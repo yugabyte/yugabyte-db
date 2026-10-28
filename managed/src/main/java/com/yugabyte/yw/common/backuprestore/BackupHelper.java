@@ -19,6 +19,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackupYb;
 import com.yugabyte.yw.common.AWSUtil;
 import com.yugabyte.yw.common.GCPUtil;
+import com.yugabyte.yw.common.HostCloudDetector;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
@@ -129,6 +130,8 @@ public class BackupHelper {
   private NodeUniverseManager nodeUniverseManager;
   private YbcBackupUtil ybcBackupUtil;
   private SoftwareUpgradeHelper softwareUpgradeHelper;
+  // The cloud YBA runs on: YBA needs no federation to reach a bucket there.
+  private final HostCloudDetector hostCloudDetector;
   private Commissioner commissioner;
 
   @Inject
@@ -142,7 +145,8 @@ public class BackupHelper {
       ValidateReplicationInfo validateReplicationInfo,
       NodeUniverseManager nodeUniverseManager,
       YbcBackupUtil ybcBackupUtil,
-      SoftwareUpgradeHelper softwareUpgradeHelper) {
+      SoftwareUpgradeHelper softwareUpgradeHelper,
+      HostCloudDetector hostCloudDetector) {
     this.ybcManager = ybcManager;
     this.ybClientService = ybClientService;
     this.customerConfigService = customerConfigService;
@@ -153,6 +157,7 @@ public class BackupHelper {
     this.ybcBackupUtil = ybcBackupUtil;
     this.softwareUpgradeHelper = softwareUpgradeHelper;
     this.commissioner = commissioner;
+    this.hostCloudDetector = hostCloudDetector;
   }
 
   public String getValidOwnerRegex() {
@@ -550,7 +555,7 @@ public class BackupHelper {
       // Only when YBA itself needs to federate. A YBA on GCP reaching a GCS bucket is same-cloud
       // and must keep its native identity; stamping an audience there would make it build an
       // AWS-IMDS external_account credential it cannot satisfy.
-      if (GCPUtil.isCrossCloudFederationConfig(gcs)) {
+      if (GCPUtil.isCrossCloudFederationConfig(gcs) && !ybaRunsOn(CloudType.gcp)) {
         CrossCloudFederationTarget target =
             resolveCrossCloudFederationTarget(universe, CloudType.gcp);
         if (target != null) {
@@ -559,7 +564,7 @@ public class BackupHelper {
       }
     } else if (configData instanceof CustomerConfigStorageS3Data) {
       CustomerConfigStorageS3Data s3 = (CustomerConfigStorageS3Data) configData;
-      if (AWSUtil.isCrossCloudFederationConfig(s3)) {
+      if (AWSUtil.isCrossCloudFederationConfig(s3) && !ybaRunsOn(CloudType.aws)) {
         CrossCloudFederationTarget target =
             resolveCrossCloudFederationTarget(universe, CloudType.aws);
         if (target != null) {
@@ -581,13 +586,19 @@ public class BackupHelper {
     String snapshotAudience = backup.getBackupInfo().crossCloudFederationAudience;
     String snapshotRoleArn = backup.getBackupInfo().crossCloudFederationRoleArn;
     if (configData instanceof CustomerConfigStorageGCSData
-        && ((CustomerConfigStorageGCSData) configData).useGcpIam) {
+        && GCPUtil.isCrossCloudFederationConfig((CustomerConfigStorageGCSData) configData)) {
+      if (ybaRunsOn(CloudType.gcp)) {
+        return;
+      }
       if (StringUtils.isNotBlank(snapshotAudience)) {
         ((CustomerConfigStorageGCSData) configData).crossCloudFederationAudience = snapshotAudience;
         return;
       }
     } else if (configData instanceof CustomerConfigStorageS3Data
         && AWSUtil.isCrossCloudFederationConfig((CustomerConfigStorageS3Data) configData)) {
+      if (ybaRunsOn(CloudType.aws)) {
+        return;
+      }
       if (StringUtils.isNotBlank(snapshotAudience) && StringUtils.isNotBlank(snapshotRoleArn)) {
         CustomerConfigStorageS3Data s3 = (CustomerConfigStorageS3Data) configData;
         s3.crossCloudFederationAudience = snapshotAudience;
@@ -599,6 +610,21 @@ public class BackupHelper {
     }
     Universe.maybeGet(backup.getUniverseUUID())
         .ifPresent(u -> applyCrossCloudFederationAudience(configData, u));
+  }
+
+  /**
+   * Whether YBA itself runs on {@code cloud}. A federated config is then still the DB nodes' way to
+   * the bucket when they run elsewhere, but where YBA builds its own client for the bucket (backup
+   * deletion) it uses its native identity: it has no identity from another cloud to federate with.
+   * YBA-side validation of a federated config stays deferred to the nodes either way. False when
+   * the host cloud is not detected, which keeps the previous behaviour.
+   */
+  private boolean ybaRunsOn(CloudType cloud) {
+    if (!hostCloudDetector.isHostCloud(cloud)) {
+      return false;
+    }
+    log.debug("YBA runs on {}: using its native identity for a federated storage config", cloud);
+    return true;
   }
 
   /**

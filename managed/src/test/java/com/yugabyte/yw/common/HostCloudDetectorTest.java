@@ -3,6 +3,8 @@
 package com.yugabyte.yw.common;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -70,6 +72,15 @@ public class HostCloudDetectorTest {
 
     assertEquals(Optional.of(CloudType.aws), detect());
     assertEquals("DMI is enough", 0, requests.get());
+  }
+
+  @Test
+  public void isHostCloudMatchesOnlyTheDetectedCloud() throws IOException {
+    dmi("chassis_asset_tag", "Amazon EC2");
+    HostCloudDetector detector = new HostCloudDetector(dmiDir, metadataUrl);
+
+    assertTrue(detector.isHostCloud(CloudType.aws));
+    assertFalse(detector.isHostCloud(CloudType.gcp));
   }
 
   @Test

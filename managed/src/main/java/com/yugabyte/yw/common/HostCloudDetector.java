@@ -79,6 +79,11 @@ public class HostCloudDetector {
     return Optional.ofNullable(detected);
   }
 
+  /** Whether YBA was detected running on {@code cloud}; false when no cloud was detected. */
+  public boolean isHostCloud(CloudType cloud) {
+    return getHostCloud().equals(Optional.of(cloud));
+  }
+
   private Optional<CloudType> fromDmi() {
     String chassisAssetTag = readDmi("chassis_asset_tag");
     if ("Amazon EC2".equals(chassisAssetTag)) {

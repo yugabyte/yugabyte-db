@@ -950,9 +950,7 @@ public class AWSUtil implements CloudUtil {
     S3Client client = null;
     var builder = S3Client.builder();
 
-    if (isCrossCloudFederationConfig(s3Data)
-        && StringUtils.isNotBlank(s3Data.crossCloudFederationRoleArn)
-        && StringUtils.isNotBlank(s3Data.crossCloudFederationAudience)) {
+    if (usesCrossCloudFederationCredentials(s3Data)) {
       // Cross-cloud federation (S3-on-GCP): YBA (on GCP) exchanges its GCE identity token for
       // temporary AWS creds via AssumeRoleWithWebIdentity, using the role/audience resolved from
       // the provider. Only reached at backup/delete time, once those transients are stamped. Let a
@@ -1065,6 +1063,16 @@ public class AWSUtil implements CloudUtil {
       throw new PlatformServiceException(
           BAD_REQUEST, String.format("Failed to create S3 client, error: %s", e.getMessage()));
     }
+  }
+
+  /**
+   * Whether YBA's S3 client for this config uses federated credentials: only once the role ARN and
+   * audience have been stamped on it. Otherwise it takes the IAM role or the default credentials.
+   */
+  public static boolean usesCrossCloudFederationCredentials(CustomerConfigStorageS3Data s3Data) {
+    return isCrossCloudFederationConfig(s3Data)
+        && StringUtils.isNotBlank(s3Data.crossCloudFederationRoleArn)
+        && StringUtils.isNotBlank(s3Data.crossCloudFederationAudience);
   }
 
   public static Map<String, AWSHostBase> getRegionHostBaseMap(CustomerConfigData configData) {
