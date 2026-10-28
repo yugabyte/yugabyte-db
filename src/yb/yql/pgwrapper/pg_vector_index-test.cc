@@ -3105,6 +3105,9 @@ void PgVectorIndexColocationOnlyTest::TestDroppedTableRetainedBySnapshotSchedule
   constexpr size_t kNumRows = 16;
   constexpr size_t kNumBusyRows = 128;
 
+  // A table rewrite copies the rows with a sequential scan.
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = false;
+
   client::SnapshotTestUtil snapshot_util;
   snapshot_util.SetProxy(&client_->proxy_cache());
   snapshot_util.SetCluster(cluster_.get());
