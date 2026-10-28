@@ -2785,6 +2785,8 @@ CheckLDAPAuth(Port *port)
 	char	   *fulluser;
 	const char *server_name;
 
+	char	   *yb_hba_password = NULL;
+
 #ifdef HAVE_LDAP_INITIALIZE
 
 	/*
@@ -2827,6 +2829,13 @@ CheckLDAPAuth(Port *port)
 	passwd = recv_password_packet(port);
 	if (passwd == NULL)
 		return STATUS_EOF;		/* client wouldn't send password */
+
+	/*
+	 * YB: get_ldap_password can raise an error, so resolve the search bind
+	 * password before connecting, when there is no LDAP handle to leak.
+	 */
+	if (port->hba->ldapbasedn)
+		yb_hba_password = get_ldap_password(port->hba->ldapbindpasswd);
 
 	if (InitializeLDAPConnection(port, &ldap) == STATUS_ERROR)
 	{
@@ -2875,12 +2884,10 @@ CheckLDAPAuth(Port *port)
 		 * Bind with a pre-defined username/password (if available) for
 		 * searching. If none is specified, this turns into an anonymous bind.
 		 */
-		char	   *hba_password = get_ldap_password(port->hba->ldapbindpasswd);
-
 		r = ldap_simple_bind_s(ldap,
 							   port->hba->ldapbinddn ? port->hba->ldapbinddn : "",
-							   hba_password);
-		pfree(hba_password);
+							   yb_hba_password);
+		pfree(yb_hba_password);
 
 		if (r != LDAP_SUCCESS)
 		{
@@ -3051,6 +3058,10 @@ errdetail_for_ldap(LDAP *ldap)
 static char *
 get_ldap_password(char *ldapbindpasswd)
 {
+	/* No password configured: bind anonymously, as upstream PG does */
+	if (ldapbindpasswd == NULL)
+		return pstrdup("");
+
 	/* Return password stored in YSQL_LDAP_BIND_PWD_ENV env var */
 	if (strncmp(ldapbindpasswd, "YSQL_LDAP_BIND_PWD_ENV", 22) == 0)
 	{
