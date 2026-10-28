@@ -149,6 +149,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -4513,7 +4514,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * the task before YBA creates VMs.
    */
   protected void createEnsureManagedLoadBalancerTasks(Cluster cluster) {
-    List<ManagedLoadBalancer> lbs = ManagedLoadBalancerUtil.planLoadBalancers(cluster);
+    createEnsureManagedLoadBalancerTasks(
+        cluster,
+        ManagedLoadBalancerUtil.planLoadBalancers(
+            cluster, getUniverse().getUniverseDetails().getManagedLoadBalancerState()));
+  }
+
+  protected void createEnsureManagedLoadBalancerTasks(
+      Cluster cluster, List<ManagedLoadBalancer> lbs) {
     if (lbs.isEmpty()) {
       return;
     }
@@ -4576,6 +4584,93 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     if (subTaskGroup.getSubTaskCount() > 0) {
       getRunnableTask().addSubTaskGroup(subTaskGroup);
     }
+  }
+
+  /**
+   * Restarts, one at a time, the tservers whose YSQL or YCQL proxy doesn't listen where its gflags
+   * now say: GFlagsUtil binds the proxies of a GCP cluster with a load balancer to 0.0.0.0. A node
+   * whose running proxies already match is skipped. Call it after the new load balancer settings
+   * are saved, because it compares against the saved universe.
+   */
+  protected void createRebindProxiesTasks() {
+    createRebindProxiesTasks(
+        getUniverse().getUniverseDetails().clusters.stream()
+            .map(c -> c.uuid)
+            .collect(Collectors.toSet()));
+  }
+
+  /** {@link #createRebindProxiesTasks()} for the given clusters only. */
+  protected void createRebindProxiesTasks(Set<UUID> clusterUuids) {
+    Universe universe = getUniverse();
+    boolean cloudEnabled =
+        confGetter.getConfForScope(
+            Customer.get(universe.getCustomerId()), CustomerConfKeys.cloudEnabled);
+    Set<ServerType> tserver = EnumSet.of(ServerType.TSERVER);
+    for (Cluster cluster : universe.getUniverseDetails().clusters) {
+      if (!clusterUuids.contains(cluster.uuid)
+          || !GFlagsUtil.listensOnLoadBalancerAddress(cluster)) {
+        continue;
+      }
+      for (NodeDetails node : universe.getNodesInCluster(cluster.uuid)) {
+        if (!node.isTserver
+            || node.state != NodeState.Live
+            || !needsProxyRebind(universe, cluster, node, cloudEnabled)) {
+          continue;
+        }
+        List<NodeDetails> nodes = Collections.singletonList(node);
+        stopProcessesOnNodes(
+            nodes,
+            tserver,
+            false /* removeMasterFromQuorum */,
+            false /* deconfigure */,
+            false /* flushTablets */,
+            false /* ignoreStopError */,
+            SubTaskGroupType.StoppingNodeProcesses);
+        createGFlagsOverrideTasks(nodes, ServerType.TSERVER);
+        startProcessesOnNode(
+            node,
+            tserver,
+            SubTaskGroupType.StartingNodeProcesses,
+            false /* addMasterToQuorum */,
+            true /* wasStopped */,
+            true /* waitForServerReady */);
+      }
+    }
+  }
+
+  private boolean needsProxyRebind(
+      Universe universe, Cluster cluster, NodeDetails node, boolean cloudEnabled) {
+    Map<String, String> target =
+        GFlagsUtil.calculateFinalGFlags(
+            node,
+            getAnsibleConfigureServerParams(
+                cluster.userIntent,
+                node,
+                ServerType.TSERVER,
+                UpgradeTaskType.GFlags,
+                UpgradeTaskSubType.None),
+            cluster.userIntent,
+            universe,
+            GFlagsUtil.getGFlagsForNode(
+                node, ServerType.TSERVER, cluster, universe.getUniverseDetails().clusters),
+            config,
+            confGetter);
+    Map<String, String> running =
+        GFlagsUtil.getActualGFlags(
+            node,
+            ServerType.TSERVER,
+            universe,
+            true /* inMemory */,
+            nodeUniverseManager,
+            nodeUIApiHelper,
+            cloudEnabled);
+    // Unknown: a restart is safe, a skip may leave the load balancer unable to connect.
+    if (running == null) {
+      return true;
+    }
+    return Stream.of(GFlagsUtil.PSQL_PROXY_BIND_ADDRESS, GFlagsUtil.CSQL_PROXY_BIND_ADDRESS)
+        .filter(target::containsKey)
+        .anyMatch(flag -> !Objects.equals(target.get(flag), running.get(flag)));
   }
 
   protected void createTablespacesTasks(

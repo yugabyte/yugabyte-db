@@ -500,7 +500,9 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
     // Delete the load balancers of the cluster that the new placement does not call for, after
     // their nodes are gone. This also cleans up a load balancer left by an edit that was rolled
     // back.
-    List<ManagedLoadBalancer> plannedLbs = ManagedLoadBalancerUtil.planLoadBalancers(cluster);
+    List<ManagedLoadBalancer> plannedLbs =
+        ManagedLoadBalancerUtil.planLoadBalancers(
+            cluster, universe.getUniverseDetails().getManagedLoadBalancerState());
     createDeleteManagedLoadBalancerTasks(
         lb ->
             lb.getClusterUuid().equals(cluster.uuid) && plannedLbs.stream().noneMatch(lb::matches),

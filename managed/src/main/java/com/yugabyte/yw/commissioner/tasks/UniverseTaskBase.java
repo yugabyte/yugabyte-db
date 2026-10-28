@@ -5804,7 +5804,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     for (Cluster cluster : clusters) {
       if (ManagedLoadBalancerUtil.isEnabled(cluster)) {
         // Validation keeps load balancer names out of a universe with managed load balancers.
-        addManagedLoadBalancers(taskParams, cluster, loadBalancerMap, nodesToIgnore, nodesToAdd);
+        // The saved state, not the params: an edit's params are the client's copy.
+        addManagedLoadBalancers(
+            taskParams,
+            cluster,
+            ManagedLoadBalancerUtil.planLoadBalancers(
+                cluster, getUniverse().getUniverseDetails().getManagedLoadBalancerState()),
+            loadBalancerMap,
+            nodesToIgnore,
+            nodesToAdd);
         continue;
       }
       Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(cluster);
@@ -5838,16 +5846,17 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * before the load balancer exists. A load balancer that an edit drops from the plan gets no
    * entry: the edit deletes it with the target groups, so there is nothing left to deregister from.
    */
-  private void addManagedLoadBalancers(
+  protected void addManagedLoadBalancers(
       UniverseDefinitionTaskParams taskParams,
       Cluster cluster,
+      List<ManagedLoadBalancer> lbs,
       Map<LoadBalancerPlacement, LoadBalancerConfig> loadBalancerMap,
       Set<NodeDetails> nodesToIgnore,
       Set<NodeDetails> nodesToAdd) {
     // A load balancer whose last node is being removed keeps its entry, so that the node is
     // deregistered.
     Map<UUID, LoadBalancerConfig> configByZone = new HashMap<>();
-    for (ManagedLoadBalancer lb : ManagedLoadBalancerUtil.planLoadBalancers(cluster)) {
+    for (ManagedLoadBalancer lb : lbs) {
       Region region = Region.getOrBadRequest(lb.getRegionUuid());
       LoadBalancerConfig config =
           loadBalancerMap.computeIfAbsent(

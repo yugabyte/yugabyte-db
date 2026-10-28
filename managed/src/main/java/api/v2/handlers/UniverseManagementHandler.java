@@ -49,6 +49,7 @@ import api.v2.utils.NormalizedPaginationSpec;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
+import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
@@ -79,6 +80,7 @@ import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.rbac.RoleBindingUtil;
+import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
 import com.yugabyte.yw.controllers.handlers.KubernetesOverridesHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
@@ -157,6 +159,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
   private final LocalhostAccessChecker localhostChecker;
   private final RoleBindingUtil roleBindingUtil;
   private final KubernetesOverridesHandler kubernetesOverridesHandler;
+  private final CloudAPI.Factory cloudAPIFactory;
 
   @Inject
   public UniverseManagementHandler(
@@ -174,7 +177,8 @@ public class UniverseManagementHandler extends ApiControllerUtils {
       FileCollectionDownloader fileCollectionDownloader,
       LocalhostAccessChecker localhostChecker,
       RoleBindingUtil roleBindingUtil,
-      KubernetesOverridesHandler kubernetesOverridesHandler) {
+      KubernetesOverridesHandler kubernetesOverridesHandler,
+      CloudAPI.Factory cloudAPIFactory) {
     super(auditService);
     this.confGetter = confGetter;
     this.releaseManager = releaseManager;
@@ -190,6 +194,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     this.localhostChecker = localhostChecker;
     this.roleBindingUtil = roleBindingUtil;
     this.kubernetesOverridesHandler = kubernetesOverridesHandler;
+    this.cloudAPIFactory = cloudAPIFactory;
   }
 
   private static final String RELEASES_PATH = "yb.releases.path";
@@ -362,6 +367,20 @@ public class UniverseManagementHandler extends ApiControllerUtils {
       clearNonDedicatedFields(cluster.userIntent);
     }
     log.debug("Edit Universe translated to v1 spec: {}", prettyPrint(v1Params));
+    // The mapping above changed dbUniverse in memory, so compare with the saved universe.
+    Universe savedUniverse = Universe.getOrBadRequest(uniUUID);
+    for (Cluster cluster : v1Params.clusters) {
+      Cluster savedCluster = savedUniverse.getCluster(cluster.uuid);
+      if (savedCluster != null) {
+        ManagedLoadBalancerUtil.validateEditedCluster(
+            savedUniverse,
+            v1Params.getPrimaryCluster(),
+            savedCluster,
+            cluster,
+            confGetter,
+            cloudAPIFactory);
+      }
+    }
 
     // edit universe with v1 spec
     v1Params.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.EDIT;

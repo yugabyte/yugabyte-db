@@ -556,6 +556,10 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
               u.setUniverseDetails(details);
             });
 
+    // The task reads the load balancer names from the saved state of its universe.
+    UniverseTaskParams params = new UniverseTaskParams();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    universeTaskBase.setTaskParams(params);
     // n3 is being removed, so r2 keeps an entry without nodes and n3 is deregistered.
     Map<LoadBalancerPlacement, LoadBalancerConfig> lbMap =
         universeTaskBase.createLoadBalancerMap(

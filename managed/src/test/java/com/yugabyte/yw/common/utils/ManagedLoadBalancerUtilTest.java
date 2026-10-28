@@ -18,6 +18,7 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.ManagedLoadBalancer;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.List;
@@ -75,7 +76,7 @@ public class ManagedLoadBalancerUtilTest extends FakeDBApplication {
     PlacementInfoUtil.addPlacementZone(az1.getUuid(), cluster.placementInfo);
     PlacementInfoUtil.addPlacementZone(az3.getUuid(), cluster.placementInfo);
 
-    List<ManagedLoadBalancer> lbs = ManagedLoadBalancerUtil.planLoadBalancers(cluster);
+    List<ManagedLoadBalancer> lbs = ManagedLoadBalancerUtil.planLoadBalancers(cluster, null);
 
     String name = ManagedLoadBalancerUtil.getPrivateName(cluster.uuid);
     assertEquals(
@@ -97,8 +98,8 @@ public class ManagedLoadBalancerUtilTest extends FakeDBApplication {
         lbs);
     assertEquals(
         List.of(),
-        ManagedLoadBalancerUtil.planLoadBalancers(cluster(ClusterType.PRIMARY, false, null)));
-    assertEquals(List.of(), ManagedLoadBalancerUtil.planLoadBalancers(null));
+        ManagedLoadBalancerUtil.planLoadBalancers(cluster(ClusterType.PRIMARY, false, null), null));
+    assertEquals(List.of(), ManagedLoadBalancerUtil.planLoadBalancers(null, null));
   }
 
   @Test
@@ -118,25 +119,58 @@ public class ManagedLoadBalancerUtilTest extends FakeDBApplication {
 
     assertEquals("Public load balancers are not supported yet", e.getMessage());
     cluster.userIntent.getManagedLoadBalancer().setEnablePrivate(false);
-    assertEquals(List.of(), ManagedLoadBalancerUtil.planLoadBalancers(cluster));
+    assertEquals(List.of(), ManagedLoadBalancerUtil.planLoadBalancers(cluster, null));
+  }
+
+  private Universe universe;
+
+  private void validateEdit(Cluster current, Cluster updated) {
+    if (universe == null) {
+      universe = ModelFactory.createUniverse(ModelFactory.testCustomer().getId());
+    }
+    ManagedLoadBalancerUtil.validateEditedCluster(
+        universe,
+        updated,
+        current,
+        updated,
+        app.injector().instanceOf(RuntimeConfGetter.class),
+        mockCloudAPIFactory);
   }
 
   @Test
-  public void testEditCannotChangeWhichLoadBalancersAreManaged() {
-    Cluster current = cluster(ClusterType.PRIMARY, true, null);
+  public void testEditTurnsTheManagedLoadBalancerOnOrOffButCannotAddPublic() {
+    Cluster on = cluster(ClusterType.PRIMARY, true, null);
     Cluster withPublic = cluster(ClusterType.PRIMARY, true, null);
     withPublic.userIntent.getManagedLoadBalancer().setEnablePublic(true);
 
-    ManagedLoadBalancerUtil.validateEditedCluster(
-        current, current, cluster(ClusterType.PRIMARY, true, null));
-    assertThrows(
-        PlatformServiceException.class,
-        () -> ManagedLoadBalancerUtil.validateEditedCluster(current, current, withPublic));
-    assertThrows(
-        PlatformServiceException.class,
-        () ->
-            ManagedLoadBalancerUtil.validateEditedCluster(
-                current, current, cluster(ClusterType.PRIMARY, false, null)));
+    validateEdit(on, cluster(ClusterType.PRIMARY, false, null));
+    validateEdit(cluster(ClusterType.PRIMARY, false, null), on);
+    PlatformServiceException e =
+        assertThrows(PlatformServiceException.class, () -> validateEdit(on, withPublic));
+    assertEquals("Public load balancers are not supported yet", e.getMessage());
+  }
+
+  @Test
+  public void testTurningOnTakesOverOnlyOneLbNamePerRegion() {
+    // The user's load balancer serves az-1; az-2 of the same region names none.
+    Cluster updated = cluster(ClusterType.PRIMARY, true, "byo-lb");
+    PlacementInfo.PlacementRegion region = updated.placementInfo.cloudList.get(0).regionList.get(0);
+    region.code = "r1";
+    PlacementInfo.PlacementAZ az2 = new PlacementInfo.PlacementAZ();
+    az2.name = "az-2";
+    region.azList.add(az2);
+
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> validateEdit(cluster(ClusterType.PRIMARY, false, "byo-lb"), updated));
+
+    assertEquals(
+        "The zones of region r1 set different load balancers: (none), byo-lb. Set the same lbName"
+            + " in every zone of the region, or none.",
+        e.getMessage());
+    az2.lbName = "byo-lb";
+    validateEdit(cluster(ClusterType.PRIMARY, false, "byo-lb"), updated);
   }
 
   @Test

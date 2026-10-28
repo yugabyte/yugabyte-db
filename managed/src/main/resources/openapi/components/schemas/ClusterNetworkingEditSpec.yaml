@@ -5,3 +5,8 @@ properties:
   enable_exposing_service:
     description: Whether to create a load balancer service for this cluster.
     $ref: "./ExposingServiceState.yaml"
+  managed_load_balancer:
+    description: 'Turns the load balancers that YBA creates, manages and deletes on or off for the primary cluster. Leave it out to keep the current setting. To turn them on, set enable_private. If the zones of a region set lb_name, YBA takes over that load balancer, keeps its name and address, and clears lb_name. All zones of the region must set the same lb_name. To turn them off, set no load balancer. YBA then deletes every managed load balancer of the cluster, including the ones that it took over.'
+    $ref: "./ManagedLoadBalancerSpec.yaml"
+    x-yba-api-since: 2.31.0.0
+    x-yba-api-visibility: preview

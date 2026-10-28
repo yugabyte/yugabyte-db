@@ -15,7 +15,7 @@ allOf:
         example: false
         x-yba-api-visibility: internal
       managed_load_balancer:
-        description: 'Load balancers that YBA creates, manages and deletes. Set when the universe is created. Do not combine with enable_lb.'
+        description: 'Load balancers that YBA creates, manages and deletes. Set it when the universe is created, or turn it on or off later with an edit of the universe. Do not combine with enable_lb.'
         $ref: "./ManagedLoadBalancerSpec.yaml"
         x-yba-api-since: 2.31.0.0
         x-yba-api-visibility: preview

@@ -366,7 +366,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @Getter
   @ApiModelProperty(
       hidden = true,
-      value = "YbaApi Internal. Load balancers that YBA created for this universe.")
+      value = "YbaApi Internal. Load balancers that YBA created or took over for this universe.")
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.31.0.0")
   private ManagedLoadBalancerState managedLoadBalancerState;
 
@@ -1588,8 +1588,10 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty(
         value =
             "WARNING: This is a preview API that could change. Load balancers that YBA creates,"
-                + " manages and deletes. Set when the universe is created. When set, it must"
-                + " enable at least one load balancer.")
+                + " manages and deletes. Set when the universe is created. An edit can turn it on"
+                + " or off. When it turns it on, YBA takes over the load balancer that the zones of"
+                + " a region name with lbName. When set, it must enable at least one load"
+                + " balancer.")
     private ManagedLoadBalancerConfig managedLoadBalancer;
 
     @ApiModelProperty(

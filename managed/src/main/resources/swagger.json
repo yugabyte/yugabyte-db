@@ -31425,7 +31425,7 @@
         },
         "managedLoadBalancer" : {
           "$ref" : "#/definitions/ManagedLoadBalancerConfig",
-          "description" : "WARNING: This is a preview API that could change. Load balancers that YBA creates, manages and deletes. Set when the universe is created. When set, it must enable at least one load balancer."
+          "description" : "WARNING: This is a preview API that could change. Load balancers that YBA creates, manages and deletes. Set when the universe is created. An edit can turn it on or off. When it turns it on, YBA takes over the load balancer that the zones of a region name with lbName. When set, it must enable at least one load balancer."
         },
         "masterDeviceInfo" : {
           "$ref" : "#/definitions/DeviceInfo",

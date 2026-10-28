@@ -22,11 +22,13 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.utils.CapacityReservationUtil;
+import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.ManagedLoadBalancerState;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -81,6 +83,26 @@ public class EditUniverse extends EditUniverseTaskBase {
   }
 
   @Override
+  protected void freezeUniverseInTxn(Universe universe) {
+    super.freezeUniverseInTxn(universe);
+    saveManagedLoadBalancerSettings(universe);
+  }
+
+  // The nodes that this edit configures read the setting from the saved universe: GFlagsUtil binds
+  // the proxies of a GCP cluster with a load balancer to 0.0.0.0. The rest of the cluster is saved
+  // after its nodes change.
+  private void saveManagedLoadBalancerSettings(Universe universe) {
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    for (Cluster cluster : taskParams().clusters) {
+      Cluster saved = details.getClusterByUuid(cluster.uuid);
+      if (saved != null) {
+        saved.userIntent.setManagedLoadBalancer(cluster.userIntent.getManagedLoadBalancer());
+      }
+    }
+    universe.setUniverseDetails(details);
+  }
+
+  @Override
   public void run() {
     if (maybeRunOnlyPrechecks()) {
       return;
@@ -95,6 +117,7 @@ public class EditUniverse extends EditUniverseTaskBase {
           (univ) -> {
             if (univ.getUniverseDetails().autoRollbackPerformed) {
               updateUniverseNodesAndSettings(univ, taskParams(), false);
+              saveManagedLoadBalancerSettings(univ);
             }
           };
       universe =
@@ -122,6 +145,20 @@ public class EditUniverse extends EditUniverseTaskBase {
                   Comparator.<Cluster, Integer>comparing(
                       c -> c.clusterType == ClusterType.PRIMARY ? -1 : c.index))
               .collect(Collectors.toList());
+      // A cluster that turns on its managed load balancer may need its proxies on 0.0.0.0. This
+      // comes before the load balancers are created, so that a retry finds none and checks again.
+      ManagedLoadBalancerState lbState =
+          universe.getUniverseDetails().getManagedLoadBalancerState();
+      createRebindProxiesTasks(
+          clusters.stream()
+              .filter(ManagedLoadBalancerUtil::isEnabled)
+              .filter(
+                  c ->
+                      lbState == null
+                          || lbState.getLoadBalancers().stream()
+                              .noneMatch(lb -> lb.getClusterUuid().equals(c.uuid)))
+              .map(c -> c.uuid)
+              .collect(Collectors.toSet()));
       // Before VM creation, so that a cloud permission error fails the edit first. This creates the
       // load balancers of new regions and reconciles the existing ones.
       for (Cluster cluster : clusters) {
@@ -160,6 +197,13 @@ public class EditUniverse extends EditUniverseTaskBase {
             false /* moveMastersFirst */);
         // Updating placement info and userIntent in DB
         createUpdateUniverseIntentTask(cluster);
+        if (ManagedLoadBalancerUtil.isEnabled(cluster)
+            && ManagedLoadBalancerUtil.setsLbName(cluster)) {
+          // YBA now manages the load balancers that lbName named. The planning above reads them
+          // from the task params, so only the saved universe loses them.
+          createUpdateUniverseFieldsTask(
+              u -> ManagedLoadBalancerUtil.clearTakenOverNames(u.getCluster(cluster.uuid)));
+        }
       }
       if (deleteCapacityReservation) {
         createDeleteCapacityReservationTask();

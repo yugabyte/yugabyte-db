@@ -1,7 +1,7 @@
 x-yba-api-visibility: preview
 x-yba-api-since: 2.31.0.0
 title: ManagedLoadBalancerSpec
-description: 'Load balancers that YBA creates, manages and deletes for the cluster. Each enabled kind gives one L4 load balancer in every region of the cluster, serving all zones of the region. When set, this object must enable at least one load balancer. ClusterInfo.load_balancers lists them with their scheme and address. The settings are fixed when the universe is created. Part of ClusterNetworkingSpec.'
+description: 'Load balancers that YBA creates, manages and deletes for the cluster. Each enabled kind gives one L4 load balancer in every region of the cluster, serving all zones of the region. When set, this object must enable at least one load balancer. ClusterInfo.load_balancers lists them with their scheme and address. An edit of the universe can turn it on or off. Part of ClusterNetworkingSpec and ClusterNetworkingEditSpec.'
 type: object
 properties:
   enable_private:
