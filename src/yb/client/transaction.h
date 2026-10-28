@@ -99,8 +99,11 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   // lifetime of the transaction it describes. It also must not be committed or aborted.
   // Used to read data written by an already committed transaction, see
   // TransactionMetadata::is_read_only_historical_committed_txn.
+  // For a historical read transaction, aborted are the subtransactions rolled back to a savepoint,
+  // whose intents the reads skip.
   static YBTransactionPtr Fabricate(
-      TransactionManager* manager, const TransactionMetadata& metadata);
+      TransactionManager* manager, const TransactionMetadata& metadata,
+      SubtxnSet aborted = SubtxnSet());
 
   // Creates "child" transaction.
   // Child transaction shares same metadata as parent transaction, so all writes are done
@@ -269,6 +272,8 @@ class YBSubTransaction {
   void SetActiveSubTransaction(SubTransactionId id);
 
   Status RollbackToSubTransaction(SubTransactionId id);
+
+  void SetAborted(SubtxnSet aborted);
 
   bool HasSubTransaction(SubTransactionId id) const;
 

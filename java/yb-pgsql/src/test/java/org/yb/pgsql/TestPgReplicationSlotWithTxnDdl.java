@@ -618,6 +618,139 @@ public class TestPgReplicationSlotWithTxnDdl extends BasePgSQLTest {
     conn.close();
   }
 
+  // Rows written after a ROLLBACK TO SAVEPOINT are decoded without the column added inside the
+  // savepoint. Its intents are still in the intents DB, so the historical catalog reads must skip
+  // the aborted subtransaction (#36047). Nothing overwrites the rolled back pg_attribute row before
+  // INSERT(2), unlike in addColumnRolledBackToSavepoint.
+  @Test
+  public void insertAfterAddColumnRolledBackToSavepoint() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("SAVEPOINT s1");
+      stmt.execute("ALTER TABLE t1 ADD COLUMN d int");
+      stmt.execute("INSERT INTO t1 VALUES (1, 'discarded', 1)");
+      stmt.execute("ROLLBACK TO SAVEPOINT s1");
+      stmt.execute("INSERT INTO t1 VALUES (2, 'kept')");
+      stmt.execute("ALTER TABLE t1 ADD COLUMN c text");
+      stmt.execute("INSERT INTO t1 VALUES (3, 'after', 'c3')");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 6);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("2", "kept"),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID), column("c", TEXT_OID)),
+        insert("3", "after", "c3"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // Same as insertAfterAddColumnRolledBackToSavepoint, but the rolled back ADD COLUMN rewrites the
+  // table. Rows written after the ROLLBACK TO SAVEPOINT are decoded with the original relfilenode,
+  // not the one of the rewritten table, which is dropped by the rollback.
+  @Test
+  public void insertAfterRewriteRolledBackToSavepoint() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text)");
+      stmt.execute("INSERT INTO t1 VALUES (0, 'before_slot')");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("SAVEPOINT s1");
+      stmt.execute("ALTER TABLE t1 ADD COLUMN d int DEFAULT (random() * 1000)::int");
+      stmt.execute("INSERT INTO t1 VALUES (1, 'discarded', 1)");
+      stmt.execute("ROLLBACK TO SAVEPOINT s1");
+      stmt.execute("RELEASE SAVEPOINT s1");
+      stmt.execute("INSERT INTO t1 VALUES (2, 'kept')");
+      stmt.execute("ALTER TABLE t1 ADD COLUMN c text");
+      stmt.execute("INSERT INTO t1 VALUES (3, 'after', 'c3')");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 6);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("2", "kept"),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID), column("c", TEXT_OID)),
+        insert("3", "after", "c3"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // The publication refresh caused by a table rewrite reads the publication's tables within the
+  // transaction. An ALTER PUBLICATION ADD TABLE rolled back to a savepoint earlier in the
+  // transaction must not be visible to it, so the rows of that table are not streamed.
+  @Test
+  public void rewriteAfterAlterPublicationRolledBackToSavepoint() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text)");
+      stmt.execute("CREATE TABLE t2 (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("SAVEPOINT s1");
+      stmt.execute("ALTER PUBLICATION pub ADD TABLE t2");
+      stmt.execute("ROLLBACK TO SAVEPOINT s1");
+      stmt.execute("ALTER TABLE t1 ADD COLUMN c int DEFAULT (random() * 1000)::int");
+      stmt.execute("INSERT INTO t1 VALUES (1, 'one', 10)");
+      stmt.execute("INSERT INTO t2 VALUES (1, 'not_published')");
+      stmt.execute("COMMIT");
+
+      stmt.execute("INSERT INTO t2 VALUES (2, 'not_published')");
+      stmt.execute("INSERT INTO t1 VALUES (2, 'two', 20)");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 7);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID), column("c", INT4_OID)),
+        insert("1", "one", "10"),
+        commitMessage(),
+        beginMessage(3),
+        insert("2", "two", "20"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
   // A large transaction with a DDL in the middle must still order the schema change correctly
   // after the reorder buffer spills to disk.
   @Test

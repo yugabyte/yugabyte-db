@@ -2399,8 +2399,11 @@ void PgApiImpl::ResetCatalogReadTime() {
 }
 
 void PgApiImpl::SetHistoricalReadContext(
-    const ReadHybridTime& read_time, const char* transaction_id) {
-  pg_session_->SetHistoricalReadContext(read_time, transaction_id ? transaction_id : "");
+    const ReadHybridTime& read_time, const char* transaction_id,
+    std::span<const uint32_t> aborted_subtxn_set) {
+  pg_session_->SetHistoricalReadContext(
+      read_time, transaction_id ? transaction_id : "",
+      std::vector<uint32_t>(aborted_subtxn_set.begin(), aborted_subtxn_set.end()));
 }
 
 void PgApiImpl::ResetHistoricalReadContext() {

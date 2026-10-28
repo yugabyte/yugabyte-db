@@ -243,6 +243,10 @@ Status YBSubTransaction::RollbackToSubTransaction(SubTransactionId id) {
   return sub_txn_.aborted.SetRange(id, highest_subtransaction_id_);
 }
 
+void YBSubTransaction::SetAborted(SubtxnSet aborted) {
+  sub_txn_.aborted = std::move(aborted);
+}
+
 const SubTransactionMetadata& YBSubTransaction::get() const { return sub_txn_; }
 
 CoarseTimePoint AdjustDeadline(CoarseTimePoint deadline);
@@ -1319,8 +1323,9 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     VLOG_WITH_PREFIX(2) << "Log prefix tag changed";
   }
 
-  void MarkHistoricalReadReady() EXCLUDES(mutex_) {
+  void MarkHistoricalReadReady(SubtxnSet aborted) EXCLUDES(mutex_) {
     std::lock_guard lock(mutex_);
+    subtransaction_.SetAborted(std::move(aborted));
     ready_ = true;
   }
 
@@ -2919,10 +2924,12 @@ YBTransaction::YBTransaction(TransactionManager* manager, ChildTransactionData d
 }
 
 YBTransactionPtr YBTransaction::Fabricate(
-    TransactionManager* manager, const TransactionMetadata& metadata) {
+    TransactionManager* manager, const TransactionMetadata& metadata, SubtxnSet aborted) {
   auto result = std::make_shared<YBTransaction>(manager, metadata, PrivateOnlyTag());
   if (metadata.is_read_only_historical_committed_txn) {
-    result->impl_->MarkHistoricalReadReady();
+    result->impl_->MarkHistoricalReadReady(std::move(aborted));
+  } else {
+    DCHECK(aborted.IsEmpty());
   }
   return result;
 }

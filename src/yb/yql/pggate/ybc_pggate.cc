@@ -642,8 +642,12 @@ void YBCPgResetCatalogReadTime() {
   pgapi->ResetCatalogReadTime();
 }
 
-void YBCPgSetHistoricalReadContext(YbcReadHybridTime read_time, const char* transaction_id) {
-  pgapi->SetHistoricalReadContext(MakeReadHybridTime(read_time), transaction_id);
+void YBCPgSetHistoricalReadContext(
+    YbcReadHybridTime read_time, const char* transaction_id, const uint32_t* aborted_subtxn_set,
+    size_t aborted_subtxn_set_size) {
+  pgapi->SetHistoricalReadContext(
+      MakeReadHybridTime(read_time), transaction_id,
+      std::span(aborted_subtxn_set, aborted_subtxn_set_size));
 }
 
 void YBCPgResetHistoricalReadContext() {
@@ -3167,6 +3171,15 @@ YbcStatus YBCPgGetCDCConsistentChanges(
     const auto& docdb_txn_id = row_message_pb.transaction_id();
     const bool has_docdb_txn_id = !docdb_txn_id.empty();
 
+    const auto& aborted_subtxn_set_pb = row_message_pb.aborted_subtxns().set();
+    uint32_t* aborted_subtxn_set = nullptr;
+    if (!aborted_subtxn_set_pb.empty()) {
+      aborted_subtxn_set = static_cast<uint32_t*>(
+          YBCPAlloc(sizeof(uint32_t) * aborted_subtxn_set_pb.size()));
+      std::copy(
+          aborted_subtxn_set_pb.begin(), aborted_subtxn_set_pb.end(), aborted_subtxn_set);
+    }
+
     new (&resp_rows[row_idx]) YbcPgRowMessage{
         .col_count = col_count,
         .cols = cols,
@@ -3183,7 +3196,9 @@ YbcStatus YBCPgGetCDCConsistentChanges(
         .xrepl_origin_id =
             row_message_pb.has_xrepl_origin_id() ? row_message_pb.xrepl_origin_id() : 0,
         .has_docdb_txn_id = has_docdb_txn_id,
-        .docdb_txn_id = {}};
+        .docdb_txn_id = {},
+        .aborted_subtxn_set = aborted_subtxn_set,
+        .aborted_subtxn_set_size = aborted_subtxn_set_pb.size()};
     if (has_docdb_txn_id) {
       snprintf(
           resp_rows[row_idx].docdb_txn_id, sizeof(resp_rows[row_idx].docdb_txn_id), "%s",

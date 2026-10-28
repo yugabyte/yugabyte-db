@@ -1829,8 +1829,8 @@ void SetKeyWriteId(string key, int32_t write_id, CDCSDKCheckpointPB* checkpoint)
 
 void FillBeginRecord(
     const TransactionId& transaction_id, const uint64_t& commit_timestamp,
-    uint32_t xrepl_origin_id, GetChangesResponsePB* resp,
-    CDCThroughputMetrics* throughput_metrics) {
+    uint32_t xrepl_origin_id, const SubtxnSet& aborted, CDCSDKRequestSource request_source,
+    GetChangesResponsePB* resp, CDCThroughputMetrics* throughput_metrics) {
   CDCSDKProtoRecordPB* proto_record = resp->add_cdc_sdk_proto_records();
   RowMessage* row_message = proto_record->mutable_row_message();
 
@@ -1839,6 +1839,12 @@ void FillBeginRecord(
   row_message->set_commit_time(commit_timestamp);
   if (xrepl_origin_id) {
     row_message->set_xrepl_origin_id(xrepl_origin_id);
+  }
+  // The walsender's catalog reads within the transaction need it to skip the intents of
+  // subtransactions rolled back to a savepoint.
+  if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
+      request_source == CDCSDKRequestSource::WALSENDER && !aborted.IsEmpty()) {
+    aborted.ToPB(row_message->mutable_aborted_subtxns()->mutable_set());
   }
   // No need to add record_time to the Begin record since it does not have any intent associated
   // with it.
@@ -1886,7 +1892,8 @@ Status ProcessIntents(
   if (stream_state->key.empty() && stream_state->write_id == 0 &&
       FLAGS_cdc_populate_end_markers_transactions) {
     FillBeginRecord(
-        transaction_id, commit_time.ToUint64(), xrepl_origin_id, resp, throughput_metrics);
+        transaction_id, commit_time.ToUint64(), xrepl_origin_id, aborted, request_source, resp,
+        throughput_metrics);
     TEST_SYNC_POINT("AddBeginRecord::End");
   }
 
