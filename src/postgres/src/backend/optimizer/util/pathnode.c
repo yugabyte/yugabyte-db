@@ -5710,7 +5710,7 @@ yb_create_unique_path(PlannerInfo *root,
  *
  * Returns a polymorphic path.
  * - either a bare distinct index scan path
- * - or an UpperUniquePath on top of a distinct index scan path
+ * - or a UniquePath on top of a distinct index scan path
  */
 Path *
 yb_create_distinct_index_path(PlannerInfo *root,
@@ -5852,7 +5852,7 @@ yb_create_distinct_index_path(PlannerInfo *root,
 	{
 		/* Range partitioned */
 		if (yb_distinct_nkeys >= 0)
-			/* pathkeys available. Can use UpperUniquePath here. */
+			/* pathkeys available. Can use UniquePath here. */
 			return (Path *)
 				yb_create_unique_path(root, index->rel, (Path *) pathnode,
 									  yb_distinct_nkeys, numDistinctRows);

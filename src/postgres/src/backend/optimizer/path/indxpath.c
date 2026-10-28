@@ -1251,8 +1251,8 @@ get_index_paths(PlannerInfo *root, RelOptInfo *rel,
 		 * YB: Bitmap scan does not support distinct pushdown. Distinct pushdown
 		 * may be represented by a UniquePath on top of a distinct index
 		 * scan path, or a bare distinct index scan path (IndexPath with
-		 * yb_distinct_prefixlen > 0). Refer to create_distinct_index_path for
-		 * more details.
+		 * yb_distinct_prefixlen > 0). Refer to
+		 * yb_create_distinct_index_path for more details.
 		 *
 		 * When either of the above conditions are true for a path, we do not add
 		 * the path to the bitindexpaths list.
