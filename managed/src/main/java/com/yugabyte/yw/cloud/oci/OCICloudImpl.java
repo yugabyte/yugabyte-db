@@ -137,12 +137,11 @@ public class OCICloudImpl implements CloudAPI {
     } catch (PlatformServiceException e) {
       throw e;
     } catch (BmcException e) {
-      log.error("OCI VCN lookup failed for {}: ", vcnId, e);
       throw wrapLookupFailure(e, "VCN", vcnId);
     } catch (Exception e) {
       log.error("Unexpected error looking up OCI VCN {}: ", vcnId, e);
       throw new PlatformServiceException(
-          BAD_REQUEST, "VCN details extraction failed: " + e.getMessage());
+          BAD_REQUEST, OCIErrorFormatter.userMessage("VCN details extraction failed", e));
     }
   }
 
@@ -158,12 +157,11 @@ public class OCICloudImpl implements CloudAPI {
     } catch (PlatformServiceException e) {
       throw e;
     } catch (BmcException e) {
-      log.error("OCI subnet lookup failed for {}: ", subnetId, e);
       throw wrapLookupFailure(e, "Subnet", subnetId);
     } catch (Exception e) {
       log.error("Unexpected error looking up OCI subnet {}: ", subnetId, e);
       throw new PlatformServiceException(
-          BAD_REQUEST, "Subnet details extraction failed: " + e.getMessage());
+          BAD_REQUEST, OCIErrorFormatter.userMessage("Subnet details extraction failed", e));
     }
   }
 
@@ -177,12 +175,11 @@ public class OCICloudImpl implements CloudAPI {
     } catch (PlatformServiceException e) {
       throw e;
     } catch (BmcException e) {
-      log.error("OCI image lookup failed for {}: ", imageId, e);
       throw wrapLookupFailure(e, "Image", imageId);
     } catch (Exception e) {
       log.error("Unexpected error looking up OCI image {}: ", imageId, e);
       throw new PlatformServiceException(
-          BAD_REQUEST, "Image details extraction failed: " + e.getMessage());
+          BAD_REQUEST, OCIErrorFormatter.userMessage("Image details extraction failed", e));
     }
   }
 
@@ -221,19 +218,21 @@ public class OCICloudImpl implements CloudAPI {
     } catch (PlatformServiceException e) {
       throw e;
     } catch (BmcException e) {
-      log.error("OCI DNS zone lookup failed for {}: ", zoneId, e);
       if (e.getStatusCode() == NOT_FOUND) {
         throw new PlatformServiceException(
             NOT_FOUND,
-            "DNS zone not found, or the provider credentials are not authorized to read it: "
-                + zoneId);
+            OCIErrorFormatter.logAndShorten(
+                "DNS zone not found, or the provider credentials are not authorized to read it: "
+                    + zoneId,
+                e));
       }
       throw new PlatformServiceException(
-          BAD_REQUEST, "DNS zone details extraction failed: " + e.getMessage());
+          BAD_REQUEST,
+          OCIErrorFormatter.logAndShorten("DNS zone details extraction failed for " + zoneId, e));
     } catch (Exception e) {
       log.error("Unexpected error looking up OCI DNS zone {}: ", zoneId, e);
       throw new PlatformServiceException(
-          BAD_REQUEST, "DNS zone details extraction failed: " + e.getMessage());
+          BAD_REQUEST, OCIErrorFormatter.userMessage("DNS zone details extraction failed", e));
     }
   }
 
@@ -248,10 +247,14 @@ public class OCICloudImpl implements CloudAPI {
   private static PlatformServiceException wrapLookupFailure(
       BmcException e, String resourceLabel, String resourceId) {
     if (e.getStatusCode() == NOT_FOUND) {
-      return new PlatformServiceException(NOT_FOUND, resourceLabel + " not found: " + resourceId);
+      return new PlatformServiceException(
+          NOT_FOUND,
+          OCIErrorFormatter.logAndShorten(resourceLabel + " not found: " + resourceId, e));
     }
     return new PlatformServiceException(
-        BAD_REQUEST, resourceLabel + " details extraction failed: " + e.getMessage());
+        BAD_REQUEST,
+        OCIErrorFormatter.logAndShorten(
+            resourceLabel + " details extraction failed for " + resourceId, e));
   }
 
   /**
