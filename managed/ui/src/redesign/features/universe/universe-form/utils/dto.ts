@@ -967,6 +967,9 @@ export interface ImageBundle {
     regions: {
       [key: string]: {
         ybImage: string;
+        // OCI only. True when the image is Marketplace or was built from one.
+        // Unset when YBA could not tell.
+        isImageMarketplaceBased?: boolean | null;
       };
     };
     sshUser: string;
