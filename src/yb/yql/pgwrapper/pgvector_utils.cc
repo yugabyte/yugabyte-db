@@ -11,7 +11,7 @@
 // under the License.
 //
 
-#include "yb/yql/pgwrapper/pgvector_helpers.h"
+#include "yb/yql/pgwrapper/pgvector_utils.h"
 
 #include "yb/util/enums.h"
 
