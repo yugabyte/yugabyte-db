@@ -3535,7 +3535,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   public void createSyncCertManagerClientCertTask(Universe universe) {
-    if (!CertManagerClientCertSync.isClientCertRequired(universe)) {
+    createSyncCertManagerClientCertTask(universe, universe.getUniverseDetails().rootCA);
+  }
+
+  /** Adds the sync if the universe needs a client cert once it uses rootCA. */
+  public void createSyncCertManagerClientCertTask(Universe universe, UUID rootCA) {
+    if (!CertManagerClientCertSync.isClientCertRequired(universe, rootCA)) {
       return;
     }
     SubTaskGroup subTaskGroup =
@@ -6184,8 +6189,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   protected boolean isServerAlive(
       NodeDetails node, ServerType server, String masterAddrs, long timeoutMs) {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    String certificate = universe.getCertificateNodetoNode();
-    try (YBClientApi client = ybService.getClient(masterAddrs, certificate)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe, masterAddrs)) {
       HostAndPort hp =
           HostAndPort.fromParts(
               node.cloudInfo.private_ip,

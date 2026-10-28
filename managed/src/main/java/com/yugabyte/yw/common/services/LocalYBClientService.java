@@ -3,7 +3,6 @@
 package com.yugabyte.yw.common.services;
 
 import com.google.inject.Inject;
-import com.yugabyte.yw.common.certmgmt.CertManagerClientCertSync;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.services.config.YbClientConfig;
@@ -42,7 +41,18 @@ public class LocalYBClientService implements YBClientService {
   }
 
   public synchronized YBClientApi getUniverseClient(Universe universe) {
-    return getClient(universe.getMasterAddresses(), universe.getCertificateNodetoNode());
+    return getUniverseClient(universe, universe.getMasterAddresses());
+  }
+
+  @Override
+  public synchronized YBClientApi getUniverseClient(Universe universe, String masterHostPorts) {
+    if (masterHostPorts == null) {
+      return null;
+    }
+    return getClientWithConfig(
+        ybClientConfigFactory
+            .create(masterHostPorts, universe.getCertificateNodetoNode())
+            .withClientCertOf(universe));
   }
 
   private YBClientApi getNewClient(String masterHPs, String certFile) {
@@ -65,9 +75,9 @@ public class LocalYBClientService implements YBClientService {
                 confGetter.getGlobalConf(GlobalConfKeys.ybClientDnsDebugThresholdNs))
             .dnsWarningThresholdNs(
                 confGetter.getGlobalConf(GlobalConfKeys.ybClientDnsWarningThresholdNs));
-    // Present a client cert for CAs with a valid synced copy.
-    CertManagerClientCertSync.getClientCertFiles(config.getCertFile())
-        .ifPresent(pair -> builder.sslClientCertFiles(pair.getLeft(), pair.getRight()));
+    if (config.getClientCertFile() != null) {
+      builder.sslClientCertFiles(config.getClientCertFile(), config.getClientKeyFile());
+    }
     return builder.build();
   }
 

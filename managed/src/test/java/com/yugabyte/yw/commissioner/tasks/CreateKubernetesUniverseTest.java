@@ -40,6 +40,7 @@ import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertManagerClientCertSync;
+import com.yugabyte.yw.common.certmgmt.CertManagerClientCertSyncTest;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -54,7 +55,7 @@ import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodList;
 import io.fabric8.kubernetes.api.model.SecretBuilder;
 import java.nio.file.Files;
-import java.nio.file.Paths;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Comparator;
@@ -64,6 +65,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.apache.commons.lang3.tuple.Pair;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -792,10 +794,14 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
               u.setUniverseDetails(details);
             });
     universeVersion = defaultUniverse.getVersion();
-    String b64 = Base64.getEncoder().encodeToString("pem".getBytes());
+    Pair<String, String> pem = CertManagerClientCertSyncTest.newCertPem(Duration.ofDays(90));
+    Base64.Encoder encoder = Base64.getEncoder();
     when(mockKubernetesManager.getSecret(any(), any(), any()))
         .thenReturn(
-            new SecretBuilder().addToData("tls.crt", b64).addToData("tls.key", b64).build());
+            new SecretBuilder()
+                .addToData("tls.crt", encoder.encodeToString(pem.getLeft().getBytes()))
+                .addToData("tls.key", encoder.encodeToString(pem.getRight().getBytes()))
+                .build());
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.rootCA = rootCA;
     TaskInfo taskInfo = submitTask(taskParams);
@@ -812,10 +818,9 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
         TaskType.SyncCertManagerClientCert,
         taskTypes.get(taskTypes.indexOf(TaskType.WaitForServer) - 1));
     assertEquals(
-        "pem",
+        pem.getLeft(),
         Files.readString(
-            Paths.get(caCertFile)
-                .resolveSibling(CertManagerClientCertSync.CLIENT_CERT_SUBDIR)
+            CertManagerClientCertSync.getClientCertDir(defaultUniverse.getUniverseUUID())
                 .resolve(CertificateHelper.CLIENT_CERT)));
   }
 

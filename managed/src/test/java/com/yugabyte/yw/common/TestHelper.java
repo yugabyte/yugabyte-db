@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
+import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.models.Universe;
@@ -29,9 +30,30 @@ import java.util.UUID;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
 import org.apache.commons.compress.compressors.gzip.GzipCompressorOutputStream;
+import org.mockito.Answers;
+import org.mockito.Mockito;
 import org.slf4j.LoggerFactory;
 
 public class TestHelper {
+
+  /**
+   * A YBClientService mock whose getUniverseClient(universe, masters) falls through to
+   * getClient(masters, universe's CA), as LocalYBClientService does, so tests that stub getClient
+   * keep covering the paths that pass a universe.
+   */
+  public static YBClientService mockYBClientService() {
+    return Mockito.mock(
+        YBClientService.class,
+        invocation -> {
+          Object[] args = invocation.getArguments();
+          if (invocation.getMethod().getName().equals("getUniverseClient") && args.length == 2) {
+            return ((YBClientService) invocation.getMock())
+                .getClient((String) args[1], ((Universe) args[0]).getCertificateNodetoNode());
+          }
+          return Answers.RETURNS_DEFAULTS.answer(invocation);
+        });
+  }
+
   public static String TMP_PATH = "/tmp/yugaware_tests";
 
   public static String createTempFile(String basePath, String fileName, String data) {

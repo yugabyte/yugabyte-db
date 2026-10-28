@@ -17,6 +17,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
@@ -31,13 +32,13 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.SecretBuilder;
-import java.io.File;
 import java.math.BigInteger;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.security.KeyPair;
+import java.security.KeyPairGenerator;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.time.Instant;
@@ -62,6 +63,7 @@ public class CertManagerClientCertSyncTest extends FakeDBApplication {
   private Universe universe;
   private String caCertFile;
   private Path clientDir;
+  private UUID rootCA;
   private CertManagerClientCertSync certSync;
 
   @Before
@@ -87,8 +89,7 @@ public class CertManagerClientCertSyncTest extends FakeDBApplication {
 
     String certDir = TestHelper.TMP_PATH + "/" + UUID.randomUUID();
     caCertFile = TestHelper.createTempFile(certDir, "ca.root.crt", "ca-cert");
-    clientDir = Paths.get(certDir, CertManagerClientCertSync.CLIENT_CERT_SUBDIR);
-    UUID rootCA = createCA(CertConfigType.K8SCertManager, caCertFile);
+    rootCA = createCA(CertConfigType.K8SCertManager, caCertFile);
 
     universe = ModelFactory.createUniverse("demo-universe", customer.getId());
     universe =
@@ -96,6 +97,7 @@ public class CertManagerClientCertSyncTest extends FakeDBApplication {
             universe.getUniverseUUID(),
             ApiUtils.mockUniverseUpdater(userIntent, "demo-prefix", true /* setMasters */));
     universe = setDetails(d -> d.rootCA = rootCA);
+    clientDir = CertManagerClientCertSync.getClientCertDir(universe.getUniverseUUID());
 
     certSync = app.injector().instanceOf(CertManagerClientCertSync.class);
   }
@@ -121,7 +123,7 @@ public class CertManagerClientCertSyncTest extends FakeDBApplication {
     return uuid;
   }
 
-  private static Pair<String, String> newCertPem(Duration validFor) throws Exception {
+  public static Pair<String, String> newCertPem(Duration validFor) throws Exception {
     return newCertPem(Instant.now().plus(validFor));
   }
 
@@ -184,7 +186,7 @@ public class CertManagerClientCertSyncTest extends FakeDBApplication {
   @Test
   public void testClientCertFilesPresent() throws Exception {
     writeLocal(newCertPem(Duration.ofDays(90)));
-    Pair<String, String> files = CertManagerClientCertSync.getClientCertFiles(caCertFile).get();
+    Pair<String, String> files = CertManagerClientCertSync.getClientCertFiles(universe).get();
     assertEquals(
         clientDir.resolve(CertificateHelper.CLIENT_CERT).toAbsolutePath().toString(),
         files.getLeft());
@@ -195,26 +197,17 @@ public class CertManagerClientCertSyncTest extends FakeDBApplication {
 
   @Test
   public void testClientCertFilesAbsent() throws Exception {
-    assertTrue(CertManagerClientCertSync.getClientCertFiles(caCertFile).isEmpty());
-    assertTrue(CertManagerClientCertSync.getClientCertFiles(null).isEmpty());
+    assertTrue(CertManagerClientCertSync.getClientCertFiles(universe).isEmpty());
     // A cert without its key is not usable.
     Files.createDirectories(clientDir);
     Files.writeString(clientDir.resolve(CertificateHelper.CLIENT_CERT), "cert");
-    assertTrue(CertManagerClientCertSync.getClientCertFiles(caCertFile).isEmpty());
+    assertTrue(CertManagerClientCertSync.getClientCertFiles(universe).isEmpty());
   }
 
   @Test
   public void testExpiredClientCertNotPresented() throws Exception {
     writeLocal(newCertPem(Instant.now().minus(Duration.ofDays(1))));
-    assertTrue(CertManagerClientCertSync.getClientCertFiles(caCertFile).isEmpty());
-  }
-
-  @Test
-  public void testVaultClientCertBesideCaIgnored() throws Exception {
-    File caDir = new File(caCertFile).getParentFile();
-    Files.writeString(caDir.toPath().resolve(CertificateHelper.CLIENT_CERT), "cert");
-    Files.writeString(caDir.toPath().resolve(CertificateHelper.CLIENT_KEY), "key");
-    assertTrue(CertManagerClientCertSync.getClientCertFiles(caCertFile).isEmpty());
+    assertTrue(CertManagerClientCertSync.getClientCertFiles(universe).isEmpty());
   }
 
   @Test
@@ -294,7 +287,7 @@ public class CertManagerClientCertSyncTest extends FakeDBApplication {
         assertThrows(RuntimeException.class, () -> certSync.sync(universe, Duration.ZERO));
     assertTrue(e.getMessage(), e.getMessage().startsWith("Timed out"));
     assertTrue(e.getCause() == null);
-    assertTrue(CertManagerClientCertSync.getClientCertFiles(caCertFile).isEmpty());
+    assertTrue(CertManagerClientCertSync.getClientCertFiles(universe).isEmpty());
   }
 
   @Test
@@ -328,7 +321,7 @@ public class CertManagerClientCertSyncTest extends FakeDBApplication {
     certSync.refreshIfNeeded(universe);
 
     assertEquals(pem.getRight(), Files.readString(clientDir.resolve(CertificateHelper.CLIENT_KEY)));
-    assertTrue(CertManagerClientCertSync.getClientCertFiles(caCertFile).isPresent());
+    assertTrue(CertManagerClientCertSync.getClientCertFiles(universe).isPresent());
   }
 
   @Test
@@ -364,6 +357,119 @@ public class CertManagerClientCertSyncTest extends FakeDBApplication {
   }
 
   @Test
+  public void testClientCertRequiredForNewRootCA() throws Exception {
+    UUID selfSigned = createCA(CertConfigType.SelfSigned, caCertFile);
+    universe = setDetails(d -> d.rootCA = selfSigned);
+    assertFalse(CertManagerClientCertSync.isClientCertRequired(universe));
+    assertTrue(CertManagerClientCertSync.isClientCertRequired(universe, rootCA));
+  }
+
+  @Test
+  public void testRefreshReplacesMismatchedKey() throws Exception {
+    Pair<String, String> pem = newCertPem(Duration.ofDays(60));
+    writeLocal(Pair.of(pem.getLeft(), newCertPem(Duration.ofDays(60)).getRight()));
+    when(mockKubernetesManager.getSecret(any(), anyString(), any())).thenReturn(secret(pem));
+
+    certSync.refreshIfNeeded(universe);
+
+    assertEquals(pem.getRight(), Files.readString(clientDir.resolve(CertificateHelper.CLIENT_KEY)));
+  }
+
+  @Test
+  public void testValidateHelmOverridesRejectsNonRsaKey() {
+    String ecdsa = "tls:\n  certManager:\n    certificates:\n      algorithm: ECDSA\n";
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> CertManagerClientCertSync.validateHelmOverrides(details, ecdsa, null));
+    assertTrue(e.getMessage(), e.getMessage().contains("algorithm=ECDSA"));
+    assertThrows(
+        PlatformServiceException.class,
+        () -> CertManagerClientCertSync.validateHelmOverrides(details, "", Map.of("az-1", ecdsa)));
+
+    String rsa = "tls:\n  certManager:\n    certificates:\n      algorithm: RSA\n";
+    CertManagerClientCertSync.validateHelmOverrides(details, rsa, null);
+
+    dropFlag();
+    CertManagerClientCertSync.validateHelmOverrides(universe.getUniverseDetails(), ecdsa, null);
+  }
+
+  @Test
+  public void testSyncRejectsNonRsaCert() throws Exception {
+    KeyPairGenerator generator = KeyPairGenerator.getInstance("EC");
+    generator.initialize(256);
+    KeyPair keyPair = generator.generateKeyPair();
+    X500Name subject = new X500Name("CN=yugabyte");
+    Instant now = Instant.now();
+    X509Certificate cert =
+        new JcaX509CertificateConverter()
+            .getCertificate(
+                new JcaX509v3CertificateBuilder(
+                        subject,
+                        BigInteger.ONE,
+                        Date.from(now.minus(Duration.ofDays(1))),
+                        Date.from(now.plus(Duration.ofDays(90))),
+                        subject,
+                        keyPair.getPublic())
+                    .build(
+                        new JcaContentSignerBuilder("SHA256withECDSA")
+                            .build(keyPair.getPrivate())));
+    Pair<String, String> pem =
+        Pair.of(
+            CertificateHelper.getAsPemString(cert),
+            CertificateHelper.getAsPemString(keyPair.getPrivate()));
+    when(mockKubernetesManager.getSecret(any(), anyString(), any())).thenReturn(secret(pem));
+
+    PlatformServiceException e =
+        assertThrows(PlatformServiceException.class, () -> certSync.sync(universe, Duration.ZERO));
+    assertTrue(e.getMessage(), e.getMessage().contains("EC key"));
+    assertFalse(Files.exists(clientDir));
+  }
+
+  @Test
+  public void testNotPresentedWhenNotRequired() throws Exception {
+    writeLocal(newCertPem(Duration.ofDays(90)));
+    dropFlag();
+    assertTrue(CertManagerClientCertSync.getClientCertFiles(universe).isEmpty());
+  }
+
+  @Test
+  public void testNotPresentedToAnotherUniverseOnSameCA() throws Exception {
+    writeLocal(newCertPem(Duration.ofDays(90)));
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    Universe other = ModelFactory.createUniverse("other-universe", customer.getId());
+    other =
+        Universe.saveDetails(
+            other.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams d = u.getUniverseDetails();
+              d.clusters = details.clusters;
+              d.rootCA = details.rootCA;
+              u.setUniverseDetails(d);
+            });
+    assertTrue(CertManagerClientCertSync.isClientCertRequired(other));
+    assertTrue(CertManagerClientCertSync.getClientCertFiles(other).isEmpty());
+  }
+
+  @Test
+  public void testCADirectoryUntouched() throws Exception {
+    when(mockKubernetesManager.getSecret(any(), anyString(), any()))
+        .thenReturn(secret(newCertPem(Duration.ofDays(90))));
+    certSync.sync(universe, Duration.ZERO);
+    try (var entries = Files.list(Paths.get(caCertFile).getParent())) {
+      assertEquals(1, entries.count());
+    }
+  }
+
+  @Test
+  public void testDeleteClientCert() throws Exception {
+    writeLocal(newCertPem(Duration.ofDays(90)));
+    CertManagerClientCertSync.deleteClientCert(universe.getUniverseUUID());
+    assertFalse(Files.exists(clientDir));
+  }
+
+  @Test
   public void testRefreshRemovesUnusedCopy() throws Exception {
     writeLocal(newCertPem(Duration.ofDays(90)));
     dropFlag();
@@ -374,30 +480,10 @@ public class CertManagerClientCertSyncTest extends FakeDBApplication {
   }
 
   @Test
-  public void testRefreshKeepsCopyUsedByAnotherUniverse() throws Exception {
-    writeLocal(newCertPem(Duration.ofDays(90)));
-    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
-    Universe other = ModelFactory.createUniverse("other-universe", customer.getId());
-    Universe.saveDetails(
-        other.getUniverseUUID(),
-        u -> {
-          UniverseDefinitionTaskParams d = u.getUniverseDetails();
-          d.clusters = details.clusters;
-          d.rootCA = details.rootCA;
-          u.setUniverseDetails(d);
-        });
-    dropFlag();
-
-    certSync.refreshIfNeeded(universe);
-
-    assertTrue(CertManagerClientCertSync.getClientCertFiles(caCertFile).isPresent());
-  }
-
-  @Test
   public void testRefreshSwallowsErrors() throws Exception {
     when(mockKubernetesManager.getSecret(any(), anyString(), any()))
         .thenThrow(new RuntimeException("cluster unreachable"));
     certSync.refreshIfNeeded(universe);
-    assertTrue(CertManagerClientCertSync.getClientCertFiles(caCertFile).isEmpty());
+    assertTrue(CertManagerClientCertSync.getClientCertFiles(universe).isEmpty());
   }
 }

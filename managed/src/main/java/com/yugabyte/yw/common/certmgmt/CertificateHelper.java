@@ -1042,7 +1042,7 @@ public class CertificateHelper {
     return getPrivateKey(FileUtils.readFileToString(new File(path)));
   }
 
-  private static boolean verifySignature(X509Certificate cert, String key) {
+  static boolean verifySignature(X509Certificate cert, String key) {
     try {
       // Add the security provider in case verifySignature was never called.
       getKeyPairObject();

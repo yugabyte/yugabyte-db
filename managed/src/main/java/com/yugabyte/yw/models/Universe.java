@@ -20,6 +20,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.certmgmt.CertManagerClientCertSync;
 import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.common.config.RuntimeConfigCacheInvalidator;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
@@ -637,6 +638,7 @@ public class Universe extends Model {
     // Delete the universe.
     LOG.info("Deleting universe " + universe.getName() + ":" + universeUUID);
     universe.delete();
+    CertManagerClientCertSync.deleteClientCert(universeUUID);
   }
 
   /**

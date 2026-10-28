@@ -107,7 +107,7 @@ public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
     createUniverseUpdateRootCertTask(UpdateRootCertAction.Reset, null /* temporaryRootCAUUID */);
 
     // The synced client cert lives under the CA directory, and rootCA now points at a new one.
-    createSyncCertManagerClientCertTask(universe);
+    createSyncCertManagerClientCertTask(universe, taskParams().rootCA);
 
     // Step 3a: Update pods with final new rootCA
     createRotateCertTask(universe, taskParams().rootCA);
