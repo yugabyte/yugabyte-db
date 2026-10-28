@@ -314,7 +314,11 @@ eqsel_internal(PG_FUNCTION_ARGS, bool negate)
 
 		if (yb_is_batched)
 		{
+			YbBatchedExpr *yb_bexpr = (YbBatchedExpr *) other;
+
 			selec *= yb_batch_expr_size(root, varRelid, other);
+			if (yb_bexpr->rows_scale > 0)
+				selec *= yb_bexpr->rows_scale;
 			CLAMP_PROBABILITY(selec);
 		}
 	}
@@ -6775,12 +6779,22 @@ get_quals_from_indexclauses(List *indexclauses)
 	return result;
 }
 
-int
+/*
+ * yb_batch_expr_size
+ *	  The number of outer values a batched clause probes its scan with per
+ *	  rescan: the batch size capped by the outer rows, or the share of it the
+ *	  expression carries when the clause shares its batch with others
+ *	  (yb_batched_clauses).
+ */
+double
 yb_batch_expr_size(PlannerInfo *root, Index path_relid, Node *batched_expr)
 {
-	Assert(IsA(batched_expr, YbBatchedExpr));
-	Node	   *batched_operand = (Node *) castNode(YbBatchedExpr,
-													batched_expr)->orig_expr;
+	YbBatchedExpr *bexpr = castNode(YbBatchedExpr, batched_expr);
+
+	if (bexpr->share > 0)
+		return bexpr->share;
+
+	Node	   *batched_operand = (Node *) bexpr->orig_expr;
 	Relids		other_varnos = pull_varnos(root, batched_operand);
 	Relids		batched_relids = root->yb_cur_batched_relids;
 

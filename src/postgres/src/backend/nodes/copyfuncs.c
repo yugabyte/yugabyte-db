@@ -5356,6 +5356,8 @@ _copyYbBatchedExpr(const YbBatchedExpr *from)
 	YbBatchedExpr *newnode = makeNode(YbBatchedExpr);
 
 	COPY_NODE_FIELD(orig_expr);
+	COPY_SCALAR_FIELD(share);
+	COPY_SCALAR_FIELD(rows_scale);
 
 	return newnode;
 }

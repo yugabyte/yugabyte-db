@@ -319,5 +319,8 @@ extern void yb_init_bnl_workspace(JoinCostWorkspace *workspace,
 								  Path *outer_path, Path *inner_path,
 								  List *pathkeys, JoinType jointype,
 								  JoinPathExtraData *extra);
+extern List *yb_batched_clauses(PlannerInfo *root, RelOptInfo *rel,
+								List *clauses, Relids batchedrelids,
+								List *groups);
 
 #endif							/* COST_H */
