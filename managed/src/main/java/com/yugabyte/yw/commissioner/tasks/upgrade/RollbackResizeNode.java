@@ -30,7 +30,9 @@ import org.apache.commons.lang3.StringUtils;
  * Rolls back a failed {@link ResizeNode} by reversing instance type / cgroup / gflags / IOPS /
  * throughput toward the {@code before} intent captured in {@code state_transition_details}. Never
  * decreases {@code volumeSize} - cloud disk grow is not reversible; the computer already picked
- * {@code max(before, current universe intent, cloud data-disk size)}.
+ * {@code max(before, current universe intent)} for the cluster-level size, kept the {@code before}
+ * per-AZ overrides, and refused the rollback if that would set a node below its current-intent or
+ * cloud data-disk size.
  *
  * <p>Reuses {@link ResizeNode#run} which classifies nodes vs the params intent (now {@code
  * before}): nodes still at the failed target instance/cgroup become {@code instanceChangingNodes}
