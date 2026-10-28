@@ -85,7 +85,10 @@ public class HostCloudDetector {
 
   /**
    * Whether YBA runs on AWS itself, not on an EC2-compatible cloud: for using AWS-only credential
-   * sources, such as the instance's IAM role, which elsewhere would only be probed in vain.
+   * sources, such as the instance's IAM role, which elsewhere would only be probed in vain. It can
+   * also be false on real AWS: an instance without the DMI tag (older Xen types) whose IMDSv2 token
+   * response cannot reach YBA (a container behind a hop limit of 1) is told apart from an
+   * EC2-compatible cloud only by its IMDSv1 answer, which both give.
    */
   public synchronized boolean isConfirmedAws() {
     return isHostCloud(CloudType.aws) && awsConfirmed;

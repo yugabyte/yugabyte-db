@@ -621,7 +621,9 @@ public class BackupHelper {
    * Has YBA on AWS reach a federated S3 bucket with its own IAM role. A federated config usually
    * carries no access keys and need not set the IAM role flag (only the UI does), so without this
    * its client would be built from blank keys. Only on confirmed AWS: on an EC2-compatible cloud
-   * the role chain would be probed in vain. A config that does carry keys keeps using them.
+   * the role chain would be probed in vain. A config that does carry keys keeps using them. Known
+   * limit: on AWS that cannot be confirmed (see {@link HostCloudDetector#isConfirmedAws}) a keyless
+   * config keeps its blank keys, as before, and setting IAM_INSTANCE_PROFILE on it works around it.
    */
   private void useYbaIamRole(CustomerConfigStorageS3Data s3) {
     if (StringUtils.isBlank(s3.awsAccessKeyId) && hostCloudDetector.isConfirmedAws()) {

@@ -176,7 +176,7 @@ public class CloudQueryHelperTest extends FakeDBApplication {
 
   @Test
   public void testGetHostInfoOfAnotherCloudSkipsYbops() {
-    // YBA runs on AWS: asking about GCP is answered without running ybops.
+    // YBA does not run on GCP: asking about GCP is answered without running ybops.
     when(hostCloudDetector.isHostCloud(Common.CloudType.gcp)).thenReturn(false);
     JsonNode json = cloudQueryHelper.getCurrentHostInfo(Common.CloudType.gcp);
     assertEquals("Unable to auto-discover GCP provider information", json.asText());
