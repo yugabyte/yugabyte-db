@@ -310,7 +310,7 @@ static bool check_min_backoff(int *min_backoff_msecs, void **extra, GucSource so
 static bool check_transaction_priority_lower_bound(double *newval, void **extra, GucSource source);
 static bool check_transaction_priority_upper_bound(double *newval, void **extra, GucSource source);
 static bool check_yb_explicit_row_locking_batch_size(int *newval, void **extra, GucSource source);
-static bool yb_check_before_first_snapshot(int *newval, void **extra, GucSource source);
+static bool yb_check_no_txn(int *newval, void **extra, GucSource source);
 static bool yb_check_toast_catcache_threshold(int *newval, void **extra, GucSource source);
 static bool yb_check_password_validity_source(int *newval, void **extra, GucSource source);
 static bool yb_check_extra_commands_to_retry(char **newval, void **extra,
@@ -2625,7 +2625,7 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"yb_disable_relaxed_visibility_mode_read_only_guardrail",
+		{"yb_disable_relaxed_read_after_commit_visibility_guardrail",
 			PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("Allow writes, row locks and DDL under "
 						 "yb_read_after_commit_visibility = relaxed, which "
@@ -2637,7 +2637,7 @@ static struct config_bool ConfigureNamesBool[] =
 						 "understanding of that risk."),
 			GUC_NOT_IN_SAMPLE
 		},
-		&yb_disable_relaxed_visibility_mode_read_only_guardrail,
+		&yb_disable_relaxed_read_after_commit_visibility_guardrail,
 		false,
 		NULL, NULL, NULL
 	},
@@ -8406,7 +8406,7 @@ static struct config_enum ConfigureNamesEnum[] =
 			gettext_noop("This GUC is intended as a crutch for users migrating from PostgreSQL and new to"
 						 " read restart errors. Users can now largely avoid these errors when"
 						 " read-after-commit-visibility guarantee is not a strong requirement."
-						 " This option cannot be set after the first query of a transaction."
+						 " This option cannot be set from within a transaction block."
 						 " Configure one of the following options:"
 						 " (a) strict: Default Behavior. The read-after-commit-visibility guarantee is"
 						 " maintained by the database. However, users may see read restart errors that"
@@ -8427,7 +8427,7 @@ static struct config_enum ConfigureNamesEnum[] =
 		&yb_read_after_commit_visibility,
 		YB_STRICT_READ_AFTER_COMMIT_VISIBILITY,
 		yb_read_after_commit_visibility_options,
-		yb_check_before_first_snapshot, NULL, NULL
+		yb_check_no_txn, NULL, NULL
 	},
 
 	{
@@ -17872,29 +17872,34 @@ yb_check_toast_catcache_threshold(int *newVal, void **extra, GucSource source)
 }
 
 /*
- * YB: yb_check_before_first_snapshot
+ * YB: yb_check_no_txn
  *
  * Do not allow users to set yb_read_after_commit_visibility
- * after the txn takes its first snapshot.
+ * from within a txn block.
  */
 static bool
-yb_check_before_first_snapshot(int *newVal, void **extra, GucSource source)
+yb_check_no_txn(int *newVal, void **extra, GucSource source)
 {
 	/*
-	 * Login applies role, database and client settings in a txn that already
-	 * has a snapshot, and CREATE FUNCTION ... SET only validates the value.
-	 * Neither changes the read time of a running query.
+	 * Check only a session SET, which includes a function's SET clause, and
+	 * make the connection sticky only for it. Login applies role, database and
+	 * client settings in its own transaction. Connection Manager replays a
+	 * value that the client already set. CREATE FUNCTION ... SET and ALTER
+	 * ROLE ... SET only validate a value for later use.
 	 */
-	if (source == PGC_S_SESSION && FirstSnapshotSet)
+	if (source != PGC_S_SESSION)
+		return true;
+
+	if (IsTransactionBlock())
 	{
-		GUC_check_errdetail("Cannot be set after the first query of a txn.");
+		GUC_check_errdetail("Cannot be set within a txn block.");
 		return false;
 	}
 
 	/*
 	 * If YSQL Connection Manager is enabled, make the connection sticky
-	 * for any variables that can only be set before the first query of a
-	 * transaction.
+	 * for any variables that can only be set outside the context of an
+	 * explicit transaction block.
 	 */
 	if (YbIsClientYsqlConnMgr())
 	{

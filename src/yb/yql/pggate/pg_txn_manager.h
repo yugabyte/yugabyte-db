@@ -136,7 +136,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   //    they pick a read time after conflict resolution.
   bool ShouldDeferReadPoint() const {
     return (read_only_ && deferrable_) ||
-           yb_read_after_commit_visibility == YB_DEFERRED_READ_AFTER_COMMIT_VISIBILITY;
+           ReadTimeVisibility() == YB_DEFERRED_READ_AFTER_COMMIT_VISIBILITY;
   }
 
   Status SetupPerformOptions(SetupPerformOptionsAccessorTag tag,
@@ -197,6 +197,11 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   bool IsTableLockingEnabledForCurrentTxn() const;
 
   void SetClampUncertaintyWindow(bool clamp) { clamp_uncertainty_window_ = clamp; }
+
+  static int ReadTimeVisibility() {
+    return yb_txn_read_after_commit_visibility >= 0 ? yb_txn_read_after_commit_visibility
+                                                    : yb_read_after_commit_visibility;
+  }
 
   void SetConnectedDatabaseOid(PgOid oid) { connected_database_oid_ = oid; }
   PgOid connected_database_oid() const { return connected_database_oid_; }

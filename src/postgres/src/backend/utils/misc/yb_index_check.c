@@ -333,9 +333,8 @@ yb_index_check(PG_FUNCTION_ARGS)
 						"block.")));
 
 	/*
-	 * Set the variable rather than the GUC: the GUC refuses a change after the
-	 * statement's first snapshot, which a user function's SET clause must not
-	 * bypass. Each batch here takes a new snapshot, so relaxed mode applies.
+	 * In multi-snapshot mode, each batch takes a new snapshot, so relaxed mode
+	 * applies to each batch.
 	 */
 	if (!is_txn_block)
 		yb_read_after_commit_visibility = YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY;

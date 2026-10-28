@@ -870,7 +870,7 @@ TEST_F(PgReadTimeTest, CheckRelaxedReadAfterCommitVisibility) {
       "visibility");
   ASSERT_OK(conn.RollbackTransaction());
   ASSERT_OK(conn.Execute(
-      "SET yb_disable_relaxed_visibility_mode_read_only_guardrail = on"));
+      "SET yb_disable_relaxed_read_after_commit_visibility_guardrail = on"));
 
   // 1. no pipeline, single operation in first batch, no distributed txn
   for (const auto& table_name : {kTable, kSingleTabletTable}) {
@@ -969,7 +969,7 @@ TEST_F(PgReadTimeTest, CheckRelaxedReadAfterCommitVisibility) {
 // #35522: relaxed mode removes the uncertainty window, so a write or row lock
 // can miss a row that another node committed just before and leave the data
 // inconsistent. Relaxed mode therefore enforces the READ ONLY transaction
-// checks unless yb_disable_relaxed_visibility_mode_read_only_guardrail is
+// checks unless yb_disable_relaxed_read_after_commit_visibility_guardrail is
 // on.
 //
 // Scenario: under relaxed mode, each statement that a READ ONLY transaction
@@ -1017,7 +1017,7 @@ TEST_F(PgReadTimeTest, RelaxedModeRejectsWrites) {
   ASSERT_OK(conn.Execute("RESET default_transaction_isolation"));
 
   ASSERT_OK(conn.Execute(
-      "SET yb_disable_relaxed_visibility_mode_read_only_guardrail = on"));
+      "SET yb_disable_relaxed_read_after_commit_visibility_guardrail = on"));
   for (const auto& statement : rejected) {
     SCOPED_TRACE(statement);
     ASSERT_OK(statement.starts_with("SELECT")
@@ -1026,43 +1026,48 @@ TEST_F(PgReadTimeTest, RelaxedModeRejectsWrites) {
   }
 }
 
-// #35522: a statement picks its read time once, under the mode in effect when
-// it starts. A function SET clause that changes the mode afterwards would let
-// the function's writes run under strict mode on that relaxed read time.
+// #35522: after a transaction reads at a relaxed read time, its later writes
+// can run at that read time. A function's SET clause, or a SET or RESET in its
+// body, can switch the GUC back to strict. A write after that must still fail.
 //
-// Scenario: under relaxed mode, an autocommit SELECT calls a function that
-// switches to strict mode, by its SET clause or by a SET statement after a
-// read, and inserts a row. Each call must fail when the switch applies, and no
-// row is inserted. check_function_bodies is off because CREATE FUNCTION
-// applies the SET clause to validate the body.
-TEST_F(PgReadTimeTest, ReadAfterCommitVisibilityFixedForTransaction) {
+// Scenario: under relaxed mode, an autocommit SELECT reads, then calls a
+// function that switches back to strict mode in one of these ways and inserts
+// a row. Each insert must fail with the relaxed-mode error, and the table stays
+// empty. ALTER ROLE ... SET only stores the value, so it works inside a
+// transaction block, and login applies it.
+TEST_F(PgReadTimeTest, RelaxedModeCheckStaysOnForTransaction) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY)"));
-  ASSERT_OK(conn.Execute("SET check_function_bodies = off"));
   ASSERT_OK(conn.Execute(
       "CREATE FUNCTION insert_row_set_clause(v INT) RETURNS INT "
       "LANGUAGE plpgsql SET yb_read_after_commit_visibility = strict AS "
       "$$BEGIN INSERT INTO t VALUES (v); RETURN v; END$$"));
-  ASSERT_OK(conn.Execute("RESET check_function_bodies"));
   ASSERT_OK(conn.Execute(
       "CREATE FUNCTION insert_row_set_statement(v INT) RETURNS INT "
       "LANGUAGE plpgsql AS "
       "$$BEGIN PERFORM count(*) FROM t; "
       "SET yb_read_after_commit_visibility = strict; "
       "INSERT INTO t VALUES (v); RETURN v; END$$"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION insert_row_reset(v INT) RETURNS INT "
+      "LANGUAGE plpgsql AS "
+      "$$BEGIN PERFORM count(*) FROM t; "
+      "RESET yb_read_after_commit_visibility; "
+      "INSERT INTO t VALUES (v); RETURN v; END$$"));
 
+  constexpr auto kRelaxedError = "under relaxed read-after-commit visibility";
   ASSERT_OK(conn.Execute("SET yb_read_after_commit_visibility = relaxed"));
+  // The subquery reads t at a relaxed read time before the SET clause applies.
+  // The call uses its count, or the planner drops the unused aggregate.
   for (const auto* call :
-       {"SELECT insert_row_set_clause(1)", "SELECT insert_row_set_statement(2)"}) {
+       {"SELECT insert_row_set_clause(c::int + 1) FROM (SELECT count(*) AS c FROM t) s",
+        "SELECT insert_row_set_statement(2)", "SELECT insert_row_reset(3)"}) {
     SCOPED_TRACE(call);
-    ASSERT_NOK_STR_CONTAINS(conn.Fetch(call), "after the first query");
+    ASSERT_NOK_STR_CONTAINS(conn.Fetch(call), kRelaxedError);
   }
+  ASSERT_OK(conn.Execute("RESET yb_read_after_commit_visibility"));
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM t")), 0);
 
-  // A stored value takes effect only in a later session, so ALTER ROLE ... SET
-  // may run inside a transaction block. Login applies it in a txn that
-  // already has a snapshot.
-  ASSERT_OK(conn.Execute("RESET yb_read_after_commit_visibility"));
   ASSERT_OK(conn.Execute("BEGIN"));
   ASSERT_OK(conn.Execute(
       "ALTER ROLE CURRENT_USER SET yb_read_after_commit_visibility = relaxed"));
@@ -1074,15 +1079,6 @@ TEST_F(PgReadTimeTest, ReadAfterCommitVisibilityFixedForTransaction) {
         "relaxed");
   }
   ASSERT_OK(conn.Execute("ALTER ROLE CURRENT_USER RESET yb_read_after_commit_visibility"));
-
-  // Before its first query, a transaction block has not picked a read time.
-  ASSERT_OK(conn.Execute("BEGIN"));
-  ASSERT_OK(conn.Execute("SET LOCAL yb_read_after_commit_visibility = relaxed"));
-  ASSERT_OK(conn.Fetch("SELECT count(*) FROM t"));
-  ASSERT_NOK_STR_CONTAINS(
-      conn.Execute("SET LOCAL yb_read_after_commit_visibility = strict"),
-      "after the first query");
-  ASSERT_OK(conn.Execute("ROLLBACK"));
 }
 
 TEST_F(PgReadTimeTest, CheckDeferredReadAfterCommitVisibility) {
@@ -1674,7 +1670,7 @@ TEST_P(PgBackfillReadTimeTest, PrecedesClampDefer) {
       pg_host_port(), "yugabyte", /*user=*/"postgres", auth_key,
       /* deadline= */ std::nullopt).Connect());
   ASSERT_OK(internal.Execute(
-      "SET yb_disable_relaxed_visibility_mode_read_only_guardrail = on"));
+      "SET yb_disable_relaxed_read_after_commit_visibility_guardrail = on"));
 
   for (const auto* mode : {"relaxed", "deferred"}) {
     ASSERT_OK(internal.ExecuteFormat("SET yb_read_after_commit_visibility = '$0'", mode));
@@ -1784,7 +1780,7 @@ TEST_P(PgFastPathWriteTest, PrecedesClampDefer) {
   ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
   ASSERT_OK(conn.Execute("SET yb_disable_transactional_writes = 1"));
   ASSERT_OK(conn.Execute(
-      "SET yb_disable_relaxed_visibility_mode_read_only_guardrail = on"));
+      "SET yb_disable_relaxed_read_after_commit_visibility_guardrail = on"));
 
   const auto csv_filename = GetTestPath("pg_read_time-test-fastpath-copy.csv");
   GenerateCSVFileForCopy(csv_filename, 1 /* num_rows */);
@@ -2177,6 +2173,42 @@ TEST_P(PgClampDeferReadTest, PrecedesEnsureReadTime) {
       ASSERT_OK(conn.Fetch("SELECT count(*) FROM t"));
     });
   }
+}
+
+// A lock at ShareUpdateExclusiveLock or stronger asks pggate to clamp the
+// uncertainty window. A statement that already picked its read time must keep
+// it. A function reads, takes such a lock and reads again while other sessions
+// insert. Both reads must count only the seed rows.
+TEST_P(PgClampDeferReadTest, DoesNotApplyIfReadTimeIsAlreadyPicked) {
+  // Only table locks request the clamp, and table locks come with concurrent
+  // DDL.
+  if (isolation() != IsolationLevel::SNAPSHOT_ISOLATION || !IsConcurrentDdl()) {
+    return;
+  }
+  auto setup = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(setup.ExecuteFormat(
+      "INSERT INTO t SELECT i, 0 FROM generate_series(1, $0) i", kSeedRows));
+
+  auto reader = ASSERT_RESULT(Connect());
+  ASSERT_NO_FATALS(SetSessionIsolation(&reader));
+  ASSERT_OK(reader.Execute("SET yb_max_query_layer_retries = 60"));
+  ASSERT_OK(reader.ExecuteFormat(
+      "CREATE FUNCTION clamp_after_read_time() RETURNS bigint AS "
+      "'BEGIN"
+      "   PERFORM count(*) FROM t WHERE k <= $0;"
+      "   LOCK TABLE t IN SHARE ROW EXCLUSIVE MODE;"
+      "   RETURN (SELECT count(*) FROM t WHERE k <= $0);"
+      " END' LANGUAGE plpgsql", kSeedRows));
+
+  TestThreadHolder threads;
+  StartConcurrentInserts(&threads, "t", kWriterStartKey);
+
+  RunFor(10s * kTimeMultiplier, [&reader] {
+    ASSERT_EQ(
+        ASSERT_RESULT(reader.FetchRow<PGUint64>("SELECT clamp_after_read_time()")), kSeedRows);
+  });
+  threads.Stop();
 }
 
 } // namespace yb::pgwrapper

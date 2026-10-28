@@ -586,6 +586,7 @@ void PgTxnManager::ResetTxnAndSession() {
   crosstxn_snapshot_read_time_is_used_ = false;
   read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
   clamp_uncertainty_window_ = false;
+  yb_txn_read_after_commit_visibility = -1;
 
   // GH #22353 - Ideally the reset of the ddl_state_ should happen without the if condition, but
   // due to the linked bug GH #22353, we are resetting the DDL state only if DDL, DML transaction
@@ -697,7 +698,7 @@ bool PgTxnManager::ShouldResetReadTime(std::optional<ReadTimeAction> read_time_a
 }
 
 bool PgTxnManager::ShouldClamp() const {
-  return yb_read_after_commit_visibility == YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY ||
+  return ReadTimeVisibility() == YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY ||
          clamp_uncertainty_window_;
 }
 
@@ -867,6 +868,10 @@ Status PgTxnManager::SetupReadTimeOptions(
       manipulation == tserver::ReadTimeManipulation::RESTART) {
     read_time_options.set_read_time_manipulation(tserver::ReadTimeManipulation::RESTART);
     return Status::OK();
+  }
+
+  if (yb_txn_read_after_commit_visibility < 0) {
+    yb_txn_read_after_commit_visibility = yb_read_after_commit_visibility;
   }
 
   if (ShouldClamp()) {
