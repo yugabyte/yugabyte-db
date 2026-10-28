@@ -526,7 +526,8 @@ TEST_F(YsqlMajorUpgradeRpcsTest, CleanupPreviousCatalog) {
 TEST_F(YsqlMajorUpgradeRpcsTest, TestTableIds) {
   const auto kPgClass = "pg_class";
   const auto kUnversioned = "30008000";
-  const auto kPg15Version = "30008001";
+  const auto kOldVersion = "30008001";
+  const auto kNewVersion = "30008002";
 
   const auto validate_simple_table_id = [&]() {
     const auto kSimpleTableIds = ASSERT_RESULT(GetTableIds(kSimpleTableName));
@@ -541,7 +542,7 @@ TEST_F(YsqlMajorUpgradeRpcsTest, TestTableIds) {
       if (expected_versions.size() < 2) {
         ASSERT_STR_CONTAINS(pg_class_id, expected_versions[0]);
       } else { // expect either version
-        if (!pg_class_id.contains(kUnversioned) && !pg_class_id.contains(kPg15Version)) {
+        if (!pg_class_id.contains(kOldVersion) && !pg_class_id.contains(kNewVersion)) {
           throw STATUS_FORMAT(
               IllegalState, "Found table ID with unexpected version: $0", pg_class_id);
         }
@@ -550,15 +551,15 @@ TEST_F(YsqlMajorUpgradeRpcsTest, TestTableIds) {
   };
 
   ASSERT_NO_FATALS(validate_simple_table_id());
-  ASSERT_NO_FATALS(validate_catalog_table_id({kUnversioned}));
+  ASSERT_NO_FATALS(validate_catalog_table_id({kOldVersion}));
 
   ASSERT_OK(UpgradeClusterToMixedMode());
   ASSERT_NO_FATALS(validate_simple_table_id());
-  ASSERT_NO_FATALS(validate_catalog_table_id({kUnversioned, kPg15Version}));
+  ASSERT_NO_FATALS(validate_catalog_table_id({kOldVersion, kNewVersion}));
 
   ASSERT_OK(CompleteUpgradeAndValidate());
   ASSERT_NO_FATALS(validate_simple_table_id());
-  ASSERT_NO_FATALS(validate_catalog_table_id({kPg15Version}));
+  ASSERT_NO_FATALS(validate_catalog_table_id({kNewVersion}));
 }
 
 TEST_F(YsqlMajorUpgradeRpcsTest, TestNamespaceIds) {

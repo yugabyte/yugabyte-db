@@ -366,3 +366,14 @@ check_pghost_envvar(void)
 	/* Free the memory that libpq allocated on our behalf */
 	PQconninfoFree(start);
 }
+
+/* YB: Set the old cluster version from the running old cluster, in get_pg_version()'s form. */
+void
+yb_get_old_cluster_version(void)
+{
+	PGconn	   *conn = connectToServer(&old_cluster, "template1");
+
+	old_cluster.major_version = PQserverVersion(conn) / 10000 * 10000;
+	old_cluster.major_version_str = psprintf("%d", old_cluster.major_version / 10000);
+	PQfinish(conn);
+}

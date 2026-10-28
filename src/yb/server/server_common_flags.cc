@@ -69,6 +69,10 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_upgrade_to_pg15_completed, kLocalPersisted,
     "Indicates the state of YSQL major upgrade to PostgreSQL version 15. Do not modify this "
     "manually.");
 
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_upgrade_to_pg19_completed, kLocalPersisted, false, true,
+    "Indicates the state of YSQL major upgrade to PostgreSQL version 19. Do not modify this "
+    "manually.");
+
 DEFINE_RUNTIME_AUTO_bool(skip_fields_moved_to_xcluster_guarded_info, kLocalVolatile, false, true,
     "Skip sending in master heartbeat responses the fields that were moved into "
     "xcluster_guarded_info, and skip applying them on TServers.");
@@ -80,14 +84,14 @@ DEFINE_RUNTIME_AUTO_bool(enforce_xcluster_guarded_lease, kLocalPersisted, false,
 namespace yb {
 
 bool IsYsqlMajorVersionUpgradeInProgress() {
-  // yb_upgrade_to_pg15_completed is only available on the newer code version.
+  // yb_upgrade_to_pg19_completed is only available on the newer code version.
   // So we use yb_major_version_upgrade_compatibility to determine if the YSQL major upgrade is in
   // progress on processes running the older version.
   // We cannot rely on yb_major_version_upgrade_compatibility only, since it will be reset in the
   // Monitoring Phase.
   //  DevNote: Keep this in sync with YBCPgYsqlMajorVersionUpgradeInProgress.
   return FLAGS_ysql_yb_major_version_upgrade_compatibility > 0 ||
-         !FLAGS_ysql_yb_upgrade_to_pg15_completed;
+         !FLAGS_ysql_yb_upgrade_to_pg19_completed;
 }
 
 }  // namespace yb

@@ -34,11 +34,10 @@ namespace yb {
 
 namespace {
 
-// Dev Note: When the major catalog version changes, meaning, for the YugabyteDB version that uses
-// PG17+ for the YSQL layer, update kPgPreviousUuidVersion to kPgCurrentUuidVersion, and increase
-// kPgCurrentUuidVersion by 1.
-constexpr uint8_t kPgPreviousUuidVersion = 0;  // PG11
-constexpr uint8_t kPgCurrentUuidVersion = 1;   // PG15
+// Dev Note: When the major catalog version changes, update kPgPreviousUuidVersion to
+// kPgCurrentUuidVersion, and increase kPgCurrentUuidVersion by 1.
+constexpr uint8_t kPgPreviousUuidVersion = 1;  // PG15
+constexpr uint8_t kPgCurrentUuidVersion = 2;   // PG19
 
 }  // namespace
 
@@ -83,7 +82,7 @@ namespace {
 // pgv = for PG catalog tables only, the PG version for the table.
 // 0 = PG11
 // 1 = PG15
-// 2 = PG17 (or whatever major PG version YB integrates next)
+// 2 = PG19
 // ...
 // Must be set to 0 for all user tables.
 

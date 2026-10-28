@@ -498,6 +498,7 @@ char	   *cluster_conn_opts(ClusterInfo *cluster);
 bool		start_postmaster(ClusterInfo *cluster, bool report_and_exit_on_error);
 void		stop_postmaster(bool in_atexit);
 void		check_pghost_envvar(void);
+void		yb_get_old_cluster_version(void);
 
 
 /* util.c */

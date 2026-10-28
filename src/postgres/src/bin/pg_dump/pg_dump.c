@@ -17177,17 +17177,22 @@ dumpACL(Archive *fout, DumpId objDumpId, DumpId altDumpId,
 	 * YB: pg_stat_statements is a built-in extension in YB (created during
 	 * initdb). PG doesn't dump built-in extensions, so pg_stat_statements is
 	 * not dumped. Therefore, pg_stat_statements_reset() is not explicitly
-	 * created. Moreover, the function no longer exists with that signature
-	 * in PG15 (it gained parameters). So keep this work-around for now,
-	 * otherwise the restore will fail with:
+	 * created. Moreover, the function no longer exists with the source's
+	 * signature (it gained parameters in PG15 and again in PG17). So keep this
+	 * work-around for now, otherwise the restore will fail with:
 	 * ERROR:  function pg_catalog.pg_stat_statements_reset() does not exist
 	 * In the future, we may want to follow the typical extension binary upgrade
 	 * path for pg_stat_statements (create an empty extension and manually
 	 * create extension objects), and then this work-around can be removed
 	 * (tracked in GH issue #26566).
+	 *
+	 * YB_TODO_PG19MERGE: once master's rewrite of this ACL to the PG15
+	 * signature (#31239) merges in, rewrite a PG15 source's ACL to the PG19
+	 * signature instead of skipping it, so a GRANT on it survives the upgrade.
 	 */
 	if (IsYugabyteEnabled && dopt->binary_upgrade &&
-		strcmp(name, "\"pg_stat_statements_reset\"()") == 0)
+		strncmp(name, "\"pg_stat_statements_reset\"(",
+				strlen("\"pg_stat_statements_reset\"(")) == 0)
 		return InvalidDumpId;
 
 	/* --data-only skips ACLs *except* large object ACLs */
