@@ -1025,7 +1025,6 @@ YbAshMain(Datum main_arg)
 		if (rc & WL_POSTMASTER_DEATH)
 			proc_exit(1);
 
-		/* YB_TODO_PG19MERGE: HandleMainLoopInterrupts -> ProcessMainLoopInterrupts (postmaster/interrupt.h). */
 		ProcessMainLoopInterrupts();
 
 		if (yb_enable_ash && yb_ash_sample_size > 0)
