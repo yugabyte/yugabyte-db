@@ -576,8 +576,12 @@ SELECT pctest1.k, pctest2.k FROM pctest1 JOIN pctest2 USING (a, c);
                ->  Parallel Seq Scan on pctest2
 (7 rows)
 
+-- Sort outside a materialized CTE: the Gather on top returns rows in worker
+-- order, and ORDER BY in the query itself could change the plan above.
 /*+ Parallel(pctest1 2 hard) Parallel(pctest2 2 hard) */
-SELECT pctest1.k, pctest2.k FROM pctest1 JOIN pctest2 USING (a, c);
+WITH r AS MATERIALIZED (
+SELECT pctest1.k, pctest2.k FROM pctest1 JOIN pctest2 USING (a, c)
+) SELECT * FROM r ORDER BY 1;
   k  |  k  
 -----+-----
  600 | 200
@@ -691,15 +695,19 @@ SELECT * FROM
                ->  Parallel Index Scan using pctest2_pkey on pctest2
 (15 rows)
 
+-- Sort outside a materialized CTE: the Gather on top returns rows in worker
+-- order, and ORDER BY in the query itself could change the plan above.
 /*+
   Parallel(pctest1 2 hard) Parallel(pctest2 2 hard)
   Parallel(pctest3 2 hard) Parallel(pctest4 2 hard)
  */
+WITH r AS MATERIALIZED (
 SELECT * FROM
   (SELECT pctest1.* FROM pctest1, pctest2
      WHERE pctest1.k = pctest2.k AND pctest1.c = pctest2.c) s1 JOIN
   (SELECT pctest4.* FROM pctest1 pctest3, pctest2 pctest4
-     WHERE pctest3.k = pctest4.k AND pctest3.b = pctest4.b) s2 ON s1.b = s2.c;
+     WHERE pctest3.k = pctest4.k AND pctest3.b = pctest4.b) s2 ON s1.b = s2.c
+) SELECT * FROM r ORDER BY 1;
  k |  a  | b | c |   d    | k |  a  | b | c |       d       
 ---+-----+---+---+--------+---+-----+---+---+---------------
  3 | 997 | 1 | 3 | Value3 | 1 | 201 | 0 | 1 | Other value 1
@@ -798,10 +806,14 @@ SELECT * from pctest2
                      Storage Filter: (d ~~ 'Value_9'::text)
 (17 rows)
 
+-- Sort outside a materialized CTE: the Gather on top returns rows in worker
+-- order, and ORDER BY in the query itself could change the plan above.
 /*+ Parallel(pctest1 2 hard)  Parallel(pctest1_1 2 hard) Parallel(pctest2 2 hard) */
+WITH r AS MATERIALIZED (
 SELECT * from pctest2
   WHERE c IN (SELECT b FROM pctest1 WHERE d LIKE 'Value_9')
-    AND b < (SELECT avg(b) FROM pctest1 WHERE d LIKE 'Value_9');
+    AND b < (SELECT avg(b) FROM pctest1 WHERE d LIKE 'Value_9')
+) SELECT * FROM r ORDER BY 1;
  k  |  a  | b  | c |       d        
 ----+-----+----+---+----------------
   6 | 206 |  1 | 6 | Other value 6
@@ -1354,12 +1366,16 @@ SELECT * FROM
                Storage Filter: (pctest2_1.b = b)
 (15 rows)
 
+-- Sort outside a materialized CTE: the Gather on top returns rows in worker
+-- order, and ORDER BY in the query itself could change the plan above.
 /*+ Parallel(pctest1 2 hard) Parallel(pctest2 2 hard) */
+WITH r AS MATERIALIZED (
 SELECT * FROM
   (SELECT pctest1.* FROM pctest1, pctest2
      WHERE pctest1.k = pctest2.k AND pctest1.c = pctest2.c) s1 JOIN
   (SELECT pctest2.* FROM pctest1, pctest2
-     WHERE pctest1.k = pctest2.k AND pctest1.b = pctest2.b) s2 ON s1.b = s2.c;
+     WHERE pctest1.k = pctest2.k AND pctest1.b = pctest2.b) s2 ON s1.b = s2.c
+) SELECT * FROM r ORDER BY 1;
  k |  a  | b | c |   d    | k |  a  | b | c |       d       
 ---+-----+---+---+--------+---+-----+---+---+---------------
  3 | 997 | 1 | 3 | Value3 | 1 | 201 | 0 | 1 | Other value 1
