@@ -25,15 +25,23 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
+import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -113,6 +121,62 @@ public class GFlagsUtilTest extends FakeDBApplication {
         "Tserver G-Flag value 'true' for 'use_node_to_node_encryption' is not"
             + " compatible with intent value 'false'",
         exception.getLocalizedMessage());
+  }
+
+  @Test
+  public void testYsqlHbaGFlagsRequireYsqlAuth() {
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        new UniverseDefinitionTaskParams.UserIntent();
+    userIntent.tserverGFlags.put(GFlagsUtil.YSQL_HBA_CONF_CSV, "host all all all md5");
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> GFlagsUtil.checkGflagsAndIntentConsistency(userIntent));
+    assertEquals(GFlagsUtil.YSQL_HBA_REQUIRES_AUTH_ERROR, exception.getLocalizedMessage());
+
+    userIntent.tserverGFlags.clear();
+    userIntent.specificGFlags = SpecificGFlags.construct(new HashMap<>(), new HashMap<>());
+    PerProcessFlags azFlags = new PerProcessFlags();
+    azFlags.value =
+        ImmutableMap.of(
+            ServerType.MASTER, ImmutableMap.of(GFlagsUtil.YSQL_HBA_CONF, "host all all all md5"));
+    userIntent.specificGFlags.setPerAZ(ImmutableMap.of(UUID.randomUUID(), azFlags));
+    exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> GFlagsUtil.checkGflagsAndIntentConsistency(userIntent));
+    assertEquals(GFlagsUtil.YSQL_HBA_REQUIRES_AUTH_ERROR, exception.getLocalizedMessage());
+
+    userIntent.enableYSQLAuth = true;
+    GFlagsUtil.checkGflagsAndIntentConsistency(userIntent);
+  }
+
+  @Test
+  public void testYsqlHbaHelmOverridesRequireYsqlAuth() {
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        new UniverseDefinitionTaskParams.UserIntent();
+    userIntent.universeOverrides =
+        "gflags:\n  tserver:\n    ysql_hba_conf_csv: host all all all md5\n";
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> GFlagsUtil.checkGflagsAndIntentConsistency(userIntent));
+    assertEquals(GFlagsUtil.YSQL_HBA_REQUIRES_AUTH_ERROR, exception.getLocalizedMessage());
+
+    userIntent.universeOverrides = "tserver:\n  podLabels:\n    env: test\n";
+    userIntent.azOverrides =
+        Map.of("az-1", "gflags:\n  master:\n    ysql_hba_conf: host all all all md5\n");
+    assertEquals(
+        Map.of("az-1/gflags.master.ysql_hba_conf", "host all all all md5"),
+        GFlagsUtil.getYsqlHbaHelmOverrides(userIntent.universeOverrides, userIntent.azOverrides));
+    exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> GFlagsUtil.checkGflagsAndIntentConsistency(userIntent));
+    assertEquals(GFlagsUtil.YSQL_HBA_REQUIRES_AUTH_ERROR, exception.getLocalizedMessage());
+
+    userIntent.enableYSQLAuth = true;
+    GFlagsUtil.checkGflagsAndIntentConsistency(userIntent);
   }
 
   @Test
@@ -1171,5 +1235,208 @@ public class GFlagsUtilTest extends FakeDBApplication {
   public void testAwsProxiesKeepPrivateIpWithLoadBalancers() {
     assertFalse(
         GFlagsUtil.listensOnLoadBalancerAddress(lbCluster(Common.CloudType.aws, true, true)));
+  }
+
+  @Test
+  public void testJwtJWKSPathByProvider() throws IOException {
+    Customer customer = ModelFactory.testCustomer();
+    String hbaConf = "host all all 0.0.0.0/0 jwt jwks={\"keys\":[]}";
+    Path localDir = Files.createTempDirectory("jwks");
+    try {
+      String k8sHbaConf =
+          GFlagsUtil.updateJwtJWKSPath(
+              hbaConf, localDir, ModelFactory.kubernetesProvider(customer).getUuid().toString());
+      String awsHbaConf =
+          GFlagsUtil.updateJwtJWKSPath(
+              hbaConf, localDir, ModelFactory.awsProvider(customer).getUuid().toString());
+
+      String[] jwksFiles = localDir.toFile().list();
+      assertEquals(1, jwksFiles.length);
+      String jwksFile = jwksFiles[0];
+      assertEquals("{\"keys\":[]}", Files.readString(localDir.resolve(jwksFile)));
+      assertEquals(
+          "host all all 0.0.0.0/0 jwt jwt_jwks_path=\"\"/mnt/disk0/yw-data/conf/gflag_files/"
+              + jwksFile
+              + "\"\"",
+          k8sHbaConf);
+      assertEquals(
+          "host all all 0.0.0.0/0 jwt jwt_jwks_path=\"\"/home/yugabyte/tserver/conf/gflag_files/"
+              + jwksFile
+              + "\"\"",
+          awsHbaConf);
+    } finally {
+      FileUtils.deleteDirectory(localDir.toFile());
+    }
+  }
+
+  @Test
+  public void testCheckTmpDirGflagConsistencyPassWhenBothDefaultTmp() {
+    Provider provider = setupOnPremProviderWithTmp(GFlagsUtil.DEFAULT_TMP_DIRECTORY);
+    Cluster cluster = createOnPremClusterWithTmpGflag(null);
+    assertNull(checkTmpDirConsistency(provider, cluster));
+  }
+
+  @Test
+  public void testCheckTmpDirGflagConsistencyPassWhenProviderAndGflagMatch() {
+    Provider provider = setupOnPremProviderWithTmp("/data/tmp");
+    Cluster cluster = createOnPremClusterWithTmpGflag("/data/tmp");
+    assertNull(checkTmpDirConsistency(provider, cluster));
+  }
+
+  @Test
+  public void testCheckTmpDirGflagConsistencyFailWhenProviderOverriddenNoGflag() {
+    Provider provider = setupOnPremProviderWithTmp("/data/tmp");
+    Cluster cluster = createOnPremClusterWithTmpGflag(null);
+    String errMsg = checkTmpDirConsistency(provider, cluster);
+    assertNotNull(errMsg);
+    assertTrue(errMsg.contains("/data/tmp"));
+    assertTrue(errMsg.contains("tmp_dir gflag is '/tmp'"));
+    assertTrue(errMsg.contains(ProviderConfKeys.skipTmpDirGflagConsistencyCheck.getKey()));
+  }
+
+  @Test
+  public void testCheckTmpDirGflagConsistencyFailWhenGflagSetProviderDefault() {
+    Provider provider = setupOnPremProviderWithTmp(GFlagsUtil.DEFAULT_TMP_DIRECTORY);
+    Cluster cluster = createOnPremClusterWithTmpGflag("/data/tmp");
+    String errMsg = checkTmpDirConsistency(provider, cluster);
+    assertNotNull(errMsg);
+    assertTrue(errMsg.contains("/data/tmp"));
+  }
+
+  @Test
+  public void testCheckTmpDirGflagConsistencyFailWhenTserverMissingGflag() {
+    Provider provider = setupOnPremProviderWithTmp("/data/tmp");
+    Cluster cluster = createOnPremClusterWithTmpGflag("/data/tmp");
+    cluster.userIntent.tserverGFlags = new HashMap<>();
+    cluster.userIntent.specificGFlags =
+        SpecificGFlags.construct(cluster.userIntent.masterGFlags, cluster.userIntent.tserverGFlags);
+    String errMsg = checkTmpDirConsistency(provider, cluster);
+    assertNotNull(errMsg);
+    assertTrue(errMsg.toLowerCase().contains("tserver"));
+  }
+
+  @Test
+  public void testCheckTmpDirGflagConsistencySkipsNonOnPremProvider() {
+    Customer customer = ModelFactory.testCustomer();
+    Provider provider = ModelFactory.gcpProvider(customer);
+    Cluster cluster = createOnPremClusterWithTmpGflag("/data/tmp");
+    assertNull(checkTmpDirConsistency(provider, cluster));
+  }
+
+  @Test
+  public void testCheckTmpDirGflagConsistencyPassWhenPlacementAzInheritsPerProcessFlags() {
+    Provider provider = setupOnPremProviderWithTmp("/data/tmp");
+    UUID az1 = UUID.randomUUID();
+    UUID az2 = UUID.randomUUID();
+    UUID az3 = UUID.randomUUID();
+    Cluster cluster = createOnPremClusterWithPlacementAzs(provider, "/data/tmp", az1, az2, az3);
+    PerProcessFlags unrelatedFlags =
+        perAzGflags(
+            Map.of(ServerType.MASTER, Map.of("enable_ysql", "true"), ServerType.TSERVER, Map.of()));
+    cluster.userIntent.specificGFlags.getPerAZ().put(az1, unrelatedFlags);
+    cluster.userIntent.specificGFlags.getPerAZ().put(az2, unrelatedFlags);
+    assertNull(checkTmpDirConsistency(provider, cluster));
+  }
+
+  @Test
+  public void testCheckTmpDirGflagConsistencyFailWhenPlacementAzMissingPerAzOverride() {
+    Provider provider = setupOnPremProviderWithTmp("/data/tmp");
+    UUID az1 = UUID.randomUUID();
+    UUID az2 = UUID.randomUUID();
+    UUID az3 = UUID.randomUUID();
+    Cluster cluster = createOnPremClusterWithPlacementAzs(provider, null, az1, az2, az3);
+    cluster.userIntent.specificGFlags.getPerAZ().put(az1, tmpDirOverride("/data/tmp"));
+    cluster.userIntent.specificGFlags.getPerAZ().put(az2, tmpDirOverride("/data/tmp"));
+    String errMsg = checkTmpDirConsistency(provider, cluster);
+    assertNotNull(errMsg);
+    assertTrue(errMsg.contains("tmp_dir gflag is '/tmp'"));
+    assertTrue(errMsg.toLowerCase().contains("master"));
+  }
+
+  @Test
+  public void testCheckTmpDirGflagConsistencyPassForMultiProviderPlacementAzs() {
+    Customer customer = ModelFactory.testCustomer();
+    Provider providerA = setupOnPremProviderWithTmp(customer, "onprem-a", "/data/tmp-a");
+    Provider providerB = setupOnPremProviderWithTmp(customer, "onprem-b", "/data/tmp-b");
+    UUID azA = UUID.randomUUID();
+    UUID azB = UUID.randomUUID();
+    Cluster cluster = createOnPremClusterWithTmpGflag(null);
+    cluster.placementInfo =
+        createPlacementInfo(
+            Map.of(providerA.getUuid(), new UUID[] {azA}, providerB.getUuid(), new UUID[] {azB}));
+    cluster.userIntent.specificGFlags.getPerAZ().put(azA, tmpDirOverride("/data/tmp-a"));
+    cluster.userIntent.specificGFlags.getPerAZ().put(azB, tmpDirOverride("/data/tmp-b"));
+    assertNull(checkTmpDirConsistency(providerA, cluster));
+    assertNull(checkTmpDirConsistency(providerB, cluster));
+  }
+
+  private String checkTmpDirConsistency(Provider provider, Cluster cluster) {
+    RuntimeConfGetter confGetter = app.injector().instanceOf(RuntimeConfGetter.class);
+    return GFlagsUtil.checkTmpDirGflagConsistency(confGetter, provider, cluster, List.of(cluster));
+  }
+
+  private Provider setupOnPremProviderWithTmp(String tmpPath) {
+    return setupOnPremProviderWithTmp(ModelFactory.testCustomer(), "OnPrem", tmpPath);
+  }
+
+  private Provider setupOnPremProviderWithTmp(Customer customer, String name, String tmpPath) {
+    Provider provider = ModelFactory.newProvider(customer, Common.CloudType.onprem, name);
+    mutableConfigFactory
+        .forProvider(provider)
+        .setValue(ProviderConfKeys.remoteTmpDirectory.getKey(), tmpPath);
+    return provider;
+  }
+
+  private PerProcessFlags perAzGflags(Map<ServerType, Map<String, String>> gflags) {
+    PerProcessFlags flags = new PerProcessFlags();
+    flags.value = gflags;
+    return flags;
+  }
+
+  private PerProcessFlags tmpDirOverride(String tmpDir) {
+    return perAzGflags(
+        Map.of(
+            ServerType.MASTER, Map.of(GFlagsUtil.TMP_DIRECTORY, tmpDir),
+            ServerType.TSERVER, Map.of(GFlagsUtil.TMP_DIRECTORY, tmpDir)));
+  }
+
+  private Cluster createOnPremClusterWithTmpGflag(String tmpDir) {
+    UserIntent userIntent = new UserIntent();
+    Cluster cluster = new Cluster(ClusterType.PRIMARY, userIntent);
+    userIntent.universeName = "test-universe";
+    Map<String, String> masterGFlags =
+        tmpDir != null ? Map.of(GFlagsUtil.TMP_DIRECTORY, tmpDir) : Map.of();
+    Map<String, String> tserverGFlags =
+        tmpDir != null ? Map.of(GFlagsUtil.TMP_DIRECTORY, tmpDir) : Map.of();
+    userIntent.masterGFlags = new HashMap<>(masterGFlags);
+    userIntent.tserverGFlags = new HashMap<>(tserverGFlags);
+    userIntent.specificGFlags = SpecificGFlags.construct(masterGFlags, tserverGFlags);
+    return cluster;
+  }
+
+  private Cluster createOnPremClusterWithPlacementAzs(
+      Provider provider, String tmpDir, UUID... azUuids) {
+    Cluster cluster = createOnPremClusterWithTmpGflag(tmpDir);
+    cluster.placementInfo = createPlacementInfo(Map.of(provider.getUuid(), azUuids));
+    return cluster;
+  }
+
+  private PlacementInfo createPlacementInfo(Map<UUID, UUID[]> providerToAzUuids) {
+    PlacementInfo placementInfo = new PlacementInfo();
+    placementInfo.cloudList = new ArrayList<>();
+    for (Map.Entry<UUID, UUID[]> entry : providerToAzUuids.entrySet()) {
+      PlacementInfo.PlacementCloud cloud = new PlacementInfo.PlacementCloud();
+      cloud.uuid = entry.getKey();
+      PlacementInfo.PlacementRegion region = new PlacementInfo.PlacementRegion();
+      region.azList = new ArrayList<>();
+      for (UUID azUuid : entry.getValue()) {
+        PlacementInfo.PlacementAZ placementAz = new PlacementInfo.PlacementAZ();
+        placementAz.uuid = azUuid;
+        region.azList.add(placementAz);
+      }
+      cloud.regionList = List.of(region);
+      placementInfo.cloudList.add(cloud);
+    }
+    return placementInfo;
   }
 }

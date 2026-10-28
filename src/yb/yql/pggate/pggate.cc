@@ -913,7 +913,8 @@ Status PgApiImpl::InsertSequenceTuple(
     int64_t db_oid, int64_t seq_oid, uint64_t ysql_catalog_version,
     int64_t last_val, bool is_called) {
   return pg_client_.InsertSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, last_val, is_called);
+      db_oid, seq_oid, ysql_catalog_version,
+      pg_txn_manager_->IsTableLockingEnabledForCurrentTxn(), last_val, is_called);
 }
 
 Status PgApiImpl::UpdateSequenceTupleConditionally(
@@ -921,7 +922,8 @@ Status PgApiImpl::UpdateSequenceTupleConditionally(
     int64_t last_val, bool is_called, int64_t expected_last_val, bool expected_is_called,
     bool *skipped) {
   *skipped = VERIFY_RESULT(pg_client_.UpdateSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, last_val, is_called,
+      db_oid, seq_oid, ysql_catalog_version,
+      pg_txn_manager_->IsTableLockingEnabledForCurrentTxn(), last_val, is_called,
       expected_last_val, expected_is_called));
   return Status::OK();
 }
@@ -930,7 +932,8 @@ Status PgApiImpl::UpdateSequenceTuple(
     int64_t db_oid, int64_t seq_oid, uint64_t ysql_catalog_version,
     int64_t last_val, bool is_called, bool* skipped) {
   auto result = VERIFY_RESULT(pg_client_.UpdateSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, last_val,
+      db_oid, seq_oid, ysql_catalog_version,
+      pg_txn_manager_->IsTableLockingEnabledForCurrentTxn(), last_val,
       is_called, std::nullopt, std::nullopt));
   if (skipped) {
     *skipped = result;
@@ -943,7 +946,8 @@ Status PgApiImpl::FetchSequenceTuple(
     uint32_t fetch_count, int64_t inc_by, int64_t min_value, int64_t max_value, bool cycle,
     int64_t *first_value, int64_t *last_value) {
   auto res = VERIFY_RESULT(pg_client_.FetchSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, fetch_count, inc_by,
+      db_oid, seq_oid, ysql_catalog_version,
+      pg_txn_manager_->IsTableLockingEnabledForCurrentTxn(), fetch_count, inc_by,
       min_value, max_value, cycle));
   *first_value = res.first;
   *last_value = res.second;
@@ -958,7 +962,7 @@ Status PgApiImpl::ReadSequenceTuple(
   const auto actual_yb_read_time = yb_read_time ? std::optional(yb_read_time) : std::nullopt;
   const auto res = VERIFY_RESULT(pg_client_.ReadSequenceTuple(
       db_oid, seq_oid, actual_ysql_catalog_version,
-      actual_yb_read_time));
+      pg_txn_manager_->IsTableLockingEnabledForCurrentTxn(), actual_yb_read_time));
   if (last_val) {
     *last_val = res.first;
   }
@@ -1641,6 +1645,13 @@ Status PgApiImpl::DmlExecWriteOp(PgStatement *handle, int32_t *rows_affected_cou
   return Status::OK();
 }
 
+Status PgApiImpl::DmlGetOnConflictOutcome(
+    PgStatement *handle, PgsqlResponsePB::PgsqlOnConflictOutcome *on_conflict_outcome) {
+  *on_conflict_outcome =
+      VERIFY_RESULT_REF(GetStatementAs<PgDmlWrite>(handle)).GetOnConflictOutcome();
+  return Status::OK();
+}
+
 // Insert ------------------------------------------------------------------------------------------
 
 Result<PgStatement*> PgApiImpl::NewInsertBlock(
@@ -1680,6 +1691,12 @@ Status PgApiImpl::ExecInsert(PgStatement* handle) {
 
 Status PgApiImpl::InsertStmtSetUpsertMode(PgStatement* handle) {
   VERIFY_RESULT_REF(GetStatementAs<PgInsert>(handle)).SetUpsertMode();
+  return Status::OK();
+}
+
+Status PgApiImpl::InsertStmtSetOnConflictAction(
+    PgStatement* handle, PgsqlWriteRequestPB::PgsqlOnConflictAction action) {
+  VERIFY_RESULT_REF(GetStatementAs<PgInsert>(handle)).SetOnConflictAction(action);
   return Status::OK();
 }
 
@@ -2118,6 +2135,15 @@ Result<uint64_t> PgApiImpl::GetSharedCatalogVersion(std::optional<PgOid> db_oid)
       static_cast<size_t>(catalog_version_db_index_->second));
 }
 
+Result<uint64_t> PgApiImpl::GetSharedDbLastPrefetchedCatalogVersion(PgOid db_oid) {
+  // Both arrays are indexed by the same shared memory slot, and GetSharedCatalogVersion is what
+  // resolves and validates it. Until this backend has resolved that slot once, the call blocks
+  // for up to 30 seconds waiting for the database to appear in shared memory.
+  RETURN_NOT_OK(GetSharedCatalogVersion(db_oid));
+  return tserver_shared_object_.ysql_db_last_prefetched_catalog_version(
+      static_cast<size_t>(catalog_version_db_index_->second));
+}
+
 Result<uint32_t> PgApiImpl::GetNumberOfDatabases() {
   const auto info = VERIFY_RESULT(pg_client_.GetTserverCatalogVersionInfo(
       true /* size_only */, kPgInvalidOid /* db_oid */));
@@ -2544,9 +2570,9 @@ bool PgApiImpl::IsParallelWorker() const {
   return is_parallel_worker_;
 }
 
-Status PgApiImpl::PrefetchRegisteredSysTables() {
+Status PgApiImpl::PrefetchRegisteredSysTables(bool completes_connection_prefetch) {
   SCHECK(pg_sys_table_prefetcher_, IllegalState, "Sys table prefetching has not been started");
-  return pg_sys_table_prefetcher_->Prefetch(pg_session_.get());
+  return pg_sys_table_prefetcher_->Prefetch(pg_session_.get(), completes_connection_prefetch);
 }
 
 void PgApiImpl::RegisterSysTableForPrefetching(
@@ -2596,11 +2622,14 @@ void PgApiImpl::RestoreSessionState(const YbcPgSessionState& session_data) {
 Status PgApiImpl::NewCreateReplicationSlot(
     const char* slot_name, const char* plugin_name, PgOid database_oid,
     YbcPgReplicationSlotSnapshotAction snapshot_action, YbcLsnType lsn_type,
-    YbcOrderingMode ordering_mode, PgStatement** handle) {
+    YbcOrderingMode ordering_mode, const char* yb_publication_name,
+    const PgOid* yb_publication_relfilenodes, size_t yb_num_publication_tables,
+    bool yb_publication_all_tables, PgStatement** handle) {
   return AddToCurrentPgMemctx(
       std::make_unique<PgCreateReplicationSlot>(
           pg_session_, slot_name, plugin_name, database_oid, snapshot_action, lsn_type,
-          ordering_mode),
+          ordering_mode, yb_publication_name, yb_publication_relfilenodes,
+          yb_num_publication_tables, yb_publication_all_tables),
       handle);
 }
 

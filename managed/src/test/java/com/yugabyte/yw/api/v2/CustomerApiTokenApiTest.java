@@ -17,13 +17,17 @@ import static org.junit.Assert.assertThrows;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
 
+import api.v2.handlers.CustomerManagementHandler;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.controllers.RequestContext;
 import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.extended.UserWithFeatures;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
@@ -173,5 +177,22 @@ public class CustomerApiTokenApiTest extends FakeDBApplication {
 
     assertEquals(Http.Status.CONFLICT, e.getHttpStatus());
     assertEquals(userUuid, Users.authWithApiToken(firstToken).getUuid());
+  }
+
+  @Test
+  public void auditedUserIsTheCallerEvenWithAStaleUserOnTheThread() {
+    CustomerManagementHandler handler = app.injector().instanceOf(CustomerManagementHandler.class);
+    Users stale = ModelFactory.testUser(ModelFactory.testCustomer("Stale Customer"));
+    RequestContext.put(TokenAuthenticator.USER, new UserWithFeatures().setUser(stale));
+    try {
+      handler.generateApiToken(
+          Helpers.fakeRequest().header(TokenAuthenticator.API_TOKEN_HEADER, apiToken).build(),
+          customerUuid,
+          null);
+
+      assertEquals(userUuid, RequestContext.get(TokenAuthenticator.USER).getUser().getUuid());
+    } finally {
+      RequestContext.clean(Set.of(TokenAuthenticator.USER));
+    }
   }
 }

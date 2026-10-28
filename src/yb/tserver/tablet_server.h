@@ -73,6 +73,7 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/locks.h"
+#include "yb/util/metrics_fwd.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/one_time_bool.h"
 #include "yb/util/status_fwd.h"
@@ -124,6 +125,16 @@ class TserverXClusterContextIf;
 class XClusterConsumerIf;
 class YsqlLeaseClient;
 
+// The active table list last accepted by SetActiveTableIdsForMetrics.
+struct ActiveTableIdsForMetrics {
+  // Null until the first list is accepted.
+  std::shared_ptr<const std::unordered_set<std::string>> table_ids;
+  // Version supplied by the caller with the list, zero if none.
+  uint32_t list_version = 0;
+  // Physical time in microseconds of the last accepted request, zero until then.
+  uint64_t last_update_time = 0;
+};
+
 class TabletServer : public DbServerBase, public TabletServerIf {
  public:
   // TODO: move this out of this header, since clients want to use this
@@ -173,6 +184,14 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   Result<uint32> ValidateAndGetAutoFlagsConfigVersion() const;
 
   AutoFlagsConfigPB TEST_GetAutoFlagConfig() const;
+
+  Status SetActiveTableIdsForMetrics(
+      std::unordered_set<std::string> table_ids, uint32_t list_version) override;
+
+  // Returns the active table list last accepted by SetActiveTableIdsForMetrics.
+  ActiveTableIdsForMetrics GetActiveTableIdsForMetrics() const;
+
+  void ConfigurePrometheusMetricsOptions(MetricPrometheusOptions* options) const override;
 
   TSTabletManager* tablet_manager() const override { return tablet_manager_.get(); }
   TabletPeerLookupIf* tablet_peer_lookup() override;
@@ -229,8 +248,21 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Status PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp) EXCLUDES(lock_);
   Result<YSQLLeaseInfo> GetYSQLLeaseInfo() const override;
-  Status RestartPG() const override;
-  Status KillPg() const override;
+
+  // Conditionally restart PG: while the persistence gate is enforced and this TServer holds no
+  // xCluster-guarded information lease, PG is paused instead and started by MaybeStartPg once the
+  // lease arrives.
+  Status RestartPG() const override EXCLUDES(pg_start_mutex_);
+  Status KillPg() const override EXCLUDES(pg_start_mutex_);
+
+  // Starts PG if RestartPG left it paused for want of the xCluster lease and that no longer
+  // applies.
+  void MaybeStartPg() const EXCLUDES(pg_start_mutex_);
+
+  // Whether this TServer satisfies the xCluster-guarded information lease requirement: it holds the
+  // lease or the persistence gate that requires it is not enforced.  Decides both whether PG may
+  // start and whether this TServer's tablets must give up leadership.
+  bool IsXClusterLeaseRequirementMet() const;
 
   Status GetLiveTServers(std::vector<master::TSInformationPB>* live_tservers) const
       EXCLUDES(lock_) override;
@@ -341,6 +373,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
       uint32_t db_oid, bool is_breaking_change, uint64_t new_catalog_version,
       const std::optional<std::string>& message_list) EXCLUDES(lock_) override;
 
+  void SetYsqlDbLastPrefetchedCatalogVersion(
+      uint32_t db_oid, uint64_t catalog_version) EXCLUDES(lock_) override;
+
   void TriggerRelcacheInitConnection(
       const tserver::TriggerRelcacheInitConnectionRequestPB& req,
       StdStatusCallback callback) EXCLUDES(lock_) override;
@@ -400,6 +435,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void RegisterConnectionManagerRestarter(std::function<Status(void)> restarter);
 
   Status StartYSQLLeaseRefresher();
+  void TriggerYSQLLeaseRefresh();
 
   /// Stops the ysql lease manager threads, which call back into the PG supervisor to restart or
   /// kill PG. Idempotent, also invoked by Shutdown.
@@ -606,6 +642,14 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   uint64_t ysql_last_breaking_catalog_version_ GUARDED_BY(lock_) = 0;
   tserver::DbOidToCatalogVersionInfoMap ysql_db_catalog_version_map_ GUARDED_BY(lock_);
 
+  // A prefetch this node has cached for a database it has no shared memory slot for yet. A fill
+  // can complete before this node has learned the database exists, and failing to record it then
+  // is permanent rather than momentary: the response cache keeps the entry that fill left, every
+  // later connection is served from it, and SetYsqlDbLastPrefetchedCatalogVersion is only ever
+  // called from that cache's fill observer, so no fill records the key again. Held here until
+  // the slot arrives, bounded by the number of databases this tserver has yet to hear about.
+  std::unordered_map<uint32_t, uint64_t> ysql_db_pending_last_prefetched_ GUARDED_BY(lock_);
+
   // Cluster-wide per-database history retention pins, aggregated by the master across all live
   // tservers and refreshed when a heartbeat response advertises a ready cluster pin map.
   // Map[db_oid] -> oldest read HybridTime that any live transaction in the cluster may still
@@ -670,6 +714,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   key_t ysql_conn_mgr_stats_shmem_key_ = 0;
 
  private:
+  Status RestartPgUnlocked() const REQUIRES(pg_start_mutex_);
+  Status KillPgUnlocked() const REQUIRES(pg_start_mutex_);
+
   struct ClusterConfig {
     std::atomic<int32_t> version{kUnknownClusterConfigVersion};
     mutable std::mutex mutex;
@@ -677,6 +724,12 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   };
 
   ClusterConfig cluster_config_;
+
+  mutable std::mutex active_table_metrics_mutex_;
+  ActiveTableIdsForMetrics active_table_ids_for_metrics_ GUARDED_BY(active_table_metrics_mutex_);
+  scoped_refptr<AtomicGauge<uint64_t>> active_table_metrics_last_update_time_;
+  scoped_refptr<AtomicGauge<uint64_t>> active_table_metrics_table_count_;
+  scoped_refptr<AtomicGauge<uint64_t>> active_table_metrics_list_version_;
 
   // Auto initialize some of the service flags that are defaulted to -1.
   void AutoInitServiceFlags();
@@ -719,6 +772,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void AbortInFlightRelcacheInitConnections() EXCLUDES(lock_);
   void DoUpdateMasterAddresses();
 
+  int64_t GetXClusterGuardedInfoLeaseHeldForMetrics() const;
+
   std::map<std::string, std::string> ValidateConfCsvViaPg(
       const std::map<std::string, std::string>& conf_flags, CoarseTimePoint deadline);
 
@@ -729,6 +784,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   std::unique_ptr<TserverXClusterContext> xcluster_context_;
 
+  // Declared after xcluster_context_ so it detaches the lease gauge, which reads
+  // xcluster_context_, before xcluster_context_ is destroyed.
+  std::shared_ptr<void> xcluster_guarded_info_lease_metric_detacher_;
+
   PgMutationCounter pg_node_level_mutation_counter_;
 
   PgConfigReloader pg_config_reloader_;
@@ -737,11 +796,15 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   std::unique_ptr<rpc::SecureContext> secure_context_;
   std::vector<CertificateReloader> certificate_reloaders_;
-  std::function<Status(void)> pg_restarter_;
-  std::function<Status(void)> pg_killer_;
-  pgwrapper::PgConfigGenerator pg_config_generator_;
 
-  std::function<Status(void)> conn_manager_restarter_;
+  // Serializes starting and pausing PG between the YSQL lease manager and the heartbeater.
+  mutable std::mutex pg_start_mutex_;
+  mutable bool pg_awaiting_xcluster_lease_ GUARDED_BY(pg_start_mutex_) = false;
+  std::function<Status(void)> pg_restarter_ GUARDED_BY(pg_start_mutex_);
+  std::function<Status(void)> pg_killer_ GUARDED_BY(pg_start_mutex_);
+  std::function<Status(void)> conn_manager_restarter_ GUARDED_BY(pg_start_mutex_);
+
+  pgwrapper::PgConfigGenerator pg_config_generator_;
 
   // xCluster consumer.
   mutable std::mutex xcluster_consumer_mutex_;

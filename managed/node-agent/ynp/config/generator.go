@@ -186,7 +186,7 @@ func (gen *YNPConfigGenerator) registerResolvers() error {
 		if err != nil {
 			return nil, err
 		}
-		return provider.AirGapInstall, nil
+		return provider.Details.AirGapInstall, nil
 	}
 	gen.resolvers["ynp_use_system_level_systemd"] = func(ctx context.Context, dataProvider ResolverDataProvider) (any, error) {
 		return false, nil

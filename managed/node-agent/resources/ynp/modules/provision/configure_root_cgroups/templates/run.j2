@@ -59,7 +59,27 @@ systemctl daemon-reload || true
 if [ "$CGROUP_MODE" = "v2" ] && [ "$USE_SYS" != "True" ]; then
   # The user manager picks up the delegated controllers only when it starts.
   YB_UID=$(id -u "$YB_USER")
-  systemctl stop "user@${YB_UID}.service" 2>/dev/null || true
-  systemctl reset-failed "user@${YB_UID}.service" 2>/dev/null || true
-  systemctl start "user@${YB_UID}.service" 2>/dev/null || true
+  USER_UNIT="user@${YB_UID}.service"
+  USER_UNIT_CGROUP="/sys/fs/cgroup/user.slice/user-${YB_UID}.slice/${USER_UNIT}"
+  systemctl stop "$USER_UNIT" || true
+  # stop returns once the unit is inactive, which can be before its cgroup is removed. Starting
+  # then can fail with "Failed to attach to cgroup ...: Device or resource busy".
+  for _ in $(seq 1 30); do
+    [ -d "$USER_UNIT_CGROUP" ] || break
+    sleep 1
+  done
+  for attempt in $(seq 1 10); do
+    systemctl reset-failed "$USER_UNIT" 2>/dev/null || true
+    systemctl start "$USER_UNIT" || true
+    if systemctl is-active --quiet "$USER_UNIT"; then
+      break
+    fi
+    echo "Waiting for ${USER_UNIT} to start (attempt ${attempt})"
+    sleep 2
+  done
+  # Everything under the yb user's systemd, including the node agent, is down without it.
+  if ! systemctl is-active --quiet "$USER_UNIT"; then
+    echo "Failed to start ${USER_UNIT}"
+    exit 1
+  fi
 fi

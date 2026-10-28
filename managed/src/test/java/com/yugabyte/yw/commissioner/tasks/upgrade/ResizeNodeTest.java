@@ -18,6 +18,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
@@ -76,6 +77,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
@@ -2425,6 +2427,91 @@ public class ResizeNodeTest extends UpgradeTaskTest {
       assertNotNull(details);
       assertFalse(details.isRollbackSafe());
       assertFalse(commissioner.canTaskRollbackDetailed(taskInfo));
+    } finally {
+      clearAbortOrPausePositions();
+    }
+  }
+
+  @Test
+  public void testRetryAfterCapacityReservationRollbackCapturesCheckpoint()
+      throws InterruptedException {
+    // PLAT-23111: a capacity-reservation failure auto-rolls back and clears the checkpoint, so
+    // the retry starts from the restored universe and must capture a new one.
+    factory
+        .globalRuntimeConf()
+        .setValue(ProviderConfKeys.enableCapacityReservationAws.getKey(), "true");
+    factory.globalRuntimeConf().setValue("yb.task.capacity_reservation.max_retries", "1");
+    factory.globalRuntimeConf().setValue("yb.task.capacity_reservation.retry_delay_seconds", "0");
+    factory.globalRuntimeConf().setValue("yb.task.allow_resize_node_rollback", "true");
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.enableComprehensivePrechecks.getKey(), "false");
+    AtomicBoolean noCapacity = new AtomicBoolean(true);
+    when(cloudAPI.createCapacityReservation(any(), any(), any(), any(), any(), anyInt(), any()))
+        .thenAnswer(
+            invocation -> {
+              if (noCapacity.get()) {
+                throw new RuntimeException("Insufficient capacity");
+              }
+              return "reservation";
+            });
+    ResizeNodeParams taskParams = createResizeParams();
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.getPrimaryCluster().userIntent.instanceType = NEW_INSTANCE_TYPE;
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.creatingUser = defaultUser;
+    taskParams.sleepAfterMasterRestartMillis = 5;
+    taskParams.sleepAfterTServerRestartMillis = 5;
+    TestUtils.setFakeHttpContext(defaultUser);
+    UUID taskUUID = commissioner.submit(TaskType.ResizeNode, taskParams);
+    CustomerTask.create(
+        defaultCustomer,
+        defaultUniverse.getUniverseUUID(),
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.ResizeNode,
+        "fake-name");
+    TaskInfo taskInfo = waitForTask(taskUUID);
+    assertEquals(Failure, taskInfo.getTaskState());
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .anyMatch(
+                t ->
+                    t.getTaskType() == TaskType.DoCapacityReservation
+                        && t.getTaskState() == TaskInfo.State.Failure));
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertTrue(universe.getUniverseDetails().autoRollbackPerformed);
+    assertNull(universe.getStateTransitionDetails());
+
+    noCapacity.set(false);
+    // An instance-type-only resize has no MarkRollbackUnsafe step, so stop the retry once the first
+    // node has been resized.
+    setPausePosition(3);
+    try {
+      CustomerTask retryTask =
+          customerTaskManager.retryCustomerTask(defaultCustomer.getUuid(), taskInfo.getUuid());
+      UUID retryUuid = retryTask.getTaskUUID();
+      CommissionerBaseTest.waitForTaskPaused(retryUuid, commissioner);
+      List<TaskInfo> subTasks = TaskInfo.getOrBadRequest(retryUuid).getSubTasks();
+      int firstChangeInstance =
+          subTasks.stream()
+              .filter(t -> t.getTaskType() == TaskType.ChangeInstanceType)
+              .mapToInt(TaskInfo::getPosition)
+              .min()
+              .orElseThrow();
+      assertTrue(subTasks.stream().noneMatch(t -> t.getTaskType() == TaskType.MarkRollbackUnsafe));
+      setAbortPosition(firstChangeInstance + 1);
+      commissioner.resumeTask(retryUuid);
+      TaskInfo retryTaskInfo = waitForTask(retryUuid);
+      assertEquals(TaskInfo.State.Aborted, retryTaskInfo.getTaskState());
+      universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+      StateTransitionDetails details = universe.getStateTransitionDetails();
+      assertNotNull("retry after auto-rollback must capture a checkpoint", details);
+      assertTrue(details.isRollbackSafe());
+      assertEquals(
+          DEFAULT_INSTANCE_TYPE,
+          details.getBeforeUniverseDetails().getPrimaryCluster().userIntent.instanceType);
+      assertTrue(commissioner.canTaskRollbackDetailed(retryTaskInfo));
     } finally {
       clearAbortOrPausePositions();
     }

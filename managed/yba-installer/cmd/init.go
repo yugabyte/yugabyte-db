@@ -17,6 +17,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/config"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/preflight/checks"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/ybactlstate"
 )
 
 var (
@@ -52,6 +53,8 @@ func initAfterFlagsParsed(cmdName string) {
 
 	// Load the config after confirming config file
 	common.InitViper()
+	// Before anything uses TLS. The state file covers an install whose yba-ctl.yml was edited.
+	common.ApplyFipsMode(viper.GetBool("fips.enabled") || ybactlstate.StoredFipsEnabled())
 
 	// Replicated migration handles config and root checks on its own.
 	// License does not need any config, so skip for now

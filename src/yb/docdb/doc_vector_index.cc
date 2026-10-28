@@ -21,6 +21,7 @@
 
 #include "yb/common/common.pb.h"
 
+#include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_vector_id.h"
 
 #include "yb/docdb/consensus_frontier.h"
@@ -46,9 +47,6 @@
 
 #include "yb/vector_index/vectorann_util.h"
 #include "yb/vector_index/vector_lsm.h"
-
-DEFINE_RUNTIME_uint64(vector_index_initial_chunk_size, 100000,
-    "Number of vector in initial vector index chunk");
 
 METRIC_DEFINE_event_stats(table, vector_index_convert_us,
     "Time to convert list of vector ids to ybctids", yb::MetricUnit::kMicroseconds,
@@ -214,7 +212,7 @@ void VectorToYSQL(const Vector& vector, ValueBuffer* out) {
 
 template<vector_index::IndexableVectorType Vector>
 Result<vector_index::VectorLSMInsertEntry<Vector>> ConvertEntry(
-    const DocVectorIndexInsertEntry& entry, bool store_payload) {
+    const DocVectorIndexInsertEntry& entry, bool store_payload, size_t tenant_components) {
 
   RSTATUS_DCHECK(!entry.value.empty(), InvalidArgument, "Vector value is not specified");
   RSTATUS_DCHECK(
@@ -227,12 +225,16 @@ Result<vector_index::VectorLSMInsertEntry<Vector>> ConvertEntry(
   }
   ValueBuffer payload;
   if (store_payload) {
+    // Master keeps the tenant components below the components of the table.
+    auto tenant_prefix_size = VERIFY_RESULT(
+        dockv::DocKey::EncodedHashGroupAndRangeComponentsSizeStrict(
+            entry.ybctid.AsSlice(), tenant_components));
     if (FLAGS_TEST_vector_index_corrupt_inserted_payloads) {
       // Sorts after every key of the row.
       dockv::KeyBytes ybctid(entry.ybctid.AsSlice(), dockv::KeyEntryTypeAsChar::kMaxByte);
-      payload = dockv::DocVectorIndexPayload(ybctid.AsSlice());
+      payload = dockv::DocVectorIndexPayload(ybctid.AsSlice(), tenant_prefix_size);
     } else {
-      payload = dockv::DocVectorIndexPayload(entry.ybctid.AsSlice());
+      payload = dockv::DocVectorIndexPayload(entry.ybctid.AsSlice(), tenant_prefix_size);
     }
   }
   return vector_index::VectorLSMInsertEntry<Vector> {
@@ -429,7 +431,6 @@ class DocVectorIndexImpl : public DocVectorIndex {
       .storage_dir = storage_dir,
       .vector_index_traits = VERIFY_RESULT((GetVectorLSMTraits<Vector, DistanceResult>(
           block_cache_, options_, mem_tracker_))),
-      .vectors_per_chunk = FLAGS_vector_index_initial_chunk_size,
       .thread_pool = thread_pools.thread_pool,
       .insert_thread_pool = thread_pools.insert_thread_pool,
       .compaction_token = thread_pools.compaction_token,
@@ -458,7 +459,8 @@ class DocVectorIndexImpl : public DocVectorIndex {
     if (!FLAGS_TEST_vector_index_skip_insert) {
       lsm_entries.reserve(entries.size());
       for (const auto& entry : entries) {
-        lsm_entries.push_back(VERIFY_RESULT(ConvertEntry<Vector>(entry, StoresPayload())));
+        lsm_entries.push_back(VERIFY_RESULT(ConvertEntry<Vector>(
+            entry, StoresPayload(), options_.tenant_hash_group_and_range_components())));
       }
     }
     vector_index::VectorLSMInsertContext context {
@@ -478,6 +480,10 @@ class DocVectorIndexImpl : public DocVectorIndex {
 
   size_t EstimateNumVectorsForBytes(size_t bytes_limit) const override {
     return lsm_.EstimateNumVectorsForBytes(bytes_limit);
+  }
+
+  size_t DefaultChunkCapacity() const override {
+    return lsm_.DefaultChunkCapacity();
   }
 
   Result<DocVectorIndexSearchResult> Search(
@@ -793,6 +799,10 @@ storage::UserFrontierPtr DocVectorIndex::GetInMemoryFrontier(storage::UpdateUser
   }
   return GetFrontiers(storage::FrontierKinds{
       storage::FrontierKind::kInMemoryLargest}).in_memory.largest;
+}
+
+bool DocVectorIndex::IsIndexedTableKey(Slice key) const {
+  return key.starts_with(indexed_table_key_prefix());
 }
 
 Result<bool> DocVectorIndex::BackfillDone() {

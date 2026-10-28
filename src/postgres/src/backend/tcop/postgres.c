@@ -224,6 +224,11 @@ static long YbNumCatalogCacheRefreshes = 0;
 static long YbNumCatalogCacheDeltaRefreshes = 0;
 
 static long YbNumHintCacheRefreshes = 0;
+/*
+ * Connections that started from a catalog version this node already had a prefetch cached at,
+ * rather than fetching the catalog from the master leader.
+ */
+static long YbNumStaleCatalogPrefetches = 0;
 static long YbNumHintCacheHits = 0;
 static long YbNumHintCacheMisses = 0;
 
@@ -4897,13 +4902,7 @@ YBRefreshCacheWrapperImpl(uint64_t catalog_master_version, bool is_retry,
 				YbUpdateCatalogCacheVersionNoPgStat(shared_catalog_version);
 			if (yb_test_delay_after_applying_inval_message_ms > 0)
 				pg_usleep(yb_test_delay_after_applying_inval_message_ms * 1000L);
-			if (!yb_enable_invalidate_table_cache_entry || YbGetNeedInvalidateAllTableCache())
-			{
-				elog(LOG, "calling YBCPgInvalidateCache");
-				HandleYBStatus(YBCPgInvalidateCache(YbGetCatalogCacheVersion()));
-			}
-			else
-				HandleYBStatus(YBCPgUpdateTableCacheMinVersion(YbGetCatalogCacheVersion()));
+			YbUpdatePggateTableCacheAfterApply();
 			yb_need_cache_refresh = false;
 			return true;
 		}
@@ -8586,10 +8585,28 @@ YbGetCatCacheDeltaRefreshes()
 	return YbNumCatalogCacheDeltaRefreshes;
 }
 
+void
+YbIncrementCatCacheDeltaRefreshes()
+{
+	YbNumCatalogCacheDeltaRefreshes++;
+}
+
 long
 YbGetHintCacheRefreshes()
 {
 	return YbNumHintCacheRefreshes;
+}
+
+long
+YbGetStaleCatalogPrefetches()
+{
+	return YbNumStaleCatalogPrefetches;
+}
+
+void
+YbIncrementStaleCatalogPrefetches()
+{
+	YbNumStaleCatalogPrefetches++;
 }
 
 long

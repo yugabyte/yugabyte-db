@@ -40,6 +40,7 @@
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet.pb.h"
+#include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_retention_policy.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/vector_index_checker.h"
@@ -80,7 +81,6 @@ DEFINE_RUNTIME_uint32(vector_index_backfill_retry_delay_ms, 5000,
     "were being replaced, e.g. by a truncate or a restore.");
 
 DECLARE_bool(vector_index_include_into_post_split_compaction);
-DECLARE_uint64(vector_index_initial_chunk_size);
 
 namespace yb::tablet {
 
@@ -216,8 +216,8 @@ class IndexedTableReader {
 
 } // namespace
 
-// A way to block backfilling vector index after the first vector index chunk is flushed.
-bool TEST_block_after_backfilling_first_vector_index_chunks = false;
+// Blocks vector index backfill after it has inserted its first batch of rows into the index.
+bool TEST_block_after_backfilling_first_vector_index_batch = false;
 
 // When set, overrides whether vector index backfill writes reverse mappings. When unset, follows
 // the indexed table's owns_vector_reverse_mapping table property.
@@ -486,16 +486,21 @@ class VectorIndexBackfillHelper : public VectorIndexBackfillContext {
     chunk_size_ = chunk_size;
   }
 
-  size_t num_chunks() const {
-    return num_chunks_;
+  // Rows collected before they are inserted into the vector index. 0 means no limit.
+  void SetMaxBatchSize(size_t max_batch_size) {
+    max_batch_size_ = max_batch_size;
+  }
+
+  size_t num_batches() const {
+    return num_batches_;
   }
 
   bool NeedFlush() {
-    return entries().size() >= FLAGS_vector_index_initial_chunk_size;
+    return max_batch_size_ && entries().size() >= max_batch_size_;
   }
 
   Status Flush(Tablet& tablet, docdb::DocVectorIndex& index, Slice next_ybctid) {
-    ++num_chunks_;
+    ++num_batches_;
 
     if (reverse_mapping_backfiller_) {
       reverse_mapping_backfiller_->Apply(tablet, *this);
@@ -518,6 +523,7 @@ class VectorIndexBackfillHelper : public VectorIndexBackfillContext {
       .reservation_mode = rocksdb::Cache::ReservationMode::kAlways,
     };
     auto num_entries = entries().size();
+    TEST_SYNC_POINT_CALLBACK("VectorIndexBackfillHelper::Flush:NumEntries", &num_entries);
     RETURN_NOT_OK_PREPEND(index.Insert(entries(), options), "Insert entries");
     index.metrics().backfill_inserted_entries->IncrementBy(num_entries);
 
@@ -531,7 +537,8 @@ class VectorIndexBackfillHelper : public VectorIndexBackfillContext {
  private:
   const OpId op_id_;
   size_t chunk_size_ = 0;
-  size_t num_chunks_ = 0;
+  size_t max_batch_size_ = 0;
+  size_t num_batches_ = 0;
   ReverseMappingBackfillerPtr reverse_mapping_backfiller_ = nullptr;
 };
 
@@ -615,17 +622,24 @@ Status TabletVectorIndexes::Backfill(
   // vector count from its internal per-node accounting.
   const size_t bytes_limit = FLAGS_vector_index_backfill_single_chunk_size_bytes;
   const size_t limit = bytes_limit ? vector_index->EstimateNumVectorsForBytes(bytes_limit) : 0;
+  size_t chunk_size = 0;
   if (limit != 0) {
-    size_t rows = 0;
-    while (VERIFY_RESULT(reader.FetchNext()) && rows < limit) {
-      ++rows;
+    while (VERIFY_RESULT(reader.FetchNext()) && chunk_size < limit) {
+      ++chunk_size;
     }
-    LOG_WITH_FUNC(INFO)
-        << "Backfill with chunk size " << rows
-        << " (memory budget: " << bytes_limit << " bytes, vector limit: " << limit << ")";
-    helper.SetChunkSize(rows);
     reader.Restart(from_key);
   }
+  helper.SetChunkSize(chunk_size);
+
+  // Insert rows in batches of the default chunk capacity, but no larger than the backfill chunk
+  // size. Either one that is 0 does not apply, and if both are 0, insert all rows at once.
+  const size_t default_chunk_capacity = vector_index->DefaultChunkCapacity();
+  const size_t max_batch_size = default_chunk_capacity && chunk_size
+      ? std::min(default_chunk_capacity, chunk_size) : std::max(default_chunk_capacity, chunk_size);
+  helper.SetMaxBatchSize(max_batch_size);
+  LOG_WITH_FUNC(INFO)
+      << "Backfill with chunk size " << chunk_size << " (batch size: " << max_batch_size
+      << ", memory budget: " << bytes_limit << " bytes, vector limit: " << limit << ")";
 
   for (;;) {
     if (tablet().IsShutdownRequested()) {
@@ -640,7 +654,7 @@ Status TabletVectorIndexes::Backfill(
       LOG_WITH_FUNC(INFO) << "Vector index shutdown: " << AsString(*vector_index);
       return Status::OK();
     }
-    if (helper.num_chunks() && TEST_block_after_backfilling_first_vector_index_chunks) {
+    if (helper.num_batches() && TEST_block_after_backfilling_first_vector_index_batch) {
       std::this_thread::sleep_for(10ms);
       continue;
     }
@@ -660,7 +674,7 @@ Status TabletVectorIndexes::Backfill(
   RETURN_NOT_OK(helper.Flush(tablet(), *vector_index, Slice()));
 
   LOG_WITH_PREFIX_AND_FUNC(INFO)
-      << "Backfilled " << AsString(*vector_index) << " in " << helper.num_chunks() << " chunks";
+      << "Backfilled " << AsString(*vector_index) << " in " << helper.num_batches() << " batches";
 
   // Hold a blocking operation across both flushes below. Tablet::Flush releases its own one before
   // the vector index flush, so acquire it here and pass kNoScopedOperation. Only
@@ -1065,15 +1079,36 @@ Status TabletVectorIndexes::ModifyFlushedFrontier(
   return Status::OK();
 }
 
-void TabletVectorIndexes::FillMaxPersistentOpIds(
-    boost::container::small_vector_base<OpId>& out, bool invalid_if_no_new_data) {
+void TabletVectorIndexes::FillPersistentStates(
+    boost::container::small_vector_base<VectorIndexPersistentState>& out,
+    bool invalid_if_no_new_data) {
   out.clear();
   auto list = List();
   if (!list) {
     return;
   }
   for (const auto& vector_index : *list) {
-    out.push_back(MaxPersistentOpIdForDb(vector_index.get(), invalid_if_no_new_data));
+    // An invalid hybrid time gives no backfill boundary, so kMin keeps every op for the index.
+    auto hybrid_time = vector_index->hybrid_time();
+    out.push_back(VectorIndexPersistentState {
+      .op_id = MaxPersistentOpIdForDb(vector_index.get(), invalid_if_no_new_data),
+      .hybrid_time = hybrid_time.is_valid() ? hybrid_time : HybridTime::kMin,
+    });
+  }
+}
+
+void TabletVectorIndexes::FillMinSchemaVersion(
+    docdb::CotableSchemaVersionMap* min_schema_versions) const {
+  auto list = List();
+  if (!list) {
+    return;
+  }
+  for (const auto& vector_index : *list) {
+    auto smallest = vector_index->GetInMemoryFrontier(storage::UpdateUserValueType::kSmallest);
+    if (smallest) {
+      down_cast<docdb::ConsensusFrontier&>(*smallest).MakeExternalSchemaVersionsAtMost(
+          min_schema_versions);
+    }
   }
 }
 
@@ -1100,22 +1135,47 @@ docdb::DocVectorIndexPtr TabletVectorIndexes::RemoveTableFromList(const TableId&
 
 Status TabletVectorIndexes::Remove(const TableId& table_id) {
   VLOG_WITH_FUNC(2) << "table_id: " << table_id;
-  if (!has_vector_indexes_.load()) {
-    return Status::OK();
-  }
   docdb::DocVectorIndexPtr index;
-  {
+  // Not an early return: has_vector_indexes_ stays false when the only vector index of the tablet
+  // was skipped, whose storage still has to be destroyed below.
+  if (has_vector_indexes_.load()) {
     UniqueLock lock(vector_indexes_mutex_);
     auto it = vector_indexes_map_.find(table_id);
-    if (it == vector_indexes_map_.end()) {
-      return Status::OK();
+    if (it != vector_indexes_map_.end()) {
+      index = RemoveTableFromList(table_id);
+      RSTATUS_DCHECK(
+          index != nullptr, IllegalState, "Index $0 present in map but missing in list", table_id);
+      vector_indexes_map_.erase(it);
     }
-    index = RemoveTableFromList(table_id);
-    RSTATUS_DCHECK(
-        index != nullptr, IllegalState, "Index $0 present in map but missing in list", table_id);
-    vector_indexes_map_.erase(it);
+  }
+  if (!index) {
+    DestroySkippedIndexStorage(table_id);
+    return Status::OK();
   }
   return index->Destroy();
+}
+
+void TabletVectorIndexes::DestroySkippedIndexStorage(const TableId& table_id) {
+  // An index skipped by DoCreateIndex (its column missing from the schema) can still have storage
+  // on disk, e.g. written before a PITR restore removed the column. The caller erases the table
+  // from the metadata next, and DeleteTabletData only cleans up indexes still listed there
+  // (#35063).
+  auto table_info = metadata().GetTableInfo(table_id);
+  if (!table_info.ok() || !(*table_info)->NeedVectorIndex()) {
+    return;
+  }
+  auto storage_dir = metadata().vector_index_dir((*table_info)->index_info->vector_idx_options());
+  if (!env().FileExists(storage_dir)) {
+    return;
+  }
+  LOG_WITH_PREFIX(INFO)
+      << "Destroying storage of not instantiated vector index " << table_id << " at "
+      << storage_dir;
+  // Leak the directory rather than fail the apply, which would fail the tablet.
+  auto status = env().DeleteRecursively(storage_dir);
+  LOG_IF_WITH_PREFIX(WARNING, !status.ok())
+      << "Failed to destroy storage of vector index " << table_id << " at " << storage_dir << ": "
+      << status;
 }
 
 Result<VectorIndexCheckResultPB> TabletVectorIndexes::Check(

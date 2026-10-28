@@ -1,8 +1,13 @@
-export const PROVIDER_CONFIGURATION = 'providerConfiguration';
+export const PROVIDER_CONFIGURATIONS = 'providerConfigurations';
 export const UNIVERSE_NAME = 'universeName';
 export const CLOUD = 'cloud';
+export const SPAN_ACROSS_PROVIDERS = 'spanAcrossProviders';
 export const DATABASE_VERSION = 'databaseVersion';
 export const REGIONS_FIELD = 'regions';
+/** Multi form field: provider uuid → regions. Persisted to placementsByProvider. */
+export const REGIONS_BY_PROVIDER = 'regionsByProvider';
+/** Multi form field: provider uuid → region code → zones. Persisted to nodesByProvider. */
+export const AVAILABILITY_ZONES_BY_PROVIDER = 'availabilityZonesByProvider';
 export const RESILIENCE_TYPE = 'resilienceType';
 export const RESILIENCE_FORM_MODE = 'resilienceFormMode';
 export const RESILIENCE_FACTOR = 'resilienceFactor';
@@ -71,3 +76,4 @@ export const K8S_AZ_OVERRIDES_FIELD = 'k8sAzOverrides';
 
 export const USER_TAGS_FIELD = 'instanceTags';
 export const AWS_ARN_STRING_FIELD = 'awsArnString';
+export const ACCESS_KEY_CODE_BY_PROVIDER = 'accessKeyCodeByProvider';

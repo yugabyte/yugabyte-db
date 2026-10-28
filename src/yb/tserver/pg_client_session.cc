@@ -43,6 +43,7 @@
 #include "yb/client/transaction_manager.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/common/cdr_metadata.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/common_util.h"
 #include "yb/common/pgsql_error.h"
@@ -182,6 +183,7 @@ DECLARE_bool(enable_qos);
 #endif
 
 DECLARE_bool(enable_object_lock_fastpath);
+DECLARE_bool(enforce_xcluster_guarded_lease);
 DECLARE_bool(vector_index_dump_stats);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
@@ -1463,6 +1465,9 @@ Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperati
       if (read.has_index_request() && next_index_table != index_tables.end()) {
         index_table = std::move(*next_index_table++);
       }
+      if (is_txn_using_table_locks) {
+        read.set_is_using_table_locks(true);
+      }
       if (read.index_request().has_vector_idx_options()) {
         if (req->ops_size() != 1) {
           auto status = STATUS_FORMAT(
@@ -1497,13 +1502,17 @@ Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperati
 
       auto& write = *op.mutable_write();
       RETURN_NOT_OK(GetTable(write.table_id(), tables, &table));
+      if (is_txn_using_table_locks) {
+        write.set_is_using_table_locks(true);
+      }
       auto write_op = std::make_shared<client::YBPgsqlWriteOp>(table, arena, *sidecars, &write);
       if (write_time) {
         write_op->SetWriteTime(write_time);
       }
-      if (req->options().xrepl_origin_id()) {
-        write_op->SetXreplOriginId(req->options().xrepl_origin_id());
-      }
+      write_op->SetCdrMetadata({
+          .source_origin = req->options().xrepl_origin_id(),
+          .source_write_ht = HybridTime::FromPB(req->options().xrepl_source_write_ht()),
+      });
       if (origination_info.IsSet()) {
         write_op->SetOriginationInfo(origination_info);
       }
@@ -2019,6 +2028,16 @@ class PgClientSession::Impl {
       }
     }
 
+    std::optional<std::string> bound_publication_name;
+    std::vector<TableId> bound_publication_table_ids;
+    bool bound_publication_all_tables = false;
+    if (!req.bound_publication_name().empty()) {
+      bound_publication_name = req.bound_publication_name();
+      bound_publication_table_ids.assign(
+          req.bound_publication_table_ids().begin(), req.bound_publication_table_ids().end());
+      bound_publication_all_tables = req.bound_publication_all_tables();
+    }
+
     uint64_t consistent_snapshot_time;
     auto stream_result = VERIFY_RESULT(client_.CreateCDCSDKStreamForNamespace(
         GetPgsqlNamespaceId(req.database_oid()), options,
@@ -2029,7 +2048,11 @@ class PgClientSession::Impl {
         CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED,
         &consistent_snapshot_time,
         lsn_type,
-        ordering_mode));
+        ordering_mode,
+        /* bound_table_ids */ {},
+        bound_publication_name,
+        bound_publication_table_ids,
+        bound_publication_all_tables));
     *resp->mutable_stream_id() = stream_result.ToString();
     resp->set_cdcsdk_consistent_snapshot_time(consistent_snapshot_time);
     return Status::OK();
@@ -3488,10 +3511,19 @@ class PgClientSession::Impl {
     }
 
     // DMLs.
-    if (xcluster_context()->IsReadOnlyMode(options.namespace_id())) {
+    // Without enforce_xcluster_guarded_lease, the role is UNAVAILABLE only before this TServer's
+    // first heartbeat.  Do not refuse DMLs to every database then: nothing guarantees writes are
+    // refused to targets in that window anyway, since IsReadOnlyMode is also false until then.
+    const bool refuse_dmls_because_role =
+        role == XClusterNamespaceInfoPB::AUTOMATIC_TARGET ||
+        (role == XClusterNamespaceInfoPB::UNAVAILABLE && FLAGS_enforce_xcluster_guarded_lease);
+    if (xcluster_context()->IsReadOnlyMode(options.namespace_id()) || refuse_dmls_because_role) {
       for (const auto& op : data->req.ops()) {
         if (op.has_write() && !op.write().is_backfill()) {
           TEST_SYNC_POINT_CALLBACK("WriteDetectedOnXClusterReadOnlyModeTarget", nullptr);
+          if (role == XClusterNamespaceInfoPB::UNAVAILABLE) {
+            return MakeForbiddenOnAutomaticTargetStatus(role, "DML operations");
+          }
           // Only DDLs and index backfill is allowed in xCluster read-only mode.
           return STATUS(
               IllegalState,
@@ -4479,6 +4511,9 @@ class PgClientSession::Impl {
       out_req->set_ysql_db_oid(narrow_cast<uint32_t>(in_req.db_oid()));
     } else if (in_req.ysql_catalog_version()) {
       out_req->set_ysql_catalog_version(in_req.ysql_catalog_version());
+    }
+    if (in_req.is_using_table_locks()) {
+      out_req->set_is_using_table_locks(true);
     }
     return Status::OK();
   }

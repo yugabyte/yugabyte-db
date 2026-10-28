@@ -1,4 +1,5 @@
 import os
+import re
 import logging
 from contextlib import nullcontext
 from work_queue.task_router import TaskProcessor
@@ -8,11 +9,53 @@ from db.system_connection_pool import SystemConnectionPool
 from models.work_queue_task import WorkQueueTask
 from rag_pipeline.rag_handler import RagPipelineHandler
 from db.source_document_tracking import SourceDocumentTracking
+from db.yugabytedb_vector_store import LeaseLostError
 from uuid import UUID
 from typing import Dict, Any, Optional, Tuple
 from langfuse import Langfuse
 from langfuse._client.get_client import _set_current_public_key
 from observability import meko_observe
+
+
+RATE_LIMIT_RETRY_SECONDS = int(os.getenv("RATE_LIMIT_RETRY_SECONDS", "60"))
+# After this many rate-limited attempts the document fails as before, so a
+# provider that stays throttled can't keep a task cycling forever.
+RATE_LIMIT_MAX_RETRIES = int(os.getenv("RATE_LIMIT_MAX_RETRIES", "10"))
+
+_THROTTLE_ERROR_NAMES = {
+    "RateLimitError",             # openai / litellm
+    "ThrottlingException",        # AWS Bedrock
+    "TooManyRequestsException",
+}
+_THROTTLE_MESSAGE = re.compile(
+    r"\b(Error code|status code|HTTP|status)[:= ]+429\b"
+    r"|\bThrottlingException\b|\bTooManyRequestsException\b"
+    r"|\bToo many requests\b",
+    re.IGNORECASE,
+)
+
+
+def _is_rate_limited(error: Exception) -> bool:
+    """True for an embedding provider's throttling response (HTTP 429).
+
+    Matches the provider's error type or status code, or a message that
+    names one. A bare "429" elsewhere in a message (an S3 key, a request
+    id) does not count.
+    """
+    seen = set()
+    while error is not None and id(error) not in seen:
+        seen.add(id(error))
+        if getattr(error, "status_code", None) == 429:
+            return True
+        if type(error).__name__ in _THROTTLE_ERROR_NAMES:
+            return True
+        code = getattr(error, "response", None)
+        if isinstance(code, dict) and code.get("Error", {}).get("Code") in _THROTTLE_ERROR_NAMES:
+            return True
+        if _THROTTLE_MESSAGE.search(str(error)):
+            return True
+        error = error.__cause__ or error.__context__
+    return False
 
 
 class DocumentPreprocessor(TaskProcessor):
@@ -30,9 +73,8 @@ class DocumentPreprocessor(TaskProcessor):
         self.rag_handler = RagPipelineHandler()
         self.source_document_tracking = SourceDocumentTracking()
         # Used to finalize the work_queue row after process(). Without this
-        # the row stays in IN_PROGRESS forever and the SQL-side reaper
-        # re-queues it once the lease expires, causing already-completed
-        # documents to be reprocessed on every poll cycle.
+        # the row stays in IN_PROGRESS and a poll reclaims it once the lease
+        # expires, causing already-completed documents to be reprocessed.
         self.poller = Poller()
 
     def _short_circuit_if_already_finalized(
@@ -78,7 +120,7 @@ class DocumentPreprocessor(TaskProcessor):
         }
 
     def _finalize_task(self, task: WorkQueueTask, succeeded: bool) -> None:
-        """Mark the work_queue row terminal so it isn't re-queued by the reaper.
+        """Mark the work_queue row terminal so no poll reclaims it.
 
         Wraps :meth:`Poller.mark_completed` / :meth:`Poller.mark_failed` so
         finalization failures can't mask the original processing outcome --
@@ -86,9 +128,9 @@ class DocumentPreprocessor(TaskProcessor):
         """
         try:
             if succeeded:
-                self.poller.mark_completed(task.id)
+                self.poller.mark_completed(task.id, lease_token=task.lease_token)
             else:
-                self.poller.mark_failed(task.id)
+                self.poller.mark_failed(task.id, lease_token=task.lease_token)
         except Exception as e:
             self.logger.error(
                 f"Failed to finalize work_queue row for task {task.id} "
@@ -456,11 +498,19 @@ class DocumentPreprocessor(TaskProcessor):
                         if transform_span and hasattr(transform_span, "trace_id")
                         else None
                     )
-                    self.source_document_tracking.update_document_status(
-                        document_id=document_id,
-                        status="PROCESSING",
-                        trace_id=trace_id,
-                    )
+                    if not self.source_document_tracking.claim_document(
+                        document_id=document_id, task_id=task.id,
+                        lease_token=task.lease_token, trace_id=trace_id
+                    ):
+                        self.logger.info(
+                            f"Skipping task {task.id}: document {document_id} "
+                            f"is held by another task or already completed"
+                        )
+                        self._finalize_task(task, succeeded=True)
+                        transform_span = None
+                        return {"status": "skipped", "task_id": task.id,
+                                "document_id": document_id,
+                                "reason": "document held by another task"}
 
                     # Start processing
                     try:
@@ -474,11 +524,14 @@ class DocumentPreprocessor(TaskProcessor):
                             chunk_kwargs=chunking_params,
                             embedding_model_params=embedding_model_params,
                             ai_provider=ai_provider,
-                            tenant_id=tenant_id
+                            tenant_id=tenant_id,
+                            lease_check=lambda: self.poller.holds_lease(
+                                task.id, task.lease_token),
                         )
                         self.logger.info(f"Task {task.id} processed successfully")
                         self.source_document_tracking.update_document_status(
-                            document_id=document_id, status="COMPLETED"
+                            document_id=document_id, status="COMPLETED",
+                            task_id=task.id, lease_token=task.lease_token
                         )
                         self._finalize_task(task, succeeded=True)
                         span_output = {
@@ -499,7 +552,8 @@ class DocumentPreprocessor(TaskProcessor):
                     self.logger.error(f"Validation error while processing task {task.id}: {str(e)}")
                     if document_id:
                         self.source_document_tracking.update_document_status(
-                            document_id=document_id, status="FAILED"
+                            document_id=document_id, status="FAILED",
+                            task_id=task.id, lease_token=task.lease_token
                         )
                     self._finalize_task(task, succeeded=False)
                     span_output = {
@@ -514,14 +568,44 @@ class DocumentPreprocessor(TaskProcessor):
                         "error_type": "ValidationError",
                         "error_message": str(e)
                     }
+                except LeaseLostError as e:
+                    # Another worker reclaimed the task; the worker that holds
+                    # it now owns the document. Leave both alone.
+                    self.logger.warning(f"Stopping task {task.id}: {str(e)}")
+                    transform_span = None
+                    return {"status": "lease_lost", "task_id": task.id,
+                            "document_id": document_id}
                 except Exception as e:
+                    attempt = int((task.task_details or {}).get("attempt") or 0)
+                    if _is_rate_limited(e) and attempt < RATE_LIMIT_MAX_RETRIES:
+                        # The embedding provider is throttling: back off and
+                        # retry rather than fail the document for good.
+                        self.logger.warning(
+                            f"Rate limited on task {task.id} (attempt {attempt + 1} of "
+                            f"{RATE_LIMIT_MAX_RETRIES}); retrying in "
+                            f"{RATE_LIMIT_RETRY_SECONDS}s: {str(e)[:200]}"
+                        )
+                        # Release first: it's fenced on the lease, so only a
+                        # worker that still holds the task puts the document
+                        # back to QUEUED. One that lost its lease leaves the
+                        # document to the worker that now holds it.
+                        released = self.poller.release(task.id, RATE_LIMIT_RETRY_SECONDS,
+                                                       lease_token=task.lease_token)
+                        if released and document_id:
+                            self.source_document_tracking.update_document_status(
+                                document_id=document_id, status="QUEUED"
+                            )
+                        transform_span = None
+                        return {"status": "retry", "task_id": task.id,
+                                "document_id": document_id, "reason": "rate limited"}
                     self.logger.error(
                         f"Unexpected error while processing task {task.id}: {str(e)}",
                         exc_info=True
                     )
                     if document_id:
                         self.source_document_tracking.update_document_status(
-                            document_id=document_id, status="FAILED"
+                            document_id=document_id, status="FAILED",
+                            task_id=task.id, lease_token=task.lease_token
                         )
                     self._finalize_task(task, succeeded=False)
                     span_output = {

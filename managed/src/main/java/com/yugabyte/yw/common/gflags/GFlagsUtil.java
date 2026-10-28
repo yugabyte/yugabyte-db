@@ -16,6 +16,7 @@ import com.google.common.collect.ImmutableSet;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
@@ -52,6 +53,7 @@ import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.UpgradeDetails;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.YCQLAuditConfig;
@@ -65,6 +67,7 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.*;
@@ -140,6 +143,7 @@ public class GFlagsUtil {
   public static final String PSQL_PROXY_BIND_ADDRESS = "pgsql_proxy_bind_address";
   public static final String PSQL_PROXY_WEBSERVER_PORT = "pgsql_proxy_webserver_port";
   public static final String YSQL_HBA_CONF_CSV = "ysql_hba_conf_csv";
+  public static final String YSQL_HBA_CONF = "ysql_hba_conf";
   public static final String YSQL_PG_CONF_CSV = "ysql_pg_conf_csv";
   public static final String YSQL_ENABLE_READ_REQUEST_CACHING = "ysql_enable_read_request_caching";
   public static final String YSQL_ENABLE_READ_COMMITTED_ISOLATION =
@@ -200,6 +204,7 @@ public class GFlagsUtil {
   public static final String YBC_DISK_IO_REQUEST_SIZE = "disk_io_request_size_bytes";
   public static final String YBC_LOG_FILENAME = "yb-controller-server";
   public static final String TMP_DIRECTORY = "tmp_dir";
+  public static final String DEFAULT_TMP_DIRECTORY = "/tmp";
   public static final String JWKS_FILE_CONTENT_KEY = "jwks=";
   public static final String JWT_AUDIENCES = "jwt_audiences=";
   public static final String JWT_ISSUERS = "jwt_issuers=";
@@ -207,6 +212,10 @@ public class GFlagsUtil {
   public static final String JWT_JWKS_FILE_PATH = "jwt_jwks_path";
   public static final String JWT_AUTH = "jwt";
   public static final String GFLAG_REMOTE_FILES_PATH = TSERVER_DIR + "/conf/gflag_files/";
+  // K8s pods keep these on the persistent volume: the container filesystem is reset on every pod
+  // restart, so files under the YB home would be lost.
+  public static final String K8S_GFLAG_REMOTE_FILES_PATH =
+      KubernetesTaskBase.K8S_NODE_YW_DATA_DIR + "/conf/gflag_files/";
   // DB internal glag to suppress going into shell mode and delete files on master removal.
   public static final String NOTIFY_PEER_OF_REMOVAL_FROM_CLUSTER =
       "notify_peer_of_removal_from_cluster";
@@ -217,6 +226,12 @@ public class GFlagsUtil {
 
   public static final Set<String> GFLAGS_ALLOWED_ONLY_IN_NON_ROLLING_UPGRADE =
       ImmutableSet.of("emergency_repair_mode");
+
+  public static final Set<String> YSQL_HBA_GFLAGS =
+      ImmutableSet.of(YSQL_HBA_CONF_CSV, YSQL_HBA_CONF);
+
+  public static final String YSQL_HBA_REQUIRES_AUTH_ERROR =
+      "Cannot set ysql_hba_conf_csv or ysql_hba_conf while YSQL auth is disabled";
 
   private static final Pattern LOG_LINE_PREFIX_PATTERN =
       Pattern.compile("^\"?\\s*log_line_prefix\\s*=\\s*'?([^']+)'?\\s*\"?$");
@@ -677,6 +692,21 @@ public class GFlagsUtil {
     return Provider.getOrBadRequest(UUID.fromString(providerUUID)).getYbHome();
   }
 
+  /** Directory on the node that holds files referenced by gflags, such as JWKS keys. */
+  public static String getRemoteGFlagFilesPath(Provider provider) {
+    if (provider.getCloudCode() == CloudType.kubernetes) {
+      return K8S_GFLAG_REMOTE_FILES_PATH;
+    }
+    return provider.getYbHome() + GFLAG_REMOTE_FILES_PATH;
+  }
+
+  private static String getRemoteGFlagFilesPath(@Nullable String providerUUID) {
+    if (providerUUID == null) {
+      return getYbHomeDir(null) + GFLAG_REMOTE_FILES_PATH;
+    }
+    return getRemoteGFlagFilesPath(Provider.getOrBadRequest(UUID.fromString(providerUUID)));
+  }
+
   private static String getMasterAddrs(
       AnsibleConfigureServers.Params taskParam, Universe universe, boolean useSecondaryIp) {
     String masterAddresses = taskParam.getMasterAddrsOverride();
@@ -813,7 +843,79 @@ public class GFlagsUtil {
       }
       result = confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
     }
-    return result == null ? "/tmp" : result;
+    return result == null ? DEFAULT_TMP_DIRECTORY : result;
+  }
+
+  /** Normalizes a tmp directory path for comparison. */
+  public static String normalizeTmpDirectoryPath(String path) {
+    if (path == null || path.trim().isEmpty()) {
+      return DEFAULT_TMP_DIRECTORY;
+    }
+    return Paths.get(path.trim()).normalize().toString();
+  }
+
+  /** Returns the effective DB tmp_dir from gflags, or {@link #DEFAULT_TMP_DIRECTORY} if unset. */
+  public static String getEffectiveDbTmpDir(Map<String, String> gflags) {
+    if (gflags == null) {
+      return DEFAULT_TMP_DIRECTORY;
+    }
+    return normalizeTmpDirectoryPath(gflags.get(TMP_DIRECTORY));
+  }
+
+  /**
+   * Validates that on-prem provider {@code remoteTmpDirectory} matches master/tserver {@code
+   * tmp_dir} gflags. Returns an error message if inconsistent, or {@code null} if valid or not
+   * applicable.
+   */
+  public static String checkTmpDirGflagConsistency(
+      RuntimeConfGetter confGetter,
+      Provider provider,
+      Cluster cluster,
+      Collection<Cluster> allClusters) {
+    if (provider.getCloudCode() != CloudType.onprem) {
+      return null;
+    }
+    String providerTmp =
+        normalizeTmpDirectoryPath(
+            confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory));
+    String clusterName =
+        cluster.userIntent.universeName != null
+            ? cluster.userIntent.universeName
+            : cluster.uuid.toString();
+
+    for (UUID azUuid : getAzUuidsForTmpDirGflagCheck(cluster, provider)) {
+      for (ServerType serverType : ImmutableList.of(ServerType.MASTER, ServerType.TSERVER)) {
+        Map<String, String> gflags = getGFlagsForAZ(azUuid, serverType, cluster, allClusters);
+        String dbTmp = getEffectiveDbTmpDir(gflags);
+        if (!Paths.get(providerTmp).equals(Paths.get(dbTmp))) {
+          return String.format(
+              "Provider remote tmp directory is '%s', but tmp_dir gflag is '%s' for %s on cluster"
+                  + " '%s'. Set tmp_dir='%s' in master and tserver gflags to match the provider"
+                  + " configuration, or disable this check by setting '%s' to true on the provider"
+                  + " runtime configuration.",
+              providerTmp,
+              dbTmp,
+              serverType.name().toLowerCase(),
+              clusterName,
+              providerTmp,
+              ProviderConfKeys.skipTmpDirGflagConsistencyCheck.getKey());
+        }
+      }
+    }
+    return null;
+  }
+
+  private static Collection<UUID> getAzUuidsForTmpDirGflagCheck(
+      Cluster cluster, Provider provider) {
+    PlacementInfo placementInfo = cluster.getOverallPlacement();
+    if (placementInfo == null || placementInfo.getAllAZUUIDs().isEmpty()) {
+      return Collections.singletonList(null);
+    }
+    return placementInfo
+        .azInfoStream()
+        .filter(az -> Objects.equals(provider.getUuid(), az.cloud.uuid))
+        .map(az -> az.placementAZ.uuid)
+        .collect(Collectors.toSet());
   }
 
   // A GCP passthrough load balancer keeps its own IP as the packet destination, health probes
@@ -1281,14 +1383,7 @@ public class GFlagsUtil {
       overrides.addAll(azOverrides.values());
     }
     for (String overridesYaml : overrides) {
-      Map<String, String> flatOverrides;
-      try {
-        flatOverrides = HelmUtils.flattenMap(HelmUtils.convertYamlToMap(overridesYaml));
-      } catch (Exception e) {
-        // Overrides that cannot be read cannot be checked, so they are not accepted either.
-        throw new PlatformServiceException(
-            BAD_REQUEST, "Kubernetes overrides are not valid YAML: " + e.getMessage());
-      }
+      Map<String, String> flatOverrides = flattenHelmOverrides(overridesYaml);
       for (String server : List.of("master", "tserver")) {
         String value = flatOverrides.get("gflags." + server + "." + OPENSSL_REQUIRE_FIPS);
         if (value != null && !value.equals("true")) {
@@ -1303,6 +1398,40 @@ public class GFlagsUtil {
     }
   }
 
+  /** Returns the HBA gflags set in kubernetes helm overrides, keyed by AZ and override path. */
+  public static Map<String, String> getYsqlHbaHelmOverrides(
+      @Nullable String universeOverrides, @Nullable Map<String, String> azOverrides) {
+    Map<String, String> overridesByScope = new HashMap<>();
+    overridesByScope.put("", universeOverrides);
+    if (azOverrides != null) {
+      overridesByScope.putAll(azOverrides);
+    }
+    Map<String, String> result = new HashMap<>();
+    overridesByScope.forEach(
+        (scope, overridesYaml) -> {
+          Map<String, String> flatOverrides = flattenHelmOverrides(overridesYaml);
+          for (String server : List.of("master", "tserver")) {
+            for (String gflag : YSQL_HBA_GFLAGS) {
+              String path = "gflags." + server + "." + gflag;
+              if (StringUtils.isNotBlank(flatOverrides.get(path))) {
+                result.put(scope + "/" + path, flatOverrides.get(path));
+              }
+            }
+          }
+        });
+    return result;
+  }
+
+  private static Map<String, String> flattenHelmOverrides(@Nullable String overridesYaml) {
+    try {
+      return HelmUtils.flattenMap(HelmUtils.convertYamlToMap(overridesYaml));
+    } catch (Exception e) {
+      // Overrides that cannot be read cannot be checked, so they are not accepted either.
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Kubernetes overrides are not valid YAML: " + e.getMessage());
+    }
+  }
+
   /**
    * Checks consistency between gflags and userIntent. Throws PlatformServiceException if any
    * problems are found.
@@ -1311,6 +1440,12 @@ public class GFlagsUtil {
    */
   public static void checkGflagsAndIntentConsistency(
       UniverseDefinitionTaskParams.UserIntent userIntent) {
+
+    if (!userIntent.enableYSQLAuth
+        && !getYsqlHbaHelmOverrides(userIntent.universeOverrides, userIntent.azOverrides)
+            .isEmpty()) {
+      throw new PlatformServiceException(BAD_REQUEST, YSQL_HBA_REQUIRES_AUTH_ERROR);
+    }
 
     if (userIntent.specificGFlags != null && userIntent.specificGFlags.isInheritFromPrimary()) {
       return;
@@ -1339,6 +1474,19 @@ public class GFlagsUtil {
         masterGFlags, MASTER_GFLAG_TO_INTENT_ACCESSOR, userIntent, "Master");
     validateGflagsAgainstIntent(
         tserverGFlags, TSERVER_GFLAG_TO_INTENT_ACCESSOR, userIntent, "Tserver");
+
+    if (!userIntent.enableYSQLAuth) {
+      List<Map<String, String>> allGFlags =
+          new ArrayList<>(Arrays.asList(masterGFlags, tserverGFlags));
+      if (userIntent.specificGFlags != null && userIntent.specificGFlags.getPerAZ() != null) {
+        userIntent.specificGFlags.getPerAZ().values().stream()
+            .filter(Objects::nonNull)
+            .forEach(azFlags -> allGFlags.addAll(azFlags.value.values()));
+      }
+      if (allGFlags.stream().anyMatch(GFlagsUtil::containsYsqlHbaGFlags)) {
+        throw new PlatformServiceException(BAD_REQUEST, YSQL_HBA_REQUIRES_AUTH_ERROR);
+      }
+    }
   }
 
   private static void validateGflagsAgainstIntent(
@@ -1642,6 +1790,27 @@ public class GFlagsUtil {
     return changedGFlags;
   }
 
+  public static boolean hasYsqlHbaGFlags(Collection<Cluster> clusters) {
+    for (Cluster cluster : clusters) {
+      Set<UUID> azUuids = new HashSet<>();
+      azUuids.add(null);
+      addPerAZGFlagUuids(azUuids, cluster);
+      for (UUID azUuid : azUuids) {
+        for (ServerType serverType : EnumSet.of(ServerType.MASTER, ServerType.TSERVER)) {
+          if (containsYsqlHbaGFlags(getGFlagsForAZ(azUuid, serverType, cluster, clusters))) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  private static boolean containsYsqlHbaGFlags(@Nullable Map<String, String> gflags) {
+    return gflags != null
+        && YSQL_HBA_GFLAGS.stream().anyMatch(gflag -> StringUtils.isNotBlank(gflags.get(gflag)));
+  }
+
   private static void addPerAZGFlagUuids(Set<UUID> azUuids, @Nullable Cluster cluster) {
     if (cluster != null
         && cluster.userIntent.specificGFlags != null
@@ -1897,8 +2066,7 @@ public class GFlagsUtil {
         throw new PlatformServiceException(
             INTERNAL_SERVER_ERROR, String.format("JWKS file write failed %s", e.getMessage()));
       }
-      String ybHomeDir = getYbHomeDir(providerUUID);
-      String remoteJWKSFilePath = ybHomeDir + GFLAG_REMOTE_FILES_PATH + fileName;
+      String remoteJWKSFilePath = getRemoteGFlagFilesPath(providerUUID) + fileName;
       String jwtJWKSPath = JWT_JWKS_FILE_PATH + "=\"\"" + remoteJWKSFilePath + "\"\"";
       StringBuilder sb = new StringBuilder(hbaConfValue);
       sb.replace(jwksIndex, endIndex + 1, jwtJWKSPath);

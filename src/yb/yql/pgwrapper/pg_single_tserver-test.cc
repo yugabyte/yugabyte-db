@@ -28,6 +28,7 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/hdr_histogram.h"
 #include "yb/util/logging_test_util.h"
@@ -54,6 +55,7 @@ DECLARE_bool(never_fsync);
 DECLARE_bool(rocksdb_use_logging_iterator);
 DECLARE_bool(TEST_disable_flush_on_shutdown);
 DECLARE_bool(TEST_skip_applying_truncate);
+DECLARE_bool(TEST_store_apply_state_without_apply_op_id);
 DECLARE_bool(use_fast_backward_scan);
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
@@ -2328,6 +2330,71 @@ TEST_F(PgSingleTServerTest, ApplyLargeTransactionAfterRestartWithoutFlush) {
 
   auto sum = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT SUM(value) FROM test"));
   ASSERT_EQ(sum, -kNumRows * (kNumRows + 1) / 2);
+}
+
+// Older releases stored the apply state of a large transaction without its apply op id. A tserver
+// that finds such a state on restart must resume and complete the apply.
+TEST_F(PgSingleTServerTest, ApplyLargeTransactionAfterRestartWithoutStoredApplyOpId) {
+  constexpr int kApplyBatchRecords = 10;
+  constexpr int kNumRows = 50;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_txn_max_apply_batch_records) = kApplyBatchRecords;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (key INT PRIMARY KEY, value INT) SPLIT INTO 1 TABLETS"));
+  auto peers = ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), "test"));
+  ASSERT_EQ(peers.size(), 1);
+  auto tablet = ASSERT_RESULT(peers.front()->shared_tablet());
+
+  // Apply only the first batch, and store the apply state for the rest the way older releases did.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_store_apply_state_without_apply_op_id) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_and_skip_apply_intents_task_loop_ms) = 10;
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test SELECT i, -i FROM generate_series(1, $0) AS i", kNumRows));
+  ASSERT_OK(conn.CommitTransaction());
+  // The first batch and its apply state are written together.
+  ASSERT_OK(WaitFor([&tablet]() -> Result<bool> {
+    return VERIFY_RESULT(tablet->TEST_CountDBRecords(docdb::StorageDbType::kRegular)) >
+           static_cast<size_t>(kApplyBatchRecords);
+  }, 10s * kTimeMultiplier, "First apply batch"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_store_apply_state_without_apply_op_id) = false;
+  const auto tablet_id = tablet->tablet_id();
+  peers.clear();
+  tablet.reset();
+  // A later write, so the flushed op id the resume uses is above the real apply op id.
+  auto other_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(other_conn.ExecuteFormat(
+      "INSERT INTO test VALUES ($0, $1)", kNumRows + 1, -(kNumRows + 1)));
+
+  // The restart flushes the apply state, and the transaction loader finds it on startup.
+  StringWaiterLogSink log_waiter("has no apply op id, resuming it with op id");
+  ASSERT_OK(cluster_->RestartSync());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_and_skip_apply_intents_task_loop_ms) = 0;
+  ASSERT_OK(log_waiter.WaitFor(10s * kTimeMultiplier));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get(), MonoDelta::FromSeconds(30) * kTimeMultiplier));
+
+  // Make the finished apply durable, then restart without flushing: the later row must come back
+  // from the WAL, and the loader must find no pending apply.
+  ASSERT_OK(cluster_->FlushTablets());
+  conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES ($0, $1)", kNumRows + 2, -(kNumRows + 2)));
+  StringWaiterLogSink pending_applies_sink("pending applies");
+  RegexWaiterLogSink load_finished_sink(Format(
+      ".*T $0 P [0-9a-f]+: LoadFinished: starting transaction status resolution.*", tablet_id));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_flush_on_shutdown) = true;
+  auto* tserver = cluster_->mini_tablet_server(0);
+  tserver->Shutdown();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_flush_on_shutdown) = false;
+  ASSERT_OK(tserver->Start());
+  ASSERT_OK(tserver->WaitStarted());
+  ASSERT_OK(load_finished_sink.WaitFor(30s * kTimeMultiplier));
+  ASSERT_EQ(pending_applies_sink.GetEventCount(), 0);
+
+  conn = ASSERT_RESULT(Connect());
+  auto count = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test"));
+  ASSERT_EQ(count, kNumRows + 2);
+  auto sum = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT SUM(value) FROM test"));
+  ASSERT_EQ(sum, -(kNumRows + 2) * (kNumRows + 3) / 2);
 }
 
 class PgSmallRpcWorkersTest : public PgSingleTServerTest {

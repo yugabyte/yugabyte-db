@@ -233,6 +233,16 @@ message SysTablesEntryPB {
 
   // Marker to indicate that the xCluster source still has a WAL_ANCHOR stream to clean up.
   optional bytes xcluster_pending_wal_anchor_deletion_source_table_id = 43;
+
+  // Marks a table known to have no custom tablespace.
+  message NoCustomTablespacePB {}
+
+  // Set at CREATE TABLE, then kept in sync with pg_class by the tablespace refresh; persisted
+  // because a HIDDEN table has no pg_class row. Neither set: not observed yet.
+  oneof tablespace {
+    bytes tablespace_id = 44;
+    NoCustomTablespacePB no_custom_tablespace = 45;
+  }
 }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for
@@ -711,6 +721,22 @@ message SysCDCStreamEntryPB {
   // never consumed by the target, they only pin the source WAL at the table's creation point so
   // that an in flight DDL can be retried.
   optional bool xcluster_is_wal_anchor = 19 [default = false];
+
+  // Signifies the stream whose table set is governed by the publication named in
+  // cdcsdk_ysql_bound_publication_name.
+  // Set at creation for streams created with a bound publication while feature flag
+  // cdcsdk_enable_publication_scoped_replication_slots is enabled.
+  // It is false for streams created before the feature (including pre-upgrade streams, where this
+  // field is absent), with feature flag off, or without a publication.
+  optional bool cdcsdk_ysql_publications_bound_stream = 20 [default = false];
+
+  // Publication this stream is statically bound to. Set exactly for publications bound streams
+  // (cdcsdk_ysql_publications_bound_stream above), unset for regular streams.
+  optional string cdcsdk_ysql_bound_publication_name = 21;
+
+  // For publications bound streams: whether a newly created table is added to the stream, which
+  // holds when the bound publication is FOR ALL TABLES.
+  optional bool cdcsdk_ysql_include_new_tables = 22 [default = false];
 }
 
 
