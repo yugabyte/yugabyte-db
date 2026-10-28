@@ -2562,6 +2562,88 @@ TEST_F_EX(
   testSyncReleaseForGlobalLocksAndDdls();
 }
 
+// Assert that we omit the partitions marked as pending_detach (partitions being detached
+// with DETACH PARTITION CONCURRENTLY) from the list of partitions that connections see.
+TEST_F_EX(
+    PgObjectLocksTest, TestDetachConcurrentlyRICheckRepeatableRead,
+    PgObjectLocksWithConcurrentDdl) {
+  auto setup_conn = ASSERT_RESULT(Connect());
+  // Create a partitioned table that will be the PK (referenced) side of the FK.
+  ASSERT_OK(setup_conn.Execute(
+      "CREATE TABLE pk_parent (id INT NOT NULL) PARTITION BY RANGE (id)"));
+  ASSERT_OK(setup_conn.Execute(
+      "CREATE TABLE pk_part1 PARTITION OF pk_parent FOR VALUES FROM (1) TO (100)"));
+  ASSERT_OK(setup_conn.Execute(
+      "CREATE TABLE pk_part2 PARTITION OF pk_parent FOR VALUES FROM (100) TO (200)"));
+  ASSERT_OK(setup_conn.Execute("ALTER TABLE pk_parent ADD PRIMARY KEY (id)"));
+  ASSERT_OK(setup_conn.Execute("INSERT INTO pk_parent VALUES (50)"));
+  ASSERT_OK(setup_conn.Execute(
+      "CREATE TABLE fk_child (id INT, pk_id INT REFERENCES pk_parent(id))"));
+
+  auto conn1 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  auto row = ASSERT_RESULT(conn1.FetchRow<int32_t>("SELECT id FROM pk_parent WHERE id = 50"));
+  LOG(INFO) << "conn1 snapshot established, read id=" << row;
+  // Write a row into pk_part1 (the partition about to be detached) from conn1's txn.
+  ASSERT_OK(conn1.Execute("INSERT INTO pk_parent VALUES (60)"));
+
+  // conn3 is on the same tserver as conn1.
+  auto conn3 = ASSERT_RESULT(Connect());
+  constexpr auto kCatalogVersionQuery =
+      "SELECT catalog_version FROM pg_stat_activity WHERE pid = pg_backend_pid()";
+  const auto initial_catalog_version =
+      ASSERT_RESULT(conn3.FetchRow<int64_t>(kCatalogVersionQuery));
+
+  auto conn2 = ASSERT_RESULT(Connect());
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&conn2]() {
+    LOG(INFO) << "conn2: DETACH PARTITION CONCURRENTLY starting";
+    auto status = conn2.Execute(
+        "ALTER TABLE pk_parent DETACH PARTITION pk_part1 CONCURRENTLY");
+    ASSERT_OK(status);
+  });
+
+  // Wait for Phase 1 of ALTER DETACH CONCURRENTLY to commit: inhdetachpending should be set.
+  // Also wait for the catalog version bump to reach the tserver so that conn1 picks up the
+  // invalidation. Otherwise conn1 could plan with a stale partdesc, and since it has written
+  // in this txn, the resulting schema version mismatch on pk_part1 can't be retried.
+  ASSERT_OK(LoggedWaitFor(
+      [&conn3, initial_catalog_version]() -> Result<bool> {
+        return VERIFY_RESULT(conn3.FetchRow<bool>(
+                   "SELECT EXISTS("
+                   "  SELECT 1 FROM pg_inherits WHERE inhdetachpending = true)")) &&
+               VERIFY_RESULT(conn3.FetchRow<int64_t>(kCatalogVersionQuery)) >
+                   initial_catalog_version;
+      },
+      30s * kTimeMultiplier,
+      "Wait for partition to be marked as detach pending"));
+
+  // The pending-detach partition is no longer visible to conn1's RR snapshot.
+  // This is YB specific logic where we violate RR semantics, but it seems
+  // necessary to avoid violating RI checks, and also to prevent new connections
+  // that started after partition marked as pending detach from seeing it.
+  auto select_result = ASSERT_RESULT(
+      conn1.FetchRows<int32_t>("SELECT id FROM pk_parent WHERE id = 50"));
+  ASSERT_TRUE(select_result.empty())
+      << "Expected id=50 to not be visible after partition marked as pending detach";
+
+  // conn1 also doesn't see its own write made to the pending-detach partition when reading
+  // through the parent. This is again YB specific logic where we violate the read-your-own-writes
+  // guarantee. The row is still visible when reading the partition directly.
+  select_result = ASSERT_RESULT(
+      conn1.FetchRows<int32_t>("SELECT id FROM pk_parent WHERE id = 60"));
+  ASSERT_TRUE(select_result.empty())
+      << "Expected conn1's own write id=60 to not be visible through the parent after "
+      << "partition marked as pending detach";
+  row = ASSERT_RESULT(conn1.FetchRow<int32_t>("SELECT id FROM pk_part1 WHERE id = 60"));
+  ASSERT_EQ(row, 60);
+
+  // RI check correctly rejected the insert -- the partition was properly omitted.
+  ASSERT_NOK(conn1.Execute("INSERT INTO fk_child VALUES (1, 50)"));
+  ASSERT_OK(conn1.Execute("ROLLBACK"));
+  thread_holder.JoinAll();
+}
+
 // In YB, CREATE INDEX acquires session locks against the session level txn's by bumping up the
 // active subtxn id, and the releases all those locks at the end by rolling back the subtxn.
 // The below test asserts that consectuive CREATE INDEX from the same session don't deadlock
