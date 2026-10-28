@@ -1862,7 +1862,15 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   void SetCDCServiceEnabled();
 
-  void PrepareRestore() override;
+  void PrepareRestore(const TxnSnapshotRestorationId& restoration_id) override;
+
+  // Fails in-flight sys catalog work and rejects new RPCs ahead of the RESTORE_SYS_CATALOG op for
+  // restoration_id. Must be called before the op is submitted, not on apply.
+  void FenceSysCatalogForRestore(const TxnSnapshotRestorationId& restoration_id);
+
+  // Drops the fence for restoration_id unless its op was applied on this node.
+  // Must be called once the op has completed or failed to submit.
+  void UnfenceSysCatalogForRestore(const TxnSnapshotRestorationId& restoration_id);
 
   void RunXReplBgTasks(const LeaderEpoch& epoch);
 
@@ -2761,6 +2769,13 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // While this is true, the ScopedLeaderSharedLock cannot be acquired on this master, so all RPCs
   // that require this lock will fail.
   std::atomic_bool restoring_sys_catalog_ = false;
+
+  // Restorations fenced by FenceSysCatalogForRestore whose op has not been applied yet.
+  // restoring_sys_catalog_ is only cleared while this is empty.
+  std::mutex restore_fence_mutex_;
+  std::vector<TxnSnapshotRestorationId> fenced_restorations_ GUARDED_BY(restore_fence_mutex_);
+
+  void ClearRestoringSysCatalogIfNotFenced() EXCLUDES(restore_fence_mutex_);
 
   // Lock used to fence operations and leader elections. All logical operations
   // (i.e. create table, alter table, etc.) should acquire this lock for

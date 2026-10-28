@@ -625,7 +625,7 @@ class MasterSnapshotCoordinator::Impl {
     }
     // Disable concurrent RPCs to the master leader for the duration of sys catalog restore.
     if (leader_term >= 0) {
-      context_.PrepareRestore();
+      context_.PrepareRestore(restoration->restoration_id);
     }
     auto tablet = VERIFY_RESULT(operation.tablet_safe());
     LOG_SLOW_EXECUTION(INFO, 1000, "Restore sys catalog took") {
@@ -1882,9 +1882,14 @@ class MasterSnapshotCoordinator::Impl {
     operation->set_completion_callback(
         tablet::MakeWeakSynchronizerOperationCompletionCallback(synchronizer));
 
-    RETURN_NOT_OK(context_.Submit(std::move(operation), leader_term));
-
-    return synchronizer->Wait();
+    cm_->FenceSysCatalogForRestore(restoration_id);
+    auto status = context_.Submit(std::move(operation), leader_term);
+    if (status.ok()) {
+      // Rejections such as a stale term are reported here, not by Submit.
+      status = synchronizer->Wait();
+    }
+    cm_->UnfenceSysCatalogForRestore(restoration_id);
+    return status;
   }
 
   void DeleteSnapshotAborted(

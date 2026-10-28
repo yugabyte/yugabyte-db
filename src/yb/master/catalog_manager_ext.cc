@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <algorithm>
 #include <memory>
 #include <optional>
 #include <queue>
@@ -3314,7 +3315,7 @@ Status CatalogManager::RestoreSysCatalog(
   if (!s.ok() && leader_mode) {
     LOG_WITH_PREFIX_AND_FUNC(INFO)
         << "PITR: Accepting RPCs to the master leader because of restoration failure: " << s;
-    restoring_sys_catalog_ = false;
+    ClearRestoringSysCatalogIfNotFenced();
   }
   // As RestoreSysCatalog is synchronous on Master it should be ok to set the completion
   // status in case of validation failures so that it gets propagated back to the client before
@@ -3863,14 +3864,18 @@ Result<size_t> CatalogManager::GetNumLiveTServersForActiveCluster() {
   return ts_descs.size();
 }
 
-// This function is used to fence other work in the catalog manager which modifies tables or tablets
-// with PITR restores. It is called during the apply of the RESTORE_SYS_CATALOG raft op.
+// These functions fence other work in the catalog manager which modifies tables or tablets with
+// PITR restores. The leader that submits a RESTORE_SYS_CATALOG op fences in
+// FenceSysCatalogForRestore before submitting it. PrepareRestore, called during the apply of the
+// op, only fences if this node did not fence for that op (e.g. it was submitted in an earlier
+// term). Fencing during apply can deadlock: IncrementPitrCount waits for in-flight sys catalog
+// writes, whose raft ops may be queued behind the restore op.
 //
-// Ideally this function would use the leader lock to wait for all async tasks and rpc handlers
+// Ideally the fence would use the leader lock to wait for all async tasks and rpc handlers
 // accessing catalog entities to return, but this is not possible:
-//  *  exclusively acquiring the CatalogManager::leader_mutex_ here introduces a lock inversion with
-//     ReplicaState::update_lock_.
-//  *  waiting to acquire the leader mutex here can add unbounded delay to a raft op apply,
+//  *  exclusively acquiring the CatalogManager::leader_mutex_ during apply introduces a lock
+//     inversion with ReplicaState::update_lock_.
+//  *  waiting to acquire the leader mutex during apply can add unbounded delay to a raft op apply,
 //     preventing raft heartbeats.
 //
 // Much existing code in the catalog manager acquires the locks in this order:
@@ -3880,15 +3885,59 @@ Result<size_t> CatalogManager::GetNumLiveTServersForActiveCluster() {
 // work (1) and preventing any new work until the sys catalog is reloaded (2).
 //   (1) Any logical unit of work in the catalog manager should grab a LeaderEpoch when it begins.
 //     The sys catalog mutation API for tables and tablets checks LeaderEpoch::pitr_count. If the
-//     catalog work began before PrepareRestore was called and tried to write after PrepareRestore
-//     was called, then the work's cached pitr_count will not match the sys catalog's pitr_count and
-//     the write will fail.
+//     catalog work began before the fence and tried to write after it, then the work's cached
+//     pitr_count will not match the sys catalog's pitr_count and the write will fail.
 //   (2) ScopedLeaderSharedLock checks restoring_sys_catalog_ and fails if it is set, so any new
 //     tasks will fail.
-void CatalogManager::PrepareRestore() {
-  LOG_WITH_PREFIX(INFO) << "Disabling concurrent RPCs since restoration is ongoing";
+void CatalogManager::PrepareRestore(const TxnSnapshotRestorationId& restoration_id) {
   restoring_sys_catalog_ = true;
+  {
+    std::lock_guard lock(restore_fence_mutex_);
+    auto it = std::find(fenced_restorations_.begin(), fenced_restorations_.end(), restoration_id);
+    if (it != fenced_restorations_.end()) {
+      fenced_restorations_.erase(it);
+      return;
+    }
+  }
+  LOG_WITH_PREFIX(INFO) << "Disabling concurrent RPCs since restoration is ongoing";
   sys_catalog_->IncrementPitrCount();
+}
+
+void CatalogManager::FenceSysCatalogForRestore(const TxnSnapshotRestorationId& restoration_id) {
+  LOG_WITH_PREFIX(INFO) << "Disabling concurrent RPCs before submitting sys catalog restore "
+                        << restoration_id;
+  {
+    std::lock_guard lock(restore_fence_mutex_);
+    fenced_restorations_.push_back(restoration_id);
+  }
+  restoring_sys_catalog_ = true;
+  // Called without restore_fence_mutex_: this waits for writes whose ops may be queued behind
+  // another restore op, whose apply takes the mutex in PrepareRestore.
+  // The bump is not undone if the op is never applied. In-flight work then fails with Aborted as
+  // if a restore had happened, and new work picks up the new count.
+  sys_catalog_->IncrementPitrCount();
+}
+
+void CatalogManager::UnfenceSysCatalogForRestore(const TxnSnapshotRestorationId& restoration_id) {
+  {
+    std::lock_guard lock(restore_fence_mutex_);
+    auto it = std::find(fenced_restorations_.begin(), fenced_restorations_.end(), restoration_id);
+    if (it == fenced_restorations_.end()) {
+      // Consumed by PrepareRestore: the op was applied and the reload clears the flag.
+      return;
+    }
+    fenced_restorations_.erase(it);
+  }
+  LOG_WITH_PREFIX(INFO) << "Sys catalog restore " << restoration_id
+                        << " was not applied on this node, dropping its fence";
+  ClearRestoringSysCatalogIfNotFenced();
+}
+
+void CatalogManager::ClearRestoringSysCatalogIfNotFenced() {
+  std::lock_guard lock(restore_fence_mutex_);
+  if (fenced_restorations_.empty()) {
+    restoring_sys_catalog_ = false;
+  }
 }
 
 Status CatalogManager::GetYsqlYbSystemTableInfo(
