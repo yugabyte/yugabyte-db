@@ -2405,6 +2405,44 @@ TEST_F(PgObjectLocksFastpathTest, TestReadOnlyTransaction) {
   }
 }
 
+// GH #35007: a REPEATABLE READ txn whose first statement is transparently restarted on a read
+// restart must still hold its table locks afterwards, so a conflicting DDL waits for it.
+TEST_F(PgObjectLocksFastpathTest, TableLocksSurviveReadRestartRetry) {
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE hot (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(setup_conn.Execute("INSERT INTO hot VALUES (1, 0)"));
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE gate (k INT PRIMARY KEY)"));
+  ASSERT_OK(setup_conn.Execute("INSERT INTO gate VALUES (1)"));
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, v INT, s INT)"));
+
+  auto writer = ASSERT_RESULT(Connect());
+  // QPM explains a newly seen plan at ExecutorEnd, which re-opens t2 with ACCESS SHARE after the
+  // retry and would block the DDL on its own, hiding a lost ROW EXCLUSIVE lock.
+  ASSERT_OK(writer.Execute("SET yb_pg_stat_plans_track = 'none'"));
+  auto updater = ASSERT_RESULT(Connect());
+  auto ddl_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(ddl_conn.Execute("SET statement_timeout = '3s'"));
+
+  ASSERT_OK(writer.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  {
+    // Scanning gate picks the read time; hot is read only after the sleep, by which point the
+    // concurrent update below has committed inside the uncertainty window -> read restart.
+    std::jthread t([&] {
+      std::this_thread::sleep_for(300ms);
+      ASSERT_OK(updater.Execute("UPDATE hot SET v = v + 1 WHERE k = 1"));
+    });
+    ASSERT_OK(writer.Execute(
+        "INSERT INTO t2 SELECT 1, -1, (SELECT v FROM hot h WHERE h.k = g.k) FROM gate g "
+        "WHERE pg_sleep(1 + g.k * 0) IS NOT NULL"));
+  }
+  ASSERT_NOK_STR_CONTAINS(
+      ddl_conn.Execute("ALTER TABLE t2 ADD CONSTRAINT t2_nonneg CHECK (v >= 0) NOT VALID"),
+      "statement timeout");
+  ASSERT_OK(writer.CommitTransaction());
+  // s == 1 means the statement read hot after the update, i.e. it was retried.
+  ASSERT_EQ(ASSERT_RESULT(writer.FetchRow<int32_t>("SELECT s FROM t2 WHERE id = 1")), 1);
+}
+
 TEST_F(PgObjectLocksFastpathTest, TestTServerSharedMemAcquire) {
   auto conn = ASSERT_RESULT(Connect());
 

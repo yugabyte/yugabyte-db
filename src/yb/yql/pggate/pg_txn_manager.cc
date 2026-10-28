@@ -1172,6 +1172,13 @@ bool PgTxnManager::TryAcquireObjectLock(
     return false;
   }
 
+  // A pending restart releases all of the session's fastpath locks when the tserver applies it, so
+  // locks taken here before that (e.g. re-acquired for a query layer retry) would be silently lost.
+  // The RPC path applies the restart before acquiring.
+  if (need_restart_) {
+    return false;
+  }
+
   if (!client_->TryAcquireObjectLockInSharedMemory(
         active_sub_transaction_id_, lock_id, lock_type)) {
     return false;
