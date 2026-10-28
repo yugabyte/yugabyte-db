@@ -315,12 +315,7 @@ public class AWSUtil implements CloudUtil {
    * tryListObjects as a 412 itself.
    */
   private static RuntimeException awsServiceError(String msg, AwsServiceException e) {
-    // Throttling (429) is not the user's to fix, like an S3-side 5xx.
-    boolean refused =
-        e.statusCode() >= BAD_REQUEST
-            && e.statusCode() < INTERNAL_SERVER_ERROR
-            && e.statusCode() != TOO_MANY_REQUESTS;
-    if (!refused && e.statusCode() != MOVED_PERMANENTLY) {
+    if (!isS3Refusal(e.statusCode()) && e.statusCode() != MOVED_PERMANENTLY) {
       return e;
     }
     log.error(msg, e);
@@ -342,6 +337,14 @@ public class AWSUtil implements CloudUtil {
       reason = "S3 returned HTTP " + e.statusCode();
     }
     return new PlatformServiceException(PRECONDITION_FAILED, msg + ": " + reason);
+  }
+
+  /**
+   * Whether an S3 error status is a refusal, which is the user's to fix: a 4xx other than
+   * throttling (429), which like an S3-side 5xx is not.
+   */
+  private static boolean isS3Refusal(int status) {
+    return status >= BAD_REQUEST && status < INTERNAL_SERVER_ERROR && status != TOO_MANY_REQUESTS;
   }
 
   @Override
@@ -1147,10 +1150,8 @@ public class AWSUtil implements CloudUtil {
         log.trace("Skipping first bucket region fetch of a missing bucket {}", bucket);
         return;
       }
-      if (e.statusCode() < BAD_REQUEST
-          || e.statusCode() >= INTERNAL_SERVER_ERROR
-          || e.statusCode() == TOO_MANY_REQUESTS) {
-        // Not a refusal (an S3-side failure or throttling): passed on as it is.
+      if (!isS3Refusal(e.statusCode())) {
+        // An S3-side failure or throttling: passed on as it is.
         throw e;
       }
       // S3's message for this call, e.g. "Access Denied", names neither the action nor the bucket.
