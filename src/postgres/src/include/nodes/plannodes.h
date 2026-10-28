@@ -751,7 +751,7 @@ typedef struct Scan
 	Index		scanrelid;
 
 	/* YB */
-	char	   *ybScannedObjectName pg_node_attr(read_write_ignore, read_as(NULL));
+	char	   *ybScannedObjectName;
 } Scan;
 
 /* ----------------
@@ -1804,7 +1804,7 @@ typedef struct Hash
 	Cardinality rows_total;
 
 	/* YB specific fields */
-	char	   *ybSkewTableName pg_node_attr(read_write_ignore, read_as(NULL));
+	char	   *ybSkewTableName;
 } Hash;
 
 /* ----------------

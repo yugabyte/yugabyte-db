@@ -2376,11 +2376,7 @@ YBUpdateOptimizationOptions yb_update_optimization_options = {
 };
 
 YbQpmConfiguration yb_qpm_configuration = {
-	/*
-	 * YB_TODO_PG19MERGE: default flipped from YB_QPM_TRACK_ALL to YB_QPM_TRACK_NONE
-	 * due to various crashes on pg19. Restore once fixed.
-	 */
-	.track = YB_QPM_TRACK_NONE,
+	.track = YB_QPM_TRACK_ALL,
 	.cache_replacement_algorithm = YB_QPM_SIMPLE_CLOCK_LRU,
 	.max_cache_size = 5000,
 	.track_catalog_queries = true,

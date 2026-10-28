@@ -4987,9 +4987,7 @@
   short_desc => 'Selects which statements are tracked by QPM.',
   flags => 'GUC_EXPLAIN',
   variable => 'yb_qpm_configuration.track',
-  # YB_TODO_PG19MERGE: boot_val flipped from YB_QPM_TRACK_ALL to YB_QPM_TRACK_NONE
-  # due to various crashes on pg19. Restore once fixed.
-  boot_val => 'YB_QPM_TRACK_NONE',
+  boot_val => 'YB_QPM_TRACK_ALL',
   options => 'yb_qpm_track_options',
 },
 
