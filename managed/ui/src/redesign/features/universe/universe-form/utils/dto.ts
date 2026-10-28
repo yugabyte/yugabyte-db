@@ -873,6 +873,8 @@ export interface Region {
   securityGroupId: string | null;
   details: string | null;
   zones: AvailabilityZone[];
+  /** Set when the region is selected under a multi-provider create flow. */
+  providerUuid?: string;
 }
 
 export enum VolumeType {

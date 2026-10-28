@@ -1,6 +1,8 @@
 import { DeviceInfo, K8NodeSpec } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { ArchitectureType } from '../../helpers/constants';
 
+export type InstanceSettingsViewMode = 'all' | 'tserverOnly' | 'masterOnly';
+
 export interface InstanceSettingProps {
   arch: ArchitectureType;
   imageBundleUUID: string | null;

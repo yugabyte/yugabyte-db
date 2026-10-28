@@ -6,6 +6,7 @@ import { CreateUniverseContext, CreateUniverseContextMethods } from '../../Creat
 import { CloudType } from '@app/redesign/helpers/dtos';
 
 import ErrorCircle from '@app/redesign/assets/error-circle.svg?img';
+import { getPrimaryProvider } from '../../helpers/providerConfigurations';
 
 const { Box, styled, Divider } = mui;
 
@@ -54,7 +55,7 @@ export const AvailabilityZones = ({
   ) as unknown) as CreateUniverseContextMethods;
   const isK8s =
     generalSettings?.cloud === CloudType.kubernetes ||
-    generalSettings?.providerConfiguration?.code === CloudType.kubernetes;
+    getPrimaryProvider(generalSettings)?.code === CloudType.kubernetes;
 
   return (
     <StyledPanel>

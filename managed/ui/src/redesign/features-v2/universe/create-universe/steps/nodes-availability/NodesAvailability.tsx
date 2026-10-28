@@ -46,6 +46,7 @@ export const NodesAvailability = forwardRef<StepsRef, NodesAvailabilityProps>(
           hideDedicatedNodes={hideDedicatedNodes}
           baselineRegionCodes={baselineRegionCodes}
           baselineZoneUuidsByRegion={baselineZoneUuidsByRegion}
+          providers={step.providers}
         />
       ) : (
         <NodesAvailabilityGuidedBody
@@ -60,6 +61,7 @@ export const NodesAvailability = forwardRef<StepsRef, NodesAvailabilityProps>(
           hideDedicatedNodes={hideDedicatedNodes}
           baselineRegionCodes={baselineRegionCodes}
           baselineZoneUuidsByRegion={baselineZoneUuidsByRegion}
+          providers={step.providers}
         />
       )}
     </FormProvider>
