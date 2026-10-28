@@ -4591,6 +4591,18 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"yb_test_notifs_poller_init_delay_ms", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("Time in milliseconds for which the notifications "
+						 "poller waits before it initializes, for testing."),
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_UNIT_MS
+		},
+		&yb_test_notifs_poller_init_delay_ms,
+		0, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_notifications_poll_sleep_duration_nonempty_ms", PGC_SIGHUP, DEVELOPER_OPTIONS,
 			gettext_noop("Time in milliseconds for which the notifications poller"
 						 " process waits before polling again in case the last"
