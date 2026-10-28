@@ -1118,7 +1118,7 @@ TEST_P(VectorLSMTest, ShutdownDuringBackgroundMerge) {
 
 // The save of a flushed chunk schedules a compaction after the chunk left the updates queue, so
 // CompleteShutdown must wait for it (#35556).
-TEST_F(VectorLSMUsearchTest, ShutdownWaitsForChunkSave) {
+TEST_F(VectorLSMHnswlibTest, ShutdownWaitsForChunkSave) {
   constexpr size_t kDimensions = 4;
 
   FloatVectorLSM lsm;
