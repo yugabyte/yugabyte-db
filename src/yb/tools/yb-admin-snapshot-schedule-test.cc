@@ -6942,26 +6942,25 @@ TEST_F_EX(
   ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1, '[1,2,3]')"));
 
   auto time = ASSERT_RESULT(GetCurrentTime());
-  // So the restore finds a covering snapshot and runs its DDL verification check right away.
-  ASSERT_OK(WaitNewSnapshot(schedule_id));
 
   // The restore rejects namespaces with DDL verification in progress, so create the index after
   // that check but before the restore starts.
-  const auto delay = 30s * kTimeMultiplier;
-  ASSERT_OK(cluster_->SetFlagOnMasters(
-      "TEST_delay_restore_after_ddl_verification_check_ms",
-      std::to_string(ToMilliseconds(delay))));
+  constexpr auto kPauseFlag = "TEST_pause_restore_after_ddl_verification_check";
+  ASSERT_OK(cluster_->SetFlagOnMasters(kPauseFlag, "true"));
+  auto paused = cluster_->GetMasterLogWaiter(Format("Pausing due to flag $0", kPauseFlag));
   auto restoration_id_future = std::async(std::launch::async, [this, &schedule_id, &time] {
     return StartRestoreSnapshotSchedule(schedule_id, time);
   });
-  SleepFor(5s * kTimeMultiplier);
+  // Runs before the future's destructor, which would otherwise block on the paused restore.
+  auto unpause = ScopeExit([this] {
+    WARN_NOT_OK(cluster_->SetFlagOnMasters(kPauseFlag, "false"), "Failed to unpause restore");
+  });
+  ASSERT_OK(paused.WaitFor(60s * kTimeMultiplier));
   ASSERT_OK(conn.Execute("BEGIN"));
   ASSERT_OK(conn.Execute("CREATE INDEX t_v ON t USING ybhnsw (v vector_l2_ops)"));
-  ASSERT_EQ(restoration_id_future.wait_for(0s), std::future_status::timeout)
-      << "Restore started before the index was created";
+  ASSERT_OK(cluster_->SetFlagOnMasters(kPauseFlag, "false"));
   auto restoration_id = ASSERT_RESULT(restoration_id_future.get());
   ASSERT_OK(WaitRestorationDone(restoration_id, 40s * kTimeMultiplier));
-  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_delay_restore_after_ddl_verification_check_ms", "0"));
 
   // If the hidden index keeps its DDL state, ROLLBACK waits out the full DDL verification timeout
   // (10 min) and the DDL's object locks stay held until then.
