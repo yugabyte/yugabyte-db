@@ -14,6 +14,7 @@ package org.yb.client;
 
 import static org.yb.AssertionWrappers.assertArrayEquals;
 import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
 import java.io.File;
@@ -57,7 +58,7 @@ public class TestAsyncYBClientPrivateKey {
       AsyncYBClient.getPrivateKey(keyFile.getPath());
       fail("Expected loading a malformed key to fail");
     } catch (RuntimeException e) {
-      // Expected.
+      assertTrue(e.getMessage(), e.getMessage().contains("Not a PKCS#8 private key"));
     }
   }
 

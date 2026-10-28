@@ -4162,7 +4162,8 @@ public class AsyncYBClient implements AutoCloseable {
       return pk;
     } catch (InvalidKeySpecException e) {
       LOG.error("Could not read the private key file.", e);
-      throw new RuntimeException("InvalidKeySpecException while reading key: " + keyFile);
+      throw new RuntimeException(
+          "InvalidKeySpecException while reading key: " + keyFile + ": " + e.getMessage(), e);
     } catch (Exception e) {
       LOG.error("Issue reading pem file.", e);
       throw new RuntimeException("IOException reading key: " + keyFile);
