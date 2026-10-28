@@ -5161,8 +5161,7 @@ Status Tablet::SetTierMigrationTargetUnlocked(
           metadata()->target_storage_tier(), metadata()->target_tier_path_id());
     }
   }
-  if (metadata()->target_storage_tier() != target_tier ||
-      metadata()->target_tier_path_id() != target_path_id) {
+  if (!IsPersistedTierTarget(target_tier, target_path_id)) {
     RETURN_NOT_OK(metadata()->SetTargetTier(target_tier, target_path_id));
   }
   RETURN_NOT_OK_PREPEND(
@@ -5177,18 +5176,22 @@ Status Tablet::SetTierMigrationTargetUnlocked(
   return Status::OK();
 }
 
+bool Tablet::IsPersistedTierTarget(
+    const std::string& target_tier, uint32_t target_path_id) const {
+  return metadata()->target_storage_tier() == target_tier &&
+         metadata()->target_tier_path_id() == target_path_id;
+}
+
 Status Tablet::CheckTierTargetStillPersisted(
     const std::string& target_tier, uint32_t target_path_id) const {
-  const auto persisted_tier = metadata()->target_storage_tier();
-  const auto persisted_path_id = metadata()->target_tier_path_id();
-  if (persisted_tier == target_tier && persisted_path_id == target_path_id) {
+  if (IsPersistedTierTarget(target_tier, target_path_id)) {
     return Status::OK();
   }
   return STATUS_FORMAT(
       ServiceUnavailable,
       "Target replaced by a concurrent request with tier '$0' (path_id $1) before this one's "
       "pass could start",
-      persisted_tier, persisted_path_id);
+      metadata()->target_storage_tier(), metadata()->target_tier_path_id());
 }
 
 Result<TierReconcileResult> Tablet::RunTierMigrationPass(
@@ -5342,8 +5345,7 @@ Result<TierMigrationStatus> Tablet::AlterTabletTier(
 
   {
     std::lock_guard target_lock(tier_target_mutex_);
-    if (metadata()->target_storage_tier() == target_tier &&
-        metadata()->target_tier_path_id() == target_path_id) {
+    if (IsPersistedTierTarget(target_tier, target_path_id)) {
       std::lock_guard lock(tier_migration_mutex_);
       if (tier_migration_status_.pass_in_flight) {
         // The request the pass is already serving, delivered again. Nothing is rewritten under a

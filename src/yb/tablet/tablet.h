@@ -1404,9 +1404,9 @@ class Tablet : public AbstractTablet,
   // operation keeps the DB open for as long as the caller holds it.
   Result<ScopedRWOperation> CheckTierTargetUsable(uint32_t target_path_id);
 
-  // Tiered storage: the one place a live tablet's target is written; TSTabletManager repairs a
-  // stale path_id at open, before any pass can exist. Refuses while a pass is in flight, so a
-  // pass always runs toward the current persisted target.
+  // Tiered storage: the one place an open tablet's target is written; creation, remote bootstrap
+  // and OpenTablet's path_id repair write it before the Tablet exists. Refuses while a pass is in
+  // flight, so a pass always runs toward the current persisted target.
   Status SetTierMigrationTargetUnlocked(const std::string& target_tier, uint32_t target_path_id)
       REQUIRES(tier_target_mutex_);
 
@@ -1415,6 +1415,10 @@ class Tablet : public AbstractTablet,
   Result<TierReconcileResult> RunTierMigrationPass(
       const TierReconcileOptions& options, ReconcilerPass reconciler_pass,
       const std::optional<TierTarget>& expected_target);
+
+  // Tiered storage: whether (target_tier, target_path_id) is the persisted target.
+  bool IsPersistedTierTarget(const std::string& target_tier, uint32_t target_path_id) const
+      REQUIRES(tier_target_mutex_);
 
   // Tiered storage: OK while (target_tier, target_path_id) is still the persisted target,
   // ServiceUnavailable naming the replacement otherwise.

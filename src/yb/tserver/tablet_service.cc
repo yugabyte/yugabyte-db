@@ -2341,11 +2341,14 @@ void TabletServiceAdminImpl::AlterTabletTier(
 
   const auto meta = peer_tablet.tablet_peer->tablet_metadata();
 
-  // Keep the disk already resolved for this tier when the tier is unchanged. Re-running the
-  // least-loaded-disk policy could pick a different disk within the same tier purely because the
-  // first call changed the load counts, forcing a pointless rewrite of every SST.
+  // Keep the disk already resolved for this tier when the tier is unchanged: OpenTablet validated
+  // or repaired the persisted path_id and nothing invalidates it while the tablet is open, so it
+  // is read here rather than re-resolved, and the tablet's own guarded write stays the only one
+  // that can touch the target of an open tablet. Re-running the least-loaded-disk policy could
+  // also pick a different disk within the same tier purely because the first call changed the
+  // load counts, forcing a pointless rewrite of every SST.
   Result<uint32_t> path_id = meta->target_storage_tier() == req->target_tier()
-      ? server_->tablet_manager()->ResolveTargetTierPathId(meta)
+      ? Result<uint32_t>(meta->target_tier_path_id())
       : server_->tablet_manager()->SelectPathIdForTier(
             *meta, meta->table_id(), req->target_tier());
   if (!path_id.ok()) {
