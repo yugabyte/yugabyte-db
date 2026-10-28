@@ -298,17 +298,24 @@ public class AWSUtil implements CloudUtil {
   }
 
   /**
-   * A clear client error for an S3 refusal of a bucket listing check, instead of a server error. S3
-   * names the action and the resource in its message, except for a HEAD request (HeadBucket, the
-   * first call of the check), whose refusal has no body: that one is described here.
+   * The error to raise for an S3 error answer to a bucket listing check. A refusal (4xx) is the
+   * user's to fix, so it is a clear 412 with the reason: S3's own message where it sends one, which
+   * names the action and the resource. A HEAD request (HeadBucket, the first call of the check)
+   * gets no message, so a 403 there is described without guessing its cause. An S3-side failure
+   * (5xx, throttling) is passed on as it is.
    */
-  private static PlatformServiceException awsServiceError(String msg, AwsServiceException e) {
+  private static RuntimeException awsServiceError(String msg, AwsServiceException e) {
+    if (e.statusCode() >= INTERNAL_SERVER_ERROR) {
+      return e;
+    }
     log.error(msg, e);
     String reason;
     if (e.awsErrorDetails() != null && StringUtils.isNotBlank(e.awsErrorDetails().errorMessage())) {
       reason = e.awsErrorDetails().errorMessage();
     } else if (e.statusCode() == FORBIDDEN) {
-      reason = "access denied (HTTP 403); listing the bucket needs the s3:ListBucket permission";
+      reason =
+          "access denied (HTTP 403); check the credentials and that they may list the bucket"
+              + " (s3:ListBucket on AWS S3)";
     } else {
       reason = "S3 returned HTTP " + e.statusCode();
     }
@@ -1019,9 +1026,7 @@ public class AWSUtil implements CloudUtil {
       String endpoint = hostBase.awsHostBase;
       boolean globalFlag = hostBase.globalBucketAccess;
       String clientRegion = getClientRegion(hostBase.signingRegion);
-      boolean crossRegionAccess =
-          globalFlag && (StringUtils.isBlank(endpoint) || isHostBaseS3Standard(endpoint));
-      if (crossRegionAccess) {
+      if (globalFlag && (StringUtils.isBlank(endpoint) || isHostBaseS3Standard(endpoint))) {
         // Use global bucket access only for standard S3.
         builder.crossRegionAccessEnabled(true);
       } else if (StringUtils.isNotBlank(endpoint)) {
@@ -1079,7 +1084,7 @@ public class AWSUtil implements CloudUtil {
       if (client == null) {
         throw new RuntimeException("S3 client is null. This is unexpected!");
       }
-      warmUpBucketRegion(client, s3Data, region, crossRegionAccess);
+      warmUpBucketRegion(client, s3Data, region);
       return client;
     } catch (SdkClientException | URISyntaxException e) {
       throw new PlatformServiceException(
@@ -1088,20 +1093,15 @@ public class AWSUtil implements CloudUtil {
   }
 
   /**
-   * Fetches the bucket region once and ignores the result, so the SDK caches the bucket's region:
-   * without it the first real call on a bucket outside the client's region can fail with a 301. Any
-   * failure is skipped, including an access error: the call that needs the bucket reports it.
-   * Skipped for a cross-cloud federation config whose client has cross-region access, which finds
-   * the bucket's region itself, so its role need not allow s3:GetBucketLocation. Otherwise it is
-   * made, and a role that may not call it only costs the ignored error.
+   * Fetches the bucket region once and ignores the result: the first bucket region fetch may fail,
+   * so it is made here rather than by the call that needs the bucket. Any failure is skipped,
+   * including an access error: that call reports it. Skipped for a cross-cloud federation config,
+   * whose role need not allow s3:GetBucketLocation (its region is derived instead, as in
+   * createCredsMapYbc).
    */
   @VisibleForTesting
-  void warmUpBucketRegion(
-      S3Client client,
-      CustomerConfigStorageS3Data s3Data,
-      String region,
-      boolean crossRegionAccess) {
-    if (isCrossCloudFederationConfig(s3Data) && crossRegionAccess) {
+  void warmUpBucketRegion(S3Client client, CustomerConfigStorageS3Data s3Data, String region) {
+    if (isCrossCloudFederationConfig(s3Data)) {
       return;
     }
     try {
