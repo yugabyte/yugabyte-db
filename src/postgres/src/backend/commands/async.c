@@ -613,12 +613,9 @@ static TransactionId ybNotifsPollerProcessingXid = InvalidTransactionId;
  * mid-transaction and must not deliver a partial transaction (doing so would
  * also break duplicate detection if the poller crashes and replays).
  *
- * The xids come from the replication slot's virtual WAL, which numbers txns
- * from the same starting value every time the slot is created, so they are
- * only unique within one incarnation of the slot.  The slot is recreated when
- * a node's first listener registers, so this state is reset at registration
- * (see Exec_ListenPreCommit): a stale begin_xid would otherwise make a new txn
- * on the new slot look like a replay and get its notifications dropped.
+ * The xids come from the replication slot's virtual WAL and are only unique
+ * within one incarnation of the slot, so this state is reset whenever the
+ * backend registers as a listener (see Exec_ListenPreCommit).
  */
 typedef struct YbListenerQueueScanCurrentXactState
 {
@@ -3458,7 +3455,6 @@ ybAsyncQueueHandleBeginEntry(const AsyncQueueEntry *qe)
 		return;
 	}
 
-	/* A leftover skip budget belongs to the previous txn's replay. */
 	ybListenerQueueScanCurrentXactState.begin_xid = qe->xid;
 	ybListenerQueueScanCurrentXactState.scanned_notifs = 0;
 	ybListenerQueueScanCurrentXactState.notifs_to_skip = 0;

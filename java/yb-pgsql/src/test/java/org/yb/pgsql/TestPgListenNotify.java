@@ -1054,6 +1054,42 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     }
   }
 
+  /**
+   * Like testNotifyAfterSoloListenerRelistens, but another backend becomes the node's first
+   * listener and recreates the slot, so the re-listening backend registers as a non-first
+   * listener and must still reset its stale duplicate-detection state.
+   */
+  @Test
+  public void testNotifyAfterRelistenOnSlotRecreatedByAnotherListener() throws Exception {
+    final String channel = "relisten_other";
+
+    try (Connection aConn = getConnectionBuilder().withTServer(0).connect();
+         Statement aStmt = aConn.createStatement();
+         Connection bConn = getConnectionBuilder().withTServer(0).connect();
+         Statement bStmt = bConn.createStatement();
+         Connection notifierConn = getConnectionBuilder().withTServer(0).connect();
+         Statement notifierStmt = notifierConn.createStatement()) {
+      aStmt.execute("LISTEN " + channel);
+      notifyInTransaction(notifierStmt, channel, "n1a", "n1b");
+      assertEquals(Arrays.asList("n1a", "n1b"),
+          payloadsOf(waitForNotification(aConn, channel, "n1b")));
+
+      aStmt.execute("UNLISTEN " + channel);
+      waitForPollerAndSlotCleanup(aConn);
+
+      // B is now the node's first listener and recreates the slot; A joins it.
+      bStmt.execute("LISTEN " + channel);
+      aStmt.execute("LISTEN " + channel);
+      notifyInTransaction(notifierStmt, channel, "n2a", "n2b");
+      notifierStmt.execute("NOTIFY " + channel + ", 'n3'");
+      List<String> expected = Arrays.asList("n2a", "n2b", "n3");
+      assertEquals("Re-listening backend", expected,
+          payloadsOf(waitForNotification(aConn, channel, "n3")));
+      assertEquals("Backend that recreated the slot", expected,
+          payloadsOf(waitForNotification(bConn, channel, "n3")));
+    }
+  }
+
   private static void notifyInTransaction(Statement stmt, String channel, String... payloads)
       throws Exception {
     stmt.execute("BEGIN");
