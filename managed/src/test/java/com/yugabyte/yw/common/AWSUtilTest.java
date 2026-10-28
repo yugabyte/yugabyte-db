@@ -843,6 +843,23 @@ public class AWSUtilTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCanCredentialListObjectsReportsMissingBucket() {
+    CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
+    s3Data.backupLocation = "s3://test-bucket/backup";
+    doReturn(mockS3Client).when(mockAWSUtil).createS3Client(any(), any());
+    when(mockS3Client.headBucket(any(Consumer.class)))
+        .thenThrow(S3Exception.builder().statusCode(404).build());
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                mockAWSUtil.canCredentialListObjects(
+                    s3Data, Collections.singletonMap("us-east-1", "s3://test-bucket/backup")));
+    assertEquals(PRECONDITION_FAILED, e.getHttpStatus());
+    assertEquals("No S3 bucket found with name test-bucket", e.getMessage());
+  }
+
+  @Test
   public void testSuccessMarkerListingPassesOnS3Failure() {
     CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
     s3Data.backupLocation = "s3://test-bucket/backup";

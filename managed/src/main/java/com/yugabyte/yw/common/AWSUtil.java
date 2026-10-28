@@ -186,8 +186,10 @@ public class AWSUtil implements CloudUtil {
       s3Client.headBucket(builder -> builder.bucket(bucketName));
     } catch (S3Exception e) {
       if (e.statusCode() == play.mvc.Http.Status.NOT_FOUND) {
-        // Bucket does not exist
-        throw new RuntimeException(String.format("No S3 bucket found with name %s", bucketName));
+        // A missing or misnamed bucket is the user's to fix, like the refusals awsServiceError
+        // reports.
+        throw new PlatformServiceException(
+            PRECONDITION_FAILED, String.format("No S3 bucket found with name %s", bucketName));
       } else {
         throw e; // rethrow other errors
       }
@@ -305,7 +307,8 @@ public class AWSUtil implements CloudUtil {
    * user's to fix, so it is a clear 412 with the reason: S3's own message where it sends one, which
    * names the action and the resource. Only a HEAD request (HeadBucket) gets no message, so a 403
    * without one is described without guessing its cause. So is a 301, a bucket in another region
-   * than the client's. Anything else (an S3-side 5xx or throttling) is passed on as it is.
+   * than the client's. Anything else (an S3-side 5xx or throttling) is passed on as it is. A
+   * HeadBucket 404, a missing bucket, never gets here: tryListObjects reports it as a 412 itself.
    */
   private static RuntimeException awsServiceError(String msg, AwsServiceException e) {
     // Throttling (429) is not the user's to fix, like an S3-side 5xx.
