@@ -22,7 +22,7 @@ For an RSS feed of all technical advisories, point your feed reader to the [RSS 
 | Advisory&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Synopsis | Product | Affected Versions | Date |
 | :------------------------------- | :------- | :-----: | :---------------: | :--- |
 | {{<ta 19066>}}
-| CDC stream and replication slot creation may time out on namespaces with a large number of tablets
+| CDC stream creation may time out on namespaces with a large number of tablets
 | {{<product "cdc">}}
 | {{<release "2025.2.4.0">}}+,<br>{{<release "2026.1.1.0">}}+
 | {{<nobreak "28 October 2026">}}

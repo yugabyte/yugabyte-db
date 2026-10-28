@@ -1259,7 +1259,7 @@ For more information, refer to [Streaming DDLs causing table rewrite](../../../a
 Default: `10`
 {{% /tags/wrap %}}
 
-Number of tables processed in each batch when YB-Master sets CDC retention barriers on the tablets of a namespace during CDC stream or replication slot creation. A value less than or equal to `0` disables batching, and all tables are processed in a single batch.
+Number of tables processed in each batch when YB-Master sets CDC retention barriers on the tablets of a namespace during CDC stream creation. A value less than or equal to `0` disables batching, and all tables are processed in a single batch.
 
 This flag can be changed at runtime without restarting YB-Master.
 
@@ -1270,7 +1270,9 @@ This flag can be changed at runtime without restarting YB-Master.
 Default: `10`
 {{% /tags/wrap %}}
 
-Maximum number of per-tablet AlterTable RPCs that YB-Master can have in flight at once when setting CDC retention barriers during CDC stream or replication slot creation. A value of `0` disables throttling. A positive value sets a global cap. A negative value derives the cap from [max_concurrent_alter_table_rpcs_per_tserver](#max-concurrent-alter-table-rpcs-per-tserver) multiplied by the number of live YB-TServers.
+Maximum number of AlterTable RPCs that YB-Master can have in flight at once when setting CDC retention barriers during CDC stream creation. A value of `0` disables throttling. A positive value sets a global cap. A negative value derives the cap from [max_concurrent_alter_table_rpcs_per_tserver](#max-concurrent-alter-table-rpcs-per-tserver) multiplied by the number of live YB-TServers.
+
+On releases that contain the fix for issue 33260, the default is `0`, so throttling is disabled by default.
 
 This flag can be changed at runtime without restarting YB-Master.
 
@@ -1281,7 +1283,7 @@ This flag can be changed at runtime without restarting YB-Master.
 Default: `1`
 {{% /tags/wrap %}}
 
-Maximum number of per-tablet AlterTable RPCs that YB-Master can have in flight at once per YB-TServer. Used only when [max_concurrent_alter_table_rpcs](#max-concurrent-alter-table-rpcs) is negative, in which case this value is multiplied by the number of live YB-TServers to obtain the global cap.
+Maximum number of AlterTable RPCs that YB-Master can have in flight at once per YB-TServer. Used only when [max_concurrent_alter_table_rpcs](#max-concurrent-alter-table-rpcs) is negative, in which case this value is multiplied by the number of live YB-TServers to obtain the global cap.
 
 This flag can be changed at runtime without restarting YB-Master.
 

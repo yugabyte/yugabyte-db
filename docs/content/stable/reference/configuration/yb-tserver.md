@@ -1234,7 +1234,7 @@ When the flag `ysql_ddl_transaction_wait_for_ddl_verification` is enabled, YSQL 
 Default: `180`
 {{% /tags/wrap %}}
 
-Timeout, in seconds, for YSQL DDL operations, such as creating a logical replication slot. This flag can be changed at runtime, but the flag is read by the PostgreSQL process, so a change takes effect only after PostgreSQL restarts.
+Timeout, in seconds, for YSQL DDL operations. This flag can be changed at runtime, but the flag is read by the PostgreSQL process, so a change takes effect only after PostgreSQL restarts.
 
 ### Change data capture (CDC) flags
 
