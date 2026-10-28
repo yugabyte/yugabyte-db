@@ -48,6 +48,7 @@ DECLARE_int32(TEST_slowdown_alter_table_rpcs_ms);
 
 DECLARE_bool(TEST_hinted_leader_election_for_existing_tablets);
 DECLARE_bool(ysql_yb_enable_alter_table_rewrite);
+DECLARE_bool(hide_retained_colocated_tables_on_tablet);
 
 namespace yb::master {
 
@@ -631,7 +632,19 @@ bool AsyncAlterTable::SendRequest(int attempt) {
 
     req.mutable_schema()->CopyFrom(l->pb.schema());
     req.set_new_table_name(l->pb.name());
-    req.mutable_indexes()->CopyFrom(l->pb.indexes());
+    // The master keeps a hidden table's indexes, but its hide removed the vector indexes from the
+    // tablet's index map to deactivate them (see AsyncHideTableOnTablet). An alter that lands after
+    // the hide, e.g. one still pending from before the drop, must not add them back.
+    if (FLAGS_hide_retained_colocated_tables_on_tablet && l->started_hiding() &&
+        table_->IsSecondaryTable()) {
+      for (const auto& index : l->pb.indexes()) {
+        if (!index.has_vector_idx_options()) {
+          *req.add_indexes() = index;
+        }
+      }
+    } else {
+      req.mutable_indexes()->CopyFrom(l->pb.indexes());
+    }
     req.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
 
     // First provisional column ID is the earliest column ID we can set next_column_id to.
@@ -1255,13 +1268,10 @@ void AsyncHideTableOnTablet::HandleResponse(int attempt) {
   LOG_WITH_PREFIX(WARNING)
       << "HideTableOnTablet responded with error (attempt " << attempt << "): "
       << AsString(resp_.error());
-  // Unlike RemoveTableFromTablet, nothing sends the hide again later, so retry anything that can
-  // succeed, e.g. a tablet that is still bootstrapping, until the task's deadline.
-  if (resp_.error().code() == TabletServerErrorPB::TABLET_NOT_FOUND) {
-    TransitionToCompleteState();
-  } else {
-    TransitionToWaitingState(MonitoredTaskState::kRunning);
-  }
+  // Unlike RemoveTableFromTablet, nothing sends the hide again later, so retry until the task's
+  // deadline. That includes TABLET_NOT_FOUND, which a replica the tablet moved away from also
+  // returns; each attempt picks the leader again.
+  TransitionToWaitingState(MonitoredTaskState::kRunning);
 }
 
 bool AsyncHideTableOnTablet::SendRequest(int attempt) {
@@ -1269,6 +1279,10 @@ bool AsyncHideTableOnTablet::SendRequest(int attempt) {
   // vector indexes of a live table.
   if (!table_->started_hiding()) {
     AbortTask(STATUS(Aborted, "Table is no longer hidden"));
+    return false;
+  }
+  if (tablet_->LockForRead()->is_deleted()) {
+    AbortTask(STATUS(Aborted, "Tablet is deleted"));
     return false;
   }
   req_.set_dest_uuid(permanent_uuid());
