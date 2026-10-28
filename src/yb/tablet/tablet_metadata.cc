@@ -2992,8 +2992,10 @@ std::string RaftGroupMetadata::vector_index_dir(
 }
 
 std::vector<std::string> RaftGroupMetadata::vector_index_dirs() const {
+  const auto infos = GetAllColocatedVectorIndexes();
   std::vector<std::string> result;
-  for (const auto& info : GetAllColocatedVectorIndexes()) {
+  result.reserve(infos.size());
+  for (const auto& info : infos) {
     result.push_back(vector_index_dir(info->index_info->vector_idx_options()));
   }
   return result;
