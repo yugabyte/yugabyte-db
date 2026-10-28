@@ -18,6 +18,7 @@ from ybops.cloud.common.method import (
     CreateRootVolumesMethod, DestroyInstancesMethod, ProvisionInstancesMethod,
     ReplaceRootVolumeMethod, DeleteRootVolumesMethod, HardRebootInstancesMethod
 )
+from ybops.cloud.oci.errors import format_oci_error
 from ybops.cloud.oci.utils import (
     OCI_VOLUME_TYPE_STANDARD, OCI_VOLUME_TYPE_HIGH_PERFORMANCE,
     OCI_VOLUME_TYPE_ULTRA_HIGH_PERFORMANCE, OCI_VOLUME_TYPE_BALANCED,
@@ -356,7 +357,8 @@ class OciListDnsEntryMethod(AbstractDnsMethod):
                 'name': result.name
             }))
         except Exception as e:
-            print(json.dumps({'error': repr(e)}))
+            logging.exception("Failed to look up OCI DNS zone %s", args.hosted_zone_id)
+            print(json.dumps({'error': format_oci_error(e) or repr(e)}))
 
 
 class OciAbstractNetworkMethod(AbstractMethod):
