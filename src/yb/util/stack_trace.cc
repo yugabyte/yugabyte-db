@@ -15,6 +15,7 @@
 
 #include <dlfcn.h>
 #include <execinfo.h>
+#include <inttypes.h>
 #include <signal.h>
 
 #ifdef __linux__
@@ -392,11 +393,11 @@ string StackTrace::ToLogFormatModuleOffsetString() const {
     void* pc = frames_[i];
     Dl_info info;
     if (dladdr(pc, &info) != 0 && info.dli_fname != nullptr) {
-      buf += Format(
-          "    @ $0 ($1+0x$2)\n", FormatStackTraceAddress(pc), info.dli_fname,
-          HexString(reinterpret_cast<uintptr_t>(pc) - reinterpret_cast<uintptr_t>(info.dli_fbase)));
+      StringAppendF(
+          &buf, "    @ %*p (%s+0x%" PRIxPTR ")\n", kPrintfPointerFieldWidth, pc, info.dli_fname,
+          reinterpret_cast<uintptr_t>(pc) - reinterpret_cast<uintptr_t>(info.dli_fbase));
     } else {
-      buf += Format("    @ $0\n", FormatStackTraceAddress(pc));
+      StringAppendF(&buf, "    @ %*p\n", kPrintfPointerFieldWidth, pc);
     }
   }
   return buf;
