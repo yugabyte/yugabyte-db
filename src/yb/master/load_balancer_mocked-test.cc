@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <iterator>
 #include <set>
+#include <string_view>
 #include <unordered_map>
 
 #include <gflags/gflags_declare.h>
@@ -79,6 +80,9 @@ TEST_F(PerTableLoadStateTest, EmptyAndSingleServer) {
   state_.SortLeaderLoad();
   ASSERT_EQ(state_.sorted_load_, (std::vector<TabletServerId>{"0000"}));
   ASSERT_EQ(state_.sorted_leader_load_, (std::vector<std::vector<TabletServerId>>{{"0000"}}));
+  ASSERT_TRUE(state_.per_ts_meta_.at("0000").sorted_path_load_by_tablets_count.empty());
+  ASSERT_EQ(state_.per_ts_meta_.at("0000").sorted_path_load_by_leader_count,
+            (std::vector<std::string>{""}));
 }
 
 TEST_F(PerTableLoadStateTest, ReplicaLoadOrder) {
@@ -144,7 +148,7 @@ TEST_F(PerTableLoadStateTest, ReplicaDriveLoadOrder) {
   ASSERT_EQ(state_.sorted_load_, expected);
 
   const TabletId tablet_id = "tablet";
-  state_.SortLoad(&servers, tablet_id);
+  state_.SortServersByLoad(&servers, tablet_id);
   ASSERT_EQ(servers,
             (std::vector<TabletServerId>{"ts-4", "ts-2", "ts-3", "ts-1", "ts-0", "ts-5"}));
   ASSERT_EQ(state_.sorted_load_, expected);
@@ -210,6 +214,89 @@ TEST_F(PerTableLoadStateTest, SortLongServerIds) {
     state_.SortLoad();
     ASSERT_EQ(state_.sorted_load_, expected);
     std::reverse(state_.sorted_load_.begin(), state_.sorted_load_.end());
+  }
+}
+
+TEST_F(PerTableLoadStateTest, DriveLoadRefreshOnlyUpdatesTarget) {
+  global_state_.drive_aware_ = true;
+  const std::vector<TabletServerId> servers{"0000", "1111"};
+  for (const auto& uuid : servers) {
+    AddTabletServer(uuid);
+    AddRunningTablets(&state_, uuid, 3, "/data0");
+    AddRunningTablets(&state_, uuid, 1, "/data1");
+    AddRunningTablets(&state_, uuid, 5, "");
+  }
+  state_.SetInitialized();
+  state_.SortLoad();
+  const std::vector<std::string> initial{"/data0", "/data1", ""};
+  const std::vector<std::string> updated{"/data1", "/data0", ""};
+  for (const auto& uuid : servers) {
+    auto& meta = state_.per_ts_meta_.at(uuid);
+    ASSERT_EQ(meta.sorted_path_load_by_tablets_count, initial);
+    for (size_t i = 0; i < 3; ++i) {
+      ASSERT_OK(state_.AddStartingTablet(NextTabletId(), uuid));
+    }
+    meta.path_to_starting_tablets_count["/data1"] = 3;
+  }
+
+  state_.SortDriveLoad(servers.front());
+  ASSERT_EQ(state_.per_ts_meta_.at(servers.front()).sorted_path_load_by_tablets_count, updated);
+  ASSERT_EQ(state_.per_ts_meta_.at(servers.back()).sorted_path_load_by_tablets_count, initial);
+  ASSERT_EQ(state_.sorted_load_, servers);
+
+  state_.SortDriveLoad();
+  for (const auto& uuid : servers) {
+    ASSERT_EQ(state_.per_ts_meta_.at(uuid).sorted_path_load_by_tablets_count, updated);
+  }
+}
+
+TEST_F(PerTableLoadStateTest, DriveLeaderLoadRefreshOnlyUpdatesTarget) {
+  global_state_.drive_aware_ = true;
+  const std::vector<TabletServerId> servers{"0000", "1111"};
+  std::unordered_map<TabletServerId, std::vector<TabletId>> leaders_to_add;
+  for (const auto& uuid : servers) {
+    AddTabletServer(uuid);
+    for (size_t i = 0; i < 4; ++i) {
+      auto tablet = NextTabletId();
+      ASSERT_OK(state_.AddRunningTablet(tablet, uuid, "/data0"));
+      if (i == 0) {
+        ASSERT_OK(state_.AddLeaderTablet(tablet, uuid, "/data0"));
+        state_.per_tablet_meta_.at(tablet).leader_uuid = uuid;
+      } else {
+        leaders_to_add[uuid].push_back(std::move(tablet));
+      }
+    }
+    for (const auto& path : {"/data1", "/data1", "/data2", ""}) {
+      const auto tablet = NextTabletId();
+      ASSERT_OK(state_.AddRunningTablet(tablet, uuid, path));
+      if (std::string_view(path) != "/data2") {
+        ASSERT_OK(state_.AddLeaderTablet(tablet, uuid, path));
+        state_.per_tablet_meta_.at(tablet).leader_uuid = uuid;
+      }
+    }
+  }
+  const std::vector<std::vector<TabletServerId>> groups{{servers.front()}, {servers.back()}};
+  state_.sorted_leader_load_ = groups;
+  state_.SetInitialized();
+  state_.SortLeaderLoad();
+  const std::vector<std::string> initial{"", "/data2", "/data0", "/data1"};
+  const std::vector<std::string> updated{"", "/data2", "/data1", "/data0"};
+  for (const auto& uuid : servers) {
+    ASSERT_EQ(state_.per_ts_meta_.at(uuid).sorted_path_load_by_leader_count, initial);
+    for (const auto& tablet : leaders_to_add.at(uuid)) {
+      ASSERT_OK(state_.AddLeaderTablet(tablet, uuid, "/data0"));
+      state_.per_tablet_meta_.at(tablet).leader_uuid = uuid;
+    }
+  }
+
+  state_.SortDriveLeaderLoad(servers.back());
+  ASSERT_EQ(state_.per_ts_meta_.at(servers.back()).sorted_path_load_by_leader_count, updated);
+  ASSERT_EQ(state_.per_ts_meta_.at(servers.front()).sorted_path_load_by_leader_count, initial);
+  ASSERT_EQ(state_.sorted_leader_load_, groups);
+
+  state_.SortDriveLeaderLoad();
+  for (const auto& uuid : servers) {
+    ASSERT_EQ(state_.per_ts_meta_.at(uuid).sorted_path_load_by_leader_count, updated);
   }
 }
 

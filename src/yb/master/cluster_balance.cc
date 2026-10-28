@@ -1650,7 +1650,7 @@ Result<bool> ClusterLoadBalancer::HandleRemoveReplicas(
       return STATUS_FORMAT(IllegalState, "No tservers to remove from over-replicated "
                            "tablet $0", tablet_id);
     }
-    state_->SortLoad(&sorted_ts, tablet_id);
+    state_->SortServersByLoad(&sorted_ts, tablet_id);
     // First try to remove a replica from the highest loaded TS.
     std::string remove_candidate = sorted_ts.back();
     *out_tablet_id = tablet_id;

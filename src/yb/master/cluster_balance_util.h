@@ -433,8 +433,8 @@ class PerTableLoadState {
   // With updated_ts, reposition only that server; all other keys must still be sorted.
   void SortLoad(optional_ref<const TabletServerId> updated_ts = std::nullopt);
 
-  // Sort a subset by table load, global load, tablet drive load (if supplied), then uuid.
-  void SortLoad(
+  // Sort caller-owned servers by table load, global load, optional tablet drive load, then uuid.
+  void SortServersByLoad(
       std::vector<TabletServerId>* servers, optional_ref<const TabletId> tablet_id) const;
 
   void SortDriveLoad(optional_ref<const TabletServerId> updated_ts = std::nullopt);
@@ -632,6 +632,8 @@ class PerTableLoadState {
 
   bool ShouldSkipReplica(const TabletReplica& replica);
   size_t GetReplicaCount(std::shared_ptr<const TabletReplicaMap> replica_map);
+  static void SortDriveLeaderLoadForTs(CBTabletServerMetadata& ts_meta);
+  static void SortDriveLoadForTs(CBTabletServerMetadata& ts_meta);
   const std::string uninitialized_ts_meta_format_msg_ =
       "Found uninitialized ts_meta: ts_uuid: $0, table_uuid: $1";
 

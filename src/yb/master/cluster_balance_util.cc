@@ -912,7 +912,7 @@ void PerTableLoadState::SortLoad(optional_ref<const TabletServerId> updated_ts) 
   load_order_initialized_ = true;
 }
 
-void PerTableLoadState::SortLoad(
+void PerTableLoadState::SortServersByLoad(
     std::vector<TabletServerId>* servers, optional_ref<const TabletId> tablet_id) const {
   SortTabletServers(servers, [this, tablet_id](const TabletServerId& uuid) {
     return ReplicaLoadKey(*this, uuid, tablet_id);
@@ -920,41 +920,44 @@ void PerTableLoadState::SortLoad(
 }
 
 void PerTableLoadState::SortDriveLoad(optional_ref<const TabletServerId> updated_ts) {
-  // Sort drives on each ts by the tablets count.
+  if (updated_ts) {
+    SortDriveLoadForTs(per_ts_meta_.at(updated_ts->get()));
+    return;
+  }
   for (const auto& ts : sorted_load_) {
-    if (updated_ts && ts != updated_ts->get()) {
+    SortDriveLoadForTs(per_ts_meta_.at(ts));
+  }
+}
+
+void PerTableLoadState::SortDriveLoadForTs(CBTabletServerMetadata& ts_meta) {
+  vector<std::pair<string, uint64>> drive_loads;
+  bool empty_path_found = false;
+  for (const auto& [path, running_tablets] : ts_meta.path_to_tablets) {
+    if (path.empty()) {
+      // TS reported tablet without path (rolling restart case).
+      empty_path_found = true;
       continue;
     }
-    auto& ts_meta = per_ts_meta_[ts];
-    vector<std::pair<string, uint64>> drive_loads;
-    bool empty_path_found = false;
-    for (const auto& [path, running_tablets] : ts_meta.path_to_tablets) {
-      if (path.empty()) {
-        // TS reported tablet without path (rolling restart case).
-        empty_path_found = true;
-        continue;
-      }
-      int num_starting_tablets = FindWithDefault(ts_meta.path_to_starting_tablets_count, path, 0);
-      drive_loads.emplace_back(path, running_tablets.size() + num_starting_tablets);
-    }
+    int num_starting_tablets = FindWithDefault(ts_meta.path_to_starting_tablets_count, path, 0);
+    drive_loads.emplace_back(path, running_tablets.size() + num_starting_tablets);
+  }
 
-    // Sort by decreasing load.
-    sort(drive_loads.begin(), drive_loads.end(),
-        [](const std::pair<string, uint64>& l, const std::pair<string, uint64>& r) {
-           return l.second > r.second;
-        });
+  // Sort by decreasing load.
+  sort(drive_loads.begin(), drive_loads.end(),
+      [](const std::pair<string, uint64>& l, const std::pair<string, uint64>& r) {
+         return l.second > r.second;
+      });
 
-    // Clear because we call SortDriveLoad multiple times in an LB run.
-    ts_meta.sorted_path_load_by_tablets_count.clear();
-    for (auto& drive_load : drive_loads) {
-      ts_meta.sorted_path_load_by_tablets_count.push_back(drive_load.first);
-    }
+  // Clear because we call SortDriveLoad multiple times in an LB run.
+  ts_meta.sorted_path_load_by_tablets_count.clear();
+  for (auto& drive_load : drive_loads) {
+    ts_meta.sorted_path_load_by_tablets_count.push_back(drive_load.first);
+  }
 
-    if (empty_path_found) {
-      // Empty path was found at path_to_tablets, so add the empty path to the
-      // end so that it has the lowest priority.
-      ts_meta.sorted_path_load_by_tablets_count.push_back(std::string());
-    }
+  if (empty_path_found) {
+    // Empty path was found at path_to_tablets, so add the empty path to the
+    // end so that it has the lowest priority.
+    ts_meta.sorted_path_load_by_tablets_count.push_back(std::string());
   }
 }
 
@@ -1000,54 +1003,57 @@ void PerTableLoadState::SortLeaderLoad(optional_ref<const TabletServerId> update
 }
 
 void PerTableLoadState::SortDriveLeaderLoad(optional_ref<const TabletServerId> updated_ts) {
-  // Sort drives on each ts by the tablet leaders count.
+  if (updated_ts) {
+    SortDriveLeaderLoadForTs(per_ts_meta_.at(updated_ts->get()));
+    return;
+  }
   for (const auto& leader_set : sorted_leader_load_) {
     for (const auto& ts : leader_set) {
-      if (updated_ts && ts != updated_ts->get()) {
-        continue;
-      }
-      auto& ts_meta = per_ts_meta_[ts];
-      vector<std::pair<string, uint64>> drive_leader_loads;
-      bool empty_path_found = false;
-
-      // Add drives with leaders.
-      for (const auto& [path, leaders] : ts_meta.path_to_leaders) {
-        if (path.empty()) {
-          empty_path_found = true;
-          continue;
-        }
-        drive_leader_loads.emplace_back(path, leaders.size());
-      }
-
-      // Add drives without leaders, but with tablets.
-      for (const auto& [path, tablets] : ts_meta.path_to_tablets) {
-        if (path.empty()) {
-          continue;
-        }
-        if (!ts_meta.path_to_leaders.contains(path)) {
-          drive_leader_loads.emplace_back(path, 0);
-        }
-      }
-
-      // Sort drives by ascending leader load.
-      sort(drive_leader_loads.begin(), drive_leader_loads.end(),
-          [](const std::pair<string, uint64>& l, const std::pair<string, uint64>& r) {
-            return l.second < r.second;
-          });
-
-      // Clear because we call SortDriveLeaderLoad multiple times in an LB run.
-      ts_meta.sorted_path_load_by_leader_count.clear();
-
-      bool add_empty_path = empty_path_found || ts_meta.path_to_leaders.empty();
-      if (add_empty_path) {
-        // Empty path was found at path_to_leaders or no leaders on TS, so add the empty path.
-        ts_meta.sorted_path_load_by_leader_count.push_back(std::string());
-      }
-
-      for (auto& drive_leader_load : drive_leader_loads) {
-        ts_meta.sorted_path_load_by_leader_count.push_back(drive_leader_load.first);
-      }
+      SortDriveLeaderLoadForTs(per_ts_meta_.at(ts));
     }
+  }
+}
+
+void PerTableLoadState::SortDriveLeaderLoadForTs(CBTabletServerMetadata& ts_meta) {
+  vector<std::pair<string, uint64>> drive_leader_loads;
+  bool empty_path_found = false;
+
+  // Add drives with leaders.
+  for (const auto& [path, leaders] : ts_meta.path_to_leaders) {
+    if (path.empty()) {
+      empty_path_found = true;
+      continue;
+    }
+    drive_leader_loads.emplace_back(path, leaders.size());
+  }
+
+  // Add drives without leaders, but with tablets.
+  for (const auto& [path, tablets] : ts_meta.path_to_tablets) {
+    if (path.empty()) {
+      continue;
+    }
+    if (!ts_meta.path_to_leaders.contains(path)) {
+      drive_leader_loads.emplace_back(path, 0);
+    }
+  }
+
+  // Sort drives by ascending leader load.
+  sort(drive_leader_loads.begin(), drive_leader_loads.end(),
+      [](const std::pair<string, uint64>& l, const std::pair<string, uint64>& r) {
+        return l.second < r.second;
+      });
+
+  // Clear because we call SortDriveLeaderLoad multiple times in an LB run.
+  ts_meta.sorted_path_load_by_leader_count.clear();
+
+  bool add_empty_path = empty_path_found || ts_meta.path_to_leaders.empty();
+  if (add_empty_path) {
+    // Empty path was found at path_to_leaders or no leaders on TS, so add the empty path.
+    ts_meta.sorted_path_load_by_leader_count.push_back(std::string());
+  }
+
+  for (auto& drive_leader_load : drive_leader_loads) {
+    ts_meta.sorted_path_load_by_leader_count.push_back(drive_leader_load.first);
   }
 }
 
