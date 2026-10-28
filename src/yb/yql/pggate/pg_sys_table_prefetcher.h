@@ -59,6 +59,13 @@ struct PrefetcherOptions {
     VersionInfo version_info;
     PgOid db_oid;
     PrefetchingCacheMode mode;
+    // Whether a fill already under way for a key this prefetch needs should send the caller
+    // away rather than queue it behind that fill. Set only on an attempt that has an older
+    // version to fall back to, and never on the attempt that follows one.
+    bool send_away_if_fill_in_flight;
+    // Whether this prefetch is a connection start's, which makes the tserver treat the database
+    // as busy for its whole duration. See CachingInfoPB.part_of_connection_prefetch.
+    bool part_of_connection_prefetch;
 
     std::string ToString() const;
   };

@@ -1070,6 +1070,8 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
     caching_info.set_catalog_version(cache_options.catalog_version);
     caching_info.set_lookup_only(cache_options.lookup_only);
     caching_info.set_completes_connection_prefetch(cache_options.completes_connection_prefetch);
+    caching_info.set_send_away_if_fill_in_flight(cache_options.send_away_if_fill_in_flight);
+    caching_info.set_part_of_connection_prefetch(cache_options.part_of_connection_prefetch);
     if (cache_options.lifetime_threshold_ms) {
       caching_info.mutable_lifetime_threshold_ms()->set_value(*cache_options.lifetime_threshold_ms);
     }

@@ -2710,11 +2710,12 @@ static struct config_bool ConfigureNamesBool[] =
 			gettext_noop("Let a connection start from a catalog version this node already has "
 						 "cached."),
 			gettext_noop("A connection beginning while the master leader reports that it is "
-						 "shedding catalog prefetches reads the catalog at a version this node "
-						 "already holds, rather than fetching the whole catalog from the leader, "
-						 "and applies the invalidation messages in between before it runs "
-						 "anything. Turning this off makes every connection fetch from the "
-						 "leader as before, and returns the read a backend makes ahead of "
+						 "shedding catalog prefetches, or while another connection is already "
+						 "filling the catalog for its database, reads the catalog at a version "
+						 "this node already holds, rather than fetching the whole catalog from "
+						 "the leader, and applies the invalidation messages in between before "
+						 "it runs anything. Turning this off makes every connection fetch from "
+						 "the leader as before, and returns the read a backend makes ahead of "
 						 "authentication to the ordinary admission priority on the master."),
 			GUC_NOT_IN_SAMPLE
 		},

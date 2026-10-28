@@ -68,9 +68,23 @@ class PgResponseCache {
 
   using Setter = std::function<void(Response&&)>;
 
+  // One connection's claim on a database, held while it fills. Counting it is what sends other
+  // connections to the older version this node holds. A request that fills takes one for the
+  // length of that request; a connection start's prefetch instead keeps one across all of its
+  // requests, so the gaps between them -- the backend building its relcache, with nothing
+  // outstanding -- do not read as an idle database.
+  class FillToken;
+  using FillTokenPtr = std::shared_ptr<FillToken>;
+
+  // session_id identifies the connection performing a fill, so that its own rounds are not
+  // mistaken for another connection's fill. See AnotherFillInFlight.
+  //
+  // token is the caller's slot for a connection start's claim, kept across that prefetch's
+  // requests and released on its last one. Dropping the slot ends the claim, so a session that
+  // goes away cannot leave its database looking busy.
   Result<Setter> Get(
       LWPgPerformOptionsPB_LWCachingInfoPB* cache_info, CoarseTimePoint deadline,
-      const PgResponseCacheWaiterPtr& waiter);
+      const PgResponseCacheWaiterPtr& waiter, uint64_t session_id, FillTokenPtr* token);
 
   struct DisablerType;
   using Disabler = std::shared_ptr<DisablerType>;

@@ -3658,11 +3658,20 @@ class PgClientSession::Impl {
       WARN_NOT_OK(MoveSessionToDatabaseCgroup(*database_oid), "Setting cgroup of PgClientSession");
     }
 
+    // Anything this session sends that is not part of a connection start's prefetch means that
+    // prefetch is over -- it finished, or it gave up -- so the claim ends here rather than
+    // waiting for the session to go away.
+    if (!options.has_caching_info() ||
+        !options.caching_info().part_of_connection_prefetch()) {
+      prefetch_fill_token_.reset();
+    }
+
     if (options.has_caching_info()) {
       VLOG_WITH_PREFIX(3)
           << "Executing read from response cache for session " << data->req.session_id();
       data->cache_setter = VERIFY_RESULT(response_cache().Get(
-          options.mutable_caching_info(), deadline, data));
+          options.mutable_caching_info(), deadline, data, data->req.session_id(),
+          &prefetch_fill_token_));
       if (!data->cache_setter) {
         return Status::OK();
       }
@@ -5030,6 +5039,18 @@ class PgClientSession::Impl {
   // Whether a Perform has moved this session's thread into the database's cgroup; see DoPerform.
   // Only accessed under the session lock.
   bool moved_to_database_cgroup_ = false;
+
+  // This session's claim on its database while a connection start's prefetch runs. Held here
+  // rather than by the request that took it, so the gaps between that prefetch's requests do
+  // not read as an idle database. Three things end it: the request that completes the prefetch,
+  // the next request that is not part of one, which resets this below, and the session.
+  //
+  // The pointer is only touched under the session lock, but the token it names is not: the
+  // setter releases it from FlushDone with the lock already dropped. That is one thread; a
+  // second arrives only where parallel workers run a connection start of their own, which
+  // needs preload_rel_cache, since they share their leader's session and so this slot.
+  // FillToken::Release carries both.
+  PgResponseCache::FillTokenPtr prefetch_fill_token_;
 
   std::optional<SubTransactionId> subtxn_with_session_object_locks_;
 

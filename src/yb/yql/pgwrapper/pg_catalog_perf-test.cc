@@ -53,6 +53,8 @@ METRIC_DECLARE_counter(pg_response_cache_entries_removed_by_gc);
 METRIC_DECLARE_counter(pg_response_cache_hits);
 METRIC_DECLARE_counter(pg_response_cache_lookup_only_hits);
 METRIC_DECLARE_counter(pg_response_cache_lookup_only_misses);
+METRIC_DECLARE_counter(pg_response_cache_send_away_asks);
+METRIC_DECLARE_counter(pg_response_cache_send_aways);
 METRIC_DECLARE_counter(pg_response_cache_gc_calls);
 METRIC_DECLARE_counter(pg_response_cache_queries);
 METRIC_DECLARE_counter(pg_response_cache_renew_hard);
@@ -80,6 +82,7 @@ DECLARE_bool(ysql_enable_relcache_init_optimization);
 DECLARE_uint32(ysql_max_invalidation_message_queue_size);
 DECLARE_bool(TEST_pg_response_cache_force_lookup_only_miss);
 DECLARE_bool(TEST_pg_response_cache_force_lookup_only_miss_on_final_request);
+DECLARE_uint64(TEST_pg_response_cache_fill_delay_ms);
 DECLARE_bool(ysql_yb_enable_stale_catalog_prefetch);
 DECLARE_uint64(ysql_catalog_prefetch_row_limit);
 DECLARE_string(ysql_pg_conf_csv);
@@ -125,6 +128,8 @@ struct MetricCounters {
     size_t hits;
     size_t lookup_only_hits;
     size_t lookup_only_misses;
+    size_t send_away_asks;
+    size_t send_aways;
     size_t renew_soft;
     size_t renew_hard;
     size_t gc_calls;
@@ -136,7 +141,7 @@ struct MetricCounters {
   size_t master_read_rpc;
 };
 
-struct MetricCountersDescriber : public MetricWatcherDeltaDescriberTraits<MetricCounters, 10> {
+struct MetricCountersDescriber : public MetricWatcherDeltaDescriberTraits<MetricCounters, 12> {
   MetricCountersDescriber(
       std::reference_wrapper<const MetricEntity> master_metric,
       std::reference_wrapper<const MetricEntity> tserver_metric)
@@ -154,6 +159,12 @@ struct MetricCountersDescriber : public MetricWatcherDeltaDescriberTraits<Metric
           Descriptor{
               &delta.cache.lookup_only_misses, tserver_metric,
               METRIC_pg_response_cache_lookup_only_misses},
+          Descriptor{
+              &delta.cache.send_away_asks, tserver_metric,
+              METRIC_pg_response_cache_send_away_asks},
+          Descriptor{
+              &delta.cache.send_aways, tserver_metric,
+              METRIC_pg_response_cache_send_aways},
           Descriptor{
               &delta.cache.renew_soft, tserver_metric, METRIC_pg_response_cache_renew_soft},
           Descriptor{
@@ -1701,6 +1712,16 @@ class PgStaleCatalogPrefetchTest : public PgCatalogPerfTestBase {
         resp.entries(0).shm_index());
   }
 
+  // The pg_response_cache_queries counter, which rises when a backend's prefetch reaches the
+  // cache. A test that starts a filling connection on another thread waits for it to rise: a
+  // backend still starting up has not registered its fill yet, and the connection that is meant
+  // to be sent away would start one of its own instead.
+  [[nodiscard]] int64_t ResponseCacheQueries() const {
+    auto counter = cluster_->mini_tablet_server(0)->server()->metric_entity()
+        ->FindOrNull<Counter>(METRIC_pg_response_cache_queries);
+    return counter ? counter->value() : 0;
+  }
+
   Result<uint64_t> CurrentCatalogVersion(PGConn* conn) {
     return conn->FetchRow<PGUint64>(
         "SELECT current_version FROM pg_yb_catalog_version WHERE db_oid = "
@@ -1932,6 +1953,146 @@ TEST_F(PgStaleCatalogPrefetchTest, ARefreshDoesNotRecordAVersion) {
       << "a refresh recorded a version it had not cached a whole connection start for";
 }
 
+// The filling connection and the one that follows it want the same entry, so queueing behind the
+// fill is what would otherwise happen. The second is sent away instead and reads the version this
+// node holds.
+//
+// The leader is pinned at LOW. A connection first checks whether the leader is busy, and asks to
+// be sent away only if that check says it is not. So if the leader looked busy, this connection
+// would read the older version right then, and the test would prove nothing about a connection
+// being sent away from a fill in flight.
+//
+// Pinned rather than left to the master, because the master derives the load from the prefetches
+// it has in flight, and this test holds one open on purpose. On a small enough machine that one
+// prefetch is already enough to read as BUSY.
+TEST_F(PgStaleCatalogPrefetchTest, DefersToAFillAlreadyUnderWay) {
+  constexpr uint64_t kFillDelayMs = 10000;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t_defer (k INT)"));
+  ASSERT_OK(SetPrefetchLoad(master::YSQL_CATALOG_PREFETCH_LOAD_LOW));
+  ASSERT_OK(LoggedWaitFor([this, &conn]() -> Result<bool> {
+    return VERIFY_RESULT(RecordedCatalogVersion(&conn)) != 0;
+  }, 60s, "a version for a deferred connection to fall back to"));
+
+  // Moves the catalog on, so a connection starting now needs entries this node does not hold.
+  // ALTER rather than CREATE TABLE: a plain CREATE increments the catalog version only when
+  // yb_always_increment_catalog_version_on_ddl is on, which is the default here but not on every
+  // release branch, while ALTER TABLE increments either way.
+  ASSERT_OK(conn.Execute("ALTER TABLE t_defer ADD COLUMN v INT"));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pg_response_cache_fill_delay_ms) = kFillDelayMs;
+
+  const auto queries_before = ResponseCacheQueries();
+  TestThreadHolder threads;
+  threads.AddThreadFunctor([this] {
+    auto filler = ASSERT_RESULT(Connect());
+    ASSERT_OK(filler.FetchRow<int32_t>("SELECT 1"));
+  });
+  ASSERT_OK(LoggedWaitFor([this, queries_before]() -> Result<bool> {
+    return ResponseCacheQueries() > queries_before;
+  }, 60s, "the filling connection to reach the response cache"));
+
+  const auto start = MonoTime::Now();
+  const auto delta = ASSERT_RESULT(metrics_->Delta([this]() -> Status {
+    auto deferred = VERIFY_RESULT(Connect());
+    return ResultToStatus(deferred.FetchRow<int32_t>("SELECT 1"));
+  }));
+  const auto elapsed = MonoTime::Now() - start;
+
+  threads.JoinAll();
+
+  ASSERT_GT(delta.cache.send_aways, 0)
+      << "the connection queued behind the fill rather than being sent away from it";
+  ASSERT_GT(delta.cache.lookup_only_hits, 0)
+      << "the connection was sent away but did not read the version this node already held";
+  // Half the delay is far more than the older version takes to read, and far less than waiting
+  // for even one of the filling connection's rounds.
+  ASSERT_LT(elapsed.ToMilliseconds(), static_cast<int64_t>(kFillDelayMs / 2))
+      << "the connection took " << elapsed << ", so it waited for the fill after all";
+}
+
+// Only the opening round of a prefetch asks to be sent away. A connection start pages through
+// many rounds, and if the ask rode on all of them a fill starting part-way through would send
+// the connection away having already fetched most of a catalog, which it would then throw away
+// and fetch again. Nothing is filling here, so the connection asks, fills, and the count of asks
+// is the whole assertion: one, not one per round.
+TEST_F(PgStaleCatalogPrefetchTest, OnlyTheOpeningRoundAsksToBeSentAway) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t_ask (k INT)"));
+  ASSERT_OK(SetPrefetchLoad(master::YSQL_CATALOG_PREFETCH_LOAD_LOW));
+  ASSERT_OK(LoggedWaitFor([this, &conn]() -> Result<bool> {
+    return VERIFY_RESULT(RecordedCatalogVersion(&conn)) != 0;
+  }, 60s, "a version for the next connection to fall back to"));
+
+  // Moves the catalog on, so the connection below needs entries this node does not hold and
+  // prefetches them itself rather than reading everything from the cache.
+  ASSERT_OK(conn.Execute("ALTER TABLE t_ask ADD COLUMN v INT"));
+
+  const auto delta = ASSERT_RESULT(metrics_->Delta([this]() -> Status {
+    auto fresh = VERIFY_RESULT(Connect());
+    return ResultToStatus(fresh.FetchRow<int32_t>("SELECT 1"));
+  }));
+
+  ASSERT_GT(delta.cache.queries, 1)
+      << "the connection start did not page, so this proves nothing about later rounds";
+  ASSERT_EQ(delta.cache.send_aways, 0)
+      << "nothing was filling this database, so nothing should have been sent away";
+  ASSERT_EQ(delta.cache.send_away_asks, 1)
+      << "a connection start must ask once, on the opening round of its prefetch, rather than "
+      << "on every round";
+}
+
+// A run of DDLs gives each connection a version of its own, so the entry one wants is not the
+// entry another is filling and they cannot be merged by key. The two are still reading the same
+// database's catalog, so a connection that finds any fill under way for its database reads the
+// version this node holds rather than adding a second whole-catalog read to the leader's load.
+TEST_F(PgStaleCatalogPrefetchTest, DefersAcrossVersionsToAFillAlreadyUnderWay) {
+  constexpr uint64_t kFillDelayMs = 10000;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t_fan (k INT)"));
+  // An idle leader, for the reason DefersToAFillAlreadyUnderWay gives.
+  ASSERT_OK(SetPrefetchLoad(master::YSQL_CATALOG_PREFETCH_LOAD_LOW));
+  ASSERT_OK(LoggedWaitFor([this, &conn]() -> Result<bool> {
+    return VERIFY_RESULT(RecordedCatalogVersion(&conn)) != 0;
+  }, 60s, "a version for a deferred connection to fall back to"));
+
+  ASSERT_OK(conn.Execute("ALTER TABLE t_fan ADD COLUMN v1 INT"));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pg_response_cache_fill_delay_ms) = kFillDelayMs;
+
+  const auto queries_before = ResponseCacheQueries();
+  TestThreadHolder threads;
+  threads.AddThreadFunctor([this] {
+    auto filler = ASSERT_RESULT(Connect());
+    ASSERT_OK(filler.FetchRow<int32_t>("SELECT 1"));
+  });
+  ASSERT_OK(LoggedWaitFor([this, queries_before]() -> Result<bool> {
+    return ResponseCacheQueries() > queries_before;
+  }, 60s, "the filling connection to reach the response cache"));
+
+  // Moves the catalog again, so the next connection wants entries under keys of its own and
+  // collides with nothing the filling connection holds.
+  ASSERT_OK(conn.Execute("ALTER TABLE t_fan ADD COLUMN v2 INT"));
+
+  const auto start = MonoTime::Now();
+  const auto delta = ASSERT_RESULT(metrics_->Delta([this]() -> Status {
+    auto deferred = VERIFY_RESULT(Connect());
+    return ResultToStatus(deferred.FetchRow<int32_t>("SELECT 1"));
+  }));
+  const auto elapsed = MonoTime::Now() - start;
+
+  threads.JoinAll();
+
+  ASSERT_GT(delta.cache.send_aways, 0)
+      << "a connection on its own version read the catalog alongside the fill already running";
+  ASSERT_GT(delta.cache.lookup_only_hits, 0)
+      << "the connection was sent away but did not read the version this node already held";
+  ASSERT_LT(elapsed.ToMilliseconds(), static_cast<int64_t>(kFillDelayMs / 2))
+      << "the connection took " << elapsed << ", so it did not take the older version";
+}
+
 // CheckMyDatabase decides whether a connection is allowed at all -- datallowconn, CONNECT
 // privilege, connection limit -- and never revisits it. Those decisions have to be made on the
 // current catalog, not on the older version the connection read, or a revocation landing inside
@@ -2005,6 +2166,52 @@ TEST_F(PgUnbridgeableCatalogPrefetchTest, FallsBackWhenTheMessagesCannotBeApplie
          "messages that would carry it forward were already known to be unusable";
 }
 
+// A connection sent away from a fill cannot always use the older version it is sent to: this
+// fixture makes the messages that would carry it forward unusable. It has to come up anyway, by
+// queueing behind the fill as it would have without the ask. The tserver answers Incomplete to
+// send it away, and raising that status instead of retrying would fail a connection the full
+// prefetch would have served.
+TEST_F(PgUnbridgeableCatalogPrefetchTest, ComesUpWhenSentAwayWithNoUsableOlderVersion) {
+  constexpr uint64_t kFillDelayMs = 10000;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t_unusable (k INT)"));
+  ASSERT_OK(SetPrefetchLoad(master::YSQL_CATALOG_PREFETCH_LOAD_LOW));
+  ASSERT_OK(LoggedWaitFor([this, &conn]() -> Result<bool> {
+    return VERIFY_RESULT(RecordedCatalogVersion(&conn)) != 0;
+  }, 60s, "a version for the sent-away connection to be sent to"));
+
+  ASSERT_OK(conn.Execute("ALTER TABLE t_unusable ADD COLUMN v INT"));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pg_response_cache_fill_delay_ms) = kFillDelayMs;
+
+  const auto queries_before = ResponseCacheQueries();
+  TestThreadHolder threads;
+  threads.AddThreadFunctor([this] {
+    auto filler = ASSERT_RESULT(Connect());
+    ASSERT_OK(filler.FetchRow<int32_t>("SELECT 1"));
+  });
+  ASSERT_OK(LoggedWaitFor([this, queries_before]() -> Result<bool> {
+    return ResponseCacheQueries() > queries_before;
+  }, 60s, "the filling connection to reach the response cache"));
+
+  Status connect_status;
+  const auto delta = ASSERT_RESULT(metrics_->Delta([this, &connect_status]() -> Status {
+    connect_status = ResultToStatus(Connect());
+    return static_cast<Status>(Status::OK());
+  }));
+
+  threads.JoinAll();
+
+  ASSERT_TRUE(connect_status.ok())
+      << "a connection sent away from a fill, with no older version it could use, failed instead "
+      << "of queueing behind that fill: " << connect_status;
+  ASSERT_GT(delta.cache.send_aways, 0)
+      << "the connection was never sent away, so this test proves nothing";
+  ASSERT_EQ(delta.cache.lookup_only_hits, 0)
+      << "the connection read an older version although the messages were known to be unusable";
+}
+
 // The switch an operator turns off to stop a node reading older catalog versions. Set here as
 // the tserver gflag, which is how an operator reaches it; pg_wrapper writes it through to the
 // GUC that the backend reads during its own startup.
@@ -2015,6 +2222,37 @@ class PgStaleCatalogPrefetchDisabledTest : public PgStaleCatalogPrefetchTest {
     PgStaleCatalogPrefetchTest::SetUp();
   }
 };
+
+// The switch covers the send-away as well as the outright older read. Both go through the one
+// test of it in YbStaleCatalogPrefetchLooksPossible, so ReadsNothingOlderWhenTurnedOff would
+// catch that test being deleted outright. What it cannot reach is this state: it pins the leader
+// busy, where no connection asks to be sent away whatever the switch says. Only an idle leader
+// gets an ask as far as the tserver, so only here can the ask be seen to stop.
+TEST_F(PgStaleCatalogPrefetchDisabledTest, AsksForNoSendAwayWhenTurnedOff) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t_ask_seed (k INT)"));
+  ASSERT_OK(SetPrefetchLoad(master::YSQL_CATALOG_PREFETCH_LOAD_LOW));
+  ASSERT_OK(LoggedWaitFor([this, &conn]() -> Result<bool> {
+    return VERIFY_RESULT(RecordedCatalogVersion(&conn)) != 0;
+  }, 60s, "a version the connection below could have been sent away to"));
+
+  // Moves the catalog on, so the connection below prefetches rather than reading everything
+  // from the cache -- with the switch on, this is the connection that would ask. ALTER rather
+  // than CREATE, which increments the version only where
+  // yb_always_increment_catalog_version_on_ddl is on.
+  ASSERT_OK(conn.Execute("ALTER TABLE t_ask_seed ADD COLUMN v INT"));
+  // One column, since MetricsForNewConnection reads it back expecting exactly that.
+  ASSERT_OK(conn.Execute("CREATE TABLE t_no_ask (k INT)"));
+
+  const auto metrics = ASSERT_RESULT(MetricsForNewConnection("t_no_ask"));
+
+  ASSERT_GT(metrics.cache.queries, 1)
+      << "the connection start did not prefetch, so it would not have asked either way";
+  // Asks, not send-aways: both send-away counters sit behind the same field on the request,
+  // so once no connection asks, no connection can be sent away either.
+  ASSERT_EQ(metrics.cache.send_away_asks, 0)
+      << "a connection asked to be sent away although the switch is off";
+}
 
 TEST_F(PgStaleCatalogPrefetchDisabledTest, ReadsNothingOlderWhenTurnedOff) {
   auto conn = ASSERT_RESULT(Connect());
