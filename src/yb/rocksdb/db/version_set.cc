@@ -4148,6 +4148,24 @@ void VersionSet::GetLiveFilesMetaData(std::vector<LiveFileMetaData>* metadata) {
   }
 }
 
+void VersionSet::GetLiveFileNumbersNotOnPath(uint32_t path_id, std::vector<uint64_t>* out) {
+  // A path id past the end of db_paths resolves to the last path everywhere (TableFileName,
+  // GetLiveFilesMetaData), so the file sits there and must compare as such.
+  const auto last_path_id = static_cast<uint32_t>(db_options_->db_paths.size() - 1);
+  for (auto cfd : *column_family_set_) {
+    if (cfd->IsDropped()) {
+      continue;
+    }
+    for (int level = 0; level < cfd->NumberLevels(); level++) {
+      for (const auto* file : cfd->current()->storage_info()->LevelFiles(level)) {
+        if (std::min(file->fd.GetPathId(), last_path_id) != path_id) {
+          out->push_back(file->fd.GetNumber());
+        }
+      }
+    }
+  }
+}
+
 void VersionSet::GetObsoleteFiles(const FileNumbersProvider& pending_outputs,
                                   std::vector<FileMetaData*>* files,
                                   std::vector<std::string>* manifest_filenames) {
