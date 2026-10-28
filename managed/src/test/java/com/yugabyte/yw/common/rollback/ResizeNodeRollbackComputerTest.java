@@ -354,6 +354,8 @@ public class ResizeNodeRollbackComputerTest extends FakeDBApplication {
     RollbackSubmission submission = computer.compute(context);
     ResizeNodeParams rollbackParams = (ResizeNodeParams) submission.getParams();
     assertFalse(rollbackParams.isForceResizeNode());
+    // The rollback still needs to know, to restart nodes the forced resize may have left stopped.
+    assertTrue(rollbackParams.isFailedResizeForced());
   }
 
   @Test

@@ -31,6 +31,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -294,9 +295,14 @@ public class ResizeNode extends UpgradeTaskBase {
             UniverseDefinitionTaskParams.UserIntent currentIntent =
                 universe.getUniverseDetails().getClusterByUuid(cluster.uuid).userIntent;
 
+            // Nodes an earlier attempt left mid-batch go first, so their processes are back up
+            // before any running node is stopped.
             LinkedHashSet<NodeDetails> instanceChangingNodes =
                 nodesToApply.instanceChangingNodes.stream()
                     .filter(n -> n.isInPlacement(cluster.uuid))
+                    .sorted(
+                        Comparator.comparing(
+                            (NodeDetails n) -> n.state == NodeDetails.NodeState.Live))
                     .collect(Collectors.toCollection(LinkedHashSet::new));
 
             List<NodeDetails> justModifyDeviceNodes =
@@ -547,12 +553,14 @@ public class ResizeNode extends UpgradeTaskBase {
     // Change instance type
     if (!newInstanceType.equals(currentInstanceType)
         || taskParams().isForceResizeNode()
-        || cgroupSizeChanging) {
+        || cgroupSizeChanging
+        || nodes.stream().anyMatch(this::mustRunChangeInstanceType)) {
       for (NodeDetails node : nodes) {
         // Check if the node needs to be resized.
         if (!taskParams().isForceResizeNode()
             && isNodeAlreadyAtInstanceType(node, newInstanceType)
-            && !cgroupSizeChanging) {
+            && !cgroupSizeChanging
+            && !mustRunChangeInstanceType(node)) {
           log.info("Skipping node {} as its type is already {}", node.nodeName, newInstanceType);
           continue;
         }
@@ -602,6 +610,11 @@ public class ResizeNode extends UpgradeTaskBase {
    */
   protected boolean isNodeAlreadyAtInstanceType(NodeDetails node, String targetInstanceType) {
     return node.cloudInfo.instance_type.equals(targetInstanceType);
+  }
+
+  /** Whether to run ChangeInstanceType for the node even when its type already matches. */
+  protected boolean mustRunChangeInstanceType(NodeDetails node) {
+    return false;
   }
 
   /**

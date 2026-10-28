@@ -21,6 +21,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.StateTransitionDetails;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Function;
 import javax.inject.Inject;
@@ -37,7 +38,8 @@ import org.apache.commons.lang3.StringUtils;
  * toward before; IOPS/throughput-only nodes take the non-restart {@code Disk_Update} path;
  * already-before nodes are skipped so rollback retry can make progress. Classification and the
  * ChangeInstanceType skip also consult the cloud so a modify that aborted before YBA persist is
- * still reverted.
+ * still reverted. A node a failed batch may have left stopped is taken through the batch even when
+ * already at before, so its VM and processes are started again.
  *
  * <p>Freeze must not recapture {@code state_transition_details} - the failed ResizeNode's delta is
  * the source of truth for the before intent. {@link
@@ -54,6 +56,7 @@ public class RollbackResizeNode extends ResizeNode {
 
   private final ResizeNodeRollbackComputer rollbackComputer;
   private Map<String, CloudAPI.NodeDiskSpec> cloudByNode;
+  private UniverseDefinitionTaskParams failedResizeTarget;
 
   @Inject
   protected RollbackResizeNode(
@@ -112,11 +115,58 @@ public class RollbackResizeNode extends ResizeNode {
     if (super.isInstanceChanging(node, newIntent, currentIntent)) {
       return true;
     }
+    if (mayBeLeftStopped(node)) {
+      return true;
+    }
     CloudAPI.NodeDiskSpec cloud = cloudState(node);
     if (cloud == null || StringUtils.isBlank(cloud.getInstanceType())) {
       return false;
     }
     return !cloud.getInstanceType().equals(newIntent.getInstanceTypeForNode(node));
+  }
+
+  /**
+   * Whether a batch of the failed resize, or of an earlier attempt of this rollback, may have
+   * stopped this node's processes, and possibly its VM, and failed before setting it Live. Its type
+   * may already be the target, so nothing else would bring it back. Only nodes whose instance type
+   * or cgroup the failed resize changes go through the rolling stop, or every node if it was
+   * forced; disk-only nodes are also set Resizing but keep running.
+   */
+  private boolean mayBeLeftStopped(NodeDetails node) {
+    if (node.state != NodeDetails.NodeState.Resizing) {
+      return false;
+    }
+    if (taskParams().isFailedResizeForced()) {
+      return true;
+    }
+    if (failedResizeTarget == null) {
+      failedResizeTarget = requireStateTransitionDetails(getUniverse()).getTargetUniverseDetails();
+    }
+    Cluster before = taskParams().getClusterByUuid(node.placementUuid);
+    Cluster target = failedResizeTarget.getClusterByUuid(node.placementUuid);
+    if (before == null || target == null) {
+      return false;
+    }
+    return !Objects.equals(
+            before.userIntent.getInstanceTypeForNode(node),
+            target.userIntent.getInstanceTypeForNode(node))
+        || !Objects.equals(
+            before.userIntent.getCGroupSize(node), target.userIntent.getCGroupSize(node));
+  }
+
+  /** ybops then only starts the VM when its type already matches. */
+  @Override
+  protected boolean mustRunChangeInstanceType(NodeDetails node) {
+    return mayBeLeftStopped(node);
+  }
+
+  /**
+   * The stop runs before the same-type ChangeInstanceType that starts the VM, and fails if the VM
+   * is off. The base only tolerates that on a retry, but the rollback's first attempt can meet it.
+   */
+  @Override
+  protected boolean isIgnoreStopError(UpgradeContext upgradeContext, NodeDetails nodeDetails) {
+    return super.isIgnoreStopError(upgradeContext, nodeDetails) || mayBeLeftStopped(nodeDetails);
   }
 
   @Override

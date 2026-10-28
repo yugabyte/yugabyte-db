@@ -748,7 +748,13 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
           },
           subGroupType);
 
-      createDisableMasterOnNonMasterNodesTasks(nodeList, subGroupType);
+      // Also a stop, so it tolerates errors on the same nodes as the stops above.
+      createDisableMasterOnNonMasterNodesTasks(
+          nodeList,
+          subGroupType,
+          params ->
+              params.isIgnoreError =
+                  ignoreStopErrorByNodeName.getOrDefault(params.nodeName, false));
 
       if (!context.runBeforeStopping) {
         rollingUpgradeLambda.run(nodeList, processTypes);

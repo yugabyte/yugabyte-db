@@ -75,6 +75,11 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
   @ApiModelProperty(hidden = true)
   private Date failedTaskCreateTime;
 
+  // Set only on RollbackResizeNode params, which clear forceResizeNode. A forced resize stops every
+  // node, so the rollback needs it to find nodes the failed resize may have left stopped.
+  @ApiModelProperty(hidden = true)
+  private boolean failedResizeForced;
+
   @Override
   public boolean isKubernetesUpgradeSupported() {
     return true;

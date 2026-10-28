@@ -159,6 +159,7 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
     // Force is a forward "make it happen anyway" knob; it must not apply on the reverse path or
     // RollbackResizeNode would re-run ChangeInstanceType / Disk_Update on nodes already at before.
     rollbackParams.setForceResizeNode(false);
+    rollbackParams.setFailedResizeForced(failedParams.isForceResizeNode());
     // Roll top-level gflag maps back to before (used when specificGFlags is not present).
     Cluster beforePrimary = before.getPrimaryCluster();
     if (beforePrimary != null && beforePrimary.userIntent != null) {
