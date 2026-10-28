@@ -296,6 +296,35 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
   }
 
   @Test
+  public void testQueuedCustomerConfigKeptWhileBackupsAreBeingDeleted() {
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST12");
+    BackupTableParams bp = new BackupTableParams();
+    bp.storageConfigUUID = customerConfig.getConfigUUID();
+    bp.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    Backup backup = Backup.create(defaultCustomer.getUuid(), bp);
+    backup.transitionState(BackupState.QueuedForDeletion);
+    backup.transitionState(BackupState.DeleteInProgress);
+    customerConfig.updateState(ConfigState.QueuedForDeletion);
+
+    // The backup still needs the config, so this run leaves both.
+    backupGC.scheduleRunner();
+    assertEquals(
+        ConfigState.QueuedForDeletion,
+        customerConfigService
+            .getOrBadRequest(defaultCustomer.getUuid(), customerConfig.getConfigUUID())
+            .getState());
+
+    // Once the backup is gone, the config goes with the next run.
+    backup.delete();
+    backupGC.scheduleRunner();
+    assertThrows(
+        PlatformServiceException.class,
+        () ->
+            customerConfigService.getOrBadRequest(
+                defaultCustomer.getUuid(), customerConfig.getConfigUUID()));
+  }
+
+  @Test
   public void testDeleteCustomerConfigSuccessWithBackupsError() {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST11");
     BackupTableParams bp = new BackupTableParams();

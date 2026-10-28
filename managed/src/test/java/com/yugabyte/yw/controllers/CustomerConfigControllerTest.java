@@ -336,7 +336,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
   private static final String BACKUPS_BEING_DELETED =
       "Backups stored with configuration %s are still being deleted, which can take a few garbage"
           + " collector runs. Try again once their deletion finishes, or use the V2 delete, which"
-          + " waits for it.";
+          + " removes the configuration once it does.";
 
   /** A config backup in one of the deletion states, as left by a delete the GC has yet to run. */
   private Backup backupBeingDeleted(UUID configUUID, Backup.BackupState state) {

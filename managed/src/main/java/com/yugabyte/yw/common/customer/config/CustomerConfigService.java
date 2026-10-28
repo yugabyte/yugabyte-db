@@ -82,7 +82,8 @@ public class CustomerConfigService {
   /**
    * Refuses to remove a storage config right away while backups stored with it are being deleted:
    * the garbage collector would then find no config for them and leave their files behind. The V2
-   * delete, which lets the garbage collector delete them first, is unaffected.
+   * delete is unaffected: it queues the config, which the garbage collector removes only once none
+   * of its backups is still being deleted.
    */
   public void checkNoBackupsBeingDeleted(CustomerConfig storageConfig) {
     if (Backup.findIfBackupsDeletingWithCustomerConfig(
@@ -92,7 +93,8 @@ public class CustomerConfigService {
           "Backups stored with configuration "
               + storageConfig.getConfigName()
               + " are still being deleted, which can take a few garbage collector runs. Try"
-              + " again once their deletion finishes, or use the V2 delete, which waits for it.");
+              + " again once their deletion finishes, or use the V2 delete, which removes the"
+              + " configuration once it does.");
     }
   }
 

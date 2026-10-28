@@ -195,8 +195,17 @@ public class BackupGarbageCollector {
                 "Error occurred while deleting backups associated with {} storage config",
                 config.getConfigName());
           } finally {
-            config.delete();
-            log.info("Customer Storage config {} is deleted", config.getConfigName());
+            // A backup whose delete failed and was queued again, or was not reached this run, still
+            // needs the config: deleting it now would leave the backup's files behind.
+            if (Backup.findIfBackupsDeletingWithCustomerConfig(
+                customer.getUuid(), config.getConfigUUID())) {
+              log.info(
+                  "Customer Storage config {} is kept until its backups are deleted",
+                  config.getConfigName());
+            } else {
+              config.delete();
+              log.info("Customer Storage config {} is deleted", config.getConfigName());
+            }
           }
         }
         // Delete remaining backups queued for deletion.
