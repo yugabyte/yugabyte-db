@@ -745,7 +745,28 @@ void TabletServiceAdminImpl::BackfillDone(
     return;
   }
   DVLOG(3) << "Received BackfillDone RPC: " << req->DebugString();
+  SubmitChangeMetadataAtLeader(req, resp, std::move(context));
+}
 
+void TabletServiceAdminImpl::HideTableOnTablet(
+    const tablet::ChangeMetadataRequestPB* req, ChangeMetadataResponsePB* resp,
+    rpc::RpcContext context) {
+  if (!CheckUuidMatchOrRespond(
+          server_->tablet_manager(), "HideTableOnTablet", req, resp, &context)) {
+    return;
+  }
+  DVLOG(3) << "Received HideTableOnTablet RPC: " << req->DebugString();
+  if (!req->has_hide_table_id()) {
+    return SetupErrorAndRespond(
+        resp->mutable_error(), STATUS(InvalidArgument, "Missing hide_table_id"),
+        TabletServerErrorPB::UNKNOWN_ERROR, &context);
+  }
+  SubmitChangeMetadataAtLeader(req, resp, std::move(context));
+}
+
+void TabletServiceAdminImpl::SubmitChangeMetadataAtLeader(
+    const tablet::ChangeMetadataRequestPB* req, ChangeMetadataResponsePB* resp,
+    rpc::RpcContext context) {
   server::UpdateClock(*req, server_->Clock());
 
   // For now, we shall only allow this RPC on the leader.

@@ -3381,6 +3381,22 @@ Status Tablet::RemoveTable(const std::string& table_id, const OpId& op_id) {
   return Status::OK();
 }
 
+Status Tablet::HideTable(const TableId& table_id, const OpId& op_id, HybridTime hybrid_time) {
+  auto table_info = metadata_->GetTableInfo(table_id);
+  if (!table_info.ok()) {
+    // Removed by an earlier operation, e.g. hidden table cleanup after the retention ended.
+    LOG_WITH_PREFIX(WARNING) << "Skipping hide of table " << table_id << ": "
+                             << table_info.status();
+    return table_info.status().IsNotFound() ? Status::OK() : table_info.status();
+  }
+  LOG_WITH_PREFIX(INFO) << "Hiding table " << table_id << ", clearing its index map";
+  metadata_->SetSchema(
+      (**table_info).schema(), qlexpr::IndexMap(), /* deleted_cols= */ {},
+      (**table_info).schema_version, op_id, table_id, hybrid_time);
+  vector_indexes_->RefreshDeactivation();
+  return metadata_->Flush();
+}
+
 Status Tablet::MarkBackfillDone(
     const OpId& op_id, const TableId& table_id, uint64_t birth_time) {
   LOG_WITH_PREFIX(INFO) << "Setting backfill as done";

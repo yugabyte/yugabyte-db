@@ -688,6 +688,12 @@ DEFINE_test_flag(int32, system_table_num_tablets, -1,
     "Number of tablets to use when creating the system tables. "
     "If -1, the number of tablets will follow the value provided in the CreateTable request.");
 
+// kLocalPersisted: the tablets replicate the request as a change metadata operation, which a
+// tserver without HideTableOnTablet cannot apply when it replays its log after a rollback.
+DEFINE_RUNTIME_AUTO_bool(hide_retained_colocated_tables_on_tablet, kLocalPersisted, false, true,
+    "When a colocated table with vector indexes is dropped while it is retained, e.g. by a "
+    "snapshot schedule, tell its tablet so that it deactivates the table's vector indexes.");
+
 DEFINE_RUNTIME_AUTO_bool(enable_tablespace_based_transaction_placement, kLocalPersisted,
     false, true,
     "Enable support for tablespace-based transaction locality.");
@@ -7796,6 +7802,17 @@ Status CatalogManager::DeleteTableInternal(
             // Upsert to sys catalog and commit to memory.
             RETURN_NOT_OK(sys_catalog_->Upsert(epoch, colocated_tablet));
             tablet_lock.Commit();
+          }
+          // The tablet keeps the table and its vector indexes, which would otherwise stay active
+          // until the retention ends. A DROP INDEX deactivates its index through the alter of the
+          // indexed table, but a dropped table gets no alter.
+          if (FLAGS_hide_retained_colocated_tables_on_tablet &&
+              !table.table_info_with_write_lock->GetVectorIndexIds().empty()) {
+            auto call = std::make_shared<AsyncHideTableOnTablet>(
+                master_, AsyncTaskPool(), colocated_tablet, table.table_info_with_write_lock.info,
+                epoch);
+            table.table_info_with_write_lock->AddTask(call);
+            WARN_NOT_OK(ScheduleTask(call), "Failed to send HideTableOnTablet request");
           }
           CheckTableDeleted(table.table_info_with_write_lock.info, epoch);
         }

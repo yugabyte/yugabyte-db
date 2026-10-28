@@ -1231,6 +1231,58 @@ bool AsyncRemoveTableFromTablet::SendRequest(int attempt) {
   return true;
 }
 
+AsyncHideTableOnTablet::AsyncHideTableOnTablet(
+    Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
+    const scoped_refptr<TableInfo>& table, LeaderEpoch epoch)
+    : RetryingTSRpcTaskWithTable(
+          master, callback_pool, std::make_unique<PickLeaderReplica>(tablet), table.get(),
+          std::move(epoch), /* async_task_throttler */ nullptr),
+      tablet_(tablet),
+      tablet_id_(tablet->tablet_id()) {
+  req_.set_tablet_id(tablet->id());
+  req_.set_hide_table_id(table->id());
+}
+
+string AsyncHideTableOnTablet::description() const {
+  return Format("HideTableOnTablet RPC ($0) ($1)", table_->ToString(), tablet_->ToString());
+}
+
+void AsyncHideTableOnTablet::HandleResponse(int attempt) {
+  if (!rpc_.status().ok()) {
+    AbortTask(rpc_.status());
+    LOG_WITH_PREFIX(WARNING) << Format(
+        "Got error when hiding table $0 on tablet $1, attempt $2 and error $3",
+        table_->ToString(), tablet_->ToString(), attempt, rpc_.status().ToString());
+    return;
+  }
+  if (resp_.has_error()) {
+    LOG_WITH_PREFIX(WARNING)
+        << "HideTableOnTablet responded with error: " << AsString(resp_.error());
+    switch (resp_.error().code()) {
+      case TabletServerErrorPB::LEADER_NOT_READY_TO_SERVE: FALLTHROUGH_INTENDED;
+      case TabletServerErrorPB::NOT_THE_LEADER:
+        TransitionToWaitingState(MonitoredTaskState::kRunning);
+        break;
+      default:
+        TransitionToCompleteState();
+        break;
+    }
+  } else {
+    TransitionToCompleteState();
+  }
+}
+
+bool AsyncHideTableOnTablet::SendRequest(int attempt) {
+  req_.set_dest_uuid(permanent_uuid());
+  // Orders the operation after the YSQL commit of the drop, which the master has observed: the
+  // vector indexes keep the rows of every transaction committed before it.
+  req_.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
+  ts_admin_proxy_->HideTableOnTabletAsync(req_, &resp_, &rpc_, BindRpcCallback());
+  VLOG_WITH_PREFIX(1) << "Send HideTableOnTablet request (attempt " << attempt << "):\n"
+                      << req_.DebugString();
+  return true;
+}
+
 namespace {
 
 // These are errors that we are unlikely to recover from by retrying the GetSplitKey or SplitTablet

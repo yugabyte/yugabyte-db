@@ -608,6 +608,10 @@ service TabletServerAdminService {
     option (yb.rpc.send_metadata) = true;
   }
 
+  // Tells a colocated tablet that one of its tables was dropped but stays on the tablet, e.g.
+  // retained by a snapshot schedule. Sets ChangeMetadataRequestPB.hide_table_id.
+  rpc HideTableOnTablet(tablet.ChangeMetadataRequestPB) returns (ChangeMetadataResponsePB);
+
   rpc FlushTablets(FlushTabletsRequestPB) returns (FlushTabletsResponsePB);
 
   // Records target_tier as a tablet replica's placement intent and starts moving its SSTs there

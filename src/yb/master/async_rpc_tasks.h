@@ -641,6 +641,35 @@ class AsyncRemoveTableFromTablet : public RetryingTSRpcTaskWithTable {
   tserver::RemoveTableFromTabletResponsePB resp_;
 };
 
+// Tells a colocated tablet that a table on it was dropped but is retained, e.g. by a snapshot
+// schedule, so that it deactivates the table's vector indexes. See
+// tablet::ChangeMetadataRequestPB::hide_table_id.
+class AsyncHideTableOnTablet : public RetryingTSRpcTaskWithTable {
+ public:
+  AsyncHideTableOnTablet(
+      Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
+      const scoped_refptr<TableInfo>& table, LeaderEpoch epoch);
+
+  server::MonitoredTaskType type() const override {
+    return server::MonitoredTaskType::kHideTableOnTablet;
+  }
+
+  std::string type_name() const override { return "Hide Table on Tablet"; }
+
+  std::string description() const override;
+
+ private:
+  TabletId tablet_id() const override { return tablet_id_; }
+
+  bool SendRequest(int attempt) override;
+  void HandleResponse(int attempt) override;
+
+  const TabletInfoPtr tablet_;
+  const TabletId tablet_id_;
+  tablet::ChangeMetadataRequestPB req_;
+  tserver::ChangeMetadataResponsePB resp_;
+};
+
 class AsyncGetTabletSplitKey : public AsyncTabletLeaderTask {
  public:
   struct Data {

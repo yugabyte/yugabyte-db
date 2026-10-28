@@ -2655,6 +2655,8 @@ class PgVectorIndexColocationOnlyTest
   }
 
   void TestDroppedIndexKeepsUnflushedRows(bool skip_deactivation_flush);
+
+  void TestDroppedTableRetainedBySnapshotSchedule(const std::string& drop_statement);
 };
 
 MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgVectorIndexColocationOnlyTest);
@@ -3088,6 +3090,121 @@ TEST_P(PgVectorIndexColocationOnlyTest, DeactivatedIndexDoesNotHoldBackBootstrap
     ASSERT_OK(cluster_->mini_tablet_server(i)->Restart(tserver::WaitTabletsBootstrapped::kTrue));
   }
   ASSERT_OK(wait_dropped_index_caught_up("Dropped index flushed OpId caught up after restart"));
+}
+
+// The vector index of a colocated table dropped or rewritten while a snapshot schedule retains it
+// stays on the shared tablet. Unlike DROP INDEX, this sends no alter of the indexed table, yet the
+// index must be deactivated, or it holds back the tablet's bootstrap and log GC until the retention
+// ends. A restore to before the drop brings it back active. See issue #35818.
+void PgVectorIndexColocationOnlyTest::TestDroppedTableRetainedBySnapshotSchedule(
+    const std::string& drop_statement) {
+  if (!IsColocated()) {
+    // The dropped table's own tablets are hidden as a whole, and nothing else shares them.
+    GTEST_SKIP() << "Colocated only";
+  }
+  constexpr size_t kNumRows = 16;
+  constexpr size_t kNumBusyRows = 128;
+
+  client::SnapshotTestUtil snapshot_util;
+  snapshot_util.SetProxy(&client_->proxy_cache());
+  snapshot_util.SetCluster(cluster_.get());
+
+  auto conn = ASSERT_RESULT(MakeIndex());
+  // Keeps writing to the tablet after the drop.
+  ASSERT_OK(conn.Execute("CREATE TABLE busy (id INT PRIMARY KEY)"));
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto schedule_id = ASSERT_RESULT(snapshot_util.CreateSchedule(
+      nullptr, YQL_DATABASE_PGSQL, DbName(), client::WaitSnapshot::kTrue, 10min, 20min));
+
+  // A rewrite creates an index with the same name, so tell the dropped one by its id.
+  std::unordered_set<TableId> dropped_index_ids;
+  for (const auto& peer : ListTabletPeersWithVectorIndexes(cluster_.get())) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    for (const auto& vector_index : *tablet->vector_indexes().List()) {
+      dropped_index_ids.insert(vector_index->table_id());
+    }
+  }
+  ASSERT_EQ(dropped_index_ids.size(), 1);
+
+  auto dropped_replicas = [this, &dropped_index_ids]() -> Result<
+      std::vector<std::pair<tablet::TabletPeerPtr, docdb::DocVectorIndexPtr>>> {
+    std::vector<std::pair<tablet::TabletPeerPtr, docdb::DocVectorIndexPtr>> result;
+    for (const auto& peer : ListTabletPeersWithVectorIndexes(cluster_.get())) {
+      auto tablet = VERIFY_RESULT(peer->shared_tablet());
+      for (const auto& vector_index : *tablet->vector_indexes().List()) {
+        if (dropped_index_ids.contains(vector_index->table_id())) {
+          result.emplace_back(peer, vector_index);
+        }
+      }
+    }
+    return result;
+  };
+  const auto num_dropped_replicas = ASSERT_RESULT(dropped_replicas()).size();
+  ASSERT_GT(num_dropped_replicas, 0);
+  auto wait_deactivated = [&dropped_replicas, num_dropped_replicas](
+      bool deactivated, const std::string& description) {
+    return WaitFor(
+        [&dropped_replicas, num_dropped_replicas, deactivated]() -> Result<bool> {
+          auto replicas = VERIFY_RESULT(dropped_replicas());
+          return replicas.size() == num_dropped_replicas &&
+                 std::ranges::all_of(replicas, [deactivated](const auto& replica) {
+                   return replica.second->IsDeactivated() == deactivated;
+                 });
+        },
+        30s * kTimeMultiplier, description);
+  };
+
+  auto restore_at = cluster_->mini_master(0)->Now();
+  ASSERT_OK(conn.Execute(drop_statement));
+  ASSERT_OK(wait_deactivated(true, "Dropped index deactivated"));
+
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO busy SELECT generate_series(1, $0)", kNumBusyRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  // The dropped index's flushed OpId keeps up with the regular DB's.
+  ASSERT_OK(WaitFor(
+      [&dropped_replicas]() -> Result<bool> {
+        for (const auto& [peer, index] : VERIFY_RESULT(dropped_replicas())) {
+          auto tablet = VERIFY_RESULT(peer->shared_tablet());
+          auto regular = VERIFY_RESULT(tablet->GetPersistentState()).regular;
+          SCHECK(regular.is_valid_not_empty(), IllegalState,
+                 Format("$0no flushed regular DB OpId", tablet->LogPrefix()));
+          auto frontier = index->GetFlushedFrontier();
+          auto index_op_id = frontier ? frontier->op_id() : OpId();
+          if (index_op_id < regular) {
+            LOG(INFO) << tablet->LogPrefix() << "Dropped index flushed OpId " << index_op_id
+                      << " behind the regular DB's " << regular;
+            return false;
+          }
+        }
+        return true;
+      },
+      30s * kTimeMultiplier, "Dropped index flushed OpId caught up"));
+
+  // Verification skips the dropped index, whose table has no visible rows.
+  ASSERT_EQ(ASSERT_RESULT(VectorIndexInconsistencies()), "");
+
+  ASSERT_OK(snapshot_util.RestoreSnapshotSchedule(schedule_id, restore_at));
+  ASSERT_OK(WaitAllReplicasAppliedLeaderCommitted(cluster_.get(), 30s * kTimeMultiplier));
+  ASSERT_OK(wait_deactivated(false, "Restored index active"));
+
+  conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(InsertRows(conn, kNumRows + 1, kNumRows * 2));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_NO_FATALS(VerifyRead(conn, kNumRows * 2, AddFilter::kFalse));
+  ASSERT_EQ(ASSERT_RESULT(VectorIndexInconsistencies()), "");
+}
+
+TEST_P(PgVectorIndexColocationOnlyTest, DroppedTableRetainedBySnapshotSchedule) {
+  TestDroppedTableRetainedBySnapshotSchedule("DROP TABLE test");
+}
+
+TEST_P(PgVectorIndexColocationOnlyTest, RewrittenTableRetainedBySnapshotSchedule) {
+  TestDroppedTableRetainedBySnapshotSchedule("ALTER TABLE test ALTER COLUMN id TYPE int");
 }
 
 // A restore to before a vector index was created removes the index from the indexed table's index

@@ -656,6 +656,10 @@ class Tablet : public AbstractTablet,
   // Apply replicated remove table operation.
   Status RemoveTable(const std::string& table_id, const OpId& op_id);
 
+  // Apply replicated hide table operation: a colocated table dropped while retained on the tablet.
+  // Clears its index map, so its vector indexes stop taking rows committed after hybrid_time.
+  Status HideTable(const TableId& table_id, const OpId& op_id, HybridTime hybrid_time);
+
   // Truncate this tablet by resetting the content of RocksDB.
   Status Truncate(TruncateOperation* operation);
 

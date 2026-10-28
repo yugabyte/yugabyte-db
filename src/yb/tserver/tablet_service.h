@@ -362,6 +362,10 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
       const tablet::ChangeMetadataRequestPB* req, ChangeMetadataResponsePB* resp,
       rpc::RpcContext context) override;
 
+  void HideTableOnTablet(
+      const tablet::ChangeMetadataRequestPB* req, ChangeMetadataResponsePB* resp,
+      rpc::RpcContext context) override;
+
   // Starts tablet splitting by adding split tablet Raft operation into Raft log of the source
   // tablet.
   void SplitTablet(
@@ -421,6 +425,11 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
       const CreateTabletRequestPB* req, CreateTabletResponsePB* resp, const MonoDelta& timeout);
 
   Result<HostPort> GetLocalPgHostPort();
+
+  // Replicates req as a ChangeMetadataOperation on the tablet leader, responding when it is done.
+  void SubmitChangeMetadataAtLeader(
+      const tablet::ChangeMetadataRequestPB* req, ChangeMetadataResponsePB* resp,
+      rpc::RpcContext context);
 
   Status DoClonePgSchema(const ClonePgSchemaRequestPB* req, ClonePgSchemaResponsePB* resp);
 

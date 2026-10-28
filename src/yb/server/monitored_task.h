@@ -78,6 +78,7 @@ YB_DEFINE_ENUM(MonitoredTaskType,
   (kGetSafeTime)
   (kGetTabletSplitKey)
   (kGetActiveRbsInfo)
+  (kHideTableOnTablet)
   (kInsertPackedSchemaForXClusterTarget)
   (kPrepareDeleteTransactionTablet)
   (kRemoveServer)

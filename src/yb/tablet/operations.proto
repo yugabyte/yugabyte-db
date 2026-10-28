@@ -188,6 +188,11 @@ message ChangeMetadataRequestPB {
 
   // Index inception / birth hybrid time, sent as part of the BackfillDone RPC.
   optional fixed64 birth_time = 23;
+
+  // A colocated table dropped while it is retained on the tablet, e.g. by a snapshot schedule.
+  // Clears its index map, which deactivates its vector indexes. A restore to before the drop sets
+  // the index map back.
+  optional bytes hide_table_id = 24;
 }
 
 message SplitTabletRequestPB {

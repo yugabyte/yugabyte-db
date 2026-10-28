@@ -161,6 +161,7 @@ Status ChangeMetadataOperation::Apply(int64_t leader_term, Status* complete_stat
     REMOVE_TABLE,
     BACKFILL_DONE,
     ADD_MULTIPLE_TABLES,
+    HIDE_TABLE,
   };
 
   MetadataChange metadata_change = MetadataChange::NONE;
@@ -233,6 +234,13 @@ Status ChangeMetadataOperation::Apply(int64_t leader_term, Status* complete_stat
     }
   }
 
+  if (request()->has_hide_table_id()) {
+    metadata_change = MetadataChange::NONE;
+    if (++num_operations == 1) {
+      metadata_change = MetadataChange::HIDE_TABLE;
+    }
+  }
+
   // Get the op id corresponding to this raft op.
   const OpId id = op_id();
 
@@ -274,6 +282,11 @@ Status ChangeMetadataOperation::Apply(int64_t leader_term, Status* complete_stat
       DCHECK_EQ(1, num_operations) << "Invalid number of change metadata operations: "
                                    << num_operations;
       RETURN_NOT_OK(tablet->AddMultipleTables(request()->add_multiple_tables(), id, hybrid_time()));
+      break;
+    case MetadataChange::HIDE_TABLE:
+      DCHECK_EQ(1, num_operations) << "Invalid number of change metadata operations: "
+                                   << num_operations;
+      RETURN_NOT_OK(tablet->HideTable(request()->hide_table_id().ToBuffer(), id, hybrid_time()));
       break;
   }
 
