@@ -1264,8 +1264,7 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
     LOG_IF_WITH_PREFIX(WARNING, !s.ok()) << "Unable to delete intents directory " << intents_dir;
   }
 
-  for (const auto& info : GetAllColocatedVectorIndexes()) {
-    auto storage_dir = vector_index_dir(info->index_info->vector_idx_options());
+  for (const auto& storage_dir : vector_index_dirs()) {
     auto status = fs_manager_->env()->DeleteRecursively(storage_dir);
     if (status.ok()) {
       LOG_WITH_PREFIX(INFO) << "Successfully destroyed vector index storage at: " << storage_dir;
@@ -2991,6 +2990,16 @@ std::string RaftGroupMetadata::vector_index_dir(
     const PgVectorIdxOptionsPB& vector_index_options) const {
   return docdb::GetStorageDir(
       kv_store_.rocksdb_dir, docdb::GetVectorIndexStorageName(vector_index_options));
+}
+
+std::vector<std::string> RaftGroupMetadata::vector_index_dirs() const {
+  const auto infos = GetAllColocatedVectorIndexes();
+  std::vector<std::string> result;
+  result.reserve(infos.size());
+  for (const auto& info : infos) {
+    result.push_back(vector_index_dir(info->index_info->vector_idx_options()));
+  }
+  return result;
 }
 
 docdb::KeyBounds RaftGroupMetadata::MakeKeyBounds() const {

@@ -2335,9 +2335,8 @@ Status TSTabletManager::DeleteTablet(
         tracked_dirs.push_back(tp.path);
       }
     }
-    for (const auto& info : meta->GetAllColocatedVectorIndexes()) {
-      tracked_dirs.push_back(
-          meta->vector_index_dir(info->index_info->vector_idx_options()));
+    for (auto& dir : meta->vector_index_dirs()) {
+      tracked_dirs.push_back(std::move(dir));
     }
     for (const auto& path : tracked_dirs) {
       resp->add_directories()->set_path(path);

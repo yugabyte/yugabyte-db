@@ -68,6 +68,7 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/mem_tracker.h"
+#include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/status_log.h"
 #include "yb/util/subprocess.h"
@@ -3474,6 +3475,66 @@ TEST_P(PgVectorIndexColocationOnlyTest, CloneRemapsVectorIndexMap) {
       ASSERT_RESULT(clone_conn.FetchRow<int64_t>(Format(
           "SELECT id FROM test ORDER BY $0 LIMIT 1", DistanceToQuery(Vector(1))))),
       1);
+}
+
+// The snapshot a clone restores holds the storage of every vector index of the source tablet,
+// including indexes created after the clone time. A storage dir is named by index oid, which the
+// clone keeps, so a later index of the clone that gets such an oid would load the source index's
+// chunks, and DROP DATABASE of the clone would leave the dir behind. See issue #35006.
+TEST_P(PgVectorIndexColocationOnlyTest, CloneDropsStorageOfIndexNotInClone) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+
+  constexpr size_t kNumRows = 8;
+  const std::string kLaterIndexName = "later_vi";
+
+  auto conn = ASSERT_RESULT(CreateSourceTable(kNumRows));
+  ASSERT_OK(CreateIndex(conn));
+
+  // No scheduled snapshot after the first one, so the clone takes a new snapshot, which holds the
+  // storage of the later index.
+  client::SnapshotTestUtil snapshot_util;
+  snapshot_util.SetProxy(&client_->proxy_cache());
+  snapshot_util.SetCluster(cluster_.get());
+  ASSERT_RESULT(snapshot_util.CreateSchedule(
+      nullptr, YQL_DATABASE_PGSQL, kSourceDb, client::WaitSnapshot::kTrue, 30min, 1h));
+
+  const auto clone_time = ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT (extract(epoch FROM clock_timestamp()) * 1000000)::bigint"));
+  ASSERT_OK(CreateIndex(conn, kLaterIndexName, vector_index::DistanceKind::kInnerProduct));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto admin_conn = ASSERT_RESULT(PgMiniTestBase::Connect());
+  ASSERT_OK(admin_conn.ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kCloneDb, kSourceDb, clone_time));
+
+  const auto clone_table_id = ASSERT_RESULT(FindTableId(kCloneDb, "test"));
+  // The clone waits only for the leaders to apply the restore.
+  auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), clone_table_id);
+  ASSERT_FALSE(peers.empty());
+  for (const auto& peer : peers) {
+    const auto& meta = *peer->tablet_metadata();
+    for (const auto& info : meta.GetAllColocatedVectorIndexes()) {
+      ASSERT_NE(info->table_name, kLaterIndexName);
+    }
+    const auto listed_dirs = meta.vector_index_dirs();
+    ASSERT_EQ(listed_dirs.size(), 1) << peer->tablet_id();
+
+    const auto prefix =
+        docdb::GetStorageDir(BaseName(meta.rocksdb_dir()), docdb::kVectorIndexDirPrefix);
+    const auto parent_dir = DirName(meta.rocksdb_dir());
+    std::vector<std::string> dirs_on_disk;
+    for (const auto& child :
+         ASSERT_RESULT(Env::Default()->GetChildren(parent_dir, ExcludeDots::kTrue))) {
+      if (child.starts_with(prefix)) {
+        dirs_on_disk.push_back(JoinPathSegments(parent_dir, child));
+      }
+    }
+    ASSERT_EQ(dirs_on_disk, listed_dirs) << peer->tablet_id();
+  }
+
+  auto clone_conn = ASSERT_RESULT(ConnectToDB(kCloneDb));
+  ASSERT_EQ(ASSERT_RESULT(FetchIdsThroughIndex(clone_conn, kNumRows)).size(), kNumRows);
 }
 
 // A clone restores the source snapshot onto tablets of a new Raft group, the same as a backup
