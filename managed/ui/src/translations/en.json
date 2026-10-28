@@ -666,6 +666,21 @@
         "onlinePrerequisite": "The universe must already be registered on the destination Perf Advisor before online mode can be enabled.",
         "advancedObservabilityLicenseNotice": "<strong>Advanced Observability is a licensed feature.</strong> Please confirm your organization has an Advanced Observability license. If not, contact your Yugabyte account team."
       },
+      "crossCloudFederation": {
+        "menuLabel": "Edit Cross-Cloud Federated Access",
+        "modalTitle": "Edit Cross-Cloud Federated Access",
+        "toggleLabel": "Enable Federated Access for Backups",
+        "subText": "Allow database nodes in this universe to access backup storage in other clouds using federated IAM.",
+        "enableInfoTitle": "Cloud provider configuration required",
+        "enableInfoText": "Before applying changes, make sure you have enabled access to the cloud services you want to use in the <bold>{{providerName}}</bold> provider configuration.",
+        "providerDisabledTitle": "Enable cloud service access to continue",
+        "providerDisabledText": "Federated access for backups is not enabled in the <providerLink>{{providerName}}</providerLink> infrastructure configuration. Enable it before applying changes.",
+        "disableWarningTitle": "Disabling federated access will affect backups and restores",
+        "disableWarningImpact": "Database nodes in this universe will lose federated access to backup storage in other clouds. Backups and restores using that storage will fail, including scheduled backups.",
+        "disableWarningPermissions": "Existing IAM permissions in AWS and Google Cloud will remain unchanged. To revoke those permissions, remove them in the respective cloud providers.",
+        "enableSuccess": "Cross-cloud federated access enabled.",
+        "disableSuccess": "Cross-cloud federated access disabled."
+      },
       "pgCompatibility": {
         "modalTitle": "Edit Enhanced Postgres Compatibility",
         "toggleLabel": "Enhanced Postgres Compatibility",
@@ -2901,7 +2916,10 @@
         "successMsg": "Success. Click <0>here</0> for task details",
         "sameVersionErrMsg": "Universe is already using the imageBundle \"{{image_name}}\". Performing OS patching using it will result in no operation.",
         "verifyImageText": "It is recommended to <b>verify that the selected image can boot successfully</b> on a standalone VM with the same instance type as the universe before initiating the upgrade.",
-        "runPrecheckOnlyButton": "Run Pre-check Only"
+        "runPrecheckOnlyButton": "Run Pre-check Only",
+        "marketplaceBasedWarning": "This upgrade replaces every node with a new instance, which gets a new IP and name, and moves the data onto it. If you have verified that the current and target images are eligible for an in-place upgrade, set the runtime configuration {{configKey}} to allow an in-place image upgrade instead.",
+        "fullMoveInfoContent": "<b>Note!</b><br/><br/>A full move is <b>time-consuming</b>. YBA creates a new node from the target image for each existing node, moves the data onto the new nodes, and then removes the old ones. The new nodes get new IP addresses and names.<br/><br/>Throughout this entire process, no other Universe operations can take place, but your application will remain intact. It is advisable to <b>upgrade during off-peak hours.</b>",
+        "unknownMarketplaceFlagWarning": "Whether this image bundle is based on an OCI Marketplace image is unknown. An in-place upgrade will try to determine that and will fail if the image is Marketplace-based or if the lookup fails."
       },
       "deleteModal": {
         "title": "Delete Linux Version",
