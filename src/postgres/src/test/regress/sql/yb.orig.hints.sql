@@ -217,15 +217,15 @@ explain (hints on, costs off) select sum(a1+x) from v2, t1, t2 where x=a1 and x=
 create temporary view v3 as select a7, a8, a9 z from t7, t8, t9 where a7=a8 and a7=a9 union select a7, a8, a9 from t7, t8, t9 where a7=a8 and a7=a9;
 explain (hints on, costs off) select * from v3, t9 where z=a9;
 
--- YB_TODO_PG19MERGE: Re-enable after
--- https://github.com/yugabyte/yugabyte-db/issues/33985
 create temporary view v4 as select a7, a8, a9 z from t7, t8, t9 where a7=a8 and a7=a9 intersect all select a7, a8, a9 from t7, t8, t9 where a7=a8 and a7=a9;
---explain (hints on, costs off) select * from v4, t9 where z=a9;
+-- TODO(#33985): the hints generated from this plan have a syntax error, which
+-- the internal hint test reports; expected: no warnings or errors.
+explain (hints on, costs off) select * from v4, t9 where z=a9;
 
--- YB_TODO_PG19MERGE: Re-enable after
--- https://github.com/yugabyte/yugabyte-db/issues/33985
 create temporary view v5 as select a7, a8, a9 z from t7, t8, t9 where a7=a8 and a7=a9 except all select a7, a8, a9 from t7, t8, t9 where a7=a8 and a7=a9;
---explain (hints on, costs off) select * from v5, t9 where z=a9;
+-- TODO(#33985): the hints generated from this plan have a syntax error, which
+-- the internal hint test reports; expected: no warnings or errors.
+explain (hints on, costs off) select * from v5, t9 where z=a9;
 
 CREATE OR REPLACE FUNCTION func1(integer, integer) RETURNS integer
     AS 'select count(*) from t1, t2 where a1<$1 and b2>$2 and a1=a2;'
@@ -283,7 +283,8 @@ INSERT INTO hint_plan.hints (query_id, application_name, hints) VALUES (-7371982
 
 select * from hint_plan.hints;
 
--- YB_TODO_PG19MERGE: the hint table row is keyed by PG15's query id and is never matched here
+-- TODO(#36091): the hint table row is keyed by PG15's query id, so it never
+-- matches and the query plans without hints.
 explain (hints on, costs off, verbose on) select * from information_schema.columns;
 
 delete from hint_plan.hints;
@@ -416,15 +417,21 @@ set pg_hint_plan.yb_bad_hint_mode to warn;
 /*+ noNestLoop(t1 t2) NoYbBatchedNL(t1 t2) */ explain (hints on, costs off) select max(a1) from t1 join t2 on a1=a2;
 
 -- Try to force t0-t1 join. Should see errors/warnings since this is not a legal join order.
+-- The fallback plan has no Materialize or Memoize: PG19 builds neither
+-- under a nested loop that a hint disables (#36009).
 /*+ Leading(((t0 t1) t2)) */ explain (hints on, costs off, uids on) select count(*) from t0 left join (t1 join t2 on a1=a2) on a0=a1;
 
 -- Syntax error. Should see warnings/error.
+-- TODO(#36092): the internal hint test then fails the query with "Multiple
+-- hints are not supported"; expected: the plan without hints.
 /*+ nestLoop(t4 t5 */ explain (hints on, costs off) select count(*) from t4 full join t5 on a4=a5;
 
 -- Fix the syntax error and try again. No joy since NLJ cannot be used for FULL join. Will give warnings.
 /*+ nestLoop(t4 t5) */ explain (hints on, costs off, uids on) select count(*) from t4 full join t5 on a4=a5;
 
 -- Cannot do a ROJ so should get a warning.
+-- The fallback plan has no Materialize or Memoize: PG19 builds neither
+-- under a nested loop that a hint disables (#36009).
 /*+ leading((t4 t5)) nestLoop(t4 t5) */ explain (costs on, uids on) select count(*) from t4 right join t5 on a4=a5;
 
 -- Change join order and use all merge joins.  The middle join has no merge
@@ -443,12 +450,16 @@ set pg_hint_plan.yb_bad_hint_mode to replan;
 set pg_hint_plan.yb_bad_hint_mode to warn;
 
 -- Hint a cross join with bad ROWS hint syntax error. Should get warnings/errors.
+-- TODO(#36093): "errors found in hints" is missing; the parse error is
+-- reported only after planning.
 /*+ Leading(((((t5 t4) t1) t3) t2)) Rows(t4 t5 !10000) */ explain (hints on, costs off) select count(*) from t1, t2, t3, t4, t5 where a2=a3 and a2=a4 and a2=a5;
 
 -- Hint a cross join with bad table name ROWS hint. Should get warnings/errors.
 /*+ Leading(((((t5 t4) t1) t3) t2)) Rows(t4 t0 #10000) */ explain (hints on, costs off) select count(*) from t1, t2, t3, t4, t5 where a2=a3 and a2=a4 and a2=a5;
 
 -- Syntax error in parallel hint. Should get warnings/errors.
+-- TODO(#36093): "errors found in hints" is missing; the parse error is
+-- reported only after planning.
 /*+ Parallel(t1 3 hrd) */ explain (hints on, costs off) select count(*) from t1;
 
 -- Bad table name in parallel hint. Should get warnings/errors.
@@ -502,6 +513,8 @@ set pg_hint_plan.yb_bad_hint_mode to error;
 
 -- Try to join subqueries first. This is illegal because they are semijoined so should see warnings.
 set pg_hint_plan.yb_bad_hint_mode to warn;
+-- The fallback plan has no Materialize or Memoize: PG19 builds neither
+-- under a nested loop that a hint disables (#36009).
 /*+ Leading((((unnamed_subquery unnamed_subquery_1) t1) t2)) */ explain (hints on, costs off, uids on) select count(*) from t1, t2 where a1=a2 and b1 in (select a4 from t4 group by a4, b4) and b2 in (select a5 from t5 group by a5, b5);
 
 set pg_hint_plan.yb_bad_hint_mode to replan;
@@ -510,6 +523,8 @@ set pg_hint_plan.yb_bad_hint_mode to replan;
 
 set pg_hint_plan.yb_bad_hint_mode to warn;
 -- Should warn since planner will not try joining t2-t3.
+-- The fallback plan has no Materialize or Memoize: PG19 builds neither
+-- under a nested loop that a hint disables (#36009).
 /*+ noNestLoop(t1 t2) noNestLoop(t1 t3) */ explain (costs off, uids on) select max(a1) from t1 join t2 on a1<a2 join t3 on a1>a3;
 
 drop schema yb_hints cascade;
