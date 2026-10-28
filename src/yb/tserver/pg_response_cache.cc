@@ -250,7 +250,14 @@ class Data {
     // group and the catalog version say which database refilled and at which version. Neither
     // identifies one fill: a paged prefetch caches every page under a key of its own, and a global
     // catalog version bump moves every database to the same version at once.
-    VLOG(1) << "Fill complete for group " << group << " catalog version " << catalog_version
+    //
+    // The outcome separates a fill that stored a catalog from one whose read failed. Both
+    // release their waiters here; only the first hands them a catalog. A filler that went away
+    // without storing anything never reaches this point, since it gives up its claim instead
+    // (see ReleaseClaim).
+    const auto* const outcome =
+        new_state == DataState::kReadyOK ? "Fill complete" : "Fill failed";
+    VLOG(1) << outcome << " for group " << group << " catalog version " << catalog_version
             << " after " << MonoDelta(CoarseMonoClock::Now() - creation_time_) << ", releasing "
             << waiters.size() << " waiters, " << sz << " bytes each";
     for (auto waiter : waiters) {
@@ -262,6 +269,18 @@ class Data {
         updater->Consume(sz);
       }
     }
+  }
+
+  // Give up the claim on an entry whose filler went away without storing anything. Nothing
+  // else clears running_, so without this the entry stays claimed for the rest of its life: no
+  // later caller can take the fill over, and every one that arrives queues behind a fill that
+  // will never land. Clearing it lets the next caller become the filler and serve everyone
+  // already queued. The queue is left in place on purpose -- a waiter can only be released by a
+  // response, and failing them here would turn a timeout the client already handles into a
+  // connection error it cannot act on.
+  void ReleaseClaim() EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    running_ = false;
   }
 
   [[nodiscard]] bool IsValid(CoarseTimePoint now, uint64_t version) const {
@@ -318,6 +337,35 @@ class Data {
   std::vector<PgResponseCacheWaiterPtr> waiters_ GUARDED_BY(mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(Data);
+};
+
+// Held by the setter handed to whichever caller claimed an entry for filling. pg_client_session
+// takes that setter and then may return early before the flush -- SetupSession and
+// PrepareOperations both can -- which destroys it without ever storing a response. Giving the
+// claim back here is what lets a later caller take the fill over.
+class FillGuard {
+ public:
+  FillGuard(std::shared_ptr<Data> data, PgResponseCache::KeyGroup group, uint64_t catalog_version)
+      : data_(std::move(data)), group_(group), catalog_version_(catalog_version) {}
+
+  ~FillGuard() {
+    if (data_) {
+      data_->ReleaseClaim();
+    }
+  }
+
+  void Store(PgResponseCache::Response&& response) {
+    // Moved out first, so the destructor above finds nothing to give back.
+    auto data = std::move(data_);
+    data->Set(std::move(response), group_, catalog_version_);
+  }
+
+ private:
+  std::shared_ptr<Data> data_;
+  const PgResponseCache::KeyGroup group_;
+  const uint64_t catalog_version_;
+
+  DISALLOW_COPY_AND_ASSIGN(FillGuard);
 };
 
 class Value {
@@ -490,7 +538,9 @@ class PgResponseCache::Impl : private GarbageCollector {
       }
       return Setter();
     }
-    return [empty_data = std::move(data), observer = fill_observer_,
+    return [guard = std::make_shared<FillGuard>(
+                std::move(data), cache_info->key_group(), cache_info->catalog_version()),
+            observer = fill_observer_,
             group = cache_info->key_group(),
             version = cache_info->catalog_version(),
             completes_connection_prefetch =
@@ -510,7 +560,7 @@ class PgResponseCache::Impl : private GarbageCollector {
           }
         }
       }
-      empty_data->Set(std::move(response), group, version);
+      guard->Store(std::move(response));
       // After the entry is set, so an observer can rely on the entry being readable.
       if (observer && is_final_round) {
         observer(group, version);
