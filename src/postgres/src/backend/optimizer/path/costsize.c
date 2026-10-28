@@ -7883,6 +7883,8 @@ yb_get_docdb_result_width(Path *path, PlannerInfo *root, bool is_index_path,
 
 			result_width += get_attavgwidth(baserel_oid, attnum);
 		}
+
+		bms_free(attrs);
 	}
 
 	/*
