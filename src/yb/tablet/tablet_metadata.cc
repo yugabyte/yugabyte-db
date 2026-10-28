@@ -704,9 +704,10 @@ Status CheckLocalVectorIndexesInSnapshot(
 // files were written with the snapshot superblock's:
 // - ysql_dump assigns dense DocDB ids and CREATE INDEX records that column id.
 // - id is the permanent index id the restored graph files are stored under.
-// - hnsw.backend and store_payload come from --vector_index_backend and
-//   --vector_index_store_payload; they set the chunk file names and whether each vector carries a
-//   ybctid.
+// - hnsw.backend, store_payload and tenant_hash_group_and_range_components come from
+//   --vector_index_backend, --vector_index_store_payload and
+//   --vector_index_tenant_hash_group_and_range_components; they set the chunk file names, whether
+//   each vector carries a ybctid, and the tenant of each vector.
 // SetSchema keeps the local index_info, so copy the snapshot options onto the local index,
 // matched by colocation id. table_id stays local.
 Status RestoreVectorIndexOptions(TableInfo* target, const TableInfoPB& snapshot_table) {

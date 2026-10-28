@@ -2524,8 +2524,10 @@ Status CatalogManager::ImportTableEntry(
     //   sequentially. If a column was dropped from the indexed table before the snapshot was
     //   taken, the snapshotted and restored tables can have different column ids. Phase 3 fixes
     //   the indexed table's column ids when it imports that table.
-    // - hnsw.backend and store_payload come from --vector_index_backend and
-    //   --vector_index_store_payload, which can differ between the two clusters.
+    // - hnsw.backend, store_payload and tenant_hash_group_and_range_components come from
+    //   --vector_index_backend, --vector_index_store_payload and
+    //   --vector_index_tenant_hash_group_and_range_components, which can differ between the two
+    //   clusters.
     // - id names the tablet's vector index directory. The tablet takes it from the snapshot
     //   superblock, so the restored files are found under the snapshot's id.
     // Here in phase 4, while importing the vector index, we copy the snapshot's options, if

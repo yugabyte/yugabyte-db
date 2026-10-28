@@ -137,6 +137,7 @@ DECLARE_uint32(vector_index_compaction_chunk_max_mem_store_size_percentage);
 DECLARE_uint32(vector_index_concurrent_reads);
 DECLARE_uint32(vector_index_concurrent_writes);
 DECLARE_uint32(vector_index_num_compactions_limit);
+DECLARE_uint32(vector_index_tenant_hash_group_and_range_components);
 DECLARE_uint64(vector_index_compaction_chunk_max_mem_store_size_mb);
 DECLARE_uint64(vector_index_initial_chunk_memstore_size_mb);
 DECLARE_uint64(vector_index_initial_chunk_size);
@@ -6599,6 +6600,41 @@ TEST_F(PgVectorIndexUtilTest, SearchSkipsDeletedVectorsWithStoredYbctid) {
   ASSERT_EQ(AsString(rows), "[6, 7, 8, 9, 10]");
 }
 
+// Master caps the tenant components of a new index below the hash group and range components of
+// its table, so a tenant never covers the whole primary key, and the vectors keep their tenant in
+// the payload.
+TEST_F(PgVectorIndexUtilTest, TenantComponents) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_tenant_hash_group_and_range_components) = 3;
+
+  constexpr size_t kNumRows = 5;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (tenant INT, id BIGINT, embedding vector(3), "
+      "PRIMARY KEY ((tenant) HASH, id))"));
+  ASSERT_OK(conn.Execute("CREATE TABLE single (id INT PRIMARY KEY, embedding vector(3))"));
+  for (const auto* table : {"test", "single"}) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE INDEX $0_idx ON $0 USING ybhnsw (embedding vector_l2_ops)", table));
+  }
+  auto tenant_components = [this](const std::string& index_name) -> Result<uint32_t> {
+    auto index = VERIFY_RESULT(client_->OpenTable(
+        VERIFY_RESULT(GetTableIDFromTableName(index_name))));
+    return index->index_info().vector_idx_options().tenant_hash_group_and_range_components();
+  };
+  // The tenant of PRIMARY KEY ((tenant) HASH, id) is its hash group.
+  ASSERT_EQ(ASSERT_RESULT(tenant_components("test_idx")), 1U);
+  // Every row of a single component key would be its own tenant.
+  ASSERT_EQ(ASSERT_RESULT(tenant_components("single_idx")), 0U);
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test SELECT 1, i, ARRAY[i, 0, 0]::vector FROM generate_series(1, $0) i",
+      kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_EQ(ASSERT_RESULT(NearestIds(conn, kNumRows)), "[1, 2, 3, 4, 5]");
+}
+
 // A table which writes no reverse mapping still marks its tablets as having vector deletions when
 // a row is deleted or its vector is replaced. Until then a search does not fetch the rows of its
 // candidates, after that it does, so the vector left behind by an update is not returned.
@@ -7044,9 +7080,9 @@ TEST_P(PgVectorIndexBackupRestoreTest, IndexAfterDroppedColumn) {
   ASSERT_EQ(rows, (std::vector<int32_t>{7}));
 }
 
-// CREATE INDEX on restore takes the backend and store_payload from the restore cluster's flags,
-// but the restored chunk files were written with the source's. Restore has to apply the source
-// options.
+// CREATE INDEX on restore takes the backend, store_payload and tenant components from the restore
+// cluster's flags, but the restored chunk files were written with the source's. Restore has to
+// apply the source options.
 TEST_P(PgVectorIndexBackupRestoreTest, IndexAfterBackendAndPayloadFlagsChange) {
   if (!UseYbController()) {
     GTEST_SKIP() << "Restoring the snapshot superblock goes through yb-controller";
@@ -7060,18 +7096,20 @@ TEST_P(PgVectorIndexBackupRestoreTest, IndexAfterBackendAndPayloadFlagsChange) {
   constexpr int kNumRows = 10;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_tenant_hash_group_and_range_components) = 1;
   {
     auto admin = ASSERT_RESULT(PgMiniTestBase::Connect());
     ASSERT_OK(admin.ExecuteFormat(
         "CREATE DATABASE $0$1", kSourceDb, IsColocated() ? " COLOCATION = true" : ""));
     auto conn = ASSERT_RESULT(ConnectToDB(kSourceDb));
     ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
-    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (id int PRIMARY KEY, v vector(3))", kTable));
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0 (tenant int, id int, v vector(3), PRIMARY KEY (tenant, id))", kTable));
     ASSERT_OK(conn.ExecuteFormat(
         "CREATE INDEX $0 ON $1 USING ybhnsw (v vector_l2_ops)", kIndex, kTable));
     ASSERT_OK(WaitForVectorIndexBackfills(1, "source index backfill"));
     ASSERT_OK(conn.ExecuteFormat(
-        "INSERT INTO $0 SELECT i, ARRAY[i, 0, 0]::vector FROM generate_series(1, $1) i", kTable,
+        "INSERT INTO $0 SELECT 1, i, ARRAY[i, 0, 0]::vector FROM generate_series(1, $1) i", kTable,
         kNumRows));
   }
   ASSERT_OK(cluster_->FlushTablets());
@@ -7080,16 +7118,21 @@ TEST_P(PgVectorIndexBackupRestoreTest, IndexAfterBackendAndPayloadFlagsChange) {
       ASSERT_RESULT(client_->OpenTable(ASSERT_RESULT(GetTableId(kSourceDb, kIndex))));
   const auto source_options = source_index->index_info().vector_idx_options();
   ASSERT_TRUE(source_options.store_payload());
+  ASSERT_EQ(source_options.tenant_hash_group_and_range_components(), 1U);
   ASSERT_EQ(source_options.hnsw().backend(), HnswBackend::YB_HNSW_HNSWLIB);
 
   tools::TmpDirProvider tmp_dir;
   ASSERT_OK(tools::CreateBackup(*cluster_, tmp_dir, Format("ysql.$0", kSourceDb)));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_tenant_hash_group_and_range_components) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backend) = "yb_hnsw_usearch";
   ASSERT_OK(tools::RestoreBackup(*cluster_, tmp_dir, Format("ysql.$0", kRestoredDb)));
 
   auto check_options = [&source_options](const PgVectorIdxOptionsPB& options) {
     ASSERT_EQ(options.store_payload(), source_options.store_payload());
+    ASSERT_EQ(
+        options.tenant_hash_group_and_range_components(),
+        source_options.tenant_hash_group_and_range_components());
     ASSERT_EQ(options.hnsw().backend(), source_options.hnsw().backend());
     ASSERT_EQ(options.id(), source_options.id());
   };
