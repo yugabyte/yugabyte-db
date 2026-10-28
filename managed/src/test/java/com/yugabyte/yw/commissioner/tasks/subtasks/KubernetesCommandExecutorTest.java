@@ -1378,6 +1378,38 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
   }
 
   @Test
+  public void testHelmInstallRejectsInjectedGFlags() throws IOException {
+    // Overrides saved before the API rejected them are still in the database.
+    defaultUniverse = updateUniverseDetails("dev");
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(), u -> u.getUniverseDetails().fipsEnabled = true);
+    for (String universeOverrides :
+        List.of(
+            "gflags:\n  tserver:\n    tmp_dir: \"/tmp\\n--openssl_require_fips=false\"",
+            "gflags:\n  tserver:\n    tryfromenv: openssl_require_fips\n",
+            "tserver:\n  extraEnv:\n  - name: FLAGS_openssl_require_fips\n    value: \"false\"")) {
+      KubernetesCommandExecutor kubernetesCommandExecutor =
+          AbstractTaskBase.createTask(KubernetesCommandExecutor.class);
+      KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
+      params.ybSoftwareVersion = ybSoftwareVersion;
+      params.providerUUID = defaultProvider.getUuid();
+      params.commandType = KubernetesCommandExecutor.CommandType.HELM_INSTALL;
+      params.config = config;
+      params.universeName = defaultUniverse.getName();
+      params.helmReleaseName = defaultUniverse.getUniverseDetails().nodePrefix;
+      params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+      params.universeConfig = defaultUniverse.getConfig();
+      params.universeDetails = defaultUniverse.getUniverseDetails();
+      params.namespace = namespace;
+      params.universeOverrides = HelmUtils.convertYamlToMap(universeOverrides);
+      kubernetesCommandExecutor.initialize(params);
+      assertThrows(PlatformServiceException.class, kubernetesCommandExecutor::run);
+    }
+    verify(kubernetesManager, never()).helmInstall(any(), any(), any(), any(), any(), any(), any());
+  }
+
+  @Test
   public void testHelmInstallResourceOverrideMerge() throws IOException {
     Map<String, String> defaultAnnotations = new HashMap<>();
     defaultAnnotations.put("OVERRIDES", "resource:\n  master:\n    limits:\n      cpu: 650m");

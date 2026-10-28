@@ -1474,6 +1474,7 @@ public class UniverseCRUDHandler {
     // enforce user tags for cloud instances.
     for (Cluster cluster : taskParams.clusters) {
       validateUserTags(customer, cluster.userIntent);
+      GFlagsUtil.validateGFlagValues(cluster.userIntent);
     }
     validateOciInstanceTags(taskParams);
     if (u.isYbcEnabled()) {

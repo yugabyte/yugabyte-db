@@ -132,6 +132,7 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
       if (newCluster.userIntent.specificGFlags != null) {
         newCluster.userIntent.specificGFlags.validateConsistency();
       }
+      GFlagsUtil.validateGFlagValues(newCluster.userIntent);
       GFlagsUtil.validateFipsCompliancy(
           newCluster.userIntent, universe.getUniverseDetails().fipsEnabled);
       hasClustersToUpdate = true;
@@ -183,6 +184,12 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
           Http.Status.BAD_REQUEST, "Cannot delete gFlags through non-restart upgrade option.");
     }
     GFlagsUtil.checkConsistency(masterGFlags, tserverGFlags);
+    GFlagsUtil.checkNoLineBreaks(masterGFlags);
+    GFlagsUtil.checkNoLineBreaks(tserverGFlags);
+    if (universe.getUniverseDetails().fipsEnabled) {
+      GFlagsUtil.checkFipsGFlagNotDisabled(masterGFlags);
+      GFlagsUtil.checkFipsGFlagNotDisabled(tserverGFlags);
+    }
     return true;
   }
 
