@@ -65,7 +65,7 @@ A replica enters the mode after nothing was appended to its log for `quiescent_t
 3. No Raft config change is pending.
 4. Every peer has L. The leader tracks this as `all_replicated_op_id` in `PeerMessageQueue` and, while the AutoFlag is on, sends it in `ConsensusRequestPB.all_replicated_op_id`. A peer behind L could otherwise only catch up through remote bootstrap. So a peer that stays down keeps the tablet out of the mode until it is removed from the config, after `follower_unavailable_considered_failed_sec`.
 5. The transaction participant has loaded the transactions from the intents DB after start, and has none, including applied ones still waiting for intent cleanup.
-6. No CDC or xCluster streams on the tablet, and no table-level WAL retention (`wal_retention_secs`, which xCluster setup sets).
+6. No CDC or xCluster streams on the tablet: the xCluster and CDC retention index (`Log::GetXReplMinReplicatedIndex`) is unset, and there is no table-level WAL retention (`wal_retention_secs`, which CDC stream setup sets).
 7. No log anchors: remote bootstrap sessions and split parents anchor the segments.
 8. The AutoFlag is promoted (see [Upgrade and rollback](#upgrade-and-rollback)).
 

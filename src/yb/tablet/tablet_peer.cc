@@ -1020,7 +1020,7 @@ Status TabletPeer::EnterQuiescentMode(const OpId& op_id) {
       is_under_cdc_sdk_replication()) {
     return STATUS(NotSupported, "Tablet has xCluster or CDC streams");
   }
-  // The table asks to keep WAL for a time, e.g. while xCluster is being set up.
+  // The table asks to keep WAL for a time, which CDC stream setup sets.
   if (meta_->wal_retention_secs() != 0) {
     return STATUS(NotSupported, "Table WAL retention is set");
   }
