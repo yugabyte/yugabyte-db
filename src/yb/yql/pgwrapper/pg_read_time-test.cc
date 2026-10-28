@@ -1027,9 +1027,9 @@ TEST_F(PgReadTimeTest, RelaxedModeRejectsWrites) {
 }
 
 // #35522: after a transaction reads at a relaxed read time, its later writes
-// can run at that read time. In autocommit, a function's SET clause or a SET in
-// its body can switch the GUC back to strict. A write after that must still
-// fail.
+// can run at that read time. A RESET, or in autocommit a function's SET clause
+// or a SET in its body, can switch the GUC back to strict. A write after that
+// must still fail.
 //
 // Scenario: under relaxed mode, an autocommit SELECT reads, then calls a
 // function that switches back to strict mode in one of these ways and inserts
@@ -1049,6 +1049,12 @@ TEST_F(PgReadTimeTest, RelaxedModeCheckStaysOnForTransaction) {
       "$$BEGIN PERFORM count(*) FROM t; "
       "SET yb_read_after_commit_visibility = strict; "
       "INSERT INTO t VALUES (v); RETURN v; END$$"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION insert_row_reset(v INT) RETURNS INT "
+      "LANGUAGE plpgsql AS "
+      "$$BEGIN PERFORM count(*) FROM t; "
+      "RESET yb_read_after_commit_visibility; "
+      "INSERT INTO t VALUES (v); RETURN v; END$$"));
 
   constexpr auto kRelaxedError = "under relaxed read-after-commit visibility";
   ASSERT_OK(conn.Execute("SET yb_read_after_commit_visibility = relaxed"));
@@ -1056,7 +1062,7 @@ TEST_F(PgReadTimeTest, RelaxedModeCheckStaysOnForTransaction) {
   // The call uses its count, or the planner drops the unused aggregate.
   for (const auto* call :
        {"SELECT insert_row_set_clause(c::int + 1) FROM (SELECT count(*) AS c FROM t) s",
-        "SELECT insert_row_set_statement(2)"}) {
+        "SELECT insert_row_set_statement(2)", "SELECT insert_row_reset(3)"}) {
     SCOPED_TRACE(call);
     ASSERT_NOK_STR_CONTAINS(conn.Fetch(call), kRelaxedError);
   }
