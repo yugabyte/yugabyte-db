@@ -1147,6 +1147,12 @@ public class AWSUtil implements CloudUtil {
         log.trace("Skipping first bucket region fetch of a missing bucket {}", bucket);
         return;
       }
+      if (e.statusCode() < BAD_REQUEST
+          || e.statusCode() >= INTERNAL_SERVER_ERROR
+          || e.statusCode() == TOO_MANY_REQUESTS) {
+        // Not a refusal (an S3-side failure or throttling): passed on as it is.
+        throw e;
+      }
       // S3's message for this call, e.g. "Access Denied", names neither the action nor the bucket.
       AwsErrorDetails details = e.awsErrorDetails();
       String reason =

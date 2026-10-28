@@ -754,6 +754,27 @@ public class AWSUtilTest extends FakeDBApplication {
   }
 
   @Test
+  public void testBucketRegionWarmUpPassesOnS3Failure() {
+    // Throttling or an S3-side failure is not about the GetBucketLocation permission.
+    CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
+    s3Data.backupLocation = "s3://test-bucket/backup";
+    S3Exception slowDown =
+        (S3Exception)
+            S3Exception.builder()
+                .statusCode(503)
+                .awsErrorDetails(AwsErrorDetails.builder().errorMessage("SlowDown").build())
+                .build();
+    when(mockS3Client.getBucketLocation(any(GetBucketLocationRequest.class))).thenThrow(slowDown);
+    S3Exception e =
+        assertThrows(
+            S3Exception.class,
+            () ->
+                mockAWSUtil.warmUpBucketRegion(
+                    mockS3Client, s3Data, YbcBackupUtil.DEFAULT_REGION_STRING));
+    assertEquals("SlowDown", e.awsErrorDetails().errorMessage());
+  }
+
+  @Test
   public void testBucketRegionWarmUpLeavesMissingBucketToTheCheck() {
     // The listing check's HeadBucket reports a missing bucket; the warm-up must not claim it.
     CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
