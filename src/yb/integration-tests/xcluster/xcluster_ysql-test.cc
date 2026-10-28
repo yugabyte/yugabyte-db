@@ -2874,6 +2874,38 @@ TEST_F(XClusterYsqlTest, TestAlterColumnTypeIndexRewrite) {
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ALTER COLUMN c2 TYPE varchar(255)", table_name));
 }
 
+// Manual-mode setup of an index whose column was renamed on the source before setup, so its
+// column name differs from the target's.  Rows must replicate through the index.
+TEST_F(XClusterYsqlTest, RenameIndexedColumnBeforeSetup) {
+  ASSERT_OK(SetUpWithParams({1}, {1}, 1));
+  const auto table_name = producer_table_->name().table_name();
+
+  auto producer_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+  ASSERT_OK(producer_conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN a int", table_name));
+  ASSERT_OK(producer_conn.ExecuteFormat("CREATE INDEX a_idx ON $0 (a)", table_name));
+  ASSERT_OK(producer_conn.ExecuteFormat("ALTER TABLE $0 RENAME COLUMN a TO a2", table_name));
+  auto consumer_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+  ASSERT_OK(consumer_conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN a2 int", table_name));
+  ASSERT_OK(consumer_conn.ExecuteFormat("CREATE INDEX a_idx ON $0 (a2)", table_name));
+
+  auto tables = producer_tables_;
+  const auto index_table_name =
+      ASSERT_RESULT(GetYsqlTable(&producer_cluster_, namespace_name, "public", "a_idx"));
+  ASSERT_OK(producer_client()->OpenTable(index_table_name, &tables.emplace_back()));
+  ASSERT_OK(SetupUniverseReplication(tables));
+
+  ASSERT_OK(producer_conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i FROM generate_series(1, 50) AS i", table_name));
+  // Reads only a_idx, so the count reflects that index's replicated rows.  The predicate on the
+  // indexed column lets the planner use the index.
+  const auto query = Format(
+      "/*+ IndexOnlyScan($0 a_idx) */ SELECT count(*) FROM $0 WHERE a2 >= 10", table_name);
+  ASSERT_STR_CONTAINS(ASSERT_RESULT(consumer_conn.FetchAllAsString("EXPLAIN " + query)), "a_idx");
+  ASSERT_OK(LoggedWaitFor(
+      [&]() -> Result<bool> { return VERIFY_RESULT(consumer_conn.FetchRow<int64_t>(query)) == 41; },
+      MonoDelta::FromSeconds(30 * kTimeMultiplier), "Wait for rows to replicate through a_idx"));
+}
+
 TEST_F(XClusterYsqlTest, RandomFailuresAfterApply) {
   // Fail one third of the Applies.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulate_random_failure_after_apply) = 0.3;
