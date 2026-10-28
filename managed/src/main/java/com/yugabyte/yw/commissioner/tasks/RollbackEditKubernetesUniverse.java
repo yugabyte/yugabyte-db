@@ -103,7 +103,8 @@ public class RollbackEditKubernetesUniverse extends KubernetesTaskBase {
                 + " failed edit is not rollbackable; retry the edit to drive it forward instead.");
       }
       details.requireRollbackable();
-      UniverseDefinitionTaskParams before = details.getBeforeUniverseDetails();
+      // Same pre-edit details the restore persists, so helm renders the current YBC throttle flags.
+      UniverseDefinitionTaskParams before = details.applyBeforeTo(universe.getUniverseDetails());
       UniverseDefinitionTaskParams target = details.getTargetUniverseDetails();
       // A read-replica-only edit checkpointed by an older build has no primary in its target.
       addPrimaryClusterIfMissing(target, before);
