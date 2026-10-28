@@ -13,16 +13,13 @@
 
 #include "yb/util/bytes_formatter.h"
 
-#include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/ascii_ctype.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/cast.h"
 #include "yb/util/enums.h"
 #include "yb/util/format.h"
 
 using std::string;
-using strings::Substitute;
 
 namespace yb {
 
@@ -59,12 +56,12 @@ string FormatBytesAsStr(const char* data,
     } else if (ascii_isprint(c)) {
       result.push_back(c);
     } else {
-      result.append(StringPrintf("\\x%02x", c));
+      result += Format("\\x$0", HexString(c, 2));
     }
     // See if we went above the max size. Don't bother if there is only one byte left to print,
     // so that we can always say "bytes".
     if (result.size() >= max_length && bytes_left > 1) {
-      result.append(Substitute("<...$0 bytes skipped>", bytes_left));
+      result.append(Format("<...$0 bytes skipped>", bytes_left));
       break;
     }
   }

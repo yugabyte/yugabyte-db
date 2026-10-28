@@ -15,6 +15,7 @@
 #include <memory>
 #include <ranges>
 #include <regex>
+#include <set>
 #include <string>
 #include <unordered_set>
 
@@ -26,6 +27,7 @@
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/xcluster_client.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
 
@@ -74,6 +76,7 @@
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/util/stol_utils.h"
 #include "yb/util/string_util.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_tablespace_util.h"
@@ -110,6 +113,7 @@ DECLARE_bool(ysql_enable_auto_analyze_infra);
 DECLARE_int32(tablet_overhead_size_percentage);
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 DECLARE_uint64(ysql_operation_lease_ttl_client_buffer_ms);
+DECLARE_uint64(object_lock_cleanup_interval_ms);
 DECLARE_bool(master_enable_deleted_tablet_cleanup);
 
 namespace yb::integration_tests {
@@ -249,12 +253,15 @@ class MasterPathHandlersBaseItest : public YBMiniClusterTestBase<T> {
 
 class MasterPathHandlersItest : public MasterPathHandlersBaseItest<MiniCluster> {
  public:
+  virtual int32_t tablet_overhead_size_percentage() const { return 20; }
+
   void InitCluster() override {
     MiniClusterOptions opts;
     // Set low heartbeat timeout.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 5000;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze_infra) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_overhead_size_percentage) = 20;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_overhead_size_percentage) =
+        tablet_overhead_size_percentage();
     opts.num_tablet_servers = num_tablet_servers();
     opts.num_masters = num_masters();
     cluster_.reset(new MiniCluster(opts));
@@ -307,6 +314,41 @@ class MasterPathHandlersItest : public MasterPathHandlersBaseItest<MiniCluster> 
   }
 
  protected:
+  // /api/v1/xcluster must list each outbound stream as a JSON object (#33773).
+  Status VerifyXClusterJsonOutboundStreams() {
+    auto table = CreateTestTable();
+    std::set<std::string> expected_stream_ids;
+    for (int i = 0; i < 2; ++i) {
+      auto stream_id = VERIFY_RESULT(client::XClusterClient(*client_).CreateXClusterStream(
+          table->id(), /*active=*/true, cdc::StreamModeTransactional::kFalse));
+      expected_stream_ids.insert(stream_id.ToString());
+    }
+
+    faststring result;
+    RETURN_NOT_OK(GetUrl("/api/v1/xcluster", &result));
+    JsonDocument doc;
+    auto root = VERIFY_RESULT(doc.Parse(result.ToString()));
+    auto outbound_streams = VERIFY_RESULT(root["outbound_streams"].GetArray());
+    std::set<std::string> actual_stream_ids;
+    for (const auto& stream : outbound_streams) {
+      SCHECK(
+          stream.IsObject(), IllegalState, "$0 is not an object: $1", stream.Path(),
+          VERIFY_RESULT(stream.ToString()));
+      SCHECK(
+          stream["metadata"].IsObject(), IllegalState, "$0.metadata is not an object",
+          stream.Path());
+      actual_stream_ids.insert(VERIFY_RESULT(stream["stream_id"].GetString()));
+    }
+    SCHECK_EQ(
+        actual_stream_ids.size(), outbound_streams.size(), IllegalState,
+        "Duplicate stream ids in outbound_streams");
+    SCHECK_FORMAT(
+        actual_stream_ids == expected_stream_ids, IllegalState,
+        "outbound_streams has stream ids $0, expected $1", actual_stream_ids,
+        expected_stream_ids);
+    return Status::OK();
+  }
+
   std::unique_ptr<client::YBClient> client_;
 };
 
@@ -331,6 +373,7 @@ TEST_F(MasterPathHandlersItest, TestMasterPathHandlers) {
   ASSERT_OK(GetUrl("/tablet-replication", &result));
   ASSERT_OK(GetUrl("/load-distribution", &result));
   ASSERT_OK(GetUrl("/api/v1/meta-cache", &result));
+  ASSERT_OK(VerifyXClusterJsonOutboundStreams());
 }
 
 TEST_F(MasterPathHandlersItest, TestDeadTServers) {
@@ -674,6 +717,54 @@ class TabletSplitMasterPathHandlersItest : public MasterPathHandlersItest {
     }
   }
 };
+
+// The on-disk size cell is a multi-line list, which the page's sort script can only compare as
+// text, so the cell carries the total bytes as a numeric sort key.
+TEST_F_EX(
+    MasterPathHandlersItest, TablesPageOnDiskSizeSortKey, TabletSplitMasterPathHandlersItest) {
+  CreateTestTable(1 /* num_tablets */);
+
+  client::TableHandle table;
+  ASSERT_OK(table.Open(table_name, client_.get()));
+  InsertRows(table, /* num_rows_to_insert = */ 500);
+  ASSERT_OK(yb_admin_client_->FlushTables({table_name}));
+
+  // The size cell in the test table's row, capturing its sort key.
+  const std::regex size_cell_regex(
+      table->id() + "[^\n]*?<td[^>]* data-sort=(\\d+)><ul><li>Total: ");
+
+  // Sizes reach the master by heartbeat, so wait until the key is set and matches the total that
+  // the JSON endpoint reports for the same table.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        faststring result;
+        RETURN_NOT_OK(GetUrl("/tables", &result));
+        const auto page = result.ToString();
+        std::smatch match;
+        if (!std::regex_search(page, match, size_cell_regex)) {
+          return false;
+        }
+        const auto sort_key = VERIFY_RESULT(CheckedStoull(match[1].str()));
+
+        RETURN_NOT_OK(GetUrl("/api/v1/tables", &result));
+        JsonDocument doc;
+        auto json_obj = VERIFY_RESULT(doc.Parse(result.ToString()));
+        // Find the same table in the JSON endpoint by uuid.
+        for (const auto& user_table : VERIFY_RESULT(json_obj["user"].GetArray())) {
+          if (VERIFY_RESULT(user_table["uuid"].GetString()) != table->id()) {
+            continue;
+          }
+          auto disk_size_obj = user_table["on_disk_size"];
+          const auto total_bytes =
+              VERIFY_RESULT(disk_size_obj["wal_files_size_bytes"].GetUint64()) +
+              VERIFY_RESULT(disk_size_obj["sst_files_size_bytes"].GetUint64()) +
+              VERIFY_RESULT(disk_size_obj["vector_index_size_bytes"].GetUint64());
+          return sort_key > 0 && sort_key == total_bytes;
+        }
+        return STATUS_FORMAT(NotFound, "Table $0 not in /api/v1/tables", table->id());
+      },
+      30s /* timeout */, "Wait for the tables page to carry the table's size as its sort key"));
+}
 
 TEST_F_EX(MasterPathHandlersItest, ShowDeletedTablets, TabletSplitMasterPathHandlersItest) {
   CreateTestTable(1 /* num_tablets */);
@@ -1233,6 +1324,174 @@ TEST_F_EX(
         << "Tablet reported underreplicated, expected_num_replicas="
         << ASSERT_RESULT(tablet_json["expected_num_replicas"].GetInt32());
   }
+}
+
+class MasterPathHandlersHiddenTablespaceItest :
+    public MasterPathHandlersUnderReplicationItest {
+ public:
+  void SetUp() override {
+    opts_.enable_ysql = true;
+    // Fast refresh: the test waits for it to place tables and to observe the canary's move.
+    opts_.extra_master_flags.push_back("--ysql_tablespace_info_refresh_secs=1");
+    MasterPathHandlersUnderReplicationItest::SetUp();
+  }
+
+ protected:
+  // tablet_server(i) is started with --placement_zone=z${i}, so index == zone.
+  std::string TServerUuidInZone(size_t zone_index) {
+    return cluster_->tablet_server(zone_index)->uuid();
+  }
+
+  Result<client::YBTableName> FindTable(const std::string& table_name) {
+    auto client = VERIFY_RESULT(cluster_->CreateClient());
+    for (const auto& listed :
+         VERIFY_RESULT(client->ListTables(table_name, /* exclude_ysql */ false))) {
+      if (listed.table_name() == table_name) {
+        return listed;
+      }
+    }
+    return STATUS_FORMAT(NotFound, "Table $0 not found", table_name);
+  }
+
+  Result<master::TabletLocationsPB> GetSoleTablet(const client::YBTableName& table) {
+    master::GetTableLocationsResponsePB locs;
+    RETURN_NOT_OK(itest::GetTableLocations(
+        cluster_.get(), table, 10s * kTimeMultiplier, RequireTabletsRunning::kTrue, &locs));
+    SCHECK_EQ(locs.tablet_locations_size(), 1, IllegalState, "Expected exactly one tablet");
+    return locs.tablet_locations(0);
+  }
+
+  Status WaitForSoleReplicaOn(const std::string& table_name, const std::string& ts_uuid) {
+    return WaitFor([&]() -> Result<bool> {
+      auto table = FindTable(table_name);
+      if (!table.ok()) {
+        return false;
+      }
+      auto tablet = GetSoleTablet(*table);
+      if (!tablet.ok()) {
+        return false;
+      }
+      return tablet->replicas_size() == 1 &&
+             tablet->replicas(0).ts_info().permanent_uuid() == ts_uuid;
+    }, 60s * kTimeMultiplier, Format("Wait for sole replica on TS $0", ts_uuid));
+  }
+
+  // What the master itself resolves via GetTablespaceForTable, as rendered by HandleTablePage.
+  // Asserting on this, not only on the alert, rejects a fix that merely stops reporting.
+  // nullopt: no tablespace resolved, so the row is not rendered.
+  Result<std::optional<uint32_t>> ResolvedTablespaceOid(const TableId& table_id) {
+    faststring result;
+    RETURN_NOT_OK(GetUrl("/table?id=" + table_id, &result));
+    const std::string page = result.ToString();
+    const std::string marker = "Tablespace OID:</td><td>";
+    const auto pos = page.find(marker);
+    if (pos == std::string::npos) {
+      return std::nullopt;
+    }
+    auto start = pos + marker.size();
+    auto end = start;
+    while (end < page.size() && isdigit(static_cast<unsigned char>(page[end]))) {
+      ++end;
+    }
+    SCHECK_GT(end, start, IllegalState, "Tablespace OID row present but held no digits");
+    return static_cast<uint32_t>(std::stoul(page.substr(start, end - start)));
+  }
+
+  // nullopt when the tablet is absent from the endpoint; otherwise it is
+  // expected_num_replicas, which differs per defect and makes failures self-describing.
+  Result<std::optional<int32_t>> UnderReplicatedExpectedReplicas(const TabletId& tablet_id) {
+    faststring result;
+    RETURN_NOT_OK(GetUrl("/api/v1/tablet-under-replication", &result));
+    JsonDocument doc;
+    auto json_obj = VERIFY_RESULT(doc.Parse(result.ToString()));
+    for (const auto& tablet_json :
+         VERIFY_RESULT(json_obj["underreplicated_tablets"].GetArray())) {
+      if (VERIFY_RESULT(tablet_json["tablet_uuid"].GetString()) == tablet_id) {
+        return VERIFY_RESULT(tablet_json["expected_num_replicas"].GetInt32());
+      }
+    }
+    return std::nullopt;
+  }
+
+  Result<uint32_t> TablespaceOidByName(pgwrapper::PGConn* conn, const std::string& name) {
+    return static_cast<uint32_t>(VERIFY_RESULT(conn->FetchRow<int64_t>(
+        Format("SELECT oid::int8 FROM pg_tablespace WHERE spcname = '$0'", name))));
+  }
+
+  Status StartSnapshotSchedule() {
+    // Keyspace-level filter: namespace only, no table name. The two-argument
+    // YBTableName constructor sets the TABLE name, which would silently produce a
+    // schedule covering nothing and make DROP delete rather than hide.
+    client::YBTableName keyspace(YQL_DATABASE_PGSQL);
+    keyspace.set_namespace_name("yugabyte");
+    RETURN_NOT_OK(yb_admin_client_->CreateSnapshotSchedule(
+        keyspace,
+        MonoDelta::FromMinutes(1) /* interval */,
+        MonoDelta::FromMinutes(60) /* retention */));
+    return Status::OK();
+  }
+};
+
+// Regression test for https://github.com/yugabyte/yugabyte-db/issues/31968.
+// A table's tablespace must survive the table being hidden by PITR and survive a master
+// failover, because the master's only other source for it is the pg_class row that DROP
+// deletes. Each assertion below rejects a different incomplete fix.
+TEST_F_EX(MasterPathHandlersItest, TestHiddenTableTablespaceSurvivesDropAndFailover,
+          MasterPathHandlersHiddenTablespaceItest) {
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+
+  // ts_a pins to z0, ts_b to z1; both RF-1 so the difference is unambiguous.
+  const test::Tablespace ts_a("ts_a", 1, {test::PlacementBlock("c", "r", "z0", 1)});
+  const test::Tablespace ts_b("ts_b", 1, {test::PlacementBlock("c", "r", "z1", 1)});
+  ASSERT_OK(conn.Execute(ts_a.CreateCmd()));
+  ASSERT_OK(conn.Execute(ts_b.CreateCmd()));
+  const auto ts_b_oid = ASSERT_RESULT(TablespaceOidByName(&conn, "ts_b"));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY) TABLESPACE ts_a"));
+  ASSERT_OK(WaitForSoleReplicaOn("t", TServerUuidInZone(0)));
+  const auto table = ASSERT_RESULT(FindTable("t"));
+  const auto table_id = table.table_id();
+  const auto tablet_id = ASSERT_RESULT(GetSoleTablet(table)).tablet_id();
+  ASSERT_EQ(ASSERT_RESULT(UnderReplicatedExpectedReplicas(tablet_id)), std::nullopt);
+  // Moved to ts_b after the DROP below; seeing the move proves a refresh read pg_class post-DROP.
+  ASSERT_OK(conn.Execute("CREATE TABLE canary (k INT PRIMARY KEY) TABLESPACE ts_a"));
+  const auto canary_id = ASSERT_RESULT(FindTable("canary")).table_id();
+
+  ASSERT_OK(StartSnapshotSchedule());
+  ASSERT_OK(conn.Execute("ALTER TABLE t SET TABLESPACE ts_b"));
+  // The load balancer must have finished the move before the drop, otherwise
+  // expected and actual placement still agree and the under-replication checks pass vacuously.
+  ASSERT_OK(WaitForSoleReplicaOn("t", TServerUuidInZone(1)));
+  ASSERT_EQ(ASSERT_RESULT(ResolvedTablespaceOid(table_id)), ts_b_oid);
+  ASSERT_EQ(ASSERT_RESULT(UnderReplicatedExpectedReplicas(tablet_id)), std::nullopt);
+
+  ASSERT_OK(conn.Execute("DROP TABLE t"));
+  // With the fix nothing about t changes when the map is rebuilt without its pg_class row, so
+  // wait on canary instead: the refresh that reports canary's move read pg_class after the DROP.
+  ASSERT_OK(conn.Execute("ALTER TABLE canary SET TABLESPACE ts_b"));
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto oid = ResolvedTablespaceOid(canary_id);
+    return oid.ok() && *oid == ts_b_oid;
+  }, 30s * kTimeMultiplier, "Wait for a tablespace refresh after the DROP"));
+
+  // Rejects suppressing the alert: this asserts what the master believes, not what it
+  // reports. Without the fix the map miss falls back to ts_a, the creation-time value.
+  ASSERT_EQ(ASSERT_RESULT(ResolvedTablespaceOid(table_id)), ts_b_oid)
+      << "Master resolved the wrong tablespace for the hidden table";
+  ASSERT_EQ(ASSERT_RESULT(UnderReplicatedExpectedReplicas(tablet_id)), std::nullopt);
+
+  // Rejects keeping the tablespace only in memory: a new leader would load it empty and
+  // fall back to the cluster default. Nothing about the table changed between the two
+  // assertions.
+  ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
+  // Page requests still go to the master chosen in SetUp(); if it is no longer leader, it
+  // fetches the page from the new leader (RedirectToLeader).
+  // Errors are retried: the request can fail while the new leader is still coming up.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto oid = ResolvedTablespaceOid(table_id);
+    return oid.ok() && *oid == ts_b_oid;
+  }, 30s * kTimeMultiplier, "Master lost the hidden table's tablespace across a failover"));
+  ASSERT_EQ(ASSERT_RESULT(UnderReplicatedExpectedReplicas(tablet_id)), std::nullopt);
 }
 
 class MasterPathHandlersUnderReplicationTwoTsItest :
@@ -2111,6 +2370,23 @@ TEST_F(MasterPathHandlersItest, HeapProfile) {
 #endif
 }
 
+class MasterPathHandlersNoTabletOverheadItest : public MasterPathHandlersItest {
+ public:
+  int32_t tablet_overhead_size_percentage() const override { return 0; }
+  int num_tablet_servers() const override { return 1; }
+  int num_masters() const override { return 1; }
+};
+
+// Without tablet overhead memory the universe has no computable tablet peer limit.
+TEST_F_EX(
+    MasterPathHandlersItest, TabletPeerLimitUndefinedWithoutOverhead,
+    MasterPathHandlersNoTabletOverheadItest) {
+  auto cols = ASSERT_RESULT(GetHtmlTableColumn(
+      "/tablet-servers", "universe_summary", "Tablet Peer Limit (Unenforced)"));
+  ASSERT_EQ(cols.size(), 1);
+  ASSERT_EQ(cols[0], "limit undefined");
+}
+
 TEST_F(MasterPathHandlersItest, TabletLimitsSkipDeadTServers) {
   const std::string kTargetHeader = "Tablet Peer Limit (Unenforced)";
   auto cols =
@@ -2218,10 +2494,12 @@ TEST_F_EX(
 TEST_F(MasterPathHandlersItest, TestLeaseStatusColumn) {
   const MonoDelta kWaitTimeout = 10s;
   const MonoDelta kLeaseTimeoutWaitBufferTime = 2s;
+  // The master only notices an expired lease on its next cleanup pass.
   const auto lease_timeout =
       MonoDelta::FromMilliseconds(
           FLAGS_master_ysql_operation_lease_ttl_ms +
-          FLAGS_ysql_operation_lease_ttl_client_buffer_ms) +
+          FLAGS_ysql_operation_lease_ttl_client_buffer_ms +
+          FLAGS_object_lock_cleanup_interval_ms) +
       kLeaseTimeoutWaitBufferTime;
   for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     ASSERT_OK(cluster_->mini_tablet_server(i)->server()->StartYSQLLeaseRefresher());

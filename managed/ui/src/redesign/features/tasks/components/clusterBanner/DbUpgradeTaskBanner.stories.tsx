@@ -1,4 +1,4 @@
-import type { ComponentType } from 'react';
+import type { ComponentProps, ComponentType } from 'react';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 
 import { dbUpgradeManagementPanelMswHandlers } from '@app/mocks/mock-data/dbUpgradeManagementPanelMswHandlers';
@@ -24,7 +24,14 @@ import {
   type UniverseSoftwareUpgradePrecheckResp
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 
+import { SOFTWARE_UPGRADE_COMPLETED_BANNER_MAX_AGE_DAYS } from '@app/redesign/features/tasks/TaskUtils';
+
 import { DbUpgradeTaskBanner } from './DbUpgradeTaskBanner';
+
+type UpgradeSuccessfulStoryArgs = ComponentProps<typeof DbUpgradeTaskBanner> & {
+  /** Storybook-only: drives `task.completionTime` to exercise the 7-day visibility window. */
+  taskCompletionTime: number;
+};
 
 const mockUniverse = generateUniverseMockResponse();
 
@@ -195,17 +202,57 @@ export const UpgradeSuccessfulPendingFinalize: Story = {
   }
 };
 
-const upgradeSuccessfulTask = createDbUpgradeTaskMock({
+const upgradeSuccessfulBaseTask = createDbUpgradeTaskMock({
   status: TaskState.SUCCESS,
   softwareUpgradeProgress: allAzsCompletedSoftwareUpgradeProgress
 });
 
-export const UpgradeSuccessful: Story = {
-  ...storyWithBannerMsw(upgradeSuccessfulTask, {
-    universeInfoOverrides: { software_upgrade_state: UniverseInfoSoftwareUpgradeState.Ready }
-  }),
+const upgradeSuccessfulStoryMsw = storyWithBannerMsw(upgradeSuccessfulBaseTask, {
+  universeInfoOverrides: { software_upgrade_state: UniverseInfoSoftwareUpgradeState.Ready }
+});
+
+export const UpgradeSuccessful: StoryObj<UpgradeSuccessfulStoryArgs> = {
+  ...upgradeSuccessfulStoryMsw,
+  parameters: {
+    ...upgradeSuccessfulStoryMsw.parameters,
+    docs: {
+      description: {
+        story: `Success banner shows only when completion is within ${SOFTWARE_UPGRADE_COMPLETED_BANNER_MAX_AGE_DAYS} days. Use **Upgrade completed at** to move the date inside or outside that window.`
+      }
+    }
+  },
+  argTypes: {
+    task: { control: false },
+    universeUuid: { control: false },
+    taskCompletionTime: {
+      name: 'Upgrade completed at',
+      control: 'date'
+    },
+    onDismissDbUpgradeTaskBanner: { action: 'dismissed banner' }
+  },
   args: {
-    task: upgradeSuccessfulTask
+    task: upgradeSuccessfulBaseTask,
+    universeUuid: DB_UPGRADE_TASK_MOCK_UNIVERSE_UUID,
+    taskCompletionTime: Date.now()
+  },
+  render: ({
+    task,
+    universeUuid,
+    taskCompletionTime,
+    onDismissDbUpgradeTaskBanner
+  }: UpgradeSuccessfulStoryArgs) => {
+    const completionDate = new Date(taskCompletionTime);
+    const completionTime = Number.isNaN(completionDate.getTime())
+      ? new Date().toISOString()
+      : completionDate.toISOString();
+
+    return (
+      <DbUpgradeTaskBanner
+        task={{ ...task, completionTime }}
+        universeUuid={universeUuid}
+        onDismissDbUpgradeTaskBanner={onDismissDbUpgradeTaskBanner}
+      />
+    );
   }
 };
 
@@ -238,7 +285,7 @@ export const UpgradeFailed: Story = {
   }
 };
 
-/** User-aborted mid-upgrade — same ERROR banner as {@link UpgradeFailed}. */
+/** User aborted mid-upgrade while the universe is not Ready — error banner, aborted title. */
 const upgradeAbortedTask = createDbUpgradeTaskMock({
   status: TaskState.ABORTED,
   softwareUpgradeProgress: {
@@ -268,7 +315,7 @@ export const UpgradeAborted: Story = {
   }
 };
 
-/** Task failed while universe is Ready (e.g. precheck) — ALERT banner vs {@link UpgradeFailed} ERROR. */
+/** Task failed while the universe is still Ready — canceled warning, not the failed error banner. */
 const upgradeFailedDuringPrecheckTask = createDbUpgradeTaskMock({
   status: TaskState.FAILURE,
   omitSoftwareUpgradeProgress: true
@@ -280,6 +327,21 @@ export const UpgradeFailedDuringPrecheck: Story = {
   }),
   args: {
     task: upgradeFailedDuringPrecheckTask
+  }
+};
+
+/** User aborted while the universe is still Ready — aborted warning, not the mid-upgrade error banner. */
+const upgradeAbortedUniverseReady = createDbUpgradeTaskMock({
+  status: TaskState.ABORTED,
+  omitSoftwareUpgradeProgress: true
+});
+
+export const UpgradeAbortedUniverseReady: Story = {
+  ...storyWithBannerMsw(upgradeAbortedUniverseReady, {
+    universeInfoOverrides: { software_upgrade_state: UniverseInfoSoftwareUpgradeState.Ready }
+  }),
+  args: {
+    task: upgradeAbortedUniverseReady
   }
 };
 

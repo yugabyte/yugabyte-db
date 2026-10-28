@@ -367,6 +367,15 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
               + " the provider scope.",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> skipTmpDirGflagConsistencyCheck =
+      new ConfKeyInfo<>(
+          "yb.filepaths.skip_tmp_dir_gflag_consistency_check",
+          ScopeType.PROVIDER,
+          "Skip tmp_dir gflag consistency check",
+          "When true, skips the on-prem create-universe precheck that requires provider"
+              + " remoteTmpDirectory to match master/tserver tmp_dir gflags.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> operationStatusPollingInterval =
       new ConfKeyInfo<>(
           "yb.gcp.operations.status_polling_interval",
@@ -478,6 +487,16 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Enables geo-partitioning for universes created with this provider.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<Boolean> managedLoadBalancerEnabled =
+      new ConfKeyInfo<>(
+          "yb.universe.managed_load_balancer_enabled",
+          ScopeType.PROVIDER,
+          "Enable managed load balancers",
+          "Lets universes created with this provider ask YBA to create and manage a private load"
+              + " balancer. Preview.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 
   public static final ConfKeyInfo<Boolean> ybcEnabledForProvider =
       new ConfKeyInfo<>(
@@ -626,6 +645,16 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Custom home directory for the yb user for CSPs and sudo onprem mainly for testing"
               + " purposes",
           ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> allowYnpManagedProviderEdit =
+      new ConfKeyInfo<>(
+          "yb.provider.allow_ynp_managed_provider_edit",
+          ScopeType.PROVIDER,
+          "Allow Editing YNP Managed Provider",
+          "Allow users to change the configuration of an on-prem provider created by YNP. Use only"
+              + " as a workaround when YNP cannot apply a needed change, because changes made here"
+              + " are not applied to the nodes that are already provisioned.",
+          ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> nodeAgentUseUniverseCertificatesOnInstall =
       new ConfKeyInfo<>(

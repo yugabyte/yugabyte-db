@@ -32,7 +32,6 @@
 
 #include <algorithm>
 #include <memory>
-#include <sstream>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -51,7 +50,6 @@
 #include "yb/docdb/docdb_compaction_context.h"
 
 #include "yb/gutil/casts.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master-test_base.h"
@@ -59,7 +57,6 @@
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_call_home.h"
 #include "yb/master/master_client.proxy.h"
-#include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_cluster_client.h"
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_ysql_lease_client.h"
@@ -67,8 +64,9 @@
 #include "yb/master/master_heartbeat.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog.h"
-
+#include "yb/master/sys_catalog_constants.h"
 #include "yb/master/ts_manager.h"
+
 #include "yb/rpc/connection_context.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
@@ -76,29 +74,27 @@
 #include "yb/rpc/yb_rpc.h"
 
 #include "yb/server/call_home-test-util.h"
-#include "yb/server/call_home.h"
 #include "yb/server/server_base.proxy.h"
 
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/tserver_admin.service.h"
+#include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
+#include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
-#include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
-#include "yb/util/tsan_util.h"
-#include "yb/util/user.h"
 
-using std::shared_ptr;
 using std::make_shared;
+using std::shared_ptr;
 using std::string;
 using std::vector;
 
@@ -116,19 +112,16 @@ DECLARE_bool(master_enable_universe_uuid_heartbeat_check);
 DECLARE_bool(enable_ysql);
 DECLARE_bool(enable_qos);
 DECLARE_bool(enable_db_history_retention_pins);
-DECLARE_int32(qos_max_db_count);
-DECLARE_int32(tserver_unresponsive_timeout_ms);
 DECLARE_int32(db_history_retention_pin_max_txn_age_sec);
+DECLARE_int32(qos_max_db_count);
 DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
+DECLARE_int32(tserver_unresponsive_timeout_ms);
 DECLARE_uint32(initial_tserver_registration_duration_secs);
 
-METRIC_DECLARE_counter(block_cache_misses);
-METRIC_DECLARE_counter(block_cache_hits);
+METRIC_DECLARE_gauge_uint64(block_cache_usage);
 
-namespace yb {
-namespace master {
+namespace yb::master {
 
-using strings::Substitute;
 
 class MasterTest : public MasterTestBase {
  protected:
@@ -177,6 +170,31 @@ TEST_F(MasterTest, TestPingServer) {
   rpc::ProxyCache proxy_cache(client_messenger_.get());
   server::GenericServiceProxy generic_proxy(&proxy_cache, mini_master_->bound_rpc_addr());
   ASSERT_OK(generic_proxy.Ping(req, &resp, ResetAndGetController()));
+}
+
+// Masters do not take an active table list, and their scrapes are never filtered by one.
+TEST_F(MasterTest, ActiveTableMetricsNotSupported) {
+  rpc::ProxyCache proxy_cache(client_messenger_.get());
+  tserver::TabletServerServiceProxy proxy(&proxy_cache, mini_master_->bound_rpc_addr());
+  tserver::SetActiveTableIdsForMetricsRequestPB req;
+  tserver::SetActiveTableIdsForMetricsResponsePB resp;
+  req.add_table_ids(kSysCatalogTableId);
+  ASSERT_OK(proxy.SetActiveTableIdsForMetrics(req, &resp, ResetAndGetController()));
+  ASSERT_TRUE(resp.has_error());
+  ASSERT_TRUE(StatusFromPB(resp.error().status()).IsNotSupported())
+      << resp.error().DebugString();
+
+  // An opted-in scrape, with an always-export list that matches nothing, still exports the
+  // sys catalog table metrics.
+  EasyCurl curl;
+  faststring buffer;
+  ASSERT_OK(curl.FetchURL(
+      Format(
+          "http://$0/prometheus-metrics?show_help=false&version=v2&apply_table_IDs_filter=true"
+          "&table_always_allowlist=NONE",
+          yb::ToString(mini_master_->bound_http_addr())),
+      &buffer));
+  ASSERT_STR_CONTAINS(buffer.ToString(), Format(R"#(table_id="$0")#", kSysCatalogTableId));
 }
 
 // Test that shutting down a MiniMaster without starting it does not
@@ -1074,27 +1092,20 @@ TEST_F(MasterTest, TestCatalogHasBlockCache) {
 
   // Check prometheus metrics via webserver to verify block_cache metrics exist
   string addr = AsString(mini_master_->bound_http_addr());
-  string url = strings::Substitute("http://$0/prometheus-metrics", AsString(addr));
+  string url = Format("http://$0/prometheus-metrics", AsString(addr));
   EasyCurl curl;
   faststring buf;
 
   ASSERT_OK(curl.FetchURL(url, &buf));
-  ASSERT_STR_CONTAINS(buf.ToString(), "block_cache_misses");
-  ASSERT_STR_CONTAINS(buf.ToString(), "block_cache_hits");
+  ASSERT_STR_CONTAINS(buf.ToString(), "block_cache_usage");
 
-  // Check block cache metrics directly and verify
-  // that the counters are greater than 0
+  // Check block cache usage metric directly and verify usage is greater than 0.
   const auto metric_map = mini_master_->master()->metric_entity()->TEST_UsageMetricsMap();
 
-  scoped_refptr<Counter> cache_misses_counter = down_cast<Counter *>(
-      FindOrDie(metric_map,
-                &METRIC_block_cache_misses).get());
-  scoped_refptr<Counter> cache_hits_counter = down_cast<Counter *>(
-      FindOrDie(metric_map,
-                &METRIC_block_cache_hits).get());
+  auto cache_usage = down_cast<AtomicGauge<uint64_t>*>(
+      FindOrDie(metric_map, &METRIC_block_cache_usage).get());
 
-  ASSERT_GT(cache_misses_counter->value(), 0);
-  ASSERT_GT(cache_hits_counter->value(), 0);
+  ASSERT_GT(cache_usage->value(), 0);
 }
 
 TEST_F(MasterTest, TestTablegroups) {
@@ -1377,7 +1388,7 @@ TEST_F(MasterTest, TestNamespaces) {
     const Status s = CreateNamespace(other_ns_name, &resp);
     ASSERT_TRUE(s.IsAlreadyPresent()) << s.ToString();
     ASSERT_STR_CONTAINS(s.ToString(),
-        Substitute("Keyspace '$0' already exists", other_ns_name));
+        Format("Keyspace '$0' already exists", other_ns_name));
   }
   {
     ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
@@ -1451,7 +1462,7 @@ TEST_F(MasterTest, TestNamespaces) {
     const Status s = CreateNamespace(default_namespace_name, &resp);
     ASSERT_TRUE(s.IsAlreadyPresent()) << s.ToString();
     ASSERT_STR_CONTAINS(s.ToString(),
-        Substitute("Keyspace '$0' already exists", default_namespace_name));
+        Format("Keyspace '$0' already exists", default_namespace_name));
   }
   {
     ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
@@ -1722,6 +1733,82 @@ TEST_F(MasterTest, TestDeletingNonEmptyNamespace) {
         {
             EXPECTED_DEFAULT_AND_SYSTEM_NAMESPACES
         }, namespaces);
+  }
+}
+
+// Dropping a YSQL database deletes its base tables, indexes and colocation parents together in
+// CatalogManager::DeleteYsqlDBTables. The other namespace deletion tests only create base tables.
+TEST_F(MasterTest, TestDeletingNamespaceWithIndexesAndTablegroup) {
+  const NamespaceName ns_name = "test_pgsql";
+  CreateNamespaceResponsePB ns_resp;
+  ASSERT_OK(CreateNamespace(ns_name, YQLDatabase::YQL_DATABASE_PGSQL, &ns_resp));
+  const NamespaceId ns_id = ns_resp.id();
+
+  const Schema kTableSchema({
+      ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
+      ColumnSchema("v1", DataType::UINT64) });
+  const Schema kIndexSchema(
+      {ColumnSchema("v1", DataType::UINT64, ColumnKind::RANGE_ASC_NULL_FIRST)});
+
+  constexpr int kNumTables = 3;
+  for (int i = 0; i < kNumTables; ++i) {
+    const TableName table_name = Format("testtb_pgsql_$0", i);
+    ASSERT_OK(CreatePgsqlTable(ns_id, table_name, kTableSchema));
+
+    ListTablesRequestPB list_req;
+    list_req.set_name_filter(table_name);
+    ListTablesResponsePB tables;
+    DoListTables(list_req, &tables);
+    ASSERT_EQ(1, tables.tables_size());
+    const TableId table_id = tables.tables(0).id();
+
+    CreateTableRequestPB req;
+    req.set_indexed_table_id(table_id);
+    auto* index_info = req.mutable_index_info();
+    index_info->set_indexed_table_id(table_id);
+    index_info->set_hash_column_count(1);
+    index_info->add_indexed_hash_column_ids(10);
+    auto* col = index_info->add_columns();
+    col->set_column_name("v1");
+    col->set_indexed_column_id(10);
+    ASSERT_OK(CreatePgsqlTable(ns_id, Format("testin_pgsql_$0", i), kIndexSchema, &req));
+  }
+
+  // The tablegroup contributes a colocation parent table and one colocated user table.
+  const TablegroupId kTablegroupId = GetPgsqlTablegroupId(12345, 67890);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tablegroup_master_only) = true;
+  ASSERT_OK(CreateTablegroup(kTablegroupId, ns_id, ns_name, "" /* tablespace_id */));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tablegroup_master_only) = false;
+  ASSERT_OK(CreateTablegroupTable(
+      ns_id, GetPgsqlTableId(12345, 67891), "testtb_pgsql_colocated", kTablegroupId,
+      kTableSchema));
+
+  {
+    ListTablesResponsePB tables;
+    ASSERT_NO_FATALS(DoListAllTables(&tables));
+    ASSERT_EQ(2 * kNumTables + 2 + kNumSystemTables, tables.tables_size());
+  }
+
+  {
+    DeleteNamespaceRequestPB req;
+    DeleteNamespaceResponsePB resp;
+    req.set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
+    req.mutable_namespace_()->set_id(ns_id);
+    ASSERT_OK(proxy_ddl_->DeleteNamespace(req, &resp, ResetAndGetController()));
+    SCOPED_TRACE(resp.DebugString());
+    ASSERT_FALSE(resp.has_error());
+
+    IsDeleteNamespaceDoneRequestPB del_req;
+    del_req.mutable_namespace_()->set_id(ns_id);
+    del_req.mutable_namespace_()->set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
+    ASSERT_OK(DeleteNamespaceWait(del_req));
+  }
+
+  {
+    ListTablesResponsePB tables;
+    ASSERT_NO_FATALS(DoListAllTables(&tables));
+    ASSERT_EQ(kNumSystemTables, tables.tables_size());
+    CheckTables({ EXPECTED_SYSTEM_TABLES }, tables);
   }
 }
 
@@ -2621,8 +2708,8 @@ void GetTableSchema(const char* table_name,
       Schema receivedSchema;
       CHECK_OK(SchemaFromPB(resp.schema(), &receivedSchema));
       CHECK(kSchema->Equals(receivedSchema)) <<
-          strings::Substitute("$0 not equal to $1",
-                              kSchema->ToString(), receivedSchema.ToString());
+          Format("$0 not equal to $1",
+                 kSchema->ToString(), receivedSchema.ToString());
     }
   }
 }
@@ -2920,6 +3007,10 @@ class FakeTabletServerAdminService : public tserver::TabletServerAdminServiceIf 
                          tserver::ChangeMetadataResponsePB)
   UNUSED_TS_ADMIN_METHOD(FlushTablets, tserver::FlushTabletsRequestPB,
                          tserver::FlushTabletsResponsePB)
+  UNUSED_TS_ADMIN_METHOD(AlterTabletTier, tserver::AlterTabletTierRequestPB,
+                         tserver::AlterTabletTierResponsePB)
+  UNUSED_TS_ADMIN_METHOD(GetTabletTierInfo, tserver::GetTabletTierInfoRequestPB,
+                         tserver::GetTabletTierInfoResponsePB)
   UNUSED_TS_ADMIN_METHOD(CountIntents, tserver::CountIntentsRequestPB,
                          tserver::CountIntentsResponsePB)
   UNUSED_TS_ADMIN_METHOD(AddTableToTablet, tserver::AddTableToTabletRequestPB,
@@ -2935,6 +3026,9 @@ class FakeTabletServerAdminService : public tserver::TabletServerAdminServiceIf 
   UNUSED_TS_ADMIN_METHOD(UpdateTransactionTablesVersion,
                          tserver::UpdateTransactionTablesVersionRequestPB,
                          tserver::UpdateTransactionTablesVersionResponsePB)
+  UNUSED_TS_ADMIN_METHOD(ApplyXClusterGuardedInfoIfNewer,
+                         tserver::ApplyXClusterGuardedInfoIfNewerRequestPB,
+                         tserver::ApplyXClusterGuardedInfoIfNewerResponsePB)
   UNUSED_TS_ADMIN_METHOD(CloneTablet, tablet::CloneTabletRequestPB,
                          tserver::CloneTabletResponsePB)
   UNUSED_TS_ADMIN_METHOD(ClonePgSchema, tserver::ClonePgSchemaRequestPB,
@@ -3543,5 +3637,4 @@ TEST_F(MasterTest, TestQosMaxDbCount) {
   ASSERT_OK(CreateNamespace("cql_ks", YQLDatabase::YQL_DATABASE_CQL, &resp));
 }
 
-} // namespace master
-} // namespace yb
+} // namespace yb::master

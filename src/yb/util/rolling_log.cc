@@ -38,9 +38,9 @@
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/numbers.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
 #include "yb/util/env.h"
+#include "yb/util/format.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
@@ -50,7 +50,6 @@
 using std::ostringstream;
 using std::setw;
 using std::string;
-using strings::Substitute;
 
 static const int kDefaultSizeLimitBytes = 64 * 1024 * 1024; // 64MB
 
@@ -156,7 +155,7 @@ Status RollingLog::Close() {
   }
   string path = file_->filename();
   RETURN_NOT_OK_PREPEND(file_->Close(),
-                        Substitute("Unable to close $0", path));
+                        Format("Unable to close $0", path));
   file_.reset();
   if (compress_after_close_) {
     WARN_NOT_OK(CompressFile(path), "Unable to compress old log file");

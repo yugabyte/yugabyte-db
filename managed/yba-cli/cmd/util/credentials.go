@@ -37,6 +37,14 @@ type AzureCredentials struct {
 	ResourceGroup  string `json:"resource_group"`
 }
 
+// OCIAPIKeyCredentials required for OCI API_KEY authentication
+type OCIAPIKeyCredentials struct {
+	TenancyID         string
+	UserID            string
+	Fingerprint       string
+	PrivateKeyContent string
+}
+
 // HashicorpCredentials required for kms configs
 type HashicorpCredentials struct {
 	Token     string `json:"HC_VAULT_TOKEN"`
@@ -224,6 +232,19 @@ func AWSRegionFromEnv() (string, error) {
 	return region, nil
 }
 
+// OCIS3CredentialsFromEnv retrieves "OCI_S3_ACCESS_KEY_ID" and "OCI_S3_SECRET_ACCESS_KEY".
+func OCIS3CredentialsFromEnv() (accessKeyID, secretAccessKey string, err error) {
+	accessKeyID, accessPresent := os.LookupEnv(OCIS3AccessKeyIDField)
+	secretAccessKey, secretPresent := os.LookupEnv(OCIS3SecretAccessKeyField)
+	if !accessPresent || !secretPresent ||
+		len(accessKeyID) == 0 || len(secretAccessKey) == 0 {
+		return "", "", fmt.Errorf(
+			"%s and %s environment variables must both be set",
+			OCIS3AccessKeyIDField, OCIS3SecretAccessKeyField)
+	}
+	return accessKeyID, secretAccessKey, nil
+}
+
 // AzureStorageCredentialsFromEnv retrives value of "AZURE_STORAGE_SAS_TOKEN" from env variables
 func AzureStorageCredentialsFromEnv() (string, error) {
 	azureSasToken, isPresent := os.LookupEnv(AzureStorageSasTokenEnv)
@@ -296,6 +317,61 @@ func AzureTenantIDFromEnv() (string, bool, error) {
 	return azureTenantID, true, nil
 }
 
+// NormalizeOCIAuthType returns API_KEY or INSTANCE_PRINCIPAL.
+func NormalizeOCIAuthType(authType string) (string, error) {
+	switch strings.ToUpper(strings.TrimSpace(authType)) {
+	case "", OCIAuthTypeAPIKey:
+		return OCIAuthTypeAPIKey, nil
+	case OCIAuthTypeInstancePrincipal:
+		return OCIAuthTypeInstancePrincipal, nil
+	default:
+		return "", fmt.Errorf(
+			"invalid OCI auth type %q. Allowed values: %s, %s",
+			authType, OCIAuthTypeAPIKey, OCIAuthTypeInstancePrincipal)
+	}
+}
+
+// OCIAuthTypeFromEnv retrieves value of "OCI_AUTH_TYPE" from env variables
+func OCIAuthTypeFromEnv() string {
+	authType, _ := os.LookupEnv(OCIAuthTypeEnv)
+	return authType
+}
+
+// OCIAPIKeyCredentialsFromEnv retrieves OCI API key credentials from environment variables
+func OCIAPIKeyCredentialsFromEnv() (OCIAPIKeyCredentials, error) {
+	var creds OCIAPIKeyCredentials
+	var missing []string
+
+	var present bool
+	creds.TenancyID, present = os.LookupEnv(OCITenancyIDEnv)
+	if !present || IsEmptyString(creds.TenancyID) {
+		missing = append(missing, OCITenancyIDEnv)
+	}
+	creds.UserID, present = os.LookupEnv(OCIUserIDEnv)
+	if !present || IsEmptyString(creds.UserID) {
+		missing = append(missing, OCIUserIDEnv)
+	}
+	creds.Fingerprint, present = os.LookupEnv(OCIFingerprintEnv)
+	if !present || IsEmptyString(creds.Fingerprint) {
+		missing = append(missing, OCIFingerprintEnv)
+	}
+	privateKeyFile, present := os.LookupEnv(OCIPrivateKeyFileEnv)
+	if !present || IsEmptyString(privateKeyFile) {
+		missing = append(missing, OCIPrivateKeyFileEnv)
+	}
+
+	if len(missing) > 0 {
+		return OCIAPIKeyCredentials{}, fmt.Errorf(
+			"Empty env variable: %s", strings.Join(missing, " "))
+	}
+	privateKey, err := ReadFileToString(privateKeyFile)
+	if err != nil {
+		return OCIAPIKeyCredentials{}, err
+	}
+	creds.PrivateKeyContent = *privateKey
+	return creds, nil
+}
+
 // HashicorpVaultTokenFromEnv retrives value of "HASHICORP_VAULT_TOKEN" from env variables
 func HashicorpVaultTokenFromEnv() (string, error) {
 	var hcv HashicorpCredentials
@@ -322,6 +398,15 @@ func HashicorpVaultAddressFromEnv() (string, error) {
 		return "", fmt.Errorf(errorString)
 	}
 	return hca.Address, nil
+}
+
+// OCIValueFromEnv retrives value of the given OCI env variable
+func OCIValueFromEnv(envName string) (string, error) {
+	value, isPresent := os.LookupEnv(envName)
+	if !isPresent || IsEmptyString(value) {
+		return "", fmt.Errorf("%s env variable not found", envName)
+	}
+	return value, nil
 }
 
 // ReadFileToString retrieves file content from given file path

@@ -39,14 +39,13 @@
 #include "yb/common/key_encoder.h"
 #include "yb/common/row.h"
 #include "yb/common/schema.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/util/bitmap.h"
 #include "yb/util/decimal.h"
+#include "yb/util/format.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
 
-using strings::Substitute;
 
 namespace yb::dockv {
 
@@ -138,9 +137,9 @@ Status YBPartialRow::Set(size_t col_idx,
   if (PREDICT_FALSE(col.type_info()->type != T::type)) {
     // TODO: at some point we could allow type coercion here.
     return STATUS(InvalidArgument,
-      Substitute("invalid type $0 provided for column '$1' (expected $2)",
-                 T::name(),
-                 col.name(), col.type_info()->name));
+      Format("invalid type $0 provided for column '$1' (expected $2)",
+             T::name(),
+             col.name(), col.type_info()->name));
   }
 
   ContiguousRow row(schema_, row_data_);
@@ -712,9 +711,9 @@ Status YBPartialRow::Get(size_t col_idx, typename T::cpp_type* val) const {
   if (PREDICT_FALSE(col.type_info()->type != T::type)) {
     // TODO: at some point we could allow type coercion here.
     return STATUS(InvalidArgument,
-      Substitute("invalid type $0 provided for column '$1' (expected $2)",
-                 T::name(),
-                 col.name(), col.type_info()->name));
+      Format("invalid type $0 provided for column '$1' (expected $2)",
+             T::name(),
+             col.name(), col.type_info()->name));
   }
 
   if (PREDICT_FALSE(!IsColumnSet(col_idx))) {

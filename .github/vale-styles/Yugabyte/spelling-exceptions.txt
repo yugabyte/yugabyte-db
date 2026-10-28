@@ -125,6 +125,7 @@ Cobertura
 Codepen
 Cognito
 Cohesity
+cooldown
 colocated
 colocating
 colocation

@@ -62,6 +62,9 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgListenNotify.class);
 
   private static final int TSERVER_UNRESPONSIVE_TIMEOUT_MS = 10000;
+  // remove_tablet_server requires the TServer to have definitely lost its xCluster-guarded
+  // information lease; keep the lease well below the time the test waits before removing.
+  private static final int XCLUSTER_GUARDED_LEASE_DURATION_MS = 5000;
 
   private static final String CHANNEL = "test_channel";
   private static final String PAYLOAD = "test_payload";
@@ -79,6 +82,10 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     // sys_catalog flush on a loaded sanitizer build, which costs the master leader its lease and
     // aborts concurrent DDL. Double the sanitizer failure-detection window.
     flagMap.put("leader_failure_max_missed_heartbeat_periods", "20");
+    flagMap.put("tserver_unresponsive_timeout_ms",
+        String.valueOf(TSERVER_UNRESPONSIVE_TIMEOUT_MS));
+    flagMap.put("xcluster_guarded_lease_duration_ms",
+        String.valueOf(XCLUSTER_GUARDED_LEASE_DURATION_MS));
     return flagMap;
   }
 

@@ -20,6 +20,7 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -31,6 +32,8 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeActionType;
@@ -50,6 +53,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.nodeagent.ConfigureNodeExporterInput;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -66,6 +70,7 @@ import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 import org.slf4j.Logger;
@@ -556,16 +561,38 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertAddNodeSequence(subTasksByPosition, false, false, false);
+    // The universe serves node_exporter over plain HTTP, which the new node already does.
+    verify(mockNodeAgentClient, never()).runConfigureNodeExporter(any(), any(), any());
 
     if (isHAConfig) {
       // In HA config mode, we expect any save of universe details to result in
       // a bump on the cluster config version. The actual number depends on the
       // number of invocations of saveUniverseDetails, so it can vary but the
       // important thing is that it is much more than the other case.
-      verify(mockClient, times(13)).changeMasterClusterConfig(any());
+      verify(mockClient, times(14)).changeMasterClusterConfig(any());
     } else {
       verify(mockClient, times(1)).changeMasterClusterConfig(any());
     }
+  }
+
+  @Test
+  public void testAddNodeToNodeExporterTlsUniverse() {
+    mockWaits(mockClient, 3);
+    when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
+    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+    when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        u -> u.updateConfig(ImmutableMap.of(Universe.NODE_EXPORTER_HTTPS, "true")));
+    TaskInfo taskInfo = submitTask(defaultUniverse.getUniverseUUID(), DEFAULT_NODE_NAME, 4);
+    assertEquals(Success, taskInfo.getTaskState());
+    // The configure step points the new node's exporter at the certs it placed.
+    ArgumentCaptor<ConfigureNodeExporterInput> input =
+        ArgumentCaptor.forClass(ConfigureNodeExporterInput.class);
+    verify(mockNodeAgentClient, atLeastOnce())
+        .runConfigureNodeExporter(any(), input.capture(), any());
+    assertTrue(input.getValue().getTlsEnabled());
+    assertTrue(input.getValue().getCertFile().endsWith(".crt"));
   }
 
   @Test
@@ -645,6 +672,33 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertAddNodeSequence(subTasksByPosition, false, true, false);
     verifyMasterAddressUpdateAffectedNodes(subTasksByPosition, 3);
+  }
+
+  @Test
+  public void testAddDedicatedMasterNodeIsNotLoadBalancerTarget() {
+    // PLAT-23221: a master-only node must not be registered with the load balancer.
+    UniverseModifyBaseTest.mockMasterAndPeerRoles(
+        mockClient, ImmutableList.of("10.0.0.1", "10.0.0.2", "10.0.0.3"));
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        u -> {
+          Cluster primary = u.getUniverseDetails().getPrimaryCluster();
+          ApiUtils.configureDedicatedMasterFields(primary.userIntent);
+          primary.userIntent.enableLB = true;
+          primary.placementInfo.azStream().forEach(az -> az.lbName = "lb1");
+          NodeDetails node = u.getNode(DEFAULT_NODE_NAME);
+          node.dedicatedTo = ServerType.MASTER;
+          node.isMaster = false;
+          node.isTserver = false;
+        });
+
+    TaskInfo taskInfo = submitTask(defaultUniverse.getUniverseUUID(), DEFAULT_NODE_NAME, -1);
+    assertEquals(Success, taskInfo.getTaskState());
+
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .noneMatch(t -> t.getTaskType() == TaskType.ManageLoadBalancerGroup));
+    verify(cloudAPI, never()).manageNodeGroup(any(), any(), any(), any(), any(), any());
   }
 
   @Test
@@ -773,5 +827,12 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
         TaskType.AddNodeToUniverse,
         taskParams);
     checkUniverseNodesStates(taskParams.getUniverseUUID());
+  }
+
+  @Test
+  public void testAddNodeIsAbortable() {
+    // The task list reports abortable from the @Abortable annotation, which gates the Abort button.
+    assertTrue(Commissioner.isTaskTypeAbortable(TaskType.AddNodeToUniverse));
+    assertTrue(Commissioner.isTaskTypeAbortable(TaskType.RollbackAddNodeToUniverse));
   }
 }

@@ -56,6 +56,17 @@ DEFINE_NON_RUNTIME_uint32(pg_cache_response_trust_auth_lifetime_limit_ms, 60 * 1
     "Lifetime limit for response cache used for auth process when connection manager is used.");
 
 namespace yb::pggate {
+
+// The prefetch kind crosses to the master as a plain cast of the C enumeration, so the two have
+// to agree value for value. A value added to one and not the other would otherwise reach the
+// master as something else.
+static_assert(static_cast<int>(YB_YQL_PREFETCH_KIND_NONE) ==
+              static_cast<int>(YSQL_CATALOG_PREFETCH_NONE));
+static_assert(static_cast<int>(YB_YQL_PREFETCH_KIND_CONNECTION_START) ==
+              static_cast<int>(YSQL_CATALOG_PREFETCH_CONNECTION_START));
+static_assert(static_cast<int>(YB_YQL_PREFETCH_KIND_HIGH_PRIORITY) ==
+              static_cast<int>(YSQL_CATALOG_PREFETCH_HIGH_PRIORITY));
+
 namespace {
 
 using ColumnIdsContainer = std::vector<int>;
@@ -232,12 +243,21 @@ auto TemporaryClearInsignificantFields(LWPgsqlReadRequestPB& req) {
   const auto metrics_capture =
     req.has_metrics_capture() ? std::optional(req.metrics_capture()) : std::nullopt;
   req.clear_metrics_capture();
-  return ScopeExit([&req, stmt_id, metrics_capture] () {
+  // Unlike catalog_prefetch_kind above, this one is cleared. It says where the request falls in
+  // its own prefetch rather than what it asks for, and the same tables requested first by one
+  // prefetch and second by another must still share an entry.
+  const auto continuation = req.has_catalog_prefetch_continuation()
+      ? std::optional(req.catalog_prefetch_continuation()) : std::nullopt;
+  req.clear_catalog_prefetch_continuation();
+  return ScopeExit([&req, stmt_id, metrics_capture, continuation] () {
     if (stmt_id) {
       req.set_stmt_id(*stmt_id);
     }
     if (metrics_capture) {
       req.set_metrics_capture(*metrics_capture);
+    }
+    if (continuation) {
+      req.set_catalog_prefetch_continuation(*continuation);
     }
   });
 }
@@ -311,6 +331,7 @@ class VersionInfoWriter {
     case PrefetchingCacheMode::TRUST_CACHE_AUTH:
       return FLAGS_pg_cache_response_trust_auth_lifetime_limit_ms;
     case PrefetchingCacheMode::TRUST_CACHE:
+    case PrefetchingCacheMode::TRUST_CACHE_LOOKUP_ONLY:
       return std::nullopt;
     case PrefetchingCacheMode::RENEW_CACHE_SOFT:
       return FLAGS_pg_cache_response_renew_soft_lifetime_limit_ms;
@@ -322,11 +343,15 @@ class VersionInfoWriter {
 
 [[nodiscard]] PgSession::CacheOptions BuildCacheOptions(
     yb::ThreadSafeArena* arena, const ReadHybridTime& catalog_read_time,
-    const std::vector<OperationInfo>& ops, const PrefetcherOptions::CachingInfo& caching_info) {
+    const std::vector<OperationInfo>& ops, const PrefetcherOptions::CachingInfo& caching_info,
+    bool completes_connection_prefetch) {
   return {
       .key_group = caching_info.db_oid,
       .key_value = BuildCacheKey(arena, catalog_read_time, ops, caching_info.version_info),
-      .lifetime_threshold_ms = GetCacheLifetimeThreshold(caching_info.mode)
+      .lifetime_threshold_ms = GetCacheLifetimeThreshold(caching_info.mode),
+      .catalog_version = caching_info.version_info.version,
+      .lookup_only = caching_info.mode == PrefetchingCacheMode::TRUST_CACHE_LOOKUP_ONLY,
+      .completes_connection_prefetch = completes_connection_prefetch
   };
 }
 
@@ -345,13 +370,14 @@ auto MakeGenerator(const std::vector<OperationInfo>& ops) {
 
 Result<rpc::CallResponsePtr> Run(
     yb::ThreadSafeArena* arena, PgSession* session, const std::vector<OperationInfo>& ops,
-    const PrefetcherOptions& options) {
+    const PrefetcherOptions& options, bool completes_connection_prefetch) {
   PgDocResponse response(
       VERIFY_RESULT(session->RunAsync(
           make_lw_function(MakeGenerator(ops)),
           options.caching_info
               ? std::optional(BuildCacheOptions(
-                  arena, session->catalog_read_time(), ops, *options.caching_info))
+                  arena, session->catalog_read_time(), ops, *options.caching_info,
+                  completes_connection_prefetch))
               : std::nullopt)),
       {TableType::SYSTEM, IsForWritePgDoc::kFalse, IsOpBuffered::kFalse,
        SingleRelationOid(ops, [](const OperationInfo& info) {
@@ -382,10 +408,13 @@ void ApplySystemItemsFilter(LWPgsqlReadRequestPB* req, int oid_column_id) {
 class Loader {
  public:
   Loader(PgSession* session, const std::shared_ptr<ThreadSafeArena>& arena,
-         size_t estimated_size, const PrefetcherOptions& options)
+         size_t estimated_size, const PrefetcherOptions& options,
+         bool completes_connection_prefetch, bool continuation)
       : session_(session),
         arena_(arena),
-        options_(options) {
+        options_(options),
+        completes_connection_prefetch_(completes_connection_prefetch),
+        continuation_(continuation) {
     op_info_.reserve(estimated_size);
   }
 
@@ -416,6 +445,12 @@ class Loader {
     // master decides admission from the operations in pgsql_batch, so a copy on the index request
     // would be read by nobody.
     req.set_catalog_prefetch_kind(static_cast<YsqlCatalogPrefetchKindPB>(options_.kind));
+    // Set on the operation for the same reason as the kind: the master reads pgsql_batch.
+    req.set_catalog_prefetch_continuation(continuation_);
+    // All catalog reads of one round go to the sys catalog tablet in a single RPC, and DocDB
+    // checks each read's size limit against the whole RPC response. The same limit on every
+    // read therefore caps the combined response of the round.
+    req.set_size_limit(options_.fetch_size_limit);
     PgTable target(table);
     auto ordered_columns = OrderColumns(target.columns(), item.fetch_ybctid);
     info.targets.reserve(ordered_columns.size());
@@ -449,13 +484,6 @@ class Loader {
   Status Load(DataContainer* data_container) {
     VLOG(2) << "Loader::Load";
     while (!op_info_.empty()) {
-      const auto fetch_size_limit = options_.fetch_size_limit
-          ? std::max<uint64_t>(options_.fetch_size_limit / op_info_.size(), 1)
-          : 0;
-      for (auto& op_info : op_info_) {
-        auto& req = op_info.operation->read_request();
-        req.set_size_limit(fetch_size_limit);
-      }
       if (yb_debug_log_catcache_events) {
         std::set<std::string> table_names;
         for (const auto& op : op_info_) {
@@ -463,7 +491,8 @@ class Loader {
         }
         LOG(INFO) << "Initiating prefetching for tables " << yb::ToString(table_names);
       }
-      auto response = VERIFY_RESULT(Run(arena_.get(), session_, op_info_, options_));
+      auto response = VERIFY_RESULT(
+          Run(arena_.get(), session_, op_info_, options_, completes_connection_prefetch_));
       Status remove_predicate_status;
       ResultFunctorAdapter<bool, OperationInfo&> remove_predicate(
           &remove_predicate_status,
@@ -499,6 +528,8 @@ class Loader {
   std::vector<OperationInfo> op_info_;
   std::shared_ptr<ThreadSafeArena> arena_;
   const PrefetcherOptions options_;
+  const bool completes_connection_prefetch_;
+  const bool continuation_;
 };
 
 } // namespace
@@ -566,12 +597,13 @@ class PgSysTablePrefetcher::Impl {
         ?  std::optional(options_.caching_info->version_info.version_read_time) : std::nullopt;
   }
 
-  Status Prefetch(PgSession* session) {
+  Status Prefetch(PgSession* session, bool completes_connection_prefetch) {
     DCHECK(!registered_for_loading_.empty());
     std::sort(registered_for_loading_.begin(),
               registered_for_loading_.end(),
               [](const auto& lhs, const auto& rhs) { return lhs.table_id < rhs.table_id; });
-    Loader loader(session, arena_, registered_for_loading_.size(), options_);
+    Loader loader(session, arena_, registered_for_loading_.size(), options_,
+                  completes_connection_prefetch, served_a_request_);
     PgObjectId prev_table_id;
     for (const auto& item : registered_for_loading_) {
       // Load table once in spite of the fact it might be registered for preloading multiple times.
@@ -581,7 +613,12 @@ class PgSysTablePrefetcher::Impl {
       }
     }
     registered_for_loading_.clear();
-    return loader.Load(&data_);
+    RETURN_NOT_OK(loader.Load(&data_));
+    // Only after one has been served. A request that failed left nothing behind, and
+    // PgSysTablePrefetcher::Prefetch throws this object away on failure anyway, so the next
+    // attempt starts over and its opening request is a new prefetch again.
+    served_a_request_ = true;
+    return Status::OK();
   }
 
   const PrefetcherOptions& options() const {
@@ -593,6 +630,9 @@ class PgSysTablePrefetcher::Impl {
   boost::container::small_vector<RegisteredItem, 64> registered_for_loading_;
   DataContainer data_;
   const PrefetcherOptions options_;
+  // Whether a request of this prefetch has already been served, so the master can tell the
+  // opening request of a prefetch from the ones that continue work it has already admitted.
+  bool served_a_request_ = false;
 };
 
 PgSysTablePrefetcher::PgSysTablePrefetcher(const PrefetcherOptions& options)
@@ -606,8 +646,8 @@ void PgSysTablePrefetcher::Register(
   impl_->Register(table_id, index_id, row_oid_filtering_attr, fetch_ybctid);
 }
 
-Status PgSysTablePrefetcher::Prefetch(PgSession* session) {
-  auto status = impl_->Prefetch(session);
+Status PgSysTablePrefetcher::Prefetch(PgSession* session, bool completes_connection_prefetch) {
+  auto status = impl_->Prefetch(session, completes_connection_prefetch);
   if (!status.ok()) {
     // Reset the state in case of failure to prevent using of incomplete data in future calls.
     impl_.reset(new Impl(impl_->options()));

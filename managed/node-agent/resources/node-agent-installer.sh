@@ -16,10 +16,13 @@ NODE_AGENT_REGISTRY_PATH=""
 
 # Yugabyte Anywhere SSL cert verification option.
 SKIP_VERIFY_CERT=""
+# Yugabyte Anywhere is FIPS enabled, so node agent runs in FIPS mode.
+FIPS_ENABLED="false"
 #Disable node to Yugabyte Anywhere connection.
 DISABLE_EGRESS="false"
 SILENT_INSTALL="false"
 AIRGAP_INSTALL="false"
+SE_LINUX_ENABLED="false"
 SKIP_PACKAGE_DOWNLOAD="false"
 CERT_DIR=""
 CERTIFICATE_NAME=""
@@ -259,12 +262,19 @@ modify_firewall() {
 
 modify_selinux() {
   set +e
+  # File context rules match real paths, and restorecon/chcon -R do not follow a symlink
+  # argument, so label the resolved directory.
+  local NODE_AGENT_REAL_HOME="$NODE_AGENT_HOME"
+  NODE_AGENT_REAL_HOME=$(readlink -f "$NODE_AGENT_HOME")
+  if [ -z "$NODE_AGENT_REAL_HOME" ]; then
+    NODE_AGENT_REAL_HOME="$NODE_AGENT_HOME"
+  fi
   if ! command -v semanage >/dev/null 2>&1; then
     if [ "$AIRGAP_INSTALL" = "true" ]; then
       # The changes made with chcon are temporary in the sense that the context of the file
       # altered with chcon goes back to default when restorecon is run.
       # It should not even try to reach out to the repo.
-      run_as_super_user chcon -R -t bin_t "$NODE_AGENT_HOME"
+      run_as_super_user chcon -R -t bin_t "$NODE_AGENT_REAL_HOME"
     elif command -v yum >/dev/null 2>&1; then
       # Install the semanage package directly.
       run_as_super_user yum install -y policycoreutils-python-utils
@@ -283,15 +293,15 @@ modify_selinux() {
     if [ "$?" -ne 0 ]; then
       check_run_as_super_user semanage port -a -t http_port_t -p tcp "$NODE_PORT"
     fi
-    run_as_super_user semanage fcontext -lC | grep -F "$NODE_AGENT_HOME(/.*)?" >/dev/null 2>&1
+    run_as_super_user semanage fcontext -lC | grep -F "$NODE_AGENT_REAL_HOME(/.*)?" >/dev/null 2>&1
     if [ "$?" -ne 0 ]; then
-      check_run_as_super_user semanage fcontext -a -t bin_t "$NODE_AGENT_HOME(/.*)?"
+      check_run_as_super_user semanage fcontext -a -t bin_t "$NODE_AGENT_REAL_HOME(/.*)?"
     fi
-    check_run_as_super_user restorecon -ir "$NODE_AGENT_HOME"
+    check_run_as_super_user restorecon -ir "$NODE_AGENT_REAL_HOME"
   else
     # Let it proceed as there can be policies to allow.
     echo "Command semanage does not exist. Defaulting to using chcon"
-    check_run_as_super_user chcon -R -t bin_t "$NODE_AGENT_HOME"
+    check_run_as_super_user chcon -R -t bin_t "$NODE_AGENT_REAL_HOME"
   fi
   set -e
 }
@@ -353,7 +363,7 @@ install_systemd_service() {
     SYSTEMD_PATH="$INSTALL_USER_HOME/.config/systemd/user"
   fi
   if [ "$USER_SCOPED_UNIT" = "false" ]; then
-    if [ "$SE_LINUX_STATUS" = "Enforcing" ]; then
+    if [ "$SE_LINUX_ENABLED" = "true" ]; then
       modify_selinux
     fi
     modify_firewall
@@ -488,6 +498,8 @@ Options:
     DEPRECATED: Username of the installation. A sudo user can install service for a non-sudo user.
   --skip_verify_cert (OPTIONAL)
     Specify to skip Yugabyte Anywhere server cert verification during install.
+  --fips_enabled (REQUIRED if Yugabyte Anywhere is FIPS enabled)
+    Run node agent in FIPS mode.
   --certificate_name (OPTIONAL for install command)
     YBA certificate config name (label) to use for node-agent TLS.
   --airgap (OPTIONAL)
@@ -637,6 +649,9 @@ main() {
     setup_node_agent_dir
     extract_package
     setup_symlink
+    if [ "$FIPS_ENABLED" = "true" ]; then
+      NODE_AGENT_CONFIG_ARGS+=(--fips_enabled)
+    fi
     node-agent node configure ${NODE_AGENT_CONFIG_ARGS[@]}
     if [ $? -ne 0 ]; then
       echo "Node agent setup failed."
@@ -695,6 +710,9 @@ while [[ $# -gt 0 ]]; do
     ;;
     --skip_verify_cert)
       SKIP_VERIFY_CERT="true"
+    ;;
+    --fips_enabled)
+      FIPS_ENABLED="true"
     ;;
     --disable_egress)
       DISABLE_EGRESS="true"
@@ -838,9 +856,20 @@ API_TOKEN=$(echo "$API_TOKEN" | xargs)
 
 NODE_AGENT_DOWNLOAD_URL="$PLATFORM_URL/api/v1/node_agents/download"
 SESSION_INFO_URL="$PLATFORM_URL/api/v1/session_info"
+
 if [ "$OS" = "Linux" ]; then
   set +e
-  SE_LINUX_STATUS=$(getenforce 2>/dev/null)
+  # Find the SELinux status, prefer sestatus first.
+  if command -v sestatus >/dev/null 2>&1; then
+    # Label even when permissive, as setenforce can switch to enforcing without a reboot.
+    if sestatus 2>/dev/null | grep -Eiq "^SELinux status:[[:space:]]+enabled"; then
+      SE_LINUX_ENABLED="true"
+    fi
+  elif command -v getenforce >/dev/null 2>&1; then
+    case "$(getenforce 2>/dev/null)" in
+      Enforcing|Permissive) SE_LINUX_ENABLED="true" ;;
+    esac
+  fi
   set -e
 fi
 

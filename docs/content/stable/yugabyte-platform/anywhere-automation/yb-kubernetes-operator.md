@@ -475,7 +475,7 @@ NAME                     STATE   SOFTWARE VERSION
 operator-universe-demo   Ready   {{< yb-version version="stable" format="build">}}
 ```
 
-To modify the universe, edit the CRD and use `kubectl apply/edit` operations.
+To modify the universe, edit the CRD and use `kubectl apply/edit` operations. Set `replicationFactor` when you create the universe; the Operator does not support changing it later. See [Limitations](#limitations).
 
 To change storage class or volume count on a running universe, use the `tserverVolume` and `masterVolume` fields (including optional `perAZ` overrides). Refer to [Full move for Kubernetes universes](../../scale-deployments/kubernetes-full-move/#operator-universes).
 
@@ -644,8 +644,15 @@ spec:
   actionType: RESTORE
   universe:  <name of universe>
   backup: <name of backup to restore>
-  keyspace: <keyspace overide>
+  restoreKeyspaces:
+    - name: <database to restore under a new name>
+      newName: <new database name>
+    - name: <database to restore under its original name>
 ```
+
+Use `spec.restoreKeyspaces` to choose which databases to restore. If you omit it, every database in the backup is restored under its original name. If you set it, only the listed databases are restored; add `newName` to restore a database under a different name. Restore creates each destination database and can't restore into a database that already exists on the target universe, so rename any database whose name is already in use.
+
+`spec.keyspace` is deprecated. It still renames the database of a single-database backup, but you can't use it with a multi-database backup or together with `spec.restoreKeyspaces`.
 
 #### Service account for backup
 
@@ -1467,3 +1474,4 @@ Importing a universe to the operator creates or adopts the following in the targ
   - Software upgrade rollback
   - [Encryption at rest](../../security/enable-encryption-at-rest/) (prior to v2026.1.2)
 - [Encryption in transit](../../security/enable-encryption-in-transit/) configuration cannot be edited after it is initially configured.
+- `replicationFactor` cannot be changed after the universe is created. To increase replication factor on a Kubernetes universe that YugabyteDB Anywhere manages directly, refer to [Scale universes](../../scale-deployments/edit-universe/#horizontal-scaling).

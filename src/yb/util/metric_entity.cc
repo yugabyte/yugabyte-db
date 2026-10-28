@@ -20,6 +20,7 @@
 
 #include "yb/util/debug.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/metrics.h"
 #include "yb/util/status_format.h"
@@ -199,7 +200,7 @@ AggregationLevels MetricEntity::ReconstructPrometheusAttributesUnlocked() {
 
   const std::string& prototype_type = prototype_->name();
   prometheus_attributes_.clear();
-  if (prototype_type == "tablet" || prototype_type == "table") {
+  if (prototype_type == kTabletMetricEntityName || prototype_type == kTableMetricEntityName) {
     aggregation_id_for_pre_aggregation_ = attributes_["table_id"];
     prometheus_attributes_["table_id"] = aggregation_id_for_pre_aggregation_;
     prometheus_attributes_["table_name"] = EscapePrometheusLabelValue(attributes_["table_name"]);
@@ -464,7 +465,7 @@ void MetricEntity::NeverRetire(const scoped_refptr<Metric>& metric) {
 }
 
 std::string MetricEntity::LogPrefix() const {
-    return strings::Substitute("$0 Metric entity [$1]: ", prototype_->name(), id_);
+    return Format("$0 Metric entity [$1]: ", prototype_->name(), id_);
 }
 
 void MetricEntity::SetAttributes(const AttributeMap& attrs) {

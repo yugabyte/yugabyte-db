@@ -30,6 +30,7 @@
 #include "yb/dockv/doc_ttl_util.h"
 #include "yb/dockv/doc_vector_id.h"
 #include "yb/dockv/schema_packing.h"
+#include "yb/dockv/value.h"
 #include "yb/dockv/subdocument.h"
 #include "yb/dockv/value_type.h"
 
@@ -44,12 +45,15 @@
 #include "yb/util/checked_narrow_cast.h"
 #include "yb/util/enums.h"
 #include "yb/util/fast_varint.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 
 using std::numeric_limits;
 using std::string;
+
+DECLARE_bool(ysql_enable_cdr_metadata);
 
 namespace yb {
 namespace docdb {
@@ -91,7 +95,8 @@ DocWriteBatch::DocWriteBatch(const DocDB& doc_db,
     : doc_db_(doc_db),
       init_marker_behavior_(init_marker_behavior),
       pending_op_(pending_op),
-      monotonic_counter_(monotonic_counter) {}
+      monotonic_counter_(monotonic_counter),
+      cdr_enabled_(FLAGS_ysql_enable_cdr_metadata) {}
 
 Status DocWriteBatch::SeekToKeyPrefix(LazyIterator* iter, HasAncestor has_ancestor) {
   subdoc_exists_ = false;
@@ -320,7 +325,7 @@ Status DocWriteBatch::SetPrimitiveInternal(
 
   // The write_id is always incremented by one for each new element of the write batch.
   if (put_batch_.size() > numeric_limits<IntraTxnWriteId>::max()) {
-    return STATUS_SUBSTITUTE(
+    return STATUS_FORMAT(
         NotSupported,
         "Trying to add more than $0 key/value pairs in the same single-shard txn.",
         numeric_limits<IntraTxnWriteId>::max());
@@ -715,7 +720,7 @@ Status DocWriteBatch::ReplaceRedisInList(
       valid = key_data && key_data.key.starts_with(key_prefix_);
     }
     if (!valid) {
-      return STATUS_SUBSTITUTE(Corruption,
+      return STATUS_FORMAT(Corruption,
           "Index Error: $0, reached beginning of list with size $1",
           index - 1, // YQL layer list index starts from 0, not 1 as in DocDB.
           current_index);
@@ -828,7 +833,7 @@ Status DocWriteBatch::ReplaceCqlInList(
       valid = key_data && key_data.key.starts_with(key_prefix_);
     }
     if (!valid) {
-      return STATUS_SUBSTITUTE(
+      return STATUS_FORMAT(
           QLError,
           "Unable to replace items into list, expecting index $0, reached end of list with size $1",
           target_cql_index,
@@ -876,14 +881,29 @@ Status DocWriteBatch::DeleteSubDoc(
     const ReadOperationData& read_operation_data,
     rocksdb::QueryId query_id,
     UserTimeMicros user_timestamp) {
+  auto control_fields = RowControlFields();
+  control_fields.timestamp = user_timestamp;
   return SetPrimitive(
-      doc_path, ValueRef(ValueEntryType::kTombstone), read_operation_data, query_id,
-      user_timestamp);
+      doc_path, control_fields, ValueRef(ValueEntryType::kTombstone), read_operation_data,
+      query_id);
 }
 
 void DocWriteBatch::Clear() {
   put_batch_.clear();
   cache_.Clear();
+  row_control_fields_ = {};
+}
+
+void DocWriteBatch::SetCdrMetadata(const CdrMetadata& cdr_metadata) {
+  DCHECK_NE(cdr_metadata.source_origin, dockv::ValueControlFields::kInvalidSourceOrigin);
+  DCHECK(cdr_metadata.source_write_ht.is_valid());
+
+  row_control_fields_ = {};
+  if (!cdr_enabled_) {
+    return;
+  }
+  row_control_fields_.cdr_source_origin = cdr_metadata.source_origin;
+  row_control_fields_.cdr_source_write_ht = cdr_metadata.source_write_ht;
 }
 
 void DocWriteBatch::MoveLocksToWriteBatchPB(LWKeyValueWriteBatchPB *kv_pb, bool is_lock) const {
@@ -911,7 +931,8 @@ void DocWriteBatch::MoveToWriteBatchPB(LWKeyValueWriteBatchPB *kv_pb) const {
       kv_pair->set_pk_is_known(static_cast<bool>(entry.pk_is_known));
     }
   }
-  if (!delete_vector_ids_.empty()) {
+  // Empty ids only mark the vector deletion, see MarkVectorDeletion.
+  if (has_vector_deletion_) {
     kv_pb->dup_delete_vector_ids(delete_vector_ids_.AsSlice());
   }
   MoveLocksToWriteBatchPB(kv_pb, /* is_lock= */ true);

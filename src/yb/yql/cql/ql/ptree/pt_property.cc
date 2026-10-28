@@ -11,6 +11,7 @@
 // under the License.
 //
 
+#include "yb/util/format.h"
 #include "yb/yql/cql/ql/ptree/pt_property.h"
 
 #include "yb/common/ql_type.h"
@@ -27,7 +28,6 @@ using std::string;
 namespace yb {
 namespace ql {
 
-using strings::Substitute;
 
 PTProperty::PTProperty(MemoryContext *memctx,
                       YBLocationPtr loc,
@@ -52,7 +52,7 @@ Status PTProperty::GetIntValueFromExpr(PTExpr::SharedPtr expr,
   DCHECK_ONLY_NOTNULL(val);
 
   if (expr == nullptr) {
-    return STATUS(InvalidArgument, Substitute("Invalid integer value for '$0'", property_name));
+    return STATUS(InvalidArgument, Format("Invalid integer value for '$0'", property_name));
   }
 
   if (expr->ql_type_id() == DataType::VARINT || expr->ql_type_id() == DataType::STRING) {
@@ -68,7 +68,7 @@ Status PTProperty::GetIntValueFromExpr(PTExpr::SharedPtr expr,
     *val = std::dynamic_pointer_cast<PTConstInt>(expr)->Eval();
     return Status::OK();
   }
-  return STATUS(InvalidArgument, Substitute("Invalid integer value for '$0'", property_name));
+  return STATUS(InvalidArgument, Format("Invalid integer value for '$0'", property_name));
 }
 
 Status PTProperty::GetDoubleValueFromExpr(PTExpr::SharedPtr expr,
@@ -101,8 +101,8 @@ Status PTProperty::GetBoolValueFromExpr(PTExpr::SharedPtr expr,
   DCHECK_ONLY_NOTNULL(val);
 
   if (expr == nullptr) {
-    return STATUS(InvalidArgument, Substitute("'$0' should either be true or false",
-                                              property_name));
+    return STATUS(InvalidArgument, Format("'$0' should either be true or false",
+                                          property_name));
   }
   if (expr->ql_type_id() == DataType::BOOL) {
     *val = std::dynamic_pointer_cast<PTConstBool>(expr)->Eval();
@@ -118,10 +118,10 @@ Status PTProperty::GetBoolValueFromExpr(PTExpr::SharedPtr expr,
       *val = false;
       return Status::OK();
     }
-    return STATUS(InvalidArgument, Substitute("'$0' should either be true or false, not $1",
-                                              property_name, str_val));
+    return STATUS(InvalidArgument, Format("'$0' should either be true or false, not $1",
+                                          property_name, str_val));
   }
-  return STATUS(InvalidArgument, Substitute("'$0' should either be true or false", property_name));
+  return STATUS(InvalidArgument, Format("'$0' should either be true or false", property_name));
 }
 
 Status PTProperty::GetStringValueFromExpr(PTExpr::SharedPtr expr,
@@ -139,7 +139,7 @@ Status PTProperty::GetStringValueFromExpr(PTExpr::SharedPtr expr,
     }
     return Status::OK();
   }
-  return STATUS(InvalidArgument, Substitute("Invalid string value for '$0'", property_name));
+  return STATUS(InvalidArgument, Format("Invalid string value for '$0'", property_name));
 }
 
 } // namespace ql

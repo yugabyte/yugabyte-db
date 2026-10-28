@@ -42,6 +42,7 @@
 
 #include "yb/gutil/dynamic_annotations.h"
 
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
@@ -104,7 +105,6 @@ struct LogSegmentSeqnoComparator {
 };
 }
 
-using strings::Substitute;
 
 const int64_t LogReader::kNoSizeLimit = -1;
 
@@ -202,7 +202,7 @@ Status LogReader::Init(const string& tablet_wal_path) {
       const auto current_seg_seqno = segment->header().sequence_number();
       if (previous_seg_seqno != -1 &&
           current_seg_seqno != previous_seg_seqno + 1) {
-        return STATUS(Corruption, Substitute("Segment sequence numbers are not consecutive. "
+        return STATUS(Corruption, Format("Segment sequence numbers are not consecutive. "
             "Previous segment: seqno $0, path $1; Current segment: seqno $2, path $3",
             previous_seg_seqno, previous_seg_path, current_seg_seqno,
                 segment->path()));
@@ -618,9 +618,9 @@ string LogReader::ToString() const {
   std::lock_guard lock(lock_);
   string ret = "Reader's SegmentSequence: \n";
   for (const SegmentSequence::value_type& entry : segments_) {
-    ret.append(Substitute("Segment: $0 Footer: $1\n",
-                          entry->header().sequence_number(),
-                          !entry->HasFooter() ? "NONE" : entry->footer().ShortDebugString()));
+    ret.append(Format("Segment: $0 Footer: $1\n",
+                      entry->header().sequence_number(),
+                      !entry->HasFooter() ? "NONE" : entry->footer().ShortDebugString()));
   }
   return ret;
 }

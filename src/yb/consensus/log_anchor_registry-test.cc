@@ -35,11 +35,11 @@
 
 #include "yb/consensus/log_anchor_registry.h"
 
+#include "yb/util/format.h"
 #include "yb/util/test_util.h"
 
 using std::string;
 
-using strings::Substitute;
 
 namespace yb {
 namespace log {
@@ -87,8 +87,8 @@ TEST_F(LogAnchorRegistryTest, TestDuplicateInserts) {
   // We should see none registered.
   Status s = reg->GetEarliestRegisteredLogIndex(&first_index);
   ASSERT_TRUE(s.IsNotFound())
-      << Substitute("Should have empty OpId registry. Status: $0, anchor: $1, Num anchors: $2",
-                    s.ToString(), first_index, reg->GetAnchorCountForTests());
+      << Format("Should have empty OpId registry. Status: $0, anchor: $1, Num anchors: $2",
+                s.ToString(), first_index, reg->GetAnchorCountForTests());
 
   ASSERT_EQ(0, reg->GetAnchorCountForTests());
 }

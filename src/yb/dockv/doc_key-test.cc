@@ -16,21 +16,24 @@
 #include "yb/common/schema.h"
 
 #include "yb/dockv/doc_key.h"
+#include "yb/dockv/doc_kv_util.h"
 #include "yb/dockv/dockv_test_util.h"
 #include "yb/dockv/intent.h"
 #include "yb/dockv/value_type.h"
 
 #include "yb/rocksdb/table.h"
 
-#include "yb/gutil/strings/substitute.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/decimal.h"
+#include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/random_util.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tostring.h"
+#include "yb/util/tsan_util.h"
 
 using std::vector;
 using std::string;
@@ -297,6 +300,192 @@ TEST_F(DocKeyTest, TestSubDocKeyToString) {
           KeyEntryValue("subkey1"), HybridTime::FromMicros(20000L)
       ).ToString());
 
+}
+
+TEST_F(DocKeyTest, TryGetEncodedSize) {
+  const auto encoded = DocKey(0x1234, MakeKeyEntryValues("h"), MakeKeyEntryValues(10)).Encode();
+  const auto size = ASSERT_RESULT(DocKey::EncodedSize(encoded.AsSlice(), DocKeyPart::kWholeDocKey));
+  ASSERT_EQ(size, encoded.size());
+  const auto probed_size = DocKey::TryGetEncodedSize(encoded.AsSlice(), DocKeyPart::kWholeDocKey);
+  ASSERT_TRUE(probed_size.has_value());
+  ASSERT_EQ(*probed_size, size);
+
+  const auto size_and_hash = ASSERT_RESULT(
+      DocKey::EncodedSizeAndHashPresent(encoded.AsSlice(), DocKeyPart::kUpToHash));
+  const auto probed_size_and_hash =
+      DocKey::TryGetEncodedSizeAndHashPresent(encoded.AsSlice(), DocKeyPart::kUpToHash);
+  ASSERT_TRUE(probed_size_and_hash.has_value());
+  ASSERT_EQ(*probed_size_and_hash, size_and_hash);
+
+  // Shaped like an intents DB reverse index key: kTransactionId, transaction id, then bytes that
+  // are not a key entry.
+  std::string non_doc_key(1, KeyEntryTypeAsChar::kTransactionId);
+  non_doc_key.append(16, 'a');
+  non_doc_key.append("\x01\x02\x03", 3);
+  const auto described = DocKey::EncodedSize(Slice(non_doc_key), DocKeyPart::kWholeDocKey);
+  ASSERT_NOK(described);
+  ASSERT_STR_CONTAINS(described.status().ToString(), "while consuming primitive values from");
+  ASSERT_FALSE(DocKey::TryGetEncodedSize(Slice(non_doc_key), DocKeyPart::kWholeDocKey));
+
+  // Hash code followed by bytes that are not a key entry.
+  std::string bad_hashed_key(1, KeyEntryTypeAsChar::kUInt16Hash);
+  bad_hashed_key.append("\x12\x34\x01", 3);
+  ASSERT_NOK(DocKey::EncodedSizeAndHashPresent(Slice(bad_hashed_key), DocKeyPart::kUpToHash));
+  ASSERT_FALSE(
+      DocKey::TryGetEncodedSizeAndHashPresent(Slice(bad_hashed_key), DocKeyPart::kUpToHash));
+}
+
+// Measures the cost of probing keys for a DocKey prefix, which the bloom filter key transformer
+// does for every key during SST file build, with and without error description. Non-DocKey keys
+// are shaped like intents DB reverse index entries, the case where the description dominated the
+// flush CPU time before the intents DB bloom filter was turned off.
+// Disabled by default, run on a release build with --gtest_also_run_disabled_tests.
+TEST_F(DocKeyTest, YB_DISABLE_TEST(TryGetEncodedSizePerf)) {
+  constexpr size_t kNumKeys = 100000;
+  constexpr size_t kNumIterations = RegularBuildVsDebugVsSanitizers(20, 2, 1);
+  constexpr auto kPart = DocKeyPart::kUpToHashOrFirstRange;
+
+  std::mt19937_64 rng(/* seed */ 20260921);
+  std::vector<std::string> reverse_index_keys;
+  std::vector<std::string> doc_keys;
+  reverse_index_keys.reserve(kNumKeys);
+  doc_keys.reserve(kNumKeys);
+  for (size_t i = 0; i != kNumKeys; ++i) {
+    // kTransactionId, transaction id, inverted doc hybrid time with value type.
+    std::string key(1, KeyEntryTypeAsChar::kTransactionId);
+    key += RandomString(kUuidSize, &rng);
+    std::string encoded_doc_ht(1, KeyEntryTypeAsChar::kHybridTime);
+    encoded_doc_ht += DocHybridTime(HybridTime::FromMicros(1000000 + i), 0).EncodedInDocDbFormat();
+    DocHybridTimeWordBuffer inverted_buffer;
+    key += InvertEncodedDocHT(encoded_doc_ht, &inverted_buffer).ToBuffer();
+    reverse_index_keys.push_back(std::move(key));
+
+    doc_keys.push_back(
+        DocKey(static_cast<DocKeyHash>(i), MakeKeyEntryValues(RandomString(8, &rng)),
+               MakeKeyEntryValues(static_cast<int64_t>(i))).Encode().ToStringBuffer());
+  }
+
+  // Returns the number of successful probes.
+  const auto measure = [&](
+      const char* name, const std::vector<std::string>& keys, const auto& probe) {
+    size_t num_successes = 0;
+    const auto start = MonoTime::Now();
+    for (size_t i = 0; i != kNumIterations; ++i) {
+      for (const auto& key : keys) {
+        num_successes += probe(Slice(key));
+      }
+    }
+    const auto elapsed = MonoTime::Now() - start;
+    const auto num_probes = kNumIterations * keys.size();
+    LOG(INFO) << name << ": " << elapsed.ToString() << ", "
+              << elapsed.ToNanoseconds() / num_probes << " ns per key, "
+              << num_successes << " of " << num_probes << " probes succeeded";
+    return num_successes;
+  };
+
+  const auto encoded_size = [](Slice key) {
+    return DocKey::EncodedSize(key, kPart).ok();
+  };
+  const auto try_get_encoded_size = [](Slice key) {
+    return DocKey::TryGetEncodedSize(key, kPart).has_value();
+  };
+
+  // A few reverse index keys decode as a single kTransactionId range component, when the random
+  // bytes happen to contain the zero-encoded string terminator, so only require the two variants
+  // to agree.
+  ASSERT_EQ(
+      measure("EncodedSize, reverse index keys", reverse_index_keys, encoded_size),
+      measure("TryGetEncodedSize, reverse index keys", reverse_index_keys, try_get_encoded_size));
+  const auto num_doc_key_probes = kNumIterations * doc_keys.size();
+  ASSERT_EQ(measure("EncodedSize, doc keys", doc_keys, encoded_size), num_doc_key_probes);
+  ASSERT_EQ(
+      measure("TryGetEncodedSize, doc keys", doc_keys, try_get_encoded_size), num_doc_key_probes);
+}
+
+TEST_F(DocKeyTest, EncodedHashGroupAndRangeComponentsSize) {
+  const auto tenant = KeyEntryValue::Create("tenant");
+  auto components_size = [](const KeyBytes& key, size_t num_components) {
+    return CHECK_RESULT(DocKey::EncodedHashGroupAndRangeComponentsSize(
+        key.AsSlice(), num_components));
+  };
+  // Drops the group end that closes the range group, as pggate does for a ybctid prefix.
+  auto query_prefix = [](const DocKey& doc_key) {
+    auto result = doc_key.Encode();
+    result.RemoveLastByte();
+    return result;
+  };
+
+  // PRIMARY KEY ((tenant) HASH, r1, r2).
+  auto ybctid = DocKey(0x1234, {tenant}, {KeyEntryValue::Int32(1), KeyEntryValue::Int32(2)})
+      .Encode();
+  auto hash_part_size = ASSERT_RESULT(
+      DocKey::EncodedSize(ybctid.AsSlice(), DocKeyPart::kUpToHash));
+  auto r1_end = query_prefix(DocKey(0x1234, {tenant}, {KeyEntryValue::Int32(1)})).size();
+  ASSERT_EQ(components_size(ybctid, 0), 0U);
+  ASSERT_EQ(components_size(ybctid, 1), hash_part_size);
+  ASSERT_EQ(components_size(ybctid, 2), r1_end);
+  // The closing range group end is not covered.
+  ASSERT_EQ(components_size(ybctid, 3), ybctid.size() - 1);
+  ASSERT_EQ(components_size(ybctid, 4), std::nullopt);
+  ASSERT_EQ(
+      ASSERT_RESULT(DocKey::EncodedHashGroupAndRangeComponentsSizeStrict(ybctid.AsSlice(), 2)),
+      r1_end);
+  auto strict_size = DocKey::EncodedHashGroupAndRangeComponentsSizeStrict(ybctid.AsSlice(), 4);
+  ASSERT_NOK(strict_size);
+  ASSERT_TRUE(strict_size.status().IsCorruption()) << strict_size.status();
+
+  // A query prefix with the hash group gives the tenant of its rows.
+  auto prefix = query_prefix(DocKey(0x1234, {tenant}, {}));
+  ASSERT_EQ(prefix.AsSlice(), ybctid.AsSlice().Prefix(hash_part_size));
+  ASSERT_EQ(components_size(prefix, 1), hash_part_size);
+  ASSERT_EQ(components_size(prefix, 2), std::nullopt);
+  prefix = query_prefix(DocKey(0x1234, {tenant}, {KeyEntryValue::Int32(1)}));
+  ASSERT_EQ(components_size(prefix, 1), hash_part_size);
+  ASSERT_EQ(components_size(prefix, 2), r1_end);
+
+  // PRIMARY KEY ((tenant) HASH): the tenant is the whole key without the range group end.
+  auto hash_ybctid = DocKey(0x1234, {tenant}, {}).Encode();
+  ASSERT_EQ(components_size(hash_ybctid, 1), hash_part_size);
+
+  // PRIMARY KEY (r1 ASC, r2 ASC).
+  auto range_ybctid = DocKey({KeyEntryValue::Int32(7), KeyEntryValue::Int32(8)}).Encode();
+  auto range_prefix = query_prefix(DocKey({KeyEntryValue::Int32(7)}));
+  ASSERT_EQ(components_size(range_ybctid, 1), range_prefix.size());
+  ASSERT_EQ(components_size(range_prefix, 1), range_prefix.size());
+  ASSERT_EQ(components_size(range_prefix, 2), std::nullopt);
+
+  // The colocation id of a range key is not a hash group.
+  constexpr ColocationId kColocationId = 0x4000;
+  DocKey colocated_key({KeyEntryValue::Int32(7), KeyEntryValue::Int32(8)});
+  colocated_key.set_colocation_id(kColocationId);
+  DocKey colocated_prefix({KeyEntryValue::Int32(7)});
+  colocated_prefix.set_colocation_id(kColocationId);
+  ASSERT_EQ(components_size(colocated_key.Encode(), 1), query_prefix(colocated_prefix).size());
+}
+
+TEST_F(DocKeyTest, IsDecodable) {
+  const auto encoded = DocKey(0x1234, MakeKeyEntryValues("h"), MakeKeyEntryValues(10)).Encode();
+  ASSERT_TRUE(DocKey::IsDecodable(encoded.AsSlice()));
+
+  // Shaped like an intents DB reverse index key: kTransactionId, transaction id, then bytes that
+  // are not a key entry.
+  std::string non_doc_key(1, KeyEntryTypeAsChar::kTransactionId);
+  non_doc_key.append(16, 'a');
+  non_doc_key.append("\x01\x02\x03", 3);
+  ASSERT_FALSE(DocKey::IsDecodable(Slice(non_doc_key)));
+
+  // A uuid component whose zero-encoded string is well formed but 5 bytes long instead of 16.
+  // Only a decode that builds the value checks the length, so here IsDecodable agrees with
+  // DecodeFrom and is stricter than TryGetEncodedSize.
+  std::string short_uuid_key(1, KeyEntryTypeAsChar::kUuid);
+  short_uuid_key += "abcde";
+  short_uuid_key.append("\0\0", 2);
+  short_uuid_key += KeyEntryTypeAsChar::kGroupEnd;
+  const auto size = DocKey::TryGetEncodedSize(Slice(short_uuid_key), DocKeyPart::kWholeDocKey);
+  ASSERT_TRUE(size.has_value());
+  ASSERT_EQ(*size, short_uuid_key.size());
+  ASSERT_NOK(DocKey().DecodeFrom(Slice(short_uuid_key)));
+  ASSERT_FALSE(DocKey::IsDecodable(Slice(short_uuid_key)));
 }
 
 TEST_F(DocKeyTest, TestDocKeyEncoding) {

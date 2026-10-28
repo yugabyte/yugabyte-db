@@ -9,6 +9,7 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
@@ -78,14 +79,30 @@ public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
 
   @Override
   protected void createPrecheckTasks(Universe universe) {
-    addBasicPrecheckTasks();
     NodeDetails currentNode = getCurrentNode(universe);
+    taskParams().azUuid = currentNode.azUuid;
+    taskParams().placementUuid = currentNode.placementUuid;
+
+    if (!instanceExists(taskParams())) {
+      String msg = "No instance exists for " + taskParams().nodeName;
+      log.error(msg);
+      throw new RuntimeException(msg);
+    }
+
+    addBasicPrecheckTasks();
     createNodePrecheckTasks(
         currentNode,
         currentNode.getAllProcesses(),
         SubTaskGroupType.PreflightChecks,
         false,
         universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
+
+    if (!taskParams().isHardReboot
+        && isFirstTry()
+        && confGetter.getConfForScope(universe, UniverseConfKeys.enableComprehensivePrechecks)) {
+      createCheckNodeCommandExecutionTasks(Collections.singletonList(currentNode))
+          .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+    }
   }
 
   @Override
@@ -98,14 +115,6 @@ public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
             taskParams().expectedUniverseVersion, null /* Txn callback */);
     try {
       NodeDetails currentNode = universe.getNode(taskParams().nodeName);
-      taskParams().azUuid = currentNode.azUuid;
-      taskParams().placementUuid = currentNode.placementUuid;
-
-      if (!instanceExists(taskParams())) {
-        String msg = "No instance exists for " + taskParams().nodeName;
-        log.error(msg);
-        throw new RuntimeException(msg);
-      }
 
       preTaskActions();
 
@@ -124,7 +133,10 @@ public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
 
       // Stop Yb-controller on this node.
       if (universe.isYbcEnabled()) {
-        createStopYbControllerTasks(Collections.singletonList(currentNode))
+        createStopServerTasks(
+                Collections.singletonList(currentNode),
+                ServerType.CONTROLLER,
+                params -> params.skipStopForPausedVM = isHardReboot)
             .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
       }
 

@@ -54,12 +54,12 @@
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/flag_validators.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
@@ -135,10 +135,10 @@ DEFINE_RUNTIME_uint32(max_remote_bootstrap_attempts_from_non_leader, 5,
     "that result in a failure. We fallback to bootstrapping from the leader peer post this.");
 
 DEFINE_RUNTIME_uint32(retain_wal_secs_for_progressing_prevoter, 900,
-    "Seconds to pin WAL for a PRE_VOTER after its first pin request. During the first tenth of "
-    "this window the WAL is always pinned. After that, each GetWalGcPeerRetentionInfo() call pins "
-    "the WAL only while this window is still open and the PRE_VOTER has advanced at least as far "
-    "as the majority-replicated op since the previous call.");
+    "Seconds to pin WAL for a catching-up PRE_VOTER. The WAL is always pinned for this long "
+    "after the PRE_VOTER is first pinned. Once the window elapses, the pin is renewed for another "
+    "window only if the PRE_VOTER has advanced at least as far as the majority-replicated op since "
+    "the last pin; otherwise the PRE_VOTER's WAL is no longer pinned.");
 TAG_FLAG(retain_wal_secs_for_progressing_prevoter, advanced);
 
 DEFINE_test_flag(bool, assert_remote_bootstrap_happens_from_same_zone, false,
@@ -161,7 +161,6 @@ using log::Log;
 using std::unique_ptr;
 using std::string;
 using std::max;
-using strings::Substitute;
 
 METRIC_DEFINE_gauge_int64(tablet, majority_done_ops, "Leader Operations Acked by Majority",
                           MetricUnit::kOperations,
@@ -352,10 +351,10 @@ void PeerMessageQueue::CheckPeersInActiveConfigIfLeaderUnlocked() const {
   }
   for (const PeersMap::value_type& entry : peers_map_) {
     if (!ContainsKey(config_peer_uuids, entry.first)) {
-      LOG_WITH_PREFIX_UNLOCKED(FATAL) << Substitute("Peer $0 is not in the active config. "
-                                                    "Queue state: $1",
-                                                    entry.first,
-                                                    queue_state_.ToString());
+      LOG_WITH_PREFIX_UNLOCKED(FATAL) << Format("Peer $0 is not in the active config. "
+                                                "Queue state: $1",
+                                                entry.first,
+                                                queue_state_.ToString());
     }
   }
 }
@@ -611,11 +610,11 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
       // We never drop from 2 voters to 1 voter automatically, at least for now (12/4/18). We may
       // want to revisit this later, we're just being cautious with this.
       // We remove unconditionally any failed non-voter replica (PRE_VOTER,PRE_OBSERVER,OBSERVER).
-      string msg = Substitute("Leader has been unable to successfully communicate "
-                              "with Peer $0 for more than $1 seconds ($2)",
-                              uuid,
-                              FLAGS_follower_unavailable_considered_failed_sec,
-                              unreachable_time.ToString());
+      string msg = Format("Leader has been unable to successfully communicate "
+                          "with Peer $0 for more than $1 seconds ($2)",
+                          uuid,
+                          FLAGS_follower_unavailable_considered_failed_sec,
+                          unreachable_time.ToString());
       NotifyObserversOfFailedFollower(uuid, current_term, msg);
     }
   }
@@ -753,25 +752,13 @@ PeerMessageQueue::WalGcPeerRetentionInfo PeerMessageQueue::GetWalGcPeerRetention
         : majority_replicated;
   }
 
-  // Track advancement of the majority replicated op since the last WAL GC in the same term.
-  const auto previous_majority_replicated =
-      queue_state_.previous_wal_gc_majority_replicated_op_id;
-  int64_t majority_advancement_since_previous_gc = 0;
-  if (previous_majority_replicated != OpId::Max() &&
-      result.majority_replicated_op_id.term == previous_majority_replicated.term &&
-      result.majority_replicated_op_id.index >= previous_majority_replicated.index) {
-    majority_advancement_since_previous_gc =
-        result.majority_replicated_op_id.index - previous_majority_replicated.index;
-  }
-
   const auto now = MonoTime::Now();
-  const auto kRetainWalPreVoterSecs = FLAGS_retain_wal_secs_for_progressing_prevoter;
-  // Hold WAL for PRE_VOTERs which are catching up at a rate as fast as the majority voters,
-  // for a max period of FLAGS_retain_wal_secs_for_progressing_prevoter, this is best effort.
-  // Called at maintenance_manager_polling_interval_ms (default 250ms). After warmup, a PRE_VOTER
-  // whose in-flight batch has not acked can look slower than the majority, though unlikely:
-  // majority advancement needs several peers, so it rarely outpaces one catching-up PRE_VOTER
-  // in a single poll.
+  const auto retain_wal_window = FLAGS_retain_wal_secs_for_progressing_prevoter * 1s;
+  // Hold WAL for PRE_VOTERs which are catching up at a rate as fast as the majority voters, this
+  // is best effort. Progress is compared against the majority once per
+  // retain_wal_secs_for_progressing_prevoter window rather than on every call (each
+  // maintenance_manager_polling_interval_ms), since over a single poll a PRE_VOTER with an
+  // in-flight batch can look slower than the majority.
   for (const auto& entry : peers_map_) {
     auto& peer = *entry.second;
     if (peer.member_type != PeerMemberType::PRE_VOTER ||
@@ -781,38 +768,29 @@ PeerMessageQueue::WalGcPeerRetentionInfo PeerMessageQueue::GetWalGcPeerRetention
       continue;
     }
 
-    auto& prev_wal_pin_info = peer.requested_wal_pin_info;
-    auto se = ScopeExit([&]() {
-      prev_wal_pin_info.op_id = peer.last_received;
-    });
-    const bool first_pin_request =
-        prev_wal_pin_info.first_requested_time == MonoTime::kUninitialized ||
-        prev_wal_pin_info.op_id == OpId::Max();
-    if (first_pin_request) {
-      prev_wal_pin_info.first_requested_time = now;
+    auto& pin_info = peer.requested_wal_pin_info;
+    bool renew_pin = pin_info.last_pinned_time == MonoTime::kUninitialized;
+    if (!renew_pin && now - pin_info.last_pinned_time >= retain_wal_window) {
+      int64_t majority_advancement = 0;
+      if (pin_info.majority_replicated_op_id != OpId::Max() &&
+          result.majority_replicated_op_id != OpId::Max()) {
+        majority_advancement = std::max<int64_t>(
+            0, result.majority_replicated_op_id.index - pin_info.majority_replicated_op_id.index);
+      }
+      if (peer.last_received.index - pin_info.op_id.index < majority_advancement) {
+        continue;
+      }
+      renew_pin = true;
     }
-
-    const auto requested_pin_duration =
-        now.GetDeltaSince(prev_wal_pin_info.first_requested_time);
-    const bool retain_wal_time_window_active =
-        requested_pin_duration.ToSeconds() < kRetainWalPreVoterSecs;
-    if (!retain_wal_time_window_active) {
-      continue;
-    }
-
-    if (!first_pin_request &&
-        previous_majority_replicated != OpId::Max() &&
-        result.majority_replicated_op_id != OpId::Max() &&
-        requested_pin_duration > kRetainWalPreVoterSecs * 1s / 10 &&
-        peer.last_received.index - prev_wal_pin_info.op_id.index <
-            majority_advancement_since_previous_gc) {
-      continue;
+    if (renew_pin) {
+      pin_info.op_id = peer.last_received;
+      pin_info.majority_replicated_op_id = result.majority_replicated_op_id;
+      pin_info.last_pinned_time = now;
     }
     result.min_progressing_pre_voter_op_id =
         std::min(result.min_progressing_pre_voter_op_id, peer.last_received);
   }
 
-  queue_state_.previous_wal_gc_majority_replicated_op_id = result.majority_replicated_op_id;
   return result;
 }
 
@@ -1823,7 +1801,7 @@ void PeerMessageQueue::DumpToHtml(std::ostream& out) const {
   out << "<table>" << endl;;
   out << "  <tr><th>Peer</th><th>Watermark</th></tr>" << endl;
   for (const PeersMap::value_type& entry : peers_map_) {
-    out << Substitute(
+    out << Format(
                "  <tr><td><ul><li>$0</li><li>$1</li></ul></td><td>$2</td></tr>",
                EscapeForHtmlToString("UUID: " + entry.first),
                EscapeForHtmlToString("Host: " + entry.second->last_known_private_addr[0].host()),
@@ -1858,10 +1836,10 @@ string PeerMessageQueue::ToString() const {
 }
 
 string PeerMessageQueue::ToStringUnlocked() const {
-  return Substitute("Consensus queue metrics:"
-                    "Only Majority Done Ops: $0, In Progress Ops: $1, Cache: $2",
-                    metrics_.num_majority_done_ops->value(), metrics_.num_in_progress_ops->value(),
-                    log_cache_.StatsString());
+  return Format("Consensus queue metrics:"
+                "Only Majority Done Ops: $0, In Progress Ops: $1, Cache: $2",
+                metrics_.num_majority_done_ops->value(), metrics_.num_in_progress_ops->value(),
+                log_cache_.StatsString());
 }
 
 void PeerMessageQueue::RegisterObserver(PeerMessageQueueObserver* observer) {
@@ -2095,10 +2073,10 @@ string PeerMessageQueue::LogPrefixUnlocked() const {
   // TODO: we should probably use an atomic here. We'll just annotate away the TSAN error for now,
   // since the worst case is a slightly out-of-date log message, and not very likely.
   Mode mode = ANNOTATE_UNPROTECTED_READ(queue_state_.mode);
-  return Substitute("T $0 P $1 [$2]: ",
-                    tablet_id_,
-                    local_peer_uuid_,
-                    ModeToStr(mode));
+  return Format("T $0 P $1 [$2]: ",
+                tablet_id_,
+                local_peer_uuid_,
+                ModeToStr(mode));
 }
 
 string PeerMessageQueue::QueueState::ToString() const {
@@ -2123,6 +2101,10 @@ size_t PeerMessageQueue::LogCacheSize() {
 
 size_t PeerMessageQueue::EvictLogCache(size_t bytes_to_evict) {
   return log_cache_.EvictThroughOp(std::numeric_limits<int64_t>::max(), bytes_to_evict);
+}
+
+Result<OpId> PeerMessageQueue::LookupOpId(int64_t op_index) const {
+  return log_cache_.LookupOpId(op_index);
 }
 
 void PeerMessageQueue::TrackOperationsMemory(const OpIds& op_ids) {

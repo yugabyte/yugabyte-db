@@ -14,6 +14,7 @@
 #pragma once
 
 #include "yb/master/master_fwd.h"
+#include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_tserver.h"
 
 #include "yb/tserver/tablet_service.h"
@@ -22,6 +23,11 @@
 
 namespace yb {
 namespace master {
+
+// How close catalog prefetch admission is to refusing work, for the heartbeat to pass on to
+// tservers. Read from wherever admission state lives rather than plumbed through the services,
+// because a process has one master tablet service and the heartbeat service cannot reach it.
+YsqlCatalogPrefetchLoadPB GetYsqlCatalogPrefetchLoad();
 
 // A subset of the TabletService supported by the Master to query specific tables.
 class MasterTabletServiceImpl : public tserver::TabletServiceImpl {
@@ -95,6 +101,7 @@ class MasterTabletServiceImpl : public tserver::TabletServiceImpl {
   Master *const master_;
   scoped_refptr<AtomicGauge<int64_t>> ysql_catalog_prefetches_in_progress_;
   scoped_refptr<Counter> ysql_catalog_prefetch_rejections_;
+  scoped_refptr<Counter> ysql_catalog_prefetch_new_admissions_;
   DISALLOW_COPY_AND_ASSIGN(MasterTabletServiceImpl);
 };
 

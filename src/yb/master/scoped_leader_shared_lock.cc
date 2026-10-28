@@ -90,7 +90,7 @@ ScopedLeaderSharedLock::ScopedLeaderSharedLock(
     // Check if the catalog manager is running.
     std::lock_guard l(catalog_->state_lock_);
     if (PREDICT_FALSE(catalog_->state_ != CatalogManager::kRunning)) {
-      catalog_status_ = STATUS_SUBSTITUTE(ServiceUnavailable,
+      catalog_status_ = STATUS_FORMAT(ServiceUnavailable,
           "Catalog manager is not initialized. State: $0", catalog_->state_);
       return;
     }
@@ -106,7 +106,7 @@ Status ScopedLeaderSharedLock::Lock() NO_THREAD_SAFETY_ANALYSIS {
   if (PREDICT_FALSE(catalog_->master_->IsShellMode())) {
     // Consensus and other internal fields should not be checked when in shell mode as they may be
     // in transition.
-    return STATUS_SUBSTITUTE(IllegalState,
+    return STATUS_FORMAT(IllegalState,
         "Catalog manager of $0 is in shell mode, not the leader.",
         catalog_->master_->instance_pb().permanent_uuid());
   }
@@ -137,7 +137,7 @@ Status ScopedLeaderSharedLock::Lock() NO_THREAD_SAFETY_ANALYSIS {
   }
 
   if (catalog_->restoring_sys_catalog_) {
-    return STATUS_SUBSTITUTE(ServiceUnavailable, "Catalog manager is restoring");
+    return STATUS_FORMAT(ServiceUnavailable, "Catalog manager is restoring");
   }
 
   return Status::OK();

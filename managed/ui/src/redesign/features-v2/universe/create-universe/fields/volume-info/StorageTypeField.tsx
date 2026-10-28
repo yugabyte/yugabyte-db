@@ -21,6 +21,7 @@ import {
 import { QUERY_KEY, api } from '@app/redesign/features/universe/universe-form/utils/api';
 import { StorageType, CloudType } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { isStorageTypeSelectableCloudType } from '@app/components/configRedesign/providerRedesign/utils';
+import { isEphemeralOciStorageInstance } from '@app/redesign/features-v2/universe/create-universe/fields/instance-type/InstanceTypeFieldHelper';
 import { InstanceSettingProps } from '@app/redesign/features-v2/universe/create-universe/steps/hardware-settings/dtos';
 import { ProviderType } from '@app/redesign/features-v2/universe/create-universe/steps/general-settings/dtos';
 import {
@@ -196,7 +197,11 @@ export const StorageTypeField: FC<StorageTypeFieldProps> = ({
   };
 
   const renderStorageType = () => {
-    if (provider && isStorageTypeSelectableCloudType(provider?.code)) {
+    if (
+      provider &&
+      isStorageTypeSelectableCloudType(provider?.code) &&
+      !isEphemeralOciStorageInstance(instance)
+    ) {
       const isPremiumV2Storage = fieldValue?.storageType === StorageType.PremiumV2_LRS;
       const isHyperdisk =
         fieldValue?.storageType === StorageType.Hyperdisk_Balanced ||

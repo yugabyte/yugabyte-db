@@ -29,6 +29,7 @@ YBUnackedTransactionInfo
 YBUpdateOptimizationOptions
 YbAddTupleToOuterBatchFn_t
 YbAdditionalNegCacheIds
+YbAnalyzeRelEnd_hook_type
 YbAsh
 YbAshQueryPlanPairStack
 YbAshTrackNestedQueries
@@ -61,6 +62,8 @@ YbCatNamePfId
 YbCatalogCacheTable
 YbCatalogMessageList
 YbCatalogModificationAspects
+YbCatalogPrefetchLoad
+YbCatalogPreloadCacheList
 YbCatalogVersionType
 YbChildScan
 YbChildScanData
@@ -80,6 +83,7 @@ YbDdlMode
 YbDdlModeOptional
 YbDdlOriginalStmtState
 YbDdlTransactionState
+YbDefaultOpClassScanState
 YbDefaultSysScan
 YbDefaultSysScanData
 YbDetailSorter
@@ -117,7 +121,8 @@ YbIndexCorruptionErrors
 YbIndexErrorInfo
 YbIndexInconsistencyLogStore
 YbIndexPathInfo
-YbIndexProcessorState
+YbIndiciesHTABEntry
+YbIndiciesHTABEntryData
 YbInsertOnConflictBatchState
 YbInsertOnConflictPhase
 YbInstrumentation
@@ -128,6 +133,7 @@ YbInternalConnKindDescriptor
 YbIssueDetectionCheck
 YbIssueDetectionPlan
 YbJumbleState
+YbListedValues
 YbListenerQueueScanCurrentXactState
 YbLocationLen
 YbLockMechanism
@@ -334,6 +340,8 @@ YbcPgLocalTabletsDescriptor
 YbcPgMemctx
 YbcPgMetricsCaptureType
 YbcPgOid
+YbcPgOnConflictAction
+YbcPgOnConflictOutcome
 YbcPgPrepareParameters
 YbcPgReplicaIdentityDescriptor
 YbcPgReplicationSlotSnapshotAction
@@ -364,6 +372,7 @@ YbcPgUuid
 YbcPgVectorDistType
 YbcPgVectorIdxOptions
 YbcPgVectorIdxType
+YbcPgVectorKeyColumn
 YbcPgXLogRecPtr
 YbcPgYBTupleIdDescriptor
 YbcPgYbrowidMode

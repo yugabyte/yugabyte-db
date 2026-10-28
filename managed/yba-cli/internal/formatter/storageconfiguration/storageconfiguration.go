@@ -6,6 +6,7 @@ package storageconfiguration
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/sirupsen/logrus"
 	ybaclient "github.com/yugabyte/platform-go-client"
@@ -23,6 +24,10 @@ const (
 	useGCPIAMHeader          = "Use GCP IAM Enabled"
 	gcsCredentialsHeader     = "GCS Credentials"
 	azSASTokenHeader         = "Azure SAS Token"
+	ociRegionHeader          = "OCI Region"
+	ociNamespaceHeader       = "OCI Namespace"
+	useOCIIAMHeader          = "Use OCI IAM Enabled"
+	ociS3HostBaseHeader      = "S3 Host Base"
 )
 
 // Context for storageConfig outputs
@@ -96,6 +101,13 @@ func NewStorageConfigContext() *Context {
 		"UseGCPIAM": useGCPIAMHeader,
 
 		"AzSASToken": azSASTokenHeader,
+
+		"OCIRegion":            ociRegionHeader,
+		"OCINamespace":         ociNamespaceHeader,
+		"UseOCIIAM":            useOCIIAMHeader,
+		"OCIS3AccessKeyID":     aws.AccessKeyIDHeader,
+		"OCIS3SecretAccessKey": aws.AccessKeySecretHeader,
+		"OCIS3HostBase":        ociS3HostBaseHeader,
 	}
 	return &storageConfigCtx
 }
@@ -183,6 +195,45 @@ func (c *Context) AzSASToken() string {
 	data := c.s.GetData()
 	if azureStorageSasToken, ok := data[util.AzureStorageSasTokenEnv]; ok {
 		return azureStorageSasToken.(string)
+	}
+	return "-"
+}
+
+// OCIRegion of the storage config
+func (c *Context) OCIRegion() string {
+	return c.dataField(util.OCIStorageRegionField)
+}
+
+// OCINamespace of the storage config
+func (c *Context) OCINamespace() string {
+	return c.dataField(util.OCINamespaceField)
+}
+
+// UseOCIIAM of the storage config
+func (c *Context) UseOCIIAM() string {
+	return c.dataField(util.UseOCIIAM)
+}
+
+// OCIS3AccessKeyID of the storage config
+func (c *Context) OCIS3AccessKeyID() string {
+	return c.dataField(util.OCIS3AccessKeyIDField)
+}
+
+// OCIS3SecretAccessKey of the storage config
+func (c *Context) OCIS3SecretAccessKey() string {
+	return c.dataField(util.OCIS3SecretAccessKeyField)
+}
+
+// OCIS3HostBase of the storage config
+func (c *Context) OCIS3HostBase() string {
+	return c.dataField(util.OCIS3HostBaseField)
+}
+
+// dataField renders non-string values too, since OCI fields such as USE_OCI_IAM are booleans.
+func (c *Context) dataField(key string) string {
+	data := c.s.GetData()
+	if value, ok := data[key]; ok && value != nil {
+		return fmt.Sprintf("%v", value)
 	}
 	return "-"
 }

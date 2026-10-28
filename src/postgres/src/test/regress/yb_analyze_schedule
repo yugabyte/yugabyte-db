@@ -5,3 +5,4 @@
 ####################################################################################################
 test: yb.orig.analyze
 test: yb.orig.analyze_system_tables
+test: yb.orig.analyze_width_skip

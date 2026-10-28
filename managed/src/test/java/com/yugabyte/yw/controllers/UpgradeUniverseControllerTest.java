@@ -11,10 +11,12 @@ import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static org.hamcrest.CoreMatchers.allOf;
+import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
@@ -28,6 +30,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
+import static play.mvc.Http.Status.FORBIDDEN;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -62,7 +65,9 @@ import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.RuntimeConfigCache;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
@@ -466,6 +471,36 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     assertEquals(Integer.valueOf(2), taskParams.rollMaxBatchSize.getPrimaryBatchSize());
     assertEquals(Integer.valueOf(2), taskParams.rollMaxBatchSize.getReadReplicaBatchSize());
     assertAuditEntry(1, customer.getUuid());
+  }
+
+  @Test
+  public void testKubernetesOverridesUpgradeCannotDisableFipsOnFipsUniverse() {
+    Universe universe = prepareK8sUniverseForOverridesUpgrade("Overrides FIPS Universe");
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              details.fipsEnabled = true;
+              u.setUniverseDetails(details);
+            });
+
+    Universe fipsUniverse = universe;
+    Result result =
+        assertPlatformException(
+            () ->
+                runUpgrade(
+                    fipsUniverse,
+                    p ->
+                        p.universeOverrides =
+                            "gflags:\n  tserver:\n    openssl_require_fips: \"false\"",
+                    KubernetesOverridesUpgradeParams.class,
+                    "kubernetes_overrides"));
+    assertBadRequest(
+        result,
+        "FIPS enabled YBAnywhere only supports FIPS enabled universe: Kubernetes overrides cannot"
+            + " set tserver openssl_require_fips to false");
+    verify(mockCommissioner, never()).submit(any(), any());
   }
 
   @Test
@@ -2547,5 +2582,51 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
           universe.setUniverseDetails(universeDetails);
         };
     Universe.saveDetails(universeUUID, updater);
+  }
+
+  /**
+   * This class mocks the runtime config, where the block for operator-owned resources reads false,
+   * and the handler caches it. Turn the block on, as it is by default.
+   */
+  private RuntimeConfigCache enableOperatorBlock() {
+    when(mockConfig.getBoolean(GlobalConfKeys.blockOperatorApiResources.getKey())).thenReturn(true);
+    RuntimeConfigCache cache = app.injector().instanceOf(RuntimeConfigCache.class);
+    cache.invalidateCache();
+    return cache;
+  }
+
+  @Test
+  public void testRollbackUpgradeBlockedForOperatorOwnedUniverse() {
+    RuntimeConfigCache cache = enableOperatorBlock();
+    try {
+      Universe.saveDetails(
+          defaultUniverse.getUniverseUUID(),
+          u -> u.getUniverseDetails().isKubernetesOperatorControlled = true);
+      defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+
+      Result result = runUpgrade(defaultUniverse, p -> {}, RollbackUpgradeParams.class, "rollback");
+
+      assertEquals(FORBIDDEN, result.status());
+      assertThat(contentAsString(result), containsString("controlled by kubernetes operator"));
+      verifyNoActions();
+    } finally {
+      cache.invalidateCache();
+    }
+  }
+
+  @Test
+  public void testRollbackUpgradeNotBlockedForUniverseNotOwnedByOperator() {
+    RuntimeConfigCache cache = enableOperatorBlock();
+    try {
+      PlatformServiceException exception =
+          assertThrows(
+              PlatformServiceException.class,
+              () -> runUpgrade(defaultUniverse, p -> {}, RollbackUpgradeParams.class, "rollback"));
+
+      // Past the operator check: the handler rejects it, since no upgrade is there to roll back.
+      assertNotEquals(FORBIDDEN, exception.getHttpStatus());
+    } finally {
+      cache.invalidateCache();
+    }
   }
 }

@@ -30,8 +30,8 @@
 
 #include "yb/gutil/endian.h"
 #include "yb/gutil/integral_types.h"
-#include "yb/gutil/strings/substitute.h" // For Substitute
 
+#include "yb/util/format.h"
 #include "yb/util/status_fwd.h"
 
 // This file should only be included in .cc files of the docdb subsystem. Defines some macros for
@@ -53,7 +53,7 @@ constexpr bool IsDocDbDebug() {
   do { \
     if (IsDocDbDebug()) { \
       LOG(INFO) << "DocDB DEBUG [" << __func__  << "]: " \
-                << strings::Substitute(__VA_ARGS__); \
+                << ::yb::Format(__VA_ARGS__); \
     } \
   } while (false)
 

@@ -39,11 +39,14 @@ public class TestPgRegressProc extends BasePgRegressTest {
     // as the object locks on catalog tables don't seem very deterministic amidst DDLs. Hence
     // disabling object locking for this tests (there are other tests where pg_locks is tested for
     // with object locking enabled).
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    flagMap.put("enable_object_locking_for_table_locks", "false");
-    flagMap.put("ysql_enable_concurrent_ddl", "false");
-    flagMap.merge("allowed_preview_flags_csv", "ysql_enable_concurrent_ddl",
-        (e, a) -> e + "," + a);
+    toggleDDLMode(flagMap, /* useLegacy */ true);
+    return flagMap;
+  }
+
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    toggleDDLMode(flagMap, /* useLegacy */ true);
     return flagMap;
   }
 

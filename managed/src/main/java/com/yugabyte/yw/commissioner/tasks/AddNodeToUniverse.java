@@ -18,6 +18,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.CanRollback;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
@@ -50,6 +51,7 @@ import lombok.extern.slf4j.Slf4j;
 // and/or master and ensures the task waits for the right set of load balance primitives.
 @Slf4j
 @Retryable
+@Abortable
 @CanRollback
 public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
 
@@ -366,13 +368,15 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
         createMasterInfoUpdateTask(universe, currentNode, null /* stopped node */);
       }
 
-      // Add node to load balancer.
-      createManageLoadBalancerTasks(
-          createLoadBalancerMap(
-              universe.getUniverseDetails(),
-              ImmutableList.of(cluster),
-              null,
-              ImmutableSet.of(currentNode)));
+      if (addTserver) {
+        // Add node to load balancer. Only tservers are load balancer targets.
+        createManageLoadBalancerTasks(
+            createLoadBalancerMap(
+                universe.getUniverseDetails(),
+                ImmutableList.of(cluster),
+                null,
+                ImmutableSet.of(currentNode)));
+      }
 
       // Update the DNS entry for this universe.
       createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, universe)

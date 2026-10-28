@@ -327,6 +327,8 @@ class PgDocOp {
 
   Result<int32_t> GetRowsAffectedCount() const;
 
+  Result<PgsqlResponsePB::PgsqlOnConflictOutcome> GetOnConflictOutcome() const;
+
   // Get the results and hand them over to the result stream.
   // Send requests for new pages if necessary.
   virtual Status FetchMoreResults();
@@ -417,6 +419,10 @@ class PgDocOp {
 
   // Executed row count.
   int32_t rows_affected_count_ = 0;
+
+  // On conflict outcome.
+  PgsqlResponsePB::PgsqlOnConflictOutcome on_conflict_outcome_ =
+      PgsqlResponsePB::PGSQL_ON_CONFLICT_OUTCOME_UNKNOWN;
 
   // Whether all requested data by the statement has been received or there's a run-time error.
   bool end_of_data_ = false;

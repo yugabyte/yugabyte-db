@@ -12,6 +12,7 @@
 
 #include "yb/client/async_rpc.h"
 
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/gutil/casts.h"
 
 #include "yb/integration-tests/xcluster/xcluster_ddl_replication_test_base.h"
@@ -23,9 +24,6 @@
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
-DECLARE_bool(enable_object_locking_for_table_locks);
-DECLARE_bool(ysql_enable_concurrent_ddl);
-DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks);
 DECLARE_bool(yb_enable_read_committed_isolation);
 
@@ -38,8 +36,7 @@ namespace {
 void SetSkipIntentsAndDdlFlagsForXClusterTest() {
   // --ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=true requires
   // --ysql_yb_ddl_transaction_block_enabled=true
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+  ToggleDDLMode(/* use_legacy = */ false);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks) =
       true;

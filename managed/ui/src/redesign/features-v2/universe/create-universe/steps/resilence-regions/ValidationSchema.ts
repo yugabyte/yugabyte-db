@@ -7,13 +7,41 @@ import {
   ResilienceType
 } from './dtos';
 import { getFaultToleranceNeeded } from '../../CreateUniverseUtils';
-import { SINGLE_AVAILABILITY_ZONE } from '../../fields/FieldNames';
+import { REGIONS_BY_PROVIDER, SINGLE_AVAILABILITY_ZONE } from '../../fields/FieldNames';
+import { flattenRegionsByProvider } from '../../helpers/placementsByProvider';
+import { Region } from '../../../../../features/universe/universe-form/utils/dto';
 
-export const ResilienceAndRegionsSchema = (t: TFunction) => {
+function resolveRegionsForValidation(parent: ResilienceAndRegionsProps): Region[] {
+  const byProvider = parent[REGIONS_BY_PROVIDER];
+  if (byProvider && Object.keys(byProvider).length > 0) {
+    return flattenRegionsByProvider(byProvider);
+  }
+  return parent.regions ?? [];
+}
+
+export const ResilienceAndRegionsSchema = (
+  t: TFunction,
+  options?: { disallowNodeAndNone?: boolean }
+) => {
   return Yup.object<ResilienceAndRegionsProps>({
     resilienceFormMode: Yup.mixed<ResilienceFormMode>().required(t('errMsg.resilienceFormMode')),
     resilienceType: Yup.mixed<ResilienceType>().required(t('errMsg.resilienceType')),
-    regions: Yup.array().min(1, t('errMsg.regions')),
+    regions: Yup.array().when(REGIONS_BY_PROVIDER, {
+      is: (byProvider: ResilienceAndRegionsProps[typeof REGIONS_BY_PROVIDER]) =>
+        !!byProvider && Object.keys(byProvider).length > 0,
+      then: Yup.array().notRequired(),
+      otherwise: Yup.array().min(1, t('errMsg.regions'))
+    }),
+    [REGIONS_BY_PROVIDER]: Yup.object()
+      .nullable()
+      .notRequired()
+      .test('each-provider-has-region', t('errMsg.providerRegionRequired'), function (value) {
+        if (!value || Object.keys(value).length === 0) return true;
+        const missing = Object.entries(value as Record<string, Region[]>).some(
+          ([, regions]) => !regions || regions.length === 0
+        );
+        return !missing;
+      }),
     [SINGLE_AVAILABILITY_ZONE]: Yup.string().when('resilienceType', {
       is: ResilienceType.SINGLE_NODE,
       then: Yup.string().required(t('errMsg.singleAvailabilityZoneRequired')),
@@ -21,13 +49,14 @@ export const ResilienceAndRegionsSchema = (t: TFunction) => {
     }),
     faultToleranceType: Yup.string().test('replicationFactor', 'Error', function () {
       const { path, createError } = this;
+      const parent = this.parent as ResilienceAndRegionsProps;
       const {
-        regions,
         resilienceFactor,
         faultToleranceType,
         resilienceFormMode,
         resilienceType
-      } = this.parent as ResilienceAndRegionsProps;
+      } = parent;
+      const regions = resolveRegionsForValidation(parent);
 
       if (resilienceType === ResilienceType.SINGLE_NODE) {
         return true;
@@ -35,7 +64,21 @@ export const ResilienceAndRegionsSchema = (t: TFunction) => {
       if (resilienceFormMode !== ResilienceFormMode.GUIDED) {
         return true;
       }
+      if (
+        options?.disallowNodeAndNone &&
+        (faultToleranceType === FaultToleranceType.NODE_LEVEL ||
+          faultToleranceType === FaultToleranceType.NONE)
+      ) {
+        return createError({
+          message: 'errMsg.multiProviderFtDisabled',
+          path
+        });
+      }
       const fieldErrors: Yup.ValidationError[] = [];
+      const regionsErrorPath =
+        parent[REGIONS_BY_PROVIDER] && Object.keys(parent[REGIONS_BY_PROVIDER]!).length > 0
+          ? REGIONS_BY_PROVIDER
+          : 'regions';
 
       switch (faultToleranceType) {
         case FaultToleranceType.NONE:
@@ -58,7 +101,7 @@ export const ResilienceAndRegionsSchema = (t: TFunction) => {
               message: t('errMsg.regionFieldRegionsFew', {
                 required_regions: faultToleranceNeeded
               }),
-              path: 'regions'
+              path: regionsErrorPath
             })
           );
           break;
@@ -66,7 +109,7 @@ export const ResilienceAndRegionsSchema = (t: TFunction) => {
         case FaultToleranceType.AZ_LEVEL: {
           const faultToleranceNeeded = getFaultToleranceNeeded(resilienceFactor);
           const azCount = regions.reduce((acc, region) => {
-            return acc + region.zones.length;
+            return acc + (region.zones?.length ?? 0);
           }, 0);
           // Too many regions for AZ-level RF (1 AZ/region max): must not return true early
           // when azCount already meets the minimum, or azErrMany would never surface.
@@ -81,7 +124,7 @@ export const ResilienceAndRegionsSchema = (t: TFunction) => {
                   az_needed: faultToleranceNeeded,
                   available_az: azCount
                 }),
-                path: 'regions'
+                path: regionsErrorPath
               })
             );
           }

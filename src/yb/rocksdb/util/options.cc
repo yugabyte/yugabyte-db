@@ -294,7 +294,8 @@ DBOptions::DBOptions()
       wal_recovery_mode(WALRecoveryMode::kTolerateCorruptedTailRecords),
       row_cache(nullptr),
       wal_filter(nullptr),
-      fail_if_options_file_error(false) {
+      fail_if_options_file_error(false),
+      persist_options_file(true) {
 }
 
 static const char* const access_hints[] = {

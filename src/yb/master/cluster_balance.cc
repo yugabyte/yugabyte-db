@@ -91,7 +91,8 @@ DEFINE_RUNTIME_uint32(load_balancer_min_free_disk_space_pct, 5,
 DEFINE_RUNTIME_int32(load_balancer_max_over_replicated_tablets, 50,
     "Maximum number of running tablet replicas per table that are allowed to be over the "
     "configured replication factor. This controls the amount of space amplification in the cluster "
-    "when tablet removal is slow. A value less than 0 means no limit.");
+    "when tablet removal is slow. Adds to tablets below the replication factor are not limited. "
+    "A value less than 0 means no limit.");
 
 DEFINE_RUNTIME_int32(load_balancer_max_concurrent_adds, 25,
     "Maximum number of tablet peer replicas to add in any one run of the cluster balancer.");
@@ -940,9 +941,12 @@ Status ClusterLoadBalancer::AnalyzeTablets(const TableInfoPtr& table) {
 
 Result<bool> ClusterLoadBalancer::HandleAddIfMissingPlacement(
     const TabletId& tablet_id, TabletServerId* out_to_ts) {
-  RETURN_NOT_OK(CanAddReplicas());
-
   const auto& tablet_meta = state_->per_tablet_meta_[tablet_id];
+  // Below RF, skip the over-replication limit: the add restores RF. At RF with a placement below
+  // its minimum, the add over-replicates until a replica is removed elsewhere, so the limit
+  // applies.
+  RETURN_NOT_OK(tablet_meta.is_under_replicated ? CheckRemoteBootstrapLimits() : CanAddReplicas());
+
   const auto& missing_placements = tablet_meta.under_replicated_placements;
   if (VLOG_IS_ON(3)) {
     std::ostringstream out;
@@ -1091,7 +1095,7 @@ Result<bool> ClusterLoadBalancer::HandleAddIfWrongPlacement(
   return false;
 }
 
-Status ClusterLoadBalancer::CanAddReplicas() {
+Status ClusterLoadBalancer::CheckRemoteBootstrapLimits() {
   DCHECK(!state_->allow_only_leader_balancing_);
 
   if (state_->options_->kAllowLimitStartingTablets) {
@@ -1106,11 +1110,14 @@ Status ClusterLoadBalancer::CanAddReplicas() {
           state_->options_->kMaxTabletRemoteBootstrapsPerTable);
     }
   }
-  // This bounds space amplification from add-then-remove moves, but it also gates the
-  // under-replication path (HandleAddIfMissingPlacement), whose adds restore RF rather than
-  // over-replicating anything.
-  // TODO(#24340): slow removals elsewhere in this table should not delay under-replication repair.
-  // Scope this limit to the move path.
+
+  return Status::OK();
+}
+
+Status ClusterLoadBalancer::CanAddReplicas() {
+  RETURN_NOT_OK(CheckRemoteBootstrapLimits());
+
+  // This bounds space amplification from add-then-remove moves.
   if (state_->options_->kAllowLimitOverReplicatedTablets &&
       get_total_over_replication() >=
           implicit_cast<size_t>(state_->options_->kMaxOverReplicatedTabletsPerTable)) {
@@ -1218,6 +1225,14 @@ Result<bool> ClusterLoadBalancer::GetLoadToMove(
   // the interval between left and right cannot have load > kMinLoadVarianceToBalance.
   ssize_t last_pos = state_->sorted_load_.size() - 1;
   for (ssize_t left = 0; left <= last_pos; ++left) {
+    // Blacklisted tservers cannot receive load. Using one as the destination could end the search
+    // early via the global load check below. last_pos is never skipped: its iteration
+    // (left == right, load_variance == 0) terminates the loop via return false instead of
+    // falling through to the IllegalState below.
+    if (left < last_pos &&
+        global_state_->blacklisted_servers_.contains(state_->sorted_load_[left])) {
+      continue;
+    }
     for (auto right = last_pos; right >= 0; --right) {
       const TabletServerId& low_load_uuid = state_->sorted_load_[left];
       const TabletServerId& high_load_uuid = state_->sorted_load_[right];

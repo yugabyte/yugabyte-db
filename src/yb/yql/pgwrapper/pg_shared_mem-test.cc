@@ -381,6 +381,8 @@ TEST_F_EX(PgSharedMemTest, LongRead, PgSharedMemBigTimeoutTest) {
 }
 
 TEST_F(PgSharedMemTest, ConnectionShutdown) {
+  // Load balancer tablet moves start new tablet peers, which spawn threads and break the count.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
   {
     auto conn = ASSERT_RESULT(Connect());
 
@@ -388,11 +390,17 @@ TEST_F(PgSharedMemTest, ConnectionShutdown) {
     ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1)"));
   }
 
-  auto threads_before = CountManagedThreads();
-  auto workers_created_before = SumExchangeThreadPoolWorkersCreated();
+  size_t threads_before = 0;
+  size_t workers_created_before = 0;
   constexpr size_t kNumIterations = 16;
 
-  for (int i = 0; i != kNumIterations; ++i) {
+  // Iteration 0 is a warm-up: the first read spawns one-time background threads, so the baseline
+  // is taken after it.
+  for (size_t i = 0; i <= kNumIterations; ++i) {
+    if (i == 1) {
+      threads_before = CountManagedThreads();
+      workers_created_before = SumExchangeThreadPoolWorkersCreated();
+    }
     auto conn = ASSERT_RESULT(Connect());
     auto result = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM t"));
     ASSERT_EQ(result, "1");
@@ -423,16 +431,18 @@ TEST_F(PgSharedMemTest, ConnectionShutdown) {
 
 // The test checks PgClientService detects postgres process (with in-flight RPC) termination faster
 // than session expiration based on heartbeat and performs required session cleanup actions.
-TEST_F(PgSharedMemTest, ConnectionWithInFlightRPCShutdown) {
+TEST_F_EX(PgSharedMemTest, ConnectionWithInFlightRPCShutdown, PgSharedMemBigTimeoutTest) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY) SPLIT INTO 1 TABLETS"));
 
-  constexpr auto kNumIterations = 16;
-  constexpr auto kWaitTimeout = 5s * kTimeMultiplier;
+  constexpr auto kNumIterations = RegularBuildVsSanitizers(16, 8);
+  constexpr auto kQueryMinExecutionTimeMs = 5000;
+  constexpr auto kWaitTimeout = 1ms * kQueryMinExecutionTimeMs * kTimeMultiplier;
 
   {
     // Slowdown some further queries to simulate in-flight RPC
-    auto flag_guard = ChangeFlagTemporary(FLAGS_TEST_slowdown_pgsql_aggregate_read_ms, 5000);
+    auto flag_guard = ChangeFlagTemporary(
+        FLAGS_TEST_slowdown_pgsql_aggregate_read_ms, kQueryMinExecutionTimeMs);
     TestThreadHolder thread_holder;
     for ([[maybe_unused]] const auto _ : std::views::iota(0, kNumIterations)) {
       auto aux_conn = ASSERT_RESULT(Connect());

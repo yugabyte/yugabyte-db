@@ -150,7 +150,6 @@ typedef enum {
 	/* YB */
 	OD_YB_USE_AUTH_BACKEND,
 	OD_YB_CERT_AUTH,
-	OD_YB_OPTIMIZED_EXTENDED_QUERY_PROTOCOL,
 	OD_YB_ENABLE_MULTI_ROUTE_POOL,
 	OD_YB_YSQL_MAX_CONNECTIONS,
 	OD_YB_OPTIMIZED_SESSION_PARAMETERS,
@@ -163,6 +162,7 @@ typedef enum {
 	OD_YB_MAX_PREPARED_STATEMENTS,
 	OD_YB_WAIT_FOR_RFQ_ON_SYNC,
 	OD_YB_BACKEND_DRAIN_TIMEOUT_MS,
+	OD_YB_DATA_DIRECTORY,
 	OD_YB_LTLS_MAX_PROTOCOL_VERSION,
 	OD_YB_LTLS_PREFER_SERVER_CIPHERS,
 	OD_YB_LTLS_ECDH_CURVE,
@@ -345,8 +345,6 @@ static od_keyword_t od_config_keywords[] = {
 	/* YB */
 	od_keyword("yb_use_auth_backend", OD_YB_USE_AUTH_BACKEND),
 	od_keyword("yb_cert_auth", OD_YB_CERT_AUTH),
-	od_keyword("yb_optimized_extended_query_protocol",
-		   OD_YB_OPTIMIZED_EXTENDED_QUERY_PROTOCOL),
 	od_keyword("yb_enable_multi_route_pool", OD_YB_ENABLE_MULTI_ROUTE_POOL),
 	od_keyword("yb_ysql_max_connections", OD_YB_YSQL_MAX_CONNECTIONS),
 	od_keyword("yb_optimized_session_parameters",
@@ -365,6 +363,7 @@ static od_keyword_t od_config_keywords[] = {
 		   OD_YB_WAIT_FOR_RFQ_ON_SYNC),
 	od_keyword("yb_backend_drain_timeout_ms",
 		   OD_YB_BACKEND_DRAIN_TIMEOUT_MS),
+	od_keyword("yb_data_directory", OD_YB_DATA_DIRECTORY),
 	/* TLS */
 	od_keyword("yb_tls_max_protocol_version", OD_YB_LTLS_MAX_PROTOCOL_VERSION),
 	od_keyword("yb_tls_prefer_server_ciphers",
@@ -2612,14 +2611,6 @@ static int od_config_reader_parse(od_config_reader_t *reader,
 				goto error;
 			}
 			continue;
-		/* yb_optimized_extended_query_protocol */
-		case OD_YB_OPTIMIZED_EXTENDED_QUERY_PROTOCOL:
-			if (!od_config_reader_yes_no(
-				    reader,
-				    &config->yb_optimized_extended_query_protocol)) {
-				goto error;
-			}
-			continue;
 		/* yb_enable_multi_route_pool */
 		case OD_YB_ENABLE_MULTI_ROUTE_POOL:
 			if (!od_config_reader_yes_no(reader,
@@ -2711,6 +2702,13 @@ static int od_config_reader_parse(od_config_reader_t *reader,
 			config->yb_backend_drain_timeout_ms = val;
 			continue;
 		}
+		/* yb_data_directory */
+		case OD_YB_DATA_DIRECTORY:
+			if (!od_config_reader_string(
+				    reader, &config->yb_data_directory)) {
+				goto error;
+			}
+			continue;
 		default:
 			od_config_reader_error(reader, &token,
 					       "unexpected parameter");

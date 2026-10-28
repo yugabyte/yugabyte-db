@@ -53,20 +53,17 @@ import static org.yb.AssertionWrappers.*;
 public class TestPgTransactions extends BasePgSQLTest {
 
   private static final Logger LOG = LoggerFactory.getLogger(TestPgTransactions.class);
-  private final boolean objectLockingEnabled;
-  private final boolean concurrentDDLEnabled;
+  // Object locking, concurrent DDL and transactional DDL are enabled/ disabled together, per the
+  // cross-flag validators in common_flags.cc, so a single parameter drives all three.
+  private final boolean useLegacyDDLMode;
 
-  public TestPgTransactions(boolean objectLockingEnabled, boolean concurrentDDLEnabled) {
-    this.objectLockingEnabled = objectLockingEnabled;
-    this.concurrentDDLEnabled = concurrentDDLEnabled;
+  public TestPgTransactions(boolean useLegacyDDLMode) {
+    this.useLegacyDDLMode = useLegacyDDLMode;
   }
 
-  @Parameterized.Parameters(name = "objectLocking={0}-concurrentDDL={1}")
+  @Parameterized.Parameters(name = "useLegacyDDLMode={0}")
   public static List<Object[]> parameters() {
-    return Arrays.asList(
-        new Object[]{false, false},
-        new Object[]{true, false},
-        new Object[]{true, true});
+    return Arrays.asList(new Object[]{true}, new Object[]{false});
   }
 
   private static boolean isYBTransactionError(PSQLException ex) {
@@ -99,14 +96,15 @@ public class TestPgTransactions extends BasePgSQLTest {
     appendToYsqlPgConf(flags, maxQueryLayerRetriesConf(2));
     // Auto Analyze makes testSerializableReadDelayWrite time out on a few build.
     flags.put("ysql_enable_auto_analyze", "false");
-    flags.put("allowed_preview_flags_csv", "ysql_enable_concurrent_ddl");
-    flags.put("ysql_yb_ddl_transaction_block_enabled", String.valueOf(objectLockingEnabled));
-    flags.put("ysql_yb_enable_ddl_savepoint_support", String.valueOf(objectLockingEnabled));
-    flags.put("ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks",
-        String.valueOf(objectLockingEnabled));
-    flags.put("enable_object_locking_for_table_locks", String.valueOf(objectLockingEnabled));
-    flags.put("ysql_enable_concurrent_ddl", String.valueOf(concurrentDDLEnabled));
+    toggleDDLMode(flags, useLegacyDDLMode);
     return flags;
+  }
+
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    toggleDDLMode(flagMap, useLegacyDDLMode);
+    return flagMap;
   }
 
   @Override
@@ -1336,7 +1334,7 @@ public class TestPgTransactions extends BasePgSQLTest {
   // Test for #30739.
   @Test
   public void testCatalogSnapshotDoesNotCorruptReadPoint() throws Exception {
-    Assume.assumeFalse("This test requires concurrent DDL to be off", concurrentDDLEnabled);
+    Assume.assumeTrue("This test requires concurrent DDL to be off", useLegacyDDLMode);
 
     try (Statement setup = connection.createStatement()) {
       setup.execute("CREATE TYPE test_mood AS ENUM ('sad', 'ok', 'happy')");

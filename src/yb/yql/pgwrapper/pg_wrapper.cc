@@ -32,6 +32,7 @@
 
 #include <boost/algorithm/string.hpp>
 
+#include "yb/common/common_flags.h"
 #include "yb/common/version_info.h"
 #include "yb/common/ysql_operation_lease.h"
 
@@ -102,6 +103,10 @@ DEFINE_test_flag(bool, pg_collation_enabled, true,
 
 DEFINE_test_flag(bool, ysql_yb_query_diagnostics_race_condition, false,
                  "If true, enables race condition testing for query diagnostics.");
+
+DEFINE_test_flag(string, ysql_pg_upgrade_dump_pid_dir, "",
+                 "If set, each ysql_dump that pg_upgrade runs creates a file named after its pid "
+                 "in this directory, then waits for a signal instead of dumping.");
 
 // Default to 5MB
 DEFINE_NON_RUNTIME_string(pg_mem_tracker_tcmalloc_gc_release_bytes, std::to_string(5 * 1024 * 1024),
@@ -221,6 +226,10 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_pg_locks_integrate_advisory_locks, kLocalPe
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_docdb_vector_type, kExternal, false, true,
     "Enable using the DocDB Vector type from YSQL.");
 
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_xcluster_analyze_replication, kExternal, false, true,
+    "If true, an xCluster automatic mode source records each relation it analyzes in ddl_queue so "
+    "that the target refreshes that relation's statistics.");
+
 DEFINE_RUNTIME_PG_FLAG(int32, yb_locks_min_txn_age, 1000,
     "Sets the minimum transaction age for results from pg_locks.");
 
@@ -278,6 +287,9 @@ DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_optimizer_statistics, false,
 
 DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_base_scans_cost_model, false,
     "Enable cost model enhancements");
+
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_ioc_do_nothing_pushdown, false,
+    "Push INSERT ... ON CONFLICT DO NOTHING conflict resolution down to DocDB.");
 
 DEFINE_RUNTIME_PG_FLAG(string, yb_enable_cbo, "legacy_mode",
     "YSQL cost-based optimizer mode. Allowed values are 'legacy_mode', 'legacy_stats_mode', "
@@ -375,6 +387,45 @@ DEFINE_RUNTIME_PG_FLAG(string, yb_read_after_commit_visibility, "strict",
 DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_fkey_catcache, true,
     "Enable preloading of foreign key information into the relation cache.");
 
+DEFINE_RUNTIME_PG_FLAG(string, yb_test_catalog_preload_cache_list, "",
+    "If set, a comma separated list of the catalog caches YSQL fills whenever it preloads the "
+    "catalog. An item is a catalog (pg_proc, for all its caches), a catalog cache (ATTNAME), or "
+    "the index of a catalog cache as the CatalogCacheMisses metric labels it "
+    "(pg_attribute_relid_attnam_index). Setting it turns on catalog preloading, at connection "
+    "start-up and on every full catalog cache refresh, as ysql_catalog_preload_additional_tables "
+    "does. If set, ysql_catalog_preload_additional_tables and "
+    "ysql_catalog_preload_additional_table_list are ignored for prefetch and prefill. The core "
+    "catalogs and the catalogs of the listed caches are prefetched; only the listed caches are "
+    "filled, plus the caches the catalog preload looks up itself, which are always filled. Items "
+    "that name no preloadable catalog cache are ignored with a warning in the postgres log. A "
+    "change applies to new connections and to the next full catalog cache refresh of existing "
+    "ones. For testing only.");
+TAG_FLAG(ysql_yb_test_catalog_preload_cache_list, hidden);
+TAG_FLAG(ysql_yb_test_catalog_preload_cache_list, unsafe);
+
+// Accepts only names made of letters, digits and underscores, separated by commas. Postgres always
+// parses such a list, so a value that passes cannot keep postgres from starting; postgres ignores
+// the names it does not know.
+static bool ValidateCatalogPreloadCacheList(const char* flag_name, const std::string& value) {
+  if (std::all_of(value.begin(), value.end(), [](unsigned char c) { return std::isspace(c); })) {
+    return true;
+  }
+  std::vector<std::string> items;
+  boost::split(items, value, boost::is_any_of(","));
+  for (auto& item : items) {
+    boost::trim(item);
+    if (item.empty() || !std::all_of(item.begin(), item.end(), [](unsigned char c) {
+          return std::isalnum(c) || c == '_';
+        })) {
+      LOG_FLAG_VALIDATION_ERROR(flag_name, value)
+          << "Expected a comma separated list of catalog, catalog cache or index names";
+      return false;
+    }
+  }
+  return true;
+}
+DEFINE_validator(ysql_yb_test_catalog_preload_cache_list, &ValidateCatalogPreloadCacheList);
+
 DEFINE_RUNTIME_PG_FLAG(int32, yb_tcmalloc_sample_period, 1024 * 1024, // 1MB
     "Sets the interval at which TCMalloc should sample allocations. "
     "Sampling is disabled if this is set to 0.");
@@ -452,6 +503,13 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_log_heap_snapshot_on_exit_threshold, -1,
     "approximate memory usage of each malloc call stack if its peak RSS "
     "is greater than or equal to this threshold in KB. Set to -1 to disable.");
 
+DEFINE_RUNTIME_PG_FLAG(int32, yb_startup_free_memory_release_threshold, 0,
+    "When a backend finishes connection startup, if the TCMalloc page heap holds at least this "
+    "much free memory in KB, return that memory to the operating system. Connection startup "
+    "frees most of the memory it allocates (fetched catalog data, relation cache build scratch), "
+    "and without this the freed pages stay resident for the life of the connection. "
+    "Set to 0 (the default) to always release, or -1 to disable the release.");
+
 const char* const AUTH_METHOD_MD5 = "md5";
 const char* const AUTH_METHOD_SCRAM = "scram-sha-256";
 const char* const AUTH_METHOD_TRUST = "trust";
@@ -477,6 +535,14 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_notifications_poll_sleep_duration_empty_ms, 100
     "Time in milliseconds for which the notifications poller process waits before polling again "
     "in case the last poll returned no notifications.");
 DEFINE_validator(ysql_yb_notifications_poll_sleep_duration_empty_ms, FLAG_GE_VALUE_VALIDATOR(0));
+
+DEFINE_RUNTIME_PG_FLAG(double, yb_dist_trace_sample_rate, 0.0,
+    "Fraction (0 to 1) of YSQL protocol cycles (simple query, Parse, Bind, Execute) that arrive "
+    "without a traceparent and are distributed-traced. Each cycle is drawn independently and "
+    "starts its own trace. 0 disables sampling. A traceparent with the sampled flag clear (-00) "
+    "is honoured: the query is not traced. Connections the tserver opens internally are not "
+    "sampled. Requires otel_collector_traces_endpoint.");
+DEFINE_validator(ysql_yb_dist_trace_sample_rate, FLAG_RANGE_VALIDATOR(0.0, 1.0));
 
 DEFINE_NON_RUNTIME_string(pg_upgrade_working_dir, "",
     "Working directory for pg_upgrade. If empty, defaults to the pg_upgrade data directory.");
@@ -1085,7 +1151,7 @@ Status PgWrapper::Start() {
   }
   proc_->SetEnv("FLAGS_tmp_dir", FLAGS_tmp_dir);
 
-  // See YBSetParentDeathSignal in pg_yb_utils.c for how this is used.
+  // See YBSetParentDeathSignal in pg_yb_common.c for how this is used.
   proc_->SetEnv("YB_PG_PDEATHSIG", Format("$0", SIGINT));
   proc_->InheritNonstandardFd(address_negotiator_fd_);
   SetCommonEnv(&*proc_, /* yb_enabled */ true);
@@ -1162,6 +1228,8 @@ Status PgWrapper::InitDb(InitdbParams initdb_params) {
 
   Subprocess initdb_subprocess(initdb_program_path, initdb_args);
   initdb_subprocess.InheritNonstandardFd(address_negotiator_fd_);
+  // See YBSetParentDeathSignal in pg_yb_common.c for how this is used.
+  initdb_subprocess.SetEnv("YB_PG_PDEATHSIG", Format("$0", SIGTERM));
   bool global_initdb = std::holds_alternative<GlobalInitdbParams>(initdb_params);
   SetCommonEnv(&initdb_subprocess, global_initdb);
 
@@ -1236,8 +1304,16 @@ Status PgWrapper::RunPgUpgrade(const PgUpgradeParams& param) {
 
   LOG(INFO) << "Launching pg_upgrade: " << AsString(args);
 
+  Subprocess pg_upgrade(program_path, args);
+  // See YBSetParentDeathSignal in pg_yb_common.c for how this is used.
+  // Keep SIGTERM: system() ignores SIGINT, so pg_upgrade's forwarding handler would miss it.
+  pg_upgrade.SetEnv("YB_PG_PDEATHSIG", Format("$0", SIGTERM));
+  if (!FLAGS_TEST_ysql_pg_upgrade_dump_pid_dir.empty()) {
+    pg_upgrade.SetEnv(
+        "FLAGS_TEST_ysql_pg_upgrade_dump_pid_dir", FLAGS_TEST_ysql_pg_upgrade_dump_pid_dir);
+  }
   RETURN_NOT_OK_PREPEND(
-      Subprocess::Call(args, /*log_stdout_and_stderr=*/true),
+      pg_upgrade.Run(/*log_stdout_and_stderr=*/true),
       "pg_upgrade failed. Check previous errors for more details.");
 
   LOG(INFO) << "pg_upgrade completed successfully";
@@ -1577,7 +1653,10 @@ Status PgWrapper::CleanupLockFileAndKillHungPg(const std::string& lock_file) {
 // ------------------------------------------------------------------------------------------------
 
 PgSupervisor::PgSupervisor(PgProcessConf conf, PgWrapperContext* server)
-    : ProcessSupervisor(conf.cgroup), conf_(std::move(conf)), server_(server) {
+    : ProcessSupervisor(conf.cgroup),
+      conf_(std::move(conf)),
+      server_(server),
+      starts_paused_(IsYsqlLeaseEnabled() || (server && IsPersistenceGateEnforced())) {
   if (server_) {
     server_->RegisterCertificateReloader(std::bind(&PgSupervisor::ReloadConfig, this));
     server_->RegisterPgProcessRestarter(std::bind(&PgSupervisor::Restart, this));
@@ -1600,6 +1679,12 @@ PgSupervisor::~PgSupervisor() {
 }
 
 void PgSupervisor::Stop() {
+  if (server_) {
+    // The server may outlive this supervisor (e.g., a test harness recreating it), and its
+    // heartbeater and YSQL lease threads call these asynchronously.
+    server_->RegisterPgProcessRestarter(nullptr);
+    server_->RegisterPgProcessKiller(nullptr);
+  }
   ProcessSupervisor::Stop();
   if (server_) {
     CHECK_OK(server_->StopSharedMemoryNegotiation());
@@ -1608,11 +1693,16 @@ void PgSupervisor::Stop() {
 }
 
 Status PgSupervisor::StartAndMaybePause() {
-  if (IsYsqlLeaseEnabled()) {
-    return InitPaused();
-  } else {
+  if (!starts_paused_) {
     return Start();
   }
+  RETURN_NOT_OK(InitPaused());
+  if (IsYsqlLeaseEnabled()) {
+    // The first YSQL lease epoch starts PG.
+    return Status::OK();
+  }
+  // The server's RestartPG starts PG only once the xCluster-guarded information lease is held.
+  return server_->RestartPG();
 }
 
 Status PgSupervisor::ReloadConfig() {

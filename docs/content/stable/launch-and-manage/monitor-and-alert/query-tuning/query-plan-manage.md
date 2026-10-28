@@ -351,6 +351,7 @@ Use the following [YSQL configuration parameters](../../../../reference/configur
 | `yb_pg_stat_plans_track_catalog_queries` | Controls tracking of statements referencing catalog tables. | true |
 | `yb_pg_stat_plans_verbose_plans` | Set to `true` to generate and store verbose plans. | false |
 | `yb_pg_stat_plans_plan_format` | Controls text format for plans.<br/>Valid values are `text`, `json`, `yaml`, and `xml`. | json |
+| `yb_pg_stat_plans_show_max_exec_params` | When `true`, `max_exec_time_params` includes the parameter values for the slowest execution of each plan. When `false`, those values are replaced with `?`. | true in v2026.1.2 and later. In earlier versions of the v2026.1 series, false. |
 
 The yb_pg_stat_plans data is stored per node; all backends on a specific node read and write to the same table. The data is persisted across restarts.
 
@@ -435,7 +436,7 @@ The columns of the yb_pg_stat_plans view are described, along with their purpose
 | calls | Detect plan regressions | Number of times [dbid query id, plan id] pair is used. |
 | avg_exec_time |         | Average execution time. |
 | max_exec_time |         | Maximum recorded execution time for this plan. |
-| max_exec_time_params |         | This particular set of query parameters led to the longest execution time. |
+| max_exec_time_params |         | Parameter values for the execution that recorded the longest time for this plan. When [`yb_pg_stat_plans_show_max_exec_params`](#configure-qpm) is false, the values are replaced with `?`. |
 | avg_est_cost |         | Planner's average estimated cost for the plan. |
 | hints | Pin the plan | These hints, if applied during query planning, would lead to the same plan being used. |
 

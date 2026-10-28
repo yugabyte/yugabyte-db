@@ -62,6 +62,10 @@ DEFINE_RUNTIME_uint32(xcluster_poller_task_delay_considered_stuck_secs, 3600 /* 
     "Maximum amount of time between tasks of a xcluster poller above which it is considered as "
     "stuck.");
 
+DEFINE_RUNTIME_bool(xcluster_kill_ddl_queue_pg_connection_on_pause, true,
+    "If true, terminate the pg backend running a replicated DDL whenever the replication group is "
+    "paused, whether by a user or by failover, so that the pause can complete.");
+
 DEFINE_test_flag(int32, xcluster_simulated_lag_ms, 0,
     "Simulate lag in xcluster replication. Replication is paused if set to -1.");
 DEFINE_test_flag(string, xcluster_simulated_lag_tablet_filter, "",
@@ -70,6 +74,10 @@ DEFINE_test_flag(string, xcluster_simulated_lag_tablet_filter, "",
 
 DEFINE_test_flag(bool, cdc_skip_replication_poll, false,
                  "If true, polling will be skipped.");
+
+DEFINE_test_flag(bool, xcluster_block_first_poll, false,
+    "If true, pollers that have not yet sent a GetChanges request will not send one. Pollers that "
+    "have already polled are not affected.");
 
 DEFINE_test_flag(bool, xcluster_simulate_get_changes_response_error, false,
                  "Simulate xCluster GetChanges returning an error.");
@@ -139,6 +147,7 @@ XClusterPoller::XClusterPoller(
       is_stream_paused_(is_stream_paused),
       wait_state_(ash::WaitStateInfo::CreateIfAshIsEnabled<ash::WaitStateInfo>()) {
   DCHECK_NE(GetLeaderTerm(), yb::OpId::kUnknownTerm);
+  DCHECK(source_client_ || is_stream_paused_);
   if (wait_state_) {
     auto status = InitializeWaitState(ts_uuid);
     if (!status.ok()) {
@@ -243,10 +252,14 @@ void XClusterPoller::DoCompleteShutdown() {
 XClusterPoller::DDLQueueHandlerCallScope::DDLQueueHandlerCallScope(XClusterPoller& poller)
     : poller_(poller) {
   DCHECK(poller_.ddl_queue_handler_);
+  // Must store the time before the increment, see active_ddl_queue_handler_calls_.
+  poller_.last_task_schedule_time_ = MonoTime::Now();
   ++poller_.active_ddl_queue_handler_calls_;
 }
 
 XClusterPoller::DDLQueueHandlerCallScope::~DDLQueueHandlerCallScope() {
+  // Must store the time before the decrement, see active_ddl_queue_handler_calls_.
+  poller_.last_task_schedule_time_ = MonoTime::Now();
   --poller_.active_ddl_queue_handler_calls_;
 
   // Load shutdown_ before the count: a call that starts after we load shutdown_ is guaranteed to
@@ -366,6 +379,12 @@ void XClusterPoller::DoPoll() {
     return;
   }
 
+  if (!source_client_) {
+    // Pause-only poller whose stream was resumed. The consumer recreates it with a source client.
+    MarkFailed("the stream was resumed and this pause-only poller has no source client");
+    return;
+  }
+
   if (ddl_queue_handler_) {
     DDLQueueHandlerCallScope ddl_queue_handler_call(*this);
     ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN;
@@ -400,6 +419,13 @@ void XClusterPoller::DoPoll() {
     SchedulePoll();
     return;
   }
+
+  if (PREDICT_FALSE(FLAGS_TEST_xcluster_block_first_poll) && !TEST_has_polled_) {
+    idle_polls_ = FLAGS_async_replication_max_idle_wait;
+    SchedulePoll();
+    return;
+  }
+  TEST_has_polled_ = true;
 
   const auto xcluster_simulated_lag_ms = FLAGS_TEST_xcluster_simulated_lag_ms;
   if (PREDICT_FALSE(xcluster_simulated_lag_ms != 0)) {
@@ -772,7 +798,21 @@ bool XClusterPoller::IsStuck() const {
     return false;
   }
 
-  const auto lag = MonoTime::Now() - last_task_schedule_time_;
+  // Load the count before last_task_schedule_time_, see active_ddl_queue_handler_calls_.
+  const bool has_in_progress_ddl = ddl_queue_handler_ && active_ddl_queue_handler_calls_ > 0;
+  const MonoDelta lag = MonoTime::Now() - last_task_schedule_time_;
+
+  if (has_in_progress_ddl) {
+    // The ddl_queue poller may run long-running DDLs, so allow it to run longer than regular
+    // pollers.  Each DDL is still bounded by its own RPC timeouts, and a pause terminates it.
+    if (lag > 10min) {
+      YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 600)
+          << "ddl_queue poller has been processing DDLs for " << lag
+          << ". Current DDL: " << ddl_queue_handler_->GetRunningDdlDescription();
+    }
+    return false;
+  }
+
   if (lag > 1s * FLAGS_xcluster_poller_task_delay_considered_stuck_secs) {
     LOG_WITH_PREFIX(DFATAL) << "XCluster Poller has not executed any tasks for " << lag.ToString();
     return true;
@@ -890,6 +930,20 @@ void XClusterPoller::SetPaused(bool is_paused) {
     // we simply mark ourself as failed and let the consumer recreate a fresh poller.
     MarkFailed("the stream was unpaused. The poller should be recreated.");
   }
+}
+
+bool XClusterPoller::ShouldKillStuckDdlBackend() const {
+  return is_stream_paused_ && ddl_queue_handler_ &&
+         FLAGS_xcluster_kill_ddl_queue_pg_connection_on_pause &&
+         ddl_queue_handler_->HasDdlInFlight();
+}
+
+void XClusterPoller::KillStuckDdlBackend() {
+  DDLQueueHandlerCallScope ddl_queue_handler_call(*this);
+  if (!is_stream_paused_) {
+    return;
+  }
+  ddl_queue_handler_->KillPgConnection();
 }
 
 Status XClusterPoller::InitializeWaitState(const std::string& ts_uuid) {

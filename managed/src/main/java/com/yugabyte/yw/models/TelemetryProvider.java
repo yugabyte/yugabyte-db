@@ -7,6 +7,7 @@ import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.models.helpers.telemetry.TelemetryProviderConfig;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
@@ -19,6 +20,9 @@ import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
+import jakarta.persistence.PostPersist;
+import jakarta.persistence.PostRemove;
+import jakarta.persistence.PostUpdate;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -92,6 +96,17 @@ public class TelemetryProvider extends Model {
 
   public static ExpressionList<TelemetryProvider> createQuery() {
     return find.query().where();
+  }
+
+  public static List<TelemetryProvider> getAll() {
+    return find.all();
+  }
+
+  @PostPersist
+  @PostUpdate
+  @PostRemove
+  public void invalidateRedactedSecrets() {
+    RedactingService.invalidateTelemetrySecrets();
   }
 
   public static List<TelemetryProvider> list(UUID customerUuid) {

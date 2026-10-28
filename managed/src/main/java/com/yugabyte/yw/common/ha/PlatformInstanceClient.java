@@ -11,6 +11,7 @@
 package com.yugabyte.yw.common.ha;
 
 import static com.yugabyte.yw.common.Util.getYbaVersion;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -19,6 +20,7 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ConfigHelper.ConfigType;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.controllers.HAAuthenticator;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import io.prometheus.metrics.core.metrics.Gauge;
@@ -62,12 +64,31 @@ public class PlatformInstanceClient implements AutoCloseable {
             .register(PrometheusRegistry.defaultRegistry);
   }
 
+  private final boolean fipsEnabled;
+
+  /** The remote instance rejected the request because its FIPS mode differs from this one's. */
+  public static class FipsModeMismatchException extends PlatformServiceException {
+    public FipsModeMismatchException(String message) {
+      super(BAD_REQUEST, message);
+    }
+  }
+
   public PlatformInstanceClient(
-      ApiHelper apiHelper, String clusterKey, String remoteAddress, ConfigHelper configHelper) {
+      ApiHelper apiHelper,
+      String clusterKey,
+      String remoteAddress,
+      ConfigHelper configHelper,
+      boolean fipsEnabled) {
     this.apiHelper = apiHelper;
     this.remoteAddress = remoteAddress;
-    this.requestHeader = ImmutableMap.of(HAAuthenticator.HA_CLUSTER_KEY_TOKEN_HEADER, clusterKey);
+    this.requestHeader =
+        ImmutableMap.of(
+            HAAuthenticator.HA_CLUSTER_KEY_TOKEN_HEADER,
+            clusterKey,
+            HAAuthenticator.HA_FIPS_ENABLED_HEADER,
+            Boolean.toString(fipsEnabled));
     this.configHelper = configHelper;
+    this.fipsEnabled = fipsEnabled;
   }
 
   // Map a Call object to a request.
@@ -89,6 +110,16 @@ public class PlatformInstanceClient implements AutoCloseable {
 
     if (response == null || response.get("error") != null) {
       log.error("Error received from remote instance {}: {}", this.remoteAddress, response);
+      if (response != null
+          && response.get("error").asText().startsWith(HAAuthenticator.FIPS_MODE_MISMATCH_ERROR)) {
+        throw new FipsModeMismatchException(
+            String.format(
+                "%s: this YBA is %s and %s is %s",
+                HAAuthenticator.FIPS_MODE_MISMATCH_ERROR,
+                HAAuthenticator.fipsModeName(fipsEnabled),
+                this.remoteAddress,
+                HAAuthenticator.fipsModeName(!fipsEnabled)));
+      }
       throw new RuntimeException("Error received from remote instance " + this.remoteAddress);
     }
 
@@ -164,6 +195,8 @@ public class PlatformInstanceClient implements AutoCloseable {
   public boolean testConnection() {
     try {
       makeRequest("GET", remoteAddress + "/api/settings/ha/internal/config", null);
+    } catch (FipsModeMismatchException e) {
+      throw e;
     } catch (Exception e) {
       return false;
     }

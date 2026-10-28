@@ -222,6 +222,53 @@ SET work_mem TO '100kB';
 \set query ':explain :Q1 SELECT * FROM multi WHERE a < 1000 OR (b > 0 AND (c < 3000 OR c > 15000)) ORDER BY a;'
 :query
 
+-- A bitmap scan does not take a pushed-down LIMIT, so its first page comes
+-- back full.  Exceeding work_mem drops the node to a full table scan, which
+-- does take the bound.  Own table because the fallback has to be predicted by
+-- the planner as well as hit by the executor, and that needs statistics;
+-- "multi" is deliberately never analyzed.  DEBUG needs the
+-- non-deterministic-field guard off, so the helper drops the volatile lines
+-- and leaves the plan shape, the storage counters and the first fetch limit
+-- as the assertion.
+CREATE TABLE bm_limit (a INT, b INT, PRIMARY KEY (a ASC));
+CREATE INDEX ON bm_limit (b ASC);
+INSERT INTO bm_limit SELECT i, i FROM generate_series(1, 10000) i;
+ANALYZE bm_limit;
+
+CREATE FUNCTION explain_bitmap_first_fetch(query text) RETURNS SETOF text
+LANGUAGE plpgsql AS $$
+DECLARE
+    line text;
+BEGIN
+    FOR line IN EXECUTE 'EXPLAIN (ANALYZE, DIST, DEBUG, COSTS OFF, SUMMARY OFF, TIMING OFF) ' || query
+    LOOP
+        CONTINUE WHEN line ~ '^\s*(Metric |Estimated |Average ybctid|Storage \w+ Read Execution Time)';
+        RETURN NEXT line;
+    END LOOP;
+END;
+$$;
+
+-- yb_enable_cbo rather than yb_enable_base_scans_cost_model, which the rest
+-- of this file uses: RESET on the latter lands on its own built-in default
+-- and drags yb_enable_cbo down to legacy_mode with it, changing later plans.
+SET yb_enable_cbo = on;
+SET yb_explain_hide_non_deterministic_fields = off;
+\set bmlimit '/*+ BitmapScan(bm_limit) */ SELECT * FROM bm_limit WHERE a < 5000 OR b > 9000 LIMIT 10'
+
+-- exceeds work_mem: the fallback table scan takes the bound, and DocDB
+-- returns only its rows
+SELECT explain_bitmap_first_fetch(:'bmlimit');
+
+-- does not exceed work_mem: no bound, the first page comes back full
+SET work_mem TO '4MB';
+SELECT explain_bitmap_first_fetch(:'bmlimit');
+
+SET work_mem TO '100kB';
+RESET yb_explain_hide_non_deterministic_fields;
+RESET yb_enable_cbo;
+DROP FUNCTION explain_bitmap_first_fetch(text);
+DROP TABLE bm_limit;
+
 -- check aggregate pushdown
 SET yb_enable_expression_pushdown = true;
 SET yb_enable_index_aggregate_pushdown = true;

@@ -5,9 +5,12 @@ package module
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 func writeTestTemplate(t *testing.T, content string) string {
@@ -124,6 +127,71 @@ func TestCleanCoresTemplate(t *testing.T) {
 	}
 }
 
+func TestCleanCoresScript(t *testing.T) {
+	if err := exec.Command("find", "/", "-maxdepth", "0", "-printf", "").Run(); err != nil {
+		t.Skip("Script requires GNU find with -printf")
+	}
+	projectDir := os.Getenv("PROJECT_DIR")
+	if projectDir == "" {
+		t.Fatal("PROJECT_DIR is not set")
+	}
+	templatePath := filepath.Join(projectDir, "resources/templates/server/clean_cores.sh.j2")
+	coresDir := t.TempDir()
+	output, err := ResolveTemplateStrict(
+		context.TODO(),
+		map[string]any{
+			"num_cores_to_keep": 2,
+			"yb_home_dir":       "/home/yugabyte",
+			"yb_cores_dir":      coresDir,
+		},
+		templatePath,
+		true, /*strictUndefined*/
+	)
+	if err != nil {
+		t.Fatalf("ResolveTemplateStrict failed: %v", err)
+	}
+	script := filepath.Join(t.TempDir(), "clean_cores.sh")
+	if err := os.WriteFile(script, []byte(output), 0755); err != nil {
+		t.Fatalf("Failed to write script: %v", err)
+	}
+	// Oldest first. The kernel appends " (deleted)" to the executable path when the
+	// crashed binary was replaced on disk.
+	cores := []string{
+		"core_1351_1771476246_!usr!sbin!auditd (deleted)",
+		"core_99_*",
+		"core_1",
+		"core_2",
+		"core_3",
+	}
+	now := time.Now()
+	for i, name := range cores {
+		path := filepath.Join(coresDir, name)
+		if err := os.WriteFile(path, nil, 0644); err != nil {
+			t.Fatalf("Failed to create %s: %v", name, err)
+		}
+		mtime := now.Add(time.Duration(i-len(cores)) * time.Hour)
+		if err := os.Chtimes(path, mtime, mtime); err != nil {
+			t.Fatalf("Failed to set mtime on %s: %v", name, err)
+		}
+	}
+	cmd := exec.Command("bash", script)
+	cmd.Env = []string{"PATH=/usr/bin:/bin", "USER=yugabyte"}
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("Script failed: %v\n%s", err, out)
+	}
+	entries, err := os.ReadDir(coresDir)
+	if err != nil {
+		t.Fatalf("Failed to read cores dir: %v", err)
+	}
+	var remaining []string
+	for _, e := range entries {
+		remaining = append(remaining, e.Name())
+	}
+	if want := []string{"core_2", "core_3"}; !slices.Equal(remaining, want) {
+		t.Fatalf("Expected remaining cores %v, got %v", want, remaining)
+	}
+}
+
 func TestClockSyncTemplate(t *testing.T) {
 	projectDir := os.Getenv("PROJECT_DIR")
 	if projectDir == "" {
@@ -228,6 +296,79 @@ func TestCollectMetricsWrapperTemplate(t *testing.T) {
 			}
 			if strings.Contains(output, "filename=({{ yb_home_dir }}/metrics/node_metrics.prom)") {
 				t.Fatalf("Output still hardcodes yb_home_dir/metrics")
+			}
+		})
+	}
+}
+
+func TestServerExecTemplate(t *testing.T) {
+	projectDir := os.Getenv("PROJECT_DIR")
+	if projectDir == "" {
+		t.Fatal("PROJECT_DIR is not set")
+	}
+	templatePath := filepath.Join(projectDir, "resources/templates/server/yb-server-exec.sh.j2")
+	output, err := ResolveTemplateStrict(
+		context.TODO(), map[string]any{}, templatePath, true /*strictUndefined*/)
+	if err != nil {
+		t.Fatalf("ResolveTemplateStrict failed: %v", err)
+	}
+	dir := t.TempDir()
+	script := filepath.Join(dir, "yb-server-exec.sh")
+	if err := os.WriteFile(script, []byte(output), 0755); err != nil {
+		t.Fatalf("Failed to write script: %v", err)
+	}
+
+	const unset = "<unset>"
+	tests := []struct {
+		name     string
+		kernel   string
+		existing string
+		want     string
+	}{
+		{"el9 kernel", "5.14.0-503.el9.x86_64", "", "glibc.pthread.rseq=0"},
+		{"ubuntu 22.04 kernel", "5.15.0-91-generic", "", "glibc.pthread.rseq=0"},
+		{
+			"appends to existing tunables",
+			"5.14.0-503.el9.x86_64",
+			"glibc.malloc.tcache_count=0",
+			"glibc.malloc.tcache_count=0:glibc.pthread.rseq=0",
+		},
+		{"keeps explicit rseq=1", "5.14.0-503.el9.x86_64", "glibc.pthread.rseq=1",
+			"glibc.pthread.rseq=1"},
+		{"keeps explicit rseq=0", "5.14.0-503.el9.x86_64", "glibc.pthread.rseq=0",
+			"glibc.pthread.rseq=0"},
+		{"6.18 is unaffected", "6.18.9", "", "glibc.pthread.rseq=0"},
+		{"6.19.0 is affected", "6.19.0", "", unset},
+		{"6.19 with suffix is affected", "6.19.5-200.fc44.x86_64", "", unset},
+		{"affected kernel keeps existing", "6.19.0", "glibc.malloc.tcache_count=0",
+			"glibc.malloc.tcache_count=0"},
+		{"7.0.0 is affected", "7.0.0", "", unset},
+		{"7.0.13 is affected", "7.0.13-generic", "", unset},
+		{"7.0 without patch is affected", "7.0", "", unset},
+		{"7.0.14 is fixed", "7.0.14", "", "glibc.pthread.rseq=0"},
+		{"7.1.0 is fixed", "7.1.0", "", "glibc.pthread.rseq=0"},
+		{"unparseable release", "weird", "", "glibc.pthread.rseq=0"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// Fake uname first on PATH to control the kernel release.
+			binDir := t.TempDir()
+			fakeUname := "#!/bin/sh\necho '" + tc.kernel + "'\n"
+			if err := os.WriteFile(filepath.Join(binDir, "uname"), []byte(fakeUname), 0755); err != nil {
+				t.Fatalf("Failed to write fake uname: %v", err)
+			}
+			cmd := exec.Command(
+				script, "bash", "-c", `echo "${GLIBC_TUNABLES-`+unset+`}"`)
+			cmd.Env = []string{"PATH=" + binDir + ":/usr/bin:/bin"}
+			if tc.existing != "" {
+				cmd.Env = append(cmd.Env, "GLIBC_TUNABLES="+tc.existing)
+			}
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("Script failed: %v\n%s", err, out)
+			}
+			if got := strings.TrimSpace(string(out)); got != tc.want {
+				t.Fatalf("Kernel %s: expected GLIBC_TUNABLES=%q, got %q", tc.kernel, tc.want, got)
 			}
 		})
 	}

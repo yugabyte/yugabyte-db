@@ -37,6 +37,7 @@
 #include "yb/tablet/tablet_options.h"
 
 #include "yb/util/env.h"
+#include "yb/util/format.h"
 #include "yb/util/path_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/std_util.h"
@@ -44,7 +45,6 @@
 #include "yb/docdb/docdb_pgapi.h"
 
 using std::string;
-using strings::Substitute;
 using std::vector;
 
 namespace yb::docdb {
@@ -182,7 +182,7 @@ Status DocDBRocksDBUtil::PopulateRocksDBWriteBatch(
       // don't contain the HybridTime.
       RETURN_NOT_OK_PREPEND(
           subdoc_key.FullyDecodeFromKeyWithOptionalHybridTime(entry.key),
-          Substitute("when decoding key: $0", FormatBytesAsStr(entry.key)));
+          Format("when decoding key: $0", FormatBytesAsStr(entry.key)));
     }
   }
 
@@ -197,7 +197,7 @@ Status DocDBRocksDBUtil::PopulateRocksDBWriteBatch(
     TransactionalWriter writer(
         kv_write_batch, hybrid_time, *current_txn_id_, txn_isolation_level_,
         partial_range_key_intents, /* replicated_batches_state= */ Slice(), intra_txn_write_id_,
-        /* applier= */ nullptr);
+        /* applier= */ nullptr, skip_prefix_locks_);
     DirectWriteToWriteBatchHandler handler(rocksdb_write_batch);
     RETURN_NOT_OK(writer.Apply(handler));
     intra_txn_write_id_ = writer.intra_txn_write_id();
@@ -236,8 +236,8 @@ Status DocDBRocksDBUtil::WriteToRocksDB(
     return Status::OK();
   }
   if (!hybrid_time.is_valid()) {
-    return STATUS_SUBSTITUTE(InvalidArgument, "Hybrid time is not valid: $0",
-                             hybrid_time.ToString());
+    return STATUS_FORMAT(InvalidArgument, "Hybrid time is not valid: $0",
+                         hybrid_time.ToString());
   }
 
   ConsensusFrontiers frontiers;
@@ -649,14 +649,15 @@ std::string GetVectorIndexStorageName(const PgVectorIdxOptionsPB& options) {
 
 std::string HnswBackendExtension(HnswBackend backend) {
   switch (backend) {
-    case USEARCH:
-      return "usearch"s;
     case YB_HNSW_USEARCH: [[fallthrough]];
     case YB_HNSW_HNSWLIB:
       // Block based representation does not depend on source index, so could use the same
       // extension because on disk format is compatible.
       return "yb_hnsw"s;
-    case HNSWLIB:
+    // Deprecated backends can still be present in persisted metadata, so keep their extensions.
+    case DEPRECATED_USEARCH:
+      return "usearch"s;
+    case DEPRECATED_HNSWLIB:
       return "hnswlib"s;
   }
   FATAL_INVALID_ENUM_VALUE(HnswBackend, backend);

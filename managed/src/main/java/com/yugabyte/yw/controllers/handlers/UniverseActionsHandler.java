@@ -28,6 +28,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
+import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
 import com.yugabyte.yw.forms.AdditionalServicesStateData;
 import com.yugabyte.yw.forms.AlertConfigFormData;
 import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
@@ -355,6 +356,10 @@ public class UniverseActionsHandler {
         "Update load balancer config, universe: {} [ {} ] ",
         universe.getName(),
         universe.getUniverseUUID());
+    for (UniverseDefinitionTaskParams.Cluster cluster : taskParams.clusters) {
+      ManagedLoadBalancerUtil.validateNoLbNames(
+          universe.getUniverseDetails().getPrimaryCluster(), cluster);
+    }
     // Set existing LB config
     taskParams.setExistingLBs(universe.getUniverseDetails().clusters);
     // Task to update LB config

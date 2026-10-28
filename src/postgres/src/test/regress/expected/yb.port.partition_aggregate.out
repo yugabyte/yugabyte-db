@@ -434,24 +434,24 @@ SELECT t1.x, sum(t1.y), count(*) FROM pagg_tab1 t1, pagg_tab2 t2 WHERE t1.x = t2
          ->  HashAggregate
                Group Key: t1_1.x
                ->  Hash Join
-                     Hash Cond: (t1_1.x = t2_1.y)
-                     ->  Seq Scan on pagg_tab1_p1 t1_1
+                     Hash Cond: (t2_1.y = t1_1.x)
+                     ->  Seq Scan on pagg_tab2_p1 t2_1
                      ->  Hash
-                           ->  Seq Scan on pagg_tab2_p1 t2_1
+                           ->  Seq Scan on pagg_tab1_p1 t1_1
          ->  HashAggregate
                Group Key: t1_2.x
                ->  Hash Join
-                     Hash Cond: (t1_2.x = t2_2.y)
-                     ->  Seq Scan on pagg_tab1_p2 t1_2
+                     Hash Cond: (t2_2.y = t1_2.x)
+                     ->  Seq Scan on pagg_tab2_p2 t2_2
                      ->  Hash
-                           ->  Seq Scan on pagg_tab2_p2 t2_2
+                           ->  Seq Scan on pagg_tab1_p2 t1_2
          ->  HashAggregate
                Group Key: t1_3.x
                ->  Hash Join
-                     Hash Cond: (t1_3.x = t2_3.y)
-                     ->  Seq Scan on pagg_tab1_p3 t1_3
+                     Hash Cond: (t2_3.y = t1_3.x)
+                     ->  Seq Scan on pagg_tab2_p3 t2_3
                      ->  Hash
-                           ->  Seq Scan on pagg_tab2_p3 t2_3
+                           ->  Seq Scan on pagg_tab1_p3 t1_3
 (24 rows)
 
 SELECT t1.x, sum(t1.y), count(*) FROM pagg_tab1 t1, pagg_tab2 t2 WHERE t1.x = t2.y GROUP BY t1.x ORDER BY 1, 2, 3;
@@ -507,24 +507,24 @@ SELECT t2.y, sum(t1.y), count(*) FROM pagg_tab1 t1, pagg_tab2 t2 WHERE t1.x = t2
          ->  HashAggregate
                Group Key: t2_1.y
                ->  Hash Join
-                     Hash Cond: (t1_1.x = t2_1.y)
-                     ->  Seq Scan on pagg_tab1_p1 t1_1
+                     Hash Cond: (t2_1.y = t1_1.x)
+                     ->  Seq Scan on pagg_tab2_p1 t2_1
                      ->  Hash
-                           ->  Seq Scan on pagg_tab2_p1 t2_1
+                           ->  Seq Scan on pagg_tab1_p1 t1_1
          ->  HashAggregate
                Group Key: t2_2.y
                ->  Hash Join
-                     Hash Cond: (t1_2.x = t2_2.y)
-                     ->  Seq Scan on pagg_tab1_p2 t1_2
+                     Hash Cond: (t2_2.y = t1_2.x)
+                     ->  Seq Scan on pagg_tab2_p2 t2_2
                      ->  Hash
-                           ->  Seq Scan on pagg_tab2_p2 t2_2
+                           ->  Seq Scan on pagg_tab1_p2 t1_2
          ->  HashAggregate
                Group Key: t2_3.y
                ->  Hash Join
-                     Hash Cond: (t1_3.x = t2_3.y)
-                     ->  Seq Scan on pagg_tab1_p3 t1_3
+                     Hash Cond: (t2_3.y = t1_3.x)
+                     ->  Seq Scan on pagg_tab2_p3 t2_3
                      ->  Hash
-                           ->  Seq Scan on pagg_tab2_p3 t2_3
+                           ->  Seq Scan on pagg_tab1_p3 t1_3
 (24 rows)
 
 -- When GROUP BY clause does not match; partial aggregation is performed for each partition.
@@ -546,28 +546,28 @@ SELECT t1.y, sum(t1.x), count(*) FROM pagg_tab1 t1, pagg_tab2 t2 WHERE t1.x = t2
                      ->  Sort
                            Sort Key: t1_1.y
                            ->  Hash Join
-                                 Hash Cond: (t1_1.x = t2_1.y)
-                                 ->  Seq Scan on pagg_tab1_p1 t1_1
+                                 Hash Cond: (t2_1.y = t1_1.x)
+                                 ->  Seq Scan on pagg_tab2_p1 t2_1
                                  ->  Hash
-                                       ->  Seq Scan on pagg_tab2_p1 t2_1
+                                       ->  Seq Scan on pagg_tab1_p1 t1_1
                ->  Partial GroupAggregate
                      Group Key: t1_2.y
                      ->  Sort
                            Sort Key: t1_2.y
                            ->  Hash Join
-                                 Hash Cond: (t1_2.x = t2_2.y)
-                                 ->  Seq Scan on pagg_tab1_p2 t1_2
+                                 Hash Cond: (t2_2.y = t1_2.x)
+                                 ->  Seq Scan on pagg_tab2_p2 t2_2
                                  ->  Hash
-                                       ->  Seq Scan on pagg_tab2_p2 t2_2
+                                       ->  Seq Scan on pagg_tab1_p2 t1_2
                ->  Partial GroupAggregate
                      Group Key: t1_3.y
                      ->  Sort
                            Sort Key: t1_3.y
                            ->  Hash Join
-                                 Hash Cond: (t1_3.x = t2_3.y)
-                                 ->  Seq Scan on pagg_tab1_p3 t1_3
+                                 Hash Cond: (t2_3.y = t1_3.x)
+                                 ->  Seq Scan on pagg_tab2_p3 t2_3
                                  ->  Hash
-                                       ->  Seq Scan on pagg_tab2_p3 t2_3
+                                       ->  Seq Scan on pagg_tab1_p3 t1_3
 (34 rows)
 
 SELECT t1.y, sum(t1.x), count(*) FROM pagg_tab1 t1, pagg_tab2 t2 WHERE t1.x = t2.y GROUP BY t1.y HAVING avg(t1.x) > 10 ORDER BY 1, 2, 3;
@@ -597,25 +597,25 @@ SELECT b.y, sum(a.y) FROM pagg_tab1 a LEFT JOIN pagg_tab2 b ON a.x = b.y GROUP B
          ->  Append
                ->  Partial HashAggregate
                      Group Key: b_1.y
-                     ->  Hash Left Join
-                           Hash Cond: (a_1.x = b_1.y)
-                           ->  Seq Scan on pagg_tab1_p1 a_1
+                     ->  Hash Right Join
+                           Hash Cond: (b_1.y = a_1.x)
+                           ->  Seq Scan on pagg_tab2_p1 b_1
                            ->  Hash
-                                 ->  Seq Scan on pagg_tab2_p1 b_1
+                                 ->  Seq Scan on pagg_tab1_p1 a_1
                ->  Partial HashAggregate
                      Group Key: b_2.y
-                     ->  Hash Left Join
-                           Hash Cond: (a_2.x = b_2.y)
-                           ->  Seq Scan on pagg_tab1_p2 a_2
+                     ->  Hash Right Join
+                           Hash Cond: (b_2.y = a_2.x)
+                           ->  Seq Scan on pagg_tab2_p2 b_2
                            ->  Hash
-                                 ->  Seq Scan on pagg_tab2_p2 b_2
+                                 ->  Seq Scan on pagg_tab1_p2 a_2
                ->  Partial HashAggregate
                      Group Key: b_3.y
-                     ->  Hash Left Join
-                           Hash Cond: (a_3.x = b_3.y)
-                           ->  Seq Scan on pagg_tab1_p3 a_3
+                     ->  Hash Right Join
+                           Hash Cond: (b_3.y = a_3.x)
+                           ->  Seq Scan on pagg_tab2_p3 b_3
                            ->  Hash
-                                 ->  Seq Scan on pagg_tab2_p3 b_3
+                                 ->  Seq Scan on pagg_tab1_p3 a_3
 (26 rows)
 
 SELECT b.y, sum(a.y) FROM pagg_tab1 a LEFT JOIN pagg_tab2 b ON a.x = b.y GROUP BY b.y ORDER BY 1 NULLS LAST;
@@ -640,25 +640,25 @@ SELECT b.y, sum(a.y) FROM pagg_tab1 a RIGHT JOIN pagg_tab2 b ON a.x = b.y GROUP 
    ->  Append
          ->  HashAggregate
                Group Key: b_1.y
-               ->  Hash Right Join
-                     Hash Cond: (a_1.x = b_1.y)
-                     ->  Seq Scan on pagg_tab1_p1 a_1
+               ->  Hash Left Join
+                     Hash Cond: (b_1.y = a_1.x)
+                     ->  Seq Scan on pagg_tab2_p1 b_1
                      ->  Hash
-                           ->  Seq Scan on pagg_tab2_p1 b_1
+                           ->  Seq Scan on pagg_tab1_p1 a_1
          ->  HashAggregate
                Group Key: b_2.y
-               ->  Hash Right Join
-                     Hash Cond: (a_2.x = b_2.y)
-                     ->  Seq Scan on pagg_tab1_p2 a_2
+               ->  Hash Left Join
+                     Hash Cond: (b_2.y = a_2.x)
+                     ->  Seq Scan on pagg_tab2_p2 b_2
                      ->  Hash
-                           ->  Seq Scan on pagg_tab2_p2 b_2
+                           ->  Seq Scan on pagg_tab1_p2 a_2
          ->  HashAggregate
                Group Key: b_3.y
-               ->  Hash Right Join
-                     Hash Cond: (a_3.x = b_3.y)
-                     ->  Seq Scan on pagg_tab1_p3 a_3
+               ->  Hash Left Join
+                     Hash Cond: (b_3.y = a_3.x)
+                     ->  Seq Scan on pagg_tab2_p3 b_3
                      ->  Hash
-                           ->  Seq Scan on pagg_tab2_p3 b_3
+                           ->  Seq Scan on pagg_tab1_p3 a_3
 (24 rows)
 
 SELECT b.y, sum(a.y) FROM pagg_tab1 a RIGHT JOIN pagg_tab2 b ON a.x = b.y GROUP BY b.y ORDER BY 1 NULLS LAST;
@@ -690,24 +690,24 @@ SELECT a.x, sum(b.x) FROM pagg_tab1 a FULL OUTER JOIN pagg_tab2 b ON a.x = b.y G
                ->  Partial HashAggregate
                      Group Key: a_1.x
                      ->  Hash Full Join
-                           Hash Cond: (a_1.x = b_1.y)
-                           ->  Seq Scan on pagg_tab1_p1 a_1
+                           Hash Cond: (b_1.y = a_1.x)
+                           ->  Seq Scan on pagg_tab2_p1 b_1
                            ->  Hash
-                                 ->  Seq Scan on pagg_tab2_p1 b_1
+                                 ->  Seq Scan on pagg_tab1_p1 a_1
                ->  Partial HashAggregate
                      Group Key: a_2.x
                      ->  Hash Full Join
-                           Hash Cond: (a_2.x = b_2.y)
-                           ->  Seq Scan on pagg_tab1_p2 a_2
+                           Hash Cond: (b_2.y = a_2.x)
+                           ->  Seq Scan on pagg_tab2_p2 b_2
                            ->  Hash
-                                 ->  Seq Scan on pagg_tab2_p2 b_2
+                                 ->  Seq Scan on pagg_tab1_p2 a_2
                ->  Partial HashAggregate
                      Group Key: a_3.x
                      ->  Hash Full Join
-                           Hash Cond: (a_3.x = b_3.y)
-                           ->  Seq Scan on pagg_tab1_p3 a_3
+                           Hash Cond: (b_3.y = a_3.x)
+                           ->  Seq Scan on pagg_tab2_p3 b_3
                            ->  Hash
-                                 ->  Seq Scan on pagg_tab2_p3 b_3
+                                 ->  Seq Scan on pagg_tab1_p3 a_3
 (26 rows)
 
 SELECT a.x, sum(b.x) FROM pagg_tab1 a FULL OUTER JOIN pagg_tab2 b ON a.x = b.y GROUP BY a.x ORDER BY 1 NULLS LAST;

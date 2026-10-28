@@ -1121,10 +1121,10 @@ type ConfUpdater struct {
 
 func (cu ConfUpdater) updateLine(line *string) {
 	// Check if the line contains a key-value pair
-	for _, entry := range cu.Entries {
-		if strings.HasPrefix(*line, entry.Key+" =") {
-			entry.Found = true
-			*line = entry.String()
+	for i := range cu.Entries {
+		if strings.HasPrefix(*line, cu.Entries[i].Key+" =") {
+			cu.Entries[i].Found = true
+			*line = cu.Entries[i].String()
 		}
 	}
 }
@@ -1161,4 +1161,18 @@ func (cu ConfUpdater) Update(f io.Reader, resp io.Writer) error {
 		return fmt.Errorf("failed to add remaining lines: %w", err)
 	}
 	return nil
+}
+
+// BackupScriptSupportsFips reports whether the given yb_platform_backup.sh accepts --fips.
+// Upgrade and rollback run the previously installed script, which rejects unknown options, and
+// the script version that first accepts --fips varies per release branch, so the script itself
+// is checked rather than a version table.
+func BackupScriptSupportsFips(script string) bool {
+	content, err := os.ReadFile(script)
+	if err != nil {
+		log.Warn(fmt.Sprintf("Failed to read %s to check for --fips support, assuming unsupported: %s",
+			script, err.Error()))
+		return false
+	}
+	return strings.Contains(string(content), "--fips)")
 }

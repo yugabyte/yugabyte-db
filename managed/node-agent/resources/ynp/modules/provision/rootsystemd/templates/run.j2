@@ -10,6 +10,9 @@ uninstall_root_systemd_services() {
     {% if is_install_node_agent == 'True' %}
     service_files+=("yb-node-agent.service")
     {% endif %}
+    # ConfigureNodeExporter lays out node_exporter in user systemd; YBA versions before 2026.2 laid
+    # out a root-level unit.
+    service_files+=("node_exporter.service")
     {% if use_system_level_systemd == 'False' %}
     {% for service_file in service_files | split_string %}
     service_files+=("{{ service_file }}")

@@ -187,6 +187,9 @@ static char *sanitize_char(char c);
 static char *sanitize_str(const char *s);
 static char *scram_mock_salt(const char *username);
 
+/* YB declarations */
+static bool yb_ssl_channel_binding_available(Port *port);
+
 /*
  * Get a list of SASL mechanisms that this module supports.
  *
@@ -209,7 +212,8 @@ scram_get_mechanisms(Port *port, StringInfo buf)
 	 * channel binding is disabled. This is to allow uniform behaviour
 	 * regardless of whether connection manager is enabled or disabled.
 	 */
-	if (*(YBCGetGFlags()->ysql_enable_scram_channel_binding) && port->ssl_in_use)
+	if (*(YBCGetGFlags()->ysql_enable_scram_channel_binding) &&
+		yb_ssl_channel_binding_available(port))
 	{
 		appendStringInfoString(buf, SCRAM_SHA_256_PLUS_NAME);
 		appendStringInfoChar(buf, '\0');
@@ -254,7 +258,8 @@ scram_init(Port *port, const char *selected_mech, const char *shadow_pass)
 	 * selecting any other SASL mechanism we don't support.
 	 */
 #ifdef HAVE_BE_TLS_GET_CERTIFICATE_HASH
-	if (strcmp(selected_mech, SCRAM_SHA_256_PLUS_NAME) == 0 && port->ssl_in_use)
+	if (strcmp(selected_mech, SCRAM_SHA_256_PLUS_NAME) == 0 &&
+		yb_ssl_channel_binding_available(port))
 		state->channel_binding_in_use = true;
 	else
 #endif
@@ -993,7 +998,8 @@ read_client_first_message(scram_state *state, const char *input)
 			 * YB: Do not run this check if SCRAM-SHA-256-PLUS
 			 * (i.e. SCRAM with channel binding) is disabled.
 			 */
-			if (*(YBCGetGFlags()->ysql_enable_scram_channel_binding) && state->port->ssl_in_use)
+			if (*(YBCGetGFlags()->ysql_enable_scram_channel_binding) &&
+				yb_ssl_channel_binding_available(state->port))
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
 						 errmsg("SCRAM channel binding negotiation error"),
@@ -1470,4 +1476,19 @@ scram_mock_salt(const char *username)
 	pg_cryptohash_free(ctx);
 
 	return (char *) sha_digest;
+}
+
+/*
+ * YB: Whether channel binding can be done on the client's channel.  Under
+ * Connection Manager the backend's own connection is unencrypted; binding is
+ * possible only if the logical connection is TLS and the connection manager
+ * forwarded the hash of the certificate it presented.  Both can only be set
+ * by the connection manager.
+ */
+static bool
+yb_ssl_channel_binding_available(Port *port)
+{
+	return port->ssl_in_use ||
+		(port->yb_is_ssl_enabled_in_logical_conn &&
+		 port->yb_logical_conn_server_cert_hash_len > 0);
 }

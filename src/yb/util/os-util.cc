@@ -45,7 +45,6 @@
 #include <vector>
 
 #include "yb/gutil/strings/split.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/util/errno.h"
 #include "yb/util/format.h"
 #include "yb/util/scope_exit.h"
@@ -57,7 +56,6 @@ using std::stringstream;
 using std::string;
 using std::vector;
 using strings::Split;
-using strings::Substitute;
 
 namespace yb {
 

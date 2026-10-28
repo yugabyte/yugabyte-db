@@ -122,11 +122,15 @@ class TSLocalLockManager {
   void PopulateObjectLocks(
       google::protobuf::RepeatedPtrField<ObjectLockInfoPB>* object_lock_infos);
 
+  void UpdateStatusTablet(TransactionId txn_id, const TabletId& status_tablet);
+
   size_t TEST_GrantedLocksSize();
   size_t TEST_WaitingLocksSize();
   void TEST_MarkBootstrapped();
   std::unordered_map<docdb::ObjectLockPrefix, docdb::LockState>
-      TEST_GetLockStateMapForTxn(const TransactionId& txn) const;
+      TEST_GetLockStateMapForTxn(TransactionId txn) const;
+  TabletId TEST_GetStatusTabletForTxn(TransactionId txn) const;
+  void TEST_ConsumePendingSharedLockRequests();
   bool IsShutdownInProgress() const;
 
  private:

@@ -23,6 +23,13 @@
 /* ----------------
  *		pg_yb_password_history definition.  cpp turns this into
  *		typedef struct FormData_pg_yb_password_history
+ *
+ * The DocDB range key is (pwdhstrole, pwdhstchangetime), so a forward scan
+ * returns one role's rows in ascending pwdhstchangetime order.  The reuse code
+ * depends on this ordering.  NOTE: for system catalogs the storage key column
+ * order follows the struct declaration order below, not the order in
+ * DECLARE_UNIQUE_INDEX_PKEY (see YBCAddSysCatalogColumns in yb_bootstrap.c) --
+ * do not reorder these fields.
  * ----------------
  */
 CATALOG(pg_yb_password_history,8118,YbPasswordHistoryRelationId) BKI_SHARED_RELATION BKI_ROWTYPE_OID(8119,YbPasswordHistoryRelation_Rowtype_Id) BKI_SCHEMA_MACRO

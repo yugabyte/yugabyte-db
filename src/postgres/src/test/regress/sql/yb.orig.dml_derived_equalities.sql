@@ -8,6 +8,9 @@
 -- Enable CBO
 SET yb_enable_optimizer_statistics = true;
 SET yb_enable_base_scans_cost_model = true;
+-- With yb_prefer_bnl the NestLoop hint also allows BNL; turn it off so the
+-- join hints below select exactly one join method.
+SET yb_prefer_bnl = false;
 
 SET yb_enable_derived_equalities = true;
 -- Don't want derived SAOPs to mask coverage of derived equalities.
@@ -93,7 +96,7 @@ CREATE INDEX orders_expr_idx ON orders_expr((yb_hash_code(user_id) % 3) ASC, use
 
 ANALYZE users, orders_no_bucket, orders_gen, orders_expr;
 
-\set Q1 '/*+ Set(yb_prefer_bnl off) NestLoop(u o) IndexScan(o) */'
+\set Q1 '/*+ NestLoop(u o) IndexScan(o) */'
 \set Q2 '/*+ YbBatchedNL(u o) IndexScan(o) */'
 \set query ':explain :Q SELECT * FROM users u JOIN :R o ON o.user_id = u.id;'
 

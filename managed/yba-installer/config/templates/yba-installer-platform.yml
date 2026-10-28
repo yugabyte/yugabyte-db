@@ -122,7 +122,7 @@ services:
         {{ end }}
         storage.path = "{{ .DataDir }}"
         seedData = false
-        multiTenant = false
+        multiTenant = {{ if eq (yamlPath "platform.multi_tenant") "true" }}true{{ else }}false{{ end }}
         releases.path = "{{ .DataDir }}/releases"
         releases.artifacts.upload_path = "{{ .DataDir }}/upload/release_artifacts"
         thirdparty.packagePath = "{{ installVersionDir }}/third-party"

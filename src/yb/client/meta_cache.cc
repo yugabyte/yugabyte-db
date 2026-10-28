@@ -63,7 +63,6 @@
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/master_client.proxy.h"
 #include "yb/master/sys_catalog_constants.h"
@@ -77,6 +76,7 @@
 #include "yb/util/atomic.h"
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
@@ -95,7 +95,6 @@
 using std::map;
 using std::shared_ptr;
 using std::string;
-using strings::Substitute;
 using namespace std::literals;
 using namespace std::placeholders;
 
@@ -577,6 +576,14 @@ RemoteTabletServer* RemoteTablet::LeaderTServer() const {
     }
   }
   return nullptr;
+}
+
+RemoteTabletServer* RemoteTablet::LeaderTServer(MarkStaleOnFailure mark_stale_on_failure) {
+  auto* result = LeaderTServer();
+  if (!result && mark_stale_on_failure) {
+    MarkStale();
+  }
+  return result;
 }
 
 bool RemoteTablet::HasLeader() const {
@@ -2386,6 +2393,11 @@ void MetaCache::LookupAllTablets(const std::shared_ptr<YBTable>& table,
         });
     return;
   }
+
+  // The fast path below returns the cached tablets without checking the partition list version.
+  // A freshly opened table may already have a newer partition list (e.g. after a split), so drop
+  // the outdated cache entry first. No-op if the cache is not older than the table.
+  InvalidateTableCache(*table);
 
   // We first want to check the cache in read-only mode, and only if we can't find anything
   // do a lookup in write mode.

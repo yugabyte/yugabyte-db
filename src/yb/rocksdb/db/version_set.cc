@@ -75,6 +75,7 @@
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
+#include "yb/util/math_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -2436,13 +2437,9 @@ Result<std::string> Version::FindTargetKey(
     }
   }
 
-  const auto cross_dist = [](uint64_t cross, uint64_t target) {
-    return cross > target ? cross - target : target - cross;
-  };
-
   // At the fixed point both bounds are candidates; take whichever measures closer to the target.
-  const uint64_t low_dist = cross_dist(low_cross, target_size);
-  const uint64_t high_dist = cross_dist(high_cross, target_size);
+  const uint64_t low_dist = yb::unsigned_abs_diff(low_cross, target_size);
+  const uint64_t high_dist = yb::unsigned_abs_diff(high_cross, target_size);
   const bool prefer_low = low_dist <= high_dist;
   const Slice chosen = prefer_low ? Slice(low_buf) : Slice(high_buf);
   const uint64_t chosen_dist = prefer_low ? low_dist : high_dist;
@@ -3300,15 +3297,15 @@ Status VersionSet::Import(const std::string& source_dir,
     return status;
   }
   std::vector<FileMetaData> files;
-  std::vector<std::pair<SequenceNumber, SequenceNumber>> segments;
   for (;;) {
     status = manifest_reader.Next();
     if (!status.ok()) {
       break;
     }
     auto& current = *manifest_reader;
-    if (!current.GetDeletedFiles().empty()) {
-      return STATUS(Corruption, "Deleted files should be empty");
+    // Deletes before adds, as in VersionBuilder, so a file moved between levels is kept.
+    for (const auto& [level, number] : current.GetDeletedFiles()) {
+      std::erase_if(files, [number](const auto& file) { return file.fd.GetNumber() == number; });
     }
     for (const auto& file : current.GetNewFiles()) {
       auto filemeta = file.second;
@@ -3322,7 +3319,6 @@ Status VersionSet::Import(const std::string& source_dir,
                              seqno);
       }
       files.push_back(filemeta);
-      segments.emplace_back(filemeta.smallest.seqno, filemeta.largest.seqno);
     }
   }
   if (!status.IsEndOfFile()) {
@@ -3333,6 +3329,10 @@ Status VersionSet::Import(const std::string& source_dir,
     return STATUS_FORMAT(NotFound, "Imported DB is empty: $0", source_dir);
   }
 
+  std::vector<std::pair<SequenceNumber, SequenceNumber>> segments;
+  for (const auto& file : files) {
+    segments.emplace_back(file.smallest.seqno, file.largest.seqno);
+  }
   std::vector<LiveFileMetaData> live_files;
   GetLiveFilesMetaData(&live_files);
   for (const auto& file : live_files) {

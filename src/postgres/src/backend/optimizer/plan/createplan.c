@@ -4277,6 +4277,7 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 	plan->ybColumnRefs = column_refs;
 	plan->no_row_trigger = no_row_trigger;
 	plan->yb_skip_entities = YbInitSkippableEntities(no_update_index_list);
+	plan->ybInsertOnConflictPushdownPossible = YbIocPushdownPossible(root, plan);
 
 	copy_generic_path_info(&plan->plan, &best_path->path);
 
@@ -7162,6 +7163,38 @@ replace_nestloop_params_mutator(Node *node, PlannerInfo *root)
 		YbBatchedExpr *bexpr = (YbBatchedExpr *) node;
 		List	   *batched_elems = NIL;
 
+#ifdef USE_ASSERT_CHECKING
+
+		/*
+		 * Every batched Var below shares root->yb_cur_batch_no, so one
+		 * batched nested loop join has to fill all of them (see
+		 * yb_ppi_batched_groups); yb_availBatchedRelids holds one entry per
+		 * enclosing such join.  yb_batched_clause_final_check keeps paths
+		 * that would span two of them out, and a violation here has no
+		 * symptom other than lost rows, so fail loudly instead.
+		 */
+		Relids		batched_vars =
+			bms_intersect(pull_varnos(root, (Node *) bexpr->orig_expr),
+						  root->yb_cur_batched_relids);
+
+		if (!bms_is_empty(batched_vars))
+		{
+			bool		one_join = false;
+			ListCell   *lc;
+
+			foreach(lc, root->yb_availBatchedRelids)
+			{
+				if (bms_is_subset(batched_vars, (Relids) lfirst(lc)))
+				{
+					one_join = true;
+					break;
+				}
+			}
+
+			Assert(one_join);
+		}
+#endif
+
 		/*
 		 * Populate batched_elems with each batched instance of
 		 * bexpr->orig_expr's contents.
@@ -9780,6 +9813,7 @@ make_modifytable(PlannerInfo *root, Plan *subplan,
 	node->yb_skip_entities = NULL;
 	node->yb_update_affected_entities = NULL;
 	node->no_row_trigger = false;
+	node->ybInsertOnConflictPushdownPossible = false;
 	return node;
 }
 

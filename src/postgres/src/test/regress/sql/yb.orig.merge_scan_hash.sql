@@ -16,16 +16,20 @@
 \set query ':explain :Q SELECT h1, h3, r1, r2, n, h2 FROM h3r2n WHERE h1 = 6 AND h2 IN (1, 3, 5, 7, 9) ORDER BY h3, r1, r2, n LIMIT 5;'
 \i :run_query
 
+-- The next three merge scan cases and the yb_hash_code inequality use
+-- LIMIT 2: a hash bucket holds about five rows, so at LIMIT 5 merge scan
+-- reads every bucket in full, the same rows as the plain scan.
+
 -- =, IN, =, sort...
-\set query ':P :Q SELECT h1, h3, r1, r2, n, h2 FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY r1, r2, n LIMIT 5;'
+\set query ':P :Q SELECT h1, h3, r1, r2, n, h2 FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY r1, r2, n LIMIT 2;'
 \i :run_query
 
 -- =, IN, =/sort, sort...
-\set query ':P :Q SELECT h1, h3, r1, r2, n, h2 FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY h3, r1, r2, n LIMIT 5;'
+\set query ':P :Q SELECT h1, h3, r1, r2, n, h2 FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY h3, r1, r2, n LIMIT 2;'
 \i :run_query
 
 -- =, =, IN, sort...
-\set query ':P :Q SELECT h1, h2, r1, r2, n, h3 FROM h3r2n WHERE h1 = 1 AND h2 = 8 AND h3 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) ORDER BY r1, r2, n LIMIT 5;'
+\set query ':P :Q SELECT h1, h2, r1, r2, n, h3 FROM h3r2n WHERE h1 = 1 AND h2 = 8 AND h3 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) ORDER BY r1, r2, n LIMIT 2;'
 \i :run_query
 
 -- =, =, IN/sort, sort...
@@ -38,7 +42,7 @@
 \i :run_query
 
 -- yb_hash_code inequality
-\set query ':P :Q SELECT r1, r2, n, yb_hash_code(h1, h2, h3), h1, h2, h3 FROM h3r2n WHERE yb_hash_code(h1, h2, h3) < 12283 AND h1 IN (5, 7) AND h2 IN (1, 3, 7) AND h3 IN (3, 6, 7) ORDER BY r1, r2, n LIMIT 5;'
+\set query ':P :Q SELECT r1, r2, n, yb_hash_code(h1, h2, h3), h1, h2, h3 FROM h3r2n WHERE yb_hash_code(h1, h2, h3) < 12283 AND h1 IN (5, 7) AND h2 IN (1, 3, 7) AND h3 IN (3, 6, 7) ORDER BY r1, r2, n LIMIT 2;'
 \i :run_query
 
 -- yb_hash_code equality
@@ -78,5 +82,10 @@ DROP INDEX h3r2n_part_idx;
 \i :run_query
 
 -- Same thing with backwards scan.
+-- Third hint is to use merge scan as the second hint ends up using sort.
+-- Fourth and fifth hints are same as previous third and fourth hints, except Set(enable_sort off) is added to them.
 \set query ':explain :Q SELECT * FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY r1 DESC, r2 DESC;'
+\set Q3 '/*+Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/'
+\set Q4 '/*+Parallel(h3r2n 2) Set(yb_enable_parallel_scan_hash_sharded true) Set(yb_parallel_range_rows 1) Set(yb_test_force_parallel force) Set(enable_sort off) Set(yb_max_merge_scan_streams 0)*/'
+\set Q5 '/*+Parallel(h3r2n 2) Set(yb_enable_parallel_scan_hash_sharded true) Set(yb_parallel_range_rows 1) Set(yb_test_force_parallel force) Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/'
 \i :run_query

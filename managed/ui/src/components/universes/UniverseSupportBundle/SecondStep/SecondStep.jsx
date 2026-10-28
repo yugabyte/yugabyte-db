@@ -87,23 +87,19 @@ const filterTypes = [
   { label: 'Custom', type: CUSTOM, value: CUSTOM }
 ];
 
-const filterTypePromDump = [
+// Prometheus and Perf Advisor dumps offer the same windows. Values must stay unique: the
+// dropdowns look the selection up by value.
+const filterTypeMetricsDump = [
   { label: 'Last 15 mins', type: 'minutes', value: '15' },
   { label: 'Last 1 hour', type: 'hours', value: '1' },
+  { label: 'Last 2 hours', type: 'hours', value: '2' },
   { label: 'Last 3 hours', type: 'hours', value: '3' },
-  { type: 'divider' },
-  { label: 'Custom', type: CUSTOM, value: CUSTOM }
-];
-
-const filterTypePerfAdvisor = [
-  { label: 'Last 1 hour', type: 'hours', value: '1' },
   { label: 'Last 6 hours', type: 'hours', value: '6' },
-  { label: 'Last 24 hrs', type: 'hours', value: '24' },
-  { label: 'Last 2 days', type: 'days', value: '2' },
-  { label: 'Last 7 days', type: 'days', value: '7' },
+  { label: 'Last 1 day', type: 'hours', value: '24' },
   { type: 'divider' },
   { label: 'Custom', type: CUSTOM, value: CUSTOM }
 ];
+const DEFAULT_METRICS_DUMP_FILTER_TYPE = filterTypeMetricsDump[1];
 
 export const selectionOptions = [
   { label: 'All', value: 'All' },
@@ -154,11 +150,11 @@ const getBackDateBeforeDate = (amount, type, date) => {
 };
 
 export const DEFAULT_PROMETHEUS_METRICS_PARAMS = {
-  promDumpStartDate: getBackDate(15, 'minutes'),
+  promDumpStartDate: getBackDate(1, 'hours'),
   promDumpEndDate: new Date(),
   prometheusMetricsOptionsValue: prometheusMetricsOptions.map(() => true),
   isPromDumpDateTypeCustom: false,
-  promDumpDateType: filterTypePromDump[0],
+  promDumpDateType: DEFAULT_METRICS_DUMP_FILTER_TYPE,
   prometheusQueries: [],
   useRemoteRead: true,
   promMetricsFormat: PerfAdvisorMetricsFormat.PROM_CHUNK,
@@ -172,7 +168,7 @@ export const DEFAULT_PERF_ADVISOR_METADATA_PARAMS = {
   paDumpEndDate: new Date(),
   paMetricsFormat: PerfAdvisorMetricsFormat.PROM_CHUNK,
   isPaDateTypeCustom: false,
-  paDateType: filterTypePerfAdvisor[0]
+  paDateType: DEFAULT_METRICS_DUMP_FILTER_TYPE
 };
 
 export const DEFAULT_UNIVERSE_LOGS_PARAMS = {
@@ -408,10 +404,10 @@ export const SecondStep = ({
 }) => {
   const [selectedFilterType, setSelectedFilterType] = useState(filterTypes[0]);
   const [selectedFilterTypePromDump, setSelectedFilterTypePromDump] = useState(
-    filterTypePromDump[0]
+    DEFAULT_METRICS_DUMP_FILTER_TYPE
   );
   const [selectedFilterTypePerfAdvisor, setSelectedFilterTypePerfAdvisor] = useState(
-    filterTypePerfAdvisor[0]
+    DEFAULT_METRICS_DUMP_FILTER_TYPE
   );
   const [selectionOptionsValue, setSelectionOptionsValue] = useState(
     selectionOptions.map(() => true)
@@ -437,7 +433,7 @@ export const SecondStep = ({
   const [startDate, setStartDate] = useState(getBackDate(1, 'days'));
   const [endDate, setEndDate] = useState(new Date());
   const [promDumpStartDate, setPromDumpStartDate] = useState(
-    getBackDateBeforeDate(15, 'minutes', endDate)
+    getBackDateBeforeDate(1, 'hours', endDate)
   );
   const [promDumpEndDate, setPromDumpEndDate] = useState(endDate);
   const [paStartDate, setPaStartDate] = useState(getBackDate(1, 'hours'));
@@ -481,7 +477,7 @@ export const SecondStep = ({
       },
       onError: (error) => {
         handleServerError(error, {
-          customErrorLabel: 'Failed fetch estimated support bundle size.'
+          customErrorLabel: 'Failed fetch estimated support bundle size'
         });
       }
     }
@@ -1104,7 +1100,7 @@ export const SecondStep = ({
                           <span className="dropdown-text">
                             <i className="fa fa-calendar" />{' '}
                             {
-                              filterTypePromDump.find(
+                              filterTypeMetricsDump.find(
                                 (type) => type.value === selectedFilterTypePromDump.value
                               ).label
                             }
@@ -1112,7 +1108,7 @@ export const SecondStep = ({
                         }
                         pullRight
                       >
-                        {filterTypePromDump.map((filterType, index) => {
+                        {filterTypeMetricsDump.map((filterType, index) => {
                           if (filterType.type === 'divider') {
                             return <MenuItem divider key={filterType.type} />;
                           }
@@ -1550,7 +1546,7 @@ export const SecondStep = ({
                           <span className="dropdown-text">
                             <i className="fa fa-calendar" />{' '}
                             {
-                              filterTypePerfAdvisor.find(
+                              filterTypeMetricsDump.find(
                                 (type) => type.value === selectedFilterTypePerfAdvisor.value
                               ).label
                             }
@@ -1558,7 +1554,7 @@ export const SecondStep = ({
                         }
                         pullRight
                       >
-                        {filterTypePerfAdvisor.map((filterType, index) => {
+                        {filterTypeMetricsDump.map((filterType, index) => {
                           if (filterType.type === 'divider') {
                             return <MenuItem divider key={filterType.type} />;
                           }

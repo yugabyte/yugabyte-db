@@ -15,6 +15,8 @@
 
 #include <cstdlib>
 
+#include "yb/util/status.h"
+
 namespace yb {
 
 void SetUpPackedRowTestFlags();
@@ -29,6 +31,9 @@ class PackedRowTestBase : public Base {
 };
 
 class MiniCluster;
+
+// Waits until every tablet peer has applied all ops acknowledged to clients.
+Status WaitAllPeersApplied(MiniCluster* cluster);
 
 void CheckNumRecords(MiniCluster* cluster, size_t expected_num_records);
 

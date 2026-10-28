@@ -57,6 +57,8 @@ import { EnableYCQLModal } from '../../../redesign/features/universe/universe-ac
 import { EditPGCompatibilityModal } from '../../../redesign/features/universe/universe-actions/edit-pg-compatibility/EditPGCompatibilityModal';
 import { EditConnectionPoolModal } from '../../../redesign/features/universe/universe-actions/edit-connection-pool/EditConnectionPoolModal';
 import { EditMultiTenancyModal } from '../../../redesign/features/universe/universe-actions/edit-multi-tenancy/EditMultiTenancyModal';
+import { CrossCloudFederationModal } from '../../../redesign/features/universe/universe-actions/cross-cloud-federation/CrossCloudFederationModal';
+import { isCrossCloudFederatedIamEnabled } from '../../backupv2/common/BackupUtils';
 import { EditGflagsModal } from '../../../redesign/features/universe/universe-actions/edit-gflags/EditGflags';
 import { EditUniverse } from '@app/redesign/features-v2/universe/edit-universe';
 import { EditUniverseTabs } from '@app/redesign/features-v2/universe/edit-universe/EditUniverseContext';
@@ -82,6 +84,7 @@ import { UpdateNodeAgentModal } from '../../../redesign/features/universe/univer
 import { ReprovisionNodesWithYnpModal } from '../../../redesign/features/universe/universe-actions/reprovision-nodes-with-ynp/ReprovisionNodesWithYnpModal';
 import { YBMenuItemLabel } from '../../../redesign/components/YBDropdownMenu/YBMenuItemLabel';
 import {
+  EDIT_ROLLBACK_TASK_TYPES,
   PerfAdvisorModalIntention,
   PERF_ADVISOR_PATH,
   RuntimeConfigKey,
@@ -469,6 +472,7 @@ class UniverseDetail extends Component {
       showEnableYCQLModal,
       showPGCompatibilityModal,
       showConnectionPoolModal,
+      showCrossCloudFederationModal,
       showMultiTenancyModal,
       updateBackupState,
       closeModal,
@@ -520,6 +524,11 @@ class UniverseDetail extends Component {
     const providerUUID = primaryCluster?.userIntent?.provider;
     const provider = providers.data.find((provider) => provider.uuid === providerUUID);
     const isProviderNodeAgentEnabled = provider?.details?.enableNodeAgent;
+    // Shown even when the provider has federation off: the modal then explains that the provider
+    // must be configured first, and a configured universe can still be disabled.
+    const isCrossCloudFederationAvailable =
+      isCrossCloudFederatedIamEnabled(runtimeConfigs?.data) &&
+      ['aws', 'gcp', 'onprem'].includes(provider?.code);
     const isNodeAgentMissing = universe?.currentUniverse?.data?.universeDetails?.nodeAgentMissing;
 
     const onPremWithoutSudoAccess =
@@ -751,6 +760,8 @@ class UniverseDetail extends Component {
     isUniverseStatusPending || isActionFrozen(allowedTasks, UNIVERSE_TASKS.INSTALL);
     const isInstallNodeAgentDisabled =
       isUniverseStatusPending || isActionFrozen(allowedTasks, UNIVERSE_TASKS.INSTALL_NODE_AGENT);
+    const isUpdateNodeAgentCertDisabled =
+      isUniverseStatusPending || isActionFrozen(allowedTasks, UNIVERSE_TASKS.UPDATE_NODE_AGENT);
     const isReprovisionNodesWithYnpDisabled =
       isUniverseStatusPending ||
       isActionFrozen(allowedTasks, UNIVERSE_TASKS.REPROVISION_NODES_WITH_YNP);
@@ -773,10 +784,28 @@ class UniverseDetail extends Component {
     const isSampleAppsDisabled = isUniverseStatusPending && !backupRestoreInProgress;
     const isSupportBundleDisabled =
       this.isUniverseDeleting() || isActionFrozen(allowedTasks, UNIVERSE_TASKS.SUPPORT_BUNDLES);
-    const isBackupsDisabled = isUniverseStatusPending || isK8ActionsDisabled;
+    // Disable Backup only flips a universe flag (update_backup_state). It is not a task, so
+    // allowedTasks cannot express it; mirror the failed-rollback lock here instead.
+    const isLockedByFailedRollback =
+      !!allowedTasks?.restricted &&
+      EDIT_ROLLBACK_TASK_TYPES.includes(universeInfo.universeDetails?.updatingTask);
+    const isBackupsDisabled =
+      isUniverseStatusPending || isLockedByFailedRollback || isK8ActionsDisabled;
     const isUniverseRegisteredToPa =
       universePaRegistrationStatus?.data?.success && isNonEmptyArray(ybaToPaServiceDetails?.data);
-    const isPerfAdvisorActionDisabled = isUniverseStatusPending;
+    // Enable Performance Monitoring registers the universe and Disable unregisters it. The
+    // Advanced Observability toggles re-register it in another mode.
+    const isPerfMonitoringDisabled =
+      isUniverseStatusPending ||
+      isActionFrozen(
+        allowedTasks,
+        isUniverseRegisteredToPa
+          ? UNIVERSE_TASKS.UNREGISTER_UNIVERSE_FROM_PERF_ADVISOR
+          : UNIVERSE_TASKS.REGISTER_UNIVERSE_TO_PERF_ADVISOR
+      );
+    const isAdvancedObservabilityDisabled =
+      isUniverseStatusPending ||
+      isActionFrozen(allowedTasks, UNIVERSE_TASKS.REGISTER_UNIVERSE_TO_PERF_ADVISOR);
     const isPauseUniverseDisabled =
       (universePaused && isUniverseStatusPending) ||
       this.isUniverseDeleting() ||
@@ -1110,6 +1139,7 @@ class UniverseDetail extends Component {
           >
             <MenuItemsContainer
               parentDropdownOpen={this.state.actionsDropdownOpen}
+              fitSubmenuToContent
               mainMenu={(setActiveSubmenu) => (
                 <>
                   {!universePaused && !isRollBackFeatureEnabled && (
@@ -1799,6 +1829,27 @@ class UniverseDetail extends Component {
                           )}
                         </RbacValidator>
                       )}
+                    {!universePaused && isCrossCloudFederationAvailable && (
+                      <RbacValidator
+                        accessRequiredOn={{
+                          onResource: uuid,
+                          ...ApiPermissionMap.MANAGE_CROSS_CLOUD_FEDERATION
+                        }}
+                        isControl
+                      >
+                        {withDisabledActionTooltip(
+                          k8OperatorTooltipTitle,
+                          <YBMenuItem
+                            disabled={isUniverseStatusPending || isK8ActionsDisabled}
+                            onClick={showCrossCloudFederationModal}
+                          >
+                            <YBLabelWithIcon icon="fa fa-cloud fa-fw">
+                              {i18n.t('universeActions.crossCloudFederation.menuLabel')}
+                            </YBLabelWithIcon>
+                          </YBMenuItem>
+                        )}
+                      </RbacValidator>
+                    )}
                     {!universePaused && (
                       <RbacValidator
                         isControl
@@ -1855,7 +1906,7 @@ class UniverseDetail extends Component {
                           }}
                         >
                           <YBMenuItem
-                            disabled={isInstallNodeAgentDisabled}
+                            disabled={isUpdateNodeAgentCertDisabled}
                             onClick={showUpdateNodeAgentModal}
                           >
                             <YBLabelWithIcon icon="fa fa-refresh">
@@ -1932,7 +1983,7 @@ class UniverseDetail extends Component {
                           }}
                         >
                           <YBMenuItem
-                            disabled={isPerfAdvisorActionDisabled}
+                            disabled={isPerfMonitoringDisabled}
                             onClick={showEnablePerfAdvisorModal}
                           >
                             <YBLabelWithIcon
@@ -1943,8 +1994,8 @@ class UniverseDetail extends Component {
                               }
                             >
                               {isUniverseRegisteredToPa
-                                ? 'Disable Perf Advisor Collector'
-                                : 'Enable Perf Advisor Collector'}
+                                ? 'Disable Performance Monitoring'
+                                : 'Enable Performance Monitoring'}
                             </YBLabelWithIcon>
                           </YBMenuItem>
                         </RbacValidator>
@@ -1961,7 +2012,7 @@ class UniverseDetail extends Component {
                           }}
                         >
                           <YBMenuItem
-                            disabled={isPerfAdvisorActionDisabled}
+                            disabled={isAdvancedObservabilityDisabled}
                             onClick={showEnableAdvancedObservabilityModal}
                           >
                             <YBLabelWithIcon icon="fa fa-line-chart fa-fw">
@@ -1982,7 +2033,7 @@ class UniverseDetail extends Component {
                           }}
                         >
                           <YBMenuItem
-                            disabled={isPerfAdvisorActionDisabled}
+                            disabled={isAdvancedObservabilityDisabled}
                             onClick={showDisableAdvancedObservabilityModal}
                           >
                             <YBLabelWithIcon icon="fa fa-line-chart fa-fw">
@@ -2288,6 +2339,20 @@ class UniverseDetail extends Component {
           }}
           universeData={currentUniverse.data}
         />
+
+        {/* Mounted only while open so the toggle re-reads federationConfigured each time. */}
+        {showModal && visibleModal === 'crossCloudFederationModal' && (
+          <CrossCloudFederationModal
+            open
+            onClose={() => {
+              closeModal();
+              this.props.fetchCustomerTasks();
+              this.props.getUniverseInfo(currentUniverse.data.universeUUID);
+            }}
+            universeData={currentUniverse.data}
+            provider={provider}
+          />
+        )}
 
         <InstallNodeAgentModal
           modalProps={{

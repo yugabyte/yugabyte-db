@@ -2147,7 +2147,8 @@ YBRunWithInitTransactionData(YbcStatus (*Callback) (const YbcPgInitTransactionDa
 			.enable_tracing = YBEnableTracing(),
 			.effective_pggate_isolation_level = YBGetEffectivePggateIsolationLevel(),
 			.read_from_followers_enabled = YBReadFromFollowersEnabled(),
-			.follower_read_staleness_ms = YBFollowerReadStalenessMs()
+			.follower_read_staleness_ms = YBFollowerReadStalenessMs(),
+			.origination_time = yb_origination_time
 		};
 
 		HandleYBStatus((*Callback) (&data));
@@ -2307,7 +2308,18 @@ StartTransaction(void)
 	xactStopTimestamp = 0;
 
 	if (IsYugaByteEnabled())
+	{
 		YBCSetObjectLockingInfraForCurrTxn();
+
+		/*
+		 * A background worker receives no messages, so it takes a fresh
+		 * origination time for each transaction, before AtStart_Cache
+		 * refreshes the catalog cache the transaction uses.  A parallel
+		 * worker keeps its leader's.
+		 */
+		if (IsBackgroundWorker && !IsParallelWorker())
+			YbRefreshOriginationTime();
+	}
 
 	/*
 	 * initialize other subsystems for new transaction
@@ -2638,6 +2650,8 @@ CommitTransaction(void)
 	AtEOXact_PgStat(true, is_parallel_worker);
 	AtEOXact_Snapshot(true, false);
 	AtEOXact_ApplyLauncher(true);
+	if (IsYugaByteEnabled())
+		YbAtEOXact_ReplicationOrigin();
 	pgstat_report_xact_timestamp(0);
 
 	CurrentResourceOwner = NULL;
@@ -2938,6 +2952,8 @@ PrepareTransaction(void)
 	AtEOXact_HashTables(true);
 	/* don't call AtEOXact_PgStat here; we fixed pgstat state above */
 	AtEOXact_Snapshot(true, true);
+	if (IsYugaByteEnabled())
+		YbAtEOXact_ReplicationOrigin();
 	pgstat_report_xact_timestamp(0);
 
 	CurrentResourceOwner = NULL;
@@ -3167,6 +3183,14 @@ AbortTransaction(void)
 		pgstat_report_xact_timestamp(0);
 	}
 
+	/*
+	 * YB: This is done outside the block above, which is skipped when the
+	 * transaction fails before creating a resource owner.  A stale stamp has
+	 * to be cleared on every exit.
+	 */
+	if (IsYugaByteEnabled())
+		YbAtEOXact_ReplicationOrigin();
+
 	YBCAbortTransaction();
 	YB_DIST_TRACE_END_SPAN();
 
@@ -3360,13 +3384,15 @@ YbCommitTransactionCommandIntermediate(void)
 	bool		is_ddl_mode = YBCPgIsDdlMode();
 	YbDdlMode	ddl_mode;
 
+	bool		ddl_txn_block_enabled = YBIsDdlTransactionBlockEnabled();
+
 	elog(DEBUG2, "YbCommitTransactionCommandIntermediate");
 
 	/*
 	 * Remember DDL state of the statement currently being executed so that we
 	 * can restore it on the next transaction.
 	 */
-	if (YBIsDdlTransactionBlockEnabled() && is_ddl_mode)
+	if (ddl_txn_block_enabled && is_ddl_mode)
 	{
 		YBGetDdlOriginalStmtState(&yb_ddl_stmt_state);
 		ddl_mode = YBGetCurrentDdlMode();
@@ -3378,7 +3404,23 @@ YbCommitTransactionCommandIntermediate(void)
 	CommitTransactionCommand();
 	StartTransactionCommand();
 
-	if (YBIsDdlTransactionBlockEnabled() && is_ddl_mode)
+	/*
+	 * YB: The new transaction latched the object locking infra auto flag
+	 * afresh. If it disagrees with what this statement started with, the rest
+	 * of the statement would run in the other mode while the state it already
+	 * built belongs to this one, so fail the statement instead.
+	 * TODO(#34635): Keep the statement in one mode by pinning the latched
+	 * value across the intermediate commit.
+	 */
+	if (YBIsDdlTransactionBlockEnabled() != ddl_txn_block_enabled)
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("transactional DDL was %s while the statement was "
+						"running",
+						ddl_txn_block_enabled ? "disabled" : "enabled"),
+				 errhint("Retry the statement.")));
+
+	if (ddl_txn_block_enabled && is_ddl_mode)
 	{
 		YBAddDdlTxnState(ddl_mode);
 		YBSetDdlOriginalStmtState(&yb_ddl_stmt_state);
@@ -5716,6 +5758,9 @@ AbortSubTransaction(void)
 			 TransStateAsString(s->state));
 
 	s->state = TRANS_ABORT;
+
+	if (IsYugaByteEnabled())
+		YBCPgClearSessionState();
 
 	/*
 	 * Reset user ID which might have been changed transiently.  (See notes in

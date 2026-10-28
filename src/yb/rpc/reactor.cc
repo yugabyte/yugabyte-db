@@ -49,7 +49,6 @@
 #include "yb/ash/wait_state.h"
 
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/stringprintf.h"
 
 #include "yb/rpc/connection_context.h"
 #include "yb/rpc/connection.h"
@@ -253,7 +252,7 @@ Reactor::Reactor(Messenger* messenger,
                  int index,
                  const MessengerBuilder &bld)
     : messenger_(*messenger),
-      name_(StringPrintf("%s_R%03d", messenger->name().c_str(), index)),
+      name_(Format("$0_R$1", messenger->name(), ZeroPadded(index, 3))),
       log_prefix_(name_ + ": "),
       loop_(kDefaultLibEvFlags),
       connection_keepalive_time_(bld.connection_keepalive_time()),

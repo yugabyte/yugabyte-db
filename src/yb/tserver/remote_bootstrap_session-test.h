@@ -46,7 +46,6 @@
 #include "yb/consensus/multi_raft_batcher.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/fastmem.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
@@ -76,7 +75,6 @@ using log::LogOptions;
 using log::LogAnchorRegistry;
 using rpc::Messenger;
 using rpc::MessengerBuilder;
-using strings::Substitute;
 using tablet::YBTabletTest;
 using tablet::TabletPeer;
 using tablet::RaftGroupReplicaSuperBlockPB;

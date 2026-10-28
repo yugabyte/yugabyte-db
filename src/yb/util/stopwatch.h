@@ -42,8 +42,8 @@
 #endif  // defined(__APPLE__)
 
 #include "yb/gutil/macros.h"
-#include "yb/gutil/stringprintf.h"
 #include "yb/gutil/walltime.h"
+#include "yb/util/format.h"
 
 namespace yb {
 
@@ -155,9 +155,10 @@ struct CpuTimes {
 
   // Return a string formatted similar to the output of the "time" shell command.
   std::string ToString() const {
-    return StringPrintf(
-      "real %.3fs\tuser %.3fs\tsys %.3fs",
-      wall_seconds(), user_cpu_seconds(), system_cpu_seconds());
+    return Format(
+      "real $0s\tuser $1s\tsys $2s",
+      FixedPoint(wall_seconds(), 3), FixedPoint(user_cpu_seconds(), 3),
+      FixedPoint(system_cpu_seconds(), 3));
   }
 
   double wall_millis() const {

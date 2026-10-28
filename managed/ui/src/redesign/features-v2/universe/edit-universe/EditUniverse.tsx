@@ -11,7 +11,7 @@ import { api, runtimeConfigQueryKey } from '@app/redesign/helpers/api';
 import { isK8OperatorApiBlocked } from '@app/redesign/helpers/k8OperatorResourceUtils';
 import { useGetUniverse } from '@app/v2/api/universe/universe';
 import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
-import { getClusterByType } from './EditUniverseUtils';
+import { getClusterByType, getClusterProviderUuids } from './EditUniverseUtils';
 import {
   EditUniverseContext,
   EditUniverseTabs,
@@ -75,13 +75,17 @@ const EditUniverseComponent: FC<EditUniverseProps & WithRouterProps> = ({
   const primaryCluster = universeData
     ? getClusterByType(universeData, ClusterSpecClusterType.PRIMARY)
     : undefined;
-  const providerUUID = primaryCluster?.provider_spec?.provider;
+  const providerUUIDs = useMemo(() => getClusterProviderUuids(primaryCluster), [primaryCluster]);
+  const providerUUIDsKey = providerUUIDs.join(',');
 
   const { data: providerRegions, isLoading: isProviderLoading } = useQuery(
-    [universeUUID, providerUUID],
-    () => api.fetchProviderRegions(providerUUID),
+    [universeUUID, 'providerRegions', providerUUIDsKey],
+    () =>
+      Promise.all(providerUUIDs.map((uuid) => api.fetchProviderRegions(uuid))).then((results) =>
+        results.flat()
+      ),
     {
-      enabled: isSuccess && !!providerUUID
+      enabled: isSuccess && providerUUIDs.length > 0
     }
   );
 

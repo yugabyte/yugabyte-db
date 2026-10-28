@@ -265,6 +265,10 @@ Status YsqlManager::RollbackYsqlMajorCatalogVersion(
   return Status::OK();
 }
 
+Status YsqlManager::CleanupStalePgUpgradeSocketDir() {
+  return ysql_initdb_and_major_upgrade_helper_->CleanupStalePgUpgradeSocketDir();
+}
+
 Status YsqlManager::GetYsqlMajorCatalogUpgradeState(
     const GetYsqlMajorCatalogUpgradeStateRequestPB* req,
     GetYsqlMajorCatalogUpgradeStateResponsePB* resp, rpc::RpcContext* rpc) {
@@ -563,7 +567,7 @@ std::optional<std::chrono::milliseconds> YsqlManager::RefreshPgCatalogVersionCac
     if (!l.IsInitializedAndIsLeader()) {
       VLOG(2) << "No longer the leader, stopping catalog versions task";
       pg_catalog_versions_bg_task_running_ = false;
-      catalog_manager_.ResetCachedCatalogVersions();
+      catalog_manager_.pg_catalog_versions_cache().Reset();
       return std::nullopt;
     }
   }

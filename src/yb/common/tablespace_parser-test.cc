@@ -36,14 +36,14 @@
 #include "yb/common/common_net.h"
 #include "yb/common/tablespace_parser.h"
 
-#include "yb/gutil/strings/substitute.h"
-
+#include "yb/util/format.h"
 #include "yb/util/test_macros.h"
 
 using std::string;
 using std::vector;
 
 DECLARE_bool(enable_tablespace_validation);
+DECLARE_bool(enable_tiered_storage);
 
 namespace yb {
 
@@ -293,6 +293,7 @@ TEST(TablespaceParserTest, InvalidTablespaceOptionFails) {
 }
 
 TEST(TablespaceParserTest, ReadReplicaPlacementParsingErrors) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = true;
   const auto kLivePlacement =
       "{\"num_replicas\":3,\"placement_blocks\":["
       "{\"cloud\":\"cloud0\",\"region\":\"rack1\",\"zone\":\"zone\",\"min_num_replicas\":1},"
@@ -664,6 +665,16 @@ TEST(TablespaceParserTest, MaxNumReplicasValidation) {
          {"cloud":"c","region":"r","zone":"z2","min_num_replicas":1,
           "max_num_replicas":1}]})",
        "Sum of effective max_num_replicas fields (2) is less than the total replication factor"},
+      // The wildcard block itself has no maximum; a maximum anywhere rules out wildcards.
+      {R"({"num_replicas":3,"placement_blocks":[
+         {"cloud":"c","region":"r","zone":"z1","min_num_replicas":2,
+          "max_num_replicas":2},
+         {"cloud":"c","region":"r","zone":"*","min_num_replicas":1}]})",
+       "max_num_replicas is not supported in combination with wildcard placement blocks"},
+      {R"({"num_replicas":3,"placement_blocks":[
+         {"cloud":"c","region":"*","zone":"*","min_num_replicas":3,
+          "max_num_replicas":3}]})",
+       "max_num_replicas is not supported in combination with wildcard placement blocks"},
   };
 
   for (const auto& [placement, expected_error] : invalid_placements) {
@@ -688,7 +699,7 @@ TEST(TablespaceParserTest, TestPreferredZoneJsonProcessing) {
 
   // Valid option with no preferred zones.
   {
-    auto no_preferred_zone = strings::Substitute(format, zone1, zone2, zone3);
+    auto no_preferred_zone = Format(format, zone1, zone2, zone3);
     auto replication_info =
         ASSERT_RESULT(TablespaceParser::FromQLValue(vector<std::string>{no_preferred_zone}));
     ASSERT_EQ(replication_info.multi_affinitized_leaders_size(), 0);
@@ -697,27 +708,27 @@ TEST(TablespaceParserTest, TestPreferredZoneJsonProcessing) {
   // Negative priority.
   {
     auto negative_priority =
-        strings::Substitute(format, zone1 + R"#(,"leader_preference":-1)#", zone2, zone3);
+        Format(format, zone1 + R"#(,"leader_preference":-1)#", zone2, zone3);
     ASSERT_NOK(TablespaceParser::FromQLValue(vector<std::string>{negative_priority}));
   }
 
   // Zero priority.
   {
     auto zero_priority =
-        strings::Substitute(format, zone1 + R"#(,"leader_preference":0)#", zone2, zone3);
+        Format(format, zone1 + R"#(,"leader_preference":0)#", zone2, zone3);
     ASSERT_NOK(TablespaceParser::FromQLValue(vector<std::string>{zero_priority}));
   }
 
   // No priority 1.
   {
     auto no_priority_1 =
-        strings::Substitute(format, zone1 + R"#(,"leader_preference":2)#", zone2, zone3);
+        Format(format, zone1 + R"#(,"leader_preference":2)#", zone2, zone3);
     ASSERT_NOK(TablespaceParser::FromQLValue(vector<std::string>{no_priority_1}));
   }
 
   // Non contiguous priority.
   {
-    auto non_cont_priority_1 = strings::Substitute(
+    auto non_cont_priority_1 = Format(
         format,
         zone1 + R"#(,"leader_preference":1)#",
         zone2 + R"#(,"leader_preference":1)#",
@@ -727,7 +738,7 @@ TEST(TablespaceParserTest, TestPreferredZoneJsonProcessing) {
 
   // Non contiguous priority3.
   {
-    auto non_cont_priority_3 = strings::Substitute(
+    auto non_cont_priority_3 = Format(
         format,
         zone1 + R"#(,"leader_preference":1)#",
         zone2 + R"#(,"leader_preference":3)#",
@@ -739,7 +750,7 @@ TEST(TablespaceParserTest, TestPreferredZoneJsonProcessing) {
   // Only 1 zone has priority
   {
     auto one_zone_priority =
-        strings::Substitute(format, zone1 + R"#(,"leader_preference":1)#", zone2, zone3);
+        Format(format, zone1 + R"#(,"leader_preference":1)#", zone2, zone3);
     auto replication_info =
         ASSERT_RESULT(TablespaceParser::FromQLValue(vector<std::string>{one_zone_priority}));
     ASSERT_EQ(replication_info.multi_affinitized_leaders_size(), 1);
@@ -749,7 +760,7 @@ TEST(TablespaceParserTest, TestPreferredZoneJsonProcessing) {
 
   // Two zones have priority 1
   {
-    auto two_zone_priority = strings::Substitute(
+    auto two_zone_priority = Format(
         format,
         zone1 + R"#(,"leader_preference":1)#",
         zone2 + R"#(,"leader_preference":1)#",
@@ -764,7 +775,7 @@ TEST(TablespaceParserTest, TestPreferredZoneJsonProcessing) {
 
   // All unique priority
   {
-    auto teo_zone_priority = strings::Substitute(
+    auto teo_zone_priority = Format(
         format,
         zone1 + R"#(,"leader_preference":1)#",
         zone2 + R"#(,"leader_preference":2)#",
@@ -796,7 +807,7 @@ TEST(TablespaceParserTest, TestDisabledTablespaceValidation) {
   const string& zone3 = R"#("cloud":"c1","region":"r1","zone":"z3","min_num_replicas":1)#";
   const string format =
       R"#(replica_placement={"num_replicas":3,"placement_blocks": [{$0},{$1},{$2}]})#";
-  const auto duplicate_placement = strings::Substitute(format, zone1, zone1_copy, zone3);
+  const auto duplicate_placement = Format(format, zone1, zone1_copy, zone3);
   ASSERT_RESULT(TablespaceParser::FromQLValue({duplicate_placement}));
 }
 
@@ -806,7 +817,7 @@ TEST(TablespaceParserTest, TestDuplicatePlacementBlocks) {
   const string& zone3 = R"#("cloud":"c1","region":"r1","zone":"z3","min_num_replicas":1)#";
   const string format =
       R"#(replica_placement={"num_replicas":3,"placement_blocks": [{$0},{$1},{$2}]})#";
-  const auto duplicate_placement = strings::Substitute(format, zone1, zone1_copy, zone3);
+  const auto duplicate_placement = Format(format, zone1, zone1_copy, zone3);
 
   // Should fail to create replication info because of duplicate placement blocks.
   auto result = TablespaceParser::FromQLValue({duplicate_placement});
@@ -861,6 +872,7 @@ TEST(TablespaceParserTest, FromStringPopulatesReplicas) {
 // rejected with a clear error for an unknown tier, the wrong type, or an empty string, and absent
 // (rather than defaulted) when omitted.
 TEST(TablespaceParserTest, StorageTierParsing) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = true;
   // The allowlist ("ssd", "hdd") must stay in sync with ValidStorageTiers() -- a tablespace
   // naming any other tier could never be satisfied by any tserver's --fs_data_dirs.
   for (const string& tier : {string("hdd"), string("ssd")}) {
@@ -927,6 +939,34 @@ TEST(TablespaceParserTest, StorageTierParsing) {
     ASSERT_EQ(replication_info.read_replicas_size(), 1);
     ASSERT_EQ(replication_info.read_replicas(0).storage_tier(), "hdd");
   }
+}
+
+// With tiered storage disabled (the default), storage_tier is rejected when a tablespace is
+// created (fail_on_validation_error) and dropped when the master re-reads an existing tablespace,
+// so the rest of that tablespace's placement policy keeps applying.
+TEST(TablespaceParserTest, StorageTierRequiresTieredStorage) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = false;
+  const string kBlocks =
+      "\"placement_blocks\":[{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\","
+      "\"min_num_replicas\":1}]";
+  const string plain_live_json = "{\"num_replicas\":1," + kBlocks + "}";
+  const string tiered_live_json = "{\"num_replicas\":1,\"storage_tier\":\"hdd\"," + kBlocks + "}";
+  const string tiered_read_replica_json =
+      "{\"num_replicas\":1,\"storage_tier\":\"ssd\"," + kBlocks + "}";
+
+  auto live_result = TablespaceParser::FromString(tiered_live_json, "");
+  ASSERT_NOK_STR_CONTAINS(live_result, "enable_tiered_storage");
+
+  auto read_replica_result =
+      TablespaceParser::FromString(plain_live_json, tiered_read_replica_json);
+  ASSERT_NOK_STR_CONTAINS(read_replica_result, "enable_tiered_storage");
+
+  auto replication_info = ASSERT_RESULT(TablespaceParser::FromString(
+      tiered_live_json, tiered_read_replica_json, false /* fail_on_validation_error */));
+  ASSERT_FALSE(replication_info.live_replicas().has_storage_tier());
+  ASSERT_EQ(replication_info.live_replicas().num_replicas(), 1);
+  ASSERT_EQ(replication_info.read_replicas_size(), 1);
+  ASSERT_FALSE(replication_info.read_replicas(0).has_storage_tier());
 }
 
 } // namespace yb

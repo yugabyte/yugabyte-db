@@ -29,6 +29,38 @@ Oracle and MySQL [offline migration](../migrate/migrate-steps/) was deprecated o
 
 Contact {{% support-general %}} to discuss alternative tools and migration approaches.
 
+## v2026.10.2 - October 27, 2026
+
+### Enhancements
+
+- Improved schema drift diagnosis.
+  - [schema detect-drift](../reference/schema-migration/detect-drift/) now sets each change's severity, impact, and recommended action based on when the change occurred: before export data, during offline, live, or changes-only migration, or after cutover is initiated but not completed.
+  - schema detect-drift now reports changes that can go either way as separate types, such as NOT NULL set versus dropped, and a partition attached versus detached.
+- Live migration now skips columns whose type is built on an unsupported datatype, and lists them in the unsupported-columns output of export data. This covers domains, arrays, composites, and user-defined multiranges. Arrays of geometric types, pg_lsn[], txid_snapshot[], timetz[], and arrays of range types are now also skipped in live migration. See [Datatypes not supported by Voyager during live migration](../known-issues/postgresql/#unsupported-datatypes-by-voyager-during-live-migration).
+
+### Bug fixes
+
+- Fixed an issue where non-ASCII characters were written as `?` during live migration export when the host locale was not UTF-8, such as `LANG=C`.
+- Fixed an issue where a time value of `24:00:00` was migrated as `00:00:00` during live migration.
+- Fixed an issue where [assess-migration](../reference/assess-migration/) failed with a `UNIQUE constraint failed: column_statistics ...` error on schemas with inherited tables after `ANALYZE` was run on the source.
+
+## v2026.10.1 - October 13, 2026
+
+### Enhancements
+
+- The [export data](../reference/data-migration/export-data/) command now checks for schema drift when a PostgreSQL live export fails because Debezium stopped while streaming changes, and prints the result after the failure message.
+- [Initiate cutover to target](../reference/cutover-archive/cutover/#cutover-to-target) now checks the PostgreSQL source for schema drift before cutting over, to ensure the source and target schemas still match.
+- Voyager cannot migrate data for tables that use `INHERITS`. The assessment report shows this caveat, and [export data](../reference/data-migration/export-data/) exits with an error when any table in the migration uses inheritance. See [Data migration for table inheritance is not supported](../known-issues/postgresql/#data-migration-for-table-inheritance-is-not-supported). YugabyteDB supports [table inheritance](../../api/ysql/the-sql-language/ddl-inherit/) in {{<release "2025.1">}} {{<tags/feature/tp>}}, {{<release "2025.2">}} {{<tags/feature/tp>}}, and {{<release "2026.1">}} {{<tags/feature/ga>}}.
+- [refcursor](https://www.postgresql.org/docs/current/plpgsql-cursors.html) columns are reported as an unsupported data type for live migration and skipped during live export. Assessment and [analyze-schema](../reference/schema-migration/analyze-schema/) flag each such column. See [Datatypes not supported by Voyager during live migration](../known-issues/postgresql/#unsupported-datatypes-by-voyager-during-live-migration).
+- [xid8](https://www.postgresql.org/docs/current/datatype-oid.html), [xid](https://www.postgresql.org/docs/current/datatype-oid.html), and [cid](https://www.postgresql.org/docs/current/datatype-oid.html) columns are skipped during live export. Assessment and [analyze-schema](../reference/schema-migration/analyze-schema/) report `xid` and `xid8` as unsupported by YugabyteDB, and `cid` as unsupported for live migration. See [Datatypes not supported by YugabyteDB](../known-issues/postgresql/#unsupported-datatypes-by-yugabytedb) and [Datatypes not supported by Voyager during live migration](../known-issues/postgresql/#unsupported-datatypes-by-voyager-during-live-migration).
+- Improved live migration throughput by reducing per-event work in streaming conflict detection for `UPDATE`s that do not change unique-index columns.
+
+### Bug fixes
+
+- Fixed an issue where a crash in [import data](../reference/data-migration/import-data/) during cutover to target could leave in-flight change events missing on the target.
+- Fixed an issue where live migration of a partitioned table whose primary key is defined only on its partitions (not on the root) could modify or delete rows in the wrong partitions. Import data now refuses this configuration when [--use-partition-root](../reference/data-migration/import-data/#arguments) is true, and tells you to re-run with `--use-partition-root false`.
+- Fixed an issue where live migration with `--use-partition-root false` could use an arbitrarily chosen primary key for conflict detection when a partitioned table's leaf partitions had inconsistent keys. Voyager now reports this as an error.
+
 ## v2026.9.3 - September 30, 2026
 
 ### New features

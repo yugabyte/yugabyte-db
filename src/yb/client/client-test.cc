@@ -59,6 +59,7 @@
 #include "yb/client/xcluster_client.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/dockv/doc_key.h"
 #include "yb/dockv/partial_row.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
@@ -71,7 +72,6 @@
 #include "yb/gutil/algorithm.h"
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
@@ -105,6 +105,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
+#include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/random_util.h"
@@ -325,7 +326,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     QLAddInt32HashValue(req, index);
     const auto& columns = table.schema().columns();
     table.AddInt32ColumnValue(req, columns[1].name(), index * 2);
-    table.AddStringColumnValue(req, columns[2].name(), StringPrintf("hello %d", index));
+    table.AddStringColumnValue(req, columns[2].name(), Format("hello $0", index));
     table.AddInt32ColumnValue(req, columns[3].name(), index * 3);
     return insert;
   }
@@ -337,7 +338,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     QLAddInt32HashValue(req, index);
     const auto& columns = table.schema().columns();
     table.AddInt32ColumnValue(req, columns[1].name(), index * 2 + 1);
-    table.AddStringColumnValue(req, columns[2].name(), StringPrintf("hello again %d", index));
+    table.AddStringColumnValue(req, columns[2].name(), Format("hello again $0", index));
     return update;
   }
 
@@ -486,7 +487,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
       }
     }
     if (!ts_found) {
-      return STATUS(InvalidArgument, strings::Substitute("Could not find tablet server $1", uuid));
+      return STATUS(InvalidArgument, Format("Could not find tablet server $0", uuid));
     }
 
     return Status::OK();
@@ -720,6 +721,98 @@ TEST_F_EX(ClientTest, TestBadKeyRanges, ClientTestNoCluster) {
   ASSERT_DEATH({
     FindPartitionStartIndex(partition_starts, high_key);
   }, "Invalid table partition list");
+}
+
+namespace {
+
+std::vector<size_t> SelectedPartitions(
+    const std::vector<std::string>& partitions, const std::vector<std::string>& prefixes) {
+  boost::dynamic_bitset<> mask(partitions.size());
+  for (const auto& prefix : prefixes) {
+    CHECK_OK(SelectPartitionsForPartitionKeyPrefix(partitions, prefix, mask));
+  }
+  std::vector<size_t> result;
+  for (size_t i = 0; i != mask.size(); ++i) {
+    if (mask[i]) {
+      result.push_back(i);
+    }
+  }
+  return result;
+}
+
+std::string HashPartitionKey(uint16_t hash) {
+  return PartitionSchema::EncodeMultiColumnHashValue(hash);
+}
+
+std::string RangeKey(
+    std::initializer_list<int32_t> values, SortOrder sort_order = SortOrder::kAscending) {
+  dockv::KeyEntryValues components;
+  for (auto value : values) {
+    components.push_back(dockv::KeyEntryValue::Int32(value, sort_order));
+  }
+  return dockv::DocKey(std::move(components)).Encode().ToStringBuffer();
+}
+
+// Encoded leading range components without the closing group end.
+std::string RangeKeyPrefix(
+    std::initializer_list<int32_t> values, SortOrder sort_order = SortOrder::kAscending) {
+  auto key = RangeKey(values, sort_order);
+  key.pop_back();
+  return key;
+}
+
+} // namespace
+
+TEST_F_EX(ClientTest, SelectPartitionsForHashPartitionKeys, ClientTestNoCluster) {
+  const std::vector<std::string> partitions = {
+      "", HashPartitionKey(0x4000), HashPartitionKey(0x8000), HashPartitionKey(0xC000)};
+  using Partitions = std::vector<size_t>;
+  ASSERT_EQ(SelectedPartitions(partitions, {}), Partitions{});
+  ASSERT_EQ(SelectedPartitions(partitions, {HashPartitionKey(0)}), Partitions{0});
+  ASSERT_EQ(SelectedPartitions(partitions, {HashPartitionKey(0x3FFF)}), Partitions{0});
+  ASSERT_EQ(SelectedPartitions(partitions, {HashPartitionKey(0x4000)}), Partitions{1});
+  ASSERT_EQ(SelectedPartitions(partitions, {HashPartitionKey(0xFFFF)}), Partitions{3});
+  ASSERT_EQ(
+      SelectedPartitions(partitions, {HashPartitionKey(0x9000), HashPartitionKey(0x9001)}),
+      Partitions{2});
+  ASSERT_EQ(
+      SelectedPartitions(partitions, {HashPartitionKey(0xC001), HashPartitionKey(0x10)}),
+      (Partitions{0, 3}));
+
+  boost::dynamic_bitset<> mask(partitions.size());
+  ASSERT_NOK(SelectPartitionsForPartitionKeyPrefix(partitions, "", mask));
+}
+
+TEST_F_EX(ClientTest, SelectPartitionsForRangePartitionKeyPrefixes, ClientTestNoCluster) {
+  const std::vector<std::string> partitions = {
+      "",
+      RangeKey({10}),
+      RangeKey({20, 5}),
+      RangeKey({30}),
+  };
+  using Partitions = std::vector<size_t>;
+  ASSERT_EQ(SelectedPartitions(partitions, {RangeKeyPrefix({5})}), Partitions{0});
+  ASSERT_EQ(SelectedPartitions(partitions, {RangeKeyPrefix({15})}), Partitions{1});
+  ASSERT_EQ(SelectedPartitions(partitions, {RangeKeyPrefix({40})}), Partitions{3});
+  // Keys starting with 20 are split between the partitions starting at {10} and {20, 5}.
+  ASSERT_EQ(SelectedPartitions(partitions, {RangeKeyPrefix({20})}), (Partitions{1, 2}));
+  ASSERT_EQ(SelectedPartitions(partitions, {RangeKeyPrefix({20, 4})}), Partitions{1});
+  // A prefix sorts before a start key that extends it, so when a split point starts with the
+  // prefix, the partition before it is selected too. That costs a search, never a row.
+  ASSERT_EQ(SelectedPartitions(partitions, {RangeKeyPrefix({20, 5})}), (Partitions{1, 2}));
+  ASSERT_EQ(SelectedPartitions(partitions, {RangeKeyPrefix({30})}), (Partitions{2, 3}));
+  ASSERT_EQ(
+      SelectedPartitions(partitions, {RangeKeyPrefix({5}), RangeKeyPrefix({40})}),
+      (Partitions{0, 3}));
+
+  // A descending key: 0 encodes as 7f ff ff ff, so the prefix ends in 0xff bytes. Keys starting
+  // with 0 sort between 10 and -5 and are split by the split point (0, 5).
+  constexpr auto kDesc = SortOrder::kDescending;
+  const std::vector<std::string> desc_partitions = {
+      "", RangeKey({10}, kDesc), RangeKey({0, 5}, kDesc), RangeKey({-5}, kDesc)};
+  ASSERT_EQ(SelectedPartitions(desc_partitions, {RangeKeyPrefix({0}, kDesc)}), (Partitions{1, 2}));
+  ASSERT_EQ(SelectedPartitions(desc_partitions, {RangeKeyPrefix({20}, kDesc)}), Partitions{0});
+  ASSERT_EQ(SelectedPartitions(desc_partitions, {RangeKeyPrefix({-9}, kDesc)}), Partitions{3});
 }
 
 TEST_F(ClientTest, TestKeyRangeFiltering) {
@@ -2184,7 +2277,7 @@ TEST_F(ClientTest, TestCreateTableWithTooManyTablets) {
   ASSERT_TRUE(s.IsInvalidArgument());
   ASSERT_STR_CONTAINS(
       s.ToString(),
-      strings::Substitute(
+      Format(
           "The requested number of tablets ($0) is over the permitted maximum ($1)", many_tablets,
           FLAGS_replication_factor));
 }
@@ -2292,7 +2385,8 @@ TEST_F(ClientTest, TestReadFromFollower) {
   // rejected due to staleness. To avoid this situation, we'll wait until all followers
   // have at least 1 op from the leader.
   ASSERT_NO_FATALS(InsertTestRows(table, 1));
-  ASSERT_OK(WaitAllReplicasSynchronizedWithLeader(cluster_.get(), CoarseMonoClock::Now() + 5s));
+  ASSERT_OK(WaitAllReplicasSynchronizedWithLeader(
+      cluster_.get(), CoarseMonoClock::Now() + 5s, RequireLeaderIsReady::kFalse));
 
   ASSERT_NO_FATALS(InsertTestRows(table, FLAGS_test_scan_num_rows));
 
@@ -2367,7 +2461,7 @@ TEST_F(ClientTest, TestReadFromFollower) {
       ASSERT_FALSE(seen_key[key]);
       seen_key[key] = true;
       ASSERT_EQ(key * 2, row.column(1).int32_value());
-      ASSERT_EQ(StringPrintf("hello %d", key), row.column(2).string_value());
+      ASSERT_EQ(Format("hello $0", key), row.column(2).string_value());
       ASSERT_EQ(key * 3, row.column(3).int32_value());
     }
   }

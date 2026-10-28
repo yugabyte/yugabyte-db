@@ -30,8 +30,6 @@ public class TestPgRegressThirdPartyExtensionsPgHintPlan extends BasePgRegressTe
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
-    // TODO(28543): Remove once transactional ddl is enabled by default.
-    flagMap.put("ysql_yb_ddl_transaction_block_enabled", "true");
     // (Auto-Analyze #28057) Query plans change after enabling auto analyze.
     flagMap.put("ysql_enable_auto_analyze", "false");
     return flagMap;

@@ -16,7 +16,7 @@ import { mapSupportBundlePayloadToV2 } from './mapSupportBundlePayload';
 import { mapSupportBundleListToUi } from './mapSupportBundleResponse';
 import type { UiSupportBundle, UiSupportBundleCreatePayload } from './supportBundleTypes';
 
-export const SUPPORT_BUNDLE_PAGE_SIZE = 500;
+export const SUPPORT_BUNDLE_PAGE_SIZE = 25;
 
 export interface ListSupportBundlesResult {
   bundles: UiSupportBundle[];

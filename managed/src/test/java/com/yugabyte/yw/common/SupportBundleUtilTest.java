@@ -92,6 +92,20 @@ public class SupportBundleUtilTest extends FakeDBApplication {
 
   @Test
   @Parameters({
+    "2022-03-06 00:00,2022-03-06",
+    "2022-03-06 10:30,2022-03-06",
+    "2022-03-06 23:59,2022-03-06"
+  })
+  public void testGetDateWithoutTime(String dateTimeStr, String dateStr) throws ParseException {
+    // Log file names carry no time of day, so any instant within a day must collapse to its
+    // midnight. This is what makes the support bundle window include the whole start day.
+    Date input = new SimpleDateFormat("yyyy-MM-dd HH:mm").parse(dateTimeStr);
+    Date expected = new SimpleDateFormat("yyyy-MM-dd").parse(dateStr);
+    assertEquals(expected, supportBundleUtil.getDateWithoutTime(input));
+  }
+
+  @Test
+  @Parameters({
     "yb-support-bundle-random-universe-name-20220302112247.793-logs.tar.gz,2022-03-02",
     "yb-support-bundle-skurapati-gcp-uni-test-20210204152839.561-logs.tar.gz,2021-02-04"
   })

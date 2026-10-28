@@ -40,7 +40,6 @@
 #include <boost/lexical_cast.hpp>
 
 #include "yb/gutil/macros.h"
-#include "yb/gutil/stringprintf.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 
@@ -92,7 +91,7 @@ Result<Endpoint> ParseEndpoint(const std::string& input, uint16_t default_port) 
         pos = std::string::npos;
       }
     } else {
-      return STATUS_SUBSTITUTE(NetworkError, "']' missing in $0", input);
+      return STATUS_FORMAT(NetworkError, "']' missing in $0", input);
     }
   } else {
     address_begin = 0;
@@ -108,16 +107,16 @@ Result<Endpoint> ParseEndpoint(const std::string& input, uint16_t default_port) 
     return Endpoint(address, default_port);
   }
   if (input[pos] != ':') {
-    return STATUS_SUBSTITUTE(NetworkError, "':' missing after ']' in $0", input);
+    return STATUS_FORMAT(NetworkError, "':' missing after ']' in $0", input);
   }
   ++pos;
   if (pos == input.size()) {
-    return STATUS_SUBSTITUTE(NetworkError, "Port not specified in $0", input);
+    return STATUS_FORMAT(NetworkError, "Port not specified in $0", input);
   }
   char *end = nullptr;
   auto port = strtoul(input.c_str() + pos, &end, 10);
   if (port > 0xffff || end != input.c_str() + input.size()) {
-    return STATUS_SUBSTITUTE(NetworkError, "Invalid port in $0", input);
+    return STATUS_FORMAT(NetworkError, "Invalid port in $0", input);
   }
   return Endpoint(address, port);
 }

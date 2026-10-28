@@ -187,4 +187,9 @@ public class DynatraceConfig extends TelemetryProviderConfig {
           BAD_REQUEST, "Failed to parse Dynatrace API response: " + e.getMessage());
     }
   }
+
+  @Override
+  public List<String> secretValues() {
+    return nonEmpty(apiToken);
+  }
 }

@@ -16,6 +16,7 @@
 #include <functional>
 #include <future>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 
@@ -30,6 +31,7 @@
 
 #include "yb/server/server_base_options.h"
 
+#include "yb/tserver/pg_cache_util.h"
 #include "yb/tserver/pg_client.service.h"
 #include "yb/tserver/pg_txn_snapshot_manager.h"
 
@@ -160,9 +162,8 @@ class PgClientServiceImpl : public PgClientServiceIf {
       const PgPerformRequestMsg* req, PgPerformResponseMsg* resp,
       rpc::RpcContext context) override;
 
-  void InvalidateTableCache();
-  void InvalidateTableCache(const std::unordered_map<uint32_t, uint64_t>& db_oids_updated,
-                            const std::unordered_set<uint32_t>& db_oids_deleted);
+  void InvalidateTableCache(const std::optional<PgTableCacheInvalidationFilter>& filter);
+
   Result<PgTxnSnapshot> GetLocalPgTxnSnapshot(const PgTxnSnapshotLocalId& snapshot_id);
 
   // Returns the current per-database read-time pins registered by local PG sessions,
@@ -174,6 +175,10 @@ class PgClientServiceImpl : public PgClientServiceIf {
 
   size_t TEST_SessionsCount();
 
+  // The database recorded by the session of the backend with the given pid: kInvalidOid if the
+  // session has recorded none yet, nullopt if no session belongs to that pid.
+  std::optional<PgOid> TEST_SessionDatabaseOid(pid_t pid);
+
   // Cumulative number of worker threads ever created by the shared memory exchange thread pool.
   // Used to verify that the pool reuses threads across postgres connections.
   size_t TEST_ExchangeThreadPoolWorkersCreated();
@@ -181,6 +186,8 @@ class PgClientServiceImpl : public PgClientServiceIf {
   // Allows shared-memory RPCs to consult the same mock registry as the network path.
   // Non-owning. The mock must outlive this service.
   void TEST_SetMockService(PgClientServiceMockImpl* mock);
+
+  PgTableCache& TEST_TableCache();
 
   void Shutdown() override;
 

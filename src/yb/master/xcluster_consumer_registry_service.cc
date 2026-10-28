@@ -27,6 +27,7 @@
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/xcluster_rpc_tasks.h"
 
+#include "yb/util/format.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 
@@ -143,7 +144,7 @@ Status ComputeTabletMapping(
     }
 
     if (consumer_tablet_id.empty()) {
-      auto s = STATUS_SUBSTITUTE(
+      auto s = STATUS_FORMAT(
           IllegalState,
           "Could not find any consumer tablets with overlapping key range for producer tablet $0, "
           "partition_key_start: $1 and partition_key_end: $2",

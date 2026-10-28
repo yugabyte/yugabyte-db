@@ -49,6 +49,8 @@ public interface ClusterMapper {
   @AfterMapping
   default void setProviderSpecs(Cluster v1Cluster, @MappingTarget ClusterSpec clusterSpec) {
     if (v1Cluster.userIntent != null && v1Cluster.userIntent.isMulticloudSupport()) {
+      // Legacy providerSpec is built from userIntent.provider, which is unset in this schema.
+      clusterSpec.setProviderSpec(null);
       clusterSpec.setProviderSpecs(
           UserIntentMapper.INSTANCE.providerSpecificationsToClusterPerProviderSpecs(
               v1Cluster.userIntent.providerSpecifications));

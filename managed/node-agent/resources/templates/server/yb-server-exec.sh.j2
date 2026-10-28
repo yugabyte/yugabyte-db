@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+#
+# Copyright 2026 YugabyteDB, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+
+# Launcher exec'd by the yb-master/yb-tserver systemd units and yb-server-ctl.sh. Sets up the
+# environment (and any other pre-launch hooks) before the server starts.
+#
+# Usage: yb-server-exec.sh <command> [args...]
+
+set -euo pipefail
+
+# True on Linux 6.19.0 - 7.0.13, where GLIBC_TUNABLES=glibc.pthread.rseq=0 must not be set.
+# Those kernels stopped rewriting rseq->cpu_id_start, which TCMalloc's own rseq registration
+# (what the tunable enables) relies on, and the servers refuse to start with per-CPU caches active
+# there. Checked on every start instead of being baked into the unit file, so a kernel update
+# can't leave a stale unit behind.
+kernel_breaks_tcmalloc_rseq() {
+  local release major minor patch
+  release=$(uname -r 2>/dev/null || true)
+  # e.g. 7.0.13-generic -> 7 0 13-generic, 5.14.0-503.el9.x86_64 -> 5 14 0-503.
+  IFS=. read -r major minor patch _ <<< "$release"
+  major=${major%%[^0-9]*}
+  minor=${minor%%[^0-9]*}
+  patch=${patch%%[^0-9]*}
+  # Unparseable: assume fine, the server has its own check.
+  [[ -n "$major" && -n "$minor" ]] || return 1
+  patch=${patch:-0}
+  (( major == 6 && minor >= 19 )) || (( major == 7 && minor == 0 && patch <= 13 ))
+}
+
+# glibc registers its own rseq area, which pushes TCMalloc from per-CPU to per-thread caches
+# (about 5% latency/throughput). Postgres and the connection manager inherit this from the tserver.
+# An explicit rseq setting is the operator's call; keep it.
+if [[ "${GLIBC_TUNABLES:-}" != *glibc.pthread.rseq=* ]] && ! kernel_breaks_tcmalloc_rseq; then
+  export GLIBC_TUNABLES="${GLIBC_TUNABLES:+${GLIBC_TUNABLES}:}glibc.pthread.rseq=0"
+fi
+
+exec "$@"

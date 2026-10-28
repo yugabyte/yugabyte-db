@@ -51,7 +51,7 @@ Note that upgrading a PostgreSQL 11-based universe ({{<release "2024.2">}} and e
 | Provide `gen_random_uuid` natively, eliminating the need for external libraries or custom implementations to generate UUIDs.
 |
 
-| [Foreign key references for partitioned tables](../../../explore/ysql-language-features/advanced-features/partitions/#foreign-key-references)
+| [Foreign key references for partitioned tables](../the-sql-language/statements/ddl_create_table/#foreign-keys-on-partitioned-tables)
 | Define foreign keys that reference partitioned tables and use partitioned tables as parent tables in a foreign key relationship.
 |
 

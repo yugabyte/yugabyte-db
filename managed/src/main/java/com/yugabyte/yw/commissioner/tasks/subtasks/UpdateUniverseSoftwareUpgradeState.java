@@ -53,14 +53,11 @@ public class UpdateUniverseSoftwareUpgradeState extends UniverseTaskBase {
                 log.error(msg);
                 throw new RuntimeException(msg);
               }
-              universeDetails.softwareUpgradeState = taskParams().state;
-              if (taskParams().isSoftwareRollbackAllowed != null) {
-                universeDetails.isSoftwareRollbackAllowed = taskParams().isSoftwareRollbackAllowed;
-                if (!taskParams().isSoftwareRollbackAllowed
-                    && !taskParams().retainPrevYBSoftwareConfig) {
-                  universeDetails.prevYBSoftwareConfig = null;
-                }
-              }
+              applySoftwareUpgradeState(
+                  universeDetails,
+                  taskParams().state,
+                  taskParams().isSoftwareRollbackAllowed,
+                  taskParams().retainPrevYBSoftwareConfig);
               universe.setUniverseDetails(universeDetails);
             }
           };
@@ -71,6 +68,24 @@ public class UpdateUniverseSoftwareUpgradeState extends UniverseTaskBase {
       String msg = getName() + " failed with exception " + e.getMessage();
       log.warn(msg, e.getMessage());
       throw new RuntimeException(msg, e);
+    }
+  }
+
+  /**
+   * Sets the upgrade state, and {@code isSoftwareRollbackAllowed} when not null. Disallowing
+   * rollback also clears {@code prevYBSoftwareConfig} unless {@code retainPrevYBSoftwareConfig}.
+   */
+  public static void applySoftwareUpgradeState(
+      UniverseDefinitionTaskParams universeDetails,
+      SoftwareUpgradeState state,
+      Boolean isSoftwareRollbackAllowed,
+      boolean retainPrevYBSoftwareConfig) {
+    universeDetails.softwareUpgradeState = state;
+    if (isSoftwareRollbackAllowed != null) {
+      universeDetails.isSoftwareRollbackAllowed = isSoftwareRollbackAllowed;
+      if (!isSoftwareRollbackAllowed && !retainPrevYBSoftwareConfig) {
+        universeDetails.prevYBSoftwareConfig = null;
+      }
     }
   }
 }

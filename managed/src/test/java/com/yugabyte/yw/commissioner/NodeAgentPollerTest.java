@@ -41,6 +41,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
 import com.yugabyte.yw.forms.CertificateParams.CustomCertInfo;
 import com.yugabyte.yw.forms.NodeAgentForm;
@@ -66,6 +67,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Calendar;
 import java.util.Date;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -86,6 +88,7 @@ public class NodeAgentPollerTest extends FakeDBApplication {
   @Mock private PlatformExecutorFactory mockPlatformExecutorFactory;
   @Mock private PlatformScheduler mockPlatformScheduler;
   @Mock private NodeAgentClient mockNodeAgentClient;
+  @Mock private PlatformReplicationManager mockReplicationManager;
 
   private CertificateHelper certificateHelper;
 
@@ -134,7 +137,8 @@ public class NodeAgentPollerTest extends FakeDBApplication {
             mockPlatformScheduler,
             nodeAgentManager,
             mockNodeAgentClient,
-            mockSwamperHelper);
+            mockSwamperHelper,
+            () -> mockReplicationManager);
     nodeAgentPoller.init();
     nodeAgentHandler.enableConnectionValidation(false);
   }
@@ -219,11 +223,18 @@ public class NodeAgentPollerTest extends FakeDBApplication {
   // miss these series. Collect from the Gauge instance instead.
   private Double getNodeAgentGaugeValue(String gaugeFieldName, NodeAgent nodeAgent)
       throws Exception {
+    GaugeDataPointSnapshot dataPoint = getNodeAgentGaugeDataPoint(gaugeFieldName, nodeAgent);
+    return dataPoint == null ? null : dataPoint.getValue();
+  }
+
+  // Matches the node agent's labels and ignores any others the gauge adds.
+  private GaugeDataPointSnapshot getNodeAgentGaugeDataPoint(
+      String gaugeFieldName, NodeAgent nodeAgent) throws Exception {
     Field field = NodeAgentPoller.class.getDeclaredField(gaugeFieldName);
     field.setAccessible(true);
     Gauge gauge = (Gauge) field.get(null);
-    Labels expected =
-        Labels.of(
+    Map<String, String> expected =
+        ImmutableMap.of(
             KnownAlertLabels.CUSTOMER_UUID.labelName(),
             nodeAgent.getCustomerUuid().toString(),
             KnownAlertLabels.NODE_AGENT_UUID.labelName(),
@@ -231,8 +242,9 @@ public class NodeAgentPollerTest extends FakeDBApplication {
             KnownAlertLabels.NODE_ADDRESS.labelName(),
             String.format("%s:%s", nodeAgent.getIp(), nodeAgent.getPort()));
     for (GaugeDataPointSnapshot dataPoint : ((GaugeSnapshot) gauge.collect()).getDataPoints()) {
-      if (dataPoint.getLabels().equals(expected)) {
-        return dataPoint.getValue();
+      Labels labels = dataPoint.getLabels();
+      if (expected.entrySet().stream().allMatch(e -> e.getValue().equals(labels.get(e.getKey())))) {
+        return dataPoint;
       }
     }
     return null;
@@ -355,11 +367,14 @@ public class NodeAgentPollerTest extends FakeDBApplication {
     assertNull(getNodeAgentGaugeValue("NODE_AGENT_VERSION_MISMATCH_GAUGE", nodeAgent));
     assertNull(getNodeAgentGaugeValue("NODE_AGENT_SERVER_CERT_EXPIRING_GAUGE", nodeAgent));
     assertNull(getNodeAgentGaugeValue("NODE_AGENT_CONNECTION_GAUGE", nodeAgent));
+    assertNull(getNodeAgentGaugeValue("NODE_AGENT_ROOT_NODE_EXPORTER_GAUGE", nodeAgent));
     verify(mockSwamperHelper).removeNodeAgentTargetJson(eq(nodeAgentUuid));
   }
 
   @Test
   public void testHeartbeat() throws Exception {
+    when(mockNodeAgentClient.waitForServerReady(any(), any()))
+        .thenReturn(PingResponse.getDefaultInstance());
     NodeAgent nodeAgent = register(newPayload("2.12.0.0"));
     UUID nodeAgentUuid = nodeAgent.getUuid();
     Date time1 = nodeAgent.getUpdatedAt();
@@ -379,6 +394,42 @@ public class NodeAgentPollerTest extends FakeDBApplication {
     assertEquals(State.READY, nodeAgent.getState());
     // Make sure time is updated.
     assertTrue("Time is not updated " + time1, time2.after(time1));
+  }
+
+  @Test
+  public void testRootNodeExporterGauge() throws Exception {
+    AtomicBoolean rootUnit = new AtomicBoolean(true);
+    when(mockNodeAgentClient.waitForServerReady(any(), any()))
+        .thenAnswer(
+            inv ->
+                PingResponse.newBuilder()
+                    .setServerInfo(
+                        ServerInfo.newBuilder().setRootNodeExporterUnit(rootUnit.get()).build())
+                    .build());
+    // Matching versions keep the poller from starting an upgrade.
+    Util.setYbaVersion("2.13.0.0");
+    NodeAgent nodeAgent = register(newPayload("2.13.0.0"));
+    PollerTaskParam param =
+        PollerTaskParam.builder()
+            .nodeAgentUuid(nodeAgent.getUuid())
+            .lifetime(Duration.ofMinutes(5))
+            .build();
+    PollerTask pollerTask = nodeAgentPoller.createPollerTask(param);
+    pollerTask.setState(PollerTaskState.SCHEDULED);
+    pollerTask.run();
+    assertEquals(
+        1.0, getNodeAgentGaugeValue("NODE_AGENT_ROOT_NODE_EXPORTER_GAUGE", nodeAgent), 0.0);
+    assertEquals(
+        nodeAgent.getName(),
+        getNodeAgentGaugeDataPoint("NODE_AGENT_ROOT_NODE_EXPORTER_GAUGE", nodeAgent)
+            .getLabels()
+            .get(KnownAlertLabels.NODE_NAME.labelName()));
+    // Re-provisioning with root removes the unit.
+    rootUnit.set(false);
+    pollerTask.setState(PollerTaskState.SCHEDULED);
+    pollerTask.run();
+    assertEquals(
+        0.0, getNodeAgentGaugeValue("NODE_AGENT_ROOT_NODE_EXPORTER_GAUGE", nodeAgent), 0.0);
   }
 
   @Test

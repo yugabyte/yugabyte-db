@@ -1,7 +1,9 @@
+import { useMemo } from 'react';
 import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
 import { api, QUERY_KEY } from '@app/redesign/features/universe/universe-form/utils/api';
 import { RunTimeConfigEntry } from '@app/redesign/features/universe/universe-form/utils/dto';
+import { getDevUserTags } from '@app/redesign/features/universe/universe-form/utils/helpers';
 import { RuntimeConfigKey } from '@app/redesign/helpers/constants';
 
 export const useRuntimeConfigValues = (providerUUID?: string) => {
@@ -38,6 +40,18 @@ export const useRuntimeConfigValues = (providerUUID?: string) => {
 
   const enableAzOverridesK8s = getConfigValue(RuntimeConfigKey.ENABLE_AZ_OVERRIDES_K8S) === 'true';
 
+  const enablePrimaryRf9 = getConfigValue(RuntimeConfigKey.ENABLE_PRIMARY_RF_9) === 'true';
+
+  // Memoized so effects depending on it run only when the config changes.
+  const devUserTags = useMemo(
+    () =>
+      getDevUserTags(
+        getConfigValue(RuntimeConfigKey.IS_TAGS_ENFORCED),
+        getConfigValue(RuntimeConfigKey.DEFAULT_DEV_TAGS)
+      ),
+    [runtimeConfigs]
+  );
+
   return {
     runtimeConfigs,
     providerRuntimeConfigs,
@@ -48,6 +62,8 @@ export const useRuntimeConfigValues = (providerUUID?: string) => {
     maxVolumeCount,
     canUseSpotInstance,
     ebsVolumeEnabled,
-    enableAzOverridesK8s
+    enableAzOverridesK8s,
+    enablePrimaryRf9,
+    devUserTags
   };
 };

@@ -16,6 +16,8 @@ YugabyteDB extends the concept of PostgreSQL tablespaces for a distributed datab
 
 YSQL tablespaces re-purpose this concept for a geo-distributed deployment by allowing you to specify the number of replicas for a table or index, and how they can be distributed across a set of clouds, regions, and zones. Replicating and pinning tables in specific regions can lower read latency, improve resilience, and achieve compliance with data residency laws. For example, you can create duplicate indexes on the same column of a table and place these indexes close to users in different regions for fast access. Similarly, you can partition a master table and associate the partitions with different tablespaces to pin the data geographically.
 
+Placement options are defined in [CREATE TABLESPACE](../../../api/ysql/the-sql-language/statements/ddl_create_tablespace/).
+
 The ability to control the placement of tables in a fine-grained manner provides the following advantages:
 
 - Tables with critical information can have higher replication factor and increased fault tolerance compared to the rest of the data.
@@ -325,7 +327,7 @@ yugabyte=# SELECT * FROM preferred_leader_table;
 Time: 1.052 ms
 ```
 
-You can specify non-zero contiguous integer values for each zone. When multiple zones have the same preference, the leaders are evenly spread across them. Zones without any values are least preferred.
+`leader_preference` is defined in [CREATE TABLESPACE](../../../api/ysql/the-sql-language/statements/ddl_create_tablespace/#replica-placement).
 
 You can check the overall leader distribution and [cluster level leader preference](../../../admin/yb-admin/#set-preferred-zones) on the [tablet-servers page](http://127.0.0.1:7000/tablet-servers).
 

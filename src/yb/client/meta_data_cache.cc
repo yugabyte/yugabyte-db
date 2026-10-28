@@ -46,30 +46,30 @@ Status GenerateUnauthorizedError(const std::string& canonical_resource,
                                  const TableName& table) {
   switch (object_type) {
     case ql::ObjectType::TABLE:
-      return STATUS_SUBSTITUTE(NotAuthorized,
+      return STATUS_FORMAT(NotAuthorized,
           "User $0 has no $1 permission on <table $2.$3> or any of its parents",
           role_name, PermissionName(permission), keyspace, table);
     case ql::ObjectType::SCHEMA:
       if (canonical_resource == "data") {
-        return STATUS_SUBSTITUTE(NotAuthorized,
+        return STATUS_FORMAT(NotAuthorized,
             "User $0 has no $1 permission on <all keyspaces> or any of its parents",
             role_name, PermissionName(permission));
       }
-      return STATUS_SUBSTITUTE(NotAuthorized,
+      return STATUS_FORMAT(NotAuthorized,
           "User $0 has no $1 permission on <keyspace $2> or any of its parents",
           role_name, PermissionName(permission), keyspace);
     case ql::ObjectType::ROLE:
       if (canonical_resource == "role") {
-        return STATUS_SUBSTITUTE(NotAuthorized,
+        return STATUS_FORMAT(NotAuthorized,
             "User $0 has no $1 permission on <all roles> or any of its parents",
             role_name, PermissionName(permission));
       }
-      return STATUS_SUBSTITUTE(NotAuthorized,
+      return STATUS_FORMAT(NotAuthorized,
           "User $0 does not have sufficient privileges to perform the requested operation",
           role_name);
     default:
-      return STATUS_SUBSTITUTE(IllegalState, "Unable to find permissions for object $0",
-                               std::to_underlying(object_type));
+      return STATUS_FORMAT(IllegalState, "Unable to find permissions for object $0",
+                           std::to_underlying(object_type));
   }
 }
 
@@ -335,8 +335,8 @@ Status YBMetaDataCache::HasResourcePermission(const std::string& canonical_resou
   if (object_type != ql::ObjectType::SCHEMA &&
       object_type != ql::ObjectType::TABLE &&
       object_type != ql::ObjectType::ROLE) {
-    DFATAL_OR_RETURN_NOT_OK(STATUS_SUBSTITUTE(InvalidArgument, "Invalid ObjectType $0",
-                                              std::to_underlying(object_type)));
+    DFATAL_OR_RETURN_NOT_OK(STATUS_FORMAT(InvalidArgument, "Invalid ObjectType $0",
+                                          std::to_underlying(object_type)));
   }
 
   if (!permissions_cache_->ready()) {

@@ -190,9 +190,7 @@ void GenericCalculatorService::DoSleep(InboundCall* incoming) {
   SleepRequestPB req;
   if (incoming->IsLocalCall()) {
     auto* local = down_cast<LocalYBInboundCall*>(incoming);
-    if (auto outbound_call = local->outbound_call()) {
-      req = yb::down_cast<const SleepRequestPB&>(*outbound_call->request().protobuf());
-    }
+    req = yb::down_cast<const SleepRequestPB&>(*local->request().protobuf());
   } else {
     Slice param(incoming->serialized_request());
     if (!req.ParseFromArray(param.data(), narrow_cast<int>(param.size()))) {

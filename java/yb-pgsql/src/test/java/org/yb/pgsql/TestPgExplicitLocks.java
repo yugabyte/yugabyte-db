@@ -69,17 +69,15 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
     // hold with concurrent DDL, because the priority is latched by the object lock/ catalog
     // read RPCs that are sent before the row lock RPC, i.e. while the row mark is still absent.
     // So, run just this test in the legacy mode.
+    Map<String, String> masterFlags = new HashMap<>();
+    toggleDDLMode(masterFlags, /* useLegacy */ true);
     Map<String, String> tserverFlags = new HashMap<>();
-    tserverFlags.put("ysql_yb_ddl_transaction_block_enabled", "false");
-    // DDL savepoint support requires ysql_yb_ddl_transaction_block_enabled, so disable it too.
-    tserverFlags.put("ysql_yb_enable_ddl_savepoint_support", "false");
-    tserverFlags.put("ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks", "false");
-    tserverFlags.put("enable_object_locking_for_table_locks", "false");
-    tserverFlags.put("ysql_enable_concurrent_ddl", "false");
+    toggleDDLMode(tserverFlags, /* useLegacy */ true);
+
     // addCommonTServerFlags() overwrites the value set in getTServerFlags(), so repeat
     // skip_prefix_locks here.
-    tserverFlags.put("allowed_preview_flags_csv", "skip_prefix_locks,ysql_enable_concurrent_ddl");
-    restartClusterWithFlags(Collections.emptyMap(), tserverFlags);
+    tserverFlags.put("allowed_preview_flags_csv", "skip_prefix_locks");
+    restartClusterWithFlags(masterFlags, tserverFlags);
     // The following tests in this class should run with the default flags again.
     markClusterNeedsRecreation();
 

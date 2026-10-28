@@ -111,6 +111,17 @@ public class SetFlagInMemory extends ServerSubTaskBase {
         String finalYsqlPgConfCsv =
             GFlagsUtil.mergeCSVs(userProvidedYsqlPgConfCsv, queryAndAuditLogYsqlPgConfCsv, true);
         if (StringUtils.isNotBlank(finalYsqlPgConfCsv)) {
+          // Keep the in-memory value matching the server's gflags file, which has the new install
+          // gflags only where they are applied. Merge default values for CSV gflags with user-set
+          // flag values.
+          if (GFlagsUtil.areNewInstallGFlagsApplied(universe)) {
+            String newInstallYsqlPgConfCsv =
+                universe
+                    .getNewInstallGFlags(taskParams().serverType)
+                    .getOrDefault(GFlagsUtil.YSQL_PG_CONF_CSV, "");
+            finalYsqlPgConfCsv =
+                GFlagsUtil.mergeCSVs(finalYsqlPgConfCsv, newInstallYsqlPgConfCsv, true);
+          }
           gflags.put(GFlagsUtil.YSQL_PG_CONF_CSV, finalYsqlPgConfCsv);
         }
       }

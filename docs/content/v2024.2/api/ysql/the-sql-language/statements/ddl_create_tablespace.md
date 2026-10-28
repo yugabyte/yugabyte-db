@@ -27,8 +27,15 @@ Use the `CREATE TABLESPACE` statement to create a tablespace in the cluster. It 
 
 ### *tablespace_option*
 
-- Can be one of [`replica_placement`].
-- Use `replica_placement` to specify the number of replicas stored in specific zones, regions, or clouds.
+#### replica_placement
+
+`replica_placement` is a JSON object that places the replicas of tables and indexes in this tablespace.
+
+- `num_replicas` is the replication factor. It is required and must be a positive integer.
+- `placement_blocks` is an array of placement blocks. Each block requires `cloud`, `region`, `zone`, and `min_num_replicas`.
+  - `min_num_replicas` is the minimum number of replicas in that cloud, region, and zone. It must be greater than 0. The sum across blocks cannot exceed `num_replicas`.
+  - `region` and `zone` accept `*` for any region or any zone. A `*` region requires a `*` zone. `cloud` must name a cloud.
+  - `leader_preference` is an optional positive integer. `1` is the most preferred zone for tablet leaders. Values that are set must form a contiguous sequence starting at 1. Zones that share a value split leaders evenly. Zones that omit the field are least preferred.
 
 ## Examples
 

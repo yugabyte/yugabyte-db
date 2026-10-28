@@ -28,8 +28,6 @@
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/in_mem_docdb.h"
 
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/rocksdb/db/filename.h"
 
 #include "yb/rocksutil/write_batch_formatter.h"
@@ -37,6 +35,7 @@
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/path_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
@@ -641,7 +640,7 @@ Status FullyCompactDB(rocksdb::DB* rocksdb) {
 Status DocDBRocksDBFixture::InitRocksDBDir() {
   string test_dir;
   RETURN_NOT_OK(Env::Default()->GetTestDirectory(&test_dir));
-  rocksdb_dir_ = JoinPathSegments(test_dir, StringPrintf("mytestdb-%d", rand()));
+  rocksdb_dir_ = JoinPathSegments(test_dir, Format("mytestdb-$0", rand()));
   CHECK(!rocksdb_dir_.empty());  // Check twice before we recursively delete anything.
   CHECK_NE(rocksdb_dir_, "/");
   RETURN_NOT_OK(Env::Default()->DeleteRecursively(rocksdb_dir_));

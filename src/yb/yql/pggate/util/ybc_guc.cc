@@ -65,6 +65,8 @@ bool yb_enable_consistent_replication_from_hash_range = false;
 
 bool yb_enable_replication_slot_exclusive_lock = false;
 
+int yb_replication_slot_wait_max_retries = 0;
+
 bool yb_cdcsdk_stream_tables_without_primary_key = true;
 
 bool yb_cdcsdk_allow_dml_without_pk = false;
@@ -102,6 +104,7 @@ int yb_explicit_row_lock_skip_locked_max_read_ahead = 1;
 uint64_t yb_read_time = 0;
 bool yb_is_read_time_ht = false;
 bool yb_disable_catalog_version_check = false;
+bool yb_read_time_skip_catalog = false;
 
 int yb_read_after_commit_visibility = 0;
 
@@ -149,8 +152,6 @@ bool yb_mixed_mode_saop_pushdown = false;
 bool yb_use_internal_auto_analyze_service_conn = false;
 
 bool yb_ddl_transaction_block_enabled = kEnableDdlTransactionBlocks;
-
-bool yb_disable_ddl_transaction_block_for_read_committed = false;
 
 int yb_fk_references_cache_limit = 65535;
 

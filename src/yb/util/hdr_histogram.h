@@ -201,9 +201,9 @@ class HdrHistogram {
  private:
   friend class AbstractHistogramIterator;
 
-  static const uint64_t kMinHighestTrackableValue = 2;
-  static const int kMinValidNumSignificantDigits = 1;
-  static const int kMaxValidNumSignificantDigits = 5;
+  static constexpr uint64_t kMinHighestTrackableValue = 2;
+  static constexpr int kMinValidNumSignificantDigits = 1;
+  static constexpr int kMaxValidNumSignificantDigits = 5;
 
   void Init();
   int CountsArrayIndex(int bucket_index, int sub_bucket_index) const;

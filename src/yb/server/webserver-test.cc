@@ -35,7 +35,6 @@
 
 #include <gtest/gtest.h>
 
-#include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/util.h"
 
 #include "yb/server/default-path-handlers.h"
@@ -44,6 +43,7 @@
 #include "yb/util/file_util.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/env_util.h"
+#include "yb/util/format.h"
 #include "yb/util/json_document.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
@@ -54,7 +54,6 @@
 
 using std::string;
 using std::vector;
-using strings::Substitute;
 
 DECLARE_int32(webserver_max_post_length_bytes);
 DECLARE_uint64(webserver_compression_threshold_kb);
@@ -91,7 +90,7 @@ class WebserverTest : public YBTest {
     ASSERT_OK(server_->GetBoundAddresses(&addrs));
     ASSERT_EQ(addrs.size(), 1);
     addr_ = addrs[0];
-    url_ = Substitute("http://$0", ToString(addr_));
+    url_ = Format("http://$0", ToString(addr_));
   }
 
  protected:
@@ -105,7 +104,7 @@ class WebserverTest : public YBTest {
 };
 
 TEST_F(WebserverTest, TestIndexPage) {
-  ASSERT_OK(curl_.FetchURL(strings::Substitute("http://$0/", ToString(addr_)),
+  ASSERT_OK(curl_.FetchURL(Format("http://$0/", ToString(addr_)),
                            &buf_));
   // Should have expected title.
   ASSERT_STR_CONTAINS(buf_.ToString(), "Yugabyte");
@@ -189,7 +188,7 @@ TEST_F(WebserverTest, TestHttpCompression) {
 
 TEST_F(WebserverTest, TestDefaultPaths) {
   // Test memz
-  ASSERT_OK(curl_.FetchURL(strings::Substitute("http://$0/memz?raw=1", ToString(addr_)),
+  ASSERT_OK(curl_.FetchURL(Format("http://$0/memz?raw=1", ToString(addr_)),
                            &buf_));
 #if YB_TCMALLOC_ENABLED
   ASSERT_STR_CONTAINS(buf_.ToString(), "Bytes in use by application");
@@ -198,11 +197,11 @@ TEST_F(WebserverTest, TestDefaultPaths) {
 #endif
 
   // Test varz -- check for one of the built-in gflags flags.
-  ASSERT_OK(curl_.FetchURL(strings::Substitute("http://$0/varz?raw=1", ToString(addr_)), &buf_));
+  ASSERT_OK(curl_.FetchURL(Format("http://$0/varz?raw=1", ToString(addr_)), &buf_));
   ASSERT_STR_CONTAINS(buf_.ToString(), "--v=");
 
   // Test varz json api
-  ASSERT_OK(curl_.FetchURL(strings::Substitute("http://$0/api/v1/varz", ToString(addr_)), &buf_));
+  ASSERT_OK(curl_.FetchURL(Format("http://$0/api/v1/varz", ToString(addr_)), &buf_));
   // Output is a JSON array of 'flags'
   JsonDocument doc;
   auto root = ASSERT_RESULT(doc.Parse(buf_.ToString()));
@@ -215,7 +214,7 @@ TEST_F(WebserverTest, TestDefaultPaths) {
   ASSERT_NE(it, entries.end());
 
   // Test status.
-  ASSERT_OK(curl_.FetchURL(strings::Substitute("http://$0/status", ToString(addr_)),
+  ASSERT_OK(curl_.FetchURL(Format("http://$0/status", ToString(addr_)),
                            &buf_));
   ASSERT_STR_EQ_VERBOSE_TRIMMED("{}", buf_.ToString());
 }
@@ -227,31 +226,30 @@ void SomeMethodForSymbolTest2() {}
 
 TEST_F(WebserverTest, TestPprofPaths) {
   // Test /pprof/cmdline GET
-  ASSERT_OK(curl_.FetchURL(strings::Substitute("http://$0/pprof/cmdline", ToString(addr_)),
+  ASSERT_OK(curl_.FetchURL(Format("http://$0/pprof/cmdline", ToString(addr_)),
                            &buf_));
   ASSERT_STR_CONTAINS(buf_.ToString(), "webserver-test");
   ASSERT_TRUE(!HasSuffixString(buf_.ToString(), string("\x00", 1)))
     << "should not have trailing NULL: " << Slice(buf_).ToDebugString();
 
   // Test /pprof/symbol GET
-  ASSERT_OK(curl_.FetchURL(strings::Substitute("http://$0/pprof/symbol", ToString(addr_)),
+  ASSERT_OK(curl_.FetchURL(Format("http://$0/pprof/symbol", ToString(addr_)),
                            &buf_));
   ASSERT_EQ(buf_.ToString(), "num_symbols: 1");
 
   // Test /pprof/symbol POST
   {
     // Formulate a request with some valid symbol addresses.
-    string req = StringPrintf("%p+%p",
-                              &SomeMethodForSymbolTest1,
-                              &SomeMethodForSymbolTest2);
+    auto* method1 = reinterpret_cast<void*>(&SomeMethodForSymbolTest1);
+    auto* method2 = reinterpret_cast<void*>(&SomeMethodForSymbolTest2);
+    string req = Format("$0+$1", method1, method2);
     SCOPED_TRACE(req);
-    ASSERT_OK(curl_.PostToURL(strings::Substitute("http://$0/pprof/symbol", ToString(addr_)),
+    ASSERT_OK(curl_.PostToURL(Format("http://$0/pprof/symbol", ToString(addr_)),
                               req, &buf_));
     ASSERT_EQ(buf_.ToString(),
-              StringPrintf("%p\tyb::SomeMethodForSymbolTest1()\n"
-                           "%p\tyb::SomeMethodForSymbolTest2()\n",
-                           &SomeMethodForSymbolTest1,
-                           &SomeMethodForSymbolTest2));
+              Format("$0\tyb::SomeMethodForSymbolTest1()\n"
+                     "$1\tyb::SomeMethodForSymbolTest2()\n",
+                     method1, method2));
   }
 }
 
@@ -260,7 +258,7 @@ TEST_F(WebserverTest, TestPprofPaths) {
 TEST_F(WebserverTest, TestPostTooBig) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_webserver_max_post_length_bytes) = 10;
   string req(10000, 'c');
-  Status s = curl_.PostToURL(strings::Substitute("http://$0/pprof/symbol", ToString(addr_)),
+  Status s = curl_.PostToURL(Format("http://$0/pprof/symbol", ToString(addr_)),
                              req, &buf_);
   ASSERT_EQ("Remote error: HTTP 413", s.ToString(/* no file/line */ false));
 }
@@ -269,20 +267,20 @@ TEST_F(WebserverTest, TestPostTooBig) {
 // disabled.
 TEST_F(WebserverTest, TestStaticFiles) {
   // Fetch a non-existent static file.
-  Status s = curl_.FetchURL(strings::Substitute("http://$0/foo.txt", ToString(addr_)),
+  Status s = curl_.FetchURL(Format("http://$0/foo.txt", ToString(addr_)),
                             &buf_);
   ASSERT_EQ("Remote error: HTTP 404", s.ToString(/* no file/line */ false));
 
   // Create the file and fetch again. This time it should succeed.
   ASSERT_OK(WriteStringToFile(env_.get(), "hello world",
-                              strings::Substitute("$0/foo.txt", static_dir_)));
-  ASSERT_OK(curl_.FetchURL(strings::Substitute("http://$0/foo.txt", ToString(addr_)),
+                              Format("$0/foo.txt", static_dir_)));
+  ASSERT_OK(curl_.FetchURL(Format("http://$0/foo.txt", ToString(addr_)),
                            &buf_));
   ASSERT_EQ("hello world", buf_.ToString());
 
   // Create a directory and ensure that subdirectory listing is disabled.
-  ASSERT_OK(env_->CreateDir(strings::Substitute("$0/dir", static_dir_)));
-  s = curl_.FetchURL(strings::Substitute("http://$0/dir/", ToString(addr_)),
+  ASSERT_OK(env_->CreateDir(Format("$0/dir", static_dir_)));
+  s = curl_.FetchURL(Format("http://$0/dir/", ToString(addr_)),
                      &buf_);
   ASSERT_EQ("Remote error: HTTP 403", s.ToString(/* no file/line */ false));
 }
@@ -304,7 +302,7 @@ class WebserverSecureTest : public WebserverTest {
   void SetUp() override {
     WebserverTest::SetUp();
 
-    url_ = Substitute("https://$0", ToString(addr_));
+    url_ = Format("https://$0", ToString(addr_));
     curl_.set_ca_cert(FLAGS_webserver_ca_certificate_file);
   }
 };

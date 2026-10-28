@@ -13,22 +13,24 @@
 
 #pragma once
 
-#include <memory>
 #include <future>
+#include <memory>
 #include <span>
 #include <string>
-#include <unordered_map>
-#include <unordered_set>
+
+#include <boost/container/container_fwd.hpp>
 
 #include "yb/client/client_fwd.h"
 
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_ddl.fwd.h"
 
+#include "yb/tserver/pg_cache_util.h"
 #include "yb/tserver/pg_client.fwd.h"
 #include "yb/tserver/tserver_fwd.h"
 
 #include "yb/util/monotime.h"
+#include "yb/util/thread_pool.h"
 
 namespace yb::tserver {
 
@@ -51,6 +53,7 @@ class PgTablesQueryResult {
   using TablesResult = Result<std::span<const TableInfo>>;
   using TablesResultPtr = std::shared_ptr<TablesResult>;
 
+  PgTablesQueryResult() = default;
   explicit PgTablesQueryResult(TablesResultPtr&& tables) : tables_(std::move(tables)) {}
 
   Result<const client::YBTablePtr&> Get(TableIdView table_id) const;
@@ -60,28 +63,43 @@ class PgTablesQueryResult {
   TablesResultPtr tables_;
 };
 
-class PgTablesQueryListener {
- public:
-  virtual ~PgTablesQueryListener() = default;
-  virtual void Ready(const PgTablesQueryResult& result) = 0;
-};
-using PgTablesQueryListenerPtr = std::shared_ptr<PgTablesQueryListener>;
-
 class PgTableCache {
  public:
-  explicit PgTableCache(std::shared_future<client::YBClient*> client_future);
+  class Listener {
+   public:
+    struct BlockingCallExecContext {
+      const std::shared_ptr<Listener> self;
+      YBThreadPool& pool;
+    };
+
+    virtual ~Listener() = default;
+
+    virtual void ResultReady(
+        PgTablesQueryResult&& result, const BlockingCallExecContext* blocking_call_exec_ctx) = 0;
+  };
+
+  using ListenerPtr = std::shared_ptr<Listener>;
+
+  PgTableCache(std::shared_future<client::YBClient*> client_future, YBThreadPool& pool);
   ~PgTableCache();
 
   Result<client::YBTablePtr> Get(TableIdView table_id);
-  void GetTables(
+  // Cache-only lookup under one lock acquisition; appends one entry per id, nullptr unless the
+  // table is already loaded. Never fetches from master.
+  void GetIfCached(
       std::span<const TableId> table_ids,
-      const PgTablesQueryListenerPtr& listener,
+      boost::container::small_vector_base<client::YBTablePtr>& tables);
+  void GetTables(
+      std::span<const TableId> table_ids, const ListenerPtr& listener,
+      const PgTableCacheGetOptions& options = {});
+
+  Result<PgTablesQueryResult> GetTables(
+      std::span<const TableId> table_ids, CoarseTimePoint deadline,
       const PgTableCacheGetOptions& options = {});
 
   void Invalidate(const TableId& table_id);
   void InvalidateAll(CoarseTimePoint invalidation_time);
-  void InvalidateDbTables(const std::unordered_map<uint32_t, uint64_t>& db_oids_updated,
-                          const std::unordered_set<uint32_t>& db_oids_deleted);
+  void InvalidateDbTables(const PgTableCacheInvalidationFilter& filter);
 
  private:
   class Impl;
@@ -89,4 +107,28 @@ class PgTableCache {
   std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace yb::tserver
+class PgTablesQueryListenerNonBlocking : public PgTableCache::Listener {
+ public:
+  virtual void ReadyNonBlocking(PgTablesQueryResult&& result) = 0;
+
+ private:
+  void ResultReady(PgTablesQueryResult&& result, const BlockingCallExecContext*) override final;
+};
+
+class PgTablesQueryListener : public PgTableCache::Listener, public ThreadPoolTask {
+ public:
+  virtual void Ready(PgTablesQueryResult&& result) = 0;
+
+ private:
+  void Run() override final;
+  void Done(const Status& status) override final;
+
+  void ResultReady(
+      PgTablesQueryResult&& result,
+      const BlockingCallExecContext* blocking_call_exec_ctx) override final;
+
+  std::shared_ptr<Listener> retained_self_;
+  PgTablesQueryResult result_holder_;
+};
+
+} // namespace yb::tserver

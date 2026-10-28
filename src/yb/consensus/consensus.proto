@@ -80,7 +80,7 @@ message ChangeConfigRequestPB {
   // UUID of server this request is addressed to.
   optional bytes dest_uuid = 4;
 
-  required bytes tablet_id = 1;
+  required bytes tablet_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
 
   // The type of config change requested.
   // This field must be specified, but is left as optional due to being an enum.
@@ -229,7 +229,7 @@ message VoteRequestPB {
   optional bytes dest_uuid = 6;
 
   // Identifies the tablet configuration a the vote is being requested for.
-  required string tablet_id = 1;
+  required string tablet_id = 1 [(yb.rpc.trace) = {enabled: true}];
 
   // The uuid of the sending peer.
   required bytes candidate_uuid = 2;
@@ -304,7 +304,7 @@ message ConsensusRequestPB {
   // UUID of server this request is addressed to.
   optional bytes dest_uuid = 7;
 
-  required string tablet_id = 1;
+  required string tablet_id = 1 [(yb.rpc.trace) = {enabled: true}];
 
   // The uuid of the peer making the call.
   required bytes caller_uuid = 2;
@@ -422,7 +422,7 @@ message RunLeaderElectionRequestPB {
   optional bytes dest_uuid = 2;
 
   // the id of the tablet
-  required bytes tablet_id = 1;
+  required bytes tablet_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
 
   // The id of the last operation the current leader has committed to its log.
   // When specified, the peer must wait till the operation has been committed
@@ -450,7 +450,7 @@ message LeaderElectionLostRequestPB {
   optional bytes dest_uuid = 1;
 
   // the id of the tablet
-  optional bytes tablet_id = 2;
+  optional bytes tablet_id = 2 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
 
   // UUID of server that lost election
   optional bytes election_lost_by_uuid = 3;
@@ -466,7 +466,7 @@ message LeaderStepDownRequestPB {
   optional bytes dest_uuid = 2;
 
   // The id of the tablet.
-  required bytes tablet_id = 1;
+  required bytes tablet_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
 
   // UUID of the server that should run the election to become the new leader.
   optional bytes new_leader_uuid = 3;
@@ -496,7 +496,7 @@ message GetLastOpIdRequestPB {
   optional bytes dest_uuid = 2;
 
   // the id of the tablet
-  required bytes tablet_id = 1;
+  required bytes tablet_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
 
   // Whether to return the last-received or last-committed OpId.
   optional OpIdType opid_type = 3 [ default = RECEIVED_OPID ];
@@ -515,7 +515,7 @@ message GetConsensusStateRequestPB {
   optional bytes dest_uuid = 2;
 
   // The id of the tablet.
-  required bytes tablet_id = 1;
+  required bytes tablet_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
 
   // Whether to fetch the committed or active consensus state.
   optional ConsensusConfigType type = 3 [ default = CONSENSUS_CONFIG_COMMITTED ];
@@ -536,7 +536,7 @@ message StartRemoteBootstrapRequestPB {
   // UUID of server this request is addressed to.
   optional bytes dest_uuid = 5;
 
-  required bytes tablet_id = 1;
+  required bytes tablet_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
 
   optional bytes split_parent_tablet_id = 8;
 
@@ -577,7 +577,7 @@ message StartRemoteBootstrapResponsePB {
 message UnsafeChangeConfigRequestPB {
   // UUID of server this request is addressed to.
   optional bytes dest_uuid = 1;
-  required bytes tablet_id = 2;
+  required bytes tablet_id = 2 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
 
   // Sender identification, it could be a static string as well.
   required bytes caller_id = 3;

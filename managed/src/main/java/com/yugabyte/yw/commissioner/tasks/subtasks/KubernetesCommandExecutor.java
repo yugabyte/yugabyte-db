@@ -496,7 +496,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                 taskParams().helmReleaseName,
                 appLabelValue,
                 universe.getUniverseDetails().useNewHelmNamingStyle,
-                taskParams().newPlacementAzMasterCount); // ReplicaCount to Assert.
+                taskParams().newPlacementAzMasterCount, // ReplicaCount to Assert.
+                confGetter.getConfForScope(universe, UniverseConfKeys.k8sMasterPvcGcReadyTimeout));
         break;
       case VOLUME_DELETE:
         kubernetesManagerFactory
@@ -876,6 +877,16 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
               .getCertChecksum(
                   taskParams().namespace, taskParams().helmReleaseName, taskParams().config);
     }
+  }
+
+  @SuppressWarnings("unchecked")
+  private static Map<String, Object> getOrCreateMap(Map<String, Object> parent, String key) {
+    Object value = parent.get(key);
+    if (!(value instanceof Map)) {
+      value = new HashMap<String, Object>();
+      parent.put(key, value);
+    }
+    return (Map<String, Object>) value;
   }
 
   private String generateHelmOverride() {
@@ -1305,9 +1316,13 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     UUID placementUuid = cluster.uuid;
     UUID azUUID = azByCode != null ? azByCode.getUuid() : null;
     Map<String, Object> gflagOverrides = new HashMap<>();
+    boolean applyNewInstallGFlags = GFlagsUtil.areNewInstallGFlagsApplied(universeFromDB);
     // Go over master flags.
     Map<String, String> masterGFlags =
         GFlagsUtil.getGFlagsForAZ(azUUID, ServerType.MASTER, cluster, taskUniverseDetails.clusters);
+    if (applyNewInstallGFlags) {
+      GFlagsUtil.mergeNewInstallGFlags(masterGFlags, universeFromDB, ServerType.MASTER);
+    }
     if (universeFromDBParams.fipsEnabled) {
       masterGFlags.put(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "true");
     }
@@ -1328,11 +1343,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           XClusterConfigTaskBase.XCLUSTER_ROOT_CERTS_DIR_GFLAG,
           taskUniverseDetails.xClusterInfo.sourceRootCertDirPath);
     }
-    if (taskParams().masterJoinExistingCluster
-        && universeFromDB
-            .getConfig()
-            .getOrDefault(Universe.K8S_SET_MASTER_EXISTING_UNIVERSE_GFLAG, "false")
-            .equals("true")) {
+    if (taskParams().masterJoinExistingCluster) {
       masterGFlags.put(GFlagsUtil.MASTER_JOIN_EXISTING_UNIVERSE, "true");
     }
     if (primaryClusterIntent.enableYSQL) {
@@ -1369,6 +1380,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     Map<String, String> tserverGFlags =
         GFlagsUtil.getGFlagsForAZ(
             azUUID, ServerType.TSERVER, cluster, taskUniverseDetails.clusters);
+    if (applyNewInstallGFlags) {
+      GFlagsUtil.mergeNewInstallGFlags(tserverGFlags, universeFromDB, ServerType.TSERVER);
+    }
     if (!primaryClusterIntent
         .enableYSQL) { // In the UI, we can choose not to show these entries for read replica.
       tserverGFlags.put("enable_ysql", "false");
@@ -1727,7 +1741,25 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           e);
       throw new RuntimeException("Error in writing overrides map to string.");
     }
-    // TODO gflags which have precedence over helm overrides should be merged here.
+    // The provider, universe and AZ overrides were merged over the generated gflags, so they can
+    // have turned the FIPS gflag off again. The API rejects such overrides, but ones saved before
+    // that check existed are still in the database. Leaves gflags.master.openssl_require_fips and
+    // gflags.tserver.openssl_require_fips at "true" in the rendered values.
+    if (universeFromDBParams.fipsEnabled) {
+      Map<String, Object> gflags = getOrCreateMap(overrides, "gflags");
+      for (String server : List.of("master", "tserver")) {
+        getOrCreateMap(gflags, server).put(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "true");
+      }
+    }
+    // Done after all overrides, so none can turn the sidecar on or off or move its port.
+    if (confGetter.getConfForScope(universeFromDB, UniverseConfKeys.k8sNodeExporterEnabled)
+        && KubernetesUtil.isNodeExporterSidecarSupported(taskParams().ybSoftwareVersion)) {
+      Map<String, Object> nodeExporter = getOrCreateMap(overrides, "nodeExporter");
+      nodeExporter.put("enabled", true);
+      nodeExporter.put("port", universeFromDBParams.communicationPorts.nodeExporterPort);
+    } else {
+      getOrCreateMap(overrides, "nodeExporter").put("enabled", false);
+    }
 
     // For single AZ azUUID may be null, use non-null values
     UUID azUuid =

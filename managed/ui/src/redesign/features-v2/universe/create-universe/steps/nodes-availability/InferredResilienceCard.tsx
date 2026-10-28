@@ -10,6 +10,7 @@ import { CloudType } from '@app/redesign/helpers/dtos';
 
 import CheckBlueIcon from '../../../../../assets/check_blue.svg';
 import CautionIcon from '../../../../../assets/caution.svg';
+import { getPrimaryProvider } from '../../helpers/providerConfigurations';
 
 const { Box, styled, Typography } = mui;
 
@@ -76,7 +77,7 @@ export const InferredResilienceCard: FC<InferredResilienceCardProps> = ({
   ) as unknown) as CreateUniverseContextMethods;
   const isK8s =
     generalSettings?.cloud === CloudType.kubernetes ||
-    generalSettings?.providerConfiguration?.code === CloudType.kubernetes;
+    getPrimaryProvider(generalSettings)?.code === CloudType.kubernetes;
   const outageCount = getInferredOutageCount(
     inferredResilience,
     replicationFactor,

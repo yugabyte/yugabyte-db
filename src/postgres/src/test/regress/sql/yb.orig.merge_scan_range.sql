@@ -153,6 +153,14 @@
 \set query ':P :Q SELECT r3, r4, r5, n, r1, r2 FROM r5n WHERE r2 IN (7, 8, 9) AND r2 = r1 ORDER BY r3, r4, r5, n LIMIT 5;'
 \i :run_query
 
+-- The five IN-equivalence queries below, through "last non-key sort column",
+-- each estimate 7 result rows (DEFAULT_EQ_SEL on the column = column
+-- clause).  That fits one response page at 16 rows, so both plans charge the
+-- whole scan to startup_cost and tie, and merge scan's 2% cost penalty makes
+-- the plain scan cheaper.  Merge scan needs a much smaller page to win.
+-- TODO(#29078): remove this SET and its restore once merge scan is costed.
+SET yb_fetch_row_limit = 3;
+
 -- IN equivalence to first key sort column
 \set query ':P :Q SELECT r1, r3, r4, r5, n, r2 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND r2 IN (6, 0, 5) AND r1 = r3 ORDER BY r3, r4, r5, n LIMIT 5;'
 \i :run_query
@@ -172,6 +180,8 @@
 -- IN equivalence to last non-key sort column
 \set query ':P :Q SELECT r3, r4, r5, r1, n, r2 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND r2 IN (6, 0, 5) AND r1 = n ORDER BY r3, r4, r5, n LIMIT 5;'
 \i :run_query
+
+SET yb_fetch_row_limit = 16;
 
 -- =-var equivalence prefix
 -- Merge scan should not be used.
@@ -609,12 +619,8 @@ ANALYZE r5n;
 
 -- No order
 -- Merge scan should not be used.
--- Third hint is to use the expression index, which the first two do not choose
--- because a sequential scan is cheaper for an unordered scan of it.
 \set query ':explain :Q SELECT * FROM r5n WHERE (greatest(r2, r3, r4) - least(r2, r3, r4)) IN (0, 2) LIMIT 5;'
-\set Q3 '/*+IndexScan(r5n r5n_expr_r2_r3_r4_idx) Set(yb_max_merge_scan_streams 64)*/'
 \i :run_query
-\unset Q3
 
 -- Forward scan
 \set query ':P :Q SELECT * FROM r5n WHERE (greatest(r2, r3, r4) - least(r2, r3, r4)) IN (0, 2) ORDER BY r2, r3, r4, n LIMIT 5;'

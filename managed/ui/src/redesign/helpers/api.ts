@@ -143,6 +143,17 @@ export const runtimeConfigQueryKey = {
   providerScope: (providerUuid: string) => [...runtimeConfigQueryKey.ALL, 'provider', providerUuid]
 };
 
+export const supportBundleQueryKey = {
+  ALL: ['supportBundle'],
+  list: (universeUuid: string, useV2Api: boolean, page: number) => [
+    ...supportBundleQueryKey.ALL,
+    'list',
+    universeUuid,
+    useV2Api,
+    page
+  ]
+};
+
 export const instanceTypeQueryKey = {
   ALL: ['instanceType'],
   provider: (providerUuid: string) => [...instanceTypeQueryKey.ALL, 'provider', providerUuid]

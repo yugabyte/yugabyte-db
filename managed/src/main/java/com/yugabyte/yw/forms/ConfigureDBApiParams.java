@@ -12,6 +12,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
@@ -110,6 +111,17 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
           && !StringUtils.isEmpty(ysqlPassword)) {
         throw new PlatformServiceException(
             BAD_REQUEST, "Cannot set password while YSQL auth is disabled.");
+      } else if (isFirstTry
+          && enableYSQL
+          && userIntent.enableYSQLAuth
+          && !enableYSQLAuth
+          && (GFlagsUtil.hasYsqlHbaGFlags(universe.getUniverseDetails().clusters)
+              || !GFlagsUtil.getYsqlHbaHelmOverrides(
+                      userIntent.universeOverrides, userIntent.azOverrides)
+                  .isEmpty())) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Cannot disable YSQL auth while ysql_hba_conf_csv or ysql_hba_conf is set.");
       } else if (communicationPorts.ysqlServerHttpPort == communicationPorts.ysqlServerRpcPort
           || communicationPorts.ysqlServerRpcPort == communicationPorts.internalYsqlServerRpcPort
           || communicationPorts.internalYsqlServerRpcPort

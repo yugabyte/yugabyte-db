@@ -44,11 +44,11 @@
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/join.h"
 
 #include "yb/util/compare_util.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/malloc.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
@@ -131,9 +131,9 @@ void ColumnSchema::DoDebugCellAppend(const void* cell, std::string* ret) const {
 // TODO: include attributes_.ToString() -- need to fix unit tests
 // first
 string ColumnSchema::ToString() const {
-  return strings::Substitute("$0[$1]",
-                             name_,
-                             TypeToString());
+  return Format("$0[$1]",
+                name_,
+                TypeToString());
 }
 
 string ColumnSchema::TypeToString() const {
@@ -643,6 +643,20 @@ Result<ColumnId> Schema::ColumnIdByName(const std::string& column_name) const {
 
 ColumnId Schema::first_column_id() {
   return kFirstColumnId;
+}
+
+size_t Schema::NumHashGroupAndRangeComponents(const SchemaPB& schema) {
+  size_t num_hash_key_columns = 0;
+  size_t num_range_key_columns = 0;
+  for (const auto& column : schema.columns()) {
+    if (column.is_hash_key()) {
+      ++num_hash_key_columns;
+    } else if (column.is_key()) {
+      ++num_range_key_columns;
+    }
+  }
+  return HashGroupAndRangeComponentIndex(
+      num_hash_key_columns + num_range_key_columns, num_hash_key_columns);
 }
 
 Result<const ColumnSchema&> Schema::column_by_id(ColumnId id) const {

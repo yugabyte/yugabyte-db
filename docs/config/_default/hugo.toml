@@ -31,3 +31,14 @@ enableGitInfo = true
       'ONETRUST_API_KEY',
       'RUDDERSTACK_API_KEY'
     ]
+
+# Fetchable Markdown at /path/page.md. Sections publish at /path/index.md,
+# and layouts/_partials/markdown-section.md also publishes /path.md.
+# ugly publishes a regular page as page.md instead of page/index.md.
+[outputFormats.markdown]
+  ugly = true
+
+[outputs]
+  home = ['html', 'rss', 'markdown']
+  page = ['html', 'markdown']
+  section = ['html', 'rss', 'markdown']

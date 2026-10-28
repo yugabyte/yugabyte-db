@@ -29,7 +29,9 @@ class CDCStreamInfo;
 class GetMasterXClusterConfigResponsePB;
 class PauseResumeXClusterProducerStreamsRequestPB;
 class PauseResumeXClusterProducerStreamsResponsePB;
+class PersistenceBlockMap;
 class PostTabletCreateTaskBase;
+class SysPersistenceBlockMapEntryPB;
 class TSHeartbeatRequestPB;
 class TSHeartbeatResponsePB;
 class XClusterConfig;
@@ -78,9 +80,63 @@ class XClusterManager : public XClusterManagerIf,
   Status FillXClusterGuardedInfo(int64_t leader_term, XClusterGuardedInfoPB& info) override
       EXCLUDES(xcluster_guarded_info_version_mutex_);
 
+  // Ensures that on successful return no TServer will ever give out xCluster-guarded information
+  // less recent than master had when this was called.  For example, after SetXClusterRole followed
+  // by a successful call to this method, no TServer will ever again give out the previous role.
+  //
+  // TServers that have not heartbeated for longer than the xCluster lease duration do not slow this
+  // down; those unresponsive for less than that can make it fail by timing out.  This method may
+  // also fail if master leadership changes during the call; callers wanting to survive that should
+  // retry.  Safe to call concurrently.
+  Status PropagateXClusterGuardedInfo(MonoTime deadline)
+      EXCLUDES(xcluster_guarded_info_version_mutex_);
+
   Status SetXClusterRole(
       const LeaderEpoch& epoch, const NamespaceId& namespace_id,
       XClusterNamespaceInfoPB_XClusterRole role);
+
+  // StopPersisting and StartPersisting calls run one at a time.
+  //
+  // A successful StopPersisting call blocks every stamped write and commit (including ones
+  // currently in flight) to the databases in namespace_ids from committing, until the next
+  // StopPersisting or StartPersisting for them.  Use StartPersisting (below) to begin allowing
+  // future such writes and commits.  Stamps are applied to writes and commits from Postgres
+  // backends.
+  //
+  // Fails if any of the databases in namespace_ids are not running YSQL user databases (e.g., ones
+  // being created or dropped).
+  // WARNING: If this function fails, some blocking may nonetheless have been applied; use
+  // StopPersisting to retry or StartPersisting for rollback if needed.
+  Status StopPersisting(
+      const std::vector<NamespaceId>& namespace_ids, MonoTime deadline, const LeaderEpoch& epoch);
+
+  // A successful StartPersisting call changes which stamped writes and commits associated with the
+  // databases in namespace_ids can commit; afterwards, until the next StopPersisting or
+  // StartPersisting for them:
+  //   * writes and commits with origination times before the beginning of the StartPersisting()
+  //     call are (still) blocked from committing
+  //   * writes and commits with origination times after the end of the StartPersisting() call
+  //     are (no longer) blocked from committing
+  //   * for other origination times, each is either always blocked or always allowed, but which
+  //     is unspecified
+  //
+  // Fails if any of the databases in namespace_ids are not running YSQL user databases (e.g., ones
+  // being created or dropped).
+  // WARNING: If this function fails, some (un)blocking may nonetheless have been applied; retry as
+  // needed.
+  Status StartPersisting(
+      const std::vector<NamespaceId>& namespace_ids, MonoTime deadline, const LeaderEpoch& epoch);
+
+  Result<SysPersistenceBlockMapEntryPB> GetPersistenceBlockMap() const;
+
+  // See PersistenceBlockMap::GetBlockedThrough.
+  Result<std::optional<HybridTime>> GetPersistenceBlockedThrough(
+      int64_t term, uint32_t database_oid) const;
+
+  // Called when a YSQL database is dropped; a database without an entry may persist anything.
+  Status ErasePersistenceBlock(const LeaderEpoch& epoch, const NamespaceId& namespace_id);
+
+  Status PrepareDefaultPersistenceBlockMap(int64_t term, bool recreate);
 
   // Remove deleted xcluster stream IDs from producer stream Id map.
   Status RemoveStreamsFromSysCatalog(
@@ -207,6 +263,16 @@ class XClusterManager : public XClusterManagerIf,
   Status XClusterEnsureSequenceUpdatesAreInWal(
       const XClusterEnsureSequenceUpdatesAreInWalRequestPB* req,
       XClusterEnsureSequenceUpdatesAreInWalResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+  Status XClusterStopPersisting(
+      const XClusterStopPersistingRequestPB* req, XClusterStopPersistingResponsePB* resp,
+      rpc::RpcContext* rpc, const LeaderEpoch& epoch);
+  Status XClusterStartPersisting(
+      const XClusterStartPersistingRequestPB* req, XClusterStartPersistingResponsePB* resp,
+      rpc::RpcContext* rpc, const LeaderEpoch& epoch);
+  Status XClusterGetPersistenceBlockMap(
+      const XClusterGetPersistenceBlockMapRequestPB* req,
+      XClusterGetPersistenceBlockMapResponsePB* resp, rpc::RpcContext* rpc,
       const LeaderEpoch& epoch);
   Status GetXClusterStreams(
       const GetXClusterStreamsRequestPB* req, GetXClusterStreamsResponsePB* resp,
@@ -339,6 +405,12 @@ class XClusterManager : public XClusterManagerIf,
  private:
   void ProcessCleanupTablesPeriodically();
 
+  // Convert a list of namespace_ids to their database OIDs, failing unless each is a user YSQL
+  // database.
+  Result<std::vector<uint32_t>> GetYsqlUserDatabaseOids(
+      const std::vector<NamespaceId>& namespace_ids) const;
+
+  Master& master_;
   CatalogManager& catalog_manager_;
   SysCatalogTable& sys_catalog_;
 
@@ -346,11 +418,20 @@ class XClusterManager : public XClusterManagerIf,
 
   bool in_memory_state_cleared_ = true;
 
-  std::unique_ptr<XClusterConfig> xcluster_config_;
+  const std::unique_ptr<XClusterConfig> xcluster_config_;
+
+  const std::unique_ptr<PersistenceBlockMap> persistence_block_map_;
+
+  // Held for the whole of each StopPersisting, StartPersisting, and ErasePersistenceBlock call,
+  // including propagation and StartPersisting's wait, so calls never overlap: when a call succeeds,
+  // the map changes it made are still in force and (for Stop and Start) have reached every TServer
+  // holding a lease.
+  std::mutex persisting_calls_mutex_;
 
   // Guards the version counter below and serializes copies of the xCluster-guarded information so
   // that a copy with a higher version never carries older information.  Lock order: this mutex,
-  // then XClusterConfig::mutex_ or the cluster config COW lock.  Never held across RPCs.
+  // then XClusterConfig::mutex_, PersistenceBlockMap::mutex_, or the cluster config COW lock.
+  // Never held across RPCs.
   std::mutex xcluster_guarded_info_version_mutex_;
   // Number of copies made by this process; see XClusterGuardedInfoVersionPB.
   uint64_t xcluster_guarded_info_copy_count_ GUARDED_BY(xcluster_guarded_info_version_mutex_) = 0;
