@@ -102,7 +102,8 @@ class GcpCreateInstancesMethod(CreateInstancesMethod):
         if posix_user and posix_user != self.SSH_USER:
             raise YBOpsRuntimeError(
                 "Instance template {} enables OS Login, which only accepts SSH as the OS Login "
-                "POSIX user {}, but the provider SSH user is {}. Set the provider SSH user to {}."
+                "POSIX user {}, but the SSH user is {}. Set the SSH user of the universe's Linux "
+                "version to {}, or the provider SSH user if the Linux version does not set one."
                 .format(template, posix_user, self.SSH_USER, posix_user))
 
 

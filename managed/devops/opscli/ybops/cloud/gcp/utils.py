@@ -668,8 +668,9 @@ class GoogleCloudAdmin():
         email = self._get_principal_email()
         if not email:
             logging.warning("[app] Cannot determine the principal of the GCP credentials; skipping "
-                            "OS Login SSH key import. Import the key and set the provider SSH "
-                            "user to the OS Login POSIX username manually.")
+                            "OS Login SSH key import. Import the key manually and set the SSH "
+                            "user of the universe's Linux version (or the provider, if the "
+                            "Linux version does not set one) to the OS Login POSIX username.")
             return None
         if self.oslogin is None:
             self.oslogin = discovery.build(
