@@ -368,13 +368,15 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
         createMasterInfoUpdateTask(universe, currentNode, null /* stopped node */);
       }
 
-      // Add node to load balancer.
-      createManageLoadBalancerTasks(
-          createLoadBalancerMap(
-              universe.getUniverseDetails(),
-              ImmutableList.of(cluster),
-              null,
-              ImmutableSet.of(currentNode)));
+      if (addTserver) {
+        // Add node to load balancer. Only tservers are load balancer targets.
+        createManageLoadBalancerTasks(
+            createLoadBalancerMap(
+                universe.getUniverseDetails(),
+                ImmutableList.of(cluster),
+                null,
+                ImmutableSet.of(currentNode)));
+      }
 
       // Update the DNS entry for this universe.
       createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, universe)
