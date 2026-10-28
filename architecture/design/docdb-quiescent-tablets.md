@@ -56,7 +56,7 @@ The file is `quiescent_marker` in the WAL directory, next to the bootstrap state
 
 ## Entering the mode
 
-A replica enters the mode after nothing was appended to its log for `quiescent_tablet_idle_sec` (default 600). `TSTabletManager` keeps a priority queue of tablets ordered by when each could enter the mode: its last append time plus the idle period. A background task wakes for the earliest one, and at least once a minute to pick up new tablets and `quiescent_tablet_idle_sec` raised from 0. Queued check times are not recomputed when a flag changes, so lowering `quiescent_tablet_idle_sec` or enabling `enable_quiescent_tablets` reaches an existing tablet at its next queued check, up to one old idle period later. It calls `TabletPeer::MaybeEnterQuiescentMode` for each due tablet, which tries to enter and returns the tablet's next check time. A failed attempt is retried after another idle period.
+A replica enters the mode after nothing was appended to its log for `quiescent_tablet_idle_sec` (default 600). `TSTabletManager` keeps a priority queue of tablets ordered by when each could enter the mode: its last append time plus the idle period. A background task wakes for the earliest one, and at least once a minute, or once per idle period if that is shorter, to pick up new tablets and `quiescent_tablet_idle_sec` raised from 0. It starts only after the tserver has processed a master heartbeat response: until then xCluster reports no WAL retention, so a producer tablet could delete WAL that its consumer still needs. Queued check times are not recomputed when a flag changes, so lowering `quiescent_tablet_idle_sec` or enabling `enable_quiescent_tablets` reaches an existing tablet at its next queued check, up to one old idle period later. It calls `TabletPeer::MaybeEnterQuiescentMode` for each due tablet, which tries to enter and returns the tablet's next check time. A failed attempt is retried after another idle period.
 
 **Preconditions**, all checked on the replica in `TabletPeer::EnterQuiescentMode`:
 
@@ -64,7 +64,7 @@ A replica enters the mode after nothing was appended to its log for `quiescent_t
 2. Committed op id and last received op id are both L, and no operations are pending. An operation stays in the operation tracker until it is applied, so this also means L was applied.
 3. No Raft config change is pending.
 4. Every peer has L. The leader tracks this as `all_replicated_op_id` in `PeerMessageQueue` and, while the AutoFlag is on, sends it in `ConsensusRequestPB.all_replicated_op_id`. A peer behind L could otherwise only catch up through remote bootstrap. So a peer that stays down keeps the tablet out of the mode until it is removed from the config, after `follower_unavailable_considered_failed_sec`.
-5. The transaction participant has no transactions, including applied ones still waiting for intent cleanup.
+5. The transaction participant has loaded the transactions from the intents DB after start, and has none, including applied ones still waiting for intent cleanup.
 6. No CDC or xCluster streams on the tablet, and no table-level WAL retention (`wal_retention_secs`, which xCluster setup sets).
 7. No log anchors: remote bootstrap sessions and split parents anchor the segments.
 8. The AutoFlag is promoted (see [Upgrade and rollback](#upgrade-and-rollback)).
@@ -76,15 +76,15 @@ A replica enters the mode after nothing was appended to its log for `quiescent_t
 3. Flush the retryable requests up to L. They are stored in the bootstrap state file (`retryable_requests`, `TabletBootstrapStateFlusher::FlushBootstrapState`) together with `min_replay_txn_first_write_ht`. If an async flush is still running, the call returns `AlreadyPresent` and entry gives up.
 4. `Log::CloseActiveSegment` submits `CLOSE_SEGMENT_MARKER` to the appender thread. If the last appended op is still L, the appender drops a preallocated segment, syncs and closes the active segment, and leaves the log with no active segment. It returns the marker values of L. Otherwise entry gives up.
 5. `Log::WriteQuiescentMarker` writes the marker and publishes it in memory. It and step 6 hold `log_copy_mutex_` and refuse a closed log, and `Log::Close` waits for them, because remote bootstrap may delete and recreate the WAL directory of a closed log.
-6. Check the log anchors again, then delete the segments covered by the marker (`Log::DeleteSegmentsCoveredByQuiescentMarker`) and fsync the WAL directory.
+6. Check the log anchors again, then delete the segments covered by the marker (`Log::DeleteSegmentsCoveredByQuiescentMarker`).
 
-Giving up before step 5 needs no undo; the flushes are harmless. An append that arrives after step 4 creates a new segment at L+1, which step 6 leaves alone, and the marker stays valid. A crash between steps 5 and 6, or an anchor found in step 6, leaves old segments next to the marker; `Log::Init` deletes them.
+Giving up before step 5 needs no undo; the flushes are harmless. An append that arrives after step 4 creates a new segment at L+1, which step 6 leaves alone, and the marker stays valid. A crash between steps 5 and 6 or one that loses the deletions, or an anchor found in step 6, leaves old segments next to the marker; `Log::Init` deletes them.
 
 The second anchor check orders entry with remote bootstrap. A session anchors the log, then reads the marker, then makes the RocksDB checkpoint. Entry publishes the marker, then checks anchors. So either entry sees the anchor and keeps the segments, or the session reads the new marker and its checkpoint is made after the flush in step 1. In the second case entry may be deleting the segments while the session lists them, so the session leaves the segments that its marker covers out of the WAL it ships; the destination's `Log::Init` would delete them anyway.
 
 ## Leaving the mode
 
-The first append creates a new segment starting at L+1 and writes to it; the marker is not touched. The append can be a leader replicate, the `NO_OP` of a new term, or a follower's `UpdateConsensus`.
+The first append creates a new segment starting at L+1 and writes to it; the marker is not touched. The append can be a leader replicate, the `NO_OP` of a new term, or a follower's `UpdateConsensus`. The segment has the initial segment size, as after a restart, not the size the segments had grown to.
 
 This relies on lazy segment allocation, which also helps restarts outside this mode:
 
@@ -102,6 +102,7 @@ If the WAL directory has a marker, bootstrap treats the tablet as existing even 
 - **Replay state.** The last and committed op ids are at least L. If nothing is replayed, both are L. The first replayed entry can be after L+1, because GC may have deleted segments after L.
 - **Restored values.** The hybrid clock, the MVCC last replicated time and the monotonic counter take the max of the marker value and the replayed values. The retryable requests clock is adjusted to the time of the last replayed entry, or to the marker's time if nothing is replayed.
 - **No new segment.** The log has no active segment until the first append.
+- **Restores.** Snapshot restore and PITR run as a Raft op on the tablet, at an index above L, so the tablet leaves the mode, and the restore forces the flushed frontiers to that op's id. Raising the frontiers to L therefore never skips restored data. Anything that sets a frontier below L on a tablet with a marker must also remove the marker.
 
 ## Running with no segments
 
@@ -142,6 +143,8 @@ Rolling back to a binary that ignores the marker corrupts the tablet. The old bi
 ## Scope and open questions
 
 The first version excludes the sys catalog and transaction status tablets, since there are few of them. It also does not enter the mode when any of these is set: `skip_wal_replay_from_beginning_with_cdc=false`, `skip_wal_rewrite=false`, `force_recover_flushed_frontier`, or `enable_flush_retryable_requests=false`.
+
+A CDC or xCluster stream created on a quiescent tablet reads ops after L. One that starts from an earlier checkpoint without a bootstrap gets `NotFound` for the ops up to L, as for WAL that GC deleted, so the setup needs a bootstrap even for a small table that used to keep all its WAL.
 
 Open questions:
 

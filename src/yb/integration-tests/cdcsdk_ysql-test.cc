@@ -36,6 +36,9 @@
 #include "yb/master/sys_catalog_constants.h"
 #include "yb/master/tasks_tracker.h"
 
+#include "yb/tablet/tablet_peer.h"
+
+#include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
@@ -45,6 +48,8 @@
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tostring.h"
 
+DECLARE_bool(enable_quiescent_tablets);
+DECLARE_int32(quiescent_tablet_idle_sec);
 DECLARE_bool(ysql_use_packed_row_v2);
 DECLARE_bool(ysql_mark_update_packed_row);
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
@@ -901,6 +906,60 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(SingleShardInsert4Rows)) {
   }
   LOG(INFO) << "Got " << count[1] << " insert records";
   CheckCount(expected_count, count);
+}
+
+// A stream set up on a tablet whose WAL was replaced with a quiescent marker gets the changes made
+// after the setup, and keeps the tablet out of the mode.
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(StreamOnQuiescentTablet)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_quiescent_tablets) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_quiescent_tablet_idle_sec) = 1;
+  auto tablets = ASSERT_RESULT(SetUpCluster());
+  ASSERT_EQ(tablets.size(), 1);
+  ASSERT_OK(WriteRows(1 /* start */, 5 /* end */, &test_cluster_));
+
+  const auto& tablet_id = tablets[0].tablet_id();
+  auto all_peers_quiescent = [this, &tablet_id] {
+    size_t num_peers = 0;
+    for (size_t i = 0; i != test_cluster()->num_tablet_servers(); ++i) {
+      auto peer = test_cluster()->mini_tablet_server(i)->server()->tablet_manager()->LookupTablet(
+          tablet_id);
+      if (!peer) {
+        continue;
+      }
+      if (!peer->IsQuiescent()) {
+        return false;
+      }
+      ++num_peers;
+    }
+    return num_peers != 0;
+  };
+  ASSERT_OK(WaitFor(all_peers_quiescent, 30s * kTimeMultiplier, "Tablet quiescent"));
+
+  auto stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(
+      stream_id, tablets, OpId::Min(), /* cdc_sdk_safe_time= */ 0, /* initial_checkpoint= */ true,
+      /* tablet_idx= */ 0, /* bootstrap= */ true));
+  ASSERT_FALSE(set_resp.has_error());
+  ASSERT_OK(WriteRows(5 /* start */, 7 /* end */, &test_cluster_));
+
+  GetChangesResponsePB change_resp;
+  ASSERT_OK(WaitForGetChangesToFetchRecords(&change_resp, stream_id, tablets, 2));
+  uint32_t count[] = {0, 0, 0, 0, 0, 0};
+  ExpectedRecord expected_records[] = {{5, 6}, {6, 7}};
+  size_t num_inserts = 0;
+  for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+    if (record.row_message().op() != RowMessage::INSERT) {
+      continue;
+    }
+    ASSERT_LT(num_inserts, std::size(expected_records));
+    CheckRecord(record, expected_records[num_inserts], count);
+    ++num_inserts;
+  }
+  ASSERT_EQ(num_inserts, std::size(expected_records));
+
+  // The WAL retention that the stream set up keeps the tablet out of the mode.
+  SleepFor(3s * kTimeMultiplier);
+  ASSERT_FALSE(all_peers_quiescent());
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(DropDatabase)) {

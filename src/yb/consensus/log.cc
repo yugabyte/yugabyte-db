@@ -105,7 +105,7 @@ DEFINE_RUNTIME_AUTO_bool(enable_quiescent_tablets, kLocalPersisted, false, true,
 DEFINE_RUNTIME_int32(log_min_segments_to_retain, 2,
     "The minimum number of past log segments to keep at all times,"
     " regardless of what is required for durability. "
-    "Must be at least 1.");
+    "Must be at least 1. A tablet in the quiescent mode (enable_quiescent_tablets) keeps none.");
 TAG_FLAG(log_min_segments_to_retain, advanced);
 
 DEFINE_RUNTIME_int32(log_min_seconds_to_retain, 900,
@@ -115,7 +115,9 @@ DEFINE_RUNTIME_int32(log_min_seconds_to_retain, 900,
     "set long enough such that a tablet server which has temporarily failed can be "
     "restarted within the given time period. If a server is down for longer than this "
     "amount of time, it is possible that its tablets will be re-replicated on other "
-    "machines. This value should match follower_unavailable_considered_failed_sec.");
+    "machines. This value should match follower_unavailable_considered_failed_sec. "
+    "A tablet in the quiescent mode (enable_quiescent_tablets) keeps no segments; it enters "
+    "the mode only when every peer has its last op.");
 TAG_FLAG(log_min_seconds_to_retain, advanced);
 
 // Flag to enable background log sync. When enabled, we DON'T wait for performing fsync until
@@ -935,6 +937,8 @@ Status Log::DoCloseActiveSegment(const OpId& expected_last_op_id, QuiescentMarke
     }
     LOG_WITH_PREFIX(INFO) << "Closed active segment at " << last_appended_entry_op_id_;
   }
+  // The first segment after the marker starts at the initial size, as after a restart.
+  cur_max_segment_size_ = (options_.initial_segment_size_bytes + 1) / 2;
   // The segments with ops up to the marker are about to be deleted.
   min_replicate_index_.store(last_appended_entry_op_id_.index + 1, std::memory_order_release);
   marker->set_tablet_id(tablet_id_);
@@ -1908,21 +1912,8 @@ Status Log::GC(const MinRetainLogIndexInfo& min_retain_log_index_info, int32_t* 
 
     // Now that they are no longer referenced by the Log, delete the files.
     *num_gced = 0;
-    for (const scoped_refptr<ReadableLogSegment>& segment : segments_to_delete) {
-      LOG_WITH_PREFIX(DETAIL)
-          << "Deleting log segment in path: " << segment->path()
-          << " (GCed ops < " << segment->footer().max_replicate_index() + 1
-          << ")";
-      RETURN_NOT_OK(get_env()->DeleteFile(segment->path()));
-      (*num_gced)++;
-
-      if (metrics_) {
-        metrics_->wal_size->IncrementBy(-1 * segment->file_size());
-        VLOG_WITH_PREFIX(4)
-            << "Decremented wal size by " << segment->file_size()
-            << " to " << metrics_->wal_size->value();
-      }
-    }
+    RETURN_NOT_OK(DeleteSegmentFiles(segments_to_delete, /* update_metrics= */ true));
+    *num_gced = static_cast<int32_t>(segments_to_delete.size());
 
     // Determine the minimum remaining replicate index in order to properly GC the index chunks.
     int64_t min_remaining_op_idx = reader_->GetMinReplicateIndex();
@@ -2406,19 +2397,22 @@ bool Log::SegmentCoveredByQuiescentMarker(
          segment.footer().max_replicate_index() <= marker.op_id().index();
 }
 
+// No directory fsync: a segment whose deletion a crash loses is deleted again, by GC or, when the
+// quiescent marker covers it, by Init.
 Status Log::DeleteSegmentFiles(const SegmentSequence& segments, bool update_metrics) {
-  if (segments.empty()) {
-    return Status::OK();
-  }
   for (const auto& segment : segments) {
-    LOG_WITH_PREFIX(INFO) << "Deleting log segment covered by quiescent marker: "
-                          << segment->path();
+    LOG_WITH_PREFIX(DETAIL)
+        << "Deleting log segment in path: " << segment->path()
+        << " (ops < " << segment->footer().max_replicate_index() + 1 << ")";
     RETURN_NOT_OK(get_env()->DeleteFile(segment->path()));
     if (update_metrics && metrics_) {
       metrics_->wal_size->IncrementBy(-segment->file_size());
+      VLOG_WITH_PREFIX(4)
+          << "Decremented wal size by " << segment->file_size()
+          << " to " << metrics_->wal_size->value();
     }
   }
-  return get_env()->SyncDir(wal_dir_);
+  return Status::OK();
 }
 
 Result<size_t> Log::DeleteSegmentsCoveredByQuiescentMarker() {

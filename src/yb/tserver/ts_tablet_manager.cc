@@ -495,6 +495,7 @@ std::string SnapshotIdToString(const std::string& snapshot_id) {
 
 // The longest wait between quiescent checks, so that new tablets and quiescent_tablet_idle_sec
 // raised from 0 are picked up. Other flag changes reach a tablet at its next queued check.
+// A shorter idle period shortens the wait, so a new tablet is checked within two idle periods.
 constexpr auto kQuiescentTabletsMaxCheckInterval = 60s;
 
 } // namespace
@@ -4254,8 +4255,15 @@ void TSTabletManager::FlushDirtySuperblocks() {
 }
 
 void TSTabletManager::EnterQuiescentModeForIdleTablets() {
+  // Before the first master heartbeat xCluster reports no WAL retention, so a tablet of an
+  // xCluster producer could delete WAL that a consumer still needs.
+  if (!server_->XClusterProducerStateKnown()) {
+    quiescent_tablets_bg_task_->SetInterval(1s);
+    return;
+  }
   const auto now = CoarseMonoClock::Now();
-  auto next_run = now + kQuiescentTabletsMaxCheckInterval;
+  auto next_run = now + std::min<CoarseDuration>(
+      kQuiescentTabletsMaxCheckInterval, tablet::QuiescentTabletIdleTime());
   while (FLAGS_quiescent_tablet_idle_sec > 0) {
     QuiescentCheck check;
     {

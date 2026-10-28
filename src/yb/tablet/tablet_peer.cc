@@ -1043,8 +1043,14 @@ Status TabletPeer::EnterQuiescentMode(const OpId& op_id) {
     return STATUS(TryAgain, "Pending operations");
   }
   auto* participant = tablet->transaction_participant();
-  if (participant && participant->GetNumRunningTransactions() != 0) {
-    return STATUS(TryAgain, "Running transactions");
+  if (participant) {
+    // Right after start the loader may not have loaded the transactions from the intents DB yet.
+    if (!participant->AllTransactionsLoaded()) {
+      return STATUS(TryAgain, "Transactions not loaded");
+    }
+    if (participant->GetNumRunningTransactions() != 0) {
+      return STATUS(TryAgain, "Running transactions");
+    }
   }
   // Remote bootstrap sessions and split parents anchor the segments.
   int64_t min_anchor_index;

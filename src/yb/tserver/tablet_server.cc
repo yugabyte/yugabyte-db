@@ -2705,6 +2705,7 @@ Status TabletServer::XClusterHandleMasterHeartbeatResponse(
         resp.xcluster_config_version()));
   }
 
+  xcluster_producer_state_known_.store(true, std::memory_order_release);
   return Status::OK();
 }
 

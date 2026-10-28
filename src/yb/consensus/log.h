@@ -262,11 +262,11 @@ class Log : public RefCountedThreadSafe<Log> {
 
   int64_t GetMinReplicateIndex() const;
 
-  /// Returns the index of the earliest op in the log.
+  // Returns the index of the earliest op in the log.
   Result<int64_t> EarliestOpIndex() const EXCLUDES(state_lock_);
 
-  /// Returns the lowest index at which a log anchor can be registered: a peer whose last op has
-  /// this index can be sent the following ops. It is L for a quiescent log, whose ops start at L+1.
+  // Returns the lowest index at which a log anchor can be registered: a peer whose last op has
+  // this index can be sent the following ops. It is L for a quiescent log, whose ops start at L+1.
   Result<int64_t> MinAnchorableIndex() const EXCLUDES(state_lock_);
 
   // Runs the garbage collector on the set of previous segments. Segments that only refer to in-mem
@@ -434,8 +434,8 @@ class Log : public RefCountedThreadSafe<Log> {
   // segments.
   Result<size_t> DeleteSegmentsCoveredByQuiescentMarker() EXCLUDES(state_lock_);
 
-  /// Returns true if the segment is closed and the marker covers all its ops. Covered segments
-  /// form a prefix of the log.
+  // Returns true if the segment is closed and the marker covers all its ops. Covered segments
+  // form a prefix of the log.
   static bool SegmentCoveredByQuiescentMarker(
       const ReadableLogSegment& segment, const QuiescentMarkerPB& marker);
 

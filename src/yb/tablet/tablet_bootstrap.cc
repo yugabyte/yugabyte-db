@@ -268,6 +268,9 @@ struct ReplayState {
   // State specific to RocksDB-backed tables (not transaction status table)
   DocDbPersistentState persistent_state;
 
+  // Op id of the quiescent marker, which persistent_state was raised to. Empty without a marker.
+  OpId quiescent_marker_op_id;
+
   // Total number of log entries applied to RocksDB.
   int64_t num_entries_applied_to_rocksdb = 0;
 
@@ -403,6 +406,7 @@ OpId ReplayState::GetLowestOpIdToReplay(bool has_intents_db, const char* extra_l
       << " (regular_op_id=" << persistent_state.regular
       << ", intents_op_id=" << persistent_state.intents
       << ", vector_indexes=" << AsString(persistent_state.vector_indexes)
+      << ", quiescent_marker_op_id=" << quiescent_marker_op_id
       << ", has_intents_db=" << has_intents_db << ")";
   return op_id_replay_lowest;
 }
@@ -561,12 +565,8 @@ class TabletBootstrap {
       tablet_->TEST_DocDBDumpToLog(docdb::IncludeIntents::kTrue);
     }
 
-    // With skip_wal_rewrite=false, bootstrap moves the WAL dir aside, writes the replayed entries
-    // into a new log in an empty WAL dir, and then deletes the old dir. The quiescent marker in the
-    // WAL dir would be moved away unread and then deleted, while the segments it replaced are gone.
-    // So a tablet with a marker always replays its WAL in place, whatever the flag says.
-    // Tablets enter the quiescent mode only with skip_wal_rewrite=true, so this applies only when
-    // the flag was changed after that.
+    // skip_wal_rewrite=false rewrites the WAL into a new dir and deletes the old one, together with
+    // the quiescent marker. So a tablet with a marker replays its WAL in place whatever the flag.
     const bool has_marker = GetEnv()->FileExists(Log::QuiescentMarkerPath(meta_->wal_dir()));
     if (has_marker && !skip_wal_rewrite_) {
       LOG_WITH_PREFIX(INFO) << "Quiescent marker found, not rewriting WAL";
@@ -1352,6 +1352,8 @@ class TabletBootstrap {
   //   tables, and just the regular RocksDB's flushed OpId for non-transactional tables. Note that
   //   in practice the flushed OpId of the intents RocksDB should also be less than or equal to the
   //   flushed OpId of the regular RocksDB or this would be an invariant violation.
+  //   With a quiescent marker at L, the flushed OpIds were raised to L (ApplyQuiescentMarker), and
+  //   the segments with ops up to L may be absent.
   //
   // - The first OpId of the segment is less than or equal to persisted retryable requests
   //   file's last_flushed_op_id_ or the "restart safe time" of the first operation in the segment
@@ -1851,6 +1853,7 @@ class TabletBootstrap {
   void ApplyQuiescentMarker(const log::QuiescentMarkerPB& marker) {
     const auto marker_op_id = OpId::FromPB(marker.op_id());
     LOG_WITH_PREFIX(INFO) << "Using quiescent marker: " << marker.ShortDebugString();
+    replay_state_->quiescent_marker_op_id = marker_op_id;
     auto& persistent_state = replay_state_->persistent_state;
     persistent_state.regular = std::max(persistent_state.regular, marker_op_id);
     persistent_state.intents = std::max(persistent_state.intents, marker_op_id);

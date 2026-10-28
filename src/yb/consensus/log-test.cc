@@ -2574,4 +2574,24 @@ TEST_F(LogTest, CloseActiveSegmentDropsAllocatedSegment) {
   ASSERT_OK(log_->Close());
 }
 
+// The first segment after the marker starts at the initial size, not at the size the log grew to.
+TEST_F(LogTest, QuiescentMarkerResetsSegmentSize) {
+  options_.initial_segment_size_bytes = 1_KB;
+  options_.segment_size_bytes = 1_MB;
+  options_.async_preallocate_segments = false;
+  BuildLog();
+  auto op_id = MakeOpId(1, 1);
+  ASSERT_OK(AppendNoOps(&op_id, 5000));
+  ASSERT_GE(log_->num_segments(), 6);
+  QuiescentMarkerPB marker;
+  ASSERT_OK(log_->CloseActiveSegment(log_->GetLatestEntryOpId(), &marker));
+  ASSERT_OK(log_->WriteQuiescentMarker(marker));
+  ASSERT_GT(ASSERT_RESULT(log_->DeleteSegmentsCoveredByQuiescentMarker()), 0);
+
+  // A few KB fit into a segment of the grown size, but not into one of the initial size.
+  ASSERT_OK(AppendNoOps(&op_id, 100));
+  ASSERT_GT(log_->num_segments(), 1);
+  ASSERT_OK(log_->Close());
+}
+
 } // namespace yb::log
