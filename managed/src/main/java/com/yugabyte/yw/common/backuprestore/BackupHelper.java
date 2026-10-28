@@ -564,7 +564,9 @@ public class BackupHelper {
       }
     } else if (configData instanceof CustomerConfigStorageS3Data) {
       CustomerConfigStorageS3Data s3 = (CustomerConfigStorageS3Data) configData;
-      if (AWSUtil.isCrossCloudFederationConfig(s3) && !ybaRunsOn(CloudType.aws)) {
+      if (AWSUtil.isCrossCloudFederationConfig(s3) && ybaRunsOn(CloudType.aws)) {
+        useYbaIamRole(s3);
+      } else if (AWSUtil.isCrossCloudFederationConfig(s3)) {
         CrossCloudFederationTarget target =
             resolveCrossCloudFederationTarget(universe, CloudType.aws);
         if (target != null) {
@@ -597,6 +599,7 @@ public class BackupHelper {
     } else if (configData instanceof CustomerConfigStorageS3Data
         && AWSUtil.isCrossCloudFederationConfig((CustomerConfigStorageS3Data) configData)) {
       if (ybaRunsOn(CloudType.aws)) {
+        useYbaIamRole((CustomerConfigStorageS3Data) configData);
         return;
       }
       if (StringUtils.isNotBlank(snapshotAudience) && StringUtils.isNotBlank(snapshotRoleArn)) {
@@ -610,6 +613,17 @@ public class BackupHelper {
     }
     Universe.maybeGet(backup.getUniverseUUID())
         .ifPresent(u -> applyCrossCloudFederationAudience(configData, u));
+  }
+
+  /**
+   * Has YBA on AWS reach a federated S3 bucket with its own IAM role. A federated config carries no
+   * access keys and need not set the IAM role flag (only the UI does), so without this its client
+   * would be built from blank keys.
+   */
+  private static void useYbaIamRole(CustomerConfigStorageS3Data s3) {
+    if (StringUtils.isBlank(s3.awsAccessKeyId)) {
+      s3.isIAMInstanceProfile = true;
+    }
   }
 
   /**

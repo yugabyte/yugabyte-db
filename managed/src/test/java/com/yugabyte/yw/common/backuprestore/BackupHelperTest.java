@@ -1540,7 +1540,22 @@ public class BackupHelperTest extends FakeDBApplication {
         s3Data, backupWithSnapshot("audience", "arn:aws:iam::123456789012:role/r"));
 
     assertFalse(AWSUtil.usesCrossCloudFederationCredentials(s3Data));
-    assertTrue(AWSUtil.usesIamRoleCredentials(s3Data));
+    assertTrue(s3Data.isIAMInstanceProfile);
+  }
+
+  /** Off AWS, or with the host unknown, a keyless federated config is left as it was. */
+  @Test
+  public void testS3ConfigKeepsItsCredentialsWhenYbaIsNotOnAws() {
+    CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
+    s3Data.useCrossCloudFederation = true;
+
+    Backup backup = backupWithSnapshot(null, null);
+    // No snapshot: falls back to the backup's universe, which is gone.
+    when(backup.getUniverseUUID()).thenReturn(UUID.randomUUID());
+
+    spyBackupHelper.applyCrossCloudFederationFromBackup(s3Data, backup);
+
+    assertFalse(s3Data.isIAMInstanceProfile);
   }
 
   /** YBA on AWS -> GCS: still federates with its AWS identity. */

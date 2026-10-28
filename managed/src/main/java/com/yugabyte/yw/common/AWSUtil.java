@@ -958,7 +958,7 @@ public class AWSUtil implements CloudUtil {
       // GCP) and defer to the node; a real STS/auth error surfaces as an AwsServiceException.
       builder.credentialsProvider(
           StaticCredentialsProvider.create(getCrossCloudFederationCredentials(s3Data)));
-    } else if (usesIamRoleCredentials(s3Data)) {
+    } else if (s3Data.isIAMInstanceProfile) {
       // Using credential chaining here.
       // This first looks for K8s service account IAM role,
       // then IAM user,
@@ -1073,17 +1073,6 @@ public class AWSUtil implements CloudUtil {
     return isCrossCloudFederationConfig(s3Data)
         && StringUtils.isNotBlank(s3Data.crossCloudFederationRoleArn)
         && StringUtils.isNotBlank(s3Data.crossCloudFederationAudience);
-  }
-
-  /**
-   * Whether YBA's S3 client for this config, when not federating, uses an IAM role rather than the
-   * config's access keys. A federated config carries no keys of its own, and need not set the IAM
-   * role flag (only the UI does), so without its stamp - YBA on AWS - it takes YBA's IAM role. On
-   * another host that role chain fails as the blank keys did, with an error naming it instead.
-   */
-  public static boolean usesIamRoleCredentials(CustomerConfigStorageS3Data s3Data) {
-    return s3Data.isIAMInstanceProfile
-        || (isCrossCloudFederationConfig(s3Data) && StringUtils.isBlank(s3Data.awsAccessKeyId));
   }
 
   public static Map<String, AWSHostBase> getRegionHostBaseMap(CustomerConfigData configData) {
