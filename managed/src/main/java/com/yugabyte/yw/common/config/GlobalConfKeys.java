@@ -1549,9 +1549,11 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ScopeType.GLOBAL,
           "Read GCP instance templates",
           "Read the instance template configured on a GCP region and carry its settings over to"
-              + " the nodes YBA creates, currently its CMEK disk encryption keys. Requires"
-              + " compute.instanceTemplates.get, which is not needed to pass the template to"
-              + " instance creation as a source.",
+              + " the nodes YBA creates, currently its CMEK disk encryption keys and its"
+              + " enable-oslogin metadata. With OS Login on, YBA imports its SSH key into the OS"
+              + " Login profile of its GCP principal, and the provider SSH user must be that"
+              + " profile's POSIX username. Requires compute.instanceTemplates.get, which is not"
+              + " needed to pass the template to instance creation as a source.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> enableOciProviderValidation =

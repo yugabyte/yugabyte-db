@@ -83,8 +83,27 @@ class GcpCreateInstancesMethod(CreateInstancesMethod):
             rsa_key = validated_key_file(args.private_key_file)
             public_key = format_rsa_key(rsa_key, public_key=True)
             ssh_keys = "{}:{} {}".format(self.SSH_USER, public_key, self.SSH_USER)
+            self._prepare_os_login(args, public_key)
 
         self.cloud.create_instance(args, server_type, can_ip_forward, machine_image, ssh_keys)
+
+    def _prepare_os_login(self, args, public_key):
+        """Makes the node reachable over SSH when the instance template turns on OS Login.
+
+        OS Login ignores the ssh-keys metadata and only accepts keys on the principal's OS Login
+        profile, logged in as that profile's POSIX username. Runs before the VM is created so a
+        wrong SSH user fails fast instead of timing out in the wait for SSH.
+        """
+        admin = self.cloud.get_admin()
+        template = get_instance_template_to_read(args)
+        if not admin.is_os_login_enabled_by_template(template):
+            return
+        posix_user = admin.import_os_login_ssh_key(public_key)
+        if posix_user and posix_user != self.SSH_USER:
+            raise YBOpsRuntimeError(
+                "Instance template {} enables OS Login, which only accepts SSH as the OS Login "
+                "POSIX user {}, but the provider SSH user is {}. Set the provider SSH user to {}."
+                .format(template, posix_user, self.SSH_USER, posix_user))
 
 
 class GcpProvisionInstancesMethod(ProvisionInstancesMethod):
