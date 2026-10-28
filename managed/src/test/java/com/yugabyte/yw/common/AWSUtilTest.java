@@ -754,6 +754,42 @@ public class AWSUtilTest extends FakeDBApplication {
   }
 
   @Test
+  public void testBucketRegionWarmUpLeavesMissingBucketToTheCheck() {
+    // The listing check's HeadBucket reports a missing bucket; the warm-up must not claim it.
+    CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
+    s3Data.backupLocation = "s3://test-bucket/backup";
+    when(mockS3Client.getBucketLocation(any(GetBucketLocationRequest.class)))
+        .thenThrow(S3Exception.builder().statusCode(404).build());
+    mockAWSUtil.warmUpBucketRegion(mockS3Client, s3Data, YbcBackupUtil.DEFAULT_REGION_STRING);
+    verify(mockS3Client).getBucketLocation(any(GetBucketLocationRequest.class));
+  }
+
+  @Test
+  public void testCheckFileExistsHintsOnBareAccessDenied() {
+    // A cross-account refusal or an S3-compatible store may only say "Access Denied".
+    CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
+    s3Data.backupLocation = "s3://test-bucket/backup";
+    when(mockS3Client.listObjectsV2(any(ListObjectsV2Request.class)))
+        .thenThrow(
+            S3Exception.builder()
+                .statusCode(403)
+                .awsErrorDetails(AwsErrorDetails.builder().errorMessage("Access Denied").build())
+                .build());
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                mockAWSUtil.checkFileExists(
+                    s3Data, Collections.singleton("s3://test-bucket/backup"), "success", true));
+    assertEquals(PRECONDITION_FAILED, e.getHttpStatus());
+    assertTrue(
+        e.getMessage()
+            .endsWith(
+                ": Access Denied (HTTP 403); check the credentials and that they may list the"
+                    + " bucket (s3:ListBucket on AWS S3)"));
+  }
+
+  @Test
   public void testCanCredentialListObjectsPassesOnThrottling() {
     CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
     s3Data.backupLocation = "s3://test-bucket/backup";

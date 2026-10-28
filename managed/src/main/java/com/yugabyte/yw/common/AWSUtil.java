@@ -9,6 +9,7 @@ import static play.mvc.Http.Status.EXPECTATION_FAILED;
 import static play.mvc.Http.Status.FORBIDDEN;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.mvc.Http.Status.MOVED_PERMANENTLY;
+import static play.mvc.Http.Status.NOT_FOUND;
 import static play.mvc.Http.Status.PRECONDITION_FAILED;
 import static play.mvc.Http.Status.TOO_MANY_REQUESTS;
 
@@ -305,11 +306,13 @@ public class AWSUtil implements CloudUtil {
    * The error to raise for an S3 error answer to a bucket listing check. The check's calls are the
    * client's bucket region warm-up (GetBucketLocation, not made for a federated config), then
    * HeadBucket and ListObjectsV2 (ListObjectsV2 alone for the file check). A refusal (4xx) is the
-   * user's to fix, so it is a clear 412 with the reason: S3's own message where it sends one, which
-   * names the action and the resource. Only a HEAD request (HeadBucket) gets no message, so a 403
-   * without one is described without guessing its cause. So is a 301, a bucket in another region
-   * than the client's. Anything else (an S3-side 5xx or throttling) is passed on as it is. A
-   * HeadBucket 404, a missing bucket, never gets here: tryListObjects reports it as a 412 itself.
+   * user's to fix, so it is a clear 412 with the reason: S3's own message where it sends one. That
+   * message may name no action: a HEAD request (HeadBucket) gets none at all, and a cross-account
+   * refusal or an S3-compatible store may only say "Access Denied". A 403 whose message names no
+   * s3: action is therefore described without guessing its cause, with the permission listing
+   * needs. So is a 301 without a message, a bucket in another region than the client's. Anything
+   * else (an S3-side 5xx or throttling) is passed on as it is. A missing bucket is reported by
+   * tryListObjects as a 412 itself.
    */
   private static RuntimeException awsServiceError(String msg, AwsServiceException e) {
     // Throttling (429) is not the user's to fix, like an S3-side 5xx.
@@ -321,17 +324,20 @@ public class AWSUtil implements CloudUtil {
       return e;
     }
     log.error(msg, e);
+    String s3Message = e.awsErrorDetails() != null ? e.awsErrorDetails().errorMessage() : null;
     String reason;
-    if (e.awsErrorDetails() != null && StringUtils.isNotBlank(e.awsErrorDetails().errorMessage())) {
-      reason = e.awsErrorDetails().errorMessage();
+    if (e.statusCode() == FORBIDDEN
+        && (StringUtils.isBlank(s3Message) || !s3Message.contains("s3:"))) {
+      reason =
+          (StringUtils.isBlank(s3Message) ? "access denied" : s3Message)
+              + " (HTTP 403); check the credentials and that they may list the bucket"
+              + " (s3:ListBucket on AWS S3)";
+    } else if (StringUtils.isNotBlank(s3Message)) {
+      reason = s3Message;
     } else if (e.statusCode() == MOVED_PERMANENTLY) {
       reason =
           "the bucket is in another region than the client's (HTTP 301); check the host base or"
               + " signing region";
-    } else if (e.statusCode() == FORBIDDEN) {
-      reason =
-          "access denied (HTTP 403); check the credentials and that they may list the bucket"
-              + " (s3:ListBucket on AWS S3)";
     } else {
       reason = "S3 returned HTTP " + e.statusCode();
     }
@@ -1136,6 +1142,11 @@ public class AWSUtil implements CloudUtil {
     } catch (SdkClientException e) {
       log.trace("Skipping first bucket region fetch error: {}", e.getMessage());
     } catch (S3Exception e) {
+      if (e.statusCode() == NOT_FOUND) {
+        // A missing bucket: the call that needs it reports that, not this warm-up's permission.
+        log.trace("Skipping first bucket region fetch of a missing bucket {}", bucket);
+        return;
+      }
       // S3's message for this call, e.g. "Access Denied", names neither the action nor the bucket.
       AwsErrorDetails details = e.awsErrorDetails();
       String reason =
