@@ -44,6 +44,7 @@ class PriorityThreadPoolSuspender;
 
 namespace yb::vector_index {
 
+class VectorLSMFileRemover;
 class VectorLSMFileMetaData;
 using VectorLSMFileMetaDataPtr = std::shared_ptr<VectorLSMFileMetaData>;
 
@@ -197,7 +198,6 @@ class VectorLSM {
   Env* TEST_GetEnv() const;
   bool TEST_HasBackgroundInserts() const;
   bool TEST_HasCompactions() const EXCLUDES(mutex_);
-  bool TEST_ObsoleteFilesCleanupInProgress() const;
   size_t TEST_NextManifestFileNo() const EXCLUDES(mutex_);
 
   // Test helper method to get the size of the latest chunk (highest serial number).
@@ -247,7 +247,7 @@ class VectorLSM {
   Status DoFlush(std::promise<Status>* promise) REQUIRES(mutex_);
   void WaitForUpdatesQueueEmpty() EXCLUDES(mutex_);
 
-  // Use var arg to avoid specifying arguments twice in SaveChunk and DoSaveChunk.
+  // The caller increments num_pending_saves_ when it schedules the save.
   void SaveChunk(const ImmutableChunkPtr& chunk) EXCLUDES(mutex_);
   void CheckFailure(const Status& status) EXCLUDES(mutex_);
 
@@ -284,12 +284,6 @@ class VectorLSM {
       VectorIndex& index, uint64_t serial_no, uint64_t size_on_disk);
 
   uint64_t NextSerialNo() EXCLUDES(mutex_);
-
-  void DoDeleteObsoleteChunks() EXCLUDES(cleanup_mutex_);
-  void DeleteObsoleteChunks() EXCLUDES(cleanup_mutex_);
-  void DeleteFile(const VectorLSMFileMetaData& file);
-  void ObsoleteFile(std::unique_ptr<VectorLSMFileMetaData>&& file) EXCLUDES(cleanup_mutex_);
-  void TriggerObsoleteChunksCleanup(bool async);
 
   // Returns compaction scope with a continuous subset of immutable chunks, which consists of
   // first N manifested chunks starting from the very first one (chunk N+1 is not manifested).
@@ -379,6 +373,10 @@ class VectorLSM {
   std::map<size_t, ImmutableChunkPtr> updates_queue_ GUARDED_BY(mutex_);
   std::condition_variable_any updates_queue_empty_cv_;
 
+  // Number of chunks whose save has not finished. A save still accesses this VectorLSM after its
+  // chunk left updates_queue_, so CompleteShutdown waits for it too.
+  std::atomic<size_t> num_pending_saves_ = 0;
+
   mutable rw_spinlock compaction_tasks_mutex_;
   std::condition_variable_any compaction_tasks_cv_;
   std::unordered_set<CompactionTask*> compaction_tasks_ GUARDED_BY(compaction_tasks_mutex_);
@@ -388,11 +386,7 @@ class VectorLSM {
   // waiting for background compactions completion and prevents new background compactions.
   bool has_pending_manual_compaction_ GUARDED_BY(compaction_tasks_mutex_) = false;
 
-  // Currently this mutex is used only in DeleteObsoleteChunks, which are not allowed to run in
-  // parallel, hence it is enough to use simple spin lock.
-  simple_spinlock cleanup_mutex_;
-  std::vector<std::unique_ptr<VectorLSMFileMetaData>> obsolete_files_ GUARDED_BY(cleanup_mutex_);
-  std::atomic<bool> obsolete_files_cleanup_in_progress_ = false;
+  std::shared_ptr<VectorLSMFileRemover> obsolete_files_remover_;
 
   Status failed_status_ GUARDED_BY(mutex_);
 

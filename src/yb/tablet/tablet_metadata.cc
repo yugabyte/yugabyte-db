@@ -2176,7 +2176,7 @@ void RaftGroupMetadata::EnableSchemaGC() {
 }
 
 Status RaftGroupMetadata::OldSchemaGC(
-    const std::unordered_map<Uuid, SchemaVersion>& versions) {
+    const docdb::CotableSchemaVersionMap& versions) {
   bool need_flush = false;
   {
     std::lock_guard lock(data_mutex_);

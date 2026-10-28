@@ -171,6 +171,11 @@ class TabletVectorIndexes :
   void FillMaxPersistentOpIds(
       boost::container::small_vector_base<OpId>& out, bool invalid_if_no_new_data);
 
+  // Lowers the schema versions in `min_schema_versions` to those of the data the indexes have not
+  // flushed. Bootstrap replays it into them, decoding the rows with the schema packings they were
+  // written with, even if the regular DB repacked them (GH#35466).
+  void FillMinSchemaVersion(docdb::CotableSchemaVersionMap* min_schema_versions) const;
+
   bool TEST_HasIndexes() const {
     return has_vector_indexes_.load();
   }

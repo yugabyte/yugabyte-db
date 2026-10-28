@@ -506,7 +506,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Result<std::unordered_set<std::string>> GetFlagsForServer() const override;
 
-  void SetCronLeaderLease(MonoTime cron_leader_lease_end);
+  void SetCronLeaseEnd(MonoTime lease_end);
+
+  void SetCronCanStartJobs(bool can_start);
 
   std::atomic<bool> initted_{false};
 

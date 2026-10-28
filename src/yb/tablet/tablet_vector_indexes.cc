@@ -1063,6 +1063,21 @@ void TabletVectorIndexes::FillMaxPersistentOpIds(
   }
 }
 
+void TabletVectorIndexes::FillMinSchemaVersion(
+    docdb::CotableSchemaVersionMap* min_schema_versions) const {
+  auto list = List();
+  if (!list) {
+    return;
+  }
+  for (const auto& vector_index : *list) {
+    auto smallest = vector_index->GetInMemoryFrontier(rocksdb::UpdateUserValueType::kSmallest);
+    if (smallest) {
+      down_cast<docdb::ConsensusFrontier&>(*smallest).MakeExternalSchemaVersionsAtMost(
+          min_schema_versions);
+    }
+  }
+}
+
 // TODO(vector_index): Shifts the positions of the later indexes, which docdb::StorageSet uses to
 // address them. See the TODO there.
 docdb::DocVectorIndexPtr TabletVectorIndexes::RemoveTableFromList(const TableId& table_id) {

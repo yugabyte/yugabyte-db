@@ -254,6 +254,9 @@ class DocVectorIndex {
   // Caches the true result; ComputeParentDataCompacted() is the uncached check.
   bool ParentDataCompacted();
 
+  // Whether the row with the specified key belongs to the indexed table.
+  bool IsIndexedTableKey(Slice key) const;
+
   // Writes reverse mapping for the vector id in `value`.
   // kInvalidColumnId means legacy raw-ybctid format; otherwise V1 value format.
   static void ApplyReverseEntry(

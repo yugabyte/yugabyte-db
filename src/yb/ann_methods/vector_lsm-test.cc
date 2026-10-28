@@ -15,7 +15,6 @@
 
 #include "yb/ann_methods/ann_methods.h"
 #include "yb/ann_methods/hnswlib_wrapper.h"
-#include "yb/ann_methods/usearch_wrapper.h"
 #include "yb/ann_methods/vector_lsm-test.pb.h"
 
 #include "yb/hnsw/vector_index_test_base.h"
@@ -207,7 +206,6 @@ class TestFrontiers : public rocksdb::UserFrontiersBase<TestFrontier> {
 
 class VectorLSMTestBase : public hnsw::VectorIndexTestBase {
  protected:
-  // Usearch creates an index with min capacity of 64 vectors.
   constexpr static size_t kDefaultChunkSize = 64;
 
   explicit VectorLSMTestBase(ParamType backend_param)
@@ -263,6 +261,9 @@ class VectorLSMTestBase : public hnsw::VectorIndexTestBase {
       FloatVectorLSM& lsm, const FloatVectorLSM::Vector& query_vector, size_t max_num_results);
 
   Result<std::vector<std::string>> GetFiles(FloatVectorLSM& lsm);
+
+  // Obsolete chunk files can be deleted in background after a compaction has returned.
+  Status WaitForFiles(FloatVectorLSM& lsm, const std::string& expected);
 
   void TestBootstrap(bool flush);
 
@@ -339,28 +340,11 @@ class VectorLSMTest : public VectorLSMTestBase,
   VectorLSMTest() : VectorLSMTestBase(GetParam()) {}
 };
 
-// Backend-independent VectorLSM tests (insert registry, flush barrier) pin usearch.
-class VectorLSMUsearchTest : public VectorLSMTestBase {
+// Backend-independent VectorLSM tests (insert registry, flush barrier) without payloads.
+class VectorLSMHnswlibTest : public VectorLSMTestBase {
  public:
-  VectorLSMUsearchTest()
-      : VectorLSMTestBase({
-            ANNMethodKind::kUsearch,
-        }) {}
+  VectorLSMHnswlibTest() : VectorLSMTestBase({ANNMethodKind::kHnswlib}) {}
 };
-
-Result<vector_index::VectorIndexTraitsPtr<std::vector<float>, float>> GetVectorIndexTraits(
-    const ParamType& param, const vector_index::HNSWOptions& options,
-    const hnsw::BlockCachePtr& block_cache, const MemTrackerPtr& mem_tracker = {}) {
-  switch (GetANNMethodKind(param)) {
-    case ANNMethodKind::kUsearch:
-      return CreateUsearchIndexTraits<std::vector<float>, float>(
-          block_cache, options, mem_tracker);
-    case ANNMethodKind::kHnswlib:
-      return CreateHnswlibIndexTraits<std::vector<float>, float>(
-          block_cache, options, mem_tracker);
-  }
-  FATAL_INVALID_ENUM_VALUE(ANNMethodKind, GetANNMethodKind(param));
-}
 
 constexpr static size_t GetNumEntriesByDimensions(size_t dimensions) {
   return 1ULL << dimensions;
@@ -497,8 +481,8 @@ Status VectorLSMTestBase::OpenVectorLSM(
   FloatVectorLSM::Options options = {
     .log_prefix = "Test: ",
     .storage_dir = dir,
-    .vector_index_traits = VERIFY_RESULT(GetVectorIndexTraits(
-        backend_param(), hnsw_options, block_cache_)),
+    .vector_index_traits = VERIFY_RESULT((CreateHnswlibIndexTraits<std::vector<float>, float>(
+        block_cache_, hnsw_options, /* mem_tracker= */ {}))),
     .vectors_per_chunk = vectors_per_chunk,
     .thread_pool = &thread_pool_,
     .insert_thread_pool = &thread_pool_,
@@ -654,6 +638,21 @@ Result<std::vector<std::string>> VectorLSMTestBase::GetFiles(FloatVectorLSM& lsm
   return path_utils::GetVectorIndexFiles(*lsm.TEST_GetEnv(), lsm.StorageDir());
 }
 
+Status VectorLSMTestBase::WaitForFiles(FloatVectorLSM& lsm, const std::string& expected) {
+  std::string files;
+  auto status = LoggedWaitFor(
+      [this, &lsm, &expected, &files]() -> Result<bool> {
+        files = AsString(VERIFY_RESULT(GetFiles(lsm)));
+        return files == expected;
+      },
+      10s * kTimeMultiplier, "Expected files on disk", MonoDelta::FromMilliseconds(100),
+      /* delay_multiplier = */ 1.0);
+  if (!status.ok()) {
+    return status.CloneAndAppend(Format("files: $0, expected: $1", files, expected));
+  }
+  return status;
+}
+
 MergeFilterPtr VectorLSMTestBase::GetMergeFilter() {
   if (!merge_filter_) {
     SetMergeFilter(rocksdb::FilterDecision::kKeep);
@@ -728,17 +727,12 @@ TEST_P(VectorLSMTest, SingleChunkSimpleCompaction) {
   ASSERT_EQ(3, lsm.TEST_NextManifestFileNo());
   VerifyVectorLSM(lsm, kDimensions);
 
-  // Wait for cleanup is completed and check files on disk.
-  while (lsm.TEST_ObsoleteFilesCleanupInProgress()) {
-    SleepFor(MonoDelta::FromSeconds(1));
-  }
-  auto files = AsString(ASSERT_RESULT(GetFiles(lsm)));
-  ASSERT_STR_EQ(files, "[0.meta, 1.meta, 2.meta, vectorindex_3]");
+  ASSERT_OK(WaitForFiles(lsm, "[0.meta, 1.meta, 2.meta, vectorindex_3]"));
 }
 
 // AdvanceFlushedFrontier keeps a single chunk without a file however often it is called, also
 // across a reopen, and the flushed frontier is the largest one recorded.
-TEST_F(VectorLSMUsearchTest, AdvanceFlushedFrontierKeepsOneFrontierOnlyChunk) {
+TEST_F(VectorLSMHnswlibTest, AdvanceFlushedFrontierKeepsOneFrontierOnlyChunk) {
   constexpr size_t kDimensions = 4;
   constexpr size_t kNumAdvances = 10;
 
@@ -801,7 +795,7 @@ TEST_F(VectorLSMUsearchTest, AdvanceFlushedFrontierKeepsOneFrontierOnlyChunk) {
 
 // Unlike adding a chunk, ModifyChunkFrontiers can move the flushed frontier backwards, and the
 // change survives reopening the index. It refuses while entries are unflushed.
-TEST_F(VectorLSMUsearchTest, ModifyChunkFrontiers) {
+TEST_F(VectorLSMHnswlibTest, ModifyChunkFrontiers) {
   constexpr size_t kDimensions = 4;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
@@ -863,6 +857,33 @@ TEST_F(VectorLSMUsearchTest, ModifyChunkFrontiers) {
   VerifyVectorLSM(lsm, kDimensions);
 }
 
+// An empty insert, e.g. of rows with NULL vectors, creates a mutable chunk of vectors_per_chunk
+// capacity. A larger batch goes to a new chunk, and the frontiers of the empty insert are kept.
+TEST_F(VectorLSMHnswlibTest, BatchAboveCapacityOfEmptyChunk) {
+  constexpr size_t kDimensions = 8;
+  static_assert(GetNumEntriesByDimensions(kDimensions) > 2 * kDefaultChunkSize);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+
+  // The greatest vertex id.
+  constexpr auto kAllOnes = std::numeric_limits<uint64_t>::max();
+  const VectorId kMaxVertexId(kAllOnes, kAllOnes);
+
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kDefaultChunkSize));
+  TestFrontiers frontiers;
+  frontiers.Largest().SetVertexId(kMaxVertexId);
+  ASSERT_OK(lsm.Insert({}, { .frontiers = &frontiers }));
+
+  ASSERT_OK(InsertCube(lsm, kDimensions, GetNumEntriesByDimensions(kDimensions)));
+  ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+  ASSERT_OK(lsm.Flush(/* wait = */ true));
+  VerifyVectorLSM(lsm, kDimensions);
+  auto flushed = lsm.GetFlushedFrontier();
+  ASSERT_TRUE(flushed);
+  ASSERT_EQ(down_cast<const TestFrontier&>(*flushed).vertex_id(), kMaxVertexId);
+}
+
 void VectorLSMTestBase::TestMultipleChunksSimpleCompaction(
     vector_index::DistanceKind distance_kind) {
   constexpr size_t kDimensions = 8;
@@ -897,13 +918,8 @@ void VectorLSMTestBase::TestMultipleChunksSimpleCompaction(
   ASSERT_EQ(2, lsm.TEST_NextManifestFileNo());
   VerifyVectorLSM(lsm, kDimensions);
 
-  // Wait for cleanup is completed and check files on disk.
-  while (lsm.TEST_ObsoleteFilesCleanupInProgress()) {
-    SleepFor(MonoDelta::FromSeconds(1));
-  }
   auto compacted_idx = kExpectedNumChunks + 1;
-  auto files = AsString(ASSERT_RESULT(GetFiles(lsm)));
-  ASSERT_STR_EQ(files, Format("[0.meta, 1.meta, vectorindex_$0]", compacted_idx));
+  ASSERT_OK(WaitForFiles(lsm, Format("[0.meta, 1.meta, vectorindex_$0]", compacted_idx)));
 
   // Compact again.
   ASSERT_OK(lsm.Compact(/* wait = */ true));
@@ -911,13 +927,8 @@ void VectorLSMTestBase::TestMultipleChunksSimpleCompaction(
   ASSERT_EQ(3, lsm.TEST_NextManifestFileNo());
   VerifyVectorLSM(lsm, kDimensions);
 
-  // Wait for cleanup is completed and check files on disk.
-  while (lsm.TEST_ObsoleteFilesCleanupInProgress()) {
-    SleepFor(MonoDelta::FromSeconds(1));
-  }
   ++compacted_idx;
-  files = AsString(ASSERT_RESULT(GetFiles(lsm)));
-  ASSERT_STR_EQ(files, Format("[0.meta, 1.meta, 2.meta, vectorindex_$0]", compacted_idx));
+  ASSERT_OK(WaitForFiles(lsm, Format("[0.meta, 1.meta, 2.meta, vectorindex_$0]", compacted_idx)));
 }
 
 TEST_P(VectorLSMTest, MultipleChunksSimpleCompaction) {
@@ -958,12 +969,7 @@ TEST_P(VectorLSMTest, AllVectorsRemovalCompaction) {
   ASSERT_EQ(1, lsm.NumImmutableChunks());
   ASSERT_EQ(2, lsm.TEST_NextManifestFileNo());
 
-  // Wait for cleanup is completed and check files on disk.
-  while (lsm.TEST_ObsoleteFilesCleanupInProgress()) {
-    SleepFor(MonoDelta::FromSeconds(1));
-  }
-  auto files = AsString(ASSERT_RESULT(GetFiles(lsm)));
-  ASSERT_STR_EQ(files, "[0.meta, 1.meta]");
+  ASSERT_OK(WaitForFiles(lsm, "[0.meta, 1.meta]"));
 
   // Verify results.
   inserted_entries_.clear();
@@ -977,8 +983,7 @@ TEST_P(VectorLSMTest, AllVectorsRemovalCompaction) {
   ASSERT_OK(lsm.Flush(/* wait = */ true));
   ASSERT_EQ(2, lsm.TEST_NextManifestFileNo());
   VerifyVectorLSM(lsm, kDimensions);
-  files = AsString(ASSERT_RESULT(GetFiles(lsm)));
-  ASSERT_STR_EQ(files, "[0.meta, 1.meta, vectorindex_2]");
+  ASSERT_STR_EQ(AsString(ASSERT_RESULT(GetFiles(lsm))), "[0.meta, 1.meta, vectorindex_2]");
 
   // Make sure further compaction works fine.
   ASSERT_OK(lsm.Compact(/* wait = */ true));
@@ -986,12 +991,90 @@ TEST_P(VectorLSMTest, AllVectorsRemovalCompaction) {
   ASSERT_EQ(3, lsm.TEST_NextManifestFileNo());
   VerifyVectorLSM(lsm, kDimensions);
 
-  // Wait for cleanup is completed and check files on disk.
-  while (lsm.TEST_ObsoleteFilesCleanupInProgress()) {
-    SleepFor(MonoDelta::FromSeconds(1));
+  ASSERT_OK(WaitForFiles(lsm, "[0.meta, 1.meta, 2.meta, vectorindex_3]"));
+}
+
+// A compacted chunk can outlive the compaction's cleanup of obsolete files, e.g. while the flush
+// task that saved it, or a search, still holds it. Its file must still be deleted once the last
+// reference is dropped (#35064).
+TEST_P(VectorLSMTest, ChunkReleasedAfterCompactionCleanupIsDeleted) {
+  constexpr size_t kDimensions = 4;
+  constexpr size_t kNumEntries = GetNumEntriesByDimensions(kDimensions);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, kDimensions, 2 * kNumEntries));
+  ASSERT_OK(InsertCube(lsm, kDimensions, 2 * kNumEntries));
+  ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+
+  // Hold the flush task, and so its reference to the flushed chunk, until the compaction below
+  // has completed, including its cleanup.
+  CountDownLatch release_flush_task{1};
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack(
+      "VectorLSM::DoFlush:AfterSaveChunk",
+      [&release_flush_task](void*) { release_flush_task.Wait(); });
+  sync_point->EnableProcessing();
+  auto se = ScopeExit([sync_point, &release_flush_task] {
+    release_flush_task.CountDown();
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  ASSERT_OK(lsm.Flush(/* wait = */ true));
+  ASSERT_OK(lsm.Compact(/* wait = */ true));
+  ASSERT_EQ(1, lsm.NumImmutableChunks());
+  ASSERT_STR_EQ(
+      AsString(ASSERT_RESULT(GetFiles(lsm))), "[0.meta, 1.meta, vectorindex_1, vectorindex_2]");
+
+  release_flush_task.CountDown();
+  ASSERT_OK(WaitForFiles(lsm, "[0.meta, 1.meta, vectorindex_2]"));
+  VerifyVectorLSM(lsm, kDimensions);
+}
+
+// The flush task still holds its chunk after the chunk has left the updates queue, so it can drop
+// a compacted chunk after the VectorLSM has been shut down and destroyed. That must not touch the
+// destroyed VectorLSM.
+TEST_P(VectorLSMTest, ChunkReleasedAfterVectorLSMDestroyed) {
+  constexpr size_t kDimensions = 4;
+  constexpr size_t kNumEntries = GetNumEntriesByDimensions(kDimensions);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+
+  CountDownLatch release_flush_task{1};
+  CountDownLatch file_released{1};
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack(
+      "VectorLSM::DoFlush:AfterSaveChunk",
+      [&release_flush_task](void*) { release_flush_task.Wait(); });
+  sync_point->SetCallBack(
+      "VectorLSM::ObsoleteFileReleased", [&file_released](void*) { file_released.CountDown(); });
+  sync_point->EnableProcessing();
+  auto se = ScopeExit([sync_point, &release_flush_task] {
+    release_flush_task.CountDown();
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  std::string storage_dir;
+  {
+    FloatVectorLSM lsm;
+    ASSERT_OK(OpenVectorLSM(lsm, kDimensions, 2 * kNumEntries));
+    storage_dir = lsm.StorageDir();
+    ASSERT_OK(InsertCube(lsm, kDimensions, 2 * kNumEntries));
+    ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+    ASSERT_OK(lsm.Flush(/* wait = */ true));
+    ASSERT_OK(lsm.Compact(/* wait = */ true));
+    ASSERT_STR_EQ(
+        AsString(ASSERT_RESULT(GetFiles(lsm))), "[0.meta, 1.meta, vectorindex_1, vectorindex_2]");
   }
-  files = AsString(ASSERT_RESULT(GetFiles(lsm)));
-  ASSERT_STR_EQ(files, "[0.meta, 1.meta, 2.meta, vectorindex_3]");
+
+  release_flush_task.CountDown();
+  ASSERT_TRUE(file_released.WaitFor(30s * kTimeMultiplier))
+      << "The flush task did not release the compacted chunk";
+  // Left on disk, the VectorLSM that would delete it is gone.
+  ASSERT_TRUE(Env::Default()->FileExists(JoinPathSegments(storage_dir, "vectorindex_1")));
 }
 
 TEST_P(VectorLSMTest, BackgroundCompactionSizeAmp) {
@@ -1029,13 +1112,7 @@ TEST_P(VectorLSMTest, BackgroundCompactionSizeAmp) {
   ASSERT_OK(WaitForCompactionsDone(lsm));
 
   auto last_chunk_id = kNumChunks + 1;
-  auto files = AsString(ASSERT_RESULT(GetFiles(lsm)));
-  ASSERT_STR_EQ(files, Format("[0.meta, vectorindex_$0]", last_chunk_id));
-
-  // Wait for cleanup is completed and check files on disk.
-  while (lsm.TEST_ObsoleteFilesCleanupInProgress()) {
-    SleepFor(MonoDelta::FromSeconds(1));
-  }
+  ASSERT_OK(WaitForFiles(lsm, Format("[0.meta, vectorindex_$0]", last_chunk_id)));
 
   // Trigger background compaction on the same size. At this point there's one big chunk which
   // is approximately equal to the size of six random chunks. So, inserting six more chunks
@@ -1057,13 +1134,7 @@ TEST_P(VectorLSMTest, BackgroundCompactionSizeAmp) {
   ASSERT_OK(WaitForCompactionsDone(lsm));
 
   last_chunk_id += kNumChunks + 1;
-  files = AsString(ASSERT_RESULT(GetFiles(lsm)));
-  ASSERT_STR_EQ(files, Format("[0.meta, vectorindex_$0]", last_chunk_id));
-
-  // Wait for cleanup is completed and check files on disk.
-  while (lsm.TEST_ObsoleteFilesCleanupInProgress()) {
-    SleepFor(MonoDelta::FromSeconds(1));
-  }
+  ASSERT_OK(WaitForFiles(lsm, Format("[0.meta, vectorindex_$0]", last_chunk_id)));
 }
 
 // Guards against a VectorLSM shutdown deadlock: when shutdown began while a background compaction
@@ -1107,11 +1178,53 @@ TEST_P(VectorLSMTest, ShutdownDuringBackgroundMerge) {
   lsm.CompleteShutdown();
 }
 
+// The save of a flushed chunk schedules a compaction after the chunk left the updates queue, so
+// CompleteShutdown must wait for it (#35556).
+TEST_F(VectorLSMHnswlibTest, ShutdownWaitsForChunkSave) {
+  constexpr size_t kDimensions = 4;
+
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kDefaultChunkSize));
+
+  CountDownLatch save_blocked(1);
+  CountDownLatch release_save(1);
+  CountDownLatch shutdown_done(1);
+  // Declared before the scope exit, so the save is released before the threads are joined.
+  ThreadHolder threads;
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack(
+      "VectorLSM::UpdateManifest:BeforeScheduleCompaction",
+      [&save_blocked, &release_save](void*) {
+        save_blocked.CountDown();
+        release_save.Wait();
+      });
+  sync_point->EnableProcessing();
+  auto se = ScopeExit([sync_point, &release_save] {
+    release_save.CountDown();
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  ASSERT_OK(InsertRandomAndFlush(lsm, kDimensions, 10));
+  ASSERT_TRUE(save_blocked.WaitFor(30s * kTimeMultiplier)) << "Save did not reach the sync point";
+
+  threads.AddThreadFunctor([&lsm, &shutdown_done] {
+    lsm.StartShutdown();
+    lsm.CompleteShutdown();
+    shutdown_done.CountDown();
+  });
+  ASSERT_FALSE(shutdown_done.WaitFor(100ms)) << "CompleteShutdown did not wait for the save";
+
+  release_save.CountDown();
+  ASSERT_TRUE(shutdown_done.WaitFor(30s * kTimeMultiplier))
+      << "CompleteShutdown did not return after the save was released";
+}
+
 // CreateSplitChildTablet flushes vector indexes with Flush(wait=false) then WaitForFlush().
 // An Insert that starts after DoFlush clears mutable_chunk_ must still be visible to that wait,
 // otherwise the split "sync" flush is not an insert barrier and a later CompleteShutdown can
 // block on the leftover tasks (#32400).
-TEST_F(VectorLSMUsearchTest, SplitFlushIsInsertBarrier) {
+TEST_F(VectorLSMHnswlibTest, SplitFlushIsInsertBarrier) {
   constexpr size_t kDimensions = 8;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
@@ -1302,13 +1415,7 @@ void VectorLSMTestBase::TestBackgroundCompactionSizeRatio(bool test_metrics) {
     for (size_t n = kNumChunks - kNumMinChunks + 1; n <= kNumChunks + 1; ++n) {
       expected_files << ", vectorindex_" << n;
     }
-    files = AsString(ASSERT_RESULT(GetFiles(lsm)));
-    ASSERT_STR_EQ(files, Format("[$0]", expected_files.str()));
-
-    // Wait for cleanup is completed and check files on disk.
-    while (lsm.TEST_ObsoleteFilesCleanupInProgress()) {
-      SleepFor(MonoDelta::FromSeconds(1));
-    }
+    ASSERT_OK(WaitForFiles(lsm, Format("[$0]", expected_files.str())));
   }
 }
 
@@ -1699,7 +1806,7 @@ TEST_P(VectorLSMTest, NotSavedChunk) {
 
 // Verifies that VectorLSM::EstimateNumVectorsForBytes returns a vector count whose actual on-disk
 // chunk size is close to the requested byte budget. This exercises the per-vector memory
-// accounting in the underlying ann_methods wrappers (usearch / hnswlib).
+// accounting in the underlying ann_methods wrapper.
 TEST_P(VectorLSMTest, EstimateNumVectorsForBytes) {
   constexpr size_t kDimensions = 64;
   constexpr size_t kBytesLimit = 1_MB;
@@ -1738,20 +1845,12 @@ TEST_P(VectorLSMTest, EstimateNumVectorsForBytes) {
   // (vectors_lookup_, nodes_, linkLists_) that don't make it into the serialized chunk file,
   // so the on-disk size is expected to be smaller than the budget but still close to it. The
   // exact ratio depends on the in-memory layout of the backend the chunk was built with.
-  const auto on_disk_lower_bound_ratio = [&]() -> double {
-    switch (GetANNMethodKind(GetParam())) {
-      case ANNMethodKind::kUsearch:
-        return 0.80;
-      case ANNMethodKind::kHnswlib:
-        return 0.65;
-    }
-    FATAL_INVALID_ENUM_VALUE(ANNMethodKind, GetANNMethodKind(GetParam()));
-  }();
+  constexpr double on_disk_lower_bound_ratio = 0.65;
   ASSERT_GE(on_disk_size, kBytesLimit * on_disk_lower_bound_ratio);
   ASSERT_LE(on_disk_size, kBytesLimit);
 }
 
-TEST_F(VectorLSMUsearchTest, MergeChunkResults) {
+TEST_F(VectorLSMHnswlibTest, MergeChunkResults) {
   const auto kIds = GenerateVectorIds(7);
 
   using ChunkResults = std::vector<vector_index::VectorWithDistance<float>>;
@@ -1773,7 +1872,7 @@ TEST_F(VectorLSMUsearchTest, MergeChunkResults) {
 INSTANTIATE_TEST_SUITE_P(
     ,
     VectorLSMTest,
-    testing::Combine(testing::ValuesIn(kANNMethodKindArray)),
+    testing::Combine(testing::Values(ANNMethodKind::kHnswlib)),
     ParamToString);
 
 }  // namespace yb::ann_methods
