@@ -977,7 +977,9 @@ Enables automatic tablet splitting of tables covered by Point-In-Time Recovery s
 Default: `false`
 {{% /tags/wrap %}}
 
-Enables tablet splitting of a YSQL table whose creating DDL transaction has not committed. v2026.1.3.0 and later only.
+v2026.1.3.0 and later
+
+Enables tablet splitting of a YSQL table whose creating DDL transaction has not committed.
 
 When `false`, YB-Master refuses automatic splits and splits you start manually until that transaction commits. A table that is still being created can grow quickly when the [new-relation fast path](../../../explore/transactions/new-table-writes/) writes its rows to the main store immediately, and splitting it during that load creates extra tablets. Each new tablet reserves memory from a tablet-server-wide budget, and the forced flushes can block writes past the client deadline.
 
@@ -1514,7 +1516,9 @@ Enables YSQL backends to generate and consume invalidation messages incrementall
 Default: `true` on a new universe. During an upgrade, `false` until the upgrade is finalized, then `true`.
 {{% /tags/wrap %}}
 
-When `true`, the YB-Master leader limits how many YSQL catalog prefetches it serves at a time. Ordinary catalog reads stay unlimited. v2026.1.3.0 and later only.
+v2026.1.3.0 and later
+
+When `true`, the YB-Master leader limits how many YSQL catalog prefetches it serves at a time. Ordinary catalog reads stay unlimited.
 
 The limit stays off until every YB-Master and YB-TServer in the universe has been upgraded. A YB-TServer from an earlier version does not report that a read is a prefetch, so applying the limit before then would cover only the upgraded servers. A value you set yourself takes effect immediately and is kept when the upgrade is finalized.
 
@@ -1529,7 +1533,9 @@ A prefetch past the limit is rejected. The client retries after backing off.
 Default: `-1` (resolved at startup to max(8, 2 × cores))
 {{% /tags/wrap %}}
 
-Maximum number of YSQL catalog prefetches the YB-Master leader serves at once when [enable_ysql_catalog_prefetch_admission](#enable-ysql-catalog-prefetch-admission) is `true`. v2026.1.3.0 and later only.
+v2026.1.3.0 and later
+
+Maximum number of YSQL catalog prefetches the YB-Master leader serves at once when [enable_ysql_catalog_prefetch_admission](#enable-ysql-catalog-prefetch-admission) is `true`.
 
 `-1`, the default, is resolved once at process startup to `max(8, 2 * cores)` for this YB-Master. `0` means no limit. Setting the flag to `-1` after startup also means no limit, because that resolution runs only at startup.
 
@@ -1542,7 +1548,9 @@ A prefetch beyond the limit is rejected, and the client retries until its RPC de
 Default: `50`
 {{% /tags/wrap %}}
 
-Percentage of [master_max_concurrent_ysql_catalog_prefetches](#master-max-concurrent-ysql-catalog-prefetches) available to a YSQL catalog prefetch that is just starting. A prefetch already in progress, a prefetch that refreshes a catalog cache, and the prefetch that builds the relcache init file, can use the full limit. At least one new prefetch is always allowed. Valid values are `0` through `100`. v2026.1.3.0 and later only.
+v2026.1.3.0 and later
+
+Percentage of [master_max_concurrent_ysql_catalog_prefetches](#master-max-concurrent-ysql-catalog-prefetches) available to a YSQL catalog prefetch that is just starting. A prefetch already in progress, a prefetch that refreshes a catalog cache, and the prefetch that builds the relcache init file, can use the full limit. At least one new prefetch is always allowed. Valid values are `0` through `100`.
 
 A prefetch is a sequence of paged reads. Holding new prefetches to this share leaves room for sequences already under way to finish.
 

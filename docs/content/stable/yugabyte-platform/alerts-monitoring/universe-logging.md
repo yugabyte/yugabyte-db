@@ -39,7 +39,7 @@ Only YSQL query and audit logs can be exported, not YCQL.
 
 Exported query and audit log records carry attributes parsed from the log line, namespaced under `yugabyte.*`.
 
-| Attribute | Log type |
+| Attribute | <div style="width:120px">Log type</div> |
 | :-------- | :------- |
 | `yugabyte.log_level` | Query and audit |
 | `yugabyte.log.file.name` | Query and audit |

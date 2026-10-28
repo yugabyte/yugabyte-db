@@ -195,11 +195,9 @@ If you switch from **Expert** to **Guided** and the current placement is not a *
 
 {{< note title="Replication factor 9" >}}
 
-In v2026.1.3.0 and later, you can allow replication factor 9 by setting the **Enable primary replication factor 9** global runtime configuration option (config key `yb.universe.enable_primary_rf_9`) to true. Refer to [Manage runtime configuration settings](../../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/). Only a Super Admin can change a global runtime configuration option.
+In v2026.1.3.0 and later, you can set RF to 9 when using Expert mode or the Classic UI. When using RF 9, ensure the number of availability zones _is equal to_ the RF.
 
-When that option is true, **Expert** mode and the Classic UI include replication factor 9, and you can raise an existing primary cluster to replication factor 9. The replication factor limits on this page apply while the option is false. A universe that you create with replication factor 9, or raise to replication factor 9, stays at replication factor 9 if you later set the option to false.
-
-For replication factor 9, the number of availability zones must equal the replication factor: use 9 availability zones.
+By default, the RF 9 option is not available. To enable the feature, set the **Enable primary replication factor 9** global runtime configuration option (config key `yb.universe.enable_primary_rf_9`) to true. Refer to [Manage runtime configuration settings](../../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/). Only a Super Admin can change a global runtime configuration option. Any universe that you created or modified with RF 9 stays at RF 9 if you later set the option back to false.
 
 **Known issues**:
 
