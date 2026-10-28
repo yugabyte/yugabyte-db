@@ -49,6 +49,10 @@ public class HostCloudDetector {
   private final HttpClient httpClient;
 
   private CloudType detected;
+  // Whether AWS was detected by a sign only AWS gives: its DMI tag, an IMDSv2 token, or IMDSv1
+  // refused because IMDSv2 is required. An IMDSv1 answer alone is also given by EC2-compatible
+  // clouds such as OpenStack.
+  private boolean awsConfirmed;
   private long undetectedUntilNanos;
   private boolean checked;
 
@@ -79,6 +83,14 @@ public class HostCloudDetector {
     return Optional.ofNullable(detected);
   }
 
+  /**
+   * Whether YBA runs on AWS itself, not on an EC2-compatible cloud: for using AWS-only credential
+   * sources, such as the instance's IAM role, which elsewhere would only be probed in vain.
+   */
+  public synchronized boolean isConfirmedAws() {
+    return isHostCloud(CloudType.aws) && awsConfirmed;
+  }
+
   /** Whether YBA was detected running on {@code cloud}; false when no cloud was detected. */
   public boolean isHostCloud(CloudType cloud) {
     return getHostCloud().equals(Optional.of(cloud));
@@ -87,6 +99,7 @@ public class HostCloudDetector {
   private Optional<CloudType> fromDmi() {
     String chassisAssetTag = readDmi("chassis_asset_tag");
     if ("Amazon EC2".equals(chassisAssetTag)) {
+      awsConfirmed = true;
       return Optional.of(CloudType.aws);
     }
     if (AZURE_CHASSIS_ASSET_TAG.equals(chassisAssetTag)) {
@@ -129,15 +142,16 @@ public class HostCloudDetector {
                 .header(AWS_IMDSV2_TOKEN_TTL_HEADER, "60")
                 .PUT(HttpRequest.BodyPublishers.noBody()),
             r -> r.statusCode() == 200);
-    CompletableFuture<Boolean> awsV1 =
-        probe(get(AWS_INSTANCE_ID_PATH), r -> r.statusCode() == 200 || r.statusCode() == 401);
+    CompletableFuture<Integer> awsV1 = status(get(AWS_INSTANCE_ID_PATH));
     if (gcp.join()) {
       return Optional.of(CloudType.gcp);
     }
     if (azu.join()) {
       return Optional.of(CloudType.azu);
     }
-    if (awsV2.join() || awsV1.join()) {
+    int awsV1Status = awsV1.join();
+    if (awsV2.join() || awsV1Status == 200 || awsV1Status == 401) {
+      awsConfirmed = awsV2.join() || awsV1Status == 401;
       return Optional.of(CloudType.aws);
     }
     return Optional.empty();
@@ -149,6 +163,14 @@ public class HostCloudDetector {
 
   private HttpRequest.Builder get(String path) {
     return request(path).GET();
+  }
+
+  /** The response status, or 0 when there is no response. */
+  private CompletableFuture<Integer> status(HttpRequest.Builder request) {
+    return httpClient
+        .sendAsync(request.build(), HttpResponse.BodyHandlers.discarding())
+        .thenApply(HttpResponse::statusCode)
+        .exceptionally(e -> 0);
   }
 
   private CompletableFuture<Boolean> probe(

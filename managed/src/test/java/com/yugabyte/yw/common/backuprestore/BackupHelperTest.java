@@ -1502,6 +1502,7 @@ public class BackupHelperTest extends FakeDBApplication {
 
   private void hostCloud(CloudType cloud) {
     when(mockHostCloudDetector.isHostCloud(any())).thenAnswer(inv -> inv.getArgument(0) == cloud);
+    when(mockHostCloudDetector.isConfirmedAws()).thenReturn(cloud == CloudType.aws);
   }
 
   private static Backup backupWithSnapshot(String audience, String roleArn) {
@@ -1543,19 +1544,37 @@ public class BackupHelperTest extends FakeDBApplication {
     assertTrue(s3Data.isIAMInstanceProfile);
   }
 
-  /** Off AWS, or with the host unknown, a keyless federated config is left as it was. */
+  /**
+   * Off AWS, with the host unknown, or on an EC2-compatible cloud taken for AWS, a keyless
+   * federated config is left as it was; one that carries keys keeps them even on AWS.
+   */
   @Test
-  public void testS3ConfigKeepsItsCredentialsWhenYbaIsNotOnAws() {
-    CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
-    s3Data.useCrossCloudFederation = true;
+  public void testS3ConfigKeepsItsCredentialsUnlessYbaIsOnConfirmedAws() {
+    for (CloudType host : new CloudType[] {null, CloudType.gcp, CloudType.aws}) {
+      if (host != null) {
+        hostCloud(host);
+      }
+      if (host == CloudType.aws) {
+        // Detected as AWS from IMDSv1 alone, which EC2-compatible clouds also answer.
+        when(mockHostCloudDetector.isConfirmedAws()).thenReturn(false);
+      }
+      CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
+      s3Data.useCrossCloudFederation = true;
+      Backup backup = backupWithSnapshot(null, null);
+      // No snapshot: falls back to the backup's universe, which is gone.
+      when(backup.getUniverseUUID()).thenReturn(UUID.randomUUID());
 
-    Backup backup = backupWithSnapshot(null, null);
-    // No snapshot: falls back to the backup's universe, which is gone.
-    when(backup.getUniverseUUID()).thenReturn(UUID.randomUUID());
+      spyBackupHelper.applyCrossCloudFederationFromBackup(s3Data, backup);
 
-    spyBackupHelper.applyCrossCloudFederationFromBackup(s3Data, backup);
+      assertFalse(String.valueOf(host), s3Data.isIAMInstanceProfile);
+    }
 
-    assertFalse(s3Data.isIAMInstanceProfile);
+    hostCloud(CloudType.aws);
+    CustomerConfigStorageS3Data withKeys = new CustomerConfigStorageS3Data();
+    withKeys.useCrossCloudFederation = true;
+    withKeys.awsAccessKeyId = "key";
+    spyBackupHelper.applyCrossCloudFederationFromBackup(withKeys, backupWithSnapshot(null, null));
+    assertFalse(withKeys.isIAMInstanceProfile);
   }
 
   /** YBA on AWS -> GCS: still federates with its AWS identity. */

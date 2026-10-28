@@ -138,6 +138,27 @@ public class HostCloudDetectorTest {
   }
 
   @Test
+  public void awsIsConfirmedOnlyBySignsOnlyAwsGives() throws IOException {
+    // EC2-compatible clouds answer IMDSv1 too.
+    answers = e -> e.getRequestURI().getPath().equals("/latest/meta-data/instance-id");
+    assertFalse(new HostCloudDetector(dmiDir, metadataUrl).isConfirmedAws());
+
+    answers =
+        e ->
+            e.getRequestMethod().equals("PUT")
+                && e.getRequestURI().getPath().equals("/latest/api/token");
+    assertTrue(new HostCloudDetector(dmiDir, metadataUrl).isConfirmedAws());
+
+    answers = e -> false;
+    rejects = e -> e.getRequestURI().getPath().equals("/latest/meta-data/instance-id");
+    assertTrue(new HostCloudDetector(dmiDir, metadataUrl).isConfirmedAws());
+
+    rejects = e -> false;
+    dmi("chassis_asset_tag", "Amazon EC2");
+    assertTrue(new HostCloudDetector(dmiDir, metadataUrl).isConfirmedAws());
+  }
+
+  @Test
   public void awsFromImdsV1WhenImdsV2IsRequired() {
     // The IMDSv2 token response doesn't reach YBA, and IMDSv1 is disabled.
     rejects = e -> e.getRequestURI().getPath().equals("/latest/meta-data/instance-id");

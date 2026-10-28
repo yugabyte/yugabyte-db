@@ -545,8 +545,10 @@ public class BackupHelper {
    * Stamps the resolved provider federation values on an in-memory storage config so YBA
    * authenticates to the bucket via in-process WIF (for preflight/delete) instead of default creds:
    * the GCP audience on a useGcpIam GCS config (GCS-on-AWS), or the AWS role ARN + audience on a
-   * cross-cloud federation S3 config (S3-on-GCP). No-op otherwise, or when no universe context /
-   * value is available.
+   * cross-cloud federation S3 config (S3-on-GCP). With YBA on the bucket's cloud nothing is
+   * stamped, so YBA uses its native identity; for a keyless S3 config on confirmed AWS that means
+   * switching it to YBA's IAM role. No-op otherwise, or when no universe context / value is
+   * available.
    */
   public void applyCrossCloudFederationAudience(
       CustomerConfigData configData, @Nullable Universe universe) {
@@ -616,12 +618,14 @@ public class BackupHelper {
   }
 
   /**
-   * Has YBA on AWS reach a federated S3 bucket with its own IAM role. A federated config carries no
-   * access keys and need not set the IAM role flag (only the UI does), so without this its client
-   * would be built from blank keys.
+   * Has YBA on AWS reach a federated S3 bucket with its own IAM role. A federated config usually
+   * carries no access keys and need not set the IAM role flag (only the UI does), so without this
+   * its client would be built from blank keys. Only on confirmed AWS: on an EC2-compatible cloud
+   * the role chain would be probed in vain. A config that does carry keys keeps using them.
    */
-  private static void useYbaIamRole(CustomerConfigStorageS3Data s3) {
-    if (StringUtils.isBlank(s3.awsAccessKeyId)) {
+  private void useYbaIamRole(CustomerConfigStorageS3Data s3) {
+    if (StringUtils.isBlank(s3.awsAccessKeyId) && hostCloudDetector.isConfirmedAws()) {
+      log.debug("YBA runs on AWS: using its IAM role for a federated storage config");
       s3.isIAMInstanceProfile = true;
     }
   }
@@ -637,7 +641,7 @@ public class BackupHelper {
     if (!hostCloudDetector.isHostCloud(cloud)) {
       return false;
     }
-    log.debug("YBA runs on {}: using its native identity for a federated storage config", cloud);
+    log.debug("YBA runs on {}: not federating its own access to a federated storage config", cloud);
     return true;
   }
 
