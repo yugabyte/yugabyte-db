@@ -179,10 +179,10 @@ public class GCPUtil implements CloudUtil {
   }
 
   /**
-   * Whether cross-cloud federation is turned on for this config: DB nodes off GCP reach the bucket
-   * with it, and so does YBA when it runs on AWS. Whether YBA itself federates is decided by
-   * BackupHelper from the host cloud: a YBA on GCP must take the native path, since the
-   * external_account credential_source is AWS IMDS, which does not exist there.
+   * Whether cross-cloud federation is turned on for YBA's own access to this bucket (YBA on AWS,
+   * bucket on GCP); the DB nodes' access does not read it. BackupHelper also leaves it unused on a
+   * GCP host: a YBA on GCP must take the native path, since the external_account credential_source
+   * is AWS IMDS, which does not exist there.
    */
   public static boolean isCrossCloudFederationConfig(CustomerConfigStorageGCSData gcsData) {
     return gcsData != null && gcsData.useCrossCloudFederation;
