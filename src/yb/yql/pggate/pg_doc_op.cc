@@ -892,7 +892,7 @@ Status PgDocReadOp::DoPopulateByYbctidOps(const YbctidGenerator& generator, Keep
   if (keep_order) {
     if (!result_stream_) {
       result_stream_ = std::make_unique<MergingPgDocOpFetchStream<DocResult>>(
-          [this]() { return this->FetchMoreResults(); }, pgsql_ops_, 0);
+          [this]() { return this->FetchMoreResults(); }, pgsql_ops_);
       result_stream_->SetFetchedTargets(targets_);
       VLOG(3) << "Created MergingPgDocOpFetchStream";
     }
@@ -1022,14 +1022,8 @@ Status PgDocReadOp::DoPopulateMergeStreamRequests(
   // responses.  No active ops means no execution.
   if (active_op_count > 0) {
     DCHECK(!result_stream_);
-    // It is not known here what columns are read, but need to reserve space in Datum/isnull arrays
-    // for them. So reserve space for all regular attributes.
-    auto nattrs = std::count_if(
-        table_->schema().columns().cbegin(),
-        table_->schema().columns().cend(),
-        [](const ColumnSchema& c) { return c.order() > 0; });
     result_stream_ = std::make_unique<MergingPgDocOpFetchStream<PgDocResult>>(
-        [this]() { return this->FetchMoreResults(); }, pgsql_ops_, nattrs);
+        [this]() { return this->FetchMoreResults(); }, pgsql_ops_);
     result_stream_->SetFetchedTargets(targets_);
     result_stream_->SetMergeSortKeys(merge_sort_keys);
   }
