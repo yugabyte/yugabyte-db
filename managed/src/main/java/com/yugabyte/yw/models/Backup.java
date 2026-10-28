@@ -196,6 +196,12 @@ public class Backup extends Model {
   public static final Set<BackupState> IN_PROGRESS_STATES =
       Sets.immutableEnumSet(
           BackupState.InProgress, BackupState.QueuedForDeletion, BackupState.DeleteInProgress);
+  // Queued for, or in the middle of, deletion by the garbage collector.
+  public static final List<BackupState> DELETION_STATES =
+      Arrays.asList(
+          BackupState.QueuedForDeletion,
+          BackupState.QueuedForForcedDeletion,
+          BackupState.DeleteInProgress);
   public static final List<BackupState> COMPLETED_STATES =
       Arrays.asList(
           BackupState.Completed, BackupState.Failed, BackupState.Stopped, BackupState.Skipped);
@@ -939,6 +945,13 @@ public class Backup extends Model {
             .filter(b -> b.getBackupInfo().storageConfigUUID.equals(customerConfigUUID))
             .collect(Collectors.toList());
     return backupList.size() != 0;
+  }
+
+  /** Whether any of the customer's backups stored with this config is being deleted. */
+  public static boolean findIfBackupsDeletingWithCustomerConfig(
+      UUID customerUUID, UUID customerConfigUUID) {
+    return findAllBackupWithState(customerUUID, DELETION_STATES).stream()
+        .anyMatch(b -> customerConfigUUID.equals(b.getBackupInfo().storageConfigUUID));
   }
 
   public static Optional<BackupTableParams> findBackupParamsWithStorageLocation(
