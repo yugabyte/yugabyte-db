@@ -1248,7 +1248,8 @@ namespace {
 void SetUsage(const char* argv0) {
   std::ostringstream str;
 
-  str << argv0 << " [--server_address=<addr>] <operation> <flags>\n"
+  str << argv0 << " [--server_address=<addr>] [--certs_dir_name=<dir>]"
+      << " [--client_node_name=<name>] <operation> <flags>\n"
       << "<operation> must be one of:\n"
       << "  " << kListTabletsOp << "\n"
       << "  " << kAreTabletsRunningOp << "\n"

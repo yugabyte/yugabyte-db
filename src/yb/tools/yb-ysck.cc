@@ -37,11 +37,16 @@
 
 #include "yb/master/master_defaults.h"
 
+#include "yb/rpc/messenger.h"
+#include "yb/rpc/secure_stream.h"
+
+#include "yb/tools/tools_utils.h"
 #include "yb/tools/ysck_remote.h"
 
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
+#include "yb/util/result.h"
 
 #define PUSH_PREPEND_NOT_OK(s, statuses, msg) do { \
   ::yb::Status _s = (s); \
@@ -73,7 +78,9 @@ namespace yb {
 namespace tools {
 
 static string GetYsckUsage(const char* progname) {
-  string msg = Format("Usage: $0 --master_address=<addr> <flags>\n\n", progname);
+  string msg = Format(
+      "Usage: $0 --master_address=<addr> [--certs_dir_name=<dir>] [--client_node_name=<name>] "
+      "<flags>\n\n", progname);
   msg += "Check the health of a YB cluster.\n\n"
          "By default, ysck checks that master and tablet server processes are running,\n"
          "and that table metadata is consistent. Use the 'checksum' flag to check that\n"
@@ -81,6 +88,13 @@ static string GetYsckUsage(const char* progname) {
          "Use the 'checksum_snapshot' along with 'checksum' if the table or tablets are\n"
          "actively receiving inserts or updates.";
   return msg;
+}
+
+static Status BuildMaster(const HostPort& address, shared_ptr<YsckMaster>* master) {
+  rpc::MessengerBuilder builder("ysck");
+  auto secure_context = VERIFY_RESULT(CreateSecureContextIfNeeded(builder));
+  auto messenger = VERIFY_RESULT(builder.Build());
+  return RemoteYsckMaster::Build(address, std::move(secure_context), std::move(messenger), master);
 }
 
 // Run ysck.
@@ -93,7 +107,7 @@ static void RunYsck(vector<string>* error_messages) {
       error_messages, "Unable to parse master address");
 
   shared_ptr<YsckMaster> master;
-  PUSH_PREPEND_NOT_OK(RemoteYsckMaster::Build(master_addrs[0], &master),
+  PUSH_PREPEND_NOT_OK(BuildMaster(master_addrs[0], &master),
                       error_messages, "Unable to build YsckMaster");
   if (!error_messages->empty()) return;
   shared_ptr<YsckCluster> cluster(new YsckCluster(master));

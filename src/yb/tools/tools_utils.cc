@@ -18,11 +18,20 @@
 
 #include "yb/util/flags.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 DEFINE_NON_RUNTIME_string(certs_dir_name, "",
-    "Directory with certificates to use for secure server connection.");
+    "Directory with certificates to use for secure server connection. Falls back to "
+    "--certs_dir when empty.");
+DEFINE_NON_RUNTIME_string(client_node_name, "",
+    "Name of the client certificate to present to the server: node.<name>.crt and "
+    "node.<name>.key from the certificates directory. Required when the cluster runs with "
+    "--node_to_node_encryption_use_client_certificates. Falls back to --cert_node_filename "
+    "when empty.");
+
+DECLARE_string(cert_node_filename);
 DECLARE_string(certs_dir);
-DEFINE_NON_RUNTIME_string(client_node_name, "", "Client node name.");
+DECLARE_bool(node_to_node_encryption_use_client_certificates);
 
 namespace yb::tools {
 
@@ -40,11 +49,25 @@ Result<std::unique_ptr<rpc::SecureContext>> CreateSecureContextIfNeeded(
     if (certs_dir_name.empty()) {
       certs_dir_name = FLAGS_certs_dir;
     }
+    // --cert_node_filename and --node_to_node_encryption_use_client_certificates come in when the
+    // tool is run with --flagfile pointing at a server's server.conf.
     cert_name = FLAGS_client_node_name;
+    if (cert_name.empty()) {
+      cert_name = FLAGS_cert_node_filename;
+    }
   }
   if (certs_dir_name.empty()) {
     return nullptr;
   }
+  // Without a client certificate the server rejects the TLS handshake and the tool only sees a
+  // connection timeout, so fail early with an actionable message instead.
+  SCHECK(
+      !cert_name.empty() || !certs_dir.empty() ||
+          !FLAGS_node_to_node_encryption_use_client_certificates,
+      InvalidArgument,
+      "--node_to_node_encryption_use_client_certificates is set, but no client certificate was "
+      "specified. Pass --client_node_name=<name> to use node.<name>.crt and node.<name>.key "
+      "from $0", certs_dir_name);
   auto secure_context = VERIFY_RESULT(rpc::CreateSecureContext(
       certs_dir_name, rpc::UseClientCerts(!cert_name.empty()), cert_name));
   rpc::ApplySecureContext(secure_context.get(), &messenger_builder);
