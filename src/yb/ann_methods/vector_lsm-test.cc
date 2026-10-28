@@ -15,7 +15,6 @@
 
 #include "yb/ann_methods/ann_methods.h"
 #include "yb/ann_methods/hnswlib_wrapper.h"
-#include "yb/ann_methods/usearch_wrapper.h"
 #include "yb/ann_methods/vector_lsm-test.pb.h"
 
 #include "yb/hnsw/vector_index_test_base.h"
@@ -207,7 +206,6 @@ class TestFrontiers : public rocksdb::UserFrontiersBase<TestFrontier> {
 
 class VectorLSMTestBase : public hnsw::VectorIndexTestBase {
  protected:
-  // Usearch creates an index with min capacity of 64 vectors.
   constexpr static size_t kDefaultChunkSize = 64;
 
   explicit VectorLSMTestBase(ParamType backend_param)
@@ -342,28 +340,11 @@ class VectorLSMTest : public VectorLSMTestBase,
   VectorLSMTest() : VectorLSMTestBase(GetParam()) {}
 };
 
-// Backend-independent VectorLSM tests (insert registry, flush barrier) pin usearch.
-class VectorLSMUsearchTest : public VectorLSMTestBase {
+// Backend-independent VectorLSM tests (insert registry, flush barrier) without payloads.
+class VectorLSMHnswlibTest : public VectorLSMTestBase {
  public:
-  VectorLSMUsearchTest()
-      : VectorLSMTestBase({
-            ANNMethodKind::kUsearch,
-        }) {}
+  VectorLSMHnswlibTest() : VectorLSMTestBase({ANNMethodKind::kHnswlib}) {}
 };
-
-Result<vector_index::VectorIndexTraitsPtr<std::vector<float>, float>> GetVectorIndexTraits(
-    const ParamType& param, const vector_index::HNSWOptions& options,
-    const hnsw::BlockCachePtr& block_cache, const MemTrackerPtr& mem_tracker = {}) {
-  switch (GetANNMethodKind(param)) {
-    case ANNMethodKind::kUsearch:
-      return CreateUsearchIndexTraits<std::vector<float>, float>(
-          block_cache, options, mem_tracker);
-    case ANNMethodKind::kHnswlib:
-      return CreateHnswlibIndexTraits<std::vector<float>, float>(
-          block_cache, options, mem_tracker);
-  }
-  FATAL_INVALID_ENUM_VALUE(ANNMethodKind, GetANNMethodKind(param));
-}
 
 constexpr static size_t GetNumEntriesByDimensions(size_t dimensions) {
   return 1ULL << dimensions;
@@ -500,8 +481,8 @@ Status VectorLSMTestBase::OpenVectorLSM(
   FloatVectorLSM::Options options = {
     .log_prefix = "Test: ",
     .storage_dir = dir,
-    .vector_index_traits = VERIFY_RESULT(GetVectorIndexTraits(
-        backend_param(), hnsw_options, block_cache_)),
+    .vector_index_traits = VERIFY_RESULT((CreateHnswlibIndexTraits<std::vector<float>, float>(
+        block_cache_, hnsw_options, /* mem_tracker= */ {}))),
     .vectors_per_chunk = vectors_per_chunk,
     .thread_pool = &thread_pool_,
     .insert_thread_pool = &thread_pool_,
@@ -751,7 +732,7 @@ TEST_P(VectorLSMTest, SingleChunkSimpleCompaction) {
 
 // AdvanceFlushedFrontier keeps a single chunk without a file however often it is called, also
 // across a reopen, and the flushed frontier is the largest one recorded.
-TEST_F(VectorLSMUsearchTest, AdvanceFlushedFrontierKeepsOneFrontierOnlyChunk) {
+TEST_F(VectorLSMHnswlibTest, AdvanceFlushedFrontierKeepsOneFrontierOnlyChunk) {
   constexpr size_t kDimensions = 4;
   constexpr size_t kNumAdvances = 10;
 
@@ -1110,7 +1091,7 @@ TEST_P(VectorLSMTest, ShutdownDuringBackgroundMerge) {
 // An Insert that starts after DoFlush clears mutable_chunk_ must still be visible to that wait,
 // otherwise the split "sync" flush is not an insert barrier and a later CompleteShutdown can
 // block on the leftover tasks (#32400).
-TEST_F(VectorLSMUsearchTest, SplitFlushIsInsertBarrier) {
+TEST_F(VectorLSMHnswlibTest, SplitFlushIsInsertBarrier) {
   constexpr size_t kDimensions = 8;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
@@ -1692,7 +1673,7 @@ TEST_P(VectorLSMTest, NotSavedChunk) {
 
 // Verifies that VectorLSM::EstimateNumVectorsForBytes returns a vector count whose actual on-disk
 // chunk size is close to the requested byte budget. This exercises the per-vector memory
-// accounting in the underlying ann_methods wrappers (usearch / hnswlib).
+// accounting in the underlying ann_methods wrapper.
 TEST_P(VectorLSMTest, EstimateNumVectorsForBytes) {
   constexpr size_t kDimensions = 64;
   constexpr size_t kBytesLimit = 1_MB;
@@ -1731,20 +1712,12 @@ TEST_P(VectorLSMTest, EstimateNumVectorsForBytes) {
   // (vectors_lookup_, nodes_, linkLists_) that don't make it into the serialized chunk file,
   // so the on-disk size is expected to be smaller than the budget but still close to it. The
   // exact ratio depends on the in-memory layout of the backend the chunk was built with.
-  const auto on_disk_lower_bound_ratio = [&]() -> double {
-    switch (GetANNMethodKind(GetParam())) {
-      case ANNMethodKind::kUsearch:
-        return 0.80;
-      case ANNMethodKind::kHnswlib:
-        return 0.65;
-    }
-    FATAL_INVALID_ENUM_VALUE(ANNMethodKind, GetANNMethodKind(GetParam()));
-  }();
+  constexpr double on_disk_lower_bound_ratio = 0.65;
   ASSERT_GE(on_disk_size, kBytesLimit * on_disk_lower_bound_ratio);
   ASSERT_LE(on_disk_size, kBytesLimit);
 }
 
-TEST_F(VectorLSMUsearchTest, MergeChunkResults) {
+TEST_F(VectorLSMHnswlibTest, MergeChunkResults) {
   const auto kIds = GenerateVectorIds(7);
 
   using ChunkResults = std::vector<vector_index::VectorWithDistance<float>>;
@@ -1766,7 +1739,7 @@ TEST_F(VectorLSMUsearchTest, MergeChunkResults) {
 INSTANTIATE_TEST_SUITE_P(
     ,
     VectorLSMTest,
-    testing::Combine(testing::ValuesIn(kANNMethodKindArray)),
+    testing::Combine(testing::Values(ANNMethodKind::kHnswlib)),
     ParamToString);
 
 }  // namespace yb::ann_methods
