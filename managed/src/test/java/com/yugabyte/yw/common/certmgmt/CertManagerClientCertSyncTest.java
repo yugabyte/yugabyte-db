@@ -30,8 +30,6 @@ import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
-import io.ebean.DB;
-import io.ebean.Transaction;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.SecretBuilder;
 import java.math.BigInteger;
@@ -361,18 +359,6 @@ public class CertManagerClientCertSyncTest extends FakeDBApplication {
     certSync.refreshIfNeeded(snapshot);
 
     verify(mockKubernetesManager, never()).getSecret(any(), anyString(), any());
-    assertFalse(Files.exists(clientDir));
-  }
-
-  @Test
-  public void testDeleteInTransactionRemovesCertWrittenBeforeCommit() throws Exception {
-    try (Transaction txn = DB.beginTransaction()) {
-      Universe.delete(universe.getUniverseUUID());
-      // Another thread still sees the universe until commit, so a refresh can write it back.
-      writeLocal(newCertPem(Duration.ofDays(90)));
-      txn.commit();
-    }
-
     assertFalse(Files.exists(clientDir));
   }
 

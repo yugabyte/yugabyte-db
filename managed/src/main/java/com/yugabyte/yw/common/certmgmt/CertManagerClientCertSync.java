@@ -282,7 +282,6 @@ public class CertManagerClientCertSync {
   }
 
   // Checked under the lock deleteClientCert holds, so a delete can't land between check and write.
-  // A delete still in an open transaction is covered by Universe.delete repeating it on commit.
   private static void writeIfUniverseExists(UUID universeUUID, Pair<String, String> pem)
       throws IOException {
     synchronized (CertManagerClientCertSync.class) {
