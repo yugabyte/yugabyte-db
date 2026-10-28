@@ -8179,6 +8179,22 @@ void CatalogManager::CleanUpDeletedTables(const LeaderEpoch& epoch) {
     if (!ShouldDeleteTable(table)) {
       continue;
     }
+    // Like CheckTableDeleted, do not mark a DDL-dropped index DELETED while the alter removing it
+    // from the indexed table is in flight; else the next statement may hit a schema version
+    // mismatch. The alter completes via tablet schema version reports, which keep re-sending it
+    // while the indexed table is running, so this deferral ends on its own.
+    if (table->is_index() && table->LockForRead()->has_ysql_ddl_txn_verifier_state()) {
+      auto indexed_table = GetTableInfo(table->indexed_table_id());
+      if (indexed_table) {
+        auto indexed_lock = indexed_table->LockForRead();
+        if (indexed_lock->is_running() && indexed_lock->pb.has_fully_applied_schema()) {
+          VLOG_WITH_PREFIX_AND_FUNC(2)
+              << "Deferring " << table->ToString() << " until alter of "
+              << indexed_table->ToString() << " completes";
+          continue;
+        }
+      }
+    }
     auto lock_and_transaction_id = PrepareTableDeletion(table);
     if (lock_and_transaction_id.first.locked()) {
       if (lock_and_transaction_id.first.data().is_hidden()) {
