@@ -9,6 +9,7 @@ import static play.mvc.Http.Status.EXPECTATION_FAILED;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.mvc.Http.Status.PRECONDITION_FAILED;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.cloud.aws.AWSCloudImpl;
@@ -85,9 +86,11 @@ import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentials;
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.awscore.exception.AwsServiceException;
 import software.amazon.awssdk.core.ResponseBytes;
 import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.core.exception.SdkClientException;
+import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.http.apache.ApacheHttpClient;
 import software.amazon.awssdk.http.apache.ProxyConfiguration;
@@ -216,6 +219,7 @@ public class AWSUtil implements CloudUtil {
       for (Map.Entry<String, String> entry : regionLocationsMap.entrySet()) {
         String region = entry.getKey();
         String backupLocation = entry.getValue();
+        String msg = String.format("Cannot list objects in backup location %s", backupLocation);
         try (S3Client s3Client = createS3Client(s3Data, region)) {
           CloudLocationInfo cLInfo = getCloudLocationInfo(region, configData, backupLocation);
           String bucketName = cLInfo.bucket;
@@ -227,9 +231,12 @@ public class AWSUtil implements CloudUtil {
             log.warn("Skipping cross-cloud federation list check: {}", e.getMessage());
             continue;
           }
-          String msg = String.format("Cannot list objects in backup location %s", backupLocation);
           log.error(msg, e);
           return false;
+        } catch (AwsServiceException e) {
+          // S3 (or STS, for a federated credential) refused, typically access denied: its message
+          // names the action and the resource.
+          throw awsServiceError(msg, e);
         }
       }
       return true;
@@ -262,6 +269,10 @@ public class AWSUtil implements CloudUtil {
           String bucketName = getCloudLocationInfo(regionPrefix.getKey(), configData, null).bucket;
           log.debug("Trying object listing with S3 bucket {} and prefix {}", bucketName, prefix);
           CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
+          String msg =
+              String.format(
+                  "Cannot list objects in cloud location with bucket %s and cloud directory %s",
+                  bucketName, prefix);
           try (S3Client s3Client = createS3Client(s3Data, region)) {
             tryListObjects(s3Client, bucketName, prefix);
           } catch (SdkClientException e) {
@@ -270,13 +281,11 @@ public class AWSUtil implements CloudUtil {
               log.warn("Skipping cross-cloud federation marker check: {}", e.getMessage());
               continue;
             }
-            String msg =
-                String.format(
-                    "Cannot list objects in cloud location with bucket %s and cloud directory %s",
-                    bucketName, prefix);
             log.error(msg, e);
             throw new PlatformServiceException(
                 PRECONDITION_FAILED, msg + ": " + e.getLocalizedMessage());
+          } catch (AwsServiceException e) {
+            throw awsServiceError(msg, e);
           }
         }
       }
@@ -286,6 +295,16 @@ public class AWSUtil implements CloudUtil {
     } finally {
       maybeEnableCertVerification();
     }
+  }
+
+  /** A clear client error for an S3 refusal, instead of letting it surface as a server error. */
+  private static PlatformServiceException awsServiceError(String msg, AwsServiceException e) {
+    log.error(msg, e);
+    String reason =
+        e.awsErrorDetails() != null && StringUtils.isNotBlank(e.awsErrorDetails().errorMessage())
+            ? e.awsErrorDetails().errorMessage()
+            : e.getMessage();
+    return new PlatformServiceException(PRECONDITION_FAILED, msg + ": " + reason);
   }
 
   @Override
@@ -1047,23 +1066,39 @@ public class AWSUtil implements CloudUtil {
         }
         client = builder.build();
       }
-      // First bucket region fetch may fail, so call and skip.
-      try {
-        if (client != null) {
-          String bucket = getCloudLocationInfo(region, s3Data, null /* backupLocation */).bucket;
-          if (StringUtils.isNotBlank(bucket)) {
-            getBucketRegion(bucket, client);
-          }
-        } else {
-          throw new RuntimeException("S3 client is null. This is unexpected!");
-        }
-      } catch (SdkClientException e) {
-        log.trace("Skipping first bucket region fetch error: {}", e.getMessage());
+      if (client == null) {
+        throw new RuntimeException("S3 client is null. This is unexpected!");
       }
+      warmUpBucketRegion(client, s3Data, region);
       return client;
     } catch (SdkClientException | URISyntaxException e) {
       throw new PlatformServiceException(
           BAD_REQUEST, String.format("Failed to create S3 client, error: %s", e.getMessage()));
+    }
+  }
+
+  /**
+   * Fetches the bucket region once and ignores the result, so the SDK caches the bucket's region:
+   * without it the first real call on a bucket outside the client's region can fail with a 301. Any
+   * failure is skipped, including an access error: the call that needs the bucket reports it.
+   * Skipped for a cross-cloud federation config, whose role need not allow s3:GetBucketLocation;
+   * its client relies on cross-region access instead.
+   */
+  @VisibleForTesting
+  void warmUpBucketRegion(S3Client client, CustomerConfigStorageS3Data s3Data, String region) {
+    if (isCrossCloudFederationConfig(s3Data)) {
+      return;
+    }
+    try {
+      String bucket = getCloudLocationInfo(region, s3Data, null /* backupLocation */).bucket;
+      if (StringUtils.isNotBlank(bucket)) {
+        getBucketRegion(bucket, client);
+      }
+    } catch (SdkException e) {
+      log.debug(
+          "Skipping first bucket region fetch error ({}): {}",
+          e.getClass().getSimpleName(),
+          e.getMessage());
     }
   }
 
@@ -1486,6 +1521,8 @@ public class AWSUtil implements CloudUtil {
         return true;
       }
       throw new RuntimeException("Error checking files on locations", e);
+    } catch (AwsServiceException e) {
+      throw awsServiceError("Cannot check files in backup locations " + locations, e);
     } finally {
       maybeEnableCertVerification();
     }

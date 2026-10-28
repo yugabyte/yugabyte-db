@@ -1338,6 +1338,9 @@ public class BackupHelper {
               fileName,
               universeUUID,
               checkExistsOnAll);
+    } catch (PlatformServiceException e) {
+      // Already a clear error for the user, such as the storage refusing access.
+      throw e;
     } catch (Exception e) {
       throw new RuntimeException(
           "Checking file existence on storage location failed", e.getCause());
