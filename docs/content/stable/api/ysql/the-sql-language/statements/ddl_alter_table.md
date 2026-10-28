@@ -261,7 +261,10 @@ Change the type of an existing column. The following semantics apply:
 
 ##### Table rewrites
 
-Altering a column's type requires a [full table rewrite](#alter-table-operations-that-involve-a-table-rewrite) when the underlying storage format changes or if the data changes. A table rewrite also rebuilds all indexes on the table.
+Altering a column's type may have one of the following outcomes:
+
+- **Table rewrite**: If the underlying storage format or the data change, the table and all its indexes may be rebuilt. See [Alter table operations that involve a table rewrite](#alter-table-operations-that-involve-a-table-rewrite).
+- **Index rebuild only**: In certain cases, the table is not rewritten, but indexes that contain the altered column are rebuilt. See [Index rebuilds without a table rewrite](#index-rebuilds-without-a-table-rewrite).
 
 The following type changes commonly require a table rewrite:
 
