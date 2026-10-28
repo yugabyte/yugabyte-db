@@ -16,6 +16,7 @@
 A wrapper script for a C++ program that generates the initial sys catalog snapshot.
 """
 
+import hashlib
 import sys
 import os
 import subprocess
@@ -38,8 +39,18 @@ def main() -> None:
     tool_path = os.path.join(build_root, 'tests-pgwrapper', tool_name)
     snapshot_dest_path = os.path.join(build_root, 'share', 'initial_sys_catalog_snapshot')
 
+    # A snapshot made from an older catalog definition lacks newer built-ins, so recreate it when
+    # postgres.bki changes.
+    with open(os.path.join(build_root, 'postgres', 'share', 'postgres.bki'), 'rb') as bki_file:
+        bki_hash = hashlib.sha256(bki_file.read()).hexdigest()
+    bki_hash_path = snapshot_dest_path + '.postgres_bki_sha256'
+    old_bki_hash = None
+    if os.path.exists(bki_hash_path):
+        with open(bki_hash_path) as hash_file:
+            old_bki_hash = hash_file.read().strip()
+
     file_to_check = os.path.join(snapshot_dest_path, 'exported_tablet_metadata_changes')
-    if (os.path.exists(file_to_check) and
+    if (os.path.exists(file_to_check) and old_bki_hash == bki_hash and
             os.environ.get('YB_RECREATE_INITIAL_SYS_CATALOG_SNAPSHOT', '') != '1'):
         logging.info(
             "Initial sys catalog snapshot already exists, not re-creating: %s",
@@ -74,6 +85,9 @@ def main() -> None:
         if initdb_result.failure():
             initdb_result.print_output_to_stdout()
             raise RuntimeError("initdb failed in %.1f sec" % elapsed_time_sec)
+
+    with open(bki_hash_path, 'w') as hash_file:
+        hash_file.write(bki_hash + '\n')
 
     logging.info(
         "Initial system catalog snapshot data creation took %1.f sec. Wrote data to: %s",
