@@ -127,6 +127,13 @@ static void plan_recursive_revoke(CatCList *memlist,
 								  DropBehavior behavior);
 static void InitGrantRoleOptions(GrantRoleOptions *popt);
 
+/* YB declarations */
+static bool yb_plan_single_revoke(CatCList *memlist,
+								  RevokeRoleGrantAction *actions,
+								  Oid member, Oid grantor,
+								  GrantRoleOptions *popt,
+								  DropBehavior behavior);
+
 /*
  * YB: Compute the pg_authid.rolvaliduntil implied by the yb_password_validity
  * policy for a password that is being stored right now.
@@ -2304,8 +2311,8 @@ DelRoleMems(Oid currentUserId, const char *rolename, Oid roleid,
 		RoleSpec   *memberRole = lfirst(specitem);
 		Oid			memberid = lfirst_oid(iditem);
 
-		if (!plan_single_revoke(memlist, actions, memberid, grantorId,
-								popt, behavior))
+		if (!yb_plan_single_revoke(memlist, actions, memberid, grantorId,
+								   popt, behavior))
 		{
 			ereport(WARNING,
 					(errmsg("role \"%s\" has not been granted membership in role \"%s\" by role \"%s\"",
@@ -2874,4 +2881,26 @@ assign_createrole_self_grant(const char *newval, void *extra)
 		(options & GRANT_ROLE_SPECIFIED_INHERIT) != 0;
 	createrole_self_grant_options.set =
 		(options & GRANT_ROLE_SPECIFIED_SET) != 0;
+}
+
+/*
+ * YB: plan_single_revoke(), but revoking as postgres also revokes the grant
+ * recorded under yugabyte.  A superuser's REVOKE without GRANTED BY, or with
+ * GRANTED BY yugabyte, revokes as postgres, yet a non-superuser that grants
+ * through ADMIN inherited from yugabyte records the grant under yugabyte, so
+ * without this no such REVOKE could remove it.
+ */
+static bool
+yb_plan_single_revoke(CatCList *memlist, RevokeRoleGrantAction *actions,
+					  Oid member, Oid grantor, GrantRoleOptions *popt,
+					  DropBehavior behavior)
+{
+	bool		found = plan_single_revoke(memlist, actions, member, grantor,
+										   popt, behavior);
+
+	/* |=, not ||: plan both rows when the member has one under each. */
+	if (grantor == BOOTSTRAP_SUPERUSERID)
+		found |= plan_single_revoke(memlist, actions, member,
+									YB_BOOTSTRAP_SUPERUSERID, popt, behavior);
+	return found;
 }
