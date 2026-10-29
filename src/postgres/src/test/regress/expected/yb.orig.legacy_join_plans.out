@@ -19,7 +19,7 @@ create index nonconcurrently i_t2r_v on t2r (v asc);
 -- every row of t2 and t2r and of their indexes as a provisional record, and
 -- the tservers apply and delete those records after the commit, while the
 -- next statements run.  On a busy host that work can delay those statements
--- past their RPC timeouts (#36159).
+-- past their RPC timeouts (#36291).
 set yb_disable_transactional_writes = on;
 insert into t1 select i, i / 4 from generate_series(1, 1000) i;
 insert into t2 select i, i, i % 10000, i % 10000, (i / 10000) * 10000, (i%2) = 1 from generate_series(1, 50000) i;
