@@ -120,6 +120,13 @@ struct TableInfo {
   // make sure this vector doesn't grow too large.
   std::vector<DeletedColumn> deleted_cols;
 
+  // For each schema version that is no longer current, the boundary op id past which WAL entries
+  // can no longer be packed with it. The entries below the boundary are packed with this version or
+  // older ones. Maintained while the tablet is under CDC replication so that OldSchemaGC retains
+  // the packings needed to decode WAL entries CDC may still stream. Entries are pruned together
+  // with their packings.
+  std::map<SchemaVersion, OpId> cdcsdk_schema_version_boundaries;
+
   // We use the retention time from the primary table.
   uint32_t wal_retention_secs = 0;
 
@@ -739,6 +746,12 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   Status OldSchemaGC(const docdb::CotableSchemaVersionMap& versions);
   void DisableSchemaGC();
   void EnableSchemaGC();
+
+  // Min schema version whose packing must be retained for CDCSDK. WAL entries the streams may
+  // still read can be packed with it or newer versions. No constraint (i.e max) when the tablet is
+  // not under CDCSDK replication.
+  SchemaVersion MinCDCSDKSchemaVersionToRetainUnlocked(const TableInfo& table_info) const
+      REQUIRES(data_mutex_);
 
   Result<docdb::CompactionSchemaInfo> CotablePacking(
       const Uuid& cotable_id, uint32_t schema_version, HybridTime history_cutoff) override;
