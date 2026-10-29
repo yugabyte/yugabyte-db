@@ -1380,15 +1380,23 @@ TEST_F(CqlTest, AlteredPrepareForIndexWithPaging_MetadataInExecResp) {
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
-// Every page of a paged SELECT reads at the read time of page 1 (GH #33610). Each case ends page 1
-// where the scan moves to another tablet or IN key, updates a row that a later page reads, and
-// expects that page to show the old value:
-// - Full scan, page size = rows in the first tablet: page 1 ends on that tablet's last row.
-//   Control: one row fewer, so page 1 ends inside the tablet.
-// - IN on the hash key, a covered index key and an uncovered index key, page size 1: page 1 ends
-//   on the first key's only row. The index cases get their paging state from the index scan.
-// Each case runs with ycql_consistent_transactional_paging off and on. With it on, a later page
-// can fail with a read restart error instead, but must never show the new value.
+// Every page of a paged SELECT reads at the read time of page 1 (GH #33610). Each scenario reads
+// page 1, sets v = 1 on a row that a later page reads, reads the remaining pages, and expects that
+// row to still show v = 0. Table t has 2 tablets, and tablet 1 holds N of the 20 rows (N = 13).
+//
+//   scenario                      query                        page size  page 1 ends
+//   control                       SELECT id, v FROM t          N - 1      inside tablet 1
+//   full scan, tablet boundary    SELECT id, v FROM t          N          on tablet 1's last row
+//   IN on the hash key            ... WHERE id IN (1, 2)       1          on key 1's only row
+//   IN on a covered index key     ... WHERE w IN (1, 2)        1          on key 1's only row
+//   IN on an uncovered index key  ... WHERE u IN (1, 2)        1          on key 1's only row
+//
+// Key 1 is the IN key that page 1 returns; the updated row is the other one. The index scenarios
+// get their paging state from the index scan. Every scenario except the control fails without the
+// fix: the later page reads at a new read time and shows v = 1.
+//
+// Each scenario runs with ycql_consistent_transactional_paging off and on. Off: the later pages
+// show v = 0. On: they show v = 0 or fail with a read restart error, but never show v = 1.
 TEST_F(CqlTest, PagingReadTimeAtPartitionBoundary) {
   auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
   ASSERT_OK(session.ExecuteQuery(
