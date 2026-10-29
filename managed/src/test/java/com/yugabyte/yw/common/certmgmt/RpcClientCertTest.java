@@ -442,7 +442,11 @@ public class RpcClientCertTest extends FakeDBApplication {
     generator.initialize(256);
     KeyPair keyPair = generator.generateKeyPair();
     X509Certificate cert =
-        sign(new X500Name("CN=yugabyte"), keyPair.getPublic(), Instant.now().plus(validFor), ROOT_CA);
+        sign(
+            new X500Name("CN=yugabyte"),
+            keyPair.getPublic(),
+            Instant.now().plus(validFor),
+            ROOT_CA);
     return Pair.of(
         CertificateHelper.getAsPemString(cert),
         CertificateHelper.getAsPemString(keyPair.getPrivate()));

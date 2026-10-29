@@ -27,8 +27,8 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import java.util.Objects;
 import java.util.Collections;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -72,7 +72,8 @@ public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
       try {
         getInstanceOf(RpcClientCert.class).load(universe);
       } catch (RuntimeException e) {
-        boolean afterReset = Objects.equals(taskParams().rootCA, universe.getUniverseDetails().rootCA);
+        boolean afterReset =
+            Objects.equals(taskParams().rootCA, universe.getUniverseDetails().rootCA);
         throw new PlatformServiceException(
             BAD_REQUEST,
             "YugabyteDB Anywhere has no client certificate issued by the universe's current root"

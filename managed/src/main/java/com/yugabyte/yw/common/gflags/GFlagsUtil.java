@@ -1370,8 +1370,8 @@ public class GFlagsUtil {
 
   /**
    * useNodeToNodeClientCerts owns node_to_node_encryption_use_client_certificates, so the gflag
-   * can't be set by hand, except to false on a universe without it; while it is on, the identity checks the chart's client cert can't pass
-   * stay off.
+   * can't be set by hand, except to false on a universe without it; while it is on, the identity
+   * checks the chart's client cert can't pass stay off.
    */
   public static void validateNodeToNodeClientCerts(
       UniverseDefinitionTaskParams.UserIntent userIntent, boolean useClientCerts) {
