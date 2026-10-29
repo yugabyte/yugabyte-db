@@ -16,6 +16,7 @@ import {
   navigateToUniverseSettingsFromWizard,
   useGeoPartitionNavigation
 } from '../AddGeoPartitionUtils';
+import { getPrimaryCluster } from '@app/redesign/utils/universeUtils';
 import GeoPartitionBreadCrumb from '../GeoPartitionBreadCrumbs';
 import { mui } from '@yugabyte-ui-library/core';
 import { NodeAvailabilityProps } from '../../../create-universe/steps/nodes-availability/dtos';
@@ -41,7 +42,9 @@ export const GeoPartitionResilience = () => {
             resilienceAndRegionsSettings: geoPartitions[activeGeoPartitionIndex].resilience,
             generalSettings: {
               providerConfiguration: {
-                uuid: universeData?.spec?.clusters[0].provider_spec?.provider ?? ''
+                uuid:
+                  getPrimaryCluster(universeData?.spec?.clusters ?? [])?.provider_spec
+                    ?.provider ?? ''
               }
             }
           },
