@@ -13,7 +13,11 @@
 package org.yb.pgsql;
 
 import java.io.File;
+import java.nio.file.Path;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 
 import org.apache.commons.io.FileUtils;
@@ -78,10 +82,48 @@ public class TestPgRegressThirdPartyExtensionsPostgresqlAnonymizer extends BaseP
   // pg_regress runs in its input dir, and tests write scratch files (e.g. tmp/_pg_dump_A.sql)
   // relative to it and read ../data, so give each run a private copy to avoid clashing with
   // concurrent runs from the same build.
+  // Only tests/ and data/ are read. Skip output of earlier or concurrent local runs, which other
+  // runs rewrite while this copy is in progress.
   private File privateInputDir() throws Exception {
+    File src = regress_schedule.getParentFile();
+    Path srcPath = src.toPath();
     File root = new File(TestUtils.getBaseTmpDir(), "postgresql_anonymizer");
-    FileUtils.copyDirectory(regress_schedule.getParentFile(), root);
+    FileUtils.copyDirectory(src, root, f -> {
+      Path rel = srcPath.relativize(f.toPath());
+      String top = rel.getName(0).toString();
+      if (rel.getNameCount() == 1) {
+        return top.equals("tests") || top.equals("data");
+      }
+      String second = rel.getName(1).toString();
+      return !top.equals("tests") ||
+          (!second.equals("results") && !second.startsWith("regression."));
+    });
     return new File(root, "tests");
+  }
+
+  // Outside CI, PgRegressRunner copies results back into the input dir. Copy them on to the build
+  // dir, where developers look for them, since the tmp dir may be deleted on exit. Errors are only
+  // logged: concurrent runs may write the same files, and the pg_regress outcome must not be lost.
+  private void copyResultsToBuildDir(File inputDir) {
+    LOG.info("Copying pg_regress results from {} to {}", inputDir, regress_schedule);
+    List<File> files = new ArrayList<>();
+    File results = new File(inputDir, "results");
+    if (results.isDirectory()) {
+      files.addAll(FileUtils.listFiles(results, null, true));
+    }
+    File[] regressionFiles = inputDir.listFiles((dir, name) -> name.startsWith("regression."));
+    if (regressionFiles != null) {
+      files.addAll(Arrays.asList(regressionFiles));
+    }
+    Path inputPath = inputDir.toPath();
+    for (File srcFile : files) {
+      File destFile = new File(regress_schedule, inputPath.relativize(srcFile.toPath()).toString());
+      try {
+        FileUtils.copyFile(srcFile, destFile);
+      } catch (Exception ex) {
+        LOG.error("Failed copying file " + srcFile + " to " + destFile, ex);
+      }
+    }
   }
 
   private void runSchedule(String schedule) throws Exception {
@@ -89,18 +131,8 @@ public class TestPgRegressThirdPartyExtensionsPostgresqlAnonymizer extends BaseP
     try {
       runPgRegressTest(inputDir, schedule);
     } finally {
-      // Outside CI, PgRegressRunner copies results back into the input dir. Move them on to the
-      // build dir, where developers look for them, since the tmp dir may be deleted on exit.
       if (!ConfForTesting.isCI()) {
-        File results = new File(inputDir, "results");
-        File diffs = new File(inputDir, "regression.diffs");
-        LOG.info("Copying pg_regress results from {} to {}", inputDir, regress_schedule);
-        if (results.isDirectory()) {
-          FileUtils.copyDirectory(results, new File(regress_schedule, "results"));
-        }
-        if (diffs.isFile()) {
-          FileUtils.copyFileToDirectory(diffs, regress_schedule);
-        }
+        copyResultsToBuildDir(inputDir);
       }
     }
   }

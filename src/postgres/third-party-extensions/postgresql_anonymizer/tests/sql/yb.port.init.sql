@@ -28,18 +28,18 @@ SELECT anon.is_initialized() IS FALSE;
 -- there) instead of a fixed /tmp dir shared by concurrently running tests.
 SELECT current_setting('data_directory') || '/tmp_anon_alternate_data' AS yb_anon_dir \gset
 \setenv YB_ANON_DIR :yb_anon_dir
-\! mkdir -p $YB_ANON_DIR # YB: Per-cluster dir
-\! cp -pr ../data/*.csv $YB_ANON_DIR # YB: Fix directory for data
-\! cp -pr ../data/fr_FR/fake/*.csv $YB_ANON_DIR # YB: Fix directory for data
+\! mkdir -p "$YB_ANON_DIR" # YB: Per-cluster dir
+\! cp -pr ../data/*.csv "$YB_ANON_DIR" # YB: Fix directory for data
+\! cp -pr ../data/fr_FR/fake/*.csv "$YB_ANON_DIR" # YB: Fix directory for data
 BEGIN; -- YB: Workaround for read time error, check #25665
 SELECT anon.init('tmp_anon_alternate_data'); -- YB: Per-cluster dir
 COMMIT; -- YB: Workaround for read time error, check #25665
 
 -- Load bad data
-\! echo '1\t too \t many \t tabs' > $YB_ANON_DIR/bad.csv # YB: Per-cluster dir
+\! echo '1\t too \t many \t tabs' > "$YB_ANON_DIR/bad.csv" # YB: Per-cluster dir
 SELECT anon.load_csv('anon.city','tmp_anon_alternate_data/bad.csv') IS FALSE; -- YB: Per-cluster dir
 
-\! rm -fr $YB_ANON_DIR # YB: Per-cluster dir
+\! rm -fr "$YB_ANON_DIR" # YB: Per-cluster dir
 
 SELECT anon.reset();
 
