@@ -46,8 +46,11 @@ import org.apache.commons.collections4.CollectionUtils;
  * blacklisted, and can be retried once it is back. Clusters are rolled back one after the other,
  * so a failure in the read replica comes after the primary was already rolled back. If the rollback
  * fails after the blacklist was set (for example in the data move or the safe-to-delete check), the
- * entries stay until a retry, which sets and clears them again. A failed rollback keeps the
- * universe's placement lock, so a retry is the only way forward and the entries do not outlive it.
+ * entries stay until a retry, which sets and clears them again. This task is a placement
+ * modification task, so its failed run stays the universe's {@code placementModificationTaskUuid}
+ * (unlock only clears it on success). Until a retry succeeds, only that retry and the {@code
+ * SAFE_TO_RUN_IF_UNIVERSE_BROKEN} tasks can run, and none of them create pods, so no later edit
+ * can reuse these pod names while the entries are set.
  *
  * <p>Primary {@code dedicatedNodes} flips are refused via {@link
  * StateTransitionDetails#requireRollbackable()}.
