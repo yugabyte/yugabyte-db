@@ -254,6 +254,7 @@ class XClusterOutboundReplicationGroup
       const NamespaceId& namespace_id, const TableId& table_id, bool needs_wal_anchor,
       const LeaderEpoch& epoch) EXCLUDES(mutex_);
 
+  // completion_cb is not invoked if an error is returned.
   Status CheckpointNewTable(
       const NamespaceId& namespace_id, const TableId& table_id, const LeaderEpoch& epoch,
       StdStatusCallback completion_cb) EXCLUDES(mutex_);

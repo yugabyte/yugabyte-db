@@ -1270,8 +1270,8 @@ class XClusterBootstrapTabletSplitITest : public XClusterTabletSplitITest {
   std::optional<client::TransactionManager> producer_transaction_manager_;
 };
 
-// Splits between the bootstrap and the replication setup are allowed because the source records the
-// bootstrapped tablets, and the target starts replicating from them.
+// Tests that the target gets every row when the source splits between the bootstrap and the
+// replication setup.
 TEST_F(XClusterBootstrapTabletSplitITest, BootstrapWithSplits) {
   // Start by writing some rows to the producer.
   ASSERT_RESULT(WriteRowsAndFlush(kDefaultNumRows));

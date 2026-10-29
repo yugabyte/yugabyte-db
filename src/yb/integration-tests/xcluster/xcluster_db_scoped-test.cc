@@ -151,7 +151,6 @@ class XClusterDBScopedTest : public XClusterYsqlTestBase {
     return STATUS_FORMAT(NotFound, "No stream found for table $0", table_id);
   }
 
-  // The tablets recorded on the source stream of the table when it was checkpointed.
   Result<std::vector<TabletId>> GetProducerStreamBootstrapTablets(const TableId& table_id) {
     auto& catalog_manager =
         VERIFY_RESULT(producer_cluster()->GetLeaderMiniMaster())->catalog_manager_impl();
@@ -436,11 +435,10 @@ Result<uint64_t> SumSourceRows(const std::string& out, const TableId& source_tab
 
 }  // namespace
 
-// The source splits between the checkpoint and the target setup. The target has to start from the
-// checkpointed (now split) tablets to get the rows written before the split.
+// Tests that the target gets every row when the source splits between the checkpoint and the
+// target setup.
 TEST_F(XClusterDBScopedAutomaticModeTest, SplitAfterCheckpoint) {
   ASSERT_OK(SetUpClusters());
-  // Cluster setup turns this off.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_replicated_tables) = true;
   ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
 
@@ -457,12 +455,11 @@ TEST_F(XClusterDBScopedAutomaticModeTest, SplitAfterCheckpoint) {
   ASSERT_OK(InsertRowsInProducer(100, 150));
   ASSERT_OK(VerifyWrittenRecords());
 
-  // Kept after the stream turns ACTIVE, for setups that are retried.
   ASSERT_EQ(ASSERT_RESULT(GetProducerStreamBootstrapTablets()), checkpointed_tablets);
 }
 
-// If the source fails to record the checkpointed tablets, the checkpoint still succeeds, and the
-// stream keeps blocking splits.
+// Tests that a checkpoint whose tablets fail to be recorded still succeeds, and that its stream
+// keeps blocking splits.
 TEST_F(XClusterDBScopedAutomaticModeTest, SplitBlockedWithoutRecordedTablets) {
   ASSERT_OK(SetUpClusters());
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_replicated_tables) = true;
@@ -481,7 +478,7 @@ TEST_F(XClusterDBScopedAutomaticModeTest, SplitBlockedWithoutRecordedTablets) {
   ASSERT_OK(VerifyWrittenRecords());
 }
 
-// An attempt of the initial checkpoint that recorded its streams but then failed is not redone.
+// Tests that a retry of the initial checkpoint skips the streams that a failed attempt recorded.
 TEST_F(XClusterDBScopedAutomaticModeTest, InitialCheckpointRetryKeepsRecordedCheckpoint) {
   ASSERT_OK(SetUpClusters());
   // Every BootstrapProducer response is lost, so the checkpoint only completes if the retry skips

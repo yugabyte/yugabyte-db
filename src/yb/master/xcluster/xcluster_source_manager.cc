@@ -1564,28 +1564,23 @@ Status XClusterSourceManager::MarkIndexBackfillCompleted(
   // Do not advance WAL_ANCHOR stream with the index's table streams.
   const auto anchor_stream_ids = GetWalAnchorStreamIds(index_ids);
   std::vector<std::pair<TableId, xrepl::StreamId>> table_streams;
-  {
-    SharedLock l(tables_to_stream_map_mutex_);
-    for (const auto& index_info : index_infos) {
-      const auto& index_id = index_info->id();
-      if (tables_to_stream_map_.contains(index_id)) {
-        for (const auto& stream : tables_to_stream_map_.at(index_id)) {
-          if (anchor_stream_ids.contains(stream->StreamId()) ||
-              !IsCheckpointedAgainAfterBackfill(*index_info, *stream)) {
-            continue;
-          }
-          // A recorded checkpoint is never redone.
-          if (HasBootstrapTablets(stream->LockForRead()->pb)) {
-            LOG(INFO) << "Not checkpointing xCluster stream " << stream->StreamId()
-                      << " of index " << index_id
-                      << " again, since an earlier run recorded its checkpoint";
-            continue;
-          }
-          LOG(INFO) << "Checkpointing xCluster stream " << stream->StreamId() << " of index "
-                    << index_id << " to its end of WAL";
-          table_streams.emplace_back(index_id, stream->StreamId());
-        }
+  for (const auto& index_info : index_infos) {
+    const auto& index_id = index_info->id();
+    // Not under tables_to_stream_map_mutex_: IsCheckpointedAgainAfterBackfill takes it.
+    for (const auto& stream : GetStreamsForTable(index_id, /*include_dropped=*/true)) {
+      if (anchor_stream_ids.contains(stream->StreamId()) ||
+          !IsCheckpointedAgainAfterBackfill(*index_info, *stream)) {
+        continue;
       }
+      // A recorded checkpoint is never redone.
+      if (HasBootstrapTablets(stream->LockForRead()->pb)) {
+        LOG(INFO) << "Not checkpointing xCluster stream " << stream->StreamId() << " of index "
+                  << index_id << " again, since an earlier run recorded its checkpoint";
+        continue;
+      }
+      LOG(INFO) << "Checkpointing xCluster stream " << stream->StreamId() << " of index "
+                << index_id << " to its end of WAL";
+      table_streams.emplace_back(index_id, stream->StreamId());
     }
   }
   if (table_streams.empty()) {

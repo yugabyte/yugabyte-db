@@ -935,11 +935,10 @@ TEST_F(XClusterDDLReplicationTest, CreateIndexWithPartitions) {
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow({namespace_name}));
 }
 
-// A new index can split before the target replays its CREATE INDEX, and the target still gets the
-// split parent's writes.
+// Tests that the target gets every index entry when a new index splits before the target replays
+// its CREATE INDEX.
 TEST_F(XClusterDDLReplicationTest, SplitIndexBeforeTargetCreatesIt) {
   ASSERT_OK(SetUpClustersAndReplication());
-  // Cluster setup turns this off.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_replicated_tables) = true;
 
   ASSERT_OK(producer_conn_->Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
@@ -7590,11 +7589,10 @@ TEST_F(XClusterWalAnchorStreamTest, TableRewriteRollbackThenRetrySucceeds) {
       /*table_name=*/kBaseTable, /*verify_tables=*/{kBaseTable});
 }
 
-// The table splits while the target keeps rolling back its CREATE TABLE. The replacement stream
-// must start from the anchor's (now split) tablets to get the rows written before the split.
+// Tests that the target gets every row when the table splits while the target keeps rolling back
+// its CREATE TABLE.
 TEST_F(XClusterWalAnchorStreamTest, SplitBeforeRollbackRetrySucceeds) {
   ASSERT_OK(SetUpClustersAndReplication());
-  // Cluster setup turns this off.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_replicated_tables) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_ddl_queue_max_retries_per_ddl) = 1000;
