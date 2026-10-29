@@ -96,13 +96,12 @@ class PgDbCache::Impl : public std::enable_shared_from_this<Impl> {
 
   void MasterLookupDone(
       uint32_t db_oid, const Status& status, const master::GetNamespaceInfoResponsePB& resp) {
-    auto result = [&]() -> Result<ColocationInfo> {
-      RETURN_NOT_OK(status);
-      return ColocationInfo{
-          .colocated = resp.colocated(),
-          .legacy_colocated_database =
-              resp.has_legacy_colocated_database() ? resp.legacy_colocated_database() : true};
-    }();
+    Result<ColocationInfo> result = status.ok()
+        ? Result<ColocationInfo>(ColocationInfo{
+              .colocated = resp.colocated(),
+              .legacy_colocated_database =
+                  resp.has_legacy_colocated_database() ? resp.legacy_colocated_database() : true})
+        : Result<ColocationInfo>(status);
 
     std::vector<Callback> waiters;
     {
