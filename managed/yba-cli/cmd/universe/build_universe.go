@@ -63,7 +63,7 @@ func buildClusters(
 	var res []ybaclient.Cluster
 
 	providerListRequest := authAPI.GetListOfProviders()
-	providerListRequest = providerListRequest.ProviderCode(strings.ToLower(providerType))
+	providerListRequest = providerListRequest.ProviderCode(providerType)
 	providerName := v1.GetString("provider-name")
 	if !util.IsEmptyString(providerName) {
 		providerListRequest = providerListRequest.Name(providerName)
@@ -940,7 +940,8 @@ func setDefaultStorageTypes(
 }
 
 func getProviderType() {
-	providerType = v1.GetString("provider-code")
+	// Lowercase the code, because the provider type checks compare it exactly.
+	providerType = strings.ToLower(v1.GetString("provider-code"))
 	if util.IsEmptyString(providerType) {
 		logrus.Fatalln(formatter.Colorize("No provider code found\n", formatter.RedColor))
 	}
@@ -966,7 +967,7 @@ func buildKMSConfigs(authAPI *ybaAuthClient.AuthAPIClient) string {
 
 	cveKMSConfigName := v1.GetString("cloud-volume-encryption-kms-config")
 	if !util.IsEmptyString(cveKMSConfigName) {
-		if !strings.EqualFold(providerType, util.AWSProviderType) {
+		if providerType != util.AWSProviderType {
 			logrus.Debug(
 				"cloud-volume-encryption-kms-config can only be set for AWS universes, ignoring value\n",
 			)
