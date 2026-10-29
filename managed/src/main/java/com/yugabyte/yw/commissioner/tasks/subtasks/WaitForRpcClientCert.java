@@ -13,8 +13,8 @@ import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Waits until YBA has a client cert for the universe's root CA: after helm install, before the
- * servers' first RPCs, and after a root CA rotation's Reset, before the roll that drops the old CA.
+ * Waits until YBA has a client cert for the universe's root CA. A root CA rotation runs it after
+ * Reset, so it fails before the roll that drops the old CA if the issuer hasn't reissued yet.
  */
 @Slf4j
 public class WaitForRpcClientCert extends UniverseTaskBase {
@@ -42,7 +42,7 @@ public class WaitForRpcClientCert extends UniverseTaskBase {
   @Override
   public void run() {
     Universe universe = getUniverse();
-    // Checked again here because a root CA rotation changes rootCA after the task was added.
+    // Checked again here because the rotation changes rootCA after the task was added.
     if (!RpcClientCert.isClientCertRequired(universe)) {
       log.info("Universe {} does not need a client cert", universe.getName());
       return;

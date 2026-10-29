@@ -35,17 +35,11 @@ import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.certmgmt.CertConfigType;
-import com.yugabyte.yw.common.certmgmt.CertificateHelper;
-import com.yugabyte.yw.common.certmgmt.RpcClientCert;
-import com.yugabyte.yw.common.certmgmt.RpcClientCertTest;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
@@ -53,18 +47,13 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodList;
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import org.apache.commons.lang3.tuple.Pair;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -759,62 +748,6 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
         TaskType.CreateYbStorageDatabase,
         taskTypes.get(taskTypes.indexOf(TaskType.UpdateConsistencyCheck) + 1));
     verify(mockYsqlQueryExecutor, times(1)).executeQueryInNodeShell(any(), any(), any());
-  }
-
-  @Test
-  public void testCreateKubernetesUniverseWaitsForClientCert() throws Exception {
-    setupUniverse(/* Create Masters */ false, /* YEDIS/REDIS enabled */ true, false);
-    setupCommon();
-    String caCertFile =
-        TestHelper.createTempFile(
-            TestHelper.TMP_PATH + "/" + UUID.randomUUID(),
-            "ca.root.crt",
-            CertificateHelper.getAsPemString(RpcClientCertTest.ROOT_CA.getRight()));
-    UUID rootCA = UUID.randomUUID();
-    CertificateInfo.create(
-        rootCA,
-        defaultCustomer.getUuid(),
-        "cert-manager-ca",
-        new Date(),
-        new Date(),
-        "",
-        caCertFile,
-        CertConfigType.K8SCertManager);
-    defaultUniverse =
-        Universe.saveDetails(
-            defaultUniverse.getUniverseUUID(),
-            u -> {
-              UniverseDefinitionTaskParams details = u.getUniverseDetails();
-              details.rootCA = rootCA;
-              details.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt = true;
-              details
-                  .getPrimaryCluster()
-                  .userIntent
-                  .tserverGFlags
-                  .put(RpcClientCert.USE_CLIENT_CERTS_GFLAG, "true");
-              u.setUniverseDetails(details);
-            });
-    universeVersion = defaultUniverse.getVersion();
-    Pair<String, String> pem = RpcClientCertTest.newCertPem(Duration.ofDays(90));
-    when(mockKubernetesManager.getSecret(any(), any(), any()))
-        .thenReturn(RpcClientCertTest.secret(pem));
-    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
-    taskParams.rootCA = rootCA;
-    TaskInfo taskInfo = submitTask(taskParams);
-    assertEquals(taskInfo.getErrorMessage(), Success, taskInfo.getTaskState());
-    List<TaskType> taskTypes =
-        taskInfo.getSubTasks().stream()
-            .collect(Collectors.groupingBy(TaskInfo::getPosition))
-            .entrySet()
-            .stream()
-            .sorted(Map.Entry.comparingByKey())
-            .map(e -> e.getValue().get(0).getTaskType())
-            .collect(Collectors.toList());
-    assertEquals(
-        TaskType.WaitForRpcClientCert,
-        taskTypes.get(taskTypes.indexOf(TaskType.WaitForServer) - 1));
-    assertEquals(
-        pem.getLeft(), Files.readString(Paths.get(CertificateHelper.getClientCertFile(rootCA))));
   }
 
   @Test

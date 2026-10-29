@@ -61,7 +61,7 @@ import org.junit.Test;
 public class RpcClientCertTest extends FakeDBApplication {
 
   /** A CA's key and cert; ROOT_CA is the universe's root CA unless a test says otherwise. */
-  public static final Pair<KeyPair, X509Certificate> ROOT_CA = newCA("test-root-ca");
+  private static final Pair<KeyPair, X509Certificate> ROOT_CA = newCA("test-root-ca");
 
   private Customer customer;
   private AvailabilityZone az;
@@ -189,7 +189,7 @@ public class RpcClientCertTest extends FakeDBApplication {
   }
 
   /** A client cert issued by ROOT_CA. */
-  public static Pair<String, String> newCertPem(Duration validFor) throws Exception {
+  private static Pair<String, String> newCertPem(Duration validFor) throws Exception {
     return newCertPem(Instant.now().plus(validFor), ROOT_CA);
   }
 
@@ -206,7 +206,7 @@ public class RpcClientCertTest extends FakeDBApplication {
     return newCertPem(Instant.now().plus(Duration.ofDays(90)), newCA("next-ca"));
   }
 
-  public static Secret secret(Pair<String, String> pem) {
+  private static Secret secret(Pair<String, String> pem) {
     Base64.Encoder encoder = Base64.getEncoder();
     return new SecretBuilder()
         .addToData("tls.crt", encoder.encodeToString(pem.getLeft().getBytes()))
