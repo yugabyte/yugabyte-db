@@ -942,19 +942,9 @@ Status RestoreSysCatalogState::PrepareTableCleanup(
     docdb::DocWriteBatch* write_batch, HybridTime now_ht) {
   VLOG_WITH_FUNC(4) << id;
 
-  // For a colocated table, mark it as HIDDEN.
-  if (pb.colocated()) {
-    pb.set_hide_state(SysTablesEntryPB::HIDDEN);
-    pb.set_hide_hybrid_time(now_ht.ToUint64());
-  } else {
-    pb.set_hide_state(SysTablesEntryPB::HIDING);
-  }
-
-  // The restore undoes any DDL in progress on this table, so drop its DDL state. For a colocated
-  // table, which goes straight to HIDDEN, nothing else clears it: the reloaded master would never
-  // finish verifying that DDL, and the DDL's object locks would stay held.
-  pb.clear_ysql_ddl_txn_verifier_state();
-  pb.clear_transaction();
+  // Colocated tables too: going straight to HIDDEN would skip PrepareTableDeletion, which ends the
+  // table's in-progress DDL, if any, and releases the DDL's object locks.
+  pb.set_hide_state(SysTablesEntryPB::HIDING);
 
   pb.set_version(pb.version() + 1);
   return WriteEntry(
