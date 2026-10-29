@@ -44,7 +44,10 @@ import org.apache.commons.collections4.CollectionUtils;
  * cluster's surviving tservers to be up, so the rollback first waits for them with the usual
  * bounded timeout. If one is down, the rollback fails there, before that cluster's tservers are
  * blacklisted, and can be retried once it is back. Clusters are rolled back one after the other,
- * so a failure in the read replica comes after the primary was already rolled back.
+ * so a failure in the read replica comes after the primary was already rolled back. If the rollback
+ * fails after the blacklist was set (for example in the data move or the safe-to-delete check), the
+ * entries stay until a retry, which sets and clears them again. A failed rollback keeps the
+ * universe's placement lock, so a retry is the only way forward and the entries do not outlive it.
  *
  * <p>Primary {@code dedicatedNodes} flips are refused via {@link
  * StateTransitionDetails#requireRollbackable()}.
