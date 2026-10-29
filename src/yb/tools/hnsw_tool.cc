@@ -133,18 +133,8 @@ struct BenchmarkArguments {
   size_t num_search_repeats = 0;
   size_t search_time_ms = 1000;
 
-  // Used only with --ann_method pgvector.
-  std::string pg_host = "127.0.0.1";
-  uint16_t pg_port = 5433;
-  std::string pg_user = "yugabyte";
-  std::string pg_password;
-  std::string pg_database = "yugabyte";
-  std::string pg_table = "vi_benchmark";
-  // Non-empty means read-only use of an existing ybhnsw index with this name.
-  std::string pg_index;
-  // "uuid" or "bigint". Bigint keys are the input vector indexes, see vertex_id_offset().
-  std::string pg_id_type = "uuid";
-  size_t pg_batch_size = 1024;
+  // Used only with --ann_method pgvector, from the --pg_* options.
+  PgVectorConfig pg_vector;
 
   // Parsed version of k_values.
   std::set<size_t> k_values;
@@ -207,6 +197,10 @@ struct BenchmarkArguments {
     if (ann_method == BenchmarkAnnMethod::kPgVector && num_index_shards != 1) {
       return STATUS(InvalidArgument, "pgvector is not supported with multiple index shards");
     }
+    // A named index or bigint ids point at existing data, which must not be modified.
+    pg_vector.read_only =
+        !pg_vector.index.empty() || pg_vector.id_type == PgVectorIdType::kBigint;
+    pg_vector.num_connections = std::max(num_indexing_threads, num_query_threads);
     return Status::OK();
   }
 };
@@ -234,6 +228,10 @@ std::unique_ptr<OptionsDescription> BenchmarkOptions() {
 #define BOOL_SWITCH_ARG_FIELD(field_name) \
     BOOST_PP_STRINGIZE(field_name), po::bool_switch(&args.field_name)
 
+#define PG_VECTOR_ARG(field_name) \
+    "pg_" BOOST_PP_STRINGIZE(field_name), \
+    po::value(&args.pg_vector.field_name)->default_value(args.pg_vector.field_name)
+
 #define HNSW_OPTION_ARG(field_name) \
     BOOST_PP_STRINGIZE(field_name), \
     po::value(&args.hnsw_options.field_name)->default_value(default_hnsw_options.field_name)
@@ -248,6 +246,11 @@ std::unique_ptr<OptionsDescription> BenchmarkOptions() {
   const auto distance_kind_help =
       Format("What kind of distance function (metric) to use. Possible values: $0." +
              ValidEnumValuesCommaSeparatedForHelp<DistanceKind>());
+  const auto pg_id_type_help =
+      Format("PgVector backend: type of the table's `id` column. Possible values: $0. Use Bigint "
+             "for tables loaded by other tools whose ids are the input vector indexes. Like "
+             "--pg_index, Bigint never modifies the cluster.",
+             ValidEnumValuesCommaSeparatedForHelp<PgVectorIdType>());
 
   result->desc.add_options()
       (OPTIONAL_ARG_FIELD(ann_method),
@@ -317,27 +320,26 @@ std::unique_ptr<OptionsDescription> BenchmarkOptions() {
       (BOOL_SWITCH_ARG_FIELD(validate_ground_truth),
        "Validate the ground truth data provided in a file by recomputing our own ground truth "
        "result sets using brute-force precise nearest neighbor search. Could be slow.")
-      (OPTIONAL_ARG_FIELD(pg_host),
+      (PG_VECTOR_ARG(host),
        "PgVector backend: YSQL host.")
-      (OPTIONAL_ARG_FIELD(pg_port),
+      (PG_VECTOR_ARG(port),
        "PgVector backend: YSQL port.")
-      (OPTIONAL_ARG_FIELD(pg_user),
+      (PG_VECTOR_ARG(user),
        "PgVector backend: YSQL user.")
-      (OPTIONAL_ARG_FIELD(pg_password),
+      (PG_VECTOR_ARG(password),
        "PgVector backend: YSQL password.")
-      (OPTIONAL_ARG_FIELD(pg_database),
+      (PG_VECTOR_ARG(database),
        "PgVector backend: YSQL database.")
-      (OPTIONAL_ARG_FIELD(pg_table),
-       "PgVector backend: table to load and query. It is reused when it already has a ready "
-       "ybhnsw index, and recreated otherwise.")
-      (OPTIONAL_ARG_FIELD(pg_index),
+      (PG_VECTOR_ARG(table),
+       "PgVector backend: table to load and query. It is reused when it has the expected row "
+       "count, `id` and `embedding` column types, and a ready ybhnsw index with the same "
+       "distance and m, m0 and ef_construction. Otherwise it is dropped and recreated.")
+      (PG_VECTOR_ARG(index),
        "PgVector backend: name of an existing ybhnsw index on --pg_table. When set, the "
        "cluster is never modified and the tool fails if the index is missing or not ready.")
-      (OPTIONAL_ARG_FIELD(pg_id_type),
-       "PgVector backend: type of the table's `id` column, 'uuid' or 'bigint'. Use 'bigint' "
-       "for tables loaded by other tools whose ids are the input vector indexes. Like "
-       "--pg_index, 'bigint' never modifies the cluster.")
-      (OPTIONAL_ARG_FIELD_WITH_LOWER_BOUND(pg_batch_size, 1),
+      (PG_VECTOR_ARG(id_type),
+       pg_id_type_help.c_str() /* Boost copies the string internally */)
+      (PG_VECTOR_ARG(batch_size)->notifier(OptionLowerBound("pg_batch_size", 1)),
        "PgVector backend: number of vectors per COPY batch.")
       (OPTIONAL_ARG_FIELD_WITH_LOWER_BOUND(num_index_shards, 1),
        "For experiments that try to take advantage of a large number of cores, this allows to "
@@ -1018,7 +1020,8 @@ class BenchmarkTool {
 
   size_t vertex_id_offset() const {
     // Bigint pgvector tables are keyed by the input vector index itself.
-    if (args_.ann_method == BenchmarkAnnMethod::kPgVector && args_.pg_id_type == "bigint") {
+    if (args_.ann_method == BenchmarkAnnMethod::kPgVector &&
+        args_.pg_vector.id_type == PgVectorIdType::kBigint) {
       return 0;
     }
     // Start from a small but round number to avoid making assumptions that the 0-based index of
@@ -1106,15 +1109,15 @@ template<BenchmarkAnnMethod ann_method_kind,
          IndexableVectorType IndexedVector>
 std::optional<Status> BenchmarkExecuteHelper(
     const BenchmarkArguments& args,
-    CoordinateKind input_coordinate_kind,
-    const PgVectorConfig& pg_config) {
+    CoordinateKind input_coordinate_kind) {
   using InputDistanceResult = typename DistanceTraits<InputVector, distance_kind>::Result;
   using IndexedDistanceResult = typename DistanceTraits<IndexedVector, distance_kind>::Result;
   if (args.ann_method == ann_method_kind &&
       args.hnsw_options.distance_kind == distance_kind &&
       input_coordinate_kind == CoordinateTypeTraits<typename InputVector::value_type>::kKind) {
     PreVectorIndexFactory<IndexedVector, IndexedDistanceResult> pre_index_factory =
-        [pg_config](const HNSWOptions& options, const hnsw::BlockCachePtr& block_cache)
+        [pg_config = args.pg_vector](
+            const HNSWOptions& options, const hnsw::BlockCachePtr& block_cache)
             -> VectorIndexTraitsPtr<IndexedVector, IndexedDistanceResult> {
       if constexpr (ann_method_kind == BenchmarkAnnMethod::kPgVector) {
         return CreatePgVectorIndexTraits<IndexedVector, IndexedDistanceResult>(options, pg_config);
@@ -1135,29 +1138,6 @@ Status BenchmarkExecute(const BenchmarkArguments& args) {
   RETURN_NOT_OK(args_copy.Finalize());
 
   LOG(INFO) << "Distance kind: " << args_copy.hnsw_options.distance_kind;
-
-  // Used only with kPgVector.
-  PgVectorConfig pg_config;
-  pg_config.host = args_copy.pg_host;
-  pg_config.port = args_copy.pg_port;
-  pg_config.user = args_copy.pg_user;
-  pg_config.password = args_copy.pg_password;
-  pg_config.database = args_copy.pg_database;
-  pg_config.table = args_copy.pg_table;
-  pg_config.index = args_copy.pg_index;
-  pg_config.batch_size = args_copy.pg_batch_size;
-  if (args_copy.pg_id_type == "uuid") {
-    pg_config.id_type = PgVectorIdType::kUuid;
-  } else if (args_copy.pg_id_type == "bigint") {
-    pg_config.id_type = PgVectorIdType::kBigint;
-  } else {
-    return STATUS_FORMAT(
-        InvalidArgument,
-        "Invalid --pg_id_type='$0' (expected 'uuid' or 'bigint')", args_copy.pg_id_type);
-  }
-  // A named index or bigint ids point at existing data, which must not be modified.
-  pg_config.read_only =
-      !args_copy.pg_index.empty() || pg_config.id_type == PgVectorIdType::kBigint;
 
   // The input coordinate type is based on input file extensions.
   auto input_coordinate_kind = VERIFY_RESULT(DetermineCoordinateKind(args_copy));
@@ -1191,7 +1171,7 @@ Status BenchmarkExecute(const BenchmarkArguments& args) {
             BenchmarkAnnMethod::BOOST_PP_CAT(k, method), \
             distance_enum_element, \
             std::vector<input_type>, \
-            std::vector<indexed_type>>(args_copy, input_coordinate_kind, pg_config); \
+            std::vector<indexed_type>>(args_copy, input_coordinate_kind); \
         status.has_value()) { \
         return *status; \
       }

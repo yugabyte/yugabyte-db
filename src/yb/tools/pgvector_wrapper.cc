@@ -147,29 +147,36 @@ class PgVectorIndex : public VectorIndexIf<FloatVector, float>, public PgVectorI
           "PgVectorIndex::Insert called after DataAlreadyExists() returned true; the caller "
           "must skip the load phase when an existing dataset is detected");
     }
+    std::pair row(vector_id, vector);
     InsertRows to_flush;
     {
       std::lock_guard lock(buffer_mutex_);
-      buffer_.emplace_back(vector_id, vector);
+      buffer_.push_back(std::move(row));
       ++num_received_;
       // The last vector flushes the partial batch, since there is no explicit flush.
-      const bool last_call = num_received_ == capacity_;
-      if (last_call || buffer_.size() >= config_.batch_size) {
-        to_flush = std::exchange(buffer_, InsertRows{});
-        buffer_.reserve(config_.batch_size);
+      if (num_received_ != capacity_ && buffer_.size() < config_.batch_size) {
+        return Status::OK();
+      }
+      to_flush.swap(buffer_);
+      if (!free_buffers_.empty()) {
+        buffer_.swap(free_buffers_.back());
+        free_buffers_.pop_back();
       }
     }
-    if (to_flush.empty()) {
-      return Status::OK();
-    }
-    return FlushRows(to_flush);
+    RETURN_NOT_OK(FlushRows(to_flush));
+    to_flush.clear();
+    std::lock_guard lock(buffer_mutex_);
+    free_buffers_.push_back(std::move(to_flush));
+    return Status::OK();
   }
 
   Result<SearchResult> Search(
       const FloatVector& query_vector, const SearchOptions& options) const override {
     auto conn = pool_->Acquire();
-    if (options.ef > 0) {
-      RETURN_NOT_OK(SetEfSearch(*conn, options.ef));
+    // Like the in-memory backends, ef 0 means the index's ef.
+    const auto ef = options.ef ? options.ef : options_.ef;
+    if (ef > 0) {
+      RETURN_NOT_OK(SetEfSearch(*conn, ef));
     }
     const auto query_text = EncodeVectorAsText(query_vector);
     const auto distance_op = DistanceOpName(options_.distance_kind);
@@ -221,8 +228,8 @@ class PgVectorIndex : public VectorIndexIf<FloatVector, float>, public PgVectorI
   }
 
  private:
-  // Keeps the table if it matches this run. Otherwise fails in read-only mode, or recreates the
-  // table without an index.
+  // Keeps the table if its columns, index and row count fit this run. Otherwise fails in
+  // read-only mode, or recreates the table without an index.
   Status EnsureSchemaOrDetectExisting() {
     auto conn = pool_->Acquire();
     if (!config_.read_only) {
@@ -253,6 +260,20 @@ class PgVectorIndex : public VectorIndexIf<FloatVector, float>, public PgVectorI
   Result<std::string> ExistingDataMismatch(PGConn& conn) {
     if (!VERIFY_RESULT(TableExists(conn))) {
       return Format("table $0 does not exist", config_.table);
+    }
+    const auto columns = VERIFY_RESULT(conn.FetchRow<std::string>(Format(
+        "SELECT coalesce(string_agg(attname || ' ' || format_type(atttypid, atttypmod), ', '"
+        "    ORDER BY attname), '')"
+        "  FROM pg_attribute"
+        "  WHERE attrelid = to_regclass('$0') AND attname IN ('embedding', 'id')"
+        "    AND NOT attisdropped",
+        config_.table)));
+    const auto expected_columns = Format(
+        "embedding vector($0), id $1", options_.dimensions,
+        config_.id_type == PgVectorIdType::kUuid ? "uuid" : "bigint");
+    if (columns != expected_columns) {
+      return Format(
+          "table $0 has columns ($1) instead of ($2)", config_.table, columns, expected_columns);
     }
     const std::string opclass = VectorOpsName(options_.distance_kind);
     const auto index_options = IndexOptions();
@@ -285,14 +306,13 @@ class PgVectorIndex : public VectorIndexIf<FloatVector, float>, public PgVectorI
         options_.num_neighbors_per_vertex_base, options_.ef_construction);
   }
 
-  Status CreateIndex() {
-    auto conn = pool_->Acquire();
+  Status CreateIndex(PGConn& conn) {
     const auto rows = num_inserted_.load(std::memory_order_relaxed);
     LOG(INFO) << "PgVectorIndex: building ybhnsw index "
               << (config_.index.empty() ? std::string() : Format("'$0' ", config_.index))
               << "on " << config_.table << " (" << rows << " vectors, " << IndexOptions() << ")";
     const auto start = MonoTime::Now();
-    RETURN_NOT_OK(conn->ExecuteFormat(
+    RETURN_NOT_OK(conn.ExecuteFormat(
         "CREATE INDEX $0 ON $1 USING ybhnsw (embedding $2) WITH ($3)",
         // Empty name lets PostgreSQL auto-generate the index name.
         config_.index, config_.table, VectorOpsName(options_.distance_kind), IndexOptions()));
@@ -367,7 +387,7 @@ class PgVectorIndex : public VectorIndexIf<FloatVector, float>, public PgVectorI
     const size_t total =
         num_inserted_.fetch_add(rows.size(), std::memory_order_acq_rel) + rows.size();
     if (total == capacity_) {
-      RETURN_NOT_OK(CreateIndex());
+      RETURN_NOT_OK(CreateIndex(*conn));
     }
     return Status::OK();
   }
@@ -390,6 +410,8 @@ class PgVectorIndex : public VectorIndexIf<FloatVector, float>, public PgVectorI
   // Rows waiting for COPY.
   std::mutex buffer_mutex_;
   InsertRows buffer_ GUARDED_BY(buffer_mutex_);
+  // Flushed batch buffers, reused to avoid allocating under the lock.
+  std::vector<InsertRows> free_buffers_ GUARDED_BY(buffer_mutex_);
   size_t num_received_ GUARDED_BY(buffer_mutex_) = 0;
 
   std::shared_ptr<void> attached_;

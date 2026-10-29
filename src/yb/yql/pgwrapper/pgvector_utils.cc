@@ -21,6 +21,8 @@
 #include <limits>
 #include <sstream>
 
+#include "yb/gutil/casts.h"
+
 #include "yb/util/enums.h"
 
 namespace yb::pgwrapper {
@@ -62,7 +64,7 @@ std::string EncodeVectorAsBinary(const FloatVector& v) {
   std::string out;
   out.resize(4 + 4 * v.size());
   char* p = out.data();
-  uint16_t dim_be = htons(static_cast<uint16_t>(v.size()));
+  uint16_t dim_be = htons(narrow_cast<uint16_t>(v.size()));
   uint16_t unused = 0;
   std::memcpy(p, &dim_be, sizeof(dim_be)); p += sizeof(dim_be);
   std::memcpy(p, &unused, sizeof(unused)); p += sizeof(unused);
