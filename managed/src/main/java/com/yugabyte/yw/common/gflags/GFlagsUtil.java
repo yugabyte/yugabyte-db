@@ -141,8 +141,6 @@ public class GFlagsUtil {
       "node_to_node_encryption_use_client_certificates";
   public static final String NODE_TO_NODE_REQUIRED_UID = "node_to_node_encryption_required_uid";
   public static final String VERIFY_CLIENT_ENDPOINT = "verify_client_endpoint";
-  public static final String CERT_MANAGER_KEY_ALGORITHM_OVERRIDE =
-      "tls.certManager.certificates.algorithm";
   public static final String REDIS_PROXY_BIND_ADDRESS = "redis_proxy_bind_address";
   public static final String REDIS_PROXY_WEBSERVER_PORT = "redis_proxy_webserver_port";
   public static final String POSTMASTER_CGROUP = "postmaster_cgroup";
@@ -1383,7 +1381,7 @@ public class GFlagsUtil {
         userIntent.universeOverrides, userIntent.azOverrides, useClientCerts);
   }
 
-  /** As above for helm overrides, which also must keep the chart's client key RSA. */
+  /** As above for helm overrides. */
   public static void validateNodeToNodeClientCertsOfHelmOverrides(
       String universeOverrides, Map<String, String> azOverrides, boolean useClientCerts) {
     List<String> overrides = new ArrayList<>();
@@ -1395,16 +1393,6 @@ public class GFlagsUtil {
       Map<String, String> flatOverrides = flattenHelmOverrides(overridesYaml);
       checkClientCertGFlags(flatOverrides, "gflags.master.", useClientCerts);
       checkClientCertGFlags(flatOverrides, "gflags.tserver.", useClientCerts);
-      // AsyncYBClient loads the client key with KeyFactory.getInstance("RSA").
-      String algorithm = flatOverrides.get(CERT_MANAGER_KEY_ALGORITHM_OVERRIDE);
-      if (useClientCerts && algorithm != null && !"RSA".equalsIgnoreCase(algorithm)) {
-        throw new PlatformServiceException(
-            BAD_REQUEST,
-            String.format(
-                "%s=%s is not supported with useNodeToNodeClientCerts: YugabyteDB Anywhere"
-                    + " can only present an RSA client certificate",
-                CERT_MANAGER_KEY_ALGORITHM_OVERRIDE, algorithm));
-      }
     }
   }
 

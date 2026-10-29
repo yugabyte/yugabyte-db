@@ -438,7 +438,7 @@ public class RpcClientCertTest extends FakeDBApplication {
   }
 
   @Test
-  public void testRejectsNonRsaKey() throws Exception {
+  public void testAcceptsEcKey() throws Exception {
     KeyPairGenerator generator = KeyPairGenerator.getInstance("EC");
     generator.initialize(256);
     KeyPair keyPair = generator.generateKeyPair();
@@ -453,11 +453,9 @@ public class RpcClientCertTest extends FakeDBApplication {
             CertificateHelper.getAsPemString(cert),
             CertificateHelper.getAsPemString(keyPair.getPrivate())));
 
-    IllegalStateException e =
-        assertThrows(IllegalStateException.class, () -> rpcClientCert.load(universe));
+    rpcClientCert.load(universe);
 
-    assertTrue(e.getMessage(), e.getMessage().contains("EC key"));
-    assertFalse(Files.exists(certFile));
+    assertEquals(CertificateHelper.getAsPemString(cert), localCert());
   }
 
   @Test
@@ -543,23 +541,11 @@ public class RpcClientCertTest extends FakeDBApplication {
 
   @Test
   public void testHelmOverrides() {
-    String ecdsa = "tls:\n  certManager:\n    certificates:\n      algorithm: ECDSA\n";
-    PlatformServiceException e =
-        assertThrows(
-            PlatformServiceException.class,
-            () -> GFlagsUtil.validateNodeToNodeClientCertsOfHelmOverrides(ecdsa, null, true));
-    assertTrue(e.getMessage(), e.getMessage().contains("algorithm=ECDSA"));
-    assertThrows(
-        PlatformServiceException.class,
-        () ->
-            GFlagsUtil.validateNodeToNodeClientCertsOfHelmOverrides(
-                "", Map.of("az-1", ecdsa), true));
+    // Any chart key algorithm is accepted.
     GFlagsUtil.validateNodeToNodeClientCertsOfHelmOverrides(
-        "tls:\n  certManager:\n    certificates:\n      algorithm: RSA\n", null, true);
-    GFlagsUtil.validateNodeToNodeClientCertsOfHelmOverrides(ecdsa, null, false);
-
+        "tls:\n  certManager:\n    certificates:\n      algorithm: ECDSA\n", null, true);
     String gflag = "gflags:\n  tserver:\n    " + GFlagsUtil.USE_CLIENT_CERTIFICATES + ": true\n";
-    e =
+    PlatformServiceException e =
         assertThrows(
             PlatformServiceException.class,
             () -> GFlagsUtil.validateNodeToNodeClientCertsOfHelmOverrides(gflag, null, false));

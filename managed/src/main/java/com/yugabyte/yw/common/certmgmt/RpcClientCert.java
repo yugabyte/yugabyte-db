@@ -48,8 +48,6 @@ import org.apache.commons.lang3.tuple.Pair;
 @Singleton
 public class RpcClientCert {
 
-  // AsyncYBClient loads the client key with KeyFactory.getInstance("RSA").
-  private static final String SUPPORTED_KEY_ALGORITHM = "RSA";
   // Under cert-manager's default renewBefore of 15 days, so the issuer has renewed by then.
   @VisibleForTesting static final Duration REFETCH_BEFORE_EXPIRY = Duration.ofDays(10);
   // While the current cert is still valid, how often to ask the issuer for a renewed one.
@@ -174,15 +172,6 @@ public class RpcClientCert {
               + universe.getName()
               + " is not signed by its root CA "
               + ca);
-    }
-    String algorithm =
-        CertificateHelper.convertStringToX509Cert(pem.getLeft()).getPublicKey().getAlgorithm();
-    if (!SUPPORTED_KEY_ALGORITHM.equals(algorithm)) {
-      throw new IllegalStateException(
-          String.format(
-              "The client cert for universe %s has a %s key; YugabyteDB Anywhere can only present"
-                  + " an %s client certificate",
-              universe.getName(), algorithm, SUPPORTED_KEY_ALGORITHM));
     }
     write(files, pem);
   }
