@@ -8,6 +8,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.core.AllOf.allOf;
 import static org.hamcrest.core.Is.is;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -33,6 +34,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.IOException;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
@@ -487,12 +489,13 @@ public class MetricQueryHelperTest extends FakeDBApplication {
   }
 
   // The tasks name releases and nodes by zone code, so a zone whose name differs from its code
-  // still selects its pods and names their lines as the YBA nodes.
+  // still selects its pods and claims and names their lines as the YBA nodes.
   @Test
   public void testMultiAzReleasesUseTheZoneCode() {
     Universe universe = kubernetesUniverse("k8s-multi-az", true, "az-1", "az-2");
     Map<String, String> queries =
-        queryKeys(universe, ImmutableList.of("container_memory_usage"), false);
+        queryKeys(
+            universe, ImmutableList.of("container_memory_usage", "container_volume_stats"), false);
     K8sPodNodeNameResolver resolver = K8sPodNodeNameResolver.forUniverse(universe);
 
     for (String azCode : ImmutableList.of("az-1", "az-2")) {
@@ -506,9 +509,68 @@ public class MetricQueryHelperTest extends FakeDBApplication {
               true);
       assertTrue(
           release, queries.get("container_memory_usage").contains(release + "-yb-tserver-(.*)"));
+      assertTrue(
+          release,
+          queries.get("container_volume_stats").contains("(.*)-" + release + "-yb-tserver-(.*)"));
       assertEquals(
           "yb-tserver-0_" + azCode,
           resolver.resolveNodeName(release + "-yb-tserver-0", null, "us-west1-a"));
     }
+  }
+
+  // Universes in new naming style can share a namespace, and kubelet volume series carry no pod
+  // name, so the volume keys select the universe's tserver claims by release.
+  @Test
+  public void testContainerVolumeKeysSelectTheUniverseClaims() {
+    List<String> releases = new ArrayList<>();
+    Universe universe = null;
+    for (String name : ImmutableList.of("k8s-shared-a", "k8s-shared-b")) {
+      universe = kubernetesUniverse(name, true, "az-1");
+      releases.add(
+          KubernetesUtil.getHelmReleaseName(
+              false,
+              universe.getUniverseDetails().nodePrefix,
+              universe.getName(),
+              "az-1",
+              false,
+              true));
+    }
+    Map<String, String> queries =
+        queryKeys(
+            universe,
+            ImmutableList.of("container_volume_stats", "container_volume_usage_percent"),
+            false);
+
+    String claim = "persistentvolumeclaim=~\"(.*)-" + releases.get(1) + "-yb-tserver-(.*)\"";
+    for (String key :
+        ImmutableList.of("container_volume_stats", "container_volume_usage_percent")) {
+      String query = queries.get(key);
+      assertTrue(query, query.contains(claim));
+      assertFalse(query, query.contains(releases.get(0)));
+      assertFalse(query, query.contains("persistentvolumeclaim=~\"(.*)-yb-tserver-(.*)\""));
+    }
+    assertTrue(queries.get("container_volume_usage_percent").split("/", 2)[1].contains(claim));
+  }
+
+  @Test
+  public void testContainerVolumeKeysSelectTheChosenPods() {
+    Universe universe = kubernetesUniverse("k8s-scoped", true, "az-1");
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> {
+              NodeDetails node = ApiUtils.getDummyNodeDetails(1, NodeDetails.NodeState.Live);
+              node.isTserver = true;
+              node.cloudInfo.kubernetesPodName = "yb-tserver-0";
+              node.cloudInfo.kubernetesNamespace = "k8s-scoped";
+              u.getUniverseDetails().nodeDetailsSet = new HashSet<>(Collections.singleton(node));
+            });
+    Map<String, String> queries =
+        queryKeys(universe, ImmutableList.of("container_volume_stats"), true);
+
+    assertTrue(
+        queries
+            .get("container_volume_stats")
+            .contains("persistentvolumeclaim=~\"(.*)-yb-tserver-0\""));
   }
 }
