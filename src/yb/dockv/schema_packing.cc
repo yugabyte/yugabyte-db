@@ -833,6 +833,12 @@ Result<const SchemaPacking&> SchemaPackingStorage::GetPacking(Slice* packed_row)
   return GetPacking(narrow_cast<SchemaVersion>(version));
 }
 
+void SchemaPackingStorage::AddPacking(SchemaVersion version, const SchemaPacking& packing) {
+  if (version_to_schema_packing_.emplace(version, packing).second) {
+    UpdateMaxSchemaVersionIfNecessary(version);
+  }
+}
+
 void SchemaPackingStorage::AddSchema(SchemaVersion version, const Schema& schema) {
   AddSchema(table_type_, version, schema, &version_to_schema_packing_);
   UpdateMaxSchemaVersionIfNecessary(version);

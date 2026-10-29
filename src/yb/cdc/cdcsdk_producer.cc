@@ -30,6 +30,7 @@
 #include "yb/consensus/replicate_msgs_holder.h"
 #include "yb/consensus/raft_consensus.h"
 
+#include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb_util.h"
 #include "yb/docdb/docdb.h"
@@ -871,25 +872,48 @@ bool SchemaPackingStorageContainsVersion(
   return true;
 }
 
+// Copies the schema packing for the given schema version from the tablet metadata into
+// 'schema_packing_storage'.
+bool TryResolveSchemaPackingFromTabletMetadata(
+    const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const TableId& table_id,
+    SchemaVersion version, SchemaPackingStorage* schema_packing_storage) {
+  auto table_info = tablet_peer->tablet_metadata()->GetTableInfo(table_id);
+  if (!table_info.ok()) {
+    return false;
+  }
+  auto packing = (*table_info)->doc_read_context->schema_packing_storage.GetPacking(version);
+  if (!packing.ok()) {
+    return false;
+  }
+  schema_packing_storage->AddPacking(version, *packing);
+  return true;
+}
+
 Result<std::pair<SchemaVersion, Schema>> GetSchemaAndVersion(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const TableId& table_id,
     uint64 read_hybrid_time, SchemaDetailsMap* cached_schema_details,
     SchemaPackingStorage* schema_packing_storage, bool is_packed_row, Slice packed_row,
     client::YBClient* client, GetChangesResponsePB* resp,
     CDCThroughputMetrics* throughput_metrics) {
-  bool update_schema_packing_storage = false;
+  // A packed row embeds the schema version it was packed with. Its packing is tried to be resolved
+  // from, in order:
+  // - the schema_packing_storage cache,
+  // - the tablet metadata (version-keyed, exact), and lastly
+  // - the sys catalog at the row's hybrid time (best effort, may return a different version than
+  // the row was packed with).
+  bool resolve_schema_packing_from_sys_catalog = false;
+  SchemaVersion pr_schema_version = std::numeric_limits<SchemaVersion>::max();
   if (is_packed_row) {
-    auto pr_schema_version = VERIFY_RESULT(FastDecodeUnsignedVarInt(&packed_row));
-    // Check if packed row schema version is present in the schema_packing_storage. If not
-    // present, invalidate the cached_schema_details so that we fetch schema with required
-    // version from sys catalog.
-    if (!SchemaPackingStorageContainsVersion(
-            schema_packing_storage, narrow_cast<SchemaVersion>(pr_schema_version))) {
-      update_schema_packing_storage = true;
-      auto it = cached_schema_details->find(table_id);
-      if (it != cached_schema_details->end()) {
-        (*cached_schema_details).erase(it);
-      }
+    pr_schema_version =
+        narrow_cast<SchemaVersion>(VERIFY_RESULT(FastDecodeUnsignedVarInt(&packed_row)));
+    resolve_schema_packing_from_sys_catalog =
+        !SchemaPackingStorageContainsVersion(schema_packing_storage, pr_schema_version) &&
+        !TryResolveSchemaPackingFromTabletMetadata(
+            tablet_peer, table_id, pr_schema_version, schema_packing_storage);
+
+    auto it = cached_schema_details->find(table_id);
+    if (it != cached_schema_details->end() && resolve_schema_packing_from_sys_catalog) {
+      (*cached_schema_details).erase(it);
     }
   }
 
@@ -899,8 +923,20 @@ Result<std::pair<SchemaVersion, Schema>> GetSchemaAndVersion(
   auto schema_version = schema_details.schema_version;
   auto schema = *schema_details.schema;
 
-  if (update_schema_packing_storage) {
-    schema_packing_storage->AddSchema(schema_version, schema);
+  if (resolve_schema_packing_from_sys_catalog) {
+    if (schema_version != pr_schema_version) {
+      YB_LOG_EVERY_N_SECS_OR_VLOG(WARNING, 300, 1)
+          << "Schema version from sys catalog (" << schema_version
+          << ") does not match the packed row's schema version (" << pr_schema_version
+          << ") for table " << table_id
+          << "; the packing for the row's version is not available on the tablet";
+    }
+    // In the mismatch case above, the fetched version may already be present, e.g. added by a
+    // previous decode attempt of the same row or learned from a CHANGE_METADATA_OP. Add the schema
+    // packing only if it is not already present.
+    if (!SchemaPackingStorageContainsVersion(schema_packing_storage, schema_version)) {
+      schema_packing_storage->AddSchema(schema_version, schema);
+    }
   }
 
   return std::make_pair(schema_version, *schema_details.schema);
@@ -1631,7 +1667,7 @@ Status PopulateCDCSDKWriteRecordWithInvalidSchemaRetry(
       }
     }
 
-    auto status = PopulateCDCSDKWriteRecord(
+    status = PopulateCDCSDKWriteRecord(
         msg, metadata, tablet_peer, enum_oid_label_map, composite_atts_map, request_source,
         cached_schema_details, schema_packing_storages, resp, client, throughput_metrics);
   }

@@ -201,7 +201,8 @@ TableInfo::TableInfo(const TableInfo& other,
       partition_schema(other.partition_schema),
       pg_table_id(other.pg_table_id),
       skip_table_tombstone_check(other.skip_table_tombstone_check),
-      deleted_cols(other.deleted_cols) {
+      deleted_cols(other.deleted_cols),
+      cdcsdk_schema_version_boundaries(other.cdcsdk_schema_version_boundaries) {
   this->deleted_cols.insert(this->deleted_cols.end(), deleted_cols.begin(), deleted_cols.end());
   CompleteInit();
 }
@@ -224,7 +225,8 @@ TableInfo::TableInfo(const TableInfo& other,
       partition_schema(other.partition_schema),
       pg_table_id(other.pg_table_id),
       skip_table_tombstone_check(other.skip_table_tombstone_check),
-      deleted_cols(other.deleted_cols) {
+      deleted_cols(other.deleted_cols),
+      cdcsdk_schema_version_boundaries(other.cdcsdk_schema_version_boundaries) {
   CompleteInit();
 }
 
@@ -244,7 +246,13 @@ TableInfo::TableInfo(const TableInfo& other, SchemaVersion min_schema_version)
       partition_schema(other.partition_schema),
       pg_table_id(other.pg_table_id),
       skip_table_tombstone_check(other.skip_table_tombstone_check),
-      deleted_cols(other.deleted_cols) {
+      deleted_cols(other.deleted_cols),
+      cdcsdk_schema_version_boundaries(other.cdcsdk_schema_version_boundaries) {
+  // Prune boundaries together with the packings dropped by this copy.
+  const auto min_version = std::min(min_schema_version, other.schema_version);
+  cdcsdk_schema_version_boundaries.erase(
+      cdcsdk_schema_version_boundaries.begin(),
+      cdcsdk_schema_version_boundaries.lower_bound(min_version));
   CompleteInit();
 }
 
@@ -300,6 +308,11 @@ Status TableInfo::DoLoadFromPB(Primary primary, const TableInfoPB& pb) {
     DeletedColumn col;
     RETURN_NOT_OK(DeletedColumn::FromPB(deleted_col, &col));
     deleted_cols.push_back(col);
+  }
+
+  for (const auto& boundary : pb.cdcsdk_schema_version_boundaries()) {
+    cdcsdk_schema_version_boundaries.emplace(
+        boundary.schema_version(), OpId::FromPB(boundary.op_id()));
   }
 
   return Status::OK();
@@ -359,6 +372,11 @@ void TableInfo::ToPB(TableInfoPB* pb) const {
 
   for (const DeletedColumn& deleted_col : deleted_cols) {
     deleted_col.CopyToPB(pb->mutable_deleted_cols()->Add());
+  }
+  for (const auto& [version, boundary_op_id] : cdcsdk_schema_version_boundaries) {
+    auto* boundary = pb->add_cdcsdk_schema_version_boundaries();
+    boundary->set_schema_version(version);
+    boundary_op_id.ToPB(boundary->mutable_op_id());
   }
   pb->set_pg_table_id(pg_table_id);
   pb->set_skip_table_tombstone_check(skip_table_tombstone_check);
@@ -428,6 +446,7 @@ bool TableInfo::TEST_Equals(const TableInfo& lhs, const TableInfo& rhs) {
                           cotable_id,
                           schema_version,
                           deleted_cols,
+                          cdcsdk_schema_version_boundaries,
                           wal_retention_secs) &&
          DereferencedEqual(lhs.doc_read_context,
                            rhs.doc_read_context,
@@ -1305,6 +1324,12 @@ void RaftGroupMetadata::SetSchemaUnlocked(const Schema& schema,
       colocation_it->second = new_table_info;
     }
   }
+  // While under CDCSDK replication, record the outgoing schema version's boundary. WAL entries
+  // below this op id can only be packed with that version or older ones, so OldSchemaGC must retain
+  // their packings until the CDCSDK checkpoint passes it.
+  if (is_under_cdc_sdk_replication_ && op_id.valid() && version > it->second->schema_version) {
+    new_table_info->cdcsdk_schema_version_boundaries.emplace(it->second->schema_version, op_id);
+  }
   VLOG_WITH_PREFIX(1) << raft_group_id_ << " Updating table " << target_table_id
                       << " to Schema version " << version
                       << " from \n" << AsString(it->second)
@@ -1866,6 +1891,26 @@ void RaftGroupMetadata::EnableSchemaGC() {
       << "Disable GC counter underflow: " << disable_schema_gc_counter_;
 }
 
+SchemaVersion RaftGroupMetadata::MinCDCSDKSchemaVersionToRetainUnlocked(
+    const TableInfo& table_info) const {
+  // No active CDCSDK stream on the tablet: no constraint.
+  if (!is_under_cdc_sdk_replication_ || !cdc_sdk_min_checkpoint_op_id_.valid() ||
+      cdc_sdk_min_checkpoint_op_id_ == OpId::Max()) {
+    return std::numeric_limits<SchemaVersion>::max();
+  }
+  // Any WAL entry CDCSDK may still stream is at an index >= this bound. WAL entries are immutable
+  // and invisible to the RocksDB frontiers which OldSchemaGC relies on, so the packings of the
+  // versions they were packed with must be retained explicitly. Keep every version that was still
+  // current at some op id >= the bound, i.e. whose boundary op id is above it.
+  const auto bound = std::min(cdc_sdk_min_checkpoint_op_id_.index, cdc_min_replicated_index_);
+  auto min_version = table_info.schema_version;
+  for (auto it = table_info.cdcsdk_schema_version_boundaries.rbegin();
+       it != table_info.cdcsdk_schema_version_boundaries.rend() && it->second.index > bound; ++it) {
+    min_version = it->first;
+  }
+  return min_version;
+}
+
 Status RaftGroupMetadata::OldSchemaGC(
     const std::unordered_map<Uuid, SchemaVersion, UuidHash>& versions) {
   bool need_flush = false;
@@ -1883,11 +1928,17 @@ Status RaftGroupMetadata::OldSchemaGC(
             << "Unknown table during " << __func__ << ": " << table_id.ToString();
         continue;
       }
-      if (!it->second->doc_read_context->schema_packing_storage.HasVersionBelow(schema_version)) {
+      const auto& schema_packing_storage = it->second->doc_read_context->schema_packing_storage;
+      const auto min_active = schema_packing_storage.registry().MinActiveVersion();
+      auto new_min_schema_version = min_active.has_value() && min_active.value() < schema_version
+                                        ? min_active.value()
+                                        : schema_version;
+      new_min_schema_version =
+          std::min(new_min_schema_version, MinCDCSDKSchemaVersionToRetainUnlocked(*it->second));
+      if (!schema_packing_storage.HasVersionBelow(new_min_schema_version)) {
         continue;
       }
-      auto new_value = std::make_shared<TableInfo>(
-          *it->second, schema_version);
+      auto new_value = std::make_shared<TableInfo>(*it->second, new_min_schema_version);
       RETURN_NOT_OK(SetTableInfoUnlocked(it, std::move(new_value)));
       VLOG_WITH_PREFIX(1)
           << Format("After old schema GC, latest schema version of table $0($1) is $2",

@@ -45,6 +45,13 @@ import "yb/tablet/tablet_types.proto";
 //  Tablet Metadata
 // ============================================================================
 
+// Marks the WAL position where a schema version stopped being current: the op id of the
+// CHANGE_METADATA operation that installed the next version.
+message SchemaVersionBoundaryPB {
+  optional uint32 schema_version = 1;
+  optional OpIdPB op_id = 2;
+}
+
 // Table information.
 message TableInfoPB {
   // Table id, name, and type.
@@ -74,6 +81,13 @@ message TableInfoPB {
   repeated DeletedColumnPB deleted_cols = 9;
 
   repeated dockv.SchemaPackingPB old_schema_packings = 11;
+
+  // For each schema version that is no longer current, the boundary op id past which WAL
+  // entries can no longer be packed with it: entries below the boundary are packed with this
+  // version or older ones. Maintained while the tablet is under CDCSDK replication so that
+  // OldSchemaGC retains the packings needed to decode WAL entries CDCSDK may still stream.
+  // Entries are pruned together with their packings.
+  repeated SchemaVersionBoundaryPB cdcsdk_schema_version_boundaries = 19;
 
   // CDC WAL retention time in secs of the table.
   optional uint32 wal_retention_secs = 12;
