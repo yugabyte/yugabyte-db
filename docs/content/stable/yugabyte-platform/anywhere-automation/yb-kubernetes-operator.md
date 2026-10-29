@@ -1361,13 +1361,9 @@ Available in YugabyteDB Anywhere v2026.1.3 and later.
 You can change [encryption in transit](../../security/enable-encryption-in-transit/) on an existing universe by editing the YBUniverse resource:
 
 - Set `enableNodeToNodeEncrypt` and `enableClientToNodeEncrypt` to turn encryption in transit on or off.
-- Set `rootCA` to the name of a YBCertificate to use that certificate as the root CA. Changing `rootCA` on a universe that already has encryption in transit rotates the root certificate and follows the universe's `upgradeOption`.
+- Set `rootCA` to the name of a YBCertificate to use that certificate as the root CA. Changing `rootCA` on a universe that already has encryption in transit rotates the root certificate.
 
-{{< warning title="Toggle restarts all nodes at once" >}}
-
-Turning encryption in transit on or off always does a non-rolling restart of all nodes, whatever `upgradeOption` is set to. The universe is unavailable during that restart.
-
-{{< /warning >}}
+Turning encryption in transit on or off restarts all nodes at the same time, resulting in downtime. The operator always performs this change as a non-rolling restart, regardless of the `upgradeOption` set on the universe. This does not apply to rotating the root certificate by changing `rootCA`, which does use the universe's `upgradeOption`.
 
 If the task fails, the operator retries it.
 
