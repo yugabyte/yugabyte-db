@@ -67,6 +67,7 @@ type platformConfig struct {
 	SupportOriginUrl      string      `mapstructure:"support_origin_url"`
 	AdditionalConfig      string      `mapstructure:"additional_config"`
 	TrustedProxies        []string    `mapstructure:"trusted_proxies"`
+	MultiTenant           bool        `mapstructure:"multi_tenant"`
 }
 
 type oauthConfig struct {

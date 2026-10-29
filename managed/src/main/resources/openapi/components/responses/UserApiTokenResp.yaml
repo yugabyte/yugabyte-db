@@ -1,0 +1,7 @@
+description: Generated API token
+content:
+  application/json:
+    schema:
+      $ref: "../schemas/UserApiToken.yaml"
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview

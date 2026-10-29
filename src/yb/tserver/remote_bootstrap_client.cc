@@ -81,6 +81,7 @@
 
 using namespace yb::size_literals;
 
+DECLARE_bool(enable_tiered_storage);
 DECLARE_int32(remote_bootstrap_begin_session_timeout_ms);
 
 DECLARE_int32(remote_bootstrap_end_session_timeout_sec);
@@ -302,7 +303,14 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
   // target_storage_tier (e.g. "ssd"/"hdd") is intentionally left as-is; still applies on this new
   // replica. target_tier_path_id must be cleared. TSTabletManager will re-resolve it the first time
   // this tablet is opened (via ResolveTargetTierPathId), since RBS always lands data on path_id 0.
+  // With tiered storage disabled this node writes no tier intent, same as CreateTablet.
   kv_store->clear_target_tier_path_id();
+  if (!FLAGS_enable_tiered_storage && kv_store->has_target_storage_tier()) {
+    LOG_WITH_PREFIX(WARNING) << "Ignoring target storage tier \"" << kv_store->target_storage_tier()
+                             << "\" of the source replica because tiered storage is disabled "
+                             << "(--enable_tiered_storage=false)";
+    kv_store->clear_target_storage_tier();
+  }
 
   superblock_->set_tablet_data_state(tablet::TABLET_DATA_COPYING);
   wal_seqnos_.assign(resp.deprecated_wal_segment_seqnos().begin(),

@@ -45,6 +45,17 @@ int32_t GetEffectiveMaxNumReplicas(
       : resolved_placement_rf;
 }
 
+bool PlacementInfoHasMaxNumReplicas(const PlacementInfoPB& placement_info) {
+  return std::ranges::any_of(
+      placement_info.placement_blocks(),
+      [](const auto& block) { return block.has_max_num_replicas(); });
+}
+
+bool IsWildcardCloudInfo(const CloudInfoPB& cloud_info) {
+  return !cloud_info.has_placement_cloud() || !cloud_info.has_placement_region() ||
+         !cloud_info.has_placement_zone();
+}
+
 bool IsCloudInfoEqual(const CloudInfoPB& lhs, const CloudInfoPB& rhs) {
   return (lhs.placement_cloud() == rhs.placement_cloud() &&
           lhs.placement_region() == rhs.placement_region() &&
@@ -169,21 +180,14 @@ bool PlacementInfoContainsPlacementInfo(const PlacementInfoPB& lhs, const Placem
     return false;
   }
 
-  const auto has_explicit_max = [](const PlacementInfoPB& placement) {
-    return std::ranges::any_of(
-        placement.placement_blocks(),
-        [](const auto& block) { return block.has_max_num_replicas(); });
-  };
-  if (has_explicit_max(lhs) || has_explicit_max(rhs)) {
+  if (PlacementInfoHasMaxNumReplicas(lhs) || PlacementInfoHasMaxNumReplicas(rhs)) {
     // Explicit maxima are only supported on fully-specified (non-wildcard) placement blocks.
     // Conservatively treat any combination of explicit maxima and wildcard blocks as not
     // contained; the prefix-matching logic below cannot attribute per-block caps to wildcard
     // blocks.
     const auto has_wildcard_block = [](const PlacementInfoPB& placement) {
       return std::ranges::any_of(placement.placement_blocks(), [](const auto& block) {
-        const auto& ci = block.cloud_info();
-        return !ci.has_placement_cloud() || !ci.has_placement_region() ||
-               !ci.has_placement_zone();
+        return IsWildcardCloudInfo(block.cloud_info());
       });
     };
     if (has_wildcard_block(lhs) || has_wildcard_block(rhs)) {

@@ -35,9 +35,11 @@ import java.io.StringWriter;
 import java.math.BigInteger;
 import java.security.*;
 import java.security.MessageDigest;
+import java.security.PublicKey;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
+import java.security.interfaces.ECPublicKey;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.time.Instant;
@@ -60,11 +62,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.commons.validator.routines.InetAddressValidator;
+import org.bouncycastle.asn1.ASN1Encodable;
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
 import org.bouncycastle.asn1.DERSequence;
 import org.bouncycastle.asn1.oiw.OIWObjectIdentifiers;
 import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
 import org.bouncycastle.asn1.pkcs.PrivateKeyInfo;
+import org.bouncycastle.asn1.sec.SECObjectIdentifiers;
 import org.bouncycastle.asn1.x500.RDN;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x500.X500NameBuilder;
@@ -123,6 +127,14 @@ public class CertificateHelper {
           PKCSObjectIdentifiers.md4,
           PKCSObjectIdentifiers.md5);
   private static final int FIPS_MIN_RSA_KEY_BITS = 2048;
+  // NIST curves the DB's FIPS provider accepts in TLS (TLS 1.3 signature schemes leave out P-224).
+  private static final Set<ASN1ObjectIdentifier> FIPS_EC_CURVES =
+      ImmutableSet.of(
+          SECObjectIdentifiers.secp256r1,
+          SECObjectIdentifiers.secp384r1,
+          SECObjectIdentifiers.secp521r1);
+  private static final String FIPS_ALLOWED_KEYS =
+      "FIPS mode requires an RSA key of at least 2048 bits or an EC key on P-256, P-384 or P-521.";
 
   private static final String CERTS_NODE_SUBDIR = "/yugabyte-tls-config";
   private static final String CERT_CLIENT_NODE_SUBDIR = "/yugabyte-client-tls-config";
@@ -518,67 +530,74 @@ public class CertificateHelper {
       writeCertBundleToCertPath(x509CACerts, certPath);
 
       CertificateInfo cert;
-      switch (certType) {
-        case SelfSigned:
-          {
-            writeKeyFileContentToKeyPath(getPrivateKey(keyContent), keyPath);
-            cert =
-                CertificateInfo.create(
-                    rootCA_UUID,
-                    customerUUID,
-                    label,
-                    certStart,
-                    certExpiry,
-                    keyPath,
-                    certPath,
-                    certType);
-            break;
-          }
-        case CustomCertHostPath:
-          {
-            cert =
-                CertificateInfo.create(
-                    rootCA_UUID,
-                    customerUUID,
-                    label,
-                    certStart,
-                    certExpiry,
-                    certPath,
-                    customCertInfo);
-            break;
-          }
-        case CustomServerCert:
-          {
-            cert =
-                CertificateInfo.create(
-                    rootCA_UUID,
-                    customerUUID,
-                    label,
-                    certStart,
-                    certExpiry,
-                    certPath,
-                    customServerCertInfo);
-            break;
-          }
-        case K8SCertManager:
-          {
-            keyPath = null;
-            cert =
-                CertificateInfo.create(
-                    rootCA_UUID,
-                    customerUUID,
-                    label,
-                    certStart,
-                    certExpiry,
-                    keyPath,
-                    certPath,
-                    certType);
-            break;
-          }
-        default:
-          {
-            throw new PlatformServiceException(BAD_REQUEST, "certType should be valid.");
-          }
+      try {
+        switch (certType) {
+          case SelfSigned:
+            {
+              writeKeyFileContentToKeyPath(getPrivateKey(keyContent), keyPath);
+              cert =
+                  CertificateInfo.create(
+                      rootCA_UUID,
+                      customerUUID,
+                      label,
+                      certStart,
+                      certExpiry,
+                      keyPath,
+                      certPath,
+                      certType);
+              break;
+            }
+          case CustomCertHostPath:
+            {
+              cert =
+                  CertificateInfo.create(
+                      rootCA_UUID,
+                      customerUUID,
+                      label,
+                      certStart,
+                      certExpiry,
+                      certPath,
+                      customCertInfo);
+              break;
+            }
+          case CustomServerCert:
+            {
+              cert =
+                  CertificateInfo.create(
+                      rootCA_UUID,
+                      customerUUID,
+                      label,
+                      certStart,
+                      certExpiry,
+                      certPath,
+                      customServerCertInfo);
+              break;
+            }
+          case K8SCertManager:
+            {
+              keyPath = null;
+              cert =
+                  CertificateInfo.create(
+                      rootCA_UUID,
+                      customerUUID,
+                      label,
+                      certStart,
+                      certExpiry,
+                      keyPath,
+                      certPath,
+                      certType);
+              break;
+            }
+          default:
+            {
+              throw new PlatformServiceException(BAD_REQUEST, "certType should be valid.");
+            }
+        }
+      } catch (RuntimeException e) {
+        // E.g. the label was taken by a concurrent request (unique_label_per_customer). Nothing
+        // references the files written above, so remove them, the key in particular.
+        FileData.deleteFiles(getCADirPath(storagePath, customerUUID, rootCA_UUID), true);
+        throw e;
       }
       log.info(
           "Uploaded cert label {} (uuid {}) of type {} at paths"
@@ -1094,25 +1113,17 @@ public class CertificateHelper {
   }
 
   /**
-   * Rejects certificates a FIPS-mode YB server would refuse: RSA keys under 2048 bits, and
-   * signatures using a weak digest. A self-signed root's own signature is skipped because OpenSSL
-   * never verifies the trust anchor's signature, so a SHA-1 root with SHA-256 descendants works.
+   * Rejects certificates a FIPS-mode YB server would refuse: keys other than RSA of at least 2048
+   * bits or EC on P-256, P-384 or P-521, and signatures using a weak digest. A self-signed root's
+   * own signature is skipped because OpenSSL never verifies the trust anchor's signature, so a
+   * SHA-1 root with SHA-256 descendants works.
    */
-  static void verifyFipsCompliance(List<X509Certificate> certs) {
+  public static void verifyFipsCompliance(List<X509Certificate> certs) {
     DefaultDigestAlgorithmIdentifierFinder digestFinder =
         new DefaultDigestAlgorithmIdentifierFinder();
     for (X509Certificate cert : certs) {
       String subject = cert.getSubjectX500Principal().getName();
-      if (cert.getPublicKey() instanceof RSAPublicKey) {
-        int bits = ((RSAPublicKey) cert.getPublicKey()).getModulus().bitLength();
-        if (bits < FIPS_MIN_RSA_KEY_BITS) {
-          throw new PlatformServiceException(
-              BAD_REQUEST,
-              String.format(
-                  "Certificate %s has a %d-bit RSA key. FIPS mode requires at least %d bits.",
-                  subject, bits, FIPS_MIN_RSA_KEY_BITS));
-        }
-      }
+      verifyFipsKey(subject, cert.getPublicKey());
       if (cert.getSubjectX500Principal().equals(cert.getIssuerX500Principal())
           && verifyCertValidity(cert, cert)) {
         continue;
@@ -1136,6 +1147,68 @@ public class CertificateHelper {
                     + "in the chain except a self-signed root.",
                 subject, cert.getSigAlgName()));
       }
+    }
+  }
+
+  private static void verifyFipsKey(String subject, PublicKey key) {
+    if (key instanceof RSAPublicKey) {
+      int bits = ((RSAPublicKey) key).getModulus().bitLength();
+      if (bits < FIPS_MIN_RSA_KEY_BITS) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "Certificate %s has a %d-bit RSA key. FIPS mode requires at least %d bits.",
+                subject, bits, FIPS_MIN_RSA_KEY_BITS));
+      }
+      return;
+    }
+    String keyType = key.getAlgorithm();
+    if (key instanceof ECPublicKey) {
+      // Named curves only: explicit curve parameters are not FIPS approved.
+      ASN1Encodable params =
+          SubjectPublicKeyInfo.getInstance(key.getEncoded()).getAlgorithm().getParameters();
+      if (params instanceof ASN1ObjectIdentifier && FIPS_EC_CURVES.contains(params)) {
+        return;
+      }
+      keyType =
+          String.format(
+              "%d-bit EC", ((ECPublicKey) key).getParams().getCurve().getField().getFieldSize());
+    }
+    throw new PlatformServiceException(
+        BAD_REQUEST,
+        String.format("Certificate %s has a %s key. %s", subject, keyType, FIPS_ALLOWED_KEYS));
+  }
+
+  /**
+   * Checks the key cert-manager generates for the node certificates of a FIPS universe, from the
+   * yugabyte chart's tls.certManager.certificates values; cert-manager accepts key types the DB
+   * then fails to load ("Failed to use certificate: decode error").
+   */
+  public static void verifyFipsCertManagerKey(@Nullable Object algorithm, @Nullable Object size) {
+    String alg = algorithm == null ? "RSA" : algorithm.toString();
+    // cert-manager's default sizes, RSA 2048 and ECDSA 256, are both allowed.
+    int bits = alg.equals("RSA") ? FIPS_MIN_RSA_KEY_BITS : 256;
+    boolean allowed = true;
+    if (size != null) {
+      try {
+        bits = Integer.parseInt(size.toString());
+      } catch (NumberFormatException e) {
+        allowed = false;
+      }
+    }
+    allowed &=
+        switch (alg) {
+          case "RSA" -> bits >= FIPS_MIN_RSA_KEY_BITS;
+          case "ECDSA" -> Set.of(256, 384, 521).contains(bits);
+          default -> false;
+        };
+    if (!allowed) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "cert-manager node certificates with tls.certManager.certificates.algorithm %s"
+                  + " and keySize %s are not FIPS compliant. %s",
+              alg, size, FIPS_ALLOWED_KEYS));
     }
   }
 

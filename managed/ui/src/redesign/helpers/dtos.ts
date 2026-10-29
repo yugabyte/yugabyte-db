@@ -233,6 +233,14 @@ export enum NodeState {
   InstanceStopped = 'InstanceStopped'
 }
 
+// CloudSpecificInfo.java
+export interface CloudInfo {
+  assignPublicIP?: boolean;
+  private_ip?: string;
+  az?: string;
+  region?: string;
+}
+
 // NodeDetails.java
 export interface NodeDetails {
   nodeIdx: number;
@@ -240,6 +248,7 @@ export interface NodeDetails {
   nodeUuid: string | null;
   placementUuid: string;
   state: NodeState;
+  cloudInfo?: CloudInfo;
 }
 
 export interface UniverseDetails {

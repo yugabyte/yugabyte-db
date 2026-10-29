@@ -468,6 +468,23 @@ MACHINE_API int yb_machine_io_get_peer_cert_der(machine_io_t *obj,
 	return yb_mm_tls_get_peer_cert_der(io, buf, len);
 }
 
+/*
+ * YB: tls-server-end-point hash of the certificate this side presented. buf
+ * must have room for EVP_MAX_MD_SIZE (64) bytes. Returns 0 on a cache hit, 1
+ * when computed from the session's certificate, and -1 on failure.
+ */
+MACHINE_API int yb_machine_io_get_server_cert_hash(machine_io_t *obj,
+						unsigned char *buf, int *len)
+{
+	mm_io_t *io = mm_cast(mm_io_t *, obj);
+	mm_errno_set(0);
+	if (io->tls == NULL || io->tls_ssl == NULL) {
+		mm_errno_set(EINVAL);
+		return -1;
+	}
+	return yb_mm_tls_get_server_cert_hash(io, buf, len);
+}
+
 int mm_io_socket_set(mm_io_t *io, int fd)
 {
 	io->fd = fd;

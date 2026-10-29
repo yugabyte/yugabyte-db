@@ -2440,11 +2440,11 @@ DROP TABLE tempTable2;
   // Concurrent CREATE INDEX produces one extra invalidation message with object locking
   // (post-backfill WaitForBackendsCatalogVersion).
   if (IsObjectLockingEnabled()) {
-    ASSERT_EQ(result.size(), 80986U);
-    ASSERT_EQ(fingerprint, 16473784601673178567UL);
+    ASSERT_EQ(result.size(), 80746U);
+    ASSERT_EQ(fingerprint, 15353702351801463433UL);
   } else {
-    ASSERT_EQ(result.size(), 80932U);
-    ASSERT_EQ(fingerprint, 148605032842492807UL);
+    ASSERT_EQ(result.size(), 80692U);
+    ASSERT_EQ(fingerprint, 4661495031371014786UL);
   }
 }
 
@@ -3025,10 +3025,28 @@ TEST_F(PgCatalogVersionTest, InvalMessageMinimalRetention) {
     });
   }
   CoarseTimePoint start = CoarseMonoClock::Now();
-  while (start + RegularBuildVsSanitizers(60s, 20s) > CoarseMonoClock::Now()) {
+  // The race is timing dependent and may not occur within the minimal duration on TSAN, so keep
+  // running DDLs until a delta refresh is seen, up to a limit. ASAN is not extended: longer runs
+  // exceed the test timeout (#32059).
+  const auto deadline = start + ReleaseVsDebugVsAsanVsTsan(60s, 60s, 20s, 90s);
+  auto next_check = start + RegularBuildVsSanitizers(60s, 20s);
+  for (;;) {
     ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN c2 INT"));
     ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP COLUMN c2"));
+    const auto now = CoarseMonoClock::Now();
+    if (now >= deadline) {
+      break;
+    }
+    if (now < next_check) {
+      continue;
+    }
+    // Throttled: each metrics fetch is costly under sanitizers and slows the DDL rate.
+    if (GetInt64MetricsHelper("CatCacheDeltaRefresh") > 0) {
+      break;
+    }
+    next_check = now + 5s;
   }
+  LOG(INFO) << "DDL loop ran for " << MonoDelta(CoarseMonoClock::Now() - start);
   thread_holder.Stop();
   // We expect to see 0 full refreshes, should see some incremental refreshes.
   VerifyCatCacheRefreshMetricsHelper(
@@ -4416,7 +4434,7 @@ TEST_F(PgCatalogVersionMasterFailoverTest,
   // overlap. The refresh waiter cannot fire early: the old leader stops refreshing at the reset
   // and only starts again once it is the leader.
   {
-    auto reset_waiter = LogWaiter(old_leader, "ResetCachedCatalogVersions: cache reset");
+    auto reset_waiter = LogWaiter(old_leader, "PgCatalogVersionsCache: reset");
     ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
     ASSERT_OK(reset_waiter.WaitFor(30s * kTimeMultiplier));
   }

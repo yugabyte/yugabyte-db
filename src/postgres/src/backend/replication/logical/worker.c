@@ -816,6 +816,9 @@ apply_handle_begin(StringInfo s)
 
 	remote_final_lsn = begin_data.final_lsn;
 
+	if (IsYugaByteEnabled())
+		replorigin_session_origin_timestamp = begin_data.committime;
+
 	maybe_start_skipping_changes(begin_data.final_lsn);
 
 	in_remote_transaction = true;
@@ -869,6 +872,9 @@ apply_handle_begin_prepare(StringInfo s)
 	set_apply_error_context_xact(begin_data.xid, begin_data.prepare_lsn);
 
 	remote_final_lsn = begin_data.prepare_lsn;
+
+	if (IsYugaByteEnabled())
+		replorigin_session_origin_timestamp = begin_data.prepare_time;
 
 	maybe_start_skipping_changes(begin_data.prepare_lsn);
 
@@ -1089,6 +1095,9 @@ apply_handle_stream_prepare(StringInfo s)
 	set_apply_error_context_xact(prepare_data.xid, prepare_data.prepare_lsn);
 
 	elog(DEBUG1, "received prepare for streamed transaction %u", prepare_data.xid);
+
+	if (IsYugaByteEnabled())
+		replorigin_session_origin_timestamp = prepare_data.prepare_time;
 
 	/* Replay all the spooled operations. */
 	apply_spooled_messages(prepare_data.xid, prepare_data.prepare_lsn);
@@ -1481,6 +1490,15 @@ apply_handle_stream_commit(StringInfo s)
 	set_apply_error_context_xact(xid, commit_data.commit_lsn);
 
 	elog(DEBUG1, "received commit for streamed transaction %u", xid);
+
+	/*
+	 * YB: Set before the spooled changes are replayed rather than left to
+	 * apply_handle_commit_internal(). YugabyteDB stamps rows with this
+	 * timestamp when they are flushed to storage, and a streamed transaction
+	 * replays, and can flush, all of its rows before the commit handler runs.
+	 */
+	if (IsYugaByteEnabled())
+		replorigin_session_origin_timestamp = commit_data.committime;
 
 	apply_spooled_messages(xid, commit_data.commit_lsn);
 

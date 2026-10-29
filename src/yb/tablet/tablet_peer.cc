@@ -51,16 +51,12 @@
 #include "yb/consensus/retryable_requests.h"
 #include "yb/consensus/state_change_context.h"
 
-#include "yb/docdb/consensus_frontier.h"
-
 #include "yb/fs/fs_manager.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/join.h"
 
 #include "yb/master/master_ddl.pb.h"
-
-#include "yb/rocksdb/db/memtable.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/periodic.h"
@@ -75,6 +71,7 @@
 #include "yb/tablet/operations/truncate_operation.h"
 #include "yb/tablet/operations/update_txn_operation.h"
 #include "yb/tablet/operations/write_operation.h"
+#include "yb/tablet/persistence_gate.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet.pb.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
@@ -187,6 +184,7 @@ TabletPeer::TabletPeer(
     Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     MetricRegistry* metric_registry,
     TabletSplitter* tablet_splitter,
+    const PersistenceGate* persistence_gate,
     const std::shared_future<client::YBClient*>& client_future)
     : meta_(meta),
       tablet_id_(meta->raft_group_id()),
@@ -201,6 +199,7 @@ TabletPeer::TabletPeer(
       preparing_operations_counter_(operation_tracker_.LogPrefix()),
       metric_registry_(metric_registry),
       tablet_splitter_(tablet_splitter),
+      persistence_gate_(persistence_gate),
       client_future_(client_future),
       data_disk_space_checker_(meta->fs_manager()->env(), meta->data_root_dir()) {}
 
@@ -271,41 +270,7 @@ Status TabletPeer::InitTabletPeer(
     strand_.reset(new rpc::Strand(service_thread_pool_holder_.get()));
     messenger_ = messenger;
 
-    tablet->SetMemTableFlushFilterFactory([log] {
-      auto largest_log_op_index = log->GetLatestEntryOpId().index;
-      return [largest_log_op_index] (const rocksdb::MemTable& memtable, bool) -> Result<bool> {
-        auto frontiers = memtable.Frontiers();
-        if (frontiers) {
-          const auto largest_memtable_op_index =
-              down_cast<const docdb::ConsensusFrontier&>(frontiers->Largest()).op_id().index;
-          // We can only flush this memtable if all operations written to it have also been written
-          // to the log (maybe not synced, if durable_wal_write is disabled, but that's OK).
-          auto should_flush = largest_memtable_op_index <= largest_log_op_index;
-          if (!should_flush) {
-            LOG(WARNING)
-              << "Skipping flush on memtable with ops ahead of log. "
-              << "Memtable index: " << largest_memtable_op_index
-              << " - log index: " << largest_log_op_index;
-          }
-          return should_flush;
-        }
-
-        // It is correct to not have frontiers when memtable is empty
-        if (memtable.IsEmpty()) {
-          return true;
-        }
-
-        // This is a degenerate case that should ideally never occur. An empty memtable got into the
-        // list of immutable memtables. We say it is OK to flush it and move on.
-        static const char* error_msg =
-            "A memtable with no frontiers set found when deciding what memtables to "
-            "flush! This should not happen.";
-        LOG(DFATAL) << error_msg;
-        return STATUS(IllegalState, error_msg);
-      };
-    });
-
-    tablet_->SetCleanupPool(snapshot_cleanup_pool, &messenger_->scheduler(), raft_pool);
+    tablet_->SetCleanupPool(snapshot_cleanup_pool, &messenger_->scheduler());
 
     ConsensusOptions options;
     options.tablet_id = meta_->raft_group_id();
@@ -480,6 +445,56 @@ void TabletPeer::ListenNumSSTFilesChanged(std::function<void()> listener) {
 
 Status TabletPeer::CheckOperationAllowed(const OpId& op_id, consensus::OperationType op_type) {
   return tablet_->CheckOperationAllowed(op_id, op_type);
+}
+
+namespace {
+
+// Rejects a write whose WritePB::ignore_after_hybrid_time is not after the hybrid time the op was
+// assigned, letting a client with a time-bounded lease stop its writes landing once the lease is
+// gone.
+Status CheckWriteFence(const consensus::LWReplicateMsg& msg) {
+  if (msg.op_type() != consensus::OperationType::WRITE_OP) {
+    return Status::OK();
+  }
+  const auto fence = HybridTime::FromPB(msg.write().ignore_after_hybrid_time());
+  if (!fence) {
+    return Status::OK();
+  }
+  // The op's own hybrid time, assigned by NotifyAddedToLeader, is when the write takes effect.
+  // An earlier clock reading would leave an unbounded window in which the op could still be
+  // assigned a time past the fence.
+  const auto hybrid_time = HybridTime(msg.hybrid_time());
+  if (fence > hybrid_time) {
+    return Status::OK();
+  }
+  return STATUS_EC_FORMAT(
+      Expired, tserver::TabletServerError(TabletServerErrorPB::WRITE_FENCE_EXPIRED),
+      "Write is fenced: ignore_after_hybrid_time $0 is not after $1", fence, hybrid_time);
+}
+
+}  // namespace
+
+Status TabletPeer::CheckReplicateAllowed(consensus::LWReplicateMsg& replicate_msg) {
+  RETURN_NOT_OK(CheckWriteFence(replicate_msg));
+  if (persistence_gate_) {
+    RETURN_NOT_OK(persistence_gate_->CheckPersistAllowed(replicate_msg));
+  }
+  // Only the persistence gate reads the stamps, so keep them out of the WAL and off the followers.
+  switch (replicate_msg.op_type()) {
+    case consensus::OperationType::WRITE_OP:
+      replicate_msg.mutable_write()->clear_origination_info();
+      break;
+    case consensus::OperationType::UPDATE_TRANSACTION_OP:
+      replicate_msg.mutable_transaction_state()->clear_origination_info();
+      break;
+    default:
+      break;
+  }
+  return Status::OK();
+}
+
+bool TabletPeer::ShouldRelinquishLeadership() {
+  return persistence_gate_ && persistence_gate_->ShouldRelinquishLeadership();
 }
 
 Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
@@ -1042,10 +1057,10 @@ Result<OpId> TabletPeer::MaxPersistentOpId() const {
     // Tablet peer not yet initialized -- we could be doing tablet bootstrap still.
     return OpId::Min();
   }
-  auto flush_op_ids = VERIFY_RESULT(tablet->MaxPersistentOpId());
-  auto result = OpId::MinValid(flush_op_ids.intents, flush_op_ids.regular);
-  for (const auto& op_id : flush_op_ids.vector_indexes) {
-    result = OpId::MinValid(result, op_id);
+  auto persistent_state = VERIFY_RESULT(tablet->GetPersistentState());
+  auto result = OpId::MinValid(persistent_state.intents, persistent_state.regular);
+  for (const auto& vector_index : persistent_state.vector_indexes) {
+    result = OpId::MinValid(result, vector_index.op_id);
   }
   return result;
 }
@@ -1139,7 +1154,7 @@ Result<log::MinRetainLogIndexInfo> TabletPeer::GetEarliestNeededLogIndex(
 
   // We keep at least one committed operation in the log so that we can always recover safe time
   // during bootstrap.
-  // Last committed op id should be read before MaxPersistentOpId to avoid race condition
+  // Last committed op id should be read before Tablet::GetPersistentState to avoid race condition
   // described in MaxPersistentOpIdForDb.
   //
   // If we read last committed op id AFTER reading last persistent op id (INCORRECT):
@@ -1259,6 +1274,13 @@ Status TabletPeer::GetGCableDataSize(int64_t* retention_size) const {
         << diagnostics.details;
   }
   return Status::OK();
+}
+
+log::WalEntryState TabletPeer::WalState(const OpId& op_id) {
+  auto* log = log_atomic_.load(std::memory_order_acquire);
+  // No log until bootstrap completes. Replay must be able to flush, since writes stop once
+  // db_max_flushing_bytes of memtables wait for flush.
+  return log ? log->WalState(op_id) : log::WalEntryState::kDurable;
 }
 
 log::Log* TabletPeer::log() const {
@@ -1837,6 +1859,14 @@ Result<client::YBClient*> TabletPeer::client() const {
 int64_t TabletPeer::LeaderTerm() const {
   auto consensus = GetRaftConsensusUnsafe();
   return consensus ? consensus->LeaderTerm() : yb::OpId::kUnknownTerm;
+}
+
+Status TabletPeer::CheckTransactionMayContinue(
+    const LWOriginationInfoPB& origination_info) const {
+  if (!persistence_gate_) {
+    return Status::OK();
+  }
+  return persistence_gate_->CheckTransactionMayContinue(origination_info);
 }
 
 Result<HybridTime> TabletPeer::LeaderSafeTime() const {

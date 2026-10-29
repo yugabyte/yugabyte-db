@@ -1757,6 +1757,7 @@ _readModifyTable(void)
 	READ_NODE_FIELD(yb_skip_entities);
 	READ_NODE_FIELD(yb_update_affected_entities);
 	READ_BOOL_FIELD(no_row_trigger);
+	READ_BOOL_FIELD(ybInsertOnConflictPushdownPossible);
 
 	READ_DONE();
 }

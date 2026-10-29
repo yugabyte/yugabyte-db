@@ -18,6 +18,10 @@
 #include "yb/client/table_info.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/partition.h"
+#include "yb/dockv/value_type.h"
+
 #include "yb/gutil/casts.h"
 
 #include "yb/master/master_client.pb.h"
@@ -354,6 +358,27 @@ PartitionKeyPtr FindPartitionStart(
     size_t group_by) {
   const auto idx = FindPartitionStartIndex(versioned_partitions->keys, partition_key, group_by);
   return PartitionKeyPtr(versioned_partitions, &versioned_partitions->keys[idx]);
+}
+
+Status SelectPartitionsForPartitionKeyPrefix(
+    const TablePartitionList& partitions, Slice prefix, boost::dynamic_bitset<>& selected) {
+  DCHECK_EQ(selected.size(), partitions.size());
+  SCHECK(!prefix.empty(), InvalidArgument, "Empty partition key prefix");
+  // Hash partition keys are exactly two bytes, and in a DocKey encoding the byte after a column
+  // value is never kMaxByte, so [prefix, prefix + kMaxByte) holds every partition key that starts
+  // with the prefix. Partitions are sorted, so the ones overlapping that range are consecutive,
+  // starting with the one holding the prefix.
+  const dockv::KeyBytes prefix_end(prefix, dockv::KeyEntryTypeAsChar::kMaxByte);
+  for (auto idx = FindPartitionStartIndex(partitions, prefix.AsStringView());
+       idx < partitions.size(); ++idx) {
+    const auto partition_end = idx + 1 < partitions.size() ? Slice(partitions[idx + 1]) : Slice();
+    if (!dockv::PartitionSchema::HasOverlap(
+            partitions[idx], partition_end, prefix, prefix_end.AsSlice())) {
+      break;
+    }
+    selected.set(idx);
+  }
+  return Status::OK();
 }
 
 std::string VersionedTablePartitionList::ToString() const {

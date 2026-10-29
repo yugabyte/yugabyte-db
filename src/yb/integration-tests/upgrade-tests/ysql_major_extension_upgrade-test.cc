@@ -47,6 +47,11 @@ TEST_F(YsqlMajorExtensionUpgradeTest, Simple) {
   ASSERT_OK(ExecuteStatement(Format("CREATE EXTENSION earthdistance")));
   ASSERT_OK(UpgradeClusterToCurrentVersion());
 
+  // pg_upgrade's ALTER EXTENSION UPDATE takes pg_partman through its update scripts.
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+  ASSERT_TRUE(ASSERT_RESULT(conn.FetchRow<bool>(
+      "SELECT extversion = default_version FROM pg_extension "
+      "JOIN pg_available_extensions ON name = extname WHERE extname = 'pg_partman'")));
 }
 
 TEST_F(YsqlMajorExtensionUpgradeTest, HStore) {

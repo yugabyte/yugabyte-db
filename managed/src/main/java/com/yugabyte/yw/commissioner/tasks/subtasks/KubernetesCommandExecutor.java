@@ -318,6 +318,15 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
   }
 
+  // A full move counts the new StatefulSet's masters. Read replicas never run masters.
+  static boolean releaseHasMasters(
+      boolean isReadOnlyCluster, int masterReplicas, FullMoveParams fullMoveParams) {
+    if (isReadOnlyCluster) {
+      return false;
+    }
+    return masterReplicas > 0 || (fullMoveParams != null && fullMoveParams.masterReplicas > 0);
+  }
+
   public static class FullMoveParams {
     public int tsReplicas = 0;
     public int masterReplicas = 0;
@@ -496,7 +505,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                 taskParams().helmReleaseName,
                 appLabelValue,
                 universe.getUniverseDetails().useNewHelmNamingStyle,
-                taskParams().newPlacementAzMasterCount); // ReplicaCount to Assert.
+                taskParams().newPlacementAzMasterCount, // ReplicaCount to Assert.
+                confGetter.getConfForScope(universe, UniverseConfKeys.k8sMasterPvcGcReadyTimeout));
         break;
       case VOLUME_DELETE:
         kubernetesManagerFactory
@@ -1028,6 +1038,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     if (taskParams().masterAddresses != null && !taskParams().masterAddresses.isEmpty()) {
       overrides.put("masterAddresses", taskParams().masterAddresses);
     }
+    int masterReplicas;
     if (isMultiAz) {
       // Don't want to use the AZ tag on minikube since there are no AZ tags
       if (!environment.isDev()) {
@@ -1035,8 +1046,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       }
       overrides.put("isMultiAz", true);
       if (taskParams().isReadOnlyCluster) {
+        masterReplicas = 0;
         overrides.put("replicas", ImmutableMap.of("tserver", numNodes, "master", 0));
       } else {
+        masterReplicas = replicationFactorZone;
         overrides.put(
             "replicas",
             ImmutableMap.of(
@@ -1049,12 +1062,13 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       }
     } else {
       if (taskParams().isReadOnlyCluster) {
+        masterReplicas = 0;
         overrides.put("replicas", ImmutableMap.of("tserver", numNodes, "master", 0));
       } else {
         // When full move is progress, the userIntent.replicationFactor will not reflect the
         // correct replication factor for master, so we need to use replicationFactorZone for
         // master replicas in that case.
-        int masterReplicas =
+        masterReplicas =
             taskParams().fullMoveParams != null ? replicationFactorZone : replicationFactor;
         overrides.put("replicas", ImmutableMap.of("tserver", numNodes, "master", masterReplicas));
       }
@@ -1315,9 +1329,13 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     UUID placementUuid = cluster.uuid;
     UUID azUUID = azByCode != null ? azByCode.getUuid() : null;
     Map<String, Object> gflagOverrides = new HashMap<>();
+    boolean applyNewInstallGFlags = GFlagsUtil.areNewInstallGFlagsApplied(universeFromDB);
     // Go over master flags.
     Map<String, String> masterGFlags =
         GFlagsUtil.getGFlagsForAZ(azUUID, ServerType.MASTER, cluster, taskUniverseDetails.clusters);
+    if (applyNewInstallGFlags) {
+      GFlagsUtil.mergeNewInstallGFlags(masterGFlags, universeFromDB, ServerType.MASTER);
+    }
     if (universeFromDBParams.fipsEnabled) {
       masterGFlags.put(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "true");
     }
@@ -1338,11 +1356,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           XClusterConfigTaskBase.XCLUSTER_ROOT_CERTS_DIR_GFLAG,
           taskUniverseDetails.xClusterInfo.sourceRootCertDirPath);
     }
-    if (taskParams().masterJoinExistingCluster
-        && universeFromDB
-            .getConfig()
-            .getOrDefault(Universe.K8S_SET_MASTER_EXISTING_UNIVERSE_GFLAG, "false")
-            .equals("true")) {
+    if (taskParams().masterJoinExistingCluster) {
       masterGFlags.put(GFlagsUtil.MASTER_JOIN_EXISTING_UNIVERSE, "true");
     }
     if (primaryClusterIntent.enableYSQL) {
@@ -1379,6 +1393,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     Map<String, String> tserverGFlags =
         GFlagsUtil.getGFlagsForAZ(
             azUUID, ServerType.TSERVER, cluster, taskUniverseDetails.clusters);
+    if (applyNewInstallGFlags) {
+      GFlagsUtil.mergeNewInstallGFlags(tserverGFlags, universeFromDB, ServerType.TSERVER);
+    }
     if (!primaryClusterIntent
         .enableYSQL) { // In the UI, we can choose not to show these entries for read replica.
       tserverGFlags.put("enable_ysql", "false");
@@ -1523,10 +1540,17 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                 placementZone,
                 taskParams().isReadOnlyCluster
                     ? UniverseDefinitionTaskParams.ClusterType.ASYNC
-                    : UniverseDefinitionTaskParams.ClusterType.PRIMARY);
+                    : UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+                releaseHasMasters(
+                    taskParams().isReadOnlyCluster, masterReplicas, taskParams().fullMoveParams));
         OtelCollectorConfigGenerator.K8sOtelConfig otelConfig =
             otelCollectorConfigGenerator.getOtelColConfigK8s(
-                provider, universeFromDB, telemetryConfig, podPlacement, logLinePrefix);
+                provider,
+                universeFromDB,
+                telemetryConfig,
+                podPlacement,
+                logLinePrefix,
+                primaryClusterIntent);
         otelOverrides = new HashMap<>();
         otelOverrides.put("enabled", otelConfig.isEnabled());
         otelOverrides.put("config", otelConfig.getConfig());
@@ -1747,6 +1771,15 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         getOrCreateMap(gflags, server).put(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "true");
       }
     }
+    // Done after all overrides, so none can turn the sidecar on or off or move its port.
+    if (confGetter.getConfForScope(universeFromDB, UniverseConfKeys.k8sNodeExporterEnabled)
+        && KubernetesUtil.isNodeExporterSidecarSupported(taskParams().ybSoftwareVersion)) {
+      Map<String, Object> nodeExporter = getOrCreateMap(overrides, "nodeExporter");
+      nodeExporter.put("enabled", true);
+      nodeExporter.put("port", universeFromDBParams.communicationPorts.nodeExporterPort);
+    } else {
+      getOrCreateMap(overrides, "nodeExporter").put("enabled", false);
+    }
 
     // For single AZ azUUID may be null, use non-null values
     UUID azUuid =
@@ -1759,6 +1792,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     handleFullMoveOverrides(overrides, userIntent, pi, azUuid);
 
     validateOverrides(overrides);
+    // Overrides stored before the API checks existed must not reach the pods either.
+    GFlagsUtil.validateHelmValuesGFlags(
+        HelmUtils.flattenMap(overrides), universeFromDBParams.fipsEnabled, "Kubernetes overrides");
 
     boolean helmLegacy =
         Universe.HelmLegacy.valueOf(taskParams().universeConfig.get(Universe.HELM2_LEGACY))
@@ -2089,7 +2125,23 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       ensureCertManagerSettings(values);
       // do not allow selfsignedBootstrap to be enabled ever from YBA
       preventBootstrapCA(values);
+      ensureFipsCertManagerKey(values);
     }
+  }
+
+  /** Fails before the helm install rather than when the DB processes fail to load the cert. */
+  @SuppressWarnings("unchecked")
+  private void ensureFipsCertManagerKey(Map<String, Object> values) {
+    Universe u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+    if (!u.getUniverseDetails().fipsEnabled || !hasCertManagerOverride(values)) {
+      return;
+    }
+    Map<String, Object> tls = (Map<String, Object>) values.get("tls");
+    Map<String, Object> certManager = (Map<String, Object>) tls.get("certManager");
+    Object certificates = certManager.get("certificates");
+    Map<String, Object> certs =
+        certificates instanceof Map ? (Map<String, Object>) certificates : Map.of();
+    CertificateHelper.verifyFipsCertManagerKey(certs.get("algorithm"), certs.get("keySize"));
   }
 
   private Map<String, Object> buildMergedHelmValues(String overridesFile) {

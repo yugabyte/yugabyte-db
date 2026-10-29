@@ -306,6 +306,8 @@ PrefetchingCacheMode YBCMapPrefetcherCacheMode(YbcPgSysTablePrefetcherCacheMode 
     case YB_YQL_PREFETCHER_RENEW_CACHE_HARD:
       LOG(ERROR) << "Emergency fallback prefetching cache mode is used";
       return PrefetchingCacheMode::RENEW_CACHE_HARD;
+    case YB_YQL_PREFETCHER_TRUST_CACHE_LOOKUP_ONLY:
+      return PrefetchingCacheMode::TRUST_CACHE_LOOKUP_ONLY;
   }
   LOG(DFATAL) << "Unexpected YbcPgSysTablePrefetcherCacheMode value " << mode;
   return PrefetchingCacheMode::RENEW_CACHE_HARD;
@@ -1324,6 +1326,19 @@ YbcStatus YBCPgGetTableDiskSize(YbcPgOid table_relfilenode_oid,
   });
 }
 
+YbcStatus YBCPgGetTablegroupDiskSize(YbcPgOid tablegroup_oid,
+                                     YbcPgOid database_oid,
+                                     bool is_database_colocated,
+                                     int64_t *size,
+                                     int32_t *num_missing_tablets) {
+  return ExtractValueFromResult(
+      pgapi->GetTablegroupDiskSize(database_oid, tablegroup_oid, is_database_colocated),
+      [size, num_missing_tablets](auto value) {
+        *size = value.table_size;
+        *num_missing_tablets = value.num_missing_tablets;
+      });
+}
+
 // Index Operations -------------------------------------------------------------------------------
 
 YbcStatus YBCPgNewCreateIndex(const char *database_name,
@@ -1556,6 +1571,12 @@ YbcStatus YBCPgDmlHnswSetReadOptions(YbcPgStatement handle, int ef_search) {
   return ToYBCStatus(pgapi->DmlHnswSetReadOptions(handle, ef_search));
 }
 
+YbcStatus YBCPgDmlANNBindKeyFilter(
+    YbcPgStatement handle, int ncolumns, const YbcPgVectorKeyColumn *columns) {
+  return ToYBCStatus(pgapi->DmlANNBindKeyFilter(
+      handle, std::span(columns, static_cast<size_t>(ncolumns))));
+}
+
 YbcStatus YBCPgDmlFetch(YbcPgStatement handle, int32_t natts, uint64_t *values, bool *isnulls,
                         YbcPgSysColumns *syscols, bool *has_data) {
   return ToYBCStatus(pgapi->DmlFetch(handle, natts, values, isnulls, syscols, has_data));
@@ -1573,6 +1594,10 @@ void YBCPgResetOperationsBuffering() {
   pgapi->ResetOperationsBuffering();
 }
 
+void YBCPgClearSessionState() {
+  pgapi->ClearSessionState();
+}
+
 YbcStatus YBCPgFlushBufferedOperations(const YbcFlushDebugContext *debug_context) {
   return ToYBCStatus(pgapi->FlushBufferedOperations(PgFlushDebugContext::Make(*debug_context)));
 }
@@ -1583,6 +1608,13 @@ YbcStatus YBCPgAdjustOperationsBuffering(int multiple) {
 
 YbcStatus YBCPgDmlExecWriteOp(YbcPgStatement handle, int32_t *rows_affected_count) {
   return ToYBCStatus(pgapi->DmlExecWriteOp(handle, rows_affected_count));
+}
+
+YbcStatus YBCPgDmlGetOnConflictOutcome(YbcPgStatement handle, YbcPgOnConflictOutcome *outcome) {
+  auto pb_outcome = PgsqlResponsePB::PGSQL_ON_CONFLICT_OUTCOME_UNKNOWN;
+  auto* status = ToYBCStatus(pgapi->DmlGetOnConflictOutcome(handle, &pb_outcome));
+  *outcome = static_cast<YbcPgOnConflictOutcome>(pb_outcome);
+  return status;
 }
 
 YbcStatus YBCPgBuildYBTupleId(const YbcPgYBTupleIdDescriptor *source, uint64_t *ybctid) {
@@ -1670,6 +1702,22 @@ YbcStatus YBCPgExecInsert(YbcPgStatement handle) {
 
 YbcStatus YBCPgInsertStmtSetUpsertMode(YbcPgStatement handle) {
   return ToYBCStatus(pgapi->InsertStmtSetUpsertMode(handle));
+}
+
+static_assert(static_cast<int>(YB_PG_ON_CONFLICT_NONE) ==
+              static_cast<int>(PgsqlWriteRequestPB::PGSQL_ON_CONFLICT_NONE),
+              "YB_PG_ON_CONFLICT_NONE does not match PGSQL_ON_CONFLICT_NONE");
+static_assert(static_cast<int>(YB_PG_ON_CONFLICT_NOTHING) ==
+              static_cast<int>(PgsqlWriteRequestPB::PGSQL_ON_CONFLICT_NOTHING),
+              "YB_PG_ON_CONFLICT_NOTHING does not match PGSQL_ON_CONFLICT_NOTHING");
+static_assert(static_cast<int>(YB_PG_ON_CONFLICT_UPDATE) ==
+              static_cast<int>(PgsqlWriteRequestPB::PGSQL_ON_CONFLICT_UPDATE),
+              "YB_PG_ON_CONFLICT_UPDATE does not match PGSQL_ON_CONFLICT_UPDATE");
+
+YbcStatus YBCPgInsertStmtSetOnConflictAction(
+    YbcPgStatement handle, YbcPgOnConflictAction action) {
+  return ToYBCStatus(pgapi->InsertStmtSetOnConflictAction(handle,
+      static_cast<PgsqlWriteRequestPB::PgsqlOnConflictAction>(action)));
 }
 
 YbcStatus YBCPgInsertStmtSetWriteTime(YbcPgStatement handle, const uint64_t write_time) {
@@ -2300,6 +2348,12 @@ YbcStatus YBCGetSharedDBCatalogVersion(YbcPgOid db_oid, uint64_t* catalog_versio
   return ExtractValueFromResult(pgapi->GetSharedCatalogVersion(db_oid), catalog_version);
 }
 
+YbcStatus YBCGetSharedDbLastPrefetchedCatalogVersion(
+    YbcPgOid db_oid, uint64_t* catalog_version) {
+  return ExtractValueFromResult(
+      pgapi->GetSharedDbLastPrefetchedCatalogVersion(db_oid), catalog_version);
+}
+
 YbcStatus YBCGetNumberOfDatabases(uint32_t* num_databases) {
   return ExtractValueFromResult(pgapi->GetNumberOfDatabases(), num_databases);
 }
@@ -2572,8 +2626,8 @@ void YBCRegisterSysTableForPrefetching(
       row_oid_filtering_attr, fetch_ybctid);
 }
 
-YbcStatus YBCPrefetchRegisteredSysTables() {
-  return ToYBCStatus(pgapi->PrefetchRegisteredSysTables());
+YbcStatus YBCPrefetchRegisteredSysTables(bool completes_connection_prefetch) {
+  return ToYBCStatus(pgapi->PrefetchRegisteredSysTables(completes_connection_prefetch));
 }
 
 YbcStatus YBCPgCheckIfPitrActive(bool* is_active) {
@@ -2629,6 +2683,10 @@ YbcStatus YBCPgNewCreateReplicationSlot(const char *slot_name,
                                         YbcPgReplicationSlotSnapshotAction snapshot_action,
                                         YbcLsnType lsn_type,
                                         YbcOrderingMode ordering_mode,
+                                        const char *yb_publication_name,
+                                        const YbcPgOid *yb_publication_relfilenodes,
+                                        size_t yb_num_publication_tables,
+                                        bool yb_publication_all_tables,
                                         YbcPgStatement *handle) {
   return ToYBCStatus(pgapi->NewCreateReplicationSlot(slot_name,
                                                      plugin_name,
@@ -2636,6 +2694,10 @@ YbcStatus YBCPgNewCreateReplicationSlot(const char *slot_name,
                                                      snapshot_action,
                                                      lsn_type,
                                                      ordering_mode,
+                                                     yb_publication_name,
+                                                     yb_publication_relfilenodes,
+                                                     yb_num_publication_tables,
+                                                     yb_publication_all_tables,
                                                      handle));
 }
 
@@ -2756,6 +2818,7 @@ YbcStatus YBCPgListReplicationSlots(
           .expired = info.expired(),
           .allow_tables_without_primary_key = info.allow_tables_without_primary_key(),
           .detect_publication_changes_implicitly = info.detect_publication_changes_implicitly(),
+          .bound_publication_name = YBCPAllocStdString(info.bound_publication_name()),
       };
       ++dest;
     }
@@ -2814,6 +2877,7 @@ YbcStatus YBCPgGetReplicationSlot(
       .expired = slot_info.expired(),
       .allow_tables_without_primary_key = slot_info.allow_tables_without_primary_key(),
       .detect_publication_changes_implicitly = slot_info.detect_publication_changes_implicitly(),
+      .bound_publication_name = YBCPAllocStdString(slot_info.bound_publication_name()),
   };
 
   return YBCStatusOK();
@@ -2991,6 +3055,8 @@ YbcStatus YBCPgGetCDCConsistentChanges(
   bool needs_publication_table_list_refresh = resp.needs_publication_table_list_refresh();
   uint64_t publication_refresh_time = resp.publication_refresh_time();
   bool explicit_alter_publication_detected = resp.explicit_alter_publication_detected();
+  uint64_t publication_refresh_record_time = resp.publication_refresh_record_time();
+  const auto& publication_refresh_txn_id = resp.publication_refresh_txn_id();
 
   size_t row_idx = 0;
   for (const auto& row_pb : resp_rows_pb) {
@@ -3139,7 +3205,15 @@ YbcStatus YBCPgGetCDCConsistentChanges(
       .needs_publication_table_list_refresh = needs_publication_table_list_refresh,
       .publication_refresh_time = publication_refresh_time,
       .explicit_alter_publication_detected = explicit_alter_publication_detected,
+      .publication_refresh_record_time = publication_refresh_record_time,
+      .publication_refresh_txn_id = {},
   };
+  if (!publication_refresh_txn_id.empty()) {
+    snprintf(
+        (*record_batch)->publication_refresh_txn_id,
+        sizeof((*record_batch)->publication_refresh_txn_id), "%s",
+        publication_refresh_txn_id.c_str());
+  }
 
   if (row_count > 0) {
     VLOG(1) << "Summary of the GetConsistentChangesResponsePB response\n"
@@ -3227,7 +3301,13 @@ YbcStatus YBCTabletsMetadata(YbcPgGlobalTabletsDescriptor** tablets, size_t* cou
             ? YBCPAllocStdString(tablet_metadata.tablet_state())
             : nullptr,
         .pg_table_oid = tablet_metadata.has_pg_table_oid() ? tablet_metadata.pg_table_oid()
-                                                           : kPgInvalidOid
+                                                           : kPgInvalidOid,
+        .has_disk_size = tablet_metadata.has_sst_files_disk_size() ||
+                         tablet_metadata.has_wal_files_disk_size(),
+        .sst_files_disk_size = tablet_metadata.sst_files_disk_size(),
+        .wal_files_disk_size = tablet_metadata.wal_files_disk_size(),
+        .uncompressed_sst_files_disk_size = tablet_metadata.uncompressed_sst_files_disk_size(),
+        .vector_index_disk_size = tablet_metadata.vector_index_disk_size()
       };
       ++dest;
     }
@@ -3350,7 +3430,9 @@ YbcStatus YBCResetAutoAnalyzeMutationCounters(
       PgObjectId(database_oid, table_relfilenode_oid)));
 }
 
-bool YBCIsCronLeader() { return pgapi->IsCronLeader(); }
+bool YBCHasCronLease() { return pgapi->HasCronLease(); }
+
+bool YBCCanCronStartJobs() { return pgapi->CanCronStartJobs(); }
 
 int YBCGetXClusterRole(uint32_t db_oid) {
   auto result = pgapi->GetXClusterRole(db_oid);

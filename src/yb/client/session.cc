@@ -210,6 +210,9 @@ void BatcherFlushDone(
       status = STATUS(
           IllegalState, "Session is closed, cannot retry operations", done_batcher->LogPrefix());
     }
+    // The batcher could outlive the callback, delaying reuse of the buffers. Timed out local calls
+    // whose handlers still run keep their own references.
+    done_batcher->SetBuffersHolder(nullptr);
     MoveErrorsAndRunCallback(
         done_batcher, std::move(errors), std::move(callback), std::move(status));
     return;
@@ -241,7 +244,7 @@ void FlushBatcherAsync(
 
 } // namespace
 
-void YBSession::FlushAsync(FlushCallback callback) {
+void YBSession::FlushAsync(FlushCallback callback, std::shared_ptr<void> buffers_holder) {
   // Swap in a new batcher to start building the next batch.
   // Save off the old batcher.
   //
@@ -252,6 +255,7 @@ void YBSession::FlushAsync(FlushCallback callback) {
   internal::BatcherPtr old_batcher;
   old_batcher.swap(batcher_);
   if (old_batcher) {
+    old_batcher->SetBuffersHolder(std::move(buffers_holder));
     FlushBatcherAsync(
         old_batcher, std::move(callback), batcher_config_,
         internal::IsWithinTransactionRetry::kFalse);

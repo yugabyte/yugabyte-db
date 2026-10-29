@@ -305,6 +305,11 @@ message FlushTabletsRequestPB {
 
   // Which DBs are the subject for the operation and other options.
   optional tablet.FlushCompactFlags flags = 11;
+
+  // Set by a snapshot leader flushing its replicas before submitting snapshot creation. Advisory:
+  // the receiver runs the flush on a lane isolated from bulk admin flushes; a receiver that does
+  // not know the field uses its admin pool.
+  optional bool snapshot_preflight = 12;
 }
 
 message FlushTabletsResponsePB {

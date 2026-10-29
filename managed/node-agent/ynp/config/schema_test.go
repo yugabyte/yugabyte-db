@@ -35,7 +35,9 @@ func validate(t *testing.T, input any, prefix string) error {
 		return nil
 	}
 	expected := fmt.Sprintf("__OPEN__ %s __CLOSE__", prefix)
-	if !reflect.DeepEqual(expected, input) {
+	// String typed values are rendered through tojson.
+	expectedString := fmt.Sprintf("__OPEN__ %s | tojson __CLOSE__", prefix)
+	if !reflect.DeepEqual(expected, input) && !reflect.DeepEqual(expectedString, input) {
 		t.Fatalf("Value mismatch for key %s: expected %s, got %v", prefix, expected, input)
 	} else {
 		t.Logf("Found correct %s\n", input)

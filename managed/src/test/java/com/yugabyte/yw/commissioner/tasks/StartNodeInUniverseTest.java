@@ -7,6 +7,7 @@ import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -14,6 +15,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -23,6 +25,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeManager;
@@ -307,6 +310,75 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
     assertStartNodeSequence(subTasksByPosition, false);
   }
 
+  // PLAT-23125: a node can lose its master while stopped, so start node rewrites its collector
+  // config for its current roles.
+  @Test
+  public void testStartNodeRewritesOtelCollectorWhenMetricsExportEnabled() {
+    assertEquals(Map.of("host-n1", false), startNodeWithMetricsExport(false /* startMaster */));
+  }
+
+  // The master start refreshes the node, so the later refresh for a lost master must not run
+  // again (PLAT-23125).
+  @Test
+  public void testStartNodeWithMasterStartRewritesOtelCollectorOnce() {
+    assertEquals(Map.of("host-n1", false), startNodeWithMetricsExport(true /* startMaster */));
+  }
+
+  // A dedicated tserver node never runs a master, so its start must not rewrite the collector.
+  @Test
+  public void testStartDedicatedTserverNodeSkipsOtelCollectorRewrite() {
+    assertEquals(Map.of(), startNodeWithMetricsExport(false, true /* dedicatedTserver */));
+  }
+
+  private Map<String, Boolean> startNodeWithMetricsExport(boolean startMaster) {
+    return startNodeWithMetricsExport(startMaster, false /* dedicatedTserver */);
+  }
+
+  // Returns ignoreErrors of each ManageOtelCollector subtask, by node name.
+  private Map<String, Boolean> startNodeWithMetricsExport(
+      boolean startMaster, boolean dedicatedTserver) {
+    Universe current = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    if (startMaster) {
+      current =
+          Universe.saveDetails(
+              current.getUniverseUUID(),
+              u -> u.getUniverseDetails().nodeDetailsSet.forEach(n -> n.isMaster = false));
+    }
+    setMasters(current, "host-n2");
+    if (startMaster) {
+      setExpectedMasters(current, "host-n1", "host-n2");
+    }
+    if (dedicatedTserver) {
+      Universe.saveDetails(
+          current.getUniverseUUID(),
+          u -> u.getNode("host-n1").dedicatedTo = UniverseTaskBase.ServerType.TSERVER);
+    }
+    Universe universe = enableMetricsExport(defaultUniverse.getUniverseUUID());
+    NodeTaskParams taskParams = new NodeTaskParams();
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
+    TaskInfo taskInfo = submitTask(taskParams, "host-n1");
+    assertEquals(
+        taskInfo.getErrorMessage()
+            + taskInfo.getSubTasks().stream()
+                .filter(t -> t.getTaskState() == TaskInfo.State.Failure)
+                .map(t -> t.getTaskType() + ": " + t.getErrorMessage())
+                .collect(Collectors.toList()),
+        TaskInfo.State.Success,
+        taskInfo.getTaskState());
+    List<TaskInfo> refreshes =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.ManageOtelCollector)
+            .collect(Collectors.toList());
+    if (!refreshes.isEmpty()) {
+      assertOtelRewritesRunLast(taskInfo);
+    }
+    return refreshes.stream()
+        .collect(
+            Collectors.toMap(
+                t -> t.getTaskParams().get("nodeName").asText(),
+                t -> t.getTaskParams().get("ignoreErrors").asBoolean()));
+  }
+
   @Test
   public void testStartNodeWithUnderReplicatedMaster_WithoutReadOnlyCluster_NodeFromPrimary() {
     Universe universe = defaultUniverse;
@@ -331,6 +403,37 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertEquals(WITH_MASTER_UNDER_REPLICATED.size(), subTasksByPosition.size());
     assertStartNodeSequence(subTasksByPosition, true);
+  }
+
+  @Test
+  public void testStartDedicatedMasterNodeIsNotLoadBalancerTarget() {
+    // PLAT-23221: a master-only node must not be registered with the load balancer.
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        u -> {
+          Cluster primary = u.getUniverseDetails().getPrimaryCluster();
+          ApiUtils.configureDedicatedMasterFields(primary.userIntent);
+          primary.userIntent.enableLB = true;
+          primary.placementInfo.azStream().forEach(az -> az.lbName = "lb1");
+          for (NodeDetails node : u.getUniverseDetails().nodeDetailsSet) {
+            boolean dedicatedMaster = node.nodeName.equals("host-n1");
+            node.dedicatedTo = dedicatedMaster ? ServerType.MASTER : ServerType.TSERVER;
+            node.isMaster = false;
+            node.isTserver = !dedicatedMaster;
+          }
+        });
+    // Set one master atleast for master addresses to be populated.
+    Universe universe = setMasters(defaultUniverse, "host-n2");
+    setExpectedMasters(universe, "host-n1", "host-n2");
+    NodeTaskParams taskParams = new NodeTaskParams();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    TaskInfo taskInfo = submitTask(taskParams, "host-n1");
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .noneMatch(t -> t.getTaskType() == TaskType.ManageLoadBalancerGroup));
+    verify(cloudAPI, never()).manageNodeGroup(any(), any(), any(), any(), any(), any());
   }
 
   @Test

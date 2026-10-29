@@ -338,9 +338,6 @@ od_frontend_attach(od_client_t *client, char *context,
 
 	bool wait_for_idle = false;
 	for (;;) {
-		if (yb_is_route_invalid(route))
-			return OD_EATTACH;
-
 		od_router_status_t status;
 		status = od_router_attach(router, client, wait_for_idle, client);
 		if (status != OD_ROUTER_OK) {
@@ -851,9 +848,20 @@ static void yb_undo_parse_queue_entry(od_server_t *server,
 				  &value_ptr);
 		break;
 	}
+	case YB_PARSE_QUEUE_QUERY:
+		if (server->sync_request > server->sync_reply) {
+			server->sync_request--;
+		} else {
+			od_instance_t *instance = server->global->instance;
+			od_error(&instance->logger, "parse queue cleanup",
+				 client, server,
+				 "discarded Query with no pending sync request");
+		}
+		server->yb_unnamed_prep_stmt_client_id =
+			entry->prev_unnamed_client_id;
+		break;
 	case YB_PARSE_QUEUE_UNNAMED_PARSE:
 	case YB_PARSE_QUEUE_UNNAMED_CLOSE:
-	case YB_PARSE_QUEUE_QUERY:
 		server->yb_unnamed_prep_stmt_client_id =
 			entry->prev_unnamed_client_id;
 		break;

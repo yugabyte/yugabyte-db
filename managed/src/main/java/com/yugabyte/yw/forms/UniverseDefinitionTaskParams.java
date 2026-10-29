@@ -90,6 +90,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   public static final String UPDATING_TASK_UUID_FIELD = "updatingTaskUUID";
   public static final String PLACEMENT_MODIFICATION_TASK_UUID_FIELD =
       "placementModificationTaskUuid";
+  public static final String IS_KUBERNETES_OPERATOR_CONTROLLED_FIELD =
+      "isKubernetesOperatorControlled";
 
   public static final Set<SoftwareUpgradeState> IN_PROGRESS_UNIV_SOFTWARE_UPGRADE_STATES =
       ImmutableSet.of(
@@ -742,6 +744,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       if (validateGFlagsConsistency) {
         GFlagsUtil.checkGflagsAndIntentConsistency(userIntent);
       }
+      GFlagsUtil.validateGFlagValues(userIntent);
       GFlagsUtil.validateFipsCompliancy(userIntent, isFipsEnabled);
       if (userIntent.specificGFlags != null) {
         if (clusterType == ClusterType.PRIMARY
@@ -2820,6 +2823,16 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return new File(xClusterInfo.sourceRootCertDirPath);
     }
     return null;
+  }
+
+  /**
+   * Returns true if task {@code taskUuid} owns this universe, as the updating task or the placement
+   * modification task. Retry and rollback eligibility both require it.
+   */
+  @JsonIgnore
+  public boolean isOwnedByTask(UUID taskUuid) {
+    return taskUuid != null
+        && (taskUuid.equals(updatingTaskUUID) || taskUuid.equals(placementModificationTaskUuid));
   }
 
   @JsonIgnore

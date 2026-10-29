@@ -59,6 +59,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <deque>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -250,7 +251,9 @@ DEFINE_test_flag(bool, get_ysql_catalog_version_from_sys_catalog, false,
 DECLARE_bool(TEST_log_catalog_version_cache_events);
 
 DEFINE_test_flag(uint32, abort_create_table, 0,
-    "Abort the creation of a table at a specified point in code.");
+    "Fail the creation of a table whose name starts with test_create_abort_. 1 fails it before "
+    "the table is written to the sys catalog, and the creation is undone. 2 fails the creation "
+    "of an index after the index and its indexed table are written, and the creation is kept.");
 
 // TODO: should this be a test flag?
 DEFINE_RUNTIME_int32(catalog_manager_inject_latency_in_delete_table_ms, 0,
@@ -389,8 +392,12 @@ DEFINE_test_flag(bool, return_error_if_namespace_not_found, false,
 DEFINE_test_flag(bool, hang_on_namespace_transition, false,
     "Used in tests to simulate a lapse between issuing a namespace op and final processing.");
 
+DEFINE_test_flag(bool, skip_persistence_block_erase_on_drop, false,
+    "Skip erasing a YSQL database's persistence block map entry when its drop finishes.");
+
 DEFINE_test_flag(bool, simulate_crash_after_table_marked_deleting, false,
-    "Crash yb-master after table's state is set to DELETING. This skips tablets deletion.");
+    "Fail DeleteTable after the table and its indexes are written to the sys catalog as DELETING "
+    "and before the deletion is applied in memory. This skips tablets deletion.");
 
 DEPRECATE_FLAG(bool, master_drop_table_after_task_response, "11_2022");
 
@@ -636,19 +643,14 @@ TAG_FLAG(emergency_repair_mode, unsafe);
 DEPRECATE_FLAG(bool, vector_index_use_hnswlib, "02_2026");
 DEPRECATE_FLAG(bool, vector_index_use_yb_hnsw, "02_2026");
 
-static constexpr char kHnswlib[] = "hnswlib";
-static constexpr char kUsearch[] = "usearch";
-static constexpr char kYbHnsw[] = "yb_hnsw";
 static constexpr char kYbHnswUsearch[] = "yb_hnsw_usearch";
 static constexpr char kYbHnswHnswlib[] = "yb_hnsw_hnswlib";
 
 DEFINE_RUNTIME_string(vector_index_backend, kYbHnswHnswlib,
-    "Which vector index backend to use. Options are \"yb_hnsw\", \"yb_hnsw_usearch\", "
-    "\"yb_hnsw_hnswlib\", \"hnswlib\", and \"usearch\". \"yb_hnsw\" has the same effect as "
-    "\"yb_hnsw_usearch\".");
+    "Which vector index backend to use. Options are \"yb_hnsw_usearch\" and \"yb_hnsw_hnswlib\".");
 
 DEFINE_validator(vector_index_backend,
-    FLAG_IN_SET_VALIDATOR(kHnswlib, kUsearch, kYbHnsw, kYbHnswUsearch, kYbHnswHnswlib));
+    FLAG_IN_SET_VALIDATOR(kYbHnswUsearch, kYbHnswHnswlib));
 
 TAG_FLAG(vector_index_backend, hidden);
 TAG_FLAG(vector_index_backend, advanced);
@@ -660,7 +662,19 @@ DEFINE_RUNTIME_bool(vector_index_store_payload, false,
     "mapping entries at all, neither on insert nor on delete. The value is fixed for a table and "
     "for an index when it is created, and indexes of a table that writes no reverse mapping always "
     "store the payload. Disabled by default, because deleted vectors are not removed from such an "
-    "index yet, see #33912.");
+    "index yet.");
+
+DEFINE_RUNTIME_uint32(vector_index_tenant_hash_group_and_range_components, 0,
+    "Temporary, until the tenant of a vector index can be specified when the index is created, "
+    "see #35312. Number of leading primary-key components that identify the vector tenant and are "
+    "stored in the payload of newly created vector indexes, see vector_index_store_payload. All "
+    "hash columns form a single hash-group component, followed by one component per range column. "
+    "0 means vectors have no tenant. Applies only to the yb_hnsw_hnswlib backend. The tenant never "
+    "covers the full primary key: values greater than or equal to the number of components use all "
+    "components but the last one, so a single-component primary key has no tenant. The value is "
+    "fixed when the index is created. Older releases cannot read payloads created with a nonzero "
+    "value and may write vectors without their tenant, so keep it 0 until the upgrade to this "
+    "release is finalized.");
 
 DEFINE_RUNTIME_AUTO_bool(enable_table_owned_vector_reverse_mapping, kExternal, false, true,
     "When true, newly created YSQL tables hold vector reverse mapping ownership. "
@@ -1441,6 +1455,8 @@ Status CatalogManager::MaybeRestoreInitialSysCatalogSnapshotAndReloadSysCatalog(
   LOG_WITH_PREFIX(INFO) << "Re-initializing xcluster config";
   RETURN_NOT_OK(xcluster_manager_->PrepareDefaultXClusterConfig(
       state->epoch.leader_term, /* recreate = */ true));
+  RETURN_NOT_OK(xcluster_manager_->PrepareDefaultPersistenceBlockMap(
+      state->epoch.leader_term, /*recreate=*/true));
 
   LOG_WITH_PREFIX(INFO) << "Restoring snapshot completed, considering initdb finished";
   RETURN_NOT_OK(ysql_manager_->SetInitDbDone(state->epoch));
@@ -1495,6 +1511,10 @@ Status CatalogManager::VisitSysCatalog(SysCatalogLoadingState* state) {
   if (finish > start + kLongLockAcquisitionLimit) {
     LOG_WITH_PREFIX(WARNING) << "Long wait on leader_mutex_: " << yb::ToString(finish - start);
   }
+
+  // Before anything below clears in-memory state.
+  catalog_loaded_term_.store(OpId::kUnknownTerm, std::memory_order_release);
+  TEST_SYNC_POINT("CatalogManager::VisitSysCatalog::CatalogLoadedTermReset");
 
   // Exclusive mutex_ scope.
   {
@@ -1577,6 +1597,7 @@ Status CatalogManager::VisitSysCatalog(SysCatalogLoadingState* state) {
     RETURN_NOT_OK(PrepareDefaultClusterConfig(term));
 
     RETURN_NOT_OK(xcluster_manager_->PrepareDefaultXClusterConfig(term, /* recreate = */ false));
+    RETURN_NOT_OK(xcluster_manager_->PrepareDefaultPersistenceBlockMap(term, /*recreate=*/false));
 
     permissions_manager_->BuildRecursiveRoles();
 
@@ -1589,6 +1610,7 @@ Status CatalogManager::VisitSysCatalog(SysCatalogLoadingState* state) {
           tables_->GetAllTables(), sys_catalog_, *ysql_manager_.get(), state->epoch));
     }
   }  // Exclusive mutex_ scope.
+  catalog_loaded_term_.store(term, std::memory_order_release);
   leader_ready_term_ = term;
   return Status::OK();
 }
@@ -2412,9 +2434,7 @@ Status CatalogManager::AbortTableCreation(TableInfo* table,
   table->CloseAndWaitForAllTasksToAbort();
 
   // For an index, must release the indexed_table COW lock
-  // that was acquired earlier. The indexed_table lock may be
-  // already released depending on the error causing the abort.
-  // Unlock() api checks for that internally.
+  // that was acquired earlier, discarding the uncommitted index info.
   // Note that the two locks are acquired based on the table_id
   // order to avoid deadlocks. But can be released in any order
   // w/o affecting correctness.
@@ -2673,8 +2693,10 @@ Result<shared_ptr<TablespaceIdToReplicationInfoMap>> CatalogManager::GetYsqlTabl
   }
 
   // Before updating the tablespace placement map, validate the
-  // placement policies. If validation fails, mark the tablespace as invalid (nullopt) so that
-  // tables in this tablespace will fail to be placed, but other tablespaces continue to work.
+  // placement policies. If validation fails, mark the tablespace as invalid (nullopt). nullopt is
+  // indistinguishable from "no placement", so tables in it silently get the cluster placement.
+  // TablespaceParser repeats the placement-only checks at CREATE/ALTER TABLESPACE, but checks that
+  // depend on the cluster config (placement_uuid, read replicas) can only be done here.
   for (auto& iter : *tablespace_map) {
     if (iter.second) {
       auto status = ValidateTableReplicationInfo(iter.second.value());
@@ -2886,6 +2908,75 @@ Status CatalogManager::CreateTransactionStatusTablesForTablespaces(
   return Status::OK();
 }
 
+namespace {
+// Cap on tables persisted per refresh cycle. The first cycle after an upgrade has to backfill
+// every table; spreading that over several cycles keeps any single consensus round small.
+constexpr size_t kMaxTablespaceIdsPersistedPerCycle = 128;
+}  // namespace
+
+Status CatalogManager::PersistTablespaceIds(
+    const TableToTablespaceIdMap& table_to_tablespace_map, const LeaderEpoch& epoch) {
+  // Two passes. The first resolves TableInfos (which takes mutex_) and filters out tables that
+  // are already up to date, while holding no CoW locks. The second takes CoW write locks while
+  // holding nothing else. Interleaving the two would hold a CoW write lock across a mutex_
+  // acquisition, the reverse of the order used elsewhere (e.g. AddTransactionStatusTablet).
+  std::vector<std::pair<TableInfoPtr, std::optional<TablespaceId>>> to_persist;
+  for (const auto& [table_id, tablespace_id] : table_to_tablespace_map) {
+    if (to_persist.size() >= kMaxTablespaceIdsPersistedPerCycle) {
+      break;
+    }
+    auto table = GetTableInfo(table_id);
+    if (!table) {
+      continue;
+    }
+    auto l = table->LockForRead();
+    const bool up_to_date = tablespace_id
+        ? l->pb.has_tablespace_id() && l->pb.tablespace_id() == *tablespace_id
+        : l->pb.has_no_custom_tablespace();
+    if (up_to_date) {
+      continue;
+    }
+    to_persist.emplace_back(std::move(table), tablespace_id);
+  }
+  if (to_persist.empty()) {
+    return Status::OK();
+  }
+
+  // Lock in table id order, the order used when a single operation locks several tables.
+  std::sort(to_persist.begin(), to_persist.end(), [](const auto& lhs, const auto& rhs) {
+    return lhs.first->id() < rhs.first->id();
+  });
+  std::vector<TableInfo*> tables;
+  std::vector<TableInfo::WriteLock> locks;
+  tables.reserve(to_persist.size());
+  locks.reserve(to_persist.size());
+  for (auto& [table, observed] : to_persist) {
+    auto lock = table->LockForWrite();
+    if (lock->started_deleting()) {
+      continue;
+    }
+    if (observed) {
+      lock.mutable_data()->pb.set_tablespace_id(*observed);
+    } else {
+      // Sets the empty marker message; being in a oneof, this also clears tablespace_id.
+      lock.mutable_data()->pb.mutable_no_custom_tablespace();
+    }
+    tables.push_back(table.get());
+    locks.push_back(std::move(lock));
+  }
+  if (tables.empty()) {
+    return Status::OK();
+  }
+
+  RETURN_NOT_OK(sys_catalog_->Upsert(epoch, tables));
+  // Reverse of lock order: Commit() waits for readers, so release higher ids first (see #10304).
+  for (auto it = locks.rbegin(); it != locks.rend(); ++it) {
+    it->Commit();
+  }
+  VLOG(2) << "Persisted tablespace id for " << tables.size() << " table(s)";
+  return Status::OK();
+}
+
 Status CatalogManager::DoRefreshTablespaceInfo(const LeaderEpoch& epoch) {
   VLOG(2) << "Running RefreshTablespaceInfoPeriodically task";
 
@@ -2916,6 +3007,11 @@ Status CatalogManager::DoRefreshTablespaceInfo(const LeaderEpoch& epoch) {
   }
 
   if (table_to_tablespace_map) {
+    // Durably record what pg_class just reported, so the mapping outlives the pg_class row.
+    // Best effort: a failure here must not stop the in-memory refresh above from taking effect.
+    WARN_NOT_OK(PersistTablespaceIds(*table_to_tablespace_map, epoch),
+                "Failed to persist table to tablespace mappings");
+
     // Trigger transaction table creates for tablespaces with tables and no transaction tables.
     RETURN_NOT_OK(CreateTransactionStatusTablesForTablespaces(
         *tablespace_info, *table_to_tablespace_map, epoch));
@@ -2925,11 +3021,10 @@ Status CatalogManager::DoRefreshTablespaceInfo(const LeaderEpoch& epoch) {
   return Status::OK();
 }
 
-Status CatalogManager::AddIndexInfoToTable(TableInfoWithWriteLock& indexed_table,
-                                           const IndexInfoPB& index_info,
-                                           const LeaderEpoch& epoch,
-                                           CreateTableResponsePB* resp) {
-  LOG(INFO) << "AddIndexInfoToTable to " << indexed_table->ToString() << "  IndexInfo "
+Status CatalogManager::PrepareAddIndexInfoToTable(TableInfoWithWriteLock& indexed_table,
+                                                 const IndexInfoPB& index_info,
+                                                 CreateTableResponsePB* resp) {
+  LOG(INFO) << "PrepareAddIndexInfoToTable to " << indexed_table->ToString() << "  IndexInfo "
             << AsString(index_info);
   auto& l = indexed_table.lock;
   RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l, resp));
@@ -2949,16 +3044,6 @@ Status CatalogManager::AddIndexInfoToTable(TableInfoWithWriteLock& indexed_table
   l.mutable_data()->set_state(
       SysTablesEntryPB::ALTERING,
       Format("Add index info version=$0 ts=$1", pb.version(), LocalTimeAsString()));
-
-  // Update sys-catalog with the new indexed table info.
-  TRACE("Updating indexed table metadata on disk");
-  RETURN_NOT_OK(sys_catalog_->Upsert(epoch, indexed_table.info));
-
-  // Update the in-memory state.
-  TRACE("Committing in-memory state");
-  l.Commit();
-
-  RETURN_NOT_OK(SendAlterTableRequest(indexed_table.info, epoch));
 
   return Status::OK();
 }
@@ -3119,6 +3204,50 @@ PitrCount CatalogManager::pitr_count() const {
   return sys_catalog_->pitr_count();
 }
 
+Result<SplitPhase> CatalogManager::GetTableSplitPhase(
+    const scoped_refptr<const TableInfo>& table) const {
+  const auto table_replication_info = VERIFY_RESULT(CatalogManagerUtil::GetTableReplicationInfo(
+      table, GetTablespaceManager(), ClusterConfig()->LockForRead()->pb.replication_info()));
+  return GetTableSplitPhase(*table, table_replication_info);
+}
+
+Result<SplitPhase> CatalogManager::GetTableSplitPhase(
+    const TableInfo& table, const ReplicationInfoPB& table_replication_info) const {
+  TSDescriptorVector ts_descs = GetAllLiveNotBlacklistedTServers();
+
+  size_t num_servers = 0;
+  // If there is custom placement information present then
+  // only count the tservers which the table has access to
+  // according to the placement policy
+  if (table_replication_info.has_live_replicas()) {
+    auto valid_tservers_res =
+        FindTServersForPlacementInfo(table_replication_info.live_replicas(), ts_descs);
+    if (!valid_tservers_res.ok()) {
+      num_servers = ts_descs.size();
+    } else {
+      num_servers = valid_tservers_res.get().size();
+    }
+  } else {
+    num_servers = ts_descs.size();
+  }
+
+  if (num_servers == 0) {
+    return STATUS_FORMAT(IllegalState,
+                         "No live, non-blacklisted tservers for table $0. "
+                         "Cannot calculate average number of tablets per tserver.",
+                         table.id());
+  }
+  int64 num_tablets_per_server = table.NumPartitions() / num_servers;
+
+  if (num_tablets_per_server < FLAGS_tablet_split_low_phase_shard_count_per_node) {
+    return SplitPhase::kLow;
+  }
+  if (num_tablets_per_server < FLAGS_tablet_split_high_phase_shard_count_per_node) {
+    return SplitPhase::kHigh;
+  }
+  return SplitPhase::kFinal;
+}
+
 Result<SplitPhase> CatalogManager::ShouldSplitValidCandidate(
     const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const {
   if (drive_info.may_have_orphaned_post_split_data) {
@@ -3135,9 +3264,7 @@ Result<SplitPhase> CatalogManager::ShouldSplitValidCandidate(
     return STATUS_FORMAT(IllegalState, "Tablet $0 SST size ($1) < low phase size threshold ($2).",
         tablet_info.id(), size, FLAGS_tablet_split_low_phase_size_threshold_bytes);
   }
-  TSDescriptorVector ts_descs = GetAllLiveNotBlacklistedTServers();
 
-  size_t num_servers = 0;
   auto table_replication_info = VERIFY_RESULT(CatalogManagerUtil::GetTableReplicationInfo(
       tablet_info.table(), GetTablespaceManager(),
       ClusterConfig()->LockForRead()->pb.replication_info()));
@@ -3150,60 +3277,36 @@ Result<SplitPhase> CatalogManager::ShouldSplitValidCandidate(
       tablet_info.id(), *tablet_info.GetReplicaLocations(),
       CatalogManagerUtil::GetReplicationFactor(table_replication_info)));
 
-  // If there is custom placement information present then
-  // only count the tservers which the table has access to
-  // according to the placement policy
-  if (table_replication_info.has_live_replicas()) {
-    auto pb = table_replication_info.live_replicas();
-    auto valid_tservers_res =
-        FindTServersForPlacementInfo(table_replication_info.live_replicas(), ts_descs);
-    if (!valid_tservers_res.ok()) {
-      num_servers = ts_descs.size();
-    } else {
-      num_servers = valid_tservers_res.get().size();
-    }
-  } else {
-    num_servers = ts_descs.size();
+  const auto phase = VERIFY_RESULT(
+      GetTableSplitPhase(*tablet_info.table(), table_replication_info));
+  switch (phase) {
+    case SplitPhase::kLow:
+      if (size <= FLAGS_tablet_split_low_phase_size_threshold_bytes) {
+        return STATUS_FORMAT(IllegalState,
+            "Table $0 is in the low split phase. Tablet $1 size ($2) <= "
+            "tablet_split_low_phase_size_threshold_bytes ($3).",
+            tablet_info.table()->id(), tablet_info.tablet_id(), size,
+            FLAGS_tablet_split_low_phase_size_threshold_bytes);
+      }
+      return phase;
+    case SplitPhase::kHigh:
+      if (size <= FLAGS_tablet_split_high_phase_size_threshold_bytes) {
+        return STATUS_FORMAT(IllegalState,
+            "Table $0 is in the high split phase. Tablet $1 size ($2) <= "
+            "tablet_split_high_phase_size_threshold_bytes ($3).",
+            tablet_info.table()->id(), tablet_info.tablet_id(), size,
+            FLAGS_tablet_split_high_phase_size_threshold_bytes);
+      }
+      return phase;
+    case SplitPhase::kFinal:
+      if (size <= FLAGS_tablet_force_split_threshold_bytes) {
+        return STATUS_FORMAT(IllegalState,
+            "Tablet $0 size ($1) <= tablet_force_split_threshold_bytes ($2)",
+            tablet_info.tablet_id(), size, FLAGS_tablet_force_split_threshold_bytes);
+      }
+      return phase;
   }
-
-  if (num_servers == 0) {
-    return STATUS_FORMAT(IllegalState,
-                         "No live, non-blacklisted tservers for tablet $0. "
-                         "Cannot calculate average number of tablets per tserver.",
-                         tablet_info.id());
-  }
-  int64 num_tablets_per_server = tablet_info.table()->NumPartitions() / num_servers;
-
-  if (num_tablets_per_server < FLAGS_tablet_split_low_phase_shard_count_per_node) {
-    if (size <= FLAGS_tablet_split_low_phase_size_threshold_bytes) {
-      return STATUS_FORMAT(IllegalState,
-          "Table $0 num_tablets_per_server ($1) is less than "
-          "tablet_split_low_phase_shard_count_per_node "
-          "($2). Tablet $3 size ($4) <= tablet_split_low_phase_size_threshold_bytes ($5).",
-          tablet_info.table()->id(), num_tablets_per_server,
-          FLAGS_tablet_split_low_phase_shard_count_per_node, tablet_info.tablet_id(), size,
-          FLAGS_tablet_split_low_phase_size_threshold_bytes);
-    }
-    return SplitPhase::kLow;
-  }
-  if (num_tablets_per_server < FLAGS_tablet_split_high_phase_shard_count_per_node) {
-    if (size <= FLAGS_tablet_split_high_phase_size_threshold_bytes) {
-      return STATUS_FORMAT(IllegalState,
-          "Table $0 num_tablets_per_server ($1) is less than "
-          "tablet_split_high_phase_shard_count_per_node "
-          "($2). Tablet $3 size ($4) <= tablet_split_high_phase_size_threshold_bytes ($5).",
-          tablet_info.table()->id(), num_tablets_per_server,
-          FLAGS_tablet_split_high_phase_shard_count_per_node, tablet_info.tablet_id(), size,
-          FLAGS_tablet_split_high_phase_size_threshold_bytes);
-    }
-    return SplitPhase::kHigh;
-  }
-  if (size <= FLAGS_tablet_force_split_threshold_bytes) {
-    return STATUS_FORMAT(IllegalState,
-        "Tablet $0 size ($1) <= tablet_force_split_threshold_bytes ($2)",
-        tablet_info.tablet_id(), size, FLAGS_tablet_force_split_threshold_bytes);
-  }
-  return SplitPhase::kFinal;
+  FATAL_INVALID_ENUM_VALUE(SplitPhase, phase);
 }
 
 namespace {
@@ -3821,6 +3924,88 @@ struct CatalogManager::DeletingTableData {
 
 std::string CatalogManager::DeletingTableData::ToString() const {
   return Format("table: $0, $1", *table_info_with_write_lock.info, delete_retainer.ToString());
+}
+
+// The changes of one delete table operation: the table being deleted, the indexes deleted along
+// with it, and the indexed table an index is removed from. They are written in a single sys
+// catalog operation, so that no failure can persist a subset of them. Changes that are not
+// committed are discarded when the operation is destroyed.
+struct CatalogManager::DeleteTableOperation {
+  // All the tables involved, by id. The entry of a deleted table is moved to tables.
+  std::map<TableId, DeletingTableData> data_map;
+
+  // The deleted tables, in the order they are deleted.
+  std::vector<DeletingTableData> tables;
+
+  std::vector<DdlLogEntry> ddl_log_entries;
+
+  // The indexed table a dropped index is removed from. It points into data_map.
+  TableInfoWithWriteLock* altered_indexed_table = nullptr;
+};
+
+Status CatalogManager::PersistDeleteTableOperation(
+    const LeaderEpoch& epoch, DeleteTableOperation& op, DeleteTableResponsePB* resp) {
+  auto ddl_log_entries = op.ddl_log_entries |
+      std::views::transform([](const DdlLogEntry& entry) { return &entry; });
+  auto deleted_tables = op.tables | std::views::transform([](const DeletingTableData& table) {
+    return table.table_info_with_write_lock.info.get();
+  });
+
+  TRACE("Updating metadata on disk");
+  auto s = op.altered_indexed_table
+      ? sys_catalog_->Upsert(
+            epoch, ddl_log_entries, deleted_tables, op.altered_indexed_table->info)
+      : sys_catalog_->Upsert(epoch, ddl_log_entries, deleted_tables);
+  if (!s.ok()) {
+    s = s.CloneAndPrepend("An error occurred while updating sys tables");
+    LOG(WARNING) << s;
+    return CheckIfNoLongerLeaderAndSetupError(s, resp);
+  }
+
+  if (PREDICT_FALSE(FLAGS_TEST_simulate_crash_after_table_marked_deleting)) {
+    return STATUS(InternalError, "Simulated crash after the table was marked deleting");
+  }
+
+  // Unlock the tables that were locked but not changed: an index that is already being deleted, or
+  // an indexed table that does not list the dropped index. The deleted tables were moved to
+  // op.tables, and altered_indexed_table is committed below.
+  for (auto& data : op.data_map | std::views::values) {
+    if (&data.table_info_with_write_lock != op.altered_indexed_table) {
+      data.table_info_with_write_lock.lock.Unlock();
+    }
+  }
+
+  // Commit the in-memory state of all the changed tables in descending table id order.
+  TRACE("Committing in-memory state");
+  std::vector<TableInfoWithWriteLock*> changed_tables;
+  changed_tables.reserve(op.tables.size() + 1);
+  for (auto& table : op.tables) {
+    changed_tables.push_back(&table.table_info_with_write_lock);
+  }
+  if (op.altered_indexed_table) {
+    changed_tables.push_back(op.altered_indexed_table);
+  }
+  std::ranges::sort(
+      changed_tables, std::ranges::greater{},
+      [](const auto* table) -> const TableId& { return table->info->id(); });
+  TEST_SYNC_POINT("PersistDeleteTableOperation::BeforeCommit");
+  for (auto* table : changed_tables) {
+    table->Commit();
+    TEST_SYNC_POINT_CALLBACK("PersistDeleteTableOperation::TableCommitted", table->info.get());
+  }
+
+  for (const auto& table : op.tables) {
+    // If table is being hidden we should not abort snapshot related tasks.
+    if (table.delete_retainer.IsHideOnly()) {
+      continue;
+    }
+    // Always ignore Table schema verification tasks since it may be the one that is initiating the
+    // deletes.
+    table.table_info_with_write_lock.info->AbortTasks(
+        /*tasks_to_ignore=*/{server::MonitoredTaskType::TableSchemaVerification});
+  }
+
+  return Status::OK();
 }
 
 Status CatalogManager::DeleteNotServingTablet(
@@ -4506,6 +4691,47 @@ bool EnableTableOwnedVectorReverseMapping() {
 
 } // namespace
 
+Status CatalogManager::PersistNewTable(
+    const CreateTableRequestPB& req, const TableInfoPtr& table, const TabletInfos& tablets,
+    TableInfoWithWriteLock& indexed_table, IndexInfoPB* index_info, bool index_backfill_enabled,
+    bool is_pg_table, const LeaderEpoch& epoch, CreateTableResponsePB* resp) {
+  // For an index, add the index info to the uncommitted metadata of the indexed table, so that
+  // both tables are written to the sys catalog in a single operation.
+  if (IsIndex(req)) {
+    if (index_backfill_enabled && !req.skip_index_backfill()) {
+      if (is_pg_table) {
+        // YSQL: start at some permission before backfill.  The real enforcement happens with
+        // pg_index system table's indislive and indisready columns.  Choose WRITE_AND_DELETE
+        // because it will probably be less confusing.
+        index_info->set_index_permissions(INDEX_PERM_WRITE_AND_DELETE);
+      } else {
+        // YCQL
+        index_info->set_index_permissions(INDEX_PERM_DELETE_ONLY);
+      }
+    }
+
+    RETURN_NOT_OK_PREPEND(
+        PrepareAddIndexInfoToTable(indexed_table, *index_info, resp),
+        "An error occurred while inserting index info");
+  }
+
+  // if test flag to abort create table is set and this is to create
+  // test table, fake abort the table creation.
+  // case 1: fakes the case where the Upsert failed.
+  RETURN_NOT_OK(TEST_MaybeFakeAbortTableCreation(1, req.name()));
+
+  // An index and the indexed table that references it are written in a single operation, so that
+  // the index can never be persisted without the reference to it.
+  RETURN_NOT_OK_PREPEND(
+      IsIndex(req) ? sys_catalog_->Upsert(epoch, table, tablets, indexed_table.info)
+                   : sys_catalog_->Upsert(epoch, table, tablets),
+      "An error occurred while inserting to sys-tablets");
+  VLOG(3) << "SysTablesEntryPB after CreateTable: " << table->metadata().dirty().pb.DebugString();
+  TRACE("Wrote table and tablets to system table");
+
+  return Status::OK();
+}
+
 // Create a new table.
 // See README file in this directory for a description of the design.
 Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
@@ -4745,13 +4971,18 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       vector_index_options.set_store_payload(
           FLAGS_vector_index_store_payload ||
           indexed_table_lock->schema().table_properties().skip_vector_reverse_mapping());
-      auto backend = FLAGS_vector_index_backend;
-      if (backend == kHnswlib) {
-        vector_index_options.mutable_hnsw()->set_backend(HnswBackend::HNSWLIB);
-      } else if (backend == kYbHnswUsearch || backend == kYbHnsw) {
-        vector_index_options.mutable_hnsw()->set_backend(HnswBackend::YB_HNSW_USEARCH);
-      } else if (backend == kYbHnswHnswlib) {
-        vector_index_options.mutable_hnsw()->set_backend(HnswBackend::YB_HNSW_HNSWLIB);
+      vector_index_options.mutable_hnsw()->set_backend(
+          FLAGS_vector_index_backend == kYbHnswUsearch
+              ? HnswBackend::YB_HNSW_USEARCH : HnswBackend::YB_HNSW_HNSWLIB);
+      // Tenants are only for the hnswlib backend. A tenant leaves at least the last component of
+      // the primary key, otherwise every row would be its own tenant.
+      if (vector_index_options.store_payload() &&
+          vector_index_options.hnsw().backend() == HnswBackend::YB_HNSW_HNSWLIB) {
+        auto num_components = Schema::NumHashGroupAndRangeComponents(indexed_table_lock->schema());
+        vector_index_options.set_tenant_hash_group_and_range_components(
+            narrow_cast<uint32_t>(std::min<size_t>(
+                FLAGS_vector_index_tenant_hash_group_and_range_components,
+                num_components ? num_components - 1 : 0)));
       }
     } else if (!is_pg_table) {
       DCHECK_EQ(index_info.columns().size(), schema.num_columns())
@@ -4880,6 +5111,9 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         req, schema, partition_schema, namespace_id, namespace_name, partitions, colocated,
         IsSystemObject::kFalse, &index_info, joining_colocation_group ? nullptr : &tablets, resp,
         &table, &indexed_table));
+    if (IsIndex(req)) {
+      TEST_SYNC_POINT_CALLBACK("CreateTable::IndexedTableLocked", indexed_table.info.get());
+    }
 
     // Section is executed when a table is either the parent table or a user table in a colocation
     // group.
@@ -5032,67 +5266,23 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   const TabletInfos no_tablets;
   const TabletInfos& created_tablets = joining_colocation_group ? no_tablets : tablets;
 
-  // if test flag to abort create table is set and this is to create
-  // test table, fake abort the table creation.
-  // case 1: fakes the case where the Upsert failed.
-  s = TEST_MaybeFakeAbortTableCreation(1, req.name());
+  s = PersistNewTable(
+      req, table, created_tablets, indexed_table, &index_info, index_backfill_enabled, is_pg_table,
+      epoch, resp);
   if (PREDICT_FALSE(!s.ok())) {
     return AbortTableCreation(table.get(), created_tablets, s, resp, &indexed_table);
   }
 
-  s = sys_catalog_->Upsert(epoch, table, created_tablets);
-  if (PREDICT_FALSE(!s.ok())) {
-    return AbortTableCreation(
-        table.get(), created_tablets,
-        s.CloneAndPrepend("An error occurred while inserting to sys-tablets"), resp,
-        &indexed_table);
+  // Commit the in-memory state of the table and the indexed table in descending table id order.
+  TRACE("Committing in-memory state");
+  const bool commit_indexed_table_first = IsIndex(req) && indexed_table->id() > table->id();
+  if (commit_indexed_table_first) {
+    indexed_table.lock.Commit();
   }
-  VLOG(3) << "SysTablesEntryPB after CreateTable: " << table->metadata().dirty().pb.DebugString();
-  TRACE("Wrote table and tablets to system table");
-
-  // For index table, insert index info in the indexed table.
-  if (IsIndex(req)) {
-    if (index_backfill_enabled && !req.skip_index_backfill()) {
-      if (is_pg_table) {
-        // YSQL: start at some permission before backfill.  The real enforcement happens with
-        // pg_index system table's indislive and indisready columns.  Choose WRITE_AND_DELETE
-        // because it will probably be less confusing.
-        index_info.set_index_permissions(INDEX_PERM_WRITE_AND_DELETE);
-      } else {
-        // YCQL
-        index_info.set_index_permissions(INDEX_PERM_DELETE_ONLY);
-      }
-    }
-
-    // if test flag to abort create table is set and this is to create
-    // test table, fake abort the table creation.
-    // case 2: fakes the case where Upsert was successful but
-    // AddIndexInfoToTable failed while still holding the COW lock
-    // on the indexed table.
-    s = TEST_MaybeFakeAbortTableCreation(2, req.name());
-    if (PREDICT_FALSE(!s.ok())) {
-      return AbortTableCreation(table.get(), created_tablets, s, resp, &indexed_table);
-    }
-
-    s = AddIndexInfoToTable(indexed_table, index_info, epoch, resp);
-    if (PREDICT_FALSE(!s.ok())) {
-      return AbortTableCreation(
-          table.get(), created_tablets,
-          s.CloneAndPrepend("An error occurred while inserting index info"), resp, &indexed_table);
-    }
-    // if test flag to abort create table is set and this is to create
-    // test table, fake abort the table creation.
-    // case 3: fakes the case where AddIndexInfoToTable failed after
-    // committing indexed table's in-memory state & releasing
-    // the COW lock on the indexed table.
-    s = TEST_MaybeFakeAbortTableCreation(3, req.name());
-    if (PREDICT_FALSE(!s.ok())) {
-      return AbortTableCreation(table.get(), created_tablets, s, resp, &indexed_table);
-    }
-  }
-
-  // Commit the in-memory state.
   table->mutable_metadata()->CommitMutation();
+  if (IsIndex(req) && !commit_indexed_table_first) {
+    indexed_table.lock.Commit();
+  }
 
   for (const auto& tablet : tablets) {
     // Add the table id to the in-memory vector of table ids on TabletInfo.
@@ -5101,6 +5291,25 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     } else {
       tablet->mutable_metadata()->CommitMutation();
     }
+  }
+
+  // The table is persisted and committed, so a failure from here on is not rolled back. A failed
+  // alter of the indexed table is returned at the end, so DDL verification is still scheduled.
+  Status post_persist_status;
+  if (IsIndex(req)) {
+    // if test flag to abort create table is set and this is to create
+    // test table, fake abort the table creation.
+    // case 2: fakes the case where the creation failed after the index and the indexed table were
+    // persisted and committed in memory.
+    post_persist_status = TEST_MaybeFakeAbortTableCreation(2, req.name());
+    if (post_persist_status.ok()) {
+      post_persist_status = SendAlterTableRequest(indexed_table.info, epoch);
+      if (!post_persist_status.ok()) {
+        post_persist_status = post_persist_status.CloneAndPrepend(
+            "An error occurred while sending alter table request");
+      }
+    }
+    WARN_NOT_OK(post_persist_status, Format("Failed to complete creation of $0", req.name()));
   }
 
   if (FLAGS_enable_pg_cron && IsPgCronJobTable(req)) {
@@ -5190,7 +5399,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     return STATUS(IllegalState, "Failing table creation at PREPARING state");
   }
 
-  return Status::OK();
+  return CheckIfNoLongerLeaderAndSetupError(post_persist_status, resp);
 }
 
 Status CatalogManager::CreateTableIfNotFound(
@@ -6268,6 +6477,7 @@ std::string CatalogManager::GenerateIdUnlocked(std::optional<const SysRowEntryTy
       case SysRowEntryType::TSERVER_REGISTRATION: FALLTHROUGH_INTENDED;
       case SysRowEntryType::OBJECT_LOCK_ENTRY: FALLTHROUGH_INTENDED;
       case SysRowEntryType::HISTORY_RETENTION_PIN: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::PERSISTENCE_BLOCK_MAP: FALLTHROUGH_INTENDED;
       case SysRowEntryType::UNKNOWN:
         LOG(DFATAL) << "Invalid id type: " << *entity_type;
         return id;
@@ -6287,9 +6497,6 @@ scoped_refptr<TableInfo> CatalogManager::CreateTableInfo(const CreateTableReques
   TableId table_id
       = !req.table_id().empty() ? req.table_id() : GenerateIdUnlocked(SysRowEntryType::TABLE);
   scoped_refptr<TableInfo> table = NewTableInfo(table_id, colocated);
-  if (req.has_tablespace_id()) {
-    table->SetTablespaceIdForTableCreation(req.tablespace_id());
-  }
   if (indexed_table && *indexed_table) {
     if ((**indexed_table).id() < table_id) {
       indexed_table->Lock();
@@ -6311,6 +6518,13 @@ scoped_refptr<TableInfo> CatalogManager::CreateTableInfo(const CreateTableReques
   }
   metadata->set_version(0);
   metadata->set_next_column_id(ColumnId(schema.max_col_id() + 1));
+  // No custom tablespace arrives as an absent or an empty id (CreateTablegroup sends "").
+  if (req.has_tablespace_id() && !req.tablespace_id().empty()) {
+    metadata->set_tablespace_id(req.tablespace_id());
+  } else {
+    // Sets the empty marker message; being in a oneof, this also clears tablespace_id.
+    metadata->mutable_no_custom_tablespace();
+  }
   *metadata->mutable_hosted_stateful_services() = req.hosted_stateful_services();
 
   if (req.has_replication_info()) {
@@ -6826,8 +7040,7 @@ Status CatalogManager::BackfillIndex(
   Status s;
   for (int attempt = 1; attempt <= kMaxAttempts; ++attempt) {
     uint32_t current_version;
-    // IndexInfoPB default, i.e. what an index absent from the list reports.
-    auto index_permissions = INDEX_PERM_READ_WRITE_AND_DELETE;
+    std::optional<IndexPermissions> index_permissions;
     {
       auto l = indexed_table->LockForRead();
       current_version = l->pb.version();
@@ -6838,16 +7051,35 @@ Status CatalogManager::BackfillIndex(
         }
       }
     }
+    // A concurrent DROP INDEX removes the index from the list before its table is gone.
+    if (!index_permissions) {
+      return SetupError(
+          resp->mutable_error(),
+          MasterErrorPB::INVALID_SCHEMA,
+          STATUS_FORMAT(
+              InvalidArgument, "Index $0 is not an index of $1", index_table->id(),
+              indexed_table->ToString()));
+    }
 
-    // Validate that the index is at the correct permission.
-    if (index_permissions != INDEX_PERM_WRITE_AND_DELETE) {
+    // A YSQL index is created at WRITE_AND_DELETE and
+    // MultiStageAlterTable::AdvanceYsqlIndexToBackfill below moves it to DO_BACKFILL.  An index
+    // already at or past DO_BACKFILL has been moved by an earlier attempt of this same request,
+    // resent after a network error or a leader change, so the request has succeeded.  Anything else
+    // is unexpected.
+    if (*index_permissions >= INDEX_PERM_DO_BACKFILL) {
+      LOG(INFO) << "BackfillIndex for " << index_table->id() << " on " << indexed_table->ToString()
+                << " finds it at " << IndexPermissions_Name(*index_permissions)
+                << ", already requested";
+      return Status::OK();
+    }
+    if (*index_permissions != INDEX_PERM_WRITE_AND_DELETE) {
       return SetupError(
           resp->mutable_error(),
           MasterErrorPB::INVALID_SCHEMA,
           STATUS_FORMAT(
               InvalidArgument,
               "Expected WRITE_AND_DELETE perm, got $0",
-              IndexPermissions_Name(index_permissions)));
+              IndexPermissions_Name(*index_permissions)));
     }
 
     s = MultiStageAlterTable::AdvanceYsqlIndexToBackfill(
@@ -7057,20 +7289,21 @@ Status CatalogManager::MarkIndexInfoFromTableForDeletion(
     const TableId& indexed_table_id, const TableId& index_table_id, bool multi_stage,
     const LeaderEpoch& epoch,
     DeleteTableResponsePB* resp,
-    std::map<TableId, DeletingTableData>* data_map_ptr,
+    DeleteTableOperation* op,
     const NamespaceInfoPtr& ns_info) {
   LOG(INFO) << "MarkIndexInfoFromTableForDeletion table " << indexed_table_id
             << " index " << index_table_id << " multi_stage=" << multi_stage;
   // Lookup the indexed table and verify if it exists.
   TableInfoPtr indexed_table;
-  // If data_map_ptr is not null, then this function is called as a part of manipulation over
-  // multiple tables. So all those tables should be already collected into data_map_ptr.
-  if (data_map_ptr) {
-    auto it = data_map_ptr->find(indexed_table_id);
-    RSTATUS_DCHECK(
-        it != data_map_ptr->end(), IllegalState,
-        "Cannot find indexed table: $0", indexed_table_id);
-    indexed_table = it->second.table_info_with_write_lock.info;
+  // If op is not null, then this function is called as a part of manipulation over
+  // multiple tables. So all those tables should be already collected into op->data_map.
+  if (op) {
+    // The indexed table is missing from the map when it was deleted and removed from memory before
+    // this index. There is no index info left to update then.
+    auto it = op->data_map.find(indexed_table_id);
+    if (it != op->data_map.end()) {
+      indexed_table = it->second.table_info_with_write_lock.info;
+    }
   } else {
     indexed_table = GetTableInfo(indexed_table_id);
   }
@@ -7089,49 +7322,38 @@ Status CatalogManager::MarkIndexInfoFromTableForDeletion(
     resp_indexed_table->set_table_id(indexed_table_id);
   }
   if (multi_stage) {
-    RSTATUS_DCHECK(!data_map_ptr, InvalidArgument, "data_map_ptr is set");
+    RSTATUS_DCHECK(!op, InvalidArgument, "op is set");
     RETURN_NOT_OK(MultiStageAlterTable::UpdateIndexPermission(
         this, indexed_table,
         {{index_table_id, IndexPermissions::INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING}}, epoch));
-  } else {
-    RSTATUS_DCHECK(data_map_ptr, InvalidArgument, "data_map_ptr is not set");
-    RETURN_NOT_OK(DeleteIndexInfoFromTable(indexed_table_id, index_table_id, epoch, data_map_ptr));
+
+    // Actual Deletion of the index info will happen asynchronously after all the
+    // tablets move to the new IndexPermission of DELETE_ONLY_WHILE_REMOVING.
+    RETURN_NOT_OK(SendAlterTableRequest(indexed_table, epoch));
+    return Status::OK();
   }
 
-  // Actual Deletion of the index info will happen asynchronously after all the
-  // tablets move to the new IndexPermission of DELETE_ONLY_WHILE_REMOVING.
-  RETURN_NOT_OK(SendAlterTableRequest(indexed_table, epoch));
-  return Status::OK();
+  RSTATUS_DCHECK(op, InvalidArgument, "op is not set");
+  return DeleteIndexInfoFromTable(indexed_table_id, index_table_id, op);
 }
 
 Status CatalogManager::DeleteIndexInfoFromTable(
-    const TableId& indexed_table_id, const TableId& index_table_id, const LeaderEpoch& epoch,
-    std::map<TableId, DeletingTableData>* data_map_ptr) {
+    const TableId& indexed_table_id, const TableId& index_table_id, DeleteTableOperation* op) {
   LOG(INFO) << "DeleteIndexInfoFromTable table " << indexed_table_id << " index " << index_table_id;
-  TableInfoPtr indexed_table;
-  TableInfo::WriteLock* l_ptr;
-  TableInfo::WriteLock indexed_table_write_lock;
-  // If data_map_ptr is not null, then this function is called as a part of manipulation over
-  // multiple tables. So all those tables should be already collected into data_map_ptr.
-  if (data_map_ptr) {
-    auto it = data_map_ptr->find(indexed_table_id);
-    if (it != data_map_ptr->end()) {
-      indexed_table = it->second.table_info_with_write_lock.info;
-      l_ptr = &it->second.table_info_with_write_lock.lock;
-    }
-  } else {
-    indexed_table = GetTableInfo(indexed_table_id);
-    l_ptr = &indexed_table_write_lock;
-
-    TRACE("Locking indexed table");
-    indexed_table_write_lock = indexed_table->LockForWrite();
-  }
-  if (indexed_table == nullptr) {
+  // This function is called as a part of manipulation over multiple tables. So all those tables
+  // should be already collected into op->data_map.
+  auto it = op->data_map.find(indexed_table_id);
+  if (it == op->data_map.end()) {
     LOG(WARNING) << "Indexed table " << indexed_table_id << " for index " << index_table_id
                  << " not found";
     return Status::OK();
   }
-  auto& l = *l_ptr;
+  auto& l = it->second.table_info_with_write_lock.lock;
+  if (l->started_deleting()) {
+    LOG(INFO) << "Indexed table " << indexed_table_id << " for index " << index_table_id
+              << " is already being deleted, not updating its index info";
+    return Status::OK();
+  }
   auto& indexed_table_data = *l.mutable_data();
 
   // Heed issue #6233.
@@ -7153,15 +7375,12 @@ Status CatalogManager::DeleteIndexInfoFromTable(
           Format("Delete index info version=$0 ts=$1",
                  indexed_table_data.pb.version(), LocalTimeAsString()));
 
-      // Update sys-catalog with the deleted indexed table info.
-      TRACE("Updating indexed table metadata on disk");
-      RETURN_NOT_OK(sys_catalog_->Upsert(epoch, indexed_table));
-
-      // Update the in-memory state.
-      TRACE("Committing in-memory state");
-      l.Commit();
-      VLOG(1) << "Successfully deleted index info from table " << indexed_table_id << " for index "
-              << index_table_id << " in sys-catalog";
+      // The indexed table is written to the sys catalog together with the index being deleted. Its
+      // in-memory state is committed and its tablets are told about the new schema version once
+      // that write succeeds.
+      op->altered_indexed_table = &it->second.table_info_with_write_lock;
+      VLOG(1) << "Deleted index info from table " << indexed_table_id << " for index "
+              << index_table_id;
       return Status::OK();
     }
   }
@@ -7341,7 +7560,7 @@ Status CatalogManager::DeleteTable(
         indexed_table != nullptr && indexed_table->GetTableType() != PGSQL_TABLE_TYPE;
     if (is_non_pg_table && IsIndexBackfillEnabled(index_table_type, is_transactional)) {
       return MarkIndexInfoFromTableForDeletion(
-          indexed_table_id, table_id, /*multi_stage=*/true, epoch, resp, /*data_map_ptr=*/nullptr,
+          indexed_table_id, table_id, /*multi_stage=*/true, epoch, resp, /*op=*/nullptr,
           VERIFY_RESULT(FindNamespaceById(indexed_table->namespace_id())));
     } else if (is_pg_table && req->ysql_yb_ddl_rollback_enabled()) {
       // If DDL Rollback is enabled, we will not delete the index now, but merely mark it for
@@ -7456,13 +7675,13 @@ Status CatalogManager::DeleteTableInternal(
   auto schedules_to_tables_map = VERIFY_RESULT(
       master_->snapshot_coordinator().MakeSnapshotSchedulesToObjectIdsMap(SysRowEntryType::TABLE));
 
-  vector<DeletingTableData> tables;
+  DeleteTableOperation op;
   RETURN_NOT_OK(DeleteTableInMemory(req->table(), req->is_index_table(),
                                     true /* update_indexed_table */, schedules_to_tables_map, epoch,
-                                    &tables, resp, rpc, nullptr, ns_info));
+                                    &op, resp, rpc, ns_info));
+  RETURN_NOT_OK(PersistDeleteTableOperation(epoch, op, resp));
+  auto& tables = op.tables;
 
-  // Update the in-memory state.
-  TRACE("Committing in-memory state");
   std::unordered_set<TableId> sys_table_ids;
   std::unordered_set<TableId> deleted_table_ids;
   std::unordered_set<TableId> non_retained_cdcsdk_deleted_table_ids;
@@ -7475,7 +7694,18 @@ Status CatalogManager::DeleteTableInternal(
       non_retained_cdcsdk_deleted_table_ids.insert(
           deleting_table.table_info_with_write_lock->id());
     }
-    deleting_table.table_info_with_write_lock.Commit();
+  }
+
+  // The deletion is persisted and committed, so a failure from here on is not rolled back. A
+  // failed alter of the indexed table is returned at the end, after the steps below have run.
+  Status post_persist_status;
+  if (op.altered_indexed_table) {
+    post_persist_status = SendAlterTableRequest(op.altered_indexed_table->info, epoch);
+    if (!post_persist_status.ok()) {
+      post_persist_status = post_persist_status.CloneAndPrepend(
+          "An error occurred while sending alter table request");
+      LOG(WARNING) << post_persist_status;
+    }
   }
 
   bool TEST_fail = false;
@@ -7629,7 +7859,7 @@ Status CatalogManager::DeleteTableInternal(
 
   // Asynchronously cleans up the final memory traces of the deleted database.
   background_tasks_->Wake();
-  return Status::OK();
+  return CheckIfNoLongerLeaderAndSetupError(post_persist_status, resp);
 }
 
 Status CatalogManager::DeleteTableInMemoryAcquireLocks(
@@ -7685,13 +7915,15 @@ Status CatalogManager::DeleteTableInMemoryAcquireLocks(
 Status CatalogManager::DeleteTableInMemory(
     const TableIdentifierPB& table_identifier, const bool is_index_table,
     const bool update_indexed_table, const SnapshotSchedulesToObjectIdsMap& schedules_to_tables_map,
-    const LeaderEpoch& epoch, vector<DeletingTableData>* tables, DeleteTableResponsePB* resp,
+    const LeaderEpoch& epoch, DeleteTableOperation* op, DeleteTableResponsePB* resp,
     rpc::RpcContext* rpc,
-    std::map<TableId, DeletingTableData>* data_map_ptr,
     const NamespaceInfoPtr& ns_info) {
   // TODO(NIC): How to handle a DeleteTable request when the namespace is being deleted?
   const char* const object_type = is_index_table ? "index" : "table";
   const bool cascade_delete_index = is_index_table && !update_indexed_table;
+  // The call for the requested table takes the write locks of all the tables involved. The calls
+  // for the indexes deleted along with it find their tables already locked in op->data_map.
+  const bool is_requested_table = op->data_map.empty();
 
   VLOG_WITH_PREFIX_AND_FUNC(1) << YB_STRUCT_TO_STRING(
       table_identifier, is_index_table, update_indexed_table) << "\n" << GetStackTrace();
@@ -7699,13 +7931,13 @@ Status CatalogManager::DeleteTableInMemory(
   // Lookup the table and verify if it exists.
   TRACE(Format("Looking up $0", object_type));
   TableInfoPtr table;
-  if (data_map_ptr && table_identifier.has_table_id()) {
-    auto it = data_map_ptr->find(table_identifier.table_id());
-    if (it != data_map_ptr->end()) {
+  if (!is_requested_table && table_identifier.has_table_id()) {
+    auto it = op->data_map.find(table_identifier.table_id());
+    if (it != op->data_map.end()) {
       table = it->second.table_info_with_write_lock.info;
     }
   } else {
-    DCHECK(!data_map_ptr)
+    DCHECK(is_requested_table)
         << "It is expected that table identifier has table id when manipulating over multiple "
            "tables";
     auto table_result = FindTable(table_identifier);
@@ -7732,14 +7964,12 @@ Status CatalogManager::DeleteTableInMemory(
     RETURN_NOT_OK(WaitForTransactionTableVersionUpdateToPropagate());
   }
 
-  std::map<TableId, DeletingTableData> data_map;
-  if (!data_map_ptr) {
+  if (is_requested_table) {
     TRACE(Format("Locking $0", object_type));
     RETURN_NOT_OK(DeleteTableInMemoryAcquireLocks(
-        table, is_index_table, update_indexed_table, schedules_to_tables_map, &data_map));
-    data_map_ptr = &data_map;
+        table, is_index_table, update_indexed_table, schedules_to_tables_map, &op->data_map));
   }
-  auto& data = data_map_ptr->find(table->id())->second;
+  auto& data = op->data_map.find(table->id())->second;
   auto& l = data.table_info_with_write_lock.lock;
   // table_id for the requested table will be added to the end of the response.
   *resp->add_deleted_table_ids() = table->id();
@@ -7786,27 +8016,15 @@ Status CatalogManager::DeleteTableInMemory(
   DdlLogEntry ddl_log_entry(now, table->id(), l->pb, "Drop");
   if (is_index_table) {
     const auto& indexed_table_id = GetIndexedTableId(l->pb);
-    auto it = data_map_ptr->find(indexed_table_id);
-    if (it != data_map_ptr->end()) {
+    auto it = op->data_map.find(indexed_table_id);
+    if (it != op->data_map.end()) {
       const auto& lock = it->second.table_info_with_write_lock.lock;
       ddl_log_entry = DdlLogEntry(
           now, indexed_table_id, lock->pb, Format("Drop index $0", l->name()));
     }
   }
 
-  // Update sys-catalog with the removed table state.
-  Status s = sys_catalog_->Upsert(epoch, &ddl_log_entry, table);
-
-  if (PREDICT_FALSE(FLAGS_TEST_simulate_crash_after_table_marked_deleting)) {
-    return Status::OK();
-  }
-
-  if (!s.ok()) {
-    // The mutation will be aborted when 'l' exits the scope on early return.
-    s = s.CloneAndPrepend("An error occurred while updating sys tables");
-    LOG(WARNING) << s;
-    return CheckIfNoLongerLeaderAndSetupError(s, resp);
-  }
+  op->ddl_log_entries.push_back(std::move(ddl_log_entry));
 
   // For regular (indexed) table, delete all its index tables if any. Else for index table, delete
   // index info from the indexed table.
@@ -7816,12 +8034,12 @@ Status CatalogManager::DeleteTableInMemory(
       index_identifier.set_table_id(index.table_id());
       RETURN_NOT_OK(DeleteTableInMemory(
           index_identifier, true /* is_index_table */, false /* update_indexed_table */,
-          schedules_to_tables_map, epoch, tables, resp, rpc, data_map_ptr, ns_info));
+          schedules_to_tables_map, epoch, op, resp, rpc, ns_info));
     }
   } else if (update_indexed_table) {
     auto indexed_table_id = GetIndexedTableId(l->pb);
-    s = MarkIndexInfoFromTableForDeletion(
-        indexed_table_id, table->id(), /* multi_stage */ false, epoch, resp, data_map_ptr, ns_info);
+    auto s = MarkIndexInfoFromTableForDeletion(
+        indexed_table_id, table->id(), /* multi_stage */ false, epoch, resp, op, ns_info);
     if (!s.ok()) {
       s = s.CloneAndPrepend(Format("An error occurred while deleting index info: $0",
                                    s.ToString()));
@@ -7830,17 +8048,10 @@ Status CatalogManager::DeleteTableInMemory(
     }
   }
 
-  if (!hide_only) {
-    // If table is being hidden we should not abort snapshot related tasks.
-    // Always ignore Table schema verification tasks since it may be the one that is initiating the
-    // deletes.
-    table->AbortTasks(/*tasks_to_ignore=*/{server::MonitoredTaskType::TableSchemaVerification});
-  }
-
   // For regular (indexed) table, insert table info and lock in the front of the list. Else for
-  // index table, append them to the end. We do so so that we will commit and delete the indexed
-  // table first before its indexes.
-  tables->insert(is_index_table ? tables->end() : tables->begin(), std::move(data));
+  // index table, append them to the end. We do so so that we will delete the indexed table first
+  // before its indexes.
+  op->tables.insert(is_index_table ? op->tables.end() : op->tables.begin(), std::move(data));
 
   return Status::OK();
 }
@@ -7872,6 +8083,13 @@ bool CatalogManager::ShouldDeleteTable(const TableInfoPtr& table) {
       return false;
     }
   }
+
+  // System and colocated tables do not wait for their tablets, which belong to another table and
+  // may already be freed.
+  if (table->is_system() || table->IsSecondaryTable()) {
+    return true;
+  }
+
   // The current relevant order of operations during a DeleteTable is:
   // 1) Mark the table as DELETING
   // 2) Abort the current table tasks
@@ -7890,11 +8108,12 @@ bool CatalogManager::ShouldDeleteTable(const TableInfoPtr& table) {
   VLOG_WITH_PREFIX_AND_FUNC(2)
       << table->ToString() << " hide only: " << hide_only << ", all tablets done: "
       << all_tablets_done;
-  return all_tablets_done || table->is_system() || table->IsSecondaryTable();
+  return all_tablets_done;
 }
 
 std::pair<TableInfo::WriteLock, TransactionId> CatalogManager::PrepareTableDeletion(
     const TableInfoPtr& table) {
+  TEST_SYNC_POINT_CALLBACK("CatalogManager::PrepareTableDeletion", table.get());
   auto lock = table->LockForWrite();
   if (lock->is_hiding()) {
     LOG(INFO) << "Marking table as HIDDEN: " << table->ToString();
@@ -7959,6 +8178,22 @@ void CatalogManager::CleanUpDeletedTables(const LeaderEpoch& epoch) {
     }
     if (!ShouldDeleteTable(table)) {
       continue;
+    }
+    // Like CheckTableDeleted, do not mark a DDL-dropped index DELETED while the alter removing it
+    // from the indexed table is in flight; else the next statement may hit a schema version
+    // mismatch. The alter completes via tablet schema version reports, which keep re-sending it
+    // while the indexed table is running, so this deferral ends on its own.
+    if (table->is_index() && table->LockForRead()->has_ysql_ddl_txn_verifier_state()) {
+      auto indexed_table = GetTableInfo(table->indexed_table_id());
+      if (indexed_table) {
+        auto indexed_lock = indexed_table->LockForRead();
+        if (indexed_lock->is_running() && indexed_lock->pb.has_fully_applied_schema()) {
+          VLOG_WITH_PREFIX_AND_FUNC(2)
+              << "Deferring " << table->ToString() << " until alter of "
+              << indexed_table->ToString() << " completes";
+          continue;
+        }
+      }
     }
     auto lock_and_transaction_id = PrepareTableDeletion(table);
     if (lock_and_transaction_id.first.locked()) {
@@ -9251,6 +9486,19 @@ Result<std::vector<scoped_refptr<TableInfo>>> CatalogManager::GetTableInfosForNa
   return table_infos;
 }
 
+Status CatalogManager::CheckNoYsqlDdlVerificationInProgress(
+    const NamespaceId& namespace_id) const {
+  SharedLock lock(mutex_);
+  for (const auto& table : tables_->GetAllTables()) {
+    auto l = table->LockForRead();
+    if (l->namespace_id() == namespace_id && l->has_ysql_ddl_txn_verifier_state()) {
+      return STATUS_FORMAT(
+          IllegalState, "Table $0 is undergoing DDL verification, retry later", table->id());
+    }
+  }
+  return Status::OK();
+}
+
 std::vector<TableInfoPtr> CatalogManager::GetTables(
     GetTablesMode mode, PrimaryTablesOnly primary_tables_only) {
   std::vector<TableInfoPtr> result;
@@ -9715,6 +9963,8 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
     }
     ns_l = ns->LockForWrite();
     SysNamespaceEntryPB *metadata = &ns_l.mutable_data()->pb;
+    // Non-zero only when reusing the namespace during ysql major upgrade.
+    const auto prev_next_normal_pg_oid = metadata->next_normal_pg_oid();
     metadata->set_name(req->name());
     metadata->set_database_type(db_type);
     metadata->set_colocated(req->colocated());
@@ -9779,6 +10029,10 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
           metadata->set_next_normal_pg_oid(source_ns_lock->pb.next_normal_pg_oid());
         }
       }
+      // Never move the OID counter back: reusing OIDs of dropped relations reuses their DocDB
+      // table ids, which tservers may still map to deleted tablets.
+      metadata->set_next_normal_pg_oid(
+          std::max(metadata->next_normal_pg_oid(), prev_next_normal_pg_oid));
     }
 
     // NS with a Transaction should be rolled back if the transaction does not get Committed.
@@ -10096,6 +10350,14 @@ Status CatalogManager::IsCreateNamespaceDone(const IsCreateNamespaceDoneRequestP
       break;
     // Pending cases.  NOT DONE
     case SysNamespaceEntryPB::PREPARING:
+      // A failed new-version catalog copy leaves the namespace PREPARING with NEXT_VER_FAILED, set
+      // by ProcessPendingNamespace on error or by NamespaceLoader::Visit after a master failover.
+      if (metadata.ysql_next_major_version_state() == SysNamespaceEntryPB::NEXT_VER_FAILED) {
+        resp->set_done(true);
+        return SetupError(resp->mutable_error(), MasterErrorPB::UNKNOWN_ERROR,
+            STATUS(InternalError,
+                "Namespace Create Failed: YSQL major upgrade catalog copy failed"));
+      }
       resp->set_done(false);
       break;
     // Failure cases.  Done, but we need to give the user an error message.
@@ -10359,6 +10621,15 @@ void CatalogManager::DeleteYsqlDatabaseAsync(
     // A DELETED Namespace has finished but was tombstoned to avoid immediately reusing the same ID.
     // We consider a restart enough time, so we just need to remove it from the SysCatalog.
     if (metadata.state() == SysNamespaceEntryPB::DELETED) {
+      // Backstop for the erase when the drop finished, which may have been lost or failed.  Must
+      // precede deleting the tombstone, which keeps the database's OID from being reused.
+      if (auto erase_status = xcluster_manager_->ErasePersistenceBlock(epoch, database->id());
+          !erase_status.ok()) {
+        LOG(WARNING) << "Failed to erase the persistence block map entry of "
+                     << database->ToString() << "; keeping its tombstone to retry: "
+                     << erase_status;
+        return;
+      }
       Status s = sys_catalog_->Delete(leader_ready_term(), database);
       WARN_NOT_OK(s, "SysCatalog DeleteItem for Namespace");
       return;
@@ -10455,6 +10726,15 @@ void CatalogManager::DeleteYsqlDatabaseAsync(
   TRACE("Committing in-memory state");
   l.Commit();
 
+  // No need to propagate: the dropped database has no more writes to block.  If this erase is
+  // lost or fails, the tombstone pass at the top of this function retries it on the next leader
+  // load.
+  if (!FLAGS_TEST_skip_persistence_block_erase_on_drop) {
+    WARN_NOT_OK(
+        xcluster_manager_->ErasePersistenceBlock(epoch, database->id()),
+        Format("Failed to erase the persistence block map entry of $0", database->ToString()));
+  }
+
   // The verification-failure path may already have released this name so a CREATE retry could
   // proceed. Tolerate that, and do not steal a name now owned by a different namespace.
   ReleaseNamespaceNameIfOwned(database);
@@ -10524,7 +10804,9 @@ Status CatalogManager::DeleteYsqlDBTables(
   }
 
   TabletInfoPtr sys_tablet_info;
-  std::vector<std::pair<scoped_refptr<TableInfo>, TableInfo::WriteLock>> tables_and_locks;
+  // Deque, not vector: base tables are pushed to the front while holding mutex_, which on a vector
+  // is O(n) per insert and quadratic over a large database.
+  std::deque<std::pair<scoped_refptr<TableInfo>, TableInfo::WriteLock>> tables_and_locks;
   std::unordered_set<TableId> sys_table_ids;
   {
     // Lock the catalog to iterate over table_ids_map_.
@@ -10564,7 +10846,7 @@ Status CatalogManager::DeleteYsqlDBTables(
       if (table->IsColocationParentTable()) {
         colocation_parents.emplace_back(table, std::move(l));
       } else if (IsTable(l->pb)) {
-        tables_and_locks.insert(tables_and_locks.begin(), {table, std::move(l)});
+        tables_and_locks.emplace_front(table, std::move(l));
       } else {
         tables_and_locks.emplace_back(table, std::move(l));
       }
@@ -11264,22 +11546,11 @@ Status CatalogManager::GetYsqlCatalogVersion(
 
 Status CatalogManager::GetYsqlDBCatalogVersion(
     uint32_t db_oid, uint64_t* catalog_version, uint64_t* last_breaking_version, bool use_cache) {
-  if (use_cache && FLAGS_enable_heartbeat_pg_catalog_versions_cache) {
-    SharedLock lock(heartbeat_pg_catalog_versions_cache_mutex_);
-    if (heartbeat_pg_catalog_versions_cache_) {
-      auto it = heartbeat_pg_catalog_versions_cache_->find(db_oid);
-      if (it != heartbeat_pg_catalog_versions_cache_->end()) {
-        LOG_IF(INFO, PREDICT_FALSE(FLAGS_TEST_log_catalog_version_cache_events))
-            << "GetYsqlDBCatalogVersion: cache hit for db_oid " << db_oid;
-        if (catalog_version) {
-          *catalog_version = it->second.current_version;
-        }
-        if (last_breaking_version) {
-          *last_breaking_version = it->second.last_breaking_version;
-        }
-        return Status::OK();
-      }
-    }
+  if (use_cache && FLAGS_enable_heartbeat_pg_catalog_versions_cache &&
+      pg_catalog_versions_cache_.GetForDb(db_oid, catalog_version, last_breaking_version)) {
+    LOG_IF(INFO, PREDICT_FALSE(FLAGS_TEST_log_catalog_version_cache_events))
+        << "GetYsqlDBCatalogVersion: cache hit for db_oid " << db_oid;
+    return Status::OK();
   }
   LOG_IF(INFO, PREDICT_FALSE(use_cache && FLAGS_TEST_log_catalog_version_cache_events))
       << "GetYsqlDBCatalogVersion: cache miss for db_oid " << db_oid;
@@ -11326,31 +11597,18 @@ Status CatalogManager::GetYsqlAllDBCatalogVersionsImpl(
 Status CatalogManager::GetYsqlAllDBCatalogVersions(
     bool use_cache, DbOidToCatalogVersionMap* versions, uint64_t* fingerprint,
     HybridTime* out_read_ht) {
-  if (use_cache) {
-    SharedLock lock(heartbeat_pg_catalog_versions_cache_mutex_);
-    // Callers that opt into the cache accept stale (but bounded) versions. Today this includes
-    // the heartbeat service (master.cc, master_heartbeat_service.cc) and the master-side Read
-    // RPC path (via MasterTabletServer::get_ysql_db_catalog_version). Authoritative callers
-    // (e.g. WaitForYsqlBackendsCatalogVersion, ReportYsqlDdlTxnStatus) must pass false.
-    //
-    // It is ok for heartbeat_pg_catalog_versions_cache_ to be empty: the heartbeat service
-    // will simply not populate catalog versions in its response message, and the tserver will
-    // not change its private catalog version map. Some unit tests check the tserver private
-    // map before the background task has a chance to populate the cache, so we fall through
-    // to read from pg_yb_catalog_version below to make such unit tests happy.
-    if (heartbeat_pg_catalog_versions_cache_) {
-      *versions = *heartbeat_pg_catalog_versions_cache_;
-      if (fingerprint) {
-        *fingerprint = heartbeat_pg_catalog_versions_cache_fingerprint_;
-      }
-      if (out_read_ht) {
-        // Reporting the snapshot's age, not the current time, is what lets the heartbeat tell a
-        // tserver that these versions are old. Without it a frozen cache is indistinguishable
-        // from a fresh read that genuinely disagrees with the tserver.
-        *out_read_ht = heartbeat_pg_catalog_versions_cache_read_ht_;
-      }
-      return Status::OK();
-    }
+  // Callers that opt into the cache accept stale (but bounded) versions. Today this includes
+  // the heartbeat service (master.cc, master_heartbeat_service.cc) and the master-side Read
+  // RPC path (via MasterTabletServer::get_ysql_db_catalog_version). Authoritative callers
+  // (e.g. WaitForYsqlBackendsCatalogVersion, ReportYsqlDdlTxnStatus) must pass false.
+  //
+  // It is ok for the cache to be empty: the heartbeat service will simply not
+  // populate catalog versions in its response message, and the tserver will not
+  // change its private catalog version map. Some unit tests check the tserver private
+  // map before the background task has a chance to populate the cache, so we fall through
+  // to read from pg_yb_catalog_version below to make such unit tests happy.
+  if (use_cache && pg_catalog_versions_cache_.GetAll(versions, fingerprint, out_read_ht)) {
+    return Status::OK();
   }
   // Cannot use cached data, or the cache has never been initialized yet, read
   // from pg_yb_catalog_version table.
@@ -11373,16 +11631,14 @@ Result<DbOidVersionToMessageListMap> CatalogManager::GetYsqlCatalogInvalationMes
     return DbOidVersionToMessageListMap();
   }
   if (use_cache) {
-    SharedLock lock(heartbeat_pg_catalog_versions_cache_mutex_);
     // We expect that the only caller uses this cache is the heartbeat service.
     // Note that if the periodic background refresh task has not populated
-    // heartbeat_pg_inval_messages_cache_ yet after the master leader starts, or
+    // the invalidation messages cache yet after the master leader starts, or
     // when the last periodic reading of pg_yb_invalidation_messages has failed, it will
     // be std::nullopt. Returning empty map is fine, as invalidation messages are only
     // used as an optimization and if not there PG simply falls back to full catalog
     // refresh.
-    return heartbeat_pg_inval_messages_cache_.has_value() ? *heartbeat_pg_inval_messages_cache_
-                                                          : DbOidVersionToMessageListMap();
+    return pg_catalog_versions_cache_.GetInvalMessages();
   }
   return GetYsqlCatalogInvalationMessagesImpl();
 }
@@ -11829,11 +12085,20 @@ Status CatalogManager::CheckIfForbiddenToDeleteTabletOf(const TableInfo& table) 
 Status CatalogManager::DeleteOrHideTabletsOfTable(
     const TableInfo& table_info, const TabletDeleteRetainerInfo& delete_retainer,
     const LeaderEpoch& epoch) {
-  auto tablets = VERIFY_RESULT(table_info.GetTabletsIncludeInactive());
-  // Silently fail if tablet deletion is forbidden so table deletion can continue executing.
-  if (!CheckIfForbiddenToDeleteTabletOf(table_info).ok()) {
+  // System and colocated tables do not own their tablets, so the tablets are not deleted with them.
+  // GetTabletsIncludeInactive() must not be called before this check: a colocated table, e.g.
+  // a vector index, holds only weak pointers to tablets owned by another table. DROP DATABASE
+  // deletes that table first, and the background cleanup may free its tablets before this table
+  // is processed, so GetTabletsIncludeInactive() would fail and leave the database FAILED.
+  if (table_info.is_system() || table_info.IsSecondaryTable()) {
     if (FLAGS_enable_table_rewrite_for_cdcsdk_table && delete_retainer.active_cdcsdk &&
         table_info.IsSecondaryTable()) {
+      // Indexes, including vector indexes, are never part of a CDCSDK stream, so only a regular
+      // colocated table gets here, and it lives on exactly one tablet. The entry records only the
+      // tablet id and does not keep the tablet alive.
+      DCHECK(!table_info.is_vector_index())
+          << "Vector index in a CDCSDK stream: " << table_info.ToString();
+      auto tablets = VERIFY_RESULT(table_info.GetTabletsIncludeInactive());
       LockGuard lock(mutex_);
       RSTATUS_DCHECK(
           tablets.size() == 1, InternalError, "Colocated table has more than one tablet");
@@ -11846,6 +12111,7 @@ Status CatalogManager::DeleteOrHideTabletsOfTable(
     return Status::OK();
   }
 
+  auto tablets = VERIFY_RESULT(table_info.GetTabletsIncludeInactive());
   std::sort(tablets.begin(), tablets.end(), [](const auto& lhs, const auto& rhs) {
     return lhs->tablet_id() < rhs->tablet_id();
   });
@@ -12292,7 +12558,6 @@ Status CatalogManager::ProcessPendingAssignmentsPerTable(
   // Initialize this table load state.
   CMPerTableLoadState table_load_state(global_load_state);
   RETURN_NOT_OK(InitializeTableLoadState(table_id, ts_descs, &table_load_state));
-  table_load_state.SortLoad();
 
   // Replacements for tablets that timed out in CREATING state are created before any write lock
   // is taken, so old and new tablets can all be locked in tablet id order, the order
@@ -12362,11 +12627,21 @@ Status CatalogManager::ProcessPendingAssignmentsPerTable(
   // For those tablets which need to be created in this round, assign replicas.
   Status s;
   std::unordered_set<TableInfo*> ok_status_tables;
+  Result<std::vector<PlacementCandidates>> candidates = std::vector<PlacementCandidates>();
+  TableInfoPtr table;
+  if (!deferred.needs_create_rpc.empty()) {
+    table = deferred.needs_create_rpc.front()->table();
+    candidates = BuildPlacementCandidates(table, ts_descs);
+  }
   for (const TabletInfoPtr& tablet : deferred.needs_create_rpc) {
+    DCHECK_EQ(tablet->table(), table);
     // NOTE: if we fail to select replicas on the first pass (due to
     // insufficient Tablet Servers being online), we will still try
     // again unless the tablet/table creation is cancelled.
-    s = SelectReplicasForTablet(ts_descs, tablet, &table_load_state, global_load_state);
+    s = candidates.ok()
+        ? SelectReplicasForTablet(ts_descs, *candidates, tablet, &table_load_state,
+                                  global_load_state)
+        : candidates.status();
     if (!s.ok()) {
       LOG_WITH_FUNC(INFO) << "Select replicas for tablet " << tablet->id() << " failed: " << s;
       s = s.CloneAndPrepend(Format(
@@ -12482,27 +12757,111 @@ Status CatalogManager::SelectProtegeForTablet(
   return Status::OK();
 }
 
-Status CatalogManager::SelectReplicasForTablet(
-    const TSDescriptorVector& ts_descs, const TabletInfoPtr& tablet,
-    CMPerTableLoadState* per_table_state, CMGlobalLoadState* global_state) {
-  auto table_guard = tablet->table()->LockForRead();
+namespace {
 
-  if (!table_guard->pb.IsInitialized()) {
-    return STATUS_FORMAT(InvalidArgument,
-        "TableInfo for tablet $0 is not initialized (aborted CreateTable attempt?)",
-        tablet->tablet_id());
+// A tserver belongs to the placement that names its placement uuid; a placement without one is
+// the live placement, whose tservers have an empty placement uuid.
+bool TsInPlacement(const PlacementInfoPB& placement_info, const TSDescriptor& ts_desc) {
+  // A placement that names a storage tier needs a tserver with a disk on it.
+  if (!placement_info.storage_tier().empty() &&
+      !ts_desc.HasStorageTier(placement_info.storage_tier())) {
+    return false;
+  }
+  if (placement_info.has_placement_uuid()) {
+    return ts_desc.placement_uuid() == placement_info.placement_uuid();
+  }
+  return ts_desc.placement_uuid().empty();
+}
+
+}  // namespace
+
+Result<std::vector<CatalogManager::PlacementCandidates>> CatalogManager::BuildPlacementCandidates(
+    const TableInfoPtr& table, const TSDescriptorVector& ts_descs) {
+  ReplicationInfoPB replication_info;
+  {
+    auto table_guard = table->LockForRead();
+    if (!table_guard->pb.IsInitialized()) {
+      return STATUS_FORMAT(InvalidArgument,
+          "TableInfo for table $0 is not initialized (aborted CreateTable attempt?)", table->id());
+    }
+    // Neither tablespace case is set only for a table an older master created; place it by the
+    // cluster default, as a custom tablespace is not known yet. The load balancer moves it later.
+    const auto tablespace_id =
+        table_guard->pb.has_tablespace_id() ? table_guard->pb.tablespace_id() : TablespaceId();
+    replication_info = VERIFY_RESULT(GetTableReplicationInfo(
+        table_guard->pb.replication_info(), tablespace_id));
   }
 
-  auto replication_info = VERIFY_RESULT(GetTableReplicationInfo(
-        table_guard->pb.replication_info(), tablet->table()->TablespaceIdForTableCreation()));
+  // Validate if we have enough tservers to put the replicas.
+  ValidateReplicationInfoRequestPB req;
+  *req.mutable_replication_info() = replication_info;
+  ValidateReplicationInfoResponsePB resp;
+  RETURN_NOT_OK(ValidateReplicationInfo(&req, &resp));
 
+  std::vector<PlacementCandidates> candidates;
+  candidates.push_back(VERIFY_RESULT(BuildPlacementCandidates(
+      replication_info.live_replicas(), ts_descs, PeerMemberType::VOTER)));
+  for (const auto& read_replicas : replication_info.read_replicas()) {
+    candidates.push_back(VERIFY_RESULT(BuildPlacementCandidates(
+        read_replicas, ts_descs, PeerMemberType::OBSERVER)));
+  }
+  return candidates;
+}
+
+Result<CatalogManager::PlacementCandidates> CatalogManager::BuildPlacementCandidates(
+    const PlacementInfoPB& placement_info, const TSDescriptorVector& ts_descs,
+    PeerMemberType member_type) {
+  PlacementCandidates result;
+  result.member_type = member_type;
+  result.nreplicas = GetNumReplicasOrGlobalReplicationFactor(placement_info);
+  result.num_allowed = 0;
+  result.all_allowed.assign(ts_descs.size(), false);
+  for (const auto& block : placement_info.placement_blocks()) {
+    result.blocks.push_back(PlacementCandidates::Block{
+        .min_num_replicas = static_cast<size_t>(block.min_num_replicas()),
+        .max_num_replicas = static_cast<size_t>(
+            GetEffectiveMaxNumReplicas(block, narrow_cast<int32_t>(result.nreplicas))),
+        .num_allowed = 0,
+        .allowed = std::vector<bool>(ts_descs.size(), false)});
+  }
+
+  for (size_t i = 0; i < ts_descs.size(); ++i) {
+    const auto& ts = *ts_descs[i];
+    if (!TsInPlacement(placement_info, ts)) {
+      continue;
+    }
+    if (result.blocks.empty()) {
+      result.all_allowed[i] = true;
+      ++result.num_allowed;
+      continue;
+    }
+    for (int b = 0; b < placement_info.placement_blocks_size(); ++b) {
+      if (!ts.MatchesCloudInfo(placement_info.placement_blocks(b).cloud_info())) {
+        continue;
+      }
+      result.blocks[b].allowed[i] = true;
+      ++result.blocks[b].num_allowed;
+      if (!result.all_allowed[i]) {
+        result.all_allowed[i] = true;
+        ++result.num_allowed;
+      }
+    }
+  }
+  return result;
+}
+
+Status CatalogManager::SelectReplicasForTablet(
+    const TSDescriptorVector& ts_descs, const std::vector<PlacementCandidates>& candidates,
+    const TabletInfoPtr& tablet, CMPerTableLoadState* per_table_state,
+    CMGlobalLoadState* global_state) {
   ConsensusStatePB* cstate = tablet->mutable_metadata()->mutable_dirty()
           ->pb.mutable_committed_consensus_state();
   VLOG_WITH_FUNC(3) << "Committed consensus state: " << AsString(cstate);
   consensus::RaftConfigPB* config = cstate->mutable_config();
 
-  RETURN_NOT_OK(HandlePlacementUsingReplicationInfo(
-      replication_info, ts_descs, config, per_table_state, global_state));
+  for (const auto& placement : candidates) {
+    RETURN_NOT_OK(SelectReplicasForPlacement(ts_descs, placement, config, per_table_state));
+  }
 
   LOG_WITH_FUNC(INFO)
       << "Initial tserver uuids for tablet " << tablet->tablet_id() << " [table_id="
@@ -12522,141 +12881,79 @@ Status CatalogManager::SelectReplicasForTablet(
   return Status::OK();
 }
 
+Status CatalogManager::SelectReplicasForPlacement(
+    const TSDescriptorVector& ts_descs, const PlacementCandidates& placement,
+    consensus::RaftConfigPB* config, CMPerTableLoadState* per_table_state) {
+  DCHECK_EQ(placement.all_allowed.size(), ts_descs.size());
+  DCHECK_EQ(per_table_state->sorted_by_load().size(), ts_descs.size());
+  // Keep track of servers we've already selected, so that we don't attempt to
+  // put two replicas on the same host.
+  std::vector<bool> already_selected(ts_descs.size(), false);
+  if (placement.blocks.empty()) {
+    // No placement blocks: spread the replicas across the whole placement.
+    return SelectReplicas(
+        ts_descs, placement.all_allowed, min(placement.nreplicas, placement.num_allowed), config,
+        &already_selected, placement.member_type, per_table_state);
+  }
+
+  // Assign the minimum requested replicas in each placement block, then the leftover replicas
+  // anywhere in the allowed blocks, up to each block's effective maximum.
+  size_t min_replica_count_sum = 0;
+  // Replicas each block can still take after its minimums before reaching its maximum.
+  std::vector<size_t> remaining_block_capacity;
+  for (const auto& block : placement.blocks) {
+    // Cluster-level placements are validated not to overlap. Table-level ones may (duplicates or
+    // prefixes); a tserver taken by an earlier block is then unavailable to a later one.
+    size_t num_replicas = min(block.min_num_replicas, block.num_allowed);
+    min_replica_count_sum += block.min_num_replicas;
+    RETURN_NOT_OK(SelectReplicas(
+        ts_descs, block.allowed, num_replicas, config, &already_selected, placement.member_type,
+        per_table_state));
+    remaining_block_capacity.push_back(block.max_num_replicas - num_replicas);
+  }
+
+  // Distribute the remaining replicas across the least loaded tservers left, skipping any
+  // tserver whose placement block has already reached its effective maximum. The maximums are
+  // hard caps: if they prevent placing every remaining replica, the tablet starts
+  // under-replicated rather than violating a maximum.
+  size_t replicas_left = placement.nreplicas - min_replica_count_sum;
+  std::vector<size_t> chosen;
+  for (size_t idx : per_table_state->sorted_by_load()) {
+    if (chosen.size() == replicas_left) {
+      break;
+    }
+    if (already_selected[idx]) {
+      continue;
+    }
+    // The first block allowing the tserver is charged; blocks overlap only in table-level
+    // placements, see above.
+    size_t b = 0;
+    while (b < placement.blocks.size() && !placement.blocks[b].allowed[idx]) {
+      ++b;
+    }
+    if (b == placement.blocks.size() || remaining_block_capacity[b] == 0) {
+      continue;
+    }
+    --remaining_block_capacity[b];
+    chosen.push_back(idx);
+  }
+  // AddReplicaToConfig reorders sorted_by_load(), so add only after the walk.
+  for (size_t idx : chosen) {
+    AddReplicaToConfig(
+        ts_descs, idx, config, &already_selected, placement.member_type, per_table_state);
+  }
+  return Status::OK();
+}
+
 void CatalogManager::GetTsDescsFromPlacementInfo(const PlacementInfoPB& placement_info,
                                                  const TSDescriptorVector& all_ts_descs,
                                                  TSDescriptorVector* ts_descs) {
   ts_descs->clear();
   for (const auto& ts_desc : all_ts_descs) {
-    // A placement that names a storage tier needs a tserver with a disk on it.
-    if (!placement_info.storage_tier().empty() &&
-        !ts_desc->HasStorageTier(placement_info.storage_tier())) {
-      continue;
-    }
-    if (placement_info.has_placement_uuid()) {
-      string placement_uuid = placement_info.placement_uuid();
-      if (ts_desc->placement_uuid() == placement_uuid) {
-        ts_descs->push_back(ts_desc);
-      }
-    } else if (ts_desc->placement_uuid() == "") {
-      // Since the placement info has no placement id, we know it is live, so we add this ts.
+    if (TsInPlacement(placement_info, *ts_desc)) {
       ts_descs->push_back(ts_desc);
     }
   }
-}
-
-Status CatalogManager::HandlePlacementUsingReplicationInfo(
-    const ReplicationInfoPB& replication_info,
-    const TSDescriptorVector& all_ts_descs,
-    consensus::RaftConfigPB* config,
-    CMPerTableLoadState* per_table_state,
-    CMGlobalLoadState* global_state) {
-  // Validate if we have enough tservers to put the replicas.
-  ValidateReplicationInfoRequestPB req;
-  req.mutable_replication_info()->CopyFrom(replication_info);
-  ValidateReplicationInfoResponsePB resp;
-  RETURN_NOT_OK(ValidateReplicationInfo(&req, &resp));
-
-  TSDescriptorVector ts_descs;
-  GetTsDescsFromPlacementInfo(replication_info.live_replicas(), all_ts_descs, &ts_descs);
-  RETURN_NOT_OK(HandlePlacementUsingPlacementInfo(
-      replication_info.live_replicas(), ts_descs, PeerMemberType::VOTER,
-      config, per_table_state, global_state));
-  for (int i = 0; i < replication_info.read_replicas_size(); i++) {
-    GetTsDescsFromPlacementInfo(replication_info.read_replicas(i), all_ts_descs, &ts_descs);
-    RETURN_NOT_OK(HandlePlacementUsingPlacementInfo(
-        replication_info.read_replicas(i), ts_descs, PeerMemberType::OBSERVER,
-        config, per_table_state, global_state));
-  }
-  return Status::OK();
-}
-
-Status CatalogManager::HandlePlacementUsingPlacementInfo(const PlacementInfoPB& placement_info,
-                                                         const TSDescriptorVector& ts_descs,
-                                                         PeerMemberType member_type,
-                                                         consensus::RaftConfigPB* config,
-                                                         CMPerTableLoadState* per_table_state,
-                                                         CMGlobalLoadState* global_state) {
-  size_t nreplicas = GetNumReplicasOrGlobalReplicationFactor(placement_info);
-  size_t ntservers = ts_descs.size();
-  // Keep track of servers we've already selected, so that we don't attempt to
-  // put two replicas on the same host.
-  set<TabletServerId> already_selected_ts;
-  if (placement_info.placement_blocks().empty()) {
-    // If we don't have placement info, just place the replicas as before, distributed across the
-    // whole cluster.
-    // We cannot put more than ntservers replicas.
-    nreplicas = min(nreplicas, ntservers);
-    SelectReplicas(ts_descs, nreplicas, config, &already_selected_ts, member_type,
-                   per_table_state, global_state);
-  } else {
-    // TODO(bogdan): move to separate function
-    //
-    // If we do have placement info, we'll try to use the same power of two algorithm, but also
-    // match the requested policies. We'll assign the minimum requested replicas in each combination
-    // of cloud.region.zone and then if we still have leftover replicas, we'll assign those
-    // in any of the allowed areas.
-    // Loop through placements and assign to respective available TSs.
-    size_t min_replica_count_sum = 0;
-    // Remaining replicas each placement block can accept, after the minimums below, before it
-    // reaches its effective maximum.
-    std::unordered_map<CloudInfoPB, size_t, cloud_hash, cloud_equal_to> remaining_block_capacity;
-    for (const auto& pb : placement_info.placement_blocks()) {
-      // This works because currently we don't allow placement blocks to overlap.
-      auto available_ts_descs = VERIFY_RESULT(FindTServersForPlacementBlock(pb, ts_descs));
-      size_t available_ts_descs_size = available_ts_descs.size();
-      size_t min_num_replicas = pb.min_num_replicas();
-      // We cannot put more than the available tablet servers in that placement block.
-      size_t num_replicas = min(min_num_replicas, available_ts_descs_size);
-      min_replica_count_sum += min_num_replicas;
-      SelectReplicas(available_ts_descs, num_replicas, config, &already_selected_ts, member_type,
-                     per_table_state, global_state);
-      remaining_block_capacity[pb.cloud_info()] =
-          GetEffectiveMaxNumReplicas(pb, narrow_cast<int32_t>(nreplicas)) - num_replicas;
-    }
-
-    // Distribute the remaining replicas across the least loaded tservers left, skipping any
-    // tserver whose placement block has already reached its effective maximum. The maximums are
-    // hard caps: if they prevent placing every remaining replica, the tablet starts
-    // under-replicated rather than violating a maximum.
-    size_t replicas_left = nreplicas - min_replica_count_sum;
-    TSDescriptorVector candidates;
-    for (const auto& ts_uuid : per_table_state->sorted_replica_load_) {
-      if (candidates.size() == replicas_left) {
-        break;
-      }
-      if (already_selected_ts.contains(ts_uuid)) {
-        continue;
-      }
-      const auto ts_it = std::find_if(
-          ts_descs.begin(), ts_descs.end(),
-          [&ts_uuid](const auto& ts) { return ts->permanent_uuid() == ts_uuid; });
-      if (ts_it == ts_descs.end()) {
-        continue;
-      }
-      // Find the (unique) placement block this tserver belongs to; placement blocks cannot
-      // overlap.
-      const auto pb = std::find_if(
-          placement_info.placement_blocks().begin(), placement_info.placement_blocks().end(),
-          [&ts_it](const auto& block) { return (*ts_it)->MatchesCloudInfo(block.cloud_info()); });
-      if (pb == placement_info.placement_blocks().end()) {
-        continue;
-      }
-      auto& capacity = remaining_block_capacity[pb->cloud_info()];
-      if (capacity == 0) {
-        continue;
-      }
-      --capacity;
-      candidates.push_back(*ts_it);
-    }
-    // Every candidate is selected, so there is nothing left to choose: apply them directly rather
-    // than re-searching the candidate list through SelectReplicas. The per-block caps hold by
-    // construction.
-    for (const auto& ts : candidates) {
-      AddReplicaToConfig(
-          ts, config, &already_selected_ts, member_type, per_table_state, global_state);
-    }
-  }
-  return Status::OK();
 }
 
 Result<vector<shared_ptr<TSDescriptor>>> CatalogManager::FindTServersForPlacementInfo(
@@ -12773,9 +13070,11 @@ void CatalogManager::StartElectionIfReady(
   }
 
   ReplicationInfoPB replication_info;
+  BlacklistSet leader_blacklist;
   {
     auto l = ClusterConfig()->LockForRead();
     replication_info = l->pb.replication_info();
+    leader_blacklist = ToBlacklistSet(GetBlacklist(l->pb, /* blacklist_leader */ true));
   }
 
   // Find tservers that can be leaders for a tablet.
@@ -12790,7 +13089,8 @@ void CatalogManager::StartElectionIfReady(
     }
     for (const auto& ts_desc : ts_descs) {
       if (ts_desc->permanent_uuid() == replica.first) {
-        if (ts_desc->IsAcceptingLeaderLoad(replication_info)) {
+        if (ts_desc->IsAcceptingLeaderLoad(replication_info) &&
+            !ts_desc->IsBlacklisted(leader_blacklist)) {
           possible_leaders.push_back(replica.first);
         }
         break;
@@ -12848,53 +13148,39 @@ void CatalogManager::StartElectionIfReady(
   WARN_NOT_OK(task->Run(), "Failed to send new tablet start election request");
 }
 
-shared_ptr<TSDescriptor> CatalogManager::SelectReplica(
-    const TSDescriptorVector& ts_descs,
-    set<TabletServerId>* excluded,
-    CMPerTableLoadState* per_table_state, CMGlobalLoadState* global_state) {
-  shared_ptr<TSDescriptor> found_ts;
-  for (const auto& sorted_load : per_table_state->sorted_replica_load_) {
-    // Don't consider a tserver that has already been considered for this tablet.
-    if (excluded->count(sorted_load)) {
-      continue;
-    }
-    // Only choose from the set of allowed tservers for this tablet.
-    auto it = std::find_if(ts_descs.begin(), ts_descs.end(), [&sorted_load](const auto& ts) {
-      return ts->permanent_uuid() == sorted_load;
-    });
-
-    if (it != ts_descs.end()) {
-      found_ts = *it;
-      break;
+std::optional<size_t> CatalogManager::SelectReplica(
+    const std::vector<bool>& allowed, const std::vector<bool>& excluded,
+    const CMPerTableLoadState& per_table_state) {
+  for (size_t idx : per_table_state.sorted_by_load()) {
+    if (allowed[idx] && !excluded[idx]) {
+      return idx;
     }
   }
-
-  return found_ts;
+  return std::nullopt;
 }
 
-void CatalogManager::SelectReplicas(
-    const TSDescriptorVector& ts_descs, size_t nreplicas, consensus::RaftConfigPB* config,
-    set<TabletServerId>* already_selected_ts, PeerMemberType member_type,
-    CMPerTableLoadState* per_table_state, CMGlobalLoadState* global_state) {
-  DCHECK_LE(nreplicas, ts_descs.size());
-
+Status CatalogManager::SelectReplicas(
+    const TSDescriptorVector& ts_descs, const std::vector<bool>& allowed, size_t nreplicas,
+    consensus::RaftConfigPB* config, std::vector<bool>* already_selected,
+    PeerMemberType member_type, CMPerTableLoadState* per_table_state) {
   for (size_t i = 0; i < nreplicas; ++i) {
-    shared_ptr<TSDescriptor> ts = SelectReplica(
-        ts_descs, already_selected_ts, per_table_state, global_state);
-    AddReplicaToConfig(ts, config, already_selected_ts, member_type, per_table_state, global_state);
+    auto idx = SelectReplica(allowed, *already_selected, *per_table_state);
+    SCHECK_FORMAT(idx, IllegalState, "Not enough tablet servers to place $0 replicas", nreplicas);
+    AddReplicaToConfig(ts_descs, *idx, config, already_selected, member_type, per_table_state);
   }
+  return Status::OK();
 }
 
 void CatalogManager::AddReplicaToConfig(
-    const shared_ptr<TSDescriptor>& ts, consensus::RaftConfigPB* config,
-    set<TabletServerId>* already_selected_ts, PeerMemberType member_type,
-    CMPerTableLoadState* per_table_state, CMGlobalLoadState* global_state) {
-  InsertOrDie(already_selected_ts, ts->permanent_uuid());
+    const TSDescriptorVector& ts_descs, size_t idx, consensus::RaftConfigPB* config,
+    std::vector<bool>* already_selected, PeerMemberType member_type,
+    CMPerTableLoadState* per_table_state) {
+  DCHECK(!(*already_selected)[idx]);
+  (*already_selected)[idx] = true;
   // Update the load state at global and table level.
-  per_table_state->per_ts_replica_load_[ts->permanent_uuid()]++;
-  global_state->per_ts_replica_load_[ts->permanent_uuid()]++;
-  per_table_state->SortLoad();
+  per_table_state->AddReplica(idx);
 
+  const auto& ts = ts_descs[idx];
   // Increment the number of pending replicas so that we take this selection into
   // account when assigning replicas for other tablets of the same table. This
   // value decays back to 0 over time.
@@ -14004,19 +14290,8 @@ Status CatalogManager::SysCatalogRespectLeaderAffinity() {
     return Status::OK();
   }
 
-  consensus::ConsensusStatePB consensus_state;
-  RETURN_NOT_OK(GetCurrentConfig(&consensus_state));
-
   std::vector<ServerEntryPB> masters;
-  for (const auto& peer : consensus_state.config().peers()) {
-    ServerEntryPB master;
-    master.mutable_instance_id()->set_permanent_uuid(peer.permanent_uuid());
-    auto* registration = master.mutable_registration();
-    registration->mutable_cloud_info()->CopyFrom(peer.cloud_info());
-    registration->mutable_private_rpc_addresses()->CopyFrom(peer.last_known_private_addr());
-    registration->mutable_broadcast_addresses()->CopyFrom(peer.last_known_broadcast_addr());
-    masters.push_back(std::move(master));
-  }
+  RETURN_NOT_OK(master_->ListMasters(&masters));
 
   auto[sorted_scored_masters, i_am_eligible] = GetMoreEligibleSysCatalogLeaders(
       affinitized_zones, blacklist, masters, server_registration_);
@@ -14139,19 +14414,18 @@ const YQLPartitionsVTable& CatalogManager::GetYqlPartitionsVtable() const {
 
 Status CatalogManager::InitializeTableLoadState(
     const TableId& table_id, TSDescriptorVector ts_descs, CMPerTableLoadState* state) {
+  std::unordered_map<TabletServerId, uint32_t> table_load;
   for (const auto& ts : ts_descs) {
     // Touch every tserver with 0 load.
-    state->per_ts_replica_load_[ts->permanent_uuid()];
-    // Insert into the sorted list.
-    state->sorted_replica_load_.emplace_back(ts->permanent_uuid());
+    table_load[ts->permanent_uuid()];
   }
 
   auto table_info = GetTableInfo(table_id);
 
-  if (!table_info) {
-    return Status::OK();
+  if (table_info) {
+    RETURN_NOT_OK(CatalogManagerUtil::FillTableLoadState(table_info, &table_load));
   }
-  return CatalogManagerUtil::FillTableLoadState(table_info, state);
+  return state->Init(ts_descs, table_load);
 }
 
 // TODO: consider unifying this code with the cluster balancer.
@@ -14176,7 +14450,7 @@ Result<CMGlobalLoadState> CatalogManager::InitializeGlobalLoadState(
         continue;
       }
     }
-    RETURN_NOT_OK(CatalogManagerUtil::FillTableLoadState(info, &state));
+    RETURN_NOT_OK(CatalogManagerUtil::FillTableLoadState(info, &state.per_ts_replica_load_));
   }
   return state;
 }
@@ -14379,7 +14653,7 @@ void CatalogManager::SysCatalogLoaded(SysCatalogLoadingState&& state) {
 
   SchedulePostTabletCreationTasksForPendingTables(state.epoch);
   EnqueuePendingBackfillsAfterLoad();
-  restoring_sys_catalog_ = false;
+  ClearRestoringSysCatalogIfNotFenced();
 
   if (FLAGS_enable_ysql) {
     // Initialize the catalog version cache.
@@ -14630,91 +14904,6 @@ void CatalogManager::EnqueuePendingBackfillsAfterLoad() {
   }
 }
 
-void CatalogManager::ResetCachedCatalogVersions() {
-  LockGuard lock(heartbeat_pg_catalog_versions_cache_mutex_);
-  // Invariant: all the pieces of heartbeat catalog-versions cache state below are reset
-  // together here. They are not independent, and clearing only a subset has already been a bug
-  // once: #33596 left the fingerprint behind, which suppressed the next invalidation-messages
-  // re-read. Any state added to this cache must be reset here too.
-  if (heartbeat_pg_catalog_versions_cache_) {
-    heartbeat_pg_catalog_versions_cache_->clear();
-  }
-  // Must be reset together with the cache: the next RefreshPgCatalogVersionCache decides whether
-  // to re-read pg_yb_invalidation_messages by comparing against this fingerprint. Leaving it
-  // stale makes a refresh that reads back the same catalog versions (e.g. after a leader
-  // stepdown and reacquisition with no intervening DDL) conclude nothing changed and leave
-  // heartbeat_pg_inval_messages_cache_ empty.
-  heartbeat_pg_catalog_versions_cache_fingerprint_ = 0;
-  // Reset to empty map to distinguish it from std::nullopt which means last periodic reading
-  // of pg_yb_invalidation_messages has failed.
-  heartbeat_pg_inval_messages_cache_ = DbOidVersionToMessageListMap();
-  // Must also be cleared, or the first install after this reset is rejected as carrying an older
-  // snapshot than the one we just discarded, and the cache stays empty.
-  heartbeat_pg_catalog_versions_cache_read_ht_ = HybridTime::kInvalid;
-  ++heartbeat_pg_catalog_versions_cache_generation_;
-  LOG_IF(INFO, PREDICT_FALSE(FLAGS_TEST_log_catalog_version_cache_events))
-      << "ResetCachedCatalogVersions: cache reset, generation: "
-      << heartbeat_pg_catalog_versions_cache_generation_;
-}
-
-uint64_t CatalogManager::GetPgCatalogVersionsCacheGeneration() const {
-  SharedLock lock(heartbeat_pg_catalog_versions_cache_mutex_);
-  return heartbeat_pg_catalog_versions_cache_generation_;
-}
-
-bool CatalogManager::InstallPgCatalogVersionsSnapshot(
-    uint64_t generation, HybridTime read_ht, DbOidToCatalogVersionMap versions,
-    uint64_t fingerprint, bool update_messages,
-    std::optional<DbOidVersionToMessageListMap> messages) {
-  if (!read_ht.is_valid()) {
-    // Callers must pass the read time of an actual read. Installing an invalid one would both
-    // install out of order -- HybridTime::kInvalid is kMax - 1, so it beats every real snapshot
-    // in the comparison below -- and then disarm that comparison for the following install.
-    // Note a use_cache=true GetYsqlAllDBCatalogVersions() reports the installed snapshot's own
-    // read time, which is for telling a tserver how old these versions are; only a
-    // use_cache=false read supplies one worth installing.
-    LOG_WITH_FUNC(DFATAL) << "Refusing to install a catalog versions snapshot with no read time";
-    return false;
-  }
-  LockGuard lock(heartbeat_pg_catalog_versions_cache_mutex_);
-  if (generation != heartbeat_pg_catalog_versions_cache_generation_) {
-    // The cache was reset after this snapshot was read, i.e. we lost leadership in between.
-    // Installing now would undo that reset, and the data is from before another master took over.
-    // Logged at INFO, not VLOG: the generation only moves on a leader stepdown, so this fires at
-    // most once per in-flight install per stepdown, and it is what explains a cache that stays
-    // empty across a failover.
-    LOG_WITH_FUNC(INFO) << "Skipping install: cache generation moved from " << generation << " to "
-                        << heartbeat_pg_catalog_versions_cache_generation_;
-    return false;
-  }
-  // The is_valid() test is required, not defensive: HybridTime::kInvalid is kMax - 1, so an unset
-  // heartbeat_pg_catalog_versions_cache_read_ht_ compares as nearly maximal rather than as "older
-  // than everything". Dropping it would reject every install, leaving the cache permanently empty
-  // on a fresh master and after every ResetCachedCatalogVersions(), which are the only two states
-  // where heartbeat_pg_catalog_versions_cache_read_ht_ is invalid.
-  if (heartbeat_pg_catalog_versions_cache_read_ht_.is_valid() &&
-      read_ht <= heartbeat_pg_catalog_versions_cache_read_ht_) {
-    // An equal or newer snapshot is already installed. Dropping this one is what keeps the cache
-    // monotonic, and it is also correct for the caller that broadcast this snapshot to tservers:
-    // what is installed is at least as new, so the cache cannot report below the broadcast.
-    VLOG_WITH_FUNC(2) << "Skipping install of snapshot at " << read_ht << ", cache holds "
-                      << heartbeat_pg_catalog_versions_cache_read_ht_;
-    return false;
-  }
-  heartbeat_pg_catalog_versions_cache_ = std::move(versions);
-  heartbeat_pg_catalog_versions_cache_fingerprint_ = fingerprint;
-  heartbeat_pg_catalog_versions_cache_read_ht_ = read_ht;
-  if (update_messages) {
-    // nullopt marks the messages unavailable so the next refresh re-reads them; the versions
-    // above are unaffected, since messages are only an optimization on top of them.
-    heartbeat_pg_inval_messages_cache_ = std::move(messages);
-  }
-  LOG_IF(INFO, PREDICT_FALSE(FLAGS_TEST_log_catalog_version_cache_events))
-      << "InstallPgCatalogVersionsSnapshot: installed snapshot at " << read_ht
-      << ", databases: " << heartbeat_pg_catalog_versions_cache_->size();
-  return true;
-}
-
 bool CatalogManager::RefreshPgCatalogVersionCache() {
   if (PREDICT_FALSE(FLAGS_TEST_pause_pg_catalog_versions_cache_refresh)) {
     return false;
@@ -14728,7 +14917,7 @@ bool CatalogManager::RefreshPgCatalogVersionCache() {
   // Must be captured before the read: nothing serializes this function against a concurrent reset,
   // so the generation is what lets the install below notice that one happened in between and drop
   // this snapshot rather than resurrecting a cache that a stepdown deliberately cleared.
-  const auto generation = GetPgCatalogVersionsCacheGeneration();
+  const auto generation = pg_catalog_versions_cache_.Generation();
   DbOidToCatalogVersionMap versions;
   HybridTime read_ht;
   Status s = GetYsqlAllDBCatalogVersionsImpl(&versions, &read_ht);
@@ -14742,19 +14931,11 @@ bool CatalogManager::RefreshPgCatalogVersionCache() {
   const auto fingerprint = yb::FingerprintCatalogVersions<DbOidToCatalogVersionMap>(versions);
   VLOG_WITH_FUNC(2) << "fingerprint: " << fingerprint;
 
-  bool changed = false;
-  {
-    SharedLock lock(heartbeat_pg_catalog_versions_cache_mutex_);
-    changed = heartbeat_pg_catalog_versions_cache_fingerprint_ != fingerprint;
-    if (FLAGS_ysql_yb_enable_invalidation_messages && !changed) {
-      // nullopt means the previous refresh has failed.
-      changed = !heartbeat_pg_inval_messages_cache_.has_value();
-    }
-  }
+  const bool needs_messages_refresh = pg_catalog_versions_cache_.NeedsMessagesRefresh(fingerprint);
 
   bool messages_refresh_failed = false;
   std::optional<DbOidVersionToMessageListMap> messages;
-  if (FLAGS_ysql_yb_enable_invalidation_messages && changed) {
+  if (FLAGS_ysql_yb_enable_invalidation_messages && needs_messages_refresh) {
     // Cache invalidation messages are considered as an optimization extension of
     // the catalog versions. If we cannot read the messages successfully, it means
     // we will skip the optimization this time but it will not affect correctness
@@ -14769,7 +14950,7 @@ bool CatalogManager::RefreshPgCatalogVersionCache() {
     }
   }
 
-  const bool update_messages = FLAGS_ysql_yb_enable_invalidation_messages && changed;
+  const bool update_messages = FLAGS_ysql_yb_enable_invalidation_messages && needs_messages_refresh;
   // Left as nullopt when the messages read failed, which marks them unavailable so the next
   // refresh retries; the catalog versions are installed either way, since messages are only an
   // optimization on top of them.
@@ -14778,7 +14959,7 @@ bool CatalogManager::RefreshPgCatalogVersionCache() {
     VLOG_WITH_FUNC(2) << "Refreshed " << messages->size() << " catalog inval messages in memory";
     messages_to_install = std::move(messages);
   }
-  const bool installed = InstallPgCatalogVersionsSnapshot(
+  const bool installed = pg_catalog_versions_cache_.Install(
       generation, read_ht, std::move(versions), fingerprint, update_messages,
       std::move(messages_to_install));
   LOG_IF(INFO, PREDICT_FALSE(FLAGS_TEST_log_catalog_version_cache_events))
@@ -15285,6 +15466,20 @@ void PopulateTabletMetadata(
         partition.partition_key_start());
     tablet_metadata->mutable_partition()->set_partition_key_end(
         partition.partition_key_end());
+  }
+
+  // Leader SST/WAL sizes from heartbeat-cached drive info (same source as GetTableDiskSize).
+  // Missing leader drive info leaves size fields unset so YSQL can omit tablet_attrs keys.
+  auto drive_info_result = tablet->GetLeaderReplicaDriveInfo();
+  if (drive_info_result.ok()) {
+    const auto& drive_info = *drive_info_result;
+    tablet_metadata->set_sst_files_disk_size(drive_info.sst_files_size);
+    tablet_metadata->set_wal_files_disk_size(drive_info.wal_files_size);
+    tablet_metadata->set_uncompressed_sst_files_disk_size(drive_info.uncompressed_sst_file_size);
+    tablet_metadata->set_total_on_disk_size(drive_info.total_size);
+    if (drive_info.vector_index_size > 0) {
+      tablet_metadata->set_vector_index_disk_size(drive_info.vector_index_size);
+    }
   }
 }
 

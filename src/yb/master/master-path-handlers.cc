@@ -1376,12 +1376,16 @@ string MasterPathHandlers::GetParentTableOid(scoped_refptr<TableInfo> parent_tab
   return std::to_string(*parent_result);
 }
 
+// The "Total" line of the on-disk size column, also used as that column's sort key.
+uint64 GetOnDiskTotalSize(const TabletReplicaDriveInfo& info) {
+  return info.sst_files_size + info.wal_files_size + info.vector_index_size;
+}
+
 string GetOnDiskSizeInHtml(const TabletReplicaDriveInfo &info) {
   std::ostringstream disk_size_html;
   disk_size_html << "<ul>"
                  << "<li>" << "Total: "
-                 << HumanizeBytes(
-                        info.sst_files_size + info.wal_files_size + info.vector_index_size)
+                 << HumanizeBytes(GetOnDiskTotalSize(info))
                  << "<li>" << "WAL Files: "
                  << HumanizeBytes(info.wal_files_size)
                  << "<li>" << "SST Files: "
@@ -1411,6 +1415,9 @@ void MasterPathHandlers::HandleAllTables(
   // The first stores user tables, the second index tables, the third parent tables,
   // and the fourth system tables.
   StringMap ordered_tables[kNumTypes];
+  // Total bytes behind each table's kOnDiskSize cell, keyed like ordered_tables; it is the
+  // numeric sort key for that column.
+  std::unordered_map<TableId, uint64> on_disk_size_bytes;
   bool has_tablegroups[kNumTypes];
   bool has_colocated_tables[kNumTypes];
   bool show_missing_size_footer[kNumTypes];
@@ -1486,6 +1493,8 @@ void MasterPathHandlers::HandleAllTables(
       auto tablets_result = table->GetTablets();
       if (!tablets_result) continue;
       bool table_has_missing_size = false;
+      // Sum the leader replica of each tablet, so the result is one copy of the data rather
+      // than the total across all replicas.
       for (const auto& tablet : *tablets_result) {
         auto drive_info = tablet->GetLeaderReplicaDriveInfo();
         if (drive_info.ok()) {
@@ -1501,6 +1510,7 @@ void MasterPathHandlers::HandleAllTables(
       }
 
       table_row[kOnDiskSize] = GetOnDiskSizeInHtml(aggregated_drive_info);
+      on_disk_size_bytes[table->id()] = GetOnDiskTotalSize(aggregated_drive_info);
       if (table_has_missing_size) {
         table_row[kOnDiskSize] += "*";
       }
@@ -1542,7 +1552,7 @@ void MasterPathHandlers::HandleAllTables(
       }
 
       if (type_index != kSystemTable) {
-        columns.push_back("On-disk size");
+        columns.push_back("On-disk size (leader replicas)");
       }
 
       auto html_table = html_print_helper.CreateTablePrinter("table", type_index, columns);
@@ -1568,11 +1578,20 @@ void MasterPathHandlers::HandleAllTables(
         }
 
         if (type_index != kSystemTable) {
-          row.AddColumn(table.second[kOnDiskSize]);
+          // The cell is a multi-line list, which the page's sort script can only compare as
+          // text, so pass the total bytes as the sort key to get a numeric sort.
+          auto size_it = on_disk_size_bytes.find(table.first);
+          row.AddColumn(
+              table.second[kOnDiskSize],
+              size_it == on_disk_size_bytes.end() ? 0 : size_it->second);
         }
       }
       html_table.Print();
 
+      if (type_index != kSystemTable) {
+        (*output) << "<p>On-disk sizes are summed over the leader replica of each tablet,"
+                  << " i.e. one copy of the data, not the total across all replicas.</p>";
+      }
       if (show_missing_size_footer[type_index]) {
         (*output) << "<p>* Some tablets did not provide disk size estimates,"
                   << " and were not added to the displayed totals.</p>";
@@ -1672,6 +1691,8 @@ void MasterPathHandlers::HandleAllTablesJSON(
       auto tablets_result = table->GetTablets();
       if (!tablets_result) continue;
       bool table_has_missing_size = false;
+      // Sum the leader replica of each tablet, so the result is one copy of the data rather
+      // than the total across all replicas.
       for (const auto& tablet : *tablets_result) {
         auto drive_info = tablet->GetLeaderReplicaDriveInfo();
         if (drive_info.ok()) {
@@ -1734,6 +1755,8 @@ void MasterPathHandlers::HandleAllTablesJSON(
       }
 
       if (type_index != kSystemTable) {
+        // Leader replicas only (one copy of the data); see the aggregation above. The field
+        // name is kept as-is because yugabyted-ui reads it.
         jw.String("on_disk_size");
         jw.StartObject();
         jw.String("wal_files_size");

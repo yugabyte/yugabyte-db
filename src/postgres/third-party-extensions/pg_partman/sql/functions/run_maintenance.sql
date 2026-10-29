@@ -59,6 +59,8 @@ v_sub_timestamp_min             timestamptz;
 v_tablename                     text;
 v_tables_list_sql               text;
 
+yb_v_use_native_txn_ddl_and_locks boolean := pg_catalog.yb_pg_partman_check_native_txn_ddl_and_locks();
+
 BEGIN
 /*
  * Function to manage pre-creation of the next partitions in a set.
@@ -69,13 +71,13 @@ BEGIN
  * Be aware that constraint exclusion may not work properly until an analyze on the partition set is run. 
  */
 
-/* YB(GH#3642): advisory lock not supported
+IF yb_v_use_native_txn_ddl_and_locks THEN
 v_adv_lock := pg_try_advisory_xact_lock(hashtext('pg_partman run_maintenance'));
 IF v_adv_lock = 'false' THEN
     RAISE NOTICE 'Partman maintenance already running.';
     RETURN;
 END IF;
-*/
+END IF; -- yb_v_use_native_txn_ddl_and_locks
 
 SELECT current_setting('search_path') INTO v_old_search_path;
 IF length(v_old_search_path) > 0 THEN
@@ -172,11 +174,11 @@ LOOP
         WHERE n.nspname = v_parent_schema
         AND c.relname = v_default_tablename;
 
-        -- YB: TODO(#3109): Disable skip after transactional DDL support.
-        IF v_is_default = 'DEFAULT' THEN
-            RAISE NOTICE 'Skip run maintenace job for table % as it has default table attached', v_row.parent_table;
+        IF NOT yb_v_use_native_txn_ddl_and_locks AND v_is_default = 'DEFAULT' THEN
+            -- Maintaining a set that has a default partition needs transactional DDL.
+            RAISE NOTICE 'Skip run maintenance job for table % as it has default table attached, which requires the gflag ysql_yb_pg_partman_use_native_txn_ddl_and_locks, transactional DDL, table level locks, and DDL savepoint support to be enabled', v_row.parent_table;
             CONTINUE;
-        END IF;
+        END IF; -- NOT yb_v_use_native_txn_ddl_and_locks AND v_is_default = 'DEFAULT'
 
         IF v_is_default != 'DEFAULT' THEN
             v_default_tablename := v_parent_tablename;

@@ -53,6 +53,9 @@ class OptimizedRocksDbIterator {
   // Seeks to the latest record which is strictly less than upper_bound_key (in other words, seeks
   // to a record the closest to upper_bound_key but strictly less than upper_bound_key).
   // Does not perform a seek if the iterator is already positioned before the upper_bound_key.
+  // An invalid iterator is taken as already positioned before upper_bound_key, i.e. moved past the
+  // start or the lower bound. If it may have moved past the end or the upper bound, e.g. after a
+  // forward seek, the caller must seek explicitly.
   const rocksdb::KeyValueEntry& SeekBackward(Slice upper_bound_key);
 
   // When we replace HybridTime::kMin in the end of seek key, next seek will skip older versions of

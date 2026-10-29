@@ -1135,6 +1135,7 @@ public class UniverseCRUDHandler {
     }
 
     checkGeoPartitioningParameters(customer, taskParams, OpType.CREATE);
+    validateTmpDirGflagConsistency(taskParams);
     validateOciInstanceTags(taskParams);
 
     // Only tasks write this state. Universe.create() below would save a copy sent by the client.
@@ -1468,10 +1469,12 @@ public class UniverseCRUDHandler {
    */
   public UUID update(Customer customer, Universe u, UniverseDefinitionTaskParams taskParams) {
     checkCanEdit(customer, u);
+    validateFipsGFlagsForUpdate(u, taskParams);
     checkTaskParamsForUpdate(u, taskParams);
     // enforce user tags for cloud instances.
     for (Cluster cluster : taskParams.clusters) {
       validateUserTags(customer, cluster.userIntent);
+      GFlagsUtil.validateGFlagValues(cluster.userIntent);
     }
     validateOciInstanceTags(taskParams);
     if (u.isYbcEnabled()) {
@@ -1490,6 +1493,9 @@ public class UniverseCRUDHandler {
     // Set helm naming style into params
     taskParams.useNewHelmNamingStyle = u.getUniverseDetails().useNewHelmNamingStyle;
 
+    // Clients such as the CLI omit it; new nodes need it to get the OTEL collector.
+    taskParams.otelCollectorEnabled = u.getUniverseDetails().otelCollectorEnabled;
+
     // Set existing LBs into taskParams
     taskParams.setExistingLBs(u.getUniverseDetails().clusters);
 
@@ -1498,6 +1504,25 @@ public class UniverseCRUDHandler {
       return updateCluster(customer, u, taskParams);
     } else {
       return updatePrimaryCluster(customer, u, taskParams);
+    }
+  }
+
+  private static void validateFipsGFlagsForUpdate(
+      Universe u, UniverseDefinitionTaskParams taskParams) {
+    if (!u.getUniverseDetails().fipsEnabled) {
+      return;
+    }
+    for (Cluster cluster : taskParams.clusters) {
+      Cluster current = u.getUniverseDetails().getClusterByUuid(cluster.uuid);
+      // Only gflags this edit changes, so a universe already storing a non-true value stays
+      // editable; configure sets the flag to true on its nodes regardless.
+      if (current != null
+          && Objects.equals(cluster.userIntent.specificGFlags, current.userIntent.specificGFlags)
+          && Objects.equals(cluster.userIntent.masterGFlags, current.userIntent.masterGFlags)
+          && Objects.equals(cluster.userIntent.tserverGFlags, current.userIntent.tserverGFlags)) {
+        continue;
+      }
+      GFlagsUtil.validateFipsCompliancy(cluster.userIntent, true);
     }
   }
 
@@ -1819,6 +1844,9 @@ public class UniverseCRUDHandler {
               + universe.getUniverseUUID());
     }
 
+    // The new cluster follows the universe, whatever the request says.
+    taskParams.fipsEnabled = universe.getUniverseDetails().fipsEnabled;
+
     for (Cluster cluster : taskParams.clusters) {
       validateUserTags(customer, cluster.userIntent);
     }
@@ -1839,6 +1867,8 @@ public class UniverseCRUDHandler {
 
     // Set helm naming style into params
     taskParams.useNewHelmNamingStyle = universe.getUniverseDetails().useNewHelmNamingStyle;
+    // Clients such as the CLI omit it; new nodes need it to get the OTEL collector.
+    taskParams.otelCollectorEnabled = universe.getUniverseDetails().otelCollectorEnabled;
 
     List<Cluster> newReadOnlyClusters = taskParams.getReadOnlyClusters();
     List<Cluster> newAddOnClusters = taskParams.getAddOnClusters();
@@ -1892,7 +1922,7 @@ public class UniverseCRUDHandler {
       throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
-    taskParams.clusters.add(primaryCluster);
+    taskParams.clusters.add(0, primaryCluster);
 
     // Set the provider code.
     Provider provider = Util.getSingleProvider(addOnCluster);
@@ -1977,7 +2007,9 @@ public class UniverseCRUDHandler {
     if (primaryCluster.userIntent.specificGFlags != null) {
       primaryGflagGroups = primaryCluster.userIntent.specificGFlags.getGflagGroups();
     }
-    taskParams.clusters.add(primaryCluster);
+    // Add the primary cluster at the beginning of the cluster list.
+    // TODO fix all other places where cluster at index 0 is assumed to be the primary cluster.
+    taskParams.clusters.add(0, primaryCluster);
     validateConsistency(primaryCluster, readOnlyCluster);
 
     if (readOnlyCluster.userIntent.provider != null) {
@@ -3169,6 +3201,9 @@ public class UniverseCRUDHandler {
         newInstallGFlags.value,
         universe.getName());
     universe.setNewInstallGFlags(newInstallGFlags);
+    if (primaryCluster != null && Util.isKubernetesBased(primaryCluster)) {
+      universe.updateConfig(Map.of(Universe.K8S_APPLY_NEW_INSTALL_GFLAGS, Boolean.toString(true)));
+    }
   }
 
   // This method enforces the user tags provided in runtime config.
@@ -3204,6 +3239,30 @@ public class UniverseCRUDHandler {
               String.format(
                   "Invalid value for %s (accepted values: %s)",
                   userTag, StringUtils.join(acceptedValuesSet, ", ")));
+      }
+    }
+  }
+
+  private void validateTmpDirGflagConsistency(UniverseDefinitionTaskParams taskParams) {
+    for (Cluster cluster : taskParams.clusters) {
+      if (!cluster.userIntent.getAllCloudTypes().contains(Common.CloudType.onprem)) {
+        continue;
+      }
+      for (UUID providerUuid : cluster.userIntent.getAllProviderUUIDs()) {
+        Provider provider = Provider.getOrBadRequest(providerUuid);
+        if (!provider.getCloudCode().equals(Common.CloudType.onprem)) {
+          continue;
+        }
+        if (confGetter.getConfForScope(
+            provider, ProviderConfKeys.skipTmpDirGflagConsistencyCheck)) {
+          continue;
+        }
+        String tmpDirErrMsg =
+            GFlagsUtil.checkTmpDirGflagConsistency(
+                confGetter, provider, cluster, taskParams.clusters);
+        if (tmpDirErrMsg != null) {
+          throw new PlatformServiceException(BAD_REQUEST, tmpDirErrMsg);
+        }
       }
     }
   }

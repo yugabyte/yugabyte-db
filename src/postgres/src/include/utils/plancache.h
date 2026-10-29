@@ -152,6 +152,8 @@ typedef struct CachedPlanSource
 	int			yb_custom_max_num_referenced_rels;	/* Max number of relations
 													 * referenced by a custom
 													 * plan */
+	YbcOtelSpanContext yb_comment_span_ctx; /* traceparent from the query's
+											 * SQL comment, or NULL */
 
 } CachedPlanSource;
 

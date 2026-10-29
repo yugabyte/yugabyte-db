@@ -102,6 +102,7 @@
 /* YB includes */
 #include "access/sysattr.h"
 #include "access/table.h"
+#include "access/yb_scan_plan.h"
 #include "catalog/pg_statistic.h"
 #include "catalog/pg_statistic_ext.h"
 #include "catalog/pg_type_d.h"
@@ -8475,26 +8476,17 @@ yb_add_base_table_fetch_cost(Cardinality tuples,
 }
 
 /*
- * yb_estimate_saop_bounding_range_selectivity
- *      For an IN-list-style ScalarArrayOpExpr (col OP ANY (Const_array)),
- *      estimate the selectivity of the bounding range
- *      [min(array), max(array)] -- the index range actually walked to
- *      expand the IN-list, as opposed to the much smaller matched
- *      selectivity (sparse IN-lists ~ 1, clustered IN-lists ~ 0).
- *
- *      Returns false (outputs unchanged) when the clause is not a SAOP,
- *      the rhs is not a non-null Const array, or no btree comparator is
- *      available for the element type.
+ * yb_saop_const_bounds
+ *		Smallest and largest non-null element of an IN-list condition's Const
+ *		array, as Consts of the element type, and the element count.  Returns
+ *		false when the array is not a plain Const or its element type has no
+ *		btree ordering; an empty or all-null array returns true with no bounds
+ *		and 'num_elems' 0.
  */
 static bool
-yb_estimate_saop_bounding_range_selectivity(PlannerInfo *root,
-											RestrictInfo *rinfo,
-											Index baserel_relid,
-											Selectivity *selectivity,
-											int *num_array_elements)
+yb_saop_const_bounds(ScalarArrayOpExpr *saop, Const **min_const,
+					 Const **max_const, int *num_elems)
 {
-	ScalarArrayOpExpr *saop;
-	Node	   *lhs;
 	Node	   *rhs;
 	Const	   *arr_const;
 	ArrayType  *arrayval;
@@ -8505,29 +8497,19 @@ yb_estimate_saop_bounding_range_selectivity(PlannerInfo *root,
 	Datum	   *elemValues;
 	bool	   *elemNulls;
 	int			numElems;
-	int			i;
-	bool		first;
-	Datum		minVal = 0;
-	Datum		maxVal = 0;
 	TypeCacheEntry *typeCache;
 	Oid			ltOp;
-	Oid			leOp;
-	Oid			geOp;
 	FmgrInfo	cmpFmgr;
-	Const	   *minConst;
-	Const	   *maxConst;
-	Expr	   *geExpr;
-	Expr	   *leExpr;
-	List	   *cl;
+	bool		first = true;
+	Datum		minVal = 0;
+	Datum		maxVal = 0;
 
-	if (rinfo == NULL || !IsA(rinfo->clause, ScalarArrayOpExpr))
-		return false;
+	*min_const = NULL;
+	*max_const = NULL;
+	*num_elems = 0;
 
-	saop = (ScalarArrayOpExpr *) rinfo->clause;
 	if (list_length(saop->args) != 2)
 		return false;
-
-	lhs = (Node *) linitial(saop->args);
 	rhs = (Node *) lsecond(saop->args);
 
 	/* Only handle a plain Const array; bail out on coercions. */
@@ -8535,44 +8517,26 @@ yb_estimate_saop_bounding_range_selectivity(PlannerInfo *root,
 		return false;
 	arr_const = (Const *) rhs;
 	if (arr_const->constisnull)
-	{
-		*selectivity = 0.0;
-		*num_array_elements = 0;
 		return true;
-	}
 
 	arrayval = DatumGetArrayTypeP(arr_const->constvalue);
 	elemtype = ARR_ELEMTYPE(arrayval);
 	get_typlenbyvalalign(elemtype, &elmlen, &elmbyval, &elmalign);
 	deconstruct_array(arrayval, elemtype, elmlen, elmbyval, elmalign,
 					  &elemValues, &elemNulls, &numElems);
-
 	if (numElems <= 0)
-	{
-		*selectivity = 0.0;
-		*num_array_elements = 0;
 		return true;
-	}
 
-	/* Look up btree '<', '<=', '>=' for the element type. */
 	typeCache = lookup_type_cache(elemtype, TYPECACHE_BTREE_OPFAMILY);
 	if (typeCache->btree_opf == InvalidOid)
 		return false;
-
 	ltOp = get_opfamily_member(typeCache->btree_opf, elemtype, elemtype,
 							   BTLessStrategyNumber);
-	leOp = get_opfamily_member(typeCache->btree_opf, elemtype, elemtype,
-							   BTLessEqualStrategyNumber);
-	geOp = get_opfamily_member(typeCache->btree_opf, elemtype, elemtype,
-							   BTGreaterEqualStrategyNumber);
-	if (!OidIsValid(ltOp) || !OidIsValid(leOp) || !OidIsValid(geOp))
+	if (!OidIsValid(ltOp))
 		return false;
-
 	fmgr_info(get_opcode(ltOp), &cmpFmgr);
 
-	/* Compute min and max of the (non-null) array values. */
-	first = true;
-	for (i = 0; i < numElems; i++)
+	for (int i = 0; i < numElems; i++)
 	{
 		if (elemNulls[i])
 			continue;
@@ -8581,37 +8545,101 @@ yb_estimate_saop_bounding_range_selectivity(PlannerInfo *root,
 			minVal = maxVal = elemValues[i];
 			first = false;
 		}
-		else
-		{
-			if (DatumGetBool(FunctionCall2Coll(&cmpFmgr,
-											   saop->inputcollid,
-											   maxVal, elemValues[i])))
-				maxVal = elemValues[i];
-			else if (DatumGetBool(FunctionCall2Coll(&cmpFmgr,
-											   saop->inputcollid,
-											   elemValues[i], minVal)))
-				minVal = elemValues[i];
-		}
+		else if (DatumGetBool(FunctionCall2Coll(&cmpFmgr, saop->inputcollid,
+												maxVal, elemValues[i])))
+			maxVal = elemValues[i];
+		else if (DatumGetBool(FunctionCall2Coll(&cmpFmgr, saop->inputcollid,
+												elemValues[i], minVal)))
+			minVal = elemValues[i];
 	}
-
 	if (first)
+		return true;
+
+	*min_const = makeConst(elemtype, -1, arr_const->constcollid, elmlen,
+						   minVal, false, elmbyval);
+	*max_const = makeConst(elemtype, -1, arr_const->constcollid, elmlen,
+						   maxVal, false, elmbyval);
+	*num_elems = numElems;
+	return true;
+}
+
+/*
+ * yb_estimate_saop_bounding_range_selectivity
+ *      For an IN-list-style ScalarArrayOpExpr (col OP ANY (Const_array)),
+ *      estimate the selectivity of the bounding range
+ *      [min(array), max(array)] -- the index range actually walked to
+ *      expand the IN-list, as opposed to the much smaller matched
+ *      selectivity (sparse IN-lists ~ 1, clustered IN-lists ~ 0).
+ *
+ *      Returns false (outputs unchanged) when the clause is not a SAOP,
+ *      the rhs is not a non-null Const array, the executor cannot bind the
+ *      array to the index column, or no btree comparator is available for
+ *      the element type and the SAOP operator.
+ */
+static bool
+yb_estimate_saop_bounding_range_selectivity(PlannerInfo *root,
+											RestrictInfo *rinfo,
+											Index baserel_relid,
+											Selectivity *selectivity,
+											int *num_array_elements)
+{
+	ScalarArrayOpExpr *saop;
+	Node	   *lhs;
+	Const	   *minConst;
+	Const	   *maxConst;
+	int			numElems;
+	Oid			elemtype;
+	TypeCacheEntry *typeCache;
+	Oid			lefttype;
+	Oid			righttype;
+	Oid			leOp;
+	Oid			geOp;
+	Expr	   *geExpr;
+	Expr	   *leExpr;
+	List	   *cl;
+
+	if (rinfo == NULL || !IsA(rinfo->clause, ScalarArrayOpExpr))
+		return false;
+
+	saop = (ScalarArrayOpExpr *) rinfo->clause;
+	if (!yb_saop_const_bounds(saop, &minConst, &maxConst, &numElems))
+		return false;
+	if (minConst == NULL)
 	{
-		/* Array contained only NULLs. */
 		*selectivity = 0.0;
 		*num_array_elements = 0;
 		return true;
 	}
 
 	/*
+	 * The executor binds the IN-list to the index only for the type pairs
+	 * YbIsScanCompatible accepts, e.g. not (name, text); otherwise no
+	 * bounding range is walked.
+	 */
+	op_input_types(saop->opno, &lefttype, &righttype);
+	if (!YbIsScanCompatible(lefttype, righttype,
+							false /* is_value_scalar */ , (Datum) 0))
+		return false;
+
+	/*
+	 * Look up btree '<=', '>=' for the SAOP operator's input types in the
+	 * element type's opfamily, to bound lhs.
+	 */
+	lhs = (Node *) linitial(saop->args);
+	elemtype = minConst->consttype;
+	typeCache = lookup_type_cache(elemtype, TYPECACHE_BTREE_OPFAMILY);
+	leOp = get_opfamily_member(typeCache->btree_opf, lefttype, righttype,
+							   BTLessEqualStrategyNumber);
+	geOp = get_opfamily_member(typeCache->btree_opf, lefttype, righttype,
+							   BTGreaterEqualStrategyNumber);
+	if (!OidIsValid(leOp) || !OidIsValid(geOp))
+		return false;
+
+	/*
 	 * Build (lhs >= minVal AND lhs <= maxVal) and ask the regular
 	 * selectivity machinery to evaluate the bounding range.  This
 	 * picks up histogram-based range estimates where available.
 	 */
-	minConst = makeConst(elemtype, -1, arr_const->constcollid,
-						 elmlen, minVal, false, elmbyval);
-	maxConst = makeConst(elemtype, -1, arr_const->constcollid,
-						 elmlen, maxVal, false, elmbyval);
-
 	geExpr = make_opclause(geOp, BOOLOID, false,
 						   (Expr *) lhs, (Expr *) minConst,
 						   InvalidOid, saop->inputcollid);
@@ -8624,6 +8652,839 @@ yb_estimate_saop_bounding_range_selectivity(PlannerInfo *root,
 										  JOIN_INNER, NULL);
 	*num_array_elements = numElems;
 	return true;
+}
+
+/*
+ * yb_distinct_skip_cost
+ *		Seek-forward share and nexts (or prevs) of one distinct scan skip that
+ *		has to cover 'distance' rows to reach the next group.
+ *
+ * A forward skip goes through SeekForward, which tries MAX_NEXTS_TO_AVOID_SEEK
+ * nexts before it seeks; with the next that read the row, a group of up to
+ * MAX_NEXTS_TO_AVOID_SEEK + 1 rows is left with nexts alone.  A backward skip
+ * goes through SeekPrevDocKey, which seeks unconditionally, so only a one-row
+ * group, where the read itself lands on the previous group, avoids the seek,
+ * and every other skip costs one seek plus the prev that follows it.  Both
+ * shares ramp linearly over the last row before the threshold, so that the
+ * estimate moves continuously with the group size instead of flipping at it.
+ */
+static void
+yb_distinct_skip_cost(Cardinality distance, bool backward,
+					  double *seek_forward_share, Cardinality *skip_nexts)
+{
+	if (backward)
+	{
+		*seek_forward_share = fmin(fmax(2.0 - distance, 0.0), 1.0);
+		*skip_nexts = 1.0 + (1.0 - *seek_forward_share);
+	}
+	else
+	{
+		const Cardinality nexts_max = MAX_NEXTS_TO_AVOID_SEEK + 1;
+
+		*seek_forward_share = fmin(fmax(nexts_max + 1.0 - distance, 0.0), 1.0);
+		*skip_nexts = fmin(distance, nexts_max);
+	}
+}
+
+/*
+ * yb_distinct_group_size_profile
+ *		Averages yb_distinct_skip_cost over the groups of a single-column
+ *		prefix using the column's MCV frequencies, each MCV value being one
+ *		group of freq * tuples rows and the values outside the list sharing the
+ *		remaining rows evenly; the skip of every group starts after the
+ *		'passed_share' of its rows.  Returns false without MCV statistics.
+ *
+ * The mean group size misjudges a skewed column: the frequent values form
+ * groups that seek while the long tail skips with nexts, and the mean sits
+ * between the two regimes.  The profile covers the whole column: a range
+ * condition on it narrows the group count but not the mix of group sizes.
+ */
+static bool
+yb_distinct_group_size_profile(PlannerInfo *root, Node *prefix_expr,
+							   Cardinality tuples, Cardinality ndv,
+							   double passed_share, bool backward,
+							   double *seek_forward_share,
+							   Cardinality *skip_nexts)
+{
+	VariableStatData vardata;
+	AttStatsSlot sslot;
+	double		mcv_freq = 0.0;
+	double		share_sum = 0.0;
+	Cardinality	nexts_sum = 0.0;
+	Cardinality	rest_groups;
+
+	examine_variable(root, prefix_expr, 0, &vardata);
+	if (!HeapTupleIsValid(vardata.statsTuple) ||
+		!get_attstatsslot(&sslot, vardata.statsTuple, STATISTIC_KIND_MCV,
+						  InvalidOid, ATTSTATSSLOT_NUMBERS))
+	{
+		ReleaseVariableStats(vardata);
+		return false;
+	}
+
+	for (int i = 0; i < sslot.nnumbers; i++)
+	{
+		double		share;
+		Cardinality	nexts;
+
+		mcv_freq += sslot.numbers[i];
+		yb_distinct_skip_cost(fmax(sslot.numbers[i] * tuples, 1.0) *
+							  (1.0 - passed_share),
+							  backward, &share, &nexts);
+		share_sum += share;
+		nexts_sum += nexts;
+	}
+
+	rest_groups = fmax(ndv - sslot.nnumbers, 0.0);
+	if (rest_groups > 0.0)
+	{
+		double		share;
+		Cardinality	nexts;
+
+		yb_distinct_skip_cost(fmax((1.0 - fmin(mcv_freq, 1.0)) * tuples /
+								   rest_groups, 1.0) * (1.0 - passed_share),
+							  backward, &share, &nexts);
+		share_sum += rest_groups * share;
+		nexts_sum += rest_groups * nexts;
+	}
+
+	*seek_forward_share = share_sum / (sslot.nnumbers + rest_groups);
+	*skip_nexts = nexts_sum / (sslot.nnumbers + rest_groups);
+
+	free_attstatsslot(&sslot);
+	ReleaseVariableStats(vardata);
+	return true;
+}
+
+/*
+ * The values an equality or IN-list index condition lists, without the NULL
+ * elements.  'cmptype' is the type the opfamily compares them as, which for
+ * a polymorphic opfamily (anyenum) is not their own type 'valuetype'.
+ */
+typedef struct YbListedValues
+{
+	Oid			eq_op;			/* the condition's = operator */
+	Oid			inputcollid;
+	bool		is_in_list;		/* = ANY, not a single equality */
+	Oid			valuetype;
+	Oid			cmptype;
+	int16		typlen;
+	bool		typbyval;
+	int			nvalues;
+	Datum	   *values;
+} YbListedValues;
+
+/*
+ * yb_get_listed_values
+ *		Returns the values of 'clause' when it is an equality or an IN-list
+ *		(= ANY) condition of opfamily 'opfamily' with a constant comparison
+ *		value, NULL otherwise.
+ */
+static YbListedValues *
+yb_get_listed_values(Expr *clause, Oid opfamily)
+{
+	YbListedValues *lv;
+	Node	   *rhs;
+	Oid			opno;
+	int			strategy;
+	Oid			lefttype;
+
+	if (is_opclause(clause) && list_length(((OpExpr *) clause)->args) == 2)
+	{
+		opno = ((OpExpr *) clause)->opno;
+		rhs = get_rightop(clause);
+	}
+	else if (IsA(clause, ScalarArrayOpExpr) &&
+			 ((ScalarArrayOpExpr *) clause)->useOr &&
+			 list_length(((ScalarArrayOpExpr *) clause)->args) == 2)
+	{
+		opno = ((ScalarArrayOpExpr *) clause)->opno;
+		rhs = (Node *) lsecond(((ScalarArrayOpExpr *) clause)->args);
+	}
+	else
+		return NULL;
+	if (!IsA(rhs, Const) || ((Const *) rhs)->constisnull ||
+		get_op_opfamily_strategy(opno, opfamily) != BTEqualStrategyNumber)
+		return NULL;
+
+	lv = (YbListedValues *) palloc(sizeof(YbListedValues));
+	lv->eq_op = opno;
+	get_op_opfamily_properties(opno, opfamily, false,
+							   &strategy, &lefttype, &lv->cmptype);
+	if (is_opclause(clause))
+	{
+		lv->inputcollid = ((OpExpr *) clause)->inputcollid;
+		lv->is_in_list = false;
+		lv->valuetype = ((Const *) rhs)->consttype;
+		get_typlenbyval(lv->valuetype, &lv->typlen, &lv->typbyval);
+		lv->nvalues = 1;
+		lv->values = (Datum *) palloc(sizeof(Datum));
+		lv->values[0] = ((Const *) rhs)->constvalue;
+	}
+	else
+	{
+		ArrayType  *arrayval = DatumGetArrayTypeP(((Const *) rhs)->constvalue);
+		char		typalign;
+		Datum	   *elems;
+		bool	   *nulls;
+		int			nelems;
+
+		lv->inputcollid = ((ScalarArrayOpExpr *) clause)->inputcollid;
+		lv->is_in_list = true;
+		lv->valuetype = ARR_ELEMTYPE(arrayval);
+		get_typlenbyvalalign(lv->valuetype, &lv->typlen, &lv->typbyval,
+							 &typalign);
+		deconstruct_array(arrayval, lv->valuetype, lv->typlen, lv->typbyval,
+						  typalign, &elems, &nulls, &nelems);
+		lv->values = (Datum *) palloc(sizeof(Datum) * Max(nelems, 1));
+		lv->nvalues = 0;
+		for (int i = 0; i < nelems; i++)
+		{
+			if (!nulls[i])
+				lv->values[lv->nvalues++] = elems[i];
+		}
+	}
+	return lv;
+}
+
+/*
+ * yb_index_rows_before_value
+ *		Selectivity of the values of 'indexkey' that a scan meeting them in
+ *		ascending ('ascending') or descending order meets before 'value', the
+ *		comparison value of operator 'op', plus the rows of 'value' itself when
+ *		'exclusive'.  'value' need not be a constant.
+ */
+static Selectivity
+yb_index_rows_before_value(PlannerInfo *root, RelOptInfo *baserel,
+						   Expr *indexkey, Oid opfamily, Oid op, Expr *value,
+						   Oid inputcollid, bool ascending, bool exclusive)
+{
+	int			strategy;
+	Oid			lefttype;
+	Oid			righttype;
+	Oid			before_op;
+	Expr	   *before;
+
+	get_op_opfamily_properties(op, opfamily, false,
+							   &strategy, &lefttype, &righttype);
+	if (ascending)
+		strategy = exclusive ? BTLessEqualStrategyNumber :
+			BTLessStrategyNumber;
+	else
+		strategy = exclusive ? BTGreaterEqualStrategyNumber :
+			BTGreaterStrategyNumber;
+	before_op = get_opfamily_member(opfamily, lefttype, righttype, strategy);
+	if (!OidIsValid(before_op))
+		return 0.0;
+	before = make_opclause(before_op, BOOLOID, false, indexkey, value,
+						   InvalidOid, inputcollid);
+	return clauselist_selectivity(root, list_make1(before), baserel->relid,
+								  JOIN_INNER, NULL);
+}
+
+/*
+ * yb_index_first_listed_value
+ *		Index into first->values of the value, in ascending ('ascending') or
+ *		descending order, that the constant conditions 'ranges' and the other
+ *		listed values 'lists' accept, or -1 when none does.
+ *
+ * DocDB drops the listed values a range condition on the column rejects,
+ * checks an equality against every list, and intersects IN lists of the same
+ * element type; it leaves an IN list of another element type to a recheck.
+ * A condition the opfamily has no operator for, at the listed values' type,
+ * counts as accepting.
+ */
+static int
+yb_index_first_listed_value(YbListedValues *first, List *ranges, List *lists,
+							Oid opfamily, bool ascending)
+{
+	int			nchecks = list_length(ranges) + list_length(lists) - 1;
+	FmgrInfo   *check_fns = (FmgrInfo *) palloc0(sizeof(FmgrInfo) *
+												 Max(nchecks, 1));
+	bool	   *check_valid = (bool *) palloc0(sizeof(bool) * Max(nchecks, 1));
+	Oid			lt_op;
+	FmgrInfo	lt_fn;
+	int			first_match = -1;
+	int			c;
+	ListCell   *lc;
+
+	lt_op = get_opfamily_member(opfamily, first->cmptype, first->cmptype,
+								BTLessStrategyNumber);
+	if (!OidIsValid(lt_op))
+		return -1;
+	fmgr_info(get_opcode(lt_op), &lt_fn);
+
+	c = 0;
+	foreach(lc, ranges)
+	{
+		OpExpr	   *op = (OpExpr *) lfirst(lc);
+		int			strategy;
+		Oid			lefttype;
+		Oid			righttype;
+		Oid			check_op;
+
+		get_op_opfamily_properties(op->opno, opfamily, false,
+								   &strategy, &lefttype, &righttype);
+		check_op = get_opfamily_member(opfamily, first->cmptype, righttype,
+									   strategy);
+		if ((check_valid[c] = OidIsValid(check_op)))
+			fmgr_info(get_opcode(check_op), &check_fns[c]);
+		c++;
+	}
+	for_each_from(lc, lists, 1)
+	{
+		YbListedValues *other = (YbListedValues *) lfirst(lc);
+		Oid			check_op;
+
+		check_op = get_opfamily_member(opfamily, first->cmptype,
+									   other->cmptype, BTEqualStrategyNumber);
+		check_valid[c] = OidIsValid(check_op) &&
+			!(first->is_in_list && other->is_in_list &&
+			  first->valuetype != other->valuetype);
+		if (check_valid[c])
+			fmgr_info(get_opcode(check_op), &check_fns[c]);
+		c++;
+	}
+
+	for (int i = 0; i < first->nvalues; i++)
+	{
+		Datum		value = first->values[i];
+		bool		accepted = true;
+
+		c = 0;
+		foreach(lc, ranges)
+		{
+			OpExpr	   *op = (OpExpr *) lfirst(lc);
+			Const	   *rhs = (Const *) get_rightop((Expr *) op);
+
+			if (accepted && check_valid[c])
+				accepted = DatumGetBool(FunctionCall2Coll(&check_fns[c],
+														  op->inputcollid,
+														  value,
+														  rhs->constvalue));
+			c++;
+		}
+		for_each_from(lc, lists, 1)
+		{
+			YbListedValues *other = (YbListedValues *) lfirst(lc);
+			bool		listed = !check_valid[c];
+
+			for (int j = 0; j < other->nvalues && !listed; j++)
+				listed = DatumGetBool(FunctionCall2Coll(&check_fns[c],
+														other->inputcollid,
+														value,
+														other->values[j]));
+			accepted = accepted && listed;
+			c++;
+		}
+		if (!accepted)
+			continue;
+		if (first_match < 0 ||
+			DatumGetBool(FunctionCall2Coll(&lt_fn, first->inputcollid,
+										   ascending ? value :
+										   first->values[first_match],
+										   ascending ?
+										   first->values[first_match] :
+										   value)))
+			first_match = i;
+	}
+	return first_match;
+}
+
+/*
+ * yb_distinct_rows_before_match
+ *		Fraction of the rows of index column 'indexcol' that the scan meets
+ *		before the first row its index conditions 'conds' accept, within each
+ *		value of the index columns before it.  For the key column past a
+ *		distinct prefix, that is the share of a group the scan steps over to
+ *		reach the group's first match.
+ *
+ * The scan meets the column's values in ascending order when it runs forward
+ * over an ASC column or backward over a DESC one, and in descending order
+ * otherwise.  When an equality or IN-list condition lists constant values,
+ * DocDB binds only the listed values that every other condition on the
+ * column accepts (yb_enable_advanced_index_cond_fold, on by default), so no
+ * match comes before the first of those in that order, and it decides.
+ * Otherwise the tightest bound on the side the scan comes from decides: a
+ * lower bound (>, >= or =) in ascending order, an upper bound (<, <= or =)
+ * in descending order, at its estimated position when its comparison value
+ * is not a constant.  The rows before a value are those that precede it in
+ * that order, plus the value's own rows when the bound excludes it.  A
+ * listed value no row holds counts as present, as it does in the group
+ * count (TODO(#34776)).
+ *
+ * No NULL passes these conditions or IS NOT NULL, so when one is present the
+ * NULLs the scan meets first are before the match too, unless the index
+ * predicate keeps NULLs out of the index.
+ */
+static Selectivity
+yb_distinct_rows_before_match(PlannerInfo *root, RelOptInfo *baserel,
+							  IndexOptInfo *index, int indexcol, List *conds,
+							  bool backward)
+{
+	Expr	   *indexkey =
+		((TargetEntry *) list_nth(index->indextlist, indexcol))->expr;
+	Oid			opfamily = index->opfamily[indexcol];
+	bool		ascending = (backward == (index->reverse_sort != NULL &&
+										  index->reverse_sort[indexcol]));
+	bool		rejects_nulls = false;
+	List	   *lists = NIL;
+	List	   *ranges = NIL;
+	List	   *bounds = NIL;
+	Selectivity before = 0.0;
+	ListCell   *lc;
+
+	foreach(lc, conds)
+	{
+		Expr	   *clause = lfirst_node(RestrictInfo, lc)->clause;
+		YbListedValues *lv;
+
+		if (is_opclause(clause))
+		{
+			OpExpr	   *op = (OpExpr *) clause;
+			Node	   *rhs = get_rightop(clause);
+
+			if (list_length(op->args) != 2 ||
+				get_op_opfamily_strategy(op->opno, opfamily) == 0)
+				continue;
+			rejects_nulls = true;
+			if ((lv = yb_get_listed_values(clause, opfamily)) != NULL)
+				lists = lappend(lists, lv);
+			else if (!IsA(rhs, Const))
+				bounds = lappend(bounds, op);
+			else if (!((Const *) rhs)->constisnull)
+			{
+				ranges = lappend(ranges, op);
+				bounds = lappend(bounds, op);
+			}
+		}
+		else if (IsA(clause, ScalarArrayOpExpr))
+		{
+			ScalarArrayOpExpr *saop = (ScalarArrayOpExpr *) clause;
+
+			/* DocDB binds an array condition only when it is an IN-list. */
+			if (!saop->useOr ||
+				get_op_opfamily_strategy(saop->opno, opfamily) !=
+				BTEqualStrategyNumber)
+				continue;
+			rejects_nulls = true;
+			if ((lv = yb_get_listed_values(clause, opfamily)) != NULL)
+				lists = lappend(lists, lv);
+		}
+		else if (IsA(clause, NullTest) &&
+				 ((NullTest *) clause)->nulltesttype == IS_NOT_NULL)
+			rejects_nulls = true;
+	}
+
+	if (lists != NIL)
+	{
+		YbListedValues *first = (YbListedValues *) linitial(lists);
+		int			first_match;
+		Const	   *match;
+
+		first_match = yb_index_first_listed_value(first, ranges, lists,
+												  opfamily, ascending);
+
+		/* No listed value passes the other conditions: nothing matches. */
+		if (first_match < 0)
+			return 0.0;
+		match = makeConst(first->valuetype, -1,
+						  get_typcollation(first->valuetype), first->typlen,
+						  first->values[first_match], false, first->typbyval);
+		before = yb_index_rows_before_value(root, baserel, indexkey, opfamily,
+											first->eq_op, (Expr *) match,
+											first->inputcollid, ascending,
+											false);
+	}
+	else
+	{
+		foreach(lc, bounds)
+		{
+			OpExpr	   *op = (OpExpr *) lfirst(lc);
+			Expr	   *rhs = (Expr *) get_rightop((Expr *) op);
+			int			strategy = get_op_opfamily_strategy(op->opno,
+															 opfamily);
+			bool		exclusive;
+
+			if (strategy == (ascending ? BTGreaterStrategyNumber :
+							 BTLessStrategyNumber))
+				exclusive = true;
+			else if (strategy == BTEqualStrategyNumber ||
+					 strategy == (ascending ? BTGreaterEqualStrategyNumber :
+								  BTLessEqualStrategyNumber))
+				exclusive = false;
+			else
+				continue;
+			before = fmax(before,
+						  yb_index_rows_before_value(root, baserel, indexkey,
+													 opfamily, op->opno, rhs,
+													 op->inputcollid,
+													 ascending, exclusive));
+		}
+	}
+
+	if (rejects_nulls && index->nulls_first != NULL &&
+		index->nulls_first[indexcol] != backward)
+	{
+		NullTest   *not_null = makeNode(NullTest);
+
+		not_null->arg = indexkey;
+		not_null->nulltesttype = IS_NOT_NULL;
+		not_null->argisrow = false;
+		not_null->location = -1;
+		if (!predicate_implied_by(list_make1(not_null), index->indpred,
+								  false))
+		{
+			VariableStatData vardata;
+
+			examine_variable(root, (Node *) indexkey, baserel->relid,
+							 &vardata);
+			if (HeapTupleIsValid(vardata.statsTuple))
+				before += ((Form_pg_statistic)
+						   GETSTRUCT(vardata.statsTuple))->stanullfrac;
+			ReleaseVariableStats(vardata);
+		}
+	}
+
+	return fmin(before, 1.0);
+}
+
+/*
+ * yb_estimate_distinct_index_scan
+ *		Estimates the DocDB work of a distinct index scan, which returns one
+ *		row per distinct value of the index's leading 'prefixlen' key columns.
+ *
+ * DocDB reads the first row of each prefix group that satisfies the index
+ * conditions, then skips to the next group; yb_distinct_skip_cost gives what
+ * a skip costs in each scan direction.  The storage filters reference prefix
+ * columns only, since the planner widens the prefix over every column a
+ * non-index predicate uses, so each sees one value per group and passes or
+ * rejects the group as a whole from that one row.
+ *
+ * Groups are counted the way yb_estimate_seeks_nexts_in_index_scan counts the
+ * unique values per prefix group: an equality condition leaves one value, an
+ * IN-list at most its element count.  The distance a skip covers is the swept
+ * range divided by the groups visited, where only leading equality conditions
+ * and the first range or IN-list condition after them narrow the sweep;
+ * conditions past that point pick values inside each value of the columns
+ * before them, which the next paragraph covers.  For a single-column prefix
+ * under a range condition or none, the column's MCV frequencies replace that
+ * mean distance (yb_distinct_group_size_profile).
+ *
+ * A condition on a prefix column after the first picks values inside each
+ * value of the columns before it.  The scan enters each of those values from
+ * the previous value's last group and steps over the rows the condition
+ * rejects before the first value it accepts (yb_distinct_rows_before_match).
+ * The step lands on the first group of the value, positioned for the
+ * conditions on the later columns too, and the distance between groups
+ * leaves the rows it crosses out.  When equalities and IN lists pin every
+ * column before it, DocDB moves to the next combination of their values with
+ * the condition's near bound already in its seek target.  The step is then
+ * not charged; DocDB still pays it past a far bound that is exclusive or
+ * absent.
+ *
+ * Conditions on key columns past the prefix pick rows inside each group and
+ * are taken as independent of the prefix: with selectivity s over a group of m
+ * rows, the group holds a match with probability 1 - (1 - s)^m.  Every group
+ * visited, unless an entry step landed on it, pays a seek-forward (or
+ * backward) over the rows the scan meets before any value that the conditions
+ * on the first key column past the prefix accept, counted the same way.
+ * Conditions on later key columns position the scan too, inside the rows of
+ * the first value the columns before them accept, and that positioning is not
+ * charged.  A group with a match is then left by a skip that starts from the
+ * matched row; a group without one is left from where the positioning landed,
+ * without a row read:
+ *
+ *   one group:  [rows before the first match] [match] [rest] | next group
+ *                positioning                   read    exit
+ *
+ *   seeks     = 1 + entry_seeks                             entering values
+ *               + positioned_groups * (1 - position_share)  positioning
+ *               + groups * key_yield * (1 - seek_forward_share)
+ *                                                           exit, matched
+ *               + groups * unmatched_seeks                  exit, unmatched
+ *   dir_steps = entry_steps                                 entering values
+ *               + positioned_groups * position_steps        positioning
+ *               + groups * key_yield * skip_nexts           read and exit
+ *               + groups * unmatched_steps                  exit, unmatched
+ *
+ * where positioned_groups leaves out the groups the entry steps landed on.
+ * When every prefix column is pinned and an IN list pins one of them, the
+ * scan ends with the last group's row and does not skip after it.  A prefix
+ * that equalities alone pin is one group, which the scan leaves by a skip
+ * like any other.
+ *
+ * 'index_conditions_selectivity' covers all index conditions,
+ * 'storage_filter_selectivity' the storage filters DocDB evaluates on the
+ * rows it reads, and 'backward' the scan direction.
+ *
+ * Outputs: the seeks and the direction steps (nexts forward, prevs backward)
+ * of the index walk, the groups the skip loop visits ('num_groups'), the
+ * groups that yield a row ('num_result_groups'), the rows the storage filters
+ * see ('num_rows_examined') and the seek-forward share ('seek_forward_frac'),
+ * which sizes the block reads.
+ */
+static void
+yb_estimate_distinct_index_scan(PlannerInfo *root,
+								IndexOptInfo *index,
+								RelOptInfo *baserel,
+								int prefixlen,
+								List **index_conditions_on_each_column,
+								Selectivity index_conditions_selectivity,
+								Selectivity storage_filter_selectivity,
+								bool backward,
+								Cardinality *num_seeks,
+								Cardinality *num_dir_steps,
+								Cardinality *num_groups,
+								Cardinality *num_result_groups,
+								Cardinality *num_rows_examined,
+								double *seek_forward_frac)
+{
+	Cardinality	tuples = clamp_row_est(index->tuples);
+	Node	   *first_col_expr = NULL;
+	Cardinality	first_col_ndv = 1.0;
+	bool		profile_groups = false;
+	List	   *prefix_exprs = NIL;
+	Cardinality	prev_ndv = 1.0;
+	Cardinality	groups = 1.0;
+	Selectivity prefix_selectivity = 1.0;
+	Selectivity swept_selectivity = 1.0;
+	bool		swept_range_open = false;
+	bool		prefix_enumerated = true;
+	bool		prefix_listed = false;
+	Cardinality	entered_groups = 0.0;
+	Cardinality	entry_rows = 0.0;
+	double		entry_seeks = 0.0;
+	Cardinality	entry_steps = 0.0;
+	Cardinality	positioned_groups;
+	Cardinality	group_rows;
+	Cardinality	skip_distance;
+	Cardinality	skip_nexts;
+	double		seek_forward_share;
+	Selectivity key_selectivity;
+	double		key_yield;
+	double		passed_share = 0.0;
+	Cardinality	position_rows = 0.0;
+	double		position_share = 1.0;
+	Cardinality	position_steps = 0.0;
+	Cardinality	exit_rows;
+	double		unmatched_seeks;
+	Cardinality	unmatched_steps;
+	double		filter_yield;
+
+	Assert(prefixlen > 0 && prefixlen <= index->nkeycolumns);
+	Assert(*num_seeks == 0);
+	Assert(*num_dir_steps == 0);
+
+	for (int col = 0; col < prefixlen; col++)
+	{
+		List	   *conds = index_conditions_on_each_column[col];
+		YbIndexCondTypes cond_type = 0;
+		int			in_list_length;
+		Selectivity col_selectivity = 1.0;
+		Cardinality	ndv;
+		Cardinality	values_per_group;
+
+		prefix_exprs = lappend(prefix_exprs,
+							   ((TargetEntry *) list_nth(index->indextlist,
+														 col))->expr);
+		ndv = yb_estimate_num_groups(root, prefix_exprs, tuples, NULL, NULL);
+
+		yb_analyze_conditions_on_current_column(root, baserel, index, col,
+												conds, &cond_type,
+												&in_list_length);
+		if (conds != NIL)
+			col_selectivity = clauselist_selectivity(root, conds,
+													 baserel->relid,
+													 JOIN_INNER, NULL);
+
+		if (col == 0)
+		{
+			first_col_expr = (Node *) llast(prefix_exprs);
+			first_col_ndv = ndv;
+			profile_groups = (prefixlen == 1 &&
+							  !(cond_type & (EQUALITY_EXPR | IN_EXPR)));
+		}
+
+		/*
+		 * Entering each value of the columns before this one, the scan steps
+		 * over the rows this column's conditions reject before the first
+		 * value they accept.  'groups', 'prefix_selectivity' and
+		 * 'prefix_enumerated' still cover the columns before this one.  A
+		 * value an earlier column's step entered is landed by that step,
+		 * whose seek target carries this column's bound too, so only the
+		 * other values pay this column's step.
+		 */
+		if (conds != NIL && !prefix_enumerated && groups > 0.0)
+		{
+			Cardinality	rows_before =
+				clamp_row_est(prefix_selectivity * tuples) / groups *
+				yb_distinct_rows_before_match(root, baserel, index, col, conds,
+											  backward);
+
+			if (rows_before > 0.0)
+			{
+				double		share;
+				Cardinality	steps;
+
+				yb_distinct_skip_cost(rows_before + 1.0, backward,
+									  &share, &steps);
+				entry_rows += groups * rows_before;
+				entry_seeks += (groups - entered_groups) * (1.0 - share);
+				entry_steps += (groups - entered_groups) * (steps - 1.0);
+				entered_groups = groups;
+			}
+		}
+
+		values_per_group = clamp_row_est(col_selectivity * ndv / prev_ndv);
+		if (cond_type & EQUALITY_EXPR)
+			values_per_group = 1.0;
+		else if (cond_type & IN_EXPR)
+			values_per_group = fmin(values_per_group,
+									(Cardinality) in_list_length);
+		groups *= values_per_group;
+		prefix_selectivity *= col_selectivity;
+		if (!(cond_type & (EQUALITY_EXPR | IN_EXPR)))
+			prefix_enumerated = false;
+		if (cond_type & IN_EXPR)
+			prefix_listed = true;
+
+		if (!swept_range_open)
+		{
+			if (cond_type & EQUALITY_EXPR)
+				swept_selectivity *= col_selectivity;
+			else
+			{
+				Selectivity range_selectivity = col_selectivity;
+
+				if (cond_type & IN_EXPR)
+				{
+					/*
+					 * The sweep spans the IN-list's bounding range, not just
+					 * its matches; without constant bounds assume the whole
+					 * column.  Hash order scatters a hash column's values, so
+					 * its list spans the column whatever the values.
+					 */
+					ListCell   *lc;
+
+					range_selectivity = 1.0;
+					foreach(lc, col < index->nhashcolumns ? NIL : conds)
+					{
+						Selectivity bsel;
+						int			nelems;
+
+						if (yb_estimate_saop_bounding_range_selectivity(root,
+																		lfirst_node(RestrictInfo, lc),
+																		baserel->relid,
+																		&bsel,
+																		&nelems))
+							range_selectivity = fmin(range_selectivity, bsel);
+					}
+				}
+				swept_selectivity *= range_selectivity;
+				swept_range_open = true;
+			}
+		}
+		prev_ndv = ndv;
+	}
+	list_free(prefix_exprs);
+
+	groups = clamp_row_est(groups);
+	group_rows = clamp_row_est(prefix_selectivity * tuples) / groups;
+	skip_distance = fmax((clamp_row_est(swept_selectivity * tuples) -
+						  entry_rows) / groups,
+						 group_rows);
+
+	key_selectivity = (prefix_selectivity > 0.0) ?
+		fmin(index_conditions_selectivity / prefix_selectivity, 1.0) : 1.0;
+	key_yield = (key_selectivity >= 1.0) ?
+		1.0 : 1.0 - pow(1.0 - key_selectivity, group_rows);
+	if (prefixlen < index->nkeycolumns &&
+		index_conditions_on_each_column[prefixlen] != NIL)
+	{
+		passed_share =
+			yb_distinct_rows_before_match(root, baserel, index, prefixlen,
+										  index_conditions_on_each_column[prefixlen],
+										  backward);
+		position_rows = group_rows * passed_share;
+	}
+
+	filter_yield = fmin(fmax(storage_filter_selectivity, 0.0), 1.0);
+
+	/*
+	 * The skip starts from the matched row, so it covers the rest of the
+	 * group only; the row read it starts with is not floored away, as the
+	 * positioning may have crossed into the next group and left nothing to
+	 * skip.
+	 */
+	exit_rows = fmax(skip_distance - position_rows, 0.0);
+	yb_distinct_skip_cost(exit_rows, backward,
+						  &seek_forward_share, &skip_nexts);
+	if (profile_groups)
+		yb_distinct_group_size_profile(root, first_col_expr, tuples,
+									   first_col_ndv, passed_share,
+									   backward, &seek_forward_share,
+									   &skip_nexts);
+
+	/*
+	 * A group without a match is left from where the positioning landed,
+	 * without the row read.  Forward that is the seek-forward's nexts over
+	 * the rest of the group, which grow with the rows left, so the mean rows
+	 * left after the positioning carry the groups it crossed entirely.
+	 * Backward the exit is a seek and the prev after it whenever the
+	 * positioning landed inside the group, so the groups it crossed, whose
+	 * rows the scan all meets before the first accepted value, are taken out
+	 * of the share.
+	 */
+	if (backward)
+	{
+		unmatched_seeks = fmax(1.0 - key_yield - pow(passed_share, group_rows),
+							   0.0);
+		unmatched_steps = unmatched_seeks;
+	}
+	else
+	{
+		unmatched_seeks = (1.0 - key_yield) * (1.0 - seek_forward_share);
+		unmatched_steps = (1.0 - key_yield) *
+			fmin(exit_rows, (Cardinality) MAX_NEXTS_TO_AVOID_SEEK);
+	}
+
+	/*
+	 * Reaching the first match is a skip over the rows before it without
+	 * the row read that a skip starts with.
+	 */
+	if (position_rows > 0.0)
+	{
+		yb_distinct_skip_cost(position_rows + 1.0, backward,
+							  &position_share, &position_steps);
+		position_steps -= 1.0;
+	}
+
+	/*
+	 * Every group visited is positioned and left by a skip; only a group
+	 * with a match reads its row, the step the skip starts with.  The groups
+	 * an entry step landed on were positioned by it.  When an IN list's
+	 * values pin a prefix column and the other prefix columns are pinned
+	 * too, the scan ends with the last group's row and does not skip after
+	 * it: forward that saves the skip's seek and nexts, backward only its
+	 * seek.
+	 */
+	*num_groups = groups;
+	*num_result_groups = clamp_row_est(groups * key_yield * filter_yield);
+	*num_rows_examined = clamp_row_est(groups * key_yield);
+	positioned_groups = fmax(groups - entered_groups, 0.0);
+	*num_seeks = 1.0 + entry_seeks +
+		positioned_groups * (1.0 - position_share) +
+		groups * (key_yield * (1.0 - seek_forward_share) + unmatched_seeks);
+	*num_dir_steps = entry_steps + positioned_groups * position_steps +
+		groups * (key_yield * skip_nexts + unmatched_steps);
+	if (prefix_enumerated && prefix_listed)
+	{
+		*num_seeks -= key_yield * (1.0 - seek_forward_share) + unmatched_seeks;
+		if (!backward)
+			*num_dir_steps -= key_yield * (skip_nexts - 1.0) + unmatched_steps;
+	}
+	*seek_forward_frac = seek_forward_share;
 }
 
 /*
@@ -8677,6 +9538,14 @@ yb_estimate_saop_bounding_range_selectivity(PlannerInfo *root,
  * left to the consuming BNL node (initial_cost_nestloop), matching
  * PostgreSQL's convention that only the consumer prices in a LIMIT; pricing it
  * in here too would double-count the savings.
+ *
+ * A distinct index scan (yb_index_path_info.yb_distinct_prefixlen > 0) is
+ * costed here too: yb_estimate_distinct_index_scan supplies the seeks and
+ * direction steps of its skip loop and the prefix groups it returns, and that
+ * group count takes the place of the matched-tuple count for everything
+ * downstream of the index walk: result transfer, base-table lookups, storage
+ * filter evaluation, the first-response share and the path's row estimate.
+ * Block reads count one block per group visited once the skips seek.
  */
 void
 yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
@@ -8751,11 +9620,24 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	Cardinality	first_fetch_limit;
 	double		index_first_batch_frac;
 	double		table_first_batch_frac;
+	int			distinct_prefixlen = path->yb_index_path_info.yb_distinct_prefixlen;
+	bool		is_distinct_scan = distinct_prefixlen > 0;
+	Cardinality	distinct_groups = 0;
+	Cardinality	distinct_result_groups = 0;
+	Cardinality	distinct_rows_examined = 0;
+	double		distinct_seek_forward_frac = 0.0;
 
 	/* Should only be applied to base relations */
 	Assert(IsA(baserel, RelOptInfo) && IsA(index, IndexOptInfo));
 	Assert(baserel->relid > 0);
 	Assert(baserel->rtekind == RTE_RELATION);
+
+	/*
+	 * Distinct index scans are serial: indxpath.c builds no partial variant
+	 * of them, so the distinct model below never divides by a parallel
+	 * divisor.
+	 */
+	Assert(!(is_distinct_scan && partial_path));
 
 	yb_get_roundtrip_transfer_costs(index_tablespace_id,
 									&index_roundtrip_cost,
@@ -8849,9 +9731,6 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 
 	bms_free(non_pushable_attnums);
 
-	first_fetch_limit = yb_first_fetch_limit(root, &path->path,
-												 local_clauses != NIL);
-
 	/*
 	 * Sort the index conditions into `index_conditions_on_each_column`.
 	 */
@@ -8924,6 +9803,33 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 		index_conditions_selectivity = 1.0;
 
 	/*
+	 * Selectivity of the index conditions and remote index filters together;
+	 * the matched tuple count follows once the parallel divisor is known.
+	 */
+	List	   *index_conditions_and_filters = NIL;
+
+	index_conditions_and_filters = list_concat(index_conditions_and_filters,
+											   list_copy(index_conditions));
+	if (need_remote_index_filters)
+	{
+		index_conditions_and_filters = list_concat(index_conditions_and_filters,
+												   list_copy(index_pushed_down_filters));
+	}
+	else
+	{
+		/* Either index only lookup, or primary index lookup */
+		index_conditions_and_filters = list_concat(index_conditions_and_filters,
+												   list_copy(base_table_pushed_down_filters));
+	}
+
+	if (list_length(index_conditions_and_filters) > 0)
+		index_selectivity =
+			clauselist_selectivity(root, index_conditions_and_filters,
+								   baserel->relid, JOIN_INNER, NULL);
+	else
+		index_selectivity = 1.0;
+
+	/*
 	 * Iterator movements are split three ways so that each counter means the
 	 * same thing at every line of this function.
 	 *
@@ -8945,7 +9851,32 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	Cardinality	num_nexts = 0;
 	Cardinality	num_prevs = 0;
 
-	if (yb_exist_conditions_on_all_hash_keys_)
+	if (is_distinct_scan)
+	{
+		/*
+		 * The storage filters reference prefix columns only, the planner
+		 * having widened the prefix over them, so DocDB evaluates them on
+		 * the one row it reads per group: their selectivity, the part of
+		 * index_selectivity beyond the index conditions, is a group-level
+		 * yield.
+		 */
+		Selectivity storage_filter_selectivity =
+			(index_conditions_selectivity > 0.0) ?
+			index_selectivity / index_conditions_selectivity : 1.0;
+
+		yb_estimate_distinct_index_scan(root, index, baserel,
+										distinct_prefixlen,
+										index_conditions_on_each_column,
+										index_conditions_selectivity,
+										storage_filter_selectivity,
+										path->indexscandir == BackwardScanDirection,
+										&num_seeks, &num_dir_steps,
+										&distinct_groups,
+										&distinct_result_groups,
+										&distinct_rows_examined,
+										&distinct_seek_forward_frac);
+	}
+	else if (yb_exist_conditions_on_all_hash_keys_)
 	{
 		/*
 		 * The estimator walks the index in scan order and is direction
@@ -8988,9 +9919,16 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 			 * This assumes one key-value pair per tuple, as in a compacted
 			 * table with packed rows; each additional key-value pair would
 			 * cost another next, which is not modeled, as for forward scans.
+			 * A distinct scan reads one row per group with a match, so it
+			 * pays these once per such group; its skips go through
+			 * PreparePrev in both modes and are counted by the skip model.
 			 */
-			num_seeks += (index_conditions_selectivity * index->tuples * 2);
-			num_nexts += (index_conditions_selectivity * index->tuples);
+			Cardinality	tuples_read = is_distinct_scan ?
+				distinct_rows_examined :
+				index_conditions_selectivity * index->tuples;
+
+			num_seeks += tuples_read * 2;
+			num_nexts += tuples_read;
 		}
 	}
 	else
@@ -9054,34 +9992,22 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	}
 
 	/*
-	 * Estimate number of index tuples that match the index conditions
-	 * and remote index filters.
+	 * Index tuples that match the index conditions and remote index filters,
+	 * i.e. the rows the index side hands on, and the rows in range the remote
+	 * index filters are evaluated on.  A distinct index scan hands on one row
+	 * per result group, and its filters see the rows the skip loop examines.
 	 */
-	List	   *index_conditions_and_filters = NIL;
-
-	index_conditions_and_filters = list_concat(index_conditions_and_filters,
-											   list_copy(index_conditions));
-	if (need_remote_index_filters)
-	{
-		index_conditions_and_filters = list_concat(index_conditions_and_filters,
-												   list_copy(index_pushed_down_filters));
-	}
-	else
-	{
-		/* Either index only lookup, or primary index lookup */
-		index_conditions_and_filters = list_concat(index_conditions_and_filters,
-												   list_copy(base_table_pushed_down_filters));
-	}
-
-	if (list_length(index_conditions_and_filters) > 0)
-		index_selectivity =
-			clauselist_selectivity(root, index_conditions_and_filters,
-								   baserel->relid, JOIN_INNER, NULL);
-	else
-		index_selectivity = 1.0;
-
 	num_index_tuples_matched =
 		clamp_row_est(index_selectivity * adjusted_index_tuples);
+
+	Cardinality	num_index_tuples_examined =
+		clamp_row_est(index_conditions_selectivity * adjusted_index_tuples);
+
+	if (is_distinct_scan)
+	{
+		num_index_tuples_matched = distinct_result_groups;
+		num_index_tuples_examined = distinct_rows_examined;
+	}
 
 	/*
 	 * Index tuples covered by the index conditions alone (the swept
@@ -9181,6 +10107,38 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	num_baserel_result_rows =
 		clamp_row_est(adjusted_index_tuples *
 					  all_conditions_and_remote_filters_selectivity);
+
+	if (is_distinct_scan)
+	{
+		/*
+		 * A distinct index scan returns one row per result group; the
+		 * base-table filters of a secondary index scan, then the local
+		 * clauses, apply to those rows.  The local clauses' selectivity is
+		 * taken from the clauses themselves: a ratio against the relation's
+		 * row estimate would also carry the quals a partial index's
+		 * predicate implies, which reach neither the index conditions nor the
+		 * pushed-down filters.
+		 */
+		Selectivity base_filter_selectivity = (index_selectivity > 0.0) ?
+			fmin(all_conditions_and_remote_filters_selectivity /
+				 index_selectivity, 1.0) : 1.0;
+		Selectivity local_selectivity = (local_clauses != NIL) ?
+			clauselist_selectivity(root, local_clauses, baserel->relid,
+								   JOIN_INNER, NULL) : 1.0;
+
+		num_baserel_result_rows =
+			clamp_row_est(distinct_result_groups * base_filter_selectivity);
+		path->path.rows =
+			clamp_row_est(num_baserel_result_rows * local_selectivity);
+	}
+
+	/*
+	 * The LIMIT trim is decided on the final row estimate: for a distinct
+	 * index scan that is its group count, which is what the DISTINCT
+	 * pass-through rule in yb_first_fetch_limit has to see.
+	 */
+	first_fetch_limit = yb_first_fetch_limit(root, &path->path,
+											 local_clauses != NIL);
 
 	index_tuple_width = yb_get_index_tuple_width(index, baserel_oid,
 												 is_primary_index);
@@ -9428,8 +10386,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	if (list_length(index_pushed_down_filters) > 0)
 	{
 		yb_add_remote_filter_cost(root, index_pushed_down_filters,
-								  clamp_row_est(index_conditions_selectivity *
-												adjusted_index_tuples),
+								  num_index_tuples_examined,
 								  index_first_batch_frac,
 								  &startup_cost, &run_cost);
 	}
@@ -9473,6 +10430,21 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 			ceil(adjusted_index_tuples * index_tuple_width /
 				 YB_DEFAULT_DOCDB_BLOCK_SIZE);
 		index_pages_fetched = clamp_row_est(index_selectivity * index_total_pages);
+		if (is_distinct_scan)
+		{
+			/*
+			 * While the skips are nexts the scan reads the blocks the plain scan
+			 * reads; once they seek it touches one block per group it visits,
+			 * at most the blocks in range.
+			 */
+			Cardinality	range_pages =
+				clamp_row_est(index_conditions_selectivity * index_total_pages);
+
+			index_pages_fetched =
+				clamp_row_est(distinct_seek_forward_frac * index_pages_fetched +
+							  (1.0 - distinct_seek_forward_frac) *
+							  fmin(range_pages, distinct_groups));
+		}
 		index_random_pages_fetched =
 			ceil(num_seeks / (num_seeks + num_nexts + num_prevs)) *
 			index_pages_fetched;
@@ -9495,6 +10467,26 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 		Cardinality	num_docdb_blocks_fetched = ceil(num_index_tuples_matched *
 													baserel_tuple_width /
 													YB_DEFAULT_DOCDB_BLOCK_SIZE);
+
+		if (is_distinct_scan && is_primary_index)
+		{
+			/*
+			 * While the skips are nexts the PK distinct scan reads the blocks
+			 * the plain scan reads; once they seek it touches one block per
+			 * group it visits, at most the blocks in range.  A secondary index
+			 * distinct scan fetches its result groups' rows by ybctid, so the
+			 * count above holds for it.
+			 */
+			Cardinality	range_blocks = ceil(index_conditions_selectivity *
+											adjusted_index_tuples *
+											baserel_tuple_width /
+											YB_DEFAULT_DOCDB_BLOCK_SIZE);
+
+			num_docdb_blocks_fetched =
+				ceil(distinct_seek_forward_frac * num_docdb_blocks_fetched +
+					 (1.0 - distinct_seek_forward_frac) *
+					 fmin(range_blocks, distinct_groups));
+		}
 
 		/*
 		 * If this is a primary index scan, pages from the disk will likely be
@@ -10041,16 +11033,18 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
  * statistics estimate the fraction of outer rows that sort before that
  * boundary.  This is the outer half of what initial_cost_mergejoin derives.
  *
- * Unlike merge join, we make that fraction FILTER-AWARE
- * (yb_bnl_outer_skip_selectivity): mergejoinscansel measures the leading
- * mismatch over the FULL outer column histogram, ignoring the outer scan's
- * own restriction.  Multiplying that full-column fraction by the already
- * restricted outer_path_rows over-counts the skip whenever the outer is
- * itself bounded to start at/above the inner's matching range (e.g.
- * "outer.k >= c" with c >= min(inner.k) has NO leading mismatch, yet the
- * full-column fraction is large).  Conditioning the fraction on the outer
- * relation's baserestrictinfo collapses it to ~0 there while preserving a
- * genuine low-key prefix.
+ * We make that fraction FILTER-AWARE
+ * (yb_bnl_outer_skip_selectivity): the full-column fraction ignores the outer
+ * scan's own restriction, so multiplying it by the already restricted
+ * outer_path_rows over-counts the skip whenever the outer is itself bounded
+ * to start at/above the inner's matching range (e.g. "outer.k >= c" with
+ * c >= min(inner.k) has NO leading mismatch, yet the full-column fraction is
+ * large).  Conditioning the fraction on the outer relation's baserestrictinfo
+ * collapses it to ~0 there while preserving a genuine low-key prefix.  Merge
+ * join conditions its start fraction on the join key's own range bounds
+ * instead, which also reach a join-relation outer, whose restriction list
+ * here is empty, and it tightens the fraction by the inner's range bounds,
+ * which do not move this skip.
  *
  * Returns 0 (the conservative fallback merge join also uses) when the outer is
  * unsorted, no mergejoinable join clause matches the leading pathkey, or the
@@ -10229,7 +11223,9 @@ yb_init_bnl_workspace(JoinCostWorkspace *workspace, PlannerInfo *root,
  *   only when this path needs no sort.  An Incremental Sort on a presorted
  *   prefix keeps the bound but must read past it to close its last group,
  *   again pulling a default-sized second page, so it is treated the same
- *   way.
+ *   way.  A path whose uniqkeys already satisfy the DISTINCT (a distinct
+ *   index scan) gets no Sort for the DISTINCT in either scan direction, so
+ *   only the ORDER BY's sort_pathkeys have to be satisfied.
  * - not parameterized: the inner side of a (batched) nested loop sizes its
  *   own requests; its LIMIT interaction is the join's to model.
  *
@@ -10249,8 +11245,13 @@ yb_first_fetch_limit(PlannerInfo *root, Path *path, bool has_local_quals)
 	if (root->yb_limit_tuples <= 0 ||
 		path->parallel_workers > 0 ||
 		has_local_quals ||
-		path->param_info != NULL ||
-		!pathkeys_contained_in(root->query_pathkeys, path->pathkeys))
+		path->param_info != NULL)
+		return 0.0;
+
+	if (!pathkeys_contained_in(root->query_pathkeys, path->pathkeys) &&
+		!(parse->distinctClause &&
+		  yb_has_sufficient_uniqkeys(root, path) &&
+		  pathkeys_contained_in(root->sort_pathkeys, path->pathkeys)))
 		return 0.0;
 
 	if (parse->groupClause ||

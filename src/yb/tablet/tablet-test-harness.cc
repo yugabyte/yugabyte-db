@@ -22,6 +22,7 @@
 #include "yb/server/logical_clock.h"
 
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_context.h"
 #include "yb/tablet/tablet_metadata.h"
 
 #include "yb/util/result.h"
@@ -107,6 +108,7 @@ TabletInitData TabletTestHarness::MakeTabletInitData(const RaftGroupMetadataPtr&
       .tablet_options = TabletOptions(),
       .mutable_tablet_options = MutableTabletOptions{},
       .log_prefix_suffix = std::string(),
+      .tablet_context = &StandaloneTabletContext::Instance(),
       .transaction_participant_context = nullptr,
       .local_tablet_filter = client::LocalTabletFilter(),
       .transaction_coordinator_context = nullptr,
@@ -119,6 +121,7 @@ TabletInitData TabletTestHarness::MakeTabletInitData(const RaftGroupMetadataPtr&
       .full_compaction_pool = nullptr,
       .admin_triggered_compaction_pool = nullptr,
       .post_split_compaction_added = nullptr,
+      .tier_migration_hooks = nullptr,
       .metadata_cache = nullptr,
     };
 }

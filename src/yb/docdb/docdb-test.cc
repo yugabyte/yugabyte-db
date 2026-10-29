@@ -19,6 +19,8 @@
 
 #include "yb/util/minmax.h"
 
+DECLARE_bool(ysql_enable_cdr_metadata);
+
 namespace yb::docdb {
 
 namespace {
@@ -144,6 +146,31 @@ void DocDBTestQl::TestTableTombstone(T id) {
 
 TEST_F(DocDBTestQl, ColocatedTableTombstone) {
   TestTableTombstone<ColocationId>(0x4001);
+}
+
+// A TRUNCATE issued while a replication origin is set goes through the same DeleteSubDoc as any
+// other delete, so the table tombstone carries a CDR stamp and no longer begins with kTombstone.
+// GetTableTombstoneTime has to decode past the control fields to recognize it; if it does not, it
+// reports no tombstone and every row the truncate removed reads as live again.
+TEST_F(DocDBTestQl, StampedColocatedTableTombstone) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_cdr_metadata) = true;
+
+  constexpr ColocationId kId = 0x4001;
+  auto doc_key = MakeDocKey("mydockey", kIntKey1);
+  SetId(&doc_key, kId);
+  ASSERT_OK(SetPrimitive(doc_key.Encode(), QLValue::Primitive(1), 1000_usec_ht));
+
+  DocKey doc_key_table;
+  SetId(&doc_key_table, kId);
+  auto dwb = MakeDocWriteBatch();
+  dwb.SetCdrMetadata({.source_origin = 42, .source_write_ht = 1500_usec_ht});
+  ASSERT_OK(dwb.DeleteSubDoc(DocPath(doc_key_table.Encode())));
+  ASSERT_OK(WriteToRocksDB(dwb, 2000_usec_ht));
+
+  ASSERT_STR_CONTAINS(DocDBDebugDumpToStr(), "DEL; cdr source origin: 42");
+  VerifyDocument(doc_key, 4000_usec_ht, "");
+  VerifyDocument(doc_key, 1500_usec_ht, "1");
 }
 
 TEST_F(DocDBTestQl, YsqlSystemTableTombstone) {

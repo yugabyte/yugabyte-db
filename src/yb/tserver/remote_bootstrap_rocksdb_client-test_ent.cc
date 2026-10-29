@@ -13,11 +13,15 @@
 #include <algorithm>
 #include <set>
 
+#include "yb/gutil/dynamic_annotations.h"
+
 #include "yb/tserver/remote_bootstrap_client-test.h"
 
 #include "yb/tablet/tablet_snapshots.h"
 #include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/tserver/remote_snapshot_transfer_client.h"
+
+DECLARE_bool(enable_tiered_storage);
 
 namespace yb {
 namespace tserver {
@@ -29,6 +33,12 @@ using std::vector;
 class RemoteBootstrapRocksDBClientTest : public RemoteBootstrapClientTest {
  public:
   RemoteBootstrapRocksDBClientTest() : RemoteBootstrapClientTest(YQL_TABLE_TYPE) {}
+
+  void SetUp() override {
+    // TierPathsUpdatedOnDestination expects the destination to record tier_paths.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = true;
+    RemoteBootstrapClientTest::SetUp();
+  }
 
   void SetUpRemoteBootstrapClient() override {
     // Create 5 snapshots.

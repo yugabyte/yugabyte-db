@@ -17,6 +17,7 @@
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb-test.h"
 
+#include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/doc_vector_index.h"
 #include "yb/docdb/rocksdb_writer.h"
@@ -24,6 +25,8 @@
 #include "yb/dockv/dockv_fwd.h"
 #include "yb/dockv/key_entry_value.h"
 #include "yb/dockv/partition.h"
+
+#include "yb/util/fast_varint.h"
 
 #include "yb/vector_index/vector_index_fwd.h"
 
@@ -67,6 +70,7 @@ class CountingVectorIndex : public DocVectorIndex {
     LOG(FATAL) << "Unexpected call";
   }
   size_t EstimateNumVectorsForBytes(size_t) const override { LOG(FATAL) << "Unexpected call"; }
+  size_t DefaultChunkCapacity() const override { LOG(FATAL) << "Unexpected call"; }
   Result<DocVectorIndexSearchResult> Search(
       Slice, const vector_index::SearchOptions&, bool, DocVectorIndexReverseMappingReader&)
       override {
@@ -77,7 +81,8 @@ class CountingVectorIndex : public DocVectorIndex {
   Status Compact() override { LOG(FATAL) << "Unexpected call"; }
   Status WaitForCompaction() override { LOG(FATAL) << "Unexpected call"; }
   Status Flush() override { LOG(FATAL) << "Unexpected call"; }
-  Status ModifyFlushedFrontier(const ConsensusFrontier&) override {
+  Status ModifyFlushedFrontier(
+      const ConsensusFrontier&, rocksdb::FrontierModificationMode) override {
     LOG(FATAL) << "Unexpected call";
   }
   Result<bool> AdvanceFlushedOpId(const OpId&) override { LOG(FATAL) << "Unexpected call"; }
@@ -86,6 +91,7 @@ class CountingVectorIndex : public DocVectorIndex {
     LOG(FATAL) << "Unexpected call";
   }
   storage::FlushAbility GetFlushAbility() override { LOG(FATAL) << "Unexpected call"; }
+  Status GetFlushStatus() const override { LOG(FATAL) << "Unexpected call"; }
   Status CreateCheckpoint(const std::string&) override { LOG(FATAL) << "Unexpected call"; }
   const std::string& ToString() const override { LOG(FATAL) << "Unexpected call"; }
   Status Destroy() override { LOG(FATAL) << "Unexpected call"; }
@@ -769,6 +775,58 @@ TEST_F(NonTransactionalBatchWriterTest, ClearsCanAdvanceIntentsFlushOpId) {
       put_batch, kWriteHT, kBatchHT, /* vector_indexes= */ nullptr, StorageSet::All(),
       TableType::PGSQL_TABLE_TYPE, &can_advance));
   ASSERT_FALSE(can_advance.load());
+}
+
+// GH#35538: an xCluster target write carries no table_schema_version, so only the batch writer
+// puts the schema versions of its packed rows into the frontiers, which packing GC reads.
+TEST_F(NonTransactionalBatchWriterTest, PackedRowSchemaVersionReachesFrontiers) {
+  const Uuid involved_tablet = ASSERT_RESULT(Uuid::FromString(kTabletUUID));
+  const TransactionId txn = ASSERT_RESULT(FullyDecodeTransactionId(kTxnId));
+  const DocKey doc_key(MakeKeyEntryValues("row1"));
+  const auto kBatchHT = 5000_usec_ht;
+  const auto kWriteHT = 6000_usec_ht;
+
+  // Only the packed row header is read on the write path.
+  auto packed_row = [](SchemaVersion version) {
+    std::string result(1, dockv::ValueEntryTypeAsChar::kPackedRowV1);
+    FastAppendUnsignedVarInt(version, &result);
+    return result;
+  };
+  auto smallest_schema_versions = [this] {
+    CotableSchemaVersionMap result;
+    auto smallest = regular_db_->GetInMemoryFrontier(storage::UpdateUserValueType::kSmallest);
+    if (smallest) {
+      down_cast<ConsensusFrontier&>(*smallest).MakeExternalSchemaVersionsAtMost(&result);
+    }
+    return AsString(result);
+  };
+  auto expected = [](SchemaVersion version) {
+    return AsString(CotableSchemaVersionMap{{Uuid::Nil(), version}});
+  };
+  // YQL keeps the vector indexes updater, which decodes the row, out of the write path.
+  auto send = [&](const docdb::LWKeyValueWriteBatchPB& put_batch) {
+    return SendWriteBatch(
+        put_batch, kWriteHT, kBatchHT, /* vector_indexes= */ nullptr, StorageSet::All(),
+        TableType::YQL_TABLE_TYPE);
+  };
+
+  docdb::LWKeyValueWriteBatchPB put_batch(&arena_);
+  auto* write_pair = put_batch.add_write_pairs();
+  write_pair->dup_key(doc_key.Encode().AsSlice());
+  write_pair->dup_value(packed_row(3));
+  ASSERT_OK(send(put_batch));
+  ASSERT_EQ(smallest_schema_versions(), expected(3));
+
+  // External transaction apply.
+  put_batch.Clear();
+  AddExternalIntentsWritePair(
+      &put_batch, txn, kMinSubTransactionId, {{DocPath(doc_key.Encode()), packed_row(2)}},
+      involved_tablet);
+  ASSERT_OK(send(put_batch));
+  put_batch.Clear();
+  AddApplyExternalTxn(&put_batch, txn, kWriteHT);
+  ASSERT_OK(send(put_batch));
+  ASSERT_EQ(smallest_schema_versions(), expected(2));
 }
 
 }  // namespace yb::docdb

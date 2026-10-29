@@ -650,10 +650,25 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
   }
 
   @Test
-  public void testAllowedTasksAfterFailedEditKeepReprovision() {
+  public void testAllowedTasksAfterFailedEditDropReprovision() {
     UniverseTaskBase.AllowedTasks allowedTasks = allowedTasksForFailedTask(TaskType.EditUniverse);
     assertTrue(allowedTasks.isRestricted());
-    assertTrue(allowedTasks.getTaskTypes().contains(TaskType.ProvisionUniverseNodes));
+    assertFalse(allowedTasks.getTaskTypes().contains(TaskType.ProvisionUniverseNodes));
+    assertTrue(allowedTasks.getTaskTypes().contains(TaskType.ReinstallNodeAgent));
+  }
+
+  @Test
+  public void testNoPlacementTaskAllowedOnBrokenUniverse() {
+    // PLAT-23213: an allowed placement task would take over the failed task's placement lock and
+    // rollback checkpoint. A failed ReplaceNodeInUniverse has no rerun or rollback of its own, so
+    // its allowed tasks are exactly the broken-universe list.
+    Set<TaskType> allowedTaskTypes =
+        allowedTasksForFailedTask(TaskType.ReplaceNodeInUniverse).getTaskTypes();
+    assertFalse(allowedTaskTypes.isEmpty());
+    for (TaskType taskType : allowedTaskTypes) {
+      // A placement task's failure freezes the universe; any other task's does not.
+      assertFalse(taskType.name(), allowedTasksForFailedTask(taskType).isRestricted());
+    }
   }
 
   @Test
@@ -666,7 +681,6 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
       assertTrue(rollbackType.name(), taskTypes.contains(TaskType.DestroyUniverse));
       assertTrue(rollbackType.name(), taskTypes.contains(TaskType.DestroyKubernetesUniverse));
       assertTrue(rollbackType.name(), taskTypes.contains(TaskType.ReinstallNodeAgent));
-      // Only re-provisioning is dropped; other universe-broken tasks, e.g. support bundles, stay.
       assertTrue(rollbackType.name(), taskTypes.contains(TaskType.CreateSupportBundle));
     }
   }

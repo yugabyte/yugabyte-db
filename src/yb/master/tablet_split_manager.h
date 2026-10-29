@@ -128,6 +128,13 @@ class TabletSplitManager {
 
   CoarseTimePoint last_run_time_;
 
+  // When a summary of rejected split candidates/tables was last logged, and when one was last
+  // collected. Collection resumes once the log interval has elapsed since the last summary, but
+  // an attempt that finds nothing does not consume the whole interval: it is retried at a tenth
+  // of it, so rejections that start right after an empty attempt are logged soon after.
+  CoarseTimePoint last_rejections_logged_time_ = CoarseTimePoint::min();
+  CoarseTimePoint last_rejections_collected_time_ = CoarseTimePoint::min();
+
   scoped_refptr<yb::AtomicGauge<uint64_t>> automatic_split_manager_time_ms_;
   scoped_refptr<AtomicGauge<uint64_t>> metric_tablet_split_candidates_;
   scoped_refptr<AtomicGauge<uint64_t>> metric_outstanding_tablet_splits_;

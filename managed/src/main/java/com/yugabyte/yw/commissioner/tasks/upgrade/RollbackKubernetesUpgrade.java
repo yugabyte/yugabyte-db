@@ -186,6 +186,8 @@ public class RollbackKubernetesUpgrade extends KubernetesUpgradeTaskBase {
           // Update Software version
           createUpdateSoftwareVersionTask(targetVersion, false /*isSoftwareUpdateViaVm*/)
               .setSubTaskGroupType(getTaskSubGroupType());
+          // The node_exporter sidecar's scrape targets follow the DB version.
+          createSwamperTargetUpdateTask(false /* removeFile */);
 
           createUpdateUniverseSoftwareUpgradeStateTask(
               UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,

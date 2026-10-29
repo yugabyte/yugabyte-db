@@ -36,6 +36,7 @@ func addDefaults(v *viper.Viper) {
 	v.SetDefault("platform.support_origin_url", "/")
 	v.SetDefault("platform.additional_config", "")
 	v.SetDefault("platform.trusted_proxies", []string{})
+	v.SetDefault("platform.multi_tenant", false)
 
 	// Postgres
 	v.SetDefault("postgres.port", 5432)
