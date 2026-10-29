@@ -2983,6 +2983,62 @@ TEST_P(PgVectorIndexColocationOnlyTest, DroppedIndexKeepsUnflushedRowsAcrossRest
   TestDroppedIndexKeepsUnflushedRows(/* skip_deactivation_flush= */ true);
 }
 
+// Bootstrap replays from the lowest flushed OpId across all storages. A vector index whose table
+// gets no vector writes keeps its flushed OpId while the rest of the tablet moves on, e.g. the
+// index of one colocated table while other tables of the database take writes, so it must not
+// hold that OpId back, or every restart replays all the retained WAL.
+TEST_P(PgVectorIndexColocationOnlyTest, IdleIndexDoesNotHoldBackBootstrap) {
+  if (!IsColocated()) {
+    // A non-colocated tablet hosts only the indexed table, and every row written to it reaches
+    // the index.
+    GTEST_SKIP() << "Colocated only";
+  }
+  constexpr size_t kNumRows = 16;
+  constexpr size_t kNumBusyRows = 128;
+
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(conn.Execute("CREATE TABLE busy (id INT PRIMARY KEY)"));
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO busy SELECT generate_series(1, $0)", kNumBusyRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto wait_index_caught_up = [this](const std::string& description) {
+    return WaitFor(
+        [this]() -> Result<bool> {
+          size_t num_indexes = 0;
+          for (const auto& peer : ListTabletPeersWithVectorIndexes(cluster_.get())) {
+            auto tablet = VERIFY_RESULT(peer->shared_tablet());
+            auto regular = VERIFY_RESULT(tablet->GetPersistentState()).regular;
+            SCHECK(regular.is_valid_not_empty(), IllegalState,
+                   Format("$0no flushed regular DB OpId", tablet->LogPrefix()));
+            for (const auto& index : *tablet->vector_indexes().List()) {
+              ++num_indexes;
+              auto frontier = index->GetFlushedFrontier();
+              auto index_op_id = frontier ? frontier->op_id() : OpId();
+              if (index_op_id < regular) {
+                LOG(INFO) << tablet->LogPrefix() << "Idle index flushed OpId " << index_op_id
+                          << " behind the regular DB's " << regular;
+                return false;
+              }
+            }
+          }
+          SCHECK_GT(num_indexes, 0U, IllegalState, "No vector indexes found");
+          return true;
+        },
+        30s * kTimeMultiplier, description);
+  };
+  ASSERT_OK(wait_index_caught_up("Idle index flushed OpId caught up"));
+
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    ASSERT_OK(cluster_->mini_tablet_server(i)->Restart(tserver::WaitTabletsBootstrapped::kTrue));
+  }
+  ASSERT_OK(wait_index_caught_up("Idle index flushed OpId caught up after restart"));
+}
+
 // A deactivated index takes no new rows, so nothing advances its flushed OpId. Bootstrap replays
 // from the lowest flushed OpId across all storages, so a frozen one would make every restart replay
 // all the retained WAL for as long as the schedule keeps the index.
