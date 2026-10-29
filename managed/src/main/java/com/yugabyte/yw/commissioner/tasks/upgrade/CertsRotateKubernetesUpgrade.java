@@ -27,6 +27,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.util.Objects;
 import java.util.Collections;
 import java.util.Set;
 import java.util.UUID;
@@ -64,12 +65,14 @@ public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
       throw new RuntimeException("RootCA rotation type is not set");
     }
     // Steps 1 to 2a present the current root CA's client cert. If YBA has none, its issuer
-    // already signs with another CA, and every server would refuse YBA.
+    // already signs with another CA, and every server would refuse YBA. A retry after Reset is
+    // already on the new CA and waits for its cert instead.
     if (taskParams().rootCARotationType == CertsRotateParams.CertRotationType.RootCert
         && RpcClientCert.isClientCertRequired(universe)) {
       try {
         getInstanceOf(RpcClientCert.class).load(universe);
       } catch (RuntimeException e) {
+        boolean afterReset = Objects.equals(taskParams().rootCA, universe.getUniverseDetails().rootCA);
         throw new PlatformServiceException(
             BAD_REQUEST,
             "YugabyteDB Anywhere has no client certificate issued by the universe's current root"
@@ -77,9 +80,12 @@ public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
                 + GFlagsUtil.USE_CLIENT_CERTIFICATES
                 + "): "
                 + e.getMessage()
-                + ". Point the cert-manager issuer back at the current root CA, wait for"
-                + " cert-manager to reissue the universe's certificates, then move the issuer to"
-                + " the new CA and retry the rotation.");
+                + (afterReset
+                    ? ". Wait for cert-manager to reissue the universe's certificates from the new"
+                        + " root CA, or fix its issuer, then retry the rotation."
+                    : ". Point the cert-manager issuer back at the current root CA, wait for"
+                        + " cert-manager to reissue the universe's certificates, then move the"
+                        + " issuer to the new CA and retry the rotation."));
       }
     }
     if (CertificateHelper.checkNode2NodeCertsExpiry(getUniverse())) {
