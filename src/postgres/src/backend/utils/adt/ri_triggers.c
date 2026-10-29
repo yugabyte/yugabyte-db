@@ -56,10 +56,12 @@
 
 /* YB includes */
 #include "catalog/catalog.h"
+#include "catalog/pg_inherits.h"
 #include "catalog/yb_type.h"
 #include "executor/execPartition.h"
 #include "executor/ybModifyTable.h"
 #include "fmgr.h"
+#include "partitioning/partdesc.h"
 #include "pg_yb_utils.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
@@ -353,10 +355,10 @@ YbGetProute(EState *estate, Relation pk_root_rel)
 }
 
 static Relation
-YbFindReferencedPartition(EState *estate, const RI_ConstraintInfo *riinfo,
-						  TupleTableSlot *fkslot, Relation pk_root_rel,
-						  TupleTableSlot *pkslot, bool using_index,
-						  TupleConversionMap **leaf_root_conversion_map)
+YbFindReferencedPartitionImpl(EState *estate, const RI_ConstraintInfo *riinfo,
+							  TupleTableSlot *fkslot, Relation pk_root_rel,
+							  TupleTableSlot *pkslot, bool using_index,
+							  TupleConversionMap **leaf_root_conversion_map)
 {
 	Assert(pk_root_rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE);
 
@@ -432,6 +434,44 @@ YbFindReferencedPartition(EState *estate, const RI_ConstraintInfo *riinfo,
 		 */
 		MemoryContextSwitchTo(cur_context);
 		FlushErrorState();
+	}
+	PG_END_TRY();
+
+	return referenced_rel;
+}
+
+/*
+ * Upstream checks the PK side with an SPI query that never sees a partition
+ * pending detach (see ri_PerformCheck). Route with the same visibility here,
+ * via a partition directory separate from the one used for DML routing.
+ */
+static Relation
+YbFindReferencedPartition(EState *estate, const RI_ConstraintInfo *riinfo,
+						  TupleTableSlot *fkslot, Relation pk_root_rel,
+						  TupleTableSlot *pkslot, bool using_index,
+						  TupleConversionMap **leaf_root_conversion_map)
+{
+	PartitionDirectory saved_pdir = estate->yb_es_routing_partition_directory;
+	bool		saved_use_latest = yb_detach_pending_use_latest_snapshot;
+	Relation	referenced_rel;
+
+	if (estate->yb_es_pk_partition_directory == NULL)
+		estate->yb_es_pk_partition_directory =
+			CreatePartitionDirectory(estate->es_query_cxt, true);
+
+	estate->yb_es_routing_partition_directory = estate->yb_es_pk_partition_directory;
+	yb_detach_pending_use_latest_snapshot = true;
+	PG_TRY();
+	{
+		referenced_rel =
+			YbFindReferencedPartitionImpl(estate, riinfo, fkslot, pk_root_rel,
+										  pkslot, using_index,
+										  leaf_root_conversion_map);
+	}
+	PG_FINALLY();
+	{
+		estate->yb_es_routing_partition_directory = saved_pdir;
+		yb_detach_pending_use_latest_snapshot = saved_use_latest;
 	}
 	PG_END_TRY();
 
@@ -2789,6 +2829,8 @@ ri_PerformCheck(const RI_ConstraintInfo *riinfo,
 	Datum		vals[RI_MAX_NUMKEYS * 2];
 	char		nulls[RI_MAX_NUMKEYS * 2];
 
+	bool		yb_saved_use_latest = yb_detach_pending_use_latest_snapshot;
+
 	/*
 	 * Use the query type code to determine whether the query is run against
 	 * the PK or FK table; we'll do the check as that table's owner
@@ -2869,6 +2911,10 @@ ri_PerformCheck(const RI_ConstraintInfo *riinfo,
 						   save_sec_context | SECURITY_LOCAL_USERID_CHANGE |
 						   SECURITY_NOFORCE_RLS);
 
+	/* YB: see YbDetachPendingInProgress() */
+	if (test_snapshot != InvalidSnapshot)
+		yb_detach_pending_use_latest_snapshot = true;
+
 	/* YB: wrap in try-catch */
 	PG_TRY();
 	{
@@ -2882,9 +2928,11 @@ ri_PerformCheck(const RI_ConstraintInfo *riinfo,
 	{
 		/* YB: Restore UID and security context in case of execution failure */
 		SetUserIdAndSecContext(save_userid, save_sec_context);
+		yb_detach_pending_use_latest_snapshot = yb_saved_use_latest;
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
+	yb_detach_pending_use_latest_snapshot = yb_saved_use_latest;
 
 	/* Restore UID and security context */
 	SetUserIdAndSecContext(save_userid, save_sec_context);

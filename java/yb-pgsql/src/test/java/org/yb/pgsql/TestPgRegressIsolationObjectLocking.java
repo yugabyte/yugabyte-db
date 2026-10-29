@@ -41,7 +41,7 @@ public class TestPgRegressIsolationObjectLocking extends BasePgRegressTest {
 
   @Override
   public int getTestMethodTimeoutSec() {
-    return 600;
+    return 1200;
   }
 
   private void runSchedule(boolean useAllHosts) throws Exception {

@@ -14,8 +14,7 @@ step s1s: SELECT * FROM d_listp;
 a
 -
 1
-2
-(2 rows)
+(1 row)
 
 step s1c: COMMIT;
 step s2detach: <... completed>
@@ -40,15 +39,13 @@ step s1s: SELECT * FROM d_listp;
 a
 -
 1
-2
-(2 rows)
+(1 row)
 
 step s3s: SELECT * FROM d_listp;
 a
 -
 1
-2
-(2 rows)
+(1 row)
 
 step s3i: SELECT relpartbound IS NULL FROM pg_class where relname = 'd_listp2';
 ?column?
@@ -88,8 +85,7 @@ a
 -
 1
 1
-2
-(3 rows)
+(2 rows)
 
 step s1c: COMMIT;
 step s2detach: <... completed>
@@ -111,9 +107,7 @@ a
 -
 1
 1
-2
-2
-(4 rows)
+(2 rows)
 
 step s1c: COMMIT;
 step s2detach: <... completed>
@@ -135,9 +129,7 @@ a
 -
 1
 1
-2
-2
-(4 rows)
+(2 rows)
 
 step s1rollback: ROLLBACK;
 step s2detach: <... completed>
@@ -189,6 +181,7 @@ step s1b: BEGIN;
 step s1ins2: INSERT INTO d_listp VALUES (2);
 step s2detach: ALTER TABLE d_listp DETACH PARTITION d_listp2 CONCURRENTLY; <waiting ...>
 step s3ins2: INSERT INTO d_listp VALUES (2);
+ERROR:  no partition of relation "d_listp" found for row
 step s1c: COMMIT;
 step s2detach: <... completed>
 
@@ -197,6 +190,7 @@ step s1b: BEGIN;
 step s1ins2: INSERT INTO d_listp VALUES (2);
 step s2detach: ALTER TABLE d_listp DETACH PARTITION d_listp2 CONCURRENTLY; <waiting ...>
 step s3ins2: INSERT INTO d_listp VALUES (2);
+ERROR:  no partition of relation "d_listp" found for row
 step s1rollback: ROLLBACK;
 step s2detach: <... completed>
 
@@ -223,8 +217,7 @@ step s3s: SELECT * FROM d_listp;
 a
 -
 1
-2
-(2 rows)
+(1 row)
 
 step s1c: COMMIT;
 step s2detach: <... completed>
@@ -248,8 +241,7 @@ step s3s: SELECT * FROM d_listp;
 a
 -
 1
-2
-(2 rows)
+(1 row)
 
 step s1c: COMMIT;
 step s2detach: <... completed>
@@ -286,12 +278,12 @@ step s1s: SELECT * FROM d_listp;
 a
 -
 1
-2
-(2 rows)
+(1 row)
 
 step s1exec2: EXECUTE f(2);
-step s1c: COMMIT;
+ERROR:  no partition of relation "d_listp" found for row
 step s2detach: <... completed>
+step s1c: COMMIT;
 step s1dealloc: DEALLOCATE f;
 
 starting permutation: s1brr s1prep1 s2detach s1s s1exec2 s1c s1dealloc
@@ -302,8 +294,7 @@ step s1s: SELECT * FROM d_listp;
 a
 -
 1
-2
-(2 rows)
+(1 row)
 
 step s1exec2: EXECUTE f(2);
 step s1c: COMMIT;
@@ -318,12 +309,12 @@ step s1s: SELECT * FROM d_listp;
 a
 -
 1
-2
-(2 rows)
+(1 row)
 
 step s1exec2: EXECUTE f(2);
-step s1c: COMMIT;
+ERROR:  no partition of relation "d_listp" found for row
 step s2detach: <... completed>
+step s1c: COMMIT;
 step s1dealloc: DEALLOCATE f;
 
 starting permutation: s1brr s1s s1ins s1s s1c s2detach

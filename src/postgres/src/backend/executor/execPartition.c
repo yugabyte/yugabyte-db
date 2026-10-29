@@ -1138,10 +1138,27 @@ ExecInitPartitionDispatchInfo(EState *estate,
 	 * partition that's being detached concurrently, but a transaction in
 	 * repeatable-read mode can still use such a partition.
 	 */
-	if (estate->es_partition_directory == NULL)
-		estate->es_partition_directory =
-			CreatePartitionDirectory(estate->es_query_cxt,
-									 !IsolationUsesXactSnapshot());
+	/*
+	 * YB: route with pending-detach partitions omitted, and let
+	 * YbDetachPendingInProgress() keep them for a transaction that read the
+	 * parent before they went pending; such a transaction is waited for by the
+	 * detach.  Upstream's repeatable-read rule lets any such transaction route
+	 * into a partition whose detach then completes without waiting for it.
+	 * Runtime pruning keeps es_partition_directory, which includes them.
+	 */
+	if (IsYugaByteEnabled())
+	{
+		if (estate->yb_es_routing_partition_directory == NULL)
+			estate->yb_es_routing_partition_directory =
+				CreatePartitionDirectory(estate->es_query_cxt, true);
+	}
+	else
+	{
+		if (estate->es_partition_directory == NULL)
+			estate->es_partition_directory =
+				CreatePartitionDirectory(estate->es_query_cxt,
+										 !IsolationUsesXactSnapshot());
+	}							/* YB: end of the !IsYugaByteEnabled() branch */
 
 	oldcxt = MemoryContextSwitchTo(proute->memcxt);
 
@@ -1154,7 +1171,12 @@ ExecInitPartitionDispatchInfo(EState *estate,
 		rel = table_open(partoid, RowExclusiveLock);
 	else
 		rel = proute->partition_root;
-	partdesc = PartitionDirectoryLookup(estate->es_partition_directory, rel);
+	/* YB: see above */
+	if (IsYugaByteEnabled())
+		partdesc = PartitionDirectoryLookup(estate->yb_es_routing_partition_directory,
+											rel);
+	else
+		partdesc = PartitionDirectoryLookup(estate->es_partition_directory, rel);
 
 	pd = (PartitionDispatch) palloc(offsetof(PartitionDispatchData, indexes) +
 									partdesc->nparts * sizeof(int));
