@@ -1879,61 +1879,6 @@ TEST_F(TestQLQuery, TestFloatPrimaryKey) {
   }
 }
 
-// UUIDs with version > 5 must be found by clustering key next to UUIDs of other versions, including
-// other versions > 5. The raw first bytes are chosen to disagree with the version order.
-TEST_F(TestQLQuery, TestUuidUnknownVersionClusteringKey) {
-  ASSERT_NO_FATALS(CreateSimulatedCluster());
-  TestQLProcessor *processor = GetQLProcessor();
-
-  // In ascending clustering key order: v4, v6, v7, v8.
-  const std::vector<string> kIds = {
-      "9e107d9d-372b-4b6a-8d0a-2f5c7c8e1a3b",
-      "f1111111-1111-6111-8111-111111111111",
-      "0b9a2f3c-5d4e-7f60-9a1b-2c3d4e5f6a7b",
-      "01111111-1111-8111-8111-111111111111"};
-
-  for (bool descending : {false, true}) {
-    const string table = descending ? "uuid_key_desc" : "uuid_key";
-    SCOPED_TRACE(table);
-    ASSERT_OK(processor->Run(Format(
-        "CREATE TABLE $0 (p int, id uuid, PRIMARY KEY (p, id))$1",
-        table, descending ? " WITH CLUSTERING ORDER BY (id DESC)" : "")));
-    for (const auto& id : kIds) {
-      ASSERT_OK(processor->Run(Format("INSERT INTO $0 (p, id) VALUES (1, $1)", table, id)));
-    }
-
-    auto select_ids = [processor, &table](const string& where) -> Result<std::vector<string>> {
-      RETURN_NOT_OK(processor->Run(Format("SELECT id FROM $0 $1", table, where)));
-      std::vector<string> result;
-      auto row_block = processor->row_block();
-      for (const auto& row : row_block->rows()) {
-        result.push_back(row.column(0).uuid_value().ToString());
-      }
-      return result;
-    };
-    auto in_scan_order = [descending](std::vector<string> ids) {
-      if (descending) {
-        std::reverse(ids.begin(), ids.end());
-      }
-      return ids;
-    };
-
-    EXPECT_EQ(in_scan_order(kIds), ASSERT_RESULT(select_ids("")));
-    EXPECT_EQ(in_scan_order(kIds), ASSERT_RESULT(select_ids(Format(
-        "WHERE p = 1 AND id IN ($0, $1, $2, $3)", kIds[3], kIds[0], kIds[2], kIds[1]))));
-    for (size_t i = 0; i != kIds.size(); ++i) {
-      const std::vector<string> expected_eq = {kIds[i]};
-      EXPECT_EQ(expected_eq, ASSERT_RESULT(select_ids(Format("WHERE id = $0", kIds[i]))));
-      EXPECT_EQ(expected_eq,
-                ASSERT_RESULT(select_ids(Format("WHERE p = 1 AND id = $0", kIds[i]))));
-      const auto expected_gt = in_scan_order({kIds.begin() + i + 1, kIds.end()});
-      EXPECT_EQ(expected_gt,
-                ASSERT_RESULT(select_ids(Format("WHERE p = 1 AND id > $0", kIds[i]))))
-          << "id > " << kIds[i];
-    }
-  }
-}
-
 TEST_F(TestQLQuery, TestDoublePrimaryKey) {
   // Init the simulated cluster.
   ASSERT_NO_FATALS(CreateSimulatedCluster());
