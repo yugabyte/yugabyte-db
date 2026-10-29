@@ -1205,32 +1205,45 @@ INSERT INTO t_txt SELECT lpad(i::text, 2, '0'), i FROM generate_series(1, 20) i;
 DROP TABLE t_i2, t_i4, t_i8, t_f4, t_f8, t_num, t_txt;
 ---
 --- Non-equality array conditions.  DocDB binds an array only as an IN list,
---- so such a condition is left to the recheck whatever other conditions its
---- column has; it never becomes a bound of the column (#35030).
+--- but k > ANY (a) holds exactly when k is greater than the least non-null
+--- element of a, and k < ANY (a) when k is less than the greatest, so the
+--- scan binds such a condition as that range bound, alone or with other
+--- conditions on its column.  A scan that read the array as a single value of
+--- the column type would return wrong rows here (#35030).
 ---
 CREATE TABLE t_nonequality_array(g int, k int, PRIMARY KEY(g ASC, k ASC));
 INSERT INTO t_nonequality_array SELECT g, k FROM generate_series(0, 1) g, generate_series(0, 9) k;
+-- alone on its column
+:explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k > ANY ('{5,2}');
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ Index Scan using t_nonequality_array_pkey on t_nonequality_array (actual rows=7 loops=1)
+   Index Cond: ((g = 0) AND (k > ANY ('{5,2}'::integer[])))
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
+   Storage Table Rows Scanned: 7
+(5 rows)
+
+-- with a range, an equality and an IN list on the same column
 :explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k >= 0 AND k > ANY ('{2,5}');
                                         QUERY PLAN                                        
 ------------------------------------------------------------------------------------------
  Index Scan using t_nonequality_array_pkey on t_nonequality_array (actual rows=7 loops=1)
    Index Cond: ((g = 0) AND (k >= 0) AND (k > ANY ('{2,5}'::integer[])))
-   Rows Removed by Index Recheck: 3
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1
-   Storage Table Rows Scanned: 10
-(6 rows)
+   Storage Table Rows Scanned: 7
+(5 rows)
 
 :explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k <= 9 AND k < ANY ('{2,5}');
                                         QUERY PLAN                                        
 ------------------------------------------------------------------------------------------
  Index Scan using t_nonequality_array_pkey on t_nonequality_array (actual rows=5 loops=1)
    Index Cond: ((g = 0) AND (k <= 9) AND (k < ANY ('{2,5}'::integer[])))
-   Rows Removed by Index Recheck: 5
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1
-   Storage Table Rows Scanned: 10
-(6 rows)
+   Storage Table Rows Scanned: 5
+(5 rows)
 
 :explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k = 5 AND k > ANY ('{2,7}');
                                         QUERY PLAN                                        
@@ -1247,10 +1260,58 @@ INSERT INTO t_nonequality_array SELECT g, k FROM generate_series(0, 1) g, genera
 -------------------------------------------------------------------------------------------------
  Index Scan using t_nonequality_array_pkey on t_nonequality_array (actual rows=2 loops=1)
    Index Cond: ((g = 0) AND (k = ANY ('{1,4,8}'::integer[])) AND (k > ANY ('{2,5}'::integer[])))
-   Rows Removed by Index Recheck: 1
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1
-   Storage Table Rows Scanned: 3
+   Storage Table Rows Scanned: 2
+(5 rows)
+
+-- a NULL element never matches, so 5 decides the bound
+:explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k >= ANY ('{NULL,5}');
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ Index Scan using t_nonequality_array_pkey on t_nonequality_array (actual rows=5 loops=1)
+   Index Cond: ((g = 0) AND (k >= ANY ('{NULL,5}'::integer[])))
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
+   Storage Table Rows Scanned: 5
+(5 rows)
+
+-- an empty or all-NULL array matches no row, so the scan sends no request
+:explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k > ANY ('{}');
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ Index Scan using t_nonequality_array_pkey on t_nonequality_array (actual rows=0 loops=1)
+   Index Cond: ((g = 0) AND (k > ANY ('{}'::integer[])))
+(2 rows)
+
+:explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k <= ANY ('{NULL}');
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ Index Scan using t_nonequality_array_pkey on t_nonequality_array (actual rows=0 loops=1)
+   Index Cond: ((g = 0) AND (k <= ANY ('{NULL}'::integer[])))
+(2 rows)
+
+-- bigint elements bind while the deciding one fits the int column; one that
+-- does not is left to the recheck
+:explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k > ANY ('{2,5}'::bigint[]);
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ Index Scan using t_nonequality_array_pkey on t_nonequality_array (actual rows=7 loops=1)
+   Index Cond: ((g = 0) AND (k > ANY ('{2,5}'::bigint[])))
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
+   Storage Table Rows Scanned: 7
+(5 rows)
+
+:explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k > ANY ('{3000000000,4000000000}'::bigint[]);
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ Index Scan using t_nonequality_array_pkey on t_nonequality_array (actual rows=0 loops=1)
+   Index Cond: ((g = 0) AND (k > ANY ('{3000000000,4000000000}'::bigint[])))
+   Rows Removed by Index Recheck: 10
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
+   Storage Table Rows Scanned: 10
 (6 rows)
 
 -- an IN list and a non-equality array with the same elements
@@ -1262,47 +1323,98 @@ INSERT INTO t_nonequality_array SELECT g, k FROM generate_series(0, 1) g, genera
    Sort Method: quicksort
    ->  Index Scan using t_nonequality_array_pkey on t_nonequality_array (actual rows=10 loops=1)
          Index Cond: ((g = ANY ('{0,1}'::integer[])) AND (g > ANY ('{0,1}'::integer[])))
-         Rows Removed by Index Recheck: 10
-         Storage Table Read Requests: 1
-         Storage Table Read Ops: 1
-         Storage Table Rows Scanned: 20
-(9 rows)
-
--- the recheck keeps the aggregate from being pushed down
-:explain_analyze SELECT count(*) FROM t_nonequality_array WHERE g = 0 AND k >= 0 AND k > ANY ('{2,5}');
-                                           QUERY PLAN                                           
-------------------------------------------------------------------------------------------------
- Aggregate (actual rows=1 loops=1)
-   ->  Index Scan using t_nonequality_array_pkey on t_nonequality_array (actual rows=7 loops=1)
-         Index Cond: ((g = 0) AND (k >= 0) AND (k > ANY ('{2,5}'::integer[])))
-         Rows Removed by Index Recheck: 3
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
          Storage Table Rows Scanned: 10
+(8 rows)
+
+-- the bound needs no recheck, so the aggregate is pushed down
+:explain_analyze SELECT count(*) FROM t_nonequality_array WHERE g = 0 AND k >= 0 AND k > ANY ('{2,5}');
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Finalize Aggregate (actual rows=1 loops=1)
+   ->  Index Scan using t_nonequality_array_pkey on t_nonequality_array (actual rows=1 loops=1)
+         Index Cond: ((g = 0) AND (k >= 0) AND (k > ANY ('{2,5}'::integer[])))
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 7
+         Partial Aggregate: true
 (7 rows)
 
+SELECT count(*) FROM t_nonequality_array WHERE g = 0 AND k >= 0 AND k > ANY ('{2,5}');
+ count 
+-------
+     7
+(1 row)
+
+-- a parameter array, which the pushdown check sees before it is evaluated
+SET plan_cache_mode = force_generic_plan;
+PREPARE nonequality_array_count(int[]) AS SELECT count(*) FROM t_nonequality_array WHERE g = 0 AND k > ANY ($1);
+:explain_analyze EXECUTE nonequality_array_count('{5,2}');
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Finalize Aggregate (actual rows=1 loops=1)
+   ->  Index Scan using t_nonequality_array_pkey on t_nonequality_array (actual rows=1 loops=1)
+         Index Cond: ((g = 0) AND (k > ANY ($1)))
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 7
+         Partial Aggregate: true
+(7 rows)
+
+EXECUTE nonequality_array_count('{5,2}');
+ count 
+-------
+     7
+(1 row)
+
+:explain_analyze EXECUTE nonequality_array_count('{}');
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Finalize Aggregate (actual rows=1 loops=1)
+   ->  Index Scan using t_nonequality_array_pkey on t_nonequality_array (actual rows=0 loops=1)
+         Index Cond: ((g = 0) AND (k > ANY ($1)))
+         Partial Aggregate: true
+(4 rows)
+
+EXECUTE nonequality_array_count('{}');
+ count 
+-------
+     0
+(1 row)
+
+DEALLOCATE nonequality_array_count;
+RESET plan_cache_mode;
 SET yb_enable_advanced_index_cond_fold = off;
+:explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k > ANY ('{5,2}');
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ Index Scan using t_nonequality_array_pkey on t_nonequality_array (actual rows=7 loops=1)
+   Index Cond: ((g = 0) AND (k > ANY ('{5,2}'::integer[])))
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
+   Storage Table Rows Scanned: 7
+(5 rows)
+
 :explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k >= 0 AND k > ANY ('{2,5}');
                                         QUERY PLAN                                        
 ------------------------------------------------------------------------------------------
  Index Scan using t_nonequality_array_pkey on t_nonequality_array (actual rows=7 loops=1)
    Index Cond: ((g = 0) AND (k >= 0) AND (k > ANY ('{2,5}'::integer[])))
-   Rows Removed by Index Recheck: 3
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1
-   Storage Table Rows Scanned: 10
-(6 rows)
+   Storage Table Rows Scanned: 7
+(5 rows)
 
 :explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k <= 9 AND k < ANY ('{2,5}');
                                         QUERY PLAN                                        
 ------------------------------------------------------------------------------------------
  Index Scan using t_nonequality_array_pkey on t_nonequality_array (actual rows=5 loops=1)
    Index Cond: ((g = 0) AND (k <= 9) AND (k < ANY ('{2,5}'::integer[])))
-   Rows Removed by Index Recheck: 5
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1
-   Storage Table Rows Scanned: 10
-(6 rows)
+   Storage Table Rows Scanned: 5
+(5 rows)
 
 :explain_analyze SELECT * FROM t_nonequality_array WHERE g IN (0, 1) AND g > ANY ('{0,1}') ORDER BY k;
                                            QUERY PLAN                                            
@@ -1320,3 +1432,27 @@ SET yb_enable_advanced_index_cond_fold = off;
 
 RESET yb_enable_advanced_index_cond_fold;
 DROP TABLE t_nonequality_array;
+-- The same bounds on a descending column (#35030).
+CREATE TABLE t_nonequality_array_desc(g int, k int, PRIMARY KEY(g ASC, k DESC));
+INSERT INTO t_nonequality_array_desc SELECT g, k FROM generate_series(0, 1) g, generate_series(0, 9) k;
+:explain_analyze SELECT * FROM t_nonequality_array_desc WHERE g = 0 AND k > ANY ('{5,2}');
+                                             QUERY PLAN                                             
+----------------------------------------------------------------------------------------------------
+ Index Scan using t_nonequality_array_desc_pkey on t_nonequality_array_desc (actual rows=7 loops=1)
+   Index Cond: ((g = 0) AND (k > ANY ('{5,2}'::integer[])))
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
+   Storage Table Rows Scanned: 7
+(5 rows)
+
+:explain_analyze SELECT * FROM t_nonequality_array_desc WHERE g = 0 AND k <= ANY ('{2,5}');
+                                             QUERY PLAN                                             
+----------------------------------------------------------------------------------------------------
+ Index Scan using t_nonequality_array_desc_pkey on t_nonequality_array_desc (actual rows=6 loops=1)
+   Index Cond: ((g = 0) AND (k <= ANY ('{2,5}'::integer[])))
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
+   Storage Table Rows Scanned: 6
+(5 rows)
+
+DROP TABLE t_nonequality_array_desc;

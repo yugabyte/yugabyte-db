@@ -986,6 +986,113 @@ ybExtractScanKeys(ScanKey keys, int nkeys, YbOpaque ybScan)
 }
 
 /*
+ * Set the argument of a scalar copy of a non-equality array key to the array
+ * element that decides the condition: the greatest non-null element for < and
+ * <=, the least for > and >=.  As in _bt_find_extreme_element(), the opfamily
+ * of the index column defines the order.  With no non-null element, mark the
+ * key as a comparison with NULL instead.
+ */
+static void
+ybSetExtremeArrayElement(ScanKey key, Relation index)
+{
+	ArrayType  *arrayval = DatumGetArrayTypeP(key->sk_argument);
+	int16		elmlen;
+	bool		elmbyval;
+	char		elmalign;
+	Datum	   *elem_values;
+	bool	   *elem_nulls;
+	int			num_elems;
+	Oid			elemtype;
+	StrategyNumber strat;
+	Oid			cmp_op;
+	RegProcedure cmp_proc;
+	FmgrInfo	flinfo;
+	bool		found = false;
+	Datum		result = (Datum) 0;
+
+	get_typlenbyvalalign(ARR_ELEMTYPE(arrayval),
+						 &elmlen, &elmbyval, &elmalign);
+	deconstruct_array(arrayval, ARR_ELEMTYPE(arrayval),
+					  elmlen, elmbyval, elmalign,
+					  &elem_values, &elem_nulls, &num_elems);
+
+	elemtype = key->sk_subtype;
+	if (elemtype == InvalidOid)
+		elemtype = index->rd_opcintype[key->sk_attno - 1];
+	strat = (key->sk_strategy == BTLessStrategyNumber ||
+			 key->sk_strategy == BTLessEqualStrategyNumber ?
+			 BTGreaterStrategyNumber : BTLessStrategyNumber);
+	cmp_op = get_opfamily_member(index->rd_opfamily[key->sk_attno - 1],
+								 elemtype, elemtype, strat);
+	if (!OidIsValid(cmp_op))
+		elog(ERROR, "missing operator %d(%u,%u) in opfamily %u",
+			 strat, elemtype, elemtype,
+			 index->rd_opfamily[key->sk_attno - 1]);
+	cmp_proc = get_opcode(cmp_op);
+	if (!RegProcedureIsValid(cmp_proc))
+		elog(ERROR, "missing oprcode for operator %u", cmp_op);
+	fmgr_info(cmp_proc, &flinfo);
+
+	/* The btree operators are strict, so a NULL element never matches. */
+	for (int i = 0; i < num_elems; i++)
+	{
+		if (elem_nulls[i])
+			continue;
+		if (!found ||
+			DatumGetBool(FunctionCall2Coll(&flinfo, key->sk_collation,
+										   elem_values[i], result)))
+			result = elem_values[i];
+		found = true;
+	}
+	pfree(elem_values);
+	pfree(elem_nulls);
+
+	if (found)
+		key->sk_argument = result;
+	else
+	{
+		key->sk_argument = (Datum) 0;
+		key->sk_flags |= SK_ISNULL;
+	}
+}
+
+/*
+ * Replace each non-equality array key with a scalar key, which binds as a
+ * range bound like any other inequality.  DocDB binds an array only as an IN
+ * list, but as in _bt_preprocess_array_keys(), c > ANY (a) and c >= ANY (a)
+ * hold exactly when the comparison with the least non-null element of a holds,
+ * and c < ANY (a) and c <= ANY (a) when the comparison with the greatest does.
+ * An array with no non-null element makes the condition never true, which
+ * YbIsUnsatisfiableCondition reports for the NULL comparison that replaces it.
+ *
+ * The scalar keys are copies, because the keys belong to the caller and serve
+ * its rescans.  An array that is not yet evaluated holds (Datum) 0, and its
+ * copy keeps that value, as a scalar runtime key does.
+ */
+static void
+ybReduceInequalityArrayKeys(YbOpaque ybScan, Relation index)
+{
+	for (int i = 0; i < ybScan->nkeys; i += YbGetLengthOfKey(&ybScan->keys[i]))
+	{
+		ScanKey		key = ybScan->keys[i];
+		ScanKey		reduced;
+
+		if (!YbIsSearchArray(key) || YbIsRowHeader(key) ||
+			key->sk_strategy == BTEqualStrategyNumber)
+			continue;
+
+		Assert(index != NULL);
+		reduced = (ScanKey) palloc(sizeof(ScanKeyData));
+		*reduced = *key;
+		reduced->sk_flags &= ~SK_SEARCHARRAY;
+		if (!(key->sk_flags & SK_ISNULL) && key->sk_argument != (Datum) 0)
+			ybSetExtremeArrayElement(reduced, index);
+		ybScan->keys[i] = reduced;
+		ybScan->reduced_keys = lappend(ybScan->reduced_keys, reduced);
+	}
+}
+
+/*
  * Return whether the given conditions are unsatisfiable regardless of the
  * values in the index because of always FALSE or UNKNOWN conditions.
  */
@@ -2438,11 +2545,10 @@ ybBindOrdinaryScanKeys(YbOpaque ybScan, YbScanPlan scan_plan, Scan *scan,
 				}
 			}
 			/* INEQUALITY */
-			else if (!YbIsSearchArray(key) &&
-					 (key->sk_strategy == BTGreaterEqualStrategyNumber ||
-					  key->sk_strategy == BTGreaterStrategyNumber ||
-					  key->sk_strategy == BTLessEqualStrategyNumber ||
-					  key->sk_strategy == BTLessStrategyNumber))
+			else if (key->sk_strategy == BTGreaterEqualStrategyNumber ||
+					 key->sk_strategy == BTGreaterStrategyNumber ||
+					 key->sk_strategy == BTLessEqualStrategyNumber ||
+					 key->sk_strategy == BTLessStrategyNumber)
 			{
 				/* Contradicts IS NULL. */
 				if (fs->type == YB_FOLD_IS_NULL)
@@ -2489,11 +2595,6 @@ ybBindOrdinaryScanKeys(YbOpaque ybScan, YbScanPlan scan_plan, Scan *scan,
 			}
 			else
 			{
-				/*
-				 * Any other key, such as a non-equality array key (DocDB binds
-				 * an array only as an IN list), is left to the recheck.
-				 */
-				ybScan->needs_recheck = true;
 				continue;
 			}
 
@@ -2596,7 +2697,7 @@ ybBindOrdinaryScanKeys(YbOpaque ybScan, YbScanPlan scan_plan, Scan *scan,
 	{
 		ScanKey		key = ybScan->keys[i];
 
-		if (YbIsSearchArray(key) && key->sk_strategy == BTEqualStrategyNumber)
+		if (YbIsSearchArray(key))
 		{
 			ListCell   *lc;
 
@@ -2760,12 +2861,6 @@ ybBindOrdinaryScanKeys(YbOpaque ybScan, YbScanPlan scan_plan, Scan *scan,
 			case BTGreaterStrategyNumber:
 			case BTLessStrategyNumber:
 			case BTLessEqualStrategyNumber:
-				/* DocDB binds an array only as an IN list. */
-				if (YbIsSearchArray(key))
-				{
-					ybScan->needs_recheck = true;
-					break;
-				}
 				offsets[noffsets++] = i;
 				yb_switch_fallthrough();
 
@@ -3491,9 +3586,13 @@ YbPredetermineNeedsRecheck(Scan *scan,
 	YbOpaqueData ybscan = {0};
 
 	ybExtractScanKeys(keys, nkeys, &ybscan);
+	ybReduceInequalityArrayKeys(&ybscan, index);
 
 	if (YbIsUnsatisfiableCondition(ybscan.nkeys, ybscan.keys))
+	{
+		list_free_deep(ybscan.reduced_keys);
 		return false;
+	}
 
 	ybscan.table = relation;
 	ybscan.index = index;
@@ -3520,6 +3619,7 @@ YbPredetermineNeedsRecheck(Scan *scan,
 	bms_free(scan_plan.hash_key_cols);
 	bms_free(scan_plan.key_cols);
 	bms_free(scan_plan.qualified_scan_key_cols);
+	list_free_deep(ybscan.reduced_keys);
 	return ybscan.needs_recheck;
 }
 
@@ -3565,6 +3665,7 @@ YbBeginScan(Relation table,
 
 	/* Flatten keys and store the results in ybScan. */
 	ybExtractScanKeys(keys, nkeys, ybScan);
+	ybReduceInequalityArrayKeys(ybScan, index);
 
 	if (YbIsUnsatisfiableCondition(ybScan->nkeys, ybScan->keys))
 	{
@@ -3863,6 +3964,7 @@ ybc_free_ybscan(YbOpaque ybscan)
 	if (PointerIsValid(ybscan))
 	{
 		YBCPgDeleteStatement(ybscan->handle);
+		list_free_deep(ybscan->reduced_keys);
 		pfree(ybscan);
 	}
 }

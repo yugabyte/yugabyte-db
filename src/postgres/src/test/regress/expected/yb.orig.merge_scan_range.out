@@ -1338,11 +1338,10 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=4571 loops=1)
                Output: r2, r3, r4, r5, n, r1
                Index Cond: (r5n.r1 > ANY ('{0,2,4,6,8}'::integer[]))
-               Rows Removed by Index Recheck: 477
                Storage Table Read Requests: 224
-               Storage Table Read Ops: 320
-               Storage Table Rows Scanned: 5048
-(13 rows)
+               Storage Table Read Ops: 291
+               Storage Table Rows Scanned: 4571
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 > ANY (ARRAY[0, 2, 4, 6, 8]) ORDER BY r2, r3, r4, r5, n LIMIT 5;
 (output identical to previous)
@@ -5144,7 +5143,7 @@ EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_mer
 \set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
 -- (Drop this index)
 DROP INDEX r5n_r2_expr_r21_expr1_r22_r5_idx;
--- A non-equality array condition on a stream column is left to the recheck,
+-- A non-equality array condition on a stream column binds as a range bound,
 -- even when its array equals the stream IN list (#35030).
 \set query ':P :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (0, 2, 4, 6, 8) AND r1 > ANY (ARRAY[0, 2, 4, 6, 8]) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
 \i :run_query
@@ -5162,11 +5161,10 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=2083 loops=1)
                Output: r2, r3, r4, r5, n, r1
                Index Cond: ((r5n.r1 = ANY ('{0,2,4,6,8}'::integer[])) AND (r5n.r1 > ANY ('{0,2,4,6,8}'::integer[])))
-               Rows Removed by Index Recheck: 477
-               Storage Table Read Requests: 99
-               Storage Table Read Ops: 165
-               Storage Table Rows Scanned: 2560
-(13 rows)
+               Storage Table Read Requests: 98
+               Storage Table Read Ops: 134
+               Storage Table Rows Scanned: 2083
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (0, 2, 4, 6, 8) AND r1 > ANY (ARRAY[0, 2, 4, 6, 8]) ORDER BY r2, r3, r4, r5, n LIMIT 5;
                                                      QUERY PLAN                                                      
@@ -5186,8 +5184,8 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Merge Streams: 5
                Merge Cond: (r5n.r1 = ANY ('{0,2,4,6,8}'::integer[]))
                Storage Table Read Requests: 1
-               Storage Table Read Ops: 5
-               Storage Table Rows Scanned: 25
+               Storage Table Read Ops: 4
+               Storage Table Rows Scanned: 20
 (17 rows)
 
 /*+Set(yb_max_merge_scan_streams 0)*/ SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (0, 2, 4, 6, 8) AND r1 > ANY (ARRAY[0, 2, 4, 6, 8]) ORDER BY r2, r3, r4, r5, n LIMIT 5;
@@ -5375,9 +5373,8 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 
 /*+Set(yb_max_merge_scan_streams 64)*/ SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5, 6) AND r1 IN (3, 4, 5, 6, 7) AND r1 IN (5, 6, 7, 8, 9, 10) ORDER BY r2, r3, r4, r5, n LIMIT 5;
 (output identical to previous)
--- The stream IN list is bound first, and the non-equality array condition with
--- the same elements is left to the recheck, not bound as a second IN list
--- (#35030).
+-- The stream IN list is bound first, so the range bound of the non-equality
+-- array condition with the same elements is left to the recheck (#35030).
 \set query ':P :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (0, 2, 4, 6, 8) AND r1 > ANY (ARRAY[0, 2, 4, 6, 8]) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
 \i :run_query
 \set _echo_run_query :ECHO

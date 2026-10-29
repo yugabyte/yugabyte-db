@@ -294,24 +294,57 @@ DROP TABLE t_i2, t_i4, t_i8, t_f4, t_f8, t_num, t_txt;
 
 ---
 --- Non-equality array conditions.  DocDB binds an array only as an IN list,
---- so such a condition is left to the recheck whatever other conditions its
---- column has; it never becomes a bound of the column (#35030).
+--- but k > ANY (a) holds exactly when k is greater than the least non-null
+--- element of a, and k < ANY (a) when k is less than the greatest, so the
+--- scan binds such a condition as that range bound, alone or with other
+--- conditions on its column.  A scan that read the array as a single value of
+--- the column type would return wrong rows here (#35030).
 ---
 
 CREATE TABLE t_nonequality_array(g int, k int, PRIMARY KEY(g ASC, k ASC));
 INSERT INTO t_nonequality_array SELECT g, k FROM generate_series(0, 1) g, generate_series(0, 9) k;
+-- alone on its column
+:explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k > ANY ('{5,2}');
+-- with a range, an equality and an IN list on the same column
 :explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k >= 0 AND k > ANY ('{2,5}');
 :explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k <= 9 AND k < ANY ('{2,5}');
 :explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k = 5 AND k > ANY ('{2,7}');
 :explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k IN (1, 4, 8) AND k > ANY ('{2,5}');
+-- a NULL element never matches, so 5 decides the bound
+:explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k >= ANY ('{NULL,5}');
+-- an empty or all-NULL array matches no row, so the scan sends no request
+:explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k > ANY ('{}');
+:explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k <= ANY ('{NULL}');
+-- bigint elements bind while the deciding one fits the int column; one that
+-- does not is left to the recheck
+:explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k > ANY ('{2,5}'::bigint[]);
+:explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k > ANY ('{3000000000,4000000000}'::bigint[]);
 -- an IN list and a non-equality array with the same elements
 :explain_analyze SELECT * FROM t_nonequality_array WHERE g IN (0, 1) AND g > ANY ('{0,1}') ORDER BY k;
--- the recheck keeps the aggregate from being pushed down
+-- the bound needs no recheck, so the aggregate is pushed down
 :explain_analyze SELECT count(*) FROM t_nonequality_array WHERE g = 0 AND k >= 0 AND k > ANY ('{2,5}');
+SELECT count(*) FROM t_nonequality_array WHERE g = 0 AND k >= 0 AND k > ANY ('{2,5}');
+-- a parameter array, which the pushdown check sees before it is evaluated
+SET plan_cache_mode = force_generic_plan;
+PREPARE nonequality_array_count(int[]) AS SELECT count(*) FROM t_nonequality_array WHERE g = 0 AND k > ANY ($1);
+:explain_analyze EXECUTE nonequality_array_count('{5,2}');
+EXECUTE nonequality_array_count('{5,2}');
+:explain_analyze EXECUTE nonequality_array_count('{}');
+EXECUTE nonequality_array_count('{}');
+DEALLOCATE nonequality_array_count;
+RESET plan_cache_mode;
 SET yb_enable_advanced_index_cond_fold = off;
+:explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k > ANY ('{5,2}');
 :explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k >= 0 AND k > ANY ('{2,5}');
 :explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k <= 9 AND k < ANY ('{2,5}');
 :explain_analyze SELECT * FROM t_nonequality_array WHERE g IN (0, 1) AND g > ANY ('{0,1}') ORDER BY k;
 RESET yb_enable_advanced_index_cond_fold;
 
 DROP TABLE t_nonequality_array;
+
+-- The same bounds on a descending column (#35030).
+CREATE TABLE t_nonequality_array_desc(g int, k int, PRIMARY KEY(g ASC, k DESC));
+INSERT INTO t_nonequality_array_desc SELECT g, k FROM generate_series(0, 1) g, generate_series(0, 9) k;
+:explain_analyze SELECT * FROM t_nonequality_array_desc WHERE g = 0 AND k > ANY ('{5,2}');
+:explain_analyze SELECT * FROM t_nonequality_array_desc WHERE g = 0 AND k <= ANY ('{2,5}');
+DROP TABLE t_nonequality_array_desc;

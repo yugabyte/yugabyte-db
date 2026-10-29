@@ -1339,11 +1339,10 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=4571 loops=1)
                Output: r2, r3, r4, r5, n, r1
                Index Cond: (r5n.r1 > ANY ('{0,2,4,6,8}'::integer[]))
-               Rows Removed by Index Recheck: 477
-               Storage Table Read Requests: 316
-               Storage Table Read Ops: 316
-               Storage Table Rows Scanned: 5048
-(13 rows)
+               Storage Table Read Requests: 286
+               Storage Table Read Ops: 286
+               Storage Table Rows Scanned: 4571
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 > ANY (ARRAY[0, 2, 4, 6, 8]) ORDER BY r2, r3, r4, r5, n LIMIT 5;
 (output identical to previous)
