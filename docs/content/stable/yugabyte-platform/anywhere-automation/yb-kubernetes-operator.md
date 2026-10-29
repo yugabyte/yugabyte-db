@@ -42,7 +42,7 @@ The following additional CRDs support day 2 operations.
 | [PitrRestore](#restore-from-pitr) | Restore a universe to a point in time using a PITR configuration. |
 | [DrConfig](#configure-xcluster-dr) | Create and manage [xCluster DR](../../back-up-restore-universes/disaster-recovery/) configurations. |
 | [YBCertificate](#configure-tls-certificates) | Configure TLS certificates for encryption in transit (self-signed or cert-manager). |
-| [UniverseServerCertRotation](#rotate-server-certificates) | Rotate node and client certificates on a universe that already has encryption in transit (available in v2026.1.2.1 or later). |
+| [UniverseServerCertRotation](#rotate-server-certificates) | Rotate node and client certificates on a universe that already has encryption in transit (available in v2026.1.3 or later). |
 | [KMSConfig](#configure-encryption-at-rest) | Configure a KMS for encryption at rest (available in v2026.1.2 or later). |
 | [UniverseKeyRotation](#rotate-the-universe-key) | Rotate the universe key for an encryption-at-rest-enabled universe (available in v2026.1.2 or later). |
 
@@ -1356,12 +1356,18 @@ spec:
 
 ### Edit encryption in transit
 
-Available in YugabyteDB Anywhere v2026.1.2.1 and later.
+Available in YugabyteDB Anywhere v2026.1.3 and later.
 
 You can change [encryption in transit](../../security/enable-encryption-in-transit/) on an existing universe by editing the YBUniverse resource:
 
 - Set `enableNodeToNodeEncrypt` and `enableClientToNodeEncrypt` to turn encryption in transit on or off.
-- Set `rootCA` to the name of a YBCertificate to use that certificate as the root CA. Changing `rootCA` on a universe that already has encryption in transit rotates the root certificate.
+- Set `rootCA` to the name of a YBCertificate to use that certificate as the root CA. Changing `rootCA` on a universe that already has encryption in transit rotates the root certificate and follows the universe's `upgradeOption`.
+
+{{< warning title="Toggle restarts all nodes at once" >}}
+
+Turning encryption in transit on or off always does a non-rolling restart of all nodes, whatever `upgradeOption` is set to. The universe is unavailable during that restart.
+
+{{< /warning >}}
 
 If the task fails, the operator retries it.
 
@@ -1502,4 +1508,5 @@ Importing a universe to the operator creates or adopts the following in the targ
 
 - Currently, YugabyteDB Kubernetes Operator does not support the following features:
   - Software upgrade rollback
-  - [Encryption at rest](../../security/enable-encryption-at-rest/) (prior to v2026.1.2)
+  - [Encryption at rest](../../security/enable-encryption-at-rest/) (prior to v2026.1.2; supported in v2026.1.2 and later)
+- [Encryption in transit](../../security/enable-encryption-in-transit/) configuration cannot be edited after it is initially configured (prior to v2026.1.3; supported in v2026.1.3 and later).
