@@ -1926,6 +1926,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Calculate the total number of replicas which are being handled by servers in state.
   int64_t GetNumRelevantReplicas(const BlacklistPB& state, bool leaders_only);
 
+  // Latches once every live tserver has completed a full tablet report after the catalog load.
+  // Call before scanning replica maps; callers must hold the leader lock against catalog reloads.
+  bool AreTabletReportsComplete();
+
   std::shared_ptr<YsqlTablespaceManager> GetTablespaceManager() const;
 
   Result<std::map<std::string, KeyRange>> GetTableKeyRanges(const TableId& table_id);
@@ -3490,6 +3494,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};
+
+  std::atomic<bool> tablet_reports_complete_{false};
 
   std::unique_ptr<rpc::ScheduledTaskTracker> refresh_yql_partitions_task_;
 

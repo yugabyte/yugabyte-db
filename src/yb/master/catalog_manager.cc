@@ -1660,6 +1660,7 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
     ts_desc->set_has_tablet_report(false);
     ts_desc->ResetYsqlDbPins();
   }
+  tablet_reports_complete_.store(false, std::memory_order_release);
 
   {
     LockGuard lock(permissions_manager()->mutex());
@@ -13691,6 +13692,29 @@ int64_t CatalogManager::GetNumRelevantReplicas(const BlacklistPB& blacklist, boo
   }
 
   return res;
+}
+
+bool CatalogManager::AreTabletReportsComplete() {
+  if (tablet_reports_complete_.load(std::memory_order_acquire)) {
+    return true;
+  }
+  TSDescriptorVector descs;
+  master_->ts_manager()->GetAllLiveDescriptors(&descs);
+  if (descs.empty()) {
+    return false;
+  }
+  for (const auto& desc : descs) {
+    if (!desc->has_tablet_report()) {
+      YB_LOG_EVERY_N_SECS(INFO, 60)
+          << "Waiting for a full tablet report from " << desc->permanent_uuid()
+          << " before trusting replica maps for blacklist completion";
+      return false;
+    }
+  }
+  // A full report reconstructs each reported tablet's replica map from its Raft config. Once
+  // populated, the maps survive tserver restarts, so later registrations need not reopen the latch.
+  tablet_reports_complete_.store(true, std::memory_order_release);
+  return true;
 }
 
 void CatalogManager::ResetTasksTrackers() {
