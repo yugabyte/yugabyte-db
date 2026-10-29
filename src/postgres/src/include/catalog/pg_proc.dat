@@ -12383,4 +12383,9 @@
   proargmodes => '{i,i,i,i,i,i,o,o}',
   proargnames => '{source_table,target_table,transform_fn,read_time_ht,partition_key,bfinstr,rows_processed,next_bfinstr}',
   prosrc => 'yb_backfill_online_schema_change_chunk' },
+
+{ oid => '8128',
+  descr => 'trigger function for online online schema change',
+  proname => 'yb_online_schema_change_trigger', provolatile => 'v', prorettype => 'trigger',
+  proargtypes => '', prosrc => 'yb_online_schema_change_trigger' },
 ]
