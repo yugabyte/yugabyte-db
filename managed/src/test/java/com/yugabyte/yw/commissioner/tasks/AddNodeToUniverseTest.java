@@ -675,7 +675,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
 
   // PLAT-23125: a node that gains a master gets one fail-fast refresh, after the address updates.
   @Test
-  public void testAddNodeWithUnderReplicatedMasterRefreshesOtelCollector() {
+  public void testAddNodeWithUnderReplicatedMasterRewritesOtelCollector() {
     UniverseModifyBaseTest.mockMasterAndPeerRoles(
         mockClient, ImmutableList.of("10.0.0.1", "10.0.0.2", "10.0.0.3"));
     Universe.saveDetails(
@@ -709,7 +709,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
             .max()
             .getAsInt();
     assertTrue(refreshes.get(0).getPosition() > lastAddressUpdate);
-    assertOtelRefreshesRunLast(taskInfo);
+    assertOtelRewritesRunLast(taskInfo);
   }
 
   @Test

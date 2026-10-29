@@ -90,7 +90,7 @@ public class SyncMasterAddresses extends UniverseDefinitionTaskBase {
       createMasterAddressUpdateTask(
           universe, pendingMasters, pendingTservers, false /* ignore error */);
       // Drop the master target from stopped stray masters. Best effort.
-      queueOtelCollectorMetricsRefresh(nonMasterActiveNodes, true /* ignoreErrors */);
+      queueOtelCollectorConfigRewrite(nonMasterActiveNodes, true /* ignoreErrors */);
       createUpdateUniverseFieldsTask(u -> u.getNodes().forEach(n -> n.autoSyncMasterAddrs = false));
       createMarkUniverseUpdateSuccessTasks(universe.getUniverseUUID());
       getRunnableTask().runSubTasks();

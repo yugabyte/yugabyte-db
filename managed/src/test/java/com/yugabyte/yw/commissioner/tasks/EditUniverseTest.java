@@ -2989,7 +2989,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   // PLAT-23125: an RF increase starts masters on existing nodes. Their configure step only updates
   // gflags, so their collector config has no master target until it is rewritten.
   @Test
-  public void testIncreaseRfRefreshesOtelCollectorOnNewMasters() {
+  public void testIncreaseRfRewritesOtelCollectorOnNewMasters() {
     prepareUniverseForRfIncrease();
     enableMetricsExport(defaultUniverse.getUniverseUUID());
     Universe universe =
@@ -3061,7 +3061,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
             .max()
             .getAsInt();
     assertTrue(firstRefresh > lastMasterChange);
-    assertOtelRefreshesRunLast(taskInfo);
+    assertOtelRewritesRunLast(taskInfo);
   }
 
   // PLAT-23125: an expand that moves a master leaves the old master node in the universe as a
@@ -3073,7 +3073,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   }
 
   @Test
-  public void testMoveMasterRefreshesOtelCollectorOnDemotedMaster() {
+  public void testMoveMasterRewritesOtelCollectorOnDemotedMaster() {
     Universe universe = setUpMetricsExportForEdit();
     Set<String> oldMasters =
         universe.getMasters().stream().map(n -> n.nodeName).collect(Collectors.toSet());
@@ -3146,7 +3146,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   // A full move removes the old masters (ToBeRemoved) and starts new ones (ToBeAdded, configured
   // with the master target), so no node needs a collector refresh.
   @Test
-  public void testFullMoveDoesNotRefreshOtelCollector() {
+  public void testFullMoveDoesNotRewriteOtelCollector() {
     Universe universe = setUpMetricsExportForEdit();
     UniverseDefinitionTaskParams taskParams = performFullMove(universe);
     taskParams.expectedUniverseVersion = -1;

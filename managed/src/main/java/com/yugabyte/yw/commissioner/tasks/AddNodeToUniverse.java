@@ -369,7 +369,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       }
       // isMaster covers a retry, where addMaster is already false.
       if (addMaster || currentNode.isMaster) {
-        queueOtelCollectorMetricsRefresh(nodeSet, false /* ignoreErrors */);
+        queueOtelCollectorConfigRewrite(nodeSet, false /* ignoreErrors */);
       }
 
       // Add node to load balancer.

@@ -310,20 +310,20 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
   // PLAT-23125: a node can lose its master while stopped, so start node rewrites its collector
   // config for its current roles.
   @Test
-  public void testStartNodeRefreshesOtelCollectorWhenMetricsExportEnabled() {
+  public void testStartNodeRewritesOtelCollectorWhenMetricsExportEnabled() {
     assertEquals(Map.of("host-n1", false), startNodeWithMetricsExport(false /* startMaster */));
   }
 
   // The master start refreshes the node, so the later refresh for a lost master must not run
   // again (PLAT-23125).
   @Test
-  public void testStartNodeWithMasterStartRefreshesOtelCollectorOnce() {
+  public void testStartNodeWithMasterStartRewritesOtelCollectorOnce() {
     assertEquals(Map.of("host-n1", false), startNodeWithMetricsExport(true /* startMaster */));
   }
 
   // A dedicated tserver node never runs a master, so its start must not rewrite the collector.
   @Test
-  public void testStartDedicatedTserverNodeSkipsOtelCollectorRefresh() {
+  public void testStartDedicatedTserverNodeSkipsOtelCollectorRewrite() {
     assertEquals(Map.of(), startNodeWithMetricsExport(false, true /* dedicatedTserver */));
   }
 
@@ -367,7 +367,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
             .filter(t -> t.getTaskType() == TaskType.ManageOtelCollector)
             .collect(Collectors.toList());
     if (!refreshes.isEmpty()) {
-      assertOtelRefreshesRunLast(taskInfo);
+      assertOtelRewritesRunLast(taskInfo);
     }
     return refreshes.stream()
         .collect(

@@ -160,7 +160,7 @@ public class MasterFailoverTaskTest extends CommissionerBaseTest {
   // drop the master target. The node is often unhealthy, so a failed refresh must not fail the
   // failover.
   @Test
-  public void testMasterFailoverRefreshesOtelCollectorOnOldMasterBestEffort() throws Exception {
+  public void testMasterFailoverRewritesOtelCollectorOnOldMasterBestEffort() throws Exception {
     Universe universe = enableMetricsExport(defaultUniverse.getUniverseUUID());
     String oldMasterIp = universe.getNode("host-n1").cloudInfo.private_ip;
     // The old master is unreachable: its collector refresh fails.
@@ -222,13 +222,13 @@ public class MasterFailoverTaskTest extends CommissionerBaseTest {
             .max()
             .getAsInt();
     assertTrue(oldMasterRefresh > lastAddressUpdate);
-    assertOtelRefreshesRunLast(taskInfo);
+    assertOtelRewritesRunLast(taskInfo);
   }
 
   // A failover that could not reach the old master leaves its collector config with the master
   // target. When the node comes back, the sync that stops its master must drop that target too.
   @Test
-  public void testSyncMasterAddressesRefreshesOtelCollectorOnStoppedMaster() throws Exception {
+  public void testSyncMasterAddressesRewritesOtelCollectorOnStoppedMaster() throws Exception {
     enableMetricsExport(defaultUniverse.getUniverseUUID());
     Universe universe =
         Universe.saveDetails(
@@ -271,13 +271,13 @@ public class MasterFailoverTaskTest extends CommissionerBaseTest {
             .max()
             .getAsInt();
     assertTrue(refresh > lastAddressUpdate);
-    assertOtelRefreshesRunLast(taskInfo);
+    assertOtelRewritesRunLast(taskInfo);
   }
 
   // A best-effort refresh must not swallow an abort, even when the interrupt arrives wrapped in a
   // RuntimeException, as from a node agent call.
   @Test
-  public void testMasterFailoverOtelRefreshRethrowsWrappedInterrupt() throws Exception {
+  public void testMasterFailoverOtelRewriteRethrowsWrappedInterrupt() throws Exception {
     Universe universe = enableMetricsExport(defaultUniverse.getUniverseUUID());
     String oldMasterIp = universe.getNode("host-n1").cloudInfo.private_ip;
     when(mockNodeAgentClient.getAndUpgradeOrThrow(any()))

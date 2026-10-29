@@ -722,7 +722,7 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       // Do this once after all the master addresses are frozen as this is expensive.
       createXClusterConfigUpdateMasterAddressesTask();
       // Existing nodes whose master role changed.
-      queueOtelCollectorMetricsRefresh(
+      queueOtelCollectorConfigRewrite(
           Sets.union(existingNodesToStartMaster, demotedStayingNodes), false /* ignoreErrors */);
     }
   }

@@ -271,7 +271,7 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
   // Resume does not change master roles, and configure already wrote the master target, so the
   // master start must not plan a collector refresh.
   @Test
-  public void testResumeUniverseSkipsOtelCollectorRefresh() {
+  public void testResumeUniverseSkipsOtelCollectorRewrite() {
     setupUniverse(false, 1);
     defaultUniverse = enableMetricsExport(defaultUniverse.getUniverseUUID());
     ResumeUniverse.Params taskParams = new ResumeUniverse.Params();

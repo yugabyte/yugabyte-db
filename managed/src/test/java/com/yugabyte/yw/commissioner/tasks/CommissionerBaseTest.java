@@ -1604,8 +1604,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     }
   }
 
-  // Collector refreshes run last, just before the universe update is marked successful.
-  protected void assertOtelRefreshesRunLast(TaskInfo taskInfo) {
+  // Collector config rewrites run last, just before the universe update is marked successful.
+  protected void assertOtelRewritesRunLast(TaskInfo taskInfo) {
     int firstRefresh =
         taskInfo.getSubTasks().stream()
             .filter(t -> t.getTaskType() == TaskType.ManageOtelCollector)

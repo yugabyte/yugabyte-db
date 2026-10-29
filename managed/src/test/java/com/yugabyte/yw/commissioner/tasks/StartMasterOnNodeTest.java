@@ -250,7 +250,7 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
   // PLAT-23125: the master-start configure step only updates gflags and does not write the
   // collector config, so the new master must get its collector config rewritten.
   @Test
-  public void testStartMasterOnNodeRefreshesOtelCollectorWhenMetricsExportEnabled() {
+  public void testStartMasterOnNodeRewritesOtelCollectorWhenMetricsExportEnabled() {
     enableMetricsExport(defaultUniverse.getUniverseUUID());
     Universe universe =
         Universe.saveDetails(
@@ -291,7 +291,7 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
             .max()
             .getAsInt();
     assertTrue(refreshes.get(0).getPosition() > lastAddressUpdate);
-    assertOtelRefreshesRunLast(taskInfo);
+    assertOtelRewritesRunLast(taskInfo);
   }
 
   @Test

@@ -277,7 +277,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
   // Configure writes the master target on a new universe, so the master start must not plan a
   // collector refresh. The install runs during provisioning, not as ManageOtelCollector.
   @Test
-  public void testCreateUniverseWithMetricsExportSkipsOtelCollectorRefresh() {
+  public void testCreateUniverseWithMetricsExportSkipsOtelCollectorRewrite() {
     Universe universe = enableMetricsExport(defaultUniverse.getUniverseUUID());
     UniverseDefinitionTaskParams taskParams = getTaskParams(true);
     taskParams.getPrimaryCluster().userIntent.metricsExportConfig =

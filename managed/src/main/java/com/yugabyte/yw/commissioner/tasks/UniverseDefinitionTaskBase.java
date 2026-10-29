@@ -188,9 +188,9 @@ import play.libs.Json;
 @Slf4j
 public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
-  // Collector refreshes queued by queueOtelCollectorMetricsRefresh, by node name.
-  private final Map<String, NodeDetails> otelRefreshNodes = new LinkedHashMap<>();
-  private final Map<String, Boolean> otelRefreshIgnoreErrors = new HashMap<>();
+  // Collector config rewrites queued by queueOtelCollectorConfigRewrite, by node name.
+  private final Map<String, NodeDetails> otelRewriteNodes = new LinkedHashMap<>();
+  private final Map<String, Boolean> otelRewriteIgnoreErrors = new HashMap<>();
 
   @Inject
   protected UniverseDefinitionTaskBase(BaseTaskDependencies baseTaskDependencies) {
@@ -827,11 +827,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         universe, currentNode, stoppingNode, ignoreMasterAddrsUpdateError, keepTserverRunning);
     // In failover, also the old node, which stays a tserver; best effort, since that node is often
     // unhealthy.
-    Set<NodeDetails> refreshNodes = new HashSet<>(nodeSet);
+    Set<NodeDetails> rewriteNodes = new HashSet<>(nodeSet);
     if (stoppingNode != null && keepTserverRunning && isStoppable) {
-      refreshNodes.add(stoppingNode);
+      rewriteNodes.add(stoppingNode);
     }
-    queueOtelCollectorMetricsRefresh(refreshNodes, keepTserverRunning /* ignoreErrors */);
+    queueOtelCollectorConfigRewrite(rewriteNodes, keepTserverRunning /* ignoreErrors */);
   }
 
   public void ensureRemoteProcessState(
@@ -3103,11 +3103,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * Queues a collector config rewrite on the nodes for their new master role. It runs last, before
    * the task succeeds, so it cannot delay the role change. A node fails fast if any caller asks.
    */
-  protected void queueOtelCollectorMetricsRefresh(
+  protected void queueOtelCollectorConfigRewrite(
       Collection<NodeDetails> nodes, boolean ignoreErrors) {
     for (NodeDetails node : nodes) {
-      otelRefreshNodes.putIfAbsent(node.nodeName, node);
-      otelRefreshIgnoreErrors.merge(node.nodeName, ignoreErrors, Boolean::logicalAnd);
+      otelRewriteNodes.putIfAbsent(node.nodeName, node);
+      otelRewriteIgnoreErrors.merge(node.nodeName, ignoreErrors, Boolean::logicalAnd);
     }
   }
 
@@ -3115,17 +3115,17 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   protected void createFinalSubTasks() {
     super.createFinalSubTasks();
     for (boolean ignoreErrors : new boolean[] {false, true}) {
-      createOtelCollectorMetricsRefreshTasks(
-          otelRefreshNodes.values().stream()
-              .filter(n -> otelRefreshIgnoreErrors.get(n.nodeName) == ignoreErrors)
+      createOtelCollectorConfigRewriteTasks(
+          otelRewriteNodes.values().stream()
+              .filter(n -> otelRewriteIgnoreErrors.get(n.nodeName) == ignoreErrors)
               .collect(Collectors.toList()),
           ignoreErrors);
     }
-    otelRefreshNodes.clear();
-    otelRefreshIgnoreErrors.clear();
+    otelRewriteNodes.clear();
+    otelRewriteIgnoreErrors.clear();
   }
 
-  private void createOtelCollectorMetricsRefreshTasks(
+  private void createOtelCollectorConfigRewriteTasks(
       Collection<NodeDetails> nodes, boolean ignoreErrors) {
     if (nodes.isEmpty()) {
       return;
