@@ -86,6 +86,9 @@ class FlushJob {
   TableProperties GetTableProperties() const { return table_properties_; }
   bool filter_failed() const { return filter_failed_; }
 
+  // False when Run found no memtable to flush, e.g. the flush filter held them all back.
+  bool picked_memtables() const { return picked_memtables_; }
+
  private:
   void ReportStartedFlush();
   void RecordFlushIOStats();
@@ -115,6 +118,7 @@ class FlushJob {
   EventLogger* event_logger_;
   yb::ash::WaitStateInfoPtr wait_state_;
   TableProperties table_properties_;
+  bool picked_memtables_ = false;
 };
 
 }  // namespace rocksdb

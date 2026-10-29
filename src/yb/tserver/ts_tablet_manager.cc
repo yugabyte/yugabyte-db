@@ -2620,6 +2620,7 @@ void TSTabletManager::OpenTablet(
             .allow_compaction_failures = allow_compaction_failures,
         },
         .log_prefix_suffix = " P " + tablet_peer->permanent_uuid(),
+        .tablet_context = tablet_peer.get(),
         .transaction_participant_context = tablet_peer.get(),
         .local_tablet_filter = std::bind(&TSTabletManager::PreserveLocalLeadersOnly, this, _1),
         .transaction_coordinator_context = tablet_peer.get(),

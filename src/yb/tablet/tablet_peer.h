@@ -53,6 +53,7 @@
 #include "yb/tablet/preparer.h"
 #include "yb/tablet/tablet_bootstrap_state_flusher.h"
 #include "yb/tablet/tablet_bootstrap_state_manager.h"
+#include "yb/tablet/tablet_context.h"
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/transaction_coordinator.h"
@@ -149,6 +150,7 @@ YB_DEFINE_ENUM(TabletObjectState,
 // class also splits the work and coordinates multi-threaded execution.
 class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
                    public consensus::ConsensusContext,
+                   public TabletContext,
                    public TransactionParticipantContext,
                    public TransactionCoordinatorContext,
                    public WriteQueryContext {
@@ -667,6 +669,9 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   Result<HybridTime> ReportReadRestart() override;
 
   Result<FixedHybridTimeLease> HybridTimeLease(HybridTime min_allowed, CoarseTimePoint deadline);
+
+  log::WalEntryState WalState(const OpId& op_id) override;
+
   Result<HybridTime> PreparePeerRequest() override;
   Status MajorityReplicated(const OpId& committed_op_id) override;
   void BecomeReplica() override;
