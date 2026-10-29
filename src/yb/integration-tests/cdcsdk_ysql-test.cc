@@ -251,7 +251,7 @@ void CDCSDKYsqlTest::TestCDCLagMetric(CDCCheckpointType checkpoint_type) {
 CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(CDCSDKYsqlTest, TestCDCLagMetric);
 
 // Sent lag must not spike when a peer becomes leader again, before it serves GetChanges.
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSentLagNoSpikeAfterLeaderChange)) {
+TEST_F(CDCSDKYsqlTest, TestSentLagNoSpikeAfterLeaderChange) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_metrics_interval_ms) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
