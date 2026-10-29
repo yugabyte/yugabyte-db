@@ -272,3 +272,25 @@ ALTER TABLE altercoltab RENAME COLUMN j TO k;
 SELECT * FROM altercoltab WHERE a && '{1}';
 -- Cleanup
 DROP TABLE altercoltab;
+
+--
+-- Prefix match on a non-C collation
+--
+
+-- Setup
+CREATE DATABASE ybgin_en_us_db LOCALE "en_US.UTF-8" TEMPLATE template0;
+\c ybgin_en_us_db
+CREATE TABLE vectors (i serial PRIMARY KEY, v tsvector);
+CREATE INDEX ON vectors USING ybgin (v);
+INSERT INTO vectors (v) VALUES
+    ('c-c'),
+    ('c-d'),
+    ('c-zz');
+-- Test the scan fails because yb_make_greater_string does not give a reliable
+-- upper bound in a non-C collation.  Otherwise, it would miss 'c-zz': en_US
+-- ignores "-" at the first comparison level, so 'c-zz' sorts after the greater
+-- string for 'c-'.
+SELECT $$
+:P /*+IndexScan(vectors)*/ SELECT v FROM vectors WHERE v @@ '''c-'':*' ORDER BY i;
+$$ AS query \gset
+\i :run_query

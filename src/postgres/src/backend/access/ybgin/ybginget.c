@@ -42,6 +42,7 @@
 #include "utils/elog.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#include "utils/pg_locale.h"
 #include "utils/rel.h"
 #include "utils/selfuncs.h"
 #include "utils/yb_like_support.h"
@@ -262,30 +263,29 @@ get_greaterstr(Datum prefix, Oid datatype, Oid colloid)
 	Oid			opfamily;
 	Oid			oproid;
 
-	/* yb_make_greater_string cannot accurately handle non-C collations. */
-	/*
-	 * YB_TODO_PG19MERGE: see src/backend/utils/adt/pg_locale.c, this function
-	 * no longer exists.
-	 */
-#if 0
-	if (!lc_collate_is_c(colloid))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("cannot handle ybgin scans with prefix on non-C collation %u",
-						colloid)));
-#endif
-
 	/*
 	 * For now, hardcode to assume type is text.  This is true for the four
 	 * native postgres ybgin opclasses, but it may no longer be true when
 	 * supporting extensions like btree_gin.  This assumption makes finding
 	 * opfamily and operator easier.
+	 *
+	 * Check this before the collation: initGinState leaves colloid invalid
+	 * only for a non-collatable key type, and pg_newlocale_from_collation
+	 * would fail on an invalid collation with an internal error instead of
+	 * this one.
 	 */
 	if (datatype != TEXTOID)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("cannot handle ybgin scans with prefix on key type %u",
 						datatype)));
+
+	/* yb_make_greater_string cannot accurately handle non-C collations. */
+	if (!pg_newlocale_from_collation(colloid)->collate_is_c)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot handle ybgin scans with prefix on non-C collation %u",
+						colloid)));
 
 	opfamily = TEXT_LSM_FAM_OID;
 	oproid = get_opfamily_member(opfamily, datatype, datatype,
