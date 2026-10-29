@@ -479,7 +479,7 @@ class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase 
           SeekToCumulativeEntryCount(iter, position, &entries_before);
       if (!entries_through_result.ok()) {
         // status_ is sticky, so NotSupported (a file without counts) is only returned: the caller
-        // can still fall back to Seek/Next on this iterator.
+        // can still reposition this iterator with Seek and walk from there.
         if (!entries_through_result.status().IsNotSupported()) {
           SaveError(entries_through_result.status());
         }
@@ -489,6 +489,8 @@ class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase 
       if (!iter->Valid()) {
         return iter == iter_.data() ? Entry() : fail_count_mismatch();
       }
+      // Holds by construction, even for corrupt counts: SeekToCumulativeEntryCount only returns a
+      // count above `position`, and only sets entries_before to counts at or below it.
       RSTATUS_DCHECK_GT(
           entries_through, entries_before, Corruption,
           "Cumulative entry count isn't above the count before the block");
@@ -508,7 +510,7 @@ class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase 
         return fail_count_mismatch();
       }
       // Entries share restart points (index_block_restart_interval > 1), so the entry can't be
-      // reached directly. Seek/Next still work.
+      // reached directly. The iterator can still be repositioned with Seek.
       return STATUS(NotSupported, "SeekToPosition() requires index_block_restart_interval = 1");
     }
     iter->SeekToRestart(static_cast<uint32_t>(position - entries_before));

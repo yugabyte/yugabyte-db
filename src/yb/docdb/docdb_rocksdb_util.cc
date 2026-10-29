@@ -196,8 +196,8 @@ DEFINE_UNKNOWN_int32(index_block_restart_interval, kDefaultIndexBlockRestartInte
     "Controls the number of data blocks to be indexed inside an index block.");
 
 DEFINE_NON_RUNTIME_bool(db_write_cumulative_index_entry_counts, false,
-    "Write cumulative data block counts into the upper-level entries of multi-level SST indexes, "
-    "so ANALYZE can sample data blocks by position without reading the whole index.");
+    "Write cumulative data block counts into the upper-level entries of multi-level SST indexes. "
+    "Nothing reads them yet; they are for position-based ANALYZE sampling in a later change.");
 
 DEFINE_NON_RUNTIME_bool(prioritize_tasks_by_disk, false,
     "Consider disk load when considering compaction and flush priorities.");
