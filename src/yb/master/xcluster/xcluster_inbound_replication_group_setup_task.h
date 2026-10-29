@@ -225,6 +225,7 @@ class XClusterInboundReplicationGroupSetupTask : public XClusterInboundReplicati
 
   Status FirstStep() override;
   Status SetupDDLReplicationExtension();
+  Status BlockWritesStartedAsSource(const std::vector<NamespaceId>& namespace_ids);
   Status BootstrapSequencesData();
   Status CreateTableTasks();
 

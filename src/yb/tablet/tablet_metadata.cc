@@ -704,9 +704,10 @@ Status CheckLocalVectorIndexesInSnapshot(
 // files were written with the snapshot superblock's:
 // - ysql_dump assigns dense DocDB ids and CREATE INDEX records that column id.
 // - id is the permanent index id the restored graph files are stored under.
-// - hnsw.backend and store_payload come from --vector_index_backend and
-//   --vector_index_store_payload; they set the chunk file names and whether each vector carries a
-//   ybctid.
+// - hnsw.backend, store_payload and tenant_hash_group_and_range_components come from
+//   --vector_index_backend, --vector_index_store_payload and
+//   --vector_index_tenant_hash_group_and_range_components; they set the chunk file names, whether
+//   each vector carries a ybctid, and the tenant of each vector.
 // SetSchema keeps the local index_info, so copy the snapshot options onto the local index,
 // matched by colocation id. table_id stays local.
 Status RestoreVectorIndexOptions(TableInfo* target, const TableInfoPB& snapshot_table) {
@@ -1263,8 +1264,7 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
     LOG_IF_WITH_PREFIX(WARNING, !s.ok()) << "Unable to delete intents directory " << intents_dir;
   }
 
-  for (const auto& info : GetAllColocatedVectorIndexes()) {
-    auto storage_dir = vector_index_dir(info->index_info->vector_idx_options());
+  for (const auto& storage_dir : vector_index_dirs()) {
     auto status = fs_manager_->env()->DeleteRecursively(storage_dir);
     if (status.ok()) {
       LOG_WITH_PREFIX(INFO) << "Successfully destroyed vector index storage at: " << storage_dir;
@@ -2990,6 +2990,16 @@ std::string RaftGroupMetadata::vector_index_dir(
     const PgVectorIdxOptionsPB& vector_index_options) const {
   return docdb::GetStorageDir(
       kv_store_.rocksdb_dir, docdb::GetVectorIndexStorageName(vector_index_options));
+}
+
+std::vector<std::string> RaftGroupMetadata::vector_index_dirs() const {
+  const auto infos = GetAllColocatedVectorIndexes();
+  std::vector<std::string> result;
+  result.reserve(infos.size());
+  for (const auto& info : infos) {
+    result.push_back(vector_index_dir(info->index_info->vector_idx_options()));
+  }
+  return result;
 }
 
 docdb::KeyBounds RaftGroupMetadata::MakeKeyBounds() const {

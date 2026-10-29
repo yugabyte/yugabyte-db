@@ -5,10 +5,13 @@ import {
   Universe
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import {
+  getClusterProviderSpec,
+  getClusterProviderUuids,
   getDedicatedClusterDisplayNodeTotal,
   hasDedicatedNodesForCluster,
   placementSpecToAvailabilityZones
 } from './EditUniverseUtils';
+import type { ClusterSpec } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import {
   FIXTURE_AZ_1_UUID,
   FIXTURE_AZ_2_UUID,
@@ -21,6 +24,52 @@ import {
   makeNonGeoUniverseWithReadReplicaPlacementSpec,
   makePrimaryPlacementSpec
 } from './__fixtures__/editUniverseFixtures';
+
+describe('getClusterProviderUuids', () => {
+  it('returns provider_spec.provider for single-provider clusters', () => {
+    const cluster = {
+      provider_spec: { provider: 'prov-a' }
+    } as ClusterSpec;
+    expect(getClusterProviderUuids(cluster)).toEqual(['prov-a']);
+  });
+
+  it('returns provider_specs providers when provider_spec is omitted (multi-provider)', () => {
+    const cluster = {
+      provider_specs: [{ provider: 'prov-a' }, { provider: 'prov-b' }]
+    } as ClusterSpec;
+    expect(getClusterProviderUuids(cluster)).toEqual(['prov-a', 'prov-b']);
+  });
+
+  it('prefers provider_specs when both are present', () => {
+    const cluster = {
+      provider_spec: { provider: 'prov-a' },
+      provider_specs: [{ provider: 'prov-a' }, { provider: 'prov-b' }]
+    } as ClusterSpec;
+    expect(getClusterProviderUuids(cluster)).toEqual(['prov-a', 'prov-b']);
+  });
+});
+
+describe('getClusterProviderSpec', () => {
+  it('returns provider_spec when present', () => {
+    const cluster = {
+      provider_spec: { provider: 'prov-a', image_bundle_uuid: 'img-a' }
+    } as ClusterSpec;
+    expect(getClusterProviderSpec(cluster)?.provider).toBe('prov-a');
+  });
+
+  it('falls back to provider_specs[0] for multi-provider', () => {
+    const cluster = {
+      provider_specs: [
+        { provider: 'prov-a', image_bundle_uuid: 'img-a' },
+        { provider: 'prov-b', image_bundle_uuid: 'img-b' }
+      ]
+    } as ClusterSpec;
+    expect(getClusterProviderSpec(cluster)).toEqual({
+      provider: 'prov-a',
+      image_bundle_uuid: 'img-a'
+    });
+  });
+});
 
 describe('hasDedicatedNodesForCluster', () => {
   it('returns false when cluster is undefined', () => {

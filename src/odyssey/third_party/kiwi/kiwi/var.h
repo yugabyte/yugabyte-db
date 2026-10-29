@@ -444,7 +444,7 @@ static inline int kiwi_enquote(char *src, char *dst, int dst_len)
 		if (*src == '\'')
 			*pos++ = '\'';
 		else if (*src == '\\') {
-			*dst++ = '\\';
+			*pos++ = '\\';
 		}
 		*pos++ = *src++;
 	}

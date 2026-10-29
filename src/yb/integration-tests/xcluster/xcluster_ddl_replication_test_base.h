@@ -35,6 +35,12 @@ class XClusterDDLReplicationTestBase : public XClusterYsqlTestBase {
 
   Status SetUpClusters(const SetupParams& params = kDefaultParams);
 
+  Status SetUpClustersAndCheckpointReplicationGroup(const SetupParams& params = kDefaultParams);
+
+  Status SetUpClustersAndReplication(const SetupParams& params = kDefaultParams);
+
+  Result<HybridTime> GetXClusterSafeTime();
+
   virtual Status CheckpointReplicationGroup(
       const xcluster::ReplicationGroupId& replication_group_id = kReplicationGroupId,
       bool require_no_bootstrap_needed = true) override {
@@ -102,6 +108,21 @@ class XClusterDDLReplicationTestBase : public XClusterYsqlTestBase {
   tools::TmpDirProvider tmp_dir_;
 
   ReplicationDirection replication_direction_ = ReplicationDirection::AToB;
+};
+
+class XClusterDDLReplicationSwitchoverTest : public XClusterDDLReplicationTestBase {
+ public:
+  void SetUp() override;
+
+  bool SetReplicationDirection(ReplicationDirection direction) override;
+
+  // Perform switchover from A->B to B->A.
+  Status Switchover();
+
+  Cluster* cluster_A_ = &producer_cluster_;
+  Cluster* cluster_B_ = &consumer_cluster_;
+  const xcluster::ReplicationGroupId kBackwardsReplicationGroupId =
+      xcluster::ReplicationGroupId("backwards_replication");
 };
 
 }  // namespace yb

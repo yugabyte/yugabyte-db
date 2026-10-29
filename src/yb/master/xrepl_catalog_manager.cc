@@ -671,7 +671,8 @@ bool IsCatalogTableEligibleForCDC(uint32_t table_oid) {
   return table_oid == kPgClassTableOid || table_oid == kPgPublicationRelOid ||
          table_oid == kPgReplicationOriginOid || table_oid == kPgPublicationOid ||
          (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
-          table_oid == kPgAttributeTableOid);
+          (table_oid == kPgAttributeTableOid ||
+           table_oid == kPgPublicationRelPrpubidIndexOid));
 }
 
 ReplicationSlotName MakeGrpcSlotName(const xrepl::StreamId& stream_id) {
@@ -1278,13 +1279,14 @@ Status CatalogManager::CreateNewCDCStreamForNamespace(
     table_ids.push_back(GetPgsqlTableId(database_oid, kPgClassTableOid));
     if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) {
       table_ids.push_back(GetPgsqlTableId(database_oid, kPgAttributeTableOid));
+      table_ids.push_back(GetPgsqlTableId(database_oid, kPgPublicationRelPrpubidIndexOid));
     }
     table_ids.push_back(GetPgsqlTableId(database_oid, kPgPublicationRelOid));
     table_ids.push_back(GetPgsqlTableId(kTemplate1Oid, kPgReplicationOriginOid));
     table_ids.push_back(GetPgsqlTableId(database_oid, kPgPublicationOid));
     VLOG_WITH_FUNC(1) << "Added the catalog tables pg_class"
                       << (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl
-                              ? ", pg_attribute"
+                              ? ", pg_attribute, pg_publication_rel_prpubid_index"
                               : "")
                       << ", pg_publication_rel, pg_replication_origin and pg_publication to the "
                       << "stream metadata tables list.";

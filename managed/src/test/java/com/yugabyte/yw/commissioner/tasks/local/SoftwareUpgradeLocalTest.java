@@ -957,7 +957,12 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
     lastTaskByTarget.put(
         task.getTargetUUID(), CustomerTask.getLastTaskByTargetUuid(task.getTargetUUID()));
     return commissioner.buildTaskStatus(
-        task, taskInfo.getSubTasks(), updatingTasks, placementLockTasks, lastTaskByTarget);
+        task,
+        taskInfo.getSubTasks(),
+        updatingTasks,
+        placementLockTasks,
+        Set.of() /* rollbackBlockedTargets */,
+        lastTaskByTarget);
   }
 
   /**

@@ -13,6 +13,7 @@ import { useTranslation } from 'react-i18next';
 import { CreateUniverseContext, CreateUniverseContextMethods } from './CreateUniverseContext';
 import { getCreateUniverseSteps } from './CreateUniverseUtils';
 import { CloudType } from '@app/redesign/helpers/dtos';
+import { getPrimaryProvider } from './helpers/providerConfigurations';
 
 export const CreateUniverseBreadCrumb = () => {
   const [{ activeStep, resilienceType, generalSettings }] = (useContext(
@@ -21,7 +22,7 @@ export const CreateUniverseBreadCrumb = () => {
   const { t } = useTranslation('translation', { keyPrefix: 'createUniverseV2.steps' });
   const isK8s =
     generalSettings?.cloud === CloudType.kubernetes ||
-    generalSettings?.providerConfiguration?.code === CloudType.kubernetes;
+    getPrimaryProvider(generalSettings)?.code === CloudType.kubernetes;
   const steps = useMemo(() => getCreateUniverseSteps(t, resilienceType, isK8s), [
     t,
     resilienceType,

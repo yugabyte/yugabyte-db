@@ -97,7 +97,7 @@ DECLARE_int32(xcluster_automatic_target_create_table_ddl_rpc_timeout_sec);
 DECLARE_uint32(xcluster_ddl_tables_retention_secs);
 DECLARE_uint32(xcluster_max_old_schema_versions);
 DECLARE_uint32(xcluster_poller_task_delay_considered_stuck_secs);
-DECLARE_bool(xcluster_enable_target_applied_filter);
+DECLARE_bool(xcluster_enable_index_backfill_replication);
 DECLARE_bool(enforce_xcluster_guarded_lease);
 DECLARE_uint32(xcluster_guarded_lease_duration_ms);
 DECLARE_bool(xcluster_target_manual_override);
@@ -156,26 +156,33 @@ class XClusterDDLReplicationTest : public XClusterDDLReplicationTestBase {
     propagation_timeout_ *= 2;
   }
 
-  Status SetUpClustersAndCheckpointReplicationGroup(
-      const SetupParams& params = XClusterDDLReplicationTestBase::kDefaultParams) {
+  // Sets up RF1 clusters replicating table vec_test (id int, embedding vector(3)) of a single
+  // tablet with ybhnsw index vec_test_idx, and returns the id of the producer tablet.
+  Result<TabletId> SetUpSingleTabletVectorIndexTable() {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
+    auto params = XClusterDDLReplicationTestBase::kDefaultParams;
+    params.replication_factor = 1;
     RETURN_NOT_OK(SetUpClusters(params));
-    LOG(INFO) << "SetupClusters done";
-
+    RETURN_NOT_OK(RunOnBothClusters([this](Cluster* cluster) -> Status {
+      auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
+      return conn.Execute("CREATE EXTENSION vector");
+    }));
     RETURN_NOT_OK(
         CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
-    LOG(INFO) << "CheckpointReplicationGroup done";
-    // Bootstrap here would have no effect because the database is empty so we skip it for the test.
-    return Status::OK();
-  }
-
-  Status SetUpClustersAndReplication(
-      const SetupParams& params = XClusterDDLReplicationTestBase::kDefaultParams) {
-    RETURN_NOT_OK(SetUpClustersAndCheckpointReplicationGroup(params));
-    LOG(INFO) << "SetUpClustersAndCheckpointReplicationGroup done";
-
     RETURN_NOT_OK(CreateReplicationFromCheckpoint());
-    LOG(INFO) << "CreateReplicationFromCheckpoint done";
-    return Status::OK();
+    RETURN_NOT_OK(producer_conn_->Execute(
+        "CREATE TABLE vec_test (id int PRIMARY KEY, embedding vector(3)) SPLIT INTO 1 TABLETS"));
+    RETURN_NOT_OK(producer_conn_->Execute(
+        "CREATE INDEX vec_test_idx ON vec_test USING ybhnsw (embedding vector_l2_ops)"));
+    RETURN_NOT_OK(WaitForSafeTimeToAdvanceToNow());
+
+    auto producer_table = VERIFY_RESULT(
+        GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name=*/"", "vec_test"));
+    google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+    RETURN_NOT_OK(
+        producer_client()->GetTabletsFromTableId(producer_table.table_id(), 0, &tablets));
+    SCHECK_EQ(tablets.size(), 1, IllegalState, "Unexpected number of producer tablets");
+    return tablets[0].tablet_id();
   }
 
   // Issues SetUniverseReplicationEnabled directly so that the pause deadline can be controlled;
@@ -227,11 +234,6 @@ class XClusterDDLReplicationTest : public XClusterDDLReplicationTestBase {
         bootstrap_required, IllegalState, "Bootstrap should always be required for Automatic mode");
 
     return AddNamespaceToXClusterReplication(source_db_id, target_db_id);
-  }
-
-  Result<HybridTime> GetXClusterSafeTime() {
-    return consumer_client()->GetXClusterSafeTimeForNamespace(
-        VERIFY_RESULT(GetNamespaceId(consumer_client())), master::XClusterSafeTimeFilter::NONE);
   }
 
   void CheckIndexRebuild(const std::string& table, const std::string& index,
@@ -2570,44 +2572,6 @@ TEST_F(XClusterDDLReplicationTest, HandleEarlierApplySafeTime) {
   ASSERT_OK(VerifyWrittenRecords(std::vector<TableName>{kTableName}));
 }
 
-class XClusterDDLReplicationSwitchoverTest : public XClusterDDLReplicationTest {
- public:
-  bool SetReplicationDirection(ReplicationDirection direction) override {
-    if (XClusterDDLReplicationTest::SetReplicationDirection(direction)) {
-      std::swap(cluster_A_, cluster_B_);
-      return true;
-    }
-    return false;
-  }
-
-  // Perform switchover from A->B to B->A.
-  Status Switchover() {
-    LOG(INFO) << "===== Beginning switchover: checkpoint B";
-    SetReplicationDirection(ReplicationDirection::BToA);
-    RETURN_NOT_OK(CheckpointReplicationGroup(
-        kBackwardsReplicationGroupId, /*require_no_bootstrap_needed=*/false));
-    LOG(INFO) << "===== Switchover: set up replication from B to A";
-    SetReplicationDirection(ReplicationDirection::BToA);
-    RETURN_NOT_OK(CreateReplicationFromCheckpoint(
-        cluster_A_->mini_cluster_->GetMasterAddresses(), kBackwardsReplicationGroupId));
-    LOG(INFO) << "===== Continuing switchover: drop replication from A to B";
-    SetReplicationDirection(ReplicationDirection::AToB);
-    RETURN_NOT_OK(DeleteOutboundReplicationGroup());
-    LOG(INFO) << "===== Finishing switchover: wait for B to no longer be in readonly mode";
-    SetReplicationDirection(ReplicationDirection::BToA);
-    RETURN_NOT_OK(WaitForReadOnlyModeOnAllTServers(
-        VERIFY_RESULT(GetNamespaceId(producer_client())), /*is_read_only=*/false, cluster_B_));
-    LOG(INFO) << "===== Switchover done";
-
-    return Status::OK();
-  }
-
-  Cluster* cluster_A_ = &producer_cluster_;
-  Cluster* cluster_B_ = &consumer_cluster_;
-  const xcluster::ReplicationGroupId kBackwardsReplicationGroupId =
-      xcluster::ReplicationGroupId("backwards_replication");
-};
-
 TEST_F(XClusterDDLReplicationSwitchoverTest, SwitchoverWithWorkload) {
   // Set up replication from A to B.
   ASSERT_OK(SetUpClustersAndReplication());
@@ -2976,12 +2940,14 @@ TEST_F(XClusterDDLReplicationSwitchoverTest, PgCron) {
     return conn.FetchRow<pgwrapper::PGUint64>(
         Format("SELECT COUNT(*) FROM cron_table WHERE a = '$0'", cluster_name));
   };
-  // A job in flight on A when switchover takes away its pg_cron leadership is expectedly marked
-  // failed with "pg_cron leader changed"; ignore that.
+  // A job in flight on A when switchover makes A a target is expectedly marked failed; ignore
+  // that.  Either pg_cron notices the role change first ("pg_cron leader changed"), or A refuses
+  // the job's write and/or the launcher's next write about the run, so B's pg_cron marks the run
+  // failed once it becomes leader ("server restarted").
   auto get_failed_runs = [&](pgwrapper::PGConn& conn) -> Result<uint64_t> {
     return conn.FetchRow<pgwrapper::PGUint64>(
         "SELECT COUNT(*) FROM cron.job_run_details WHERE status = 'failed' "
-        "AND return_message <> 'pg_cron leader changed'");
+        "AND return_message NOT IN ('pg_cron leader changed', 'server restarted')");
   };
 
   SleepFor(30s);
@@ -3008,8 +2974,9 @@ TEST_F(XClusterDDLReplicationSwitchoverTest, PgCron) {
   failed_runs = ASSERT_RESULT(get_failed_runs(conn_A));
   ASSERT_EQ(failed_runs, 0);
 
-  // Make sure target did not attempt to perform any writes.
-  ASSERT_EQ(sync_point_instance_count, 0);
+  // A run in flight on A when it becomes a target may have its write and/or the launcher's next
+  // bookkeeping write refused (the launcher exits on that refusal), but A must not keep retrying.
+  ASSERT_LE(sync_point_instance_count, 2);
 }
 
 using XClusterDDLReplicationFailoverTest = XClusterDDLReplicationSwitchoverTest;
@@ -6192,34 +6159,13 @@ TEST_F(XClusterDDLReplicationTest, VectorIndexMergeDuringMultiTransactionApply) 
   // Even with a single vector per insert, this many inserts roll several chunks of kChunkSize.
   constexpr int kParkAtInsert = 30;
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_initial_chunk_size) = kChunkSize;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
   // Merge on the compaction thread itself, so the merge does not hit the insert registry sync
   // point used to park the apply.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_max_merge_tasks) = 0;
 
-  auto params = XClusterDDLReplicationTestBase::kDefaultParams;
-  params.replication_factor = 1;
-  ASSERT_OK(SetUpClusters(params));
-  ASSERT_OK(RunOnBothClusters([this](Cluster* cluster) -> Status {
-    auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
-    return conn.Execute("CREATE EXTENSION vector");
-  }));
-  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
-  ASSERT_OK(CreateReplicationFromCheckpoint());
-  ASSERT_OK(producer_conn_->Execute(
-      "CREATE TABLE vec_test (id int PRIMARY KEY, embedding vector(3)) SPLIT INTO 1 TABLETS"));
-  ASSERT_OK(producer_conn_->Execute(
-      "CREATE INDEX vec_test_idx ON vec_test USING ybhnsw (embedding vector_l2_ops)"));
-  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
-
-  auto producer_table = ASSERT_RESULT(
-      GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name=*/"", "vec_test"));
-  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  ASSERT_OK(producer_client()->GetTabletsFromTableId(producer_table.table_id(), 0, &tablets));
-  ASSERT_EQ(tablets.size(), 1);
-  const auto producer_tablet_id = tablets[0].tablet_id();
+  const auto producer_tablet_id = ASSERT_RESULT(SetUpSingleTabletVectorIndexTable());
 
   // Pause replication of the table, so the consumer later receives all transactions in one batch.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = producer_tablet_id;
@@ -6311,29 +6257,7 @@ TEST_F(XClusterDDLReplicationTest, VectorIndexMergeDuringMultiTransactionApply) 
 // completes. Here the apply is parked between the two writes, and the vector index flush must
 // complete meanwhile (GH #34246).
 TEST_F(XClusterDDLReplicationTest, VectorIndexFlushBeforeIntentsWrite) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
-
-  auto params = XClusterDDLReplicationTestBase::kDefaultParams;
-  params.replication_factor = 1;
-  ASSERT_OK(SetUpClusters(params));
-  ASSERT_OK(RunOnBothClusters([this](Cluster* cluster) -> Status {
-    auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
-    return conn.Execute("CREATE EXTENSION vector");
-  }));
-  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
-  ASSERT_OK(CreateReplicationFromCheckpoint());
-  ASSERT_OK(producer_conn_->Execute(
-      "CREATE TABLE vec_test (id int PRIMARY KEY, embedding vector(3)) SPLIT INTO 1 TABLETS"));
-  ASSERT_OK(producer_conn_->Execute(
-      "CREATE INDEX vec_test_idx ON vec_test USING ybhnsw (embedding vector_l2_ops)"));
-  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
-
-  auto producer_table = ASSERT_RESULT(
-      GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name=*/"", "vec_test"));
-  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  ASSERT_OK(producer_client()->GetTabletsFromTableId(producer_table.table_id(), 0, &tablets));
-  ASSERT_EQ(tablets.size(), 1);
-  const auto producer_tablet_id = tablets[0].tablet_id();
+  const auto producer_tablet_id = ASSERT_RESULT(SetUpSingleTabletVectorIndexTable());
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = producer_tablet_id;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = -1;
@@ -6406,6 +6330,80 @@ TEST_F(XClusterDDLReplicationTest, VectorIndexFlushBeforeIntentsWrite) {
       "SELECT id FROM vec_test ORDER BY embedding <-> '[0, 0, 0]' LIMIT $0", kOpenTxnRowId);
   auto p_search = ASSERT_RESULT(producer_conn_->FetchAllAsString(query));
   auto c_search = ASSERT_RESULT(consumer_conn_->FetchAllAsString(query));
+  ASSERT_EQ(p_search, c_search);
+}
+
+// A regular DB flush must not advance the intents DB flushed OpId past vectors that an external
+// transaction apply left only in memory (GH #34699).
+TEST_F(XClusterDDLReplicationTest, VectorIndexBootstrapAfterRegularFlush) {
+  const auto producer_tablet_id = ASSERT_RESULT(SetUpSingleTabletVectorIndexTable());
+
+  // Commit while replication is paused, so the consumer gets the intents of the transaction
+  // together with its apply and never writes them to the intents DB. An intents DB write would
+  // disable advancing the intents DB flushed OpId for the tablet.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = producer_tablet_id;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = -1;
+  ASSERT_OK(WaitForConsumerPollersToSleep({producer_tablet_id}));
+
+  // A distributed transaction is replicated as an external transaction, a single row insert would
+  // take the fast path and reach the consumer as a plain write.
+  constexpr int kNumRows = 20;
+  ASSERT_OK(producer_conn_->StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  for (int id = 1; id <= kNumRows; ++id) {
+    ASSERT_OK(producer_conn_->ExecuteFormat(
+        "INSERT INTO vec_test VALUES ($0, '[$0, $0, $0]')", id));
+  }
+  ASSERT_OK(producer_conn_->CommitTransaction());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = "";
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_EQ(
+      ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>("SELECT count(*) FROM vec_test")), kNumRows);
+
+  {
+    // TotalEntries waits for the running vector inserts, and the count is the baseline for the
+    // check after the restart.
+    auto indexes = ListVectorIndexes(consumer_cluster());
+    ASSERT_EQ(indexes.size(), 1);
+    ASSERT_EQ(ASSERT_RESULT(indexes.front()->TotalEntries()), static_cast<size_t>(kNumRows));
+
+    const auto consumer_table = ASSERT_RESULT(
+        GetYsqlTable(&consumer_cluster_, namespace_name, /*schema_name=*/"", "vec_test"));
+    auto peers = ListTableActiveTabletPeers(consumer_cluster(), consumer_table.table_id());
+    ASSERT_EQ(peers.size(), 1);
+    auto consumer_tablet = ASSERT_RESULT(peers.front()->shared_tablet());
+
+    // The intents DB flushed OpId starts below the vector index one, so the wait below only
+    // succeeds if the flush advances it.
+    auto state = ASSERT_RESULT(consumer_tablet->GetPersistentState());
+    ASSERT_EQ(state.vector_indexes.size(), 1);
+    ASSERT_LT(state.intents, state.vector_indexes[0].op_id) << AsString(state);
+
+    ASSERT_OK(consumer_cluster()->FlushTablets(
+        tablet::FlushMode::kSync, tablet::FlushFlags::kRegular));
+    // The regular DB flush listener advances the intents DB flushed OpId, and may run after the
+    // flush returns. It must stop at the vector index flushed OpId.
+    ASSERT_OK(WaitFor([&]() -> Result<bool> {
+      state = VERIFY_RESULT(consumer_tablet->GetPersistentState());
+      return state.intents == state.vector_indexes[0].op_id;
+    }, 10s * kTimeMultiplier, "Intents DB flushed OpId to match the vector index"));
+    ASSERT_LT(state.vector_indexes[0].op_id, state.regular) << AsString(state);
+  }
+
+  DisableFlushOnShutdown(*consumer_cluster(), true);
+  ASSERT_OK(consumer_cluster()->mini_tablet_server(0)->Restart(
+      tserver::WaitTabletsBootstrapped::kTrue));
+  auto indexes = ListVectorIndexes(consumer_cluster());
+  ASSERT_EQ(indexes.size(), 1);
+  ASSERT_EQ(ASSERT_RESULT(indexes.front()->TotalEntries()), static_cast<size_t>(kNumRows));
+
+  auto consumer_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+  const auto query = Format(
+      "SELECT id FROM vec_test ORDER BY embedding <-> '[0, 0, 0]' LIMIT $0", kNumRows);
+  ASSERT_TRUE(ASSERT_RESULT(consumer_conn.HasIndexScan(query)));
+  auto p_search = ASSERT_RESULT(producer_conn_->FetchAllAsString(query));
+  auto c_search = ASSERT_RESULT(consumer_conn.FetchAllAsString(query));
   ASSERT_EQ(p_search, c_search);
 }
 
@@ -7218,7 +7216,7 @@ TEST_F(XClusterDDLReplicationIndexBackfillTest, ReplicatedFromSource) {
 // Flag off, so the target falls back to the legacy behavior of running its own local backfill.
 // Also verify changing the flag after the stream is created does not affect the backfill decision.
 TEST_F(XClusterDDLReplicationIndexBackfillTest, LegacyLocalBackfill) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_enable_target_applied_filter) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_enable_index_backfill_replication) = false;
   ASSERT_OK(SetUpClustersAndReplication());
   ASSERT_OK(CreateBaseTable());
 
@@ -7230,8 +7228,8 @@ TEST_F(XClusterDDLReplicationIndexBackfillTest, LegacyLocalBackfill) {
   ASSERT_OK(producer_conn_->ExecuteFormat(
       "CREATE INDEX $0 ON $1($2 ASC)", kIndexName, kTableName, kCol));
 
-  // Promote the flag after the stream already exists, which should not affect backfill decision.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_enable_target_applied_filter) = true;
+  // Turn the flag on after the stream already exists, which should not affect backfill decision.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_enable_index_backfill_replication) = true;
 
   // Unblock the replication to the target and the target takes the local backfill path.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 0;

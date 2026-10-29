@@ -662,7 +662,19 @@ DEFINE_RUNTIME_bool(vector_index_store_payload, false,
     "mapping entries at all, neither on insert nor on delete. The value is fixed for a table and "
     "for an index when it is created, and indexes of a table that writes no reverse mapping always "
     "store the payload. Disabled by default, because deleted vectors are not removed from such an "
-    "index yet, see #33912.");
+    "index yet.");
+
+DEFINE_RUNTIME_uint32(vector_index_tenant_hash_group_and_range_components, 0,
+    "Temporary, until the tenant of a vector index can be specified when the index is created, "
+    "see #35312. Number of leading primary-key components that identify the vector tenant and are "
+    "stored in the payload of newly created vector indexes, see vector_index_store_payload. All "
+    "hash columns form a single hash-group component, followed by one component per range column. "
+    "0 means vectors have no tenant. Applies only to the yb_hnsw_hnswlib backend. The tenant never "
+    "covers the full primary key: values greater than or equal to the number of components use all "
+    "components but the last one, so a single-component primary key has no tenant. The value is "
+    "fixed when the index is created. Older releases cannot read payloads created with a nonzero "
+    "value and may write vectors without their tenant, so keep it 0 until the upgrade to this "
+    "release is finalized.");
 
 DEFINE_RUNTIME_AUTO_bool(enable_table_owned_vector_reverse_mapping, kExternal, false, true,
     "When true, newly created YSQL tables hold vector reverse mapping ownership. "
@@ -4962,6 +4974,16 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       vector_index_options.mutable_hnsw()->set_backend(
           FLAGS_vector_index_backend == kYbHnswUsearch
               ? HnswBackend::YB_HNSW_USEARCH : HnswBackend::YB_HNSW_HNSWLIB);
+      // Tenants are only for the hnswlib backend. A tenant leaves at least the last component of
+      // the primary key, otherwise every row would be its own tenant.
+      if (vector_index_options.store_payload() &&
+          vector_index_options.hnsw().backend() == HnswBackend::YB_HNSW_HNSWLIB) {
+        auto num_components = Schema::NumHashGroupAndRangeComponents(indexed_table_lock->schema());
+        vector_index_options.set_tenant_hash_group_and_range_components(
+            narrow_cast<uint32_t>(std::min<size_t>(
+                FLAGS_vector_index_tenant_hash_group_and_range_components,
+                num_components ? num_components - 1 : 0)));
+      }
     } else if (!is_pg_table) {
       DCHECK_EQ(index_info.columns().size(), schema.num_columns())
         << "Number of columns are not the same between index_info and index_schema";
@@ -8157,6 +8179,22 @@ void CatalogManager::CleanUpDeletedTables(const LeaderEpoch& epoch) {
     if (!ShouldDeleteTable(table)) {
       continue;
     }
+    // Like CheckTableDeleted, do not mark a DDL-dropped index DELETED while the alter removing it
+    // from the indexed table is in flight; else the next statement may hit a schema version
+    // mismatch. The alter completes via tablet schema version reports, which keep re-sending it
+    // while the indexed table is running, so this deferral ends on its own.
+    if (table->is_index() && table->LockForRead()->has_ysql_ddl_txn_verifier_state()) {
+      auto indexed_table = GetTableInfo(table->indexed_table_id());
+      if (indexed_table) {
+        auto indexed_lock = indexed_table->LockForRead();
+        if (indexed_lock->is_running() && indexed_lock->pb.has_fully_applied_schema()) {
+          VLOG_WITH_PREFIX_AND_FUNC(2)
+              << "Deferring " << table->ToString() << " until alter of "
+              << indexed_table->ToString() << " completes";
+          continue;
+        }
+      }
+    }
     auto lock_and_transaction_id = PrepareTableDeletion(table);
     if (lock_and_transaction_id.first.locked()) {
       if (lock_and_transaction_id.first.data().is_hidden()) {
@@ -9446,6 +9484,19 @@ Result<std::vector<scoped_refptr<TableInfo>>> CatalogManager::GetTableInfosForNa
   }
 
   return table_infos;
+}
+
+Status CatalogManager::CheckNoYsqlDdlVerificationInProgress(
+    const NamespaceId& namespace_id) const {
+  SharedLock lock(mutex_);
+  for (const auto& table : tables_->GetAllTables()) {
+    auto l = table->LockForRead();
+    if (l->namespace_id() == namespace_id && l->has_ysql_ddl_txn_verifier_state()) {
+      return STATUS_FORMAT(
+          IllegalState, "Table $0 is undergoing DDL verification, retry later", table->id());
+    }
+  }
+  return Status::OK();
 }
 
 std::vector<TableInfoPtr> CatalogManager::GetTables(
@@ -11495,22 +11546,11 @@ Status CatalogManager::GetYsqlCatalogVersion(
 
 Status CatalogManager::GetYsqlDBCatalogVersion(
     uint32_t db_oid, uint64_t* catalog_version, uint64_t* last_breaking_version, bool use_cache) {
-  if (use_cache && FLAGS_enable_heartbeat_pg_catalog_versions_cache) {
-    SharedLock lock(heartbeat_pg_catalog_versions_cache_mutex_);
-    if (heartbeat_pg_catalog_versions_cache_) {
-      auto it = heartbeat_pg_catalog_versions_cache_->find(db_oid);
-      if (it != heartbeat_pg_catalog_versions_cache_->end()) {
-        LOG_IF(INFO, PREDICT_FALSE(FLAGS_TEST_log_catalog_version_cache_events))
-            << "GetYsqlDBCatalogVersion: cache hit for db_oid " << db_oid;
-        if (catalog_version) {
-          *catalog_version = it->second.current_version;
-        }
-        if (last_breaking_version) {
-          *last_breaking_version = it->second.last_breaking_version;
-        }
-        return Status::OK();
-      }
-    }
+  if (use_cache && FLAGS_enable_heartbeat_pg_catalog_versions_cache &&
+      pg_catalog_versions_cache_.GetForDb(db_oid, catalog_version, last_breaking_version)) {
+    LOG_IF(INFO, PREDICT_FALSE(FLAGS_TEST_log_catalog_version_cache_events))
+        << "GetYsqlDBCatalogVersion: cache hit for db_oid " << db_oid;
+    return Status::OK();
   }
   LOG_IF(INFO, PREDICT_FALSE(use_cache && FLAGS_TEST_log_catalog_version_cache_events))
       << "GetYsqlDBCatalogVersion: cache miss for db_oid " << db_oid;
@@ -11557,31 +11597,18 @@ Status CatalogManager::GetYsqlAllDBCatalogVersionsImpl(
 Status CatalogManager::GetYsqlAllDBCatalogVersions(
     bool use_cache, DbOidToCatalogVersionMap* versions, uint64_t* fingerprint,
     HybridTime* out_read_ht) {
-  if (use_cache) {
-    SharedLock lock(heartbeat_pg_catalog_versions_cache_mutex_);
-    // Callers that opt into the cache accept stale (but bounded) versions. Today this includes
-    // the heartbeat service (master.cc, master_heartbeat_service.cc) and the master-side Read
-    // RPC path (via MasterTabletServer::get_ysql_db_catalog_version). Authoritative callers
-    // (e.g. WaitForYsqlBackendsCatalogVersion, ReportYsqlDdlTxnStatus) must pass false.
-    //
-    // It is ok for heartbeat_pg_catalog_versions_cache_ to be empty: the heartbeat service
-    // will simply not populate catalog versions in its response message, and the tserver will
-    // not change its private catalog version map. Some unit tests check the tserver private
-    // map before the background task has a chance to populate the cache, so we fall through
-    // to read from pg_yb_catalog_version below to make such unit tests happy.
-    if (heartbeat_pg_catalog_versions_cache_) {
-      *versions = *heartbeat_pg_catalog_versions_cache_;
-      if (fingerprint) {
-        *fingerprint = heartbeat_pg_catalog_versions_cache_fingerprint_;
-      }
-      if (out_read_ht) {
-        // Reporting the snapshot's age, not the current time, is what lets the heartbeat tell a
-        // tserver that these versions are old. Without it a frozen cache is indistinguishable
-        // from a fresh read that genuinely disagrees with the tserver.
-        *out_read_ht = heartbeat_pg_catalog_versions_cache_read_ht_;
-      }
-      return Status::OK();
-    }
+  // Callers that opt into the cache accept stale (but bounded) versions. Today this includes
+  // the heartbeat service (master.cc, master_heartbeat_service.cc) and the master-side Read
+  // RPC path (via MasterTabletServer::get_ysql_db_catalog_version). Authoritative callers
+  // (e.g. WaitForYsqlBackendsCatalogVersion, ReportYsqlDdlTxnStatus) must pass false.
+  //
+  // It is ok for the cache to be empty: the heartbeat service will simply not
+  // populate catalog versions in its response message, and the tserver will not
+  // change its private catalog version map. Some unit tests check the tserver private
+  // map before the background task has a chance to populate the cache, so we fall through
+  // to read from pg_yb_catalog_version below to make such unit tests happy.
+  if (use_cache && pg_catalog_versions_cache_.GetAll(versions, fingerprint, out_read_ht)) {
+    return Status::OK();
   }
   // Cannot use cached data, or the cache has never been initialized yet, read
   // from pg_yb_catalog_version table.
@@ -11604,16 +11631,14 @@ Result<DbOidVersionToMessageListMap> CatalogManager::GetYsqlCatalogInvalationMes
     return DbOidVersionToMessageListMap();
   }
   if (use_cache) {
-    SharedLock lock(heartbeat_pg_catalog_versions_cache_mutex_);
     // We expect that the only caller uses this cache is the heartbeat service.
     // Note that if the periodic background refresh task has not populated
-    // heartbeat_pg_inval_messages_cache_ yet after the master leader starts, or
+    // the invalidation messages cache yet after the master leader starts, or
     // when the last periodic reading of pg_yb_invalidation_messages has failed, it will
     // be std::nullopt. Returning empty map is fine, as invalidation messages are only
     // used as an optimization and if not there PG simply falls back to full catalog
     // refresh.
-    return heartbeat_pg_inval_messages_cache_.has_value() ? *heartbeat_pg_inval_messages_cache_
-                                                          : DbOidVersionToMessageListMap();
+    return pg_catalog_versions_cache_.GetInvalMessages();
   }
   return GetYsqlCatalogInvalationMessagesImpl();
 }
@@ -14244,19 +14269,8 @@ Status CatalogManager::SysCatalogRespectLeaderAffinity() {
     return Status::OK();
   }
 
-  consensus::ConsensusStatePB consensus_state;
-  RETURN_NOT_OK(GetCurrentConfig(&consensus_state));
-
   std::vector<ServerEntryPB> masters;
-  for (const auto& peer : consensus_state.config().peers()) {
-    ServerEntryPB master;
-    master.mutable_instance_id()->set_permanent_uuid(peer.permanent_uuid());
-    auto* registration = master.mutable_registration();
-    registration->mutable_cloud_info()->CopyFrom(peer.cloud_info());
-    registration->mutable_private_rpc_addresses()->CopyFrom(peer.last_known_private_addr());
-    registration->mutable_broadcast_addresses()->CopyFrom(peer.last_known_broadcast_addr());
-    masters.push_back(std::move(master));
-  }
+  RETURN_NOT_OK(master_->ListMasters(&masters));
 
   auto[sorted_scored_masters, i_am_eligible] = GetMoreEligibleSysCatalogLeaders(
       affinitized_zones, blacklist, masters, server_registration_);
@@ -14618,7 +14632,7 @@ void CatalogManager::SysCatalogLoaded(SysCatalogLoadingState&& state) {
 
   SchedulePostTabletCreationTasksForPendingTables(state.epoch);
   EnqueuePendingBackfillsAfterLoad();
-  restoring_sys_catalog_ = false;
+  ClearRestoringSysCatalogIfNotFenced();
 
   if (FLAGS_enable_ysql) {
     // Initialize the catalog version cache.
@@ -14869,91 +14883,6 @@ void CatalogManager::EnqueuePendingBackfillsAfterLoad() {
   }
 }
 
-void CatalogManager::ResetCachedCatalogVersions() {
-  LockGuard lock(heartbeat_pg_catalog_versions_cache_mutex_);
-  // Invariant: all the pieces of heartbeat catalog-versions cache state below are reset
-  // together here. They are not independent, and clearing only a subset has already been a bug
-  // once: #33596 left the fingerprint behind, which suppressed the next invalidation-messages
-  // re-read. Any state added to this cache must be reset here too.
-  if (heartbeat_pg_catalog_versions_cache_) {
-    heartbeat_pg_catalog_versions_cache_->clear();
-  }
-  // Must be reset together with the cache: the next RefreshPgCatalogVersionCache decides whether
-  // to re-read pg_yb_invalidation_messages by comparing against this fingerprint. Leaving it
-  // stale makes a refresh that reads back the same catalog versions (e.g. after a leader
-  // stepdown and reacquisition with no intervening DDL) conclude nothing changed and leave
-  // heartbeat_pg_inval_messages_cache_ empty.
-  heartbeat_pg_catalog_versions_cache_fingerprint_ = 0;
-  // Reset to empty map to distinguish it from std::nullopt which means last periodic reading
-  // of pg_yb_invalidation_messages has failed.
-  heartbeat_pg_inval_messages_cache_ = DbOidVersionToMessageListMap();
-  // Must also be cleared, or the first install after this reset is rejected as carrying an older
-  // snapshot than the one we just discarded, and the cache stays empty.
-  heartbeat_pg_catalog_versions_cache_read_ht_ = HybridTime::kInvalid;
-  ++heartbeat_pg_catalog_versions_cache_generation_;
-  LOG_IF(INFO, PREDICT_FALSE(FLAGS_TEST_log_catalog_version_cache_events))
-      << "ResetCachedCatalogVersions: cache reset, generation: "
-      << heartbeat_pg_catalog_versions_cache_generation_;
-}
-
-uint64_t CatalogManager::GetPgCatalogVersionsCacheGeneration() const {
-  SharedLock lock(heartbeat_pg_catalog_versions_cache_mutex_);
-  return heartbeat_pg_catalog_versions_cache_generation_;
-}
-
-bool CatalogManager::InstallPgCatalogVersionsSnapshot(
-    uint64_t generation, HybridTime read_ht, DbOidToCatalogVersionMap versions,
-    uint64_t fingerprint, bool update_messages,
-    std::optional<DbOidVersionToMessageListMap> messages) {
-  if (!read_ht.is_valid()) {
-    // Callers must pass the read time of an actual read. Installing an invalid one would both
-    // install out of order -- HybridTime::kInvalid is kMax - 1, so it beats every real snapshot
-    // in the comparison below -- and then disarm that comparison for the following install.
-    // Note a use_cache=true GetYsqlAllDBCatalogVersions() reports the installed snapshot's own
-    // read time, which is for telling a tserver how old these versions are; only a
-    // use_cache=false read supplies one worth installing.
-    LOG_WITH_FUNC(DFATAL) << "Refusing to install a catalog versions snapshot with no read time";
-    return false;
-  }
-  LockGuard lock(heartbeat_pg_catalog_versions_cache_mutex_);
-  if (generation != heartbeat_pg_catalog_versions_cache_generation_) {
-    // The cache was reset after this snapshot was read, i.e. we lost leadership in between.
-    // Installing now would undo that reset, and the data is from before another master took over.
-    // Logged at INFO, not VLOG: the generation only moves on a leader stepdown, so this fires at
-    // most once per in-flight install per stepdown, and it is what explains a cache that stays
-    // empty across a failover.
-    LOG_WITH_FUNC(INFO) << "Skipping install: cache generation moved from " << generation << " to "
-                        << heartbeat_pg_catalog_versions_cache_generation_;
-    return false;
-  }
-  // The is_valid() test is required, not defensive: HybridTime::kInvalid is kMax - 1, so an unset
-  // heartbeat_pg_catalog_versions_cache_read_ht_ compares as nearly maximal rather than as "older
-  // than everything". Dropping it would reject every install, leaving the cache permanently empty
-  // on a fresh master and after every ResetCachedCatalogVersions(), which are the only two states
-  // where heartbeat_pg_catalog_versions_cache_read_ht_ is invalid.
-  if (heartbeat_pg_catalog_versions_cache_read_ht_.is_valid() &&
-      read_ht <= heartbeat_pg_catalog_versions_cache_read_ht_) {
-    // An equal or newer snapshot is already installed. Dropping this one is what keeps the cache
-    // monotonic, and it is also correct for the caller that broadcast this snapshot to tservers:
-    // what is installed is at least as new, so the cache cannot report below the broadcast.
-    VLOG_WITH_FUNC(2) << "Skipping install of snapshot at " << read_ht << ", cache holds "
-                      << heartbeat_pg_catalog_versions_cache_read_ht_;
-    return false;
-  }
-  heartbeat_pg_catalog_versions_cache_ = std::move(versions);
-  heartbeat_pg_catalog_versions_cache_fingerprint_ = fingerprint;
-  heartbeat_pg_catalog_versions_cache_read_ht_ = read_ht;
-  if (update_messages) {
-    // nullopt marks the messages unavailable so the next refresh re-reads them; the versions
-    // above are unaffected, since messages are only an optimization on top of them.
-    heartbeat_pg_inval_messages_cache_ = std::move(messages);
-  }
-  LOG_IF(INFO, PREDICT_FALSE(FLAGS_TEST_log_catalog_version_cache_events))
-      << "InstallPgCatalogVersionsSnapshot: installed snapshot at " << read_ht
-      << ", databases: " << heartbeat_pg_catalog_versions_cache_->size();
-  return true;
-}
-
 bool CatalogManager::RefreshPgCatalogVersionCache() {
   if (PREDICT_FALSE(FLAGS_TEST_pause_pg_catalog_versions_cache_refresh)) {
     return false;
@@ -14967,7 +14896,7 @@ bool CatalogManager::RefreshPgCatalogVersionCache() {
   // Must be captured before the read: nothing serializes this function against a concurrent reset,
   // so the generation is what lets the install below notice that one happened in between and drop
   // this snapshot rather than resurrecting a cache that a stepdown deliberately cleared.
-  const auto generation = GetPgCatalogVersionsCacheGeneration();
+  const auto generation = pg_catalog_versions_cache_.Generation();
   DbOidToCatalogVersionMap versions;
   HybridTime read_ht;
   Status s = GetYsqlAllDBCatalogVersionsImpl(&versions, &read_ht);
@@ -14981,19 +14910,11 @@ bool CatalogManager::RefreshPgCatalogVersionCache() {
   const auto fingerprint = yb::FingerprintCatalogVersions<DbOidToCatalogVersionMap>(versions);
   VLOG_WITH_FUNC(2) << "fingerprint: " << fingerprint;
 
-  bool changed = false;
-  {
-    SharedLock lock(heartbeat_pg_catalog_versions_cache_mutex_);
-    changed = heartbeat_pg_catalog_versions_cache_fingerprint_ != fingerprint;
-    if (FLAGS_ysql_yb_enable_invalidation_messages && !changed) {
-      // nullopt means the previous refresh has failed.
-      changed = !heartbeat_pg_inval_messages_cache_.has_value();
-    }
-  }
+  const bool needs_messages_refresh = pg_catalog_versions_cache_.NeedsMessagesRefresh(fingerprint);
 
   bool messages_refresh_failed = false;
   std::optional<DbOidVersionToMessageListMap> messages;
-  if (FLAGS_ysql_yb_enable_invalidation_messages && changed) {
+  if (FLAGS_ysql_yb_enable_invalidation_messages && needs_messages_refresh) {
     // Cache invalidation messages are considered as an optimization extension of
     // the catalog versions. If we cannot read the messages successfully, it means
     // we will skip the optimization this time but it will not affect correctness
@@ -15008,7 +14929,7 @@ bool CatalogManager::RefreshPgCatalogVersionCache() {
     }
   }
 
-  const bool update_messages = FLAGS_ysql_yb_enable_invalidation_messages && changed;
+  const bool update_messages = FLAGS_ysql_yb_enable_invalidation_messages && needs_messages_refresh;
   // Left as nullopt when the messages read failed, which marks them unavailable so the next
   // refresh retries; the catalog versions are installed either way, since messages are only an
   // optimization on top of them.
@@ -15017,7 +14938,7 @@ bool CatalogManager::RefreshPgCatalogVersionCache() {
     VLOG_WITH_FUNC(2) << "Refreshed " << messages->size() << " catalog inval messages in memory";
     messages_to_install = std::move(messages);
   }
-  const bool installed = InstallPgCatalogVersionsSnapshot(
+  const bool installed = pg_catalog_versions_cache_.Install(
       generation, read_ht, std::move(versions), fingerprint, update_messages,
       std::move(messages_to_install));
   LOG_IF(INFO, PREDICT_FALSE(FLAGS_TEST_log_catalog_version_cache_events))
