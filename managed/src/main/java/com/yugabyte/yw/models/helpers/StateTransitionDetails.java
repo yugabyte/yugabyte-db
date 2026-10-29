@@ -91,6 +91,11 @@ public class StateTransitionDetails {
    * the current rollback task so {@code unlockUniverseForUpdate} still works, YBC fields that may
    * have been updated by a YBC upgrade outside this edit, and {@code sequenceNumber} advanced by
    * {@code UpdateConsistencyCheck} after freeze (must not be restored from the checkpoint).
+   *
+   * <p>Fields that other tasks write while the failed task waits are kept too: YBC throttle flags,
+   * the node agent flags and the Perf Advisor registration (PA sync can clear the collector; the
+   * endpoint is kept with it). The rolled-back tasks never write them (an edit pins its {@code
+   * ybcFlags} to the universe's on every run), so the current value is the right one.
    */
   public UniverseDefinitionTaskParams applyBeforeTo(UniverseDefinitionTaskParams current) {
     UniverseDefinitionTaskParams before = getBeforeUniverseDetails();
@@ -103,6 +108,11 @@ public class StateTransitionDetails {
     before.setEnableYbc(current.isEnableYbc());
     before.setYbcInstalled(current.isYbcInstalled());
     before.sequenceNumber = current.sequenceNumber;
+    before.installNodeAgent = current.installNodeAgent;
+    before.nodeAgentMissing = current.nodeAgentMissing;
+    before.setPaCollectorUuid(current.getPaCollectorUuid());
+    before.setPaEndpointUuid(current.getPaEndpointUuid());
+    before.copyYbcFlagsFrom(current);
     return before;
   }
 

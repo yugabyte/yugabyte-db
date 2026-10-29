@@ -2563,6 +2563,19 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     return Iterables.getOnlyElement(foundClusters, null);
   }
 
+  /**
+   * Sets each cluster's {@code ybcFlags} to those of the cluster with the same uuid in {@code
+   * source}. A cluster with no match keeps its own.
+   */
+  public void copyYbcFlagsFrom(UniverseDefinitionTaskParams source) {
+    for (Cluster cluster : clusters) {
+      Cluster sourceCluster = source.getClusterByUuid(cluster.uuid);
+      if (sourceCluster != null) {
+        cluster.userIntent.ybcFlags = sourceCluster.userIntent.ybcFlags;
+      }
+    }
+  }
+
   public UUID searchProviderUUIDByAz(UUID azUUID) {
     return clusters.stream()
         .map(c -> c.searchProviderUUIDByAz(azUUID))

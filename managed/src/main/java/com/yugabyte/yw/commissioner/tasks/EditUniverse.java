@@ -99,6 +99,9 @@ public class EditUniverse extends EditUniverseTaskBase {
               taskParams().expectedUniverseVersion,
               this::freezeUniverseInTxn,
               retryCallback);
+      // A YBC throttle update may run while this edit is failed, and a retry reuses the first
+      // params, so take the universe's ybcFlags on every run.
+      taskParams().copyYbcFlagsFrom(universe.getUniverseDetails());
       if (taskParams().getPrimaryCluster() != null) {
         dedicatedNodesChanged.set(
             taskParams().getPrimaryCluster().userIntent.dedicatedNodes
