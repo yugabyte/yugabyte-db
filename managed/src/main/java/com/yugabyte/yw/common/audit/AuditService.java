@@ -11,6 +11,7 @@
 package com.yugabyte.yw.common.audit;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.jayway.jsonpath.Configuration;
 import com.jayway.jsonpath.spi.json.JacksonJsonNodeJsonProvider;
 import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
@@ -195,12 +196,31 @@ public class AuditService {
     MDC.remove("logType");
   }
 
-  public void updateAdditionalDetails(UUID taskUUID, JsonNode additionalDetails) {
+  public synchronized void updateAdditionalDetails(UUID taskUUID, JsonNode additionalDetails) {
     Audit audit = Audit.getFromTaskUUID(taskUUID);
     if (audit != null) {
       audit.setAdditionalDetails(additionalDetails);
       audit.save();
     }
+  }
+
+  /**
+   * Adds the given fields to the additional details of the task's audit entry, keeping the fields
+   * already there. Subtasks of one task can run in parallel (a prechecks-only run puts all its
+   * prechecks into one subtask group), so the read-modify-write is serialized here: otherwise a
+   * subtask can save a stale copy of the details and drop the fields another subtask just added.
+   */
+  public synchronized void mergeAdditionalDetails(UUID taskUUID, ObjectNode details) {
+    Audit audit = Audit.getFromTaskUUID(taskUUID);
+    if (audit == null) {
+      LOG.info("Audit not found for task UUID: {}", taskUUID);
+      return;
+    }
+    JsonNode current = audit.getAdditionalDetails();
+    ObjectNode merged = current instanceof ObjectNode ? current.deepCopy() : Json.newObject();
+    merged.setAll(details);
+    audit.setAdditionalDetails(merged);
+    audit.save();
   }
 
   public List<Audit> getAll(UUID customerUUID) {
