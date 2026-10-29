@@ -23,7 +23,7 @@ For an RSS feed of all technical advisories, point your feed reader to the [RSS 
 | :------------------------------- | :------- | :-----: | :---------------: | :--- |
 | {{<ta 35465>}}
 | YugabyteDB gRPC connector may skip rows when a task restarts during the initial snapshot
-| [CDC: YugabyteDB gRPC Connector](/stable/additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/)
+| [CDC: YugabyteDB (Debezium) gRPC Connector](/stable/additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/)
 | [dz.1.9.5.yb.grpc.2024.1](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/tag/vdz.1.9.5.yb.grpc.2024.1) to [dz.1.9.5.yb.grpc.2026.1.2.0.2](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/tag/vdz.1.9.5.yb.grpc.2026.1.2.0.2)
 | {{<nobreak "29 October 2026">}}
 |
