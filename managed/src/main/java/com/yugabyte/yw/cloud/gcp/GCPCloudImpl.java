@@ -47,10 +47,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.commons.collections4.CollectionUtils;
@@ -644,6 +646,11 @@ public class GCPCloudImpl implements CloudAPI {
    * groups. GCP cannot change the ports of a forwarding rule, so a rule that misses a port is
    * replaced; the reserved address keeps the IP.
    *
+   * <p>A load balancer that the user created and YBA took over has only the backend service under
+   * this name; the user's forwarding rules and address have other names. Those rules are reused
+   * while they forward every port at one address, so the address that clients use stays. Once they
+   * miss a port, YBA adds its own rule and address, and the address changes.
+   *
    * @return the internal IP of the load balancer.
    */
   @Override
@@ -671,9 +678,18 @@ public class GCPCloudImpl implements CloudAPI {
     GCPProjectApiClient apiClient = getApiClient(provider);
 
     BackendService backendService = apiClient.getRegionalBackendServiceIfExists(regionCode, name);
+    ForwardingRule rule = apiClient.getRegionalForwardingRuleIfExists(regionCode, name);
     String backendServiceUrl;
     if (backendService != null) {
       backendServiceUrl = backendService.getSelfLink();
+      if (rule == null) {
+        String userAddress =
+            ensureUserForwardingRules(apiClient, regionCode, backendServiceUrl, ports, tags);
+        if (userAddress != null) {
+          log.info("Load balancer {} in {} has address {}", name, regionCode, userAddress);
+          return userAddress;
+        }
+      }
     } else {
       // GCP requires a health check. ensureHealthChecks finds this one by name.
       String healthCheckName = getHealthCheckName(name, Protocol.TCP);
@@ -690,7 +706,6 @@ public class GCPCloudImpl implements CloudAPI {
     if (address == null) {
       address = apiClient.createInternalAddress(regionCode, name, subnetworkUrl);
     }
-    ForwardingRule rule = apiClient.getRegionalForwardingRuleIfExists(regionCode, name);
     // Read before a replacement, which starts without labels.
     Map<String, String> ruleLabels = rule != null ? rule.getLabels() : null;
     if (rule == null || !forwardsPorts(rule, ports)) {
@@ -719,7 +734,7 @@ public class GCPCloudImpl implements CloudAPI {
   }
 
   /**
-   * Deletes the forwarding rule, the backend service, its health checks and instance groups, then
+   * Deletes the forwarding rules, the backend service, its health checks and instance groups, then
    * the address: GCP refuses to delete a resource that another still references. The fixed names
    * find the checks and groups of a run that deleted the backend service and then failed; the
    * backend service references also find ones under other names.
@@ -732,6 +747,14 @@ public class GCPCloudImpl implements CloudAPI {
     SetMultimap<String, String> instanceGroupsByZone = LinkedHashMultimap.create();
     BackendService backendService = apiClient.getRegionalBackendServiceIfExists(regionCode, name);
     if (backendService != null) {
+      // The user's rules of a load balancer that YBA took over. A reserved address that they used
+      // stays, because YBA does not know its name.
+      for (ForwardingRule rule :
+          CollectionUtils.emptyIfNull(
+              apiClient.getRegionalForwardingRulesForBackend(
+                  regionCode, backendService.getSelfLink()))) {
+        apiClient.deleteRegionalForwardingRule(regionCode, rule.getName());
+      }
       for (String url : CollectionUtils.emptyIfNull(backendService.getHealthChecks())) {
         healthCheckNames.add(CloudAPI.getResourceNameFromResourceUrl(url));
       }
@@ -755,6 +778,54 @@ public class GCPCloudImpl implements CloudAPI {
     instanceGroupsByZone.forEach(apiClient::deleteInstanceGroup);
     apiClient.deleteRegionalAddress(regionCode, name);
     log.info("Deleted load balancer {} in {}", name, regionCode);
+  }
+
+  /**
+   * Finds the forwarding rules that send every port to the backend service at one address, and adds
+   * the tags to them as labels.
+   *
+   * @return that address, or null when there is none.
+   */
+  @Nullable
+  private static String ensureUserForwardingRules(
+      GCPProjectApiClient apiClient,
+      String region,
+      String backendServiceUrl,
+      List<Integer> ports,
+      Map<String, String> tags) {
+    Map<String, List<ForwardingRule>> rulesByAddress =
+        CollectionUtils.emptyIfNull(
+                apiClient.getRegionalForwardingRulesForBackend(region, backendServiceUrl))
+            .stream()
+            .filter(rule -> rule.getIPAddress() != null)
+            .collect(
+                Collectors.groupingBy(
+                    ForwardingRule::getIPAddress, TreeMap::new, Collectors.toList()));
+    for (Map.Entry<String, List<ForwardingRule>> entry : rulesByAddress.entrySet()) {
+      List<ForwardingRule> rules = entry.getValue();
+      boolean forwardsEveryPort =
+          ports.stream()
+              .allMatch(port -> rules.stream().anyMatch(r -> forwardsPorts(r, List.of(port))));
+      if (!forwardsEveryPort) {
+        continue;
+      }
+      Map<String, String> labels = toLabels(tags);
+      try {
+        for (ForwardingRule rule : rules) {
+          if (!labels.isEmpty()) {
+            apiClient.setForwardingRuleLabels(
+                region,
+                rule.getName(),
+                rule.getLabelFingerprint(),
+                withLabels(rule.getLabels(), labels));
+          }
+        }
+      } catch (RuntimeException e) {
+        log.warn("Could not update the labels of forwarding rules {}: {}", rules, e.getMessage());
+      }
+      return entry.getKey();
+    }
+    return null;
   }
 
   private static boolean forwardsPorts(ForwardingRule rule, List<Integer> ports) {

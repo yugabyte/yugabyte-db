@@ -86,6 +86,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UpgradeParams;
@@ -248,7 +249,8 @@ public class UniverseCRUDHandler {
                 && !isSameInstanceTypes(
                     cluster.userIntent, currentCluster.userIntent, nodesInCluster))
             || cluster.userIntent.enableExposingService
-                != currentCluster.userIntent.enableExposingService;
+                != currentCluster.userIntent.enableExposingService
+            || ManagedLoadBalancerUtil.isTurnedOnOrOff(currentCluster, cluster);
 
     boolean nodeSettingsChanges =
         isAwsArnChanged(cluster, currentCluster)
@@ -2894,6 +2896,14 @@ public class UniverseCRUDHandler {
               universe.getUniverseDetails().nodePrefix, taskParams.nodePrefix));
     }
 
+    // An edit turns the managed load balancer off by turning off every load balancer in it.
+    for (Cluster cluster : taskParams.clusters) {
+      ManagedLoadBalancerConfig config = cluster.userIntent.getManagedLoadBalancer();
+      if (config != null && !config.isEnablePrivate() && !config.isEnablePublic()) {
+        cluster.userIntent.setManagedLoadBalancer(null);
+      }
+    }
+
     Set<UniverseDefinitionTaskParams.UpdateOptions> updateOptions =
         getUpdateOptions(taskParams, UniverseConfigureTaskParams.ClusterOperationType.EDIT);
     if (!updateOptions.contains(UniverseDefinitionTaskParams.UpdateOptions.UPDATE)
@@ -2941,7 +2951,14 @@ public class UniverseCRUDHandler {
         throw new PlatformServiceException(BAD_REQUEST, "RF change is not available");
       }
       ManagedLoadBalancerUtil.validateEditedCluster(
-          universe.getUniverseDetails().getPrimaryCluster(), curCluster, newCluster);
+          universe,
+          taskParams.getPrimaryCluster() != null
+              ? taskParams.getPrimaryCluster()
+              : universe.getUniverseDetails().getPrimaryCluster(),
+          curCluster,
+          newCluster,
+          confGetter,
+          cloudAPIFactory);
       UserIntent newIntent = newCluster.userIntent;
       UserIntent curIntent = curCluster.userIntent;
       for (UUID providerUUID : newIntent.getAllProviderUUIDs()) {

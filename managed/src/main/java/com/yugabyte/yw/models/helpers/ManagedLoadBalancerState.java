@@ -10,9 +10,9 @@ import java.util.UUID;
 import lombok.Data;
 
 /**
- * The load balancers that YBA created for a universe. A subtask records a load balancer before the
- * cloud call and removes it after the cloud delete, so the list names every load balancer that may
- * exist.
+ * The load balancers that YBA created or took over for a universe. A subtask records a load
+ * balancer before the cloud call and removes it after the cloud delete, so the list names every
+ * load balancer that may exist.
  */
 @Data
 public class ManagedLoadBalancerState {

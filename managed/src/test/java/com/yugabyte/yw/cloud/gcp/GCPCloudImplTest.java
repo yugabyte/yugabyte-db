@@ -666,6 +666,44 @@ public class GCPCloudImplTest extends FakeDBApplication {
   }
 
   @Test
+  public void testEnsureTakenOverLbKeepsTheUsersForwardingRuleAndAddress() {
+    setupLbProvider();
+    // The user named only the backend service; their rule and address have other names.
+    when(mockApiClient.getRegionalBackendServiceIfExists(LB_REGION, LB_NAME))
+        .thenReturn(new BackendService().setSelfLink(BS_URL));
+    when(mockApiClient.getRegionalForwardingRulesForBackend(LB_REGION, BS_URL))
+        .thenReturn(
+            List.of(
+                new ForwardingRule()
+                    .setName("user-rule")
+                    .setIPAddress("10.150.0.9")
+                    .setPorts(List.of("5433", "9042"))
+                    .setLabelFingerprint("fp-u")));
+
+    String address = ensureLb(lbZones, Map.of("universe-name", "u1"));
+
+    assertEquals("10.150.0.9", address);
+    verifyNoLbResourceCreated();
+    verify(mockApiClient)
+        .setForwardingRuleLabels(LB_REGION, "user-rule", "fp-u", Map.of("universe-name", "u1"));
+  }
+
+  @Test
+  public void testDeleteTakenOverLbDeletesTheUsersForwardingRuleBeforeTheBackendService() {
+    setupLbProvider();
+    when(mockApiClient.getRegionalBackendServiceIfExists(LB_REGION, LB_NAME))
+        .thenReturn(new BackendService().setSelfLink(BS_URL));
+    when(mockApiClient.getRegionalForwardingRulesForBackend(LB_REGION, BS_URL))
+        .thenReturn(List.of(new ForwardingRule().setName("user-rule")));
+
+    gcpCloudImpl.deleteManagedLoadBalancer(defaultProvider, LB_REGION, LB_NAME);
+
+    InOrder inOrder = Mockito.inOrder(mockApiClient);
+    inOrder.verify(mockApiClient).deleteRegionalForwardingRule(LB_REGION, "user-rule");
+    inOrder.verify(mockApiClient).deleteRegionalBackendService(LB_REGION, LB_NAME);
+  }
+
+  @Test
   public void testEnsureLbFailsBeforeCreatingAnythingWhenNoZoneHasSubnet() {
     setupLbProvider();
     AvailabilityZone zoneWithoutSubnet = new AvailabilityZone();

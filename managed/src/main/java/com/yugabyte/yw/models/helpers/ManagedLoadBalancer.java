@@ -10,9 +10,9 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * A load balancer that YBA created for one cluster. It serves a set of zones in one region. The
- * cluster, region and name identify it; the zones can change, for example when the provider gets a
- * zone.
+ * A load balancer that YBA created or took over for one cluster. It serves a set of zones in one
+ * region. The cluster, region and name identify it; the zones can change, for example when the
+ * provider gets a zone.
  */
 @Data
 @NoArgsConstructor

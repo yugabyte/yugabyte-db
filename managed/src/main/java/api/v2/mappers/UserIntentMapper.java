@@ -946,6 +946,13 @@ public interface UserIntentMapper {
       userIntent.enableExposingService =
           toV1ExposingServiceState(clusterNetworkingEditSpec.getEnableExposingService());
     }
+    if (clusterNetworkingEditSpec.getManagedLoadBalancer() != null) {
+      ManagedLoadBalancerConfig config =
+          toV1ManagedLoadBalancerConfig(clusterNetworkingEditSpec.getManagedLoadBalancer());
+      // An edit turns the setting off by turning off every load balancer in it.
+      userIntent.setManagedLoadBalancer(
+          config.isEnablePrivate() || config.isEnablePublic() ? config : null);
+    }
     return userIntent;
   }
 

@@ -61,6 +61,7 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
+import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.YbcThrottleParameters;
@@ -103,6 +104,8 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.ArgumentMatchers;
+import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.slf4j.LoggerFactory;
 import org.yb.client.ChangeConfigResponse;
@@ -1364,6 +1367,203 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     verify(cloudAPI)
         .ensureManagedLoadBalancer(
             any(), eq("region-1"), any(), any(), eq(List.of(5434, 9042)), any());
+  }
+
+  // The customer's own load balancer in the only region of the default universe.
+  private Universe givenUserLoadBalancer() {
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    return Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        u -> {
+          Cluster primary = u.getUniverseDetails().getPrimaryCluster();
+          primary.userIntent.enableLB = true;
+          primary.placementInfo.azStream().forEach(az -> az.lbName = "byo-lb");
+        });
+  }
+
+  private static UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig privateLb() {
+    UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig config =
+        new UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig();
+    config.setEnablePrivate(true);
+    return config;
+  }
+
+  // An edit payload that changes only the managed load balancer setting.
+  private static UniverseDefinitionTaskParams flipManagedLoadBalancer(
+      Universe universe, boolean enablePrivate) {
+    UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
+    taskParams.expectedUniverseVersion = -1;
+    taskParams
+        .getPrimaryCluster()
+        .userIntent
+        .setManagedLoadBalancer(enablePrivate ? privateLb() : null);
+    return taskParams;
+  }
+
+  private TaskInfo retry(TaskInfo failed) throws InterruptedException {
+    CustomerTask.create(
+        defaultCustomer,
+        defaultUniverse.getUniverseUUID(),
+        failed.getUuid(),
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.Edit,
+        defaultUniverse.getName());
+    return waitForTask(
+        customerTaskManager
+            .retryCustomerTask(defaultCustomer.getUuid(), failed.getUuid())
+            .getTaskUUID());
+  }
+
+  private static List<TaskType> subTaskTypes(TaskInfo taskInfo) {
+    return taskInfo.getSubTasks().stream()
+        .sorted(Comparator.comparing(TaskInfo::getPosition))
+        .map(TaskInfo::getTaskType)
+        .collect(Collectors.toList());
+  }
+
+  @Test
+  public void testEditTurningOnManagedLoadBalancerTakesOverTheZonesLoadBalancer()
+      throws InterruptedException {
+    Universe universe = givenUserLoadBalancer();
+    UniverseDefinitionTaskParams taskParams = flipManagedLoadBalancer(universe, true);
+    // Without a node change, the flip alone must still count as an edit.
+    assertTrue(
+        UniverseCRUDHandler.getUpdateOptions(
+                taskParams,
+                EDIT,
+                taskParams.getPrimaryCluster(),
+                Universe.getOrBadRequest(universe.getUniverseUUID()))
+            .contains(UniverseDefinitionTaskParams.UpdateOptions.UPDATE));
+    when(cloudAPI.ensureManagedLoadBalancer(any(), any(), any(), any(), any(), any()))
+        .thenThrow(new RuntimeException("quota exceeded"))
+        .thenReturn("byo-lb.elb");
+
+    TaskInfo failed = submitTask(taskParams);
+    assertEquals(Failure, failed.getTaskState());
+    TaskInfo retried = retry(failed);
+
+    assertEquals(Success, retried.getTaskState());
+    List<TaskType> subTasks = subTaskTypes(retried);
+    assertTrue(
+        subTasks.toString(),
+        subTasks.indexOf(TaskType.EnsureManagedLoadBalancer)
+                < subTasks.indexOf(TaskType.ManageLoadBalancerGroup)
+            && subTasks.indexOf(TaskType.ManageLoadBalancerGroup)
+                < subTasks.indexOf(TaskType.UpdateUniverseIntent)
+            && subTasks.indexOf(TaskType.UpdateUniverseIntent)
+                < subTasks.indexOf(TaskType.UpdateUniverseFields));
+    // Both attempts take over the user's load balancer; none is created under the managed name.
+    verify(cloudAPI, Mockito.times(2))
+        .ensureManagedLoadBalancer(any(), eq("region-1"), eq("byo-lb"), any(), any(), any());
+    verify(cloudAPI)
+        .manageNodeGroup(
+            any(),
+            eq("region-1"),
+            eq("byo-lb"),
+            ArgumentMatchers.argThat(
+                azNodes -> azNodes.values().stream().mapToInt(Set::size).sum() == 3),
+            any(),
+            any());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    Cluster primary = universe.getUniverseDetails().getPrimaryCluster();
+    assertTrue(primary.userIntent.getManagedLoadBalancer().isEnablePrivate());
+    assertFalse(primary.userIntent.enableLB);
+    primary.placementInfo.azStream().forEach(az -> assertNull(az.lbName));
+    List<ManagedLoadBalancer> lbs =
+        universe.getUniverseDetails().getManagedLoadBalancerState().getLoadBalancers();
+    assertEquals(1, lbs.size());
+    assertEquals("byo-lb", lbs.get(0).getName());
+    assertEquals("byo-lb.elb", lbs.get(0).getAddress());
+  }
+
+  @Test
+  public void testEditTurningOffManagedLoadBalancerDeletesIt() throws InterruptedException {
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    UUID clusterUUID = defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid;
+    Universe universe =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              details.getPrimaryCluster().userIntent.setManagedLoadBalancer(privateLb());
+              ManagedLoadBalancerState state = new ManagedLoadBalancerState();
+              state.put(
+                  new ManagedLoadBalancer(
+                      clusterUUID,
+                      Region.getByCode(defaultProvider, "region-1").getUuid(),
+                      ManagedLoadBalancer.Scheme.PRIVATE,
+                      ImmutableList.of(),
+                      "byo-lb",
+                      "byo-lb.elb"));
+              details.setManagedLoadBalancerState(state);
+            });
+    doThrow(new RuntimeException("target group in use"))
+        .doNothing()
+        .when(cloudAPI)
+        .deleteManagedLoadBalancer(any(), any(), any());
+
+    TaskInfo failed = submitTask(flipManagedLoadBalancer(universe, false));
+    assertEquals(Failure, failed.getTaskState());
+    TaskInfo retried = retry(failed);
+
+    assertEquals(Success, retried.getTaskState());
+    List<TaskType> subTasks = subTaskTypes(retried);
+    assertTrue(
+        subTasks.toString(),
+        subTasks.indexOf(TaskType.DeleteManagedLoadBalancer)
+            < subTasks.indexOf(TaskType.UpdateUniverseIntent));
+    verify(cloudAPI, Mockito.times(2))
+        .deleteManagedLoadBalancer(any(), eq("region-1"), eq("byo-lb"));
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertNull(
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.getManagedLoadBalancer());
+    assertNull(universe.getUniverseDetails().getManagedLoadBalancerState());
+  }
+
+  @Test
+  public void testRollbackOfFailedTakeOverLeavesTheUsersLoadBalancer() throws InterruptedException {
+    factory.globalRuntimeConf().setValue("yb.task.allow_edit_universe_rollback", "true");
+    Universe universe = givenUserLoadBalancer();
+    when(cloudAPI.ensureManagedLoadBalancer(any(), any(), any(), any(), any(), any()))
+        .thenThrow(new RuntimeException("quota exceeded"));
+    TaskInfo failed = submitTask(flipManagedLoadBalancer(universe, true));
+    assertEquals(Failure, failed.getTaskState());
+    // The state names the user's load balancer, so the rollback must tell it apart.
+    assertEquals(
+        "byo-lb",
+        Universe.getOrBadRequest(universe.getUniverseUUID())
+            .getUniverseDetails()
+            .getManagedLoadBalancerState()
+            .getLoadBalancers()
+            .get(0)
+            .getName());
+
+    UniverseDefinitionTaskParams rollbackParams =
+        Json.fromJson(failed.getTaskParams(), UniverseDefinitionTaskParams.class);
+    rollbackParams.expectedUniverseVersion = -1;
+    TaskInfo rollback =
+        waitForTask(commissioner.submit(TaskType.RollbackEditUniverse, rollbackParams));
+
+    assertEquals(
+        rollback.getErrorMessage()
+            + rollback.getSubTasks().stream()
+                .filter(t -> t.getTaskState() == Failure)
+                .map(t -> t.getTaskType() + ": " + t.getErrorMessage())
+                .collect(Collectors.toList()),
+        Success,
+        rollback.getTaskState());
+    verify(cloudAPI, never()).deleteManagedLoadBalancer(any(), any(), any());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    Cluster primary = universe.getUniverseDetails().getPrimaryCluster();
+    assertNull(primary.userIntent.getManagedLoadBalancer());
+    primary.placementInfo.azStream().forEach(az -> assertEquals("byo-lb", az.lbName));
   }
 
   private UniverseDefinitionTaskParams getTaskParamsForDiskSizeValidation(Universe universe) {
