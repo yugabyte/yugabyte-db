@@ -799,23 +799,27 @@ _equal${n}(const $n *a, const $n *b)
 		}
 		elsif ($t eq 'YbPlanInfo')
 		{
-			print $cff "\tCOPY_SCALAR_FIELD($f.estimated_num_nexts_prevs);\n" unless $copy_ignore;
+			print $cff "\tCOPY_SCALAR_FIELD($f.estimated_num_nexts);\n" unless $copy_ignore;
+			print $cff "\tCOPY_SCALAR_FIELD($f.estimated_num_prevs);\n" unless $copy_ignore;
 			print $cff "\tCOPY_SCALAR_FIELD($f.estimated_num_seeks);\n" unless $copy_ignore;
 			print $cff "\tCOPY_SCALAR_FIELD($f.estimated_docdb_result_width);\n" unless $copy_ignore;
 			print $cff "\tCOPY_SCALAR_FIELD($f.estimated_ybctid_width);\n" unless $copy_ignore;
 			print $cff "\tCOPY_SCALAR_FIELD($f.estimated_num_table_result_pages);\n" unless $copy_ignore;
 			print $cff "\tCOPY_SCALAR_FIELD($f.estimated_num_index_result_pages);\n" unless $copy_ignore;
-			print $cff "\tCOPY_SCALAR_FIELD($f.estimated_num_bmscan_nexts_prevs);\n" unless $copy_ignore;
+			print $cff "\tCOPY_SCALAR_FIELD($f.estimated_num_bmscan_nexts);\n" unless $copy_ignore;
+			print $cff "\tCOPY_SCALAR_FIELD($f.estimated_num_bmscan_prevs);\n" unless $copy_ignore;
 			print $cff "\tCOPY_SCALAR_FIELD($f.estimated_num_bmscan_seeks);\n" unless $copy_ignore;
 			print $cff "\tCOPY_SCALAR_FIELD($f.estimated_num_bmscan_result_pages);\n" unless $copy_ignore;
 			print $cff "\tCOPY_SCALAR_FIELD($f.first_fetch_limit);\n" unless $copy_ignore;
-			print $eff "\tCOMPARE_SCALAR_FIELD($f.estimated_num_nexts_prevs);\n" unless $equal_ignore;
+			print $eff "\tCOMPARE_SCALAR_FIELD($f.estimated_num_nexts);\n" unless $equal_ignore;
+			print $eff "\tCOMPARE_SCALAR_FIELD($f.estimated_num_prevs);\n" unless $equal_ignore;
 			print $eff "\tCOMPARE_SCALAR_FIELD($f.estimated_num_seeks);\n" unless $equal_ignore;
 			print $eff "\tCOMPARE_SCALAR_FIELD($f.estimated_docdb_result_width);\n" unless $equal_ignore;
 			print $eff "\tCOMPARE_SCALAR_FIELD($f.estimated_ybctid_width);\n" unless $equal_ignore;
 			print $eff "\tCOMPARE_SCALAR_FIELD($f.estimated_num_table_result_pages);\n" unless $equal_ignore;
 			print $eff "\tCOMPARE_SCALAR_FIELD($f.estimated_num_index_result_pages);\n" unless $equal_ignore;
-			print $eff "\tCOMPARE_SCALAR_FIELD($f.estimated_num_bmscan_nexts_prevs);\n" unless $equal_ignore;
+			print $eff "\tCOMPARE_SCALAR_FIELD($f.estimated_num_bmscan_nexts);\n" unless $equal_ignore;
+			print $eff "\tCOMPARE_SCALAR_FIELD($f.estimated_num_bmscan_prevs);\n" unless $equal_ignore;
 			print $eff "\tCOMPARE_SCALAR_FIELD($f.estimated_num_bmscan_seeks);\n" unless $equal_ignore;
 			print $eff "\tCOMPARE_SCALAR_FIELD($f.estimated_num_bmscan_result_pages);\n" unless $equal_ignore;
 			print $eff "\tCOMPARE_SCALAR_FIELD($f.first_fetch_limit);\n" unless $equal_ignore;
@@ -1142,23 +1146,27 @@ _read${n}(void)
 		}
 		elsif ($t eq 'YbPlanInfo')
 		{
-			print $off "\tWRITE_FLOAT_FIELD($f.estimated_num_nexts_prevs);\n";
+			print $off "\tWRITE_FLOAT_FIELD($f.estimated_num_nexts);\n";
+			print $off "\tWRITE_FLOAT_FIELD($f.estimated_num_prevs);\n";
 			print $off "\tWRITE_FLOAT_FIELD($f.estimated_num_seeks);\n";
 			print $off "\tWRITE_INT_FIELD($f.estimated_docdb_result_width);\n";
 			print $off "\tWRITE_INT_FIELD($f.estimated_ybctid_width);\n";
 			print $off "\tWRITE_FLOAT_FIELD($f.estimated_num_table_result_pages);\n";
 			print $off "\tWRITE_FLOAT_FIELD($f.estimated_num_index_result_pages);\n";
-			print $off "\tWRITE_FLOAT_FIELD($f.estimated_num_bmscan_nexts_prevs);\n";
+			print $off "\tWRITE_FLOAT_FIELD($f.estimated_num_bmscan_nexts);\n";
+			print $off "\tWRITE_FLOAT_FIELD($f.estimated_num_bmscan_prevs);\n";
 			print $off "\tWRITE_FLOAT_FIELD($f.estimated_num_bmscan_seeks);\n";
 			print $off "\tWRITE_FLOAT_FIELD($f.estimated_num_bmscan_result_pages);\n";
 			print $off "\tWRITE_FLOAT_FIELD($f.first_fetch_limit);\n";
-			print $rff "\tREAD_FLOAT_FIELD($f.estimated_num_nexts_prevs);\n" unless $no_read;
+			print $rff "\tREAD_FLOAT_FIELD($f.estimated_num_nexts);\n" unless $no_read;
+			print $rff "\tREAD_FLOAT_FIELD($f.estimated_num_prevs);\n" unless $no_read;
 			print $rff "\tREAD_FLOAT_FIELD($f.estimated_num_seeks);\n" unless $no_read;
 			print $rff "\tREAD_INT_FIELD($f.estimated_docdb_result_width);\n" unless $no_read;
 			print $rff "\tREAD_INT_FIELD($f.estimated_ybctid_width);\n" unless $no_read;
 			print $rff "\tREAD_FLOAT_FIELD($f.estimated_num_table_result_pages);\n" unless $no_read;
 			print $rff "\tREAD_FLOAT_FIELD($f.estimated_num_index_result_pages);\n" unless $no_read;
-			print $rff "\tREAD_FLOAT_FIELD($f.estimated_num_bmscan_nexts_prevs);\n" unless $no_read;
+			print $rff "\tREAD_FLOAT_FIELD($f.estimated_num_bmscan_nexts);\n" unless $no_read;
+			print $rff "\tREAD_FLOAT_FIELD($f.estimated_num_bmscan_prevs);\n" unless $no_read;
 			print $rff "\tREAD_FLOAT_FIELD($f.estimated_num_bmscan_seeks);\n" unless $no_read;
 			print $rff "\tREAD_FLOAT_FIELD($f.estimated_num_bmscan_result_pages);\n" unless $no_read;
 			print $rff "\tREAD_FLOAT_FIELD($f.first_fetch_limit);\n" unless $no_read;

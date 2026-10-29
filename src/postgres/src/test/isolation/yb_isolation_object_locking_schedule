@@ -17,7 +17,12 @@ test: yb.orig.non_concurrent_index_with_parallel_dml
 test: yb.orig.detach-partition-concurrently-1
 test: yb.orig.matview_refresh_locking
 test: yb.orig.ddl_lock_conflicts
+test: yb.orig.validate_constraint_concurrent_dml
+test: yb.orig.validate_fk_constraint_concurrent_dml
+test: yb.orig.add_fk_constraint_concurrent_dml
 test: yb.orig.index_check_concurrent_drop
 test: yb.orig.lock-status-ddl-waiters
 test: yb.orig.reset_txn_snapshot_after_ddl
 test: yb.orig.alter_partitioned_table_locks
+test: yb.orig.rollback_to_savepoint_retains_table_locks
+test: yb.orig.revoke_honored_in_txn_block

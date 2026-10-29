@@ -556,14 +556,25 @@ TEST_F(CqlTest, ReadTimeoutTest) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_read_write_timeout_ms) = 5;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_connection_timeout) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_read_deadline_check_granularity) = 1;
-  starting_time = CoarseMonoClock::now();
-  auto result = session.ExecuteAndRenderToString(
-      "select acctid from test_t WHERE custid = '123' AND roletitle = 'Manager'");
-  // Use a slightly lower bound to account for clock granularity and propagation latency on macOS.
-  ASSERT_GE(MonoDelta(CoarseMonoClock::now() - starting_time).ToMilliseconds(),
-      FLAGS_client_read_write_timeout_ms - 1);
-  // Verify that read operation failed due to passed deadline.
-  ASSERT_NOK(result);
+  Result<std::string> result = std::string();
+  // On slow builds the deadline may expire before the read is executed by the tablet (e.g. in
+  // tablet lookup or the RPC queue), retry then.
+  for (int attempt = 0; attempt < 10; ++attempt) {
+    starting_time = CoarseMonoClock::now();
+    result = session.ExecuteAndRenderToString(
+        "select acctid from test_t WHERE custid = '123' AND roletitle = 'Manager'");
+    // Use a slightly lower bound to account for clock granularity and propagation latency on
+    // macOS.
+    ASSERT_GE(MonoDelta(CoarseMonoClock::now() - starting_time).ToMilliseconds(),
+        FLAGS_client_read_write_timeout_ms - 1);
+    // Verify that read operation failed due to passed deadline.
+    ASSERT_NOK(result);
+    if (result.status().message().ToBuffer().find("Deadline for query passed") !=
+        std::string::npos) {
+      break;
+    }
+    LOG(INFO) << "Deadline expired before read execution, retrying: " << result.status();
+  }
   ASSERT_STR_CONTAINS(result.status().message().ToBuffer(), "Deadline for query passed");
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_read_write_timeout_ms) = 60000;
 }

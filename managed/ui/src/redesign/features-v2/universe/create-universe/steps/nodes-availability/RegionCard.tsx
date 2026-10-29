@@ -42,7 +42,9 @@ const StyledRegionCard = styled('div')(({ theme }) => ({
   gap: '24px',
   border: `1px solid ${theme.palette.grey[300]}`,
   borderRadius: '8px',
-  width: '672px'
+  boxSizing: 'border-box',
+  width: '672px',
+  maxWidth: '100%'
 }));
 
 const StyledRegionHeader = styled('div')(({ theme }) => ({

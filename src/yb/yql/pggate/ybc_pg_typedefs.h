@@ -406,6 +406,7 @@ typedef struct {
   YbcReadPointHandle (*GetCatalogSnapshotReadPoint)(YbcPgOid table_oid, bool create_if_not_exists);
   /* replication origin */
   uint16_t (*GetSessionReplicationOriginId)();
+  int64_t (*GetSessionReplicationOriginTimestamp)();
   bool (*HasProcessableAbortInterrupt)();
   /* xact.h */
   bool (*IsInParallelMode)();
@@ -429,6 +430,16 @@ typedef struct {
   size_t nattrs;
   YbcPgAttrValueDescriptor *attrs;
 } YbcPgYBTupleIdDescriptor;
+
+// The values a primary key column of the indexed table is compared for equality with
+// (col = value, or col IN (values)) in a vector index search. The datums have the column's type.
+// Columns under a non-C collation are never passed: their quals aren't pushed down.
+typedef struct {
+  int attr_num;
+  const YbcPgTypeEntity *type_entity;
+  size_t nvalues;
+  const uint64_t *datums;
+} YbcPgVectorKeyColumn;
 
 typedef struct {
   const char *host;
@@ -607,14 +618,18 @@ typedef enum {
   YB_YQL_PREFETCHER_TRUST_CACHE_AUTH,
   YB_YQL_PREFETCHER_TRUST_CACHE,
   YB_YQL_PREFETCHER_RENEW_CACHE_SOFT,
-  YB_YQL_PREFETCHER_RENEW_CACHE_HARD
+  YB_YQL_PREFETCHER_RENEW_CACHE_HARD,
+  // Serve the request only from what is already cached; if no cached response matches, fail
+  // instead of reading the catalog. Used to start a connection from an older catalog version that
+  // this node already holds.
+  YB_YQL_PREFETCHER_TRUST_CACHE_LOOKUP_ONLY
 } YbcPgSysTablePrefetcherCacheMode;
 
 // Mirrors YsqlCatalogPrefetchKindPB in pgsql_protocol.proto.
 typedef enum {
   YB_YQL_PREFETCH_KIND_NONE = 0,
   YB_YQL_PREFETCH_KIND_CONNECTION_START = 1,
-  YB_YQL_PREFETCH_KIND_CACHE_REFRESH = 2,
+  YB_YQL_PREFETCH_KIND_HIGH_PRIORITY = 2,
 } YbcPgSysTablePrefetchKind;
 
 typedef struct {
@@ -645,6 +660,19 @@ typedef enum {
   // Use a distributed transaction for full ACID semantics (common case).
   YB_TRANSACTIONAL
 } YbcPgTransactionSetting;
+
+typedef enum {
+  YB_PG_ON_CONFLICT_NONE = 0,
+  YB_PG_ON_CONFLICT_NOTHING = 1,
+  YB_PG_ON_CONFLICT_UPDATE = 2,
+} YbcPgOnConflictAction;
+
+typedef enum {
+  YB_PG_ON_CONFLICT_OUTCOME_UNKNOWN = 0,
+  YB_PG_ON_CONFLICT_OUTCOME_INSERTED = 1,
+  YB_PG_ON_CONFLICT_OUTCOME_UPDATED = 2,
+  YB_PG_ON_CONFLICT_OUTCOME_SKIPPED = 3,
+} YbcPgOnConflictOutcome;
 
 // Postgres WAL record pointer defined in Postgres' xlogdefs.h
 typedef uint64_t YbcPgXLogRecPtr;
@@ -679,6 +707,7 @@ typedef struct {
   bool expired;
   bool allow_tables_without_primary_key;
   bool detect_publication_changes_implicitly;
+  const char *bound_publication_name;
 } YbcReplicationSlotDescriptor;
 
 typedef struct {
@@ -913,6 +942,12 @@ typedef struct {
   bool is_hash_partitioned;
   const char* tablet_state;
   YbcPgOid pg_table_oid;
+  /* Tablet leader disk sizes from master; has_disk_size false when unavailable. */
+  bool has_disk_size;
+  int64_t sst_files_disk_size;
+  int64_t wal_files_disk_size;
+  int64_t uncompressed_sst_files_disk_size;
+  int64_t vector_index_disk_size;
 } YbcPgGlobalTabletsDescriptor;
 
 typedef struct {

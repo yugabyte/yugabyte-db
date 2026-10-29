@@ -103,10 +103,37 @@ KIWI_API static inline int kiwi_fe_read_auth(char *data, uint32_t size,
 		return 0;
 	/* AuthenticationSASL */
 	case 10:
-		/* SCRAM-SHA-256 is the only implemented SASL mechanism in
-			 * PostgreSQL, at the moment */
-		if (strcmp(pos, "SCRAM-SHA-256") != 0)
-			return -1;
+		/* YB: Copied from upstream Odyssey; drop this comment on upstream merge. */
+		/* PostgreSQL sends a list of SASL mechanisms as null-terminated
+		 * strings. When TLS is enabled, PostgreSQL sends the list:
+		 * ["SCRAM-SHA-256-PLUS", "SCRAM-SHA-256", ""].
+		 * We need to iterate through the list to find SCRAM-SHA-256. */
+		{
+			char *mechanism = pos;
+			int found = 0;
+			size_t offset = 0;
+			while (offset < pos_size && mechanism[0] != '\0') {
+				/* Find the end of this mechanism string safely */
+				size_t len = 0;
+				while (offset + len < pos_size &&
+				       mechanism[len] != '\0') {
+					len++;
+				}
+				/* Check if we found null terminator within bounds */
+				if (offset + len >= pos_size) {
+					break;
+				}
+				if (strcmp(mechanism, "SCRAM-SHA-256") == 0) {
+					found = 1;
+					break;
+				}
+				offset += len + 1;
+				mechanism += len + 1;
+			}
+			if (!found) {
+				return -1;
+			}
+		}
 		return 0;
 	/* AuthenticationSASLContinue */
 	case 11:

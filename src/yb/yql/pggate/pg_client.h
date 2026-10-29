@@ -32,6 +32,7 @@
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/client/client_fwd.h"
 
+#include "yb/common/entity_ids_types.h"
 #include "yb/common/pg_types.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
@@ -276,15 +277,19 @@ class PgClient {
 
   Result<client::TableSizeInfo> GetTableDiskSize(const PgObjectId& table_oid);
 
+  Result<client::TableSizeInfo> GetTableDiskSizeByYbTableId(const TableId& yb_table_id);
+
   Status InsertSequenceTuple(int64_t db_oid,
                              int64_t seq_oid,
                              uint64_t ysql_catalog_version,
+                             bool is_using_table_locks,
                              int64_t last_val,
                              bool is_called);
 
   Result<bool> UpdateSequenceTuple(int64_t db_oid,
                                    int64_t seq_oid,
                                    uint64_t ysql_catalog_version,
+                                   bool is_using_table_locks,
                                    int64_t last_val,
                                    bool is_called,
                                    std::optional<int64_t> expected_last_val,
@@ -293,6 +298,7 @@ class PgClient {
   Result<std::pair<int64_t, int64_t>> FetchSequenceTuple(int64_t db_oid,
                                                          int64_t seq_oid,
                                                          uint64_t ysql_catalog_version,
+                                                         bool is_using_table_locks,
                                                          uint32_t fetch_count,
                                                          int64_t inc_by,
                                                          int64_t min_value,
@@ -301,7 +307,7 @@ class PgClient {
 
   Result<std::pair<int64_t, bool>> ReadSequenceTuple(
       int64_t db_oid, int64_t seq_oid, std::optional<uint64_t> ysql_catalog_version,
-      std::optional<uint64_t> read_time = std::nullopt);
+      bool is_using_table_locks, std::optional<uint64_t> read_time = std::nullopt);
 
   Status DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid);
 

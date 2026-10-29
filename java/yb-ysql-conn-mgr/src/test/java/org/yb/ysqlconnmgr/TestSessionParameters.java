@@ -30,10 +30,12 @@ import java.util.Map;
 import java.util.Set;
 import java.util.HashSet;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
+import org.yb.util.Pair;
 import org.yb.util.RequiresLinux;
 import org.yb.client.TestUtils;
 import org.yb.util.ProcessUtil;
@@ -1036,5 +1038,39 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
     restartClusterWithAdditionalFlags(java.util.Collections.emptyMap(), tserverFlags);
 
     updateRuntimeFlagPGCBackend();
+  }
+
+  // With a single backend, B's query resets the backend to defaults, so A's next query has to
+  // replay both its startup parameter ('G' packet) and its SET on it. Postgres reports those
+  // GUC_REPORT variables again, but A already knows their values and must not be sent a
+  // ParameterStatus for them. A SET issued by A afterwards must still be reported.
+  @Test
+  public void testNoParameterStatusDuringDeploy() throws Exception {
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), SINGLE_BACKEND_FLAGS);
+
+    try (WireConn a = rawConnBuilder().startupParam("application_name", "deploy_a").connect();
+         WireConn b = rawConnBuilder().connect()) {
+      PipelineResult r = a.createPipeline()
+          .query("SET TimeZone = 'America/Sao_Paulo'")
+          .run();
+      assertEquals(Arrays.asList(new Pair<>("TimeZone", "America/Sao_Paulo")),
+          r.parameterStatuses());
+
+      r = b.createPipeline()
+          .query("SHOW TimeZone").rowCount(1)
+          .run();
+      assertEquals(Collections.emptyList(), r.parameterStatuses());
+
+      r = a.createPipeline()
+          .query("SHOW application_name").row("deploy_a")
+          .query("SHOW TimeZone").row("America/Sao_Paulo")
+          .run();
+      assertEquals(Collections.emptyList(), r.parameterStatuses());
+
+      r = a.createPipeline()
+          .query("SET TimeZone = 'UTC'")
+          .run();
+      assertEquals(Arrays.asList(new Pair<>("TimeZone", "UTC")), r.parameterStatuses());
+    }
   }
 }

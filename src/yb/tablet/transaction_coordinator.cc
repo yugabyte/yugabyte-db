@@ -421,7 +421,11 @@ class TransactionState {
 
     replicating_ = nullptr;
 
-    // We are not leader, so could abort all queued requests.
+    // Replication of this transaction's update failed (e.g., this peer lost leadership, the Raft
+    // append failed, or a leader-side check refused it); the transaction itself is not aborted and
+    // keeps its status.  Fail the requests queued behind the update: the client can resend a
+    // refused COMMITTED update, and an ABORTED update dropped here is redone when the transaction
+    // expires.
     ClearRequests(STATUS(Aborted, "Replication failed"));
   }
 

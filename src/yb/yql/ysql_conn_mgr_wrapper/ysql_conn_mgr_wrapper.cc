@@ -240,6 +240,10 @@ DEFINE_NON_RUNTIME_CONN_MGR_FLAG(bool, cert_auth, true,
     "which is what makes the connection manager verify the client certificate the same way "
     "PostgreSQL would.");
 
+DEFINE_test_flag(uint32, ysql_conn_mgr_shutdown_delay_ms, 0,
+    "Time (in ms) that Ysql Connection Manager waits during SIGINT/SIGTERM shutdown before the "
+    "process exits.");
+
 namespace {
 
 bool ValidateLogSettings(const char* flag_name, const std::string& value) {
@@ -393,6 +397,12 @@ Status YsqlConnMgrWrapper::Start() {
   // also be inherited from this process's environment, so pass the intent separately. It refuses
   // to start if the provider did not come up.
   proc_->SetEnv(YSQL_CONN_MGR_REQUIRE_FIPS, FLAGS_openssl_require_fips ? "true" : "false");
+
+  unsetenv("YB_YSQL_CONN_MGR_TEST_SHUTDOWN_DELAY_MS");
+  if (FLAGS_TEST_ysql_conn_mgr_shutdown_delay_ms > 0) {
+    proc_->SetEnv("YB_YSQL_CONN_MGR_TEST_SHUTDOWN_DELAY_MS",
+                  std::to_string(FLAGS_TEST_ysql_conn_mgr_shutdown_delay_ms));
+  }
 
 #ifdef THREAD_SANITIZER
   // Disable thread leak detection for the Ysql Connection Manager (Odyssey) process.

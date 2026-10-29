@@ -4,6 +4,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.FileHelperService;
 import com.yugabyte.yw.common.Util;
@@ -2043,14 +2044,17 @@ public class OtelCollectorConfigGenerator {
     List<OtelCollectorConfigFormat.ScrapeConfig> scrapeConfigs = new ArrayList<>();
 
     // Add yugabyte scrape config. Includes master, tserver, ysql, cql exports.
-    if (OtelCollectorUtil.yugabyteJobScrapeConfigEnabled(
-        metricsExportConfig.getScrapeConfigTargets())) {
-      scrapeConfigs.add(createYugabyteScrapeConfig(nodeAddress, nodeDetails, metricsExportConfig));
+    Set<ScrapeConfigTargetType> yugabyteTargets =
+        getYugabyteScrapeTargetsForNode(nodeDetails, metricsExportConfig.getScrapeConfigTargets());
+    if (OtelCollectorUtil.yugabyteJobScrapeConfigEnabled(yugabyteTargets)) {
+      scrapeConfigs.add(
+          createYugabyteScrapeConfig(
+              nodeAddress, nodeDetails, metricsExportConfig, yugabyteTargets));
     }
 
     // Add node exporter scrape config if the scrape config target is enabled.
     if (metricsExportConfig.getScrapeConfigTargets().contains(ScrapeConfigTargetType.NODE_EXPORT)) {
-      scrapeConfigs.add(createNodeExporterScrapeConfig(nodeAddress, nodeDetails));
+      scrapeConfigs.add(createNodeExporterScrapeConfig(nodeAddress, universe, nodeDetails));
     }
 
     // Add node-agent scrape config if the scrape config target is enabled.
@@ -2225,15 +2229,42 @@ public class OtelCollectorConfigGenerator {
   }
 
   private OtelCollectorConfigFormat.ScrapeConfig createYugabyteScrapeConfig(
-      String nodeAddress, NodeDetails nodeDetails, MetricsExportConfig metricsExportConfig) {
+      String nodeAddress,
+      NodeDetails nodeDetails,
+      MetricsExportConfig metricsExportConfig,
+      Set<ScrapeConfigTargetType> scrapeConfigTargets) {
     return createYugabyteScrapeConfig(
         nodeAddress,
         metricsExportConfig,
-        metricsExportConfig.getScrapeConfigTargets(),
+        scrapeConfigTargets,
         nodeDetails.masterHttpPort,
         nodeDetails.tserverHttpPort,
         nodeDetails.ysqlServerHttpPort,
         nodeDetails.yqlServerHttpPort);
+  }
+
+  /**
+   * Drops the requested targets that have no server on this node, so the collector does not scrape
+   * a closed port every interval (PLAT-21847). The collector config is written during configure,
+   * before add/start node and master moves store isTserver/isMaster, so gate only on fields those
+   * flows do not change: dedicatedTo, and the API flags (ConfigureDBApis regenerates the config
+   * when it changes them). This is why MASTER_EXPORT is not gated.
+   */
+  static Set<ScrapeConfigTargetType> getYugabyteScrapeTargetsForNode(
+      NodeDetails nodeDetails, Set<ScrapeConfigTargetType> requestedTargets) {
+    Set<ScrapeConfigTargetType> targets = EnumSet.noneOf(ScrapeConfigTargetType.class);
+    targets.addAll(requestedTargets);
+    boolean dedicatedMaster = nodeDetails.dedicatedTo == UniverseTaskBase.ServerType.MASTER;
+    if (dedicatedMaster) {
+      targets.remove(ScrapeConfigTargetType.TSERVER_EXPORT);
+    }
+    if (dedicatedMaster || !nodeDetails.isYsqlServer) {
+      targets.remove(ScrapeConfigTargetType.YSQL_EXPORT);
+    }
+    if (dedicatedMaster || !nodeDetails.isYqlServer) {
+      targets.remove(ScrapeConfigTargetType.CQL_EXPORT);
+    }
+    return targets;
   }
 
   private OtelCollectorConfigFormat.ScrapeConfig createYugabyteScrapeConfig(
@@ -2398,11 +2429,11 @@ public class OtelCollectorConfigGenerator {
   }
 
   private OtelCollectorConfigFormat.ScrapeConfig createNodeExporterScrapeConfig(
-      String nodeAddress, NodeDetails nodeDetails) {
+      String nodeAddress, Universe universe, NodeDetails nodeDetails) {
     OtelCollectorConfigFormat.ScrapeConfig scrapeConfig =
         new OtelCollectorConfigFormat.ScrapeConfig();
     scrapeConfig.setJob_name(JOB_NAME_NODE);
-    scrapeConfig.setScheme("http");
+    scrapeConfig.setScheme(universe.isNodeExporterHttps() ? "https" : "http");
     scrapeConfig.setMetrics_path("/metrics");
 
     // Add TLS config

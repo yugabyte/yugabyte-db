@@ -41,7 +41,10 @@ public class BlockYnpManagedProviderHandler extends Action<BlockYnpManagedProvid
     try {
       YnpProviderUtil.checkYnpManagedProvider(provider.get(), request, configuration.operation());
     } catch (PlatformServiceException e) {
-      log.warn("Blocking API call {}, provider is managed by YNP", request.path());
+      log.warn(
+          "Blocking API call {}, provider {} is managed by YNP",
+          request.path(),
+          provider.get().getName());
       return CompletableFuture.completedFuture(e.buildResult(request));
     }
     return delegate.call(request);

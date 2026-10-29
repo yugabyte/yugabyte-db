@@ -1,0 +1,49 @@
+--
+-- GH #33196: a parallel worker shares the leader's distributed transaction but
+-- not its client-side write buffer, so a write still sitting in the leader's
+-- buffer has never reached DocDB and no read time the worker picks can make it
+-- visible.
+--
+SET yb_test_force_parallel = force;
+-- A participating leader may drain the buffer through its own scan.
+SET parallel_leader_participation = off;
+-- READ COMMITTED would reset the read point per statement, flushing on the way.
+SET default_transaction_isolation = 'repeatable read';
+-- Without these, PL/pgSQL flushes before PERFORM.
+SET yb_speculatively_execute_pl_statements = on;
+SET yb_whitelist_extra_statements_for_pl_speculative_execution = on;
+CREATE TABLE pbw_test (k INT PRIMARY KEY, v INT);
+INSERT INTO pbw_test SELECT s, s FROM generate_series(1, 1000) AS s;
+ANALYZE pbw_test;
+-- The buffer is flushed once per top-level statement, so the write and the
+-- read share the same function.
+CREATE FUNCTION pbw_insert_then_count(nrows INT) RETURNS BIGINT AS $$
+DECLARE
+  cnt BIGINT;
+BEGIN
+  INSERT INTO pbw_test SELECT 1000 + s, s FROM generate_series(1, nrows) AS s;
+  PERFORM * FROM pbw_test WHERE k > 1000;
+  GET DIAGNOSTICS cnt = ROW_COUNT;
+  RETURN cnt;
+END;
+$$ LANGUAGE plpgsql;
+-- Populate catalog cache.
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)
+  SELECT * FROM pbw_test WHERE k > 1000;
+                           QUERY PLAN                           
+----------------------------------------------------------------
+ Gather (actual rows=0.00 loops=1)
+   Workers Planned: 2
+   Workers Launched: 2
+   ->  Parallel Seq Scan on pbw_test (actual rows=0.00 loops=2)
+         Storage Filter: (k > 1000)
+(5 rows)
+
+SELECT pbw_insert_then_count(15);
+ pbw_insert_then_count 
+-----------------------
+                    15
+(1 row)
+
+DROP FUNCTION pbw_insert_then_count(INT);
+DROP TABLE pbw_test;

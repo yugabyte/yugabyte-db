@@ -270,6 +270,9 @@ void TestYcqlWorkload::State::WriteThread(const TestWorkloadOptions& options) {
       }
     }
     auto txn = CHECK_RESULT(MayBeStartNewTransaction(session.get(), options));
+    // Ops are allocated from the session arena, and the session lives as long as this thread, so
+    // start a new arena per batch. Ops carried over in retry_ops keep their old arena alive.
+    session->ResetArena();
     std::vector<client::YBqlWriteOpPtr> ops;
     ops.swap(retry_ops);
     const auto num_more_keys_to_insert = should_run ? options.write_batch_size - ops.size() : 0;
@@ -390,6 +393,8 @@ void TestYcqlWorkload::State::ReadThread(const TestWorkloadOptions& options) {
 
   while (should_run_.load(std::memory_order_acquire)) {
     auto txn = CHECK_RESULT(MayBeStartNewTransaction(session.get(), options));
+    // New arena per read, as in WriteThread.
+    session->ResetArena();
     auto op = table.NewReadOp(session->arena());
     auto req = op->mutable_request();
     const int32_t next_key = next_key_;

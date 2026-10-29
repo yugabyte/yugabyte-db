@@ -49,6 +49,8 @@ using client::YBClient;
 using YBTables = std::vector<std::shared_ptr<client::YBTable>>;
 
 constexpr int kRpcTimeout = RegularBuildVsSanitizers(60, 120);
+// How long to check that safe time stays stuck.
+constexpr std::chrono::seconds kSafeTimeStuckCheckDuration{RegularBuildVsSanitizers(10, 30)};
 static const std::string kUniverseId = "test_universe";
 static const xcluster::ReplicationGroupId kReplicationGroupId("test_replication_group");
 static const std::string kKeyColumnName = "key";
@@ -357,6 +359,15 @@ class XClusterTestBase : public YBTest {
   // Wait for the xcluster safe time to advance to Now on all TServers for the given namespaces.
   // The empty list (the default) means just the namespace namespace_name.
   virtual Status WaitForSafeTimeToAdvanceToNow(std::vector<NamespaceName> namespace_names = {});
+
+  // Checks that safe time does not reach Now within the timeout. Faster than
+  // ASSERT_NOK(WaitForSafeTimeToAdvanceToNow()), which waits the full propagation_timeout_.
+  Status VerifySafeTimeDoesNotAdvanceToNow(
+      std::vector<NamespaceName> namespace_names = {},
+      MonoDelta timeout = kSafeTimeStuckCheckDuration);
+
+  // Runs wait_fn with propagation_timeout_ set to timeout. Returns OK only if it times out.
+  Status VerifyWaitTimesOut(const std::function<Status()>& wait_fn, MonoDelta timeout);
 
   Status VerifyReplicationError(
       const std::string& consumer_table_id, const xrepl::StreamId& stream_id,

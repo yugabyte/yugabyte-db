@@ -22,6 +22,7 @@ import com.yugabyte.yw.common.encryption.bc.Pbkdf2HmacSha256Hasher;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
+import io.ebean.DB;
 import io.ebean.DuplicateKeyException;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -48,6 +49,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
@@ -532,19 +534,37 @@ public class Users extends Model {
    * @return apiToken
    */
   public String upsertApiToken() {
-    return upsertApiToken(apiTokenVersion);
+    return upsertApiToken(null);
   }
 
   public String upsertApiToken(Long version) {
+    return upsertApiToken(version, BAD_REQUEST);
+  }
+
+  /**
+   * Like {@link #upsertApiToken(Long)}, but a stale {@code expectedVersion} is a 409 rather than a
+   * 400, so a caller can tell a concurrent rotation from bad input. Null skips the check.
+   */
+  public String rotateApiToken(@Nullable Long expectedVersion) {
+    return upsertApiToken(expectedVersion, Status.CONFLICT);
+  }
+
+  private String upsertApiToken(Long version, int versionMismatchStatus) {
     String apiTokenFormatVersion = "4";
     UUID uuidToLock = uuid != null ? uuid : NULL_UUID;
     usersLock.acquireLock(uuidToLock);
     try {
+      // This instance may have been loaded before the lock was taken, so re-read the stored row:
+      // the version check and the increment must start from the stored version. Otherwise two
+      // rotations that both loaded version N would both pass the check and both store N + 1.
+      if (!DB.beanState(this).isNew()) {
+        refresh();
+      }
       if (version != null
           && version != -1
           && apiTokenVersion != null
           && !version.equals(apiTokenVersion)) {
-        throw new PlatformServiceException(BAD_REQUEST, "API token version has changed");
+        throw new PlatformServiceException(versionMismatchStatus, "API token version has changed");
       }
       String apiTokenUnhashed = UUID.randomUUID().toString();
       apiToken = Users.pbkdf2Hasher.hash(apiTokenUnhashed);

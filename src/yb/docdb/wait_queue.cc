@@ -1645,7 +1645,9 @@ class WaitQueue::Impl {
           continue;
         }
         auto waiters_to_signal = txn_it->second->PurgeWaiter(waiter->request_id);
-        DCHECK(!waiters_to_signal.empty())
+        // The waiter may have been concurrently purged by another signal (e.g. another blocker
+        // resolving, or Poll), as in InvokeWaiterCallback.
+        VLOG_IF(1, waiters_to_signal.empty())
             << "Did not find waiter to signal during promotion " << waiter->id
             << ", request_id: " << waiter->request_id;
         for (const auto& waiter_to_signal : waiters_to_signal) {

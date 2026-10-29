@@ -456,7 +456,8 @@ static const struct config_enum_entry track_options[] =
 #define YB_HDR_DEFAULT_LATENCY_RES_MS 0.1
 #define YB_HDR_DEFAULT_BUCKET_FACTOR 16
 #define YB_HDR_DEFAULT_MAX_VALUE YB_HDR_DEFAULT_MAX_LATENCY_MS / YB_HDR_DEFAULT_LATENCY_RES_MS
-#define YB_DEFAULT_QTEXT_LIMIT_KB -1
+#define YB_DEFAULT_QTEXT_LIMIT_KB -1	/* max text file size read; -1 = no limit */
+#define YB_DEFAULT_MAX_QUERY_TEXT_LENGTH -1	/* max text bytes per entry; -1 = no limit */
 
 static int	pgss_max = 5000;	/* max # statements to track */
 static int	pgss_track = PGSS_TRACK_TOP;	/* tracking level */
@@ -478,6 +479,7 @@ static int64_t yb_hdr_max_value = YB_HDR_DEFAULT_MAX_VALUE; /* default hardcode 
 															 * latency_res */
 static struct hdr_histogram_bucket_config cfg;
 static int	yb_qtext_size_limit = YB_DEFAULT_QTEXT_LIMIT_KB;
+static int	yb_max_query_text_length = YB_DEFAULT_MAX_QUERY_TEXT_LENGTH;
 
 /*
  * yb_hdr_max_value is the integer representation of the max query latency we
@@ -603,6 +605,8 @@ static void yb_pgss_mark_needs_normalization(int64 queryId);
 static bool yb_pgss_needs_normalization(int64 queryId);
 static bool yb_pgss_normalization_changes_text(const JumbleState *jstate);
 static bool yb_pgss_is_role_switch(const Node *stmt);
+static char *yb_truncate_query_text(const char *query, int *query_len,
+									int encoding);
 
 /*
  * Module load callback
@@ -710,6 +714,19 @@ _PG_init(void)
 							MAX_KILOBYTES,
 							PGC_SUSET,
 							GUC_UNIT_KB,
+							NULL,
+							NULL,
+							NULL);
+
+	DefineCustomIntVariable("pg_stat_statements.yb_max_query_text_length",
+							"Sets the maximum length in bytes of the query text stored for each statement.",
+							"Longer texts are truncated and end with \"...\". -1 stores texts in full.",
+							&yb_max_query_text_length,
+							YB_DEFAULT_MAX_QUERY_TEXT_LENGTH,
+							-1,
+							INT_MAX / 2,
+							PGC_SUSET,
+							GUC_UNIT_BYTE,
 							NULL,
 							NULL,
 							NULL);
@@ -1574,7 +1591,6 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query, const JumbleState *jst
 	 * anyway, so there's no need for an early entry.
 	 */
 	if (jstate && jstate->clocations_count > 0)
-	{
 		pgss_store(pstate->p_sourcetext,
 				   query->queryId,
 				   query->stmt_location,
@@ -1591,7 +1607,6 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query, const JumbleState *jst
 				   PLAN_STMT_UNKNOWN,
 				   false /* yb_is_sensitive_stmt */ ,
 				   NULL /* yb_stats */ );
-	}
 }
 
 /*
@@ -1820,6 +1835,8 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 	int			saved_stmt_len = pstmt->stmt_len;
 	bool		enabled = pgss_track_utility && pgss_enabled(nesting_level);
 
+	bool		yb_is_backfill = IsA(parsetree, YbBackfillIndexStmt);
+
 	/*
 	 * Force utility statements to get queryId zero.  We do this even in cases
 	 * where the statement contains an optimizable statement for which a
@@ -1924,7 +1941,7 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 		 * For BACKFILL INDEX commands, generate a normalized query string so
 		 * that all backfill calls for the same index are aggregated.
 		 */
-		if (IsA(parsetree, YbBackfillIndexStmt))
+		if (yb_is_backfill)
 		{
 			char	   *norm_query;
 			int			norm_query_len;
@@ -2126,6 +2143,21 @@ pgss_store(const char *query, int64 queryId,
 			 * with proper normalization on the next full parse cycle.
 			 */
 			goto done;
+		}
+
+		/*
+		 * YB: Enforce yb_max_query_text_length.  The truncated copy takes the
+		 * place of norm_query so that the code below stores and frees it.
+		 */
+		if (yb_max_query_text_length >= 0 &&
+			query_len > yb_max_query_text_length)
+		{
+			char	   *truncated = yb_truncate_query_text(norm_query ? norm_query : query,
+														   &query_len, encoding);
+
+			if (norm_query)
+				pfree(norm_query);
+			norm_query = truncated;
 		}
 
 		/* Append new query text to file with only shared lock held */
@@ -4318,4 +4350,34 @@ yb_generate_normalized_backfill_query(YbBackfillIndexStmt *stmt,
 
 	*query_len_p = buf.len;
 	return buf.data;
+}
+
+/*
+ * YB: Truncate a query text to yb_max_query_text_length bytes without
+ * splitting a multibyte character, and append "..." to show the truncation,
+ * as upstream does for log_parameter_max_length and COPY error context.
+ * "query" need not be null-terminated.  Returns a palloc'd string and sets
+ * *query_len to its length.
+ */
+static char *
+yb_truncate_query_text(const char *query, int *query_len, int encoding)
+{
+	int			cliplen;
+	char	   *result;
+
+	/*
+	 * Length of the longest prefix of at most yb_max_query_text_length bytes
+	 * that ends on a character boundary. Upstream clips texts the same way,
+	 * via pg_mbcliplen, for track_activity_query_size and
+	 * log_parameter_max_length.
+	 */
+	cliplen = pg_encoding_mbcliplen(encoding, query, *query_len,
+									yb_max_query_text_length);
+
+	result = palloc(cliplen + 4);
+	memcpy(result, query, cliplen);
+	strcpy(result + cliplen, "...");
+
+	*query_len = cliplen + 3;
+	return result;
 }

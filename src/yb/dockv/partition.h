@@ -45,6 +45,7 @@
 
 #include "yb/util/enums.h"
 #include "yb/util/result.h"
+#include "yb/util/slice.h"
 #include "yb/util/memory/arena_fwd.h"
 #include "yb/util/memory/arena_list.h"
 #include "yb/util/status_format.h"
@@ -314,10 +315,7 @@ class PartitionSchema {
   // Get if there is overlap between two key ranges. This can be done without decoding, by just
   // performing string comparisons on keys.
   static bool HasOverlap(
-      const std::string& key_start,
-      const std::string& key_end,
-      const std::string& other_key_start,
-      const std::string& other_key_end);
+      Slice key_start, Slice key_end, Slice other_key_start, Slice other_key_end);
 
   template <class T>
   static void ProcessHashKeyEntry(const T* value_pb, std::string* out) {

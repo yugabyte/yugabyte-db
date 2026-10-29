@@ -66,4 +66,10 @@ public class TestPgRegressPgTable extends BasePgRegressTestPorted {
   public void schedule() throws Exception {
     runPgRegressTest("yb_pg_table_schedule");
   }
+
+  // Split from yb_pg_table_schedule to keep each method under the 30-minute cap on ASAN.
+  @Test
+  public void schedule2() throws Exception {
+    runPgRegressTest("yb_pg_table2_schedule");
+  }
 }

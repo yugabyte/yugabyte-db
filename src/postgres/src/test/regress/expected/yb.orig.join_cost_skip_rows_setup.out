@@ -1,26 +1,29 @@
 -- Create database objects used by the join skip-rows cost tests.
 --
--- These tests check how a range bound on one join input's key changes the cost
--- of reading the other input, for both join methods that model it: the merge
--- join's scan clamp (mergejoinscansel) and the batched nested loop's
--- leading-mismatch skip (yb_bnl_outer_skip_selectivity).  Both build a
--- comparison against the other side's boundary key and condition it on the
--- scanned side's own restrictions, so the same mechanisms decide whether a
--- bound is usable: its collation, extended statistics over the conditioning
--- clauses, a binary-compatible relabeling of the join key, and whether the
--- bound falls on a value the boundary group includes.
+-- These tests check how a range bound on a join input's key changes the cost
+-- of reading that input or the other one, for both join methods that model
+-- it: the merge join's scan fractions (mergejoinscansel) and the batched
+-- nested loop's leading-mismatch skip (yb_bnl_outer_skip_selectivity).  Both
+-- build a comparison against the other side's boundary key and condition it
+-- on the scanned side's own restrictions, so the same mechanisms decide
+-- whether a bound is usable: its collation, extended statistics over the
+-- conditioning clauses, a binary-compatible relabeling of the join key, and
+-- whether the bound falls on a value the boundary group includes.
 --
--- Every group joins an outer aliased `o` to an inner aliased `i`, and the
--- outer's key range extends BELOW the inner's.  That one layout carries both
--- directions of the bound:
+-- Every group joins an outer aliased `o` to an inner aliased `i`.  In groups
+-- 100-400 the outer's key range extends BELOW the inner's, a layout that
+-- carries both directions of the bound:
 --   * a bound on the inner lowers where the merge stops reading the outer;
 --   * a bound on the outer decides how many leading outer rows sort before the
 --     inner's first key -- rows read and discarded before the join emits
 --     anything, which both methods charge to startup cost.
 -- Only the second direction reaches the batched nested loop, which takes the
 -- inner's boundary from its full-column histogram and so cannot see an inner
--- bound at all.  Every inner carries an index on its join key so the batched
--- nested loop can probe it.
+-- bound at all.  In groups 500 and 510 the outer's range extends past the
+-- inner's in the direction the merge reads, so a bound on the outer decides
+-- how much of it the merge reads; group 520 reads an outer that ends before
+-- the inner starts, and group 530 an outer with NULL keys.  Every inner
+-- carries an index on its join key so the batched nested loop can probe it.
 set client_min_messages to 'warning';
 drop database if exists join_cost_skip_rows_test with (force);
 create database join_cost_skip_rows_test;
@@ -115,6 +118,47 @@ insert into bnd_i select i, ((i - 1) / 26) + 11 from generate_series(1, 260) i;
 create index nonconcurrently on bnd_i (k asc);
 analyze bnd_o;
 analyze bnd_i;
+------------------------------------------------------------------------------
+-- Own restriction.  own_o.k runs 1..1040, four times the inner's 1..260, so
+-- the full-column fraction puts a merge's end at a quarter of the outer; a
+-- restriction cutting the outer at the inner's last key leaves a scan the
+-- merge reads in full.
+------------------------------------------------------------------------------
+create table own_o (k int, primary key (k asc));
+create table own_i (id int, k int, primary key (id asc));
+insert into own_o select i from generate_series(1, 1040) i;
+insert into own_i select i, i from generate_series(1, 260) i;
+create index nonconcurrently on own_i (k asc);
+analyze own_o;
+analyze own_i;
+------------------------------------------------------------------------------
+-- Own restriction, mirrored.  own_ih holds the top quarter of own_o's range,
+-- 781..1040, so read descending the outer extends below the inner as own_o
+-- extends above own_i read ascending; read ascending, the outer starts below
+-- the inner's first key.
+------------------------------------------------------------------------------
+create table own_ih (id int, k int, primary key (id asc));
+insert into own_ih select i, i + 780 from generate_series(1, 260) i;
+create index nonconcurrently on own_ih (k asc);
+analyze own_ih;
+------------------------------------------------------------------------------
+-- NULL join keys.  nul_o.k holds 1..624 and 416 NULLs; its twin nnl_o holds
+-- the same 1..624 and, in place of the NULLs, 416 keys above 2000.  The two
+-- have the same row count and the same keys at or below any bound under 624,
+-- so a scan restricted to such a bound reads the same rows from either at the
+-- same cost.
+------------------------------------------------------------------------------
+create table nul_o (id int, k int, primary key (id asc));
+create table nnl_o (id int, k int, primary key (id asc));
+insert into nul_o
+select i, case when i <= 624 then i end from generate_series(1, 1040) i;
+insert into nnl_o
+select i, case when i <= 624 then i else i + 1376 end
+from generate_series(1, 1040) i;
+create index nonconcurrently on nul_o (k asc);
+create index nonconcurrently on nnl_o (k asc);
+analyze nul_o;
+analyze nnl_o;
 ------------------------------------------------------------------------------
 -- Driver framework.  Mirrors yb.orig.bnl_cost_parity_setup.sql with the
 -- comparison axis turned around: there, one query runs under several join

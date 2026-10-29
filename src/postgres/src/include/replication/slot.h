@@ -195,6 +195,13 @@ typedef struct ReplicationSlotPersistentData
 	 * catalog tablet for detecting changes to publications.
 	 */
 	bool		yb_detect_publication_changes_implicitly;
+
+	/*
+	 * YB: The publication this slot is statically bound to (publication-scoped
+	 * replication slots, created with the yb_publication option). Empty string
+	 * for regular slots.
+	 */
+	NameData	yb_bound_publication_name;
 } ReplicationSlotPersistentData;
 
 /*
@@ -385,7 +392,8 @@ extern void ReplicationSlotCreate(const char *name, bool db_specific,
 								  CRSSnapshotAction yb_snapshot_action,
 								  uint64_t *yb_consistent_snapshot_time,
 								  YbCRSLsnType lsn_type,
-								  YbCRSOrderingMode yb_ordering_mode);
+								  YbCRSOrderingMode yb_ordering_mode,
+								  const char *yb_publication_name);
 extern void ReplicationSlotPersist(void);
 extern void ReplicationSlotDrop(const char *name, bool nowait,
 								bool yb_force, bool yb_if_exists);
@@ -447,6 +455,7 @@ extern void YbReplicationSlotCreateForDB(const char *name, bool two_phase,
 										 uint64_t *yb_consistent_snapshot_time,
 										 YbCRSLsnType lsn_type,
 										 YbCRSOrderingMode yb_ordering_mode,
-										 Oid database_oid);
+										 Oid database_oid,
+										 const char *yb_publication_name);
 
 #endif							/* SLOT_H */

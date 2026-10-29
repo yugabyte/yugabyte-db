@@ -43,5 +43,6 @@ yba provider [flags]
 * [yba provider gcp](yba_provider_gcp.md)	 - Manage a YugabyteDB Anywhere GCP provider
 * [yba provider kubernetes](yba_provider_kubernetes.md)	 - Manage a YugabyteDB Anywhere K8s provider
 * [yba provider list](yba_provider_list.md)	 - List YugabyteDB Anywhere providers
+* [yba provider oci](yba_provider_oci.md)	 - Manage a YugabyteDB Anywhere OCI provider
 * [yba provider onprem](yba_provider_onprem.md)	 - Manage a YugabyteDB Anywhere on-premises provider
 

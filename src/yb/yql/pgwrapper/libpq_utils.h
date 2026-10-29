@@ -373,6 +373,12 @@ class PGConn {
   // Fetches data matrix of specified size. I.e. exact number of rows and columns are expected.
   Result<PGResultPtr> FetchMatrix(const std::string& command, int rows, int columns);
 
+  // Named prepared statement over the extended protocol: Prepare sends Parse+Sync, FetchPrepared
+  // sends Bind+Describe+Execute+Sync, i.e. a protocol cycle without a Parse.
+  Status Prepare(const std::string& stmt_name, const std::string& query);
+  Result<PGResultPtr> FetchPrepared(
+      const std::string& stmt_name, const std::vector<const char*>& params = {});
+
   // TODO (#30816): FetchRow<T> for non-string types fails on simple query protocol connections
   template <class... Args>
   auto FetchRow(const std::string& query) {
