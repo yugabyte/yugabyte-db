@@ -14,11 +14,13 @@ rightNav:
   hideH4: true
 ---
 
-YugabyteDB normally serves a read from the tablet leader so the result is up to date. Follower reads serve the read from the closest replica instead, at a staleness you set. The result is timeline consistent: writes are not returned out of order.
+YugabyteDB normally serves a read from the tablet leader to ensure the result is up to date. Follower reads allow you to serve the read from the closest replica instead, allowing for lower read latencies, at the cost of the read being slightly stale. The result is timeline consistent: writes are not returned out of order. You can specify the staleness of the reads.
 
 Writes still go to the leader. A follower read is stale even when the closest replica is the leader, because the read time is `now` minus the staleness interval.
 
-For where this pattern fits a multi-region application, see [Follower reads for global applications](/stable/develop/build-global-apps/follower-reads/). For a walkthrough, see [Follower reads](../../explore/going-beyond-sql/follower-reads-ysql/) in Explore.
+For an illustration of how this pattern can benefit multi-region applications, see [Follower reads for global applications](../../develop/build-global-apps/follower-reads/). For a walkthrough, see [Follower reads](../../explore/going-beyond-sql/follower-reads-ysql/) in Explore.
+
+[Read replica](../../deploy/multi-dc/read-replica-clusters/) clusters also use follower reads.
 
 ## How far behind a follower may be
 
