@@ -358,6 +358,10 @@ class PgApiImpl {
 
   Status AlterTableSetTableId(PgStatement* handle, const PgObjectId& table_id);
 
+  Status AlterTableSetOnlineSchemaChangeInternalDdl(PgStatement *handle);
+
+  Status AlterTableSetPgTableId(PgStatement* handle, const PgObjectId& pg_table_id);
+
   Status AlterTableSetSchema(PgStatement *handle, const char *schema_name);
 
   Status ExecAlterTable(PgStatement *handle);

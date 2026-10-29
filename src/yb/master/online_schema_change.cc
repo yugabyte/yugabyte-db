@@ -784,6 +784,7 @@ Result<bool> OnlineSchemaChangeController::Copy(
   const auto key = OnlineSchemaChangeTabletKey(job.pg_job_id);
   struct Pending {
     TabletInfoPtr tablet;
+    TableId leaf_id;
     uint32_t leaf_oid;
     std::string start_key;
   };
@@ -807,7 +808,8 @@ Result<bool> OnlineSchemaChangeController::Copy(
       if (resume_key && resume_key->empty()) {
         continue;
       }
-      pending.push_back({std::move(tablet), leaf_oid, resume_key.value_or(std::string())});
+      pending.push_back(
+          {std::move(tablet), leaf->id(), leaf_oid, resume_key.value_or(std::string())});
     }
   }
   if (pending.empty()) {
@@ -842,6 +844,7 @@ Result<bool> OnlineSchemaChangeController::Copy(
     req.set_read_at_hybrid_time(entry.backfilling_timestamp());
     req.set_namespace_name(entry.database_name());
     req.set_source_table_oid(p.leaf_oid);
+    req.set_source_table_id(p.leaf_id);
     req.set_target_table_oid(entry.target_table_oid());
     req.set_transform_fn_oid(entry.transform_fn_oid());
     req.set_pg_job_id(job.pg_job_id);

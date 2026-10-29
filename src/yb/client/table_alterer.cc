@@ -109,6 +109,16 @@ YBTableAlterer* YBTableAlterer::set_increment_schema_version() {
   return this;
 }
 
+YBTableAlterer* YBTableAlterer::set_online_schema_change_internal_ddl() {
+  online_schema_change_internal_ddl_ = true;
+  return this;
+}
+
+YBTableAlterer* YBTableAlterer::set_pg_table_id(const std::string& pg_table_id) {
+  pg_table_id_ = pg_table_id;
+  return this;
+}
+
 Status YBTableAlterer::Alter() {
   master::AlterTableRequestPB req;
   RETURN_NOT_OK(ToRequest(&req));
@@ -133,7 +143,8 @@ Status YBTableAlterer::ToRequest(master::AlterTableRequestPB* req) {
   }
 
   if (!rename_to_ && steps_.empty() && !increment_schema_version_ &&
-      !table_properties_ && !wal_retention_secs_ && !replication_info_) {
+      !table_properties_ && !wal_retention_secs_ && !replication_info_ &&
+      pg_table_id_.empty()) {
     return STATUS(InvalidArgument, "No alter steps provided");
   }
 
@@ -222,6 +233,14 @@ Status YBTableAlterer::ToRequest(master::AlterTableRequestPB* req) {
 
   if (increment_schema_version_) {
     req->set_increment_schema_version(true);
+  }
+
+  if (online_schema_change_internal_ddl_) {
+    req->set_yb_online_schema_change_internal_ddl(true);
+  }
+
+  if (!pg_table_id_.empty()) {
+    req->set_pg_table_id(pg_table_id_);
   }
 
   return Status::OK();

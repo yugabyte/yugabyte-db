@@ -506,6 +506,16 @@ Status PgAlterTable::SetTableId(const PgObjectId& table_id) {
   return Status::OK();
 }
 
+Status PgAlterTable::SetOnlineSchemaChangeInternalDdl() {
+  req_.set_yb_online_schema_change_internal_ddl(true);
+  return Status::OK();
+}
+
+Status PgAlterTable::SetPgTableId(const PgObjectId& pg_table_id) {
+  req_.set_pg_table_id(pg_table_id.GetYbTableId());
+  return Status::OK();
+}
+
 Status PgAlterTable::SetSchema(const char *schema_name) {
   auto& rename = *req_.mutable_rename_table();
   rename.set_schema_name(schema_name);
