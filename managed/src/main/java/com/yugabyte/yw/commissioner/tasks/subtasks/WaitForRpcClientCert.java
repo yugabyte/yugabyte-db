@@ -13,8 +13,9 @@ import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Waits until YBA has a client cert for the universe's root CA. A root CA rotation runs it after
- * Reset, so it fails before the roll that drops the old CA if the issuer hasn't reissued yet.
+ * Waits until YBA has a client cert for the universe's root CA: on create before the first
+ * WaitForServer, and in a root CA rotation after Reset, so it fails before the roll that drops the
+ * old CA if the issuer hasn't reissued yet.
  */
 @Slf4j
 public class WaitForRpcClientCert extends UniverseTaskBase {
