@@ -159,8 +159,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   // Creates TabletPeer.
   // `tablet_splitter` will be used for applying split tablet Raft operation.
-  // `persistence_gate` decides whether stamped YSQL writes and commits may replicate; nullptr
-  // allows them all.
+  // `persistence_gate` may refuse to let stamped YSQL writes and commits replicate, and may have
+  // this tablet's transaction coordinator abort stamped pending transactions; nullptr does neither.
   TabletPeer(
       const RaftGroupMetadataPtr& meta,
       const consensus::RaftPeerPB& local_peer_pb,
@@ -410,6 +410,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   bool IsLeaderAndReady() const;
   bool IsNotLeader() const;
+
+  Status CheckTransactionMayContinue(const LWOriginationInfoPB& origination_info) const override;
 
   Result<HybridTime> HtLeaseExpiration() const override;
 

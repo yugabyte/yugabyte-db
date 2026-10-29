@@ -1861,6 +1861,14 @@ int64_t TabletPeer::LeaderTerm() const {
   return consensus ? consensus->LeaderTerm() : yb::OpId::kUnknownTerm;
 }
 
+Status TabletPeer::CheckTransactionMayContinue(
+    const LWOriginationInfoPB& origination_info) const {
+  if (!persistence_gate_) {
+    return Status::OK();
+  }
+  return persistence_gate_->CheckTransactionMayContinue(origination_info);
+}
+
 Result<HybridTime> TabletPeer::LeaderSafeTime() const {
   return tablet_->SafeTime();
 }

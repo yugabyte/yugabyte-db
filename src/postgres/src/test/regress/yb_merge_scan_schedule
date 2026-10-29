@@ -73,3 +73,4 @@ test: yb.orig.merge_scan_degenerate
 test: yb.orig.merge_scan_subquery
 test: yb.orig.merge_scan_plan_cache
 test: yb.orig.merge_scan_cost
+test: yb.orig.merge_scan_dropped
