@@ -931,6 +931,13 @@ public class NodeAgentClient {
         nodeAgent.updateServerInfo(response.getServerInfo());
         return response;
       } catch (StatusRuntimeException e) {
+        if (e.getStatus().getCode() == Code.CANCELLED
+            && (Thread.currentThread().isInterrupted()
+                || e.getCause() instanceof InterruptedException)) {
+          log.warn("Ping to node agent {} interrupted", nodeAgent);
+          Thread.currentThread().interrupt();
+          throw e;
+        }
         nodeAgent.updateLastError(new YBAError(YBAError.Code.CONNECTION_ERROR, e.getMessage()));
         if (e.getStatus().getCode() != Code.UNAVAILABLE
             && e.getStatus().getCode() != Code.DEADLINE_EXCEEDED) {

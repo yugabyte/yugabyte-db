@@ -50,6 +50,7 @@ import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.ebean.DB;
+import io.ebean.DataIntegrityException;
 import io.swagger.annotations.ApiModel;
 import jakarta.persistence.PersistenceException;
 import java.io.BufferedInputStream;
@@ -119,6 +120,9 @@ import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.validator.routines.InetAddressValidator;
+import org.postgresql.util.PSQLException;
+import org.postgresql.util.PSQLState;
+import org.postgresql.util.ServerErrorMessage;
 import org.slf4j.MDC;
 import play.libs.Json;
 
@@ -2089,5 +2093,19 @@ public class Util {
       return null;
     }
     return nodes.stream().filter(n -> n.nodeName.equals(nodeName)).findFirst().orElse(null);
+  }
+
+  // Postgres reports the referencing (child) table for an FK violation on delete.
+  public static String getReferencingTable(DataIntegrityException e) {
+    for (Throwable t = e; t != null; t = t.getCause()) {
+      if (t instanceof PSQLException) {
+        PSQLException pe = (PSQLException) t;
+        ServerErrorMessage msg = pe.getServerErrorMessage();
+        if (PSQLState.FOREIGN_KEY_VIOLATION.getState().equals(pe.getSQLState()) && msg != null) {
+          return msg.getTable();
+        }
+      }
+    }
+    return null;
   }
 }
