@@ -1430,6 +1430,47 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
   }
 
   @Test
+  public void testHelmInstallOverridesCannotRequireClientCertsWithoutSetting() throws IOException {
+    // YBA presents no client cert without the setting, so an override can't make servers require
+    // one; without such an override the gflag isn't added, so the gflags checksum is unchanged.
+    Map<String, String> azConfig = new HashMap<>();
+    azConfig.put(
+        "OVERRIDES", "gflags:\n  master:\n    node_to_node_encryption_use_client_certificates: true");
+    defaultAZ.updateConfig(azConfig);
+    defaultAZ.save();
+    defaultUniverse = updateUniverseDetails("dev");
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        AbstractTaskBase.createTask(KubernetesCommandExecutor.class);
+    KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
+    params.ybSoftwareVersion = ybSoftwareVersion;
+    params.providerUUID = defaultProvider.getUuid();
+    params.commandType = KubernetesCommandExecutor.CommandType.HELM_INSTALL;
+    params.config = config;
+    params.universeName = defaultUniverse.getName();
+    params.helmReleaseName = defaultUniverse.getUniverseDetails().nodePrefix;
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.universeConfig = defaultUniverse.getConfig();
+    params.universeDetails = defaultUniverse.getUniverseDetails();
+    params.namespace = namespace;
+    kubernetesCommandExecutor.initialize(params);
+    kubernetesCommandExecutor.run();
+
+    ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
+    verify(kubernetesManager, times(1))
+        .helmInstall(any(), any(), any(), any(), any(), any(), expectedOverrideFile.capture());
+    Yaml yaml = new Yaml();
+    InputStream is = new FileInputStream(new File(expectedOverrideFile.getValue()));
+    Map<String, Object> overrides = yaml.loadAs(is, Map.class);
+    Map<String, Object> gflags = (Map<String, Object>) overrides.get("gflags");
+    assertEquals(
+        "false",
+        ((Map<String, Object>) gflags.get("master")).get(GFlagsUtil.USE_CLIENT_CERTIFICATES));
+    assertFalse(
+        ((Map<String, Object>) gflags.getOrDefault("tserver", Map.of()))
+            .containsKey(GFlagsUtil.USE_CLIENT_CERTIFICATES));
+  }
+
+  @Test
   public void testHelmInstallResourceOverrideMerge() throws IOException {
     Map<String, String> defaultAnnotations = new HashMap<>();
     defaultAnnotations.put("OVERRIDES", "resource:\n  master:\n    limits:\n      cpu: 650m");
