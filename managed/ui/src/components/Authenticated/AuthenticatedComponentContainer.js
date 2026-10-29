@@ -20,7 +20,6 @@ import {
   getAZUTypeList,
   getAZUTypeListResponse,
   listAccessKeysResponse,
-  listAccessKeys,
   listAccessKeysReqCompleted
 } from '../../actions/cloud';
 import {
@@ -148,15 +147,14 @@ const mapDispatchToProps = (dispatch) => {
     getProviderListItems: () => {
       dispatch(getProviderList()).then((response) => {
         if (response.payload.status === 200) {
-          Promise.all(
-            response.payload.data.map((provider) => {
-              return dispatch(listAccessKeys(provider.uuid)).then((response) => {
-                dispatch(listAccessKeysResponse(response.payload));
-              });
+          // The provider list already embeds each provider's access keys.
+          dispatch(
+            listAccessKeysResponse({
+              status: response.payload.status,
+              data: response.payload.data.flatMap((provider) => provider.allAccessKeys ?? [])
             })
-          ).then(() => {
-            dispatch(listAccessKeysReqCompleted());
-          });
+          );
+          dispatch(listAccessKeysReqCompleted());
         }
         dispatch(getProviderListResponse(response.payload));
       });
