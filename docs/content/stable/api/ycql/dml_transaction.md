@@ -59,7 +59,7 @@ transaction_block ::= START TRANSACTION ';'
 - DDLs are always executed outside of a transaction block, and like DMLs outside a transaction block, are committed immediately.
 - Inside a transaction block only insert, update, and delete statements are allowed. Select statements are not allowed.
 - An error is raised if any of the `INSERT`, `UPDATE`, or `DELETE` statements contains an `IF` clause without `ELSE ERROR`. If any `IF` condition is not satisfied, the transaction fails and none of its statements are applied.
-- An `UPDATE` statement that reads a column of a row that does not exist, such as `SET balance = balance + 200`, has no effect and does not raise an error, both inside and outside a transaction block. The other statements in the transaction block are still applied. To raise an error instead, add `IF EXISTS ELSE ERROR` to the statement, as shown in [Insert a row funded from an existing row](#insert-a-row-funded-from-an-existing-row).
+- An `UPDATE` statement whose assignments are all arithmetic on non-counter columns, such as `SET balance = balance + 200`, has no effect and does not raise an error if the row does not exist, both inside and outside a transaction block. The other statements in the transaction block are still applied. To raise an error instead, add `IF EXISTS ELSE ERROR` to the statement, as shown in [Insert a row funded from an existing row](#insert-a-row-funded-from-an-existing-row).
 
 ## Examples
 
