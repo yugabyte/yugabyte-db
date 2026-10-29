@@ -2972,7 +2972,8 @@ TEST_F(ClientTest, TestDrainedTServerReplicasStayFailedAcrossRefresh) {
   ASSERT_NO_FATALS(assert_drained_excluded());
 
   // Repeated heartbeats need no second sweep, and a cold cache must remember unseen UUIDs.
-  meta_cache.UpdateDrainedTServers({drained->permanent_uuid()}, all_uuids);
+  meta_cache.UpdateDrainedTServers(
+      {drained->permanent_uuid(), drained->permanent_uuid()}, all_uuids);
   ASSERT_NO_FATALS(assert_drained_excluded());
   auto cold_client = ASSERT_RESULT(cluster_->CreateClient());
   cold_client->UpdateDrainedTServers({drained->permanent_uuid()}, all_uuids);

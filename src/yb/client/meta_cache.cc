@@ -2558,12 +2558,16 @@ void MetaCache::MarkTSFailed(
 
 void MetaCache::UpdateDrainedTServers(
     const std::vector<std::string>& drained, const std::vector<std::string>& live) {
+  std::unordered_set<std::string_view> drained_set;
   auto no_longer_drained = [&](const std::string& uuid) REQUIRES_SHARED(mutex_) {
-    return drained_tserver_uuids_.contains(uuid) &&
-        std::find(drained.begin(), drained.end(), uuid) == drained.end();
+    return drained_tserver_uuids_.contains(uuid) && !drained_set.contains(uuid);
   };
   {
     SharedLock lock(mutex_);
+    if (drained.empty() && drained_tserver_uuids_.empty()) {
+      return;
+    }
+    drained_set.insert(drained.begin(), drained.end());
     const bool has_new = std::any_of(drained.begin(), drained.end(), [&](const auto& uuid)
         REQUIRES_SHARED(mutex_) {
       return (!local_tserver_ || uuid != local_tserver_->permanent_uuid()) &&
