@@ -2447,7 +2447,8 @@ TEST_F(YsqlMajorUpgradeTest, SocketDirCleanedUpAfterMasterKilledDuringUpgrade) {
   // Kill the leader right before the pg_upgrade binary runs, with the new version postgres up.
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_kill_master_before_ysql_pg_upgrade", "true"));
   ASSERT_NOK(PerformYsqlMajorCatalogUpgrade());
-  // The RPC can fail before the SIGKILLed process is reaped; Restart() requires it to be gone.
+  // The upgrade RPC can fail once the killed master's sockets close, before the process has
+  // exited; Restart() requires it to be gone.
   ASSERT_OK(WaitFor(
       [leader]() -> Result<bool> { return !leader->IsProcessAlive(); }, 30s,
       "yb-master to be killed before pg_upgrade"));
