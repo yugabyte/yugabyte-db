@@ -678,6 +678,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         boolean validateGFlagsConsistency,
         boolean isAuthEnforced,
         boolean isFipsEnabled,
+        boolean useNodeToNodeClientCerts,
         Set<NodeDetails> nodes) {
       if (uuid == null) {
         throw new IllegalStateException("Cluster uuid should not be null");
@@ -743,7 +744,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         GFlagsUtil.checkGflagsAndIntentConsistency(userIntent);
       }
       GFlagsUtil.validateFipsCompliancy(userIntent, isFipsEnabled);
-      GFlagsUtil.validateNodeToNodeClientCerts(userIntent, userIntent.useNodeToNodeClientCerts);
+      GFlagsUtil.validateNodeToNodeClientCerts(userIntent, useNodeToNodeClientCerts);
       if (userIntent.specificGFlags != null) {
         if (clusterType == ClusterType.PRIMARY
             && userIntent.specificGFlags.isInheritFromPrimary()) {

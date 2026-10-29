@@ -901,7 +901,12 @@ public class UniverseCRUDHandler {
       c.userIntent.setFederationConfigured(federationConfigured);
 
       isK8s = c.userIntent.getAllCloudTypes().contains(Common.CloudType.kubernetes);
-      c.validate(!cloudEnabled, isAuthEnforced, taskParams.fipsEnabled, taskParams.nodeDetailsSet);
+      c.validate(
+          !cloudEnabled,
+          isAuthEnforced,
+          taskParams.fipsEnabled,
+          taskParams.getPrimaryCluster().userIntent.useNodeToNodeClientCerts,
+          taskParams.nodeDetailsSet);
       ManagedLoadBalancerUtil.validateNewCluster(
           c, taskParams.getPrimaryCluster(), confGetter, cloudAPIFactory);
       // Enforce user tags.
@@ -1904,7 +1909,11 @@ public class UniverseCRUDHandler {
     boolean isAuthEnforced = confGetter.getConfForScope(customer, CustomerConfKeys.isAuthEnforced);
     addOnCluster.userIntent.providerType = Common.CloudType.valueOf(provider.getCode());
     addOnCluster.validate(
-        !cloudEnabled, isAuthEnforced, taskParams.fipsEnabled, taskParams.nodeDetailsSet);
+        !cloudEnabled,
+        isAuthEnforced,
+        taskParams.fipsEnabled,
+        primaryCluster.userIntent.useNodeToNodeClientCerts,
+        taskParams.nodeDetailsSet);
     addOnCluster.userIntent.enableNodeToNodeEncrypt =
         primaryCluster.userIntent.enableNodeToNodeEncrypt;
     addOnCluster.userIntent.enableClientToNodeEncrypt =
@@ -1996,7 +2005,11 @@ public class UniverseCRUDHandler {
         runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled");
     boolean isAuthEnforced = confGetter.getConfForScope(customer, CustomerConfKeys.isAuthEnforced);
     readOnlyCluster.validate(
-        !cloudEnabled, isAuthEnforced, taskParams.fipsEnabled, taskParams.nodeDetailsSet);
+        !cloudEnabled,
+        isAuthEnforced,
+        taskParams.fipsEnabled,
+        primaryCluster.userIntent.useNodeToNodeClientCerts,
+        taskParams.nodeDetailsSet);
     if (readOnlyCluster.userIntent.specificGFlags != null) {
       SpecificGFlags primaryGFlags = primaryCluster.userIntent.specificGFlags;
       if (primaryGFlags != null) {
