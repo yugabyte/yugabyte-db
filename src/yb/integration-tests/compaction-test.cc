@@ -1026,8 +1026,8 @@ class ScheduledFullCompactionsTest : public CompactionTest {
   // Flushes the sys catalog tablet so that it has SST files to compact.
   Status FlushSysCatalog();
 
-  // Waits until the sys catalog tablet records a full compaction at or after lower_bound and
-  // has a single SST file.
+  // Waits until the sys catalog tablet records a full compaction at or after lower_bound, has no
+  // scheduled or admin full compaction running, and has a single SST file.
   Status WaitForSysCatalogFullCompaction(HybridTime lower_bound);
 
   const int kPercentObsoleteThreshold = 50;
@@ -1049,7 +1049,7 @@ Status ScheduledFullCompactionsTest::WaitForSysCatalogFullCompaction(HybridTime 
         const auto last_compact_time =
             HybridTime(tablet->metadata()->last_full_compaction_time());
         return !last_compact_time.is_special() && last_compact_time >= lower_bound &&
-               tablet->GetCurrentVersionNumSSTFiles() == 1;
+               !tablet->HasActiveFullCompaction() && tablet->GetCurrentVersionNumSSTFiles() == 1;
       },
       60s, "Waiting for full compaction of the sys catalog tablet",
       kWaitDelay * kTimeMultiplier);

@@ -3438,7 +3438,8 @@ TEST_F(PgSysCatalogFullCompactionTest, CompactBasedOnStats) {
   ASSERT_OK(LoggedWaitFor(
       [&tablet, before_compaction] {
         const auto last_compact_time = HybridTime(tablet->metadata()->last_full_compaction_time());
-        return !last_compact_time.is_special() && last_compact_time >= before_compaction;
+        return !last_compact_time.is_special() && last_compact_time >= before_compaction &&
+               !tablet->HasActiveFullCompaction();
       },
       30s * kTimeMultiplier, "Waiting for full compaction of the sys catalog tablet"));
 
