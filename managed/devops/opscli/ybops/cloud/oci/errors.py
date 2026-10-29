@@ -39,6 +39,8 @@ def format_oci_error(e):
 
 
 def _format_service_error(e):
+    # ServiceError converts the response body's keys to snake_case, so OCI's originalMessage is
+    # original_message here.
     body = e.args[0] if e.args and isinstance(e.args[0], dict) else {}
     # Some services return "detail" instead of, or in addition to, "message".
     detail = _non_blank(body.get("detail"))
