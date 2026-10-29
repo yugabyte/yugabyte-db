@@ -15,10 +15,10 @@
 
 #include <algorithm>
 #include <atomic>
+#include <future>
 #include <optional>
 #include <memory>
 #include <string>
-#include <future>
 #include <thread>
 #include <unordered_map>
 #include <utility>
@@ -7026,7 +7026,7 @@ TEST_F_EX(
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_disable_ysql_ddl_txn_verification", "true"));
   ASSERT_OK(cluster_->SetFlagOnMasters("vmodule", "object_lock_info_manager=1"));
   ASSERT_OK(RestoreDuringVectorIndexCreate(schedule_id, time, conn, [this, backend_pid] {
-    // Created here because a daemon has one log listener, which the pause waiter replaced.
+    // Created here because a daemon has one log listener, which the pause waiter would replace.
     auto release_ignored = cluster_->GetMasterLogWaiter("Ignoring release request");
     // SIGKILL, so the backend does not abort the transaction itself, which waits for verification.
     SCHECK_EQ(kill(backend_pid, SIGKILL), 0, IllegalState, "Failed to kill backend");

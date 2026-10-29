@@ -942,8 +942,8 @@ Status RestoreSysCatalogState::PrepareTableCleanup(
     docdb::DocWriteBatch* write_batch) {
   VLOG_WITH_FUNC(4) << id;
 
-  // Colocated tables too: going straight to HIDDEN would skip PrepareTableDeletion, which ends the
-  // table's in-progress DDL, if any, and releases the DDL's object locks.
+  // Mark colocated tables HIDING too, not HIDDEN: the HIDING -> HIDDEN transition in
+  // CleanUpDeletedTables ends the table's in-progress DDL, if any, and releases its object locks.
   pb.set_hide_state(SysTablesEntryPB::HIDING);
 
   pb.set_version(pb.version() + 1);
