@@ -131,6 +131,7 @@ Anything that copies or links WAL segments must also carry the marker. Otherwise
 
 - **Remote bootstrap.** The source reads the marker right after anchoring the log and before the RocksDB checkpoint, and sends it in `BeginRemoteBootstrapSessionResponsePB.quiescent_marker`. The destination writes it into the new WAL directory before downloading segments.
 - **Split.** `Log::CopyTo` hard-links segments into the child WAL directories and writes the marker with the child's tablet id. The `SPLIT_OP` is itself an append, so the parent has left the mode by then. The child's frontiers can still be below L, so it still needs the marker.
+- **yb-data-patcher.** `add-time` and `sub-time` rebuild each WAL directory from its segments, so they also copy the marker, with its hybrid time shifted like those of the WAL entries. Bootstrap updates the clock with that hybrid time.
 
 ## Upgrade and rollback
 

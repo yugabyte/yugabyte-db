@@ -13,6 +13,8 @@
 
 #include <boost/algorithm/string/join.hpp>
 
+#include "yb/consensus/log.h"
+
 #include "yb/docdb/docdb_test_util.h"
 
 #include "yb/gutil/casts.h"
@@ -26,25 +28,34 @@
 
 #include "yb/server/skewed_clock.h"
 
+#include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_peer.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/physical_time.h"
 #include "yb/util/range.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/string_util.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/timestamp.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 
+DECLARE_bool(enable_quiescent_tablets);
 DECLARE_bool(fail_on_out_of_range_clock_skew);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
+DECLARE_int32(quiescent_tablet_idle_sec);
 DECLARE_string(time_source);
 DECLARE_uint64(clock_skew_force_crash_bound_usec);
 
 namespace yb {
 namespace tools {
+
+YB_STRONGLY_TYPED_BOOL(QuiescentTablets);
 
 class DataPatcherTest : public CqlTestBase<MiniCluster> {
  protected:
@@ -69,6 +80,17 @@ class DataPatcherTest : public CqlTestBase<MiniCluster> {
       LOG(INFO) << line;
     }
     return result;
+  }
+
+  void TestAddTimeDelta(QuiescentTablets quiescent_tablets);
+};
+
+class DataPatcherQuiescentTabletsTest : public DataPatcherTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_quiescent_tablets) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_quiescent_tablet_idle_sec) = 1;
+    DataPatcherTest::SetUp();
   }
 };
 
@@ -162,7 +184,7 @@ void CheckWriteTimeConsistency(
 // Start cluster.
 // Write more values.
 // Check that all write times are before current time.
-TEST_F(DataPatcherTest, AddTimeDelta) {
+void DataPatcherTest::TestAddTimeDelta(QuiescentTablets quiescent_tablets) {
   docdb::DisableYcqlPackedRow();
 
   constexpr int kValueGroupSize = 10;
@@ -170,7 +192,9 @@ TEST_F(DataPatcherTest, AddTimeDelta) {
   const MonoDelta kMonoDelta(60min * 24 * 365 * 80);
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_fail_on_out_of_range_clock_skew) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 0.8;
+  // Transactions with ignored APPLYING keep tablets out of the quiescent mode.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) =
+      quiescent_tablets ? 0 : 0.8;
 
   auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
   ASSERT_OK(session.ExecuteQuery(
@@ -237,6 +261,22 @@ TEST_F(DataPatcherTest, AddTimeDelta) {
   }
   auto data_root_dirs = boost::join(data_root_dirs_vec, ",");
   auto wal_root_dirs = boost::join(wal_root_dirs_vec, ",");
+
+  std::vector<std::string> quiescent_wal_dirs;
+  if (quiescent_tablets) {
+    ASSERT_OK(WaitFor([this]() -> Result<bool> {
+      for (const auto& peer : VERIFY_RESULT(ListTabletPeersForTableName(cluster_.get(), "t"))) {
+        if (!peer->IsQuiescent()) {
+          return false;
+        }
+      }
+      return true;
+    }, 30s * kTimeMultiplier, "Tablets quiescent"));
+    for (const auto& peer : ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), "t"))) {
+      quiescent_wal_dirs.push_back(peer->tablet_metadata()->wal_dir());
+    }
+  }
+
   LOG(INFO) << "Data dirs: " << data_root_dirs;
   LOG(INFO) << "WAL dirs: " << wal_root_dirs;
 
@@ -266,6 +306,12 @@ TEST_F(DataPatcherTest, AddTimeDelta) {
   args.resize(args.size() - 1);
   LOG(INFO) << "Running data-patcher apply-patch without --dry-run";
   ASSERT_OK(RunDataPatcher(args));
+
+  for (const auto& dir : quiescent_wal_dirs) {
+    auto marker = ASSERT_RESULT(log::Log::ReadQuiescentMarkerFile(Env::Default(), dir));
+    ASSERT_LT(HybridTime(marker.hybrid_time()).GetPhysicalValueMicros(),
+              time_after_clock_jump.value());
+  }
 
   const auto start_cluster = [&]() {
     ASSERT_OK(StartCluster());
@@ -312,6 +358,15 @@ TEST_F(DataPatcherTest, AddTimeDelta) {
       &session, original_last_value, &write_times_after_revert,
       "after reverting the effect of data-patcher, going back to clock skew"));
   ASSERT_VECTORS_EQ(write_times_after_jump, write_times_after_revert);
+}
+
+TEST_F(DataPatcherTest, AddTimeDelta) {
+  TestAddTimeDelta(QuiescentTablets::kFalse);
+}
+
+// The patched WAL dirs of quiescent tablets keep the marker, with its hybrid time patched.
+TEST_F(DataPatcherQuiescentTabletsTest, AddTimeDelta) {
+  TestAddTimeDelta(QuiescentTablets::kTrue);
 }
 
 } // namespace tools
