@@ -653,9 +653,10 @@ ybEqualityIndexClause(IndexOptInfo *index, List *indexclauses, int indexcol)
 /*
  * Settle the stream key columns of an index path, the columns each merge
  * stream binds to one value.  stream_cols holds the SAOP columns the pathkeys
- * walk picked.  build_index_paths calls this once the path's pathkeys are
- * final, after truncate_useless_pathkeys, with the path's index clauses, so
- * that the path's costing and its plan see the same stream keys.
+ * walk picked.  build_index_paths calls this after truncate_useless_pathkeys,
+ * with the path's index clauses, so that the path's costing and its plan see
+ * the same stream keys.  The pathkeys are final only after this call, which
+ * can truncate them on an embedded index.
  *
  * On an embedded index, such as a colocated index, pggate compares each merge
  * sort value in the table row.  So when embedded, *pathkeys is truncated
