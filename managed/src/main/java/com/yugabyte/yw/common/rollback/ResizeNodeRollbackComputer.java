@@ -266,7 +266,8 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
             BAD_REQUEST,
             String.format(
                 "Cannot roll back resize node: the universe records %d GB for node %s, larger than"
-                    + " the %d GB the rollback would set for it.",
+                    + " the %d GB the rollback would set for it, so it can't be rolled back. Retry"
+                    + " the resize to drive it forward instead.",
                 currentDevice.volumeSize,
                 node.nodeName,
                 wanted.volumeSize));
@@ -279,8 +280,8 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
             BAD_REQUEST,
             String.format(
                 "Cannot roll back resize node: the data disk of node %s is %d GB in the cloud,"
-                    + " larger than the %d GB the rollback would set for it. It was resized outside"
-                    + " this task; update the universe disk size to match before rolling back.",
+                    + " larger than the %d GB the rollback would set for it, so it can't be rolled"
+                    + " back. Retry the resize to drive it forward instead.",
                 node.nodeName,
                 cloud.getVolumeSizeGb(),
                 wanted.volumeSize));

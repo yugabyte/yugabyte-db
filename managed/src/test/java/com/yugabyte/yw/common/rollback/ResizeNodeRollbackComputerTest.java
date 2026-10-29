@@ -863,9 +863,8 @@ public class ResizeNodeRollbackComputerTest extends FakeDBApplication {
     assertTrue(ex.getMessage(), ex.getMessage().contains("node n1 is 200 GB in the cloud"));
   }
 
-
   @Test
-  public void computeDoesNotInflateMasterVolumeFromTserverCloudGrow() {
+  public void computeChecksEachRoleAgainstItsOwnVolumeSize() {
     enableRollback();
     final String masterNodeName = "n-master";
     UUID azUuid = universe.getNodes().stream().findFirst().orElseThrow().azUuid;
@@ -1047,7 +1046,6 @@ public class ResizeNodeRollbackComputerTest extends FakeDBApplication {
         ex.getMessage(),
         ex.getMessage().contains("node n1 is 200 GB in the cloud, larger than the 100 GB"));
   }
-
 
   /** Simple identity check: {@link Cluster} lookup by uuid should match primary. */
   @Test
