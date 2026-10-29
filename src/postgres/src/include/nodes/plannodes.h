@@ -1237,14 +1237,6 @@ typedef struct Group
  * executor startup.  (It is possible that there are no aggregate functions;
  * this could happen if they get optimized away by constant-folding, or if
  * we are using the Agg node to implement hash-based grouping.)
- *
- * YB: 'yb_pushdown_decision' says who decides whether the scan below
- * evaluates the aggregates in DocDB, one partial-aggregate row per read
- * request (see YbAggPushdownDecision).  ExecInitAgg runs
- * yb_agg_pushdown_supported for YB_AGG_PUSHDOWN_BY_EXECUTOR and obeys the
- * planner's answer otherwise.  Cached plans copy the node and parallel
- * workers read it back, so the field is copied, written and read with the
- * other fields.
  * ---------------
  */
 typedef struct Agg
@@ -1262,9 +1254,6 @@ typedef struct Agg
 	/* Note: planner provides numGroups & aggParams only in HASHED/MIXED case */
 	List	   *groupingSets;	/* grouping sets to use */
 	List	   *chain;			/* chained Agg/Sort nodes */
-
-	/* YB fields */
-	YbAggPushdownDecision yb_pushdown_decision;
 } Agg;
 
 /* ----------------

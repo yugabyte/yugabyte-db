@@ -552,11 +552,21 @@ Status PgDropDBSequences::Exec() {
 PgCreateReplicationSlot::PgCreateReplicationSlot(
     const PgSessionPtr& pg_session, const char* slot_name, const char* plugin_name,
     PgOid database_oid, YbcPgReplicationSlotSnapshotAction snapshot_action, YbcLsnType lsn_type,
-    YbcOrderingMode yb_ordering_mode)
+    YbcOrderingMode yb_ordering_mode, const char* yb_publication_name,
+    const PgOid* yb_publication_relfilenodes, size_t yb_num_publication_tables,
+    bool yb_publication_all_tables)
     : BaseType(pg_session) {
   req_.set_database_oid(database_oid);
   req_.set_replication_slot_name(slot_name);
   req_.set_output_plugin_name(plugin_name);
+  if (yb_publication_name) {
+    req_.set_bound_publication_name(yb_publication_name);
+    req_.set_bound_publication_all_tables(yb_publication_all_tables);
+    for (size_t i = 0; i < yb_num_publication_tables; ++i) {
+      req_.add_bound_publication_table_ids(
+          PgObjectId(database_oid, yb_publication_relfilenodes[i]).GetYbTableId());
+    }
+  }
 
   switch (snapshot_action) {
     case YB_REPLICATION_SLOT_NOEXPORT_SNAPSHOT:

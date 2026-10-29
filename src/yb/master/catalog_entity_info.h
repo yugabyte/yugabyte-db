@@ -1470,6 +1470,16 @@ class CDCStreamInfo : public RefCountedThreadSafe<CDCStreamInfo>,
 
   const ReplicationSlotName GetCdcsdkYsqlReplicationSlotName() const;
 
+  // Whether the stream's table set is governed by the publication it is bound to.
+  bool IsCdcsdkYsqlPublicationsBoundStream() const;
+
+  // Name of the publication this stream is statically bound to. Non-empty exactly when
+  // IsCdcsdkYsqlPublicationsBoundStream() returns true.
+  const std::string GetCdcsdkYsqlBoundPublicationName() const;
+
+  // Whether a newly created table joins this publications bound stream.
+  bool CdcsdkYsqlIncludesNewTables() const;
+
   bool IsConsistentSnapshotStream() const;
 
   const google::protobuf::Map<::std::string, ::yb::PgReplicaIdentity> GetReplicaIdentityMap() const;

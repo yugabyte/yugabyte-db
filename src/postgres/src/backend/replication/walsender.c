@@ -1037,7 +1037,8 @@ parseCreateReplSlotOptions(CreateReplicationSlotCmd *cmd,
 						   CRSSnapshotAction *snapshot_action,
 						   bool *two_phase,
 						   YbCRSLsnType *lsn_type,
-						   YbCRSOrderingMode *ordering_mode)
+						   YbCRSOrderingMode *ordering_mode,
+						   char **yb_publication_name)
 {
 	ListCell   *lc;
 	bool		snapshot_action_given = false;
@@ -1143,6 +1144,17 @@ parseCreateReplSlotOptions(CreateReplicationSlotCmd *cmd,
 						 errmsg("unrecognized value for CREATE_REPLICATION_SLOT option \"%s\": \"%s\"",
 								defel->defname, action)));
 		}
+		/* YB */
+		else if (strcmp(defel->defname, "yb_publication") == 0)
+		{
+			if (*yb_publication_name != NULL ||
+				cmd->kind != REPLICATION_KIND_LOGICAL)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options")));
+
+			*yb_publication_name = defGetString(defel);
+		}
 		else
 			elog(ERROR, "unrecognized option: %s", defel->defname);
 	}
@@ -1169,18 +1181,22 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 	bool		reserve_wal = false;
 	bool		two_phase = false;
 	CRSSnapshotAction snapshot_action = CRS_EXPORT_SNAPSHOT;
-	YbCRSLsnType lsn_type = CRS_SEQUENCE;
-	YbCRSOrderingMode yb_ordering_mode = YB_CRS_TRANSACTION;
 	DestReceiver *dest;
 	TupOutputState *tstate;
 	TupleDesc	tupdesc;
 	Datum		values[4];
 	bool		nulls[4];
 
+	/* YB declarations */
+	YbCRSLsnType lsn_type = CRS_SEQUENCE;
+	YbCRSOrderingMode yb_ordering_mode = YB_CRS_TRANSACTION;
+	char	   *yb_publication_name = NULL;
+
 	Assert(!MyReplicationSlot);
 
 	parseCreateReplSlotOptions(cmd, &reserve_wal, &snapshot_action, &two_phase,
-							   &lsn_type, &yb_ordering_mode);
+							   &lsn_type, &yb_ordering_mode,
+							   &yb_publication_name);
 
 	if (cmd->kind == REPLICATION_KIND_PHYSICAL)
 	{
@@ -1192,7 +1208,8 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 		ReplicationSlotCreate(cmd->slotname, false,
 							  cmd->temporary ? RS_TEMPORARY : RS_PERSISTENT,
 							  false,
-							  cmd->plugin, snapshot_action, NULL, lsn_type, yb_ordering_mode);
+							  cmd->plugin, snapshot_action, NULL, lsn_type, yb_ordering_mode,
+							  NULL /* yb_publication_name */ );
 	}
 	else
 	{
@@ -1215,7 +1232,8 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 			ReplicationSlotCreate(cmd->slotname, true,
 								  cmd->temporary ? RS_TEMPORARY : RS_EPHEMERAL,
 								  two_phase, cmd->plugin, snapshot_action, NULL,
-								  lsn_type, yb_ordering_mode);
+								  lsn_type, yb_ordering_mode,
+								  NULL /* yb_publication_name */ );
 		}
 	}
 
@@ -1313,7 +1331,7 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 			ReplicationSlotCreate(cmd->slotname, true, RS_PERSISTENT, two_phase,
 								  cmd->plugin, snapshot_action,
 								  &yb_consistent_snapshot_time, lsn_type,
-								  yb_ordering_mode);
+								  yb_ordering_mode, yb_publication_name);
 
 			if (snapshot_action == CRS_EXPORT_SNAPSHOT)
 				snapshot_name = YbSnapBuildExportSnapshotWithReadTime(yb_consistent_snapshot_time);
@@ -1572,6 +1590,15 @@ StartLogicalReplication(StartReplicationCmd *cmd)
 							  WalSndPrepareWrite, WalSndWriteData,
 							  WalSndUpdateProgress);
 	xlogreader = logical_decoding_ctx->reader;
+
+	/*
+	 * YB: Validate that a publication-bound slot is used with exactly its
+	 * bound publication. Like the decoding context creation above, this must
+	 * happen before sending the CopyBothResponse message so that the error is
+	 * reported as a failure of the START_REPLICATION command.
+	 */
+	if (IsYugaByteEnabled())
+		YBCValidateBoundPublication(logical_decoding_ctx->options.yb_publication_names);
 
 	WalSndSetState(WALSNDSTATE_CATCHUP);
 

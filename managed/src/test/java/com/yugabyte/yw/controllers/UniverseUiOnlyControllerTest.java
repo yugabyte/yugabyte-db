@@ -47,6 +47,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ProviderInitializer;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -2139,6 +2140,46 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
         assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson));
     assertErrorResponse(result, "Cannot change master gflags for existing node");
+  }
+
+  @Test
+  public void testUniverseUpdateFipsGFlagDisabledFail() {
+    Universe u = setUpUniverse();
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(), univ -> univ.getUniverseDetails().fipsEnabled = true);
+    for (String value : List.of("false", "True", "1")) {
+      u.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags =
+          SpecificGFlags.construct(
+              Collections.emptyMap(), Map.of(GFlagsUtil.OPENSSL_REQUIRE_FIPS, value));
+      String url = "/api/customers/" + customer.getUuid() + "/universes/" + u.getUniverseUUID();
+      JsonNode bodyJson = Json.toJson(u.getUniverseDetails());
+      Result result =
+          assertPlatformException(
+              () -> doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson));
+      assertErrorResponse(result, "FIPS enabled universe");
+    }
+  }
+
+  @Test
+  public void testUniverseUpdateKeepsStoredFipsGFlagValue() {
+    Universe u = setUpUniverse();
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            univ -> {
+              univ.getUniverseDetails().fipsEnabled = true;
+              univ.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags =
+                  SpecificGFlags.construct(
+                      Collections.emptyMap(), Map.of(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "false"));
+            });
+    String url = "/api/customers/" + customer.getUuid() + "/universes/" + u.getUniverseUUID();
+    JsonNode bodyJson = Json.toJson(u.getUniverseDetails());
+    Result result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson));
+    // Unchanged gflags pass the FIPS check and reach the next validation.
+    assertErrorResponse(result, "No changes that could be applied by EditUniverse");
   }
 
   @Test

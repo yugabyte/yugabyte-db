@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -62,6 +63,7 @@ using namespace std::literals;
 
 DECLARE_bool(enable_load_balancing);
 DECLARE_int32(heartbeat_interval_ms);
+DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_bool(TEST_pause_before_remote_bootstrap);
 DECLARE_bool(TEST_tserver_disable_heartbeat);
 DECLARE_int32(committed_config_change_role_timeout_sec);
@@ -1128,6 +1130,74 @@ TEST_F_EX(MasterHeartbeatITest, MaybeHasXClusterGuardedLease, MasterHeartbeatITe
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> { return tserver_desc->MaybeHasXClusterGuardedLease(); },
       3s * kTimeMultiplier, "Wait for xCluster-guarded information lease to be re-acquired"));
+}
+
+class MasterHeartbeatITestMultiMaster : public MasterHeartbeatITest {
+ public:
+  void SetUp() override {
+    // A restarted replica reports no leader until the tablet leader's next raft heartbeat reaches
+    // it. Report to the master much more often than that, so the master sees that report.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_interval_ms) = 100;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_raft_heartbeat_interval_ms) = 2000 * kTimeMultiplier;
+    MasterHeartbeatITest::SetUp();
+  }
+
+  bool enable_ysql() override { return false; }
+  size_t num_masters() override { return 3; }
+  int num_tablets() override { return 1; }
+};
+
+// The hinted leader election is meant for the first election of a new tablet. A restarted follower
+// of a tablet with a live leader must not trigger one, even on a master leader that has not sent a
+// hint for the tablet yet (e.g. after a master leader change).
+TEST_F_EX(MasterHeartbeatITest, NoHintedElectionOnTServerRestart,
+          MasterHeartbeatITestMultiMaster) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  CreateTable();
+  const auto kTimeout = MonoDelta::FromSeconds(60 * kTimeMultiplier);
+
+  ASSERT_RESULT(mini_cluster_->StepDownMasterLeader());
+  auto& catalog_mgr = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster())->catalog_manager();
+  auto table = table_name();
+  auto table_info = catalog_mgr.GetTableInfoFromNamespaceNameAndTableName(
+      table.namespace_type(), table.namespace_name(), table.table_name());
+  ASSERT_NE(table_info, nullptr);
+  auto tablet = ASSERT_RESULT(table_info->GetTablets())[0];
+
+  // Wait for the new master leader to learn the tablet leader and all running replicas from tablet
+  // reports.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        if (!tablet->GetLeader().ok()) {
+          return false;
+        }
+        auto replicas = tablet->GetReplicaLocations();
+        return replicas->size() == num_tablet_servers() &&
+               std::ranges::all_of(*replicas, [](const auto& entry) {
+                 return entry.second.state == tablet::RaftGroupStatePB::RUNNING;
+               });
+      },
+      kTimeout, "New master leader learns tablet leader and replicas"));
+  const auto leader_uuid = ASSERT_RESULT(tablet->GetLeader())->permanent_uuid();
+
+  tserver::MiniTabletServer* follower = nullptr;
+  for (size_t i = 0; i < mini_cluster_->num_tablet_servers(); ++i) {
+    auto* ts = mini_cluster_->mini_tablet_server(i);
+    if (ts->server()->permanent_uuid() != leader_uuid) {
+      follower = ts;
+      break;
+    }
+  }
+  ASSERT_NE(follower, nullptr);
+
+  google::SetVLOGLevel("master_heartbeat_service*", 1);
+  StringWaiterLogSink hinted_election_log("Starting election at " + tablet->tablet_id());
+  StringWaiterLogSink skipped_election_log(Format(
+      "Skipping hinted leader election for existing tablet $0 reported by $1",
+      tablet->tablet_id(), follower->server()->permanent_uuid()));
+  ASSERT_OK(follower->Restart());
+  ASSERT_OK(skipped_election_log.WaitFor(kTimeout));
+  ASSERT_FALSE(hinted_election_log.IsEventOccurred());
 }
 
 }  // namespace yb::integration_tests

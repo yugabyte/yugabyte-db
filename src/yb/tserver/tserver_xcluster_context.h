@@ -46,7 +46,10 @@ class TserverXClusterContext : public TserverXClusterContextIf {
   // Only ever raises the count.
   void UpdateOidCacheInvalidationsCount(uint32_t oid_cache_invalidations_count) EXCLUDES(mutex_);
 
-  Result<std::shared_ptr<const PersistenceBlockMapPB>> GetPersistenceBlockMap() const override
+  Result<std::optional<HybridTime>> GetPersistenceBlockedThrough(
+      uint32_t database_oid) const override EXCLUDES(mutex_);
+
+  Result<std::shared_ptr<const PersistenceBlockMapPB>> TEST_GetPersistenceBlockMap() const override
       EXCLUDES(mutex_);
 
   void UpdatePersistenceBlockMap(const PersistenceBlockMapPB& persistence_block_map)
@@ -61,6 +64,13 @@ class TserverXClusterContext : public TserverXClusterContextIf {
   void UpdateSafeTimeMap(const XClusterNamespaceToSafeTimePBMap& safe_time_map);
 
   void UpdateXClusterGuardedLease(MonoTime lease_expiration_time);
+
+  // See tserver_xcluster_context_if.h for specification.
+  bool HasXClusterGuardedInfoLease() const override EXCLUDES(mutex_);
+
+  // Pure check if we have an xCluster-guarded information lease; ignores
+  // enforce_xcluster_guarded_lease.
+  bool HasUnexpiredXClusterGuardedInfoLease() const EXCLUDES(mutex_);
 
   void UpdateXClusterInfoPerNamespace(
       const ::google::protobuf::Map<std::string, XClusterNamespaceInfoPB>&
@@ -83,6 +93,8 @@ class TserverXClusterContext : public TserverXClusterContextIf {
  private:
   // Whether xCluster-guarded information may be given out.
   bool HasXClusterGuardedInfoUnlocked() const REQUIRES_SHARED(mutex_);
+
+  bool HasUnexpiredLeaseUnlocked() const REQUIRES_SHARED(mutex_);
 
   XClusterSafeTimeMap safe_time_map_;
 

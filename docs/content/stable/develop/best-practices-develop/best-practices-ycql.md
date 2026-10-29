@@ -18,11 +18,11 @@ To build high-performance and scalable applications using YCQL, developers shoul
 
 ## Global secondary indexes
 
-Indexes use multi-shard transactional capability of YugabyteDB and are global and strongly consistent (ACID). To add secondary indexes, you need to create tables with [transactions enabled](../../../api/ycql/ddl_create_table/#table). They can also be used as materialized views by using the [INCLUDE clause](../../../api/ycql/ddl_create_index#included-columns).
+Indexes use multi-shard transactional capability of YugabyteDB and are global and strongly consistent (ACID). To add secondary indexes, you need to create tables with [transactions enabled](../../../api/ycql/ddl_create_table/#transactions). They can also be used as materialized views by using the [INCLUDE clause](../../../api/ycql/ddl_create_index/#included-columns).
 
 ## Unique indexes
 
-YCQL supports [unique indexes](../../../api/ycql/ddl_create_index#unique-index). A unique index disallows duplicate values from being inserted into the indexed columns.
+YCQL supports [unique indexes](../../../api/ycql/ddl_create_index/#unique-index). A unique index disallows duplicate values from being inserted into the indexed columns.
 
 ## Covering indexes
 
@@ -90,13 +90,13 @@ Collections are designed for storing small sets of values that are not expected 
 
 ## Collections with many elements
 
-Each element inside a collection ends up as a [separate key value](../../../architecture/docdb/data-model#examples) in DocDB adding per-element overhead.
+Each element inside a collection ends up as a [separate key value](../../../architecture/docdb/data-model/#examples) in DocDB adding per-element overhead.
 
 If your collections are immutable, or you update the whole collection in full, consider using the JSONB data type. An alternative would also be to use ProtoBuf or FlatBuffers and store the serialized data in a BLOB column.
 
 ## Use partition_hash for large table scans
 
-`partition_hash` function can be used for querying a subset of the data to get approximate row counts or to break down full-table operations into smaller sub-tasks that can be run in parallel. See [example usage](../../../api/ycql/expr_fcall#partition-hash-function) along with a working Python script.
+`partition_hash` function can be used for querying a subset of the data to get approximate row counts or to break down full-table operations into smaller sub-tasks that can be run in parallel. See [example usage](../../../api/ycql/expr_fcall/#partition-hash-function) along with a working Python script.
 
 ## TRUNCATE tables instead of DELETE
 

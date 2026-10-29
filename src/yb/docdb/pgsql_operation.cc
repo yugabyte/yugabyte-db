@@ -781,19 +781,21 @@ struct RowPackerData {
     };
   }
 
-  dockv::RowPackerVariant MakePacker(bool is_update = false) const {
+  dockv::RowPackerVariant MakePacker(
+      bool is_update, const dockv::ValueControlFields& control_fields) const {
     if (FLAGS_ysql_use_packed_row_v2) {
-      return MakePackerHelper<dockv::RowPackerV2>(is_update);
+      return MakePackerHelper<dockv::RowPackerV2>(is_update, control_fields);
     }
-    return MakePackerHelper<dockv::RowPackerV1>(is_update);
+    return MakePackerHelper<dockv::RowPackerV1>(is_update, control_fields);
   }
 
  private:
   template <class T>
-  dockv::RowPackerVariant MakePackerHelper(bool is_update) const {
+  dockv::RowPackerVariant MakePackerHelper(
+      bool is_update, const dockv::ValueControlFields& control_fields) const {
     return dockv::RowPackerVariant(
         std::in_place_type_t<T>(), schema_version, packing, FLAGS_ysql_packed_row_size_limit,
-        Slice(), is_update, vector_value_format);
+        control_fields, is_update, vector_value_format);
   }
 };
 
@@ -1292,7 +1294,7 @@ class PgsqlWriteOperation::RowPackContext {
       : query_id_(request.stmt_id()),
         data_(data),
         write_id_(data.doc_write_batch->ReserveWriteId()),
-        packer_(packer_data.MakePacker(is_update)) {
+        packer_(packer_data.MakePacker(is_update, data.doc_write_batch->RowControlFields())) {
   }
 
   template <class Value>
@@ -1675,8 +1677,21 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
       // assigned. When owns_vector_reverse_mapping tables are enabled, vector columns must be
       // intercepted here (e.g. by falling through to the unpack-repack path below for tables
       // with vectors).
+
+      // TODO(cdr): The row control fields (the CDR stamp) are spliced onto the front of the row
+      // pggate already packed rather than passed to SetPrimitive: for an already-encoded value,
+      // SetPrimitive writes the control fields and then overwrites them with the value, so they
+      // would be silently dropped. Make SetPrimitive keep the control fields it is given for an
+      // already-encoded value, and pass them there instead.
+      ValueBuffer stamped_value;
+      data.doc_write_batch->RowControlFields().AppendEncoded(&stamped_value);
       if (pack_row &&
-          packed_value.size() < dockv::PackedSizeLimit(FLAGS_ysql_packed_row_size_limit)) {
+          stamped_value.size() + packed_value.size() <
+              dockv::PackedSizeLimit(FLAGS_ysql_packed_row_size_limit)) {
+        if (!stamped_value.empty()) {
+          stamped_value.Append(packed_value);
+          packed_value = stamped_value.AsSlice();
+        }
         RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
             DocPath(key), dockv::ValueControlFields(),
             ValueRef(packed_value), data.read_operation_data, request_.stmt_id()));
@@ -1694,7 +1709,8 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
         } else {
           RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
               DocPath(key, KeyEntryValue::kLivenessColumn),
-              dockv::ValueControlFields(), ValueRef(dockv::ValueEntryType::kNullLow),
+              data.doc_write_batch->RowControlFields(),
+              ValueRef(dockv::ValueEntryType::kNullLow),
               data.read_operation_data, request_.stmt_id()));
         }
         for (size_t idx = 0; idx != packing.columns(); ++idx) {
@@ -1739,7 +1755,8 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
   } else {
     RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
         DocPath(encoded_doc_key_.as_slice(), KeyEntryValue::kLivenessColumn),
-        dockv::ValueControlFields(), ValueRef(dockv::ValueEntryType::kNullLow),
+        data.doc_write_batch->RowControlFields(),
+        ValueRef(dockv::ValueEntryType::kNullLow),
         data.read_operation_data, request_.stmt_id()));
 
     for (const auto& column_value : request_.column_values()) {
@@ -1890,6 +1907,22 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
 
       RETURN_NOT_OK(pack_context.Complete(encoded_doc_key_));
     } else {
+      // A partial update writes only the changed column entries, so there is no row-level entry
+      // describing this row version. Write the liveness column to be that entry if CDR is enabled.
+      //
+      // This is written for a local update too, not just a replication apply. The reader identifies
+      // the last writer from the newest row-level entry. If a local update wrote no such entry, an
+      // older stamped one would still be the newest and the row would keep claiming a remote origin
+      // it no longer has. The entry a local write produces here carries no CDR bytes -
+      // RowControlFields() is empty for it - so absence of a stamp remains what marks a write as
+      // local.
+      if (data.doc_write_batch->IsCdrEnabled() && !request_.column_new_values().empty()) {
+        RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
+            DocPath(encoded_doc_key_.as_slice(), KeyEntryValue::kLivenessColumn),
+            data.doc_write_batch->RowControlFields(),
+            ValueRef(dockv::ValueEntryType::kNullLow),
+            data.read_operation_data, request_.stmt_id()));
+      }
       for (const auto& column_value : request_.column_new_values()) {
         RETURN_NOT_OK(UpdateColumn(
             data, table_row, column_value, &returning_table_row,

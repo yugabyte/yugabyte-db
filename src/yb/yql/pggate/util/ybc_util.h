@@ -43,6 +43,7 @@ bool YBCStatusIsTryAgain(YbcStatus s);
 bool YBCStatusIsTimedOut(YbcStatus s);
 bool YBCStatusIsAlreadyPresent(YbcStatus s);
 bool YBCStatusIsReplicationSlotLimitReached(YbcStatus s);
+bool YBCStatusIsNotSupported(YbcStatus s);
 uint32_t YBCStatusPgsqlError(YbcStatus s);
 void YBCFreeStatus(YbcStatus s);
 

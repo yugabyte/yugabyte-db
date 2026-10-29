@@ -77,16 +77,15 @@ public class CloudQueryHelper extends DevopsBase {
 
   /**
    * Returns the host's metadata from the cloud's metadata service. On failure, returns what ybops
-   * does: a JSON string if YBA doesn't run on that cloud or its metadata service is unreachable,
-   * or an {@code {"error": ...}} object if ybops itself failed.
+   * does: a JSON string if YBA doesn't run on that cloud or its metadata service is unreachable, or
+   * an {@code {"error": ...}} object if ybops itself failed.
    */
   public JsonNode getCurrentHostInfo(Common.CloudType cloudType) {
     if (!hostCloudDetector.getHostCloud().equals(Optional.of(cloudType))) {
       // Running ybops would only wait out the metadata service timeouts to fail the same way.
       return Json.toJson(
           String.format(
-              "Unable to auto-discover %s provider information",
-              cloudType.name().toUpperCase()));
+              "Unable to auto-discover %s provider information", cloudType.name().toUpperCase()));
     }
     CachedHostInfo cached = cachedHostInfos.get(cloudType);
     if (cached != null && cached.isFresh()) {
@@ -99,8 +98,7 @@ public class CloudQueryHelper extends DevopsBase {
         return cached.hostInfo;
       }
       JsonNode hostInfo =
-          currentHostInfo(
-              cloudType, cloudType == Common.CloudType.aws ? AWS_METADATA_TYPES : null);
+          currentHostInfo(cloudType, cloudType == Common.CloudType.aws ? AWS_METADATA_TYPES : null);
       boolean success = hostInfo.isObject() && !hostInfo.has("error");
       cachedHostInfos.put(
           cloudType,

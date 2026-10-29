@@ -9,12 +9,14 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -26,10 +28,12 @@ import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
 import com.yugabyte.operator.OperatorConfig;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
+import com.yugabyte.yw.commissioner.tasks.NodeExporterSidecarTestUtil;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.ShellKubernetesManager;
 import com.yugabyte.yw.common.TestUtils;
@@ -49,6 +53,7 @@ import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
@@ -458,6 +463,9 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     expectedOverrides.put("master", ImmutableMap.of("extraEnv", metricSuffixExtraEnv));
 
     expectedOverrides.put("defaultServiceScope", "AZ");
+    // The key defaults to on, and the version gate, like KubernetesUtil's others, treats an
+    // unparsable version such as "1.0.0" as supported.
+    expectedOverrides.put("nodeExporter", ImmutableMap.of("enabled", true, "port", 9300));
     return expectedOverrides;
   }
 
@@ -497,6 +505,65 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
 
     // TODO implement exposeAll false case
     assertEquals(getExpectedOverrides(true), overrides);
+  }
+
+  // The key defaults to on.
+  @Test
+  public void testNodeExporterRenderedAtSupportedVersion() throws IOException {
+    ybSoftwareVersion = NodeExporterSidecarTestUtil.SUPPORTED_VERSION;
+
+    assertEquals(
+        ImmutableMap.of("enabled", true, "port", 9300),
+        runHelmInstallAndReadOverrides(null).get("nodeExporter"));
+  }
+
+  @Test
+  public void testNodeExporterOffWithKeyOff() throws IOException {
+    ybSoftwareVersion = NodeExporterSidecarTestUtil.SUPPORTED_VERSION;
+    RuntimeConfigEntry.upsert(defaultUniverse, "yb.kubernetes.node_exporter.enabled", "false");
+
+    assertEquals(
+        ImmutableMap.of("enabled", false),
+        runHelmInstallAndReadOverrides(null).get("nodeExporter"));
+  }
+
+  @Test
+  public void testNodeExporterUserOverridesCannotTurnItOn() throws IOException {
+    ybSoftwareVersion = NodeExporterSidecarTestUtil.SUPPORTED_VERSION;
+    RuntimeConfigEntry.upsert(defaultUniverse, "yb.kubernetes.node_exporter.enabled", "false");
+
+    Map<String, Object> overrides =
+        runHelmInstallAndReadOverrides(
+            ImmutableMap.of("nodeExporter", ImmutableMap.of("enabled", true)));
+
+    assertEquals(false, ((Map<String, Object>) overrides.get("nodeExporter")).get("enabled"));
+  }
+
+  @Test
+  public void testNodeExporterUserOverridesCannotTurnItOff() throws IOException {
+    ybSoftwareVersion = NodeExporterSidecarTestUtil.SUPPORTED_VERSION;
+
+    Map<String, Object> overrides =
+        runHelmInstallAndReadOverrides(
+            ImmutableMap.of("nodeExporter", ImmutableMap.of("enabled", false, "port", 9400)));
+
+    assertEquals(ImmutableMap.of("enabled", true, "port", 9300), overrides.get("nodeExporter"));
+  }
+
+  /** Runs a HELM_INSTALL with the given universe overrides and returns the rendered overrides. */
+  private Map<String, Object> runHelmInstallAndReadOverrides(Map<String, Object> universeOverrides)
+      throws IOException {
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        createExecutor(
+            KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
+    kubernetesCommandExecutor.taskParams().universeOverrides = universeOverrides;
+    kubernetesCommandExecutor.run();
+    ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
+    verify(kubernetesManager, times(1))
+        .helmInstall(any(), any(), any(), any(), any(), any(), expectedOverrideFile.capture());
+    try (InputStream is = new FileInputStream(new File(expectedOverrideFile.getValue()))) {
+      return new Yaml().loadAs(is, Map.class);
+    }
   }
 
   @Test
@@ -1225,6 +1292,43 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     assertEquals(overrides.get("bar"), "foo");
     // TODO implement exposeAll false case
     assertEquals(getExpectedOverrides(true), overrides);
+  }
+
+  @Test
+  public void testHelmInstallRejectsCertManagerKeyFipsDoesNotAllow() throws IOException {
+    // Chart defaults with a cert-manager setup the other checks accept.
+    when(kubernetesManager.helmShowValues(any(), any()))
+        .thenReturn(
+            "tls:\n  enabled: false\n  certManager:\n    enabled: false\n"
+                + "    bootstrapSelfsigned: false\n    useClusterIssuer: true\n"
+                + "    clusterIssuer: cluster-ca\n"
+                + "    certificates:\n      algorithm: RSA\n      keySize: 2048\n");
+    defaultUniverse = updateUniverseDetails("dev");
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(), u -> u.getUniverseDetails().fipsEnabled = true);
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        AbstractTaskBase.createTask(KubernetesCommandExecutor.class);
+    KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
+    params.ybSoftwareVersion = ybSoftwareVersion;
+    params.providerUUID = defaultProvider.getUuid();
+    params.commandType = KubernetesCommandExecutor.CommandType.HELM_INSTALL;
+    params.config = config;
+    params.universeName = defaultUniverse.getName();
+    params.helmReleaseName = defaultUniverse.getUniverseDetails().nodePrefix;
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.universeConfig = defaultUniverse.getConfig();
+    params.universeDetails = defaultUniverse.getUniverseDetails();
+    params.namespace = namespace;
+    params.universeOverrides =
+        HelmUtils.convertYamlToMap(
+            "tls:\n  enabled: true\n  certManager:\n    enabled: true\n"
+                + "    certificates:\n      algorithm: Ed25519\n");
+    kubernetesCommandExecutor.initialize(params);
+    PlatformServiceException e =
+        assertThrows(PlatformServiceException.class, kubernetesCommandExecutor::run);
+    assertTrue(e.getMessage(), e.getMessage().contains("algorithm Ed25519"));
+    verify(kubernetesManager, never()).helmInstall(any(), any(), any(), any(), any(), any(), any());
   }
 
   @Test

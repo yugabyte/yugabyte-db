@@ -1469,6 +1469,7 @@ public class UniverseCRUDHandler {
    */
   public UUID update(Customer customer, Universe u, UniverseDefinitionTaskParams taskParams) {
     checkCanEdit(customer, u);
+    validateFipsGFlagsForUpdate(u, taskParams);
     checkTaskParamsForUpdate(u, taskParams);
     // enforce user tags for cloud instances.
     for (Cluster cluster : taskParams.clusters) {
@@ -1499,6 +1500,25 @@ public class UniverseCRUDHandler {
       return updateCluster(customer, u, taskParams);
     } else {
       return updatePrimaryCluster(customer, u, taskParams);
+    }
+  }
+
+  private static void validateFipsGFlagsForUpdate(
+      Universe u, UniverseDefinitionTaskParams taskParams) {
+    if (!u.getUniverseDetails().fipsEnabled) {
+      return;
+    }
+    for (Cluster cluster : taskParams.clusters) {
+      Cluster current = u.getUniverseDetails().getClusterByUuid(cluster.uuid);
+      // Only gflags this edit changes, so a universe already storing a non-true value stays
+      // editable; configure sets the flag to true on its nodes regardless.
+      if (current != null
+          && Objects.equals(cluster.userIntent.specificGFlags, current.userIntent.specificGFlags)
+          && Objects.equals(cluster.userIntent.masterGFlags, current.userIntent.masterGFlags)
+          && Objects.equals(cluster.userIntent.tserverGFlags, current.userIntent.tserverGFlags)) {
+        continue;
+      }
+      GFlagsUtil.validateFipsCompliancy(cluster.userIntent, true);
     }
   }
 
@@ -1820,6 +1840,9 @@ public class UniverseCRUDHandler {
               + universe.getUniverseUUID());
     }
 
+    // The new cluster follows the universe, whatever the request says.
+    taskParams.fipsEnabled = universe.getUniverseDetails().fipsEnabled;
+
     for (Cluster cluster : taskParams.clusters) {
       validateUserTags(customer, cluster.userIntent);
     }
@@ -1893,7 +1916,7 @@ public class UniverseCRUDHandler {
       throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
-    taskParams.clusters.add(primaryCluster);
+    taskParams.clusters.add(0, primaryCluster);
 
     // Set the provider code.
     Provider provider = Util.getSingleProvider(addOnCluster);
@@ -1978,7 +2001,9 @@ public class UniverseCRUDHandler {
     if (primaryCluster.userIntent.specificGFlags != null) {
       primaryGflagGroups = primaryCluster.userIntent.specificGFlags.getGflagGroups();
     }
-    taskParams.clusters.add(primaryCluster);
+    // Add the primary cluster at the beginning of the cluster list.
+    // TODO fix all other places where cluster at index 0 is assumed to be the primary cluster.
+    taskParams.clusters.add(0, primaryCluster);
     validateConsistency(primaryCluster, readOnlyCluster);
 
     if (readOnlyCluster.userIntent.provider != null) {

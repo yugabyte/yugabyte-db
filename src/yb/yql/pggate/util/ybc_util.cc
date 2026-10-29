@@ -290,6 +290,10 @@ bool YBCStatusIsReplicationSlotLimitReached(YbcStatus s) {
   return StatusWrapper(s)->IsReplicationSlotLimitReached();
 }
 
+bool YBCStatusIsNotSupported(YbcStatus s) {
+  return StatusWrapper(s)->IsNotSupported();
+}
+
 uint32_t YBCStatusPgsqlError(YbcStatus s) {
   return std::to_underlying(FetchErrorCode(s));
 }

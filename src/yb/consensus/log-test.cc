@@ -557,6 +557,36 @@ TEST_F(LogTest, TestNoBackgroundSyncWhenIntervalDisabled) {
   ASSERT_OK(log_->Close());
 }
 
+// An uncommitted tail can be replaced by entries from an earlier term. Fsyncs of the replaced
+// tail, including the one done by a rollover, must not make the replacing entries durable.
+TEST_F(LogTest, WalStateAfterTailReplacedByEarlierTerm) {
+  options_.durable_wal_write = false;
+  options_.interval_durable_wal_write = MonoDelta::FromSeconds(3600);
+  options_.bytes_durable_wal_write_mb = 1024;
+  BuildLog();
+
+  auto wait_durable = [this](const OpId& op_id) {
+    return WaitFor(
+        [this, op_id] { return log_->WalState(op_id) == WalEntryState::kDurable; },
+        MonoDelta::FromSeconds(10), Format("$0 to become durable", op_id));
+  };
+
+  OpIdPB op_id = MakeOpId(2, 1);
+  ASSERT_OK(AppendNoOps(&op_id, 50));
+  OpIdPB replaced_op_id = MakeOpId(3, 51);
+  ASSERT_OK(AppendNoOps(&replaced_op_id, 50));
+  ASSERT_OK(wait_durable(OpId(3, 100)));
+
+  ASSERT_OK(log_->ResetLastSyncedEntryOpId(OpId(2, 50)));
+  ASSERT_OK(log_->AllocateSegmentAndRollOver());
+  ASSERT_OK(AppendNoOps(&op_id, 10));
+
+  ASSERT_EQ(log_->WalState(OpId(2, 55)), WalEntryState::kAppended);
+  ASSERT_OK(wait_durable(OpId(2, 60)));
+
+  ASSERT_OK(log_->Close());
+}
+
 // Regression test for part of KUDU-735:
 // if a log is not preallocated, we should properly track its on-disk size as we append to
 // it.
@@ -2550,6 +2580,8 @@ TEST_F(LogTest, QuiescentMarkerLeftoverSegments) {
   ASSERT_FALSE(env_->FileExists(temp_file));
   ASSERT_OK(log_->EnsureSegmentInitialized());
   ASSERT_EQ(log_->GetLatestEntryOpId(), last_op_id);
+  // Otherwise memtable flushes of ops up to the marker would wait for a WAL fsync.
+  ASSERT_EQ(log_->WalState(last_op_id), WalEntryState::kDurable);
   ASSERT_OK(log_->Close());
 }
 

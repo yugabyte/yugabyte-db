@@ -22,6 +22,7 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/entity_ids_types.h"
 
+#include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/docdb_compaction_context.h"
 
 #include "yb/gutil/dynamic_annotations.h"
@@ -44,6 +45,7 @@
 
 #include "yb/util/logging_test_util.h"
 #include "yb/util/metrics.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tostring.h"
@@ -56,8 +58,10 @@ DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 DECLARE_bool(ysql_yb_skip_redundant_update_ops);
 DECLARE_uint64(transaction_resend_applying_interval_usec);
 DECLARE_bool(TEST_disable_apply_committed_transactions);
+DECLARE_bool(cdcsdk_enable_publication_scoped_replication_slots);
 DECLARE_bool(cdc_pg_create_grpc_stream);
 DECLARE_bool(ysql_yb_enable_listen_notify);
+DECLARE_int32(TEST_slowdown_alter_table_rpcs_ms);
 
 namespace yb {
 
@@ -15313,6 +15317,508 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentsNotRetainedAfterDropin
       },
       MonoDelta::FromSeconds(60),
       "Timed out waiting for intent SST file cleanup after dropping the CDC stream"));
+}
+
+// Verifies that GetChanges streams rows written after the master has persisted a schema change but
+// before the tablet applied it. Such rows are packed with the previous schema version, which a cold
+// schema packing cache (such as tserver restart) can resolve only from the tablet metadata. A
+// sys_catalog lookup at the rows' hybrid times returns the new version.
+TEST_F(CDCSDKYsqlTest, TestSchemaPackingNotFoundForConcurrentDDLAndDML) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+
+  ASSERT_OK(SetUpWithParams(1 /* replication_factor */, 1 /* num_masters */));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
+  // Stream creation bumps the schema version too (wal_retention_secs alter), so take the
+  // baseline from the sys catalog only now.
+  const auto initial_version =
+      ASSERT_RESULT(
+          test_client()->GetTableSchemaFromSysCatalog(
+              table_id, std::numeric_limits<uint64_t>::max()))
+          .second;
+
+  // Hold back the master -> tserver ALTER RPCs: the master persists the bumped schema version
+  // while the tablet keeps packing rows with the old one.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_slowdown_alter_table_rpcs_ms) = 120000;
+
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([this] {
+    auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+    ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx ON $0($1)", kTableName, kValueColumnName));
+  });
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto schema_and_version = VERIFY_RESULT(test_client()->GetTableSchemaFromSysCatalog(
+            table_id, std::numeric_limits<uint64_t>::max()));
+        return schema_and_version.second > initial_version;
+      },
+      MonoDelta::FromSeconds(30 * kTimeMultiplier),
+      "Timed out waiting for the master-side schema version bump"));
+
+  // Poisoned rows: packed with the old schema version, hybrid times map to the new one.
+  ASSERT_OK(WriteRows(1 /* start */, 11 /* end */, &test_cluster_));
+  ASSERT_OK(WriteRowsHelper(11 /* start */, 21 /* end */, &test_cluster_, true /* flag */));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_slowdown_alter_table_rpcs_ms) = 0;
+  thread_holder.JoinAll();
+
+  auto change_resp = ASSERT_RESULT(GetChangesFromCDCWithoutRetry(stream_id, tablets, nullptr));
+  // 20 inserts, each single-shard write wrapped in its own BEGIN/COMMIT pair and the multi-shard
+  // transaction in one, plus 3 DDL records: the initial schema image (v1) and the index build's
+  // backfill (v2) and ready (v3) phase alters.
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 45);
+}
+
+// Verifies that an old schema version's packing survives full compactions while the CDCSDK
+// checkpoint is behind the schema change, and is GC'ed once the checkpoint moves past it.
+// Single-shard writes are used so that no intent SST files pin the old packing.
+TEST_F(CDCSDKYsqlTest, TestSchemaPackingRetentionForCDCSDK) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_interval_secs) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  // Rows must be repackable to the new version right away, so that the schema packing of the old
+  // version is held by the CDCSDK schema-version-boundary hold alone, not by the RocksDB file
+  // frontiers.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+
+  ASSERT_OK(SetUpWithParams(
+      1 /* replication_factor */, 1 /* num_masters */, false /* colocated */,
+      true /* cdc_populate_safepoint_record */));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  tablet::TabletPeerPtr tablet_peer;
+  for (const auto& peer : test_cluster()->GetTabletPeers(0)) {
+    if (peer->tablet_id() == tablets[0].tablet_id()) {
+      tablet_peer = peer;
+    }
+  }
+  ASSERT_NE(tablet_peer, nullptr);
+
+  const auto old_version =
+      ASSERT_RESULT(tablet_peer->tablet_metadata()->GetTableInfo(table_id))->schema_version;
+  auto has_old_packing = [&]() -> Result<bool> {
+    auto table_info = VERIFY_RESULT(tablet_peer->tablet_metadata()->GetTableInfo(table_id));
+    return table_info->doc_read_context->schema_packing_storage.HasVersion(old_version);
+  };
+
+  auto wait_for_barriers_past = [&](int64_t index) -> Status {
+    return WaitFor(
+        [&]() -> Result<bool> { return tablet_peer->cdc_sdk_min_checkpoint_op_id().index > index; },
+        MonoDelta::FromSeconds(60 * kTimeMultiplier),
+        "Timed out waiting for CDCSDK retention barriers");
+  };
+  auto full_compact_table = [&]() -> Status {
+    return WaitForFlushTables(
+        {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+        /* is_compaction = */ true);
+  };
+
+  ASSERT_OK(WriteRows(1 /* start */, 11 /* end */, &test_cluster_));
+  const auto initial_index = tablet_peer->cdc_sdk_min_checkpoint_op_id().index;
+  ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table_id}, 10 /* expected_dml_records */, true /* init_virtual_wal */));
+  // The virtual WAL persists the restart position forwarded by the ack on the next poll.
+  ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table_id}, 0 /* expected_dml_records */, false /* init_virtual_wal */));
+  ASSERT_OK(wait_for_barriers_past(initial_index));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(AddColumn(&test_cluster_, test_namespace_name, kTableName, kValue2ColumnName, &conn));
+
+  // The compaction repacks the stored rows to the new version, so the old packing survives on
+  // the CDCSDK schema-version-boundary hold alone.
+  ASSERT_OK(full_compact_table());
+  ASSERT_TRUE(ASSERT_RESULT(has_old_packing()));
+
+  const auto held_index = tablet_peer->cdc_sdk_min_checkpoint_op_id().index;
+  ASSERT_OK(WriteRows(11 /* start */, 12 /* end */, &test_cluster_));
+  ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table_id}, 1 /* expected_dml_records */, false /* init_virtual_wal */));
+  ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table_id}, 0 /* expected_dml_records */, false /* init_virtual_wal */));
+  ASSERT_OK(wait_for_barriers_past(held_index));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        RETURN_NOT_OK(full_compact_table());
+        return !VERIFY_RESULT(has_old_packing());
+      },
+      MonoDelta::FromSeconds(60 * kTimeMultiplier),
+      "Timed out waiting for the old schema packing to be GC'ed"));
+}
+
+void CDCSDKYsqlTest::TestPublicationsBoundStreamsAcrossMasterRestart(
+    bool bind_to_all_tables_pub, const std::string& output_plugin_name) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_publication_scoped_replication_slots) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 100;
+  ASSERT_OK(SetUpWithParams(1 /* replication_factor */, 1 /* num_masters */));
+
+  auto table1 = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "test1"));
+  auto table2 = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "test2"));
+
+  const std::string publication_name = bind_to_all_tables_pub ? "pub_all" : "pub1";
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(conn.Execute(
+      bind_to_all_tables_pub ? "CREATE PUBLICATION pub_all FOR ALL TABLES"
+                             : "CREATE PUBLICATION pub1 FOR TABLE test1"));
+
+  auto bound_stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(
+      "rs_bound", CDCSDKSnapshotOption::EXPORT_SNAPSHOT, false /* verify_snapshot_name */,
+      test_namespace_name, output_plugin_name, publication_name));
+  // Only logical replication streams poll the catalog tables.
+  const bool include_catalog_tables = output_plugin_name != kYbGrpcStreamIndicator;
+
+  std::unordered_set<std::string> expected_table_ids = {table1.table_id()};
+  if (bind_to_all_tables_pub) {
+    expected_table_ids.insert(table2.table_id());
+  }
+
+  auto verify_stream_metadata = [&]() {
+    VerifyTablesInStreamMetadata(
+        bound_stream_id, expected_table_ids,
+        "The bound stream must contain only the publication's member tables", std::nullopt,
+        include_catalog_tables);
+  };
+  auto verify_bindings = [&]() {
+    auto& cm = test_cluster()->mini_master()->catalog_manager_impl();
+    auto bound_info = ASSERT_RESULT(cm.GetXReplStreamInfo(bound_stream_id));
+    ASSERT_TRUE(bound_info->IsCdcsdkYsqlPublicationsBoundStream());
+    ASSERT_EQ(bound_info->GetCdcsdkYsqlBoundPublicationName(), publication_name);
+    ASSERT_EQ(bound_info->CdcsdkYsqlIncludesNewTables(), bind_to_all_tables_pub);
+  };
+  verify_stream_metadata();
+  verify_bindings();
+
+  // cdc_state entries follow the same restriction.
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table1, 0, &tablets, /* partition_list_version */ nullptr));
+  std::unordered_set<TabletId> expected_tablets = {kCDCSDKSlotEntryTabletId};
+  for (const auto& tablet : tablets) {
+    expected_tablets.insert(tablet.tablet_id());
+  }
+  if (bind_to_all_tables_pub) {
+    ASSERT_OK(test_client()->GetTablets(table2, 0, &tablets, /* partition_list_version */ nullptr));
+    for (const auto& tablet : tablets) {
+      expected_tablets.insert(tablet.tablet_id());
+    }
+  }
+  CheckTabletsInCDCStateTable(
+      expected_tablets, test_client(), bound_stream_id, {},
+      "cdc_state rows for the bound stream don't match", include_catalog_tables);
+
+  // Retention barriers are set on the member tables' tablets only.
+  auto tablet_has_retention_barriers = [&](const client::YBTableName& table) -> Result<bool> {
+    google::protobuf::RepeatedPtrField<master::TabletLocationsPB> table_tablets;
+    RETURN_NOT_OK(
+        test_client()->GetTablets(table, 0, &table_tablets, /* partition_list_version */ nullptr));
+    SCHECK_EQ(table_tablets.size(), 1, IllegalState, "expected 1 tablet");
+    for (const auto& peer : test_cluster()->GetTabletPeers(0)) {
+      if (peer->tablet_id() == table_tablets[0].tablet_id()) {
+        return peer->cdc_sdk_min_checkpoint_op_id() != OpId::Invalid();
+      }
+    }
+    return STATUS(NotFound, "tablet peer not found");
+  };
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> { return tablet_has_retention_barriers(table1); },
+      MonoDelta::FromSeconds(60), "Retention barriers not set on test1"));
+  if (bind_to_all_tables_pub) {
+    ASSERT_OK(WaitFor(
+        [&]() -> Result<bool> { return tablet_has_retention_barriers(table2); },
+        MonoDelta::FromSeconds(60), "Retention barriers not set on test2"));
+  } else {
+    // test2 is not a member of the publication, so no stream retains it.
+    ASSERT_FALSE(ASSERT_RESULT(tablet_has_retention_barriers(table2)));
+  }
+
+  // Restart the master and give the stream loader's scans and the dynamic-table bg task a few
+  // cycles: they must not add test2 to a stream bound to a publication that test2 is not in.
+  ASSERT_OK(test_cluster()->mini_master()->Restart());
+  ASSERT_OK(test_cluster()->WaitForAllTabletServers());
+  SleepFor(MonoDelta::FromSeconds(5 * kTimeMultiplier));
+
+  verify_stream_metadata();
+  verify_bindings();
+}
+
+TEST_F(CDCSDKYsqlTest, TestAllTablesPublicationBoundStreamsAcrossMasterRestart) {
+  TestPublicationsBoundStreamsAcrossMasterRestart(true /* bind_to_all_tables_pub */, "pgoutput");
+}
+
+TEST_F(CDCSDKYsqlTest, TestTargetedPublicationBoundStreamsAcrossMasterRestart) {
+  TestPublicationsBoundStreamsAcrossMasterRestart(false /* bind_to_all_tables_pub */, "pgoutput");
+}
+
+TEST_F(CDCSDKYsqlTest, TestAllTablesPublicationBoundGrpcStreamsAcrossMasterRestart) {
+  TestPublicationsBoundStreamsAcrossMasterRestart(
+      true /* bind_to_all_tables_pub */, kYbGrpcStreamIndicator);
+}
+
+TEST_F(CDCSDKYsqlTest, TestTargetedPublicationBoundGrpcStreamsAcrossMasterRestart) {
+  TestPublicationsBoundStreamsAcrossMasterRestart(
+      false /* bind_to_all_tables_pub */, kYbGrpcStreamIndicator);
+}
+
+TEST_F(CDCSDKYsqlTest, TestSlotWithoutPublicationInDatabaseWithoutPublications) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_publication_scoped_replication_slots) = true;
+  ASSERT_OK(SetUpWithParams(1 /* replication_factor */, 1 /* num_masters */));
+
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "test1"));
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot("rs_no_pub"));
+
+  auto stream_info = ASSERT_RESULT(
+      test_cluster()->mini_master()->catalog_manager_impl().GetXReplStreamInfo(stream_id));
+  ASSERT_FALSE(stream_info->IsCdcsdkYsqlPublicationsBoundStream());
+  ASSERT_TRUE(stream_info->GetCdcsdkYsqlBoundPublicationName().empty());
+
+  VerifyTablesInStreamMetadata(
+      stream_id, {table.table_id()}, "The stream must contain test1", std::nullopt,
+      true /* include_catalog_tables */);
+
+  auto expected_tablets = ListTabletIdsForTable(test_cluster(), table.table_id());
+  expected_tablets.insert(kCDCSDKSlotEntryTabletId);
+  CheckTabletsInCDCStateTable(
+      expected_tablets, test_client(), stream_id, {}, "cdc_state rows for the stream don't match",
+      true /* include_catalog_tables */);
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version */ nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        for (const auto& peer : test_cluster()->GetTabletPeers(0)) {
+          if (peer->tablet_id() == tablets[0].tablet_id()) {
+            return peer->cdc_sdk_min_checkpoint_op_id() != OpId::Invalid();
+          }
+        }
+        return false;
+      },
+      MonoDelta::FromSeconds(60), "Retention barriers not set on test1"));
+}
+
+TEST_F(CDCSDKYsqlTest, TestSlotWithoutPublicationIgnoresPublications) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_publication_scoped_replication_slots) = true;
+  ASSERT_OK(SetUpWithParams(1 /* replication_factor */, 1 /* num_masters */));
+
+  auto table1 = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "test1"));
+  auto table2 = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "test2"));
+  auto table3 = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "test3"));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub1 FOR TABLE test1"));
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub2 FOR TABLE test2"));
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot("rs_no_pub"));
+
+  auto stream_info = ASSERT_RESULT(
+      test_cluster()->mini_master()->catalog_manager_impl().GetXReplStreamInfo(stream_id));
+  ASSERT_FALSE(stream_info->IsCdcsdkYsqlPublicationsBoundStream());
+  ASSERT_TRUE(stream_info->GetCdcsdkYsqlBoundPublicationName().empty());
+
+  VerifyTablesInStreamMetadata(
+      stream_id, {table1.table_id(), table2.table_id(), table3.table_id()},
+      "The stream must contain every table of the database", std::nullopt,
+      true /* include_catalog_tables */);
+
+  std::unordered_set<TabletId> expected_tablets = {kCDCSDKSlotEntryTabletId};
+  for (const auto& table : {table1, table2, table3}) {
+    expected_tablets.merge(ListTabletIdsForTable(test_cluster(), table.table_id()));
+  }
+  CheckTabletsInCDCStateTable(
+      expected_tablets, test_client(), stream_id, {}, "cdc_state rows for the stream don't match",
+      true /* include_catalog_tables */);
+
+  auto tablet_has_retention_barriers = [&](const client::YBTableName& table) -> Result<bool> {
+    google::protobuf::RepeatedPtrField<master::TabletLocationsPB> table_tablets;
+    RETURN_NOT_OK(
+        test_client()->GetTablets(table, 0, &table_tablets, /* partition_list_version */ nullptr));
+    SCHECK_EQ(table_tablets.size(), 1, IllegalState, "expected 1 tablet");
+    for (const auto& peer : test_cluster()->GetTabletPeers(0)) {
+      if (peer->tablet_id() == table_tablets[0].tablet_id()) {
+        return peer->cdc_sdk_min_checkpoint_op_id() != OpId::Invalid();
+      }
+    }
+    return STATUS(NotFound, "tablet peer not found");
+  };
+  for (const auto& table : {table1, table2, table3}) {
+    ASSERT_OK(WaitFor(
+        [&]() -> Result<bool> { return tablet_has_retention_barriers(table); },
+        MonoDelta::FromSeconds(60),
+        Format("Retention barriers not set on $0", table.table_name())));
+  }
+}
+
+TEST_F(CDCSDKYsqlTest, TestAllTablesPublicationBoundStreamWithTableCreatedDuringSlotCreation) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_publication_scoped_replication_slots) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 100;
+  ASSERT_OK(SetUpWithParams(1 /* replication_factor */, 1 /* num_masters */));
+
+  auto table1 = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "test1"));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub_all FOR ALL TABLES"));
+
+  // Pause the slot creation in the master after PG has resolved pub_all, and meanwhile create test2
+  // and let the dynamic-table background task handle it before the stream exists.
+  std::atomic<bool> stream_creation_paused{false};
+  std::atomic<bool> resume_stream_creation{false};
+  SyncPoint::GetInstance()->SetCallBack("CreateNewCDCStreamForNamespace::Start", [&](void*) {
+    stream_creation_paused = true;
+    while (!resume_stream_creation) {
+      SleepFor(MonoDelta::FromMilliseconds(10));
+    }
+  });
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  std::optional<Result<xrepl::StreamId>> stream_id_result;
+  std::thread slot_creator([&]() {
+    stream_id_result = CreateConsistentSnapshotStreamWithReplicationSlot(
+        "rs_bound", CDCSDKSnapshotOption::EXPORT_SNAPSHOT, false /* verify_snapshot_name */,
+        test_namespace_name, "pgoutput", "pub_all");
+  });
+  auto cleanup = ScopeExit([&]() {
+    resume_stream_creation = true;
+    if (slot_creator.joinable()) {
+      slot_creator.join();
+    }
+    SyncPoint::GetInstance()->DisableProcessing();
+    SyncPoint::GetInstance()->ClearAllCallBacks();
+  });
+  ASSERT_OK(WaitFor(
+      [&]() { return stream_creation_paused.load(); }, MonoDelta::FromSeconds(30),
+      "Slot creation did not reach the master"));
+
+  auto table2 = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "test2"));
+  SleepFor(MonoDelta::FromSeconds(2 * kTimeMultiplier));
+  resume_stream_creation = true;
+  slot_creator.join();
+  auto stream_id = ASSERT_RESULT(std::move(*stream_id_result));
+
+  // Like a regular stream, the stream starts with every eligible table.
+  VerifyTablesInStreamMetadata(
+      stream_id, {table1.table_id(), table2.table_id()},
+      "The stream bound to the ALL TABLES publication must contain test1 and test2", std::nullopt,
+      true /* include_catalog_tables */);
+}
+
+TEST_F(CDCSDKYsqlTest, TestTargetedPublicationBoundStreamWithRewrittenTables) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_publication_scoped_replication_slots) = true;
+  ASSERT_OK(SetUpWithParams(1 /* replication_factor */, 1 /* num_masters */));
+
+  ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "test1"));
+  ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "test2"));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub1 FOR TABLE test1"));
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(
+      "rs_bound", CDCSDKSnapshotOption::EXPORT_SNAPSHOT, false /* verify_snapshot_name */,
+      test_namespace_name, "pgoutput", "pub1"));
+
+  // Returns the id of the new DocDB table the rewrite creates.
+  auto rewrite_table = [&](const std::string& table_name,
+                           const std::string& type) -> Result<TableId> {
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "ALTER TABLE $0 ALTER COLUMN $1 TYPE $2", table_name, kValueColumnName, type));
+    return VERIFY_RESULT(GetTable(&test_cluster_, test_namespace_name, table_name)).table_id();
+  };
+  // A dropped table stays in the stream until the stream is consumed past the drop, so only the new
+  // tables are checked.
+  auto stream_has_table = [&](const TableId& table_id) -> Result<bool> {
+    auto stream_info = VERIFY_RESULT(GetDBStreamInfo(stream_id));
+    for (const auto& table_info : stream_info.table_info()) {
+      if (table_info.table_id() == table_id) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  // The rewrite of the member table test1 joins the stream, the rewrite of test2 does not.
+  auto test1_table_id = ASSERT_RESULT(rewrite_table("test1", "bigint"));
+  auto test2_table_id = ASSERT_RESULT(rewrite_table("test2", "bigint"));
+  ASSERT_OK(WaitFor(
+      [&]() { return stream_has_table(test1_table_id); }, MonoDelta::FromSeconds(60),
+      "The rewritten test1 did not join the stream"));
+  SleepFor(MonoDelta::FromSeconds(2 * kTimeMultiplier));
+  ASSERT_FALSE(ASSERT_RESULT(stream_has_table(test2_table_id)));
+
+  // Rewrite test1 again with the dynamic-table background task paused and the old table kept in the
+  // stream. After a master restart, the stream loader must find the new table.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_skip_processing_dynamic_table_addition) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_disable_drop_table_cleanup) = true;
+  test1_table_id = ASSERT_RESULT(rewrite_table("test1", "int"));
+  ASSERT_OK(test_cluster()->mini_master()->Restart());
+  ASSERT_OK(test_cluster()->WaitForAllTabletServers());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_skip_processing_dynamic_table_addition) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_disable_drop_table_cleanup) = false;
+  ASSERT_OK(WaitFor(
+      [&]() { return stream_has_table(test1_table_id); }, MonoDelta::FromSeconds(60),
+      "The rewritten test1 did not join the stream after the master restart"));
+}
+
+// With SNAPSHOT 'use', PG resolves the bound publication inside the client's transaction before the
+// slot's consistent snapshot time is applied to it. That catalog read must not fix the
+// transaction's read time: the transaction must read as of the consistent snapshot time.
+TEST_F(CDCSDKYsqlTest, TestUseSnapshotWithPublicationBoundSlot) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_publication_scoped_replication_slots) = true;
+  ASSERT_OK(SetUpWithParams(1 /* replication_factor */, 1 /* num_masters */));
+  ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "test1"));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub1 FOR TABLE test1"));
+
+  auto repl_conn = ASSERT_RESULT(test_cluster_.ConnectToDBWithReplication(test_namespace_name));
+  ASSERT_OK(repl_conn.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+
+  // Pause the slot creation in the master, after PG has resolved pub1.
+  std::atomic<bool> stream_creation_paused{false};
+  std::atomic<bool> resume_stream_creation{false};
+  SyncPoint::GetInstance()->SetCallBack("CreateNewCDCStreamForNamespace::Start", [&](void*) {
+    stream_creation_paused = true;
+    while (!resume_stream_creation) {
+      SleepFor(MonoDelta::FromMilliseconds(10));
+    }
+  });
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  Status create_status;
+  std::thread slot_creator([&]() {
+    create_status = ResultToStatus(repl_conn.Fetch(
+        "CREATE_REPLICATION_SLOT rs_bound LOGICAL yboutput "
+        "(SNAPSHOT 'use', yb_publication 'pub1')"));
+  });
+  auto cleanup = ScopeExit([&]() {
+    resume_stream_creation = true;
+    if (slot_creator.joinable()) {
+      slot_creator.join();
+    }
+    SyncPoint::GetInstance()->DisableProcessing();
+    SyncPoint::GetInstance()->ClearAllCallBacks();
+  });
+  ASSERT_OK(WaitFor(
+      [&]() { return stream_creation_paused.load(); }, MonoDelta::FromSeconds(30),
+      "Slot creation did not reach the master"));
+
+  // Row 1 commits before the consistent snapshot time, row 2 after it.
+  ASSERT_OK(conn.Execute("INSERT INTO test1 VALUES (1, 0)"));
+  resume_stream_creation = true;
+  slot_creator.join();
+  ASSERT_OK(create_status);
+  ASSERT_OK(conn.Execute("INSERT INTO test1 VALUES (2, 0)"));
+
+  ASSERT_EQ(ASSERT_RESULT(repl_conn.FetchAllAsString("SELECT key::text FROM test1")), "1");
+  ASSERT_OK(repl_conn.Execute("COMMIT"));
 }
 
 }  // namespace cdc

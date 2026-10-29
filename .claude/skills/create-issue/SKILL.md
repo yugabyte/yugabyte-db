@@ -104,7 +104,7 @@ issue from being created at all.
    - `managed/` → `YBA`
    - `yugabyted-ui/` → `yugabyted`
    - `docs/` → `Docs`
-   - `.claude/`, `AGENTS.md`, `CLAUDE.md` → `ClaudeCode`
+   - `.claude/`, `AGENTS.md` → `Agents`
    - `build-support/`, `cmake_modules/`, `.github/` → `Build`
    - mixed/cross-cutting → ask the user
 

@@ -1751,6 +1751,15 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         getOrCreateMap(gflags, server).put(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "true");
       }
     }
+    // Done after all overrides, so none can turn the sidecar on or off or move its port.
+    if (confGetter.getConfForScope(universeFromDB, UniverseConfKeys.k8sNodeExporterEnabled)
+        && KubernetesUtil.isNodeExporterSidecarSupported(taskParams().ybSoftwareVersion)) {
+      Map<String, Object> nodeExporter = getOrCreateMap(overrides, "nodeExporter");
+      nodeExporter.put("enabled", true);
+      nodeExporter.put("port", universeFromDBParams.communicationPorts.nodeExporterPort);
+    } else {
+      getOrCreateMap(overrides, "nodeExporter").put("enabled", false);
+    }
 
     // For single AZ azUUID may be null, use non-null values
     UUID azUuid =
@@ -2093,7 +2102,23 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       ensureCertManagerSettings(values);
       // do not allow selfsignedBootstrap to be enabled ever from YBA
       preventBootstrapCA(values);
+      ensureFipsCertManagerKey(values);
     }
+  }
+
+  /** Fails before the helm install rather than when the DB processes fail to load the cert. */
+  @SuppressWarnings("unchecked")
+  private void ensureFipsCertManagerKey(Map<String, Object> values) {
+    Universe u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+    if (!u.getUniverseDetails().fipsEnabled || !hasCertManagerOverride(values)) {
+      return;
+    }
+    Map<String, Object> tls = (Map<String, Object>) values.get("tls");
+    Map<String, Object> certManager = (Map<String, Object>) tls.get("certManager");
+    Object certificates = certManager.get("certificates");
+    Map<String, Object> certs =
+        certificates instanceof Map ? (Map<String, Object>) certificates : Map.of();
+    CertificateHelper.verifyFipsCertManagerKey(certs.get("algorithm"), certs.get("keySize"));
   }
 
   private Map<String, Object> buildMergedHelmValues(String overridesFile) {

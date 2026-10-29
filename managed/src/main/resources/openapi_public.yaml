@@ -26,6 +26,8 @@ tags:
   description: Authentication operations on YBA
 - name: Backup and Restore
   description: Operations related to universe backup and restore
+- name: Certificate
+  description: Certificate management
 - name: Continuous Backup
   description: CRUD operations for Continuous YBA Backups
 - name: Customer
@@ -326,6 +328,63 @@ paths:
           path: customers
           sourceType: endpoint
       x-yba-api-since: 2024.2.0.0
+      x-yba-api-visibility: preview
+  /customers/{cUUID}/certificates:
+    parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    post:
+      operationId: createCertificate
+      summary: Add a certificate
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>Adds a certificate to the customer,
+        such as the root CA for node-to-node and client-to-node encryption in transit.
+        A SelfSigned certificate is a CA certificate with its private key; YBA uses
+        it to sign node and client certificates. The caller either uploads the CA
+        and its key, or omits both and YBA generates them, so that the key never leaves
+        YBA.'
+      tags:
+      - Certificate
+      requestBody:
+        $ref: '#/components/requestBodies/CertificateCreateReq'
+      responses:
+        '200':
+          $ref: '#/components/responses/CertificateResp'
+        '400':
+          description: Invalid input, such as content that isn't PEM, only one of
+            cert_content and key_content, lifetime_years with an uploaded CA or outside
+            1-100, or (unless yb.tls.enable_config_validation is off) a certificate
+            that isn't a valid CA or a key that doesn't match it
+        '401':
+          description: The request has no valid API or session token, cUUID is not
+            the caller's customer (including a customer that doesn't exist), or the
+            caller's role has no create permission on the customer
+        '409':
+          description: The customer already has a certificate with this label
+        '500':
+          description: Server error
+      security:
+      - apiKeyAuth: []
+      - authTokenAuth: []
+      x-yba-api-audit:
+        auditTargetType: Certificate
+        auditTargetId: obj.getUuid().toString()
+        auditActionType: Create
+      x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: create
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+      x-yba-api-since: 2026.2.0.0
       x-yba-api-visibility: preview
   /customers/{cUUID}/auto-yba-backups:
     parameters:
@@ -2589,6 +2648,8 @@ paths:
           $ref: '#/components/responses/YBATaskResp'
         '400':
           description: Invalid input
+        '403':
+          description: The task cannot be rolled back, or the operator owns the resource
         '500':
           description: Server error
       security:
@@ -5173,6 +5234,93 @@ components:
         type:
           description: The data type of the flag.
           type: string
+    CertificateType:
+      title: CertificateType
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>Kind of certificate. SelfSigned:
+        a root CA whose certificate and private key YBA holds and uses to sign node
+        and client certificates.'
+      type: string
+      enum:
+      - SelfSigned
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    CertificateSpec:
+      title: CertificateSpec
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>A certificate to add to the customer.
+        Give cert_content and key_content to upload a CA, or omit both to have YBA
+        generate the CA and its key. Part of CertificateCreateReq.'
+      type: object
+      required:
+      - label
+      - cert_type
+      properties:
+        label:
+          description: Name of the certificate, unique within the customer. A generated
+            CA also uses it as its subject CN.
+          type: string
+          minLength: 1
+        cert_type:
+          $ref: '#/components/schemas/CertificateType'
+        cert_content:
+          description: PEM-encoded CA certificate, optionally followed by the rest
+            of its chain. Omit, together with key_content, to have YBA generate the
+            CA.
+          type: string
+          minLength: 1
+        key_content:
+          description: PEM-encoded private key of the CA certificate. Omit, together
+            with cert_content, to have YBA generate the CA.
+          type: string
+          minLength: 1
+          writeOnly: true
+        lifetime_years:
+          description: Validity of a CA that YBA generates, in years. Defaults to
+            yb.tlsCertificate.root.expiryInYears. Only for a generated CA.
+          type: integer
+          format: int32
+          maximum: 100
+          minimum: 1
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    Certificate:
+      title: Certificate
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>A customer''s certificate. Part
+        of CertificateResp.'
+      type: object
+      required:
+      - uuid
+      - label
+      - cert_type
+      - start_date
+      - expiry_date
+      properties:
+        uuid:
+          description: UUID of the certificate
+          type: string
+          format: uuid
+          readOnly: true
+        label:
+          description: Name of the certificate
+          type: string
+          readOnly: true
+        cert_type:
+          $ref: '#/components/schemas/CertificateType'
+          readOnly: true
+        start_date:
+          description: Start of the certificate's validity
+          type: string
+          format: date-time
+          readOnly: true
+        expiry_date:
+          description: End of the certificate's validity
+          type: string
+          format: date-time
+          readOnly: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
     ContinuousBackupInfo:
       title: ContinuousBackupInfo
       description: 'ContinuousBackupInfo
@@ -8095,10 +8243,11 @@ components:
           additionalProperties:
             type: string
         prometheus_metrics_types:
-          description: 'List of exports to be included in the prometheus dump. NODE_EXPORT
-            is dropped on Kubernetes
+          description: 'List of exports to be included in the prometheus dump. On
+            Kubernetes universes NODE_EXPORT is
 
-            universes, where node_exporter is not scraped.
+            collected only where the node_exporter sidecar is monitored, and dropped
+            otherwise.
 
             '
           type: array
@@ -12322,6 +12471,14 @@ components:
             type: array
             items:
               $ref: '#/components/schemas/GflagMetadata'
+    CertificateResp:
+      description: The added certificate
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Certificate'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
     ContinuousBackupResp:
       description: Continuous Backup Config
       content:
@@ -12564,6 +12721,14 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/IncrementalBackupPagedQuerySpec'
+    CertificateCreateReq:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CertificateSpec'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
     ContinuousBackupCreateReq:
       required: true
       content:

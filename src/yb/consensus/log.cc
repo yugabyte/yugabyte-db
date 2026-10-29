@@ -63,6 +63,7 @@
 #include "yb/gutil/walltime.h"
 
 #include "yb/util/async_util.h"
+#include "yb/util/atomic.h"
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/long_operation_tracker.h"
@@ -283,6 +284,15 @@ bool IsMarkerType(LogEntryTypePB type) {
   return IsRolloverMarkerType(type) ||
          type == LogEntryTypePB::FLUSH_MARKER ||
          type == LogEntryTypePB::CLOSE_SEGMENT_MARKER;
+}
+
+Status FsyncFile(Env* env, const std::string& path) {
+  RWFileOptions opts;
+  opts.mode = Env::OPEN_EXISTING;
+  std::unique_ptr<RWFile> file;
+  RETURN_NOT_OK(env->NewRWFile(opts, path, &file));
+  RETURN_NOT_OK(file->Sync());
+  return file->Close();
 }
 
 // int64 max is the "no constraint" sentinel for WAL retention indexes, so print it as "<max_int>"
@@ -928,7 +938,7 @@ Status Log::DoCloseActiveSegment(const OpId& expected_last_op_id, QuiescentMarke
   RETURN_NOT_OK(DropAllocatedSegment());
   if (active_segment_) {
     WriteLatestMinStartTimeRunningTxnsInFooterBuilder();
-    RETURN_NOT_OK(DoSync());
+    RETURN_NOT_OK(DoSync(last_appended_entry_op_id_));
     RETURN_NOT_OK(CloseCurrentSegment());
     {
       std::lock_guard lock(state_lock_);
@@ -972,7 +982,7 @@ Status Log::RollOver() {
         "Last appended OpId in segment $0: $1", active_segment_->path(),
         last_appended_entry_op_id_.ToString());
 
-    RETURN_NOT_OK(DoSync());
+    RETURN_NOT_OK(DoSync(last_appended_entry_op_id_));
     RETURN_NOT_OK(CloseCurrentSegment());
 
     RETURN_NOT_OK(SwitchToAllocatedSegment());
@@ -1343,14 +1353,25 @@ Status Log::EnsureSegmentInitializedUnlocked(CreateNewSegment create_new_segment
     if (!last_segment->HasFooter()) {
       // Reuse this segment as writable active_segment.
       reuse_last_segment = VERIFY_RESULT(ReuseAsActiveSegment(last_segment));
+      if (!reuse_last_segment) {
+        // A crash could leave its tail unsynced, while the next sync of the log marks the entries
+        // replayed from it durable.
+        WARN_NOT_OK(FsyncFile(get_env(), last_segment->path()),
+                    Format("Failed to fsync $0", last_segment->path()));
+      }
     }
   }
   if (reuse_last_segment) {
     log_index_->SetMinIndexedSegmentNumber(active_segment_sequence_number_);
-  } else if (create_new_segment) {
-    RETURN_NOT_OK(StartActiveSegment());
+  } else {
+    // The other segments were synced when closed, and the ops up to the quiescent marker are in the
+    // storages. Without an active segment no sync of the log would mark them durable.
+    UpdateAtomicMax(&last_durable_entry_op_id_, GetLatestEntryOpId());
+    if (create_new_segment) {
+      RETURN_NOT_OK(StartActiveSegment());
+    }
+    // Otherwise the first append starts a new segment.
   }
-  // Otherwise the first append starts a new segment.
 
   RETURN_NOT_OK(appender_->Init());
   log_state_ = LogState::kLogWriting;
@@ -1383,7 +1404,7 @@ Status Log::EnsureSegmentInitializedUnlocked(CreateNewSegment create_new_segment
 // ::DoSync should not be called directly, instead we should call ::Sync and that might execute
 // this function in-line or as a task in the background or could just return because an fsync
 // might not be necessary. We only call ::DoSync directly before we call ::CloseCurrentSegment
-Status Log::DoSync() {
+Status Log::DoSync(std::optional<OpId> written_op_id) {
   // Acquire the lock over active_segment_ to prevent segment rollover in the interim.
   SCOPED_WAIT_STATUS(WAL_Sync);
   std::lock_guard lock(active_segment_mutex_);
@@ -1396,6 +1417,9 @@ Status Log::DoSync() {
   if (active_segment_->IsClosed()) {
     return Status::OK();
   }
+  if (!written_op_id) {
+    written_op_id = GetLatestEntryOpId();
+  }
 
   Status status;
   periodic_sync_needed_.store(0, std::memory_order_release);
@@ -1405,6 +1429,10 @@ Status Log::DoSync() {
     SCOPED_LATENCY_METRIC(metrics_, sync_latency);
     status = active_segment_->Sync();
   }
+  if (status.ok()) {
+    UpdateAtomicMax(&last_durable_entry_op_id_, *written_op_id);
+  }
+  sync_failed_.store(!status.ok(), std::memory_order_release);
 
   return status;
 }
@@ -1420,7 +1448,7 @@ Status Log::DoSync() {
 // determine if there is a pending fsync task corresponding to the current active segment.
 void Log::DoSyncAndResetTaskInQueue() {
   ADOPT_WAIT_STATE(background_synchronizer_wait_state_);
-  auto status = DoSync();
+  auto status = DoSync(std::nullopt);
   if (!status.ok()) {
     // ensure that fsync gets called on the subsequent call to Log::Sync() function
     periodic_sync_needed_.store(true);
@@ -1587,7 +1615,7 @@ Status Log::Sync() {
       break;
     }
     case SyncType::kForceFsync: {
-      RETURN_NOT_OK(DoSync());
+      RETURN_NOT_OK(DoSync(last_appended_entry_op_id_));
       break;
     }
   }
@@ -1821,6 +1849,20 @@ uint32_t Log::wal_retention_secs() const {
 
 OpId Log::GetLatestEntryOpId() const {
   return last_synced_entry_op_id_.load(boost::memory_order_acquire);
+}
+
+WalEntryState Log::WalState(const OpId& op_id) {
+  if (op_id > GetLatestEntryOpId()) {
+    return WalEntryState::kNone;
+  }
+  if (op_id <= last_durable_entry_op_id_.load(std::memory_order_acquire)) {
+    return WalEntryState::kDurable;
+  }
+  if (sync_failed_.load(std::memory_order_acquire)) {
+    return WalEntryState::kSyncFailed;
+  }
+  SubmitBackgroundSync();
+  return WalEntryState::kAppended;
 }
 
 int64_t Log::GetMinReplicateIndex() const {
@@ -2082,7 +2124,7 @@ Status Log::Close() {
       // Now that we have shut background_sync_threadpool_token_, don't call ::Sync.
       // call ::DoSync instead.
       if (active_segment_) {
-        RETURN_NOT_OK(DoSync());
+        RETURN_NOT_OK(DoSync(last_appended_entry_op_id_));
         RETURN_NOT_OK(CloseCurrentSegment());
         RETURN_NOT_OK(ReplaceSegmentInReaderUnlocked());
       }
@@ -2661,14 +2703,33 @@ Status Log::TEST_SubmitFuncToAppendToken(const std::function<void()>& func) {
 }
 
 Status Log::ResetLastSyncedEntryOpId(const OpId& op_id) {
-  RETURN_NOT_OK(WaitUntilAllFlushed());
+  auto reserved_entry_batch = VERIFY_RESULT(ReserveMarker(FLUSH_MARKER));
+  Synchronizer s;
+  RETURN_NOT_OK(AsyncAppend(
+      std::move(reserved_entry_batch),
+      Bind(&Log::DoResetLastSyncedEntryOpId, Unretained(this), op_id, s.AsStatusCallback())));
+  return s.Wait();
+}
 
+void Log::DoResetLastSyncedEntryOpId(
+    const OpId& op_id, const StatusCallback& callback, const Status& status) {
+  if (!status.ok()) {
+    callback.Run(status);
+    return;
+  }
+
+  // Otherwise the next sync on the appender thread would bring back the replaced tail.
+  last_appended_entry_op_id_ = op_id;
   OpId old_value;
   {
     std::lock_guard write_lock(last_synced_entry_op_id_mutex_);
     old_value = last_synced_entry_op_id_.load(boost::memory_order_acquire);
     last_synced_entry_op_id_.store(op_id, boost::memory_order_release);
     YB_PROFILE(last_synced_entry_op_id_cond_.notify_all());
+  }
+  {
+    std::lock_guard lock(active_segment_mutex_);
+    UpdateAtomicMin(&last_durable_entry_op_id_, op_id);
   }
   LOG_WITH_PREFIX(INFO) << "Reset last synced entry op id from " << old_value << " to " << op_id;
   if (old_value.term < op_id.term) {
@@ -2677,7 +2738,7 @@ Status Log::ResetLastSyncedEntryOpId(const OpId& op_id) {
                 << "old_value: " << old_value << ", op_id: " << op_id;
   }
 
-  return Status::OK();
+  callback.Run(Status::OK());
 }
 
 HybridTime Log::GetMinStartHTOfRunningTxnsFromGCSegments() const {

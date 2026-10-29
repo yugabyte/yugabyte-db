@@ -156,6 +156,7 @@ class TabletPeerTest : public YBTabletTest {
             tablet()->tablet_id()),
         &metric_registry_,
         /*tablet_splitter=*/nullptr,
+        /*persistence_gate=*/nullptr,
         std::shared_future<client::YBClient*>()
     ));
 

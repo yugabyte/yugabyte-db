@@ -32,6 +32,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include <queue>
@@ -113,6 +114,7 @@ typedef std::vector<TabletCreationMetadata> SplitTabletsCreationMetadata;
 
 typedef Callback<void(tablet::TabletPeerPtr)> ConsensusChangeCallback;
 
+class TabletFlusher;
 class TabletMetadataValidator;
 
 // If 'expr' fails, log a message, tombstone the given tablet, and return the
@@ -199,6 +201,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   ThreadPool* tablet_prepare_pool() const { return tablet_prepare_pool_.get(); }
   ThreadPool* raft_pool() const { return raft_pool_.get(); }
   ThreadPool* snapshot_cleanup_pool() const { return snapshot_cleanup_pool_.get(); }
+  TabletFlusher& tablet_flusher() const { return *tablet_flusher_; }
   rpc::ThreadPool* raft_notifications_pool() const {
     return raft_notifications_pool_.get();
   }
@@ -708,6 +711,12 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   void CleanupSplitTablets();
 
+  // Steps down every leader on this TServer while its tablets must not lead (see
+  // PersistenceGate::ShouldRelinquishLeadership).  Runs on the scheduler; the step-downs run on
+  // the Raft pool, in StepDownLocalLeaders.
+  void RelinquishLeadershipIfNeeded();
+  void StepDownLocalLeaders();
+
   docdb::HistoryCutoff AllowedHistoryCutoff(tablet::RaftGroupMetadata* metadata);
 
   template <class Key>
@@ -800,6 +809,11 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   TabletServer* server_;
 
+  // Created in Init, before any tablet peer.  Every tablet peer points at it, so it must outlive
+  // their use of it: all peers are shut down (see CompleteShutdown) before this manager is
+  // destroyed.
+  std::unique_ptr<tablet::PersistenceGate> persistence_gate_;
+
   consensus::RaftPeerPB local_peer_pb_;
 
   using TabletMap = std::unordered_map<
@@ -875,6 +889,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Bounded process-wide pool for physical tablet snapshot directory cleanup.
   std::unique_ptr<ThreadPool> snapshot_cleanup_pool_;
+  std::unique_ptr<TabletFlusher> tablet_flusher_;
 
   // Thread pool for appender threads, shared between all tablets.
   std::unique_ptr<ThreadPool> append_pool_;
@@ -911,6 +926,16 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Used for cleaning up old metrics.
   std::unique_ptr<rpc::Poller> metrics_cleaner_;
+
+  std::unique_ptr<rpc::Poller> relinquish_leadership_poller_;
+
+  // Whether StepDownLocalLeaders is queued or running; at most one is.
+  std::atomic<bool> relinquish_leadership_running_{false};
+
+  // When StepDownLocalLeaders last asked this TServer's leader of each tablet to step down.  Never
+  // pruned: an entry is a few dozen bytes per tablet this TServer has led.  Used only by
+  // StepDownLocalLeaders, which runs one at a time.
+  std::unordered_map<TabletId, CoarseTimePoint> relinquish_step_down_requests_;
 
   // Updates the metrics for the amount of active (non-retention / snapshot-related) and total data
   // on the server, accounting for hardlinks.

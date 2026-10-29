@@ -3710,6 +3710,19 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_alter_type_reuse_expr_and_partial_indexes", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Skip rebuild of expression and partial indexes when ALTER TABLE ... "
+				"ALTER COLUMN ... TYPE changes only a column's type modifier and does not rewrite "
+				"the table."),
+				gettext_noop("When turned off, such indexes are dropped and rebuilt."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_alter_type_reuse_expr_and_partial_indexes,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_planner_trace", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Enables planner tracing."),
 			NULL
@@ -4598,6 +4611,19 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_test_notify_queue_max_pages,
+		0, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_replication_slot_wait_max_retries", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Maximum advisory-lock RPC timeout retries for "
+						 "DROP_REPLICATION_SLOT ... WAIT before giving up with "
+						 "an error. 0 retries indefinitely."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_replication_slot_wait_max_retries,
 		0, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
@@ -6574,6 +6600,19 @@ static struct yb_config_oid ConfigureNamesOid[] =
 		},
 		&yb_force_tablespace_locality_oid,
 		InvalidOid, 0, OID_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_ysql_upgrade_min_next_oid", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Lowest OID to assign in YSQL upgrade mode. "
+						 "Set by the YSQL upgrade runner before a migration that "
+						 "creates a shared relation."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_ysql_upgrade_min_next_oid,
+		InvalidOid, 0, FirstNormalObjectId,
 		NULL, NULL, NULL
 	},
 

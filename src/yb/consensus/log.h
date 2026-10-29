@@ -260,6 +260,9 @@ class Log : public RefCountedThreadSafe<Log> {
   // returns (0, 0)
   OpId GetLatestEntryOpId() const;
 
+  // Returns the state of the entry with op_id. Starts a background fsync when it is kAppended.
+  WalEntryState WalState(const OpId& op_id) EXCLUDES(background_sync_token_mutex_);
+
   int64_t GetMinReplicateIndex() const;
 
   // Returns the index of the earliest op in the log.
@@ -459,7 +462,7 @@ class Log : public RefCountedThreadSafe<Log> {
   static Status WriteQuiescentMarkerFile(
       Env* env, const std::string& wal_dir, const QuiescentMarkerPB& marker);
 
-  // Waits until all entries flushed, then reset last received op id to specified one.
+  // Waits until all entries flushed, then resets last appended, synced and durable op ids to op_id.
   Status ResetLastSyncedEntryOpId(const OpId& op_id);
 
   Status TEST_WriteCorruptedEntryBatchAndSync();
@@ -616,7 +619,15 @@ class Log : public RefCountedThreadSafe<Log> {
   // - time interval/unsynced data exceeds upper limits
   //   time upper limit: interval_durable_wal_write_
   //   data upper limit: bytes_durable_wal_write_mb_ (MB)
-  Status DoSync() EXCLUDES(active_segment_mutex_);
+  // written_op_id must already be written to the log; it is durable once DoSync succeeds.
+  // Without it, the last synced entry op id is read under active_segment_mutex_, so it cannot race
+  // with the reset in DoResetLastSyncedEntryOpId.
+  Status DoSync(std::optional<OpId> written_op_id) EXCLUDES(active_segment_mutex_);
+
+  // Runs on the appender thread, which owns last_appended_entry_op_id_.
+  void DoResetLastSyncedEntryOpId(
+      const OpId& op_id, const StatusCallback& callback, const Status& status)
+      EXCLUDES(active_segment_mutex_);
 
   // Calls ::DoSync and resets fsync_task_in_queue_.
   void DoSyncAndResetTaskInQueue() EXCLUDES(active_segment_mutex_);
@@ -750,6 +761,13 @@ class Log : public RefCountedThreadSafe<Log> {
   // The last known OpId for a REPLICATE message appended and synced to this log (any segment).
   // NOTE: this op is not necessarily durable unless gflag durable_wal_write is true.
   boost::atomic<OpId> last_synced_entry_op_id_{OpId()};
+
+  // The last known OpId for a REPLICATE message that is fsynced, with all entries before it.
+  // Lowered by ResetLastSyncedEntryOpId, since the replacing tail could have an earlier term.
+  std::atomic<OpId> last_durable_entry_op_id_{OpId()};
+
+  // Whether the last fsync failed.
+  std::atomic<bool> sync_failed_{false};
 
   // The last know OpId for a REPLICATE message appended to this log (any segment).
   // This variable is not accessed concurrently.

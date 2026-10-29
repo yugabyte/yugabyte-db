@@ -104,13 +104,8 @@ var setGflagsUniverseCmd = &cobra.Command{
 			))
 		}
 
-		primaryCluster := universeutil.FindClusterByType(clusters, util.PrimaryClusterType)
-		if universeutil.IsClusterEmpty(primaryCluster) {
-			err := fmt.Errorf(
-				"No primary cluster found in universe " + universeName + " (" + universeUUID + ")\n",
-			)
-			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
-		}
+		primaryCluster, _ := universeutil.MustFindPrimaryCluster(
+			clusters, universeName, universeUUID)
 
 		primaryUserIntent := primaryCluster.GetUserIntent()
 		version := primaryUserIntent.GetYbSoftwareVersion()

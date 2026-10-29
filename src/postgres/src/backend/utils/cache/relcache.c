@@ -10906,3 +10906,65 @@ YbIndexAttHasOptionsProc(Relation indexrel, AttrNumber attnum)
 			OidIsValid(index_getprocid(indexrel, attnum,
 									   indexrel->rd_indam->amoptsprocnum)));
 }
+
+/*
+ * YbRelationGetUnConstifiedIndexExpressions -- RelationGetIndexExpressions,
+ * but without constant folding.
+ *
+ * The expression tree is returned exactly as stored in indexprs of pg_index.
+ * This form is not cached, since rd_indexprs holds the folded one.
+ */
+List *
+YbRelationGetUnConstifiedIndexExpressions(Relation relation)
+{
+	List	   *result;
+	Datum		exprsDatum;
+	bool		isnull;
+	char	   *exprsString;
+
+	if (relation->rd_indextuple == NULL ||
+		heap_attisnull(relation->rd_indextuple, Anum_pg_index_indexprs, NULL))
+		return NIL;
+
+	exprsDatum = heap_getattr(relation->rd_indextuple,
+							  Anum_pg_index_indexprs,
+							  GetPgIndexDescriptor(),
+							  &isnull);
+	Assert(!isnull);
+	exprsString = TextDatumGetCString(exprsDatum);
+	result = (List *) stringToNode(exprsString);
+	pfree(exprsString);
+
+	return result;
+}
+
+/*
+ * YbRelationGetUnConstifiedIndexPredicate -- RelationGetIndexPredicate, but
+ * without constant folding  and conversion to implicit-AND form.
+ *
+ * The expression tree is returned exactly as stored in indpred of pg_index.
+ * This form is not cached, since indpred holds the folded one.
+ */
+Node *
+YbRelationGetUnConstifiedIndexPredicate(Relation relation)
+{
+	Node	   *result;
+	Datum		predDatum;
+	bool		isnull;
+	char	   *predString;
+
+	if (relation->rd_indextuple == NULL ||
+		heap_attisnull(relation->rd_indextuple, Anum_pg_index_indpred, NULL))
+		return NULL;
+
+	predDatum = heap_getattr(relation->rd_indextuple,
+							 Anum_pg_index_indpred,
+							 GetPgIndexDescriptor(),
+							 &isnull);
+	Assert(!isnull);
+	predString = TextDatumGetCString(predDatum);
+	result = (Node *) stringToNode(predString);
+	pfree(predString);
+
+	return result;
+}

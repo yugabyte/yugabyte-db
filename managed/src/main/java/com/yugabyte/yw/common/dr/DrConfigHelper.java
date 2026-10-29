@@ -439,6 +439,8 @@ public class DrConfigHelper {
     XClusterUtil.ensureUpgradeIsComplete(sourceUniverse, targetUniverse);
     Universe newTargetUniverse =
         Universe.getOrBadRequest(replaceReplicaForm.drReplicaUniverseUuid, customer);
+    // Before the task drops the current replication, which a later restore failure can't undo.
+    XClusterUtil.ensureFipsModesMatch(sourceUniverse, newTargetUniverse);
 
     if (confGetter.getGlobalConf(GlobalConfKeys.xclusterEnableAutoFlagValidation)) {
       autoFlagUtil.checkPromotedAutoFlagsEquality(sourceUniverse, newTargetUniverse);

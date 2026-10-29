@@ -176,6 +176,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -1260,20 +1261,25 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   protected UniverseDefinitionTaskParams getTargetUniverseDetails() {
     UniverseDefinitionTaskParams target =
         Json.fromJson(Json.toJson(taskParams()), UniverseDefinitionTaskParams.class);
-    if (target.nodeDetailsSet == null) {
-      return target;
+    if (target.nodeDetailsSet != null) {
+      target.nodeDetailsSet.removeIf(node -> node.state == NodeState.ToBeRemoved);
+      for (NodeDetails node : target.nodeDetailsSet) {
+        if (node.state == NodeState.ToBeAdded) {
+          node.state = NodeState.Live;
+        }
+        if (node.masterState == MasterState.ToStart) {
+          node.isMaster = true;
+        } else if (node.masterState == MasterState.ToStop) {
+          node.isMaster = false;
+        }
+        node.masterState = null;
+      }
     }
-    target.nodeDetailsSet.removeIf(node -> node.state == NodeState.ToBeRemoved);
-    for (NodeDetails node : target.nodeDetailsSet) {
-      if (node.state == NodeState.ToBeAdded) {
-        node.state = NodeState.Live;
-      }
-      if (node.masterState == MasterState.ToStart) {
-        node.isMaster = true;
-      } else if (node.masterState == MasterState.ToStop) {
-        node.isMaster = false;
-      }
-      node.masterState = null;
+    if (target.clusters != null) {
+      // Primary cluster is moved to the front of the list. This is a fix for any regression that
+      // can happen if the primary cluster is not at index 0.
+      // TODO: Fix other places that assume the primary cluster is always at index 0.
+      target.clusters.sort(Comparator.comparing(c -> c.clusterType != ClusterType.PRIMARY));
     }
     target.updateInProgress = false;
     return target;
@@ -1300,6 +1306,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    */
   protected boolean shouldCaptureStateTransitionDelta() {
     return true;
+  }
+
+  /**
+   * Whether this run retries the task that holds the universe's placement lock, so an earlier
+   * attempt already started changing the universe.
+   */
+  protected boolean isRetryOfPlacementLockHolder(Universe universe) {
+    UUID previousTaskUuid = taskParams().getPreviousTaskUUID();
+    return previousTaskUuid != null
+        && previousTaskUuid.equals(universe.getUniverseDetails().placementModificationTaskUuid);
   }
 
   /**
@@ -1862,12 +1878,39 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   /** Create a task to mark the final software version on a universe. */
   public SubTaskGroup createUpdateSoftwareVersionTask(
       String softwareVersion, boolean isSoftwareUpdateViaVm) {
+    return createUpdateSoftwareVersionTask(
+        softwareVersion, isSoftwareUpdateViaVm, null /* softwareUpgradeState */);
+  }
+
+  public SubTaskGroup createUpdateSoftwareVersionTask(
+      String softwareVersion,
+      boolean isSoftwareUpdateViaVm,
+      @Nullable SoftwareUpgradeState softwareUpgradeState) {
+    return createUpdateSoftwareVersionTask(
+        softwareVersion,
+        isSoftwareUpdateViaVm,
+        softwareUpgradeState,
+        null /* isSoftwareRollbackAllowed */);
+  }
+
+  /**
+   * Create a task to mark the final software version on a universe, also setting {@code
+   * softwareUpgradeState} (and {@code isSoftwareRollbackAllowed} when not null) in the same
+   * universe save when it is not null.
+   */
+  public SubTaskGroup createUpdateSoftwareVersionTask(
+      String softwareVersion,
+      boolean isSoftwareUpdateViaVm,
+      @Nullable SoftwareUpgradeState softwareUpgradeState,
+      @Nullable Boolean isSoftwareRollbackAllowed) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("FinalizeUniverseUpdate");
     UpdateSoftwareVersion.Params params = new UpdateSoftwareVersion.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.softwareVersion = softwareVersion;
     params.prevSoftwareVersion = taskParams().ybPrevSoftwareVersion;
     params.isSoftwareUpdateViaVm = isSoftwareUpdateViaVm;
+    params.softwareUpgradeState = softwareUpgradeState;
+    params.isSoftwareRollbackAllowed = isSoftwareRollbackAllowed;
     UpdateSoftwareVersion task = createTask(UpdateSoftwareVersion.class);
     task.initialize(params);
     task.setUserTaskUUID(getUserTaskUUID());

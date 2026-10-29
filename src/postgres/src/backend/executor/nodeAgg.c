@@ -277,9 +277,7 @@
 #include "utils/tuplesort.h"
 
 /* YB includes */
-#include "access/yb_scan_core.h"
 #include "catalog/yb_type.h"
-#include "optimizer/yb_agg_pushdown.h"
 #include "pg_yb_utils.h"
 #include "utils/fmgroids.h"
 #include "utils/numeric.h"
@@ -2140,13 +2138,6 @@ lookup_hash_entries(AggState *aggstate)
 /*
  * Evaluates whether plan supports pushdowns of aggregates to DocDB, and sets
  * yb_pushdown_supported accordingly in AggState.
- *
- * Legacy cost model only: this runs for an Agg planned without the YB cost
- * model (YB_AGG_PUSHDOWN_BY_EXECUTOR).  Under the YB cost model the planner
- * decides on the paths (yb_agg_pushdown_eligible) and ExecInitAgg takes its
- * answer; the per-Aggref rules are the planner's (yb_aggref_function_pushable,
- * yb_aggref_arg_type_pushable).  Remove with the legacy cost model modes,
- * together with EXEC_FLAG_YB_AGG_PARENT and the code marked the same way.
  */
 static void
 yb_agg_pushdown_supported(AggState *aggstate)
@@ -2227,13 +2218,76 @@ yb_agg_pushdown_supported(AggState *aggstate)
 	foreach(lc_agg, aggstate->aggs)
 	{
 		Aggref	   *aggref = (Aggref *) lfirst(lc_agg);
+		char	   *func_name = get_func_name(aggref->aggfnoid);
 
-		/* The function and its transition type: the planner's rule. */
-		if (!yb_aggref_function_pushable(aggref))
+		/* Only support COUNT/MIN/MAX/SUM. */
+		if (strcmp(func_name, "count") != 0 &&
+			strcmp(func_name, "min") != 0 &&
+			strcmp(func_name, "max") != 0 &&
+			strcmp(func_name, "sum") != 0 &&
+			strcmp(func_name, "avg") != 0)
+			return;
+
+		/* No ORDER BY. */
+		if (list_length(aggref->aggorder) != 0)
+			return;
+
+		/* No DISTINCT. */
+		if (list_length(aggref->aggdistinct) != 0)
+			return;
+
+		/* No FILTER. */
+		if (aggref->aggfilter)
+			return;
+
+		/* No array arguments. */
+		if (aggref->aggvariadic)
+			return;
+
+		/* Normal aggregate kind. */
+		if (aggref->aggkind != AGGKIND_NORMAL)
+			return;
+
+		/* Does not belong to outer plan. */
+		if (aggref->agglevelsup != 0)
 			return;
 
 		/* Simple split. */
 		if (aggref->aggsplit == AGGSPLIT_FINAL_DESERIAL)
+			return;
+
+
+		/*
+		 * Aggtranstype is a supported YB key type and is not INTERNAL or
+		 * NUMERIC.
+		 */
+		if (!YbDataTypeIsValidForKey(aggref->aggtranstype) ||
+			aggref->aggtranstype == INTERNALOID ||
+			aggref->aggtranstype == NUMERICOID)
+		{
+			/*
+			 * However, AVG with INT8ARRAYOID is a special case
+			 * that we support.
+			 */
+			if (!(strcmp(func_name, "avg") == 0 &&
+				  aggref->aggtranstype == INT8ARRAYOID))
+				return;
+		}
+
+		/*
+		 * The builtin functions max and min imply comparison. Character type
+		 * comparison requires postgres collation info which is not accessible
+		 * by DocDB. Because DocDB only does byte-wise comparison, it will not
+		 * be correct for any non-C collations. In order to allow min/max
+		 * pushdown for a non-C collation, we need to ensure that the argument
+		 * is a key-column with a deterministic non-C collation. In such a
+		 * case we store a collation-encoded string by concatenating the
+		 * collation sort key with the original text value so that the byte-wise
+		 * comparison result is correct.
+		 */
+		if ((strcmp(func_name, "min") == 0 || strcmp(func_name, "max") == 0) &&
+			(YBIsCollationValidNonC(aggref->aggcollid) ||
+			 YBIsCollationValidNonC(aggref->inputcollid)))
 			return;
 
 		foreach(lc_arg, aggref->args)
@@ -2295,8 +2349,31 @@ yb_agg_pushdown_supported(AggState *aggstate)
 			else
 				return;
 
-			/* The argument type: the planner's rule. */
-			if (!yb_aggref_arg_type_pushable(aggref, type))
+			/*
+			 * Only support types that are allowed to be YB keys as we cannot guarantee
+			 * we can safely perform postgres semantic compatible DocDB aggregate evaluation
+			 * otherwise.
+			 */
+			if (!YbDataTypeIsValidForKey(type))
+				return;
+
+			/*
+			 * Aggregates over a money argument are pushed down only if
+			 * they are one of min/max/count, whose transition state
+			 * cannot overflow.  Anything else (sum(money) today, and
+			 * any future or user-defined money aggregate) is evaluated
+			 * in Postgres, where the transition function does proper
+			 * overflow checking: cash_pl raises "money out of range",
+			 * whereas DocDB's EvalSumInt uses plain 64-bit addition
+			 * and would silently wrap around.  This keys on the
+			 * argument type rather than the transition type so that
+			 * aggregates accumulating money in another form (e.g. an
+			 * int8 array) are also caught.
+			 */
+			if (type == MONEYOID &&
+				strcmp(func_name, "min") != 0 &&
+				strcmp(func_name, "max") != 0 &&
+				strcmp(func_name, "count") != 0)
 				return;
 		}
 	}
@@ -3672,19 +3749,16 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 	outerPlan = outerPlan(node);
 
 	/*
-	 * Legacy cost model only: for YB IndexScan/IndexOnlyScan/BitmapScan outer
-	 * plan, we need to collect recheck information, so set that eflag.
-	 * Ideally, the flag is only set for YB relations since, later on, agg
-	 * pushdown is disabled anyway for non-YB relations, but we don't have that
-	 * information at this point: the relation is opened in the child node.  So
-	 * set the flag in all cases, and move the YB-relation check down there.
-	 * An Agg planned under the YB cost model carries the planner's decision,
-	 * which needs no recheck information from the scan.
+	 * For YB IndexScan/IndexOnlyScan/BitmapScan outer plan, we need to collect
+	 * recheck information, so set that eflag.  Ideally, the flag is only set
+	 * for YB relations since, later on, agg pushdown is disabled anyway for
+	 * non-YB relations, but we don't have that information at this point: the
+	 * relation is opened in the child node.  So set the flag
+	 * in all cases, and move the YB-relation check down there.
 	 */
 	int			yb_eflags = 0;
 
 	if (IsYugaByteEnabled() &&
-		node->yb_pushdown_decision == YB_AGG_PUSHDOWN_BY_EXECUTOR &&
 		(IsA(outerPlan, IndexScan) || IsA(outerPlan, IndexOnlyScan) ||
 		 IsA(outerPlan, YbBitmapTableScan)))
 		yb_eflags |= EXEC_FLAG_YB_AGG_PARENT;
@@ -4035,39 +4109,8 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 		select_current_set(aggstate, 0, false);
 	}
 
-	/*
-	 * Internally set whether plan supports YB agg pushdown, unless the
-	 * planner decided it under the YB cost model.
-	 */
-	if (node->yb_pushdown_decision == YB_AGG_PUSHDOWN_BY_EXECUTOR)
-		yb_agg_pushdown_supported(aggstate);
-	else if (node->yb_pushdown_decision == YB_AGG_PUSHDOWN_PLANNED_ON)
-	{
-		PlanState  *yb_scan = outerPlanState(aggstate);
-		bool		yb_recheck_is_local;
-
-		/* The planner marks an Agg only above a scan that takes aggregates. */
-		if (YbPlanStateTryGetAggrefs(yb_scan) == NULL)
-			elog(ERROR, "aggregate pushdown over an unsupported scan node %d",
-				 (int) nodeTag(yb_scan));
-
-		/*
-		 * A pushed-down aggregate row cannot take a recheck of the scan's
-		 * index conditions in PostgreSQL, and the planner predicted none.
-		 * Two settings make ybBindScanKeys recheck whatever was predicted,
-		 * and a cached plan outlives a change to either: sys-table
-		 * prefetching, for any scan, and yb_test_skip_binding_scan_keys, for
-		 * an index scan or a bitmap table scan with local recheck quals.
-		 * Evaluate the aggregates here then.
-		 */
-		yb_recheck_is_local =
-			IsA(yb_scan, IndexScanState) || IsA(yb_scan, IndexOnlyScanState) ||
-			(IsA(yb_scan, YbBitmapTableScanState) &&
-			 castNode(YbBitmapTableScanState, yb_scan)->recheck_local_quals);
-		aggstate->yb_pushdown_supported =
-			!YBCIsSysTablePrefetchingStarted() &&
-			!(yb_test_skip_binding_scan_keys && yb_recheck_is_local);
-	}
+	/* Internally set whether plan supports YB agg pushdown. */
+	yb_agg_pushdown_supported(aggstate);
 
 	/*
 	 * Perform lookups of aggregate function info, and initialize the
