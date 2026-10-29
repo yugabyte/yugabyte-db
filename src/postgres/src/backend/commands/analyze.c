@@ -121,6 +121,7 @@ static void yb_set_width_cap(VacAttrStatsP stats);
 static int *yb_analyze_width_caps(Relation rel);
 
 /* keep attribute info for data skipping */
+static TupleDesc yb_analyze_tupdesc = NULL;
 static VacAttrStats **yb_analyze_attr_stats = NULL;
 static int	yb_analyze_attr_cnt = 0;
 
@@ -596,13 +597,11 @@ do_analyze_rel(Relation onerel, const VacuumParams *params,
 								 inh ? PROGRESS_ANALYZE_PHASE_ACQUIRE_SAMPLE_ROWS_INH :
 								 PROGRESS_ANALYZE_PHASE_ACQUIRE_SAMPLE_ROWS);
 
-	/*
-	 * TODO(#31506): inherited analysis needs the caps mapped from
-	 * parent to child column positions; until then it skips nothing.
-	 */
-	yb_analyze_attr_stats = inh ? NULL : vacattrstats;
-	yb_analyze_attr_cnt = inh ? 0 : attr_cnt;
-	yb_analyze_full_value_cols = inh ? NULL : yb_full_value_cols;
+	/* YB: what yb_analyze_width_caps() needs while the rows are sampled */
+	yb_analyze_tupdesc = RelationGetDescr(onerel);
+	yb_analyze_attr_stats = vacattrstats;
+	yb_analyze_attr_cnt = attr_cnt;
+	yb_analyze_full_value_cols = yb_full_value_cols;
 
 	if (inh)
 		numrows = acquire_inherited_sample_rows(onerel, elevel,
@@ -612,6 +611,7 @@ do_analyze_rel(Relation onerel, const VacuumParams *params,
 		numrows = (*acquirefunc) (onerel, elevel,
 								  rows, targrows,
 								  &totalrows, &totaldeadrows);
+	yb_analyze_tupdesc = NULL;				/* YB */
 	yb_analyze_attr_stats = NULL;			/* YB */
 	yb_analyze_attr_cnt = 0;				/* YB */
 	yb_analyze_full_value_cols = NULL;		/* YB */
@@ -3321,17 +3321,27 @@ static int *
 yb_analyze_width_caps(Relation rel)
 {
 	TupleDesc	tupdesc = RelationGetDescr(rel);
+	AttrMap    *attmap;
 	int		   *caps;
 	bool		any = false;
 
 	/*
-	 * Skip nothing if skipping is turned off, on the inherited pass, or if a
-	 * whole-row reference reads every column.
+	 * Skip nothing if skipping is turned off, or if a whole-row reference
+	 * reads every column.
 	 */
 	if (!yb_enable_analyze_width_skip || yb_analyze_attr_stats == NULL ||
 		bms_is_member(0 - FirstLowInvalidHeapAttributeNumber,
 					  yb_analyze_full_value_cols))
 		return NULL;
+
+	/*
+	 * rel is the analyzed relation or, on the inherited pass, one of its
+	 * children, whose columns can be in another order: attmap->attnums[i] is
+	 * rel's column for the analyzed relation's column i + 1.
+	 */
+	attmap = build_attrmap_by_name(tupdesc, yb_analyze_tupdesc,
+								   false /* missing_ok */ ,
+								   false /* yb_ignore_type_mismatch */ );
 
 	/* A column with no statistics is read by nothing. */
 	caps = palloc(tupdesc->natts * sizeof(int));
@@ -3340,19 +3350,30 @@ yb_analyze_width_caps(Relation rel)
 	for (int i = 0; i < yb_analyze_attr_cnt; i++)
 	{
 		VacAttrStats *stats = yb_analyze_attr_stats[i];
+		AttrNumber	attnum = attmap->attnums[stats->tupattnum - 1];
 
-		if (stats->tupattnum >= 1 && stats->tupattnum <= tupdesc->natts)
-			caps[stats->tupattnum - 1] = stats->yb_width_cap;
+		if (attnum > 0)
+			caps[attnum - 1] = stats->yb_width_cap;
 	}
+
+	/* A column that something reads in full cannot be stood in for. */
+	for (int i = 0; i < attmap->maplen; i++)
+	{
+		AttrNumber	attnum = attmap->attnums[i];
+
+		if (attnum > 0 &&
+			bms_is_member(i + 1 - FirstLowInvalidHeapAttributeNumber,
+						  yb_analyze_full_value_cols))
+			caps[attnum - 1] = YB_ANALYZE_WIDTH_SKIP_NONE;
+	}
+	free_attrmap(attmap);
 
 	for (int i = 0; i < tupdesc->natts; i++)
 	{
 		Form_pg_attribute att = TupleDescAttr(tupdesc, i);
 
-		/* Only a varlena that nothing reads in full can be stood in for. */
-		if (att->attisdropped || att->attlen != -1 ||
-			bms_is_member(att->attnum - FirstLowInvalidHeapAttributeNumber,
-						  yb_analyze_full_value_cols))
+		/* Only a varlena can be stood in for. */
+		if (att->attisdropped || att->attlen != -1)
 			caps[i] = YB_ANALYZE_WIDTH_SKIP_NONE;
 		else if (caps[i] != YB_ANALYZE_WIDTH_SKIP_NONE)
 			any = true;

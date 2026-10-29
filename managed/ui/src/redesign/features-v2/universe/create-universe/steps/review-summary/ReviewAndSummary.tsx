@@ -1,4 +1,5 @@
 import { forwardRef, useContext, useImperativeHandle } from 'react';
+import { useSelector } from 'react-redux';
 import { useQuery } from 'react-query';
 import { useYBToast } from '../../helpers/ToastUtils';
 import { useTranslation } from 'react-i18next';
@@ -26,6 +27,8 @@ import { mapCreateUniversePayload, getDedicatedTserverMasterCounts } from '../..
 import { Region } from '../../../../../features/universe/universe-form/utils/dto';
 import { createErrorMessage } from '@app/redesign/features/universe/universe-form/utils/helpers';
 import { CloudType } from '@app/redesign/helpers/dtos';
+import { ResilienceFormMode } from '../resilence-regions/dtos';
+import { persistCreateUniverseFormMode } from '../../helpers/createUniverseFormModePreference';
 
 //icons
 import UniverseIcon from '../../../../../assets/clusters.svg';
@@ -107,6 +110,9 @@ export const ReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
   const toast = useYBToast();
   const payload = mapCreateUniversePayload({ ...context });
   const createUniverse = useCreateUniverse();
+  const currentUser = useSelector((state: any) => state.customer.currentUser?.data);
+  const formMode =
+    resilienceAndRegionsSettings?.resilienceFormMode ?? ResilienceFormMode.GUIDED;
   const dedicatedCounts = getDedicatedTserverMasterCounts(
     resilienceAndRegionsSettings,
     nodesAvailabilitySettings
@@ -136,9 +142,10 @@ export const ReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
               }
             }
           )
-          .then((resp) => {
+          .then(async (resp) => {
             if (resp.resource_uuid) {
-              // Navigate to the universe details page after creation
+              // Await so navigation does not abort the preference PUT; failures are swallowed.
+              await persistCreateUniverseFormMode(currentUser, formMode);
               window.location.href = `/universes/${resp.resource_uuid}`;
             }
           })

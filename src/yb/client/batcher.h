@@ -214,6 +214,16 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
   // associated transaction (if any) already expects them.
   void FlushAsync(StatusFunctor callback, IsWithinTransactionRetry is_within_transaction_retry);
 
+  // Lets local calls of this batcher time out at the deadline. holder keeps alive the data that
+  // the ops reference, apart from what the batcher owns.
+  void SetBuffersHolder(std::shared_ptr<void> holder) {
+    buffers_holder_ = std::move(holder);
+  }
+
+  bool local_calls_can_time_out() const {
+    return buffers_holder_ != nullptr;
+  }
+
   CoarseTimePoint deadline() const {
     return deadline_;
   }
@@ -421,6 +431,8 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
   const int64_t leader_term_;
 
   ThreadSafeArenaPtr arena_;
+
+  std::shared_ptr<void> buffers_holder_;
 
   // - For a session advisory lock request: the below points to
   //   the in-progress DocDB transaction, if any.

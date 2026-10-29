@@ -32,6 +32,7 @@
 
 #include <boost/algorithm/string.hpp>
 
+#include "yb/common/common_flags.h"
 #include "yb/common/version_info.h"
 #include "yb/common/ysql_operation_lease.h"
 
@@ -102,6 +103,10 @@ DEFINE_test_flag(bool, pg_collation_enabled, true,
 
 DEFINE_test_flag(bool, ysql_yb_query_diagnostics_race_condition, false,
                  "If true, enables race condition testing for query diagnostics.");
+
+DEFINE_test_flag(string, ysql_pg_upgrade_dump_pid_dir, "",
+                 "If set, each ysql_dump that pg_upgrade runs creates a file named after its pid "
+                 "in this directory, then waits for a signal instead of dumping.");
 
 // Default to 5MB
 DEFINE_NON_RUNTIME_string(pg_mem_tracker_tcmalloc_gc_release_bytes, std::to_string(5 * 1024 * 1024),
@@ -282,6 +287,9 @@ DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_optimizer_statistics, false,
 
 DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_base_scans_cost_model, false,
     "Enable cost model enhancements");
+
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_ioc_do_nothing_pushdown, false,
+    "Push INSERT ... ON CONFLICT DO NOTHING conflict resolution down to DocDB.");
 
 DEFINE_RUNTIME_PG_FLAG(string, yb_enable_cbo, "legacy_mode",
     "YSQL cost-based optimizer mode. Allowed values are 'legacy_mode', 'legacy_stats_mode', "
@@ -527,6 +535,14 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_notifications_poll_sleep_duration_empty_ms, 100
     "Time in milliseconds for which the notifications poller process waits before polling again "
     "in case the last poll returned no notifications.");
 DEFINE_validator(ysql_yb_notifications_poll_sleep_duration_empty_ms, FLAG_GE_VALUE_VALIDATOR(0));
+
+DEFINE_RUNTIME_PG_FLAG(double, yb_dist_trace_sample_rate, 0.0,
+    "Fraction (0 to 1) of YSQL protocol cycles (simple query, Parse, Bind, Execute) that arrive "
+    "without a traceparent and are distributed-traced. Each cycle is drawn independently and "
+    "starts its own trace. 0 disables sampling. A traceparent with the sampled flag clear (-00) "
+    "is honoured: the query is not traced. Connections the tserver opens internally are not "
+    "sampled. Requires otel_collector_traces_endpoint.");
+DEFINE_validator(ysql_yb_dist_trace_sample_rate, FLAG_RANGE_VALIDATOR(0.0, 1.0));
 
 DEFINE_NON_RUNTIME_string(pg_upgrade_working_dir, "",
     "Working directory for pg_upgrade. If empty, defaults to the pg_upgrade data directory.");
@@ -1139,7 +1155,7 @@ Status PgWrapper::Start() {
   }
   proc_->SetEnv("FLAGS_tmp_dir", FLAGS_tmp_dir);
 
-  // See YBSetParentDeathSignal in pg_yb_utils.c for how this is used.
+  // See YBSetParentDeathSignal in pg_yb_common.c for how this is used.
   proc_->SetEnv("YB_PG_PDEATHSIG", Format("$0", SIGINT));
   proc_->InheritNonstandardFd(address_negotiator_fd_);
   SetCommonEnv(&*proc_, /* yb_enabled */ true);
@@ -1216,6 +1232,8 @@ Status PgWrapper::InitDb(InitdbParams initdb_params) {
 
   Subprocess initdb_subprocess(initdb_program_path, initdb_args);
   initdb_subprocess.InheritNonstandardFd(address_negotiator_fd_);
+  // See YBSetParentDeathSignal in pg_yb_common.c for how this is used.
+  initdb_subprocess.SetEnv("YB_PG_PDEATHSIG", Format("$0", SIGTERM));
   bool global_initdb = std::holds_alternative<GlobalInitdbParams>(initdb_params);
   SetCommonEnv(&initdb_subprocess, global_initdb);
 
@@ -1290,8 +1308,16 @@ Status PgWrapper::RunPgUpgrade(const PgUpgradeParams& param) {
 
   LOG(INFO) << "Launching pg_upgrade: " << AsString(args);
 
+  Subprocess pg_upgrade(program_path, args);
+  // See YBSetParentDeathSignal in pg_yb_common.c for how this is used.
+  // Keep SIGTERM: system() ignores SIGINT, so pg_upgrade's forwarding handler would miss it.
+  pg_upgrade.SetEnv("YB_PG_PDEATHSIG", Format("$0", SIGTERM));
+  if (!FLAGS_TEST_ysql_pg_upgrade_dump_pid_dir.empty()) {
+    pg_upgrade.SetEnv(
+        "FLAGS_TEST_ysql_pg_upgrade_dump_pid_dir", FLAGS_TEST_ysql_pg_upgrade_dump_pid_dir);
+  }
   RETURN_NOT_OK_PREPEND(
-      Subprocess::Call(args, /*log_stdout_and_stderr=*/true),
+      pg_upgrade.Run(/*log_stdout_and_stderr=*/true),
       "pg_upgrade failed. Check previous errors for more details.");
 
   LOG(INFO) << "pg_upgrade completed successfully";
@@ -1631,7 +1657,10 @@ Status PgWrapper::CleanupLockFileAndKillHungPg(const std::string& lock_file) {
 // ------------------------------------------------------------------------------------------------
 
 PgSupervisor::PgSupervisor(PgProcessConf conf, PgWrapperContext* server)
-    : ProcessSupervisor(conf.cgroup), conf_(std::move(conf)), server_(server) {
+    : ProcessSupervisor(conf.cgroup),
+      conf_(std::move(conf)),
+      server_(server),
+      starts_paused_(IsYsqlLeaseEnabled() || (server && IsPersistenceGateEnforced())) {
   if (server_) {
     server_->RegisterCertificateReloader(std::bind(&PgSupervisor::ReloadConfig, this));
     server_->RegisterPgProcessRestarter(std::bind(&PgSupervisor::Restart, this));
@@ -1654,6 +1683,12 @@ PgSupervisor::~PgSupervisor() {
 }
 
 void PgSupervisor::Stop() {
+  if (server_) {
+    // The server may outlive this supervisor (e.g., a test harness recreating it), and its
+    // heartbeater and YSQL lease threads call these asynchronously.
+    server_->RegisterPgProcessRestarter(nullptr);
+    server_->RegisterPgProcessKiller(nullptr);
+  }
   ProcessSupervisor::Stop();
   if (server_) {
     CHECK_OK(server_->StopSharedMemoryNegotiation());
@@ -1662,11 +1697,16 @@ void PgSupervisor::Stop() {
 }
 
 Status PgSupervisor::StartAndMaybePause() {
-  if (IsYsqlLeaseEnabled()) {
-    return InitPaused();
-  } else {
+  if (!starts_paused_) {
     return Start();
   }
+  RETURN_NOT_OK(InitPaused());
+  if (IsYsqlLeaseEnabled()) {
+    // The first YSQL lease epoch starts PG.
+    return Status::OK();
+  }
+  // The server's RestartPG starts PG only once the xCluster-guarded information lease is held.
+  return server_->RestartPG();
 }
 
 Status PgSupervisor::ReloadConfig() {

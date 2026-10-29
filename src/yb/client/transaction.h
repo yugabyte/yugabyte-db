@@ -252,6 +252,9 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   // a method call on this YBTransaction).
   void RemoteAbortCallback(std::function<void(void)> callback);
 
+  // Set callback for when the transaction is promoted.
+  void PromotionCallback(std::function<void(TabletId)> callback);
+
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;

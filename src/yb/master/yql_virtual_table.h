@@ -98,6 +98,7 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
       const docdb::ReadOperationData& read_operation_data,
       const dockv::DocKey& start_doc_key,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
+      docdb::SkipSeek skip_seek,
       docdb::YQLRowwiseIteratorIf::UniPtr* iter) const override {
     LOG(FATAL) << "Postgresql virtual tables are not yet implemented";
     return Status::OK();

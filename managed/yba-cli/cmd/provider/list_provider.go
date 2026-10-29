@@ -10,6 +10,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/provider/providerutil"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
@@ -36,5 +37,5 @@ func init() {
 	listProviderCmd.Flags().StringP("name", "n", "", "[Optional] Name of the provider.")
 	listProviderCmd.Flags().StringP("code", "c", "",
 		"[Optional] Code of the provider, defaults to list all providers. "+
-			"Allowed values: aws, gcp, azu, onprem, kubernetes.")
+			"Allowed values: "+util.ProviderCodesString()+".")
 }

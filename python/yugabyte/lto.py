@@ -566,7 +566,10 @@ class LinkHelper:
                     ', '.join(sorted(self.static_libs_from_ldd[static_lib_path])))
                 self.new_args.append(static_lib_path)
 
-        self.add_pgcommon_srv_library()
+        if self.yb_pgbackend_needed:
+            # Backend code, needed only next to libyb_pgbackend. Reading it needs a built Postgres
+            # tree, which targets that don't link the backend (libyb_thin_client.so) can't require.
+            self.add_pgcommon_srv_library()
         self.new_args.append('-fwhole-program')
         if self.yb_pgbackend_needed:
             # We are most likely building the main server process, so add other Postgres libraries

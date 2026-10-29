@@ -1,0 +1,4 @@
+# src/test/regress/yb_pg_table2_schedule
+# This schedule is for ported tests only.
+
+test: yb.port.create_table_like

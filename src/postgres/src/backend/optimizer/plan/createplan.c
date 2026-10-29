@@ -4135,6 +4135,7 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 	plan->ybColumnRefs = column_refs;
 	plan->no_row_trigger = no_row_trigger;
 	plan->yb_skip_entities = YbInitSkippableEntities(no_update_index_list);
+	plan->ybInsertOnConflictPushdownPossible = YbIocPushdownPossible(root, plan);
 
 	copy_generic_path_info(&plan->plan, &best_path->path);
 
@@ -10019,6 +10020,7 @@ make_modifytable(PlannerInfo *root, Plan *subplan,
 	node->yb_skip_entities = NULL;
 	node->yb_update_affected_entities = NULL;
 	node->no_row_trigger = false;
+	node->ybInsertOnConflictPushdownPossible = false;
 	return node;
 }
 

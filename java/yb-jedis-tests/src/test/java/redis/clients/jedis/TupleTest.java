@@ -1,5 +1,6 @@
 package redis.clients.jedis;
 
+import org.junit.Ignore;
 import org.junit.Test;
 import static org.yb.AssertionWrappers.*;
 
@@ -13,6 +14,7 @@ import redis.clients.jedis.tests.BaseYBClassForJedis;
 import org.yb.YBTestRunner;
 
 @RunWith(value=YBTestRunner.class)
+@Ignore("YEDIS is deprecated")
 public class TupleTest extends BaseYBClassForJedis {
 
   @Test

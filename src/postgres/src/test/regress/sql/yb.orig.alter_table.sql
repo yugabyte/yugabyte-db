@@ -160,6 +160,15 @@ SELECT * FROM foo_part ORDER BY a, b;
 ALTER TABLE foo ADD COLUMN g int DEFAULT null NOT NULL;
 -- Test add column with volatile default value.
 ALTER TABLE foo ADD COLUMN f FLOAT DEFAULT random();
+-- Verify that DROP COLUMN renames the column and clears its missing value.
+CREATE TABLE foo_missing(a int);
+INSERT INTO foo_missing VALUES (1), (2);
+ALTER TABLE foo_missing ADD COLUMN b int DEFAULT 42;
+SELECT attname, attisdropped, atthasmissing, attmissingval FROM pg_attribute
+	WHERE attrelid='foo_missing'::regclass AND attnum=2;
+ALTER TABLE foo_missing DROP COLUMN b;
+SELECT attname, attisdropped, atthasmissing, attmissingval FROM pg_attribute
+	WHERE attrelid='foo_missing'::regclass AND attnum=2;
 
 --
 -- Tests for ALTER TABLE ... ADD COLUMN ... UNIQUE

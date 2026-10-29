@@ -86,6 +86,28 @@ class ConsensusContext {
   virtual Status CheckOperationAllowed(
       const OpId& op_id, consensus::OperationType op_type) = 0;
 
+  // Checks whether the leader may replicate replicate_msg, which already has its op id and hybrid
+  // time.  Called only on the leader, under the Raft lock, before the op is added as pending.  Not
+  // called for a client's resend of a write that has already been replicated: Raft answers that
+  // resend AlreadyPresent before reaching this check, so the client learns its write succeeded
+  // even if this check would now reject it.
+  //
+  // A non-OK status rejects the op: Raft rolls back its op id and fails its round with that
+  // status.  Unlike CheckOperationAllowed, which runs before the hybrid time is assigned, this
+  // check can judge an op by the time it would commit at.
+  //
+  // Every op type reaches this check, including those Raft and the tablet rely on for their own
+  // operation, e.g., the NO_OP a new leader appends, CHANGE_CONFIG_OP and SPLIT_OP.  Rejecting one
+  // of those can stall the tablet or break its invariants, so reject only op types for which that
+  // has been shown to be safe.
+  //
+  // Runs for every op the leader appends while holding the Raft lock, so it must be cheap and must
+  // not block.
+  //
+  // May modify an op it allows, e.g., to drop fields only the check needs: the op has not yet
+  // reached the log cache, the WAL, or any follower, all of which see the modified op.
+  virtual Status CheckReplicateAllowed(LWReplicateMsg& replicate_msg) = 0;
+
   virtual ~ConsensusContext() = default;
 };
 

@@ -8,6 +8,7 @@
  */
 
 import { FC } from 'react';
+import { useUpdateEffect } from 'react-use';
 import { useTranslation } from 'react-i18next';
 import { useFormContext, useWatch } from 'react-hook-form';
 import { mui, YBToggleField, YBPasswordField, YBTooltip } from '@yugabyte-ui-library/core';
@@ -26,7 +27,7 @@ interface YCQLProps {
 }
 
 export const YCQField: FC<YCQLProps> = ({ disabled }) => {
-  const { control } = useFormContext<DatabaseSettingsProps>();
+  const { control, setValue } = useFormContext<DatabaseSettingsProps>();
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.databaseSettings'
   });
@@ -34,6 +35,11 @@ export const YCQField: FC<YCQLProps> = ({ disabled }) => {
   //watchers
   const ycqlEnabled = useWatch({ name: YCQL_FIELD });
   const ycqlAuthEnabled = useWatch({ name: YCQL_AUTH_FIELD });
+
+  // Create rejects enable_auth when the YCQL endpoint is disabled.
+  useUpdateEffect(() => {
+    if (!ycqlEnabled) setValue(YCQL_AUTH_FIELD, false);
+  }, [ycqlEnabled]);
 
   return (
     <FieldContainer>

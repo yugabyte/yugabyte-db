@@ -84,4 +84,7 @@ extern void replorigin_redo(XLogReaderState *record);
 extern void replorigin_desc(StringInfo buf, XLogReaderState *record);
 extern const char *replorigin_identify(uint8 info);
 
+/* YB declarations */
+extern void YbAtEOXact_ReplicationOrigin(void);
+
 #endif							/* PG_ORIGIN_H */

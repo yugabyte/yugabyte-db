@@ -228,24 +228,18 @@ export const UpgradeSuccessful: StoryObj<UpgradeSuccessfulStoryArgs> = {
       name: 'Upgrade completed at',
       control: 'date'
     },
-    isUpgradeCompletedBannerDismissed: {
-      name: 'Completed banner dismissed',
-      control: 'boolean'
-    },
-    onDismissUpgradeCompletedBanner: { action: 'dismissed completed banner' }
+    onDismissDbUpgradeTaskBanner: { action: 'dismissed banner' }
   },
   args: {
     task: upgradeSuccessfulBaseTask,
     universeUuid: DB_UPGRADE_TASK_MOCK_UNIVERSE_UUID,
-    taskCompletionTime: Date.now(),
-    isUpgradeCompletedBannerDismissed: false
+    taskCompletionTime: Date.now()
   },
   render: ({
     task,
     universeUuid,
     taskCompletionTime,
-    isUpgradeCompletedBannerDismissed,
-    onDismissUpgradeCompletedBanner
+    onDismissDbUpgradeTaskBanner
   }: UpgradeSuccessfulStoryArgs) => {
     const completionDate = new Date(taskCompletionTime);
     const completionTime = Number.isNaN(completionDate.getTime())
@@ -256,8 +250,7 @@ export const UpgradeSuccessful: StoryObj<UpgradeSuccessfulStoryArgs> = {
       <DbUpgradeTaskBanner
         task={{ ...task, completionTime }}
         universeUuid={universeUuid}
-        isUpgradeCompletedBannerDismissed={isUpgradeCompletedBannerDismissed}
-        onDismissUpgradeCompletedBanner={onDismissUpgradeCompletedBanner}
+        onDismissDbUpgradeTaskBanner={onDismissDbUpgradeTaskBanner}
       />
     );
   }
@@ -292,7 +285,7 @@ export const UpgradeFailed: Story = {
   }
 };
 
-/** User-aborted mid-upgrade — same ERROR banner as {@link UpgradeFailed}. */
+/** User aborted mid-upgrade while the universe is not Ready — error banner, aborted title. */
 const upgradeAbortedTask = createDbUpgradeTaskMock({
   status: TaskState.ABORTED,
   softwareUpgradeProgress: {
@@ -322,7 +315,7 @@ export const UpgradeAborted: Story = {
   }
 };
 
-/** Task failed while universe is Ready (e.g. precheck) — ALERT banner vs {@link UpgradeFailed} ERROR. */
+/** Task failed while the universe is still Ready — canceled warning, not the failed error banner. */
 const upgradeFailedDuringPrecheckTask = createDbUpgradeTaskMock({
   status: TaskState.FAILURE,
   omitSoftwareUpgradeProgress: true
@@ -334,6 +327,21 @@ export const UpgradeFailedDuringPrecheck: Story = {
   }),
   args: {
     task: upgradeFailedDuringPrecheckTask
+  }
+};
+
+/** User aborted while the universe is still Ready — aborted warning, not the mid-upgrade error banner. */
+const upgradeAbortedUniverseReady = createDbUpgradeTaskMock({
+  status: TaskState.ABORTED,
+  omitSoftwareUpgradeProgress: true
+});
+
+export const UpgradeAbortedUniverseReady: Story = {
+  ...storyWithBannerMsw(upgradeAbortedUniverseReady, {
+    universeInfoOverrides: { software_upgrade_state: UniverseInfoSoftwareUpgradeState.Ready }
+  }),
+  args: {
+    task: upgradeAbortedUniverseReady
   }
 };
 

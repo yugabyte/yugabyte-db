@@ -15,6 +15,8 @@
 
 #include "yb/docdb/docdb_test_base.h"
 
+#include "yb/rocksdb/options.h"
+
 #include "yb/util/random_util.h"
 #include "yb/util/tsan_util.h"
 
@@ -34,7 +36,9 @@ class DocDBPerfTest : public DocDBTestBase {
   template <class F>
   void TestScanPerformance(
       size_t expected_num_keys, const std::string& perf_test_string, const F& f,
-      bool need_warmup = false) {
+      bool need_warmup = false,
+      rocksdb::CacheRestartBlockKeys cache_restart_block_keys =
+          rocksdb::CacheRestartBlockKeys::kFalse) {
     constexpr int kIteration = 3;
 
     auto statistics = regular_db_options().statistics.get();
@@ -43,9 +47,9 @@ class DocDBPerfTest : public DocDBTestBase {
     for (int i = need_warmup ? -1 : 0; i < kIteration; i++) {
       rocksdb::ReadOptions read_opts;
       read_opts.query_id = rocksdb::kDefaultQueryId;
+      read_opts.cache_restart_block_keys = cache_restart_block_keys;
       std::unique_ptr<rocksdb::Iterator> iter(rocksdb()->NewIterator(read_opts));
       auto start = MonoTime::Now();
-      iter->SeekToFirst();
       auto result = f(iter.get());
       auto time_taken = MonoTime::Now() - start;
       ASSERT_EQ(expected_num_keys, result.first);
@@ -70,7 +74,7 @@ class DocDBPerfTest : public DocDBTestBase {
       size_t scanned_keys = 0;
       size_t total_size = 0;
       iter->UseFastNext(use_fast_next);
-      const auto* entry = &iter->Entry();
+      const auto* entry = &iter->SeekToFirst();
       while (*entry) {
         total_size += entry->TotalSize();
         ++scanned_keys;
@@ -78,6 +82,24 @@ class DocDBPerfTest : public DocDBTestBase {
       }
       return {scanned_keys, total_size};
     }, !use_fast_next);
+  }
+
+  void TestScanPrev(
+      size_t expected_num_keys, const std::string& perf_test_string,
+      rocksdb::CacheRestartBlockKeys cache_restart_block_keys) {
+    TestScanPerformance(
+        expected_num_keys, perf_test_string,
+        [](auto* iter) -> std::pair<size_t, size_t> {
+      size_t scanned_keys = 0;
+      size_t total_size = 0;
+      const auto* entry = &iter->SeekToLast();
+      while (*entry) {
+        total_size += entry->TotalSize();
+        ++scanned_keys;
+        entry = &iter->Prev();
+      }
+      return {scanned_keys, total_size};
+    }, /* need_warmup = */ true, cache_restart_block_keys);
   }
 
   template <class GetKey>
@@ -131,6 +153,9 @@ class DocDBPerfTest : public DocDBTestBase {
     LOG(INFO) << "Wrote " << count << ", validating performance";
     TestScanNext(count, "Next");
     TestScanNext(count, "FastNext", /* use_fast_next */ true);
+
+    TestScanPrev(count, "Prev", rocksdb::CacheRestartBlockKeys::kFalse);
+    TestScanPrev(count, "PrevCachedRestartKeys", rocksdb::CacheRestartBlockKeys::kTrue);
   }
 };
 

@@ -467,12 +467,22 @@ SchemaVersion XClusterConsumer::GetMinXClusterSchemaVersion(const TableId& table
   return cdc::kInvalidSchemaVersion;
 }
 
+Result<std::shared_ptr<client::XClusterRemoteClientHolder>> XClusterConsumer::CreateSourceClient(
+    const xcluster::ReplicationGroupId& replication_group_id) {
+  auto* master_addrs = FindOrNull(uuid_master_addrs_, replication_group_id);
+  RSTATUS_DCHECK(
+      master_addrs, NotFound, "Master address not found for $0", replication_group_id);
+  return client::XClusterRemoteClientHolder::Create(replication_group_id, *master_addrs);
+}
+
 void XClusterConsumer::TriggerPollForNewTablets() {
   // TODO(#24924): Check if our config is stale before starting new pollers.
 
   ACQUIRE_SHARED_LOCK_IF_ONLINE;
 
   int32_t current_cluster_config_version = cluster_config_version();
+  // Creating a source client blocks for up to cdc_read_rpc_timeout_ms, so try once per group.
+  std::unordered_set<xcluster::ReplicationGroupId> groups_without_source_client;
 
   for (const auto& entry : producer_consumer_tablet_map_from_master_) {
     const auto& producer_tablet_info = entry.producer_tablet_info;
@@ -500,6 +510,9 @@ void XClusterConsumer::TriggerPollForNewTablets() {
       }
     }
     if (start_polling) {
+      if (groups_without_source_client.contains(replication_group_id)) {
+        continue;
+      }
       std::lock_guard write_lock_pollers(pollers_map_mutex_);
       const auto leader_term = get_leader_term_func_(consumer_tablet_info.tablet_id);
 
@@ -508,21 +521,18 @@ void XClusterConsumer::TriggerPollForNewTablets() {
           !pollers_map_.contains(producer_tablet_info) && leader_term != yb::OpId::kUnknownTerm;
       if (start_polling) {
         // This is a new tablet, trigger a poll.
-        // See if we need to create a new client connection
-        if (!remote_clients_.contains(replication_group_id)) {
-          if (!uuid_master_addrs_.contains(replication_group_id)) {
-            LOG(DFATAL) << "Master address not found for " << replication_group_id;
-            return;  // Don't finish creation.  Try again on the next heartbeat.
+        // See if we need to create a new client connection.
+        // A disabled stream's poller never polls, so it doesn't need a source client.
+        auto source_client = FindPtrOrNull(remote_clients_, replication_group_id);
+        if (!source_client && !entry.disable_stream) {
+          auto result = CreateSourceClient(replication_group_id);
+          if (!result.ok()) {
+            LOG(WARNING) << "Could not create source client for " << replication_group_id << ": "
+                         << result.status();
+            groups_without_source_client.insert(replication_group_id);
+            continue;  // Try again on the next heartbeat.
           }
-
-          auto remote_client = client::XClusterRemoteClientHolder::Create(
-              replication_group_id, uuid_master_addrs_[replication_group_id]);
-          if (!remote_client) {
-            LOG(WARNING) << "Could not build messenger for " << replication_group_id << ": "
-                         << remote_client.status();
-            return;  // Don't finish creation.  Try again on the next heartbeat.
-          }
-          remote_clients_[replication_group_id] = std::move(*remote_client);
+          source_client = remote_clients_[replication_group_id] = std::move(*result);
         }
 
         // Now create the poller.
@@ -561,9 +571,8 @@ void XClusterConsumer::TriggerPollForNewTablets() {
             producer_tablet_info, consumer_tablet_info, consumer_namespace_id,
             auto_flags_version_handler_->GetAutoFlagsCompatibleVersion(
                 producer_tablet_info.replication_group_id),
-            thread_pool_.get(), rpcs_.get(), local_client_, remote_clients_[replication_group_id],
-            this, leader_term, get_leader_term_func_, entry.automatic_ddl_mode,
-            entry.disable_stream, ts_uuid_);
+            thread_pool_.get(), rpcs_.get(), local_client_, source_client, this, leader_term,
+            get_leader_term_func_, entry.automatic_ddl_mode, entry.disable_stream, ts_uuid_);
 
         if (ddl_queue_streams_.contains(producer_tablet_info.stream_id)) {
           auto source_namespace_id = GetNamespaceIdFromYsqlTableId(producer_tablet_info.table_id);

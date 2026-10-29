@@ -576,6 +576,7 @@ typedef struct ModifyTable
 	List	   *ybReturningColumns; /* columns to fetch from DocDB */
 	List	   *ybColumnRefs;	/* colrefs to evaluate pushdown expressions */
 	bool		no_row_trigger; /* planner has checked no triggers apply */
+	bool		ybInsertOnConflictPushdownPossible; /* push conflict resolution to DocDB */
 	/*
 	 * YB: A collection of entities that are impacted by the ModifyTable query,
 	 * and their relationship to the columns that are modified by the query.

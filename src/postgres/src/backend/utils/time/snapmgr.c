@@ -2239,8 +2239,13 @@ YbGetCatalogSnapshotReadPoint(YbcPgOid table_oid, bool create_if_not_exists)
 {
 	if (create_if_not_exists)
 		GetCatalogSnapshot(table_oid);
-	return CatalogSnapshotData.yb_read_point_handle.has_value ?
-		CatalogSnapshotData.yb_read_point_handle.value : YbcInvalidReadPointHandle;
+	/*
+	 * InvalidateCatalogSnapshot() leaves CatalogSnapshotData as is, so check
+	 * CatalogSnapshot to avoid returning the read point of an invalidated
+	 * snapshot.
+	 */
+	return CatalogSnapshot && CatalogSnapshot->yb_read_point_handle.has_value ?
+		CatalogSnapshot->yb_read_point_handle.value : YbcInvalidReadPointHandle;
 }
 
 /*

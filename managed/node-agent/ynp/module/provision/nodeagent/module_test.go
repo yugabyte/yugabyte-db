@@ -278,6 +278,63 @@ func TestRenderTemplatesExistingProviderValidation(t *testing.T) {
 			wantErr: "not an on-prem",
 		},
 		{
+			name: "node exporter port mismatch rejected",
+			provider: model.Provider{
+				BasicInfo: model.BasicInfo{
+					Name: "onprem-provider",
+					Code: "onprem",
+					Uuid: "provider-123",
+				},
+				Details: model.ProviderDetails{
+					SkipProvisioning: true,
+					NodeExporterPort: 9301,
+					CloudInfo: model.CloudInfo{
+						Onprem: model.OnPremCloudInfo{
+							YbHomeDir:          "/home/yugabyte",
+							EnableMultiTenancy: true,
+						},
+					},
+				},
+				Regions: []model.Region{
+					{
+						BasicInfo: model.BasicInfo{Name: "region-a", Code: "region-a"},
+						Zones: []model.Zone{
+							{BasicInfo: model.BasicInfo{Name: "zone-a", Code: "zone-a"}},
+						},
+					},
+				},
+			},
+			wantErr: "node exporter port (9301) does not match the configured value (9300)",
+		},
+		{
+			name: "matching node exporter port accepted",
+			provider: model.Provider{
+				BasicInfo: model.BasicInfo{
+					Name: "onprem-provider",
+					Code: "onprem",
+					Uuid: "provider-123",
+				},
+				Details: model.ProviderDetails{
+					SkipProvisioning: true,
+					NodeExporterPort: 9300,
+					CloudInfo: model.CloudInfo{
+						Onprem: model.OnPremCloudInfo{
+							YbHomeDir:          "/home/yugabyte",
+							EnableMultiTenancy: true,
+						},
+					},
+				},
+				Regions: []model.Region{
+					{
+						BasicInfo: model.BasicInfo{Name: "region-a", Code: "region-a"},
+						Zones: []model.Zone{
+							{BasicInfo: model.BasicInfo{Name: "zone-a", Code: "zone-a"}},
+						},
+					},
+				},
+			},
+		},
+		{
 			name: "manual onprem accepted",
 			provider: model.Provider{
 				BasicInfo: model.BasicInfo{
@@ -539,6 +596,7 @@ func TestCreateInstanceIfNotExists(t *testing.T) {
 			name: "existing instance type matching mounts",
 			instanceType: &model.NodeInstanceType{
 				InstanceTypeCode: "c5.large",
+				Active:           true,
 				Details: model.NodeInstanceTypeDetails{
 					VolumeDetailsList: []model.VolumeDetails{
 						{MountPath: "/mnt/d0"},
@@ -552,6 +610,7 @@ func TestCreateInstanceIfNotExists(t *testing.T) {
 			name: "existing instance type mismatched mounts",
 			instanceType: &model.NodeInstanceType{
 				InstanceTypeCode: "c5.large",
+				Active:           true,
 				Details: model.NodeInstanceTypeDetails{
 					VolumeDetailsList: []model.VolumeDetails{
 						{MountPath: "/mnt/d0"},
@@ -565,6 +624,7 @@ func TestCreateInstanceIfNotExists(t *testing.T) {
 			name: "existing instance type mounts different order",
 			instanceType: &model.NodeInstanceType{
 				InstanceTypeCode: "c5.large",
+				Active:           true,
 				Details: model.NodeInstanceTypeDetails{
 					VolumeDetailsList: []model.VolumeDetails{
 						{MountPath: "/mnt/d0"},
@@ -574,6 +634,21 @@ func TestCreateInstanceIfNotExists(t *testing.T) {
 			},
 			mountPoints: "['/mnt/d1', '/mnt/d0']",
 			wantErr:     "mount paths",
+		},
+		{
+			// Inactive types are not listed by the installer, so they are recreated and their
+			// old mounts are not enforced.
+			name: "inactive instance type creates payload",
+			instanceType: &model.NodeInstanceType{
+				InstanceTypeCode: "c5.large",
+				Details: model.NodeInstanceTypeDetails{
+					VolumeDetailsList: []model.VolumeDetails{
+						{MountPath: "/mnt/d0"},
+					},
+				},
+			},
+			mountPoints: "['/mnt/d0', '/mnt/d1']",
+			wantCreate:  true,
 		},
 		{
 			name:        "instance type missing creates payload",

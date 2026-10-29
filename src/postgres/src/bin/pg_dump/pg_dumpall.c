@@ -698,6 +698,13 @@ main(int argc, char *argv[])
 	if (quote_all_identifiers)
 		executeCommand(conn, "SET quote_all_identifiers = true");
 
+	/*
+	 * YB: ysql_dumpall writes rolvaliduntil as text. ISO makes that
+	 * timestamp portable, so restore stores the same calendar date.
+	 * ysql_dump does this in setup_connection().
+	 */
+	executeCommand(conn, "SET DATESTYLE = ISO");
+
 	/* create a archive file for global commands. */
 	if (archDumpFormat != archNull)
 	{
@@ -806,6 +813,16 @@ main(int argc, char *argv[])
 
 		/* Restore will need to write to the target cluster */
 		fprintf(OPF, "SET default_transaction_read_only = off;\n\n");
+
+		/*
+		 * YB: backup restore replays hashed role passwords.
+		 * yb_binary_restore is what lets AlterRole accept a verifier while
+		 * yb_allow_prehashed_passwords is off. Binary upgrade does not use
+		 * this flag; that backend is already in binary-upgrade mode, and
+		 * setting this would skip authid OID preservation.
+		 */
+		if (include_yb_metadata)
+			fprintf(OPF, "SET yb_binary_restore = true;\n\n");
 
 		/* Replicate encoding and standard_conforming_strings in output */
 		fprintf(OPF, "SET client_encoding = '%s';\n",
@@ -2102,6 +2119,13 @@ dropDBs(PGconn *conn)
 		char	   *dbname = PQgetvalue(res, i, 0);
 
 		/*
+		 * YB: Skip yb_system, the internal LISTEN/NOTIFY database.  The restore
+		 * target manages its own copy.  This must agree with dumpDatabases().
+		 */
+		if (strcmp(dbname, "yb_system") == 0)
+			continue;
+
+		/*
 		 * Skip "postgres" and "template1"; dumpDatabases() will deal with
 		 * them specially.  Also, be sure to skip "template0", even if for
 		 * some reason it's not marked !datallowconn.
@@ -2325,6 +2349,10 @@ dumpDatabases(PGconn *conn, const char *pgdb)
 
 		/* Skip template0, even if it's not marked !datallowconn. */
 		if (strcmp(dbname, "template0") == 0)
+			continue;
+
+		/* YB: Skip yb_system.  This must agree with dropDBs(). */
+		if (strcmp(dbname, "yb_system") == 0)
 			continue;
 
 		/* Skip any explicitly excluded database */
