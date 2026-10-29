@@ -255,7 +255,7 @@ yb_index_check(PG_FUNCTION_ARGS)
 {
 	Oid			indexoid = PG_GETARG_OID(0);
 	bool		multi_snapshot_mode = !PG_GETARG_BOOL(1);
-	int			saved_visibility = yb_read_after_commit_visibility;
+	int			savedGUCLevel = -1;
 	int			log_num_errors = PG_GETARG_INT32(2);
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 	MemoryContext per_query_ctx;
@@ -333,7 +333,13 @@ yb_index_check(PG_FUNCTION_ARGS)
 						"block.")));
 
 	if (!is_txn_block)
-		yb_read_after_commit_visibility = YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY;
+	{
+		savedGUCLevel = NewGUCNestLevel();
+
+		(void) set_config_option("yb_read_after_commit_visibility", "relaxed",
+								 PGC_USERSET, PGC_S_SESSION, GUC_ACTION_SAVE,
+								 true, 0, false);
+	}
 
 	/*
 	 * Check every leaf index. do_index_check() releases the locks on the leaves
@@ -343,31 +349,26 @@ yb_index_check(PG_FUNCTION_ARGS)
 	ListCell   *lc;
 	bool		aborted = false;
 
-	PG_TRY();
+	foreach(lc, leaf_indexes)
 	{
-		foreach(lc, leaf_indexes)
+		Oid			leaf_indexoid = lfirst_oid(lc);
+
+		if (!aborted)
 		{
-			Oid			leaf_indexoid = lfirst_oid(lc);
+			do_index_check(leaf_indexoid, multi_snapshot_mode, &log_store);
+			aborted = should_abort_execution(&log_store);
+		}
+		else
+		{
+			Oid			baserelid = IndexGetRelation(leaf_indexoid, false);
 
-			if (!aborted)
-			{
-				do_index_check(leaf_indexoid, multi_snapshot_mode, &log_store);
-				aborted = should_abort_execution(&log_store);
-			}
-			else
-			{
-				Oid			baserelid = IndexGetRelation(leaf_indexoid, false);
-
-				UnlockRelationOid(leaf_indexoid, AccessShareLock);
-				UnlockRelationOid(baserelid, AccessShareLock);
-			}
+			UnlockRelationOid(leaf_indexoid, AccessShareLock);
+			UnlockRelationOid(baserelid, AccessShareLock);
 		}
 	}
-	PG_FINALLY();
-	{
-		yb_read_after_commit_visibility = saved_visibility;
-	}
-	PG_END_TRY();
+
+	if (!is_txn_block)
+		AtEOXact_GUC(false, savedGUCLevel);
 
 	/*
 	 * yb_index_check() uses multiple snapshots in multi_snapshot_mode. Verify
