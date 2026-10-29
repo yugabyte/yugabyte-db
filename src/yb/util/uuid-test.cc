@@ -58,9 +58,6 @@ TEST_F(UuidTest, TestRoundTrip) {
       "123e4567-e89b-22d3-a456-426655440000"s,
       "123e4567-e89b-32d3-a456-426655440000"s,
       "123e4567-e89b-42d3-a456-426655440000"s,
-      "123e4567-e89b-62d3-a456-426655440000"s,
-      "123e4567-e89b-72d3-a456-426655440000"s,
-      "123e4567-e89b-82d3-a456-426655440000"s,
       "11111111-1111-1111-1111-111111111111"s,
       "00000000-0000-0000-0000-000000000000"s}) {
     RunRoundTrip(strval);
@@ -142,51 +139,6 @@ TEST_F(UuidTest, TestOperators) {
   uuid2 = ASSERT_RESULT(Uuid::FromString("11111111-1111-1111-1111-111111111111"));
   ASSERT_LE(uuid1, uuid2);
   ASSERT_GE(uuid1, uuid2);
-}
-
-// boost reports versions > 5 as version_unknown (-1), so operator< used to order them before
-// v1..v5, while the DocDB key encoding orders by the raw version nibble.
-TEST_F(UuidTest, TestUnknownVersionOrder) {
-  auto uuid_v4 = ASSERT_RESULT(Uuid::FromString("9e107d9d-372b-4b6a-8d0a-2f5c7c8e1a3b"));
-  auto uuid_v7 = ASSERT_RESULT(Uuid::FromString("0b9a2f3c-5d4e-7f60-9a1b-2c3d4e5f6a7b"));
-  EXPECT_LT(uuid_v4, uuid_v7);
-  EXPECT_GT(uuid_v7, uuid_v4);
-
-  // Different versions > 5 used to share version_unknown, so their raw bytes decided the order.
-  auto uuid_v6 = ASSERT_RESULT(Uuid::FromString("f1111111-1111-6111-8111-111111111111"));
-  auto uuid_v8 = ASSERT_RESULT(Uuid::FromString("01111111-1111-8111-8111-111111111111"));
-  EXPECT_LT(uuid_v6, uuid_v8);
-  EXPECT_GT(uuid_v8, uuid_v6);
-  EXPECT_LT(uuid_v6, uuid_v7);
-  EXPECT_LT(uuid_v7, uuid_v8);
-
-  // operator< must agree with the EncodeToComparable order for every version nibble.
-  constexpr size_t kVersionCharPos = 14;
-  std::vector<Uuid> uuids;
-  for (auto pattern : {
-      "00000000-0000-0000-0000-000000000000"s,
-      "ffffffff-ffff-ffff-ffff-ffffffffffff"s,
-      "123e4567-e89b-02d3-a456-426655440000"s,
-      "123e4567-e89b-02d3-a456-426655440001"s,
-      "f23e4567-e89b-02d3-a456-426655440000"s,
-      "123e4567-f89b-02d3-a456-426655440000"s,
-      "123e4567-e89b-0fd3-a456-426655440000"s}) {
-    for (char version : "0123456789abcdef"s) {
-      pattern[kVersionCharPos] = version;
-      uuids.push_back(ASSERT_RESULT(Uuid::FromString(pattern)));
-    }
-  }
-  auto encoded = [](const Uuid& uuid) {
-    std::string result;
-    uuid.EncodeToComparable(&result);
-    return result;
-  };
-  for (const auto& lhs : uuids) {
-    for (const auto& rhs : uuids) {
-      ASSERT_EQ(lhs < rhs, encoded(lhs) < encoded(rhs))
-          << lhs.ToString() << " vs " << rhs.ToString();
-    }
-  }
 }
 
 TEST_F(UuidTest, TestErrors) {

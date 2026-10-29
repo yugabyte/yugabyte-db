@@ -236,15 +236,10 @@ Status Uuid::IsTimeUuid() const {
 }
 
 bool operator<(const Uuid& lhs, const Uuid& rhs) {
-  // We need to compare raw value of version field since boost's version() returns -1 for
-  // the unknown version which breaks comparison logic.
-  const auto lhs_version = lhs.version_raw();
-  const auto rhs_version = rhs.version_raw();
-
   // First compare the version, variant and then the timestamp bytes.
-  if (lhs_version < rhs_version) {
+  if (lhs.boost_uuid_.version() < rhs.boost_uuid_.version()) {
     return true;
-  } else if (lhs_version > rhs_version) {
+  } else if (lhs.boost_uuid_.version() > rhs.boost_uuid_.version()) {
     return false;
   }
   if (lhs.boost_uuid_.version() == boost::uuids::uuid::version_time_based) {
