@@ -825,8 +825,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // Update all server conf files because there was a master change.
     createMasterInfoUpdateTask(
         universe, currentNode, stoppingNode, ignoreMasterAddrsUpdateError, keepTserverRunning);
-    // In failover, also the old node, which stays a tserver; best effort, since that node is often
-    // unhealthy.
+    // In failover, also the old node, which stays a tserver. Failover is best effort for both: the
+    // old node is often unhealthy, and a collector error must not fail a failover.
     Set<NodeDetails> rewriteNodes = new HashSet<>(nodeSet);
     if (stoppingNode != null && keepTserverRunning && isStoppable) {
       rewriteNodes.add(stoppingNode);
