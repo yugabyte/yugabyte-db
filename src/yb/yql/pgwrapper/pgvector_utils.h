@@ -13,6 +13,10 @@
 
 #pragma once
 
+#include <string>
+
+#include "yb/common/vector_types.h"
+
 #include "yb/vector_index/distance.h"
 
 namespace yb::pgwrapper {
@@ -24,5 +28,11 @@ const char* VectorOpsName(vector_index::DistanceKind distance_kind);
 // Returns the pgvector distance operator (e.g. "<->") for the given DistanceKind.
 // Suitable for `ORDER BY embedding <op> '<query_vec>'::vector` queries.
 const char* DistanceOpName(vector_index::DistanceKind distance_kind);
+
+// Encodes `v` as a pgvector text literal, e.g. "[1,2,3]".
+std::string EncodeVectorAsText(const FloatVector& v);
+
+// Encodes `v` in the binary format of the pgvector `vector` type, as used by binary COPY.
+std::string EncodeVectorAsBinary(const FloatVector& v);
 
 }  // namespace yb::pgwrapper

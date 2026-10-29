@@ -13,6 +13,14 @@
 
 #include "yb/yql/pgwrapper/pgvector_utils.h"
 
+#include <arpa/inet.h>
+
+#include <cstdint>
+#include <cstring>
+#include <iomanip>
+#include <limits>
+#include <sstream>
+
 #include "yb/util/enums.h"
 
 namespace yb::pgwrapper {
@@ -35,6 +43,37 @@ const char* DistanceOpName(DistanceKind distance_kind) {
     case DistanceKind::kCosine:       return "<=>";
   }
   FATAL_INVALID_ENUM_VALUE(DistanceKind, distance_kind);
+}
+
+std::string EncodeVectorAsText(const FloatVector& v) {
+  std::ostringstream out;
+  out << std::setprecision(std::numeric_limits<float>::max_digits10) << '[';
+  for (size_t i = 0; i < v.size(); ++i) {
+    if (i > 0) {
+      out << ',';
+    }
+    out << v[i];
+  }
+  out << ']';
+  return out.str();
+}
+
+std::string EncodeVectorAsBinary(const FloatVector& v) {
+  std::string out;
+  out.resize(4 + 4 * v.size());
+  char* p = out.data();
+  uint16_t dim_be = htons(static_cast<uint16_t>(v.size()));
+  uint16_t unused = 0;
+  std::memcpy(p, &dim_be, sizeof(dim_be)); p += sizeof(dim_be);
+  std::memcpy(p, &unused, sizeof(unused)); p += sizeof(unused);
+  for (float f : v) {
+    uint32_t bits;
+    std::memcpy(&bits, &f, sizeof(bits));
+    uint32_t bits_be = htonl(bits);
+    std::memcpy(p, &bits_be, sizeof(bits_be));
+    p += sizeof(bits_be);
+  }
+  return out;
 }
 
 }  // namespace yb::pgwrapper

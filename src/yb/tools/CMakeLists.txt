@@ -266,8 +266,18 @@ ADD_YB_TEST_LIBRARY(yb-backup-test_base
                     SRCS ${YB_BACKUP_TEST_BASE_SRCS}
                     DEPS ${YB_BACKUP_TEST_BASE_DEPS})
 
-add_executable(hnsw_tool hnsw_tool.cc)
-target_link_libraries(hnsw_tool boost_program_options yb_util yb_docdb vector_index)
+# hnsw_tool bundles its own pgvector backend so that the libpq dependency (pulled in via
+# pq_utils) stays scoped to this tool and does not leak into other consumers of ann_methods.
+include_directories(${YB_BUILD_ROOT}/postgres_build/src/include)
+add_executable(hnsw_tool hnsw_tool.cc pgvector_wrapper.cc)
+target_link_libraries(hnsw_tool
+                      boost_program_options
+                      ann_methods
+                      pq_utils
+                      yb_util
+                      yb_docdb
+                      vector_index)
+add_dependencies(hnsw_tool postgres)
 
 add_executable(clockbound_dump clockbound_dump.cc)
 target_link_libraries(clockbound_dump
