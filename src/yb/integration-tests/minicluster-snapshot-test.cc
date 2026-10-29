@@ -1125,7 +1125,19 @@ TEST_P(PgCloneTestWithColocatedDBParam, CloneWithAlterTableSchema) {
   ASSERT_EQ(rows[0], kRow);
 }
 
-TEST_F(PgCloneTest, CloneYsqlDbTimeout) {
+// Lowers the admin operation timeout cluster-wide (the in-process master and tservers read the
+// flag directly; postgres backends inherit it through their environment), so the delay that
+// CloneYsqlDbTimeout injects to exceed it can be 30 s instead of the default 120 s.
+class PgCloneTimeoutTest : public PgCloneTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_client_admin_operation_timeout_sec) =
+        30 * kTimeMultiplier;
+    PgCloneTest::SetUp();
+  }
+};
+
+TEST_F_EX(PgCloneTest, CloneYsqlDbTimeout, PgCloneTimeoutTest) {
   // Inject an artificial delay that would make CREATE DATABASE timeout in case clone is using
   // a timeout other than ysql_clone_pg_schema_rpc_timeout_ms.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_clone_pg_schema_delay_ms) =
