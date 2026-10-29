@@ -493,9 +493,8 @@ Result<DocResult*> CachedPgDocResultStream::NextDocResult() {
 
 template <class R>
 MergingPgDocResultStream<R>::MergingPgDocResultStream(
-    PgDocFetchCallback fetch_func, const std::vector<PgsqlOpPtr>& ops, size_t nattrs)
-    : PgDocResultStream(fetch_func),
-      nattrs_(nattrs) {
+    PgDocFetchCallback fetch_func, const std::vector<PgsqlOpPtr>& ops)
+    : PgDocResultStream(fetch_func) {
   ResetOps(ops);
 }
 
@@ -529,14 +528,19 @@ Result<uint64_t> MergingPgDocResultStream<R>::EmplaceOpDocResult(
 template <>
 Result<uint64_t> MergingPgDocResultStream<PgDocResult>::EmplaceOpDocResult(
     const PgsqlOpPtr& op, rpc::SidecarHolder&& data, const LWPgsqlResponsePB& response) {
-  VLOG_WITH_FUNC(4) << "targets: " << targets_->size() << " nattrs: " << nattrs_
+  int max_index = -1;
+  for (const auto& target : *targets_) {
+    max_index = std::max(max_index, target->index());
+  }
+  size_t nattrs = static_cast<size_t>(max_index + 1);
+  VLOG_WITH_FUNC(4) << "targets: " << targets_->size() << " nattrs: " << nattrs
                     << " merge sort keys: " << merge_sort_keys_->size();
   return EmplaceDocResult(
       VERIFY_RESULT_REF(FindReadStream(op, response)),
       std::move(data),
       targets_,
       merge_sort_keys_,
-      nattrs_);
+      nattrs);
 }
 
 template <class R>
@@ -1294,7 +1298,7 @@ Status PgDocReadOp::DoPopulateByYbctidOps(const YbctidGenerator& generator, Keep
   if (keep_order) {
     if (!result_stream_) {
       result_stream_ = std::make_unique<MergingPgDocResultStream<DocResult>>(
-          [this]() { return this->FetchMoreResults(); }, pgsql_ops_, 0);
+          [this]() { return this->FetchMoreResults(); }, pgsql_ops_);
       result_stream_->SetFetchedTargets(targets_);
       VLOG(3) << "Created MergingPgDocResultStream";
     }
@@ -1399,14 +1403,8 @@ Status PgDocReadOp::DoPopulateMergeStreamRequests(
   // responses.  No active ops means no execution.
   if (active_op_count > 0) {
     DCHECK(!result_stream_);
-    // It is not known here what columns are read, but need to reserve space in Datum/isnull arrays
-    // for them. So reserve space for all regular attributes.
-    auto nattrs = std::count_if(
-        table_->schema().columns().cbegin(),
-        table_->schema().columns().cend(),
-        [](const ColumnSchema& c) { return c.order() > 0; });
     result_stream_ = std::make_unique<MergingPgDocResultStream<PgDocResult>>(
-        [this]() { return this->FetchMoreResults(); }, pgsql_ops_, nattrs);
+        [this]() { return this->FetchMoreResults(); }, pgsql_ops_);
     result_stream_->SetFetchedTargets(targets_);
     result_stream_->SetMergeSortKeys(merge_sort_keys);
   }

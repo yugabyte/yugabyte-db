@@ -362,7 +362,7 @@ class PgIndexedColumnRef : public PgColumnRef {
     tuple->WriteNull(index());
   }
 
-  int index() const {
+  int index() const override {
     return attr_num() - 1;
   }
 
