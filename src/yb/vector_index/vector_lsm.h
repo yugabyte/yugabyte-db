@@ -14,6 +14,7 @@
 #pragma once
 
 #include <condition_variable>
+#include <functional>
 #include <future>
 #include <map>
 #include <unordered_set>
@@ -137,6 +138,12 @@ class VectorLSM {
   // Records `frontiers` as flushed without a chunk file, when nothing is unflushed: the mutable
   // chunk has no entries and every chunk is in the manifest. Returns false when skipped.
   Result<bool> AdvanceFlushedFrontier(const storage::UserFrontiers& frontiers);
+
+  // Applies `modify` to the frontiers of every chunk, and saves them as a single reset update in a
+  // new manifest file. Unlike adding a chunk, this can move the flushed frontier backwards. Fails
+  // when anything is unflushed. The caller keeps compactions off, so no compaction output can
+  // bring back frontiers computed before the change.
+  Status ModifyChunkFrontiers(const std::function<void(storage::UserFrontiers&)>& modify);
 
   // Returns an estimate, derived from the underlying vector index implementation, of the number
   // of vectors that fit into the specified byte budget.

@@ -827,6 +827,71 @@ TEST_F(VectorLSMHnswlibTest, BatchAboveCapacityOfEmptyChunk) {
   ASSERT_EQ(down_cast<const TestFrontier&>(*flushed).vertex_id(), VectorId::Max());
 }
 
+// Unlike adding a chunk, ModifyChunkFrontiers can move the flushed frontier backwards, and the
+// change survives reopening the index. It refuses while entries are unflushed.
+TEST_F(VectorLSMHnswlibTest, ModifyChunkFrontiers) {
+  constexpr size_t kDimensions = 4;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+
+  std::string test_dir;
+  ASSERT_OK(Env::Default()->GetTestDirectory(&test_dir));
+  const auto storage_dir = JoinPathSegments(
+      test_dir, "vector_lsm_test_" + Uuid::Generate().ToString(), "vector_lsm");
+  auto open = [this, &storage_dir](FloatVectorLSM& lsm) {
+    return OpenVectorLSM(
+        lsm, kDimensions, kDefaultChunkSize, vector_index::DistanceKind::kL2Squared,
+        /* mem_tracker = */ {}, storage_dir);
+  };
+  auto flushed_vertex_id = [](FloatVectorLSM& lsm) -> std::optional<VectorId> {
+    auto frontier = lsm.GetFlushedFrontier();
+    if (!frontier) {
+      return std::nullopt;
+    }
+    return down_cast<const TestFrontier&>(*frontier).vertex_id();
+  };
+  // Below any vertex id the inserts generate, so the flushed frontier has to move backwards.
+  const auto kTarget = VectorId::Nil();
+  auto set_target = [&kTarget](storage::UserFrontiers& frontiers) {
+    down_cast<TestFrontier&>(frontiers.Smallest()).SetVertexId(kTarget);
+    down_cast<TestFrontier&>(frontiers.Largest()).SetVertexId(kTarget);
+  };
+
+  size_t num_chunks = 0;
+  {
+    FloatVectorLSM lsm;
+    ASSERT_OK(open(lsm));
+    ASSERT_OK(InsertCube(lsm, kDimensions, kDefaultChunkSize));
+    ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+    ASSERT_NOK(lsm.ModifyChunkFrontiers(set_target));
+
+    ASSERT_OK(lsm.Flush(/* wait = */ true));
+    // Next to the chunk with the vectors, a chunk without a file, which only carries a frontier.
+    TestFrontiers frontiers;
+    frontiers.Largest().SetVertexId(VectorId::GenerateRandom());
+    ASSERT_TRUE(ASSERT_RESULT(lsm.AdvanceFlushedFrontier(frontiers)));
+    ASSERT_OK(WaitFor(
+        [&lsm] { return lsm.GetFlushAbility() == storage::FlushAbility::kNoNewData; },
+        10s, "Frontier only chunk in manifest"));
+    num_chunks = lsm.NumImmutableChunks();
+    ASSERT_EQ(num_chunks, 2);
+    auto flushed = flushed_vertex_id(lsm);
+    ASSERT_TRUE(flushed.has_value());
+    ASSERT_NE(*flushed, kTarget);
+
+    ASSERT_OK(lsm.ModifyChunkFrontiers(set_target));
+    ASSERT_EQ(flushed_vertex_id(lsm), kTarget);
+    ASSERT_EQ(lsm.NumImmutableChunks(), num_chunks);
+    VerifyVectorLSM(lsm, kDimensions);
+  }
+
+  FloatVectorLSM lsm;
+  ASSERT_OK(open(lsm));
+  ASSERT_EQ(flushed_vertex_id(lsm), kTarget);
+  ASSERT_EQ(lsm.NumImmutableChunks(), num_chunks);
+  VerifyVectorLSM(lsm, kDimensions);
+}
+
 void VectorLSMTestBase::TestMultipleChunksSimpleCompaction(
     vector_index::DistanceKind distance_kind) {
   constexpr size_t kDimensions = 8;

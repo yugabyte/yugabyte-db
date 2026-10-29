@@ -79,7 +79,8 @@ class CountingVectorIndex : public DocVectorIndex {
   Status Compact() override { LOG(FATAL) << "Unexpected call"; }
   Status WaitForCompaction() override { LOG(FATAL) << "Unexpected call"; }
   Status Flush() override { LOG(FATAL) << "Unexpected call"; }
-  Status ModifyFlushedFrontier(const ConsensusFrontier&) override {
+  Status ModifyFlushedFrontier(
+      const ConsensusFrontier&, rocksdb::FrontierModificationMode) override {
     LOG(FATAL) << "Unexpected call";
   }
   Result<bool> AdvanceFlushedOpId(const OpId&) override { LOG(FATAL) << "Unexpected call"; }
