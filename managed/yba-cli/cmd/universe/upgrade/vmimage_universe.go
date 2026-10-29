@@ -86,13 +86,8 @@ var upgradeVMImageCmd = &cobra.Command{
 			)
 		}
 
-		primaryCluster := universeutil.FindClusterByType(clusters, util.PrimaryClusterType)
-		if universeutil.IsClusterEmpty(primaryCluster) {
-			err := fmt.Errorf(
-				"No primary cluster found in universe " + universeName + " (" + universeUUID + ")\n",
-			)
-			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
-		}
+		primaryCluster, _ := universeutil.MustFindPrimaryCluster(
+			clusters, universeName, universeUUID)
 
 		primaryUserIntent := primaryCluster.GetUserIntent()
 
@@ -129,15 +124,9 @@ var upgradeVMImageCmd = &cobra.Command{
 			if err != nil {
 				logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
-			var rrCluster ybaclient.Cluster
-			for _, c := range clusters {
-				if strings.EqualFold(c.GetClusterType(), util.ReadReplicaClusterType) {
-					rrCluster = c
-					break
-				}
-			}
+			rrCluster, rrIndex := util.FindClusterByType(clusters, util.ReadReplicaClusterType)
 
-			if universeutil.IsClusterEmpty(rrCluster) {
+			if rrIndex < 0 {
 				err := fmt.Errorf(
 					"No read replica cluster found in universe " + universeName + " (" + universeUUID + ")\n",
 				)

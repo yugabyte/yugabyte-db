@@ -230,6 +230,21 @@ int32_t CompactionPriorityStepSize() {
   return step_size >= 0 ? step_size : FLAGS_compaction_priority_step_size;
 }
 
+// Unless canceled, marks the files of `chunks` obsolete on scope exit and releases the chunks,
+// which hands the files to the obsolete file remover: for chunks saved to disk that never reached
+// the manifest, nothing else would delete them.
+template <class ChunkPtrs>
+auto MarkChunkFilesObsoleteOnExit(ChunkPtrs& chunks) {
+  return CancelableScopeExit([&chunks] {
+    for (const auto& chunk : chunks) {
+      if (chunk->file) {
+        chunk->file->MarkObsolete();
+      }
+    }
+    chunks.clear();
+  });
+}
+
 size_t SizeRatioCompactionMinMergeWidth() {
   const auto width = make_unsigned(FLAGS_vector_index_compaction_size_ratio_min_merge_width);
   return std::max<size_t>(width, 2); // Must be at least two chunks.
@@ -2827,6 +2842,9 @@ class VectorLSM<Vector, DistanceResult>::Merger {
   Result<ImmutableChunkPtrs> Merge(Iterator& input_it, size_t max_vectors_per_output_chunk) {
     ImmutableChunkPtrs merged_chunks;
 
+    // When the merge fails, the output chunks saved so far never reach the manifest.
+    auto delete_saved_files = MarkChunkFilesObsoleteOnExit(merged_chunks);
+
     // Calculate number of vectors per chunk.
     const auto input_size = input_it.GetNumVectors();
     const auto num_vectors_per_chunk = max_vectors_per_output_chunk == 0 ?
@@ -2865,6 +2883,10 @@ class VectorLSM<Vector, DistanceResult>::Merger {
         // Check shutting down in progress before saving new vector index on disk.
         RETURN_NOT_OK(lsm_.RUNNING_STATUS());
 
+        Status test_status;
+        TEST_SYNC_POINT_CALLBACK("VectorLSM::Merger::Merge:BeforeSave", &test_status);
+        RETURN_NOT_OK(test_status);
+
         // Save index to disk, the index may be updated to a different structure.
         VectorIndexPtr new_index;
         std::tie(merged_index_file, new_index) = VERIFY_RESULT(
@@ -2886,6 +2908,7 @@ class VectorLSM<Vector, DistanceResult>::Merger {
       }
     }
 
+    delete_saved_files.Cancel();
     return merged_chunks;
   }
 
@@ -3048,6 +3071,9 @@ Status VectorLSM<Vector, DistanceResult>::DoCompact(
   const auto compact_start = MonoTime::Now();
   auto merged_chunks = VERIFY_RESULT(DoCompactChunks(scope.chunks(), suspender));
 
+  // Until the manifest references the output chunks, a failure below must delete their files.
+  auto delete_merged_files = MarkChunkFilesObsoleteOnExit(merged_chunks);
+
   uint64_t compact_read_bytes = 0;
   uint64_t compact_write_bytes = 0;
   if (metrics_) {
@@ -3068,6 +3094,8 @@ Status VectorLSM<Vector, DistanceResult>::DoCompact(
       "VectorLSM::DoCompact:Merged", const_cast<CompactionType*>(&context.type));
 
   // Lock manifest file for writes to be able to not miss any upcoming chunk.
+  // TODO(vector_index): the early returns below (RollManifest, the manifest append)
+  // never release the manifest, so the next AcquireManifest() waits forever.
   AcquireManifest();
   TEST_SYNC_POINT("VectorLSM::DoCompact:ManifestAcquired");
   // Prepare manifest file update taking into account specified policy.
@@ -3104,6 +3132,9 @@ Status VectorLSM<Vector, DistanceResult>::DoCompact(
 
   VLOG_WITH_PREFIX_AND_FUNC(3) << update.ShortDebugString();
   TEST_SYNC_POINT("VectorLSM::DoCompact:BeforeManifestUpdate");
+  // Not after the append: it can fail after writing the record, which a reopen still loads, and a
+  // manifest chunk without its file fails the load. Leaking the files is the lesser harm.
+  delete_merged_files.Cancel();
   RETURN_NOT_OK(VectorLSMMetadataAppendUpdate(*manifest_file, update));
 
   // Update in-memory structure.

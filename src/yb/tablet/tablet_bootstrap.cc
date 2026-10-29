@@ -394,8 +394,8 @@ OpId ReplayState::GetLowestOpIdToReplay(bool has_intents_db, const char* extra_l
       has_intents_db ? std::min(stored_op_ids.regular, stored_op_ids.intents)
                      : stored_op_ids.regular;
   // A vector index flushes independently of the regular and intents DBs, and the intents flushed
-  // OpId may be advanced to match the regular one without waiting for vector indexes, so it
-  // could lag behind both of them. Replay from the lowest storage.
+  // OpId may be advanced to match the regular one past a vector index that holds nothing unflushed,
+  // so it could lag behind both of them. Replay from the lowest storage.
   for (const auto& op_id : stored_op_ids.vector_indexes) {
     op_id_replay_lowest = std::min(op_id_replay_lowest, op_id);
   }
