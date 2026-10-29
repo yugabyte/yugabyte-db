@@ -85,6 +85,7 @@ import java.io.File;
 import java.time.temporal.ChronoUnit;
 import java.util.Collections;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
@@ -1169,12 +1170,17 @@ public class CustomerControllerTest extends FakeDBApplication {
     return filterOverridesCaptor;
   }
 
+  // Each test requests one metric, which gets the ALL bucket plus its own entry.
   private JsonNode capturedFiltersAsJson(
       ArgumentCaptor<Map<String, Map<String, String>>> filterOverrides) {
     assertThat(filterOverrides.getValue(), is(notNullValue()));
-    Map<String, String> allFilters =
-        filterOverrides.getValue().getOrDefault(MetricQueryHelper.ALL, Collections.emptyMap());
-    return Json.toJson(allFilters);
+    Map<String, String> filters =
+        new HashMap<>(
+            filterOverrides.getValue().getOrDefault(MetricQueryHelper.ALL, Collections.emptyMap()));
+    filterOverrides.getValue().entrySet().stream()
+        .filter(entry -> !entry.getKey().equals(MetricQueryHelper.ALL))
+        .forEach(entry -> filters.putAll(entry.getValue()));
+    return Json.toJson(filters);
   }
 
   private Result getHostInfo(UUID customerUUID) {

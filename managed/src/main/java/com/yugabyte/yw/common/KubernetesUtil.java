@@ -1629,10 +1629,13 @@ public class KubernetesUtil {
       NodeDetails nodeDetails) {
 
     String serverType = nodeDetails.isTserver ? "tserver" : "master";
-    Double UserIntentcpuCoreCount =
+    UserIntent.K8SNodeResourceSpec resourceSpec =
         nodeDetails.isTserver
-            ? userIntent.tserverK8SNodeResourceSpec.cpuCoreCount
-            : userIntent.masterK8SNodeResourceSpec.cpuCoreCount;
+            ? userIntent.tserverK8SNodeResourceSpec
+            : userIntent.masterK8SNodeResourceSpec;
+    // Using the default spec when there is none, since that is what the pods are deployed with.
+    Double UserIntentcpuCoreCount =
+        (resourceSpec == null ? new UserIntent.K8SNodeResourceSpec() : resourceSpec).cpuCoreCount;
     try {
       Object azOverrides = finalUniverseOverridesAZMap.get(nodeDetails.azUuid);
       // Traverse the overrides map to find the specific CPU core count for the server type
@@ -1646,7 +1649,7 @@ public class KubernetesUtil {
       }
       return (azOverrides == null || azOverrides.toString().isEmpty())
           ? UserIntentcpuCoreCount
-          : Double.parseDouble(azOverrides.toString());
+          : Quantity.getAmountInBytes(new Quantity(azOverrides.toString())).doubleValue();
     } catch (Exception e) {
       log.warn(
           "Failed to get core count for node {} with user intent {} and overrides {}",

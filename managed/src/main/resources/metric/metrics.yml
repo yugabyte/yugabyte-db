@@ -305,6 +305,155 @@ container_volume_usage_percent:
         "container_volume_stats/container_volume_max_usage": "Used"
       ticksuffix: "&nbsp;%"
 
+k8s_cpu_usage:
+  metric: "k8s_cpu_usage_cores/k8s_cpu_request_cores"
+  join_on: ["pod_name", "namespace"]
+  panel_group: "Node Metrics"
+  layout:
+    title: "CPU Usage"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "k8s_cpu_usage_cores/k8s_cpu_request_cores": "Total"
+      ticksuffix: "&nbsp;%"
+
+k8s_cpu_usage_cores:
+  metric: "container_cpu_usage_seconds_total"
+  function: "irate|avg"
+  range: true
+  filters:
+    container_name: "yb-master|yb-tserver"
+  layout:
+    title: "CPU Usage"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "container_cpu_usage_seconds_total": "Usage"
+
+k8s_cpu_request_cores:
+  metric: "ybp_container_resource_requests_cpu_cores"
+  function: "avg"
+  filters:
+    container_name: "yb-master|yb-tserver"
+  layout:
+    title: "CPU Request"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "ybp_container_resource_requests_cpu_cores": "Request"
+
+k8s_memory_usage:
+  metric: ""
+  function: "avg_over_time|avg"
+  range: true
+  operator: "/ 1073741824"
+  filters:
+    saved_name: "container_memory_working_set_bytes|container_spec_memory_limit_bytes|\
+      container_memory_cache"
+    container_name: "yb-master|yb-tserver"
+  group_by: "saved_name"
+  panel_group: "Node Metrics"
+  layout:
+    title: "Memory Usage"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "container_memory_working_set_bytes": "Usage"
+        "container_spec_memory_limit_bytes": "Limit"
+        "container_memory_cache": "Cached"
+      ticksuffix: "&nbsp;GB"
+
+k8s_volume_disk_used_size_total:
+  metric: "kubelet_volume_stats_used_bytes"
+  function: "sum"
+  operator: "/ 1073741824"
+  filters:
+    persistentvolumeclaim: "(.*)datadir[0-9]+-(.*)yb-(.*)"
+  layout:
+    title: "Data Disks Usage"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "kubelet_volume_stats_used_bytes": "Disk Usage"
+      ticksuffix: "&nbsp;GB"
+
+k8s_volume_disk_capacity_size_total:
+  metric: "kubelet_volume_stats_capacity_bytes"
+  function: "sum"
+  operator: "/ 1073741824"
+  filters:
+    persistentvolumeclaim: "(.*)datadir[0-9]+-(.*)yb-(.*)"
+  layout:
+    title: "Data Disks Capacity"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "kubelet_volume_stats_capacity_bytes": "Disk Capacity"
+      ticksuffix: "&nbsp;GB"
+
+k8s_volume_disk_usage_percent:
+  metric: "k8s_volume_disk_used_size_total/k8s_volume_disk_capacity_size_total"
+  panel_group: "Node Metrics"
+  layout:
+    title: "Data Disks Usage Percent"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "k8s_volume_disk_used_size_total/k8s_volume_disk_capacity_size_total": "Disk Usage"
+      ticksuffix: "&nbsp;%"
+
+k8s_volume_disk_volume_used:
+  metric: "kubelet_volume_stats_used_bytes"
+  function: "sum"
+  operator: "/ 1073741824"
+  filters:
+    persistentvolumeclaim: "(.*)datadir[0-9]+-(.*)yb-(.*)"
+  group_by: "namespace,persistentvolumeclaim"
+  layout:
+    title: "Disk Volume Usage"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "kubelet_volume_stats_used_bytes": "Disk Usage"
+      ticksuffix: "&nbsp;GB"
+
+k8s_volume_disk_volume_capacity:
+  metric: "kubelet_volume_stats_capacity_bytes"
+  function: "sum"
+  operator: "/ 1073741824"
+  filters:
+    persistentvolumeclaim: "(.*)datadir[0-9]+-(.*)yb-(.*)"
+  group_by: "namespace,persistentvolumeclaim"
+  layout:
+    title: "Disk Volume Capacity"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "kubelet_volume_stats_capacity_bytes": "Disk Capacity"
+      ticksuffix: "&nbsp;GB"
+
+k8s_volume_disk_volume_usage_percent:
+  metric: "k8s_volume_disk_volume_used/k8s_volume_disk_volume_capacity"
+  panel_group: "Node Metrics"
+  group_by: "namespace,persistentvolumeclaim"
+  layout:
+    title: "Disk Volume Usage Percent"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "k8s_volume_disk_volume_used/k8s_volume_disk_volume_capacity": "Disk Usage"
+      ticksuffix: "&nbsp;%"
+
 network_bytes:
   metric: ""
   function: "avg_over_time|avg"
