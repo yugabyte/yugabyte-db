@@ -40,7 +40,10 @@ import org.apache.commons.collections4.CollectionUtils;
  * tservers before starting them, so in an existing AZ the load balancer can already have moved
  * data onto them within the safe window. The rollback therefore drains them (blacklist, wait for
  * data move, safe-to-delete check) before removing them, and clears their blacklist entries after,
- * since later edits reuse the pod names. Like the edit's own removal path, the drain needs the
+ * since later edits reuse the pod names. Only the added pods the edit's {@code POD_INFO} recorded
+ * are drained, since the blacklist needs their addresses. If the edit failed before that (for
+ * example while waiting for a pod that stayed Pending), its new pods are removed without a drain,
+ * as before this change. Like the edit's own removal path, the drain needs the
  * cluster's surviving tservers to be up, so the rollback first waits for them with the usual
  * bounded timeout. If one is down, the rollback fails there, before that cluster's tservers are
  * blacklisted, and can be retried once it is back. Clusters are rolled back one after the other,
