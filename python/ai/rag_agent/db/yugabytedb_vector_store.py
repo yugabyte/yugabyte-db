@@ -188,6 +188,7 @@ class YugabyteDBVectorStore:
 
             batch = []
             total_inserted = 0
+            total_persisted = 0
             items_yielded = 0
             for chunk_text, embedding_vector in embedding_iterator:
                 items_yielded += 1
@@ -200,6 +201,7 @@ class YugabyteDBVectorStore:
                      embedding_vector, document_id, tenant_id, metadata_json)
                 )
                 if len(batch) >= batch_size:
+                    batch_rows = len(batch)
                     rows_inserted = execute_sql(
                         cur,
                         insert_stmt,
@@ -207,24 +209,31 @@ class YugabyteDBVectorStore:
                         many=True
                     )
                     total_inserted += rows_inserted
+                    # Count the chunks now stored, not the rows this statement
+                    # wrote: executemany reports a conflicting row as 0, and a
+                    # conflict means the chunk's deterministic id is already
+                    # there from an interrupted run. Counting rowcount would
+                    # make a resumed run report fewer embeddings than chunks.
+                    total_persisted += batch_rows
                     self._check_lease(lease_check, document_id)
                     # The running total, not this batch: MEKO-646 made
                     # update_embeddings_persisted replace the stored value
                     # rather than add to it, as update_chunks_processed does.
                     self.pipeline_tracking.update_embeddings_persisted(
                         pipeline_id=pipeline_id,
-                        embeddings_count=total_inserted
+                        embeddings_count=total_persisted
                     )
                     self.logger.info(
-                        f"Inserted batch of {rows_inserted} rows into "
-                        f"{target_schema}.{table_name} (total so far: "
-                        f"{total_inserted}, items yielded: {items_yielded})"
+                        f"Inserted batch of {rows_inserted} new rows into "
+                        f"{target_schema}.{table_name} ({total_persisted} chunks "
+                        f"persisted, items yielded: {items_yielded})"
                     )
                     conn.commit()
                     batch.clear()
 
             # Insert any remaining items in the batch
             if batch:
+                batch_rows = len(batch)
                 rows_inserted = execute_sql(
                     cur,
                     insert_stmt,
@@ -232,21 +241,23 @@ class YugabyteDBVectorStore:
                     many=True
                 )
                 total_inserted += rows_inserted
+                total_persisted += batch_rows
                 self._check_lease(lease_check, document_id)
                 self.pipeline_tracking.update_embeddings_persisted(
                     pipeline_id=pipeline_id,
-                    embeddings_count=total_inserted
+                    embeddings_count=total_persisted
                 )
                 self.logger.info(
-                    f"Inserted final batch of {rows_inserted} rows into "
-                    f"{target_schema}.{table_name} (total: {total_inserted})"
+                    f"Inserted final batch of {rows_inserted} new rows into "
+                    f"{target_schema}.{table_name} ({total_persisted} chunks "
+                    f"persisted)"
                 )
                 conn.commit()
 
             self.logger.info(
-                f"Completed inserting all {total_inserted} embeddings into "
-                f"{target_schema}.{table_name} (total items yielded by "
-                f"generator: {items_yielded})"
+                f"Persisted {total_persisted} embeddings into "
+                f"{target_schema}.{table_name} ({total_inserted} newly "
+                f"inserted, {items_yielded} items yielded by generator)"
             )
             cur.close()
 

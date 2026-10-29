@@ -168,6 +168,21 @@ class TestYugabyteDBVectorStore:
         # 20 items / 5 batch_size = 4 batches
         assert mock_cur.executemany.call_count == 4
 
+    def _persisted_counts(self, store, items, batch_size, rowcount):
+        store.pipeline_tracking.update_embeddings_persisted.reset_mock()
+        conn = store._get_connection()
+        conn.cursor.return_value.fetchone.return_value = (True,)
+        conn.cursor.return_value.rowcount = rowcount
+        store.insert_embeddings(
+            document_id=1,
+            table_name="test_table",
+            embedding_iterator=[(f"chunk {i}", [0.1]) for i in range(items)],
+            pipeline_id=PIPELINE_ID,
+            batch_size=batch_size
+        )
+        return [c.kwargs["embeddings_count"]
+                for c in store.pipeline_tracking.update_embeddings_persisted.call_args_list]
+
     @patch('db.yugabytedb_vector_store.PipelineTracking')
     @patch('db.yugabytedb_vector_store.ConnectionPool')
     def test_embeddings_persisted_is_the_running_total(self, mock_pool_cls, mock_pt_cls):
@@ -176,21 +191,25 @@ class TestYugabyteDBVectorStore:
         store, mock_pool, mock_pt, mock_conn, mock_cur = _create_store(
             mock_pool_cls, mock_pt_cls
         )
-        mock_cur.fetchone.return_value = (True,)
-        mock_cur.rowcount = 5
 
-        store.insert_embeddings(
-            document_id=1,
-            table_name="test_table",
-            embedding_iterator=[(f"chunk {i}", [0.1]) for i in range(15)],
-            pipeline_id=PIPELINE_ID,
-            batch_size=5
+        # 15 items / 5 = three full batches, so only the in-loop call site runs.
+        assert self._persisted_counts(store, 15, 5, rowcount=5) == [5, 10, 15]
+        # 12 items / 5 leaves a remainder, which is the second call site.
+        assert self._persisted_counts(store, 12, 5, rowcount=5) == [5, 10, 12]
+
+    @patch('db.yugabytedb_vector_store.PipelineTracking')
+    @patch('db.yugabytedb_vector_store.ConnectionPool')
+    def test_a_resumed_run_still_reports_every_chunk(self, mock_pool_cls, mock_pt_cls):
+        """A chunk an interrupted run already committed conflicts, and executemany
+        reports rowcount 0 for it. It is still persisted, so it must still be
+        counted: otherwise the replacing update lowers the column on a retry."""
+        store, mock_pool, mock_pt, mock_conn, mock_cur = _create_store(
+            mock_pool_cls, mock_pt_cls
         )
 
-        counts = [c.kwargs["embeddings_count"]
-                  for c in store.pipeline_tracking.update_embeddings_persisted.call_args_list]
-        assert counts == [5, 10, 15], "each call carries the total, not its own batch"
-        assert counts[-1] == 15, "the value left in the column is the document's total"
+        # rowcount 0: every row conflicted because a previous run stored it.
+        assert self._persisted_counts(store, 15, 5, rowcount=0) == [5, 10, 15]
+        assert self._persisted_counts(store, 12, 5, rowcount=0) == [5, 10, 12]
 
     @patch('db.yugabytedb_vector_store.PipelineTracking')
     @patch('db.yugabytedb_vector_store.ConnectionPool')
