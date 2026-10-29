@@ -3023,6 +3023,9 @@ void RaftGroupMetadata::DeleteUnlistedVectorIndexStorages(
   const std::unordered_set<std::string> listed_dirs(
       listed_dirs_list.begin(), listed_dirs_list.end());
   for (const auto& storage_name : storage_names) {
+    if (!storage_name.starts_with(docdb::kVectorIndexDirPrefix)) {
+      continue;
+    }
     auto dir = docdb::GetStorageDir(kv_store_.rocksdb_dir, storage_name);
     if (listed_dirs.contains(dir) || !env->DirExists(dir)) {
       continue;

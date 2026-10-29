@@ -700,7 +700,11 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Deletes leftover remote bootstrap checkpoint dirs and fills startup_vector_index_storages_.
   void ScanTabletDataDirsOnStartup();
 
-  // Deletes the startup_vector_index_storages_ entries of meta's tablet that meta does not list.
+  // Deletes the startup_vector_index_storages_ entries of meta's tablet that meta does not list. A
+  // crash during a restore, or a restore on a build before #35006, leaves such storages. Called
+  // before the peer starts, so no operation can add an index meanwhile, and for a tablet that
+  // bootstraps, after bootstrap: Tablet::AddTableInMemory creates the storage of a new index before
+  // the superblock listing it is flushed, and replay adds such an index back.
   void DeleteStartupUnlistedVectorIndexStorages(const tablet::RaftGroupMetadata& meta);
 
   void LogCacheGC(MemTracker* log_cache_mem_tracker, size_t required);
@@ -843,10 +847,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   mutable std::mutex transition_in_progress_mutex_;
 
   // Vector index storage names ("vi-*") found next to each tablet's RocksDB dir at startup, keyed
-  // by the base name of that dir. A restore can leave the storage of an index the tablet does not
-  // list, e.g. on a crash before it deletes such storages, and nothing else destroys it.
-  // OpenTablet consumes the entry after bootstrap, once replay has re-added any index whose
-  // storage was created before the superblock listing it was flushed.
+  // by the base name of that dir. Consumed by DeleteStartupUnlistedVectorIndexStorages.
   std::unordered_map<std::string, std::vector<std::string>> startup_vector_index_storages_
       GUARDED_BY(startup_vector_index_storages_mutex_);
   std::mutex startup_vector_index_storages_mutex_;

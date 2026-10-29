@@ -815,15 +815,12 @@ Status TabletSnapshots::RestoreCheckpoint(
   // dropped ones a snapshot schedule retains and, in a clone, ones the clone does not have. A
   // storage dir is named by index oid, so a later index of a clone that reuses such an oid would
   // load its chunks. Best effort: a failure here would fail the restore apply, which is fatal for
-  // the tserver, after the frontier patch that keeps the restore from being replayed. The startup
-  // sweep in TSTabletManager::OpenTablet deletes what a crash before this point leaves.
+  // the tserver, after the frontier patch that keeps the restore from being replayed. A crash
+  // before this point is covered by the startup sweep in TSTabletManager.
   // Runs after MergeWithRestored: it can change the id, and so the storage dir, of a listed index.
   if (!snapshot_dir.empty()) {
     auto children = env().GetChildren(snapshot_dir, ExcludeDots::kTrue);
     if (children.ok()) {
-      std::erase_if(*children, [](const auto& child) {
-        return !child.starts_with(docdb::kVectorIndexDirPrefix);
-      });
       metadata().DeleteUnlistedVectorIndexStorages(*children);
     } else {
       LOG_WITH_PREFIX(WARNING) << "Failed to list " << snapshot_dir

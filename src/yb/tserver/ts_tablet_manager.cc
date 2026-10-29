@@ -2721,9 +2721,6 @@ void TSTabletManager::OpenTablet(
     }
   }
 
-  // After bootstrap: Tablet::AddTableInMemory creates the storage of a new vector index before the
-  // superblock listing the index is flushed, and replay adds such an index back. Before the peer
-  // starts: no operation can add an index until then.
   DeleteStartupUnlistedVectorIndexStorages(*meta);
 
   auto pool_tag = PoolTagForTablet(tablet);
@@ -3661,6 +3658,7 @@ Status TSTabletManager::DoHandleNonReadyTabletOnStartup(
     // Passing no OpId will retain the last_logged_opid that was previously in the metadata.
     RETURN_NOT_OK(DeleteTabletData(meta, data_state, fs_manager_->uuid(), yb::OpId()));
   }
+  DeleteStartupUnlistedVectorIndexStorages(*meta);
 
   // Register TOMBSTONED tablets and mark dirty so that they get reported to the Master,
   // which allows us to permanently delete replica tombstones when a table gets deleted.
