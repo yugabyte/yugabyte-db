@@ -1145,7 +1145,9 @@ TEST_F(YsqlMajorUpgradeTestWithAuth, NoYugabyteUserPassword) {
 // Make sure the yugabyte user keeps its changed password, the table it owns and the role grants
 // made by it or by a role it gave ADMIN OPTION to.
 TEST_F(YsqlMajorUpgradeTestWithAuth, YugabyteUserPasswordOwnershipAndGrants) {
-  const auto kNewPassword = "yb_new_password";
+  // Quotes in the password make sure they survive the upgrade. The connection string takes the
+  // password unquoted, so it must not contain spaces or backslashes or start with a quote.
+  const auto kNewPassword = "yb_\"secure\"\"_'pass''";
   const auto kPasswordQuery = "SELECT rolpassword FROM pg_authid WHERE rolname = 'yugabyte'";
   const auto kGrantsQuery =
       "SELECT member::regrole::text, grantor::regrole::text, admin_option FROM pg_auth_members "
@@ -1173,7 +1175,7 @@ TEST_F(YsqlMajorUpgradeTestWithAuth, YugabyteUserPasswordOwnershipAndGrants) {
       "SET ROLE admin_role",
       "GRANT granted_role TO member_by_admin",
       "RESET ROLE",
-      Format("ALTER USER yugabyte PASSWORD '$0'", kNewPassword)}));
+      Format("ALTER USER yugabyte PASSWORD $0", pgwrapper::PqEscapeLiteral(kNewPassword))}));
 
   std::string password_before;
   {

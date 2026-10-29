@@ -239,7 +239,7 @@ TEST_F(YsqlMajorUpgradeCheckTest, UsersAndRoles) {
       .port = ts->ysql_port(),
       .dbname = "yugabyte",
       .user = "yugabyte",
-      .password = escape_double_quote(new_yb_password)};
+      .password = new_yb_password};
 
   auto conn = ASSERT_RESULT(pgwrapper::PGConnBuilder(conn_settings).Connect());
 
