@@ -1,0 +1,20 @@
+title: UserCreateSpec
+description: A user to add to the customer. Part of UserCreateReq.
+type: object
+required:
+  - spec
+  - password
+properties:
+  spec:
+    $ref: "./UserSpec.yaml"
+  password:
+    description: 'Password of the user, which must satisfy the customer''s password policy. Ignored when OIDC SSO is enabled.'
+    type: string
+    format: password
+    writeOnly: true
+  generate_api_token:
+    description: 'Also generate an API token for the new user and return it, so that the caller doesn''t have to log in as that user to get one'
+    type: boolean
+    default: false
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview
