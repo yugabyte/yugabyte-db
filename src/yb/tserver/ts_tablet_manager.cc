@@ -1517,8 +1517,15 @@ Status TSTabletManager::DoApplyCloneTablet(
   for (const auto& colocated_table : ToRepeatedPtrField(request->colocated_tables())) {
     LOG(INFO) << Format(
         "Adding table $0 to the tablet: $1", colocated_table.table_id(), target_tablet_id);
-    colocated_tables_infos.push_back(VERIFY_RESULT(
-        tablet::TableInfo::LoadFromPB(log_prefix, target_table_id, colocated_table)));
+    auto table_info = VERIFY_RESULT(
+        tablet::TableInfo::LoadFromPB(log_prefix, target_table_id, colocated_table));
+    // The master leaves the hybrid time of colocated_tables entries unset. A vector index only
+    // takes intent applies committed after it, so an invalid one keeps every transactional write to
+    // the clone out of the index.
+    if (!table_info->hybrid_time.is_valid()) {
+      table_info->hybrid_time = operation->hybrid_time();
+    }
+    colocated_tables_infos.push_back(std::move(table_info));
   }
   // Setup raft group metadata. If we crash between here and when we set the tablet data state to
   // TABLET_DATA_READY, the tablet will be deleted on the next bootstrap.
