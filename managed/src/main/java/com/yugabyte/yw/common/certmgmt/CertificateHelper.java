@@ -1146,8 +1146,7 @@ public class CertificateHelper {
     }
   }
 
-  private static boolean verifyCertValidity(
-      X509Certificate cert, X509Certificate potentialRootCert) {
+  static boolean verifyCertValidity(X509Certificate cert, X509Certificate potentialRootCert) {
     try {
       cert.verify(potentialRootCert.getPublicKey());
       return true;

@@ -215,26 +215,19 @@ public class RpcClientCert {
     // Bounded by the chain length, so a cycle in a malformed bundle can't loop.
     for (int i = 0; i <= chain.size(); i++) {
       X509Certificate current = cert;
-      if (trusted.stream().anyMatch(t -> isSignedBy(current, t))) {
+      if (trusted.stream().anyMatch(t -> CertificateHelper.verifyCertValidity(current, t))) {
         return true;
       }
       Optional<X509Certificate> issuer =
-          chain.stream().filter(c -> c != current && isSignedBy(current, c)).findFirst();
+          chain.stream()
+              .filter(c -> c != current && CertificateHelper.verifyCertValidity(current, c))
+              .findFirst();
       if (issuer.isEmpty()) {
         return false;
       }
       cert = issuer.get();
     }
     return false;
-  }
-
-  private static boolean isSignedBy(X509Certificate cert, X509Certificate ca) {
-    try {
-      cert.verify(ca.getPublicKey());
-      return true;
-    } catch (Exception e) {
-      return false;
-    }
   }
 
   // Present, the key matches the cert, and the cert is valid until margin from now.

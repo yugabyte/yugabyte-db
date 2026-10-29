@@ -38,8 +38,9 @@ public class TestHelper {
 
   /**
    * A YBClientService mock whose getUniverseClient(universe, masters) falls through to
-   * getClient(masters, universe's CA), as LocalYBClientService does, so tests that stub getClient
-   * keep covering the paths that pass a universe.
+   * getClient(masters, universe's CA), so tests that stub getClient keep covering the paths that
+   * pass a universe. LocalYBClientService instead goes through getClientWithConfig, which also adds
+   * the client cert.
    */
   public static YBClientService mockYBClientService() {
     return Mockito.mock(
