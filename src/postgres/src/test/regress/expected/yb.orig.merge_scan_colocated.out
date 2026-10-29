@@ -4596,7 +4596,9 @@ DROP INDEX r5n_expr_r2_r3_r4_idx;
 CREATE INDEX NONCONCURRENTLY ON r5n (r2 ASC, r3, (r4 + 0), r5, r4);
 ANALYZE r5n;
 -- DISTINCT
--- With larger response pages, merge scan is the cheaper plan for this query.
+-- The merge scan path is built and costed, which is what reaches the
+-- truncated pathkeys, but its order feeds a hash aggregate and a sort, so
+-- the plain scan is cheaper and should be chosen (#29078).
 SET yb_fetch_row_limit = 1024;
 -- Index only scan is off, since only a plain index scan on a colocated index
 -- needs its merge sort keys to stop before an expression column (issue #36017).
@@ -4628,31 +4630,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 (17 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT DISTINCT r3, r4 + 0, r5, r4 FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY r3, r4 + 0, r5, r4 LIMIT 5;
-                                                       QUERY PLAN                                                       
-------------------------------------------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
-   Output: r3, ((r4 + '0'::numeric)), r5, r4
-   ->  Sort (actual rows=5 loops=1)
-         Output: r3, ((r4 + '0'::numeric)), r5, r4
-         Sort Key: r5n.r3, ((r5n.r4 + '0'::numeric)), r5n.r5, r5n.r4
-         Sort Method: top-N heapsort
-         ->  HashAggregate (actual rows=881 loops=1)
-               Output: r3, ((r4 + '0'::numeric)), r5, r4
-               Group Key: r5n.r3, (r5n.r4 + '0'::numeric), r5n.r5, r5n.r4
-               ->  Distinct Index Scan Backward using r5n_r2_r3_expr_r5_r4_idx on public.r5n (actual rows=1634 loops=1)
-                     Output: r3, (r4 + '0'::numeric), r5, r4
-                     Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
-                     Merge Sort Key: r5n.r3 DESC
-                     Merge Stream Key: r5n.r2
-                     Merge Streams: 4
-                     Merge Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
-                     Distinct Keys: r5n.r2, r5n.r3, (r5n.r4 + '0'::numeric), r5n.r5, r5n.r4
-                     Storage Table Rows Scanned: 1634
-                     Storage Index Read Requests: 1
-                     Storage Index Read Ops: 4
-                     Storage Index Rows Scanned: 1634
-(21 rows)
-
+(output identical to previous)
 /*+Set(yb_max_merge_scan_streams 0)*/ SELECT DISTINCT r3, r4 + 0, r5, r4 FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY r3, r4 + 0, r5, r4 LIMIT 5;
  r3 | ?column? | r5 | r4 
 ----+----------+----+----

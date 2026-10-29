@@ -645,7 +645,9 @@ CREATE INDEX NONCONCURRENTLY ON r5n (r2 ASC, r3, (r4 + 0), r5, r4);
 ANALYZE r5n;
 
 -- DISTINCT
--- With larger response pages, merge scan is the cheaper plan for this query.
+-- The merge scan path is built and costed, which is what reaches the
+-- truncated pathkeys, but its order feeds a hash aggregate and a sort, so
+-- the plain scan is cheaper and should be chosen (#29078).
 SET yb_fetch_row_limit = 1024;
 -- Index only scan is off, since only a plain index scan on a colocated index
 -- needs its merge sort keys to stop before an expression column (issue #36017).

@@ -726,3 +726,20 @@ yb_finalize_merge_scan_stream_cols(IndexOptInfo *index, Relids relids,
 	}
 	return result;
 }
+
+/*
+ * Number of streams a merge scan over stream_cols opens: the product of the
+ * number of elements in each stream column's SAOP, with a single-value
+ * equality column counting as one.  The cost model and EXPLAIN both report
+ * this, so they must agree on it.
+ */
+int
+yb_merge_scan_num_streams(List *stream_cols)
+{
+	int			num_streams = 1;
+	ListCell   *lc;
+
+	foreach(lc, stream_cols)
+		num_streams *= lfirst_node(YbMergeScanStreamColInfo, lc)->num_elems;
+	return num_streams;
+}

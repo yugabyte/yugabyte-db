@@ -56,3 +56,5 @@ extern List *yb_finalize_merge_scan_stream_cols(IndexOptInfo *index,
 												List *stream_cols,
 												List *indexclauses,
 												List *pathkeys);
+
+extern int yb_merge_scan_num_streams(List *stream_cols);
