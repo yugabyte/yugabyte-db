@@ -21,7 +21,8 @@ var deleteGCSStorageConfigurationCmd = &cobra.Command{
 		storageconfigurationutil.DeleteStorageConfigurationValidation(cmd)
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		storageconfigurationutil.DeleteStorageConfigurationUtil(cmd, util.GCSStorageConfigType)
+		storageconfigurationutil.DeleteStorageConfigurationUtil(
+			cmd, util.GCSStorageConfigType, util.GCSStorageConfigType)
 	},
 }
 

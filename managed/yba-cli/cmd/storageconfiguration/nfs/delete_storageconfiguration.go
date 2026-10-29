@@ -21,7 +21,8 @@ var deleteNFSStorageConfigurationCmd = &cobra.Command{
 		storageconfigurationutil.DeleteStorageConfigurationValidation(cmd)
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		storageconfigurationutil.DeleteStorageConfigurationUtil(cmd, util.NFSStorageConfigType)
+		storageconfigurationutil.DeleteStorageConfigurationUtil(
+			cmd, util.NFSStorageConfigType, util.NFSStorageConfigType)
 	},
 }
 
