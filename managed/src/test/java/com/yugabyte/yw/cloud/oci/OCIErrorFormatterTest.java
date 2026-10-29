@@ -255,6 +255,26 @@ public class OCIErrorFormatterTest {
   }
 
   @Test
+  public void testContextFromEveryWrapperIsKept() {
+    BmcException e = invalidCompartment();
+    RuntimeException vaultCheck =
+        new RuntimeException(OCIErrorFormatter.userMessage("OCI vault is not accessible.", e), e);
+    assertEquals(
+        "Error refreshing OCI KMS config 'x'. OCI vault is not accessible. " + userMessage(e),
+        userMessage(new RuntimeException("Error refreshing OCI KMS config 'x'.", vaultCheck)));
+
+    RuntimeException embedded = new RuntimeException("Key lookup failed: " + e.getMessage(), e);
+    assertEquals(
+        "Create failed: Key lookup failed: " + userMessage(e),
+        userMessage(new RuntimeException("Create failed", embedded)));
+    assertEquals(
+        "Create failed: Key lookup failed: " + userMessage(e) + ". Retry.",
+        userMessage(
+            new RuntimeException(
+                "Create failed: " + embedded.getMessage() + ". Retry.", embedded)));
+  }
+
+  @Test
   public void testEndpointHost() {
     assertEquals(
         "iaas.us-ashburn-1.oraclecloud.com",
