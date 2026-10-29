@@ -941,6 +941,22 @@ AlterRole(ParseState *pstate, AlterRoleStmt *stmt)
 	{
 		/* YB: skip the checks below; see yb_bypassrls_by_admin above. */
 	}
+	else if (profile != NULL || dnoprofile != NULL || dunlocked != NULL)
+	{
+		/*
+		 * YB: Only a superuser or a yb_db_admin member may change a role's
+		 * profile settings, and only a superuser if the role has or gets
+		 * REPLICATION.  The command makes only the profile change, so the
+		 * checks below don't apply.  See commit 7a13a29b22f.
+		 */
+		if (!superuser() &&
+			(!IsYbDbAdminUser(currentUserId) ||
+			 authform->rolreplication || disreplication))
+			ereport(ERROR,
+					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+					 errmsg("must be superuser or a member of the yb_db_admin "
+							"role to change profile configuration")));
+	}
 	else if (!have_createrole_privilege() ||
 			 !is_admin_of_role(GetUserId(), roleid))
 	{
@@ -987,23 +1003,6 @@ AlterRole(ParseState *pstate, AlterRoleStmt *stmt)
 					 errdetail("Only roles with the %s attribute may change the %s attribute.",
 							   "BYPASSRLS", "BYPASSRLS")));
 	}
-
-	/*
-	 * YB_TODO_PG19MERGE: PG19 restructured AlterRole privilege checks from a
-	 * nested superuser-based chain into a CREATEROLE+ADMIN flow with per-attribute
-	 * checks. YB had an IsYbDbAdminUser bypass for profile management. Port it
-	 * into the new model.
-	 */
-#if 0
-	else if (profile != NULL || dnoprofile != NULL || dunlocked != NULL)
-	{
-		if (!superuser() && !IsYbDbAdminUser(GetUserId()))
-			ereport(ERROR,
-					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-					 errmsg("must be superuser or a member of the yb_db_admin "
-							"role to change profile configuration")));
-	}
-#endif
 
 	/* To add or drop members, you need ADMIN OPTION. */
 	if (drolemembers && !is_admin_of_role(currentUserId, roleid))
