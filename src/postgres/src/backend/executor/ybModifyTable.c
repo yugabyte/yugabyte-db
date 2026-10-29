@@ -485,10 +485,22 @@ YBCExecuteInsertInternal(Oid dboid,
 						 Datum *ybctid,
 						 YbcPgTransactionSetting transaction_setting)
 {
+	uint64_t backfill_time = yb_backfill_timestamp;
+
+	if (backfill_time != 0)
+		transaction_setting = YB_NON_TRANSACTIONAL;
+
 	YbcPgStatement insert_stmt = YbNewInsertForDb(dboid, rel, transaction_setting);
 
 	YBCApplyInsertRow(insert_stmt, rel, slot, onConflictAction, ybctid,
 					  transaction_setting, true /* add_fk_reference_cache */ );
+
+	if (backfill_time != 0)
+	{
+		HandleYBStatus(YBCPgInsertStmtSetIsBackfill(insert_stmt,
+													true /* is_backfill */ ));
+		HandleYBStatus(YBCPgInsertStmtSetWriteTime(insert_stmt, backfill_time));
+	}
 	/* Execute the insert */
 	YBCApplyWriteStmt(insert_stmt, rel);
 }
@@ -975,6 +987,18 @@ YBCExecuteInsertIndexForDb(Oid dboid,
 {
 	Assert(index->rd_rel->relkind == RELKIND_INDEX);
 	Assert(ybctid != 0);
+
+	/*
+	 * YB: During an online schema change backfill, an insert into a user index
+	 * must be a backfill write at the backfill time like the base-table
+	 * insert: one batch cannot mix transactional and non-transactional
+	 * ops.  This covers every index access method that reaches here.
+	 */
+	uint64_t	osc_backfill_time = yb_backfill_timestamp;
+
+	if (backfill_write_time == NULL && osc_backfill_time != 0 &&
+		!IsSystemRelation(index))
+		backfill_write_time = &osc_backfill_time;
 
 	const bool	is_backfill = (backfill_write_time != NULL);
 	const bool	is_non_distributed_txn_write = (is_backfill ||

@@ -12374,4 +12374,13 @@
   proname => 'yb_pg_partman_check_native_txn_ddl_and_locks', provolatile => 'v',
   prorettype => 'bool', proargtypes => '',
   prosrc => 'yb_pg_partman_check_native_txn_ddl_and_locks' },
+
+{ oid => '8123',
+  descr => 'backfill one chunk of an online schema change source tablet; returns rows_processed and the next bfinstr (NULL when the tablet scan is complete)',
+  proname => 'yb_backfill_online_schema_change_chunk', provolatile => 'v', proisstrict => 'f',
+  prorettype => 'record', proargtypes => 'oid oid oid int8 bytea bytea',
+  proallargtypes => '{oid,oid,oid,int8,bytea,bytea,int8,bytea}',
+  proargmodes => '{i,i,i,i,i,i,o,o}',
+  proargnames => '{source_table,target_table,transform_fn,read_time_ht,partition_key,bfinstr,rows_processed,next_bfinstr}',
+  prosrc => 'yb_backfill_online_schema_change_chunk' },
 ]
