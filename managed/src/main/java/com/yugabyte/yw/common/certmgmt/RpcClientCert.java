@@ -18,6 +18,8 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.security.PrivateKey;
+import java.security.Signature;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.time.Instant;
@@ -246,11 +248,31 @@ public class RpcClientCert {
       Instant now = Instant.now();
       return !now.isBefore(cert.getNotBefore().toInstant())
           && !Date.from(now.plus(margin)).after(cert.getNotAfter())
-          && CertificateHelper.verifySignature(cert, Files.readString(Paths.get(files.getRight())));
+          && isKeyOf(cert, Files.readString(Paths.get(files.getRight())));
     } catch (Exception e) {
       log.warn("Unreadable client cert {}: {}", files.getLeft(), e.getMessage());
       return false;
     }
+  }
+
+  // CertificateHelper.verifySignature handles RSA only; the chart's key can be RSA, ECDSA or
+  // Ed25519, so prove the pair by signing with the key and verifying with the cert.
+  private static boolean isKeyOf(X509Certificate cert, String keyPem) throws Exception {
+    PrivateKey key = CertificateHelper.getPrivateKey(keyPem);
+    String algorithm =
+        switch (key.getAlgorithm()) {
+          case "RSA" -> "SHA256withRSA";
+          case "EC", "ECDSA" -> "SHA256withECDSA";
+          default -> key.getAlgorithm();
+        };
+    byte[] data = cert.getEncoded();
+    Signature signer = Signature.getInstance(algorithm);
+    signer.initSign(key);
+    signer.update(data);
+    Signature verifier = Signature.getInstance(algorithm);
+    verifier.initVerify(cert.getPublicKey());
+    verifier.update(data);
+    return verifier.verify(signer.sign());
   }
 
   private static void restoreFromDB(Pair<String, String> files) throws IOException {

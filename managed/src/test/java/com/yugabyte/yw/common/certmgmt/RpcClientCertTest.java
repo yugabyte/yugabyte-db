@@ -437,25 +437,48 @@ public class RpcClientCertTest extends FakeDBApplication {
     assertFalse(RpcClientCert.isIssuedBy(leaf.getLeft(), rootCA));
   }
 
-  @Test
-  public void testAcceptsEcKey() throws Exception {
+  private static Pair<String, String> newEcCertPem(Duration validFor) throws Exception {
     KeyPairGenerator generator = KeyPairGenerator.getInstance("EC");
     generator.initialize(256);
     KeyPair keyPair = generator.generateKeyPair();
     X509Certificate cert =
-        sign(
-            new X500Name("CN=yugabyte"),
-            keyPair.getPublic(),
-            Instant.now().plus(Duration.ofDays(90)),
-            ROOT_CA);
-    givenSecret(
-        Pair.of(
-            CertificateHelper.getAsPemString(cert),
-            CertificateHelper.getAsPemString(keyPair.getPrivate())));
+        sign(new X500Name("CN=yugabyte"), keyPair.getPublic(), Instant.now().plus(validFor), ROOT_CA);
+    return Pair.of(
+        CertificateHelper.getAsPemString(cert),
+        CertificateHelper.getAsPemString(keyPair.getPrivate()));
+  }
+
+  @Test
+  public void testAcceptsEcKey() throws Exception {
+    Pair<String, String> pem = newEcCertPem(Duration.ofDays(90));
+    givenSecret(pem);
+
+    rpcClientCert.load(universe);
+    rpcClientCert.load(universe);
+
+    assertEquals(pem.getLeft(), localCert());
+    verify(mockKubernetesManager, times(1)).getSecret(any(), anyString(), any());
+  }
+
+  @Test
+  public void testKeepsEcCertWhenIssuerSignsWithAnotherCA() throws Exception {
+    Pair<String, String> local = newEcCertPem(Duration.ofDays(5));
+    writeLocal(local);
+    givenSecret(fromOtherCA());
+
+    assertTrue(rpcClientCert.getFiles(universe).isPresent());
+    assertEquals(local.getLeft(), localCert());
+  }
+
+  @Test
+  public void testReplacesMismatchedEcKey() throws Exception {
+    Pair<String, String> pem = newEcCertPem(Duration.ofDays(60));
+    writeLocal(Pair.of(pem.getLeft(), newEcCertPem(Duration.ofDays(60)).getRight()));
+    givenSecret(pem);
 
     rpcClientCert.load(universe);
 
-    assertEquals(CertificateHelper.getAsPemString(cert), localCert());
+    assertEquals(pem.getRight(), Files.readString(keyFile));
   }
 
   @Test
