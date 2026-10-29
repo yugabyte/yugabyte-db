@@ -1309,6 +1309,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   /**
+   * Whether this run retries the task that holds the universe's placement lock, so an earlier
+   * attempt already started changing the universe.
+   */
+  protected boolean isRetryOfPlacementLockHolder(Universe universe) {
+    UUID previousTaskUuid = taskParams().getPreviousTaskUUID();
+    return previousTaskUuid != null
+        && previousTaskUuid.equals(universe.getUniverseDetails().placementModificationTaskUuid);
+  }
+
+  /**
    * Whether another task holds the placement lock. The rollback checkpoint ({@code
    * state_transition_details}) is then that task's, so this task must not write or clear it.
    */

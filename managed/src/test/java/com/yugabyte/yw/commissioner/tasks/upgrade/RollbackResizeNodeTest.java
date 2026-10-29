@@ -19,9 +19,12 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.common.DeltaEvaluator;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -488,36 +491,7 @@ public class RollbackResizeNodeTest extends UpgradeTaskTest {
   public void testRollbackResizeNodeRetryLastNodeState() throws InterruptedException {
     seedFailedResize(/* changeInstance */ true, /* growVolume */ false, /* changeIops */ false);
     ResizeNodeParams rollbackParams = createRollbackParams();
-    rollbackParams.expectedUniverseVersion = -1;
-    rollbackParams.creatingUser = defaultUser;
-    rollbackParams.sleepAfterMasterRestartMillis = 5;
-    rollbackParams.sleepAfterTServerRestartMillis = 5;
-    TestUtils.setFakeHttpContext(defaultUser);
-    setPausePosition(5);
-    UUID taskUUID = commissioner.submit(TaskType.RollbackResizeNode, rollbackParams);
-    CustomerTask.create(
-        defaultCustomer,
-        defaultUniverse.getUniverseUUID(),
-        taskUUID,
-        CustomerTask.TargetType.Universe,
-        CustomerTask.TaskType.RollbackResizeNode,
-        "fake-name");
-    TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
-    CommissionerBaseTest.waitForTaskPaused(taskInfo.getUuid(), commissioner);
-    taskInfo = TaskInfo.getOrBadRequest(taskInfo.getUuid());
-    int i = 0;
-    int lastNodeUpdatePosition = 0;
-    for (TaskInfo subTask : taskInfo.getSubTasks()) {
-      if (subTask.getTaskType() == TaskType.ChangeInstanceType) {
-        lastNodeUpdatePosition = i;
-      }
-      i++;
-    }
-    setAbortPosition(lastNodeUpdatePosition);
-    commissioner.resumeTask(taskInfo.getUuid());
-    taskInfo = waitForTask(taskInfo.getUuid());
-    assertEquals(Aborted, taskInfo.getTaskState());
-    clearAbortOrPausePositions();
+    TaskInfo taskInfo = abortRollbackAtLastInstanceChange(rollbackParams);
 
     Date expectedFailedTaskCreateTime = rollbackParams.getFailedTaskCreateTime();
     CustomerTask retryTask =
@@ -534,6 +508,151 @@ public class RollbackResizeNodeTest extends UpgradeTaskTest {
       assertEquals(DEFAULT_INSTANCE_TYPE, node.cloudInfo.instance_type);
     }
     assertNull(universe.getStateTransitionDetails());
+  }
+
+  @Test
+  public void testRollbackRejectedOnOci() {
+    // PLAT-23226: the task refuses a first run on OCI even when submitted without the computer.
+    seedFailedResize(/* changeInstance */ true, /* growVolume */ false, /* changeIops */ false);
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u ->
+                u.getUniverseDetails().getPrimaryCluster().userIntent.providerType =
+                    Common.CloudType.oci);
+    PlatformServiceException ex =
+        assertThrows(PlatformServiceException.class, () -> submitRollback(createRollbackParams()));
+    assertThat(ex.getMessage(), containsString("not supported on oci"));
+  }
+
+  @Test
+  public void testRollbackRetryAllowedOnOci() throws InterruptedException {
+    // PLAT-23226: a rollback that already started must still finish on retry. It owns the
+    // universe, so refusing it would leave the universe locked with nothing left to run.
+    seedFailedResize(/* changeInstance */ true, /* growVolume */ false, /* changeIops */ false);
+    TaskInfo taskInfo = abortRollbackAtLastInstanceChange(createRollbackParams());
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u ->
+                u.getUniverseDetails().getPrimaryCluster().userIntent.providerType =
+                    Common.CloudType.oci);
+
+    CustomerTask retryTask =
+        customerTaskManager.retryCustomerTask(defaultCustomer.getUuid(), taskInfo.getUuid());
+    assertEquals(Success, waitForTask(retryTask.getTaskUUID()).getTaskState());
+  }
+
+  @Test
+  public void testRollbackOnOciSubmitSaysWhy() {
+    // PLAT-23226: a failed OCI resize has oci in its own params too. Submit must still give the
+    // reason rather than a generic "cannot be rolled back".
+    factory.globalRuntimeConf().setValue("yb.task.allow_resize_node_rollback", "true");
+    seedFailedResize(/* changeInstance */ true, /* growVolume */ false, /* changeIops */ false);
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u ->
+                u.getUniverseDetails().getPrimaryCluster().userIntent.providerType =
+                    Common.CloudType.oci);
+    TaskInfo failedTask = TaskInfo.getOrBadRequest(failedResizeTaskUuid);
+    failedTask.setTaskParams(Json.toJson(createRollbackParams()));
+    failedTask.save();
+    CustomerTask.create(
+        defaultCustomer,
+        defaultUniverse.getUniverseUUID(),
+        failedResizeTaskUuid,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.ResizeNode,
+        "fake-name");
+
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                customerTaskManager.rollbackCustomerTask(
+                    defaultCustomer.getUuid(), failedResizeTaskUuid));
+    assertThat(ex.getMessage(), containsString("not supported on oci"));
+  }
+
+  @Test
+  public void testListingHidesRollbackOnOci() {
+    factory.globalRuntimeConf().setValue("yb.task.allow_resize_node_rollback", "true");
+    ResizeNodeParams ociParams = createRollbackParams();
+    ociParams.getPrimaryCluster().userIntent.providerType = Common.CloudType.oci;
+
+    assertTrue(listingCanRollback(Json.toJson(createRollbackParams())));
+    assertFalse(listingCanRollback(Json.toJson(ociParams)));
+    // Params that don't bind are left to submit rather than breaking the task list.
+    assertTrue(listingCanRollback(Json.parse("{\"clusters\": \"not-a-list\"}")));
+  }
+
+  /** Lists a failed ResizeNode with these params that owns the universe, as the task list does. */
+  private boolean listingCanRollback(JsonNode failedParams) {
+    TaskInfo taskInfo = new TaskInfo(TaskType.ResizeNode, null);
+    taskInfo.setTaskParams(failedParams);
+    taskInfo.setOwner("");
+    taskInfo.setYbaVersion(Util.getYbaVersion());
+    taskInfo.setTaskState(TaskInfo.State.Failure);
+    taskInfo.save();
+    UUID universeUuid = defaultUniverse.getUniverseUUID();
+    CustomerTask.create(
+        defaultCustomer,
+        universeUuid,
+        taskInfo.getUuid(),
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.ResizeNode,
+        "fake-name");
+    // Re-fetch so the OneToOne TaskInfo join is populated (create() does not load it).
+    CustomerTask customerTask =
+        CustomerTask.getOrBadRequest(defaultCustomer.getUuid(), taskInfo.getUuid());
+    Map<UUID, Set<String>> owners =
+        ImmutableMap.of(universeUuid, ImmutableSet.of(taskInfo.getUuid().toString()));
+    return commissioner
+        .buildTaskStatus(
+            customerTask,
+            Collections.emptyList(),
+            owners,
+            owners,
+            ImmutableMap.of(universeUuid, customerTask))
+        .orElseThrow(() -> new AssertionError("expected task status"))
+        .get("canRollback")
+        .asBoolean();
+  }
+
+  /** Runs a rollback of the seeded failed resize and aborts it at its last instance change. */
+  private TaskInfo abortRollbackAtLastInstanceChange(ResizeNodeParams rollbackParams)
+      throws InterruptedException {
+    rollbackParams.expectedUniverseVersion = -1;
+    rollbackParams.creatingUser = defaultUser;
+    rollbackParams.sleepAfterMasterRestartMillis = 5;
+    rollbackParams.sleepAfterTServerRestartMillis = 5;
+    TestUtils.setFakeHttpContext(defaultUser);
+    setPausePosition(5);
+    UUID taskUUID = commissioner.submit(TaskType.RollbackResizeNode, rollbackParams);
+    CustomerTask.create(
+        defaultCustomer,
+        defaultUniverse.getUniverseUUID(),
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.RollbackResizeNode,
+        "fake-name");
+    CommissionerBaseTest.waitForTaskPaused(taskUUID, commissioner);
+    TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
+    int i = 0;
+    int lastNodeUpdatePosition = 0;
+    for (TaskInfo subTask : taskInfo.getSubTasks()) {
+      if (subTask.getTaskType() == TaskType.ChangeInstanceType) {
+        lastNodeUpdatePosition = i;
+      }
+      i++;
+    }
+    setAbortPosition(lastNodeUpdatePosition);
+    commissioner.resumeTask(taskUUID);
+    taskInfo = waitForTask(taskUUID);
+    assertEquals(Aborted, taskInfo.getTaskState());
+    clearAbortOrPausePositions();
+    return taskInfo;
   }
 
   @Test
