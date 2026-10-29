@@ -46,7 +46,7 @@ Pass the flag in both `--master_flags` and `--tserver_flags` when you [start the
 
 ### YugabyteDB Anywhere
 
-Set `ysql_enable_profile` to `true` for both Master and T-Server. Refer to [Edit configuration flags](../../yugabyte-platform/scale-deployments/edit-config-flags/).
+Set `ysql_enable_profile` to `true` for both Master and T-Server. Refer to [Edit configuration flags](../../../yugabyte-platform/scale-deployments/edit-config-flags/).
 
 ### Manual deployment
 
