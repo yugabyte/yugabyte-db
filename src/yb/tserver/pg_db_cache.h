@@ -52,9 +52,10 @@ class PgDbCache {
   // this returns; otherwise it runs on an RPC callback thread once the master has answered.
   // Concurrent uncached requests for the same db are coalesced into a single fetch.
   //
-  // This never blocks the calling thread. Callers run on RPC service threads, and the master's
-  // reply is delivered by the same thread pool, so a service thread that waited here could hold
-  // up the very reply it is waiting for. See issue #36104.
+  // This never waits for the master's reply. Callers run on RPC service threads, and that reply
+  // is delivered by the same thread pool, so a service thread that waited here could hold up the
+  // very reply it is waiting for. See issue #36104. A miss does still wait on the YBClient
+  // future, which is unresolved only until the tserver has finished starting up.
   void GetColocationInfo(uint32_t db_oid, Callback callback);
 
   // Drops cached entries for the given db_oids

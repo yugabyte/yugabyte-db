@@ -22,6 +22,8 @@
 
 #include "yb/common/pg_types.h"
 
+#include "yb/gutil/thread_annotations.h"
+
 #include "yb/master/master_ddl.pb.h"
 
 #include "yb/util/logging.h"
@@ -129,9 +131,9 @@ class PgDbCache::Impl : public std::enable_shared_from_this<Impl> {
   std::mutex mutex_;
 
   // db oid -> db colocation info
-  std::unordered_map<uint32_t, ColocationInfo> cache_;
+  std::unordered_map<uint32_t, ColocationInfo> cache_ GUARDED_BY(mutex_);
   // db oid -> callbacks waiting on the master lookup under way for it
-  std::unordered_map<uint32_t, std::vector<Callback>> in_flight_;
+  std::unordered_map<uint32_t, std::vector<Callback>> in_flight_ GUARDED_BY(mutex_);
 };
 
 PgDbCache::PgDbCache(std::shared_future<client::YBClient*> client_future)

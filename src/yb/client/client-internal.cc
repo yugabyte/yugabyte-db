@@ -2642,8 +2642,14 @@ void YBClient::Data::GetNamespaceInfo(
     CoarseTimePoint deadline,
     std::shared_ptr<master::GetNamespaceInfoResponsePB> resp,
     StdStatusCallback callback) {
-  StartRpc<internal::GetNamespaceInfoRpc>(
-      client, namespace_id, std::move(resp), std::move(callback), deadline);
+  auto rpc = std::make_shared<internal::GetNamespaceInfoRpc>(
+      client, namespace_id, std::move(resp), callback, deadline);
+  // Registration fails once rpcs_ is shutting down, and an rpc rejected there is aborted before
+  // it is sent, so its own callback never runs. Report that to the caller here.
+  auto status = rpcs_.RegisterAndStartStatus(rpc, rpc->RpcHandle());
+  if (!status.ok()) {
+    callback(status);
+  }
 }
 
 Result<IndexPermissions> YBClient::Data::GetIndexPermissions(
