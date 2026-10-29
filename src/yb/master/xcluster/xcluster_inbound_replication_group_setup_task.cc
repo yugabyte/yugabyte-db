@@ -1054,7 +1054,7 @@ Status XClusterTableSetupTask::ValidateBootstrapNotRequired() {
   }
 
   // TODO: When FLAGS_check_bootstrap_required is enabled by default we need to convert this to a
-  // async rpc call.
+  // async rpc call, and check the stream's checkpointed tablets, not the table's current ones.
   if (VERIFY_RESULT(
           parent_task_->GetYbClient().IsBootstrapRequired({source_table_id_}, bootstrap_id))) {
     return STATUS(
