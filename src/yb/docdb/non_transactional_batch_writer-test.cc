@@ -567,6 +567,47 @@ SubDocKey(DocKey([], ["row1"]), [ColumnId(11); HT{ physical: 6000 }]) -> \
   )#");
 }
 
+// GH#32556: xCluster direct (non-transactional) apply writes every row at the producer hybrid time
+// of its own record, while the request's write hybrid time is the time of the first record only.
+// The table-owned reverse mapping must be written at the row's hybrid time. Otherwise a read in
+// between sees the reverse mapping without the row version it points at, while a vector search
+// takes the mapping as proof that the row exists and holds the vector.
+TEST_F(NonTransactionalBatchWriterTest, ExternalWriteVectorReverseMappingHybridTime) {
+  const auto vector_id1 = ASSERT_RESULT(vector_index::VectorIdFromString(
+      "10000000-2000-3000-4000-000000000001"));
+  const auto vector_id2 = ASSERT_RESULT(vector_index::VectorIdFromString(
+      "10000000-2000-3000-4000-000000000002"));
+
+  const auto kFirstRecordHT = 6000_usec_ht;
+  const auto kSecondRecordHT = 6500_usec_ht;
+  const auto kBatchHT = 9000_usec_ht;
+
+  docdb::LWKeyValueWriteBatchPB put_batch(&arena_);
+  auto add_external_write = [&put_batch](
+      const std::string& row, const vector_index::VectorId& vector_id, HybridTime ht) {
+    const DocKey doc_key(MakeKeyEntryValues(row));
+    auto* write_pair = put_batch.add_write_pairs();
+    write_pair->dup_key(EncodeDocPathKey(
+        DocPath(doc_key.Encode(), KeyEntryValue::MakeColumnId(ColumnId(11)))).AsSlice());
+    write_pair->dup_value(EncodeTableOwnedVectorColumnValue(vector_id));
+    write_pair->set_external_hybrid_time(ht.ToUint64());
+  };
+  add_external_write("row1", vector_id1, kFirstRecordHT);
+  add_external_write("row2", vector_id2, kSecondRecordHT);
+  ASSERT_OK(SendWriteBatch(put_batch, kFirstRecordHT, kBatchHT));
+
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+MetaKey(VectorId(10000000-2000-3000-4000-000000000001), [HT{ physical: 6000 }]) -> \
+    SubDocKey(DocKey([], ["row1"]), [ColumnId(11)])
+MetaKey(VectorId(10000000-2000-3000-4000-000000000002), [HT{ physical: 6500 w: 1 }]) -> \
+    SubDocKey(DocKey([], ["row2"]), [ColumnId(11)])
+SubDocKey(DocKey([], ["row1"]), [ColumnId(11); HT{ physical: 6000 }]) -> \
+    VECTOR_DATA(561000000020003000400000000000000111)
+SubDocKey(DocKey([], ["row2"]), [ColumnId(11); HT{ physical: 6500 w: 1 }]) -> \
+    VECTOR_DATA(561000000020003000400000000000000211)
+  )#");
+}
+
 // GH#32694: whenever the writer fills the intents write batch, it must clear the tablet's
 // can_advance_intents_flush_op_id_.
 TEST_F(NonTransactionalBatchWriterTest, ClearsCanAdvanceIntentsFlushOpId) {
