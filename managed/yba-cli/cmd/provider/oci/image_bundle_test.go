@@ -162,6 +162,26 @@ func TestAddOCIImageBundles(t *testing.T) {
 	}
 }
 
+func TestEditOCIImageBundlesKeepsEarlierImage(t *testing.T) {
+	regions := map[string]ybaclient.BundleInfo{
+		"us-ashburn-1": {YbImage: util.GetStringPointer("old")},
+	}
+	existing := []ybaclient.ImageBundle{{
+		Uuid:    util.GetStringPointer("u1"),
+		Details: &ybaclient.ImageBundleDetails{Regions: &regions, SshUser: util.GetStringPointer("opc")},
+	}}
+	got, err := editOCIImageBundles([]string{
+		"image-bundle-uuid=u1::machine-image=img-a",
+		"image-bundle-uuid=u1::ssh-user=yb",
+	}, existing, []string{"us-ashburn-1"}, nil)
+	checkErr(t, err, "")
+	details := got[0].GetDetails()
+	info := details.GetRegions()["us-ashburn-1"]
+	if info.GetYbImage() != "img-a" || details.GetSshUser() != "yb" {
+		t.Errorf("got image %q ssh-user %q", info.GetYbImage(), details.GetSshUser())
+	}
+}
+
 func TestApplyOCIRegionImageEdit(t *testing.T) {
 	details := ybaclient.ImageBundleDetails{}
 	details.SetRegions(map[string]ybaclient.BundleInfo{

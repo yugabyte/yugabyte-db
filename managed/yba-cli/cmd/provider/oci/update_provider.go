@@ -779,7 +779,11 @@ func editOCIImageBundles(
 			for _, imageBundleString := range editImageBundles {
 				imageBundle := providerutil.BuildImageBundleMapFromString(imageBundleString, "edit")
 				if strings.Compare(imageBundle["uuid"], bundleUUID) == 0 {
-					machineImage = imageBundle["machine-image"]
+					// A later flag for the same UUID with no machine-image
+					// must not clear the OCID set by an earlier one.
+					if len(imageBundle["machine-image"]) != 0 {
+						machineImage = imageBundle["machine-image"]
+					}
 					if len(imageBundle["ssh-user"]) != 0 {
 						details.SetSshUser(imageBundle["ssh-user"])
 					}
