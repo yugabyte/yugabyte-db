@@ -2420,6 +2420,7 @@ void CDCServiceImpl::UpdateMetrics() {
       if (!is_leader) {
         tablet_metric->cdcsdk_sent_lag_micros->set_value(0);
         tablet_metric->cdcsdk_flush_lag->set_value(0);
+        tablet_metric->cdcsdk_last_sent_physicaltime->set_value(0);
       } else {
         auto last_replicated_micros = GetLastReplicatedTime(tablet_peer);
         auto cdc_state_last_replication_time_micros =
