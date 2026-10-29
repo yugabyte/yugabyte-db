@@ -704,7 +704,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // crash during a restore, or a restore on a build before #35006, leaves such storages. Called
   // before the peer starts, so no operation can add an index meanwhile, and for a tablet that
   // bootstraps, after bootstrap: Tablet::AddTableInMemory creates the storage of a new index before
-  // the superblock listing it is flushed, and replay adds such an index back.
+  // the superblock listing it is flushed, and replay adds such an index back if its ADD_TABLE is
+  // known committed. One applied before its commit was logged stays pending until the peer starts,
+  // so the sweep deletes its storage, and applying it creates the storage again and backfills it.
   void DeleteStartupUnlistedVectorIndexStorages(const tablet::RaftGroupMetadata& meta);
 
   void LogCacheGC(MemTracker* log_cache_mem_tracker, size_t required);

@@ -1076,7 +1076,7 @@ Status TSTabletManager::RegisterServiceCallback(
 
 void TSTabletManager::ScanTabletDataDirsOnStartup() {
   const auto vector_index_infix = "." + docdb::kVectorIndexDirPrefix;
-  std::lock_guard lock(startup_vector_index_storages_mutex_);
+  decltype(startup_vector_index_storages_) vector_index_storages;
   for (const auto& data_root : fs_manager_->GetDataRootDirs()) {
     auto tables_dir = JoinPathSegments(data_root, FsManager::kRocksDBDirName);
     auto tables = fs_manager_->env()->GetChildren(tables_dir, ExcludeDots::kTrue);
@@ -1096,7 +1096,7 @@ void TSTabletManager::ScanTabletDataDirsOnStartup() {
       for (const auto& tablet : *tablets) {
         auto vector_index_pos = tablet.find(vector_index_infix);
         if (vector_index_pos != std::string::npos) {
-          startup_vector_index_storages_[tablet.substr(0, vector_index_pos)].push_back(
+          vector_index_storages[tablet.substr(0, vector_index_pos)].push_back(
               tablet.substr(vector_index_pos + 1));
           continue;
         }
@@ -1110,6 +1110,8 @@ void TSTabletManager::ScanTabletDataDirsOnStartup() {
       }
     }
   }
+  std::lock_guard lock(startup_vector_index_storages_mutex_);
+  startup_vector_index_storages_ = std::move(vector_index_storages);
 }
 
 void TSTabletManager::DeleteStartupUnlistedVectorIndexStorages(
