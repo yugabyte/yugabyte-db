@@ -128,4 +128,12 @@
   rolreplication => 'f', rolbypassrls => 'f', rolconnlimit => '-1',
   rolpassword => '_null_', rolvaliduntil => '_null_' },
 
+# YB: yugabyte is a second bootstrap superuser, treated like the one above
+# (see YbIsBootstrapSuperuser). initdb sets its password.
+{ oid => '8960', oid_symbol => 'YB_BOOTSTRAP_SUPERUSERID',
+  rolname => 'yugabyte', rolsuper => 't', rolinherit => 't',
+  rolcreaterole => 't', rolcreatedb => 't', rolcanlogin => 't',
+  rolreplication => 't', rolbypassrls => 't', rolconnlimit => '-1',
+  rolpassword => '_null_', rolvaliduntil => '_null_' },
+
 ]

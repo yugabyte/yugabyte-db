@@ -1142,6 +1142,79 @@ TEST_F(YsqlMajorUpgradeTestWithAuth, NoYugabyteUserPassword) {
   ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes));
 }
 
+// Make sure the yugabyte user keeps its changed password, the table it owns and the role grants
+// made by it or by a role it gave ADMIN OPTION to.
+TEST_F(YsqlMajorUpgradeTestWithAuth, YugabyteUserPasswordOwnershipAndGrants) {
+  // Quotes in the password make sure they survive the upgrade. The connection string takes the
+  // password unquoted, so it must not contain spaces or backslashes or start with a quote.
+  const auto kNewPassword = "yb_\"secure\"\"_'pass''";
+  const auto kPasswordQuery = "SELECT rolpassword FROM pg_authid WHERE rolname = 'yugabyte'";
+  const auto kGrantsQuery =
+      "SELECT member::regrole::text, grantor::regrole::text, admin_option FROM pg_auth_members "
+      "WHERE roleid = 'granted_role'::regrole ORDER BY member::regrole::text";
+  using Grants = std::vector<std::tuple<std::string, std::string, bool>>;
+
+  auto connect_as_yugabyte = [this](const std::string& password) {
+    auto* ts = cluster_->tablet_server(0);
+    return pgwrapper::PGConnBuilder(pgwrapper::PGConnSettings{
+        .host = ts->bind_host(),
+        .port = ts->ysql_port(),
+        .dbname = "yugabyte",
+        .user = "yugabyte",
+        .password = password}).Connect();
+  };
+
+  ASSERT_OK(ExecuteStatements({
+      "CREATE TABLE yugabyte_owned (a int)",
+      "CREATE ROLE granted_role",
+      "CREATE ROLE admin_role",
+      "CREATE ROLE member_by_yugabyte",
+      "CREATE ROLE member_by_admin",
+      "GRANT granted_role TO admin_role WITH ADMIN OPTION",
+      "GRANT granted_role TO member_by_yugabyte",
+      "SET ROLE admin_role",
+      "GRANT granted_role TO member_by_admin",
+      "RESET ROLE",
+      Format("ALTER USER yugabyte PASSWORD $0", pgwrapper::PqEscapeLiteral(kNewPassword))}));
+
+  std::string password_before;
+  {
+    auto conn = ASSERT_RESULT(connect_as_yugabyte(kNewPassword));
+    password_before = ASSERT_RESULT(conn.FetchRow<std::string>(kPasswordQuery));
+    auto grants = ASSERT_RESULT((conn.FetchRows<std::string, std::string, bool>(kGrantsQuery)));
+    ASSERT_VECTORS_EQ(
+        (Grants{
+            {"admin_role", "yugabyte", true},
+            {"member_by_admin", "admin_role", false},
+            {"member_by_yugabyte", "yugabyte", false}}),
+        grants);
+  }
+
+  ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes));
+
+  ASSERT_NOK_STR_CONTAINS(connect_as_yugabyte("yugabyte"), "password authentication failed");
+  auto conn = ASSERT_RESULT(connect_as_yugabyte(kNewPassword));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(kPasswordQuery)), password_before);
+
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<std::string>(
+          "SELECT tableowner::text FROM pg_tables WHERE tablename = 'yugabyte_owned'")),
+      "yugabyte");
+
+  // The dump has no grantors for versions before PG 16, so every grant is recorded under postgres.
+  auto grants = ASSERT_RESULT((conn.FetchRows<std::string, std::string, bool>(kGrantsQuery)));
+  ASSERT_VECTORS_EQ(
+      (Grants{
+          {"admin_role", "postgres", true},
+          {"member_by_admin", "postgres", false},
+          {"member_by_yugabyte", "postgres", false}}),
+      grants);
+
+  ASSERT_OK(conn.Execute("REVOKE granted_role FROM member_by_admin, member_by_yugabyte"));
+  grants = ASSERT_RESULT((conn.FetchRows<std::string, std::string, bool>(kGrantsQuery)));
+  ASSERT_VECTORS_EQ((Grants{{"admin_role", "postgres", true}}), grants);
+}
+
 // Test scenario 2: MD5->SCRAM version upgrade with no HBA modification
 // This tests that during a major version upgrade, existing MD5 passwords continue to work
 // while new passwords use the upgraded version's default (SCRAM-SHA-256)

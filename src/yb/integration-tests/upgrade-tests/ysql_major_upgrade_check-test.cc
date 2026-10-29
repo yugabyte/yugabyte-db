@@ -239,7 +239,7 @@ TEST_F(YsqlMajorUpgradeCheckTest, UsersAndRoles) {
       .port = ts->ysql_port(),
       .dbname = "yugabyte",
       .user = "yugabyte",
-      .password = escape_double_quote(new_yb_password)};
+      .password = new_yb_password};
 
   auto conn = ASSERT_RESULT(pgwrapper::PGConnBuilder(conn_settings).Connect());
 
@@ -284,6 +284,12 @@ TEST_F(YsqlMajorUpgradeCheckTest, UsersAndRoles) {
   ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes));
 
   conn = ASSERT_RESULT(pgwrapper::PGConnBuilder(conn_settings).Connect());
+
+  // Make sure the yugabyte user keeps its attributes after the upgrade.
+  ASSERT_TRUE(ASSERT_RESULT(conn.FetchRow<bool>(
+      "SELECT rolsuper AND rolinherit AND rolcreaterole AND rolcreatedb AND rolcanlogin AND "
+      "rolreplication AND rolbypassrls FROM pg_authid WHERE rolname = 'yugabyte'")));
+
   for (const auto& role_name : special_role_names) {
     LOG(INFO) << "Checking role: " << role_name;
     auto res_role_name = ASSERT_RESULT(conn.FetchRow<std::string>(Format(

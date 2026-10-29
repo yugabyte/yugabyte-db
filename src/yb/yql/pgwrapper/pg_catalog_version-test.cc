@@ -551,9 +551,9 @@ class PgCatalogVersionTest : public LibPqTestBase {
     for (size_t i = 0; i < indexes.size(); ++i) {
       auto result = ASSERT_RESULT(conns[i].FetchAllAsString("SELECT 1"));
       ASSERT_EQ(result, "1");
-      // i == 0 needs to be NOSUPERUSER or else it is a noop that does not increment
+      // i == 0 needs to be NOCREATEDB or else it is a noop that does not increment
       // the catalog version.
-      ASSERT_OK(BumpCatalogVersion(1, &conn_yugabyte, i % 2 == 0 ? "NOSUPERUSER" : "SUPERUSER"));
+      ASSERT_OK(BumpCatalogVersion(1, &conn_yugabyte, i % 2 == 0 ? "NOCREATEDB" : "CREATEDB"));
       WaitForCatalogVersionToPropagate();
     }
     // Use datid != 1 to exclude template1, which is the database that the tserver
@@ -1174,7 +1174,7 @@ TEST_F(PgCatalogVersionTest, ResetIsGlobalDdlState) {
   ASSERT_OK(conn_yugabyte.Execute("SET yb_test_fail_next_inc_catalog_version=true"));
   // The following ALTER ROLE is a global impact DDL statement. It will
   // fail due to yb_test_fail_next_inc_catalog_version=true.
-  auto status = conn_yugabyte.Execute("ALTER ROLE yugabyte NOSUPERUSER");
+  auto status = conn_yugabyte.Execute("ALTER ROLE yugabyte NOCREATEDB");
   ASSERT_TRUE(status.IsNetworkError()) << status;
   ASSERT_STR_CONTAINS(status.ToString(), "Failed increment catalog version as requested");
 

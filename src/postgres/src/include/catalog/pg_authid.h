@@ -65,4 +65,13 @@ DECLARE_UNIQUE_INDEX_PKEY(pg_authid_oid_index, 2677, AuthIdOidIndexId, pg_authid
 MAKE_SYSCACHE(AUTHNAME, pg_authid_rolname_index, 8);
 MAKE_SYSCACHE(AUTHOID, pg_authid_oid_index, 8);
 
+/*
+ * YB: yugabyte gets the same protections as the bootstrap superuser postgres.
+ * Use this instead of comparing a role OID with BOOTSTRAP_SUPERUSERID when
+ * the check protects the role, not when it names the owner of built-in
+ * objects or the user to run as.
+ */
+#define YbIsBootstrapSuperuser(roleid) \
+	((roleid) == BOOTSTRAP_SUPERUSERID || (roleid) == YB_BOOTSTRAP_SUPERUSERID)
+
 #endif							/* PG_AUTHID_H */

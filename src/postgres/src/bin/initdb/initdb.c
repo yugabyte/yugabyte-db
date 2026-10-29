@@ -2283,7 +2283,7 @@ make_postgres(FILE *cmdfd)
 }
 
 /*
- * Create yugabyte user and database.
+ * Set the yugabyte user's password and create the yugabyte database.
  */
 static void
 make_yugabyte(FILE *cmdfd)
@@ -2292,9 +2292,8 @@ make_yugabyte(FILE *cmdfd)
 	char	  **lines;
 
 	lines = (char **) pg_malloc(4 * sizeof(char *));
-	lines[0] = pg_strdup("CREATE USER yugabyte SUPERUSER INHERIT CREATEROLE "
-						 "CREATEDB LOGIN REPLICATION BYPASSRLS PASSWORD "
-						 "$YB_PASSWORD ;\n\n");
+	/* The yugabyte role itself comes from pg_authid.dat. */
+	lines[0] = pg_strdup("ALTER USER yugabyte PASSWORD $YB_PASSWORD ;\n\n");
 	lines[1] = pg_strdup("CREATE DATABASE yugabyte $YB_OID ;\n\n");
 	lines[2] = pg_strdup("COMMENT ON DATABASE yugabyte IS "
 						 "'default administrative connection database';\n\n");
@@ -2305,8 +2304,8 @@ make_yugabyte(FILE *cmdfd)
 	if (YBIsMajorUpgradeInitDb())
 	{
 		/*
-		 * Create without password. The restore will set the password from the
-		 * old version.
+		 * Leave yugabyte's password unset. The restore will set the password
+		 * from the old version.
 		 */
 		lines = replace_token(lines, "$YB_PASSWORD", "NULL");
 

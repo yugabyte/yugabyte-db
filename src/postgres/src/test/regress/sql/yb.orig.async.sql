@@ -4,9 +4,9 @@
 
 -- LISTEN should not depend on yugabyte role
 \c - postgres;
-ALTER ROLE yugabyte RENAME TO yugabyte_async_test;
+ALTER ROLE yugabyte NOLOGIN;
 LISTEN c;
 -- reset
-ALTER ROLE yugabyte_async_test RENAME TO yugabyte;
+ALTER ROLE yugabyte LOGIN;
 
 -- Add new tests before the above test.

@@ -127,6 +127,13 @@ static void plan_recursive_revoke(CatCList *memlist,
 								  DropBehavior behavior);
 static void InitGrantRoleOptions(GrantRoleOptions *popt);
 
+/* YB declarations */
+static bool yb_plan_single_revoke(CatCList *memlist,
+								  RevokeRoleGrantAction *actions,
+								  Oid member, Oid grantor,
+								  GrantRoleOptions *popt,
+								  DropBehavior behavior);
+
 /*
  * YB: Compute the pg_authid.rolvaliduntil implied by the yb_password_validity
  * policy for a password that is being stored right now.
@@ -1069,7 +1076,7 @@ AlterRole(ParseState *pstate, AlterRoleStmt *stmt)
 	{
 		bool		should_be_super = boolVal(dissuper->arg);
 
-		if (!should_be_super && roleid == BOOTSTRAP_SUPERUSERID)
+		if (!should_be_super && YbIsBootstrapSuperuser(roleid))
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("permission denied to alter role"),
@@ -1655,6 +1662,12 @@ RenameRole(const char *oldname, const char *newname)
 				 strcmp(oldname, "postgres") != 0 ?
 				 errhint("ALTER ROLE %s RENAME TO postgres", oldname) : 0));
 
+	/* YB: yugabyte, like postgres, cannot be renamed. */
+	if (roleid == YB_BOOTSTRAP_SUPERUSERID && strcmp(newname, "yugabyte") != 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("cannot rename yugabyte")));
+
 	/*
 	 * If built with appropriate switch, whine when regression-testing
 	 * conventions for role names are violated.
@@ -2061,7 +2074,7 @@ AddRoleMems(Oid currentUserId, const char *rolename, Oid roleid,
 		{
 			Oid			memberid = lfirst_oid(iditem);
 
-			if (memberid == BOOTSTRAP_SUPERUSERID)
+			if (YbIsBootstrapSuperuser(memberid))
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_GRANT_OPERATION),
 						 errmsg("%s option cannot be granted back to your own grantor",
@@ -2298,8 +2311,8 @@ DelRoleMems(Oid currentUserId, const char *rolename, Oid roleid,
 		RoleSpec   *memberRole = lfirst(specitem);
 		Oid			memberid = lfirst_oid(iditem);
 
-		if (!plan_single_revoke(memlist, actions, memberid, grantorId,
-								popt, behavior))
+		if (!yb_plan_single_revoke(memlist, actions, memberid, grantorId,
+								   popt, behavior))
 		{
 			ereport(WARNING,
 					(errmsg("role \"%s\" has not been granted membership in role \"%s\" by role \"%s\"",
@@ -2531,7 +2544,7 @@ check_role_grantor(Oid currentUserId, Oid roleid, Oid grantorId, bool is_grant)
 					 errdetail("Only roles with privileges of role \"%s\" may grant privileges as this role.",
 							   GetUserNameFromId(grantorId, false))));
 
-		if (grantorId != BOOTSTRAP_SUPERUSERID &&
+		if (!YbIsBootstrapSuperuser(grantorId) &&
 			select_best_admin(grantorId, roleid) != grantorId)
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
@@ -2550,6 +2563,14 @@ check_role_grantor(Oid currentUserId, Oid roleid, Oid grantorId, bool is_grant)
 					 errdetail("Only roles with privileges of role \"%s\" may revoke privileges granted by this role.",
 							   GetUserNameFromId(grantorId, false))));
 	}
+
+	/*
+	 * YB: record grants named as yugabyte under postgres, as PG does for every
+	 * superuser that names no grantor, so a membership never has one row for
+	 * each of the two bootstrap superusers.
+	 */
+	if (grantorId == YB_BOOTSTRAP_SUPERUSERID)
+		return BOOTSTRAP_SUPERUSERID;
 
 	/*
 	 * If a grantor was specified explicitly, always attribute the grant to
@@ -2860,4 +2881,26 @@ assign_createrole_self_grant(const char *newval, void *extra)
 		(options & GRANT_ROLE_SPECIFIED_INHERIT) != 0;
 	createrole_self_grant_options.set =
 		(options & GRANT_ROLE_SPECIFIED_SET) != 0;
+}
+
+/*
+ * YB: plan_single_revoke(), but revoking as postgres also revokes the grant
+ * recorded under yugabyte.  A superuser's REVOKE without GRANTED BY, or with
+ * GRANTED BY yugabyte, revokes as postgres, yet a non-superuser that grants
+ * through ADMIN inherited from yugabyte records the grant under yugabyte, so
+ * without this no such REVOKE could remove it.
+ */
+static bool
+yb_plan_single_revoke(CatCList *memlist, RevokeRoleGrantAction *actions,
+					  Oid member, Oid grantor, GrantRoleOptions *popt,
+					  DropBehavior behavior)
+{
+	bool		found = plan_single_revoke(memlist, actions, member, grantor,
+										   popt, behavior);
+
+	/* |=, not ||: plan both rows when the member has one under each. */
+	if (grantor == BOOTSTRAP_SUPERUSERID)
+		found |= plan_single_revoke(memlist, actions, member,
+									YB_BOOTSTRAP_SUPERUSERID, popt, behavior);
+	return found;
 }

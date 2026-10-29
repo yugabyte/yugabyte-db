@@ -1105,7 +1105,7 @@ class PgLibPqReadFromSysCatalogTest : public PgLibPqTest {
         break;
       }
       LOG(INFO) << "ITERATION " << i;
-      RETURN_NOT_OK(BumpCatalogVersion(1, &conn, i % 2 == 1 ? "NOSUPERUSER" : "SUPERUSER"));
+      RETURN_NOT_OK(BumpCatalogVersion(1, &conn, i % 2 == 1 ? "NOCREATEDB" : "CREATEDB"));
       LOG(INFO) << "Fetching CatalogVersion. Expecting " << i + ver_orig;
       uint64_t ver = 0;
       RETURN_NOT_OK(client->GetYsqlDBCatalogMasterVersion("postgres", &ver));
