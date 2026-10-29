@@ -25,15 +25,20 @@ describe('getS3IamOptions', () => {
 });
 
 describe('getGcsIamOptions', () => {
-  it('hides federated IAM on a new config only when YBA runs on GCP', () => {
+  it('hides federated IAM on a new config when YBA runs on GCP or Azure', () => {
     expect(getGcsIamOptions(YBAHost.GCP, false, false).showFederatedIam).toBe(false);
-    for (const host of OTHER_HOSTS) {
-      expect(getGcsIamOptions(host, false, false).showFederatedIam).toBe(true);
-    }
+    expect(getGcsIamOptions(YBAHost.AZU, false, false).showFederatedIam).toBe(false);
+  });
+
+  it('keeps federated IAM on AWS and on a self-hosted or unknown host', () => {
+    expect(getGcsIamOptions(YBAHost.AWS, false, false).showFederatedIam).toBe(true);
+    expect(getGcsIamOptions(YBAHost.SELF_HOSTED, false, false).showFederatedIam).toBe(true);
   });
 
   it('shows federated IAM when editing, or while it is on', () => {
-    expect(getGcsIamOptions(YBAHost.GCP, true, false).showFederatedIam).toBe(true);
-    expect(getGcsIamOptions(YBAHost.GCP, false, true).showFederatedIam).toBe(true);
+    for (const host of [YBAHost.GCP, YBAHost.AZU]) {
+      expect(getGcsIamOptions(host, true, false).showFederatedIam).toBe(true);
+      expect(getGcsIamOptions(host, false, true).showFederatedIam).toBe(true);
+    }
   });
 });
