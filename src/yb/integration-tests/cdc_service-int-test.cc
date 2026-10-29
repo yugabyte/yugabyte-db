@@ -53,6 +53,7 @@
 #include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/slice.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -2364,7 +2365,10 @@ TEST_F(CDCServiceTestMinSpace, TestLogRetentionByOpId_MinSpace) {
       std::numeric_limits<int64_t>::max(), &segment_sequence));
   ASSERT_EQ(segment_sequence.size(), 0);
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_free_space_bytes) = 128;
+  // Just below the threshold. Not lower: WAL pre-allocation also reads this flag, and a value below
+  // the segment size fails it with ENOSPC, which DFATALs on the next append.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_free_space_bytes) =
+      FLAGS_log_stop_retaining_min_disk_mb * 1_KB - 1;
 
   ASSERT_OK(tablet_peer->log()->TEST_GetSegmentsToGC(
       std::numeric_limits<int64_t>::max(), &segment_sequence));
