@@ -546,6 +546,15 @@ AllocSetContextCreateInternal(MemoryContext parent,
 		   (Size) ((maxBlockSize - ALLOC_BLOCKHDRSZ) / ALLOC_CHUNK_FRACTION))
 		set->allocChunkLimit >>= 1;
 
+#ifdef ADDRESS_SANITIZER
+	/*
+	 * YB: Give every chunk its own malloc'd block, so that AddressSanitizer
+	 * sees the bounds of each chunk, and a freed chunk goes to its quarantine
+	 * instead of a freelist that hands it straight back out.
+	 */
+	set->allocChunkLimit = 0;
+#endif
+
 	/* Finally, do the type-independent part of context creation */
 	MemoryContextCreate((MemoryContext) set,
 						T_AllocSetContext,
@@ -757,6 +766,12 @@ AllocSetAlloc(MemoryContext context, Size size)
 	Size		blksize;
 
 	AssertArg(AllocSetIsValid(set));
+
+#ifdef ADDRESS_SANITIZER
+	/* YB: With allocChunkLimit 0, only a nonzero size takes the path below. */
+	if (size == 0)
+		size = 1;
+#endif
 
 	/*
 	 * If requested size exceeds maximum for chunks, allocate an entire block

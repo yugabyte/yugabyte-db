@@ -1287,15 +1287,21 @@ public class MiniYBCluster implements AutoCloseable {
     boolean mastersGraceful = shutdownDaemons(masterProcesses.values(),
                                               gracefulShutdownDeadlineNs,
                                               processWaitTimeNs);
+    // Fail the test if a daemon logged an error such as a sanitizer report, or crashed (e.g. a
+    // failed CHECK) instead of shutting down cleanly.
+    List<String> crashes = new ArrayList<>();
     for (LogPrinter logPrinter : logPrinters) {
-      logPrinter.stop();
+      try {
+        logPrinter.stop();
+      } catch (AssertionError e) {
+        LOG.error(e.getMessage());
+        crashes.add(e.getMessage());
+      }
     }
     if (syncClient != null) {
       syncClient.shutdown();
       syncClient = null;
     }
-    // Fail the test if a daemon crashed (e.g. a failed CHECK) instead of shutting down cleanly.
-    List<String> crashes = new ArrayList<>();
     for (MiniYBDaemon daemon : workerDaemons) {
       collectCrash(daemon, crashes);
     }

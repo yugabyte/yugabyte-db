@@ -120,6 +120,11 @@ if(NOT APPLE AND IS_ASAN AND IS_CLANG AND "${COMPILER_VERSION}" VERSION_GREATER_
   add_pg_ld_flags(-ldl)
 endif()
 
+if(IS_ASAN AND IS_CLANG)
+  add_pg_c_cxx_flags(
+    "-fsanitize-ignorelist=${YB_SRC_ROOT}/build-support/pg-sanitizer-ignorelist.txt")
+endif()
+
 get_filename_component(OPENSSL_LIB_DIR "${OPENSSL_CRYPTO_LIBRARY}" DIRECTORY)
 message("OPENSSL_LIB_DIR=${OPENSSL_LIB_DIR}")
 
