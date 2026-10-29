@@ -170,8 +170,9 @@ class TestYugabyteDBVectorStore:
 
     @patch('db.yugabytedb_vector_store.PipelineTracking')
     @patch('db.yugabytedb_vector_store.ConnectionPool')
-    def test_embeddings_persisted_gets_each_batch_once(self, mock_pool_cls, mock_pt_cls):
-        """The tracker adds each count, so passing the running total over-counted."""
+    def test_embeddings_persisted_is_the_running_total(self, mock_pool_cls, mock_pt_cls):
+        """update_embeddings_persisted replaces the stored value (MEKO-646), so each
+        call must carry the total so far. Per-batch counts left only the last batch."""
         store, mock_pool, mock_pt, mock_conn, mock_cur = _create_store(
             mock_pool_cls, mock_pt_cls
         )
@@ -188,7 +189,8 @@ class TestYugabyteDBVectorStore:
 
         counts = [c.kwargs["embeddings_count"]
                   for c in store.pipeline_tracking.update_embeddings_persisted.call_args_list]
-        assert counts == [5, 5, 5]
+        assert counts == [5, 10, 15], "each call carries the total, not its own batch"
+        assert counts[-1] == 15, "the value left in the column is the document's total"
 
     @patch('db.yugabytedb_vector_store.PipelineTracking')
     @patch('db.yugabytedb_vector_store.ConnectionPool')
