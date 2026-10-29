@@ -64,13 +64,6 @@
 DEFINE_test_flag(bool, pause_write_apply_after_if, false,
                  "Pause application of QLWriteOperation after evaluating if condition.");
 
-DEFINE_UNKNOWN_bool(ycql_consistent_transactional_paging, false,
-            "Whether to enforce consistency of data returned for second page and beyond for YCQL "
-            "queries on transactional tables. If true, read restart errors could be returned to "
-            "prevent inconsistency. If false, no read restart errors are returned but the data may "
-            "be stale. The latter is preferable for long scans. The data returned for the first "
-            "page of results is never stale regardless of this flag.");
-
 DEFINE_UNKNOWN_bool(ycql_disable_index_updating_optimization, false,
             "If true all secondary indexes must be updated even if the update does not change "
             "the index data.");
@@ -1925,14 +1918,7 @@ Status QLReadOperation::SetPagingStateIfNecessary(YQLRowwiseIteratorIf* iter,
       }
     }
     if (response_->has_paging_state()) {
-      if (FLAGS_ycql_consistent_transactional_paging) {
-        read_time.AddToPB(response_->mutable_paging_state());
-      } else {
-        // Using SingleTime will help avoid read restarts on second page and later but will
-        // potentially produce stale results on those pages.
-        auto per_row_consistent_read_time = ReadHybridTime::SingleTime(read_time.read);
-        per_row_consistent_read_time.AddToPB(response_->mutable_paging_state());
-      }
+      PagingReadTime(read_time).AddToPB(response_->mutable_paging_state());
     }
   }
 
