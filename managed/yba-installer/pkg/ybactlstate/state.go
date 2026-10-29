@@ -36,6 +36,9 @@ type PostgresState struct {
 	UseExisting bool `json:"UseExisting"`
 	IsEnabled   bool `json:"enabled"`
 	LdapEnabled bool `json:"ldap_enabled"`
+	// Major version of the first postgres cluster of this install. Clusters created before 18 have
+	// data checksums off, and pg_upgrade needs every later cluster to match.
+	InitialMajorVersion int `json:"initial_major_version"`
 }
 
 type ReplicatedMigrationState struct {
@@ -66,9 +69,10 @@ func New() *State {
 		RootInstall: viper.GetString("installRoot"),
 		Username:    viper.GetString("service_username"),
 		Postgres: PostgresState{
-			UseExisting: viper.GetBool("postgres.useExisting.enabled"),
-			IsEnabled:   common.IsPostgresEnabled(),
-			LdapEnabled: viper.GetBool("postgres.install.ldap_enabled"),
+			UseExisting:         viper.GetBool("postgres.useExisting.enabled"),
+			IsEnabled:           common.IsPostgresEnabled(),
+			LdapEnabled:         viper.GetBool("postgres.install.ldap_enabled"),
+			InitialMajorVersion: common.PostgresMajorVersion(common.PostgresVersion),
 		},
 		Ybdb: YbdbState{
 			IsEnabled: viper.GetBool("ybdb.install.enabled"),
