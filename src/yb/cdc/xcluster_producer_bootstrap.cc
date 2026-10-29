@@ -28,6 +28,7 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/util/logging.h"
 #include "yb/util/status_format.h"
+#include "yb/util/sync_point.h"
 
 DEFINE_test_flag(bool, cdc_inject_replication_index_update_failure, false,
     "Injects an error after updating a tablet's replication index entry");
@@ -121,6 +122,8 @@ Status XClusterProducerBootstrap::RunBootstrapProducer() {
   LOG_WITH_FUNC(INFO) << "Initializing xCluster Streams";
   RETURN_NOT_OK(CreateAllBootstrapStreams());
   RETURN_NOT_OK(ConstructServerToTabletsMapping());
+
+  TEST_SYNC_POINT("XClusterProducerBootstrap::RunBootstrapProducer::BeforeReadingOpIds");
 
   LOG_WITH_FUNC(INFO) << "Retrieving Latest OpIDs for each tablet.";
   RETURN_NOT_OK(GetLatestOpIdsFromLocalPeers());
@@ -401,8 +404,10 @@ Status XClusterProducerBootstrap::UpdateCdcStateTableWithCheckpoints() {
     entry.checkpoint = op_id;
     entries_to_insert.emplace_back(std::move(entry));
   }
-  RETURN_NOT_OK(cdc_state_table_->UpsertEntries(entries_to_insert));
-  return Status::OK();
+  if (req_.keep_existing_checkpoints()) {
+    return cdc_state_table_->InsertEntries(entries_to_insert);
+  }
+  return cdc_state_table_->UpsertEntries(entries_to_insert);
 }
 
 Status XClusterProducerBootstrap::RecordStreamBootstrapInfo() {

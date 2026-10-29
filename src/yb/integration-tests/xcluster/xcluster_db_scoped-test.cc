@@ -17,6 +17,7 @@
 
 #include <gmock/gmock.h>
 
+#include "yb/cdc/cdc_state_table.h"
 #include "yb/client/table.h"
 #include "yb/client/xcluster_client.h"
 #include "yb/client/yb_table_name.h"
@@ -25,6 +26,7 @@
 #include "yb/common/xcluster_util.h"
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/gutil/strings/join.h"
+#include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/xcluster/xcluster_test_utils.h"
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
 #include "yb/master/catalog_manager.h"
@@ -40,10 +42,14 @@
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/countdown_latch.h"
 #include "yb/util/json_document.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/string_util.h"
 #include "yb/util/subprocess.h"
+#include "yb/util/sync_point.h"
+#include "yb/util/test_thread_holder.h"
 
 DECLARE_bool(allow_insecure_connections);
 DECLARE_string(certs_dir);
@@ -57,6 +63,7 @@ DECLARE_bool(vector_index_store_payload);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_start);
 DECLARE_bool(TEST_xcluster_drop_bootstrap_producer_response);
 DECLARE_bool(TEST_xcluster_fail_record_stream_bootstrap_info);
+DECLARE_bool(TEST_enable_sync_points);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
 DECLARE_bool(disable_xcluster_db_scoped_new_table_processing);
 DECLARE_int32(cdc_parent_tablet_deletion_task_retry_secs);
@@ -171,6 +178,22 @@ class XClusterDBScopedTest : public XClusterYsqlTestBase {
 
   Result<std::vector<TabletId>> GetProducerStreamBootstrapTablets() {
     return GetProducerStreamBootstrapTablets(producer_table_->id());
+  }
+
+  Result<std::unordered_map<TabletId, OpId>> GetProducerStreamCheckpoints() {
+    const auto stream_id = VERIFY_RESULT(GetProducerStreamId(producer_table_->id()));
+    auto cdc_state_table = cdc::MakeCDCStateTable(producer_client());
+    Status iteration_status;
+    std::unordered_map<TabletId, OpId> result;
+    for (auto row_result : VERIFY_RESULT(cdc_state_table.GetTableRange(
+             cdc::CDCStateTableEntrySelector().IncludeCheckpoint(), &iteration_status))) {
+      RETURN_NOT_OK(row_result);
+      if (row_result->key.stream_id == stream_id && row_result->checkpoint) {
+        result[row_result->key.tablet_id] = *row_result->checkpoint;
+      }
+    }
+    RETURN_NOT_OK(iteration_status);
+    return result;
   }
 
   std::vector<TabletId> ProducerActiveTabletIds(const TableId& table_id) {
@@ -519,6 +542,59 @@ TEST_F(XClusterDBScopedAutomaticModeTest, InitialCheckpointRetryKeepsRecordedChe
 
   ASSERT_OK(InsertRowsInProducer(0, 50));
   ASSERT_OK(CreateReplicationFromCheckpoint());
+  ASSERT_OK(VerifyWrittenRecords());
+}
+
+// Tests that a checkpoint run left behind by a master failover does not overwrite the new
+// leader's checkpoint once the tablets have split.
+TEST_F(XClusterDBScopedAutomaticModeTest, StaleCheckpointRunAfterMasterFailover) {
+  ASSERT_OK(SetUpClusters(SetupParams{.num_masters = 3}));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_replicated_tables) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
+
+  // Pause the first BootstrapProducer run after it resolves the tablets.
+  std::atomic<bool> first_run{true};
+  CountDownLatch paused(1), resume(1);
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack(
+      "XClusterProducerBootstrap::RunBootstrapProducer::BeforeReadingOpIds", [&](void*) {
+        if (first_run.exchange(false)) {
+          paused.CountDown();
+          resume.Wait();
+        }
+      });
+  sync_point->EnableProcessing();
+
+  TestThreadHolder threads;
+  threads.AddThreadFunctor([this] {
+    ASSERT_OK(
+        CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  });
+  ASSERT_TRUE(paused.WaitFor(MonoDelta::FromSeconds(kRpcTimeout)));
+
+  // The new leader checkpoints again while the first run stays paused.
+  ASSERT_OK(producer_cluster()->StepDownMasterLeader());
+  threads.JoinAll();
+  const auto checkpointed_tablets = ProducerActiveTabletIds();
+  ASSERT_EQ(ASSERT_RESULT(GetProducerStreamBootstrapTablets()), checkpointed_tablets);
+  const auto checkpoints = ASSERT_RESULT(GetProducerStreamCheckpoints());
+
+  ASSERT_OK(InsertRowsInProducer(0, 50));
+  ASSERT_OK(SplitTabletsOnce(producer_cluster_, producer_table_->id()));
+  ASSERT_OK(InsertRowsInProducer(50, 100));
+
+  // The first run reads the split parents' op ids, which are now past their SPLIT_OPs.
+  StringWaiterLogSink rejected_sink("Not recording the bootstrap tablets of xCluster stream");
+  resume.CountDown();
+  ASSERT_OK(rejected_sink.WaitFor(MonoDelta::FromSeconds(kRpcTimeout)));
+  sync_point->ClearAllCallBacks();
+  const auto checkpoints_after = ASSERT_RESULT(GetProducerStreamCheckpoints());
+  for (const auto& tablet_id : checkpointed_tablets) {
+    ASSERT_EQ(checkpoints_after.at(tablet_id), checkpoints.at(tablet_id)) << tablet_id;
+  }
+
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+  ASSERT_OK(InsertRowsInProducer(100, 150));
   ASSERT_OK(VerifyWrittenRecords());
 }
 

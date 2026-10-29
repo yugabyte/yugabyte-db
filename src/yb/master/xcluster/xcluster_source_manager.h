@@ -281,7 +281,7 @@ class XClusterSourceManager {
 
   Status CheckpointStreamsToEndOfWAL(
       const std::vector<std::pair<TableId, xrepl::StreamId>>& table_streams,
-      const LeaderEpoch& epoch, bool check_if_bootstrap_required,
+      const LeaderEpoch& epoch, bool check_if_bootstrap_required, bool keep_existing_checkpoints,
       std::function<void(Result<bool>)> user_callback);
 
   std::vector<CDCStreamInfoPtr> GetStreamsForTable(

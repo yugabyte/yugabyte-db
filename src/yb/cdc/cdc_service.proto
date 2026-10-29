@@ -692,6 +692,8 @@ message BootstrapProducerRequestPB {
   repeated bytes xrepl_stream_ids = 2 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   // Check if data bootstrap is required. Equivalent to the IsBootstrapRequired RPC.
   optional bool check_if_bootstrap_required = 3; // [default = false]
+  // Keep the cdc_state checkpoints that already exist instead of overwriting them.
+  optional bool keep_existing_checkpoints = 4; // [default = false]
 }
 
 message BootstrapProducerResponsePB {

@@ -658,8 +658,11 @@ Status XClusterSourceManager::CheckpointXClusterStreams(
       SCHECK(
           op0_tablet_ids.empty(), InvalidArgument,
           "Tablets can only be provided for OpId0 checkpoints");
+      // Keep existing checkpoints. A stale run from before a master failover can finish after the
+      // tablets split, and its checkpoint would then skip the split.
       return CheckpointStreamsToEndOfWAL(
-          table_streams, epoch, check_if_bootstrap_required, user_callback);
+          table_streams, epoch, check_if_bootstrap_required, /*keep_existing_checkpoints=*/true,
+          user_callback);
   }
 
   FATAL_INVALID_ENUM_VALUE(StreamCheckpointLocation, checkpoint_location);
@@ -942,9 +945,11 @@ Result<std::vector<TabletId>> XClusterSourceManager::GetStreamBootstrapTablets(
 
 Status XClusterSourceManager::CheckpointStreamsToEndOfWAL(
     const std::vector<std::pair<TableId, xrepl::StreamId>>& table_streams, const LeaderEpoch& epoch,
-    bool check_if_bootstrap_required, std::function<void(Result<bool>)> user_callback) {
+    bool check_if_bootstrap_required, bool keep_existing_checkpoints,
+    std::function<void(Result<bool>)> user_callback) {
   cdc::BootstrapProducerRequestPB bootstrap_req;
   bootstrap_req.set_check_if_bootstrap_required(check_if_bootstrap_required);
+  bootstrap_req.set_keep_existing_checkpoints(keep_existing_checkpoints);
 
   master::TSDescriptorPtr ts_desc = nullptr;
   for (const auto& [table_id, stream_id] : table_streams) {
@@ -1593,6 +1598,7 @@ Status XClusterSourceManager::MarkIndexBackfillCompleted(
 
   RETURN_NOT_OK(CheckpointStreamsToEndOfWAL(
       table_streams, epoch, /*check_if_bootstrap_required=*/false,
+      /*keep_existing_checkpoints=*/false,
       [&promise](Result<bool> result) { promise.set_value(std::move(result)); }));
   auto bootstrap_required = VERIFY_RESULT(promise.get_future().get());
 
