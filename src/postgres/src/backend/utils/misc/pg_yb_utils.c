@@ -7260,7 +7260,13 @@ YbRegisterSysTableForPrefetching(int sys_table_id)
 			break;
 		case AuthIdRelationId:	/* pg_authid */
 			db_id = Template1DbOid;
-			index_id = AuthIdRolnameIndexId;
+			/*
+			 * Mandatory: a conn mgr auth passthrough control backend looks up
+			 * roles by name while prefetching is active, and with its relcache
+			 * built, an AUTHNAME catcache miss (e.g. a dropped role) is an
+			 * index-ordered scan of pg_authid_rolname_index.
+			 */
+			mandatory_index_id = AuthIdRolnameIndexId;
 			sys_only_filter_attr = InvalidAttrNumber;
 			break;
 		case DatabaseRelationId:	/* pg_database */

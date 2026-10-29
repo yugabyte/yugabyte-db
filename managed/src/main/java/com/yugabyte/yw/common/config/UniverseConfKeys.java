@@ -633,7 +633,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           ScopeType.UNIVERSE,
           "Skip TLS Cert Validation",
           "Used to skip certificates validation for the configure phase."
-              + "Possible values - ALL, HOSTNAME, NONE",
+              + "Possible values - ALL, HOSTNAME, REQUIRE_SAN, NONE",
           ConfDataType.SkipCertValdationEnum,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> deleteOrphanSnapshotOnStartup =

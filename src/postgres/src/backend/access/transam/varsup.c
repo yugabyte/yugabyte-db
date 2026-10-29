@@ -57,6 +57,9 @@ VariableCache ShmemVariableCache = NULL;
 /* next OID to assign during YSQL upgrade */
 Oid			ysql_upgrade_next_oid = InvalidOid;
 
+/* lowest OID to assign during YSQL upgrade, set by the upgrade runner */
+Oid			yb_ysql_upgrade_min_next_oid = InvalidOid;
+
 
 /*
  * Allocate the next FullTransactionId for a new transaction or
@@ -696,6 +699,16 @@ GetNewObjectId(void)
 	{
 		if (!OidIsValid(ysql_upgrade_next_oid))
 			ysql_upgrade_next_oid = YbGetMaxAllocatedSystemOid() + 1;
+
+		/*
+		 * The catalogs of this database are not the only ones that can hold
+		 * the OID: a migration that creates a shared relation inserts some of
+		 * its rows, with OIDs assigned here, into every database.  Before
+		 * such a migration, the upgrade runner sets the minimum above the
+		 * system OIDs of every database.
+		 */
+		if (ysql_upgrade_next_oid < yb_ysql_upgrade_min_next_oid)
+			ysql_upgrade_next_oid = yb_ysql_upgrade_min_next_oid;
 
 		result = ysql_upgrade_next_oid;
 		ysql_upgrade_next_oid++;

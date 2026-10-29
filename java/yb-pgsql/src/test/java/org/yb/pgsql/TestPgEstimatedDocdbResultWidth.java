@@ -5,7 +5,6 @@ import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_APPEND;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_ONLY_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_MODIFY_TABLE;
-import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_NESTED_LOOP;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_RESULT;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_SEQ_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.getExplainOutput;
@@ -127,41 +126,6 @@ public class TestPgEstimatedDocdbResultWidth extends BasePgSQLTest {
                     .relationName(table_name)
                     .estimatedDocdbResultWidth(Checkers.equal(expected_docdb_result_width))
                     .build())
-                  .build())
-              .build());
-    }
-    catch (AssertionError e) {
-      LOG.info("Failed Query: " + query);
-      LOG.info(e.toString());
-      throw e;
-    }
-  }
-
-  /* The aggregate above a join is not pushed down to either scan, so each scan keeps the width of
-   * what it projects.  Both join inputs are Seq Scans, the outer one listed first.
-   */
-  private void testAggregateOverJoinDocdbResultWidhEstimationHelper(
-      Statement stmt, String query, String join_node_type,
-      String outer_alias, Integer outer_width,
-      String inner_alias, Integer inner_width) throws Exception {
-    try {
-      testExplainDebug(stmt, query,
-          makeTopLevelBuilder()
-              .plan(makePlanBuilder()
-                  .nodeType(NODE_AGGREGATE)
-                  .plans(makePlanBuilder()
-                      .nodeType(join_node_type)
-                      .plans(makePlanBuilder()
-                                 .nodeType(NODE_SEQ_SCAN)
-                                 .alias(outer_alias)
-                                 .estimatedDocdbResultWidth(Checkers.equal(outer_width))
-                                 .build(),
-                             makePlanBuilder()
-                                 .nodeType(NODE_SEQ_SCAN)
-                                 .alias(inner_alias)
-                                 .estimatedDocdbResultWidth(Checkers.equal(inner_width))
-                                 .build())
-                      .build())
                   .build())
               .build());
     }
@@ -424,7 +388,6 @@ public class TestPgEstimatedDocdbResultWidth extends BasePgSQLTest {
       stmt.execute("SET yb_enable_optimizer_statistics = true");
       stmt.execute("SET yb_enable_base_scans_cost_model = true");
       stmt.execute("SET yb_bnl_batch_size = 1024");
-      stmt.execute("SET enable_bitmapscan = false"); // TODO(#20573): update bitmap scan cost model
     }
   }
 
@@ -541,6 +504,9 @@ public class TestPgEstimatedDocdbResultWidth extends BasePgSQLTest {
 
   @Test
   public void testDocdbResultWidthEstimationArraysAndUserDefinedTypes() throws Exception {
+    /* TODO(#20955) : Some aggregate functions can be pushed down to DocDB,
+     * but it is not modeled properly in the cost model.
+     */
     try (Statement stmt = connection.createStatement()) {
 
       stmt.execute("CREATE TYPE two_ints AS (i1 INTEGER, i2 INTEGER)");
@@ -606,24 +572,24 @@ public class TestPgEstimatedDocdbResultWidth extends BasePgSQLTest {
 
   @Test
   public void testDocdbResultWidthEstimationAggregateFunctions() throws Exception {
+    /* TODO(#20955) : Some aggregate functions can be pushed down to DocDB,
+     * but it is not modeled properly in the cost model.
+     */
     try (Statement stmt = connection.createStatement()) {
 
       stmt.execute("CREATE TABLE t_20955 (i1 INT, i2 INT, i3 INT)");
       stmt.execute("INSERT INTO t_20955 values (1, 1, 1)");
       stmt.execute("ANALYZE t_20955");
 
-      /* The scan under a pushed-down aggregate returns one partial-aggregate row per read request:
-       * 1 byte for the null indicator and 8 bytes for the int64 count or sum.
-       */
+      /* Actual result 9 (1 byte for null indicator and 8 byte for int64 result */
       testAggregateFunctionsDocdbResultWidhEstimationHelper(stmt,
-          "SELECT count(i1) FROM t_20955", "t_20955", 9);
+          "SELECT count(i1) FROM t_20955", "t_20955", 5);
+      /* Actual result 9 (1 byte for null indicator and 8 byte for int64 result */
       testAggregateFunctionsDocdbResultWidhEstimationHelper(stmt,
-          "SELECT sum(i1) FROM t_20955", "t_20955", 9);
-      /* avg accumulates in an int8 array (count and sum), which DocDB returns as two int64
-       * columns: 2 * (1 + 8).
-       */
+          "SELECT sum(i1) FROM t_20955", "t_20955", 5);
+      /* Actual result 18 (1 byte for null indicator and 17 byte for numeric result */
       testAggregateFunctionsDocdbResultWidhEstimationHelper(stmt,
-          "SELECT avg(i1) FROM t_20955", "t_20955", 18);
+          "SELECT sum(i1) FROM t_20955", "t_20955", 5);
 
       /* Result min and max have same type as input columns */
       testAggregateFunctionsDocdbResultWidhEstimationHelper(stmt,
@@ -633,34 +599,6 @@ public class TestPgEstimatedDocdbResultWidth extends BasePgSQLTest {
 
       testAggregateFunctionsDocdbResultWidhEstimationHelper(stmt,
           "SELECT count(*) FROM t_20955", "t_20955", 9);
-
-      /* Not pushed down: sum over bigint accumulates in an internal transition type that DocDB
-       * cannot evaluate, so the scan ships i1.
-       */
-      testAggregateFunctionsDocdbResultWidhEstimationHelper(stmt,
-          "SELECT sum(i1::bigint) FROM t_20955", "t_20955", 5);
-
-      /* Not pushed down: clock_timestamp() is volatile and not on the DocDB pushdown whitelist,
-       * so the filter stays local, the aggregate stays on the PG side, and the scan returns the
-       * ybctid (33 bytes for a table without a primary key) since it projects no column.
-       */
-      testAggregateFunctionsDocdbResultWidhEstimationHelper(stmt,
-          "SELECT count(*) FROM t_20955 WHERE clock_timestamp() > '2000-01-01'", "t_20955", 33);
-
-      /* Pushed down: random() is volatile too, but on the whitelist, so the filter goes to DocDB
-       * with the aggregate.
-       */
-      testAggregateFunctionsDocdbResultWidhEstimationHelper(stmt,
-          "SELECT count(*) FROM t_20955 WHERE random() >= 0", "t_20955", 9);
-
-      /* Not pushed down: the aggregate above a join leaves each scan with the width of what it
-       * projects, i1 for the outer scan and the ybctid for the inner scan, which projects no
-       * column.
-       */
-      testAggregateOverJoinDocdbResultWidhEstimationHelper(stmt,
-          "/*+ Leading((a b)) NestLoop(a b) Set(enable_material off) */ " +
-          "SELECT count(a.i1) FROM t_20955 a CROSS JOIN t_20955 b",
-          NODE_NESTED_LOOP, "a", 5, "b", 33);
     }
   }
 

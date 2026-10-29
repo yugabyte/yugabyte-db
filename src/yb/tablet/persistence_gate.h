@@ -42,22 +42,35 @@ namespace tablet {
 using PersistenceBlockLookupFunc =
     std::function<Result<std::optional<HybridTime>>(int64_t op_term, uint32_t database_oid)>;
 
+// A function that returns whether this server's tablets must give up and not seek leadership
+// because the server cannot currently judge stamped writes and commits (e.g., a TServer without a
+// lease).  Called on every election start, under the Raft lock, and on every leadership sweep, so
+// it must be cheap: it may take only briefly held locks, and none that is held while taking the
+// Raft lock.
+using ShouldRelinquishLeadershipFunc = std::function<bool()>;
+
 // Decides whether a tablet leader may replicate a YSQL write or commit stamped with its database
 // and origination time, given the persistence block map that StopPersisting and StartPersisting
 // set.  The map lives in the TServer or master, which the tablet layer cannot reach, so each
 // server builds one gate with a lookup into its own copy and gives it to every TabletPeer.
 class PersistenceGate {
  public:
+  // Without should_relinquish_leadership_func, ShouldRelinquishLeadership always returns false.
   PersistenceGate(
       PersistenceBlockLookupFunc lookup_func,
-      const scoped_refptr<MetricEntity>& server_metric_entity);
+      const scoped_refptr<MetricEntity>& server_metric_entity,
+      ShouldRelinquishLeadershipFunc should_relinquish_leadership_func = nullptr);
 
   // Returns an error if replicate_msg, which already has its op id and hybrid time, must not be
   // replicated.  Called through ConsensusContext::CheckReplicateAllowed, under the Raft lock.
   Status CheckPersistAllowed(const consensus::LWReplicateMsg& replicate_msg) const;
 
+  // Whether this server's tablets must give up leadership and not seek it.
+  bool ShouldRelinquishLeadership() const;
+
  private:
   const PersistenceBlockLookupFunc lookup_func_;
+  const ShouldRelinquishLeadershipFunc should_relinquish_leadership_func_;
   const scoped_refptr<Counter> persistence_violation_rejections_;
 };
 

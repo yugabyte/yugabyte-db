@@ -401,6 +401,7 @@ FullTransactionIdNewer(FullTransactionId a, FullTransactionId b)
 #endif							/* FRONTEND */
 
 /* YB declarations */
+extern PGDLLIMPORT Oid yb_ysql_upgrade_min_next_oid;
 extern void YbAtEOXact_UpgradeNextOid(void);
 
 #endif							/* TRANSAM_H */

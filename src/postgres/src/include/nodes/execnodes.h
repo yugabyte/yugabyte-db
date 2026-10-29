@@ -1748,7 +1748,7 @@ typedef struct IndexScanState
 	Size		iss_PscanLen;
 
 	/* YB specific attributes. */
-	bool		yb_iss_might_recheck;	/* legacy cost model only */
+	bool		yb_iss_might_recheck;
 	List	   *yb_iss_aggrefs;
 } IndexScanState;
 
@@ -1799,7 +1799,7 @@ typedef struct IndexOnlyScanState
 	int			ioss_NameCStringCount;
 
 	/* YB specific attributes. */
-	bool		yb_ioss_might_recheck;	/* legacy cost model only */
+	bool		yb_ioss_might_recheck;
 	List	   *yb_ioss_aggrefs;
 	int			yb_ioss_num_decoded_pk_cols;		/* number of decoded PK columns */
 	AttrNumber *yb_ioss_decoded_pk_base_attnums;	/* base table attnums */

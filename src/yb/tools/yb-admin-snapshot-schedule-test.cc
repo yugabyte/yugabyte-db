@@ -6262,23 +6262,24 @@ class YbAdminSnapshotScheduleTestWithYsqlTransactionalDDL
   }
 };
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, BeforeCreateFinishes,
+TEST_F_EX(YbAdminSnapshotScheduleTest, DisallowRestoreBeforeCreateFinishes,
           YbAdminSnapshotScheduleTestWithYsqlTransactionalDDL) {
   auto schedule_id = ASSERT_RESULT(PreparePg(YsqlColocationConfig::kDBColocated));
 
   auto conn = ASSERT_RESULT(PgConnect(kTableName.namespace_name()));
   ASSERT_OK(conn.ExecuteFormat("CREATE TABLE demo_new (id INT, name TEXT)"));
 
-  // We want to restore to time before table was created.
   auto time = ASSERT_RESULT(GetCurrentTime());
-  // Skip txn verification at the master so that txn metadata remains.
-  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_skip_transaction_verification", "true"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_disable_ysql_ddl_txn_verification", "true"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("report_ysql_ddl_txn_status_to_master", "false"));
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+      "ysql_ddl_transaction_wait_for_ddl_verification", "false"));
   ASSERT_OK(conn.ExecuteFormat("CREATE TABLE demo (id INT, name TEXT)"));
 
-  // Reset the flag.
-  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_skip_transaction_verification", "false"));
-  // Restore to this time. There should be no fatals.
-  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+  ASSERT_NOK_STR_CONTAINS(
+      RestoreSnapshotSchedule(schedule_id, time), "undergoing DDL verification");
+
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_disable_ysql_ddl_txn_verification", "false"));
 }
 
 // PITRs done on an xcluster consumer for an xcluster failover have different requirements. XCluster

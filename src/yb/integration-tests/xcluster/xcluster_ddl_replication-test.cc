@@ -156,28 +156,6 @@ class XClusterDDLReplicationTest : public XClusterDDLReplicationTestBase {
     propagation_timeout_ *= 2;
   }
 
-  Status SetUpClustersAndCheckpointReplicationGroup(
-      const SetupParams& params = XClusterDDLReplicationTestBase::kDefaultParams) {
-    RETURN_NOT_OK(SetUpClusters(params));
-    LOG(INFO) << "SetupClusters done";
-
-    RETURN_NOT_OK(
-        CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
-    LOG(INFO) << "CheckpointReplicationGroup done";
-    // Bootstrap here would have no effect because the database is empty so we skip it for the test.
-    return Status::OK();
-  }
-
-  Status SetUpClustersAndReplication(
-      const SetupParams& params = XClusterDDLReplicationTestBase::kDefaultParams) {
-    RETURN_NOT_OK(SetUpClustersAndCheckpointReplicationGroup(params));
-    LOG(INFO) << "SetUpClustersAndCheckpointReplicationGroup done";
-
-    RETURN_NOT_OK(CreateReplicationFromCheckpoint());
-    LOG(INFO) << "CreateReplicationFromCheckpoint done";
-    return Status::OK();
-  }
-
   // Sets up RF1 clusters replicating table vec_test (id int, embedding vector(3)) of a single
   // tablet with ybhnsw index vec_test_idx, and returns the id of the producer tablet.
   Result<TabletId> SetUpSingleTabletVectorIndexTable() {
@@ -256,11 +234,6 @@ class XClusterDDLReplicationTest : public XClusterDDLReplicationTestBase {
         bootstrap_required, IllegalState, "Bootstrap should always be required for Automatic mode");
 
     return AddNamespaceToXClusterReplication(source_db_id, target_db_id);
-  }
-
-  Result<HybridTime> GetXClusterSafeTime() {
-    return consumer_client()->GetXClusterSafeTimeForNamespace(
-        VERIFY_RESULT(GetNamespaceId(consumer_client())), master::XClusterSafeTimeFilter::NONE);
   }
 
   void CheckIndexRebuild(const std::string& table, const std::string& index,
@@ -2566,44 +2539,6 @@ TEST_F(XClusterDDLReplicationTest, HandleEarlierApplySafeTime) {
   ASSERT_OK(VerifyWrittenRecords(std::vector<TableName>{kTableName}));
 }
 
-class XClusterDDLReplicationSwitchoverTest : public XClusterDDLReplicationTest {
- public:
-  bool SetReplicationDirection(ReplicationDirection direction) override {
-    if (XClusterDDLReplicationTest::SetReplicationDirection(direction)) {
-      std::swap(cluster_A_, cluster_B_);
-      return true;
-    }
-    return false;
-  }
-
-  // Perform switchover from A->B to B->A.
-  Status Switchover() {
-    LOG(INFO) << "===== Beginning switchover: checkpoint B";
-    SetReplicationDirection(ReplicationDirection::BToA);
-    RETURN_NOT_OK(CheckpointReplicationGroup(
-        kBackwardsReplicationGroupId, /*require_no_bootstrap_needed=*/false));
-    LOG(INFO) << "===== Switchover: set up replication from B to A";
-    SetReplicationDirection(ReplicationDirection::BToA);
-    RETURN_NOT_OK(CreateReplicationFromCheckpoint(
-        cluster_A_->mini_cluster_->GetMasterAddresses(), kBackwardsReplicationGroupId));
-    LOG(INFO) << "===== Continuing switchover: drop replication from A to B";
-    SetReplicationDirection(ReplicationDirection::AToB);
-    RETURN_NOT_OK(DeleteOutboundReplicationGroup());
-    LOG(INFO) << "===== Finishing switchover: wait for B to no longer be in readonly mode";
-    SetReplicationDirection(ReplicationDirection::BToA);
-    RETURN_NOT_OK(WaitForReadOnlyModeOnAllTServers(
-        VERIFY_RESULT(GetNamespaceId(producer_client())), /*is_read_only=*/false, cluster_B_));
-    LOG(INFO) << "===== Switchover done";
-
-    return Status::OK();
-  }
-
-  Cluster* cluster_A_ = &producer_cluster_;
-  Cluster* cluster_B_ = &consumer_cluster_;
-  const xcluster::ReplicationGroupId kBackwardsReplicationGroupId =
-      xcluster::ReplicationGroupId("backwards_replication");
-};
-
 TEST_F(XClusterDDLReplicationSwitchoverTest, SwitchoverWithWorkload) {
   // Set up replication from A to B.
   ASSERT_OK(SetUpClustersAndReplication());
@@ -2972,12 +2907,14 @@ TEST_F(XClusterDDLReplicationSwitchoverTest, PgCron) {
     return conn.FetchRow<pgwrapper::PGUint64>(
         Format("SELECT COUNT(*) FROM cron_table WHERE a = '$0'", cluster_name));
   };
-  // A job in flight on A when switchover takes away its pg_cron leadership is expectedly marked
-  // failed with "pg_cron leader changed"; ignore that.
+  // A job in flight on A when switchover makes A a target is expectedly marked failed; ignore
+  // that.  Either pg_cron notices the role change first ("pg_cron leader changed"), or A refuses
+  // the job's write and/or the launcher's next write about the run, so B's pg_cron marks the run
+  // failed once it becomes leader ("server restarted").
   auto get_failed_runs = [&](pgwrapper::PGConn& conn) -> Result<uint64_t> {
     return conn.FetchRow<pgwrapper::PGUint64>(
         "SELECT COUNT(*) FROM cron.job_run_details WHERE status = 'failed' "
-        "AND return_message <> 'pg_cron leader changed'");
+        "AND return_message NOT IN ('pg_cron leader changed', 'server restarted')");
   };
 
   SleepFor(30s);
@@ -3004,8 +2941,9 @@ TEST_F(XClusterDDLReplicationSwitchoverTest, PgCron) {
   failed_runs = ASSERT_RESULT(get_failed_runs(conn_A));
   ASSERT_EQ(failed_runs, 0);
 
-  // Make sure target did not attempt to perform any writes.
-  ASSERT_EQ(sync_point_instance_count, 0);
+  // A run in flight on A when it becomes a target may have its write and/or the launcher's next
+  // bookkeeping write refused (the launcher exits on that refusal), but A must not keep retrying.
+  ASSERT_LE(sync_point_instance_count, 2);
 }
 
 using XClusterDDLReplicationFailoverTest = XClusterDDLReplicationSwitchoverTest;

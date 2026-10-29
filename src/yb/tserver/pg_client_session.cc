@@ -183,6 +183,7 @@ DECLARE_bool(enable_qos);
 #endif
 
 DECLARE_bool(enable_object_lock_fastpath);
+DECLARE_bool(enforce_xcluster_guarded_lease);
 DECLARE_bool(vector_index_dump_stats);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
@@ -3510,10 +3511,19 @@ class PgClientSession::Impl {
     }
 
     // DMLs.
-    if (xcluster_context()->IsReadOnlyMode(options.namespace_id())) {
+    // Without enforce_xcluster_guarded_lease, the role is UNAVAILABLE only before this TServer's
+    // first heartbeat.  Do not refuse DMLs to every database then: nothing guarantees writes are
+    // refused to targets in that window anyway, since IsReadOnlyMode is also false until then.
+    const bool refuse_dmls_because_role =
+        role == XClusterNamespaceInfoPB::AUTOMATIC_TARGET ||
+        (role == XClusterNamespaceInfoPB::UNAVAILABLE && FLAGS_enforce_xcluster_guarded_lease);
+    if (xcluster_context()->IsReadOnlyMode(options.namespace_id()) || refuse_dmls_because_role) {
       for (const auto& op : data->req.ops()) {
         if (op.has_write() && !op.write().is_backfill()) {
           TEST_SYNC_POINT_CALLBACK("WriteDetectedOnXClusterReadOnlyModeTarget", nullptr);
+          if (role == XClusterNamespaceInfoPB::UNAVAILABLE) {
+            return MakeForbiddenOnAutomaticTargetStatus(role, "DML operations");
+          }
           // Only DDLs and index backfill is allowed in xCluster read-only mode.
           return STATUS(
               IllegalState,

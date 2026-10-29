@@ -55,13 +55,18 @@ if [[ "$(id -u)" != "0" && "$USER" != "yugabyte" ]]; then
   exit 1
 fi
 
-find_core_files="find $YB_CRASH_DIR -name 'core_*' -type f -printf '%T+\t%p\n' | sort |
-  awk '{print \$2}'"
-num_core_files=$(eval $find_core_files | wc -l)
+# NUL-delimited so core names with spaces (e.g. "... (deleted)" when the crashed binary was
+# replaced on disk) or glob characters survive intact.
+# Counted in the loop because bash's array-length syntax opens a Jinja comment.
+core_files=()
+num_core_files=0
+while IFS=$'\t' read -r -d '' _ file; do
+  core_files+=("$file")
+  num_core_files=$((num_core_files + 1))
+done < <(find "$YB_CRASH_DIR" -name 'core_*' -type f -printf '%T@\t%p\0' | sort -z -n)
 if [[ "${num_core_files}" -gt "${num_cores_to_keep}" ]]; then
-  core_files_to_delete=$(eval $find_core_files | head -n$(($num_core_files - $num_cores_to_keep)))
-  for file in $core_files_to_delete; do
+  for file in "${core_files[@]:0:num_core_files-num_cores_to_keep}"; do
     echo "Deleting core file $file"
-    rm -f $file
+    rm -f -- "$file"
   done
 fi

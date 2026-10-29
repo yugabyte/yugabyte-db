@@ -28,7 +28,7 @@ const buildFormValues = (
     generalSettings: {
       universeName: 'test',
       databaseVersion: '2025.1.0.0',
-      providerConfiguration: { uuid: 'provider-uuid', code }
+      providerConfigurations: [{ uuid: 'provider-uuid', code }]
     },
     resilienceAndRegionsSettings: {},
     nodesAvailabilitySettings: { availabilityZones: {} },

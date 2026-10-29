@@ -2500,6 +2500,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: 'The task cannot be rolled back, or the operator owns the resource'
       '500':
         description: Server error
     security:

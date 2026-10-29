@@ -2,7 +2,7 @@ import { forwardRef, useContext, useEffect, useImperativeHandle } from 'react';
 import { FormProvider, useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { useQuery } from 'react-query';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 import { mui, YBAccordion, YBCheckboxField } from '@yugabyte-ui-library/core';
 import {
   StyledContent,
@@ -27,7 +27,11 @@ import { useRuntimeConfigValues } from '@app/redesign/features-v2/universe/creat
 import { usePersistStepFormValues } from '@app/redesign/features-v2/universe/create-universe/helpers/persistStepFormValues';
 import { QUERY_KEY, api } from '@app/redesign/features/universe/universe-form/utils/api';
 import { useGetZones } from '@app/redesign/features-v2/universe/create-universe/fields/instance-type/InstanceTypeFieldHelper';
-import { CloudType, Placement } from '@app/redesign/features/universe/universe-form/utils/dto';
+import {
+  CloudType,
+  Placement,
+  Region
+} from '@app/redesign/features/universe/universe-form/utils/dto';
 import { isSpotInstanceCloudType } from '@app/components/configRedesign/providerRedesign/utils';
 import {
   CreateUniverseContext,
@@ -36,7 +40,10 @@ import {
   StepsRef
 } from '@app/redesign/features-v2/universe/create-universe/CreateUniverseContext';
 import { ResilienceType } from '@app/redesign/features-v2/universe/create-universe/steps/resilence-regions/dtos';
-import { InstanceSettingProps } from '@app/redesign/features-v2/universe/create-universe/steps/hardware-settings/dtos';
+import {
+  InstanceSettingProps,
+  InstanceSettingsViewMode
+} from '@app/redesign/features-v2/universe/create-universe/steps/hardware-settings/dtos';
 import { InstanceSettingsValidationSchema } from '@app/redesign/features-v2/universe/create-universe/steps/hardware-settings/ValidationSchema';
 import { ArchitectureType } from '@app/redesign/features-v2/universe/create-universe/helpers/constants';
 import {
@@ -56,8 +63,11 @@ import {
   EBS_KMS_CONFIG_FIELD,
   CPU_ARCH_FIELD
 } from '@app/redesign/features-v2/universe/create-universe/fields/FieldNames';
+import { getPrimaryProvider } from '../../helpers/providerConfigurations';
+import { getEffectiveRegions } from '../../helpers/placementsByProvider';
+import { ProviderType } from '../general-settings/dtos';
 
-const { Box, CircularProgress } = mui;
+const { Box, CircularProgress, Typography } = mui;
 
 export const InstanceBox = ({ children }: { children: React.ReactNode }) => (
   <Box sx={{ width: 480, display: 'flex', flexDirection: 'column', gap: 2 }}>{children}</Box>
@@ -85,42 +95,67 @@ const PanelWrapper = ({
   </Box>
 );
 
-export type InstanceSettingsViewMode = 'all' | 'tserverOnly' | 'masterOnly';
+export type { InstanceSettingsViewMode };
 
-export const InstanceSettings = forwardRef<
-  StepsRef,
-  {
-    editMode?: boolean;
-    /**
-     * Controls which subsections of the hardware form are rendered.
-     * - `all` (default): T-Server section, plus Master accordion when dedicated nodes are enabled.
-     * - `tserverOnly`: T-Server section only (no Master accordion). Used for the dedicated
-     *   T-Server edit modal where master is edited via a separate modal.
-     * - `masterOnly`: Master section only, rendered as a flat panel without the accordion
-     *   wrapper. Used for the dedicated Master edit modal. The "Keep master same as T-Server"
-     *   checkbox is rendered above the panel instead of inside an accordion.
-     */
-    viewMode?: InstanceSettingsViewMode;
-    /**
-     * When true, all hardware input fields in the T-Server (or non-dedicated cluster) section
-     * are rendered as disabled. Used by the read-replica edit flow to lock fields while the
-     * "Keep read replica instance settings same as primary cluster" checkbox is checked.
-     */
-    disableTserverFields?: boolean;
-  }
->(({ editMode = false, viewMode = 'all', disableTserverFields = false }, forwardRef) => {
+export type InstanceSettingsProps = {
+  editMode?: boolean;
+  /**
+   * Controls which subsections of the hardware form are rendered.
+   * - `all` (default): T-Server section, plus Master accordion when dedicated nodes are enabled.
+   * - `tserverOnly`: T-Server section only (no Master accordion). Used for the dedicated
+   *   T-Server edit modal where master is edited via a separate modal.
+   * - `masterOnly`: Master section only, rendered as a flat panel without the accordion
+   *   wrapper. Used for the dedicated Master edit modal. The "Keep master same as T-Server"
+   *   checkbox is rendered above the panel instead of inside an accordion.
+   */
+  viewMode?: InstanceSettingsViewMode;
+  /**
+   * When true, all hardware input fields in the T-Server (or non-dedicated cluster) section
+   * are rendered as disabled. Used by the read-replica edit flow to lock fields while the
+   * "Keep read replica instance settings same as primary cluster" checkbox is checked.
+   */
+  disableTserverFields?: boolean;
+  /** Multi-provider modal: bind fields to this provider instead of primary. */
+  providerOverride?: ProviderType;
+  /** Multi-provider modal: regions for instance-type queries. */
+  regionsOverride?: Region[];
+  /** Embedded form defaults (modal draft). */
+  formDefaults?: InstanceSettingProps;
+  /** Embedded: called after successful validate instead of advancing the wizard. */
+  onValidated?: (data: InstanceSettingProps) => void;
+  /** Skip step chrome + context persistence (Configure Instances modal). */
+  embedded?: boolean;
+};
+
+export const InstanceSettingsForm = forwardRef<StepsRef, InstanceSettingsProps>(
+  (
+    {
+      editMode = false,
+      viewMode = 'all',
+      disableTserverFields = false,
+      providerOverride,
+      regionsOverride,
+      formDefaults,
+      onValidated,
+      embedded = false
+    },
+    forwardRef
+  ) => {
   const [
     {
       instanceSettings,
       generalSettings,
       nodesAvailabilitySettings,
       resilienceAndRegionsSettings,
+      placementsByProvider,
       securitySettings
     },
     { moveToNextPage, moveToPreviousPage, saveInstanceSettings, setActiveStep }
   ] = useContext(CreateUniverseContext) as unknown as CreateUniverseContextMethods;
 
-  const provider = generalSettings?.providerConfiguration;
+  const provider = providerOverride ?? getPrimaryProvider(generalSettings);
+  const effectiveRegions =
+    regionsOverride ?? getEffectiveRegions(resilienceAndRegionsSettings, placementsByProvider);
   const isK8s = provider?.code === CloudType.kubernetes;
   const isOnPrem = provider?.code === CloudType.onprem;
   const useDedicatedNodes = nodesAvailabilitySettings?.useDedicatedNodes;
@@ -147,7 +182,7 @@ export const InstanceSettings = forwardRef<
   const earKMSConfig = securitySettings?.kmsConfig ?? null;
 
   const methods = useForm<InstanceSettingProps>({
-    defaultValues: instanceSettings,
+    defaultValues: formDefaults ?? instanceSettings,
     mode: 'onSubmit',
     reValidateMode: 'onChange',
     context: {
@@ -163,7 +198,11 @@ export const InstanceSettings = forwardRef<
       )
     )
   });
-  usePersistStepFormValues(methods.watch, methods.getValues, saveInstanceSettings);
+  usePersistStepFormValues(
+    methods.watch,
+    methods.getValues,
+    embedded ? () => undefined : saveInstanceSettings
+  );
   const { watch, setValue, control, trigger } = methods;
   const {
     formState: { isSubmitted }
@@ -177,9 +216,9 @@ export const InstanceSettings = forwardRef<
   const cpuArch = watch(CPU_ARCH_FIELD);
 
   const needsInstanceTypes = !isK8s || !useK8CustomResources;
-  const { zones, isLoadingZones } = useGetZones(provider, resilienceAndRegionsSettings?.regions);
+  const { zones, isLoadingZones } = useGetZones(provider, effectiveRegions);
   const zoneNames = zones.map((zone: Placement) => zone.name);
-  const hasRegionsForZones = (resilienceAndRegionsSettings?.regions?.length ?? 0) > 0;
+  const hasRegionsForZones = effectiveRegions.length > 0;
   const instanceTypesQueryEnabled =
     needsInstanceTypes && !!provider?.uuid && zoneNames.length > 0 && !isLoadingZones;
 
@@ -253,10 +292,15 @@ export const InstanceSettings = forwardRef<
     forwardRef,
     () => ({
       onNext: () =>
-        methods.handleSubmit(() => {
+        methods.handleSubmit((data) => {
+          if (embedded) {
+            onValidated?.(data);
+            return;
+          }
           moveToNextPage();
         })(),
       onPrev: () => {
+        if (embedded) return;
         if (resilienceAndRegionsSettings?.resilienceType === ResilienceType.SINGLE_NODE) {
           setActiveStep(CreateUniverseSteps.RESILIENCE_AND_REGIONS);
         } else {
@@ -264,7 +308,7 @@ export const InstanceSettings = forwardRef<
         }
       }
     }),
-    []
+    [embedded, onValidated, moveToNextPage, moveToPreviousPage, setActiveStep, resilienceAndRegionsSettings?.resilienceType, methods]
   );
 
   const showDedicatedNodesSection = !!(
@@ -291,6 +335,13 @@ export const InstanceSettings = forwardRef<
   const Content = editMode ? Box : StyledContent;
 
   if (isRuntimeConfigLoading || isProviderRuntimeConfigLoading || showInstanceTypesLoader) {
+    if (embedded) {
+      return (
+        <Box display="flex" alignItems="center" justifyContent="center" width="100%" py={4}>
+          <CircularProgress />
+        </Box>
+      );
+    }
     return (
       <Panel>
         {!editMode && <StyledHeader />}
@@ -302,6 +353,214 @@ export const InstanceSettings = forwardRef<
           </PanelWrapper>
         </Content>
       </Panel>
+    );
+  }
+
+  const tserverFormFields = (
+    <InstanceBox>
+      {osPatchingEnabled &&
+        provider &&
+        (isImgBundleSupportedByProvider(provider) || provider.code === CloudType.onprem) &&
+        !editMode && (
+          <>
+            <CPUArchField
+              supportedArchs={
+                provider.code === CloudType.onprem
+                  ? [ArchitectureType.X86_64, ArchitectureType.ARM64]
+                  : (provider.imageBundles?.map((img) => img.details.arch) ?? [])
+              }
+              disabled={false}
+            />
+            {provider.code !== CloudType.onprem && (
+              <LinuxVersionField disabled={false} provider={provider} />
+            )}
+          </>
+        )}
+      {provider && isSpotInstanceCloudType(provider.code) && canUseSpotInstance && (
+        <SpotInstanceField disabled={false} cloudType={provider.code} />
+      )}
+      {!isK8s && (
+        <>
+          <InstanceTypeField
+            isEditMode={editMode}
+            isMaster={false}
+            disabled={disableTserverFields}
+            provider={provider}
+            regions={effectiveRegions}
+          />
+          <VolumeInfoField
+            isEditMode={editMode}
+            isMaster={false}
+            maxVolumeCount={maxVolumeCount}
+            disabled={disableTserverFields}
+            provider={provider}
+            useDedicatedNodes={useDedicatedNodes}
+            regions={effectiveRegions}
+          />
+        </>
+      )}
+      {isK8s &&
+        (useK8CustomResources ? (
+          <>
+            <K8NodeSpecField
+              isMaster={false}
+              disabled={disableTserverFields}
+              provider={provider}
+            />
+            <K8VolumeInfoField
+              isMaster={false}
+              maxVolumeCount={maxVolumeCount}
+              disableVolumeSize={false}
+              disabled={disableTserverFields}
+              provider={provider}
+              isEditMode={editMode}
+              k8sOverrideEnabled={k8sOverrideEnabled}
+            />
+          </>
+        ) : (
+          <>
+            <InstanceTypeField
+              isEditMode={editMode}
+              isMaster={false}
+              disabled={disableTserverFields}
+              provider={provider}
+              regions={effectiveRegions}
+            />
+            <VolumeInfoField
+              isEditMode={editMode}
+              isMaster={false}
+              maxVolumeCount={maxVolumeCount}
+              disabled={disableTserverFields}
+              provider={provider}
+              useDedicatedNodes={useDedicatedNodes}
+              regions={effectiveRegions}
+            />
+          </>
+        ))}
+      {deviceInfo && provider?.code === CloudType.gcp && useDedicatedNodes && (
+        <StorageTypeField
+          disabled={disableTserverFields}
+          isEditMode={editMode}
+          provider={provider}
+        />
+      )}
+      {ebsVolumeEnabled && provider?.code === CloudType.aws && (
+        <EBSVolumeField disabled={disableTserverFields || editMode} />
+      )}
+      {ebsVolumeEnabled && provider?.code === CloudType.aws && ebsEnabled && (
+        <EBSKmsConfigField disabled={disableTserverFields || editMode} />
+      )}
+    </InstanceBox>
+  );
+
+  const masterNodesBadge =
+    !embedded && !editMode && useDedicatedNodes ? (
+      <Box sx={{ mb: 3 }}>
+        <TotalNodesBadge
+          label={t(isK8s ? 'totalMasterServerPods' : 'totalMasterServerNodes')}
+          count={masterNodeCount}
+          onEdit={goToNodesAvailibility}
+          dataTestId="instance-settings-total-master-nodes"
+        />
+      </Box>
+    ) : null;
+
+  const sameCheckbox = (
+    <Box mb={2}>
+      <YBCheckboxField
+        label={t('keepMasterTserverSame')}
+        control={control}
+        name={MASTER_TSERVER_SAME_FIELD}
+        size="large"
+        dataTestId="keep-master-tserver-same-field"
+      />
+    </Box>
+  );
+
+  const masterFormPanel = (
+    <PanelWrapper editMode={editMode || embedded}>
+      <InstanceBox>
+        {!isK8s && useDedicatedNodes && (
+          <>
+            <InstanceTypeField
+              isEditMode={editMode}
+              isMaster={true}
+              disabled={!!sameAsTserver}
+              provider={provider}
+              regions={effectiveRegions}
+            />
+            <VolumeInfoField
+              isEditMode={editMode}
+              isMaster={true}
+              maxVolumeCount={maxVolumeCount}
+              disabled={!!sameAsTserver}
+              provider={provider}
+              useDedicatedNodes={useDedicatedNodes}
+              regions={effectiveRegions}
+            />
+          </>
+        )}
+        {isK8s && useK8CustomResources && (
+          <>
+            <K8NodeSpecField isMaster={true} disabled={!!sameAsTserver} provider={provider} />
+            <K8VolumeInfoField
+              isMaster={true}
+              disableVolumeSize={false}
+              maxVolumeCount={maxVolumeCount}
+              disabled={!!sameAsTserver}
+              provider={provider}
+              isEditMode={editMode}
+              k8sOverrideEnabled={k8sOverrideEnabled}
+            />
+          </>
+        )}
+      </InstanceBox>
+    </PanelWrapper>
+  );
+
+  // Multi-provider modal: keep-same checkbox lives on the page, so embedded shows the global-settings note instead.
+  const masterGlobalNote = (
+    <Typography sx={{ mt: 2, fontSize: '11.5px', lineHeight: '16px', color: '#4E5F6D' }}>
+      <Trans
+        t={t}
+        i18nKey={
+          provider?.code === CloudType.aws ? 'multiProvider.masterNoteAws' : 'multiProvider.masterNote'
+        }
+        components={{ b: <b /> }}
+      />
+    </Typography>
+  );
+
+  const masterSection =
+    showDedicatedNodesSection && !isTServerOnlyView
+      ? isMasterOnlyDedicatedView || embedded
+        ? (
+            <Box>
+              {masterNodesBadge}
+              {embedded ? null : sameCheckbox}
+              {masterFormPanel}
+              {embedded && isMasterOnlyDedicatedView && masterGlobalNote}
+            </Box>
+          )
+        : (
+            <YBAccordion defaultExpanded titleContent={<>{t('master')}</>} sx={{ width: '100%' }}>
+              <Box>
+                {masterNodesBadge}
+                {sameCheckbox}
+                {masterFormPanel}
+              </Box>
+            </YBAccordion>
+          )
+      : null;
+
+  if (embedded) {
+    return (
+      <FormProvider {...methods}>
+        {!isMasterOnlyDedicatedView && (
+          <PanelWrapper editMode>{tserverFormFields}</PanelWrapper>
+        )}
+        {masterSection}
+      </FormProvider>
     );
   }
 
@@ -334,222 +593,16 @@ export const InstanceSettings = forwardRef<
           )}
 
           <Content>
-            <PanelWrapper editMode={editMode}>
-              <InstanceBox>
-                {osPatchingEnabled &&
-                  provider &&
-                  (isImgBundleSupportedByProvider(provider) ||
-                    provider.code === CloudType.onprem) &&
-                  !editMode && (
-                    <>
-                      <CPUArchField
-                        supportedArchs={
-                          provider.code === CloudType.onprem
-                            ? [ArchitectureType.X86_64, ArchitectureType.ARM64]
-                            : (provider.imageBundles?.map((img) => img.details.arch) ?? [])
-                        }
-                        disabled={false}
-                      />
-                      {provider.code !== CloudType.onprem && (
-                        <LinuxVersionField disabled={false} provider={provider} />
-                      )}
-                    </>
-                  )}
-                {provider && isSpotInstanceCloudType(provider.code) && canUseSpotInstance && (
-                  <SpotInstanceField disabled={false} cloudType={provider.code} />
-                )}
-                {!isK8s &&
-                  (!useDedicatedNodes ? (
-                    <>
-                      <InstanceTypeField
-                        isEditMode={editMode}
-                        isMaster={false}
-                        disabled={disableTserverFields}
-                        provider={provider}
-                        regions={resilienceAndRegionsSettings?.regions}
-                      />
-                      <VolumeInfoField
-                        isEditMode={editMode}
-                        isMaster={false}
-                        maxVolumeCount={maxVolumeCount}
-                        disabled={disableTserverFields}
-                        provider={provider}
-                        useDedicatedNodes={useDedicatedNodes}
-                        regions={resilienceAndRegionsSettings?.regions}
-                      />
-                    </>
-                  ) : (
-                    <>
-                      <InstanceTypeField
-                        isEditMode={editMode}
-                        isMaster={false}
-                        disabled={disableTserverFields}
-                        provider={provider}
-                        regions={resilienceAndRegionsSettings?.regions}
-                      />
-                      <VolumeInfoField
-                        isEditMode={editMode}
-                        isMaster={false}
-                        maxVolumeCount={maxVolumeCount}
-                        disabled={disableTserverFields}
-                        provider={provider}
-                        useDedicatedNodes={useDedicatedNodes}
-                        regions={resilienceAndRegionsSettings?.regions}
-                      />
-                    </>
-                  ))}
-                {isK8s &&
-                  (useK8CustomResources ? (
-                    <>
-                      <K8NodeSpecField
-                        isMaster={false}
-                        disabled={disableTserverFields}
-                        provider={provider}
-                      />
-                      <K8VolumeInfoField
-                        isMaster={false}
-                        maxVolumeCount={maxVolumeCount}
-                        disableVolumeSize={false}
-                        disabled={disableTserverFields}
-                        provider={provider}
-                        isEditMode={editMode}
-                        k8sOverrideEnabled={k8sOverrideEnabled}
-                      />
-                    </>
-                  ) : (
-                    <>
-                      <InstanceTypeField
-                        isEditMode={editMode}
-                        isMaster={false}
-                        disabled={disableTserverFields}
-                        provider={provider}
-                        regions={resilienceAndRegionsSettings?.regions}
-                      />
-                      <VolumeInfoField
-                        isEditMode={editMode}
-                        isMaster={false}
-                        maxVolumeCount={maxVolumeCount}
-                        disabled={disableTserverFields}
-                        provider={provider}
-                        useDedicatedNodes={useDedicatedNodes}
-                        regions={resilienceAndRegionsSettings?.regions}
-                      />
-                    </>
-                  ))}
-                {deviceInfo && provider?.code === CloudType.gcp && useDedicatedNodes && (
-                  <StorageTypeField
-                    disabled={disableTserverFields}
-                    isEditMode={editMode}
-                    provider={provider}
-                  />
-                )}
-                {ebsVolumeEnabled && provider?.code === CloudType.aws && (
-                  <EBSVolumeField disabled={disableTserverFields || editMode} />
-                )}
-                {ebsVolumeEnabled && provider?.code === CloudType.aws && ebsEnabled && (
-                  <EBSKmsConfigField disabled={disableTserverFields || editMode} />
-                )}
-              </InstanceBox>
-            </PanelWrapper>
+            <PanelWrapper editMode={editMode}>{tserverFormFields}</PanelWrapper>
           </Content>
         </Panel>
       )}
-      {showDedicatedNodesSection &&
-        !isTServerOnlyView &&
-        (() => {
-          const masterNodesBadge =
-            !editMode && useDedicatedNodes ? (
-              <Box sx={{ mb: 3 }}>
-                <TotalNodesBadge
-                  label={t(isK8s ? 'totalMasterServerPods' : 'totalMasterServerNodes')}
-                  count={masterNodeCount}
-                  onEdit={goToNodesAvailibility}
-                  dataTestId="instance-settings-total-master-nodes"
-                />
-              </Box>
-            ) : null;
-
-          const sameCheckbox = (
-            <Box mb={2}>
-              <YBCheckboxField
-                label={t('keepMasterTserverSame')}
-                control={control}
-                name={MASTER_TSERVER_SAME_FIELD}
-                size="large"
-                dataTestId="keep-master-tserver-same-field"
-              />
-            </Box>
-          );
-
-          const masterFormPanel = (
-            <PanelWrapper editMode={editMode}>
-              <InstanceBox>
-                {!isK8s && useDedicatedNodes && (
-                  <>
-                    <InstanceTypeField
-                      isEditMode={editMode}
-                      isMaster={true}
-                      disabled={!!sameAsTserver}
-                      provider={provider}
-                      regions={resilienceAndRegionsSettings?.regions}
-                    />
-                    <VolumeInfoField
-                      isEditMode={editMode}
-                      isMaster={true}
-                      maxVolumeCount={maxVolumeCount}
-                      disabled={!!sameAsTserver}
-                      provider={provider}
-                      useDedicatedNodes={useDedicatedNodes}
-                      regions={resilienceAndRegionsSettings?.regions}
-                    />
-                  </>
-                )}
-                {isK8s && useK8CustomResources && (
-                  <>
-                    <K8NodeSpecField
-                      isMaster={true}
-                      disabled={!!sameAsTserver}
-                      provider={provider}
-                    />
-                    <K8VolumeInfoField
-                      isMaster={true}
-                      disableVolumeSize={false}
-                      maxVolumeCount={maxVolumeCount}
-                      disabled={!!sameAsTserver}
-                      provider={provider}
-                      isEditMode={editMode}
-                      k8sOverrideEnabled={k8sOverrideEnabled}
-                    />
-                  </>
-                )}
-              </InstanceBox>
-            </PanelWrapper>
-          );
-
-          // Master-only edit views (e.g. dedicated Master edit modal) render a flat panel
-          // with the "Keep same" checkbox above it instead of using the YBAccordion.
-          if (isMasterOnlyDedicatedView) {
-            return (
-              <Box>
-                {masterNodesBadge}
-                {sameCheckbox}
-                {masterFormPanel}
-              </Box>
-            );
-          }
-
-          return (
-            <YBAccordion defaultExpanded titleContent={<>{t('master')}</>} sx={{ width: '100%' }}>
-              <Box>
-                {masterNodesBadge}
-                {sameCheckbox}
-                {masterFormPanel}
-              </Box>
-            </YBAccordion>
-          );
-        })()}
+      {masterSection}
     </FormProvider>
   );
 });
 
-InstanceSettings.displayName = 'InstanceSettings';
+InstanceSettingsForm.displayName = 'InstanceSettingsForm';
+
+/** @deprecated Prefer {@link InstanceSettingsForm}; kept for existing edit-universe imports. */
+export const InstanceSettings = InstanceSettingsForm;

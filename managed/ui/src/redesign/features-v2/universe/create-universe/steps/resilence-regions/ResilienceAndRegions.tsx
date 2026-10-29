@@ -7,7 +7,16 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { forwardRef, useContext, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import {
+  forwardRef,
+  useCallback,
+  useContext,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState
+} from 'react';
 import { useMount } from 'react-use';
 import { Trans, useTranslation } from 'react-i18next';
 import { FormProvider, useForm } from 'react-hook-form';
@@ -47,6 +56,7 @@ import {
 } from './dtos';
 import {
   FAULT_TOLERANCE_TYPE,
+  REGIONS_BY_PROVIDER,
   REGIONS_FIELD,
   RESILIENCE_FACTOR,
   RESILIENCE_FORM_MODE,
@@ -64,6 +74,18 @@ import MapDisabled from '@app/redesign/assets/map_disabled.svg';
 import CommandIcon from '@app/redesign/assets/guided-expert-mode/command.svg';
 import CommandIconSelected from '@app/redesign/assets/guided-expert-mode/command-selected.svg';
 import Flash from '@app/redesign/assets/flash_transparent.svg';
+import {
+  ENABLE_MULTI_PROVIDER_CREATE,
+  getPrimaryProvider,
+  getProviderConfigurations,
+  isMultiProvider
+} from '../../helpers/providerConfigurations';
+import {
+  buildPlacementsByProvider,
+  flattenRegionsByProvider,
+  isMultiProviderPlacement,
+  regionsByProviderFromPlacements
+} from '../../helpers/placementsByProvider';
 
 const { Collapse, styled, Box, Link, Typography } = mui;
 
@@ -94,7 +116,7 @@ const SetupModeCard = styled(Box)(({ theme }) => ({
   padding: '24px 16px',
   borderRadius: '8px',
   border: `1px solid ${theme.palette.grey[300]}`,
-  backgroundColor: '#FBFCFD',
+  backgroundColor: '#F7F9FB',
   boxSizing: 'border-box'
 }));
 
@@ -147,11 +169,13 @@ export const ResilienceAndRegions = forwardRef<
   { isGeoPartition?: boolean; hideHelpText?: boolean; disableGuidedMode?: boolean }
 >(({ isGeoPartition = false, hideHelpText = false, disableGuidedMode = false }, forwardRef) => {
   const [
-    { generalSettings, resilienceAndRegionsSettings, nodesAvailabilitySettings },
+    { generalSettings, resilienceAndRegionsSettings, nodesAvailabilitySettings, placementsByProvider },
     {
       moveToPreviousPage,
       saveResilienceAndRegionsSettings,
       saveNodesAvailabilitySettings,
+      saveNodesByProvider,
+      savePlacementsByProvider,
       moveToNextPage,
       setResilienceType
     }
@@ -169,17 +193,82 @@ export const ResilienceAndRegions = forwardRef<
     handleClickAway: handleGuidedExpertModePopoverClickAway
   } = useGuidedExpertModePopover();
 
+  const providers = getProviderConfigurations(generalSettings);
+  const multiProvider = ENABLE_MULTI_PROVIDER_CREATE && isMultiProvider(generalSettings);
+
+  const savedResilience =
+    resilienceAndRegionsSettings ?? initialCreateUniverseFormState.resilienceAndRegionsSettings!;
+  const savedFt = savedResilience[FAULT_TOLERANCE_TYPE];
+  const formDefaultValues: ResilienceAndRegionsProps = {
+    ...savedResilience,
+    // Multi-provider only supports a regular cluster (no single-node path).
+    [RESILIENCE_TYPE]: multiProvider
+      ? ResilienceType.REGULAR
+      : savedResilience[RESILIENCE_TYPE],
+    [FAULT_TOLERANCE_TYPE]:
+      multiProvider &&
+      (savedFt === FaultToleranceType.NODE_LEVEL || savedFt === FaultToleranceType.NONE)
+        ? FaultToleranceType.AZ_LEVEL
+        : savedFt,
+    ...(multiProvider
+      ? {
+          [REGIONS_FIELD]: [],
+          [REGIONS_BY_PROVIDER]: regionsByProviderFromPlacements(placementsByProvider, providers)
+        }
+      : { [REGIONS_BY_PROVIDER]: undefined })
+  };
+
   const methods = useForm<ResilienceAndRegionsProps>({
-    defaultValues: resilienceAndRegionsSettings,
-    resolver: yupResolver(ResilienceAndRegionsSchema(t))
+    defaultValues: formDefaultValues,
+    resolver: yupResolver(ResilienceAndRegionsSchema(t, { disallowNodeAndNone: multiProvider }))
   });
 
-  usePersistStepFormValues(methods.watch, methods.getValues, saveResilienceAndRegionsSettings);
+  const persistResilience = useCallback(
+    (data: ResilienceAndRegionsProps) => {
+      const { [REGIONS_BY_PROVIDER]: regionsByProvider, ...rest } = data;
+      if (isMultiProviderPlacement(generalSettings, data[RESILIENCE_FORM_MODE])) {
+        savePlacementsByProvider?.(buildPlacementsByProvider(regionsByProvider ?? {}, providers));
+        saveResilienceAndRegionsSettings({
+          ...rest,
+          [REGIONS_FIELD]: []
+        });
+        return;
+      }
+      savePlacementsByProvider?.({});
+      saveResilienceAndRegionsSettings(rest);
+    },
+    [
+      generalSettings,
+      providers,
+      savePlacementsByProvider,
+      saveResilienceAndRegionsSettings
+    ]
+  );
+
+  usePersistStepFormValues(methods.watch, methods.getValues, persistResilience);
 
   const { watch, trigger, clearErrors } = methods;
 
   const formMode = watch(RESILIENCE_FORM_MODE);
-  const regions = watch(REGIONS_FIELD);
+  const regionsByProviderWatch = watch(REGIONS_BY_PROVIDER);
+  const singularRegions = watch(REGIONS_FIELD);
+  // Memoize: flattenRegionsByProvider returns a new array each call; using that in
+  // effect deps re-fires trigger() after every validation → infinite loop / freeze.
+  const regions = useMemo(
+    () =>
+      isMultiProviderPlacement(generalSettings, formMode)
+        ? flattenRegionsByProvider(regionsByProviderWatch)
+        : singularRegions ?? [],
+    [generalSettings, formMode, regionsByProviderWatch, singularRegions]
+  );
+  const regionSelectionKey = useMemo(
+    () =>
+      (regions ?? [])
+        .map((r) => `${r.providerUuid ?? ''}:${r.uuid ?? r.code}`)
+        .sort()
+        .join('|'),
+    [regions]
+  );
   const resilienceFactor = watch(RESILIENCE_FACTOR);
   const faultToleranceType = watch(FAULT_TOLERANCE_TYPE);
   const faultToleranceForRegion = getFaultToleranceNeeded(resilienceFactor);
@@ -194,6 +283,11 @@ export const ResilienceAndRegions = forwardRef<
   const [showErrorsAfterSubmit, setShowErrorsAfterSubmit] = useState(false);
   const [showSwitchToGuidedModal, setShowSwitchToGuidedModal] = useState(false);
   const [modeButtonGroupKey, setModeButtonGroupKey] = useState(0);
+
+  const resetNodesPlacement = useCallback(() => {
+    saveNodesAvailabilitySettings(initialCreateUniverseFormState.nodesAvailabilitySettings!);
+    saveNodesByProvider?.({});
+  }, [saveNodesAvailabilitySettings, saveNodesByProvider]);
 
   const resetModeButtonGroupSelection = () => {
     setModeButtonGroupKey((key) => key + 1);
@@ -218,7 +312,7 @@ export const ResilienceAndRegions = forwardRef<
 
   const resetToGuidedDefaults = () => {
     methods.setValue(REGIONS_FIELD, [], { shouldValidate: true });
-    const provider = generalSettings?.providerConfiguration;
+    const provider = getPrimaryProvider(generalSettings);
     if (provider) {
       const defaults = computeResilienceTypeFromProvider(provider);
       methods.setValue(FAULT_TOLERANCE_TYPE, defaults[FAULT_TOLERANCE_TYPE], {
@@ -281,8 +375,8 @@ export const ResilienceAndRegions = forwardRef<
     prevResilienceTypeRef.current = resilienceType;
 
     // Reset nodes only when resilience type actually changes (not on remount).
-    saveNodesAvailabilitySettings(initialCreateUniverseFormState.nodesAvailabilitySettings!);
-  }, [resilienceType]);
+    resetNodesPlacement();
+  }, [resilienceType, resetNodesPlacement]);
 
   const prevFormModeRef = useRef<ResilienceFormMode | null>(null);
 
@@ -296,7 +390,7 @@ export const ResilienceAndRegions = forwardRef<
     }
     prevFormModeRef.current = formMode;
 
-    saveNodesAvailabilitySettings(initialCreateUniverseFormState.nodesAvailabilitySettings!);
+    resetNodesPlacement();
 
     if (formMode === ResilienceFormMode.EXPERT_MODE) {
       const ft = methods.getValues(FAULT_TOLERANCE_TYPE);
@@ -309,13 +403,13 @@ export const ResilienceAndRegions = forwardRef<
       const nextRf = getGuidedNodesStepReplicationFactor(ft, factor);
       methods.setValue(FAULT_TOLERANCE_TYPE, nextFt, { shouldValidate: true });
       methods.setValue(RESILIENCE_FACTOR, nextRf, { shouldValidate: true });
-      saveResilienceAndRegionsSettings({
+      persistResilience({
         ...methods.getValues(),
         [FAULT_TOLERANCE_TYPE]: nextFt,
         [RESILIENCE_FACTOR]: nextRf
       });
     }
-  }, [formMode, methods, saveNodesAvailabilitySettings, saveResilienceAndRegionsSettings]);
+  }, [formMode, methods, resetNodesPlacement, persistResilience]);
 
   // RF / FT / region selection drive node placement. Clear stale nodesAndAvailability so the Nodes
   // step rebuilds from the new resilience settings (same as resilience-type / form-mode resets).
@@ -326,8 +420,11 @@ export const ResilienceAndRegions = forwardRef<
   } | null>(null);
 
   useEffect(() => {
-    const regionSignature = JSON.stringify((regions ?? []).map((r) => r.uuid ?? r.code).sort());
-    const next = { resilienceFactor, regionSignature, faultToleranceType };
+    const next = {
+      resilienceFactor,
+      regionSignature: regionSelectionKey,
+      faultToleranceType
+    };
     if (prevPlacementDriversRef.current === null) {
       prevPlacementDriversRef.current = next;
       return;
@@ -341,8 +438,8 @@ export const ResilienceAndRegions = forwardRef<
       return;
     }
     prevPlacementDriversRef.current = next;
-    saveNodesAvailabilitySettings(initialCreateUniverseFormState.nodesAvailabilitySettings!);
-  }, [resilienceFactor, regions, faultToleranceType, saveNodesAvailabilitySettings]);
+    resetNodesPlacement();
+  }, [resilienceFactor, regionSelectionKey, faultToleranceType, resetNodesPlacement]);
 
   // When guided/expert mode, fault tolerance type, RF, or resilience type changes, hide submit
   // errors until the user clicks Next again (do not carry forward stale validation UI).
@@ -378,13 +475,14 @@ export const ResilienceAndRegions = forwardRef<
   }, [formMode, faultToleranceType, resilienceFactor, resilienceType, clearErrors]);
 
   // Re-validate when regions change after submit; when form becomes valid, hide errors without another Next.
+  // Depend on regionSelectionKey (content), not regions (reference) — see memo note above.
   useEffect(() => {
     if (isSubmitted) {
       trigger().then((isValid) => {
         if (isValid) setShowErrorsAfterSubmit(false);
       });
     }
-  }, [regions, isSubmitted, trigger]);
+  }, [regionSelectionKey, isSubmitted, trigger]);
 
   useImperativeHandle(
     forwardRef,
@@ -406,10 +504,9 @@ export const ResilienceAndRegions = forwardRef<
   useMount(() => {
     if (regions.length !== 0) return;
 
-    if (!isGeoPartition && generalSettings?.providerConfiguration) {
-      const computedFaultToleranceType = computeResilienceTypeFromProvider(
-        generalSettings.providerConfiguration
-      );
+    const provider = getPrimaryProvider(generalSettings);
+    if (!isGeoPartition && provider) {
+      const computedFaultToleranceType = computeResilienceTypeFromProvider(provider);
       methods.setValue(FAULT_TOLERANCE_TYPE, computedFaultToleranceType[FAULT_TOLERANCE_TYPE]);
       methods.setValue(RESILIENCE_FACTOR, computedFaultToleranceType[RESILIENCE_FACTOR]);
     }
@@ -435,6 +532,21 @@ export const ResilienceAndRegions = forwardRef<
   const prevFaultToleranceTypeRef = useRef(faultToleranceType);
 
   useEffect(() => {
+    if (multiProvider && resilienceType !== ResilienceType.REGULAR) {
+      methods.setValue(RESILIENCE_TYPE, ResilienceType.REGULAR, { shouldValidate: true });
+    }
+  }, [multiProvider, resilienceType, methods]);
+
+  useEffect(() => {
+    if (
+      multiProvider &&
+      (faultToleranceType === FaultToleranceType.NODE_LEVEL ||
+        faultToleranceType === FaultToleranceType.NONE)
+    ) {
+      prevFaultToleranceTypeRef.current = FaultToleranceType.AZ_LEVEL;
+      methods.setValue(FAULT_TOLERANCE_TYPE, FaultToleranceType.AZ_LEVEL, { shouldValidate: true });
+      return;
+    }
     if (prevFaultToleranceTypeRef.current !== faultToleranceType) {
       prevFaultToleranceTypeRef.current = faultToleranceType;
       methods.setValue(RESILIENCE_FACTOR, 1, { shouldValidate: true });
@@ -451,11 +563,13 @@ export const ResilienceAndRegions = forwardRef<
         methods.setValue(REGIONS_FIELD, [current[0]], { shouldValidate: true });
       }
     }
-  }, [faultToleranceType, resilienceFactor]);
+  }, [faultToleranceType, resilienceFactor, multiProvider, methods]);
 
   return (
     <FormProvider {...methods}>
-      {!isGeoPartition && <ResilienceTypeField<ResilienceAndRegionsProps> name="resilienceType" />}
+      {!isGeoPartition && !multiProvider && (
+        <ResilienceTypeField<ResilienceAndRegionsProps> name="resilienceType" />
+      )}
       {resilienceType === ResilienceType.SINGLE_NODE && (
         <Collapse in={resilienceType === ResilienceType.SINGLE_NODE}>
           <Box
@@ -481,20 +595,28 @@ export const ResilienceAndRegions = forwardRef<
         <>
           <SetupModeCard data-testid="setup-mode-card">
             <SetupModeCopy>
-              <SetupModeTitle>{t('setupMode.title')}</SetupModeTitle>
+              <SetupModeTitle>
+                {multiProvider ? t('configurationMode.title') : t('setupMode.title')}
+              </SetupModeTitle>
               <SetupModeDescription>
-                <span>{t('setupMode.description')}</span>
-                <SetupModeLearnMore
-                  component="button"
-                  type="button"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    handleGuidedExpertModePopoverOpen();
-                  }}
-                >
-                  {t('setupMode.learnMore')}
-                </SetupModeLearnMore>
+                <span>
+                  {multiProvider
+                    ? t('configurationMode.description')
+                    : t('setupMode.description')}
+                </span>
+                {!multiProvider && (
+                  <SetupModeLearnMore
+                    component="button"
+                    type="button"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      handleGuidedExpertModePopoverOpen();
+                    }}
+                  >
+                    {t('setupMode.learnMore')}
+                  </SetupModeLearnMore>
+                )}
               </SetupModeDescription>
             </SetupModeCopy>
             <span ref={guidedExpertModeAnchorRef} style={{ display: 'inline-flex', flexShrink: 0 }}>
@@ -563,6 +685,13 @@ export const ResilienceAndRegions = forwardRef<
               a: (
                 <a
                   href="https://docs.yugabyte.com/stable/yugabyte-platform/create-deployments/read-replicas/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                />
+              ),
+              b: (
+                <a
+                  href="https://docs.yugabyte.com/stable/explore/multi-region-deployments/row-level-geo-partitioning/"
                   target="_blank"
                   rel="noopener noreferrer"
                 />

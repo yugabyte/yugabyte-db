@@ -88,7 +88,7 @@ export const EditPlacementNodesAndAvailability = () => {
             generalSettings: isK8s
               ? {
                   cloud: CloudType.kubernetes,
-                  providerConfiguration: { code: CloudType.kubernetes }
+                  providerConfigurations: [{ code: CloudType.kubernetes }]
                 }
               : undefined
           },

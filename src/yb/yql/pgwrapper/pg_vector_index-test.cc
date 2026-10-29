@@ -68,6 +68,7 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/mem_tracker.h"
+#include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/status_log.h"
 #include "yb/util/subprocess.h"
@@ -80,6 +81,7 @@
 #include "yb/vector_index/vector_lsm.h"
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "yb/yql/pgwrapper/pgvector_utils.h"
 #include "yb/yql/pgwrapper/ysql_binary_runner.h"
 
 DECLARE_bool(enable_automatic_tablet_splitting);
@@ -137,6 +139,7 @@ DECLARE_uint32(vector_index_compaction_chunk_max_mem_store_size_percentage);
 DECLARE_uint32(vector_index_concurrent_reads);
 DECLARE_uint32(vector_index_concurrent_writes);
 DECLARE_uint32(vector_index_num_compactions_limit);
+DECLARE_uint32(vector_index_tenant_hash_group_and_range_components);
 DECLARE_uint64(vector_index_compaction_chunk_max_mem_store_size_mb);
 DECLARE_uint64(vector_index_initial_chunk_memstore_size_mb);
 DECLARE_uint64(vector_index_initial_chunk_size);
@@ -368,7 +371,7 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
        const std::string& build_options = kDefaultIndexBuildOptions) {
     return conn.ExecuteFormat(
         "CREATE INDEX $1 ON test USING ybhnsw ($2 $0) WITH ($3)",
-        VectorOpsName(distance_kind.value_or(distance_kind_)), index_name,
+        pgwrapper::VectorOpsName(distance_kind.value_or(distance_kind_)), index_name,
         column.empty() ? "embedding" : column, build_options);
   }
 
@@ -483,37 +486,6 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
     return expected;
   }
 
-  const char* VectorOpsName() const {
-    using vector_index::DistanceKind;
-    return VectorOpsName(distance_kind_);
-  }
-
-  static const char* VectorOpsName(vector_index::DistanceKind distance_kind) {
-    using vector_index::DistanceKind;
-    switch (distance_kind) {
-      case DistanceKind::kL2Squared:
-        return "vector_l2_ops";
-      case DistanceKind::kInnerProduct:
-        return "vector_ip_ops";
-      case DistanceKind::kCosine:
-        return "vector_cosine_ops";
-    }
-    FATAL_INVALID_ENUM_VALUE(DistanceKind, distance_kind);
-  }
-
-  const char* VectorOp() const {
-    using vector_index::DistanceKind;
-    switch (distance_kind_) {
-      case DistanceKind::kL2Squared:
-        return "<->";
-      case DistanceKind::kInnerProduct:
-        return "<#>";
-      case DistanceKind::kCosine:
-        return "<=>";
-    }
-    FATAL_INVALID_ENUM_VALUE(DistanceKind, distance_kind_);
-  }
-
   unum::usearch::metric_kind_t UsearchMetricKind() const {
     using vector_index::DistanceKind;
     switch (distance_kind_) {
@@ -529,7 +501,7 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
 
   template <class Vector>
   std::string DistanceToQuery(const Vector& vector) const {
-    return Format("embedding $0 '$1'", VectorOp(), vector);
+    return Format("embedding $0 '$1'", pgwrapper::DistanceOpName(distance_kind_), vector);
   }
 
   template <class Vector>
@@ -3505,6 +3477,66 @@ TEST_P(PgVectorIndexColocationOnlyTest, CloneRemapsVectorIndexMap) {
       1);
 }
 
+// The snapshot a clone restores holds the storage of every vector index of the source tablet,
+// including indexes created after the clone time. A storage dir is named by index oid, which the
+// clone keeps, so a later index of the clone that gets such an oid would load the source index's
+// chunks, and DROP DATABASE of the clone would leave the dir behind. See issue #35006.
+TEST_P(PgVectorIndexColocationOnlyTest, CloneDropsStorageOfIndexNotInClone) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+
+  constexpr size_t kNumRows = 8;
+  const std::string kLaterIndexName = "later_vi";
+
+  auto conn = ASSERT_RESULT(CreateSourceTable(kNumRows));
+  ASSERT_OK(CreateIndex(conn));
+
+  // No scheduled snapshot after the first one, so the clone takes a new snapshot, which holds the
+  // storage of the later index.
+  client::SnapshotTestUtil snapshot_util;
+  snapshot_util.SetProxy(&client_->proxy_cache());
+  snapshot_util.SetCluster(cluster_.get());
+  ASSERT_RESULT(snapshot_util.CreateSchedule(
+      nullptr, YQL_DATABASE_PGSQL, kSourceDb, client::WaitSnapshot::kTrue, 30min, 1h));
+
+  const auto clone_time = ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT (extract(epoch FROM clock_timestamp()) * 1000000)::bigint"));
+  ASSERT_OK(CreateIndex(conn, kLaterIndexName, vector_index::DistanceKind::kInnerProduct));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto admin_conn = ASSERT_RESULT(PgMiniTestBase::Connect());
+  ASSERT_OK(admin_conn.ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kCloneDb, kSourceDb, clone_time));
+
+  const auto clone_table_id = ASSERT_RESULT(FindTableId(kCloneDb, "test"));
+  // The clone waits only for the leaders to apply the restore.
+  auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), clone_table_id);
+  ASSERT_FALSE(peers.empty());
+  for (const auto& peer : peers) {
+    const auto& meta = *peer->tablet_metadata();
+    for (const auto& info : meta.GetAllColocatedVectorIndexes()) {
+      ASSERT_NE(info->table_name, kLaterIndexName);
+    }
+    const auto listed_dirs = meta.vector_index_dirs();
+    ASSERT_EQ(listed_dirs.size(), 1) << peer->tablet_id();
+
+    const auto prefix =
+        docdb::GetStorageDir(BaseName(meta.rocksdb_dir()), docdb::kVectorIndexDirPrefix);
+    const auto parent_dir = DirName(meta.rocksdb_dir());
+    std::vector<std::string> dirs_on_disk;
+    for (const auto& child :
+         ASSERT_RESULT(Env::Default()->GetChildren(parent_dir, ExcludeDots::kTrue))) {
+      if (child.starts_with(prefix)) {
+        dirs_on_disk.push_back(JoinPathSegments(parent_dir, child));
+      }
+    }
+    ASSERT_EQ(dirs_on_disk, listed_dirs) << peer->tablet_id();
+  }
+
+  auto clone_conn = ASSERT_RESULT(ConnectToDB(kCloneDb));
+  ASSERT_EQ(ASSERT_RESULT(FetchIdsThroughIndex(clone_conn, kNumRows)).size(), kNumRows);
+}
+
 // A clone restores the source snapshot onto tablets of a new Raft group, the same as a backup
 // restored into another universe, e.g. an xCluster DR target. The restored vector index chunks
 // carry OpIds of the source Raft group, far above the restore OpId of the new one. Unless the
@@ -6067,7 +6099,8 @@ class PgVectorIndexUtilTest : public PgVectorIndexSingleServerDumpTestBase {
   // Ids of the rows nearest to the origin.
   Result<std::string> NearestIds(PGConn& conn, size_t limit) {
     return AsString(VERIFY_RESULT(conn.FetchRows<int64_t>(Format(
-        "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1", VectorOp(), limit))));
+        "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1",
+        pgwrapper::DistanceOpName(distance_kind_), limit))));
   }
 
   static Status UpdateInTransaction(PGConn& conn, int64_t id, const std::string& vector) {
@@ -6204,7 +6237,8 @@ TEST_F(PgVectorIndexUtilTest, SearchSkipsTombstonedReverseMapping) {
   ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
 
   const auto kQuery = Format(
-      "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1", VectorOp(), kQueryLimit);
+      "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1",
+      pgwrapper::DistanceOpName(distance_kind_), kQueryLimit);
 
   ANNOTATE_UNPROTECTED_WRITE(docdb::TEST_vector_index_clear_result_entries_once) = true;
 
@@ -6243,7 +6277,8 @@ TEST_F(PgVectorIndexUtilTest, NumTopVectorsToRemoveExceedsResultEntries) {
   ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
 
   const std::string kQuery = Format(
-      "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1", VectorOp(), kQueryLimit);
+      "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1",
+      pgwrapper::DistanceOpName(distance_kind_), kQueryLimit);
 
   // Will be triggered only on the second page of the query simulating reverse-mapping misses.
   ANNOTATE_UNPROTECTED_WRITE(docdb::TEST_vector_index_clear_result_entries_once) = true;
@@ -6432,7 +6467,8 @@ TEST_F(PgVectorIndexUtilTest, SstDumpStoredYbctid) {
   // Search resolves rows from the ybctids stored in the vector index and skips both the deleted
   // row and the vector left behind by the update, because it fetches the row they point to.
   const auto query = Format(
-      "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1", VectorOp(), kNumRows);
+      "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1",
+      pgwrapper::DistanceOpName(distance_kind_), kNumRows);
   auto rows = ASSERT_RESULT(conn.FetchRows<int64_t>(query));
   std::ranges::sort(rows);
   ASSERT_EQ(AsString(rows), "[1, 3, 4, 5]");
@@ -6593,10 +6629,46 @@ TEST_F(PgVectorIndexUtilTest, SearchSkipsDeletedVectorsWithStoredYbctid) {
   ASSERT_EQ(ASSERT_RESULT(index.TotalEntries()), kNumRows);
 
   const auto query = Format(
-      "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1", VectorOp(), kNumRows);
+      "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1",
+      pgwrapper::DistanceOpName(distance_kind_), kNumRows);
   auto rows = ASSERT_RESULT(conn.FetchRows<int64_t>(query));
   std::ranges::sort(rows);
   ASSERT_EQ(AsString(rows), "[6, 7, 8, 9, 10]");
+}
+
+// Master caps the tenant components of a new index below the hash group and range components of
+// its table, so a tenant never covers the whole primary key, and the vectors keep their tenant in
+// the payload.
+TEST_F(PgVectorIndexUtilTest, TenantComponents) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_tenant_hash_group_and_range_components) = 3;
+
+  constexpr size_t kNumRows = 5;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (tenant INT, id BIGINT, embedding vector(3), "
+      "PRIMARY KEY ((tenant) HASH, id))"));
+  ASSERT_OK(conn.Execute("CREATE TABLE single (id INT PRIMARY KEY, embedding vector(3))"));
+  for (const auto* table : {"test", "single"}) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE INDEX $0_idx ON $0 USING ybhnsw (embedding vector_l2_ops)", table));
+  }
+  auto tenant_components = [this](const std::string& index_name) -> Result<uint32_t> {
+    auto index = VERIFY_RESULT(client_->OpenTable(
+        VERIFY_RESULT(GetTableIDFromTableName(index_name))));
+    return index->index_info().vector_idx_options().tenant_hash_group_and_range_components();
+  };
+  // The tenant of PRIMARY KEY ((tenant) HASH, id) is its hash group.
+  ASSERT_EQ(ASSERT_RESULT(tenant_components("test_idx")), 1U);
+  // Every row of a single component key would be its own tenant.
+  ASSERT_EQ(ASSERT_RESULT(tenant_components("single_idx")), 0U);
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test SELECT 1, i, ARRAY[i, 0, 0]::vector FROM generate_series(1, $0) i",
+      kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_EQ(ASSERT_RESULT(NearestIds(conn, kNumRows)), "[1, 2, 3, 4, 5]");
 }
 
 // A table which writes no reverse mapping still marks its tablets as having vector deletions when
@@ -7044,9 +7116,9 @@ TEST_P(PgVectorIndexBackupRestoreTest, IndexAfterDroppedColumn) {
   ASSERT_EQ(rows, (std::vector<int32_t>{7}));
 }
 
-// CREATE INDEX on restore takes the backend and store_payload from the restore cluster's flags,
-// but the restored chunk files were written with the source's. Restore has to apply the source
-// options.
+// CREATE INDEX on restore takes the backend, store_payload and tenant components from the restore
+// cluster's flags, but the restored chunk files were written with the source's. Restore has to
+// apply the source options.
 TEST_P(PgVectorIndexBackupRestoreTest, IndexAfterBackendAndPayloadFlagsChange) {
   if (!UseYbController()) {
     GTEST_SKIP() << "Restoring the snapshot superblock goes through yb-controller";
@@ -7060,18 +7132,20 @@ TEST_P(PgVectorIndexBackupRestoreTest, IndexAfterBackendAndPayloadFlagsChange) {
   constexpr int kNumRows = 10;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_tenant_hash_group_and_range_components) = 1;
   {
     auto admin = ASSERT_RESULT(PgMiniTestBase::Connect());
     ASSERT_OK(admin.ExecuteFormat(
         "CREATE DATABASE $0$1", kSourceDb, IsColocated() ? " COLOCATION = true" : ""));
     auto conn = ASSERT_RESULT(ConnectToDB(kSourceDb));
     ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
-    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (id int PRIMARY KEY, v vector(3))", kTable));
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0 (tenant int, id int, v vector(3), PRIMARY KEY (tenant, id))", kTable));
     ASSERT_OK(conn.ExecuteFormat(
         "CREATE INDEX $0 ON $1 USING ybhnsw (v vector_l2_ops)", kIndex, kTable));
     ASSERT_OK(WaitForVectorIndexBackfills(1, "source index backfill"));
     ASSERT_OK(conn.ExecuteFormat(
-        "INSERT INTO $0 SELECT i, ARRAY[i, 0, 0]::vector FROM generate_series(1, $1) i", kTable,
+        "INSERT INTO $0 SELECT 1, i, ARRAY[i, 0, 0]::vector FROM generate_series(1, $1) i", kTable,
         kNumRows));
   }
   ASSERT_OK(cluster_->FlushTablets());
@@ -7080,16 +7154,21 @@ TEST_P(PgVectorIndexBackupRestoreTest, IndexAfterBackendAndPayloadFlagsChange) {
       ASSERT_RESULT(client_->OpenTable(ASSERT_RESULT(GetTableId(kSourceDb, kIndex))));
   const auto source_options = source_index->index_info().vector_idx_options();
   ASSERT_TRUE(source_options.store_payload());
+  ASSERT_EQ(source_options.tenant_hash_group_and_range_components(), 1U);
   ASSERT_EQ(source_options.hnsw().backend(), HnswBackend::YB_HNSW_HNSWLIB);
 
   tools::TmpDirProvider tmp_dir;
   ASSERT_OK(tools::CreateBackup(*cluster_, tmp_dir, Format("ysql.$0", kSourceDb)));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_tenant_hash_group_and_range_components) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backend) = "yb_hnsw_usearch";
   ASSERT_OK(tools::RestoreBackup(*cluster_, tmp_dir, Format("ysql.$0", kRestoredDb)));
 
   auto check_options = [&source_options](const PgVectorIdxOptionsPB& options) {
     ASSERT_EQ(options.store_payload(), source_options.store_payload());
+    ASSERT_EQ(
+        options.tenant_hash_group_and_range_components(),
+        source_options.tenant_hash_group_and_range_components());
     ASSERT_EQ(options.hnsw().backend(), source_options.hnsw().backend());
     ASSERT_EQ(options.id(), source_options.id());
   };
@@ -7275,7 +7354,8 @@ TEST_F(PgVectorIndexUtilTest, DropDatabaseAfterIndexedTableCleanedUp) {
           "CREATE TABLE t$0 (id bigserial PRIMARY KEY, embedding vector(3)) SPLIT INTO 1 TABLETS",
           i));
       ASSERT_OK(db_conn.ExecuteFormat(
-          "CREATE INDEX ON t$0 USING ybhnsw (embedding $1)", i, VectorOpsName()));
+          "CREATE INDEX ON t$0 USING ybhnsw (embedding $1)", i,
+          pgwrapper::VectorOpsName(distance_kind_)));
     }
   }
 
@@ -8413,7 +8493,8 @@ class PgVectorIndexStorageSetCapacityTest
   Status CreateVectorIndex(PGConn& conn, size_t idx) {
     return conn.ExecuteFormat(
         "CREATE INDEX vi_$0 ON $1 USING ybhnsw ($2 $3) WITH ($4)",
-        idx, TableForIndex(idx), ColumnForIndex(idx), VectorOpsName(), kCheapIndexBuildOptions);
+        idx, TableForIndex(idx), ColumnForIndex(idx), pgwrapper::VectorOpsName(distance_kind_),
+        kCheapIndexBuildOptions);
   }
 
   Result<PGConn> MakeTabletWithIndexes() {
@@ -8492,7 +8573,8 @@ class PgVectorIndexStorageSetCapacityTest
       // TEST_fail_on_seq_scan_with_vector_indexes is on, so the read has to go through the index.
       auto rows = ASSERT_RESULT(conn.FetchAllAsString(Format(
           "SELECT id FROM $0 ORDER BY $1 $2 '$3' LIMIT $4",
-          TableForIndex(i), ColumnForIndex(i), VectorOp(), AsString(Vector(1)), kNumRows)));
+          TableForIndex(i), ColumnForIndex(i), pgwrapper::DistanceOpName(distance_kind_),
+          AsString(Vector(1)), kNumRows)));
       ASSERT_EQ(rows, expected) << "Vector index " << i;
     }
   }

@@ -4,6 +4,7 @@ import { CloudType } from '@app/redesign/features/universe/universe-form/utils/d
 import { ReleaseState } from '@app/redesign/features/releases/components/dtos';
 import {
   buildGeneralSettingsDefaults,
+  collapseProvidersToSingleCloud,
   getDefaultCloudType,
   getDefaultProviderForCloud,
   getLatestStableDbVersion,
@@ -11,6 +12,7 @@ import {
   isProviderValidForCloud,
   ProviderListItem,
   resolveProviderOnCloudSync,
+  syncProvidersForClouds,
   transformDbVersionQueryData
 } from './generalSettingsDefaults';
 
@@ -155,8 +157,8 @@ describe('buildGeneralSettingsDefaults', () => {
 
     expect(defaults.universeName).toBeTruthy();
     expect(defaults.cloud).toBe(getDefaultCloudType(providers));
-    expect(defaults.providerConfiguration?.uuid).toBe(
-      getDefaultProviderForCloud(providers, defaults.cloud)?.uuid
+    expect(defaults.providerConfigurations?.[0]?.uuid).toBe(
+      getDefaultProviderForCloud(providers, defaults.cloud as string)?.uuid
     );
     expect(defaults.databaseVersion).toBe('2024.2.0.0-b1');
   });
@@ -165,15 +167,42 @@ describe('buildGeneralSettingsDefaults', () => {
     const defaults = buildGeneralSettingsDefaults(providers, undefined, {
       universeName: 'my-universe',
       cloud: CloudType.gcp,
-      providerConfiguration: getDefaultProviderForCloud(providers, CloudType.gcp)!,
+      providerConfigurations: [getDefaultProviderForCloud(providers, CloudType.gcp)!],
       databaseVersion: '2.20.1.0-b1'
     });
 
     expect(defaults).toMatchObject({
       universeName: 'my-universe',
       cloud: CloudType.gcp,
-      providerConfiguration: expect.objectContaining({ uuid: 'gcp-1' }),
+      providerConfigurations: [expect.objectContaining({ uuid: 'gcp-1' })],
       databaseVersion: '2.20.1.0-b1'
     });
+  });
+});
+
+describe('collapseProvidersToSingleCloud', () => {
+  it('keeps the selected config for the remaining cloud', () => {
+    const collapsed = collapseProvidersToSingleCloud(
+      CloudType.aws,
+      [awsBeta as any, getDefaultProviderForCloud(providers, CloudType.gcp)!],
+      providers
+    );
+    expect(collapsed.map((item) => item.uuid)).toEqual(['aws-2']);
+  });
+});
+
+describe('syncProvidersForClouds', () => {
+  it('fills first READY provider per cloud in selection order', () => {
+    const synced = syncProvidersForClouds(
+      [CloudType.gcp, CloudType.aws],
+      [getDefaultProviderForCloud(providers, CloudType.aws)!],
+      providers
+    );
+    expect(synced.map((p) => p.uuid)).toEqual(['gcp-1', 'aws-1']);
+  });
+
+  it('keeps a still-valid existing config for a cloud', () => {
+    const synced = syncProvidersForClouds([CloudType.aws], [awsBeta as any], providers);
+    expect(synced[0].uuid).toBe('aws-2');
   });
 });
