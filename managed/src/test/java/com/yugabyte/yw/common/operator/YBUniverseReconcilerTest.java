@@ -349,6 +349,25 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCreateTaskParamsUseNodeToNodeClientCerts() throws Exception {
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse("test-universe-mtls", defaultProvider);
+    assertFalse(
+        ybUniverseReconciler
+            .createTaskParams(ybUniverse, defaultCustomer.getUuid())
+            .getPrimaryCluster()
+            .userIntent
+            .useNodeToNodeClientCerts);
+
+    ybUniverse.getSpec().setUseNodeToNodeClientCerts(true);
+    assertTrue(
+        ybUniverseReconciler
+            .createTaskParams(ybUniverse, defaultCustomer.getUuid())
+            .getPrimaryCluster()
+            .userIntent
+            .useNodeToNodeClientCerts);
+  }
+
+  @Test
   public void testReconcileCreateAlreadyExists() throws Exception {
     // We don't find any customer task entry for create universe.
     String universeName = "test-universe-already-exists";

@@ -1435,7 +1435,8 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     // one; without such an override the gflag isn't added, so the gflags checksum is unchanged.
     Map<String, String> azConfig = new HashMap<>();
     azConfig.put(
-        "OVERRIDES", "gflags:\n  master:\n    node_to_node_encryption_use_client_certificates: true");
+        "OVERRIDES",
+        "gflags:\n  master:\n    node_to_node_encryption_use_client_certificates: true");
     defaultAZ.updateConfig(azConfig);
     defaultAZ.save();
     defaultUniverse = updateUniverseDetails("dev");
