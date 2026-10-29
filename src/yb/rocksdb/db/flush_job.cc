@@ -180,6 +180,7 @@ Result<FileNumbersHolder> FlushJob::Run(FileMetaData* file_meta) {
 
     return FileNumbersHolder();
   }
+  picked_memtables_ = true;
 
   // entries mems are (implicitly) sorted in ascending order by their created
   // time. We will use the first memtable's `edit` to keep the meta info for
