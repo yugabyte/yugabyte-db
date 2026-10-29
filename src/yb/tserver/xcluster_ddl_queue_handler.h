@@ -14,6 +14,7 @@
 #pragma once
 
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <tuple>
@@ -24,6 +25,7 @@
 #include "yb/cdc/xcluster_types.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/pg_types.h"
+#include "yb/gutil/thread_annotations.h"
 #include "yb/tserver/xcluster_consumer_if.h"
 
 namespace yb {
@@ -90,6 +92,9 @@ class XClusterDDLQueueHandler {
 
   // Whether a replicated DDL batch is currently executing on pg_conn_.
   bool HasDdlInFlight() const;
+
+  // Returns the command tag, ddl_end_time, and query_id of the DDL currently executing, or "none".
+  std::string GetRunningDdlDescription() const EXCLUDES(running_ddl_mutex_);
 
   // Terminates the Postgres backend running the in-flight replicated DDL, if any. Blocks on a
   // Postgres round trip.
@@ -180,6 +185,10 @@ class XClusterDDLQueueHandler {
   std::atomic<uint32_t> pg_backend_pid_{0};
   // Whether ExecuteCommittedDDLs is running a DDL batch on pg_conn_.
   std::atomic<bool> ddl_in_flight_{false};
+
+  mutable std::mutex running_ddl_mutex_;
+  // Set when executing a DDL, empty otherwise.
+  std::string running_ddl_description_ GUARDED_BY(running_ddl_mutex_);
 
   NamespaceName namespace_name_;
   NamespaceId source_namespace_id_;

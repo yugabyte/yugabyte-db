@@ -358,6 +358,11 @@ bool XClusterDDLQueueHandler::HasDdlInFlight() const {
   return ddl_in_flight_.load(std::memory_order_acquire);
 }
 
+std::string XClusterDDLQueueHandler::GetRunningDdlDescription() const {
+  std::lock_guard l(running_ddl_mutex_);
+  return running_ddl_description_.empty() ? "none" : running_ddl_description_;
+}
+
 void XClusterDDLQueueHandler::KillPgConnection() {
   if (!ddl_in_flight_.load(std::memory_order_acquire)) {
     VLOG_WITH_PREFIX(1) << "KillPgConnection: no DDL in flight, nothing to terminate";
@@ -487,12 +492,21 @@ Status XClusterDDLQueueHandler::ExecuteCommittedDDLs() {
           kSupportedCommandTags.contains(query_info.command_tag), InvalidArgument,
           "Found unsupported command tag $0", query_info.command_tag);
 
+      {
+        std::lock_guard l(running_ddl_mutex_);
+        running_ddl_description_ = Format(
+            "$0 (ddl_end_time: $1, query_id: $2)", query_info.command_tag,
+            query_info.ddl_end_time, query_info.query_id);
+      }
+
       std::unordered_set<YsqlFullTableName> new_relations;
       auto se = ScopeExit([this, &new_relations]() {
         // Ensure that we always clear the xcluster_context.
         for (const auto& new_rel : new_relations) {
           xcluster_context_.ClearSourceTableInfoMappingForCreateTable(new_rel);
         }
+        std::lock_guard l(running_ddl_mutex_);
+        running_ddl_description_.clear();
       });
 
       RETURN_NOT_OK(ProcessNewRelations(query_info, new_relations, commit_time));

@@ -71,6 +71,7 @@ DECLARE_int32(xcluster_ddl_queue_max_retries_per_ddl);
 DECLARE_int64(xcluster_ddl_queue_advisory_lock_key);
 DECLARE_uint32(xcluster_consistent_wal_safe_time_frequency_ms);
 DECLARE_uint32(xcluster_max_old_schema_versions);
+DECLARE_uint32(xcluster_poller_task_delay_considered_stuck_secs);
 DECLARE_bool(xcluster_target_manual_override);
 DECLARE_string(ysql_cron_database_name);
 DECLARE_bool(ysql_enable_packed_row);
@@ -5949,6 +5950,33 @@ TEST_F(XClusterDDLReplicationStuckCreateTablePauseTest, PauseTerminatesOrphanedP
   ASSERT_OK(SetReplicationEnabled(/*is_enabled=*/false, MonoDelta::FromSeconds(90)));
   ASSERT_OK(terminated_log.WaitFor(kTimeout));
   ASSERT_OK(shutdown_completed_log.WaitFor(kTimeout));
+}
+
+// The ddl_queue poller must not be treated as stuck (a DFATAL in debug builds) when running long
+// running DDLs.
+TEST_F(XClusterDDLReplicationStuckCreateTablePauseTest, LongRunningDdlIsNotStuck) {
+  const auto kStuckSecs = 2 * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_poller_task_delay_considered_stuck_secs) = kStuckSecs;
+  // Keep the failure backoff of the data pollers below the stuck threshold.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_failure_delay_exponent) = 8;
+
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  StringWaiterLogSink stuck_log("XCluster Poller has not executed any tasks");
+  ASSERT_NO_FATALS(WedgeReplicatedCreateTable());
+
+  SleepFor(2s * kStuckSecs);
+  ASSERT_FALSE(stuck_log.IsEventOccurred());
+
+  // Let the create finish.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = "";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 0;
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Ensure that the DDL was able to replicate without ddl_queue handler getting killed.
+  ASSERT_TRUE(ASSERT_RESULT(consumer_conn_->FetchRow<bool>(
+      Format("SELECT EXISTS(SELECT 1 FROM pg_class WHERE relname = '$0')", kStuckTableName))));
+  ASSERT_FALSE(stuck_log.IsEventOccurred());
 }
 
 // A replicated DROP TABLE blocks on the target while the target master removes the table from
