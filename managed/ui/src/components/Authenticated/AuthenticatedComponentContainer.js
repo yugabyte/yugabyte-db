@@ -1,6 +1,7 @@
 // Copyright (c) YugabyteDB, Inc.
 
 import { connect } from 'react-redux';
+import { groupBy } from 'lodash';
 import AuthenticatedComponent from './AuthenticatedComponent';
 import {
   fetchUniverseList,
@@ -19,6 +20,7 @@ import {
   getGCPTypeListResponse,
   getAZUTypeList,
   getAZUTypeListResponse,
+  listAllAccessKeys,
   listAccessKeysResponse,
   listAccessKeysReqCompleted
 } from '../../actions/cloud';
@@ -147,18 +149,14 @@ const mapDispatchToProps = (dispatch) => {
     getProviderListItems: () => {
       dispatch(getProviderList()).then((response) => {
         if (response.payload.status === 200) {
-          // The provider list already embeds each provider's access keys. Dispatch per provider:
-          // the reducer drops a payload that overlaps existing keys, so a combined payload would
-          // lose a newly created provider's keys on refetch.
-          response.payload.data.forEach((provider) => {
-            dispatch(
-              listAccessKeysResponse({
-                status: response.payload.status,
-                data: provider.allAccessKeys ?? []
-              })
+          // One call for all providers. Dispatch per provider: the reducer drops a payload that
+          // overlaps existing keys, so a combined payload would lose new providers' keys on refetch.
+          listAllAccessKeys().then((keysResponse) => {
+            Object.values(groupBy(keysResponse.data, (key) => key.idKey.providerUUID)).forEach(
+              (data) => dispatch(listAccessKeysResponse({ status: keysResponse.status, data }))
             );
+            dispatch(listAccessKeysReqCompleted());
           });
-          dispatch(listAccessKeysReqCompleted());
         }
         dispatch(getProviderListResponse(response.payload));
       });
