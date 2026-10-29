@@ -549,6 +549,8 @@ public class RpcClientCertTest extends FakeDBApplication {
     azFlags.value = Map.of(ServerType.TSERVER, Map.of(GFlagsUtil.USE_CLIENT_CERTIFICATES, "false"));
     intent.specificGFlags.setPerAZ(new HashMap<>(Map.of(az.getUuid(), azFlags)));
     assertGFlagsRejected(intent, true, "Don't set");
+    // Universes that set it to false before this check still pass.
+    GFlagsUtil.validateNodeToNodeClientCerts(intent, false);
   }
 
   @Test

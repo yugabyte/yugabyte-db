@@ -1370,7 +1370,7 @@ public class GFlagsUtil {
 
   /**
    * useNodeToNodeClientCerts owns node_to_node_encryption_use_client_certificates, so the gflag
-   * can't be set by hand; while it is on, the identity checks the chart's client cert can't pass
+   * can't be set by hand, except to false on a universe without it; while it is on, the identity checks the chart's client cert can't pass
    * stay off.
    */
   public static void validateNodeToNodeClientCerts(
@@ -1401,11 +1401,15 @@ public class GFlagsUtil {
     if (gflags == null) {
       return;
     }
-    if (gflags.containsKey(prefix + USE_CLIENT_CERTIFICATES)) {
+    // false is allowed where it changes nothing, so universes that set it before this check keep
+    // passing edits and gflags upgrades.
+    String value = gflags.get(prefix + USE_CLIENT_CERTIFICATES);
+    if (value != null && (useClientCerts || !"false".equalsIgnoreCase(value))) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(
-              "Don't set %s; YugabyteDB Anywhere sets it from useNodeToNodeClientCerts",
+              "Don't set %s; YugabyteDB Anywhere sets it from useNodeToNodeClientCerts, chosen at"
+                  + " universe creation. Remove it with a gflags upgrade.",
               USE_CLIENT_CERTIFICATES));
     }
     if (useClientCerts
