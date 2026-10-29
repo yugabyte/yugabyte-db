@@ -245,6 +245,49 @@ public class RollbackAddNodeToUniverseTest extends UniverseModifyBaseTest {
   }
 
   @Test
+  public void testRollbackFromAddingDestroysTheNewInstance() throws Exception {
+    // PLAT-23244: an add from Adding destroys the leftover and creates a new VM.
+    assertRollbackDestroysTheInstanceTheAddCreated(NodeState.Adding);
+  }
+
+  @Test
+  public void testRollbackFromToBeAddedDestroysTheNewInstance() throws Exception {
+    // PLAT-23244: an add from ToBeAdded creates the node's first VM.
+    assertRollbackDestroysTheInstanceTheAddCreated(NodeState.ToBeAdded);
+  }
+
+  /** Adds a cloud node from {@code startState}, aborts the add and rolls it back. */
+  private void assertRollbackDestroysTheInstanceTheAddCreated(NodeState startState)
+      throws Exception {
+    setNodeState(defaultUniverse, startState, DEFAULT_NODE_NAME);
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    enableAddNodeRollback(universe);
+
+    TaskInfo failedAdd = submitAddAndAbort(universe, defaultProvider, DEFAULT_NODE_NAME, 0);
+    assertEquals(Aborted, failedAdd.getTaskState());
+    assertTrue(
+        failedAdd.getSubTasks().stream()
+            .anyMatch(
+                t ->
+                    t.getTaskType() == TaskType.AnsibleCreateServer
+                        && t.getTaskState() == Success));
+
+    clearInvocations(mockNodeManager);
+    stubNodeManagerOkWithInstancesPresent();
+    TaskInfo rollbackInfo = submitRollback(failedAdd, universe);
+    assertEquals(Success, rollbackInfo.getTaskState());
+    assertTrue(
+        rollbackInfo.getSubTasks().stream()
+            .anyMatch(t -> t.getTaskType() == TaskType.AnsibleDestroyServer));
+    verify(mockNodeManager, atLeastOnce())
+        .nodeCommand(eq(NodeManager.NodeCommandType.Destroy), any());
+
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertEquals(startState, universe.getNode(DEFAULT_NODE_NAME).state);
+    assertNull(universe.getStateTransitionDetails());
+  }
+
+  @Test
   public void testRollbackDecommissionedHappyPathAfterAbortBeforeCheckpoint() throws Exception {
     decomissionOnPremNode(DEFAULT_NODE_NAME);
     Universe universe = Universe.getOrBadRequest(onPremUniverse.getUniverseUUID());
