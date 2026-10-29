@@ -64,12 +64,12 @@
 
 using namespace std::literals;
 
-DECLARE_bool(wait_for_full_tablet_reports_on_blacklist_completion);
-
 DECLARE_uint64(TEST_delay_sys_catalog_reload_secs);
 DECLARE_int32(blacklist_progress_initial_delay_secs);
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_uint32(drained_blacklisted_tservers_refresh_interval_ms);
+DECLARE_bool(wait_for_full_tablet_reports_on_blacklist_completion);
+
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(send_blacklisted_tservers_on_heartbeat);
 DECLARE_int32(heartbeat_interval_ms);

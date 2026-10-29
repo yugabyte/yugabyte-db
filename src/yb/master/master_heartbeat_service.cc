@@ -126,17 +126,15 @@ DEFINE_RUNTIME_bool(use_create_table_leader_hint, true,
     "Whether the Master should hint which replica for each tablet should "
     "be leader initially on tablet creation.");
 
+DEFINE_RUNTIME_bool(send_blacklisted_tservers_on_heartbeat, false,
+    "When set, the master will send the list of blacklisted tservers that host no tablets "
+    "on the heartbeat response, so tservers can stop routing to their stale cached replicas.");
+TAG_FLAG(send_blacklisted_tservers_on_heartbeat, advanced);
+
 DEFINE_RUNTIME_bool(send_leader_blacklisted_tservers_on_heartbeat, true,
     "When set, the master will send the list of leader-blacklisted tservers with no leaders "
     "on the heartbeat response.");
 TAG_FLAG(send_leader_blacklisted_tservers_on_heartbeat, advanced);
-
-DEFINE_RUNTIME_bool(send_blacklisted_tservers_on_heartbeat, false,
-    "When set, the master will send the list of blacklisted tservers that host no tablets "
-    "on the heartbeat response, so tservers can stop routing to their stale cached replicas. "
-    "Off by default; tservers that do not understand the field ignore it, so it can be enabled "
-    "once the tservers that should act on it are upgraded.");
-TAG_FLAG(send_blacklisted_tservers_on_heartbeat, advanced);
 
 DEFINE_test_flag(uint64, inject_latency_during_tablet_report_ms, 0,
                  "Number of milliseconds to sleep during the processing of a tablet batch.");
