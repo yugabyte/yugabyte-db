@@ -93,6 +93,10 @@ message TabletLocationsPB {
   // -cache refresh. This OpId helps the tablet server determine if its meta-cache entry
   // is stale by comparing this against its current raft_config_opid_index
   optional int64 raft_config_opid_index = 15;
+
+  // Tablet is hidden and every logical slot's restart time is past its hide time, so CDC no
+  // longer needs it. The virtual WAL must not poll it.
+  optional bool is_hidden_table_cleared_by_cdc = 16;
 }
 
 message GetIndexBackfillProgressRequestPB {

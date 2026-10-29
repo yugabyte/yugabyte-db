@@ -13360,6 +13360,19 @@ Status CatalogManager::BuildLocationsForTablet(
   }
   std::shared_ptr<const TabletReplicaMap> locs;
   consensus::ConsensusStatePB cstate;
+  // IsHiddenTabletClearedByCDC takes the catalog mutex, so call it before the tablet lock below.
+  bool tablet_hidden = false;
+  HybridTime hide_time;
+  {
+    auto l_tablet = tablet->LockForRead();
+    tablet_hidden = l_tablet->is_hidden();
+    if (tablet_hidden && l_tablet->pb.has_hide_hybrid_time()) {
+      hide_time = HybridTime(l_tablet->pb.hide_hybrid_time());
+    }
+  }
+  const bool hidden_tablet_cleared_by_cdc =
+      tablet_hidden && hide_time.is_valid() &&
+      IsHiddenTabletClearedByCDC(tablet->table()->id(), hide_time);
   {
     auto l_tablet = tablet->LockForRead();
 
@@ -13386,6 +13399,9 @@ Status CatalogManager::BuildLocationsForTablet(
           l_tablet->pb.state_msg());
     }
     InitializeTabletLocationsPB(tablet->tablet_id(), l_tablet->pb, locs_pb);
+    if (hidden_tablet_cleared_by_cdc) {
+      locs_pb->set_is_hidden_table_cleared_by_cdc(true);
+    }
     locs = tablet->GetReplicaLocations();
     locs_pb->set_stale(locs->empty());
     locs_pb->set_raft_config_opid_index(

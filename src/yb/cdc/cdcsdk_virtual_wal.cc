@@ -465,6 +465,10 @@ Status CDCSDKVirtualWAL::GetTabletListAndCheckpoint(
 
   for (const auto& tablet_checkpoint_pair : resp.tablet_checkpoint_pairs()) {
     auto tablet_id = tablet_checkpoint_pair.tablet_locations().tablet_id();
+    if (tablet_checkpoint_pair.tablet_locations().is_hidden_table_cleared_by_cdc()) {
+      LOG_WITH_PREFIX(INFO) << "Not adding hidden tablet " << tablet_id << " cleared by CDC";
+      continue;
+    }
     TabletStreamInfo tablet_info = {.stream_id = stream_id_, .tablet_id = tablet_id};
     auto entry_opt = VERIFY_RESULT(cdc_service_->cdc_state_table_->TryFetchEntry(
         {tablet_id, stream_id_}, CDCStateTableEntrySelector().IncludeActiveTime()));
