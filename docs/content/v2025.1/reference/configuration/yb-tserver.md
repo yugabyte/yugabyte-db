@@ -528,18 +528,17 @@ When set to true, tables and indexes are hash-partitioned based on the first col
 
 {{% tags/wrap %}}
 
-{{<tags/feature/restart-needed>}}
-Default: `0` (disabled)
+Default: `1024`
 {{% /tags/wrap %}}
 
-Set the level of batching for [INSERT ... ON CONFLICT](../../../api/ysql/the-sql-language/statements/dml_insert/#on-conflict-clause). Set to 0 to disable batching. Batching is always disabled for the following:
+Maximum batch size for arbiter index reads during [INSERT ... ON CONFLICT](../../../api/ysql/the-sql-language/statements/dml_insert/#on-conflict-clause). Set to `0` to disable batching. Only a superuser can change this setting.
+
+Batching is always disabled for the following:
 
 - temporary relations
 - foreign relations
 - system relations
 - relations that have row triggers (excluding those created internally for FOREIGN KEY constraints)
-
-The higher the number, the more batching is done. 1024 is recommended.
 
 ##### yb_read_from_followers
 
