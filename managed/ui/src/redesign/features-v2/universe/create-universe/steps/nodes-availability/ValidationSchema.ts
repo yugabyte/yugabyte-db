@@ -8,6 +8,16 @@ import { getValidationMetrics, validateCommonRules } from './validation/common';
 import { validateExpertRules } from './validation/expert';
 import { validateGuidedRules } from './validation/guided';
 import { OnPremValidationContext } from './validation/onPrem';
+import { AVAILABILITY_ZONES_BY_PROVIDER } from '../../fields/FieldNames';
+import { flattenAvailabilityZonesByProvider } from '../../helpers/nodesByProvider';
+
+function resolveAvailabilityZones(parent: NodeAvailabilityProps) {
+  const byProvider = parent[AVAILABILITY_ZONES_BY_PROVIDER];
+  if (byProvider && Object.keys(byProvider).length > 0) {
+    return flattenAvailabilityZonesByProvider(byProvider);
+  }
+  return parent.availabilityZones ?? {};
+}
 
 export const NodesAvailabilitySchema = (
   resilienceAndRegionsProps?: ResilienceAndRegionsProps,
@@ -16,7 +26,9 @@ export const NodesAvailabilitySchema = (
   return Yup.object<NodeAvailabilityProps>({
     lesserNodes: Yup.number().test('availabilityZones', 'Error', function () {
       const { path, createError } = this;
-      const { availabilityZones, useDedicatedNodes } = this.parent;
+      const parent = this.parent as NodeAvailabilityProps;
+      const { useDedicatedNodes } = parent;
+      const availabilityZones = resolveAvailabilityZones(parent);
       const metrics = getValidationMetrics(availabilityZones, resilienceAndRegionsProps);
       const fieldErrors: Yup.ValidationError[] = [];
 
@@ -40,7 +52,7 @@ export const NodesAvailabilitySchema = (
             resilienceAndRegionsProps,
             metrics,
             replicationFactor:
-              (this.parent as NodeAvailabilityProps).replicationFactor ??
+              parent.replicationFactor ??
               resilienceAndRegionsProps?.resilienceFactor ??
               1
           })

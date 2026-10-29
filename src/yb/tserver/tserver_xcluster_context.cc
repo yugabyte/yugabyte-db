@@ -108,12 +108,21 @@ bool TserverXClusterContext::HasXClusterGuardedInfoLease() const {
   return HasXClusterGuardedInfoUnlocked();
 }
 
+bool TserverXClusterContext::HasUnexpiredXClusterGuardedInfoLease() const {
+  SharedLock lock(mutex_);
+  return HasUnexpiredLeaseUnlocked();
+}
+
 bool TserverXClusterContext::HasXClusterGuardedInfoUnlocked() const {
   if (FLAGS_enforce_xcluster_guarded_lease) {
-    return xcluster_guarded_lease_expiration_ &&
-           MonoTime::Now() < xcluster_guarded_lease_expiration_;
+    return HasUnexpiredLeaseUnlocked();
   }
   return have_received_a_heartbeat_;
+}
+
+bool TserverXClusterContext::HasUnexpiredLeaseUnlocked() const {
+  return xcluster_guarded_lease_expiration_ &&
+         MonoTime::Now() < xcluster_guarded_lease_expiration_;
 }
 
 bool TserverXClusterContext::IsReadOnlyMode(NamespaceIdView namespace_id) const {

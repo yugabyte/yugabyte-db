@@ -12,12 +12,12 @@
 //
 package org.yb.pgsql;
 
-import static org.yb.AssertionWrappers.assertNotEquals;
 import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertFalse;
+import static org.yb.AssertionWrappers.assertNotEquals;
 import static org.yb.AssertionWrappers.assertNotNull;
 import static org.yb.AssertionWrappers.assertNull;
 import static org.yb.AssertionWrappers.assertTrue;
-import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.fail;
 
 import com.google.common.net.HostAndPort;
@@ -43,6 +43,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -1359,6 +1360,219 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   @Test
   public void replicationConnectionConsumptionWithPgoutput() throws Exception {
     testReplicationConnectionConsumption("test_repl_slot_consumption", PG_OUTPUT_PLUGIN_NAME);
+  }
+
+  @Test
+  public void replicationSlotBoundToPublicationErrorCases() throws Exception {
+    HostAndPort masterLeader = getMasterLeaderAddress();
+    setServerFlag(masterLeader, "cdcsdk_enable_publication_scoped_replication_slots", "false");
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS test1");
+      stmt.execute("DROP PUBLICATION IF EXISTS pub1");
+      stmt.execute("DROP PUBLICATION IF EXISTS pub2");
+      stmt.execute("CREATE TABLE test1 (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub1 FOR TABLE test1");
+      stmt.execute("CREATE PUBLICATION pub2 FOR TABLE test1");
+    }
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+
+    // With the preview flag off, binding a slot to a publication is rejected.
+    executeExpectingError(conn,
+        "CREATE_REPLICATION_SLOT rs1 LOGICAL yboutput (yb_publication 'pub1')",
+        "replication slot cannot be bound to a publication");
+
+    setServerFlag(masterLeader, "allowed_preview_flags_csv",
+        "cdcsdk_enable_publication_scoped_replication_slots");
+    setServerFlag(masterLeader, "cdcsdk_enable_publication_scoped_replication_slots", "true");
+
+    // The yb_publication option is accepted and the slot is created.
+    try (Statement stmt = conn.createStatement()) {
+      stmt.execute("CREATE_REPLICATION_SLOT rs1 LOGICAL yboutput (yb_publication 'pub1')");
+    }
+    assertReplicationSlotExists("rs1", true);
+
+    // The option requires a value.
+    executeExpectingError(conn, "CREATE_REPLICATION_SLOT rs2 LOGICAL yboutput (yb_publication)",
+        "requires a parameter");
+
+    // The option cannot be given more than once.
+    executeExpectingError(conn,
+        "CREATE_REPLICATION_SLOT rs3 LOGICAL yboutput "
+            + "(yb_publication 'pub1', yb_publication 'pub1')",
+        "conflicting or redundant options");
+
+    // A slot is bound to exactly one publication: naming two different ones is rejected too.
+    executeExpectingError(conn,
+        "CREATE_REPLICATION_SLOT rs3 LOGICAL yboutput "
+            + "(yb_publication 'pub1', yb_publication 'pub2')",
+        "conflicting or redundant options");
+
+    // A comma separated list is not a list of publications but a single publication name.
+    executeExpectingError(conn,
+        "CREATE_REPLICATION_SLOT rs3 LOGICAL yboutput (yb_publication 'pub1,pub2')",
+        "publication \"pub1,pub2\" does not exist");
+
+    // The option combines with other options.
+    try (Statement stmt = conn.createStatement()) {
+      stmt.execute("CREATE_REPLICATION_SLOT rs4 LOGICAL yboutput "
+          + "(yb_publication 'pub1', SNAPSHOT 'nothing')");
+    }
+    assertReplicationSlotExists("rs4", true);
+
+    // Binding to a nonexistent publication fails cleanly.
+    executeExpectingError(conn,
+        "CREATE_REPLICATION_SLOT rs5 LOGICAL yboutput (yb_publication 'no_pub')",
+        "publication \"no_pub\" does not exist");
+
+    // Starting a bound slot with a different publication is rejected, even when that publication's
+    // tables are a subset of the bound publication's tables.
+    executeExpectingError(conn,
+        "START_REPLICATION SLOT rs1 LOGICAL 0/0 "
+            + "(\"proto_version\" '1', \"publication_names\" 'pub2')",
+        "is bound to publication");
+
+    // Starting a bound slot with multiple publications is rejected too.
+    executeExpectingError(conn,
+        "START_REPLICATION SLOT rs1 LOGICAL 0/0 "
+            + "(\"proto_version\" '1', \"publication_names\" 'pub1,pub2')",
+        "is bound to publication");
+  }
+
+  private void executeExpectingError(Connection conn, String query, String expectedErrorMessage)
+      throws Exception {
+    boolean exceptionThrown = false;
+    try (Statement stmt = conn.createStatement()) {
+      stmt.execute(query);
+    } catch (PSQLException e) {
+      exceptionThrown = true;
+      if (StringUtils.containsIgnoreCase(e.getMessage(), expectedErrorMessage)) {
+        LOG.info("Expected exception", e);
+      } else {
+        fail(String.format("Unexpected Error Message. Got: '%s', Expected to contain: '%s'",
+            e.getMessage(), expectedErrorMessage));
+      }
+    }
+    assertTrue("Expected an exception but wasn't thrown", exceptionThrown);
+  }
+
+  @Test
+  public void replicationConnectionConsumptionWithPublicationBoundSlot() throws Exception {
+    Map<String, String> masterFlags = super.getMasterFlags();
+    masterFlags.put(
+        "allowed_preview_flags_csv", "cdcsdk_enable_publication_scoped_replication_slots");
+    masterFlags.put("cdcsdk_enable_publication_scoped_replication_slots", "true");
+    restartClusterWithFlags(masterFlags, Collections.emptyMap());
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS test1");
+      stmt.execute("DROP TABLE IF EXISTS test2");
+      stmt.execute("CREATE TABLE test1 (a int primary key, b text)");
+      stmt.execute("CREATE TABLE test2 (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub1 FOR TABLE test1");
+      stmt.execute("CREATE PUBLICATION pub_all FOR ALL TABLES");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    try (Statement stmt = conn.createStatement()) {
+      stmt.execute("CREATE_REPLICATION_SLOT bound_slot_pub1 LOGICAL yboutput "
+          + "(yb_publication 'pub1', SNAPSHOT 'nothing')");
+      stmt.execute("CREATE_REPLICATION_SLOT bound_slot_pub_all LOGICAL yboutput "
+          + "(yb_publication 'pub_all', SNAPSHOT 'nothing')");
+      stmt.execute("CREATE_REPLICATION_SLOT regular_slot LOGICAL yboutput (SNAPSHOT 'nothing')");
+    }
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO test1 VALUES (1, 'abcd')");
+      stmt.execute("INSERT INTO test2 VALUES (1, 'efgh')");
+      stmt.execute("INSERT INTO test1 VALUES (2, 'ijkl')");
+      stmt.execute("UPDATE test1 SET b = 'updated' WHERE a = 1");
+      stmt.execute("UPDATE test2 SET b = 'updated' WHERE a = 1");
+    }
+
+    // Each stream serves exactly its publication's changes. The slot bound to pub1 streams only
+    // test1's 3 transactions: 3 * (BEGIN, DML, COMMIT) + 1 RELATION = 10 messages.
+    PGReplicationStream pub1Stream = conn.unwrap(PGConnection.class)
+                                         .getReplicationAPI()
+                                         .replicationStream()
+                                         .logical()
+                                         .withSlotName("bound_slot_pub1")
+                                         .withStartPosition(LogSequenceNumber.valueOf(0L))
+                                         .withSlotOption("proto_version", 1)
+                                         .withSlotOption("publication_names", "pub1")
+                                         .start();
+    assertPublicationBoundStreamMessages(pub1Stream, 10, 2 /* expectedInserts */,
+        1 /* expectedUpdates */, new HashSet<>(Arrays.asList("test1")));
+
+    // The slot bound to the ALL TABLES publication streams both tables' changes: 5 transactions
+    // plus 2 RELATION messages = 17 messages.
+    Connection conn2 = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationStream pubAllStream = conn2.unwrap(PGConnection.class)
+                                           .getReplicationAPI()
+                                           .replicationStream()
+                                           .logical()
+                                           .withSlotName("bound_slot_pub_all")
+                                           .withStartPosition(LogSequenceNumber.valueOf(0L))
+                                           .withSlotOption("proto_version", 1)
+                                           .withSlotOption("publication_names", "pub_all")
+                                           .start();
+    assertPublicationBoundStreamMessages(pubAllStream, 17, 3 /* expectedInserts */,
+        2 /* expectedUpdates */, new HashSet<>(Arrays.asList("test1", "test2")));
+
+    // The regular slot is not bound to any publication, i.e it streams every table of the database.
+    // So it streams the same 17 messages.
+    Connection conn3 = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationStream regularStream = conn3.unwrap(PGConnection.class)
+                                            .getReplicationAPI()
+                                            .replicationStream()
+                                            .logical()
+                                            .withSlotName("regular_slot")
+                                            .withStartPosition(LogSequenceNumber.valueOf(0L))
+                                            .withSlotOption("proto_version", 1)
+                                            .withSlotOption("publication_names", "pub1,pub_all")
+                                            .start();
+    assertPublicationBoundStreamMessages(regularStream, 17, 3 /* expectedInserts */,
+        2 /* expectedUpdates */, new HashSet<>(Arrays.asList("test1", "test2")));
+
+    // A table created now joins the slot bound to the ALL TABLES publication and the regular slot.
+    // The master adds it to their streams, and not to the one bound to pub1.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE test3 (a int primary key, b text)");
+      stmt.execute("INSERT INTO test3 VALUES (1, 'mnop')");
+      stmt.execute("INSERT INTO test1 VALUES (3, 'qrst')");
+    }
+    // The slot bound to the ALL TABLES publication and the regular slot stream test3's insert (with
+    // test3's RELATION message) and test1's: 2 * (BEGIN, INSERT, COMMIT) + 1 RELATION = 7
+    // messages. The slot bound to pub1 streams only test1's insert: 3 messages.
+    assertPublicationBoundStreamMessages(pubAllStream, 7, 2 /* expectedInserts */,
+        0 /* expectedUpdates */, new HashSet<>(Arrays.asList("test1", "test2", "test3")));
+    assertPublicationBoundStreamMessages(regularStream, 7, 2 /* expectedInserts */,
+        0 /* expectedUpdates */, new HashSet<>(Arrays.asList("test1", "test2", "test3")));
+    assertPublicationBoundStreamMessages(pub1Stream, 3, 1 /* expectedInserts */,
+        0 /* expectedUpdates */, new HashSet<>(Arrays.asList("test1")));
+    pub1Stream.close();
+    pubAllStream.close();
+    regularStream.close();
+  }
+
+  private void assertPublicationBoundStreamMessages(PGReplicationStream stream, int totalMessages,
+      int expectedInserts, int expectedUpdates, Set<String> allowedRelationNames) throws Exception {
+    List<PgOutputMessage> result = receiveMessage(stream, totalMessages);
+    int inserts = 0;
+    int updates = 0;
+    for (PgOutputMessage message : result) {
+      if (message instanceof PgOutputRelationMessage) {
+        String relationName = ((PgOutputRelationMessage) message).name;
+        assertTrue(String.format("Unexpected relation %s in the stream", relationName),
+            allowedRelationNames.contains(relationName));
+      } else if (message instanceof PgOutputInsertMessage) {
+        inserts++;
+      } else if (message instanceof PgOutputUpdateMessage) {
+        updates++;
+      }
+    }
+    assertEquals(expectedInserts, inserts);
+    assertEquals(expectedUpdates, updates);
   }
 
   @Test
@@ -7053,6 +7267,141 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     assertReplicationSlotExists(slotName, false);
     replConn1.close();
     replConn0.close();
+  }
+
+  @Test
+  public void testDropReplicationSlotWaitRetriesAcrossRpcTimeout() throws Exception {
+    // Verify that DROP_REPLICATION_SLOT ... WAIT keeps waiting even after the advisory-lock
+    // RPC deadline expires.  We force a short RPC deadline by setting
+    // ysql_client_read_write_timeout_ms to 5 seconds, then hold the slot alive for longer than
+    // that before releasing it.  The drop must succeed rather than failing with a timeout error.
+    Map<String, String> tserverFlags = getTServerFlagsWithExclusiveLock();
+    tserverFlags.put("ysql_client_read_write_timeout_ms", "5000");
+    restartClusterWithFlags(getMasterFlags(), tserverFlags);
+
+    String slotName = "drop_slot_wait_retry_test";
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS t_drop_wait_retry");
+      stmt.execute("CREATE TABLE t_drop_wait_retry(k int primary key, v text)");
+      stmt.execute("INSERT INTO t_drop_wait_retry VALUES (1, 'a')");
+    }
+
+    Connection replConn0 = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replApi0 =
+        replConn0.unwrap(PGConnection.class).getReplicationAPI();
+
+    createSlot(replApi0, slotName, "test_decoding");
+    assertReplicationSlotExists(slotName, true);
+
+    PGReplicationStream stream0 = replApi0.replicationStream()
+        .logical()
+        .withSlotName(slotName)
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .start();
+
+    // Start the WAIT drop on a different tserver while the slot is held.
+    AtomicReference<Exception> dropError = new AtomicReference<>();
+    Thread dropThread = new Thread(() -> {
+      try (Connection replConn1 = getConnectionBuilder().withTServer(1).replicationConnect();
+           Statement stmt = replConn1.createStatement()) {
+        stmt.execute("DROP_REPLICATION_SLOT " + slotName + " WAIT");
+      } catch (Exception e) {
+        dropError.set(e);
+      }
+    });
+    dropThread.start();
+
+    // Hold the slot alive for longer than the 5-second RPC timeout so that the first
+    // advisory-lock acquire RPC definitely times out.  The retry loop must issue a new
+    // acquire and eventually succeed.
+    Thread.sleep(15000);
+    assertTrue("DROP_REPLICATION_SLOT ... WAIT must still be blocked after the first RPC timeout",
+        dropThread.isAlive());
+    assertReplicationSlotExists(slotName, true);
+
+    // Release the slot; the retrying drop must now complete.
+    stream0.close();
+    replConn0.close();
+
+    dropThread.join(30000);
+    assertFalse("DROP_REPLICATION_SLOT ... WAIT must complete after the slot is released",
+        dropThread.isAlive());
+    if (dropError.get() != null) {
+      throw new AssertionError("DROP_REPLICATION_SLOT ... WAIT failed unexpectedly",
+          dropError.get());
+    }
+    assertReplicationSlotExists(slotName, false);
+  }
+
+  @Test
+  public void testDropReplicationSlotWaitMaxRetriesGuc() throws Exception {
+    // Verify that yb_replication_slot_wait_max_retries caps the retry loop: when set to 2,
+    // DROP_REPLICATION_SLOT ... WAIT must fail with LOCK_NOT_AVAILABLE after 2 RPC timeouts
+    // rather than blocking indefinitely.
+    Map<String, String> tserverFlags = getTServerFlagsWithExclusiveLock();
+    tserverFlags.put("ysql_client_read_write_timeout_ms", "5000");
+    restartClusterWithFlags(getMasterFlags(), tserverFlags);
+
+    String slotName = "drop_slot_wait_max_retries_test";
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS t_drop_wait_maxretries");
+      stmt.execute("CREATE TABLE t_drop_wait_maxretries(k int primary key, v text)");
+      stmt.execute("INSERT INTO t_drop_wait_maxretries VALUES (1, 'a')");
+    }
+
+    Connection replConn0 = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replApi0 =
+        replConn0.unwrap(PGConnection.class).getReplicationAPI();
+
+    createSlot(replApi0, slotName, "test_decoding");
+    assertReplicationSlotExists(slotName, true);
+
+    PGReplicationStream stream0 = replApi0.replicationStream()
+        .logical()
+        .withSlotName(slotName)
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .start();
+
+    // Set max retries to 2 on tserver 1 and issue DROP WAIT from there.
+    // The slot remains held by tserver 0 throughout, so the drop must hit the cap and fail.
+    AtomicReference<Exception> dropError = new AtomicReference<>();
+    Thread dropThread = new Thread(() -> {
+      try (Connection replConn1 = getConnectionBuilder().withTServer(1).replicationConnect();
+           Statement stmt = replConn1.createStatement()) {
+        stmt.execute("SET yb_replication_slot_wait_max_retries = 2");
+        stmt.execute("DROP_REPLICATION_SLOT " + slotName + " WAIT");
+      } catch (Exception e) {
+        dropError.set(e);
+      }
+    });
+    dropThread.start();
+
+    // 2 retries x ~7s each + some margin: the drop must have exited by 30s.
+    dropThread.join(30000);
+    assertFalse("DROP_REPLICATION_SLOT ... WAIT must exit after hitting max retries",
+        dropThread.isAlive());
+
+    // The drop must have failed, not succeeded.
+    Exception err = dropError.get();
+    assertNotNull("Expected DROP_REPLICATION_SLOT ... WAIT to fail when max retries is reached",
+        err);
+    String expectedMsg = "timed out waiting for replication slot";
+    assertTrue(
+        String.format("Expected error to contain '%s', got: '%s'", expectedMsg, err.getMessage()),
+        StringUtils.containsIgnoreCase(err.getMessage(), expectedMsg));
+
+    // Slot must still exist because the drop failed.
+    assertReplicationSlotExists(slotName, true);
+
+    // Cleanup.
+    stream0.close();
+    replConn0.close();
+    Connection cleanupConn = getConnectionBuilder().withTServer(0).replicationConnect();
+    cleanupConn.unwrap(PGConnection.class).getReplicationAPI().dropReplicationSlot(slotName);
+    cleanupConn.close();
+    assertReplicationSlotExists(slotName, false);
   }
 
   @Test

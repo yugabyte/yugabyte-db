@@ -31,6 +31,7 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
 #include "yb/util/sync_point.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread_holder.h"
 #include "yb/util/tsan_util.h"
@@ -43,6 +44,7 @@
 using namespace std::literals;
 using namespace yb::size_literals;
 
+DECLARE_bool(TEST_enable_sync_points);
 DECLARE_bool(TEST_vector_index_exact);
 DECLARE_bool(TEST_vector_index_skip_manifest_update_during_shutdown);
 DECLARE_bool(vector_index_enable_compactions);
@@ -274,6 +276,9 @@ class VectorLSMTestBase : public hnsw::VectorIndexTestBase {
   vector_index::StoreVectorPayload store_vector_payload() const {
     return StorePayload(backend_param());
   }
+
+  void TestFlushRetirement(bool fail);
+  void TestOutOfOrderFlush(bool fail);
 
   void TestBootstrap(bool flush);
 
@@ -696,6 +701,183 @@ MergeFilterPtr VectorLSMTestBase::GetMergeFilter() {
 void VectorLSMTestBase::SetMergeFilter(MergeFilterPtr&& filter) {
   std::lock_guard lock(merge_filter_mutex_);
   merge_filter_ = std::move(filter);
+}
+
+void VectorLSMTestBase::TestFlushRetirement(bool fail) {
+  Status status;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, 4, 1000));
+  ASSERT_OK(InsertRandom(lsm, 4, 8));
+  ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+  CountDownLatch retiring(1), release(1), completed(1);
+  auto* sync = SyncPoint::GetInstance();
+  if (fail) {
+    sync->SetCallBack("VectorLSM::DoSaveChunk:Status", [](void* arg) {
+      *static_cast<Status*>(arg) = STATUS(IOError, "injected vector save failure");
+    });
+  }
+  sync->SetCallBack("VectorLSM::SaveChunk:BeforeRetirement", [&](void* arg) {
+    if (arg == &lsm) {
+      retiring.CountDown();
+      release.Wait();
+    }
+  });
+  sync->EnableProcessing();
+  TestThreadHolder threads;
+  auto cleanup = ScopeExit([&] {
+    release.CountDown();
+    threads.JoinAll();
+    sync->DisableProcessing();
+    sync->ClearAllCallBacks();
+  });
+  ASSERT_OK(lsm.Flush(/* wait = */ false));
+  ASSERT_TRUE(retiring.WaitFor(5s));
+  threads.AddThreadFunctor([&] {
+    status = lsm.WaitForFlush();
+    completed.CountDown();
+  });
+  ASSERT_FALSE(completed.WaitFor(20ms));
+  release.CountDown();
+  ASSERT_TRUE(completed.WaitFor(5s));
+  threads.JoinAll();
+  if (fail) {
+    ASSERT_TRUE(status.IsIOError()) << status;
+    ASSERT_TRUE(lsm.Flush(false).IsIOError());
+    ASSERT_TRUE(InsertRandom(lsm, 4, 1).IsIOError());
+    ASSERT_TRUE(lsm.WaitForFlush().IsIOError());
+  } else {
+    ASSERT_OK(status);
+  }
+}
+
+TEST_P(VectorLSMTest, FlushWaitsForRetirement) {
+  TestFlushRetirement(false);
+}
+
+TEST_P(VectorLSMTest, FlushErrorWaitsForRetirement) {
+  TestFlushRetirement(true);
+}
+
+void VectorLSMTestBase::TestOutOfOrderFlush(bool fail) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, 4, 1000));
+  ASSERT_OK(InsertRandom(lsm, 4, 8));
+  ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+
+  CountDownLatch first_saving(1), release_first(1), completed(1);
+  std::atomic<size_t> saves{0};
+  Status status;
+  auto* sync = SyncPoint::GetInstance();
+  sync->SetCallBack("VectorLSM::DoSaveChunk:Status", [&](void* arg) {
+    if (saves.fetch_add(1) == 0) {
+      first_saving.CountDown();
+      release_first.Wait();
+      if (fail) {
+        *static_cast<Status*>(arg) = STATUS(IOError, "injected earlier chunk failure");
+      }
+    }
+  });
+  sync->EnableProcessing();
+  TestThreadHolder threads;
+  auto cleanup = ScopeExit([&] {
+    release_first.CountDown();
+    threads.JoinAll();
+    sync->DisableProcessing();
+    sync->ClearAllCallBacks();
+  });
+  ASSERT_OK(lsm.Flush(/* wait = */ false));
+  ASSERT_TRUE(first_saving.WaitFor(5s * kTimeMultiplier));
+  ASSERT_OK(lsm.GetFlushStatus());
+  ASSERT_OK(InsertRandom(lsm, 4, 8));
+  ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+  threads.AddThreadFunctor([&] {
+    status = lsm.Flush(/* wait = */ true);
+    completed.CountDown();
+  });
+  // B has saved and retired, but cannot enter the manifest ahead of A. No B task remains to
+  // discover A's eventual failure and complete B's synchronous promise.
+  ASSERT_OK(WaitFor([&] {
+    return lsm.NumSavedImmutableChunks() == 1 && lsm.TEST_PendingSaveTasks() == 1;
+  }, 5s * kTimeMultiplier, "later save task retired"));
+  ASSERT_FALSE(completed.WaitFor(20ms));
+  release_first.CountDown();
+  ASSERT_TRUE(completed.WaitFor(5s * kTimeMultiplier));
+  threads.JoinAll();
+  if (fail) {
+    ASSERT_TRUE(status.IsIOError()) << status;
+    ASSERT_TRUE(lsm.GetFlushStatus().IsIOError());
+    ASSERT_TRUE(lsm.WaitForFlush().IsIOError());
+  } else {
+    ASSERT_OK(status);
+    ASSERT_OK(lsm.GetFlushStatus());
+    ASSERT_OK(lsm.WaitForFlush());
+  }
+}
+
+TEST_P(VectorLSMTest, OutOfOrderSynchronousFlush) {
+  TestOutOfOrderFlush(false);
+}
+
+TEST_P(VectorLSMTest, EarlierFailureCompletesSynchronousFlush) {
+  TestOutOfOrderFlush(true);
+}
+
+TEST_P(VectorLSMTest, ManifestFailureReleasesCompactionWaiter) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, 4, 1000));
+  for (size_t i = 0; i != 2; ++i) {
+    ASSERT_OK(InsertRandomAndFlush(lsm, 4, 8));
+  }
+  ASSERT_OK(InsertRandom(lsm, 4, 8));
+  ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+  CountDownLatch writing(1), release(1), waiting(1), completed(1), shutdown_done(1);
+  Status status;
+  auto* sync = SyncPoint::GetInstance();
+  sync->SetCallBack("VectorLSM::AddChunkToManifest:Status", [&](void* arg) {
+    writing.CountDown();
+    release.Wait();
+    *static_cast<Status*>(arg) = STATUS(IOError, "injected manifest failure");
+  });
+  sync->SetCallBack("VectorLSM::AcquireManifest:Waiting", [&](void* arg) {
+    if (arg == &lsm) {
+      waiting.CountDown();
+    }
+  });
+  sync->EnableProcessing();
+  TestThreadHolder threads;
+  auto cleanup = ScopeExit([&] {
+    release.CountDown();
+    threads.JoinAll();
+    sync->DisableProcessing();
+    sync->ClearAllCallBacks();
+  });
+  ASSERT_OK(lsm.Flush(/* wait = */ false));
+  ASSERT_TRUE(writing.WaitFor(5s * kTimeMultiplier));
+  threads.AddThreadFunctor([&] {
+    status = lsm.Compact(/* wait = */ true);
+    completed.CountDown();
+  });
+  ASSERT_TRUE(waiting.WaitFor(5s * kTimeMultiplier));
+  ASSERT_FALSE(completed.WaitFor(20ms));
+  release.CountDown();
+  ASSERT_TRUE(completed.WaitFor(5s * kTimeMultiplier));
+  threads.JoinAll();
+  ASSERT_TRUE(status.IsIOError()) << status;
+  ASSERT_TRUE(lsm.WaitForFlush().IsIOError());
+  ASSERT_TRUE(lsm.Compact(/* wait = */ true).IsIOError());
+  threads.AddThreadFunctor([&] {
+    lsm.StartShutdown();
+    lsm.CompleteShutdown();
+    shutdown_done.CountDown();
+  });
+  ASSERT_TRUE(shutdown_done.WaitFor(5s * kTimeMultiplier));
+  threads.JoinAll();
 }
 
 TEST_P(VectorLSMTest, Simple) {
@@ -1205,6 +1387,48 @@ TEST_P(VectorLSMTest, ShutdownDuringBackgroundMerge) {
   lsm.CompleteShutdown();
 }
 
+// The save of a flushed chunk schedules a compaction after the chunk left the updates queue, so
+// CompleteShutdown must wait for it (#35556).
+TEST_F(VectorLSMHnswlibTest, ShutdownWaitsForChunkSave) {
+  constexpr size_t kDimensions = 4;
+
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kDefaultChunkSize));
+
+  CountDownLatch save_blocked(1);
+  CountDownLatch release_save(1);
+  CountDownLatch shutdown_done(1);
+  // Declared before the scope exit, so the save is released before the threads are joined.
+  ThreadHolder threads;
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack(
+      "VectorLSM::UpdateManifest:BeforeScheduleCompaction",
+      [&save_blocked, &release_save](void*) {
+        save_blocked.CountDown();
+        release_save.Wait();
+      });
+  sync_point->EnableProcessing();
+  auto se = ScopeExit([sync_point, &release_save] {
+    release_save.CountDown();
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  ASSERT_OK(InsertRandomAndFlush(lsm, kDimensions, 10));
+  ASSERT_TRUE(save_blocked.WaitFor(30s * kTimeMultiplier)) << "Save did not reach the sync point";
+
+  threads.AddThreadFunctor([&lsm, &shutdown_done] {
+    lsm.StartShutdown();
+    lsm.CompleteShutdown();
+    shutdown_done.CountDown();
+  });
+  ASSERT_FALSE(shutdown_done.WaitFor(100ms)) << "CompleteShutdown did not wait for the save";
+
+  release_save.CountDown();
+  ASSERT_TRUE(shutdown_done.WaitFor(30s * kTimeMultiplier))
+      << "CompleteShutdown did not return after the save was released";
+}
+
 // CreateSplitChildTablet flushes vector indexes with Flush(wait=false) then WaitForFlush().
 // An Insert that starts after DoFlush clears mutable_chunk_ must still be visible to that wait,
 // otherwise the split "sync" flush is not an insert barrier and a later CompleteShutdown can
@@ -1547,6 +1771,71 @@ TEST_P(VectorLSMTest, ChunkedCompactionRespectsMemStoreLimit) {
   for (size_t i = 1; i < manifest_chunks.size(); ++i) {
     ASSERT_LE(manifest_chunks[i - 1].order_no(), manifest_chunks[i].order_no());
   }
+}
+
+// A compaction that fails after saving some of its output chunks must delete their files: they
+// never reach the manifest, so nothing else would.
+TEST_P(VectorLSMTest, FailedCompactionDeletesSavedOutputFiles) {
+  constexpr size_t kDimensions = 16;
+  constexpr size_t kNumInputChunks = 2;
+  constexpr size_t kMemStoreLimitMb = 1;
+  const std::string kChunkFilePrefix = "vectorindex_";
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb) = kMemStoreLimitMb;
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) = 0;
+
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kDefaultChunkSize));
+  // Each input chunk holds one output chunk's worth of vectors, so the merge saves several.
+  const auto vectors_per_input_chunk = lsm.EstimateNumVectorsForBytes(kMemStoreLimitMb * 1_MB);
+  ASSERT_GT(vectors_per_input_chunk, 0);
+  for (size_t i = 0; i != kNumInputChunks; ++i) {
+    ASSERT_OK(InsertRandomAndFlush(lsm, kDimensions, vectors_per_input_chunk));
+  }
+
+  // Fail the merge right before it saves its second output chunk. This stands for a non-shutdown
+  // failure such as an IO error. ShutdownInProgress is used only because any other status is a
+  // DFATAL in CompactionTask::Run, and the LSM here is not shutting down.
+  std::atomic<size_t> num_saves{0};
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack("VectorLSM::Merger::Merge:BeforeSave", [&num_saves](void* arg) {
+    if (++num_saves == 2) {
+      *static_cast<Status*>(arg) = STATUS(ShutdownInProgress, "Injected merge failure");
+    }
+  });
+  sync_point->EnableProcessing();
+  auto se = ScopeExit([sync_point] {
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  auto status = lsm.Compact(/* wait = */ true);
+  ASSERT_TRUE(status.IsShutdownInProgress()) << status;
+  ASSERT_EQ(num_saves.load(), 2);
+  // The failure affects only the output: the input chunks are still there.
+  ASSERT_EQ(lsm.NumImmutableChunks(), kNumInputChunks);
+
+  // Releasing the failed compaction's chunks removes their files.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    std::unordered_set<uint64_t> manifest_serial_nos;
+    for (const auto& chunk : VERIFY_RESULT(
+             LoadAliveManifestChunks(lsm.TEST_GetEnv(), lsm.StorageDir()))) {
+      manifest_serial_nos.insert(chunk.serial_no());
+    }
+    auto files = VERIFY_RESULT(
+        vector_index::ListVectorLSMFiles(lsm.TEST_GetEnv(), lsm.StorageDir()));
+    for (const auto& file : files.manifest_and_chunk_files) {
+      if (file.starts_with(kChunkFilePrefix) &&
+          !manifest_serial_nos.contains(std::stoull(file.substr(kChunkFilePrefix.size())))) {
+        LOG(INFO) << "Chunk file not in the manifest: " << file;
+        return false;
+      }
+    }
+    return true;
+  }, 10s * kTimeMultiplier, "Only manifest chunks left on disk"));
 }
 
 // Same chunk-splitting behavior as ChunkedCompactionRespectsMemStoreLimit, but the byte budget

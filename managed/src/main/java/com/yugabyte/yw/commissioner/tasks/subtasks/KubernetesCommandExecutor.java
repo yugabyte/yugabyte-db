@@ -2119,7 +2119,23 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       ensureCertManagerSettings(values);
       // do not allow selfsignedBootstrap to be enabled ever from YBA
       preventBootstrapCA(values);
+      ensureFipsCertManagerKey(values);
     }
+  }
+
+  /** Fails before the helm install rather than when the DB processes fail to load the cert. */
+  @SuppressWarnings("unchecked")
+  private void ensureFipsCertManagerKey(Map<String, Object> values) {
+    Universe u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+    if (!u.getUniverseDetails().fipsEnabled || !hasCertManagerOverride(values)) {
+      return;
+    }
+    Map<String, Object> tls = (Map<String, Object>) values.get("tls");
+    Map<String, Object> certManager = (Map<String, Object>) tls.get("certManager");
+    Object certificates = certManager.get("certificates");
+    Map<String, Object> certs =
+        certificates instanceof Map ? (Map<String, Object>) certificates : Map.of();
+    CertificateHelper.verifyFipsCertManagerKey(certs.get("algorithm"), certs.get("keySize"));
   }
 
   private Map<String, Object> buildMergedHelmValues(String overridesFile) {

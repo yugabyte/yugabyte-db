@@ -122,6 +122,11 @@ DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_replication_slot_exclusive_lock, 
     "Acquire a cluster-wide exclusive advisory lock while a replication slot is "
     "in use so that only one consumer can use it at a time across the universe.");
 
+DEFINE_RUNTIME_PG_FLAG(int32, yb_replication_slot_wait_max_retries, 0,
+    "Maximum number of advisory-lock RPC timeout retries for "
+    "DROP_REPLICATION_SLOT ... WAIT before giving up with an error. "
+    "0 (default) retries indefinitely.");
+
 DEFINE_NON_RUNTIME_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication, true,
     "When set to true, modifications to publication will be reflected implicitly. "
     "This replaces the previous mechanism of periodic publication refresh with PG "

@@ -84,6 +84,7 @@ class FlushJob {
 
   Result<FileNumbersHolder> Run(FileMetaData* file_meta = nullptr);
   TableProperties GetTableProperties() const { return table_properties_; }
+  bool filter_failed() const { return filter_failed_; }
 
  private:
   void ReportStartedFlush();
@@ -102,6 +103,7 @@ class FlushJob {
   std::vector<SequenceNumber> existing_snapshots_;
   SequenceNumber earliest_write_conflict_snapshot_;
   MemTableFilter mem_table_flush_filter_;
+  bool filter_failed_ = false;
   FileNumbersProvider* file_numbers_provider_;
   JobContext* job_context_;
   LogBuffer* log_buffer_;

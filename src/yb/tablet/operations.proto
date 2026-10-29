@@ -122,6 +122,10 @@ message WritePB {
   // Copied from WriteRequestPB.origination_info for the persistence gate.  Leader-only: cleared
   // once the gate has passed the write, so it never reaches the WAL or any follower.
   optional OriginationInfoPB origination_info = 25;
+
+  // Source commit time of the transaction being applied, as a HybridTime, travelling with
+  // xrepl_origin_id.
+  optional fixed64 xrepl_source_write_ht = 26;
 }
 
 message ChangeMetadataRequestPB {

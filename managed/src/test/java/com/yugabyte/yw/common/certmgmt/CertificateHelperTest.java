@@ -536,6 +536,52 @@ public class CertificateHelperTest extends FakeDBApplication {
   }
 
   @Test
+  public void testVerifyFipsComplianceRejectsKeyTypesFipsDoesNotAllow() throws Exception {
+    for (String root : List.of("root-ec-p192.crt", "root-dsa.crt", "root-ed25519.crt")) {
+      List<X509Certificate> chain =
+          CertificateHelper.convertStringToX509CertList(
+              TestUtils.readResource("certs/fips/" + root));
+      PlatformServiceException e =
+          assertThrows(
+              PlatformServiceException.class, () -> CertificateHelper.verifyFipsCompliance(chain));
+      assertEquals(BAD_REQUEST, e.getHttpStatus());
+      assertTrue(
+          root + ": " + e.getMessage(),
+          e.getMessage()
+              .endsWith(
+                  "FIPS mode requires an RSA key of at least 2048 bits or an EC key on P-256,"
+                      + " P-384 or P-521."));
+    }
+  }
+
+  @Test
+  public void testVerifyFipsComplianceAcceptsEcP256() throws Exception {
+    CertificateHelper.verifyFipsCompliance(
+        CertificateHelper.convertStringToX509CertList(
+            TestUtils.readResource("certs/fips/root-ec-p256.crt")));
+  }
+
+  @Test
+  public void testVerifyFipsCertManagerKey() {
+    CertificateHelper.verifyFipsCertManagerKey(null, null);
+    CertificateHelper.verifyFipsCertManagerKey("RSA", 2048);
+    CertificateHelper.verifyFipsCertManagerKey("RSA", "4096");
+    CertificateHelper.verifyFipsCertManagerKey("ECDSA", 384);
+    for (List<Object> key :
+        List.<List<Object>>of(
+            List.of("Ed25519", 256),
+            List.of("RSA", 1024),
+            List.of("ECDSA", 224),
+            List.of("ECDSA", "large"))) {
+      PlatformServiceException e =
+          assertThrows(
+              PlatformServiceException.class,
+              () -> CertificateHelper.verifyFipsCertManagerKey(key.get(0), key.get(1)));
+      assertTrue(e.getMessage(), e.getMessage().contains("are not FIPS compliant"));
+    }
+  }
+
+  @Test
   public void testUploadRootCARejectsSha1IntermediateWhenFipsEnabled() {
     try (MockedStatic<AppConfigHelper> appConfig = mockStatic(AppConfigHelper.class)) {
       appConfig.when(AppConfigHelper::isFipsEnabled).thenReturn(true);

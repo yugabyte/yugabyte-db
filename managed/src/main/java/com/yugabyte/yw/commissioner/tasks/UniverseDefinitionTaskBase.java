@@ -2577,6 +2577,15 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
+   * Whether the node's instance is a cloud VM that YBA creates and destroys. Only on public clouds:
+   * onprem nodes are pre-existing hardware, and kubernetes and local never go through instance
+   * destroy.
+   */
+  protected static boolean isCloudInstanceNode(Universe universe, NodeDetails node) {
+    return universe.getCluster(node.placementUuid).getProviderCloudType(node).isPublicCloud();
+  }
+
+  /**
    * Creates subtasks to create a set of server nodes. As the tasks are not idempotent, node states
    * are checked to determine if some tasks must be run or skipped. This state checking is ignored
    * if ignoreNodeStatus is true.
@@ -2623,12 +2632,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               // pre-existing hardware, and kubernetes and local never go through instance destroy.
               Set<NodeDetails> leftoverNodes =
                   filteredNodes.stream()
-                      .filter(
-                          n ->
-                              universe
-                                  .getCluster(n.placementUuid)
-                                  .getProviderCloudType(n)
-                                  .isPublicCloud())
+                      .filter(n -> isCloudInstanceNode(universe, n))
                       .collect(Collectors.toSet());
               if (!leftoverNodes.isEmpty()) {
                 // isForceDelete stays false: creating on top of a cleanup that silently failed is
@@ -4147,10 +4151,39 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     return universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
   }
 
+  /**
+   * Records {@code targetVersion} as the software version when the user intent still holds an older
+   * one. Finalize clears prevYBSoftwareConfig, the only other record of the target.
+   */
+  protected void createUpdateSoftwareVersionTaskIfStale(
+      Universe universe, String targetVersion, SubTaskGroupType subTaskGroupType) {
+    if (!targetVersion.equals(
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion)) {
+      createUpdateSoftwareVersionTask(targetVersion, false /* isSoftwareUpdateViaVm */)
+          .setSubTaskGroupType(subTaskGroupType);
+    }
+  }
+
   protected void createFinalizeUpgradeTasks(
       boolean upgradeSystemCatalog,
       boolean finalizeCatalogUpgrade,
       boolean requireAdditionalSuperUserForCatalogUpgrade) {
+    createFinalizeUpgradeTasks(
+        upgradeSystemCatalog,
+        finalizeCatalogUpgrade,
+        requireAdditionalSuperUserForCatalogUpgrade,
+        true /* saveReadyState */);
+  }
+
+  /**
+   * Finalize subtasks, ending with the Ready state unless {@code saveReadyState} is false; a caller
+   * that passes false must save Ready (rollback disallowed) itself, together with the version.
+   */
+  protected void createFinalizeUpgradeTasks(
+      boolean upgradeSystemCatalog,
+      boolean finalizeCatalogUpgrade,
+      boolean requireAdditionalSuperUserForCatalogUpgrade,
+      boolean saveReadyState) {
     Universe universe = getUniverse();
 
     createClearSoftwareUpgradeProgressTask();
@@ -4187,9 +4220,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // This also updates intermittentMinRecoverTimeInMillis for all PITR configs
     createEnablePitrConfigTask();
 
-    createUpdateUniverseSoftwareUpgradeStateTask(
-        UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
-        false /* isSoftwareRollbackAllowed */);
+    if (saveReadyState) {
+      createUpdateUniverseSoftwareUpgradeStateTask(
+          UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
+          false /* isSoftwareRollbackAllowed */);
+    }
   }
 
   protected void createEnablePitrConfigTask() {
@@ -4769,5 +4804,16 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
+  }
+
+  /**
+   * Which nodes may be force-destroyed: only onprem ones, where a failed cleanup leaves the node
+   * instance decommissioned. On a cloud, a failed terminate fails the task so the node stays
+   * tracked and blacklisted. A retry is safe because destroy succeeds when the instance is already
+   * gone.
+   */
+  protected static Function<NodeDetails, Boolean> forceDestroyOnlyOnOnprem(Universe universe) {
+    Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(universe);
+    return node -> providerGetter.apply(node).getCloudCode() == CloudType.onprem;
   }
 }

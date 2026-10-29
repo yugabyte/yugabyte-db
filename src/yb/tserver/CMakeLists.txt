@@ -137,7 +137,7 @@ YRPC_GENERATE(
   TSERVER_ADMIN_YRPC_SRCS TSERVER_ADMIN_YRPC_HDRS TSERVER_ADMIN_YRPC_TGTS
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-  MESSAGES_PROTO_FILES tserver_admin.proto)
+  PROTO_FILES tserver_admin.proto)
 set(TSERVER_ADMIN_YRPC_LIBS
   yrpc
   protobuf
@@ -289,6 +289,8 @@ set(TSERVER_SRCS
   remote_snapshot_transfer_client.cc
   service_util.cc
   session_registry.cc
+  snapshot_preflush.cc
+  tablet_flusher.cc
   tablet_limits.cc
   tablet_memory_manager.cc
   tablet_server.cc

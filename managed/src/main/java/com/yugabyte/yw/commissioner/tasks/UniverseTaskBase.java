@@ -1310,6 +1310,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   /**
+   * Whether this run retries the task that holds the universe's placement lock, so an earlier
+   * attempt already started changing the universe.
+   */
+  protected boolean isRetryOfPlacementLockHolder(Universe universe) {
+    UUID previousTaskUuid = taskParams().getPreviousTaskUUID();
+    return previousTaskUuid != null
+        && previousTaskUuid.equals(universe.getUniverseDetails().placementModificationTaskUuid);
+  }
+
+  /**
    * Whether another task holds the placement lock. The rollback checkpoint ({@code
    * state_transition_details}) is then that task's, so this task must not write or clear it.
    */
@@ -1869,12 +1879,39 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   /** Create a task to mark the final software version on a universe. */
   public SubTaskGroup createUpdateSoftwareVersionTask(
       String softwareVersion, boolean isSoftwareUpdateViaVm) {
+    return createUpdateSoftwareVersionTask(
+        softwareVersion, isSoftwareUpdateViaVm, null /* softwareUpgradeState */);
+  }
+
+  public SubTaskGroup createUpdateSoftwareVersionTask(
+      String softwareVersion,
+      boolean isSoftwareUpdateViaVm,
+      @Nullable SoftwareUpgradeState softwareUpgradeState) {
+    return createUpdateSoftwareVersionTask(
+        softwareVersion,
+        isSoftwareUpdateViaVm,
+        softwareUpgradeState,
+        null /* isSoftwareRollbackAllowed */);
+  }
+
+  /**
+   * Create a task to mark the final software version on a universe, also setting {@code
+   * softwareUpgradeState} (and {@code isSoftwareRollbackAllowed} when not null) in the same
+   * universe save when it is not null.
+   */
+  public SubTaskGroup createUpdateSoftwareVersionTask(
+      String softwareVersion,
+      boolean isSoftwareUpdateViaVm,
+      @Nullable SoftwareUpgradeState softwareUpgradeState,
+      @Nullable Boolean isSoftwareRollbackAllowed) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("FinalizeUniverseUpdate");
     UpdateSoftwareVersion.Params params = new UpdateSoftwareVersion.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.softwareVersion = softwareVersion;
     params.prevSoftwareVersion = taskParams().ybPrevSoftwareVersion;
     params.isSoftwareUpdateViaVm = isSoftwareUpdateViaVm;
+    params.softwareUpgradeState = softwareUpgradeState;
+    params.isSoftwareRollbackAllowed = isSoftwareRollbackAllowed;
     UpdateSoftwareVersion task = createTask(UpdateSoftwareVersion.class);
     task.initialize(params);
     task.setUserTaskUUID(getUserTaskUUID());

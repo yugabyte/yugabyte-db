@@ -27,6 +27,7 @@
 #include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/common/cdr_metadata.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
 #include "yb/common/txn_error_injection.h"
@@ -122,6 +123,9 @@ void SetupKeyValueBatch(const tserver::WriteRequestMsg& client_request, LWWriteP
   }
   if (client_request.has_xrepl_origin_id()) {
     out_request->set_xrepl_origin_id(client_request.xrepl_origin_id());
+  }
+  if (client_request.has_xrepl_source_write_ht()) {
+    out_request->set_xrepl_source_write_ht(client_request.xrepl_source_write_ht());
   }
   out_request->set_batch_idx(client_request.batch_idx());
   // Lift the ops' write fence into the replicated message, which is all RaftConsensus sees. The
@@ -1144,11 +1148,21 @@ Status WriteQuery::DoCompleteExecute() {
       ? docdb::InitMarkerBehavior::kRequired
       : docdb::InitMarkerBehavior::kOptional;
   auto& write_batch = *request().mutable_write_batch();
+  // Only a replication apply carries a source write time. A request can carry an origin without one
+  // (CDCSDK reports it), and is then a local write.
+  std::optional<CdrMetadata> cdr_metadata;
+  if (request().xrepl_source_write_ht()) {
+    cdr_metadata = CdrMetadata{
+        .source_origin = request().xrepl_origin_id(),
+        .source_write_ht = HybridTime::FromPB(request().xrepl_source_write_ht()),
+    };
+  }
   for (;;) {
     RETURN_NOT_OK(docdb::AssembleDocWriteBatch(
         doc_ops_, read_operation_data, tablet->doc_db(), &tablet->GetSchemaPackingProvider(),
         scoped_read_operation_, &write_batch, init_marker_behavior,
-        tablet->monotonic_counter(), &read_restart_data_, tablet->metadata()->table_name()));
+        tablet->monotonic_counter(), &read_restart_data_, tablet->metadata()->table_name(),
+        cdr_metadata));
 
     if (!read_restart_data_.is_valid() &&
         ShouldInjectReadRestart(read_operation_data.read_time)) {

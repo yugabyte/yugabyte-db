@@ -1017,6 +1017,30 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
+   * Replace the active table list a TServer uses to filter table-level Prometheus metrics.
+   *
+   * @param hp host and port of the TServer.
+   * @param tableIds the complete list of DocDB table IDs; it replaces the previous list.
+   * @param listVersion the caller's version of the list, zero if none.
+   * @return a deferred that yields the response, which carries the TServer's filtering state and
+   *     any rejection.
+   */
+  public Deferred<SetActiveTableIdsForMetricsResponse> setActiveTableIdsForMetrics(
+      final HostAndPort hp, Collection<String> tableIds, int listVersion) {
+    checkIsClosed();
+    TabletClient client = newSimpleClient(hp);
+    if (client == null) {
+      throw new IllegalStateException("Could not create a client to " + hp.toString());
+    }
+    SetActiveTableIdsForMetricsRequest rpc =
+        new SetActiveTableIdsForMetricsRequest(tableIds, listVersion);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    Deferred<SetActiveTableIdsForMetricsResponse> d = rpc.getDeferred();
+    client.sendRpc(rpc);
+    return d;
+  }
+
+  /**
    * Get connectivity state from a TServer (tserver-to-tserver and tserver-to-master connectivity).
    *
    * @param hp host and port of the TServer.

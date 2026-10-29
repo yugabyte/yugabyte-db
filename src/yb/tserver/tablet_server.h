@@ -117,6 +117,7 @@ namespace tserver {
 
 class GetYSQLLeaseInfoResponsePB;
 class PgClientServiceImpl;
+class TabletServiceBackupImpl;
 class TServerCgroupManager;
 class TserverAutoFlagsManager;
 class TserverXClusterContext;
@@ -257,6 +258,11 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // Starts PG if RestartPG left it paused for want of the xCluster lease and that no longer
   // applies.
   void MaybeStartPg() const EXCLUDES(pg_start_mutex_);
+
+  // Whether this TServer satisfies the xCluster-guarded information lease requirement: it holds the
+  // lease or the persistence gate that requires it is not enforced.  Decides both whether PG may
+  // start and whether this TServer's tablets must give up leadership.
+  bool IsXClusterLeaseRequirementMet() const;
 
   Status GetLiveTServers(std::vector<master::TSInformationPB>* live_tservers) const
       EXCLUDES(lock_) override;
@@ -696,6 +702,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // An instance to remote bootstrap service. This pointer is no longer valid after
   // RpcAndWebServerBase is shut down.
   std::weak_ptr<RemoteBootstrapServiceImpl> remote_bootstrap_service_;
+  std::weak_ptr<TabletServiceBackupImpl> backup_service_;
 
   struct PgClientServiceHolder;
 
@@ -707,7 +714,6 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   key_t ysql_conn_mgr_stats_shmem_key_ = 0;
 
  private:
-  bool IsPgStartAllowedByXClusterLeaseStatus() const;
   Status RestartPgUnlocked() const REQUIRES(pg_start_mutex_);
   Status KillPgUnlocked() const REQUIRES(pg_start_mutex_);
 
@@ -766,6 +772,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void AbortInFlightRelcacheInitConnections() EXCLUDES(lock_);
   void DoUpdateMasterAddresses();
 
+  int64_t GetXClusterGuardedInfoLeaseHeldForMetrics() const;
+
   std::map<std::string, std::string> ValidateConfCsvViaPg(
       const std::map<std::string, std::string>& conf_flags, CoarseTimePoint deadline);
 
@@ -775,6 +783,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   HostPort pgsql_proxy_bind_address_;
 
   std::unique_ptr<TserverXClusterContext> xcluster_context_;
+
+  // Declared after xcluster_context_ so it detaches the lease gauge, which reads
+  // xcluster_context_, before xcluster_context_ is destroyed.
+  std::shared_ptr<void> xcluster_guarded_info_lease_metric_detacher_;
 
   PgMutationCounter pg_node_level_mutation_counter_;
 

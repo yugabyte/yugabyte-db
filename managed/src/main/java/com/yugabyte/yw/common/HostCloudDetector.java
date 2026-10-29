@@ -125,8 +125,7 @@ public class HostCloudDetector {
                 .PUT(HttpRequest.BodyPublishers.noBody()),
             r -> r.statusCode() == 200);
     CompletableFuture<Boolean> awsV1 =
-        probe(
-            get(AWS_INSTANCE_ID_PATH), r -> r.statusCode() == 200 || r.statusCode() == 401);
+        probe(get(AWS_INSTANCE_ID_PATH), r -> r.statusCode() == 200 || r.statusCode() == 401);
     if (gcp.join()) {
       return Optional.of(CloudType.gcp);
     }

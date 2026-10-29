@@ -280,10 +280,13 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
     if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) {
       pg_attribute_table_id_ = GetPgsqlTableId(pg_database_oid_, kPgAttributeTableOid);
       table_list.emplace(pg_attribute_table_id_);
+      pg_publication_rel_prpubid_index_table_id_ =
+          GetPgsqlTableId(pg_database_oid_, kPgPublicationRelPrpubidIndexOid);
+      table_list.emplace(pg_publication_rel_prpubid_index_table_id_);
     }
     VLOG_WITH_PREFIX(1) << "Successfully added the catalog tables pg_class"
                         << (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl
-                                ? ", pg_attribute"
+                                ? ", pg_attribute, pg_publication_rel_prpubid_index"
                                 : "")
                         << ", pg_publication_rel, pg_replication_origin and pg_publication to the "
                            "polling list.";
@@ -746,12 +749,33 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
     auto record = tablet_record_info_pair.second.second;
 
     if (tablet_id == master::kSysCatalogTabletId) {
-      bool explicit_alter_pub_detected;
-      auto pub_refresh_required = DeterminePubRefreshFromMasterRecord(
-          tablet_record_info_pair.second, &explicit_alter_pub_detected);
-      if (pub_refresh_required) {
+      const auto pub_refresh_trigger =
+          DeterminePubRefreshFromMasterRecord(tablet_record_info_pair.second);
+      if (pub_refresh_trigger != PubRefreshTrigger::kNone) {
+        const bool explicit_alter_pub_detected =
+            pub_refresh_trigger == PubRefreshTrigger::kPublicationTableChanged ||
+            pub_refresh_trigger == PubRefreshTrigger::kPublicationUpdated;
+        bool needs_table_list_refresh = true;
         last_pub_refresh_time = unique_id->GetCommitTime();
-        resp->set_needs_publication_table_list_refresh(true);
+        if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) {
+          DCHECK(record->row_message().has_record_time());
+          DCHECK(record->row_message().has_transaction_id());
+          // We don't advance last_seen_unique_record_id_ for a table rewrite, since the rewritten
+          // rows into the new DocDB table are written before the pg_class entry.
+          if (pub_refresh_trigger != PubRefreshTrigger::kTableRewritten) {
+            last_seen_unique_record_id_ = unique_id;
+          }
+
+          if (pub_refresh_trigger == PubRefreshTrigger::kPublicationUpdated) {
+            // If the publication properties are updated, we don't need to refresh the table list.
+            // For example: ALTER PUBLICATION SET (publish = 'insert');
+            needs_table_list_refresh = false;
+          } else if (pub_refresh_trigger != PubRefreshTrigger::kTableCreated) {
+            resp->set_publication_refresh_record_time(record->row_message().record_time());
+            resp->set_publication_refresh_txn_id(record->row_message().transaction_id());
+          }
+        }
+        resp->set_needs_publication_table_list_refresh(needs_table_list_refresh);
         resp->set_publication_refresh_time(last_pub_refresh_time);
         resp->set_explicit_alter_publication_detected(explicit_alter_pub_detected);
         metadata.contains_publication_refresh_record = true;
@@ -759,6 +783,8 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
             << "Notifying walsender to refresh publication list in the GetConsistentChanges "
                "response at commit_time: "
             << last_pub_refresh_time
+            << ", record_time: " << record->row_message().record_time()
+            << ", needs_publication_table_list_refresh: " << needs_table_list_refresh
             << ", explicit_alter_publication_detected: " << explicit_alter_pub_detected;
         break;
       }
@@ -1939,7 +1965,8 @@ bool CDCSDKVirtualWAL::IsCatalogTableEligibleForCDC(const TableId& table_id) con
   return table_id == pg_class_table_id_ || table_id == pg_publication_rel_table_id_ ||
          table_id == pg_replication_origin_table_id_ || table_id == pg_publication_table_id_ ||
          (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
-          table_id == pg_attribute_table_id_);
+          (table_id == pg_attribute_table_id_ ||
+           table_id == pg_publication_rel_prpubid_index_table_id_));
 }
 
 bool CDCSDKVirtualWAL::IsDmlOnPgCatalogTableForDetectingDDL(
@@ -1965,19 +1992,21 @@ bool CDCSDKVirtualWAL::IsDmlOnPgCatalogTableForDetectingDDL(
   return table_id == pg_attribute_table_id_;
 }
 
-bool CDCSDKVirtualWAL::DeterminePubRefreshFromMasterRecord(
-    const RecordInfo& record_info, bool* explicit_alter_publication_detected) {
+CDCSDKVirtualWAL::PubRefreshTrigger CDCSDKVirtualWAL::DeterminePubRefreshFromMasterRecord(
+    const RecordInfo& record_info) {
   auto const& record = record_info.second;
   auto table_id = record->row_message().table_id();
-  *explicit_alter_publication_detected = false;
 
   // The record is a BEGIN / COMMIT.
   if (table_id.empty()) {
-    return false;
+    return PubRefreshTrigger::kNone;
   } else if (table_id == pg_class_table_id_) {
     if (FLAGS_enable_table_rewrite_for_cdcsdk_table && CheckForTableRewriteOrDrop(record)) {
       LOG_WITH_PREFIX(INFO) << "Table rewrite detected, will trigger a publication refresh";
-      return true;
+      // CheckForTableRewriteOrDrop() reports a drop as a DELETE, a rewrite as an INSERT / UPDATE.
+      return record->row_message().op() == RowMessage_Op_DELETE
+                 ? PubRefreshTrigger::kTableDropped
+                 : PubRefreshTrigger::kTableRewritten;
     }
 
     // We are only interested in INSERTS to pg_class when pub_all_tables is true. Also we are only
@@ -1987,53 +2016,60 @@ bool CDCSDKVirtualWAL::DeterminePubRefreshFromMasterRecord(
         record->row_message(), "relkind", true /* use_new_tuple */);
     if (!pub_all_tables_ || record->row_message().op() != RowMessage_Op_INSERT || !relkind ||
         *relkind != 'r') {
-      return false;
+      return PubRefreshTrigger::kNone;
     }
 
-    return true;
-  } else if (table_id == pg_publication_rel_table_id_) {
+    return PubRefreshTrigger::kTableCreated;
+  } else if (table_id == pg_publication_rel_table_id_ ||
+             (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
+              table_id == pg_publication_rel_prpubid_index_table_id_)) {
+    // With transactional DDL only the prpubid index entry triggers the refresh. It is written after
+    // its pg_publication_rel row (for both insert and delete), so a read at its record_time sees
+    // the row and the index entry together..
+    if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
+        table_id == pg_publication_rel_table_id_) {
+      return PubRefreshTrigger::kNone;
+    }
+
     if (record->row_message().op() != RowMessage_Op_INSERT &&
         record->row_message().op() != RowMessage_Op_DELETE) {
-      return false;
+      return PubRefreshTrigger::kNone;
     }
 
-    *explicit_alter_publication_detected = true;
-
     if (record->row_message().op() == RowMessage_Op_DELETE) {
-      return true;
+      return PubRefreshTrigger::kPublicationTableChanged;
     }
 
     auto pub_oid = GetPgCatalogUint32Column(
         record->row_message(), "prpubid", true /* use_new_tuple */);
     if (!pub_oid || !publications_list_.contains(*pub_oid)) {
-      return false;
+      return PubRefreshTrigger::kNone;
     }
 
-    return true;
+    return PubRefreshTrigger::kPublicationTableChanged;
   } else if (table_id == pg_replication_origin_table_id_) {
     if (record->row_message().op() != RowMessage_Op_INSERT &&
         record->row_message().op() != RowMessage_Op_DELETE) {
-      return false;
+      return PubRefreshTrigger::kNone;
     }
-    return true;
+    return PubRefreshTrigger::kReplicationOriginChanged;
   } else if (table_id == pg_publication_table_id_) {
     if (record->row_message().op() != RowMessage_Op_UPDATE) {
-      return false;
+      return PubRefreshTrigger::kNone;
     }
 
     auto pub_oid =
         GetPgCatalogUint32Column(record->row_message(), "oid", true /* use_new_tuple */);
     if (!pub_oid || !publications_list_.contains(*pub_oid)) {
-      return false;
+      return PubRefreshTrigger::kNone;
     }
 
-    *explicit_alter_publication_detected = true;
-    return true;
+    return PubRefreshTrigger::kPublicationUpdated;
   }
 
   if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
     table_id == pg_attribute_table_id_) {
-    return false;
+    return PubRefreshTrigger::kNone;
   }
 
   // We should only receive records corresponding to pg_class, pg_attribute (when detecting DDL
@@ -2047,9 +2083,11 @@ bool CDCSDKVirtualWAL::DeterminePubRefreshFromMasterRecord(
       << " pg_class_table_id_ = " << pg_class_table_id_
       << " pg_attribute_table_id_ = " << pg_attribute_table_id_
       << " pg_publication_rel_table_id_ = " << pg_publication_rel_table_id_
+      << " pg_publication_rel_prpubid_index_table_id_ = "
+      << pg_publication_rel_prpubid_index_table_id_
       << " pg_replication_origin_table_id_ = " << pg_replication_origin_table_id_
       << " pg_publication_table_id_ = " << pg_publication_table_id_;
-  return false;
+  return PubRefreshTrigger::kNone;
 }
 
 Status CDCSDKVirtualWAL::AddSyntheticDDLRecordFromCatalogDML(

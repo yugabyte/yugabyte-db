@@ -4603,6 +4603,19 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"yb_replication_slot_wait_max_retries", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Maximum advisory-lock RPC timeout retries for "
+						 "DROP_REPLICATION_SLOT ... WAIT before giving up with "
+						 "an error. 0 retries indefinitely."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_replication_slot_wait_max_retries,
+		0, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_notifications_poll_sleep_duration_nonempty_ms", PGC_SIGHUP, DEVELOPER_OPTIONS,
 			gettext_noop("Time in milliseconds for which the notifications poller"
 						 " process waits before polling again in case the last"
@@ -6574,6 +6587,19 @@ static struct yb_config_oid ConfigureNamesOid[] =
 		},
 		&yb_force_tablespace_locality_oid,
 		InvalidOid, 0, OID_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_ysql_upgrade_min_next_oid", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Lowest OID to assign in YSQL upgrade mode. "
+						 "Set by the YSQL upgrade runner before a migration that "
+						 "creates a shared relation."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_ysql_upgrade_min_next_oid,
+		InvalidOid, 0, FirstNormalObjectId,
 		NULL, NULL, NULL
 	},
 

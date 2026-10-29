@@ -16,6 +16,7 @@
 #include "yb/rpc/lightweight_message.h"
 #include "yb/rpc/rtest.messages.h"
 #include "yb/rpc/rtest.pb.h"
+#include "yb/rpc/rtest.trace.h"
 
 #include "yb/util/faststring.h"
 #include "yb/util/logging.h"

@@ -26,10 +26,7 @@
 
 // Cases where we refuse a write or commit because we cannot tell whether persisting is blocked for
 // its database (i.e., we lack an xCluster-guarded info lease) do not cause this counter to be
-// bumped.
-//
-// TODO(#35656): Add a gauge metric for whether we currently hold an xCluster-guarded info lease so
-// it's easier to detect when those cases might apply.
+// bumped.  The xcluster_guarded_info_lease_held gauge shows when a TServer lacks that lease.
 METRIC_DEFINE_counter(
     server, persistence_violation_rejections, "Persistence Violation Rejections",
     yb::MetricUnit::kRequests,
@@ -77,10 +74,16 @@ const LWOriginationInfoPB* GetOriginationInfo(const consensus::LWReplicateMsg& r
 }  // namespace
 
 PersistenceGate::PersistenceGate(
-    PersistenceBlockLookupFunc lookup_func, const scoped_refptr<MetricEntity>& server_metric_entity)
+    PersistenceBlockLookupFunc lookup_func, const scoped_refptr<MetricEntity>& server_metric_entity,
+    ShouldRelinquishLeadershipFunc should_relinquish_leadership_func)
     : lookup_func_(std::move(lookup_func)),
+      should_relinquish_leadership_func_(std::move(should_relinquish_leadership_func)),
       persistence_violation_rejections_(
           METRIC_persistence_violation_rejections.Instantiate(server_metric_entity)) {}
+
+bool PersistenceGate::ShouldRelinquishLeadership() const {
+  return should_relinquish_leadership_func_ && should_relinquish_leadership_func_();
+}
 
 Status PersistenceGate::CheckPersistAllowed(const consensus::LWReplicateMsg& replicate_msg) const {
   if (!IsPersistenceGateEnforced()) {

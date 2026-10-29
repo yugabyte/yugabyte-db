@@ -5,6 +5,7 @@ package server
 import (
 	"bufio"
 	"context"
+	"crypto/fips140"
 	"crypto/tls"
 	"errors"
 	"io"
@@ -250,6 +251,7 @@ func (server *RPCServer) Ping(ctx context.Context, in *pb.PingRequest) (*pb.Ping
 			Compressor:           gzip.Name,
 			CertExpirySecs:       loadedCertExpirySecs,
 			RootNodeExporterUnit: err == nil,
+			FipsEnabled:          fips140.Enabled(),
 		},
 	}, nil
 }
