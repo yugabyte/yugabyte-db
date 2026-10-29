@@ -2,27 +2,20 @@
 
 package com.yugabyte.yw.common.certmgmt;
 
-import static play.mvc.Http.Status.BAD_REQUEST;
-
 import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import io.fabric8.kubernetes.api.model.Secret;
-import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collections;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import org.apache.commons.lang3.StringUtils;
@@ -38,7 +31,6 @@ public class CertManagerClientCert {
   private static final String SECRET_CERT_KEY = "tls.crt";
   private static final String SECRET_KEY_KEY = "tls.key";
   private static final String OLD_NAMING_SECRET_NAME = "yugabyte-tls-client-cert";
-  private static final String KEY_ALGORITHM_OVERRIDE = "tls.certManager.certificates.algorithm";
 
   private final KubernetesManagerFactory kubernetesManagerFactory;
 
@@ -76,46 +68,6 @@ public class CertManagerClientCert {
     }
     Base64.Decoder decoder = Base64.getDecoder();
     return Pair.of(new String(decoder.decode(cert)), new String(decoder.decode(key)));
-  }
-
-  /**
-   * Rejects helm overrides that make the chart issue a non-RSA client key for a universe that needs
-   * one: the YB Java client only loads RSA keys.
-   */
-  public static void validateHelmOverrides(
-      UniverseDefinitionTaskParams details,
-      @Nullable String universeOverrides,
-      @Nullable Map<String, String> azOverrides) {
-    if (!RpcClientCert.isClientCertRequired(details, details.rootCA)) {
-      return;
-    }
-    List<String> overrides = new ArrayList<>();
-    overrides.add(universeOverrides);
-    if (azOverrides != null) {
-      overrides.addAll(azOverrides.values());
-    }
-    for (String overridesYaml : overrides) {
-      String algorithm;
-      try {
-        algorithm =
-            HelmUtils.flattenMap(HelmUtils.convertYamlToMap(overridesYaml))
-                .get(KEY_ALGORITHM_OVERRIDE);
-      } catch (Exception e) {
-        throw new PlatformServiceException(
-            BAD_REQUEST, "Kubernetes overrides are not valid YAML: " + e.getMessage());
-      }
-      if (algorithm != null && !RpcClientCert.SUPPORTED_KEY_ALGORITHM.equalsIgnoreCase(algorithm)) {
-        throw new PlatformServiceException(
-            BAD_REQUEST,
-            String.format(
-                "%s=%s is not supported with %s: YugabyteDB Anywhere can only present an %s client"
-                    + " certificate",
-                KEY_ALGORITHM_OVERRIDE,
-                algorithm,
-                RpcClientCert.USE_CLIENT_CERTS_GFLAG,
-                RpcClientCert.SUPPORTED_KEY_ALGORITHM));
-      }
-    }
   }
 
   @VisibleForTesting

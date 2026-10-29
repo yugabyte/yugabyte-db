@@ -42,11 +42,6 @@ public class WaitForRpcClientCert extends UniverseTaskBase {
   @Override
   public void run() {
     Universe universe = getUniverse();
-    // Checked again here because the rotation changes rootCA after the task was added.
-    if (!RpcClientCert.isClientCertRequired(universe)) {
-      log.info("Universe {} does not need a client cert", universe.getName());
-      return;
-    }
     Instant deadline = Instant.now().plus(TIMEOUT);
     while (true) {
       try {

@@ -8,7 +8,6 @@ import com.google.common.collect.Sets;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.certmgmt.CertManagerClientCert;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.models.Universe;
@@ -44,8 +43,8 @@ public class KubernetesOverridesUpgradeParams extends UpgradeTaskParams {
 
     GFlagsUtil.validateFipsCompliancyOfHelmOverrides(
         universeOverrides, azOverrides, universe.getUniverseDetails().fipsEnabled);
-    CertManagerClientCert.validateHelmOverrides(
-        universe.getUniverseDetails(), universeOverrides, azOverrides);
+    GFlagsUtil.validateNodeToNodeClientCertsOfHelmOverrides(
+        universeOverrides, azOverrides, userIntent.useNodeToNodeClientCerts);
 
     if (isFirstTry && !userIntent.enableYSQLAuth) {
       Map<String, String> newHbaOverrides =

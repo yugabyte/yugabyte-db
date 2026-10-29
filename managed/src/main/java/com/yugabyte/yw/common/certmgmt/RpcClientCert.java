@@ -2,11 +2,13 @@
 
 package com.yugabyte.yw.common.certmgmt;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.google.common.annotations.VisibleForTesting;
-import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
-import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.FileData;
 import com.yugabyte.yw.models.Universe;
@@ -21,11 +23,9 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.Date;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import javax.annotation.Nullable;
@@ -35,9 +35,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.Pair;
 
 /**
- * The client cert YBA presents on RPCs to a universe whose servers require one
- * (node_to_node_encryption_use_client_certificates). Servers only check that the cert chains to
- * their root CA, so one client cert per CA serves every universe on it.
+ * The client cert YBA presents on RPCs to a universe whose servers require one. A universe opts in
+ * at creation with userIntent.useNodeToNodeClientCerts, and KubernetesCommandExecutor sets
+ * node_to_node_encryption_use_client_certificates from it. Servers only check that the cert chains
+ * to their root CA, so one client cert per CA serves every universe on it.
  *
  * <p>The cert and key sit in the CA's directory, as CertificateHelper.getClientCertFile names them,
  * and in the DB like the CA itself. They are loaded when a client is built: from disk, else from
@@ -47,10 +48,8 @@ import org.apache.commons.lang3.tuple.Pair;
 @Singleton
 public class RpcClientCert {
 
-  public static final String USE_CLIENT_CERTS_GFLAG =
-      "node_to_node_encryption_use_client_certificates";
   // AsyncYBClient loads the client key with KeyFactory.getInstance("RSA").
-  static final String SUPPORTED_KEY_ALGORITHM = "RSA";
+  private static final String SUPPORTED_KEY_ALGORITHM = "RSA";
   // Under cert-manager's default renewBefore of 15 days, so the issuer has renewed by then.
   @VisibleForTesting static final Duration REFETCH_BEFORE_EXPIRY = Duration.ofDays(10);
   // While the current cert is still valid, how often to ask the issuer for a renewed one.
@@ -67,30 +66,42 @@ public class RpcClientCert {
   }
 
   public static boolean isClientCertRequired(Universe universe) {
-    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
-    return isClientCertRequired(details, details.rootCA);
+    return isClientCertRequired(universe.getUniverseDetails());
   }
 
-  /** As above, but as if the universe used rootCA, for a task that is about to switch to it. */
-  public static boolean isClientCertRequired(
-      UniverseDefinitionTaskParams details, @Nullable UUID rootCA) {
-    Cluster primary = details.getPrimaryCluster();
-    if (!primary.userIntent.enableNodeToNodeEncrypt || rootCA == null) {
-      return false;
+  public static boolean isClientCertRequired(UniverseDefinitionTaskParams details) {
+    return details.getPrimaryCluster().userIntent.useNodeToNodeClientCerts;
+  }
+
+  /** Rejects turning on client cert auth for a universe YBA can't get a client cert for. */
+  public static void validate(UniverseDefinitionTaskParams details) {
+    UserIntent intent = details.getPrimaryCluster().userIntent;
+    if (!intent.useNodeToNodeClientCerts) {
+      return;
     }
-    // A null AZ reads the cluster-level gflags; per-AZ overrides can also set the flag.
-    Set<UUID> azUuids = new HashSet<>(primary.placementInfo.getAllAZUUIDs());
-    azUuids.add(null);
-    boolean flagSet = false;
-    for (UUID azUuid : azUuids) {
-      for (ServerType serverType : new ServerType[] {ServerType.MASTER, ServerType.TSERVER}) {
-        Map<String, String> gflags =
-            GFlagsUtil.getGFlagsForAZ(azUuid, serverType, primary, details.clusters);
-        flagSet |= Boolean.parseBoolean(gflags.getOrDefault(USE_CLIENT_CERTS_GFLAG, "false"));
-      }
+    if (!intent.getAllCloudTypes().stream().allMatch(t -> t == CloudType.kubernetes)) {
+      throw invalid("is only supported on Kubernetes universes");
     }
-    return flagSet
-        && CertificateInfo.maybeGet(rootCA).map(c -> isSupported(c.getCertType())).orElse(false);
+    if (!intent.enableNodeToNodeEncrypt) {
+      throw invalid("requires node-to-node encryption");
+    }
+    validateRootCA(details.rootCA);
+  }
+
+  /** Rejects a root CA YBA can't get a client cert for. */
+  public static void validateRootCA(@Nullable UUID rootCA) {
+    boolean supported =
+        rootCA != null
+            && CertificateInfo.maybeGet(rootCA)
+                .map(c -> isSupported(c.getCertType()))
+                .orElse(false);
+    if (!supported) {
+      throw invalid("requires a K8SCertManager root CA");
+    }
+  }
+
+  private static PlatformServiceException invalid(String reason) {
+    return new PlatformServiceException(BAD_REQUEST, "useNodeToNodeClientCerts " + reason);
   }
 
   // The CA types YBA can get a client cert for; see fetch.

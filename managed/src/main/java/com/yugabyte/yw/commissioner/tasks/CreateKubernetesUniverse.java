@@ -25,7 +25,6 @@ import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.certmgmt.CertManagerClientCert;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
@@ -33,7 +32,6 @@ import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.common.pa.PerfAdvisorService;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
@@ -78,15 +76,6 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
     super(baseTaskDependencies);
     this.kubernetesStatus = operatorStatusUpdaterFactory.create();
     this.perfAdvisorService = perfAdvisorService;
-  }
-
-  @Override
-  public void validateParams(boolean isFirstTry) {
-    super.validateParams(isFirstTry);
-    UniverseDefinitionTaskParams.UserIntent userIntent =
-        taskParams().getPrimaryCluster().userIntent;
-    CertManagerClientCert.validateHelmOverrides(
-        taskParams(), userIntent.universeOverrides, userIntent.azOverrides);
   }
 
   @Override

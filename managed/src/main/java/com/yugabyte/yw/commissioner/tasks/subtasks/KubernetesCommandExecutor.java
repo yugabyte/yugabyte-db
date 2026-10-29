@@ -1346,6 +1346,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     if (taskParams().masterJoinExistingCluster) {
       masterGFlags.put(GFlagsUtil.MASTER_JOIN_EXISTING_UNIVERSE, "true");
     }
+    if (primaryClusterIntent.useNodeToNodeClientCerts) {
+      masterGFlags.put(GFlagsUtil.USE_CLIENT_CERTIFICATES, "true");
+    }
     if (primaryClusterIntent.enableYSQL) {
       if (primaryClusterIntent.enableYSQLAuth) {
         masterGFlags.put("ysql_enable_auth", "true");
@@ -1455,6 +1458,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
     if (primaryClusterIntent.enableYCQL && primaryClusterIntent.enableYCQLAuth) {
       tserverGFlags.put("use_cassandra_authentication", "true");
+    }
+    if (primaryClusterIntent.useNodeToNodeClientCerts) {
+      tserverGFlags.put(GFlagsUtil.USE_CLIENT_CERTIFICATES, "true");
     }
     if (placementCloud != null && tserverGFlags.get("placement_cloud") == null) {
       tserverGFlags.put("placement_cloud", placementCloud);

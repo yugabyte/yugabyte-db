@@ -14,12 +14,14 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -86,8 +88,10 @@ public class RpcClientCertTest extends FakeDBApplication {
     userIntent.replicationFactor = 3;
     userIntent.universeName = "demo-universe";
     userIntent.enableNodeToNodeEncrypt = true;
+    userIntent.useNodeToNodeClientCerts = true;
+    userIntent.providerType = CloudType.kubernetes;
     userIntent.masterGFlags = new HashMap<>();
-    userIntent.tserverGFlags = new HashMap<>(Map.of(RpcClientCert.USE_CLIENT_CERTS_GFLAG, "true"));
+    userIntent.tserverGFlags = new HashMap<>();
 
     rootCA = createCA(CertConfigType.K8SCertManager, ROOT_CA.getRight());
     universe = ModelFactory.createUniverse("demo-universe", customer.getId());
@@ -228,13 +232,13 @@ public class RpcClientCertTest extends FakeDBApplication {
   }
 
   private void dropFlag() {
-    universe =
-        setDetails(
-            d ->
-                d.getPrimaryCluster()
-                    .userIntent
-                    .tserverGFlags
-                    .remove(RpcClientCert.USE_CLIENT_CERTS_GFLAG));
+    universe = setDetails(d -> d.getPrimaryCluster().userIntent.useNodeToNodeClientCerts = false);
+  }
+
+  private void assertRejected(UniverseDefinitionTaskParams details, String message) {
+    PlatformServiceException e =
+        assertThrows(PlatformServiceException.class, () -> RpcClientCert.validate(details));
+    assertTrue(e.getMessage(), e.getMessage().contains(message));
   }
 
   @Test
@@ -457,41 +461,73 @@ public class RpcClientCertTest extends FakeDBApplication {
   }
 
   @Test
-  public void testClientCertRequired() throws Exception {
+  public void testClientCertRequiredFollowsIntent() {
     assertTrue(RpcClientCert.isClientCertRequired(universe));
-
     dropFlag();
     assertFalse(RpcClientCert.isClientCertRequired(universe));
-
-    universe =
-        setDetails(
-            d ->
-                d.getPrimaryCluster()
-                    .userIntent
-                    .masterGFlags
-                    .put(RpcClientCert.USE_CLIENT_CERTS_GFLAG, "true"));
-    assertTrue(RpcClientCert.isClientCertRequired(universe));
-
-    UUID selfSigned = createCA(CertConfigType.SelfSigned, ROOT_CA.getRight());
-    universe = setDetails(d -> d.rootCA = selfSigned);
-    assertFalse(RpcClientCert.isClientCertRequired(universe));
-    assertTrue(RpcClientCert.isClientCertRequired(universe.getUniverseDetails(), rootCA));
   }
 
   @Test
-  public void testClientCertRequiredByAzGFlags() {
-    dropFlag();
+  public void testValidateAcceptsSupportedSetup() {
+    RpcClientCert.validate(universe.getUniverseDetails());
+  }
+
+  @Test
+  public void testValidateRejectsUnsupportedSetups() throws Exception {
+    universe = setDetails(d -> d.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt = false);
+    assertRejected(universe.getUniverseDetails(), "requires node-to-node encryption");
+
+    universe = setDetails(d -> d.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt = true);
+    UUID selfSigned = createCA(CertConfigType.SelfSigned, ROOT_CA.getRight());
+    universe = setDetails(d -> d.rootCA = selfSigned);
+    assertRejected(universe.getUniverseDetails(), "requires a K8SCertManager root CA");
+    universe = setDetails(d -> d.rootCA = null);
+    assertRejected(universe.getUniverseDetails(), "requires a K8SCertManager root CA");
+
     universe =
         setDetails(
             d -> {
-              UserIntent intent = d.getPrimaryCluster().userIntent;
-              intent.specificGFlags = SpecificGFlags.construct(Map.of(), Map.of());
-              PerProcessFlags azFlags = new PerProcessFlags();
-              azFlags.value =
-                  Map.of(ServerType.TSERVER, Map.of(RpcClientCert.USE_CLIENT_CERTS_GFLAG, "true"));
-              intent.specificGFlags.setPerAZ(new HashMap<>(Map.of(az.getUuid(), azFlags)));
+              d.rootCA = rootCA;
+              d.getPrimaryCluster().userIntent.providerType = CloudType.aws;
             });
-    assertTrue(RpcClientCert.isClientCertRequired(universe));
+    assertRejected(universe.getUniverseDetails(), "only supported on Kubernetes universes");
+  }
+
+  private static void assertGFlagsRejected(
+      UserIntent intent, boolean useClientCerts, String message) {
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> GFlagsUtil.validateNodeToNodeClientCerts(intent, useClientCerts));
+    assertTrue(e.getMessage(), e.getMessage().contains(message));
+  }
+
+  @Test
+  public void testGFlagsRejectIdentityChecks() {
+    UserIntent intent = new UserIntent();
+    intent.tserverGFlags = Map.of(GFlagsUtil.NODE_TO_NODE_REQUIRED_UID, "yugabyte");
+    assertGFlagsRejected(intent, true, GFlagsUtil.NODE_TO_NODE_REQUIRED_UID);
+    // Allowed on a universe without client cert auth.
+    GFlagsUtil.validateNodeToNodeClientCerts(intent, false);
+
+    intent.tserverGFlags = Map.of();
+    intent.masterGFlags = Map.of(GFlagsUtil.VERIFY_CLIENT_ENDPOINT, "true");
+    assertGFlagsRejected(intent, true, GFlagsUtil.VERIFY_CLIENT_ENDPOINT);
+  }
+
+  @Test
+  public void testGFlagsRejectTheFlagSetByHand() {
+    // Even to turn client cert auth on: the intent field owns it.
+    UserIntent intent = new UserIntent();
+    intent.masterGFlags = Map.of(GFlagsUtil.USE_CLIENT_CERTIFICATES, "true");
+    assertGFlagsRejected(intent, false, "Don't set");
+
+    intent.masterGFlags = Map.of();
+    intent.specificGFlags = SpecificGFlags.construct(Map.of(), Map.of());
+    PerProcessFlags azFlags = new PerProcessFlags();
+    azFlags.value = Map.of(ServerType.TSERVER, Map.of(GFlagsUtil.USE_CLIENT_CERTIFICATES, "false"));
+    intent.specificGFlags.setPerAZ(new HashMap<>(Map.of(az.getUuid(), azFlags)));
+    assertGFlagsRejected(intent, true, "Don't set");
   }
 
   @Test
@@ -506,22 +542,33 @@ public class RpcClientCertTest extends FakeDBApplication {
   }
 
   @Test
-  public void testValidateHelmOverridesRejectsNonRsaKey() {
+  public void testHelmOverrides() {
     String ecdsa = "tls:\n  certManager:\n    certificates:\n      algorithm: ECDSA\n";
-    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
     PlatformServiceException e =
         assertThrows(
             PlatformServiceException.class,
-            () -> CertManagerClientCert.validateHelmOverrides(details, ecdsa, null));
+            () -> GFlagsUtil.validateNodeToNodeClientCertsOfHelmOverrides(ecdsa, null, true));
     assertTrue(e.getMessage(), e.getMessage().contains("algorithm=ECDSA"));
     assertThrows(
         PlatformServiceException.class,
-        () -> CertManagerClientCert.validateHelmOverrides(details, "", Map.of("az-1", ecdsa)));
+        () ->
+            GFlagsUtil.validateNodeToNodeClientCertsOfHelmOverrides(
+                "", Map.of("az-1", ecdsa), true));
+    GFlagsUtil.validateNodeToNodeClientCertsOfHelmOverrides(
+        "tls:\n  certManager:\n    certificates:\n      algorithm: RSA\n", null, true);
+    GFlagsUtil.validateNodeToNodeClientCertsOfHelmOverrides(ecdsa, null, false);
 
-    String rsa = "tls:\n  certManager:\n    certificates:\n      algorithm: RSA\n";
-    CertManagerClientCert.validateHelmOverrides(details, rsa, null);
+    String gflag = "gflags:\n  tserver:\n    " + GFlagsUtil.USE_CLIENT_CERTIFICATES + ": true\n";
+    e =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> GFlagsUtil.validateNodeToNodeClientCertsOfHelmOverrides(gflag, null, false));
+    assertTrue(e.getMessage(), e.getMessage().contains("Don't set"));
 
-    dropFlag();
-    CertManagerClientCert.validateHelmOverrides(universe.getUniverseDetails(), ecdsa, null);
+    String uid = "gflags:\n  master:\n    " + GFlagsUtil.NODE_TO_NODE_REQUIRED_UID + ": yugabyte\n";
+    assertThrows(
+        PlatformServiceException.class,
+        () -> GFlagsUtil.validateNodeToNodeClientCertsOfHelmOverrides(uid, null, true));
+    GFlagsUtil.validateNodeToNodeClientCertsOfHelmOverrides(uid, null, false);
   }
 }

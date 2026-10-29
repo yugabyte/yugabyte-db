@@ -137,6 +137,12 @@ public class GFlagsUtil {
   public static final String WEBSERVER_PORT = "webserver_port";
   public static final String WEBSERVER_INTERFACE = "webserver_interface";
   public static final String OPENSSL_REQUIRE_FIPS = "openssl_require_fips";
+  public static final String USE_CLIENT_CERTIFICATES =
+      "node_to_node_encryption_use_client_certificates";
+  public static final String NODE_TO_NODE_REQUIRED_UID = "node_to_node_encryption_required_uid";
+  public static final String VERIFY_CLIENT_ENDPOINT = "verify_client_endpoint";
+  public static final String CERT_MANAGER_KEY_ALGORITHM_OVERRIDE =
+      "tls.certManager.certificates.algorithm";
   public static final String REDIS_PROXY_BIND_ADDRESS = "redis_proxy_bind_address";
   public static final String REDIS_PROXY_WEBSERVER_PORT = "redis_proxy_webserver_port";
   public static final String POSTMASTER_CGROUP = "postmaster_cgroup";
@@ -1336,25 +1342,93 @@ public class GFlagsUtil {
             String.format(
                 "FIPS compliant universes are not supported on provider(s): %s", nonSupported));
       }
-      if (userIntent.specificGFlags == null) {
-        // Create still accepts the deprecated maps and converts them to specificGFlags only after
-        // this check runs.
-        checkFipsGFlagNotDisabled(userIntent.masterGFlags);
-        checkFipsGFlagNotDisabled(userIntent.tserverGFlags);
-      } else if (!userIntent.specificGFlags.isInheritFromPrimary()) {
-        Collection<UUID> azUuids = new ArrayList<>(Collections.singletonList(null));
-        if (userIntent.specificGFlags.getPerAZ() != null) {
-          azUuids.addAll(userIntent.specificGFlags.getPerAZ().keySet());
-        }
-        for (UUID azUuid : azUuids) {
-          checkFipsGFlagNotDisabled(
-              userIntent.specificGFlags.getGFlags(azUuid, UniverseTaskBase.ServerType.MASTER));
-          checkFipsGFlagNotDisabled(
-              userIntent.specificGFlags.getGFlags(azUuid, ServerType.TSERVER));
-        }
-      }
+      getIntentGFlags(userIntent).forEach(GFlagsUtil::checkFipsGFlagNotDisabled);
       validateFipsCompliancyOfHelmOverrides(
           userIntent.universeOverrides, userIntent.azOverrides, fipsEnabled);
+    }
+  }
+
+  // The gflags userIntent sets, per process and per AZ.
+  private static List<Map<String, String>> getIntentGFlags(
+      UniverseDefinitionTaskParams.UserIntent userIntent) {
+    List<Map<String, String>> result = new ArrayList<>();
+    if (userIntent.specificGFlags == null) {
+      // Create still accepts the deprecated maps and converts them to specificGFlags only after
+      // validation runs.
+      result.add(userIntent.masterGFlags);
+      result.add(userIntent.tserverGFlags);
+    } else if (!userIntent.specificGFlags.isInheritFromPrimary()) {
+      Collection<UUID> azUuids = new ArrayList<>(Collections.singletonList(null));
+      if (userIntent.specificGFlags.getPerAZ() != null) {
+        azUuids.addAll(userIntent.specificGFlags.getPerAZ().keySet());
+      }
+      for (UUID azUuid : azUuids) {
+        result.add(userIntent.specificGFlags.getGFlags(azUuid, ServerType.MASTER));
+        result.add(userIntent.specificGFlags.getGFlags(azUuid, ServerType.TSERVER));
+      }
+    }
+    return result;
+  }
+
+  /**
+   * useNodeToNodeClientCerts owns node_to_node_encryption_use_client_certificates, so the gflag
+   * can't be set by hand; while it is on, the identity checks the chart's client cert can't pass
+   * stay off.
+   */
+  public static void validateNodeToNodeClientCerts(
+      UniverseDefinitionTaskParams.UserIntent userIntent, boolean useClientCerts) {
+    getIntentGFlags(userIntent)
+        .forEach(gflags -> checkClientCertGFlags(gflags, "", useClientCerts));
+    validateNodeToNodeClientCertsOfHelmOverrides(
+        userIntent.universeOverrides, userIntent.azOverrides, useClientCerts);
+  }
+
+  /** As above for helm overrides, which also must keep the chart's client key RSA. */
+  public static void validateNodeToNodeClientCertsOfHelmOverrides(
+      String universeOverrides, Map<String, String> azOverrides, boolean useClientCerts) {
+    List<String> overrides = new ArrayList<>();
+    overrides.add(universeOverrides);
+    if (azOverrides != null) {
+      overrides.addAll(azOverrides.values());
+    }
+    for (String overridesYaml : overrides) {
+      Map<String, String> flatOverrides = flattenHelmOverrides(overridesYaml);
+      checkClientCertGFlags(flatOverrides, "gflags.master.", useClientCerts);
+      checkClientCertGFlags(flatOverrides, "gflags.tserver.", useClientCerts);
+      // AsyncYBClient loads the client key with KeyFactory.getInstance("RSA").
+      String algorithm = flatOverrides.get(CERT_MANAGER_KEY_ALGORITHM_OVERRIDE);
+      if (useClientCerts && algorithm != null && !"RSA".equalsIgnoreCase(algorithm)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "%s=%s is not supported with useNodeToNodeClientCerts: YugabyteDB Anywhere"
+                    + " can only present an RSA client certificate",
+                CERT_MANAGER_KEY_ALGORITHM_OVERRIDE, algorithm));
+      }
+    }
+  }
+
+  private static void checkClientCertGFlags(
+      @Nullable Map<String, String> gflags, String prefix, boolean useClientCerts) {
+    if (gflags == null) {
+      return;
+    }
+    if (gflags.containsKey(prefix + USE_CLIENT_CERTIFICATES)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Don't set %s; YugabyteDB Anywhere sets it from useNodeToNodeClientCerts",
+              USE_CLIENT_CERTIFICATES));
+    }
+    if (useClientCerts
+        && (StringUtils.isNotBlank(gflags.get(prefix + NODE_TO_NODE_REQUIRED_UID))
+            || "true".equalsIgnoreCase(gflags.get(prefix + VERIFY_CLIENT_ENDPOINT)))) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "useNodeToNodeClientCerts doesn't support %s or %s: YugabyteDB Anywhere's"
+                  + " client certificate matches neither",
+              NODE_TO_NODE_REQUIRED_UID, VERIFY_CLIENT_ENDPOINT));
     }
   }
 

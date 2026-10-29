@@ -201,7 +201,6 @@ public class AnsibleClusterServerCtl extends NodeTaskBase {
     YbClientConfig config =
         ybClientConfigFactory.create(
             universe.getMasterAddresses(), universe.getCertificateNodetoNode());
-    config.withClientCertOf(universe);
     config.setOperationTimeout(flushTimeout);
     config.setAdminOperationTimeout(flushTimeout);
     Stopwatch flushStopwatch = Stopwatch.createStarted();

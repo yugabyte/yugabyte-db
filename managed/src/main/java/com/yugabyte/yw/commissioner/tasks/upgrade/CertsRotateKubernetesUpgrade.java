@@ -18,6 +18,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.RpcClientCert;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -73,7 +74,7 @@ public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
             BAD_REQUEST,
             "YugabyteDB Anywhere has no client certificate issued by the universe's current root"
                 + " CA, which its servers require ("
-                + RpcClientCert.USE_CLIENT_CERTS_GFLAG
+                + GFlagsUtil.USE_CLIENT_CERTIFICATES
                 + "): "
                 + e.getMessage()
                 + ". Point the cert-manager issuer back at the current root CA, wait for"
@@ -130,7 +131,7 @@ public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
     createUniverseUpdateRootCertTask(UpdateRootCertAction.Reset, null /* temporaryRootCAUUID */);
 
     // YBA presents the new CA's client cert from here on; step 3a's pods stop trusting the old one.
-    createWaitForRpcClientCertTask(universe, taskParams().rootCA);
+    createWaitForRpcClientCertTask(universe);
 
     // Step 3a: Update pods with final new rootCA
     createRotateCertTask(universe, taskParams().rootCA);

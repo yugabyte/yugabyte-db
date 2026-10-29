@@ -743,6 +743,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         GFlagsUtil.checkGflagsAndIntentConsistency(userIntent);
       }
       GFlagsUtil.validateFipsCompliancy(userIntent, isFipsEnabled);
+      GFlagsUtil.validateNodeToNodeClientCerts(userIntent, userIntent.useNodeToNodeClientCerts);
       if (userIntent.specificGFlags != null) {
         if (clusterType == ClusterType.PRIMARY
             && userIntent.specificGFlags.isInheritFromPrimary()) {
@@ -1371,6 +1372,16 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     @ApiModelProperty() public boolean enableClientToNodeEncrypt = false;
 
+    @ApiModelProperty(
+        value =
+            "WARNING: This is a preview API that could change. Servers require a client cert on"
+                + " RPC (node_to_node_encryption_use_client_certificates). Supported only on"
+                + " Kubernetes universes whose node-to-node encryption uses a cert-manager"
+                + " (K8SCertManager) root CA; VM universes and Kubernetes universes with other root"
+                + " CA types are not supported. Can only be set at universe creation.")
+    @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2026.2.0.0")
+    public boolean useNodeToNodeClientCerts = false;
+
     @Deprecated
     @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2025.1")
     @ApiModelProperty(
@@ -1696,6 +1707,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.enableYEDIS = enableYEDIS;
       newUserIntent.enableNodeToNodeEncrypt = enableNodeToNodeEncrypt;
       newUserIntent.enableClientToNodeEncrypt = enableClientToNodeEncrypt;
+      newUserIntent.useNodeToNodeClientCerts = useNodeToNodeClientCerts;
       newUserIntent.instanceTags = new HashMap<>(instanceTags);
       newUserIntent.enableLB = enableLB;
       if (deviceInfo != null) {

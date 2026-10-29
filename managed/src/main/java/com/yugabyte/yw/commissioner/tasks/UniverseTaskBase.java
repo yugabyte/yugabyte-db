@@ -3532,9 +3532,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
   }
 
-  /** Adds the wait if the universe needs a client cert once it uses rootCA. */
-  public void createWaitForRpcClientCertTask(Universe universe, UUID rootCA) {
-    if (!RpcClientCert.isClientCertRequired(universe.getUniverseDetails(), rootCA)) {
+  public void createWaitForRpcClientCertTask(Universe universe) {
+    if (!RpcClientCert.isClientCertRequired(universe)) {
       return;
     }
     SubTaskGroup subTaskGroup =

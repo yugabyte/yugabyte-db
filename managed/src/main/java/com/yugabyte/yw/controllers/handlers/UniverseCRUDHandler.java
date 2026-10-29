@@ -53,6 +53,7 @@ import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+import com.yugabyte.yw.common.certmgmt.RpcClientCert;
 import com.yugabyte.yw.common.certmgmt.providers.VaultPKI;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -1135,6 +1136,7 @@ public class UniverseCRUDHandler {
     }
 
     checkGeoPartitioningParameters(customer, taskParams, OpType.CREATE);
+    RpcClientCert.validate(taskParams);
     validateTmpDirGflagConsistency(taskParams);
     validateOciInstanceTags(taskParams);
 
@@ -2917,6 +2919,9 @@ public class UniverseCRUDHandler {
           && curCluster.clusterType == ClusterType.PRIMARY) {
         throw new PlatformServiceException(BAD_REQUEST, "RF change is not available");
       }
+      // Fixed at creation. Clients that predate the field send false, so keep the current value.
+      newCluster.userIntent.useNodeToNodeClientCerts =
+          curCluster.userIntent.useNodeToNodeClientCerts;
       ManagedLoadBalancerUtil.validateEditedCluster(
           universe.getUniverseDetails().getPrimaryCluster(), curCluster, newCluster);
       UserIntent newIntent = newCluster.userIntent;
