@@ -53,7 +53,6 @@
 #include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
-#include "yb/util/size_literals.h"
 #include "yb/util/slice.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -2365,14 +2364,7 @@ TEST_F(CDCServiceTestMinSpace, TestLogRetentionByOpId_MinSpace) {
       std::numeric_limits<int64_t>::max(), &segment_sequence));
   ASSERT_EQ(segment_sequence.size(), 0);
 
-  // Sit just below the log_stop_retaining_min_disk_mb threshold so that only the first few
-  // segments violate the min space policy: each one adds its size to the reclaimed space that
-  // ViolatesMinSpacePolicy() credits against the threshold, which closes the gap after a handful
-  // of segments. Staying near the threshold rather than at a few bytes also keeps the simulated
-  // free space above the WAL pre-allocation size, which consults the same flag and would
-  // otherwise fail every segment allocation in the process with ENOSPC.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_free_space_bytes) =
-      FLAGS_log_stop_retaining_min_disk_mb * 1_MB - 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_free_space_bytes) = 128;
 
   ASSERT_OK(tablet_peer->log()->TEST_GetSegmentsToGC(
       std::numeric_limits<int64_t>::max(), &segment_sequence));
