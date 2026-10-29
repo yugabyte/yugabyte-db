@@ -181,9 +181,9 @@ class PgVectorIndex : public VectorIndexIf<FloatVector, float>, public PgVectorI
     const auto query_text = EncodeVectorAsText(query_vector);
     const auto distance_op = DistanceOpName(options_.distance_kind);
     const auto query = Format(
-        "SELECT id, embedding $0 '$1'::vector AS dist "
-        "FROM $2 ORDER BY embedding $0 '$1'::vector LIMIT $3",
-        distance_op, query_text, config_.table, options.max_num_results);
+        "$0SELECT id, embedding $1 '$2'::vector AS dist "
+        "FROM $3 AS v ORDER BY embedding $1 '$2'::vector LIMIT $4",
+        search_hint_, distance_op, query_text, config_.table, options.max_num_results);
     switch (config_.id_type) {
       case PgVectorIdType::kUuid:
         return FetchSearchResults<Uuid>(*conn, query);
@@ -255,8 +255,9 @@ class PgVectorIndex : public VectorIndexIf<FloatVector, float>, public PgVectorI
     return Status::OK();
   }
 
-  // Returns why the existing table cannot be reused, or an empty string if it can.
-  // Read-only runs accept any index build options and row count.
+  // Returns why the existing table cannot be reused, or an empty string if it can, after
+  // pointing searches to the matching index. Read-only runs accept any index build options and
+  // row count.
   Result<std::string> ExistingDataMismatch(PGConn& conn) {
     if (!VERIFY_RESULT(TableExists(conn))) {
       return Format("table $0 does not exist", config_.table);
@@ -283,7 +284,8 @@ class PgVectorIndex : public VectorIndexIf<FloatVector, float>, public PgVectorI
              index.opclass == opclass &&
              (config_.read_only || index.options == index_options);
     };
-    if (std::ranges::none_of(indexes, matches)) {
+    const auto index = std::ranges::find_if(indexes, matches);
+    if (index == indexes.end()) {
       return Format(
           "table $0 has no ready ybhnsw index$1 with $2$3, found: $4",
           config_.table, config_.index.empty() ? std::string() : " " + config_.index, opclass,
@@ -296,6 +298,8 @@ class PgVectorIndex : public VectorIndexIf<FloatVector, float>, public PgVectorI
         return Format("table $0 has $1 rows instead of $2", config_.table, num_rows, capacity_);
       }
     }
+    // The planner does not prefer any of several ybhnsw indexes with the same opclass.
+    search_hint_ = Format("/*+IndexScan(v \"$0\")*/ ", index->name);
     return std::string();
   }
 
@@ -399,6 +403,9 @@ class PgVectorIndex : public VectorIndexIf<FloatVector, float>, public PgVectorI
   std::atomic<size_t> num_inserted_{0};
 
   bool data_already_exists_ = false;
+
+  // pg_hint_plan hint for the reused index. Empty for a new table, whose only index is ours.
+  std::string search_hint_;
 
   // Mutable since const Search() acquires connections.
   mutable std::unique_ptr<PGConnPool> pool_;
