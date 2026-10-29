@@ -1028,6 +1028,8 @@ extern bool yb_always_increment_catalog_version_on_ddl;
  */
 extern bool yb_enable_negative_catcache_entries;
 
+extern bool YbNegativeCatcacheEntriesEnabled(void);
+
 typedef struct YBUpdateOptimizationOptions
 {
 	bool		has_infra;
