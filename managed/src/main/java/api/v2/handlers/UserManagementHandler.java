@@ -57,7 +57,12 @@ public class UserManagementHandler {
         throw new PlatformServiceException(
             CONFLICT, "Users are created on their first OIDC login on this YBA");
       }
-      // Users log in through OIDC, so the password is never used.
+      // Users log in through OIDC only. A token would let the caller act as the user without it.
+      if (Boolean.TRUE.equals(createSpec.getGenerateApiToken())) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "generate_api_token isn't allowed when OIDC SSO is enabled");
+      }
+      // The password is never used.
       password = Util.getRandomPassword();
     }
     passwordPolicyService.checkPasswordPolicy(cUUID, password);

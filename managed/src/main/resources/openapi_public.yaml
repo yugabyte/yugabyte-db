@@ -12517,7 +12517,8 @@ components:
           writeOnly: true
         generate_api_token:
           description: Also generate an API token for the new user and return it,
-            so that the caller doesn't have to log in as that user to get one
+            so that the caller doesn't have to log in as that user to get one. Refused
+            when OIDC SSO is enabled, because such users log in only through OIDC.
           type: boolean
           default: false
       x-yba-api-since: 2026.2.0.0

@@ -202,6 +202,25 @@ public class UserApiTest extends FakeDBApplication {
   }
 
   @Test
+  public void oidcRefusesGeneratingAnApiToken() {
+    mutableConfigFactory.globalRuntimeConf().setValue("yb.security.use_oauth", "true");
+    mutableConfigFactory
+        .globalRuntimeConf()
+        .setValue("yb.security.oidc_enable_auto_create_users", "false");
+
+    Result result =
+        assertPlatformException(
+            () ->
+                create(
+                    apiToken,
+                    createSpec("sso@example.com", "Admin", PASSWORD)
+                        .put("generate_api_token", true)));
+
+    assertBadRequest(result, "generate_api_token isn't allowed when OIDC SSO is enabled");
+    assertNull(Users.getByEmail("sso@example.com"));
+  }
+
+  @Test
   public void noTokenIsUnauthorized() {
     Result result = create(null, createSpec("project-1@example.com", "Admin", PASSWORD));
 
