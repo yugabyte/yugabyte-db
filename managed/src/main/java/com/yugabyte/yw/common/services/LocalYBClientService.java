@@ -3,6 +3,7 @@
 package com.yugabyte.yw.common.services;
 
 import com.google.inject.Inject;
+import com.yugabyte.yw.common.certmgmt.RpcClientCert;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.services.config.YbClientConfig;
@@ -26,6 +27,7 @@ public class LocalYBClientService implements YBClientService {
 
   @Inject private YbClientConfigFactory ybClientConfigFactory;
   @Inject private RuntimeConfGetter confGetter;
+  @Inject private RpcClientCert rpcClientCert;
 
   @Override
   public synchronized YBClientApi getClient(String masterHostPorts) {
@@ -40,12 +42,13 @@ public class LocalYBClientService implements YBClientService {
     return null;
   }
 
-  public synchronized YBClientApi getUniverseClient(Universe universe) {
+  // Not synchronized: loading the client cert may read it from its issuer.
+  public YBClientApi getUniverseClient(Universe universe) {
     return getUniverseClient(universe, universe.getMasterAddresses());
   }
 
   @Override
-  public synchronized YBClientApi getUniverseClient(Universe universe, String masterHostPorts) {
+  public YBClientApi getUniverseClient(Universe universe, String masterHostPorts) {
     if (masterHostPorts == null) {
       return null;
     }
@@ -75,8 +78,10 @@ public class LocalYBClientService implements YBClientService {
                 confGetter.getGlobalConf(GlobalConfKeys.ybClientDnsDebugThresholdNs))
             .dnsWarningThresholdNs(
                 confGetter.getGlobalConf(GlobalConfKeys.ybClientDnsWarningThresholdNs));
-    if (config.getClientCertFile() != null) {
-      builder.sslClientCertFiles(config.getClientCertFile(), config.getClientKeyFile());
+    if (config.getClientCertUniverse() != null) {
+      rpcClientCert
+          .getFiles(config.getClientCertUniverse())
+          .ifPresent(files -> builder.sslClientCertFiles(files.getLeft(), files.getRight()));
     }
     return builder.build();
   }

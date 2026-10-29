@@ -15,8 +15,8 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.CertReloadTaskCreator;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert.UpdateRootCertAction;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.certmgmt.CertManagerClientCertSync;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.certmgmt.RpcClientCert;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.CertsRotateParams;
@@ -62,19 +62,24 @@ public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
         || taskParams().rootCARotationType == CertsRotateParams.CertRotationType.None) {
       throw new RuntimeException("RootCA rotation type is not set");
     }
-    // The task-start refresh only copies a cert issued by the current root CA. If YBA has none,
-    // the Secret was already reissued from the new CA, and every server would refuse YBA.
+    // Steps 1 to 2a present the current root CA's client cert. If YBA has none, its issuer
+    // already signs with another CA, and every server would refuse YBA.
     if (taskParams().rootCARotationType == CertsRotateParams.CertRotationType.RootCert
-        && CertManagerClientCertSync.isClientCertRequired(universe)
-        && CertManagerClientCertSync.getClientCertFiles(universe).isEmpty()) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          "YugabyteDB Anywhere has no client certificate issued by the universe's current root CA,"
-              + " which its servers require (node_to_node_encryption_use_client_certificates)."
-              + " Point the cert-manager issuer back at the current root CA, wait for cert-manager"
-              + " to reissue the universe's certificates and for YugabyteDB Anywhere to copy the"
-              + " client certificate on its next health check, then move the issuer to the new CA"
-              + " and retry the rotation.");
+        && RpcClientCert.isClientCertRequired(universe)) {
+      try {
+        getInstanceOf(RpcClientCert.class).load(universe);
+      } catch (RuntimeException e) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "YugabyteDB Anywhere has no client certificate issued by the universe's current root"
+                + " CA, which its servers require ("
+                + RpcClientCert.USE_CLIENT_CERTS_GFLAG
+                + "): "
+                + e.getMessage()
+                + ". Point the cert-manager issuer back at the current root CA, wait for"
+                + " cert-manager to reissue the universe's certificates, then move the issuer to"
+                + " the new CA and retry the rotation.");
+      }
     }
     if (CertificateHelper.checkNode2NodeCertsExpiry(getUniverse())) {
       if (taskParams().upgradeOption != UpgradeOption.NON_ROLLING_UPGRADE) {
@@ -124,9 +129,8 @@ public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
     // Step 3: Reset to use only the new rootCA
     createUniverseUpdateRootCertTask(UpdateRootCertAction.Reset, null /* temporaryRootCAUUID */);
 
-    // Re-copy the client cert, now issued by the new CA, before step 3a's pods stop trusting the
-    // old one.
-    createSyncCertManagerClientCertTask(universe, taskParams().rootCA);
+    // YBA presents the new CA's client cert from here on; step 3a's pods stop trusting the old one.
+    createWaitForRpcClientCertTask(universe, taskParams().rootCA);
 
     // Step 3a: Update pods with final new rootCA
     createRotateCertTask(universe, taskParams().rootCA);

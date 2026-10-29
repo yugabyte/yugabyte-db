@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.common.services.config;
 
-import com.yugabyte.yw.common.certmgmt.CertManagerClientCertSync;
 import com.yugabyte.yw.models.Universe;
 import java.time.Duration;
 import lombok.Getter;
@@ -18,8 +17,8 @@ public class YbClientConfig {
   private Duration adminOperationTimeout;
   private Duration socketReadTimeout;
   private Duration operationTimeout;
-  private String clientCertFile;
-  private String clientKeyFile;
+  // Presents this universe's client cert, if it requires one.
+  private Universe clientCertUniverse;
 
   public YbClientConfig(
       String masterHostPorts,
@@ -34,14 +33,8 @@ public class YbClientConfig {
     this.operationTimeout = Duration.ofMillis(operationTimeoutMs);
   }
 
-  /** Presents the universe's client cert, if it requires one. */
   public YbClientConfig withClientCertOf(Universe universe) {
-    CertManagerClientCertSync.getClientCertFiles(universe)
-        .ifPresent(
-            pair -> {
-              clientCertFile = pair.getLeft();
-              clientKeyFile = pair.getRight();
-            });
+    clientCertUniverse = universe;
     return this;
   }
 }

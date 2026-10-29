@@ -32,7 +32,6 @@ import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.alerts.MaintenanceService;
 import com.yugabyte.yw.common.alerts.SmtpData;
 import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
-import com.yugabyte.yw.common.certmgmt.CertManagerClientCertSync;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -185,8 +184,6 @@ public class HealthChecker {
 
   private final NodeAgentClient nodeAgentClient;
 
-  private final CertManagerClientCertSync certManagerClientCertSync;
-
   // Cached health check interval in milliseconds.
   private volatile long healthCheckIntervalMs = 0L;
 
@@ -207,8 +204,7 @@ public class HealthChecker {
       MaintenanceService maintenanceService,
       YBClientService ybClientService,
       ConfigHelper configHelper,
-      NodeAgentClient nodeAgentClient,
-      CertManagerClientCertSync certManagerClientCertSync) {
+      NodeAgentClient nodeAgentClient) {
     this(
         environment,
         config,
@@ -228,8 +224,7 @@ public class HealthChecker {
         maintenanceService,
         ybClientService,
         configHelper,
-        nodeAgentClient,
-        certManagerClientCertSync);
+        nodeAgentClient);
   }
 
   HealthChecker(
@@ -251,8 +246,7 @@ public class HealthChecker {
       MaintenanceService maintenanceService,
       YBClientService ybClientService,
       ConfigHelper configHelper,
-      NodeAgentClient nodeAgentClient,
-      CertManagerClientCertSync certManagerClientCertSync) {
+      NodeAgentClient nodeAgentClient) {
     this.environment = environment;
     this.config = config;
     this.platformScheduler = platformScheduler;
@@ -274,7 +268,6 @@ public class HealthChecker {
             connectivityCheckExecutor, confGetter, ybClientService, metricService);
     this.configHelper = configHelper;
     this.nodeAgentClient = nodeAgentClient;
-    this.certManagerClientCertSync = certManagerClientCertSync;
   }
 
   public void initialize() {
@@ -745,9 +738,6 @@ public class HealthChecker {
           "Skipping universe " + params.universe.getName() + " as it is in the paused state...");
       return;
     }
-    // Keeps YBA's copy current across cert-manager renewals and HA promotion, for the RPCs YBA
-    // makes between universe tasks.
-    certManagerClientCertSync.refreshIfNeeded(params.universe);
     boolean universeBusyByTask = details.isUniverseBusyByTask();
     if (universeBusyByTask) {
       log.debug(

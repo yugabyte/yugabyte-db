@@ -25,7 +25,7 @@ import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.certmgmt.CertManagerClientCertSync;
+import com.yugabyte.yw.common.certmgmt.CertManagerClientCert;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
@@ -85,7 +85,7 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
     super.validateParams(isFirstTry);
     UniverseDefinitionTaskParams.UserIntent userIntent =
         taskParams().getPrimaryCluster().userIntent;
-    CertManagerClientCertSync.validateHelmOverrides(
+    CertManagerClientCert.validateHelmOverrides(
         taskParams(), userIntent.universeOverrides, userIntent.azOverrides);
   }
 
@@ -259,7 +259,7 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
                 .collect(Collectors.toSet());
       }
 
-      createSyncCertManagerClientCertTask(getUniverse());
+      createWaitForRpcClientCertTask(getUniverse());
 
       // Wait for new tablet servers to be responsive.
       Set<NodeDetails> allTserversAdded = new HashSet<>();

@@ -3030,7 +3030,7 @@
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
             "CreateYbStorageDatabase",
-            "SyncCertManagerClientCert"
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -6075,7 +6075,7 @@
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
             "CreateYbStorageDatabase",
-            "SyncCertManagerClientCert"
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -9353,7 +9353,7 @@
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
             "CreateYbStorageDatabase",
-            "SyncCertManagerClientCert"
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -10227,7 +10227,7 @@
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
             "CreateYbStorageDatabase",
-            "SyncCertManagerClientCert"
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -11794,7 +11794,7 @@
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
             "CreateYbStorageDatabase",
-            "SyncCertManagerClientCert"
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -12562,7 +12562,7 @@
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
             "CreateYbStorageDatabase",
-            "SyncCertManagerClientCert"
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -17470,7 +17470,7 @@
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
             "CreateYbStorageDatabase",
-            "SyncCertManagerClientCert"
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -18192,7 +18192,7 @@
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
             "CreateYbStorageDatabase",
-            "SyncCertManagerClientCert"
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -19299,7 +19299,7 @@
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
             "CreateYbStorageDatabase",
-            "SyncCertManagerClientCert"
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -20177,7 +20177,7 @@
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
             "CreateYbStorageDatabase",
-            "SyncCertManagerClientCert"
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -21763,7 +21763,7 @@
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
             "CreateYbStorageDatabase",
-            "SyncCertManagerClientCert"
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -22472,7 +22472,7 @@
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
             "CreateYbStorageDatabase",
-            "SyncCertManagerClientCert"
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -22919,7 +22919,7 @@
               "CheckDuplicateInstance",
               "RunUpgradeNodeAgent",
               "CreateYbStorageDatabase",
-              "SyncCertManagerClientCert"
+              "WaitForRpcClientCert"
             ],
             "type" : "string"
           },
@@ -23520,7 +23520,7 @@
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
             "CreateYbStorageDatabase",
-            "SyncCertManagerClientCert"
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -24334,7 +24334,7 @@
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
             "CreateYbStorageDatabase",
-            "SyncCertManagerClientCert"
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -25537,7 +25537,7 @@
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
             "CreateYbStorageDatabase",
-            "SyncCertManagerClientCert"
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -26929,7 +26929,7 @@
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
             "CreateYbStorageDatabase",
-            "SyncCertManagerClientCert"
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -27650,7 +27650,7 @@
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
             "CreateYbStorageDatabase",
-            "SyncCertManagerClientCert"
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -28517,7 +28517,7 @@
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
             "CreateYbStorageDatabase",
-            "SyncCertManagerClientCert"
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -29203,7 +29203,7 @@
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
             "CreateYbStorageDatabase",
-            "SyncCertManagerClientCert"
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -29889,7 +29889,7 @@
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
             "CreateYbStorageDatabase",
-            "SyncCertManagerClientCert"
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -31096,7 +31096,7 @@
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
             "CreateYbStorageDatabase",
-            "SyncCertManagerClientCert"
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -32283,7 +32283,7 @@
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
             "CreateYbStorageDatabase",
-            "SyncCertManagerClientCert"
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },

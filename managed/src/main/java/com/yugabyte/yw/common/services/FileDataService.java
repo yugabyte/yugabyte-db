@@ -16,7 +16,6 @@ import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ConfigHelper.ConfigType;
-import com.yugabyte.yw.common.certmgmt.CertManagerClientCertSync;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.AccessKey;
@@ -55,12 +54,7 @@ import org.apache.commons.lang3.StringUtils;
 public class FileDataService {
 
   private static final List<String> FILE_DIRECTORY_TO_SYNC =
-      ImmutableList.of(
-          "keys",
-          "certs",
-          "licenses",
-          "node-agent/certs",
-          CertManagerClientCertSync.CLIENT_CERT_DIR);
+      ImmutableList.of("keys", "certs", "licenses", "node-agent/certs");
   private static final String UUID_REGEX =
       "[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}";
   private static final Pattern keyPattern =

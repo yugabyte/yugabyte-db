@@ -89,7 +89,7 @@ import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupNodeRetriever;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
-import com.yugabyte.yw.common.certmgmt.CertManagerClientCertSync;
+import com.yugabyte.yw.common.certmgmt.RpcClientCert;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
@@ -1383,8 +1383,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     UniverseUpdater updater = getLockingUniverseUpdater(updaterConfig);
     Universe universe = lockUniverseForUpdate(universeUuid, updater);
     try {
-      // Prechecks may already open RPC connections.
-      getInstanceOf(CertManagerClientCertSync.class).refreshIfNeeded(universe);
       Universe universeBeforePrechecks = Universe.getOrBadRequest(universeUuid);
       initAndAddPrecheckTasks(universe);
       TaskType taskType = getTaskExecutor().getTaskType(getClass());
@@ -3534,20 +3532,20 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
   }
 
-  public void createSyncCertManagerClientCertTask(Universe universe) {
-    createSyncCertManagerClientCertTask(universe, universe.getUniverseDetails().rootCA);
+  public void createWaitForRpcClientCertTask(Universe universe) {
+    createWaitForRpcClientCertTask(universe, universe.getUniverseDetails().rootCA);
   }
 
-  /** Adds the sync if the universe needs a client cert once it uses rootCA. */
-  public void createSyncCertManagerClientCertTask(Universe universe, UUID rootCA) {
-    if (!CertManagerClientCertSync.isClientCertRequired(universe, rootCA)) {
+  /** Adds the wait if the universe needs a client cert once it uses rootCA. */
+  public void createWaitForRpcClientCertTask(Universe universe, UUID rootCA) {
+    if (!RpcClientCert.isClientCertRequired(universe.getUniverseDetails(), rootCA)) {
       return;
     }
     SubTaskGroup subTaskGroup =
         createSubTaskGroup(
-            SyncCertManagerClientCert.class.getSimpleName(), SubTaskGroupType.ConfigureUniverse);
-    SyncCertManagerClientCert task = createTask(SyncCertManagerClientCert.class);
-    SyncCertManagerClientCert.Params params = new SyncCertManagerClientCert.Params();
+            WaitForRpcClientCert.class.getSimpleName(), SubTaskGroupType.ConfigureUniverse);
+    WaitForRpcClientCert task = createTask(WaitForRpcClientCert.class);
+    WaitForRpcClientCert.Params params = new WaitForRpcClientCert.Params();
     params.setUniverseUUID(universe.getUniverseUUID());
     task.initialize(params);
     subTaskGroup.addSubTask(task);

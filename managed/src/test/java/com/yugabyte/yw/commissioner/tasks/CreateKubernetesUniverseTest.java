@@ -39,9 +39,9 @@ import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
-import com.yugabyte.yw.common.certmgmt.CertManagerClientCertSync;
-import com.yugabyte.yw.common.certmgmt.CertManagerClientCertSyncTest;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.certmgmt.RpcClientCert;
+import com.yugabyte.yw.common.certmgmt.RpcClientCertTest;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -53,11 +53,10 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodList;
-import io.fabric8.kubernetes.api.model.SecretBuilder;
 import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
@@ -763,12 +762,14 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
   }
 
   @Test
-  public void testCreateKubernetesUniverseSyncsCertManagerClientCert() throws Exception {
+  public void testCreateKubernetesUniverseWaitsForClientCert() throws Exception {
     setupUniverse(/* Create Masters */ false, /* YEDIS/REDIS enabled */ true, false);
     setupCommon();
     String caCertFile =
         TestHelper.createTempFile(
-            TestHelper.TMP_PATH + "/" + UUID.randomUUID(), "ca.root.crt", "ca-cert");
+            TestHelper.TMP_PATH + "/" + UUID.randomUUID(),
+            "ca.root.crt",
+            CertificateHelper.getAsPemString(RpcClientCertTest.ROOT_CA.getRight()));
     UUID rootCA = UUID.randomUUID();
     CertificateInfo.create(
         rootCA,
@@ -790,18 +791,13 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
                   .getPrimaryCluster()
                   .userIntent
                   .tserverGFlags
-                  .put(CertManagerClientCertSync.USE_CLIENT_CERTS_GFLAG, "true");
+                  .put(RpcClientCert.USE_CLIENT_CERTS_GFLAG, "true");
               u.setUniverseDetails(details);
             });
     universeVersion = defaultUniverse.getVersion();
-    Pair<String, String> pem = CertManagerClientCertSyncTest.newCertPem(Duration.ofDays(90));
-    Base64.Encoder encoder = Base64.getEncoder();
+    Pair<String, String> pem = RpcClientCertTest.newCertPem(Duration.ofDays(90));
     when(mockKubernetesManager.getSecret(any(), any(), any()))
-        .thenReturn(
-            new SecretBuilder()
-                .addToData("tls.crt", encoder.encodeToString(pem.getLeft().getBytes()))
-                .addToData("tls.key", encoder.encodeToString(pem.getRight().getBytes()))
-                .build());
+        .thenReturn(RpcClientCertTest.secret(pem));
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.rootCA = rootCA;
     TaskInfo taskInfo = submitTask(taskParams);
@@ -815,13 +811,10 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
             .map(e -> e.getValue().get(0).getTaskType())
             .collect(Collectors.toList());
     assertEquals(
-        TaskType.SyncCertManagerClientCert,
+        TaskType.WaitForRpcClientCert,
         taskTypes.get(taskTypes.indexOf(TaskType.WaitForServer) - 1));
     assertEquals(
-        pem.getLeft(),
-        Files.readString(
-            CertManagerClientCertSync.getClientCertDir(defaultUniverse.getUniverseUUID())
-                .resolve(CertificateHelper.CLIENT_CERT)));
+        pem.getLeft(), Files.readString(Paths.get(CertificateHelper.getClientCertFile(rootCA))));
   }
 
   @Test

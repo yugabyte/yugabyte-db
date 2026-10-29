@@ -1414,8 +1414,7 @@ public enum TaskType {
   CreateYbStorageDatabase(
       com.yugabyte.yw.commissioner.tasks.subtasks.CreateYbStorageDatabase.class),
 
-  SyncCertManagerClientCert(
-      com.yugabyte.yw.commissioner.tasks.subtasks.SyncCertManagerClientCert.class);
+  WaitForRpcClientCert(com.yugabyte.yw.commissioner.tasks.subtasks.WaitForRpcClientCert.class);
 
   private final Class<? extends ITask> taskClass;
 
