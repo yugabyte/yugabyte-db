@@ -400,6 +400,11 @@ message StartTableBackfillRequestPB {
   // safe times, because the client's clock cannot bound the commit times tablet leaders assign.
   optional uint64 backfill_timestamp = 4;
   optional int64 pg_job_id = 5;
+  // The leaves of the source / target hierarchies, by table id; source_table and target_table
+  // name the roots. The job copies the source leaves and pins delete-marker retention on the target
+  // leaves and their indexes. Empty lists mean the root alone.
+  repeated TableIdentifierPB source_leaf_tables = 7;
+  repeated TableIdentifierPB target_leaf_tables = 8;
 }
 
 message StartTableBackfillResponsePB {

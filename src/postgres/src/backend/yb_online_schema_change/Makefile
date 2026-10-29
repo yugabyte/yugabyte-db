@@ -16,6 +16,7 @@ OBJS = \
 	yb_online_schema_change.o \
 	yb_osc_backfill.o \
 	yb_osc_catalog.o \
+	yb_osc_clone.o \
 	yb_osc_constraints.o \
 	yb_osc_transform.o \
 	yb_osc_trigger.o \

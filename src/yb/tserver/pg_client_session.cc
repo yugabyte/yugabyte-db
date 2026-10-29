@@ -229,6 +229,16 @@ YB_DEFINE_ENUM(PgClientSessionKind,
     (kPlain)(kAutonomousDdl)(kLegacyCatalog)(kSequence)(kPgSession)(kHistoricalRead));
 YB_DEFINE_ENUM(GlobalObjectLocksReleaseMode, (kAsync)(kSync));
 
+TableIds TableIdsFromOids(
+    uint32_t database_oid, const google::protobuf::RepeatedField<uint32_t>& table_oids) {
+  TableIds result;
+  result.reserve(table_oids.size());
+  for (const auto table_oid : table_oids) {
+    result.push_back(GetPgsqlTableId(database_oid, table_oid));
+  }
+  return result;
+}
+
 constexpr const size_t kPgSequenceLastValueColIdx = 2;
 constexpr const size_t kPgSequenceIsCalledColIdx = 3;
 const std::string kTxnLogPrefixTagSource("Session ");
@@ -2198,10 +2208,15 @@ class PgClientSession::Impl {
       const PgStartTableBackfillRequestPB& req,
       PgStartTableBackfillResponsePB* resp,
       rpc::RpcContext* context) {
+    const auto database_oid = req.source_table_id().database_oid();
     return client_.StartTableBackfill(
         PgObjectId::GetYbTableIdFromPB(req.source_table_id()),
         PgObjectId::GetYbTableIdFromPB(req.target_table_id()), req.transform_fn_oid(),
         req.backfill_timestamp(), req.pg_job_id(),
+        client::OnlineSchemaChangeTableIdLists{
+            .source_leaves = TableIdsFromOids(database_oid, req.source_leaf_table_oids()),
+            .target_leaves = TableIdsFromOids(database_oid, req.target_leaf_table_oids()),
+        },
         context->GetClientDeadline());
   }
 

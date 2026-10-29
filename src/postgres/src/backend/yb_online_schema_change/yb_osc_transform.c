@@ -29,6 +29,7 @@
 
 #include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
+#include "nodes/nodeFuncs.h"
 #include "nodes/primnodes.h"
 #include "utils/builtins.h"
 #include "utils/guc.h"
@@ -95,18 +96,63 @@ YbOscTransformDeparse(YbOscTransform *xf, Relation srcRel,
 }
 
 /*
+ * The backfill may scan a partition as "s" while the transform takes the
+ * root's rowtype, so a bare whole-row "s" would pass the partition's rowtype,
+ * whose column order may differ.  Spell it out as ROW(s.c1, ...)::<root
+ * rowtype>, the same row the trigger replay passes.
+ */
+static Node *
+WholeRowToRowExprMutator(Node *node, void *context)
+{
+	if (node == NULL)
+		return NULL;
+
+	if (IsA(node, Var) && ((Var *) node)->varno == 1 &&
+		((Var *) node)->varattno == 0)
+	{
+		Var		   *var = (Var *) node;
+		TupleDesc	tupdesc = RelationGetDescr((Relation) context);
+		RowExpr    *row = makeNode(RowExpr);
+
+		/*
+		 * One arg per attribute, dropped ones included: the deparser skips
+		 * those by position.
+		 */
+		for (int i = 0; i < tupdesc->natts; i++)
+		{
+			Form_pg_attribute attr = TupleDescAttr(tupdesc, i);
+			Node	   *arg = attr->attisdropped ?
+				(Node *) makeNullConst(INT4OID, -1, InvalidOid) :
+				(Node *) makeVar(1, attr->attnum, attr->atttypid, attr->atttypmod,
+								 attr->attcollation, 0);
+
+			row->args = lappend(row->args, arg);
+		}
+		row->row_typeid = var->vartype;
+		row->row_format = COERCE_EXPLICIT_CAST;
+		row->colnames = NIL;
+		row->location = -1;
+		return (Node *) row;
+	}
+
+	return expression_tree_mutator(node, WholeRowToRowExprMutator, context);
+}
+
+/*
  * The transform's call on source alias "s", for the backfill's
  * "CROSS JOIN LATERAL <call> AS t".  In the SELECT list, "(fn(s)).*" would
- * call it once per column.  The deparser passes the row as "s.*", which a
- * source column named "s" cannot capture, and names the function so that it
- * resolves to fnOid rather than to another overload.
+ * call it once per column.  The deparser names the function so that it
+ * resolves to fnOid rather than to another overload.  The deparsed Vars are
+ * named after the source root's columns, which a partition scan resolves by
+ * name.
  */
 char *
 YbOscTransformDeparseCall(YbOscTransform *xf, Relation srcRel)
 {
 	List	   *context = deparse_context_for("s", RelationGetRelid(srcRel));
 
-	return deparse_expression((Node *) xf->call, context,
+	return deparse_expression(WholeRowToRowExprMutator((Node *) xf->call, srcRel),
+							  context,
 							  true /* forceprefix */ ,
 							  false /* showimplicit */ ,
 							  false /* yb_pretty */ ,

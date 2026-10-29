@@ -28,6 +28,7 @@
  */
 #include "postgres.h"
 
+#include "catalog/pg_class.h"
 #include "executor/spi.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
@@ -134,6 +135,10 @@ ExecAlterTable(const char *sql)
  * and RowShareLock on the referenced table.  A validating ADD CONSTRAINT
  * would hold ShareRowExclusiveLock on both tables for a full scan.
  *
+ * PostgreSQL refuses NOT VALID foreign keys on a partitioned table, so a
+ * partitioned target gets the validating ADD CONSTRAINT instead, and writes
+ * to the referenced table block until its scan finishes.
+ *
  * The validation also checks the copy and the trigger, so it is not skipped.
  * A constraint that is NOT VALID on the source stays unvalidated.  Work
  * already done is skipped, so a failed call can be retried.
@@ -144,6 +149,7 @@ YbOscPromoteForeignKeys(Oid srcOid, Oid dstOid)
 	List	   *srcFkeys = CollectForeignKeys(srcOid);
 	List	   *dstFkeys = CollectForeignKeys(dstOid);
 	char	   *dstQual = QuoteQualifiedRelNameByOid(dstOid);
+	bool		dstPartitioned = get_rel_relkind(dstOid) == RELKIND_PARTITIONED_TABLE;
 	ListCell   *lc;
 
 	foreach(lc, srcFkeys)
@@ -152,8 +158,23 @@ YbOscPromoteForeignKeys(Oid srcOid, Oid dstOid)
 		YbOscForeignKey *existing = FindForeignKeyByName(dstFkeys, fk->conname);
 		const char *quotedName = quote_identifier(fk->conname);
 
+		if (dstPartitioned && !fk->convalidated)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("cannot carry NOT VALID foreign key \"%s\" over to partitioned "
+							"target table \"%s\"",
+							fk->conname, get_rel_name(dstOid)),
+					 errhint("Validate the constraint on the source first.")));
+
 		if (existing == NULL)
 		{
+			if (dstPartitioned)
+			{
+				ExecAlterTable(psprintf("ALTER TABLE %s ADD CONSTRAINT %s %s",
+										dstQual, quotedName, fk->condef));
+				continue;
+			}
+
 			/* condef already ends in NOT VALID if the source's is. */
 			ExecAlterTable(psprintf("ALTER TABLE %s ADD CONSTRAINT %s %s%s",
 									dstQual, quotedName, fk->condef,

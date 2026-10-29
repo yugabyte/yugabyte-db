@@ -290,11 +290,17 @@ Status TabletSplitManager::ValidatePartitioningVersion(const TableInfo& table) {
 Status TabletSplitManager::ValidateSplitCandidateTable(
     const TableInfoPtr& table,
     const IgnoreDisabledList ignore_disabled_lists,
-    const IgnoreVectorIndexesValidation ignore_vector_indexes_validation) {
+    const IgnoreVectorIndexesValidation ignore_vector_indexes_validation,
+    const std::function<TableInfoPtr(const TableId&)>& find_table) {
   if (PREDICT_FALSE(FLAGS_TEST_validate_all_tablet_candidates)) {
     return Status::OK();
   }
-  if (auto osc_job = CopyingOnlineSchemaChangeJobReading(*table)) {
+  auto osc_job = find_table
+      ? CopyingOnlineSchemaChangeJobReading(*table, find_table)
+      : CopyingOnlineSchemaChangeJobReading(*table, [this](const TableId& table_id) {
+          return catalog_manager_.GetTableInfo(table_id);
+        });
+  if (osc_job) {
     return STATUS_EC_FORMAT(IllegalState, MasterError(MasterErrorPB::SPLIT_OR_BACKFILL_IN_PROGRESS),
                             "Online schema change job $0 in progress, table: $1", *osc_job, *table);
   }
