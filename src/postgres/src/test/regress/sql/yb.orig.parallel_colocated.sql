@@ -374,12 +374,16 @@ SELECT * FROM
      WHERE pctest1.k = pctest2.k AND pctest1.c = pctest2.c) s1 JOIN
   (SELECT pctest2.* FROM pctest1, pctest2
      WHERE pctest1.k = pctest2.k AND pctest1.b = pctest2.b) s2 ON s1.b = s2.c;
+-- Sort outside a materialized CTE: the Gather on top returns rows in worker
+-- order, and ORDER BY in the query itself could change the plan above.
 /*+ Parallel(pctest1 2 hard) Parallel(pctest2 2 hard) */
+WITH r AS MATERIALIZED (
 SELECT * FROM
   (SELECT pctest1.* FROM pctest1, pctest2
      WHERE pctest1.k = pctest2.k AND pctest1.c = pctest2.c) s1 JOIN
   (SELECT pctest2.* FROM pctest1, pctest2
-     WHERE pctest1.k = pctest2.k AND pctest1.b = pctest2.b) s2 ON s1.b = s2.c;
+     WHERE pctest1.k = pctest2.k AND pctest1.b = pctest2.b) s2 ON s1.b = s2.c
+) SELECT * FROM r ORDER BY 1;
 
 -- index only scan with aggregates pushdown such that #atts being pushed down > #atts in relation
 /*+ IndexOnlyScan(pctest3) Parallel(pctest3 3 hard) */

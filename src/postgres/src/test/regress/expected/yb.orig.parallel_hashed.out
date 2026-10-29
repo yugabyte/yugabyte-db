@@ -422,32 +422,36 @@ SELECT * from pctest2
                      Storage Filter: (d ~~ 'Value_9'::text)
 (17 rows)
 
+-- Sort outside a materialized CTE: the Gather on top returns rows in worker
+-- order, and ORDER BY in the query itself could change the plan above.
 /*+ Parallel(pctest1 2 hard) Parallel(pctest1_1 2 hard) Parallel(pctest2 2 hard) */
+WITH r AS MATERIALIZED (
 SELECT * from pctest2
   WHERE c IN (SELECT b FROM pctest1 WHERE d LIKE 'Value_9')
-    AND b < (SELECT avg(b) FROM pctest1 WHERE d LIKE 'Value_9');
+    AND b < (SELECT avg(b) FROM pctest1 WHERE d LIKE 'Value_9')
+) SELECT * FROM r ORDER BY 1;
  k  |  a  | b  | c |       d        
 ----+-----+----+---+----------------
- 49 | 249 |  9 | 9 | Other value 49
- 29 | 229 |  5 | 9 | Other value 29
- 89 | 289 | 17 | 9 | Other value 89
- 86 | 286 | 17 | 6 | Other value 86
- 16 | 216 |  3 | 6 | Other value 16
- 59 | 259 | 11 | 9 | Other value 59
   6 | 206 |  1 | 6 | Other value 6
- 96 | 296 | 19 | 6 | Other value 96
   9 | 209 |  1 | 9 | Other value 9
+ 16 | 216 |  3 | 6 | Other value 16
  19 | 219 |  3 | 9 | Other value 19
- 36 | 236 |  7 | 6 | Other value 36
- 69 | 269 | 13 | 9 | Other value 69
- 66 | 266 | 13 | 6 | Other value 66
- 99 | 299 | 19 | 9 | Other value 99
- 79 | 279 | 15 | 9 | Other value 79
- 46 | 246 |  9 | 6 | Other value 46
- 56 | 256 | 11 | 6 | Other value 56
  26 | 226 |  5 | 6 | Other value 26
+ 29 | 229 |  5 | 9 | Other value 29
+ 36 | 236 |  7 | 6 | Other value 36
  39 | 239 |  7 | 9 | Other value 39
+ 46 | 246 |  9 | 6 | Other value 46
+ 49 | 249 |  9 | 9 | Other value 49
+ 56 | 256 | 11 | 6 | Other value 56
+ 59 | 259 | 11 | 9 | Other value 59
+ 66 | 266 | 13 | 6 | Other value 66
+ 69 | 269 | 13 | 9 | Other value 69
  76 | 276 | 15 | 6 | Other value 76
+ 79 | 279 | 15 | 9 | Other value 79
+ 86 | 286 | 17 | 6 | Other value 86
+ 89 | 289 | 17 | 9 | Other value 89
+ 96 | 296 | 19 | 6 | Other value 96
+ 99 | 299 | 19 | 9 | Other value 99
 (20 rows)
 
 -- test rescan cases
@@ -843,20 +847,24 @@ SELECT * FROM
                Storage Filter: (pctest2_1.b = b)
 (15 rows)
 
+-- Sort outside a materialized CTE: the Gather on top returns rows in worker
+-- order, and ORDER BY in the query itself could change the plan above.
 /*+ Parallel(pctest1 2 hard) Parallel(pctest2 2 hard) */
+WITH r AS MATERIALIZED (
 SELECT * FROM
   (SELECT pctest1.* FROM pctest1, pctest2
      WHERE pctest1.k = pctest2.k AND pctest1.c = pctest2.c) s1 JOIN
   (SELECT pctest2.* FROM pctest1, pctest2
-     WHERE pctest1.k = pctest2.k AND pctest1.b = pctest2.b) s2 ON s1.b = s2.c;
+     WHERE pctest1.k = pctest2.k AND pctest1.b = pctest2.b) s2 ON s1.b = s2.c
+) SELECT * FROM r ORDER BY 1;
  k |  a  | b | c |   d    | k |  a  | b | c |       d       
 ---+-----+---+---+--------+---+-----+---+---+---------------
+ 3 | 997 | 1 | 3 | Value3 | 1 | 201 | 0 | 1 | Other value 1
+ 4 | 996 | 1 | 4 | Value4 | 1 | 201 | 0 | 1 | Other value 1
  5 | 995 | 1 | 5 | Value5 | 1 | 201 | 0 | 1 | Other value 1
  6 | 994 | 2 | 6 | Value6 | 2 | 202 | 0 | 2 | Other value 2
  7 | 993 | 2 | 7 | Value7 | 2 | 202 | 0 | 2 | Other value 2
- 4 | 996 | 1 | 4 | Value4 | 1 | 201 | 0 | 1 | Other value 1
  8 | 992 | 2 | 8 | Value8 | 2 | 202 | 0 | 2 | Other value 2
- 3 | 997 | 1 | 3 | Value3 | 1 | 201 | 0 | 1 | Other value 1
 (6 rows)
 
 -- index only scan with aggregates pushdown such that #atts being pushed down > #atts in relation

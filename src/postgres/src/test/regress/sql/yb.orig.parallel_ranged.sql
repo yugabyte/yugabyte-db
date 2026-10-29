@@ -152,8 +152,12 @@ set enable_mergejoin to false;
 /*+ Parallel(pctest1 2 hard) Parallel(pctest2 2 hard) */
 EXPLAIN (costs off)
 SELECT pctest1.k, pctest2.k FROM pctest1 JOIN pctest2 USING (a, c);
+-- Sort outside a materialized CTE: the Gather on top returns rows in worker
+-- order, and ORDER BY in the query itself could change the plan above.
 /*+ Parallel(pctest1 2 hard) Parallel(pctest2 2 hard) */
-SELECT pctest1.k, pctest2.k FROM pctest1 JOIN pctest2 USING (a, c);
+WITH r AS MATERIALIZED (
+SELECT pctest1.k, pctest2.k FROM pctest1 JOIN pctest2 USING (a, c)
+) SELECT * FROM r ORDER BY 1;
 reset enable_mergejoin;
 
 -- Merge join
@@ -190,15 +194,19 @@ SELECT * FROM
      WHERE pctest1.k = pctest2.k AND pctest1.c = pctest2.c) s1 JOIN
   (SELECT pctest4.* FROM pctest1 pctest3, pctest2 pctest4
      WHERE pctest3.k = pctest4.k AND pctest3.b = pctest4.b) s2 ON s1.b = s2.c;
+-- Sort outside a materialized CTE: the Gather on top returns rows in worker
+-- order, and ORDER BY in the query itself could change the plan above.
 /*+
   Parallel(pctest1 2 hard) Parallel(pctest2 2 hard)
   Parallel(pctest3 2 hard) Parallel(pctest4 2 hard)
  */
+WITH r AS MATERIALIZED (
 SELECT * FROM
   (SELECT pctest1.* FROM pctest1, pctest2
      WHERE pctest1.k = pctest2.k AND pctest1.c = pctest2.c) s1 JOIN
   (SELECT pctest4.* FROM pctest1 pctest3, pctest2 pctest4
-     WHERE pctest3.k = pctest4.k AND pctest3.b = pctest4.b) s2 ON s1.b = s2.c;
+     WHERE pctest3.k = pctest4.k AND pctest3.b = pctest4.b) s2 ON s1.b = s2.c
+) SELECT * FROM r ORDER BY 1;
 
 -- no parallelism
 EXPLAIN (costs off)
@@ -213,10 +221,14 @@ EXPLAIN (costs off)
 SELECT * from pctest2
   WHERE c IN (SELECT b FROM pctest1 WHERE d LIKE 'Value_9')
     AND b < (SELECT avg(b) FROM pctest1 WHERE d LIKE 'Value_9');
+-- Sort outside a materialized CTE: the Gather on top returns rows in worker
+-- order, and ORDER BY in the query itself could change the plan above.
 /*+ Parallel(pctest1 2 hard)  Parallel(pctest1_1 2 hard) Parallel(pctest2 2 hard) */
+WITH r AS MATERIALIZED (
 SELECT * from pctest2
   WHERE c IN (SELECT b FROM pctest1 WHERE d LIKE 'Value_9')
-    AND b < (SELECT avg(b) FROM pctest1 WHERE d LIKE 'Value_9');
+    AND b < (SELECT avg(b) FROM pctest1 WHERE d LIKE 'Value_9')
+) SELECT * FROM r ORDER BY 1;
 
 -- test rescan cases
 set enable_material = false;
@@ -372,12 +384,16 @@ SELECT * FROM
      WHERE pctest1.k = pctest2.k AND pctest1.c = pctest2.c) s1 JOIN
   (SELECT pctest2.* FROM pctest1, pctest2
      WHERE pctest1.k = pctest2.k AND pctest1.b = pctest2.b) s2 ON s1.b = s2.c;
+-- Sort outside a materialized CTE: the Gather on top returns rows in worker
+-- order, and ORDER BY in the query itself could change the plan above.
 /*+ Parallel(pctest1 2 hard) Parallel(pctest2 2 hard) */
+WITH r AS MATERIALIZED (
 SELECT * FROM
   (SELECT pctest1.* FROM pctest1, pctest2
      WHERE pctest1.k = pctest2.k AND pctest1.c = pctest2.c) s1 JOIN
   (SELECT pctest2.* FROM pctest1, pctest2
-     WHERE pctest1.k = pctest2.k AND pctest1.b = pctest2.b) s2 ON s1.b = s2.c;
+     WHERE pctest1.k = pctest2.k AND pctest1.b = pctest2.b) s2 ON s1.b = s2.c
+) SELECT * FROM r ORDER BY 1;
 
 -- index only scan with aggregates pushdown such that #atts being pushed down > #atts in relation
 /*+ Parallel(pctest3 3 hard) */
