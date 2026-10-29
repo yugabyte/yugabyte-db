@@ -3199,8 +3199,7 @@ Status CatalogManager::RestoreSysCatalogCommon(
   MAYBE_FAULT(FLAGS_TEST_crash_during_sys_catalog_restoration);
 
   // Restore the other tables.
-  RETURN_NOT_OK(state->PrepareWriteBatch(
-      doc_read_context, schema_packing_provider, write_batch, master_->clock()->Now()));
+  RETURN_NOT_OK(state->PrepareWriteBatch(doc_read_context, schema_packing_provider, write_batch));
 
   // Updates the restoration state to indicate that sys catalog phase has completed.
   // Also, initializes the master side perceived list of tables/tablets/namespaces
