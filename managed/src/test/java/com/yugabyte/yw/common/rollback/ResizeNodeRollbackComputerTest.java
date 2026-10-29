@@ -27,6 +27,7 @@ import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntentOverrides;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
@@ -66,6 +67,7 @@ public class ResizeNodeRollbackComputerTest extends FakeDBApplication {
   private static final int DEFAULT_VOLUME_SIZE = 100;
   private static final int NEW_VOLUME_SIZE = 200;
   private static final int MASTER_VOLUME_SIZE = 50;
+  private static final int AZ_OVERRIDE_VOLUME_SIZE = 500;
   private static final int DEFAULT_DISK_IOPS = 3000;
   private static final int NEW_DISK_IOPS = 5000;
   private static final int DEFAULT_DISK_THROUGHPUT = 125;
@@ -916,10 +918,10 @@ public class ResizeNodeRollbackComputerTest extends FakeDBApplication {
   }
 
   @Test
-  public void computeKeepsCloudVolumeSizeWhenYbaNeverPersistedGrow() {
+  public void computeRejectsWhenCloudDiskLargerThanRollbackSize() {
     enableRollback();
     seedStateTransitionDetailsForResize(NEW_VOLUME_SIZE);
-    // YBA still at 100; cloud already grew to 200 before PersistResizeNode aborted.
+    // YBA still at 100 but the cloud disk is 200: it was grown outside the rollback-safe window.
     stubCloudState(
         NEW_INSTANCE_TYPE,
         NEW_DISK_IOPS,
@@ -929,14 +931,13 @@ public class ResizeNodeRollbackComputerTest extends FakeDBApplication {
     ResizeNodeParams failedParams = failedResizeParams(NEW_VOLUME_SIZE);
     RollbackContext context = buildContext(failedParams, DateUtils.addHours(new Date(), -48));
 
-    RollbackSubmission submission = computer.compute(context);
-    UserIntent restored =
-        ((ResizeNodeParams) submission.getParams()).getPrimaryCluster().userIntent;
-    assertEquals(NEW_VOLUME_SIZE, restored.deviceInfo.volumeSize.intValue());
+    PlatformServiceException ex =
+        assertThrows(PlatformServiceException.class, () -> computer.compute(context));
+    assertTrue(ex.getMessage(), ex.getMessage().contains("node n1 is 200 GB in the cloud"));
   }
 
   @Test
-  public void computeDoesNotInflateMasterVolumeFromTserverCloudGrow() {
+  public void computeChecksEachRoleAgainstItsOwnVolumeSize() {
     enableRollback();
     final String masterNodeName = "n-master";
     UUID azUuid = universe.getNodes().stream().findFirst().orElseThrow().azUuid;
@@ -974,14 +975,14 @@ public class ResizeNodeRollbackComputerTest extends FakeDBApplication {
               u.getUniverseDetails().nodeDetailsSet.add(master);
             });
     seedStateTransitionDetailsForResize(NEW_VOLUME_SIZE);
-    // Tserver cloud grew to 200 before persist; dedicated master cloud stayed at 50.
+    // Each role's cloud disk matches its own size: tserver 100, dedicated master 50.
     Instant expired = Instant.now().minus(Duration.ofHours(48));
     when(cloudAPI.describeNodeDataDiskSpec(any(), any()))
         .thenAnswer(
             invocation -> {
               NodeDetails node = invocation.getArgument(1);
               int volume =
-                  masterNodeName.equals(node.nodeName) ? MASTER_VOLUME_SIZE : NEW_VOLUME_SIZE;
+                  masterNodeName.equals(node.nodeName) ? MASTER_VOLUME_SIZE : DEFAULT_VOLUME_SIZE;
               return Optional.of(
                   new CloudAPI.NodeDiskSpec(
                       DEFAULT_INSTANCE_TYPE,
@@ -996,9 +997,127 @@ public class ResizeNodeRollbackComputerTest extends FakeDBApplication {
     RollbackSubmission submission = computer.compute(context);
     UserIntent restored =
         ((ResizeNodeParams) submission.getParams()).getPrimaryCluster().userIntent;
-    assertEquals(NEW_VOLUME_SIZE, restored.deviceInfo.volumeSize.intValue());
+    assertEquals(
+        DEFAULT_VOLUME_SIZE,
+        restored.evaluateDeviceInfoForNode(universe.getNode("n1")).volumeSize.intValue());
     assertNotNull(restored.masterDeviceInfo);
     assertEquals(MASTER_VOLUME_SIZE, restored.masterDeviceInfo.volumeSize.intValue());
+    assertEquals(
+        MASTER_VOLUME_SIZE,
+        restored.evaluateDeviceInfoForNode(universe.getNode(masterNodeName)).volumeSize.intValue());
+  }
+
+  // Adds node n2 in a second AZ whose before-state disk override is AZ_OVERRIDE_VOLUME_SIZE.
+  private void addSecondAzWithVolumeOverride() {
+    NodeDetails n1 = universe.getNode("n1");
+    AvailabilityZone az1 = AvailabilityZone.getOrBadRequest(n1.azUuid);
+    AvailabilityZone az2 =
+        AvailabilityZone.createOrThrow(az1.getRegion(), "az-2", "PlacementAZ 2", "subnet-2");
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> {
+              UserIntent primary = u.getUniverseDetails().getPrimaryCluster().userIntent;
+              UserIntentOverrides overrides = new UserIntentOverrides();
+              overrides.updateAZOverride(
+                  az2.getUuid(),
+                  azOverride -> {
+                    DeviceInfo device = new DeviceInfo();
+                    device.volumeSize = AZ_OVERRIDE_VOLUME_SIZE;
+                    azOverride.setDeviceInfo(device);
+                  });
+              primary.setUserIntentOverrides(overrides);
+              NodeDetails n2 = Json.fromJson(Json.toJson(n1), NodeDetails.class);
+              n2.nodeIdx = 2;
+              n2.nodeName = "n2";
+              n2.nodeUuid = UUID.randomUUID();
+              n2.azUuid = az2.getUuid();
+              n2.cloudInfo.private_ip = "127.0.0.2";
+              n2.cloudInfo.az = az2.getName();
+              u.getUniverseDetails().nodeDetailsSet.add(n2);
+            });
+  }
+
+  // Each node's cloud data disk: n2 at the AZ override, n1 at n1VolumeSize.
+  private void stubCloudVolumePerNode(int n1VolumeSize) {
+    Instant expired = Instant.now().minus(Duration.ofHours(48));
+    when(cloudAPI.describeNodeDataDiskSpec(any(), any()))
+        .thenAnswer(
+            invocation -> {
+              NodeDetails node = invocation.getArgument(1);
+              int volume = "n2".equals(node.nodeName) ? AZ_OVERRIDE_VOLUME_SIZE : n1VolumeSize;
+              return Optional.of(
+                  new CloudAPI.NodeDiskSpec(
+                      NEW_INSTANCE_TYPE,
+                      DEFAULT_DISK_IOPS,
+                      DEFAULT_DISK_THROUGHPUT,
+                      volume,
+                      expired));
+            });
+  }
+
+  @Test
+  public void computeRespectsPerAzVolumeOverrides() {
+    enableRollback();
+    addSecondAzWithVolumeOverride();
+    seedStateTransitionDetailsForResize(DEFAULT_VOLUME_SIZE);
+    stubCloudVolumePerNode(DEFAULT_VOLUME_SIZE);
+    ResizeNodeParams failedParams = failedResizeParams(DEFAULT_VOLUME_SIZE);
+    RollbackContext context = buildContext(failedParams, DateUtils.addHours(new Date(), -48));
+
+    UserIntent restored =
+        ((ResizeNodeParams) computer.compute(context).getParams()).getPrimaryCluster().userIntent;
+    // The larger AZ override must not become the default that AZ-1 inherits.
+    assertEquals(DEFAULT_VOLUME_SIZE, restored.deviceInfo.volumeSize.intValue());
+    assertEquals(
+        DEFAULT_VOLUME_SIZE,
+        restored.evaluateDeviceInfoForNode(universe.getNode("n1")).volumeSize.intValue());
+    assertEquals(
+        AZ_OVERRIDE_VOLUME_SIZE,
+        restored.evaluateDeviceInfoForNode(universe.getNode("n2")).volumeSize.intValue());
+  }
+
+  @Test
+  public void computeRejectsWhenCurrentAzOverrideLargerThanBefore() {
+    enableRollback();
+    addSecondAzWithVolumeOverride();
+    seedStateTransitionDetailsForResize(DEFAULT_VOLUME_SIZE);
+    // The universe now records 600 GB for AZ-2 (before had 500). Restoring before would shrink it.
+    UUID az2 = universe.getNode("n2").azUuid;
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u ->
+                u.getUniverseDetails()
+                    .getPrimaryCluster()
+                    .userIntent
+                    .getUserIntentOverrides()
+                    .updateAZOverride(az2, azOverride -> azOverride.getDeviceInfo().volumeSize = 600));
+    stubCloudVolumePerNode(DEFAULT_VOLUME_SIZE);
+    RollbackContext context =
+        buildContext(failedResizeParams(DEFAULT_VOLUME_SIZE), DateUtils.addHours(new Date(), -48));
+
+    PlatformServiceException ex =
+        assertThrows(PlatformServiceException.class, () -> computer.compute(context));
+    assertTrue(
+        ex.getMessage(), ex.getMessage().contains("records 600 GB for node n2, larger than the 500"));
+  }
+
+  @Test
+  public void computeRejectsWhenCloudDiskLargerThanItsAz() {
+    enableRollback();
+    addSecondAzWithVolumeOverride();
+    seedStateTransitionDetailsForResize(DEFAULT_VOLUME_SIZE);
+    // n1's disk is 200 GB, above its AZ's 100 GB. AZ-2's 500 GB must not cover for it.
+    stubCloudVolumePerNode(NEW_VOLUME_SIZE);
+    RollbackContext context =
+        buildContext(failedResizeParams(DEFAULT_VOLUME_SIZE), DateUtils.addHours(new Date(), -48));
+
+    PlatformServiceException ex =
+        assertThrows(PlatformServiceException.class, () -> computer.compute(context));
+    assertTrue(
+        ex.getMessage(),
+        ex.getMessage().contains("node n1 is 200 GB in the cloud, larger than the 100 GB"));
   }
 
   /** Simple identity check: {@link Cluster} lookup by uuid should match primary. */
