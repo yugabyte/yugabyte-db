@@ -113,7 +113,12 @@ CREATE VIEW yb_online_schema_change AS
         m.updated_at,
         m.origin,
         m.cutover_mode,
-        m.alter_cmds
+        m.alter_cmds,
+        -- 0 once the table has been dropped.
+        (SELECT count(*)::int FROM pg_catalog.pg_partition_tree(m.source_table_oid)
+         WHERE isleaf)                      AS source_leaf_count,
+        (SELECT count(*)::int FROM pg_catalog.pg_partition_tree(m.target_table_oid)
+         WHERE isleaf)                      AS target_leaf_count
     FROM pg_catalog.pg_yb_online_schema_change m,
          -- The master reports an active job's copy. The function is strict, so a
          -- NULL id skips the call for a job that has ended.
@@ -139,6 +144,8 @@ COMMENT ON COLUMN yb_online_schema_change.updated_at IS 'When the job last chang
 COMMENT ON COLUMN yb_online_schema_change.origin IS 'Who started the job: manual (the SQL lifecycle functions) or alter_table (ALTER TABLE ... CONCURRENTLY).';
 COMMENT ON COLUMN yb_online_schema_change.cutover_mode IS 'What finish does: rename (the target takes the source''s name) or swap (the source keeps its OID and takes the target''s storage).';
 COMMENT ON COLUMN yb_online_schema_change.alter_cmds IS 'Text of the ALTER TABLE ... CONCURRENTLY statement, which a swap re-runs on the source, else NULL.';
+COMMENT ON COLUMN yb_online_schema_change.source_leaf_count IS 'Data-bearing partitions of the source (1 for an ordinary table).';
+COMMENT ON COLUMN yb_online_schema_change.target_leaf_count IS 'Data-bearing partitions of the target (1 for an ordinary table).';
 
 COMMENT ON TABLE pg_catalog.pg_yb_online_schema_change IS
     'Online schema change jobs, one row per job. The yb_online_schema_change view adds names and the progress of the copy.';

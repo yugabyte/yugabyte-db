@@ -12391,6 +12391,13 @@
   proargnames => '{source_table,target_table,transform_fn}',
   prosrc => 'yb_begin_mirror_table' },
 
+{ oid => '8140',
+  descr => 'recreate the source table\'s partitions under an empty partitioned target',
+  proname => 'yb_online_schema_change_clone_partitions', provolatile => 'v', proisstrict => 't',
+  prorettype => 'void', proargtypes => 'regclass regclass text bool',
+  proargnames => '{source_table,target_table,suffix,clone_local_indexes}',
+  prosrc => 'yb_online_schema_change_clone_partitions' },
+
 { oid => '8142',
   descr => 'wait until an online schema change is ready to finish',
   proname => 'yb_wait_mirror_table', provolatile => 'v', proisstrict => 't',

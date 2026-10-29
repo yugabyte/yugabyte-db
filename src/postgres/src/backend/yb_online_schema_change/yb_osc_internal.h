@@ -22,7 +22,9 @@
 
 #include "commands/trigger.h"
 #include "nodes/pg_list.h"
+#include "storage/lockdefs.h"
 #include "utils/rel.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 /* Values stored in pg_yb_online_schema_change.status. */
 #define YB_OSC_STATUS_ACTIVE			"active"
@@ -43,6 +45,10 @@ extern char *YbOscBuildColumnList(Relation rel);
 extern void	 YbOscRenameTable(Relation rel, const char *newName);
 
 extern Oid	YbOscTransformOwner(Oid transformOid);
+
+extern List *YbOscHierarchyNodes(Oid rootOid, LOCKMODE lockmode);
+extern List *YbOscHierarchyLeaves(List *nodes);
+extern YbcPgOid *YbOscRelfileNodeArray(List *oids);
 
 extern List *YbOscGetKeyWitnessAttnums(Relation srcRel, Relation dstRel);
 
@@ -99,6 +105,7 @@ typedef struct YbOscJob
 extern int64 YbOscInsertJob(Oid srcOid, Oid dstOid, Oid transformOid);
 extern void YbOscSetStatus(int64 jobId, const char *status);
 extern bool YbOscFetchJob(int64 jobId, YbOscJob *job);
+extern int64 YbOscFindActiveJob(List *relOids);
 extern bool YbOscHasActiveJob(Oid srcOid, Oid dstOid);
 
 

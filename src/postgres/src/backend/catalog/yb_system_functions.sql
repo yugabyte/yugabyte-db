@@ -125,6 +125,19 @@ VOLATILE PARALLEL UNSAFE
 AS 'yb_index_check';
 
 CREATE OR REPLACE FUNCTION
+  yb_online_schema_change_clone_partitions(source_table regclass,
+                             target_table regclass,
+                             suffix text DEFAULT '_new',
+                             clone_local_indexes bool DEFAULT false)
+RETURNS void
+-- SECURITY INVOKER: the clones are plain DDL, owned by the caller.  V117 pins
+-- the DEFAULT expressions' parse locations, so any text change above them
+-- needs a matching change there.
+LANGUAGE INTERNAL
+STRICT VOLATILE
+AS 'yb_online_schema_change_clone_partitions';
+
+CREATE OR REPLACE FUNCTION
   yb_backfill_online_schema_change_chunk(
     source_table oid,
     target_table oid,
