@@ -12,6 +12,7 @@
 //
 
 #include <algorithm>
+#include <atomic>
 #include <random>
 #include <string>
 #include <unordered_set>
@@ -223,19 +224,30 @@ TEST_F(HnswlibTenantTest, ConcurrentInserts) {
   ASSERT_NO_FATALS(CheckSearches());
 }
 
-// Concurrent first inserts of a tenant into an empty index must agree on its entry point, otherwise
-// the vectors of the other inserts are cut off from the tenant.
+// Concurrent first inserts of a tenant must agree on its entry point, otherwise the vectors of the
+// other inserts are cut off from the tenant. The index already has a vector of another tenant: the
+// first insert into an empty index holds the global lock of hnswlib until it is done.
 TEST_F(HnswlibTenantTest, ConcurrentFirstInsertsOfTenant) {
   constexpr size_t kNumInserts = 8;
-  constexpr size_t kNumRounds = 50;
+  // A round rarely hits the race, so it is repeated many times.
+  constexpr size_t kNumRounds = 2000;
   const Slice tenant("tenant");
   for (size_t round = 0; round != kNumRounds; ++round) {
-    auto index = ASSERT_RESULT(CreateIndex(TenantFromPayload, kNumInserts));
-    ASSERT_OK(ProcessInParallel(
-        kNumInserts, static_cast<size_t>(0), kNumInserts,
-        [this, &index, tenant](size_t i) {
-          return index->Insert(entries_[i].id, entries_[i].vector, tenant);
-        }));
+    auto index = ASSERT_RESULT(CreateIndex(TenantFromPayload, kNumInserts + 1));
+    const auto& other = entries_[kNumInserts];
+    ASSERT_OK(index->Insert(other.id, other.vector, Slice("other_tenant")));
+    // The inserts spin until all of them are started, so that they run together.
+    std::atomic<bool> start{false};
+    ThreadHolder threads;
+    for (size_t i = 0; i != kNumInserts; ++i) {
+      threads.AddThreadFunctor([this, &index, &start, tenant, i] {
+        while (!start.load(std::memory_order_acquire)) {
+        }
+        ASSERT_OK(index->Insert(entries_[i].id, entries_[i].vector, tenant));
+      });
+    }
+    start.store(true, std::memory_order_release);
+    threads.JoinAll();
     auto results = ASSERT_RESULT(index->Search(entries_.front().vector, SearchOptions {
       .max_num_results = kNumInserts,
       .ef = kEf,
