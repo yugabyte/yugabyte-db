@@ -263,6 +263,7 @@ void DataPatcherTest::TestAddTimeDelta(QuiescentTablets quiescent_tablets) {
   auto wal_root_dirs = boost::join(wal_root_dirs_vec, ",");
 
   std::vector<std::string> quiescent_wal_dirs;
+  MicrosTime quiescent_time = 0;
   if (quiescent_tablets) {
     ASSERT_OK(WaitFor([this]() -> Result<bool> {
       for (const auto& peer : VERIFY_RESULT(ListTabletPeersForTableName(cluster_.get(), "t"))) {
@@ -272,6 +273,8 @@ void DataPatcherTest::TestAddTimeDelta(QuiescentTablets quiescent_tablets) {
       }
       return true;
     }, 30s * kTimeMultiplier, "Tablets quiescent"));
+    // The op at the marker can follow the inserts, e.g. the APPLYING record of a transaction.
+    quiescent_time = ASSERT_RESULT(WallClock()->Now()).time_point;
     for (const auto& peer : ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), "t"))) {
       quiescent_wal_dirs.push_back(peer->tablet_metadata()->wal_dir());
     }
@@ -309,8 +312,7 @@ void DataPatcherTest::TestAddTimeDelta(QuiescentTablets quiescent_tablets) {
 
   for (const auto& dir : quiescent_wal_dirs) {
     auto marker = ASSERT_RESULT(log::Log::ReadQuiescentMarkerFile(Env::Default(), dir));
-    ASSERT_LT(HybridTime(marker.hybrid_time()).GetPhysicalValueMicros(),
-              time_after_clock_jump.value());
+    ASSERT_LT(HybridTime(marker.hybrid_time()).GetPhysicalValueMicros(), quiescent_time);
   }
 
   const auto start_cluster = [&]() {
