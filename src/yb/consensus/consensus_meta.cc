@@ -122,6 +122,8 @@ Status ConsensusMetadata::Load(FsManager* fs_manager,
   cmeta->committed_consensus_state_cache_.set_config(cmeta->committed_config());
   cmeta->committed_consensus_state_cache_.set_leader_uuid(cmeta->leader_uuid());
   cmeta->committed_consensus_state_cache_.set_current_term(cmeta->current_term());
+  cmeta->committed_config_index_.store(
+      cmeta->committed_config().committed_op_index(), std::memory_order_release);
   cmeta->UpdateActiveRole(); // Needs to happen here as we sidestep the accessor APIs.
   RETURN_NOT_OK(cmeta->UpdateOnDiskSize());
   cmeta_out->swap(cmeta);
@@ -211,6 +213,7 @@ const RaftConfigPB& ConsensusMetadata::committed_config() const {
 
 void ConsensusMetadata::set_committed_config(const RaftConfigPB& config) {
   *pb_.mutable_committed_config() = config;
+  committed_config_index_.store(config.committed_op_index(), std::memory_order_release);
   if (!has_pending_config_) {
     UpdateActiveRole();
   }
@@ -376,7 +379,8 @@ ConsensusMetadata::ConsensusMetadata(FsManager* fs_manager,
       peer_uuid_(std::move(peer_uuid)),
       has_pending_config_(false),
       active_role_(PeerRole::UNKNOWN_ROLE),
-      on_disk_size_(0) {
+      on_disk_size_(0),
+      committed_config_index_(kInvalidOpIdIndex) {
   UpdateRoleAndTermCache();
 }
 
