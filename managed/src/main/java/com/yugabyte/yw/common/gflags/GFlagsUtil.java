@@ -1959,13 +1959,8 @@ public class GFlagsUtil {
   }
 
   /**
-   * Applies the audit/query log ysql_pg_conf_csv entries over a user or platform value. A base
-   * entry whose key telemetry also sets is replaced in place and new keys are appended, so a base
-   * without conflicts keeps its entries and their order (GFlagsUpgrade compares the printed string
-   * with the server's value). PostgreSQL setting names are case-insensitive, so a telemetry key
-   * replaces the first base entry for that key in any case and drops the later ones. Other base
-   * keys match exactly and the first entry for a key wins, as in mergeCSVs, also when there are no
-   * telemetry entries.
+   * Overrides base ysql_pg_conf_csv entries with telemetry ones in place (keys match in any case,
+   * as in PostgreSQL) and appends the rest, so an unchanged base keeps its order.
    */
   public static String overrideWithTelemetryYsqlPgConfCsv(String baseCsv, String telemetryCsv) {
     if (StringUtils.isEmpty(telemetryCsv)) {
@@ -2502,9 +2497,7 @@ public class GFlagsUtil {
   }
 
   public static String getLogLinePrefix(QueryLogConfig queryLogConfig, String ysqlPgConfCsv) {
-    // Same order as the ysql_pg_conf_csv merge (telemetry over user), so the collector parses with
-    // the prefix PostgreSQL runs with. The query log API's prefix applies only where
-    // getYsqlPgConfCsv(QueryLogConfig) emits it.
+    // Telemetry over user, as in the ysql_pg_conf_csv merge, so the collector uses PG's prefix.
     if (queryLogConfig != null
         && queryLogConfig.getYsqlQueryLogConfig() != null
         && queryLogConfig.getYsqlQueryLogConfig().isEnabled()

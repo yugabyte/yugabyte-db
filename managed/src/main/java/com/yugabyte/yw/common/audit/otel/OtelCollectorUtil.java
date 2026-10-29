@@ -285,9 +285,8 @@ public class OtelCollectorUtil {
   }
 
   /**
-   * Returns the persisted export_telemetry_config row, or null when there is none. There is no
-   * userIntent fallback: K8s helm overrides, the K8s in-memory ysql_pg_conf_csv and the v2 GET API
-   * read only this row.
+   * Returns the export_telemetry_config row, or null. No userIntent fallback: K8s helm values and
+   * the K8s in-memory ysql_pg_conf_csv must read the same source.
    */
   public static TelemetryConfig getPersistedTelemetryConfig(UUID universeUUID) {
     return ExportTelemetryConfig.getForUniverse(universeUUID)

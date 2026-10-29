@@ -3,6 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -24,6 +25,7 @@ import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.YCQLAuditConfig;
 import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
 import java.util.Map;
+import java.util.concurrent.CancellationException;
 import org.junit.Before;
 import org.junit.Test;
 import org.yb.client.YBClientApi;
@@ -61,7 +63,12 @@ public class SetFlagInMemoryTest extends CommissionerBaseTest {
   }
 
   private void runSetFlagInMemory(ServerType serverType) {
+    runSetFlagInMemory(serverType, false /* ignoreErrors */);
+  }
+
+  private void runSetFlagInMemory(ServerType serverType, boolean ignoreErrors) {
     SetFlagInMemory.Params params = new SetFlagInMemory.Params();
+    params.ignoreErrors = ignoreErrors;
     params.setUniverseUUID(universe.getUniverseUUID());
     params.nodeName = NODE_NAME;
     params.serverType = serverType;
@@ -126,5 +133,39 @@ public class SetFlagInMemoryTest extends CommissionerBaseTest {
     runSetFlagInMemory(ServerType.TSERVER);
     verify(mockClient)
         .setFlag(any(), eq(GFlagsUtil.YSQL_PG_CONF_CSV), eq(USER_PG_CONF_CSV), eq(true));
+  }
+
+  @Test
+  public void testFailedRpcFailsTask() throws Exception {
+    when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean())).thenReturn(false);
+    assertThrows(RuntimeException.class, () -> runSetFlagInMemory(ServerType.TSERVER));
+  }
+
+  @Test
+  public void testIgnoreErrorsSkipsFailedRpc() throws Exception {
+    when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean()))
+        .thenThrow(new RuntimeException("rpc failed"));
+    runSetFlagInMemory(ServerType.TSERVER, true /* ignoreErrors */);
+    verify(mockClient)
+        .setFlag(any(), eq(GFlagsUtil.YSQL_PG_CONF_CSV), eq(USER_PG_CONF_CSV), eq(true));
+  }
+
+  @Test
+  public void testIgnoreErrorsRethrowsCancellation() throws Exception {
+    when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean()))
+        .thenThrow(new RuntimeException(new CancellationException("aborted")));
+    assertThrows(
+        RuntimeException.class,
+        () -> runSetFlagInMemory(ServerType.TSERVER, true /* ignoreErrors */));
+  }
+
+  @Test
+  public void testIgnoreErrorsRethrowsAbort() throws Exception {
+    // An abort interrupts the RPC; ignoreErrors must not turn it into success.
+    when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean()))
+        .thenThrow(new RuntimeException(new InterruptedException()));
+    assertThrows(
+        RuntimeException.class,
+        () -> runSetFlagInMemory(ServerType.TSERVER, true /* ignoreErrors */));
   }
 }

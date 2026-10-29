@@ -4228,9 +4228,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
-   * SetFlagInMemory rebuilds ysql_pg_conf_csv from the passed gflags, the new install gflags (where
-   * applied) and the telemetry configs. Callers that set only a few flags must also pass the node's
-   * user ysql_pg_conf_csv, or the live value loses it until the next restart.
+   * Adds the node's user ysql_pg_conf_csv, which SetFlagInMemory needs to rebuild the live value
+   * when the caller sets only a few flags.
    */
   protected static void addUserYsqlPgConfCsv(
       Map<String, String> gflags, Universe universe, NodeDetails node, ServerType serverType) {

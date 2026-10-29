@@ -25,11 +25,13 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.concurrent.CancellationException;
 import java.util.function.Supplier;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.yb.client.YBClientApi;
 
 @Slf4j
@@ -56,6 +58,9 @@ public class SetFlagInMemory extends ServerSubTaskBase {
 
     // If ONLY the masters need to be updated.
     public boolean updateMasterAddrs = false;
+
+    // Log and skip a failed setFlag RPC instead of failing the task. An abort still fails it.
+    public boolean ignoreErrors = false;
     // Supplier for master addresses override which is invoked only when the subtask starts
     // execution.
     @Nullable public Supplier<String> masterAddrsOverride;
@@ -99,55 +104,15 @@ public class SetFlagInMemory extends ServerSubTaskBase {
       Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
 
       if (!taskParams().updateMasterAddrs) {
-        String userProvidedYsqlPgConfCsv = gflags.getOrDefault(GFlagsUtil.YSQL_PG_CONF_CSV, "");
-        // Read telemetry from the same source as the server's config: the VM config file has it
-        // only when the node's cluster has YSQL enabled, K8s helm overrides use only the
-        // export_telemetry_config row and only for tservers.
-        TelemetryConfig telemetryConfig = null;
-        if (!Util.isKubernetesBasedUniverse(universe)) {
-          NodeDetails node = universe.getNode(taskParams().nodeName);
-          Cluster cluster = node == null ? null : universe.getCluster(node.placementUuid);
-          if (cluster == null) {
-            cluster = universe.getUniverseDetails().getPrimaryCluster();
-          }
-          if (cluster.userIntent.enableYSQL) {
-            telemetryConfig = OtelCollectorUtil.getCurrentTelemetryConfig(universe);
-          }
-        } else if (taskParams().serverType == ServerType.TSERVER) {
-          telemetryConfig =
-              OtelCollectorUtil.getPersistedTelemetryConfig(universe.getUniverseUUID());
-        }
-        String telemetryYsqlPgConfCsv =
-            telemetryConfig == null
-                ? ""
-                : GFlagsUtil.getYsqlPgConfCsv(
-                    telemetryConfig.getAuditLogConfig(), telemetryConfig.getQueryLogConfig());
-        // Build the value in the same order as the server's gflags file (user, then new install
-        // gflags where they are applied, then telemetry over both): GFlagsUpgrade compares the
-        // in-memory string with the target.
-        String baseYsqlPgConfCsv = userProvidedYsqlPgConfCsv;
-        if (GFlagsUtil.areNewInstallGFlagsApplied(universe)) {
-          baseYsqlPgConfCsv =
-              GFlagsUtil.mergeCSVs(
-                  baseYsqlPgConfCsv,
-                  universe
-                      .getNewInstallGFlags(taskParams().serverType)
-                      .getOrDefault(GFlagsUtil.YSQL_PG_CONF_CSV, ""),
-                  true);
-        }
-        if (StringUtils.isNotBlank(baseYsqlPgConfCsv)
-            || StringUtils.isNotBlank(telemetryYsqlPgConfCsv)) {
-          // K8s helm overrides pass the user value through unchanged unless the export row has an
-          // audit or query section (KubernetesCommandExecutor checks requiresYsqlPgConfCsv).
-          boolean keepRaw =
-              Util.isKubernetesBasedUniverse(universe)
-                  && (telemetryConfig == null || !telemetryConfig.requiresYsqlPgConfCsv());
-          gflags.put(
-              GFlagsUtil.YSQL_PG_CONF_CSV,
-              keepRaw
-                  ? baseYsqlPgConfCsv
-                  : GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv(
-                      baseYsqlPgConfCsv, telemetryYsqlPgConfCsv));
+        String ysqlPgConfCsv =
+            getInMemoryYsqlPgConfCsv(
+                universe,
+                taskParams().nodeName,
+                taskParams().serverType,
+                gflags.getOrDefault(GFlagsUtil.YSQL_PG_CONF_CSV, ""),
+                null /* vmTelemetryConfig */);
+        if (ysqlPgConfCsv != null) {
+          gflags.put(GFlagsUtil.YSQL_PG_CONF_CSV, ysqlPgConfCsv);
         }
       }
       if (universe.getUniverseDetails().getPrimaryCluster().userIntent.enableConnectionPooling
@@ -190,18 +155,88 @@ public class SetFlagInMemory extends ServerSubTaskBase {
     }
   }
 
+  /**
+   * Returns the ysql_pg_conf_csv to set in memory, built like the server's config so GFlagsUpgrade
+   * sees no change; null when there is nothing to set. vmTelemetryConfig overrides the saved one.
+   */
+  @Nullable
+  public static String getInMemoryYsqlPgConfCsv(
+      Universe universe,
+      String nodeName,
+      ServerType serverType,
+      String userYsqlPgConfCsv,
+      @Nullable TelemetryConfig vmTelemetryConfig) {
+    // Same telemetry source as the server's config: VM only with YSQL on, K8s helm tservers only.
+    TelemetryConfig telemetryConfig = null;
+    boolean isKubernetes = Util.isKubernetesBasedUniverse(universe);
+    if (!isKubernetes) {
+      NodeDetails node = universe.getNode(nodeName);
+      Cluster cluster = node == null ? null : universe.getCluster(node.placementUuid);
+      if (cluster == null) {
+        cluster = universe.getUniverseDetails().getPrimaryCluster();
+      }
+      if (cluster.userIntent.enableYSQL) {
+        telemetryConfig =
+            vmTelemetryConfig != null
+                ? vmTelemetryConfig
+                : OtelCollectorUtil.getCurrentTelemetryConfig(universe);
+      }
+    } else if (serverType == ServerType.TSERVER) {
+      telemetryConfig = OtelCollectorUtil.getPersistedTelemetryConfig(universe.getUniverseUUID());
+    }
+    String telemetryYsqlPgConfCsv =
+        telemetryConfig == null
+            ? ""
+            : GFlagsUtil.getYsqlPgConfCsv(
+                telemetryConfig.getAuditLogConfig(), telemetryConfig.getQueryLogConfig());
+    String baseYsqlPgConfCsv = StringUtils.defaultString(userYsqlPgConfCsv);
+    if (GFlagsUtil.areNewInstallGFlagsApplied(universe)) {
+      baseYsqlPgConfCsv =
+          GFlagsUtil.mergeCSVs(
+              baseYsqlPgConfCsv,
+              universe
+                  .getNewInstallGFlags(serverType)
+                  .getOrDefault(GFlagsUtil.YSQL_PG_CONF_CSV, ""),
+              true);
+    }
+    if (StringUtils.isBlank(baseYsqlPgConfCsv) && StringUtils.isBlank(telemetryYsqlPgConfCsv)) {
+      return null;
+    }
+    // Like KubernetesCommandExecutor: helm keeps the raw value without an audit or query section.
+    if (isKubernetes && (telemetryConfig == null || !telemetryConfig.requiresYsqlPgConfCsv())) {
+      return baseYsqlPgConfCsv;
+    }
+    return GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv(baseYsqlPgConfCsv, telemetryYsqlPgConfCsv);
+  }
+
   private void setFlag(YBClientApi client, String gflag, String value, HostAndPort hp)
       throws Exception {
     log.debug("Setting gflag {} to {} on node {} via non-restart rpc", gflag, value, hp);
-    boolean setSuccess = client.setFlag(hp, gflag, value, taskParams().force);
-    if (!setSuccess) {
-      throw new RuntimeException(
-          "Could not set gflag "
-              + gflag
-              + " for "
-              + taskParams().serverType
-              + " on node "
-              + taskParams().nodeName);
+    try {
+      boolean setSuccess = client.setFlag(hp, gflag, value, taskParams().force);
+      if (!setSuccess) {
+        throw new RuntimeException(
+            "Could not set gflag "
+                + gflag
+                + " for "
+                + taskParams().serverType
+                + " on node "
+                + taskParams().nodeName);
+      }
+    } catch (Exception e) {
+      // Never swallow an abort. indexOfType walks the cause chain; hasCause does not.
+      if (!taskParams().ignoreErrors
+          || Thread.currentThread().isInterrupted()
+          || ExceptionUtils.indexOfType(e, InterruptedException.class) >= 0
+          || ExceptionUtils.indexOfType(e, CancellationException.class) >= 0) {
+        throw e;
+      }
+      log.warn(
+          "Ignoring the failure to set gflag {} in memory for {} on node {}",
+          gflag,
+          taskParams().serverType,
+          taskParams().nodeName,
+          e);
     }
   }
 }
