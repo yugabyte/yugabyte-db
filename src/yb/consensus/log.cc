@@ -1363,15 +1363,10 @@ Status Log::EnsureSegmentInitializedUnlocked(CreateNewSegment create_new_segment
   }
   if (reuse_last_segment) {
     log_index_->SetMinIndexedSegmentNumber(active_segment_sequence_number_);
-  } else {
-    // The other segments were synced when closed, and the ops up to the quiescent marker are in the
-    // storages. Without an active segment no sync of the log would mark them durable.
-    UpdateAtomicMax(&last_durable_entry_op_id_, GetLatestEntryOpId());
-    if (create_new_segment) {
-      RETURN_NOT_OK(StartActiveSegment());
-    }
-    // Otherwise the first append starts a new segment.
+  } else if (create_new_segment) {
+    RETURN_NOT_OK(StartActiveSegment());
   }
+  // Otherwise the first append starts a new segment.
 
   RETURN_NOT_OK(appender_->Init());
   log_state_ = LogState::kLogWriting;
@@ -1409,9 +1404,11 @@ Status Log::DoSync(std::optional<OpId> written_op_id) {
   SCOPED_WAIT_STATUS(WAL_Sync);
   std::lock_guard lock(active_segment_mutex_);
   if (!active_segment_) {
-    // The closed segment was synced before closing.
+    // Every entry is in a segment synced when closed, in the unreused last segment that
+    // EnsureSegmentInitialized fsynced, or is covered by the quiescent marker.
     periodic_sync_needed_.store(false, std::memory_order_release);
     periodic_sync_unsynced_bytes_.store(0, std::memory_order_release);
+    UpdateAtomicMax(&last_durable_entry_op_id_, written_op_id.value_or(GetLatestEntryOpId()));
     return Status::OK();
   }
   if (active_segment_->IsClosed()) {

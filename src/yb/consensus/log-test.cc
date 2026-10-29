@@ -587,6 +587,39 @@ TEST_F(LogTest, WalStateAfterTailReplacedByEarlierTerm) {
   ASSERT_OK(log_->Close());
 }
 
+// Entries replayed from closed segments become durable before the first append starts a segment,
+// otherwise memtable flushes of them would wait for a WAL fsync.
+TEST_F(LogTest, WalStateOfReplayedEntriesWithoutActiveSegment) {
+  options_.durable_wal_write = false;
+  options_.interval_durable_wal_write = MonoDelta::FromSeconds(3600);
+  options_.bytes_durable_wal_write_mb = 1024;
+  BuildLog();
+  auto op_id = MakeOpId(1, 1);
+  ASSERT_OK(AppendNoOps(&op_id, 10));
+  ASSERT_OK(log_->Close());
+
+  BuildLog(/* byte_limit = */ -1, CreateNewSegment::kFalse);
+  log_->DisableSync();
+  SegmentSequence segments;
+  ASSERT_OK(ASSERT_RESULT(log_->GetLogReader())->GetSegmentsSnapshot(&segments));
+  for (const auto& segment : segments) {
+    auto read_result = segment->ReadEntries();
+    ASSERT_OK(read_result.status);
+    for (size_t i = 0; i != read_result.entries.size(); ++i) {
+      ASSERT_OK(log_->Append(
+          read_result.entries[i], read_result.entry_metadata[i], SkipWalWrite::kTrue));
+    }
+  }
+  ASSERT_OK(log_->EnsureSegmentInitialized());
+  ASSERT_OK(log_->ReEnableSyncIfRequired());
+  const OpId last_op_id(1, 10);
+  ASSERT_EQ(log_->GetLatestEntryOpId(), last_op_id);
+  ASSERT_OK(WaitFor(
+      [this, &last_op_id] { return log_->WalState(last_op_id) == WalEntryState::kDurable; },
+      10s, "Replayed entries durable"));
+  ASSERT_OK(log_->Close());
+}
+
 // Regression test for part of KUDU-735:
 // if a log is not preallocated, we should properly track its on-disk size as we append to
 // it.
@@ -2581,7 +2614,9 @@ TEST_F(LogTest, QuiescentMarkerLeftoverSegments) {
   ASSERT_OK(log_->EnsureSegmentInitialized());
   ASSERT_EQ(log_->GetLatestEntryOpId(), last_op_id);
   // Otherwise memtable flushes of ops up to the marker would wait for a WAL fsync.
-  ASSERT_EQ(log_->WalState(last_op_id), WalEntryState::kDurable);
+  ASSERT_OK(WaitFor(
+      [this, &last_op_id] { return log_->WalState(last_op_id) == WalEntryState::kDurable; },
+      10s, "Marker op durable"));
   ASSERT_OK(log_->Close());
 }
 
