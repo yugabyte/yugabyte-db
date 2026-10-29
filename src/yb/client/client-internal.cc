@@ -1502,6 +1502,52 @@ class GetTableSchemaRpc
   master::GetTableSchemaResponsePB* resp_copy_;
 };
 
+// Gets a namespace's info from the leader master. See ClientMasterRpc.
+class GetNamespaceInfoRpc
+    : public ClientMasterRpc<master::GetNamespaceInfoRequestPB,
+                             master::GetNamespaceInfoResponsePB> {
+ public:
+  GetNamespaceInfoRpc(YBClient* client,
+                      const NamespaceId& namespace_id,
+                      std::shared_ptr<master::GetNamespaceInfoResponsePB> resp,
+                      StdStatusCallback user_cb,
+                      CoarseTimePoint deadline)
+      : ClientMasterRpc(client, deadline),
+        resp_copy_(std::move(resp)),
+        user_cb_(std::move(user_cb)) {
+    req_.mutable_namespace_()->set_id(namespace_id);
+  }
+
+  std::string ToString() const override {
+    return Format(
+        "GetNamespaceInfoRpc(namespace_id: $0, num_attempts: $1)",
+        req_.namespace_().id(), num_attempts());
+  }
+
+  ~GetNamespaceInfoRpc() override = default;
+
+ private:
+  void CallRemoteMethod() override {
+    master_ddl_proxy()->GetNamespaceInfoAsync(
+        req_, &resp_, mutable_retrier()->mutable_controller(),
+        std::bind(&GetNamespaceInfoRpc::Finished, this, Status::OK()));
+  }
+
+  void ProcessResponse(const Status& status) override {
+    if (status.ok()) {
+      resp_copy_->Swap(&resp_);
+    } else {
+      LOG(WARNING) << ToString() << " failed: " << status.ToString();
+    }
+    user_cb_(status);
+  }
+
+  // Held rather than borrowed so that the response outlives the RPC regardless of what the
+  // caller does after starting it.
+  std::shared_ptr<master::GetNamespaceInfoResponsePB> resp_copy_;
+  StdStatusCallback user_cb_;
+};
+
 // Gets all table schemas for a tablegroup from the leader master. See ClientMasterRpc.
 class GetTablegroupSchemaRpc
     : public ClientMasterRpc<GetTablegroupSchemaRequestPB, GetTablegroupSchemaResponsePB> {
@@ -2588,6 +2634,16 @@ Status YBClient::Data::GetTablegroupSchemaById(
       info.get(),
       deadline);
   return Status::OK();
+}
+
+void YBClient::Data::GetNamespaceInfo(
+    YBClient* client,
+    const NamespaceId& namespace_id,
+    CoarseTimePoint deadline,
+    std::shared_ptr<master::GetNamespaceInfoResponsePB> resp,
+    StdStatusCallback callback) {
+  StartRpc<internal::GetNamespaceInfoRpc>(
+      client, namespace_id, std::move(resp), std::move(callback), deadline);
 }
 
 Result<IndexPermissions> YBClient::Data::GetIndexPermissions(
