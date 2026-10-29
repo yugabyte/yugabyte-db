@@ -147,13 +147,17 @@ const mapDispatchToProps = (dispatch) => {
     getProviderListItems: () => {
       dispatch(getProviderList()).then((response) => {
         if (response.payload.status === 200) {
-          // The provider list already embeds each provider's access keys.
-          dispatch(
-            listAccessKeysResponse({
-              status: response.payload.status,
-              data: response.payload.data.flatMap((provider) => provider.allAccessKeys ?? [])
-            })
-          );
+          // The provider list already embeds each provider's access keys. Dispatch per provider:
+          // the reducer drops a payload that overlaps existing keys, so a combined payload would
+          // lose a newly created provider's keys on refetch.
+          response.payload.data.forEach((provider) => {
+            dispatch(
+              listAccessKeysResponse({
+                status: response.payload.status,
+                data: provider.allAccessKeys ?? []
+              })
+            );
+          });
           dispatch(listAccessKeysReqCompleted());
         }
         dispatch(getProviderListResponse(response.payload));
