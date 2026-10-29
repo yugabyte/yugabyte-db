@@ -250,6 +250,9 @@ class DocVectorIndex {
   storage::UserFrontierPtr GetInMemoryFrontier(storage::UpdateUserValueType type);
 
   virtual storage::FlushAbility GetFlushAbility() = 0;
+
+  // Returns terminal failure without waiting for in-flight saves.
+  virtual Status GetFlushStatus() const = 0;
   virtual Status CreateCheckpoint(const std::string& out) = 0;
   virtual const std::string& ToString() const = 0;
   virtual Status Destroy() = 0;

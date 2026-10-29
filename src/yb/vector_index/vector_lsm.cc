@@ -1188,7 +1188,7 @@ class VectorLSM<Vector, DistanceResult>::CompactionTask : public PriorityThreadP
     if (status.ok() || status.IsShutdownInProgress()) {
       LOG_WITH_PREFIX(INFO) << "Done: " << status;
     } else {
-      LOG_WITH_PREFIX(DFATAL) << "Failed: " << status;
+      LOG_WITH_PREFIX(ERROR) << "Failed: " << status;
       lsm_.CheckFailure(status);
     }
     Completed(status, last_serial_no);
@@ -1219,6 +1219,7 @@ class VectorLSM<Vector, DistanceResult>::CompactionTask : public PriorityThreadP
   }
 
   Status DoRun(PriorityThreadPoolSuspender* suspender) {
+    RETURN_NOT_OK(lsm_.GetFlushStatus());
     auto scope = lsm_.PickChunksForCompaction(compaction_type_);
 
     if (scope.empty()) {
@@ -1333,13 +1334,14 @@ void VectorLSM<Vector, DistanceResult>::CompleteShutdown() {
   MonoDelta report_interval = 1s;
   for (;;) {
     size_t chunks_left;
+    size_t saves_left;
     {
       std::lock_guard lock(mutex_);
+      if (FlushesRetiredUnlocked()) {
+        break;
+      }
       chunks_left = updates_queue_.size();
-    }
-    auto saves_left = num_pending_saves_.load();
-    if (chunks_left == 0 && saves_left == 0) {
-      break;
+      saves_left = pending_save_tasks_;
     }
     auto now = CoarseMonoClock::now();
     if (now > last_warning_time + report_interval) {
@@ -1392,7 +1394,7 @@ inline void VectorLSM<Vector, DistanceResult>::CheckFailure(const Status& status
   {
     std::lock_guard lock(mutex_);
     if (failed_status_.ok()) {
-      failed_status_ = status;
+      RecordFailureUnlocked(status);
       return;
     }
     existing_status = failed_status_;
@@ -1400,6 +1402,20 @@ inline void VectorLSM<Vector, DistanceResult>::CheckFailure(const Status& status
   YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 1)
       << "Vector LSM already in failed state: " << existing_status
       << ", while trying to set new failed state: " << status;
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+void VectorLSM<Vector, DistanceResult>::RecordFailureUnlocked(const Status& status) {
+  DCHECK(!status.ok());
+  if (failed_status_.ok()) {
+    failed_status_ = status;
+  }
+  // A later chunk may have retired its save task while waiting for an earlier manifest entry.
+  for (auto& [_, chunk] : updates_queue_) {
+    chunk->Flushed(failed_status_);
+  }
+  updates_queue_empty_cv_.notify_all();
+  writing_manifest_done_cv_.notify_all();
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -1471,8 +1487,8 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
   }
   for (auto& promise : promises) {
     auto status = promise.get_future().get();
-    if (!status.ok() && failed_status_.ok()) {
-      failed_status_ = status;
+    if (!status.ok()) {
+      RecordFailureUnlocked(status);
     }
   }
 
@@ -1557,7 +1573,9 @@ Status VectorLSM<Vector, DistanceResult>::Insert(
   MutableChunkPtr chunk;
   {
     std::lock_guard lock(mutex_);
-    RETURN_NOT_OK(failed_status_);
+    if (!failed_status_.ok()) {
+      return failed_status_;
+    }
 
     if (!mutable_chunk_) {
       RETURN_NOT_OK(CreateNewMutableChunk(entries.size(), context));
@@ -1862,15 +1880,18 @@ bool VectorLSM<Vector, DistanceResult>::ManifestAcquired() {
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-void VectorLSM<Vector, DistanceResult>::AcquireManifest() {
+Status VectorLSM<Vector, DistanceResult>::AcquireManifest() {
   UniqueLock lock(mutex_);
-
-  // Wait for all current writes to manifest file are done.
-  writing_manifest_done_cv_.wait(
-      lock, [this]() NO_THREAD_SAFETY_ANALYSIS { return !writing_manifest_; });
-
-  // Take the ownership of the writing state.
+  TEST_SYNC_POINT_CALLBACK("VectorLSM::AcquireManifest:Waiting", this);
+  // A failed writer may leave the manifest unusable. Waiters must retire without acquiring it.
+  writing_manifest_done_cv_.wait(lock, [this]() NO_THREAD_SAFETY_ANALYSIS {
+    return !writing_manifest_ || !failed_status_.ok();
+  });
+  if (!failed_status_.ok()) {
+    return failed_status_;
+  }
   writing_manifest_ = true;
+  return Status::OK();
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -1917,6 +1938,9 @@ template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::DoSaveChunk(const ImmutableChunkPtr& chunk) {
   VLOG_WITH_PREFIX_AND_FUNC(3) << AsString(*chunk);
 
+  Status injected;
+  TEST_SYNC_POINT_CALLBACK("VectorLSM::DoSaveChunk:Status", &injected);
+  RETURN_NOT_OK(injected);
   SaveIndexToFileResult saved;
   VectorIndexPtr index;
   {
@@ -2014,6 +2038,9 @@ Status VectorLSM<Vector, DistanceResult>::AddChunkToManifest(
   chunk.AddToUpdate(update);
   VLOG_WITH_PREFIX_AND_FUNC(3) << update.ShortDebugString();
 
+  Status injected;
+  TEST_SYNC_POINT_CALLBACK("VectorLSM::AddChunkToManifest:Status", &injected);
+  RETURN_NOT_OK(injected);
   RETURN_NOT_OK(VectorLSMMetadataAppendUpdate(manifest_file, update));
 
   // TODO(vector_index): print chunk number as well, could be covered within #27098.
@@ -2030,9 +2057,7 @@ Status VectorLSM<Vector, DistanceResult>::UpdateManifest(
     if (!status.ok()) {
       // Manifest stays acquired on failure, so queued chunks would never flush.
       std::lock_guard lock(mutex_);
-      for (auto& [_, queued_chunk] : updates_queue_) {
-        queued_chunk->Flushed(status);
-      }
+      RecordFailureUnlocked(status);
       return status;
     }
 
@@ -2068,19 +2093,31 @@ Status VectorLSM<Vector, DistanceResult>::UpdateManifest(
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 void VectorLSM<Vector, DistanceResult>::SaveChunk(const ImmutableChunkPtr& chunk) {
+  auto retire = ScopeExit([this] {
+    TEST_SYNC_POINT_CALLBACK("VectorLSM::SaveChunk:BeforeRetirement", this);
+    std::lock_guard lock(mutex_);
+    // Every path that schedules SaveChunk must have counted it; an underflow here would make
+    // FlushesRetiredUnlocked never true and hang flush waits and shutdown.
+    DCHECK_GT(pending_save_tasks_, 0);
+    --pending_save_tasks_;
+    updates_queue_empty_cv_.notify_all();
+  });
   if (TEST_sleep_during_flush && chunk->order_no) {
     SleepFor(TEST_sleep_during_flush);
   }
 
-  auto status = DoSaveChunk(chunk);
-  if (!status.ok()) {
-    chunk->Flushed(status);
-    LOG_WITH_PREFIX(DFATAL) << "Save chunk failed: " << status;
-    CheckFailure(status);
+  Status status;
+  {
+    std::lock_guard lock(mutex_);
+    status = failed_status_;
   }
-
-  // Must be the last access to this VectorLSM, CompleteShutdown could destroy it right after.
-  --num_pending_saves_;
+  if (status.ok()) {
+    status = DoSaveChunk(chunk);
+  }
+  if (!status.ok()) {
+    CheckFailure(status);
+    LOG_WITH_PREFIX(ERROR) << "Save chunk failed: " << status;
+  }
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -2090,7 +2127,6 @@ Status VectorLSM<Vector, DistanceResult>::DoFlush(std::promise<Status>* promise)
   auto chunk = immutable_chunks_.back();
   updates_queue_.emplace(chunk->order_no, chunk);
 
-  ++num_pending_saves_;
   mutable_chunk_->save_callback = [this, chunk, mut = mutable_chunk_]() {
     {
       std::lock_guard lock(mutex_);
@@ -2106,10 +2142,16 @@ Status VectorLSM<Vector, DistanceResult>::DoFlush(std::promise<Status>* promise)
 
   auto tasks = mutable_chunk_->num_tasks -= kRunningMark;
   RSTATUS_DCHECK_LT(tasks, kRunningMark, RuntimeError, "Wrong value for num_tasks");
+  ++pending_save_tasks_;
   if (tasks == 0) {
-    options_.insert_thread_pool->EnqueueFunctor(mutable_chunk_->save_callback);
-    // TODO(vector_index): Optimize memory allocation related to save callback
+    const bool queued = options_.insert_thread_pool->EnqueueFunctor(mutable_chunk_->save_callback);
     mutable_chunk_->save_callback = {};
+    if (!queued) {
+      --pending_save_tasks_;
+      RecordFailureUnlocked(
+          STATUS(ShutdownInProgress, "Vector flush executor is shutting down"));
+      return failed_status_;
+    }
   }
   return Status::OK();
 }
@@ -2119,8 +2161,15 @@ void VectorLSM<Vector, DistanceResult>::ReleaseChunkHold(MutableChunk& chunk) {
   if (--chunk.num_tasks == 0) {
     // Holds are released on the write path, so save the chunk on the insert thread pool.
     DCHECK(chunk.save_callback);
-    options_.insert_thread_pool->EnqueueFunctor(chunk.save_callback);
+    const bool queued = options_.insert_thread_pool->EnqueueFunctor(chunk.save_callback);
     chunk.save_callback = {};
+    if (!queued) {
+      // DoFlush counted this save task; retire it here or shutdown waits for it forever.
+      std::lock_guard lock(mutex_);
+      --pending_save_tasks_;
+      RecordFailureUnlocked(
+          STATUS(ShutdownInProgress, "Vector flush executor is shutting down"));
+    }
   }
 }
 
@@ -2224,6 +2273,9 @@ Status VectorLSM<Vector, DistanceResult>::Flush(bool wait) {
   std::promise<Status> promise;
   {
     std::lock_guard lock(mutex_);
+    if (!failed_status_.ok()) {
+      return failed_status_;
+    }
     if (!mutable_chunk_) {
       LOG_WITH_PREFIX_AND_FUNC(INFO) << "Noting to flush";
       return Status::OK();
@@ -2244,7 +2296,7 @@ Status VectorLSM<Vector, DistanceResult>::ModifyChunkFrontiers(
     const std::function<void(storage::UserFrontiers&)>& modify) {
   RETURN_NOT_OK(RUNNING_STATUS());
 
-  AcquireManifest();
+  RETURN_NOT_OK(AcquireManifest());
   auto release_manifest = ScopeExit([this] { ReleaseManifest(); });
 
   std::vector<std::pair<ImmutableChunkPtr, storage::UserFrontiersPtr>> modified;
@@ -2337,10 +2389,19 @@ Result<bool> VectorLSM<Vector, DistanceResult>::AdvanceFlushedFrontier(
         /* registered_frontiers= */ storage::UserFrontiersPtr{}, /* flush_promise= */ nullptr);
     immutable_chunks_.push_back(chunk);
     updates_queue_.emplace(order_no, chunk);
+    // SaveChunk retires one counted task; this is the third producer besides DoFlush and
+    // ReleaseChunkHold.
+    ++pending_save_tasks_;
   }
 
-  ++num_pending_saves_;
-  options_.insert_thread_pool->EnqueueFunctor([this, chunk] { SaveChunk(chunk); });
+  const bool queued =
+      options_.insert_thread_pool->EnqueueFunctor([this, chunk] { SaveChunk(chunk); });
+  if (!queued) {
+    std::lock_guard lock(mutex_);
+    --pending_save_tasks_;
+    RecordFailureUnlocked(STATUS(ShutdownInProgress, "Vector flush executor is shutting down"));
+    return failed_status_;
+  }
   return true;
 }
 
@@ -2419,6 +2480,18 @@ storage::FlushAbility VectorLSM<Vector, DistanceResult>::GetFlushAbility() {
     return storage::FlushAbility::kHasNewData;
   }
   return storage::FlushAbility::kNoNewData;
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+Status VectorLSM<Vector, DistanceResult>::GetFlushStatus() const {
+  SharedLock lock(mutex_);
+  return failed_status_;
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+size_t VectorLSM<Vector, DistanceResult>::TEST_PendingSaveTasks() const {
+  SharedLock lock(mutex_);
+  return pending_save_tasks_;
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -2505,12 +2578,18 @@ DistanceResult VectorLSM<Vector, DistanceResult>::Distance(
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+bool VectorLSM<Vector, DistanceResult>::FlushesRetiredUnlocked() const {
+  return pending_save_tasks_ == 0 && (updates_queue_.empty() || !failed_status_.ok());
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 void VectorLSM<Vector, DistanceResult>::WaitForUpdatesQueueEmpty() {
   UniqueLock lock(mutex_);
-  while (!updates_queue_.empty()) {
+  while (!FlushesRetiredUnlocked()) {
     if (updates_queue_empty_cv_.wait_for(lock, 1s) == std::cv_status::timeout) {
       LOG_WITH_PREFIX(WARNING)
-          << "Long wait for vector LSM flush queue, chunks left: " << updates_queue_.size();
+          << "Long wait for vector LSM flush queue, chunks left: "
+          << std::max(updates_queue_.size(), pending_save_tasks_);
     }
   }
 }
@@ -2528,7 +2607,7 @@ Status VectorLSM<Vector, DistanceResult>::WaitForFlush() {
 
   // Also covers the original DoFlush chunk, and a waited insert that RollChunk -> DoFlush.
   WaitForUpdatesQueueEmpty();
-  return Status::OK();
+  return GetFlushStatus();
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -3207,9 +3286,10 @@ Status VectorLSM<Vector, DistanceResult>::DoCompact(
       "VectorLSM::DoCompact:Merged", const_cast<CompactionType*>(&context.type));
 
   // Lock manifest file for writes to be able to not miss any upcoming chunk.
-  // TODO(vector_index): the early returns below (RollManifest, the manifest append)
-  // never release the manifest, so the next AcquireManifest() waits forever.
-  AcquireManifest();
+  // TODO(vector_index): the early returns below (RollManifest, the manifest append) never
+  // release the manifest. Later AcquireManifest() calls only return because CompactionTask::Run
+  // records the failure, which fails the whole VectorLSM.
+  RETURN_NOT_OK(AcquireManifest());
   TEST_SYNC_POINT("VectorLSM::DoCompact:ManifestAcquired");
   // Prepare manifest file update taking into account specified policy.
   VectorLSMUpdatePB update;
