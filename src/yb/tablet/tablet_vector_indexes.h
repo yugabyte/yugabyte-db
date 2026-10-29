@@ -138,10 +138,14 @@ class TabletVectorIndexes :
   // new rows, while their unflushed rows keep the log and the intents DB from being cleaned up.
   void FlushDeactivated() EXCLUDES(vector_indexes_mutex_);
 
-  // Advances the flushed OpId of deactivated indexes holding nothing unflushed to op_id, the
-  // regular DB's flushed OpId. Otherwise it stays where the index was deactivated, and bootstrap
-  // replays all the log after it.
-  void AdvanceDeactivatedFlushedOpIds(const OpId& op_id) EXCLUDES(vector_indexes_mutex_);
+  // Advances the flushed OpId of indexes holding nothing unflushed to op_id, the regular DB's
+  // flushed OpId: deactivated ones if advance_deactivated, active ones with a finished backfill if
+  // advance_active. Otherwise the flushed OpId of an index that takes no rows, e.g. a deactivated
+  // one or one whose table gets no vector writes while the rest of the tablet does, stays at its
+  // last flush, and bootstrap replays all the log after it.
+  void AdvanceIdleFlushedOpIds(
+      const OpId& op_id, bool advance_deactivated, bool advance_active)
+      EXCLUDES(vector_indexes_mutex_);
 
   // Relaunches backfills after a restore replaced the storages: the restored checkpoint could have
   // been taken before a backfill finished, e.g. by a replica still bootstrapping.

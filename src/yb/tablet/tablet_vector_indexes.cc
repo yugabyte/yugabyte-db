@@ -993,14 +993,24 @@ void TabletVectorIndexes::FlushDeactivated() {
   }
 }
 
-void TabletVectorIndexes::AdvanceDeactivatedFlushedOpIds(const OpId& op_id) {
+void TabletVectorIndexes::AdvanceIdleFlushedOpIds(
+    const OpId& op_id, bool advance_deactivated, bool advance_active) {
   auto list = List();
   if (!list) {
     return;
   }
   for (const auto& index : *list) {
-    if (!index->IsDeactivated()) {
-      continue;
+    if (index->IsDeactivated()) {
+      if (!advance_deactivated) {
+        continue;
+      }
+    } else {
+      // Backfill adds the rows written before the index was created, which no operation after
+      // the index's flushed OpId replays.
+      auto backfill_done = index->BackfillDone();
+      if (!advance_active || !backfill_done.ok() || !*backfill_done) {
+        continue;
+      }
     }
     auto flushed = index->GetFlushedFrontier();
     if (flushed && flushed->op_id() >= op_id) {
@@ -1009,12 +1019,12 @@ void TabletVectorIndexes::AdvanceDeactivatedFlushedOpIds(const OpId& op_id) {
     auto advanced = index->AdvanceFlushedOpId(op_id);
     if (!advanced.ok()) {
       LOG_WITH_PREFIX(WARNING)
-          << "Failed to advance flushed OpId of deactivated vector index " << index->table_id()
+          << "Failed to advance flushed OpId of vector index " << index->table_id()
           << " to " << op_id << ": " << advanced.status();
       continue;
     }
     VLOG_WITH_PREFIX(2)
-        << "Deactivated vector index " << index->table_id() << " flushed OpId "
+        << "Idle vector index " << index->table_id() << " flushed OpId "
         << (flushed ? flushed->op_id() : OpId()) << " -> " << op_id
         << (*advanced ? "" : " skipped, unflushed data");
   }
