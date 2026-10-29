@@ -202,11 +202,13 @@ YB_DEFINE_ENUM(DataState, (kNotReady)(kReadyOK)(kReadyFailure));
 class Data {
  public:
   Data(uint64_t version,
+       uint64_t catalog_version,
        std::weak_ptr<MetricUpdater> metric_updater,
        CoarseTimePoint creation_time,
        CoarseTimePoint readiness_deadline)
       : metric_updater_(std::move(metric_updater)),
         version_(version),
+        catalog_version_(catalog_version),
         creation_time_(creation_time),
         readiness_deadline_(readiness_deadline) {}
 
@@ -237,6 +239,19 @@ class Data {
       response = &*response_;
       state_.store(new_state, std::memory_order_release);
     }
+    // Logged before the loop, not after, because a node that is about to run out of memory dies
+    // inside it.
+    //
+    // The waiter count is the point: every waiter receives the response here, and connections that
+    // arrived one at a time go on to build their catalog caches together. The byte count is the
+    // response itself, not what a backend grows to holding it -- a few MB here has been seen to
+    // become a few hundred MB of relcache. The fill duration is here because anything that delays
+    // the filler, such as the master shedding its prefetch, lengthens the queue behind it. The
+    // catalog version is what tells concurrent fills on one node apart, since a run of DDLs leaves
+    // each connection pinning a version of its own.
+    VLOG(1) << "Fill complete for catalog version " << catalog_version_ << " after "
+            << MonoDelta(CoarseMonoClock::Now() - creation_time_) << ", releasing "
+            << waiters.size() << " waiters, " << sz << " bytes each";
     for (auto waiter : waiters) {
       waiter->Apply(*response);
     }
@@ -293,6 +308,9 @@ class Data {
  private:
   std::weak_ptr<MetricUpdater> metric_updater_;
   const uint64_t version_;
+  // The catalog version this entry is keyed at, as opposed to version_ above, which is the key
+  // group's disable counter. Kept only for logging.
+  const uint64_t catalog_version_;
   const CoarseTimePoint creation_time_;
   const CoarseTimePoint readiness_deadline_;
   std::mutex mutex_;
@@ -308,12 +326,13 @@ class Value {
  public:
   Value() = default;
   Value(uint64_t version,
+        uint64_t catalog_version,
         MetricContext* metric_context,
         CoarseTimePoint creation_time,
         CoarseTimePoint readiness_deadline)
       : metric_updater_(std::make_shared<MetricUpdater>(metric_context)),
-        data_(std::make_shared<Data>(version, metric_updater_, creation_time, readiness_deadline)) {
-        }
+        data_(std::make_shared<Data>(
+            version, catalog_version, metric_updater_, creation_time, readiness_deadline)) {}
 
   [[nodiscard]] size_t Consumption() const {
     DCHECK(metric_updater_);
@@ -426,7 +445,8 @@ class PgResponseCache::Impl : private GarbageCollector {
       return data;
     }
     VLOG(5) << "(Re)Building element group=" << group << " actual_version=" << actual_version;
-    const_cast<Value&>(value) = Value(actual_version, &metric_context_, now, deadline);
+    const_cast<Value&>(value) = Value(
+        actual_version, cache_info->catalog_version(), &metric_context_, now, deadline);
     return value.data();
   }
 
