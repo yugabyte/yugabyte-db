@@ -5,6 +5,8 @@ package com.yugabyte.yw.models.configs.validators;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.NOT_FOUND;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.SetMultimap;
 import com.google.inject.Singleton;
@@ -14,21 +16,21 @@ import com.yugabyte.yw.cloud.oci.OCICloudImpl;
 import com.yugabyte.yw.cloud.oci.OCICloudUtil;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.provider.OCICloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.OCIRegionCloudInfo;
-import java.util.List;
 import java.util.regex.Pattern;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
+import play.libs.Json;
 
 @Slf4j
 @Singleton
@@ -65,44 +67,42 @@ public class OCIProviderValidator extends ProviderFieldsValidator {
     }
 
     SetMultimap<String, String> validationErrorsMap = HashMultimap.create();
+    // Error keys are the JSON paths of the offending fields; the UI maps them onto form inputs
+    // and region rows through OCI_FORM_MAPPERS.
+    JsonNode processedProvider = Util.addJsonPathToLeafNodes(Json.toJson(provider));
 
-    List<AccessKey> accessKeys = provider.getAllAccessKeys();
-    if (CollectionUtils.isNotEmpty(accessKeys)) {
-      try {
-        validatePrivateKey(accessKeys);
-      } catch (PlatformServiceException e) {
-        if (e.getHttpStatus() == BAD_REQUEST || e.getHttpStatus() == NOT_FOUND) {
-          validationErrorsMap.put("SSH_PRIVATE_KEY_CONTENT", e.getMessage());
-        } else {
-          throw e;
-        }
-      }
-    }
+    validatePrivateKeys(provider, processedProvider, validationErrorsMap);
 
-    if (provider.getDetails() != null && provider.getDetails().ntpServers != null) {
+    if (provider.getDetails() != null
+        && CollectionUtils.isNotEmpty(provider.getDetails().ntpServers)) {
       try {
         validateNTPServers(provider.getDetails().ntpServers);
       } catch (PlatformServiceException e) {
-        validationErrorsMap.put("NTP_SERVERS", e.getMessage());
+        validationErrorsMap.put(
+            processedProvider.get("details").get("ntpServers").get(0).get("jsonPath").asText(),
+            e.getMessage());
       }
     }
 
-    validateHostedZone(provider, validationErrorsMap);
+    validateHostedZone(provider, processedProvider, validationErrorsMap);
 
     if (CollectionUtils.isNotEmpty(provider.getRegions())) {
+      ArrayNode regionArrayJson = (ArrayNode) processedProvider.get("regions");
+      int regionInd = 0;
       for (Region region : provider.getRegions()) {
+        JsonNode regionJson = regionArrayJson.get(regionInd++);
         OCIRegionCloudInfo regionCloudInfo = CloudInfoInterface.get(region);
         if (regionCloudInfo != null) {
           String instanceTemplate = regionCloudInfo.getInstanceTemplate();
           if (StringUtils.isNotEmpty(instanceTemplate)
               && !OCICloudUtil.isValidInstanceConfigurationOcid(instanceTemplate)) {
             validationErrorsMap.put(
-                "instanceTemplate",
+                regionOciCloudInfoJson(regionJson).get("instanceTemplate").get("jsonPath").asText(),
                 "instanceTemplate must be a valid OCI Instance Configuration OCID");
           }
         }
-        validateVcn(provider, region, validationErrorsMap);
-        validateSubnets(provider, region, validationErrorsMap);
+        validateVcn(provider, region, regionJson, validationErrorsMap);
+        validateSubnets(provider, region, regionJson, validationErrorsMap);
       }
     }
 
@@ -111,18 +111,31 @@ public class OCIProviderValidator extends ProviderFieldsValidator {
     }
   }
 
+  private static JsonNode regionOciCloudInfoJson(JsonNode regionJson) {
+    return regionJson.get("details").get("cloudInfo").get("oci");
+  }
+
   private void validateHostedZone(
-      Provider provider, SetMultimap<String, String> validationErrorsMap) {
+      Provider provider,
+      JsonNode processedProvider,
+      SetMultimap<String, String> validationErrorsMap) {
     OCICloudInfo cloudInfo = CloudInfoInterface.get(provider);
     String zoneId = cloudInfo == null ? null : cloudInfo.ociHostedZoneId;
     if (StringUtils.isEmpty(zoneId)) {
       return;
     }
 
+    String jsonPath =
+        processedProvider
+            .get("details")
+            .get("cloudInfo")
+            .get("oci")
+            .get("ociHostedZoneId")
+            .get("jsonPath")
+            .asText();
     if (!DNS_ZONE_OCID_PATTERN.matcher(zoneId).matches()) {
       validationErrorsMap.put(
-          "HOSTED_ZONE",
-          "Invalid DNS zone OCID '" + zoneId + "'. Expected format: ocid1.dns-zone...");
+          jsonPath, "Invalid DNS zone OCID '" + zoneId + "'. Expected format: ocid1.dns-zone...");
       return;
     }
 
@@ -132,7 +145,7 @@ public class OCIProviderValidator extends ProviderFieldsValidator {
       // delete on it with 409, so universe create would only fail later at UpdateDnsEntry.
       if (Boolean.TRUE.equals(zone.getIsProtected())) {
         validationErrorsMap.put(
-            "HOSTED_ZONE",
+            jsonPath,
             "DNS zone "
                 + zone.getName()
                 + " is OCI-managed and does not accept record changes. Use a private zone you"
@@ -140,7 +153,7 @@ public class OCIProviderValidator extends ProviderFieldsValidator {
       }
     } catch (PlatformServiceException e) {
       if (e.getHttpStatus() == BAD_REQUEST || e.getHttpStatus() == NOT_FOUND) {
-        validationErrorsMap.put("HOSTED_ZONE", e.getMessage());
+        validationErrorsMap.put(jsonPath, e.getMessage());
       } else {
         throw e;
       }
@@ -148,13 +161,16 @@ public class OCIProviderValidator extends ProviderFieldsValidator {
   }
 
   private void validateVcn(
-      Provider provider, Region region, SetMultimap<String, String> validationErrorsMap) {
+      Provider provider,
+      Region region,
+      JsonNode regionJson,
+      SetMultimap<String, String> validationErrorsMap) {
     String vcnId = region.getVnetName();
     if (StringUtils.isEmpty(vcnId)) {
       return;
     }
 
-    String fieldDetails = "REGION." + region.getCode() + ".VCN";
+    String fieldDetails = regionOciCloudInfoJson(regionJson).get("vnet").get("jsonPath").asText();
     if (!VCN_OCID_PATTERN.matcher(vcnId).matches()) {
       validationErrorsMap.put(
           fieldDetails, "Invalid VCN OCID '" + vcnId + "'. Expected format: ocid1.vcn...");
@@ -173,19 +189,24 @@ public class OCIProviderValidator extends ProviderFieldsValidator {
   }
 
   private void validateSubnets(
-      Provider provider, Region region, SetMultimap<String, String> validationErrorsMap) {
+      Provider provider,
+      Region region,
+      JsonNode regionJson,
+      SetMultimap<String, String> validationErrorsMap) {
     if (CollectionUtils.isEmpty(region.getZones())) {
       return;
     }
 
     String regionVcnId = region.getVnetName();
+    int zoneInd = 0;
     for (AvailabilityZone zone : region.getZones()) {
+      JsonNode zoneJson = regionJson.get("zones").get(zoneInd++);
       String subnetId = zone.getSubnet();
       if (StringUtils.isEmpty(subnetId)) {
         continue;
       }
 
-      String fieldDetails = "REGION." + region.getCode() + ".ZONE." + zone.getCode() + ".SUBNET";
+      String fieldDetails = zoneJson.get("subnet").get("jsonPath").asText();
       if (!SUBNET_OCID_PATTERN.matcher(subnetId).matches()) {
         validationErrorsMap.put(
             fieldDetails,
