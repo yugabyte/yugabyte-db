@@ -447,8 +447,9 @@ public class Commissioner {
               return taskUuidsToAllowRetry.contains(taskInfo.getUuid().toString());
             });
     responseJson.put("retryable", retryable);
-    // Listing hint: @CanRollback + error state + optional moreCondition (ownership), same pattern
-    // as retryable. Submit uses canTaskRollbackDetailed (universe checkpoint when present).
+    // Listing hint: @CanRollback + error state + optional moreCondition (ownership, then the task's
+    // own params), same pattern as retryable. Submit uses canTaskRollbackDetailed (universe
+    // checkpoint when present).
     boolean canRollback =
         canTaskRollback(
             taskInfo,
@@ -465,8 +466,9 @@ public class Commissioner {
                       ? placementLockTasks
                       : updatingTasks;
               return owners
-                  .getOrDefault(task.getTargetUUID(), Collections.emptySet())
-                  .contains(tf.getUuid().toString());
+                      .getOrDefault(task.getTargetUUID(), Collections.emptySet())
+                      .contains(tf.getUuid().toString())
+                  && isRollbackAllowedByParams(tf);
             });
     responseJson.put("canRollback", canRollback);
     if (isTaskPaused(taskInfo.getUuid())) {
@@ -558,6 +560,24 @@ public class Commissioner {
   }
 
   /**
+   * Listing hint from the failed task's own params. A task whose params cannot be read is left to
+   * submit, which checks the universe, so one bad row cannot break the task list.
+   */
+  private boolean isRollbackAllowedByParams(TaskInfo taskInfo) {
+    TaskRollbackComputer computer = taskRollbackComputers.get().get(taskInfo.getTaskType());
+    if (computer == null) {
+      return true;
+    }
+    try {
+      return computer.canRollbackFromParams(taskInfo);
+    } catch (Exception e) {
+      log.warn(
+          "canRollbackFromParams check failed for task {}: {}", taskInfo.getUuid(), e.getMessage());
+      return true;
+    }
+  }
+
+  /**
    * Whether rollback of this task type replays a {@code state_transition_details} checkpoint (edit
    * universe / add node). Such rollbacks are ineligible when no checkpoint was captured.
    */
@@ -592,10 +612,10 @@ public class Commissioner {
   }
 
   /**
-   * Universe-aware rollback gate. Requires {@link TaskRollbackComputer#canRollback}. If there is no
-   * {@code state_transition_details}, the rollback must not need that checkpoint. When details are
-   * present, requires placement ownership and a safe delta (including refusing dedicatedNodes
-   * flips).
+   * Universe-aware rollback gate. Requires {@link TaskRollbackComputer#canRollback}. Rollbacks that
+   * do not replay a {@code state_transition_details} checkpoint ignore it. Checkpoint-based
+   * rollbacks require the checkpoint, placement ownership and a safe delta (including refusing
+   * dedicatedNodes flips).
    */
   private boolean canRollbackTaskOnUniverse(TaskInfo taskInfo) {
     try {
@@ -611,14 +631,21 @@ public class Commissioner {
       if (!isRollbackAllowedOnUniverse(taskInfo, universeUUID)) {
         return false;
       }
+      if (!rollbackRequiresStateTransitionDetails(taskInfo.getTaskType())) {
+        // Non-checkpoint rollbacks (software upgrade, DR switchover) do not use
+        // state_transition_details and never own placementModificationTaskUuid, so a checkpoint
+        // left on the universe by an unrelated task must not block them. Listing likewise checks
+        // only updatingTaskUUID ownership for them.
+        return true;
+      }
       Universe universe = universeOpt.get();
       StateTransitionDetails details = universe.getStateTransitionDetails();
       if (details == null) {
         // Checkpoint-based rollbacks (edit universe / add node) need a captured delta; a task with
         // none - e.g. aborted at precheck, before the freeze/checkpoint - is not rollbackable, so
         // submit stays consistent with listing (which requires placement ownership the task never
-        // took). Non-checkpoint rollbacks (software upgrade) do not use state_transition_details.
-        return !rollbackRequiresStateTransitionDetails(taskInfo.getTaskType());
+        // took).
+        return false;
       }
       // Must match the failed task - not an in-progress/failed RollbackEditUniverse.
       if (!Objects.equals(
@@ -718,12 +745,11 @@ public class Commissioner {
   }
 
   /**
-   * Whether the operator's ownership of the task's target decides its rollback. It does for an
-   * edit of the universe or of one of its clusters, which the operator would re-apply. A node
-   * action or a DR config task has the universe as the target, but is not an edit the operator
-   * re-applies, and its API is not blocked for the operator, so neither is its rollback. Wrongly
-   * blocking a rollback leaves the user without a way back, so any other target type is not
-   * blocked.
+   * Whether the operator's ownership of the task's target decides its rollback. It does for an edit
+   * of the universe or of one of its clusters, which the operator would re-apply. A node action or
+   * a DR config task has the universe as the target, but is not an edit the operator re-applies,
+   * and its API is not blocked for the operator, so neither is its rollback. Wrongly blocking a
+   * rollback leaves the user without a way back, so any other target type is not blocked.
    */
   private static boolean ownershipOfTargetBlocksRollback(CustomerTask task) {
     switch (task.getTargetType()) {

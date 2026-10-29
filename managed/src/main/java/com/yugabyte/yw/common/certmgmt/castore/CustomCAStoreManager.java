@@ -69,6 +69,7 @@ public class CustomCAStoreManager {
     try {
       x509CACerts = getCertChain(customerId, name, contents);
       validateNewCert(name, x509CACerts, validate);
+      verifyFipsCompliance(x509CACerts);
     } catch (CertificateException e) {
       log.error(String.format("Failed to validate certificate %s", name), e);
       throw new PlatformServiceException(BAD_REQUEST, e.getLocalizedMessage());
@@ -118,6 +119,16 @@ public class CustomCAStoreManager {
     return certId;
   }
 
+  /**
+   * Not gated by yb.tls.enable_config_validation, as for universe certificates: in FIPS mode YBA
+   * cannot verify a chain with such a key or signature, so the CA would only fail in use.
+   */
+  private static void verifyFipsCompliance(List<X509Certificate> x509CACerts) {
+    if (AppConfigHelper.isFipsEnabled()) {
+      CertificateHelper.verifyFipsCompliance(x509CACerts);
+    }
+  }
+
   private void validateNewCert(String name, List<X509Certificate> x509CACerts, boolean validate) {
     CustomCaCertificateInfo cert = CustomCaCertificateInfo.getByName(name);
     if (cert != null) {
@@ -155,6 +166,7 @@ public class CustomCAStoreManager {
     try {
       // Validate new certificate's chain and expiry.
       List<X509Certificate> x509CACerts = getCertChain(customerId, name, newCertContents);
+      verifyFipsCompliance(x509CACerts);
       if (validate) {
         CertificateHelper.verifyCertValidity(x509CACerts);
       } else {

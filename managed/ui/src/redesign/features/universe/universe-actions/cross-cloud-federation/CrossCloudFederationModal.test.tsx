@@ -61,11 +61,10 @@ describe('CrossCloudFederationModal', () => {
     expect(applyButton().disabled).toBe(true);
   });
 
-  it('reminds to configure the provider when enabling with provider federation on', () => {
+  it('shows no banner when enabling with provider federation on', () => {
     renderModal(false, true);
     toggle();
-    expect(screen.getByText('Cloud provider configuration required')).toBeTruthy();
-    expect(screen.getByText('aws-prod')).toBeTruthy();
+    expect(screen.queryByText('Cloud provider configuration required')).toBeNull();
     expect(applyButton().disabled).toBe(false);
   });
 

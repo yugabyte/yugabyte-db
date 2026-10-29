@@ -66,6 +66,7 @@
 #include "yb/tablet/mvcc.h"
 #include "yb/tablet/operations/operation.h"
 #include "yb/tablet/operation_filter.h"
+#include "yb/tablet/tablet_context.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/transaction_intent_applier.h"
@@ -926,11 +927,6 @@ class Tablet : public AbstractTablet,
     ht_lease_provider_ = std::move(provider);
   }
 
-  void SetMemTableFlushFilterFactory(std::function<rocksdb::MemTableFilter()> factory) {
-    std::lock_guard lock(flush_filter_mutex_);
-    mem_table_flush_filter_factory_ = std::move(factory);
-  }
-
   // When a compaction starts with a particular "history cutoff" timestamp, it calls this function
   // to disallow reads at a time lower than that history cutoff timestamp, to avoid reading
   // invalid/incomplete data.
@@ -1654,6 +1650,8 @@ class Tablet : public AbstractTablet,
   Result<HybridTime> DoGetSafeTime(
       RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const override;
 
+  Result<bool> RegularDbFlushFilter(const rocksdb::MemTable& memtable);
+
   struct IntentsDbFlushFilterState;
   Result<bool> IntentsDbFlushFilter(
       const rocksdb::MemTable& memtable, bool write_blocked,
@@ -1699,14 +1697,12 @@ class Tablet : public AbstractTablet,
 
   docdb::HistoryCutoff AllowedHistoryCutoff();
 
-  mutable std::mutex flush_filter_mutex_;
-  std::function<rocksdb::MemTableFilter()> mem_table_flush_filter_factory_
-      GUARDED_BY(flush_filter_mutex_);
-
   client::LocalTabletFilter local_tablet_filter_;
 
   // This is typically "P <peer_id>", so we can get a log prefix "T <tablet_id> P <peer_id>: ".
   std::string log_prefix_suffix_;
+
+  TabletContext* const tablet_context_;
 
   IsSysCatalogTablet is_sys_catalog_;
   TransactionsEnabled txns_enabled_;

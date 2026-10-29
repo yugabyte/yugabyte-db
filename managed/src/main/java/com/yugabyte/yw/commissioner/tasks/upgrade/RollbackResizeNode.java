@@ -86,6 +86,11 @@ public class RollbackResizeNode extends ResizeNode {
       throw new PlatformServiceException(
           BAD_REQUEST, "Rollback of Kubernetes resize node is not supported");
     }
+    if (!isRetryOfPlacementLockHolder(universe)) {
+      // A rollback that already holds the placement lock has started changing the universe and
+      // must be able to finish; refusing it would leave the universe locked with nothing to run.
+      ResizeNodeRollbackComputer.rejectCloudWithoutSnapshot(universe.getUniverseDetails().clusters);
+    }
     requireStateTransitionDetails(universe).requireRollbackable();
   }
 

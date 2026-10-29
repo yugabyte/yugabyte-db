@@ -68,6 +68,7 @@
 #include "utils/syscache.h"
 
 /* YB includes */
+#include "access/transam.h"
 #include "catalog/binary_upgrade.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_database.h"
@@ -131,6 +132,13 @@ static void YbWaitForBackendsCatalogVersion(bool error_on_timeout);
 static void YbWaitForLockersOrBackendsCatalogVersion(LOCKTAG *heaplocktag,
 													 LOCKMODE lockmode);
 static void YbDefineIndexHelper(Oid relationId, Oid indexRelationId, Oid databaseId);
+static bool YbIndexReuseIsSafe(Relation irel, Oid heapRelid,
+							   IndexInfo *newIndexInfo, Oid *newClassObjectId,
+							   Node *newWhereClause);
+static bool YbChildIndexesMatch(Relation rootIrel, TupleDesc rootHeapDesc);
+
+/* Defined in publicationcmds.c. */
+extern bool YbIsSimpleRowFilterExpr(Node *node);
 
 /*
  * callback argument type for RangeVarCallbackForReindexIndex()
@@ -187,12 +195,18 @@ typedef struct ReindexErrorInfo
  *
  * We do not yet implement a test to verify compatibility of expression
  * columns or predicates, so assume any such index is incompatible.
+ *
+ * YB: For a YB secondary index, reusability of expressions and predicates are
+ * assessed by YbIndexReuseIsSafe.
+ * Reusability is gated by the GUC yb_alter_type_reuse_expr_and_partial_indexes.
+ * 'yb_where_clause' is the transformed predicate of the prospective index.
  */
 bool
 CheckIndexCompatible(Oid oldId,
 					 const char *accessMethodName,
 					 List *attributeList,
-					 List *exclusionOpNames)
+					 List *exclusionOpNames,
+					 Node *yb_where_clause)
 {
 	bool		isconstraint;
 	Oid		   *typeObjectId;
@@ -272,6 +286,13 @@ CheckIndexCompatible(Oid oldId,
 		elog(ERROR, "cache lookup failed for index %u", oldId);
 	indexForm = (Form_pg_index) GETSTRUCT(tuple);
 
+	/* YB: Carved out from the expression index check below to keep the code flow simple. */
+	if (!indexForm->indisvalid)
+	{
+		ReleaseSysCache(tuple);
+		return false;
+	}
+
 	/*
 	 * We don't assess expressions or predicates; assume incompatibility.
 	 * Also, if the index is invalid for any reason, treat it as incompatible.
@@ -280,8 +301,20 @@ CheckIndexCompatible(Oid oldId,
 		  heap_attisnull(tuple, Anum_pg_index_indexprs, NULL) &&
 		  indexForm->indisvalid))
 	{
-		ReleaseSysCache(tuple);
-		return false;
+		/*
+		 * YB: expressions and predicates of YB secondary indexes are assessed
+		 * by YbIndexReuseIsSafe below.
+		 */
+
+		/* YB: a primary key cannot have expressions or a predicate. */
+		Assert(!indexForm->indisprimary);
+
+		/* YB: Skip further checks for temp table or if the flag is not enabled. */
+		if (!yb_alter_type_reuse_expr_and_partial_indexes || !IsYBRelationById(oldId))
+		{
+			ReleaseSysCache(tuple);
+			return false;
+		}						/* YB */
 	}
 
 	/* Any change in operator class or collation breaks compatibility. */
@@ -359,6 +392,11 @@ CheckIndexCompatible(Oid oldId,
 			}
 		}
 	}
+
+	/* YB */
+	if (ret)
+		ret = YbIndexReuseIsSafe(irel, relationId, indexInfo, classObjectId,
+								 yb_where_clause);
 
 	index_close(irel, NoLock);
 	return ret;
@@ -5573,4 +5611,247 @@ YbWaitForLockersOrBackendsCatalogVersion(LOCKTAG *heaplocktag,
 		WaitForLockers(*heaplocktag, lockmode, false);
 	else
 		YbWaitForBackendsCatalogVersion(true);	/* error on timeout */
+}
+
+/*
+ * Returns a copy of 'node' in which every Var takes the typmod of its table
+ * column from 'context' (the post-ALTER heap tuple descriptor).
+ *
+ * A Var is the only node that copies its typmod directly from the column.
+ * Other typmods are either fixed by the expression (cast targets, Consts) or
+ * derived from the inputs. When a derived one changes, the patched tree no
+ * longer equals the reparsed one and the index is rebuilt.
+ */
+static Node *
+YbSetVarTypmodsMutator(Node *node, void *context)
+{
+	if (node == NULL)
+		return NULL;
+
+	if (IsA(node, Var))
+	{
+		TupleDesc	heapDesc = (TupleDesc) context;
+		Var		   *var = (Var *) copyObject(node);
+
+		/* Var must reference the index's base table and must not be from a subquery */
+		Assert(var->varno == 1 && var->varlevelsup == 0);
+
+		/* Var must point to a valid attribute in the base table */
+		Assert(var->varattno > 0 && var->varattno <= heapDesc->natts);
+		var->vartypmod = TupleDescAttr(heapDesc, AttrNumberGetAttrOffset(var->varattno))->atttypmod;
+		return (Node *) var;
+	}
+
+	return expression_tree_mutator(node, YbSetVarTypmodsMutator, context);
+}
+
+/*
+ * CheckIndexCompatible rejects indexes with expressions or predicates. This
+ * function contains extra checks to enable reuse of such indexes.
+ * A compatible YB index keeps its OID and DocDB table and only has its catalog
+ * entries updated in place, so its stored expressions and predicate, built
+ * against the pre-ALTER column types, must compute the same values as the ones
+ * reparsed against the new types. With no table rewrite the column datums are
+ * unchanged, and the reparsed expression trees must be exactly the stored ones
+ * with their Vars' typmods updated.
+ *
+ * An index with expressions or a predicate is reused only if they are "simple
+ * expressions": a limited set of node types using only built-in immutable
+ * functions, operators, types and collations. Any key column must also use a
+ * built-in opclass. User-defined code could in theory inspect its arguments'
+ * typmods and is disallowed.
+ */
+static bool
+YbIndexReuseIsSafe(Relation irel, Oid heapRelid, IndexInfo *newIndexInfo,
+				   Oid *newClassObjectId, Node *newWhereClause)
+{
+	Relation	heapRel;
+	TupleDesc	heapDesc;
+	List	   *oldExprs;
+	List	   *newExprs;
+	List	   *oldPred;
+	List	   *newPred;
+	bool		safe = true;
+	int			i;
+
+	oldExprs = YbRelationGetUnConstifiedIndexExpressions(irel);
+	oldPred = make_ands_implicit((Expr *) YbRelationGetUnConstifiedIndexPredicate(irel));
+
+	newExprs = newIndexInfo->ii_Expressions;
+	newPred = make_ands_implicit((Expr *) newWhereClause);
+
+	if (oldExprs == NIL && oldPred == NIL)
+		return true;
+
+	/* The op-classes for the index keys must not be user-defined */
+	for (i = 0; i < irel->rd_index->indnkeyatts; i++)
+	{
+		if (newClassObjectId[i] >= FirstNormalObjectId)
+			return false;
+	}
+
+	/* There must be no user-defined functions in the expressions or predicates */
+	if (!YbIsSimpleRowFilterExpr((Node *) newExprs) ||
+		!YbIsSimpleRowFilterExpr((Node *) newPred))
+		return false;
+
+	/*
+	 * The expressions used by the index are "safe". Validate that pre ALTER
+	 * COLUMN and post ALTER COLUMN expressions are identical except for typemod
+	 * changes.
+	 */
+	heapRel = table_open(heapRelid, NoLock);
+	heapDesc = RelationGetDescr(heapRel);
+
+	/* In case of a partitioned index, each child must also be compatible. */
+	if (irel->rd_rel->relkind == RELKIND_PARTITIONED_INDEX)
+		safe = YbChildIndexesMatch(irel, heapDesc);
+
+	safe &= equal(YbSetVarTypmodsMutator((Node *) oldExprs, heapDesc), newExprs) &&
+			equal(YbSetVarTypmodsMutator((Node *) oldPred, heapDesc), newPred);
+
+	table_close(heapRel, NoLock);
+	return safe;
+}
+
+/*
+ * Returns the index expressions from the ALTER TABLE 'stmt' in a form that's
+ * compatible with indexprs in pg_index.
+ */
+List *
+YbComputeIndexExpressions(Oid heapRelid, IndexStmt *stmt)
+{
+	int			natts = list_length(stmt->indexParams);
+	HeapTuple	tuple;
+	Form_pg_am	accessMethodForm;
+	Oid			accessMethodId;
+	IndexAmRoutine *amRoutine;
+	IndexInfo  *indexInfo;
+
+	Assert(stmt->transformed);
+
+	tuple = SearchSysCache1(AMNAME, PointerGetDatum(stmt->accessMethod));
+	if (!HeapTupleIsValid(tuple))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("access method \"%s\" does not exist",
+						stmt->accessMethod)));
+	accessMethodForm = (Form_pg_am) GETSTRUCT(tuple);
+	accessMethodId = accessMethodForm->oid;
+	amRoutine = GetIndexAmRoutine(accessMethodForm->amhandler);
+	ReleaseSysCache(tuple);
+
+	indexInfo = makeIndexInfo(natts, natts, accessMethodId, NIL, NIL,
+							  false, false, false, false);
+	ComputeIndexAttrs(indexInfo,
+					  palloc(natts * sizeof(Oid)),
+					  palloc(natts * sizeof(Oid)),
+					  palloc(natts * sizeof(Oid)),
+					  palloc(natts * sizeof(int16)),
+					  stmt->indexParams, stmt->excludeOpNames, heapRelid,
+					  stmt->accessMethod, accessMethodId,
+					  amRoutine->amcanorder, false, InvalidOid, 0, NULL);
+
+	return indexInfo->ii_Expressions;
+}
+
+/*
+ * In partitioned scenarios, a root index partition and its child partitions
+ * must reach the same decision on whether to reuse or rebuild the entire index.
+ * The decision is taken top-down (root decides for itself, the child partitions
+ * decide independently later). A child partition index that chooses to rebuild
+ * itself, cannot be dropped while it is attached to a reused parent. This
+ * causes the ALTER to fail.
+ * CompareIndexInfo() lets a child index partition be attached when its
+ * expressions and predicate equal the parent's after eval_const_expressions(),
+ * and when its operator classes share a family. This is in contrast to
+ * YbIndexReuseIsSafe() which examines the unsimplified trees that can still
+ * differ.
+ * This function requires every partition of an index, at any depth, to
+ * match its parent's stored (unsimplified) trees and operator classes exactly.
+ * Otherwise the parent is rebuilt, which recreates all child partitions from
+ * their definition.
+ * This function must be called from the parent partition.
+ *
+ * rootHeapDesc already has the altered column types of the root, while the
+ * child partitions are altered later, so the attribute map ignores type
+ * differences. The stored trees on both sides still carry the old typmods.
+ */
+static bool
+YbChildIndexesMatch(Relation rootIrel, TupleDesc rootHeapDesc)
+{
+	List	   *rootExprs = YbRelationGetUnConstifiedIndexExpressions(rootIrel);
+	Node	   *rootPred = YbRelationGetUnConstifiedIndexPredicate(rootIrel);
+	int			rootNkeyatts = IndexRelationGetNumberOfKeyAttributes(rootIrel);
+	oidvector  *rootIndclass;
+	bool		isnull;
+	bool		match = true;
+	List	   *descendants;
+	ListCell   *lc;
+
+	rootIndclass = (oidvector *) DatumGetPointer(SysCacheGetAttr(INDEXRELID,
+																 rootIrel->rd_indextuple,
+																 Anum_pg_index_indclass,
+																 &isnull));
+	Assert(!isnull);
+
+	/* The ALTER already holds locks on every partitioned table. */
+	descendants = find_all_inheritors(RelationGetRelid(rootIrel), NoLock, NULL);
+	foreach(lc, descendants)
+	{
+		Oid			childOid = lfirst_oid(lc);
+		Relation	childIrel;
+		Relation	childHeap;
+		AttrMap    *attmap;
+		Node	   *childExprs;
+		Node	   *childPred;
+		oidvector  *childIndclass;
+		bool		exprs_whole_row;
+		bool		pred_whole_row;
+
+		/* find_all_inheritors() includes the root itself. */
+		if (childOid == RelationGetRelid(rootIrel))
+			continue;
+
+		childIrel = index_open(childOid, AccessShareLock);
+		childHeap = table_open(childIrel->rd_index->indrelid, NoLock);
+		attmap = build_attrmap_by_name(rootHeapDesc, RelationGetDescr(childHeap),
+									   true /* yb_ignore_type_mismatch */ );
+		childExprs = map_variable_attnos((Node *) YbRelationGetUnConstifiedIndexExpressions(childIrel),
+										 1, 0, attmap, InvalidOid,
+										 &exprs_whole_row);
+		childPred = map_variable_attnos(YbRelationGetUnConstifiedIndexPredicate(childIrel),
+										1, 0, attmap, InvalidOid,
+										&pred_whole_row);
+		childIndclass = (oidvector *) DatumGetPointer(SysCacheGetAttr(INDEXRELID,
+																	  childIrel->rd_indextuple,
+																	  Anum_pg_index_indclass,
+																	  &isnull));
+		Assert(!isnull);
+
+		/*
+		 * CompareIndexInfo() rejects a whole-row reference and a different
+		 * number of key columns, and cloning a partition index rejects a
+		 * whole-row reference, so neither can occur in an attached index.
+		 */
+		Assert(!exprs_whole_row && !pred_whole_row);
+		Assert(IndexRelationGetNumberOfKeyAttributes(childIrel) == rootNkeyatts);
+
+		/*
+		 * Validate that parent and child have identical operator classes.
+		 * CompareIndexInfo() compares operator families, not classes.
+		 */
+		if (memcmp(rootIndclass->values, childIndclass->values, rootNkeyatts * sizeof(Oid)) != 0)
+			match = false;
+
+		/* Validate that parent and child have identical trees before simplification. */
+		match &= equal(rootExprs, childExprs) && equal(rootPred, childPred);
+
+		table_close(childHeap, NoLock);
+		index_close(childIrel, NoLock);
+		if (!match)
+			break;
+	}
+
+	return match;
 }
