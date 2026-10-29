@@ -191,6 +191,10 @@ class ReplicaState {
   // This method is thread safe.
   ConsensusStatePB GetConsensusStateFromCache() const;
 
+  // Lock-free reads of this peer's role with the current term, and of the committed config index.
+  std::pair<PeerRole, int64_t> GetRoleAndTerm() const;
+  int64_t GetCommittedConfigIndex() const;
+
   // Returns the currently active Raft role.
   PeerRole GetActiveRoleUnlocked() const;
 
