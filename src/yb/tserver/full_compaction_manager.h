@@ -168,7 +168,7 @@ class FullCompactionManager {
   FRIEND_TEST(TsTabletManagerTest, FullCompactionCalculateNextCompaction);
   FRIEND_TEST(TsTabletManagerTest, CompactionsEvenlySpreadByJitter);
 
-  // Iterates through all tablets owned by the tablet manager, scheduling full compactions
+  // Iterates through all tablets returned by the peers provider, scheduling full compactions
   // on any tablets that are eligible for full compaction. When a new compaction is scheduled,
   // the tablet is removed from the in-memory map of next compaction times
   // (next_compact_time_per_tablet_).
@@ -178,7 +178,7 @@ class FullCompactionManager {
   // sliding window of stats.
   void CollectDocDBStats(const std::vector<tablet::TabletPeerPtr>& peers);
 
-  // Removes obsolete entries (i.e. entries that no longer exist in the TsTabletManager)
+  // Removes obsolete entries (i.e. entries that the peers provider no longer returns)
   // from in-memory record-keeping maps, specifically next_compact_time_per_tablet_
   // and tablet_stats_window_.
   void CleanupIfNecessary(const std::vector<tablet::TabletPeerPtr>& peers);

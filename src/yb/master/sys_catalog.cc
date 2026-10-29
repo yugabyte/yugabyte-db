@@ -661,7 +661,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
   };
 
   full_compaction_manager_ = std::make_unique<tserver::FullCompactionManager>(
-      get_peers_lambda, scoped_refptr<server::Clock>(master_->clock()));
+      get_peers_lambda, server::ClockPtr(master_->clock()));
 
   mem_manager_ = std::make_shared<tserver::TabletMemoryManager>(
       &tablet_options,

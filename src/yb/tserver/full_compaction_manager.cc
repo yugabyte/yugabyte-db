@@ -39,7 +39,7 @@ constexpr int32_t kDefaultJitterFactorPercentage = 33;
 constexpr uint64_t kMaxSmallHash = 1000000000;
 // Indicates the factor at which we should force memory cleanup in FullCompactionManager.
 // Multiplier for the maximum number of peers we should ever store in FullCompactionManager
-// versus the number of peers stored in TsTabletManager.
+// versus the number of peers returned by the peers provider.
 constexpr double kPeerCleanupFactor = 2;
 
 }; // namespace
@@ -181,7 +181,7 @@ void FullCompactionManager::CleanupIfNecessary(
   const auto peer_not_exists_fn = [&in_tablet_manager](const auto& item) {
     return in_tablet_manager.find(&item.first) == in_tablet_manager.end();
   };
-  // Erase any tablet entries that are not currently in the TsTabletManager's peers.
+  // Erase any tablet entries that are not currently returned by the peers provider.
   std::erase_if(next_compact_time_per_tablet_, peer_not_exists_fn);
   std::erase_if(tablet_stats_window_, peer_not_exists_fn);
   last_cleanup_time_ = CoarseMonoClock::Now();
