@@ -2334,4 +2334,20 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
         "runOnMaster must be set for metrics export, yaml=" + overridesYaml,
         overridesYaml.contains("runOnMaster: true"));
   }
+
+  // The collector config is shared by every pod in the release, so it keeps the master target
+  // when either the current or the full-move StatefulSet runs masters.
+  @Test
+  public void testReleaseHasMasters() {
+    assertTrue(KubernetesCommandExecutor.releaseHasMasters(false, 1, null));
+    assertFalse(KubernetesCommandExecutor.releaseHasMasters(false, 0, null));
+    KubernetesCommandExecutor.FullMoveParams fullMove =
+        new KubernetesCommandExecutor.FullMoveParams();
+    fullMove.masterReplicas = 1;
+    assertTrue(KubernetesCommandExecutor.releaseHasMasters(false, 0, fullMove));
+    // A read replica full move sets masterReplicas from the placement, but runs no masters.
+    assertFalse(KubernetesCommandExecutor.releaseHasMasters(true, 0, fullMove));
+    fullMove.masterReplicas = 0;
+    assertFalse(KubernetesCommandExecutor.releaseHasMasters(false, 0, fullMove));
+  }
 }
