@@ -398,6 +398,21 @@ In YugabyteDB (on Linux), the check also applies while a new connection starts u
 
 During startup, only the server-wide value applies, set with [ysql_pg_conf_csv](#ysql-pg-conf-csv), because per-database and per-role settings are loaded after the preload.
 
+##### yb_enable_stale_catalog_prefetch
+
+{{% tags/wrap %}}
+
+Default: `true`
+{{% /tags/wrap %}}
+
+v2025.2.8.1 and later only. Lets a connection start from a catalog version that the node already has cached. When a connection begins while the YB-Master leader is shedding catalog prefetches, the backend reads the catalog at the cached version instead of fetching the whole catalog from the leader, and applies the invalidation messages between that version and the current version before it runs anything.
+
+When set to `false`, every connection fetches the catalog from the YB-Master leader, and the read that a backend makes ahead of authentication takes the ordinary catalog prefetch admission priority.
+
+Set this parameter server-wide, for example using [ysql_pg_conf_csv](#ysql-pg-conf-csv). Changes take effect when the configuration is reloaded, and apply to connections that start after the reload.
+
+See also the [--ysql_yb_enable_stale_catalog_prefetch](#ysql-yb-enable-stale-catalog-prefetch) flag.
+
 ##### enable_bitmapscan
 
 {{% tags/wrap %}}
@@ -1628,6 +1643,17 @@ Default: `true`
 {{% /tags/wrap %}}
 
 Enables the YB-TServer catalog cache, which reduces YB-Master overhead for starting a connection and internal system catalog metadata refresh (for example, after executing a DDL), when there are many YSQL connections per node.
+
+##### --ysql_yb_enable_stale_catalog_prefetch
+
+{{% tags/wrap %}}
+
+Default: `true`
+{{% /tags/wrap %}}
+
+v2025.2.8.1 and later only. Lets a connection start from a catalog version that the node already has cached when the YB-Master leader is shedding catalog prefetches, instead of fetching the whole catalog from the leader. When set to `false`, every connection fetches the catalog from the leader, and the read that a backend makes ahead of authentication takes the ordinary catalog prefetch admission priority.
+
+See also the [yb_enable_stale_catalog_prefetch](#yb-enable-stale-catalog-prefetch) configuration parameter.
 
 ##### --ysql_minimal_catalog_caches_preload
 
