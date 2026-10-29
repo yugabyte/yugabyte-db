@@ -139,6 +139,10 @@ DROP EXTENSION PGAudit;
 --
 RESET SESSION AUTHORIZATION;
 SELECT current_user;
+-- yugabyte has its fixed OID and the attributes initdb used to give it
+SELECT oid, rolsuper, rolinherit, rolcreaterole, rolcreatedb, rolcanlogin,
+       rolreplication, rolbypassrls
+  FROM pg_authid WHERE rolname = 'yugabyte';
 CREATE ROLE regress_yb_role;
 CREATE ROLE regress_yb_member;
 CREATE ROLE regress_yb_admin;

@@ -155,6 +155,15 @@ SELECT current_user;
  yugabyte
 (1 row)
 
+-- yugabyte has its fixed OID and the attributes initdb used to give it
+SELECT oid, rolsuper, rolinherit, rolcreaterole, rolcreatedb, rolcanlogin,
+       rolreplication, rolbypassrls
+  FROM pg_authid WHERE rolname = 'yugabyte';
+ oid  | rolsuper | rolinherit | rolcreaterole | rolcreatedb | rolcanlogin | rolreplication | rolbypassrls 
+------+----------+------------+---------------+-------------+-------------+----------------+--------------
+ 8960 | t        | t          | t             | t           | t           | t              | t
+(1 row)
+
 CREATE ROLE regress_yb_role;
 CREATE ROLE regress_yb_member;
 CREATE ROLE regress_yb_admin;
