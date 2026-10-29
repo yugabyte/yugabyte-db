@@ -4907,11 +4907,13 @@ void CDCServiceImpl::UpdateTabletCDCSDKMetrics(
   }
 
   tablet_metric->cdcsdk_traffic_sent->IncrementBy(throughput_metrics.bytes_sent);
+  auto last_replicated_micros = GetLastReplicatedTime(tablet_peer);
   auto last_record_time = GetCDCSDKLastSendRecordTime(resp);
+  const auto last_sent_micros = tablet_metric->cdcsdk_last_sent_physicaltime->value();
+  // last_sent 0 is uninitialized (new entity, or cleared when this peer was a follower).
   auto last_record_micros = last_record_time
                                 ? last_record_time.value()
-                                : tablet_metric->cdcsdk_last_sent_physicaltime->value();
-  auto last_replicated_micros = GetLastReplicatedTime(tablet_peer);
+                                : (last_sent_micros ? last_sent_micros : last_replicated_micros);
   tablet_metric->cdcsdk_last_sent_physicaltime->set_value(last_record_micros);
   const int64_t sent_lag_value = last_replicated_micros - last_record_micros;
   tablet_metric->cdcsdk_sent_lag_micros->set_value(sent_lag_value > 0 ? sent_lag_value : 0);
