@@ -151,8 +151,20 @@ public class ManagedLoadBalancerUtilTest extends FakeDBApplication {
   }
 
   @Test
+  public void testEditThatLeavesTheSettingOutKeepsIt() {
+    ManagedLoadBalancerConfig on =
+        cluster(ClusterType.PRIMARY, true, null).userIntent.getManagedLoadBalancer();
+    ManagedLoadBalancerConfig off = new ManagedLoadBalancerConfig();
+
+    // A client that predates the field must not turn the load balancer off.
+    assertEquals(on, ManagedLoadBalancerUtil.getEditedSetting(on, null));
+    assertEquals(null, ManagedLoadBalancerUtil.getEditedSetting(on, off));
+    assertEquals(on, ManagedLoadBalancerUtil.getEditedSetting(null, on));
+  }
+
+  @Test
   public void testTurningOnTakesOverOnlyOneLbNamePerRegion() {
-    // The user's load balancer serves az-1; az-2 of the same region names none.
+    // az-2 of the same region names no load balancer.
     Cluster updated = cluster(ClusterType.PRIMARY, true, "byo-lb");
     PlacementInfo.PlacementRegion region = updated.placementInfo.cloudList.get(0).regionList.get(0);
     region.code = "r1";

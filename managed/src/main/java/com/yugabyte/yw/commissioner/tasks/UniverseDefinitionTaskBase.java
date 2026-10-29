@@ -4554,18 +4554,22 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
-  /** Deletes the managed load balancers in the saved state that the filter accepts. */
+  /**
+   * Deletes the saved load balancers that the filter accepts. One a zone still names with lbName
+   * stays: a takeover clears lbName only on success, so until then it is the user's.
+   */
   protected void createDeleteManagedLoadBalancerTasks(
       Predicate<ManagedLoadBalancer> filter, boolean ignoreErrors) {
-    ManagedLoadBalancerState state =
-        getUniverse().getUniverseDetails().getManagedLoadBalancerState();
+    Universe universe = getUniverse();
+    ManagedLoadBalancerState state = universe.getUniverseDetails().getManagedLoadBalancerState();
     if (state == null) {
       return;
     }
     SubTaskGroup subTaskGroup =
         createSubTaskGroup("DeleteManagedLoadBalancer", SubTaskGroupType.RemovingUnusedServers);
     for (ManagedLoadBalancer lb : state.getLoadBalancers()) {
-      if (!filter.test(lb)) {
+      if (!filter.test(lb)
+          || ManagedLoadBalancerUtil.isNamedByZones(universe.getCluster(lb.getClusterUuid()), lb)) {
         continue;
       }
       Region region = Region.getOrBadRequest(lb.getRegionUuid());
@@ -4589,8 +4593,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   /**
    * Restarts, one at a time, the tservers whose YSQL or YCQL proxy doesn't listen where its gflags
    * now say: GFlagsUtil binds the proxies of a GCP cluster with a load balancer to 0.0.0.0. A node
-   * whose running proxies already match is skipped. Call it after the new load balancer settings
-   * are saved, because it compares against the saved universe.
+   * whose running proxies already match is skipped. Plan it after the new settings are saved.
    */
   protected void createRebindProxiesTasks() {
     createRebindProxiesTasks(
@@ -4599,7 +4602,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             .collect(Collectors.toSet()));
   }
 
-  /** {@link #createRebindProxiesTasks()} for the given clusters only. */
   protected void createRebindProxiesTasks(Set<UUID> clusterUuids) {
     Universe universe = getUniverse();
     boolean cloudEnabled =

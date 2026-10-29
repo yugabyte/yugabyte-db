@@ -9968,10 +9968,11 @@ components:
       description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
         version 2.31.0.0 that could change.</b></p>Load balancers that YBA creates,
         manages and deletes for the cluster. Each enabled kind gives one L4 load balancer
-        in every region of the cluster, serving all zones of the region. When set,
+        in every region of the cluster, serving all zones of the region. At create,
         this object must enable at least one load balancer. ClusterInfo.load_balancers
         lists them with their scheme and address. An edit of the universe can turn
-        it on or off. Part of ClusterNetworkingSpec and ClusterNetworkingEditSpec.'
+        them on or off; in an edit, an object that enables none turns them off. Part
+        of ClusterNetworkingSpec and ClusterNetworkingEditSpec.'
       type: object
       properties:
         enable_private:
@@ -11130,9 +11131,11 @@ components:
             Leave it out to keep the current setting. To turn them on, set enable_private.
             If the zones of a region set lb_name, YBA takes over that load balancer,
             keeps its name and address, and clears lb_name. All zones of the region
-            must set the same lb_name. To turn them off, set no load balancer. YBA
-            then deletes every managed load balancer of the cluster, including the
-            ones that it took over.'
+            must set the same lb_name. On GCP, the forwarding rules of the load balancer
+            must forward the YSQL and YCQL ports at one address, or the edit fails.
+            The edit cannot also add or remove nodes. To turn them off, set no load
+            balancer. YBA then deletes every managed load balancer of the cluster,
+            including the ones that it took over.'
           $ref: '#/components/schemas/ManagedLoadBalancerSpec'
           x-yba-api-since: 2.31.0.0
           x-yba-api-visibility: preview

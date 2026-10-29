@@ -86,7 +86,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UpgradeParams;
@@ -2873,12 +2872,11 @@ public class UniverseCRUDHandler {
               universe.getUniverseDetails().nodePrefix, taskParams.nodePrefix));
     }
 
-    // An edit turns the managed load balancer off by turning off every load balancer in it.
     for (Cluster cluster : taskParams.clusters) {
-      ManagedLoadBalancerConfig config = cluster.userIntent.getManagedLoadBalancer();
-      if (config != null && !config.isEnablePrivate() && !config.isEnablePublic()) {
-        cluster.userIntent.setManagedLoadBalancer(null);
-      }
+      cluster.userIntent.setManagedLoadBalancer(
+          ManagedLoadBalancerUtil.getEditedSetting(
+              universe.getCluster(cluster.uuid).userIntent.getManagedLoadBalancer(),
+              cluster.userIntent.getManagedLoadBalancer()));
     }
 
     Set<UniverseDefinitionTaskParams.UpdateOptions> updateOptions =
@@ -2927,15 +2925,6 @@ public class UniverseCRUDHandler {
           && curCluster.clusterType == ClusterType.PRIMARY) {
         throw new PlatformServiceException(BAD_REQUEST, "RF change is not available");
       }
-      ManagedLoadBalancerUtil.validateEditedCluster(
-          universe,
-          taskParams.getPrimaryCluster() != null
-              ? taskParams.getPrimaryCluster()
-              : universe.getUniverseDetails().getPrimaryCluster(),
-          curCluster,
-          newCluster,
-          confGetter,
-          cloudAPIFactory);
       UserIntent newIntent = newCluster.userIntent;
       UserIntent curIntent = curCluster.userIntent;
       for (UUID providerUUID : newIntent.getAllProviderUUIDs()) {

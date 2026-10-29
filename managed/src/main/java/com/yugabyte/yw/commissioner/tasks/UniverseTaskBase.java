@@ -5803,8 +5803,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // Get load balancers for each cluster
     for (Cluster cluster : clusters) {
       if (ManagedLoadBalancerUtil.isEnabled(cluster)) {
-        // Validation keeps load balancer names out of a universe with managed load balancers.
-        // The saved state, not the params: an edit's params are the client's copy.
+        // Names from the saved state: params are the client's copy.
         addManagedLoadBalancers(
             taskParams,
             cluster,

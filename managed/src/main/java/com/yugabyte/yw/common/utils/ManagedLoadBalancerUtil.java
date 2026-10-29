@@ -113,11 +113,8 @@ public class ManagedLoadBalancerUtil {
    * the CloudAPI implementations. A load balancer for each zone, or several for a region that each
    * serve some of its zones, changes this method and {@link #getPrivateName}, and nothing else.
    *
-   * <p>A region's load balancer is named {@link #getPrivateName(UUID, Region)}, unless YBA took
-   * over a load balancer that the user created: then it keeps that name, which the saved state
-   * records. Validation keeps lbName out of a cluster with a managed load balancer, except in the
-   * edit that turns it on. There, the lbName that the zones of a region set names the load balancer
-   * that YBA takes over.
+   * <p>Name: the saved state's, so a taken-over load balancer keeps its name; else the zones'
+   * lbName, set only in the edit that turns this on; else {@link #getPrivateName(UUID, Region)}.
    *
    * @return nothing for a null cluster or one without a managed load balancer.
    */
@@ -163,14 +160,7 @@ public class ManagedLoadBalancerUtil {
     return lbs;
   }
 
-  /**
-   * The load balancers that the zones of the cluster name with lbName, by region UUID. YBA takes
-   * them over: it keeps their names, and so their addresses, instead of creating new ones. A region
-   * whose zones set no lbName gets no entry.
-   *
-   * @throws PlatformServiceException when the zones of a region do not all set the same lbName,
-   *     because one managed load balancer serves every zone of its region.
-   */
+  // Throws if a region's zones disagree: one managed load balancer serves the whole region.
   private static Map<UUID, String> getTakeoverNames(Cluster cluster) {
     Map<UUID, Set<String>> namesByRegion = new HashMap<>();
     Map<UUID, String> regionCodes = new HashMap<>();
@@ -268,12 +258,9 @@ public class ManagedLoadBalancerUtil {
   }
 
   /**
-   * Rejects an edit that changes the managed load balancer in a way that YBA cannot carry out, or
-   * that adds a load balancer name to a universe with managed load balancers. An edit can turn the
-   * managed load balancer of the primary cluster on or off. When it turns it on, the zones of each
-   * region may set one lbName, which names the load balancer that YBA takes over.
-   *
-   * @param primaryAfterEdit the primary cluster as the edit leaves it.
+   * An edit may turn the managed load balancer on or off. Turning it on takes over the load
+   * balancer that each region's zones name with lbName; otherwise lbName stays out of a managed
+   * universe.
    */
   public static void validateEditedCluster(
       Universe universe,
@@ -282,10 +269,9 @@ public class ManagedLoadBalancerUtil {
       Cluster updated,
       RuntimeConfGetter confGetter,
       CloudAPI.Factory cloudAPIFactory) {
-    validateEnablesSomething(updated);
     if (!isEnabled(current) && isEnabled(updated)) {
       validateCanEnable(updated, confGetter, cloudAPIFactory);
-      // Only the primary cluster's load balancers can be taken over.
+      // Only the primary's load balancers can be taken over.
       for (Cluster other : universe.getUniverseDetails().clusters) {
         if (!other.uuid.equals(updated.uuid)) {
           validateNoLbNames(updated, other);
@@ -301,13 +287,22 @@ public class ManagedLoadBalancerUtil {
     validateNoLbNames(primaryAfterEdit, updated);
   }
 
-  /** Whether the edit turns the managed load balancer on or off. */
+  /** Missing keeps the setting (older clients omit it); one that enables nothing turns it off. */
+  @Nullable
+  public static ManagedLoadBalancerConfig getEditedSetting(
+      @Nullable ManagedLoadBalancerConfig current, @Nullable ManagedLoadBalancerConfig requested) {
+    if (requested == null) {
+      return current;
+    }
+    return requested.isEnablePrivate() || requested.isEnablePublic() ? requested : null;
+  }
+
   public static boolean isTurnedOnOrOff(Cluster current, Cluster updated) {
     return isPrivateEnabled(current) != isPrivateEnabled(updated)
         || isPublicEnabled(current) != isPublicEnabled(updated);
   }
 
-  /** An empty managedLoadBalancer is a mistake, so YBA rejects it rather than ignores it. */
+  /** At create, an empty config is a mistake; in an edit it means off (see getEditedSetting). */
   private static void validateEnablesSomething(Cluster cluster) {
     ManagedLoadBalancerConfig config = cluster.userIntent.getManagedLoadBalancer();
     if (config != null && !config.isEnablePrivate() && !config.isEnablePublic()) {
@@ -341,22 +336,18 @@ public class ManagedLoadBalancerUtil {
             });
   }
 
-  public static boolean setsLbName(Cluster cluster) {
-    return getPlacements(cluster)
-        .flatMap(PlacementInfo::azStream)
-        .anyMatch(az -> StringUtils.isNotEmpty(az.lbName));
+  public static boolean usesOwnLoadBalancer(Cluster cluster) {
+    return cluster.userIntent.enableLB
+        || getPlacements(cluster)
+            .flatMap(PlacementInfo::azStream)
+            .anyMatch(az -> StringUtils.isNotEmpty(az.lbName));
   }
 
-  /**
-   * Clears lbName and enableLB, which named the load balancers that YBA took over when the cluster
-   * turned on its managed load balancer.
-   */
   public static void clearTakenOverNames(Cluster cluster) {
     cluster.userIntent.enableLB = false;
     getPlacements(cluster).flatMap(PlacementInfo::azStream).forEach(az -> az.lbName = null);
   }
 
-  /** Whether a zone of the cluster in the load balancer's region sets the load balancer's name. */
   public static boolean isNamedByZones(@Nullable Cluster cluster, ManagedLoadBalancer lb) {
     return cluster != null
         && getPlacements(cluster)
@@ -367,7 +358,7 @@ public class ManagedLoadBalancerUtil {
             .anyMatch(az -> lb.getName().equals(az.lbName));
   }
 
-  /** The placement and the partition placements. getOverallPlacement() drops lbName. */
+  // getOverallPlacement() drops lbName.
   private static Stream<PlacementInfo> getPlacements(Cluster cluster) {
     return Stream.concat(
             Stream.ofNullable(cluster.placementInfo),

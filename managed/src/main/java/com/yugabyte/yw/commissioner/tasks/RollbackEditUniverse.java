@@ -179,13 +179,8 @@ public class RollbackEditUniverse extends EditUniverseTaskBase {
           before.clusters.stream()
               .flatMap(c -> ManagedLoadBalancerUtil.planLoadBalancers(c, lbState).stream())
               .collect(Collectors.toList());
-      // A load balancer that the edit took over goes back to the user, whose lbName names it.
       createDeleteManagedLoadBalancerTasks(
-          lb ->
-              plannedLbs.stream().noneMatch(lb::matches)
-                  && before.clusters.stream()
-                      .noneMatch(c -> ManagedLoadBalancerUtil.isNamedByZones(c, lb)),
-          false /* ignoreErrors */);
+          lb -> plannedLbs.stream().noneMatch(lb::matches), false /* ignoreErrors */);
 
       // Force-release before restore: DeleteCapacityReservation reads current details; restore
       // would drop failed-edit CapacityReservationState while cloud reservations may remain.

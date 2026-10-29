@@ -646,10 +646,8 @@ public class GCPCloudImpl implements CloudAPI {
    * groups. GCP cannot change the ports of a forwarding rule, so a rule that misses a port is
    * replaced; the reserved address keeps the IP.
    *
-   * <p>A load balancer that the user created and YBA took over has only the backend service under
-   * this name; the user's forwarding rules and address have other names. Those rules are reused
-   * while they forward every port at one address, so the address that clients use stays. Once they
-   * miss a port, YBA adds its own rule and address, and the address changes.
+   * <p>A taken-over load balancer has only its backend service under this name. The user's rules
+   * are reused so the address stays; if they miss a port, this fails rather than add an address.
    *
    * @return the internal IP of the load balancer.
    */
@@ -747,8 +745,8 @@ public class GCPCloudImpl implements CloudAPI {
     SetMultimap<String, String> instanceGroupsByZone = LinkedHashMultimap.create();
     BackendService backendService = apiClient.getRegionalBackendServiceIfExists(regionCode, name);
     if (backendService != null) {
-      // The user's rules of a load balancer that YBA took over. A reserved address that they used
-      // stays, because YBA does not know its name.
+      // A taken-over load balancer's user rules; GCP won't delete a backend service they reference.
+      // Their reserved address stays: YBA doesn't know its name.
       for (ForwardingRule rule :
           CollectionUtils.emptyIfNull(
               apiClient.getRegionalForwardingRulesForBackend(
@@ -780,12 +778,8 @@ public class GCPCloudImpl implements CloudAPI {
     log.info("Deleted load balancer {} in {}", name, regionCode);
   }
 
-  /**
-   * Finds the forwarding rules that send every port to the backend service at one address, and adds
-   * the tags to them as labels.
-   *
-   * @return that address, or null when there is none.
-   */
+  // Address of the user's rules that forward every port; null if no rule targets the backend
+  // service; throws if rules miss a port.
   @Nullable
   private static String ensureUserForwardingRules(
       GCPProjectApiClient apiClient,
@@ -825,7 +819,15 @@ public class GCPCloudImpl implements CloudAPI {
       }
       return entry.getKey();
     }
-    return null;
+    if (rulesByAddress.isEmpty()) {
+      return null;
+    }
+    throw new PlatformServiceException(
+        BAD_REQUEST,
+        String.format(
+            "The forwarding rules of backend service %s do not forward ports %s at one address."
+                + " Add the missing ports to them.",
+            CloudAPI.getResourceNameFromResourceUrl(backendServiceUrl), ports));
   }
 
   private static boolean forwardsPorts(ForwardingRule rule, List<Integer> ports) {

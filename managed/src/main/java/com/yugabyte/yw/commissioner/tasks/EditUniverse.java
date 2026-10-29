@@ -10,7 +10,10 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
@@ -19,6 +22,7 @@ import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.utils.CapacityReservationUtil;
@@ -53,9 +57,13 @@ public class EditUniverse extends EditUniverseTaskBase {
   private final AtomicBoolean dedicatedNodesChanged = new AtomicBoolean();
   private final AtomicBoolean primaryRFChanged = new AtomicBoolean();
 
+  private final CloudAPI.Factory cloudAPIFactory;
+
   @Inject
-  protected EditUniverse(BaseTaskDependencies baseTaskDependencies) {
+  protected EditUniverse(
+      BaseTaskDependencies baseTaskDependencies, CloudAPI.Factory cloudAPIFactory) {
     super(baseTaskDependencies);
+    this.cloudAPIFactory = cloudAPIFactory;
   }
 
   @Override
@@ -64,6 +72,36 @@ public class EditUniverse extends EditUniverseTaskBase {
     if (isFirstTry) {
       // Verify the task params.
       verifyParams(UniverseOpType.EDIT);
+      validateManagedLoadBalancerChanges();
+    }
+  }
+
+  // Here, not in the handlers: the v2 edit skips UniverseCRUDHandler's checks.
+  private void validateManagedLoadBalancerChanges() {
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+    Cluster primaryAfterEdit =
+        taskParams().getPrimaryCluster() != null
+            ? taskParams().getPrimaryCluster()
+            : universe.getUniverseDetails().getPrimaryCluster();
+    for (Cluster cluster : taskParams().clusters) {
+      Cluster current = universe.getCluster(cluster.uuid);
+      if (current == null) {
+        continue;
+      }
+      ManagedLoadBalancerUtil.validateEditedCluster(
+          universe, primaryAfterEdit, current, cluster, confGetter, cloudAPIFactory);
+      // No VM work, and no auto-rollback: it restores only nodes, not the setting saved at freeze.
+      if (ManagedLoadBalancerUtil.isTurnedOnOrOff(current, cluster)
+          && taskParams().getNodesInCluster(cluster.uuid).stream()
+              .anyMatch(
+                  n ->
+                      n.state == NodeDetails.NodeState.ToBeAdded
+                          || n.state == NodeDetails.NodeState.ToBeRemoved)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "An edit that turns the managed load balancer on or off cannot also add or remove"
+                + " nodes");
+      }
     }
   }
 
@@ -82,16 +120,10 @@ public class EditUniverse extends EditUniverseTaskBase {
     }
   }
 
+  // Saved at freeze: the GCP proxy rebind writes gflags from the saved universe.
   @Override
   protected void freezeUniverseInTxn(Universe universe) {
     super.freezeUniverseInTxn(universe);
-    saveManagedLoadBalancerSettings(universe);
-  }
-
-  // The nodes that this edit configures read the setting from the saved universe: GFlagsUtil binds
-  // the proxies of a GCP cluster with a load balancer to 0.0.0.0. The rest of the cluster is saved
-  // after its nodes change.
-  private void saveManagedLoadBalancerSettings(Universe universe) {
     UniverseDefinitionTaskParams details = universe.getUniverseDetails();
     for (Cluster cluster : taskParams().clusters) {
       Cluster saved = details.getClusterByUuid(cluster.uuid);
@@ -117,7 +149,6 @@ public class EditUniverse extends EditUniverseTaskBase {
           (univ) -> {
             if (univ.getUniverseDetails().autoRollbackPerformed) {
               updateUniverseNodesAndSettings(univ, taskParams(), false);
-              saveManagedLoadBalancerSettings(univ);
             }
           };
       universe =
@@ -145,8 +176,7 @@ public class EditUniverse extends EditUniverseTaskBase {
                   Comparator.<Cluster, Integer>comparing(
                       c -> c.clusterType == ClusterType.PRIMARY ? -1 : c.index))
               .collect(Collectors.toList());
-      // A cluster that turns on its managed load balancer may need its proxies on 0.0.0.0. This
-      // comes before the load balancers are created, so that a retry finds none and checks again.
+      // GCP proxies need 0.0.0.0 once the LB is on. Before ensure, so a retry still finds no state.
       ManagedLoadBalancerState lbState =
           universe.getUniverseDetails().getManagedLoadBalancerState();
       createRebindProxiesTasks(
@@ -198,9 +228,8 @@ public class EditUniverse extends EditUniverseTaskBase {
         // Updating placement info and userIntent in DB
         createUpdateUniverseIntentTask(cluster);
         if (ManagedLoadBalancerUtil.isEnabled(cluster)
-            && ManagedLoadBalancerUtil.setsLbName(cluster)) {
-          // YBA now manages the load balancers that lbName named. The planning above reads them
-          // from the task params, so only the saved universe loses them.
+            && ManagedLoadBalancerUtil.usesOwnLoadBalancer(cluster)) {
+          // Planning above reads lbName from params, so only the saved copy is cleared.
           createUpdateUniverseFieldsTask(
               u -> ManagedLoadBalancerUtil.clearTakenOverNames(u.getCluster(cluster.uuid)));
         }

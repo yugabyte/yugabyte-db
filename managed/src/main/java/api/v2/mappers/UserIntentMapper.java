@@ -44,6 +44,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
+import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
 import com.yugabyte.yw.forms.HierarchicalNodesSpec;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.AZOverrides;
@@ -947,11 +948,10 @@ public interface UserIntentMapper {
           toV1ExposingServiceState(clusterNetworkingEditSpec.getEnableExposingService());
     }
     if (clusterNetworkingEditSpec.getManagedLoadBalancer() != null) {
-      ManagedLoadBalancerConfig config =
-          toV1ManagedLoadBalancerConfig(clusterNetworkingEditSpec.getManagedLoadBalancer());
-      // An edit turns the setting off by turning off every load balancer in it.
       userIntent.setManagedLoadBalancer(
-          config.isEnablePrivate() || config.isEnablePublic() ? config : null);
+          ManagedLoadBalancerUtil.getEditedSetting(
+              userIntent.getManagedLoadBalancer(),
+              toV1ManagedLoadBalancerConfig(clusterNetworkingEditSpec.getManagedLoadBalancer())));
     }
     return userIntent;
   }

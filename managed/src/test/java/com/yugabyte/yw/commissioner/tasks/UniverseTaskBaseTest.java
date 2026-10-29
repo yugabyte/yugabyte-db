@@ -556,7 +556,7 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
               u.setUniverseDetails(details);
             });
 
-    // The task reads the load balancer names from the saved state of its universe.
+    // Names come from the task's saved universe.
     UniverseTaskParams params = new UniverseTaskParams();
     params.setUniverseUUID(universe.getUniverseUUID());
     universeTaskBase.setTaskParams(params);

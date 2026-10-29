@@ -13,6 +13,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
@@ -55,6 +56,7 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.NodeDetailsArrayComparator;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -1369,12 +1371,15 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
             any(), eq("region-1"), any(), any(), eq(List.of(5434, 9042)), any());
   }
 
-  // The customer's own load balancer in the only region of the default universe.
   private Universe givenUserLoadBalancer() {
     factory
         .forUniverse(defaultUniverse)
         .setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
     factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    factory
+        .forProvider(defaultProvider)
+        .setValue("yb.universe.managed_load_balancer_enabled", "true");
+    when(cloudAPI.supportsManagedLoadBalancer()).thenReturn(true);
     return Universe.saveDetails(
         defaultUniverse.getUniverseUUID(),
         u -> {
@@ -1391,7 +1396,6 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     return config;
   }
 
-  // An edit payload that changes only the managed load balancer setting.
   private static UniverseDefinitionTaskParams flipManagedLoadBalancer(
       Universe universe, boolean enablePrivate) {
     UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
@@ -1430,7 +1434,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
       throws InterruptedException {
     Universe universe = givenUserLoadBalancer();
     UniverseDefinitionTaskParams taskParams = flipManagedLoadBalancer(universe, true);
-    // Without a node change, the flip alone must still count as an edit.
+    // The flip alone must count as an edit.
     assertTrue(
         UniverseCRUDHandler.getUpdateOptions(
                 taskParams,
@@ -1456,7 +1460,6 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
                 < subTasks.indexOf(TaskType.UpdateUniverseIntent)
             && subTasks.indexOf(TaskType.UpdateUniverseIntent)
                 < subTasks.indexOf(TaskType.UpdateUniverseFields));
-    // Both attempts take over the user's load balancer; none is created under the managed name.
     verify(cloudAPI, Mockito.times(2))
         .ensureManagedLoadBalancer(any(), eq("region-1"), eq("byo-lb"), any(), any(), any());
     verify(cloudAPI)
@@ -1478,6 +1481,22 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     assertEquals(1, lbs.size());
     assertEquals("byo-lb", lbs.get(0).getName());
     assertEquals("byo-lb.elb", lbs.get(0).getAddress());
+  }
+
+  @Test
+  public void testEditTurningOnManagedLoadBalancerCannotAlsoAddNodes() {
+    Universe universe = givenUserLoadBalancer();
+    UniverseDefinitionTaskParams taskParams = performExpand(universe, false /* move master */);
+    taskParams.getPrimaryCluster().userIntent.setManagedLoadBalancer(privateLb());
+
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> commissioner.submit(TaskType.EditUniverse, taskParams));
+
+    assertEquals(
+        "An edit that turns the managed load balancer on or off cannot also add or remove nodes",
+        e.getMessage());
   }
 
   @Test
@@ -1535,7 +1554,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         .thenThrow(new RuntimeException("quota exceeded"));
     TaskInfo failed = submitTask(flipManagedLoadBalancer(universe, true));
     assertEquals(Failure, failed.getTaskState());
-    // The state names the user's load balancer, so the rollback must tell it apart.
+    // The state lists the user's load balancer, which the rollback must leave.
     assertEquals(
         "byo-lb",
         Universe.getOrBadRequest(universe.getUniverseUUID())

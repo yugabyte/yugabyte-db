@@ -668,7 +668,7 @@ public class GCPCloudImplTest extends FakeDBApplication {
   @Test
   public void testEnsureTakenOverLbKeepsTheUsersForwardingRuleAndAddress() {
     setupLbProvider();
-    // The user named only the backend service; their rule and address have other names.
+    // Only the backend service has the load balancer's name.
     when(mockApiClient.getRegionalBackendServiceIfExists(LB_REGION, LB_NAME))
         .thenReturn(new BackendService().setSelfLink(BS_URL));
     when(mockApiClient.getRegionalForwardingRulesForBackend(LB_REGION, BS_URL))
@@ -686,6 +686,27 @@ public class GCPCloudImplTest extends FakeDBApplication {
     verifyNoLbResourceCreated();
     verify(mockApiClient)
         .setForwardingRuleLabels(LB_REGION, "user-rule", "fp-u", Map.of("universe-name", "u1"));
+  }
+
+  @Test
+  public void testEnsureTakenOverLbFailsWhenTheUsersRulesMissAPort() {
+    setupLbProvider();
+    when(mockApiClient.getRegionalBackendServiceIfExists(LB_REGION, LB_NAME))
+        .thenReturn(new BackendService().setSelfLink(BS_URL));
+    when(mockApiClient.getRegionalForwardingRulesForBackend(LB_REGION, BS_URL))
+        .thenReturn(
+            List.of(
+                new ForwardingRule()
+                    .setName("user-rule")
+                    .setIPAddress("10.150.0.9")
+                    .setPorts(List.of("5433"))));
+
+    PlatformServiceException e =
+        assertThrows(PlatformServiceException.class, () -> ensureLb(lbZones, Map.of()));
+
+    assertEquals(BAD_REQUEST, e.getHttpStatus());
+    // A second address would change the address that clients use.
+    verifyNoLbResourceCreated();
   }
 
   @Test
