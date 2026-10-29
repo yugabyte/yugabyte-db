@@ -235,6 +235,7 @@ class UsearchIndex :
 
   Result<std::vector<vector_index::VectorWithDistance<DistanceResult>>> DoSearch(
       const Vector& query_vector, const vector_index::SearchOptions& options) const {
+    SCHECK(options.tenant.empty(), NotSupported, "Usearch vector indexes have no tenants");
     std::vector<vector_index::VectorWithDistance<DistanceResult>> result_vec;
     if (index_.size() == 0) {
       return result_vec;

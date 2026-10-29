@@ -77,7 +77,7 @@ struct SearchOptions {
   size_t ef;
   VectorFilter filter = [](const auto&, const auto&) { return true; };
   // Restricts the search to vectors of the tenant, see VectorTenantExtractor. Empty searches all
-  // tenants.
+  // tenants. Only hnswlib indexes with a tenant extractor support a tenant, others reject it.
   Slice tenant = Slice();
 
   std::string ToString() const {

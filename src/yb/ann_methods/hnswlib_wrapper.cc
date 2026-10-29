@@ -315,6 +315,8 @@ class HnswlibIndex :
 
   Result<std::vector<VectorWithDistance<DistanceResult>>> DoSearch(
       const Vector& query_vector, const SearchOptions& options) const {
+    SCHECK(tenant_extractor_ || options.tenant.empty(), InvalidArgument,
+           "Tenant search of a vector index without tenants");
     std::vector<VectorWithDistance<DistanceResult>> result;
     HnswlibVectorFilter filter(options.filter, this->payloads());
     auto tmp_result = tenant_extractor_

@@ -51,8 +51,13 @@ class HnswlibTenantTest : public YBTest {
     std::string tenant;
   };
 
-  void SetUp() override {
-    YBTest::SetUp();
+  // The payload of a vector in this test is its tenant.
+  static Result<Slice> TenantFromPayload(Slice payload) {
+    return payload;
+  }
+
+  static Result<VectorIndexIfPtr<FloatVector, float>> CreateIndex(
+      vector_index::VectorTenantExtractor tenant_extractor, size_t capacity) {
     const HNSWOptions options = {
         .dimensions = kDimensions,
         .num_neighbors_per_vertex = 8,
@@ -60,14 +65,19 @@ class HnswlibTenantTest : public YBTest {
         .ef_construction = 64,
         .distance_kind = DistanceKind::kL2Squared,
     };
-    // The payload of a vector in this test is its tenant.
-    auto traits = ASSERT_RESULT((CreateHnswlibIndexTraits<FloatVector, float>(
+    auto traits = VERIFY_RESULT((CreateHnswlibIndexTraits<FloatVector, float>(
         /* block_cache= */ nullptr, options, /* mem_tracker= */ nullptr,
-        [](Slice payload) -> Result<Slice> { return payload; })));
-    index_ = traits->Create(FactoryMode::kCreate, StoreVectorPayload::kTrue);
-    ASSERT_OK(index_->Reserve(
-        kNumVectors, /* max_concurrent_inserts= */ 8, /* max_concurrent_reads= */ 8,
+        std::move(tenant_extractor))));
+    auto index = traits->Create(FactoryMode::kCreate, StoreVectorPayload::kTrue);
+    RETURN_NOT_OK(index->Reserve(
+        capacity, /* max_concurrent_inserts= */ 8, /* max_concurrent_reads= */ 8,
         rocksdb::Cache::ReservationMode::kAlways));
+    return index;
+  }
+
+  void SetUp() override {
+    YBTest::SetUp();
+    index_ = ASSERT_RESULT(CreateIndex(TenantFromPayload, kNumVectors));
 
     // All tenants share the same distribution, so their vectors are close to each other.
     std::uniform_real_distribution<float> distribution(0, 1);
@@ -200,8 +210,7 @@ TEST_F(HnswlibTenantTest, RandomOrder) {
   ASSERT_NO_FATALS(CheckSearches());
 }
 
-// The first vectors of all tenants are inserted concurrently, so concurrent first inserts of a
-// tenant must not create separate clusters.
+// Vectors of all tenants are inserted concurrently, round robin over the tenants.
 TEST_F(HnswlibTenantTest, ConcurrentInserts) {
   std::vector<size_t> order(kNumVectors);
   for (size_t i = 0; i != kNumVectors; ++i) {
@@ -212,6 +221,45 @@ TEST_F(HnswlibTenantTest, ConcurrentInserts) {
       /* num_threads= */ 8, static_cast<size_t>(0), kNumVectors,
       [this, &order](size_t i) { return Insert(entries_[order[i]]); }));
   ASSERT_NO_FATALS(CheckSearches());
+}
+
+// Concurrent first inserts of a tenant into an empty index must agree on its entry point, otherwise
+// the vectors of the other inserts are cut off from the tenant.
+TEST_F(HnswlibTenantTest, ConcurrentFirstInsertsOfTenant) {
+  constexpr size_t kNumInserts = 8;
+  constexpr size_t kNumRounds = 50;
+  const Slice tenant("tenant");
+  for (size_t round = 0; round != kNumRounds; ++round) {
+    auto index = ASSERT_RESULT(CreateIndex(TenantFromPayload, kNumInserts));
+    ASSERT_OK(ProcessInParallel(
+        kNumInserts, static_cast<size_t>(0), kNumInserts,
+        [this, &index, tenant](size_t i) {
+          return index->Insert(entries_[i].id, entries_[i].vector, tenant);
+        }));
+    auto results = ASSERT_RESULT(index->Search(entries_.front().vector, SearchOptions {
+      .max_num_results = kNumInserts,
+      .ef = kEf,
+      .tenant = tenant,
+    }));
+    ASSERT_EQ(results.size(), kNumInserts) << "Round " << round;
+  }
+}
+
+// A search of a tenant needs an index whose vectors belong to tenants.
+TEST_F(HnswlibTenantTest, TenantSearchWithoutTenants) {
+  auto index = ASSERT_RESULT(CreateIndex(/* tenant_extractor= */ nullptr, /* capacity= */ 1));
+  const auto& entry = entries_.front();
+  ASSERT_OK(index->Insert(entry.id, entry.vector, Slice(entry.tenant)));
+  ASSERT_NOK(index->Search(entry.vector, SearchOptions {
+    .max_num_results = 1,
+    .ef = kEf,
+    .tenant = Slice(entry.tenant),
+  }));
+  auto results = ASSERT_RESULT(index->Search(entry.vector, SearchOptions {
+    .max_num_results = 1,
+    .ef = kEf,
+  }));
+  ASSERT_EQ(results.size(), 1U);
 }
 
 } // namespace yb::ann_methods
