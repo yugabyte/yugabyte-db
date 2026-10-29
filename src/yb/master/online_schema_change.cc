@@ -127,13 +127,61 @@ std::string OnlineSchemaChangeTabletKey(int64_t pg_job_id) {
   return Format("online_schema_change_$0", pg_job_id);
 }
 
-std::optional<int64_t> CopyingOnlineSchemaChangeJobReading(const TableInfo& table) {
-  auto l = table.LockForRead();
-  if (l->pb.has_online_schema_change_job() &&
-      IsOnlineSchemaChangeJobResumable(l->pb.online_schema_change_job().state())) {
-    return l->pb.online_schema_change_job().pg_job_id();
+std::optional<int64_t> CopyingOnlineSchemaChangeJobReading(
+    const TableInfo& table, const std::function<TableInfoPtr(const TableId&)>& find_table) {
+  TableId root_id;
+  {
+    auto l = table.LockForRead();
+    if (l->pb.has_online_schema_change_job() &&
+        IsOnlineSchemaChangeJobResumable(l->pb.online_schema_change_job().state())) {
+      return l->pb.online_schema_change_job().pg_job_id();
+    }
+    root_id = l->pb.table_backfill_source_root_id();
+  }
+  if (root_id.empty() || root_id == table.id()) {
+    return std::nullopt;
+  }
+  // The lookup may take the catalog manager lock, which must not be taken under a table lock.
+  auto root = find_table(root_id);
+  if (!root) {
+    return std::nullopt;
+  }
+  auto l = root->LockForRead();
+  if (!l->pb.has_online_schema_change_job()) {
+    return std::nullopt;
+  }
+  const auto& job = l->pb.online_schema_change_job();
+  if (IsOnlineSchemaChangeJobResumable(job.state()) &&
+      std::find(job.source_leaf_table_ids().begin(), job.source_leaf_table_ids().end(),
+                table.id()) != job.source_leaf_table_ids().end()) {
+    return job.pg_job_id();
   }
   return std::nullopt;
+}
+
+void OnlineSchemaChangeTableIds::FillDefaults(
+    const TableId& source_table_id, const TableId& target_table_id) {
+  if (source_leaves.empty()) {
+    source_leaves = {source_table_id};
+  }
+  if (target_leaves.empty()) {
+    target_leaves = {target_table_id};
+  }
+}
+
+void OnlineSchemaChangeTableIds::ToJob(OnlineSchemaChangeJobPB* job) const {
+  *job->mutable_source_leaf_table_ids() = {source_leaves.begin(), source_leaves.end()};
+  *job->mutable_target_leaf_table_ids() = {target_leaves.begin(), target_leaves.end()};
+}
+
+OnlineSchemaChangeTableIds OnlineSchemaChangeTableIdsFromJob(
+    const OnlineSchemaChangeJobPB& job, const TableId& source_table_id) {
+  OnlineSchemaChangeTableIds ids{
+      .source_leaves = {job.source_leaf_table_ids().begin(), job.source_leaf_table_ids().end()},
+      .target_leaves = {job.target_leaf_table_ids().begin(), job.target_leaf_table_ids().end()},
+  };
+  ids.FillDefaults(source_table_id, job.target_table_id());
+  return ids;
 }
 
 Result<OnlineSchemaChangeProgress> ReadOnlineSchemaChangeProgress(
@@ -552,7 +600,7 @@ Result<bool> OnlineSchemaChangeController::Adopt(
   const bool cancelling = entry.cancel_requested();
   auto status = ResolveTables(job, entry, cancelling);
   if (status.ok() && !cancelling) {
-    status = PinTarget(job, epoch);
+    status = RecordSourceRootAndPinTarget(job, epoch);
   }
   if (!status.ok()) {
     LOG(WARNING) << job.prefix << "Failed to pin the target: " << status;
@@ -564,22 +612,30 @@ Result<bool> OnlineSchemaChangeController::Adopt(
 
 Status OnlineSchemaChangeController::ResolveTables(
     Job& job, const OnlineSchemaChangeJobPB& entry, bool skip_missing) {
-  // A missing target fails the job.
-  auto target = catalog_manager_->FindTableById(entry.target_table_id());
-  job.source_leaves = {job.source_table};
-  job.target_leaves.clear();
-  if (target.ok()) {
-    job.target_leaves = {*target};
-  } else if (!skip_missing || !target.status().IsNotFound()) {
-    return target.status();
-  }
+  // A missing table fails the job: copying or pinning a subset of the hierarchy would silently
+  // lose the rest.
+  const auto ids = OnlineSchemaChangeTableIdsFromJob(entry, job.source_table->id());
+  const SkipMissingOnlineSchemaChangeTables skip(skip_missing);
+  job.source_leaves =
+      VERIFY_RESULT(catalog_manager_->GetOnlineSchemaChangeTables(ids.source_leaves, skip));
+  job.target_leaves =
+      VERIFY_RESULT(catalog_manager_->GetOnlineSchemaChangeTables(ids.target_leaves, skip));
   job.resolved = true;
   return Status::OK();
 }
 
-Status OnlineSchemaChangeController::PinTarget(const Job& job, const LeaderEpoch& epoch) {
-  // Before any copy runs, and before the capture trigger starts writing tombstones. Idempotent, so
-  // a new leader re-asserts it.
+Status OnlineSchemaChangeController::RecordSourceRootAndPinTarget(
+    const Job& job, const LeaderEpoch& epoch) {
+  // Each source leaf below the root records the root before the split wait, which is what makes
+  // the split manager see the job in time (CopyingOnlineSchemaChangeJobReading). Every target leaf
+  // is pinned before any copy runs, and before the capture trigger starts writing tombstones.
+  // Idempotent, so a new leader re-asserts them.
+  for (const auto& table : job.source_leaves) {
+    if (table != job.source_table) {
+      RETURN_NOT_OK(catalog_manager_->SetOnlineSchemaChangeSourceRoot(
+          table, job.source_table->id(), epoch));
+    }
+  }
   for (const auto& table : job.target_leaves) {
     RETURN_NOT_OK(
         catalog_manager_->PinOnlineSchemaChangeTargetDeleteMarkers(table, job.pg_job_id, epoch));

@@ -251,21 +251,14 @@ BeginOnlineSchemaChange(YbOscStepArgs *args)
 	/*
 	 * ExclusiveLock blocks DML on the source until this transaction commits.
 	 * Writes committed before that are read by the backfill and writes after
-	 * it fire the trigger, so no write falls between the two.
+	 * it fire the trigger, so no write falls between the two.  Every node of
+	 * a partition hierarchy is locked, root first as PostgreSQL does, because
+	 * a statement that names a partition locks only that partition.
 	 */
 	Relation	srcRel = table_open(srcOid, ExclusiveLock);
 	Relation	dstRel = table_open(dstOid, ExclusiveLock);
-
-	if (!IsYBRelation(srcRel) || !IsYBRelation(dstRel))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("online schema change is only supported for Yugabyte-backed tables")));
-
-	if (srcRel->rd_rel->relkind != RELKIND_RELATION ||
-		dstRel->rd_rel->relkind != RELKIND_RELATION)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("online schema change is only supported for ordinary tables")));
+	List	   *srcNodes = YbOscHierarchyNodes(srcOid, ExclusiveLock);
+	List	   *dstNodes = YbOscHierarchyNodes(dstOid, ExclusiveLock);
 
 	/* Before validation, which would reject the target the job is filling. */
 	if (YbOscHasActiveJob(srcOid, dstOid))
@@ -290,11 +283,25 @@ BeginOnlineSchemaChange(YbOscStepArgs *args)
 			 YB_OSC_TRIGGER_NAME_PREFIX, (long long) jobId);
 	YbOscCreateTrigger(srcRel, triggerName, dstOid, transformOid);
 
+	/*
+	 * The copy runs per source leaf, and the retention pins go on the target
+	 * leaves.
+	 */
+	List	   *srcLeaves = YbOscHierarchyLeaves(srcNodes);
+	List	   *dstLeaves = YbOscHierarchyLeaves(dstNodes);
+	YbcPgOnlineSchemaChangeTableLists lists = {
+		.source_leaf_oids = YbOscRelfileNodeArray(srcLeaves),
+		.num_source_leaf_oids = list_length(srcLeaves),
+		.target_leaf_oids = YbOscRelfileNodeArray(dstLeaves),
+		.num_target_leaf_oids = list_length(dstLeaves),
+	};
+
 	HandleYBStatus(YBCPgStartTableBackfill(MyDatabaseId,
 										   YbGetRelfileNodeId(srcRel),
 										   YbGetRelfileNodeId(dstRel),
 										   transformOid,
-										   backfillTimeHt, jobId));
+										   backfillTimeHt, jobId,
+										   &lists));
 
 	table_close(dstRel, NoLock);
 	table_close(srcRel, NoLock);
@@ -372,6 +379,8 @@ yb_wait_mirror_table(PG_FUNCTION_ARGS)
 	 */
 	LockRelationOid(job.source_table_oid, ShareUpdateExclusiveLock);
 	LockRelationOid(job.target_table_oid, ShareUpdateExclusiveLock);
+	(void) YbOscHierarchyNodes(job.source_table_oid, ShareUpdateExclusiveLock);
+	(void) YbOscHierarchyNodes(job.target_table_oid, ShareUpdateExclusiveLock);
 
 	/* A finish or an abort may have committed while this waited. */
 	FetchJobOrError(jobId, &job);
@@ -391,6 +400,9 @@ FinishOnlineSchemaChange(YbOscStepArgs *args)
 
 	Relation	srcRel = table_open(srcOid, AccessExclusiveLock);
 	Relation	dstRel = table_open(dstOid, AccessExclusiveLock);
+
+	(void) YbOscHierarchyNodes(srcOid, AccessExclusiveLock);
+	(void) YbOscHierarchyNodes(dstOid, AccessExclusiveLock);
 
 	/* Again under the locks: a concurrent finish or abort may have ended it. */
 	YbOscJob	job;
@@ -452,11 +464,13 @@ FinishOnlineSchemaChange(YbOscStepArgs *args)
  * yb_finish_mirror_table(job_id)
  *
  * Cut over: drop the capture trigger, rename the source to
- * yb_osc_old_<job_id> and give the target the source's name.  The old source
- * is left for the operator to inspect and drop.  AccessExclusiveLock on both
- * tables keeps a write from landing on the source between the trigger drop
- * and the renames, where it would be lost.  If the commit fails, the job stays
- * active and finish can be run again.
+ * yb_osc_old_<job_id> and give the target the source's name.  Only the roots
+ * are renamed; partitions follow them by OID.  The old source is left for the
+ * operator to inspect and drop.  AccessExclusiveLock on every node of both
+ * hierarchies (DML addressed to a leaf locks only that leaf) keeps a write
+ * from landing on the source between the trigger drop and the renames, where
+ * it would be lost.  If the commit fails, the job stays active and finish can
+ * be run again.
  */
 Datum
 yb_finish_mirror_table(PG_FUNCTION_ARGS)
@@ -485,6 +499,9 @@ AbortOnlineSchemaChange(YbOscStepArgs *args)
 	 * master's job entry with it, so only the row is left to update.
 	 */
 	Relation	srcRel = try_table_open(srcOid, AccessExclusiveLock);
+
+	if (srcRel != NULL)
+		(void) YbOscHierarchyNodes(srcOid, AccessExclusiveLock);
 
 	/* Again under the lock: a concurrent finish or abort may have ended it. */
 	YbOscJob	job;

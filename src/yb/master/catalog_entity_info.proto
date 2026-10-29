@@ -84,6 +84,9 @@ message OnlineSchemaChangeJobPB {
   // A job that has it stops copying and ends CANCELLED, on this leader or at the next resume.
   // Nothing sets it: the SQL interface stops a job with AbortTableBackfill.
   optional bool cancel_requested = 10;
+  // See OnlineSchemaChangeTableIds; empty lists mean the source table / target_table_id alone.
+  repeated string source_leaf_table_ids = 11;
+  repeated string target_leaf_table_ids = 12;
   // Written with the terminal state: a SUCCESS job drops the per-tablet resume keys they are
   // otherwise derived from.
   optional int32 num_tablets_done = 15;
@@ -296,6 +299,12 @@ message SysTablesEntryPB {
   // While it is set, GetBackfillStatus reports BACKFILL_UNKNOWN so that the tserver tablet
   // validator does not clear the property; the controller releases pins whose job has finished.
   optional int64 table_backfill_pin_job_id = 47;
+
+  // On every source leaf of an online schema change backfill below its root: the root, whose
+  // online_schema_change_job holds the job. Lets the split manager find the job that reads a source
+  // leaf. Written when the job is adopted and never cleared: a root whose job no longer lists the
+  // leaf does not affect it.
+  optional bytes table_backfill_source_root_id = 48;
 }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for

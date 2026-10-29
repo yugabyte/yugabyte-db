@@ -297,6 +297,9 @@ message PgStartTableBackfillRequestPB {
   uint32 transform_fn_oid = 4;
   uint64 backfill_timestamp = 5;
   int64 pg_job_id = 6;
+  // Relfilenode oids in source_table_id's database; see StartTableBackfillRequestPB.
+  repeated uint32 source_leaf_table_oids = 8;
+  repeated uint32 target_leaf_table_oids = 9;
 }
 
 message PgStartTableBackfillResponsePB {

@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <functional>
 #include <unordered_set>
 
 #include "yb/master/leader_epoch.h"
@@ -61,11 +62,14 @@ class TabletSplitManager {
 
   // Table-level checks for splitting that are checked not only as a best-effort
   // filter, but also after acquiring the table/tablet locks in CatalogManager::DoSplit.
+  // `find_table` resolves other tables the checks read; it defaults to
+  // CatalogManagerIf::GetTableInfo, which a caller holding the catalog manager lock must replace.
   Status ValidateSplitCandidateTable(
       const TableInfoPtr& table,
       IgnoreDisabledList ignore_disabled_list = IgnoreDisabledList::kFalse,
       IgnoreVectorIndexesValidation ignore_vector_indexes_validation =
-          IgnoreVectorIndexesValidation::kFalse);
+          IgnoreVectorIndexesValidation::kFalse,
+      const std::function<TableInfoPtr(const TableId&)>& find_table = {});
 
   // Tablet-level checks for splitting that are checked not only as a best-effort
   // filter, but also after acquiring the table/tablet locks in CatalogManager::DoSplit.

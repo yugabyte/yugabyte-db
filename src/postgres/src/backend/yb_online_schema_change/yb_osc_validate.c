@@ -25,6 +25,7 @@
 #include "access/transam.h"
 #include "catalog/dependency.h"
 #include "catalog/pg_attribute.h"
+#include "catalog/pg_class.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_inherits.h"
 #include "catalog/pg_proc.h"
@@ -35,6 +36,7 @@
 #include "nodes/nodeFuncs.h"
 #include "optimizer/clauses.h"
 #include "optimizer/optimizer.h"
+#include "partitioning/partdesc.h"
 #include "pg_yb_utils.h"
 #include "utils/acl.h"
 #include "utils/array.h"
@@ -64,35 +66,176 @@ EnsureSameSchema(Relation srcRel, Relation dstRel)
 }
 
 /*
- * pg_inherits names tables by OID, so the cutover rename would leave the
- * renamed table in the hierarchy while its replacement stands outside it.
- * DML addressed to an ancestor would also fire no statement trigger on rel,
- * and the copy would read an inheritance parent together with its children.
+ * Open one node of a hierarchy whose root the caller already has open.
+ * NoLock: yb_begin_mirror_table has locked every node.
+ */
+static Relation
+NodeOpen(Oid relOid, Relation root)
+{
+	return relOid == RelationGetRelid(root) ? root : table_open(relOid, NoLock);
+}
+
+static void
+NodeClose(Relation rel, Relation root)
+{
+	if (rel != root)
+		table_close(rel, NoLock);
+}
+
+/*
+ * A foreign key declared on a partition itself, rather than inherited from
+ * the root, is invisible to the promotion, the cutover gate and the archive
+ * cleanup, which all read the root's constraints.
  */
 static void
-EnsureNotInHierarchy(Relation rel, bool isSource)
+EnsureNoPartitionLocalForeignKeys(Relation rel)
+{
+	ScanKeyData key[1];
+
+	ScanKeyInit(&key[0], Anum_pg_constraint_conrelid, BTEqualStrategyNumber,
+				F_OIDEQ, ObjectIdGetDatum(RelationGetRelid(rel)));
+
+	Relation	pgConstraint = table_open(ConstraintRelationId, AccessShareLock);
+	SysScanDesc scan = systable_beginscan(pgConstraint, ConstraintRelidTypidNameIndexId,
+										  true /* indexOK */ , NULL /* snapshot */ ,
+										  1 /* nkeys */ , key);
+	HeapTuple	tuple;
+
+	while (HeapTupleIsValid(tuple = systable_getnext(scan)))
+	{
+		Form_pg_constraint con = (Form_pg_constraint) GETSTRUCT(tuple);
+
+		if (con->contype != CONSTRAINT_FOREIGN || OidIsValid(con->conparentid))
+			continue;
+
+		char	   *conname = pstrdup(NameStr(con->conname));
+
+		systable_endscan(scan);
+		table_close(pgConstraint, AccessShareLock);
+
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("partition \"%s\" of the source declares its own foreign key",
+						RelationGetRelationName(rel)),
+				 errdetail("Constraint \"%s\" is not inherited from the root, so it would be "
+						   "neither promoted to the target nor dropped at cutover.",
+						   conname),
+				 errhint("Declare the foreign key on the root table instead.")));
+	}
+
+	systable_endscan(scan);
+	table_close(pgConstraint, AccessShareLock);
+}
+
+/*
+ * Reject a hierarchy the online schema change cannot copy or capture.  A
+ * partition pending DETACH CONCURRENTLY still receives routed writes but is
+ * about to leave the tree; a source leaf needs a primary key because the copy
+ * orders and resumes by it.
+ */
+static void
+EnsureHierarchySupported(Relation root, List *nodes, bool isSource)
 {
 	const char *role = isSource ? "source" : "target";
+	ListCell   *lc;
 
-	if (rel->rd_rel->relispartition)
+	/*
+	 * DML addressed to an ancestor fires no statement trigger on a partition,
+	 * and the cutover rename would leave the renamed partition attached while
+	 * its replacement stands outside the hierarchy.
+	 */
+	if (root->rd_rel->relispartition)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("%s table \"%s\" is a partition", role,
-						RelationGetRelationName(rel))));
+						RelationGetRelationName(root)),
+				 errhint("Run the online schema change on the root of the partition hierarchy instead.")));
 
-	if (has_superclass(RelationGetRelid(rel)))
+	/*
+	 * Legacy inheritance has the same problem: pg_inherits names tables by
+	 * OID, so the cutover rename leaves the archive in the hierarchy.  The
+	 * copy would also read an inheritance parent together with its children.
+	 */
+	if (has_superclass(RelationGetRelid(root)))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("%s table \"%s\" inherits from another table", role,
-						RelationGetRelationName(rel)),
+						RelationGetRelationName(root)),
 				 errdetail("Online schema change of tables that use table inheritance is not supported.")));
 
-	if (find_inheritance_children(RelationGetRelid(rel), NoLock) != NIL)
+	foreach(lc, nodes)
+	{
+		Oid			relOid = lfirst_oid(lc);
+		Relation	rel = NodeOpen(relOid, root);
+		char		relkind = rel->rd_rel->relkind;
+
+		if (rel != root && !rel->rd_rel->relispartition)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("%s table \"%s\" has inheritance children", role,
+							RelationGetRelationName(root)),
+					 errdetail("Online schema change of tables that use table inheritance is not supported.")));
+
+		if (relkind != RELKIND_RELATION && relkind != RELKIND_PARTITIONED_TABLE)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("online schema change is only supported for ordinary and partitioned tables"),
+					 errdetail("\"%s\" in the %s hierarchy is not one.",
+							   RelationGetRelationName(rel), role)));
+
+		if (!IsYBRelation(rel))
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("online schema change is only supported for Yugabyte-backed tables"),
+					 errdetail("\"%s\" in the %s hierarchy is not one.",
+							   RelationGetRelationName(rel), role)));
+
+		/*
+		 * find_all_inheritors omits a partition whose DETACH CONCURRENTLY
+		 * has committed its first transaction, so ask each parent instead.
+		 */
+		if (relkind == RELKIND_PARTITIONED_TABLE)
+		{
+			bool		detachedExist = false;
+
+			(void) find_inheritance_children_extended(relOid, false /* omit_detached */ ,
+													  NoLock, &detachedExist, NULL);
+			if (detachedExist)
+				ereport(ERROR,
+						(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+						 errmsg("a partition of \"%s\" in the %s hierarchy is being detached",
+								RelationGetRelationName(rel), role),
+						 errhint("Finalize the detach with ALTER TABLE ... DETACH PARTITION "
+								 "... FINALIZE first.")));
+		}
+
+		if (isSource && relkind == RELKIND_RELATION)
+		{
+			(void) YbOscGetPrimaryKeyAttnums(rel);
+
+			/*
+			 * The copy checkpoints and drains per tablet; leaves sharing a
+			 * colocation tablet would share that state too.
+			 */
+			if (YbGetTableProperties(rel)->is_colocated)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("online schema change of a colocated table is not supported"),
+						 errdetail("\"%s\" in the source hierarchy is colocated.",
+								   RelationGetRelationName(rel))));
+		}
+
+		if (isSource && rel != root)
+			EnsureNoPartitionLocalForeignKeys(rel);
+
+		NodeClose(rel, root);
+	}
+
+	if (isSource && YbOscHierarchyLeaves(nodes) == NIL)
 		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("%s table \"%s\" has inheritance children", role,
-						RelationGetRelationName(rel)),
-				 errdetail("Online schema change of tables that use table inheritance is not supported.")));
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("source table \"%s\" has no partitions",
+						RelationGetRelationName(root))));
 }
 
 /*
@@ -219,28 +362,39 @@ ValidateTransformFn(Oid transformFnOid, Relation srcRel, Relation dstRel)
 }
 
 /*
- * The columns some index of dstRel covers.  *allIndexed is set if an index
- * covers the whole row.
+ * The target columns some index of the target hierarchy covers, as attnums of
+ * dstRel, matched by name.  *allIndexed is set if an index covers the whole
+ * row.
  */
 static Bitmapset *
-IndexedTargetColumns(Relation dstRel, bool *allIndexed)
+IndexedTargetColumns(Relation dstRel, List *dstNodes, bool *allIndexed)
 {
-	Bitmapset  *indexed = RelationGetIndexAttrBitmap(dstRel, INDEX_ATTR_BITMAP_ALL);
-	int			offset = YBGetFirstLowInvalidAttributeNumber(dstRel);
 	Bitmapset  *result = NULL;
-	int			bit = -1;
+	ListCell   *lc;
 
 	*allIndexed = false;
-	while ((bit = bms_next_member(indexed, bit)) >= 0)
+	foreach(lc, dstNodes)
 	{
-		AttrNumber	attnum = bit + offset;
+		Relation	rel = NodeOpen(lfirst_oid(lc), dstRel);
+		Bitmapset  *indexed = RelationGetIndexAttrBitmap(rel, INDEX_ATTR_BITMAP_ALL);
+		int			offset = YBGetFirstLowInvalidAttributeNumber(rel);
+		int			bit = -1;
 
-		if (attnum == InvalidAttrNumber)
-			*allIndexed = true;
-		else if (attnum > 0)
-			result = bms_add_member(result, attnum);
+		while ((bit = bms_next_member(indexed, bit)) >= 0)
+		{
+			AttrNumber	attnum = bit + offset;
+
+			if (attnum == InvalidAttrNumber)
+				*allIndexed = true;
+			else if (attnum > 0)
+				result = bms_add_member(result,
+										get_attnum(RelationGetRelid(dstRel),
+												   get_attname(RelationGetRelid(rel),
+															   attnum, false)));
+		}
+		bms_free(indexed);
+		NodeClose(rel, dstRel);
 	}
-	bms_free(indexed);
 	return result;
 }
 
@@ -419,7 +573,8 @@ CheckTransformColumn(const YbOscTransformCheck *chk, Node *expr,
  * ValidateTransformFn has checked that these set search_path.
  */
 static void
-CheckTransformBody(Oid transformFnOid, Relation srcRel, Relation dstRel)
+CheckTransformBody(Oid transformFnOid, Relation srcRel, Relation dstRel,
+				   List *dstNodes)
 {
 	YbOscSingleReturnExprFn singleReturnExpr = (YbOscSingleReturnExprFn)
 		load_external_function("$libdir/plpgsql",
@@ -470,7 +625,7 @@ CheckTransformBody(Oid transformFnOid, Relation srcRel, Relation dstRel)
 	row = (RowExpr *) expr;
 
 	witness = YbOscGetKeyWitnessAttnums(srcRel, dstRel);
-	indexed = IndexedTargetColumns(dstRel, &allIndexed);
+	indexed = IndexedTargetColumns(dstRel, dstNodes, &allIndexed);
 
 	i = 0;
 	foreach(lc, row->args)
@@ -687,15 +842,17 @@ EnsureForeignKeyColumnsOnTarget(Relation srcRel, Relation dstRel)
 }
 
 /*
- * The copy reads the source and writes the target as the owner of the
+ * The copy reads each source leaf and writes the target as the owner of the
  * transform (see yb_backfill_online_schema_change_chunk).  The caller must
  * have that owner's privileges, so that the job cannot run code with
  * privileges the caller lacks, and the owner must be allowed to read and
  * write the tables.  Checked here so that the job fails before it starts
- * rather than on its first chunk.
+ * rather than on its first chunk.  Rows routed to a partition are checked
+ * against the privileges on the table the INSERT names only, which is the
+ * target root, but a leaf is scanned by name and may have an owner of its own.
  */
 static void
-EnsureTransformOwnerCanCopy(Oid transformFnOid, Relation srcRel, Relation dstRel)
+EnsureTransformOwnerCanCopy(Oid transformFnOid, List *srcNodes, Relation dstRel)
 {
 	Oid			owner = YbOscTransformOwner(transformFnOid);
 	char	   *fnName = get_func_name(transformFnOid);
@@ -706,15 +863,22 @@ EnsureTransformOwnerCanCopy(Oid transformFnOid, Relation srcRel, Relation dstRel
 				 errmsg("must be owner of transform function %s", fnName),
 				 errdetail("The copy runs the transform with the privileges of its owner.")));
 
-	if (pg_class_aclcheck(RelationGetRelid(srcRel), owner, ACL_SELECT) != ACLCHECK_OK)
-		ereport(ERROR,
-				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("owner of transform function %s cannot read table \"%s\"",
-						fnName, RelationGetRelationName(srcRel)),
-				 errdetail("The copy reads the source as the owner of the transform."),
-				 errhint("Grant SELECT on table \"%s\" to role \"%s\".",
-						 RelationGetRelationName(srcRel),
-						 GetUserNameFromId(owner, false))));
+	ListCell   *lc;
+
+	foreach(lc, srcNodes)
+	{
+		Oid			relOid = lfirst_oid(lc);
+
+		if (pg_class_aclcheck(relOid, owner, ACL_SELECT) != ACLCHECK_OK)
+			ereport(ERROR,
+					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+					 errmsg("owner of transform function %s cannot read table \"%s\"",
+							fnName, get_rel_name(relOid)),
+					 errdetail("The copy reads the source as the owner of the transform."),
+					 errhint("Grant SELECT on table \"%s\" to role \"%s\".",
+							 get_rel_name(relOid),
+							 GetUserNameFromId(owner, false))));
+	}
 
 	if (pg_class_aclcheck(RelationGetRelid(dstRel), owner,
 						  ACL_INSERT) != ACLCHECK_OK)
@@ -731,51 +895,120 @@ EnsureTransformOwnerCanCopy(Oid transformFnOid, Relation srcRel, Relation dstRel
 /*
  * The copy writes blindly and nothing deletes from the target, so a row that
  * is already there and has no counterpart in the source would survive the
- * cutover as live data.  yb_begin_mirror_table holds ExclusiveLock on the
- * target, so no row can arrive between this probe and the start of the job.
+ * cutover as live data.  yb_begin_mirror_table holds ExclusiveLock on every
+ * target node, so no row can arrive between this probe and the start of the
+ * job.
  */
 static void
-EnsureTargetEmpty(Relation dstRel)
+EnsureTargetEmpty(Relation dstRel, List *dstNodes)
 {
-	TableScanDesc scan = table_beginscan(dstRel, GetActiveSnapshot(), 0, NULL);
-	TupleTableSlot *slot = table_slot_create(dstRel, NULL);
-	bool		hasRow = table_scan_getnextslot(scan, ForwardScanDirection, slot);
+	ListCell   *lc;
 
-	ExecDropSingleTupleTableSlot(slot);
-	table_endscan(scan);
+	foreach(lc, YbOscHierarchyLeaves(dstNodes))
+	{
+		Relation	rel = NodeOpen(lfirst_oid(lc), dstRel);
+		TableScanDesc scan = table_beginscan(rel, GetActiveSnapshot(), 0, NULL);
+		TupleTableSlot *slot = table_slot_create(rel, NULL);
+		bool		hasRow = table_scan_getnextslot(scan, ForwardScanDirection, slot);
 
-	/*
-	 * The scan cached the target's DocDB schema, whose version the backfill's
-	 * delete-marker pin is about to bump.  A trigger write through the stale
-	 * entry would fail with a schema version mismatch.
-	 */
-	YBCPgAlterTableInvalidateTableByOid(YBCGetDatabaseOid(dstRel),
-										YbGetRelfileNodeId(dstRel));
+		ExecDropSingleTupleTableSlot(slot);
+		table_endscan(scan);
 
-	if (hasRow)
-		ereport(ERROR,
-				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("target table \"%s\" is not empty",
-						RelationGetRelationName(dstRel)),
-				 errdetail("Rows already in the target would survive the cutover."),
-				 errhint("Truncate the target table first.")));
+		/*
+		 * The scan cached the leaf's DocDB schema, whose version the
+		 * backfill's delete-marker pin is about to bump.  A trigger write
+		 * through the stale entry would fail with a schema version mismatch.
+		 */
+		YBCPgAlterTableInvalidateTableByOid(YBCGetDatabaseOid(rel),
+											YbGetRelfileNodeId(rel));
+		NodeClose(rel, dstRel);
+
+		if (hasRow)
+			ereport(ERROR,
+					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+					 errmsg("target table \"%s\" is not empty",
+							RelationGetRelationName(dstRel)),
+					 errdetail("Rows already in the target would survive the cutover."),
+					 errhint("Truncate the target table first.")));
+	}
 }
 
+static bool
+HierarchyHasDefaultPartition(Relation root, List *nodes)
+{
+	ListCell   *lc;
+
+	foreach(lc, nodes)
+	{
+		Relation	rel = NodeOpen(lfirst_oid(lc), root);
+		bool		hasDefault =
+			rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE &&
+			OidIsValid(get_default_oid_from_partdesc(RelationGetPartitionDesc(rel, true)));
+
+		NodeClose(rel, root);
+		if (hasDefault)
+			return true;
+	}
+	return false;
+}
+
+/*
+ * Schema, key witness, transform signature and foreign-key columns are checked
+ * on the roots only: partitions may live in any schema, a unique index on a
+ * partitioned table spans the whole table because it must include the
+ * partition key, and the transform maps root rowtype to root
+ * rowtype.  Everything that concerns what the online schema change writes, or
+ * what could reach a table behind its back, is checked on every node.
+ */
 void
 YbOscValidate(Relation srcRel, Relation dstRel, Oid transformFnOid)
 {
+	List	   *srcNodes = YbOscHierarchyNodes(RelationGetRelid(srcRel), NoLock);
+	List	   *dstNodes = YbOscHierarchyNodes(RelationGetRelid(dstRel), NoLock);
+	ListCell   *lc;
+
 	EnsureSameSchema(srcRel, dstRel);
-	EnsureNotInHierarchy(srcRel, true /* isSource */ );
-	EnsureNotInHierarchy(dstRel, false /* isSource */ );
+	EnsureHierarchySupported(srcRel, srcNodes, true /* isSource */ );
+	EnsureHierarchySupported(dstRel, dstNodes, false /* isSource */ );
 	ValidateKeyWitness(srcRel, dstRel);
 
 	(void) ValidateTransformFn(transformFnOid, srcRel, dstRel);
-	CheckTransformBody(transformFnOid, srcRel, dstRel);
-	EnsureDstNoForeignKeys(dstRel);
-	EnsureDstNoGeneratedColumns(dstRel);
-	EnsureDstNoOwnedSequences(dstRel);
-	EnsureSrcNoIncomingForeignKeys(srcRel);
+	CheckTransformBody(transformFnOid, srcRel, dstRel, dstNodes);
+
+	foreach(lc, dstNodes)
+	{
+		Relation	rel = NodeOpen(lfirst_oid(lc), dstRel);
+
+		EnsureDstNoForeignKeys(rel);
+		EnsureDstNoGeneratedColumns(rel);
+		EnsureDstNoOwnedSequences(rel);
+		NodeClose(rel, dstRel);
+	}
+
+	foreach(lc, srcNodes)
+	{
+		Relation	rel = NodeOpen(lfirst_oid(lc), srcRel);
+
+		EnsureSrcNoIncomingForeignKeys(rel);
+		NodeClose(rel, srcRel);
+	}
+
 	EnsureForeignKeyColumnsOnTarget(srcRel, dstRel);
-	EnsureTransformOwnerCanCopy(transformFnOid, srcRel, dstRel);
-	EnsureTargetEmpty(dstRel);
+	EnsureTransformOwnerCanCopy(transformFnOid, srcNodes, dstRel);
+	EnsureTargetEmpty(dstRel, dstNodes);
+
+	/*
+	 * A default partition on the target accepts any row, which can mask a
+	 * transform that sends rows to the wrong place.
+	 */
+	if (HierarchyHasDefaultPartition(dstRel, dstNodes) &&
+		!HierarchyHasDefaultPartition(srcRel, srcNodes))
+		ereport(NOTICE,
+				(errmsg("target table \"%s\" has a default partition but source table "
+						"\"%s\" does not",
+						RelationGetRelationName(dstRel),
+						RelationGetRelationName(srcRel)),
+				 errdetail("Rows the transform maps outside every other partition's "
+						   "bounds will land in the default partition instead of "
+						   "failing the job.")));
 }

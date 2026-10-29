@@ -21,6 +21,7 @@
 #include "executor/spi.h"
 #include "funcapi.h"
 #include "miscadmin.h"
+#include "parser/parse_type.h"
 #include "pg_yb_utils.h"
 #include "utils/builtins.h"
 #include "utils/guc.h"
@@ -190,11 +191,35 @@ yb_backfill_online_schema_change_chunk(PG_FUNCTION_ARGS)
 	char	   *bfinstrHex = HexEncodeBytea(bfinstrBytea);
 
 	/*
+	 * srcOid is the tablet's own table, which for a partitioned source is a
+	 * leaf.  The transform is defined on the source root (its argument type),
+	 * so it is compiled against the root while the scan runs against the leaf.
+	 * dstOid is always the target root, and the INSERT routes each row like
+	 * any other INSERT.  The root is locked before the leaf, the order
+	 * begin/finish/abort use.
+	 */
+	Oid		   *argtypes;
+	int			nargs;
+
+	(void) get_func_signature(transformOid, &argtypes, &nargs);
+
+	Oid			srcRootOid = typeidTypeRelid(argtypes[0]);
+
+	if (!list_member_oid(YbOscHierarchyNodes(srcRootOid, NoLock), srcOid))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_TABLE),
+				 errmsg("relation %u is not in the partition hierarchy of \"%s\"",
+						srcOid, get_rel_name(srcRootOid))));
+
+	/*
 	 * The target is locked in the mode the INSERT takes, and every lock is
 	 * kept until the end of the transaction, so the INSERT never upgrades a
 	 * lock and the relations cannot change between deparsing and execution.
 	 */
-	Relation	srcRel = table_open(srcOid, AccessShareLock);
+	Relation	srcRootRel = table_open(srcRootOid, AccessShareLock);
+	Relation	srcRel = srcRootOid == srcOid ? srcRootRel :
+		table_open(srcOid, AccessShareLock);
+
 	Oid			saveUserId;
 	int			saveSecContext;
 
@@ -210,7 +235,12 @@ yb_backfill_online_schema_change_chunk(PG_FUNCTION_ARGS)
 	char	   *dstQual = YbOscQuoteQualifiedRelName(dstRel);
 	char	   *dstCols = BuildDstColumnList(RelationGetDescr(dstRel));
 
-	YbOscTransform *xf = YbOscCompileTransform(transformOid, srcRel,
+	/*
+	 * The transform takes the source root's rowtype, which can differ from
+	 * the leaf's, so its call is deparsed against the root into column names,
+	 * which the leaf scan resolves by name.
+	 */
+	YbOscTransform *xf = YbOscCompileTransform(transformOid, srcRootRel,
 											   dstRel);
 
 	/*
@@ -228,12 +258,14 @@ yb_backfill_online_schema_change_chunk(PG_FUNCTION_ARGS)
 							 GUC_ACTION_SAVE, true, 0, false);
 	YbOscForceSpeculativePl();
 
-	char	   *selectList = YbOscTransformDeparse(xf, srcRel, dstRel);
+	char	   *selectList = YbOscTransformDeparse(xf, srcRootRel, dstRel);
 	char	   *fromList = psprintf("%s AS s CROSS JOIN LATERAL %s AS t", srcQual,
-									YbOscTransformDeparseCall(xf, srcRel));
+									YbOscTransformDeparseCall(xf, srcRootRel));
 
 	table_close(dstRel, NoLock);
-	table_close(srcRel, NoLock);
+	if (srcRel != srcRootRel)
+		table_close(srcRel, NoLock);
+	table_close(srcRootRel, NoLock);
 
 	/*
 	 * No LIMIT: pggate applies the tablet scope, row limit and resume key to
