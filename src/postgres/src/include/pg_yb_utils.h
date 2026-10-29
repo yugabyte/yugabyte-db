@@ -1118,6 +1118,7 @@ typedef struct YbDdlOriginalStmtState
 {
 	NodeTag		node_tag;
 	CommandTag	command_tag;
+	bool		is_analyze;
 	bool		is_top_level_ddl_active;
 } YbDdlOriginalStmtState;
 

@@ -1281,13 +1281,14 @@ typedef struct YbCatalogMessageList
 } YbCatalogMessageList;
 
 /*
- * Some SQL statements require to switch to other userid (e.g. table owner's
- * userid) and lock down security-restricted operations during execution.
- * PG saves and restores userid and SecurityRestrictionContext properly during
- * normal execution. They aren't restored when an exception happens so that the
- * normal execution is aborted. This struct is used to record userid and
- * SecurityRestrictionContextwe so that we can properly restore the saved values
- * during query retries when the normal execution is aborted.
+ * A multi-table ANALYZE commits once per table, and analyzes each table as
+ * its owner under SECURITY_RESTRICTED_OPERATION. When it fails, the query
+ * layer retry in postgres.c restarts only the YB transaction and does not
+ * abort the PG transaction, so PG's abort-time restore of the userid and
+ * SecurityRestrictionContext does not run, and StartTransactionCommand
+ * asserts on the leftover context when the retry re-executes. This records
+ * the context the ANALYZE started with, so that YBResetDdlState can restore
+ * it from the PG_CATCH in YBTxnDdlProcessUtility before the retry.
  */
 typedef struct YbUserIdAndSecContext
 {
@@ -1316,6 +1317,13 @@ typedef struct
 	 * increment the catalog version. See YbDdlCannotIncrementCatalogVersion.
 	 */
 	bool		stmt_cannot_increment_version;
+	/*
+	 * Whether the statement named by current_stmt_node_tag is an ANALYZE.
+	 * Kept apart from current_stmt_ddl_command_tag because YbGetDdlMode
+	 * clears that tag for a DDL that does not increment the catalog version,
+	 * such as an ANALYZE of only temporary tables.
+	 */
+	bool		current_stmt_is_analyze;
 	CommandTag	current_stmt_ddl_command_tag;
 	CommandTag	last_stmt_ddl_command_tag;
 	/*
@@ -2726,6 +2734,7 @@ YBGetDdlOriginalStmtState(YbDdlOriginalStmtState *state)
 {
 	state->node_tag = ddl_transaction_state.current_stmt_node_tag;
 	state->command_tag = ddl_transaction_state.current_stmt_ddl_command_tag;
+	state->is_analyze = ddl_transaction_state.current_stmt_is_analyze;
 	state->is_top_level_ddl_active = ddl_transaction_state.is_top_level_ddl_active;
 }
 
@@ -2734,6 +2743,7 @@ YBSetDdlOriginalStmtState(const YbDdlOriginalStmtState *state)
 {
 	ddl_transaction_state.current_stmt_node_tag = state->node_tag;
 	ddl_transaction_state.current_stmt_ddl_command_tag = state->command_tag;
+	ddl_transaction_state.current_stmt_is_analyze = state->is_analyze;
 	ddl_transaction_state.is_top_level_ddl_active = state->is_top_level_ddl_active;
 }
 
@@ -2754,14 +2764,7 @@ YbSetIsGlobalDDL()
 static bool
 CheckIsAnalyzeDDL()
 {
-	if (ddl_transaction_state.current_stmt_node_tag == T_VacuumStmt)
-	{
-		CommandTag	cmdtag = ddl_transaction_state.current_stmt_ddl_command_tag;
-
-		Assert(cmdtag);
-		return cmdtag == CMDTAG_ANALYZE;
-	}
-	return false;
+	return ddl_transaction_state.current_stmt_is_analyze;
 }
 
 void
@@ -3829,6 +3832,22 @@ YbIsTopLevelOrAtomicStatement(ProcessUtilityContext context)
 }
 
 /*
+ * Undo YbGetDdlMode's write of is_top_level_ddl_active once the statement is
+ * done. A top-level statement clears it: not all statements (for eg. DMLs)
+ * call YBTxnDdlProcessUtility and hence YbGetDdlMode, so it cannot wait to be
+ * unset upon receiving the next statement. An atomic statement runs inside
+ * an enclosing one and restores the value that statement had.
+ */
+static void
+YbRestoreIsTopLevelDdlActive(ProcessUtilityContext context, bool prev_value)
+{
+	if (context == PROCESS_UTILITY_TOPLEVEL)
+		ddl_transaction_state.is_top_level_ddl_active = false;
+	else if (YbIsTopLevelOrAtomicStatement(context))
+		ddl_transaction_state.is_top_level_ddl_active = prev_value;
+}
+
+/*
  * This function tells if a statement can never increment the catalog version.
  *
  * This function examines the statement. It does not examine the DDL mode,
@@ -3931,13 +3950,23 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 				ddl_transaction_state.current_stmt_ddl_command_tag;
 		ddl_transaction_state.current_stmt_ddl_command_tag =
 			CreateCommandTag(parsetree);
+		ddl_transaction_state.current_stmt_is_analyze =
+			(node_tag == T_VacuumStmt &&
+			 ddl_transaction_state.current_stmt_ddl_command_tag == CMDTAG_ANALYZE);
 		/*
-		 * Only a top-level ANALYZE runs in multiple transactions. An ANALYZE
-		 * via SPI can run with a switched user, e.g. inside REFRESH
-		 * MATERIALIZED VIEW CONCURRENTLY or a SECURITY DEFINER function, and
-		 * YBResetDdlState must not restore that user after the abort.
+		 * See YbUserIdAndSecContext. Only a top-level ANALYZE commits per
+		 * table, and only in legacy mode can the query layer retry it: with
+		 * transactional DDL, READ COMMITTED refuses to retry a DDL and the
+		 * other isolation levels retry ANALYZE only when it is listed in
+		 * yb_extra_commands_to_retry. Saving in any other case is harmful:
+		 * YBResetDdlState then restores the context after AbortTransaction
+		 * has already restored the session's own. That leaks a SET ROLE
+		 * rolled back with the transaction, or the matview owner and
+		 * SECURITY_RESTRICTED_OPERATION of an ANALYZE that REFRESH
+		 * MATERIALIZED VIEW CONCURRENTLY runs through SPI.
 		 */
-		if (context == PROCESS_UTILITY_TOPLEVEL && CheckIsAnalyzeDDL() &&
+		if (context == PROCESS_UTILITY_TOPLEVEL &&
+			!YBIsDdlTransactionBlockEnabled() && CheckIsAnalyzeDDL() &&
 			!ddl_transaction_state.userid_and_sec_context.is_set)
 		{
 			Oid			save_userid;
@@ -4812,6 +4841,14 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 		ddl_transaction_state.global_ddl_command_tag;
 	const CommandTag prev_breaking_ddl_command_tag =
 		ddl_transaction_state.breaking_ddl_command_tag;
+	/*
+	 * A DDL run through SPI, e.g. by REFRESH MATERIALIZED VIEW CONCURRENTLY or
+	 * an event trigger, must hand back the enclosing statement's value when it
+	 * finishes. Clearing it would let the query layer retry the enclosing DDL
+	 * in READ COMMITTED, see postgres.c.
+	 */
+	const bool	prev_is_top_level_ddl_active =
+		ddl_transaction_state.is_top_level_ddl_active;
 	const YbDdlModeOptional ddl_mode =
 		YbGetDdlMode(pstmt, context, &should_run_in_autonomous_transaction);
 
@@ -4852,8 +4889,7 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 		}
 		PG_CATCH();
 		{
-			if (YbIsTopLevelOrAtomicStatement(context))
-				ddl_transaction_state.is_top_level_ddl_active = false;
+			YbRestoreIsTopLevelDdlActive(context, prev_is_top_level_ddl_active);
 			ddl_transaction_state.is_global_ddl = prev_is_global_ddl;
 			ddl_transaction_state.global_ddl_command_tag = prev_global_ddl_command_tag;
 			ddl_transaction_state.breaking_ddl_command_tag = prev_breaking_ddl_command_tag;
@@ -4946,16 +4982,7 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 			else
 				YBMergeDdlTxnState();
 
-			/*
-			 * Reset the is_top_level_ddl_active for this statement as it is
-			 * done executing. This field is set in YbGetDdlMode when we detect
-			 * a DDL statement. We need to the unset it after the DDL statement
-			 * is done and cannot wait for it to be unset upon receiving the
-			 * next statement. This is because not all statements (for eg. DMLs)
-			 * call YBTxnDdlProcessUtility and hence YbGetDdlMode.
-			 */
-			if (YbIsTopLevelOrAtomicStatement(context))
-				ddl_transaction_state.is_top_level_ddl_active = false;
+			YbRestoreIsTopLevelDdlActive(context, prev_is_top_level_ddl_active);
 		}
 	}
 	PG_CATCH();
