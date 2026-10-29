@@ -197,9 +197,9 @@ void TCMallocReleaseMemoryToSystemIgnoringRecentDemand(int64_t bytes) {
 #endif
 }
 
-void TCMallocReleaseAllFreeMemory() {
+void TCMallocReleaseAllFreeMemory(bool drain_cpu_caches) {
 #if YB_GOOGLE_TCMALLOC
-  if (tcmalloc::MallocExtension::PerCpuCachesActive()) {
+  if (drain_cpu_caches && tcmalloc::MallocExtension::PerCpuCachesActive()) {
     static const int num_cpus = static_cast<int>(std::thread::hardware_concurrency());
     for (int cpu = 0; cpu < num_cpus; ++cpu) {
       tcmalloc::MallocExtension::ReleaseCpuMemory(cpu);

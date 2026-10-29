@@ -29,6 +29,7 @@ extern int	yb_startup_free_memory_release_threshold;
 extern bool yb_enable_tcmalloc_background_thread;
 extern int	yb_tcmalloc_background_release_rate;
 extern bool yb_tcmalloc_release_after_statement;
+extern bool yb_tcmalloc_release_after_statement_drain_cpu_caches;
 
 /*
  * Handle and process logging of heap snapshot interrupt.

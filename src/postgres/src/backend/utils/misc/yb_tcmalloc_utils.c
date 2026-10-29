@@ -49,6 +49,7 @@ int			yb_startup_free_memory_release_threshold = 0;
 bool		yb_enable_tcmalloc_background_thread = true;
 int			yb_tcmalloc_background_release_rate = 1024 * 1024 * 1024;
 bool		yb_tcmalloc_release_after_statement = true;
+bool		yb_tcmalloc_release_after_statement_drain_cpu_caches = true;
 
 static bool yb_tcmalloc_background_thread_started = false;
 
@@ -345,7 +346,7 @@ void
 YbReleaseTCMallocMemoryAfterStatement(void)
 {
 	if (yb_tcmalloc_release_after_statement)
-		YBCTCMallocReleaseAllFreeMemory();
+		YBCTCMallocReleaseAllFreeMemory(yb_tcmalloc_release_after_statement_drain_cpu_caches);
 }
 
 static void

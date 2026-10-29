@@ -442,6 +442,9 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_tcmalloc_release_after_statement, true,
     "After each statement, drain the TCMalloc per-CPU caches of the YSQL backend and return all "
     "of its free page heap memory to the OS, including free pages in partially used hugepages.");
 
+DEFINE_RUNTIME_PG_FLAG(bool, yb_tcmalloc_release_after_statement_drain_cpu_caches, true,
+    "Whether ysql_yb_tcmalloc_release_after_statement also drains the TCMalloc per-CPU caches.");
+
 DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_nop_alter_role_optimization, true,
     "Enable nop alter role statement optimization.");
 

@@ -723,8 +723,8 @@ void YBCTCMallocReleaseFreeMemory(int64_t bytes) {
   TCMallocReleaseMemoryToSystemIgnoringRecentDemand(bytes);
 }
 
-void YBCTCMallocReleaseAllFreeMemory() {
-  TCMallocReleaseAllFreeMemory();
+void YBCTCMallocReleaseAllFreeMemory(bool drain_cpu_caches) {
+  TCMallocReleaseAllFreeMemory(drain_cpu_caches);
 }
 
 YbcStatus YBCStartTCMallocBackgroundThread() {

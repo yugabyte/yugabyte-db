@@ -3713,6 +3713,18 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_tcmalloc_release_after_statement_drain_cpu_caches", PGC_SUSET, RESOURCES_MEM,
+			gettext_noop("Whether yb_tcmalloc_release_after_statement also "
+						 "drains the TCMalloc per-CPU caches."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_tcmalloc_release_after_statement_drain_cpu_caches,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_fkey_batched_docdb_lookup_when_types_mismatch", PGC_BACKEND, DEVELOPER_OPTIONS,
 			gettext_noop("Enable batched DocDB lookup for foreign key constraint check "
 						 "when types mismatch."),
