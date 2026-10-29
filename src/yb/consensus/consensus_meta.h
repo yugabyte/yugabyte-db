@@ -256,6 +256,11 @@ class ConsensusMetadata {
   // A lock-free way to read role and term atomically.
   std::pair<PeerRole, int64_t> GetRoleAndTerm() const;
 
+  // Lock-free read of committed_config().committed_op_index(); kInvalidOpIdIndex until set.
+  int64_t committed_config_index() const {
+    return committed_config_index_.load(std::memory_order_acquire);
+  }
+
   // Used internally for storing the role + term combination atomically.
   using PackedRoleAndTerm = uint64;
 
@@ -309,6 +314,9 @@ class ConsensusMetadata {
   // Active role and term. Stored as a separate atomic field for fast read-only access. This is
   // still only modified under the lock.
   std::atomic<PackedRoleAndTerm> role_and_term_cache_;
+
+  // Updated with pb_.committed_config() under the same lock; read without it.
+  std::atomic<int64_t> committed_config_index_;
 
   DISALLOW_COPY_AND_ASSIGN(ConsensusMetadata);
 };
