@@ -2919,18 +2919,21 @@ Status Tablet::SetAllCDCRetentionBarriersUnlocked(
                                                       require_history_cutoff,
                                                       initial_retention_barrier));
   // Intents Retention setting on txn_participant
-  // 1. cdc_sdk_intents_op_id - opid beyond which GC will not happen
+  // 1. cdc_sdk_intents_op_id - opid beyond which GC will not happen. This is same as what is
+  // persisted in the tablet metadata above.
   // 2. cdc_sdk_op_id_expiration - time limit upto which intents barrier setting holds
   // 3. min_start_ht_cdc_unstreamed_txns - time up to which intents SST files retained for CDC can
   // be deleted, provided their maximum record time is earlier than this value.
   auto txn_participant = transaction_participant();
   if (txn_participant) {
+    const auto intents_op_id = metadata_->cdc_sdk_min_checkpoint_op_id();
     VLOG_WITH_PREFIX_AND_FUNC(1)
-        << "Intents opid retention duration = " << cdc_sdk_op_id_expiration
+        << "Intents op id = " << intents_op_id << " (requested " << cdc_sdk_intents_op_id
+        << "), intents opid retention duration = " << cdc_sdk_op_id_expiration
         << ", Minimum start time for CDC unstreamed txns from available gc log segments = "
         << min_start_ht_cdc_unstreamed_txns;
     txn_participant->SetIntentRetainOpIdAndTime(
-        cdc_sdk_intents_op_id, cdc_sdk_op_id_expiration, min_start_ht_cdc_unstreamed_txns);
+        intents_op_id, cdc_sdk_op_id_expiration, min_start_ht_cdc_unstreamed_txns);
     if (FLAGS_cdc_immediate_transaction_cleanup) {
       CleanupIntentFiles();
     }

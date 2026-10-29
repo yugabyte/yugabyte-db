@@ -14,6 +14,10 @@
 
 #include "yb/cdc/cdc_state_table.h"
 
+#include "yb/util/countdown_latch.h"
+#include "yb/util/scope_exit.h"
+
+DECLARE_int32(txn_max_apply_batch_records);
 DECLARE_int32(ysql_ddl_rpc_timeout_sec);
 
 namespace yb {
@@ -514,6 +518,105 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestRetentionBarrierSettingRace) {
   VerifyTransactionParticipant(tablet_peer->tablet_id(), OpId::Max());
   ASSERT_EQ(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
   ASSERT_EQ(tablet_peer->get_cdc_min_replicated_index(), OpId::Max().index);
+}
+
+TEST_F(CDCSDKConsistentSnapshotTest, TestNewStreamKeepsStricterIntentsBarrierInParticipant) {
+  // UPAM would reset the participant to the min across streams, hence block barrier movement.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 3600;
+
+  auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
+  const auto& tablet_id = tablets.begin()->tablet_id();
+  auto tablet_peer = ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablet_id));
+  auto tablet = ASSERT_RESULT(tablet_peer->shared_tablet());
+  auto* txn_participant = tablet->transaction_participant();
+  ASSERT_NE(txn_participant, nullptr);
+
+  ASSERT_RESULT(CreateConsistentSnapshotStream());
+  const auto stream1_barrier = tablet_peer->cdc_sdk_min_checkpoint_op_id();
+  ASSERT_LT(stream1_barrier, OpId::Max());
+  ASSERT_EQ(txn_participant->GetRetainOpId(), stream1_barrier);
+
+  // Move the tablet's op id forward so that the second stream asks for a looser barrier.
+  ASSERT_OK(WriteRows(1 /* start */, 10 /* end */, &test_cluster_));
+
+  auto stream2_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  auto stream2_checkpoint = ASSERT_RESULT(GetCDCSnapshotCheckpoint(stream2_id, tablet_id));
+  LogRetentionBarrierAndRelatedDetails(stream2_checkpoint, tablet_peer);
+
+  ASSERT_GT(stream2_checkpoint.checkpoint().op_id().index(), stream1_barrier.index);
+  ASSERT_EQ(tablet_peer->cdc_sdk_min_checkpoint_op_id(), stream1_barrier);
+  ASSERT_EQ(txn_participant->GetRetainOpId(), stream1_barrier);
+}
+
+// A transaction that the first stream has not streamed yet is still in the participant's memory
+// when a second stream is created. If the second stream's initial barrier loosens the participant's
+// intents barrier, the transaction's intents are removed once its apply completes, and the first
+// stream fails with "CDCSDK Trying to fetch already GCed intents".
+TEST_F(CDCSDKConsistentSnapshotTest, TestNewStreamCreationDoesNotGCIntentsOfExistingStream) {
+  // UPAM would reset the participant to the min across streams, hence block barrier movement.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 3600;
+  // Apply the transaction in several batches, so that the batches after the first one run in an
+  // ApplyIntentsTask, which the sync point below can hold.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_txn_max_apply_batch_records) = 10;
+  constexpr int kNumRows = 100;
+
+  auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
+  const auto& tablet_id = tablets.begin()->tablet_id();
+  auto tablet_peer = ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablet_id));
+  auto tablet = ASSERT_RESULT(tablet_peer->shared_tablet());
+  auto* txn_participant = tablet->transaction_participant();
+  ASSERT_NE(txn_participant, nullptr);
+
+  auto stream1_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  auto checkpoint = ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream1_id, tablet_id));
+
+  CountDownLatch apply_paused(1);
+  CountDownLatch resume_apply(1);
+  auto* sync_point = SyncPoint::GetInstance();
+  std::atomic<bool> apply_pause_triggered{false};
+  sync_point->SetCallBack("ApplyIntentsTask::Run:Loop", [&](void*) {
+    if (!apply_pause_triggered.exchange(true)) {
+      apply_paused.CountDown();
+      resume_apply.WaitFor(MonoDelta::FromSeconds(120));
+    }
+  });
+  sync_point->EnableProcessing();
+  auto cleanup = ScopeExit([&] {
+    resume_apply.CountDown();
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  ASSERT_OK(WriteRowsHelper(0 /* start */, kNumRows /* end */, &test_cluster_, true));
+  // The transaction's APPLY is replicated and it stays in the participant's memory until the
+  // ApplyIntentsTask is resumed.
+  ASSERT_TRUE(apply_paused.WaitFor(MonoDelta::FromSeconds(30)));
+
+  ASSERT_RESULT(CreateConsistentSnapshotStream());
+  resume_apply.CountDown();
+
+  // Wait for the cleanup intents task. With the fix we would write post apply metadata instead.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto counts = VERIFY_RESULT(txn_participant->TEST_CountIntents());
+        return counts.num_post_apply > 0 || counts.num_intents == 0;
+      },
+      MonoDelta::FromSeconds(30), "Wait for post-apply metadata or removal of intents"));
+
+  int num_inserts = 0;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto resp = VERIFY_RESULT(UpdateCheckpoint(stream1_id, tablets, checkpoint));
+        for (const auto& record : resp.cdc_sdk_proto_records()) {
+          if (record.row_message().op() == RowMessage::INSERT) {
+            ++num_inserts;
+          }
+        }
+        checkpoint = resp.cdc_sdk_checkpoint();
+        return num_inserts >= kNumRows;
+      },
+      MonoDelta::FromSeconds(60), "Stream the transaction's inserts on the first stream"));
+  ASSERT_EQ(num_inserts, kNumRows);
 }
 
 // Insert a row before snapshot. Insert a row after snapshot.
