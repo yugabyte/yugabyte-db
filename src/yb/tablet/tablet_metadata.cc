@@ -3013,6 +3013,27 @@ std::vector<std::string> RaftGroupMetadata::vector_index_dirs() const {
   return result;
 }
 
+void RaftGroupMetadata::DeleteUnlistedVectorIndexStorages(
+    const std::vector<std::string>& storage_names) const {
+  if (storage_names.empty()) {
+    return;
+  }
+  auto* env = fs_manager_->env();
+  const auto listed_dirs_list = vector_index_dirs();
+  const std::unordered_set<std::string> listed_dirs(
+      listed_dirs_list.begin(), listed_dirs_list.end());
+  for (const auto& storage_name : storage_names) {
+    auto dir = docdb::GetStorageDir(kv_store_.rocksdb_dir, storage_name);
+    if (listed_dirs.contains(dir) || !env->DirExists(dir)) {
+      continue;
+    }
+    LOG_WITH_PREFIX(INFO) << "Deleting storage of vector index not in the tablet: " << dir;
+    auto status = env->DeleteRecursively(dir);
+    LOG_IF_WITH_PREFIX(WARNING, !status.ok())
+        << "Failed to delete vector index storage " << dir << ": " << status;
+  }
+}
+
 docdb::KeyBounds RaftGroupMetadata::MakeKeyBounds() const {
   return docdb::KeyBounds(kv_store_.lower_bound_key, kv_store_.upper_bound_key);
 }

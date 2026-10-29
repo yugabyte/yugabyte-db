@@ -70,6 +70,7 @@
 #include "yb/consensus/state_change_context.h"
 
 #include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/docdb_util.h"
 
 #include "yb/fs/fs_manager.h"
 
@@ -131,6 +132,7 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
+#include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/priority_thread_pool.h"
 #include "yb/util/scope_exit.h"
@@ -833,7 +835,7 @@ Status TSTabletManager::Init() {
   }
 #endif
 
-  CleanupCheckpoints();
+  ScanTabletDataDirsOnStartup();
 
   // Search for tablets in the metadata dir.
   auto tablet_ids = VERIFY_RESULT(fs_manager_->ListTabletIds(CleanupTemporaryFiles::kTrue));
@@ -1072,7 +1074,9 @@ Status TSTabletManager::RegisterServiceCallback(
   return Status::OK();
 }
 
-void TSTabletManager::CleanupCheckpoints() {
+void TSTabletManager::ScanTabletDataDirsOnStartup() {
+  const auto vector_index_infix = "." + docdb::kVectorIndexDirPrefix;
+  std::lock_guard lock(startup_vector_index_storages_mutex_);
   for (const auto& data_root : fs_manager_->GetDataRootDirs()) {
     auto tables_dir = JoinPathSegments(data_root, FsManager::kRocksDBDirName);
     auto tables = fs_manager_->env()->GetChildren(tables_dir, ExcludeDots::kTrue);
@@ -1090,6 +1094,12 @@ void TSTabletManager::CleanupCheckpoints() {
         continue;
       }
       for (const auto& tablet : *tablets) {
+        auto vector_index_pos = tablet.find(vector_index_infix);
+        if (vector_index_pos != std::string::npos) {
+          startup_vector_index_storages_[tablet.substr(0, vector_index_pos)].push_back(
+              tablet.substr(vector_index_pos + 1));
+          continue;
+        }
         auto checkpoints_dir = JoinPathSegments(
             table_dir, tablet, RemoteBootstrapSession::kCheckpointsDir);
         if (fs_manager_->env()->FileExists(checkpoints_dir)) {
@@ -1100,6 +1110,21 @@ void TSTabletManager::CleanupCheckpoints() {
       }
     }
   }
+}
+
+void TSTabletManager::DeleteStartupUnlistedVectorIndexStorages(
+    const tablet::RaftGroupMetadata& meta) {
+  std::vector<std::string> storage_names;
+  {
+    std::lock_guard lock(startup_vector_index_storages_mutex_);
+    auto it = startup_vector_index_storages_.find(BaseName(meta.rocksdb_dir()));
+    if (it == startup_vector_index_storages_.end()) {
+      return;
+    }
+    storage_names = std::move(it->second);
+    startup_vector_index_storages_.erase(it);
+  }
+  meta.DeleteUnlistedVectorIndexStorages(storage_names);
 }
 
 // Schedules a background task if the interval is > 0.
@@ -2695,6 +2720,11 @@ void TSTabletManager::OpenTablet(
       return;
     }
   }
+
+  // After bootstrap: Tablet::AddTableInMemory creates the storage of a new vector index before the
+  // superblock listing the index is flushed, and replay adds such an index back. Before the peer
+  // starts: no operation can add an index until then.
+  DeleteStartupUnlistedVectorIndexStorages(*meta);
 
   auto pool_tag = PoolTagForTablet(tablet);
   auto service_thread_pool = server_->messenger()->TaggedThreadPool(pool_tag);
