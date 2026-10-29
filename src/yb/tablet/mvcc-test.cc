@@ -429,7 +429,7 @@ TEST_F(MvccTest, ShutdownWakesSafeTimeWaiters) {
 
 // Replicates operations as on a busy tablet leader, while readers wait for safe time to reach
 // either the current time or a time far ahead of the clock.
-TEST_F(MvccTest, YB_DISABLE_TEST_IN_SANITIZERS(ReplicateWithManySafeTimeWaiters)) {
+TEST_F(MvccTest, YB_RELEASE_ONLY_TEST(ReplicateWithManySafeTimeWaiters)) {
   constexpr int kTotalOps = 20000;
   constexpr uint64_t kAheadOfClock = 1ULL << 40;
   int op_index = 0;

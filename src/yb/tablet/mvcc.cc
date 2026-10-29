@@ -297,9 +297,9 @@ Result<SafeTimeWithSource> MvccManager::WaitForSafeTime(
     auto waiter = std::make_shared<Synchronizer>();
     waiters->Push({ .min_allowed = min_allowed, .synchronizer = waiter });
     ReverseLock<std::unique_lock<std::mutex>> unlock(*lock);
-    // A timed-out waiter stays in waiters, and the deadline check on the next iteration returns
-    // TimedOut.
-    (void) waiter->WaitUntil(steady_deadline);
+    // A timed-out waiter stays in waiters, and a later waker or StartShutdown signals it.
+    RETURN_NOT_OK_PREPEND(
+        waiter->WaitUntil(steady_deadline), Format("Waiting for safe time $0", min_allowed));
   }
 }
 
