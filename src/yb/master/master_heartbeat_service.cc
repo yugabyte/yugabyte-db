@@ -450,7 +450,12 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
       "TSHeartbeat", FLAGS_master_ts_heartbeat_long_operation_warning_ms * 1ms);
 
   consensus::ConsensusStatePB cpb;
-  Status s = catalog_manager_->GetCurrentConfig(&cpb);
+  Status s;
+  // The locked config read runs only for a tserver whose config index is behind.
+  auto config_index = catalog_manager_->GetCommittedConfigIndex();
+  if (!config_index.ok() || *config_index > req->config_index()) {
+    s = catalog_manager_->GetCurrentConfig(&cpb);
+  }
   if (!s.ok()) {
     // For now, we skip setting the config on errors (hopefully next heartbeat will work).
     // We could enhance to fail rpc, if there are too many error, on a case by case error basis.
@@ -956,7 +961,7 @@ Status MasterHeartbeatServiceImpl::ProcessTabletReportBatch(
     auto& tablet_lock = tablet_write_locks[tablet_id];
 
     TRACE_EVENT1("master", "HandleReportedTablet", "tablet_id", report.tablet_id());
-    RETURN_NOT_OK_PREPEND(catalog_manager_->CheckIsLeaderAndReady(),
+    RETURN_NOT_OK_PREPEND(catalog_manager_->CheckLeaderRoleAndReadyTerm(),
         Format("This master is no longer the leader, unable to handle report for tablet $0",
             tablet_id));
 
