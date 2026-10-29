@@ -13360,7 +13360,6 @@ Status CatalogManager::BuildLocationsForTablet(
   }
   std::shared_ptr<const TabletReplicaMap> locs;
   consensus::ConsensusStatePB cstate;
-  // IsHiddenTabletClearedByCDC takes the catalog mutex, so call it before the tablet lock below.
   bool tablet_hidden = false;
   HybridTime hide_time;
   {
