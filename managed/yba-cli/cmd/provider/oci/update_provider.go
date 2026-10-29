@@ -270,6 +270,12 @@ var updateOCIProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
+		if err := validateOCIImageBundlesNotRemoved(
+			removeImageBundles, editImageBundles, editImageBundleRegionOverrides,
+		); err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
 		regionCodes := ociRegionCodes(providerRegions)
 		providerImageBundles = removeOCIImageBundles(removeImageBundles, providerImageBundles)
 		providerImageBundles, err = editOCIImageBundles(
@@ -288,6 +294,16 @@ var updateOCIProviderCmd = &cobra.Command{
 			addImageBundleRegionOverrides,
 		)
 		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		addedRegionCodes := make([]string, 0, len(addRegions))
+		for _, regionString := range addRegions {
+			addedRegionCodes = append(addedRegionCodes,
+				providerutil.BuildRegionMapFromString(regionString, "add")["name"])
+		}
+		if err := validateOCIBundlesCoverAddedRegions(
+			addedRegionCodes, providerImageBundles,
+		); err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		provider.SetImageBundles(providerImageBundles)
@@ -343,6 +359,8 @@ func init() {
 			formatter.Colorize("Region name and Virtual network are required key-values.",
 				formatter.GreenColor)+
 			" Instance template is optional. "+
+			"OCI image OCIDs are region scoped, so each custom image bundle needs an image "+
+			"for the new region through --edit-image-bundle-region-override. "+
 			"Each region needs to be added using a separate --add-region flag.")
 	updateOCIProviderCmd.Flags().StringArray("add-zone", []string{},
 		"[Optional] Zone associated to the OCI Region defined. "+
@@ -671,40 +689,75 @@ func applyOCIRegionImageEdit(
 	if machineImage == "" && len(overrides) == 0 {
 		return nil
 	}
-	if len(regionCodes) == 0 {
-		return fmt.Errorf("at least one region is required for an OCI image bundle")
+	images, err := ociRegionImages(regionCodes, machineImage, overrides, false)
+	if err != nil {
+		return err
 	}
-	if machineImage != "" && len(overrides) > 0 {
-		return fmt.Errorf("machine-image cannot be combined with image-bundle region overrides")
-	}
-
 	regions := details.GetRegions()
 	if regions == nil {
 		regions = map[string]ybaclient.BundleInfo{}
 	}
-	if len(overrides) == 0 {
-		if len(regionCodes) != 1 {
-			return fmt.Errorf(
-				"OCI image OCIDs are region scoped; provide an image-bundle region override for the region to update",
-			)
-		}
-		info := regions[regionCodes[0]]
-		info.SetYbImage(machineImage)
-		regions[regionCodes[0]] = info
-	} else {
-		for code, image := range overrides {
-			if !slices.Contains(regionCodes, code) {
-				return fmt.Errorf("region %s is not configured on the provider", code)
-			}
-			if image == "" {
-				return fmt.Errorf("machine image not specified for region %s", code)
-			}
-			info := regions[code]
-			info.SetYbImage(image)
-			regions[code] = info
-		}
+	for code, image := range images {
+		info := regions[code]
+		info.SetYbImage(image)
+		regions[code] = info
 	}
 	details.SetRegions(regions)
+	return nil
+}
+
+// customImageBundleType is ImageBundle.Metadata.Type for user-provided bundles.
+const customImageBundleType = "CUSTOM"
+
+// validateOCIBundlesCoverAddedRegions fails early when a custom bundle has no
+// image for a region added in this update. YBA rejects the edit in
+// CloudProviderHelper.validateImageBundles; YBA-managed bundles are handled
+// server side.
+func validateOCIBundlesCoverAddedRegions(
+	addedRegionCodes []string,
+	providerImageBundles []ybaclient.ImageBundle,
+) error {
+	for _, ib := range providerImageBundles {
+		if ib.Metadata == nil || ib.Metadata.GetType() != customImageBundleType {
+			continue
+		}
+		details := ib.GetDetails()
+		regions := details.GetRegions()
+		for _, code := range addedRegionCodes {
+			if info, ok := regions[code]; ok && info.GetYbImage() != "" {
+				continue
+			}
+			return fmt.Errorf(
+				"image bundle %s (%s) has no image for added region %s; "+
+					"add --edit-image-bundle-region-override "+
+					"image-bundle-uuid=%s::region-name=%s::machine-image=<image-ocid>",
+				ib.GetName(), ib.GetUuid(), code, ib.GetUuid(), code)
+		}
+	}
+	return nil
+}
+
+// validateOCIImageBundlesNotRemoved rejects edits of a bundle that the same
+// update removes; otherwise the edit is dropped or reported as an unknown bundle.
+func validateOCIImageBundlesNotRemoved(
+	removeImageBundles, editImageBundles, editRegionOverrides []string,
+) error {
+	edited := make([]string, 0, len(editImageBundles)+len(editRegionOverrides))
+	for _, raw := range editImageBundles {
+		edited = append(edited,
+			providerutil.BuildImageBundleMapFromString(raw, "edit")["uuid"])
+	}
+	for _, raw := range editRegionOverrides {
+		edited = append(edited,
+			providerutil.BuildImageBundleRegionOverrideMapFromString(raw, "edit")["uuid"])
+	}
+	for _, uuid := range edited {
+		if slices.Contains(removeImageBundles, uuid) {
+			return fmt.Errorf(
+				"image bundle %s is removed with --remove-image-bundle in the same command "+
+					"and cannot also be edited", uuid)
+		}
+	}
 	return nil
 }
 
@@ -714,7 +767,10 @@ func editOCIImageBundles(
 	regionCodes []string,
 	regionOverrides []string,
 ) ([]ybaclient.ImageBundle, error) {
-	overridesByBundle := ociOverridesByBundle(regionOverrides, "uuid")
+	overridesByBundle, err := ociOverridesByBundle(regionOverrides, "edit")
+	if err != nil {
+		return nil, err
+	}
 	for i, ib := range providerImageBundles {
 		bundleUUID := ib.GetUuid()
 		details := ib.GetDetails()
@@ -778,14 +834,23 @@ func addOCIImageBundles(
 	regionCodes []string,
 	regionOverrides []string,
 ) ([]ybaclient.ImageBundle, error) {
-	overridesByBundle := ociOverridesByBundle(regionOverrides, "name")
+	overridesByBundle, err := ociOverridesByBundle(regionOverrides, "add")
+	if err != nil {
+		return nil, err
+	}
 	bundles := make([]map[string]string, 0, len(imageBundles))
 	// Auto-promoting a bundle on an arch that also has an explicit default
 	// fails server side with two defaults for that arch.
 	explicitDefaultArchs := map[string]bool{}
+	names := map[string]bool{}
 	for _, i := range imageBundles {
 		bundle := providerutil.DefaultImageBundleValues(
 			providerutil.BuildImageBundleMapFromString(i, "add"))
+		// Region overrides are matched to bundles by name.
+		if names[bundle["name"]] {
+			return nil, fmt.Errorf("image bundle name %s is given more than once", bundle["name"])
+		}
+		names[bundle["name"]] = true
 		if isDefault, _ := strconv.ParseBool(bundle["default"]); isDefault {
 			explicitDefaultArchs[strings.ToLower(bundle["arch"])] = true
 		}
@@ -796,15 +861,20 @@ func addOCIImageBundles(
 			return nil, fmt.Errorf("SSH User not specified in image bundle")
 		}
 
-		regions, err := ociBundleRegions(
+		images, err := ociRegionImages(
 			regionCodes,
 			bundle["machine-image"],
 			overridesByBundle[bundle["name"]],
+			true,
 		)
 		if err != nil {
 			return nil, err
 		}
 		delete(overridesByBundle, bundle["name"])
+		regions := make(map[string]ybaclient.BundleInfo, len(images))
+		for code, image := range images {
+			regions[code] = ybaclient.BundleInfo{YbImage: util.GetStringPointer(image)}
+		}
 
 		sshPort, err := strconv.ParseInt(bundle["ssh-port"], 10, 64)
 		if err != nil {

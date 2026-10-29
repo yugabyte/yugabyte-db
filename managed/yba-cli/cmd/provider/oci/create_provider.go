@@ -6,7 +6,9 @@ package oci
 
 import (
 	"fmt"
+	"maps"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -217,7 +219,7 @@ func init() {
 			"OCI image OCIDs are region scoped, so a provider with more than one region "+
 			"needs --image-bundle-region-override once per region instead of machine-image. "+
 			fmt.Sprintf(
-				" Allowed values for architecture are %s and %s, defaults to %s.",
+				"Allowed values for architecture are %s and %s, defaults to %s.",
 				util.X86_64, util.AARCH64, util.X86_64)+
 			" The default SSH user is opc and the default SSH Port is 22. "+
 			"Default marks the image bundle as default for the provider. "+
@@ -424,78 +426,91 @@ func buildOCIZones(zoneStrings []string, regionName string) (res []ybaclient.Ava
 	return res
 }
 
-// ociBundleRegions maps an OCI image OCID onto details.regions. An OCID is valid
-// in one region, so machineImage is used only for a single-region provider.
-func ociBundleRegions(
+// ociRegionImages returns region code -> image OCID for an OCI image bundle.
+// An OCID is valid in one region, so machineImage is accepted only for a
+// single-region provider. requireAllRegions is set on add, where the bundle
+// needs an image for every region; edit updates only the named regions.
+func ociRegionImages(
 	regionCodes []string,
 	machineImage string,
 	overrides map[string]string,
-) (map[string]ybaclient.BundleInfo, error) {
+	requireAllRegions bool,
+) (map[string]string, error) {
 	if len(regionCodes) == 0 {
 		return nil, fmt.Errorf("at least one region is required for an OCI image bundle")
 	}
-
 	if machineImage != "" && len(overrides) > 0 {
 		return nil, fmt.Errorf("machine-image cannot be combined with image-bundle region overrides")
 	}
 
-	regions := make(map[string]ybaclient.BundleInfo, len(regionCodes))
 	if len(overrides) == 0 {
 		if len(regionCodes) != 1 {
 			return nil, fmt.Errorf(
-				"OCI image OCIDs are region scoped; provide an image-bundle region override for every region",
-			)
+				"OCI image OCIDs are region scoped and the provider has %d regions; "+
+					"provide an image-bundle region override per region instead of machine-image",
+				len(regionCodes))
 		}
 		if machineImage == "" {
-			return nil, fmt.Errorf("Machine Image not specified in image bundle")
+			return nil, fmt.Errorf("machine-image not specified in image bundle")
 		}
-		regions[regionCodes[0]] = ybaclient.BundleInfo{
-			YbImage: util.GetStringPointer(machineImage),
-		}
-		return regions, nil
+		return map[string]string{regionCodes[0]: machineImage}, nil
 	}
 
-	for _, code := range regionCodes {
-		image := overrides[code]
-		if image == "" {
+	for _, code := range slices.Sorted(maps.Keys(overrides)) {
+		if !slices.Contains(regionCodes, code) {
 			return nil, fmt.Errorf(
-				"region %s is missing an image OCID; provide an image-bundle region override for every region",
-				code,
-			)
+				"image-bundle region override references region %s, "+
+					"which is not configured on the provider", code)
 		}
-		regions[code] = ybaclient.BundleInfo{
-			YbImage: util.GetStringPointer(image),
+		if overrides[code] == "" {
+			return nil, fmt.Errorf("machine-image not specified for region %s", code)
 		}
 	}
-	if len(overrides) != len(regions) {
-		return nil, fmt.Errorf("an image-bundle region override references a region not configured on the provider")
+	if requireAllRegions {
+		for _, code := range regionCodes {
+			if _, ok := overrides[code]; !ok {
+				return nil, fmt.Errorf(
+					"region %s is missing an image OCID; "+
+						"provide an image-bundle region override for every region", code)
+			}
+		}
 	}
-	return regions, nil
+	return overrides, nil
 }
 
 // ociOverridesByBundle groups region overrides by bundle name (add) or uuid
 // (edit) into region-name -> machine-image.
-func ociOverridesByBundle(overrides []string, matchKey string) map[string]map[string]string {
-	operation := "add"
-	if matchKey == "uuid" {
-		operation = "edit"
+func ociOverridesByBundle(
+	overrides []string,
+	operation string,
+) (map[string]map[string]string, error) {
+	matchKey := "name"
+	if operation == "edit" {
+		matchKey = "uuid"
 	}
 	res := map[string]map[string]string{}
 	for _, raw := range overrides {
 		override := providerutil.BuildImageBundleRegionOverrideMapFromString(raw, operation)
-		if res[override[matchKey]] == nil {
-			res[override[matchKey]] = map[string]string{}
+		bundle, region := override[matchKey], override["region-name"]
+		if res[bundle] == nil {
+			res[bundle] = map[string]string{}
 		}
-		res[override[matchKey]][override["region-name"]] = override["machine-image"]
+		if _, ok := res[bundle][region]; ok {
+			return nil, fmt.Errorf(
+				"image bundle %s has more than one image-bundle region override for region %s",
+				bundle, region)
+		}
+		res[bundle][region] = override["machine-image"]
 	}
-	return res
+	return res, nil
 }
 
 func unmatchedOverridesError(unmatched map[string]map[string]string) error {
-	for bundle := range unmatched {
-		return fmt.Errorf("image-bundle region override references unknown image bundle %s", bundle)
+	if len(unmatched) == 0 {
+		return nil
 	}
-	return nil
+	return fmt.Errorf("image-bundle region overrides reference unknown image bundles: %s",
+		strings.Join(slices.Sorted(maps.Keys(unmatched)), ", "))
 }
 
 // ociRegionCodes skips regions marked inactive by --remove-region in the same update.
