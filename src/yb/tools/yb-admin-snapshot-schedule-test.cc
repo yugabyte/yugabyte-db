@@ -6933,18 +6933,17 @@ class YbAdminSnapshotScheduleTestWithYsqlObjectLocks : public YbAdminSnapshotSch
  protected:
   static constexpr auto kPauseFlag = "TEST_pause_restore_after_ddl_verification_check";
 
-  Result<pgwrapper::PGConn> CreateVectorTable() {
+  Result<pgwrapper::PGConn> CreateReferencedTable() {
     auto conn = VERIFY_RESULT(PgConnect(client::kTableName.namespace_name()));
-    RETURN_NOT_OK(conn.Execute("CREATE EXTENSION vector"));
-    RETURN_NOT_OK(conn.Execute("CREATE TABLE t (id INT PRIMARY KEY, v vector(3))"));
-    RETURN_NOT_OK(conn.Execute("INSERT INTO t VALUES (1, '[1,2,3]')"));
+    RETURN_NOT_OK(conn.Execute("CREATE TABLE t (id INT PRIMARY KEY)"));
     return conn;
   }
 
-  // Restores to restore_at with CREATE INDEX t_v open on conn. The restore rejects a namespace with
-  // DDL verification in progress, so the index is created after that check but before the restore
-  // starts. before_restore runs right before the restore starts.
-  Status RestoreDuringVectorIndexCreate(
+  // Restores to restore_at with CREATE TABLE t2 open on conn. t2 references t, so the DDL also
+  // locks t, which CheckDdlLocksReleased tests. The restore rejects a namespace with DDL
+  // verification in progress, so t2 is created after that check but before the restore starts.
+  // before_restore runs right before the restore starts.
+  Status RestoreDuringTableCreate(
       const std::string& schedule_id, Timestamp restore_at, pgwrapper::PGConn& conn,
       const std::function<Status()>& before_restore = {}) {
     RETURN_NOT_OK(cluster_->SetFlagOnMasters(kPauseFlag, "true"));
@@ -6958,7 +6957,7 @@ class YbAdminSnapshotScheduleTestWithYsqlObjectLocks : public YbAdminSnapshotSch
     });
     RETURN_NOT_OK(paused.WaitFor(60s * kTimeMultiplier));
     RETURN_NOT_OK(conn.Execute("BEGIN"));
-    RETURN_NOT_OK(conn.Execute("CREATE INDEX t_v ON t USING ybhnsw (v vector_l2_ops)"));
+    RETURN_NOT_OK(conn.Execute("CREATE TABLE t2 (k INT PRIMARY KEY, id INT REFERENCES t (id))"));
     if (before_restore) {
       RETURN_NOT_OK(before_restore());
     }
@@ -6966,8 +6965,8 @@ class YbAdminSnapshotScheduleTestWithYsqlObjectLocks : public YbAdminSnapshotSch
     return WaitRestorationDone(VERIFY_RESULT(restoration_id_future.get()), 40s * kTimeMultiplier);
   }
 
-  // Checks that the restore removed t_v and that CREATE INDEX no longer holds its object locks.
-  Status CheckVectorIndexDdlReleased(MonoTime start) {
+  // Checks that the restore removed t2 and that CREATE TABLE t2 no longer holds its object locks.
+  Status CheckDdlLocksReleased(MonoTime start) {
     // PITR may restart PG backends.
     std::optional<pgwrapper::PGConn> conn;
     RETURN_NOT_OK(WaitFor([this, &conn]() -> Result<bool> {
@@ -6980,52 +6979,52 @@ class YbAdminSnapshotScheduleTestWithYsqlObjectLocks : public YbAdminSnapshotSch
     }, 60s * kTimeMultiplier, "Reconnect to PG after PITR restore"));
     RETURN_NOT_OK(conn->ExecuteFormat("SET statement_timeout = $0", 60000 * kTimeMultiplier));
     RETURN_NOT_OK(conn->Execute("CREATE TABLE after_pitr (k INT PRIMARY KEY)"));
-    // Conflicts with any lock CREATE INDEX still holds on t.
+    // Conflicts with any lock CREATE TABLE t2 still holds on t.
     RETURN_NOT_OK(conn->Execute("BEGIN"));
     RETURN_NOT_OK(conn->Execute("LOCK TABLE t IN ACCESS EXCLUSIVE MODE"));
     RETURN_NOT_OK(conn->Execute("COMMIT"));
     SCHECK(MonoTime::Now() - start < 120s * kTimeMultiplier, IllegalState,
            "DDL after the restore took too long");
-    auto num_indexes = VERIFY_RESULT(conn->FetchRow<int64_t>(
-        "SELECT COUNT(*) FROM pg_class WHERE relname = 't_v'"));
-    SCHECK_EQ(num_indexes, 0, IllegalState, "Restore did not remove t_v");
+    auto num_tables = VERIFY_RESULT(conn->FetchRow<int64_t>(
+        "SELECT COUNT(*) FROM pg_class WHERE relname = 't2'"));
+    SCHECK_EQ(num_tables, 0, IllegalState, "Restore did not remove t2");
     return Status::OK();
   }
 };
 
-// Aborting a CREATE INDEX whose index the restore removed must still complete its DDL verification
-// and release its object locks.
+// Aborting a CREATE TABLE whose colocated table the restore removed must still complete its DDL
+// verification and release its object locks.
 TEST_F_EX(
-    YbAdminSnapshotScheduleTest, PgsqlPitrDuringVectorIndexCreate,
+    YbAdminSnapshotScheduleTest, PgsqlPitrDuringColocatedTableCreate,
     YbAdminSnapshotScheduleTestWithYsqlObjectLocks) {
-  auto schedule_id = ASSERT_RESULT(PreparePg());
-  auto conn = ASSERT_RESULT(CreateVectorTable());
+  auto schedule_id = ASSERT_RESULT(PreparePg(YsqlColocationConfig::kDBColocated));
+  auto conn = ASSERT_RESULT(CreateReferencedTable());
   auto time = ASSERT_RESULT(GetCurrentTime());
-  ASSERT_OK(RestoreDuringVectorIndexCreate(schedule_id, time, conn));
+  ASSERT_OK(RestoreDuringTableCreate(schedule_id, time, conn));
 
-  // If the restore leaves the DDL unverified, ROLLBACK waits out the full DDL verification timeout
-  // (10 min) and the DDL's object locks stay held until then.
+  // If the restore leaves the DDL unverified, its object locks stay held and the LOCK TABLE in
+  // CheckDdlLocksReleased times out.
   const auto start = MonoTime::Now();
   // PITR may have killed the backend, which also aborts the transaction.
   WARN_NOT_OK(conn.Execute("ROLLBACK"), "ROLLBACK after PITR failed");
-  ASSERT_OK(CheckVectorIndexDdlReleased(start));
+  ASSERT_OK(CheckDdlLocksReleased(start));
 }
 
 // When a backend dies, the tserver releases its DDL's object locks without waiting for DDL
 // verification. The master ignores that release while the DDL is registered for verification, so
 // after a restore removes the DDL's table the master must release the locks itself.
 TEST_F_EX(
-    YbAdminSnapshotScheduleTest, PgsqlPitrDuringVectorIndexCreateReleaseIgnored,
+    YbAdminSnapshotScheduleTest, PgsqlPitrDuringColocatedTableCreateReleaseIgnored,
     YbAdminSnapshotScheduleTestWithYsqlObjectLocks) {
-  auto schedule_id = ASSERT_RESULT(PreparePg());
-  auto conn = ASSERT_RESULT(CreateVectorTable());
+  auto schedule_id = ASSERT_RESULT(PreparePg(YsqlColocationConfig::kDBColocated));
+  auto conn = ASSERT_RESULT(CreateReferencedTable());
   auto time = ASSERT_RESULT(GetCurrentTime());
   const auto backend_pid = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT pg_backend_pid()"));
 
   // Keep the master from verifying the DDL, and so releasing its locks, before the restore.
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_disable_ysql_ddl_txn_verification", "true"));
   ASSERT_OK(cluster_->SetFlagOnMasters("vmodule", "object_lock_info_manager=1"));
-  ASSERT_OK(RestoreDuringVectorIndexCreate(schedule_id, time, conn, [this, backend_pid] {
+  ASSERT_OK(RestoreDuringTableCreate(schedule_id, time, conn, [this, backend_pid] {
     // Created here because a daemon has one log listener, which the pause waiter would replace.
     auto release_ignored = cluster_->GetMasterLogWaiter("Ignoring release request");
     // SIGKILL, so the backend does not abort the transaction itself, which waits for verification.
@@ -7034,7 +7033,7 @@ TEST_F_EX(
   }));
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_disable_ysql_ddl_txn_verification", "false"));
 
-  ASSERT_OK(CheckVectorIndexDdlReleased(MonoTime::Now()));
+  ASSERT_OK(CheckDdlLocksReleased(MonoTime::Now()));
 }
 
 }  // namespace yb::tools
