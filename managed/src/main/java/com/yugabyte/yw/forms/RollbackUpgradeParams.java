@@ -84,9 +84,9 @@ public class RollbackUpgradeParams extends UpgradeTaskParams {
       throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(
-              "Cannot rollback to software version %s as it does not support ybdb inbuilt ybc."
-                  + " Disable ybdb inbuilt ybc before rolling back.",
-              prevVersion));
+              "Cannot rollback to software version %s as it does not support ybdb inbuilt ybc.%s",
+              prevVersion,
+              disableImmutableYbcHint(universeDetails.softwareUpgradeState, "rolling back")));
     }
   }
 

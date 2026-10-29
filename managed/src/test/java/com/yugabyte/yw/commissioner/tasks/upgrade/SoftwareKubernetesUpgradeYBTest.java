@@ -840,7 +840,9 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
     PlatformServiceException e =
         assertThrows(
             PlatformServiceException.class, () -> taskParams.verifyParams(defaultUniverse, true));
-    assertTrue(e.getMessage(), e.getMessage().contains("2025.1.0.0-b1"));
+    assertTrue(
+        e.getMessage(), e.getMessage().contains("uses ybdb inbuilt ybc, which software version"));
+    assertTrue(e.getMessage(), e.getMessage().contains("Disable ybdb inbuilt ybc"));
   }
 
   @Test

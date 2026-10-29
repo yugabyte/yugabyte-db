@@ -305,9 +305,9 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
   }
 
   private RollbackUpgradeParams setupImmutableYbcRollback(
-      String currentVersion, String prevVersion) {
+      String currentVersion, String prevVersion, SoftwareUpgradeState state) {
     setupUniverseSingleAZ(false, true);
-    setImmutableYbcUniverseState(true, currentVersion, SoftwareUpgradeState.PreFinalize);
+    setImmutableYbcUniverseState(true, currentVersion, state);
     UniverseDefinitionTaskParams.PrevYBSoftwareConfig ybSoftwareConfig =
         new UniverseDefinitionTaskParams.PrevYBSoftwareConfig();
     ybSoftwareConfig.setSoftwareVersion(prevVersion);
@@ -318,16 +318,34 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
 
   @Test
   public void testRollbackRejectedWhenPrevVersionLacksInbuiltYbc() {
-    RollbackUpgradeParams taskParams = setupImmutableYbcRollback("2025.2.0.0-b1", "2025.1.0.0-b1");
+    RollbackUpgradeParams taskParams =
+        setupImmutableYbcRollback(
+            "2025.2.0.0-b1", "2025.1.0.0-b1", SoftwareUpgradeState.PreFinalize);
     PlatformServiceException e =
         assertThrows(
             PlatformServiceException.class, () -> taskParams.verifyParams(defaultUniverse, true));
-    assertTrue(e.getMessage(), e.getMessage().contains("2025.1.0.0-b1"));
+    assertTrue(e.getMessage(), e.getMessage().contains("does not support ybdb inbuilt ybc"));
+    assertTrue(e.getMessage(), e.getMessage().contains("Disable ybdb inbuilt ybc"));
+  }
+
+  @Test
+  public void testRollbackRejectedWhenFrozenDoesNotSuggestToggle() {
+    // The toggle task is not admitted on a frozen universe, so the error must not suggest it.
+    RollbackUpgradeParams taskParams =
+        setupImmutableYbcRollback(
+            "2025.2.0.0-b1", "2025.1.0.0-b1", SoftwareUpgradeState.RollbackFailed);
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class, () -> taskParams.verifyParams(defaultUniverse, true));
+    assertTrue(e.getMessage(), e.getMessage().contains("cannot be disabled"));
+    assertFalse(e.getMessage(), e.getMessage().contains("Disable ybdb inbuilt ybc"));
   }
 
   @Test
   public void testRollbackAllowedWhenPrevVersionSupportsInbuiltYbc() {
-    RollbackUpgradeParams taskParams = setupImmutableYbcRollback("2025.2.1.0-b1", "2025.2.0.0-b1");
+    RollbackUpgradeParams taskParams =
+        setupImmutableYbcRollback(
+            "2025.2.1.0-b1", "2025.2.0.0-b1", SoftwareUpgradeState.PreFinalize);
     taskParams.verifyParams(defaultUniverse, true);
   }
 }

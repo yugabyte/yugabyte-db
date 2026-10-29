@@ -131,9 +131,10 @@ public class SoftwareUpgradeParams extends UpgradeTaskParams {
       throw new PlatformServiceException(
           Status.BAD_REQUEST,
           String.format(
-              "Universe %s uses ybdb inbuilt ybc, which software version %s does not support."
-                  + " Disable ybdb inbuilt ybc before moving to this version.",
-              universe.getUniverseUUID(), ybSoftwareVersion));
+              "Universe %s uses ybdb inbuilt ybc, which software version %s does not support.%s",
+              universe.getUniverseUUID(),
+              ybSoftwareVersion,
+              disableImmutableYbcHint(softwareUpgradeState, "moving to this version")));
     }
 
     RuntimeConfigFactory runtimeConfigFactory =
