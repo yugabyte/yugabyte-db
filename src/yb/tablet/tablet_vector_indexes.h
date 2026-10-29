@@ -142,7 +142,8 @@ class TabletVectorIndexes :
   // Advances the flushed OpId of indexes holding nothing unflushed to op_id, the regular DB's
   // flushed OpId. Otherwise an index that gets no new vectors, deactivated or with every new row's
   // vector NULL, keeps the OpId of its last vector, and bootstrap replays all the log after it.
-  // An active index is skipped until its backfill is done: backfill inserts rows outside the log.
+  // An active index is skipped until its backfill is done, since backfill inserts rows outside the
+  // log, and while it lags by at most vector_index_num_raft_ops_to_force_flush operations.
   void AdvanceIdleFlushedOpIds(
       const OpId& op_id, bool include_deactivated, bool include_active)
       EXCLUDES(vector_indexes_mutex_);

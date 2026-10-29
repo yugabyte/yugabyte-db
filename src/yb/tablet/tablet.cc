@@ -375,8 +375,9 @@ TAG_FLAG(advance_deactivated_vector_index_flushed_op_id, advanced);
 
 DEFINE_RUNTIME_bool(advance_idle_vector_index_flushed_op_id, true,
     "If true, the flushed op id of a vector index whose backfill is done and that holds nothing "
-    "unflushed, e.g. one whose rows all have a NULL vector, is advanced to that of the regular db "
-    "after a regular db flush.");
+    "unflushed, e.g. one whose new rows all have a NULL vector, is advanced to that of the regular "
+    "db after a regular db flush, once it lags by more than "
+    "vector_index_num_raft_ops_to_force_flush operations.");
 TAG_FLAG(advance_idle_vector_index_flushed_op_id, advanced);
 
 DEFINE_RUNTIME_bool(vector_index_include_into_post_split_compaction, true,

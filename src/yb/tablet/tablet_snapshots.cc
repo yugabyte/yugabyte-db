@@ -434,8 +434,8 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
   }
 
   if (PREDICT_FALSE(!s.ok())) {
-    LOG_WITH_PREFIX(WARNING) << "RocksDB flush status: " << s;
-    return s.CloneAndPrepend("Unable to flush RocksDB");
+    LOG_WITH_PREFIX(WARNING) << "Tablet flush status: " << s;
+    return s.CloneAndPrepend("Unable to flush tablet storages");
   }
 
   const std::string& snapshot_dir = data.snapshot_dir;
@@ -1346,8 +1346,11 @@ Status TabletSnapshots::DoCreateCheckpoint(
       // inside the write that adds their row, so flushing after the regular DB checkpoint puts the
       // vectors of every row in it into the chunks below, including rows written during the
       // checkpoint. See #34759.
-      RETURN_NOT_OK(vector_indexes.Flush());
-      RETURN_NOT_OK(vector_indexes.WaitForFlush());
+      // Waits for the saves started by the other indexes also when one failed.
+      auto flush_status = vector_indexes.Flush();
+      auto wait_status = vector_indexes.WaitForFlush();
+      RETURN_NOT_OK(flush_status);
+      RETURN_NOT_OK(wait_status);
     }
     for (const auto& vector_index : *vector_indexes) {
       const auto storage_name = docdb::GetVectorIndexStorageName(vector_index->options());

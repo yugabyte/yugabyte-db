@@ -81,6 +81,7 @@ DEFINE_RUNTIME_uint32(vector_index_backfill_retry_delay_ms, 5000,
     "were being replaced, e.g. by a truncate or a restore.");
 
 DECLARE_bool(vector_index_include_into_post_split_compaction);
+DECLARE_int32(vector_index_num_raft_ops_to_force_flush);
 
 namespace yb::tablet {
 
@@ -1009,7 +1010,7 @@ void TabletVectorIndexes::AdvanceIdleFlushedOpIds(
         continue;
       }
     } else {
-      if (!include_active) {
+      if (!include_active || index->GetFlushAbility() == storage::FlushAbility::kHasNewData) {
         continue;
       }
       auto backfill_done = index->BackfillDone();
@@ -1018,7 +1019,15 @@ void TabletVectorIndexes::AdvanceIdleFlushedOpIds(
       }
     }
     auto flushed = index->GetFlushedFrontier();
-    if (flushed && flushed->op_id() >= op_id) {
+    auto flushed_op_id = flushed ? flushed->op_id() : OpId();
+    if (flushed_op_id >= op_id) {
+      continue;
+    }
+    // Each advance adds a record to the index manifest that only a compaction removes, and an
+    // index that gets no vectors does not compact. So an active index is advanced only once it
+    // lags as far as an index holding unflushed entries may, before it is force flushed.
+    if (!index->IsDeactivated() &&
+        op_id.index - flushed_op_id.index <= FLAGS_vector_index_num_raft_ops_to_force_flush) {
       continue;
     }
     auto advanced = index->AdvanceFlushedOpId(op_id);
@@ -1030,8 +1039,8 @@ void TabletVectorIndexes::AdvanceIdleFlushedOpIds(
     }
     VLOG_WITH_PREFIX(2)
         << (index->IsDeactivated() ? "Deactivated" : "Idle") << " vector index "
-        << index->table_id() << " flushed OpId " << (flushed ? flushed->op_id() : OpId())
-        << " -> " << op_id << (*advanced ? "" : " skipped, unflushed data");
+        << index->table_id() << " flushed OpId " << flushed_op_id << " -> " << op_id
+        << (*advanced ? "" : " skipped, unflushed data");
   }
 }
 
@@ -1261,8 +1270,20 @@ Status VectorIndexList::Flush() {
   Status result;
   for (const auto& index : *list_) {
     auto status = index->Flush();
-    if (result.ok() && !status.ok()) {
-      result = status.CloneAndPrepend(Format("Flush vector index $0", index->table_id()));
+    if (status.ok()) {
+      continue;
+    }
+    status = status.CloneAndPrepend(Format("Flush vector index $0", index->table_id()));
+    // Tablet shutdown stops the vector indexes only after blocking operations, such as a
+    // checkpoint, have drained. So a shutting down index here is one being dropped, and its rows
+    // are not needed. A flush executor that is shutting down fails WaitForFlush instead.
+    if (status.IsShutdownInProgress()) {
+      LOG(INFO) << status;
+      continue;
+    }
+    LOG(WARNING) << status;
+    if (result.ok()) {
+      result = std::move(status);
     }
   }
 

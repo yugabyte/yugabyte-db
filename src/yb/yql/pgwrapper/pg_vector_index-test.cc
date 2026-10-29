@@ -129,6 +129,7 @@ DECLARE_int32(retryable_request_timeout_secs);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
+DECLARE_int32(vector_index_num_raft_ops_to_force_flush);
 DECLARE_int32(TEST_delay_init_tablet_peer_ms);
 DECLARE_int32(TEST_sleep_after_vector_index_backfill_chunk_ms);
 DECLARE_int32(ysql_client_read_write_timeout_ms);
@@ -3149,8 +3150,11 @@ TEST_P(PgVectorIndexColocationOnlyTest, DeactivatedIndexDoesNotHoldBackBootstrap
 TEST_P(PgVectorIndexColocationOnlyTest, IdleIndexDoesNotHoldBackBootstrap) {
   constexpr size_t kNumRows = 16;
   constexpr size_t kNumNullRows = 64;
+  // An active index is advanced only once it lags the regular DB by more than this.
+  constexpr int32_t kMaxLag = 10;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_num_raft_ops_to_force_flush) = kMaxLag;
 
   auto conn = ASSERT_RESULT(MakeIndex());
   ASSERT_OK(InsertRows(conn, 1, kNumRows));
@@ -3176,7 +3180,7 @@ TEST_P(PgVectorIndexColocationOnlyTest, IdleIndexDoesNotHoldBackBootstrap) {
               ++num_indexes;
               auto frontier = index->GetFlushedFrontier();
               auto index_op_id = frontier ? frontier->op_id() : OpId();
-              if (index_op_id < regular) {
+              if (index_op_id.index + kMaxLag < regular.index) {
                 LOG(INFO) << tablet->LogPrefix() << "Vector index flushed OpId " << index_op_id
                           << " behind the regular DB's " << regular;
                 return false;
@@ -3225,9 +3229,12 @@ TEST_P(PgVectorIndexColocationOnlyTest, FlushFailureFailsCheckpoint) {
            std::pair{"VectorLSM::Flush:Status", true},
            std::pair{"VectorLSM::DoSaveChunk:Status", false}}) {
     SCOPED_TRACE(point);
-    ASSERT_OK(InsertRows(conn, num_rows + 1, num_rows + kRowsPerRound));
-    num_rows += kRowsPerRound;
-    ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+    // Saves the rows of earlier rounds, so no save of them can hit the injection before this
+    // round's rows are written: a failed index rejects new rows.
+    for (const auto& peer : ListTabletPeersWithVectorIndexes(cluster_.get())) {
+      auto peer_tablet = ASSERT_RESULT(peer->shared_tablet());
+      ASSERT_OK(peer_tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
+    }
 
     sync_point->ClearAllCallBacks();
     sync_point->SetCallBack(point, [test_thread, test_thread_only, &kInjectedError](void* arg) {
@@ -3236,6 +3243,12 @@ TEST_P(PgVectorIndexColocationOnlyTest, FlushFailureFailsCheckpoint) {
       }
     });
     sync_point->EnableProcessing();
+
+    // Written after the injection is enabled, so a background flush cannot save them first and
+    // leave Tablet::Flush nothing to fail on.
+    ASSERT_OK(InsertRows(conn, num_rows + 1, num_rows + kRowsPerRound));
+    num_rows += kRowsPerRound;
+    ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
 
     ASSERT_NOK_STR_CONTAINS(
         tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly), kInjectedError);
