@@ -1112,9 +1112,8 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 		if (YbUseTserverResponseCacheForAuth(shared_catalog_version))
 		{
 			/*
-			 * If YB connection manager is enabled, for scalability reason we use
-			 * shared catalog version instead of YbGetMasterCatalogVersion() to
-			 * avoid one master RPC.
+			 * Use the shared memory catalog version instead of
+			 * YbGetMasterCatalogVersion() to save a master RPC per connection.
 			 */
 			YbcPgLastKnownCatalogVersionInfo catalog_version =
 				(YbcPgLastKnownCatalogVersionInfo)

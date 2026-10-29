@@ -63,6 +63,7 @@ DECLARE_bool(ysql_minimal_catalog_caches_preload);
 DECLARE_bool(ysql_catalog_preload_additional_tables);
 DECLARE_bool(ysql_use_relcache_file);
 DECLARE_bool(ysql_yb_enable_invalidation_messages);
+DECLARE_bool(ysql_enable_read_request_cache_for_connection_auth);
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_string(ysql_catalog_preload_additional_table_list);
 DECLARE_uint64(ysql_catalog_prefetch_row_limit);
@@ -79,6 +80,7 @@ DECLARE_bool(TEST_pg_response_cache_force_lookup_only_miss_on_final_request);
 DECLARE_bool(ysql_yb_enable_stale_catalog_prefetch);
 DECLARE_uint64(ysql_catalog_prefetch_row_limit);
 DECLARE_string(ysql_pg_conf_csv);
+DECLARE_int32(heartbeat_interval_ms);
 DECLARE_int32(ysql_client_read_write_timeout_ms);
 DECLARE_int32(pg_client_extra_timeout_ms);
 DECLARE_int32(TEST_ysql_catalog_prefetch_rejections_to_inject);
@@ -113,6 +115,8 @@ struct Configuration {
   const bool preload_additional_catalog_tables = false;
   const bool use_relcache_file = true;
   const bool enable_invalidation_messages = false;
+  const bool enable_read_request_cache_for_connection_auth = false;
+  const bool always_increment_catalog_version_on_ddl = false;
 };
 
 struct MetricCounters {
@@ -191,11 +195,17 @@ class PgCatalogPerfTestBase : public PgMiniTestBase {
           std::string(config.preload_additional_catalog_list);
     }
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_use_relcache_file) = config.use_relcache_file;
-    // When invalidation messages are used, this test does not use the tserver response
-    // cache and the test will timeout if we wait for response cache counters to become
-    // greater than 0.
+    // Most configs keep invalidation messages off: with them on, the catalog preload skips
+    // the tserver response cache, so tests that wait for cache hits would time out.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_invalidation_messages) =
         config.enable_invalidation_messages;
+    ANNOTATE_UNPROTECTED_WRITE(
+        FLAGS_ysql_enable_read_request_cache_for_connection_auth) =
+        config.enable_read_request_cache_for_connection_auth;
+    if (config.always_increment_catalog_version_on_ddl) {
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) =
+          "yb_always_increment_catalog_version_on_ddl=true";
+    }
     // Auto-Analyze runs ANALYZEs and increments catalog version, causing more response cache
     // queires. Disable auto-analyze for more stable test results.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
@@ -207,6 +217,38 @@ class PgCatalogPerfTestBase : public PgMiniTestBase {
 
   size_t NumTabletServers() override {
     return 1;
+  }
+
+  // New connections must see CREATE ROLE and DROP ROLE, not a stale cached auth response.
+  void TestConnectionAuthCacheRoleDdl() {
+    static constexpr auto kRole = "auth_cache_role";
+    auto conn_as_role = [this] {
+      auto settings = MakeConnSettings();
+      settings.user = kRole;
+      settings.connect_timeout = 2;
+      return PGConnBuilder(settings).Connect();
+    };
+    auto conn = ASSERT_RESULT(Connect());
+    // Fill the auth cache for the current catalog version.
+    ASSERT_RESULT(Connect());
+    ASSERT_RESULT(Connect());
+
+    // The DDL only updates the local catalog version for its own database, so new
+    // connections see the new version after a heartbeat. Without the version bump the cached
+    // auth response never expires, and these waits time out.
+    const auto timeout = 20ms * FLAGS_heartbeat_interval_ms;
+
+    ASSERT_OK(conn.ExecuteFormat("CREATE ROLE $0 LOGIN", kRole));
+    ASSERT_OK(WaitFor(
+        [&conn_as_role]() -> Result<bool> { return conn_as_role().ok(); },
+        timeout, "new connection sees CREATE ROLE"));
+    ASSERT_RESULT(conn_as_role());
+
+    ASSERT_OK(conn.ExecuteFormat("DROP ROLE $0", kRole));
+    ASSERT_OK(WaitFor(
+        [&conn_as_role]() -> Result<bool> { return !conn_as_role().ok(); },
+        timeout, "new connection sees DROP ROLE"));
+    ASSERT_NOK_STR_CONTAINS(conn_as_role(), Format("role \"$0\" does not exist", kRole));
   }
 
   Result<uint64_t> CacheRefreshRPCCount() {
@@ -482,6 +524,27 @@ constexpr Configuration kConfigStatsPreloadInvalMessages{
     .preload_additional_catalog_list = kStatsTableList,
     .enable_invalidation_messages = true};
 
+// Without connection manager, the connection-auth cache also needs
+// yb_always_increment_catalog_version_on_ddl.
+constexpr Configuration kConfigConnectionAuthCache{
+    .response_cache_size_bytes = kResponseCacheSize5MB,
+    .enable_invalidation_messages = true,
+    .enable_read_request_cache_for_connection_auth = true,
+    .always_increment_catalog_version_on_ddl = true};
+
+constexpr Configuration kConfigConnectionAuthCacheDisabled{
+    .response_cache_size_bytes = kResponseCacheSize5MB,
+    .enable_invalidation_messages = true,
+    .enable_read_request_cache_for_connection_auth = false,
+    .always_increment_catalog_version_on_ddl = true};
+
+// Without always-increment, a regular backend must not use the connection-auth cache.
+constexpr Configuration kConfigConnectionAuthCacheNoAlwaysIncrement{
+    .response_cache_size_bytes = kResponseCacheSize5MB,
+    .enable_invalidation_messages = true,
+    .enable_read_request_cache_for_connection_auth = true,
+    .always_increment_catalog_version_on_ddl = false};
+
 template<class Base, const Configuration& Config>
 class ConfigurableTest : public Base {
  private:
@@ -511,6 +574,12 @@ using PgPredictableMemoryUsageTest =
     ConfigurableTest<PgCatalogPerfTestBase, kConfigPredictableMemoryUsage>;
 using PgSmallPreloadTest =
     ConfigurableTest<PgCatalogPerfTestBase, kConfigSmallPreload>;
+using PgConnectionAuthCacheTest =
+    ConfigurableTest<PgCatalogPerfTestBase, kConfigConnectionAuthCache>;
+using PgConnectionAuthCacheDisabledTest =
+    ConfigurableTest<PgCatalogPerfTestBase, kConfigConnectionAuthCacheDisabled>;
+using PgConnectionAuthCacheNoAlwaysIncrementTest =
+    ConfigurableTest<PgCatalogPerfTestBase, kConfigConnectionAuthCacheNoAlwaysIncrement>;
 
 class PgCatalogWithStaleResponseCacheTest : public PgCatalogWithUnlimitedCachePerfTest {
  protected:
@@ -774,6 +843,60 @@ TEST_F_EX(PgCatalogPerfTest,
   }));
   ASSERT_EQ(metrics.cache.queries, 2);
   ASSERT_EQ(metrics.cache.hits, 2);
+}
+
+TEST_F_EX(PgCatalogPerfTest,
+          ConnectionAuthCacheServedFromCache,
+          PgConnectionAuthCacheTest) {
+  // Warm up the response cache.
+  ASSERT_RESULT(Connect());
+  ASSERT_RESULT(Connect());
+  const auto metrics = ASSERT_RESULT(metrics_->Delta([this] {
+    RETURN_NOT_OK(Connect());
+    return static_cast<Status>(Status::OK());
+  }));
+  // One cache hit for the catalog preload and one for the auth prefetch.
+  ASSERT_EQ(metrics.cache.queries, 2);
+  ASSERT_EQ(metrics.cache.hits, 2);
+}
+
+TEST_F_EX(PgCatalogPerfTest,
+          ConnectionAuthCacheDisabled,
+          PgConnectionAuthCacheDisabledTest) {
+  ASSERT_RESULT(Connect());
+  ASSERT_RESULT(Connect());
+  const auto metrics = ASSERT_RESULT(metrics_->Delta([this] {
+    RETURN_NOT_OK(Connect());
+    return static_cast<Status>(Status::OK());
+  }));
+  // Only the catalog preload hits the cache; the auth prefetch reads from master.
+  ASSERT_EQ(metrics.cache.queries, 1);
+  ASSERT_EQ(metrics.cache.hits, 1);
+}
+
+TEST_F_EX(PgCatalogPerfTest,
+          ConnectionAuthCacheNeedsAlwaysIncrement,
+          PgConnectionAuthCacheNoAlwaysIncrementTest) {
+  ASSERT_RESULT(Connect());
+  ASSERT_RESULT(Connect());
+  const auto metrics = ASSERT_RESULT(metrics_->Delta([this] {
+    RETURN_NOT_OK(Connect());
+    return static_cast<Status>(Status::OK());
+  }));
+  ASSERT_EQ(metrics.cache.queries, 1);
+  ASSERT_EQ(metrics.cache.hits, 1);
+}
+
+TEST_F_EX(PgCatalogPerfTest,
+          ConnectionAuthCacheRoleDdl,
+          PgConnectionAuthCacheTest) {
+  TestConnectionAuthCacheRoleDdl();
+}
+
+TEST_F_EX(PgCatalogPerfTest,
+          ConnectionAuthCacheRoleDdlNoAlwaysIncrement,
+          PgConnectionAuthCacheNoAlwaysIncrementTest) {
+  TestConnectionAuthCacheRoleDdl();
 }
 
 class PgCatalogShortRpcDeadlineTest : public PgCatalogWithUnlimitedCachePerfTest {

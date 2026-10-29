@@ -8957,15 +8957,21 @@ YbCheckTserverResponseCacheForAuthGflags()
 bool
 YbUseTserverResponseCacheForAuth(uint64_t shared_catalog_version)
 {
-	if (!(YbIsAuthBackend() || YbIsAuthPassthroughInProgress(MyProcPort)))
-		return false;
 	/*
-	 * We should only see auth backend or auth passthrough in progress if
-	 * connection manager is enabled.
+	 * The cache is keyed by catalog version, so role DDLs must bump the
+	 * version. They are only forced to when connection manager is enabled
+	 * (see increment_for_conn_mgr_needed), so regular backends also need
+	 * yb_always_increment_catalog_version_on_ddl.
 	 */
-	Assert(YbIsYsqlConnMgrEnabled());
+	if (!(YbIsAuthBackend() || YbIsAuthPassthroughInProgress(MyProcPort)) &&
+		!yb_always_increment_catalog_version_on_ddl)
+		return false;
 
 	if (!YbCheckTserverResponseCacheForAuthGflags())
+		return false;
+
+	/* initdb and binary upgrade run DDLs that don't bump the catalog version. */
+	if (YBCIsInitDbModeEnvVarSet() || IsBinaryUpgrade)
 		return false;
 
 	/*
