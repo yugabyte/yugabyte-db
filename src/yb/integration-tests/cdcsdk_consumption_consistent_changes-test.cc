@@ -3795,6 +3795,10 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCreationOfSlotOnNewDBAfterUpg
   ASSERT_NE(tablet_peer->cdc_sdk_min_checkpoint_op_id(), OpId::Invalid());
   ASSERT_NE(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
 
+  // Wait for dynamic table addition to complete on CDC bg thread.
+  SleepFor(MonoDelta::FromMilliseconds(
+      2 * FLAGS_catalog_manager_cdc_bg_task_wait_ms * kTimeMultiplier));
+
   set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id_1, dynamic_tablets_1, OpId::Min()));
   ASSERT_FALSE(set_resp.has_error());
 

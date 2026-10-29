@@ -3481,6 +3481,41 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestDeletedStreamRowsRemoved)) {
   VerifyStreamDeletedFromCdcState(test_client(), stream_id, kCDCSDKSlotEntryTabletId, 30);
 }
 
+TEST_F(CDCSDKYsqlTest, TestCDCSDKStreamCleanupIndependentOfCatalogBgThread) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 60 * 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_cdc_bg_task_wait_ms) = 100;
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(
+      CreateTable(&test_cluster_, test_namespace_name, kTableName, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+  // CreateTable wakes catalog bgtasks for tablet assignment. Let that tick finish so the catalog
+  // loop is sitting in its 60s wait before we mark streams DELETING.
+  SleepFor(MonoDelta::FromSeconds(2 * kTimeMultiplier));
+
+  auto cdcsdk_stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  auto xcluster_stream_id =
+      ASSERT_RESULT(cdc::CreateXClusterStream(*test_client(), table.table_id()));
+
+  ASSERT_TRUE(DeleteCDCStream(cdcsdk_stream_id));
+  ASSERT_OK(test_client()->DeleteCDCStream(xcluster_stream_id, true /* force_delete */));
+
+  VerifyStreamDeletedFromCdcState(
+      test_client(), cdcsdk_stream_id, tablets[0].tablet_id(), 10 * kTimeMultiplier);
+  VerifyStreamDeletedFromCdcState(
+      test_client(), cdcsdk_stream_id, kCDCSDKSlotEntryTabletId, 10 * kTimeMultiplier);
+  ASSERT_NOK(GetCDCStreamTableIds(cdcsdk_stream_id));
+
+  SleepFor(MonoDelta::FromSeconds(2 * kTimeMultiplier));
+  auto cdc_state_table = MakeCDCStateTable(test_client());
+  auto xcluster_row = ASSERT_RESULT(
+      cdc_state_table.TryFetchEntry({tablets[0].tablet_id(), xcluster_stream_id}));
+  ASSERT_TRUE(xcluster_row.has_value());
+}
+
 // Here we are creating a table test_table_1 and a CDC stream ex:- stream-id-1.
 // Now create another table test_table_2 and create another stream ex:- stream-id-2 on the same
 // namespace. stream-id-1 and stream-id-2 are now associated with test_table_1. drop test_table_1,
@@ -5058,7 +5093,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAdd100TableToNamespaceWithAct
 
 TEST_F(
     CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddTableToNamespaceWithActiveStreamMasterRestart)) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 60 * 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_cdc_bg_task_wait_ms) = 60 * 1000;
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
   const uint32_t num_tablets = 3;
@@ -5250,7 +5285,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddTableToNamespaceWithMultip
 
 TEST_F(
     CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddTableWithMultipleActiveStreamsMasterRestart)) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 60 * 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_cdc_bg_task_wait_ms) = 60 * 1000;
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
   const uint32_t num_tablets = 3;
@@ -6099,7 +6134,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMetricObjectRemovalAfterStrea
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_metrics_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 50;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_cdc_bg_task_wait_ms) = 50;
 
   ASSERT_OK(SetUpWithParams(1, 1, false));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
@@ -8247,7 +8282,7 @@ TEST_F(CDCSDKYsqlTest, TestTableRewriteOperationsForgRPCStream) {
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestUnrelatedTableDropUponTserverRestart)) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 50000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_cdc_bg_task_wait_ms) = 50000;
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto old_table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "old_table"));
 
@@ -9598,7 +9633,7 @@ void CDCSDKYsqlTest::TestDisableOfDynamicTableAdditionOnCDCStream(
     bool use_consistent_snapshot_stream) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) =
       use_consistent_snapshot_stream;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_cdc_bg_task_wait_ms) = 100;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_dynamic_tables_disable_option) = true;
   // Setup cluster.
   ASSERT_OK(SetUpWithParams(3, 3, false));
@@ -9970,7 +10005,7 @@ void CDCSDKYsqlTest::TestNonEligibleTableRemovalFromCDCStream(bool use_consisten
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) =
       use_consistent_snapshot_stream;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_cdc_bg_task_wait_ms) = 100;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_add_indexes_to_stream) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = false;
   // Setup cluster.
@@ -10335,7 +10370,7 @@ TEST_F(
 
 TEST_F(CDCSDKYsqlTest, TestUserTableCleanupWithDropTable) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_cdc_bg_task_wait_ms) = 1;
   SyncPoint::GetInstance()->LoadDependency(
       {{"ProcessTablesToBeRemovedFromCDCSDKStreams::ValidationCompleted", "DropTable::Start"},
        {"DropTable::Done",
@@ -10416,7 +10451,7 @@ TEST_F(CDCSDKYsqlTest, TestUserTableCleanupWithDropTable) {
 
 TEST_F(CDCSDKYsqlTest, TestUserTableCleanupWithDeleteCDCStream) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_cdc_bg_task_wait_ms) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   SyncPoint::GetInstance()->LoadDependency(
       {{"ProcessTablesToBeRemovedFromCDCSDKStreams::ValidationCompleted", "DeleteStream::Start"},
@@ -10472,7 +10507,7 @@ TEST_F(CDCSDKYsqlTest, TestUserTableCleanupWithDeleteCDCStream) {
 TEST_F(CDCSDKYsqlTest, TestNonEligibleTableCleanupWithDropTable) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_cdc_bg_task_wait_ms) = 100;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_add_indexes_to_stream) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = false;
   SyncPoint::GetInstance()->LoadDependency(
@@ -10585,7 +10620,7 @@ TEST_F(CDCSDKYsqlTest, TestNonEligibleTableCleanupWithDropTable) {
 TEST_F(CDCSDKYsqlTest, TestNonEligibleTableCleanupWithDeleteStream) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_cdc_bg_task_wait_ms) = 100;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_add_indexes_to_stream) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_disable_deleted_stream_cleanup) = true;
@@ -11326,7 +11361,7 @@ TEST_F(CDCSDKYsqlTest, TestCleanupOfExpiredTableForLogicalReplicationStream) {
 // metadata are cleaned up by the master bg thread after a master restart.
 TEST_F(CDCSDKYsqlTest, TestNonEligibleTableRemovalFromReplicationSlotStream) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_cdc_bg_task_wait_ms) = 100;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_add_indexes_to_stream) = true;
   ASSERT_OK(SetUpWithParams(1, 1, false /* colocated */));
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
@@ -11405,7 +11440,7 @@ TEST_F(CDCSDKYsqlTest, TestNonEligibleTableRemovalFromReplicationSlotStream) {
 TEST_F(CDCSDKYsqlTest, TestInEligibleTableEntriesRemovalFromCDCStateTable) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_master_interval_secs) = 1;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_cdc_bg_task_wait_ms) = 100;
   ASSERT_OK(SetUpWithParams(1, 1, false /* colocated */));
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
@@ -13316,7 +13351,7 @@ void CDCSDKYsqlTest::TestStreamsDroppedOnDBDropAndMasterRestart(
     const std::string& sync_point_name, bool use_logical_replication) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 10 * 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_cdc_bg_task_wait_ms) = 10 * 1000;
 
   ASSERT_OK(SetUpWithParams(
       1 /* rf */, 1 /* num_masters */, false /* colocated */,
@@ -13416,7 +13451,7 @@ TEST_F(CDCSDKYsqlTest, TestStreamWithoutNamespaceDrops) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   // ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   // ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 0;
-  // ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 10 * 1000;
+  // ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_cdc_bg_task_wait_ms) = 10 * 1000;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_disable_deleted_stream_cleanup) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_disable_stream_drop_during_db_drop) = true;
 
@@ -14737,7 +14772,7 @@ TEST_F(CDCSDKYsqlTest, TestTableBoundStreamRejectsWithReplicationSlot) {
 }
 
 TEST_F(CDCSDKYsqlTest, TestTableBoundStreamDisablesDynamicAddition) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_cdc_bg_task_wait_ms) = 100;
   ASSERT_OK(SetUpWithParams(3, 1, /* colocated */ false));
 
   auto bound_table = ASSERT_RESULT(CreateTable(
@@ -15463,7 +15498,7 @@ TEST_F(CDCSDKYsqlTest, TestSchemaPackingRetentionForCDCSDK) {
 void CDCSDKYsqlTest::TestPublicationsBoundStreamsAcrossMasterRestart(
     bool bind_to_all_tables_pub, const std::string& output_plugin_name) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_publication_scoped_replication_slots) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_cdc_bg_task_wait_ms) = 100;
   ASSERT_OK(SetUpWithParams(1 /* replication_factor */, 1 /* num_masters */));
 
   auto table1 = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "test1"));
@@ -15664,7 +15699,7 @@ TEST_F(CDCSDKYsqlTest, TestSlotWithoutPublicationIgnoresPublications) {
 
 TEST_F(CDCSDKYsqlTest, TestAllTablesPublicationBoundStreamWithTableCreatedDuringSlotCreation) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_publication_scoped_replication_slots) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_cdc_bg_task_wait_ms) = 100;
   ASSERT_OK(SetUpWithParams(1 /* replication_factor */, 1 /* num_masters */));
 
   auto table1 = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "test1"));
