@@ -318,12 +318,14 @@ public class MetricQueryHelper {
               for (Region r : provider.getRegions()) {
                 for (AvailabilityZone az : r.getZones()) {
                   boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
+                  // Release names take the zone code on a multi-zone provider, else null.
+                  String azName = isMultiAZ ? az.getCode() : null;
                   String helmRelease =
                       KubernetesUtil.getHelmReleaseName(
                           isMultiAZ,
                           nodePrefix,
                           universe.getName(),
-                          az.getName(),
+                          azName,
                           cluster.clusterType == ClusterType.ASYNC,
                           newNamingStyle);
                   nodePrefixes.add(helmRelease + "-yb-tserver-(.*)");

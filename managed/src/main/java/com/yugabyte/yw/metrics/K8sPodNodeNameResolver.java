@@ -138,7 +138,7 @@ public class K8sPodNodeNameResolver {
       boolean isReadReplica = cluster.clusterType == ClusterType.ASYNC;
       for (Region region : provider.getRegions()) {
         for (AvailabilityZone az : region.getZones()) {
-          String azName = az.getName();
+          String azName = isMultiAZ ? az.getCode() : null;
           String helmReleaseName;
           String namespace;
           try {
