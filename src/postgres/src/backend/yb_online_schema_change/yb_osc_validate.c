@@ -466,6 +466,8 @@ typedef Node *(*YbOscSingleReturnExprFn) (Oid fnOid, const char **why);
 typedef struct YbOscTransformCheck
 {
 	const char *fnName;
+	/* ALTER TABLE ... CONCURRENTLY wrote the transform, not the caller. */
+	bool		forAlter;
 } YbOscTransformCheck;
 
 static void
@@ -481,17 +483,23 @@ TransformShapeNotSupported(const YbOscTransformCheck *chk, const char *why)
 					 "column>)::<target>; END.")));
 }
 
-/* Report a column the transform computes in a way it must not. */
+/*
+ * Report a column the transform computes in a way it must not: with alterMsg
+ * if ALTER TABLE ... CONCURRENTLY wrote the transform, else with fnMsg.
+ */
 static void
 pg_attribute_noreturn()
-TransformColumnNotSupported(const char *msg, const char *detail,
-							const char *hint)
+TransformColumnNotSupported(const YbOscTransformCheck *chk, const char *alterMsg,
+							const char *fnMsg, const char *detail,
+							const char *fnHint)
 {
 	ereport(ERROR,
 			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("%s", msg),
+			 errmsg("%s", chk->forAlter ? alterMsg : fnMsg),
 			 errdetail("%s", detail),
-			 hint ? errhint("%s", hint) : 0));
+			 chk->forAlter ?
+			 errhint("Run the ALTER TABLE without CONCURRENTLY.") :
+			 (fnHint ? errhint("%s", fnHint) : 0)));
 }
 
 /*
@@ -516,14 +524,20 @@ CheckTransformColumn(const YbOscTransformCheck *chk, Node *expr,
 	Oid			notBuiltin = InvalidOid;
 
 	if (contain_subplans(expr))
-		TransformColumnNotSupported(psprintf("transform function %s computes column \"%s\" with a subquery",
+		TransformColumnNotSupported(chk,
+									psprintf("ALTER TABLE ... CONCURRENTLY does not support a subquery in the expression for column \"%s\"",
+											 attname),
+									psprintf("transform function %s computes column \"%s\" with a subquery",
 											 chk->fnName, attname),
 									"Its result depends on when it runs, so the change-capture "
 									"trigger could compute a different row than the copy wrote.",
 									NULL);
 
 	if (ContainNotBuiltinFunctionsWalker(expr, &notBuiltin))
-		TransformColumnNotSupported(psprintf("transform function %s computes column \"%s\" with a user-defined function",
+		TransformColumnNotSupported(chk,
+									psprintf("ALTER TABLE ... CONCURRENTLY does not support a user-defined function in the expression for column \"%s\"",
+											 attname),
+									psprintf("transform function %s computes column \"%s\" with a user-defined function",
 											 chk->fnName, attname),
 									psprintf("Function %s is not built in.  Only built-in "
 											 "functions are allowed, since a user-defined "
@@ -532,7 +546,10 @@ CheckTransformColumn(const YbOscTransformCheck *chk, Node *expr,
 									NULL);
 
 	if (ContainSequenceFunctionsWalker(expr, NULL))
-		TransformColumnNotSupported(psprintf("transform function %s computes column \"%s\" with a sequence function",
+		TransformColumnNotSupported(chk,
+									psprintf("ALTER TABLE ... CONCURRENTLY does not support a sequence function in the expression for column \"%s\"",
+											 attname),
+									psprintf("transform function %s computes column \"%s\" with a sequence function",
 											 chk->fnName, attname),
 									"The copy and the change-capture triggers can evaluate the "
 									"expression more than once for a row, and each evaluation "
@@ -540,14 +557,20 @@ CheckTransformColumn(const YbOscTransformCheck *chk, Node *expr,
 									NULL);
 
 	if (ContainStableFunctionsWalker(expr, NULL))
-		TransformColumnNotSupported(psprintf("transform function %s computes column \"%s\" with a stable expression",
+		TransformColumnNotSupported(chk,
+									psprintf("ALTER TABLE ... CONCURRENTLY does not support a stable expression for column \"%s\"",
+											 attname),
+									psprintf("transform function %s computes column \"%s\" with a stable expression",
 											 chk->fnName, attname),
 									"The copy and the change-capture triggers would evaluate it at "
 									"different times and under different settings.",
 									NULL);
 
 	if (indexed && contain_volatile_functions(expr))
-		TransformColumnNotSupported(psprintf("transform function %s computes indexed column \"%s\" with a volatile expression",
+		TransformColumnNotSupported(chk,
+									psprintf("ALTER TABLE ... CONCURRENTLY does not support a volatile expression for indexed column \"%s\"",
+											 attname),
+									psprintf("transform function %s computes indexed column \"%s\" with a volatile expression",
 											 chk->fnName, attname),
 									"The change-capture triggers find a row's index entries by "
 									"recomputing its values, so an indexed column must get the same "
@@ -574,7 +597,7 @@ CheckTransformColumn(const YbOscTransformCheck *chk, Node *expr,
  */
 static void
 CheckTransformBody(Oid transformFnOid, Relation srcRel, Relation dstRel,
-				   List *dstNodes)
+				   List *dstNodes, bool forAlter)
 {
 	YbOscSingleReturnExprFn singleReturnExpr = (YbOscSingleReturnExprFn)
 		load_external_function("$libdir/plpgsql",
@@ -582,6 +605,7 @@ CheckTransformBody(Oid transformFnOid, Relation srcRel, Relation dstRel,
 							   true /* signalNotFound */ , NULL);
 	YbOscTransformCheck chk = {
 		.fnName = format_procedure(transformFnOid),
+		.forAlter = forAlter,
 	};
 	TupleDesc	srcDesc = RelationGetDescr(srcRel);
 	TupleDesc	dstDesc = RelationGetDescr(dstRel);
@@ -648,7 +672,10 @@ CheckTransformBody(Oid transformFnOid, Relation srcRel, Relation dstRel,
 
 		if (srcAttnum != InvalidAttrNumber &&
 			!(IsA(colExpr, Var) && ((Var *) colExpr)->varattno == srcAttnum))
-			TransformColumnNotSupported(psprintf("transform function %s must pass key column \"%s\" through unchanged",
+			TransformColumnNotSupported(&chk,
+										psprintf("ALTER TABLE ... CONCURRENTLY cannot change the values of key column \"%s\"",
+												 attname),
+										psprintf("transform function %s must pass key column \"%s\" through unchanged",
 												 chk.fnName, attname),
 										"The online schema change relies on a unique index over that "
 										"column to prove that distinct source rows reach distinct "
@@ -961,8 +988,10 @@ HierarchyHasDefaultPartition(Relation root, List *nodes)
  * what could reach a table behind its back, is checked on every node.
  */
 void
-YbOscValidate(Relation srcRel, Relation dstRel, Oid transformFnOid)
+YbOscValidate(Relation srcRel, Relation dstRel, Oid transformFnOid,
+			  const YbOscBeginOptions *opts)
 {
+	YbOscCutoverMode cutoverMode = opts->cutover_mode;
 	List	   *srcNodes = YbOscHierarchyNodes(RelationGetRelid(srcRel), NoLock);
 	List	   *dstNodes = YbOscHierarchyNodes(RelationGetRelid(dstRel), NoLock);
 	ListCell   *lc;
@@ -973,7 +1002,8 @@ YbOscValidate(Relation srcRel, Relation dstRel, Oid transformFnOid)
 	ValidateKeyWitness(srcRel, dstRel);
 
 	(void) ValidateTransformFn(transformFnOid, srcRel, dstRel);
-	CheckTransformBody(transformFnOid, srcRel, dstRel, dstNodes);
+	CheckTransformBody(transformFnOid, srcRel, dstRel, dstNodes,
+					   strcmp(opts->origin, YB_OSC_ORIGIN_ALTER_TABLE) == 0);
 
 	foreach(lc, dstNodes)
 	{
@@ -985,15 +1015,25 @@ YbOscValidate(Relation srcRel, Relation dstRel, Oid transformFnOid)
 		NodeClose(rel, dstRel);
 	}
 
-	foreach(lc, srcNodes)
+	/*
+	 * Both foreign-key rules exist because a rename cutover gives the data a
+	 * new OID: incoming constraints would keep pointing at the archived
+	 * source, and outgoing ones have to be recreated on the target.  A swap
+	 * cutover keeps the source's OID and its constraints.
+	 */
+	if (cutoverMode == YB_OSC_CUTOVER_RENAME)
 	{
-		Relation	rel = NodeOpen(lfirst_oid(lc), srcRel);
+		foreach(lc, srcNodes)
+		{
+			Relation	rel = NodeOpen(lfirst_oid(lc), srcRel);
 
-		EnsureSrcNoIncomingForeignKeys(rel);
-		NodeClose(rel, srcRel);
+			EnsureSrcNoIncomingForeignKeys(rel);
+			NodeClose(rel, srcRel);
+		}
+
+		EnsureForeignKeyColumnsOnTarget(srcRel, dstRel);
 	}
 
-	EnsureForeignKeyColumnsOnTarget(srcRel, dstRel);
 	EnsureTransformOwnerCanCopy(transformFnOid, srcNodes, dstRel);
 	EnsureTargetEmpty(dstRel, dstNodes);
 

@@ -1156,6 +1156,7 @@ _equalAlterTableStmt(const AlterTableStmt *a, const AlterTableStmt *b)
 	COMPARE_NODE_FIELD(cmds);
 	COMPARE_SCALAR_FIELD(objtype);
 	COMPARE_SCALAR_FIELD(missing_ok);
+	COMPARE_SCALAR_FIELD(yb_concurrent);
 
 	return true;
 }

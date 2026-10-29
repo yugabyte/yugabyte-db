@@ -198,6 +198,14 @@ extern struct YbPgExecOutParam *yb_osc_backfill_out_param;
 extern bool yb_osc_backfill_outer_started;
 
 /*
+ * Non-zero while the online schema change lifecycle runs an ALTER TABLE ...
+ * CONCURRENTLY job's own DDL, which YBCExecAlterTable marks for the master.
+ * Every increment is undone in PG_FINALLY.
+ */
+extern int	yb_osc_internal_ddl_depth;
+extern bool YbOscIsInternalDdl(void);
+
+/*
  * Errors out of a partition-topology change under parent_oid while an online
  * schema change job on it or on an ancestor is active.  ddl is the verb phrase
  * for the message, e.g. "add a partition to".  Defined in yb_osc_catalog.c.

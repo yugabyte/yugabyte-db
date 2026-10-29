@@ -142,6 +142,10 @@ message TableBackfillChunkRequestPB {
   optional uint32 transform_fn_oid = 8;
   optional fixed64 propagated_hybrid_time = 9;
   optional int64 pg_job_id = 10;
+  // The DocDB table id of source_table_oid's table, which must be this tablet's table. Checked
+  // by id because the OID can no longer be derived from it once ALTER TABLE ... CONCURRENTLY has
+  // given the table the shadow's DocDB table.
+  optional bytes source_table_id = 11;
 }
 
 message TableBackfillChunkResponsePB {

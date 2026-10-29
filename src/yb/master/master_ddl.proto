@@ -557,6 +557,15 @@ message AlterTableRequestPB {
 
   // This is the sub-transaction performing the Alter operation.
   optional uint32 sub_transaction_id = 15;
+
+  // Set for the alters that the online schema change lifecycle functions issue themselves. They do
+  // not enroll in DDL transaction verification; see AlterTableWithBatchTracker.
+  optional bool yb_online_schema_change_internal_ddl = 16 [ default = false ];
+
+  // Set at a swap cutover of an online schema change job: the DocDB tables the source adopts from
+  // its shadow were created with the shadow's pg_table_id, and must map back to the source's
+  // pg_class row.
+  optional bytes pg_table_id = 17;
 }
 
 message AlterTableResponsePB {
