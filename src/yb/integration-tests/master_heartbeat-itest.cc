@@ -24,6 +24,7 @@
 
 #include "yb/common/common_net.h"
 #include "yb/common/common_types.pb.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/casts.h"
 
@@ -63,6 +64,8 @@ using namespace std::literals;
 
 DECLARE_uint64(TEST_delay_sys_catalog_reload_secs);
 DECLARE_int32(blacklist_progress_initial_delay_secs);
+DECLARE_bool(wait_for_full_tablet_reports_on_blacklist_completion);
+
 DECLARE_bool(enable_load_balancing);
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_bool(TEST_pause_before_remote_bootstrap);
@@ -81,7 +84,6 @@ DECLARE_int32(heartbeat_rpc_timeout_ms);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_int32(tablet_report_limit);
 DECLARE_int32(replication_factor);
-DECLARE_bool(wait_for_full_tablet_reports_on_blacklist_completion);
 
 METRIC_DECLARE_histogram(handler_latency_yb_master_MasterHeartbeat_TSHeartbeat);
 
