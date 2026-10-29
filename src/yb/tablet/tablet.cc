@@ -374,9 +374,9 @@ DEFINE_RUNTIME_bool(advance_deactivated_vector_index_flushed_op_id, true,
 TAG_FLAG(advance_deactivated_vector_index_flushed_op_id, advanced);
 
 DEFINE_RUNTIME_bool(advance_idle_vector_index_flushed_op_id, true,
-    "If true, the flushed op id of an active vector index holding nothing unflushed, e.g. one whose "
-    "table gets no vector writes while other tables of a colocated tablet do, is advanced to that "
-    "of the regular db after a regular db flush.");
+    "If true, the flushed op id of an active vector index holding nothing unflushed, e.g. one "
+    "whose table gets no vector writes while other tables of a colocated tablet do, is advanced "
+    "to that of the regular db after a regular db flush.");
 TAG_FLAG(advance_idle_vector_index_flushed_op_id, advanced);
 
 DEFINE_RUNTIME_bool(vector_index_include_into_post_split_compaction, true,
