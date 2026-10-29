@@ -88,7 +88,7 @@ The first append creates a new segment starting at L+1 and writes to it; the mar
 
 This relies on lazy segment allocation, which also helps restarts outside this mode:
 
-- The log stays in `kLogWriting` without an active segment. `Log::DoAppend` starts a segment for the first batch that has data. Rollover markers and sync do nothing without an active segment.
+- The log stays in `kLogWriting` without an active segment. `Log::DoAppend` starts a segment for the first batch that has data. Rollover markers do nothing without an active segment. A sync without one marks the existing entries durable: closed segments were synced when closed, `EnsureSegmentInitialized` fsyncs an unclosed last segment it does not reuse, and the marker covers the ops up to L. Memtable flushes wait for `Log::WalState` to report their ops durable, so without this they would wait for the next append.
 - `EnsureSegmentInitialized`, called from `FinishBootstrap`, no longer allocates a segment. It still reuses an unclosed last segment eagerly, because its scan in `ReuseAsActiveSegment` would otherwise land on the write path.
 - A log opened with `CreateNewSegment::kTrue` still allocates a segment at open.
 
@@ -106,7 +106,7 @@ If the WAL directory has a marker, bootstrap treats the tablet as existing even 
 
 ## Running with no segments
 
-`Log::Init` loads the marker and sets the last appended and last synced op ids to L. Remote bootstrap waits on them in `WaitForSafeOpIdToApply`, and memtable flushes compare against them.
+`Log::Init` loads the marker and sets the last appended and last synced op ids to L. Remote bootstrap waits on them in `WaitForSafeOpIdToApply`. The first background sync that `Log::WalState` starts marks L durable, which memtable flushes wait for.
 
 **Lookup of L.** `LogCache::Init` keeps only the next index, and a cache miss used to fall back to `LogReader::LookupOpId`. After an election the first AppendEntries needs L as its preceding op. If that lookup failed, peers would be sent to remote bootstrap. `LogCache::LookupOpId` now calls `Log::LookupOpId`, which answers for L from the marker.
 
@@ -115,7 +115,7 @@ If the WAL directory has a marker, bootstrap treats the tablet as existing even 
 | Place | Change |
 | --- | --- |
 | `Log::Close` | Closes the active segment only if there is one |
-| `Log::DoSync` | Without an active segment, clears the pending sync state |
+| `Log::DoSync` | Without an active segment, clears the pending sync state and marks the existing entries durable |
 | `Log::UpdateSegmentReadableOffset` | Updates the reader only for an active segment |
 | `Log::CopyTo` | Skips the last segment only if it is active, i.e. has no footer |
 | Rollover markers | Already did nothing for an empty or missing active segment |
