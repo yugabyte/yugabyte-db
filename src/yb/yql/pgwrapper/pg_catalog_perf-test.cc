@@ -1407,6 +1407,53 @@ TEST_F(PgCatalogPrefetchAdmissionTest, RejectedPrefetchIsRetried) {
       << "the injected rejection did not reach a prefetch, so the retry path was not exercised";
 }
 
+// Preloading makes a connection's prefetch a long sequence of paged reads, and a limit of one lets
+// one such sequence hold the only slot for all of them. A connection arriving meanwhile is rejected
+// over and over on a single retrier, and that is where the delay the rejection carries earns its
+// keep: these connections take tens of seconds with it and upwards of four minutes without it.
+// See issue #36187.
+class PgCatalogPrefetchSaturationTest : public PgCatalogPrefetchAdmissionTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_catalog_preload_additional_tables) = true;
+    PgCatalogPrefetchAdmissionTest::SetUp();
+  }
+};
+
+TEST_F(PgCatalogPrefetchSaturationTest, RepeatedRejectionsDoNotStallConnections) {
+  constexpr size_t kNumConnections = 16;
+  // Too few connections leave the slot free between sequences, so each one is rejected only once
+  // or twice and both retry schedules cost the same. Checked rather than assumed, because the test
+  // would still pass while proving nothing.
+  constexpr int64_t kMinRejections = 40;
+  // Measured with the delay: 9 s release, 35 s fastdebug, 54 s asan. Without it, 133 s to 460 s.
+  // Whether some connection keeps losing the slot is a race, so this catches the slow schedule
+  // without catching it every run: 4 runs of 4 in fastdebug, 3 of 6 in release. Neither 12 nor 24
+  // connections did better than 16, and 24 raised the quick runs to about 67 s, close enough to
+  // the deadline below to risk failing for the wrong reason.
+  constexpr int64_t kDeadlineMs = 120000;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_max_concurrent_ysql_catalog_prefetches) = 1;
+
+  const auto rejections_before = Rejections();
+  const auto start = MonoTime::Now();
+  TestThreadHolder threads;
+  for (size_t i = 0; i < kNumConnections; ++i) {
+    threads.AddThreadFunctor([this] {
+      auto conn = ASSERT_RESULT(Connect());
+      ASSERT_OK(conn.FetchRow<int32_t>("SELECT 1"));
+    });
+  }
+  threads.JoinAll();
+  const auto elapsed = MonoTime::Now() - start;
+
+  ASSERT_GE(Rejections() - rejections_before, kMinRejections)
+      << "the limit did not stay saturated, so neither retry schedule was exercised";
+  ASSERT_LT(elapsed.ToMilliseconds(), kDeadlineMs)
+      << kNumConnections << " connections took " << elapsed
+      << ", the cost of a rejection the client has no delay to pace by";
+}
+
 // The limit itself must not break connections, and admissions must be released once a read
 // finishes -- a leaked slot would reject every prefetch from then on.
 TEST_F(PgCatalogPrefetchAdmissionTest, ConcurrentPrefetchesAreAdmittedAndReleased) {

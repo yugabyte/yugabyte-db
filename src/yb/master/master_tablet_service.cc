@@ -33,6 +33,8 @@
 
 #include "yb/rpc/rpc_context.h"
 
+#include "yb/tserver/tserver_error.h"
+
 #include "yb/util/cgroups.h"
 #include "yb/util/flag_validators.h"
 #include "yb/util/flags.h"
@@ -69,6 +71,14 @@ DEFINE_RUNTIME_uint32(master_new_ysql_catalog_prefetch_percent, 50,
 
 DEFINE_validator(master_new_ysql_catalog_prefetch_percent,
     FLAG_COND_VALIDATOR(_value <= 100, "Must be a percentage, so at most 100"));
+
+DEFINE_RUNTIME_uint32(master_ysql_catalog_prefetch_rejection_delay_ms, 100,
+    "How long a client is told to wait before retrying a catalog prefetch the leader shed. The "
+    "client adds this to its retry delay once per rejection, so the wait grows linearly instead "
+    "of doubling, which is what an unhinted retryable error gets. Doubling suits a server that is "
+    "down; it badly overshoots here, because an admission slot is held for a single read rather "
+    "than for a whole prefetch and so frees many times a second. 0 attaches no delay, which "
+    "leaves the client on its own doubling schedule.");
 
 METRIC_DEFINE_gauge_int64(server, ysql_catalog_prefetches_in_progress,
                           "YSQL Catalog Prefetches In Progress",
@@ -250,7 +260,21 @@ Result<std::shared_ptr<void>> MasterTabletServiceImpl::AdmitRead(
   // real one to the client.
   const auto reject = [this](const std::string& reason) {
     ysql_catalog_prefetch_rejections_->Increment();
-    auto status = STATUS_FORMAT(ServiceUnavailable, "Rejecting catalog prefetch: $0", reason);
+    const auto delay_ms = FLAGS_master_ysql_catalog_prefetch_rejection_delay_ms;
+    Status status;
+    if (delay_ms > 0) {
+      // A ServiceUnavailable carrying a delay is sent as a response error, and the client waits
+      // that delay before retrying it. See DoSetupErrorAndRespond.
+      status = STATUS_EC_FORMAT(
+          ServiceUnavailable,
+          tserver::TabletServerDelay(std::chrono::milliseconds(delay_ms)),
+          "Rejecting catalog prefetch: $0", reason);
+    } else {
+      // One with no delay is sent as ERROR_SERVER_TOO_BUSY instead, which the client paces on a
+      // schedule of its own. Attaching a delay of zero would not do this: a zero delay is still a
+      // delay, and the client honours it by retrying without pausing.
+      status = STATUS_FORMAT(ServiceUnavailable, "Rejecting catalog prefetch: $0", reason);
+    }
     // Throttled the way the write path throttles its own rejections. Without a line here the only
     // evidence that the leader is shedding prefetches is a metric, which is not where anyone
     // looks first; the suppressed-message count the macro appends gives the rate.
