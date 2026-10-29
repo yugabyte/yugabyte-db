@@ -207,7 +207,8 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   // Storage tiers this tserver registered for its data directories (labels from
   // ValidStorageTiers()). Persisted with the registration, so it is correct from the first
   // heartbeat and right after a master failover. Empty for a tserver from before the field: its
-  // tiers are unknown, so it is not chosen for a placement that names a tier.
+  // tiers are unknown, so create-time placement does not choose it for a placement that names a
+  // tier. The load balancer does not consider tiers.
   std::set<std::string> GetStorageTiers() const EXCLUDES(mutex_);
   bool HasStorageTier(const std::string& tier) const EXCLUDES(mutex_);
 

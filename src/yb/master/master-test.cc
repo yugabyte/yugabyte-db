@@ -121,6 +121,7 @@ DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
 DECLARE_int32(tserver_unresponsive_timeout_ms);
 DECLARE_uint32(initial_tserver_registration_duration_secs);
 DECLARE_bool(catalog_manager_check_ts_count_for_create_table);
+DECLARE_bool(enable_tiered_storage);
 
 METRIC_DECLARE_gauge_uint64(block_cache_usage);
 
@@ -788,6 +789,7 @@ TEST_F(MasterTest, TestHeartbeatFromRegisteredTSPersisted) {
 // cluster with none of them rejects the replication info instead of creating tablets nowhere. A
 // placement without a tier is unconstrained, so an all-hdd cluster still accepts it.
 TEST_F(MasterTest, ValidateReplicationInfoRequiresTserversOnStorageTier) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_check_ts_count_for_create_table) = true;
   for (int i = 0; i < 3; ++i) {
     TSRegistrationPB reg;
@@ -824,6 +826,12 @@ TEST_F(MasterTest, ValidateReplicationInfoRequiresTserversOnStorageTier) {
   ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
 
   resp = ASSERT_RESULT(validate(""));
+  ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
+
+  // With tiered storage off the tier is not acted on, so the ssd placement is validated as
+  // untiered and the all-hdd cluster accepts it.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = false;
+  resp = ASSERT_RESULT(validate(kDefaultStorageTier));
   ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
 }
 
