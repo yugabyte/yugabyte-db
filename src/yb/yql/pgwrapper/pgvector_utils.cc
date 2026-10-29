@@ -13,15 +13,13 @@
 
 #include "yb/yql/pgwrapper/pgvector_utils.h"
 
-#include <arpa/inet.h>
-
 #include <cstdint>
-#include <cstring>
 #include <iomanip>
 #include <limits>
 #include <sstream>
 
 #include "yb/gutil/casts.h"
+#include "yb/gutil/endian.h"
 
 #include "yb/util/enums.h"
 
@@ -61,19 +59,14 @@ std::string EncodeVectorAsText(const FloatVector& v) {
 }
 
 std::string EncodeVectorAsBinary(const FloatVector& v) {
-  std::string out;
-  out.resize(4 + 4 * v.size());
-  char* p = out.data();
-  uint16_t dim_be = htons(narrow_cast<uint16_t>(v.size()));
-  uint16_t unused = 0;
-  std::memcpy(p, &dim_be, sizeof(dim_be)); p += sizeof(dim_be);
-  std::memcpy(p, &unused, sizeof(unused)); p += sizeof(unused);
-  for (float f : v) {
-    uint32_t bits;
-    std::memcpy(&bits, &f, sizeof(bits));
-    uint32_t bits_be = htonl(bits);
-    std::memcpy(p, &bits_be, sizeof(bits_be));
-    p += sizeof(bits_be);
+  std::string out(2 * sizeof(uint16_t) + sizeof(uint32_t) * v.size(), '\0');
+  auto* p = out.data();
+  BigEndian::Store16(p, narrow_cast<uint16_t>(v.size()));
+  // The second uint16 is unused and stays zero.
+  p += 2 * sizeof(uint16_t);
+  for (auto f : v) {
+    BigEndian::Store32(p, bit_cast<uint32_t>(f));
+    p += sizeof(uint32_t);
   }
   return out;
 }
