@@ -415,10 +415,12 @@ TEST_F(MvccTest, ShutdownWakesSafeTimeWaiters) {
   manager_.SetPropagatedSafeTimeOnFollower(ht.Decremented());
   std::thread leader_waiter([this, ht] {
     auto result = manager_.SafeTime(ht, CoarseTimePoint::max(), FixedHybridTimeLease());
+    ASSERT_NOK(result);
     ASSERT_TRUE(result.status().IsShutdownInProgress()) << result.status();
   });
   std::thread follower_waiter([this, ht] {
     auto result = manager_.SafeTimeForFollower(ht, CoarseMonoClock::now() + 60s);
+    ASSERT_NOK(result);
     ASSERT_TRUE(result.status().IsShutdownInProgress()) << result.status();
   });
   std::this_thread::sleep_for(100ms);
