@@ -3539,6 +3539,14 @@ ConsensusStatePB RaftConsensus::GetConsensusStateFromCache() const {
   return state_->GetConsensusStateFromCache();
 }
 
+std::pair<PeerRole, int64_t> RaftConsensus::GetRoleAndTerm() const {
+  return state_->GetRoleAndTerm();
+}
+
+int64_t RaftConsensus::GetCommittedConfigIndex() const {
+  return state_->GetCommittedConfigIndex();
+}
+
 RaftConfigPB RaftConsensus::CommittedConfig() const {
   auto lock = state_->LockForRead();
   return state_->GetCommittedConfigUnlocked();

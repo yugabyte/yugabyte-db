@@ -103,6 +103,7 @@
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
+#include "yb/consensus/raft_consensus.h"
 
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/partition.h"
@@ -2298,6 +2299,22 @@ Status CatalogManager::CheckIsLeaderAndReady() const {
           "Leader not yet ready to serve requests: ready term $0 vs cstate term $1",
           leader_ready_term, cstate.current_term());
     }
+  }
+  return Status::OK();
+}
+
+Status CatalogManager::CheckLeaderRoleAndReadyTerm() const {
+  const auto [role, term] = VERIFY_RESULT(tablet_peer()->GetRaftConsensus())->GetRoleAndTerm();
+  if (PREDICT_FALSE(role != PeerRole::LEADER)) {
+    return STATUS_FORMAT(
+        IllegalState, "Not the leader. Role: $0, term: $1", PeerRole_Name(role), term);
+  }
+
+  auto leader_ready_term = leader_ready_term_.load();
+  if (PREDICT_FALSE(leader_ready_term != term)) {
+    return STATUS_FORMAT(ServiceUnavailable,
+        "Leader not yet ready to serve requests: ready term $0 vs current term $1",
+        leader_ready_term, term);
   }
   return Status::OK();
 }
@@ -13519,6 +13536,12 @@ Status CatalogManager::GetCurrentConfig(consensus::ConsensusStatePB* cpb) const 
   *cpb = consensus->ConsensusState(CONSENSUS_CONFIG_COMMITTED);
 
   return Status::OK();
+}
+
+Result<int64_t> CatalogManager::GetCommittedConfigIndex() const {
+  auto tablet_peer = sys_catalog_->tablet_peer();
+  SCHECK(tablet_peer, IllegalState, "Node $0 peer not initialized.", master_->fs_manager()->uuid());
+  return VERIFY_RESULT(tablet_peer->GetRaftConsensus())->GetCommittedConfigIndex();
 }
 
 Status CatalogManager::DumpState(std::ostream* out, bool on_disk_dump) const {

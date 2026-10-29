@@ -34,6 +34,7 @@
 #include "yb/integration-tests/yb_table_test_base.h"
 
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
 #include "yb/master/master_backup.proxy.h"
@@ -616,6 +617,49 @@ TEST_F(MasterHeartbeatITestOneTServer, FullReportContinutation) {
     // The continuation should succeed and the full report should be complete.
     ASSERT_FALSE(resp.needs_full_tablet_report());
   }
+}
+
+class MasterHeartbeatITestThreeMasters : public YBMiniClusterTestBase<MiniCluster> {
+  void SetUp() override {
+    MiniClusterOptions opts;
+    opts.num_tablet_servers = 1;
+    opts.num_masters = 3;
+    cluster_ = std::make_unique<MiniCluster>(opts);
+    ASSERT_OK(cluster_->Start());
+  }
+};
+
+// The lock-free leader check used for heartbeat tablet reports must agree with the locked one
+// on every master, and follow a leader step-down on both sides.
+TEST_F(MasterHeartbeatITestThreeMasters, LeaderRoleAndReadyTermFollowsLeadership) {
+  auto check_all_masters = [this](master::MiniMaster* leader) {
+    ASSERT_OK(leader->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+    for (size_t i = 0; i < cluster_->num_masters(); ++i) {
+      auto* mini_master = cluster_->mini_master(i);
+      auto s = mini_master->catalog_manager_impl().CheckLeaderRoleAndReadyTerm();
+      ASSERT_EQ(s.ok(), mini_master->catalog_manager().CheckIsLeaderAndReady().ok()) << s;
+      if (mini_master == leader) {
+        ASSERT_OK(s);
+        continue;
+      }
+      ASSERT_TRUE(s.IsIllegalState()) << s;
+      ASSERT_STR_CONTAINS(s.message().ToBuffer(), "Not the leader");
+      ASSERT_STR_CONTAINS(s.message().ToBuffer(), "Role: FOLLOWER");
+    }
+  };
+
+  auto* leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+  ASSERT_NO_FATALS(check_all_masters(leader));
+
+  // The mini cluster's simulated network puts the only tserver in the same group as the first two
+  // masters; a leader elsewhere cannot reach it, and teardown's cluster check would then time out.
+  auto* successor = cluster_->mini_master(leader == cluster_->mini_master(0) ? 1 : 0);
+  ASSERT_OK(StepDown(leader->tablet_peer(), successor->permanent_uuid(), ForceStepDown::kTrue));
+  ASSERT_OK(WaitFor([leader]() -> Result<bool> {
+    return !leader->catalog_manager_impl().CheckLeaderRoleAndReadyTerm().ok();
+  }, 10s, "old leader fails the lock-free leader check"));
+
+  ASSERT_NO_FATALS(check_all_masters(ASSERT_RESULT(cluster_->GetLeaderMiniMaster())));
 }
 
 class MasterHeartbeatITestSixTablets : public MasterHeartbeatITest {

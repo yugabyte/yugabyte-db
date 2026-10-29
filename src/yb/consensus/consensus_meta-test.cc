@@ -227,6 +227,66 @@ TEST_F(ConsensusMetadataTest, TestActiveRole) {
   ASSERT_EQ(PeerRole::NON_PARTICIPANT, cmeta->active_role());
 }
 
+// GetRoleAndTerm is the lock-free view CheckLeaderRoleAndReadyTerm relies on: LEADER exactly while
+// this peer is the leader of the active config, paired with the term current at that point.
+TEST_F(ConsensusMetadataTest, GetRoleAndTerm) {
+  std::unique_ptr<ConsensusMetadata> cmeta = ASSERT_RESULT(ConsensusMetadata::Create(
+      &fs_manager_, kTabletId, fs_manager_.uuid(), config_, kInitialTerm));
+  ASSERT_EQ(std::make_pair(PeerRole::FOLLOWER, kInitialTerm), cmeta->GetRoleAndTerm());
+
+  cmeta->set_leader_uuid(fs_manager_.uuid());
+  ASSERT_EQ(std::make_pair(PeerRole::LEADER, kInitialTerm), cmeta->GetRoleAndTerm());
+
+  cmeta->set_current_term(kInitialTerm + 1);
+  ASSERT_EQ(std::make_pair(PeerRole::LEADER, kInitialTerm + 1), cmeta->GetRoleAndTerm());
+
+  cmeta->set_leader_uuid("someone-else");
+  ASSERT_EQ(std::make_pair(PeerRole::FOLLOWER, kInitialTerm + 1), cmeta->GetRoleAndTerm());
+
+  cmeta->set_leader_uuid(fs_manager_.uuid());
+  cmeta->clear_leader_uuid();
+  ASSERT_EQ(std::make_pair(PeerRole::FOLLOWER, kInitialTerm + 1), cmeta->GetRoleAndTerm());
+
+  // Leader uuid still points at us, but a committed config without us wins.
+  cmeta->set_leader_uuid(fs_manager_.uuid());
+  RaftConfigPB config_without_us = BuildConfig({ "a", "b" });
+  config_without_us.set_committed_op_index(5);
+  cmeta->set_committed_config(config_without_us);
+  ASSERT_EQ(std::make_pair(PeerRole::NON_PARTICIPANT, kInitialTerm + 1), cmeta->GetRoleAndTerm());
+}
+
+// The lock-free committed config index follows every committed config write and survives a Load.
+TEST_F(ConsensusMetadataTest, CommittedConfigIndex) {
+  {
+    std::unique_ptr<ConsensusMetadata> cmeta = ASSERT_RESULT(ConsensusMetadata::Create(
+        &fs_manager_, kTabletId, fs_manager_.uuid(), config_, kInitialTerm));
+    ASSERT_EQ(kInvalidOpIdIndex, cmeta->committed_config_index());
+
+    RaftConfigPB config = config_;
+    config.set_committed_op_index(7);
+    cmeta->set_committed_config(config);
+    ASSERT_EQ(7, cmeta->committed_config_index());
+
+    // A pending config is not committed.
+    cmeta->set_pending_config(config_, OpId(kInitialTerm, 8));
+    ASSERT_EQ(7, cmeta->committed_config_index());
+    cmeta->clear_pending_config();
+
+    ConsensusStatePB cstate;
+    cstate.set_current_term(kInitialTerm);
+    *cstate.mutable_config() = config_;
+    cstate.mutable_config()->set_committed_op_index(9);
+    cmeta->MergeCommittedConsensusStatePB(cstate);
+    ASSERT_EQ(9, cmeta->committed_config_index());
+
+    ASSERT_OK(cmeta->Flush());
+  }
+
+  std::unique_ptr<ConsensusMetadata> cmeta;
+  ASSERT_OK(ConsensusMetadata::Load(&fs_manager_, kTabletId, fs_manager_.uuid(), &cmeta));
+  ASSERT_EQ(9, cmeta->committed_config_index());
+}
+
 // Ensure that invocations of ToConsensusStatePB() return the expected state
 // in the returned object.
 TEST_F(ConsensusMetadataTest, TestToConsensusStatePB) {
