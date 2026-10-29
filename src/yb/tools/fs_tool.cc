@@ -53,6 +53,7 @@
 #include "yb/master/sys_catalog_constants.h"
 
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_context.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_options.h"
 
@@ -273,6 +274,7 @@ Status FsTool::DumpTabletData(const std::string& tablet_id) {
       .tablet_options = tablet_options,
       .mutable_tablet_options = tablet::MutableTabletOptions{},
       .log_prefix_suffix = std::string(),
+      .tablet_context = &tablet::StandaloneTabletContext::Instance(),
       .transaction_participant_context = nullptr,
       .local_tablet_filter = client::LocalTabletFilter(),
       .transaction_coordinator_context = nullptr,

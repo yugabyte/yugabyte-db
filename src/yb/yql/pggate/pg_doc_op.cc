@@ -1089,22 +1089,29 @@ Result<bool> PgDocReadOp::BindExprsToBatch(
   auto partition = client::FindPartitionStartIndex(table_->GetPartitionList(), partition_key);
   DCHECK(partition < partition_batches.size());
   auto& partition_batch = partition_batches[partition];
+  if (partition_batch.request_range && partition_batch.request_range->IsEmpty()) {
+    return false;
+  }
   if (!partition_batch.read_op) {
+    PgReadRange request_range(table_);
+    request_range.SetRequestBounds(GetTemplateReadReq());
+    request_range.SetPartitionBounds(partition);
+    // read_op_provider clones an op, so check the request bounds before taking one.
+    if (request_range.IsEmpty()) {
+      partition_batch.request_range.emplace(std::move(request_range));
+      return false;
+    }
     partition_batch.read_op = &VERIFY_RESULT_REF(read_op_provider());
     auto& read_req = partition_batch.read_op->read_request();
+    // The clone carries the template bounds, which request_range already includes.
+    const auto applied = request_range.ApplyBounds(read_req);
+    DCHECK(applied);
+    partition_batch.rhs_values = InitHashPermutationBatch(read_req);
     PgReadRange partition_range(table_);
     partition_range.SetPartitionBounds(partition);
-    if (partition_range.ApplyBounds(read_req)) {
-      partition_batch.rhs_values = InitHashPermutationBatch(read_req);
-      PgReadRange request_range(table_);
-      request_range.SetRequestBounds(read_req);
-      if (request_range != partition_range) {
-        partition_batch.request_range.emplace(std::move(request_range));
-      }
+    if (request_range != partition_range) {
+      partition_batch.request_range.emplace(std::move(request_range));
     }
-  }
-  if (!partition_batch.rhs_values) {
-    return false;
   }
   if (partition_batch.request_range) {
     // The hash permutation key generally is a range, keys with the same hash code and the hash
@@ -1181,23 +1188,24 @@ Result<bool> PgDocReadOp::PopulateNextHashPermutationOps() {
   }
 
   // Setup operations
-  const auto max_op_count = std::min(hash_permutations_->Size(),
-                               IsHashBatchingEnabled() ?
-                                   table_->GetPartitionListSize() :
-                                   implicit_cast<size_t>(FLAGS_ysql_request_limit));
-  ClonePgsqlOps(max_op_count);
   if (IsHashBatchingEnabled()) {
+    DCHECK(pgsql_ops_.empty());
     PartitionBatches batches(table_->GetPartitionListSize());
-    const auto op_provider =
-        [it = pgsql_ops_.begin(), end = pgsql_ops_.end()] () mutable -> Result<PgsqlReadOp&> {
-          RSTATUS_DCHECK(it != end, IllegalState, "No more read ops available");
-          return AsReadOp(*it++);
-        };
     size_t limit = 0;
     if (exec_params_.work_mem > 0) {
       limit = pgsql_op_arena_->UsedBytes() + (implicit_cast<size_t>(exec_params_.work_mem) * 1024);
     }
     VLOG(4) << "arena size limit: " << limit;
+    // Clone an op only when a permutation first reaches its tablet. The clones are not charged to
+    // work_mem: the limit grows by what each clone takes from the arena.
+    const auto op_provider = [this, &limit]() -> Result<PgsqlReadOp&> {
+      const auto used_before = pgsql_op_arena_->UsedBytes();
+      auto& op = CloneOnePgsqlOp();
+      if (limit > 0) {
+        limit += pgsql_op_arena_->UsedBytes() - used_before;
+      }
+      return op;
+    };
     for (; hash_permutations_->HasPermutation(); ) {
       if (VERIFY_RESULT(BindExprsToBatch(
               batches, hash_permutations_->NextPermutation(), make_lw_function(op_provider))) &&
@@ -1206,7 +1214,11 @@ Result<bool> PgDocReadOp::PopulateNextHashPermutationOps() {
       }
     }
     VLOG(4) << "arena size after bind: " << pgsql_op_arena_->UsedBytes();
+    AddOpsToResultStream();
+    parallelism_level_ = pgsql_ops_.size();
   } else {
+    ClonePgsqlOps(std::min(hash_permutations_->Size(),
+                           implicit_cast<size_t>(FLAGS_ysql_request_limit)));
     for (auto it = pgsql_ops_.begin();
          it != pgsql_ops_.end() && hash_permutations_->HasPermutation(); ++it) {
       if (VERIFY_RESULT(BindExprsRegular(
@@ -1490,17 +1502,21 @@ Result<bool> PgDocReadOp::SetLowerUpperBound(LWPgsqlReadRequestPB* request, size
 void PgDocReadOp::ClonePgsqlOps(size_t op_count) {
   // Allocate batch operator, one per partition.
   DCHECK_GT(op_count, 0);
-  DCHECK(!end_of_data_);
   pgsql_ops_.reserve(op_count);
-  const auto& arena = pgsql_op_arena_ ? pgsql_op_arena_ : GetSharedArena(read_op_);
   while (pgsql_ops_.size() < op_count) {
-    pgsql_ops_.push_back(read_op_->DeepCopy(arena));
-    // Initialize as inactive. Turn it on when setup argument for a specific partition.
-    pgsql_ops_.back()->set_active(false);
+    CloneOnePgsqlOp();
   }
   AddOpsToResultStream();
   // Set parallelism_level_ to maximum possible of operators to be executed at one time.
   parallelism_level_ = pgsql_ops_.size();
+}
+
+PgsqlReadOp& PgDocReadOp::CloneOnePgsqlOp() {
+  DCHECK(!end_of_data_);
+  const auto& arena = pgsql_op_arena_ ? pgsql_op_arena_ : GetSharedArena(read_op_);
+  pgsql_ops_.push_back(read_op_->DeepCopy(arena));
+  pgsql_ops_.back()->set_active(false);
+  return AsReadOp(pgsql_ops_.back());
 }
 
 //--------------------------------------------------------------------------------------------------

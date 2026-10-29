@@ -24,7 +24,10 @@ import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
@@ -33,6 +36,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.Collections;
+import java.util.Map;
 import java.util.UUID;
 import java.util.function.Consumer;
 import junitparams.JUnitParamsRunner;
@@ -166,6 +170,58 @@ public class UniverseClustersControllerTest extends UniverseCreateControllerTest
     assertBadRequest(
         result,
         "Ysql auth setting should be the same for primary and readonly replica true vs false");
+  }
+
+  @Test
+  public void createReadonlyClusterDeprecatedApiFipsGFlagDisabledFailTest() {
+    Universe universe = ModelFactory.createUniverse(customer.getId());
+    Universe.saveDetails(
+        universe.getUniverseUUID(), univ -> univ.getUniverseDetails().fipsEnabled = true);
+    Provider p = ModelFactory.awsProvider(customer);
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
+    UniverseDefinitionTaskParams.Cluster newCluster =
+        new UniverseDefinitionTaskParams.Cluster(
+            UniverseDefinitionTaskParams.ClusterType.ASYNC,
+            universe.getUniverseDetails().getPrimaryCluster().userIntent);
+    newCluster.uuid = UUID.randomUUID();
+    DeviceInfo deviceInfo = new DeviceInfo();
+    deviceInfo.volumeSize = 10;
+    deviceInfo.numVolumes = 2;
+    deviceInfo.storageType = PublicCloudConstants.StorageType.GP2;
+    TestUtils.initUserIntent(newCluster.userIntent, p, "c3.xlarge", deviceInfo, "demo-access");
+    newCluster.userIntent.regionList = Collections.singletonList(r.getUuid());
+    newCluster.userIntent.replicationFactor = 1;
+    newCluster.userIntent.numNodes = 1;
+    newCluster.placementInfo =
+        PlacementInfoUtil.getPlacementInfo(
+            UniverseDefinitionTaskParams.ClusterType.ASYNC,
+            newCluster.userIntent,
+            1,
+            null,
+            Collections.emptyList());
+    newCluster.userIntent.specificGFlags =
+        SpecificGFlags.construct(
+            Collections.emptyMap(), Map.of(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "false"));
+
+    // No fipsEnabled in the request: the universe's setting applies.
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.set("clusters", Json.newArray().add(Json.toJson(newCluster)));
+    bodyJson.set("nodeDetailsSet", Json.newArray());
+    bodyJson.put("universeUUID", universe.getUniverseUUID().toString());
+    Result result =
+        assertPlatformException(
+            () ->
+                doRequestWithAuthTokenAndBody(
+                    "POST",
+                    "/api/customers/"
+                        + customer.getUuid()
+                        + "/universes/"
+                        + universe.getUniverseUUID()
+                        + "/cluster",
+                    authToken,
+                    bodyJson));
+    assertBadRequest(result, "FIPS enabled universe");
   }
 
   private void testCreateReadonlyCluster(
