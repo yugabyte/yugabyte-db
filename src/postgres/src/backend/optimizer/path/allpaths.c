@@ -1752,9 +1752,8 @@ add_paths_to_append_rel(PlannerInfo *root, RelOptInfo *rel,
 
 		if (subpaths_valid)
 			add_path(rel, (Path *)
-					 create_append_path(root, rel, subpaths, NIL,
-										NIL, required_outer, 0, false,
-										-1));
+					 create_append_path(root, rel, subpaths, NIL, NIL,
+										required_outer, 0, false, -1));
 	}
 
 	/*
