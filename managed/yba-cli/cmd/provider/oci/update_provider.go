@@ -347,6 +347,7 @@ func init() {
 			formatter.Colorize("Region name is a required key-value pair.",
 				formatter.GreenColor)+
 			" Virtual network and instance template are optional. "+
+			"Pass an empty value (instance-template=) to clear the instance template. "+
 			"Each region needs to be modified using a separate --edit-region flag.")
 	updateOCIProviderCmd.Flags().StringArray("edit-zone", []string{},
 		"[Optional] Edit zone associated to the OCI Region defined. "+
@@ -438,8 +439,8 @@ func editOCIRegions(
 					if len(region["vnet"]) != 0 {
 						ociRegion.SetVnet(region["vnet"])
 					}
-					if len(region["instance-template"]) != 0 {
-						ociRegion.SetInstanceTemplate(region["instance-template"])
+					if template, ok := region["instance-template"]; ok {
+						ociRegion.SetInstanceTemplate(template)
 					}
 					cloudInfo.SetOci(ociRegion)
 					details.SetCloudInfo(cloudInfo)

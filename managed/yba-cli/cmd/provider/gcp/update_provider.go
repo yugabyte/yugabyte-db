@@ -370,6 +370,7 @@ func init() {
 			formatter.Colorize("Region name is a required key-value pair.",
 				formatter.GreenColor)+
 			" Shared subnet and Instance Template are optional. "+
+			"Pass an empty value (instance-template=) to clear the instance template. "+
 			"Each region needs to be modified using a separate --edit-region flag.")
 	updateGCPProviderCmd.Flags().StringArray("remove-region", []string{},
 		"[Optional] Region name to be removed from the provider. "+
@@ -455,8 +456,8 @@ func editGCPRegions(
 						}
 						r.SetZones(zones)
 					}
-					if len(region["instance-template"]) != 0 {
-						gcp.SetInstanceTemplate(region["instance-template"])
+					if template, ok := region["instance-template"]; ok {
+						gcp.SetInstanceTemplate(template)
 					}
 					cloudInfo.SetGcp(gcp)
 					details.SetCloudInfo(cloudInfo)

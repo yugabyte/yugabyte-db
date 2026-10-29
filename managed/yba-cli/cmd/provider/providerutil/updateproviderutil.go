@@ -245,6 +245,9 @@ func BuildRegionMapFromString(
 		case "instance-template":
 			if !util.IsEmptyString(val) {
 				region["instance-template"] = val
+			} else if operation == "edit" {
+				// An empty value on edit clears the region's instance template.
+				region["instance-template"] = ""
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
