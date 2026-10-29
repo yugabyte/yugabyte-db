@@ -7,6 +7,8 @@ import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -193,12 +195,23 @@ public class RollbackAddNodeToUniverseTest extends UniverseModifyBaseTest {
   }
 
   private void stubNodeManagerOkWithInstancesPresent() {
+    stubNodeManagerOkWithInstancesPresent(null /* failingCommand */);
+  }
+
+  /** Like {@link #stubNodeManagerOkWithInstancesPresent()}, but {@code failingCommand} fails. */
+  private void stubNodeManagerOkWithInstancesPresent(NodeManager.NodeCommandType failingCommand) {
     ShellResponse ok = new ShellResponse();
     ok.message = "";
     ShellResponse listWithInstance = new ShellResponse();
     listWithInstance.message = "[{\"id\":\"i-mock\"}]";
+    ShellResponse failed = new ShellResponse();
+    failed.code = 100;
+    failed.message = "Nope";
     doAnswer(
             invocation -> {
+              if (invocation.getArgument(0).equals(failingCommand)) {
+                return failed;
+              }
               if (NodeManager.NodeCommandType.List.equals(invocation.getArgument(0))) {
                 return listWithInstance;
               }
@@ -313,6 +326,39 @@ public class RollbackAddNodeToUniverseTest extends UniverseModifyBaseTest {
     assertEquals(NodeState.Decommissioned, node.state);
     assertNull(universe.getStateTransitionDetails());
     verify(mockNodeAgentClient, atLeastOnce()).runDestroyServer(any(), any(), any());
+  }
+
+  @Test
+  public void testRollbackDecommissionedFailsWhenCloudDestroyFails() throws Exception {
+    // PLAT-23215: on a cloud, a failed terminate of the recreated instance fails the rollback
+    // instead of losing track of it, and a retry finishes the rollback.
+    setNodeState(defaultUniverse, NodeState.Decommissioned, DEFAULT_NODE_NAME);
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    enableAddNodeRollback(universe);
+
+    TaskInfo failedAdd = submitAddAndAbort(universe, defaultProvider, DEFAULT_NODE_NAME, 0);
+    assertEquals(Aborted, failedAdd.getTaskState());
+
+    stubNodeManagerOkWithInstancesPresent(NodeManager.NodeCommandType.Destroy);
+    TaskInfo rollbackInfo = submitRollback(failedAdd, universe);
+    assertEquals(Failure, rollbackInfo.getTaskState());
+    TaskInfo destroy =
+        rollbackInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.AnsibleDestroyServer)
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("no destroy subtask"));
+    assertFalse(destroy.getTaskParams().path("isForceDelete").asBoolean());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertNotEquals(NodeState.Decommissioned, universe.getNode(DEFAULT_NODE_NAME).state);
+    assertNotNull(universe.getStateTransitionDetails());
+
+    stubNodeManagerOkWithInstancesPresent();
+    CustomerTask retryTask =
+        customerTaskManager.retryCustomerTask(defaultCustomer.getUuid(), rollbackInfo.getUuid());
+    assertEquals(Success, waitForTask(retryTask.getTaskUUID()).getTaskState());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertEquals(NodeState.Decommissioned, universe.getNode(DEFAULT_NODE_NAME).state);
+    assertNull(universe.getStateTransitionDetails());
   }
 
   @Test

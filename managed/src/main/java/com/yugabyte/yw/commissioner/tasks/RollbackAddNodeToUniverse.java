@@ -141,7 +141,7 @@ public class RollbackAddNodeToUniverse extends UniverseDefinitionTaskBase {
         createDestroyServerTasks(
                 universe,
                 nodeSet,
-                node -> true /* isForceDelete */,
+                forceDestroyOnlyOnOnprem(universe),
                 false /* deleteNode */,
                 true /* deleteRootVolumes */,
                 true /* skipDestroyPrecheck */)

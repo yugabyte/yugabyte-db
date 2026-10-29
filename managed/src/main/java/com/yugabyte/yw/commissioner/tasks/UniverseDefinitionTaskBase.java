@@ -4805,4 +4805,15 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
+
+  /**
+   * Which nodes may be force-destroyed: only onprem ones, where a failed cleanup leaves the node
+   * instance decommissioned. On a cloud, a failed terminate fails the task so the node stays
+   * tracked and blacklisted. A retry is safe because destroy succeeds when the instance is already
+   * gone.
+   */
+  protected static Function<NodeDetails, Boolean> forceDestroyOnlyOnOnprem(Universe universe) {
+    Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(universe);
+    return node -> providerGetter.apply(node).getCloudCode() == CloudType.onprem;
+  }
 }
