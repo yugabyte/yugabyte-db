@@ -122,7 +122,7 @@ DEFINE_test_flag(bool, cdc_make_consistent_stream_safe_time_invalid, false,
 
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_yb_enable_replica_identity);
-DECLARE_bool(TEST_ysql_yb_enable_replication_slot_transactional_ddl);
+DECLARE_bool(ysql_yb_enable_replication_slot_transactional_ddl);
 
 namespace yb::cdc {
 
@@ -668,7 +668,7 @@ Result<size_t> DoPopulatePackedRows(
     auto column_value = decoder.FetchValue(i);
     const auto& column_data = packing.column_packing_data(i);
     const ColumnSchema& col = VERIFY_RESULT(schema.column_by_id(column_data.id));
-    if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
+    if (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl &&
         col.marked_for_deletion()) {
       continue;
     }
@@ -942,7 +942,7 @@ Result<std::pair<SchemaVersion, Schema>> GetSchemaAndVersion(
     auto it = cached_schema_details->find(table_id);
     if (it != cached_schema_details->end() &&
         (resolve_schema_packing_from_sys_catalog ||
-         (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
+         (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl &&
           it->second.schema_version != pr_schema_version))) {
       (*cached_schema_details).erase(it);
     }
@@ -1281,7 +1281,7 @@ Status PopulateCDCSDKIntentRecord(
 
         if (column_id_opt && column_id_opt->type() == dockv::KeyEntryType::kColumnId) {
           auto column = schema.column_by_id(column_id_opt->GetColumnId());
-          if (!column.ok() && FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
+          if (!column.ok() && FLAGS_ysql_yb_enable_replication_slot_transactional_ddl &&
               IsColumnIdNotFound(column.status())) {
             std::tie(schema_version, schema) = VERIFY_RESULT(ReloadSchemaAtIntentTime(
                 tablet_peer, table_id, intent.intent_ht.hybrid_time().ToUint64(),

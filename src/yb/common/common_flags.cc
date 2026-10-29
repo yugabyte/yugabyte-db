@@ -136,7 +136,8 @@ DEFINE_RUNTIME_bool(enable_table_rewrite_for_cdcsdk_table, true,
     "When set, CDC will not block DDLs causing table rewrites. Also records from the re-written "
     "tablets will be streamed by CDC after finishing the streaming of data from older tablets.");
 
-DEFINE_test_flag(bool, ysql_yb_enable_replication_slot_transactional_ddl, false,
+DEFINE_RUNTIME_AUTO_bool(ysql_yb_enable_replication_slot_transactional_ddl, kLocalPersisted,
+    false, true,
     "When set, logical replication with transactional DDL support is enabled.");
 
 DEFINE_NON_RUNTIME_bool(TEST_hide_details_for_pg_regress, false,

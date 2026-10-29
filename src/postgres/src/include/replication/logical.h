@@ -132,7 +132,7 @@ typedef struct LogicalDecodingContext
 	 *
 	 * The entry (value) remains unused i.e. this is used like a set.
 	 *
-	 * If TEST_ysql_yb_enable_replication_slot_transactional_ddl is true, this
+	 * If ysql_yb_enable_replication_slot_transactional_ddl is true, this
 	 * is unused.
 	 */
 	HTAB	   *yb_needs_relcache_invalidation;
@@ -144,7 +144,7 @@ typedef struct LogicalDecodingContext
 	 * that case, because decode-time lookups after the DDL would otherwise be
 	 * reused for earlier DMLs. Invalidating on every commit is expensive.
 	 *
-	 * Only used when TEST_ysql_yb_enable_replication_slot_transactional_ddl is
+	 * Only used when ysql_yb_enable_replication_slot_transactional_ddl is
 	 * true.
 	 */
 	bool		yb_inval_catalog_on_decode_commit;

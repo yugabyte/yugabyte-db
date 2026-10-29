@@ -2242,7 +2242,7 @@ ReorderBufferProcessTXN(ReorderBuffer *rb, ReorderBufferTXN *txn,
 
 					if (IsYugaByteEnabled())
 					{
-						if (*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl)
+						if (*YBCGetGFlags()->ysql_yb_enable_replication_slot_transactional_ddl)
 							YBCSetHistoricalReadContext(change->data.tp.yb_read_time,
 														change->data.tp.yb_in_txn_limit,
 														change->data.tp.yb_txn_id);

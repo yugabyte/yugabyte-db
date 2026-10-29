@@ -29,7 +29,7 @@ namespace cdc {
 // first remaining intent is reused for the rest of the txn and misses column ids written after a
 // later ADD COLUMN; decoding then fails with "Column id ... not found".
 TEST_F(CDCSDKYsqlTest, TestGrpcStreamTransactionalDdlGetChangesFailsAfterRestart) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) = true;
   ToggleDDLMode(/* use_legacy = */ false);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_max_stream_intent_records) = 10;
@@ -159,7 +159,7 @@ TEST_F(CDCSDKYsqlTest, TestGrpcStreamTransactionalDdlGetChangesFailsAfterRestart
 // and after the same column is added again with a different type. Streaming must decode each
 // insert with the columns that existed when it was written.
 TEST_F(CDCSDKYsqlTest, TestGrpcStreamTransactionalDdlAddAndDropColumn) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) = true;
   ToggleDDLMode(/* use_legacy = */ false);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
 
@@ -268,7 +268,7 @@ TEST_F(CDCSDKYsqlTest, TestGrpcStreamTransactionalDdlAddAndDropColumn) {
 // Packed rows with REPLICA IDENTITY FULL. A restart mid-APPLY must still decode each update in
 // the transactional DDL txn, including columns added and dropped between those updates.
 TEST_F(CDCSDKYsqlTest, TestGrpcStreamTransactionalDdlPackedFullGetChangesAfterRestart) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) = true;
   ToggleDDLMode(/* use_legacy = */ false);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_intra_transactional_before_image) = true;
