@@ -1345,9 +1345,8 @@ Status TabletSnapshots::DoCreateCheckpoint(
       // A vector index checkpoint only takes chunks that are already flushed. Vectors are queued
       // inside the write that adds their row, so flushing after the regular DB checkpoint puts the
       // vectors of every row in it into the chunks below, including rows written during the
-      // checkpoint. See #34759. A failed chunk save leaves WaitForFlush blocked, and other flush
-      // errors are only logged (#35156).
-      vector_indexes.Flush();
+      // checkpoint. See #34759.
+      RETURN_NOT_OK(vector_indexes.Flush());
       RETURN_NOT_OK(vector_indexes.WaitForFlush());
     }
     for (const auto& vector_index : *vector_indexes) {

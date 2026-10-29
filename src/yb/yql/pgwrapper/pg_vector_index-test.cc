@@ -57,6 +57,7 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/tablet_snapshots.h"
 #include "yb/tablet/tablet_vector_indexes.h"
 
 #include "yb/tools/tools_test_utils.h"
@@ -3141,6 +3142,109 @@ TEST_P(PgVectorIndexColocationOnlyTest, DeactivatedIndexDoesNotHoldBackBootstrap
     ASSERT_OK(cluster_->mini_tablet_server(i)->Restart(tserver::WaitTabletsBootstrapped::kTrue));
   }
   ASSERT_OK(wait_dropped_index_caught_up("Dropped index flushed OpId caught up after restart"));
+}
+
+// Rows whose vector is NULL add nothing to the index, so its flushed OpId stays at its last vector
+// unless advanced to the regular DB's, and bootstrap replays all the log after it. See #35620.
+TEST_P(PgVectorIndexColocationOnlyTest, IdleIndexDoesNotHoldBackBootstrap) {
+  constexpr size_t kNumRows = 16;
+  constexpr size_t kNumNullRows = 64;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  for (auto i = kNumRows + 1; i <= kNumRows + kNumNullRows; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES ($0, NULL)", i));
+  }
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto wait_index_caught_up = [this](const std::string& description) {
+    return WaitFor(
+        [this]() -> Result<bool> {
+          size_t num_indexes = 0;
+          for (const auto& peer : ListTabletPeersWithVectorIndexes(cluster_.get())) {
+            auto tablet = VERIFY_RESULT(peer->shared_tablet());
+            auto regular = VERIFY_RESULT(tablet->GetPersistentState()).regular;
+            SCHECK(regular.is_valid_not_empty(), IllegalState,
+                   Format("$0no flushed regular DB OpId", tablet->LogPrefix()));
+            for (const auto& index : *tablet->vector_indexes().List()) {
+              ++num_indexes;
+              auto frontier = index->GetFlushedFrontier();
+              auto index_op_id = frontier ? frontier->op_id() : OpId();
+              if (index_op_id < regular) {
+                LOG(INFO) << tablet->LogPrefix() << "Vector index flushed OpId " << index_op_id
+                          << " behind the regular DB's " << regular;
+                return false;
+              }
+            }
+          }
+          return num_indexes != 0;
+        },
+        30s * kTimeMultiplier, description);
+  };
+  ASSERT_OK(wait_index_caught_up("Idle index flushed OpId caught up"));
+
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    ASSERT_OK(cluster_->mini_tablet_server(i)->Restart(tserver::WaitTabletsBootstrapped::kTrue));
+  }
+  ASSERT_OK(wait_index_caught_up("Idle index flushed OpId caught up after restart"));
+
+  conn = ASSERT_RESULT(Connect());
+  VerifyRead(conn, kNumRows, AddFilter::kFalse);
+}
+
+// A vector index flush that fails, before or after it seals the mutable chunk, fails the tablet
+// flush and the checkpoint. See #35156.
+TEST_P(PgVectorIndexColocationOnlyTest, FlushFailureFailsCheckpoint) {
+  constexpr size_t kRowsPerRound = 16;
+
+  auto conn = ASSERT_RESULT(MakeIndex());
+
+  auto peers = ListTabletPeersWithVectorIndexes(cluster_.get(), ListPeersFilter::kLeaders);
+  ASSERT_FALSE(peers.empty());
+  auto tablet = ASSERT_RESULT(peers.front()->shared_tablet());
+
+  auto* sync_point = SyncPoint::GetInstance();
+  auto cleanup = ScopeExit([sync_point] {
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+  const std::string kInjectedError = "Injected vector index flush failure";
+  // The intents DB flush filter also flushes the vector indexes, from a RocksDB thread, and its
+  // failure sticks to the intents DB. So the failure of Flush itself is injected only on the test
+  // thread, where Tablet::Flush and the checkpoint flush the indexes. A failed chunk save leaves
+  // the index failed, and the intents DB with it, so that round goes last.
+  const auto test_thread = std::this_thread::get_id();
+  size_t num_rows = 0;
+  for (const auto& [point, test_thread_only] : {
+           std::pair{"VectorLSM::Flush:Status", true},
+           std::pair{"VectorLSM::DoSaveChunk:Status", false}}) {
+    SCOPED_TRACE(point);
+    ASSERT_OK(InsertRows(conn, num_rows + 1, num_rows + kRowsPerRound));
+    num_rows += kRowsPerRound;
+    ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+    sync_point->ClearAllCallBacks();
+    sync_point->SetCallBack(point, [test_thread, test_thread_only, &kInjectedError](void* arg) {
+      if (!test_thread_only || std::this_thread::get_id() == test_thread) {
+        *static_cast<Status*>(arg) = STATUS(IOError, kInjectedError);
+      }
+    });
+    sync_point->EnableProcessing();
+
+    ASSERT_NOK_STR_CONTAINS(
+        tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly), kInjectedError);
+    ASSERT_NOK_STR_CONTAINS(
+        tablet->snapshots().CreateCheckpoint(GetTestPath(Format("checkpoint_$0", num_rows))),
+        kInjectedError);
+
+    sync_point->DisableProcessing();
+  }
 }
 
 // A restore to before a vector index was created removes the index from the indexed table's index

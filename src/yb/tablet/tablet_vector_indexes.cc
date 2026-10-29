@@ -997,14 +997,25 @@ void TabletVectorIndexes::FlushDeactivated() {
   }
 }
 
-void TabletVectorIndexes::AdvanceDeactivatedFlushedOpIds(const OpId& op_id) {
+void TabletVectorIndexes::AdvanceIdleFlushedOpIds(
+    const OpId& op_id, bool include_deactivated, bool include_active) {
   auto list = List();
   if (!list) {
     return;
   }
   for (const auto& index : *list) {
-    if (!index->IsDeactivated()) {
-      continue;
+    if (index->IsDeactivated()) {
+      if (!include_deactivated) {
+        continue;
+      }
+    } else {
+      if (!include_active) {
+        continue;
+      }
+      auto backfill_done = index->BackfillDone();
+      if (!backfill_done.ok() || !*backfill_done) {
+        continue;
+      }
     }
     auto flushed = index->GetFlushedFrontier();
     if (flushed && flushed->op_id() >= op_id) {
@@ -1013,14 +1024,14 @@ void TabletVectorIndexes::AdvanceDeactivatedFlushedOpIds(const OpId& op_id) {
     auto advanced = index->AdvanceFlushedOpId(op_id);
     if (!advanced.ok()) {
       LOG_WITH_PREFIX(WARNING)
-          << "Failed to advance flushed OpId of deactivated vector index " << index->table_id()
+          << "Failed to advance flushed OpId of vector index " << index->table_id()
           << " to " << op_id << ": " << advanced.status();
       continue;
     }
     VLOG_WITH_PREFIX(2)
-        << "Deactivated vector index " << index->table_id() << " flushed OpId "
-        << (flushed ? flushed->op_id() : OpId()) << " -> " << op_id
-        << (*advanced ? "" : " skipped, unflushed data");
+        << (index->IsDeactivated() ? "Deactivated" : "Idle") << " vector index "
+        << index->table_id() << " flushed OpId " << (flushed ? flushed->op_id() : OpId())
+        << " -> " << op_id << (*advanced ? "" : " skipped, unflushed data");
   }
 }
 
@@ -1242,13 +1253,20 @@ Status VectorIndexList::WaitForFlush() {
   return result;
 }
 
-void VectorIndexList::Flush() {
+Status VectorIndexList::Flush() {
   if (!list_) {
-    return;
+    return Status::OK();
   }
+
+  Status result;
   for (const auto& index : *list_) {
-    WARN_NOT_OK(index->Flush(), "Flush vector index");
+    auto status = index->Flush();
+    if (result.ok() && !status.ok()) {
+      result = status.CloneAndPrepend(Format("Flush vector index $0", index->table_id()));
+    }
   }
+
+  return result;
 }
 
 void VectorIndexList::EnableAutoCompactions() {

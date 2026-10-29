@@ -43,7 +43,8 @@ class VectorIndexList {
 
   void EnableAutoCompactions();
   void Compact(rocksdb::CompactionReason reason);
-  void Flush();
+  // Flushes every index, also after one fails, and returns the first failure.
+  Status Flush();
   Status WaitForCompaction();
   Status WaitForFlush();
   // Returns true if this list is empty or every index has compacted inherited parent data for
@@ -138,10 +139,13 @@ class TabletVectorIndexes :
   // new rows, while their unflushed rows keep the log and the intents DB from being cleaned up.
   void FlushDeactivated() EXCLUDES(vector_indexes_mutex_);
 
-  // Advances the flushed OpId of deactivated indexes holding nothing unflushed to op_id, the
-  // regular DB's flushed OpId. Otherwise it stays where the index was deactivated, and bootstrap
-  // replays all the log after it.
-  void AdvanceDeactivatedFlushedOpIds(const OpId& op_id) EXCLUDES(vector_indexes_mutex_);
+  // Advances the flushed OpId of indexes holding nothing unflushed to op_id, the regular DB's
+  // flushed OpId. Otherwise an index that gets no new vectors, deactivated or with every new row's
+  // vector NULL, keeps the OpId of its last vector, and bootstrap replays all the log after it.
+  // An active index is skipped until its backfill is done: backfill inserts rows outside the log.
+  void AdvanceIdleFlushedOpIds(
+      const OpId& op_id, bool include_deactivated, bool include_active)
+      EXCLUDES(vector_indexes_mutex_);
 
   // Relaunches backfills after a restore replaced the storages: the restored checkpoint could have
   // been taken before a backfill finished, e.g. by a replica still bootstrapping.
