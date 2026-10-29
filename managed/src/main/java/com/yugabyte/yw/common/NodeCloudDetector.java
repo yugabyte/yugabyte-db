@@ -111,12 +111,7 @@ public class NodeCloudDetector {
             universe,
             node,
             context,
-            curl(
-                "-X",
-                "PUT",
-                AWS_IMDSV2_TOKEN_URL,
-                "-H",
-                AWS_IMDSV2_TOKEN_TTL_HEADER + ":60"));
+            curl("-X", "PUT", AWS_IMDSV2_TOKEN_URL, "-H", AWS_IMDSV2_TOKEN_TTL_HEADER + ":60"));
     if (tokenResponse == null) {
       allProbesRan = false;
     } else {

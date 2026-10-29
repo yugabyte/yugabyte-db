@@ -13,6 +13,8 @@
 
 #include "yb/tablet/tablet_snapshots.h"
 
+#include <unordered_set>
+
 #include <boost/algorithm/string/predicate.hpp>
 
 #include "yb/ash/wait_state.h"
@@ -164,6 +166,40 @@ void CleanupLastSnapshotHybridTime(
   VLOG(2) << "Cleanup snapshot ht: " << path;
   if (env.FileExists(path)) {
     WARN_NOT_OK(env.DeleteFile(path), "Failed to cleanup last snapshot time");
+  }
+}
+
+// The snapshot holds the storage of every vector index the tablet had at snapshot time, including
+// dropped ones a snapshot schedule retains and, in a clone, ones the clone does not have. The
+// tablet destroys only the storages of the indexes its metadata lists, and a storage dir is named
+// by index oid, so a later index of a clone that reuses such an oid would load its chunks.
+// Best effort: a failure here would fail the restore apply, which is fatal for the tserver, after
+// the frontier patch that keeps the restore from being replayed.
+void DeleteUnlistedVectorIndexStorages(
+    Env& env, const std::string& snapshot_dir, const RaftGroupMetadata& metadata) {
+  auto children = env.GetChildren(snapshot_dir, ExcludeDots::kTrue);
+  if (!children.ok()) {
+    LOG(WARNING) << metadata.LogPrefix() << "Failed to list " << snapshot_dir
+                 << " for vector index storages to delete: " << children.status();
+    return;
+  }
+  const auto listed_dirs_list = metadata.vector_index_dirs();
+  const std::unordered_set<std::string> listed_dirs(
+      listed_dirs_list.begin(), listed_dirs_list.end());
+  for (const auto& child : *children) {
+    if (!child.starts_with(docdb::kVectorIndexDirPrefix)) {
+      continue;
+    }
+    auto dir = docdb::GetStorageDir(metadata.rocksdb_dir(), child);
+    if (listed_dirs.contains(dir) || !env.DirExists(dir)) {
+      continue;
+    }
+    LOG(INFO) << metadata.LogPrefix() << "Deleting storage of vector index not in the tablet: "
+              << dir;
+    auto status = env.DeleteRecursively(dir);
+    LOG_IF(WARNING, !status.ok())
+        << metadata.LogPrefix() << "Failed to delete vector index storage " << dir << ": "
+        << status;
   }
 }
 
@@ -367,10 +403,6 @@ bool TabletSnapshots::IsLastSnapshotTimeFilePath(const std::string& dir) {
   return dir.starts_with(kLastSnapshotPrefix);
 }
 
-Status TabletSnapshots::Prepare(SnapshotOperation* operation) {
-  return Status::OK();
-}
-
 Status TabletSnapshots::Create(SnapshotOperation* operation) {
   return Create(CreateSnapshotData {
     .snapshot_hybrid_time = HybridTime::FromPB(operation->request()->snapshot_hybrid_time()),
@@ -395,7 +427,10 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
   Status s;
   {
     SCOPED_WAIT_STATUS(Snapshot_WaitingForFlush);
-    s = regular_db().Flush(rocksdb::FlushOptions(rocksdb::FlushReason::kSnapshotCreation));
+    // Flush all DBs, not just the regular DB, so the flushes triggered internally by checkpoint
+    // creation below need not flush intents while additionally holding create_checkpoint_lock().
+    // Preflushing before submission does not cover intervening writes or follower catch-up.
+    s = Flush(FlushMode::kSync, FlushFlags::kAllDbs, rocksdb::FlushReason::kSnapshotCreation);
   }
 
   if (PREDICT_FALSE(!s.ok())) {
@@ -811,6 +846,11 @@ Status TabletSnapshots::RestoreCheckpoint(
   if (need_flush) {
     RETURN_NOT_OK(tablet().metadata()->Flush());
     RefreshYBMetaDataCache();
+  }
+
+  // After MergeWithRestored: it can change the id, and so the storage dir, of a listed index.
+  if (!snapshot_dir.empty()) {
+    DeleteUnlistedVectorIndexStorages(env(), snapshot_dir, metadata());
   }
 
   // Reopen database from copied checkpoint.

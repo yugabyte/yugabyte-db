@@ -231,9 +231,12 @@ bool AsyncRpc::HasResponse() const {
 
 rpc::RpcController* AsyncRpc::PrepareController() {
   auto* controller = Rpc::PrepareController();
-  if (batcher_->local_calls_can_time_out()) {
-    // The rpc keeps alive the request, the response and the batcher with the rest of buffers.
-    controller->set_local_call_buffers_holder(shared_from_this());
+  if (const auto& buffers_holder = batcher_->buffers_holder()) {
+    // The rpc keeps alive the request, the response and the batcher. The batcher drops
+    // buffers_holder once its rpcs are done, so the call needs its own reference.
+    controller->set_local_call_buffers_holder(
+        std::make_shared<std::pair<std::shared_ptr<void>, std::shared_ptr<void>>>(
+            shared_from_this(), buffers_holder));
   }
   return controller;
 }

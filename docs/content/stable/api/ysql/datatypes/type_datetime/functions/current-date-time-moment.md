@@ -47,7 +47,7 @@ $body$;
 
 It finishes without error showing that all the assertions hold.
 
-There are five moment data types. (This number includes _timetz_. But the PostgreSQL documentation, and therefore the YSQL documentation, recommend against using this. See [this note](../../../type_datetime#avoid-timetz) on the "Date and time data types" major section's main page.) So, with three kinds of moment, you might expect every cell in the implied five-by-three matrix to be filled with a differently named function. However, there are only nine differently named functions (not counting _timeofday()_). This reflects two facts:
+There are five moment data types. (This number includes _timetz_. But the PostgreSQL documentation, and therefore the YSQL documentation, recommend against using this. See [this note](../../../type_datetime/#avoid-timetz) on the "Date and time data types" major section's main page.) So, with three kinds of moment, you might expect every cell in the implied five-by-three matrix to be filled with a differently named function. However, there are only nine differently named functions (not counting _timeofday()_). This reflects two facts:
 
 - Only the functions that return a _timestamptz_ value have "start of statement" and "instantaneous" variants.
 

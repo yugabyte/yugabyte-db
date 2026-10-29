@@ -61,7 +61,7 @@ Follower reads are particularly beneficial in applications that can tolerate sta
 
 ## Hybrid time
 
-Hybrid time/timestamp is a monotonically increasing timestamp derived using [Hybrid Logical clock](../transactions/transactions-overview/#hybrid-logical-clocks). Multiple aspects of YugabyteDB's transaction model are based on hybrid time. {{<link dest="../transactions/transactions-overview#hybrid-logical-clocks">}}
+Hybrid time/timestamp is a monotonically increasing timestamp derived using [Hybrid Logical clock](../transactions/transactions-overview/#hybrid-logical-clocks). Multiple aspects of YugabyteDB's transaction model are based on hybrid time. {{<link dest="../transactions/transactions-overview/#hybrid-logical-clocks">}}
 
 ## Isolation levels
 

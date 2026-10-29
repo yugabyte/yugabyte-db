@@ -268,6 +268,21 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
     assertTrue(defaultCustomer.getUniverseUUIDs().contains(defaultUniverse.getUniverseUUID()));
   }
 
+  // Resume does not change master roles, and configure already wrote the master target, so the
+  // master start must not plan a collector refresh.
+  @Test
+  public void testResumeUniverseSkipsOtelCollectorRewrite() {
+    setupUniverse(false, 1);
+    defaultUniverse = enableMetricsExport(defaultUniverse.getUniverseUUID());
+    ResumeUniverse.Params taskParams = new ResumeUniverse.Params();
+    taskParams.customerUUID = defaultCustomer.getUuid();
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .noneMatch(t -> t.getTaskType() == TaskType.ManageOtelCollector));
+  }
+
   @Test
   public void testResumeUniverseWithCRAzureSuccess() {
     factory

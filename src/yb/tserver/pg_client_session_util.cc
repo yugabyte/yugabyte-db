@@ -32,6 +32,7 @@
 #include "yb/gutil/map-util.h"
 
 #include "yb/tserver/pg_client.messages.h"
+#include "yb/tserver/tserver_error.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/status_format.h"
@@ -211,6 +212,18 @@ Status CombineNonEmptyErrorsToStatus(
                   GetStatusStringSet(errors),
                   result.ErrorCodesSlice(),
                   /* file_name_len= */ size_t(0));
+  }
+
+  // A transaction refused by the persistence gate fails every op with its own status
+  // (Batcher::Abort), so listing the ops' errors would only repeat the message.  Other statuses, or
+  // any op failing with a different status, keep the list.
+  if (TabletServerError(status).value() == TabletServerErrorPB::PERSISTING_BLOCKED &&
+      std::all_of(errors.begin(), errors.end(), [&status](const auto& error) {
+        const auto& op_status = error->status();
+        return op_status.code() == status.code() && op_status.message() == status.message() &&
+               op_status.ErrorCodesSlice() == status.ErrorCodesSlice();
+      })) {
+    return status;
   }
 
   const auto result = status.ok()

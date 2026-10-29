@@ -77,4 +77,4 @@ id                                   | ordered_id
 ## See also
 
 - [`Date and time Functions`](../function_datetime)
-- [Data types](..#data-types)
+- [Data types](../#data-types)

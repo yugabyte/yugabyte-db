@@ -218,8 +218,21 @@ message GetConsistentChangesResponsePB {
   // When true, the refresh was caused by an explicit ALTER PUBLICATION rather than a CREATE TABLE
   // auto-added to a FOR ALL TABLES publication. Tells the walsender to fire syscache callbacks so
   // pgoutput re-reads the publication and re-sends RELATION messages. Only relevant when
-  // 'needs_publication_table_list_refresh' is true.
+  // 'needs_publication_table_list_refresh' is true, except with transactional DDL: an update of the
+  // publication itself (ALTER PUBLICATION SET (...), RENAME, OWNER) doesn't change its table list,
+  // so it sets this field alone and the walsender only resets its caches.
   optional bool explicit_alter_publication_detected = 5;
+
+  // record_time of the catalog write that triggered this refresh. The walsender uses it as
+  // in_txn_limit. publication_refresh_time is the commit time, which is shared by every change in
+  // the transaction, so it cannot tell an earlier ALTER PUBLICATION from a later one.
+  // Left unset for a CREATE TABLE under FOR ALL TABLES, which the walsender reads at
+  // publication_refresh_time.
+  optional uint64 publication_refresh_record_time = 6;
+
+  // DocDB transaction id of that catalog write. in_txn_limit applies only to intents of this
+  // transaction. Only set together with publication_refresh_record_time.
+  optional bytes publication_refresh_txn_id = 7;
 }
 
 message DestroyVirtualWALForCDCRequestPB {

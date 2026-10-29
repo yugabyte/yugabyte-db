@@ -24,6 +24,7 @@ type Props = Pick<
   | 'errors'
   | 't'
   | 'resilienceAndRegionsSettings'
+  | 'providers'
 > & {
   isGeoPartition?: boolean;
   hideDedicatedNodes?: boolean;
@@ -39,6 +40,7 @@ export function NodesAvailabilityGuidedBody({
   errors,
   t,
   resilienceAndRegionsSettings,
+  providers,
   isGeoPartition = false,
   hideDedicatedNodes = false,
   baselineRegionCodes,
@@ -52,7 +54,8 @@ export function NodesAvailabilityGuidedBody({
     showErrorsAfterSubmit,
     resilienceAndRegionsSettings,
     baselineRegionCodes,
-    baselineZoneUuidsByRegion
+    baselineZoneUuidsByRegion,
+    providers
   });
 
   const showRequirementCard =

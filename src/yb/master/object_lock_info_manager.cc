@@ -1136,10 +1136,10 @@ void ObjectLockInfoManager::Impl::PopulateDbCatalogVersionCache(ReleaseObjectLoc
   if (!req.populate_db_catalog_info()) {
     return;
   }
-  // Captured before the read below, and handed to InstallPgCatalogVersionsSnapshot() at the end:
+  // Captured before the read below, and handed to Install() at the end:
   // it is what lets that call notice a leader stepdown that reset the cache in between, and
   // decline rather than repopulating it with pre-stepdown data.
-  const auto cache_generation = catalog_manager_.GetPgCatalogVersionsCacheGeneration();
+  const auto cache_generation = catalog_manager_.pg_catalog_versions_cache().Generation();
 
   // TODO: Currently, we fetch and send catalog version of all dbs because the cache invalidation
   // logic on the tserver side expects a full report. Fix it and then optimize the below to only
@@ -1197,7 +1197,7 @@ void ObjectLockInfoManager::Impl::PopulateDbCatalogVersionCache(ReleaseObjectLoc
   // `messages` is passed by value, i.e. copied, because the loop below moves it into the request.
   // Installing after that loop instead would cache empty message lists for real versions, which a
   // tserver merging them against genuine content reports as a message_list mismatch DFATAL.
-  catalog_manager_.InstallPgCatalogVersionsSnapshot(
+  catalog_manager_.pg_catalog_versions_cache().Install(
       cache_generation, read_ht, std::move(versions), fingerprint, update_messages, messages);
 
   if (!messages) {

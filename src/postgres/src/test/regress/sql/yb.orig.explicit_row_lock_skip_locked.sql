@@ -253,6 +253,12 @@ RESET yb_enable_bitmapscan;
 \set q 'SELECT sub.k, t_multi.v FROM (SELECT k FROM t_asc ORDER BY v FOR UPDATE SKIP LOCKED) sub JOIN t_multi ON sub.k = t_multi.k1 LIMIT 3'
 :txn_with_q
 
+-- Nested Loop Join
+SET enable_material = off;
+\set q 'SELECT t_a.id, s.id FROM t_a, (SELECT * FROM t_a FOR UPDATE SKIP LOCKED) AS s WHERE t_a.id < 3'
+:txn_with_q
+RESET enable_material;
+
 -- -------------------------------------------------------------------------
 -- Section 3: Multiple LockRows nodes locking different tables
 -- -------------------------------------------------------------------------

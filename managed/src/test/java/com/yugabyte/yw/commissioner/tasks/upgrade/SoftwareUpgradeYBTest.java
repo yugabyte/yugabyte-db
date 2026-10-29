@@ -64,6 +64,7 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.StateTransitionDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -1201,6 +1202,26 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
   }
 
   @Test
+  public void testRollbackAllowedWithStaleStateTransitionDetails() throws InterruptedException {
+    TaskInfo taskInfo = abortUpgradeAroundUpgradingState(true);
+    assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
+    // A checkpoint left behind by another task, which owns no placement lock.
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams d = u.getUniverseDetails();
+          d.placementModificationTaskUuid = null;
+          u.setUniverseDetails(d);
+          u.setStateTransitionDetails(
+              new StateTransitionDetails(true, play.libs.Json.newObject().put("enableYbc", false)));
+        });
+
+    CustomerTask customerTask = createCustomerTask(taskInfo);
+    assertTrue(listingCanRollback(customerTask));
+    assertTrue(commissioner.canTaskRollbackDetailed(taskInfo));
+  }
+
+  @Test
   @Parameters({"true, false", "false, false", "true, true", "false, true"})
   public void testAbortBeforeVersionUpdateFailsUpgradeAndRetryCompletes(
       boolean requireFinalize, boolean canary) throws InterruptedException {
@@ -1429,6 +1450,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
             customerTask.getTaskInfo().getSubTasks(),
             ImmutableMap.of(customerTask.getTargetUUID(), owners),
             ImmutableMap.of(customerTask.getTargetUUID(), placementLockOwners),
+            Set.of() /* rollbackBlockedTargets */,
             ImmutableMap.of(customerTask.getTargetUUID(), customerTask))
         .map(status -> status.get("canRollback").asBoolean())
         .orElseThrow();

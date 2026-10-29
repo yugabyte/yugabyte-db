@@ -53,6 +53,7 @@
 #include "yb/tablet/preparer.h"
 #include "yb/tablet/tablet_bootstrap_state_flusher.h"
 #include "yb/tablet/tablet_bootstrap_state_manager.h"
+#include "yb/tablet/tablet_context.h"
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/transaction_coordinator.h"
@@ -149,6 +150,7 @@ YB_DEFINE_ENUM(TabletObjectState,
 // class also splits the work and coordinates multi-threaded execution.
 class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
                    public consensus::ConsensusContext,
+                   public TabletContext,
                    public TransactionParticipantContext,
                    public TransactionCoordinatorContext,
                    public WriteQueryContext {
@@ -157,8 +159,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   // Creates TabletPeer.
   // `tablet_splitter` will be used for applying split tablet Raft operation.
-  // `persistence_gate` decides whether stamped YSQL writes and commits may replicate; nullptr
-  // allows them all.
+  // `persistence_gate` may refuse to let stamped YSQL writes and commits replicate, and may have
+  // this tablet's transaction coordinator abort stamped pending transactions; nullptr does neither.
   TabletPeer(
       const RaftGroupMetadataPtr& meta,
       const consensus::RaftPeerPB& local_peer_pb,
@@ -408,6 +410,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   bool IsLeaderAndReady() const;
   bool IsNotLeader() const;
+
+  Status CheckTransactionMayContinue(const LWOriginationInfoPB& origination_info) const override;
 
   Result<HybridTime> HtLeaseExpiration() const override;
 
@@ -667,6 +671,9 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   Result<HybridTime> ReportReadRestart() override;
 
   Result<FixedHybridTimeLease> HybridTimeLease(HybridTime min_allowed, CoarseTimePoint deadline);
+
+  log::WalEntryState WalState(const OpId& op_id) override;
+
   Result<HybridTime> PreparePeerRequest() override;
   Status MajorityReplicated(const OpId& committed_op_id) override;
   void BecomeReplica() override;
@@ -677,6 +684,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   Status CheckOperationAllowed(
       const OpId& op_id, consensus::OperationType op_type) override;
   Status CheckReplicateAllowed(consensus::LWReplicateMsg& replicate_msg) override;
+  bool ShouldRelinquishLeadership() override;
   // Return granular types of on-disk size of this tablet replica, in bytes.
   TabletOnDiskSizeInfo GetOnDiskSizeInfoUnlocked() const REQUIRES(lock_);
 

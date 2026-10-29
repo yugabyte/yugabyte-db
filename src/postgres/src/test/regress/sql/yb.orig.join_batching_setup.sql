@@ -1,0 +1,47 @@
+--
+-- Tables shared by the batched nested loop join tests
+--
+-- yb.orig.join_batching and yb.orig.join_batching_negative read these tables
+-- and never write them; a test whose data carries a key type, a physical
+-- layout or a property of its own creates a table of its own.  Nothing is
+-- dropped: the schedule's database goes away with the test's cluster.
+--
+-- p1 to p4 have a hash primary key on (a, b), a from 0 to 598 at a stride of
+-- 2, 3, 5 and 7, b = a % 25 and a varchar payload; p1 has a range index on
+-- b and p2 an index on the expression b + 123.  p5 has a range primary key
+-- over a from 0 to 59 and b from 0 to 9, and two hash indexes.  rk1 has a
+-- one-column range key, rk2 a two-column range key with the payload a * b,
+-- and h is a heap with a non-unique index on (a) and one on (b, a).
+--
+
+CREATE TABLE p1 (a int, b int, c varchar, primary key(a,b));
+INSERT INTO p1 SELECT i, i % 25, to_char(i, 'FM0000') FROM generate_series(0, 599) i WHERE i % 2 = 0;
+CREATE INDEX p1_b_idx ON p1 (b ASC);
+
+CREATE TABLE p2 (a int, b int, c varchar, primary key(a,b));
+INSERT INTO p2 SELECT i, i % 25, to_char(i, 'FM0000') FROM generate_series(0, 599) i WHERE i % 3 = 0;
+CREATE INDEX ON p2 ((b + 123) ASC);
+
+CREATE TABLE p3 (a int, b int, c varchar, primary key(a,b));
+INSERT INTO p3 SELECT i, i % 25, to_char(i, 'FM0000') FROM generate_series(0, 599) i WHERE i % 5 = 0;
+
+CREATE TABLE p4 (a int, b int, c varchar, primary key(a,b));
+INSERT INTO p4 SELECT i, i % 25, to_char(i, 'FM0000') FROM generate_series(0, 599) i WHERE i % 7 = 0;
+
+CREATE TABLE p5 (a int, b int, c varchar, primary key(a asc,b asc));
+INSERT INTO p5 SELECT i / 10, i % 10, to_char(i, 'FM0000') FROM generate_series(0, 599) i;
+CREATE INDEX p5_hash ON p5((a,b) hash);
+CREATE INDEX p5_hash_asc ON p5(a hash, b asc);
+
+CREATE TABLE rk1 (a int, PRIMARY KEY (a ASC));
+INSERT INTO rk1 SELECT i FROM generate_series(1, 40) i;
+
+CREATE TABLE rk2 (a int, b int, v int, PRIMARY KEY (a ASC, b ASC));
+INSERT INTO rk2 SELECT i, j, i * j FROM generate_series(1, 10) i, generate_series(1, 5) j;
+
+CREATE TABLE h (a int, b int);
+CREATE INDEX h_a_idx ON h (a ASC);
+CREATE INDEX h_ba_idx ON h (b ASC, a ASC);
+INSERT INTO h SELECT i, i % 4 FROM generate_series(1, 10) i;
+
+ANALYZE p1, p2, p3, p4, p5, rk1, rk2, h;

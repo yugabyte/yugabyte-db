@@ -537,6 +537,12 @@ public class LocalNodeManager {
         }
         break;
       case Destroy:
+        if (nodeInfo == null) {
+          // Create never ran for this node, or an earlier Destroy already removed it.
+          log.info("Node {} does not exist, nothing to destroy", nodeTaskParam.nodeName);
+          response = ShellResponse.create(ERROR_CODE_SUCCESS, "Success!");
+          break;
+        }
         for (UniverseTaskBase.ServerType serverType :
             nodeInfo.processMap.keySet().toArray(new UniverseTaskBase.ServerType[0])) {
           stopProcessForNode(userIntent, serverType, nodeInfo, true);
