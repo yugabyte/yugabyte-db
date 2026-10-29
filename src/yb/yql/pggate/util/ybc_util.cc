@@ -565,10 +565,6 @@ uint32_t YBCAshNormalizeComponentForTServerEvents(uint32_t code, bool component_
   return ash::WaitStateInfo::AshNormalizeComponentForTServerEvents(code, component_bits_set);
 }
 
-int YBCGetCallStackFrames(void** result, int max_depth, int skip_count) {
-  return google::GetStackTrace(result, max_depth, skip_count);
-}
-
 bool YBCIsInitDbModeEnvVarSet() {
   static bool cached_value = false;
   static bool cached = false;

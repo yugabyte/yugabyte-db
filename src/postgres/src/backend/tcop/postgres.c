@@ -4186,57 +4186,6 @@ ProcessInterrupts(void)
 }
 
 /*
- * YB_TODO_PG19MERGE: PG commit moved set_stack_base, stack_is_too_deep,
- * check_max_stack_depth, and IA64 helpers to src/backend/utils/misc/stack_depth.c.
- * YB macros and YB ADDRESS_SANITIZER block from stack_is_too_deep below needs to be
- * ported into the new file.
- */
-#if 0
-/* YB_TODO(mikhail) Commit fda466915e304491214789d9b08f36c19e7fd775 */
-#if !defined(__clang__) && defined(__GNUC__) && __GNUC__ >= 12
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdangling-pointer"
-#endif
-
- #ifdef HAVE__BUILTIN_FRAME_ADDRESS
- 	stack_base_ptr = __builtin_frame_address(0);
- #else
- 	stack_base_ptr = &stack_base;
- #endif
-
-+/* YB */
-+#if !defined(__clang__) && defined(__GNUC__) && __GNUC__ >= 12
-+#pragma GCC diagnostic pop
-+#endif
-#ifdef ADDRESS_SANITIZER		/* YB */
-	/*
-	 * YB: Postgres analyzes/limits stack depth based on local variables
-	 * address offset.
-	 * ... see git history for full block ...
-	 */
-	if (get_guc_variables())
-	{
-		const char *max_stack_depth_GUC = "max_stack_depth";
-		const char *current_value =
-			GetConfigOption(max_stack_depth_GUC, false, false);
-		const char *default_value =
-			GetConfigOptionResetString(max_stack_depth_GUC);
-
-		if (strcmp(current_value, default_value) != 0)
-		{
-			static const int MAX_STACK_FRAMES = 64;
-			void	   *frames[MAX_STACK_FRAMES];
-			int			frames_count = YBCGetCallStackFrames(frames,
-															 MAX_STACK_FRAMES,
-															 0);
-			return frames_count >= MAX_STACK_FRAMES;
-		}
-	}
-	return false;
-#endif							/* YB */
-#endif
-
-/*
  * GUC check_hook for client_connection_check_interval
  */
 bool

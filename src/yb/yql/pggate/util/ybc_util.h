@@ -161,8 +161,6 @@ int YBCGetCircularBufferSizeInKiBs();
 const char* YBCGetPggateRPCName(uint32_t pggate_rpc_enum_value);
 uint32_t YBCAshNormalizeComponentForTServerEvents(uint32_t code, bool component_bits_set);
 
-int YBCGetCallStackFrames(void** result, int max_depth, int skip_count);
-
 bool YBCIsInitDbModeEnvVarSet();
 
 bool YBIsMajorUpgradeInitDb();
