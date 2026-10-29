@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
+import static org.hamcrest.Matchers.containsString;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -722,6 +723,68 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
       Map<String, Object> gflags = getGFlagOverrides(overrides, serverType);
       assertEquals("true", gflags.get("yb_enable_read_committed_isolation"));
       assertEquals("yb_enable_cbo=on", gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV));
+    }
+  }
+
+  @Test
+  public void testHelmUpgradeProcessesMasterHbaConfWithOidcEnhancements() throws IOException {
+    String hbaConf = "host all all 0.0.0.0/0 jwt jwks={\"keys\":[]}";
+    defaultUserIntent.enableYSQLAuth = true;
+    defaultUserIntent.masterGFlags =
+        new HashMap<>(ImmutableMap.of(GFlagsUtil.YSQL_HBA_CONF_CSV, hbaConf));
+    defaultUserIntent.tserverGFlags =
+        new HashMap<>(ImmutableMap.of(GFlagsUtil.YSQL_HBA_CONF_CSV, hbaConf));
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            ApiUtils.mockUniverseUpdater(defaultUserIntent, "host", true));
+    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.oidcFeatureEnhancements.getKey(), "true");
+
+    UUID clusterUUID = defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid;
+    File jwksDir =
+        new File(
+            runtimeConfGetter.getGlobalConf(GlobalConfKeys.ybTmpDirectoryPath),
+            clusterUUID.toString());
+    try {
+      KubernetesCommandExecutor kubernetesCommandExecutor =
+          createExecutor(
+              KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
+              defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo);
+      kubernetesCommandExecutor.taskParams().namespace = namespace;
+      kubernetesCommandExecutor
+          .taskParams()
+          .universeDetails
+          .setUniverseUUID(defaultUniverse.getUniverseUUID());
+      kubernetesCommandExecutor.run();
+
+      ArgumentCaptor<String> overrideFile = ArgumentCaptor.forClass(String.class);
+      verify(kubernetesManager, times(1))
+          .helmUpgrade(
+              any(UUID.class),
+              any(String.class),
+              any(Map.class),
+              any(String.class),
+              any(String.class),
+              overrideFile.capture(),
+              isNull());
+      Map<String, Object> overrides;
+      try (InputStream is = new FileInputStream(overrideFile.getValue())) {
+        overrides = new Yaml().loadAs(is, Map.class);
+      }
+
+      String[] jwksFiles = jwksDir.list();
+      assertNotNull(jwksFiles);
+      assertEquals(1, jwksFiles.length);
+      String remoteJwksPath = "/mnt/disk0/yw-data/conf/gflag_files/" + jwksFiles[0];
+      for (String serverType : ImmutableList.of("master", "tserver")) {
+        String processedHbaConf =
+            (String) getGFlagOverrides(overrides, serverType).get(GFlagsUtil.YSQL_HBA_CONF_CSV);
+        assertThat(processedHbaConf, containsString("jwt_jwks_path="));
+        assertThat(processedHbaConf, containsString(remoteJwksPath));
+        assertFalse(processedHbaConf.contains("jwks={"));
+      }
+    } finally {
+      FileUtils.deleteDirectory(jwksDir);
     }
   }
 
