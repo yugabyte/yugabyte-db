@@ -262,6 +262,8 @@ static std::string kSegmentPlaceholderFileTemplate = kSegmentPlaceholderFilePref
 
 // Must not match IsLogFileName.
 static constexpr auto kQuiescentMarkerFileName = "quiescent_marker";
+// WritePBContainerToPath writes the marker to such a temp file and renames it.
+static constexpr auto kQuiescentMarkerTempFilePrefix = "quiescent_marker.tmp.";
 
 namespace yb::log {
 
@@ -770,13 +772,14 @@ int64_t Log::WalSyncOverdueMs() const {
 Status Log::Init() {
   std::lock_guard write_lock(state_lock_);
   CHECK_EQ(kLogInitialized, log_state_);
-  RETURN_NOT_OK(LoadQuiescentMarker());
+  const auto wal_dir_files = VERIFY_RESULT(get_env()->GetChildren(wal_dir_, ExcludeDots::kTrue));
+  RETURN_NOT_OK(LoadQuiescentMarker(wal_dir_files));
   // Init the index
   log_index_ = VERIFY_RESULT(LogIndex::NewLogIndex(wal_dir_));
   // Reader for previous segments.
   reader_ = VERIFY_RESULT(LogReader::Open(
       get_env(), log_index_, log_prefix_, wal_dir_, table_metric_entity_.get(),
-      tablet_metric_entity_.get(), read_wal_mem_tracker_));
+      tablet_metric_entity_.get(), read_wal_mem_tracker_, &wal_dir_files));
 
   // Segments covered by the marker remain when entering the mode crashed, or gave up after writing
   // the marker. The wal size metric still counts them only after an in-process reopen: otherwise it
@@ -2321,13 +2324,25 @@ std::string Log::QuiescentMarkerPath(const std::string& wal_dir) {
   return JoinPathSegments(wal_dir, kQuiescentMarkerFileName);
 }
 
-Status Log::LoadQuiescentMarker() {
-  auto path = QuiescentMarkerPath(wal_dir_);
-  if (!get_env()->FileExists(path)) {
+Status Log::LoadQuiescentMarker(const std::vector<std::string>& wal_dir_files) {
+  bool has_marker = false;
+  for (const auto& file : wal_dir_files) {
+    if (!file.starts_with(kQuiescentMarkerFileName)) {
+      continue;
+    }
+    if (file == kQuiescentMarkerFileName) {
+      has_marker = true;
+    } else if (file.starts_with(kQuiescentMarkerTempFilePrefix)) {
+      // A crash during a marker write leaves its temp file, which nothing else deletes.
+      LOG_WITH_PREFIX(INFO) << "Deleting quiescent marker temp file " << file;
+      RETURN_NOT_OK(get_env()->DeleteFile(JoinPathSegments(wal_dir_, file)));
+    }
+  }
+  if (!has_marker) {
     return Status::OK();
   }
-  auto& marker = quiescent_marker_.emplace();
-  RETURN_NOT_OK(ReadQuiescentMarkerFile(get_env(), wal_dir_, &marker));
+  auto& marker = quiescent_marker_.emplace(
+      VERIFY_RESULT(ReadQuiescentMarkerFile(get_env(), wal_dir_)));
   SCHECK_EQ(
       marker.tablet_id(), tablet_id_, Corruption,
       Format("Quiescent marker in $0 belongs to another tablet", wal_dir_));
@@ -2345,9 +2360,8 @@ Status Log::LoadQuiescentMarker() {
   return Status::OK();
 }
 
-Status Log::ReadQuiescentMarkerFile(
-    Env* env, const std::string& wal_dir, QuiescentMarkerPB* marker) {
-  return pb_util::ReadPBContainerFromPath(env, QuiescentMarkerPath(wal_dir), marker);
+Result<QuiescentMarkerPB> Log::ReadQuiescentMarkerFile(Env* env, const std::string& wal_dir) {
+  return pb_util::ReadPBContainerFromPath<QuiescentMarkerPB>(env, QuiescentMarkerPath(wal_dir));
 }
 
 Status Log::WriteQuiescentMarkerFile(

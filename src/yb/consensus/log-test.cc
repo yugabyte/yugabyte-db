@@ -2517,8 +2517,7 @@ TEST_F(LogTest, QuiescentMarker) {
   ASSERT_NOK(log_->CopyTo(GetLogCopyPath(1)));
   ASSERT_OK(log_->Close());
 
-  QuiescentMarkerPB child_marker;
-  ASSERT_OK(Log::ReadQuiescentMarkerFile(env_.get(), GetLogCopyPath(0), &child_marker));
+  auto child_marker = ASSERT_RESULT(Log::ReadQuiescentMarkerFile(env_.get(), GetLogCopyPath(0)));
   ASSERT_EQ(child_marker.tablet_id(), "child");
   ASSERT_EQ(OpId::FromPB(child_marker.op_id()), last_op_id);
 
@@ -2542,9 +2541,13 @@ TEST_F(LogTest, QuiescentMarkerLeftoverSegments) {
   ASSERT_OK(log_->WriteQuiescentMarker(marker));
   ASSERT_OK(log_->Close());
   CheckRightNumberOfSegmentFiles(1);
+  // A crash during a later marker write leaves its temp file.
+  const auto temp_file = JoinPathSegments(tablet_wal_path_, "quiescent_marker.tmp.abc123");
+  ASSERT_OK(WriteStringToFile(env_.get(), Slice("x"), temp_file));
 
   BuildLog(/* byte_limit = */ -1, CreateNewSegment::kFalse);
   CheckRightNumberOfSegmentFiles(0);
+  ASSERT_FALSE(env_->FileExists(temp_file));
   ASSERT_OK(log_->EnsureSegmentInitialized());
   ASSERT_EQ(log_->GetLatestEntryOpId(), last_op_id);
   ASSERT_OK(log_->Close());

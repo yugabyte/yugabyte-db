@@ -454,8 +454,7 @@ class Log : public RefCountedThreadSafe<Log> {
 
   static std::string QuiescentMarkerPath(const std::string& wal_dir);
 
-  static Status ReadQuiescentMarkerFile(
-      Env* env, const std::string& wal_dir, QuiescentMarkerPB* marker);
+  static Result<QuiescentMarkerPB> ReadQuiescentMarkerFile(Env* env, const std::string& wal_dir);
 
   static Status WriteQuiescentMarkerFile(
       Env* env, const std::string& wal_dir, const QuiescentMarkerPB& marker);
@@ -552,7 +551,8 @@ class Log : public RefCountedThreadSafe<Log> {
       EXCLUDES(state_lock_, active_segment_mutex_);
 
   // Loads the quiescent marker from the WAL dir, if there is one, and continues the log after it.
-  Status LoadQuiescentMarker() REQUIRES(state_lock_);
+  // Deletes the temp files of marker writes that a crash interrupted.
+  Status LoadQuiescentMarker(const std::vector<std::string>& wal_dir_files) REQUIRES(state_lock_);
 
   // Trims from the reader the prefix of segments that contain only ops covered by the quiescent
   // marker, and returns them. The caller deletes their files.

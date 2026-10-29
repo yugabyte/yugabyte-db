@@ -112,12 +112,13 @@ Result<LogReaderPtr> LogReader::Open(
     Env* env, const scoped_refptr<LogIndex>& index, std::string log_prefix,
     const std::string& tablet_wal_path, const scoped_refptr<MetricEntity>& table_metric_entity,
     const scoped_refptr<MetricEntity>& tablet_metric_entity,
-    std::shared_ptr<MemTracker> read_wal_mem_tracker) {
+    std::shared_ptr<MemTracker> read_wal_mem_tracker,
+    const std::vector<std::string>* wal_dir_files) {
   auto log_reader = std::make_shared<LogReader>(
       env, index, std::move(log_prefix), table_metric_entity, tablet_metric_entity,
       std::move(read_wal_mem_tracker), PrivateTag());
 
-  RETURN_NOT_OK(log_reader->Init(tablet_wal_path));
+  RETURN_NOT_OK(log_reader->Init(tablet_wal_path, wal_dir_files));
   return log_reader;
 }
 
@@ -151,27 +152,30 @@ LogReader::LogReader(Env* env,
 
 LogReader::~LogReader() = default;
 
-Status LogReader::Init(const string& tablet_wal_path) {
+Status LogReader::Init(
+    const string& tablet_wal_path, const std::vector<std::string>* wal_dir_files) {
   {
     std::lock_guard lock(lock_);
     CHECK_EQ(state_, kLogReaderInitialized) << "bad state for Init(): " << state_;
   }
   VLOG_WITH_PREFIX(1) << "Reading wal from path:" << tablet_wal_path;
 
-  if (!env_->FileExists(tablet_wal_path)) {
-    return STATUS(IllegalState, "Cannot find wal location at", tablet_wal_path);
+  std::vector<std::string> files_from_log_directory;
+  if (!wal_dir_files) {
+    if (!env_->FileExists(tablet_wal_path)) {
+      return STATUS(IllegalState, "Cannot find wal location at", tablet_wal_path);
+    }
+    RETURN_NOT_OK_PREPEND(env_->GetChildren(tablet_wal_path, &files_from_log_directory),
+                          "Unable to read children from path");
+    wal_dir_files = &files_from_log_directory;
   }
 
   VLOG_WITH_PREFIX(1) << "Parsing segments from path: " << tablet_wal_path;
 
-  std::vector<string> files_from_log_directory;
-  RETURN_NOT_OK_PREPEND(env_->GetChildren(tablet_wal_path, &files_from_log_directory),
-                        "Unable to read children from path");
-
   std::vector<ReadableLogSegmentPtr> read_segments;
 
   // Build a log segment from log files, ignoring non log files.
-  for (const string &potential_log_file : files_from_log_directory) {
+  for (const auto& potential_log_file : *wal_dir_files) {
     if (!IsLogFileName(potential_log_file)) {
       continue;
     }

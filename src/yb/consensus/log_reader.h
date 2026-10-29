@@ -79,11 +79,13 @@ class LogReader {
   // Opens a LogReader on a specific log directory.
   //
   // 'index' may be nullptr, but if it is, ReadReplicatesInRange() may not be used.
+  // 'wal_dir_files' is the listing of 'tablet_wal_path', if the caller has one.
   static Result<LogReaderPtr> Open(
       Env* env, const scoped_refptr<LogIndex>& index, std::string log_prefix,
       const std::string& tablet_wal_path, const scoped_refptr<MetricEntity>& table_metric_entity,
       const scoped_refptr<MetricEntity>& tablet_metric_entity,
-      std::shared_ptr<MemTracker> read_wal_mem_tracker);
+      std::shared_ptr<MemTracker> read_wal_mem_tracker,
+      const std::vector<std::string>* wal_dir_files = nullptr);
 
   // Returns the biggest prefix of segments, from the current sequence, guaranteed
   // not to include any replicate messages with indexes >= 'index'.
@@ -226,7 +228,7 @@ class LogReader {
       const LogIndexEntry& index_entry, ObeyMemoryLimit obey_memory_limit) const;
 
   // Reads the headers of all segments in 'path_'.
-  Status Init(const std::string& path);
+  Status Init(const std::string& path, const std::vector<std::string>* wal_dir_files);
 
   // Initializes an 'empty' reader for tests, i.e. does not scan a path looking for segments.
   Status InitEmptyReaderForTests();
