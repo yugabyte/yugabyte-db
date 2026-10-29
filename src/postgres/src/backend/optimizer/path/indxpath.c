@@ -40,6 +40,7 @@
 #include "access/yb_cost.h"
 #include "catalog/pg_proc.h"
 #include "executor/ybExpr.h"
+#include "optimizer/plancat.h"
 #include "optimizer/planmain.h"
 #include "optimizer/tlist.h"
 #include "optimizer/yb_merge_scan.h"
@@ -246,8 +247,15 @@ static IndexClause *yb_match_clause_to_index(PlannerInfo *root,
 static IndexClause *yb_match_rowcompare_to_index(PlannerInfo *root,
 												 RestrictInfo *rinfo,
 												 IndexOptInfo *index);
+static void yb_omit_partition_implied_quals(PlannerInfo *root,
+											RelOptInfo *rel);
+static List *yb_get_partition_implied_quals(PlannerInfo *root,
+											 RelOptInfo *rel);
+static bool yb_qual_references_index_key(RestrictInfo *rinfo,
+										 IndexOptInfo *index);
 
 bool yb_enable_derived_equalities;
+bool yb_enable_partition_implied_qual_removal;
 
 /*
  * create_index_paths()
@@ -4301,6 +4309,9 @@ match_clause_to_ordering_op(IndexOptInfo *index,
  * baserestrictinfo list.  We assume that adding more restrictions can't make
  * an index not predOK.  We must recompute indrestrictinfo each time, though,
  * to make sure any newly-added restrictions get into it if needed.
+ *
+ * YB: For a partition, indrestrictinfo also omits quals that the partition
+ * constraint implies; see yb_omit_partition_implied_quals.
  */
 void
 check_index_predicates(PlannerInfo *root, RelOptInfo *rel)
@@ -4328,6 +4339,11 @@ check_index_predicates(PlannerInfo *root, RelOptInfo *rel)
 		if (index->indpred)
 			have_partial = true;
 	}
+
+	/* YB: When the partial-index pass below runs, this is done after it. */
+	if (!have_partial)
+		yb_omit_partition_implied_quals(root, rel);
+
 	if (!have_partial)
 		return;
 
@@ -4424,6 +4440,8 @@ check_index_predicates(PlannerInfo *root, RelOptInfo *rel)
 				index->indrestrictinfo = lappend(index->indrestrictinfo, rinfo);
 		}
 	}
+
+	yb_omit_partition_implied_quals(root, rel);
 }
 
 /****************************************************************************
@@ -5711,4 +5729,130 @@ yb_finalize_merge_scan_path(PlannerInfo *root, RelOptInfo *rel,
 												  yb_distinct_prefixlen,
 												  yb_distinct_nkeys);
 	return useful_pathkeys;
+}
+
+/*
+ * YB: yb_omit_partition_implied_quals
+ *
+ * Removes from each index's indrestrictinfo the restriction clauses that the
+ * partition constraint of 'rel' implies, so that an index scan does not
+ * evaluate them. When such a clause references a column the index lacks,
+ * evaluating it forces a fetch from the base table, which also rules out
+ * index-only scans and distinct pushdown.
+ *
+ * A clause that references a key column of the index is kept because it may
+ * serve as an index condition: dropping one that binds a hash key column
+ * would turn a single-tablet lookup into a scan of every tablet.
+ */
+static void
+yb_omit_partition_implied_quals(PlannerInfo *root, RelOptInfo *rel)
+{
+	List	   *implied = yb_get_partition_implied_quals(root, rel);
+	ListCell   *lc;
+
+	if (implied == NIL)
+		return;
+
+	foreach(lc, rel->indexlist)
+	{
+		IndexOptInfo *index = (IndexOptInfo *) lfirst(lc);
+		List	   *kept = NIL;
+		ListCell   *lcr;
+
+		/* Build a new list: indrestrictinfo may be rel->baserestrictinfo. */
+		foreach(lcr, index->indrestrictinfo)
+		{
+			RestrictInfo *rinfo = (RestrictInfo *) lfirst(lcr);
+
+			if (!list_member_ptr(implied, rinfo) ||
+				yb_qual_references_index_key(rinfo, index))
+				kept = lappend(kept, rinfo);
+		}
+		index->indrestrictinfo = kept;
+	}
+}
+
+/*
+ * YB: yb_get_partition_implied_quals
+ *
+ * Returns the restriction clauses of 'rel' that its partition constraint
+ * implies. Such a clause is true for every row of the partition: rows always
+ * satisfy their partition constraint, and partition constraints never
+ * evaluate to NULL (see get_qual_for_list), so strong implication suffices.
+ *
+ * Target relations are skipped for the EvalPlanQual reason given in
+ * check_index_predicates. Foreign tables are skipped because their rows are
+ * not checked against the partition constraint.
+ */
+static List *
+yb_get_partition_implied_quals(PlannerInfo *root, RelOptInfo *rel)
+{
+	RangeTblEntry *rte;
+	List	   *result = NIL;
+	ListCell   *lc;
+
+	if (!IsYugaByteEnabled() || !yb_enable_partition_implied_qual_removal ||
+		rel->baserestrictinfo == NIL || rel->indexlist == NIL)
+		return NIL;
+
+	rte = planner_rt_fetch(rel->relid, root);
+	if (rte->rtekind != RTE_RELATION || rte->relkind != RELKIND_RELATION)
+		return NIL;
+
+	if (bms_is_member(rel->relid, root->all_result_relids) ||
+		get_plan_rowmark(root->rowMarks, rel->relid) != NULL)
+		return NIL;
+
+	if (rel->partition_qual == NIL)
+	{
+		Relation	relation = table_open(rte->relid, NoLock);
+
+		if (relation->rd_rel->relispartition)
+			yb_set_baserel_partition_constraint(relation, rel);
+		table_close(relation, NoLock);
+
+		if (rel->partition_qual == NIL)
+			return NIL;
+	}
+
+	foreach(lc, rel->baserestrictinfo)
+	{
+		RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc);
+
+		/* predicate_implied_by() assumes first arg is immutable */
+		if (!contain_mutable_functions((Node *) rinfo->clause) &&
+			predicate_implied_by(list_make1(rinfo->clause),
+								 rel->partition_qual, false))
+			result = lappend(result, rinfo);
+	}
+
+	return result;
+}
+
+/*
+ * YB: yb_qual_references_index_key
+ *
+ * Returns true if 'rinfo' references a key column of 'index', including a
+ * column used in a key expression.
+ */
+static bool
+yb_qual_references_index_key(RestrictInfo *rinfo, IndexOptInfo *index)
+{
+	Bitmapset  *qual_attnos = NULL;
+	Bitmapset  *key_attnos = NULL;
+	int			i;
+
+	pull_varattnos_min_attr((Node *) rinfo->clause, index->rel->relid,
+							&qual_attnos, YBFirstLowInvalidAttributeNumber + 1);
+	pull_varattnos_min_attr((Node *) index->indexprs, index->rel->relid,
+							&key_attnos, YBFirstLowInvalidAttributeNumber + 1);
+	for (i = 0; i < index->nkeycolumns; i++)
+	{
+		if (index->indexkeys[i] != 0)
+			key_attnos = bms_add_member(key_attnos,
+										index->indexkeys[i] -
+										YBFirstLowInvalidAttributeNumber);
+	}
+
+	return bms_overlap(qual_attnos, key_attnos);
 }

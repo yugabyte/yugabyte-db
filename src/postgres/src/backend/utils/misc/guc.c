@@ -3454,6 +3454,19 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_partition_implied_qual_removal", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Skip evaluating restriction clauses implied by a"
+						 " partition's constraint in index scans of that"
+						 " partition."),
+			NULL,
+			GUC_EXPLAIN
+		},
+		&yb_enable_partition_implied_qual_removal,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_base_scans_cost_model", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Enables YB cost model for Sequential and Index scans. "
 						 "  DEPRECATED: This setting is deprecated and will "
