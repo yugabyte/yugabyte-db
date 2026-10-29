@@ -1930,21 +1930,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Call before scanning replica maps; callers must hold the leader lock against catalog reloads.
   bool AreTabletReportsComplete();
 
-  // Recomputes the blacklisted tservers that host no replica of any live tablet, as far as the
-  // replica maps know. Run from the background task, at most once per
-  // drained_blacklisted_tservers_refresh_interval_ms and only while
-  // send_blacklisted_tservers_on_heartbeat is set; served to tservers in heartbeat responses so
-  // they can stop routing to cached replicas on those tservers.
+  // Recomputes the heartbeat hint from replica maps, throttled and gated by its runtime flags.
   void RefreshDrainedBlacklistedTServers();
   std::vector<TabletServerId> GetDrainedBlacklistedTServers() const;
-  // Whether every live tserver has completed a full tablet report since the sys catalog was
-  // loaded, so the replica maps can be trusted to say which tservers host nothing. Latched for the
-  // leadership term; false while tservers are still reporting after an election.
-  bool ReplicaMapsTrusted() const;
-  // Advances the report latch from the current descriptors and returns its value.
-  bool UpdateReplicaMapsTrusted();
-  // Forgets the cached set, its refresh time and the report latch, so the next refresh is not
-  // throttled and waits for tservers to report again.
   void ResetDrainedBlacklistedTServers();
 
   std::shared_ptr<YsqlTablespaceManager> GetTablespaceManager() const;
@@ -3519,11 +3507,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       GUARDED_BY(drained_blacklisted_tservers_lock_);
   CoarseTimePoint drained_blacklisted_tservers_refreshed_at_
       GUARDED_BY(drained_blacklisted_tservers_lock_);
-  // Live tservers that have completed a full tablet report since the last sys catalog load, and
-  // whether that is every live tserver. See ReplicaMapsTrusted().
-  std::unordered_set<TabletServerId> tservers_reported_since_load_
-      GUARDED_BY(drained_blacklisted_tservers_lock_);
-  bool replica_maps_trusted_ GUARDED_BY(drained_blacklisted_tservers_lock_) = false;
 
   std::unique_ptr<rpc::ScheduledTaskTracker> refresh_yql_partitions_task_;
 

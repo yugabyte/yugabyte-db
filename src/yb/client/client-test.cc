@@ -2917,11 +2917,7 @@ RefreshBurstResult ApplyConsensusInfoConcurrently(
 
 }  // namespace
 
-// The master's drained hint marks a tserver's replicas permanently failed, i.e. not retried after
-// retry_failed_replica_ms. Metadata built before the drain finished can arrive after that mark, so
-// a replica rebuilt by a master lookup or a Raft config refresh must come back failed while the
-// hint holds, and routable again only once the hint drops the tserver and the master reports it
-// live.
+// Late metadata must preserve drain marks; a live, unblacklisted server must be usable again.
 TEST_F(ClientTest, TestDrainedTServerReplicasStayFailedAcrossRefresh) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_retry_failed_replica_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_metacache_partial_refresh) = true;
@@ -2975,10 +2971,14 @@ TEST_F(ClientTest, TestDrainedTServerReplicasStayFailedAcrossRefresh) {
   };
   ASSERT_NO_FATALS(assert_drained_excluded());
 
-  // UUIDs not in the cache are remembered, in case a refresh introduces them, and change nothing
-  // until then.
-  meta_cache.UpdateDrainedTServers({drained->permanent_uuid(), "not-a-tserver"}, all_uuids);
+  // Repeated heartbeats need no second sweep, and a cold cache must remember unseen UUIDs.
+  meta_cache.UpdateDrainedTServers({drained->permanent_uuid()}, all_uuids);
   ASSERT_NO_FATALS(assert_drained_excluded());
+  auto cold_client = ASSERT_RESULT(cluster_->CreateClient());
+  cold_client->UpdateDrainedTServers({drained->permanent_uuid()}, all_uuids);
+  auto cold_tablet = ASSERT_RESULT(GetRemoteTablet(tablet_id, false, cold_client.get()));
+  ASSERT_EQ(cold_tablet->GetNumFailedReplicas(), 1);
+  ASSERT_EQ(cold_tablet->GetRemoteTabletServers().size(), 2);
 
   // The deferred clear that an expired ordinary mark gets must not undo a permanent one that
   // was applied in between.
@@ -2997,16 +2997,7 @@ TEST_F(ClientTest, TestDrainedTServerReplicasStayFailedAcrossRefresh) {
 
   // The master still lists the drained tserver, as a response built before the drain finished
   // would: the replica a full refresh rebuilds for it is born failed.
-  auto refresh_from_master = [&]() -> Result<internal::RemoteTabletPtr> {
-    std::promise<Result<internal::RemoteTabletPtr>> promise;
-    client_->LookupTabletById(
-        tablet_id, table.table(), master::IncludeHidden::kFalse, master::IncludeDeleted::kFalse,
-        CoarseMonoClock::Now() + 30s,
-        [&promise](const Result<internal::RemoteTabletPtr>& result) { promise.set_value(result); },
-        UseCache::kFalse);
-    return promise.get_future().get();
-  };
-  rt = ASSERT_RESULT(refresh_from_master());
+  rt = ASSERT_RESULT(GetRemoteTablet(tablet_id, false, client_.get()));
   ASSERT_NO_FATALS(assert_drained_excluded());
 
   // Same for a replica rebuilt from a newer Raft config that still has the drained tserver, as a
@@ -3021,11 +3012,10 @@ TEST_F(ClientTest, TestDrainedTServerReplicasStayFailedAcrossRefresh) {
       *locations, transient->permanent_uuid(), rt->raft_config_opid_index() + 1)));
   ASSERT_NO_FATALS(assert_drained_excluded());
 
-  // The hint dropping the tserver while the master does not report it live, as it does for a
-  // removed tserver and for every tserver during its post-failover grace period, changes nothing.
+  // Removal or an empty post-failover hint must not resurrect a dead server.
   meta_cache.UpdateDrainedTServers({}, live_without_drained);
   ASSERT_TRUE(drained->drained());
-  rt = ASSERT_RESULT(refresh_from_master());
+  rt = ASSERT_RESULT(GetRemoteTablet(tablet_id, false, client_.get()));
   ASSERT_NO_FATALS(assert_drained_excluded());
 
   // Dropped from the hint and live again: the mark on the existing replica stays until the next
@@ -3033,10 +3023,15 @@ TEST_F(ClientTest, TestDrainedTServerReplicasStayFailedAcrossRefresh) {
   meta_cache.UpdateDrainedTServers({}, all_uuids);
   ASSERT_FALSE(drained->drained());
   ASSERT_EQ(rt->GetNumFailedReplicas(), 1);
-  rt = ASSERT_RESULT(refresh_from_master());
+  rt = ASSERT_RESULT(GetRemoteTablet(tablet_id, false, client_.get()));
   tservers.clear();
   rt->GetRemoteTabletServers(&tservers);
   ASSERT_EQ(tservers.size(), 3);
+  ASSERT_EQ(rt->GetNumFailedReplicas(), 0);
+
+  // An older heartbeat's deferred sweep must not undo the release and refresh above.
+  meta_cache.MarkTSFailed(
+      drained, STATUS(ServiceUnavailable, "drained"), internal::PermanentFailure::kTrue);
   ASSERT_EQ(rt->GetNumFailedReplicas(), 0);
 }
 

@@ -70,7 +70,6 @@ DECLARE_uint64(TEST_delay_sys_catalog_reload_secs);
 DECLARE_int32(blacklist_progress_initial_delay_secs);
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_uint32(drained_blacklisted_tservers_refresh_interval_ms);
-DECLARE_uint64(TEST_delay_sys_catalog_reload_secs);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(send_blacklisted_tservers_on_heartbeat);
 DECLARE_int32(heartbeat_interval_ms);
@@ -439,6 +438,10 @@ TEST_F(MasterHeartbeatITest, BlacklistCompletionWaitsForTabletReports) {
   // The runtime escape hatch must also work while a live tserver has not reported.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_wait_for_full_tablet_reports_on_blacklist_completion) = false;
   ASSERT_EQ(ASSERT_RESULT(completion()), 100);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_send_blacklisted_tservers_on_heartbeat) = true;
+  ASSERT_EQ(ASSERT_RESULT(completion()), 0);
+  reloaded_catalog.RefreshDrainedBlacklistedTServers();
+  ASSERT_TRUE(reloaded_catalog.GetDrainedBlacklistedTServers().empty());
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_wait_for_full_tablet_reports_on_blacklist_completion) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_disable_heartbeat) = false;
   ASSERT_OK(WaitFor([&] { return reloaded_catalog.AreTabletReportsComplete(); },
@@ -447,6 +450,8 @@ TEST_F(MasterHeartbeatITest, BlacklistCompletionWaitsForTabletReports) {
       ASSERT_RESULT(reloaded_catalog.GetTableInfo(table_info->id())->GetTablets())[0];
   ASSERT_TRUE(reloaded_tablet->GetReplicaLocations()->contains(hosting_uuid));
   ASSERT_LT(ASSERT_RESULT(completion()), 100);
+  reloaded_catalog.RefreshDrainedBlacklistedTServers();
+  ASSERT_TRUE(reloaded_catalog.GetDrainedBlacklistedTServers().empty());
 
   // Re-registration clears this bit, but does not discard the reconstructed replica maps.
   hosting_desc = ASSERT_RESULT(mini_master->ts_manager().LookupTSByUUID(hosting_uuid));
@@ -643,98 +648,11 @@ TEST_F(MasterHeartbeatITest, BlacklistedTServersWithNoTabletsHint) {
   ASSERT_OK(wait_for_hint({dead_ts->permanent_uuid()}));
 }
 
-// After an election the tablet replica maps are empty until tservers send full reports, and the
-// grace period meant to cover that starts at election, before the sys catalog is loaded. If the
-// load outlasts the grace period, the first background tick would see empty maps and name every
-// blacklisted tserver, including ones that still host replicas, and get_load_move_completion would
-// report 100%. Both must instead wait until every live tserver has completed a full report.
-TEST_F(MasterHeartbeatITest, BlacklistedTServersWithNoTabletsHintWaitsForTabletReports) {
-  // The hint must be on, or the drained set is empty for the wrong reason.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_send_blacklisted_tservers_on_heartbeat) = true;
-  // Descriptors must survive the master restart; otherwise there is nothing to misjudge.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_persist_tserver_registry) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_drained_blacklisted_tservers_refresh_interval_ms) = 0;
-  CreateTable();
-  auto* mini_master = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster());
-  auto& catalog_mgr = mini_master->catalog_manager();
-  auto table = table_name();
-  auto table_info = catalog_mgr.GetTableInfoFromNamespaceNameAndTableName(
-      table.namespace_type(), table.namespace_name(), table.table_name());
-  auto tablet = ASSERT_RESULT(table_info->GetTablets())[0];
-  ASSERT_OK(WaitFor(
-      [&tablet]() -> Result<bool> { return tablet->GetReplicaLocations()->size() == 3; },
-      30s * kTimeMultiplier, "Tablet replicas reported"));
-  const auto hosting_uuid = tablet->GetReplicaLocations()->begin()->first;
-  auto hosting_desc = ASSERT_RESULT(mini_master->ts_manager().LookupTSByUUID(hosting_uuid));
-
-  master::MasterClusterClient cluster_client(master::MasterClusterProxy(
-      proxy_cache_.get(), mini_master->bound_rpc_addr()));
-  ASSERT_OK(cluster_client.BlacklistHost(
-      HostPortPB(hosting_desc->GetRegistration().private_rpc_addresses(0))));
-  // Wait for the registry to be persisted. Use the persisted bit as a proxy.
-  ASSERT_OK(WaitFor(
-      [mini_master]() -> Result<bool> {
-        auto descs = mini_master->ts_manager().GetAllDescriptors();
-        return std::all_of(descs.begin(), descs.end(), [](const auto& desc) {
-          return desc->LockForRead()->pb.persisted();
-        });
-      },
-      30s * kTimeMultiplier, "Not all tservers persisted yet."));
-
-  // Restart the master with a sys catalog load that outlasts the grace period, while no tserver
-  // can report: the loaded registry says every tserver is live, and every replica map is empty.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_disable_heartbeat) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_blacklist_progress_initial_delay_secs) = 1;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_sys_catalog_reload_secs) = 3;
-  ShutdownAllMasters(mini_cluster_.get());
-  ASSERT_OK(StartAllMasters(mini_cluster_.get()));
-  mini_master = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster());
-  ASSERT_OK(mini_master->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_sys_catalog_reload_secs) = 0;
-  auto& new_catalog_mgr = mini_master->catalog_manager_impl();
-  ASSERT_EQ(mini_master->ts_manager().GetAllDescriptors().size(), 3);
-  ASSERT_GT(
-      new_catalog_mgr.TimeSinceElectedLeader(),
-      MonoDelta::FromSeconds(FLAGS_blacklist_progress_initial_delay_secs));
-  // Give the background task a few ticks on the empty maps.
-  SleepFor(MonoDelta::FromMilliseconds(3 * FLAGS_catalog_manager_bg_task_wait_ms));
-  ASSERT_FALSE(new_catalog_mgr.ReplicaMapsTrusted());
-  ASSERT_TRUE(new_catalog_mgr.GetDrainedBlacklistedTServers().empty());
-  {
-    master::MasterClusterProxy proxy(proxy_cache_.get(), mini_master->bound_rpc_addr());
-    master::GetLoadMovePercentRequestPB req;
-    master::GetLoadMovePercentResponsePB resp;
-    rpc::RpcController rpc;
-    rpc.set_timeout(30s * kTimeMultiplier);
-    ASSERT_OK(proxy.GetLoadMoveCompletion(req, &resp, &rpc));
-    ASSERT_FALSE(resp.has_error()) << resp.error().DebugString();
-    ASSERT_EQ(resp.percent(), 0);
-  }
-
-  // Once the tservers report again, the maps are trusted and show that the blacklisted tserver
-  // still hosts a replica, so it is still not named.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_disable_heartbeat) = false;
-  ASSERT_OK(WaitFor(
-      [&new_catalog_mgr] { return new_catalog_mgr.ReplicaMapsTrusted(); },
-      60s * kTimeMultiplier, "Replica maps trusted after all tservers reported"));
-  auto reloaded_tablet = ASSERT_RESULT(
-      new_catalog_mgr.GetTableInfo(table_info->id())->GetTablets())[0];
-  ASSERT_TRUE(reloaded_tablet->GetReplicaLocations()->contains(hosting_uuid));
-  SleepFor(MonoDelta::FromMilliseconds(3 * FLAGS_catalog_manager_bg_task_wait_ms));
-  ASSERT_TRUE(new_catalog_mgr.GetDrainedBlacklistedTServers().empty());
-}
-
-// A tserver blacklisted after it already hosts nothing, e.g. one that died and was evicted from
-// its tablets before the operator got to it, has no initial load, so the move is complete at once.
-// Completion is the operator's cue to remove the tserver, which also takes it out of the hint, so
-// the hint must have been derived and delivered before completion is reported.
+// Even an initially empty server must be named before completion permits removing its descriptor.
 TEST_F(MasterHeartbeatITest, LoadMoveCompletionWithNoInitialLoadWaitsForHint) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_send_blacklisted_tservers_on_heartbeat) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_blacklist_progress_initial_delay_secs) = 0;
-  // The scan that names the tserver runs on the next background tick, so a completion request
-  // sent right after blacklisting precedes it.
   CreateTable();
   ASSERT_OK(mini_cluster_->AddTabletServer());
   ASSERT_OK(mini_cluster_->WaitForTabletServerCount(4));
@@ -752,13 +670,15 @@ TEST_F(MasterHeartbeatITest, LoadMoveCompletionWithNoInitialLoadWaitsForHint) {
   }
   ASSERT_NE(drained_ts, nullptr);
   ASSERT_OK(WaitFor(
-      [&catalog_mgr] { return catalog_mgr.ReplicaMapsTrusted(); }, 30s * kTimeMultiplier,
+      [&catalog_mgr] { return catalog_mgr.AreTabletReportsComplete(); }, 30s * kTimeMultiplier,
       "Replica maps trusted"));
 
   master::MasterClusterClient cluster_client(master::MasterClusterProxy(
       proxy_cache_.get(), mini_master->bound_rpc_addr()));
   ASSERT_OK(cluster_client.BlacklistHost(
       HostPortPB(drained_ts->GetRegistration().private_rpc_addresses(0))));
+  const auto config = ASSERT_RESULT(cluster_client.GetMasterClusterConfig());
+  ASSERT_EQ(config.server_blacklist().initial_replica_load(), 0);
   master::MasterClusterProxy proxy(proxy_cache_.get(), mini_master->bound_rpc_addr());
   master::GetLoadMovePercentRequestPB req;
   master::GetLoadMovePercentResponsePB resp;
@@ -770,6 +690,33 @@ TEST_F(MasterHeartbeatITest, LoadMoveCompletionWithNoInitialLoadWaitsForHint) {
   ASSERT_EQ(
       catalog_mgr.GetDrainedBlacklistedTServers(),
       std::vector<std::string>{drained_ts->permanent_uuid()});
+}
+
+TEST_F(MasterHeartbeatITest, ZeroLoadCompletionKeepsDefaultBehavior) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_blacklist_progress_initial_delay_secs) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_disable_heartbeat) = true;
+  auto* mini_master = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster());
+  master::MasterClusterProxy proxy(proxy_cache_.get(), mini_master->bound_rpc_addr());
+  master::GetLoadMovePercentResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(1s * kTimeMultiplier);
+  ASSERT_FALSE(FLAGS_send_blacklisted_tservers_on_heartbeat);
+  ASSERT_OK(proxy.GetLoadMoveCompletion(master::GetLoadMovePercentRequestPB(), &resp, &rpc));
+  ASSERT_FALSE(resp.has_error()) << resp.DebugString();
+  ASSERT_EQ(resp.percent(), 100);
+
+  // A heartbeat wait would time out: zero initial leader load must return immediately with
+  // either setting of the new hint flag.
+  for (const bool send_hint : {false, true}) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_send_blacklisted_tservers_on_heartbeat) = send_hint;
+    resp.Clear();
+    rpc.Reset();
+    rpc.set_timeout(1s * kTimeMultiplier);
+    ASSERT_OK(proxy.GetLeaderBlacklistCompletion(
+        master::GetLeaderBlacklistPercentRequestPB(), &resp, &rpc));
+    ASSERT_FALSE(resp.has_error()) << resp.DebugString();
+    ASSERT_EQ(resp.percent(), 100);
+  }
 }
 
 // Verifies the timed-lock heartbeat path (ProcessTabletReportBatch, #10304). When the master cannot

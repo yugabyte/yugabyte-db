@@ -241,7 +241,9 @@ Status MasterClusterHandler::RemoveTabletServer(
 Status MasterClusterHandler::GetLoadMoveCompletionPercent(
     GetLoadMovePercentResponsePB* resp, bool blacklist_leader) {
   // Check before scanning: reports may finish concurrently and populate previously empty maps.
-  const bool waiting_for_reports = FLAGS_wait_for_full_tablet_reports_on_blacklist_completion &&
+  const bool waiting_for_reports =
+      (FLAGS_wait_for_full_tablet_reports_on_blacklist_completion ||
+       (!blacklist_leader && FLAGS_send_blacklisted_tservers_on_heartbeat)) &&
       !catalog_manager_->AreTabletReportsComplete();
   // Fine to pass in empty defaults if server_blacklist or leader_blacklist is not filled.
   auto state = GetBlacklist(catalog_manager_->ClusterConfig()->LockForRead()->pb, blacklist_leader);
@@ -282,11 +284,13 @@ Status MasterClusterHandler::GetLoadMoveCompletionPercent(
   LOG(INFO) << "Blacklisted count " << blacklist_replicas << " across " << state.hosts_size()
             << " servers, with initial load " << initial_load;
 
-  // Case when a blacklisted servers did not have any starting load. Zero load is still a drain
-  // the hint has to announce, e.g. a tserver that died and lost its replicas before it was
-  // blacklisted, so fall through to the waits below rather than returning here.
+  // An already-drained server still needs the hint before its descriptor can be removed.
+  // Preserve the immediate return for the leader blacklist and when the hint is disabled.
   if (initial_load == 0) {
     resp->set_percent(100);
+    if (blacklist_leader || !FLAGS_send_blacklisted_tservers_on_heartbeat) {
+      return Status::OK();
+    }
   } else {
     resp->set_percent(100 - (static_cast<double>(blacklist_replicas) * 100 / initial_load));
     resp->set_remaining(blacklist_replicas);
@@ -300,11 +304,7 @@ Status MasterClusterHandler::GetLoadMoveCompletionPercent(
       : FLAGS_delay_blacklist_completion_percent_until_tservers_heartbeat &&
             FLAGS_send_blacklisted_tservers_on_heartbeat;
   if (blacklist_replicas == 0 && delay_until_heartbeat) {
-    // Best effort wait to ensure all tservers have updated their meta-cache: marked the leader
-    // blacklisted tservers with no leaders as followers, or the blacklisted tservers with no
-    // tablets as failed. A heartbeat only proves delivery of the hint if the response was built
-    // after the hint became true, so for the server blacklist first wait for the background task
-    // to have derived the drained set from the same replica maps this function just scanned.
+    // Best effort: wait for the derived hint before waiting for heartbeat responses that carry it.
     auto start_time = MonoTime::Now();
     if (!blacklist_leader) {
       const auto blacklist_set = ToBlacklistSet(state);

@@ -2538,9 +2538,13 @@ void MetaCache::RefreshTablePartitions(
 
 void MetaCache::MarkTSFailed(
     RemoteTabletServer* ts, const Status& status, PermanentFailure permanent) {
+  SharedLock<decltype(mutex_)> lock(mutex_);
+  // A newer heartbeat may have released this UUID after the drain sweep was scheduled.
+  if (permanent && !ts->drained()) {
+    return;
+  }
   LOG_WITH_PREFIX(INFO) << "Marking tablet server " << ts->ToString() << " as "
                         << (permanent ? "permanently " : "") << "failed.";
-  SharedLock<decltype(mutex_)> lock(mutex_);
 
   Status ts_status = status.CloneAndPrepend("TS failed");
 
@@ -2554,6 +2558,22 @@ void MetaCache::MarkTSFailed(
 
 void MetaCache::UpdateDrainedTServers(
     const std::vector<std::string>& drained, const std::vector<std::string>& live) {
+  auto no_longer_drained = [&](const std::string& uuid) REQUIRES_SHARED(mutex_) {
+    return drained_tserver_uuids_.contains(uuid) &&
+        std::find(drained.begin(), drained.end(), uuid) == drained.end();
+  };
+  {
+    SharedLock lock(mutex_);
+    const bool has_new = std::any_of(drained.begin(), drained.end(), [&](const auto& uuid)
+        REQUIRES_SHARED(mutex_) {
+      return (!local_tserver_ || uuid != local_tserver_->permanent_uuid()) &&
+          !drained_tserver_uuids_.contains(uuid);
+    });
+    if (!has_new && (drained_tserver_uuids_.empty() ||
+                    std::none_of(live.begin(), live.end(), no_longer_drained))) {
+      return;
+    }
+  }
   // Entries are never removed from ts_cache_, so these pointers stay valid after unlocking.
   std::vector<RemoteTabletServer*> newly_drained;
   {
@@ -2571,17 +2591,15 @@ void MetaCache::UpdateDrainedTServers(
         newly_drained.push_back(it->second.get());
       }
     }
-    const std::unordered_set<std::string_view> drained_set(drained.begin(), drained.end());
-    const std::unordered_set<std::string_view> live_set(live.begin(), live.end());
-    std::erase_if(drained_tserver_uuids_, [&](const std::string& uuid) REQUIRES(mutex_) {
-      if (drained_set.contains(uuid) || !live_set.contains(uuid)) {
-        return false;
+    for (const auto& uuid : live) {
+      if (!no_longer_drained(uuid)) {
+        continue;
       }
+      drained_tserver_uuids_.erase(uuid);
       if (auto it = ts_cache_.find(uuid); it != ts_cache_.end()) {
         it->second->set_drained(false);
       }
-      return true;
-    });
+    }
   }
   const auto status =
       STATUS(ServiceUnavailable, "Tablet server is blacklisted and hosts no tablets");

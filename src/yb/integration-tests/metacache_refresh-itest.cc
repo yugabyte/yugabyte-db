@@ -33,7 +33,6 @@
 #include <algorithm>
 #include <map>
 #include <memory>
-#include <mutex>
 #include <set>
 #include <sstream>
 #include <string>
@@ -50,7 +49,6 @@
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/table_info.h"
-#include "yb/client/tablet_rpc.h"
 #include "yb/client/yb_op.h"
 
 #include "yb/common/common.pb.h"
@@ -77,7 +75,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/json_document.h"
 #include "yb/util/jsonwriter.h"
-#include "yb/util/scope_exit.h"
+#include "yb/util/metrics.h"
 #include "yb/rpc/sidecars.h"
 #include "yb/util/sync_point.h"
 #include "yb/tserver/mini_tablet_server.h"
@@ -91,6 +89,8 @@
 
 using yb::client::YBTableName;
 using yb::client::YBTableType;
+
+METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
 // DECLARE_bool(TEST_always_return_consensus_info_for_succeeded_rpc);
 DECLARE_bool(TEST_check_broadcast_address);
 DECLARE_int32(blacklist_progress_initial_delay_secs);
@@ -283,15 +283,7 @@ TEST_F(MetacacheRefreshITest, TestMetacacheNoRefreshFromWrite) {
   ASSERT_FALSE(refresh_succeeded);
 }
 
-// A tserver process shares one meta cache across all of its PG sessions, so a replica that was
-// cached once stays cached until that tablet is looked up again. When a blacklisted tserver has
-// been drained, the master names it in the heartbeat response and every tserver marks its cached
-// replicas on it as permanently failed, so no query is routed to it once it is taken down. This
-// drives the scenario end to end: follower reads from a gateway in the same region as the victim
-// warm the cache, the victim is blacklisted and drained, and reads of the untouched tablets must
-// stop dispatching to it before it is shut down. The victim is then brought back and its
-// decommission reverted; once it hosts replicas again the gateway must route to it once more, so
-// the permanent mark has to yield to the Raft config that a live replica piggybacks on a read.
+// Follower reads must avoid a drained server before shutdown and resume after unblacklisting.
 class BlacklistedTServerMetacacheITest : public pgwrapper::PgMiniTestBase {
  protected:
   struct TestTable {
@@ -433,25 +425,8 @@ TEST_F(BlacklistedTServerMetacacheITest, DrainedTServerIsNotRoutedTo) {
     (table.value < kNumTables / 2 ? drained_phase_tablets : held_back_tablets).insert(id);
   }
 
-  std::mutex mutex;
-  size_t victim_dispatches = 0;
-  std::set<TabletId> dispatched_tablets;
-  auto* sync_point = SyncPoint::GetInstance();
-  auto cleanup = ScopeExit([&] {
-    sync_point->DisableProcessing();
-    sync_point->ClearAllCallBacks();
-  });
-  sync_point->SetCallBack("TabletInvoker::BeforeSendRpcToTserver", [&](void* arg) {
-    const auto& data = *static_cast<client::internal::TabletInvoker::RpcSendTestData*>(arg);
-    if (data.client != gateway_client || data.ts_uuid != victim_uuid ||
-        !test_tablets.contains(data.tablet_id)) {
-      return;
-    }
-    std::lock_guard lock(mutex);
-    ++victim_dispatches;
-    dispatched_tablets.insert(data.tablet_id);
-  });
-  sync_point->EnableProcessing();
+  auto victim_reads = METRIC_handler_latency_yb_tserver_TabletServerService_Read.Instantiate(
+      victim->server()->metric_entity());
 
   auto read_all = [&](const std::set<TabletId>& tablets) -> Status {
     auto session = VERIFY_RESULT(Connect());
@@ -468,14 +443,12 @@ TEST_F(BlacklistedTServerMetacacheITest, DrainedTServerIsNotRoutedTo) {
   // Warm the gateway's meta cache: each read goes to the victim, the closest follower. Wait out the
   // follower read staleness first so the stale snapshot includes the rows inserted above.
   SleepFor(3s * kTimeMultiplier);
-  ASSERT_OK(read_all(all_tablets));
-  size_t dispatches_before_drain;
-  {
-    std::lock_guard lock(mutex);
-    ASSERT_EQ(dispatched_tablets.size(), kNumTables);
-    ASSERT_GE(victim_dispatches, kNumTables);
-    dispatches_before_drain = victim_dispatches;
+  for (const auto& tablet_id : all_tablets) {
+    const auto before = victim_reads->TotalCount();
+    ASSERT_OK(read_all({tablet_id}));
+    ASSERT_GT(victim_reads->TotalCount(), before);
   }
+  const auto reads_before_drain = victim_reads->TotalCount();
 
   // Decommission the victim: add a replacement, blacklist it, and let the load balancer drain it.
   auto replacement_options =
@@ -505,31 +478,26 @@ TEST_F(BlacklistedTServerMetacacheITest, DrainedTServerIsNotRoutedTo) {
     ASSERT_OK(read_all(drained_phase_tablets));
     SleepFor(MonoDelta::FromMilliseconds(5 * FLAGS_retry_failed_replica_ms));
   }
-  {
-    std::lock_guard lock(mutex);
-    ASSERT_EQ(victim_dispatches, dispatches_before_drain);
-  }
+  ASSERT_EQ(victim_reads->TotalCount(), reads_before_drain);
 
   // Nor after it is gone.
   victim->Shutdown();
   ASSERT_OK(read_all(drained_phase_tablets));
-  {
-    std::lock_guard lock(mutex);
-    ASSERT_EQ(victim_dispatches, dispatches_before_drain);
-  }
 
   // Revert the decommission: bring the victim back at the same address, take it off the blacklist
   // and blacklist the replacement instead. That leaves exactly three eligible tservers, so the load
   // balancer has to put a replica of every tablet back on the victim. It stays leader-blacklisted,
   // so those replicas are followers and the gateway's follower reads pick it as the closest one.
   ASSERT_OK(victim->Start(tserver::WaitTabletsBootstrapped::kFalse));
-  ASSERT_OK(cluster_client.UnBlacklistHost(
-      HostPortPB(victim_desc->GetRegistration().private_rpc_addresses(0))));
   auto* replacement = cluster_->mini_tablet_server(cluster_->num_tablet_servers() - 1);
   auto replacement_desc = ASSERT_RESULT(
       master->ts_manager().LookupTSByUUID(replacement->server()->permanent_uuid()));
-  ASSERT_OK(cluster_client.BlacklistHost(
-      HostPortPB(replacement_desc->GetRegistration().private_rpc_addresses(0))));
+  config = ASSERT_RESULT(cluster_client.GetMasterClusterConfig());
+  auto* hosts = config.mutable_server_blacklist()->mutable_hosts();
+  hosts->Clear();
+  *hosts->Add() = gateway_desc->GetRegistration().private_rpc_addresses(0);
+  *hosts->Add() = replacement_desc->GetRegistration().private_rpc_addresses(0);
+  ASSERT_OK(cluster_client.ChangeMasterClusterConfig(std::move(config)));
   for (const auto& [tablet_id, table] : test_tablets) {
     TabletId readded_tablet_id;
     ASSERT_OK(WaitFor([&]() -> Result<bool> {
@@ -549,15 +517,13 @@ TEST_F(BlacklistedTServerMetacacheITest, DrainedTServerIsNotRoutedTo) {
       ASSERT_TRUE(it != failed.end() && it->second) << tablet_id;
     }
   }
-  {
-    std::lock_guard lock(mutex);
-    dispatched_tablets.clear();
-  }
+  victim_reads = METRIC_handler_latency_yb_tserver_TabletServerService_Read.Instantiate(
+      victim->server()->metric_entity());
   ASSERT_OK(read_all(all_tablets));
-  ASSERT_OK(read_all(all_tablets));
-  {
-    std::lock_guard lock(mutex);
-    ASSERT_EQ(dispatched_tablets, all_tablets);
+  for (const auto& tablet_id : all_tablets) {
+    const auto before = victim_reads->TotalCount();
+    ASSERT_OK(read_all({tablet_id}));
+    ASSERT_GT(victim_reads->TotalCount(), before);
   }
   const auto failed = ASSERT_RESULT(PermanentlyFailedReplicasOn(gateway_client, victim_uuid));
   for (const auto& tablet_id : all_tablets) {

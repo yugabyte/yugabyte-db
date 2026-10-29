@@ -13728,85 +13728,17 @@ bool CatalogManager::AreTabletReportsComplete() {
   return true;
 }
 
-bool CatalogManager::UpdateReplicaMapsTrusted() {
-  {
-    std::lock_guard l(drained_blacklisted_tservers_lock_);
-    if (replica_maps_trusted_) {
-      return true;
-    }
-  }
-  // A full report from any one replica rebuilds that tablet's whole replica map from its Raft
-  // config, so once every live tserver has completed a full report, every tablet that still has a
-  // live replica has a complete map. Tablets whose replicas are all dead keep an empty map, which
-  // can only make a dead tserver look drained.
-  //
-  // Membership is remembered for the leadership term rather than read from has_tablet_report(),
-  // which a re-registration (tserver restart) clears: once a tserver has reported, its tablets are
-  // in the maps for good, keyed by uuid. Until the latch is set, a uuid never seen this term holds
-  // it until its first full report, whether it registered late or replaced another node. Once set,
-  // later registrations do not reopen it: their tablets enter the maps through the config changes
-  // that add them.
-  std::vector<std::string> reported;
-  std::vector<std::string> live;
-  for (const auto& desc : master_->ts_manager()->GetAllDescriptors()) {
-    if (!desc->IsLive()) {
-      continue;
-    }
-    live.push_back(desc->permanent_uuid());
-    if (desc->has_tablet_report()) {
-      reported.push_back(desc->permanent_uuid());
-    }
-  }
-  std::vector<std::string> waiting_for;
-  {
-    std::lock_guard l(drained_blacklisted_tservers_lock_);
-    tservers_reported_since_load_.insert(reported.begin(), reported.end());
-    for (const auto& uuid : live) {
-      if (!tservers_reported_since_load_.contains(uuid)) {
-        waiting_for.push_back(uuid);
-      }
-    }
-    if (waiting_for.empty()) {
-      replica_maps_trusted_ = true;
-      LOG(INFO) << "Every live tserver has completed a full tablet report since the sys catalog "
-                << "was loaded; the tablet replica maps are now trusted for blacklist drain checks";
-      return true;
-    }
-  }
-  YB_LOG_EVERY_N_SECS(INFO, 60)
-      << "Not trusting the tablet replica maps for blacklist drain checks until these live "
-      << "tservers complete a full tablet report: " << AsString(waiting_for);
-  return false;
-}
-
-bool CatalogManager::ReplicaMapsTrusted() const {
-  std::lock_guard l(drained_blacklisted_tservers_lock_);
-  return replica_maps_trusted_;
-}
-
 void CatalogManager::RefreshDrainedBlacklistedTServers() {
-  std::vector<TabletServerId> drained;
-  // Replica maps are rebuilt from tablet reports after a master failover, so until tservers have
-  // had time to report every blacklisted tserver would look drained. The grace period is the one
-  // that keeps GetLoadMoveCompletionPercent from reporting a premature 100% while tservers are
-  // still registering; the report latch covers a load that outlasts it, or a cluster whose full
-  // reports take longer than it.
-  const bool past_failover_grace = TimeSinceElectedLeader() >
-      MonoDelta::FromSeconds(FLAGS_blacklist_progress_initial_delay_secs);
-  // Advanced every tick, not only once the grace period is over, so a report that lands and is
-  // then cleared by a tserver restart during the grace period still counts. Also advanced while the
-  // hint is disabled: GetLoadMoveCompletionPercent relies on it independently of the hint.
-  const bool maps_trusted = UpdateReplicaMapsTrusted();
   if (!FLAGS_send_blacklisted_tservers_on_heartbeat) {
-    // The off switch stops the scan as well as the hint. Forget the cached set so that turning the
-    // flag back on does not serve a stale set, and the refresh time so that it recomputes at once.
-    std::lock_guard l(drained_blacklisted_tservers_lock_);
-    drained_blacklisted_tservers_.clear();
-    drained_blacklisted_tservers_refreshed_at_ = CoarseTimePoint();
+    ResetDrainedBlacklistedTServers();
     return;
   }
+  std::vector<TabletServerId> drained;
+  const bool past_failover_grace = TimeSinceElectedLeader() >
+      MonoDelta::FromSeconds(FLAGS_blacklist_progress_initial_delay_secs);
   auto blacklist = BlacklistSetFromPB();
-  if (past_failover_grace && maps_trusted && blacklist.ok() && !blacklist->empty()) {
+  // An empty replica map during catalog reload is not evidence that a server has drained.
+  if (past_failover_grace && blacklist.ok() && !blacklist->empty() && AreTabletReportsComplete()) {
     // Unresponsive descriptors stay candidates: a decommissioned tserver keeps being named after
     // it is shut down, until it is removed from the registry. The tserver's own last reported
     // tablet count is deliberately not consulted; it is stale once the tserver is dead.
@@ -13859,8 +13791,6 @@ void CatalogManager::ResetDrainedBlacklistedTServers() {
   std::lock_guard l(drained_blacklisted_tservers_lock_);
   drained_blacklisted_tservers_.clear();
   drained_blacklisted_tservers_refreshed_at_ = CoarseTimePoint();
-  tservers_reported_since_load_.clear();
-  replica_maps_trusted_ = false;
 }
 
 void CatalogManager::ResetTasksTrackers() {

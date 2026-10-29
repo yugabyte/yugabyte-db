@@ -1152,9 +1152,8 @@ class YBClient {
 
   void MarkTServersAsFollowers(const std::vector<std::string>& ts_uuids);
 
-  // Applies the master's heartbeat hint naming the blacklisted tservers that host no tablets, and
-  // the tservers it counts as live. Cached replicas on a drained tserver are permanently failed
-  // until the hint drops it and it is live again. See MetaCache::UpdateDrainedTServers.
+  // Applies drain hints to the shared client's cached replicas. A live tserver absent from the
+  // hint can be used again after a metadata refresh. See MetaCache::UpdateDrainedTServers.
   void UpdateDrainedTServers(
       const std::vector<std::string>& drained, const std::vector<std::string>& live);
 
