@@ -168,8 +168,9 @@ class TabletVectorIndexes :
   Status ModifyFlushedFrontier(
       const docdb::ConsensusFrontier& frontier, rocksdb::FrontierModificationMode mode);
 
-  void FillMaxPersistentOpIds(
-      boost::container::small_vector_base<OpId>& out, bool invalid_if_no_new_data);
+  void FillPersistentStates(
+      boost::container::small_vector_base<VectorIndexPersistentState>& out,
+      bool invalid_if_no_new_data);
 
   // Lowers the schema versions in `min_schema_versions` to those of the data the indexes have not
   // flushed. Bootstrap replays it into them, decoding the rows with the schema packings they were

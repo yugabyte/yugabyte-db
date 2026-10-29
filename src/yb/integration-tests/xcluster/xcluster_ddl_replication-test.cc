@@ -5765,19 +5765,19 @@ TEST_F(XClusterDDLReplicationTest, VectorIndexBootstrapAfterRegularFlush) {
 
     // The intents DB flushed OpId starts below the vector index one, so the wait below only
     // succeeds if the flush advances it.
-    auto state = ASSERT_RESULT(consumer_tablet->MaxPersistentOpId());
+    auto state = ASSERT_RESULT(consumer_tablet->GetPersistentState());
     ASSERT_EQ(state.vector_indexes.size(), 1);
-    ASSERT_LT(state.intents, state.vector_indexes[0]) << AsString(state);
+    ASSERT_LT(state.intents, state.vector_indexes[0].op_id) << AsString(state);
 
     ASSERT_OK(consumer_cluster()->FlushTablets(
         tablet::FlushMode::kSync, tablet::FlushFlags::kRegular));
     // The regular DB flush listener advances the intents DB flushed OpId, and may run after the
     // flush returns. It must stop at the vector index flushed OpId.
     ASSERT_OK(WaitFor([&]() -> Result<bool> {
-      state = VERIFY_RESULT(consumer_tablet->MaxPersistentOpId());
-      return state.intents == state.vector_indexes[0];
+      state = VERIFY_RESULT(consumer_tablet->GetPersistentState());
+      return state.intents == state.vector_indexes[0].op_id;
     }, 10s * kTimeMultiplier, "Intents DB flushed OpId to match the vector index"));
-    ASSERT_LT(state.vector_indexes[0], state.regular) << AsString(state);
+    ASSERT_LT(state.vector_indexes[0].op_id, state.regular) << AsString(state);
   }
 
   DisableFlushOnShutdown(*consumer_cluster(), true);

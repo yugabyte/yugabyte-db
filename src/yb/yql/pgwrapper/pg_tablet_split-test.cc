@@ -2293,7 +2293,7 @@ TEST_F(PgTabletSplitTest, AsyncWriteRaceWithSplit) {
       tablet::FlushMode::kSync, tablet::FlushFlags::kIntents, rocksdb::FlushReason::kTestOnly));
 
   const auto stored = ASSERT_RESULT(
-      source_tablet->MaxPersistentOpId(/* invalid_if_no_new_data = */ false));
+      source_tablet->GetPersistentState(/* invalid_if_no_new_data = */ false));
   LOG(INFO) << "After race+flush: split_op_id=" << split_op_id
             << " regular_flushed_op_id=" << stored.regular
             << " intents_flushed_op_id=" << stored.intents;
