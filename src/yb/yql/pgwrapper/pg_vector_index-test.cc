@@ -93,6 +93,7 @@ DECLARE_bool(pg_client_use_shared_memory);
 DECLARE_bool(enable_tablet_split_of_tables_with_vector_index);
 DECLARE_bool(vector_index_enable_compactions);
 DECLARE_bool(vector_index_enable_pk_routing);
+DECLARE_bool(vector_index_include_into_post_split_compaction);
 DECLARE_bool(vector_index_no_deletions_skip_filter_check);
 DECLARE_bool(vector_index_skip_filter_check);
 DECLARE_bool(vector_index_store_payload);
@@ -6415,6 +6416,70 @@ TEST_F(PgVectorIndexUtilTest, ReverseMappingPostSplitCompaction) {
           ybctid_2_vector_2 -> ybctid_2
       )#",
       with_row2_dump);
+}
+
+// Covers https://github.com/yugabyte/yugabyte-db/issues/35923.
+TEST_F(PgVectorIndexUtilTest, PayloadSplit) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+  // Keep the chunks inherited from the parent, so the children hold the vectors of the sibling.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_include_into_post_split_compaction) = false;
+
+  constexpr size_t kNumRows = 10;
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kTrue, 30s * kTimeMultiplier));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 1);
+  const auto parent_tablet_id = peers.front()->tablet_id();
+  ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(cluster_.get(), parent_tablet_id));
+
+  peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  std::erase_if(peers, [&](const auto& peer) {
+    return peer->tablet_id() == parent_tablet_id;
+  });
+  ASSERT_EQ(peers.size(), 2);
+
+  // [0, 0, 0] in the pgvector binary format: dimensions, an unused int16, coordinates.
+  std::string query_vector("\x03\x00\x00\x00", 4);
+  query_vector.append(3 * sizeof(float), '\0');
+
+  size_t num_found = 0;
+  std::vector<docdb::DocVectorIndexPtr> indexes;
+  for (const auto& peer : peers) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    auto tablet_indexes = tablet->vector_indexes().List();
+    ASSERT_TRUE(tablet_indexes);
+    ASSERT_EQ(tablet_indexes->size(), 1);
+    const auto& index = tablet_indexes->front();
+    ASSERT_EQ(ASSERT_RESULT(index->TotalEntries()), kNumRows);
+
+    auto reader = ASSERT_RESULT(index->context().CreateReverseMappingReader(
+        ReadHybridTime::Max(), /* statistics= */ nullptr));
+    auto result = ASSERT_RESULT(index->Search(
+        query_vector, {.max_num_results = kNumRows, .ef = kNumRows},
+        /* could_have_missing_entries= */ true, *reader));
+    for (const auto& entry : result.entries) {
+      ASSERT_TRUE(tablet->key_bounds().IsWithinBounds(entry.key.AsSlice()))
+          << "Tablet " << peer->tablet_id() << " found sibling row "
+          << entry.key.AsSlice().ToDebugHexString();
+    }
+    num_found += result.entries.size();
+    indexes.push_back(index);
+  }
+  ASSERT_EQ(num_found, kNumRows);
+
+  size_t num_entries = 0;
+  for (const auto& index : indexes) {
+    ASSERT_OK(index->Compact());
+    ASSERT_OK(index->WaitForCompaction());
+    num_entries += ASSERT_RESULT(index->TotalEntries());
+  }
+  ASSERT_EQ(num_entries, kNumRows);
 }
 
 TEST_F(PgVectorIndexUtilTest, SstDump) {
