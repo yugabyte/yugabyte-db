@@ -836,7 +836,7 @@ SELECT spcoptions IS NOT NULL FROM pg_tablespace WHERE spcname = 'storage_tier_t
 -- Placement checks the tier. This cluster's data dirs are unlabeled, so every tserver is on ssd:
 -- a table in the hdd tablespace has no tserver to go to and is rejected, the ssd one is created.
 CREATE TABLE storage_tier_tab (i int) TABLESPACE storage_tier_ts;
-ERROR:  Invalid table definition: Error creating table yugabyte.storage_tier_tab on the master: No live tablet server has a data directory on storage tier hdd
+ERROR:  Invalid table definition: Error creating table yugabyte.storage_tier_tab on the master: No live tablet server has registered a data directory on storage tier hdd
 CREATE TABLE storage_tier_tab2 (i int) TABLESPACE storage_tier_ts2;
 DROP TABLE storage_tier_tab2;
 DROP TABLESPACE storage_tier_ts;

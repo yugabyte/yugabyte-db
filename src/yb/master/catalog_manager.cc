@@ -13573,16 +13573,19 @@ Status CatalogManager::ValidateReplicationInfo(
   }
   GetTsDescsFromPlacementInfo(placement_info, all_ts_descs, &ts_descs);
   // When the tier is why nothing qualifies, say so: the count check below would only report that
-  // zero tablet servers are alive.
+  // zero tablet servers are alive. Gated like that check. "Registered" also covers tservers whose
+  // tiers are unknown, which create-time placement does not use.
   const auto& storage_tier = placement_info.storage_tier();
-  if (!storage_tier.empty() && ts_descs.empty() && !all_ts_descs.empty() &&
+  if (FLAGS_catalog_manager_check_ts_count_for_create_table &&
+      !storage_tier.empty() && ts_descs.empty() && !all_ts_descs.empty() &&
       std::none_of(all_ts_descs.begin(), all_ts_descs.end(), [&](const auto& ts_desc) {
         return ts_desc->HasStorageTier(storage_tier);
       })) {
     return SetupError(
         resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO,
         STATUS_FORMAT(
-            InvalidArgument, "No live tablet server has a data directory on storage tier $0",
+            InvalidArgument,
+            "No live tablet server has registered a data directory on storage tier $0",
             storage_tier));
   }
   Status s = CheckValidPlacementInfo(placement_info, ts_descs, resp);

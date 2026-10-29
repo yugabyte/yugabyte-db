@@ -450,11 +450,6 @@ class PerTableLoadState {
   // it returns the cloud info of the TS itself.
   std::optional<CloudInfoPB> GetValidPlacement(const TabletServerId& ts_uuid);
 
-  // Whether placement_ names a storage tier that at least one live tablet server has. A tier no
-  // server has is not enforced, so a tablespace naming a tier the cluster never had disks for
-  // keeps its tablets repairable. Computed once per run.
-  bool IsStorageTierEnforced();
-
   Result<bool> CanSelectWrongPlacementReplicaToMove(
     const TabletId& tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts);
 
@@ -552,9 +547,6 @@ class PerTableLoadState {
   // determining over-replication, by checking num_replicas, but also for az awareness, by keeping
   // track of the placement block policies between cluster and table level.
   PlacementInfoPB placement_;
-
-  // Cache for IsStorageTierEnforced.
-  std::optional<bool> storage_tier_enforced_;
 
   // Effective maximum replicas per placement block of placement_, see
   // CachePlacementBlockMaxReplicas.

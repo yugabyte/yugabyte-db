@@ -791,7 +791,7 @@ TEST_F(MasterTest, ValidateReplicationInfoRequiresTserversOnStorageTier) {
   ASSERT_TRUE(resp.has_error()) << resp.ShortDebugString();
   ASSERT_STR_CONTAINS(
       resp.error().status().message(),
-      "No live tablet server has a data directory on storage tier ssd");
+      "No live tablet server has registered a data directory on storage tier ssd");
 
   resp = ASSERT_RESULT(validate("hdd"));
   ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
