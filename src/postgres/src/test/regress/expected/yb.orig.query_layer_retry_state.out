@@ -63,6 +63,10 @@ BEGIN
   END IF;
   COMMIT;
 END $$;
+-- READ COMMITTED retries this CALL on its own; opt it in so REPEATABLE READ
+-- (the debug-build default) retries it too.
+SET yb_extra_commands_to_retry = 'CALL';
+SET yb_extra_commands_to_retry_in_proc = 'DISCARD PLANS';
 CALL p();
 SELECT count(*) FROM retry_rows;
  count 
@@ -70,6 +74,8 @@ SELECT count(*) FROM retry_rows;
      1
 (1 row)
 
+RESET yb_extra_commands_to_retry;
+RESET yb_extra_commands_to_retry_in_proc;
 DROP PROCEDURE p();
 DROP SEQUENCE p_attempt;
 DROP TABLE retry_rows;
