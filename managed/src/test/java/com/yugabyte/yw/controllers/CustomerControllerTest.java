@@ -78,6 +78,7 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.Role;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.File;
@@ -737,11 +738,17 @@ public class CustomerControllerTest extends FakeDBApplication {
     Universe u1 = createUniverse("demo", customer.getId(), CloudType.kubernetes);
     Provider provider = Util.getSingleProvider(u1.getUniverseDetails().getPrimaryCluster());
     Region r = Region.create(provider, "region-1", "PlacementRegion-1", "default-image");
-    AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ-1", "subnet-1");
+    AvailabilityZone az1 = AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ-1", "subnet-1");
     Region r1 = Region.create(provider, "region-2", "PlacementRegion-2", "default-image");
-    AvailabilityZone.createOrThrow(r1, "az-2", "PlacementAZ-2", "subnet-2");
+    AvailabilityZone az2 = AvailabilityZone.createOrThrow(r1, "az-2", "PlacementAZ-2", "subnet-2");
     AvailabilityZone az3 = AvailabilityZone.createOrThrow(r1, "az-3", "PlacementAZ-3", "subnet-3");
-    az3.updateConfig(ImmutableMap.of("KUBENAMESPACE", "test-ns-1"));
+    // Each zone carries its kubeconfig, as a multi-cluster provider's zones do.
+    for (AvailabilityZone az : ImmutableList.of(az1, az2)) {
+      az.updateConfig(ImmutableMap.of("KUBECONFIG", "/tmp/kubeconfig"));
+      az.save();
+    }
+    az3.updateConfig(
+        ImmutableMap.of("KUBECONFIG", "/tmp/kubeconfig", "KUBENAMESPACE", "test-ns-1"));
     az3.save();
 
     ObjectNode response = Json.newObject();
@@ -780,6 +787,9 @@ public class CustomerControllerTest extends FakeDBApplication {
               u1.getUniverseUUID(), ApiUtils.mockUniverseUpdaterWithHelmNamingStyle(true));
     }
     Provider provider = Util.getSingleProvider(u1.getUniverseDetails().getPrimaryCluster());
+    CloudInfoInterface.setCloudProviderInfoFromConfig(
+        provider, ImmutableMap.of("KUBECONFIG", "/tmp/kubeconfig"));
+    provider.save();
     Region r = Region.create(provider, "region-1", "PlacementRegion-1", "default-image");
     AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ-1", "subnet-1");
 

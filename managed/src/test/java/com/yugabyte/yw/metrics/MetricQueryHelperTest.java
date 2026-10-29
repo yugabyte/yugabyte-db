@@ -573,4 +573,28 @@ public class MetricQueryHelperTest extends FakeDBApplication {
             .get("container_volume_stats")
             .contains("persistentvolumeclaim=~\"(.*)-yb-tserver-0\""));
   }
+
+  // The tasks read KUBENAMESPACE from the region and zone config merged, so a namespace set on the
+  // region applies to its zones; old-naming pods, matched by namespace, resolve in it.
+  @Test
+  public void testNamespaceSetAtRegionLevel() {
+    Universe universe = kubernetesUniverse("k8s-region-ns", false, "az-1");
+    Provider provider =
+        Provider.getOrBadRequest(
+            UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
+    Region region = Region.getByCode(provider, "region-1");
+    CloudInfoInterface.setCloudProviderInfoFromConfig(
+        region, ImmutableMap.of("KUBECONFIG", "/tmp/kubeconfig", "KUBENAMESPACE", "shared-ns"));
+    region.save();
+    Map<String, String> queries =
+        queryKeys(universe, ImmutableList.of("container_memory_usage"), false);
+
+    assertTrue(
+        queries.get("container_memory_usage"),
+        queries.get("container_memory_usage").contains("namespace=\"shared-ns\""));
+    assertEquals(
+        "yb-tserver-0",
+        K8sPodNodeNameResolver.forUniverse(universe)
+            .resolveNodeName("yb-tserver-0", "shared-ns", null));
+  }
 }

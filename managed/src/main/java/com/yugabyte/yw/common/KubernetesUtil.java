@@ -48,6 +48,7 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -260,6 +261,32 @@ public class KubernetesUtil {
       }
     }
 
+    return azToConfig;
+  }
+
+  /**
+   * Every zone of the provider with its config merged as getConfigPerAZ merges it for the tasks.
+   * Zones with no kubeconfig at any level are left out, since no pods can be deployed to them.
+   * Zones keep the provider's region and zone order.
+   */
+  public static Map<UUID, Map<String, String>> getConfigPerProviderZone(Provider provider) {
+    Map<UUID, Map<String, String>> azToConfig = new LinkedHashMap<>();
+    boolean providerHasKubeConfig =
+        CloudInfoInterface.fetchEnvVars(provider).containsKey("KUBECONFIG");
+    for (Region region : Region.getByProvider(provider.getUuid())) {
+      boolean regionHasKubeConfig =
+          providerHasKubeConfig
+              || CloudInfoInterface.fetchEnvVars(region).containsKey("KUBECONFIG");
+      for (AvailabilityZone az : AvailabilityZone.getAZsForRegion(region.getUuid())) {
+        if (!regionHasKubeConfig
+            && !CloudInfoInterface.fetchEnvVars(az).containsKey("KUBECONFIG")) {
+          continue;
+        }
+        PlacementInfo pi = new PlacementInfo();
+        PlacementInfoUtil.addPlacementZone(az.getUuid(), pi);
+        azToConfig.putAll(getConfigPerAZ(pi));
+      }
+    }
     return azToConfig;
   }
 
