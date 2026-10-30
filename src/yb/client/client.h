@@ -582,6 +582,13 @@ class YBClient {
 
   Status GetNamespaceInfo(const NamespaceId& namespace_id, master::GetNamespaceInfoResponsePB* ret);
 
+  // Asynchronous counterpart of the call above. Returns immediately; `callback` runs on an RPC
+  // callback thread once the master has replied, with `resp` filled in on success. Callers that
+  // run on an RPC service thread must use this form -- see GetColocationInfo in pg_db_cache.h.
+  void GetNamespaceInfoAsync(
+      const NamespaceId& namespace_id, std::shared_ptr<master::GetNamespaceInfoResponsePB> resp,
+      StdStatusCallback callback);
+
   Status GetNamespaceInfoByTableId(
       const TableId& table_id, master::GetNamespaceInfoResponsePB* ret);
 

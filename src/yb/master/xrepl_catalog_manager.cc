@@ -6674,8 +6674,21 @@ void CatalogManager::UpdateHideTimeInHiddenColocatedTableToCDCSDKMap(const Table
     return;
   }
 
-  DCHECK(colocated_tables_retained_by_cdcsdk_.contains(table.id()));
-  colocated_tables_retained_by_cdcsdk_[table.id()].second = table.hide_hybrid_time();;
+  if (auto* entry = FindOrNull(colocated_tables_retained_by_cdcsdk_, table.id())) {
+    entry->second = table.hide_hybrid_time();
+    return;
+  }
+  // DeleteOrHideTabletsOfTable adds the entry when the table is dropped. A table hidden some other
+  // way has none yet: one still HIDING across a master failover, or one removed by PITR that was
+  // added to the stream while HIDING (#36190).
+  auto tablets = table.GetTabletsIncludeInactive();
+  if (!tablets.ok() || tablets->size() != 1) {
+    LOG(DFATAL) << "Expected 1 tablet for hidden colocated table " << table.ToString() << ": "
+                << (tablets.ok() ? AsString(tablets->size()) : tablets.status().ToString());
+    return;
+  }
+  colocated_tables_retained_by_cdcsdk_.emplace(
+      table.id(), std::make_pair((*tablets)[0]->tablet_id(), table.hide_hybrid_time()));
 }
 
 Result<HybridTime> CatalogManager::GetTabletHideTime(const TabletId& tablet_id) const {

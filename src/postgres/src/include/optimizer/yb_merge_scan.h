@@ -57,7 +57,8 @@ extern List *yb_finalize_merge_scan_stream_cols(IndexOptInfo *index,
 												Relids relids,
 												List *stream_cols,
 												List *indexclauses,
-												List *pathkeys,
+												List **pathkeys,
+												int *yb_distinct_nkeys,
 												bool embedded);
 
 extern void yb_add_merge_gap_sort_cols(IndexOptInfo *index,

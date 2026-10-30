@@ -23,6 +23,7 @@ import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.helm.HelmUtils;
+import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
 import com.yugabyte.yw.common.operator.helpers.OperatorPlacementInfoHelper;
 import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
@@ -131,6 +132,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
   private final CustomerTaskManager customerTaskManager;
   private final UniverseActionsHandler universeActionsHandler;
   private final YbcManager ybcManager;
+  private final MetricService metricService;
   private final Set<UUID> universeReadySet;
   private final Map<String, String> universeDeletionReferenceMap;
   private final Map<String, UUID> universeTaskMap;
@@ -152,7 +154,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       CustomerTaskManager customerTaskManager,
       OperatorUtils operatorUtils,
       UniverseActionsHandler universeActionsHandler,
-      YbcManager ybcManager) {
+      YbcManager ybcManager,
+      MetricService metricService) {
     this(
         client,
         informerFactory,
@@ -167,7 +170,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
         customerTaskManager,
         operatorUtils,
         universeActionsHandler,
-        ybcManager);
+        ybcManager,
+        metricService);
   }
 
   @VisibleForTesting
@@ -185,7 +189,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       CustomerTaskManager customerTaskManager,
       OperatorUtils operatorUtils,
       UniverseActionsHandler universeActionsHandler,
-      YbcManager ybcManager) {
+      YbcManager ybcManager,
+      MetricService metricService) {
 
     super(client, informerFactory, YBUniverse.class, operatorUtils, namespace);
     this.releaseInformer = informerFactory.getSharedIndexInformer(Release.class, client);
@@ -202,6 +207,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     this.inProgressAutoProviderCRs = ConcurrentHashMap.newKeySet();
     this.universeActionsHandler = universeActionsHandler;
     this.ybcManager = ybcManager;
+    this.metricService = metricService;
   }
 
   @VisibleForTesting
@@ -364,6 +370,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       if (TaskInfo.ERROR_STATES.contains(createTaskState)) {
         log.debug("Previous attempt to create Universe {} failed, retrying", ybaUniverseName);
         Universe.delete(u.getUniverseUUID());
+        metricService.markSourceRemoved(cust.getUuid(), u.getUniverseUUID());
         UniverseConfigureTaskParams taskParams =
             createTaskParams(ybUniverse, cust.getUuid(), getProvider(ybUniverse, cust.getUuid()));
         createUniverse(cust.getUuid(), taskParams, ybUniverse);
