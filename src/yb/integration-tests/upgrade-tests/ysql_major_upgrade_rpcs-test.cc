@@ -317,8 +317,7 @@ TEST_F(YsqlMajorUpgradeRpcsTest, SimultaneousRollback) {
 }
 
 // Make sure ysql major catalog upgrade works with a master crash during the upgrade.
-// Disabling in debug builds since this test times out on it.
-TEST_F(YsqlMajorUpgradeRpcsTest, YB_RELEASE_ONLY_TEST(MasterCrashDuringUpgrade)) {
+TEST_F(YsqlMajorUpgradeRpcsTest, MasterCrashDuringUpgrade) {
   ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
   auto master_leader = cluster_->GetLeaderMaster();
 
@@ -363,7 +362,7 @@ TEST_F(YsqlMajorUpgradeRpcsTest, YB_RELEASE_ONLY_TEST(MasterCrashDuringUpgrade))
 }
 
 // Make sure rollback works after a master restart inside the catalog copy window.
-TEST_F(YsqlMajorUpgradeRpcsTest, YB_RELEASE_ONLY_TEST(MasterCrashWhileNamespacePreparing)) {
+TEST_F(YsqlMajorUpgradeRpcsTest, MasterCrashWhileNamespacePreparing) {
   ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
   auto* master_leader = cluster_->GetLeaderMaster();
 
@@ -396,7 +395,7 @@ TEST_F(YsqlMajorUpgradeRpcsTest, YB_RELEASE_ONLY_TEST(MasterCrashWhileNamespaceP
 }
 
 // Make sure a namespace left in PREPARING before the upgrade is still reaped.
-TEST_F(YsqlMajorUpgradeRpcsTest, YB_RELEASE_ONLY_TEST(StaleNamespaceIsStillReaped)) {
+TEST_F(YsqlMajorUpgradeRpcsTest, StaleNamespaceIsStillReaped) {
   const std::string kStaleDb = "stale_db";
 
   // Hang the creation so the database stays in PREPARING on disk. The hook has to be one the old
