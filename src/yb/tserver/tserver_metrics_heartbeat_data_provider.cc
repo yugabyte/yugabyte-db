@@ -43,6 +43,15 @@ DEFINE_RUNTIME_bool(tserver_heartbeat_metrics_add_replication_status, true,
 DEFINE_RUNTIME_bool(tserver_heartbeat_metrics_add_leader_info, true,
             "Add leader info to metrics tserver sends to master");
 
+DEFINE_RUNTIME_bool(tserver_heartbeat_metrics_send_tablet_metadata_on_change, true,
+    "Send a tablet's storage metadata and full compaction status to the master only when they "
+    "changed since the master last processed them, instead of in every metrics heartbeat.");
+
+DEFINE_RUNTIME_uint64(tserver_heartbeat_metrics_storage_size_change_threshold_bytes, 1024 * 1024,
+    "Changes of at most this many bytes in a tablet's WAL size or total on-disk size alone do not "
+    "count as a storage metadata change for "
+    "tserver_heartbeat_metrics_send_tablet_metadata_on_change.");
+
 DECLARE_uint64(rocksdb_max_file_size_for_compaction);
 DECLARE_bool(enable_tiered_storage);
 
@@ -51,11 +60,55 @@ using namespace std::literals;
 namespace yb {
 namespace tserver {
 
+namespace {
+
+// WAL and total size move with every write; the other fields change only on flush, compaction,
+// split or backfill, so they are compared exactly.
+bool StorageMetadataChanged(
+    const master::TabletDriveStorageMetadataPB& acked,
+    const master::TabletDriveStorageMetadataPB& current) {
+  auto size_changed = [](uint64_t acked_size, uint64_t current_size) {
+    auto diff = acked_size > current_size ? acked_size - current_size : current_size - acked_size;
+    return diff > FLAGS_tserver_heartbeat_metrics_storage_size_change_threshold_bytes;
+  };
+  return acked.sst_file_size() != current.sst_file_size() ||
+         acked.uncompressed_sst_file_size() != current.uncompressed_sst_file_size() ||
+         acked.vector_index_size() != current.vector_index_size() ||
+         acked.may_have_orphaned_post_split_data() != current.may_have_orphaned_post_split_data() ||
+         acked.has_active_vector_index_backfill() != current.has_active_vector_index_backfill() ||
+         size_changed(acked.wal_file_size(), current.wal_file_size()) ||
+         size_changed(acked.total_size(), current.total_size());
+}
+
+} // namespace
+
 TServerMetricsHeartbeatDataProvider::TServerMetricsHeartbeatDataProvider(TabletServer* server)
     : PeriodicalHeartbeatDataProvider(server), start_time_(MonoTime::Now()) {}
 
 MonoDelta TServerMetricsHeartbeatDataProvider::Period() const {
   return MonoDelta::FromMilliseconds(FLAGS_tserver_heartbeat_metrics_interval_ms);
+}
+
+void TServerMetricsHeartbeatDataProvider::AddData(
+    const master::TSHeartbeatResponsePB& last_resp, master::TSHeartbeatRequestPB* req) {
+  // Still set here only if the previous heartbeat got no successful response.
+  pending_storage_metadata_.clear();
+  pending_full_compaction_status_.clear();
+  PeriodicalHeartbeatDataProvider::AddData(last_resp, req);
+}
+
+void TServerMetricsHeartbeatDataProvider::OnHeartbeatResponse(
+    const master::TSHeartbeatResponsePB& resp) {
+  if (resp.tablet_metadata_processed()) {
+    for (auto& [tablet_id, storage_metadata] : pending_storage_metadata_) {
+      acked_storage_metadata_[tablet_id] = std::move(storage_metadata);
+    }
+    for (auto& [tablet_id, status] : pending_full_compaction_status_) {
+      acked_full_compaction_status_[tablet_id] = std::move(status);
+    }
+  }
+  pending_storage_metadata_.clear();
+  pending_full_compaction_status_.clear();
 }
 
 void TServerMetricsHeartbeatDataProvider::DoAddData(
@@ -74,6 +127,14 @@ void TServerMetricsHeartbeatDataProvider::DoAddData(
   bool should_add_tablet_data =
       FLAGS_tserver_heartbeat_metrics_add_drive_data && no_full_tablet_report;
 
+  // A full tablet report means the master (re)built its view of this tserver's replicas.
+  if (needs_full_tablet_report) {
+    acked_storage_metadata_.clear();
+    acked_full_compaction_status_.clear();
+  }
+  std::unordered_set<TabletId> tablets_with_storage_metadata;
+  std::unordered_set<TabletId> tablets_with_full_compaction_status;
+
   for (const auto& tablet_peer : server().tablet_manager()->GetTabletPeers()) {
     if (tablet_peer) {
       auto tablet = tablet_peer->shared_tablet_maybe_null();
@@ -84,18 +145,27 @@ void TServerMetricsHeartbeatDataProvider::DoAddData(
         num_files += tablet->GetCurrentVersionNumSSTFiles();
         if (should_add_tablet_data && tablet_peer->log_available() &&
             CanServeTabletData(tablet_peer->tablet_metadata()->tablet_data_state())) {
-          auto storage_metadata = req->add_storage_metadata();
-          storage_metadata->set_tablet_id(tablet_peer->tablet_id());
-          storage_metadata->set_sst_file_size(on_disk_size_info.sst_files_disk_size);
-          storage_metadata->set_wal_file_size(on_disk_size_info.wal_files_disk_size);
-          storage_metadata->set_uncompressed_sst_file_size(
+          const auto& tablet_id = tablet_peer->tablet_id();
+          master::TabletDriveStorageMetadataPB storage_metadata;
+          storage_metadata.set_tablet_id(tablet_id);
+          storage_metadata.set_sst_file_size(on_disk_size_info.sst_files_disk_size);
+          storage_metadata.set_wal_file_size(on_disk_size_info.wal_files_disk_size);
+          storage_metadata.set_uncompressed_sst_file_size(
               on_disk_size_info.uncompressed_sst_files_disk_size);
-          storage_metadata->set_may_have_orphaned_post_split_data(
+          storage_metadata.set_may_have_orphaned_post_split_data(
                 tablet->MayHaveOrphanedPostSplitData());
-          storage_metadata->set_total_size(on_disk_size_info.total_on_disk_size);
-          storage_metadata->set_vector_index_size(on_disk_size_info.vector_index_disk_size);
-          storage_metadata->set_has_active_vector_index_backfill(
+          storage_metadata.set_total_size(on_disk_size_info.total_on_disk_size);
+          storage_metadata.set_vector_index_size(on_disk_size_info.vector_index_disk_size);
+          storage_metadata.set_has_active_vector_index_backfill(
               tablet->vector_indexes().HasActiveBackfill());
+          tablets_with_storage_metadata.insert(tablet_id);
+          auto acked = acked_storage_metadata_.find(tablet_id);
+          if (!FLAGS_tserver_heartbeat_metrics_send_tablet_metadata_on_change ||
+              acked == acked_storage_metadata_.end() ||
+              StorageMetadataChanged(acked->second, storage_metadata)) {
+            req->add_storage_metadata()->CopyFrom(storage_metadata);
+            pending_storage_metadata_[tablet_id] = std::move(storage_metadata);
+          }
           if (FLAGS_tserver_heartbeat_metrics_add_leader_info) {
             auto consensus_result = tablet_peer->GetRaftConsensus();
             if (consensus_result) {
@@ -116,18 +186,42 @@ void TServerMetricsHeartbeatDataProvider::DoAddData(
         }
 
         if (no_full_tablet_report) {
-          auto full_compaction_status = req->add_full_compaction_statuses();
-          full_compaction_status->set_tablet_id(tablet->tablet_id());
+          const auto& tablet_id = tablet->tablet_id();
+          master::FullCompactionStatusPB full_compaction_status;
+          full_compaction_status.set_tablet_id(tablet_id);
           if (tablet->HasActiveFullCompaction()) {
-            full_compaction_status->set_full_compaction_state(tablet::COMPACTING);
+            full_compaction_status.set_full_compaction_state(tablet::COMPACTING);
           } else {
-            full_compaction_status->set_full_compaction_state(tablet::IDLE);
+            full_compaction_status.set_full_compaction_state(tablet::IDLE);
           }
-          full_compaction_status->set_last_full_compaction_time(
+          full_compaction_status.set_last_full_compaction_time(
               tablet->metadata()->last_full_compaction_time());
+          tablets_with_full_compaction_status.insert(tablet_id);
+          auto acked = acked_full_compaction_status_.find(tablet_id);
+          if (!FLAGS_tserver_heartbeat_metrics_send_tablet_metadata_on_change ||
+              acked == acked_full_compaction_status_.end() ||
+              acked->second.full_compaction_state() !=
+                  full_compaction_status.full_compaction_state() ||
+              acked->second.last_full_compaction_time() !=
+                  full_compaction_status.last_full_compaction_time()) {
+            req->add_full_compaction_statuses()->CopyFrom(full_compaction_status);
+            pending_full_compaction_status_[tablet_id] = std::move(full_compaction_status);
+          }
         }
       }
     }
+  }
+  // Tablets gone from this tserver may come back with a new, empty replica entry on the master.
+  if (should_add_tablet_data) {
+    std::erase_if(acked_storage_metadata_, [&tablets_with_storage_metadata](const auto& entry) {
+      return !tablets_with_storage_metadata.contains(entry.first);
+    });
+  }
+  if (no_full_tablet_report) {
+    std::erase_if(
+        acked_full_compaction_status_, [&tablets_with_full_compaction_status](const auto& entry) {
+          return !tablets_with_full_compaction_status.contains(entry.first);
+        });
   }
   // Report xCluster consumer heartbeat info via the metric collector only when a full report is
   // required. The partial reports are sent via the regular heartbeat request.

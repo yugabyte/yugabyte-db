@@ -109,6 +109,11 @@ class HeartbeatPoller : public MasterLeaderPollerInterface {
   std::string name() override;
   const std::string& LogPrefix() const override;
 
+  std::optional<bool> TEST_last_tablet_metadata_processed() const {
+    auto value = TEST_last_tablet_metadata_processed_.load(std::memory_order_acquire);
+    return value < 0 ? std::nullopt : std::optional(value > 0);
+  }
+
  private:
   Status DoPoll();
   Status TryHeartbeat();
@@ -129,6 +134,9 @@ class HeartbeatPoller : public MasterLeaderPollerInterface {
   // Full reports can take multiple heartbeats.
   // This field has value of the sequence number of the first heartbeat in this scenario.
   std::optional<int32> full_report_seq_no_;
+
+  // -1 until the first successful response.
+  std::atomic<int8_t> TEST_last_tablet_metadata_processed_{-1};
 
   std::vector<std::unique_ptr<HeartbeatDataProvider>> data_providers_;
 };
@@ -151,6 +159,10 @@ class Heartbeater::Impl {
   }
 
   HostPort get_master_leader_hostport() { return finder_.get_master_leader_hostport(); }
+
+  std::optional<bool> TEST_last_tablet_metadata_processed() const {
+    return poller_->TEST_last_tablet_metadata_processed();
+  }
 
  private:
   const std::string& LogPrefix() const { return server_.LogPrefix(); }
@@ -189,6 +201,10 @@ void Heartbeater::set_master_addresses(server::MasterAddressesPtr master_address
 
 HostPort Heartbeater::get_master_leader_hostport() {
   return impl_->get_master_leader_hostport();
+}
+
+std::optional<bool> Heartbeater::TEST_last_tablet_metadata_processed() const {
+  return impl_->TEST_last_tablet_metadata_processed();
 }
 
 
@@ -517,6 +533,8 @@ Status HeartbeatPoller::TryHeartbeat() {
     // the last heartbeat response. This invalidates resp so we should use last_hb_response_ instead
     // below (hence using the nested scope for resp until here).
     last_hb_response_.Swap(&resp);
+    TEST_last_tablet_metadata_processed_.store(
+        last_hb_response_.tablet_metadata_processed() ? 1 : 0, std::memory_order_release);
     heartbeat_rtt_ = end_time.GetDeltaSince(start_time);
     server_.SetMasterHeartbeatInfo({
         .uuid = last_hb_response_.master_instance().permanent_uuid(),
@@ -524,6 +542,10 @@ Status HeartbeatPoller::TryHeartbeat() {
         .time = end_time,
         .rtt = heartbeat_rtt_,
         .last_failure = Status::OK()});
+  }
+
+  for (auto& data_provider : data_providers_) {
+    data_provider->OnHeartbeatResponse(last_hb_response_);
   }
 
   // The master rejects ysql lease requests from a tablet server until it registers.
