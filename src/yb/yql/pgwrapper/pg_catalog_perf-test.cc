@@ -1453,12 +1453,15 @@ TEST_F(PgCatalogPrefetchSaturationTest, RepeatedRejectionsDoNotStallConnections)
   threads.JoinAll();
   const auto elapsed = MonoTime::Now() - start;
 
-  // One opening read per connection reaches admission whatever the retry schedule does afterwards
-  // -- OnlyTheFirstReadOfAConnectionCountsAsNew pins that per-connection count at one -- so this
-  // holds in both arms and says the elapsed time below measures 16 contended prefetches.
+  // One opening read per connection reaches admission whatever the retry schedule does
+  // afterwards, so this holds in both arms and says the elapsed time below measures 16 contended
+  // prefetches. It came out at 16 in every run behind the figures above. Not pinned by
+  // OnlyTheFirstReadOfAConnectionCountsAsNew, which runs without the preloading this fixture
+  // turns on, and so sees a different request sequence.
   ASSERT_EQ(NewAdmissions() - admissions_before, static_cast<int64_t>(kNumConnections))
-      << "a connection prefetched without passing through admission, so the limit was not what "
-         "the timing below measured";
+      << "expected one new admission per connection: fewer means a connection prefetched without "
+         "passing through admission, more means a later preload request was counted as new, and "
+         "either way the limit was not what the timing below measured";
   ASSERT_GE(Rejections() - rejections_before, kMinRejections)
       << "the limit did not stay saturated, so neither retry schedule was exercised";
   ASSERT_LT(elapsed.ToMilliseconds(), kDeadlineMs)

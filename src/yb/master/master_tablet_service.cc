@@ -269,9 +269,9 @@ Result<std::shared_ptr<void>> MasterTabletServiceImpl::AdmitRead(
     if (delay_ms > 0) {
       // rpc::RetryAfter rather than tserver::TabletServerDelay: a TabletServerDelay would make
       // DoSetupErrorAndRespond send this as a response error, and the client answers one of those
-      // by demoting the master leader it should be retrying. DoSetupErrorAndRespond branches
-      // only on TabletServerDelay, so a status carrying RetryAfter instead still becomes
-      // ERROR_SERVER_TOO_BUSY and is still retried against the same peer, only sooner.
+      // by demoting the master leader it should be retrying. A TabletServerError does the same,
+      // by moving the code off UNKNOWN_ERROR. RetryAfter is neither, so the rejection still
+      // becomes ERROR_SERVER_TOO_BUSY and is still retried against the same peer, only sooner.
       status = STATUS_EC_FORMAT(
           ServiceUnavailable, rpc::RetryAfter(std::chrono::milliseconds(delay_ms)),
           "Rejecting catalog prefetch: $0", reason);
