@@ -2971,6 +2971,18 @@ void od_frontend(void *arg)
 				machine_sleep(instance->config.TEST_yb_cancel_delay_ms);
 			od_cancel(client->global, cancel.storage, &cancel.key,
 				  &cancel.id);
+
+			od_route_t *srv_route = cancel.yb_route;
+			od_route_lock(srv_route);
+			od_server_cancel_end(cancel.server);
+			od_route_unlock(srv_route);
+			yb_signal_all_routes(
+				router, srv_route,
+				instance->config.yb_enable_multi_route_pool);
+			od_route_lock(srv_route);
+			srv_route->yb_cancels_in_flight--;
+			od_route_unlock(srv_route);
+
 			od_router_cancel_free(&cancel);
 		}
 		od_frontend_close(client);

@@ -41,6 +41,7 @@ struct od_route {
 	int yb_user_name_len;
 
 	od_route_status_t status;
+	int yb_cancels_in_flight;
 
 	od_list_t link;
 };
@@ -50,6 +51,7 @@ static inline void od_route_init(od_route_t *route, bool extra_route_logging)
 	route->rule = NULL;
 	route->tcp_connections = 0;
 	route->last_heartbeat = 0;
+	route->yb_cancels_in_flight = 0;
 
 	od_route_id_init(&route->id);
 	od_server_pool_init(&route->server_pool);
