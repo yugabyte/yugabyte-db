@@ -1596,6 +1596,7 @@ public class UniverseCRUDHandler {
                 PlacementInfoUtil.findRetainedAZs(
                     primaryCluster.placementInfo,
                     u.getUniverseDetails().getPrimaryCluster().placementInfo)));
+        validateK8sStorageClassChange(primaryCluster, u.getUniverseDetails().getPrimaryCluster());
       }
     } else {
       mergeNodeExporterInfo(u, taskParams);
@@ -1628,9 +1629,54 @@ public class UniverseCRUDHandler {
                 PlacementInfoUtil.findRetainedAZs(
                     cluster.placementInfo,
                     u.getUniverseDetails().getReadOnlyClusters().get(0).placementInfo)));
+        validateK8sStorageClassChange(cluster, u.getUniverseDetails().getReadOnlyClusters().get(0));
       }
     }
     return submitEditUniverse(customer, u, taskParams, taskType, CustomerTask.TargetType.Cluster);
+  }
+
+  /**
+   * Rejects a cluster-level storage class change that some AZ would ignore. A provider zone's
+   * storage class (or a K8s AZ override) is stored as a per-AZ override, which outranks the
+   * cluster-level class, so the edit would record the new class while that AZ's PVCs keep the old
+   * one.
+   */
+  @VisibleForTesting
+  static void validateK8sStorageClassChange(Cluster newCluster, Cluster currCluster) {
+    UUID providerUUID = UUID.fromString(newCluster.userIntent.provider);
+    for (ServerType serverType : List.of(ServerType.TSERVER, ServerType.MASTER)) {
+      DeviceInfo newBase = newCluster.userIntent.getBaseDeviceInfo(providerUUID, serverType);
+      DeviceInfo currBase = currCluster.userIntent.getBaseDeviceInfo(providerUUID, serverType);
+      if (newBase == null
+          || currBase == null
+          || storageClassEquals(newBase.storageClass, currBase.storageClass)) {
+        continue;
+      }
+      List<String> ignoringAZs = new ArrayList<>();
+      for (UUID azUUID : newCluster.placementInfo.getAllAZUUIDs()) {
+        DeviceInfo newAz = newCluster.userIntent.evaluateDeviceInfoForAz(azUUID, serverType);
+        if (newAz != null && !storageClassEquals(newAz.storageClass, newBase.storageClass)) {
+          ignoringAZs.add(
+              AvailabilityZone.maybeGet(azUUID).map(az -> az.getCode()).orElse(azUUID.toString()));
+        }
+      }
+      if (!ignoringAZs.isEmpty()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "Cannot change %s storage class from '%s' to '%s': zones %s set their own storage"
+                    + " class, which takes precedence. Change it on the provider zones or in the"
+                    + " AZ overrides instead.",
+                serverType,
+                StringUtils.trimToEmpty(currBase.storageClass),
+                StringUtils.trimToEmpty(newBase.storageClass),
+                ignoringAZs));
+      }
+    }
+  }
+
+  private static boolean storageClassEquals(String a, String b) {
+    return StringUtils.trimToEmpty(a).equals(StringUtils.trimToEmpty(b));
   }
 
   /** Merge node exporter related information from current universe details to the task params */
