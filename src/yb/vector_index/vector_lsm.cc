@@ -86,17 +86,23 @@ DEFINE_RUNTIME_uint64(vector_index_initial_chunk_memstore_size_mb, 256,
     "specifies its own chunk size, as backfill does, uses that instead. A single insert batch "
     "that does not fit gets a chunk of its own size.");
 
-DEFINE_RUNTIME_uint64(vector_index_compaction_chunk_max_mem_store_size_mb, 0,
+DEFINE_RUNTIME_uint64(vector_index_compaction_chunk_max_memstore_size_mb, 0,
     "Maximum in-memory size in megabytes for a single output chunk built during Vector LSM "
     "compaction. 0 means no limit (single output chunk). When non-zero, this flag takes priority "
-    "over `vector_index_compaction_chunk_max_mem_store_size_percentage`.");
+    "over `vector_index_compaction_chunk_max_memstore_size_percentage`.");
 
-DEFINE_RUNTIME_uint32(vector_index_compaction_chunk_max_mem_store_size_percentage, 60,
+DEFINE_RUNTIME_uint32(vector_index_compaction_chunk_max_memstore_size_percentage, 60,
     "Maximum in-memory size for a single output chunk built during Vector LSM "
     "compaction, as a percentage of the vector index block cache capacity. "
     "0 means no limit (single output chunk). Values above 100 are treated as 100. "
-    "Ignored when `vector_index_compaction_chunk_max_mem_store_size_mb` is non-zero or "
+    "Ignored when `vector_index_compaction_chunk_max_memstore_size_mb` is non-zero or "
     "concurrent compactions are allowed (`vector_index_num_compactions_limit` is not 1).");
+
+// Renamed to the one-word "memstore" spelling to follow the wording of the existing gflags.
+// The old names are accepted but their values are ignored: they are not expected to be used
+// anywhere.
+DEPRECATE_FLAG(uint64, vector_index_compaction_chunk_max_mem_store_size_mb, "10_2026");
+DEPRECATE_FLAG(uint32, vector_index_compaction_chunk_max_mem_store_size_percentage, "10_2026");
 
 DEFINE_RUNTIME_uint32(vector_index_num_compactions_limit, 1,
     "Number of vector index compaction per tserver. 0 - no limit per tserver.");
@@ -163,9 +169,9 @@ YB_DEFINE_ENUM(ImmutableChunkState, (kInMemory)(kOnDisk)(kInManifest));
 YB_DEFINE_ENUM(CompactionState, (kNone)(kCompacting)(kCompacted));
 YB_DEFINE_ENUM(ManifestUpdateType, (kFull)(kActual));
 
-// Resolves the max mem-store size for a Vector LSM compaction output chunk from gflags.
-// --vector_index_compaction_chunk_max_mem_store_size_mb takes priority when non-zero.
-// Otherwise --vector_index_compaction_chunk_max_mem_store_size_percentage of block_cache_capacity
+// Resolves the max memstore size for a Vector LSM compaction output chunk from gflags.
+// --vector_index_compaction_chunk_max_memstore_size_mb takes priority when non-zero.
+// Otherwise --vector_index_compaction_chunk_max_memstore_size_percentage of block_cache_capacity
 // is used when --vector_index_num_compactions_limit is 1 (meaning no concurrent compactions).
 // Returned bytes == 0 means no limit.
 struct CompactionChunkMemStoreLimit {
@@ -174,27 +180,27 @@ struct CompactionChunkMemStoreLimit {
 };
 
 CompactionChunkMemStoreLimit GetCompactionChunkMaxMemStoreBytes(size_t block_cache_capacity) {
-  const auto max_mem_store_size_mb = FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb;
-  if (max_mem_store_size_mb) {
+  const auto max_memstore_size_mb = FLAGS_vector_index_compaction_chunk_max_memstore_size_mb;
+  if (max_memstore_size_mb) {
     return {
-      .bytes = max_mem_store_size_mb * 1_MB,
-      .description = Format("$0 MB", max_mem_store_size_mb),
+      .bytes = max_memstore_size_mb * 1_MB,
+      .description = Format("$0 MB", max_memstore_size_mb),
     };
   }
 
   // Concurrent compactions disable the percentage limit (no automatic budget).
-  // Users should set --vector_index_compaction_chunk_max_mem_store_size_mb.
+  // Users should set --vector_index_compaction_chunk_max_memstore_size_mb.
   if (FLAGS_vector_index_num_compactions_limit != 1) {
-    LOG_IF(WARNING, FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage != 0)
-        << "vector_index_compaction_chunk_max_mem_store_size_percentage is ignored because "
+    LOG_IF(WARNING, FLAGS_vector_index_compaction_chunk_max_memstore_size_percentage != 0)
+        << "vector_index_compaction_chunk_max_memstore_size_percentage is ignored because "
         << "concurrent vector index compactions are allowed; set "
-        << "vector_index_compaction_chunk_max_mem_store_size_mb";
+        << "vector_index_compaction_chunk_max_memstore_size_mb";
     return {.description = "- (percentage disabled by concurrent compactions)"};
   }
 
-  auto percentage = FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage;
+  auto percentage = FLAGS_vector_index_compaction_chunk_max_memstore_size_percentage;
   if (percentage > 100) {
-     LOG(WARNING) << "Setting vector_index_compaction_chunk_max_mem_store_size_percentage to 100";
+     LOG(WARNING) << "Setting vector_index_compaction_chunk_max_memstore_size_percentage to 100";
      percentage = 100;
   }
 

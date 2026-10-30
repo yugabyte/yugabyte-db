@@ -74,6 +74,7 @@ DECLARE_bool(xcluster_kill_ddl_queue_pg_connection_on_pause);
 DECLARE_int32(xcluster_automatic_target_create_table_ddl_rpc_timeout_sec);
 DECLARE_uint32(xcluster_ddl_tables_retention_secs);
 DECLARE_uint32(xcluster_max_old_schema_versions);
+DECLARE_uint32(xcluster_poller_task_delay_considered_stuck_secs);
 DECLARE_bool(xcluster_target_manual_override);
 DECLARE_uint64(ysql_cdc_active_replication_slot_window_ms);
 DECLARE_string(ysql_cron_database_name);
@@ -85,14 +86,17 @@ DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_string(ysql_pg_conf_csv);
 DECLARE_int32(ysql_sequence_cache_minval);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
+DECLARE_bool(ysql_yb_enable_update_reltuples_after_create_index);
 DECLARE_int32(ysql_yb_major_version_upgrade_compatibility);
 
 DECLARE_bool(TEST_block_apply_intent);
 DECLARE_int32(TEST_delay_at_start_of_schedule_post_tablet_create_tasks_ms);
+DECLARE_bool(TEST_fail_vector_index_backfill);
 DECLARE_bool(TEST_force_get_checkpoint_from_cdc_state);
 DECLARE_int32(TEST_pause_at_start_of_setup_replication_group_ms);
 DECLARE_string(TEST_skip_async_insert_packed_schema_for_tablet_id);
 DECLARE_bool(TEST_skip_oid_advance_on_restore);
+DECLARE_int32(TEST_sleep_before_vector_index_backfill_seconds);
 DECLARE_bool(TEST_vector_index_exact);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_cache_connection);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_end);
@@ -5765,19 +5769,19 @@ TEST_F(XClusterDDLReplicationTest, VectorIndexBootstrapAfterRegularFlush) {
 
     // The intents DB flushed OpId starts below the vector index one, so the wait below only
     // succeeds if the flush advances it.
-    auto state = ASSERT_RESULT(consumer_tablet->MaxPersistentOpId());
+    auto state = ASSERT_RESULT(consumer_tablet->GetPersistentState());
     ASSERT_EQ(state.vector_indexes.size(), 1);
-    ASSERT_LT(state.intents, state.vector_indexes[0]) << AsString(state);
+    ASSERT_LT(state.intents, state.vector_indexes[0].op_id) << AsString(state);
 
     ASSERT_OK(consumer_cluster()->FlushTablets(
         tablet::FlushMode::kSync, tablet::FlushFlags::kRegular));
     // The regular DB flush listener advances the intents DB flushed OpId, and may run after the
     // flush returns. It must stop at the vector index flushed OpId.
     ASSERT_OK(WaitFor([&]() -> Result<bool> {
-      state = VERIFY_RESULT(consumer_tablet->MaxPersistentOpId());
-      return state.intents == state.vector_indexes[0];
+      state = VERIFY_RESULT(consumer_tablet->GetPersistentState());
+      return state.intents == state.vector_indexes[0].op_id;
     }, 10s * kTimeMultiplier, "Intents DB flushed OpId to match the vector index"));
-    ASSERT_LT(state.vector_indexes[0], state.regular) << AsString(state);
+    ASSERT_LT(state.vector_indexes[0].op_id, state.regular) << AsString(state);
   }
 
   DisableFlushOnShutdown(*consumer_cluster(), true);
@@ -5794,6 +5798,116 @@ TEST_F(XClusterDDLReplicationTest, VectorIndexBootstrapAfterRegularFlush) {
   auto p_search = ASSERT_RESULT(producer_conn_->FetchAllAsString(query));
   auto c_search = ASSERT_RESULT(consumer_conn.FetchAllAsString(query));
   ASSERT_EQ(p_search, c_search);
+}
+
+// A DDL that creates a vector index must not commit on the target before backfill completes.
+TEST_F(XClusterDDLReplicationTest, VectorIndexReadyBeforeTargetDDLCommits) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
+  // So index_build on the target would write the table's reltuples, like with CBO on.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_update_reltuples_after_create_index) = true;
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(RunOnBothClusters([this](Cluster* cluster) -> Status {
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
+    return conn.Execute("CREATE EXTENSION vector");
+  }));
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE vec_test (id int PRIMARY KEY, v1 text, embedding vector(3))"));
+  ASSERT_OK(producer_conn_->Execute(
+      "INSERT INTO vec_test SELECT g, 'v_' || g, ARRAY[g, g + 1, g + 2]::vector "
+      "FROM generate_series(1, 100) AS g"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // CREATE INDEX below must keep the target's reltuples, not reset it to 0. The rewrite isn't
+  // checked: it resets reltuples to -1 by itself, on the source too.
+  ASSERT_OK(consumer_conn_->Execute("ANALYZE vec_test"));
+  auto target_reltuples = [this] {
+    return consumer_conn_->FetchRow<int64_t>(
+        "SELECT reltuples::bigint FROM pg_class WHERE relname = 'vec_test'");
+  };
+  ASSERT_EQ(ASSERT_RESULT(target_reltuples()), 100);
+
+  const std::string kSearch = "SELECT id FROM vec_test ORDER BY embedding <-> '[1, 2, 3]' LIMIT 5";
+  constexpr auto kBackfillSleepSec = 5;
+
+  // Runs ddl on the producer only, then slows the target's vector index backfill and lets the
+  // target run ddl, once confirm commit, vector index search should work.
+  auto run_ddl_with_slow_target_backfill = [&](const std::string& ddl,
+                                               const std::string& is_visible_query) -> Status {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = true;
+    RETURN_NOT_OK(producer_conn_->Execute(ddl));
+    RETURN_NOT_OK(WaitForSafeTimeToAdvanceToNowWithoutDDLQueue());
+
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sleep_before_vector_index_backfill_seconds) =
+        kBackfillSleepSec;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = false;
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          return consumer_conn_->FetchRow<bool>(is_visible_query);
+        },
+        kTimeout, Format("Commit of $0 on target", ddl)));
+    // The index is visible on the target now, so it must serve searches.
+    RETURN_NOT_OK(consumer_conn_->Fetch(kSearch));
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sleep_before_vector_index_backfill_seconds) = 0;
+
+    RETURN_NOT_OK(WaitForSafeTimeToAdvanceToNow());
+    auto c_explain =
+        VERIFY_RESULT(consumer_conn_->FetchAllAsString("EXPLAIN (COSTS OFF) " + kSearch));
+    SCHECK_STR_CONTAINS(c_explain, "vec_test_idx");
+    auto p_search = VERIFY_RESULT(producer_conn_->FetchAllAsString(kSearch));
+    auto c_search = VERIFY_RESULT(consumer_conn_->FetchAllAsString(kSearch));
+    SCHECK_EQ(p_search, c_search, IllegalState, "Producer and consumer searches differ");
+    return Status::OK();
+  };
+
+  // CREATE INDEX: the target tablets build the vector index on target
+  ASSERT_OK(run_ddl_with_slow_target_backfill(
+      "CREATE INDEX vec_test_idx ON vec_test USING ybhnsw (embedding vector_l2_ops)",
+      "SELECT EXISTS (SELECT 1 FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid "
+      "WHERE c.relname = 'vec_test_idx' AND i.indisready AND i.indisvalid)"));
+  ASSERT_EQ(ASSERT_RESULT(target_reltuples()), 100);
+
+  // Table rewrite: the target rebuilds the vector index on the new table's tablets.
+  ASSERT_OK(run_ddl_with_slow_target_backfill(
+      "ALTER TABLE vec_test ALTER COLUMN v1 TYPE varchar(200)",
+      "SELECT format_type(atttypid, atttypmod) = 'character varying(200)' FROM pg_attribute "
+      "WHERE attrelid = 'vec_test'::regclass AND attname = 'v1'"));
+}
+
+// A failed vector index build on the target fails the replayed DDL instead of stalling DDL
+// replication, and the retry works once the build can succeed.
+TEST_F(XClusterDDLReplicationTest, VectorIndexFailedTargetBuildIsRetried) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_ddl_queue_max_retries_per_ddl) = 1000;
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(RunOnBothClusters([this](Cluster* cluster) -> Status {
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
+    return conn.Execute("CREATE EXTENSION vector");
+  }));
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE vec_test (id int PRIMARY KEY, embedding vector(3))"));
+  ASSERT_OK(producer_conn_->Execute(
+      "INSERT INTO vec_test SELECT g, ARRAY[g, g + 1, g + 2]::vector "
+      "FROM generate_series(1, 100) AS g"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Build the index on the producer, then fail the target's build.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = true;
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE INDEX vec_test_idx ON vec_test USING ybhnsw (embedding vector_l2_ops)"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNowWithoutDDLQueue());
+  StringWaiterLogSink replay_failed_log("Vector index backfill failed on tablet");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_vector_index_backfill) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = false;
+  ASSERT_OK(replay_failed_log.WaitFor(kTimeout));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_vector_index_backfill) = false;
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_TRUE(ASSERT_RESULT(consumer_conn_->FetchRow<bool>(
+      "SELECT EXISTS (SELECT 1 FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid "
+      "WHERE c.relname = 'vec_test_idx' AND i.indisready AND i.indisvalid)")));
 }
 
 TEST_F(XClusterDDLReplicationTest, CloneSourceDatabaseIncludesDDLReplicationTables) {
@@ -6387,6 +6501,33 @@ TEST_F(XClusterDDLReplicationStuckCreateTablePauseTest, PauseTerminatesOrphanedP
       /*is_enabled=*/false, MonoDelta::FromSeconds(15 * kTimeMultiplier)));
   ASSERT_OK(terminated_log.WaitFor(kTimeout));
   ASSERT_OK(shutdown_completed_log.WaitFor(kTimeout));
+}
+
+// The ddl_queue poller must not be treated as stuck (a DFATAL in debug builds) when running long
+// running DDLs.
+TEST_F(XClusterDDLReplicationStuckCreateTablePauseTest, LongRunningDdlIsNotStuck) {
+  const auto kStuckSecs = 2 * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_poller_task_delay_considered_stuck_secs) = kStuckSecs;
+  // Keep the failure backoff of the data pollers below the stuck threshold.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_failure_delay_exponent) = 8;
+
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  StringWaiterLogSink stuck_log("XCluster Poller has not executed any tasks");
+  ASSERT_NO_FATALS(WedgeReplicatedCreateTable());
+
+  SleepFor(2s * kStuckSecs);
+  ASSERT_FALSE(stuck_log.IsEventOccurred());
+
+  // Let the create finish.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = "";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 0;
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Ensure that the DDL was able to replicate without ddl_queue handler getting killed.
+  ASSERT_TRUE(ASSERT_RESULT(consumer_conn_->FetchRow<bool>(
+      Format("SELECT EXISTS(SELECT 1 FROM pg_class WHERE relname = '$0')", kStuckTableName))));
+  ASSERT_FALSE(stuck_log.IsEventOccurred());
 }
 
 // A replicated DROP TABLE blocks on the target while the target master removes the table from

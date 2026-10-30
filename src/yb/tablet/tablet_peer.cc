@@ -1037,10 +1037,10 @@ Result<OpId> TabletPeer::MaxPersistentOpId() const {
     // Tablet peer not yet initialized -- we could be doing tablet bootstrap still.
     return OpId::Min();
   }
-  auto flush_op_ids = VERIFY_RESULT(tablet->MaxPersistentOpId());
-  auto result = OpId::MinValid(flush_op_ids.intents, flush_op_ids.regular);
-  for (const auto& op_id : flush_op_ids.vector_indexes) {
-    result = OpId::MinValid(result, op_id);
+  auto persistent_state = VERIFY_RESULT(tablet->GetPersistentState());
+  auto result = OpId::MinValid(persistent_state.intents, persistent_state.regular);
+  for (const auto& vector_index : persistent_state.vector_indexes) {
+    result = OpId::MinValid(result, vector_index.op_id);
   }
   return result;
 }
@@ -1113,7 +1113,7 @@ Result<log::MinRetainLogIndexInfo> TabletPeer::GetEarliestNeededLogIndex(
 
   // We keep at least one committed operation in the log so that we can always recover safe time
   // during bootstrap.
-  // Last committed op id should be read before MaxPersistentOpId to avoid race condition
+  // Last committed op id should be read before Tablet::GetPersistentState to avoid race condition
   // described in MaxPersistentOpIdForDb.
   //
   // If we read last committed op id AFTER reading last persistent op id (INCORRECT):

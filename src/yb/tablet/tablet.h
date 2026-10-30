@@ -597,11 +597,11 @@ class Tablet : public AbstractTablet,
   // Returns true if a RocksDB-backed tablet has any SSTables.
   Result<bool> HasSSTables() const;
 
-  // Returns the maximum persistent op id from all SSTables in RocksDB.
-  // First for regular records and second for intents.
+  // Returns the maximum persistent op ids of the regular DB, the intents DB and each vector index,
+  // plus the hybrid time of each vector index.
   // When invalid_if_no_new_data is true then function would return invalid op id when no new
   // data is present in corresponding db.
-  Result<DocDbOpIds> MaxPersistentOpId(bool invalid_if_no_new_data = false) const;
+  Result<DocDbPersistentState> GetPersistentState(bool invalid_if_no_new_data = false) const;
 
   // Returns the maximum persistent hybrid_time across all SSTables in RocksDB.
   Result<HybridTime> MaxPersistentHybridTime() const;

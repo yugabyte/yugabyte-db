@@ -40,6 +40,7 @@
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet.pb.h"
+#include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/vector_index_checker.h"
 
@@ -1064,15 +1065,21 @@ Status TabletVectorIndexes::ModifyFlushedFrontier(
   return Status::OK();
 }
 
-void TabletVectorIndexes::FillMaxPersistentOpIds(
-    boost::container::small_vector_base<OpId>& out, bool invalid_if_no_new_data) {
+void TabletVectorIndexes::FillPersistentStates(
+    boost::container::small_vector_base<VectorIndexPersistentState>& out,
+    bool invalid_if_no_new_data) {
   out.clear();
   auto list = List();
   if (!list) {
     return;
   }
   for (const auto& vector_index : *list) {
-    out.push_back(MaxPersistentOpIdForDb(vector_index.get(), invalid_if_no_new_data));
+    // An invalid hybrid time gives no backfill boundary, so kMin keeps every op for the index.
+    auto hybrid_time = vector_index->hybrid_time();
+    out.push_back(VectorIndexPersistentState {
+      .op_id = MaxPersistentOpIdForDb(vector_index.get(), invalid_if_no_new_data),
+      .hybrid_time = hybrid_time.is_valid() ? hybrid_time : HybridTime::kMin,
+    });
   }
 }
 
@@ -1114,22 +1121,47 @@ docdb::DocVectorIndexPtr TabletVectorIndexes::RemoveTableFromList(const TableId&
 
 Status TabletVectorIndexes::Remove(const TableId& table_id) {
   VLOG_WITH_FUNC(2) << "table_id: " << table_id;
-  if (!has_vector_indexes_.load()) {
-    return Status::OK();
-  }
   docdb::DocVectorIndexPtr index;
-  {
+  // Not an early return: has_vector_indexes_ stays false when the only vector index of the tablet
+  // was skipped, whose storage still has to be destroyed below.
+  if (has_vector_indexes_.load()) {
     UniqueLock lock(vector_indexes_mutex_);
     auto it = vector_indexes_map_.find(table_id);
-    if (it == vector_indexes_map_.end()) {
-      return Status::OK();
+    if (it != vector_indexes_map_.end()) {
+      index = RemoveTableFromList(table_id);
+      RSTATUS_DCHECK(
+          index != nullptr, IllegalState, "Index $0 present in map but missing in list", table_id);
+      vector_indexes_map_.erase(it);
     }
-    index = RemoveTableFromList(table_id);
-    RSTATUS_DCHECK(
-        index != nullptr, IllegalState, "Index $0 present in map but missing in list", table_id);
-    vector_indexes_map_.erase(it);
+  }
+  if (!index) {
+    DestroySkippedIndexStorage(table_id);
+    return Status::OK();
   }
   return index->Destroy();
+}
+
+void TabletVectorIndexes::DestroySkippedIndexStorage(const TableId& table_id) {
+  // An index skipped by DoCreateIndex (its column missing from the schema) can still have storage
+  // on disk, e.g. written before a PITR restore removed the column. The caller erases the table
+  // from the metadata next, and DeleteTabletData only cleans up indexes still listed there
+  // (#35063).
+  auto table_info = metadata().GetTableInfo(table_id);
+  if (!table_info.ok() || !(*table_info)->NeedVectorIndex()) {
+    return;
+  }
+  auto storage_dir = metadata().vector_index_dir((*table_info)->index_info->vector_idx_options());
+  if (!env().FileExists(storage_dir)) {
+    return;
+  }
+  LOG_WITH_PREFIX(INFO)
+      << "Destroying storage of not instantiated vector index " << table_id << " at "
+      << storage_dir;
+  // Leak the directory rather than fail the apply, which would fail the tablet.
+  auto status = env().DeleteRecursively(storage_dir);
+  LOG_IF_WITH_PREFIX(WARNING, !status.ok())
+      << "Failed to destroy storage of vector index " << table_id << " at " << storage_dir << ": "
+      << status;
 }
 
 Result<VectorIndexCheckResultPB> TabletVectorIndexes::Check(
