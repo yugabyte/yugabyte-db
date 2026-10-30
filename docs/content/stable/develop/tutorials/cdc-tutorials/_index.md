@@ -42,12 +42,6 @@ type: indexpage
     icon="/images/section_icons/quick_start/sample_apps.png">}}
 
   {{<index/item
-    title="Oracle GoldenGate"
-    body="Replicate data from Oracle Database to YugabyteDB in real time using Oracle GoldenGate."
-    href="cdc-goldengate/"
-    icon="/images/section_icons/quick_start/sample_apps.png">}}
-
-  {{<index/item
     title="Azure Event Hubs"
     body="Use Azure Event Hubs to stream real-time data for downstream processing."
     href="../azure/azure-event-hubs/"

@@ -6,9 +6,9 @@ description: Replicate data from Oracle Database to YugabyteDB in real time usin
 headcontent: Replicate data from Oracle Database to YugabyteDB using Oracle GoldenGate
 menu:
   stable_develop:
-    parent: tutorials-kafka-stream
+    parent: tutorials-cdc
     identifier: cdc-oracle-goldengate
-    weight: 50
+    weight: 60
 type: docs
 ---
 
@@ -22,7 +22,7 @@ This tutorial describes how to set up real-time replication from Oracle Database
 | GoldenGate | Oracle GoldenGate 21c for Oracle Database | Oracle GoldenGate 21c for PostgreSQL |
 | Example schema and tables | Schema `ggpdbuser` in pluggable database `ORCLPDB1` | Database `yugadb1`, schema `public` |
 
-GoldenGate connects to YugabyteDB over the PostgreSQL wire protocol using the ODBC driver bundled with GoldenGate for PostgreSQL. For other GoldenGate releases, check the [Oracle GoldenGate certification matrix](https://www.oracle.com/middleware/technologies/goldengate-downloads.html) for supported PostgreSQL-compatible targets before you start.
+GoldenGate connects to YugabyteDB over the PostgreSQL wire protocol using the ODBC driver bundled with GoldenGate for PostgreSQL. For other GoldenGate releases, check the supported PostgreSQL-compatible targets on the [Oracle GoldenGate downloads page](https://www.oracle.com/middleware/technologies/goldengate-downloads.html) before you start.
 
 ## Before you begin
 
@@ -70,28 +70,9 @@ Perform the following steps on the Oracle source host using GoldenGate for Oracl
     GGSCI> ADD TRANDATA ORCLPDB1.ggpdbuser.regions ALLCOLS
     ```
 
-### Generate the definitions file
-
-When the source and target table structures differ, the Replicat process needs a definitions file that describes the source tables. Generate it on the source and copy it to the target GoldenGate home (for example, as `dirdef/all7tab.def`):
-
-```sh
-$ cat dirprm/defgen.prm
-DEFSFILE ./dirprm/all7tab.def
-USERIDALIAS oracredcdb
-TABLE ORCLPDB1.ggpdbuser.regions;
-TABLE ORCLPDB1.ggpdbuser.locations;
-TABLE ORCLPDB1.ggpdbuser.countries;
-TABLE ORCLPDB1.ggpdbuser.departments;
-TABLE ORCLPDB1.ggpdbuser.employees;
-TABLE ORCLPDB1.ggpdbuser.job_history;
-TABLE ORCLPDB1.ggpdbuser.jobs;
-
-$ ./defgen paramfile ./dirprm/defgen.prm
-```
-
 ### Add credentials and start the Manager process
 
-1. Add the source database credentials to the GoldenGate credential store, and verify that you can log in:
+1. Add the source database credentials to the GoldenGate credential store, and verify that you can log in. The Extract and defgen configurations in this tutorial reference the alias you create here, so perform this step before running them:
 
     ```output
     GGSCI> ADD CREDENTIALSTORE
@@ -109,6 +90,25 @@ $ ./defgen paramfile ./dirprm/defgen.prm
     GGSCI> START MGR
     Manager started.
     ```
+
+### Generate the definitions file
+
+When the source and target table structures differ, the Replicat process needs a definitions file that describes the source tables. Generate it on the source and copy it to the `dirdef` directory of the target GoldenGate home, where the Replicat configurations in this tutorial expect it (`dirdef/all7tab.def`):
+
+```sh
+$ cat dirprm/defgen.prm
+DEFSFILE ./dirdef/all7tab.def
+USERIDALIAS oracredcdb
+TABLE ORCLPDB1.ggpdbuser.regions;
+TABLE ORCLPDB1.ggpdbuser.locations;
+TABLE ORCLPDB1.ggpdbuser.countries;
+TABLE ORCLPDB1.ggpdbuser.departments;
+TABLE ORCLPDB1.ggpdbuser.employees;
+TABLE ORCLPDB1.ggpdbuser.job_history;
+TABLE ORCLPDB1.ggpdbuser.jobs;
+
+$ ./defgen paramfile ./dirprm/defgen.prm
+```
 
 ## Set up the target
 
@@ -185,39 +185,11 @@ Replace the paths with the Oracle client library path and GoldenGate library pat
 
 ## Configure the Extract processes
 
-Configure the following Extract processes on the source host.
-
-### Initial-load Extract
-
-Create an initial-load Extract that reads the current table contents and writes them to a remote file for the initial-load Replicat:
-
-```output
-GGSCI> VIEW PARAMS expil7tb
-EXTRACT expil7tb
-USERIDALIAS oracredcdb
-RMTHOST 10.98.41.158, MGRPORT 7811
-RMTFILE ./dirdat/il, MAXFILES 999999, MEGABYTES 190, APPEND
-TABLE ORCLPDB1.ggpdbuser.regions;
-TABLE ORCLPDB1.ggpdbuser.locations;
-TABLE ORCLPDB1.ggpdbuser.countries;
-TABLE ORCLPDB1.ggpdbuser.departments;
-TABLE ORCLPDB1.ggpdbuser.employees;
-TABLE ORCLPDB1.ggpdbuser.job_history;
-TABLE ORCLPDB1.ggpdbuser.jobs;
-
-GGSCI> ADD EXTRACT expil7tb, SOURCEISTABLE
-Extract added.
-```
-
-Before you start the initial load, record the current system change number (SCN). You use it to start the real-time Replicat from a consistent point:
-
-```sql
-SELECT current_scn FROM v$database;
-```
+Configure the following Extract processes on the source host. To get a consistent starting point for replication (sometimes called precise instantiation), create and start the change data capture Extract first, record a system change number (SCN) after it is running, and then run the initial load as of that SCN. The real-time Replicat later starts from the same SCN, so no change is applied twice or skipped.
 
 ### Change data capture Extract
 
-Create an integrated Extract that captures ongoing changes and writes them to a remote trail:
+Create an integrated Extract that captures ongoing changes and writes them to a remote trail. Register the Extract with the database before you add it, as required for integrated capture:
 
 ```output
 GGSCI> VIEW PARAMS ext7tab
@@ -236,10 +208,50 @@ TABLE ORCLPDB1.ggpdbuser.employees;
 TABLE ORCLPDB1.ggpdbuser.job_history;
 TABLE ORCLPDB1.ggpdbuser.jobs;
 
+GGSCI> DBLOGIN USERIDALIAS oracredcdb
+GGSCI> REGISTER EXTRACT ext7tab, DATABASE CONTAINER(ORCLPDB1)
 GGSCI> ADD EXTRACT ext7tab, INTEGRATED TRANLOG, BEGIN NOW
 Integrated Extract added.
 
-GGSCI> REGISTER EXTRACT ext7tab, DATABASE CONTAINER(ORCLPDB1)
+GGSCI> ADD RMTTRAIL ./dirdat/rt, EXTRACT ext7tab
+```
+
+Start the Extract now so that it captures changes while the initial load runs:
+
+```output
+GGSCI> START ext7tab
+```
+
+### Record the instantiation SCN
+
+After the capture Extract is running, record the current SCN. The SCN must be later than the Extract registration SCN, and there must be no open transaction older than it; if long-running transactions are open, wait for them to complete or use the oldest active transaction SCN instead (see `START_SCN` in `v$transaction`):
+
+```sql
+SELECT current_scn FROM v$database;
+```
+
+Use this SCN in the initial-load Extract and when you start the real-time Replicat. In this tutorial, the recorded SCN is `3625429`.
+
+### Initial-load Extract
+
+Create an initial-load Extract that reads the table contents as of the recorded SCN and writes them to a remote file for the initial-load Replicat. Add a flashback predicate (`SQLPREDICATE "AS OF SCN ..."`) to each `TABLE` statement so the load is consistent with the SCN, and make sure the database retains enough undo to read as of that SCN:
+
+```output
+GGSCI> VIEW PARAMS expil7tb
+EXTRACT expil7tb
+USERIDALIAS oracredcdb
+RMTHOST 10.98.41.158, MGRPORT 7811
+RMTFILE ./dirdat/il, MAXFILES 999999, MEGABYTES 190, APPEND
+TABLE ORCLPDB1.ggpdbuser.regions, SQLPREDICATE "AS OF SCN 3625429";
+TABLE ORCLPDB1.ggpdbuser.locations, SQLPREDICATE "AS OF SCN 3625429";
+TABLE ORCLPDB1.ggpdbuser.countries, SQLPREDICATE "AS OF SCN 3625429";
+TABLE ORCLPDB1.ggpdbuser.departments, SQLPREDICATE "AS OF SCN 3625429";
+TABLE ORCLPDB1.ggpdbuser.employees, SQLPREDICATE "AS OF SCN 3625429";
+TABLE ORCLPDB1.ggpdbuser.job_history, SQLPREDICATE "AS OF SCN 3625429";
+TABLE ORCLPDB1.ggpdbuser.jobs, SQLPREDICATE "AS OF SCN 3625429";
+
+GGSCI> ADD EXTRACT expil7tb, SOURCEISTABLE
+Extract added.
 ```
 
 ## Configure the Replicat processes
@@ -248,14 +260,19 @@ Configure the following Replicat processes on the target host. Both use the defi
 
 ### Initial-load Replicat
 
+The initial load uses a file-to-Replicat load: the Replicat is a one-time (`SPECIALRUN`) process that reads the extract file written by the initial-load Extract (`EXTFILE`) and ends when the load finishes, so it does not use a checkpoint table:
+
 ```output
 GGSCI> VIEW PARAMS repil7tb
 REPLICAT repil7tb
+SPECIALRUN
+END RUNTIME
 SOURCEDEFS dirdef/all7tab.def
 SETENV (ODBCINI="/etc/odbc.ini")
 SETENV (PGCLIENTENCODING="UTF8")
 SETENV (NLS_LANG="AMERICAN_AMERICA.AL32UTF8")
 TARGETDB YB_tgt USERIDALIAS yugacredalias
+EXTFILE ./dirdat/il
 DISCARDFILE ./dirrpt/diskg.dsc, PURGE
 MAP ORCLPDB1.ggpdbuser.regions, TARGET public.regions;
 MAP ORCLPDB1.ggpdbuser.locations, TARGET public.locations;
@@ -265,7 +282,7 @@ MAP ORCLPDB1.ggpdbuser.employees, TARGET public.employees;
 MAP ORCLPDB1.ggpdbuser.job_history, TARGET public.job_history;
 MAP ORCLPDB1.ggpdbuser.jobs, TARGET public.jobs;
 
-GGSCI> ADD REPLICAT repil7tb, EXTTRAIL ./dirdat/il CHECKPOINTTABLE public.ggcheckpoint
+GGSCI> ADD REPLICAT repil7tb, SPECIALRUN
 Replicat added.
 ```
 
@@ -296,20 +313,15 @@ Replicat added.
 
 ## Start replication and verify
 
-1. On the source, start the initial-load Extract and the change data capture Extract:
-
-    ```output
-    GGSCI> START expil7tb
-    GGSCI> START ext7tab
-    ```
-
-1. On the target, start the initial-load Replicat to load the existing data into YugabyteDB:
+1. On the target, start the initial-load Replicat, and on the source, start the initial-load Extract to load the existing data (as of the recorded SCN) into YugabyteDB:
 
     ```output
     GGSCI> START repil7tb
+
+    GGSCI> START expil7tb
     ```
 
-1. After the initial load completes, start the real-time Replicat from the SCN you recorded before the initial load:
+1. After the initial load completes, start the real-time Replicat from the recorded SCN. It applies the changes that the capture Extract collected during the load, starting after the SCN, and then continues with ongoing changes:
 
     ```output
     GGSCI> START rep7tab, AFTERCSN 3625429
