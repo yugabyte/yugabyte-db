@@ -3299,6 +3299,14 @@ void YBClient::MarkTServersAsFollowers(const std::vector<std::string>& ts_uuids)
   data_->meta_cache_->MarkTServersAsFollowers(ts_uuids);
 }
 
+void YBClient::UpdateLeaderBlacklistedTServers(const std::vector<std::string>& ts_uuids) {
+  data_->meta_cache_->UpdateLeaderBlacklistedTServers(ts_uuids);
+}
+
+std::set<TabletServerId> YBClient::TEST_LeaderBlacklistedTServers() const {
+  return *data_->meta_cache_->leader_blacklisted_tservers();
+}
+
 template <class PB>
 bool YBClient::DoRefreshTabletInfoWithConsensusInfo(const PB& newly_received_info) {
   auto status = data_->meta_cache_->RefreshTabletInfoWithConsensusInfo(newly_received_info);
