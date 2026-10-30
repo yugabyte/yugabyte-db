@@ -332,6 +332,16 @@ EXECUTE nonequality_array_count('{5,2}');
 :explain_analyze EXECUTE nonequality_array_count('{}');
 EXECUTE nonequality_array_count('{}');
 DEALLOCATE nonequality_array_count;
+-- a bigint parameter array, whose deciding element the int column might not
+-- hold.  The pushdown check runs before the array is evaluated, so it keeps
+-- the aggregate in the executor whatever the elements, since a pushed-down
+-- count would skip the recheck such an element needs (#26493).
+PREPARE nonequality_array_count_bigint(bigint[]) AS SELECT count(*) FROM t_nonequality_array WHERE g = 0 AND k > ANY ($1);
+:explain_analyze EXECUTE nonequality_array_count_bigint('{5,2}');
+EXECUTE nonequality_array_count_bigint('{5,2}');
+:explain_analyze EXECUTE nonequality_array_count_bigint('{3000000000,4000000000}');
+EXECUTE nonequality_array_count_bigint('{3000000000,4000000000}');
+DEALLOCATE nonequality_array_count_bigint;
 RESET plan_cache_mode;
 SET yb_enable_advanced_index_cond_fold = off;
 :explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k > ANY ('{5,2}');
@@ -348,3 +358,51 @@ INSERT INTO t_nonequality_array_desc SELECT g, k FROM generate_series(0, 1) g, g
 :explain_analyze SELECT * FROM t_nonequality_array_desc WHERE g = 0 AND k > ANY ('{5,2}');
 :explain_analyze SELECT * FROM t_nonequality_array_desc WHERE g = 0 AND k <= ANY ('{2,5}');
 DROP TABLE t_nonequality_array_desc;
+
+-- The collation of the condition orders the elements, so under an ICU
+-- collation, where 'a' < 'B', 'a' decides k > ANY ('{B,a}') and 'B' decides
+-- k < ANY ('{B,a}').  Byte order, where 'B' < 'a', would pick the other
+-- element (#35030).
+CREATE TABLE t_nonequality_array_text(k text COLLATE "en-US-x-icu", PRIMARY KEY(k ASC));
+INSERT INTO t_nonequality_array_text VALUES ('a'), ('A'), ('b'), ('B'), ('c'), ('C');
+:explain_analyze SELECT * FROM t_nonequality_array_text WHERE k > ANY ('{B,a}');
+:explain_analyze SELECT * FROM t_nonequality_array_text WHERE k < ANY ('{B,a}');
+DROP TABLE t_nonequality_array_text;
+
+-- An enum orders its labels as declared, so 'ok' decides both
+-- m > ANY ('{happy,ok}') and m < ANY ('{sad,ok}').  Label text order would
+-- pick the other element (#35030).
+CREATE TYPE nonequality_array_mood AS ENUM ('sad', 'ok', 'happy');
+CREATE TABLE t_nonequality_array_enum(m nonequality_array_mood, PRIMARY KEY(m ASC));
+INSERT INTO t_nonequality_array_enum VALUES ('sad'), ('ok'), ('happy');
+:explain_analyze SELECT * FROM t_nonequality_array_enum WHERE m > ANY ('{happy,ok}');
+:explain_analyze SELECT * FROM t_nonequality_array_enum WHERE m < ANY ('{sad,ok}');
+DROP TABLE t_nonequality_array_enum;
+DROP TYPE nonequality_array_mood;
+
+-- A date array on a timestamp column.  A date value does not bind to a
+-- timestamp column, so the scalar key that replaces the array goes to the
+-- recheck, and each condition still returns the three rows on its side of
+-- midnight of 2024-01-02 (#35030).
+CREATE TABLE t_nonequality_array_ts(ts timestamp, PRIMARY KEY(ts ASC));
+INSERT INTO t_nonequality_array_ts SELECT '2024-01-01'::timestamp + i * interval '12 hours' FROM generate_series(0, 5) i;
+:explain_analyze SELECT * FROM t_nonequality_array_ts WHERE ts > ANY ('{2024-01-03,2024-01-02}'::date[]);
+:explain_analyze SELECT * FROM t_nonequality_array_ts WHERE ts <= ANY ('{2024-01-01,2024-01-02}'::date[]);
+DROP TABLE t_nonequality_array_ts;
+
+-- A varchar column compares through the text operators, which relabel it as
+-- text.  Its ICU collation orders the elements, so 'a' decides
+-- v > ANY ('{B,a}'::text[]), as for a text column.  A pattern index orders
+-- bytewise, and YB allows one only under the C collation, where the default
+-- comparator of text orders bytewise too, so 'B' decides p ~>~ ANY ('{b,B}')
+-- and 'b' decides p ~<~ ANY ('{b,B}') (#35030).
+CREATE TABLE t_nonequality_array_varchar(v varchar COLLATE "en-US-x-icu", p varchar COLLATE "C", s serial PRIMARY KEY);
+CREATE INDEX t_nonequality_array_varchar_v ON t_nonequality_array_varchar(v ASC);
+CREATE INDEX t_nonequality_array_varchar_p ON t_nonequality_array_varchar(p varchar_pattern_ops ASC);
+INSERT INTO t_nonequality_array_varchar(v, p) SELECT x, x FROM unnest('{a,A,b,B,c,C}'::text[]) x;
+:explain_analyze SELECT v FROM t_nonequality_array_varchar WHERE v > ANY ('{B,a}'::text[]);
+:explain_analyze SELECT p FROM t_nonequality_array_varchar WHERE p ~>~ ANY ('{b,B}');
+:explain_analyze SELECT p FROM t_nonequality_array_varchar WHERE p ~<~ ANY ('{b,B}');
+-- the bound folds with the range of a LIKE prefix, so the scan reads only 'b'
+:explain_analyze SELECT p FROM t_nonequality_array_varchar WHERE p LIKE 'b%' AND p ~>~ ANY ('{a,B}');
+DROP TABLE t_nonequality_array_varchar;

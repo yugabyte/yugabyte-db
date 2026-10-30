@@ -987,13 +987,12 @@ ybExtractScanKeys(ScanKey keys, int nkeys, YbOpaque ybScan)
 
 /*
  * Set the argument of a scalar copy of a non-equality array key to the array
- * element that decides the condition: the greatest non-null element for < and
- * <=, the least for > and >=.  As in _bt_find_extreme_element(), the opfamily
- * of the index column defines the order.  With no non-null element, mark the
- * key as a comparison with NULL instead.
+ * element that decides the condition, by the comparator 'cmp_fn': the greatest
+ * non-null element for < and <=, the least for > and >=.  With no non-null
+ * element, mark the key as a comparison with NULL instead.
  */
 static void
-ybSetExtremeArrayElement(ScanKey key, Relation index)
+ybSetExtremeArrayElement(ScanKey key, FmgrInfo *cmp_fn)
 {
 	ArrayType  *arrayval = DatumGetArrayTypeP(key->sk_argument);
 	int16		elmlen;
@@ -1002,11 +1001,8 @@ ybSetExtremeArrayElement(ScanKey key, Relation index)
 	Datum	   *elem_values;
 	bool	   *elem_nulls;
 	int			num_elems;
-	Oid			elemtype;
-	StrategyNumber strat;
-	Oid			cmp_op;
-	RegProcedure cmp_proc;
-	FmgrInfo	flinfo;
+	bool		want_greatest = (key->sk_strategy == BTLessStrategyNumber ||
+								 key->sk_strategy == BTLessEqualStrategyNumber);
 	bool		found = false;
 	Datum		result = (Datum) 0;
 
@@ -1016,32 +1012,22 @@ ybSetExtremeArrayElement(ScanKey key, Relation index)
 					  elmlen, elmbyval, elmalign,
 					  &elem_values, &elem_nulls, &num_elems);
 
-	elemtype = key->sk_subtype;
-	if (elemtype == InvalidOid)
-		elemtype = index->rd_opcintype[key->sk_attno - 1];
-	strat = (key->sk_strategy == BTLessStrategyNumber ||
-			 key->sk_strategy == BTLessEqualStrategyNumber ?
-			 BTGreaterStrategyNumber : BTLessStrategyNumber);
-	cmp_op = get_opfamily_member(index->rd_opfamily[key->sk_attno - 1],
-								 elemtype, elemtype, strat);
-	if (!OidIsValid(cmp_op))
-		elog(ERROR, "missing operator %d(%u,%u) in opfamily %u",
-			 strat, elemtype, elemtype,
-			 index->rd_opfamily[key->sk_attno - 1]);
-	cmp_proc = get_opcode(cmp_op);
-	if (!RegProcedureIsValid(cmp_proc))
-		elog(ERROR, "missing oprcode for operator %u", cmp_op);
-	fmgr_info(cmp_proc, &flinfo);
-
 	/* The btree operators are strict, so a NULL element never matches. */
 	for (int i = 0; i < num_elems; i++)
 	{
 		if (elem_nulls[i])
 			continue;
-		if (!found ||
-			DatumGetBool(FunctionCall2Coll(&flinfo, key->sk_collation,
-										   elem_values[i], result)))
-			result = elem_values[i];
+		if (found)
+		{
+			int32		cmp = DatumGetInt32(FunctionCall2Coll(cmp_fn,
+															  key->sk_collation,
+															  elem_values[i],
+															  result));
+
+			if (want_greatest ? cmp <= 0 : cmp >= 0)
+				continue;
+		}
+		result = elem_values[i];
 		found = true;
 	}
 	pfree(elem_values);
@@ -1065,16 +1051,31 @@ ybSetExtremeArrayElement(ScanKey key, Relation index)
  * An array with no non-null element makes the condition never true, which
  * YbIsUnsatisfiableCondition reports for the NULL comparison that replaces it.
  *
+ * Unlike _bt_find_extreme_element(), which takes the operator from the index
+ * opfamily, order the elements by the default comparator of the element type,
+ * as YbBindSearchArray does, because the bound applies in the order of DocDB's
+ * keys, which follows the type and the collation with no notion of opclasses.
+ * A key whose element type has no comparator stays an array key, which
+ * YbCheckScanTypes leaves to the recheck.
+ *
  * The scalar keys are copies, because the keys belong to the caller and serve
  * its rescans.  An array that is not yet evaluated holds (Datum) 0, and its
  * copy keeps that value, as a scalar runtime key does.
+ *
+ * Return whether the key of an array that is not yet evaluated might not bind
+ * once it is: its element type has no comparator, or is an integer type wider
+ * than the column, which might not hold the element that decides the
+ * condition.
  */
-static void
+static bool
 ybReduceInequalityArrayKeys(YbOpaque ybScan, Relation index)
 {
+	bool		might_not_bind = false;
+
 	for (int i = 0; i < ybScan->nkeys; i += YbGetLengthOfKey(&ybScan->keys[i]))
 	{
 		ScanKey		key = ybScan->keys[i];
+		FmgrInfo   *cmp_fn;
 		ScanKey		reduced;
 
 		if (!YbIsSearchArray(key) || YbIsRowHeader(key) ||
@@ -1082,14 +1083,33 @@ ybReduceInequalityArrayKeys(YbOpaque ybScan, Relation index)
 			continue;
 
 		Assert(index != NULL);
+		cmp_fn = &lookup_type_cache(key->sk_subtype,
+									TYPECACHE_CMP_PROC_FINFO)->cmp_proc_finfo;
+		if (!(key->sk_flags & SK_ISNULL) && key->sk_argument == (Datum) 0)
+		{
+			Oid			col_typid = ybc_get_atttypid(RelationGetDescr(index),
+													 key->sk_attno);
+
+			/*
+			 * TODO(#36353): drop the wider-integer test once the precheck's
+			 * answer for a parameter inequality holds at execution.
+			 */
+			if (!OidIsValid(cmp_fn->fn_oid) ||
+				YbShouldRecheckEquality(col_typid, key->sk_subtype))
+				might_not_bind = true;
+		}
+		else if (!OidIsValid(cmp_fn->fn_oid))
+			continue;
+
 		reduced = (ScanKey) palloc(sizeof(ScanKeyData));
 		*reduced = *key;
 		reduced->sk_flags &= ~SK_SEARCHARRAY;
 		if (!(key->sk_flags & SK_ISNULL) && key->sk_argument != (Datum) 0)
-			ybSetExtremeArrayElement(reduced, index);
+			ybSetExtremeArrayElement(reduced, cmp_fn);
 		ybScan->keys[i] = reduced;
 		ybScan->reduced_keys = lappend(ybScan->reduced_keys, reduced);
 	}
+	return might_not_bind;
 }
 
 /*
@@ -1312,6 +1332,15 @@ YbCheckScanTypes(YbOpaque ybScan, YbScanPlan scan_plan, int i)
 {
 	ScanKey		key = ybScan->keys[i];
 	Oid			valtypid = key->sk_subtype;
+
+	/*
+	 * A non-equality array key binds only as the scalar key that
+	 * ybReduceInequalityArrayKeys replaces it with, so one it leaves in place
+	 * goes to the recheck.
+	 */
+	if (YbIsSearchArray(key) && !YbIsRowHeader(key) &&
+		key->sk_strategy != BTEqualStrategyNumber)
+		return false;
 
 	/*
 	 * TODO(jason): this RECORDOID logic is hacky.  It essentially skips the
@@ -3584,9 +3613,10 @@ YbPredetermineNeedsRecheck(Scan *scan,
 						   int nkeys)
 {
 	YbOpaqueData ybscan = {0};
+	bool		array_might_not_bind;
 
 	ybExtractScanKeys(keys, nkeys, &ybscan);
-	ybReduceInequalityArrayKeys(&ybscan, index);
+	array_might_not_bind = ybReduceInequalityArrayKeys(&ybscan, index);
 
 	if (YbIsUnsatisfiableCondition(ybscan.nkeys, ybscan.keys))
 	{
@@ -3620,7 +3650,12 @@ YbPredetermineNeedsRecheck(Scan *scan,
 	bms_free(scan_plan.key_cols);
 	bms_free(scan_plan.qualified_scan_key_cols);
 	list_free_deep(ybscan.reduced_keys);
-	return ybscan.needs_recheck;
+
+	/*
+	 * The bind above sees an array that is not yet evaluated as (Datum) 0, so
+	 * report the recheck for a key that might not bind once the array is.
+	 */
+	return ybscan.needs_recheck || array_might_not_bind;
 }
 
 /*
@@ -3665,7 +3700,7 @@ YbBeginScan(Relation table,
 
 	/* Flatten keys and store the results in ybScan. */
 	ybExtractScanKeys(keys, nkeys, ybScan);
-	ybReduceInequalityArrayKeys(ybScan, index);
+	(void) ybReduceInequalityArrayKeys(ybScan, index);
 
 	if (YbIsUnsatisfiableCondition(ybScan->nkeys, ybScan->keys))
 	{
