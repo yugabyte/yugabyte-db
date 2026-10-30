@@ -51,6 +51,7 @@ set(TABLET_SRCS
   operations/truncate_operation.cc
   operations/update_txn_operation.cc
   operations/write_operation.cc
+  persistence_gate.cc
   preparer.cc
   remove_intents_task.cc
   restore_util.cc
@@ -173,3 +174,4 @@ ADD_YB_TEST(tablet_peer-test)
 ADD_YB_TEST(tablet_random_access-test)
 ADD_YB_TEST(tablet_data_integrity-test)
 ADD_YB_TEST(operations/operation_tracker-test)
+ADD_YB_TEST(persistence_gate-test)

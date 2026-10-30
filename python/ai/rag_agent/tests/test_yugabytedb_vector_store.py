@@ -10,7 +10,7 @@ import pytest
 import json
 from unittest.mock import Mock, patch, MagicMock, call
 
-from db.yugabytedb_vector_store import YugabyteDBVectorStore
+from db.yugabytedb_vector_store import YugabyteDBVectorStore, chunk_id
 
 PIPELINE_ID = 1
 
@@ -168,6 +168,55 @@ class TestYugabyteDBVectorStore:
         # 20 items / 5 batch_size = 4 batches
         assert mock_cur.executemany.call_count == 4
 
+    def _persisted_counts(self, store, items, batch_size, rowcounts):
+        """Run insert_embeddings with a given rowcount per batch, and return the
+        value passed to update_embeddings_persisted after each one."""
+        store.pipeline_tracking.update_embeddings_persisted.reset_mock()
+        cur = store._get_connection().cursor.return_value
+        cur.fetchone.return_value = (True,)
+        remaining = iter(rowcounts)
+        cur.executemany.side_effect = lambda *a, **k: setattr(
+            cur, "rowcount", next(remaining)
+        )
+        store.insert_embeddings(
+            document_id=1,
+            table_name="test_table",
+            embedding_iterator=[(f"chunk {i}", [0.1]) for i in range(items)],
+            pipeline_id=PIPELINE_ID,
+            batch_size=batch_size
+        )
+        return [c.kwargs["embeddings_count"]
+                for c in store.pipeline_tracking.update_embeddings_persisted.call_args_list]
+
+    @patch('db.yugabytedb_vector_store.PipelineTracking')
+    @patch('db.yugabytedb_vector_store.ConnectionPool')
+    def test_embeddings_persisted_is_the_running_total(self, mock_pool_cls, mock_pt_cls):
+        """update_embeddings_persisted stores the value as-is, so each call must
+        carry the total so far. Per-batch counts left only the last batch."""
+        store, mock_pool, mock_pt, mock_conn, mock_cur = _create_store(
+            mock_pool_cls, mock_pt_cls
+        )
+
+        # 15 items at 5 divides evenly, so only the in-loop call site runs.
+        assert self._persisted_counts(store, 15, 5, [5, 5, 5]) == [5, 10, 15]
+        # 12 items at 5 leaves a remainder, which is the second call site.
+        assert self._persisted_counts(store, 12, 5, [5, 5, 2]) == [5, 10, 12]
+
+    @patch('db.yugabytedb_vector_store.PipelineTracking')
+    @patch('db.yugabytedb_vector_store.ConnectionPool')
+    def test_the_total_counts_only_the_rows_this_attempt_inserted(
+            self, mock_pool_cls, mock_pt_cls):
+        """A chunk an earlier attempt committed conflicts under ON CONFLICT DO
+        NOTHING, so executemany reports 0 rows for it and this attempt does not
+        count it. pipeline_stats sums the column over a document's attempts, so
+        counting rows already present would double-count there."""
+        store, mock_pool, mock_pt, mock_conn, mock_cur = _create_store(
+            mock_pool_cls, mock_pt_cls
+        )
+
+        # A retry that re-submits 15 chunks of which only the last 5 are new.
+        assert self._persisted_counts(store, 15, 5, [0, 0, 5]) == [0, 0, 5]
+
     @patch('db.yugabytedb_vector_store.PipelineTracking')
     @patch('db.yugabytedb_vector_store.ConnectionPool')
     def test_insert_embeddings_remaining_batch(self, mock_pool_cls, mock_pt_cls):
@@ -271,7 +320,7 @@ class TestYugabyteDBVectorStore:
         data = call_args[0][1]
         # metadata is serialized as JSON '{}' when None
         assert data == [(
-            "chunk 1", [0.1, 0.2, 0.3], 1,
+            chunk_id(1, 1, "chunk 1"), "chunk 1", [0.1, 0.2, 0.3], 1,
             None, '{}',
         )]
 
@@ -356,11 +405,12 @@ class TestYugabyteDBVectorStore:
 
         call_args = mock_cur.executemany.call_args
         data = call_args[0][1]
-        assert data[0][0] == "chunk 1"
-        assert data[0][1] == [0.1, 0.2, 0.3]
-        assert data[0][2] == 1
-        assert data[0][3] is None
-        assert json.loads(data[0][4]) == complex_metadata
+        assert data[0][0] == chunk_id(1, 1, "chunk 1")
+        assert data[0][1] == "chunk 1"
+        assert data[0][2] == [0.1, 0.2, 0.3]
+        assert data[0][3] == 1
+        assert data[0][4] is None
+        assert json.loads(data[0][5]) == complex_metadata
 
     @patch('db.yugabytedb_vector_store.PipelineTracking')
     @patch('db.yugabytedb_vector_store.ConnectionPool')

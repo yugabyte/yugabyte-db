@@ -19,6 +19,7 @@
 #include "yb/client/xcluster_client.h"
 
 #include "yb/common/colocated_util.h"
+#include "yb/common/common_flags.h"
 #include "yb/common/common_net.pb.h"
 #include "yb/common/xcluster_util.h"
 
@@ -44,6 +45,7 @@
 #include "yb/util/flags/auto_flags_util.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
+#include "yb/util/sync_point.h"
 
 // TODO: Bootstrap check sends multiple RPCs. Consider converting it to one RPC when enabling
 // check_bootstrap_required flag by default.
@@ -287,6 +289,7 @@ Status XClusterInboundReplicationGroupSetupTask::FirstStep() {
 Status XClusterInboundReplicationGroupSetupTask::SetupDDLReplicationExtension() {
   bool need_to_bootstrap_sequences_data = false;
   if (data_.automatic_ddl_mode) {
+    std::vector<NamespaceId> switchover_namespace_ids;
     for (const auto& namespace_id : data_.target_namespace_ids) {
       auto namespace_name = VERIFY_RESULT(catalog_manager_.FindNamespaceById(namespace_id))->name();
       bool is_switchover = xcluster_manager_.IsNamespaceInAutomaticModeSource(namespace_id);
@@ -301,10 +304,15 @@ Status XClusterInboundReplicationGroupSetupTask::SetupDDLReplicationExtension() 
           sync.AsStdStatusCallback()));
       RETURN_NOT_OK_PREPEND(sync.Wait(), "Failed to setup xCluster DDL replication extension");
 
-      if (!is_switchover) {
+      if (is_switchover) {
+        switchover_namespace_ids.push_back(namespace_id);
+      } else {
         // ALTERs to add/remove a table, and remove namespace do not reach this function.
         need_to_bootstrap_sequences_data = true;
       }
+    }
+    if (!switchover_namespace_ids.empty()) {
+      RETURN_NOT_OK(BlockWritesStartedAsSource(switchover_namespace_ids));
     }
   }
 
@@ -316,6 +324,37 @@ Status XClusterInboundReplicationGroupSetupTask::SetupDDLReplicationExtension() 
     ScheduleNextStep(
         [self = shared_from(this)] { return self->CreateTableTasks(); }, "CreateTableTasks");
   }
+  return Status::OK();
+}
+
+// Ensure that we refuse user YSQL writes and commits to namespace_ids, including those that
+// originated before this call.
+Status XClusterInboundReplicationGroupSetupTask::BlockWritesStartedAsSource(
+    const std::vector<NamespaceId>& namespace_ids) {
+  if (!IsPersistenceGateEnforced()) {
+    // Mid-upgrade, before every process can enforce the persistence gate: keep the old behavior.
+    LOG_WITH_PREFIX(WARNING) << "Persistence gate not enforced; not blocking writes started while "
+                             << AsString(namespace_ids) << " were xCluster sources";
+    return Status::OK();
+  }
+
+  const auto deadline =
+      MonoTime::Now() + MonoDelta::FromSeconds(FLAGS_xcluster_ysql_statement_timeout_sec);
+
+  // Propagate the TARGET role first.  Once it reaches every TServer, PgClientSession refuses new
+  // DMLs to these databases, so any DML that passed that check before the role arrived originated
+  // before the StartPersisting call below, which refuses it.  Exception: some DMLs are allowed
+  // through the PgClientSession gate, including index backfill writes.
+  RETURN_NOT_OK_PREPEND(
+      xcluster_manager_.PropagateXClusterGuardedInfo(deadline),
+      "Failed to propagate the xCluster target role");
+
+  RETURN_NOT_OK_PREPEND(
+      xcluster_manager_.StartPersisting(namespace_ids, deadline, epoch_),
+      "Failed to block writes started while the databases were xCluster sources");
+  LOG_WITH_PREFIX(INFO) << "Blocked transactions started while " << AsString(namespace_ids)
+                        << " were xCluster sources";
+  TEST_SYNC_POINT("XClusterInboundReplicationGroupSetupTask::AfterBlockWritesStartedAsSource");
   return Status::OK();
 }
 

@@ -114,6 +114,7 @@ YB_STRONGLY_TYPED_BOOL(KeepOrder);
 //        pgsql_ops_[0] = template_op_
 //    - CreateRequests()
 //    - ClonePgsqlOps() Clone template_op_ into one or more ops.
+//    - CloneOnePgsqlOp() Lazy clone of template_op_ for one tablet.
 //    - PopulateParallelSelectOps() Parallel processing of aggregate requests or requests with
 //      WHERE expressions filtering rows in DocDB.
 //      The same requests are constructed for each tablet server.
@@ -327,6 +328,8 @@ class PgDocOp {
 
   Result<int32_t> GetRowsAffectedCount() const;
 
+  Result<PgsqlResponsePB::PgsqlOnConflictOutcome> GetOnConflictOutcome() const;
+
   // Get the results and hand them over to the result stream.
   // Send requests for new pages if necessary.
   virtual Status FetchMoreResults();
@@ -417,6 +420,10 @@ class PgDocOp {
 
   // Executed row count.
   int32_t rows_affected_count_ = 0;
+
+  // On conflict outcome.
+  PgsqlResponsePB::PgsqlOnConflictOutcome on_conflict_outcome_ =
+      PgsqlResponsePB::PGSQL_ON_CONFLICT_OUTCOME_UNKNOWN;
 
   // Whether all requested data by the statement has been received or there's a run-time error.
   bool end_of_data_ = false;
@@ -528,6 +535,11 @@ class PgDocReadOp : public PgDocOp {
   //       PopulateNextHashPermutationOps()
   void ClonePgsqlOps(size_t op_count);
 
+  // Clone a single inactive op from the template and append it to pgsql_ops_, returning a reference
+  // to it. The PgsqlReadOp objects live behind shared pointers, so the reference stays valid across
+  // later appends (vector reallocation only moves the pointers, not the objects).
+  PgsqlReadOp& CloneOnePgsqlOp();
+
   const LWPgsqlReadRequestPB& GetTemplateReadReq() const { return read_op_->read_request(); }
 
  private:
@@ -538,10 +550,8 @@ class PgDocReadOp : public PgDocOp {
   // - request_range: The range of the operation request, if different from the partition range.
   //   Used to filter out the out of bounds hash permutations.
   // The fields are initialized lazily when the first hash permutation is bound to the partition.
-  // If the operation has empty range, like if the template request range does not intersect with
-  // the partition range, the rhs_values and request_range fields are not initialized. The operation
-  // remains associated with the partition batch, to prevent re-initialization attempts. Such
-  // operations are never activated and not executed.
+  // If the template request range does not intersect with the partition range, no operation is
+  // taken and request_range holds the empty range, to prevent re-initialization attempts.
   struct PartitionBatch {
     PgsqlReadOp* read_op = nullptr;
     LWPgsqlExpressionPB* rhs_values = nullptr;

@@ -406,6 +406,7 @@ typedef struct {
   YbcReadPointHandle (*GetCatalogSnapshotReadPoint)(YbcPgOid table_oid, bool create_if_not_exists);
   /* replication origin */
   uint16_t (*GetSessionReplicationOriginId)();
+  int64_t (*GetSessionReplicationOriginTimestamp)();
   bool (*HasProcessableAbortInterrupt)();
   /* xact.h */
   bool (*IsInParallelMode)();
@@ -617,14 +618,18 @@ typedef enum {
   YB_YQL_PREFETCHER_TRUST_CACHE_AUTH,
   YB_YQL_PREFETCHER_TRUST_CACHE,
   YB_YQL_PREFETCHER_RENEW_CACHE_SOFT,
-  YB_YQL_PREFETCHER_RENEW_CACHE_HARD
+  YB_YQL_PREFETCHER_RENEW_CACHE_HARD,
+  // Serve the request only from what is already cached; if no cached response matches, fail
+  // instead of reading the catalog. Used to start a connection from an older catalog version that
+  // this node already holds.
+  YB_YQL_PREFETCHER_TRUST_CACHE_LOOKUP_ONLY
 } YbcPgSysTablePrefetcherCacheMode;
 
 // Mirrors YsqlCatalogPrefetchKindPB in pgsql_protocol.proto.
 typedef enum {
   YB_YQL_PREFETCH_KIND_NONE = 0,
   YB_YQL_PREFETCH_KIND_CONNECTION_START = 1,
-  YB_YQL_PREFETCH_KIND_CACHE_REFRESH = 2,
+  YB_YQL_PREFETCH_KIND_HIGH_PRIORITY = 2,
 } YbcPgSysTablePrefetchKind;
 
 typedef struct {
@@ -655,6 +660,19 @@ typedef enum {
   // Use a distributed transaction for full ACID semantics (common case).
   YB_TRANSACTIONAL
 } YbcPgTransactionSetting;
+
+typedef enum {
+  YB_PG_ON_CONFLICT_NONE = 0,
+  YB_PG_ON_CONFLICT_NOTHING = 1,
+  YB_PG_ON_CONFLICT_UPDATE = 2,
+} YbcPgOnConflictAction;
+
+typedef enum {
+  YB_PG_ON_CONFLICT_OUTCOME_UNKNOWN = 0,
+  YB_PG_ON_CONFLICT_OUTCOME_INSERTED = 1,
+  YB_PG_ON_CONFLICT_OUTCOME_UPDATED = 2,
+  YB_PG_ON_CONFLICT_OUTCOME_SKIPPED = 3,
+} YbcPgOnConflictOutcome;
 
 // Postgres WAL record pointer defined in Postgres' xlogdefs.h
 typedef uint64_t YbcPgXLogRecPtr;
@@ -689,6 +707,7 @@ typedef struct {
   bool expired;
   bool allow_tables_without_primary_key;
   bool detect_publication_changes_implicitly;
+  const char *bound_publication_name;
 } YbcReplicationSlotDescriptor;
 
 typedef struct {
@@ -724,6 +743,7 @@ typedef enum {
   YB_PG_ROW_MESSAGE_ACTION_UPDATE = 4,
   YB_PG_ROW_MESSAGE_ACTION_DELETE = 5,
   YB_PG_ROW_MESSAGE_ACTION_DDL = 6,
+  YB_PG_ROW_MESSAGE_ACTION_PUBLICATION_REFRESH = 7,
 } YbcPgRowMessageAction;
 
 // Upon adding any more palloc'd members in the below struct, add logic to free it in
@@ -760,6 +780,8 @@ typedef struct {
   bool needs_publication_table_list_refresh;
   uint64_t publication_refresh_time;
   bool explicit_alter_publication_detected;
+  uint64_t publication_refresh_record_time;
+  char publication_refresh_txn_id[37]; /* UUID string length (36) + null terminator */
 } YbcPgChangeRecordBatch;
 
 typedef struct {

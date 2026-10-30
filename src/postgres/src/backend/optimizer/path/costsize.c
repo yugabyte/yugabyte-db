@@ -11028,25 +11028,20 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
  * We require only that the OUTER is sorted on a join key: take the leading
  * outer pathkey and find a mergejoinable join clause whose equivalence class
  * matches it (no inner pathkey is needed).  Both sides' statistics are used,
- * in different roles: the INNER histogram supplies a single boundary value --
- * its lowest join key (highest for a DESC outer) -- and the OUTER's own
- * statistics estimate the fraction of outer rows that sort before that
- * boundary.  This is the outer half of what initial_cost_mergejoin derives.
- *
- * Unlike merge join, we make that fraction FILTER-AWARE
- * (yb_bnl_outer_skip_selectivity): mergejoinscansel measures the leading
- * mismatch over the FULL outer column histogram, ignoring the outer scan's
- * own restriction.  Multiplying that full-column fraction by the already
- * restricted outer_path_rows over-counts the skip whenever the outer is
- * itself bounded to start at/above the inner's matching range (e.g.
- * "outer.k >= c" with c >= min(inner.k) has NO leading mismatch, yet the
- * full-column fraction is large).  Conditioning the fraction on the outer
- * relation's baserestrictinfo collapses it to ~0 there while preserving a
- * genuine low-key prefix.
+ * in different roles: the INNER supplies a single boundary value, its first
+ * join key in the outer's sort order, and the OUTER's own statistics estimate
+ * the fraction of outer rows that sort before that boundary.  This is the
+ * outer half of what initial_cost_mergejoin derives, and
+ * yb_bnl_outer_skip_selectivity seeds it as mergejoinscansel does and adjusts
+ * it with yb_adjust_scansel_for_restrictions: the outer's own range bounds
+ * remove leading mismatches the full column counts (e.g. "outer.k >= c" with
+ * c >= min(inner.k) has NO leading mismatch, yet the full-column fraction is
+ * large), and the inner's bound on the side where its keys start moves its
+ * first key, since the inner's restrictions apply on every probe.
  *
  * Returns 0 (the conservative fallback merge join also uses) when the outer is
  * unsorted, no mergejoinable join clause matches the leading pathkey, or the
- * stats/bounds needed for a filter-aware estimate are unavailable.
+ * statistics the estimate needs are unavailable.
  */
 static double
 yb_bnl_outer_skip_rows(PlannerInfo *root, Path *outer_path,
@@ -11094,8 +11089,7 @@ yb_bnl_outer_skip_rows(PlannerInfo *root, Path *outer_path,
 			yb_bnl_outer_skip_selectivity(root, (Node *) rinfo->clause,
 										  opathkey->pk_opfamily,
 										  opathkey->pk_strategy,
-										  outer_path->parent->relids,
-										  outer_path->parent->baserestrictinfo);
+										  outer_path->parent->relids);
 		if (outerstartsel < 0.0)
 			return 0.0;
 

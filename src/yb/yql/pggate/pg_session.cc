@@ -226,7 +226,15 @@ Result<bool> ShouldHandleTransactionally(const PgTxnManager& txn_manager,
     return true;
   }
 
-  if (txn_manager.IsDdlMode() || (non_ddl_txn_for_sys_tables_allowed && has_non_ddl_txn)) {
+  // yb_read_time_skip_catalog means catalog reads must see the catalog as of now.  In legacy
+  // catalog mode, such a read can't join the transaction, because an earlier table read may have
+  // pinned the transaction's read point to yb_read_time.  In transactional catalog mode it still
+  // joins, which is fine: catalog reads there first switch to their own catalog snapshot
+  // read point (see UpdateReadPointForCatalogOps).
+  const auto read_catalog_as_of_now =
+      op.is_read() && yb_read_time != 0 && yb_read_time_skip_catalog;
+  if (txn_manager.IsDdlMode() ||
+      (non_ddl_txn_for_sys_tables_allowed && has_non_ddl_txn && !read_catalog_as_of_now)) {
     return true;
   }
   if (op.is_write()) {
@@ -926,7 +934,7 @@ Status PgSession::CheckConflictWithYbReadTime(const PgsqlOps& operations) {
 }
 
 Status PgSession::SetReadTimeIfPresent(
-    const PgsqlOps& operations, tserver::PgPerformOptionsPB& options) {
+    const PgsqlOps& operations, bool has_catalog_ops, tserver::PgPerformOptionsPB& options) {
   const auto ops_read_time = VERIFY_RESULT(GetReadTime(operations));
   if (ops_read_time) {
     RETURN_NOT_OK(UpdateReadTime(*options.mutable_read_time_options(), ops_read_time));
@@ -937,10 +945,14 @@ Status PgSession::SetReadTimeIfPresent(
         options.mutable_read_time_options()->mutable_read_time());
   } else if (yb_read_time != 0) {
     RETURN_NOT_OK(CheckConflictWithYbReadTime(operations));
-    const auto read_ht = yb_is_read_time_ht
-        ? ReadHybridTime::FromUint64(yb_read_time)
-        : ReadHybridTime::FromMicros(yb_read_time);
-    read_ht.ToPB(options.mutable_read_time_options()->mutable_read_time());
+    // Catalog reads never get batched together with other tables.
+    const auto read_catalog_as_of_now = yb_read_time_skip_catalog && has_catalog_ops;
+    if (!read_catalog_as_of_now) {
+      const auto read_ht = yb_is_read_time_ht
+          ? ReadHybridTime::FromUint64(yb_read_time)
+          : ReadHybridTime::FromMicros(yb_read_time);
+      read_ht.ToPB(options.mutable_read_time_options()->mutable_read_time());
+    }
   }
   return Status::OK();
 }
@@ -949,7 +961,7 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
   DCHECK(!ops.Empty());
   tserver::PgPerformOptionsPB options;
   // Passed read time takes precedence over other read time options.
-  RETURN_NOT_OK(SetReadTimeIfPresent(ops.operations(), options));
+  RETURN_NOT_OK(SetReadTimeIfPresent(ops.operations(), ops_options.has_catalog_ops, options));
 
   if (ops_options.use_legacy_catalog_session) {
     auto& read_time_options = *options.mutable_read_time_options();
@@ -1050,6 +1062,9 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
     auto& caching_info = *options.mutable_caching_info();
     caching_info.set_key_group(cache_options.key_group);
     caching_info.set_key_value(std::move(cache_options.key_value));
+    caching_info.set_catalog_version(cache_options.catalog_version);
+    caching_info.set_lookup_only(cache_options.lookup_only);
+    caching_info.set_completes_connection_prefetch(cache_options.completes_connection_prefetch);
     if (cache_options.lifetime_threshold_ms) {
       caching_info.mutable_lifetime_threshold_ms()->set_value(*cache_options.lifetime_threshold_ms);
     }
@@ -1061,6 +1076,15 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
 
   if (auto origin_id = pg_callbacks_.GetSessionReplicationOriginId()) {
     options.set_xrepl_origin_id(origin_id);
+
+    // The origin is sent either way, because it is not only used for stamping - CDCSDK reports it
+    // on change records. CDR metadata is not stamped on the rows when xrepl_source_write_ht is
+    // absent.
+    if (auto origin_ts = pg_callbacks_.GetSessionReplicationOriginTimestamp();
+        origin_ts > 0 && static_cast<MicrosTime>(origin_ts) <= kMaxHybridTimePhysicalMicros) {
+      options.set_xrepl_source_write_ht(
+          HybridTime::FromMicros(static_cast<MicrosTime>(origin_ts)).ToUint64());
+    }
   }
 
   DEBUG_ONLY(pg_txn_manager_->DEBUG_CheckOptionsForPerform(options));

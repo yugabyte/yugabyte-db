@@ -1001,7 +1001,10 @@
             "YBA_K8S_DISK_USAGE",
             "OTEL_COLLECTOR_RESTART",
             "NODE_EXPORTER_TLS_ROOT_NODES",
-            "NODE_EXPORTER_ROOT_NON_UNIVERSE"
+            "NODE_EXPORTER_ROOT_NON_UNIVERSE",
+            "DB_K8S_CPU_USAGE",
+            "DB_K8S_MEMORY_USAGE",
+            "DB_K8S_DATA_VOLUME_USAGE"
           ],
           "type" : "string"
         },
@@ -1205,7 +1208,10 @@
             "YBA_K8S_DISK_USAGE",
             "OTEL_COLLECTOR_RESTART",
             "NODE_EXPORTER_TLS_ROOT_NODES",
-            "NODE_EXPORTER_ROOT_NON_UNIVERSE"
+            "NODE_EXPORTER_ROOT_NON_UNIVERSE",
+            "DB_K8S_CPU_USAGE",
+            "DB_K8S_MEMORY_USAGE",
+            "DB_K8S_DATA_VOLUME_USAGE"
           ],
           "type" : "string"
         },
@@ -1505,7 +1511,10 @@
             "YBA_K8S_DISK_USAGE",
             "OTEL_COLLECTOR_RESTART",
             "NODE_EXPORTER_TLS_ROOT_NODES",
-            "NODE_EXPORTER_ROOT_NON_UNIVERSE"
+            "NODE_EXPORTER_ROOT_NON_UNIVERSE",
+            "DB_K8S_CPU_USAGE",
+            "DB_K8S_MEMORY_USAGE",
+            "DB_K8S_DATA_VOLUME_USAGE"
           ],
           "type" : "string"
         },
@@ -3029,7 +3038,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -6073,7 +6083,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -9350,7 +9361,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -10223,7 +10235,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -11789,7 +11802,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -12556,7 +12570,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -16265,6 +16280,12 @@
           "minimum" : 1,
           "type" : "integer"
         },
+        "max_num_replicas" : {
+          "description" : "Maximum replicas",
+          "format" : "int32",
+          "minimum" : 1,
+          "type" : "integer"
+        },
         "min_num_replicas" : {
           "description" : "Minimum replicas",
           "format" : "int32",
@@ -16461,12 +16482,22 @@
           ],
           "type" : "string"
         },
+        "maxFileSize" : {
+          "description" : "WARNING: This is a preview API that could change. Maximum size of the active application log file before it is rolled over, for example \"1024MB\" or \"1GB\". Minimum 256MB.",
+          "example" : "1024MB",
+          "type" : "string"
+        },
         "maxHistory" : {
           "format" : "int32",
           "minimum" : 0,
           "type" : "integer"
         },
         "rolloverPattern" : {
+          "type" : "string"
+        },
+        "totalSizeCap" : {
+          "description" : "WARNING: This is a preview API that could change. Total size of retained application log archives, for example \"20GB\". Archives are deleted oldest first once this is exceeded, so on a high volume node this binds before maxHistory and retains fewer days than maxHistory allows. Minimum 5GB.",
+          "example" : "20GB",
           "type" : "string"
         }
       },
@@ -17453,7 +17484,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -18174,7 +18206,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -19280,7 +19313,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -20157,7 +20191,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -21742,7 +21777,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -22450,7 +22486,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -22896,7 +22933,8 @@
               "SaveSoftwareUpgradeProgress",
               "CheckDuplicateInstance",
               "RunUpgradeNodeAgent",
-              "CreateYbStorageDatabase"
+              "CreateYbStorageDatabase",
+              "WaitForRpcClientCert"
             ],
             "type" : "string"
           },
@@ -23496,7 +23534,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -24309,7 +24348,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -25511,7 +25551,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -26902,7 +26943,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -27622,7 +27664,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -28488,7 +28531,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -29173,7 +29217,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -29858,7 +29903,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -31064,7 +31110,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -31285,6 +31332,10 @@
           "type" : "string"
         },
         "useHostname" : {
+          "type" : "boolean"
+        },
+        "useNodeToNodeClientCerts" : {
+          "description" : "WARNING: This is a preview API that could change. Servers require a client cert on RPC (node_to_node_encryption_use_client_certificates). Supported only on Kubernetes universes whose node-to-node encryption uses a cert-manager (K8SCertManager) root CA; VM universes and Kubernetes universes with other root CA types are not supported. Can only be set at universe creation.",
           "type" : "boolean"
         },
         "useSpotInstance" : {
@@ -32250,7 +32301,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },

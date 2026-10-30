@@ -345,7 +345,8 @@ public class XClusterUniverseService {
             sourceUniverseCertificate,
             ybClientTimeout,
             ybClientTimeout);
-    try (YBClientApi client = ybService.getClientWithConfig(clientConfig)) {
+    try (YBClientApi client =
+        ybService.getClientWithConfig(clientConfig.withClientCertOf(sourceUniverse))) {
       try {
         int partitionSize =
             XClusterConfigTaskBase.supportsMultipleTablesWithIsBootstrapRequired(sourceUniverse)
@@ -526,7 +527,8 @@ public class XClusterUniverseService {
     String targetUniverseCertificate = targetUniverse.getCertificateNodetoNode();
     YbClientConfig clientConfig =
         ybClientConfigFactory.create(targetUniverseMasterAddresses, targetUniverseCertificate);
-    try (YBClientApi client = ybService.getClientWithConfig(clientConfig)) {
+    try (YBClientApi client =
+        ybService.getClientWithConfig(clientConfig.withClientCertOf(targetUniverse))) {
       GetReplicationStatusResponse resp =
           client.getReplicationStatus(xClusterConfig.getReplicationGroupName());
       if (resp.hasError()) {
@@ -579,7 +581,8 @@ public class XClusterUniverseService {
     String targetUniverseCertificate = targetUniverse.getCertificateNodetoNode();
     YbClientConfig clientConfig =
         ybClientConfigFactory.create(targetUniverseMasterAddresses, targetUniverseCertificate);
-    try (YBClientApi client = ybService.getClientWithConfig(clientConfig)) {
+    try (YBClientApi client =
+        ybService.getClientWithConfig(clientConfig.withClientCertOf(targetUniverse))) {
       GetXClusterSafeTimeResponse resp = client.getXClusterSafeTime();
       if (resp.hasError()) {
         throw new RuntimeException(

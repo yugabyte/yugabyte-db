@@ -182,6 +182,10 @@ class PgSupervisor : public ProcessSupervisor {
   // So the semantics should maybe be different.
   Status StartAndMaybePause();
 
+  // Whether StartAndMaybePause leaves PG paused, to be started by the server's RestartPG.  Decided
+  // once, at construction, so that the connection manager is created to match.
+  bool starts_paused() const { return starts_paused_; }
+
   Status ReloadConfig();
   Status UpdateAndReloadConfig();
   std::shared_ptr<ProcessWrapper> CreateProcessWrapper() override;
@@ -208,6 +212,7 @@ class PgSupervisor : public ProcessSupervisor {
   PgWrapperContext* server_;
   std::vector<FlagCallbackRegistration> flag_callbacks_ GUARDED_BY(mtx_);
   key_t ysql_conn_mgr_stats_shmem_key_ = 0;
+  const bool starts_paused_;
 
   std::string GetProcessName() override {
     return "PostgreSQL";

@@ -276,6 +276,11 @@ class XClusterSourceManager {
       const NamespaceId& namespace_id,
       const xcluster::ReplicationGroupId& drop_replication_group_id) const;
 
+  // Refuses user YSQL writes and commits to namespace_id that originated before this call, unless
+  // the persistence gate is not enforced yet.
+  Status StartPersistingAfterCheckpoint(
+      const NamespaceId& namespace_id, const LeaderEpoch& epoch) const;
+
   Master& master_;
   CatalogManager& catalog_manager_;
   SysCatalogTable& sys_catalog_;

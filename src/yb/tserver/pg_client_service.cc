@@ -784,7 +784,13 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
         table_cache_(client_future_, messenger_.ThreadPool()),
         db_cache_(client_future_),
         check_object_id_allocators_("check_object_id_allocators", &messenger->scheduler()),
-        response_cache_(parent_mem_tracker, metric_entity),
+        response_cache_(
+            parent_mem_tracker, metric_entity,
+            [this](PgResponseCache::KeyGroup key_group, uint64_t catalog_version) {
+              // The key group is the database oid the prefetch was cached for.
+              const_cast<TabletServerIf&>(tablet_server_)
+                  .SetYsqlDbLastPrefetchedCatalogVersion(key_group, catalog_version);
+            }),
         instance_id_(permanent_uuid),
         shared_mem_pool_(parent_mem_tracker, instance_id_),
         transaction_builder_([this](auto&&... args) {
@@ -953,13 +959,19 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
     return client().GetNamespaceInfo(GetPgsqlNamespaceId(req.oid()), resp->mutable_info());
   }
 
-  Status IsDatabaseColocated(
+  void IsDatabaseColocated(
       const PgIsDatabaseColocatedRequestPB& req, PgIsDatabaseColocatedResponsePB* resp,
-      rpc::RpcContext* context) {
-    auto info = VERIFY_RESULT(db_cache_.GetColocationInfo(req.database_oid()));
-    resp->set_colocated(info.colocated);
-    resp->set_legacy_colocated_database(info.legacy_colocated_database);
-    return Status::OK();
+      rpc::RpcContext context) {
+    db_cache_.GetColocationInfo(
+        req.database_oid(),
+        [resp, context = std::make_shared<rpc::RpcContext>(std::move(context))](
+            Result<PgDbCache::ColocationInfo> info) {
+          if (info.ok()) {
+            resp->set_colocated(info->colocated);
+            resp->set_legacy_colocated_database(info->legacy_colocated_database);
+          }
+          Respond(ResultToStatus(info), resp, context.get());
+        });
   }
 
   Result<PgPollVectorIndexReadyResponsePB> PollVectorIndexReady(

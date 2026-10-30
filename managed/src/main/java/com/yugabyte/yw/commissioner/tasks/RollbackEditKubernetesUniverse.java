@@ -105,6 +105,8 @@ public class RollbackEditKubernetesUniverse extends KubernetesTaskBase {
       details.requireRollbackable();
       UniverseDefinitionTaskParams before = details.getBeforeUniverseDetails();
       UniverseDefinitionTaskParams target = details.getTargetUniverseDetails();
+      // A read-replica-only edit checkpointed by an older build has no primary in its target.
+      addPrimaryClusterIfMissing(target, before);
       log.info(
           "RollbackEditKubernetesUniverse for {}: restoring pre-edit topology (primary tservers"
               + " {} -> {}); pods added by the failed edit within the safe window will be removed.",
@@ -123,7 +125,7 @@ public class RollbackEditKubernetesUniverse extends KubernetesTaskBase {
       boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
 
       PlacementInfo beforePrimaryPI = beforePrimary.placementInfo;
-      selectNumMastersAZ(beforePrimaryPI);
+      selectNumMastersAZ(beforePrimaryPI, beforePrimary);
       KubernetesPlacement beforePrimaryPlacement =
           new KubernetesPlacement(beforePrimaryPI, false /* isReadOnlyCluster */);
       String masterAddresses =
@@ -211,8 +213,8 @@ public class RollbackEditKubernetesUniverse extends KubernetesTaskBase {
     PlacementInfo beforePI = beforeCluster.placementInfo;
     PlacementInfo targetPI = targetCluster.placementInfo;
     if (!isReadOnlyCluster) {
-      selectNumMastersAZ(beforePI);
-      selectNumMastersAZ(targetPI);
+      selectNumMastersAZ(beforePI, beforeCluster);
+      selectNumMastersAZ(targetPI, targetCluster);
     }
     KubernetesPlacement preEditPlacement = new KubernetesPlacement(beforePI, isReadOnlyCluster);
     KubernetesPlacement targetPlacement = new KubernetesPlacement(targetPI, isReadOnlyCluster);

@@ -6,10 +6,12 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.google.common.collect.Sets;
 import com.google.inject.Inject;
+import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.forms.KubernetesOverridesResponse;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
@@ -63,6 +65,17 @@ public class KubernetesOverridesHandler {
       Map<String, String> azsOverrides = userIntent.azOverrides;
       if (azsOverrides == null) {
         azsOverrides = new HashMap<>();
+      }
+
+      // The gflags checks the create and overrides upgrade APIs run on the same overrides; the
+      // universe is created FIPS enabled on a FIPS YBA.
+      try {
+        GFlagsUtil.validateHelmOverridesGFlags(
+            userIntent.universeOverrides,
+            azsOverrides,
+            taskParams.fipsEnabled || AppConfigHelper.isFipsEnabled());
+      } catch (PlatformServiceException e) {
+        overrideErrorsSet.add(e.getMessage());
       }
 
       // For every AZ, run helm template with overrides and collect errors.

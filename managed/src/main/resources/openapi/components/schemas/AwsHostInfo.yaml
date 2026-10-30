@@ -1,0 +1,22 @@
+title: AwsHostInfo
+description: EC2 instance metadata of the YBA host. Part of HostCloudInfo.
+type: object
+properties:
+  instance_id:
+    description: EC2 instance ID
+    type: string
+    readOnly: true
+  vpc_id:
+    description: VPC of the instance's primary network interface
+    type: string
+    readOnly: true
+  private_ip:
+    description: Private IP address of the instance
+    type: string
+    readOnly: true
+  region:
+    description: AWS region
+    type: string
+    readOnly: true
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview

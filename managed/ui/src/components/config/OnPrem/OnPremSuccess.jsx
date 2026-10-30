@@ -10,6 +10,7 @@ import {
   pickArray
 } from '../../../utils/ObjectUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
+import { getPrimaryCluster } from '../../../utils/UniverseUtils';
 import { DescriptionList } from '../../common/descriptors';
 import { YBButton, YBControlledSelectWithLabel } from '../../common/forms/fields';
 import { YBLoading } from '../../common/indicators';
@@ -257,7 +258,8 @@ class NewOnPremSuccess extends Component {
 
     const universeExistsForProvider = (universeList.data || []).some(
       (universe) =>
-        universe?.universeDetails?.clusters[0]?.userIntent.provider === currentProvider.uuid
+        getPrimaryCluster(universe?.universeDetails?.clusters)?.userIntent.provider ===
+        currentProvider.uuid
     );
 
     const buttons = (

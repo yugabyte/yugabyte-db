@@ -2018,7 +2018,8 @@ TEST_F(PgDelayedSplitAtFollower, TestDelayedSplitAtFollower) {
   // follower may flush an empty regular memtable (a no-op) and end up without any level-0 SST file.
   // If such a follower later becomes the leader, GetSplitKey fails with "No SST file at level 0",
   // which is not retried for a manual split, so the split never completes.
-  ASSERT_OK(WaitAllReplicasSynchronizedWithLeader(cluster_.get(), 30s * kTimeMultiplier));
+  ASSERT_OK(WaitAllReplicasSynchronizedWithLeader(
+      cluster_.get(), 30s * kTimeMultiplier, RequireLeaderIsReady::kTrue));
   ASSERT_OK(cluster_->FlushTablets());
 
   // Stop tserver C (index 2)
@@ -2305,7 +2306,7 @@ TEST_F(PgTabletSplitTest, AsyncWriteRaceWithSplit) {
       tablet::FlushMode::kSync, tablet::FlushFlags::kIntents, rocksdb::FlushReason::kTestOnly));
 
   const auto stored = ASSERT_RESULT(
-      source_tablet->MaxPersistentOpId(/* invalid_if_no_new_data = */ false));
+      source_tablet->GetPersistentState(/* invalid_if_no_new_data = */ false));
   LOG(INFO) << "After race+flush: split_op_id=" << split_op_id
             << " regular_flushed_op_id=" << stored.regular
             << " intents_flushed_op_id=" << stored.intents;

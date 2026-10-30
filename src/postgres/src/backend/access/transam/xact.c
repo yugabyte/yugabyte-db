@@ -2650,6 +2650,11 @@ CommitTransaction(void)
 	AtEOXact_PgStat(true, is_parallel_worker);
 	AtEOXact_Snapshot(true, false);
 	AtEOXact_ApplyLauncher(true);
+	if (IsYugaByteEnabled())
+	{
+		YbAtEOXact_ReplicationOrigin();
+		YbAtEOXact_UpgradeNextOid();
+	}
 	pgstat_report_xact_timestamp(0);
 
 	CurrentResourceOwner = NULL;
@@ -2950,6 +2955,11 @@ PrepareTransaction(void)
 	AtEOXact_HashTables(true);
 	/* don't call AtEOXact_PgStat here; we fixed pgstat state above */
 	AtEOXact_Snapshot(true, true);
+	if (IsYugaByteEnabled())
+	{
+		YbAtEOXact_ReplicationOrigin();
+		YbAtEOXact_UpgradeNextOid();
+	}
 	pgstat_report_xact_timestamp(0);
 
 	CurrentResourceOwner = NULL;
@@ -3177,6 +3187,17 @@ AbortTransaction(void)
 		AtEOXact_PgStat(false, is_parallel_worker);
 		AtEOXact_ApplyLauncher(false);
 		pgstat_report_xact_timestamp(0);
+	}
+
+	/*
+	 * YB: This is done outside the block above, which is skipped when the
+	 * transaction fails before creating a resource owner.  A stale stamp or
+	 * upgrade OID counter has to be cleared on every exit.
+	 */
+	if (IsYugaByteEnabled())
+	{
+		YbAtEOXact_ReplicationOrigin();
+		YbAtEOXact_UpgradeNextOid();
 	}
 
 	YBCAbortTransaction();
@@ -5746,6 +5767,9 @@ AbortSubTransaction(void)
 			 TransStateAsString(s->state));
 
 	s->state = TRANS_ABORT;
+
+	if (IsYugaByteEnabled())
+		YBCPgClearSessionState();
 
 	/*
 	 * Reset user ID which might have been changed transiently.  (See notes in

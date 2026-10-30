@@ -104,7 +104,7 @@ Status UpdatePackedRow(
 }
 
 Status CombineExternalIntents(
-    const tablet::TransactionStatePB& transaction_state, SubTransactionId subtransaction_id,
+    const TransactionId& txn_id, const Uuid& involved_tablet, SubTransactionId subtransaction_id,
     const google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>& pairs,
     Slice delete_vector_ids,
     docdb::KeyValuePairMsg* out, std::unordered_set<SchemaVersion>& used_packed_schema_versions,
@@ -175,15 +175,44 @@ Status CombineExternalIntents(
     Status status = Status::OK();
   };
 
-  auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(transaction_state.transaction_id()));
-  SCHECK_EQ(transaction_state.tablets().size(), 1, InvalidArgument, "Wrong tablets number");
-  auto source_tablet = VERIFY_RESULT(Uuid::FromHexString(transaction_state.tablets()[0]));
-
   Provider provider(
-      source_tablet, &pairs, schema_versions_map, out, used_packed_schema_versions,
+      involved_tablet, &pairs, schema_versions_map, out, used_packed_schema_versions,
       delete_vector_ids);
   docdb::CombineExternalIntents(txn_id, subtransaction_id, &provider);
   return provider.GetOutcome();
+}
+
+Status CombineExternalIntents(
+    const tablet::TransactionStatePB& transaction_state, SubTransactionId subtransaction_id,
+    const google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>& pairs,
+    Slice delete_vector_ids,
+    docdb::KeyValuePairMsg* out, std::unordered_set<SchemaVersion>& used_packed_schema_versions,
+    const cdc::XClusterSchemaVersionMap& schema_versions_map) {
+  auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(transaction_state.transaction_id()));
+  SCHECK_EQ(transaction_state.tablets().size(), 1, InvalidArgument, "Wrong tablets number");
+  auto source_tablet = VERIFY_RESULT(Uuid::FromHexString(transaction_state.tablets()[0]));
+  return CombineExternalIntents(
+      txn_id, source_tablet, subtransaction_id, pairs, delete_vector_ids, out,
+      used_packed_schema_versions, schema_versions_map);
+}
+
+// Tombstones the ids replaced by a non-transactional source op at the op's hybrid time: the request
+// applies an external transaction without key-value pairs, committed at that time. Batch level ids
+// would be tombstoned at the request's hybrid time, the time of its first record.
+Status AddVectorIdTombstones(
+    const TransactionId& txn_id, const cdc::CDCRecordPB& record,
+    std::unordered_set<SchemaVersion>& used_packed_schema_versions,
+    const cdc::XClusterSchemaVersionMap& schema_versions_map,
+    docdb::KeyValueWriteBatchMsg& write_batch) {
+  RETURN_NOT_OK(CombineExternalIntents(
+      txn_id, Uuid::Nil(), kMinSubTransactionId,
+      google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>(), Slice(record.delete_vector_ids()),
+      write_batch.mutable_write_pairs()->Add(), used_packed_schema_versions, schema_versions_map));
+  auto* apply_txn = write_batch.mutable_apply_external_transactions()->Add();
+  apply_txn->dup_transaction_id(txn_id.AsSlice());
+  apply_txn->set_commit_hybrid_time(record.time());
+  apply_txn->set_filter_range_encoded(true);
+  return Status::OK();
 }
 
 Status AddRecord(
@@ -271,25 +300,65 @@ class XClusterWriteImplementation : public XClusterWriteInterface {
   Status ProcessRecord(
       const ProcessRecordInfo& process_record_info, const cdc::CDCRecordPB& record) override {
     const auto& tablet_id = process_record_info.tablet_id;
-    docdb::KeyValueWriteBatchMsg* write_batch = nullptr;
-    // Finally, handle records to be applied to both regular and intents db.
-    auto it = records_.find(tablet_id);
-    if (it == records_.end()) {
-      // Create a write request for tablet.
-      auto write_request = rpc::SharedMessage<LWWriteRequestPB>();
-      write_request->dup_tablet_id(tablet_id);
-      write_request->set_external_hybrid_time(record.time());
-      // Set on all consumer writes, but only used for producer filters on automatic mode.
-      write_request->set_xcluster_target_applied(true);
-      write_batch = write_request->mutable_write_batch();
-      records_.emplace(tablet_id, std::move(write_request));
-    } else {
-      write_batch = it->second->mutable_write_batch();
+    auto& used_packed_schema_versions =
+        used_packed_schema_versions_[process_record_info.colocation_id];
+    auto& tablet_request = GetTabletRequest(tablet_id, record);
+    RETURN_NOT_OK(AddRecord(
+        process_record_info, record, used_packed_schema_versions,
+        tablet_request.request->mutable_write_batch()));
+
+    if (record.operation() != cdc::CDCRecordPB::WRITE &&
+        record.operation() != cdc::CDCRecordPB::DELETE) {
+      return Status::OK();
+    }
+    // All records of a source WAL op arrive consecutively and carry the op's hybrid time, so the
+    // tablets stamped with it are the ones that received rows of the op.
+    tablet_request.last_write_op_time = record.time();
+    if (!record.has_delete_vector_ids()) {
+      return Status::OK();
     }
 
-    return AddRecord(
-        process_record_info, record,
-        used_packed_schema_versions_[process_record_info.colocation_id], write_batch);
+    // The source does not know which row each replaced vector id belongs to, so it attaches the
+    // ids of its whole write batch to the batch's last record. When the target is partitioned
+    // differently, the batch's rows can land on several target tablets, and each of them must
+    // tombstone the ids or its vector index keeps returning the replaced vectors (#34419).
+    // Tombstoning an id on a tablet that never had it is correct, since vector ids are unique.
+    Slice delete_vector_ids(record.delete_vector_ids());
+    std::optional<TransactionId> tombstones_txn_id;
+    for (auto& [op_tablet_id, op_tablet_request] : records_) {
+      if (op_tablet_request.last_write_op_time != record.time()) {
+        continue;
+      }
+      auto& write_batch = *op_tablet_request.request->mutable_write_batch();
+      // Empty batch level ids tombstone nothing but mark the tablet as having vector deletions, so
+      // its searches check their candidates. Tables without the reverse mapping send only empty
+      // ids, see DocWriteBatch::MarkVectorDeletion.
+      write_batch.dup_delete_vector_ids(Slice());
+      if (delete_vector_ids.empty()) {
+        continue;
+      }
+      if (!record.has_transaction_state()) {
+        if (!tombstones_txn_id) {
+          tombstones_txn_id = TransactionId::GenerateRandom();
+        }
+        RETURN_NOT_OK(AddVectorIdTombstones(
+            *tombstones_txn_id, record, used_packed_schema_versions,
+            process_record_info.schema_versions_map, write_batch));
+        continue;
+      }
+      // AddRecord already appended the ids to this record's external intents.
+      if (op_tablet_id == tablet_id) {
+        continue;
+      }
+      // External intents without key-value pairs: applying them only tombstones the ids.
+      RETURN_NOT_OK(CombineExternalIntents(
+          record.transaction_state(),
+          record.has_subtransaction_id() ? record.subtransaction_id() : kMinSubTransactionId,
+          google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>(), delete_vector_ids,
+          write_batch.mutable_write_pairs()->Add(), used_packed_schema_versions,
+          process_record_info.schema_versions_map));
+    }
+    return Status::OK();
   }
 
   std::shared_ptr<WriteRequestMsg> FetchNextRequest() override {
@@ -297,7 +366,7 @@ class XClusterWriteImplementation : public XClusterWriteInterface {
       return nullptr;
     }
     auto it = records_.begin();
-    auto next_req = std::move(it->second);
+    auto next_req = std::move(it->second.request);
     records_.erase(it);
 
     for (const auto& [colocation_id, used_packed_schema_versions] : used_packed_schema_versions_) {
@@ -314,9 +383,29 @@ class XClusterWriteImplementation : public XClusterWriteInterface {
   }
 
  private:
+  struct TabletRequest {
+    std::shared_ptr<WriteRequestMsg> request;
+    // Hybrid time of the last source WAL op whose WRITE/DELETE records reached this tablet.
+    uint64_t last_write_op_time = 0;
+  };
+
+  TabletRequest& GetTabletRequest(const TabletId& tablet_id, const cdc::CDCRecordPB& record) {
+    auto it = records_.find(tablet_id);
+    if (it != records_.end()) {
+      return it->second;
+    }
+    auto write_request = rpc::SharedMessage<LWWriteRequestPB>();
+    write_request->dup_tablet_id(tablet_id);
+    write_request->set_external_hybrid_time(record.time());
+    // Set on all consumer writes, but only used for producer filters on automatic mode.
+    write_request->set_xcluster_target_applied(true);
+    return records_.emplace(tablet_id, TabletRequest{.request = std::move(write_request)})
+        .first->second;
+  }
+
   // Contains key value pairs to apply to regular and intents db. The key of this map is the
   // tablet to send to.
-  UnorderedStringMap<TabletId, std::shared_ptr<WriteRequestMsg>> records_;
+  UnorderedStringMap<TabletId, TabletRequest> records_;
 
   // Keep track of the packed schema versions used.
   // kColocationIdNotSet is used for non-colocated tables.

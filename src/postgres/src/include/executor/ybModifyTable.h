@@ -89,6 +89,15 @@ extern void YBCHeapInsert(ResultRelInfo *resultRelInfo,
 extern bool YbIsInsertOnConflictReadBatchingPossible(ResultRelInfo *resultRelInfo);
 
 /*
+ * Combine the planner's IOC pushdown hint with properties available only after
+ * the target relation is opened, then initialize the executor's conflict
+ * strategy.  Pushdown takes precedence over the existing read-side
+ * optimizations.
+ */
+extern void YbInitIocStrategy(ResultRelInfo *resultRelInfo,
+							  ModifyTable *node);
+
+/*
  * Insert a tuple into a YugaByte table. Will execute within a distributed
  * transaction if the table is transactional (YSQL default).
  *
@@ -116,6 +125,11 @@ extern void YBCExecuteInsertForDb(Oid dboid,
 								  YbcPgTransactionSetting transaction_setting);
 
 extern void YBCApplyWriteStmt(YbcPgStatement handle, Relation relation);
+
+extern bool YBCExecuteIocPushdown(Relation rel,
+								  TupleTableSlot *slot,
+								  EState *estate,
+								  OnConflictAction onConflictAction);
 
 /*
  * Execute the insert outside of a transaction.

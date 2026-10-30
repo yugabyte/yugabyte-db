@@ -179,8 +179,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
   private void createCheckOCIImageEligibilityTask(Universe universe) {
     Set<NodeDetails> ociNodes =
         toOrderedSet(getNodesToBeRestarted().asPair()).stream()
-            .filter(
-                n -> universe.getCluster(n.placementUuid).getProviderCloudType(n) == CloudType.oci)
+            .filter(n -> isOciNode(universe, n))
             .collect(Collectors.toCollection(LinkedHashSet::new));
     Map<String, ImageSettings> imageSettingsMap = getImageSettingsForNodes(ociNodes);
     Set<CheckOCIImageEligibility.BundleImage> targetImages = new LinkedHashSet<>();
@@ -215,6 +214,10 @@ public class VMImageUpgrade extends UpgradeTaskBase {
           task.initialize(params);
           subTaskGroup.addSubTask(task);
         });
+  }
+
+  private static boolean isOciNode(Universe universe, NodeDetails node) {
+    return universe.getCluster(node.placementUuid).getProviderCloudType(node) == CloudType.oci;
   }
 
   @Override
@@ -398,7 +401,14 @@ public class VMImageUpgrade extends UpgradeTaskBase {
       replacementRootDevices.putAll(runtimeInfo.replacementRootDevices);
       replacementRootVolumes.putAll(runtimeInfo.replacementRootVolumes);
     } else {
-      createRootVolumeCreationTasks(nodes, imageSettingsMap)
+      // OCI creates the new boot volume from the image during ReplaceRootVolume.
+      Universe universe = getUniverse();
+      List<NodeDetails> nodesNeedingVolumes =
+          nodes.stream().filter(n -> !isOciNode(universe, n)).collect(Collectors.toList());
+      if (nodesNeedingVolumes.isEmpty()) {
+        return;
+      }
+      createRootVolumeCreationTasks(nodesNeedingVolumes, imageSettingsMap)
           .setSubTaskGroupType(getTaskSubGroupType())
           .setAfterGroupRunListener(
               g ->
@@ -490,8 +500,8 @@ public class VMImageUpgrade extends UpgradeTaskBase {
     addParallelTasks(
             nodesToReplaceRootVolume,
             node -> {
-              ImageSettings imageSettings = imageSettingsMap.get(node.nodeName);
-              return createRootVolumeReplacementTask(node, imageSettings.sshPortOverride);
+              return createRootVolumeReplacementTask(
+                  universe, node, imageSettingsMap.get(node.nodeName));
             },
             "ReplaceRootVolume",
             getTaskSubGroupType())
@@ -675,14 +685,18 @@ public class VMImageUpgrade extends UpgradeTaskBase {
   }
 
   private ReplaceRootVolume createRootVolumeReplacementTask(
-      NodeDetails node, Integer sshPortOverride) {
+      Universe universe, NodeDetails node, ImageSettings imageSettings) {
     ReplaceRootVolume.Params replaceParams = new ReplaceRootVolume.Params();
     replaceParams.nodeName = node.nodeName;
     replaceParams.azUuid = node.azUuid;
     replaceParams.setUniverseUUID(taskParams().getUniverseUUID());
     replaceParams.bootDisksPerNodePerZone = this.replacementRootVolumes;
     replaceParams.rootDevicePerZone = this.replacementRootDevices;
-    replaceParams.sshPortOverride = sshPortOverride;
+    replaceParams.sshPortOverride = imageSettings.sshPortOverride;
+    if (isOciNode(universe, node)) {
+      replaceParams.replacementDisk = imageSettings.machineImage;
+      replaceParams.forceReplacement = taskParams().forceVMImageUpgrade;
+    }
 
     ReplaceRootVolume replaceDiskTask = createTask(ReplaceRootVolume.class);
     replaceDiskTask.initialize(replaceParams);

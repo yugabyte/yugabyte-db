@@ -536,6 +536,9 @@ extern int	yb_index_state_flags_update_delay;
  */
 extern bool yb_enable_expression_pushdown;
 
+/* Enables pushing INSERT ON CONFLICT DO NOTHING resolution to DocDB. */
+extern bool yb_enable_ioc_do_nothing_pushdown;
+
 /*
  * Enables distinct pushdown.
  * If true, send supported DISTINCT operations to DocDB
@@ -700,6 +703,12 @@ extern bool yb_enable_fkey_batched_docdb_lookup_when_types_mismatch;
 extern bool yb_enable_nop_alter_role_optimization;
 
 /*
+ * Skip rebuild of expression and partial indexes during ALTER COLUMN ... TYPE
+ * when the table is not rewritten.
+ */
+extern bool yb_alter_type_reuse_expr_and_partial_indexes;
+
+/*
  * Compatibility option to ignore FREEZE with COPY FROM.
  */
 extern bool yb_ignore_freeze_with_copy;
@@ -789,6 +798,8 @@ extern int yb_test_sleep_before_executor_start_ms;
  * Resets to 0 after triggering.
  */
 extern int yb_test_fail_next_ddl;
+extern bool yb_test_fail_stale_catalog_message_check;
+extern bool yb_enable_stale_catalog_prefetch;
 
 /* Test fault injection: fail drop after heap_drop_with_catalog. */
 extern bool yb_test_fail_drop_after_heap_drop;
@@ -1353,14 +1364,6 @@ extern const int yb_pushdown_funcs_to_constify_count;
 extern const int yb_pushdown_sqlvaluefunctions_count;
 
 /**
- * Use the YB_PG_PDEATHSIG environment variable to set the signal to be sent to
- * the current process in case the parent process dies. This is Linux-specific
- * and can only be done from the child process (the postmaster process). The
- * parent process here is yb-master or yb-tserver.
- */
-void		YBSetParentDeathSignal();
-
-/**
  * Given a relation, return it's relfilenode OID. In YB, the relfilenode OID
  * maps to the relation's DocDB table ID. Note: if the table has not
  * previously been rewritten, this function returns the OID of the table.
@@ -1426,6 +1429,9 @@ void		YbUpdateSessionStats(YbInstrumentation *yb_instr);
 
 extern bool check_yb_read_time(char **newval, void **extra, GucSource source);
 extern void assign_yb_read_time(const char *newval, void *extra);
+extern bool check_yb_read_time_skip_catalog(bool *newval, void **extra,
+											GucSource source);
+extern void assign_yb_read_time_skip_catalog(bool newval, void *extra);
 
 extern uint64_t yb_origination_time;
 extern void YbRefreshOriginationTime(void);
@@ -1666,6 +1672,8 @@ extern const char *YbGetRedactedQueryString(const char *query, int *redacted_que
 /* Check if optimizations for UPDATE queries have been enabled. */
 extern bool YbIsUpdateOptimizationEnabled();
 
+extern bool YbIsIocPushdownEnabled(OnConflictAction action);
+
 extern void YbRelationSetNewRelfileNode(Relation rel, Oid relfileNodeId,
 										bool yb_copy_split_options,
 										bool is_truncate);
@@ -1737,7 +1745,13 @@ extern Oid	YbGetDatabaseOidToIncrementCatalogVersion();
 
 extern bool yb_default_collation_resolved;
 
+/*
+ * Whether every message in the lists is one this backend knows how to apply. Looks only at the
+ * message bytes, so a caller can ask before it has anything to apply them to.
+ */
+extern bool YbCanApplyInvalidationMessages(YbcCatalogMessageLists *message_lists);
 extern bool YbApplyInvalidationMessages(YbcCatalogMessageLists *message_lists);
+extern void YbUpdatePggateTableCacheAfterApply(void);
 
 extern bool YbInvalidationMessagesTableExists();
 
@@ -1746,6 +1760,12 @@ extern bool yb_is_calling_internal_sql_for_ddl;
 extern char *YbGetPotentiallyHiddenOidText(Oid oid);
 
 extern void YbWaitForSharedCatalogVersionToCatchup(uint64_t version);
+
+/* Whether this backend is authenticating on connection manager's behalf. */
+extern bool YbIsPerformingConnMgrAuth();
+
+/* The admission priority to ask the master for when prefetching ahead of authentication. */
+extern YbcPgSysTablePrefetchKind YbAuthPrefetchKind();
 
 extern bool YbIsInvalidationMessageEnabled();
 

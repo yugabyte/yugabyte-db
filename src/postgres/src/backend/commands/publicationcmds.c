@@ -587,6 +587,13 @@ check_simple_rowfilter_expr_walker(Node *node, ParseState *pstate)
 	}
 
 	/*
+	 * YB: a NULL pstate asks only whether the expression is simple; see
+	 * YbIsSimpleRowFilterExpr.
+	 */
+	if (errdetail_msg && pstate == NULL)
+		return true;
+
+	/*
 	 * If we found a problem in this node, throw error now. Otherwise keep
 	 * going.
 	 */
@@ -2059,4 +2066,18 @@ AlterPublicationOwner_oid(Oid subid, Oid newOwnerId)
 	heap_freetuple(tup);
 
 	table_close(rel, RowExclusiveLock);
+}
+
+/*
+ * YB: Returns whether 'node' is a "simple expression" as defined by
+ * check_simple_rowfilter_expr_walker, without raising an error.  Also used to
+ * restrict which index expressions and predicates ALTER COLUMN TYPE may reuse
+ * in place (see YbIndexReuseIsSafe); yb.orig.alter_table_rewrite pins the
+ * outcome for each node type so that upstream changes to the walker show up
+ * there.
+ */
+bool
+YbIsSimpleRowFilterExpr(Node *node)
+{
+	return !check_simple_rowfilter_expr_walker(node, NULL);
 }

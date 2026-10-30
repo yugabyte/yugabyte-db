@@ -366,6 +366,9 @@ class PeerMessageQueue {
 
   OpId TEST_GetCommittedIndex() const;
 
+  // Returns the last op replicated to all tracked peers, or OpId::Min() if not in leader mode.
+  OpId GetAllReplicatedOpId() const;
+
   OpId GetAllAppliedOpId() const;
 
   // Returns the current majority replicated OpId, for tests.

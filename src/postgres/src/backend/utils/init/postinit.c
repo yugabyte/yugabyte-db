@@ -1202,10 +1202,10 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 			YBCStartSysTablePrefetching(Template1DbOid,
 										catalog_version,
 										YB_YQL_PREFETCHER_TRUST_CACHE_AUTH,
-										YB_YQL_PREFETCH_KIND_CONNECTION_START);
+										YbAuthPrefetchKind());
 		}
 		else
-			YBCStartSysTablePrefetchingNoCache(YB_YQL_PREFETCH_KIND_CONNECTION_START);
+			YBCStartSysTablePrefetchingNoCache(YbAuthPrefetchKind());
 		YbRegisterSysTableForPrefetching(AuthIdRelationId); /* pg_authid */
 		YbRegisterSysTableForPrefetching(DatabaseRelationId);	/* pg_database */
 
@@ -1222,7 +1222,8 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 		 */
 		YbTryRegisterLogicalClientVersionTableForPrefetching();
 
-		HandleYBStatus(YBCPrefetchRegisteredSysTables());
+		/* Not a connection start's large set, so this records no catalog version. */
+		HandleYBStatus(YBCPrefetchRegisteredSysTables(false /* completes_connection_prefetch */ ));
 		/*
 		 * If per database catalog version mode is enabled, this will load the
 		 * catalog version of template1. It is fine because at this time we
@@ -1664,6 +1665,9 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 										&YbTablegroupCatalogExists));
 
 	RelationCacheInitializePhase3();
+
+	/* Before anything below reads the catalog for a decision that lasts the session. */
+	YbFinishStaleCatalogPrefetch();
 
 	/*
 	 * YB: Also cache whether the database is colocated for optimization

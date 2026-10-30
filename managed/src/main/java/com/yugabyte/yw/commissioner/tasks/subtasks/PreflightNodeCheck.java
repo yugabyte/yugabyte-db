@@ -12,6 +12,7 @@ import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.YnpProviderUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.models.NodeAgent;
@@ -105,8 +106,7 @@ public class PreflightNodeCheck extends NodeTaskBase {
         nodeAgentClient.runYnpPreflightCheck(nodeAgent, checkParams, null /* custom user */);
     if (checkOutput.getExitCode() != 0) {
       String errMsg =
-          String.format(
-              "Failed YNP preflight checks for node %s with exit code %d. Output: %s",
+          YnpProviderUtil.ynpPreflightFailureMessage(
               taskParams().nodeName, checkOutput.getExitCode(), checkOutput.getOutput());
       log.error(errMsg);
       throw new PlatformServiceException(BAD_REQUEST, errMsg);
