@@ -248,7 +248,7 @@ YbGetMasterLogicalClientVersionTableEntryYbctid(Relation logical_client_version_
 }
 
 bool
-YbIsPerDbLogicalClientVersionMode()
+YbNeedsLegacyPerDbLogicalClientVersionRows()
 {
 	return (IsYugaByteEnabled() &&
 			!IsBootstrapProcessingMode() &&
@@ -288,6 +288,7 @@ YbCreateMasterDBLogicalClientVersionTableEntry(Oid db_oid)
 				(errmsg("%s: creating master logical client version for database %u",
 						__func__, db_oid)));
 	HandleYBStatus(YBCPgDmlExecWriteOp(insert_stmt, &rows_affected_count));
+	Assert(rows_affected_count == 0);
 
 	RelationClose(rel);
 }

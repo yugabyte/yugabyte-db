@@ -31,7 +31,7 @@ extern YbLogicalClientVersionType yb_logical_client_version_type;
 /* Send a request to increment the master logical client version. */
 extern bool YbIncrementMasterLogicalClientVersionTableEntry();
 
-extern bool YbIsPerDbLogicalClientVersionMode();
+extern bool YbNeedsLegacyPerDbLogicalClientVersionRows();
 
 extern void YbCreateMasterDBLogicalClientVersionTableEntry(Oid db_oid);
 

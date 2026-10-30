@@ -160,7 +160,7 @@ YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bo
 	if (YBIsDBCatalogVersionMode())
 		YbCreateMasterDBCatalogVersionTableEntry(dboid);
 
-	if (YbIsPerDbLogicalClientVersionMode())
+	if (YbNeedsLegacyPerDbLogicalClientVersionRows())
 		YbCreateMasterDBLogicalClientVersionTableEntry(dboid);
 }
 
@@ -207,7 +207,7 @@ YBCDropDatabase(Oid dboid, const char *dbname)
 	if (YBIsDBCatalogVersionMode())
 		YbDeleteMasterDBCatalogVersionTableEntry(dboid);
 
-	if (YbIsPerDbLogicalClientVersionMode())
+	if (YbNeedsLegacyPerDbLogicalClientVersionRows())
 		YbDeleteMasterDBLogicalClientVersionTableEntry(dboid);
 }
 
