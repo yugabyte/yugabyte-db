@@ -32,19 +32,7 @@ With the YugabyteDB MCP Server, developers can:
 
 ## YugabyteDB Agent Skills
 
-Complement the MCP server with [YugabyteDB Agent Skills](https://github.com/yugabyte/yugabytedb-skills). These are structured skill packages that give AI coding agents native YugabyteDB expertise for schema design, API usage, operations, and RAG workflows.
-
-| Skill | Description |
-| :--- | :--- |
-| [ysql](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/ysql) | YSQL development, including schema design, indexes, geo-distribution, smart drivers, transaction retries, batching, and PostgreSQL migration. See [Use YSQL with an AI coding agent](../../best-practices-develop/#use-ysql-with-an-ai-coding-agent). |
-| [ycql](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/ycql) | YCQL development, including partition keys, clustering columns, global secondary indexes, prepared statements, batching, and TTL. See [Use YCQL with an AI coding agent](../../best-practices-develop/best-practices-ycql/#use-ycql-with-an-ai-coding-agent). |
-| [yb-k8s-operator](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/yb-k8s-operator) | YugabyteDB Anywhere Kubernetes Operator custom resources. See [Use the operator with an AI coding agent](../../../yugabyte-platform/anywhere-automation/yb-kubernetes-operator/#use-the-operator-with-an-ai-coding-agent). |
-| [yba-api](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/yba-api) | YugabyteDB Anywhere REST API for creating and managing universes across supported clouds and topologies. See [Use the REST API with an AI coding agent](../../../yugabyte-platform/anywhere-automation/anywhere-api/#use-the-rest-api-with-an-ai-coding-agent). |
-| [yba-terraform](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/yba-terraform) | YugabyteDB Anywhere Terraform provider for installing YugabyteDB Anywhere and creating providers, universes, and backups. See [Use the Terraform provider with an AI coding agent](../../../yugabyte-platform/anywhere-automation/anywhere-terraform/#use-the-terraform-provider-with-an-ai-coding-agent). |
-| [yb-rag-langchain](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/yb-rag-langchain) | RAG and semantic search with LangChain, including vector indexes, hybrid search, and metadata filtering. See [Build RAG with an AI coding agent](../hello-rag/#build-rag-with-an-ai-coding-agent). |
-| [aeon-api](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/aeon-api) | YugabyteDB Aeon REST API for cluster lifecycle, database users, network access, backups, and metrics. See [Use the Aeon API with an AI coding agent](../../../yugabyte-cloud/managed-automation/managed-api/#use-the-aeon-api-with-an-ai-coding-agent). |
-| [yb-perf](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/yb-perf) | Performance checks for a slow application or database, including slow queries, execution plans, locks, session history, and Prometheus and YugabyteDB Anywhere metrics. See [Assess performance with an AI coding agent](../../../launch-and-manage/monitor-and-alert/#assess-performance-with-an-ai-coding-agent). |
-| [yb-model](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/yb-model) | Offline review of an existing YSQL schema, including sharding, indexes, partitions, and statistics. See [Review a YSQL schema with an AI coding agent](../../best-practices-develop/#review-a-ysql-schema-with-an-ai-coding-agent). |
+Complement the MCP server with [YugabyteDB Agent Skills](https://github.com/yugabyte/yugabytedb-skills). These are structured skill packages that give AI coding agents native YugabyteDB expertise for schema design, API usage, operations, and RAG workflows. The [yugabytedb-skills](https://github.com/yugabyte/yugabytedb-skills) repository lists the skills and what each one covers.
 
 Install all skills at once:
 
@@ -57,8 +45,6 @@ Or install one skill. For example, `ysql`:
 ```sh
 npx skills add yugabyte/yugabytedb-skills -s ysql
 ```
-
-See the [yugabytedb-skills](https://github.com/yugabyte/yugabytedb-skills) repository for other install options and the latest skill set.
 
 ## MCP tools
 

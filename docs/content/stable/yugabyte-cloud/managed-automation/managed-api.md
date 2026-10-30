@@ -33,8 +33,6 @@ npx skills add yugabyte/yugabytedb-skills -s aeon-api
 
 For more information, see the [yugabytedb-skills](https://github.com/yugabyte/yugabytedb-skills) repository.
 
-{{< youtube id="bD9CNHwet74?si=UpNu1jedrvni2mht" title="YugabyteDB Aeon REST API" >}}
-
 {{< sections/2-boxes >}}
   {{< sections/bottom-image-box
     title="Get Started"
@@ -44,3 +42,7 @@ For more information, see the [yugabytedb-skills](https://github.com/yugabyte/yu
   >}}
 
 {{< /sections/2-boxes >}}
+
+## Learn more
+
+{{< youtube id="bD9CNHwet74?si=UpNu1jedrvni2mht" title="YugabyteDB Aeon REST API" >}}

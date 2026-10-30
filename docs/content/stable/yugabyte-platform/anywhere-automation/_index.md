@@ -15,7 +15,7 @@ showRightNav: true
 
 Use the following automation tools to manage your YugabyteDB Anywhere installation and universes:
 
-| Automation | Description | Agent skill |
+| Automation | Description | <div style="min-width:11rem">Agent skill</div> |
 | :--------- | :---------- | :---------- |
 | [REST API](anywhere-api/) | Deploy and manage database universes using a REST API. | [yba-api](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/yba-api) |
 | [Terraform provider](anywhere-terraform/) | Provider for automating YugabyteDB Anywhere resources that are accessible via the API. | [yba-terraform](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/yba-terraform) |
