@@ -158,22 +158,124 @@ def _inline_parse(tok: dict, state: Any) -> dict:
     return tok
 
 
-# A column-0 ATX heading: the only place the source is cut into sections.
-# Requires a space or end of line after the hashes, so "#hashtag" is not one,
-# and no leading space, so a heading nested in a list or quote is not one
-# either. Setext headings ("Title\n=====") are deliberately not split points;
-# they are parsed normally inside whichever section contains them.
+# A column-0 ATX heading: where the source is cut into sections. Requires a
+# space or end of line after the hashes, so "#hashtag" is not one, and no
+# leading space, so a heading nested in a list or quote is not one either.
+# Setext headings ("Title\n=====") are deliberately not split points; they are
+# parsed normally inside whichever section contains them, and an oversized
+# section is bounded by _iter_section_pieces instead.
 _ATX_HEADING = re.compile(r"#{1,6}(?:[ \t]|$)")
 _FENCE_OPEN = re.compile(r"[ ]{0,3}(`{3,}|~{3,})")
-# Conservative: any block-level HTML opener. Nothing is split until the block
-# is judged closed, so a column-0 "## " inside raw HTML stays put.
-_HTML_OPEN = re.compile(r"[ ]{0,3}<[A-Za-z/!?]")
 _HTML_RAW_OPEN = re.compile(
     r"[ ]{0,3}<(?:pre|script|style|textarea)\b", re.IGNORECASE
 )
 _HTML_RAW_CLOSE = re.compile(
     r"</(?:pre|script|style|textarea)>", re.IGNORECASE
 )
+# Any other block-level HTML opener, which CommonMark ends at a blank line.
+_HTML_OPEN = re.compile(r"[ ]{0,3}<[A-Za-z/!?]")
+# Openers that run to a specific terminator instead of a blank line. "#" is
+# valid PHP comment syntax and "## " can appear in a declaration or CDATA
+# block, so treating these as blank-line-terminated would split inside them.
+_HTML_TERMINATED = (
+    ("<!--", re.compile(r"-->")),
+    ("<![CDATA[", re.compile(r"\]\]>")),
+    ("<?", re.compile(r"\?>")),
+)
+_HTML_DECL_OPEN = re.compile(r"[ ]{0,3}<![A-Za-z]")
+_HTML_DECL_CLOSE = re.compile(r">")
+
+
+def _fence_closes(line: str, fence: str) -> bool:
+    """True when `line` closes a fence opened with the run `fence`.
+
+    A closer is a run of the same character, at least as long as the opener,
+    with nothing else on the line.
+    """
+    stripped = line.strip()
+    return (len(stripped) >= len(fence)
+            and set(stripped) == {fence[0]})
+
+
+class _BlockScanner:
+    """Tracks which lines sit at the document's top level.
+
+    Shared by the two line scans so they cannot disagree about what counts as
+    inside a container: `_iter_source_sections` must not cut there, and
+    `_seed_ref_links` must not read a link definition out of it. Keeping one
+    state machine is the point - an earlier version tracked fences in both and
+    HTML in only one, which seeded definitions out of HTML comments.
+    """
+
+    def __init__(self) -> None:
+        self._fence: str | None = None
+        self._html_close: re.Pattern[str] | None = None
+        self._html_until_blank = False
+
+    def feed(self, line: str) -> bool:
+        """Consume `line`; True only if it is a plain top-level line.
+
+        False while inside, opening or closing a fenced code block or any
+        flavour of HTML block, so the caller never acts on such a line.
+        """
+        if self._fence is not None:
+            if _fence_closes(line, self._fence):
+                self._fence = None
+            return False
+
+        if self._html_close is not None:
+            if self._html_close.search(line):
+                self._html_close = None
+            return False
+
+        if self._html_until_blank:
+            if not line.strip():
+                self._html_until_blank = False
+            return False
+
+        fence_open = _FENCE_OPEN.match(line)
+        if fence_open:
+            self._fence = fence_open.group(1)
+            return False
+
+        for marker, closer in _HTML_TERMINATED:
+            index = line.find(marker)
+            if index != -1 and not line[:index].strip():
+                # A one-line block closes on its own line, so only arm the
+                # terminator when it is not already here.
+                if not closer.search(line, index + len(marker)):
+                    self._html_close = closer
+                return False
+
+        raw_open = _HTML_RAW_OPEN.match(line)
+        if raw_open:
+            if not _HTML_RAW_CLOSE.search(line, raw_open.end()):
+                self._html_close = _HTML_RAW_CLOSE
+            return False
+
+        decl_open = _HTML_DECL_OPEN.match(line)
+        if decl_open:
+            if not _HTML_DECL_CLOSE.search(line, decl_open.end()):
+                self._html_close = _HTML_DECL_CLOSE
+            return False
+
+        if _HTML_OPEN.match(line):
+            self._html_until_blank = True
+            return False
+
+        return True
+
+
+def _iter_line_spans(s: str) -> Iterator[tuple[int, int]]:
+    """Yield (start, end_of_line_exclusive) for each line of `s`."""
+    pos = 0
+    n = len(s)
+    while pos < n:
+        eol = s.find("\n", pos)
+        if eol == -1:
+            eol = n
+        yield pos, eol
+        pos = eol + 1
 
 
 def _iter_source_sections(s: str) -> Iterator[str]:
@@ -183,54 +285,18 @@ def _iter_source_sections(s: str) -> Iterator[str]:
     is whatever preceded the first heading. Splitting here is what keeps peak
     memory flat: the block parser is handed one section at a time instead of
     the whole document.
-
-    A split point is skipped inside a fenced code block, an HTML comment, a
-    raw-text HTML element and an ordinary HTML block, since a "## " line in
-    any of those is content rather than a heading.
     """
-    fence: str | None = None
-    html_until_blank = False
-    html_close: re.Pattern[str] | None = None
+    scanner = _BlockScanner()
     start = 0
-    pos = 0
-    n = len(s)
 
-    while pos < n:
-        eol = s.find("\n", pos)
-        if eol == -1:
-            eol = n
+    for pos, eol in _iter_line_spans(s):
         line = s[pos:eol]
+        if scanner.feed(line) and _ATX_HEADING.match(line):
+            if pos > start:
+                yield s[start:pos]
+            start = pos
 
-        if fence is not None:
-            stripped = line.strip()
-            if (stripped.startswith(fence[0] * len(fence))
-                    and set(stripped) == {fence[0]}):
-                fence = None
-        elif html_close is not None:
-            if html_close.search(line):
-                html_close = None
-        elif html_until_blank:
-            if not line.strip():
-                html_until_blank = False
-        else:
-            m = _FENCE_OPEN.match(line)
-            if m:
-                fence = m.group(1)
-            elif line.lstrip().startswith("<!--"):
-                if "-->" not in line[line.find("<!--") + 4:]:
-                    html_close = re.compile(r"-->")
-            elif _HTML_RAW_OPEN.match(line):
-                html_close = _HTML_RAW_CLOSE
-            elif _HTML_OPEN.match(line):
-                html_until_blank = True
-            elif _ATX_HEADING.match(line):
-                if pos > start:
-                    yield s[start:pos]
-                start = pos
-
-        pos = eol + 1
-
-    if start < n:
+    if start < len(s):
         yield s[start:]
 
 
@@ -242,28 +308,29 @@ def _normalise(body: str) -> str:
     return s
 
 
-def _iter_lines_of(s: str) -> Iterator[str]:
-    """Yield lines split on "\\n" only.
-
-    Deliberately not ``splitlines()``: that also breaks on \\r, U+2028 and
-    U+2029, which would cut a line in two and could invent a reference
-    definition that is not one. Mirrors ``_iter_lines`` in
-    ``partition_chunk_pipeline`` for the same reason.
-    """
-    start = 0
-    while True:
-        end = s.find("\n", start)
-        if end == -1:
-            if start < len(s):
-                yield s[start:]
-            return
-        yield s[start:end]
-        start = end + 1
-
-
 # Opening line of a link reference definition. Deliberately loose: it only
 # decides which lines to hand to mistune, which then decides what counts.
 _REF_DEF_START = re.compile(r"[ ]{0,3}\[[^\]]*\]:")
+# Blockquote markers and list-item markers, which a definition can sit behind.
+# mistune parses a blockquote or list item with a child state that shares the
+# parent's env, so a definition in one is registered document-wide and has to
+# be seeded like any other.
+_QUOTE_MARKER = re.compile(r"[ ]{0,3}>[ ]?")
+_LIST_MARKER = re.compile(r"[ ]{0,3}(?:[-*+]|\d{1,9}[.)])[ ]+")
+# A definition's destination and title may sit on the lines after its label,
+# so a couple of following lines go with it.
+_REF_DEF_TRAILING_LINES = 2
+
+
+def _strip_container_markers(line: str) -> str:
+    """Strip leading blockquote and list markers from `line`."""
+    while True:
+        quote = _QUOTE_MARKER.match(line)
+        if not quote:
+            break
+        line = line[quote.end():]
+    item = _LIST_MARKER.match(line)
+    return line[item.end():] if item else line
 
 
 def _seed_ref_links(s: str, env: MutableMapping[str, Any]) -> None:
@@ -273,25 +340,37 @@ def _seed_ref_links(s: str, env: MutableMapping[str, Any]) -> None:
     text is parsed, so a definition below a use still resolves. Parsing one
     section at a time would only see definitions already passed, so the
     candidate lines are gathered first and handed to the real block parser,
-    which populates ``env["ref_links"]``. Lines inside a fenced code block are
-    skipped; a false positive elsewhere only matters if a matching reference
-    use also exists.
+    which populates ``env["ref_links"]``.
+
+    Uses the same :class:`_BlockScanner` as the section split, so a line that
+    merely looks like a definition inside a fence, an HTML comment or a raw
+    HTML block is not seeded. Getting that wrong changes chunk text: mistune
+    keeps the first definition for a label, so a commented-out one would
+    shadow the real one and turn ``[r1]`` into a link the whole-document parse
+    leaves as text.
+
+    Blockquote and list markers are stripped before matching, and the next
+    couple of lines travel with a definition, so a destination on its own line
+    is not lost. mistune decides what is really a definition; anything else in
+    the gathered lines parses to a paragraph and registers nothing.
     """
     candidates: list[str] = []
-    fence: str | None = None
-    for line in _iter_lines_of(s):
-        if fence is not None:
-            stripped = line.strip()
-            if (stripped.startswith(fence[0] * len(fence))
-                    and set(stripped) == {fence[0]}):
-                fence = None
+    scanner = _BlockScanner()
+    trailing = 0
+    for start, end in _iter_line_spans(s):
+        line = s[start:end]
+        if not scanner.feed(line):
+            trailing = 0
             continue
-        m = _FENCE_OPEN.match(line)
-        if m:
-            fence = m.group(1)
-            continue
-        if _REF_DEF_START.match(line):
-            candidates.append(line)
+        stripped = _strip_container_markers(line)
+        if _REF_DEF_START.match(stripped):
+            candidates.append(stripped)
+            trailing = _REF_DEF_TRAILING_LINES
+        elif trailing and stripped.strip():
+            candidates.append(stripped)
+            trailing -= 1
+        else:
+            trailing = 0
 
     if not candidates:
         return
@@ -300,6 +379,49 @@ def _seed_ref_links(s: str, env: MutableMapping[str, Any]) -> None:
     state.env = env
     state.process(_normalise("\n".join(candidates)))
     _MD_PARSER.block.parse(state)
+
+
+# Largest section handed to the block parser in one call. A section is parsed
+# whole, and the block token list for one section is what sets peak memory, so
+# a document with no column-0 ATX heading after its start would otherwise cost
+# the old whole-document multiple: table-heavy Markdown measures about 92x its
+# size, roughly 6 GB at the 64 MiB read cap. Over this size a section is cut
+# further at top-level blank lines, which bounds the token list without
+# changing which chunks are produced, since chunks are flushed on headings
+# only. See _iter_section_pieces for what this can change.
+_MAX_SECTION_BYTES = 1024 * 1024  # 1 MiB
+
+
+def _iter_section_pieces(section: str) -> Iterator[str]:
+    """Cut an oversized section at top-level blank lines.
+
+    Only sections over ``_MAX_SECTION_BYTES`` are cut, so an ordinary document
+    is parsed exactly as before. A blank line at the top level always ends a
+    CommonMark block, so for the shapes that make a section huge - tables,
+    paragraphs, fenced code - each piece parses to the same block tokens as
+    the whole section would, and the chunk is unchanged. Two constructs can
+    straddle a cut and parse differently: a loose list, whose items would
+    become two lists, and an indented code block containing a blank line,
+    which would become two code blocks. Both are accepted here, because the
+    alternative for such a section is a worker that runs out of memory.
+    """
+    if len(section) <= _MAX_SECTION_BYTES:
+        yield section
+        return
+
+    scanner = _BlockScanner()
+    start = 0
+    for pos, eol in _iter_line_spans(section):
+        line = section[pos:eol]
+        if (scanner.feed(line)
+                and not line.strip()
+                and pos - start >= _MAX_SECTION_BYTES):
+            # Cut after the blank line, so the next piece starts on content.
+            yield section[start:eol + 1]
+            start = eol + 1
+
+    if start < len(section):
+        yield section[start:]
 
 
 def _iter_block_tokens(body: str) -> Iterator[dict]:
@@ -311,11 +433,15 @@ def _iter_block_tokens(body: str) -> Iterator[dict]:
     the Markdown's shape: measured at 5 MiB input, 3.6x for fenced code, 8.9x
     for prose, 43.2x for 20-byte paragraphs and 127.7x for tables.
 
-    Two changes bound it. The source is cut into heading-delimited sections so
-    the block parser only ever holds one section's tokens, and each token's
-    inline tree is built as it is yielded and dropped straight after. One
-    ``env`` is shared across sections so link reference definitions still
-    resolve document-wide.
+    Three things bound it. The source is cut into heading-delimited sections,
+    an oversized section is cut again at top-level blank lines, and each
+    token's inline tree is built as it is yielded and dropped straight after.
+    The second of those is what covers a document with no column-0 ATX heading
+    after its start, which is a single section and would otherwise cost the
+    full whole-document multiple.
+
+    One ``env`` is shared across sections and pieces, so link reference
+    definitions still resolve document-wide.
     """
     s = _normalise(body)
 
@@ -324,22 +450,23 @@ def _iter_block_tokens(body: str) -> Iterator[dict]:
     _seed_ref_links(s, env)
 
     for section in _iter_source_sections(s):
-        state = _MD_PARSER.block.state_cls()
-        state.env = env
-        state.process(_normalise(section))
+        for piece in _iter_section_pieces(section):
+            state = _MD_PARSER.block.state_cls()
+            state.env = env
+            state.process(_normalise(piece))
 
-        for hook in _MD_PARSER.before_parse_hooks:
-            hook(_MD_PARSER, state)
-        _MD_PARSER.block.parse(state)
-        for hook in _MD_PARSER.before_render_hooks:
-            hook(_MD_PARSER, state)
+            for hook in _MD_PARSER.before_parse_hooks:
+                hook(_MD_PARSER, state)
+            _MD_PARSER.block.parse(state)
+            for hook in _MD_PARSER.before_render_hooks:
+                hook(_MD_PARSER, state)
 
-        tokens = state.tokens
-        for i, tok in enumerate(tokens):
-            yield _inline_parse(tok, state)
-            # Drop the finished token, inline tree and all, so the walk below
-            # never holds more than one block's worth of it.
-            tokens[i] = None
+            tokens = state.tokens
+            for i, tok in enumerate(tokens):
+                yield _inline_parse(tok, state)
+                # Drop the finished token, inline tree and all, so the walk
+                # below never holds more than one block's worth of it.
+                tokens[i] = None
 
 
 def _document_from_frontmatter(

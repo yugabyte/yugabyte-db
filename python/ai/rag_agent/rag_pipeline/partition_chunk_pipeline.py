@@ -18,11 +18,20 @@ from observability import meko_observe
 #
 # The Markdown fine-tuning path shares this cap. It costs more per byte than
 # the plain-text path, because md_parser also holds the block tokens for the
-# current heading section and the chunk it is assembling. Peak RSS measured at
-# this 64 MiB default, by document shape: 197 MB for 20-byte paragraphs, 229 MB
-# for prose, 251 MB for table-heavy, and 700 MB for the worst shape, a document
-# with no heading after the first, which is one section and one chunk. Size the
-# workers for the 700 MB figure times WORKER_CONCURRENCY.
+# piece it is parsing and the chunk it is assembling. Peak RSS measured at this
+# 64 MiB default, by document shape: 194 MB for 20-byte paragraphs, 228 MB for
+# prose, 242 MB for fenced code, 250 MB for table-heavy, 303 MB for a single
+# section of prose.
+#
+# The worst shape measures 1,211 MB: a table-heavy document with no column-0
+# ATX heading, which is one chunk holding every table in the file. What
+# dominates there is the chunk under construction, not the parser - the
+# TableBlock rows for the whole document are live at once - so it is a property
+# of one-chunk-per-heading-section, not of the read cap. Size the text workers
+# for 1,211 MB times WORKER_CONCURRENCY.
+#
+# Do not quote a single multiplier for this path. It ranges 3.0x to 18.9x at
+# this cap, by shape alone.
 DEFAULT_MAX_FILE_SIZE_BYTES = 64 * 1024 * 1024  # 64 MiB
 
 

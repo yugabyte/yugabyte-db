@@ -10,6 +10,7 @@ text and Markdown reads use, and copies the body in blocks.
 
 import io
 import os
+import tempfile
 from unittest.mock import Mock, patch
 
 import pytest
@@ -112,12 +113,88 @@ class TestPdfReadGuard:
             _resolve_local_pdf_path("s3://bucket/big.pdf")
 
     @patch("pdf_processing.docling_loader.boto3")
-    def test_a_local_path_is_untouched(self, mock_boto3):
-        path, cleanup = _resolve_local_pdf_path("/tmp/local.pdf")
+    def test_a_local_path_is_returned_as_is(self, mock_boto3, tmp_path):
+        pdf = tmp_path / "local.pdf"
+        pdf.write_bytes(b"%PDF-1.7 small")
 
-        assert path == "/tmp/local.pdf"
+        path, cleanup = _resolve_local_pdf_path(str(pdf))
+
+        assert path == str(pdf)
         cleanup()
+        assert pdf.exists(), "a local file must not be deleted"
         mock_boto3.client.assert_not_called()
+
+    def test_an_oversized_local_pdf_is_rejected(self, tmp_path, monkeypatch):
+        # generate_embeddings accepts local paths, and routes a local PDF
+        # through this path, so the guard has to cover it too. It used to run
+        # only after the early return for non-S3 locations.
+        monkeypatch.setenv("MAX_FILE_SIZE_BYTES", "1024")
+        pdf = tmp_path / "big.pdf"
+        pdf.write_bytes(b"x" * 2048)
+
+        with pytest.raises(ValueError, match="Raise MAX_FILE_SIZE_BYTES"):
+            _resolve_local_pdf_path(str(pdf))
+
+    def test_a_local_pdf_under_the_cap_is_accepted(self, tmp_path,
+                                                   monkeypatch):
+        monkeypatch.setenv("MAX_FILE_SIZE_BYTES", "4096")
+        pdf = tmp_path / "ok.pdf"
+        pdf.write_bytes(b"x" * 1024)
+
+        path, cleanup = _resolve_local_pdf_path(str(pdf))
+
+        assert path == str(pdf)
+        cleanup()
+
+    @patch("pdf_processing.docling_loader.boto3")
+    def test_a_failed_copy_leaves_no_temp_file(self, mock_boto3, monkeypatch):
+        # The temp file is created before the body is read, and the caller
+        # only receives the cleanup callback on success. A read that dies part
+        # way through would otherwise strand the partial file on a worker that
+        # stays up and retries the document.
+        class FailingBody(io.BytesIO):
+            def read(self, size=-1):
+                raise ConnectionResetError("peer reset")
+
+        client = Mock()
+        mock_boto3.client.return_value = client
+        client.get_object.return_value = {
+            "Body": FailingBody(b"x" * 4096),
+            "ContentLength": 4096,
+        }
+
+        created = []
+        real_mkstemp = tempfile.mkstemp
+
+        def tracking_mkstemp(*args, **kwargs):
+            fd, path = real_mkstemp(*args, **kwargs)
+            created.append(path)
+            return fd, path
+
+        monkeypatch.setattr(tempfile, "mkstemp", tracking_mkstemp)
+
+        with pytest.raises(ConnectionResetError):
+            _resolve_local_pdf_path("s3://bucket/broken.pdf")
+
+        assert created, "the test should have reached mkstemp"
+        for path in created:
+            assert not os.path.exists(path), (
+                f"partial temp PDF left behind: {path}"
+            )
+
+    @patch("pdf_processing.docling_loader.boto3")
+    def test_the_body_is_closed_when_the_object_is_rejected(self, mock_boto3):
+        # Nothing reads the stream on this path, so it would otherwise hold
+        # its connection until the object was collected.
+        _, body = make_s3_pdf(
+            mock_boto3, b"x",
+            content_length=DEFAULT_MAX_FILE_SIZE_BYTES + 1,
+        )
+
+        with pytest.raises(ValueError):
+            _resolve_local_pdf_path("s3://bucket/big.pdf")
+
+        assert body.closed, "the rejected body should be closed"
 
     @patch("pdf_processing.docling_loader.boto3")
     def test_a_missing_content_length_does_not_block_the_read(

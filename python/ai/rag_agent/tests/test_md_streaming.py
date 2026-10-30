@@ -21,11 +21,13 @@ from dataclasses import asdict
 import mistune
 import pytest
 
+from rag_pipeline import md_parser
 from rag_pipeline.md_parser import (
     CodeBlock,
     ParsedChunk,
     _extract_links,
     _extract_text,
+    _fence_closes,
     _iter_block_tokens,
     _iter_source_sections,
     _normalise,
@@ -184,6 +186,60 @@ CASES = {
     "seven hashes is not a heading": "# A\n\n####### too many\n\ntext\n",
     "closing hashes on a heading": "# A ###\n\nbody\n\n## B ##\n\nmore\n",
     "headings with no blank lines between": "# A\n## B\n### C\ntext\n",
+    # A raw-text element closed on its own line. The scanner used to arm the
+    # close tag without checking the opener line for it, so everything after a
+    # one-liner looked like raw HTML: no further splits, and the fence state
+    # could invert.
+    "one-line script element": (
+        '# A\n\n<script src="x.js"></script>\n\n## B\n\nbody b\n\n## C\n\nc\n'
+    ),
+    "one-line style element": "# A\n\n<style>p{}</style>\n\n## B\n\nbody\n",
+    "one-line pre element": "# A\n\n<pre>x</pre>\n\n## B\n\nbody\n",
+    "one-line element then fences": (
+        "<script src=a></script>\n\n# Usage\n\n```html\n<pre>x</pre>\n```\n\n"
+        "```\n## x\n```\n\nafter\n"
+    ),
+    "one-line html comment": "# A\n\n<!-- c -->\n\n## B\n\nbody\n",
+    # Openers that run to their own terminator, not to a blank line. "#" is a
+    # PHP comment, so a blank line inside the block used to re-enable
+    # splitting and invent a heading.
+    "php block with a hash comment": (
+        "# A\n\n<?php\n$x = 1;\n\n# set y\n$y = 2;\n?>\n\nafter\n"
+    ),
+    "cdata with hashes": (
+        "# A\n\n<![CDATA[\n## not a heading\n\nmore\n]]>\n\nafter\n"
+    ),
+    "declaration with hashes": (
+        "# A\n\n<!DOCTYPE html\n## not a heading\n>\n\nafter\n"
+    ),
+    # Reference definitions the section scan must agree with.
+    "ref def inside an html comment": (
+        "# A\n\n<!--\n[r1]: http://x\n-->\n\nsee [r1]\n"
+    ),
+    "ref def inside a pre element": (
+        "# A\n\n<pre>\n[r1]: http://x\n</pre>\n\nsee [r1]\n"
+    ),
+    "commented ref def must not shadow the real one": (
+        "# A\n\n<!--\n[r1]: http://old\n-->\n\nsee [r1]\n\n[r1]: http://new\n"
+    ),
+    "ref def in a blockquote, used earlier": (
+        "# A\n\nsee [r1]\n\n## B\n\n> [r1]: http://x\n"
+    ),
+    "ref def in a nested blockquote": (
+        "# A\n\nsee [r1]\n\n## B\n\n> > [r1]: http://x\n"
+    ),
+    "ref def in a bullet item": (
+        "# A\n\nsee [r1]\n\n## B\n\n- [r1]: http://x\n"
+    ),
+    "ref def in a numbered item": (
+        "# A\n\nsee [r1]\n\n## B\n\n1. [r1]: http://x\n"
+    ),
+    "ref def destination on the next line": (
+        "# A\n\nsee [r1]\n\n## B\n\n[r1]:\nhttp://x\n"
+    ),
+    "ref def destination and title on later lines": (
+        '# A\n\nsee [r1]\n\n## B\n\n[r1]:\nhttp://x\n"t"\n'
+    ),
 }
 
 
@@ -314,6 +370,41 @@ class TestSourceSectionSplitting:
             f"should not split on {reason}: {text!r}"
         )
 
+    @pytest.mark.parametrize("opener", [
+        '<script src="x.js"></script>',
+        "<style>p{}</style>",
+        "<pre>x</pre>",
+        "<textarea>x</textarea>",
+        "<!-- c -->",
+        "<?php $x = 1; ?>",
+        "<![CDATA[ x ]]>",
+        "<!DOCTYPE html>",
+    ])
+    def test_a_one_line_html_block_does_not_disable_later_splits(
+        self, opener
+    ):
+        # The block closes on its own line, so the heading after it still
+        # starts a section. Arming the terminator here would swallow the rest
+        # of the document and restore the whole-document memory multiple.
+        sections = self.sections(f"# A\n\n{opener}\n\n## B\n\nbody\n")
+
+        assert len(sections) == 2, (
+            f"{opener!r} should not keep the scanner in HTML mode"
+        )
+
+    @pytest.mark.parametrize("text,reason", [
+        ("# A\n\n<?php\n$x = 1;\n\n# set y\n?>\n", "php block"),
+        ("# A\n\n<![CDATA[\n## x\n\nmore\n]]>\n", "cdata block"),
+        ("# A\n\n<!DOCTYPE html\n## x\n>\n", "declaration"),
+        ("# A\n\n<!--\n## x\n\nmore\n-->\n", "comment across a blank line"),
+    ])
+    def test_a_terminated_html_block_is_not_ended_by_a_blank_line(
+        self, text, reason
+    ):
+        # These run to ?>, ]]>, > and --> respectively. Treating a blank line
+        # as the end would split inside them and invent a heading.
+        assert len(self.sections(text)) == 1, f"split inside a {reason}"
+
     def test_setext_heading_is_not_a_split_point(self):
         # It is still parsed as a heading inside its section; it just does not
         # start a new one.
@@ -325,6 +416,60 @@ class TestSourceSectionSplitting:
         for text in CASES.values():
             s = _normalise(text)
             assert "".join(_iter_source_sections(s)) == s
+
+
+class TestFenceClosing:
+    """One helper decides this, so the two line scans cannot disagree."""
+
+    @pytest.mark.parametrize("line,fence,closes", [
+        ("```", "```", True),
+        ("````", "```", True),
+        ("```", "````", False),
+        ("~~~", "~~~", True),
+        ("```", "~~~", False),
+        ("  ```", "```", True),
+        ("``` ", "```", True),
+        ("```python", "```", False),
+        ("x```", "```", False),
+        ("", "```", False),
+    ])
+    def test_fence_closes(self, line, fence, closes):
+        assert _fence_closes(line, fence) is closes
+
+
+class TestSharedScannerAgreement:
+    """The section split and the ref-def scan use one state machine.
+
+    They have to agree on what is inside a container. An earlier version
+    tracked fences in both and HTML in only one, which seeded link definitions
+    out of HTML comments and changed chunk text.
+    """
+
+    @pytest.mark.parametrize("container", [
+        "```\n{}\n```",
+        "~~~\n{}\n~~~",
+        "<!--\n{}\n-->",
+        "<pre>\n{}\n</pre>",
+        "<script>\n{}\n</script>",
+    ])
+    def test_a_ref_def_inside_a_container_is_not_seeded(self, container):
+        body = container.format("[r1]: http://seeded-by-mistake.example")
+        text = f"# A\n\n{body}\n\nsee [r1]\n"
+
+        expected = reference_walk(text)
+        _, streamed = stream_markdown(text)
+
+        assert chunks_as_data(list(streamed)) == chunks_as_data(expected)
+
+    @pytest.mark.parametrize("container", [
+        "```\n{}\n```",
+        "<!--\n{}\n-->",
+    ])
+    def test_a_container_is_not_a_split_point_either(self, container):
+        body = container.format("## not a heading")
+        assert len(list(_iter_source_sections(
+            _normalise(f"# A\n\n{body}\n\nafter\n")
+        ))) == 1
 
 
 class TestLaziness:
@@ -357,6 +502,118 @@ class TestLaziness:
         assert emitted[0].chunk_index == 0
 
 
+def table_document_without_headings(target_bytes: int) -> str:
+    """Table-heavy with no column-0 ATX heading: one section, one chunk.
+
+    The shape that defeats the heading split, and so the one that forced the
+    second bound in `_iter_section_pieces`.
+    """
+    out, size = [], 0
+    while size < target_bytes:
+        s = ("\n| a | b | c |\n|---|---|---|\n"
+             + "".join(f"| r{j} | v{j} | w{j} |\n" for j in range(50)))
+        out.append(s)
+        size += len(s)
+    return "# T\n\n" + "".join(out)
+
+
+class TestOversizedSectionPieces:
+    """A section too big to parse in one call is cut again at blank lines.
+
+    Without this, a document whose only column-0 heading is at the top is a
+    single section, and the block token list for the whole file is live at
+    once: the pre-change multiplier, about 92x for tables.
+    """
+
+    def test_a_small_section_is_not_cut(self):
+        section = "## A\n\nbody\n"
+        assert list(md_parser._iter_section_pieces(section)) == [section]
+
+    def test_an_oversized_section_is_cut_into_pieces(self):
+        section = "## A\n\n" + "paragraph text\n\n" * 200_000
+        pieces = list(md_parser._iter_section_pieces(section))
+
+        assert len(pieces) > 1
+        assert "".join(pieces) == section
+
+    def test_every_piece_but_the_last_reaches_the_threshold(self):
+        section = "## A\n\n" + "paragraph text\n\n" * 200_000
+        pieces = list(md_parser._iter_section_pieces(section))
+
+        for piece in pieces[:-1]:
+            assert len(piece) >= md_parser._MAX_SECTION_BYTES
+
+    def test_a_piece_boundary_never_lands_inside_a_fence(self):
+        # A fence larger than the threshold must survive whole, or its content
+        # would be parsed as Markdown.
+        fence = "```\n" + "x = 1\n" * 200_000 + "```\n"
+        pieces = list(md_parser._iter_section_pieces("## A\n\n" + fence))
+
+        assert "".join(pieces) == "## A\n\n" + fence
+        for piece in pieces:
+            assert piece.count("```") % 2 == 0, (
+                "a piece ended inside a fenced block"
+            )
+
+    def test_chunks_are_unchanged_for_an_oversized_table_section(self):
+        # Tables and paragraphs are separated by blank lines, so cutting there
+        # produces the same block tokens and therefore the same chunk.
+        text = table_document_without_headings(
+            md_parser._MAX_SECTION_BYTES * 3
+        )
+
+        expected = reference_walk(text)
+        _, streamed = stream_markdown(text)
+
+        assert chunks_as_data(list(streamed)) == chunks_as_data(expected)
+
+    def test_chunks_are_unchanged_for_an_oversized_prose_section(self):
+        body = "paragraph number {} with some words in it\n\n"
+        text = "# T\n\n" + "".join(
+            body.format(i) for i in range(60_000)
+        )
+        assert len(text) > md_parser._MAX_SECTION_BYTES
+
+        expected = reference_walk(text)
+        _, streamed = stream_markdown(text)
+
+        assert chunks_as_data(list(streamed)) == chunks_as_data(expected)
+
+    def test_the_bound_holds_for_a_headingless_document(self):
+        """The case the heading split alone does not cover.
+
+        A "does not grow" assertion would not discriminate here: without the
+        bound the multiplier is flat *and* high, about 92x at every size. With
+        it, the parse cost is capped at one piece while the source keeps
+        growing, so the multiplier has to fall. Measured 80.0x at the
+        threshold, 47.3x at twice it, 30.5x at four times.
+        """
+        # At exactly the threshold the section is not cut, so this is the
+        # uncut cost of one piece.
+        small = table_document_without_headings(
+            md_parser._MAX_SECTION_BYTES
+        )
+        large = table_document_without_headings(
+            md_parser._MAX_SECTION_BYTES * 4
+        )
+
+        def run(text):
+            def go():
+                _, chunks = stream_markdown(text)
+                for _chunk in chunks:
+                    pass
+            return go
+
+        small_ratio = peak_bytes(run(small)) / len(small.encode())
+        large_ratio = peak_bytes(run(large)) / len(large.encode())
+
+        assert large_ratio < small_ratio * 0.6, (
+            f"peak per source byte only went from {small_ratio:.1f}x to "
+            f"{large_ratio:.1f}x on a 4x larger headingless document; the "
+            f"per-piece bound does not look to be in effect"
+        )
+
+
 def table_document(target_bytes: int) -> str:
     """Table-heavy Markdown: the shape with the worst AST multiplier."""
     out, size, i = [], 0, 0
@@ -385,10 +642,11 @@ class TestSectionedMemory:
     """The reason the cap could be raised.
 
     Peak memory for the worst-shaped Markdown used to be a large multiple of
-    the file. Measured peak RSS at a 64 MiB input, by shape: 197 MB for
-    20-byte paragraphs, 229 MB for prose, 251 MB for tables, and 700 MB for a
-    document with no heading after the first. Before the change, a table-heavy
-    file peaked at 138.7x its size, which at 64 MiB is about 8.9 GB.
+    the file: 127.7x for table-heavy input, which at 64 MiB is about 8.9 GB.
+    Measured peak RSS at a 64 MiB input after the change, by shape: 194 MB for
+    20-byte paragraphs, 228 MB for prose, 242 MB for fenced code, 250 MB for
+    tables, 303 MB for one section of prose, and 1,211 MB for the worst shape,
+    table-heavy Markdown with no column-0 heading.
 
     These assertions use tracemalloc on a small document, so they are about
     the ratio between the two implementations, not the figures above.
@@ -421,7 +679,7 @@ class TestSectionedMemory:
             for _chunk in chunks:
                 pass
 
-        # The whole-document walk is ~120x the source on this shape.
+        # The whole-document walk is about 127x the source on this shape.
         assert peak_bytes(streamed) < 10 * n
 
     def test_the_multiplier_does_not_grow_with_the_document(self):
