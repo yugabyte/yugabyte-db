@@ -1715,7 +1715,14 @@ RemoveRelations(DropStmt *drop)
 	/* Lock and validate each relation; build a list of object addresses */
 	objects = new_object_addresses();
 
-	bool		yb_only_temp_tables = IsYugaByteEnabled() && relkind == RELKIND_RELATION;
+	/*
+	 * A permanent object can depend on a temp sequence or view, so a cascading
+	 * drop of one can change permanent objects.
+	 */
+	bool		yb_only_temp_tables = IsYugaByteEnabled() &&
+		(relkind == RELKIND_RELATION || relkind == RELKIND_INDEX ||
+		 ((relkind == RELKIND_SEQUENCE || relkind == RELKIND_VIEW) &&
+		  drop->behavior != DROP_CASCADE));
 
 	foreach(cell, drop->objects)
 	{

@@ -3905,6 +3905,19 @@ YbDdlCannotIncrementCatalogVersion(Node *parsetree,
 		!IsInTransactionBlock(context == PROCESS_UTILITY_TOPLEVEL);
 }
 
+static bool
+YbAreAllRangeVarsTemp(List *relations)
+{
+	ListCell   *cell;
+
+	foreach(cell, relations)
+	{
+		if (!YbIsRangeVarTempRelation(lfirst_node(RangeVar, cell)))
+			return false;
+	}
+	return true;
+}
+
 YbDdlModeOptional
 YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 			 bool *requires_autonomous_transaction)
@@ -4024,6 +4037,15 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 			break;
 
 		case T_TruncateStmt:
+			if (YbAreAllRangeVarsTemp(castNode(TruncateStmt, parsetree)->relations))
+			{
+				is_breaking_change = false;
+				is_version_increment = false;
+				is_altering_existing_data = true;
+				YBMarkTxnUsesTempRelAndSetTxnId();
+				break;
+			}
+
 			/*
 			 * TRUNCATE (on YB relations) using the old approach does not
 			 * make any system catalog changes, so it doesn't require a
@@ -4049,6 +4071,15 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 			if (IsYsqlUpgrade &&
 				YbIsCatalogNamespaceByName(castNode(ViewStmt, parsetree)->view->schemaname))
 				break;
+
+			if (castNode(ViewStmt, parsetree)->view->relpersistence ==
+				RELPERSISTENCE_TEMP)
+			{
+				is_version_increment = false;
+				is_altering_existing_data = true;
+				YBMarkTxnUsesTempRelAndSetTxnId();
+				break;
+			}
 
 			/* Create or replace view needs to increment catalog version. */
 			if (!castNode(ViewStmt, parsetree)->replace)
@@ -4133,6 +4164,20 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 				CreateStmt *stmt = castNode(CreateStmt, parsetree);
 
 				is_breaking_change = false;
+
+				/*
+				 * The parent of a temp partition is always temp too, while a temp
+				 * table can inherit from a permanent one.
+				 */
+				if (stmt->relation->relpersistence == RELPERSISTENCE_TEMP &&
+					YbAreAllRangeVarsTemp(stmt->inhRelations))
+				{
+					is_version_increment = false;
+					is_altering_existing_data = true;
+					YBMarkTxnUsesTempRelAndSetTxnId();
+					break;
+				}
+
 				/*
 				 * If a partition table is being created, this means pg_inherits
 				 * table that is being cached should be invalidated. If the cache
@@ -4179,16 +4224,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 					break;
 				}
 
-				if (stmt->relation->relpersistence == RELPERSISTENCE_TEMP)
-				{
-					is_version_increment = false;
-					is_altering_existing_data = true;
-					YBMarkTxnUsesTempRelAndSetTxnId();
-				}
-				else
-				{
-					is_version_increment = should_increment_version_by_default;
-				}
+				is_version_increment = should_increment_version_by_default;
 				break;
 			}
 
@@ -4225,6 +4261,16 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 
 		case T_CreateSeqStmt:
 			is_breaking_change = false;
+
+			/* Also covers the sequences of SERIAL and identity columns. */
+			if (castNode(CreateSeqStmt, parsetree)->sequence->relpersistence ==
+				RELPERSISTENCE_TEMP)
+			{
+				is_version_increment = false;
+				is_altering_existing_data = true;
+				YBMarkTxnUsesTempRelAndSetTxnId();
+				break;
+			}
 
 			/*
 			 * Need to increment if owner is set to ensure its dependency
@@ -4274,9 +4320,16 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 					 */
 					DropStmt   *stmt = castNode(DropStmt, parsetree);
 
+				/*
+				 * A permanent object can depend on a temp sequence, e.g. through
+				 * DEFAULT nextval(), so only a non-cascading drop of one is
+				 * temp-only.
+				 */
 				if (stmt->removeType == OBJECT_INDEX ||
 					stmt->removeType == OBJECT_TABLE ||
-					stmt->removeType == OBJECT_VIEW)
+					stmt->removeType == OBJECT_VIEW ||
+					(stmt->removeType == OBJECT_SEQUENCE &&
+					 stmt->behavior != DROP_CASCADE))
 				{
 					ListCell   *cell;
 
@@ -4350,7 +4403,6 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 		case T_AlterPolicyStmt:
 		case T_AlterPublicationStmt:
 		case T_AlterRoleSetStmt:
-		case T_AlterSeqStmt:
 		case T_AlterStatsStmt:
 		case T_AlterSubscriptionStmt:
 		case T_AlterSystemStmt:
@@ -4363,6 +4415,16 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 		case T_AlternativeSubPlan:
 		case T_ReassignOwnedStmt:
 		case T_AlterTypeStmt:
+			break;
+
+		case T_AlterSeqStmt:
+			if (YbIsRangeVarTempRelation(castNode(AlterSeqStmt, parsetree)->sequence))
+			{
+				is_breaking_change = false;
+				is_version_increment = false;
+				is_altering_existing_data = true;
+				YBMarkTxnUsesTempRelAndSetTxnId();
+			}
 			break;
 
 		case T_AlterRoleStmt:
