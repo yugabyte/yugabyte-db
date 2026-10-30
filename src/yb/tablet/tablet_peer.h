@@ -143,6 +143,9 @@ YB_DEFINE_ENUM(TabletObjectState,
     (kAvailable)
     (kDestroyed));
 
+// A tablet enters the quiescent mode after nothing was appended to its log for this time.
+CoarseDuration QuiescentTabletIdleTime();
+
 // A peer is a tablet consensus configuration, which coordinates writes to tablets.
 // Each time Write() is called this class appends a new entry to a replicated
 // state machine through a consensus algorithm, which makes sure that other
@@ -159,8 +162,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   // Creates TabletPeer.
   // `tablet_splitter` will be used for applying split tablet Raft operation.
-  // `persistence_gate` decides whether stamped YSQL writes and commits may replicate; nullptr
-  // allows them all.
+  // `persistence_gate` may refuse to let stamped YSQL writes and commits replicate, and may have
+  // this tablet's transaction coordinator abort stamped pending transactions; nullptr does neither.
   TabletPeer(
       const RaftGroupMetadataPtr& meta,
       const consensus::RaftPeerPB& local_peer_pb,
@@ -411,6 +414,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   bool IsLeaderAndReady() const;
   bool IsNotLeader() const;
 
+  Status CheckTransactionMayContinue(const LWOriginationInfoPB& origination_info) const override;
+
   Result<HybridTime> HtLeaseExpiration() const override;
 
   const scoped_refptr<log::LogAnchorRegistry>& log_anchor_registry() const {
@@ -436,6 +441,18 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   // Tells the tablet's log to garbage collect.
   Status RunLogGC(bool rollover = false);
+
+  // Enters the quiescent mode if nothing was appended to the log for quiescent_tablet_idle_sec.
+  // Returns when the tablet should be checked next, always after now.
+  // Called from one thread.
+  CoarseTimePoint MaybeEnterQuiescentMode(CoarseTimePoint now);
+
+  // Flushes all storages and replaces the WAL segments with a quiescent marker at op_id, the last
+  // op in the log. Returns TryAgain if the tablet is not idle at op_id.
+  Status EnterQuiescentMode(const OpId& op_id);
+
+  // Returns true if the log has no segments and its quiescent marker is the last op.
+  bool IsQuiescent() const;
 
   // Register the maintenance ops associated with this peer's tablet, also invokes
   // Tablet::RegisterMaintenanceOps().

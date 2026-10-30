@@ -109,6 +109,7 @@ import org.yb.client.ChangeConfigResponse;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
+import org.yb.client.LeaderStepDownResponse;
 import org.yb.client.ListLiveTabletServersResponse;
 import org.yb.client.ListMasterRaftPeersResponse;
 import org.yb.client.ListTabletServersResponse;
@@ -3273,6 +3274,189 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         beforeTags,
         true /* assertExpandMarkVsMblOrder */,
         null /* beforeReplicationFactor */);
+  }
+
+  // PLAT-23125: an RF increase starts masters on existing nodes. Their configure step only updates
+  // gflags, so their collector config has no master target until it is rewritten.
+  @Test
+  public void testIncreaseRfRewritesOtelCollectorOnNewMasters() {
+    prepareUniverseForRfIncrease();
+    enableMetricsExport(defaultUniverse.getUniverseUUID());
+    Universe universe =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              // RF 1: one master, so the RF increase starts masters on the other two nodes.
+              int firstIdx =
+                  u.getUniverseDetails().nodeDetailsSet.stream()
+                      .mapToInt(n -> n.nodeIdx)
+                      .min()
+                      .getAsInt();
+              u.getUniverseDetails()
+                  .nodeDetailsSet
+                  .forEach(n -> n.isMaster = n.nodeIdx == firstIdx);
+            });
+    factory.globalRuntimeConf().setValue(GlobalConfKeys.enableRFChange.getKey(), "true");
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    Set<String> oldMasters =
+        universe.getMasters().stream().map(n -> n.nodeName).collect(Collectors.toSet());
+    // The RF change steps the master leader down and waits for a different leader.
+    try {
+      LeaderStepDownResponse stepDownResponse = mock(LeaderStepDownResponse.class);
+      when(stepDownResponse.hasError()).thenReturn(false);
+      when(mockClient.masterLeaderStepDown()).thenReturn(stepDownResponse);
+      when(mockClient.getLeaderMasterUUID()).thenReturn("leader-1", "leader-2");
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
+
+    TaskInfo taskInfo = submitTask(performIncreaseRf(universe, 3));
+    assertEquals(
+        taskInfo.getErrorMessage()
+            + taskInfo.getSubTasks().stream()
+                .filter(t -> t.getTaskState() == Failure)
+                .map(t -> t.getTaskType() + ": " + t.getErrorMessage())
+                .collect(Collectors.toList()),
+        Success,
+        taskInfo.getTaskState());
+
+    Set<String> newMasters =
+        Universe.getOrBadRequest(universe.getUniverseUUID()).getMasters().stream()
+            .map(n -> n.nodeName)
+            .filter(n -> !oldMasters.contains(n))
+            .collect(Collectors.toSet());
+    assertEquals(2, newMasters.size());
+    Set<String> refreshed =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.ManageOtelCollector)
+            .map(t -> t.getTaskParams().get("nodeName").asText())
+            .collect(Collectors.toSet());
+    assertEquals(newMasters, refreshed);
+    // The refreshes run after the master quorum changes and address updates, so a slow node
+    // cannot delay them.
+    int firstRefresh =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.ManageOtelCollector)
+            .mapToInt(TaskInfo::getPosition)
+            .min()
+            .getAsInt();
+    int lastMasterChange =
+        taskInfo.getSubTasks().stream()
+            .filter(
+                t ->
+                    t.getTaskType() == TaskType.ChangeMasterConfig
+                        || (t.getTaskType() == TaskType.AnsibleConfigureServers
+                            && t.getTaskParams().path("updateMasterAddrsOnly").asBoolean()))
+            .mapToInt(TaskInfo::getPosition)
+            .max()
+            .getAsInt();
+    assertTrue(firstRefresh > lastMasterChange);
+    assertOtelRewritesRunLast(taskInfo);
+  }
+
+  // PLAT-23125: an expand that moves a master leaves the old master node in the universe as a
+  // tserver. Its collector config still has the master target, so the edit must rewrite it.
+  private Universe setUpMetricsExportForEdit() {
+    Universe universe = enableMetricsExport(defaultUniverse.getUniverseUUID());
+    factory.forUniverse(universe).setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
+    return universe;
+  }
+
+  @Test
+  public void testMoveMasterRewritesOtelCollectorOnDemotedMaster() {
+    Universe universe = setUpMetricsExportForEdit();
+    Set<String> oldMasters =
+        universe.getMasters().stream().map(n -> n.nodeName).collect(Collectors.toSet());
+    UniverseDefinitionTaskParams taskParams = performExpand(universe, true /* move master */);
+    // The setup above bumped the universe version.
+    taskParams.expectedUniverseVersion = -1;
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(
+        taskInfo.getErrorMessage()
+            + taskInfo.getSubTasks().stream()
+                .filter(t -> t.getTaskState() == Failure)
+                .map(t -> t.getTaskType() + ": " + t.getErrorMessage())
+                .collect(Collectors.toList()),
+        Success,
+        taskInfo.getTaskState());
+
+    Universe after = Universe.getOrBadRequest(universe.getUniverseUUID());
+    Set<String> demoted =
+        oldMasters.stream()
+            .filter(n -> after.getNode(n) != null && !after.getNode(n).isMaster)
+            .collect(Collectors.toSet());
+    assertEquals(1, demoted.size());
+    Set<String> refreshed =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.ManageOtelCollector)
+            .map(t -> t.getTaskParams().get("nodeName").asText())
+            .collect(Collectors.toSet());
+    // The new master is a new node: configure already wrote its master target, so only the
+    // demoted node is refreshed.
+    assertEquals(demoted, refreshed);
+    // A failed refresh can leave the collector stopped, so edit universe must fail, not ignore it.
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.ManageOtelCollector)
+            .noneMatch(t -> t.getTaskParams().get("ignoreErrors").asBoolean()));
+    // The refresh runs after the master address update that follows the demotion, so a slow
+    // node cannot delay it.
+    String demotedNode = demoted.iterator().next();
+    int demotion =
+        taskInfo.getSubTasks().stream()
+            .filter(
+                t ->
+                    t.getTaskType() == TaskType.UpdateNodeProcess
+                        && demotedNode.equals(t.getTaskParams().path("nodeName").asText())
+                        && !t.getTaskParams().path("isAdd").asBoolean())
+            .mapToInt(TaskInfo::getPosition)
+            .min()
+            .getAsInt();
+    int addressUpdate =
+        taskInfo.getSubTasks().stream()
+            .filter(
+                t ->
+                    t.getTaskType() == TaskType.AnsibleConfigureServers
+                        && t.getTaskParams().path("updateMasterAddrsOnly").asBoolean()
+                        && t.getPosition() > demotion)
+            .mapToInt(TaskInfo::getPosition)
+            .min()
+            .getAsInt();
+    int refresh =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.ManageOtelCollector)
+            .mapToInt(TaskInfo::getPosition)
+            .min()
+            .getAsInt();
+    assertTrue(refresh + " > " + addressUpdate, refresh > addressUpdate);
+  }
+
+  // A full move removes the old masters (ToBeRemoved) and starts new ones (ToBeAdded, configured
+  // with the master target), so no node needs a collector refresh.
+  @Test
+  public void testFullMoveDoesNotRewriteOtelCollector() {
+    Universe universe = setUpMetricsExportForEdit();
+    UniverseDefinitionTaskParams taskParams = performFullMove(universe);
+    taskParams.expectedUniverseVersion = -1;
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    setDumpEntitiesMock(universe, "", false);
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(
+        taskInfo.getErrorMessage()
+            + taskInfo.getSubTasks().stream()
+                .filter(t -> t.getTaskState() == Failure)
+                .map(t -> t.getTaskType() + ": " + t.getErrorMessage())
+                .collect(Collectors.toList()),
+        Success,
+        taskInfo.getTaskState());
+    assertEquals(
+        List.of(),
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.ManageOtelCollector)
+            .map(t -> t.getTaskParams().get("nodeName").asText())
+            .collect(Collectors.toList()));
   }
 
   @Test

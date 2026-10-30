@@ -16,6 +16,7 @@
 #include <numeric>
 #include <queue>
 
+#include "yb/client/client-test-util.h"
 #include "yb/client/client_error.h"
 #include "yb/client/client_fwd.h"
 #include "yb/client/meta_cache.h"
@@ -140,12 +141,12 @@ DECLARE_string(vector_index_backend);
 DECLARE_uint64(post_split_compaction_input_size_threshold_bytes);
 DECLARE_bool(vector_index_allow_parallel_compactions);
 DECLARE_int32(vector_index_files_number_compaction_trigger);
-DECLARE_uint32(vector_index_compaction_chunk_max_mem_store_size_percentage);
+DECLARE_uint32(vector_index_compaction_chunk_max_memstore_size_percentage);
 DECLARE_uint32(vector_index_concurrent_reads);
 DECLARE_uint32(vector_index_concurrent_writes);
 DECLARE_uint32(vector_index_num_compactions_limit);
 DECLARE_uint32(vector_index_tenant_hash_group_and_range_components);
-DECLARE_uint64(vector_index_compaction_chunk_max_mem_store_size_mb);
+DECLARE_uint64(vector_index_compaction_chunk_max_memstore_size_mb);
 DECLARE_uint64(vector_index_initial_chunk_memstore_size_mb);
 DECLARE_uint64(vector_index_initial_chunk_size);
 DECLARE_uint64(vector_index_max_insert_tasks);
@@ -263,9 +264,9 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_num_compactions_limit) = 0;
 
     // Preserve the existing test assumption that each compaction produces one output chunk.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_memstore_size_mb) = 0;
     ANNOTATE_UNPROTECTED_WRITE(
-        FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) = 0;
+        FLAGS_vector_index_compaction_chunk_max_memstore_size_percentage) = 0;
 
     auto packing_mode = GetPackingMode();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = packing_mode != PackingMode::kNone;
@@ -1832,6 +1833,52 @@ TEST_P(PgVectorIndexTest, SnapshotSchedule) {
       schedule_id, hybrid_time));
   ASSERT_OK(snapshot_util.RestoreSnapshot(snapshot_id, hybrid_time));
 
+  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
+}
+
+// An in-place restore of a plain snapshot keeps vector indexes created after the snapshot. They
+// have no counterpart in the snapshot superblock and must be backfilled from the restored rows.
+// See issue #35832.
+TEST_P(PgVectorIndexTest, SnapshotRestoreIndexCreatedAfterSnapshot) {
+  constexpr size_t kNumRows = 128;
+  constexpr size_t kQueryLimit = 5;
+
+  client::SnapshotTestUtil snapshot_util;
+  snapshot_util.SetProxy(&client_->proxy_cache());
+  snapshot_util.SetCluster(cluster_.get());
+
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
+
+  client::YBTableName db_name(YQL_DATABASE_PGSQL);
+  db_name.set_namespace_id(ASSERT_RESULT(client::GetNamespaceIdByNamespaceName(
+      client_.get(), DbName())));
+  db_name.set_namespace_name(DbName());
+  auto snapshot_id = ASSERT_RESULT(snapshot_util.CreateSnapshot(db_name));
+
+  // Delete the rows first, so the indexes below are built empty and correct results after the
+  // restore can only come from the post-restore backfill.
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = false;
+  ASSERT_OK(conn.Execute("DELETE FROM test"));
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = true;
+
+  ASSERT_OK(CreateIndex(conn, "vi_after"));
+  ASSERT_OK(CreateIndex(conn, "vi_dropped"));
+  ASSERT_OK(conn.Execute("DROP INDEX vi_dropped"));
+
+  ASSERT_OK(snapshot_util.RestoreSnapshot(snapshot_id));
+
+  ASSERT_OK(WaitFor([this]() -> Result<bool> {
+    for (const auto& index : ListVectorIndexes(cluster_.get())) {
+      if (!index->IsDeactivated() && !VERIFY_RESULT(index->BackfillDone())) {
+        return false;
+      }
+    }
+    return true;
+  }, 60s * kTimeMultiplier, "Wait vector index backfills"));
+
+  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
+  // Leave only the index created after the snapshot to serve the query.
+  ASSERT_OK(conn.ExecuteFormat("DROP INDEX $0", kVectorIndexName));
   ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
 }
 

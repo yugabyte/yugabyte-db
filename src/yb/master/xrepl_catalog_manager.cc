@@ -318,10 +318,9 @@ class CDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
       l.mutable_data()->pb.set_state(SysCDCStreamEntryPB::DELETING);
     }
 
-    // If the table asscoiated with this xcluster stream is in deleting state or the namespace
-    // associated with this CDCSDK stream is in deleting state, then mark this stream as DELETING so
-    // it can be deleted by the catalog manager background thread. Otherwise if this stream is
-    // missing an entry for state, then mark its state as Active.
+    // If the table for this xCluster stream or the namespace for this CDCSDK stream is deleting,
+    // mark DELETING so cleanup runs on the catalog manager bg thread (xCluster) or CDC bg thread
+    // (CDCSDK). If state is missing, mark ACTIVE.
     if (((table && table->LockForRead()->is_deleting()) ||
          (ns && ns->state() == SysNamespaceEntryPB::DELETING)) &&
         !l.data().is_deleting()) {
@@ -759,8 +758,8 @@ Status CatalogManager::DropXClusterStreamsOfTables(const std::unordered_set<Tabl
 
   LOG(INFO) << "Deleting xCluster streams for tables:" << AsString(table_ids);
 
-  // Do not delete them here, just mark them as DELETING and the catalog manager background thread
-  // will handle the deletion.
+  // Do not delete them here, just mark them as DELETING; the catalog manager bg thread
+  // (RunXReplBgTasks) will finish deletion.
   return DropXReplStreams(streams, SysCDCStreamEntryPB::DELETING);
 }
 
@@ -884,8 +883,8 @@ Status CatalogManager::DropCDCSDKStreams(const std::unordered_set<TableId>& tabl
 
   LOG(INFO) << "Deleting CDCSDK streams metadata for tables:" << AsString(table_ids);
 
-  // Do not delete them here, just mark them as DELETING_METADATA and the catalog manager background
-  // thread will handle the deletion.
+  // Do not delete them here, just mark them as DELETING_METADATA; the CDC bg thread
+  // will handle the deletion.
   return DropXReplStreams(streams, SysCDCStreamEntryPB::DELETING_METADATA);
 }
 
@@ -908,7 +907,7 @@ Status CatalogManager::DropAllCDCSDKStreams(const NamespaceId& ns_id) {
   }
 
   LOG(INFO) << "Deleting all CDCSDK streams for namespace: " << ns_id;
-  // Do not delete them here, just mark them as DELETING and the catalog manager background thread
+  // Do not delete them here, just mark them as DELETING; the CDC bg thread
   // will handle the deletion.
   return DropXReplStreams(streams, SysCDCStreamEntryPB::DELETING);
 }
@@ -2237,8 +2236,8 @@ Status CatalogManager::DeleteCDCStream(
         MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
   }
 
-  // Do not delete them here, just mark them as DELETING and the catalog manager background thread
-  // will handle the deletion.
+  // Do not delete them here, just mark them as DELETING; CDCSDK cleanup runs on the CDC bg
+  // thread and xCluster cleanup on the catalog manager loop.
   Status s = DropXReplStreams(streams, SysCDCStreamEntryPB::DELETING);
   if (!s.ok()) {
     if (s.IsIllegalState()) {
@@ -3483,19 +3482,40 @@ void CatalogManager::RemoveStreamsFromIneligibleTableMap(
 }
 
 Result<std::vector<CDCStreamInfoPtr>> CatalogManager::FindXReplStreamsMarkedForDeletion(
-    SysCDCStreamEntryPB::State deletion_state) {
+    SysCDCStreamEntryPB::State deletion_state,
+    std::optional<bool> is_cdcsdk_stream) {
   std::vector<CDCStreamInfoPtr> streams;
   TRACE("Acquired catalog manager lock");
   SharedLock lock(mutex_);
   for (const CDCStreamInfoMap::value_type& entry : cdc_stream_map_) {
     auto ltm = entry.second->LockForRead();
+
+    // Check deletion state.
+    bool matches_deletion_state = false;
     if (deletion_state == SysCDCStreamEntryPB::DELETING_METADATA && ltm->is_deleting_metadata()) {
-      VLOG(2) << "Stream " << entry.second->id() << " was marked as DELETING_METADATA";
-      streams.push_back(entry.second);
+      matches_deletion_state = true;
     } else if (deletion_state == SysCDCStreamEntryPB::DELETING && ltm->is_deleting()) {
-      VLOG(2) << "Stream " << entry.second->id() << " was marked as DELETING";
-      streams.push_back(entry.second);
+      matches_deletion_state = true;
     }
+
+    if (!matches_deletion_state) {
+      continue;
+    }
+
+    // Apply CDCSDK filter if specified, using the already-held lock.
+    if (is_cdcsdk_stream.has_value()) {
+      bool is_cdcsdk = ltm->pb.has_namespace_id() && !ltm->pb.namespace_id().empty();
+      if (is_cdcsdk != *is_cdcsdk_stream) {
+        continue;
+      }
+    }
+
+    VLOG(2) << Format("Stream $0 ($1) marked as $2",
+                       entry.second->id(),
+                       ltm->pb.has_namespace_id() && !ltm->pb.namespace_id().empty()
+                           ? "CDCSDK" : "xCluster",
+                       SysCDCStreamEntryPB::State_Name(deletion_state));
+    streams.push_back(entry.second);
   }
   return streams;
 }
@@ -3912,8 +3932,8 @@ Status CatalogManager::CleanUpCDCSDKStreamsMetadata(const LeaderEpoch& epoch) {
   return CleanupCDCSDKDroppedTablesFromStreamInfo(epoch, drop_stream_table_list);
 }
 
-Status CatalogManager::CleanUpDeletedXReplStreams(const LeaderEpoch& epoch) {
-  auto streams = VERIFY_RESULT(FindXReplStreamsMarkedForDeletion(SysCDCStreamEntryPB::DELETING));
+Status CatalogManager::CleanUpDeletedXReplStreams(
+    const LeaderEpoch& epoch, std::vector<CDCStreamInfoPtr> streams) {
   if (streams.empty()) {
     return Status::OK();
   }
@@ -3931,7 +3951,7 @@ Status CatalogManager::CleanUpDeletedXReplStreams(const LeaderEpoch& epoch) {
   // We use GetTableRangeAsync here since it could be that we came here to rollback a CDCSDK stream
   // with the CDC state table creation still in progress. This can happen in case the stream being
   // rolled back is the first CDC stream in the universe. In this case, we skip the rollback and the
-  // caller (CatalogManagerBgTasks) is expected to retry this cleanup at a later time.
+  // caller is expected to retry this cleanup at a later time.
   Status iteration_status;
   auto all_entry_keys = VERIFY_RESULT(
       cdc_state_table_->GetTableRangeAsync({} /* just key columns */, &iteration_status));
@@ -3995,6 +4015,18 @@ Status CatalogManager::CleanUpDeletedXReplStreams(const LeaderEpoch& epoch) {
   LOG(INFO) << "Successfully deleted XRepl streams: " << CDCStreamInfosAsString(streams_to_delete);
 
   return Status::OK();
+}
+
+Status CatalogManager::CleanUpDeletedCDCSDKStreams(const LeaderEpoch& epoch) {
+  auto streams = VERIFY_RESULT(FindXReplStreamsMarkedForDeletion(
+      SysCDCStreamEntryPB::DELETING, true /* is_cdcsdk_stream */));
+  return CleanUpDeletedXReplStreams(epoch, std::move(streams));
+}
+
+Status CatalogManager::CleanUpDeletedXClusterStreams(const LeaderEpoch& epoch) {
+  auto streams = VERIFY_RESULT(FindXReplStreamsMarkedForDeletion(
+      SysCDCStreamEntryPB::DELETING, false /* is_cdcsdk_stream */));
+  return CleanUpDeletedXReplStreams(epoch, std::move(streams));
 }
 
 Status CatalogManager::CleanupXReplStreamFromMaps(CDCStreamInfoPtr stream) {
@@ -5672,8 +5704,7 @@ Status CatalogManager::RemoveUserTableFromCDCSDKStream(
     RETURN_INVALID_REQUEST_STATUS("Stream and Table are not under the same namespace");
   }
 
-  // Add to the 'cdcsdk_unprocessed_unqualified_tables_to_streams_' map which will be further
-  // processed by the catalog manager bg thread.
+  // Add to cdcsdk_unprocessed_unqualified_tables_to_streams_; the CDC bg thread processes it.
   RETURN_NOT_OK(AddTableForRemovalFromCDCSDKStream({table_id}, stream));
 
   LOG_WITH_FUNC(INFO) << "Successfully added table " << table_id
@@ -5933,8 +5964,8 @@ Status CatalogManager::RemoveTablesFromCDCSDKStream(
     valid_tables_for_removal.insert(table_id);
   }
 
-  // Add to the 'cdcsdk_unprocessed_unqualified_tables_to_streams_' map which will be further
-  // processed by the catalog manager bg thread.
+  // Add to cdcsdk_unprocessed_unqualified_tables_to_streams_;
+  //  processed by the catalog manager's cdc bg thread.
   RETURN_NOT_OK(AddTableForRemovalFromCDCSDKStream(valid_tables_for_removal, stream));
 
   if (!valid_tables_for_removal.empty()) {
@@ -5942,8 +5973,7 @@ Status CatalogManager::RemoveTablesFromCDCSDKStream(
                         << " to unqualified list for CDC stream: " << stream_id;
   }
 
-  // Add to the 'cdcsdk_ineligible_tables_to_streams_' map which will be further processed by the
-  // catalog manager bg thread.
+  // Add to cdcsdk_ineligible_tables_to_streams_; the CDC bg thread processes it.
   RETURN_NOT_OK(AddTableForDeletionFromCDCStateTable(ineligible_tables_for_removal, stream));
   if (!ineligible_tables_for_removal.empty()) {
     LOG_WITH_FUNC(INFO) << "Successfully added table " << AsString(ineligible_tables_for_removal)
@@ -6123,7 +6153,8 @@ void CatalogManager::RunXReplBgTasks(const LeaderEpoch& epoch) {
   TEST_SYNC_POINT("RunXReplBgTasks::Start");
 
   if (!FLAGS_TEST_cdcsdk_disable_deleted_stream_cleanup) {
-    WARN_NOT_OK(CleanUpDeletedXReplStreams(epoch), "Failed Cleaning Deleted XRepl Streams");
+    WARN_NOT_OK(
+        CleanUpDeletedXClusterStreams(epoch), "Failed cleaning deleted xCluster streams");
   }
 
   // Clean up Failed Universes on the Consumer.
@@ -6131,10 +6162,6 @@ void CatalogManager::RunXReplBgTasks(const LeaderEpoch& epoch) {
 
   // Clean up Failed Replication Bootstrap on the Consumer.
   WARN_NOT_OK(ClearFailedReplicationBootstrap(), "Failed Clearing Failed Replication Bootstrap");
-
-  if (!FLAGS_TEST_cdcsdk_disable_drop_table_cleanup) {
-    WARN_NOT_OK(CleanUpCDCSDKStreamsMetadata(epoch), "Failed Cleanup CDCSDK Streams Metadata");
-  }
 
   // Restart xCluster and CDCSDK parent tablet deletion bg task.
   StartXReplParentTabletDeletionTaskIfStopped();
@@ -6674,8 +6701,21 @@ void CatalogManager::UpdateHideTimeInHiddenColocatedTableToCDCSDKMap(const Table
     return;
   }
 
-  DCHECK(colocated_tables_retained_by_cdcsdk_.contains(table.id()));
-  colocated_tables_retained_by_cdcsdk_[table.id()].second = table.hide_hybrid_time();;
+  if (auto* entry = FindOrNull(colocated_tables_retained_by_cdcsdk_, table.id())) {
+    entry->second = table.hide_hybrid_time();
+    return;
+  }
+  // DeleteOrHideTabletsOfTable adds the entry when the table is dropped. A table hidden some other
+  // way has none yet: one still HIDING across a master failover, or one removed by PITR that was
+  // added to the stream while HIDING (#36190).
+  auto tablets = table.GetTabletsIncludeInactive();
+  if (!tablets.ok() || tablets->size() != 1) {
+    LOG(DFATAL) << "Expected 1 tablet for hidden colocated table " << table.ToString() << ": "
+                << (tablets.ok() ? AsString(tablets->size()) : tablets.status().ToString());
+    return;
+  }
+  colocated_tables_retained_by_cdcsdk_.emplace(
+      table.id(), std::make_pair((*tablets)[0]->tablet_id(), table.hide_hybrid_time()));
 }
 
 Result<HybridTime> CatalogManager::GetTabletHideTime(const TabletId& tablet_id) const {

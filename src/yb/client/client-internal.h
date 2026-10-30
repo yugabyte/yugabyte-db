@@ -306,6 +306,14 @@ class YBClient::Data {
                                  std::shared_ptr<std::vector<YBTableInfo>> info,
                                  StatusCallback callback);
 
+  // Asynchronous counterpart of YBClient::GetNamespaceInfo. The RPC retains `resp` until
+  // `callback` has run.
+  void GetNamespaceInfo(YBClient* client,
+                        const NamespaceId& namespace_id,
+                        CoarseTimePoint deadline,
+                        std::shared_ptr<master::GetNamespaceInfoResponsePB> resp,
+                        StdStatusCallback callback);
+
   Result<IndexPermissions> GetIndexPermissions(
       YBClient* client,
       const TableId& table_id,

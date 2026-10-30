@@ -35,6 +35,8 @@
 #include <optional>
 #include <string>
 
+#include "yb/consensus/log.pb.h"
+
 #include "yb/tserver/remote_client_base.h"
 
 #include "yb/util/disk_space_checker.h"
@@ -188,6 +190,8 @@ class RemoteBootstrapClient : public RemoteClientBase {
 
   // First available WAL segment.
   uint64_t first_wal_seqno_ = 0;
+
+  std::optional<log::QuiescentMarkerPB> quiescent_marker_;
 
   bool download_retryable_requests_;
 

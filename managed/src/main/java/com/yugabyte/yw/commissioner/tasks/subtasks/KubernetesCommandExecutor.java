@@ -318,6 +318,15 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
   }
 
+  // A full move counts the new StatefulSet's masters. Read replicas never run masters.
+  static boolean releaseHasMasters(
+      boolean isReadOnlyCluster, int masterReplicas, FullMoveParams fullMoveParams) {
+    if (isReadOnlyCluster) {
+      return false;
+    }
+    return masterReplicas > 0 || (fullMoveParams != null && fullMoveParams.masterReplicas > 0);
+  }
+
   public static class FullMoveParams {
     public int tsReplicas = 0;
     public int masterReplicas = 0;
@@ -1029,6 +1038,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     if (taskParams().masterAddresses != null && !taskParams().masterAddresses.isEmpty()) {
       overrides.put("masterAddresses", taskParams().masterAddresses);
     }
+    int masterReplicas;
     if (isMultiAz) {
       // Don't want to use the AZ tag on minikube since there are no AZ tags
       if (!environment.isDev()) {
@@ -1036,8 +1046,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       }
       overrides.put("isMultiAz", true);
       if (taskParams().isReadOnlyCluster) {
+        masterReplicas = 0;
         overrides.put("replicas", ImmutableMap.of("tserver", numNodes, "master", 0));
       } else {
+        masterReplicas = replicationFactorZone;
         overrides.put(
             "replicas",
             ImmutableMap.of(
@@ -1050,12 +1062,13 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       }
     } else {
       if (taskParams().isReadOnlyCluster) {
+        masterReplicas = 0;
         overrides.put("replicas", ImmutableMap.of("tserver", numNodes, "master", 0));
       } else {
         // When full move is progress, the userIntent.replicationFactor will not reflect the
         // correct replication factor for master, so we need to use replicationFactorZone for
         // master replicas in that case.
-        int masterReplicas =
+        masterReplicas =
             taskParams().fullMoveParams != null ? replicationFactorZone : replicationFactor;
         overrides.put("replicas", ImmutableMap.of("tserver", numNodes, "master", masterReplicas));
       }
@@ -1527,10 +1540,17 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                 placementZone,
                 taskParams().isReadOnlyCluster
                     ? UniverseDefinitionTaskParams.ClusterType.ASYNC
-                    : UniverseDefinitionTaskParams.ClusterType.PRIMARY);
+                    : UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+                releaseHasMasters(
+                    taskParams().isReadOnlyCluster, masterReplicas, taskParams().fullMoveParams));
         OtelCollectorConfigGenerator.K8sOtelConfig otelConfig =
             otelCollectorConfigGenerator.getOtelColConfigK8s(
-                provider, universeFromDB, telemetryConfig, podPlacement, logLinePrefix);
+                provider,
+                universeFromDB,
+                telemetryConfig,
+                podPlacement,
+                logLinePrefix,
+                primaryClusterIntent);
         otelOverrides = new HashMap<>();
         otelOverrides.put("enabled", otelConfig.isEnabled());
         otelOverrides.put("config", otelConfig.getConfig());
@@ -1772,6 +1792,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     handleFullMoveOverrides(overrides, userIntent, pi, azUuid);
 
     validateOverrides(overrides);
+    // Overrides stored before the API checks existed must not reach the pods either.
+    GFlagsUtil.validateHelmValuesGFlags(
+        HelmUtils.flattenMap(overrides), universeFromDBParams.fipsEnabled, "Kubernetes overrides");
 
     boolean helmLegacy =
         Universe.HelmLegacy.valueOf(taskParams().universeConfig.get(Universe.HELM2_LEGACY))

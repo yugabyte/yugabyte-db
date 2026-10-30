@@ -78,12 +78,14 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.Role;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.File;
 import java.time.temporal.ChronoUnit;
 import java.util.Collections;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
@@ -737,11 +739,17 @@ public class CustomerControllerTest extends FakeDBApplication {
     Universe u1 = createUniverse("demo", customer.getId(), CloudType.kubernetes);
     Provider provider = Util.getSingleProvider(u1.getUniverseDetails().getPrimaryCluster());
     Region r = Region.create(provider, "region-1", "PlacementRegion-1", "default-image");
-    AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ-1", "subnet-1");
+    AvailabilityZone az1 = AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ-1", "subnet-1");
     Region r1 = Region.create(provider, "region-2", "PlacementRegion-2", "default-image");
-    AvailabilityZone.createOrThrow(r1, "az-2", "PlacementAZ-2", "subnet-2");
+    AvailabilityZone az2 = AvailabilityZone.createOrThrow(r1, "az-2", "PlacementAZ-2", "subnet-2");
     AvailabilityZone az3 = AvailabilityZone.createOrThrow(r1, "az-3", "PlacementAZ-3", "subnet-3");
-    az3.updateConfig(ImmutableMap.of("KUBENAMESPACE", "test-ns-1"));
+    // Each zone carries its kubeconfig, as a multi-cluster provider's zones do.
+    for (AvailabilityZone az : ImmutableList.of(az1, az2)) {
+      az.updateConfig(ImmutableMap.of("KUBECONFIG", "/tmp/kubeconfig"));
+      az.save();
+    }
+    az3.updateConfig(
+        ImmutableMap.of("KUBECONFIG", "/tmp/kubeconfig", "KUBENAMESPACE", "test-ns-1"));
     az3.save();
 
     ObjectNode response = Json.newObject();
@@ -780,6 +788,9 @@ public class CustomerControllerTest extends FakeDBApplication {
               u1.getUniverseUUID(), ApiUtils.mockUniverseUpdaterWithHelmNamingStyle(true));
     }
     Provider provider = Util.getSingleProvider(u1.getUniverseDetails().getPrimaryCluster());
+    CloudInfoInterface.setCloudProviderInfoFromConfig(
+        provider, ImmutableMap.of("KUBECONFIG", "/tmp/kubeconfig"));
+    provider.save();
     Region r = Region.create(provider, "region-1", "PlacementRegion-1", "default-image");
     AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ-1", "subnet-1");
 
@@ -1159,12 +1170,17 @@ public class CustomerControllerTest extends FakeDBApplication {
     return filterOverridesCaptor;
   }
 
+  // Each test requests one metric, which gets the ALL bucket plus its own entry.
   private JsonNode capturedFiltersAsJson(
       ArgumentCaptor<Map<String, Map<String, String>>> filterOverrides) {
     assertThat(filterOverrides.getValue(), is(notNullValue()));
-    Map<String, String> allFilters =
-        filterOverrides.getValue().getOrDefault(MetricQueryHelper.ALL, Collections.emptyMap());
-    return Json.toJson(allFilters);
+    Map<String, String> filters =
+        new HashMap<>(
+            filterOverrides.getValue().getOrDefault(MetricQueryHelper.ALL, Collections.emptyMap()));
+    filterOverrides.getValue().entrySet().stream()
+        .filter(entry -> !entry.getKey().equals(MetricQueryHelper.ALL))
+        .forEach(entry -> filters.putAll(entry.getValue()));
+    return Json.toJson(filters);
   }
 
   private Result getHostInfo(UUID customerUUID) {

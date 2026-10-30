@@ -23,6 +23,7 @@
 #include "yb/client/client.h"
 #include "yb/client/xcluster_client.h"
 
+#include "yb/common/common_flags.h"
 #include "yb/common/xcluster_util.h"
 
 #include "yb/master/catalog_manager.h"
@@ -32,6 +33,7 @@
 #include "yb/master/xcluster/add_table_to_xcluster_source_task.h"
 #include "yb/master/xcluster/master_xcluster_util.h"
 #include "yb/master/xcluster/xcluster_catalog_entity.h"
+#include "yb/master/xcluster/xcluster_manager.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/master/xcluster/xcluster_outbound_replication_group_tasks.h"
 #include "yb/master/xcluster/xcluster_outbound_replication_group.h"
@@ -282,6 +284,8 @@ XClusterSourceManager::InitOutboundReplicationGroup(
           std::bind(&XClusterSourceManager::SetupDDLReplicationExtension, this, _1, _2),
       .drop_ddl_replication_extension_func =
           std::bind(&XClusterSourceManager::DropDDLReplicationExtensionIfExists, this, _1, _2),
+      .start_persisting_func =
+          std::bind(&XClusterSourceManager::StartPersistingAfterCheckpoint, this, _1, _2),
   };
 
   return std::make_shared<XClusterOutboundReplicationGroup>(
@@ -1493,6 +1497,19 @@ Status XClusterSourceManager::SetupDDLReplicationExtension(
 
   return master::SetupDDLReplicationExtension(
       catalog_manager_, namespace_id, XClusterDDLReplicationRole::kSource, std::move(callback));
+}
+
+Status XClusterSourceManager::StartPersistingAfterCheckpoint(
+    const NamespaceId& namespace_id, const LeaderEpoch& epoch) const {
+  if (!IsPersistenceGateEnforced()) {
+    // Mid-upgrade, before every process can enforce the persistence gate: keep the old behavior.
+    LOG(WARNING) << "Persistence gate not enforced; not blocking writes started before namespace "
+                 << namespace_id << " was checkpointed";
+    return Status::OK();
+  }
+  return catalog_manager_.GetXClusterManagerImpl()->StartPersisting(
+      {namespace_id},
+      MonoTime::Now() + MonoDelta::FromSeconds(FLAGS_xcluster_ysql_statement_timeout_sec), epoch);
 }
 
 Status XClusterSourceManager::DropDDLReplicationExtensionIfExists(

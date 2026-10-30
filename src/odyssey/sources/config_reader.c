@@ -107,6 +107,7 @@ typedef enum {
 	OD_LPOOL_RESERVE_PREPARED_STATEMENT,
 	OD_LPOOL_CLIENT_IDLE_TIMEOUT,
 	OD_LPOOL_IDLE_IN_TRANSACTION_TIMEOUT,
+	OD_LPOOL_ATTACH_CHECK,
 	OD_LSTORAGE_DB,
 	OD_LSTORAGE_USER,
 	OD_LSTORAGE_PASSWORD,
@@ -290,6 +291,7 @@ static od_keyword_t od_config_keywords[] = {
 	od_keyword("pool_client_idle_timeout", OD_LPOOL_CLIENT_IDLE_TIMEOUT),
 	od_keyword("pool_idle_in_transaction_timeout",
 		   OD_LPOOL_IDLE_IN_TRANSACTION_TIMEOUT),
+	od_keyword("pool_attach_check", OD_LPOOL_ATTACH_CHECK),
 	od_keyword("storage_db", OD_LSTORAGE_DB),
 	od_keyword("storage_user", OD_LSTORAGE_USER),
 	od_keyword("storage_password", OD_LSTORAGE_PASSWORD),
@@ -1537,6 +1539,13 @@ static int od_config_reader_rule_settings(od_config_reader_t *reader,
 				    reader,
 				    &rule->pool->reserve_prepared_statement))
 				return NOT_OK_RESPONSE;
+			continue;
+		/* pool_attach_check */
+		case OD_LPOOL_ATTACH_CHECK:
+			if (!od_config_reader_yes_no(
+				    reader, &rule->pool->attach_check)) {
+				return NOT_OK_RESPONSE;
+			}
 			continue;
 		/* pool_client_idle_timeout */
 		case OD_LPOOL_CLIENT_IDLE_TIMEOUT:

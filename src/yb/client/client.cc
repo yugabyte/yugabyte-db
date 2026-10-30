@@ -1176,6 +1176,14 @@ Status YBClient::GetNamespaceInfo(
       namespace_id, /* namespace_name */ {}, /* database_type */ {}, /* table_id */ {}, ret);
 }
 
+void YBClient::GetNamespaceInfoAsync(
+    const NamespaceId& namespace_id, std::shared_ptr<master::GetNamespaceInfoResponsePB> resp,
+    StdStatusCallback callback) {
+  data_->GetNamespaceInfo(
+      this, namespace_id, CoarseMonoClock::Now() + default_admin_operation_timeout(),
+      std::move(resp), std::move(callback));
+}
+
 Status YBClient::GetNamespaceInfoByTableId(
     const TableId& table_id, master::GetNamespaceInfoResponsePB* ret) {
   return GetNamespaceInfo(

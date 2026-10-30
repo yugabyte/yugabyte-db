@@ -179,6 +179,8 @@ ADD_YB_TEST(periodic-test)
 ADD_YB_TEST(reactor-test)
 ADD_YB_TEST(rpc-bench RUN_SERIAL true)
 ADD_YB_TEST(rpc-test)
+# TestRpcClientCertificates uses the generated test certificates.
+add_dependencies(rpc-test generate_test_certs)
 ADD_YB_TEST(rpc_retrier-test)
 ADD_YB_TEST(rpc_stub-test RUN_SERIAL true)
 ADD_YB_TEST(scheduler-test)
