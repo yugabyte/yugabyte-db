@@ -1764,8 +1764,9 @@ public class TestPgReplicationSlotWithTxnDdl extends BasePgSQLTest {
     conn.close();
   }
 
-  // DROP COLUMN removes a column added in the same transaction at once. Decoding the INSERT's intent
-  // reloads the schema at its time, which has d, so the producer also sends d with the UPDATE.
+  // DROP COLUMN removes a column added in the same transaction at once. Decoding the INSERT's
+  // intent reloads the schema at its time, which has d, so the producer also sends d with the
+  // UPDATE.
   @Test
   public void updateAfterAddThenDropColumnInsideTransaction() throws Exception {
     Map<String, String> tserverFlags = new HashMap<>();
@@ -1818,8 +1819,9 @@ public class TestPgReplicationSlotWithTxnDdl extends BasePgSQLTest {
     restartClusterWithFlags(Collections.emptyMap(), tserverFlags);
   }
 
-  // The rewrite creates the new DocDB table inside the transaction, so DROP COLUMN removes c from it
-  // at once. The producer still sends c in the writes after the transaction; the walsender skips it.
+  // The rewrite creates the new DocDB table inside the transaction, so DROP COLUMN removes c from
+  // it at once. The producer still sends c in the writes after the transaction; the walsender
+  // skips it.
   @Test
   public void writeAfterRewriteThenDropColumnInsideTransaction() throws Exception {
     restartWithDefaultReplicaIdentity("FULL");
