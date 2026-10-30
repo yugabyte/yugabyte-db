@@ -2348,10 +2348,14 @@ StartTransaction(void)
  * Recreates the state required to restart the write that received a transaction
  * conflict.
  *
- * Invariant: afterwards the backend must behave as if the transaction had
+ * Goal: afterwards the backend should behave as if the transaction had
  * aborted and the client had replayed the same command in a new transaction.
  * State that AbortTransaction resets, or that a new local transaction id
  * invalidates, must be reset here too; #30540 broke this for plpgsql.
+ *
+ * Known gaps: the retry does not undo GUC settings from a function's SET
+ * clause (AbortTransaction calls AtEOXact_GUC), and it does not restore the
+ * user id that a SECURITY DEFINER function set.
  */
 void
 YBCRestartWriteTransaction()
