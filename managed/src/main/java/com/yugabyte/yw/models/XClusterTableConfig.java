@@ -2,6 +2,7 @@
 package com.yugabyte.yw.models;
 
 import static org.yb.CommonTypes.ReplicationErrorPb.REPLICATION_AUTO_FLAG_CONFIG_VERSION_MISMATCH;
+import static org.yb.CommonTypes.ReplicationErrorPb.REPLICATION_DDL_QUEUE_PAUSED;
 import static org.yb.CommonTypes.ReplicationErrorPb.REPLICATION_ERROR_UNINITIALIZED;
 import static org.yb.CommonTypes.ReplicationErrorPb.REPLICATION_MISSING_OP_ID;
 import static org.yb.CommonTypes.ReplicationErrorPb.REPLICATION_MISSING_TABLE;
@@ -185,7 +186,9 @@ public class XClusterTableConfig extends Model {
     AUTO_FLAG_CONFIG_MISMATCH(
         REPLICATION_AUTO_FLAG_CONFIG_VERSION_MISMATCH, "Auto flag config mismatch"),
     SOURCE_UNREACHABLE(REPLICATION_SOURCE_UNREACHABLE, "Source unreachable"),
-    SYSTEM_ERROR(REPLICATION_SYSTEM_ERROR, "System error");
+    SYSTEM_ERROR(REPLICATION_SYSTEM_ERROR, "System error"),
+    // The target paused DDL replication after repeatedly failing to apply the same DDL
+    DDL_QUEUE_PAUSED(REPLICATION_DDL_QUEUE_PAUSED, "DDL replication paused");
     // REPLICATION_OK and REPLICATION_PAUSED are not included intentionally because they are not
     // errors.
 

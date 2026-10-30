@@ -10,11 +10,23 @@ import static org.junit.Assert.fail;
 
 import com.google.protobuf.ByteString;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.forms.TableInfoForm.NamespaceInfoResp;
+import com.yugabyte.yw.forms.TableInfoForm.TableInfoResp;
+import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.XClusterConfig.ConfigType;
+import com.yugabyte.yw.models.XClusterNamespaceConfig;
+import com.yugabyte.yw.models.XClusterTableConfig;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
@@ -207,5 +219,224 @@ public class XClusterConfigTaskBaseTest {
         XClusterConfigTaskBase.getTableIds(
             XClusterConfigTaskBase.getRequestedTableInfoList(
                 Set.of(DB2_ID), sourceTableInfoList, true /* matviewSupported */)));
+  }
+
+  private static final String DB = "db";
+  private static final Duration MAX_LAG = Duration.ofMinutes(15);
+  private static final long LOW_LAG_US = Duration.ofSeconds(5).toNanos() / 1000;
+  private static final long HIGH_LAG_US = MAX_LAG.plusSeconds(1).toNanos() / 1000;
+
+  private static XClusterTableConfig table(
+      XClusterConfig config, String db, XClusterTableConfig.Status status) {
+    XClusterTableConfig tableConfig = new XClusterTableConfig(config, UUID.randomUUID().toString());
+    tableConfig.setStatus(status);
+    TableInfoResp info =
+        TableInfoResp.builder().tableID(tableConfig.getTableId()).keySpace(db).build();
+    // tables that only exist on the target have no source table info
+    if (status == XClusterTableConfig.Status.ExtraTableOnTarget) {
+      tableConfig.setTargetTableInfo(info);
+    } else {
+      tableConfig.setSourceTableInfo(info);
+    }
+    return tableConfig;
+  }
+
+  private static XClusterConfig config(
+      boolean automaticDdlMode, XClusterTableConfig.Status... statuses) {
+    XClusterConfig config = new XClusterConfig();
+    config.setType(ConfigType.Db);
+    config.setAutomaticDdlMode(automaticDdlMode);
+    Set<XClusterTableConfig> tables = new HashSet<>();
+    tables.add(table(config, DB, XClusterTableConfig.Status.Running));
+    for (XClusterTableConfig.Status status : statuses) {
+      tables.add(table(config, DB, status));
+    }
+    config.setTables(tables);
+    return config;
+  }
+
+  private static XClusterNamespaceConfig.Status namespaceStatus(
+      XClusterConfig config,
+      Supplier<Map<String, Long>> safeTimeLags,
+      Supplier<Optional<Set<String>>> walAnchorTableIds) {
+    XClusterNamespaceConfig namespaceConfig = new XClusterNamespaceConfig(config, "id");
+    namespaceConfig.setStatus(XClusterNamespaceConfig.Status.Running);
+    namespaceConfig.setSourceNamespaceInfo(NamespaceInfoResp.builder().name(DB).build());
+    XClusterConfigTaskBase.setNamespaceStatusesFromTables(
+        config, Map.of(DB, namespaceConfig), safeTimeLags, walAnchorTableIds, MAX_LAG);
+    return namespaceConfig.getStatus();
+  }
+
+  private static XClusterNamespaceConfig.Status namespaceStatus(
+      XClusterConfig config, Supplier<Map<String, Long>> safeTimeLags) {
+    // the source doesn't create WAL anchor streams
+    return namespaceStatus(config, safeTimeLags, Optional::empty);
+  }
+
+  private static Set<String> tableIdsWithStatus(
+      XClusterConfig config, XClusterTableConfig.Status status) {
+    return config.getTableDetailsWithStatus(status).stream()
+        .map(XClusterTableConfig::getTableId)
+        .collect(Collectors.toSet());
+  }
+
+  private static XClusterNamespaceConfig.Status namespaceStatus(
+      XClusterConfig config, long safeTimeLagUs) {
+    return namespaceStatus(config, () -> Map.of(DB, safeTimeLagUs));
+  }
+
+  @Test
+  public void testNamespaceStatusWithDdlInProgress() {
+    for (XClusterTableConfig.Status status :
+        List.of(
+            XClusterTableConfig.Status.ExtraTableOnSource,
+            XClusterTableConfig.Status.DroppedFromSource,
+            XClusterTableConfig.Status.ExtraTableOnTarget)) {
+      assertEquals(
+          status.toString(),
+          XClusterNamespaceConfig.Status.Updating,
+          namespaceStatus(config(true, status), LOW_LAG_US));
+      // the DDL is stuck
+      assertEquals(
+          status.toString(),
+          XClusterNamespaceConfig.Status.Error,
+          namespaceStatus(config(true, status), HIGH_LAG_US));
+      assertEquals(
+          status.toString(),
+          XClusterNamespaceConfig.Status.Error,
+          namespaceStatus(config(false, status), LOW_LAG_US));
+    }
+  }
+
+  @Test
+  public void testNamespaceStatusWithDdlInProgressAndOtherBadTable() {
+    XClusterConfig config =
+        config(
+            true, XClusterTableConfig.Status.ExtraTableOnSource, XClusterTableConfig.Status.Failed);
+    assertEquals(XClusterNamespaceConfig.Status.Error, namespaceStatus(config, LOW_LAG_US));
+  }
+
+  @Test
+  public void testNamespaceStatusWithDdlInProgressAndReplicationError() {
+    XClusterConfig config = config(true, XClusterTableConfig.Status.ExtraTableOnSource);
+    config.getTableDetails().stream()
+        .filter(t -> t.getStatus() == XClusterTableConfig.Status.ExtraTableOnSource)
+        .forEach(
+            t ->
+                t.getReplicationStatusErrors()
+                    .add(XClusterTableConfig.ReplicationStatusError.SCHEMA_MISMATCH));
+    assertEquals(XClusterNamespaceConfig.Status.Error, namespaceStatus(config, LOW_LAG_US));
+  }
+
+  @Test
+  public void testNamespaceStatusWithDdlInProgressAndUnableToFetch() {
+    XClusterConfig config =
+        config(
+            true,
+            XClusterTableConfig.Status.ExtraTableOnSource,
+            XClusterTableConfig.Status.UnableToFetch);
+    assertEquals(XClusterNamespaceConfig.Status.Warning, namespaceStatus(config, LOW_LAG_US));
+  }
+
+  @Test
+  public void testNamespaceStatusWithoutSafeTime() {
+    XClusterConfig config = config(true, XClusterTableConfig.Status.ExtraTableOnSource);
+    assertEquals(XClusterNamespaceConfig.Status.Error, namespaceStatus(config, Map::of));
+    assertEquals(
+        XClusterNamespaceConfig.Status.Error,
+        namespaceStatus(
+            config,
+            () -> {
+              throw new RuntimeException("target unavailable");
+            }));
+  }
+
+  @Test
+  public void testNamespaceStatusFetchesSafeTimeOnlyIfNeeded() {
+    AtomicInteger calls = new AtomicInteger();
+    Supplier<Map<String, Long>> safeTimeLags =
+        () -> {
+          calls.incrementAndGet();
+          return Map.of(DB, LOW_LAG_US);
+        };
+    assertEquals(
+        XClusterNamespaceConfig.Status.Running, namespaceStatus(config(true), safeTimeLags));
+    assertEquals(
+        XClusterNamespaceConfig.Status.Error,
+        namespaceStatus(config(true, XClusterTableConfig.Status.Failed), safeTimeLags));
+    assertEquals(0, calls.get());
+  }
+
+  @Test
+  public void testNamespaceStatusWithDdlQueuePaused() {
+    XClusterConfig config = config(true, XClusterTableConfig.Status.ExtraTableOnSource);
+    // the ddl_queue table of the DB reports the paused DDL replication
+    XClusterTableConfig ddlQueue = table(config, DB, XClusterTableConfig.Status.Error);
+    ddlQueue
+        .getReplicationStatusErrors()
+        .add(XClusterTableConfig.ReplicationStatusError.DDL_QUEUE_PAUSED);
+    Set<XClusterTableConfig> tables = new HashSet<>(config.getTableDetails());
+    tables.add(ddlQueue);
+    config.setTables(tables);
+
+    assertEquals(XClusterNamespaceConfig.Status.Error, namespaceStatus(config, LOW_LAG_US));
+  }
+
+  @Test
+  public void testDdlQueuePausedErrorCode() {
+    assertEquals(
+        XClusterTableConfig.ReplicationStatusError.DDL_QUEUE_PAUSED,
+        XClusterTableConfig.ReplicationStatusError.fromErrorCode(
+            CommonTypes.ReplicationErrorPb.REPLICATION_DDL_QUEUE_PAUSED));
+  }
+
+  @Test
+  public void testNamespaceStatusWithWalAnchors() {
+    XClusterConfig config = config(true, XClusterTableConfig.Status.ExtraTableOnSource);
+    Set<String> newTableIds =
+        tableIdsWithStatus(config, XClusterTableConfig.Status.ExtraTableOnSource);
+
+    // the new table is waiting for its CREATE TABLE on the target
+    assertEquals(
+        XClusterNamespaceConfig.Status.Updating,
+        namespaceStatus(
+            config, () -> Map.of(DB, LOW_LAG_US), () -> Optional.of(Set.copyOf(newTableIds))));
+    // the safe time lag still catches a CREATE TABLE that hangs on the target
+    assertEquals(
+        XClusterNamespaceConfig.Status.Error,
+        namespaceStatus(
+            config, () -> Map.of(DB, HIGH_LAG_US), () -> Optional.of(Set.copyOf(newTableIds))));
+    // the table isn't new, e.g. adding it to replication failed
+    assertEquals(
+        XClusterNamespaceConfig.Status.Error,
+        namespaceStatus(config, () -> Map.of(DB, LOW_LAG_US), () -> Optional.of(Set.of())));
+    // without WAL anchor streams, only the safe time lag counts
+    assertEquals(
+        XClusterNamespaceConfig.Status.Updating,
+        namespaceStatus(
+            config,
+            () -> Map.of(DB, LOW_LAG_US),
+            () -> {
+              throw new RuntimeException("source unavailable");
+            }));
+  }
+
+  @Test
+  public void testWalAnchorsOnlyCheckedForNewTables() {
+    AtomicInteger calls = new AtomicInteger();
+    Supplier<Optional<Set<String>>> walAnchorTableIds =
+        () -> {
+          calls.incrementAndGet();
+          return Optional.of(Set.of());
+        };
+    for (XClusterTableConfig.Status status :
+        List.of(
+            XClusterTableConfig.Status.DroppedFromSource,
+            XClusterTableConfig.Status.ExtraTableOnTarget)) {
+      assertEquals(
+          XClusterNamespaceConfig.Status.Updating,
+          namespaceStatus(config(true, status), () -> Map.of(DB, LOW_LAG_US), walAnchorTableIds));
+    }
+    assertEquals(0, calls.get());
   }
 }

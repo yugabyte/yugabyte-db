@@ -83,6 +83,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -96,6 +97,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import lombok.Data;
@@ -124,6 +126,7 @@ import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 import org.yb.master.MasterReplicationOuterClass.GetUniverseReplicationInfoResponsePB.DbScopedInfoPB;
 import org.yb.master.MasterReplicationOuterClass.GetXClusterOutboundReplicationGroupInfoResponsePB.NamespaceInfoPB;
+import org.yb.master.MasterReplicationOuterClass.GetXClusterSafeTimeResponsePB.NamespaceSafeTimePB;
 import org.yb.master.MasterReplicationOuterClass.ReplicationStatusErrorPB;
 import org.yb.master.MasterReplicationOuterClass.ReplicationStatusPB;
 import org.yb.master.MasterTypes;
@@ -2397,51 +2400,16 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
                               xClusterNamespaceConfig.getSourceNamespaceInfo().name,
                           Function.identity()))
               : null;
-      xClusterConfig
-          .getTableDetails()
-          .forEach(
-              tableConfig -> {
-                if (tableConfig.getStatus().getCode() != 4) {
-                  if (tableConfig.getStatus().getCode() > 0) {
-                    log.warn(
-                        "In xCluster config {}, table {} is not in Running status",
-                        xClusterConfig,
-                        tableConfig);
-                  } else if (tableConfig.getStatus().getCode() == 0) {
-                    if (Objects.nonNull(dbNameToXClusterNamespaceConfigMap)) {
-                      XClusterNamespaceConfig xClusterNamespaceConfig =
-                          dbNameToXClusterNamespaceConfigMap.get(
-                              tableConfig.getSourceTableInfo().keySpace);
-                      if (xClusterNamespaceConfig != null
-                          && xClusterNamespaceConfig.getStatus()
-                              == XClusterNamespaceConfig.Status.Running) {
-                        xClusterNamespaceConfig.setStatus(XClusterNamespaceConfig.Status.Warning);
-                      }
-                    }
-                    log.warn(
-                        "In xCluster config {}, table {} is not in Running status",
-                        xClusterConfig,
-                        tableConfig);
-                  } else {
-                    if (Objects.nonNull(dbNameToXClusterNamespaceConfigMap)) {
-                      XClusterNamespaceConfig xClusterNamespaceConfig =
-                          dbNameToXClusterNamespaceConfigMap.get(
-                              tableConfig.getSourceTableInfo().keySpace);
-                      if (xClusterNamespaceConfig != null
-                          && (xClusterNamespaceConfig.getStatus()
-                                  == XClusterNamespaceConfig.Status.Running
-                              || xClusterNamespaceConfig.getStatus()
-                                  == XClusterNamespaceConfig.Status.Warning)) {
-                        xClusterNamespaceConfig.setStatus(XClusterNamespaceConfig.Status.Error);
-                      }
-                    }
-                    log.error(
-                        "In xCluster config {}, table {} is in bad status",
-                        xClusterConfig,
-                        tableConfig);
-                  }
-                }
-              });
+      Universe targetUniverse = targetUniverseOptional.get();
+      setNamespaceStatusesFromTables(
+          xClusterConfig,
+          dbNameToXClusterNamespaceConfigMap,
+          () -> getSafeTimeLagByDbName(xClusterUniverseService, targetUniverse),
+          () ->
+              xClusterUniverseService.getXClusterWalAnchorTableIds(
+                  ybClientService,
+                  Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID())),
+          confGetter.getGlobalConf(GlobalConfKeys.xClusterDdlInProgressMaxSafeTimeLag));
     } catch (Exception e) {
       log.error(
           "Error setting the namespace status based on its tables replication status for xCluster"
@@ -2733,6 +2701,200 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
           data);
     }
     return data;
+  }
+
+  // In automatic DDL mode, a table only exists on one side while the target replays its CREATE or
+  // DROP, so these statuses are expected until then.
+  private static final Set<XClusterTableConfig.Status> DDL_IN_PROGRESS_TABLE_STATUSES =
+      EnumSet.of(
+          XClusterTableConfig.Status.ExtraTableOnSource,
+          XClusterTableConfig.Status.DroppedFromSource,
+          XClusterTableConfig.Status.ExtraTableOnTarget);
+
+  /**
+   * Sets the status of each DB in the xCluster config based on the replication status of its
+   * tables: Warning if a table's status can't be fetched, and Error if a table is in a bad status.
+   *
+   * <p>In automatic DDL mode, a table that only exists on one side because the target hasn't
+   * replayed a DDL yet doesn't make its DB Error, and the DB is reported as Updating instead. The
+   * DB is still Error if the DDL is stuck:
+   *
+   * <ul>
+   *   <li>The target paused DDL replication after repeatedly failing to apply it, which is reported
+   *       as a DDL_QUEUE_PAUSED error on the ddl_queue table and handled like any other bad table.
+   *   <li>A table that only exists on the source has no WAL anchor stream although the source
+   *       creates one for each new table until the target commits its CREATE TABLE, so it isn't a
+   *       new table waiting for the target.
+   *   <li>The DB's safe time lags more than {@code maxSafeTimeLag}, which catches a DDL that hangs
+   *       on the target without failing.
+   * </ul>
+   *
+   * @param xClusterConfig The xCluster config with the table details already populated.
+   * @param dbNameToNamespaceConfig The DBs in the config by name, or null if it isn't DB scoped.
+   * @param safeTimeLagByDbName Supplies the safe time lag of each DB on the target in microseconds;
+   *     only called if needed.
+   * @param walAnchorTableIds Supplies the IDs of the source tables with a WAL anchor stream, or
+   *     empty if the source doesn't create them; only called if needed.
+   * @param maxSafeTimeLag The safe time lag above which a DDL is considered stuck.
+   */
+  public static void setNamespaceStatusesFromTables(
+      XClusterConfig xClusterConfig,
+      @Nullable Map<String, XClusterNamespaceConfig> dbNameToNamespaceConfig,
+      Supplier<Map<String, Long>> safeTimeLagByDbName,
+      Supplier<Optional<Set<String>>> walAnchorTableIds,
+      Duration maxSafeTimeLag) {
+    boolean automaticDdlMode =
+        xClusterConfig.getType() == ConfigType.Db
+            && Boolean.TRUE.equals(xClusterConfig.isAutomaticDdlMode());
+    Map<String, List<XClusterTableConfig>> ddlInProgressTablesByDbName = new HashMap<>();
+
+    for (XClusterTableConfig tableConfig : xClusterConfig.getTableDetails()) {
+      int code = tableConfig.getStatus().getCode();
+      if (code == XClusterTableConfig.Status.Running.getCode()) {
+        continue;
+      }
+
+      if (code > 0) {
+        log.warn(
+            "In xCluster config {}, table {} is not in Running status",
+            xClusterConfig,
+            tableConfig);
+        continue;
+      }
+
+      // tables that only exist on the target have no source table info
+      TableInfoResp tableInfo =
+          Objects.nonNull(tableConfig.getSourceTableInfo())
+              ? tableConfig.getSourceTableInfo()
+              : tableConfig.getTargetTableInfo();
+      XClusterNamespaceConfig xClusterNamespaceConfig =
+          Objects.nonNull(dbNameToNamespaceConfig) && Objects.nonNull(tableInfo)
+              ? dbNameToNamespaceConfig.get(tableInfo.keySpace)
+              : null;
+
+      if (code == 0) {
+        if (xClusterNamespaceConfig != null
+            && xClusterNamespaceConfig.getStatus() == XClusterNamespaceConfig.Status.Running) {
+          xClusterNamespaceConfig.setStatus(XClusterNamespaceConfig.Status.Warning);
+        }
+        log.warn(
+            "In xCluster config {}, table {} is not in Running status",
+            xClusterConfig,
+            tableConfig);
+      } else if (automaticDdlMode
+          && xClusterNamespaceConfig != null
+          && DDL_IN_PROGRESS_TABLE_STATUSES.contains(tableConfig.getStatus())
+          && tableConfig.getReplicationStatusErrors().isEmpty()) {
+        ddlInProgressTablesByDbName
+            .computeIfAbsent(tableInfo.keySpace, k -> new ArrayList<>())
+            .add(tableConfig);
+        log.info(
+            "In xCluster config {}, table {} is waiting for a DDL to be replicated",
+            xClusterConfig,
+            tableConfig);
+      } else {
+        if (xClusterNamespaceConfig != null
+            && (xClusterNamespaceConfig.getStatus() == XClusterNamespaceConfig.Status.Running
+                || xClusterNamespaceConfig.getStatus() == XClusterNamespaceConfig.Status.Warning)) {
+          xClusterNamespaceConfig.setStatus(XClusterNamespaceConfig.Status.Error);
+        }
+        log.error("In xCluster config {}, table {} is in bad status", xClusterConfig, tableConfig);
+      }
+    }
+
+    // DBs that already are Error because of other tables stay Error
+    List<XClusterNamespaceConfig> namespaceConfigsWithDdlInProgress =
+        ddlInProgressTablesByDbName.keySet().stream()
+            .map(dbNameToNamespaceConfig::get)
+            .filter(
+                namespaceConfig ->
+                    namespaceConfig.getStatus() == XClusterNamespaceConfig.Status.Running
+                        || namespaceConfig.getStatus() == XClusterNamespaceConfig.Status.Warning)
+            .toList();
+    if (namespaceConfigsWithDdlInProgress.isEmpty()) {
+      return;
+    }
+
+    boolean hasNewTables =
+        namespaceConfigsWithDdlInProgress.stream()
+            .flatMap(
+                namespaceConfig ->
+                    ddlInProgressTablesByDbName
+                        .get(namespaceConfig.getSourceNamespaceInfo().name)
+                        .stream())
+            .anyMatch(t -> t.getStatus() == XClusterTableConfig.Status.ExtraTableOnSource);
+    Optional<Set<String>> anchoredTableIds = Optional.empty();
+    if (hasNewTables) {
+      try {
+        anchoredTableIds = walAnchorTableIds.get();
+      } catch (Exception e) {
+        // without the WAL anchor streams, fall back to the safe time lag
+        log.warn(
+            "Failed to get the xCluster WAL anchor streams for xCluster config {}",
+            xClusterConfig.getUuid(),
+            e);
+      }
+    }
+
+    Map<String, Long> safeTimeLags;
+    try {
+      safeTimeLags = safeTimeLagByDbName.get();
+    } catch (Exception e) {
+      log.error(
+          "Failed to get the safe time lag for xCluster config {}; treating DDLs in progress as"
+              + " stuck",
+          xClusterConfig.getUuid(),
+          e);
+      safeTimeLags = Map.of();
+    }
+
+    long maxSafeTimeLagUs = TimeUnit.MILLISECONDS.toMicros(maxSafeTimeLag.toMillis());
+    for (XClusterNamespaceConfig namespaceConfig : namespaceConfigsWithDdlInProgress) {
+      String dbName = namespaceConfig.getSourceNamespaceInfo().name;
+      if (anchoredTableIds.isPresent()) {
+        Set<String> anchored = anchoredTableIds.get();
+        List<String> notAnchored =
+            ddlInProgressTablesByDbName.get(dbName).stream()
+                .filter(t -> t.getStatus() == XClusterTableConfig.Status.ExtraTableOnSource)
+                .map(XClusterTableConfig::getTableId)
+                .filter(tableId -> !anchored.contains(tableId))
+                .toList();
+        if (!notAnchored.isEmpty()) {
+          log.error(
+              "In xCluster config {}, tables {} in DB {} only exist on the source but aren't"
+                  + " waiting for a CREATE TABLE on the target",
+              xClusterConfig,
+              notAnchored,
+              dbName);
+          namespaceConfig.setStatus(XClusterNamespaceConfig.Status.Error);
+          continue;
+        }
+      }
+
+      Long safeTimeLagUs = safeTimeLags.get(dbName);
+      if (safeTimeLagUs != null && safeTimeLagUs <= maxSafeTimeLagUs) {
+        if (namespaceConfig.getStatus() == XClusterNamespaceConfig.Status.Running) {
+          namespaceConfig.setStatus(XClusterNamespaceConfig.Status.Updating);
+        }
+      } else {
+        log.error(
+            "In xCluster config {}, DB {} has a DDL that isn't replicated with safe time lag {} us",
+            xClusterConfig,
+            dbName,
+            safeTimeLagUs);
+        namespaceConfig.setStatus(XClusterNamespaceConfig.Status.Error);
+      }
+    }
+  }
+
+  private static Map<String, Long> getSafeTimeLagByDbName(
+      XClusterUniverseService xClusterUniverseService, Universe targetUniverse) {
+    return xClusterUniverseService.getNamespaceSafeTimeList(targetUniverse).stream()
+        .collect(
+            Collectors.toMap(
+                NamespaceSafeTimePB::getNamespaceName,
+                NamespaceSafeTimePB::getSafeTimeLag,
+                (a, b) -> Math.max(a, b)));
   }
 
   /**

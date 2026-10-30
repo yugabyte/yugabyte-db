@@ -33,7 +33,8 @@ export const REPLICATION_STATUS_ERROR_KEY: Record<string, string> = {
   [XClusterReplicationStatusError.ERROR_UNINITIALIZED]: 'uninitialized',
   [XClusterReplicationStatusError.AUTO_FLAG_CONFIG_MISMATCH]: 'autoFlagConfigMismatch',
   [XClusterReplicationStatusError.SOURCE_UNREACHABLE]: 'sourceUnreachable',
-  [XClusterReplicationStatusError.SYSTEM_ERROR]: 'systemError'
+  [XClusterReplicationStatusError.SYSTEM_ERROR]: 'systemError',
+  [XClusterReplicationStatusError.DDL_QUEUE_PAUSED]: 'ddlQueuePaused'
 };
 export const XClusterTableStatusLabel = ({
   status,
