@@ -87,7 +87,8 @@ public class TestCustomGucStickiness extends BaseYsqlConnMgr {
     try (Connection conn = getConnectionBuilder()
              .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR).connect();
          Statement stmt = conn.createStatement()) {
-      // pgaudit.log is PGC_SUSET, so only a superuser can SET it.
+      // pgaudit.log is PGC_SUSET; we can SET it since we are logged in as a superuser.
+      // Superuser connections are sticky in prod but not in tests.
       stmt.execute("SET pgaudit.log = 'read'");
       assertPgauditLog(stmt, "read");
       assertStickyConnections("yugabyte", 1);
