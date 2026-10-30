@@ -13,7 +13,9 @@
 
 #include "yb/util/stack_trace.h"
 
+#include <dlfcn.h>
 #include <execinfo.h>
+#include <inttypes.h>
 #include <signal.h>
 
 #ifdef __linux__
@@ -53,6 +55,12 @@ typedef sig_t sighandler_t;
 
 DEFINE_test_flag(bool, disable_thread_stack_collection_wait, false,
     "When set to true, ThreadStacks() will not wait for threads to respond");
+
+DEFINE_RUNTIME_bool(stack_trace_symbolize, true,
+    "Resolve stack trace addresses to symbols when logging them. Symbolization reads the "
+    "binaries' symbol tables and is expensive; when false, frames are logged as hex address "
+    "plus module+offset, resolvable offline with llvm-symbolizer.");
+TAG_FLAG(stack_trace_symbolize, advanced);
 
 // A hack to grab a function from glog.
 // For source see e.g. https://github.com/yugabyte/glog/blob/v0.4.0-yb-5/src/stacktrace.h#L57
@@ -362,6 +370,9 @@ std::string StackTrace::ToHexString(int flags) const {
 // Symbolization function borrowed from glog and modified to use libbacktrace on Linux.
 std::string StackTrace::Symbolize(
     const StackTraceLineFormat stack_trace_line_format, StackTraceGroup* group) const {
+  if (!FLAGS_stack_trace_symbolize) {
+    return ToLogFormatModuleOffsetString();
+  }
   std::string buf;
   auto* global_backtrace_state = libbacktrace::GetGlobalBacktraceState();
 
@@ -383,6 +394,22 @@ string StackTrace::ToLogFormatHexString() const {
   for (int i = 0; i < num_frames_; i++) {
     void* pc = frames_[i];
     StringAppendF(&buf, "    @ %*p\n", kPrintfPointerFieldWidth, pc);
+  }
+  return buf;
+}
+
+string StackTrace::ToLogFormatModuleOffsetString() const {
+  string buf;
+  for (int i = 0; i < num_frames_; i++) {
+    void* pc = frames_[i];
+    Dl_info info;
+    if (dladdr(pc, &info) != 0 && info.dli_fname != nullptr) {
+      StringAppendF(
+          &buf, "    @ %*p (%s+0x%" PRIxPTR ")\n", kPrintfPointerFieldWidth, pc, info.dli_fname,
+          reinterpret_cast<uintptr_t>(pc) - reinterpret_cast<uintptr_t>(info.dli_fbase));
+    } else {
+      StringAppendF(&buf, "    @ %*p\n", kPrintfPointerFieldWidth, pc);
+    }
   }
   return buf;
 }
