@@ -2233,11 +2233,11 @@ DROP INDEX r5n_r1_r4_r3_r2_idx;
 -- r2 = r3 makes r3 redundant for the ORDER BY without binding it, so r3 is not
 -- a stream key, and the merge also sorts on r3.  The filter runs in storage, or
 -- locally with expression pushdown off.
-\set query ':P :Q SELECT r2, r4, r5, n, r1, r3 FROM r5n WHERE r1 IN (0, 1, 2) AND r2 = r3 ORDER BY r2, r4, r5, n LIMIT 5;'
+\set query ':P :Q SELECT r2, r4, r5, n, r1, r3 FROM r5n WHERE r1 IN (0, 1, 2, 3, 4, 5, 6) AND r2 = r3 ORDER BY r2, r4, r5, n LIMIT 5;'
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT r2, r4, r5, n, r1, r3 FROM r5n WHERE r1 IN (0, 1, 2) AND r2 = r3 ORDER BY r2, r4, r5, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT r2, r4, r5, n, r1, r3 FROM r5n WHERE r1 IN (0, 1, 2, 3, 4, 5, 6) AND r2 = r3 ORDER BY r2, r4, r5, n LIMIT 5;
                                   QUERY PLAN                                   
 -------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -2246,53 +2246,16 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
          Output: r2, r4, r5, n, r1, r3
          Sort Key: r5n.r2, r5n.r4, r5n.r5, r5n.n
          Sort Method: top-N heapsort
-         ->  Index Scan using r5n_pkey on public.r5n (actual rows=144 loops=1)
+         ->  Index Scan using r5n_pkey on public.r5n (actual rows=345 loops=1)
                Output: r2, r4, r5, n, r1, r3
-               Index Cond: (r5n.r1 = ANY ('{0,1,2}'::integer[]))
+               Index Cond: (r5n.r1 = ANY ('{0,1,2,3,4,5,6}'::integer[]))
                Storage Filter: (r5n.r2 = r5n.r3)
-               Storage Table Read Requests: 9
-               Storage Table Read Ops: 9
-               Storage Table Rows Scanned: 1489
+               Storage Table Read Requests: 22
+               Storage Table Read Ops: 22
+               Storage Table Rows Scanned: 3533
 (13 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT r2, r4, r5, n, r1, r3 FROM r5n WHERE r1 IN (0, 1, 2) AND r2 = r3 ORDER BY r2, r4, r5, n LIMIT 5;
-(output identical to previous)
-/*+Set(yb_max_merge_scan_streams 0)*/ SELECT r2, r4, r5, n, r1, r3 FROM r5n WHERE r1 IN (0, 1, 2) AND r2 = r3 ORDER BY r2, r4, r5, n LIMIT 5;
- r2 | r4 | r5 |   n   | r1 | r3 
-----+----+----+-------+----+----
-  0 |  0 |  3 | 30002 |  2 |  0
-  0 |  2 |  5 | 52001 |  1 |  0
-  0 |  2 |  6 | 62001 |  1 |  0
-  0 |  4 |  2 | 24002 |  2 |  0
-  0 |  4 |  3 | 34002 |  2 |  0
-(5 rows)
-
-/*+Set(yb_max_merge_scan_streams 64)*/ SELECT r2, r4, r5, n, r1, r3 FROM r5n WHERE r1 IN (0, 1, 2) AND r2 = r3 ORDER BY r2, r4, r5, n LIMIT 5;
-(output identical to previous)
-SET yb_enable_expression_pushdown = off;
-\i :run_query
-\set _echo_run_query :ECHO
-\set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT r2, r4, r5, n, r1, r3 FROM r5n WHERE r1 IN (0, 1, 2) AND r2 = r3 ORDER BY r2, r4, r5, n LIMIT 5;
-                                  QUERY PLAN                                   
--------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
-   Output: r2, r4, r5, n, r1, r3
-   ->  Sort (actual rows=5 loops=1)
-         Output: r2, r4, r5, n, r1, r3
-         Sort Key: r5n.r2, r5n.r4, r5n.r5, r5n.n
-         Sort Method: top-N heapsort
-         ->  Index Scan using r5n_pkey on public.r5n (actual rows=144 loops=1)
-               Output: r2, r4, r5, n, r1, r3
-               Index Cond: (r5n.r1 = ANY ('{0,1,2}'::integer[]))
-               Filter: (r5n.r2 = r5n.r3)
-               Rows Removed by Filter: 1345
-               Storage Table Read Requests: 94
-               Storage Table Read Ops: 94
-               Storage Table Rows Scanned: 1489
-(14 rows)
-
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT r2, r4, r5, n, r1, r3 FROM r5n WHERE r1 IN (0, 1, 2) AND r2 = r3 ORDER BY r2, r4, r5, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT r2, r4, r5, n, r1, r3 FROM r5n WHERE r1 IN (0, 1, 2, 3, 4, 5, 6) AND r2 = r3 ORDER BY r2, r4, r5, n LIMIT 5;
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -2304,28 +2267,86 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
          Full-sort Groups: 1  Sort Method: quicksort
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=6 loops=1)
                Output: r2, r4, r5, n, r1, r3
-               Index Cond: (r5n.r1 = ANY ('{0,1,2}'::integer[]))
+               Index Cond: (r5n.r1 = ANY ('{0,1,2,3,4,5,6}'::integer[]))
                Merge Sort Key: r5n.r2, r5n.r3, r5n.r4, r5n.r5
                Merge Stream Key: r5n.r1
-               Merge Streams: 3
-               Merge Cond: (r5n.r1 = ANY ('{0,1,2}'::integer[]))
-               Filter: (r5n.r2 = r5n.r3)
+               Merge Streams: 7
+               Merge Cond: (r5n.r1 = ANY ('{0,1,2,3,4,5,6}'::integer[]))
+               Storage Filter: (r5n.r2 = r5n.r3)
                Storage Table Read Requests: 1
-               Storage Table Read Ops: 6
-               Storage Table Rows Scanned: 48
+               Storage Table Read Ops: 7
+               Storage Table Rows Scanned: 238
 (18 rows)
 
-/*+Set(yb_max_merge_scan_streams 0)*/ SELECT r2, r4, r5, n, r1, r3 FROM r5n WHERE r1 IN (0, 1, 2) AND r2 = r3 ORDER BY r2, r4, r5, n LIMIT 5;
+/*+Set(yb_max_merge_scan_streams 0)*/ SELECT r2, r4, r5, n, r1, r3 FROM r5n WHERE r1 IN (0, 1, 2, 3, 4, 5, 6) AND r2 = r3 ORDER BY r2, r4, r5, n LIMIT 5;
  r2 | r4 | r5 |   n   | r1 | r3 
 ----+----+----+-------+----+----
+  0 |  0 |  0 |     6 |  6 |  0
   0 |  0 |  3 | 30002 |  2 |  0
+  0 |  1 |  3 | 31004 |  4 |  0
+  0 |  1 |  8 | 81005 |  5 |  0
   0 |  2 |  5 | 52001 |  1 |  0
-  0 |  2 |  6 | 62001 |  1 |  0
-  0 |  4 |  2 | 24002 |  2 |  0
-  0 |  4 |  3 | 34002 |  2 |  0
 (5 rows)
 
-/*+Set(yb_max_merge_scan_streams 64)*/ SELECT r2, r4, r5, n, r1, r3 FROM r5n WHERE r1 IN (0, 1, 2) AND r2 = r3 ORDER BY r2, r4, r5, n LIMIT 5;
+/*+Set(yb_max_merge_scan_streams 64)*/ SELECT r2, r4, r5, n, r1, r3 FROM r5n WHERE r1 IN (0, 1, 2, 3, 4, 5, 6) AND r2 = r3 ORDER BY r2, r4, r5, n LIMIT 5;
+(output identical to previous)
+SET yb_enable_expression_pushdown = off;
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT r2, r4, r5, n, r1, r3 FROM r5n WHERE r1 IN (0, 1, 2, 3, 4, 5, 6) AND r2 = r3 ORDER BY r2, r4, r5, n LIMIT 5;
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: r2, r4, r5, n, r1, r3
+   ->  Sort (actual rows=5 loops=1)
+         Output: r2, r4, r5, n, r1, r3
+         Sort Key: r5n.r2, r5n.r4, r5n.r5, r5n.n
+         Sort Method: top-N heapsort
+         ->  Index Scan using r5n_pkey on public.r5n (actual rows=345 loops=1)
+               Output: r2, r4, r5, n, r1, r3
+               Index Cond: (r5n.r1 = ANY ('{0,1,2,3,4,5,6}'::integer[]))
+               Filter: (r5n.r2 = r5n.r3)
+               Rows Removed by Filter: 3188
+               Storage Table Read Requests: 221
+               Storage Table Read Ops: 221
+               Storage Table Rows Scanned: 3533
+(14 rows)
+
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT r2, r4, r5, n, r1, r3 FROM r5n WHERE r1 IN (0, 1, 2, 3, 4, 5, 6) AND r2 = r3 ORDER BY r2, r4, r5, n LIMIT 5;
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: r2, r4, r5, n, r1, r3
+   ->  Incremental Sort (actual rows=5 loops=1)
+         Output: r2, r4, r5, n, r1, r3
+         Sort Key: r5n.r2, r5n.r4, r5n.r5, r5n.n
+         Presorted Key: r5n.r2, r5n.r4, r5n.r5
+         Full-sort Groups: 1  Sort Method: quicksort
+         ->  Index Scan using r5n_pkey on public.r5n (actual rows=6 loops=1)
+               Output: r2, r4, r5, n, r1, r3
+               Index Cond: (r5n.r1 = ANY ('{0,1,2,3,4,5,6}'::integer[]))
+               Merge Sort Key: r5n.r2, r5n.r3, r5n.r4, r5n.r5
+               Merge Stream Key: r5n.r1
+               Merge Streams: 7
+               Merge Cond: (r5n.r1 = ANY ('{0,1,2,3,4,5,6}'::integer[]))
+               Filter: (r5n.r2 = r5n.r3)
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 14
+               Storage Table Rows Scanned: 112
+(18 rows)
+
+/*+Set(yb_max_merge_scan_streams 0)*/ SELECT r2, r4, r5, n, r1, r3 FROM r5n WHERE r1 IN (0, 1, 2, 3, 4, 5, 6) AND r2 = r3 ORDER BY r2, r4, r5, n LIMIT 5;
+ r2 | r4 | r5 |   n   | r1 | r3 
+----+----+----+-------+----+----
+  0 |  0 |  0 |     6 |  6 |  0
+  0 |  0 |  3 | 30002 |  2 |  0
+  0 |  1 |  3 | 31004 |  4 |  0
+  0 |  1 |  8 | 81005 |  5 |  0
+  0 |  2 |  5 | 52001 |  1 |  0
+(5 rows)
+
+/*+Set(yb_max_merge_scan_streams 64)*/ SELECT r2, r4, r5, n, r1, r3 FROM r5n WHERE r1 IN (0, 1, 2, 3, 4, 5, 6) AND r2 = r3 ORDER BY r2, r4, r5, n LIMIT 5;
 (output identical to previous)
 RESET yb_enable_expression_pushdown;
 -- OR clause

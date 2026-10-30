@@ -227,7 +227,7 @@ DROP INDEX r5n_r1_r4_r3_r2_idx;
 -- r2 = r3 makes r3 redundant for the ORDER BY without binding it, so r3 is not
 -- a stream key, and the merge also sorts on r3.  The filter runs in storage, or
 -- locally with expression pushdown off.
-\set query ':P :Q SELECT r2, r4, r5, n, r1, r3 FROM r5n WHERE r1 IN (0, 1, 2) AND r2 = r3 ORDER BY r2, r4, r5, n LIMIT 5;'
+\set query ':P :Q SELECT r2, r4, r5, n, r1, r3 FROM r5n WHERE r1 IN (0, 1, 2, 3, 4, 5, 6) AND r2 = r3 ORDER BY r2, r4, r5, n LIMIT 5;'
 \i :run_query
 SET yb_enable_expression_pushdown = off;
 \i :run_query
