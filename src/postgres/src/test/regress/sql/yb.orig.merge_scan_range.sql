@@ -762,7 +762,7 @@ ANALYZE r5n;
 -- The equality ties r4 to the expression column (r3 + r4), and the merge scan
 -- sorts on that column.
 -- Third hint pins the index and turns sort off so that the merge scan is
--- chosen.
+-- chosen whenever the planner can build it.
 \set query ':P :Q SELECT r4, r2, n FROM r5n WHERE r2 IN (0, 1, 2, 3) AND r4 = r3 + r4 ORDER BY r4, n LIMIT 5;'
 \set Q3 '/*+IndexScan(r5n r5n_r2_expr_r21_expr1_r22_r5_idx) Set(yb_max_merge_scan_streams 64) Set(enable_sort off)*/'
 \i :run_query
@@ -786,9 +786,16 @@ SPLIT AT VALUES (
     (3));
 ANALYZE r5n;
 
+-- Following queries send various numbers of requests/scan various number of rows
+-- due to non-deterministic order of equal rows in merge sort, hide their DIST
+\set explain 'EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
+
 -- Order by the cast expression
 \set query ':P :Q SELECT r3, r2, n FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY r3::oid, n LIMIT 5;'
 \i :run_query
+
+-- (Reset the explain change)
+\set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
 
 -- (Drop this index)
 DROP INDEX r5n_r2_r3_r4_idx;
