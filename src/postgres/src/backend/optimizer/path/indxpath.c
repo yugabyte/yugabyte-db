@@ -251,8 +251,7 @@ static void yb_omit_partition_implied_quals(PlannerInfo *root,
 											RelOptInfo *rel);
 static List *yb_get_partition_implied_quals(PlannerInfo *root,
 											 RelOptInfo *rel);
-static bool yb_qual_references_index_key(RestrictInfo *rinfo,
-										 IndexOptInfo *index);
+static Bitmapset *yb_get_index_key_attnos(IndexOptInfo *index);
 
 bool yb_enable_derived_equalities;
 bool yb_enable_partition_implied_qual_removal;
@@ -5740,33 +5739,54 @@ yb_finalize_merge_scan_path(PlannerInfo *root, RelOptInfo *rel,
  * evaluating it forces a fetch from the base table, which also rules out
  * index-only scans and distinct pushdown.
  *
- * A clause that references a key column of the index is kept because it may
- * serve as an index condition: dropping one that binds a hash key column
- * would turn a single-tablet lookup into a scan of every tablet.
+ * A clause that references a key column of the index is kept, because it may
+ * serve as an index condition. The partial index pass in
+ * check_index_predicates makes no such exception: when a clause that the index
+ * predicate implies binds a hash key column, the scan can no longer target one
+ * tablet and reads all of them (#34120).
  */
 static void
 yb_omit_partition_implied_quals(PlannerInfo *root, RelOptInfo *rel)
 {
 	List	   *implied = yb_get_partition_implied_quals(root, rel);
+	List	   *implied_attnos = NIL;
 	ListCell   *lc;
 
 	if (implied == NIL)
 		return;
 
+	foreach(lc, implied)
+	{
+		RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+		Bitmapset  *attnos = NULL;
+
+		pull_varattnos_min_attr((Node *) rinfo->clause, rel->relid, &attnos,
+								YBFirstLowInvalidAttributeNumber + 1);
+		implied_attnos = lappend(implied_attnos, attnos);
+	}
+
 	foreach(lc, rel->indexlist)
 	{
 		IndexOptInfo *index = (IndexOptInfo *) lfirst(lc);
+		Bitmapset  *key_attnos = yb_get_index_key_attnos(index);
+		List	   *omitted = NIL;
 		List	   *kept = NIL;
-		ListCell   *lcr;
+		ListCell   *lc1;
+		ListCell   *lc2;
+
+		forboth(lc1, implied, lc2, implied_attnos)
+		{
+			if (!bms_overlap((Bitmapset *) lfirst(lc2), key_attnos))
+				omitted = lappend(omitted, lfirst(lc1));
+		}
+		if (omitted == NIL)
+			continue;
 
 		/* Build a new list: indrestrictinfo may be rel->baserestrictinfo. */
-		foreach(lcr, index->indrestrictinfo)
+		foreach(lc1, index->indrestrictinfo)
 		{
-			RestrictInfo *rinfo = (RestrictInfo *) lfirst(lcr);
-
-			if (!list_member_ptr(implied, rinfo) ||
-				yb_qual_references_index_key(rinfo, index))
-				kept = lappend(kept, rinfo);
+			if (!list_member_ptr(omitted, lfirst(lc1)))
+				kept = lappend(kept, lfirst(lc1));
 		}
 		index->indrestrictinfo = kept;
 	}
@@ -5830,29 +5850,26 @@ yb_get_partition_implied_quals(PlannerInfo *root, RelOptInfo *rel)
 }
 
 /*
- * YB: yb_qual_references_index_key
+ * YB: yb_get_index_key_attnos
  *
- * Returns true if 'rinfo' references a key column of 'index', including a
- * column used in a key expression.
+ * Returns the key columns of 'index', including columns used in key
+ * expressions, offset by YBFirstLowInvalidAttributeNumber.
  */
-static bool
-yb_qual_references_index_key(RestrictInfo *rinfo, IndexOptInfo *index)
+static Bitmapset *
+yb_get_index_key_attnos(IndexOptInfo *index)
 {
-	Bitmapset  *qual_attnos = NULL;
-	Bitmapset  *key_attnos = NULL;
+	Bitmapset  *attnos = NULL;
 	int			i;
 
-	pull_varattnos_min_attr((Node *) rinfo->clause, index->rel->relid,
-							&qual_attnos, YBFirstLowInvalidAttributeNumber + 1);
 	pull_varattnos_min_attr((Node *) index->indexprs, index->rel->relid,
-							&key_attnos, YBFirstLowInvalidAttributeNumber + 1);
+							&attnos, YBFirstLowInvalidAttributeNumber + 1);
 	for (i = 0; i < index->nkeycolumns; i++)
 	{
 		if (index->indexkeys[i] != 0)
-			key_attnos = bms_add_member(key_attnos,
-										index->indexkeys[i] -
-										YBFirstLowInvalidAttributeNumber);
+			attnos = bms_add_member(attnos,
+									index->indexkeys[i] -
+									YBFirstLowInvalidAttributeNumber);
 	}
 
-	return bms_overlap(qual_attnos, key_attnos);
+	return attnos;
 }

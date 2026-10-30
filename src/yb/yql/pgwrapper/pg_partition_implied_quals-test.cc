@@ -13,9 +13,11 @@
 // Tests for yb_enable_partition_implied_qual_removal: index scans of a partition skip quals that
 // the partition constraint implies.
 
+#include <optional>
 #include <string>
-#include <utility>
 #include <vector>
+
+#include "yb/gutil/strings/join.h"
 
 #include "yb/util/json_document.h"
 #include "yb/util/test_macros.h"
@@ -41,7 +43,8 @@ Result<ScanStats> GetScanStats(PGConn* conn, const std::string& query) {
 }
 
 Result<std::string> GetPlan(PGConn* conn, const std::string& query) {
-  return conn->FetchAllAsString("EXPLAIN (COSTS OFF) " + query, ", ", "\n");
+  return JoinStrings(
+      VERIFY_RESULT(conn->FetchRows<std::string>("EXPLAIN (COSTS OFF) " + query)), "\n");
 }
 
 Status SetRemoval(PGConn* conn, bool enabled) {
@@ -70,19 +73,19 @@ TEST_F(PgPartitionImpliedQualsTest, DistinctScanSkipsTableReads) {
 
   const std::string query =
       "SELECT DISTINCT b FROM t WHERE region = 1 AND a = 1 AND b IN ('b1', 'b3', 'b5')";
-  const std::string expected = "b1; b3; b5";
+  const std::vector<std::string> expected = {"b1", "b3", "b5"};
 
   // Off by default.
   ASSERT_STR_NOT_CONTAINS(ASSERT_RESULT(GetPlan(&conn, query)), "Distinct Index Only Scan");
   const auto off = ASSERT_RESULT(GetScanStats(&conn, query));
   ASSERT_GE(off.rows_scanned, 3000);
-  ASSERT_EQ(ASSERT_RESULT(conn.FetchAllAsString(query + " ORDER BY b")), expected);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRows<std::string>(query + " ORDER BY b")), expected);
 
   ASSERT_OK(SetRemoval(&conn, true));
   ASSERT_STR_CONTAINS(ASSERT_RESULT(GetPlan(&conn, query)), "Distinct Index Only Scan");
   const auto on = ASSERT_RESULT(GetScanStats(&conn, query));
   ASSERT_EQ(on.rows_scanned, 3);
-  ASSERT_EQ(ASSERT_RESULT(conn.FetchAllAsString(query + " ORDER BY b")), expected);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRows<std::string>(query + " ORDER BY b")), expected);
 }
 
 // Index scans return the same rows with and without the GUC, across partition layouts and
@@ -130,27 +133,33 @@ TEST_F(PgPartitionImpliedQualsTest, SameResultsAsWithoutRemoval) {
       "p IS NOT NULL", "(p = 1 OR a = 3)"};
   const std::vector<std::string> other_preds = {
       "TRUE", "a = 3", "a < 5 AND b IS NULL", "a IN (1, 7) AND b > 3"};
-  const std::vector<std::pair<std::string, std::string>> targets_and_order = {
-      {"a, b", "a, b"}, {"DISTINCT a", "a"}};
 
   size_t changed_plans = 0;
+  // Runs 'query' with the GUC off and on, and fetches its rows with 'fetch'. The rows must match.
+  const auto compare = [&conn, &changed_plans](const std::string& query, const auto& fetch) {
+    SCOPED_TRACE(query);
+    ASSERT_OK(SetRemoval(&conn, false));
+    const auto expected = ASSERT_RESULT(fetch(query));
+    const auto plan_without = ASSERT_RESULT(GetPlan(&conn, query));
+    ASSERT_OK(SetRemoval(&conn, true));
+    ASSERT_EQ(ASSERT_RESULT(fetch(query)), expected);
+    if (ASSERT_RESULT(GetPlan(&conn, query)) != plan_without) {
+      ++changed_plans;
+    }
+  };
+  const auto fetch_a_b = [&conn](const std::string& query) {
+    return conn.FetchRows<int32_t, std::optional<int32_t>>(query);
+  };
+  const auto fetch_a = [&conn](const std::string& query) {
+    return conn.FetchRows<int32_t>(query);
+  };
+
   for (const auto& table : tables) {
     for (const auto& partition_key_pred : partition_key_preds) {
       for (const auto& other_pred : other_preds) {
-        for (const auto& [targets, order] : targets_and_order) {
-          const auto query = Format(
-              "SELECT $0 FROM $1 WHERE $2 AND $3 ORDER BY $4",
-              targets, table, partition_key_pred, other_pred, order);
-          SCOPED_TRACE(query);
-          ASSERT_OK(SetRemoval(&conn, false));
-          const auto expected = ASSERT_RESULT(conn.FetchAllAsString(query));
-          const auto plan_without = ASSERT_RESULT(GetPlan(&conn, query));
-          ASSERT_OK(SetRemoval(&conn, true));
-          ASSERT_EQ(ASSERT_RESULT(conn.FetchAllAsString(query)), expected);
-          if (ASSERT_RESULT(GetPlan(&conn, query)) != plan_without) {
-            ++changed_plans;
-          }
-        }
+        const auto from = Format("$0 WHERE $1 AND $2", table, partition_key_pred, other_pred);
+        ASSERT_NO_FATALS(compare(Format("SELECT a, b FROM $0 ORDER BY a, b", from), fetch_a_b));
+        ASSERT_NO_FATALS(compare(Format("SELECT DISTINCT a FROM $0 ORDER BY a", from), fetch_a));
       }
     }
   }
