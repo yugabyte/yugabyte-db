@@ -2390,19 +2390,28 @@ class PgVectorIndexColocationOnlyTest
     return conn;
   }
 
-  Status CloneSourceDb() {
-    // Cloning a database is off by default on this branch.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_db_clone) = true;
+  Status CreateSourceSnapshotSchedule() {
     client::SnapshotTestUtil snapshot_util;
     snapshot_util.SetProxy(&client_->proxy_cache());
     snapshot_util.SetCluster(cluster_.get());
     // Retention must outlive the clone, which takes minutes under sanitizers; otherwise the source
     // snapshot is GC'd before the clone is applied.
-    RETURN_NOT_OK(snapshot_util.CreateSchedule(
+    return ResultToStatus(snapshot_util.CreateSchedule(
         nullptr, YQL_DATABASE_PGSQL, kSourceDb,
         client::WaitSnapshot::kTrue, 10s * kTimeMultiplier, 1h));
+  }
+
+  // Clones kSourceDb into kCloneDb through a schedule that CreateSourceSnapshotSchedule created.
+  Status CloneSourceDbWithExistingSchedule() {
+    // Cloning a database is off by default on this branch.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_db_clone) = true;
     auto admin_conn = VERIFY_RESULT(PgMiniTestBase::Connect());
     return admin_conn.ExecuteFormat("CREATE DATABASE $0 TEMPLATE $1", kCloneDb, kSourceDb);
+  }
+
+  Status CloneSourceDb() {
+    RETURN_NOT_OK(CreateSourceSnapshotSchedule());
+    return CloneSourceDbWithExistingSchedule();
   }
 
   // Inserts rows first..last into test in one transaction.
@@ -2498,6 +2507,89 @@ class PgVectorIndexColocationOnlyTest
 };
 
 MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgVectorIndexColocationOnlyTest);
+
+// Rows a vector index holds only in memory when a snapshot is taken must survive a restore served
+// from that snapshot. See issue #34759.
+TEST_P(PgVectorIndexColocationOnlyTest, SnapshotRestoreKeepsUnflushedVectorIndexRows) {
+  constexpr size_t kNumRows = 16;
+
+  // One tablet, so that every replica's vector index holds unflushed rows below.
+  num_pre_split_tablets_ = 1;
+
+  client::SnapshotTestUtil snapshot_util;
+  snapshot_util.SetProxy(&client_->proxy_cache());
+  snapshot_util.SetCluster(cluster_.get());
+
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  // Only the snapshot taken at creation precedes the restore point below, so the restore has to
+  // take a new snapshot while the rows below are still in the vector index's memory.
+  auto schedule_id = ASSERT_RESULT(snapshot_util.CreateSchedule(
+      nullptr, YQL_DATABASE_PGSQL, DbName(), client::WaitSnapshot::kTrue, 10min, 20min));
+
+  // Non-transactional writes leave nothing in the intents DB, whose flush filter would otherwise
+  // force a vector index flush.
+  ASSERT_OK(InsertRows(
+      conn, kNumRows + 1, kNumRows * 2, /* keep_vectors = */ false,
+      NonTransactionalWrites::kTrue));
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kRegular));
+  auto indexes = ListVectorIndexes(cluster_.get());
+  ASSERT_FALSE(indexes.empty());
+  for (const auto& index : indexes) {
+    ASSERT_EQ(index->GetFlushAbility(), rocksdb::FlushAbility::kHasNewData) << index->ToString();
+  }
+  indexes.clear();
+
+  auto restore_at = cluster_->mini_master(0)->Now();
+  ASSERT_OK(snapshot_util.RestoreSnapshotSchedule(schedule_id, restore_at));
+
+  conn = ASSERT_RESULT(Connect());
+  ASSERT_NO_FATALS(VerifyRead(conn, kNumRows * 2, AddFilter::kFalse));
+}
+
+// A clone starts from a snapshot of the source without the source's log, so rows the source's
+// vector index holds only in memory when that snapshot is taken must be in the snapshot. See
+// issue #34759.
+TEST_P(PgVectorIndexColocationOnlyTest, CloneKeepsUnflushedVectorIndexRows) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = false;
+
+  constexpr size_t kNumRows = 16;
+
+  auto conn = ASSERT_RESULT(CreateSourceTable(kNumRows));
+  ASSERT_OK(CreateIndex(conn));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  // Each snapshot op flushes the vector indexes after its checkpoint, when it moves the flushed
+  // frontier, so only a snapshot taken after the rows below shows the bug. Create the schedule,
+  // and with it the first snapshot, before them.
+  ASSERT_OK(CreateSourceSnapshotSchedule());
+
+  // Non-transactional writes leave nothing in the intents DB, whose flush filter would otherwise
+  // force a vector index flush.
+  ASSERT_OK(conn.Execute("SET yb_disable_transactional_writes = on"));
+  for (size_t i = kNumRows + 1; i <= 2 * kNumRows; ++i) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO test (id, embedding) VALUES ($0, '$1')", i, AsString(Vector(i))));
+  }
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kRegular));
+  auto indexes = ListTableVectorIndexes(ASSERT_RESULT(FindTableId(kSourceDb, "test")));
+  ASSERT_FALSE(indexes.empty());
+  for (const auto& index : indexes) {
+    ASSERT_EQ(index->GetFlushAbility(), rocksdb::FlushAbility::kHasNewData) << index->ToString();
+  }
+  indexes.clear();
+
+  ASSERT_OK(CloneSourceDbWithExistingSchedule());
+
+  auto clone_conn = ASSERT_RESULT(ConnectToDB(kCloneDb));
+  ASSERT_EQ(
+      ASSERT_RESULT(FetchIdsThroughIndex(clone_conn, 4 * kNumRows)), Ids(1, 2 * kNumRows));
+}
 
 // A vector index dropped while a snapshot schedule retains it stays on the tablets, hidden, until
 // the retention ends. A restore can only bring it back as of a time before the drop, so writes
@@ -6249,6 +6341,62 @@ class PgVectorIndexBackupRestoreTest
 };
 
 MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgVectorIndexBackupRestoreTest);
+
+// A restored backup has none of the source's log, so rows the source's vector index holds only in
+// memory when the backup's snapshot is taken must be in the snapshot. See issue #34759.
+TEST_P(PgVectorIndexBackupRestoreTest, BackupKeepsUnflushedVectorIndexRows) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "Backup and restore go through yb-controller";
+  }
+  ASSERT_OK(cluster_->StartYbControllerServers());
+
+  constexpr auto kSourceDb = "vec_backup_db";
+  constexpr auto kRestoredDb = "vec_restored_db";
+  constexpr int kNumRows = 16;
+
+  {
+    auto admin = ASSERT_RESULT(PgMiniTestBase::Connect());
+    ASSERT_OK(admin.ExecuteFormat(
+        "CREATE DATABASE $0$1", kSourceDb, IsColocated() ? " COLOCATION = true" : ""));
+    auto conn = ASSERT_RESULT(ConnectToDB(kSourceDb));
+    ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+    ASSERT_OK(conn.Execute("CREATE TABLE t (id int PRIMARY KEY, v vector(3))"));
+    ASSERT_OK(conn.Execute("CREATE INDEX v_idx ON t USING ybhnsw (v vector_l2_ops)"));
+    ASSERT_OK(WaitForVectorIndexBackfills(1, "source index backfill"));
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO t SELECT i, ARRAY[i, 0, 0]::vector FROM generate_series(1, $0) i",
+        kNumRows));
+    ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+    ASSERT_OK(cluster_->FlushTablets());
+
+    // Non-transactional writes leave nothing in the intents DB, whose flush filter would
+    // otherwise force a vector index flush.
+    ASSERT_OK(conn.Execute("SET yb_disable_transactional_writes = on"));
+    for (int i = kNumRows + 1; i <= 2 * kNumRows; ++i) {
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO t VALUES ($0, '[$0, 0, 0]')", i));
+    }
+  }
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kRegular));
+  auto indexes = ListVectorIndexes(cluster_.get());
+  ASSERT_FALSE(indexes.empty());
+  for (const auto& index : indexes) {
+    ASSERT_EQ(index->GetFlushAbility(), rocksdb::FlushAbility::kHasNewData) << index->ToString();
+  }
+  indexes.clear();
+
+  tools::TmpDirProvider tmp_dir;
+  ASSERT_OK(tools::CreateBackup(*cluster_, tmp_dir, Format("ysql.$0", kSourceDb)));
+  ASSERT_OK(tools::RestoreBackup(*cluster_, tmp_dir, Format("ysql.$0", kRestoredDb)));
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kRestoredDb));
+  ASSERT_OK(conn.Execute("SET enable_seqscan = off"));
+  auto ids = ASSERT_RESULT(conn.FetchRows<int32_t>(Format(
+      "SELECT id FROM t ORDER BY v <-> '[0, 0, 0]' LIMIT $0", 4 * kNumRows)));
+  std::ranges::sort(ids);
+  std::vector<int32_t> expected(2 * kNumRows);
+  std::iota(expected.begin(), expected.end(), 1);
+  ASSERT_EQ(ids, expected);
+}
 
 TEST_P(PgVectorIndexBackupRestoreTest, IndexAfterDroppedColumn) {
   if (!UseYbController()) {
