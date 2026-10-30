@@ -1951,7 +1951,11 @@ TEST_F(MultiMasterObjectLockTest, TServerCanAcquireLeaseAfterProlongedPartition)
   size_t idx = 0;
   // Get the leader master to be located with the tserver which we are going to isolate.
   ASSERT_RESULT(cluster_->StepDownMasterLeader(MasterUuid(idx)));
-  CHECK_EQ(idx, cluster_->LeaderMasterIdx());
+  // The leader delays the step down until the new leader catches up, e.g. on the lease grants
+  // written right after the tservers start.
+  ASSERT_OK(WaitFor(
+      [this, idx] { return cluster_->LeaderMasterIdx() == static_cast<ssize_t>(idx); },
+      10s, "Wait for the master leader to move"));
 
   auto kLeaseTimeout = MonoDelta::FromMilliseconds(FLAGS_master_ysql_operation_lease_ttl_ms);
   ASSERT_OK(
