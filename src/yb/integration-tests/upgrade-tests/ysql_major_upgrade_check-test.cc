@@ -133,11 +133,6 @@ TEST_F(YsqlMajorUpgradeCheckTest, PgUpgradeChecks) {
     ASSERT_OK(ValidateUpgradeCompatibility());
   }
 
-// Disabled the re-upgrade step on debug builds because it times out.
-#ifndef NDEBUG
-  return;
-#endif
-
   // Setup all failures at once.
   std::vector<std::string> all_errors;
   for (const auto& check : kCheckList) {
