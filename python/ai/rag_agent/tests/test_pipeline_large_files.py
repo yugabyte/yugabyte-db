@@ -7,7 +7,9 @@ for the whole embedding run.
 
 import json
 import os
+import random
 import tempfile
+import tracemalloc
 from unittest.mock import Mock, patch
 
 import pytest
@@ -15,7 +17,10 @@ import pytest
 from rag_pipeline.chunk import chunk, get_splitter_for_filetype
 from rag_pipeline.partition_chunk_pipeline import (
     DEFAULT_MAX_FILE_SIZE_BYTES,
+    DEFAULT_MAX_MARKDOWN_FILE_SIZE_BYTES,
+    _iter_lines,
     max_file_size_bytes,
+    max_markdown_file_size_bytes,
     read_file_stream,
     stream_partition_and_chunk,
 )
@@ -319,6 +324,84 @@ class TestSizeLimit:
         ))
 
         assert chunks == [f"Uploaded on the {tier} tier."]
+
+
+class TestIterLines:
+    """_iter_lines must equal str.split("\\n") without building the list."""
+
+    @pytest.mark.parametrize("text", [
+        "", "\n", "a", "a\n", "\na", "a\nb", "a\n\nb", "\n\n",
+        "a\r\nb", "a b", "no newline at all", "trailing\n\n\n",
+        "\n\nleading", "x" * 100,
+    ])
+    def test_matches_str_split(self, text):
+        assert list(_iter_lines(text)) == text.split("\n")
+
+    def test_matches_str_split_on_random_inputs(self):
+        rnd = random.Random(7)
+        alphabet = ["a", "b", "\n", "\n", "\r", " ", " ", " "]
+        for _ in range(2000):
+            text = "".join(
+                rnd.choice(alphabet) for _ in range(rnd.randint(0, 14))
+            )
+            assert list(_iter_lines(text)) == text.split("\n"), repr(text)
+
+    def test_does_not_retain_every_line(self):
+        # str.split("\n") held an entry and a string per line until chunking
+        # finished: tens of MiB on a large file, and ~500 MiB at the 64 MiB cap
+        # for newline-heavy input. Lazy iteration keeps one line live.
+        text = "\n" * (1024 * 1024)
+
+        tracemalloc.start()
+        try:
+            base = tracemalloc.get_traced_memory()[0]
+            for _ in _iter_lines(text):
+                pass
+            lazy_peak = tracemalloc.get_traced_memory()[1] - base
+        finally:
+            tracemalloc.stop()
+
+        tracemalloc.start()
+        try:
+            base = tracemalloc.get_traced_memory()[0]
+            for _ in iter(text.split("\n")):
+                pass
+            split_peak = tracemalloc.get_traced_memory()[1] - base
+        finally:
+            tracemalloc.stop()
+
+        assert lazy_peak < split_peak / 100, (
+            f"lazy={lazy_peak} split={split_peak}"
+        )
+
+
+class TestMarkdownCap:
+    """Markdown keeps a lower cap, because parse_markdown costs ~23x input."""
+
+    def test_markdown_default_is_lower_than_the_text_default(self):
+        assert (DEFAULT_MAX_MARKDOWN_FILE_SIZE_BYTES
+                < DEFAULT_MAX_FILE_SIZE_BYTES)
+
+    def test_markdown_default_is_unchanged_from_master(self):
+        # Raising it is MEKO-1128 and needs worker memory sized first.
+        assert DEFAULT_MAX_MARKDOWN_FILE_SIZE_BYTES == 5 * 1024 * 1024
+
+    def test_markdown_cap_is_independently_configurable(self, monkeypatch):
+        monkeypatch.setenv("MAX_MARKDOWN_FILE_SIZE_BYTES", "16777216")
+        monkeypatch.setenv("MAX_FILE_SIZE_BYTES", "33554432")
+        assert max_markdown_file_size_bytes() == 16777216
+        assert max_file_size_bytes() == 33554432
+
+    def test_markdown_cap_falls_back_on_junk(self, monkeypatch):
+        monkeypatch.setenv("MAX_MARKDOWN_FILE_SIZE_BYTES", "not-a-number")
+        assert (max_markdown_file_size_bytes()
+                == DEFAULT_MAX_MARKDOWN_FILE_SIZE_BYTES)
+
+    def test_the_text_cap_does_not_move_the_markdown_cap(self, monkeypatch):
+        monkeypatch.setenv("MAX_FILE_SIZE_BYTES", "67108864")
+        monkeypatch.delenv("MAX_MARKDOWN_FILE_SIZE_BYTES", raising=False)
+        assert (max_markdown_file_size_bytes()
+                == DEFAULT_MAX_MARKDOWN_FILE_SIZE_BYTES)
 
 
 class TestLineSplitting:

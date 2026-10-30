@@ -18,26 +18,65 @@ from observability import meko_observe
 DEFAULT_MAX_FILE_SIZE_BYTES = 64 * 1024 * 1024  # 64 MiB
 
 
-def max_file_size_bytes() -> int:
-    """Size cap for a whole-file read, overridable per deployment."""
-    raw = os.getenv("MAX_FILE_SIZE_BYTES", "").strip()
+# The Markdown fine-tuning path keeps its own, much lower cap. parse_markdown
+# peaks at about 23.4x the input, measured linearly at 1, 5 and 16 MiB (24.6 MB,
+# 122.8 MB and 392.9 MB), against roughly 2x for the plain-text path. At 64 MiB
+# that is about 1.5 GiB for one task, times WORKER_CONCURRENCY, so the two paths
+# cannot share one number. Raising this is MEKO-1128, which needs the worker
+# memory sized for it first.
+DEFAULT_MAX_MARKDOWN_FILE_SIZE_BYTES = 5 * 1024 * 1024  # 5 MiB
+
+
+def _env_size_bytes(var_name: str, default: int) -> int:
+    """Read a positive byte count from the environment, else `default`."""
+    raw = os.getenv(var_name, "").strip()
     if not raw:
-        return DEFAULT_MAX_FILE_SIZE_BYTES
+        return default
     try:
         value = int(raw)
     except ValueError:
         logging.warning(
-            f"MAX_FILE_SIZE_BYTES={raw!r} is not an integer; "
-            f"using {DEFAULT_MAX_FILE_SIZE_BYTES}"
+            f"{var_name}={raw!r} is not an integer; using {default}"
         )
-        return DEFAULT_MAX_FILE_SIZE_BYTES
+        return default
     if value <= 0:
         logging.warning(
-            f"MAX_FILE_SIZE_BYTES={value} is not positive; "
-            f"using {DEFAULT_MAX_FILE_SIZE_BYTES}"
+            f"{var_name}={value} is not positive; using {default}"
         )
-        return DEFAULT_MAX_FILE_SIZE_BYTES
+        return default
     return value
+
+
+def max_file_size_bytes() -> int:
+    """Size cap for a whole-file text read, overridable per deployment."""
+    return _env_size_bytes(
+        "MAX_FILE_SIZE_BYTES", DEFAULT_MAX_FILE_SIZE_BYTES
+    )
+
+
+def max_markdown_file_size_bytes() -> int:
+    """Size cap for the Markdown fine-tuning read, overridable per deployment."""
+    return _env_size_bytes(
+        "MAX_MARKDOWN_FILE_SIZE_BYTES", DEFAULT_MAX_MARKDOWN_FILE_SIZE_BYTES
+    )
+
+
+def _iter_lines(text: str) -> Generator[str, None, None]:
+    """Yield `text` split on "\\n", one line at a time.
+
+    Same result as text.split("\\n"), without building the list: that retained
+    an entry and a string per line until chunking finished, hundreds of MiB on
+    a large file. Splits on "\\n" only - splitlines() and io.StringIO also break
+    on \\r and U+2028, which would change chunk output.
+    """
+    start = 0
+    while True:
+        end = text.find("\n", start)
+        if end == -1:
+            yield text[start:]
+            return
+        yield text[start:end]
+        start = end + 1
 
 
 def _decode_utf8(byte_chunks) -> Generator[str, None, None]:
@@ -176,9 +215,7 @@ def stream_partition_and_chunk(
     full_text = read_whole_file(
         file_location, max_size_bytes=max_file_size_bytes()
     )
-    # str.split("\n"), not splitlines() or an io.StringIO: those also break on
-    # \r and U+2028, which would change chunk output for a file holding them.
-    lines_iter = iter(full_text.split("\n"))
+    lines_iter = _iter_lines(full_text)
     logging.debug(f"generated lines_iter for file: {file_location}")
     for paragraph in paragraph_stream(lines_iter):
         for chunked_text in chunk(splitter, paragraph, args):
