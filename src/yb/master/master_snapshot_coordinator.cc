@@ -968,20 +968,12 @@ class MasterSnapshotCoordinator::Impl {
     return { min_last_snapshot_ht, min_last_snapshot_ht };
   }
 
-  // Returns a check to run without mutex_: it takes the raft state lock, which a sys catalog
-  // apply may hold while waiting for mutex_ (e.g. CreateReplicated).
-  std::function<Status()> PrepareVerifyRestoration(RestorationState* restoration)
-      REQUIRES(mutex_) {
+  Status VerifyRestoration(RestorationState* restoration) REQUIRES(mutex_) {
     auto schedule_result = FindSnapshotSchedule(restoration->schedule_id());
-    if (!schedule_result.ok()) {
-      return [s = schedule_result.status().CloneAndPrepend("Snapshot schedule not found")] {
-        return s;
-      };
-    }
-    return [this, objects = restoration->MasterMetadata(),
-            tables = schedule_result->options().filter().tables().tables()] {
-      return context_.VerifyRestoredObjects(objects, tables);
-    };
+    RETURN_NOT_OK_PREPEND(schedule_result, "Snapshot schedule not found.");
+
+    return context_.VerifyRestoredObjects(
+        restoration->MasterMetadata(), schedule_result->options().filter().tables().tables());
   }
 
   std::optional<std::reference_wrapper<const yb::master::SnapshotState>>
@@ -1046,20 +1038,6 @@ class MasterSnapshotCoordinator::Impl {
       return;
     }
 
-    std::unordered_map<TxnSnapshotRestorationId, std::function<Status()>> verifications;
-    {
-      std::lock_guard lock(mutex_);
-      for (const auto& r : restorations_) {
-        if (ValidateRestoreAndGetSnapshot(r.get()) && !r->schedule_id().IsNil()) {
-          verifications.emplace(r->restoration_id(), PrepareVerifyRestoration(r.get()));
-        }
-      }
-    }
-    std::unordered_map<TxnSnapshotRestorationId, Status> verify_statuses;
-    for (const auto& [restoration_id, verify] : verifications) {
-      verify_statuses.emplace(restoration_id, verify());
-    }
-
     // Issue pending restoration rpcs.
     vector<RestorationData> postponed_restores;
     {
@@ -1076,15 +1054,7 @@ class MasterSnapshotCoordinator::Impl {
         }
         // If it is PITR restore, then verify restoration and add to the queue for rpcs.
         if (!restoration->schedule_id().IsNil()) {
-          // Became restorable after mutex_ was released above, so it was not verified.
-          // The next SysCatalogLoaded will pick it up.
-          auto it = verify_statuses.find(restoration->restoration_id());
-          if (it == verify_statuses.end()) {
-            LOG(INFO) << "PITR: Skipping restoration " << restoration->restoration_id()
-                      << ", it was not verified";
-            continue;
-          }
-          const auto& status = it->second;
+          auto status = VerifyRestoration(restoration.get());
           if (status.ok()) {
             LOG(INFO) << "PITR: Master metadata verified successfully for restoration "
                       << restoration->restoration_id();
