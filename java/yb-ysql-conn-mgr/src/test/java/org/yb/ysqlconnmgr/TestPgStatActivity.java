@@ -17,6 +17,7 @@ import java.lang.management.ManagementFactory;
 import java.net.InetSocketAddress;
 import java.sql.Connection;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -29,6 +30,7 @@ import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.assertNotNull;
+import static org.yb.AssertionWrappers.fail;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
 import org.yb.util.RequiresLinux;
@@ -114,6 +116,111 @@ public class TestPgStatActivity extends BaseYsqlConnMgr {
     public void testPgStatActivityAuthPassthrough() throws Exception {
         restartClusterWithFlags(Collections.emptyMap(), createTserverFlags(false, false));
         runPgStatActivityTest();
+    }
+
+    private Connection connectViaConnMgr(int tserverIndex) throws Exception {
+        return getConnectionBuilder()
+            .withTServer(tserverIndex)
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .withUser("yugabyte")
+            .withPassword("yugabyte")
+            .connect();
+    }
+
+    /*
+     * Returns the single JVM -> Ysql Conn Mgr connection present in after but
+     * not in before.
+     */
+    private InetSocketAddress newConnection(List<InetSocketAddress> before,
+            List<InetSocketAddress> after) {
+        List<InetSocketAddress> added = new ArrayList<>(after);
+        added.removeAll(before);
+        assertEquals("expected exactly one new JVM connection to Ysql Conn Mgr, got " + added,
+            1, added.size());
+        return added.get(0);
+    }
+
+    private void assertInetClientAddrPort(Connection conn, InetSocketAddress expected)
+            throws Exception {
+        ResultSet rs = conn.createStatement().executeQuery(
+            "SELECT host(inet_client_addr()), inet_client_port()");
+        assertTrue(rs.next());
+        String clientAddr = rs.getString(1);
+        assertNotNull("inet_client_addr() should be populated", clientAddr);
+        int clientPort = rs.getInt(2);
+        LOG.info("inet_client_addr()={} inet_client_port()={}", clientAddr, clientPort);
+        assertEquals("inet_client_addr():inet_client_port() should match the logical client",
+            expected, new InetSocketAddress(clientAddr, clientPort));
+    }
+
+    /*
+     * Verifies that inet_client_addr() and inet_client_port() return the
+     * address of the logical client, not of Ysql Conn Mgr, and follow the
+     * logical client when the backend is reused by another one.
+     */
+    @Test
+    public void testInetClientAddrPort() throws Exception {
+        final int tserverIndex = 0;
+        InetSocketAddress ysqlConnMgrAddr =
+            miniCluster.getYsqlConnMgrContactPoints().get(tserverIndex);
+        String ysqlConnMgrHost = ysqlConnMgrAddr.getHostName();
+        int ysqlConnMgrPort = ysqlConnMgrAddr.getPort();
+
+        List<InetSocketAddress> before = getJvmConnectionsTo(ysqlConnMgrHost, ysqlConnMgrPort);
+        try (Connection conn1 = connectViaConnMgr(tserverIndex)) {
+            List<InetSocketAddress> afterConn1 =
+                getJvmConnectionsTo(ysqlConnMgrHost, ysqlConnMgrPort);
+            InetSocketAddress client1 = newConnection(before, afterConn1);
+
+            try (Connection conn2 = connectViaConnMgr(tserverIndex)) {
+                InetSocketAddress client2 = newConnection(afterConn1,
+                    getJvmConnectionsTo(ysqlConnMgrHost, ysqlConnMgrPort));
+
+                // Alternate between the clients so that a shared backend is
+                // re-attached to a different logical client each time.
+                for (int i = 0; i < 3; ++i) {
+                    assertInetClientAddrPort(conn1, client1);
+                    assertInetClientAddrPort(conn2, client2);
+                }
+            }
+        }
+    }
+
+    /*
+     * Verifies that a client cannot override the logical client details that
+     * Ysql Conn Mgr forwards, since inet_client_addr(), inet_client_port() and
+     * pg_stat_activity report them.
+     */
+    @Test
+    public void testClientCannotSetConnMgrClientInfo() throws Exception {
+        final int tserverIndex = 0;
+        InetSocketAddress ysqlConnMgrAddr =
+            miniCluster.getYsqlConnMgrContactPoints().get(tserverIndex);
+        String ysqlConnMgrHost = ysqlConnMgrAddr.getHostName();
+        int ysqlConnMgrPort = ysqlConnMgrAddr.getPort();
+
+        List<InetSocketAddress> before = getJvmConnectionsTo(ysqlConnMgrHost, ysqlConnMgrPort);
+        try (Connection conn = connectViaConnMgr(tserverIndex)) {
+            InetSocketAddress client = newConnection(before,
+                getJvmConnectionsTo(ysqlConnMgrHost, ysqlConnMgrPort));
+
+            String[] statements = {
+                "SET yb_ycm_internal_client_addr = '192.0.2.1'",
+                "SET yb_ycm_internal_client_port = 4242",
+                "SET yb_conn_mgr_client_hostname = 'example.com'",
+                "SELECT set_config('yb_ycm_internal_client_addr', '192.0.2.1', false)",
+            };
+            for (String stmt : statements) {
+                try {
+                    conn.createStatement().execute(stmt);
+                    fail("expected '" + stmt + "' to fail");
+                } catch (SQLException e) {
+                    assertTrue("unexpected error for '" + stmt + "': " + e.getMessage(),
+                        e.getMessage().contains("can only be set by YSQL Connection Manager"));
+                }
+            }
+            assertInetClientAddrPort(conn, client);
+        }
     }
 
     /*

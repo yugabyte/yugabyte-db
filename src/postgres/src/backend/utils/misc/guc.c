@@ -17179,8 +17179,13 @@ check_yb_conn_mgr_client_addr(char **newval, void **extra, GucSource source)
 	 * Postgres keeps it NULL so does connection manager too.
 	 * yb_is_client_ysqlconnmgr may get set before/after yb_ycm_internal_client_addr,
 	 * therefore explicitly check for parallel workers.
+	 *
+	 * Connection manager sets this via the startup packet or the 'G' packet,
+	 * both PGC_S_CLIENT. Reject any other source, e.g. a user's SET, since
+	 * inet_client_addr() and pg_stat_activity report this value.
 	 */
-	if (!YbIsClientYsqlConnMgr() && !yb_is_parallel_worker)
+	if ((!YbIsClientYsqlConnMgr() && !yb_is_parallel_worker) ||
+		source != PGC_S_CLIENT)
 	{
 		GUC_check_errmsg("yb_ycm_internal_client_addr can only be set by "
 						 "YSQL Connection Manager");
@@ -17254,8 +17259,10 @@ check_yb_conn_mgr_client_hostname(char **newval, void **extra, GucSource source)
 	 * Postgres keeps it NULL so does connection manager too.
 	 * yb_is_client_ysqlconnmgr may get set before/after yb_ycm_internal_client_port,
 	 * therefore explicitly check for parallel workers.
+	 * See check_yb_conn_mgr_client_addr() about the source check.
 	 */
-	if (!YbIsClientYsqlConnMgr() && !yb_is_parallel_worker)
+	if ((!YbIsClientYsqlConnMgr() && !yb_is_parallel_worker) ||
+		source != PGC_S_CLIENT)
 	{
 		GUC_check_errmsg("yb_conn_mgr_client_hostname can only be set by "
 						 "YSQL Connection Manager");
@@ -17289,8 +17296,10 @@ check_yb_conn_mgr_client_port(int *newval, void **extra, GucSource source)
 	 * Postgres keeps it NULL so does connection manager too.
 	 * yb_is_client_ysqlconnmgr may get set before/after yb_conn_mgr_client_hostname,
 	 * therefore explicitly check for parallel workers.
+	 * See check_yb_conn_mgr_client_addr() about the source check.
 	 */
-	if (!YbIsClientYsqlConnMgr() && !yb_is_parallel_worker)
+	if ((!YbIsClientYsqlConnMgr() && !yb_is_parallel_worker) ||
+		source != PGC_S_CLIENT)
 	{
 		GUC_check_errmsg("yb_ycm_internal_client_port can only be set by "
 						 "YSQL Connection Manager");
