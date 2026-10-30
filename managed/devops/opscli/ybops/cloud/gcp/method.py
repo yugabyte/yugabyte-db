@@ -58,7 +58,10 @@ class GcpCreateInstancesMethod(CreateInstancesMethod):
                                  help="Instance type template for GCP instances")
         self.parser.add_argument("--read_instance_template", action="store_true",
                                  help="Read the instance template and carry its settings over to "
-                                      "the disks created for this instance.")
+                                      "this instance: CMEK keys to its disks and enable-oslogin "
+                                      "to its metadata. With OS Login on, import the SSH key "
+                                      "into the OS Login profile and require the SSH user to be "
+                                      "its POSIX username.")
         self.parser.add_argument("--disk_iops", type=int, default=None,
                                  help="Desired iops for instance volumes.")
         self.parser.add_argument("--disk_throughput", type=int, default=None,

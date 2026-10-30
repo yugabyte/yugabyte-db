@@ -664,6 +664,11 @@ class GoogleCloudAdmin():
         Returns the profile's POSIX username for this project, or None if the credentials have no
         identifiable principal (e.g. user credentials), in which case the key must be imported
         out of band.
+
+        The key is imported without an expiration and nothing removes it, so rotating or deleting
+        the access key does not revoke it: the old key keeps working on every OS Login VM where
+        the principal has login access, until removed with `gcloud compute os-login ssh-keys
+        remove`.
         """
         email = self._get_principal_email()
         if not email:
