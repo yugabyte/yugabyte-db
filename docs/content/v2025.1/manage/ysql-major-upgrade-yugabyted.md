@@ -64,7 +64,7 @@ Performing a YSQL major upgrade on a universe with [CDC with logical replication
 
 - Drop the `pg_stat_monitor` extension before upgrading (`DROP EXTENSION pg_stat_monitor;`) and re-enable it after the upgrade is finalized (`CREATE EXTENSION pg_stat_monitor;`).
 
-- If you use [YSQL login profiles](../../secure/enable-authentication/ysql-login-profiles/), set `ysql_enable_profile=true` on the YB-Masters before you start the upgrade. The upgrade restores roles and login profiles on the YB-Master. If the flag is not set there, the upgrade fails with `PROFILE not supported yet`.
+- If you use [YSQL login profiles](../../secure/enable-authentication/ysql-login-profiles/), set `ysql_enable_profile=true` on the YB-Masters and restart them before you start the upgrade. The upgrade restores roles and login profiles on the YB-Master. If the flag is not set there, the upgrade fails with `PROFILE not supported yet`.
 
 ### Precheck
 

@@ -28,7 +28,7 @@ The upgrade is fully online. While the upgrade is in progress, you have full and
 
 - To update Kubernetes universes to v2025.1 or later, you must be running YugabyteDB Anywhere v2025.1.0.1 or later.
 
-- If you use [YSQL login profiles](../../../secure/enable-authentication/ysql-login-profiles/), set `ysql_enable_profile=true` on the YB-Masters before you start the upgrade. The upgrade restores roles and login profiles on the YB-Master. If the flag is not set there, the upgrade fails with `PROFILE not supported yet`.
+- If you use [YSQL login profiles](../../../secure/enable-authentication/ysql-login-profiles/), set `ysql_enable_profile=true` on the YB-Masters and restart them before you start the upgrade. The upgrade restores roles and login profiles on the YB-Master. If the flag is not set there, the upgrade fails with `PROFILE not supported yet`.
 
 ### Precheck
 
