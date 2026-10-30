@@ -2028,10 +2028,12 @@ TEST_F_EX(QLTransactionTest, YB_DEBUG_ONLY_TEST(WriteBatchDuringShutdown),
   OpId apply_op_id;
   sync_point.SetCallBack(
       "RaftConsensus::UpdateReplica",
-      [follower, &write_batch_latch, &start_shutdown_latch, &apply_op_id](void* arg) {
+      // Use copied ids: the follower peer is destroyed during shutdown while other replicas
+      // still hit this callback.
+      [&follower_uuid, &tablet_id, &write_batch_latch, &start_shutdown_latch, &apply_op_id](
+          void* arg) {
     auto* request = static_cast<consensus::LWConsensusRequestPB*>(arg);
-    if (request->dest_uuid() != follower->permanent_uuid() ||
-        request->tablet_id() != follower->tablet_id()) {
+    if (request->dest_uuid() != follower_uuid || request->tablet_id() != tablet_id) {
       return;
     }
     LOG(INFO) << "RaftConsensus::UpdateReplica: " << request->ShortDebugString();
@@ -2073,13 +2075,9 @@ TEST_F_EX(QLTransactionTest, YB_DEBUG_ONLY_TEST(WriteBatchDuringShutdown),
   ASSERT_OK(mini_tserver->Start());
   LOG(INFO) << "RESTART END";
   latch.Wait();
-  {
-    auto peers = ASSERT_RESULT(ListTabletPeersForTableName(
-        cluster_.get(), table_->name().table_name(), ListPeersFilter::kLeaders));
-    ASSERT_EQ(peers.size(), 1);
-    LOG(INFO) << "STEP DOWN";
-    ASSERT_OK(TransferLeadership(cluster_.get(), tablet_id, follower_uuid));
-  }
+  // Load balancer may move leadership concurrently; TransferLeadership waits for a leader.
+  LOG(INFO) << "STEP DOWN";
+  ASSERT_OK(TransferLeadership(cluster_.get(), tablet_id, follower_uuid));
   ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
   LOG(INFO) << "VERIFY";
   ASSERT_NO_FATALS(VerifyRows(CreateSession()));
