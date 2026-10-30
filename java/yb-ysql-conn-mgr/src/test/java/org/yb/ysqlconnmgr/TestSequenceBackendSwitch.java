@@ -90,7 +90,7 @@ public class TestSequenceBackendSwitch extends BaseYsqlConnMgr {
     // ...and the client's own state stays behind on the backend it left.
     for (String test : Arrays.asList("testCurrvalLastvalFollowClientAcrossSwitch",
                                      "testCurrvalAfterRolledBackNextvalOnOtherBackend")) {
-      knownFailure("#36293", NOT_YET_DEFINED, test, POOLED_WITH, "connection", "server");
+      knownFailure("#36294", NOT_YET_DEFINED, test, POOLED_WITH, "connection", "server");
     }
     // With the connection cache method each backend hands out its own cached range.
     for (String mode : Arrays.asList(POOLED_WITHOUT, POOLED_WITH)) {
