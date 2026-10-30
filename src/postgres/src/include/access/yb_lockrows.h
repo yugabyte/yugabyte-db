@@ -9,14 +9,12 @@
  *
  *	  Lifecycle: this is an interim executor bypass of the tableam
  *	  tuple_lock callback, which upstream ExecLockRows routes
- *	  through.  Routing YB locks the same way needs design work
- *	  first: tuple_lock's contract is TID-shaped (YB locks by
- *	  ybctid), carries TM_Result/EvalPlanQual semantics that YB does
- *	  not map onto, and has no room for the batched flush that
- *	  YBCFlushTupleLocks provides.  Kept separate from
- *	  yb_special_scans.h, whose entry points have no tableam
- *	  callback to route through, and from yb_table_scan.h, whose
- *	  removal #32268 tracks without covering locking.
+ *	  through, and #36167 tracks routing YB locks the same way.
+ *	  That needs design work first: tuple_lock identifies the row by
+ *	  heap TID (YB locks by ybctid), returns the locked row version
+ *	  and the TM_FailureData that EvalPlanQual follows (YBCLockTuple
+ *	  returns only a TM_Result), and has no room for the batched
+ *	  flush that YBCFlushTupleLocks provides.
  *
  * Copyright (c) YugabyteDB, Inc.
  *

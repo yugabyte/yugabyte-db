@@ -6,8 +6,16 @@
  *	  Scan APIs for consumers outside the executor scan nodes:
  *	  catalog scans (systable lookups), ANALYZE row sampling, and
  *	  single-row fetch by ybctid.  Unlike the interim accessors in
- *	  yb_table_scan.h, these are permanent AM-bypass surfaces: their
- *	  callers have no tableam callback to route through.
+ *	  yb_table_scan.h, these stay, because no AM interface fits
+ *	  them: tableam's analyze callbacks assume block sampling while
+ *	  DocDB samples rows itself, tuple_fetch_row_version() takes a
+ *	  heap TID rather than a ybctid, and
+ *	  ybc_systable_begin_default_scan() serves the pg_inherits cache
+ *	  that systable_beginscan() reads from.
+ *	  ybc_systable_beginscan() is different: it is YB's
+ *	  implementation of genam's systable_beginscan(), called only
+ *	  from genam.c.  #36174 tracks replacing it with upstream's
+ *	  systable_* path on the lsm and heap access methods.
  *
  *	  Each section below is the API of one implementation file.  A
  *	  contract that belongs to the callers' subsystem, such as the
@@ -91,8 +99,8 @@ extern int	ybFetchSample(YbSample ybSample, HeapTuple *rows);
 
 /*
  * Single-row fetch by ybctid (yb_ybctid_scan.c): the YB counterpart of
- * heap_fetch() in heapam.c, keyed by ybctid in place of a heap TID.  It takes
- * no snapshot and reads at pggate's current read point.
+ * heap_fetch() in heapam.c, keyed by ybctid in place of a heap TID.  Unlike
+ * heap_fetch(), it takes no snapshot and reads at pggate's current read point.
  */
 extern bool YbFetchHeapTuple(Relation relation, Datum ybctid,
 							 HeapTuple *tuple);
