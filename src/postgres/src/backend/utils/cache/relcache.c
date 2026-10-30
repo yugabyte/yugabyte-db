@@ -2011,6 +2011,15 @@ YbCompleteAttrProcessingImpl(const YbAttrProcessorState *state)
 	{
 		Assert(state->pg_trigger_cache != NULL);
 		RelationBuildTriggers(relation, state->pg_trigger_cache);
+
+		/*
+		 * relhastriggers stays set after the last trigger is dropped.  Clear
+		 * the local copy, as RelationCacheInitializePhase3 does, so that it
+		 * doesn't reload the triggers with an index scan that pg_trigger rows
+		 * prefetched without the index can't serve.
+		 */
+		if (relation->trigdesc == NULL)
+			relation->rd_rel->relhastriggers = false;
 	}
 	else
 		relation->trigdesc = NULL;
