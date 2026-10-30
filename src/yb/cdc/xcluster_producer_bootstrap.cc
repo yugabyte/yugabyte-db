@@ -121,6 +121,7 @@ Result<bool> IsBootstrapRequiredForTablet(
 Status XClusterProducerBootstrap::RunBootstrapProducer() {
   LOG_WITH_FUNC(INFO) << "Initializing xCluster Streams";
   RETURN_NOT_OK(CreateAllBootstrapStreams());
+  TEST_SYNC_POINT("XClusterProducerBootstrap::RunBootstrapProducer::BeforeResolvingTablets");
   RETURN_NOT_OK(ConstructServerToTabletsMapping());
 
   TEST_SYNC_POINT("XClusterProducerBootstrap::RunBootstrapProducer::BeforeReadingOpIds");

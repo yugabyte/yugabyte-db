@@ -852,8 +852,8 @@ Status XClusterSourceManager::RecordXClusterStreamBootstrapInfo(
     SCHECK_FORMAT(
         stream->IsXClusterStream() && table_ids.size() == 1, InvalidArgument,
         "Stream $0 is not an xCluster stream", stream_id);
-    // A stream whose tablets fail validation is not recorded, and keeps blocking splits until it
-    // turns ACTIVE. That does not stop the other streams from being recorded.
+    // A stream whose tablets fail validation is left as it is. That does not stop the other streams
+    // from being recorded.
     auto status = ValidateEndOfWalBootstrapTablets(
         xcluster::StripSequencesDataAliasIfPresent(table_ids.Get(0)), tablet_ids);
     if (!status.ok()) {
@@ -910,6 +910,13 @@ Status XClusterSourceManager::WriteXClusterStreamBootstrapInfo(
     if (tablet_ids.empty() || pb.state() != SysCDCStreamEntryPB::INITIATED) {
       VLOG_WITH_FUNC(1) << "Not recording bootstrap tablets of stream " << stream_id
                         << " in state " << SysCDCStreamEntryPB::State_Name(pb.state());
+      continue;
+    }
+    // A recorded checkpoint is never redone. A stale run from before a master failover can
+    // resolve the tablets after a split, and pass validation with the children.
+    if (HasBootstrapTablets(pb)) {
+      LOG(INFO) << "Not recording the bootstrap tablets of xCluster stream " << stream_id
+                << ", which already has a record";
       continue;
     }
     auto& tablet_ids_pb = *pb.mutable_xcluster_bootstrap_info()->mutable_checkpointed_tablet_ids();

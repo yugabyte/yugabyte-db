@@ -301,6 +301,7 @@ class XClusterDBScopedAutomaticModeTest : public XClusterDBScopedTest {
   bool UseAutomaticMode() override { return true; }
 
   void TestVectorIndexUpdatesWithDifferentTabletLayouts();
+  void TestOldLeaderCheckpointFinishesAfterSplit(const std::string& pause_point);
 };
 
 // Both universes run TLS, and CreateReplicationFromCheckpoint stages the source's certificates
@@ -545,24 +546,22 @@ TEST_F(XClusterDBScopedAutomaticModeTest, InitialCheckpointRetryKeepsRecordedChe
   ASSERT_OK(VerifyWrittenRecords());
 }
 
-// Tests that a checkpoint run left behind by a master failover does not overwrite the new
-// leader's checkpoint once the tablets have split.
-TEST_F(XClusterDBScopedAutomaticModeTest, StaleCheckpointRunAfterMasterFailover) {
+void XClusterDBScopedAutomaticModeTest::TestOldLeaderCheckpointFinishesAfterSplit(
+    const std::string& pause_point) {
   ASSERT_OK(SetUpClusters(SetupParams{.num_masters = 3}));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_replicated_tables) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
 
-  // Pause the first BootstrapProducer run after it resolves the tablets.
+  // Pause the first BootstrapProducer run.
   std::atomic<bool> first_run{true};
   CountDownLatch paused(1), resume(1);
   auto* sync_point = SyncPoint::GetInstance();
-  sync_point->SetCallBack(
-      "XClusterProducerBootstrap::RunBootstrapProducer::BeforeReadingOpIds", [&](void*) {
-        if (first_run.exchange(false)) {
-          paused.CountDown();
-          resume.Wait();
-        }
-      });
+  sync_point->SetCallBack(pause_point, [&](void*) {
+    if (first_run.exchange(false)) {
+      paused.CountDown();
+      resume.Wait();
+    }
+  });
   sync_point->EnableProcessing();
 
   TestThreadHolder threads;
@@ -583,11 +582,12 @@ TEST_F(XClusterDBScopedAutomaticModeTest, StaleCheckpointRunAfterMasterFailover)
   ASSERT_OK(SplitTabletsOnce(producer_cluster_, producer_table_->id()));
   ASSERT_OK(InsertRowsInProducer(50, 100));
 
-  // The first run reads the split parents' op ids, which are now past their SPLIT_OPs.
-  StringWaiterLogSink rejected_sink("Not recording the bootstrap tablets of xCluster stream");
+  StringWaiterLogSink not_recorded_sink(Format(
+      "Not recording the bootstrap tablets of xCluster stream $0",
+      ASSERT_RESULT(GetProducerStreamId(producer_table_->id()))));
   resume.CountDown();
-  ASSERT_OK(rejected_sink.WaitFor(MonoDelta::FromSeconds(kRpcTimeout)));
-  sync_point->ClearAllCallBacks();
+  ASSERT_OK(not_recorded_sink.WaitFor(MonoDelta::FromSeconds(kRpcTimeout)));
+  ASSERT_EQ(ASSERT_RESULT(GetProducerStreamBootstrapTablets()), checkpointed_tablets);
   const auto checkpoints_after = ASSERT_RESULT(GetProducerStreamCheckpoints());
   for (const auto& tablet_id : checkpointed_tablets) {
     ASSERT_EQ(checkpoints_after.at(tablet_id), checkpoints.at(tablet_id)) << tablet_id;
@@ -596,6 +596,19 @@ TEST_F(XClusterDBScopedAutomaticModeTest, StaleCheckpointRunAfterMasterFailover)
   ASSERT_OK(CreateReplicationFromCheckpoint());
   ASSERT_OK(InsertRowsInProducer(100, 150));
   ASSERT_OK(VerifyWrittenRecords());
+}
+
+// Tests that a checkpoint run left behind by a master failover does not overwrite the new
+// leader's checkpoint once the tablets have split, whether it resolved the tablets before or after
+// the split.
+TEST_F(XClusterDBScopedAutomaticModeTest, OldLeaderCheckpointReadsOpIdsAfterSplit) {
+  TestOldLeaderCheckpointFinishesAfterSplit(
+      "XClusterProducerBootstrap::RunBootstrapProducer::BeforeReadingOpIds");
+}
+
+TEST_F(XClusterDBScopedAutomaticModeTest, OldLeaderCheckpointResolvesTabletsAfterSplit) {
+  TestOldLeaderCheckpointFinishesAfterSplit(
+      "XClusterProducerBootstrap::RunBootstrapProducer::BeforeResolvingTablets");
 }
 
 // The only place kDiverged is reached against two real universes; every other verify test runs on
