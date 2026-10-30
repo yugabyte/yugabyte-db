@@ -60,6 +60,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import lombok.Getter;
@@ -196,6 +197,12 @@ public class Backup extends Model {
   public static final Set<BackupState> IN_PROGRESS_STATES =
       Sets.immutableEnumSet(
           BackupState.InProgress, BackupState.QueuedForDeletion, BackupState.DeleteInProgress);
+  // Queued for, or in the middle of, deletion by the garbage collector.
+  public static final List<BackupState> DELETION_STATES =
+      Arrays.asList(
+          BackupState.QueuedForDeletion,
+          BackupState.QueuedForForcedDeletion,
+          BackupState.DeleteInProgress);
   public static final List<BackupState> COMPLETED_STATES =
       Arrays.asList(
           BackupState.Completed, BackupState.Failed, BackupState.Stopped, BackupState.Skipped);
@@ -823,13 +830,41 @@ public class Backup extends Model {
   }
 
   public synchronized void transitionState(BackupState newState) {
+    transitionState(newState, null /* beforeSave */);
+  }
+
+  /**
+   * Queues a backup whose deletion failed for another attempt, recording how many it has had. Both
+   * are saved together, after the reload that a state change needs.
+   */
+  public synchronized void requeueForDeletion(int retryCount) {
+    transitionState(BackupState.QueuedForDeletion, b -> b.setRetryCount(retryCount));
+  }
+
+  /**
+   * Reloads the backup and moves it to {@code newState} if that transition is allowed, applying
+   * {@code beforeSave} so that any other change is saved with the new state.
+   */
+  private void transitionState(BackupState newState, @Nullable Consumer<Backup> beforeSave) {
     // Need updated backup state as multiple threads can access backup object.
     this.refresh();
     if (this.getState().equals(newState)) {
       LOG.debug("Skipping state transition as backup is already in the {} state", this.getState());
+      if (beforeSave != null) {
+        // The other change still applies, e.g. a retry count for a backup queued again meanwhile.
+        beforeSave.accept(this);
+        save();
+      }
     } else if (ALLOWED_TRANSITIONS.containsEntry(this.getState(), newState)) {
       LOG.debug("Backup state transitioned from {} to {}", this.getState(), newState);
+      if (this.getState() == BackupState.FailedToDelete) {
+        // A delete asked for again after the last one gave up starts with every attempt.
+        this.setRetryCount(0);
+      }
       this.setState(newState);
+      if (beforeSave != null) {
+        beforeSave.accept(this);
+      }
       save();
     } else {
       LOG.error("Ignored INVALID STATE TRANSITION  {} -> {}", getState(), newState);
@@ -939,6 +974,13 @@ public class Backup extends Model {
             .filter(b -> b.getBackupInfo().storageConfigUUID.equals(customerConfigUUID))
             .collect(Collectors.toList());
     return backupList.size() != 0;
+  }
+
+  /** Whether any of the customer's backups stored with this config is being deleted. */
+  public static boolean findIfBackupsDeletingWithCustomerConfig(
+      UUID customerUUID, UUID customerConfigUUID) {
+    return findAllBackupWithState(customerUUID, DELETION_STATES).stream()
+        .anyMatch(b -> customerConfigUUID.equals(b.getBackupInfo().storageConfigUUID));
   }
 
   public static Optional<BackupTableParams> findBackupParamsWithStorageLocation(
