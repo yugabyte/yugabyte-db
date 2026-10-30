@@ -705,20 +705,24 @@ TEST_F(XClusterDDLReplicationTest, YB_DISABLE_TEST(BootstrappingWithNoTables)) {
   ASSERT_OK(CreateReplicationFromCheckpoint());
 }
 
-// Sets up replication of an index whose column was renamed on the source before setup, so its
-// column name differs from the target's, and checks that rows replicate through the index, also
-// after a column rename and an index rename on the source.
+// Sets up replication, from a backup and restore, of an index whose column was renamed on the
+// source before setup, so its column name differs from the target's, and checks that rows
+// replicate through the index, also after a column rename and an index rename on the source.
 TEST_F(XClusterDDLReplicationTest, RenameIndexedColumn) {
-  ASSERT_OK(SetUpClusters());
+  if (!UseYbController()) {
+    GTEST_SKIP() << "This test does not work with yb_backup.py";
+  }
+
+  auto params = XClusterDDLReplicationTestBase::kDefaultParams;
+  params.start_yb_controller_servers = true;
+  ASSERT_OK(SetUpClusters(params));
   ASSERT_OK(producer_conn_->Execute("CREATE TABLE t (key int PRIMARY KEY, a int)"));
   ASSERT_OK(producer_conn_->Execute("CREATE INDEX t_a_idx ON t (a)"));
   ASSERT_OK(producer_conn_->Execute("ALTER TABLE t RENAME COLUMN a TO a2"));
-  // Create the target objects the way a restore of the source would: the index gets the table's
-  // current column name.
-  ASSERT_OK(consumer_conn_->Execute("CREATE TABLE t (key int PRIMARY KEY, a2 int)"));
-  ASSERT_OK(consumer_conn_->Execute("CREATE INDEX t_a_idx ON t (a2)"));
 
-  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CheckpointReplicationGroupOnNamespaces({namespace_name}));
+  ASSERT_OK(BackupFromProducer());
+  ASSERT_OK(RestoreToConsumer());
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
   const auto kIndexColumnNameQuery =
