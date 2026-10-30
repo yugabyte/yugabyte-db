@@ -100,13 +100,16 @@ void TServerMetricsHeartbeatDataProvider::DoAddData(
             auto consensus_result = tablet_peer->GetRaftConsensus();
             if (consensus_result) {
               MicrosTime ht_lease_exp;
-              consensus::LeaderLeaseStatus leader_lease_status =
-                  consensus_result.get()->GetLeaderLeaseStatusIfLeader(&ht_lease_exp);
-              auto leader_info = req->add_leader_info();
-              leader_info->set_tablet_id(tablet_peer->tablet_id());
-              leader_info->set_leader_lease_status(leader_lease_status);
-              if (leader_lease_status == consensus::LeaderLeaseStatus::HAS_LEASE) {
-                leader_info->set_ht_lease_expiration(ht_lease_exp);
+              // The master discards entries from replicas it does not hold as the leader.
+              auto leader_lease_status =
+                  consensus_result.get()->TryGetLeaderLeaseStatus(&ht_lease_exp);
+              if (leader_lease_status) {
+                auto leader_info = req->add_leader_info();
+                leader_info->set_tablet_id(tablet_peer->tablet_id());
+                leader_info->set_leader_lease_status(*leader_lease_status);
+                if (*leader_lease_status == consensus::LeaderLeaseStatus::HAS_LEASE) {
+                  leader_info->set_ht_lease_expiration(ht_lease_exp);
+                }
               }
             }
           }
