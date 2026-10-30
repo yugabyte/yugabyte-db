@@ -4,7 +4,7 @@ import re
 import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any, Iterable, Iterator, MutableMapping, Sequence
 
 import frontmatter
 import mistune
@@ -141,8 +141,211 @@ def _table_to_block(node: dict) -> TableBlock:
 _MD_PARSER = mistune.create_markdown(renderer=None, plugins=["table"])
 
 
-def parse_markdown(content: str, source_file: str = "") -> ParsedDocument:
-    # ── Step 1: split frontmatter from body ───────────────────────────────────
+def _inline_parse(tok: dict, state: Any) -> dict:
+    """Run mistune's inline phase over one block token, in place.
+
+    This is the body of ``mistune.Markdown._iter_render`` for a single token.
+    It is reproduced here so the inline phase can be driven one block at a
+    time; ``test_md_streaming`` asserts the result equals ``_MD_PARSER(body)``
+    so a mistune upgrade that changes this is caught.
+    """
+    if "children" in tok:
+        tok["children"] = [_inline_parse(c, state) for c in tok["children"]]
+    elif "text" in tok:
+        text = tok.pop("text")
+        # Same strip set as mistune: don't touch emsp or other unicode spaces.
+        tok["children"] = _MD_PARSER.inline(text.strip(" \r\n\t\f"), state.env)
+    return tok
+
+
+# A column-0 ATX heading: the only place the source is cut into sections.
+# Requires a space or end of line after the hashes, so "#hashtag" is not one,
+# and no leading space, so a heading nested in a list or quote is not one
+# either. Setext headings ("Title\n=====") are deliberately not split points;
+# they are parsed normally inside whichever section contains them.
+_ATX_HEADING = re.compile(r"#{1,6}(?:[ \t]|$)")
+_FENCE_OPEN = re.compile(r"[ ]{0,3}(`{3,}|~{3,})")
+# Conservative: any block-level HTML opener. Nothing is split until the block
+# is judged closed, so a column-0 "## " inside raw HTML stays put.
+_HTML_OPEN = re.compile(r"[ ]{0,3}<[A-Za-z/!?]")
+_HTML_RAW_OPEN = re.compile(
+    r"[ ]{0,3}<(?:pre|script|style|textarea)\b", re.IGNORECASE
+)
+_HTML_RAW_CLOSE = re.compile(
+    r"</(?:pre|script|style|textarea)>", re.IGNORECASE
+)
+
+
+def _iter_source_sections(s: str) -> Iterator[str]:
+    """Cut normalised Markdown into sections at column-0 ATX headings.
+
+    Each section after the first starts with its heading line, and the first
+    is whatever preceded the first heading. Splitting here is what keeps peak
+    memory flat: the block parser is handed one section at a time instead of
+    the whole document.
+
+    A split point is skipped inside a fenced code block, an HTML comment, a
+    raw-text HTML element and an ordinary HTML block, since a "## " line in
+    any of those is content rather than a heading.
+    """
+    fence: str | None = None
+    html_until_blank = False
+    html_close: re.Pattern[str] | None = None
+    start = 0
+    pos = 0
+    n = len(s)
+
+    while pos < n:
+        eol = s.find("\n", pos)
+        if eol == -1:
+            eol = n
+        line = s[pos:eol]
+
+        if fence is not None:
+            stripped = line.strip()
+            if (stripped.startswith(fence[0] * len(fence))
+                    and set(stripped) == {fence[0]}):
+                fence = None
+        elif html_close is not None:
+            if html_close.search(line):
+                html_close = None
+        elif html_until_blank:
+            if not line.strip():
+                html_until_blank = False
+        else:
+            m = _FENCE_OPEN.match(line)
+            if m:
+                fence = m.group(1)
+            elif line.lstrip().startswith("<!--"):
+                if "-->" not in line[line.find("<!--") + 4:]:
+                    html_close = re.compile(r"-->")
+            elif _HTML_RAW_OPEN.match(line):
+                html_close = _HTML_RAW_CLOSE
+            elif _HTML_OPEN.match(line):
+                html_until_blank = True
+            elif _ATX_HEADING.match(line):
+                if pos > start:
+                    yield s[start:pos]
+                start = pos
+
+        pos = eol + 1
+
+    if start < n:
+        yield s[start:]
+
+
+def _normalise(body: str) -> str:
+    """Line separators and trailing newline, exactly as Markdown.parse does."""
+    s = body.replace("\r\n", "\n").replace("\r", "\n")
+    if not s.endswith("\n"):
+        s += "\n"
+    return s
+
+
+def _iter_lines_of(s: str) -> Iterator[str]:
+    """Yield lines split on "\\n" only.
+
+    Deliberately not ``splitlines()``: that also breaks on \\r, U+2028 and
+    U+2029, which would cut a line in two and could invent a reference
+    definition that is not one. Mirrors ``_iter_lines`` in
+    ``partition_chunk_pipeline`` for the same reason.
+    """
+    start = 0
+    while True:
+        end = s.find("\n", start)
+        if end == -1:
+            if start < len(s):
+                yield s[start:]
+            return
+        yield s[start:end]
+        start = end + 1
+
+
+# Opening line of a link reference definition. Deliberately loose: it only
+# decides which lines to hand to mistune, which then decides what counts.
+_REF_DEF_START = re.compile(r"[ ]{0,3}\[[^\]]*\]:")
+
+
+def _seed_ref_links(s: str, env: MutableMapping[str, Any]) -> None:
+    """Register the document's link reference definitions up front.
+
+    A whole-document parse collects every ``[label]: url`` before any inline
+    text is parsed, so a definition below a use still resolves. Parsing one
+    section at a time would only see definitions already passed, so the
+    candidate lines are gathered first and handed to the real block parser,
+    which populates ``env["ref_links"]``. Lines inside a fenced code block are
+    skipped; a false positive elsewhere only matters if a matching reference
+    use also exists.
+    """
+    candidates: list[str] = []
+    fence: str | None = None
+    for line in _iter_lines_of(s):
+        if fence is not None:
+            stripped = line.strip()
+            if (stripped.startswith(fence[0] * len(fence))
+                    and set(stripped) == {fence[0]}):
+                fence = None
+            continue
+        m = _FENCE_OPEN.match(line)
+        if m:
+            fence = m.group(1)
+            continue
+        if _REF_DEF_START.match(line):
+            candidates.append(line)
+
+    if not candidates:
+        return
+
+    state = _MD_PARSER.block.state_cls()
+    state.env = env
+    state.process(_normalise("\n".join(candidates)))
+    _MD_PARSER.block.parse(state)
+
+
+def _iter_block_tokens(body: str) -> Iterator[dict]:
+    """Yield block tokens one at a time, each with its inline tree attached.
+
+    ``_MD_PARSER(body)`` builds every block token for the document and then
+    every token's inline tree, and holds all of it at once. That is what makes
+    peak memory a large multiple of the source, by a factor that depends on
+    the Markdown's shape: measured at 5 MiB input, 3.6x for fenced code, 8.9x
+    for prose, 43.2x for 20-byte paragraphs and 127.7x for tables.
+
+    Two changes bound it. The source is cut into heading-delimited sections so
+    the block parser only ever holds one section's tokens, and each token's
+    inline tree is built as it is yielded and dropped straight after. One
+    ``env`` is shared across sections so link reference definitions still
+    resolve document-wide.
+    """
+    s = _normalise(body)
+
+    state = _MD_PARSER.block.state_cls()
+    env = state.env
+    _seed_ref_links(s, env)
+
+    for section in _iter_source_sections(s):
+        state = _MD_PARSER.block.state_cls()
+        state.env = env
+        state.process(_normalise(section))
+
+        for hook in _MD_PARSER.before_parse_hooks:
+            hook(_MD_PARSER, state)
+        _MD_PARSER.block.parse(state)
+        for hook in _MD_PARSER.before_render_hooks:
+            hook(_MD_PARSER, state)
+
+        tokens = state.tokens
+        for i, tok in enumerate(tokens):
+            yield _inline_parse(tok, state)
+            # Drop the finished token, inline tree and all, so the walk below
+            # never holds more than one block's worth of it.
+            tokens[i] = None
+
+
+def _document_from_frontmatter(
+    content: str, source_file: str
+) -> tuple[ParsedDocument, str]:
+    """Split frontmatter from body and build the chunkless document."""
     post = frontmatter.loads(content)
     meta: dict[str, Any] = post.metadata
     body: str = post.content
@@ -162,21 +365,25 @@ def parse_markdown(content: str, source_file: str = "") -> ParsedDocument:
         source_file     = source_file,
         raw_frontmatter = dict(meta),
     )
+    return doc, body
 
-    # ── Step 2: parse body to AST ─────────────────────────────────────────────
-    ast: list[dict] = _MD_PARSER(body) or []
 
-    # ── Step 3: walk AST, split on headings ───────────────────────────────────
+def _iter_chunks(body: str) -> Iterator[ParsedChunk]:
+    """Walk the block tokens, splitting on headings, yielding as we go."""
     heading_stack:    list[str] = []
     current_depth:    int = 0
     current_text:     list[str] = []
     current_codes:    list[CodeBlock] = []
     current_tables:   list[TableBlock] = []
     current_links:    list[str] = []
+    chunk_index:      int = 0
 
-    def flush() -> None:
+    def flush() -> ParsedChunk | None:
+        nonlocal chunk_index
         if not heading_stack:
-            return
+            # No clear() on this path, deliberately: content before the first
+            # heading stays buffered and lands in the first chunk.
+            return None
         # Inline table prose into the text block so it's searchable
         table_prose = "\n\n".join(t.to_prose() for t in current_tables)
         full_text = "\n\n".join(filter(None, [
@@ -184,6 +391,7 @@ def parse_markdown(content: str, source_file: str = "") -> ParsedDocument:
             table_prose,
         ])).strip()
 
+        chunk = None
         if full_text or current_codes:
             chunk = ParsedChunk(
                 heading_path  = list(heading_stack),
@@ -192,23 +400,26 @@ def parse_markdown(content: str, source_file: str = "") -> ParsedDocument:
                 code_blocks   = list(current_codes),
                 tables        = list(current_tables),
                 links         = list(current_links),
-                chunk_index   = len(doc.chunks),
+                chunk_index   = chunk_index,
             )
-            doc.chunks.append(chunk)
+            chunk_index += 1
 
         current_text.clear()
         current_codes.clear()
         current_tables.clear()
         current_links.clear()
+        return chunk
 
-    for node in ast:
+    for node in _iter_block_tokens(body):
         ntype = node.get("type")
 
         if ntype == "blank_line":
             continue
 
         elif ntype == "heading":
-            flush()
+            pending = flush()
+            if pending is not None:
+                yield pending
             depth = node["attrs"]["level"]
             title = _extract_text(node).strip()
             heading_stack = heading_stack[:depth - 1]
@@ -227,7 +438,35 @@ def parse_markdown(content: str, source_file: str = "") -> ParsedDocument:
             current_text.append(_extract_text(node).strip())
             current_links.extend(_extract_links(node))
 
-    flush()
+    pending = flush()
+    if pending is not None:
+        yield pending
+
+
+def stream_markdown(
+    content: str, source_file: str = ""
+) -> tuple[ParsedDocument, Iterator[ParsedChunk]]:
+    """Parse the frontmatter now; yield chunks lazily.
+
+    The returned document carries the document-level fields with an empty
+    ``chunks`` list, and the iterator produces the same chunks
+    :func:`parse_markdown` would, in the same order, without ever holding them
+    all at once. Use this on the ingestion path, where chunks are embedded and
+    discarded one at a time; use :func:`parse_markdown` when the whole
+    document is genuinely needed.
+
+    ``doc.total_chunks`` stays 0 while the iterator runs, so it cannot feed
+    :meth:`ParsedChunk.to_metadata`'s ``doc_length``. That is why
+    :class:`MekoMarkdownParser`, which needs the metadata, still collects.
+    """
+    doc, body = _document_from_frontmatter(content, source_file)
+    return doc, _iter_chunks(body)
+
+
+def parse_markdown(content: str, source_file: str = "") -> ParsedDocument:
+    """Parse a whole Markdown document, chunks included."""
+    doc, chunks = stream_markdown(content, source_file)
+    doc.chunks.extend(chunks)
     return doc
 
 

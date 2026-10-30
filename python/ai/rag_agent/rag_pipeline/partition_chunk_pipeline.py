@@ -15,16 +15,15 @@ from observability import meko_observe
 # registered through dist_rag.create_source has no size check at all, because
 # CreateSourceProcessorForAWS_S3 queues every object of a supported type. Keep
 # this above 60 MB, or raise MAX_FILE_SIZE_BYTES per deployment.
+#
+# The Markdown fine-tuning path shares this cap. It costs more per byte than
+# the plain-text path, because md_parser also holds the block tokens for the
+# current heading section and the chunk it is assembling. Peak RSS measured at
+# this 64 MiB default, by document shape: 197 MB for 20-byte paragraphs, 229 MB
+# for prose, 251 MB for table-heavy, and 700 MB for the worst shape, a document
+# with no heading after the first, which is one section and one chunk. Size the
+# workers for the 700 MB figure times WORKER_CONCURRENCY.
 DEFAULT_MAX_FILE_SIZE_BYTES = 64 * 1024 * 1024  # 64 MiB
-
-
-# The Markdown fine-tuning path keeps its own, much lower cap. parse_markdown
-# peaks at about 23.4x the input, measured linearly at 1, 5 and 16 MiB (24.6 MB,
-# 122.8 MB and 392.9 MB), against roughly 2x for the plain-text path. At 64 MiB
-# that is about 1.5 GiB for one task, times WORKER_CONCURRENCY, so the two paths
-# cannot share one number. Raising this is MEKO-1128, which needs the worker
-# memory sized for it first.
-DEFAULT_MAX_MARKDOWN_FILE_SIZE_BYTES = 5 * 1024 * 1024  # 5 MiB
 
 
 def _env_size_bytes(var_name: str, default: int) -> int:
@@ -100,13 +99,6 @@ def max_file_size_bytes() -> int:
     )
     _warn_on_cap_drift(value)
     return value
-
-
-def max_markdown_file_size_bytes() -> int:
-    """Size cap for the Markdown fine-tuning read, overridable per deployment."""
-    return _env_size_bytes(
-        "MAX_MARKDOWN_FILE_SIZE_BYTES", DEFAULT_MAX_MARKDOWN_FILE_SIZE_BYTES
-    )
 
 
 def _iter_lines(text: str) -> Generator[str, None, None]:
