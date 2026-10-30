@@ -21,7 +21,7 @@ import {
 import { YBTabsPanel } from '../../panels';
 import { GraphTab } from '../GraphTab/GraphTab';
 import { showOrRedirect } from '../../../utils/LayoutUtils';
-import { getIsKubernetesUniverse } from '../../../utils/UniverseUtils';
+import { getIsKubernetesUniverse, getPrimaryCluster } from '../../../utils/UniverseUtils';
 import { RuntimeConfigKey } from '../../../redesign/helpers/constants';
 
 import './CustomerMetricsPanel.scss';
@@ -58,7 +58,8 @@ const PanelBody = ({
       (c) => c.key === RuntimeConfigKey.PER_PROCESS_METRICS_FEATURE_FLAG
     )?.value === 'true';
   const invalidTabType = [];
-  const isYSQLOpsEnabled = selectedUniverse?.universeDetails?.clusters?.[0]?.userIntent.enableYSQL;
+  const primaryCluster = getPrimaryCluster(selectedUniverse?.universeDetails?.clusters);
+  const isYSQLOpsEnabled = primaryCluster?.userIntent.enableYSQL;
 
   // List of default tabs to display based on metrics origin
   let defaultTabToDisplay = isYSQLOpsEnabled ? MetricTypes.YSQL_OPS : MetricTypes.YCQL_OPS;

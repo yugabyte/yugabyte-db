@@ -1334,6 +1334,22 @@ TEST_F(ClientTest, TestAsyncFlushResponseAfterSessionDropped) {
   ASSERT_EQ(flush_future.wait_for(3min), std::future_status::ready);
 }
 
+// The session releases the buffers holder before the flush callback, so the caller can reuse the
+// buffers right away.
+TEST_F(ClientTest, FlushReleasesBuffersHolderBeforeCallback) {
+  auto session = CreateSession();
+  ApplyInsertToSession(session.get(), client_table_, 1, 1, "row");
+  auto holder = std::make_shared<int>(0);
+  std::weak_ptr<int> weak_holder = holder;
+  std::promise<std::pair<Status, bool>> promise;
+  session->FlushAsync([&weak_holder, &promise](FlushStatus* flush_status) {
+    promise.set_value({flush_status->status, weak_holder.expired()});
+  }, std::move(holder));
+  auto [status, released] = promise.get_future().get();
+  ASSERT_OK(status);
+  ASSERT_TRUE(released);
+}
+
 TEST_F(ClientTest, TestSessionClose) {
   auto session = CreateSession();
   ApplyInsertToSession(session.get(), client_table_, 1, 1, "row");
@@ -2385,7 +2401,8 @@ TEST_F(ClientTest, TestReadFromFollower) {
   // rejected due to staleness. To avoid this situation, we'll wait until all followers
   // have at least 1 op from the leader.
   ASSERT_NO_FATALS(InsertTestRows(table, 1));
-  ASSERT_OK(WaitAllReplicasSynchronizedWithLeader(cluster_.get(), CoarseMonoClock::Now() + 5s));
+  ASSERT_OK(WaitAllReplicasSynchronizedWithLeader(
+      cluster_.get(), CoarseMonoClock::Now() + 5s, RequireLeaderIsReady::kFalse));
 
   ASSERT_NO_FATALS(InsertTestRows(table, FLAGS_test_scan_num_rows));
 

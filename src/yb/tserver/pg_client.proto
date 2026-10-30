@@ -410,6 +410,14 @@ message PgCreateReplicationSlotRequestPB {
   reserved 6; // ASH metadata is now passed in RequestHeader PB
   PGReplicationSlotLsnType lsn_type = 7;
   PGReplicationSlotOrderingMode ordering_mode = 8;
+  // Publication this slot is statically bound to (publication-scoped replication slots,
+  // created with the yb_publication option). Empty for regular slots.
+  string bound_publication_name = 9;
+  // DocDB table ids of bound_publication_name's member tables, as PG resolved them. Empty for a
+  // FOR ALL TABLES publication.
+  repeated string bound_publication_table_ids = 10;
+  // Whether bound_publication_name is a FOR ALL TABLES publication.
+  bool bound_publication_all_tables = 11;
 }
 
 message PgCreateReplicationSlotResponsePB {
@@ -768,6 +776,9 @@ message PgReplicationSlotInfoPB {
   bool expired = 14;
   bool allow_tables_without_primary_key = 15;
   bool detect_publication_changes_implicitly = 16;
+  // Publication this slot is statically bound to (publication-scoped replication slots).
+  // Empty for regular slots.
+  string bound_publication_name = 17;
 }
 
 message PgListReplicationSlotsResponsePB {
@@ -841,6 +852,27 @@ message PgPerformOptionsPB {
     uint32 key_group = 1;
     bytes key_value = 2;
     OptionalUint32PB lifetime_threshold_ms = 3;
+
+    // The catalog version this response is being cached at. The version is already part of
+    // key_value, but only as opaque bytes that pggate serialized; naming it separately lets the
+    // tserver record which version it now holds a prefetch for, for backends that want to start
+    // from an older one.
+    uint64 catalog_version = 4;
+
+    // Serve this request only if the response is already cached. A miss returns an Incomplete
+    // status instead of being filled, so a backend asking for an older version cannot cause the
+    // catalog to be read afresh and then stored under that older version's key.
+    bool lookup_only = 5;
+
+    // This request is the last of a connection start's prefetch, so once it is cached this node
+    // holds every entry such a connection needs at catalog_version. The tserver records the
+    // version only for these, because the load worth sparing the master leader is the large
+    // catalog read a connection start makes, and a connection skips it only when the whole set
+    // is cached: it reads every request back, and a partial set sends it to the leader anyway.
+    // The small prefetches elsewhere -- the pre-auth pair of tables, the few read after a
+    // relcache preload -- cost the leader little, so a version recorded from one of them would
+    // advertise a saving that does not exist.
+    bool completes_connection_prefetch = 6;
   }
 
   message ReadTimeOptionsPB {
@@ -912,6 +944,10 @@ message PgPerformOptionsPB {
 
   // Origination time of the current PG transaction (see OriginationInfoPB); 0 when unknown.
   fixed64 origination_ht = 38;
+
+  // Source commit time of the transaction being applied, as a HybridTime, travelling with
+  // xrepl_origin_id.
+  fixed64 xrepl_source_write_ht = 39;
 }
 
 message PgRequestSequenceNumPB {
@@ -1010,6 +1046,8 @@ message PgInsertSequenceTupleRequestPB {
   bool is_called = 6;
   reserved 8; // ASH metadata is now passed in RequestHeader PB
   fixed64 origination_ht = 9;
+  // See PgsqlWriteRequestPB::is_using_table_locks.
+  bool is_using_table_locks = 10;
 }
 
 message PgInsertSequenceTupleResponsePB {
@@ -1029,6 +1067,8 @@ message PgUpdateSequenceTupleRequestPB {
   bool expected_is_called = 9;
   reserved 11; // ASH metadata is now passed in RequestHeader PB
   fixed64 origination_ht = 12;
+  // See PgsqlWriteRequestPB::is_using_table_locks.
+  bool is_using_table_locks = 13;
 }
 
 message PgUpdateSequenceTupleResponsePB {
@@ -1053,6 +1093,8 @@ message PgFetchSequenceTupleRequestPB {
   bool cycle = 9;
   reserved 11; // ASH metadata is now passed in RequestHeader PB
   fixed64 origination_ht = 12;
+  // See PgsqlWriteRequestPB::is_using_table_locks.
+  bool is_using_table_locks = 13;
 }
 
 message PgFetchSequenceTupleResponsePB {
@@ -1069,6 +1111,8 @@ message PgReadSequenceTupleRequestPB {
   uint64 ysql_db_catalog_version = 5;
   uint64 read_time = 6;
   reserved 7; // ASH metadata is now passed in RequestHeader PB
+  // See PgsqlWriteRequestPB::is_using_table_locks.
+  bool is_using_table_locks = 8;
 }
 
 message PgReadSequenceTupleResponsePB {
@@ -1103,6 +1147,9 @@ message PgDeleteDBSequencesResponsePB {
 message PgGetTableDiskSizeRequestPB {
   PgObjectIdPB table_id = 1;
   reserved 2; // ASH metadata is now passed in RequestHeader PB
+  // DocDB table UUID. When set, takes precedence over table_id. Used for
+  // colocation parent tables which have no PG oid mapping.
+  optional string yb_table_id = 3;
 }
 
 message PgGetTableDiskSizeResponsePB {

@@ -99,6 +99,7 @@
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/yb_pg_errcodes.h"
@@ -684,10 +685,9 @@ class SessionProvider {
   virtual ~SessionProvider() = default;
   virtual Result<SessionAccessor> GetSessionAccessor(
       uint64_t session_id, std::optional<PgRequestSequencer::SequenceNum> request_serial_no) = 0;
-  virtual rpc::Messenger& Messenger() = 0;
 };
 
-class PerformQuery : public std::enable_shared_from_this<PerformQuery>, public rpc::ThreadPoolTask,
+class PerformQuery : public std::enable_shared_from_this<PerformQuery>,
                      public PgTablesQueryListener {
  public:
   using ContextHolder = rpc::TypedPBRpcContextHolder<
@@ -695,47 +695,30 @@ class PerformQuery : public std::enable_shared_from_this<PerformQuery>, public r
 
   PerformQuery(
       SessionProvider& provider, ContextHolder&& context)
-      : provider_(provider), context_(std::move(context)), tid_(Thread::UniqueThreadId()),
+      : provider_(provider), context_(std::move(context)),
         wait_state_ptr_(ash::WaitStateInfo::CurrentWaitState()) {
   }
 
-  void Ready(const PgTablesQueryResult& tables) override {
-    tables_ = tables;
-    if (Thread::UniqueThreadId() == tid_) {
-      Run();
-    } else {
-      retained_self_ = shared_from_this();
-      provider_.Messenger().ThreadPool().Enqueue(this);
-    }
+  void Ready(PgTablesQueryResult&& tables) override {
+    tables_ = std::move(tables);
+    ADOPT_WAIT_STATE(wait_state_ptr_);
+    SCOPED_WAIT_STATUS(OnCpu_Active);
+    RespondIfError(DoReady());
   }
 
  private:
-  PgPerformRequestMsg& req() {
-    return context_.req();
-  }
+  auto& req() { return context_.req(); }
 
-  PgPerformResponseMsg& resp() {
-    return context_.resp();
-  }
+  auto& resp() { return context_.resp(); }
 
-  void Run() override {
-    ADOPT_WAIT_STATE(wait_state_ptr_);
-    SCOPED_WAIT_STATUS(OnCpu_Active);
-    if (const auto status = RunImpl(); !status.ok()) {
-      RespondWithError(status);
-    }
-  }
-
-  Status RunImpl() {
+  Status DoReady() {
     auto accessor = VERIFY_RESULT(provider_.GetSessionAccessor(
         req().session_id(), RequestSequenceNumFromPB(req().sequence_num())));
     if (auto session = accessor.GetSessionNoWait(); !session) {
       RETURN_NOT_OK(accessor.Enqueue(
-          [shared_this = shared_from_this()](Result<PgClientSession&> session) {
-            if (!session.ok()) {
-              shared_this->RespondWithError(session.status());
-            } else {
-              shared_this->DoPerform(*session);
+          [self = shared_from_this()](Result<PgClientSession&> session) {
+            if (!self->RespondIfError(ResultToStatus(session))) {
+              self->DoPerform(*session);
             }
           }, context_.context().GetClientDeadline()));
     } else {
@@ -744,24 +727,21 @@ class PerformQuery : public std::enable_shared_from_this<PerformQuery>, public r
     return Status::OK();
   }
 
-  void Done(const Status& status) override {
-    retained_self_ = nullptr;
-  }
-
-  void RespondWithError(const Status& status) {
-    DCHECK(!status.ok());
+  bool RespondIfError(const Status& status) {
+    if (status.ok()) {
+      return false;
+    }
     Respond(status, &resp(), &context_.context());
+    return true;
   }
 
   void DoPerform(PgClientSession& session) {
-    session.Perform(req(), resp(), std::move(context_.context()), *tables_);
+    session.Perform(req(), resp(), std::move(context_.context()), tables_);
   }
 
   SessionProvider& provider_;
   ContextHolder context_;
-  const int64_t tid_;
-  std::optional<PgTablesQueryResult> tables_;
-  std::shared_ptr<PerformQuery> retained_self_;
+  PgTablesQueryResult tables_;
 
   // kept here in case the task is scheduled in another thread.
   const ash::WaitStateInfoPtr wait_state_ptr_;
@@ -801,10 +781,16 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
         transaction_manager_provider_(std::move(transaction_manager_provider)),
         transaction_pool_provider_(std::move(transaction_pool_provider)),
         messenger_(*messenger),
-        table_cache_(client_future_),
+        table_cache_(client_future_, messenger_.ThreadPool()),
         db_cache_(client_future_),
         check_object_id_allocators_("check_object_id_allocators", &messenger->scheduler()),
-        response_cache_(parent_mem_tracker, metric_entity),
+        response_cache_(
+            parent_mem_tracker, metric_entity,
+            [this](PgResponseCache::KeyGroup key_group, uint64_t catalog_version) {
+              // The key group is the database oid the prefetch was cached for.
+              const_cast<TabletServerIf&>(tablet_server_)
+                  .SetYsqlDbLastPrefetchedCatalogVersion(key_group, catalog_version);
+            }),
         instance_id_(permanent_uuid),
         shared_mem_pool_(parent_mem_tracker, instance_id_),
         transaction_builder_([this](auto&&... args) {
@@ -973,13 +959,19 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
     return client().GetNamespaceInfo(GetPgsqlNamespaceId(req.oid()), resp->mutable_info());
   }
 
-  Status IsDatabaseColocated(
+  void IsDatabaseColocated(
       const PgIsDatabaseColocatedRequestPB& req, PgIsDatabaseColocatedResponsePB* resp,
-      rpc::RpcContext* context) {
-    auto info = VERIFY_RESULT(db_cache_.GetColocationInfo(req.database_oid()));
-    resp->set_colocated(info.colocated);
-    resp->set_legacy_colocated_database(info.legacy_colocated_database);
-    return Status::OK();
+      rpc::RpcContext context) {
+    db_cache_.GetColocationInfo(
+        req.database_oid(),
+        [resp, context = std::make_shared<rpc::RpcContext>(std::move(context))](
+            Result<PgDbCache::ColocationInfo> info) {
+          if (info.ok()) {
+            resp->set_colocated(info->colocated);
+            resp->set_legacy_colocated_database(info->legacy_colocated_database);
+          }
+          Respond(ResultToStatus(info), resp, context.get());
+        });
   }
 
   Result<PgPollVectorIndexReadyResponsePB> PollVectorIndexReady(
@@ -1014,10 +1006,11 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
 
       auto tablets = *lookup_result;
       VLOG_WITH_FUNC(2) << "num tablets: " << tablets.size();
+      TEST_SYNC_POINT_CALLBACK("PgClientService::PollVectorIndexReady:TabletsLookedUp", &tablets);
 
       ready = true;
       for (const auto& tablet : tablets) {
-        auto* leader = tablet->LeaderTServer();
+        auto* leader = tablet->LeaderTServer(client::internal::MarkStaleOnFailure::kTrue);
         if (!leader) {
           VLOG_WITH_FUNC(4) << "No leader for " << tablet->tablet_id();
           ready = false;
@@ -1030,8 +1023,13 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
         rpc::RpcController controller;
         controller.set_deadline(deadline);
         auto status = leader->proxy()->GetTabletStatus(status_req, &status_resp, &controller);
+        if (status.ok() && status_resp.has_error()) {
+          status = StatusFromPB(status_resp.error().status());
+        }
         if (!status.ok()) {
           LOG_WITH_FUNC(INFO) << "Failed to query tablet " << tablet->tablet_id() << ": " << status;
+          // Leader could have moved.
+          tablet->MarkStale();
           ready = false;
           break;
         }
@@ -1887,6 +1885,11 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
   Status ListSlotEntries(
       const PgListSlotEntriesRequestPB& req, PgListSlotEntriesResponsePB* resp,
       rpc::RpcContext* context) {
+    // cdc_state is only created with the first CDC/xCluster stream, so don't wait for it here.
+    if (!VERIFY_RESULT(cdc_state_table_->TableExists())) {
+      return Status::OK();
+    }
+
     Status iteration_status;
     auto range_result = VERIFY_RESULT(cdc_state_table_->GetTableRange(
         cdc::CDCStateTableEntrySelector()
@@ -2270,8 +2273,10 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
   Status GetTableDiskSize(
       const PgGetTableDiskSizeRequestPB& req, PgGetTableDiskSizeResponsePB* resp,
       rpc::RpcContext* context) {
-    auto result =
-        client().GetTableDiskSize(PgObjectId::GetYbTableIdFromPB(req.table_id()));
+    const auto table_id = req.has_yb_table_id() && !req.yb_table_id().empty()
+        ? req.yb_table_id()
+        : PgObjectId::GetYbTableIdFromPB(req.table_id());
+    auto result = client().GetTableDiskSize(table_id);
     if (!result.ok()) {
       StatusToPB(result.status(), resp->mutable_status());
     } else {
@@ -2552,16 +2557,14 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
     table_cache_.GetTables(table_ids, query);
   }
 
-  void InvalidateTableCache() {
+  void InvalidateTableCache(const std::optional<PgTableCacheInvalidationFilter>& filter) {
+    if (filter) {
+      table_cache_.InvalidateDbTables(*filter);
+      db_cache_.Invalidate(filter->dropped_dbs);
+      return;
+    }
     table_cache_.InvalidateAll(CoarseMonoClock::Now());
     db_cache_.Clear();
-  }
-
-  void InvalidateTableCache(
-      const std::unordered_map<uint32_t, uint64_t>& db_oids_updated,
-      const std::unordered_set<uint32_t>& db_oids_deleted) {
-    table_cache_.InvalidateDbTables(db_oids_updated, db_oids_deleted);
-    db_cache_.Invalidate(db_oids_deleted);
   }
 
   // Return the TabletServer hosting the specified status tablet.
@@ -3096,10 +3099,6 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
     return SessionAccessor::Make(VERIFY_RESULT(DoGetSession(session_id)), request_serial_no);
   }
 
-  rpc::Messenger& Messenger() override {
-    return messenger_;
-  }
-
   [[nodiscard]] client::YBTransactionPtr BuildTransaction(
       TxnAssignment* dest, IsDDL is_ddl, TransactionFullLocality locality,
       CoarseTimePoint deadline, client::ForceCreateTransaction force_create_txn) {
@@ -3229,14 +3228,9 @@ void PgClientServiceImpl::Perform(
   impl_->Perform(const_cast<PgPerformRequestMsg*>(req), resp, &context);
 }
 
-void PgClientServiceImpl::InvalidateTableCache() {
-  impl_->InvalidateTableCache();
-}
-
 void PgClientServiceImpl::InvalidateTableCache(
-    const std::unordered_map<uint32_t, uint64_t>& db_oids_updated,
-    const std::unordered_set<uint32_t>& db_oids_deleted) {
-  impl_->InvalidateTableCache(db_oids_updated, db_oids_deleted);
+    const std::optional<PgTableCacheInvalidationFilter>& filter) {
+  impl_->InvalidateTableCache(filter);
 }
 
 Result<PgTxnSnapshot> PgClientServiceImpl::GetLocalPgTxnSnapshot(

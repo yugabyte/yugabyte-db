@@ -1,6 +1,6 @@
 import { Controller, FieldValues, Path, useFormContext } from 'react-hook-form';
-import { TFunction } from 'i18next';
-import { YBSelect, mui } from '@yugabyte-ui-library/core';
+import { Trans, TFunction } from 'react-i18next';
+import { YBSelect, YBTooltip, mui } from '@yugabyte-ui-library/core';
 import { FaultToleranceType } from '../../steps/resilence-regions/dtos';
 
 const { MenuItem, styled } = mui;
@@ -11,7 +11,14 @@ interface FaultToleranceTypeFieldProps<T extends FieldValues> {
   t: TFunction;
   sx?: React.CSSProperties;
   isK8s?: boolean;
+  /** Grey-disable Node and None (multi-provider). */
+  disableNodeAndNone?: boolean;
 }
+
+const MULTI_PROVIDER_DISABLED_FT = new Set<string>([
+  FaultToleranceType.NODE_LEVEL,
+  FaultToleranceType.NONE
+]);
 
 const faultToleranceTitleKey = (value: string, isK8s: boolean) =>
   isK8s && value === FaultToleranceType.NODE_LEVEL ? `${value}.titlePod` : `${value}.title`;
@@ -29,11 +36,21 @@ const StyledMenuItem = styled(MenuItem)(({ theme }) => ({
   fontWeight: 600,
   lineHeight: '16px',
   height: '56px !important',
+  width: '100%',
+  boxSizing: 'border-box',
+  position: 'relative',
   borderBottom: `1px solid ${theme.palette.grey[300]}`,
   '& > .subText': {
     fontWeight: 400,
     fontSize: theme.typography.subtitle1.fontSize,
     color: theme.palette.grey[600]
+  },
+  '&.Mui-disabled': {
+    opacity: 1,
+    color: theme.palette.grey[500],
+    '& > .subText': {
+      color: theme.palette.grey[500]
+    }
   }
 }));
 
@@ -42,14 +59,22 @@ export const FaultToleranceTypeField = <T extends FieldValues>({
   t,
   label,
   sx = {},
-  isK8s = false
+  isK8s = false,
+  disableNodeAndNone = false
 }: FaultToleranceTypeFieldProps<T>) => {
   const { control } = useFormContext<T>();
+  const disabledTooltip = (
+    <Trans
+      t={t}
+      i18nKey="multiProviderFtDisabledTooltip"
+      components={{ bold: <span style={{ fontWeight: 600 }} /> }}
+    />
+  );
   return (
     <Controller
       name={name}
       control={control}
-      render={({ field, fieldState }) => {
+      render={({ field }) => {
         return (
           <YBSelect
             value={field.value}
@@ -67,6 +92,9 @@ export const FaultToleranceTypeField = <T extends FieldValues>({
                 vertical: 'top',
                 horizontal: 'left'
               },
+              PaperProps: {
+                sx: { width: 'auto' }
+              },
               MenuListProps: {
                 sx: { paddingTop: 0, paddingBottom: 0 }
               }
@@ -79,10 +107,17 @@ export const FaultToleranceTypeField = <T extends FieldValues>({
           >
             {Object.keys(FaultToleranceType).map((key) => {
               const value = FaultToleranceType[key as keyof typeof FaultToleranceType];
+              const disabled =
+                disableNodeAndNone && MULTI_PROVIDER_DISABLED_FT.has(value);
               return (
-                <StyledMenuItem key={value} value={value}>
+                <StyledMenuItem key={value} value={value} disabled={disabled}>
                   <span>{t(faultToleranceTitleKey(value, isK8s))}</span>
                   <span className="subText">{t(faultToleranceSubTextKey(value, isK8s))}</span>
+                  {disabled && (
+                    <YBTooltip title={disabledTooltip} placement="right">
+                      <span style={{ position: 'absolute', inset: 0, pointerEvents: 'auto' }} />
+                    </YBTooltip>
+                  )}
                 </StyledMenuItem>
               );
             })}

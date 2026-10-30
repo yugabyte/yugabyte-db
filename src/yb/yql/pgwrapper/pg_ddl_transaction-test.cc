@@ -40,6 +40,9 @@ DECLARE_bool(ysql_ddl_transaction_wait_for_ddl_verification);
 DECLARE_bool(TEST_ysql_ddl_fail_transaction_status_poll);
 DECLARE_int32(TEST_ysql_ddl_atomicity_alter_table_request_delay_ms);
 DECLARE_double(TEST_ysql_ddl_verification_failure_probability);
+DECLARE_int32(master_ts_rpc_timeout_ms);
+DECLARE_int32(retrying_ts_rpc_max_delay_ms);
+DECLARE_int32(unresponsive_ts_rpc_retry_limit);
 DECLARE_int32(ysql_ddl_post_processing_failed_verification_retry_secs);
 
 namespace yb::pgwrapper {
@@ -380,6 +383,93 @@ TEST_F(PgDdlTransactionMiniClusterTest, TestPostProcessingFailedDueToFailedStatu
     },
     MonoDelta::FromSeconds(60),
     "DDL verification task should have been re-triggered"));
+}
+
+// A rollback AlterSchema that runs out of retries after the abort has been reported must be sent
+// again. Before the fix the txn stayed in kDdlPostProcessing, which none of the re-trigger paths
+// act on, and in the table's ddl_txns_waiting_for_schema_version_, which is only drained by a
+// tablet reporting the new schema version (#34514).
+TEST_F(PgDdlTransactionMiniClusterTest, TestRollbackAlterResentAfterRetriesExhausted) {
+  // Keep the periodic re-trigger off until the rollback alter has given up, so the txn stays in
+  // kDdlPostProcessingFailed.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_post_processing_failed_verification_retry_secs) = -1;
+  auto conn = ASSERT_RESULT(Connect());
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager_impl();
+
+  const std::string kTable = "rollback_alter_gives_up";
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (id INT PRIMARY KEY) SPLIT INTO 1 TABLETS", kTable));
+  const auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabase, kTable));
+  auto table_info = catalog_manager.GetTableInfo(table_id);
+  ASSERT_NE(table_info, nullptr);
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN c INT", kTable));
+  const auto txn_id_pb = table_info->LockForRead()->pb_transaction_id();
+  ASSERT_FALSE(txn_id_pb.empty());
+  const auto txn_id = ASSERT_RESULT(FullyDecodeTransactionId(txn_id_pb));
+  ASSERT_OK(WaitFor(
+      [&] { return !table_info->HasTasks(server::MonitoredTaskType::kAlterTable); },
+      MonoDelta::FromSeconds(30), "Forward ADD COLUMN alter to finish"));
+
+  // A held write permit makes PauseWritePermits in the tserver's AlterSchema time out, so every
+  // rollback AlterSchema attempt fails. This is what the long-running backfill write did in the
+  // colocated DDL/backfill stall.
+  std::vector<ScopedRWOperation> write_permits;
+  for (const auto& peer : ListTableTabletPeers(cluster_.get(), table_id)) {
+    auto tablet = peer->shared_tablet_maybe_null();
+    ASSERT_NE(tablet, nullptr);
+    auto permit = tablet->GetPermitToWrite(CoarseMonoClock::Now() + MonoDelta::FromSeconds(10));
+    ASSERT_TRUE(permit.ok());
+    write_permits.push_back(std::move(permit));
+  }
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_ts_rpc_timeout_ms) = 2000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_unresponsive_ts_rpc_retry_limit) = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retrying_ts_rpc_max_delay_ms) = 500;
+  // Verification can't finish while the permits are held. Don't wait for it in ROLLBACK; the
+  // master's object lock release still waits for it until the release RPC times out (~60s).
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_transaction_wait_for_ddl_verification) = false;
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+
+  // Only HandleAlterTableTaskFailed moves the txn out of kDdlPostProcessing here, and only after
+  // a rollback AlterSchema has given up.
+  ASSERT_OK(WaitFor(
+      [&] {
+        return catalog_manager.TEST_GetYsqlDdlVerificationState(txn_id) ==
+               master::YsqlDdlVerificationState::kDdlPostProcessingFailed;
+      },
+      MonoDelta::FromSeconds(60), "Rollback alter to give up"));
+  ASSERT_FALSE(table_info->GetDdlTxnsWaitingForSchemaVersion().empty());
+  LOG(INFO) << "Rollback alter gave up. Waiting for schema version: "
+            << AsString(table_info->GetDdlTxnsWaitingForSchemaVersion());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_post_processing_failed_verification_retry_secs) = 1;
+  write_permits.clear();
+
+  // Nothing blocks AlterSchema anymore, so the alter that the periodic re-trigger resends every
+  // second succeeds.
+  ASSERT_OK(WaitFor(
+      [&] { return !catalog_manager.TEST_GetYsqlDdlVerificationState(txn_id).has_value(); },
+      MonoDelta::FromSeconds(30),
+      "DDL verification to finish after the rollback alter is unblocked"));
+  ASSERT_TRUE(table_info->GetDdlTxnsWaitingForSchemaVersion().empty());
+
+  // Every replica, not just the leader that reported the version, has the rolled-back schema.
+  const auto table_schema_version = table_info->LockForRead()->pb.version();
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        for (const auto& peer : ListTableTabletPeers(cluster_.get(), table_id)) {
+          const auto& metadata = peer->tablet_metadata();
+          if (metadata->primary_table_schema_version() != table_schema_version ||
+              metadata->schema()->find_column("c") != Schema::kColumnNotFound) {
+            return false;
+          }
+        }
+        return true;
+      },
+      MonoDelta::FromSeconds(30), "Tablets to apply the rolled-back schema"));
 }
 
 TEST_F(PgDdlTransactionTest, TestRenameIndexAndTruncateInTxn) {

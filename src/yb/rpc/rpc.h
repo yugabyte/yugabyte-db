@@ -223,7 +223,7 @@ class Rpc : public RpcCommand {
  protected:
   const RpcRetrier& retrier() const { return retrier_; }
   RpcRetrier* mutable_retrier() { return &retrier_; }
-  RpcController* PrepareController() {
+  virtual RpcController* PrepareController() {
     return retrier_.PrepareController();
   }
 

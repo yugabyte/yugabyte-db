@@ -5602,6 +5602,9 @@ show_modifytable_info(ModifyTableState *mtstate, List *ancestors,
 							"NOTHING" : "UPDATE",
 							es);
 
+		if (mtstate->resultRelInfo->ri_ybUseIocPushdown)
+			ExplainPropertyBool("Conflict Resolution Pushdown", true, es);
+
 		/*
 		 * Don't display arbiter indexes at all when DO NOTHING variant
 		 * implicitly ignores all conflicts

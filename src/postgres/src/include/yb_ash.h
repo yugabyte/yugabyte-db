@@ -73,7 +73,7 @@ extern bool YbAshShouldIgnoreWaitEvent(uint32 wait_event_info);
 extern void YbAshMaybeIncludeSample(PGPROC *proc, int num_procs,
 									TimestampTz sample_time,
 									int *samples_considered);
-extern void YbAshStoreSample(PGPROC *proc, int num_procs,
+extern void YbAshStoreSample(PGPROC *proc, const YbcWaitEventInfo *info,
 							 TimestampTz sample_time,
 							 int index);
 extern void YbAshFillSampleWeight(int samples_considered);

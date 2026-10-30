@@ -53,6 +53,16 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
                 String.join(", ", changedNonRollingOnlyGFlags)));
       }
     }
+    if (isFirstTry
+        && !universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQLAuth) {
+      Collection<Cluster> newClusters = getNewVersionsOfClusters(universe).values();
+      if (!GFlagsUtil.getChangedGFlags(
+                  universe.getUniverseDetails().clusters, newClusters, GFlagsUtil.YSQL_HBA_GFLAGS)
+              .isEmpty()
+          && GFlagsUtil.hasYsqlHbaGFlags(newClusters)) {
+        throw new PlatformServiceException(BAD_REQUEST, GFlagsUtil.YSQL_HBA_REQUIRES_AUTH_ERROR);
+      }
+    }
   }
 
   public Set<String> getChangedNonRollingOnlyGFlags(Universe universe) {
@@ -122,8 +132,12 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
       if (newCluster.userIntent.specificGFlags != null) {
         newCluster.userIntent.specificGFlags.validateConsistency();
       }
+      GFlagsUtil.validateGFlagValues(newCluster.userIntent);
       GFlagsUtil.validateFipsCompliancy(
           newCluster.userIntent, universe.getUniverseDetails().fipsEnabled);
+      GFlagsUtil.validateNodeToNodeClientCerts(
+          newCluster.userIntent,
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.useNodeToNodeClientCerts);
       hasClustersToUpdate = true;
       if (upgradeOption == UpgradeOption.NON_RESTART_UPGRADE) {
         for (NodeDetails nodeDetails : universe.getNodesInCluster(curCluster.uuid)) {
@@ -173,6 +187,12 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
           Http.Status.BAD_REQUEST, "Cannot delete gFlags through non-restart upgrade option.");
     }
     GFlagsUtil.checkConsistency(masterGFlags, tserverGFlags);
+    GFlagsUtil.checkNoLineBreaks(masterGFlags);
+    GFlagsUtil.checkNoLineBreaks(tserverGFlags);
+    if (universe.getUniverseDetails().fipsEnabled) {
+      GFlagsUtil.checkFipsGFlagNotDisabled("master gflags", masterGFlags);
+      GFlagsUtil.checkFipsGFlagNotDisabled("tserver gflags", tserverGFlags);
+    }
     return true;
   }
 

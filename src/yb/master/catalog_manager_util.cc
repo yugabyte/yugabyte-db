@@ -14,6 +14,7 @@
 #include "yb/master/catalog_manager_util.h"
 
 #include <algorithm>
+#include <numeric>
 
 #include "yb/common/common_net.h"
 #include "yb/common/schema_pbutil.h"
@@ -404,9 +405,7 @@ Status CatalogManagerUtil::IsPlacementInfoValid(const PlacementInfoPB& placement
 }
 
 Status CatalogManagerUtil::ValidateMaxNumReplicasFields(const PlacementInfoPB& placement_info) {
-  if (std::none_of(
-          placement_info.placement_blocks().begin(), placement_info.placement_blocks().end(),
-          [](const auto& block) { return block.has_max_num_replicas(); })) {
+  if (!PlacementInfoHasMaxNumReplicas(placement_info)) {
     return Status::OK();
   }
 
@@ -419,8 +418,7 @@ Status CatalogManagerUtil::ValidateMaxNumReplicasFields(const PlacementInfoPB& p
   std::unordered_set<std::string> placement_ids;
   for (const auto& placement_block : placement_info.placement_blocks()) {
     const auto& cloud_info = placement_block.cloud_info();
-    if (!cloud_info.has_placement_cloud() || !cloud_info.has_placement_region() ||
-        !cloud_info.has_placement_zone()) {
+    if (IsWildcardCloudInfo(cloud_info)) {
       return STATUS_FORMAT(
           IllegalState,
           "max_num_replicas is not supported in combination with wildcard placement blocks: $0",
@@ -599,31 +597,57 @@ size_t CatalogManagerUtil::GetReplicationFactor(const ReplicationInfoPB& replica
   return FLAGS_replication_factor;
 }
 
-Result<bool> CMPerTableLoadState::CompareReplicaLoads(
-    const TabletServerId &ts1, const TabletServerId &ts2) {
-  auto ts1_load = per_ts_replica_load_.find(ts1);
-  auto ts2_load = per_ts_replica_load_.find(ts2);
-  SCHECK(ts1_load != per_ts_replica_load_.end(), IllegalState,
-         Format("per_ts_replica_load_ does not contain $0", ts1));
-  SCHECK(ts2_load != per_ts_replica_load_.end(), IllegalState,
-         Format("per_ts_replica_load_ does not contain $0", ts2));
-
-  if (ts1_load->second != ts2_load->second) {
-    return ts1_load->second < ts2_load->second;
+Status CMPerTableLoadState::Init(
+    const TSDescriptorVector& ts_descs,
+    const std::unordered_map<TabletServerId, uint32_t>& table_load) {
+  const size_t n = ts_descs.size();
+  uuids_.reserve(n);
+  table_load_.reserve(n);
+  global_load_.reserve(n);
+  for (const auto& ts : ts_descs) {
+    const auto& uuid = ts->permanent_uuid();
+    auto it = table_load.find(uuid);
+    SCHECK(it != table_load.end(), IllegalState,
+           Format("table_load does not contain $0", uuid));
+    uuids_.push_back(uuid);
+    table_load_.push_back(it->second);
+    global_load_.push_back(VERIFY_RESULT(global_load_state_->GetGlobalReplicaLoad(uuid)));
   }
-
-  auto ts1_global_load = VERIFY_RESULT(global_load_state_->GetGlobalReplicaLoad(ts1));
-  auto ts2_global_load = VERIFY_RESULT(global_load_state_->GetGlobalReplicaLoad(ts2));
-
-  if (ts1_global_load == ts2_global_load) {
-    return ts1 < ts2;
+  sorted_.resize(n);
+  std::iota(sorted_.begin(), sorted_.end(), 0);
+  std::sort(sorted_.begin(), sorted_.end(),
+            [this](size_t a, size_t b) { return LessLoaded(a, b); });
+  pos_.resize(n);
+  for (size_t p = 0; p < n; ++p) {
+    pos_[sorted_[p]] = p;
   }
-  return ts1_global_load < ts2_global_load;
+  return Status::OK();
 }
 
-void CMPerTableLoadState::SortLoad() {
-  Comparator comp(this);
-  std::sort(sorted_replica_load_.begin(), sorted_replica_load_.end(), comp);
+bool CMPerTableLoadState::LessLoaded(size_t a, size_t b) const {
+  if (table_load_[a] != table_load_[b]) {
+    return table_load_[a] < table_load_[b];
+  }
+  if (global_load_[a] != global_load_[b]) {
+    return global_load_[a] < global_load_[b];
+  }
+  return uuids_[a] < uuids_[b];
+}
+
+void CMPerTableLoadState::AddReplica(size_t idx) {
+  DCHECK_LT(idx, uuids_.size());
+  ++table_load_[idx];
+  ++global_load_[idx];
+  ++global_load_state_->per_ts_replica_load_[uuids_[idx]];
+  // The key only grew, so the entry can only move towards the loaded end.
+  size_t p = pos_[idx];
+  while (p + 1 < sorted_.size() && LessLoaded(sorted_[p + 1], idx)) {
+    sorted_[p] = sorted_[p + 1];
+    pos_[sorted_[p]] = p;
+    ++p;
+  }
+  sorted_[p] = idx;
+  pos_[idx] = p;
 }
 
 int32_t GetNumReplicasOrGlobalReplicationFactor(const PlacementInfoPB& placement_info) {
@@ -680,9 +704,9 @@ bool UseRelfilenodeForTableMatch(const SnapshotInfoPB& snapshot_pb) {
   return snapshot_pb.format_version() == kUseRelfilenodeFormatVersion;
 }
 
-template <class LoadState>
 Status CatalogManagerUtil::FillTableLoadState(
-    const scoped_refptr<TableInfo>& table_info, LoadState* state) {
+    const scoped_refptr<TableInfo>& table_info,
+    std::unordered_map<TabletServerId, uint32_t>* per_ts_replica_load) {
   auto tablets = VERIFY_RESULT(table_info->GetTabletsIncludeInactive());
 
   for (const auto& tablet : tablets) {
@@ -697,20 +721,16 @@ Status CatalogManagerUtil::FillTableLoadState(
 
     for (const auto& loc : *replica_locs) {
       // Ignore replica if not present in the tserver list passed.
-      if (state->per_ts_replica_load_.count(loc.first) == 0) {
+      auto it = per_ts_replica_load->find(loc.first);
+      if (it == per_ts_replica_load->end()) {
         continue;
       }
       // Account for this load.
-      state->per_ts_replica_load_[loc.first]++;
+      ++it->second;
     }
   }
   return Status::OK();
 }
-
-template Status CatalogManagerUtil::FillTableLoadState(
-    const scoped_refptr<TableInfo>& table_info, CMPerTableLoadState* state);
-template Status CatalogManagerUtil::FillTableLoadState(
-    const scoped_refptr<TableInfo>& table_info, CMGlobalLoadState* state);
 
 Status ValidateVectorIndexBackend(const TableId& table_id, const SysTablesEntryPB& table) {
   if (!table.has_index_info() || !table.index_info().has_vector_idx_options() ||

@@ -147,11 +147,11 @@ public class YbcUpgrade {
     return confGetter.getGlobalConf(GlobalConfKeys.ybcNodeBatchSize);
   }
 
-  private int getMaxYBCUpgradePollResultTries() {
+  public int getMaxYBCUpgradePollResultTries() {
     return confGetter.getGlobalConf(GlobalConfKeys.maxYbcUpgradePollResultTries);
   }
 
-  private long getYBCUpgradePollResultSleepMs() {
+  public long getYBCUpgradePollResultSleepMs() {
     return confGetter.getGlobalConf(GlobalConfKeys.ybcUpgradePollResultSleepMs);
   }
 
@@ -177,7 +177,14 @@ public class YbcUpgrade {
     return ybcUpgradeUniverseSet.contains(universeUUID);
   }
 
-  public synchronized boolean checkYBCUpgradeProcessExistsOnK8s(UUID universeUUID) {
+  /**
+   * Deliberately not synchronized, unlike its VM counterpart. {@link #upgradeYbcOnK8s} and {@link
+   * #waitForYbcServers} hold this monitor across minutes of pod work, and {@code
+   * InstallYbcSoftwareOnK8s} polls this from a task thread. Monitor entry is not abort-aware, so a
+   * blocking read would strand an aborted subtask. The backing set is a {@link
+   * CopyOnWriteArraySet}, so the read is safe on its own.
+   */
+  public boolean checkYBCUpgradeProcessExistsOnK8s(UUID universeUUID) {
     return ybcUpgradeUniverseSetOnK8s.contains(universeUUID);
   }
 
@@ -307,12 +314,18 @@ public class YbcUpgrade {
             .anyMatch(c -> c.userIntent != null && c.userIntent.getMigrationConfig() == null);
   }
 
+  /**
+   * Unlike the VM path, a locked universe is never eligible here, including under {@link
+   * #SAFE_TO_UPGRADE_YBC_TASKS}: the k8s upgrade hard-restarts YBC on every tserver pod and has no
+   * way to coordinate with the task holding the lock, so it would kill YBC under a running backup
+   * (PLAT-21957). Nothing is starved by this, because CreateBackup, RestoreBackup and
+   * backup-schedule creation each upgrade YBC themselves inside their own lock.
+   */
   public boolean canUpgradeYBCOnK8s(Universe universe, String ybcVersion) {
     return universe.isYbcEnabled()
         && !universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc()
         && !universe.getUniverseDetails().universePaused
-        && (!universe.getUniverseDetails().updateInProgress
-            || SAFE_TO_UPGRADE_YBC_TASKS.contains(universe.getUniverseDetails().updatingTask))
+        && !universe.getUniverseDetails().updateInProgress
         && !StringUtils.equals(universe.getUniverseDetails().getYbcSoftwareVersion(), ybcVersion)
         && !failedYBCUpgradeUniverseSetOnK8s.contains(universe.getUniverseUUID());
   }
@@ -360,16 +373,27 @@ public class YbcUpgrade {
       return;
     }
 
+    // Ahead of the in-flight claim below, so an early return here cannot strand the flag and block
+    // every later InstallYbcSoftwareOnK8s on this universe for the lifetime of the process.
+    if (universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc()) {
+      log.debug("Skipping YBC upgrade for universe {} as it uses inbuilt YBC", universeUUID);
+      return;
+    }
+
+    // scheduleRunner picks universes before draining the VM batch, so the universe may have been
+    // locked in between. Re-check against the state read above rather than acting on that snapshot.
+    if (!force && !canUpgradeYBCOnK8s(universe, ybcVersion)) {
+      log.info(
+          "Skipping scheduled YBC upgrade on universe {} as it is no longer eligible",
+          universeUUID);
+      return;
+    }
+
     if (checkYBCUpgradeProcessExistsOnK8s(universeUUID)) {
       log.warn("YBC upgrade process already exists for universe {}", universeUUID);
       return;
     } else {
       setYBCUpgradeProcessOnK8s(universeUUID);
-    }
-
-    if (universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc()) {
-      log.debug("Skipping YBC upgrade for universe {} as it uses inbuilt YBC", universeUUID);
-      return;
     }
 
     try {

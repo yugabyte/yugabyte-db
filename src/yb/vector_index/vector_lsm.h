@@ -14,6 +14,7 @@
 #pragma once
 
 #include <condition_variable>
+#include <functional>
 #include <future>
 #include <map>
 #include <unordered_set>
@@ -28,6 +29,7 @@
 #include "yb/util/shutdown_controller.h"
 #include "yb/util/status_callback.h"
 
+#include "yb/vector_index/vector_index_fwd.h"
 #include "yb/vector_index/vector_index_if.h"
 #include "yb/vector_index/vector_lsm_metrics.h"
 
@@ -41,6 +43,7 @@ class PriorityThreadPoolSuspender;
 
 namespace yb::vector_index {
 
+class VectorLSMFileRemover;
 class VectorLSMFileMetaData;
 using VectorLSMFileMetaDataPtr = std::shared_ptr<VectorLSMFileMetaData>;
 
@@ -67,6 +70,11 @@ struct VectorLSMInsertContext {
   size_t chunk_size = 0;
   rocksdb::Cache::ReservationMode reservation_mode =
       rocksdb::Cache::ReservationMode::kAlways;
+  // When set, a non empty insert adds a hold on its chunk here. While held, the chunk is not saved,
+  // and therefore not merged. A merge drops the vectors whose reverse mappings it does not find, so
+  // the caller must keep the hold until the write that carries the reverse mappings of the inserted
+  // vectors is visible to readers, and should release it right after.
+  VectorLSMChunkHolds* chunk_holds = nullptr;
 };
 
 template<IndexableVectorType Vector,
@@ -100,7 +108,6 @@ struct VectorLSMOptions {
   std::string log_prefix;
   std::string storage_dir;
   VectorIndexTraits vector_index_traits;
-  size_t vectors_per_chunk;
   rpc::ThreadPool* thread_pool;
   rpc::ThreadPool* insert_thread_pool;
   PriorityThreadPoolTokenPtr compaction_token;
@@ -149,15 +156,28 @@ class VectorLSM {
   storage::UserFrontierRange GetInMemoryFrontiers();
   storage::FlushAbility GetFlushAbility();
 
+  // Returns terminal failure without waiting for in-flight saves.
+  Status GetFlushStatus() const;
+
   Status Insert(std::vector<InsertEntry> entries, const VectorLSMInsertContext& context);
 
   // Records `frontiers` as flushed without a chunk file, when nothing is unflushed: the mutable
   // chunk has no entries and every chunk is in the manifest. Returns false when skipped.
   Result<bool> AdvanceFlushedFrontier(const storage::UserFrontiers& frontiers);
 
+  // Applies `modify` to the frontiers of every chunk, and saves them as a single reset update in a
+  // new manifest file. Unlike adding a chunk, this can move the flushed frontier backwards. Fails
+  // when anything is unflushed. The caller keeps compactions off, so no compaction output can
+  // bring back frontiers computed before the change.
+  Status ModifyChunkFrontiers(const std::function<void(storage::UserFrontiers&)>& modify);
+
   // Returns an estimate, derived from the underlying vector index implementation, of the number
   // of vectors that fit into the specified byte budget.
   size_t EstimateNumVectorsForBytes(size_t bytes_limit) const;
+
+  // Capacity of a new mutable chunk when the insert does not specify one. Controlled by runtime
+  // gflags, so a change applies from the next chunk. Returns 0 when the gflags are 0.
+  size_t DefaultChunkCapacity() const;
 
   Result<SearchResults> Search(const Vector& query_vector, const SearchOptions& options) const;
 
@@ -204,8 +224,8 @@ class VectorLSM {
 
   Env* TEST_GetEnv() const;
   bool TEST_HasBackgroundInserts() const;
+  size_t TEST_PendingSaveTasks() const;
   bool TEST_HasCompactions() const EXCLUDES(mutex_);
-  bool TEST_ObsoleteFilesCleanupInProgress() const;
   size_t TEST_NextManifestFileNo() const EXCLUDES(mutex_);
 
   // Test helper method to get the size of the latest chunk (highest serial number).
@@ -253,14 +273,18 @@ class VectorLSM {
   friend struct MutableChunk;
 
   // Saves the current mutable chunk to disk and creates a new one.
-  Status RollChunk(
-      size_t min_vectors, rocksdb::Cache::ReservationMode reservation_mode) REQUIRES(mutex_);
+  Status RollChunk(size_t num_entries, const VectorLSMInsertContext& context) REQUIRES(mutex_);
   Status DoFlush(std::promise<Status>* promise) REQUIRES(mutex_);
   void WaitForUpdatesQueueEmpty() EXCLUDES(mutex_);
+  bool FlushesRetiredUnlocked() const REQUIRES(mutex_);
 
-  // Use var arg to avoid specifying arguments twice in SaveChunk and DoSaveChunk.
+  // Releases a hold added by Insert, see VectorLSMInsertContext::chunk_holds.
+  void ReleaseChunkHold(MutableChunk& chunk);
+
+  // The caller increments pending_save_tasks_ when it schedules the save; SaveChunk retires it.
   void SaveChunk(const ImmutableChunkPtr& chunk) EXCLUDES(mutex_);
   void CheckFailure(const Status& status) EXCLUDES(mutex_);
+  void RecordFailureUnlocked(const Status& status) REQUIRES(mutex_);
 
   // Actual implementation for SaveChunk, to have ability simply return Status in case of failure.
   Status DoSaveChunk(const ImmutableChunkPtr& chunk) EXCLUDES(mutex_);
@@ -274,19 +298,24 @@ class VectorLSM {
   Status AddChunkToManifest(WritableFile& manifest_file, ImmutableChunk& chunk);
 
   bool ManifestAcquired() EXCLUDES(mutex_);
-  void AcquireManifest() EXCLUDES(mutex_);
+  Status AcquireManifest() EXCLUDES(mutex_);
   void ReleaseManifest() EXCLUDES(mutex_);
   void ReleaseManifestUnlocked() REQUIRES(mutex_);
   Result<WritableFile*> RollManifest() REQUIRES(mutex_);
 
   Result<VectorLSMChunkFileSizes> GetChunkFileSize(uint64_t serial_no) const;
 
-  // Creates vector index and reserve at least for `min_vectors` entries.
+  // Creates a vector index sized for exactly `capacity` vectors -- the backend may round that up,
+  // but this method never does. Sizing is the caller's decision: a compaction output chunk
+  // is sized by its mem-store budget, a mutable chunk by CreateNewMutableChunk.
   Result<VectorIndexPtr> CreateVectorIndex(
-      size_t min_vectors, rocksdb::Cache::ReservationMode reservation_mode) const;
+      size_t capacity, rocksdb::Cache::ReservationMode reservation_mode) const;
 
+  // Creates a mutable chunk for an insert of `num_entries` vectors. Its capacity is the context's
+  // chunk_size when the insert specifies one, as backfill does, otherwise DefaultChunkCapacity();
+  // a larger batch gets a chunk of its own size.
   Status CreateNewMutableChunk(
-      size_t min_vectors, rocksdb::Cache::ReservationMode reservation_mode) REQUIRES(mutex_);
+      size_t num_entries, const VectorLSMInsertContext& context) REQUIRES(mutex_);
 
   Result<std::vector<VectorIndexPtr>> AllIndexes() const EXCLUDES(mutex_);
 
@@ -295,12 +324,6 @@ class VectorLSM {
       VectorIndex& index, uint64_t serial_no, const VectorLSMChunkFileSizes& sizes);
 
   uint64_t NextSerialNo() EXCLUDES(mutex_);
-
-  void DoDeleteObsoleteChunks() EXCLUDES(cleanup_mutex_);
-  void DeleteObsoleteChunks() EXCLUDES(cleanup_mutex_);
-  void DeleteFile(const VectorLSMFileMetaData& file);
-  void ObsoleteFile(std::unique_ptr<VectorLSMFileMetaData>&& file) EXCLUDES(cleanup_mutex_);
-  void TriggerObsoleteChunksCleanup(bool async);
 
   // Returns compaction scope with a continuous subset of immutable chunks, which consists of
   // first N manifested chunks starting from the very first one (chunk N+1 is not manifested).
@@ -389,6 +412,9 @@ class VectorLSM {
   // invariant must be kept. The value of order_no is used as key in this map.
   std::map<size_t, ImmutableChunkPtr> updates_queue_ GUARDED_BY(mutex_);
   std::condition_variable_any updates_queue_empty_cv_;
+  // Includes queued saves and saves waiting for inserts. Manifest failure can leave entries in
+  // updates_queue_ permanently, so error-path retirement cannot use queue emptiness alone.
+  size_t pending_save_tasks_ GUARDED_BY(mutex_) = 0;
 
   mutable rw_spinlock compaction_tasks_mutex_;
   std::condition_variable_any compaction_tasks_cv_;
@@ -399,12 +425,10 @@ class VectorLSM {
   // waiting for background compactions completion and prevents new background compactions.
   bool has_pending_manual_compaction_ GUARDED_BY(compaction_tasks_mutex_) = false;
 
-  // Currently this mutex is used only in DeleteObsoleteChunks, which are not allowed to run in
-  // parallel, hence it is enough to use simple spin lock.
-  simple_spinlock cleanup_mutex_;
-  std::vector<std::unique_ptr<VectorLSMFileMetaData>> obsolete_files_ GUARDED_BY(cleanup_mutex_);
-  std::atomic<bool> obsolete_files_cleanup_in_progress_ = false;
+  std::shared_ptr<VectorLSMFileRemover> obsolete_files_remover_;
 
+  // Set via RecordFailureUnlocked to complete synchronous waiters. Must be copied, not moved,
+  // when returned: retirement and subsequent calls rely on this error.
   Status failed_status_ GUARDED_BY(mutex_);
 
   std::unique_ptr<VectorLSMMetrics> metrics_;

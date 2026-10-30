@@ -561,17 +561,7 @@ Status DocRowwiseIterator::InitIterator(
           *db_iter_, doc_read_context_.table_key_prefix()));
 
   if (!scan_choices_has_upperbound) {
-    auto prefix = shared_key_prefix();
-    if (is_forward_scan_ && has_bound_key_ &&
-        bound_key_.data().data()[0] != dockv::KeyEntryTypeAsChar::kHighest) {
-      DCHECK(bound_key_.AsSlice().starts_with(prefix))
-          << "Bound key: " << bound_key_.AsSlice().ToDebugHexString()
-          << ", prefix: " << prefix.ToDebugHexString();
-      upperbound_scope_.emplace(bound_key_, db_iter_.get());
-    } else {
-      DCHECK(!upperbound().empty());
-      upperbound_scope_.emplace(upperbound(), db_iter_.get());
-    }
+    upperbound_scope_.emplace(GetInitialUpperBound(), db_iter_.get());
   }
 
   if (use_fast_backward_scan_) {
@@ -641,11 +631,47 @@ void DocRowwiseIterator::Seek(Slice key) {
   db_iter_->Seek(Slice(&null_low, 1), seek_filter_, Full::kFalse);
 }
 
-inline void DocRowwiseIterator::SeekToDocKeyPrefix(Slice doc_key_prefix) {
+void DocRowwiseIterator::SeekToDocKeyPrefix(Slice doc_key_prefix) {
   VLOG_WITH_FUNC(3) << "Seeking to " << doc_key_prefix.ToDebugHexString();
+  // A fetch marks the iterator as done once it reaches the upper bound, e.g. the end of the
+  // previous sample block. The seek starts at a new position, so fetching has to resume.
+  done_ = false;
+  if (doc_key_prefix.empty()) {
+    Seek(Slice());
+    row_key_.Clear();
+    return;
+  }
   prev_doc_found_ = DocReaderResult::kNotFound;
   db_iter_->Seek(doc_key_prefix, SeekFilter::kAll, Full::kFalse);
   row_key_.Clear();
+}
+
+Slice DocRowwiseIterator::GetInitialUpperBound() const {
+  if (is_forward_scan_ && has_bound_key_ &&
+      bound_key_.data().data()[0] != dockv::KeyEntryTypeAsChar::kHighest) {
+    DCHECK(bound_key_.AsSlice().starts_with(shared_key_prefix()))
+        << "Bound key: " << bound_key_.AsSlice().ToDebugHexString()
+        << ", prefix: " << shared_key_prefix().ToDebugHexString();
+    return bound_key_.AsSlice();
+  }
+  DCHECK(!upperbound().empty());
+  return upperbound();
+}
+
+void DocRowwiseIterator::SetUpperBound(Slice upper_bound) {
+  VLOG_WITH_FUNC(3) << upper_bound.ToDebugHexString();
+  DCHECK(is_forward_scan_);
+  DCHECK(upperbound_scope_) << "Requires the iterator to own the upper bound";
+  const auto initial_upper_bound = GetInitialUpperBound();
+  // The scope could refer to upper_bound_, so it has to go before the buffer changes.
+  upperbound_scope_.reset();
+  if (upper_bound.empty() || upper_bound >= initial_upper_bound) {
+    upper_bound_.Clear();
+    upperbound_scope_.emplace(initial_upper_bound, db_iter_.get());
+    return;
+  }
+  upper_bound_.Assign(upper_bound);
+  upperbound_scope_.emplace(upper_bound_.AsSlice(), db_iter_.get());
 }
 
 inline void DocRowwiseIterator::SeekPrevDocKey(Slice key) {
@@ -774,6 +800,18 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
     }
     first_iteration = false;
 
+    // The IntentAwareIterator upper bound lets an intent pass when its key prefix is equal to the
+    // bound, for example an intent for a whole row whose doc key is the bound. The intents iterator
+    // doesn't return such an intent today, but this check doesn't depend on it.
+    if (is_forward_scan_ && !upper_bound_.empty() &&
+        key_data.key.compare(upper_bound_.AsSlice()) >= 0) {
+      VLOG(3) << "Done since " << dockv::SubDocKey::DebugSliceToString(key_data.key)
+              << " out of upper bound: "
+              << dockv::SubDocKey::DebugSliceToString(upper_bound_.AsSlice());
+      done_ = true;
+      return false;
+    }
+
     if (has_bound_key_ && is_forward_scan_ == (key_data.key.compare(bound_key_) >= 0)) {
       VLOG(3) << "Done since " << dockv::SubDocKey::DebugSliceToString(key_data.key)
               << " out of bound: " << dockv::SubDocKey::DebugSliceToString(bound_key_);
@@ -819,6 +857,14 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
     if (doc_found != DocReaderResult::kNotFound) {
       RETURN_NOT_OK(FillRow(table_row));
       prev_doc_found_ = doc_found;
+      break;
+    }
+
+    // Intents alone are not the whole row, e.g. a column set to NULL reads as not found. So this
+    // mode returns every row with intents.
+    if (seek_filter_ == SeekFilter::kIntentsOnly) {
+      RETURN_NOT_OK(FillRow(table_row));
+      prev_doc_found_ = DocReaderResult::kFoundNotFinished;
       break;
     }
 

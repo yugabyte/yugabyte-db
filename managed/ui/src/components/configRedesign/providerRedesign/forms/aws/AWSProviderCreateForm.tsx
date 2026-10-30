@@ -80,9 +80,11 @@ import { LinuxVersionCatalog } from '../../components/linuxVersionCatalog/LinuxV
 import { ImageBundle } from '../../../../../redesign/features/universe/universe-form/utils/dto';
 import { SshPrivateKeyFormField } from '../../components/SshPrivateKeyField';
 import {
-  buildFederationTargets,
+  buildFederationPayload,
+  CloudAccessHeading,
   CrossCloudFederatedIamFields,
-  FEDERATED_IAM_VALIDATION
+  FEDERATED_IAM_VALIDATION,
+  useIsCrossCloudFederatedIamUiEnabled
 } from '../components/CrossCloudFederatedIamFields';
 
 interface AWSProviderCreateFormProps {
@@ -93,7 +95,7 @@ interface AWSProviderCreateFormProps {
 export interface AWSProviderCreateFormFieldValues {
   accessKeyId: string;
   dbNodePublicInternetAccess: boolean;
-  enableFederatedIam?: boolean;
+  federationGcsCredentialFile?: File;
   federationGcsEnabled?: boolean;
   federationGcsAudience?: string;
   federationS3Enabled?: boolean;
@@ -210,7 +212,6 @@ export const AWSProviderCreateForm = ({
 
   const defaultValues: Partial<AWSProviderCreateFormFieldValues> = {
     dbNodePublicInternetAccess: true,
-    enableFederatedIam: false,
     federationGcsEnabled: false,
     federationGcsAudience: '',
     federationS3Enabled: false,
@@ -234,6 +235,7 @@ export const AWSProviderCreateForm = ({
   });
 
   const hostInfoQuery = useQuery(hostInfoQueryKey.ALL, () => api.fetchHostInfo());
+  const isFederatedIamUiEnabled = useIsCrossCloudFederatedIamUiEnabled();
 
   const isOsPatchingEnabled = IsOsPatchingEnabled();
 
@@ -402,10 +404,20 @@ export const AWSProviderCreateForm = ({
               infoTitle="Cloud Info"
               infoContent="Enter your cloud credentials and specify how Yugabyte should leverage cloud services."
             >
+              <CloudAccessHeading
+                infoTitle="Access to AWS"
+                infoContent="Choose how YugabyteDB Anywhere authenticates to this AWS account to create and manage universe nodes."
+              >
+                Access to AWS
+              </CloudAccessHeading>
               <FormField>
                 <FieldLabel
-                  infoTitle="Credential Type"
-                  infoContent="For public cloud Providers YBA creates compute instances, and therefore requires sufficient permissions to do so."
+                  // With the preview on, this help moves to the "Access to AWS" heading.
+                  {...(!isFederatedIamUiEnabled && {
+                    infoTitle: 'Credential Type',
+                    infoContent:
+                      'For public cloud Providers YBA creates compute instances, and therefore requires sufficient permissions to do so.'
+                  })}
                 >
                   Credential Type
                 </FieldLabel>
@@ -458,7 +470,6 @@ export const AWSProviderCreateForm = ({
                 isFormDisabled={isFormDisabled}
                 providerCloud="aws"
               />
-
             </FieldGroup>
             <FieldGroup
               heading="Regions"
@@ -723,10 +734,7 @@ const constructProviderPayload = async (
             awsAccessKeySecret: formValues.secretAccessKey
           }),
           ...(formValues.enableHostedZone && { awsHostedZoneId: formValues.hostedZoneId }),
-          ...(formValues.enableFederatedIam && {
-            enableFederatedIam: true,
-            crossCloudFederationTargets: buildFederationTargets(formValues)
-          })
+          ...buildFederationPayload(formValues)
         }
       },
       ntpServers: formValues.ntpServers,

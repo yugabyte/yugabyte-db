@@ -225,8 +225,26 @@ std::shared_ptr<const YBTable> AsyncRpc::table() const {
   return ops_[0].yb_op->table();
 }
 
+bool AsyncRpc::HasResponse() const {
+  return retrier().controller().status().ok();
+}
+
+rpc::RpcController* AsyncRpc::PrepareController() {
+  auto* controller = Rpc::PrepareController();
+  if (const auto& buffers_holder = batcher_->buffers_holder()) {
+    // The rpc keeps alive the request, the response and the batcher. The batcher drops
+    // buffers_holder once its rpcs are done, so the call needs its own reference.
+    controller->set_local_call_buffers_holder(
+        std::make_shared<std::pair<std::shared_ptr<void>, std::shared_ptr<void>>>(
+            shared_from_this(), buffers_holder));
+  }
+  return controller;
+}
+
 void AsyncRpc::Finished(const Status& status) {
-  VLOG_WITH_FUNC(4) << "status: " << status << ", error: " << AsString(response_error());
+  VLOG_WITH_FUNC(4)
+      << "status: " << status << ", error: "
+      << (HasResponse() ? AsString(response_error()) : "<no response>");
   Status new_status = status;
   RefCntBuffer data_holder;
   if (status.ok()) {
@@ -646,7 +664,7 @@ template <class Req, class Resp>
 void AsyncRpcBase<Req, Resp>::ProcessResponseFromTserver(
     RefCntBuffer data_holder, const Status& status) {
   TRACE_TO(trace_, "ProcessResponseFromTserver($0)", status.ToString(false));
-  if (resp_.has_trace_buffer()) {
+  if (HasResponse() && resp_.has_trace_buffer()) {
     TRACE_TO(
         trace_, "Received from server: \nBEGIN AsyncRpc\n$0END AsyncRpc",
         resp_.trace_buffer().ToBuffer());
@@ -686,6 +704,9 @@ void AsyncRpcBase<Req, Resp>::SetRequestRaftConfigOpidIndex(int64_t opid_index) 
 
 template <class Req, class Resp>
 FlushExtraResult AsyncRpcBase<Req, Resp>::MakeFlushExtraResult() {
+  if (!HasResponse()) {
+    return {};
+  }
   return {GetPropagatedHybridTime(resp_),
           resp_.has_used_read_time() ? ReadHybridTime::FromPB(resp_.used_read_time())
                                      : ReadHybridTime()};
@@ -706,8 +727,12 @@ void HandleExtraFields(YBPgsqlWriteOp* op, tserver::LWWriteRequestPB* req) {
     req->set_external_hybrid_time(op->write_time().ToUint64());
     ReadHybridTime::SingleTime(op->write_time()).ToPB(req->mutable_read_time());
   }
-  if (op->XreplOriginId()) {
-    req->set_xrepl_origin_id(op->XreplOriginId());
+  const auto& cdr_metadata = op->cdr_metadata();
+  if (cdr_metadata.source_origin) {
+    req->set_xrepl_origin_id(cdr_metadata.source_origin);
+  }
+  if (cdr_metadata.source_write_ht.is_valid()) {
+    req->set_xrepl_source_write_ht(cdr_metadata.source_write_ht.ToUint64());
   }
   if (op->origination_info().IsSet()) {
     op->origination_info().ToPB(req->mutable_origination_info());

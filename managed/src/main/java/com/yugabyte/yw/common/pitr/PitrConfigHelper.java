@@ -495,7 +495,8 @@ public class PitrConfigHelper {
         ybClientConfigFactory.create(
             universe.getMasterAddresses(), universe.getCertificateNodetoNode(), timeoutMs);
 
-    try (YBClientApi client = ybClientService.getClientWithConfig(config)) {
+    try (YBClientApi client =
+        ybClientService.getClientWithConfig(config.withClientCertOf(universe))) {
       ListSnapshotSchedulesResponse scheduleResp = client.listSnapshotSchedules(null);
       if (scheduleResp.hasError()) {
         log.warn(

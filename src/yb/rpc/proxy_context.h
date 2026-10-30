@@ -34,7 +34,7 @@ class ProxyContext {
   // that reactor to assign and send the call.
   virtual void QueueOutboundCall(OutboundCallPtr call) = 0;
 
-  virtual void Handle(InboundCallPtr call, Queue queue) = 0;
+  virtual void HandleLocal(LocalYBInboundCallPtr call, Queue queue) = 0;
 
   virtual const Protocol& DefaultProtocol() = 0;
   virtual const Protocol& UncompressedProtocol() = 0;

@@ -165,7 +165,6 @@
 #include "replication/yb_virtual_wal_client.h"
 #include "yb/yql/pggate/util/ybc_guc.h"
 
-
 /*
  * Maximum size of a NOTIFY payload, including terminating NULL.  This
  * must be kept small enough so that a notification message fits on one
@@ -3086,7 +3085,8 @@ ybCreateNotifsReplicationSlot(void)
 	YbReplicationSlotCreateForDB(slotname, /* two_phase = */ false,
 								 YB_OUTPUT_PLUGIN, CRS_NOEXPORT_SNAPSHOT,
 								 &yb_consistent_snapshot_time, CRS_SEQUENCE,
-								 YB_CRS_TRANSACTION, YbSystemDbOid());
+								 YB_CRS_TRANSACTION, YbSystemDbOid(),
+								 NULL /* yb_publication_name */ );
 }
 
 /*

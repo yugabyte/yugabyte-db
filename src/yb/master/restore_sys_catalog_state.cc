@@ -895,7 +895,7 @@ Status RestoreSysCatalogState::CheckExistingEntry(
 Status RestoreSysCatalogState::PrepareWriteBatch(
     const docdb::DocReadContextPtr& doc_read_context,
     docdb::SchemaPackingProvider* schema_packing_provider,
-    docdb::DocWriteBatch* write_batch, HybridTime now_ht) {
+    docdb::DocWriteBatch* write_batch) {
   for (const auto& entry : entries_.entries()) {
     VLOG_WITH_FUNC(4)
         << "type: " << entry.type() << ", id: " << Slice(entry.id()).ToDebugHexString()
@@ -913,7 +913,7 @@ Status RestoreSysCatalogState::PrepareWriteBatch(
   for (const auto& [table_id, pb] : restoration_.non_system_obsolete_tables) {
     VLOG_WITH_FUNC(4) << "Clean up table: " << table_id << ", " << pb.ShortDebugString();
     RETURN_NOT_OK(PrepareTableCleanup(
-        table_id, pb, doc_read_context, schema_packing_provider, write_batch, now_ht));
+        table_id, pb, doc_read_context, schema_packing_provider, write_batch));
   }
 
   return Status::OK();
@@ -939,16 +939,12 @@ Status RestoreSysCatalogState::PrepareTabletCleanup(
 Status RestoreSysCatalogState::PrepareTableCleanup(
     const TableId& id, SysTablesEntryPB pb, const docdb::DocReadContextPtr& doc_read_context,
     docdb::SchemaPackingProvider* schema_packing_provider,
-    docdb::DocWriteBatch* write_batch, HybridTime now_ht) {
+    docdb::DocWriteBatch* write_batch) {
   VLOG_WITH_FUNC(4) << id;
 
-  // For a colocated table, mark it as HIDDEN.
-  if (pb.colocated()) {
-    pb.set_hide_state(SysTablesEntryPB::HIDDEN);
-    pb.set_hide_hybrid_time(now_ht.ToUint64());
-  } else {
-    pb.set_hide_state(SysTablesEntryPB::HIDING);
-  }
+  // Mark colocated tables HIDING too, not HIDDEN: the HIDING -> HIDDEN transition in
+  // CleanUpDeletedTables ends the table's in-progress DDL, if any, and releases its object locks.
+  pb.set_hide_state(SysTablesEntryPB::HIDING);
 
   pb.set_version(pb.version() + 1);
   return WriteEntry(

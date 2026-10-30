@@ -51,6 +51,8 @@
 #include "yb/tablet/tablet-test-harness.h"
 #include "yb/tablet/tablet-test-util.h"
 #include "yb/tablet/tablet.h"
+#include "yb/gutil/dynamic_annotations.h"
+
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_snapshots.h"
 
@@ -61,6 +63,8 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
+
+DECLARE_bool(enable_tiered_storage);
 
 using std::string;
 
@@ -74,6 +78,9 @@ class TestRaftGroupMetadata : public YBTabletTest {
   }
 
   void SetUp() override {
+    // Most tests here exercise tier_paths, so turn the preview feature on before the harness
+    // creates its tablet.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = true;
     YBTabletTest::SetUp();
     writer_.reset(new LocalTabletWriter(harness_->tablet()));
   }
@@ -101,7 +108,8 @@ class TestRaftGroupMetadata : public YBTabletTest {
 
   // Creates a fresh tablet on the given FsManager, homed on the first data root of `home_tier`.
   Result<RaftGroupMetadataPtr> CreateTabletOn(
-      FsManager* fs, const std::string& home_tier, const RaftGroupId& tablet_id) {
+      FsManager* fs, const std::string& home_tier, const RaftGroupId& tablet_id,
+      const std::string& target_storage_tier = "") {
     auto home_roots = fs->GetDataRootDirsForTier(home_tier);
     CHECK(!home_roots.empty()) << "No data roots for home tier " << home_tier;
     // RaftGroupMetadata::Load() resolves the metadata path via FsManager's tablet->data-root map.
@@ -120,6 +128,7 @@ class TestRaftGroupMetadata : public YBTabletTest {
             .tablet_data_state = TABLET_DATA_READY,
             .snapshot_schedules = {},
             .hosted_services = {},
+            .target_storage_tier = target_storage_tier,
         },
         home_roots[0], home_roots[0]);
   }
@@ -741,6 +750,122 @@ TEST_F(TestRaftGroupMetadata, LoadFromPathDoesNotMigrateOrFlushOldSuperblock) {
 
   ASSERT_EQ(loaded_colocated.size(), 1u);
   ASSERT_EQ(loaded_colocated[0]->schema().colocation_id(), kColocationId);
+}
+
+// Tiered storage disabled (the default): a new tablet gets no tier_paths and no target tier even
+// when one is requested, a pre-tiered-storage superblock is not migrated, and tier_paths persisted
+// while the feature was on are still honored so SST files on other disks stay reachable.
+TEST_F(TestRaftGroupMetadata, NoTierPathsWrittenWhenTieredStorageDisabled) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = false;
+  const auto disk_a = GetTestPath("off_disk_a");
+  const auto disk_b = GetTestPath("off_disk_b");
+  auto fs = MakeMultiDriveFsManager({{disk_a, "ssd"}, {disk_b, "ssd"}});
+
+  const RaftGroupId kTabletId = "0123456789abcdef0123456789abcde2";
+  auto meta = ASSERT_RESULT(CreateTabletOn(fs.get(), "ssd", kTabletId, "hdd"));
+  ASSERT_TRUE(meta->tier_paths().empty());
+  ASSERT_TRUE(meta->target_storage_tier().empty());
+  ASSERT_EQ(meta->target_tier_path_id(), 0u);
+
+  RaftGroupReplicaSuperBlockPB on_disk;
+  ASSERT_OK(meta->ReadSuperBlockFromDisk(&on_disk));
+  ASSERT_EQ(on_disk.kv_store().tier_paths_size(), 0);
+  ASSERT_FALSE(on_disk.kv_store().has_target_storage_tier());
+
+  // Reload as on a tserver restart: the superblock upgrade must neither run nor persist anything.
+  auto reloaded = ASSERT_RESULT(RaftGroupMetadata::Load(fs.get(), kTabletId));
+  ASSERT_TRUE(reloaded->tier_paths().empty());
+  ASSERT_OK(reloaded->ReadSuperBlockFromDisk(&on_disk));
+  ASSERT_EQ(on_disk.kv_store().tier_paths_size(), 0);
+
+  // tier_paths written while the feature was on are loaded unchanged.
+  RaftGroupReplicaSuperBlockPB sb;
+  reloaded->ToSuperBlock(&sb);
+  auto* kv = sb.mutable_kv_store();
+  kv->clear_tier_paths();
+  {
+    auto* home = kv->add_tier_paths();
+    home->set_path_id(0);
+    home->set_tier("ssd");
+    home->set_path(reloaded->rocksdb_dir());
+  }
+  {
+    auto* slow = kv->add_tier_paths();
+    slow->set_path_id(1);
+    slow->set_tier("hdd");
+    slow->set_path("/some/hdd/path");
+  }
+  ASSERT_OK(reloaded->ReplaceSuperBlock(sb));
+  auto reloaded2 = ASSERT_RESULT(RaftGroupMetadata::Load(fs.get(), kTabletId));
+  const auto& loaded = reloaded2->tier_paths();
+  ASSERT_EQ(loaded.size(), 2u);
+  ASSERT_EQ(loaded[0].path, reloaded2->rocksdb_dir());
+  ASSERT_EQ(loaded[1].tier, "hdd");
+  ASSERT_EQ(loaded[1].path, "/some/hdd/path");
+}
+
+// Tiered storage disabled: a split child gets tier_paths only when its parent already spans
+// several disks (written while the feature was on), so SST files the parent keeps on other disks
+// stay reachable from the child. A slot-less parent yields a slot-less child.
+TEST_F(TestRaftGroupMetadata, SplitChildTierPathsWhenTieredStorageDisabled) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = false;
+  const auto disk_a = GetTestPath("split_off_disk_a");
+  const auto disk_b = GetTestPath("split_off_disk_b");
+  auto fs = MakeMultiDriveFsManager({{disk_a, "ssd"}, {disk_b, "ssd"}});
+  const auto data_roots = fs->GetDataRootDirs();
+  ASSERT_EQ(data_roots.size(), 2u);
+
+  const RaftGroupId kParentId = "0123456789abcdef0123456789abcde3";
+  auto parent = ASSERT_RESULT(CreateTabletOn(fs.get(), "ssd", kParentId));
+  ASSERT_TRUE(parent->tier_paths().empty());
+  const auto partition = *parent->partition();
+
+  // Slot-less parent (created with the feature off): the child has no slots either.
+  auto child_a = ASSERT_RESULT(parent->CreateSplitChildMetadata(
+      kParentId + "-a", partition, /* lower_bound_key= */ "", /* upper_bound_key= */ ""));
+  ASSERT_TRUE(child_a->tier_paths().empty());
+  RaftGroupReplicaSuperBlockPB on_disk;
+  ASSERT_OK(child_a->ReadSuperBlockFromDisk(&on_disk));
+  ASSERT_EQ(on_disk.kv_store().tier_paths_size(), 0);
+
+  // Parent spanning two disks: the child gets one slot per disk of this node, each under the
+  // child's own directory, with path_id 0 as its home dir.
+  RaftGroupReplicaSuperBlockPB sb;
+  parent->ToSuperBlock(&sb);
+  auto* kv = sb.mutable_kv_store();
+  kv->clear_tier_paths();
+  {
+    auto* home = kv->add_tier_paths();
+    home->set_path_id(0);
+    home->set_tier("ssd");
+    home->set_path(parent->rocksdb_dir());
+  }
+  {
+    auto* other = kv->add_tier_paths();
+    other->set_path_id(1);
+    other->set_tier("hdd");
+    other->set_path(JoinPathSegments(disk_b, "some/hdd/path"));
+  }
+  ASSERT_OK(parent->ReplaceSuperBlock(sb));
+  // ReplaceSuperBlock loads the PB as a remote superblock, which carries no tier_paths; reload
+  // from disk as on a restart so the parent's in-memory metadata has both slots.
+  parent = ASSERT_RESULT(RaftGroupMetadata::Load(fs.get(), kParentId));
+  ASSERT_EQ(parent->tier_paths().size(), 2u);
+
+  auto child_b = ASSERT_RESULT(parent->CreateSplitChildMetadata(
+      kParentId + "-b", partition, /* lower_bound_key= */ "", /* upper_bound_key= */ ""));
+  const auto& child_paths = child_b->tier_paths();
+  ASSERT_EQ(child_paths.size(), 2u);
+  ASSERT_EQ(child_paths[0].path_id, 0u);
+  ASSERT_EQ(child_paths[0].path, child_b->rocksdb_dir());
+  std::set<std::string> child_roots;
+  for (const auto& tp : child_paths) {
+    ASSERT_NE(tp.path.find(child_b->raft_group_id()), std::string::npos) << tp.path;
+    child_roots.insert(GetDataRootFromTabletDir(tp.path));
+  }
+  ASSERT_EQ(child_roots, std::set<std::string>(data_roots.begin(), data_roots.end()));
+  ASSERT_OK(child_b->ReadSuperBlockFromDisk(&on_disk));
+  ASSERT_EQ(on_disk.kv_store().tier_paths_size(), 2);
 }
 
 } // namespace tablet

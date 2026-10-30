@@ -21,6 +21,7 @@ import static org.mockito.Mockito.when;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DoCapacityReservation;
 import com.yugabyte.yw.common.ApiUtils;
@@ -273,6 +274,25 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
                     NodeDetails.NodeExporterSystemdLevel.USER, n.nodeExporterSystemdLevel));
   }
 
+  // Configure writes the master target on a new universe, so the master start must not plan a
+  // collector refresh. The install runs during provisioning, not as ManageOtelCollector.
+  @Test
+  public void testCreateUniverseWithMetricsExportSkipsOtelCollectorRewrite() {
+    Universe universe = enableMetricsExport(defaultUniverse.getUniverseUUID());
+    UniverseDefinitionTaskParams taskParams = getTaskParams(true);
+    taskParams.getPrimaryCluster().userIntent.metricsExportConfig =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.metricsExportConfig;
+    taskParams.otelCollectorEnabled = true;
+    taskParams.arch = Architecture.x86_64;
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+    List<TaskInfo> otelTasks =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.ManageOtelCollector)
+            .collect(Collectors.toList());
+    assertEquals(List.of(), otelTasks);
+  }
+
   private UniverseDefinitionTaskParams getManagedLbTaskParams() {
     UniverseDefinitionTaskParams taskParams = getTaskParams(true);
     UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig lbConfig =
@@ -356,6 +376,28 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
         expected,
         taskInfo.getSubTasks().stream().collect(Collectors.groupingBy(TaskInfo::getPosition)));
     verify(mockYsqlQueryExecutor, times(1)).executeQueryInNodeShell(any(), any(), any());
+  }
+
+  @Test
+  public void testCreateFipsUniverseRebootsEachNodeOnce() {
+    UniverseDefinitionTaskParams taskParams = getTaskParams(true);
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(), u -> u.getUniverseDetails().fipsEnabled = true);
+    taskParams.fipsEnabled = true;
+    int numNodes = taskParams.nodeDetailsSet.size();
+    assertTrue(numNodes > 1);
+
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    List<TaskInfo> reboots =
+        subTasks.stream()
+            .filter(t -> t.getTaskType() == TaskType.RebootServer)
+            .collect(Collectors.toList());
+    assertEquals(numNodes, reboots.size());
+    assertEquals(1, reboots.stream().map(TaskInfo::getPosition).distinct().count());
+    // A group added once per node used to leave duplicate subtasks behind in Created.
+    assertTrue(subTasks.stream().allMatch(t -> t.getTaskState() == Success));
   }
 
   @Test

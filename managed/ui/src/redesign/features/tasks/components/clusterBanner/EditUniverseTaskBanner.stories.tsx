@@ -23,7 +23,6 @@ let storyTaskActionOutcome: EditUniverseTaskActionOutcome = 'success';
 type EditUniverseTaskBannerStoryArgs = {
   task: Task;
   universeUuid: string;
-  onDismiss: () => void;
   taskActionOutcome: EditUniverseTaskActionOutcome;
 };
 
@@ -57,7 +56,6 @@ const meta = {
   },
   argTypes: {
     universeUuid: { control: false },
-    onDismiss: { action: 'onDismiss' },
     taskActionOutcome: {
       name: 'Retry / rollback outcome',
       options: ['success', 'failure'],
@@ -71,16 +69,9 @@ const meta = {
     },
     task: { control: false }
   },
-  render: ({
-    task,
-    universeUuid,
-    onDismiss,
-    taskActionOutcome
-  }: EditUniverseTaskBannerStoryArgs) => {
+  render: ({ task, universeUuid, taskActionOutcome }: EditUniverseTaskBannerStoryArgs) => {
     storyTaskActionOutcome = taskActionOutcome;
-    return (
-      <EditUniverseTaskBanner task={task} universeUuid={universeUuid} onDismiss={onDismiss} />
-    );
+    return <EditUniverseTaskBanner task={task} universeUuid={universeUuid} />;
   },
   parameters: {
     msw: {
@@ -105,7 +96,7 @@ export const InProgress: Story = {
   }
 };
 
-/** Terminal success. Dismissible — the only state where the banner can be acknowledged away. */
+/** Terminal success. The banner renders nothing. */
 export const Succeeded: Story = {
   args: {
     task: createEditUniverseTaskMock({
@@ -143,7 +134,7 @@ export const FailedReadReplicaEdit: Story = {
   }
 };
 
-/** User aborted the edit mid-flight — treated the same as a failure. */
+/** User stopped the edit mid-flight — aborted title and description. */
 export const Aborted: Story = {
   args: {
     task: createEditUniverseTaskMock({ status: TaskState.ABORTED })

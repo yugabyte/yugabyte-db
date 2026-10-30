@@ -32,6 +32,7 @@
 
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/util/backoff_waiter.h"
@@ -50,11 +51,14 @@ METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
 METRIC_DECLARE_counter(pg_response_cache_disable_calls);
 METRIC_DECLARE_counter(pg_response_cache_entries_removed_by_gc);
 METRIC_DECLARE_counter(pg_response_cache_hits);
+METRIC_DECLARE_counter(pg_response_cache_lookup_only_hits);
+METRIC_DECLARE_counter(pg_response_cache_lookup_only_misses);
 METRIC_DECLARE_counter(pg_response_cache_gc_calls);
 METRIC_DECLARE_counter(pg_response_cache_queries);
 METRIC_DECLARE_counter(pg_response_cache_renew_hard);
 METRIC_DECLARE_counter(pg_response_cache_renew_soft);
 METRIC_DECLARE_counter(ysql_catalog_prefetch_rejections);
+METRIC_DECLARE_counter(ysql_catalog_prefetch_new_admissions);
 METRIC_DECLARE_gauge_int64(ysql_catalog_prefetches_in_progress);
 
 DECLARE_bool(ysql_enable_read_request_caching);
@@ -73,6 +77,12 @@ DECLARE_uint64(pg_response_cache_size_bytes);
 DECLARE_uint32(pg_response_cache_size_percentage);
 DECLARE_int32(pgsql_proxy_webserver_port);
 DECLARE_bool(ysql_enable_relcache_init_optimization);
+DECLARE_uint32(ysql_max_invalidation_message_queue_size);
+DECLARE_bool(TEST_pg_response_cache_force_lookup_only_miss);
+DECLARE_bool(TEST_pg_response_cache_force_lookup_only_miss_on_final_request);
+DECLARE_bool(ysql_yb_enable_stale_catalog_prefetch);
+DECLARE_uint64(ysql_catalog_prefetch_row_limit);
+DECLARE_string(ysql_pg_conf_csv);
 DECLARE_int32(ysql_client_read_write_timeout_ms);
 DECLARE_int32(pg_client_extra_timeout_ms);
 DECLARE_int32(TEST_ysql_catalog_prefetch_rejections_to_inject);
@@ -113,6 +123,8 @@ struct MetricCounters {
   struct ResponseCache {
     size_t queries;
     size_t hits;
+    size_t lookup_only_hits;
+    size_t lookup_only_misses;
     size_t renew_soft;
     size_t renew_hard;
     size_t gc_calls;
@@ -124,7 +136,7 @@ struct MetricCounters {
   size_t master_read_rpc;
 };
 
-struct MetricCountersDescriber : public MetricWatcherDeltaDescriberTraits<MetricCounters, 8> {
+struct MetricCountersDescriber : public MetricWatcherDeltaDescriberTraits<MetricCounters, 10> {
   MetricCountersDescriber(
       std::reference_wrapper<const MetricEntity> master_metric,
       std::reference_wrapper<const MetricEntity> tserver_metric)
@@ -136,6 +148,12 @@ struct MetricCountersDescriber : public MetricWatcherDeltaDescriberTraits<Metric
               &delta.cache.queries, tserver_metric, METRIC_pg_response_cache_queries},
           Descriptor{
               &delta.cache.hits, tserver_metric, METRIC_pg_response_cache_hits},
+          Descriptor{
+              &delta.cache.lookup_only_hits, tserver_metric,
+              METRIC_pg_response_cache_lookup_only_hits},
+          Descriptor{
+              &delta.cache.lookup_only_misses, tserver_metric,
+              METRIC_pg_response_cache_lookup_only_misses},
           Descriptor{
               &delta.cache.renew_soft, tserver_metric, METRIC_pg_response_cache_renew_soft},
           Descriptor{
@@ -422,6 +440,16 @@ constexpr auto kShortTableList = "pg_inherits"sv;
 constexpr auto kStatsTableList = "pg_statistic,pg_statistic_ext,pg_statistic_ext_data"sv;
 constexpr auto kAggregateTableList = "pg_aggregate"sv;
 
+// The stale catalog read needs the response cache to hold an older prefetch, and invalidation
+// messages for the connection to catch up from it.
+constexpr Configuration kConfigStalePrefetch{
+    .response_cache_size_bytes = 0,
+    // Connections only preload the catalog when YbCatalogPreloadRequired() says so, and without
+    // this they do not, leaving a prefetch too small for the difference this measures to show
+    // above the noise.
+    .preload_additional_catalog_tables = true,
+    .enable_invalidation_messages = true};
+
 constexpr Configuration kConfigDefault;
 
 constexpr Configuration kConfigMinPreload{.minimal_catalog_caches_preload = true};
@@ -576,6 +604,38 @@ class ClientConnectionsCountFetcher {
   const MonoDelta initial_delay_;
 };
 
+// A counter from the postgres metrics endpoint, which the yb_pg_metrics extension serves. The
+// per-backend counters only reach it when a backend finishes a statement, so a caller has to have
+// run one.
+Result<int64_t> FetchPgMetricCount(const HostPort& pg_host_port, std::string_view suffix) {
+  EasyCurl curl;
+  faststring buf;
+  const auto url = Format(
+      "http://$0:$1/metrics", pg_host_port.host(), FLAGS_pgsql_proxy_webserver_port);
+  RETURN_NOT_OK(WaitFor(
+      [&curl, &url, &buf]() -> Result<bool> { return curl.FetchURL(url, &buf).ok(); },
+      5s, "Requesting postgres /metrics", 100ms));
+  const auto doc = VERIFY_RESULT(ParseJson(std::string_view(buf.char_data(), buf.size())));
+  SCHECK(doc.IsArray(), IllegalState, "postgres /metrics did not return an array");
+  for (const auto& entry : doc.GetArray()) {
+    if (!entry.IsObject() || !entry.HasMember("metrics") || !entry["metrics"].IsArray()) {
+      continue;
+    }
+    for (const auto& metric : entry["metrics"].GetArray()) {
+      if (!metric.IsObject() || !metric.HasMember("name") || !metric["name"].IsString() ||
+          !metric.HasMember("count") || !metric["count"].IsInt64()) {
+        continue;
+      }
+      const std::string_view name(
+          metric["name"].GetString(), metric["name"].GetStringLength());
+      if (name.ends_with(suffix)) {
+        return metric["count"].GetInt64();
+      }
+    }
+  }
+  return STATUS_FORMAT(NotFound, "No postgres metric ending in $0", suffix);
+}
+
 Status WaitForAllClientConnectionsClosure(const HostPort& pg_host_port) {
   static constexpr auto kInitialDelay = 100ms;
   ClientConnectionsCountFetcher connection_count_fetcher(pg_host_port, kInitialDelay);
@@ -584,6 +644,18 @@ Status WaitForAllClientConnectionsClosure(const HostPort& pg_host_port) {
       [&connection_count_fetcher]() -> Result<bool> {
         return !VERIFY_RESULT(connection_count_fetcher());
       }, 30s, "Client connections closure", kInitialDelay);
+}
+
+// The level travels master -> heartbeat -> this tserver's shared memory, so setting the override
+// is not enough; a heartbeat has to land before a backend can observe it.
+Status SetSharedPrefetchLoad(MiniCluster& cluster, master::YsqlCatalogPrefetchLoadPB load) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_catalog_prefetch_load_override) = load;
+  return LoggedWaitFor(
+      [&cluster, load] {
+        return cluster.mini_tablet_server(0)->server()->shared_object()
+                   ->ysql_catalog_prefetch_load() == static_cast<uint32_t>(load);
+      },
+      30s, Format("shared prefetch load to become $0", load));
 }
 
 } // namespace
@@ -1293,6 +1365,14 @@ class PgCatalogPrefetchAdmissionTest : public PgMiniTestBase {
     return counter ? counter->value() : 0;
   }
 
+  // Reads admitted as newly starting rather than continuing a prefetch already under way.
+  [[nodiscard]] int64_t NewAdmissions() const {
+    auto counter = MasterMetrics().FindOrNull<Counter>(
+        METRIC_ysql_catalog_prefetch_new_admissions);
+    CHECK(counter) << "ysql_catalog_prefetch_new_admissions counter not found";
+    return counter->value();
+  }
+
   [[nodiscard]] int64_t InProgress() const {
     auto gauge = MasterMetrics().FindOrNull<AtomicGauge<int64_t>>(
         METRIC_ysql_catalog_prefetches_in_progress);
@@ -1346,6 +1426,28 @@ TEST_F(PgCatalogPrefetchAdmissionTest, ConcurrentPrefetchesAreAdmittedAndRelease
       [this] { return InProgress() == 0; }, 30s, "prefetch admissions released"));
 }
 
+// A connection start is several separately keyed requests, and only the first of them is work
+// the master has not already committed to. The later ones open without paging state, so without
+// the continuation flag the master would count each as a new prefetch and could shed a connection
+// that had already paid for the large catalog read. Counted rather than raced: reaching the
+// difference through the concurrency limit would need a cluster large enough to saturate the
+// master, while the count is categorical -- one per connection, not one per request.
+TEST_F(PgCatalogPrefetchAdmissionTest, OnlyTheFirstReadOfAConnectionCountsAsNew) {
+  // Out of the way, so nothing here is rejected and every read reaches the count below.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_max_concurrent_ysql_catalog_prefetches) = 1000;
+
+  const auto before = NewAdmissions();
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.FetchRow<int32_t>("SELECT 1"));
+  }
+  const auto admitted_as_new = NewAdmissions() - before;
+
+  ASSERT_EQ(admitted_as_new, 1)
+      << "a connection start should open one prefetch, not " << admitted_as_new
+      << "; every read after the first continues work the master has already admitted";
+}
+
 // A prefetch that is under way keeps the whole limit available to it, while one that is starting
 // gets only a share. With the share set to zero the floor still has to admit new prefetches, or a
 // connection could never begin and the limit would be a deadlock rather than a bound.
@@ -1369,20 +1471,8 @@ class PgDdlPrefetchPacingTest : public PgMiniTestBase {
     return 1;
   }
 
-  // The level travels master -> heartbeat -> this tserver's shared memory, so a test that sets it
-  // has to let a heartbeat land before the backend can observe it.
-  Status WaitForSharedPrefetchLoad(uint32_t expected) {
-    return LoggedWaitFor(
-        [this, expected] {
-          return cluster_->mini_tablet_server(0)->server()->shared_object()
-                     ->ysql_catalog_prefetch_load() == expected;
-        },
-        30s, Format("shared prefetch load to become $0", expected));
-  }
-
   Status SetPrefetchLoad(master::YsqlCatalogPrefetchLoadPB load) {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_catalog_prefetch_load_override) = load;
-    return WaitForSharedPrefetchLoad(load);
+    return SetSharedPrefetchLoad(*cluster_, load);
   }
 
   // Elapsed time of a DDL that bumps the catalog version.
@@ -1503,6 +1593,394 @@ TEST_F(PgDdlPrefetchPacingTest, StatementTimeoutInterruptsTheWait) {
   // The level never falls, so without the timeout this would run to twice kWaitMs.
   ASSERT_LT(elapsed.ToMilliseconds(), kTimeoutMs * 10)
       << "statement_timeout did not interrupt the wait (took " << elapsed << ")";
+}
+
+// A connection starting while the master leader is busy reads the catalog at the version this
+// node already has cached, instead of asking the leader for a fresh copy, and catches up to the
+// current version before it runs anything.
+class PgStaleCatalogPrefetchTest : public PgCatalogPerfTestBase {
+ protected:
+  void SetUp() override {
+    // Make the prefetch page. pggate reads in rounds while any operation still returns paging
+    // state, each round is cached under its own key, and only the last of them publishes the
+    // version this node holds. Without paging a prefetch is a single round and that distinction
+    // is never exercised.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_catalog_prefetch_row_limit) = 64;
+    PgCatalogPerfTestBase::SetUp();
+  }
+
+  Configuration GetConfig() const override { return kConfigStalePrefetch; }
+
+  size_t NumTabletServers() override { return 1; }
+
+  Status SetPrefetchLoad(master::YsqlCatalogPrefetchLoadPB load) {
+    return SetSharedPrefetchLoad(*cluster_, load);
+  }
+
+  // Whether the tserver has learned this database's catalog version and so has a slot to
+  // record a prefetch into. Keyed by oid rather than by connection, because what this answers
+  // is whether it is yet worth connecting at all.
+  Result<bool> HasSharedMemorySlot(uint32_t db_oid) {
+    auto* ts = cluster_->mini_tablet_server(0)->server();
+    tserver::GetTserverCatalogVersionInfoRequestPB req;
+    tserver::GetTserverCatalogVersionInfoResponsePB resp;
+    req.set_db_oid(db_oid);
+    RETURN_NOT_OK(ts->get_ysql_db_oid_to_cat_version_info_map(req, &resp));
+    return resp.entries_size() == 1;
+  }
+
+  // The catalog version this node has a cached prefetch for, as the tserver recorded it when the
+  // fill completed. This is what a starting backend reads to decide which older version to ask
+  // for.
+  Result<uint64_t> RecordedCatalogVersion(PGConn* conn) {
+    const auto db_oid = VERIFY_RESULT(conn->FetchRow<PGOid>(
+        "SELECT oid FROM pg_database WHERE datname = current_database()"));
+    auto* ts = cluster_->mini_tablet_server(0)->server();
+    tserver::GetTserverCatalogVersionInfoRequestPB req;
+    tserver::GetTserverCatalogVersionInfoResponsePB resp;
+    req.set_db_oid(db_oid);
+    RETURN_NOT_OK(ts->get_ysql_db_oid_to_cat_version_info_map(req, &resp));
+    SCHECK_EQ(resp.entries_size(), 1, IllegalState, "no shared memory slot for this database");
+    return ts->shared_object()->ysql_db_last_prefetched_catalog_version(
+        resp.entries(0).shm_index());
+  }
+
+  Result<uint64_t> CurrentCatalogVersion(PGConn* conn) {
+    return conn->FetchRow<PGUint64>(
+        "SELECT current_version FROM pg_yb_catalog_version WHERE db_oid = "
+        "(SELECT oid FROM pg_database WHERE datname = current_database())");
+  }
+
+  // Opens one connection and returns the change in every MetricCounters field across it. The
+  // cases here read master_read_rpc, for how much of the catalog came from the master leader,
+  // and cache.lookup_only_hits and cache.lookup_only_misses, for whether the connection asked
+  // the response cache for an older catalog version and whether it got one. The caller sets up
+  // what that connection finds -- a cached prefetch on this node, and a catalog that has since
+  // moved past it -- and names a table created after the cached version in visible_table.
+  Result<MetricCounters> MetricsForNewConnection(const std::string& visible_table) {
+    std::optional<PGConn> conn;
+    auto delta = VERIFY_RESULT(metrics_->Delta([this, &conn]() -> Status {
+      conn = VERIFY_RESULT(Connect());
+      return static_cast<Status>(Status::OK());
+    }));
+    // Run after the measurement, since this query's own catalog reads are large enough to hide
+    // the difference being measured. Reading a table created after the cached version is what
+    // shows the catch-up left the connection on the current catalog rather than the older one.
+    RETURN_NOT_OK(conn->FetchMatrix(Format("SELECT * FROM $0", visible_table), 0, 1));
+    return delta;
+  }
+};
+
+// A connection reads the cached version while the master leader is busy, and fetches the
+// catalog from the leader while it is idle. Asserted on the cache counters rather than on a
+// margin in master reads, so the difference is categorical rather than a threshold: no lookups
+// served from cache in the idle case, against one per paging round -- around 60 with the row
+// limit this fixture sets -- in the busy one.
+TEST_F(PgStaleCatalogPrefetchTest, BusyLeaderIsNotAskedForAFreshCatalog) {
+  auto conn = ASSERT_RESULT(Connect());
+  // Moves the catalog version past whatever this connection's own prefetch cached.
+  ASSERT_OK(conn.Execute("CREATE TABLE t_seed (k INT)"));
+
+  ASSERT_OK(SetPrefetchLoad(master::YSQL_CATALOG_PREFETCH_LOAD_LOW));
+  ASSERT_OK(conn.Execute("CREATE TABLE t_low (k INT)"));
+  // An idle leader makes this connection fetch the catalog from it, so every paging round is
+  // cached at the current version and that version is published. It is what the busy connection
+  // below reads.
+  const auto low = ASSERT_RESULT(MetricsForNewConnection("t_low"));
+
+  // Same shape of work, with the leader reporting that it is shedding prefetches.
+  ASSERT_OK(SetPrefetchLoad(master::YSQL_CATALOG_PREFETCH_LOAD_BUSY));
+  ASSERT_OK(conn.Execute("CREATE TABLE t_busy (k INT)"));
+  const auto busy = ASSERT_RESULT(MetricsForNewConnection("t_busy"));
+
+  // Both connections came up and saw the table created after the cached version, so the catalog
+  // they ended on was current either way. What differs is where they got it.
+  LOG(INFO) << "new connection: low reads=" << low.master_read_rpc
+            << " stale_hits=" << low.cache.lookup_only_hits
+            << " | busy reads=" << busy.master_read_rpc
+            << " stale_hits=" << busy.cache.lookup_only_hits;
+
+  // An idle leader is what keeps the cached version moving, so a connection does not look for
+  // an older one.
+  ASSERT_EQ(low.cache.lookup_only_hits, 0)
+      << "a connection read an older catalog version although the leader was idle";
+
+  // A busy one is served out of what this node already held.
+  ASSERT_GT(busy.cache.lookup_only_hits, 0)
+      << "a connection starting against a busy leader still fetched the catalog from it";
+  // Pinned rather than bounded, so a seventh shows up here rather than as a slower connection on
+  // a loaded cluster. The six are: the read before authentication, which carries pg_authid,
+  // pg_database, pg_yb_catalog_version and pg_yb_logical_client_version in one request and never
+  // takes the stale path itself; the pg_yb_catalog_version row read to pick a version to prefetch
+  // at; and the four ApplySetting scans of pg_db_role_setting in process_settings, which reach the
+  // leader because applying the messages had to stop the prefetcher first.
+  constexpr size_t kStalePathMasterReads = 6;
+  ASSERT_EQ(busy.master_read_rpc, kStalePathMasterReads)
+      << "a connection on the stale path changed how much it reads from the leader";
+}
+
+// Catching up from the cached version needs every invalidation message between it and the current
+// one. When the gap outruns the queue that holds them, the connection has to be turned away
+// before it asks the response cache for anything: it would otherwise read the older version and
+// then need a full refresh to reach the current one, which is the cost reading the cached
+// version is there to save.
+//
+// The queue size has to be set before the cluster starts: a backend reads it as a gflag of the
+// postgres process, which is set from the environment the tserver hands that process at startup,
+// so writing it mid-test would reach only the tserver.
+class PgNarrowMessageQueueCatalogPrefetchTest : public PgStaleCatalogPrefetchTest {
+ protected:
+  static constexpr uint32_t kMessageQueueSize = 1;
+
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_max_invalidation_message_queue_size) = kMessageQueueSize;
+    PgStaleCatalogPrefetchTest::SetUp();
+  }
+};
+
+TEST_F(PgNarrowMessageQueueCatalogPrefetchTest, FallsBackWhenTheGapOutrunsTheMessageQueue) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t_seed (k INT)"));
+
+  // An idle leader makes this connection fetch the catalog from it, which is what leaves this
+  // node holding a cached prefetch for the gap below to be measured from.
+  ASSERT_OK(SetPrefetchLoad(master::YSQL_CATALOG_PREFETCH_LOAD_LOW));
+  { auto warm = ASSERT_RESULT(Connect()); }
+
+  ASSERT_OK(SetPrefetchLoad(master::YSQL_CATALOG_PREFETCH_LOAD_BUSY));
+  for (uint32_t i = 0; i != kMessageQueueSize + 1; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE t_gap_$0 (k INT)", i));
+  }
+
+  const auto recorded = ASSERT_RESULT(RecordedCatalogVersion(&conn));
+  const auto current = ASSERT_RESULT(CurrentCatalogVersion(&conn));
+  LOG(INFO) << "recorded=" << recorded << " current=" << current;
+  ASSERT_GT(current - recorded, kMessageQueueSize)
+      << "the gap is not wider than the message queue, so this test proves nothing";
+
+  const auto metrics = ASSERT_RESULT(MetricsForNewConnection(
+      Format("t_gap_$0", kMessageQueueSize)));
+
+  ASSERT_EQ(metrics.cache.lookup_only_hits, 0)
+      << "the connection started from an older catalog version it had no way to bridge";
+  // A miss would mean the lookup happened and found nothing, which is a different fallback.
+  ASSERT_EQ(metrics.cache.lookup_only_misses, 0)
+      << "the connection asked the response cache for an older catalog version although the gap "
+         "was already too wide to bridge";
+}
+
+// What a starting backend reads to pick the older version. A full prefetch is what advances it,
+// so it should follow the catalog as connections come and go, and never run ahead of it.
+TEST_F(PgStaleCatalogPrefetchTest, RecordedVersionFollowsTheCatalog) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(SetPrefetchLoad(master::YSQL_CATALOG_PREFETCH_LOAD_LOW));
+
+  uint64_t previous = 0;
+  for (int i = 0; i != 3; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE t_track_$0 (k INT)", i));
+    // A connection at the new version is what caches a prefetch there.
+    auto fresh = ASSERT_RESULT(Connect());
+
+    const auto current = ASSERT_RESULT(CurrentCatalogVersion(&conn));
+    const auto recorded = ASSERT_RESULT(RecordedCatalogVersion(&conn));
+    LOG(INFO) << "after DDL " << i << ": catalog=" << current << " recorded=" << recorded;
+
+    ASSERT_GT(recorded, previous) << "the recorded version did not move after a DDL and a "
+                                  << "connection that prefetched at the new version";
+    ASSERT_LE(recorded, current) << "this node reports holding a prefetch for a catalog version "
+                                 << "that does not exist yet";
+    previous = recorded;
+  }
+}
+
+// The node-level counter an operator reads to see how many connections avoided the leader. Unlike
+// the response cache metrics it counts connections rather than requests, so it has to move by
+// exactly one.
+TEST_F(PgStaleCatalogPrefetchTest, ConnectionCounterMovesByOne) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t_counted_seed (k INT)"));
+  ASSERT_OK(SetPrefetchLoad(master::YSQL_CATALOG_PREFETCH_LOAD_BUSY));
+  ASSERT_OK(conn.Execute("CREATE TABLE t_counted (k INT)"));
+
+  const auto host_port = pg_host_port();
+  const auto before = ASSERT_RESULT(FetchPgMetricCount(host_port, "StaleCatalogPrefetch"));
+
+  {
+    auto fresh = ASSERT_RESULT(Connect());
+    // The counter reaches the endpoint when a backend finishes a statement, so one has to run.
+    ASSERT_OK(fresh.FetchMatrix("SELECT * FROM t_counted", 0, 1));
+  }
+
+  const auto after = ASSERT_RESULT(FetchPgMetricCount(host_port, "StaleCatalogPrefetch"));
+  LOG(INFO) << "StaleCatalogPrefetch: before=" << before << " after=" << after;
+  ASSERT_EQ(after - before, 1)
+      << "one connection that started from the cached version should move the counter by one";
+}
+
+// The cached entry can be evicted between the version being published and a connection asking
+// for it. The connection has to notice and fetch the catalog properly rather than fail.
+TEST_F(PgStaleCatalogPrefetchTest, FallsBackWhenTheCachedEntryIsGone) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t_seed (k INT)"));
+  ASSERT_OK(SetPrefetchLoad(master::YSQL_CATALOG_PREFETCH_LOAD_BUSY));
+  ASSERT_OK(conn.Execute("CREATE TABLE t_gone (k INT)"));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pg_response_cache_force_lookup_only_miss) = true;
+  const auto metrics = ASSERT_RESULT(MetricsForNewConnection("t_gone"));
+
+  ASSERT_EQ(metrics.cache.lookup_only_hits, 0) << "the entry was supposed to be missing";
+  ASSERT_GT(metrics.cache.lookup_only_misses, 0)
+      << "the connection did not look for an older catalog version at all";
+}
+
+// A prefetch is several separately keyed requests, and the relcache is built from the first of
+// them. So a miss on a later one arrives after the connection already holds relations built from
+// the older version, and the retry has to start from a clean relcache: YBLoadRelations expects no
+// alterable entry for a relation it is about to build.
+TEST_F(PgStaleCatalogPrefetchTest, FallsBackAfterTheRelcacheIsBuiltFromTheOlderVersion) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t_seed (k INT)"));
+  ASSERT_OK(SetPrefetchLoad(master::YSQL_CATALOG_PREFETCH_LOAD_BUSY));
+  ASSERT_OK(conn.Execute("CREATE TABLE t_partial (k INT)"));
+
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_TEST_pg_response_cache_force_lookup_only_miss_on_final_request) = true;
+  const auto metrics = ASSERT_RESULT(MetricsForNewConnection("t_partial"));
+
+  ASSERT_GT(metrics.cache.lookup_only_hits, 0)
+      << "the requests before the last one were supposed to be served from cache";
+  ASSERT_GT(metrics.cache.lookup_only_misses, 0) << "the last request was supposed to miss";
+}
+
+// A full catalog cache refresh caches the same large requests a connection start does, but never
+// the small last one. Recording its version would advertise a prefetch that no connection can be
+// served from: every one of them would read the large requests back and then miss.
+TEST_F(PgStaleCatalogPrefetchTest, ARefreshDoesNotRecordAVersion) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto other = ASSERT_RESULT(Connect());
+  // Without invalidation messages this session cannot bridge a version gap, so the first
+  // statement after a DDL elsewhere rebuilds its whole catalog cache through YBPreloadRelCache.
+  ASSERT_OK(conn.Execute("SET yb_enable_invalidation_messages = off"));
+
+  // Read through a connection that is not the one refreshing, so measuring does not itself
+  // trigger the refresh being measured.
+  const auto before = ASSERT_RESULT(RecordedCatalogVersion(&other));
+  const auto delta = ASSERT_RESULT(metrics_->Delta([&conn, &other]() -> Status {
+    RETURN_NOT_OK(other.Execute("CREATE TABLE t_refresh (k INT)"));
+    return ResultToStatus(conn.FetchMatrix("SELECT * FROM t_refresh", 0, 1));
+  }));
+  const auto after = ASSERT_RESULT(RecordedCatalogVersion(&other));
+
+  ASSERT_GT(delta.cache.queries, 0) << "nothing prefetched, so the refresh under test never ran";
+  ASSERT_EQ(before, after)
+      << "a refresh recorded a version it had not cached a whole connection start for";
+}
+
+// CheckMyDatabase decides whether a connection is allowed at all -- datallowconn, CONNECT
+// privilege, connection limit -- and never revisits it. Those decisions have to be made on the
+// current catalog, not on the older version the connection read, or a revocation landing inside
+// the gap would admit a session it should have refused for that session's whole life.
+TEST_F(PgStaleCatalogPrefetchTest, ConnectionChecksSeeARevocationInsideTheGap) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE DATABASE d_revoked"));
+  // Leaves this node holding a prefetch cached at d_revoked's current version. The fill can
+  // land before the tserver has heard of this database and so before there is a slot to record
+  // into; the version is held until the slot arrives, so wait for the slot and the record
+  // together rather than ordering the connection behind the slot.
+  const auto db_oid = ASSERT_RESULT(conn.FetchRow<PGOid>(
+      "SELECT oid FROM pg_database WHERE datname = 'd_revoked'"));
+  {
+    auto warm = ASSERT_RESULT(ConnectToDB("d_revoked"));
+    ASSERT_OK(LoggedWaitFor([this, &warm, db_oid]() -> Result<bool> {
+      // RecordedCatalogVersion fails outright when there is no slot, which would end the wait
+      // instead of polling through the window this is here to cover.
+      if (!VERIFY_RESULT(HasSharedMemorySlot(db_oid))) {
+        return false;
+      }
+      return VERIFY_RESULT(RecordedCatalogVersion(&warm)) != 0;
+    }, 60s, "d_revoked's prefetch to be recorded"));
+  }
+
+  ASSERT_OK(SetPrefetchLoad(master::YSQL_CATALOG_PREFETCH_LOAD_BUSY));
+  // Shared catalog, so this moves d_revoked's version too and opens the gap.
+  ASSERT_OK(conn.Execute("ALTER DATABASE d_revoked WITH ALLOW_CONNECTIONS false"));
+
+  Status connect_status;
+  const auto delta = ASSERT_RESULT(metrics_->Delta([this, &connect_status]() -> Status {
+    connect_status = ResultToStatus(ConnectToDB("d_revoked"));
+    return static_cast<Status>(Status::OK());
+  }));
+
+  ASSERT_NOK(connect_status);
+  ASSERT_STR_CONTAINS(connect_status.ToString(), "not currently accepting connections");
+  // Without this the test would pass just as well with the feature switched off.
+  ASSERT_GT(delta.cache.lookup_only_hits, 0)
+      << "the connection did not read the older catalog version, so this test proves nothing";
+}
+
+// The messages are there but hold something this release cannot apply, so the refresh that would
+// carry the connection to the current version could not be a cheap one. Reading the older version
+// buys nothing then, and the connection has to come up by the ordinary route.
+//
+// The GUC has to be in the postgres config rather than SET on a session, because the only place
+// it matters is a connection's own startup, before that connection can run anything.
+class PgUnbridgeableCatalogPrefetchTest : public PgStaleCatalogPrefetchTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) =
+        "yb_test_fail_stale_catalog_message_check=true";
+    PgStaleCatalogPrefetchTest::SetUp();
+  }
+};
+
+TEST_F(PgUnbridgeableCatalogPrefetchTest, FallsBackWhenTheMessagesCannotBeApplied) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t_seed (k INT)"));
+  ASSERT_OK(SetPrefetchLoad(master::YSQL_CATALOG_PREFETCH_LOAD_BUSY));
+  ASSERT_OK(conn.Execute("CREATE TABLE t_unbridged (k INT)"));
+
+  const auto metrics = ASSERT_RESULT(MetricsForNewConnection("t_unbridged"));
+
+  ASSERT_EQ(metrics.cache.lookup_only_hits, 0)
+      << "the connection started from an older catalog version it had no way to leave";
+  // A miss would mean the lookup happened and found nothing, which is a different fallback.
+  ASSERT_EQ(metrics.cache.lookup_only_misses, 0)
+      << "the connection asked the response cache for an older catalog version although the "
+         "messages that would carry it forward were already known to be unusable";
+}
+
+// The switch an operator turns off to stop a node reading older catalog versions. Set here as
+// the tserver gflag, which is how an operator reaches it; pg_wrapper writes it through to the
+// GUC that the backend reads during its own startup.
+class PgStaleCatalogPrefetchDisabledTest : public PgStaleCatalogPrefetchTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_stale_catalog_prefetch) = false;
+    PgStaleCatalogPrefetchTest::SetUp();
+  }
+};
+
+TEST_F(PgStaleCatalogPrefetchDisabledTest, ReadsNothingOlderWhenTurnedOff) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t_seed (k INT)"));
+
+  // Leaves this node holding a cached prefetch, exactly as the enabled case does, so what is
+  // being measured is the flag and not the absence of anything to read.
+  ASSERT_OK(SetPrefetchLoad(master::YSQL_CATALOG_PREFETCH_LOAD_LOW));
+  { auto warm = ASSERT_RESULT(Connect()); }
+
+  ASSERT_OK(SetPrefetchLoad(master::YSQL_CATALOG_PREFETCH_LOAD_BUSY));
+  ASSERT_OK(conn.Execute("CREATE TABLE t_off (k INT)"));
+  ASSERT_GT(ASSERT_RESULT(RecordedCatalogVersion(&conn)), 0)
+      << "nothing was cached for this connection to have read, so this test proves nothing";
+
+  const auto metrics = ASSERT_RESULT(MetricsForNewConnection("t_off"));
+
+  ASSERT_EQ(metrics.cache.lookup_only_hits, 0)
+      << "a connection read an older catalog version although the switch is off";
+  ASSERT_EQ(metrics.cache.lookup_only_misses, 0)
+      << "a connection asked the response cache for an older catalog version although the "
+         "switch is off";
 }
 
 } // namespace yb::pgwrapper
