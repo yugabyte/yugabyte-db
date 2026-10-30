@@ -16,3 +16,4 @@ test: yb.orig.generated
 test: yb.orig.tablet_metadata
 test: yb.orig.yb_get_tablet_for_key
 test: yb.orig.parameterized_query
+test: yb.orig.memory_tracking

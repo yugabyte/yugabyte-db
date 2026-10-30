@@ -187,6 +187,8 @@ BumpContextCreate(MemoryContext parent, const char *name, Size minContextSize,
 						   name)));
 	}
 
+	YbPgMemAddConsumption(allocSize);
+
 	/*
 	 * Avoid writing code that can fail between here and MemoryContextCreate;
 	 * we'd leak the header and initial block if we ereport in this stretch.
@@ -300,7 +302,10 @@ BumpDelete(MemoryContext context)
 	VALGRIND_DESTROY_MEMPOOL(context);
 
 	/* And free the context header and keeper block */
+	size_t		yb_freed_sz = context->mem_allocated;
+
 	free(context);
+	YbPgMemSubConsumption(yb_freed_sz);
 }
 
 /*
@@ -337,6 +342,8 @@ BumpAllocLarge(MemoryContext context, Size size, int flags)
 	block = (BumpBlock *) malloc(blksize);
 	if (block == NULL)
 		return MemoryContextAllocationFailure(context, size, flags);
+
+	YbPgMemAddConsumption(blksize);
 
 	/* Make a vchunk covering the new block's header */
 	VALGRIND_MEMPOOL_ALLOC(set, block, Bump_BLOCKHDRSZ);
@@ -477,6 +484,8 @@ BumpAllocFromNewBlock(MemoryContext context, Size size, int flags,
 
 	if (block == NULL)
 		return MemoryContextAllocationFailure(context, size, flags);
+
+	YbPgMemAddConsumption(blksize);
 
 	/* Make a vchunk covering the new block's header */
 	VALGRIND_MEMPOOL_ALLOC(set, block, Bump_BLOCKHDRSZ);
@@ -627,6 +636,7 @@ BumpBlockFree(BumpContext *set, BumpBlock *block)
 	dlist_delete(&block->node);
 
 	((MemoryContext) set)->mem_allocated -= ((char *) block->endptr - (char *) block);
+	size_t		yb_freed_sz = (char *) block->endptr - (char *) block;
 
 #ifdef CLOBBER_FREED_MEMORY
 	wipe_mem(block, ((char *) block->endptr - (char *) block));
@@ -636,6 +646,7 @@ BumpBlockFree(BumpContext *set, BumpBlock *block)
 	VALGRIND_MEMPOOL_FREE(set, block);
 
 	free(block);
+	YbPgMemSubConsumption(yb_freed_sz);
 }
 
 /*
