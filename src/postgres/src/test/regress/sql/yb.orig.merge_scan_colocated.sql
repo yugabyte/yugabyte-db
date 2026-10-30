@@ -725,7 +725,6 @@ ANALYZE r5n;
 \i :run_query
 
 -- Expression column tied to a plain column
--- The equality ties r4 to the expression column (r3 + r4).
 -- Third hint is to encourage merge scan by pinning the index and disabling
 -- sort.
 -- TODO(#36180): the third hint should use merge scan.

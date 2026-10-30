@@ -759,7 +759,6 @@ ANALYZE r5n;
 \i :run_query
 
 -- Expression column tied to a plain column
--- The equality ties r4 to the expression column (r3 + r4).
 -- Third hint is to encourage merge scan by pinning the index and disabling
 -- sort.
 \set query ':P :Q SELECT r4, r2, n FROM r5n WHERE r2 IN (0, 1, 2, 3) AND r4 = r3 + r4 ORDER BY r4, n LIMIT 5;'
