@@ -1,9 +1,8 @@
 --
 -- GH #30978: a parallel worker reads only committed catalog rows, so a
--- parallel query after a DDL in the same transaction block runs in the
--- leader alone. Scenario: BEGIN, ALTER TABLE ADD COLUMN c, then a parallel
--- scan that filters on c. A worker launched there fails with "invalid
--- attnum 3 for relation".
+-- query after a DDL in the same transaction block gets no parallel plan.
+-- Scenario: BEGIN, ALTER TABLE ADD COLUMN c, then a scan that filters on c.
+-- A worker launched there fails with "invalid attnum 3 for relation".
 --
 SET yb_enable_cbo = on;
 SET parallel_setup_cost = 0;
@@ -15,14 +14,22 @@ CREATE TABLE ddl_par (id INT, name TEXT, PRIMARY KEY (id ASC));
 INSERT INTO ddl_par SELECT i, 'n' || i FROM generate_series(1, 1000) i;
 ANALYZE ddl_par;
 
+-- A generic plan cached before the block is parallel; the ALTER TABLE
+-- invalidates it, and the replanned query has no Gather.
+SET plan_cache_mode = force_generic_plan;
+PREPARE ddl_par_count AS SELECT COUNT(*) FROM ddl_par;
+EXPLAIN (COSTS OFF) EXECUTE ddl_par_count;
+
 BEGIN;
 ALTER TABLE ddl_par ADD COLUMN c TEXT DEFAULT 'g';
 EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM ddl_par WHERE c = 'g';
--- The plan keeps its Gather, but no worker is launched.
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)
 SELECT COUNT(*) FROM ddl_par WHERE c = 'g';
-SELECT COUNT(*) FROM ddl_par WHERE c = 'g';
+EXPLAIN (COSTS OFF) EXECUTE ddl_par_count;
+EXECUTE ddl_par_count;
 ROLLBACK;
+
+DEALLOCATE ddl_par_count;
+RESET plan_cache_mode;
 
 DROP TABLE ddl_par;
 

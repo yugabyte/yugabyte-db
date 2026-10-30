@@ -1,9 +1,8 @@
 --
 -- GH #30978: a parallel worker reads only committed catalog rows, so a
--- parallel query after a DDL in the same transaction block runs in the
--- leader alone. Scenario: BEGIN, ALTER TABLE ADD COLUMN c, then a parallel
--- scan that filters on c. A worker launched there fails with "invalid
--- attnum 3 for relation".
+-- query after a DDL in the same transaction block gets no parallel plan.
+-- Scenario: BEGIN, ALTER TABLE ADD COLUMN c, then a scan that filters on c.
+-- A worker launched there fails with "invalid attnum 3 for relation".
 --
 SET yb_enable_cbo = on;
 SET parallel_setup_cost = 0;
@@ -13,30 +12,31 @@ SET yb_parallel_range_rows = 1;
 CREATE TABLE ddl_par (id INT, name TEXT, PRIMARY KEY (id ASC));
 INSERT INTO ddl_par SELECT i, 'n' || i FROM generate_series(1, 1000) i;
 ANALYZE ddl_par;
+-- A generic plan cached before the block is parallel; the ALTER TABLE
+-- invalidates it, and the replanned query has no Gather.
+SET plan_cache_mode = force_generic_plan;
+PREPARE ddl_par_count AS SELECT COUNT(*) FROM ddl_par;
+EXPLAIN (COSTS OFF) EXECUTE ddl_par_count;
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Gather
+         Workers Planned: 2
+         ->  Noop Aggregate
+               ->  Parallel Index Only Scan using ddl_par_pkey on ddl_par
+                     Partial Aggregate: true
+(6 rows)
+
 BEGIN;
 ALTER TABLE ddl_par ADD COLUMN c TEXT DEFAULT 'g';
 EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM ddl_par WHERE c = 'g';
-                  QUERY PLAN                   
------------------------------------------------
- Aggregate
-   ->  Gather
-         Workers Planned: 2
-         ->  Parallel Seq Scan on ddl_par
-               Storage Filter: (c = 'g'::text)
-(5 rows)
-
--- The plan keeps its Gather, but no worker is launched.
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)
-SELECT COUNT(*) FROM ddl_par WHERE c = 'g';
-                             QUERY PLAN                              
----------------------------------------------------------------------
- Aggregate (actual rows=1 loops=1)
-   ->  Gather (actual rows=1000 loops=1)
-         Workers Planned: 2
-         Workers Launched: 0
-         ->  Parallel Seq Scan on ddl_par (actual rows=1000 loops=1)
-               Storage Filter: (c = 'g'::text)
-(6 rows)
+               QUERY PLAN                
+-----------------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ddl_par
+         Storage Filter: (c = 'g'::text)
+         Partial Aggregate: true
+(4 rows)
 
 SELECT COUNT(*) FROM ddl_par WHERE c = 'g';
  count 
@@ -44,7 +44,23 @@ SELECT COUNT(*) FROM ddl_par WHERE c = 'g';
   1000
 (1 row)
 
+EXPLAIN (COSTS OFF) EXECUTE ddl_par_count;
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ddl_par_pkey on ddl_par
+         Partial Aggregate: true
+(3 rows)
+
+EXECUTE ddl_par_count;
+ count 
+-------
+  1000
+(1 row)
+
 ROLLBACK;
+DEALLOCATE ddl_par_count;
+RESET plan_cache_mode;
 DROP TABLE ddl_par;
 -- GH #34740: a parallel scan of a table created earlier in the same
 -- transaction block must not fail with "relation with OID ... does not
@@ -54,15 +70,12 @@ BEGIN;
 CREATE TABLE ddl_par_new (k INT);
 INSERT INTO ddl_par_new VALUES (1), (2);
 EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM ddl_par_new;
-                     QUERY PLAN                     
-----------------------------------------------------
+           QUERY PLAN            
+---------------------------------
  Finalize Aggregate
-   ->  Gather
-         Workers Planned: 2
-         ->  Noop Aggregate
-               ->  Parallel Seq Scan on ddl_par_new
-                     Partial Aggregate: true
-(6 rows)
+   ->  Seq Scan on ddl_par_new
+         Partial Aggregate: true
+(3 rows)
 
 SELECT COUNT(*) FROM ddl_par_new;
  count 
