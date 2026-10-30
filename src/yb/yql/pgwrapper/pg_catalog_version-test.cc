@@ -2173,7 +2173,7 @@ TEST_F(PgCatalogVersionTest, AnalyzeAllTables) {
   LOG(INFO) << "result:\n" << result;
   string expected = IsTransactionalDdlEnabled()
       ? "$0, 2, 120; $0, 3, 768; $0, 4, 600; $0, 5, 720; "
-        "$0, 6, 816; $0, 7, 504; $0, 8, 168; $0, 9, 648; $0, 10, 192; "
+        "$0, 6, 816; $0, 7, 288; $0, 8, 168; $0, 9, 648; $0, 10, 192; "
         "$0, 11, 192; $0, 12, 216; $0, 13, 528; $0, 14, 96; $0, 15, 216; "
         "$0, 16, 144; $0, 17, 144; $0, 18, 672; $0, 19, 192; $0, 20, 168; "
         "$0, 21, 96; $0, 22, 504; $0, 23, 216; $0, 24, 96; $0, 25, 216; "
@@ -2182,7 +2182,7 @@ TEST_F(PgCatalogVersionTest, AnalyzeAllTables) {
         "$0, 36, 120; $0, 37, 96; $0, 38, 120; $0, 39, 216; $0, 40, 96; "
         "$0, 41, 48; $0, 42, 240; $0, 43, 168; $0, 44, 120; $0, 45, 120; "
         "$0, 46, 96"
-      : "$0, 2, 11400";
+      : "$0, 2, 11184";
   expected = Format(expected, yugabyte_db_oid);
   if (result != expected) {
     LOG(INFO) << ASSERT_RESULT(conn_yugabyte.FetchAllAsString(
