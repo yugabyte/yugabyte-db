@@ -252,14 +252,17 @@ Change the type of an existing column. The following semantics apply:
 - If the optional `COLLATE` clause is not specified, the default collation for the new column type will be used.
 - If the optional `USING` clause is not provided, the default conversion for the new column value will be the same as an assignment cast from the old type to the new type.
 - A `USING` clause must be included when there is no implicit assignment cast available from the old type to the new type.
-- Alter type is not supported for partitioned tables. See {{<issue 16980>}}.
+- Alter type is not supported for columns that are part of the partition key (limitation inherited from PostgreSQL).
 - Alter type is not supported for tables with rules (limitation inherited from PostgreSQL).
 - Alter type is not supported for tables with CDC streams if a table rewrite is required. See {{<issue 27766>}}.
-- Alter type is not supported for tables under xCluster replication if a table rewrite is required. This will be supported by automatic mode in a future release. See {{<issue 27796>}}.
+- Alter type is not supported for tables under xCluster replication if a table rewrite or an index rebuild is required. This will be supported by automatic mode in a future release. See {{<issue 27796>}}.
 
 ##### Table rewrites
 
-Altering a column's type requires a [full table rewrite](#alter-table-operations-that-involve-a-table-rewrite), and any indexes that contain this column when the underlying storage format changes or if the data changes.
+Altering a column's type may have one of the following outcomes:
+
+- **Table rewrite**: If the underlying storage format or the data change, the table and all its indexes may be rebuilt. See [Alter table operations that involve a table rewrite](#alter-table-operations-that-involve-a-table-rewrite).
+- **Index rebuild only**: In certain cases, the table is not rewritten, but indexes that contain the altered column are rebuilt. See [Index rebuilds without a table rewrite](#index-rebuilds-without-a-table-rewrite).
 
 The following type changes commonly require a table rewrite:
 
@@ -275,7 +278,7 @@ The following type changes commonly require a table rewrite:
 | REAL         | NUMERIC        | Different precision and format.                                       |
 | NUMERIC(p,s) | NUMERIC(p2,s2) | Requires data changes if scale is changed or if precision is smaller. |
 
-The following type changes do not require a rewrite when there is no associated index table on the column. When there is an associated index table on the column, a rewrite is performed on the index table alone but not on the main table.
+The following type changes do not require a table rewrite:
 
 | From              |  To                   | Notes                  |
 | ------------ | ------------------ | ------------------------------------------------------ |
@@ -302,6 +305,21 @@ For example, the following ALTER TYPE statements would cause a table rewrite:
 The following ALTER TYPE statement does not cause a table rewrite:
 
 - ALTER TABLE test ALTER COLUMN a TYPE VARCHAR(51); -- from VARCHAR(50)
+
+##### Index rebuilds without a table rewrite
+
+When an alter type operation does not require a table rewrite, indexes that contain the altered column [may still be rebuilt](https://github.com/yugabyte/yugabyte-db/commit/ffc729f267e166610c0e7b47cc344be26523a546) as follows:
+
+- **Index reused**: the index is not rebuilt. For example, a plain index on a VARCHAR(n) column altered to VARCHAR(m) with m > n, or to TEXT.
+- **Index rebuilt**: the index is dropped and recreated, but the main table is not rewritten. For example, an expression or partial index that references the altered column, or a change in the column collation.
+- **Index not affected**: the index does not contain the altered column.
+
+In the following example, the ALTER TABLE statement does not cause a table rewrite, but rebuilds the expression index `test_lower_a_idx`:
+
+```sql
+CREATE INDEX test_lower_a_idx ON test ((lower(a)));
+ALTER TABLE test ALTER COLUMN a TYPE TEXT; -- from VARCHAR(51)
+```
 
 #### DROP CONSTRAINT *constraint_name* [ RESTRICT | CASCADE ]
 
@@ -405,7 +423,7 @@ Constraints marked as `INITIALLY DEFERRED` will be checked at the end of the tra
 
 Most ALTER TABLE statements only involve a schema modification and complete quickly. However, certain specific ALTER TABLE statements require a new copy of the underlying table (and associated index tables, in some cases) to be made and can potentially take a long time, depending on the sizes of the tables and indexes involved. This is typically referred to as a "table rewrite". This behavior is [similar to PostgreSQL](https://www.crunchydata.com/blog/when-does-alter-table-require-a-rewrite), though the exact scenarios when a rewrite is triggered may differ between PostgreSQL and YugabyteDB.
 
-It is not safe to execute concurrent DML on the table during a table rewrite because the results of any concurrent DML are not guaranteed to be reflected in the copy of the table being made. This restriction is similar to PostgreSQL, which explicitly prevents concurrent DML during a table rewrite by acquiring an ACCESS EXCLUSIVE table lock.
+It is not safe to execute concurrent DML on the table during a table rewrite or an [index rebuild](#index-rebuilds-without-a-table-rewrite) because the results of any concurrent DML are not guaranteed to be reflected in the new copy of the table or index being made. This restriction is similar to PostgreSQL, which explicitly prevents concurrent DML during a table rewrite by acquiring an ACCESS EXCLUSIVE table lock. To get the same protection in YugabyteDB, enable [table-level locks](../../../../../explore/transactions/explicit-locking/#table-level-locks), which make the ALTER TABLE wait for in-progress DML and block new DML until it completes.
 
 If you need to perform one of these expensive rewrites, it is recommended to combine them into a single ALTER TABLE statement to avoid multiple expensive rewrites. For example:
 
