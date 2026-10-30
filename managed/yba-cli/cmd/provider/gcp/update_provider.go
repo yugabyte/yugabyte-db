@@ -442,7 +442,8 @@ func editGCPRegions(
 		regionName := r.GetCode()
 		if len(editRegions) != 0 {
 			for _, regionString := range editRegions {
-				region := providerutil.BuildRegionMapFromString(regionString, "edit")
+				region := providerutil.BuildRegionMapFromStringAllowingClearInstanceTemplate(
+					regionString, "edit")
 
 				if strings.Compare(region["name"], regionName) == 0 {
 					details := r.GetDetails()
