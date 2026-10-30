@@ -472,14 +472,6 @@ pgstat_bestart(void)
 	 */
 
 	/*
-	 * YB: the copy above keeps the previous occupant's has_version, and only
-	 * client backends ever set it, so a background worker taking over a
-	 * client's slot would report that client's catalog snapshot.  Keep the
-	 * version: InitPostgres may already have set this backend's own.
-	 */
-	lbeentry.yb_st_catalog_version.has_version = false;
-
-	/*
 	 * We're ready to enter the critical section that fills the shared-memory
 	 * status entry.  We follow the protocol of bumping st_changecount before
 	 * and after; and make sure it's even afterwards.  We use a volatile
