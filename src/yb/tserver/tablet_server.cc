@@ -1084,6 +1084,9 @@ void TabletServer::Shutdown() {
   }
   LOG(INFO) << "TabletServer shutting down...";
 
+  // Unblock RPCs waiting in AllocateShared, otherwise RPC server shutdown hangs joining them.
+  object_lock_shared_state_manager_->Shutdown();
+
   // Best effort to give up our ysql lease.
   // todo(zdrudi): there's lifetime issues trying to access the pg_supervisor here through
   // callbacks. Probably due to the way the MiniCluster sets up the PgSupervisor.
@@ -3204,7 +3207,8 @@ TabletServer::AllocateObjectLockSharedState() const {
     if (result.ok()) {
       return std::move(*result);
     }
-    LOG(DFATAL) << "Failed to allocate new object lock shared state: " << result.status();
+    LOG_IF(DFATAL, !result.status().IsShutdownInProgress())
+        << "Failed to allocate new object lock shared state: " << result.status();
   }
   return std::nullopt;
 }
