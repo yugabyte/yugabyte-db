@@ -54,7 +54,6 @@ import org.apache.commons.io.FileUtils;
 import org.yb.client.LocatedTablet;
 import org.yb.client.TestUtils;
 import org.yb.client.YBTable;
-import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.util.SystemUtil;
 import org.yb.util.TableProperties;
@@ -62,6 +61,7 @@ import org.yb.YBTestRunner;
 import org.yb.util.ProcessUtil;
 import org.yb.util.SkipOnASAN;
 import org.yb.util.SkipOnTSAN;
+import org.yb.util.SkipOnYbController;
 import org.yb.util.YBBackupException;
 import org.yb.util.YBBackupUtil;
 import org.yb.util.SideBySideDiff;
@@ -270,12 +270,8 @@ public class TestYbBackup extends BasePgSQLTest {
       stmt.execute("CREATE TABLE test_tbl (h INT PRIMARY KEY, a INT, b FLOAT) " +
                    String.format("WITH (colocation = %s)", colocString));
 
-      for (int i = 1; i <= 2000; ++i) {
-        stmt.execute("INSERT INTO test_tbl (h, a, b) VALUES" +
-          " (" + String.valueOf(i) +                     // h
-          ", " + String.valueOf(100 + i) +               // a
-          ", " + String.valueOf(2.14 + (float)i) + ")"); // b
-      }
+      stmt.execute("INSERT INTO test_tbl (h, a, b) " +
+          "SELECT i, 100 + i, 2.14::float8 + i FROM generate_series(1, 2000) AS i");
 
       stmt.execute("ALTER TABLE test_tbl DROP a");
       String backupDir = YBBackupUtil.getTempBackupDir();
@@ -354,12 +350,11 @@ public class TestYbBackup extends BasePgSQLTest {
 
       // Insert random rows/values for tables to snapshot
       for (int j = 1; j <= 3; ++j) {
-        for (int i = 1; i <= 2000; ++i) {
-          stmt.execute("INSERT INTO test_tbl" + String.valueOf(j) + " (h, a, b) VALUES" +
-            " (" + String.valueOf(i * j) +                       // h
-            ", " + String.valueOf((100 + i) * j) +               // a
-            ", " + String.valueOf((2.14 + (float)i) * j) + ")"); // b
-        }
+        stmt.execute(String.format(
+            "INSERT INTO test_tbl%d (h, a, b) " +
+            "SELECT i * %d, (100 + i) * %d, (2.14::float8 + i) * %d " +
+            "FROM generate_series(1, 2000) AS i",
+            j, j, j, j));
       }
 
       String backupDir = YBBackupUtil.getTempBackupDir();
@@ -448,12 +443,8 @@ public class TestYbBackup extends BasePgSQLTest {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE TABLE  test_tbl (h INT PRIMARY KEY, a INT, b FLOAT)");
 
-      for (int i = 1; i <= 2000; ++i) {
-        stmt.execute("INSERT INTO test_tbl (h, a, b) VALUES" +
-          " (" + String.valueOf(i) +                     // h
-          ", " + String.valueOf(100 + i) +               // a
-          ", " + String.valueOf(2.14 + (float)i) + ")"); // b
-      }
+      stmt.execute("INSERT INTO test_tbl (h, a, b) " +
+          "SELECT i, 100 + i, 2.14::float8 + i FROM generate_series(1, 2000) AS i");
 
       String backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
@@ -919,12 +910,8 @@ public class TestYbBackup extends BasePgSQLTest {
       stmt.execute("CREATE TABLE test_tbl (h INT PRIMARY KEY, a INT, b FLOAT)");
       stmt.execute("CREATE INDEX test_idx ON test_tbl (a)");
 
-      for (int i = 1; i <= 1000; ++i) {
-        stmt.execute("INSERT INTO test_tbl (h, a, b) VALUES" +
-          " (" + String.valueOf(i) +                     // h
-          ", " + String.valueOf(100 + i) +               // a
-          ", " + String.valueOf(2.14 + (float)i) + ")"); // b
-      }
+      stmt.execute("INSERT INTO test_tbl (h, a, b) " +
+          "SELECT i, 100 + i, 2.14::float8 + i FROM generate_series(1, 1000) AS i");
 
       backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
@@ -945,10 +932,11 @@ public class TestYbBackup extends BasePgSQLTest {
       assertQuery(stmt, "SELECT * FROM test_tbl WHERE a=8888", new Row(9999, 8888, 8.9));
     }
 
-    // Add a new node.
+    // Add a new node and wait for it to register with the master, so the restore can place
+    // tablets on it.
     miniCluster.startTServer(getTServerFlags());
-    // Wait for node list refresh.
-    Thread.sleep(MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 2 * 1000);
+    assertTrue("Timed out waiting for the new tablet server to register",
+        waitForTServersAtMasterLeader());
     YBBackupUtil.setTSAddresses(miniCluster.getTabletServers());
     YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
 
@@ -1184,21 +1172,13 @@ public class TestYbBackup extends BasePgSQLTest {
   }
 
   @Test
+  @SkipOnYbController  // yb-controller-cli has no --restore_time.
   public void testRestoreWithRestoreTime() throws Exception {
-    // disabling this test since Yb Controller doesn't support
-    // --restore_time
-    if(TestUtils.useYbController()){
-      return;
-    }
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE TABLE  test_tbl (h INT PRIMARY KEY, a INT, b FLOAT)");
 
-      for (int i = 1; i <= 2000; ++i) {
-        stmt.execute("INSERT INTO test_tbl (h, a, b) VALUES" +
-            " (" + String.valueOf(i) +                     // h
-            ", " + String.valueOf(100 + i) +               // a
-            ", " + String.valueOf(2.14 + (float)i) + ")"); // b
-      }
+      stmt.execute("INSERT INTO test_tbl (h, a, b) " +
+          "SELECT i, 100 + i, 2.14::float8 + i FROM generate_series(1, 2000) AS i");
 
       // Get the current timestamp in microseconds.
       String ts = Long.toString(ChronoUnit.MICROS.between(Instant.EPOCH, Instant.now()));
@@ -1225,21 +1205,13 @@ public class TestYbBackup extends BasePgSQLTest {
   }
 
   @Test
+  @SkipOnYbController  // yb-controller-cli output has no backup size JSON.
   public void testBackupCreateGetBackupSize() throws Exception {
-    // output from yb controller doesn't contain backup size data in json format so
-    // this test doesn't make much sense
-    if (TestUtils.useYbController()) {
-      return;
-    }
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE TABLE  test_tbl (h INT PRIMARY KEY, a INT, b FLOAT)");
 
-      for (int i = 1; i <= 2000; ++i) {
-        stmt.execute("INSERT INTO test_tbl (h, a, b) VALUES" +
-            " (" + String.valueOf(i) +                     // h
-            ", " + String.valueOf(100 + i) +               // a
-            ", " + String.valueOf(2.14 + (float)i) + ")"); // b
-      }
+      stmt.execute("INSERT INTO test_tbl (h, a, b) " +
+          "SELECT i, 100 + i, 2.14::float8 + i FROM generate_series(1, 2000) AS i");
 
       String backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
@@ -1261,12 +1233,8 @@ public class TestYbBackup extends BasePgSQLTest {
   }
 
   @Test
+  @SkipOnYbController  // yb-controller-cli has no --edit_ysql_dump_sed_reg_exp.
   public void testSedRegExpForYSQLDump() throws Exception {
-    // disabling this test since Yb Controller doesn't support
-    // --edit_ysql_dump_sed_reg_exp
-    if(TestUtils.useYbController()){
-      return;
-    }
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE ROLE  admin");
       // Default DB & table owner is ROLE 'yugabyte'.
@@ -1351,11 +1319,8 @@ public class TestYbBackup extends BasePgSQLTest {
       assertEquals("region2_ts", getTablespaceForTable(stmt, "tbl_r2"));
       assertEquals("region3_ts", getTablespaceForTable(stmt, "tbl_r3"));
 
-      for (int i = 1; i <= 2000; ++i) {
-        stmt.execute("INSERT INTO tbl (id, geo) VALUES" +
-          " (" + String.valueOf(i) +                  // id
-          ", 'R" + String.valueOf(1 + i % 3) + "')"); // geo
-      }
+      stmt.execute("INSERT INTO tbl (id, geo) " +
+          "SELECT i, 'R' || (1 + i % 3) FROM generate_series(1, 2000) AS i");
 
       List<String> tblTablets = getTabletsForYsqlTable("yugabyte", "tbl");
       List<String> tblR1Tablets = getTabletsForYsqlTable("yugabyte", "tbl_r1");
@@ -1511,85 +1476,69 @@ public class TestYbBackup extends BasePgSQLTest {
         /* restoreFlag */ null, /* useTablespaces */ true);
   }
 
+  // The geo-partitioning and tablespace tests below only run with yb_backup.py: yb-controller-cli
+  // does not support such backups, and that path is covered by the YBA iTests instead.
   @Test
+  @SkipOnYbController
   public void testGeoPartitioning() throws Exception {
-    if (disableGeoPartitionedTests()) {
-      return;
-    }
     doTestGeoPartitionedBackupAndRestore("db2", 3, false);
   }
 
   @Test
+  @SkipOnYbController
   public void testGeoPartitioningNoRegions() throws Exception {
-    if (disableGeoPartitionedTests()) {
-      return;
-    }
     doTestGeoPartitionedBackupAndRestore("db2", 0, false);
   }
 
   @Test
+  @SkipOnYbController
   public void testGeoPartitioningOneRegion() throws Exception {
-    if (disableGeoPartitionedTests()) {
-      return;
-    }
     doTestGeoPartitionedBackupAndRestore("db2", 1, false);
   }
 
   @Test
+  @SkipOnYbController
   // The test fails with Connection Manager as it is expected that a new
   // session would latch onto a new physical connection. Instead, two logical
   // connections use the same physical connection, leading to unexpected
   // results as per the expectations of the test.
   @BypassConnMgr(reason = BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED)
   public void testGeoPartitioningRestoringIntoExisting() throws Exception {
-    if (disableGeoPartitionedTests()) {
-      return;
-    }
     doTestGeoPartitionedBackupAndRestore("yugabyte", 3, false);
   }
 
   @Test
+  @SkipOnYbController
   public void testGeoPartitioningWithTablespaces() throws Exception {
-    if (disableGeoPartitionedTests()) {
-      return;
-    }
     doTestGeoPartitionedBackupAndRestore("db2", 3, true);
   }
 
   @Test
+  @SkipOnYbController
   public void testGeoPartitioningNoRegionsWithTablespaces() throws Exception {
-    if (disableGeoPartitionedTests()) {
-      return;
-    }
     doTestGeoPartitionedBackupAndRestore("db2", 0, true);
   }
 
   @Test
+  @SkipOnYbController
   public void testGeoPartitioningOneRegionWithTablespaces() throws Exception {
-    if (disableGeoPartitionedTests()) {
-      return;
-    }
     doTestGeoPartitionedBackupAndRestore("db2", 1, true);
   }
 
   @Test
+  @SkipOnYbController
   // The test fails with Connection Manager as it is expected that a new
   // session would latch onto a new physical connection. Instead, two logical
   // connections use the same physical connection, leading to unexpected
   // results as per the expectations of the test.
   @BypassConnMgr(reason = BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED)
   public void testGeoPartitioningRestoringIntoExistingWithTablespaces() throws Exception {
-    if (disableGeoPartitionedTests()) {
-      return;
-    }
     doTestGeoPartitionedBackupAndRestore("yugabyte", 3, true);
   }
 
   @Test
+  @SkipOnYbController
   public void testFailureOnExistingTablespaces() throws Exception {
-    if (disableGeoPartitionedTests()) {
-      return;
-    }
     try {
       doTestGeoPartitionedBackupAndRestore(
           "db2", 3, /* backupAndRestoreTablespaces */ true, /* dropTablespaces */ false,
@@ -1605,20 +1554,16 @@ public class TestYbBackup extends BasePgSQLTest {
   }
 
   @Test
+  @SkipOnYbController
   public void testIgnoreExistingTablespaces() throws Exception {
-    if (disableGeoPartitionedTests()) {
-      return;
-    }
     doTestGeoPartitionedBackupAndRestore(
         "db2", 3, /* backupAndRestoreTablespaces */ true, /* dropTablespaces */ false,
         "--ignore_existing_tablespaces", /* useTablespaces */ true);
   }
 
   @Test
+  @SkipOnYbController
   public void testBackupRestoreTablespaces() throws Exception {
-    if (disableGeoPartitionedTests()) {
-      return;
-    }
     doTestGeoPartitionedBackupAndRestore(
         "db2", 3, /* backupAndRestoreTablespaces */ true, /* dropTablespaces */ true,
         /* restoreFlag */ null, /* useTablespaces */ false);
@@ -1626,10 +1571,8 @@ public class TestYbBackup extends BasePgSQLTest {
   }
 
   @Test
+  @SkipOnYbController
   public void testGeoPartitioningDeleteBackup() throws Exception {
-    if (disableGeoPartitionedTests()) {
-      return;
-    }
     String output = doCreateGeoPartitionedBackup(3, /* backupTablespaces */ false);
     JSONObject json = new JSONObject(output);
     String backupDir = json.getString("snapshot_url");
@@ -2826,11 +2769,9 @@ public class TestYbBackup extends BasePgSQLTest {
       stmt.execute("CREATE TABLE tbl_non_col (k INT PRIMARY KEY, v INT) WITH (COLOCATION = false) "
                    + "SPLIT INTO 5 TABLETS");
 
-      for (int i = 0; i < 1000; ++i) {
-        stmt.execute(String.format("INSERT INTO tbl_col1 VALUES (%d,'%s')", i, "text" + i));
-        stmt.execute(String.format("INSERT INTO tbl_col2 VALUES (%d,%d)", i, i + 123));
-        stmt.execute(String.format("INSERT INTO tbl_non_col VALUES (%d,%d)", i, i + 456));
-      }
+      stmt.execute("INSERT INTO tbl_col1 SELECT i, 'text' || i FROM generate_series(0, 999) AS i");
+      stmt.execute("INSERT INTO tbl_col2 SELECT i, i + 123 FROM generate_series(0, 999) AS i");
+      stmt.execute("INSERT INTO tbl_non_col SELECT i, i + 456 FROM generate_series(0, 999) AS i");
 
       // Verify the existence of legacy colocated database parent table.
       List<YBTable> legacyDBParentTablesList = getTablesFromName(".colocated.parent.tablename");
@@ -2910,10 +2851,9 @@ public class TestYbBackup extends BasePgSQLTest {
       stmt.execute("CREATE INDEX tbl_non_col1_idx on tbl_non_col1(v ASC)");
       stmt.execute("CREATE UNIQUE INDEX tbl_non_col2_uniq_idx ON tbl_non_col2(v DESC)");
 
-      for (int i = 0; i < 1000; ++i) {
-        stmt.execute(String.format("INSERT INTO tbl_non_col1 VALUES (%d,'%s')", i, "text" + i));
-        stmt.execute(String.format("INSERT INTO tbl_non_col2 VALUES (%d,%d)", i, i + 123));
-      }
+      stmt.execute(
+          "INSERT INTO tbl_non_col1 SELECT i, 'text' || i FROM generate_series(0, 999) AS i");
+      stmt.execute("INSERT INTO tbl_non_col2 SELECT i, i + 123 FROM generate_series(0, 999) AS i");
 
       // Verify the existence of legacy colocated database parent table.
       List<YBTable> legacyDBParentTablesList = getTablesFromName(".colocated.parent.tablename");
@@ -3299,15 +3239,5 @@ public class TestYbBackup extends BasePgSQLTest {
       "yb.orig.backup_drop_column_describe.sql",
       "yb.orig.backup_drop_column_describe.out"
     );
-  }
-
-  /**
-   * Disabling geo partitioning tests when backups are run using YB Controller.
-   * This is because yb-controller-cli currently doesn't support such backups
-   * using the yb-controller-cli.
-   * Geo-partitioned backups via YB Controller are tested as part of YBA iTests.
-   */
-  private boolean disableGeoPartitionedTests() {
-    return TestUtils.useYbController();
   }
 }
