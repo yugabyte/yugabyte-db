@@ -10,6 +10,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.google.common.collect.ImmutableSet;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -122,6 +123,18 @@ public class SoftwareUpgradeParams extends UpgradeTaskParams {
           BAD_REQUEST,
           "Software upgrade cannot be preformed on universe in state "
               + universe.getUniverseDetails().softwareUpgradeState);
+    }
+
+    // Not covered by skip_version_checks: the target image itself must ship YBC.
+    if (currentIntent.isUseYbdbInbuiltYbc()
+        && !KubernetesUtil.isUseYbdbInbuiltYbcSupported(ybSoftwareVersion)) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST,
+          String.format(
+              "Universe %s uses ybdb inbuilt ybc, which software version %s does not support.%s",
+              universe.getUniverseUUID(),
+              ybSoftwareVersion,
+              disableImmutableYbcHint(softwareUpgradeState, "moving to this version")));
     }
 
     RuntimeConfigFactory runtimeConfigFactory =

@@ -7,6 +7,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -17,6 +18,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
@@ -300,5 +302,50 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
 
     assertEquals(taskInfo.getErrorMessage(), Success, taskInfo.getTaskState());
     assertReadReplicaCommandsTargetReadReplica(taskInfo, readReplica);
+  }
+
+  private RollbackUpgradeParams setupImmutableYbcRollback(
+      String currentVersion, String prevVersion, SoftwareUpgradeState state) {
+    setupUniverseSingleAZ(false, true);
+    setImmutableYbcUniverseState(true, currentVersion, state);
+    UniverseDefinitionTaskParams.PrevYBSoftwareConfig ybSoftwareConfig =
+        new UniverseDefinitionTaskParams.PrevYBSoftwareConfig();
+    ybSoftwareConfig.setSoftwareVersion(prevVersion);
+    TestHelper.updateUniversePrevSoftwareConfig(defaultUniverse, ybSoftwareConfig);
+    TestHelper.updateUniverseIsRollbackAllowed(defaultUniverse, true);
+    return new RollbackUpgradeParams();
+  }
+
+  @Test
+  public void testRollbackRejectedWhenPrevVersionLacksInbuiltYbc() {
+    RollbackUpgradeParams taskParams =
+        setupImmutableYbcRollback(
+            "2025.2.0.0-b1", "2025.1.0.0-b1", SoftwareUpgradeState.PreFinalize);
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class, () -> taskParams.verifyParams(defaultUniverse, true));
+    assertTrue(e.getMessage(), e.getMessage().contains("does not support ybdb inbuilt ybc"));
+    assertTrue(e.getMessage(), e.getMessage().contains("Disable ybdb inbuilt ybc"));
+  }
+
+  @Test
+  public void testRollbackRejectedWhenFrozenDoesNotSuggestToggle() {
+    // The toggle task is not admitted on a frozen universe, so the error must not suggest it.
+    RollbackUpgradeParams taskParams =
+        setupImmutableYbcRollback(
+            "2025.2.0.0-b1", "2025.1.0.0-b1", SoftwareUpgradeState.RollbackFailed);
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class, () -> taskParams.verifyParams(defaultUniverse, true));
+    assertTrue(e.getMessage(), e.getMessage().contains("cannot be disabled"));
+    assertFalse(e.getMessage(), e.getMessage().contains("Disable ybdb inbuilt ybc"));
+  }
+
+  @Test
+  public void testRollbackAllowedWhenPrevVersionSupportsInbuiltYbc() {
+    RollbackUpgradeParams taskParams =
+        setupImmutableYbcRollback(
+            "2025.2.1.0-b1", "2025.2.0.0-b1", SoftwareUpgradeState.PreFinalize);
+    taskParams.verifyParams(defaultUniverse, true);
   }
 }
