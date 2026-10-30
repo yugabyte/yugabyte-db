@@ -7,10 +7,56 @@ import requests
 from rag_pipeline.chunk import chunk, get_splitter_for_filetype
 from observability import meko_observe
 
-# The api-server rejects uploads above this size
-# (maxFileSizeBytes in meko/api_server/internal/handlers/knowledge_base_handler.go),
-# so nothing larger should reach a worker.
-MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024  # 5 MiB
+# Cap on a text file this worker will read into memory, since it reads the
+# whole object in one call. This is a worker limit, not something a caller
+# guarantees: dist_rag.create_source takes any s3:// URI and
+# CreateSourceProcessorForAWS_S3 queues every object of a supported type
+# without checking size, so a source pointed at an arbitrary bucket can hold
+# larger files. Raise MAX_FILE_SIZE_BYTES to index them. Meko's own upload path
+# caps uploads at the same 5 MiB in its api-server (a separate repo), which is
+# where the default comes from.
+DEFAULT_MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024  # 5 MiB
+
+
+def max_file_size_bytes() -> int:
+    """Size cap for a whole-file read, overridable per deployment."""
+    raw = os.getenv("MAX_FILE_SIZE_BYTES", "").strip()
+    if not raw:
+        return DEFAULT_MAX_FILE_SIZE_BYTES
+    try:
+        value = int(raw)
+    except ValueError:
+        logging.warning(
+            f"MAX_FILE_SIZE_BYTES={raw!r} is not an integer; "
+            f"using {DEFAULT_MAX_FILE_SIZE_BYTES}"
+        )
+        return DEFAULT_MAX_FILE_SIZE_BYTES
+    if value <= 0:
+        logging.warning(
+            f"MAX_FILE_SIZE_BYTES={value} is not positive; "
+            f"using {DEFAULT_MAX_FILE_SIZE_BYTES}"
+        )
+        return DEFAULT_MAX_FILE_SIZE_BYTES
+    return value
+
+
+def _decode_utf8(byte_chunks) -> Generator[str, None, None]:
+    """Decode an iterable of byte slices as one UTF-8 stream.
+
+    A character split across two slices decodes correctly, and the final flush
+    raises if the stream ends mid-character rather than dropping the bytes.
+    """
+    decoder = codecs.getincrementaldecoder("utf-8")()
+    for data in byte_chunks:
+        if not data:
+            continue
+        text = decoder.decode(data)
+        if text:
+            yield text
+    tail = decoder.decode(b"", final=True)
+    if tail:
+        yield tail
+
 
 def read_file_stream(
     file_location: str, chunk_size: int = 1024 * 1024
@@ -32,19 +78,9 @@ def read_file_stream(
             bucket, key = path.split('/', 1)
             obj = s3.get_object(Bucket=bucket, Key=key)
             body = obj['Body']
-            decoder = codecs.getincrementaldecoder("utf-8")()
-            while True:
-                chunk = body.read(chunk_size)
-                if not chunk:
-                    # Raises if the object ended mid-character, rather than
-                    # dropping the trailing bytes.
-                    tail = decoder.decode(b"", final=True)
-                    if tail:
-                        yield tail
-                    break
-                text = decoder.decode(chunk)
-                if text:
-                    yield text
+            yield from _decode_utf8(
+                iter(lambda: body.read(chunk_size), b"")
+            )
         except Exception as e:
             if ("NoCredentialsError" in str(type(e).__name__) or
                     "Unable to locate credentials" in str(e)):
@@ -66,18 +102,9 @@ def read_file_stream(
                     # only when the response declares an encoding, and yields
                     # bytes otherwise. Decode here instead, as UTF-8, to match
                     # the boto3 branch.
-                    decoder = codecs.getincrementaldecoder("utf-8")()
-                    for chunk_data in response.iter_content(
-                        chunk_size=chunk_size
-                    ):
-                        if not chunk_data:
-                            continue
-                        text = decoder.decode(chunk_data)
-                        if text:
-                            yield text
-                    tail = decoder.decode(b"", final=True)
-                    if tail:
-                        yield tail
+                    yield from _decode_utf8(
+                        response.iter_content(chunk_size=chunk_size)
+                    )
 
                 except requests.exceptions.RequestException as req_e:
                     logging.error(
@@ -137,16 +164,6 @@ def stream_partition_and_chunk(
         if paragraph:
             yield "\n".join(paragraph).strip()
 
-    def line_iterator_from_chunks(text_chunks):
-        buffer = ""
-        for chunk_data in text_chunks:
-            buffer += chunk_data
-            while "\n" in buffer:
-                line, buffer = buffer.split('\n', 1)
-                yield line
-        if buffer:
-            yield buffer
-
     # nikhil-todo: chunk args should be configured from the request chunk_embedding_kwargs.
     auto_splitter, auto_args = get_splitter_for_filetype(file_location)
     splitter = chunk_args.get('splitter', auto_splitter)
@@ -157,9 +174,11 @@ def stream_partition_and_chunk(
     )
 
     full_text = read_whole_file(
-        file_location, max_size_bytes=MAX_FILE_SIZE_BYTES
+        file_location, max_size_bytes=max_file_size_bytes()
     )
-    lines_iter = line_iterator_from_chunks([full_text])
+    # str.split("\n"), not splitlines() or an io.StringIO: those also break on
+    # \r and U+2028, which would change chunk output for a file holding them.
+    lines_iter = iter(full_text.split("\n"))
     logging.debug(f"generated lines_iter for file: {file_location}")
     for paragraph in paragraph_stream(lines_iter):
         for chunked_text in chunk(splitter, paragraph, args):
@@ -211,7 +230,13 @@ def _read_s3_whole(
             file_location, obj.get("ContentLength"), max_size_bytes
         )
         return obj["Body"].read().decode("utf-8")
+    except UnicodeDecodeError as e:
+        # Before ValueError, which it subclasses: without this a decode failure
+        # would propagate bare, without naming the file.
+        logging.error(f"Error decoding S3 file {file_location}: {e}")
+        raise RuntimeError(f"Failed to decode S3 file {file_location}: {e}")
     except ValueError:
+        # enforce_size_limit's rejection: already names the file.
         raise
     except Exception as e:
         no_credentials = (
@@ -240,6 +265,11 @@ def _read_s3_whole(
                         max_size_bytes,
                     )
                 return response.content.decode("utf-8")
+        except UnicodeDecodeError as e:
+            logging.error(f"Error decoding S3 file {file_location}: {e}")
+            raise RuntimeError(
+                f"Failed to decode S3 file {file_location}: {e}"
+            )
         except ValueError:
             raise
         except requests.exceptions.RequestException as req_e:

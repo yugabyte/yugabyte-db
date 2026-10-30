@@ -4,7 +4,7 @@ from typing import Any, Dict, Generator, Optional
 
 from rag_pipeline.md_parser import parse_markdown, split_embed_text
 from rag_pipeline.partition_chunk_pipeline import (
-    MAX_FILE_SIZE_BYTES,
+    max_file_size_bytes,
     read_whole_file,
 )
 from observability import meko_observe
@@ -27,7 +27,7 @@ def chunk_markdown_whole_file(
 ) -> Generator[str, None, None]:
 
     full_text = read_whole_file(
-        file_location, max_size_bytes=MAX_FILE_SIZE_BYTES
+        file_location, max_size_bytes=max_file_size_bytes()
     )
 
     doc = parse_markdown(full_text, source_file=file_location)

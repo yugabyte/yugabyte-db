@@ -14,10 +14,13 @@ import pytest
 
 from rag_pipeline.chunk import chunk, get_splitter_for_filetype
 from rag_pipeline.partition_chunk_pipeline import (
-    MAX_FILE_SIZE_BYTES,
+    DEFAULT_MAX_FILE_SIZE_BYTES,
+    max_file_size_bytes,
     read_file_stream,
     stream_partition_and_chunk,
 )
+
+MAX_FILE_SIZE_BYTES = DEFAULT_MAX_FILE_SIZE_BYTES
 
 PIPELINE_ID = 1
 SLICE_SIZE = 1024 * 1024
@@ -57,6 +60,12 @@ def make_s3_object(mock_boto3, text, content_length=None):
         else content_length,
     }
     return mock_s3_client, body
+
+
+def requests_request_exception():
+    """The real RequestException, for a test that patches the requests module."""
+    import requests
+    return requests.exceptions.RequestException
 
 
 def devanagari_text(byte_length=1536 * 1024):
@@ -108,7 +117,9 @@ class TestMultiByteBoundary:
             list(read_file_stream("s3://test-bucket/truncated.txt"))
 
     @patch("rag_pipeline.partition_chunk_pipeline.boto3")
-    def test_stream_partition_decodes_across_slice_boundary(self, mock_boto3):
+    def test_stream_partition_decodes_multibyte_text(self, mock_boto3):
+        # stream_partition_and_chunk reads in one call, so this covers the
+        # one-shot decode of multi-byte text rather than a slice boundary.
         # Two paragraphs, each over 1 MiB of 3-byte characters.
         half = devanagari_text()
         text = f"{half}\n\n{half}"
@@ -120,7 +131,61 @@ class TestMultiByteBoundary:
 
         assert chunks
         assert all(DEVANAGARI_KA in c for c in chunks)
-        assert "".join(chunks).count(DEVANAGARI_KA) >= len(half) // 1000
+        # Exact, against the same contract TestOutputUnchanged uses, so a run
+        # that silently dropped most of the text can't pass.
+        assert chunks == expected_chunks("s3://test-bucket/hindi.txt", text)
+
+
+class TestPublicUrlFallback:
+    """The no-credentials branch decodes the same way as the boto3 branch."""
+
+    @staticmethod
+    def _no_credentials(mock_boto3):
+        mock_s3_client = Mock()
+        mock_boto3.client.return_value = mock_s3_client
+        mock_s3_client.get_object.side_effect = RuntimeError(
+            "Unable to locate credentials"
+        )
+        return mock_s3_client
+
+    @patch("rag_pipeline.partition_chunk_pipeline.requests")
+    @patch("rag_pipeline.partition_chunk_pipeline.boto3")
+    def test_public_url_decodes_across_slice_boundary(
+        self, mock_boto3, mock_requests
+    ):
+        self._no_credentials(mock_boto3)
+        text = devanagari_text()
+        data = text.encode("utf-8")
+        # requests is mocked, so iter_content yields byte slices the way it
+        # does without a declared encoding.
+        slices = [data[i:i + SLICE_SIZE]
+                  for i in range(0, len(data), SLICE_SIZE)]
+        response = Mock()
+        response.iter_content.return_value = iter(slices)
+        mock_requests.get.return_value = response
+        mock_requests.exceptions.RequestException = \
+            requests_request_exception()
+
+        chunks = list(read_file_stream("s3://test-bucket/hindi.txt"))
+
+        assert len(slices) > 1
+        assert "".join(chunks) == text
+
+    @patch("rag_pipeline.partition_chunk_pipeline.requests")
+    @patch("rag_pipeline.partition_chunk_pipeline.boto3")
+    def test_public_url_rejects_truncated_trailing_character(
+        self, mock_boto3, mock_requests
+    ):
+        self._no_credentials(mock_boto3)
+        truncated = (DEVANAGARI_KA * 10).encode("utf-8")[:-1]
+        response = Mock()
+        response.iter_content.return_value = iter([truncated])
+        mock_requests.get.return_value = response
+        mock_requests.exceptions.RequestException = \
+            requests_request_exception()
+
+        with pytest.raises(RuntimeError, match="utf-8"):
+            list(read_file_stream("s3://test-bucket/truncated.txt"))
 
 
 class TestSingleRead:
@@ -152,8 +217,45 @@ class TestSingleRead:
 class TestSizeLimit:
     """Nothing over the api-server's upload cap should be chunked."""
 
-    def test_cap_matches_the_upload_limit(self):
-        assert MAX_FILE_SIZE_BYTES == 5 * 1024 * 1024
+    def test_default_cap_matches_the_upload_limit(self):
+        assert DEFAULT_MAX_FILE_SIZE_BYTES == 5 * 1024 * 1024
+
+    @pytest.mark.parametrize("raw,expected", [
+        ("10485760", 10485760),
+        ("  10485760  ", 10485760),
+        ("", DEFAULT_MAX_FILE_SIZE_BYTES),
+        ("not-a-number", DEFAULT_MAX_FILE_SIZE_BYTES),
+        ("0", DEFAULT_MAX_FILE_SIZE_BYTES),
+        ("-1", DEFAULT_MAX_FILE_SIZE_BYTES),
+    ])
+    def test_cap_is_configurable(self, monkeypatch, raw, expected):
+        monkeypatch.setenv("MAX_FILE_SIZE_BYTES", raw)
+        assert max_file_size_bytes() == expected
+
+    def test_cap_defaults_when_unset(self, monkeypatch):
+        monkeypatch.delenv("MAX_FILE_SIZE_BYTES", raising=False)
+        assert max_file_size_bytes() == DEFAULT_MAX_FILE_SIZE_BYTES
+
+    @patch("rag_pipeline.partition_chunk_pipeline.boto3")
+    def test_raised_cap_lets_a_larger_object_through(
+        self, mock_boto3, monkeypatch
+    ):
+        # A source crawled from an arbitrary bucket can hold objects over the
+        # default cap; raising the env var must index them.
+        monkeypatch.setenv(
+            "MAX_FILE_SIZE_BYTES", str(DEFAULT_MAX_FILE_SIZE_BYTES * 2)
+        )
+        make_s3_object(
+            mock_boto3,
+            "Over the default cap.\n",
+            content_length=DEFAULT_MAX_FILE_SIZE_BYTES + 1,
+        )
+
+        chunks = list(stream_partition_and_chunk(
+            PIPELINE_ID, "s3://test-bucket/big.txt", {}
+        ))
+
+        assert chunks == ["Over the default cap."]
 
     @patch("rag_pipeline.partition_chunk_pipeline.boto3")
     def test_oversize_s3_object_raises_before_any_chunk(self, mock_boto3):
@@ -183,6 +285,54 @@ class TestSizeLimit:
         ))
 
         assert chunks == ["At the limit."]
+
+
+class TestLineSplitting:
+    """Lines split on \\n only, so chunk output doesn't change."""
+
+    @pytest.mark.parametrize("separator,name", [
+        ("\r", "carriage return"),
+        ("\u2028", "U+2028 line separator"),
+        ("\u2029", "U+2029 paragraph separator"),
+        ("\v", "vertical tab"),
+        ("\f", "form feed"),
+    ])
+    @patch("rag_pipeline.partition_chunk_pipeline.boto3")
+    def test_other_line_breaks_stay_inside_a_paragraph(
+        self, mock_boto3, separator, name
+    ):
+        # splitlines() and io.StringIO would break on these and split the
+        # paragraph, changing chunk output. str.split("\n") must not.
+        text = f"alpha{separator}beta\n\nsecond paragraph\n"
+        make_s3_object(mock_boto3, text)
+
+        chunks = list(stream_partition_and_chunk(
+            PIPELINE_ID, "s3://test-bucket/doc.txt", {}
+        ))
+
+        assert f"alpha{separator}beta" in chunks, (
+            f"{name} should not split the paragraph"
+        )
+        assert chunks == expected_chunks("s3://test-bucket/doc.txt", text)
+
+    @pytest.mark.parametrize("text", [
+        "one\ntwo\n\nthree\n",
+        "one\ntwo\n\nthree",
+        "trailing blank lines\n\n\n\n",
+        "\n\nleading blank lines\nkeep going\n",
+        "single line, no newline",
+        "\n",
+        "",
+    ])
+    @patch("rag_pipeline.partition_chunk_pipeline.boto3")
+    def test_paragraph_output_matches_the_contract(self, mock_boto3, text):
+        make_s3_object(mock_boto3, text)
+
+        chunks = list(stream_partition_and_chunk(
+            PIPELINE_ID, "s3://test-bucket/doc.txt", {}
+        ))
+
+        assert chunks == expected_chunks("s3://test-bucket/doc.txt", text)
 
 
 class TestOutputUnchanged:
