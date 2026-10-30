@@ -2353,9 +2353,15 @@ StartTransaction(void)
  * State that AbortTransaction resets, or that a new local transaction id
  * invalidates, must be reset here too; #30540 broke this for plpgsql.
  *
- * Known gaps: the retry does not undo GUC settings from a function's SET
- * clause (AbortTransaction calls AtEOXact_GUC), and it does not restore the
- * user id that a SECURITY DEFINER function set.
+ * GUC state is the deliberate exception.  AbortTransaction undoes it with
+ * AtEOXact_GUC, but the retry stays inside the client's transaction block,
+ * so undoing it would also drop settings the block made before the retried
+ * command, such as the isolation level from BEGIN ISOLATION LEVEL
+ * SERIALIZABLE.  As a result, GUCs from a function's SET clause outlive a
+ * retry of that function.
+ *
+ * Known gap: the retry does not restore the user id that a SECURITY DEFINER
+ * function set.
  */
 void
 YBCRestartWriteTransaction()
