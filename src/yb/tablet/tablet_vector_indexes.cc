@@ -58,6 +58,10 @@ using namespace yb::size_literals;
 DEFINE_test_flag(int32, sleep_before_vector_index_backfill_seconds, 0,
     "Sleep specified amount of seconds before doing vector index backfill.");
 
+DEFINE_test_flag(bool, pause_vector_reverse_mapping_repair, false,
+    "Hold the vector reverse mapping repair of a colocated table, see "
+    "TableInfoPB::vector_reverse_mapping_repair_pending, before it starts.");
+
 DEFINE_test_flag(bool, fail_vector_index_backfill, false,
     "Make vector index backfills fail with an injected error. Logged as a warning, not DFATAL.");
 
@@ -223,9 +227,8 @@ class IndexedTableReader {
 // Blocks vector index backfill after it has inserted its first batch of rows into the index.
 bool TEST_block_after_backfilling_first_vector_index_batch = false;
 
-// When set, overrides whether vector index backfill writes reverse mappings for all rows or none.
-// When unset, follows the indexed table's owns_vector_reverse_mapping table property, and for an
-// owning colocated table writes the entries its rows miss.
+// When set, overrides whether vector index backfill writes reverse mappings. When unset, follows
+// the indexed table's owns_vector_reverse_mapping table property.
 std::optional<bool> TEST_vector_index_skip_reverse_mapping_backfill = std::nullopt;
 
 // Makes TabletVectorIndexes::ParentDataCompacted() always return false, simulating incomplete
@@ -381,8 +384,22 @@ Status TabletVectorIndexes::DoCreateIndex(
       vector_index_metric_entity));
   vector_index->SetDeactivatedHybridTime(index_table.vector_index_deactivated_ht);
 
+  // Backfilling before the indexed table's reverse mapping repair would put vectors without a
+  // reverse mapping entry into the index, which compaction then drops; the repair launches it. Read
+  // the mark here, under vector_indexes_mutex_: the repair clears it before listing the indexes to
+  // launch, so either this sees it cleared or the repair sees this index.
+  bool repair_pending = indexed_table->vector_reverse_mapping_repair_pending;
+  if (auto current = metadata().GetTableInfo(indexed_table->table_id); current.ok()) {
+    repair_pending = (**current).vector_reverse_mapping_repair_pending;
+  }
+  if (repair_pending && !bootstrap) {
+    LOG_WITH_PREFIX(INFO)
+        << "Waiting for the reverse mapping repair of " << indexed_table->table_id
+        << " to backfill " << index_table.table_id;
+  }
+
   // A restore that reactivates the index relaunches its backfill, see ScheduleBackfillAfterRestore.
-  if (!bootstrap && !index_table.vector_index_deactivated_ht.is_valid()) {
+  if (!bootstrap && !index_table.vector_index_deactivated_ht.is_valid() && !repair_pending) {
     // Using non-blocking operation to avoid deadlock during shutdown. This is safe because
     // ScheduleBackfill handles errors from the backfill task gracefully.
     auto read_op = tablet().CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
@@ -424,9 +441,7 @@ class VectorIndexBackfillContext;
 
 class ReverseMappingBackfiller : public rocksdb::DirectWriter {
  public:
-  // Writes v1 format entries when column_id is valid, legacy format entries otherwise.
-  ReverseMappingBackfiller(OpId op_id, ColumnId column_id, Slice table_key_prefix)
-      : op_id_(op_id), column_id_(column_id), table_key_prefix_(table_key_prefix) {
+  explicit ReverseMappingBackfiller(OpId op_id) : op_id_(op_id) {
   }
 
   void Apply(Tablet& tablet, const VectorIndexBackfillContext& context);
@@ -436,8 +451,6 @@ class ReverseMappingBackfiller : public rocksdb::DirectWriter {
 
   const VectorIndexBackfillContext* context_ = nullptr;
   const OpId op_id_;
-  const ColumnId column_id_;
-  const KeyBuffer table_key_prefix_;
 };
 using ReverseMappingBackfillerPtr = std::unique_ptr<ReverseMappingBackfiller>;
 
@@ -447,10 +460,8 @@ class VectorIndexBackfillContext {
       : backfill_ht_(backfill_ht), store_payload_(store_payload) {
   }
 
-  void Add(Slice ybctid, Slice value, bool add_reverse_entry) {
-    if (add_reverse_entry) {
-      reverse_entries_.push_back({arena_.DupSlice(ybctid), entries_.size()});
-    }
+  void Add(Slice ybctid, Slice value) {
+    ybctids_.push_back(arena_.DupSlice(ybctid));
     entries_.emplace_back(docdb::DocVectorIndexInsertEntry {
       .value = ValueBuffer(value),
       .ybctid = store_payload_ ? KeyBuffer(ybctid) : KeyBuffer(),
@@ -459,7 +470,7 @@ class VectorIndexBackfillContext {
 
   void Reset() {
     entries_.clear();
-    reverse_entries_.clear();
+    ybctids_.clear();
     arena_.Reset(ResetMode::kKeepLast);
   }
 
@@ -471,21 +482,15 @@ class VectorIndexBackfillContext {
     return entries_;
   }
 
-  struct ReverseEntry {
-    Slice ybctid;
-    size_t entry_index;
-  };
-
-  // Rows the reverse mapping backfill writes an entry for, a subset of entries().
-  const std::vector<ReverseEntry>& reverse_entries() const {
-    return reverse_entries_;
+  const std::vector<Slice>& ybctids() const {
+    return ybctids_;
   }
 
  private:
   const HybridTime backfill_ht_;
   const bool store_payload_;
   docdb::DocVectorIndexInsertEntries entries_;
-  std::vector<ReverseEntry> reverse_entries_;
+  std::vector<Slice> ybctids_;
   Arena arena_;
 };
 
@@ -579,14 +584,13 @@ Status ReverseMappingBackfiller::Apply(rocksdb::DirectWriteHandler& handler) {
 
   const auto backfill_ht = context_->backfill_ht();
   const auto& entries = context_->entries();
+  const auto& ybctids = context_->ybctids();
+  DCHECK_EQ(entries.size(), ybctids.size());
 
-  // TODO(#35495): the entry is written at backfill_ht, so on an xCluster target a later applied
-  // tombstone of the vector with an earlier commit time sorts below it and the mapping stays live.
-  // The entry should be written at the write time of the vector column instead.
-  for (const auto& [ybctid, entry_index] : context_->reverse_entries()) {
+  // Backfiller always uses legacy format, while table-owned vector reverse mapping uses v1 format.
+  for (size_t i = 0; i != ybctids.size(); ++i) {
     docdb::DocVectorIndex::ApplyReverseEntry(
-        handler, ybctid, entries[entry_index].value.AsSlice(), DocHybridTime(backfill_ht, 0),
-        column_id_, table_key_prefix_.AsSlice());
+        handler, ybctids[i], entries[i].value.AsSlice(), DocHybridTime(backfill_ht, 0));
   }
   return Status::OK();
 }
@@ -621,29 +625,13 @@ Status TabletVectorIndexes::Backfill(
   // The per-index decision keeps the ybctid in the entries, the reverse mapping backfill and
   // the payload mode of the chunks consistent with each other.
   const bool store_payload = vector_index->StoresPayload();
-  const bool owns_reverse_mapping =
-      indexed_table.schema().table_properties().owns_vector_reverse_mapping();
-  const bool backfill_all_reverse_entries =
-      !TEST_vector_index_skip_reverse_mapping_backfill.value_or(
-          store_payload || owns_reverse_mapping);
-
-  // An owning colocated table can hold rows applied before its schema packing reached the tablet
-  // (xCluster automatic mode, #34504), which have no reverse mapping entry.
-  docdb::DocVectorIndexReverseMappingReaderPtr existing_reverse_mapping;
-  if (!TEST_vector_index_skip_reverse_mapping_backfill.has_value() && !store_payload &&
-      owns_reverse_mapping && !vector_index->indexed_table_key_prefix().empty()) {
-    existing_reverse_mapping = VERIFY_RESULT(vector_index->context().CreateReverseMappingReader(
-        ReadHybridTime::SingleTime(backfill_ht), /* statistics= */ nullptr));
-  }
-
-  // Entries of an owning table use the v1 format: compaction removes only those once the table or
-  // the vector column is dropped.
   ReverseMappingBackfillerPtr reverse_mapping_backfiller;
-  if (backfill_all_reverse_entries || existing_reverse_mapping) {
-    reverse_mapping_backfiller = owns_reverse_mapping
-        ? std::make_unique<ReverseMappingBackfiller>(
-              op_id, vector_index->column_id(), vector_index->indexed_table_key_prefix())
-        : std::make_unique<ReverseMappingBackfiller>(op_id, kInvalidColumnId, Slice());
+  const bool skip_reverse_mapping_backfill =
+      TEST_vector_index_skip_reverse_mapping_backfill.value_or(
+          store_payload ||
+          indexed_table.schema().table_properties().owns_vector_reverse_mapping());
+  if (!skip_reverse_mapping_backfill) {
+    reverse_mapping_backfiller = std::make_unique<ReverseMappingBackfiller>(op_id);
   }
 
   // Expecting one row at most.
@@ -702,13 +690,7 @@ Status TabletVectorIndexes::Backfill(
         std::this_thread::sleep_for(FLAGS_TEST_sleep_after_vector_index_backfill_chunk_ms * 1ms);
       }
     }
-    auto vector = reader.current_vector_slice();
-    auto add_reverse_entry = backfill_all_reverse_entries;
-    if (existing_reverse_mapping) {
-      auto vector_id = VERIFY_RESULT(dockv::EncodedDocVectorValue::FromSlice(vector).DecodeId());
-      add_reverse_entry = VERIFY_RESULT(existing_reverse_mapping->FetchYbctid(vector_id)).empty();
-    }
-    helper.Add(ybctid, vector, add_reverse_entry);
+    helper.Add(ybctid, reader.current_vector_slice());
   }
 
   RETURN_NOT_OK(helper.Flush(tablet(), *vector_index, Slice()));
@@ -723,9 +705,7 @@ Status TabletVectorIndexes::Backfill(
   // backfill instead, ScheduleBackfill treats the resulting TryAgain as expected.
   auto flush_op = tablet().CreateScopedRWOperationBlockingRocksDbShutdownStart();
   RETURN_NOT_OK(flush_op);
-  // TODO(#35499) Need to handle scenario when regular db was not flushed before restart:
-  // the reverse mapping entries of the chunks flushed so far are lost, and a resumed backfill does
-  // not rewrite them.
+  // TODO(vector_index) Need to handle scenario when regular db was not flushed before restart.
   RETURN_NOT_OK_PREPEND(
       Flush(FlushMode::kSync, FlushFlags::kRegular | FlushFlags::kNoScopedOperation,
             rocksdb::FlushReason::kVectorIndexBackfill),
@@ -736,6 +716,11 @@ Status TabletVectorIndexes::Backfill(
 
 void TabletVectorIndexes::LaunchBackfillsIfNecessary() {
   backfills_launched_.store(true);
+  for (const auto& table_info : metadata().GetAllColocatedTableInfos()) {
+    if (table_info->vector_reverse_mapping_repair_pending) {
+      ScheduleReverseMappingRepair(table_info->table_id);
+    }
+  }
   auto list = List();
   LOG_WITH_PREFIX_AND_FUNC(INFO) << "list: " << AsString(list);
   if (!list) {
@@ -788,6 +773,13 @@ void TabletVectorIndexes::LaunchBackfillsIfNecessary() {
             << indexed_table_id << ": " << indexed_table_info_res.status();
         continue;
     }
+    if ((**indexed_table_info_res).vector_reverse_mapping_repair_pending) {
+      // Launched again by the repair once it is done.
+      LOG_WITH_PREFIX_AND_FUNC(INFO)
+          << "Waiting for the reverse mapping repair of " << indexed_table_id << " to backfill "
+          << AsString(*vector_index);
+      continue;
+    }
 
     if (!read_op) {
       // Using non-blocking operation to avoid deadlock during shutdown. This is safe because
@@ -811,15 +803,136 @@ void TabletVectorIndexes::LaunchBackfillsIfNecessary() {
   }
 }
 
+void TabletVectorIndexes::ScheduleReverseMappingRepair(const TableId& table_id) {
+  // Taken before queuing, like a backfill's, so the tablet cannot shut down under the queued task.
+  // Non-blocking to avoid a deadlock during shutdown.
+  auto read_op = std::make_shared<ScopedRWOperation>(
+      tablet().CreateScopedRWOperationNotBlockingRocksDbShutdownStart());
+  if (!read_op->ok()) {
+    auto status = read_op->CreateStatus();
+    LOG_WITH_PREFIX_AND_FUNC(WARNING)
+        << "Failed to create operation for the reverse mapping repair of " << table_id << ": "
+        << status;
+    if (status.IsTryAgain()) {
+      // The storages are being replaced, the retry relaunches the repair once they are back.
+      ScheduleBackfillRetry(FLAGS_vector_index_backfill_retry_delay_ms * 1ms);
+    }
+    return;
+  }
+  {
+    std::lock_guard lock(tasks_mutex_);
+    if (failed_repairs_.contains(table_id) || !repairs_in_flight_.insert(table_id).second) {
+      return;
+    }
+  }
+  thread_pool_provider_(VectorIndexThreadPoolType::kBackfill)->EnqueueFunctor(
+      [this, table_id, read_op = std::move(read_op)] {
+    auto status = RepairReverseMapping(table_id);
+    {
+      std::lock_guard lock(tasks_mutex_);
+      repairs_in_flight_.erase(table_id);
+      if (!status.ok() && !status.IsTryAgain() && !status.IsShutdownInProgress()) {
+        // Not repeated until the tablet restarts: the scan would most likely fail the same way.
+        failed_repairs_.insert(table_id);
+      }
+    }
+    if (status.ok()) {
+      if (!IndexesOf(table_id).empty()) {
+        // Launches the backfills of the table's vector indexes, held back until now.
+        ScheduleBackfillRetry(0ms);
+      }
+    } else if (status.IsTryAgain()) {
+      // A storage replacement, which aborts the backfills too; the retry relaunches both.
+      LOG_WITH_PREFIX(WARNING)
+          << "Reverse mapping repair of " << table_id << " aborted: " << status;
+      ScheduleBackfillRetry(FLAGS_vector_index_backfill_retry_delay_ms * 1ms);
+    } else if (!status.IsShutdownInProgress()) {
+      // The table's vector indexes stay held back, so fail the backfills someone may wait for.
+      LOG_WITH_PREFIX(DFATAL) << "Reverse mapping repair of " << table_id << " failed: " << status;
+      for (const auto& vector_index : IndexesOf(table_id)) {
+        vector_index->SetBackfillStatus(status);
+      }
+    }
+  });
+}
+
+std::vector<docdb::DocVectorIndexPtr> TabletVectorIndexes::IndexesOf(
+    const TableId& indexed_table_id) {
+  std::vector<docdb::DocVectorIndexPtr> result;
+  auto list = List();
+  if (!list) {
+    return result;
+  }
+  for (const auto& vector_index : *list) {
+    auto table_info = metadata().GetTableInfo(vector_index->table_id());
+    if (table_info.ok() && (**table_info).index_info &&
+        (**table_info).index_info->indexed_table_id() == indexed_table_id) {
+      result.push_back(vector_index);
+    }
+  }
+  return result;
+}
+
+// The repair is not resumable: a restart before it is done starts over, rewriting the same entries.
+// So the pending mark is cleared only once the regular DB holding the entries is flushed.
+Status TabletVectorIndexes::RepairReverseMapping(const TableId& table_id) {
+  while (FLAGS_TEST_pause_vector_reverse_mapping_repair && !tablet().IsShutdownRequested()) {
+    std::this_thread::sleep_for(10ms);
+  }
+  if (tablet().IsShutdownRequested()) {
+    return STATUS(ShutdownInProgress, "Tablet is shutting down");
+  }
+  auto table_info = metadata().GetTableInfo(table_id);
+  if (!table_info.ok() || !(**table_info).vector_reverse_mapping_repair_pending) {
+    // Dropped, or already repaired.
+    return Status::OK();
+  }
+  RETURN_NOT_OK(tablet().WriteMissingVectorReverseMappings(**table_info, (**table_info).op_id));
+
+  auto flush_op = tablet().CreateScopedRWOperationBlockingRocksDbShutdownStart();
+  RETURN_NOT_OK(flush_op);
+  RETURN_NOT_OK_PREPEND(
+      Flush(FlushMode::kSync, FlushFlags::kRegular | FlushFlags::kNoScopedOperation,
+            rocksdb::FlushReason::kVectorReverseMappingRepair),
+      "Flush regular DB");
+  auto status = metadata().SetVectorReverseMappingRepairPending(table_id, false);
+  if (status.IsNotFound()) {
+    // Dropped during the repair.
+    return Status::OK();
+  }
+  RETURN_NOT_OK(status);
+  status = metadata().Flush();
+  if (!status.ok()) {
+    // The entries are durable and the mark is cleared in memory; a later superblock flush persists
+    // that. Retried as TryAgain, which launches the backfills held back for this table.
+    return STATUS_FORMAT(TryAgain, "Failed to flush the cleared repair mark: $0", status);
+  }
+  LOG_WITH_PREFIX(INFO) << "Reverse mapping repair of " << table_id << " done";
+  return Status::OK();
+}
+
 void TabletVectorIndexes::ScheduleBackfill(
     const docdb::DocVectorIndexPtr& vector_index, const TableInfoPtr& indexed_table, Slice key,
     HybridTime backfill_ht, OpId op_id, std::shared_ptr<ScopedRWOperation> read_op) {
+  // LaunchBackfillsIfNecessary relaunches every index that is not done, also outside of the storage
+  // replacements that abort the running backfills, e.g. after a reverse mapping repair.
+  {
+    std::lock_guard lock(tasks_mutex_);
+    if (!backfills_in_flight_.insert(vector_index->table_id()).second) {
+      VLOG_WITH_PREFIX_AND_FUNC(1) << "Already running: " << AsString(*vector_index);
+      return;
+    }
+  }
   // New attempt, forget the error from the last one.
   vector_index->SetBackfillStatus(Status::OK());
   thread_pool_provider_(VectorIndexThreadPoolType::kBackfill)->EnqueueFunctor(
       [this, vector_index, backfill_ht, key = key.ToBuffer(), op_id, indexed_table,
        read_op = std::move(read_op)] {
     auto status = Backfill(vector_index, *indexed_table, key, backfill_ht, op_id);
+    {
+      std::lock_guard lock(tasks_mutex_);
+      backfills_in_flight_.erase(vector_index->table_id());
+    }
     if (status.IsShutdownInProgress() || status.IsTryAgain()) {
       LOG_WITH_PREFIX(WARNING) << "Backfill " << AsString(vector_index) << " aborted: " << status;
       if (status.IsTryAgain()) {

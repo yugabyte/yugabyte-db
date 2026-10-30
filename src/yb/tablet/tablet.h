@@ -657,6 +657,10 @@ class Tablet : public AbstractTablet,
   // Apply replicated remove table operation.
   Status RemoveTable(const std::string& table_id, const OpId& op_id);
 
+  // Writes the vector reverse mapping entries a colocated table owns for the rows that reached the
+  // tablet before the table did, with op_id as their frontier, see TabletVectorIndexes.
+  Status WriteMissingVectorReverseMappings(const TableInfo& table_info, const OpId& op_id);
+
   // Truncate this tablet by resetting the content of RocksDB.
   Status Truncate(TruncateOperation* operation);
 
@@ -1415,6 +1419,12 @@ class Tablet : public AbstractTablet,
     REQUIRES(operation_filters_mutex_);
 
   Status AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id, HybridTime ht);
+
+  // Whether a colocated table about to be added owns a vector reverse mapping with a vector column,
+  // and the tablet already has entries under its colocation id.
+  bool NeedsVectorReverseMappingRepair(
+      const Schema& schema,
+      const google::protobuf::RepeatedPtrField<dockv::SchemaPackingPB>& old_schema_packings);
 
   // Split/LB policy: true when this tablet still has parent data that should block a further
   // split (or, today, a load-balancer move). RocksDB leftover always counts; vector-index leftover

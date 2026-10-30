@@ -121,6 +121,7 @@ DECLARE_bool(TEST_disable_tablet_deletion);
 DECLARE_bool(TEST_fail_vector_index_backfill);
 DECLARE_bool(TEST_force_get_checkpoint_from_cdc_state);
 DECLARE_int32(TEST_pause_at_start_of_setup_replication_group_ms);
+DECLARE_bool(TEST_pause_vector_reverse_mapping_repair);
 DECLARE_string(TEST_skip_async_insert_packed_schema_for_tablet_id);
 DECLARE_bool(TEST_skip_oid_advance_on_restore);
 DECLARE_int32(TEST_sleep_before_vector_index_backfill_seconds);
@@ -6112,59 +6113,272 @@ TEST_F(XClusterDDLReplicationTest, VectorIndexLateWriteAfterBackfillMissing) {
 }
 
 // Rows of a new colocated table reach the consumer before the DDL queue creates the table there,
-// so the consumer applies them without the reverse mapping entries the table owns. The vector
-// index backfill has to write them, or search finds none of the rows (GH #34504).
-TEST_F(XClusterDDLReplicationTest, VectorIndexColocatedRowsBeforeTargetCreateTable) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
-  auto params = XClusterDDLReplicationTestBase::kDefaultParams;
-  params.is_colocated = true;
-  ASSERT_OK(SetUpClusters(params));
-  ASSERT_OK(RunOnBothClusters([this](Cluster* cluster) -> Status {
-    auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
-    return conn.Execute("CREATE EXTENSION vector");
-  }));
-  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
-  ASSERT_OK(CreateReplicationFromCheckpoint());
+// without the reverse mapping entries the table owns. The tablet has to write them once the table
+// is created, or search finds none of the rows (GH #34504).
+class XClusterDDLReplicationColocatedVectorTest : public XClusterDDLReplicationTest {
+ protected:
+  static constexpr auto kInsert =
+      "INSERT INTO $0 (id, embedding) SELECT id, ('[' || id || ', ' || id * 2 || ', 1]')::vector "
+      "FROM generate_series($1, $2) AS g(id)";
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = true;
-  constexpr auto kInsert =
-      "INSERT INTO vec_test SELECT id, ('[' || id || ', ' || id * 2 || ', 1]')::vector "
-      "FROM generate_series($0, $1) AS g(id)";
+  Status SetUpColocatedVectorReplication() {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
+    auto params = XClusterDDLReplicationTestBase::kDefaultParams;
+    params.is_colocated = true;
+    RETURN_NOT_OK(SetUpClusters(params));
+    RETURN_NOT_OK(RunOnBothClusters([this](Cluster* cluster) -> Status {
+      auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
+      return conn.Execute("CREATE EXTENSION vector");
+    }));
+    RETURN_NOT_OK(
+        CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+    return CreateReplicationFromCheckpoint();
+  }
+
+  // Holds the consumer's DDL queue, so the source's DDLs and rows reach the consumer in that
+  // order: the rows first.
+  void HoldConsumerDdls() {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = true;
+  }
+
+  Status ReleaseConsumerDdls() {
+    RETURN_NOT_OK(WaitForSafeTimeToAdvanceToNowWithoutDDLQueue());
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = false;
+    return Status::OK();
+  }
+
+  Status WaitForConsumerIndexReady(const std::string& index_name) {
+    return WaitFor(
+        [this, &index_name]() -> Result<bool> {
+          return consumer_conn_->FetchRow<bool>(Format(
+              "SELECT EXISTS (SELECT 1 FROM pg_index i "
+              "JOIN pg_class c ON c.oid = i.indexrelid "
+              "WHERE c.relname = '$0' AND i.indisready AND i.indisvalid)", index_name));
+        },
+        kTimeout, Format("consumer vector index $0 ready", index_name));
+  }
+
+  void ExpectSameResults(std::initializer_list<std::string> queries) {
+    for (const auto& query : queries) {
+      auto p_result = ASSERT_RESULT(producer_conn_->FetchAllAsString(query));
+      auto c_result = ASSERT_RESULT(consumer_conn_->FetchAllAsString(query));
+      ASSERT_EQ(p_result, c_result) << query;
+    }
+  }
+
+  static std::string SearchQuery(const std::string& table, const std::string& vector, int limit) {
+    return Format("SELECT id FROM $0 ORDER BY embedding <-> '$1' LIMIT $2", table, vector, limit);
+  }
+};
+
+TEST_F(XClusterDDLReplicationColocatedVectorTest, RowsBeforeTargetCreateTable) {
+  ASSERT_OK(SetUpColocatedVectorReplication());
+  HoldConsumerDdls();
   ASSERT_OK(producer_conn_->Execute(
       "CREATE TABLE vec_test (id int PRIMARY KEY, embedding vector(3))"));
-  ASSERT_OK(producer_conn_->ExecuteFormat(kInsert, 1, 50));
+  ASSERT_OK(producer_conn_->ExecuteFormat(kInsert, "vec_test", 1, 50));
   ASSERT_OK(producer_conn_->Execute(
       "CREATE INDEX vec_test_idx ON vec_test USING ybhnsw (embedding vector_l2_ops)"));
-  ASSERT_OK(producer_conn_->ExecuteFormat(kInsert, 51, 100));
-  ASSERT_OK(WaitForSafeTimeToAdvanceToNowWithoutDDLQueue());
-
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = false;
+  ASSERT_OK(producer_conn_->ExecuteFormat(kInsert, "vec_test", 51, 100));
+  ASSERT_OK(ReleaseConsumerDdls());
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
-  ASSERT_OK(WaitFor(
-      [this]() -> Result<bool> {
-        return consumer_conn_->FetchRow<bool>(
-            "SELECT EXISTS (SELECT 1 FROM pg_index i "
-            "JOIN pg_class c ON c.oid = i.indexrelid "
-            "WHERE c.relname = 'vec_test_idx' AND i.indisready AND i.indisvalid)");
-      },
-      kTimeout, "consumer vector index backfill"));
+  ASSERT_OK(WaitForConsumerIndexReady("vec_test_idx"));
 
-  auto c_explain = ASSERT_RESULT(consumer_conn_->FetchAllAsString(
-      "EXPLAIN (COSTS OFF) SELECT id FROM vec_test "
-      "ORDER BY embedding <-> '[1.0, 2.0, 1.0]' LIMIT 10"));
-  ASSERT_STR_CONTAINS(c_explain, "vec_test_idx");
-
+  auto explain = ASSERT_RESULT(consumer_conn_->FetchAllAsString(
+      "EXPLAIN (COSTS OFF) " + SearchQuery("vec_test", "[1, 2, 1]", 10)));
+  ASSERT_STR_CONTAINS(explain, "vec_test_idx");
   ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>("SELECT count(*) FROM vec_test")), 100);
   // The search wider than the table goes first: with rows the index cannot resolve, it returns
   // none of them, while the narrower searches never finish.
-  for (const auto* query : {
-      "SELECT id FROM vec_test ORDER BY embedding <-> '[0.0, 0.0, 0.0]' LIMIT 200",
-      "SELECT id FROM vec_test ORDER BY embedding <-> '[1.0, 2.0, 1.0]' LIMIT 10",
-      "SELECT id FROM vec_test ORDER BY embedding <-> '[75.0, 150.0, 1.0]' LIMIT 10"}) {
-    auto p_search = ASSERT_RESULT(producer_conn_->FetchAllAsString(query));
-    auto c_search = ASSERT_RESULT(consumer_conn_->FetchAllAsString(query));
-    ASSERT_EQ(p_search, c_search) << query;
+  ASSERT_NO_FATALS(ExpectSameResults({
+      SearchQuery("vec_test", "[0, 0, 0]", 200),
+      SearchQuery("vec_test", "[1, 2, 1]", 10),
+      SearchQuery("vec_test", "[75, 150, 1]", 10)}));
+}
+
+// Rows packed with two schema versions before the consumer's CREATE TABLE, which then installs
+// more than one historical packing.
+TEST_F(XClusterDDLReplicationColocatedVectorTest, RowsBeforeTargetCreateTableWithAlter) {
+  ASSERT_OK(SetUpColocatedVectorReplication());
+  HoldConsumerDdls();
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE vec_test (id int PRIMARY KEY, embedding vector(3))"));
+  ASSERT_OK(producer_conn_->ExecuteFormat(kInsert, "vec_test", 1, 50));
+  ASSERT_OK(producer_conn_->Execute("ALTER TABLE vec_test ADD COLUMN extra int"));
+  ASSERT_OK(producer_conn_->ExecuteFormat(kInsert, "vec_test", 51, 100));
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE INDEX vec_test_idx ON vec_test USING ybhnsw (embedding vector_l2_ops)"));
+  ASSERT_OK(producer_conn_->ExecuteFormat(kInsert, "vec_test", 101, 150));
+  ASSERT_OK(ReleaseConsumerDdls());
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(WaitForConsumerIndexReady("vec_test_idx"));
+
+  ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>("SELECT count(*) FROM vec_test")), 150);
+  ASSERT_NO_FATALS(ExpectSameResults({
+      SearchQuery("vec_test", "[0, 0, 0]", 200),
+      SearchQuery("vec_test", "[25, 50, 1]", 10),
+      SearchQuery("vec_test", "[125, 250, 1]", 10),
+      "SELECT id, extra FROM vec_test ORDER BY id"}));
+}
+
+// The vector column is added by an ALTER before the consumer's CREATE TABLE, so the table is
+// created without it and only its old packings have it.
+TEST_F(XClusterDDLReplicationColocatedVectorTest, VectorColumnAddedBeforeTargetCreateTable) {
+  ASSERT_OK(SetUpColocatedVectorReplication());
+  HoldConsumerDdls();
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE vec_test (id int PRIMARY KEY)"));
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO vec_test SELECT generate_series(1, 20)"));
+  ASSERT_OK(producer_conn_->Execute("ALTER TABLE vec_test ADD COLUMN embedding vector(3)"));
+  ASSERT_OK(producer_conn_->ExecuteFormat(kInsert, "vec_test", 21, 100));
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE INDEX vec_test_idx ON vec_test USING ybhnsw (embedding vector_l2_ops)"));
+  ASSERT_OK(ReleaseConsumerDdls());
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(WaitForConsumerIndexReady("vec_test_idx"));
+
+  ASSERT_NO_FATALS(ExpectSameResults({
+      SearchQuery("vec_test", "[0, 0, 0]", 200),
+      SearchQuery("vec_test", "[25, 50, 1]", 10)}));
+}
+
+// Rows updated and deleted before the consumer's CREATE TABLE: the repair writes the mappings of
+// every version at its own time, so the tombstones of replaced and deleted vectors still win.
+TEST_F(XClusterDDLReplicationColocatedVectorTest, UpdatesBeforeTargetCreateTable) {
+  ASSERT_OK(SetUpColocatedVectorReplication());
+  HoldConsumerDdls();
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE vec_test (id int PRIMARY KEY, embedding vector(3))"));
+  ASSERT_OK(producer_conn_->ExecuteFormat(kInsert, "vec_test", 1, 100));
+  // Moves rows 1..20 far away and removes rows 21..30.
+  ASSERT_OK(producer_conn_->Execute(
+      "UPDATE vec_test SET embedding = ('[' || id * 1000 || ', 0, 0]')::vector WHERE id <= 20"));
+  ASSERT_OK(producer_conn_->Execute("DELETE FROM vec_test WHERE id BETWEEN 21 AND 30"));
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE INDEX vec_test_idx ON vec_test USING ybhnsw (embedding vector_l2_ops)"));
+  ASSERT_OK(producer_conn_->Execute(
+      "UPDATE vec_test SET embedding = '[-5, -5, -5]' WHERE id = 31"));
+  ASSERT_OK(ReleaseConsumerDdls());
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(WaitForConsumerIndexReady("vec_test_idx"));
+
+  ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>("SELECT count(*) FROM vec_test")), 90);
+  // The old vectors of rows 1..20 and 31, and the vectors of the deleted rows, are near these
+  // query vectors; no row may be returned for them.
+  ASSERT_NO_FATALS(ExpectSameResults({
+      SearchQuery("vec_test", "[0, 0, 0]", 200),
+      SearchQuery("vec_test", "[1, 2, 1]", 10),
+      SearchQuery("vec_test", "[25, 50, 1]", 10)}));
+}
+
+// Two tables, each repaired and backfilled on the consumer.
+TEST_F(XClusterDDLReplicationColocatedVectorTest, TwoTablesBeforeTargetCreateTable) {
+  ASSERT_OK(SetUpColocatedVectorReplication());
+  HoldConsumerDdls();
+  for (const auto* table : {"vec_t0", "vec_t1"}) {
+    ASSERT_OK(producer_conn_->ExecuteFormat(
+        "CREATE TABLE $0 (id int PRIMARY KEY, embedding vector(3))", table));
+    ASSERT_OK(producer_conn_->ExecuteFormat(kInsert, table, 1, 1000));
+    ASSERT_OK(producer_conn_->ExecuteFormat(
+        "CREATE INDEX $0_idx ON $0 USING ybhnsw (embedding vector_l2_ops)", table));
   }
+  ASSERT_OK(ReleaseConsumerDdls());
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  for (const std::string table : {"vec_t0", "vec_t1"}) {
+    ASSERT_OK(WaitForConsumerIndexReady(table + "_idx"));
+    ASSERT_NO_FATALS(ExpectSameResults({SearchQuery(table, "[0, 0, 0]", 1100)}));
+  }
+}
+
+// Enough rows before the consumer's CREATE TABLE for the repair to write its entries in several
+// batches.
+TEST_F(XClusterDDLReplicationColocatedVectorTest, ManyRowsBeforeTargetCreateTable) {
+  constexpr int kNumRows = 20000;
+  ASSERT_OK(SetUpColocatedVectorReplication());
+  HoldConsumerDdls();
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE vec_test (id int PRIMARY KEY, embedding vector(3))"));
+  ASSERT_OK(producer_conn_->ExecuteFormat(kInsert, "vec_test", 1, kNumRows));
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE INDEX vec_test_idx ON vec_test USING ybhnsw (embedding vector_l2_ops)"));
+  ASSERT_OK(ReleaseConsumerDdls());
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(WaitForConsumerIndexReady("vec_test_idx"));
+
+  ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>(Format(
+      "SELECT count(*) FROM ($0) t", SearchQuery("vec_test", "[0, 0, 0]", kNumRows + 100)))),
+      kNumRows);
+}
+
+// The consumer creates the vector index while the repair of its table is held: the index must not
+// be backfilled until the repair is done.
+TEST_F(XClusterDDLReplicationColocatedVectorTest, CreateIndexDuringRepair) {
+  ASSERT_OK(SetUpColocatedVectorReplication());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_vector_reverse_mapping_repair) = true;
+  HoldConsumerDdls();
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE vec_test (id int PRIMARY KEY, embedding vector(3))"));
+  ASSERT_OK(producer_conn_->ExecuteFormat(kInsert, "vec_test", 1, 100));
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE INDEX vec_test_idx ON vec_test USING ybhnsw (embedding vector_l2_ops)"));
+
+  StringWaiterLogSink held_back("Waiting for the reverse mapping repair of");
+  ASSERT_OK(ReleaseConsumerDdls());
+  ASSERT_OK(held_back.WaitFor(kTimeout));
+  for (const auto& index : ListVectorIndexes(consumer_cluster())) {
+    ASSERT_FALSE(ASSERT_RESULT(index->BackfillDone()));
+  }
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_vector_reverse_mapping_repair) = false;
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(WaitForConsumerIndexReady("vec_test_idx"));
+  ASSERT_NO_FATALS(ExpectSameResults({
+      SearchQuery("vec_test", "[0, 0, 0]", 200),
+      SearchQuery("vec_test", "[1, 2, 1]", 10)}));
+}
+
+// The consumer tservers restart with the repair pending, which Start relaunches.
+TEST_F(XClusterDDLReplicationColocatedVectorTest, RestartDuringRepair) {
+  ASSERT_OK(SetUpColocatedVectorReplication());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_vector_reverse_mapping_repair) = true;
+  HoldConsumerDdls();
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE vec_test (id int PRIMARY KEY, embedding vector(3))"));
+  ASSERT_OK(producer_conn_->ExecuteFormat(kInsert, "vec_test", 1, 100));
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE INDEX vec_test_idx ON vec_test USING ybhnsw (embedding vector_l2_ops)"));
+
+  StringWaiterLogSink held_back("Waiting for the reverse mapping repair of");
+  ASSERT_OK(ReleaseConsumerDdls());
+  ASSERT_OK(held_back.WaitFor(kTimeout));
+
+  for (size_t i = 0; i != consumer_cluster()->num_tablet_servers(); ++i) {
+    ASSERT_OK(consumer_cluster()->mini_tablet_server(i)->Restart());
+  }
+  consumer_conn_ = std::make_unique<pgwrapper::PGConn>(
+      ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name)));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_vector_reverse_mapping_repair) = false;
+
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(WaitForConsumerIndexReady("vec_test_idx"));
+  ASSERT_NO_FATALS(ExpectSameResults({
+      SearchQuery("vec_test", "[0, 0, 0]", 200),
+      SearchQuery("vec_test", "[1, 2, 1]", 10)}));
+}
+
+// A colocated table whose rows are written after it is created needs no repair.
+TEST_F(XClusterDDLReplicationColocatedVectorTest, NoRepairForTableCreatedFirst) {
+  ASSERT_OK(SetUpColocatedVectorReplication());
+  StringWaiterLogSink repaired("Reverse mapping repair of");
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE vec_test (id int PRIMARY KEY, embedding vector(3))"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(producer_conn_->ExecuteFormat(kInsert, "vec_test", 1, 100));
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE INDEX vec_test_idx ON vec_test USING ybhnsw (embedding vector_l2_ops)"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(WaitForConsumerIndexReady("vec_test_idx"));
+  ASSERT_FALSE(repaired.IsEventOccurred());
+  ASSERT_NO_FATALS(ExpectSameResults({SearchQuery("vec_test", "[0, 0, 0]", 200)}));
 }
 
 // The consumer applies every external transaction of a polled batch in one write op, and each

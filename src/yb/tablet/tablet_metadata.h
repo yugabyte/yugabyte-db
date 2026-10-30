@@ -133,6 +133,9 @@ struct TableInfo {
   // See TableInfoPB::vector_index_deactivated_ht. Invalid while the vector index is active.
   HybridTime vector_index_deactivated_ht;
 
+  // See TableInfoPB::vector_reverse_mapping_repair_pending.
+  bool vector_reverse_mapping_repair_pending = false;
+
   // Public ctor with private argument to allow std::make_shared, but prevent public usage.
   TableInfo(const std::string& log_prefix,
             TableType table_type,
@@ -646,7 +649,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
       HybridTime ht,
       const TableId& pg_table_id,
       const SkipTableTombstoneCheck skip_table_tombstone_check,
-      const google::protobuf::RepeatedPtrField<dockv::SchemaPackingPB>& old_schema_packings)
+      const google::protobuf::RepeatedPtrField<dockv::SchemaPackingPB>& old_schema_packings,
+      bool vector_reverse_mapping_repair_pending = false)
       EXCLUDES(data_mutex_);
 
   void RemoveTable(const TableId& table_id, const OpId& op_id);
@@ -858,6 +862,10 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   void OnChangeMetadataOperationApplied(const OpId& applied_opid);
 
   OpId MinUnflushedChangeMetadataOpId() const;
+
+  // See TableInfoPB::vector_reverse_mapping_repair_pending. Does not flush the superblock.
+  Status SetVectorReverseMappingRepairPending(const TableId& table_id, bool pending)
+      EXCLUDES(data_mutex_);
 
   // Called to update related metadata when index table backfilling is complete.
   // Returns kStatusNotFound if table is not found in kv_store, in other case returns kStatusOk.
