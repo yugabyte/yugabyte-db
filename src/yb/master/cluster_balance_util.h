@@ -371,36 +371,6 @@ class PerTableLoadState {
 
   virtual ~PerTableLoadState();
 
-  // Comparators used for sorting by load.
-  bool CompareLoad(
-      const TabletServerId& a, const TabletServerId& b,
-      optional_ref<const TabletId> tablet_id);
-
-  // Comparator functor to be able to wrap around the public but non-static compare methods that
-  // end up using internal state of the class.
-  struct LoadComparator {
-    LoadComparator(
-        PerTableLoadState* state, optional_ref<const TabletId> tablet_id)
-        : state_(state), tablet_id_(tablet_id) {}
-
-    bool operator()(const TabletServerId& a, const TabletServerId& b) const {
-      return state_->CompareLoad(a, b, tablet_id_);
-    }
-
-    PerTableLoadState* state_;
-    optional_ref<const TabletId> tablet_id_;
-  };
-
-  // Comparator to sort tablet servers' leader load.
-  struct LeaderLoadComparator {
-    explicit LeaderLoadComparator(PerTableLoadState* state, GlobalLoadState* global_state)
-      : state_(state), global_state_(global_state) {}
-    bool operator()(const TabletServerId& a, const TabletServerId& b);
-
-    PerTableLoadState* state_;
-    GlobalLoadState* global_state_;
-  };
-
   // Get the load for a certain TS.
   size_t GetLoad(const TabletServerId& ts_uuid) const;
   size_t GetTabletDriveLoad(const TabletServerId& ts_uuid, const TabletId& tablet_id) const;
@@ -423,6 +393,8 @@ class PerTableLoadState {
   void SetInitialized() {
     DCHECK(!initialized_);
     initialized_ = true;
+    load_order_initialized_ = false;
+    leader_load_order_initialized_ = false;
   }
 
   // Checks whether a replica of tablet_id can be added to to_ts. from_ts is the tserver the
@@ -458,18 +430,24 @@ class PerTableLoadState {
 
   Status RemoveReplica(const TabletId& tablet_id, const TabletServerId& from_ts);
 
-  void SortLoad();
+  // With updated_ts, reposition only that server; all other keys must still be sorted.
+  void SortLoad(optional_ref<const TabletServerId> updated_ts = std::nullopt);
 
-  void SortDriveLoad();
+  // Sort caller-owned servers by table load, global load, optional tablet drive load, then uuid.
+  void SortServersByLoad(
+      std::vector<TabletServerId>* servers, optional_ref<const TabletId> tablet_id) const;
+
+  void SortDriveLoad(optional_ref<const TabletServerId> updated_ts = std::nullopt);
 
   Status MoveLeader(const TabletId& tablet_id,
                     const TabletServerId& from_ts,
                     const TabletServerId& to_ts = "",
                     const TabletServerId& to_ts_path = "");
 
-  void SortLeaderLoad();
+  // With updated_ts, reposition only that server within its leader-priority group.
+  void SortLeaderLoad(optional_ref<const TabletServerId> updated_ts = std::nullopt);
 
-  void SortDriveLeaderLoad();
+  void SortDriveLeaderLoad(optional_ref<const TabletServerId> updated_ts = std::nullopt);
 
   int AdjustLeaderBalanceThreshold(int zone_set_size);
 
@@ -649,9 +627,13 @@ class PerTableLoadState {
   // State-modifying functions that expect to only be called before / after initialization
   // can SCHECK initialized_ is false / true respectively.
   bool initialized_ = false;
+  bool load_order_initialized_ = false;
+  bool leader_load_order_initialized_ = false;
 
   bool ShouldSkipReplica(const TabletReplica& replica);
   size_t GetReplicaCount(std::shared_ptr<const TabletReplicaMap> replica_map);
+  static void SortDriveLeaderLoadForTs(CBTabletServerMetadata& ts_meta);
+  static void SortDriveLoadForTs(CBTabletServerMetadata& ts_meta);
   const std::string uninitialized_ts_meta_format_msg_ =
       "Found uninitialized ts_meta: ts_uuid: $0, table_uuid: $1";
 
