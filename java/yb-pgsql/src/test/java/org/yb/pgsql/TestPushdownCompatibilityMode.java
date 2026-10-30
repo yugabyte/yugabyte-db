@@ -255,12 +255,13 @@ public class TestPushdownCompatibilityMode extends BasePgSQLTest {
       if (expr.behaviour == Behaviour.kNotPushable) {
         CheckFilters(prefix, kLocalFilter, expr);
       } else if (expr.behaviour == Behaviour.kPushable) {
-        if (compatibility != "0")
+        if (!compatibility.equals("0"))
           CheckFilters(prefix, kLocalFilter, expr);
         else
           CheckFilters(prefix, kStorageFilter, expr);
       } else if (expr.behaviour == Behaviour.kMMPushable) {
-        if (compatibility != "0" && compatibility != "11")
+        // Only 11 has a mixed mode safe list; any later major upgrade pushes nothing down.
+        if (!compatibility.equals("0") && !compatibility.equals("11"))
           CheckFilters(prefix, kLocalFilter, expr);
         else
           CheckFilters(prefix, kStorageFilter, expr);
@@ -269,7 +270,7 @@ public class TestPushdownCompatibilityMode extends BasePgSQLTest {
       }
     }
 
-    if (compatibility == "11") {
+    if (compatibility.equals("11")) {
       /* Retry any SAOP expressions with SAOP pushdown disabled */
       SetMixedModeSaopPushdown("false");
       for (Expression expr : exprs) {
