@@ -5202,24 +5202,41 @@ std::vector<uint64_t> Tablet::CollectTierMigrationCandidates(const std::string& 
   return candidates;
 }
 
-Status Tablet::SetTierMigrationTarget(const std::string& target_tier, uint32_t target_path_id) {
+Result<ScopedRWOperation> Tablet::CheckTierTargetUsable(uint32_t target_path_id) {
   auto scoped_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
   RETURN_NOT_OK(scoped_operation);
   if (!regular_db_) {
     return STATUS(IllegalState, "Tablet has no regular RocksDB open");
   }
   RETURN_NOT_OK(LookupTierDir(target_path_id));
+  return scoped_operation;
+}
 
+Status Tablet::SetTierMigrationTarget(const std::string& target_tier, uint32_t target_path_id) {
+  auto scoped_operation = VERIFY_RESULT(CheckTierTargetUsable(target_path_id));
+  std::lock_guard lock(tier_target_mutex_);
+  return SetTierMigrationTargetUnlocked(target_tier, target_path_id);
+}
+
+Status Tablet::SetTierMigrationTargetUnlocked(
+    const std::string& target_tier, uint32_t target_path_id) {
   {
-    std::lock_guard lock(tier_target_mutex_);
-    if (metadata()->target_storage_tier() != target_tier ||
-        metadata()->target_tier_path_id() != target_path_id) {
-      RETURN_NOT_OK(metadata()->SetTargetTier(target_tier, target_path_id));
+    std::lock_guard lock(tier_migration_mutex_);
+    if (tier_migration_status_.pass_in_flight) {
+      // ScheduleDBPathMove has no cancel: the pass would keep copying to the old disk, and
+      // FinishTierMigrationPass would book its outcome against the new target.
+      return STATUS_FORMAT(
+          ServiceUnavailable,
+          "Tier migration pass toward tier '$0' (path_id $1) is in flight; retry when it ends",
+          metadata()->target_storage_tier(), metadata()->target_tier_path_id());
     }
-    RETURN_NOT_OK_PREPEND(
-        regular_db_->SetOptions({{"target_path_id", std::to_string(target_path_id)}}),
-        "Failed to set target_path_id on regular DB");
   }
+  if (!IsPersistedTierTarget(target_tier, target_path_id)) {
+    RETURN_NOT_OK(metadata()->SetTargetTier(target_tier, target_path_id));
+  }
+  RETURN_NOT_OK_PREPEND(
+      regular_db_->SetOptions({{"target_path_id", std::to_string(target_path_id)}}),
+      "Failed to set target_path_id on regular DB");
 
   // Intent (re)asserted: convergence is unproven again, and earlier failures no longer count.
   std::lock_guard lock(tier_migration_mutex_);
@@ -5229,8 +5246,27 @@ Status Tablet::SetTierMigrationTarget(const std::string& target_tier, uint32_t t
   return Status::OK();
 }
 
+bool Tablet::IsPersistedTierTarget(
+    const std::string& target_tier, uint32_t target_path_id) const {
+  return metadata()->target_storage_tier() == target_tier &&
+         metadata()->target_tier_path_id() == target_path_id;
+}
+
+Status Tablet::CheckTierTargetStillPersisted(
+    const std::string& target_tier, uint32_t target_path_id) const {
+  if (IsPersistedTierTarget(target_tier, target_path_id)) {
+    return Status::OK();
+  }
+  return STATUS_FORMAT(
+      ServiceUnavailable,
+      "Target replaced by a concurrent request with tier '$0' (path_id $1) before this one's "
+      "pass could start",
+      metadata()->target_storage_tier(), metadata()->target_tier_path_id());
+}
+
 Result<TierReconcileResult> Tablet::RunTierMigrationPass(
-    const TierReconcileOptions& options, ReconcilerPass reconciler_pass) {
+    const TierReconcileOptions& options, ReconcilerPass reconciler_pass,
+    const std::optional<TierTarget>& expected_target) {
   using State = TierMigrationStatus::State;
 
   auto scoped_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
@@ -5238,23 +5274,35 @@ Result<TierReconcileResult> Tablet::RunTierMigrationPass(
   if (!regular_db_) {
     return STATUS(IllegalState, "Tablet has no regular RocksDB open");
   }
-  if (metadata()->target_storage_tier().empty()) {
-    return STATUS(IllegalState, "Tablet has no target storage tier");
-  }
-  const auto target_path_id = metadata()->target_tier_path_id();
-  const auto target_dir = VERIFY_RESULT(LookupTierDir(target_path_id));
 
   TierReconcileResult result;
-  // Check if post-split compaction is needed
-  if (NeedPostSplitCompaction()) {
-    result.awaiting_post_split_compaction = true;
-    result.status = tier_migration_status();
-    VLOG_WITH_PREFIX(1) << "Tier migration pass deferred until the post-split compaction has run";
-    return result;
-  }
-
+  uint32_t target_path_id = 0;
+  std::string target_dir;
   auto state_before = State::kNone;
   {
+    // Held from reading the target to claiming the pass, so the pass is toward the persisted
+    // target and AlterTabletTier cannot swap it for another until the pass ends. Not held across
+    // the scan or the scheduling below.
+    std::lock_guard target_lock(tier_target_mutex_);
+    if (metadata()->target_storage_tier().empty()) {
+      return STATUS(IllegalState, "Tablet has no target storage tier");
+    }
+    if (expected_target) {
+      // A concurrent AlterTabletTier may have replaced the target the caller wrote; a pass toward
+      // the replacement would be reported to the caller as its own.
+      RETURN_NOT_OK(
+          CheckTierTargetStillPersisted(expected_target->tier, expected_target->path_id));
+    }
+    target_path_id = metadata()->target_tier_path_id();
+    target_dir = VERIFY_RESULT(LookupTierDir(target_path_id));
+
+    if (NeedPostSplitCompaction()) {
+      result.awaiting_post_split_compaction = true;
+      result.status = tier_migration_status();
+      VLOG_WITH_PREFIX(1) << "Tier migration pass deferred until the post-split compaction has run";
+      return result;
+    }
+
     std::lock_guard lock(tier_migration_mutex_);
     auto& status = tier_migration_status_;
     if (status.pass_in_flight) {
@@ -5272,21 +5320,12 @@ Result<TierReconcileResult> Tablet::RunTierMigrationPass(
 
   auto candidates = CollectTierMigrationCandidates(target_dir);
   result.candidates = candidates.size();
-  // Lets a test change the target between the scan and the verdict on it.
+  // Lets a test send a target change between the scan and the verdict on it.
   DEBUG_ONLY_TEST_SYNC_POINT("Tablet::RunTierMigrationPass:AfterScan");
 
   {
     std::lock_guard lock(tier_migration_mutex_);
     auto& status = tier_migration_status_;
-    // The target may have changed since the scan started, so the candidates are no longer valid.
-    if (metadata()->target_tier_path_id() != target_path_id) {
-      status.pass_in_flight = false;
-      result.candidates = 0;
-      result.target_changed = true;
-      result.state_changed = status.state != state_before;
-      result.status = status;
-      return result;
-    }
     if (candidates.empty()) {
       status.pass_in_flight = false;
       status.files_total = 0;
@@ -5348,13 +5387,13 @@ Result<TierReconcileResult> Tablet::RunTierMigrationPass(
   return result;
 }
 
-Result<TierMigrationStatus> Tablet::StartTierMigrationPass() {
+Result<TierMigrationStatus> Tablet::StartTierMigrationPass(
+    const std::optional<TierTarget>& expected_target) {
   auto result = VERIFY_RESULT(
-      RunTierMigrationPass(TierReconcileOptions{}, ReconcilerPass::kFalse));
-  // Nothing to move, or a scan the target change made moot: the verdict, or the new target, is
-  // the reconciler's to act on now. A pass that scheduled moves wakes it from
-  // FinishTierMigrationPass instead, and one waiting on the post-split compaction has nothing
-  // for it yet.
+      RunTierMigrationPass(TierReconcileOptions{}, ReconcilerPass::kFalse, expected_target));
+  // Nothing to move: the verdict is the reconciler's to act on now. A pass that scheduled moves
+  // wakes it from FinishTierMigrationPass instead, and one waiting on the post-split compaction
+  // has nothing for it yet.
   if (result.scheduled == 0 && !result.awaiting_post_split_compaction) {
     WakeTierMigrationReconciler();
   }
@@ -5362,7 +5401,7 @@ Result<TierMigrationStatus> Tablet::StartTierMigrationPass() {
 }
 
 Result<TierReconcileResult> Tablet::RunTierReconcilePass(const TierReconcileOptions& options) {
-  return RunTierMigrationPass(options, ReconcilerPass::kTrue);
+  return RunTierMigrationPass(options, ReconcilerPass::kTrue, /* expected_target = */ std::nullopt);
 }
 
 TierMigrationStatus Tablet::tier_migration_status() const {
@@ -5372,13 +5411,34 @@ TierMigrationStatus Tablet::tier_migration_status() const {
 
 Result<TierMigrationStatus> Tablet::AlterTabletTier(
     const std::string& target_tier, uint32_t target_path_id) {
-  RETURN_NOT_OK(SetTierMigrationTarget(target_tier, target_path_id));
-  auto status = StartTierMigrationPass();
+  auto scoped_operation = VERIFY_RESULT(CheckTierTargetUsable(target_path_id));
+
+  {
+    std::lock_guard target_lock(tier_target_mutex_);
+    if (IsPersistedTierTarget(target_tier, target_path_id)) {
+      std::lock_guard lock(tier_migration_mutex_);
+      if (tier_migration_status_.pass_in_flight) {
+        // The request the pass is already serving, delivered again. Nothing is rewritten under a
+        // running pass, not even the same target; the response says the pass is in flight.
+        return tier_migration_status_;
+      }
+    }
+    RETURN_NOT_OK(SetTierMigrationTargetUnlocked(target_tier, target_path_id));
+  }
+
+  // Lets a test slip another target in after the write, before the pass starts.
+  DEBUG_ONLY_TEST_SYNC_POINT("Tablet::AlterTabletTier:BeforeStartPass");
+
+  auto status = StartTierMigrationPass(TierTarget{.tier = target_tier, .path_id = target_path_id});
   if (status.ok() || !status.status().IsServiceUnavailable()) {
     return status;
   }
-  // A pass is already in flight. It keeps moving toward the target it started with; the next
-  // pass picks up the intent just persisted. Report its progress rather than failing.
+  // A pass is in flight, or the target was replaced. While the target is still this one, the pass
+  // read it after the write above and serves this request, so report its progress. Checked again
+  // here rather than inferred from the status: the pass that refused the start may have ended and
+  // the target been replaced since.
+  std::lock_guard target_lock(tier_target_mutex_);
+  RETURN_NOT_OK(CheckTierTargetStillPersisted(target_tier, target_path_id));
   std::lock_guard lock(tier_migration_mutex_);
   return tier_migration_status_;
 }
@@ -5452,8 +5512,8 @@ void Tablet::FinishTierMigrationPass(const std::shared_ptr<TierMigrationPass>& p
 
   // Even a pass with nothing left behind proves nothing by itself: a flush or compaction that was
   // already running when the target switched can have landed a file on the old disk since the
-  // scan, and the target may have changed while this pass ran. Deciding that the tablet has
-  // converged (kDone) is the background reconciler's job, from a fresh scan of its own.
+  // scan. Deciding that the tablet has converged (kDone) is the background reconciler's job, from
+  // a fresh scan of its own.
   {
     std::lock_guard lock(tier_migration_mutex_);
     auto& status = tier_migration_status_;
