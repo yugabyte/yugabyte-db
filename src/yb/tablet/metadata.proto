@@ -109,8 +109,8 @@ message TableInfoPB {
   optional fixed64 vector_index_deactivated_ht = 18;
 
   // For a colocated table that owns the vector reverse mapping: the tablet had rows of the table
-  // before the table was added, without their reverse mapping entries, and has not written them yet.
-  // Vector indexes of the table are not backfilled until it has.
+  // before the table was added, without their reverse mapping entries, and has not written them
+  // yet. Vector indexes of the table are not backfilled until it has.
   optional bool vector_reverse_mapping_repair_pending = 20;
 }
 
