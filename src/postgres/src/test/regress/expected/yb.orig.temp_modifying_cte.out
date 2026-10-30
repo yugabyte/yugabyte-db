@@ -1,0 +1,111 @@
+--
+-- Writes to a temp table that is not the statement's top-level target
+--
+CREATE TEMP TABLE tt (k int PRIMARY KEY, v int);
+INSERT INTO tt VALUES (1, 1), (2, 2), (3, 3), (4, 4), (5, 5);
+-- Data-modifying CTEs under a top-level SELECT
+WITH d AS (DELETE FROM tt WHERE k = 1 RETURNING *) SELECT * FROM d;
+ k | v 
+---+---
+ 1 | 1
+(1 row)
+
+WITH u AS (UPDATE tt SET v = 20 WHERE k = 2 RETURNING *) SELECT * FROM u;
+ k | v  
+---+----
+ 2 | 20
+(1 row)
+
+WITH i AS (INSERT INTO tt VALUES (6, 6) RETURNING *) SELECT * FROM i;
+ k | v 
+---+---
+ 6 | 6
+(1 row)
+
+BEGIN;
+WITH d AS (DELETE FROM tt WHERE k = 3 RETURNING *) SELECT * FROM d;
+ k | v 
+---+---
+ 3 | 3
+(1 row)
+
+COMMIT;
+SELECT * FROM tt ORDER BY k;
+ k | v  
+---+----
+ 2 | 20
+ 4 |  4
+ 5 |  5
+ 6 |  6
+(4 rows)
+
+-- Temp table written through a CTE while the top-level target is a YB table
+CREATE TABLE yb_t (k int PRIMARY KEY, v int);
+WITH d AS (DELETE FROM tt WHERE k = 4 RETURNING *) INSERT INTO yb_t SELECT * FROM d;
+SELECT * FROM tt ORDER BY k;
+ k | v  
+---+----
+ 2 | 20
+ 5 |  5
+ 6 |  6
+(3 rows)
+
+SELECT * FROM yb_t ORDER BY k;
+ k | v 
+---+---
+ 4 | 4
+(1 row)
+
+-- Prepared statement and PL/pgSQL
+PREPARE cte_del(int) AS
+  WITH d AS (DELETE FROM tt WHERE k = $1 RETURNING *) SELECT * FROM d;
+EXECUTE cte_del(5);
+ k | v 
+---+---
+ 5 | 5
+(1 row)
+
+EXECUTE cte_del(6);
+ k | v 
+---+---
+ 6 | 6
+(1 row)
+
+SELECT * FROM tt ORDER BY k;
+ k | v  
+---+----
+ 2 | 20
+(1 row)
+
+INSERT INTO tt VALUES (7, 7), (8, 8);
+CREATE FUNCTION cte_upd(x int) RETURNS SETOF tt LANGUAGE plpgsql AS $$
+BEGIN
+  RETURN QUERY WITH u AS (UPDATE tt SET v = -v WHERE k = x RETURNING *)
+    SELECT * FROM u;
+END $$;
+SELECT * FROM cte_upd(7);
+ k | v  
+---+----
+ 7 | -7
+(1 row)
+
+SELECT * FROM tt ORDER BY k;
+ k | v  
+---+----
+ 2 | 20
+ 7 | -7
+ 8 |  8
+(3 rows)
+
+-- Rule on a YB table whose action writes a temp table
+CREATE TEMP TABLE tt_log (k int, op text);
+CREATE RULE yb_t_ins AS ON INSERT TO yb_t DO ALSO INSERT INTO tt_log VALUES (NEW.k, 'ins');
+INSERT INTO yb_t VALUES (9, 9);
+SELECT * FROM tt_log;
+ k | op  
+---+-----
+ 9 | ins
+(1 row)
+
+DROP FUNCTION cte_upd(int);
+DROP TABLE yb_t;
