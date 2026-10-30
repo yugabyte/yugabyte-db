@@ -452,7 +452,8 @@ class TestMarkdownSharesTheTextCap:
     It used to carry its own 5 MiB cap, below every paid tier's upload limit,
     because the Markdown parser held the whole document's AST. It now parses
     one heading section at a time, so peak memory tracks the source instead of
-    the AST, and one cap covers both paths. See TestMarkdownSectionedMemory.
+    the AST, and one cap covers both paths. See TestSectionedMemory in
+    tests/test_md_streaming.py.
     """
 
     def test_markdown_chunker_reads_under_the_shared_cap(self):
