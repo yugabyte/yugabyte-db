@@ -157,6 +157,12 @@ class AbstractCloud(AbstractCommandParser):
             if value:
                 self.metadata[key] = value
 
+    def format_sdk_error(self, e):
+        """Returns a short user-facing message for an exception raised by this cloud's SDK, or
+        None to show the exception's own text.
+        """
+        return None
+
     def validate_credentials(self):
         potential_env_vars = self.metadata.get('credential_vars')
         missing_var = None

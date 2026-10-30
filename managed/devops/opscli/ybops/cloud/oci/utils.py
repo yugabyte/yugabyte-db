@@ -16,6 +16,7 @@ import requests
 
 from ybops.common.exceptions import YBOpsRuntimeError, YBOpsRecoverableError
 from ybops.cloud.common.utils import request_retry_decorator
+from ybops.cloud.oci.errors import format_oci_error
 from ybops.utils import DNS_RECORD_SET_TTL, MIN_MEM_SIZE_GB, MIN_NUM_CORES
 from ybops.utils.ssh import format_rsa_key, validated_key_file
 from threading import Thread
@@ -486,7 +487,7 @@ class OciCloudAdmin:
         except Exception as e:
             raise YBOpsRuntimeError(
                 "Failed to fetch OCI Instance Configuration {}: {}".format(
-                    instance_configuration_id, e))
+                    instance_configuration_id, format_oci_error(e) or e))
         instance_details = getattr(ic, "instance_details", None)
         launch_details = (
             getattr(instance_details, "launch_details", None) if instance_details else None)

@@ -15,6 +15,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.cloud.oci.OCIErrorFormatter;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.kms.algorithms.OciAlgorithm;
@@ -105,8 +106,10 @@ public class OciEARService extends EncryptionAtRestService<OciAlgorithm> {
       ObjectNode authConfig = EncryptionAtRestUtil.getAuthConfig(configUUID);
       return ociEARServiceUtil.decryptUniverseKey(configUUID, keyRef, authConfig);
     } catch (Exception e) {
-      LOG.error("Error retrieving key from OCI KMS", e);
-      throw new RuntimeException("Error retrieving key from OCI KMS", e);
+      String context = "Error retrieving key from OCI KMS";
+      LOG.error(context, e);
+      throw new RuntimeException(
+          OCIErrorFormatter.isOciError(e) ? OCIErrorFormatter.userMessage(context, e) : context, e);
     }
   }
 
@@ -130,8 +133,10 @@ public class OciEARService extends EncryptionAtRestService<OciAlgorithm> {
       byte[] encrypted = ociEARServiceUtil.encryptUniverseKey(configUUID, universeKey, authConfig);
       return new EncryptionKey(encrypted);
     } catch (Exception e) {
-      LOG.error("Error encrypting key with OCI KMS", e);
-      throw new RuntimeException("Error encrypting key with OCI KMS", e);
+      String context = "Error encrypting key with OCI KMS";
+      LOG.error(context, e);
+      throw new RuntimeException(
+          OCIErrorFormatter.isOciError(e) ? OCIErrorFormatter.userMessage(context, e) : context, e);
     }
   }
 
