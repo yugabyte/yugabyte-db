@@ -27,8 +27,12 @@ from observability import meko_observe
 # ATX heading, which is one chunk holding every table in the file. What
 # dominates there is the chunk under construction, not the parser - the
 # TableBlock rows for the whole document are live at once - so it is a property
-# of one-chunk-per-heading-section, not of the read cap. Size the text workers
-# for 1,211 MB times WORKER_CONCURRENCY.
+# of one-chunk-per-heading-section, not of the read cap.
+#
+# That 1,211 MB is per task. A worker claims one task at a time, so it is also
+# the per-pod figure; concurrency comes from how many rag-agent replicas run,
+# which is set in the agentic-cloud helm chart rather than by anything here.
+# Size the text pod's memory limit above 1,211 MB before raising this cap.
 #
 # Do not quote a single multiplier for this path. It ranges 3.0x to 18.9x at
 # this cap, by shape alone.
