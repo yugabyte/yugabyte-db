@@ -9,8 +9,14 @@ cuts the source at heading boundaries and builds one block's inline tree at a
 time, so peak memory tracks the source and one cap covers both paths.
 
 The parity tests are the point of this module: streaming must emit exactly the
-chunks the whole-document walk emitted, for every shape of Markdown, or the
-embeddings change.
+chunks the whole-document walk emitted, or the embeddings change.
+
+There is one deliberate exception, pinned by
+TestOversizedSectionPieces.test_a_forced_cut_changes_the_parse_of_that_block: a
+section holding a single block larger than _MAX_FORCED_PIECE_BYTES is cut
+mid-block, because nothing else bounds it. The chunk still holds all the text
+and the chunk count is unchanged; the rows after the cut parse as prose rather
+than as table cells.
 """
 
 import gc
@@ -503,10 +509,12 @@ class TestLaziness:
 
 
 def table_document_without_headings(target_bytes: int) -> str:
-    """Table-heavy with no column-0 ATX heading: one section, one chunk.
+    """Many tables, no column-0 ATX heading: one section, one chunk.
 
     The shape that defeats the heading split, and so the one that forced the
-    second bound in `_iter_section_pieces`.
+    second bound in `_iter_section_pieces`. Note the blank line between each
+    table, which gives that bound a legal cut point - see
+    `single_table_document` for the shape that does not.
     """
     out, size = [], 0
     while size < target_bytes:
@@ -515,6 +523,38 @@ def table_document_without_headings(target_bytes: int) -> str:
         out.append(s)
         size += len(s)
     return "# T\n\n" + "".join(out)
+
+
+def single_table_document(target_bytes: int) -> str:
+    """ONE table: a header, a delimiter, then rows. No blank line anywhere.
+
+    The blank-line rule cannot cut this, so it is the case the forced cut
+    exists for. Measured unbounded before that: 90.3x at 2 MiB and 85.9x at
+    5 MiB.
+    """
+    rows, size, i = [], 0, 0
+    while size < target_bytes:
+        i += 1
+        row = f"| r{i} | v{i} | w{i} |\n"
+        rows.append(row)
+        size += len(row)
+    return "# T\n\n| a | b | c |\n|---|---|---|\n" + "".join(rows)
+
+
+def single_list_document(target_bytes: int) -> str:
+    """One tight list, no blank line anywhere. Measured 45.5x at 5 MiB."""
+    out, size, i = [], 0, 0
+    while size < target_bytes:
+        i += 1
+        item = f"- item {i} text\n"
+        out.append(item)
+        size += len(item)
+    return "# T\n\n" + "".join(out)
+
+
+def single_fence_document(target_bytes: int) -> str:
+    """One fenced code block. Cheap at any size: measured 4.0x."""
+    return "# T\n\n```\n" + "x = 1\n" * (target_bytes // 6) + "```\n"
 
 
 class TestOversizedSectionPieces:
@@ -555,6 +595,33 @@ class TestOversizedSectionPieces:
                 "a piece ended inside a fenced block"
             )
 
+    def test_a_forced_cut_changes_the_parse_of_that_block(self):
+        """The one place chunk output is knowingly not identical.
+
+        A cut inside a table leaves the rows after it without a header row, so
+        they parse as a paragraph instead of table prose. This is the accepted
+        cost of bounding a single block; the test exists so the divergence is
+        a recorded decision rather than a surprise. Everything about it is
+        confined to a section holding one block over the forced ceiling.
+        """
+        text = single_table_document(md_parser._MAX_FORCED_PIECE_BYTES * 2)
+
+        expected = reference_walk(text)
+        _, streamed = stream_markdown(text)
+        got = list(streamed)
+
+        # Still one chunk under the same heading: the cut does not add chunks,
+        # because chunks flush on headings only.
+        assert len(got) == len(expected) == 1
+        assert got[0].heading_path == expected[0].heading_path
+        # The text does differ, which is the point being recorded.
+        assert got[0].text != expected[0].text
+        # Nothing is lost: every row still reaches the chunk, as prose rather
+        # than as table cells.
+        assert "r1" in got[0].text and "r1" in expected[0].text
+        last_row = text.rstrip().rsplit("\n", 1)[-1].split("|")[1].strip()
+        assert last_row in got[0].text
+
     def test_chunks_are_unchanged_for_an_oversized_table_section(self):
         # Tables and paragraphs are separated by blank lines, so cutting there
         # produces the same block tokens and therefore the same chunk.
@@ -578,6 +645,72 @@ class TestOversizedSectionPieces:
         _, streamed = stream_markdown(text)
 
         assert chunks_as_data(list(streamed)) == chunks_as_data(expected)
+
+    @pytest.mark.parametrize("builder", [
+        single_table_document,
+        single_list_document,
+    ])
+    def test_one_enormous_block_is_still_cut(self, builder):
+        """The blank-line rule alone leaves this unbounded.
+
+        A single table or list has no blank line in it, so nothing capped the
+        parse. Measured 90.3x for a 2 MiB table and 46.8x for a 2 MiB list
+        before the forced cut.
+        """
+        text = builder(md_parser._MAX_FORCED_PIECE_BYTES * 2)
+        pieces = list(md_parser._iter_section_pieces(text))
+
+        assert len(pieces) > 1, "one block was never cut"
+        assert "".join(pieces) == text
+
+        # The cut lands on the first top-level line at or after the ceiling,
+        # so a piece can overshoot by at most one line.
+        longest_line = max(len(line) for line in text.split("\n")) + 1
+        limit = md_parser._MAX_FORCED_PIECE_BYTES + longest_line
+        longest = max(len(p) for p in pieces)
+        assert longest <= limit, (
+            f"longest piece is {longest} bytes, over the forced ceiling "
+            f"{md_parser._MAX_FORCED_PIECE_BYTES} plus one line "
+            f"({longest_line})"
+        )
+
+    def test_a_huge_fence_is_never_cut(self):
+        """Cutting a fence would parse code as Markdown, and it is cheap.
+
+        One fenced block is a single token holding raw text: measured 4.0x at
+        both 2 and 5 MiB, so it needs no bound.
+        """
+        text = single_fence_document(md_parser._MAX_FORCED_PIECE_BYTES * 2)
+
+        pieces = list(md_parser._iter_section_pieces(text))
+
+        assert len(pieces) == 1, "a fenced block must not be split"
+        assert pieces[0] == text
+
+    @pytest.mark.parametrize("builder", [
+        single_table_document,
+        single_list_document,
+    ])
+    def test_one_enormous_block_stays_bounded_as_it_grows(self, builder):
+        small = builder(md_parser._MAX_FORCED_PIECE_BYTES)
+        large = builder(md_parser._MAX_FORCED_PIECE_BYTES * 4)
+
+        def run(text):
+            def go():
+                _, chunks = stream_markdown(text)
+                for _chunk in chunks:
+                    pass
+            return go
+
+        small_ratio = peak_bytes(run(small)) / len(small.encode())
+        large_ratio = peak_bytes(run(large)) / len(large.encode())
+
+        # Unbounded, both sit at the same high multiple. Bounded, the parse
+        # cost is capped at one piece while the source grows, so it falls.
+        assert large_ratio < small_ratio * 0.75, (
+            f"peak per source byte only went from {small_ratio:.1f}x to "
+            f"{large_ratio:.1f}x on a 4x larger single block"
+        )
 
     def test_the_bound_holds_for_a_headingless_document(self):
         """The case the heading split alone does not cover.

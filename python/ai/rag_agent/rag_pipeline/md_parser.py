@@ -388,22 +388,46 @@ def _seed_ref_links(s: str, env: MutableMapping[str, Any]) -> None:
 # size, roughly 6 GB at the 64 MiB read cap. Over this size a section is cut
 # further at top-level blank lines, which bounds the token list without
 # changing which chunks are produced, since chunks are flushed on headings
-# only. See _iter_section_pieces for what this can change.
+# only.
 _MAX_SECTION_BYTES = 1024 * 1024  # 1 MiB
+
+# A blank line is the only cut that preserves the parse, and one enormous block
+# contains none: a single 5 MiB table measures 85.9x and a single 5 MiB list
+# 45.5x, both unbounded, which at the 64 MiB cap is gigabytes again. Past this
+# size the cut is taken at the next top-level line instead, accepting a changed
+# parse for that block. See _iter_section_pieces.
+_MAX_FORCED_PIECE_BYTES = 2 * _MAX_SECTION_BYTES  # 2 MiB
 
 
 def _iter_section_pieces(section: str) -> Iterator[str]:
-    """Cut an oversized section at top-level blank lines.
+    """Cut an oversized section so no one parse call sees too much at once.
 
     Only sections over ``_MAX_SECTION_BYTES`` are cut, so an ordinary document
-    is parsed exactly as before. A blank line at the top level always ends a
-    CommonMark block, so for the shapes that make a section huge - tables,
-    paragraphs, fenced code - each piece parses to the same block tokens as
-    the whole section would, and the chunk is unchanged. Two constructs can
-    straddle a cut and parse differently: a loose list, whose items would
-    become two lists, and an indented code block containing a blank line,
-    which would become two code blocks. Both are accepted here, because the
-    alternative for such a section is a worker that runs out of memory.
+    is parsed exactly as before.
+
+    The preferred cut is a top-level blank line, which always ends a
+    CommonMark block. For the shapes that make a section huge - many tables,
+    many paragraphs - each piece then parses to the same block tokens as the
+    whole section would, and the chunk is unchanged.
+
+    One enormous block has no blank line to cut at, and is the case that
+    matters most: a single 5 MiB table measures 85.9x its size and a single
+    5 MiB list 45.5x, neither bounded by a blank-line rule. Past
+    ``_MAX_FORCED_PIECE_BYTES`` the cut is therefore taken at the next
+    top-level line, which does change how that block parses - the rows after
+    the cut lose their header row and become a paragraph, and a list becomes
+    two lists. That is accepted, because the alternative is a worker that runs
+    out of memory on input the api-server accepted.
+
+    A cut is never taken inside a fenced code block or an HTML block, both
+    because the scanner reports those lines as not top-level and because they
+    do not need it: a fence is one token holding raw text and measures 4.0x at
+    any size. Cutting one would turn code into Markdown.
+
+    Known divergences from a whole-document parse, both confined to a section
+    over the threshold: a loose list straddling a blank-line cut becomes two
+    lists, and an indented code block containing a blank line becomes two code
+    blocks.
     """
     if len(section) <= _MAX_SECTION_BYTES:
         yield section
@@ -413,12 +437,19 @@ def _iter_section_pieces(section: str) -> Iterator[str]:
     start = 0
     for pos, eol in _iter_line_spans(section):
         line = section[pos:eol]
-        if (scanner.feed(line)
-                and not line.strip()
-                and pos - start >= _MAX_SECTION_BYTES):
+        if not scanner.feed(line):
+            # Inside a fence or an HTML block: never a cut point.
+            continue
+        size = pos - start
+        if not line.strip() and size >= _MAX_SECTION_BYTES:
             # Cut after the blank line, so the next piece starts on content.
             yield section[start:eol + 1]
             start = eol + 1
+        elif size >= _MAX_FORCED_PIECE_BYTES:
+            # No blank line arrived in time. Cut before this line, which is
+            # mid-block, rather than let the block grow without bound.
+            yield section[start:pos]
+            start = pos
 
     if start < len(section):
         yield section[start:]
