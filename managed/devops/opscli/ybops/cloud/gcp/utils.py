@@ -16,6 +16,7 @@ import json
 from googleapiclient import discovery
 from googleapiclient.errors import HttpError
 import google.auth
+import google.auth.transport.requests
 from six.moves import http_client
 
 from ybops.common.exceptions import YBOpsRuntimeError
@@ -41,6 +42,7 @@ STARTUP_SCRIPT_META_KEY = "startup-script"
 SERVER_TYPE_META_KEY = "server_type"
 SSH_KEYS_META_KEY = "ssh-keys"
 BLOCK_PROJECT_SSH_KEY = "block-project-ssh-keys"
+OS_LOGIN_META_KEY = "enable-oslogin"
 
 META_KEYS = [STARTUP_SCRIPT_META_KEY, SERVER_TYPE_META_KEY, SSH_KEYS_META_KEY]
 
@@ -578,9 +580,11 @@ class GoogleCloudAdmin():
 
         self.metadata = metadata
         self.waiter = Waiter(self.project, self.compute)
-        # Memoizes instance template name -> (boot disk key, data disk key), to avoid refetching
-        # the template for every disk we create during a single invocation.
+        # Memoize instance template name -> template and -> (boot disk key, data disk key), to
+        # avoid refetching the template for every disk we create during a single invocation.
+        self.templates = {}
         self.template_kms_keys = {}
+        self.oslogin = None
 
     def network(self, dest_vpc_id=None, host_vpc_id=None, per_region_meta=None,
                 create_new_vpc=False):
@@ -620,6 +624,78 @@ class GoogleCloudAdmin():
         return self.compute.instanceTemplates().get(
             project=self.project, instanceTemplate=name).execute()
 
+    def _read_instance_template(self, template_name):
+        if template_name not in self.templates:
+            try:
+                self.templates[template_name] = self.get_instance_template(template_name)
+            except HttpError as e:
+                raise YBOpsRuntimeError("Failed to read instance template {}: {}".format(
+                    template_name, e))
+        return self.templates[template_name]
+
+    def get_template_os_login_metadata(self, template_name):
+        """Returns the template's enable-oslogin metadata item, or None if it does not set one.
+
+        instances().insert() replaces the template's metadata "items" list with ours, so the
+        template's enable-oslogin is dropped unless we copy it into the items we send.
+        """
+        if not template_name:
+            return None
+        items = self._read_instance_template(template_name).get(
+            "properties", {}).get("metadata", {}).get("items", [])
+        return next((item for item in items if item.get("key") == OS_LOGIN_META_KEY), None)
+
+    def is_os_login_enabled_by_template(self, template_name):
+        item = self.get_template_os_login_metadata(template_name)
+        return item is not None and str(item.get("value", "")).lower() == "true"
+
+    def _get_principal_email(self):
+        email = getattr(self.credentials, "service_account_email", None)
+        if email in (None, "default"):
+            # Compute Engine credentials only learn the attached service account on refresh.
+            self.credentials.refresh(google.auth.transport.requests.Request())
+            email = getattr(self.credentials, "service_account_email", None)
+        return None if email == "default" else email
+
+    def import_os_login_ssh_key(self, public_key):
+        """Adds public_key to the OS Login profile of the principal YBA authenticates as.
+
+        OS Login ignores the ssh-keys instance metadata, so this is what lets YBA SSH into nodes
+        that have OS Login enabled. Importing a key that is already on the profile is a no-op.
+        Returns the profile's POSIX username for this project, or None if the credentials have no
+        identifiable principal (e.g. user credentials), in which case the key must be imported
+        out of band.
+
+        The key is imported without an expiration and nothing removes it, so rotating or deleting
+        the access key does not revoke it: the old key keeps working on every OS Login VM where
+        the principal has login access, until removed with `gcloud compute os-login ssh-keys
+        remove`.
+        """
+        email = self._get_principal_email()
+        if not email:
+            logging.warning("[app] Cannot determine the principal of the GCP credentials; skipping "
+                            "OS Login SSH key import. Import the key manually and set the SSH "
+                            "user of the universe's Linux version (or the provider, if the "
+                            "Linux version does not set one) to the OS Login POSIX username.")
+            return None
+        if self.oslogin is None:
+            self.oslogin = discovery.build(
+                "oslogin", "v1", credentials=self.credentials, num_retries=3)
+        try:
+            response = self.oslogin.users().importSshPublicKey(
+                parent="users/{}".format(email), projectId=self.project,
+                body={"key": public_key}).execute()
+        except HttpError as e:
+            raise YBOpsRuntimeError(
+                "Failed to import SSH key into the OS Login profile of {}: {}".format(email, e))
+        accounts = response.get("loginProfile", {}).get("posixAccounts", [])
+        account = next((a for a in accounts if a.get("primary")), accounts[0] if accounts else None)
+        if account is None:
+            raise YBOpsRuntimeError("OS Login profile of {} has no POSIX account".format(email))
+        logging.info("[app] Imported SSH key into the OS Login profile of {} (POSIX user {})"
+                     .format(email, account.get("username")))
+        return account.get("username")
+
     def get_template_disk_kms_keys(self, template_name):
         """Returns the (boot disk, data disk) CMEK keys declared on an instance template.
 
@@ -633,11 +709,7 @@ class GoogleCloudAdmin():
             return (None, None)
         if template_name in self.template_kms_keys:
             return self.template_kms_keys[template_name]
-        try:
-            template = self.get_instance_template(template_name)
-        except HttpError as e:
-            raise YBOpsRuntimeError("Failed to read instance template {}: {}".format(
-                template_name, e))
+        template = self._read_instance_template(template_name)
         boot_key = None
         data_key = None
         for disk in template.get("properties", {}).get("disks", []):
@@ -1150,6 +1222,10 @@ class GoogleCloudAdmin():
                 "items": get_firewall_tags()
             }
         }
+
+        os_login_item = self.get_template_os_login_metadata(instance_template_to_read)
+        if os_login_item is not None:
+            body["metadata"]["items"].append(os_login_item)
 
         if capacity_reservation:
             logging.info(f'[app] Using capacity reservation: {capacity_reservation}')
