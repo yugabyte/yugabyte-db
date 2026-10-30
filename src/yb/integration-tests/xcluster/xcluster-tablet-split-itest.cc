@@ -1019,13 +1019,15 @@ TEST_F(XClusterTabletSplitMetricsTest, VerifyReplicationLagMetricsOnChildren) {
       consumer_cluster_->GetMasterAddresses(), "set_universe_replication_enabled",
       kProducerClusterId, "1"));
   ASSERT_OK(CheckForNumRowsOnConsumer(3 * kDefaultNumRows));
-  SleepFor(FLAGS_update_metrics_interval_ms * 2ms);  // Wait for metrics to update.
-  {
-    auto [committed_lag_micros, sent_lag_micros] = FetchMaxReplicationLag(stream_id);
-    LOG(INFO) << "Replication lag is : " << committed_lag_micros << ", " << sent_lag_micros;
-    ASSERT_EQ(committed_lag_micros, 1);
-    ASSERT_EQ(sent_lag_micros, 1);
-  }
+  // A caught-up GetChanges sets lag to 1, but the periodic metrics update recomputes it as 0, so
+  // wait until the value from a caught-up poll is observed.
+  ASSERT_OK(LoggedWaitFor(
+      [this, &stream_id]() {
+        auto [committed_lag_micros, sent_lag_micros] = FetchMaxReplicationLag(stream_id);
+        LOG(INFO) << "Replication lag is : " << committed_lag_micros << ", " << sent_lag_micros;
+        return committed_lag_micros == 1 && sent_lag_micros == 1;
+      },
+      kRpcTimeout, "Wait for caught-up replication lag"));
 }
 
 class XClusterExternalTabletSplitITest :
