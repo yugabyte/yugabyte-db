@@ -373,13 +373,6 @@ DEFINE_RUNTIME_bool(advance_deactivated_vector_index_flushed_op_id, true,
     "schedule retains it, is advanced to that of the regular db after a regular db flush.");
 TAG_FLAG(advance_deactivated_vector_index_flushed_op_id, advanced);
 
-DEFINE_RUNTIME_bool(advance_idle_vector_index_flushed_op_id, true,
-    "If true, the flushed op id of a vector index whose backfill is done and that holds nothing "
-    "unflushed, e.g. one whose new rows all have a NULL vector, is advanced to that of the regular "
-    "db after a regular db flush, once it lags by more than "
-    "vector_index_num_raft_ops_to_force_flush operations.");
-TAG_FLAG(advance_idle_vector_index_flushed_op_id, advanced);
-
 DEFINE_RUNTIME_bool(vector_index_include_into_post_split_compaction, true,
     "Whether to include vector indexes into tablet's post split compaction");
 TAG_FLAG(vector_index_include_into_post_split_compaction, hidden);
@@ -717,9 +710,9 @@ class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
     // Best-effort; not fatal. As above, suppress ShutdownInProgress and let TryAgain warn.
     LOG_IF_WITH_PREFIX_AND_FUNC(WARNING, !status.ok() && !status.IsShutdownInProgress())
         << "Failed to update intents db flushed op id: " << status;
-    status = tablet_.MayAdvanceIdleVectorIndexesFlushedOpId();
+    status = tablet_.MayAdvanceDeactivatedVectorIndexesFlushedOpId();
     LOG_IF_WITH_PREFIX_AND_FUNC(WARNING, !status.ok() && !status.IsShutdownInProgress())
-        << "Failed to advance idle vector indexes flushed op id: " << status;
+        << "Failed to advance deactivated vector indexes flushed op id: " << status;
   }
 
  private:
@@ -4774,11 +4767,8 @@ void Tablet::FlushIntentsDbIfNecessary(const yb::OpId& lastest_log_entry_op_id) 
   }
 }
 
-Status Tablet::MayAdvanceIdleVectorIndexesFlushedOpId() {
-  const IncludeDeactivated include_deactivated{
-      FLAGS_advance_deactivated_vector_index_flushed_op_id};
-  const IncludeActive include_active{FLAGS_advance_idle_vector_index_flushed_op_id};
-  if (!include_deactivated && !include_active) {
+Status Tablet::MayAdvanceDeactivatedVectorIndexesFlushedOpId() {
+  if (!FLAGS_advance_deactivated_vector_index_flushed_op_id) {
     return Status::OK();
   }
   auto scoped_read_operation = CreateScopedRWOperationBlockingRocksDbShutdownStart();
@@ -4795,7 +4785,7 @@ Status Tablet::MayAdvanceIdleVectorIndexesFlushedOpId() {
   if (!regular_op_id.is_valid_not_empty()) {
     return Status::OK();
   }
-  vector_indexes_->AdvanceIdleFlushedOpIds(regular_op_id, include_deactivated, include_active);
+  vector_indexes_->AdvanceDeactivatedFlushedOpIds(regular_op_id);
   return Status::OK();
 }
 

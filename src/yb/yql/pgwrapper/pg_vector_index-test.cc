@@ -129,7 +129,6 @@ DECLARE_int32(retryable_request_timeout_secs);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
-DECLARE_int32(vector_index_num_raft_ops_to_force_flush);
 DECLARE_int32(TEST_delay_init_tablet_peer_ms);
 DECLARE_int32(TEST_sleep_after_vector_index_backfill_chunk_ms);
 DECLARE_int32(ysql_client_read_write_timeout_ms);
@@ -3143,63 +3142,6 @@ TEST_P(PgVectorIndexColocationOnlyTest, DeactivatedIndexDoesNotHoldBackBootstrap
     ASSERT_OK(cluster_->mini_tablet_server(i)->Restart(tserver::WaitTabletsBootstrapped::kTrue));
   }
   ASSERT_OK(wait_dropped_index_caught_up("Dropped index flushed OpId caught up after restart"));
-}
-
-// Rows whose vector is NULL add nothing to the index, so its flushed OpId stays at its last vector
-// unless advanced to the regular DB's, and bootstrap replays all the log after it. See #35620.
-TEST_P(PgVectorIndexColocationOnlyTest, IdleIndexDoesNotHoldBackBootstrap) {
-  constexpr size_t kNumRows = 16;
-  constexpr size_t kNumNullRows = 64;
-  // An active index is advanced only once it lags the regular DB by more than this.
-  constexpr int32_t kMaxLag = 10;
-
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_num_raft_ops_to_force_flush) = kMaxLag;
-
-  auto conn = ASSERT_RESULT(MakeIndex());
-  ASSERT_OK(InsertRows(conn, 1, kNumRows));
-  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
-  ASSERT_OK(cluster_->FlushTablets());
-
-  for (auto i = kNumRows + 1; i <= kNumRows + kNumNullRows; ++i) {
-    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES ($0, NULL)", i));
-  }
-  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
-  ASSERT_OK(cluster_->FlushTablets());
-
-  auto wait_index_caught_up = [this](const std::string& description) {
-    return WaitFor(
-        [this]() -> Result<bool> {
-          size_t num_indexes = 0;
-          for (const auto& peer : ListTabletPeersWithVectorIndexes(cluster_.get())) {
-            auto tablet = VERIFY_RESULT(peer->shared_tablet());
-            auto regular = VERIFY_RESULT(tablet->GetPersistentState()).regular;
-            SCHECK(regular.is_valid_not_empty(), IllegalState,
-                   Format("$0no flushed regular DB OpId", tablet->LogPrefix()));
-            for (const auto& index : *tablet->vector_indexes().List()) {
-              ++num_indexes;
-              auto frontier = index->GetFlushedFrontier();
-              auto index_op_id = frontier ? frontier->op_id() : OpId();
-              if (index_op_id.index + kMaxLag < regular.index) {
-                LOG(INFO) << tablet->LogPrefix() << "Vector index flushed OpId " << index_op_id
-                          << " behind the regular DB's " << regular;
-                return false;
-              }
-            }
-          }
-          return num_indexes != 0;
-        },
-        30s * kTimeMultiplier, description);
-  };
-  ASSERT_OK(wait_index_caught_up("Idle index flushed OpId caught up"));
-
-  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
-    ASSERT_OK(cluster_->mini_tablet_server(i)->Restart(tserver::WaitTabletsBootstrapped::kTrue));
-  }
-  ASSERT_OK(wait_index_caught_up("Idle index flushed OpId caught up after restart"));
-
-  conn = ASSERT_RESULT(Connect());
-  VerifyRead(conn, kNumRows, AddFilter::kFalse);
 }
 
 // A vector index flush that fails, before or after it seals the mutable chunk, fails the tablet

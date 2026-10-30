@@ -27,7 +27,6 @@
 #include "yb/tablet/tablet_options.h"
 
 #include "yb/util/shutdown_controller.h"
-#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 
@@ -36,9 +35,6 @@ class ScopedRWOperation;
 }
 
 namespace yb::tablet {
-
-YB_STRONGLY_TYPED_BOOL(IncludeDeactivated);
-YB_STRONGLY_TYPED_BOOL(IncludeActive);
 
 class VectorIndexList {
  public:
@@ -145,14 +141,10 @@ class TabletVectorIndexes :
   // new rows, while their unflushed rows keep the log and the intents DB from being cleaned up.
   void FlushDeactivated() EXCLUDES(vector_indexes_mutex_);
 
-  // Advances the flushed OpId of indexes holding nothing unflushed to op_id, the regular DB's
-  // flushed OpId. Otherwise an index that gets no new vectors, deactivated or with every new row's
-  // vector NULL, keeps the OpId of its last vector, and bootstrap replays all the log after it.
-  // An active index is skipped until its backfill is done, since backfill inserts rows outside the
-  // log, and while it lags by at most vector_index_num_raft_ops_to_force_flush operations.
-  void AdvanceIdleFlushedOpIds(
-      const OpId& op_id, IncludeDeactivated include_deactivated, IncludeActive include_active)
-      EXCLUDES(vector_indexes_mutex_);
+  // Advances the flushed OpId of deactivated indexes holding nothing unflushed to op_id, the
+  // regular DB's flushed OpId. Otherwise it stays where the index was deactivated, and bootstrap
+  // replays all the log after it.
+  void AdvanceDeactivatedFlushedOpIds(const OpId& op_id) EXCLUDES(vector_indexes_mutex_);
 
   // Relaunches backfills after a restore replaced the storages: the restored checkpoint could have
   // been taken before a backfill finished, e.g. by a replica still bootstrapping.

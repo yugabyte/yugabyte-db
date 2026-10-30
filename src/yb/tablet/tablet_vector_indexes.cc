@@ -81,7 +81,6 @@ DEFINE_RUNTIME_uint32(vector_index_backfill_retry_delay_ms, 5000,
     "were being replaced, e.g. by a truncate or a restore.");
 
 DECLARE_bool(vector_index_include_into_post_split_compaction);
-DECLARE_int32(vector_index_num_raft_ops_to_force_flush);
 
 namespace yb::tablet {
 
@@ -998,48 +997,29 @@ void TabletVectorIndexes::FlushDeactivated() {
   }
 }
 
-void TabletVectorIndexes::AdvanceIdleFlushedOpIds(
-    const OpId& op_id, IncludeDeactivated include_deactivated, IncludeActive include_active) {
+void TabletVectorIndexes::AdvanceDeactivatedFlushedOpIds(const OpId& op_id) {
   auto list = List();
   if (!list) {
     return;
   }
   for (const auto& index : *list) {
-    if (index->IsDeactivated()) {
-      if (!include_deactivated) {
-        continue;
-      }
-    } else {
-      if (!include_active || index->GetFlushAbility() == storage::FlushAbility::kHasNewData) {
-        continue;
-      }
-      auto backfill_done = index->BackfillDone();
-      if (!backfill_done.ok() || !*backfill_done) {
-        continue;
-      }
-    }
-    auto flushed = index->GetFlushedFrontier();
-    auto flushed_op_id = flushed ? flushed->op_id() : OpId();
-    if (flushed_op_id >= op_id) {
+    if (!index->IsDeactivated()) {
       continue;
     }
-    // Each advance adds a record to the index manifest that only a compaction removes, and an
-    // index that gets no vectors does not compact. So an active index is advanced only once it
-    // lags as far as an index holding unflushed entries may, before it is force flushed.
-    if (!index->IsDeactivated() &&
-        op_id.index - flushed_op_id.index <= FLAGS_vector_index_num_raft_ops_to_force_flush) {
+    auto flushed = index->GetFlushedFrontier();
+    if (flushed && flushed->op_id() >= op_id) {
       continue;
     }
     auto advanced = index->AdvanceFlushedOpId(op_id);
     if (!advanced.ok()) {
       LOG_WITH_PREFIX(WARNING)
-          << "Failed to advance flushed OpId of vector index " << index->table_id()
+          << "Failed to advance flushed OpId of deactivated vector index " << index->table_id()
           << " to " << op_id << ": " << advanced.status();
       continue;
     }
     VLOG_WITH_PREFIX(2)
-        << (index->IsDeactivated() ? "Deactivated" : "Idle") << " vector index "
-        << index->table_id() << " flushed OpId " << flushed_op_id << " -> " << op_id
+        << "Deactivated vector index " << index->table_id() << " flushed OpId "
+        << (flushed ? flushed->op_id() : OpId()) << " -> " << op_id
         << (*advanced ? "" : " skipped, unflushed data");
   }
 }
