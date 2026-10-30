@@ -223,6 +223,10 @@ DEFINE_RUNTIME_CONN_MGR_FLAG(uint32, cancel_timeout_ms, 5000,
     "connection used to forward a client's cancel request. The backend the cancel targets is "
     "not handed to another client during this wait. Setting this to 0 waits indefinitely.");
 
+DEFINE_NON_RUNTIME_CONN_MGR_test_flag(uint32, cancel_delay_ms, 0,
+    "Delay in milliseconds between Connection Manager matching a cancel request to a backend "
+    "and forwarding the cancel to postgres.");
+
 DEFINE_NON_RUNTIME_CONN_MGR_FLAG(uint32, socket_listen_backlog, 128,
     "Maximum number of pending TCP connections queued by the kernel on "
     "Connection Manager's listening socket (the backlog argument to listen(2)). "
