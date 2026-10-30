@@ -15742,7 +15742,6 @@ dropconstraint_internal(Relation rel, HeapTuple constraintTup, DropBehavior beha
 	 * routines, we have to do this one level of recursion at a time; we can't
 	 * use find_all_inheritors to do it in one pass.
 	 */
-	/* YB_TODO_PG19MERGE: was *yb_mutable_rel, which isn't in scope here; using rel (the constraint's relation). */
 	if (!is_no_inherit_constraint)
 		children = find_inheritance_children(RelationGetRelid(rel), lockmode);
 	else
@@ -25854,12 +25853,12 @@ YbATCopyMiscMetadata(Relation old_rel, Relation new_rel, const AttrMap *attmap)
 		else
 			nulls[Anum_pg_attribute_attacl - 1] = true;
 
-		/*
-		 * YB_TODO_PG19MERGE: attstattarget is not longer present in
-		 * FormData_pg_attribute.
-		 * For now, leave the new tuple's attstattarget NULL.
-		 */
-		nulls[Anum_pg_attribute_attstattarget - 1] = true;
+		/* Copy attstattarget value. */
+		values[Anum_pg_attribute_attstattarget - 1] =
+			heap_getattr(old_rel_att_tuple,
+						 Anum_pg_attribute_attstattarget,
+						 RelationGetDescr(pg_attribute),
+						 &nulls[Anum_pg_attribute_attstattarget - 1]);
 		replaces[Anum_pg_attribute_attstattarget - 1] = true;
 
 		new_rel_att_tuple = SearchSysCache2(ATTNUM, ObjectIdGetDatum(new_relid),
@@ -26328,18 +26327,17 @@ YbATCreateSimilarForeignKey(HeapTuple tuple, const char *fk_name,
 	bool		yb_pk_has_without_overlaps = false;
 
 	index_oid = transformFkeyCheckAttrs(fk_rel, numkeys, confkey,
-										false /* with_period */ ,
+										con_form->conperiod,
 										index_opclasses,
 										&yb_pk_has_without_overlaps);
 
 	/* Record the FK constraint in pg_constraint. */
-	/* YB_TODO_PG19MERGE: verify new PG args (isEnforced, conPeriod) */
 	Oid			constr_oid = CreateConstraintEntry(fk_name,
 												   con_form->connamespace,
 												   CONSTRAINT_FOREIGN,
 												   con_form->condeferrable,
 												   con_form->condeferred,
-												   true /* isEnforced */ ,
+												   con_form->conenforced,
 												   con_form->convalidated,
 												   con_form->conparentid,
 												   RelationGetRelid(base_rel),
@@ -26369,8 +26367,12 @@ YbATCreateSimilarForeignKey(HeapTuple tuple, const char *fk_name,
 												   true,	/* islocal */
 												   0,	/* inhcount */
 												   con_form->connoinherit,	/* conNoInherit */
-												   false /* conPeriod */ ,
+												   con_form->conperiod,
 												   false);	/* is_internal */
+
+	/* A NOT ENFORCED foreign key has no triggers. */
+	if (!con_form->conenforced)
+		return constr_oid;
 
 	/*
 	 * Postgres no longer has this function. Need to use new Postgres's
