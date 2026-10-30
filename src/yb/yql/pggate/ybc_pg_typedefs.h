@@ -566,7 +566,6 @@ typedef struct {
   uint64_t txn_serial_no;
   uint64_t read_time_serial_no;
   uint32_t active_sub_transaction_id;
-  bool is_legacy_mode_for_catalog_ops;
 } YbcPgSessionState;
 
 typedef struct {

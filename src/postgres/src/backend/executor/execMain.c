@@ -1701,6 +1701,16 @@ ExecutePlan(QueryDesc *queryDesc,
 		use_parallel_mode = queryDesc->plannedstmt->parallelModeNeeded;
 		yb_read_ahead_allowed = IsYugaByteEnabled() && YbIsReadAheadAllowed();
 	}
+
+	/*
+	 * YB: A parallel worker reads only committed catalog rows, so after a DDL
+	 * in this transaction block it fails on the leader's uncommitted changes,
+	 * e.g. "invalid attnum 3" for a column the block added (#30978, #34740).
+	 * Run the plan in the leader alone.
+	 */
+	if (use_parallel_mode && IsYugaByteEnabled() &&
+		YBGetDdlUseRegularTransactionBlock())
+		use_parallel_mode = false;
 	queryDesc->already_executed = true;
 
 	estate->es_use_parallel_mode = use_parallel_mode;

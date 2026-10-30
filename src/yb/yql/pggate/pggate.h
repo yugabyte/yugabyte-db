@@ -807,7 +807,6 @@ class PgApiImpl {
   void ResumeSysTablePrefetching();
   bool IsSysTablePrefetchingStarted() const;
   bool IsParallelWorker() const;
-  bool LeaderIsLegacyModeForCatalogOps() const;
   void RegisterSysTableForPrefetching(
       const PgObjectId& table_id, const PgObjectId& index_id, int row_oid_filtering_attr,
       bool fetch_ybctid);
@@ -1024,7 +1023,6 @@ class PgApiImpl {
   const WaitEventWatcher wait_event_watcher_;
 
   bool is_parallel_worker_;
-  bool leader_is_legacy_mode_for_catalog_ops_ = true;
 
   PgSharedDataHolder pg_shared_data_;
 

@@ -615,8 +615,6 @@ YbcStatus YBCFetchFromUrl(const char *url, char **buf) {
 
 void YBCDumpCurrentPgSessionState(YbcPgSessionState* session_data) {
   pgapi->DumpSessionState(session_data);
-  session_data->is_legacy_mode_for_catalog_ops =
-      YBCIsLegacyModeForCatalogOps();
 }
 
 void YBCRestorePgSessionState(const YbcPgSessionState* session_data) {
@@ -2118,19 +2116,9 @@ bool YBCIsLegacyModeForCatalogOps() {
   //     (i.e., with transactional DDL enabled) go via the kTransactional session type and would use
   //     the TransactionSnapshot's read time serial number.
   //
-  // A parallel worker shares the leader's PgClientSession and takes no
-  // object locks, so it cannot decide the mode from its own state. Outside
-  // parallel mode it runs its own setup transaction, whose kTransactional
-  // reads carry another txn_serial_no and abort the leader's transaction
-  // (#31008). Inside parallel mode it must read the catalog the way the
-  // leader does, or it misses the leader's uncommitted DDL (#30978).
-  if (pgapi && pgapi->IsParallelWorker()) {
-    return !pgapi->pg_callbacks()->IsInParallelMode() ||
-        pgapi->LeaderIsLegacyModeForCatalogOps();
-  }
   return !pgapi || !pgapi->IsTableLockingEnabledForCurrentTxn() ||
       !FLAGS_ysql_enable_concurrent_ddl || YBCIsInitDbModeEnvVarSet() ||
-      YBCIsSysTablePrefetchingStarted();
+      YBCIsSysTablePrefetchingStarted() || pgapi->IsParallelWorker();
 }
 
 bool YBCIsDdlTransactionBlockEnabled() {

@@ -1,8 +1,9 @@
 --
--- GH #30978: a parallel worker must see the catalog changes of the leader's
--- uncommitted DDL, as in PostgreSQL. Scenario: BEGIN, ALTER TABLE ADD
--- COLUMN c, then a parallel scan that filters on c. A worker that reads
--- the committed catalog fails with "invalid attnum 3 for relation".
+-- GH #30978: a parallel worker reads only committed catalog rows, so a
+-- parallel query after a DDL in the same transaction block runs in the
+-- leader alone. Scenario: BEGIN, ALTER TABLE ADD COLUMN c, then a parallel
+-- scan that filters on c. A worker launched there fails with "invalid
+-- attnum 3 for relation".
 --
 SET yb_enable_cbo = on;
 SET parallel_setup_cost = 0;
@@ -17,14 +18,17 @@ ANALYZE ddl_par;
 BEGIN;
 ALTER TABLE ddl_par ADD COLUMN c TEXT DEFAULT 'g';
 EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM ddl_par WHERE c = 'g';
+-- The plan keeps its Gather, but no worker is launched.
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)
+SELECT COUNT(*) FROM ddl_par WHERE c = 'g';
 SELECT COUNT(*) FROM ddl_par WHERE c = 'g';
 ROLLBACK;
 
 DROP TABLE ddl_par;
 
--- GH #34740: the worker must find a table the leader created earlier in the
--- same transaction block, instead of failing with "relation with OID ...
--- does not exist".
+-- GH #34740: a parallel scan of a table created earlier in the same
+-- transaction block must not fail with "relation with OID ... does not
+-- exist".
 SET force_parallel_mode = on;
 BEGIN;
 CREATE TABLE ddl_par_new (k INT);
