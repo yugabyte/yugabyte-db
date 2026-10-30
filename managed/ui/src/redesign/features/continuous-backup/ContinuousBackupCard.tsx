@@ -16,7 +16,7 @@ import {
 } from './ConfigureContinuousBackupModal';
 import { useFormatDatetime } from '../../helpers/DateUtils';
 import { DeleteContinuousBackupConfigModal } from './DeleteContinuousBackupConfigModal';
-import { getIsLastPlatformBackupOld } from './utils';
+import { getBackupIntervalDisplay, getIsLastPlatformBackupOld } from './utils';
 import { ApiPermissionMap } from '../rbac/ApiAndUserPermMapping';
 import { RbacValidator } from '../rbac/common/RbacApiPermValidator';
 
@@ -124,6 +124,10 @@ export const ContinuousBackupCard = ({ continuousBackupConfig }: ContinuousBacku
     }
   };
   const shouldShowNoRecentBackupBanner = getIsLastPlatformBackupOld(continuousBackupConfig);
+  const backupIntervalDisplay = getBackupIntervalDisplay(
+    continuousBackupConfig.spec?.frequency ?? 0,
+    continuousBackupConfig.spec?.frequency_time_unit
+  );
   return (
     <div className={classes.card}>
       <div className={classes.cardHeader}>
@@ -166,7 +170,11 @@ export const ContinuousBackupCard = ({ continuousBackupConfig }: ContinuousBacku
           <Typography className={classes.metadataLabel}>{t('metadata.backupInterval')}</Typography>
           <Typography className={classes.metadataInformation}>
             {t('backupIntervalValue', {
-              backupFrequencyMinutes: continuousBackupConfig.spec?.frequency
+              backupFrequency: backupIntervalDisplay.backupFrequency,
+              unit: t(`duration.${backupIntervalDisplay.durationI18nKey}`, {
+                count: backupIntervalDisplay.backupFrequency,
+                keyPrefix: 'common'
+              }).toLocaleLowerCase()
             })}
           </Typography>
         </div>

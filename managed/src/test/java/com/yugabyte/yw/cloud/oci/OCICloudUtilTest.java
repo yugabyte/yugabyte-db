@@ -7,6 +7,8 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
+import com.oracle.bmc.core.model.Image;
+import com.yugabyte.yw.cloud.oci.OCICloudUtil.ImageType;
 import java.util.HashMap;
 import java.util.Map;
 import junitparams.JUnitParamsRunner;
@@ -83,5 +85,21 @@ public class OCICloudUtilTest {
     } else {
       assertTrue(error.contains("provisioning would apply"));
     }
+  }
+
+  @Parameters({
+    "publisherCompartment, MARKETPLACE",
+    "null, PLATFORM",
+    ", PLATFORM",
+    "ocid1.compartment.oc1..example, CUSTOM"
+  })
+  @Test
+  public void testGetImageType(String compartmentId, ImageType expected) {
+    Image image =
+        Image.builder()
+            .id("ocid1.image.oc1..example")
+            .compartmentId("null".equals(compartmentId) ? null : compartmentId)
+            .build();
+    assertEquals(expected, OCICloudUtil.getImageType(image));
   }
 }

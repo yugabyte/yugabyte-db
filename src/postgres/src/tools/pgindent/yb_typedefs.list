@@ -121,6 +121,7 @@ YbIndexProcessorState
 YbInsertOnConflictBatchState
 YbInsertOnConflictPhase
 YbInstrumentation
+YbInt8TransTypeData
 YbIntCounters
 YbInternalConnKind
 YbInternalConnKindDescriptor
@@ -172,6 +173,7 @@ YbPgssQueryNeedingNormalization
 YbPlanInfo
 YbPlanStatePtr
 YbPrefetcherStarterFunctor
+YbPrefetcherStarterNoCache
 YbPrefetcherStarterWithCache
 YbPushdownExprs
 YbQdPgssStoreKind
@@ -346,6 +348,7 @@ YbcPgSkipIntentsOptimizationInfo
 YbcPgSplitDatum
 YbcPgStatement
 YbcPgSysColumns
+YbcPgSysTablePrefetchKind
 YbcPgSysTablePrefetcherCacheMode
 YbcPgTableDesc
 YbcPgTableLocalityInfo

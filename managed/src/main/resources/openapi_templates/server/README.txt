@@ -160,3 +160,11 @@ signature and the caller's obligation to close the body.
 
 Example:
 x-yba-api-stream-response: true
+
+10. x-yba-api-block-operator-resource (at operation level)
+Adds @BlockOperatorResource to the generated controller method so requests for resources owned by
+the Kubernetes operator are rejected before request-body parsing. Valid values are universe and
+provider.
+
+Example:
+x-yba-api-block-operator-resource: universe

@@ -21,6 +21,21 @@ namespace yb::docdb {
 
 class ChainTrackerTest : public YBTest {};
 
+TEST(AgeBandsTest, AfterMovesEachBandByItsYoungestEdge) {
+  AgeBandCounts counts{};
+  counts[0] = 3;
+  counts[1] = 4;
+  counts[AgeBands::kNumBands - 1] = 5;
+  ASSERT_EQ(AgeBandsAfter(counts, 0), counts);
+  // Clock skew: an anchor in the future leaves the bands as measured.
+  ASSERT_EQ(AgeBandsAfter(counts, -1), counts);
+  // 20 minutes on, <5m starts at 20m and 5m..15m at 25m: both are now in the <1h band.
+  AgeBandCounts expected{};
+  expected[2] = 7;
+  expected[AgeBands::kNumBands - 1] = 5;
+  ASSERT_EQ(AgeBandsAfter(counts, 20LL * 60 * 1000000), expected);
+}
+
 TEST_F(ChainTrackerTest, AnatomyStrip) {
   const auto s = TrackerFixture().Add(AnatomyStrip()).Finish();
   ASSERT_NO_FATALS(ExpectIdentities(s));

@@ -4,6 +4,7 @@ import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_AGGREGATE;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_APPEND;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_ONLY_SCAN;
+import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_MODIFY_TABLE;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_RESULT;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_SEQ_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.getExplainOutput;
@@ -59,6 +60,28 @@ public class TestPgEstimatedDocdbResultWidth extends BasePgSQLTest {
                       .build(),
                       makePlanBuilder()
                       .nodeType(NODE_RESULT)
+                      .build())
+                  .build())
+              .build());
+    }
+    catch (AssertionError e) {
+      LOG.info("Failed Query: " + query);
+      LOG.info(e.toString());
+      throw e;
+    }
+  }
+
+  private void testDocdbResultWidhEstimationHelperModifyTable(
+      Statement stmt, String query, String table_name,
+      Integer expected_docdb_result_width) throws Exception {
+    try {
+      testExplainDebug(stmt, query,
+          makeTopLevelBuilder()
+              .plan(makePlanBuilder()
+                  .nodeType(NODE_MODIFY_TABLE)
+                  .plans(makePlanBuilder()
+                      .relationName(table_name)
+                      .estimatedDocdbResultWidth(Checkers.equal(expected_docdb_result_width))
                       .build())
                   .build())
               .build());
@@ -603,6 +626,43 @@ public class TestPgEstimatedDocdbResultWidth extends BasePgSQLTest {
       testDocdbResultWidhEstimationHelper(stmt, "/*+IndexScan(t_20956)*/ SELECT i2 FROM t_20956 " +
           "WHERE i1 = 1 and i1 in (2, 3, 4)",
           "t_20956", 5);
+    }
+  }
+
+  /**
+   * A whole-row reference fetches every column that is not dropped. Every UPDATE carries one to
+   * rebuild its unchanged columns, and so does a DELETE on a table with a secondary index.
+   */
+  @Test
+  public void testDocdbResultWidthEstimationWholeRow() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t_whole_row (k1 INT, k2 INT, v1 INT, v2 INT, " +
+                   "PRIMARY KEY (k1 ASC, k2 ASC))");
+      stmt.execute("CREATE INDEX t_whole_row_v1 ON t_whole_row (v1 ASC)");
+      stmt.execute("INSERT INTO t_whole_row VALUES (1, 1, 1, 1)");
+      stmt.execute("ANALYZE t_whole_row");
+
+      /* Each int column is 4 bytes plus 1 byte for the null indicator. */
+      testDocdbResultWidhEstimationHelper(stmt,
+          "SELECT t FROM t_whole_row t", "t_whole_row", 20);
+      /* Columns referenced next to the whole row are not counted twice. */
+      testDocdbResultWidhEstimationHelper(stmt,
+          "SELECT t, k1, v1 FROM t_whole_row t", "t_whole_row", 20);
+
+      /* The ybctid is returned as well: 1 byte for the null indicator, 8 bytes for the size, 5
+       * bytes for each of the 2 key columns, and 1 byte for group termination.
+       */
+      testDocdbResultWidhEstimationHelperModifyTable(stmt,
+          "/*+ SeqScan(t_whole_row) */ UPDATE t_whole_row SET v1 = k1", "t_whole_row", 40);
+      testDocdbResultWidhEstimationHelperModifyTable(stmt,
+          "/*+ SeqScan(t_whole_row) */ DELETE FROM t_whole_row WHERE v2 < 0", "t_whole_row", 40);
+
+      /* A dropped column is not fetched. */
+      stmt.execute("ALTER TABLE t_whole_row DROP COLUMN v2");
+      testDocdbResultWidhEstimationHelper(stmt,
+          "SELECT t FROM t_whole_row t", "t_whole_row", 15);
+      testDocdbResultWidhEstimationHelperModifyTable(stmt,
+          "/*+ SeqScan(t_whole_row) */ UPDATE t_whole_row SET v1 = k1", "t_whole_row", 35);
     }
   }
 

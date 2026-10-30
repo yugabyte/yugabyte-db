@@ -64,9 +64,11 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgReplicationSlot.class);
 
   private static int kMultiplier = BuildTypeUtil.nonSanitizerVsSanitizer(1, 3);
-  private static int kPublicationRefreshIntervalSec = 5;
+  private static int kPublicationRefreshIntervalSec =
+      PgReplicationSlotTestUtil.PUBLICATION_REFRESH_INTERVAL_SEC;
 
-  private static final String YB_OUTPUT_PLUGIN_NAME = "yboutput";
+  protected static final String YB_OUTPUT_PLUGIN_NAME =
+      PgReplicationSlotTestUtil.YB_OUTPUT_PLUGIN_NAME;
 
   private static final String PG_OUTPUT_PLUGIN_NAME = "pgoutput";
 
@@ -76,20 +78,13 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Override
   protected int getInitialNumTServers() {
-    return 3;
+    return PgReplicationSlotTestUtil.NUM_TSERVERS;
   }
 
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
-    if (isTestRunningWithConnectionManager()) {
-      flagMap.put("ysql_conn_mgr_stats_interval", "1");
-    }
-    flagMap.put(
-        "cdcsdk_publication_list_refresh_interval_secs","" + kPublicationRefreshIntervalSec);
-    flagMap.put("cdc_send_null_before_image_if_not_exists", "true");
-    flagMap.put("TEST_dcheck_for_missing_schema_packing", "false");
-    flagMap.put("ysql_cdc_active_replication_slot_window_ms", "0");
+    PgReplicationSlotTestUtil.addCommonTServerFlags(flagMap);
     return flagMap;
   }
 
@@ -105,7 +100,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   @Override
   protected Map<String, String> getMasterFlags() {
     Map<String, String> flagMap = super.getMasterFlags();
-    flagMap.put("TEST_dcheck_for_missing_schema_packing", "false");
+    PgReplicationSlotTestUtil.addCommonMasterFlags(flagMap);
     return flagMap;
   }
 
@@ -122,11 +117,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   void createSlot(PGReplicationConnection replConnection, String slotName, String pluginName)
       throws Exception {
-    replConnection.createReplicationSlot()
-        .logical()
-        .withSlotName(slotName)
-        .withOutputPlugin(pluginName)
-        .make();
+    PgReplicationSlotTestUtil.createSlot(replConnection, slotName, pluginName);
   }
 
   @Test
@@ -253,16 +244,9 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     assertTrue("Expected an exception but wasn't thrown", exceptionThrown);
   }
 
-  private List<PgOutputMessage> receiveMessage(PGReplicationStream stream, int count)
+  protected List<PgOutputMessage> receiveMessage(PGReplicationStream stream, int count)
       throws Exception {
-    List<PgOutputMessage> result = new ArrayList<PgOutputMessage>(count);
-    for (int index = 0; index < count; index++) {
-      PgOutputMessage message = PgOutputMessageDecoder.DecodeBytes(stream.read());
-      result.add(message);
-      LOG.info("Row = {}", message);
-    }
-
-    return result;
+    return PgReplicationSlotTestUtil.receiveMessage(stream, count);
   }
 
   private List<PgOutputMessage> CreateMessages(PgOutputMessage... messages) {
@@ -4434,9 +4418,9 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
       assertEquals(1, spill_txns);
       assertEquals(2, spill_count); // ceil(spill_bytes / (ysql_yb_reorderbuffer_max_memory_kb KB))
-      assertEquals(5920000, spill_bytes); // 148*40000
+      assertEquals(8160000, spill_bytes); // 204*40000
       assertEquals(1, total_txns);
-      assertEquals(5920000, total_bytes);
+      assertEquals(8160000, total_bytes);
 
       stmt.execute("INSERT INTO xyz values (40001)");
       Thread.sleep(kPublicationRefreshIntervalSec * 2 * 1000);
@@ -4450,9 +4434,9 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       total_bytes = r1.getLong("total_bytes");
       assertEquals(1, spill_txns);
       assertEquals(2, spill_count);
-      assertEquals(5920000, spill_bytes);
+      assertEquals(8160000, spill_bytes);
       assertEquals(2, total_txns);
-      assertEquals(5920148, total_bytes);
+      assertEquals(8160204, total_bytes); // 204*40000 + 204
 
       // Reset the stat values
       stmt.executeQuery(String.format("SELECT pg_stat_reset_replication_slot(NULL)"));
@@ -4537,9 +4521,9 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
       assertEquals(2, spill_txns);
       assertEquals(4, spill_count);
-      assertEquals(11840000, spill_bytes);
+      assertEquals(16320000, spill_bytes); // 2 * 204*40000
       assertEquals(2, total_txns);
-      assertEquals(11840000, total_bytes);
+      assertEquals(16320000, total_bytes);
 
       ResultSet r2 = stmt.executeQuery(
         String.format("SELECT * FROM pg_stat_replication_slots WHERE slot_name='%s'", slotName2)
@@ -4553,9 +4537,9 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
       assertEquals(1, spill_txns);
       assertEquals(2, spill_count);
-      assertEquals(5920000, spill_bytes);
+      assertEquals(8160000, spill_bytes); // 204*40000
       assertEquals(1, total_txns);
-      assertEquals(5920000, total_bytes);
+      assertEquals(8160000, total_bytes);
     }
     for (PGReplicationStream stream : streams) {
       stream.close();

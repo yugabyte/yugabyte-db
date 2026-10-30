@@ -1217,6 +1217,9 @@ public enum TaskType {
 
   CheckCpuCgroup(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckCpuCgroup.class),
 
+  CheckOCIImageEligibility(
+      com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckOCIImageEligibility.class),
+
   CheckOpentelemetryOperator(
       com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckOpentelemetryOperator.class),
 

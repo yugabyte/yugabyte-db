@@ -16,6 +16,7 @@
 #include <string>
 
 #include "yb/common/colocated_util.h"
+#include "yb/common/common_types.pb.h"
 #include "yb/common/hybrid_time.h"
 
 #include "yb/master/catalog_entity_info.h"
@@ -241,6 +242,20 @@ Status XClusterManager::FillHeartbeatResponse(
   RETURN_NOT_OK(XClusterTargetManager::FillHeartbeatResponse(req, resp));
 
   return xcluster_config_->FillHeartbeatResponse(req, resp);
+}
+
+Status XClusterManager::FillXClusterGuardedInfo(
+    int64_t leader_term, XClusterGuardedInfoPB& info) {
+  std::lock_guard l(xcluster_guarded_info_version_mutex_);
+  ++xcluster_guarded_info_copy_count_;
+  auto& version = *info.mutable_xcluster_guarded_info_version();
+  version.set_term(leader_term);
+  version.set_count(xcluster_guarded_info_copy_count_);
+
+  RETURN_NOT_OK(xcluster_config_->FillXClusterInfoPerNamespace(info));
+  info.set_oid_cache_invalidations_count(
+      VERIFY_RESULT(catalog_manager_.GetOidCacheInvalidationsCount()));
+  return Status::OK();
 }
 
 Status XClusterManager::SetXClusterRole(

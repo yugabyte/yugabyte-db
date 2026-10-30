@@ -564,7 +564,8 @@ class TSLocalLockManager::Impl {
       const google::protobuf::RepeatedPtrField<docdb::ObjectLockPB>& object_locks,
       CoarseTimePoint deadline,
       StdStatusCallback&& callback,
-      const TransactionId& background_txn_id) {
+      const TransactionId& background_txn_id,
+      const TabletId& background_txn_status_tablet) {
     auto s = CheckShutdown();
     if (!s.ok()) {
       callback(s);
@@ -585,7 +586,8 @@ class TSLocalLockManager::Impl {
       return;
     }
     object_lock_manager_.WaitForConflictingLockers(
-        *keys_to_check, std::move(callback), deadline, background_txn_id);
+        *keys_to_check, std::move(callback), deadline, background_txn_id,
+        background_txn_status_tablet);
   }
 
   void Poll() {
@@ -818,8 +820,11 @@ void TSLocalLockManager::WaitForLockersAsync(
     const google::protobuf::RepeatedPtrField<docdb::ObjectLockPB>& object_locks,
     CoarseTimePoint deadline,
     StdStatusCallback&& callback,
-    const TransactionId& background_txn_id) {
-  impl_->WaitForLockersAsync(object_locks, deadline, std::move(callback), background_txn_id);
+    const TransactionId& background_txn_id,
+    const TabletId& background_txn_status_tablet) {
+  impl_->WaitForLockersAsync(
+      object_locks, deadline, std::move(callback), background_txn_id,
+      background_txn_status_tablet);
 }
 
 void TSLocalLockManager::Start(

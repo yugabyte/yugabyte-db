@@ -435,6 +435,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Status XClusterHandleMasterHeartbeatResponse(const master::TSHeartbeatResponsePB& resp);
 
+  void ApplyXClusterGuardedInfoIfNewer(const XClusterGuardedInfoPB& info)
+      EXCLUDES(xcluster_guarded_info_version_mutex_);
+
   Status ValidateAndMaybeSetUniverseUuid(const UniverseUuid& universe_uuid);
 
   Status ClearUniverseUuid();
@@ -602,9 +605,16 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // Cluster uuid. This is sent by the master leader during the first heartbeat.
   std::string cluster_uuid_;
 
-  // Highest value of SysXClusterConfigEntryPB.oid_cache_invalidations_count received from any
-  // TSHeartbeatResponsePB.  This value is bumped to invalidate all the TServer OID caches.
+  // Highest value of SysClusterConfigEntryPB.oid_cache_invalidations_count received from the
+  // master.  This value is bumped to invalidate all the TServer OID caches.
   std::atomic<uint32_t> oid_cache_invalidations_count_ = 0;
+
+  // Serializes ApplyXClusterGuardedInfoIfNewer, whose copies arrive via heartbeat responses and
+  // PropagateXClusterGuardedInfo RPCs, and guards the version below.
+  std::mutex xcluster_guarded_info_version_mutex_;
+  // (term, count) of the most recently applied copy; (0, 0) is below any real version.
+  std::pair<int64_t, uint64_t> xcluster_guarded_info_version_
+      GUARDED_BY(xcluster_guarded_info_version_mutex_){0, 0};
 
   // Latest known version from the YSQL catalog (as reported by last heartbeat response).
   uint64_t ysql_catalog_version_ GUARDED_BY(lock_) = 0;

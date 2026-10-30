@@ -2444,6 +2444,84 @@ TEST_F_EX(
   ASSERT_OK(truncate_future.get());
 }
 
+TEST_F_EX(
+    PgObjectLocksTest, WaitForLockersParticipatesInDeadlockDetection,
+    PgObjectLocksWithConcurrentDdl) {
+  auto* ts1 = cluster_->tablet_server(1);
+  auto* ts2 = cluster_->tablet_server(2);
+  ASSERT_OK(cluster_->SetFlagOnTServers("refresh_waiter_timeout_ms", "5000"));
+
+  auto setup_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE parent(k INT PRIMARY KEY)"));
+  ASSERT_OK(setup_conn.Execute(
+      "CREATE TABLE child(k INT PRIMARY KEY, parent_k INT REFERENCES parent(k))"));
+  ASSERT_OK(setup_conn.Execute("INSERT INTO parent VALUES (1)"));
+  const auto child_oid =
+      ASSERT_RESULT(setup_conn.FetchRow<PGOid>("SELECT 'child'::regclass::oid"));
+
+  ASSERT_OK(cluster_->SetFlag(ts2, "TEST_pause_wait_for_lockers", "true"));
+  LogWaiter wait_for_lockers_waiter(
+      ts2, "Pausing due to flag TEST_pause_wait_for_lockers");
+  auto create_index_future = std::async(std::launch::async, [&]() -> Status {
+    auto conn = VERIFY_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+    RETURN_NOT_OK(conn.Execute("SET statement_timeout = '60s'"));
+    return conn.Execute("CREATE INDEX child_parent_k_idx ON child(parent_k)");
+  });
+  ASSERT_OK(wait_for_lockers_waiter.WaitFor(10s * kTimeMultiplier));
+
+  auto insert_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(insert_conn.Execute("SET statement_timeout = '30s'"));
+  ASSERT_OK(insert_conn.Execute("SET yb_max_query_layer_retries = 0"));
+  ASSERT_OK(insert_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(insert_conn.Fetch("SELECT * FROM child"));
+
+  auto drop_future = std::async(std::launch::async, [&]() -> Status {
+    auto conn = VERIFY_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    RETURN_NOT_OK(conn.Execute("SET statement_timeout = '30s'"));
+    RETURN_NOT_OK(conn.Execute("SET yb_max_query_layer_retries = 0"));
+    return conn.Execute("DROP TABLE parent CASCADE");
+  });
+
+  auto observer_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return VERIFY_RESULT(observer_conn.FetchRow<PGUint64>(
+        Format("SELECT count(*) FROM pg_locks "
+               "WHERE relation = $0 AND NOT granted "
+               "AND mode = 'AccessExclusiveLock'", child_oid))) > 0;
+  }, 10s * kTimeMultiplier, "DROP should wait for CREATE INDEX's child-table lock"));
+
+  auto insert_future = std::async(std::launch::async, [&]() -> Status {
+    auto status = insert_conn.Execute("INSERT INTO child VALUES (1, 1)");
+    if (!status.ok()) {
+      WARN_NOT_OK(insert_conn.RollbackTransaction(), "Failed to roll back INSERT transaction");
+      return status;
+    }
+    return insert_conn.CommitTransaction();
+  });
+  SleepFor(1s * kTimeMultiplier);
+  ASSERT_EQ(insert_future.wait_for(0s), std::future_status::timeout);
+
+  ASSERT_OK(cluster_->SetFlag(ts2, "TEST_pause_wait_for_lockers", "false"));
+  ASSERT_OK(WaitFor([&]() {
+    return create_index_future.wait_for(0s) == std::future_status::ready;
+  }, 40s * kTimeMultiplier, "CREATE INDEX should complete after deadlock detection"));
+  ASSERT_OK(create_index_future.get());
+  ASSERT_OK(WaitFor([&]() {
+    return drop_future.wait_for(0s) == std::future_status::ready &&
+           insert_future.wait_for(0s) == std::future_status::ready;
+  }, 20s * kTimeMultiplier, "DROP and INSERT should complete after deadlock detection"));
+  auto drop_status = drop_future.get();
+  auto insert_status = insert_future.get();
+  ASSERT_TRUE(drop_status.ok() ^ insert_status.ok())
+      << "drop_status: " << drop_status << ", insert_status: " << insert_status;
+  if (!drop_status.ok()) {
+    LOG(INFO) << "DROP failed with: " << drop_status;
+  }
+  if (!insert_status.ok()) {
+    LOG(INFO) << "INSERT failed with: " << insert_status;
+  }
+}
+
 YB_STRONGLY_TYPED_BOOL(Colocated);
 
 // Parameterized over colocated vs non-colocated so we cover both the separate index-read path

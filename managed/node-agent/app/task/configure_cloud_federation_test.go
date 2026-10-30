@@ -10,9 +10,10 @@ import (
 func gcsHandler(audience string) *ConfigureCloudFederation {
 	return &ConfigureCloudFederation{
 		param: &pb.ConfigureCloudFederationInput{
-			FlowDirection: pb.ConfigureCloudFederationInput_GCS_ON_AWS,
-			Config: &pb.ConfigureCloudFederationInput_GcsOnAws{
-				GcsOnAws: &pb.GcsOnAwsConfig{Audience: audience},
+			SourceCloud: pb.ConfigureCloudFederationInput_AWS,
+			TargetCloud: pb.ConfigureCloudFederationInput_GCP,
+			Config: &pb.ConfigureCloudFederationInput_Gcs{
+				Gcs: &pb.GcsConfig{Audience: audience},
 			},
 		},
 	}
@@ -54,9 +55,10 @@ func TestDesiredStateHash(t *testing.T) {
 func s3Handler(roleArn, audience, profile string) *ConfigureCloudFederation {
 	return &ConfigureCloudFederation{
 		param: &pb.ConfigureCloudFederationInput{
-			FlowDirection: pb.ConfigureCloudFederationInput_S3_ON_GCP,
-			Config: &pb.ConfigureCloudFederationInput_S3OnGcp{
-				S3OnGcp: &pb.S3OnGcpConfig{
+			SourceCloud: pb.ConfigureCloudFederationInput_GCP,
+			TargetCloud: pb.ConfigureCloudFederationInput_AWS,
+			Config: &pb.ConfigureCloudFederationInput_S3{
+				S3: &pb.S3Config{
 					RoleArn:     roleArn,
 					Audience:    audience,
 					ProfileName: profile,
@@ -101,14 +103,14 @@ func TestDesiredStateHashS3(t *testing.T) {
 	}
 }
 
-// validateS3OnGcpInputs is the shell-injection guard: every field is interpolated into a rendered
+// validateS3Inputs is the shell-injection guard: every field is interpolated into a rendered
 // shell script / ~/.aws/config block, so metacharacter-bearing inputs must be rejected.
-func TestValidateS3OnGcpInputs(t *testing.T) {
+func TestValidateS3Inputs(t *testing.T) {
 	roleA := "arn:aws:iam::123456789012:role/yb-federation"
 	aud := "//iam.googleapis.com/projects/1/locations/global/workloadIdentityPools/p/providers/a"
 	prof := "yb-cross-cloud-federation"
 
-	if err := validateS3OnGcpInputs(s3Handler(roleA, aud, prof).param.GetS3OnGcp()); err != nil {
+	if err := validateS3Inputs(s3Handler(roleA, aud, prof).param.GetS3()); err != nil {
 		t.Errorf("valid inputs rejected: %v", err)
 	}
 	bad := []struct {
@@ -125,7 +127,7 @@ func TestValidateS3OnGcpInputs(t *testing.T) {
 		{"profile injection", roleA, aud, "p'; rm -rf /"},
 	}
 	for _, tc := range bad {
-		if err := validateS3OnGcpInputs(&pb.S3OnGcpConfig{
+		if err := validateS3Inputs(&pb.S3Config{
 			RoleArn: tc.role, Audience: tc.aud, ProfileName: tc.profile,
 		}); err == nil {
 			t.Errorf("%s: expected validation error, got nil", tc.name)

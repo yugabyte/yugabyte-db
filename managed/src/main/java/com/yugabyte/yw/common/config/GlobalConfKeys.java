@@ -274,6 +274,17 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " it is passed as a component while creating.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> supportBundleUiV2Enabled =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.ui_v2_enabled",
+          ScopeType.GLOBAL,
+          "Enable Support Bundle V2 API in UI",
+          "When true, the YBA UI uses the v2 support bundle API (support_bundle_v2 table)."
+              + " When false, the UI continues to use the v1 support bundle API. V1 and v2"
+              + " bundles are stored separately; toggling this flag switches which bundles"
+              + " appear in the UI list.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<List> supportBundleExtraYbAdminCommands =
       new ConfKeyInfo<>(
           "yb.support_bundle.extra_yb_admin_commands",
@@ -2124,6 +2135,16 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable AWS signing region for S3 access",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableCrossCloudFederatedIam =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.enable_cross_cloud_federated_iam",
+          ScopeType.GLOBAL,
+          "Enable Cross-Cloud Federated IAM",
+          "Exposes the cross-cloud federated IAM fields on the provider and backup storage"
+              + " configuration pages. Off by default while the feature is in preview; a provider"
+              + " or storage config that already has it set keeps working regardless.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableS3BackupProxy =
       new ConfKeyInfo<>(
           "yb.ui.feature_flags.enable_s3_backup_proxy",

@@ -270,7 +270,12 @@ public class TabletClient extends ReplayingDecoder<Void> {
 
     final Channel chancopy = chan;
     if (chancopy == null) {
+      // Channel is not established yet. Mark the client as dead and remove it from the cache.
       LOG.warn("Channel is missing during client shutdown for {}", getPeerUuidLoggingString());
+      synchronized (this) {
+        dead = true;
+      }
+      ybClient.removeClientFromCache(this, null /* remote peer address */);
       return Deferred.fromResult(null);
     }
     String hostPort = getHostPort(chan.remoteAddress());

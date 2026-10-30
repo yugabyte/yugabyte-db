@@ -40,6 +40,14 @@ There are multiple components and stages involved in the execution of a distribu
 To understand how a transaction is executed, see [Transactional I/O path](transactional-io-path/).
 {{</lead>}}
 
+## Transactional DDL
+
+YugabyteDB can roll back DDL statements that run inside a transaction block. Isolation between concurrent DDL is weaker than in PostgreSQL while object locks are still under development.
+
+{{<lead link="transactional-ddl/">}}
+To learn how to enable transactional DDL and what it can roll back, see [Transactional DDL](transactional-ddl/).
+{{</lead>}}
+
 ## Skip intents optimization
 
 When a transaction creates or rebuilds a table and then writes into it, the table is invisible to other sessions until commit. YugabyteDB can skip writing provisional records and write those rows straight to the main store.

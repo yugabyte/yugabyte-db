@@ -429,6 +429,17 @@ message PgsqlBackfillSpecPB {
   optional bytes next_row_key = 3;
 }
 
+// Why a read is prefetching whole catalog tables. Every prefetch sends a wave of these to the
+// master leader, and the master admits them by kind. CACHE_REFRESH is for a prefetch something is
+// already blocked on: a backend refreshing its catalog cache, or the relcache-init backend, whose
+// file every new connection on its node waits for. A connection still starting up can afford to
+// wait, so it gets CONNECTION_START.
+enum YsqlCatalogPrefetchKindPB {
+  YSQL_CATALOG_PREFETCH_NONE = 0;
+  YSQL_CATALOG_PREFETCH_CONNECTION_START = 1;
+  YSQL_CATALOG_PREFETCH_CACHE_REFRESH = 2;
+}
+
 // Make sure this is in sync with YbcPgMetricsCaptureType in ybc_pg_typedefs.h.
 enum PgsqlMetricsCaptureType {
   PGSQL_METRICS_CAPTURE_NONE = 0;
@@ -628,6 +639,13 @@ message PgsqlReadRequestPB {
 
   // See PgsqlWriteRequestPB::read_at_in_txn_limit.
   optional bool read_at_in_txn_limit = 47;
+
+  // Set by the YSQL system table prefetcher, which reads whole catalog tables at connection start
+  // and on catalog cache refresh. Every tserver in the cluster issues these together after a DDL,
+  // and each one is orders of magnitude more expensive than an ordinary catalog read, so the
+  // master bounds how many it serves at a time. NONE is never bounded, which keeps an older
+  // client working against a newer master.
+  optional YsqlCatalogPrefetchKindPB catalog_prefetch_kind = 48;
 }
 
 //--------------------------------------------------------------------------------------------------

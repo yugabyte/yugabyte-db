@@ -37,8 +37,11 @@
 #include <iomanip>
 #include <map>
 #include <memory>
+#include <optional>
 #include <regex>
 #include <sstream>
+#include <tuple>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -1889,6 +1892,92 @@ TabletReplicaMapToSortedVector(const TabletReplicaMap& replicas) {
   return sorted_replicas;
 }
 
+// A table-page row for a split parent that is no longer in memory.
+struct RemovedSplitParentRow {
+  TabletId tablet_id;
+  std::string partition;
+  uint64_t split_depth;
+  std::string state_msg;
+};
+
+// A removed split parent keeps only its children and state message, so its partition and split
+// depth are rebuilt from its children's: it covers the union of their ranges, one split level up.
+// Resolved bottom-up, since a child can itself be a removed parent.
+std::vector<RemovedSplitParentRow> RemovedSplitParentRows(
+    const TabletInfos& tablets,
+    const std::vector<std::pair<TabletId, DeletedSplitParent>>& removed_split_parents,
+    const dockv::PartitionSchema& partition_schema, const Schema& partition_keys_schema) {
+  struct TabletRange {
+    std::string start;
+    std::string end;  // Empty means unbounded.
+    uint64_t split_depth;
+  };
+  std::unordered_map<TabletId, TabletRange> known;
+  for (const auto& tablet : tablets) {
+    auto l = tablet->LockForRead();
+    known.emplace(
+        tablet->tablet_id(),
+        TabletRange{
+            l->pb.partition().partition_key_start(), l->pb.partition().partition_key_end(),
+            l->pb.split_depth()});
+  }
+  std::vector<std::tuple<TabletId, std::string, TabletRange>> resolved;
+  auto pending = removed_split_parents;
+  for (bool progress = true; progress;) {
+    progress = false;
+    for (auto it = pending.begin(); it != pending.end();) {
+      const auto& [parent_id, parent] = *it;
+      std::optional<TabletRange> range;
+      for (const auto& child_id : parent.child_ids) {
+        auto child_it = known.find(child_id);
+        if (child_it == known.end()) {
+          range.reset();
+          break;
+        }
+        const auto& child = child_it->second;
+        if (!range) {
+          range = TabletRange{
+              child.start, child.end, child.split_depth > 0 ? child.split_depth - 1 : 0};
+          continue;
+        }
+        range->start = std::min(range->start, child.start);
+        if (!range->end.empty() && (child.end.empty() || child.end > range->end)) {
+          range->end = child.end;
+        }
+      }
+      if (!range) {
+        ++it;
+        continue;
+      }
+      known.emplace(parent_id, *range);
+      resolved.emplace_back(parent_id, parent.state_msg, *range);
+      it = pending.erase(it);
+      progress = true;
+    }
+  }
+  std::ranges::sort(resolved, [](const auto& lhs, const auto& rhs) {
+    const auto& l = std::get<2>(lhs);
+    const auto& r = std::get<2>(rhs);
+    return l.start == r.start ? l.split_depth < r.split_depth : l.start < r.start;
+  });
+
+  std::vector<RemovedSplitParentRow> rows;
+  rows.reserve(resolved.size());
+  for (auto& [tablet_id, state_msg, range] : resolved) {
+    PartitionPB partition_pb;
+    partition_pb.set_partition_key_start(range.start);
+    partition_pb.set_partition_key_end(range.end);
+    dockv::Partition partition;
+    dockv::Partition::FromPB(partition_pb, &partition);
+    rows.push_back(RemovedSplitParentRow{
+        .tablet_id = std::move(tablet_id),
+        .partition = partition_schema.PartitionDebugString(partition, partition_keys_schema),
+        .split_depth = range.split_depth,
+        .state_msg = std::move(state_msg)});
+  }
+  return rows;
+}
+
 }  // anonymous namespace
 
 
@@ -2096,7 +2185,12 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
 
   server::HtmlOutputSchemaTable(schema, output);
 
-  bool has_deleted_tablets = false;
+  // Split parents already dropped from memory are no longer among the table's tablets, but can
+  // still be listed with their children.
+  const auto removed_split_parents =
+      master_->catalog_manager_impl()->GetDeletedSplitParents(table->id());
+
+  bool has_deleted_tablets = !removed_split_parents.empty();
   for (const auto& tablet : tablets) {
     if (tablet->LockForRead()->is_deleted()) {
       has_deleted_tablets = true;
@@ -2152,6 +2246,16 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
         state,
         l->is_hidden(),
         EscapeForHtmlToString(l->pb.state_msg()));
+  }
+  if (show_deleted_tablets) {
+    for (const auto& row : RemovedSplitParentRows(
+             tablets, removed_split_parents, partition_schema, *partition_keys_schema)) {
+      *output << Format(
+          "<tr><th>$0</th><td>$1</td><td>$2</td><td></td><td>Deleted</td><td>0</td><td>$3</td>"
+          "</tr>\n",
+          row.tablet_id, EscapeForHtmlToString(row.partition), row.split_depth,
+          EscapeForHtmlToString(row.state_msg));
+    }
   }
   *output << "</table>\n";
 
@@ -2485,6 +2589,25 @@ void MasterPathHandlers::HandleTablePageJSON(const Webserver::WebRequest& req,
     jw.String("message");
     jw.String(l->pb.state_msg());
     RaftConfigToJson(sorted_locations, tablet->tablet_id(), &jw);
+    jw.EndObject();
+  }
+  for (const auto& row : RemovedSplitParentRows(
+           tablets, master_->catalog_manager_impl()->GetDeletedSplitParents(table->id()),
+           partition_schema, *partition_keys_schema)) {
+    jw.StartObject();
+    jw.String("tablet_id");
+    jw.String(row.tablet_id);
+    jw.String("partition");
+    jw.String(row.partition);
+    jw.String("split_depth");
+    jw.Uint64(row.split_depth);
+    jw.String("state");
+    jw.String("Deleted");
+    jw.String("hidden");
+    jw.String("false");
+    jw.String("message");
+    jw.String(row.state_msg);
+    RaftConfigToJson({}, row.tablet_id, &jw);
     jw.EndObject();
   }
   jw.EndArray();

@@ -549,6 +549,8 @@ WaitForLockersMultipleRequestPB TserverRequestFor(
   }
   if (master_request.has_background_transaction_id()) {
     req.set_background_transaction_id(master_request.background_transaction_id());
+    req.set_background_transaction_status_tablet(
+        master_request.background_transaction_status_tablet());
   }
   return req;
 }

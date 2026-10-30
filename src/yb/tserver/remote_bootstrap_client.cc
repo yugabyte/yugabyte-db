@@ -507,6 +507,11 @@ Status RemoteBootstrapClient::Finish() {
   LOG_WITH_PREFIX(INFO) << "Remote bootstrap complete. Replacing tablet superblock.";
   UpdateStatusMessage("Replacing tablet superblock");
   new_superblock_.set_tablet_data_state(remote_tablet_data_state_);
+  // The file lists only describe the transfer. RaftGroupMetadata never serializes them, so if they
+  // were persisted, RemoteBootstrapSession::CreateSnapshot on this replica would see the on-disk
+  // superblock differ from the in-memory one and fail every remote bootstrap sourced from it.
+  new_superblock_.mutable_kv_store()->clear_rocksdb_files();
+  new_superblock_.mutable_kv_store()->clear_snapshot_files();
   RETURN_NOT_OK(meta_->ReplaceSuperBlock(new_superblock_));
 
   if (FLAGS_remote_bootstrap_save_downloaded_metadata) {

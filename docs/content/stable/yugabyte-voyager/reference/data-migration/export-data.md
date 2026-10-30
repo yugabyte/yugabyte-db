@@ -61,6 +61,28 @@ export-data:
 ```
 
 |Use this argument to disable progress bar during data export and statistics printing during streaming phase. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --disable-schema-snapshot-capture |
+
+```yaml{.nocopy}
+export-data:
+  disable-schema-snapshot-capture:
+(OR)
+export-data-from-source:
+  disable-schema-snapshot-capture:
+```
+
+| Turn off recording of source schema snapshots at export data start, periodically, and at exit. [schema detect-drift](../../schema-migration/detect-drift/) reads these snapshots. Recording is best effort and never fails the export. PostgreSQL only. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --schema-snapshot-capture-interval |
+
+```yaml{.nocopy}
+export-data:
+  schema-snapshot-capture-interval:
+(OR)
+export-data-from-source:
+  schema-snapshot-capture-interval:
+```
+
+| How often, in minutes, a source schema snapshot is recorded while export data runs. Covers both the snapshot and streaming phases. Must be at least 1. PostgreSQL only. <br>Default: 60 |
 | --export-type |
 
 ```yaml{.nocopy}

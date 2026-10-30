@@ -68,7 +68,9 @@ typedef enum ReorderBufferChangeType
 	REORDER_BUFFER_CHANGE_INTERNAL_SPEC_INSERT,
 	REORDER_BUFFER_CHANGE_INTERNAL_SPEC_CONFIRM,
 	REORDER_BUFFER_CHANGE_INTERNAL_SPEC_ABORT,
-	REORDER_BUFFER_CHANGE_TRUNCATE
+	REORDER_BUFFER_CHANGE_TRUNCATE,
+
+	YB_REORDER_BUFFER_CHANGE_DDL,
 } ReorderBufferChangeType;
 
 /* forward declaration */
@@ -115,6 +117,9 @@ typedef struct ReorderBufferChange
 
 			/* YB */
 			Oid			yb_table_oid;
+			uint64		yb_read_time;
+			uint64		yb_in_txn_limit;
+			char		yb_txn_id[37];	/* UUID string (36) + NUL */
 		}			tp;
 
 		/*
@@ -165,6 +170,12 @@ typedef struct ReorderBufferChange
 			uint32		ninvalidations; /* Number of messages */
 			SharedInvalidationMessage *invalidations;	/* invalidation message */
 		}			inval;
+
+		/* YB DDL marker. */
+		struct
+		{
+			Oid			table_oid;
+		}			yb_ddl;
 	}			data;
 
 	/*

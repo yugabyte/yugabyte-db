@@ -350,11 +350,7 @@ class OutboundCall : public RpcCall {
     conn_id_ = value;
     hostname_ = hostname;
     if (otel_span_) {
-      if (hostname) {
-        otel_span_->SetAttribute("server.address", *hostname);
-      }
       const auto& remote = value.remote();
-      otel_span_->SetAttribute("server.port", static_cast<int64_t>(remote.port()));
       otel_span_->SetAttribute("network.peer.address", remote.address().to_string());
       otel_span_->SetAttribute("network.peer.port", static_cast<int64_t>(remote.port()));
     }

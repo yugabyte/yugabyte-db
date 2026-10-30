@@ -42,6 +42,8 @@
 /* YB includes */
 #include "access/yb_special_scans.h"
 #include "executor/ybModifyTable.h"
+#include "utils/datum.h"
+#include "ybctid.h"
 #include <pg_yb_utils.h>
 
 
@@ -604,11 +606,70 @@ bool
 systable_recheck_tuple(SysScanDesc sysscan, HeapTuple tup)
 {
 	/*
-	 * If YugaByte is enabled, systable_recheck_tuple doesn't work
-	 * since the function uses the buffer to determine the tuple's visibility.
+	 * YB: The upstream code below decides visibility from the xmin/xmax in the
+	 * heap buffer that the scan slot points into.  YB tuples are palloc'd
+	 * copies with no buffer behind them, so instead re-fetch the row by its
+	 * ybctid and report whether it still exists unchanged.  Callers such as
+	 * findDependentObjects() rely on this to notice that a concurrent DDL
+	 * deleted the object while we waited for its lock, instead of proceeding
+	 * against the deleted row (e.g. "could not find tuple for rule").
+	 *
+	 * Upstream also reports false for a row that was updated after the scan,
+	 * since the version the scan saw is no longer visible.  A YB update keeps
+	 * the same ybctid, so the fetch alone cannot tell an updated row from an
+	 * unchanged one.  Compare the fetched row with the scanned one and treat
+	 * any difference as "gone", e.g. a pg_depend row that ALTER ... SET
+	 * SCHEMA repointed at another namespace while DROP SCHEMA ... CASCADE was
+	 * waiting for the object's lock.
+	 *
+	 * Upstream takes a fresh snapshot via GetCatalogSnapshot() for the
+	 * recheck.  There is no equivalent call here because every catalog read
+	 * in YB is bound to the current catalog snapshot by pggate (see
+	 * PgSession::UpdateReadPointForCatalogOps), which creates a new snapshot
+	 * if the previous one was invalidated.  If acquiring the lock waited, it
+	 * ran AcceptInvalidationMessages() on the way out, which applied the
+	 * committed DDL's invalidation messages and dropped the old snapshot, so
+	 * the fetch reads at a read time that is at or after that commit.  (If
+	 * we already held the lock, nothing could have changed the row.)  This
+	 * must be a scan rather than a syscache lookup: the catalogs that need
+	 * the recheck, e.g. pg_depend, have no syscache (see
+	 * RelationInvalidatesSnapshotsOnly()).
+	 *
+	 * The legacy mode has no object locks, so AcquireDeletionLock() never
+	 * waits and the tuple cannot have gone away.  Keep returning true there.
 	 */
-	if (IsYugaByteEnabled())
-		return true;
+	if (IsYBRelation(sysscan->heap_rel))
+	{
+		TupleDesc	tupdesc = RelationGetDescr(sysscan->heap_rel);
+		HeapTuple	freshtup;
+		bool		same;
+
+		if (YBCIsLegacyModeForCatalogOps())
+			return true;
+
+		if (!YbFetchHeapTuple(sysscan->heap_rel, HEAPTUPLE_YBCTID(tup),
+							  &freshtup))
+			return false;
+
+		same = true;
+		for (int attnum = 1; same && attnum <= tupdesc->natts; attnum++)
+		{
+			Form_pg_attribute att = TupleDescAttr(tupdesc, attnum - 1);
+			bool		isnull;
+			bool		freshisnull;
+			Datum		value = heap_getattr(tup, attnum, tupdesc, &isnull);
+			Datum		freshvalue = heap_getattr(freshtup, attnum, tupdesc,
+												  &freshisnull);
+
+			if (isnull != freshisnull)
+				same = false;
+			else if (!isnull)
+				same = datumIsEqual(value, freshvalue, att->attbyval,
+									att->attlen);
+		}
+		heap_freetuple(freshtup);
+		return same;
+	}
 
 	Snapshot	freshsnap;
 	bool		result;

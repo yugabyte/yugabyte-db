@@ -240,6 +240,16 @@ struct TableWithTabletsEntries {
   SysTabletsEntriesWithIds tablets_entries;
 };
 
+// What the master keeps of a split parent once its TabletInfo is dropped.
+struct DeletedSplitParent {
+  // The table it belonged to, so its entry can be found by table and dropped with it.
+  TableId table_id;
+  // The tablets that replaced it. A vector because a split can produce more than two tablets.
+  std::vector<TabletId> child_ids;
+  // Its state message when it was deleted, which records when; shown in the master UI.
+  std::string state_msg;
+};
+
 // The component of the master which tracks the state and location
 // of tables/tablets in the cluster.
 //
@@ -1113,6 +1123,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // must have updated the config in the meantime.
   Result<SysClusterConfigEntryPB> GetClusterConfig() override;
   Result<int32_t> GetClusterConfigVersion();
+  Result<uint32_t> GetOidCacheInvalidationsCount();
 
   // Validator for placement information with respect to cluster configuration
   Status ValidateReplicationInfo(
@@ -1896,6 +1907,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Gets the tablet info for each tablet id, or nullptr if the tablet was not found.
   TabletInfos GetTabletInfos(const std::vector<TabletId>& ids) override;
 
+  // Returns the split parents of table_id in deleted_split_parents_. Used by the master UI to list
+  // split parents no longer in memory.
+  std::vector<std::pair<TabletId, DeletedSplitParent>> GetDeletedSplitParents(
+      const TableId& table_id) const EXCLUDES(mutex_);
+
   bool IsColocatedNamespace(const NamespaceId& ns_id) const EXCLUDES(mutex_);
 
   // Gets the set of table IDs that belong to the sys.catalog tablet.
@@ -2474,6 +2490,12 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // This function should only be called from the bg_tasks thread, in a single threaded fashion!
   void CleanUpDeletedTables(const LeaderEpoch& epoch);
 
+  // Removes DELETED tablets from TableInfo::tablets_ and tablet_map_, recording split parents'
+  // children in deleted_split_parents_. Tablets of a table that has started hiding or deleting are
+  // left to CleanUpDeletedTables above. Takes the candidate list
+  // ExtractTabletsToProcess already built this cycle. Called from the bg_tasks thread.
+  void RemoveDeletedTabletsFromTables(const TabletInfos& candidates);
+
   // Called when a new table id is added to table_ids_map_.
   void HandleNewTableId(const TableId& id);
 
@@ -2581,14 +2603,21 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Tablets that were hidden instead of deleted. Used to clean up such tablets when they expire.
   std::vector<TabletInfoPtr> hidden_tablets_ GUARDED_BY(mutex_);
 
-  // The set of tablets that have ever been deleted from the cluster. This set is populated on the
-  // TabletLoader path in VisitSysCatalog when the loader sees a tablet with DELETED state.
+  // The set of tablets that have ever been deleted from the cluster. This set is populated by the
+  // TabletLoader in VisitSysCatalog when it sees a tablet with DELETED state, and whenever a
+  // DELETED tablet is dropped from tablet_map_, by CleanUpDeletedTables or
+  // RemoveDeletedTabletsFromTables.
   // This set is used when processing a tablet report. If a reported tablet is not present in
-  // tablet_map_, then make sure it is present in deleted_tablets_loaded_from_sys_catalog_ before
+  // tablet_map_, then make sure it is present in this set before
   // issuing a DeleteTablet call to tservers. It is possible in the case of corrupted sys catalog or
   // tservers heartbeating into wrong clusters that live data is considered to be orphaned. So make
   // sure that the tablet was explicitly deleted before deleting any on-disk data from tservers.
   UnorderedStringSet<TabletId> deleted_tablets_ GUARDED_BY(mutex_);
+
+  // Split parents dropped from tablet_map_, or never loaded into it, so a lookup for a parent can
+  // still redirect to its children. Populated by RemoveDeletedTabletsFromTables and by the
+  // TabletLoader, and pruned by CleanUpDeletedTables when the table is dropped.
+  UnorderedStringMap<TabletId, DeletedSplitParent> deleted_split_parents_ GUARDED_BY(mutex_);
 
   // Stores the info about the tablets being hidden and retained for CDC.
   // A tablet is retained by CDC in two scenarios:

@@ -594,7 +594,7 @@ CatCacheRemoveCTup(CatCache *cache, CatCTup *ct)
 	else
 	{
 		cache->yb_cc_size_bytes -=
-			sizeof(CatCTup) + MAXIMUM_ALIGNOF + ct->tuple.t_len;
+			MAXALIGN(sizeof(CatCTup)) + ct->tuple.t_len;
 		if (need_to_free_ybctid)
 			cache->yb_cc_size_bytes -= VARSIZE(HEAPTUPLE_YBCTID(&ct->tuple));
 	}
@@ -2910,16 +2910,20 @@ CatalogCacheCreateEntry(CatCache *cache, HeapTuple ntp, Datum *arguments,
 			dtp = ntp;
 
 		/* Allocate memory for CatCTup and the cached tuple in one go */
-		oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
-
-		ct = (CatCTup *) palloc(sizeof(CatCTup) +
-								MAXIMUM_ALIGNOF + dtp->t_len);
+		ct = (CatCTup *)
+			MemoryContextAlloc(CacheMemoryContext,
+							   MAXALIGN(sizeof(CatCTup)) + dtp->t_len);
 #ifdef CATCACHE_STATS			/* YB added */
-		cache->yb_cc_size_bytes += sizeof(CatCTup) + MAXIMUM_ALIGNOF + dtp->t_len;
+		cache->yb_cc_size_bytes += MAXALIGN(sizeof(CatCTup)) + dtp->t_len;
 #endif
 		ct->tuple.t_len = dtp->t_len;
 		ct->tuple.t_self = dtp->t_self;
-		HEAPTUPLE_COPY_YBCTID(dtp, &ct->tuple);
+		{
+			MemoryContext oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
+
+			HEAPTUPLE_COPY_YBCTID(dtp, &ct->tuple);
+			MemoryContextSwitchTo(oldcxt);
+		}
 #ifdef CATCACHE_STATS			/* YB added */
 		/* HEAPTUPLE_COPY_YBCTID makes allocation for ybctid. */
 		bool		allocated_ybctid = (IsYugaByteEnabled() &&
@@ -2930,12 +2934,11 @@ CatalogCacheCreateEntry(CatCache *cache, HeapTuple ntp, Datum *arguments,
 #endif
 		ct->tuple.t_tableOid = dtp->t_tableOid;
 		ct->tuple.t_data = (HeapTupleHeader)
-			MAXALIGN(((char *) ct) + sizeof(CatCTup));
+			(((char *) ct) + MAXALIGN(sizeof(CatCTup)));
 		/* copy tuple contents */
 		memcpy((char *) ct->tuple.t_data,
 			   (const char *) dtp->t_data,
 			   dtp->t_len);
-		MemoryContextSwitchTo(oldcxt);
 
 		if (dtp != ntp)
 			heap_freetuple(dtp);

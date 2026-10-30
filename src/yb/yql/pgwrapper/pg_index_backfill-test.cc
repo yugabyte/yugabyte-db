@@ -2401,6 +2401,61 @@ TEST_P(PgIndexBackfillColocated, ColocatedSimple) {
   TestSimpleBackfill();
 }
 
+// A pending intent on a later key of the same index must not stall unique-index backfill.
+//
+// The index has to exist and be past WRITE_AND_DELETE before the insert, or the insert does not
+// write an index intent. The insert's hash must be greater than the key being backfilled, and
+// both keys must share one tablet, so the forward intent scan from that key reaches it.
+class PgBackfillOtherIndexKeyIntentTest : public PgIndexBackfillBlockDoBackfill {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillBlockDoBackfill::UpdateMiniClusterOptions(options);
+    // The stuck status-cache loop otherwise runs until max(client_read_write_timeout_ms, 600s).
+    options->extra_tserver_flags.push_back("--ysql_client_read_write_timeout_ms=8000");
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(, PgBackfillOtherIndexKeyIntentTest, ::testing::Bool());
+
+TEST_P(PgBackfillOtherIndexKeyIntentTest, UniqueBackfillIgnoresOtherIndexKeyIntent) {
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE TABLE $0 (k int PRIMARY KEY, v int) SPLIT INTO 1 TABLETS", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 10)", kTableName));
+
+  const int later_v = ASSERT_RESULT(conn_->FetchRow<int32_t>(
+      "SELECT i FROM generate_series(11, 10000) i "
+      "WHERE yb_hash_code(i) > yb_hash_code(10) LIMIT 1"));
+  const int before_v = ASSERT_RESULT(conn_->FetchRow<int32_t>(
+      "SELECT i FROM generate_series(11, 10000) i "
+      "WHERE yb_hash_code(i) < yb_hash_code(10) LIMIT 1"));
+
+  thread_holder_.AddThreadFunctor([this] {
+    PGConn create_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+    ASSERT_OK(create_conn.ExecuteFormat(
+        "CREATE UNIQUE INDEX $0 ON $1 (v HASH) SPLIT INTO 1 TABLETS", kIndexName, kTableName));
+  });
+
+  ASSERT_OK(WaitForBackfillSafeTime(kYBTableName));
+
+  PGConn holder = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+  ASSERT_OK(holder.Execute("BEGIN"));
+  ASSERT_OK(holder.ExecuteFormat("INSERT INTO $0 VALUES (2, $1)", kTableName, later_v));
+  ASSERT_OK(holder.ExecuteFormat("INSERT INTO $0 VALUES (3, $1)", kTableName, before_v));
+
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"));
+  thread_holder_.JoinAll();
+
+  ASSERT_OK(holder.Execute("COMMIT"));
+
+  const std::string query = Format("SELECT k FROM $0 WHERE v = 10", kTableName);
+  ASSERT_TRUE(ASSERT_RESULT(conn_->HasIndexScan(query)));
+  ASSERT_EQ(ASSERT_RESULT(conn_->FetchRow<int32_t>(query)), 1);
+  ASSERT_EQ(ASSERT_RESULT(conn_->FetchRow<int32_t>(
+      Format("SELECT k FROM $0 WHERE v = $1", kTableName, before_v))), 3);
+  ASSERT_EQ(ASSERT_RESULT(conn_->FetchRow<int32_t>(
+      Format("SELECT k FROM $0 WHERE v = $1", kTableName, later_v))), 2);
+}
+
 // Make sure that backfill works when there are multiple colocated tables.
 TEST_P(PgIndexBackfillColocated, ColocatedMultipleTables) {
   // Create two tables with the index on the second table.
@@ -3766,6 +3821,8 @@ TEST_P(PgIndexBackfillPartialIndexTest, RowCountsChunkRetry) {
   ASSERT_OK(CreatePartialIndexTable(1 /* num_tablets */));
 
   ASSERT_OK(cluster_->SetFlagOnTServers("TEST_slowdown_backfill_by_ms", "3000"));
+  const auto rpc_timeout = ASSERT_RESULT(
+      cluster_->GetLeaderMaster()->GetFlag("ysql_index_backfill_rpc_timeout_ms"));
   ASSERT_OK(cluster_->SetFlagOnMasters("ysql_index_backfill_rpc_timeout_ms", "1000"));
 
   std::vector<ExternalDaemon*> tablet_servers;
@@ -3786,6 +3843,8 @@ TEST_P(PgIndexBackfillPartialIndexTest, RowCountsChunkRetry) {
   LogWaiter redone_waiter(tablet_servers, kFirstChunkOfTablet);
   ASSERT_OK(redone_waiter.WaitFor(60s * kTimeMultiplier));
   ASSERT_OK(cluster_->SetFlagOnTServers("TEST_slowdown_backfill_by_ms", "0"));
+  // An unslowed chunk can still take over 1s on slow builds, so it would never finish in time.
+  ASSERT_OK(cluster_->SetFlagOnMasters("ysql_index_backfill_rpc_timeout_ms", rpc_timeout));
   thread_holder_.JoinAll();
 
   ASSERT_NO_FATALS(CheckRowCounts("idx_concurrent", kNumRows, kMatchingRows));

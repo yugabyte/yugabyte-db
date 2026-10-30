@@ -104,7 +104,7 @@ Because LSNs aren't comparable across replication slots, avoid re-using Kafka to
 
     DDL operations should not be performed from the time of replication slot creation till the start of snapshot consumption of the last table.
 
-- CDC currently doesn't support [Transactional DDL](../../../explore/transactions/transactional-ddl/). Do not enable the `ysql_yb_ddl_transaction_block_enabled` flag if you are using CDC.
+- CDC currently doesn't support [Transactional DDL](../../../architecture/transactions/transactional-ddl/). Do not enable the `ysql_yb_ddl_transaction_block_enabled` flag if you are using CDC.
 
 - There should be a primary key on the table you want to stream the changes from.
 

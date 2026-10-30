@@ -860,6 +860,11 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   void ResetMinUnflushedChangeMetadataOpIdUnlocked() REQUIRES(data_mutex_);
 
+  // Applies the CDC SDK checkpoint and the derived replication flag; returns whether anything
+  // changed.
+  bool SetCdcSdkMinCheckpointOpIdUnlocked(const OpId& cdc_min_checkpoint_op_id)
+      REQUIRES(data_mutex_);
+
   void SetLastAppliedChangeMetadataOperationOpIdUnlocked(const OpId& op_id) REQUIRES(data_mutex_);
 
   void OnChangeMetadataOperationAppliedUnlocked(const OpId& applied_op_id) REQUIRES(data_mutex_);

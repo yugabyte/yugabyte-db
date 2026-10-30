@@ -1616,6 +1616,18 @@ extern Relation YbGetRelationWithOverwrittenReplicaIdentity(Oid relid,
 
 extern void YBCUpdateYbReadTimeAndInvalidateRelcache(uint64_t read_time);
 
+extern void YBCSetHistoricalReadContext(uint64_t read_time_ht,
+										uint64_t in_txn_limit_ht,
+										const char *docdb_txn_id);
+
+extern void YBCInvalidateCachesForHistoricalReadContext(void);
+
+extern void YBCSetHistoricalReadContextAndInvalidateCaches(uint64_t read_time_ht,
+															 uint64_t in_txn_limit_ht,
+															 const char *docdb_txn_id);
+
+extern void YBCResetHistoricalReadContextAndInvalidateRelcache(void);
+
 extern void YBCResetYbReadTimeAndInvalidateRelcache();
 
 extern uint64_t YbCalculateTimeDifferenceInMicros(TimestampTz yb_start_time);

@@ -55,6 +55,7 @@ class ScanChoices;
 class SchemaPackingProvider;
 class SharedLockManager;
 class SstStatsAggregator;
+class SstStatsMetrics;
 class StorageSet;
 class TableInfoProvider;
 class TransactionStatusCache;

@@ -644,6 +644,8 @@ Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValueBackward(
   VLOG(2) << "Looking for collision while going backward. Trying to insert " << *pk_doc_key_;
   auto requested_read_time = data.read_time();
 
+  char highest = dockv::KeyEntryTypeAsChar::kHighest;
+  KeyBuffer upperbound_buffer(pk_doc_key_->Encode().AsSlice(), Slice(&highest, 1));
   auto iter = CreateIntentAwareIterator(
       data.doc_write_batch->doc_db(),
       BloomFilterOptions::Fixed(pk_doc_key_->Encode().AsSlice()),
@@ -651,6 +653,7 @@ Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValueBackward(
       txn_op_context_,
       // This should be done with kMaxReadTime so that we do not filter out any records.
       data.read_operation_data.WithAlteredReadTime(ReadHybridTime::Max()));
+  IntentAwareIteratorUpperboundScope upperbound_scope(upperbound_buffer.AsSlice(), iter.get());
 
   DocHybridTime oldest_past_min_dht = VERIFY_RESULT(FindOldestOverwrittenTimestamp(
       iter.get(), dockv::SubDocKey(*pk_doc_key_), requested_read_time.read));

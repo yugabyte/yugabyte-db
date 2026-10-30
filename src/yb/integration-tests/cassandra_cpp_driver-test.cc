@@ -278,7 +278,10 @@ class CppCassandraDriverTestIndexMultipleChunksWithLeaderMoves
   std::vector<std::string> ExtraMasterFlags() override {
     auto flags = CppCassandraDriverTestIndex::ExtraMasterFlags();
     flags.push_back("--enable_load_balancing=true");
-    flags.push_back("--index_backfill_rpc_max_retries=0");
+    // Chunks sent to a stale leader are retried (index_backfill_rpc_max_retries=10 from the base
+    // fixture). Raise the backoff cap so the retries span ~12s instead of ~5s, giving the master
+    // time to learn the new leader from heartbeats.
+    flags.push_back("--index_backfill_rpc_max_delay_ms=4000");
     // We do not want backfill to fail because of any throttling.
     flags.push_back("--index_backfill_rpc_timeout_ms=180000");
     return flags;
@@ -298,10 +301,11 @@ class CppCassandraDriverTestIndexMultipleChunksWithLeaderMoves
       constexpr auto kSleepTimeMs = 5000;
       for (int i = 0; !thread_holder_.stop_flag(); i++) {
         const auto tserver_id = i % kNumTServers;
-        ASSERT_OK(cluster_->AddTServerToLeaderBlacklist(
+        // ASSERT_OK records successes in gtest results, racing with the main thread.
+        ASSERT_OK_FAST(cluster_->AddTServerToLeaderBlacklist(
             cluster_->master(), cluster_->tablet_server(tserver_id)));
         SleepFor(MonoDelta::FromMilliseconds(kSleepTimeMs));
-        ASSERT_OK(cluster_->ClearBlacklist(cluster_->master()));
+        ASSERT_OK_FAST(cluster_->ClearBlacklist(cluster_->master()));
       }
     });
   }

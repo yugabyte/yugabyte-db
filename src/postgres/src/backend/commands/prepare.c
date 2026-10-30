@@ -40,6 +40,7 @@
 /* YB includes */
 #include "libpq/pqformat.h"
 #include "pg_yb_utils.h"
+#include "yb/yql/pggate/ybc_dist_trace.h"
 #include "yb_ysql_conn_mgr_helper.h"
 
 
@@ -274,9 +275,11 @@ ExecuteQuery(ParseState *pstate,
 	/*
 	 * Run the portal as appropriate.
 	 */
+	YB_DIST_TRACE_START_SPAN("execute");
 	PortalStart(portal, paramLI, eflags, GetActiveSnapshot());
 
 	(void) PortalRun(portal, count, false, true, dest, dest, qc);
+	YB_DIST_TRACE_END_SPAN();
 
 	PortalDrop(portal, false);
 

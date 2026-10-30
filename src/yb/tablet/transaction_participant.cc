@@ -537,6 +537,11 @@ class TransactionParticipant::Impl
 
   template <class PB>
   Result<TransactionMetadata> PrepareMetadata(const PB& pb) {
+    // If this is a historical read, we don't need to check the transaction status.
+    if (pb.is_read_only_historical_committed_txn()) {
+      return TransactionMetadata::FromPB(pb);
+    }
+
     if (pb.has_isolation()) {
       auto metadata = VERIFY_RESULT(TransactionMetadata::FromPB(pb));
       std::unique_lock<std::mutex> lock(mutex_);

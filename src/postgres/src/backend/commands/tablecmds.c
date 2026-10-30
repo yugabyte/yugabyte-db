@@ -9809,7 +9809,7 @@ ATExecAddStatistics(AlteredTableInfo *tab, Relation rel,
 	/* The CreateStatsStmt has already been through transformStatsStmt */
 	Assert(stmt->transformed);
 
-	address = CreateStatistics(stmt);
+	address = CreateStatistics(stmt, !is_rebuild);
 
 	return address;
 }
@@ -21593,7 +21593,11 @@ YbATCopyStats(Oid old_relid, RangeVar *new_rel, Oid new_relid,
 		stmt = YbGenerateClonedExtStatsStmt(new_rel, old_relid,
 											stat_ext_form->oid, attmap);
 		stmt->defnames = stringToQualifiedNameList(orig_stats_name);
-		CreateStatistics(stmt);
+		/*
+		 * Re-creating statistics during a rewrite must not require CREATE on
+		 * the schema, matching the !is_rebuild case in ATExecAddStatistics.
+		 */
+		CreateStatistics(stmt, false /* check_rights */ );
 	}
 	systable_endscan(scan);
 	table_close(pg_statistic_ext, RowExclusiveLock);

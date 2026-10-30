@@ -15,7 +15,13 @@ class URIHelperTest {
     "http://old-host/api/v1/users, http://new-host:8080, http://new-host:8080/api/v1/users",
     "http://old-host/api/v1/users, http://new-host:8080/, http://new-host:8080/api/v1/users",
     "https://yba.example.com/api/v1/universe, http://localhost:9090, http://localhost:9090/api/v1/universe",
-    "http://old-host/api/v1/users?foo=bar, http://new-host:8080, http://new-host:8080/api/v1/users",
+    "http://old-host/api/v1/users?foo=bar, http://new-host:8080, http://new-host:8080/api/v1/users?foo=bar",
+    "http://old-host/api/v1/list_gflags?server=MASTER&mostUsedGFlags=true, http://new-host:8080, http://new-host:8080/api/v1/list_gflags?server=MASTER&mostUsedGFlags=true",
+    "http://old-host/api/v1/users?a=b%26c&d=e%20f, http://new-host:8080, http://new-host:8080/api/v1/users?a=b%26c&d=e%20f",
+    "http://old-host/api/v1/users?, http://new-host:8080, http://new-host:8080/api/v1/users",
+    "http://old-host/api/v1/users?foo=bar#section, http://new-host:8080, http://new-host:8080/api/v1/users?foo=bar",
+    "http://old-host/api/a/../b?x=1, http://new-host:8080, http://new-host:8080/api/b?x=1",
+    "http://old-host/api/v1/a%2Fb%20c, http://new-host:8080, http://new-host:8080/api/v1/a%2Fb%20c",
     "http://old-host/api/v1/users#section, http://new-host:8080, http://new-host:8080/api/v1/users",
     "http://old-host, http://new-host:8080, http://new-host:8080/",
     "http://old-host/, http://new-host:8080, http://new-host:8080/",
@@ -23,7 +29,7 @@ class URIHelperTest {
     "http://old-host/api//v1/users, http://new-host:8080, http://new-host:8080/api/v1/users",
     "http://old-host/api/v1/users, http://new-host:8080/api-prefix, http://new-host:8080/api/v1/users",
   })
-  void replaceBaseAndNormalize_replacesHostAndKeepsPath(
+  void replaceBaseAndNormalize_replacesHostAndKeepsPathAndQuery(
       String originalUri, String newBaseUri, String expectedUri) {
     assertEquals(
         URI.create(expectedUri), URIHelper.replaceBaseAndNormalize(originalUri, newBaseUri));

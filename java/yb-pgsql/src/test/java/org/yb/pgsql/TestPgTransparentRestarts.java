@@ -1629,7 +1629,11 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
           for (String setupSql : sessionSetupSqls) {
             stmt.execute(setupSql);
           }
-          while (!isExecutionDone.getAsBoolean()) {
+          // Keep going after the inserts finish until every statement has succeeded once: a
+          // non-retriable statement may surface a read restart on each run during a short insert
+          // phase.
+          while (!isExecutionDone.getAsBoolean() ||
+                 Arrays.stream(succeeded).anyMatch(s -> s == 0)) {
             for (int i = 0; i < n; ++i) {
               String execSql = execSqls.get(i);
               try {

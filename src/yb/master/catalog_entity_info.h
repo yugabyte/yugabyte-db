@@ -796,13 +796,20 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // If deactivate_only is set to true then it only
   // deactivates the tablet (i.e. removes it only from partitions_ and not from tablets_).
   // See the declaration of partitions_ structure to understand what constitutes inactive tablets.
+  // REQUIRES: the caller holds a write lock on the tablet, since the tablet's partition is read
+  // from its dirty state. Use RemoveInactiveTablet below to drop an already deactivated tablet.
   Result<bool> RemoveTablet(
       const TabletId& tablet_id, DeactivateOnly deactivate_only = DeactivateOnly::kFalse);
 
   // Remove multiple tablets from this table.
   // Return true if all given tablets were removed from 'partitions_'.
+  // REQUIRES: the caller holds a write lock on each tablet. See RemoveTablet above.
   Result<bool> RemoveTablets(
       const TabletInfos& tablets, DeactivateOnly deactivate_only = DeactivateOnly::kFalse);
+
+  // Removes the tablet from 'tablets_' if it is inactive, i.e. no longer in 'partitions_'. Returns
+  // whether it is inactive. Requires no lock on the tablet.
+  bool RemoveInactiveTablet(const TabletInfoPtr& tablet);
 
   // This only returns tablets which are in RUNNING state.
   Result<TabletInfos> GetTabletsInRange(const GetTableLocationsRequestPB* req) const;
@@ -1029,7 +1036,9 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // with the introduction of DBClone, SELECT AS-OF features.
   // TODO(#24956) If a tablet T1[0,100] splits into T2[0,50] and T3[50,100] and later the table is
   // Hidden, the partitions_ structure may end up with T1 and T3 as start_keys are unique.
-  // TODO(#15043): remove tablets from tablets_ once they have been deleted from all TServers.
+  // DELETED tablets are removed from this map by CatalogManager::RemoveDeletedTabletsFromTables,
+  // except in a table that has started hiding or deleting, or with the cleanup turned off by a
+  // flag, so a DELETED tablet may still be present here.
   std::map<TabletId, std::weak_ptr<TabletInfo>> tablets_ GUARDED_BY(lock_);
 
   // Protects partitions_ and tablets_.

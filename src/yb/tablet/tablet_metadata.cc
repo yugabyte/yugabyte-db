@@ -77,6 +77,7 @@
 #include "yb/util/status_log.h"
 #include "yb/util/std_util.h"
 #include "yb/util/storage_tier.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
 
 DEPRECATE_FLAG(bool, enable_tablet_orphaned_block_deletion, "10_2022");
@@ -1374,6 +1375,7 @@ Status RaftGroupMetadata::Flush(OnlyIfDirty only_if_dirty) {
     last_applied_change_metadata_op_id = last_applied_change_metadata_op_id_;
     ResetMinUnflushedChangeMetadataOpIdUnlocked();
   }
+  TEST_SYNC_POINT_CALLBACK("RaftGroupMetadata::Flush", this);
   RETURN_NOT_OK(SaveToDiskUnlocked(pb));
   {
     // Update last_flushed_change_metadata_op_id_ only after disk write is complete. This removes
@@ -1815,6 +1817,9 @@ uint32_t RaftGroupMetadata::wal_retention_secs() const {
 Status RaftGroupMetadata::set_cdc_min_replicated_index(int64 cdc_min_replicated_index) {
   {
     std::lock_guard lock(data_mutex_);
+    if (cdc_min_replicated_index_ == cdc_min_replicated_index) {
+      return Status::OK();
+    }
     cdc_min_replicated_index_ = cdc_min_replicated_index;
   }
   return Flush();
@@ -1843,22 +1848,48 @@ bool RaftGroupMetadata::is_under_cdc_sdk_replication() const {
 Status RaftGroupMetadata::set_cdc_sdk_min_checkpoint_op_id(const OpId& cdc_min_checkpoint_op_id) {
   {
     std::lock_guard lock(data_mutex_);
-    cdc_sdk_min_checkpoint_op_id_ = cdc_min_checkpoint_op_id;
-
-    if (cdc_min_checkpoint_op_id == OpId::Max() || cdc_min_checkpoint_op_id == OpId::Invalid()) {
-      // This means we no longer have an active CDC stream for the tablet.
-      is_under_cdc_sdk_replication_ = false;
-    } else if (cdc_min_checkpoint_op_id.valid()) {
-      // Any OpId less than OpId::Max() indicates we are actively streaming from this tablet.
-      is_under_cdc_sdk_replication_ = true;
+    if (!SetCdcSdkMinCheckpointOpIdUnlocked(cdc_min_checkpoint_op_id)) {
+      return Status::OK();
     }
   }
   return Flush();
 }
 
+namespace {
+
+// Whether an active CDC stream exists given its min checkpoint; an op id that is neither valid
+// nor the "no stream" markers keeps the existing value.
+bool IsUnderCdcSdkReplication(const OpId& cdc_min_checkpoint_op_id, bool existing_value) {
+  if (cdc_min_checkpoint_op_id == OpId::Max() || cdc_min_checkpoint_op_id == OpId::Invalid()) {
+    return false;
+  } else if (cdc_min_checkpoint_op_id.valid()) {
+    // Any OpId less than OpId::Max() indicates we are actively streaming from this tablet.
+    return true;
+  } else {
+    return existing_value;
+  }
+}
+
+} // namespace
+
+bool RaftGroupMetadata::SetCdcSdkMinCheckpointOpIdUnlocked(const OpId& cdc_min_checkpoint_op_id) {
+  const bool is_under_cdc_sdk_replication =
+      IsUnderCdcSdkReplication(cdc_min_checkpoint_op_id, is_under_cdc_sdk_replication_);
+  if (cdc_sdk_min_checkpoint_op_id_ == cdc_min_checkpoint_op_id &&
+      is_under_cdc_sdk_replication_ == is_under_cdc_sdk_replication) {
+    return false;
+  }
+  cdc_sdk_min_checkpoint_op_id_ = cdc_min_checkpoint_op_id;
+  is_under_cdc_sdk_replication_ = is_under_cdc_sdk_replication;
+  return true;
+}
+
 Status RaftGroupMetadata::set_cdc_sdk_safe_time(const HybridTime& cdc_sdk_safe_time) {
   {
     std::lock_guard lock(data_mutex_);
+    if (cdc_sdk_safe_time_ == cdc_sdk_safe_time) {
+      return Status::OK();
+    }
     cdc_sdk_safe_time_ = cdc_sdk_safe_time;
   }
   return Flush();
@@ -1871,28 +1902,25 @@ Status RaftGroupMetadata::set_all_cdc_retention_barriers(
     bool set_cdc_min_checkpoint_op_id_check,
     const HybridTime& cdc_sdk_safe_time,
     bool set_cdc_sdk_safe_time_check) {
+  bool changed = false;
   {
     std::lock_guard lock(data_mutex_);
-    if (set_cdc_min_replicated_index_check) {
+    if (set_cdc_min_replicated_index_check &&
+        cdc_min_replicated_index_ != cdc_min_replicated_index) {
       cdc_min_replicated_index_ = cdc_min_replicated_index;
+      changed = true;
     }
 
     if (set_cdc_min_checkpoint_op_id_check) {
-      cdc_sdk_min_checkpoint_op_id_ = cdc_min_checkpoint_op_id;
-      if (cdc_min_checkpoint_op_id == OpId::Max() || cdc_min_checkpoint_op_id == OpId::Invalid()) {
-        // This means we no longer have an active CDC stream for the tablet.
-        is_under_cdc_sdk_replication_ = false;
-      } else if (cdc_min_checkpoint_op_id.valid()) {
-        // Any OpId less than OpId::Max() indicates we are actively streaming from this tablet.
-        is_under_cdc_sdk_replication_ = true;
-      }
+      changed = SetCdcSdkMinCheckpointOpIdUnlocked(cdc_min_checkpoint_op_id) || changed;
     }
 
-    if (set_cdc_sdk_safe_time_check) {
+    if (set_cdc_sdk_safe_time_check && cdc_sdk_safe_time_ != cdc_sdk_safe_time) {
       cdc_sdk_safe_time_ = cdc_sdk_safe_time;
+      changed = true;
     }
   }
-  return Flush();
+  return changed ? Flush() : Status::OK();
 }
 
 Status RaftGroupMetadata::SetAllCDCRetentionBarriers(

@@ -43,10 +43,15 @@ void YsqlMajorUpgradeTestBase::SetUp() {
 }
 
 Status YsqlMajorUpgradeTestBase::ValidateUpgradeCompatibility(const std::string& user_name) {
+  return ValidateUpgradeCompatibilityWithArgs(/*extra_args=*/{}, user_name);
+}
+
+Status YsqlMajorUpgradeTestBase::ValidateUpgradeCompatibilityWithArgs(
+    const std::vector<std::string>& extra_args, const std::string& user_name) {
   const auto tserver = cluster_->tablet_server(0);
   const auto data_path = JoinPathSegments(tserver->GetDataDirs().front(), "../../pg_data");
 
-  const std::vector<std::string> args = {
+  std::vector<std::string> args = {
     GetPgToolPath("pg_upgrade"),
     "--old-datadir", data_path,
     "--old-host", tserver->bind_host(),
@@ -54,6 +59,7 @@ Status YsqlMajorUpgradeTestBase::ValidateUpgradeCompatibility(const std::string&
     "--username", user_name,
     "--check"
   };
+  args.insert(args.end(), extra_args.begin(), extra_args.end());
 
   LOG(INFO) << "Running " << AsString(args);
 

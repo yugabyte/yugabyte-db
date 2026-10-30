@@ -4,7 +4,6 @@ import { Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { YBToggle, YBTextInputWithLabel, YBPassword } from '../../common/forms/fields';
 import { Field } from 'redux-form';
-import { isNonEmptyObject } from '../../../utils/ObjectUtils';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
 import './StorageConfiguration.scss';
 
@@ -35,18 +34,16 @@ class GcsStorageConfiguration extends Component {
     }
   };
 
-  componentDidMount = () => {
-    const { customerConfigs } = this.props;
-    const gcsConfig = customerConfigs?.data.find((config) => config.name === 'GCS');
-    this.setState({useGcpIam: gcsConfig?.data?.USE_GCP_IAM === 'true'});
-  };
-
   render() {
     const {
       isEdited,
-      gcpIamToggle,
+      gcsFederatedIamEnabled,
+      showFederatedIam,
       useGcpIam,
     } = this.props;
+    // Federation runs on top of an instance identity - the payload sets USE_GCP_IAM either way -
+    // so a pasted credentials JSON is unusable under both modes, not just GCP IAM.
+    const usesInstanceIdentity = useGcpIam || gcsFederatedIamEnabled;
     return (
       <Row className="config-section-header">
         <Col lg={9}>
@@ -92,7 +89,6 @@ class GcsStorageConfiguration extends Component {
               <Field
                 name="USE_GCP_IAM"
                 component={YBToggle}
-                onToggle={gcpIamToggle}
                 isReadOnly={this.disableInputFields(isEdited, 'USE_GCP_IAM')}
                 subLabel="Whether to use IAM role for backup on GCS."
               />
@@ -104,6 +100,27 @@ class GcsStorageConfiguration extends Component {
               />
             </Col>
           </Row>
+          {showFederatedIam && (
+          <Row className="config-provider-row">
+            <Col lg={2}>
+              <div className="form-item-custom-label">Federated IAM</div>
+            </Col>
+            <Col lg={9}>
+              <Field
+                name="GCS_FEDERATED_IAM"
+                component={YBToggle}
+                isReadOnly={this.disableInputFields(isEdited, 'GCS_FEDERATED_IAM')}
+                subLabel="Whether to use cross-cloud federated IAM for GCS backup."
+              />
+            </Col>
+            <Col lg={1} className="config-zone-tooltip">
+              <YBInfoTip
+                title="Federated IAM"
+                content="Lets YBA reach this GCS bucket from AWS using its own instance identity, for the operations it performs directly such as validating and deleting backups. Leave off when YBA runs on GCP - it already reaches GCS natively. This setting is about YBA only; DB nodes are configured from their provider."
+              />
+            </Col>
+          </Row>
+          )}
           <Row className="config-provider-row">
             <Col lg={2}>
               <div className="form-item-custom-label">GCS Credentials</div>
@@ -113,11 +130,11 @@ class GcsStorageConfiguration extends Component {
                   name="GCS_CREDENTIALS_JSON"
                   placeHolder="GCS Credentials JSON"
                   component={YBTextInputWithLabel}
-                  validate={!useGcpIam ? required: false}
+                  validate={!usesInstanceIdentity ? required : false}
                   isReadOnly={this.disableInputFields(
                     isEdited,
                     'GCS_CREDENTIALS_JSON',
-                    useGcpIam
+                    usesInstanceIdentity
                   )}
                 />
             </Col>

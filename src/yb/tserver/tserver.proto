@@ -491,6 +491,14 @@ message YsqlCatalogVersionPB {
 message DBCatalogVersionDataPB {
   repeated YsqlCatalogVersionPB db_catalog_versions = 1;
   optional bool ignore_catalog_version_staleness_check = 2 [ default = false ];
+  // Hybrid time of the pg_yb_catalog_version read these versions came from. The tserver's
+  // staleness check measures a stale episode against catalog_versions_read_time rather than
+  // against its own clock, because a master that cannot read pg_yb_catalog_version keeps
+  // answering from a frozen snapshot: the gap then means the master has not looked, not that
+  // the two sides have diverged. Left unset by senders with no read time to report, and by a
+  // master from before this field was added, in which case the tserver falls back to wall clock.
+  // See TabletServer::SetYsqlDBCatalogVersionsUnlocked().
+  optional fixed64 catalog_versions_read_time = 3;
 }
 
 // This matches a row in pg_yb_invalidation_messages table, which has a composite primary
@@ -567,6 +575,7 @@ message WaitForLockersMultipleRequestPB {
   // The expected lease epoch of the recipient tserver.
   optional uint64 recipient_lease_epoch = 5;
   optional bytes background_transaction_id = 6;
+  optional bytes background_transaction_status_tablet = 7;
 }
 
 message WaitForLockersMultipleResponsePB {

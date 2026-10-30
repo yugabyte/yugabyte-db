@@ -342,13 +342,15 @@ message TSHeartbeatResponsePB {
   // the server to be in a severe bad state and should be immediately shutdown.
   optional bool is_fatal_error = 27;
 
-  optional uint32 oid_cache_invalidations_count = 29;
+  // Moved to xcluster_guarded_info via auto flag skip_fields_moved_to_xcluster_guarded_info.
+  optional uint32 DEPRECATED_oid_cache_invalidations_count = 29;
 
   message XClusterHeartbeatInfo {
     // Local NamespaceId -> xCluster info for that namespace.
     map<string, XClusterNamespaceInfoPB> xcluster_info_per_namespace = 1;
   }
-  optional XClusterHeartbeatInfo xcluster_heartbeat_info = 30;
+  // Moved to xcluster_guarded_info via auto flag skip_fields_moved_to_xcluster_guarded_info.
+  optional XClusterHeartbeatInfo DEPRECATED_xcluster_heartbeat_info = 30;
 
   optional ReplicationInfoPB cluster_replication_info = 31;
 
@@ -369,6 +371,9 @@ message TSHeartbeatResponsePB {
   // Defaults to true so that an outdated master keeps the previous behavior of
   // applying every map it sends.
   optional bool cluster_ysql_db_pins_ready = 34 [default = true];
+
+  // xCluster-guarded information.
+  optional XClusterGuardedInfoPB xcluster_guarded_info = 35;
 }
 
 service MasterHeartbeat {

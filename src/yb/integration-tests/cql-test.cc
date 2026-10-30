@@ -79,6 +79,7 @@ DECLARE_bool(ycql_allow_non_authenticated_password_reset);
 DECLARE_bool(TEST_disable_connection_timeout);
 DECLARE_uint32(TEST_read_deadline_check_granularity);
 DECLARE_uint64(arena_warn_threshold_bytes);
+DECLARE_uint64(consensus_max_batch_size_bytes);
 
 namespace yb {
 
@@ -1493,11 +1494,8 @@ TEST_F(CqlTest, AggregateArenaReset) {
   constexpr int kNumRows = 1000;
   constexpr size_t kValueLen = 1000;
 
-  // Without the aggregate-arena recycling, ~1 MB of varchar data would flow
-  // through a single arena and trip this warning. With recycling, each arena
-  // generation stays well below the threshold.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_arena_warn_threshold_bytes) = 256_KB;
-  StringWaiterLogSink arena_warning_sink("exceeded warning threshold");
+  // Keep Raft catch-up batches to lagging followers well below the arena warn threshold.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_consensus_max_batch_size_bytes) = 64_KB;
 
   auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
   ASSERT_OK(session.ExecuteQuery(
@@ -1512,6 +1510,13 @@ TEST_F(CqlTest, AggregateArenaReset) {
     ASSERT_OK(session.ExecuteQuery(
         Format("INSERT INTO tbl (k, v) VALUES ($0, '$1')", i, v)));
   }
+
+  // Without the aggregate-arena recycling, ~1 MB of varchar data would flow
+  // through a single arena and trip this warning. With recycling, each arena
+  // generation stays well below the threshold.
+  // Armed after the inserts so that write path arenas are not counted.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_arena_warn_threshold_bytes) = 256_KB;
+  StringWaiterLogSink arena_warning_sink("exceeded warning threshold");
 
   CassandraStatement stmt("SELECT min(v) FROM tbl");
   stmt.SetPageSize(100);

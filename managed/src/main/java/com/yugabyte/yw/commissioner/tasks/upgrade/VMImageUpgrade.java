@@ -17,6 +17,7 @@ import com.yugabyte.yw.commissioner.tasks.UpdateOOMServiceState;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RunNodeCommand;
+import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckOCIImageEligibility;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.Util;
@@ -146,6 +147,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
       }
     }
     addBasicPrecheckTasks();
+    createCheckOCIImageEligibilityTask(universe);
     runtimeInfo = getRuntimeInfo(RuntimeInfo.class);
     Customer customer = Customer.get(universe.getCustomerId());
 
@@ -172,6 +174,39 @@ public class VMImageUpgrade extends UpgradeTaskBase {
         enableEarlyoom = false;
       }
     }
+  }
+
+  // TODO(PLAT-22730): also check the images the nodes are running now, not just the target images.
+  private void createCheckOCIImageEligibilityTask(Universe universe) {
+    Set<NodeDetails> ociNodes =
+        toOrderedSet(getNodesToBeRestarted().asPair()).stream()
+            .filter(
+                n -> universe.getCluster(n.placementUuid).getProviderCloudType(n) == CloudType.oci)
+            .collect(Collectors.toCollection(LinkedHashSet::new));
+    Map<String, ImageSettings> imageSettingsMap = getImageSettingsForNodes(ociNodes);
+    Set<CheckOCIImageEligibility.TargetImage> targetImages =
+        ociNodes.stream()
+            .filter(n -> imageSettingsMap.containsKey(n.nodeName))
+            .map(
+                n ->
+                    new CheckOCIImageEligibility.TargetImage(
+                        universe.getCluster(n.placementUuid).getProviderUUIDForNode(n),
+                        n.cloudInfo.region,
+                        imageSettingsMap.get(n.nodeName).machineImage))
+            .collect(Collectors.toCollection(LinkedHashSet::new));
+    if (targetImages.isEmpty()) {
+      return;
+    }
+    doInPrecheckSubTaskGroup(
+        "CheckOCIImageEligibility",
+        subTaskGroup -> {
+          CheckOCIImageEligibility.Params params = new CheckOCIImageEligibility.Params();
+          params.setUniverseUUID(taskParams().getUniverseUUID());
+          params.targetImages = new ArrayList<>(targetImages);
+          CheckOCIImageEligibility task = createTask(CheckOCIImageEligibility.class);
+          task.initialize(params);
+          subTaskGroup.addSubTask(task);
+        });
   }
 
   @Override
