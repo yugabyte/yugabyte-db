@@ -552,14 +552,6 @@ YbTidNext(TidScanState *node)
 		YbPushdownExprs *rel_pushdown =
 			YbInstantiatePushdownExprs(&plan->yb_rel_pushdown, estate);
 
-		if (node->yb_tss_aggrefs)
-		{
-			TupleDesc	tupdesc = CreateTemplateTupleDesc(list_length(node->yb_tss_aggrefs));
-
-			ExecInitScanTupleSlot(node->ss.ps.state, &node->ss, tupdesc, &TTSOpsVirtual);
-			slot = node->ss.ss_ScanTupleSlot;
-		}
-
 		{
 			YbTableScanOptions yb_options = {
 				.pg_scan_plan = (Scan *) plan,

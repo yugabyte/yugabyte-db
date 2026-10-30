@@ -76,22 +76,6 @@ YbSeqNext(YbSeqScanState *node)
 	 */
 	if (tsdesc == NULL)
 	{
-		if (node->aggrefs)
-		{
-			/*
-			 * For aggregate pushdown, we read just the aggregates from DocDB
-			 * and pass that up to the aggregate node (agg pushdown wouldn't be
-			 * enabled if we needed to read more than that).  Set up a dummy
-			 * scan slot to hold as many attributes as there are pushed
-			 * aggregates.
-			 */
-			TupleDesc	tupdesc = CreateTemplateTupleDesc(list_length(node->aggrefs));
-
-			ExecInitScanTupleSlot(estate, &node->ss, tupdesc, &TTSOpsVirtual);
-			/* Refresh the local pointer. */
-			slot = node->ss.ss_ScanTupleSlot;
-		}
-
 		YbSeqScan  *plan = (YbSeqScan *) node->ss.ps.plan;
 		YbPushdownExprs *yb_pushdown =
 			YbInstantiatePushdownExprs(&plan->yb_pushdown, estate);

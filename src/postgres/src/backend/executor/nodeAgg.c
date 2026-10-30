@@ -2457,6 +2457,15 @@ yb_agg_pushdown(AggState *aggstate)
 	 * operators.
 	 */
 	ps->ps_ProjInfo = NULL;
+
+	/*
+	 * The scan returns only the pushed down aggregate results, so give it a
+	 * scan slot with one attribute per pushed down aggregate.  Do it here
+	 * rather than on scan start so that rescans reuse the slot.
+	 */
+	ExecInitScanTupleSlot(ps->state, (ScanState *) ps,
+						  CreateTemplateTupleDesc(list_length(*aggrefs)),
+						  &TTSOpsVirtual);
 }
 
 /*
@@ -2784,6 +2793,7 @@ agg_retrieve_direct(AggState *aggstate)
 						fcinfo->args[1].isnull = isnull;
 						advance_transition_function(aggstate, pertrans, pergroupstate);
 					}
+					pfree(func_name);
 					++valno;
 				}
 
