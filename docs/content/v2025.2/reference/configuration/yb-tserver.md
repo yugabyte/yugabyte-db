@@ -2079,9 +2079,68 @@ Default: `50`
 
 Assigns an extra priority to automatic (minor) compactions when automatic tablet splitting is enabled. This deprioritizes post-split compactions and ensures that smaller compactions are not starved. Suggested values are between 0 and 50.
 
-### Vector Index LSM compaction flags
+### Vector Index LSM flags
 
-Use these flags to control background compaction of Vector LSM chunk files used by [vector indexes](../../../additional-features/pg-extensions/extension-pgvector/#vector-indexing).
+Use these flags to control the memory and background compaction of Vector LSM chunks used by [vector indexes](../../../additional-features/pg-extensions/extension-pgvector/#vector-indexing).
+
+##### --vector_index_initial_chunk_memstore_size_mb
+
+{{% tags/wrap %}}
+
+Default: `256`
+{{% /tags/wrap %}}
+
+Available in v2025.2.9.0 and later.
+
+In-memory size, in megabytes, of a vector index mutable chunk: the in-memory chunk that new vectors are inserted into before it is flushed to disk. The size is converted to a number of vectors using the index's per-vector memory estimate, so the more dimensions the vectors have, the fewer vectors a chunk holds. A chunk holds the smaller of this number of vectors and [`--vector_index_initial_chunk_size`](#vector-index-initial-chunk-size). Set to `0` for no memory limit.
+
+A chunk can be larger than this size when a single insert batch does not fit in it, or when vector index backfill sizes its own chunk (`--vector_index_backfill_single_chunk_size_bytes` is non-zero). Backfill also inserts rows in batches of at most the same number of vectors, which bounds the memory each batch uses.
+
+##### --vector_index_initial_chunk_size
+
+{{% tags/wrap %}}
+
+Default: `100000`
+{{% /tags/wrap %}}
+
+Number of vectors in a vector index mutable chunk: the in-memory chunk that new vectors are inserted into before it is flushed to disk. A chunk holds the smaller of this number and the number of vectors that fit into [`--vector_index_initial_chunk_memstore_size_mb`](#vector-index-initial-chunk-memstore-size-mb). Set to `0` for no limit by the number of vectors; if both flags are `0`, each chunk is sized to the batch of vectors inserted into it. Avoid setting both flags to `0`: vector index backfill then inserts all of a tablet's rows in one batch and builds a single chunk for the whole tablet.
+
+As with the memory limit, a chunk can be larger when a single insert batch does not fit in it, or when vector index backfill sizes its own chunk (`--vector_index_backfill_single_chunk_size_bytes` is non-zero).
+
+##### --vector_index_compaction_chunk_max_memstore_size_mb
+
+{{% tags/wrap %}}
+
+Default: `0`
+{{% /tags/wrap %}}
+
+Available in v2025.2.6.0 and later.
+
+Maximum in-memory size in megabytes for a single output chunk built during Vector LSM compaction. When set to `0` (the default), the limit comes from [`--vector_index_compaction_chunk_max_memstore_size_percentage`](#vector-index-compaction-chunk-max-memstore-size-percentage). When set to a non-zero value, the output is split into multiple chunks bounded by the specified memory budget.
+
+This flag takes priority over [`--vector_index_compaction_chunk_max_memstore_size_percentage`](#vector-index-compaction-chunk-max-memstore-size-percentage). When concurrent compactions are allowed ([`--vector_index_num_compactions_limit`](#vector-index-num-compactions-limit) is not `1`), you should set this flag instead of relying on the percentage-based limit.
+
+Before v2025.2.9.0, this flag was named `--vector_index_compaction_chunk_max_mem_store_size_mb`. The old name is still accepted, but its value is ignored.
+
+##### --vector_index_compaction_chunk_max_memstore_size_percentage
+
+{{% tags/wrap %}}
+
+Default: `60`
+{{% /tags/wrap %}}
+
+Available in v2025.2.6.0 and later.
+
+Maximum in-memory size for a single output chunk built during Vector LSM compaction, expressed as a percentage of the vector index block cache capacity. A value of `0` means no limit (single output chunk). Values above `100` are treated as `100`.
+
+This flag is ignored when:
+
+- [`--vector_index_compaction_chunk_max_memstore_size_mb`](#vector-index-compaction-chunk-max-memstore-size-mb) is set to a non-zero value
+- Concurrent compactions are allowed ([`--vector_index_num_compactions_limit`](#vector-index-num-compactions-limit) is not `1`)
+
+When both this flag and the MB-based limit are at their defaults, chunked compaction is enabled with output chunks capped at 60% of the vector index block cache capacity, which reduces the risk of out-of-memory (OOM) errors during compaction.
+
+Before v2025.2.9.0, this flag was named `--vector_index_compaction_chunk_max_mem_store_size_percentage`. The old name is still accepted, but its value is ignored.
 
 ##### --vector_index_num_compactions_limit
 
@@ -2091,6 +2150,8 @@ Default: `1`
 {{% /tags/wrap %}}
 
 Maximum number of concurrent Vector LSM compactions per tablet server. Set to `0` for no per-tserver limit.
+
+When this flag is not `1` (concurrent compactions are allowed), [`--vector_index_compaction_chunk_max_memstore_size_percentage`](#vector-index-compaction-chunk-max-memstore-size-percentage) is ignored. Set an absolute limit with [`--vector_index_compaction_chunk_max_memstore_size_mb`](#vector-index-compaction-chunk-max-memstore-size-mb) instead, and account for total memory across concurrent merges.
 
 ##### --vector_index_files_number_compaction_trigger
 
