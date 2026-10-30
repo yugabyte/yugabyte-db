@@ -1109,6 +1109,46 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
     updateRuntimeFlagPGCBackend();
   }
 
+  private void assertPgauditLog(Statement stmt, String expected) throws Exception {
+    try (ResultSet rs = stmt.executeQuery("SHOW pgaudit.log")) {
+      assertTrue(rs.next());
+      assertEquals(expected, rs.getString(1));
+    }
+  }
+
+  @Test
+  public void testCustomStringGucStickyOnlyOnClientSet() throws Exception {
+    restartClusterWithAdditionalFlags(Collections.emptyMap(),
+        Collections.singletonMap("ysql_pg_conf_csv", "pgaudit.log='ddl'"));
+
+    try (Connection conn = getConnectionBuilder()
+             .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR).connect();
+         Statement stmt = conn.createStatement()) {
+      stmt.execute("SELECT pg_reload_conf()");
+      Thread.sleep(2000);
+      assertPgauditLog(stmt, "ddl");
+      assertConnectionStickyState(stmt, false);
+
+      stmt.execute("CREATE ROLE audit_role LOGIN");
+      stmt.execute("ALTER ROLE audit_role SET pgaudit.log = 'write'");
+    }
+
+    try (Connection conn = getConnectionBuilder()
+             .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+             .withUser("audit_role").connect();
+         Statement stmt = conn.createStatement()) {
+      assertPgauditLog(stmt, "write");
+      assertConnectionStickyState(stmt, false);
+    }
+
+    try (Connection conn = getConnectionBuilder()
+             .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR).connect();
+         Statement stmt = conn.createStatement()) {
+      stmt.execute("SET pgaudit.log = 'read'");
+      assertConnectionStickyState(stmt, true);
+    }
+  }
+
   // With a single backend, B's query resets the backend to defaults, so A's next query has to
   // replay both its startup parameter ('G' packet) and its SET on it. Postgres reports those
   // GUC_REPORT variables again, but A already knows their values and must not be sent a
