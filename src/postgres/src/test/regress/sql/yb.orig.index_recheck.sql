@@ -317,6 +317,7 @@ INSERT INTO t_nonequality_array SELECT g, k FROM generate_series(0, 1) g, genera
 :explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k <= ANY ('{NULL}');
 -- bigint elements bind while the deciding one fits the int column; one that
 -- does not is left to the recheck
+-- TODO(#26493): decide an out-of-range deciding element without the recheck.
 :explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k > ANY ('{2,5}'::bigint[]);
 :explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k > ANY ('{3000000000,4000000000}'::bigint[]);
 -- an IN list and a non-equality array with the same elements
@@ -336,6 +337,7 @@ DEALLOCATE nonequality_array_count;
 -- hold.  The pushdown check runs before the array is evaluated, so it keeps
 -- the aggregate in the executor whatever the elements, since a pushed-down
 -- count would skip the recheck such an element needs (#26493).
+-- TODO(#36353): push the aggregate down over such an array.
 PREPARE nonequality_array_count_bigint(bigint[]) AS SELECT count(*) FROM t_nonequality_array WHERE g = 0 AND k > ANY ($1);
 :explain_analyze EXECUTE nonequality_array_count_bigint('{5,2}');
 EXECUTE nonequality_array_count_bigint('{5,2}');
@@ -384,6 +386,7 @@ DROP TYPE nonequality_array_mood;
 -- timestamp column, so the scalar key that replaces the array goes to the
 -- recheck, and each condition still returns the three rows on its side of
 -- midnight of 2024-01-02 (#35030).
+-- TODO(#36444): filter the other rows in DocDB instead of the recheck.
 CREATE TABLE t_nonequality_array_ts(ts timestamp, PRIMARY KEY(ts ASC));
 INSERT INTO t_nonequality_array_ts SELECT '2024-01-01'::timestamp + i * interval '12 hours' FROM generate_series(0, 5) i;
 :explain_analyze SELECT * FROM t_nonequality_array_ts WHERE ts > ANY ('{2024-01-03,2024-01-02}'::date[]);
