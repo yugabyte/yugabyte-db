@@ -1016,7 +1016,10 @@
             "YBA_K8S_DISK_USAGE",
             "OTEL_COLLECTOR_RESTART",
             "NODE_EXPORTER_TLS_ROOT_NODES",
-            "NODE_EXPORTER_ROOT_NON_UNIVERSE"
+            "NODE_EXPORTER_ROOT_NON_UNIVERSE",
+            "DB_K8S_CPU_USAGE",
+            "DB_K8S_MEMORY_USAGE",
+            "DB_K8S_DATA_VOLUME_USAGE"
           ],
           "type" : "string"
         },
@@ -1220,7 +1223,10 @@
             "YBA_K8S_DISK_USAGE",
             "OTEL_COLLECTOR_RESTART",
             "NODE_EXPORTER_TLS_ROOT_NODES",
-            "NODE_EXPORTER_ROOT_NON_UNIVERSE"
+            "NODE_EXPORTER_ROOT_NON_UNIVERSE",
+            "DB_K8S_CPU_USAGE",
+            "DB_K8S_MEMORY_USAGE",
+            "DB_K8S_DATA_VOLUME_USAGE"
           ],
           "type" : "string"
         },
@@ -1520,7 +1526,10 @@
             "YBA_K8S_DISK_USAGE",
             "OTEL_COLLECTOR_RESTART",
             "NODE_EXPORTER_TLS_ROOT_NODES",
-            "NODE_EXPORTER_ROOT_NON_UNIVERSE"
+            "NODE_EXPORTER_ROOT_NON_UNIVERSE",
+            "DB_K8S_CPU_USAGE",
+            "DB_K8S_MEMORY_USAGE",
+            "DB_K8S_DATA_VOLUME_USAGE"
           ],
           "type" : "string"
         },

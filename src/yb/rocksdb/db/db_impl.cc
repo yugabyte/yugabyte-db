@@ -2314,6 +2314,10 @@ Result<FileNumbersHolder> DBImpl::FlushMemTableToOutputFile(
     bg_error_.TrySet(file_number_holder.status());
   }
   RETURN_NOT_OK(file_number_holder);
+  if (!flush_job.picked_memtables()) {
+    // Nothing was flushed, so there is no flush or file to report.
+    return file_number_holder;
+  }
   MAYBE_FAULT(FLAGS_fault_crash_after_rocksdb_flush);
   // may temporarily unlock and lock the mutex.
   NotifyOnFlushCompleted(
@@ -3804,8 +3808,12 @@ ColumnFamilyData* DBImpl::PopFirstFromFlushQueue(FlushReason* flush_reason_out) 
 
 void DBImpl::SchedulePendingFlush(ColumnFamilyData* cfd, FlushReason reason) {
   if (!cfd->pending_flush() && cfd->imm()->IsFlushPending()) {
-    for (auto listener : db_options_.listeners) {
-      listener->OnFlushScheduled(this);
+    if (!db_options_.listeners.empty()) {
+      auto largest_frontier =
+          cfd->imm()->GetFrontier({}, yb::storage::UpdateUserValueType::kLargest);
+      for (auto listener : db_options_.listeners) {
+        listener->OnFlushScheduled(this, largest_frontier.get());
+      }
     }
     VLOG_WITH_PREFIX_AND_FUNC(2) << "Flush scheduled for CF: " << cfd->GetName()
                                  << ", reason: " << ToString(reason);

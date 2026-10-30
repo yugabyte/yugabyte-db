@@ -1481,6 +1481,7 @@ public class UniverseCRUDHandler {
     // enforce user tags for cloud instances.
     for (Cluster cluster : taskParams.clusters) {
       validateUserTags(customer, cluster.userIntent);
+      GFlagsUtil.validateGFlagValues(cluster.userIntent);
     }
     validateOciInstanceTags(taskParams);
     if (u.isYbcEnabled()) {
@@ -1498,6 +1499,9 @@ public class UniverseCRUDHandler {
 
     // Set helm naming style into params
     taskParams.useNewHelmNamingStyle = u.getUniverseDetails().useNewHelmNamingStyle;
+
+    // Clients such as the CLI omit it; new nodes need it to get the OTEL collector.
+    taskParams.otelCollectorEnabled = u.getUniverseDetails().otelCollectorEnabled;
 
     // Set existing LBs into taskParams
     taskParams.setExistingLBs(u.getUniverseDetails().clusters);
@@ -1870,6 +1874,8 @@ public class UniverseCRUDHandler {
 
     // Set helm naming style into params
     taskParams.useNewHelmNamingStyle = universe.getUniverseDetails().useNewHelmNamingStyle;
+    // Clients such as the CLI omit it; new nodes need it to get the OTEL collector.
+    taskParams.otelCollectorEnabled = universe.getUniverseDetails().otelCollectorEnabled;
 
     List<Cluster> newReadOnlyClusters = taskParams.getReadOnlyClusters();
     List<Cluster> newAddOnClusters = taskParams.getAddOnClusters();

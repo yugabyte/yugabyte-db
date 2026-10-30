@@ -745,6 +745,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       if (validateGFlagsConsistency) {
         GFlagsUtil.checkGflagsAndIntentConsistency(userIntent);
       }
+      GFlagsUtil.validateGFlagValues(userIntent);
       GFlagsUtil.validateFipsCompliancy(userIntent, isFipsEnabled);
       GFlagsUtil.validateNodeToNodeClientCerts(userIntent, useNodeToNodeClientCerts);
       if (userIntent.specificGFlags != null) {

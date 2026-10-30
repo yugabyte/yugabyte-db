@@ -3710,6 +3710,19 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_alter_type_reuse_expr_and_partial_indexes", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Skip rebuild of expression and partial indexes when ALTER TABLE ... "
+				"ALTER COLUMN ... TYPE changes only a column's type modifier and does not rewrite "
+				"the table."),
+				gettext_noop("When turned off, such indexes are dropped and rebuilt."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_alter_type_reuse_expr_and_partial_indexes,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_planner_trace", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Enables planner tracing."),
 			NULL

@@ -408,6 +408,30 @@ public class KubernetesUtilTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCoreCountParsesMilliCoresAndDefaultsAMissingSpec() throws IOException {
+    Pair<UniverseDefinitionTaskParams, List<AvailabilityZone>> pair =
+        addClusterAndNodeDetailsK8s("2024.2.0.0-b2", false /* createRR */);
+    UniverseDefinitionTaskParams universeParams = pair.getFirst();
+    UserIntent userIntent = universeParams.getPrimaryCluster().userIntent;
+    userIntent.tserverK8SNodeResourceSpec = null;
+    userIntent.masterK8SNodeResourceSpec = null;
+    Map<UUID, Map<String, Object>> milliCoreOverrides =
+        KubernetesUtil.getFinalOverrides(
+            universeParams.getPrimaryCluster(),
+            "resource:\n  tserver:\n    requests:\n      cpu: 500m\n",
+            userIntent.azOverrides);
+    double defaultCores = new UserIntent.K8SNodeResourceSpec().cpuCoreCount;
+    for (NodeDetails node : universeParams.nodeDetailsSet) {
+      assertEquals(
+          defaultCores, KubernetesUtil.getCoreCountForUniverseForServer(userIntent, null, node), 0);
+      assertEquals(
+          node.isTserver ? 0.5 : defaultCores,
+          KubernetesUtil.getCoreCountForUniverseForServer(userIntent, milliCoreOverrides, node),
+          0.001);
+    }
+  }
+
+  @Test
   public void testNeedsFullMoveSameDeviceInfo() throws IOException {
     Pair<UniverseDefinitionTaskParams, List<AvailabilityZone>> pair =
         addClusterAndNodeDetailsK8s("2024.2.0.0-b2", false);
