@@ -36,9 +36,9 @@ import org.yb.pgsql.ConnectionBuilder;
  *       the given one.</li>
  * </ul>
  * The builder must use the client's user and database, so that holders draw from the client's
- * pool, and a non-superuser, since ysql_conn_mgr_superuser_sticky pins every superuser client to
- * one backend. A backend that a sticky client owns can be neither held nor steered to; both calls
- * return false then.
+ * pool. Use a non-superuser: with ysql_conn_mgr_superuser_sticky, which defaults to true but
+ * BaseYsqlConnMgr sets to false, every superuser client is pinned to one backend. A backend that a
+ * sticky client owns can be neither held nor steered to; both calls return false then.
  *
  * The observer is a direct (not pooled) connection to the same node, used to list backends.
  * Holders cannot do that themselves: pg_stat_activity is read once per transaction.
@@ -103,13 +103,23 @@ public class BackendSteering implements AutoCloseable {
   /** Releases every held backend. */
   @Override
   public void close() throws Exception {
+    Exception first = null;
     for (Integer pid : holders.keySet().toArray(new Integer[0])) {
       try (Connection conn = holders.remove(pid);
            Statement stmt = conn.createStatement()) {
         stmt.execute("ROLLBACK");
+      } catch (Exception e) {
+        if (first == null) {
+          first = e;
+        } else {
+          first.addSuppressed(e);
+        }
       }
     }
     Thread.sleep(RELEASE_SETTLE_MS);
+    if (first != null) {
+      throw first;
+    }
   }
 
   /**
@@ -128,6 +138,9 @@ public class BackendSteering implements AutoCloseable {
       try (Statement stmt = conn.createStatement()) {
         stmt.execute("BEGIN");
         pid = backendPid(stmt);
+      } catch (Exception e) {
+        conn.close();
+        throw e;
       }
       holders.put(pid, conn);
       if (pid == target) {

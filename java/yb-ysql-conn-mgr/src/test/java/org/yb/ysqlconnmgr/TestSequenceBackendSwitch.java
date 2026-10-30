@@ -69,11 +69,15 @@ public class TestSequenceBackendSwitch extends BaseYsqlConnMgr {
   private static final String NOT_SUPPORTED =
       "not supported for session created by connection manager";
 
-  private static final Map<String, String> KNOWN_FAILURES = new HashMap<>();
+  private static final String NOT_YET_DEFINED = "is not yet defined in this session";
 
-  private static void knownFailure(String bug, String test, String mode, String... cacheMethods) {
+  // Test name with parameters -> {bug, part of the failure message the bug produces}.
+  private static final Map<String, String[]> KNOWN_FAILURES = new HashMap<>();
+
+  private static void knownFailure(String bug, String symptom, String test, String mode,
+                                   String... cacheMethods) {
     for (String cacheMethod : cacheMethods) {
-      KNOWN_FAILURES.put(test + "[" + mode + "-" + cacheMethod + "]", bug);
+      KNOWN_FAILURES.put(test + "[" + mode + "-" + cacheMethod + "]", new String[] {bug, symptom});
     }
   }
 
@@ -81,39 +85,48 @@ public class TestSequenceBackendSwitch extends BaseYsqlConnMgr {
     // currval and lastval read the backend's state, whichever client left it there...
     for (String test : Arrays.asList("testOtherClientDoesNotSeeCurrvalLastval",
                                      "testCurrvalErrorsAfterDiscardSequences")) {
-      knownFailure("#36294", test, POOLED_WITH, "connection", "server");
+      knownFailure("#36294", "to fail on backend", test, POOLED_WITH, "connection", "server");
     }
     // ...and the client's own state stays behind on the backend it left.
     for (String test : Arrays.asList("testCurrvalLastvalFollowClientAcrossSwitch",
                                      "testCurrvalAfterRolledBackNextvalOnOtherBackend")) {
-      knownFailure("#36293", test, POOLED_WITH, "connection", "server");
+      knownFailure("#36293", NOT_YET_DEFINED, test, POOLED_WITH, "connection", "server");
     }
     // With the connection cache method each backend hands out its own cached range.
     for (String mode : Arrays.asList(POOLED_WITHOUT, POOLED_WITH)) {
-      knownFailure("#36294", "testNextvalMonotonicPerClientAcrossBackends", mode, "connection");
-      knownFailure("#36296", "testSetvalSeenOnOtherBackend", mode, "connection");
-      knownFailure("#36296", "testRestartSeenOnOtherBackend", mode, "connection");
+      knownFailure("#36294", "went backwards", "testNextvalMonotonicPerClientAcrossBackends",
+                   mode, "connection");
+      knownFailure("#36296", "nextval after setval", "testSetvalSeenOnOtherBackend", mode,
+                   "connection");
+      knownFailure("#36296", "nextval after RESTART", "testRestartSeenOnOtherBackend", mode,
+                   "connection");
     }
     // A rolled-back nextval does not make the client sticky.
-    knownFailure("#36295", "testCurrvalAfterRolledBackNextvalOnOtherBackend", SESSION,
-                 "connection", "server");
+    knownFailure("#36295", NOT_YET_DEFINED, "testCurrvalAfterRolledBackNextvalOnOtherBackend",
+                 SESSION, "connection", "server");
   }
 
+  // Reports a listed test as skipped while it fails with its bug's symptom. Any other failure,
+  // such as a missed steer or a setup error, still fails the test.
   @Rule
   public final TestRule knownFailures = (base, description) ->
       new org.junit.runners.model.Statement() {
         @Override
         public void evaluate() throws Throwable {
-          String bug = KNOWN_FAILURES.get(description.getMethodName());
-          if (bug == null) {
+          String[] known = KNOWN_FAILURES.get(description.getMethodName());
+          if (known == null) {
             base.evaluate();
             return;
           }
+          String bug = known[0];
           try {
             base.evaluate();
           } catch (AssumptionViolatedException e) {
             throw e;
           } catch (Throwable t) {
+            if (t.getMessage() == null || !t.getMessage().contains(known[1])) {
+              throw t;
+            }
             LOG.info("Known failure, " + bug, t);
             throw new AssumptionViolatedException("Known failure, " + bug + ": " + t);
           }
@@ -198,9 +211,27 @@ public class TestSequenceBackendSwitch extends BaseYsqlConnMgr {
     }
   }
 
+  // A failed test leaves its sequence behind on the reused cluster. In pooled_with_curval_lastval
+  // mode a backend's lastval() keeps pointing at it for the next client (#36294), which would
+  // break later tests' lastval checks.
   @After
-  public void closeObserver() throws Exception {
-    if (observer != null) {
+  public void dropSequencesAndCloseObserver() throws Exception {
+    if (observer == null) {
+      return;
+    }
+    try (Statement stmt = observer.createStatement()) {
+      List<String> seqs = new ArrayList<>();
+      try (ResultSet rs = stmt.executeQuery(
+               "SELECT c.relname FROM pg_class c JOIN pg_roles r ON r.oid = c.relowner" +
+               " WHERE c.relkind = 'S' AND r.rolname = '" + APP_USER + "'")) {
+        while (rs.next()) {
+          seqs.add(rs.getString(1));
+        }
+      }
+      for (String seq : seqs) {
+        stmt.execute("DROP SEQUENCE IF EXISTS " + seq);
+      }
+    } finally {
       observer.close();
     }
   }
@@ -283,12 +314,18 @@ public class TestSequenceBackendSwitch extends BaseYsqlConnMgr {
     }
   }
 
-  private static String notYetDefined(String seq) {
-    return "currval of sequence \"" + seq + "\" is not yet defined in this session";
+  /** Asserts the client ran on the backend it was steered to, except in session mode. */
+  private void assertLanded(int expected, int actual, String what) {
+    if (!isSession()) {
+      assertEquals(what + " did not run on backend " + expected, expected, actual);
+    }
   }
 
-  private static final String LASTVAL_NOT_YET_DEFINED =
-      "lastval is not yet defined in this session";
+  private static String notYetDefined(String seq) {
+    return "currval of sequence \"" + seq + "\" " + NOT_YET_DEFINED;
+  }
+
+  private static final String LASTVAL_NOT_YET_DEFINED = "lastval " + NOT_YET_DEFINED;
 
   // 1. Client B never sees client A's currval or lastval, even on A's backend.
   @Test
@@ -304,10 +341,7 @@ public class TestSequenceBackendSwitch extends BaseYsqlConnMgr {
         try (BackendSteering steering = steering()) {
           assertSteered(steering.steerTo(aPid), "steer B to A's backend " + aPid);
           String err = expr.contains("currval") ? notYetDefined(seq) : LASTVAL_NOT_YET_DEFINED;
-          int bPid = expectSeqFnError(sb, expr, err);
-          if (!isSession()) {
-            assertEquals("B did not land on A's backend", aPid, bPid);
-          }
+          assertLanded(aPid, expectSeqFnError(sb, expr, err), "B's " + expr);
         }
       }
       sa.execute("DROP SEQUENCE " + seq);
@@ -406,15 +440,14 @@ public class TestSequenceBackendSwitch extends BaseYsqlConnMgr {
         assertSteered(steering.hold(p), "hold A's backend " + p);
         q = (int) pidAndValue(sb, "nextval('" + seq + "')")[0];
       }
-      int setvalPid;
       try (BackendSteering steering = steering()) {
         assertSteered(steering.steerTo(p), "steer A to backend " + p);
-        setvalPid = (int) pidAndValue(sa, "setval('" + seq + "', 1000)")[0];
+        assertLanded(p, (int) pidAndValue(sa, "setval('" + seq + "', 1000)")[0], "setval");
       }
       try (BackendSteering steering = steering()) {
         assertSteered(steering.steerTo(q), "steer A to B's backend " + q);
         long[] r = pidAndValue(sa, "nextval('" + seq + "')");
-        assertSwitched(setvalPid, (int) r[0]);
+        assertLanded(q, (int) r[0], "nextval");
         assertEquals("nextval after setval on backend " + r[0], 1001, r[1]);
       }
       sa.execute("DROP SEQUENCE " + seq);
@@ -455,7 +488,8 @@ public class TestSequenceBackendSwitch extends BaseYsqlConnMgr {
       }
       try (BackendSteering steering = steering()) {
         assertSteered(steering.steerTo(p), "steer A back to backend " + p);
-        expectSeqFnError(sa, "currval('" + seq + "')", notYetDefined(seq));
+        assertLanded(p, expectSeqFnError(sa, "currval('" + seq + "')", notYetDefined(seq)),
+                     "currval");
       }
       expectSeqFnError(sa, "currval('" + seq + "')", notYetDefined(seq));
       sa.execute("DROP SEQUENCE " + seq);
@@ -475,7 +509,7 @@ public class TestSequenceBackendSwitch extends BaseYsqlConnMgr {
       }
       try (BackendSteering steering = steering()) {
         assertSteered(steering.steerTo(p), "steer A back to backend " + p);
-        expectSeqFnError(sa, "lastval()", LASTVAL_NOT_YET_DEFINED);
+        assertLanded(p, expectSeqFnError(sa, "lastval()", LASTVAL_NOT_YET_DEFINED), "lastval");
       }
       expectSeqFnError(sa, "lastval()", LASTVAL_NOT_YET_DEFINED);
     }
@@ -496,15 +530,14 @@ public class TestSequenceBackendSwitch extends BaseYsqlConnMgr {
         assertSteered(steering.hold(p), "hold A's backend " + p);
         q = (int) pidAndValue(sb, "nextval('" + seq + "')")[0];
       }
-      int alterPid;
       try (BackendSteering steering = steering()) {
         assertSteered(steering.steerTo(p), "steer A to backend " + p);
-        alterPid = exec(sa, "ALTER SEQUENCE " + seq + " RESTART WITH 1000");
+        assertLanded(p, exec(sa, "ALTER SEQUENCE " + seq + " RESTART WITH 1000"), "ALTER");
       }
       try (BackendSteering steering = steering()) {
         assertSteered(steering.steerTo(q), "steer A to B's backend " + q);
         long[] r = pidAndValue(sa, "nextval('" + seq + "')");
-        assertSwitched(alterPid, (int) r[0]);
+        assertLanded(q, (int) r[0], "nextval");
         assertEquals("nextval after RESTART on backend " + r[0], 1000, r[1]);
       }
       sa.execute("DROP SEQUENCE " + seq);
