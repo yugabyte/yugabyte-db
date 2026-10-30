@@ -1272,8 +1272,6 @@ Default: `10`
 
 Maximum number of AlterTable RPCs that YB-Master can have in flight at once when setting CDC retention barriers during CDC stream creation. A value of `0` disables throttling. A positive value sets a global cap. A negative value derives the cap from [max_concurrent_alter_table_rpcs_per_tserver](#max-concurrent-alter-table-rpcs-per-tserver) multiplied by the number of live YB-TServers.
 
-`10` is the default only in the affected releases (v2025.2.4 and later, and v2026.1.1 and later, before the fix). On releases that contain the fix for issue 33260, the default is `0`, so throttling is disabled by default. For the affected and fixed releases, refer to [TA-19066](/stable/releases/techadvisories/ta-19066/).
-
 This flag can be changed at runtime without restarting YB-Master.
 
 ##### --max_concurrent_alter_table_rpcs_per_tserver
