@@ -387,6 +387,11 @@ DEFINE_RUNTIME_PG_FLAG(string, yb_read_after_commit_visibility, "strict",
 DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_fkey_catcache, true,
     "Enable preloading of foreign key information into the relation cache.");
 
+DEFINE_RUNTIME_PG_FLAG(bool, yb_free_read_committed_savepoint_memory, true,
+    "Free the memory context of a READ COMMITTED statement's internal savepoint when it is "
+    "released, if nothing allocated in it is still in use. Without this, a statement that fires "
+    "an AFTER trigger or a foreign key check retains about 8 KB until the transaction ends.");
+
 DEFINE_RUNTIME_PG_FLAG(string, yb_test_catalog_preload_cache_list, "",
     "If set, a comma separated list of the catalog caches YSQL fills whenever it preloads the "
     "catalog. An item is a catalog (pg_proc, for all its caches), a catalog cache (ATTNAME), or "

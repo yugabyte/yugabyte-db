@@ -2336,6 +2336,7 @@ bool		yb_always_increment_catalog_version_on_ddl = true;
 bool		yb_enable_negative_catcache_entries = true;
 bool		yb_enable_new_relation_fastpath_write = true;
 bool		yb_enable_new_relation_fastpath_write_in_txn_blocks = kEnableDdlTransactionBlocks;
+bool		yb_free_read_committed_savepoint_memory = true;
 
 /* DEPRECATED */
 bool		yb_enable_advisory_locks = true;

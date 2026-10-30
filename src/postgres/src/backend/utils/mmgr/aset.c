@@ -1570,3 +1570,64 @@ AllocSetCheck(MemoryContext context)
 }
 
 #endif							/* MEMORY_CONTEXT_CHECKING */
+
+/*
+ * YbAllocSetHasNoLiveChunks
+ *		Is every chunk ever allocated in the set back on a freelist?
+ *
+ * AllocSetIsEmpty() only reports whether anything was allocated since the
+ * last reset.  This instead checks that the set holds no live chunks: every
+ * chunk carved from a block is either live or on a freelist, and large chunks
+ * have their own blocks, which pfree returns to malloc.  So when the keeper
+ * is the only block, the set has no live chunks iff the space carved from it
+ * equals the space of the chunks on the freelists.
+ *
+ * Only cheap cases are examined: more than one block or more than a few free
+ * chunks report false.
+ */
+bool
+YbAllocSetHasNoLiveChunks(MemoryContext context)
+{
+	AllocSet	set = (AllocSet) context;
+	AllocBlock	keeper = set->keeper;
+	Size		carved;
+	Size		freed = 0;
+	int			nfree = 0;
+	int			fidx;
+
+	Assert(IsA(context, AllocSetContext));
+
+	if (set->blocks != keeper || keeper->next != NULL)
+		return false;
+
+	carved = keeper->freeptr - ((char *) keeper + ALLOC_BLOCKHDRSZ);
+
+	for (fidx = 0; fidx < ALLOCSET_NUM_FREELISTS; fidx++)
+	{
+		AllocChunk	chunk;
+
+		for (chunk = set->freelist[fidx]; chunk != NULL;
+			 chunk = (AllocChunk) chunk->aset)
+		{
+			if (++nfree > 64)
+				return false;
+			freed += chunk->size + ALLOC_CHUNKHDRSZ;
+		}
+	}
+
+	Assert(freed <= carved);
+	return freed == carved;
+}
+
+/*
+ * YbAllocSetDisableRecycling
+ *		Make AllocSetDelete free the set instead of keeping it on a freelist
+ *		for reuse by a later AllocSetContextCreate.
+ */
+void
+YbAllocSetDisableRecycling(MemoryContext context)
+{
+	Assert(IsA(context, AllocSetContext));
+
+	((AllocSet) context)->freeListIndex = -1;
+}

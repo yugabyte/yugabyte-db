@@ -674,54 +674,196 @@ TEST_F_EX(PgTxnTest, ReadAtMultipleTimestamps, PgReadCommittedTxnTest) {
   }
 }
 
-// Test that in READ COMMITTED isolation level, a transaction executing
-// a large number of statements (in the order of a few hundred thousand)
-// does not crash at transaction COMMIT time.
-// See issue https://github.com/yugabyte/yugabyte-db/issues/23742
-// Before the fix to 23742, a large number of statements
-// in a transaction running in READ COMMITTED isolation level
-// will lead to error "Thread stack size exceeded due to excessive recursion" and
-// result in a SIGSEGV crashing the backend process.
+namespace {
 
+struct StatementWorkload {
+  std::string name;
+  std::function<std::string(int)> statement;
+};
+
+// Every statement of a READ COMMITTED transaction block runs in an internal savepoint. These
+// workloads cover statements that fire no trigger, AFTER ROW triggers (foreign key checks on both
+// sides) and a statement trigger with a transition table.
+Result<std::vector<StatementWorkload>> SetUpStatementWorkloads(PGConn& conn, int num_parents) {
+  RETURN_NOT_OK(conn.Execute("CREATE TABLE plain (k INT PRIMARY KEY, v INT)"));
+  RETURN_NOT_OK(conn.Execute("CREATE TABLE parent (k INT PRIMARY KEY)"));
+  RETURN_NOT_OK(conn.Execute("CREATE TABLE child (k INT PRIMARY KEY, p INT REFERENCES parent)"));
+  RETURN_NOT_OK(conn.ExecuteFormat(
+      "INSERT INTO parent SELECT generate_series(1, $0)", num_parents));
+  RETURN_NOT_OK(conn.Execute("CREATE TABLE logged (k INT PRIMARY KEY, v INT)"));
+  RETURN_NOT_OK(conn.Execute("CREATE TABLE insert_log (k INT PRIMARY KEY, v INT)"));
+  RETURN_NOT_OK(conn.Execute(R"(
+      CREATE FUNCTION log_inserts() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+      BEGIN
+        INSERT INTO insert_log SELECT k, v FROM new_table;
+        RETURN NULL;
+      END;
+      $$
+  )"));
+  RETURN_NOT_OK(conn.Execute(R"(
+      CREATE TRIGGER logged_inserts AFTER INSERT ON logged
+        REFERENCING NEW TABLE AS new_table
+        FOR EACH STATEMENT EXECUTE FUNCTION log_inserts()
+  )"));
+  return std::vector<StatementWorkload>{
+    {"plain insert", [](int i) { return Format("INSERT INTO plain VALUES ($0, $0)", i); }},
+    {"foreign key child insert",
+     [](int i) { return Format("INSERT INTO child VALUES ($0, $1)", i, i % 10 + 1); }},
+    {"foreign key parent delete",
+     [](int i) { return Format("DELETE FROM parent WHERE k = $0", i + 11); }},
+    {"transition table insert",
+     [](int i) { return Format("INSERT INTO logged VALUES ($0, $0)", i); }},
+  };
+}
+
+Result<std::tuple<int64_t, int32_t>> CurTransactionContexts(PGConn& conn) {
+  return conn.FetchRow<int64_t, int32_t>(
+      "SELECT count(*), max(level) FROM pg_backend_memory_contexts "
+      "WHERE name = 'CurTransactionContext'");
+}
+
+} // namespace
+
+// The memory context of a released statement savepoint must not outlive it unless something in it
+// is still in use.
+TEST_F_EX(PgTxnTest, ReadCommittedStatementContexts, PgReadCommittedTxnTest) {
+  // Kept small: pg_backend_memory_contexts overflows the stack on a context chain about 10k levels
+  // deep.
+  constexpr int kStatements = 150;
+  auto conn = ASSERT_RESULT(Connect());
+  const auto workloads = ASSERT_RESULT(SetUpStatementWorkloads(conn, kStatements + 20));
+
+  // Returns the growth in the number of CurTransactionContexts and in their maximum depth.
+  auto run = [&conn](const StatementWorkload& workload) -> Result<std::tuple<int64_t, int32_t>> {
+    RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::READ_COMMITTED));
+    // The first execution of a statement may allocate something that lives on. Run each statement
+    // once before taking the baseline, including the query that takes it.
+    RETURN_NOT_OK(conn.Execute(workload.statement(0)));
+    RETURN_NOT_OK(CurTransactionContexts(conn));
+    RETURN_NOT_OK(conn.Execute(workload.statement(1)));
+    const auto [count_before, level_before] = VERIFY_RESULT(CurTransactionContexts(conn));
+    for (int i = 2; i < kStatements + 2; ++i) {
+      RETURN_NOT_OK(conn.Execute(workload.statement(i)));
+    }
+    const auto [count_after, level_after] = VERIFY_RESULT(CurTransactionContexts(conn));
+    RETURN_NOT_OK(conn.CommitTransaction());
+    LOG(INFO) << workload.name << ": CurTransactionContext count " << count_before << " -> "
+              << count_after << ", max level " << level_before << " -> " << level_after;
+    return std::make_tuple(count_after - count_before, level_after - level_before);
+  };
+
+  for (const auto& workload : workloads) {
+    SCOPED_TRACE(workload.name);
+    const auto growth = ASSERT_RESULT(run(workload));
+    EXPECT_EQ(growth, std::make_tuple(0, 0));
+  }
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM child")), kStatements + 2);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM parent")), 18);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+                "SELECT count(*) FROM insert_log l JOIN logged USING (k, v)")),
+            kStatements + 2);
+
+  // Each statement firing a trigger leaves its context behind unless it is freed.
+  ASSERT_OK(conn.Execute("SET yb_free_read_committed_savepoint_memory = off"));
+  ASSERT_OK(conn.Execute("TRUNCATE plain, child"));
+  const auto growth = ASSERT_RESULT(run(workloads[1]));
+  ASSERT_EQ(growth, std::make_tuple(kStatements, 0));
+}
+
+// A large number of statements in a READ COMMITTED transaction block must not grow the backend's
+// resident memory. Disabled in sanitizers, which quarantine freed memory.
 TEST_F_EX(
     PgTxnTest, YB_DISABLE_TEST_IN_SANITIZERS(LargeNumberOfStatements), PgReadCommittedTxnTest) {
+  constexpr int kWarmupStatements = 500;
+  constexpr int kStatements = 10000;
+  constexpr int64_t kMaxGrowthKb = 16 * 1024;
   auto conn = ASSERT_RESULT(Connect());
-  constexpr size_t kPayloadBytes = 1024;
-  ASSERT_OK(conn.Execute("CREATE TABLE tt_test (id INT PRIMARY KEY, val TEXT)"));
-  ASSERT_OK(conn.Execute("CREATE TABLE tt_insert_log (id INT PRIMARY KEY, val TEXT)"));
-  ASSERT_OK(conn.Execute(R"(
-    CREATE FUNCTION tt_write_large_insert() RETURNS trigger LANGUAGE plpgsql AS $$
-    BEGIN
-      INSERT INTO tt_insert_log SELECT id, val FROM new_table;
-      RETURN NULL;
-    END;
-    $$;
-  )"));
+  const auto workloads = ASSERT_RESULT(SetUpStatementWorkloads(conn, 10));
+  const auto pid = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT pg_backend_pid()"));
+  auto rss_anon_kb = [pid] {
+    return ProcFileValue(Format("/proc/$0/status", pid), "RssAnon:");
+  };
 
-  // The AFTER INSERT trigger below allocates AfterTriggersTableData
-  // in CurTransactionContext in the function GetAfterTriggersTableData
-  // in trigger.c. This allocation in CurTransactionContext ensures
-  // that in AtSubCommit_Memory() in xact.c, the function does not
-  // MemoryContextDelete the CurTransactionContext trivially because
-  // it is empty. We need non empty CurTransactionContext for each
-  // internal savepoint created for each statement in a READ COMMITTED
-  // transaction in order to reproduce the backend crash due to
-  // stack overflow.
-  ASSERT_OK(conn.Execute(R"(
-    CREATE TRIGGER tt_test_ins AFTER INSERT ON tt_test
-      REFERENCING NEW TABLE AS new_table
-      FOR EACH STATEMENT EXECUTE FUNCTION tt_write_large_insert()
-  )"));
-  const auto insert_query_template =
-      Format("INSERT INTO tt_test VALUES ($$0, repeat('x', $0))", kPayloadBytes);
-  // In order to reproduce the stack overflow we need num_stms to be
-  // about 385000. To avoid test timeouts, we use a smaller number of statements.
-  uint32_t num_stms = 10000;
-  ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED"));
-  for (uint32_t idx = 0; idx < num_stms; ++idx) {
-    ASSERT_OK(conn.ExecuteFormat(insert_query_template, idx));
+  for (const auto& workload : {workloads[0], workloads[1]}) {
+    SCOPED_TRACE(workload.name);
+    ASSERT_OK(conn.StartTransaction(IsolationLevel::READ_COMMITTED));
+    int i = 0;
+    for (; i < kWarmupStatements; ++i) {
+      ASSERT_OK(conn.Execute(workload.statement(i)));
+    }
+    const auto rss_before_kb = ASSERT_RESULT(rss_anon_kb());
+    const auto start = MonoTime::Now();
+    for (; i < kWarmupStatements + kStatements; ++i) {
+      ASSERT_OK(conn.Execute(workload.statement(i)));
+    }
+    const auto rss_after_kb = ASSERT_RESULT(rss_anon_kb());
+    ASSERT_OK(conn.CommitTransaction());
+    LOG(INFO) << workload.name << ": RssAnon " << rss_before_kb << " kB -> " << rss_after_kb
+              << " kB over " << kStatements << " statements in " << MonoTime::Now() - start;
+    EXPECT_LT(rss_after_kb - rss_before_kb, kMaxGrowthKb);
   }
-  ASSERT_OK(conn.Execute("COMMIT"));
+}
+
+// Freeing statement savepoint contexts must keep what later statements and COMMIT still need.
+TEST_F_EX(PgTxnTest, ReadCommittedDeferredForeignKey, PgReadCommittedTxnTest) {
+  constexpr int kStatements = 50;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE parent (k INT PRIMARY KEY)"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO parent SELECT generate_series(1, $0)", 3 * kStatements));
+  ASSERT_OK(conn.Execute("CREATE TABLE child (k INT PRIMARY KEY, p INT REFERENCES parent)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE deferred_child (k INT PRIMARY KEY, "
+      "p INT REFERENCES parent DEFERRABLE INITIALLY DEFERRED)"));
+  constexpr auto kMissingParent = 1000000;
+  auto insert_children = [&conn](int from, int to) -> Status {
+    for (int i = from; i < to; ++i) {
+      RETURN_NOT_OK(conn.ExecuteFormat("INSERT INTO child VALUES ($0, $0)", i));
+    }
+    return Status::OK();
+  };
+  auto insert_orphan = [&] {
+    return conn.ExecuteFormat("INSERT INTO deferred_child VALUES (1, $0)", kMissingParent);
+  };
+
+  // The check deferred by an early statement fails at COMMIT.
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::READ_COMMITTED));
+  ASSERT_OK(insert_children(1, kStatements));
+  ASSERT_OK(insert_orphan());
+  ASSERT_OK(insert_children(kStatements, 2 * kStatements));
+  ASSERT_NOK_STR_CONTAINS(conn.CommitTransaction(), "violates foreign key constraint");
+
+  // ... and in a later statement that makes it immediate.
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::READ_COMMITTED));
+  ASSERT_OK(insert_children(1, kStatements));
+  ASSERT_OK(insert_orphan());
+  ASSERT_OK(insert_children(kStatements, 2 * kStatements));
+  ASSERT_NOK_STR_CONTAINS(
+      conn.Execute("SET CONSTRAINTS ALL IMMEDIATE"), "violates foreign key constraint");
+  ASSERT_OK(conn.RollbackTransaction());
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM child")), 0);
+
+  // A later statement can still satisfy it.
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::READ_COMMITTED));
+  ASSERT_OK(insert_orphan());
+  ASSERT_OK(insert_children(1, kStatements));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO parent VALUES ($0)", kMissingParent));
+  ASSERT_OK(conn.CommitTransaction());
+  ASSERT_OK(conn.Execute("TRUNCATE child, deferred_child"));
+
+  // Rolling back to a user savepoint discards the orphan and the statements after it.
+  ASSERT_OK(conn.ExecuteFormat("DELETE FROM parent WHERE k = $0", kMissingParent));
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::READ_COMMITTED));
+  ASSERT_OK(insert_children(1, kStatements));
+  ASSERT_OK(conn.Execute("SAVEPOINT s"));
+  ASSERT_OK(insert_orphan());
+  ASSERT_OK(insert_children(kStatements, 2 * kStatements));
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT s"));
+  ASSERT_OK(insert_children(2 * kStatements, 3 * kStatements));
+  ASSERT_OK(conn.CommitTransaction());
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM child")),
+            2 * kStatements - 1);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM deferred_child")), 0);
 }
 
 TEST_F(PgTxnTest, MultiInsertUpdate) {

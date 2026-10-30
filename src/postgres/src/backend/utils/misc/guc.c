@@ -4377,6 +4377,18 @@ static struct config_bool ConfigureNamesBool[] =
 		check_yb_enable_new_relation_fastpath_write_in_txn_blocks, NULL, NULL
 	},
 
+	{
+		{"yb_free_read_committed_savepoint_memory", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Frees the memory context of a READ COMMITTED statement's internal "
+						 "savepoint when it is released, if nothing allocated in it is still in use."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_free_read_committed_savepoint_memory,
+		true,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL
