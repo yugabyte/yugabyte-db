@@ -184,7 +184,8 @@ public class XClusterFailoverWithOnDemandSnapshot extends XClusterConfigTaskBase
     YbClientConfig clientConfig =
         ybClientConfigFactory.create(
             targetUniverse.getMasterAddresses(), targetUniverse.getCertificateNodetoNode());
-    try (YBClientApi client = ybService.getClientWithConfig(clientConfig)) {
+    try (YBClientApi client =
+        ybService.getClientWithConfig(clientConfig.withClientCertOf(targetUniverse))) {
       XClusterFailoverResponse resp = client.xClusterFailover(replicationGroupName);
       if (resp.hasError()) {
         throw new RuntimeException(
@@ -211,7 +212,8 @@ public class XClusterFailoverWithOnDemandSnapshot extends XClusterConfigTaskBase
     YbClientConfig clientConfig =
         ybClientConfigFactory.create(
             targetUniverse.getMasterAddresses(), targetUniverse.getCertificateNodetoNode());
-    try (YBClientApi client = ybService.getClientWithConfig(clientConfig)) {
+    try (YBClientApi client =
+        ybService.getClientWithConfig(clientConfig.withClientCertOf(targetUniverse))) {
       IsXClusterFailoverDoneResponse resp = client.isXClusterFailoverDone(replicationGroupName);
       if (resp.hasError()) {
         throw new RuntimeException(

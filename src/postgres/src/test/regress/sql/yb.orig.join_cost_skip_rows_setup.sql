@@ -4,11 +4,11 @@
 -- of reading that input or the other one, for both join methods that model
 -- it: the merge join's scan fractions (mergejoinscansel) and the batched
 -- nested loop's leading-mismatch skip (yb_bnl_outer_skip_selectivity).  Both
--- build a comparison against the other side's boundary key and condition it
--- on the scanned side's own restrictions, so the same mechanisms decide
--- whether a bound is usable: its collation, extended statistics over the
--- conditioning clauses, a binary-compatible relabeling of the join key, and
--- whether the bound falls on a value the boundary group includes.
+-- build a comparison against the other side's boundary key and adjust it for
+-- both sides' range bounds with the same function, so the same mechanisms
+-- decide whether a bound is usable: its collation, a binary-compatible
+-- relabeling of the join key, and whether the bound falls on a value the
+-- boundary group includes.
 --
 -- Every group joins an outer aliased `o` to an inner aliased `i`.  In groups
 -- 100-400 the outer's key range extends BELOW the inner's, a layout that
@@ -17,13 +17,14 @@
 --   * a bound on the outer decides how many leading outer rows sort before the
 --     inner's first key -- rows read and discarded before the join emits
 --     anything, which both methods charge to startup cost.
--- Only the second direction reaches the batched nested loop, which takes the
--- inner's boundary from its full-column histogram and so cannot see an inner
--- bound at all.  In groups 500 and 510 the outer's range extends past the
--- inner's in the direction the merge reads, so a bound on the outer decides
--- how much of it the merge reads; group 520 reads an outer that ends before
--- the inner starts, and group 530 an outer with NULL keys.  Every inner
--- carries an index on its join key so the batched nested loop can probe it.
+-- Only the second direction reaches the batched nested loop, which probes
+-- every outer row and never stops early; a bound on the inner reaches it only
+-- by moving the inner's first key.  In groups 500 and 510 the outer's range
+-- extends past the inner's in the direction the merge reads, so a bound on
+-- the outer decides how much of it the merge reads; group 520 reads an outer
+-- that ends before the inner starts, and group 530 an outer with NULL keys.
+-- Every inner carries an index on its join key so the batched nested loop can
+-- probe it.
 set client_min_messages to 'warning';
 
 drop database if exists join_cost_skip_rows_test with (force);
@@ -69,14 +70,12 @@ analyze cln_o;
 analyze cln_i;
 
 ------------------------------------------------------------------------------
--- Extended statistics.  The estimate is a conditional fraction -- P(the
--- scanned key is within the other side's bound | the scanned side's own
--- restrictions) -- and a ratio of two estimates only means that if both come
--- from the same model.  Extended statistics apply to a list of two or more
--- RestrictInfos, which the two sides of the ratio are not both guaranteed to
--- be.  ext_o.g groups the key 52 rows at a time, so a restriction on g is a
--- restriction on the key; the statistics object created by the test covers g
--- and k together.  The inner starts at 131.
+-- Extended statistics.  ext_o.g groups the key 52 rows at a time, so a
+-- restriction on g is a restriction on the key, and the statistics object the
+-- test creates covers g and k together.  Both estimates condition only on the
+-- range bounds a relation enforces on the join key itself, computed from
+-- per-column selectivities, so a restriction on g does not enter them and the
+-- object has nothing to apply to.  The inner starts at 131.
 ------------------------------------------------------------------------------
 create table ext_o (k int, g int, primary key (k asc));
 create table ext_i (id int, k int, primary key (id asc));
@@ -88,12 +87,12 @@ analyze ext_i;
 
 ------------------------------------------------------------------------------
 -- Relabeling.  A varchar join key reaches the comparison through a
--- binary-compatible relabeling.  clauselist_selectivity() pairs a range clause
--- with a restriction on the same column by comparing the two operands, and a
--- bare Var does not match the restriction's relabeled one, so the comparison
--- the estimate builds has to carry the relabeling too.  The two pairs hold
--- identical values and differ only in the key's declared type, so they must be
--- costed identically.  Both inners start at '0251'.
+-- binary-compatible relabeling.  The estimates find a key's range bounds by
+-- matching each restriction's operand against the join key, and a varchar
+-- restriction compares a relabeled Var, so the matching has to look through
+-- the relabeling.  The two pairs hold identical values and differ only in the
+-- key's declared type, so they must be costed identically.  Both inners start
+-- at '0251'.
 ------------------------------------------------------------------------------
 create table rlbt_o (k text, primary key (k asc));
 create table rlbt_i (id int, k text, primary key (id asc));

@@ -4785,6 +4785,52 @@
     x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2026.2.0.0
     x-yba-api-visibility: preview
+'/customers/{cUUID}/users':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: createUser
+    summary: Add a user
+    description: 'Adds a local user with a system role to the customer. SuperAdmin users can''t be created this way. With generate_api_token, the response also carries an API token for the new user.'
+    tags:
+      - User
+    requestBody:
+      $ref: "../components/requestBodies/UserCreateReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/UserCreationResp.yaml"
+      '400':
+        description: 'Invalid input, such as an invalid email, a missing role, the SuperAdmin role, or a password that violates the password policy'
+      '401':
+        description: 'The request has no valid API or session token, cUUID is not the caller''s customer (including a customer that doesn''t exist), or the caller''s role has no create permission on users'
+      '409':
+        description: 'A user with this email already exists, or OIDC SSO creates users automatically on this YBA'
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+      - authTokenAuth: []
+    x-yba-api-audit:
+      auditTargetType: User
+      auditTargetId: obj.getUser().getInfo().getUuid().toString()
+      auditActionType: Create
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: user
+          action: create
+        resourceLocation:
+          path: users
+          sourceType: endpoint
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
 /yba-info:
   get:
     operationId: GetYBAInstanceInfo

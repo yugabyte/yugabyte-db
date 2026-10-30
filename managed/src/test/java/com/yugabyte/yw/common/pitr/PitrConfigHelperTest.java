@@ -99,6 +99,7 @@ public class PitrConfigHelperTest extends FakeDBApplication {
     lenient()
         .when(mockYbClientConfigFactory.create(any(), any(), anyLong()))
         .thenReturn(mockYbClientConfig);
+    lenient().when(mockYbClientConfig.withClientCertOf(any())).thenReturn(mockYbClientConfig);
     lenient()
         .when(mockYbClientService.getClientWithConfig(mockYbClientConfig))
         .thenReturn(mockYbClient);

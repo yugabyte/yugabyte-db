@@ -3227,6 +3227,8 @@ public class OperatorUtils {
           universe.getUniverseDetails().getPrimaryCluster().userIntent.enableNodeToNodeEncrypt);
       spec.setEnableClientToNodeEncrypt(
           universe.getUniverseDetails().getPrimaryCluster().userIntent.enableClientToNodeEncrypt);
+      spec.setUseNodeToNodeClientCerts(
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.useNodeToNodeClientCerts);
       spec.setYbSoftwareVersion(
           universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
       spec.setProviderName(providerName);

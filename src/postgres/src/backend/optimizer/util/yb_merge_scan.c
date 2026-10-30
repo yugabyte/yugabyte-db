@@ -476,34 +476,6 @@ ybFindPathkeyTle(List *tlist, EquivalenceClass *ec, Relids relids,
 }
 
 /*
- * Whether ec has a member that is a plain column of the relation relids,
- * possibly relabeled.
- */
-static bool
-ybEclassHasRelVar(EquivalenceClass *ec, Relids relids)
-{
-	ListCell   *lc2;
-	bool		found = false;
-
-	foreach(lc2, ec->ec_members)
-	{
-		EquivalenceMember *em = (EquivalenceMember *) lfirst(lc2);
-		if (bms_equal(em->em_relids, relids))
-		{
-			Expr	   *expr = em->em_expr;
-			while (IsA(expr, RelabelType))
-				expr = ((RelabelType *) expr)->arg;
-			if (IsA(expr, Var))
-			{
-				found = true;
-				break;
-			}
-		}
-	}
-	return found;
-}
-
-/*
  * Get sort info for given pathkeys corresponding to tlist.  In case a pathkey
  * matches multiple columns in tlist, avoid the columns that are pinned as
  * stream key columns.
@@ -658,13 +630,11 @@ ybEqualityIndexClause(IndexOptInfo *index, List *indexclauses, int indexcol)
  * the same stream keys.  The pathkeys are final only after this call, which
  * can truncate them on an embedded index.
  *
- * On an embedded index, such as a colocated index, pggate compares each merge
- * sort value in the table row.  So when embedded, *pathkeys is truncated
- * before the first pathkey whose EquivalenceClass has no plain column of the
- * relation, and *yb_distinct_nkeys is set to -1 if the truncation cuts into
- * the pathkeys that span the distinct prefix.
- * TODO(#34267): the merge compares the index column the pathkey resolves to,
- * which can be an expression column even when the class has a plain column.
+ * On an embedded index, pggate compares each merge sort value in the table
+ * row, which has no value for an expression index column.  So when embedded,
+ * *pathkeys is truncated before the first pathkey that resolves to an
+ * expression column, and *yb_distinct_nkeys is set to -1 if the truncation
+ * cuts into the pathkeys that span the distinct prefix.
  *
  * Each index column before the last merge sort column is one of:
  *
@@ -725,7 +695,10 @@ yb_finalize_merge_scan_stream_cols(IndexOptInfo *index, Relids relids,
 											pathkey->pk_eclass, relids,
 											saop_idxs, &em);
 
-		if (embedded && !ybEclassHasRelVar(pathkey->pk_eclass, relids))
+		/* Not an ordering the merge can compare on. */
+		if (!tle)
+			return NIL;
+		if (embedded && index->indexkeys[tle->resno - 1] == 0)
 		{
 			*pathkeys = list_truncate(*pathkeys, foreach_current_index(lc));
 
@@ -739,10 +712,6 @@ yb_finalize_merge_scan_stream_cols(IndexOptInfo *index, Relids relids,
 				*yb_distinct_nkeys = -1;
 			break;
 		}
-
-		/* Not an ordering the merge can compare on. */
-		if (!tle)
-			return NIL;
 		sort_idxs = bms_add_member(sort_idxs, tle->resno - 1);
 		last_sort_indexcol = Max(last_sort_indexcol, tle->resno - 1);
 	}

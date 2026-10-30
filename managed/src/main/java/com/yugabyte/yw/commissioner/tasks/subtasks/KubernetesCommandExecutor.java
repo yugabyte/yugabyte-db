@@ -1359,6 +1359,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     if (taskParams().masterJoinExistingCluster) {
       masterGFlags.put(GFlagsUtil.MASTER_JOIN_EXISTING_UNIVERSE, "true");
     }
+    if (primaryClusterIntent.useNodeToNodeClientCerts) {
+      masterGFlags.put(GFlagsUtil.USE_CLIENT_CERTIFICATES, "true");
+    }
     if (primaryClusterIntent.enableYSQL) {
       if (primaryClusterIntent.enableYSQLAuth) {
         masterGFlags.put("ysql_enable_auth", "true");
@@ -1468,6 +1471,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
     if (primaryClusterIntent.enableYCQL && primaryClusterIntent.enableYCQLAuth) {
       tserverGFlags.put("use_cassandra_authentication", "true");
+    }
+    if (primaryClusterIntent.useNodeToNodeClientCerts) {
+      tserverGFlags.put(GFlagsUtil.USE_CLIENT_CERTIFICATES, "true");
     }
     if (placementCloud != null && tserverGFlags.get("placement_cloud") == null) {
       tserverGFlags.put("placement_cloud", placementCloud);
@@ -1769,6 +1775,23 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       Map<String, Object> gflags = getOrCreateMap(overrides, "gflags");
       for (String server : List.of("master", "tserver")) {
         getOrCreateMap(gflags, server).put(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "true");
+      }
+    }
+    // Likewise for client certs, where provider overrides are never validated: the setting decides,
+    // since YBA presents a client cert only when it is on. While on, also drop the identity checks
+    // YBA's client cert can't pass. While off, only an override that set the gflag is changed, so
+    // other universes' gflags checksum, and with it their pods, stay as they were.
+    for (String server : List.of("master", "tserver")) {
+      if (primaryClusterIntent.useNodeToNodeClientCerts) {
+        Map<String, Object> serverGFlags =
+            getOrCreateMap(getOrCreateMap(overrides, "gflags"), server);
+        serverGFlags.put(GFlagsUtil.USE_CLIENT_CERTIFICATES, "true");
+        serverGFlags.remove(GFlagsUtil.NODE_TO_NODE_REQUIRED_UID);
+        serverGFlags.remove(GFlagsUtil.VERIFY_CLIENT_ENDPOINT);
+      } else if (overrides.get("gflags") instanceof Map<?, ?> gflags
+          && gflags.get(server) instanceof Map<?, ?> serverGFlags
+          && serverGFlags.containsKey(GFlagsUtil.USE_CLIENT_CERTIFICATES)) {
+        ((Map<String, Object>) serverGFlags).put(GFlagsUtil.USE_CLIENT_CERTIFICATES, "false");
       }
     }
     // Done after all overrides, so none can turn the sidecar on or off or move its port.
