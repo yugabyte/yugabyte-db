@@ -12527,7 +12527,7 @@ set_config_option_ext(const char *name, const char *value,
 													 false);
 
 					if ((conf->gen.flags & GUC_YB_CUSTOM_STICKY) &&
-						source == PGC_S_SESSION &&
+						(source == PGC_S_SESSION || source == PGC_S_CLIENT) &&
 						YbIsClientYsqlConnMgr())
 					{
 						elog(LOG, "Making connection sticky for setting %s", name);
