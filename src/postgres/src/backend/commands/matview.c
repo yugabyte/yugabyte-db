@@ -365,7 +365,8 @@ ExecRefreshMatView(RefreshMatViewStmt *stmt, const char *queryString,
 	OIDNewHeap = make_new_heap(matviewOid, tableSpace,
 							   matviewRel->rd_rel->relam,
 							   relpersistence, ExclusiveLock,
-							   false /* yb_copy_split_options */ );
+							   false /* yb_copy_split_options */ ,
+							   NULL /* yb_split_options */ );
 	LockRelationOid(OIDNewHeap, AccessExclusiveLock);
 	dest = CreateTransientRelDestReceiver(OIDNewHeap);
 

@@ -462,3 +462,110 @@ SELECT c.relname, c.reloptions
     ORDER BY c.relname;
 SELECT num_tablets FROM yb_table_properties('test_multi_leaf'::regclass);
 DROP TABLE test_multi_parent;
+
+-- =============================================================================
+-- ALTER COLUMN TYPE on a key column keeps the split layout
+-- =============================================================================
+
+CREATE VIEW alt_splits AS
+    SELECT c.relname, c.reloptions, p.num_tablets,
+           CASE WHEN p.num_hash_key_columns = 0 AND p.num_tablets > 1
+                THEN yb_get_range_split_clause(c.oid)::text END AS split_clause
+    FROM pg_class c, LATERAL yb_table_properties(c.oid) p
+    WHERE c.relname LIKE 'alt\_%' AND c.relname NOT LIKE '%\_pkey'
+      AND c.relkind IN ('r', 'i')
+    ORDER BY c.relname;
+
+-- Range primary key and range secondary index, int to bigint.
+CREATE TABLE alt_t (id int, v int, w int, PRIMARY KEY (id ASC))
+    SPLIT AT VALUES ((100), (200));
+CREATE INDEX alt_t_v ON alt_t (v ASC) SPLIT AT VALUES ((100), (200));
+CREATE INDEX alt_t_w ON alt_t (w HASH) SPLIT INTO 3 TABLETS;
+INSERT INTO alt_t SELECT i, i, i FROM generate_series(1, 300) i;
+ALTER TABLE alt_t ALTER COLUMN id TYPE bigint;
+ALTER TABLE alt_t ALTER COLUMN v TYPE bigint;
+ALTER TABLE alt_t ALTER COLUMN w TYPE bigint;
+SELECT * FROM alt_splits;
+SELECT count(*) FROM alt_t WHERE v BETWEEN 50 AND 250;
+DROP TABLE alt_t;
+
+-- Changing a non-key column of a range index keeps its split points.
+CREATE TABLE alt_t (id int, v int, w int, PRIMARY KEY (id ASC));
+CREATE INDEX alt_t_v ON alt_t (v ASC) INCLUDE (w)
+    SPLIT AT VALUES ((100), (200));
+ALTER TABLE alt_t ALTER COLUMN w TYPE bigint;
+SELECT * FROM alt_splits;
+DROP TABLE alt_t;
+
+-- A conversion that reorders the points: they are re-sorted.
+CREATE TABLE alt_t (k int, PRIMARY KEY (k ASC)) SPLIT AT VALUES ((9), (10));
+ALTER TABLE alt_t ALTER COLUMN k TYPE text;
+SELECT * FROM alt_splits;
+DROP TABLE alt_t;
+
+CREATE TABLE alt_t (k text COLLATE "C", PRIMARY KEY (k ASC))
+    SPLIT AT VALUES (('B'), ('a'));
+ALTER TABLE alt_t ALTER COLUMN k TYPE text COLLATE "en_US";
+SELECT * FROM alt_splits;
+DROP TABLE alt_t;
+
+-- Points that convert to the same value are merged.
+CREATE TABLE alt_t (k numeric, PRIMARY KEY (k ASC))
+    SPLIT AT VALUES ((1.2), (1.4), (5));
+ALTER TABLE alt_t ALTER COLUMN k TYPE int;
+SELECT * FROM alt_splits;
+DROP TABLE alt_t;
+
+-- DESC key, multi-column key with MINVALUE/MAXVALUE, USING on the column.
+CREATE TABLE alt_t (a int, b int, PRIMARY KEY (a DESC, b ASC))
+    SPLIT AT VALUES ((200, MAXVALUE), (100), (100, 5));
+ALTER TABLE alt_t ALTER COLUMN b TYPE bigint USING b * 10;
+SELECT * FROM alt_splits;
+DROP TABLE alt_t;
+
+-- Hash-partitioned primary key with a range column keeps its tablet count.
+CREATE TABLE alt_t (a int, b int, PRIMARY KEY ((a) HASH, b ASC))
+    SPLIT INTO 3 TABLETS;
+ALTER TABLE alt_t ALTER COLUMN b TYPE bigint;
+SELECT * FROM alt_splits;
+DROP TABLE alt_t;
+
+-- Without a yb_presplit reloption, the current layout is kept and no
+-- yb_presplit is added.
+CREATE TABLE alt_t (k int, v int, PRIMARY KEY (k ASC))
+    SPLIT AT VALUES ((100), (200));
+CREATE INDEX alt_t_v ON alt_t (v HASH) SPLIT INTO 3 TABLETS;
+ALTER TABLE alt_t RESET (yb_presplit);
+ALTER INDEX alt_t_v RESET (yb_presplit);
+ALTER TABLE alt_t ALTER COLUMN k TYPE bigint, ALTER COLUMN v TYPE bigint;
+SELECT * FROM alt_splits;
+DROP TABLE alt_t;
+
+-- Points that cannot be converted fall back to a single tablet.
+CREATE TABLE alt_t (k bigint, PRIMARY KEY (k ASC))
+    SPLIT AT VALUES ((100), (3000000000));
+ALTER TABLE alt_t ALTER COLUMN k TYPE int;
+SELECT * FROM alt_splits;
+DROP TABLE alt_t;
+
+CREATE TABLE alt_t (k int, v int, PRIMARY KEY (k ASC))
+    SPLIT AT VALUES ((100), (200));
+CREATE INDEX alt_t_v ON alt_t (v ASC) SPLIT AT VALUES ((100), (200));
+CREATE INDEX alt_t_expr ON alt_t ((v + 1) ASC) SPLIT AT VALUES ((100));
+ALTER TABLE alt_t ALTER COLUMN k TYPE bigint USING k + v;
+ALTER TABLE alt_t ALTER COLUMN v TYPE float8 USING v + random();
+SELECT * FROM alt_splits;
+DROP TABLE alt_t;
+
+-- Same, inside a transaction block.
+CREATE TABLE alt_t (k bigint, v int, PRIMARY KEY (k ASC))
+    SPLIT AT VALUES ((100), (3000000000));
+BEGIN;
+ALTER TABLE alt_t ALTER COLUMN k TYPE int;
+INSERT INTO alt_t VALUES (1, 1);
+COMMIT;
+SELECT * FROM alt_splits;
+SELECT * FROM alt_t;
+DROP TABLE alt_t;
+
+DROP VIEW alt_splits;

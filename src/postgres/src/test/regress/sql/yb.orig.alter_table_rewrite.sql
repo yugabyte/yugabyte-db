@@ -483,8 +483,8 @@ ALTER TABLE test2 ALTER c1 TYPE int USING length(c1);
 CREATE TABLE test3 (c1 varchar, c2 varchar, PRIMARY KEY(c2 ASC))
     SPLIT AT VALUES ((E'test123\"\"''\\\\\\u0068\\u0069'));
 ALTER TABLE test3 ALTER c1 TYPE int USING length(c1);
--- verify range split options on the table are only preserved when the altered column is not a
--- part of the table's key.
+-- verify range split points are converted with the USING expression when the altered column is
+-- a part of the key.
 SELECT yb_get_range_split_clause('test2'::regclass);
 SELECT yb_get_range_split_clause('test3'::regclass);
 -- test ALTER TYPE on temp tables.
