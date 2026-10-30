@@ -816,10 +816,14 @@ public class KubernetesUtil {
     if (!newNamingStyle) {
       return "datadir0";
     }
+    return getHelmFullName(helmReleaseName) + "-datadir0";
+  }
+
+  /** The chart's yugabyte.fullname for a release YBA installs with fullnameOverride set. */
+  public static String getHelmFullName(String helmReleaseName) {
     // trunc then trimSuffix, matching the helm pipeline order: truncation can expose a trailing
     // "-".
-    String fullName = StringUtils.removeEnd(StringUtils.substring(helmReleaseName, 0, 43), "-");
-    return fullName + "-datadir0";
+    return StringUtils.removeEnd(StringUtils.substring(helmReleaseName, 0, 43), "-");
   }
 
   /**
