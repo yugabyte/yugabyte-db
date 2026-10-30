@@ -4188,8 +4188,10 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	/*
-	 * This flag should only be enabled after enabling
-	 * yb_test_make_all_ddl_statements_incrementing.
+	 * This flag should only be enabled after
+	 * yb_always_increment_catalog_version_on_ddl is enabled on all the nodes
+	 * in a cluster. Otherwise, the yb_test_make_all_ddl_statements_incrementing
+	 * AutoFlag enables negative caching once an upgrade is finalized.
 	 */
 	{
 		{"yb_enable_negative_catcache_entries", PGC_SIGHUP, DEVELOPER_OPTIONS,
@@ -4197,7 +4199,7 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&yb_enable_negative_catcache_entries,
-		true,
+		false,
 		NULL, NULL, NULL
 	},
 
