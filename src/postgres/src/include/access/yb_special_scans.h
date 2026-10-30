@@ -6,7 +6,7 @@
  *	  Scan APIs for consumers outside the executor scan nodes:
  *	  catalog scans (systable lookups), ANALYZE row sampling, and
  *	  single-row fetch by ybctid.  Unlike the interim accessors in
- *	  yb_table_scan.h, these stay.
+ *	  yb_table_scan.h, these stay until an AM interface fits them.
  *
  *	  Each section below is the API of one implementation file and
  *	  says why no AM interface replaces it.  A contract that belongs
@@ -48,7 +48,9 @@
  * ybc_systable_begin_default_scan() is the plain catalog scan underneath it.
  * yb_inheritscache.c also calls that directly to fill the pg_inherits cache,
  * because systable_beginscan() on pg_inherits reads the cache.  The
- * SysScanDesc they return follows genam's systable scan contract.
+ * SysScanDesc they return works with systable_getnext() and
+ * systable_endscan(), but it reads at pggate's current read point, whatever
+ * snapshot the caller passes.
  */
 extern SysScanDesc ybc_systable_beginscan(Relation relation,
 										  Oid indexId,

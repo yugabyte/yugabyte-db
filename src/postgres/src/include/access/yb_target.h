@@ -8,8 +8,9 @@
  *	  by pushed-down expressions (WHERE clauses, etc.) that are
  *	  evaluated server-side.
  *
- *	  Used by the access methods and by some code above them that
- *	  builds its own pggate requests.
+ *	  Used by the access methods.  Some code above them also builds
+ *	  its own pggate requests with it.  That should probably move
+ *	  behind the access methods, though this is not yet settled.
  *
  * Copyright (c) YugabyteDB, Inc.
  *

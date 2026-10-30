@@ -3,12 +3,9 @@
  * yb_parallel_scan.h
  *	  Parallel partition-key distribution for YB scans.
  *
- *	  Manages a shared-memory cyclic buffer of partition-key
- *	  ranges that parallel workers consume to divide a YB table
- *	  scan across backends.  Used by nodeYbSeqscan (sequential)
- *	  and yb_lsm (index) parallel scans.  The AM callbacks
- *	  amestimateparallelscan and aminitparallelscan delegate to
- *	  functions declared here.
+ *	  Manages a shared-memory cyclic buffer of partition-key ranges
+ *	  that parallel workers consume to divide a YB scan across
+ *	  backends.
  *
  *	  Lifecycle: the index-scan side consumes this properly through
  *	  amapi.  The direct calls in nodeYbSeqscan's DSM functions are

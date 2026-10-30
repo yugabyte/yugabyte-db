@@ -4,9 +4,11 @@ YB Scan Layer
 =============
 
 This directory implements scans of YB relations: the tableam scan callbacks
-for YB tables, the scan primitives that the YB index access methods (yb_lsm,
-ybgin, and ybvector) share, and the YB implementation of genam's systable
-scans.  Their headers are under src/include/access/.  Four of those headers
+for YB tables and the accessors that executor nodes still call on them, the
+scan primitives that the YB index access methods (yb_lsm, ybgin, and ybvector)
+share, the plan-time scan logic that the planner shares, the YB implementation
+of genam's systable scans, ANALYZE row sampling, and single-row fetch by
+ybctid.  Their headers are under src/include/access/.  Four of those headers
 are implemented in src/backend/access/common/ rather than here: yb_cost.h,
 yb_target.h, yb_lockrows.h, and yb_parallel_scan.h.
 
@@ -15,10 +17,11 @@ commands, and catalog and cache code, should reach YB relations only through
 the interfaces upstream code uses for any table or index access method:
 tableam, the index AM interface, and genam's systable functions.  YB extends
 those interfaces where it needs to, as with table_beginscan_*_yb() and the
-yb_ammightrecheck index AM callback, rather than going around them.  The
-groups below sort the headers by how they relate to that rule.  The comment at
-the top of each header says what belongs in it and, where only some code may
-include it, which code that is.
+yb_ammightrecheck index AM callback, rather than going around them.  The write
+path, which goes around tuple_insert, tuple_update, and tuple_delete, is not
+covered yet.  The groups below sort the headers by how they relate to that
+rule.  The comment at the top of each header says what belongs in it and,
+where only some code may include it, which code that is.
 
 Headers
 -------
@@ -41,8 +44,9 @@ reasons and should move to the optimizer:
 
   yb_cost.h
 
-Building pggate requests, used by the access methods and by some code above
-them.  Where request building belongs is not settled yet:
+Building pggate requests.  It should probably be internal to the access
+methods, though that is not yet settled, so its use above them is not
+accounted for:
 
   yb_target.h
 

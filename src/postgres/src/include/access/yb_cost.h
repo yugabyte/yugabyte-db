@@ -6,9 +6,8 @@
  *	  Selectivity constants and cost functions used by the optimizer
  *	  to estimate costs.
  *
- *	  Used by optimizer paths (indxpath, allpaths, pathnode,
- *	  plancat), the amcostestimate implementations (yb_lsm, ybgin),
- *	  and analyze.c.
+ *	  Used by the planner, the access methods' cost estimators, and
+ *	  ANALYZE.
  *
  * Copyright (c) YugabyteDB, Inc.
  *
