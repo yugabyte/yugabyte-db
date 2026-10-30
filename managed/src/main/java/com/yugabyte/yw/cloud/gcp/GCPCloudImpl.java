@@ -28,6 +28,7 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.NLBHealthCheckConfiguration;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeID;
 import java.io.IOException;
 import java.security.GeneralSecurityException;
@@ -37,6 +38,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
@@ -44,6 +46,7 @@ import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.SetUtils;
+import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
 public class GCPCloudImpl implements CloudAPI {
@@ -501,6 +504,30 @@ public class GCPCloudImpl implements CloudAPI {
     } catch (Exception e) {
       String message = "Error executing task {manageNodeGroup()} " + e.toString();
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, message);
+    }
+  }
+
+  @Override
+  public Optional<CloudAPI.NodeDiskSpec> describeNodeDataDiskSpec(
+      Provider provider, NodeDetails node) {
+    if (node == null
+        || node.cloudInfo == null
+        || StringUtils.isBlank(node.cloudInfo.az)
+        || StringUtils.isBlank(node.nodeName)) {
+      throw new PlatformServiceException(BAD_REQUEST, "GCP node is missing zone or name");
+    }
+    try {
+      GCPProjectApiClient apiClient = new GCPProjectApiClient(runtimeConfGetter, provider);
+      return Optional.of(apiClient.describeNodeDataDiskSpec(node.cloudInfo.az, node.nodeName));
+    } catch (PlatformServiceException e) {
+      throw e;
+    } catch (Exception e) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR,
+          "Failed to describe GCP data disk performance for "
+              + node.nodeName
+              + ": "
+              + e.getMessage());
     }
   }
 }

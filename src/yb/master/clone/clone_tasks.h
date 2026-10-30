@@ -85,7 +85,7 @@ class AsyncClonePgSchema : public RetrySpecificTSRpcTask {
 
 class AsyncClearMetacache : public RetrySpecificTSRpcTask {
  public:
-  using ClearMetacacheCallbackType = std::function<Status()>;
+  using ClearMetacacheCallbackType = std::function<Status(Status)>;
   AsyncClearMetacache(
       Master* master, ThreadPool* callback_pool, const std::string& permanent_uuid,
       const std::string& namespace_id, ClearMetacacheCallbackType callback);
@@ -100,6 +100,7 @@ class AsyncClearMetacache : public RetrySpecificTSRpcTask {
 
  protected:
   void HandleResponse(int attempt) override;
+  void Finished(const Status& status) override;
   bool SendRequest(int attempt) override;
   // Not associated with a tablet.
   TabletId tablet_id() const override { return TabletId(); }
@@ -127,6 +128,7 @@ class AsyncEnableDbConns : public RetrySpecificTSRpcTask {
 
  protected:
   void HandleResponse(int attempt) override;
+  void Finished(const Status& status) override;
   bool SendRequest(int attempt) override;
   // Not associated with a tablet.
   TabletId tablet_id() const override { return TabletId(); }

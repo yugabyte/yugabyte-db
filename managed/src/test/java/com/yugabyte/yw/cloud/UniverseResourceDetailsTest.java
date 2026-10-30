@@ -27,6 +27,7 @@ import com.yugabyte.yw.cloud.oci.OCIPriceUtil;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -509,7 +510,8 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
   public void testAddCustomPriceDetails() {
     UniverseDefinitionTaskParams params =
         setupSamplePriceDetails(PublicCloudConstants.StorageType.GP2);
-    params.getPrimaryCluster().userIntent.instanceType = "c4.large";
+    TestUtils.existingProviderInitializer(params.getPrimaryCluster().userIntent)
+        .setInstanceType("c4.large");
     UniverseResourceDetails details = new UniverseResourceDetails();
     details.addPrice(params, context);
     double expectedEbsPrice =
@@ -523,7 +525,9 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
   public void testAddNullPriceDetails() {
     UniverseDefinitionTaskParams params =
         setupNullPriceDetails(PublicCloudConstants.StorageType.GP2);
-    params.getPrimaryCluster().userIntent.instanceType = "c4.large";
+
+    TestUtils.existingProviderInitializer(params.getPrimaryCluster().userIntent)
+        .setInstanceType("c4.large");
     UniverseResourceDetails details = new UniverseResourceDetails();
     details.addPrice(params, context);
     assertThat(details.ebsPricePerHour, equalTo(0.0));

@@ -118,4 +118,11 @@ public class YBReconcilerFactory {
     return new UniverseKeyRotationReconciler(
         universeActionsHandler, namespace, operatorUtils, client, informerFactory);
   }
+
+  public UniverseServerCertRotationReconciler getUniverseServerCertRotationReconciler(
+      KubernetesClient client) {
+    String namespace = confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorNamespace);
+    return new UniverseServerCertRotationReconciler(
+        upgradeUniverseHandler, namespace, operatorUtils, client, informerFactory);
+  }
 }

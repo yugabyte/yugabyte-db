@@ -6,6 +6,7 @@ import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_ONLY_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_RESULT;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_SEQ_SCAN;
+import static org.yb.pgsql.ExplainAnalyzeUtils.getExplainOutput;
 import static org.yb.pgsql.ExplainAnalyzeUtils.testExplainDebug;
 import static org.yb.AssertionWrappers.assertEquals;
 
@@ -27,6 +28,9 @@ import org.yb.pgsql.ExplainAnalyzeUtils.PlanCheckerBuilder;
 import org.yb.pgsql.ExplainAnalyzeUtils.TopLevelCheckerBuilder;
 import org.yb.util.json.Checkers;
 import org.yb.util.json.JsonUtil;
+
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
 @RunWith(value=YBTestRunner.class)
 public class TestPgEstimatedDocdbResultWidth extends BasePgSQLTest {
@@ -109,6 +113,44 @@ public class TestPgEstimatedDocdbResultWidth extends BasePgSQLTest {
     }
   }
 
+  private static JsonObject getExplainDebugPlan(Statement stmt, String query) throws Exception {
+    String json = getExplainOutput(stmt, query, "json", true /* analyze */, true /* costs */,
+                                   true /* debug */, true /* dist */, false /* summary */,
+                                   false /* timing */, false /* verbose */);
+    return JsonParser.parseString(json).getAsJsonArray().get(0).getAsJsonObject()
+        .getAsJsonObject("Plan");
+  }
+
+  /* A scan hint prunes the planner's index list before the hinted scan is costed, which must not
+   * change the scan's estimated width.  Compare the hinted scan, planned with hinted_scan_guc off
+   * so that only the hint can pick it, with the same scan picked by turning other_scan_gucs off
+   * instead, and with a hint naming no existing index, which pg_hint_plan ignores.
+   */
+  private void testHintedDocdbResultWidthHelper(
+      Statement stmt, String table_name, String hint, String hinted_scan_guc, String query,
+      String... other_scan_gucs) throws Exception {
+    for (String guc : other_scan_gucs) {
+      stmt.execute(String.format("SET %s = off", guc));
+    }
+    JsonObject unhinted = getExplainDebugPlan(stmt, query);
+    JsonObject bad_hinted = getExplainDebugPlan(stmt,
+        String.format("/*+ IndexScan(%1$s %1$s_no_such_index) */ %2$s", table_name, query));
+    for (String guc : other_scan_gucs) {
+      stmt.execute(String.format("RESET %s", guc));
+    }
+
+    stmt.execute(String.format("SET %s = off", hinted_scan_guc));
+    JsonObject hinted = getExplainDebugPlan(stmt, hint + " " + query);
+    stmt.execute(String.format("RESET %s", hinted_scan_guc));
+
+    for (String key : new String[] {"Node Type", "Index Name", "Estimated Docdb Result Width"}) {
+      assertEquals(String.format("%s of %s %s", key, hint, query),
+                   unhinted.get(key), hinted.get(key));
+      assertEquals(String.format("%s of %s with a hint naming no index", key, query),
+                   unhinted.get(key), bad_hinted.get(key));
+    }
+  }
+
   private void helperTestsForFixedTypeSizes(Statement stmt, String table_name,
                                                         String type_name, Integer type_size,
                                                         String value) throws Exception {
@@ -185,6 +227,21 @@ public class TestPgEstimatedDocdbResultWidth extends BasePgSQLTest {
         String.format("/*+ IndexOnlyScan(%1$s %1$s_index) */ SELECT 0 FROM %1$s " +
                       "WHERE v1 > %2$s and v2 > %2$s", table_name, value),
         String.format("%1$s", table_name), 2 * value_size);
+
+    testHintedDocdbResultWidthHelper(stmt, table_name,
+        String.format("/*+ SeqScan(%1$s) */", table_name), "enable_seqscan",
+        String.format("SELECT 0 FROM %1$s WHERE k1 > %2$s", table_name, value),
+        "enable_indexscan", "enable_indexonlyscan");
+
+    /* Only a hint picks this scan (with seq scans off, SELECT 0 scans the primary key index
+     * instead), so it has no unhinted counterpart to compare with.  With index only scans off, the
+     * planner first costs the index after the hint has pruned the primary key index.
+     */
+    stmt.execute("SET enable_indexonlyscan = off");
+    testDocdbResultWidhEstimationHelper(stmt,
+        String.format("/*+ IndexOnlyScan(%1$s %1$s_index) */ SELECT 0 FROM %1$s", table_name),
+        String.format("%1$s", table_name), 2 * ybctid_size - 2);
+    stmt.execute("RESET enable_indexonlyscan");
   }
 
   private void helperTestsForStringTypes(Statement stmt, String table_name,
@@ -231,30 +288,26 @@ public class TestPgEstimatedDocdbResultWidth extends BasePgSQLTest {
     testDocdbResultWidhEstimationHelper(stmt,
         String.format("SELECT 0 FROM %1$s", table_name),
         String.format("%1$s", table_name), ybctid_size);
-    /* TODO(#21490): BEGIN: When hint is used, the new cost model misestimates the ybctid width
-     * In some cases, the following queries result in seq scans, while in others they result in
+    /* In some cases, the following queries result in seq scans, while in others they result in
      * index scans. In each case the expected size of the output is different. To test both, we
-     * force both plans. However when forcing a seqscan using hints, the cost model misestimates
-     * the YBCTID size. It returns 33 when it should return ybctid_size. After this bug is fixed,
-     * the expectation for the tests should be changed.
+     * force both plans.
      */
     testDocdbResultWidhEstimationHelper(stmt,
         String.format("/*+ SeqScan(%1$s) */ SELECT 0 FROM %1$s WHERE k1 > %2$s",
                       table_name, value),
-        String.format("%1$s", table_name), 33);
+        String.format("%1$s", table_name), ybctid_size);
     testDocdbResultWidhEstimationHelper(stmt,
         String.format("/*+ SeqScan(%1$s) */ SELECT 0 FROM %1$s WHERE k1 > %2$s " +
                       "and k2 > %2$s", table_name, value),
-        String.format("%1$s", table_name), 33);
+        String.format("%1$s", table_name), ybctid_size);
     testDocdbResultWidhEstimationHelper(stmt,
         String.format("/*+ SeqScan(%1$s) */ SELECT 0 FROM %1$s WHERE k1 > %2$s " +
                       "and k2 > %2$s and v1 > %2$s", table_name, value),
-        String.format("%1$s", table_name), 33);
+        String.format("%1$s", table_name), ybctid_size);
     testDocdbResultWidhEstimationHelper(stmt,
         String.format("/*+ SeqScan(%1$s) */ SELECT 0 FROM %1$s WHERE k1 > %2$s and " +
                       "k2 > %2$s and v1 > %2$s and v2 > %2$s", table_name, value),
-        String.format("%1$s", table_name), 33);
-    /* TODO(#21490): END: When hint is used, the new cost model misestimates the ybctid width */
+        String.format("%1$s", table_name), ybctid_size);
 
     testDocdbResultWidhEstimationHelper(stmt,
         String.format("/*+ IndexScan(%1$s %1$s_pkey) */ SELECT 0 FROM %1$s WHERE k1 > %2$s",
@@ -289,6 +342,21 @@ public class TestPgEstimatedDocdbResultWidth extends BasePgSQLTest {
         String.format("/*+ IndexOnlyScan(%1$s %1$s_index) */ SELECT 0 FROM %1$s " +
                       "WHERE v1 > %2$s and v2 > %2$s", table_name, value),
         String.format("%1$s", table_name), 2 * value_size);
+
+    testHintedDocdbResultWidthHelper(stmt, table_name,
+        String.format("/*+ SeqScan(%1$s) */", table_name), "enable_seqscan",
+        String.format("SELECT 0 FROM %1$s WHERE k1 > %2$s", table_name, value),
+        "enable_indexscan", "enable_indexonlyscan");
+
+    /* Only a hint picks this scan (with seq scans off, SELECT 0 scans the primary key index
+     * instead), so it has no unhinted counterpart to compare with.  With index only scans off, the
+     * planner first costs the index after the hint has pruned the primary key index.
+     */
+    stmt.execute("SET enable_indexonlyscan = off");
+    testDocdbResultWidhEstimationHelper(stmt,
+        String.format("/*+ IndexOnlyScan(%1$s %1$s_index) */ SELECT 0 FROM %1$s", table_name),
+        String.format("%1$s", table_name), 2 * ybctid_size - 2);
+    stmt.execute("RESET enable_indexonlyscan");
   }
 
   @Before

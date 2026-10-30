@@ -30,19 +30,17 @@ public class StateTransitionDetails {
   public void requireRollbackable() {
     if (delta == null || delta.isNull()) {
       throw new PlatformServiceException(
-          BAD_REQUEST, "Cannot roll back edit universe: state_transition_details.delta is missing");
+          BAD_REQUEST, "Cannot roll back: state_transition_details.delta is missing");
     }
     if (!rollbackSafe) {
       throw new PlatformServiceException(
-          BAD_REQUEST,
-          "Cannot roll back edit universe: rollback checkpoint was crossed"
-              + " (rollbackSafe=false)");
+          BAD_REQUEST, "Cannot roll back: rollback checkpoint was crossed (rollbackSafe=false)");
     }
     if (isDedicatedNodesChanged()) {
       throw new PlatformServiceException(
           BAD_REQUEST,
-          "Cannot roll back edit universe: dedicatedNodes changed (Live tserver gflags were"
-              + " rewritten before the rollback checkpoint)");
+          "Cannot roll back: dedicatedNodes changed (Live tserver gflags were rewritten before"
+              + " the rollback checkpoint)");
     }
   }
 
@@ -72,7 +70,7 @@ public class StateTransitionDetails {
     JsonNode beforeJson = DeltaEvaluator.generateOldValue(requireDelta());
     if (beforeJson == null || beforeJson.isNull()) {
       throw new PlatformServiceException(
-          BAD_REQUEST, "Cannot roll back edit universe: generateOldValue returned null");
+          BAD_REQUEST, "Cannot roll back: generateOldValue returned null");
     }
     return Json.fromJson(beforeJson, UniverseDefinitionTaskParams.class);
   }
@@ -83,7 +81,7 @@ public class StateTransitionDetails {
     JsonNode targetJson = DeltaEvaluator.generateNewValue(requireDelta());
     if (targetJson == null || targetJson.isNull()) {
       throw new PlatformServiceException(
-          BAD_REQUEST, "Cannot roll back edit universe: generateNewValue returned null");
+          BAD_REQUEST, "Cannot roll back: generateNewValue returned null");
     }
     return Json.fromJson(targetJson, UniverseDefinitionTaskParams.class);
   }
@@ -111,7 +109,7 @@ public class StateTransitionDetails {
   private JsonNode requireDelta() {
     if (delta == null || delta.isNull()) {
       throw new PlatformServiceException(
-          BAD_REQUEST, "Cannot roll back edit universe: state_transition_details.delta is missing");
+          BAD_REQUEST, "Cannot roll back: state_transition_details.delta is missing");
     }
     return delta;
   }

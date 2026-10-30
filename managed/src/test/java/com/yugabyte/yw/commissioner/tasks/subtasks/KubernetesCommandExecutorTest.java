@@ -403,32 +403,35 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     ybcOverrides.put("useYBDBImage", defaultUserIntent.isUseYbdbInbuiltYbc());
     expectedOverrides.put("ybc", ybcOverrides);
 
+    UUID providerUUID = defaultUserIntent.maybeGetSingleProviderUUID().get();
+    DeviceInfo defaultDeviceInfo = defaultUserIntent.getBaseDeviceInfo(providerUUID);
+
     Map<String, Object> storageOverrides =
         (Map<String, Object>) expectedOverrides.getOrDefault("storage", new HashMap<>());
-    if (defaultUserIntent.deviceInfo != null) {
+    if (defaultDeviceInfo != null) {
       Map<String, Object> tserverDiskSpecs =
           (Map<String, Object>) storageOverrides.getOrDefault("tserver", new HashMap<>());
       Map<String, Object> masterDiskSpecs =
           (Map<String, Object>) storageOverrides.getOrDefault("master", new HashMap<>());
 
-      if (defaultUserIntent.deviceInfo.numVolumes != null) {
-        tserverDiskSpecs.put("count", defaultUserIntent.deviceInfo.numVolumes);
+      if (defaultDeviceInfo.numVolumes != null) {
+        tserverDiskSpecs.put("count", defaultDeviceInfo.numVolumes);
       }
-      if (defaultUserIntent.deviceInfo.volumeSize != null) {
-        tserverDiskSpecs.put(
-            "size", String.format("%dGi", defaultUserIntent.deviceInfo.volumeSize));
+      if (defaultDeviceInfo.volumeSize != null) {
+        tserverDiskSpecs.put("size", String.format("%dGi", defaultDeviceInfo.volumeSize));
       }
-      if (defaultUserIntent.deviceInfo.storageClass != null) {
-        tserverDiskSpecs.put("storageClass", defaultUserIntent.deviceInfo.storageClass);
+      if (defaultDeviceInfo.storageClass != null) {
+        tserverDiskSpecs.put("storageClass", defaultDeviceInfo.storageClass);
       }
 
+      DeviceInfo defaultMasterDeviceInfo =
+          defaultUserIntent.getBaseDeviceInfo(providerUUID, ServerType.MASTER);
       // For master
-      if (defaultUserIntent.masterDeviceInfo.numVolumes != null) {
-        masterDiskSpecs.put("count", defaultUserIntent.masterDeviceInfo.numVolumes);
+      if (defaultMasterDeviceInfo.numVolumes != null) {
+        masterDiskSpecs.put("count", defaultMasterDeviceInfo.numVolumes);
       }
-      if (defaultUserIntent.masterDeviceInfo.volumeSize != null) {
-        masterDiskSpecs.put(
-            "size", String.format("%dGi", defaultUserIntent.masterDeviceInfo.volumeSize));
+      if (defaultMasterDeviceInfo.volumeSize != null) {
+        masterDiskSpecs.put("size", String.format("%dGi", defaultMasterDeviceInfo.volumeSize));
       }
       if (defaultUserIntent.masterDeviceInfo.storageClass != null) {
         masterDiskSpecs.put("storageClass", defaultUserIntent.masterDeviceInfo.storageClass);
@@ -1187,8 +1190,9 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
 
   @Test
   public void testHelmInstallWithStorageClass() throws IOException {
-    defaultUserIntent.deviceInfo = new DeviceInfo();
-    defaultUserIntent.deviceInfo.storageClass = "foo";
+    DeviceInfo deviceInfo = new DeviceInfo();
+    deviceInfo.storageClass = "foo";
+    TestUtils.existingProviderInitializer(defaultUserIntent).setDeviceInfo(deviceInfo);
     Universe u =
         Universe.saveDetails(
             defaultUniverse.getUniverseUUID(),

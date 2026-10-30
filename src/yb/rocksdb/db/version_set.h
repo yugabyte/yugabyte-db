@@ -526,7 +526,7 @@ class Version {
 
   // Returns the sum of SeekOffsetOf(key) for all SST files: an estimate of how much SST data
   // sorts below `key`. Non-decreasing, but distinct keys can share a value.
-  // Takes an *internal* key, unlike DB::Cross().
+  // Takes an *internal* key, unlike PinnedVersion::Cross().
   Result<uint64_t> Cross(const Slice& key);
 
   // Returns the sum of ApproximateOffsetOfDataEnd() for all SST files, or 0 if there are none.

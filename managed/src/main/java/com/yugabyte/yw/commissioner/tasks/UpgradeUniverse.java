@@ -1215,7 +1215,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
         getBaseAnsibleServerTaskParams(userIntent, node, processType, type, taskSubType);
 
     // Set the device information (numVolumes, volumeSize, etc.)
-    params.deviceInfo = userIntent.getDeviceInfoForNode(node);
+    params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
     // Add the node name.
     params.nodeName = node.nodeName;
     // Add the universe uuid.

@@ -668,8 +668,9 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     Universe.saveDetails(
         universe.getUniverseUUID(),
         univ -> {
-          univ.getUniverseDetails().getPrimaryCluster().userIntent.provider =
-              k8sProvider.getUuid().toString();
+          TestUtils.existingProviderInitializer(
+                  univ.getUniverseDetails().getPrimaryCluster().userIntent)
+              .setProviderUUID(k8sProvider.getUuid());
         });
 
     ObjectNode providerJson = (ObjectNode) Json.toJson(p);
@@ -696,8 +697,9 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     Universe.saveDetails(
         universe.getUniverseUUID(),
         univ -> {
-          univ.getUniverseDetails().getPrimaryCluster().userIntent.provider =
-              k8sProvider.getUuid().toString();
+          TestUtils.existingProviderInitializer(
+                  univ.getUniverseDetails().getPrimaryCluster().userIntent)
+              .setProviderUUID(k8sProvider.getUuid());
         });
 
     List<AvailabilityZone> zones = p.getRegions().get(0).getZones();
@@ -1135,8 +1137,9 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     Universe.saveDetails(
         universe.getUniverseUUID(),
         univ -> {
-          univ.getUniverseDetails().getPrimaryCluster().userIntent.provider =
-              provider.getUuid().toString();
+          TestUtils.existingProviderInitializer(
+                  univ.getUniverseDetails().getPrimaryCluster().userIntent)
+              .setProviderUUID(provider.getUuid());
         });
     params.setUniverseUUID(universe.getUniverseUUID());
     providerEditRestrictionManager.onTaskCreated(backupTaskUUID, createBackup, params);
@@ -1170,8 +1173,9 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     Universe.saveDetails(
         universe.getUniverseUUID(),
         univ -> {
-          univ.getUniverseDetails().getPrimaryCluster().userIntent.provider =
-              provider.getUuid().toString();
+          TestUtils.existingProviderInitializer(
+                  univ.getUniverseDetails().getPrimaryCluster().userIntent)
+              .setProviderUUID(provider.getUuid());
         });
     params.setUniverseUUID(universe.getUniverseUUID());
     providerEditRestrictionManager.onTaskCreated(backupTaskUUID, createBackup, params);

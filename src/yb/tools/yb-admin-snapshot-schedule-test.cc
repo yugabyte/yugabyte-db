@@ -286,7 +286,24 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
             Aborted, "Clone aborted: $0", common::PrettyWriteRapidJsonToString(entries[0]));
       }
       return state == master::SysCloneStatePB::COMPLETE;
-    }, timeout, "Wait for clone to complete");
+    }, timeout * kTimeMultiplier, "Wait for clone to complete");
+  }
+
+  // Brings up a cluster with a ysql database holding one row and a snapshot schedule over it,
+  // which is the minimum a clone needs as a source.
+  Status PrepareCloneSource(const std::string& source_db) {
+    RETURN_NOT_OK(PrepareCommon());
+    RETURN_NOT_OK(cluster_->SetFlagOnMasters("enable_db_clone", "true"));
+
+    auto conn = VERIFY_RESULT(PgConnect());
+    RETURN_NOT_OK(conn.ExecuteFormat("CREATE DATABASE $0", source_db));
+    auto source_conn = VERIFY_RESULT(PgConnect(source_db));
+    RETURN_NOT_OK(source_conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
+    RETURN_NOT_OK(source_conn.Execute("INSERT INTO test_table VALUES (1, 'one')"));
+
+    RETURN_NOT_OK(CreateSnapshotScheduleAndWaitSnapshot(
+        "ysql." + source_db, kInterval, kRetention));
+    return Status::OK();
   }
 
   Status PrepareCommon() {
@@ -1025,6 +1042,69 @@ TEST_F(YbAdminSnapshotScheduleTest, DeleteRowsFromCloneYcql) {
   row_count = ASSERT_RESULT(target_conn.ExecuteWithResult(
       Format("SELECT COUNT(*) FROM $0", kTableName)));
   ASSERT_EQ(row_count.RenderToString(), "0");
+}
+
+// A ysql clone sends a ClearMetacache RPC to every tserver and enables connections to the target
+// database once they have all answered. The per-tserver callbacks run concurrently, so electing
+// the one that runs EnableDbConnections has to be atomic: a second EnableDbConnections task runs
+// ALTER DATABASE against the same pg_database row, both DDLs hold kHighestPriority, and neither
+// can win the conflict, so the clone is aborted instead of retried.
+TEST_F_EX(
+    YbAdminSnapshotScheduleTest, CloneConcurrentClearMetacacheCallbacks,
+    YbAdminSnapshotScheduleTestWithYsql) {
+  const std::string kSourceDb = "source_database";
+  const std::string kTargetDb = "cloned_database";
+
+  ASSERT_OK(PrepareCloneSource(kSourceDb));
+  // Hold every callback after it has recorded its tserver, so that they all reach the election
+  // together. Without this the callbacks are far enough apart that only the last one sees a zero
+  // count, which is why the race only shows up on loaded (sanitizer) CI hosts.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_delay_after_clearing_tserver_metacache_ms", "3000"));
+
+  ASSERT_OK(CloneAndWait("ysql." + kSourceDb, kTargetDb, 2min /* timeout */));
+
+  auto target_conn = ASSERT_RESULT(PgConnect(kTargetDb));
+  ASSERT_EQ(
+      ASSERT_RESULT(target_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test_table")), 1);
+}
+
+// A tserver that did not clear its metacache may still route to the source namespace's tablets, so
+// a clone that cannot confirm every tserver has to abort rather than enable connections. Before
+// the ClearMetacache callback carried a status, the failure counted as a successful clear and the
+// clone completed.
+TEST_F_EX(
+    YbAdminSnapshotScheduleTest, CloneAbortsWhenClearMetacacheFails,
+    YbAdminSnapshotScheduleTestWithYsql) {
+  const std::string kSourceDb = "source_database";
+  const std::string kTargetDb = "cloned_database";
+
+  ASSERT_OK(PrepareCloneSource(kSourceDb));
+  // One tserver is enough: the clone must abort even though the others cleared successfully.
+  ASSERT_OK(cluster_->SetFlag(
+      cluster_->tablet_server(0), "TEST_fail_clear_metacache", "true"));
+
+  auto status = CloneAndWait("ysql." + kSourceDb, kTargetDb, 2min /* timeout */);
+  ASSERT_NOK(status);
+  ASSERT_TRUE(status.IsAborted()) << status;
+  ASSERT_STR_CONTAINS(status.ToString(), "Failing ClearMetacache for test");
+}
+
+// The EnableDbConns callback runs from the task's Finished hook, so it reports the failure and
+// aborts.
+TEST_F_EX(
+    YbAdminSnapshotScheduleTest, CloneAbortsWhenEnableDbConnsFails,
+    YbAdminSnapshotScheduleTestWithYsql) {
+  const std::string kSourceDb = "source_database";
+  const std::string kTargetDb = "cloned_database";
+
+  ASSERT_OK(PrepareCloneSource(kSourceDb));
+  // The master picks the tserver for this task itself, so every one of them has to fail.
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_fail_enable_db_conns", "true"));
+
+  auto status = CloneAndWait("ysql." + kSourceDb, kTargetDb, 2min /* timeout */);
+  ASSERT_NOK(status);
+  ASSERT_TRUE(status.IsAborted()) << status;
+  ASSERT_STR_CONTAINS(status.ToString(), "Failing EnableDbConns for test");
 }
 
 TEST_F(YbAdminSnapshotScheduleTest, CreateIntervalZero) {

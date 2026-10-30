@@ -214,6 +214,7 @@ YbSkippableEntityType
 YbSortArrayContext
 YbSortInfo
 YbSplitType
+YbStatExtListEntry
 YbStatLabel
 YbStatLabelData
 YbStatementType
@@ -243,7 +244,6 @@ YbTerminatedQueriesBuffer
 YbTerminatedQuery
 YbTraceparentResult
 YbTruncateType
-YbTserverUuidClauseResult
 YbTupleBitmap
 YbTupleCache
 YbTupleCacheEntry

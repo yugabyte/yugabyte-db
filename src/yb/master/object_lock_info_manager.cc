@@ -1430,7 +1430,7 @@ ObjectLockInfoManager::Impl::GetLeaseInfos() const {
   for (const auto& [uuid, object_info] : object_lock_infos_map_) {
     result[uuid] = TServerLeaseInfo{
         .lease_info = object_info->LockForRead()->pb.lease_info(),
-        .lease_expiry = std::max(object_info->ysql_lease_deadline() - now, MonoDelta::kZero),
+        .time_to_lease_deadline = object_info->ysql_lease_deadline() - now,
     };
   }
   return result;

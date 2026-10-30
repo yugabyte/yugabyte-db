@@ -2650,7 +2650,7 @@ class PgClientSession::Impl {
     PreparePgTablesQuery(data->req, table_ids);
     auto tables_future = GetTablesAsync(table_cache(), table_ids);
     RETURN_NOT_OK(Wait(tables_future, ToSteady(deadline)));
-    RETURN_NOT_OK(precondition_waiter(data->req.serial_no(), deadline));
+    RETURN_NOT_OK(precondition_waiter(data->req.sequence_num(), deadline));
     return DoPerform(tables_future.get(), data, deadline);
   }
 

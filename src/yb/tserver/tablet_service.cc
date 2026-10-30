@@ -326,6 +326,12 @@ DEFINE_test_flag(bool, cdc_sdk_fail_setting_retention_barrier, false,
 DEFINE_test_flag(uint32, clone_pg_schema_delay_ms, 0,
     "Delay before processing PgCloneSchema request.");
 
+DEFINE_test_flag(bool, fail_clear_metacache, false,
+    "Answer the master's ClearMetacache request with an error.");
+
+DEFINE_test_flag(bool, fail_enable_db_conns, false,
+    "Answer the master's EnableDbConns request with an error.");
+
 DEFINE_test_flag(uint32, pause_tablet_compact_flush_ms, 0,
     "Used in tests to pause FlushTablet RPC for the specified number of milliseconds");
 
@@ -2414,6 +2420,8 @@ void TabletServiceAdminImpl::EnableDbConns(
 
 Status TabletServiceAdminImpl::DoEnableDbConns(
     const EnableDbConnsRequestPB* req, EnableDbConnsResponsePB* resp) {
+  SCHECK(!FLAGS_TEST_fail_enable_db_conns, InternalError, "Failing EnableDbConns for test");
+
   const std::string script = Format(
       "ALTER DATABASE $0 ALLOW_CONNECTIONS true",
       pgwrapper::PqEscapeIdentifier(req->target_db_name()));
@@ -3939,7 +3947,9 @@ void TabletServiceImpl::ClearMetacache(
         resp->mutable_error(), STATUS(InvalidArgument, "namespace_id is not specified"), &context);
     return;
   }
-  auto s = server_->ClearMetacache(req->namespace_id());
+  auto s = FLAGS_TEST_fail_clear_metacache
+      ? STATUS(InternalError, "Failing ClearMetacache for test")
+      : server_->ClearMetacache(req->namespace_id());
   if (!s.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), s, &context);
   } else {

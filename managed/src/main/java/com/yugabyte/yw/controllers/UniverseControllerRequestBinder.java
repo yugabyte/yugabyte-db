@@ -80,11 +80,12 @@ public class UniverseControllerRequestBinder {
         for (Cluster cluster : taskParams.clusters) {
           UserIntent ui = cluster.userIntent;
           if (Util.isKubernetesBasedUniverse(taskParams)) {
-            if (ui.instanceType != null) {
+            UUID providerUUID = Util.getSingleProviderUUID(ui);
+            if (ui.getBaseInstanceType(providerUUID) != null) {
               if (runtimeConfGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
-                UUID providerUUID = Util.getSingleProviderUUID(ui);
                 InstanceType instanceType =
-                    InstanceType.getOrBadRequest(providerUUID, ui.instanceType);
+                    InstanceType.getOrBadRequest(
+                        providerUUID, ui.getBaseInstanceType(providerUUID));
                 // set K8s resource spec from instance type data.
                 ui.masterK8SNodeResourceSpec = new K8SNodeResourceSpec();
                 ui.tserverK8SNodeResourceSpec = new K8SNodeResourceSpec();
@@ -156,7 +157,7 @@ public class UniverseControllerRequestBinder {
       UniverseDefinitionTaskParams.Cluster universeCluster =
           universeClustersByUuid.get(paramCluster.uuid);
       if (universeCluster == null || universeCluster.userIntent == null) {
-        // New cluster — no stored counterpart to merge from. Reject any REDACTED gflags so the
+        // New cluster - no stored counterpart to merge from. Reject any REDACTED gflags so the
         // sentinel is never written into universe metadata (the real value is unrecoverable).
         UserIntent newIntent = paramCluster.userIntent;
         if (mapContainsRedactedPlaceholder(newIntent.masterGFlags)
@@ -295,6 +296,7 @@ public class UniverseControllerRequestBinder {
           checkAndAddMapField(
               instanceTagsNode,
               tags -> {
+                // old flow - using userIntent.
                 cluster.userIntent.instanceTags = tags;
                 userIntent.put("instanceTags", Json.toJson(tags));
               });
@@ -445,6 +447,7 @@ public class UniverseControllerRequestBinder {
           (new ObjectMapper()).treeToValue(clusterJson, UniverseDefinitionTaskParams.Cluster.class);
       cluster.userIntent.masterGFlags = masterGFlagsMap;
       cluster.userIntent.tserverGFlags = tserverGFlagsMap;
+      // old flow - using UserIntent.
       cluster.userIntent.instanceTags = instanceTags;
       clusters.add(cluster);
     }

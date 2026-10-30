@@ -284,13 +284,6 @@ class VectorIndexesUpdater {
   Status Feed(rocksdb::DirectWriteHandler& handler, Slice key, Slice value);
   Status Complete();
 
-  // Whether reverse mapping tombstones should be written for deleted vectors. They are not
-  // needed when all vector indexes store ybctids: such a vector has no reverse mapping entry,
-  // and a deleted row is detected by fetching it by the ybctid from the vector payload.
-  bool NeedReverseMappingTombstones() const {
-    return !all_indexes_store_ybctid_;
-  }
-
  private:
   template <class Decoder>
   Status FeedPackedRow(
@@ -313,6 +306,10 @@ class VectorIndexesUpdater {
 
   bool IntentApplyShouldUpdateVectorIndex(const DocVectorIndex& vector_index) const;
 
+  // Whether the table with the specified key prefix writes the vector reverse mapping. Fixed at
+  // table creation, so it does not depend on the schema version the row is packed with.
+  Result<bool> TableWritesVectorReverseMapping(Slice table_key_prefix);
+
   DocVectorIndexesPtr indexes_;
   SchemaPackingProvider& schema_packing_provider_;
   ConsensusFrontiers& frontiers_;
@@ -321,15 +318,13 @@ class VectorIndexesUpdater {
   const IntraTxnWriteId& write_id_;
   const bool xcluster_target_;
 
-  // Whether all vector indexes store ybctids in their chunks, so no reverse mapping entries are
-  // needed at all. Based on the per-index decision fixed at index open, so it is consistent with
-  // the contents of the chunks the entries go to.
-  const bool all_indexes_store_ybctid_;
   // TODO(#30819 vector_index) Optimize memory management
   std::vector<DocVectorIndexInsertEntries> batches_;
+  // The table the cached values below belong to, they are all replaced when it changes.
+  KeyBuffer table_key_prefix_;
+  std::optional<bool> table_writes_vector_reverse_mapping_;
   std::shared_ptr<const dockv::SchemaPacking> schema_packing_;
   SchemaVersion schema_packing_version_ = std::numeric_limits<SchemaVersion>::max();
-  KeyBuffer schema_packing_table_prefix_;
   bool schema_packing_owns_vector_reverse_mapping_ = false;
 };
 

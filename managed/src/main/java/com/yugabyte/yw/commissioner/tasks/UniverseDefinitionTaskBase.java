@@ -1087,7 +1087,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               UpgradeTaskParams.UpgradeTaskType.GFlags,
               null /* taskSubType */);
       // Set the device information (numVolumes, volumeSize, etc.)
-      params.deviceInfo = userIntent.getDeviceInfoForNode(node);
+      params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
       // Add the node name.
       params.nodeName = node.nodeName;
       // Add the universe uuid.
@@ -1219,8 +1219,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // Change admin password for Admin user, as specified.
     checkAndCreateChangeAdminPasswordTask(primaryCluster);
 
-    if (primaryCluster.userIntent.getAllCloudTypes().contains(CloudType.kubernetes)
-        && taskParams().useNewHelmNamingStyle) {
+    if (Util.isKubernetesBased(primaryCluster) && taskParams().useNewHelmNamingStyle) {
       // Create Pod Disruption Budget policy for the universe pods using the new Helm naming style.
       createPodDisruptionBudgetPolicyTask(false /* deletePDB */)
           .setSubTaskGroupType(SubTaskGroupType.CreatePodDisruptionBudgetPolicy);
@@ -1281,7 +1280,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Add the node name.
       params.nodeName = node.nodeName;
       // Add device info.
-      params.deviceInfo = userIntent.getDeviceInfoForNode(node);
+      params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
       // Set numVolumes if user did not set it
       if (params.deviceInfo.numVolumes == null) {
         params.deviceInfo.numVolumes =
@@ -1289,7 +1288,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                 .getUniverseDetails()
                 .getPrimaryCluster()
                 .userIntent
-                .getDeviceInfoForNode(node)
+                .evaluateDeviceInfoForNode(node)
                 .numVolumes;
       }
 
@@ -1406,7 +1405,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       AnsibleSetupServer.Params params, Cluster cluster, NodeDetails node) {
     UserIntent userIntent = cluster.userIntent;
     CloudSpecificInfo cloudInfo = node.cloudInfo;
-    params.deviceInfo = userIntent.getDeviceInfoForNode(node);
+    params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
     // Set the region code.
     params.azUuid = node.azUuid;
     params.placementUuid = node.placementUuid;
@@ -1443,7 +1442,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   protected void fillCreateParamsForNode(
       AnsibleCreateServer.Params params, UserIntent userIntent, NodeDetails node) {
     CloudSpecificInfo cloudInfo = node.cloudInfo;
-    params.deviceInfo = userIntent.getDeviceInfoForNode(node);
+    params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
     // Set the region code.
     params.azUuid = node.azUuid;
     params.placementUuid = node.placementUuid;
@@ -1639,7 +1638,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           getBaseAnsibleServerTaskParams(
               userIntent, node, null /* processType */, null /* type */, null /* taskSubType */);
       // Set the device information (numVolumes, volumeSize, etc.)
-      params.deviceInfo = userIntent.getDeviceInfoForNode(node);
+      params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
       // Add the node name.
       params.nodeName = node.nodeName;
       // Add the universe uuid.
@@ -1736,7 +1735,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       NodeTaskParams params = new NodeTaskParams();
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
       // Set the device information (numVolumes, volumeSize, etc.)
-      params.deviceInfo = userIntent.getDeviceInfoForNode(node);
+      params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
       // Set the region name to the proper provider code so we can use it in the cloud API calls.
       params.azUuid = node.azUuid;
       params.placementUuid = node.placementUuid;
@@ -1802,7 +1801,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       PlacementInfoUtil.verifyNumNodesAndRF(
           cluster.clusterType, cluster.userIntent.numNodes, cluster.userIntent.replicationFactor);
 
-      if (cluster.userIntent.getAllCloudTypes().contains(CloudType.kubernetes)) {
+      if (Util.isKubernetesBased(cluster)) {
         if (opType == UniverseOpType.EDIT
             && KubernetesUtil.needsFullMove(univCluster, cluster)
             && !KubernetesUtil.isFullMoveSupported(univCluster.userIntent.ybSoftwareVersion)) {
@@ -2230,7 +2229,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                               UserIntent userIntent = cluster.userIntent;
                               params.nodeName = node.nodeName;
                               params.nodeUuid = node.nodeUuid;
-                              params.deviceInfo = userIntent.getDeviceInfoForNode(node);
+                              params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
                               params.azUuid = node.azUuid;
                               params.placementUuid = node.placementUuid;
                               params.isMaster = node.isMaster;
@@ -2479,12 +2478,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         n -> {
           UserIntent userIntent = taskParams().getClusterByUuid(n.placementUuid).userIntent;
           YNPProvisioning.Params params = new YNPProvisioning.Params();
-          params.deviceInfo = userIntent.getDeviceInfoForNode(n);
+          params.deviceInfo = userIntent.evaluateDeviceInfoForNode(n);
           Provider provider = providerGetter.apply(n);
           if (imageBundleUtil != null) {
             params.sshUser = imageBundleUtil.findEffectiveSshUser(provider, universe, n);
           }
-          params.deviceInfo = userIntent.getDeviceInfoForNode(n);
+          params.deviceInfo = userIntent.evaluateDeviceInfoForNode(n);
           params.nodeName = n.nodeName;
           params.azUuid = n.azUuid;
           params.customerUuid = customer.getUuid();
@@ -3342,9 +3341,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           continue;
         }
         DeviceInfo taskDeviceInfo =
-            cluster.userIntent.getDeviceInfoForAz(nodeDetails.azUuid, serverType);
+            cluster.userIntent.evaluateDeviceInfoForAz(nodeDetails.azUuid, serverType);
         DeviceInfo existingDeviceInfo =
-            existingUserIntent.getDeviceInfoForAz(nodeDetails.azUuid, serverType);
+            existingUserIntent.evaluateDeviceInfoForAz(nodeDetails.azUuid, serverType);
 
         if (taskDeviceInfo != null
             && existingDeviceInfo != null
@@ -3924,15 +3923,15 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         shellContext);
   }
 
-  protected <X> void addParallelTasks(
+  protected <X> SubTaskGroup addParallelTasks(
       Collection<X> vals,
       Function<X, ITask> taskInitializer,
       String subTaskGroupName,
       UserTaskDetails.SubTaskGroupType subTaskGroupType) {
-    addParallelTasks(vals, taskInitializer, subTaskGroupName, subTaskGroupType, false);
+    return addParallelTasks(vals, taskInitializer, subTaskGroupName, subTaskGroupType, false);
   }
 
-  protected <X> void addParallelTasks(
+  protected <X> SubTaskGroup addParallelTasks(
       Collection<X> vals,
       Function<X, ITask> taskInitializer,
       String subTaskGroupName,
@@ -3946,6 +3945,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         });
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     subTaskGroup.setSubTaskGroupType(subTaskGroupType);
+    return subTaskGroup;
   }
 
   protected RollMaxBatchSize getCurrentRollBatchSize(
@@ -4566,7 +4566,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               continue;
             }
             CheckDuplicateInstance.Params params = new CheckDuplicateInstance.Params();
-            params.deviceInfo = userIntent.getDeviceInfoForNode(node);
+            params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
             params.azUuid = node.azUuid;
             params.placementUuid = node.placementUuid;
             params.nodeName = node.nodeName;

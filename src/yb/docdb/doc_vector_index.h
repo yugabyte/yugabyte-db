@@ -35,6 +35,7 @@
 
 #include "yb/util/kv_util.h"
 #include "yb/util/metrics.h"
+#include "yb/util/strongly_typed_bool.h"
 
 #include "yb/vector_index/vector_index_fwd.h"
 
@@ -49,12 +50,16 @@ namespace yb::docdb {
 
 using EncodedDistance = uint64_t;
 
+// Whether the indexed table writes the vector reverse mapping, see
+// TablePropertiesPB::skip_vector_reverse_mapping.
+YB_STRONGLY_TYPED_BOOL(TableWritesReverseMapping);
+
 struct DocVectorIndexInsertEntry {
   ValueBuffer value;
 
-  // ybctid of the row that contains the vector. Attached to the vector in the chunk when the
-  // index stores ybctids, so search can resolve rows without reading the reverse mapping, see
-  // DocVectorIndex::StoresYbctid.
+  // ybctid of the row that contains the vector. Goes into the payload attached to the vector in
+  // the chunk when the index stores payloads, so search can resolve rows without reading the
+  // reverse mapping, see DocVectorIndex::StoresPayload.
   KeyBuffer ybctid;
 };
 
@@ -91,7 +96,6 @@ class DocVectorIndexReverseMappingReader {
   // Returns ybctid which corresponds to the specified vector_id. Returns empty value if
   // no ybctid is found or kTombstone corresponds to the specified vector_id.
   Result<Slice> FetchYbctid(const vector_index::VectorId& vector_id);
-
 };
 
 using DocVectorIndexReverseMappingReaderPtr = std::unique_ptr<DocVectorIndexReverseMappingReader>;
@@ -101,12 +105,6 @@ class DocVectorIndexContext {
   virtual ~DocVectorIndexContext() = default;
   virtual Result<DocVectorIndexReverseMappingReaderPtr> CreateReverseMappingReader(
       const ReadHybridTime& read_ht, DocDBStatistics* statistics) const = 0;
-
-  // Creates a reader at the tablet's current history cutoff. A tombstone visible to this reader
-  // cannot be observed as a live vector by any allowed read time, so the merge filter may
-  // discard the corresponding vector.
-  virtual Result<DocVectorIndexReverseMappingReaderPtr> CreateReverseMappingReaderAtHistoryCutoff()
-      const = 0;
 };
 
 using DocVectorIndexContextPtr = std::unique_ptr<DocVectorIndexContext>;
@@ -147,10 +145,11 @@ class DocVectorIndex {
   virtual const DocVectorIndexContext& context() const = 0;
   virtual const DocVectorIndexMetrics& metrics() const = 0;
 
-  // Whether ybctids are stored in the vector index chunks as vector payloads, so search resolves
-  // rows without reading the reverse mapping and insert-time reverse mapping entries are not
-  // needed. Fixed for the lifetime of the index.
-  virtual bool StoresYbctid() const = 0;
+  // Whether a payload is attached to every vector in the index chunks. The payload carries the
+  // ybctid, so search resolves rows without the reverse mapping. Fixed when the index is created,
+  // see PgVectorIdxOptionsPB::store_payload, and always true when the indexed table writes no
+  // reverse mapping, which leaves the payload as the only way to resolve a row.
+  virtual bool StoresPayload() const = 0;
 
   virtual Status Insert(
       const DocVectorIndexInsertEntries& entries, const InsertOptions& options) = 0;
@@ -169,6 +168,19 @@ class DocVectorIndex {
   virtual Status WaitForCompaction() = 0;
   virtual Status Flush() = 0;
   virtual Status WaitForFlush() = 0;
+
+  // Persists `frontier` as part of the flushed state without inserting any vector. Stamps an OpId
+  // on an index that is known to reflect everything up to it, but cannot reach it by flushing,
+  // because a truncate or a restore replaced its storage.
+  //
+  // The stamp only moves the flushed OpId forward: the flushed frontier is the maximum over the
+  // index chunks. That covers a truncate and a restore within the same Raft group, whose chunks
+  // carry lower OpIds. It cannot bring an index back from OpIds of another Raft group, the way
+  // RocksDBPatcher::ModifyFlushedFrontier resets the per file OpIds of the SST files.
+  //
+  // Each stamp adds a frontier only chunk that stays in the manifest until a full compaction, so
+  // it is reserved for storage replacement and not used to advance an idle index.
+  virtual Status ModifyFlushedFrontier(const ConsensusFrontier& frontier) = 0;
 
   // Computes the requested frontiers (flushed and/or in-memory) atomically, so the views are
   // mutually consistent. This is the single primitive subclasses override; the accessors below are
@@ -236,6 +248,7 @@ Result<DocVectorIndexPtr> CreateDocVectorIndex(
     const std::string& storage_dir,
     const DocVectorIndexThreadPoolProvider& thread_pool_provider,
     Slice indexed_table_key_prefix,
+    TableWritesReverseMapping table_writes_reverse_mapping,
     HybridTime hybrid_time,
     uint64_t split_generation,
     const qlexpr::IndexInfo& index_info,

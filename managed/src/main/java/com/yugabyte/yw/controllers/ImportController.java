@@ -27,6 +27,7 @@ import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -103,6 +104,8 @@ public class ImportController extends AuthenticatedController {
   @Inject ApiHelper apiHelper;
 
   @Inject ConfigHelper configHelper;
+
+  @Inject RuntimeConfGetter confGetter;
 
   @Inject
   public ImportController(
@@ -685,12 +688,13 @@ public class ImportController extends AuthenticatedController {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.universeName = universeName;
-    userIntent.provider = provider.getUuid().toString();
     userIntent.regionList = new ArrayList<>();
     userIntent.regionList.add(region.getUuid());
-    userIntent.providerType = importForm.providerType;
-    userIntent.instanceType = importForm.instanceType;
     userIntent.replicationFactor = importForm.replicationFactor;
+
+    Util.newProviderInitializer(userIntent, provider.getUuid(), importForm.providerType, confGetter)
+        .setInstanceType(importForm.instanceType);
+
     // Currently using YW version instead of YB version.
     // TODO: #1842: Create YBClient endpoint for getting ybSoftwareVersion.
     userIntent.ybSoftwareVersion =

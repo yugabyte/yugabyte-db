@@ -3,3 +3,4 @@
 
 test: yb.orig.roles
 test: yb.orig.rowsecurity
+test: yb.orig.password_valid_until

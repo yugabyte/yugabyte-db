@@ -113,12 +113,13 @@ class MockQueue : public PeerMessageQueue {
                                             const yb::OpId& committed_op_id,
                                             RestartSafeCoarseTimePoint time));
   MOCK_METHOD1(UntrackPeer, void(const string&));
-  MOCK_METHOD6(RequestForPeer, Status(const std::string& uuid,
+  MOCK_METHOD7(RequestForPeer, Status(const std::string& uuid,
                                       LWConsensusRequestPB* request,
                                       LWReplicateMsgsHolder* msgs_holder,
                                       bool* needs_remote_bootstrap,
                                       PeerMemberType* member_type,
-                                      bool* last_exchange_successful));
+                                      bool* last_exchange_successful,
+                                      bool* batch_reaches_majority_replicated));
   MOCK_METHOD2(ResponseFromPeer, bool(const std::string& peer_uuid,
                                       const LWConsensusResponsePB& response));
   MOCK_CONST_METHOD1(CanPeerBecomeLeader, bool(const std::string& peer_uuid));

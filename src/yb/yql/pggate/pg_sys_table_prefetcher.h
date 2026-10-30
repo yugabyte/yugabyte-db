@@ -62,6 +62,7 @@ struct PrefetcherOptions {
 
   std::optional<CachingInfo> caching_info;
   uint64_t fetch_row_limit;
+  uint64_t fetch_size_limit;
 
   std::string ToString() const;
 };

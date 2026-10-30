@@ -230,6 +230,10 @@ Status XClusterYsqlTestBase::InitPostgres(
           yb::ToString(Endpoint(pg_ts->bound_rpc_addr().address(), pg_port)),
           pg_ts->options()->fs_opts.data_paths.front() + "/pg_data"));
   pg_process_conf.master_addresses = pg_ts->options()->master_addresses_flag;
+  // Postgres cannot derive the certificate directory on its own, and the encryption flags reach it
+  // through the environment regardless, so without this it would start encrypted with nowhere to
+  // read certificates from. The tserver's own startup path does the same.
+  RETURN_NOT_OK(pg_process_conf.SetSslConf(*pg_ts->options(), pg_ts->fs_manager()));
   pg_process_conf.force_disable_log_file = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_webserver_port) =
       cluster->mini_cluster_->AllocateFreePort();

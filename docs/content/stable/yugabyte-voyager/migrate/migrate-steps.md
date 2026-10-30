@@ -613,7 +613,7 @@ yb-voyager import data --export-dir <EXPORT_DIR> \
 
 {{< /tabpane >}}
 
-By default, yb-voyager imports data in parallel using multiple connections, and adapts the parallelism based on the resource usage of the cluster. Refer to [Techniques to improve performance](../../reference/performance/#techniques-to-improve-performance) for more details on tuning performance.
+By default, yb-voyager imports data in parallel using multiple connections, and adapts the parallelism based on the resource usage of the cluster. Refer to [Improve import snapshot performance](../../reference/performance/#improve-import-snapshot-performance) for more details on tuning performance.
 
 Refer to [import data](../../reference/data-migration/import-data/) for more information.
 

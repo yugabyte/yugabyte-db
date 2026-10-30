@@ -63,6 +63,12 @@ CREATE INDEX t_range_range ON t_incomplete_binds(r1 ASC, r2 ASC);
 :explain_analyze /*+ IndexScan(t t_hash_range) */ SELECT * FROM t_incomplete_binds t WHERE r2 < 5;
 :explain_analyze /*+ IndexScan(t t_range_range) */ SELECT * FROM t_incomplete_binds t WHERE r2 < 5;
 
+-- an out-of-range equality means no row can match, so nothing is read, whether
+-- or not the hash columns are all bound
+:explain_analyze /*+ IndexScan(t t_hash_hash) */ SELECT * FROM t_incomplete_binds t WHERE h1 = 1 AND h2 = 2147483648;
+:explain_analyze /*+ IndexScan(t t_hash_hash) */ SELECT * FROM t_incomplete_binds t WHERE h2 = 2147483648;
+:explain_analyze /*+ IndexScan(t t_hash_range) */ SELECT * FROM t_incomplete_binds t WHERE r2 = 2147483648;
+
 DROP TABLE t_incomplete_binds;
 
 --- - ---
@@ -84,31 +90,68 @@ INSERT INTO t_int VALUES ( 32767,  2147483647,  9223372036854775807);
 :explain_analyze SELECT * FROM t_int WHERE i2 = 1;
 :explain_analyze SELECT * FROM t_int WHERE i2 > 1;
 :explain_analyze SELECT * FROM t_int WHERE i2 < 1;
--- these are each out of range, so recheck is required
-:explain_analyze SELECT * FROM t_int WHERE i2 = 32768;
-:explain_analyze SELECT * FROM t_int WHERE i2 < 32768;
-:explain_analyze SELECT * FROM t_int WHERE i2 > 32768;
-:explain_analyze SELECT * FROM t_int WHERE i2 IN (1, 2, 32767, 32768);
-
--- these are each within range, so no recheck is required
 :explain_analyze SELECT * FROM t_int WHERE i4 = 1;
 :explain_analyze SELECT * FROM t_int WHERE i4 > 1;
 :explain_analyze SELECT * FROM t_int WHERE i4 < 1;
--- these are each out of range, so recheck is required
-:explain_analyze SELECT * FROM t_int WHERE i4 = 2147483648;
-:explain_analyze SELECT * FROM t_int WHERE i4 > 2147483648;
-:explain_analyze SELECT * FROM t_int WHERE i4 < 2147483648;
-:explain_analyze SELECT * FROM t_int WHERE i4 IN (1, 2, 2147483647, 2147483648);
-
--- these are each within range, so no recheck is required
 :explain_analyze SELECT * FROM t_int WHERE i8 = 1;
 :explain_analyze SELECT * FROM t_int WHERE i8 > 1;
 :explain_analyze SELECT * FROM t_int WHERE i8 < 1;
--- these are each out of range, so recheck is required
+:explain_analyze SELECT * FROM t_int WHERE s = 1;
+
+-- these equalities are out of range, so no row can match and nothing is read
+:explain_analyze SELECT * FROM t_int WHERE i2 = 32768;
+:explain_analyze SELECT * FROM t_int WHERE i2 = -32769;
+:explain_analyze SELECT * FROM t_int WHERE i4 = 2147483648;
+:explain_analyze SELECT * FROM t_int WHERE s = 2147483648;
+-- i8 <op> numeric casts the column, so the conditions are filters on a
+-- sequential scan
 :explain_analyze SELECT * FROM t_int WHERE i8 = 9223372036854775809;
+
+-- these inequalities are out of range, so their key is not bound and recheck is
+-- required
+:explain_analyze SELECT * FROM t_int WHERE i2 < 32768;
+:explain_analyze SELECT * FROM t_int WHERE i2 > 32768;
+:explain_analyze SELECT * FROM t_int WHERE i4 > 2147483648;
+:explain_analyze SELECT * FROM t_int WHERE i4 < 2147483648;
+-- i8 <op> numeric casts the column, so the conditions are filters on a
+-- sequential scan
 :explain_analyze SELECT * FROM t_int WHERE i8 > 9223372036854775809;
 :explain_analyze SELECT * FROM t_int WHERE i8 < 9223372036854775809;
+
+-- the out-of-range element is dropped from the IN list, so no recheck is
+-- required
+:explain_analyze SELECT * FROM t_int WHERE i2 IN (1, 2, 32767, 32768);
+:explain_analyze SELECT * FROM t_int WHERE i4 IN (1, 2, 2147483647, 2147483648);
+:explain_analyze SELECT * FROM t_int WHERE s IN (1, 2, 2147483647, 2147483648);
+-- i8 <op> numeric casts the column, so the conditions are filters on a
+-- sequential scan
 :explain_analyze SELECT * FROM t_int WHERE i8 IN (1, 2, 9223372036854775807, 9223372036854775808);
+
+-- in-range and out-of-range equality as a parameter of a generic plan
+SET plan_cache_mode = force_generic_plan;
+PREPARE t_int_i2_eq(int4) AS SELECT * FROM t_int WHERE i2 = $1;
+:explain_analyze EXECUTE t_int_i2_eq(1);
+:explain_analyze EXECUTE t_int_i2_eq(32768);
+DEALLOCATE t_int_i2_eq;
+RESET plan_cache_mode;
+
+-- aggregate pushdown, which a constant out-of-range equality allows since the
+-- scan reads nothing
+:explain_analyze SELECT count(*) FROM t_int WHERE i4 = 2147483648;
+SELECT count(*) FROM t_int WHERE i4 = 2147483648;
+:explain_analyze /*+ IndexScan(t_int t_int_i4) */ SELECT count(*) FROM t_int WHERE i4 = 2147483648;
+/*+ IndexScan(t_int t_int_i4) */ SELECT count(*) FROM t_int WHERE i4 = 2147483648;
+:explain_analyze SELECT count(*) FROM t_int WHERE s = 2147483648;
+SELECT count(*) FROM t_int WHERE s = 2147483648;
+
+-- aggregate pushdown with a subquery value, which is not yet known when the
+-- executor decides whether to push the aggregate down
+:explain_analyze SELECT count(*) FROM t_int WHERE i4 = (SELECT 2147483648::int8);
+SELECT count(*) FROM t_int WHERE i4 = (SELECT 2147483648::int8);
+:explain_analyze /*+ IndexScan(t_int t_int_i4) */ SELECT count(*) FROM t_int WHERE i4 = (SELECT 2147483648::int8);
+/*+ IndexScan(t_int t_int_i4) */ SELECT count(*) FROM t_int WHERE i4 = (SELECT 2147483648::int8);
+:explain_analyze SELECT count(*) FROM t_int WHERE s = (SELECT 2147483648::int8);
+SELECT count(*) FROM t_int WHERE s = (SELECT 2147483648::int8);
 
 DROP TABLE t_int;
 

@@ -135,6 +135,7 @@
 | "Regex for match Yugabyte DB release helm .tar.gz files" | "yb.regex.release_pattern.helm" | "GLOBAL" | "Regex pattern used to find Yugabyte DB helm .tar.gz files" | "String" |
 | "Enables extra logging" | "yb.logging.enable_task_failed_request_logs" | "GLOBAL" | "Enables extra logging for task params and request body" | "Boolean" |
 | "Enable gflags sensitive data API redaction" | "yb.api.enable_gflags_sensitive_data_redaction" | "GLOBAL" | "When true, API responses redact gflags sensitive data that is not covered by JsonPath (for example ldapbindpasswd in ysql_hba_conf_csv and audit additionalDetails). JsonPath based API redaction remains enabled." | "Boolean" |
+| "Fail fast OCI instance type change with multiple volumes" | "yb.oci.fail_fast_multi_volume_instance_type_change" | "GLOBAL" | "When enabled, ResizeNode precheck fails instance type changes if the node has more than one data volume. OCI UpdateInstance allows at most one boot volume and one secondary volume." | "Boolean" |
 | "tmp directory path" | "yb.filepaths.tmpDirectory" | "GLOBAL" | "Path to the tmp directory to be used by YBA" | "String" |
 | "Customer UUID to use with Kubernentes Operator" | "yb.kubernetes.operator.customer_uuid" | "GLOBAL" | "Customer UUID to use with Kubernentes Operator, do not change once set" | "String" |
 | "Enable Kubernentes Operator" | "yb.kubernetes.operator.enabled" | "GLOBAL" | "Enable Kubernentes Operator, requires restart to take effect" | "Boolean" |
@@ -208,6 +209,8 @@
 | "Timeout for backup success marker download" | "ybc.success_marker_download_timeout_secs" | "GLOBAL" | "Timeout for backup success marker download from backup location" | "Integer" |
 | "Enable Performing Automatic Rollback of Edit Operation" | "yb.task.enable_edit_auto_rollback" | "GLOBAL" | "Enable performing automatic rollback of edit operation (if possible)" | "Boolean" |
 | "Allow Rollback of Edit Universe Tasks" | "yb.task.allow_edit_universe_rollback" | "GLOBAL" | "Allow rolling back a failed edit universe task (VM and Kubernetes) via the task rollback API" | "Boolean" |
+| "Allow Rollback of Add Node Tasks" | "yb.task.allow_add_node_rollback" | "GLOBAL" | "Allow rolling back a failed add-node-to-universe task via the task rollback API. Rollback is limited to the window before tserver start / raft join; Kubernetes is out of scope." | "Boolean" |
+| "Allow Rollback of Resize Node Tasks" | "yb.task.allow_resize_node_rollback" | "GLOBAL" | "Allow rolling back a failed resize node task via the task rollback API. Kubernetes and disk-size shrink are out of scope; IOPS/throughput revert during the cloud disk-modify cooldown window is rejected." | "Boolean" |
 | "Enable S3 Backup Proxy" | "yb.ui.feature_flags.enable_s3_backup_proxy" | "GLOBAL" | "Enable proxy configuration for S3 backup storage" | "Boolean" |
 | "Allow YBA Restore With Universes" | "yb.yba_backup.allow_restore_with_universes" | "GLOBAL" | "Allow YBA restore from one time restore or continuous backup when existing universes are present" | "Boolean" |
 | "Allow YBA Restore With Old Backup" | "yb.yba_backup.allow_restore_with_old_backup" | "GLOBAL" | "Allow YBA restore from one time restore or continuous backup when backup file is more than 1 day old" | "Boolean" |

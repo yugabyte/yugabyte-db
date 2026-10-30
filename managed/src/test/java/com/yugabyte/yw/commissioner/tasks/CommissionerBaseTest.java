@@ -1548,7 +1548,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     DeviceInfo deviceInfo =
         params.deviceInfo != null
             ? params.deviceInfo
-            : cluster.userIntent.getDeviceInfoForNode(node);
+            : cluster.userIntent.evaluateDeviceInfoForNode(node);
     int numVolumes =
         deviceInfo != null && deviceInfo.numVolumes != null ? deviceInfo.numVolumes : 1;
     for (int lun = 0; lun < numVolumes; lun++) {

@@ -641,11 +641,6 @@
   to = "/stable/develop/drivers-orms/:splat"
   force = true
 
-[[redirects]]
-  from = "/v2.20/reference/drivers/*"
-  to = "/stable/develop/drivers-orms/"
-  force = true
-
 # Redirect for YugabyteDB Voyager
 
 [[redirects]]
@@ -802,6 +797,11 @@
   to = "https://docs-archive.yugabyte.com/v2024.1/"
   force = true
 
+[[redirects]]
+  from = "/v2.20/*"
+  to = "https://docs-archive.yugabyte.com/v2.20/:splat"
+  force = true
+
 # Build an app for orms
 
 [[redirects]]
@@ -953,13 +953,10 @@
   from = "/preview/explore/change-data-capture/using-yugabytedb-grpc-replication/*"
   to = "/stable/additional-features/change-data-capture/using-yugabytedb-grpc-replication/:splat"
   force = true
+  
 [[redirects]]
   from = "/stable/explore/change-data-capture/using-yugabytedb-grpc-replication/*"
   to = "/stable/additional-features/change-data-capture/using-yugabytedb-grpc-replication/:splat"
-  force = true
-[[redirects]]
-  from = "/v2.20/explore/change-data-capture/*"
-  to = "/v2.20/additional-features/change-data-capture/:splat"
   force = true
 
 [[redirects]]

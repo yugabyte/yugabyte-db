@@ -1071,6 +1071,16 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Cooldown after hyperdisk resize in gcp (in hours)",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> ociFailFastMultiVolumeInstanceTypeChange =
+      new ConfKeyInfo<>(
+          "yb.oci.fail_fast_multi_volume_instance_type_change",
+          ScopeType.GLOBAL,
+          "Fail fast OCI instance type change with multiple volumes",
+          "When enabled, ResizeNode precheck fails instance type changes if the node has more than"
+              + " one data volume. OCI UpdateInstance allows at most one boot volume and one"
+              + " secondary volume.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> ybTmpDirectoryPath =
       new ConfKeyInfo<>(
           "yb.filepaths.tmpDirectory",
@@ -1520,6 +1530,17 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ScopeType.GLOBAL,
           "GCP provider validation",
           "Enables validation for GCP Provider and returns the validation errors json if any",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> readGcpInstanceTemplate =
+      new ConfKeyInfo<>(
+          "yb.gcp.read_instance_template",
+          ScopeType.GLOBAL,
+          "Read GCP instance templates",
+          "Read the instance template configured on a GCP region and carry its settings over to"
+              + " the nodes YBA creates, currently its CMEK disk encryption keys. Requires"
+              + " compute.instanceTemplates.get, which is not needed to pass the template to"
+              + " instance creation as a source.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> enableOciProviderValidation =
@@ -2055,6 +2076,37 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " rollback API",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowAddNodeRollback =
+      new ConfKeyInfo<>(
+          "yb.task.allow_add_node_rollback",
+          ScopeType.GLOBAL,
+          "Allow Rollback of Add Node Tasks",
+          "Allow rolling back a failed add-node-to-universe task via the task rollback API."
+              + " Rollback is limited to the window before tserver start / raft join; Kubernetes"
+              + " is out of scope.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowResizeNodeRollback =
+      new ConfKeyInfo<>(
+          "yb.task.allow_resize_node_rollback",
+          ScopeType.GLOBAL,
+          "Allow Rollback of Resize Node Tasks",
+          "Allow rolling back a failed resize node task via the task rollback API. Kubernetes"
+              + " and disk-size shrink are out of scope; IOPS/throughput revert during the cloud"
+              + " disk-modify cooldown window is rejected.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> skipResizeNodeRollbackCooldown =
+      new ConfKeyInfo<>(
+          "yb.task.skip_resize_node_rollback_cooldown",
+          ScopeType.GLOBAL,
+          "Skip Cloud Disk-modify Cooldown Check on Resize Node Rollback",
+          "Bypass the cloud disk-modify cooldown gate when submitting or executing a resize node"
+              + " rollback. The cooldown protects against cloud-side rejection of IOPS/throughput"
+              + " reverts; enable only when the operator has independently confirmed the window"
+              + " has expired or the cloud will accept the reverse modify.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> enableContinuousPlatformBackups =
       new ConfKeyInfo<>(
           "yb.ui.feature_flags.continuous_platform_backups",

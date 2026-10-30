@@ -181,24 +181,30 @@ class GraphPanelHeader extends Component {
         filterParams.filterValue = '';
         filterParams.filterLabel = 'Custom';
       } else {
-        const currentFilterItem = filterTypes.find(
-          (filterType) =>
-            filterType.type === currentQuery.filterType &&
-            filterType.value === currentQuery.filterValue
-        );
-        filterParams.filterLabel = currentFilterItem?.label;
+        // Other pages' query params (e.g. a Perf Advisor drilldown's queryId) can reach here without
+        // a metrics filter, so fall back to the default range rather than crash.
+        const currentFilterItem =
+          filterTypes.find(
+            (filterType) =>
+              filterType.type === currentQuery.filterType &&
+              filterType.value === currentQuery.filterValue
+          ) ?? defaultFilter;
+        filterParams.filterType = currentFilterItem.type;
+        filterParams.filterValue = currentFilterItem.value;
+        filterParams.filterLabel = currentFilterItem.label;
         filterParams.endMoment = moment();
         filterParams.startMoment = moment().subtract(
           currentFilterItem.value,
           currentFilterItem.type
         );
       }
+      // Params absent from the URL must keep their defaults; the graph filter is replaced wholesale.
+      const graphFilters = { ...defaultFilters, ..._.omitBy(filterParams, _.isUndefined) };
       this.state = {
-        ...defaultFilters,
-        ...filterParams,
+        ...graphFilters,
         selectedTimezone: sessionStorage.getItem('metricsTimezone') ?? DEFAULT_TIMEZONE.value
       };
-      props.changeGraphQueryFilters(filterParams);
+      props.changeGraphQueryFilters(graphFilters);
     } else {
       this.state = defaultFilters;
     }

@@ -63,6 +63,7 @@ public class PersistResizeNode extends UniverseTaskBase {
         sb.append(intent.deviceInfo.throughput);
       }
     }
+    sb.append(", providerSpecifications: " + intent.providerSpecifications);
     sb.append(')');
     return sb.toString();
   }
@@ -88,8 +89,8 @@ public class PersistResizeNode extends UniverseTaskBase {
               UserIntent newUserIntent = taskParams().newUserIntent;
 
               for (NodeDetails nodeDetails : nodesInCluster) {
-                DeviceInfo oldDeviceInfo = userIntent.getDeviceInfoForNode(nodeDetails);
-                DeviceInfo newDeviceInfo = newUserIntent.getDeviceInfoForNode(nodeDetails);
+                DeviceInfo oldDeviceInfo = userIntent.evaluateDeviceInfoForNode(nodeDetails);
+                DeviceInfo newDeviceInfo = newUserIntent.evaluateDeviceInfoForNode(nodeDetails);
                 if (!Objects.equals(newDeviceInfo, oldDeviceInfo)) {
                   nodeDetails.lastVolumeUpdateTime = now;
                 }

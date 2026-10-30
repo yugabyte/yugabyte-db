@@ -49,18 +49,6 @@
       "initialRelease": "2024-12-09",
       "endOfMaintenance": "2026-12-09",
       "endOfLife": "2027-06-09"
-    },
-    {
-      "series": "v2.20",
-      "display": "v2.20 (LTS)",
-      "version": "2.20.12.0",
-      "versionShort": "2.20.12",
-      "appVersion": "2.20.12.0-b30",
-      "isStable": true,
-      "isLTS": true,
-      "initialRelease": "2023-11-13",
-      "endOfMaintenance": "2025-11-13",
-      "endOfLife": "2026-05-13"
     }
   ],
   "ybaVersions":

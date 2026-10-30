@@ -889,12 +889,17 @@ message PgPerformOptionsPB {
   ReadTimeOptionsPB read_time_options = 34;
 }
 
+message PgRequestSequenceNumPB {
+  uint64 serial_no = 1;
+  OptionalUint64PB predecessor_serial_no = 2;
+}
+
 message PgPerformRequestPB {
   uint64 session_id = 1;
   PgPerformOptionsPB options = 2;
   repeated PgPerformOpPB ops = 3;
   fixed64 write_time = 4;
-  uint64 serial_no = 5;
+  PgRequestSequenceNumPB sequence_num = 5;
 }
 
 message PgPerformResponsePB {

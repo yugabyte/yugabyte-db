@@ -67,7 +67,7 @@ public class SystemdUpgrade extends UpgradeTaskBase {
           MastersAndTservers nodes = getNodesToBeRestarted();
 
           if (taskParams().isYbcInstalled()) {
-            createServerControlTasks(nodes.tserversList, ServerType.CONTROLLER, "stop")
+            createStopServerTasks(nodes.tserversList, ServerType.CONTROLLER, false)
                 .setSubTaskGroupType(getTaskSubGroupType());
           }
           // Rolling Upgrade Systemd

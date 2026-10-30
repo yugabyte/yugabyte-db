@@ -52,6 +52,7 @@
 
 #include "yb/tablet/tablet.h"
 
+#include "yb/util/atomic.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/flags/auto_flags.h"
 #include "yb/util/flags/flag_tags.h"
@@ -71,6 +72,10 @@ DEFINE_test_flag(bool, fail_clone_tablets, false, "Fail ImportSnapshotAndStartTa
 DEFINE_test_flag(bool, pause_before_enabling_db_connections, false,
     "If set, pause the clone workflow right before re-enabling connections to the target "
     "database (i.e. while the target's pg_database.datallowconn is still false).");
+DEFINE_test_flag(uint32, delay_after_clearing_tserver_metacache_ms, 0,
+    "Sleep this long in the ClearMetaCache callback between recording that a tserver responded "
+    "and acting on it. Lines the per-tserver callbacks up so that any non-atomic 'am I the last "
+    "one' check schedules EnableDbConnections more than once.");
 
 namespace yb {
 namespace master {
@@ -878,11 +883,25 @@ Status CloneStateManager::HandleCreatingState(const CloneStateInfoPtr& clone_sta
 }
 
 Status CloneStateManager::ClearMetaCaches(const CloneStateInfoPtr& clone_state) {
-  auto callback = [this, clone_state]() -> Status {
-    auto num_tservers_with_stale_metacache = clone_state->NumTserversWithStaleMetacache();
-    num_tservers_with_stale_metacache->CountDown();
-    if (num_tservers_with_stale_metacache->count() == 0) {
-      RETURN_NOT_OK(EnableDbConnections(clone_state));
+  auto callback = [this, clone_state](const Status& clear_metacache_status) -> Status {
+    // A tserver that never cleared its metacache may still route to the source namespace's
+    // tablets, so enabling connections would expose the clone through a stale cache. Abort
+    // instead.
+    auto status = clear_metacache_status;
+    if (status.ok()) {
+      // CountDown reports whether this callback is the one that accounted for the last tserver,
+      // so exactly one of the concurrent callbacks enables connections. Two EnableDbConnections
+      // tasks run ALTER DATABASE concurrently, and those conflict at kHighestPriority, which
+      // aborts the clone instead of retrying.
+      const bool all_tservers_cleared = clone_state->NumTserversWithStaleMetacache()->CountDown();
+      AtomicFlagSleepMs(&FLAGS_TEST_delay_after_clearing_tserver_metacache_ms);
+      if (all_tservers_cleared) {
+        // The caller only logs a returned error, which would leave the clone in RESTORED.
+        status = EnableDbConnections(clone_state);
+      }
+    }
+    if (!status.ok()) {
+      RETURN_NOT_OK(MarkCloneAborted(clone_state, status.ToString()));
     }
     return Status::OK();
   };
@@ -911,7 +930,9 @@ Status CloneStateManager::EnableDbConnections(const CloneStateInfoPtr& clone_sta
       LOG(INFO) << Format("Marking clone as complete for source namespace $0 with seq_no $1",
                           lock->pb.source_namespace_id(), lock->pb.clone_request_seq_no());
       lock.mutable_data()->pb.set_aggregate_state(SysCloneStatePB::COMPLETE);
-      auto status = external_funcs_->Upsert(clone_state->Epoch().leader_term, clone_state);
+      // Assigns the outer status: a failed Upsert must reach the abort below, otherwise the
+      // uncommitted lock leaves the clone in RESTORED with nothing left to advance it.
+      status = external_funcs_->Upsert(clone_state->Epoch().leader_term, clone_state);
       if (status.ok()) {
         lock.Commit();
       }

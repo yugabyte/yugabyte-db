@@ -15,7 +15,6 @@ import com.google.common.collect.Lists;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackupYb;
 import com.yugabyte.yw.common.AWSUtil;
 import com.yugabyte.yw.common.NodeUniverseManager;
@@ -790,12 +789,7 @@ public class BackupHelper {
   // For k8s universes: if useYbdbInbuiltYbc is true, need to check if Azure IAM feature is
   // supported
   private void validateIfYbdbInbuiltYbcHasAzureIAM(Universe universe) {
-    if (universe
-            .getUniverseDetails()
-            .getPrimaryCluster()
-            .userIntent
-            .providerType
-            .equals(Common.CloudType.kubernetes)
+    if (Util.isKubernetesBasedUniverse(universe)
         && universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc()
         && !ybcManager.getEnabledBackupFeatures(universe.getUniverseUUID()).getAzureIam()) {
       throw new PlatformServiceException(
@@ -808,12 +802,7 @@ public class BackupHelper {
   // For k8s universes: if useYbdbInbuiltYbc is true, need to check if immutable storage feature
   // is supported
   private void validateIfYbdbInbuiltYbcHasImmutableStorage(Universe universe) {
-    if (universe
-            .getUniverseDetails()
-            .getPrimaryCluster()
-            .userIntent
-            .providerType
-            .equals(Common.CloudType.kubernetes)
+    if (Util.isKubernetesBasedUniverse(universe)
         && universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc()
         && !ybcManager.getEnabledBackupFeatures(universe.getUniverseUUID()).getImmutableStorage()) {
       throw new PlatformServiceException(

@@ -1406,6 +1406,21 @@ YbCleanupUpdateRelationCacheState(YbUpdateRelationCacheState *state)
 }
 
 /*
+ * A scratch context for one row of a relcache preload scan, reset by
+ * YbSystableGetNextInContext.  The scans may also process their rows in it:
+ * everything a relcache entry keeps is allocated explicitly in
+ * CacheMemoryContext (or a child of it), the same as when RelationBuildDesc
+ * runs in a throwaway workspace context.
+ */
+static MemoryContext
+YbCreatePreloadRowContext(void)
+{
+	return AllocSetContextCreate(CurrentMemoryContext,
+								 "relcache preload row",
+								 ALLOCSET_DEFAULT_SIZES);
+}
+
+/*
  * YugaByte-mode only utility used to load up the relcache on initialization
  * to minimize the number on YB-master queries needed.
  * It is based on (and similar to) RelationBuildDesc but does all relations
@@ -1439,8 +1454,11 @@ YBLoadRelations(YbUpdateRelationCacheState *state)
 
 	HeapTuple	pg_class_tuple;
 	int			num_tuples = 0;
+	MemoryContext row_cxt = YbCreatePreloadRowContext();
+	MemoryContext oldcxt = MemoryContextSwitchTo(row_cxt);
 
-	while (HeapTupleIsValid(pg_class_tuple = systable_getnext(scandesc)))
+	while (HeapTupleIsValid(pg_class_tuple =
+							YbSystableGetNextInContext(scandesc, row_cxt)))
 	{
 		/* get information from the pg_class_tuple */
 		Form_pg_class relp = (Form_pg_class) GETSTRUCT(pg_class_tuple);
@@ -1590,6 +1608,9 @@ YBLoadRelations(YbUpdateRelationCacheState *state)
 		state->has_partitioned_tables |= (relation->rd_rel->relkind ==
 										  RELKIND_PARTITIONED_TABLE);
 	}
+	MemoryContextSwitchTo(oldcxt);
+	MemoryContextDelete(row_cxt);
+
 	if (yb_debug_log_catcache_events)
 		elog(LOG, "Inserted %d entries into relcache", num_tuples);
 
@@ -2009,8 +2030,11 @@ YBUpdateRelationsAttributes(const YbUpdateRelationCacheState *cache_update_state
 	const bool	sys_rel_update_required = cache_update_state->sys_relations_update_required;
 
 	HeapTuple	htup;
+	MemoryContext row_cxt = YbCreatePreloadRowContext();
+	MemoryContext oldcxt = MemoryContextSwitchTo(row_cxt);
 
-	while (HeapTupleIsValid(htup = systable_getnext(scandesc)))
+	while (HeapTupleIsValid(htup = YbSystableGetNextInContext(scandesc,
+															  row_cxt)))
 	{
 		if (!YbApplyAttr(&state, attrel, htup))
 		{
@@ -2020,6 +2044,8 @@ YBUpdateRelationsAttributes(const YbUpdateRelationCacheState *cache_update_state
 		}
 	}
 	YbCompleteAttrProcessing(&state);
+	MemoryContextSwitchTo(oldcxt);
+	MemoryContextDelete(row_cxt);
 	systable_endscan(scandesc);
 	table_close(attrel, AccessShareLock);
 }
@@ -2033,8 +2059,11 @@ YBUpdateRelationsPartitioning(const YbUpdateRelationCacheState *state)
 											  NULL);
 
 	HeapTuple	htup;
+	MemoryContext row_cxt = YbCreatePreloadRowContext();
+	MemoryContext oldcxt = MemoryContextSwitchTo(row_cxt);
 
-	while (HeapTupleIsValid(htup = systable_getnext(scandesc)))
+	while (HeapTupleIsValid(htup = YbSystableGetNextInContext(scandesc,
+															  row_cxt)))
 	{
 		Form_pg_partitioned_table part_table_form = (Form_pg_partitioned_table) GETSTRUCT(htup);
 		Relation	relation;
@@ -2051,6 +2080,8 @@ YBUpdateRelationsPartitioning(const YbUpdateRelationCacheState *state)
 			RelationBuildPartitionDesc(relation, true /* omit_detached */ );
 		}
 	}
+	MemoryContextSwitchTo(oldcxt);
+	MemoryContextDelete(row_cxt);
 
 	systable_endscan(scandesc);
 	table_close(partrel, AccessShareLock);
@@ -2209,8 +2240,15 @@ YBUpdateRelationsIndicies(const YbUpdateRelationCacheState *cache_update_state)
 											 NULL);
 	HeapTuple	htup;
 	YbIndexProcessorState state = {0};
+	MemoryContext row_cxt = YbCreatePreloadRowContext();
 
-	while (HeapTupleIsValid(htup = systable_getnext(indscan)))
+	/*
+	 * Unlike the other preload scans, don't process rows in row_cxt:
+	 * YbApplyIndex appends to state.result in the current context, and that
+	 * list must survive until the relation's last row.
+	 */
+	while (HeapTupleIsValid(htup = YbSystableGetNextInContext(indscan,
+															  row_cxt)))
 	{
 		Form_pg_index index = (Form_pg_index) GETSTRUCT(htup);
 
@@ -2232,6 +2270,7 @@ YBUpdateRelationsIndicies(const YbUpdateRelationCacheState *cache_update_state)
 		}
 	}
 	YbCompleteIndexProcessing(&state);
+	MemoryContextDelete(row_cxt);
 	systable_endscan(indscan);
 	table_close(indrel, AccessShareLock);
 }
@@ -2790,6 +2829,130 @@ YbExtractPolicyTupleCacheKey(HeapTuple htup)
 	return ((Form_pg_policy) GETSTRUCT(htup))->polrelid;
 }
 
+typedef struct YbStatExtListEntry
+{
+	Oid			stxrelid;		/* hash key, must be first */
+	List	   *stat_oids;		/* OIDs of the relation's pg_statistic_ext rows */
+} YbStatExtListEntry;
+
+/*
+ * YBUpdateRelationsStatExtLists populates the rd_statlist/rd_statvalid fields
+ * for all preloaded relations, the analogue of calling RelationGetStatExtList
+ * on each one but doing it in a single pass while pg_statistic_ext is still
+ * available from prefetched data.
+ *
+ * RelationGetStatExtList is otherwise invoked lazily by the planner
+ * (get_relation_info) the first time a relation is referenced in a query. By
+ * then the preload window has closed, so that scan of pg_statistic_ext turns
+ * into a master read for every relation in the query -- even though almost no
+ * relation has extended statistics. Precomputing the (usually empty) list here
+ * avoids those reads.
+ */
+static void
+YBUpdateRelationsStatExtLists(YbTablePrefetcherState *prefetcher)
+{
+	/*
+	 * pg_statistic_ext is not part of the core preload set; it is only fetched
+	 * when requested via ysql_catalog_preload_additional_tables. If it wasn't
+	 * prefetched, scanning it here would issue the very master reads we are
+	 * trying to avoid (just at connection setup instead of plan time), so leave
+	 * rd_statlist to be built lazily as upstream does.
+	 */
+	if (prefetcher->tables[YB_PFETCH_TABLE_PG_STATISTIC_EXT] ==
+		YB_PFETCH_STATE_EMPTY)
+		return;
+
+	/*
+	 * Collect the statistics object OIDs per relation with a single pass over
+	 * pg_statistic_ext. Extended statistics are uncommon, so this table is
+	 * usually empty and the map is never even created.
+	 *
+	 * This must be a sequential scan: the prefetcher only serves reads that
+	 * match how the table was fetched, and pg_statistic_ext is registered with
+	 * its name index, so a scan through any other index would bypass the
+	 * prefetched data (DFATAL in debug builds).
+	 */
+	HTAB	   *stat_lists = NULL;
+	Relation	statrel = table_open(StatisticExtRelationId, AccessShareLock);
+	SysScanDesc scan = systable_beginscan(statrel, InvalidOid,
+										  false /* indexOk */ , NULL, 0, NULL);
+	HeapTuple	htup;
+
+	while (HeapTupleIsValid(htup = systable_getnext(scan)))
+	{
+		Form_pg_statistic_ext staForm = (Form_pg_statistic_ext) GETSTRUCT(htup);
+		YbStatExtListEntry *entry;
+		bool		found;
+
+		if (stat_lists == NULL)
+		{
+			HASHCTL		ctl;
+
+			MemSet(&ctl, 0, sizeof(ctl));
+			ctl.keysize = sizeof(Oid);
+			ctl.entrysize = sizeof(YbStatExtListEntry);
+			ctl.hcxt = CurrentMemoryContext;
+			stat_lists = hash_create("YB stat ext list map", 32, &ctl,
+									 HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
+		}
+
+		entry = hash_search(stat_lists, &staForm->stxrelid, HASH_ENTER, &found);
+		if (!found)
+			entry->stat_oids = NIL;
+		entry->stat_oids = lappend_oid(entry->stat_oids, staForm->oid);
+	}
+	systable_endscan(scan);
+	table_close(statrel, AccessShareLock);
+
+	/*
+	 * Stamp every relation that can carry extended statistics with its list
+	 * (empty in the common case) and mark it valid, so the planner's later
+	 * RelationGetStatExtList call returns immediately without a catalog scan.
+	 * A subsequent CREATE/DROP STATISTICS sends a relcache invalidation that
+	 * resets rd_statvalid, keeping this consistent.
+	 */
+	HASH_SEQ_STATUS status;
+	RelIdCacheEnt *idhentry;
+
+	hash_seq_init(&status, RelationIdCache);
+	while ((idhentry = (RelIdCacheEnt *) hash_seq_search(&status)) != NULL)
+	{
+		Relation	relation = idhentry->reldesc;
+		char		relkind = relation->rd_rel->relkind;
+		List	   *stat_oids = NIL;
+
+		if (relation->rd_statvalid)
+			continue;
+
+		if (relkind != RELKIND_RELATION &&
+			relkind != RELKIND_MATVIEW &&
+			relkind != RELKIND_PARTITIONED_TABLE &&
+			relkind != RELKIND_FOREIGN_TABLE)
+			continue;
+
+		if (stat_lists != NULL)
+		{
+			YbStatExtListEntry *entry =
+				hash_search(stat_lists, &RelationGetRelid(relation),
+							HASH_FIND, NULL);
+
+			if (entry != NULL)
+				stat_oids = entry->stat_oids;
+		}
+
+		MemoryContext oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
+
+		relation->rd_statlist = list_copy(stat_oids);
+		/* Keep the API contract that the list is sorted by OID. */
+		list_sort(relation->rd_statlist, list_oid_cmp);
+		relation->rd_statvalid = true;
+		MemoryContextSwitchTo(oldcxt);
+	}
+
+	if (stat_lists != NULL)
+		hash_destroy(stat_lists);
+}
+
 static void
 YbInitUpdateRelationCacheState(YbUpdateRelationCacheState *state)
 {
@@ -2852,6 +3015,8 @@ YbUpdateRelationCacheImpl(YbUpdateRelationCacheState *state,
 	YbFillCaches(prefetcher);
 
 	YBUpdateRelationsIndicies(state);
+
+	YBUpdateRelationsStatExtLists(prefetcher);
 	return NULL;
 }
 

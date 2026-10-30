@@ -2,10 +2,10 @@ package com.yugabyte.yw.common.supportbundle;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.SupportBundleUtil;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.SupportBundleFormData;
@@ -48,9 +48,8 @@ class GFlagsComponent implements SupportBundleComponent {
       Path bundlePath,
       NodeDetails node)
       throws Exception {
-    CloudType cloudType = universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
     String nodeHomeDir;
-    if (CloudType.kubernetes.equals(cloudType)) {
+    if (Util.isKubernetesBased(universe.getUniverseDetails().getPrimaryCluster())) {
       nodeHomeDir = GFlagsUtil.K8S_HOME_DIR_FOR_GFLAG_OVERRIDES;
     } else {
       nodeHomeDir = nodeUniverseManager.getYbHomeDir(node, universe);

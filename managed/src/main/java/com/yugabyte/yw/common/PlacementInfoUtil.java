@@ -685,7 +685,7 @@ public class PlacementInfoUtil {
    * @param nodeDetailsSet
    */
   public static void applyK8sStsIndexIncrement(Cluster cluster, Set<NodeDetails> nodeDetailsSet) {
-    if (cluster.userIntent.providerType == CloudType.kubernetes) {
+    if (Util.isKubernetesBased(cluster)) {
       cluster
           .placementInfo
           .azStream()
@@ -780,7 +780,7 @@ public class PlacementInfoUtil {
       ClusterOperationType clusterOpType) {
     if (!Objects.equals(
             node.cloudInfo.instance_type, cluster.userIntent.getInstanceTypeForNode(node))
-        && !(cluster.userIntent.providerType == CloudType.kubernetes)) {
+        && !(provider.getCloudCode() == CloudType.kubernetes)) {
       return true;
     }
     if (!cluster.userIntent.dedicatedNodes
@@ -790,11 +790,11 @@ public class PlacementInfoUtil {
     }
     if (clusterOpType == UniverseConfigureTaskParams.ClusterOperationType.EDIT) {
       Cluster currentCluster = universe.getUniverseDetails().getClusterByUuid(cluster.uuid);
-      DeviceInfo newDeviceInfo = cluster.userIntent.getDeviceInfoForNode(node);
-      DeviceInfo currentDeviceInfo = currentCluster.userIntent.getDeviceInfoForNode(node);
+      DeviceInfo newDeviceInfo = cluster.userIntent.evaluateDeviceInfoForNode(node);
+      DeviceInfo currentDeviceInfo = currentCluster.userIntent.evaluateDeviceInfoForNode(node);
       if (!Objects.equals(newDeviceInfo, currentDeviceInfo)
           && newDeviceInfo != null
-          && !(cluster.userIntent.providerType == CloudType.kubernetes
+          && !(provider.getCloudCode() == CloudType.kubernetes
               && currentDeviceInfo.onlyVolumeSizeChanged(newDeviceInfo))) {
         LOG.debug("Device info has changed from {} to {}", currentDeviceInfo, newDeviceInfo);
         return true;
@@ -1615,8 +1615,8 @@ public class PlacementInfoUtil {
       boolean imageBundleChanged = false;
       boolean instanceTypeChanged = false;
       for (NodeDetails nodeDetails : taskParams.nodeDetailsSet) {
-        DeviceInfo oldDevice = oldCluster.userIntent.getDeviceInfoForNode(nodeDetails);
-        DeviceInfo newDevice = newCluster.userIntent.getDeviceInfoForNode(nodeDetails);
+        DeviceInfo oldDevice = oldCluster.userIntent.evaluateDeviceInfoForNode(nodeDetails);
+        DeviceInfo newDevice = newCluster.userIntent.evaluateDeviceInfoForNode(nodeDetails);
         deviceChanged = deviceChanged || !Objects.equals(oldDevice, newDevice);
         Provider provider =
             Provider.getOrBadRequest(newCluster.getProviderUUIDForNode(nodeDetails));
@@ -2139,7 +2139,7 @@ public class PlacementInfoUtil {
           getDefaultRegion(cluster),
           true /* throwIfIncorrect */);
     }
-    if (cluster.userIntent.providerType == CloudType.kubernetes) {
+    if (Util.isKubernetesBased(cluster)) {
       return;
     }
     for (NodeDetails node : nodes) {
