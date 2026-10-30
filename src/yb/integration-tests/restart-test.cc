@@ -147,9 +147,11 @@ TEST_F(RestartTest, WalFooterProperlyInitialized) {
   ASSERT_OK(tablet_server->WaitStarted());
   log::SegmentSequence segments;
   auto log_reader = ASSERT_RESULT(tablet_peer->log()->GetLogReader());
-  ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
-
-  ASSERT_EQ(2, segments.size());
+  // The second segment is started by the first append after restart.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    RETURN_NOT_OK(log_reader->GetSegmentsSnapshot(&segments));
+    return segments.size() == 2;
+  }, 10s * kTimeMultiplier, "Second segment"));
   log::ReadableLogSegmentPtr segment = ASSERT_RESULT(segments.front());
   ASSERT_TRUE(segment->HasFooter());
   ASSERT_TRUE(segment->footer().has_close_timestamp_micros());
@@ -215,15 +217,18 @@ TEST_F(RestartTest, BootstrapReplaysUnflushedWritesFromWAL) {
   ASSERT_NO_FATALS(check_all_keys_present(kNumRows));
 
   // The previously-active segment should now have a footer rebuilt by tail-scan during bootstrap.
-  // With reuse_unclosed_segment_threshold_bytes = -1 and an abrupt prior shutdown, bootstrap is
-  // guaranteed to close the prior segment and allocate a fresh tail, so >= 2 segments must exist.
+  // With reuse_unclosed_segment_threshold_bytes = -1 and an abrupt prior shutdown, bootstrap does
+  // not reuse the prior segment. A new one is started by the first append after the restart, which
+  // this replica may receive after the scan.
   {
     auto* ts = mini_cluster()->mini_tablet_server(0);
     auto peer = ASSERT_RESULT(ts->server()->tablet_manager()->GetServingTablet(tablet_id));
     log::SegmentSequence segments;
     auto log_reader = ASSERT_RESULT(peer->log()->GetLogReader());
-    ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
-    ASSERT_GE(segments.size(), 2);
+    ASSERT_OK(WaitFor([&]() -> Result<bool> {
+      RETURN_NOT_OK(log_reader->GetSegmentsSnapshot(&segments));
+      return segments.size() >= 2;
+    }, 10s * kTimeMultiplier, "Second segment"));
     log::ReadableLogSegmentPtr first = ASSERT_RESULT(segments.front());
     ASSERT_TRUE(first->HasFooter()) << "first segment missing footer after bootstrap";
   }

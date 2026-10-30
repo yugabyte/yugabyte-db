@@ -1475,6 +1475,11 @@ class TransactionParticipant::Impl
     return transactions_.size();
   }
 
+  bool AllTransactionsLoaded() const {
+    auto completed = loader_.Completed();
+    return completed.ok() && *completed;
+  }
+
   void SetMinReplayTxnFirstWriteTimeUpdateCallback(std::function<void(HybridTime)> callback) {
     std::lock_guard lock(mutex_);
     min_replay_txn_first_write_ht_callback_ = std::move(callback);
@@ -3205,6 +3210,10 @@ Status TransactionParticipant::ResolveIntents(HybridTime resolve_at, CoarseTimeP
 
 size_t TransactionParticipant::GetNumRunningTransactions() const {
   return impl_->GetNumRunningTransactions();
+}
+
+bool TransactionParticipant::AllTransactionsLoaded() const {
+  return impl_->AllTransactionsLoaded();
 }
 
 OneWayBitmap TransactionParticipant::TEST_TransactionReplicatedBatches(

@@ -132,6 +132,9 @@ class LogIndex : public RefCountedThreadSafe<LogIndex> {
 
   void SetMinIndexedSegmentNumber(int64_t segment_number);
 
+  // Sets min indexed segment number, unless it is already set.
+  void SetMinIndexedSegmentNumberIfUnset(int64_t segment_number);
+
   // We rely on min_indexed_segment_number_ initial value (kNoIndexForFullWalSegment) to be larger
   // than any other possible value stored inside min_indexed_segment_number_.
   static constexpr int64_t kNoIndexForFullWalSegment =
