@@ -209,8 +209,6 @@ public class TestPushdownCompatibilityMode extends BasePgSQLTest {
     CheckExprs(prefix, expressions, "0");
     CheckExprs(prefix, expressions, "11");
     CheckExprs(prefix, expressions, "15");
-    // A version with no special handling, such as the source of a later major upgrade.
-    CheckExprs(prefix, expressions, "19");
   }
 
   /* CheckFailure

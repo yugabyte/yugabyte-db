@@ -49,10 +49,9 @@ DEFINE_RUNTIME_AUTO_bool(ysql_yb_enable_advisory_locks, kLocalPersisted, false, 
     "Whether to enable advisory locks.");
 
 DEFINE_RUNTIME_PG_FLAG(int32, yb_major_version_upgrade_compatibility, 0,
-    "The compatibility level to use during a YSQL Major version upgrade: 0, or the YSQL major "
-    "version being upgraded from (11 or later).");
-DEFINE_validator(ysql_yb_major_version_upgrade_compatibility,
-    FLAG_COND_VALIDATOR(_value == 0 || _value >= 11, "Must be 0, or 11 or later"));
+    "The compatibility level to use during a YSQL Major version upgrade. Allowed values are 0, 11 "
+    "and 15.");
+DEFINE_validator(ysql_yb_major_version_upgrade_compatibility, FLAG_IN_SET_VALIDATOR(0, 11, 15));
 
 // DevNote: If this flag is changed to runtime then it needs to be converted to RUNTIME_PG_FLAG,
 // and pggate/webserver/ybc_pg_webserver_wrapper.cc needs to be updated to use the guc instead of

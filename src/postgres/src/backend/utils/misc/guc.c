@@ -6347,8 +6347,8 @@ static struct config_int ConfigureNamesInt[] =
 
 	{
 		{"yb_major_version_upgrade_compatibility", PGC_SIGHUP, CUSTOM_OPTIONS,
-			gettext_noop("The compatibility level to use during a YSQL Major version upgrade: "
-						 "0, or the YSQL major version being upgraded from (11 or later)."),
+			gettext_noop("The compatibility level to use during a YSQL Major version upgrade. "
+						 "Allowed values are 0, 11 and 15."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
