@@ -2112,11 +2112,11 @@ As with the memory limit, a chunk can be larger when a single insert batch does 
 Default: `0`
 {{% /tags/wrap %}}
 
-Before v2025.2.9.0, this flag was named `--vector_index_compaction_chunk_max_mem_store_size_mb`.
-
 Maximum in-memory size in megabytes for a single output chunk built during Vector LSM compaction. When set to `0` (the default), there is no limit and a single output chunk is produced. When set to a non-zero value, this flag enables chunked compaction, allowing the output to be split into multiple chunks bounded by the specified memory budget.
 
 This flag takes priority over [`--vector_index_compaction_chunk_max_memstore_size_percentage`](#vector-index-compaction-chunk-max-memstore-size-percentage). When concurrent compactions are allowed ([`--vector_index_num_compactions_limit`](#vector-index-num-compactions-limit) is not `1`), you should set this flag instead of relying on the percentage-based limit.
+
+Before v2025.2.9.0, this flag was named `--vector_index_compaction_chunk_max_mem_store_size_mb`.
 
 ##### --vector_index_compaction_chunk_max_memstore_size_percentage
 
@@ -2124,8 +2124,6 @@ This flag takes priority over [`--vector_index_compaction_chunk_max_memstore_siz
 
 Default: `60`
 {{% /tags/wrap %}}
-
-Before v2025.2.9.0, this flag was named `--vector_index_compaction_chunk_max_mem_store_size_percentage`.
 
 Maximum in-memory size for a single output chunk built during Vector LSM compaction, expressed as a percentage of the vector index block cache capacity. A value of `0` means no limit (single output chunk). Values above `100` are treated as `100`.
 
@@ -2135,6 +2133,8 @@ This flag is ignored when:
 - Concurrent compactions are allowed ([`--vector_index_num_compactions_limit`](#vector-index-num-compactions-limit) is not `1`)
 
 When both this flag and the MB-based limit are at their defaults, chunked compaction is enabled with output chunks capped at 60% of the vector index block cache capacity, which reduces the risk of out-of-memory (OOM) errors during compaction.
+
+Before v2025.2.9.0, this flag was named `--vector_index_compaction_chunk_max_mem_store_size_percentage`.
 
 ##### --vector_index_num_compactions_limit
 
