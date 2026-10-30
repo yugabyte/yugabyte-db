@@ -7,9 +7,7 @@ import {
   fetchCustomerConfigsResponse,
   fetchCustomerRunTimeConfigs,
   fetchCustomerRunTimeConfigsResponse,
-  fetchHostInfo,
-  fetchHostInfoSuccess,
-  fetchHostInfoFailure
+  loadHostInfo
 } from '../../../actions/customers';
 import {
   createKMSProviderConfig,
@@ -122,13 +120,7 @@ const mapDispatchToProps = (dispatch) => {
     },
 
     fetchHostInfo: () => {
-      dispatch(fetchHostInfo()).then((response) => {
-        if (response.payload.status !== 200) {
-          dispatch(fetchHostInfoFailure(response.payload));
-        } else {
-          dispatch(fetchHostInfoSuccess(response.payload));
-        }
-      });
+      loadHostInfo(dispatch);
     }
   };
 };
