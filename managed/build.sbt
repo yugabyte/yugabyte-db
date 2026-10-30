@@ -1092,6 +1092,7 @@ dependencyOverrides += "org.bouncycastle" % "bcutil-fips" % bouncyCastleUtilFips
 libraryDependencies += "org.yb" % "yb-client" % "0.8.124-SNAPSHOT"
 libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.4-b11"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b35"
+libraryDependencies += "com.yugabyte.troubleshoot" % "perf-advisor-client" % "0.1.0"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",

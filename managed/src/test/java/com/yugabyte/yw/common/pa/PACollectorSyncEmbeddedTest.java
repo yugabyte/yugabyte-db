@@ -9,9 +9,9 @@ import static org.hamcrest.Matchers.equalTo;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
-import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.HighAvailabilityConfig;
+import com.yugabyte.yw.models.PlatformInstance;
 import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -64,11 +64,6 @@ public class PACollectorSyncEmbeddedTest extends FakeDBApplication {
   public void setUp() {
     customer = ModelFactory.testCustomer();
     sync = app.injector().instanceOf(PACollectorSync.class);
-    // Global runtime config outlives a test run in the shared test database, so the value this
-    // test flips has to start from a known state rather than its declared default.
-    mutableConfigFactory
-        .globalRuntimeConf()
-        .setValue(GlobalConfKeys.paEmbeddedUiReverseProxyEnabled.getKey(), "false");
   }
 
   @AfterClass
@@ -85,8 +80,7 @@ public class PACollectorSyncEmbeddedTest extends FakeDBApplication {
 
     RecordedRequest create = embeddedPa.takeRequest();
     assertThat(create.getMethod(), equalTo("PUT"));
-    assertThat(
-        create.getPath(), containsString("/api/customer/" + customer.getUuid() + "/metadata"));
+    assertThat(create.getPath(), containsString("/api/v2/customers/" + customer.getUuid()));
 
     int afterCreate = embeddedPa.getRequestCount();
     sync.initialize(customer);
@@ -101,18 +95,13 @@ public class PACollectorSyncEmbeddedTest extends FakeDBApplication {
     embeddedPa.takeRequest();
     int afterCreate = embeddedPa.getRequestCount();
 
-    // proxyMode is in the body and comes from runtime config, so flipping it has to be pushed.
-    mutableConfigFactory
-        .globalRuntimeConf()
-        .setValue(GlobalConfKeys.paEmbeddedUiReverseProxyEnabled.getKey(), "true");
-
-    // Guards the lever itself: if the flip is not visible to the code that builds the body, the
+    // collection_enabled is in the body and follows this YBA's HA role, so becoming a follower
+    // has to be pushed.
+    HighAvailabilityConfig haConfig = HighAvailabilityConfig.create("test-cluster-key");
+    PlatformInstance.create(haConfig, "http://local.yba.example.com", false, true);
+    // Guards the lever itself: if the role is not visible to the code that builds the body, the
     // rest of this test would pass for the wrong reason.
-    assertThat(
-        app.injector()
-            .instanceOf(RuntimeConfGetter.class)
-            .getGlobalConf(GlobalConfKeys.paEmbeddedUiReverseProxyEnabled),
-        equalTo(true));
+    assertThat(HighAvailabilityConfig.isFollower(), equalTo(true));
 
     embeddedPa.enqueue(new MockResponse().setBody("{}"));
     sync.initialize(customer);
@@ -120,7 +109,7 @@ public class PACollectorSyncEmbeddedTest extends FakeDBApplication {
 
     RecordedRequest update = embeddedPa.takeRequest();
     assertThat(update.getMethod(), equalTo("PUT"));
-    assertThat(update.getBody().readUtf8(), containsString("\"proxyMode\" : true"));
+    assertThat(update.getBody().readUtf8(), containsString("\"collection_enabled\":false"));
   }
 
   @Test
