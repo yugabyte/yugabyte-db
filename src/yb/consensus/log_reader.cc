@@ -61,9 +61,11 @@ DEFINE_UNKNOWN_int32(log_max_seconds_to_retain, 24 * 3600, "Log files that are o
              "ignored. This flag is ignored if a log segment contains entries that haven't been"
              "flushed to RocksDB.");
 
-DEFINE_UNKNOWN_int64(log_stop_retaining_min_disk_mb, 100, "Stop retaining logs if the space "
-             "available for the logs falls below this limit. This flag is ignored if a log segment "
-             "contains unflushed entries.");
+// Misnamed: the value is in KB, as in every stable release. Changing the unit rescales explicitly
+// set values on upgrade (#36232).
+DEFINE_UNKNOWN_int64(log_stop_retaining_min_disk_mb, 100 * 1024, "Stop retaining logs if the "
+             "space available for the logs falls below this limit, in KB. This flag is ignored if "
+             "a log segment contains unflushed entries.");
 
 METRIC_DEFINE_counter(tablet, log_reader_bytes_read, "Bytes Read From Log",
                       yb::MetricUnit::kBytes,
@@ -275,11 +277,11 @@ bool LogReader::ViolatesMinSpacePolicy(const scoped_refptr<ReadableLogSegment>& 
   } else {
     uint64_t free_space = *free_space_result;
     if (free_space + *potential_reclaimed_space <
-            FLAGS_log_stop_retaining_min_disk_mb * 1_MB) {
+            FLAGS_log_stop_retaining_min_disk_mb * 1_KB) {
       YB_LOG_EVERY_N_SECS(WARNING, 300)
           << "Segment " << segment->path() << " violates minimum free space policy "
           << "specified by log_stop_retaining_min_disk_mb: "
-          << FLAGS_log_stop_retaining_min_disk_mb;
+          << FLAGS_log_stop_retaining_min_disk_mb << " KB";
       *potential_reclaimed_space += segment->file_size();
       if (PREDICT_FALSE(FLAGS_TEST_record_segments_violate_min_space_policy)) {
         TEST_segments_violate_min_space_policy_->push_back(segment);
