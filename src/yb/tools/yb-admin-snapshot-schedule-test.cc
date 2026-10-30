@@ -1398,6 +1398,12 @@ class YbAdminSnapshotScheduleTestWithYsqlParam
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     YbAdminSnapshotScheduleTestWithYsql::UpdateMiniClusterOptions(opts);
     opts->extra_tserver_flags.emplace_back("--ysql_beta_feature_tablegroup=true");
+    // None of the parameterized PITR/clone tests exercise master failover or follower-side sys
+    // catalog restore. The fixtures that do (YbAdminSnapshotScheduleFailoverTests,
+    // YbAdminSnapshotConsistentRestoreFailoverTest and the other non-parameterized ones) keep the
+    // num_masters = 3 set by YbAdminSnapshotScheduleTest. A single master roughly halves the
+    // per-case cost of cluster start, CREATE DATABASE and restore.
+    opts->num_masters = 1;
   }
 
   virtual std::vector<std::string> ExtraTSFlags() override {
