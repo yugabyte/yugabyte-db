@@ -43,6 +43,8 @@
 #include "yb/client/request_id_allocator.h"
 
 #include "yb/common/common_net.pb.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/common/wire_protocol.pb.h"
 #include "yb/common/entity_ids.h"
 #include "yb/qlexpr/index.h"
 #include "yb/common/transaction.h"
@@ -422,7 +424,14 @@ class YBClient::Data {
   //
   // See also: SetMasterServerProxyAsync.
   void LeaderMasterDetermined(const Status& status,
-                              const HostPort& host_port);
+                              const HostPort& host_port,
+                              const ServerRegistrationPB& registration);
+
+  // The transport for a connection to a node placed at connect_to, reached at an address of the
+  // given provenance: the one use_node_to_node_plaintext names when this client applies it, and
+  // otherwise null, which a proxy takes as the messenger's default.
+  const rpc::Protocol* ProtocolFor(
+      UsedBroadcastAddress used_broadcast, const CloudInfoPB& connect_to) const;
 
   // Asynchronously sets 'master_proxy_' to the leader master by
   // cycling through servers listed in 'master_server_addrs_' until
@@ -634,6 +643,9 @@ class YBClient::Data {
 
   // Cloud info indicating placement information of client.
   CloudInfoPB cloud_info_pb_;
+
+  // See YBClientBuilder::apply_node_to_node_plaintext.
+  bool apply_node_to_node_plaintext_ = false;
 
   // When the client is part of a CQL proxy, this denotes the uuid for the associated tserver to
   // aid in detecting local tservers.

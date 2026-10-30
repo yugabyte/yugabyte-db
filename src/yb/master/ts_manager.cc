@@ -75,8 +75,6 @@ DECLARE_uint32(initial_tserver_registration_duration_secs);
 namespace yb::master {
 namespace {
 
-bool HasSameHostPort(const HostPortPB& lhs, const HostPortPB& rhs);
-
 bool HasSameHostPort(const google::protobuf::RepeatedPtrField<HostPortPB>& lhs,
                      const google::protobuf::RepeatedPtrField<HostPortPB>& rhs);
 
@@ -605,15 +603,11 @@ Status TSManager::ValidateAllTserverVersions(ValidateVersionInfoOp op) const {
 
 namespace {
 
-bool HasSameHostPort(const HostPortPB& lhs, const HostPortPB& rhs) {
-  return lhs.host() == rhs.host() && lhs.port() == rhs.port();
-}
-
 bool HasSameHostPort(const google::protobuf::RepeatedPtrField<HostPortPB>& lhs,
                      const google::protobuf::RepeatedPtrField<HostPortPB>& rhs) {
   for (const auto& lhs_hp : lhs) {
     for (const auto& rhs_hp : rhs) {
-      if (HasSameHostPort(lhs_hp, rhs_hp)) {
+      if (yb::HasSameHostPort(lhs_hp, rhs_hp)) {
         return true;
       }
     }
@@ -624,7 +618,7 @@ bool HasSameHostPort(const google::protobuf::RepeatedPtrField<HostPortPB>& lhs,
 bool HasSameHostPort(
     const ServerRegistrationPB& lhs, const ServerRegistrationPB& rhs,
     const CloudInfoPB& cloud_info) {
-  return HasSameHostPort(DesiredHostPort(lhs, cloud_info), DesiredHostPort(rhs, cloud_info));
+  return yb::HasSameHostPort(DesiredHostPort(lhs, cloud_info), DesiredHostPort(rhs, cloud_info));
 }
 
 bool HasSameHostPort(const ServerRegistrationPB& lhs, const ServerRegistrationPB& rhs) {
