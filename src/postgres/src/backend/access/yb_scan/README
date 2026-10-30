@@ -1,0 +1,60 @@
+src/backend/access/yb_scan/README
+
+YB Scan Layer
+=============
+
+This directory implements scans of YB relations: the tableam scan callbacks
+for YB tables, the scan primitives that the YB index access methods (yb_lsm,
+ybgin, and ybvector) share, and the YB implementation of genam's systable
+scans.  Their headers are under src/include/access/.  Four of those headers
+are implemented in src/backend/access/common/ rather than here: yb_cost.h,
+yb_target.h, yb_lockrows.h, and yb_parallel_scan.h.
+
+Code above the access-method layer, such as executor nodes, the optimizer,
+commands, and catalog and cache code, should reach YB relations only through
+the interfaces upstream code uses for any table or index access method:
+tableam, the index AM interface, and genam's systable functions.  YB extends
+those interfaces where it needs to, as with table_beginscan_*_yb() and the
+yb_ammightrecheck index AM callback, rather than going around them.  The
+groups below sort the headers by how they relate to that rule.  The comment at
+the top of each header says who includes it and what belongs in it.
+
+Headers
+-------
+
+Internal to the access methods:
+
+  yb_scan_core.h
+  yb_sys_scan_base.h
+
+Extending tableam:
+
+  yb_table_scan_options.h
+
+Execution logic that the planner shares instead of copying:
+
+  yb_scan_plan.h
+
+The YB cost model.  It is planner code that sits under access/ for historical
+reasons and should move to the optimizer:
+
+  yb_cost.h
+
+Building pggate requests.  It should be internal to the access methods, but
+write-path code above them still calls it, and this layering does not cover
+the write path yet:
+
+  yb_target.h
+
+Entry points that no AM interface fits:
+
+  yb_special_scans.h
+
+Bypasses of an AM interface still to be removed, tracked in #36168:
+
+  yb_table_scan.h
+  yb_lockrows.h
+  yb_parallel_scan.h (the sequential scan side)
+
+Avoid adding a bypass.  When one is unavoidable, its header says why no AM
+interface fits or which issue tracks its removal.
