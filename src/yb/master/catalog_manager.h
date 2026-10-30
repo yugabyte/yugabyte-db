@@ -1364,6 +1364,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Time since this peer last became master leader.
   MonoDelta TimeSinceElectedLeader() const;
 
+  // Whether this master created the universe as leader in term: its sys catalog load in that term
+  // found no cluster config, so no earlier leader finished loading it.  Requires the leader shared
+  // lock for term, which is only granted once that load has finished.
+  bool IsUniverseCreatedInTerm(int64_t term) const;
+
   Result<std::vector<TableDescription>> CollectTables(
       const google::protobuf::RepeatedPtrField<TableIdentifierPB>& table_identifiers,
       bool add_indexes,
@@ -2854,6 +2859,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   std::shared_ptr<SystemTablet> system_partitions_tablet_ = nullptr;
 
   std::atomic<MonoTime> time_elected_leader_;
+
+  // Written in VisitSysCatalog with leader_mutex_ held exclusively, and read with it held shared.
+  int64_t universe_created_term_ = -1;
 
   std::unique_ptr<client::YBClient> cdc_state_client_;
 
