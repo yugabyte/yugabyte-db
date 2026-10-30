@@ -2094,7 +2094,7 @@ Available in v2025.2.9.0 and later.
 
 In-memory size, in megabytes, of a vector index mutable chunk: the in-memory chunk that new vectors are inserted into before it is flushed to disk. The size is converted to a number of vectors using the index's per-vector memory estimate, so the more dimensions the vectors have, the fewer vectors a chunk holds. A chunk holds the smaller of this number of vectors and [`--vector_index_initial_chunk_size`](#vector-index-initial-chunk-size). Set to `0` for no memory limit.
 
-A chunk can be larger than this size when a single insert batch does not fit in it, or when the insert specifies its own chunk size, as vector index backfill does. Backfill also inserts rows in batches of the same number of vectors, which bounds the memory each batch uses.
+A chunk can be larger than this size when a single insert batch does not fit in it, or when vector index backfill sizes its own chunk (`--vector_index_backfill_single_chunk_size_bytes` is non-zero). Backfill also inserts rows in batches of at most the same number of vectors, which bounds the memory each batch uses.
 
 ##### --vector_index_initial_chunk_size
 
@@ -2103,9 +2103,9 @@ A chunk can be larger than this size when a single insert batch does not fit in 
 Default: `100000`
 {{% /tags/wrap %}}
 
-Number of vectors in a vector index mutable chunk: the in-memory chunk that new vectors are inserted into before it is flushed to disk. A chunk holds the smaller of this number and the number of vectors that fit into [`--vector_index_initial_chunk_memstore_size_mb`](#vector-index-initial-chunk-memstore-size-mb). Set to `0` for no limit by the number of vectors; if both flags are `0`, each chunk is sized to the batch of vectors inserted into it.
+Number of vectors in a vector index mutable chunk: the in-memory chunk that new vectors are inserted into before it is flushed to disk. A chunk holds the smaller of this number and the number of vectors that fit into [`--vector_index_initial_chunk_memstore_size_mb`](#vector-index-initial-chunk-memstore-size-mb). Set to `0` for no limit by the number of vectors; if both flags are `0`, each chunk is sized to the batch of vectors inserted into it. Avoid setting both flags to `0`: vector index backfill then inserts all of a tablet's rows in one batch and builds a single chunk for the whole tablet.
 
-As with the memory limit, a chunk can be larger when a single insert batch does not fit in it, or when the insert specifies its own chunk size, as vector index backfill does.
+As with the memory limit, a chunk can be larger when a single insert batch does not fit in it, or when vector index backfill sizes its own chunk (`--vector_index_backfill_single_chunk_size_bytes` is non-zero).
 
 ##### --vector_index_compaction_chunk_max_memstore_size_mb
 
@@ -2114,7 +2114,9 @@ As with the memory limit, a chunk can be larger when a single insert batch does 
 Default: `0`
 {{% /tags/wrap %}}
 
-Maximum in-memory size in megabytes for a single output chunk built during Vector LSM compaction. When set to `0` (the default), there is no limit and a single output chunk is produced. When set to a non-zero value, this flag enables chunked compaction, allowing the output to be split into multiple chunks bounded by the specified memory budget.
+Available in v2025.2.6.0 and later.
+
+Maximum in-memory size in megabytes for a single output chunk built during Vector LSM compaction. When set to `0` (the default), the limit comes from [`--vector_index_compaction_chunk_max_memstore_size_percentage`](#vector-index-compaction-chunk-max-memstore-size-percentage). When set to a non-zero value, the output is split into multiple chunks bounded by the specified memory budget.
 
 This flag takes priority over [`--vector_index_compaction_chunk_max_memstore_size_percentage`](#vector-index-compaction-chunk-max-memstore-size-percentage). When concurrent compactions are allowed ([`--vector_index_num_compactions_limit`](#vector-index-num-compactions-limit) is not `1`), you should set this flag instead of relying on the percentage-based limit.
 
@@ -2126,6 +2128,8 @@ Before v2025.2.9.0, this flag was named `--vector_index_compaction_chunk_max_mem
 
 Default: `60`
 {{% /tags/wrap %}}
+
+Available in v2025.2.6.0 and later.
 
 Maximum in-memory size for a single output chunk built during Vector LSM compaction, expressed as a percentage of the vector index block cache capacity. A value of `0` means no limit (single output chunk). Values above `100` are treated as `100`.
 
