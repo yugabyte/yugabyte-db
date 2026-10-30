@@ -1407,8 +1407,9 @@ TEST_F(PgCatalogPrefetchAdmissionTest, RejectedPrefetchIsRetried) {
       << "the injected rejection did not reach a prefetch, so the retry path was not exercised";
 }
 
-// Preloading makes a connection's prefetch a long sequence of paged reads, and a limit of one lets
-// one such sequence hold the only slot for all of them. A connection arriving meanwhile is
+// Preloading makes a connection's prefetch a long sequence of paged reads, and admission is per
+// read, so with a limit of one such a sequence holds the only slot for most of its run rather than
+// all of it. A connection arriving meanwhile is
 // rejected over and over on a single retrier, and that is where the delay the rejection carries
 // earns its keep. See issue #36187.
 class PgCatalogPrefetchSaturationTest : public PgCatalogPrefetchAdmissionTest {

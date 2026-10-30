@@ -19,8 +19,6 @@
 #include "yb/util/monotime.h"
 #include "yb/util/status_ec.h"
 
-using namespace std::literals;
-
 namespace yb::rpc {
 
 // How long a service wants the client to wait before retrying the call it is failing. A service
@@ -28,27 +26,9 @@ namespace yb::rpc {
 //
 // It says nothing about which peer to retry. A rejection that carries it still travels as whatever
 // ErrorStatusPB code the service chose, so the client's choice of peer is unchanged.
-class RetryAfterTraits {
- public:
-  using ValueType = MonoDelta;
-  using RepresentationType = int64_t;
-
-  static MonoDelta FromRepresentation(RepresentationType source) {
-    return MonoDelta::FromNanoseconds(source);
-  }
-
-  static RepresentationType ToRepresentation(MonoDelta value) {
-    return value.ToNanoseconds();
-  }
-
-  static std::string ToString(MonoDelta value) {
-    return value.ToString();
-  }
-};
-
-struct RetryAfterTag : IntegralBackedErrorTag<RetryAfterTraits> {
+struct RetryAfterTag : IntegralBackedErrorTag<MonoDeltaTraits> {
   // This category id is part of the wire protocol and should not be changed once released.
-  static constexpr CategoryDescriptor kCategory{25, "retry after"sv};
+  static constexpr CategoryDescriptor kCategory{25, std::string_view("retry after")};
 
   static std::string ToMessage(MonoDelta value) {
     return value.ToString();
