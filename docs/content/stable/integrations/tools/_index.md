@@ -42,6 +42,13 @@ Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can use thir
   </li>
 
   <li>
+    <a href="dbine/">
+      <img src="/images/develop/tools/dbine/dbine-icon.png">
+      DBine
+    </a>
+  </li>
+
+  <li>
     <a href="dbschema/">
       <img src="/images/develop/tools/dbschema/dbschema-icon.png">
       DbSchema
