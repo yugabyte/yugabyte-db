@@ -1,4 +1,5 @@
 from typing import Generator, Any, Dict, Optional
+import codecs
 import os
 import boto3
 import logging
@@ -6,12 +7,21 @@ import requests
 from rag_pipeline.chunk import chunk, get_splitter_for_filetype
 from observability import meko_observe
 
+# The api-server rejects uploads above this size
+# (maxFileSizeBytes in meko/api_server/internal/handlers/knowledge_base_handler.go),
+# so nothing larger should reach a worker.
+MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024  # 5 MiB
+
 def read_file_stream(
     file_location: str, chunk_size: int = 1024 * 1024
 ) -> Generator[str, None, None]:
     """
     Reads a file from S3 or local (NFS) as a stream of chunks.
     Assumes S3 paths are prefixed with 's3://', otherwise treats as local.
+
+    Byte slices are decoded with an incremental decoder, so a multi-byte
+    character that straddles a slice boundary does not raise
+    UnicodeDecodeError.
     """
     if file_location.startswith("s3://"):
         logging.debug(f"Reading file from S3: {file_location}")
@@ -22,11 +32,19 @@ def read_file_stream(
             bucket, key = path.split('/', 1)
             obj = s3.get_object(Bucket=bucket, Key=key)
             body = obj['Body']
+            decoder = codecs.getincrementaldecoder("utf-8")()
             while True:
                 chunk = body.read(chunk_size)
                 if not chunk:
+                    # Raises if the object ended mid-character, rather than
+                    # dropping the trailing bytes.
+                    tail = decoder.decode(b"", final=True)
+                    if tail:
+                        yield tail
                     break
-                yield chunk.decode('utf-8')
+                text = decoder.decode(chunk)
+                if text:
+                    yield text
         except Exception as e:
             if ("NoCredentialsError" in str(type(e).__name__) or
                     "Unable to locate credentials" in str(e)):
@@ -44,11 +62,22 @@ def read_file_stream(
                     response = requests.get(public_url, stream=True)
                     response.raise_for_status()
 
+                    # iter_content(decode_unicode=True) decodes incrementally
+                    # only when the response declares an encoding, and yields
+                    # bytes otherwise. Decode here instead, as UTF-8, to match
+                    # the boto3 branch.
+                    decoder = codecs.getincrementaldecoder("utf-8")()
                     for chunk_data in response.iter_content(
-                        chunk_size=chunk_size, decode_unicode=True
+                        chunk_size=chunk_size
                     ):
-                        if chunk_data:
-                            yield chunk_data
+                        if not chunk_data:
+                            continue
+                        text = decoder.decode(chunk_data)
+                        if text:
+                            yield text
+                    tail = decoder.decode(b"", final=True)
+                    if tail:
+                        yield tail
 
                 except requests.exceptions.RequestException as req_e:
                     logging.error(
@@ -89,8 +118,12 @@ def stream_partition_and_chunk(
     chunk_args: Dict[str, Any] = {}
 ) -> Generator[str, None, None]:
     """
-    Stream-partitions a text file from s3 or nfs into logical paragraphs,
-    and further chunks paragraphs using chunk function from chunk.py.
+    Partitions a text file from s3 or nfs into logical paragraphs, and
+    further chunks paragraphs using chunk function from chunk.py.
+
+    The file is read in one call before the first chunk is yielded. Reading it
+    lazily held the S3 response open for the whole embedding run - minutes per
+    megabyte - and the server dropped the idle connection mid-file.
     """
     def paragraph_stream(lines_iter):
         paragraph = []
@@ -123,8 +156,10 @@ def stream_partition_and_chunk(
         f"(auto-detected: '{auto_splitter}')"
     )
 
-    text_chunks = read_file_stream(file_location)
-    lines_iter = line_iterator_from_chunks(text_chunks)
+    full_text = read_whole_file(
+        file_location, max_size_bytes=MAX_FILE_SIZE_BYTES
+    )
+    lines_iter = line_iterator_from_chunks([full_text])
     logging.debug(f"generated lines_iter for file: {file_location}")
     for paragraph in paragraph_stream(lines_iter):
         for chunked_text in chunk(splitter, paragraph, args):
