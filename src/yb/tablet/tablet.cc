@@ -2916,6 +2916,15 @@ Status Tablet::Flush(
   if (HasFlags(flags, FlushFlags::kVectorIndexes)) {
     vector_indexes_list = vector_indexes_->List();
     vector_indexes_flush_status = vector_indexes_list.Flush();
+    // VectorIndexList::Flush skips indexes that are shutting down. A caller holding a blocking
+    // operation only sees that for a dropped index, but one holding a non-blocking operation, e.g.
+    // DoCleanupIntentFiles, can race tablet shutdown, which stops the indexes before pausing such
+    // operations. Their unflushed vectors still need the log and the intents. StartShutdown marks
+    // the tablet's indexes before stopping each one, so this check sees it.
+    if (vector_indexes_flush_status.ok() && vector_indexes_->ShutdownStarted()) {
+      vector_indexes_flush_status = STATUS_FORMAT(
+          ShutdownInProgress, "$0Vector indexes are shutting down", LogPrefix());
+    }
   }
 
   rocksdb::FlushOptions options(rocksdb_flush_reason);
@@ -4766,8 +4775,9 @@ void Tablet::FlushIntentsDbIfNecessary(const yb::OpId& lastest_log_entry_op_id) 
 }
 
 Status Tablet::MayAdvanceIdleVectorIndexesFlushedOpId() {
-  const auto include_deactivated = FLAGS_advance_deactivated_vector_index_flushed_op_id;
-  const auto include_active = FLAGS_advance_idle_vector_index_flushed_op_id;
+  const IncludeDeactivated include_deactivated{
+      FLAGS_advance_deactivated_vector_index_flushed_op_id};
+  const IncludeActive include_active{FLAGS_advance_idle_vector_index_flushed_op_id};
   if (!include_deactivated && !include_active) {
     return Status::OK();
   }

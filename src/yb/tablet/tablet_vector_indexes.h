@@ -27,6 +27,7 @@
 #include "yb/tablet/tablet_options.h"
 
 #include "yb/util/shutdown_controller.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 
@@ -36,6 +37,9 @@ class ScopedRWOperation;
 
 namespace yb::tablet {
 
+YB_STRONGLY_TYPED_BOOL(IncludeDeactivated);
+YB_STRONGLY_TYPED_BOOL(IncludeActive);
+
 class VectorIndexList {
  public:
   VectorIndexList() = default;
@@ -43,7 +47,9 @@ class VectorIndexList {
 
   void EnableAutoCompactions();
   void Compact(rocksdb::CompactionReason reason);
-  // Flushes every index, also after one fails, and returns the first failure.
+  // Flushes every index, also after one fails, and returns the first failure. An index that is
+  // shutting down is skipped, since only a drop shuts down a single index; Tablet::Flush reports
+  // tablet shutdown itself.
   Status Flush();
   Status WaitForCompaction();
   Status WaitForFlush();
@@ -145,7 +151,7 @@ class TabletVectorIndexes :
   // An active index is skipped until its backfill is done, since backfill inserts rows outside the
   // log, and while it lags by at most vector_index_num_raft_ops_to_force_flush operations.
   void AdvanceIdleFlushedOpIds(
-      const OpId& op_id, bool include_deactivated, bool include_active)
+      const OpId& op_id, IncludeDeactivated include_deactivated, IncludeActive include_active)
       EXCLUDES(vector_indexes_mutex_);
 
   // Relaunches backfills after a restore replaced the storages: the restored checkpoint could have
@@ -162,6 +168,7 @@ class TabletVectorIndexes :
 
   void StartShutdown();
   void CompleteShutdown(std::vector<std::string>& out_paths);
+  bool ShutdownStarted() const { return !shutdown_controller_.IsRunning(); }
   // Adds finished and failed vector index backfills to the tablet status.
   void FillBackfillStatus(TabletStatusPB& tablet_status);
 

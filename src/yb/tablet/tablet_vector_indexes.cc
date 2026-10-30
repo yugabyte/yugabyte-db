@@ -999,7 +999,7 @@ void TabletVectorIndexes::FlushDeactivated() {
 }
 
 void TabletVectorIndexes::AdvanceIdleFlushedOpIds(
-    const OpId& op_id, bool include_deactivated, bool include_active) {
+    const OpId& op_id, IncludeDeactivated include_deactivated, IncludeActive include_active) {
   auto list = List();
   if (!list) {
     return;
@@ -1274,9 +1274,9 @@ Status VectorIndexList::Flush() {
       continue;
     }
     status = status.CloneAndPrepend(Format("Flush vector index $0", index->table_id()));
-    // Tablet shutdown stops the vector indexes only after blocking operations, such as a
-    // checkpoint, have drained. So a shutting down index here is one being dropped, and its rows
-    // are not needed. A flush executor that is shutting down fails WaitForFlush instead.
+    // Only a drop shuts down a single index, and a dropped index's rows are not needed. Tablet
+    // shutdown stops every index, and Tablet::Flush reports it. A flush executor that is shutting
+    // down fails WaitForFlush instead.
     if (status.IsShutdownInProgress()) {
       LOG(INFO) << status;
       continue;
