@@ -19,7 +19,6 @@ import java.util.UUID;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.tuple.Pair;
 
 /**
  * Reads the client cert the YugabyteDB chart has cert-manager issue for a universe. YBA holds no
@@ -40,7 +39,7 @@ public class CertManagerClientCert {
   }
 
   /** The PEM cert and key in the universe's client cert Secret. */
-  public Pair<String, String> read(Universe universe) {
+  public RpcClientCert.CertAndKey read(Universe universe) {
     Cluster primary = universe.getUniverseDetails().getPrimaryCluster();
     // Every AZ's Secret is signed by the same CA, so the first one is enough.
     Map.Entry<UUID, Map<String, String>> az =
@@ -67,7 +66,8 @@ public class CertManagerClientCert {
       throw new IllegalStateException("Client cert Secret " + secretName + " is not ready");
     }
     Base64.Decoder decoder = Base64.getDecoder();
-    return Pair.of(new String(decoder.decode(cert)), new String(decoder.decode(key)));
+    return new RpcClientCert.CertAndKey(
+        new String(decoder.decode(cert)), new String(decoder.decode(key)));
   }
 
   @VisibleForTesting

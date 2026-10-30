@@ -81,7 +81,7 @@ public class LocalYBClientService implements YBClientService {
     if (config.getClientCertUniverse() != null) {
       rpcClientCert
           .getFiles(config.getClientCertUniverse())
-          .ifPresent(files -> builder.sslClientCertFiles(files.getLeft(), files.getRight()));
+          .ifPresent(files -> builder.sslClientCertFiles(files.cert(), files.key()));
     }
     return builder.build();
   }

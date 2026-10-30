@@ -21,6 +21,7 @@ import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.certmgmt.RpcClientCert.CertAndKey;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
@@ -50,6 +51,7 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.apache.commons.lang3.tuple.Pair;
@@ -89,6 +91,7 @@ public class RpcClientCertTest extends FakeDBApplication {
     userIntent.universeName = "demo-universe";
     userIntent.enableNodeToNodeEncrypt = true;
     userIntent.useNodeToNodeClientCerts = true;
+    userIntent.ybSoftwareVersion = RpcClientCert.MIN_STABLE_VERSION;
     userIntent.providerType = CloudType.kubernetes;
     userIntent.masterGFlags = new HashMap<>();
     userIntent.tserverGFlags = new HashMap<>();
@@ -193,38 +196,38 @@ public class RpcClientCertTest extends FakeDBApplication {
   }
 
   /** A client cert issued by ROOT_CA. */
-  public static Pair<String, String> newCertPem(Duration validFor) throws Exception {
+  public static CertAndKey newCertPem(Duration validFor) throws Exception {
     return newCertPem(Instant.now().plus(validFor), ROOT_CA);
   }
 
-  private static Pair<String, String> newCertPem(
-      Instant notAfter, Pair<KeyPair, X509Certificate> ca) throws Exception {
+  private static CertAndKey newCertPem(Instant notAfter, Pair<KeyPair, X509Certificate> ca)
+      throws Exception {
     KeyPair keyPair = CertificateHelper.getKeyPairObject();
     X509Certificate cert = sign(new X500Name("CN=yugabyte"), keyPair.getPublic(), notAfter, ca);
-    return Pair.of(
+    return new CertAndKey(
         CertificateHelper.getAsPemString(cert),
         CertificateHelper.getAsPemString(keyPair.getPrivate()));
   }
 
-  private static Pair<String, String> fromOtherCA() throws Exception {
+  private static CertAndKey fromOtherCA() throws Exception {
     return newCertPem(Instant.now().plus(Duration.ofDays(90)), newCA("next-ca"));
   }
 
-  public static Secret secret(Pair<String, String> pem) {
+  public static Secret secret(CertAndKey pem) {
     Base64.Encoder encoder = Base64.getEncoder();
     return new SecretBuilder()
-        .addToData("tls.crt", encoder.encodeToString(pem.getLeft().getBytes()))
-        .addToData("tls.key", encoder.encodeToString(pem.getRight().getBytes()))
+        .addToData("tls.crt", encoder.encodeToString(pem.cert().getBytes()))
+        .addToData("tls.key", encoder.encodeToString(pem.key().getBytes()))
         .build();
   }
 
-  private void givenSecret(Pair<String, String> pem) {
+  private void givenSecret(CertAndKey pem) {
     when(mockKubernetesManager.getSecret(any(), anyString(), any())).thenReturn(secret(pem));
   }
 
-  private void writeLocal(Pair<String, String> pem) throws Exception {
-    Files.writeString(certFile, pem.getLeft());
-    Files.writeString(keyFile, pem.getRight());
+  private void writeLocal(CertAndKey pem) throws Exception {
+    Files.writeString(certFile, pem.cert());
+    Files.writeString(keyFile, pem.key());
   }
 
   private String localCert() throws Exception {
@@ -243,14 +246,14 @@ public class RpcClientCertTest extends FakeDBApplication {
 
   @Test
   public void testLoadsFromIssuerNextToCA() throws Exception {
-    Pair<String, String> pem = newCertPem(Duration.ofDays(90));
+    CertAndKey pem = newCertPem(Duration.ofDays(90));
     givenSecret(pem);
 
-    Pair<String, String> files = rpcClientCert.getFiles(universe).get();
+    CertAndKey files = rpcClientCert.getFiles(universe).get();
 
-    assertEquals(Pair.of(certFile.toString(), keyFile.toString()), files);
-    assertEquals(pem.getLeft(), localCert());
-    assertEquals(pem.getRight(), Files.readString(keyFile));
+    assertEquals(new CertAndKey(certFile.toString(), keyFile.toString()), files);
+    assertEquals(pem.cert(), localCert());
+    assertEquals(pem.key(), Files.readString(keyFile));
     assertEquals(
         "rw-------", PosixFilePermissions.toString(Files.getPosixFilePermissions(keyFile)));
     assertNotNull(FileData.getFromFile(FileData.getRelativePath(certFile.toString())));
@@ -269,7 +272,7 @@ public class RpcClientCertTest extends FakeDBApplication {
   @Test
   public void testRestoresDeletedFileFromDB() throws Exception {
     // The issuer has moved on to the next CA, so only the DB has a cert the servers trust.
-    Pair<String, String> pem = newCertPem(Duration.ofDays(90));
+    CertAndKey pem = newCertPem(Duration.ofDays(90));
     givenSecret(pem);
     rpcClientCert.load(universe);
     Files.delete(certFile);
@@ -278,30 +281,30 @@ public class RpcClientCertTest extends FakeDBApplication {
 
     rpcClientCert.load(universe);
 
-    assertEquals(pem.getLeft(), localCert());
-    assertEquals(pem.getRight(), Files.readString(keyFile));
+    assertEquals(pem.cert(), localCert());
+    assertEquals(pem.key(), Files.readString(keyFile));
   }
 
   @Test
   public void testRefetchesNearExpiry() throws Exception {
     writeLocal(newCertPem(Duration.ofDays(5)));
-    Pair<String, String> renewed = newCertPem(Duration.ofDays(90));
+    CertAndKey renewed = newCertPem(Duration.ofDays(90));
     givenSecret(renewed);
 
     rpcClientCert.load(universe);
 
-    assertEquals(renewed.getLeft(), localCert());
+    assertEquals(renewed.cert(), localCert());
   }
 
   @Test
   public void testKeepsCertWhenIssuerSignsWithAnotherCA() throws Exception {
     // A cert-manager issuer moved to the next CA ahead of the root CA rotation.
-    Pair<String, String> local = newCertPem(Duration.ofDays(5));
+    CertAndKey local = newCertPem(Duration.ofDays(5));
     writeLocal(local);
     givenSecret(fromOtherCA());
 
     assertTrue(rpcClientCert.getFiles(universe).isPresent());
-    assertEquals(local.getLeft(), localCert());
+    assertEquals(local.cert(), localCert());
   }
 
   @Test
@@ -318,7 +321,7 @@ public class RpcClientCertTest extends FakeDBApplication {
 
   @Test
   public void testThrottlesIssuerWhileCertIsValid() throws Exception {
-    Pair<String, String> local = newCertPem(Duration.ofDays(5));
+    CertAndKey local = newCertPem(Duration.ofDays(5));
     writeLocal(local);
     // Not renewed yet.
     givenSecret(local);
@@ -352,13 +355,13 @@ public class RpcClientCertTest extends FakeDBApplication {
 
   @Test
   public void testReplacesMismatchedKey() throws Exception {
-    Pair<String, String> pem = newCertPem(Duration.ofDays(60));
-    writeLocal(Pair.of(pem.getLeft(), newCertPem(Duration.ofDays(60)).getRight()));
+    CertAndKey pem = newCertPem(Duration.ofDays(60));
+    writeLocal(new CertAndKey(pem.cert(), newCertPem(Duration.ofDays(60)).key()));
     givenSecret(pem);
 
     rpcClientCert.load(universe);
 
-    assertEquals(pem.getRight(), Files.readString(keyFile));
+    assertEquals(pem.key(), Files.readString(keyFile));
   }
 
   @Test
@@ -392,13 +395,13 @@ public class RpcClientCertTest extends FakeDBApplication {
         multiCert.toString(),
         CertConfigType.K8SCertManager);
     universe = setDetails(d -> d.rootCA = temporary);
-    Pair<String, String> old = newCertPem(Duration.ofDays(5));
+    CertAndKey old = newCertPem(Duration.ofDays(5));
     writeLocal(old);
     givenSecret(newCertPem(Instant.now().plus(Duration.ofDays(90)), next));
 
     assertEquals(rootCA, RpcClientCert.getOwningCA(temporary));
-    assertEquals(certFile.toString(), rpcClientCert.getFiles(universe).get().getLeft());
-    assertEquals(old.getLeft(), localCert());
+    assertEquals(certFile.toString(), rpcClientCert.getFiles(universe).get().cert());
+    assertEquals(old.cert(), localCert());
   }
 
   @Test
@@ -430,14 +433,14 @@ public class RpcClientCertTest extends FakeDBApplication {
   @Test
   public void testIssuedByFollowsIntermediate() throws Exception {
     Pair<KeyPair, X509Certificate> intermediate = newCA("intermediate-ca", ROOT_CA);
-    Pair<String, String> leaf = newCertPem(Instant.now().plus(Duration.ofDays(90)), intermediate);
-    String chain = leaf.getLeft() + CertificateHelper.getAsPemString(intermediate.getRight());
+    CertAndKey leaf = newCertPem(Instant.now().plus(Duration.ofDays(90)), intermediate);
+    String chain = leaf.cert() + CertificateHelper.getAsPemString(intermediate.getRight());
 
     assertTrue(RpcClientCert.isIssuedBy(chain, rootCA));
-    assertFalse(RpcClientCert.isIssuedBy(leaf.getLeft(), rootCA));
+    assertFalse(RpcClientCert.isIssuedBy(leaf.cert(), rootCA));
   }
 
-  private static Pair<String, String> newEcCertPem(Duration validFor) throws Exception {
+  private static CertAndKey newEcCertPem(Duration validFor) throws Exception {
     KeyPairGenerator generator = KeyPairGenerator.getInstance("EC");
     generator.initialize(256);
     KeyPair keyPair = generator.generateKeyPair();
@@ -447,42 +450,42 @@ public class RpcClientCertTest extends FakeDBApplication {
             keyPair.getPublic(),
             Instant.now().plus(validFor),
             ROOT_CA);
-    return Pair.of(
+    return new CertAndKey(
         CertificateHelper.getAsPemString(cert),
         CertificateHelper.getAsPemString(keyPair.getPrivate()));
   }
 
   @Test
   public void testAcceptsEcKey() throws Exception {
-    Pair<String, String> pem = newEcCertPem(Duration.ofDays(90));
+    CertAndKey pem = newEcCertPem(Duration.ofDays(90));
     givenSecret(pem);
 
     rpcClientCert.load(universe);
     rpcClientCert.load(universe);
 
-    assertEquals(pem.getLeft(), localCert());
+    assertEquals(pem.cert(), localCert());
     verify(mockKubernetesManager, times(1)).getSecret(any(), anyString(), any());
   }
 
   @Test
   public void testKeepsEcCertWhenIssuerSignsWithAnotherCA() throws Exception {
-    Pair<String, String> local = newEcCertPem(Duration.ofDays(5));
+    CertAndKey local = newEcCertPem(Duration.ofDays(5));
     writeLocal(local);
     givenSecret(fromOtherCA());
 
     assertTrue(rpcClientCert.getFiles(universe).isPresent());
-    assertEquals(local.getLeft(), localCert());
+    assertEquals(local.cert(), localCert());
   }
 
   @Test
   public void testReplacesMismatchedEcKey() throws Exception {
-    Pair<String, String> pem = newEcCertPem(Duration.ofDays(60));
-    writeLocal(Pair.of(pem.getLeft(), newEcCertPem(Duration.ofDays(60)).getRight()));
+    CertAndKey pem = newEcCertPem(Duration.ofDays(60));
+    writeLocal(new CertAndKey(pem.cert(), newEcCertPem(Duration.ofDays(60)).key()));
     givenSecret(pem);
 
     rpcClientCert.load(universe);
 
-    assertEquals(pem.getRight(), Files.readString(keyFile));
+    assertEquals(pem.key(), Files.readString(keyFile));
   }
 
   @Test
@@ -495,6 +498,18 @@ public class RpcClientCertTest extends FakeDBApplication {
   @Test
   public void testValidateAcceptsSupportedSetup() {
     RpcClientCert.validate(universe.getUniverseDetails());
+  }
+
+  @Test
+  public void testValidateChecksVersion() {
+    for (String version : List.of("2025.2.1.0-b50", "2026.1.0.0-b1", "2.29.0.0-b259")) {
+      universe = setDetails(d -> d.getPrimaryCluster().userIntent.ybSoftwareVersion = version);
+      RpcClientCert.validate(universe.getUniverseDetails());
+    }
+    for (String version : List.of("2025.2.0.0-b100", "2025.1.3.0-b1", "2.29.0.0-b258")) {
+      universe = setDetails(d -> d.getPrimaryCluster().userIntent.ybSoftwareVersion = version);
+      assertRejected(universe.getUniverseDetails(), "requires YugabyteDB 2025.2.1.0-b50 or later");
+    }
   }
 
   @Test

@@ -6,7 +6,9 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.CertificateInfo;
@@ -34,7 +36,6 @@ import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.tuple.Pair;
 
 /**
  * The client cert YBA presents on RPCs to a universe whose servers require one. A universe opts in
@@ -50,10 +51,16 @@ import org.apache.commons.lang3.tuple.Pair;
 @Singleton
 public class RpcClientCert {
 
+  /** A client cert and its key, as file paths or as PEM. */
+  public record CertAndKey(String cert, String key) {}
+
   // Under cert-manager's default renewBefore of 15 days, so the issuer has renewed by then.
   @VisibleForTesting static final Duration REFETCH_BEFORE_EXPIRY = Duration.ofDays(10);
   // While the current cert is still valid, how often to ask the issuer for a renewed one.
   @VisibleForTesting static final Duration REFETCH_INTERVAL = Duration.ofMinutes(5);
+  // Earlier versions' postgres can't connect to servers requiring client certs (#7335).
+  @VisibleForTesting static final String MIN_STABLE_VERSION = "2025.2.1.0-b50";
+  @VisibleForTesting static final String MIN_PREVIEW_VERSION = "2.29.0.0-b259";
 
   private final CertManagerClientCert certManagerClientCert;
   // Keyed by the client cert file, so universes on one CA load it once.
@@ -85,6 +92,15 @@ public class RpcClientCert {
     if (!intent.enableNodeToNodeEncrypt) {
       throw invalid("requires node-to-node encryption");
     }
+    if (intent.ybSoftwareVersion == null
+        || Util.compareYBVersions(
+                intent.ybSoftwareVersion, MIN_STABLE_VERSION, MIN_PREVIEW_VERSION, true)
+            < 0) {
+      throw invalid(
+          String.format(
+              "requires YugabyteDB %s or later, or preview %s or later",
+              MIN_STABLE_VERSION, MIN_PREVIEW_VERSION));
+    }
     validateRootCA(details.rootCA);
   }
 
@@ -113,7 +129,7 @@ public class RpcClientCert {
    * The cert and key files to present to universe, if it requires them and a valid pair can be
    * loaded. Never throws: a client built without the cert fails its RPCs on the server's refusal.
    */
-  public Optional<Pair<String, String>> getFiles(Universe universe) {
+  public Optional<CertAndKey> getFiles(Universe universe) {
     if (!isClientCertRequired(universe)) {
       return Optional.empty();
     }
@@ -126,28 +142,29 @@ public class RpcClientCert {
   }
 
   /** The cert and key files for universe; throws why there is no valid pair. */
-  public Pair<String, String> load(Universe universe) {
+  public CertAndKey load(Universe universe) {
     UUID ca = getOwningCA(universe.getUniverseDetails().rootCA);
-    Pair<String, String> files =
-        Pair.of(CertificateHelper.getClientCertFile(ca), CertificateHelper.getClientKeyFile(ca));
+    CertAndKey files =
+        new CertAndKey(
+            CertificateHelper.getClientCertFile(ca), CertificateHelper.getClientKeyFile(ca));
     if (isUsable(files, REFETCH_BEFORE_EXPIRY)) {
       return files;
     }
-    synchronized (locks.computeIfAbsent(files.getLeft(), f -> new Object())) {
+    synchronized (locks.computeIfAbsent(files.cert(), f -> new Object())) {
       try {
         refresh(universe, ca, files);
       } catch (Exception e) {
         if (!isUsable(files, Duration.ZERO)) {
           throw new IllegalStateException(e.getMessage(), e);
         }
-        log.warn("Keeping client cert {}, which expires soon: {}", files.getLeft(), e.getMessage());
+        log.warn("Keeping client cert {}, which expires soon: {}", files.cert(), e.getMessage());
       }
     }
     return files;
   }
 
   // Disk, then DB, then the issuer. Runs under the file's lock.
-  private void refresh(Universe universe, UUID ca, Pair<String, String> files) throws Exception {
+  private void refresh(Universe universe, UUID ca, CertAndKey files) throws Exception {
     // Loaded by another client build while this one waited for the lock.
     if (isUsable(files, REFETCH_BEFORE_EXPIRY)) {
       return;
@@ -158,17 +175,17 @@ public class RpcClientCert {
         return;
       }
     }
-    Instant last = lastFetch.get(files.getLeft());
+    Instant last = lastFetch.get(files.cert());
     if (isUsable(files, Duration.ZERO)
         && last != null
         && last.plus(REFETCH_INTERVAL).isAfter(Instant.now())) {
       return;
     }
-    lastFetch.put(files.getLeft(), Instant.now());
-    Pair<String, String> pem = fetch(universe, ca);
+    lastFetch.put(files.cert(), Instant.now());
+    CertAndKey pem = fetch(universe, ca);
     // A cert-manager issuer moved ahead of a root CA rotation signs with a CA the servers don't
     // trust yet.
-    if (!isIssuedBy(pem.getLeft(), ca)) {
+    if (!isIssuedBy(pem.cert(), ca)) {
       throw new IllegalStateException(
           "The issuer's client cert for universe "
               + universe.getName()
@@ -178,7 +195,7 @@ public class RpcClientCert {
     write(files, pem);
   }
 
-  private Pair<String, String> fetch(Universe universe, UUID ca) {
+  private CertAndKey fetch(Universe universe, UUID ca) {
     CertConfigType certType = CertificateInfo.getOrBadRequest(ca).getCertType();
     switch (certType) {
       case K8SCertManager:
@@ -199,12 +216,11 @@ public class RpcClientCert {
     if (!CertificateInfo.isTemporary(info)) {
       return rootCA;
     }
-    // <old CA>.<universe>.ca.multi.root.crt, as UniverseUpdateRootCert names it.
-    String fileName = Paths.get(info.getCertificate()).getFileName().toString();
-    return UUID.fromString(fileName.split("\\.")[0]);
+    return UniverseUpdateRootCert.getOriginalRootCA(info);
   }
 
-  // Whether certPem (a leaf, optionally followed by its intermediates) chains to ca.
+  // Whether certPem chains to ca. certPem is the leaf first, then any intermediates in issuing
+  // order, as cert-manager writes tls.crt.
   @VisibleForTesting
   static boolean isIssuedBy(String certPem, UUID ca) throws Exception {
     List<X509Certificate> trusted =
@@ -231,19 +247,19 @@ public class RpcClientCert {
   }
 
   // Present, the key matches the cert, and the cert is valid until margin from now.
-  private static boolean isUsable(Pair<String, String> files, Duration margin) {
+  private static boolean isUsable(CertAndKey files, Duration margin) {
     try {
-      if (!Files.isRegularFile(Paths.get(files.getLeft()))
-          || !Files.isRegularFile(Paths.get(files.getRight()))) {
+      if (!Files.isRegularFile(Paths.get(files.cert()))
+          || !Files.isRegularFile(Paths.get(files.key()))) {
         return false;
       }
-      X509Certificate cert = CertificateHelper.getCertificateFromFile(files.getLeft());
+      X509Certificate cert = CertificateHelper.getCertificateFromFile(files.cert());
       Instant now = Instant.now();
       return !now.isBefore(cert.getNotBefore().toInstant())
           && !Date.from(now.plus(margin)).after(cert.getNotAfter())
-          && isKeyOf(cert, Files.readString(Paths.get(files.getRight())));
+          && isKeyOf(cert, Files.readString(Paths.get(files.key())));
     } catch (Exception e) {
-      log.warn("Unreadable client cert {}: {}", files.getLeft(), e.getMessage());
+      log.warn("Unreadable client cert {}: {}", files.cert(), e.getMessage());
       return false;
     }
   }
@@ -269,13 +285,13 @@ public class RpcClientCert {
     return verifier.verify(signer.sign());
   }
 
-  private static void restoreFromDB(Pair<String, String> files) throws IOException {
-    Optional<String> cert = readFromDB(files.getLeft());
-    Optional<String> key = readFromDB(files.getRight());
+  private static void restoreFromDB(CertAndKey files) throws IOException {
+    Optional<String> cert = readFromDB(files.cert());
+    Optional<String> key = readFromDB(files.key());
     if (cert.isPresent() && key.isPresent()) {
-      replace(files.getRight(), key.get());
-      replace(files.getLeft(), cert.get());
-      log.info("Restored client cert {} from the DB", files.getLeft());
+      replace(files.key(), key.get());
+      replace(files.cert(), cert.get());
+      log.info("Restored client cert {} from the DB", files.cert());
     }
   }
 
@@ -284,14 +300,13 @@ public class RpcClientCert {
         .map(data -> new String(Base64.getDecoder().decode(data.getFileContent())));
   }
 
-  private static void write(Pair<String, String> files, Pair<String, String> pem)
-      throws IOException {
+  private static void write(CertAndKey files, CertAndKey pem) throws IOException {
     // Key first: a crash between the two leaves a pair isUsable rejects, not a stale key.
-    replace(files.getRight(), pem.getRight());
-    replace(files.getLeft(), pem.getLeft());
-    FileData.upsertFileInDB(files.getRight());
-    FileData.upsertFileInDB(files.getLeft());
-    log.info("Stored client cert {}", files.getLeft());
+    replace(files.key(), pem.key());
+    replace(files.cert(), pem.cert());
+    FileData.upsertFileInDB(files.key());
+    FileData.upsertFileInDB(files.cert());
+    log.info("Stored client cert {}", files.cert());
   }
 
   private static void replace(String file, String content) throws IOException {

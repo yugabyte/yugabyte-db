@@ -40,6 +40,7 @@ import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.certmgmt.RpcClientCert.CertAndKey;
 import com.yugabyte.yw.common.certmgmt.RpcClientCertTest;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -63,7 +64,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import org.apache.commons.lang3.tuple.Pair;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -790,7 +790,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
               u.setUniverseDetails(details);
             });
     universeVersion = defaultUniverse.getVersion();
-    Pair<String, String> pem = RpcClientCertTest.newCertPem(Duration.ofDays(90));
+    CertAndKey pem = RpcClientCertTest.newCertPem(Duration.ofDays(90));
     when(mockKubernetesManager.getSecret(any(), any(), any()))
         .thenReturn(RpcClientCertTest.secret(pem));
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
@@ -809,7 +809,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
         TaskType.WaitForRpcClientCert,
         taskTypes.get(taskTypes.indexOf(TaskType.WaitForServer) - 1));
     assertEquals(
-        pem.getLeft(), Files.readString(Paths.get(CertificateHelper.getClientCertFile(rootCA))));
+        pem.cert(), Files.readString(Paths.get(CertificateHelper.getClientCertFile(rootCA))));
   }
 
   @Test
