@@ -233,9 +233,12 @@ var updateOCIProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		validateOCIRegionsExist(removeRegions, editRegions, providerRegions)
-		validateOCIZonesExist(editZones, "edit", providerRegions)
-		validateOCIZonesExist(removeZones, "remove", providerRegions)
+		if err := validateOCIRegionAndZoneNames(
+			addRegions, removeRegions, editRegions, addZones, editZones, removeZones,
+			providerRegions,
+		); err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
 
 		providerRegions = removeOCIRegions(removeRegions, providerRegions)
 		providerRegions = editOCIRegions(
@@ -421,55 +424,75 @@ func removeOCIRegions(
 	return providerRegions
 }
 
+// validateOCIRegionAndZoneNames rejects region and zone names that match nothing;
+// the update helpers skip unmatched names, so a typo would otherwise exit 0.
+func validateOCIRegionAndZoneNames(
+	addRegions, removeRegions, editRegions, addZones, editZones, removeZones []string,
+	providerRegions []ybaclient.Region,
+) error {
+	for _, r := range removeRegions {
+		if findOCIRegion(r, providerRegions) == nil {
+			return regionNotFoundError(r)
+		}
+	}
+	for _, regionString := range editRegions {
+		name := providerutil.BuildRegionMapFromString(regionString, "edit")["name"]
+		if findOCIRegion(name, providerRegions) == nil {
+			return regionNotFoundError(name)
+		}
+	}
+
+	addedRegions := make(map[string]bool, len(addRegions))
+	for _, regionString := range addRegions {
+		addedRegions[providerutil.BuildRegionMapFromString(regionString, "add")["name"]] = true
+	}
+	for _, zoneString := range addZones {
+		regionName := providerutil.BuildZoneMapFromString(zoneString, "add")["region-name"]
+		if !addedRegions[regionName] && findOCIRegion(regionName, providerRegions) == nil {
+			return fmt.Errorf(
+				"region %s in --add-zone is not in the provider or in --add-region", regionName)
+		}
+	}
+
+	for _, op := range []struct {
+		name  string
+		zones []string
+	}{{"edit", editZones}, {"remove", removeZones}} {
+		for _, zoneString := range op.zones {
+			zone := providerutil.BuildZoneMapFromString(zoneString, op.name)
+			region := findOCIRegion(zone["region-name"], providerRegions)
+			if region == nil {
+				return regionNotFoundError(zone["region-name"])
+			}
+			if !ociRegionHasZone(region, zone["name"]) {
+				return fmt.Errorf("zone %s not found in region %s of the provider",
+					zone["name"], zone["region-name"])
+			}
+		}
+	}
+	return nil
+}
+
 func findOCIRegion(regionName string, providerRegions []ybaclient.Region) *ybaclient.Region {
 	for i := range providerRegions {
 		if strings.Compare(providerRegions[i].GetCode(), regionName) == 0 {
 			return &providerRegions[i]
 		}
 	}
-	logrus.Fatalln(
-		formatter.Colorize(
-			fmt.Sprintf("Region %s not found in the provider.\n", regionName),
-			formatter.RedColor))
 	return nil
 }
 
-func validateOCIRegionsExist(
-	removeRegions, editRegions []string,
-	providerRegions []ybaclient.Region,
-) {
-	for _, r := range removeRegions {
-		findOCIRegion(r, providerRegions)
+func ociRegionHasZone(region *ybaclient.Region, zoneName string) bool {
+	for _, az := range region.GetZones() {
+		if strings.Compare(az.GetCode(), zoneName) == 0 {
+			return true
+		}
 	}
-	for _, regionString := range editRegions {
-		region := providerutil.BuildRegionMapFromString(regionString, "edit")
-		findOCIRegion(region["name"], providerRegions)
-	}
+	return false
 }
 
-func validateOCIZonesExist(
-	zoneStrings []string,
-	operation string,
-	providerRegions []ybaclient.Region,
-) {
-	for _, zoneString := range zoneStrings {
-		zone := providerutil.BuildZoneMapFromString(zoneString, operation)
-		region := findOCIRegion(zone["region-name"], providerRegions)
-		found := false
-		for _, az := range region.GetZones() {
-			if strings.Compare(az.GetCode(), zone["name"]) == 0 {
-				found = true
-				break
-			}
-		}
-		if !found {
-			logrus.Fatalln(
-				formatter.Colorize(
-					fmt.Sprintf("Zone %s not found in region %s of the provider.\n",
-						zone["name"], zone["region-name"]),
-					formatter.RedColor))
-		}
-	}
+func regionNotFoundError(regionName string) error {
+	return fmt.Errorf("region %s not found in the provider", regionName)
 }
 
 func editOCIRegions(
