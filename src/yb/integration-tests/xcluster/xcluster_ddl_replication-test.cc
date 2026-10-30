@@ -7609,7 +7609,7 @@ TEST_F(XClusterWalAnchorStreamTest, SplitBeforeRollbackRetrySucceeds) {
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = false;
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
-  ASSERT_OK(VerifyWrittenRecords({kTableName}));
+  ASSERT_OK(VerifyWrittenRecords(std::vector<TableName>{kTableName}));
 }
 
 // The stream created for a reconnecting table is not usable until its checkpoint lands. Until then
