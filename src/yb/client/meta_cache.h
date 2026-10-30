@@ -675,7 +675,8 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
 
   // Permanently fail replicas on drained tservers, including those introduced by later metadata.
   // Release a UUID only when absent from 'drained' and present in 'live': an empty post-failover
-  // hint must not resurrect a dead server. The local tserver is ignored.
+  // hint must not resurrect a dead server. During failover, live UUIDs can be released, allowing
+  // stale metadata to restore routing until hints resume. The local tserver is ignored.
   void UpdateDrainedTServers(
       const std::vector<std::string>& drained, const std::vector<std::string>& live);
 

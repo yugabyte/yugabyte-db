@@ -13759,6 +13759,10 @@ void CatalogManager::RefreshDrainedBlacklistedTServers() {
         std::lock_guard l(drained_blacklisted_tservers_lock_);
         if (drained_blacklisted_tservers_refreshed_at_ != CoarseTimePoint() &&
             now - drained_blacklisted_tservers_refreshed_at_ < interval) {
+          // Unblacklisting must not wait for the next full replica-map scan.
+          std::erase_if(drained_blacklisted_tservers_, [&candidates](const auto& uuid) {
+            return !candidates.contains(uuid);
+          });
           return;
         }
         drained_blacklisted_tservers_refreshed_at_ = now;

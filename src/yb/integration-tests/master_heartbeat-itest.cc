@@ -643,7 +643,23 @@ TEST_F(MasterHeartbeatITest, BlacklistedTServersWithNoTabletsHint) {
   ASSERT_OK(evict_from_all_tablets(dead_ts->permanent_uuid()));
   ASSERT_OK(wait_for_hint({drained_ts->permanent_uuid(), dead_ts->permanent_uuid()}));
 
-  // Removal takes a tserver out of the registry, and out of the hint.
+  // Removing one server from a nonempty blacklist must update the hint even between full scans.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_drained_blacklisted_tservers_refresh_interval_ms) = 3600000;
+  auto config = ASSERT_RESULT(cluster_client.GetMasterClusterConfig());
+  auto* hosts = config.mutable_server_blacklist()->mutable_hosts();
+  hosts->Clear();
+  *hosts->Add() = dead_ts->GetRegistration().private_rpc_addresses(0);
+  *hosts->Add() = kRaftOnlyAddr;
+  ASSERT_OK(cluster_client.ChangeMasterClusterConfig(std::move(config)));
+  ASSERT_OK(wait_for_hint({dead_ts->permanent_uuid()}));
+
+  ASSERT_OK(cluster_client.BlacklistHost(
+      HostPortPB(drained_ts->GetRegistration().private_rpc_addresses(0))));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_drained_blacklisted_tservers_refresh_interval_ms) = 0;
+  ASSERT_OK(wait_for_hint({drained_ts->permanent_uuid(), dead_ts->permanent_uuid()}));
+
+  // Removal from the registry must also bypass the scan throttle.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_drained_blacklisted_tservers_refresh_interval_ms) = 3600000;
   ASSERT_OK(cluster_client.RemoveTabletServer(std::string(drained_ts->permanent_uuid())));
   ASSERT_OK(wait_for_hint({dead_ts->permanent_uuid()}));
 }

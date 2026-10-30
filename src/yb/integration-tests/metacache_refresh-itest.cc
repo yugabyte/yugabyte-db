@@ -415,14 +415,21 @@ TEST_F(BlacklistedTServerMetacacheITest, DrainedTServerIsNotRoutedTo) {
     }, timeout, "Victim hosts a follower of the test tablet"));
     test_tablets.emplace(tablet_id, TestTable{name, i, table_id});
   }
-  // Half of the tablets are read while the victim is drained. The other half are left alone until
-  // the victim is back, so their cached victim replica still carries the permanent mark by then.
+  // Leave separate tablets untouched until shutdown and until the victim is back, so each phase
+  // exercises stale cached replicas.
   std::set<TabletId> all_tablets;
   std::set<TabletId> drained_phase_tablets;
+  std::set<TabletId> shutdown_phase_tablets;
   std::set<TabletId> held_back_tablets;
   for (const auto& [id, table] : test_tablets) {
     all_tablets.insert(id);
-    (table.value < kNumTables / 2 ? drained_phase_tablets : held_back_tablets).insert(id);
+    if (table.value < kNumTables / 3) {
+      drained_phase_tablets.insert(id);
+    } else if (table.value < 2 * kNumTables / 3) {
+      shutdown_phase_tablets.insert(id);
+    } else {
+      held_back_tablets.insert(id);
+    }
   }
 
   auto victim_reads = METRIC_handler_latency_yb_tserver_TabletServerService_Read.Instantiate(
@@ -480,9 +487,17 @@ TEST_F(BlacklistedTServerMetacacheITest, DrainedTServerIsNotRoutedTo) {
   }
   ASSERT_EQ(victim_reads->TotalCount(), reads_before_drain);
 
-  // Nor after it is gone.
+  // The first reads of these tablets after drain must exclude the stopped victim, rather than
+  // waiting for a connection timeout and retrying. Check the marks without refreshing the cache.
   victim->Shutdown();
-  ASSERT_OK(read_all(drained_phase_tablets));
+  {
+    const auto failed = ASSERT_RESULT(PermanentlyFailedReplicasOn(gateway_client, victim_uuid));
+    for (const auto& tablet_id : shutdown_phase_tablets) {
+      auto it = failed.find(tablet_id);
+      ASSERT_TRUE(it != failed.end() && it->second) << tablet_id;
+    }
+  }
+  ASSERT_OK(read_all(shutdown_phase_tablets));
 
   // Revert the decommission: bring the victim back at the same address, take it off the blacklist
   // and blacklist the replacement instead. That leaves exactly three eligible tservers, so the load
