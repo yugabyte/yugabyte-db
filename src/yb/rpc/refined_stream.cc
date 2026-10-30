@@ -228,11 +228,8 @@ Status RefinedStream::StartHandshake() {
 
 Result<size_t> RefinedStream::Handshake() {
   auto handshake_status = refiner_->Handshake();
-  if (!handshake_status.ok()) {
-    // A client retrying against a server that rejects it fails once per retry.
-    YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 10) << "Handshake failed: " << handshake_status;
-    return handshake_status;
-  }
+  LOG_IF_WITH_PREFIX(INFO, !handshake_status.ok()) << "Handshake failed: " << handshake_status;
+  RETURN_NOT_OK(handshake_status);
 
   if (state_ == RefinedStreamState::kEnabled) {
     return Read();

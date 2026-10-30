@@ -122,6 +122,7 @@
 #include "yb/master/catalog_entity_parser.h"
 #include "yb/master/catalog_loaders.h"
 #include "yb/master/catalog_manager_bg_tasks.h"
+#include "yb/master/catalog_manager_cdc_bg_tasks.h"
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/cdcsdk_manager.h"
@@ -2382,6 +2383,9 @@ void CatalogManager::CompleteShutdown() {
   xcluster_manager_->CompleteShutdown();
   ysql_manager_->CompleteShutdown();
 
+  if (cdc_background_tasks_) {
+    cdc_background_tasks_->Shutdown();
+  }
   if (background_tasks_) {
     background_tasks_->Shutdown();
   }
@@ -11810,6 +11814,10 @@ Status CatalogManager::EnableBgTasks() {
   RETURN_NOT_OK_PREPEND(background_tasks_->Init(),
                         "Failed to initialize catalog manager background tasks");
 
+  cdc_background_tasks_.reset(new CatalogManagerCdcBgTasks(master_));
+  RETURN_NOT_OK_PREPEND(cdc_background_tasks_->Init(),
+                        "Failed to initialize CDC cleanup background tasks");
+
   // Add bg thread to rebuild yql system partitions.
   refresh_yql_partitions_task_ = std::make_unique<rpc::ScheduledTaskTracker>();
   refresh_yql_partitions_task_->Bind(&master_->messenger()->scheduler());
@@ -11824,7 +11832,10 @@ Status CatalogManager::EnableBgTasks() {
 }
 
 void CatalogManager::WakeBgTaskIfPendingUpdates() {
-  background_tasks_->WakeIfHasPendingUpdates();
+  SharedLock lock(mutex_);
+  if (background_tasks_) {
+    background_tasks_->WakeIfHasPendingUpdates();
+  }
 }
 
 Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB& req) {
@@ -13790,11 +13801,19 @@ Status CatalogManager::GoIntoShellMode() {
   LOG(INFO) << "Starting going into shell mode.";
   master_->SetShellMode(true);
 
+  std::unique_ptr<CatalogManagerCdcBgTasks> cdc_background_tasks;
+  std::unique_ptr<CatalogManagerBgTasks> background_tasks;
   {
     LockGuard lock(mutex_);
     RETURN_NOT_OK(sys_catalog_->GoIntoShellMode());
-    background_tasks_->Shutdown();
-    background_tasks_.reset();
+    cdc_background_tasks = std::move(cdc_background_tasks_);
+    background_tasks = std::move(background_tasks_);
+  }
+  if (cdc_background_tasks) {
+    cdc_background_tasks->Shutdown();
+  }
+  if (background_tasks) {
+    background_tasks->Shutdown();
   }
   {
     std::lock_guard l(remote_bootstrap_mtx_);

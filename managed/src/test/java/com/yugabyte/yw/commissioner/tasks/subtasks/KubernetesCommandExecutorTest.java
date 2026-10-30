@@ -1378,6 +1378,100 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
   }
 
   @Test
+  public void testHelmInstallOverridesCannotDisableClientCerts() throws IOException {
+    // Provider overrides aren't validated, so the generated values must put the client cert
+    // gflag back and drop the identity checks YBA's client cert can't pass.
+    Map<String, String> azConfig = new HashMap<>();
+    azConfig.put(
+        "OVERRIDES",
+        "gflags:\n  master:\n    node_to_node_encryption_use_client_certificates: false\n"
+            + "  tserver:\n    node_to_node_encryption_required_uid: yugabyte\n"
+            + "    verify_client_endpoint: true");
+    defaultAZ.updateConfig(azConfig);
+    defaultAZ.save();
+    defaultUniverse = updateUniverseDetails("dev");
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              details.getPrimaryCluster().userIntent.useNodeToNodeClientCerts = true;
+              u.setUniverseDetails(details);
+            });
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        AbstractTaskBase.createTask(KubernetesCommandExecutor.class);
+    KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
+    params.ybSoftwareVersion = ybSoftwareVersion;
+    params.providerUUID = defaultProvider.getUuid();
+    params.commandType = KubernetesCommandExecutor.CommandType.HELM_INSTALL;
+    params.config = config;
+    params.universeName = defaultUniverse.getName();
+    params.helmReleaseName = defaultUniverse.getUniverseDetails().nodePrefix;
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.universeConfig = defaultUniverse.getConfig();
+    params.universeDetails = defaultUniverse.getUniverseDetails();
+    params.namespace = namespace;
+    kubernetesCommandExecutor.initialize(params);
+    kubernetesCommandExecutor.run();
+
+    ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
+    verify(kubernetesManager, times(1))
+        .helmInstall(any(), any(), any(), any(), any(), any(), expectedOverrideFile.capture());
+    Yaml yaml = new Yaml();
+    InputStream is = new FileInputStream(new File(expectedOverrideFile.getValue()));
+    Map<String, Object> overrides = yaml.loadAs(is, Map.class);
+    Map<String, Object> gflags = (Map<String, Object>) overrides.get("gflags");
+    for (String server : List.of("master", "tserver")) {
+      Map<String, Object> serverGFlags = (Map<String, Object>) gflags.get(server);
+      assertEquals("true", serverGFlags.get(GFlagsUtil.USE_CLIENT_CERTIFICATES));
+      assertFalse(serverGFlags.containsKey(GFlagsUtil.NODE_TO_NODE_REQUIRED_UID));
+      assertFalse(serverGFlags.containsKey(GFlagsUtil.VERIFY_CLIENT_ENDPOINT));
+    }
+  }
+
+  @Test
+  public void testHelmInstallOverridesCannotRequireClientCertsWithoutSetting() throws IOException {
+    // YBA presents no client cert without the setting, so an override can't make servers require
+    // one; without such an override the gflag isn't added, so the gflags checksum is unchanged.
+    Map<String, String> azConfig = new HashMap<>();
+    azConfig.put(
+        "OVERRIDES",
+        "gflags:\n  master:\n    node_to_node_encryption_use_client_certificates: true");
+    defaultAZ.updateConfig(azConfig);
+    defaultAZ.save();
+    defaultUniverse = updateUniverseDetails("dev");
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        AbstractTaskBase.createTask(KubernetesCommandExecutor.class);
+    KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
+    params.ybSoftwareVersion = ybSoftwareVersion;
+    params.providerUUID = defaultProvider.getUuid();
+    params.commandType = KubernetesCommandExecutor.CommandType.HELM_INSTALL;
+    params.config = config;
+    params.universeName = defaultUniverse.getName();
+    params.helmReleaseName = defaultUniverse.getUniverseDetails().nodePrefix;
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.universeConfig = defaultUniverse.getConfig();
+    params.universeDetails = defaultUniverse.getUniverseDetails();
+    params.namespace = namespace;
+    kubernetesCommandExecutor.initialize(params);
+    kubernetesCommandExecutor.run();
+
+    ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
+    verify(kubernetesManager, times(1))
+        .helmInstall(any(), any(), any(), any(), any(), any(), expectedOverrideFile.capture());
+    Yaml yaml = new Yaml();
+    InputStream is = new FileInputStream(new File(expectedOverrideFile.getValue()));
+    Map<String, Object> overrides = yaml.loadAs(is, Map.class);
+    Map<String, Object> gflags = (Map<String, Object>) overrides.get("gflags");
+    assertEquals(
+        "false",
+        ((Map<String, Object>) gflags.get("master")).get(GFlagsUtil.USE_CLIENT_CERTIFICATES));
+    assertFalse(
+        ((Map<String, Object>) gflags.getOrDefault("tserver", Map.of()))
+            .containsKey(GFlagsUtil.USE_CLIENT_CERTIFICATES));
+  }
+
+  @Test
   public void testHelmInstallRejectsInjectedGFlags() throws IOException {
     // Overrides saved before the API rejected them are still in the database.
     defaultUniverse = updateUniverseDetails("dev");

@@ -82,6 +82,7 @@ import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.common.TableManagerYb;
+import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
@@ -196,7 +197,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected ConfigHelper mockConfigHelper = mock(ConfigHelper.class);
   protected AWSInitializer mockAWSInitializer = mock(AWSInitializer.class);
   protected GCPInitializer mockGCPInitializer = mock(GCPInitializer.class);
-  protected YBClientService mockYBClient = mock(YBClientService.class);
+  protected YBClientService mockYBClient = TestHelper.mockYBClientService();
   protected NodeManager mockNodeManager = mock(NodeManager.class);
   protected DnsManager mockDnsManager = mock(DnsManager.class);
   protected TableManager mockTableManager = mock(TableManager.class);

@@ -34,6 +34,8 @@
 
 #include <atomic>
 #include <memory>
+#include <mutex>
+#include <queue>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -734,6 +736,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   void FlushDirtySuperblocks();
 
+  void EnterQuiescentModeForIdleTablets();
+
   // Helper functions to reduce code duplication between RemoteBootstrap and RemoteSnapshotTransfer
   // flows.
   typedef std::unordered_map<std::string, int> RemoteSessionSourceAddresses;
@@ -1000,6 +1004,22 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Background task for periodically flushing the superblocks.
   std::unique_ptr<BackgroundTask> superblock_flush_bg_task_;
+
+  std::unique_ptr<BackgroundTask> quiescent_tablets_bg_task_;
+
+  struct QuiescentCheck {
+    CoarseTimePoint time;
+    tablet::TabletPeerWeakPtr peer;
+
+    // Reversed, so that the top of the priority queue is the earliest check.
+    bool operator<(const QuiescentCheck& rhs) const {
+      return time > rhs.time;
+    }
+  };
+
+  std::mutex quiescent_checks_mutex_;
+  // Tablets ordered by the time when they could enter the quiescent mode.
+  std::priority_queue<QuiescentCheck> quiescent_checks_ GUARDED_BY(quiescent_checks_mutex_);
 
   std::unique_ptr<FullCompactionManager> full_compaction_manager_;
 
