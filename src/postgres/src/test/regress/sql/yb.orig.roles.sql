@@ -54,8 +54,9 @@ DROP SERVER s1;
 DROP EXTENSION file_fdw;
 
 \c -
-DROP USER regress_priv_user1;
+-- regress_priv_user1 granted yb_fdw to regress_priv_user2, so drop user2 first.
 DROP USER regress_priv_user2;
+DROP USER regress_priv_user1;
 
 -- test password change with BYPASSRLS attribute
 CREATE ROLE user1 BYPASSRLS;
@@ -131,6 +132,11 @@ ALTER EXTENSION orafce UPDATE TO '4.16';
 DROP EXTENSION orafce;
 -- removing yb_db_admin role should result in error
 REVOKE yb_db_admin FROM regress_priv_user;
+-- Since PG 16 the REVOKE above only removes grants that regress_priv_user made,
+-- and a superuser made this one, so the superuser revokes it.
+RESET SESSION AUTHORIZATION;
+REVOKE yb_db_admin FROM regress_priv_user;
+SET SESSION AUTHORIZATION regress_priv_user;
 CREATE EXTENSION PGAudit;
 DROP EXTENSION PGAudit;
 

@@ -57,14 +57,17 @@ CREATE EXTENSION file_fdw;
 CREATE SERVER s1 FOREIGN DATA WRAPPER file_fdw;
 -- should not allow the user to set the filename/program options as they require more privileges
 CREATE FOREIGN TABLE test (x int) SERVER s1 OPTIONS ( filename 'foo');
-ERROR:  only superuser or a role with privileges of the pg_read_server_files role may specify the filename option of a file_fdw foreign table
+ERROR:  permission denied to set the "filename" option of a file_fdw foreign table
+DETAIL:  Only roles with privileges of the "pg_read_server_files" role may set this option.
 CREATE FOREIGN TABLE test (x int) SERVER s1 OPTIONS ( program 'foo');
-ERROR:  only superuser or a role with privileges of the pg_execute_server_program role may specify the program option of a file_fdw foreign table
+ERROR:  permission denied to set the "program" option of a file_fdw foreign table
+DETAIL:  Only roles with privileges of the "pg_execute_server_program" role may set this option.
 DROP SERVER s1;
 DROP EXTENSION file_fdw;
 \c -
-DROP USER regress_priv_user1;
+-- regress_priv_user1 granted yb_fdw to regress_priv_user2, so drop user2 first.
 DROP USER regress_priv_user2;
+DROP USER regress_priv_user1;
 -- test password change with BYPASSRLS attribute
 CREATE ROLE user1 BYPASSRLS;
 ALTER ROLE user1 PASSWORD 'password';
@@ -140,9 +143,19 @@ NOTICE:  version "4.16" of extension "orafce" is already installed
 DROP EXTENSION orafce;
 -- removing yb_db_admin role should result in error
 REVOKE yb_db_admin FROM regress_priv_user;
+WARNING:  role "regress_priv_user" has not been granted membership in role "yb_db_admin" by role "regress_priv_user"
+-- Since PG 16 the REVOKE above only removes grants that regress_priv_user made,
+-- and a superuser made this one, so the superuser revokes it.
+RESET SESSION AUTHORIZATION;
+REVOKE yb_db_admin FROM regress_priv_user;
+SET SESSION AUTHORIZATION regress_priv_user;
 CREATE EXTENSION PGAudit;
 ERROR:  permission denied to create event trigger "pgaudit_ddl_command_end"
 HINT:  Must be superuser or a member of the yb_db_admin role to create an event trigger.
+CONTEXT:  SQL statement "CREATE EVENT TRIGGER pgaudit_ddl_command_end
+	ON ddl_command_end
+	EXECUTE PROCEDURE pgaudit_ddl_command_end()"
+extension script file "pgaudit--19.0.sql", near line 11
 DROP EXTENSION PGAudit;
 ERROR:  extension "pgaudit" does not exist
 --
