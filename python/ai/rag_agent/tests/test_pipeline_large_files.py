@@ -6,6 +6,7 @@ for the whole embedding run.
 """
 
 import json
+import logging
 import os
 import random
 import tempfile
@@ -14,11 +15,14 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from rag_pipeline import partition_chunk_pipeline
 from rag_pipeline.chunk import chunk, get_splitter_for_filetype
 from rag_pipeline.partition_chunk_pipeline import (
     DEFAULT_MAX_FILE_SIZE_BYTES,
     DEFAULT_MAX_MARKDOWN_FILE_SIZE_BYTES,
     _iter_lines,
+    api_upload_cap_bytes,
+    enforce_size_limit,
     max_file_size_bytes,
     max_markdown_file_size_bytes,
     read_file_stream,
@@ -222,10 +226,19 @@ class TestSingleRead:
 class TestSizeLimit:
     """Nothing over the api-server's upload cap should be chunked."""
 
-    # Meko api-server per-file KB upload caps, read from
-    # meko/api_server/internal/service/free_tier.go: free 5 MB,
-    # standard 50 MB, pro and above 60 MB (ProTierMaxKBFileBytes).
-    LARGEST_CALLER_CAP_BYTES = 60 * 1024 * 1024
+    # Meko api-server per-file KB upload caps, from
+    # meko/api_server/internal/service/free_tier.go: free 5 MB, standard
+    # 50 MB, pro and above 60 MB, each env-tunable, and any tier cap clamped
+    # to the 512 MiB maxUploadFileBytes ceiling. Those live in another repo,
+    # so these numbers can go stale; test_cap_drift_is_reported covers the
+    # case where they have.
+    API_TIER_CAPS = {
+        "free": 5 * 1024 * 1024,
+        "standard": 50 * 1024 * 1024,
+        "pro": 60 * 1024 * 1024,
+    }
+    API_UPLOAD_CEILING_BYTES = 512 * 1024 * 1024
+    LARGEST_CALLER_CAP_BYTES = max(API_TIER_CAPS.values())
 
     def test_default_cap_clears_every_caller_cap(self):
         # The worker cap is an out-of-memory guard, not a product limit. If it
@@ -302,15 +315,12 @@ class TestSizeLimit:
 
         assert chunks == ["At the limit."]
 
-    @pytest.mark.parametrize("tier,cap", [
-        ("free", 5 * 1024 * 1024),
-        ("standard", 50 * 1024 * 1024),
-        ("pro", 60 * 1024 * 1024),
-    ])
+    @pytest.mark.parametrize("tier", sorted(API_TIER_CAPS))
     @patch("rag_pipeline.partition_chunk_pipeline.boto3")
     def test_an_upload_the_api_server_accepts_is_chunked(
-        self, mock_boto3, tier, cap
+        self, mock_boto3, tier
     ):
+        cap = self.API_TIER_CAPS[tier]
         # A file at each tier's per-file upload cap must index. A worker cap
         # below one of these rejects an upload the api-server allowed.
         make_s3_object(
@@ -373,6 +383,69 @@ class TestIterLines:
         assert lazy_peak < split_peak / 100, (
             f"lazy={lazy_peak} split={split_peak}"
         )
+
+
+class TestCapDrift:
+    """A worker cap below the api-server's upload cap must announce itself."""
+
+    API_UPLOAD_CEILING_BYTES = 512 * 1024 * 1024
+
+    @pytest.fixture(autouse=True)
+    def _reset_warned_flag(self, monkeypatch):
+        # The warning fires once per process.
+        monkeypatch.setattr(
+            partition_chunk_pipeline, "_cap_drift_warned", False
+        )
+        for var in partition_chunk_pipeline._API_TIER_CAP_VARS:
+            monkeypatch.delenv(var, raising=False)
+
+    def test_api_cap_is_read_from_the_tier_variables(self, monkeypatch):
+        monkeypatch.setenv("MEKO_FREE_TIER_KB_FILE_BYTES", "5242880")
+        monkeypatch.setenv("MEKO_PRO_TIER_KB_FILE_BYTES", "268435456")
+        assert api_upload_cap_bytes() == 268435456
+
+    def test_api_cap_is_unknown_when_nothing_is_set(self):
+        assert api_upload_cap_bytes() is None
+
+    def test_cap_drift_is_reported(self, monkeypatch, caplog):
+        # An operator raising the advertised cap in the api-server, with the
+        # worker left at its default, is the cross-repo drift case.
+        monkeypatch.delenv("MAX_FILE_SIZE_BYTES", raising=False)
+        monkeypatch.setenv(
+            "MEKO_PRO_TIER_KB_FILE_BYTES",
+            str(self.API_UPLOAD_CEILING_BYTES),
+        )
+
+        with caplog.at_level(logging.WARNING):
+            assert max_file_size_bytes() == DEFAULT_MAX_FILE_SIZE_BYTES
+
+        assert "MAX_FILE_SIZE_BYTES" in caplog.text
+        assert "fail here" in caplog.text
+
+    def test_no_warning_when_the_worker_cap_covers_the_api_cap(
+        self, monkeypatch, caplog
+    ):
+        monkeypatch.delenv("MAX_FILE_SIZE_BYTES", raising=False)
+        monkeypatch.setenv(
+            "MEKO_PRO_TIER_KB_FILE_BYTES",
+            str(DEFAULT_MAX_FILE_SIZE_BYTES),
+        )
+
+        with caplog.at_level(logging.WARNING):
+            max_file_size_bytes()
+
+        assert caplog.text == ""
+
+    def test_rejection_names_the_knob_to_raise(self, monkeypatch):
+        monkeypatch.setenv("MAX_FILE_SIZE_BYTES", "1024")
+        with pytest.raises(ValueError, match="Raise MAX_FILE_SIZE_BYTES"):
+            enforce_size_limit(
+                "s3://b/big.txt", 4096, 1024, "MAX_FILE_SIZE_BYTES"
+            )
+
+    def test_rejection_without_a_knob_is_unchanged(self):
+        with pytest.raises(ValueError, match="rejecting.$"):
+            enforce_size_limit("s3://b/big.txt", 4096, 1024)
 
 
 class TestMarkdownCap:

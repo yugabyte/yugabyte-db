@@ -47,11 +47,59 @@ def _env_size_bytes(var_name: str, default: int) -> int:
     return value
 
 
+# What a user may upload is the api-server's per-tier cap; what one worker can
+# hold in memory is the cap above. They are set in different repos and not
+# derived from one deployment value, so raising
+# MEKO_PRO_TIER_KB_FILE_BYTES (agentic-cloud
+# meko/api_server/internal/service/free_tier.go) lets through an upload this
+# worker then rejects, and the document is marked FAILED after the upload
+# succeeded. The api-server clamps any tier cap to its own 512 MiB ceiling
+# (maxUploadFileBytes, applied in s3_service.go), so that is the worst case.
+# When those variables are visible here, say so once instead of failing
+# documents without explanation.
+_API_TIER_CAP_VARS = (
+    "MEKO_FREE_TIER_KB_FILE_BYTES",
+    "MEKO_STANDARD_TIER_KB_FILE_BYTES",
+    "MEKO_PRO_TIER_KB_FILE_BYTES",
+)
+
+_cap_drift_warned = False
+
+
+def api_upload_cap_bytes() -> Optional[int]:
+    """Largest per-file upload the api-server may accept, if it tells us."""
+    caps = [
+        cap for cap in (_env_size_bytes(var, 0) for var in _API_TIER_CAP_VARS)
+        if cap > 0
+    ]
+    return max(caps) if caps else None
+
+
+def _warn_on_cap_drift(worker_cap: int) -> None:
+    global _cap_drift_warned
+    if _cap_drift_warned:
+        return
+    api_cap = api_upload_cap_bytes()
+    if api_cap is None or api_cap <= worker_cap:
+        return
+    _cap_drift_warned = True
+    logging.warning(
+        f"api-server accepts uploads up to {api_cap} bytes "
+        f"({api_cap // (1024 * 1024)} MiB) but this worker reads at most "
+        f"{worker_cap} bytes ({worker_cap // (1024 * 1024)} MiB), so a file "
+        f"between the two will upload and then fail here. Raise "
+        f"MAX_FILE_SIZE_BYTES on the worker (and size its memory for it) or "
+        f"lower the tier cap."
+    )
+
+
 def max_file_size_bytes() -> int:
     """Size cap for a whole-file text read, overridable per deployment."""
-    return _env_size_bytes(
+    value = _env_size_bytes(
         "MAX_FILE_SIZE_BYTES", DEFAULT_MAX_FILE_SIZE_BYTES
     )
+    _warn_on_cap_drift(value)
+    return value
 
 
 def max_markdown_file_size_bytes() -> int:
@@ -213,7 +261,9 @@ def stream_partition_and_chunk(
     )
 
     full_text = read_whole_file(
-        file_location, max_size_bytes=max_file_size_bytes()
+        file_location,
+        max_size_bytes=max_file_size_bytes(),
+        knob="MAX_FILE_SIZE_BYTES",
     )
     lines_iter = _iter_lines(full_text)
     logging.debug(f"generated lines_iter for file: {file_location}")
@@ -225,26 +275,32 @@ def enforce_size_limit(
     file_location: str,
     size_bytes: Optional[int],
     max_size_bytes: Optional[int],
+    knob: Optional[str] = None,
 ) -> None:
     if size_bytes is None or max_size_bytes is None:
         return
     if size_bytes > max_size_bytes:
+        # Name the knob: the api-server may have accepted this upload under a
+        # higher per-tier cap, and then the operator has to find out which
+        # worker setting rejected it.
+        hint = f" Raise {knob} to index it." if knob else ""
         raise ValueError(
             f"File {file_location} is {size_bytes} bytes which exceeds "
             f"the {max_size_bytes}-byte "
             f"({max_size_bytes // (1024 * 1024)} MiB) size limit; "
-            f"rejecting."
+            f"rejecting.{hint}"
         )
 
 def read_whole_file(
     file_location: str,
     max_size_bytes: Optional[int] = None,
+    knob: Optional[str] = None,
 ) -> str:
     if file_location.startswith("s3://"):
-        return _read_s3_whole(file_location, max_size_bytes)
+        return _read_s3_whole(file_location, max_size_bytes, knob)
 
     size_bytes = os.path.getsize(file_location)
-    enforce_size_limit(file_location, size_bytes, max_size_bytes)
+    enforce_size_limit(file_location, size_bytes, max_size_bytes, knob)
     logging.debug(
         f"Reading file from local: {file_location} ({size_bytes} bytes)"
     )
@@ -255,6 +311,7 @@ def read_whole_file(
 def _read_s3_whole(
     file_location: str,
     max_size_bytes: Optional[int],
+    knob: Optional[str] = None,
 ) -> str:
     path = file_location[5:]
     bucket, key = path.split("/", 1)
@@ -264,7 +321,7 @@ def _read_s3_whole(
         s3 = boto3.client("s3")
         obj = s3.get_object(Bucket=bucket, Key=key)
         enforce_size_limit(
-            file_location, obj.get("ContentLength"), max_size_bytes
+            file_location, obj.get("ContentLength"), max_size_bytes, knob
         )
         return obj["Body"].read().decode("utf-8")
     except UnicodeDecodeError as e:
@@ -300,6 +357,7 @@ def _read_s3_whole(
                         file_location,
                         int(content_length_header),
                         max_size_bytes,
+                        knob,
                     )
                 return response.content.decode("utf-8")
         except UnicodeDecodeError as e:

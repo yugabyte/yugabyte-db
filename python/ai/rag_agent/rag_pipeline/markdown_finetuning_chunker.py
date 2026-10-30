@@ -27,7 +27,9 @@ def chunk_markdown_whole_file(
 ) -> Generator[str, None, None]:
 
     full_text = read_whole_file(
-        file_location, max_size_bytes=max_markdown_file_size_bytes()
+        file_location,
+        max_size_bytes=max_markdown_file_size_bytes(),
+        knob="MAX_MARKDOWN_FILE_SIZE_BYTES",
     )
 
     doc = parse_markdown(full_text, source_file=file_location)
