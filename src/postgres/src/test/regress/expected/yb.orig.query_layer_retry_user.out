@@ -32,6 +32,40 @@ SELECT current_user;
 (1 row)
 
 RESET ROLE;
+--
+-- The same for a function that changes the role through its SET clause
+-- rather than SECURITY DEFINER: the abort undoes the clause, so after the
+-- retry current_user must be the caller, not retry_bob.  The check runs in
+-- the same REPEATABLE READ transaction, which the retry restarts in place;
+-- the commit would otherwise undo the clause before a later statement.
+--
+CREATE ROLE retry_bob;
+CREATE SEQUENCE sr_attempt;
+GRANT USAGE ON SEQUENCE sr_attempt TO retry_bob;
+CREATE FUNCTION sr() RETURNS int LANGUAGE plpgsql SET role = retry_bob AS $$
+BEGIN
+  IF nextval('sr_attempt') = 1 THEN
+    RAISE EXCEPTION 'injected kAborted' USING ERRCODE = 'YB001';
+  END IF;
+  RETURN 1;
+END $$;
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+SELECT sr();
+ sr 
+----
+  1
+(1 row)
+
+SELECT current_user;
+ current_user 
+--------------
+ yugabyte
+(1 row)
+
+COMMIT;
 DROP FUNCTION sd();
+DROP FUNCTION sr();
 DROP SEQUENCE sd_attempt;
+DROP SEQUENCE sr_attempt;
 DROP ROLE retry_alice;
+DROP ROLE retry_bob;

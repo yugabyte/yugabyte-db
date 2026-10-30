@@ -2351,8 +2351,6 @@ StartTransaction(void)
 void
 YBCRestartWriteTransaction()
 {
-	TransactionState s = &TopTransactionStateData;
-
 	/*
 	 * Roll back every open savepoint / subtransaction so the trans_stack is
 	 * clean before we recreate the top-level write state. Without this, the
@@ -2366,13 +2364,12 @@ YBCRestartWriteTransaction()
 		RollbackAndReleaseCurrentSubTransaction();
 
 	/*
-	 * Control may have escaped a SECURITY DEFINER function, which leaves
-	 * undoing its user switch to the abort; without this the retry runs with
-	 * the definer's privileges.  The transaction-start user that
-	 * AbortTransaction restores would be wrong here: a SET ROLE earlier in an
-	 * extended-protocol batch is not replayed, and its role GUC stays set.
+	 * Control may have escaped a function with a SET clause, such as
+	 * SET role, which leaves undoing it to the abort; without this the retry
+	 * runs with the function's settings.  Keep the transaction's own level: a
+	 * SET earlier in an extended-protocol batch is not replayed.
 	 */
-	SetUserIdAndSecContext(GetOuterUserId(), s->prevSecContext);
+	AtEOXact_GUC(false, CurrentTransactionState->gucNestLevel + 1);
 
 	/*
 	 * Presence of triggers pushes additional snapshots. Pop all of them. Given
