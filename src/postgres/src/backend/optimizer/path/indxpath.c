@@ -1034,10 +1034,6 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 			add_path(rel, (Path *) ipath);
 		}
 
-		/*
-		 * YB_TODO_PG19MERGE: PG removed UpperUniquePath (renamed to UniquePath to
-		 * compile); distinct-pushdown task should replace this indirect marker.
-		 */
 		if (((index->amhasgetbitmap || index->yb_amhasgetbitmap) &&
 			 !IsA(ipath, UniquePath)) &&
 			(ipath->path.pathkeys == NIL ||
@@ -1255,15 +1251,11 @@ get_index_paths(PlannerInfo *root, RelOptInfo *rel,
 		 * YB: Bitmap scan does not support distinct pushdown. Distinct pushdown
 		 * may be represented by a UniquePath on top of a distinct index
 		 * scan path, or a bare distinct index scan path (IndexPath with
-		 * yb_distinct_prefixlen > 0). Refer to create_distinct_index_path for
-		 * more details.
+		 * yb_distinct_prefixlen > 0). Refer to
+		 * yb_create_distinct_index_path for more details.
 		 *
 		 * When either of the above conditions are true for a path, we do not add
 		 * the path to the bitindexpaths list.
-		 *
-		 * YB_TODO_PG19MERGE: PG removed UpperUniquePath (renamed to UniquePath
-		 * to compile); distinct-pushdown task should replace this indirect
-		 * marker.
 		 */
 		if ((index->amhasgetbitmap || index->yb_amhasgetbitmap) &&
 			!(IsA(ipath, UniquePath) ||
@@ -2647,11 +2639,7 @@ choose_bitmap_and(PlannerInfo *root, RelOptInfo *rel, List *paths)
 	{
 		Path	   *ipath = (Path *) lfirst(l);
 
-		/*
-		 * YB: TODO(#21039): Support Distinct Bitmap Scans.
-		 * YB_TODO_PG19MERGE: PG removed UpperUniquePath (renamed to UniquePath to
-		 * compile); distinct-pushdown task should replace this indirect marker.
-		 */
+		/* YB: TODO(#21039): Support Distinct Bitmap Scans */
 		if (IsA(ipath, UniquePath))
 			continue;
 
@@ -5485,7 +5473,6 @@ yb_can_pushdown_distinct(PlannerInfo *root, IndexOptInfo *index)
 		otherrels = bms_difference(root->all_baserels, index->rel->relids);
 
 	/* Collect join clauses and implied join clauses. */
-	/* YB_TODO_PG19MERGE: PG19 added a trailing SpecialJoinInfo *sjinfo. */
 	joininfo = list_concat(list_copy(index->rel->joininfo),
 						   generate_join_implied_equalities(root,
 															bms_union(index->rel->relids, otherrels),

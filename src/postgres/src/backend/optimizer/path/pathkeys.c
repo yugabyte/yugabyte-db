@@ -797,7 +797,7 @@ get_cheapest_parallel_safe_total_inner(List *paths)
  * The function returns the set of pathkeys corresponding to the prefix
  * back again in 'yb_distinct_nkeys'. Since this set is a prefix, we need only
  * return the prefix length of returned pathkeys in 'yb_distinct_nkeys'.
- * This field is eventually used in generating a UpperUniquePath node.
+ * This field is eventually used in generating a UniquePath node.
  * Returns -1 in 'yb_distinct_nkeys' if the pathkeys cannot span the prefix.
  * Returns 0 in 'yb_distinct_nkeys' when the prefix is empty.
  *
@@ -951,7 +951,7 @@ build_index_pathkeys(PlannerInfo *root,
 		}
 
 		i++;
-		/* YB: For later use in creating a UpperUniquePath node. */
+		/* YB: For later use in creating a UniquePath node. */
 		if (i == yb_distinct_prefixlen)
 			*yb_distinct_nkeys = list_length(retval);
 	}
@@ -2334,7 +2334,7 @@ count_common_leading_pathkeys_unordered(List *keys1, List *keys2)
  *		List containing only the useful PathKeys.
  *
  * YB: Do NOT truncate pathkeys useful for distinct index scan because
- * UpperUniquePath nodes require these pathkeys. 'yb_distinct_nkeys' restricts
+ * UniquePath nodes require these pathkeys. 'yb_distinct_nkeys' restricts
  * this.
  *
  * YB: Normally, distinct pathkeys are retained in pathkeys_useful_for_ordering
@@ -2478,14 +2478,10 @@ yb_get_ecs_for_query_uniqkeys(PlannerInfo *root)
 		sortkey = (Expr *) get_sortgroupclause_expr(sortcl,
 													root->processed_tlist);
 		Assert(OidIsValid(sortcl->sortop));
-		/*
-		 * YB_TODO_PG19MERGE: PG19 dropped the nullable_relids arg and added
-		 * reverse_sort
-		 */
 		pathkey = make_pathkey_from_sortop(root,
 										   sortkey,
 										   sortcl->sortop,
-										   false /* reverse_sort */,
+										   sortcl->reverse_sort,
 										   sortcl->nulls_first,
 										   sortcl->tleSortGroupRef,
 										   false);

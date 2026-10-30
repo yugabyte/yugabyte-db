@@ -719,11 +719,6 @@ struct PlannerInfo
 	int			extension_state_allocated;
 
 	/*
-	 * YB_TODO_PG19MERGE: evaluate whether the YB-added fields below need
-	 * `pg_node_attr(read_write_ignore)` (or other pg_node_attr).
-	 */
-
-	/*
 	 * YB: These are used to transfer information about batching in
 	 * createplan.c and indxpath.c
 	 */
@@ -1310,11 +1305,6 @@ typedef struct RelOptInfo
 	void	  **extension_state pg_node_attr(read_write_ignore);
 	int			extension_state_allocated;
 
-	/*
-	 * YB_TODO_PG19MERGE: evaluate whether the YB-added fields below need
-	 * `pg_node_attr(read_write_ignore)` (or other pg_node_attr).
-	 */
-
 	/* used for YB relations */
 	bool		is_yb_relation; /* Is a YbRelation */
 
@@ -1337,7 +1327,7 @@ typedef struct RelOptInfo
 	 */
 	List	   *ybHintsOrigIndexlist;
 
-	PlannerInfo *ybRoot;
+	PlannerInfo *ybRoot pg_node_attr(read_write_ignore);
 
 	char	   *ybRelationName;
 

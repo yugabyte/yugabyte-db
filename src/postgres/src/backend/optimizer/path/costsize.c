@@ -5824,9 +5824,12 @@ compute_semi_anti_join_factors(PlannerInfo *root,
 	Selectivity jselec;
 	Selectivity nselec;
 	Selectivity avgmatch;
-	SpecialJoinInfo temp_sjinfo;
+	SpecialJoinInfo norm_sjinfo;
 	List	   *joinquals;
 	ListCell   *l;
+
+	SpecialJoinInfo yb_dummy_sjinfo;
+	SpecialJoinInfo *yb_jselec_sjinfo = sjinfo;
 
 	/*
 	 * In an ANTI join, we must ignore clauses that are "pushed down", since
@@ -5850,22 +5853,24 @@ compute_semi_anti_join_factors(PlannerInfo *root,
 		joinquals = restrictlist;
 
 	/*
-	 * YB: The following code was modified to fix a PG bug detailed in #19021.
-	 * Note to PG15 mergers: temp_sjinfo was previously known as "norm_sjinfo".
+	 * YB: eqjoinsel() takes the join type from sjinfo; its jointype argument
+	 * is unused.  So unless sjinfo is a SEMI or ANTI join's, jselec is
+	 * estimated with a dummy semijoin of outerrel to innerrel: the sjinfo of
+	 * an inner_unique join describes an inner or outer join and would give
+	 * that join's own selectivity, not the fraction of outer rows that have
+	 * a match.  A SEMI or ANTI sjinfo is passed as is, because it already
+	 * gives the semijoin selectivity, measured on the semijoin's LHS
+	 * whichever side the path puts outer.
 	 */
-	temp_sjinfo.type = T_SpecialJoinInfo;
-	temp_sjinfo.min_lefthand = outerrel->relids;
-	temp_sjinfo.min_righthand = innerrel->relids;
-	temp_sjinfo.syn_lefthand = outerrel->relids;
-	temp_sjinfo.syn_righthand = innerrel->relids;
-	temp_sjinfo.jointype = (jointype == JOIN_ANTI) ? JOIN_ANTI : JOIN_SEMI;
-	/* we don't bother trying to make the remaining fields valid */
-	temp_sjinfo.lhs_strict = false;
-	/* YB_TODO_PG19MERGE: SpecialJoinInfo.delay_upper_joins removed in PG19. */
-	temp_sjinfo.semi_can_btree = false;
-	temp_sjinfo.semi_can_hash = false;
-	temp_sjinfo.semi_operators = NIL;
-	temp_sjinfo.semi_rhs_exprs = NIL;
+	if (sjinfo == NULL ||
+		(sjinfo->jointype != JOIN_SEMI && sjinfo->jointype != JOIN_ANTI))
+	{
+		init_dummy_sjinfo(&yb_dummy_sjinfo, outerrel->relids,
+						  innerrel->relids);
+		yb_dummy_sjinfo.jointype =
+			(jointype == JOIN_ANTI) ? JOIN_ANTI : JOIN_SEMI;
+		yb_jselec_sjinfo = &yb_dummy_sjinfo;
+	}
 
 	/*
 	 * Get the JOIN_SEMI or JOIN_ANTI selectivity of the join clauses.
@@ -5874,18 +5879,18 @@ compute_semi_anti_join_factors(PlannerInfo *root,
 									joinquals,
 									0,
 									(jointype == JOIN_ANTI) ? JOIN_ANTI : JOIN_SEMI,
-									&temp_sjinfo);
+									yb_jselec_sjinfo);
 
 	/*
 	 * Also get the normal inner-join selectivity of the join clauses.
 	 */
-	init_dummy_sjinfo(&temp_sjinfo, outerrel->relids, innerrel->relids);
+	init_dummy_sjinfo(&norm_sjinfo, outerrel->relids, innerrel->relids);
 
 	nselec = clauselist_selectivity(root,
 									joinquals,
 									0,
 									JOIN_INNER,
-									&temp_sjinfo);
+									&norm_sjinfo);
 
 	/* Avoid leaking a lot of ListCells */
 	if (IS_OUTER_JOIN(jointype))
@@ -7836,8 +7841,6 @@ yb_get_docdb_result_width(Path *path, PlannerInfo *root, bool is_index_path,
 	/* TODO(#20956): Columns needed for rechecking need to be added */
 	if (bms_num_members(attrs) > 0)
 	{
-		/* YB_TODO_PG19MERGE: PG19 removed destructive bms_first_member;
-		 * use non-destructive bms_next_member iteration. */
 		int			bms_index = -1;
 
 		attrs = yb_expand_whole_row_attrs(attrs,
@@ -7880,6 +7883,8 @@ yb_get_docdb_result_width(Path *path, PlannerInfo *root, bool is_index_path,
 
 			result_width += get_attavgwidth(baserel_oid, attnum);
 		}
+
+		bms_free(attrs);
 	}
 
 	/*
