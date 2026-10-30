@@ -1670,7 +1670,8 @@ TEST_P(PgVectorIndexTest, BootstrapTransactionCommittedAfterIndexCreation) {
   ASSERT_EQ(ASSERT_RESULT(VectorIndexInconsistencies()), "");
 }
 
-// See issue #35895.
+// A vector index storage the tablet does not list, as a restore leaves on a crash, is deleted at
+// tserver startup. See issue #35895.
 TEST_P(PgVectorIndexTest, StartupDeletesStorageOfUnlistedIndex) {
   constexpr size_t kNumRows = 64;
   constexpr size_t kQueryLimit = 5;

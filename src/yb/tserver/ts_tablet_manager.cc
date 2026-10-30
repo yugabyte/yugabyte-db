@@ -1087,21 +1087,22 @@ void TSTabletManager::ScanTabletDataDirsOnStartup() {
     }
     for (const auto& table : *tables) {
       auto table_dir = JoinPathSegments(tables_dir, table);
-      auto tablets = fs_manager_->env()->GetChildren(table_dir, ExcludeDots::kTrue);
-      if (!tablets.ok()) {
+      // A tablet's RocksDB dir and its sibling storage dirs: <tablet dir>.intents, .snapshots and
+      // .vi-*.
+      auto children = fs_manager_->env()->GetChildren(table_dir, ExcludeDots::kTrue);
+      if (!children.ok()) {
         LOG_WITH_PREFIX(WARNING)
-            << "Failed to get tablets in " << table_dir << ": " << tablets.status();
+            << "Failed to list " << table_dir << ": " << children.status();
         continue;
       }
-      for (const auto& tablet : *tablets) {
-        auto vector_index_pos = tablet.find(vector_index_infix);
+      for (const auto& child : *children) {
+        auto vector_index_pos = child.find(vector_index_infix);
         if (vector_index_pos != std::string::npos) {
-          vector_index_storages[tablet.substr(0, vector_index_pos)].push_back(
-              tablet.substr(vector_index_pos + 1));
-          continue;
+          vector_index_storages[child.substr(0, vector_index_pos)].push_back(
+              child.substr(vector_index_pos + 1));
         }
         auto checkpoints_dir = JoinPathSegments(
-            table_dir, tablet, RemoteBootstrapSession::kCheckpointsDir);
+            table_dir, child, RemoteBootstrapSession::kCheckpointsDir);
         if (fs_manager_->env()->FileExists(checkpoints_dir)) {
           LOG_WITH_PREFIX(INFO) << "Cleaning up checkpoints dir: " << yb::ToString(checkpoints_dir);
           auto status = fs_manager_->env()->DeleteRecursively(checkpoints_dir);
