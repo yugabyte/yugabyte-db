@@ -580,9 +580,10 @@ class GoogleCloudAdmin():
 
         self.metadata = metadata
         self.waiter = Waiter(self.project, self.compute)
-        # Memoizes instance template name -> template, to avoid refetching the template for every
-        # disk we create during a single invocation.
+        # Memoize instance template name -> template and -> (boot disk key, data disk key), to
+        # avoid refetching the template for every disk we create during a single invocation.
         self.templates = {}
+        self.template_kms_keys = {}
         self.oslogin = None
 
     def network(self, dest_vpc_id=None, host_vpc_id=None, per_region_meta=None,
@@ -706,6 +707,8 @@ class GoogleCloudAdmin():
         """
         if not template_name:
             return (None, None)
+        if template_name in self.template_kms_keys:
+            return self.template_kms_keys[template_name]
         template = self._read_instance_template(template_name)
         boot_key = None
         data_key = None
@@ -720,6 +723,7 @@ class GoogleCloudAdmin():
         if boot_key or data_key:
             logging.info("[app] Instance template {} CMEK keys: boot disk {}, data disks {}".format(
                 template_name, boot_key, data_key))
+        self.template_kms_keys[template_name] = (boot_key, data_key)
         return (boot_key, data_key)
 
     def create_disk(self, zone, instance_tags, body):
