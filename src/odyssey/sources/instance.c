@@ -410,7 +410,7 @@ error:
 
 /*
  * NOTE: This code has been duplicated from YBSetParentDeathSignal()
- * function present in `src/postgres/src/backend/utils/misc/pg_yb_utils.c`.
+ * function present in `src/postgres/src/common/pg_yb_common.c`.
  */
 void YbSetParentDeathSignal()
 {
@@ -420,7 +420,19 @@ void YbSetParentDeathSignal()
 		long int pdeathsig = strtol(pdeathsig_str, &end_ptr, 10);
 		if (end_ptr == pdeathsig_str + strlen(pdeathsig_str)) {
 			if (pdeathsig >= 1 && pdeathsig <= 31) {
+				char *parent_pid_str =
+					getenv("YB_YSQLCONNMGR_PARENT_PID");
+				pid_t parent_pid =
+					parent_pid_str ? atoi(parent_pid_str) : 0;
+				unsetenv("YB_YSQLCONNMGR_PARENT_PID");
 				prctl(PR_SET_PDEATHSIG, pdeathsig);
+				/*
+				 * The signal is only sent if the parent dies after
+				 * prctl(), so deliver it ourselves if the parent
+				 * already died while this process was starting up.
+				 */
+				if (parent_pid != 0 && getppid() != parent_pid)
+					raise(pdeathsig);
 			} else {
 				fprintf(stdout,
 					"Error: YB_YSQLCONNMGR_PDEATHSIG is an invalid signal value: %ld",

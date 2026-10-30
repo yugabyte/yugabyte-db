@@ -311,6 +311,30 @@ TEST_F(PgWrapperTest, TestStartStop) {
   ));
 }
 
+// The parent death signal only fires if the tserver dies after postgres asks for it, so a tserver
+// that dies while postgres is still starting must not leave an orphaned postmaster behind.
+TEST_F(PgWrapperTest, PostmasterExitsIfTServerDiesWhileItStarts) {
+  constexpr auto kParentDeathSignalDelay = 5s;
+  const std::string kPostmasterStarted = "PostgreSQL server running as pid ";
+  LogWaiter postmaster_started(pg_ts, kPostmasterStarted);
+  pg_ts->Shutdown();
+  ASSERT_OK(pg_ts->Restart(
+      ExternalMiniClusterOptions::kDefaultStartCqlProxy,
+      {{"TEST_pg_delay_before_parent_death_signal_ms",
+        AsString(ToMilliseconds(kParentDeathSignalDelay))}}));
+  ASSERT_OK(postmaster_started.WaitFor(30s));
+  const auto line = postmaster_started.matched_log_line();
+  const pid_t postmaster_pid =
+      std::stoi(line.substr(line.find(kPostmasterStarted) + kPostmasterStarted.size()));
+
+  pg_ts->Shutdown();
+  ASSERT_OK(WaitFor(
+      [postmaster_pid] { return kill(postmaster_pid, 0) != 0; },
+      kParentDeathSignalDelay + 10s, "Waiting for the orphaned postmaster to exit"));
+
+  ASSERT_OK(pg_ts->Restart());
+}
+
 TEST_F(PgWrapperTest, TestCompactHistoryWithTxn) {
   ASSERT_NO_FATALS(CreateTable("CREATE TABLE mytbl (k INT PRIMARY KEY, v TEXT)"));
 
