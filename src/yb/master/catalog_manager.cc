@@ -1670,6 +1670,7 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
     ts_desc->set_has_tablet_report(false);
     ts_desc->ResetYsqlDbPins();
   }
+  master_->ts_manager()->ResetClusterYsqlDbPins();
 
   {
     LockGuard lock(permissions_manager()->mutex());

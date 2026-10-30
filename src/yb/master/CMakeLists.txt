@@ -184,6 +184,7 @@ set(MASTER_SRCS
   yql_views_vtable.cc
   yql_virtual_table.cc
   yql_vtable_iterator.cc
+  ysql_db_pin_index.cc
   ysql/ysql_catalog_config.cc
   ysql/ysql_initdb_major_upgrade_handler.cc
   ysql/ysql_manager.cc
