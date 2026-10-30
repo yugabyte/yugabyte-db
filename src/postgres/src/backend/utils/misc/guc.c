@@ -9949,9 +9949,12 @@ ResetAllOptions(void)
 			/*
 			 * YB: Conn mgr also applies a logical client's PGC_BACKEND /
 			 * PGC_SU_BACKEND startup settings, so its reset must undo them
-			 * too.
+			 * too. Limit this to GUCs it saved a default for, so the
+			 * backend's own startup settings (e.g.
+			 * yb_ycm_internal_is_client_ysqlconnmgr) are left alone.
 			 */
-			!yb_conn_mgr_modifying_defaults)
+			!(yb_conn_mgr_modifying_defaults &&
+			  gconf->ysql_conn_mgr_saved_default))
 			continue;
 
 		/* YB: Reset defaults set by connection manager */
