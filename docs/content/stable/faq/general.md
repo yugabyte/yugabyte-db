@@ -213,15 +213,15 @@ Migrate data
 
 ### How does YugabyteDB distribute data?
 
-The table data is split into [tablets](/stable/architecture/key-concepts/#tablet) and the table rows are mapped to the tablets via [sharding](/stable/explore/linear-scalability/data-distribution/). The tablets themselves are distributed across the various nodes in the cluster.
+The table data is split into [tablets](/stable/architecture/key-concepts/#tablet) and the table rows are mapped to the tablets via [sharding](/stable/architecture/docdb-sharding/sharding/). The tablets themselves are distributed across the various nodes in the cluster.
 
-{{<lead link="/stable/explore/linear-scalability/data-distribution/">}}
-Data distribution
+{{<lead link="/stable/architecture/docdb-sharding/sharding/">}}
+Hash and range sharding
 {{</lead>}}
 
 ### How does YugabyteDB scale?
 
-YugabyteDB scales seamlessly when new nodes are added to the cluster without any service disruption. Table data is [stored distributed](#how-does-yugabytedb-distribute-data) in tablets. When new nodes are added, the rebalancer moves certain tablets to other nodes and keeps the number of tablets on each node more or less the same. As data grows, these tablets also split into two and are moved to other nodes.
+YugabyteDB scales seamlessly when new nodes are added to the cluster without any service disruption. Table data is [stored distributed](#how-does-yugabytedb-distribute-data) in tablets. When new nodes are added, the [rebalancer](/stable/architecture/docdb-sharding/cluster-balancing/) moves certain tablets to other nodes and keeps the number of tablets on each node more or less the same. As data grows, these tablets also [split](/stable/architecture/docdb-sharding/tablet-splitting/) into two and are moved to other nodes.
 
 {{<lead link="/stable/explore/linear-scalability/">}}
 Horizontal scalability

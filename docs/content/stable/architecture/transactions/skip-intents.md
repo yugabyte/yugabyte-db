@@ -146,7 +146,7 @@ Look for `skip_intents_writes` under the `yb.tabletserver` entity. Sample it bef
 
 | Feature | Status |
 | :------ | :----- |
-| [xCluster replication](../../../explore/going-beyond-sql/asynchronous-replication-ysql/) | Fully supported. Replicated data is identical either way. |
+| [xCluster replication](../../docdb-replication/async-replication/) | Fully supported. Replicated data is identical either way. |
 | [Change data capture](../../../additional-features/change-data-capture/) and [logical replication](../../../additional-features/change-data-capture/using-logical-replication/) | The optimization disables itself automatically in any database that has a publication or a CDC stream, so replication stays correct. No action is required, but data loads in those databases will not get the speed-up. |
 | [Backups](../../../manage/backup-restore/), snapshots, and [point-in-time recovery](../../../explore/cluster-management/point-in-time-recovery-ysql/) | Unaffected. Restoring to a point before the table was created removes the table and its data, as expected. |
 | Rolling upgrades | Safe. The optimization may disable itself temporarily while a cluster is partly upgraded. |

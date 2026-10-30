@@ -572,7 +572,7 @@ The higher the number, the more batching is done. 1024 is recommended.
 Default: `false`
 {{% /tags/wrap %}}
 
-Controls whether or not reading from followers is enabled. For more information, refer to [Follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/).
+Controls whether or not reading from followers is enabled. For more information, refer to [Follower reads](../../../additional-features/follower-reads/).
 
 ##### yb_follower_read_staleness_ms
 
@@ -592,7 +592,7 @@ Sets the maximum allowable staleness. Although the default is recommended, you c
 Default: `false`
 {{% /tags/wrap %}}
 
-Turn this setting `ON/TRUE/1` to make all the transactions in the current session read-only. This is helpful when you want to run reports or set up [follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/#read-only-transaction).
+Turn this setting `ON/TRUE/1` to make all the transactions in the current session read-only. This is helpful when you want to run reports or set up [follower reads](../../../additional-features/follower-reads/#read-only-transaction).
 
 ##### default_transaction_isolation
 
@@ -1923,10 +1923,10 @@ Leader lease duration should be longer than the heartbeat interval, and less tha
 
 {{% tags/wrap %}}
 
-Default: `10000` (10 seconds)
+Default: `60000` (60 seconds)
 {{% /tags/wrap %}}
 
-Specifies the maximum bounded staleness (duration), in milliseconds, before a follower forwards a read request to the leader.
+How far the follower's safe time may be behind now, in milliseconds, before the follower rejects the read and the client retries it at the leader.
 
 In a geo-distributed cluster, with followers located a long distance from the tablet leader, you can use this setting to increase the maximum bounded staleness.
 
@@ -2531,7 +2531,7 @@ Enable per table mutation (INSERT, UPDATE, DELETE) counting. The Auto Analyze se
 
 ### Explicit row locking flags
 
-To learn about explicit row locking, see [Row-level locks](../../../explore/transactions/explicit-locking/#row-level-locks) and [Explicit row locking modes](../../../explore/transactions/explicit-locking/#explicit-row-locking-modes).
+To learn about explicit row locking, see [Row-level locks](../../../architecture/transactions/concurrency-control/#row-level-explicit-locking-clauses) and [Explicit row locking modes](../../../explore/transactions/explicit-locking/#explicit-row-locking-modes).
 
 ##### --ysql_yb_explicit_row_locking_batch_size
 
@@ -3129,7 +3129,7 @@ Specifies the default transaction isolation level.
 
 Valid values: `serializable`, `'repeatable read'`, `'read committed'`, and `'read uncommitted'`.
 
-[Read Committed isolation](../../../explore/transactions/isolation-levels/) is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`.
+[Read Committed isolation](../../../architecture/transactions/read-committed/) is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`.
 
 For new universes running v2025.2 or later, `yb_enable_read_committed_isolation` is set to `true` by default when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon.
 
@@ -3142,11 +3142,11 @@ If `yb_enable_read_committed_isolation` is `false`, the Read Committed isolation
 Default: `false`
 {{% /tags/wrap %}}
 
-Enables Read Committed isolation.
+Enables [Read Committed isolation](../../../architecture/transactions/read-committed/).
 
 For new universes running v2025.2 or later, `yb_enable_read_committed_isolation` is set to `true` by default when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon.
 
-When set to false, Read Committed (and Read Uncommitted) isolation level of YSQL fall back to the stricter [Snapshot isolation](../../../explore/transactions/isolation-levels/). See also the [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag.
+When set to false, Read Committed (and Read Uncommitted) isolation level of YSQL fall back to the stricter Snapshot isolation. See also the [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag.
 
 ##### --pg_client_use_shared_memory
 
