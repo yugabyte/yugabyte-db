@@ -1225,33 +1225,80 @@ Status TabletServer::KillPgUnlocked() const {
   return STATUS(IllegalState, "Pg killer callback not registered, cannot restart PG");
 }
 
-Status TabletServer::PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp) {
+void TabletServer::PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp) {
+  if (heartbeat_resp.has_tserver_list_update()) {
+    ApplyTServerListUpdate(heartbeat_resp.tserver_list_update());
+  } else if (heartbeat_resp.tservers_size() > 0) {
+    // A master that predates versioned lists sends every live tserver on every heartbeat.
+    master::TServerListUpdatePB full;
+    full.set_full(true);
+    for (const auto& ts_info_pb : heartbeat_resp.tservers()) {
+      auto* entry = full.add_tservers();
+      *entry->mutable_instance() = ts_info_pb.tserver_instance();
+      *entry->mutable_registration() = ts_info_pb.registration();
+      entry->set_alive(true);
+    }
+    ApplyTServerListUpdate(full);
+  }
+}
+
+void TabletServer::ApplyTServerListUpdate(const master::TServerListUpdatePB& update) {
   std::lock_guard l(lock_);
-  // We reset the list each time, since we want to keep the tservers that are live from the
-  // master's perspective.
-  // TODO: In the future, we should enhance the logic here to keep track information retrieved
-  // from the master and compare it with information stored here. Based on this information, we
-  // can only send diff updates CQL clients about whether a node came up or went down.
-  live_tservers_.clear();
-  for (const auto& ts_info_pb : heartbeat_resp.tservers()) {
-    const auto& ts_uuid = ts_info_pb.tserver_instance().permanent_uuid();
-    live_tservers_[ts_uuid] = ts_info_pb;
-    if (!remote_tservers_.contains(ts_uuid)) {
-      remote_tservers_[ts_uuid] = std::make_shared<RemoteTabletServer>(ts_info_pb);
+  // A delta is relative to the version this tserver sent; a stale one has nothing new.
+  if (!update.full() && update.version() <= tserver_list_version_) {
+    return;
+  }
+  if (update.full()) {
+    known_tservers_.clear();
+  }
+  for (const auto& ts_uuid : update.removed()) {
+    known_tservers_.erase(ts_uuid);
+  }
+  for (const auto& entry : update.tservers()) {
+    if (!entry.has_instance() || !entry.has_registration()) {
+      LOG(DFATAL) << "Tserver list entry without instance or registration: "
+                  << entry.ShortDebugString();
+      continue;
+    }
+    const auto& ts_uuid = entry.instance().permanent_uuid();
+    auto& known = known_tservers_[ts_uuid];
+    *known.info.mutable_tserver_instance() = entry.instance();
+    *known.info.mutable_registration() = entry.registration();
+    known.alive = entry.alive();
+    if (known.alive && !remote_tservers_.contains(ts_uuid)) {
+      remote_tservers_[ts_uuid] = std::make_shared<RemoteTabletServer>(known.info);
     }
   }
+  tserver_list_version_ = update.version();
   // Prune handles to the TServers that are no longer alive.
   std::erase_if(remote_tservers_, [&](const auto& remote_ts_pair) REQUIRES(lock_) {
-    return !live_tservers_.contains(remote_ts_pair.first);
+    auto it = known_tservers_.find(remote_ts_pair.first);
+    return it == known_tservers_.end() || !it->second.alive;
   });
-  return Status::OK();
+}
+
+uint64_t TabletServer::tserver_list_version() const {
+  SharedLock l(lock_);
+  return tserver_list_version_;
+}
+
+std::vector<TabletServer::KnownTServer> TabletServer::GetKnownTServers() const {
+  SharedLock l(lock_);
+  std::vector<KnownTServer> result;
+  result.reserve(known_tservers_.size());
+  for (const auto& [_, known] : known_tservers_) {
+    result.push_back(known);
+  }
+  return result;
 }
 
 Status TabletServer::GetLiveTServers(std::vector<master::TSInformationPB> *live_tservers) const {
   SharedLock l(lock_);
-  live_tservers->reserve(live_tservers_.size());
-  for (const auto& [_, ts_info_pb] : live_tservers_) {
-    live_tservers->push_back(ts_info_pb);
+  live_tservers->reserve(known_tservers_.size());
+  for (const auto& [_, known] : known_tservers_) {
+    if (known.alive) {
+      live_tservers->push_back(known.info);
+    }
   }
   return Status::OK();
 }
