@@ -172,6 +172,9 @@ using RetryingTSRpcTaskWithTablePtr = std::shared_ptr<RetryingTSRpcTaskWithTable
 struct PgCatalogVersion;
 using DbOidToCatalogVersionMap = std::map<uint32_t, PgCatalogVersion>;
 using DbOidToHybridTimeMap = std::unordered_map<PgOid, HybridTime>;
+// Ordered so that two reports from one tserver diff in a single merge pass.
+using OrderedDbOidToHybridTimeMap = std::map<PgOid, HybridTime>;
+class YsqlDbPinIndex;
 
 // This map represents pg_yb_invalidation_messages: (db_oid, current_version) => inval messages.
 // If the message value is nullopt, it means a SQL null value. If it is empty string, it means

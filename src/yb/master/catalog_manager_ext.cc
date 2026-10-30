@@ -3911,7 +3911,7 @@ namespace {
 // The oldest read time pinned by a live ysql transaction anywhere in the cluster, as reported by
 // tserver heartbeats, or an invalid HybridTime when nothing is pinned. Only populated on the master
 // leader, which is the only master tservers heartbeat to.
-HybridTime ClusterYsqlOldestPinnedReadTime(const DbOidToHybridTimeMap& pins) {
+HybridTime ClusterYsqlOldestPinnedReadTime(const OrderedDbOidToHybridTimeMap& pins) {
   HybridTime pin = HybridTime::kInvalid;
   // The sys catalog tablet applies a single cutoff to all of its cotables, so the catalog of every
   // database is retained back to the oldest pin in the cluster.

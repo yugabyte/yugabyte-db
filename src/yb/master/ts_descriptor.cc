@@ -42,6 +42,7 @@
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_util.h"
 #include "yb/master/master_ysql_lease.pb.h"
+#include "yb/master/ysql_db_pin_index.h"
 
 #include "yb/util/status_format.h"
 
@@ -182,9 +183,14 @@ std::string TSDescriptor::placement_id() const {
 }
 
 Status TSDescriptor::UpdateFromHeartbeat(
-    const TSHeartbeatRequestPB& req, const TSDescriptor::WriteLock& lock) {
+    const TSHeartbeatRequestPB& req, const TSDescriptor::WriteLock& lock,
+    YsqlDbPinIndex& pin_index) {
   DCHECK_GE(req.num_live_tablets(), 0);
   DCHECK_GE(req.leader_count(), 0);
+  if (lock->pb.state() == SysTabletServerEntryPB::REMOVED) {
+    return STATUS_FORMAT(
+        IllegalState, "Processing ts heartbeat for ts $0 raced with removing the ts", id());
+  }
   {
     std::lock_guard l(mutex_);
     RETURN_NOT_OK(IsReportCurrentUnlocked(
@@ -217,18 +223,16 @@ Status TSDescriptor::UpdateFromHeartbeat(
     }
 
     // Populate local per-tserver database pins from tserver heartbeat
-    ts_ysql_db_oldest_pinned_read_times_.clear();
+    OrderedDbOidToHybridTimeMap pins;
     for (const auto& [db_oid, pin] : req.ts_ysql_db_oldest_pinned_read_times()) {
       HybridTime pin_ht = HybridTime::FromPB(pin.db_level_oldest_read_time());
       if (pin_ht.is_valid()) {
-        ts_ysql_db_oldest_pinned_read_times_.emplace(static_cast<PgOid>(db_oid), pin_ht);
+        pins.emplace(static_cast<PgOid>(db_oid), pin_ht);
       }
     }
+    pin_index.Update(id(), ts_ysql_db_oldest_pinned_read_times_, pins);
+    ts_ysql_db_oldest_pinned_read_times_ = std::move(pins);
     has_ysql_db_pins_ = true;
-  }
-  if (lock->pb.state() == SysTabletServerEntryPB::REMOVED) {
-    return STATUS_FORMAT(
-        IllegalState, "Processing ts heartbeat for ts $0 raced with removing the ts", id());
   }
   if (lock->pb.state() != SysTabletServerEntryPB::LIVE) {
     lock.mutable_data()->pb.set_state(SysTabletServerEntryPB::LIVE);
@@ -247,11 +251,6 @@ MonoTime TSDescriptor::LastHeartbeatTime() const {
   return last_heartbeat_;
 }
 
-DbOidToHybridTimeMap TSDescriptor::GetYsqlDbOldestPinnedReadTimes() const {
-  SharedLock<decltype(mutex_)> l(mutex_);
-  return ts_ysql_db_oldest_pinned_read_times_;
-}
-
 bool TSDescriptor::has_ysql_db_pins() const {
   SharedLock<decltype(mutex_)> l(mutex_);
   return has_ysql_db_pins_;
@@ -261,6 +260,16 @@ void TSDescriptor::ResetYsqlDbPins() {
   std::lock_guard l(mutex_);
   ts_ysql_db_oldest_pinned_read_times_.clear();
   has_ysql_db_pins_ = false;
+}
+
+void TSDescriptor::ClearYsqlDbPins(YsqlDbPinIndex& pin_index) {
+  std::lock_guard l(mutex_);
+  ClearYsqlDbPinsUnlocked(pin_index);
+}
+
+void TSDescriptor::ClearYsqlDbPinsUnlocked(YsqlDbPinIndex& pin_index) {
+  pin_index.Remove(id(), ts_ysql_db_oldest_pinned_read_times_);
+  ts_ysql_db_oldest_pinned_read_times_.clear();
 }
 
 int64_t TSDescriptor::latest_seqno() const {
@@ -600,7 +609,8 @@ bool TSDescriptor::IsReadOnlyTS(const ReplicationInfoPB& replication_info) const
   return !placement_uuid().empty();
 }
 
-std::optional<TSDescriptor::WriteLock> TSDescriptor::MaybeUpdateLiveness(MonoTime time) {
+std::optional<TSDescriptor::WriteLock> TSDescriptor::MaybeUpdateLiveness(
+    MonoTime time, YsqlDbPinIndex& pin_index) {
   auto proto_lock = LockForWrite();
   std::lock_guard<decltype(mutex_)> transient_lock(mutex_);
   // Unset only for a TServer registered from a Raft config that has not heartbeated since; such a
@@ -620,6 +630,8 @@ std::optional<TSDescriptor::WriteLock> TSDescriptor::MaybeUpdateLiveness(MonoTim
     proto_lock.mutable_data()->pb.set_state(SysTabletServerEntryPB::UNRESPONSIVE);
     // Force a full tablet report on recovery.
     set_has_tablet_report_unlocked(false);
+    // Only live tservers contribute to the cluster pins.
+    ClearYsqlDbPinsUnlocked(pin_index);
     const auto& addr = DesiredHostPort(proto_lock->pb.registration(), local_master_cloud_info_);
     LOG(WARNING) << "Marking tserver " << permanent_uuid() << " (" << addr.host() << ":"
                  << addr.port() << ")"
