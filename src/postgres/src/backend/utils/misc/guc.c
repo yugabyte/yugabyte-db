@@ -9945,7 +9945,13 @@ ResetAllOptions(void)
 
 		/* Don't reset non-SET-able values */
 		if (gconf->context != PGC_SUSET &&
-			gconf->context != PGC_USERSET)
+			gconf->context != PGC_USERSET &&
+			/*
+			 * YB: Conn mgr also applies a logical client's PGC_BACKEND /
+			 * PGC_SU_BACKEND startup settings, so its reset must undo them
+			 * too.
+			 */
+			!yb_conn_mgr_modifying_defaults)
 			continue;
 
 		/* YB: Reset defaults set by connection manager */
