@@ -1370,7 +1370,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
            * https://docs.google.com/document/d/1SJzZJrAqc0wkXTCuMS7UKi1-5xEuYQKCOOa3QWYpMeM/edit
            */
           GFlagsUtil.processHbaConfFlagIfRequired(
-              null, masterGFlags, confGetter, taskUniverseDetails.getUniverseUUID());
+              null, masterGFlags, confGetter, taskUniverseDetails.getUniverseUUID(), placementUuid);
         }
         GFlagsUtil.mergeCSVs(
             masterGFlags,
