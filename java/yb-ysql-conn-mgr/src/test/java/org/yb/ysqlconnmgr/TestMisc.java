@@ -418,6 +418,55 @@ public class TestMisc extends BaseYsqlConnMgr {
     testSequenceFunctions("SELECT lastval()");
   }
 
+  // In pooled_with_curval_lastval mode, currval/lastval before any nextval must raise PG's usual
+  // error rather than return a placeholder: currval used to return the start value, which the
+  // next nextval then handed out again.
+  @Test
+  public void testCurrvalLastvalUndefinedInPooledMode() throws Exception {
+    restartClusterWithFlags(Collections.emptyMap(),
+                            Collections.singletonMap("ysql_conn_mgr_sequence_support_mode",
+                                                     "pooled_with_curval_lastval"));
+
+    try (Connection suConn = getConnectionBuilder()
+             .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+             .connect();
+         Statement suStmt = suConn.createStatement()) {
+      suStmt.execute("CREATE ROLE seq_user LOGIN");
+      suStmt.execute("CREATE SEQUENCE undef_seq START 1");
+      suStmt.execute("GRANT USAGE, SELECT ON SEQUENCE undef_seq TO seq_user");
+    }
+
+    // Non-superuser, so that ysql_conn_mgr_superuser_sticky cannot pin the connection.
+    try (Connection conn = getConnectionBuilder()
+             .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+             .withUser("seq_user")
+             .connect();
+         Statement stmt = conn.createStatement()) {
+      assertTrue(verifySessionParameterValue(stmt, "is_superuser", "off"));
+
+      try {
+        stmt.executeQuery("SELECT currval('undef_seq')");
+        fail("Expected currval before nextval to fail");
+      } catch (SQLException e) {
+        assertTrue(e.getMessage(), e.getMessage().contains(
+            "currval of sequence \"undef_seq\" is not yet defined in this session"));
+      }
+
+      try {
+        stmt.executeQuery("SELECT lastval()");
+        fail("Expected lastval before nextval to fail");
+      } catch (SQLException e) {
+        assertTrue(e.getMessage(), e.getMessage().contains(
+            "lastval is not yet defined in this session"));
+      }
+
+      ResultSet rs = stmt.executeQuery("SELECT nextval('undef_seq')");
+      assertTrue(rs.next());
+      assertEquals(1, rs.getLong(1));
+      assertConnectionStickyState(stmt, false);
+    }
+  }
+
   private void testPgPreparedStatementsStateHelper() throws Exception {
     Properties props = new Properties();
     props.setProperty("prepareThreshold", "1");

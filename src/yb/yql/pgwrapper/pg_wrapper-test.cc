@@ -876,6 +876,7 @@ TEST_F(PgWrapperFlagsTest, YB_DISABLE_TEST_IN_TSAN(VerifyGFlagRuntimeTag)) {
 
   // Verify changing non-runtime flag fails
   ASSERT_NOK(SetFlagOnAllTServers("max_connections", "47"));
+  ASSERT_NOK(SetFlagOnAllTServers("ysql_conn_mgr_sequence_support_mode", "session"));
 }
 
 class PgWrapperOverrideFlagsTest : public PgWrapperFlagsTest {
@@ -1321,6 +1322,10 @@ TEST_F(PgWrapperCoDependentFlagsTest, ValidateCoDependentFlags) {
   // FLAG_IN_SET_VALIDATOR
   ASSERT_NO_FATALS(expect_err({{"otel_internal_log_level", "nope"}}, "otel_internal_log_level"));
   ASSERT_NO_FATALS(expect_ok({{"otel_internal_log_level", "warning"}}));
+  ASSERT_NO_FATALS(expect_err(
+      {{"ysql_conn_mgr_sequence_support_mode", "pooled_with_currval_lastval"}},
+      "ysql_conn_mgr_sequence_support_mode"));
+  ASSERT_NO_FATALS(expect_ok({{"ysql_conn_mgr_sequence_support_mode", "session"}}));
 
   // FLAG_GT_VALUE_VALIDATOR
   ASSERT_NO_FATALS(expect_err({{"pg_client_heartbeat_interval_ms", "500"}},
