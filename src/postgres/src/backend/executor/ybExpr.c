@@ -662,7 +662,7 @@ YbCanPushdownExpr(Expr *pg_expr, List **colrefs, Oid relid)
 	}
 	else if (yb_major_version_upgrade_compatibility > 0)
 	{
-		/* Mixed mode of any later major upgrade: no pushdown. */
+		/* Mixed mode of any later major upgrade: plans built now push nothing down. */
 		return false;
 	}
 
