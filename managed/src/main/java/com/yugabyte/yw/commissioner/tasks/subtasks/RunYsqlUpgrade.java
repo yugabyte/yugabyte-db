@@ -102,7 +102,8 @@ public class RunYsqlUpgrade extends UniverseTaskBase {
                 ysqlUpgradeAdminOperationTimeoutMs,
                 confGetter.getGlobalConf(GlobalConfKeys.ybcAdminOperationTimeoutMs)));
 
-    try (YBClient client = ybService.getClientWithConfig(clientConfig)) {
+    try (YBClient client =
+        ybService.getClientWithConfig(clientConfig.withClientCertOf(universe))) {
       validateAndUpgrade(client, universe);
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());

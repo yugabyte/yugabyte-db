@@ -36,6 +36,7 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagGroup.GroupName;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
+import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -131,6 +132,10 @@ public class GFlagsUtil {
   public static final String WEBSERVER_PORT = "webserver_port";
   public static final String WEBSERVER_INTERFACE = "webserver_interface";
   public static final String OPENSSL_REQUIRE_FIPS = "openssl_require_fips";
+  public static final String USE_CLIENT_CERTIFICATES =
+      "node_to_node_encryption_use_client_certificates";
+  public static final String NODE_TO_NODE_REQUIRED_UID = "node_to_node_encryption_required_uid";
+  public static final String VERIFY_CLIENT_ENDPOINT = "verify_client_endpoint";
   public static final String REDIS_PROXY_BIND_ADDRESS = "redis_proxy_bind_address";
   public static final String REDIS_PROXY_WEBSERVER_PORT = "redis_proxy_webserver_port";
   public static final String POSTMASTER_CGROUP = "postmaster_cgroup";
@@ -1220,6 +1225,103 @@ public class GFlagsUtil {
     }
   }
 
+  /** A user intent's gflag maps, keyed by where they come from, for error messages. */
+  private static Map<String, Map<String, String>> getUserGFlagMaps(
+      UniverseDefinitionTaskParams.UserIntent userIntent) {
+    Map<String, Map<String, String>> result = new LinkedHashMap<>();
+    if (userIntent.specificGFlags == null) {
+      // Create still accepts the deprecated maps and converts them to specificGFlags only after
+      // the checks run.
+      result.put("master gflags", userIntent.masterGFlags);
+      result.put("tserver gflags", userIntent.tserverGFlags);
+    } else if (!userIntent.specificGFlags.isInheritFromPrimary()) {
+      Collection<UUID> azUuids = new ArrayList<>(Collections.singletonList(null));
+      if (userIntent.specificGFlags.getPerAZ() != null) {
+        azUuids.addAll(userIntent.specificGFlags.getPerAZ().keySet());
+      }
+      for (UUID azUuid : azUuids) {
+        String az =
+            azUuid == null
+                ? ""
+                : " of AZ "
+                    + AvailabilityZone.maybeGet(azUuid)
+                        .map(AvailabilityZone::getCode)
+                        .orElse(azUuid.toString());
+        result.put(
+            "master gflags" + az, userIntent.specificGFlags.getGFlags(azUuid, ServerType.MASTER));
+        result.put(
+            "tserver gflags" + az, userIntent.specificGFlags.getGFlags(azUuid, ServerType.TSERVER));
+      }
+    }
+    return result;
+  }
+
+  /**
+   * useNodeToNodeClientCerts owns node_to_node_encryption_use_client_certificates, so the gflag
+   * can't be set by hand, except to false on a universe without it; while it is on, the identity
+   * checks the chart's client cert can't pass stay off.
+   */
+  public static void validateNodeToNodeClientCerts(
+      UniverseDefinitionTaskParams.UserIntent userIntent, boolean useClientCerts) {
+    getUserGFlagMaps(userIntent)
+        .values()
+        .forEach(gflags -> checkClientCertGFlags(gflags, "", useClientCerts));
+    validateNodeToNodeClientCertsOfHelmOverrides(
+        userIntent.universeOverrides, userIntent.azOverrides, useClientCerts);
+  }
+
+  /** As above for helm overrides. */
+  public static void validateNodeToNodeClientCertsOfHelmOverrides(
+      String universeOverrides, Map<String, String> azOverrides, boolean useClientCerts) {
+    List<String> overrides = new ArrayList<>();
+    overrides.add(universeOverrides);
+    if (azOverrides != null) {
+      overrides.addAll(azOverrides.values());
+    }
+    for (String overridesYaml : overrides) {
+      Map<String, String> flatOverrides = flattenHelmOverrides(overridesYaml);
+      checkClientCertGFlags(flatOverrides, "gflags.master.", useClientCerts);
+      checkClientCertGFlags(flatOverrides, "gflags.tserver.", useClientCerts);
+    }
+  }
+
+  private static void checkClientCertGFlags(
+      @Nullable Map<String, String> gflags, String prefix, boolean useClientCerts) {
+    if (gflags == null) {
+      return;
+    }
+    // false is allowed where it changes nothing, so universes that set it before this check keep
+    // passing edits and gflags upgrades.
+    String value = gflags.get(prefix + USE_CLIENT_CERTIFICATES);
+    if (value != null && (useClientCerts || !"false".equalsIgnoreCase(value))) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Don't set %s; YugabyteDB Anywhere sets it from useNodeToNodeClientCerts, chosen at"
+                  + " universe creation. Remove it with a gflags upgrade.",
+              USE_CLIENT_CERTIFICATES));
+    }
+    if (useClientCerts
+        && (StringUtils.isNotBlank(gflags.get(prefix + NODE_TO_NODE_REQUIRED_UID))
+            || "true".equalsIgnoreCase(gflags.get(prefix + VERIFY_CLIENT_ENDPOINT)))) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "useNodeToNodeClientCerts doesn't support %s or %s: YugabyteDB Anywhere's"
+                  + " client certificate matches neither",
+              NODE_TO_NODE_REQUIRED_UID, VERIFY_CLIENT_ENDPOINT));
+    }
+  }
+
+  private static Map<String, String> flattenHelmOverrides(@Nullable String overridesYaml) {
+    try {
+      return HelmUtils.flattenMap(HelmUtils.convertYamlToMap(overridesYaml));
+    } catch (Exception e) {
+      // Overrides that cannot be read cannot be checked, so they are not accepted either.
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Kubernetes overrides are not valid YAML: " + e.getMessage());
+    }
+  }
   /**
    * Checks consistency between gflags and userIntent. Throws PlatformServiceException if any
    * problems are found.

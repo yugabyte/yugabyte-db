@@ -87,6 +87,7 @@ import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupNodeRetriever;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
+import com.yugabyte.yw.common.certmgmt.RpcClientCert;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
@@ -3318,6 +3319,21 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
   }
 
+  public void createWaitForRpcClientCertTask(Universe universe) {
+    if (!RpcClientCert.isClientCertRequired(universe)) {
+      return;
+    }
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup(
+            WaitForRpcClientCert.class.getSimpleName(), SubTaskGroupType.ConfigureUniverse);
+    WaitForRpcClientCert task = createTask(WaitForRpcClientCert.class);
+    WaitForRpcClientCert.Params params = new WaitForRpcClientCert.Params();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
   public SubTaskGroup createUpdateConsistencyCheckTask() {
     SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateConsistencyCheckTable");
     UpdateConsistencyCheck task = createTask(UpdateConsistencyCheck.class);
@@ -5863,8 +5879,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   protected boolean isServerAlive(
       NodeDetails node, ServerType server, String masterAddrs, long timeoutMs) {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    String certificate = universe.getCertificateNodetoNode();
-    try (YBClient client = ybService.getClient(masterAddrs, certificate)) {
+    try (YBClient client = ybService.getUniverseClient(universe, masterAddrs)) {
       HostAndPort hp =
           HostAndPort.fromParts(
               node.cloudInfo.private_ip,

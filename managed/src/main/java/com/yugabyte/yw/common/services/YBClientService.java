@@ -15,6 +15,9 @@ public interface YBClientService {
 
   YBClient getUniverseClient(Universe universe);
 
+  /** A client for the given masters of universe, presenting its client cert if it requires one. */
+  YBClient getUniverseClient(Universe universe, String masterHostPorts);
+
   YBClient getClientWithConfig(YbClientConfig config);
 
   Optional<String> getServerVersion(YBClient client, String nodeIp, int port);

@@ -98,7 +98,8 @@ public class DeleteReplicationOnSource extends XClusterConfigTaskBase {
       clientConfig =
           ybcClientConfigFactory.create(sourceUniverseMasterAddresses, sourceUniverseCertificate);
     }
-    try (YBClient client = ybService.getClientWithConfig(clientConfig)) {
+    try (YBClient client =
+        ybService.getClientWithConfig(clientConfig.withClientCertOf(sourceUniverse))) {
       Set<CommonNet.HostPortPB> targetMasterAddresses =
           new HashSet<>(
               NetUtil.parseStringsAsPB(

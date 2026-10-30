@@ -1037,6 +1037,7 @@ public class OperatorUtilsTest extends FakeDBApplication {
     assertEquals(Long.valueOf(userIntent.replicationFactor), spec.getReplicationFactor());
     assertEquals(userIntent.enableNodeToNodeEncrypt, spec.getEnableNodeToNodeEncrypt());
     assertEquals(userIntent.enableClientToNodeEncrypt, spec.getEnableClientToNodeEncrypt());
+    assertEquals(userIntent.useNodeToNodeClientCerts, spec.getUseNodeToNodeClientCerts());
     assertEquals(userIntent.ybSoftwareVersion, spec.getYbSoftwareVersion());
     assertEquals(providerName, spec.getProviderName());
     assertEquals(userIntent.enableIPV6, spec.getEnableIPV6());
