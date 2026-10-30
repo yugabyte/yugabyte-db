@@ -9947,11 +9947,13 @@ ResetAllOptions(void)
 		if (gconf->context != PGC_SUSET &&
 			gconf->context != PGC_USERSET &&
 			/*
-			 * YB: Conn mgr also applies a logical client's PGC_BACKEND /
-			 * PGC_SU_BACKEND startup settings, so its reset must undo them
-			 * too. Limit this to GUCs it saved a default for, so the
-			 * backend's own startup settings (e.g.
-			 * yb_ycm_internal_is_client_ysqlconnmgr) are left alone.
+			 * YB: The conn mgr reset undoes everything its 'G' set, i.e. every
+			 * GUC with a conn mgr saved default. set_config_option() only lets
+			 * 'G' (context PGC_BACKEND / PGC_SU_BACKEND) set PGC_USERSET,
+			 * PGC_SUSET, PGC_BACKEND and PGC_SU_BACKEND GUCs, so this only
+			 * extends the reset to the BACKEND contexts. The backend's own
+			 * startup settings (e.g. yb_ycm_internal_is_client_ysqlconnmgr)
+			 * were not set by 'G', have no saved default, and are left alone.
 			 */
 			!(yb_conn_mgr_modifying_defaults &&
 			  gconf->ysql_conn_mgr_saved_default))
