@@ -703,6 +703,12 @@ extern bool yb_enable_fkey_batched_docdb_lookup_when_types_mismatch;
 extern bool yb_enable_nop_alter_role_optimization;
 
 /*
+ * Skip rebuild of expression and partial indexes during ALTER COLUMN ... TYPE
+ * when the table is not rewritten.
+ */
+extern bool yb_alter_type_reuse_expr_and_partial_indexes;
+
+/*
  * Compatibility option to ignore FREEZE with COPY FROM.
  */
 extern bool yb_ignore_freeze_with_copy;

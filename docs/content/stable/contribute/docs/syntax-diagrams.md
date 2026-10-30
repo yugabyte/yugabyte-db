@@ -113,7 +113,7 @@ Check the syntax of your rule carefully; refer to [Caveats](#caveats) for exampl
 
 To specify the syntax diagrams to display on a page, use the `ebnf` shortcode and provide the rule name of each [_syntax rule_](#syntax-rule) that you want included as a separate line ending with a comma.
 
-For example, for [window function invocations](../../../api/ysql/exprs/window_functions/invocation-syntax-semantics#syntax), to show `select_start` and `window_clause` on the page, you would add the following syntax diagram set:
+For example, for [window function invocations](../../../api/ysql/exprs/window_functions/invocation-syntax-semantics/#syntax), to show `select_start` and `window_clause` on the page, you would add the following syntax diagram set:
 
 ```ebnf
 {{%/*ebnf*/%}}

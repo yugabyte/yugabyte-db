@@ -97,7 +97,7 @@ DECLARE_int32(xcluster_automatic_target_create_table_ddl_rpc_timeout_sec);
 DECLARE_uint32(xcluster_ddl_tables_retention_secs);
 DECLARE_uint32(xcluster_max_old_schema_versions);
 DECLARE_uint32(xcluster_poller_task_delay_considered_stuck_secs);
-DECLARE_bool(xcluster_enable_target_applied_filter);
+DECLARE_bool(xcluster_enable_index_backfill_replication);
 DECLARE_bool(enforce_xcluster_guarded_lease);
 DECLARE_uint32(xcluster_guarded_lease_duration_ms);
 DECLARE_bool(xcluster_target_manual_override);
@@ -7183,7 +7183,7 @@ TEST_F(XClusterDDLReplicationIndexBackfillTest, ReplicatedFromSource) {
 // Flag off, so the target falls back to the legacy behavior of running its own local backfill.
 // Also verify changing the flag after the stream is created does not affect the backfill decision.
 TEST_F(XClusterDDLReplicationIndexBackfillTest, LegacyLocalBackfill) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_enable_target_applied_filter) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_enable_index_backfill_replication) = false;
   ASSERT_OK(SetUpClustersAndReplication());
   ASSERT_OK(CreateBaseTable());
 
@@ -7195,8 +7195,8 @@ TEST_F(XClusterDDLReplicationIndexBackfillTest, LegacyLocalBackfill) {
   ASSERT_OK(producer_conn_->ExecuteFormat(
       "CREATE INDEX $0 ON $1($2 ASC)", kIndexName, kTableName, kCol));
 
-  // Promote the flag after the stream already exists, which should not affect backfill decision.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_enable_target_applied_filter) = true;
+  // Turn the flag on after the stream already exists, which should not affect backfill decision.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_enable_index_backfill_replication) = true;
 
   // Unblock the replication to the target and the target takes the local backfill path.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 0;

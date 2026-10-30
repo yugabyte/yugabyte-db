@@ -31,6 +31,7 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
 #include "yb/util/sync_point.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread_holder.h"
 #include "yb/util/tsan_util.h"
@@ -43,6 +44,7 @@
 using namespace std::literals;
 using namespace yb::size_literals;
 
+DECLARE_bool(TEST_enable_sync_points);
 DECLARE_bool(TEST_vector_index_exact);
 DECLARE_bool(TEST_vector_index_skip_manifest_update_during_shutdown);
 DECLARE_bool(vector_index_enable_compactions);
@@ -52,8 +54,8 @@ DECLARE_int32(vector_index_compaction_size_ratio_percent);
 DECLARE_int32(vector_index_compaction_size_ratio_min_merge_width);
 DECLARE_uint64(TEST_vector_index_delay_saving_first_chunk_ms);
 DECLARE_uint64(vector_index_compaction_always_include_size_threshold);
-DECLARE_uint64(vector_index_compaction_chunk_max_mem_store_size_mb);
-DECLARE_uint32(vector_index_compaction_chunk_max_mem_store_size_percentage);
+DECLARE_uint64(vector_index_compaction_chunk_max_memstore_size_mb);
+DECLARE_uint32(vector_index_compaction_chunk_max_memstore_size_percentage);
 DECLARE_uint32(vector_index_num_compactions_limit);
 DECLARE_uint64(vector_index_initial_chunk_memstore_size_mb);
 DECLARE_uint64(vector_index_initial_chunk_size);
@@ -227,9 +229,9 @@ class VectorLSMTestBase : public hnsw::VectorIndexTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = true;
     // Mutable chunks are sized by the vector count each test opens its LSM with.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_initial_chunk_memstore_size_mb) = 0;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_memstore_size_mb) = 0;
     ANNOTATE_UNPROTECTED_WRITE(
-        FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) = 0;
+        FLAGS_vector_index_compaction_chunk_max_memstore_size_percentage) = 0;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_num_compactions_limit) = 1;
     hnsw::VectorIndexTestBase::SetUp();
   }
@@ -274,6 +276,9 @@ class VectorLSMTestBase : public hnsw::VectorIndexTestBase {
   vector_index::StoreVectorPayload store_vector_payload() const {
     return StorePayload(backend_param());
   }
+
+  void TestFlushRetirement(bool fail);
+  void TestOutOfOrderFlush(bool fail);
 
   void TestBootstrap(bool flush);
 
@@ -529,24 +534,24 @@ VectorLSMTestBase::ChunkedCompactionHelper::ChunkedCompactionHelper(VectorLSMTes
 auto VectorLSMTestBase::ChunkedCompactionHelper::ScopedCompactionFlags(
     bool enable_compactions, size_t mem_store_limit_mb, uint32_t block_cache_percentage) {
   const bool old_enable_compactions = FLAGS_vector_index_enable_compactions;
-  const uint64_t old_chunk_max_mem_store_size_mb =
-      FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb;
-  const uint32_t old_chunk_max_mem_store_size_percentage =
-      FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage;
+  const uint64_t old_chunk_max_memstore_size_mb =
+      FLAGS_vector_index_compaction_chunk_max_memstore_size_mb;
+  const uint32_t old_chunk_max_memstore_size_percentage =
+      FLAGS_vector_index_compaction_chunk_max_memstore_size_percentage;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = enable_compactions;
   ANNOTATE_UNPROTECTED_WRITE(
-      FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb) = mem_store_limit_mb;
+      FLAGS_vector_index_compaction_chunk_max_memstore_size_mb) = mem_store_limit_mb;
   ANNOTATE_UNPROTECTED_WRITE(
-      FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) = block_cache_percentage;
+      FLAGS_vector_index_compaction_chunk_max_memstore_size_percentage) = block_cache_percentage;
 
-  return ScopeExit([old_enable_compactions, old_chunk_max_mem_store_size_mb,
-                    old_chunk_max_mem_store_size_percentage] {
+  return ScopeExit([old_enable_compactions, old_chunk_max_memstore_size_mb,
+                    old_chunk_max_memstore_size_percentage] {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = old_enable_compactions;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb) =
-        old_chunk_max_mem_store_size_mb;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) =
-        old_chunk_max_mem_store_size_percentage;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_memstore_size_mb) =
+        old_chunk_max_memstore_size_mb;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_memstore_size_percentage) =
+        old_chunk_max_memstore_size_percentage;
   });
 }
 
@@ -696,6 +701,183 @@ MergeFilterPtr VectorLSMTestBase::GetMergeFilter() {
 void VectorLSMTestBase::SetMergeFilter(MergeFilterPtr&& filter) {
   std::lock_guard lock(merge_filter_mutex_);
   merge_filter_ = std::move(filter);
+}
+
+void VectorLSMTestBase::TestFlushRetirement(bool fail) {
+  Status status;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, 4, 1000));
+  ASSERT_OK(InsertRandom(lsm, 4, 8));
+  ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+  CountDownLatch retiring(1), release(1), completed(1);
+  auto* sync = SyncPoint::GetInstance();
+  if (fail) {
+    sync->SetCallBack("VectorLSM::DoSaveChunk:Status", [](void* arg) {
+      *static_cast<Status*>(arg) = STATUS(IOError, "injected vector save failure");
+    });
+  }
+  sync->SetCallBack("VectorLSM::SaveChunk:BeforeRetirement", [&](void* arg) {
+    if (arg == &lsm) {
+      retiring.CountDown();
+      release.Wait();
+    }
+  });
+  sync->EnableProcessing();
+  TestThreadHolder threads;
+  auto cleanup = ScopeExit([&] {
+    release.CountDown();
+    threads.JoinAll();
+    sync->DisableProcessing();
+    sync->ClearAllCallBacks();
+  });
+  ASSERT_OK(lsm.Flush(/* wait = */ false));
+  ASSERT_TRUE(retiring.WaitFor(5s));
+  threads.AddThreadFunctor([&] {
+    status = lsm.WaitForFlush();
+    completed.CountDown();
+  });
+  ASSERT_FALSE(completed.WaitFor(20ms));
+  release.CountDown();
+  ASSERT_TRUE(completed.WaitFor(5s));
+  threads.JoinAll();
+  if (fail) {
+    ASSERT_TRUE(status.IsIOError()) << status;
+    ASSERT_TRUE(lsm.Flush(false).IsIOError());
+    ASSERT_TRUE(InsertRandom(lsm, 4, 1).IsIOError());
+    ASSERT_TRUE(lsm.WaitForFlush().IsIOError());
+  } else {
+    ASSERT_OK(status);
+  }
+}
+
+TEST_P(VectorLSMTest, FlushWaitsForRetirement) {
+  TestFlushRetirement(false);
+}
+
+TEST_P(VectorLSMTest, FlushErrorWaitsForRetirement) {
+  TestFlushRetirement(true);
+}
+
+void VectorLSMTestBase::TestOutOfOrderFlush(bool fail) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, 4, 1000));
+  ASSERT_OK(InsertRandom(lsm, 4, 8));
+  ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+
+  CountDownLatch first_saving(1), release_first(1), completed(1);
+  std::atomic<size_t> saves{0};
+  Status status;
+  auto* sync = SyncPoint::GetInstance();
+  sync->SetCallBack("VectorLSM::DoSaveChunk:Status", [&](void* arg) {
+    if (saves.fetch_add(1) == 0) {
+      first_saving.CountDown();
+      release_first.Wait();
+      if (fail) {
+        *static_cast<Status*>(arg) = STATUS(IOError, "injected earlier chunk failure");
+      }
+    }
+  });
+  sync->EnableProcessing();
+  TestThreadHolder threads;
+  auto cleanup = ScopeExit([&] {
+    release_first.CountDown();
+    threads.JoinAll();
+    sync->DisableProcessing();
+    sync->ClearAllCallBacks();
+  });
+  ASSERT_OK(lsm.Flush(/* wait = */ false));
+  ASSERT_TRUE(first_saving.WaitFor(5s * kTimeMultiplier));
+  ASSERT_OK(lsm.GetFlushStatus());
+  ASSERT_OK(InsertRandom(lsm, 4, 8));
+  ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+  threads.AddThreadFunctor([&] {
+    status = lsm.Flush(/* wait = */ true);
+    completed.CountDown();
+  });
+  // B has saved and retired, but cannot enter the manifest ahead of A. No B task remains to
+  // discover A's eventual failure and complete B's synchronous promise.
+  ASSERT_OK(WaitFor([&] {
+    return lsm.NumSavedImmutableChunks() == 1 && lsm.TEST_PendingSaveTasks() == 1;
+  }, 5s * kTimeMultiplier, "later save task retired"));
+  ASSERT_FALSE(completed.WaitFor(20ms));
+  release_first.CountDown();
+  ASSERT_TRUE(completed.WaitFor(5s * kTimeMultiplier));
+  threads.JoinAll();
+  if (fail) {
+    ASSERT_TRUE(status.IsIOError()) << status;
+    ASSERT_TRUE(lsm.GetFlushStatus().IsIOError());
+    ASSERT_TRUE(lsm.WaitForFlush().IsIOError());
+  } else {
+    ASSERT_OK(status);
+    ASSERT_OK(lsm.GetFlushStatus());
+    ASSERT_OK(lsm.WaitForFlush());
+  }
+}
+
+TEST_P(VectorLSMTest, OutOfOrderSynchronousFlush) {
+  TestOutOfOrderFlush(false);
+}
+
+TEST_P(VectorLSMTest, EarlierFailureCompletesSynchronousFlush) {
+  TestOutOfOrderFlush(true);
+}
+
+TEST_P(VectorLSMTest, ManifestFailureReleasesCompactionWaiter) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, 4, 1000));
+  for (size_t i = 0; i != 2; ++i) {
+    ASSERT_OK(InsertRandomAndFlush(lsm, 4, 8));
+  }
+  ASSERT_OK(InsertRandom(lsm, 4, 8));
+  ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+  CountDownLatch writing(1), release(1), waiting(1), completed(1), shutdown_done(1);
+  Status status;
+  auto* sync = SyncPoint::GetInstance();
+  sync->SetCallBack("VectorLSM::AddChunkToManifest:Status", [&](void* arg) {
+    writing.CountDown();
+    release.Wait();
+    *static_cast<Status*>(arg) = STATUS(IOError, "injected manifest failure");
+  });
+  sync->SetCallBack("VectorLSM::AcquireManifest:Waiting", [&](void* arg) {
+    if (arg == &lsm) {
+      waiting.CountDown();
+    }
+  });
+  sync->EnableProcessing();
+  TestThreadHolder threads;
+  auto cleanup = ScopeExit([&] {
+    release.CountDown();
+    threads.JoinAll();
+    sync->DisableProcessing();
+    sync->ClearAllCallBacks();
+  });
+  ASSERT_OK(lsm.Flush(/* wait = */ false));
+  ASSERT_TRUE(writing.WaitFor(5s * kTimeMultiplier));
+  threads.AddThreadFunctor([&] {
+    status = lsm.Compact(/* wait = */ true);
+    completed.CountDown();
+  });
+  ASSERT_TRUE(waiting.WaitFor(5s * kTimeMultiplier));
+  ASSERT_FALSE(completed.WaitFor(20ms));
+  release.CountDown();
+  ASSERT_TRUE(completed.WaitFor(5s * kTimeMultiplier));
+  threads.JoinAll();
+  ASSERT_TRUE(status.IsIOError()) << status;
+  ASSERT_TRUE(lsm.WaitForFlush().IsIOError());
+  ASSERT_TRUE(lsm.Compact(/* wait = */ true).IsIOError());
+  threads.AddThreadFunctor([&] {
+    lsm.StartShutdown();
+    lsm.CompleteShutdown();
+    shutdown_done.CountDown();
+  });
+  ASSERT_TRUE(shutdown_done.WaitFor(5s * kTimeMultiplier));
+  threads.JoinAll();
 }
 
 TEST_P(VectorLSMTest, Simple) {
@@ -1601,9 +1783,9 @@ TEST_P(VectorLSMTest, FailedCompactionDeletesSavedOutputFiles) {
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
   ANNOTATE_UNPROTECTED_WRITE(
-      FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb) = kMemStoreLimitMb;
+      FLAGS_vector_index_compaction_chunk_max_memstore_size_mb) = kMemStoreLimitMb;
   ANNOTATE_UNPROTECTED_WRITE(
-      FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) = 0;
+      FLAGS_vector_index_compaction_chunk_max_memstore_size_percentage) = 0;
 
   FloatVectorLSM lsm;
   ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kDefaultChunkSize));
@@ -1681,9 +1863,9 @@ TEST_P(VectorLSMTest, ConcurrentCompactionsDisableBlockCachePercentage) {
   constexpr uint32_t kBlockCachePercentage = 13;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_memstore_size_mb) = 0;
   ANNOTATE_UNPROTECTED_WRITE(
-      FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) = kBlockCachePercentage;
+      FLAGS_vector_index_compaction_chunk_max_memstore_size_percentage) = kBlockCachePercentage;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_num_compactions_limit) = 2;
 
   FloatVectorLSM lsm;
@@ -1719,9 +1901,9 @@ TEST_P(VectorLSMTest, MemStoreSizeMbOverridesBlockCachePercentage) {
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
   ANNOTATE_UNPROTECTED_WRITE(
-      FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb) = kMemStoreLimitMb;
+      FLAGS_vector_index_compaction_chunk_max_memstore_size_mb) = kMemStoreLimitMb;
   ANNOTATE_UNPROTECTED_WRITE(
-      FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) = kBlockCachePercentage;
+      FLAGS_vector_index_compaction_chunk_max_memstore_size_percentage) = kBlockCachePercentage;
 
   FloatVectorLSM lsm;
   ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kDefaultChunkSize));
@@ -1797,9 +1979,9 @@ TEST_P(VectorLSMTest, CompactionChunkCapacityRespectsMemStoreLimit) {
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
   ANNOTATE_UNPROTECTED_WRITE(
-      FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb) = kMemStoreLimitMb;
+      FLAGS_vector_index_compaction_chunk_max_memstore_size_mb) = kMemStoreLimitMb;
   ANNOTATE_UNPROTECTED_WRITE(
-      FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) = 0;
+      FLAGS_vector_index_compaction_chunk_max_memstore_size_percentage) = 0;
 
   FloatVectorLSM lsm;
   ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kVectorsPerChunk));
@@ -1836,9 +2018,9 @@ TEST_P(VectorLSMTest, CompactionChunkCapacityWithoutMemStoreLimit) {
   constexpr size_t kNumInputChunks = 4;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_memstore_size_mb) = 0;
   ANNOTATE_UNPROTECTED_WRITE(
-      FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) = 0;
+      FLAGS_vector_index_compaction_chunk_max_memstore_size_percentage) = 0;
 
   FloatVectorLSM lsm;
   ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kVectorsPerChunk));
@@ -1936,29 +2118,29 @@ TEST_P(VectorLSMTest, MutableChunkCapacity) {
 
 TEST(VectorLSMCompactionLimitTest, MaxMemStoreBytesFlagPriority) {
   constexpr size_t kCacheCapacity = 8_MB;
-  const uint64_t old_mb = FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb;
-  const uint32_t old_percentage = FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage;
+  const uint64_t old_mb = FLAGS_vector_index_compaction_chunk_max_memstore_size_mb;
+  const uint32_t old_percentage = FLAGS_vector_index_compaction_chunk_max_memstore_size_percentage;
   const uint32_t old_num_compactions = FLAGS_vector_index_num_compactions_limit;
   auto restore = ScopeExit([old_mb, old_percentage, old_num_compactions] {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb) = old_mb;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_memstore_size_mb) = old_mb;
     ANNOTATE_UNPROTECTED_WRITE(
-        FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) = old_percentage;
+        FLAGS_vector_index_compaction_chunk_max_memstore_size_percentage) = old_percentage;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_num_compactions_limit) = old_num_compactions;
   });
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_memstore_size_mb) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_memstore_size_percentage) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_num_compactions_limit) = 1;
   ASSERT_EQ(0, TEST_GetCompactionChunkMaxMemStoreBytes(kCacheCapacity));
 
   ANNOTATE_UNPROTECTED_WRITE(
-      FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) = 25;
+      FLAGS_vector_index_compaction_chunk_max_memstore_size_percentage) = 25;
   ASSERT_EQ(2_MB, TEST_GetCompactionChunkMaxMemStoreBytes(kCacheCapacity));
   ASSERT_EQ(0, TEST_GetCompactionChunkMaxMemStoreBytes(/* block_cache_capacity = */ 0));
 
   // Values above 100% are clamped to the full block cache capacity.
   ANNOTATE_UNPROTECTED_WRITE(
-      FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) = 125;
+      FLAGS_vector_index_compaction_chunk_max_memstore_size_percentage) = 125;
   ASSERT_EQ(kCacheCapacity, TEST_GetCompactionChunkMaxMemStoreBytes(kCacheCapacity));
 
   // The percentage limit is disabled when concurrent compactions are enabled.
@@ -1968,10 +2150,10 @@ TEST(VectorLSMCompactionLimitTest, MaxMemStoreBytesFlagPriority) {
   ASSERT_EQ(0, TEST_GetCompactionChunkMaxMemStoreBytes(kCacheCapacity));
 
   // Absolute MB size takes priority and remains enabled with concurrent compactions.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_memstore_size_mb) = 1;
   ASSERT_EQ(1_MB, TEST_GetCompactionChunkMaxMemStoreBytes(kCacheCapacity));
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_memstore_size_percentage) = 0;
   ASSERT_EQ(1_MB, TEST_GetCompactionChunkMaxMemStoreBytes(kCacheCapacity));
 }
 
@@ -2008,8 +2190,8 @@ TEST_P(VectorLSMTest, DefaultCompactionMergesMultipleChunks) {
   static_assert(kVectorsPerInputChunk <= kDefaultChunkSize);
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_memstore_size_mb) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_memstore_size_percentage) = 0;
 
   FloatVectorLSM lsm;
   ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kDefaultChunkSize));

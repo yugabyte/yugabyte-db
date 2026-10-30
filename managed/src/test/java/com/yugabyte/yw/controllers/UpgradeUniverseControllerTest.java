@@ -70,6 +70,7 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigCache;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.AZUpgradeStep;
@@ -474,6 +475,46 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
   }
 
   @Test
+  public void testKubernetesOverridesUpgradeWithLineBreakInGFlag() {
+    Universe universe = prepareK8sUniverseForOverridesUpgrade("Overrides Line Break Universe");
+    Result result =
+        assertPlatformException(
+            () ->
+                runUpgrade(
+                    universe,
+                    p -> p.universeOverrides = "gflags:\n  tserver:\n    tmp_dir: \"/tmp\\n--a=b\"",
+                    KubernetesOverridesUpgradeParams.class,
+                    "kubernetes_overrides"));
+    assertBadRequest(result, "GFlag tmp_dir cannot contain a line break");
+    verify(mockCommissioner, never()).submit(any(), any());
+  }
+
+  @Test
+  public void testKubernetesOverridesUpgradeCannotReadFipsGFlagFromEnvOnFipsUniverse() {
+    Universe universe = prepareK8sUniverseForOverridesUpgrade("Overrides FIPS Env Universe");
+    Universe fipsUniverse =
+        Universe.saveDetails(
+            universe.getUniverseUUID(), u -> u.getUniverseDetails().fipsEnabled = true);
+    Result result =
+        assertPlatformException(
+            () ->
+                runUpgrade(
+                    fipsUniverse,
+                    p ->
+                        p.universeOverrides =
+                            "gflags:\n  tserver:\n    tryfromenv: openssl_require_fips\n"
+                                + "tserver:\n  extraEnv:\n"
+                                + "  - name: FLAGS_openssl_require_fips\n    value: \"false\"",
+                    KubernetesOverridesUpgradeParams.class,
+                    "kubernetes_overrides"));
+    assertBadRequest(
+        result,
+        "A FIPS enabled universe cannot read openssl_require_fips from the environment, but"
+            + " tryfromenv in the Kubernetes universe overrides (gflags.tserver) lists it.");
+    verify(mockCommissioner, never()).submit(any(), any());
+  }
+
+  @Test
   public void testKubernetesOverridesUpgradeCannotDisableFipsOnFipsUniverse() {
     Universe universe = prepareK8sUniverseForOverridesUpgrade("Overrides FIPS Universe");
     universe =
@@ -498,8 +539,8 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
                     "kubernetes_overrides"));
     assertBadRequest(
         result,
-        "FIPS enabled YBAnywhere only supports FIPS enabled universe: Kubernetes overrides cannot"
-            + " set tserver openssl_require_fips to false");
+        "A FIPS enabled universe needs openssl_require_fips set to true or left unset, but the"
+            + " Kubernetes universe overrides (gflags.tserver) set it to false.");
     verify(mockCommissioner, never()).submit(any(), any());
   }
 
@@ -1434,6 +1475,50 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     assertThat(task.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
     assertThat(task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.GFlagsUpgrade)));
     assertAuditEntry(1, customer.getUuid());
+  }
+
+  @Test
+  public void testGFlagsUpgradeWithLineBreakInValue() {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.GFlagsUpgrade);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    UUID universeUUID = createUniverse(customer.getId()).getUniverseUUID();
+
+    String url =
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/gflags";
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.set("masterGFlags", Json.parse("{ \"master-flag\": \"123\"}"));
+    bodyJson.set(
+        "tserverGFlags", Json.newObject().put("tmp_dir", "/tmp\n--openssl_require_fips=false"));
+    Result result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+    assertBadRequest(result, "GFlag tmp_dir cannot contain a line break");
+    verify(mockCommissioner, never()).submit(any(), any());
+  }
+
+  @Test
+  public void testGFlagsUpgradeCannotDisableFipsOnFipsUniverse() {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.GFlagsUpgrade);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    UUID universeUUID = createUniverse(customer.getId()).getUniverseUUID();
+    Universe.saveDetails(universeUUID, u -> u.getUniverseDetails().fipsEnabled = true);
+
+    String url =
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/gflags";
+    // The deprecated masterGFlags/tserverGFlags maps, as opposed to specificGFlags.
+    for (ObjectNode tserverGFlags :
+        List.of(
+            Json.newObject().put(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "false"),
+            Json.newObject().put("tryfromenv", GFlagsUtil.OPENSSL_REQUIRE_FIPS))) {
+      ObjectNode bodyJson = Json.newObject();
+      bodyJson.set("masterGFlags", Json.parse("{ \"master-flag\": \"123\"}"));
+      bodyJson.set("tserverGFlags", tserverGFlags);
+      Result result =
+          assertPlatformException(
+              () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+      assertBadRequest(result, "FIPS enabled universe");
+    }
+    verify(mockCommissioner, never()).submit(any(), any());
   }
 
   @Test

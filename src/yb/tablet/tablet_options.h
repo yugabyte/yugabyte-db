@@ -94,6 +94,7 @@ struct TabletInitData {
   TabletOptions tablet_options;
   MutableTabletOptions mutable_tablet_options;
   std::string log_prefix_suffix;
+  TabletContext* tablet_context = nullptr;
   TransactionParticipantContext* transaction_participant_context = nullptr;
   client::LocalTabletFilter local_tablet_filter;
   TransactionCoordinatorContext* transaction_coordinator_context = nullptr;

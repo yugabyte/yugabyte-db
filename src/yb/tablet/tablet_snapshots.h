@@ -89,9 +89,6 @@ class TabletSnapshots : public TabletComponent {
 
   Status RestoreFinished(SnapshotOperation* operation);
 
-  // Prepares the operation context for a snapshot operation.
-  Status Prepare(SnapshotOperation* operation);
-
   Result<std::string> RestoreToTemporary(const TxnSnapshotId& snapshot_id, HybridTime restore_at);
 
   //------------------------------------------------------------------------------------------------

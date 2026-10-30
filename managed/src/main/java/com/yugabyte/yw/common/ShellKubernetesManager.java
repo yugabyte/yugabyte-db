@@ -1593,13 +1593,13 @@ public class ShellKubernetesManager extends KubernetesManager {
     Set<String> helmReleaseNames = new HashSet<>();
     boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
     for (NodeDetails node : universe.getNodesInCluster(cluster.uuid)) {
-      AvailabilityZone az = AvailabilityZone.getOrBadRequest(node.azUuid);
+      String azCode = isMultiAZ ? AvailabilityZone.getOrBadRequest(node.azUuid).getCode() : null;
       String helmRelease =
           KubernetesUtil.getHelmReleaseName(
               isMultiAZ,
               universe.getUniverseDetails().nodePrefix,
               universe.getName(),
-              az.getName(),
+              azCode,
               cluster.clusterType == ClusterType.ASYNC,
               universe.getUniverseDetails().useNewHelmNamingStyle);
       helmReleaseNames.add(helmRelease);
