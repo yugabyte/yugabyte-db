@@ -14872,6 +14872,12 @@
           "minimum" : 1,
           "type" : "integer"
         },
+        "max_num_replicas" : {
+          "description" : "Maximum replicas",
+          "format" : "int32",
+          "minimum" : 1,
+          "type" : "integer"
+        },
         "min_num_replicas" : {
           "description" : "Minimum replicas",
           "format" : "int32",
