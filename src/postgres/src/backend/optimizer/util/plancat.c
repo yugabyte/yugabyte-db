@@ -2740,3 +2740,12 @@ set_baserel_partition_constraint(Relation relation, RelOptInfo *rel)
 		rel->partition_qual = partconstr;
 	}
 }
+
+/*
+ * YB: Exposes set_baserel_partition_constraint for check_index_predicates.
+ */
+void
+yb_set_baserel_partition_constraint(Relation relation, RelOptInfo *rel)
+{
+	set_baserel_partition_constraint(relation, rel);
+}
