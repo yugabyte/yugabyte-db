@@ -3431,10 +3431,10 @@ TEST_P(PgVectorIndexColocationOnlyTest, CloneKeepsNewRowsAcrossRestart) {
   ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
   ASSERT_OK(cluster_->FlushTablets());
   for (const auto& peer : ListTableActiveTabletPeers(cluster_.get(), source_table_id)) {
-    auto op_ids = ASSERT_RESULT(ASSERT_RESULT(peer->shared_tablet())->MaxPersistentOpId());
-    ASSERT_FALSE(op_ids.vector_indexes.empty());
-    for (const auto& vector_index_op_id : op_ids.vector_indexes) {
-      ASSERT_GT(vector_index_op_id.term, kNumSourceLeaderChanges) << op_ids.ToString();
+    auto state = ASSERT_RESULT(ASSERT_RESULT(peer->shared_tablet())->GetPersistentState());
+    ASSERT_FALSE(state.vector_indexes.empty());
+    for (const auto& vector_index : state.vector_indexes) {
+      ASSERT_GT(vector_index.op_id.term, kNumSourceLeaderChanges) << state.ToString();
     }
   }
 
@@ -3476,7 +3476,7 @@ TEST_P(PgVectorIndexColocationOnlyTest, CloneKeepsNewRowsAcrossRestart) {
     for (const auto& peer : ListTableActiveTabletPeers(cluster_.get(), clone_table_id)) {
       auto tablet = VERIFY_RESULT(peer->shared_tablet());
       LOG(INFO) << "Clone tablet " << peer->tablet_id() << " " << when << ": "
-                << VERIFY_RESULT(tablet->MaxPersistentOpId()).ToString();
+                << VERIFY_RESULT(tablet->GetPersistentState()).ToString();
     }
     return Status::OK();
   };
@@ -3495,10 +3495,10 @@ TEST_P(PgVectorIndexColocationOnlyTest, CloneKeepsNewRowsAcrossRestart) {
 
   // The restore must not leave a vector index flushed OpId from the source Raft group.
   for (const auto& peer : ListTableActiveTabletPeers(cluster_.get(), clone_table_id)) {
-    auto op_ids = ASSERT_RESULT(ASSERT_RESULT(peer->shared_tablet())->MaxPersistentOpId());
-    ASSERT_FALSE(op_ids.vector_indexes.empty());
-    for (const auto& vector_index_op_id : op_ids.vector_indexes) {
-      ASSERT_LE(vector_index_op_id.index, op_ids.regular.index) << op_ids.ToString();
+    auto state = ASSERT_RESULT(ASSERT_RESULT(peer->shared_tablet())->GetPersistentState());
+    ASSERT_FALSE(state.vector_indexes.empty());
+    for (const auto& vector_index : state.vector_indexes) {
+      ASSERT_LE(vector_index.op_id.index, state.regular.index) << state.ToString();
     }
   }
 }
