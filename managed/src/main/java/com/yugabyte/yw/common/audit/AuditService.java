@@ -11,11 +11,13 @@
 package com.yugabyte.yw.common.audit;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.jayway.jsonpath.Configuration;
 import com.jayway.jsonpath.spi.json.JacksonJsonNodeJsonProvider;
 import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
+import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.controllers.RequestContext;
 import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.models.Audit;
@@ -37,6 +39,8 @@ public class AuditService {
 
   public static final TypedKey<AtomicBoolean> IS_AUDITED = TypedKey.create("isAudited");
   public static final Logger LOG = LoggerFactory.getLogger(AuditService.class);
+
+  private static final KeyLock<UUID> ADDITIONAL_DETAILS_LOCK = new KeyLock<>();
 
   public static final Configuration JSONPATH_CONFIG =
       Configuration.builder()
@@ -200,6 +204,31 @@ public class AuditService {
     if (audit != null) {
       audit.setAdditionalDetails(additionalDetails);
       audit.save();
+    }
+  }
+
+  /**
+   * Adds the given fields to the additional details of the task's audit entry, keeping the fields
+   * already there. Subtasks of one task can run in parallel (a prechecks-only run puts all its
+   * prechecks into one subtask group), so the read-modify-write is serialized per task here:
+   * otherwise a subtask can save a stale copy of the details and drop the fields another subtask
+   * just added.
+   */
+  public void mergeAdditionalDetails(UUID taskUUID, ObjectNode details) {
+    ADDITIONAL_DETAILS_LOCK.acquireLock(taskUUID);
+    try {
+      Audit audit = Audit.getFromTaskUUID(taskUUID);
+      if (audit == null) {
+        LOG.info("Audit not found for task UUID: {}", taskUUID);
+        return;
+      }
+      JsonNode current = audit.getAdditionalDetails();
+      ObjectNode merged = current instanceof ObjectNode ? current.deepCopy() : Json.newObject();
+      merged.setAll(details);
+      audit.setAdditionalDetails(merged);
+      audit.save();
+    } finally {
+      ADDITIONAL_DETAILS_LOCK.releaseLock(taskUUID);
     }
   }
 
