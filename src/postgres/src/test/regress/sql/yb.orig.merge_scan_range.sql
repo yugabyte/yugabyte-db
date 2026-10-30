@@ -759,10 +759,9 @@ ANALYZE r5n;
 \i :run_query
 
 -- Expression column tied to a plain column
--- The equality ties r4 to the expression column (r3 + r4), and the merge scan
--- sorts on that column.
--- Third hint pins the index and turns sort off so that the merge scan is
--- chosen whenever the planner can build it.
+-- The equality ties r4 to the expression column (r3 + r4).
+-- Third hint is to encourage merge scan by pinning the index and disabling
+-- sort.
 \set query ':P :Q SELECT r4, r2, n FROM r5n WHERE r2 IN (0, 1, 2, 3) AND r4 = r3 + r4 ORDER BY r4, n LIMIT 5;'
 \set Q3 '/*+IndexScan(r5n r5n_r2_expr_r21_expr1_r22_r5_idx) Set(yb_max_merge_scan_streams 64) Set(enable_sort off)*/'
 \i :run_query

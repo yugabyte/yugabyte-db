@@ -5082,10 +5082,10 @@ EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_mer
 EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT r5, 1, r5 FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY (r3 + r4) DESC, r2, n LIMIT 5;
 (output identical to previous)
 -- Expression column tied to a plain column
--- The equality ties r4 to the expression column (r3 + r4).  An embedded index
--- scan cannot merge on an expression column, so merge scan is not used.
--- Third hint pins the index and turns sort off so that the merge scan is
--- chosen whenever the planner can build it.
+-- The equality ties r4 to the expression column (r3 + r4).
+-- Third hint is to encourage merge scan by pinning the index and disabling
+-- sort.
+-- TODO(#36180): the third hint should use merge scan.
 \set query ':P :Q SELECT r4, r2, n FROM r5n WHERE r2 IN (0, 1, 2, 3) AND r4 = r3 + r4 ORDER BY r4, n LIMIT 5;'
 \set Q3 '/*+IndexScan(r5n r5n_r2_expr_r21_expr1_r22_r5_idx) Set(yb_max_merge_scan_streams 64) Set(enable_sort off)*/'
 \i :run_query
@@ -5151,8 +5151,7 @@ ANALYZE r5n;
 -- due to non-deterministic order of equal rows in merge sort, hide their DIST
 \set explain 'EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
 -- Order by the cast expression
--- An embedded index scan cannot merge on an expression column, so merge scan is
--- not used.
+-- TODO(#36180): this should use merge scan.
 \set query ':P :Q SELECT r3, r2, n FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY r3::oid, n LIMIT 5;'
 \i :run_query
 \set _echo_run_query :ECHO
