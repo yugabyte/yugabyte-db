@@ -528,6 +528,8 @@ Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
   }
   tablet_->Start();
 
+  TEST_SYNC_POINT_CALLBACK("TabletPeer::Start:BeforeStartedNotification", this);
+
   // The context tracks that the current caller does not hold the lock for consensus state.
   // So mark dirty callback, e.g., consensus->ConsensusState() for master consensus callback of
   // SysCatalogStateChanged, can get the lock when needed.
