@@ -319,8 +319,8 @@ public class GCPUtil implements CloudUtil {
     if (isGcsIam
         && StringUtils.isBlank(
             ((CustomerConfigStorageGCSData) configData).crossCloudFederationAudience)) {
-      // useGcpIam config with no resolvable federation audience (config-level validation, or
-      // same-cloud GKE): YBA cannot list the bucket. Skip; the node/YBC does the real check.
+      // useGcpIam with no audience: YBA would check with its own credentials, not the identity the
+      // nodes back up with. YBC checks the bucket on the node.
       return true;
     }
     if (MapUtils.isEmpty(regionLocationsMap)) {
@@ -378,8 +378,7 @@ public class GCPUtil implements CloudUtil {
     if (isGcsIam
         && StringUtils.isBlank(
             ((CustomerConfigStorageGCSData) configData).crossCloudFederationAudience)) {
-      // useGcpIam with no resolvable audience: YBA can't list the bucket; node-side YBC validation
-      // covers it. Skip.
+      // See canCredentialListObjects.
       return;
     }
     Map<String, ResponseCloudStoreSpec.BucketLocation> regionPrefixesMap =
@@ -587,8 +586,8 @@ public class GCPUtil implements CloudUtil {
     if (isGcsIam
         && StringUtils.isBlank(
             ((CustomerConfigStorageGCSData) configData).crossCloudFederationAudience)) {
-      // useGcpIam with no resolvable audience: YBA can't reach the bucket. Federation backups are
-      // always YBC, so report present and let the node-side YBC path do the authoritative check.
+      // See canCredentialListObjects. Federation backups are always YBC, so report present and let
+      // YBC on the node do the authoritative check.
       return true;
     }
     try {
