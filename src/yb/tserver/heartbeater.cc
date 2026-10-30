@@ -110,6 +110,7 @@ class HeartbeatPoller : public MasterLeaderPollerInterface {
   const std::string& LogPrefix() const override;
 
  private:
+  Status DoPoll();
   Status TryHeartbeat();
   Status SetupRegistration(master::TSRegistrationPB* reg);
   void SetupCommonField(master::TSToMasterCommonPB* common);
@@ -261,6 +262,14 @@ Status HeartbeatPoller::Poll() {
     return Status::OK();
   }
 
+  auto status = DoPoll();
+  if (!status.ok()) {
+    server_.SetMasterHeartbeatFailure(status);
+  }
+  return status;
+}
+
+Status HeartbeatPoller::DoPoll() {
   if (!proxy_) {
     VLOG_WITH_PREFIX(1) << "No valid master proxy. Connecting...";
     proxy_ = VERIFY_RESULT(finder_.CreateProxy<master::MasterHeartbeatProxy>(
@@ -509,6 +518,12 @@ Status HeartbeatPoller::TryHeartbeat() {
     // below (hence using the nested scope for resp until here).
     last_hb_response_.Swap(&resp);
     heartbeat_rtt_ = end_time.GetDeltaSince(start_time);
+    server_.SetMasterHeartbeatInfo({
+        .uuid = last_hb_response_.master_instance().permanent_uuid(),
+        .host_port = finder_.get_master_leader_hostport(),
+        .time = end_time,
+        .rtt = heartbeat_rtt_,
+        .last_failure = Status::OK()});
   }
 
   // The master rejects ysql lease requests from a tablet server until it registers.
