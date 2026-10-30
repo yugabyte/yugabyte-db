@@ -216,7 +216,7 @@ public class TestPgStatActivity extends BaseYsqlConnMgr {
                     fail("expected '" + stmt + "' to fail");
                 } catch (SQLException e) {
                     assertTrue("unexpected error for '" + stmt + "': " + e.getMessage(),
-                        e.getMessage().contains("can only be set by YSQL Connection Manager"));
+                        e.getMessage().contains("cannot be set after connection start"));
                 }
             }
             assertInetClientAddrPort(conn, client);
