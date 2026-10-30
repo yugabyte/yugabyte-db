@@ -46,6 +46,7 @@
 #include "yb/util/json_document.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/path_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/string_util.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/sync_point.h"
@@ -565,6 +566,8 @@ void XClusterDBScopedAutomaticModeTest::TestOldLeaderCheckpointFinishesAfterSpli
   sync_point->EnableProcessing();
 
   TestThreadHolder threads;
+  // Resume the paused run even if an assert fails, so teardown does not hang.
+  auto resume_on_exit = ScopeExit([&resume] { resume.CountDown(); });
   threads.AddThreadFunctor([this] {
     ASSERT_OK(
         CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));

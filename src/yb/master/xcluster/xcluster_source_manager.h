@@ -264,7 +264,7 @@ class XClusterSourceManager {
   // The stream's recorded tablets, or empty if there are none.
   Result<std::vector<TabletId>> GetStreamBootstrapTablets(const xrepl::StreamId& stream_id) const;
 
-  // Skips streams that are not INITIATED, and empty tablet lists.
+  // Skips streams that are not INITIATED or already have a record, and empty tablet lists.
   Status WriteXClusterStreamBootstrapInfo(
       const XClusterStreamCheckpointedTablets& stream_tablets, const LeaderEpoch& epoch);
 
