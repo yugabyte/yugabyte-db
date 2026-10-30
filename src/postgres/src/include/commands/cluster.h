@@ -39,7 +39,8 @@ extern void mark_index_clustered(Relation rel, Oid indexOid, bool is_internal);
 
 extern Oid	make_new_heap(Oid OIDOldHeap, Oid NewTableSpace, Oid NewAccessMethod,
 						  char relpersistence, LOCKMODE lockmode,
-						  bool yb_copy_split_options);
+						  bool yb_copy_split_options,
+						  YbOptSplit *yb_split_options);
 extern void finish_heap_swap(Oid OIDOldHeap, Oid OIDNewHeap,
 							 bool is_system_catalog,
 							 bool swap_toast_by_content,

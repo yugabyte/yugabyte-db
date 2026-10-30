@@ -29,6 +29,7 @@ YBUnackedTransactionInfo
 YBUpdateOptimizationOptions
 YbAddTupleToOuterBatchFn_t
 YbAdditionalNegCacheIds
+YbAlterTypeSplits
 YbAnalyzeRelEnd_hook_type
 YbAsh
 YbAshQueryPlanPairStack
@@ -71,6 +72,7 @@ YbColFoldState
 YbColFoldType
 YbCommandInfo
 YbConcurrencyContext
+YbConvertedSplits
 YbCostModel
 YbCounters
 YbCreateProfileStmt
@@ -221,6 +223,8 @@ YbSkippableEntities
 YbSkippableEntityType
 YbSortArrayContext
 YbSortInfo
+YbSplitPoint
+YbSplitPointOrder
 YbSplitType
 YbStatExtListEntry
 YbStatLabel

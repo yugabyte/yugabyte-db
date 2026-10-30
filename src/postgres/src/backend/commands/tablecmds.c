@@ -251,6 +251,9 @@ typedef struct AlteredTableInfo
 											 * type was altered. used for ALTER
 											 * TYPE in-place index attribute type
 											 * update */
+	struct YbAlterTypeSplits *yb_alter_type_splits;	/* YB: split points
+													 * converted for ALTER
+													 * TYPE */
 } AlteredTableInfo;
 
 /* Struct describing one new constraint to check in Phase 3 scan */
@@ -737,6 +740,37 @@ static ObjectAddress YbATExecAlterIndexAttributeType(AlteredTableInfo *tab,
 													 Relation rel,
 													 AlterTableCmd *cmd,
 													 LOCKMODE lockmode);
+
+/*
+ * YB: Split layout of a relation whose range key columns change type, with
+ * the split points converted to the new key column types.
+ */
+typedef struct YbConvertedSplits
+{
+	Oid			relid;
+	YbOptSplit *split_options;	/* NULL: the relation gets the default layout */
+	char	   *presplit;		/* new yb_presplit reloption, NULL: none */
+} YbConvertedSplits;
+
+/*
+ * YB: Split layouts converted by YbATConvertAlterTypeSplits.  They are
+ * computed in phase 1, while the catalog and DocDB still have the old key
+ * column types.
+ */
+typedef struct YbAlterTypeSplits
+{
+	YbConvertedSplits *table;	/* NULL if no primary key column changes */
+	List	   *table_key_attnums;	/* the primary key the above is for */
+	List	   *indexes;		/* YbConvertedSplits of range indexes whose key
+								 * columns change */
+} YbAlterTypeSplits;
+
+static void YbATConvertAlterTypeSplits(List *wqueue);
+static YbConvertedSplits *YbATFindConvertedIndexSplits(AlteredTableInfo *tab,
+													   Oid indexoid);
+static YbOptSplit *YbATGetTableRewriteSplitOptions(AlteredTableInfo *tab,
+												   Relation rel);
+static char *YbATGetPresplitReloption(Oid relid);
 
 /* ----------------------------------------------------------------
  *		DefineRelation
@@ -4996,6 +5030,13 @@ ATController(AlterTableStmt *parsetree,
 		ATPrepCmd(&wqueue, rel, cmd, recurse, false, lockmode, context);
 	}
 
+	/*
+	 * YB: Convert split points of relations whose range key columns change
+	 * type, while the old types are still in place.
+	 */
+	if (IsYugaByteEnabled())
+		YbATConvertAlterTypeSplits(wqueue);
+
 	/* Close the relation, but keep lock until commit */
 	relation_close(rel, NoLock);
 
@@ -6259,6 +6300,8 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 			Oid			NewTableSpace;
 			char		persistence;
 
+			YbOptSplit *yb_split_options = NULL;
+
 			OldHeap = table_open(tab->relid, NoLock);
 
 			/*
@@ -6362,6 +6405,10 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 			persistence = tab->chgPersistence ?
 				tab->newrelpersistence : OldHeap->rd_rel->relpersistence;
 
+			/* YB: split points converted for ALTER TYPE on a key column */
+			if (IsYBRelation(OldHeap))
+				yb_split_options = YbATGetTableRewriteSplitOptions(tab, OldHeap);
+
 			table_close(OldHeap, NoLock);
 
 			/*
@@ -6396,7 +6443,8 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 			 */
 			OIDNewHeap = make_new_heap(tab->relid, NewTableSpace, NewAccessMethod,
 									   persistence, lockmode,
-									   !tab->yb_skip_copy_split_options);
+									   !tab->yb_skip_copy_split_options,
+									   yb_split_options);
 
 			/*
 			 * Copy the heap data into the new table with the desired
@@ -14724,9 +14772,22 @@ RememberIndexForRebuilding(Oid indoid, AlteredTableInfo *tab)
 				 * reindex phase, split options must be retrieved beforehand and passed via these
 				 * parallel lists to restore correct split options.
 				 */
-				YbOptSplit *splitOpt = YbGetSplitOptions(indexRel);
-				if (splitOpt)
-					splitOpt->split_points = NIL;  /* Clear split points - incompatible with new type */
+				YbConvertedSplits *converted =
+					YbATFindConvertedIndexSplits(tab, indoid);
+				YbOptSplit *splitOpt;
+
+				if (converted)
+					splitOpt = converted->split_options;
+				else
+				{
+					splitOpt = YbGetSplitOptions(indexRel);
+					/*
+					 * Without converted split points, the old ones are only
+					 * usable if the index key columns keep their types.
+					 */
+					if (splitOpt && !tab->yb_alter_type_splits)
+						splitOpt->split_points = NIL;
+				}
 				tab->changedIndexSplitOpts = lappend(tab->changedIndexSplitOpts, splitOpt);
 				tab->changedIndexNames = lappend(tab->changedIndexNames,
 												 pstrdup(RelationGetRelationName(indexRel)));
@@ -23895,6 +23956,8 @@ YbATCopyIndexSplitOptions(Oid oldId, IndexStmt *stmt, AlteredTableInfo *tab)
 	{
 		ListCell   *lcmd;
 		bool		yb_copy_split_options = true;
+		YbConvertedSplits *converted = YbATFindConvertedIndexSplits(tab, oldId);
+		char	   *presplit = YbATGetPresplitReloption(oldId);
 
 		YbGetTableProperties(idx_rel);
 		/*
@@ -23915,6 +23978,23 @@ YbATCopyIndexSplitOptions(Oid oldId, IndexStmt *stmt, AlteredTableInfo *tab)
 		}
 		if (yb_copy_split_options)
 			stmt->split_options = YbGetSplitOptions(idx_rel);
+
+		if (converted)
+		{
+			stmt->split_options = copyObject(converted->split_options);
+			presplit = converted->presplit;
+		}
+
+		/*
+		 * The index definition carries no reloptions, so carry over
+		 * yb_presplit, and keep the copied SPLIT clause from recording one
+		 * the old index did not have.
+		 */
+		if (presplit || stmt->split_options)
+			stmt->options = lappend(stmt->options,
+									makeDefElem("yb_presplit",
+												(Node *) makeString(presplit ? presplit : ""),
+												-1));
 	}
 	RelationClose(idx_rel);
 }
@@ -24131,4 +24211,578 @@ YbATExecAlterIndexAttributeType(AlteredTableInfo *tab, Relation rel,
 
 	ObjectAddressSet(address, RelationRelationId, index_oid);
 	return address;
+}
+
+/*
+ * YB: Ordering of the split points of one relation in the new key order.
+ */
+typedef struct YbSplitPointOrder
+{
+	int			nkeys;
+	FmgrInfo   *cmp[INDEX_MAX_KEYS];
+	Oid			collations[INDEX_MAX_KEYS];
+	bool		desc[INDEX_MAX_KEYS];
+} YbSplitPointOrder;
+
+/*
+ * YB: A split point being converted.  Key columns past nvalues are
+ * MINVALUE, as in a SPLIT AT VALUES clause.
+ */
+typedef struct YbSplitPoint
+{
+	int			nvalues;
+	PartitionRangeDatumKind kinds[INDEX_MAX_KEYS];
+	Datum		values[INDEX_MAX_KEYS];
+} YbSplitPoint;
+
+static int
+YbCompareSplitPoints(const void *a, const void *b, void *arg)
+{
+	const YbSplitPoint *pa = (const YbSplitPoint *) a;
+	const YbSplitPoint *pb = (const YbSplitPoint *) b;
+	const YbSplitPointOrder *order = (const YbSplitPointOrder *) arg;
+
+	for (int i = 0; i < order->nkeys; i++)
+	{
+		PartitionRangeDatumKind ka = (i < pa->nvalues ? pa->kinds[i] :
+									  PARTITION_RANGE_DATUM_MINVALUE);
+		PartitionRangeDatumKind kb = (i < pb->nvalues ? pb->kinds[i] :
+									  PARTITION_RANGE_DATUM_MINVALUE);
+		int			c;
+
+		/* DocDB sorts MINVALUE first and MAXVALUE last, also for DESC. */
+		if (ka != kb)
+			return ka < kb ? -1 : 1;
+		if (ka != PARTITION_RANGE_DATUM_VALUE)
+			continue;
+
+		c = DatumGetInt32(FunctionCall2Coll(order->cmp[i],
+											order->collations[i],
+											pa->values[i], pb->values[i]));
+		if (c != 0)
+			return order->desc[i] ? -c : c;
+	}
+	return 0;
+}
+
+/*
+ * YB: Workhorse of YbATConvertSplitPoints, run in a subtransaction so that
+ * a value that cannot be converted only abandons the conversion.
+ */
+static YbOptSplit *
+YbATConvertSplitPointsInternal(AlteredTableInfo *tab, Relation index,
+							   List *points, Expr **transforms,
+							   Oid *newtypes, YbSplitPointOrder *order)
+{
+	int			nkeys = order->nkeys;
+	Form_pg_attribute oldattrs[INDEX_MAX_KEYS];
+	ExprState  *states[INDEX_MAX_KEYS];
+	ParseState *pstate = make_parsestate(NULL);
+	EState	   *estate = CreateExecutorState();
+	ExprContext *econtext = GetPerTupleExprContext(estate);
+	TupleTableSlot *slot = MakeSingleTupleTableSlot(tab->oldDesc,
+													&TTSOpsVirtual);
+	YbSplitPoint *converted = palloc(list_length(points) *
+									 sizeof(YbSplitPoint));
+	int			npoints = 0;
+	YbOptSplit *result = makeNode(YbOptSplit);
+	ListCell   *lc;
+
+	for (int i = 0; i < nkeys; i++)
+	{
+		TypeCacheEntry *typentry = lookup_type_cache(newtypes[i],
+													 TYPECACHE_CMP_PROC_FINFO);
+
+		if (!OidIsValid(typentry->cmp_proc))
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_FUNCTION),
+					 errmsg("could not identify a comparison function for type %s",
+							format_type_be(newtypes[i]))));
+		order->cmp[i] = &typentry->cmp_proc_finfo;
+		oldattrs[i] = TupleDescAttr(RelationGetDescr(index), i);
+		states[i] = transforms[i] ? ExecInitExpr(transforms[i], NULL) : NULL;
+	}
+	econtext->ecxt_scantuple = slot;
+
+	foreach(lc, points)
+	{
+		PartitionRangeDatum *datums[INDEX_MAX_KEYS];
+		YbSplitPoint *point = &converted[npoints++];
+
+		/* Parse the point as a value of the old key column types. */
+		YBTransformPartitionSplitValue(pstate, lfirst_node(List, lc),
+									   oldattrs, nkeys, datums,
+									   &point->nvalues);
+
+		ExecClearTuple(slot);
+		memset(slot->tts_isnull, true,
+			   slot->tts_tupleDescriptor->natts * sizeof(bool));
+		for (int i = 0; i < point->nvalues; i++)
+		{
+			AttrNumber	attnum = index->rd_index->indkey.values[i];
+
+			if (attnum != 0 &&
+				datums[i]->kind == PARTITION_RANGE_DATUM_VALUE)
+			{
+				slot->tts_values[attnum - 1] =
+					castNode(Const, datums[i]->value)->constvalue;
+				slot->tts_isnull[attnum - 1] = false;
+			}
+		}
+		ExecStoreVirtualTuple(slot);
+
+		for (int i = 0; i < point->nvalues; i++)
+		{
+			bool		isnull;
+
+			point->kinds[i] = datums[i]->kind;
+			if (point->kinds[i] != PARTITION_RANGE_DATUM_VALUE)
+				continue;
+			if (!states[i])
+			{
+				point->values[i] = castNode(Const, datums[i]->value)->constvalue;
+				continue;
+			}
+			point->values[i] = ExecEvalExprSwitchContext(states[i], econtext,
+														 &isnull);
+			if (isnull)
+				ereport(ERROR,
+						(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+						 errmsg("a split point of column \"%s\" converts to NULL",
+								NameStr(oldattrs[i]->attname))));
+		}
+	}
+
+	qsort_arg(converted, npoints, sizeof(YbSplitPoint), YbCompareSplitPoints,
+			  order);
+
+	result->split_type = SPLIT_POINTS;
+	for (int p = 0; p < npoints; p++)
+	{
+		List	   *point = NIL;
+
+		if (p > 0 &&
+			YbCompareSplitPoints(&converted[p - 1], &converted[p], order) == 0)
+			continue;
+
+		for (int i = 0; i < converted[p].nvalues; i++)
+		{
+			ColumnRef  *c;
+
+			switch (converted[p].kinds[i])
+			{
+				case PARTITION_RANGE_DATUM_VALUE:
+					point = lappend(point,
+									YbSplitValueToNode(converted[p].values[i],
+													   newtypes[i]));
+					break;
+				case PARTITION_RANGE_DATUM_MINVALUE:
+				case PARTITION_RANGE_DATUM_MAXVALUE:
+					c = makeNode(ColumnRef);
+					c->fields = list_make1(makeString(converted[p].kinds[i] ==
+													  PARTITION_RANGE_DATUM_MINVALUE ?
+													  "minvalue" : "maxvalue"));
+					point = lappend(point, c);
+					break;
+			}
+		}
+		result->split_points = lappend(result->split_points, point);
+	}
+	result->num_tablets = list_length(result->split_points) + 1;
+
+	ExecDropSingleTupleTableSlot(slot);
+	FreeExecutorState(estate);
+	free_parsestate(pstate);
+	return result;
+}
+
+/*
+ * YB: Convert the split points of `split`, given for the key columns of
+ * `index` (the primary key, for a table), to the key column types after the
+ * ALTER TYPE subcommands of `tab`.  Each value goes through the same
+ * expression as the column data, and the points are re-sorted in the new key
+ * order, so the tablet count is kept unless some points become equal.
+ *
+ * Returns NULL and sets *reason if the points cannot be converted.
+ */
+static YbOptSplit *
+YbATConvertSplitPoints(AlteredTableInfo *tab, Relation index,
+					   YbOptSplit *split, char **reason)
+{
+	int			nkeys = index->rd_index->indnkeyatts;
+	Expr	   *transforms[INDEX_MAX_KEYS];
+	Oid			newtypes[INDEX_MAX_KEYS];
+	YbSplitPointOrder order;
+	List	   *indexprs = RelationGetIndexExpressions(index);
+	ListCell   *indexpr = list_head(indexprs);
+	MemoryContext oldcontext = CurrentMemoryContext;
+	ResourceOwner oldowner = CurrentResourceOwner;
+	YbOptSplit *volatile result = NULL;
+
+	if (split->split_points == NIL)
+		return split;
+
+	order.nkeys = nkeys;
+	for (int i = 0; i < nkeys; i++)
+	{
+		AttrNumber	attnum = index->rd_index->indkey.values[i];
+		Form_pg_attribute attr = TupleDescAttr(RelationGetDescr(index), i);
+		Bitmapset  *varattnos = NULL;
+		ListCell   *lc;
+
+		transforms[i] = NULL;
+		newtypes[i] = attr->atttypid;
+		order.collations[i] = index->rd_indcollation[i];
+		order.desc[i] = (index->rd_indoption[i] & INDOPTION_DESC) != 0;
+
+		if (attnum == 0)
+		{
+			pull_varattnos(lfirst(indexpr), 1, &varattnos);
+			indexpr = lnext(indexprs, indexpr);
+			foreach(lc, tab->newvals)
+			{
+				NewColumnValue *ex = lfirst(lc);
+
+				if (bms_is_member(ex->attnum - FirstLowInvalidHeapAttributeNumber,
+								  varattnos))
+				{
+					*reason = psprintf(_("index expression \"%s\" depends on column \"%s\""),
+									   NameStr(attr->attname),
+									   NameStr(TupleDescAttr(tab->oldDesc,
+															 ex->attnum - 1)->attname));
+					return NULL;
+				}
+			}
+			continue;
+		}
+
+		foreach(lc, tab->newvals)
+		{
+			NewColumnValue *ex = lfirst(lc);
+			Form_pg_attribute oldattr;
+
+			if (ex->attnum != attnum)
+				continue;
+
+			oldattr = TupleDescAttr(tab->oldDesc, attnum - 1);
+			pull_varattnos((Node *) ex->expr, 1, &varattnos);
+			varattnos = bms_del_member(varattnos,
+									   attnum - FirstLowInvalidHeapAttributeNumber);
+			if (!bms_is_empty(varattnos))
+			{
+				*reason = psprintf(_("the new value of column \"%s\" depends on other columns"),
+								   NameStr(oldattr->attname));
+				return NULL;
+			}
+			if (contain_volatile_functions((Node *) ex->expr))
+			{
+				*reason = psprintf(_("the new value of column \"%s\" is computed by a volatile expression"),
+								   NameStr(oldattr->attname));
+				return NULL;
+			}
+
+			transforms[i] = ex->expr;
+			newtypes[i] = exprType((Node *) ex->expr);
+			/* A key column using the column's collation follows its change. */
+			if (order.collations[i] == oldattr->attcollation)
+			{
+				ListCell   *lcmd;
+
+				foreach(lcmd, tab->subcmds[AT_PASS_ALTER_TYPE])
+				{
+					AlterTableCmd *cmd = lfirst_node(AlterTableCmd, lcmd);
+
+					if (cmd->subtype == AT_AlterColumnType &&
+						strcmp(cmd->name, NameStr(oldattr->attname)) == 0)
+						order.collations[i] =
+							GetColumnDefCollation(NULL,
+												  castNode(ColumnDef, cmd->def),
+												  newtypes[i]);
+				}
+			}
+		}
+	}
+
+	BeginInternalSubTransaction(NULL);
+	MemoryContextSwitchTo(oldcontext);
+
+	PG_TRY();
+	{
+		result = YbATConvertSplitPointsInternal(tab, index, split->split_points,
+												transforms, newtypes, &order);
+		ReleaseCurrentSubTransaction();
+		MemoryContextSwitchTo(oldcontext);
+		CurrentResourceOwner = oldowner;
+	}
+	PG_CATCH();
+	{
+		ErrorData  *edata;
+
+		MemoryContextSwitchTo(oldcontext);
+		edata = CopyErrorData();
+		FlushErrorState();
+
+		RollbackAndReleaseCurrentSubTransaction();
+		MemoryContextSwitchTo(oldcontext);
+		CurrentResourceOwner = oldowner;
+
+		*reason = edata->message;
+		result = NULL;
+	}
+	PG_END_TRY();
+
+	return result;
+}
+
+/*
+ * YB: Convert the split layout of `index`, or of the table if `index` is its
+ * primary key, if any of its key columns changes type.  Returns NULL if no
+ * key column changes type or the relation is colocated.
+ */
+static YbConvertedSplits *
+YbATConvertRelSplits(AlteredTableInfo *tab, Relation rel, Relation index)
+{
+	Relation	splitrel = index->rd_index->indisprimary ? rel : index;
+	Bitmapset  *keyattnos = NULL;
+	bool		key_altered = false;
+	YbConvertedSplits *result;
+	YbOptSplit *split;
+	char	   *reason = NULL;
+	ListCell   *lc;
+
+	if (!IsYBRelation(splitrel))
+		return NULL;
+
+	for (int i = 0; i < index->rd_index->indnkeyatts; i++)
+		keyattnos = bms_add_member(keyattnos,
+								   index->rd_index->indkey.values[i] -
+								   FirstLowInvalidHeapAttributeNumber);
+	pull_varattnos((Node *) RelationGetIndexExpressions(index), 1, &keyattnos);
+	foreach(lc, tab->newvals)
+	{
+		NewColumnValue *ex = lfirst(lc);
+
+		if (bms_is_member(ex->attnum - FirstLowInvalidHeapAttributeNumber,
+						  keyattnos))
+			key_altered = true;
+	}
+	if (!key_altered)
+		return NULL;
+
+	YbGetTableProperties(splitrel);
+	if (splitrel->yb_table_properties->is_colocated)
+		return NULL;
+
+	split = YbGetSplitOptions(splitrel);
+	result = palloc0(sizeof(YbConvertedSplits));
+	result->relid = RelationGetRelid(splitrel);
+	result->split_options = split;
+	result->presplit = YbATGetPresplitReloption(result->relid);
+
+	if (split && split->split_type == SPLIT_POINTS)
+	{
+		result->split_options = YbATConvertSplitPoints(tab, index, split,
+													   &reason);
+		if (!result->split_options)
+			ereport(NOTICE,
+					(errmsg("relation \"%s\" will have a single tablet",
+							RelationGetRelationName(splitrel)),
+					 errdetail("Its split points cannot be converted to the new column type: %s.",
+							   reason)));
+	}
+
+	if (result->presplit)
+	{
+		YbOptSplit *presplit = YbParsePresplitString(result->presplit);
+
+		if (presplit && presplit->split_type == SPLIT_POINTS)
+		{
+			presplit = YbATConvertSplitPoints(tab, index, presplit, &reason);
+			result->presplit = YbSplitOptionsToPresplitString(presplit);
+			if (!presplit)
+				ereport(NOTICE,
+						(errmsg("removing yb_presplit of relation \"%s\"",
+								RelationGetRelationName(splitrel)),
+						 errdetail("Its split points cannot be converted to the new column type: %s.",
+								   reason)));
+		}
+	}
+
+	return result;
+}
+
+/*
+ * YB: For every table in wqueue that has ALTER COLUMN TYPE subcommands,
+ * convert the split points of the table and of its indexes whose key columns
+ * change type, so that the rebuilt relations keep their tablet layout.  This
+ * runs at the end of phase 1 because DocDB split points can only be decoded
+ * with the old column types.
+ */
+static void
+YbATConvertAlterTypeSplits(List *wqueue)
+{
+	ListCell   *ltab;
+
+	if (!yb_enable_alter_table_rewrite)
+		return;
+
+	foreach(ltab, wqueue)
+	{
+		AlteredTableInfo *tab = (AlteredTableInfo *) lfirst(ltab);
+		Relation	rel;
+		YbAlterTypeSplits *splits;
+		ListCell   *lc;
+
+		if (tab->newvals == NIL)
+			continue;
+
+		rel = relation_open(tab->relid, NoLock);
+		if (!IsYBRelation(rel) || rel->rd_rel->relkind != RELKIND_RELATION)
+		{
+			relation_close(rel, NoLock);
+			continue;
+		}
+
+		splits = palloc0(sizeof(YbAlterTypeSplits));
+		foreach(lc, RelationGetIndexList(rel))
+		{
+			Relation	index = index_open(lfirst_oid(lc), AccessShareLock);
+			YbConvertedSplits *converted = YbATConvertRelSplits(tab, rel, index);
+
+			if (converted && index->rd_index->indisprimary)
+			{
+				splits->table = converted;
+				for (int i = 0; i < index->rd_index->indnkeyatts; i++)
+					splits->table_key_attnums =
+						lappend_int(splits->table_key_attnums,
+									index->rd_index->indkey.values[i]);
+			}
+			else if (converted)
+				splits->indexes = lappend(splits->indexes, converted);
+
+			index_close(index, AccessShareLock);
+		}
+		tab->yb_alter_type_splits = splits;
+		relation_close(rel, NoLock);
+	}
+}
+
+static YbConvertedSplits *
+YbATFindConvertedIndexSplits(AlteredTableInfo *tab, Oid indexoid)
+{
+	ListCell   *lc;
+
+	if (!tab->yb_alter_type_splits)
+		return NULL;
+
+	foreach(lc, tab->yb_alter_type_splits->indexes)
+	{
+		YbConvertedSplits *converted = lfirst(lc);
+
+		if (converted->relid == indexoid)
+			return converted;
+	}
+	return NULL;
+}
+
+/*
+ * YB: Return the split options for the table rewrite of an ALTER TYPE on a
+ * primary key column, after setting the table's yb_presplit reloption to
+ * match them.  Returns NULL if there are none, or if the same ALTER TABLE
+ * also changes the primary key.
+ */
+static YbOptSplit *
+YbATGetTableRewriteSplitOptions(AlteredTableInfo *tab, Relation rel)
+{
+	YbConvertedSplits *converted;
+	Oid			pkoid;
+	Relation	pk;
+	List	   *key = NIL;
+	char	   *presplit;
+
+	if (!tab->yb_alter_type_splits || !tab->yb_alter_type_splits->table)
+		return NULL;
+	converted = tab->yb_alter_type_splits->table;
+
+	pkoid = RelationGetPrimaryKeyIndex(rel);
+	if (!OidIsValid(pkoid))
+		return NULL;
+	pk = index_open(pkoid, AccessShareLock);
+	for (int i = 0; i < pk->rd_index->indnkeyatts; i++)
+		key = lappend_int(key, pk->rd_index->indkey.values[i]);
+	index_close(pk, AccessShareLock);
+	if (!equal(key, tab->yb_alter_type_splits->table_key_attnums))
+		return NULL;
+
+	presplit = YbATGetPresplitReloption(RelationGetRelid(rel));
+	if (presplit != converted->presplit &&
+		(!presplit || !converted->presplit ||
+		 strcmp(presplit, converted->presplit) != 0))
+	{
+		Relation	pgclass = table_open(RelationRelationId, RowExclusiveLock);
+		HeapTuple	tuple = SearchSysCacheCopy1(RELOID,
+												ObjectIdGetDatum(RelationGetRelid(rel)));
+		Datum		values[Natts_pg_class] = {0};
+		bool		nulls[Natts_pg_class] = {0};
+		bool		replaces[Natts_pg_class] = {0};
+		bool		isnull;
+		Datum		reloptions;
+		DefElem    *def;
+		HeapTuple	newtuple;
+
+		if (!HeapTupleIsValid(tuple))
+			elog(ERROR, "cache lookup failed for relation %u",
+				 RelationGetRelid(rel));
+		reloptions = SysCacheGetAttr(RELOID, tuple, Anum_pg_class_reloptions,
+									 &isnull);
+		def = makeDefElem("yb_presplit",
+						  converted->presplit ?
+						  (Node *) makeString(converted->presplit) : NULL,
+						  -1);
+		reloptions = transformRelOptions(isnull ? (Datum) 0 : reloptions,
+										 list_make1(def), NULL, NULL, false,
+										 converted->presplit == NULL);
+		if (reloptions != (Datum) 0)
+			values[Anum_pg_class_reloptions - 1] = reloptions;
+		else
+			nulls[Anum_pg_class_reloptions - 1] = true;
+		replaces[Anum_pg_class_reloptions - 1] = true;
+
+		newtuple = heap_modify_tuple(tuple, RelationGetDescr(pgclass),
+									 values, nulls, replaces);
+		CatalogTupleUpdate(pgclass, &newtuple->t_self, newtuple);
+		heap_freetuple(newtuple);
+		heap_freetuple(tuple);
+		table_close(pgclass, RowExclusiveLock);
+		CommandCounterIncrement();
+	}
+
+	return converted->split_options;
+}
+
+static char *
+YbATGetPresplitReloption(Oid relid)
+{
+	HeapTuple	tuple = SearchSysCache1(RELOID, ObjectIdGetDatum(relid));
+	Datum		reloptions;
+	bool		isnull;
+	char	   *result = NULL;
+	ListCell   *lc;
+
+	if (!HeapTupleIsValid(tuple))
+		elog(ERROR, "cache lookup failed for relation %u", relid);
+	reloptions = SysCacheGetAttr(RELOID, tuple, Anum_pg_class_reloptions,
+								 &isnull);
+	if (!isnull)
+	{
+		foreach(lc, untransformRelOptions(reloptions))
+		{
+			DefElem    *def = lfirst_node(DefElem, lc);
+
+			if (strcmp(def->defname, "yb_presplit") == 0)
+				result = defGetString(def);
+		}
+	}
+	ReleaseSysCache(tuple);
+	return result;
 }

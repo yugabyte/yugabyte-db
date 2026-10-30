@@ -1093,7 +1093,7 @@ SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('idx3'::regcla
 SELECT yb_get_range_split_clause('idx4'::regclass);
  yb_get_range_split_clause 
 ---------------------------
- 
+ SPLIT AT VALUES ((1))
 (1 row)
 
 CREATE TABLE test2 (c1 varchar, c2 varchar, PRIMARY KEY(c1 ASC, c2 DESC))
@@ -1102,12 +1102,12 @@ ALTER TABLE test2 ALTER c1 TYPE int USING length(c1);
 CREATE TABLE test3 (c1 varchar, c2 varchar, PRIMARY KEY(c2 ASC))
     SPLIT AT VALUES ((E'test123\"\"''\\\\\\u0068\\u0069'));
 ALTER TABLE test3 ALTER c1 TYPE int USING length(c1);
--- verify range split options on the table are only preserved when the altered column is not a
--- part of the table's key.
+-- verify range split points are converted with the USING expression when the altered column is
+-- a part of the key.
 SELECT yb_get_range_split_clause('test2'::regclass);
- yb_get_range_split_clause 
----------------------------
- 
+  yb_get_range_split_clause  
+-----------------------------
+ SPLIT AT VALUES ((1, '20'))
 (1 row)
 
 SELECT yb_get_range_split_clause('test3'::regclass);
