@@ -8,9 +8,8 @@
  *	  by pushed-down expressions (WHERE clauses, etc.) that are
  *	  evaluated server-side.
  *
- *	  Used by AM implementations (yb_scan_core, yb_lsm, ybgin,
- *	  yb_catalog_scan, yb_sample_scan) and the executor
- *	  (createplan, ybModifyTable).
+ *	  Used by the access methods and by some code above them that
+ *	  builds its own pggate requests.
  *
  * Copyright (c) YugabyteDB, Inc.
  *

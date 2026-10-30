@@ -6,21 +6,12 @@
  *	  Scan APIs for consumers outside the executor scan nodes:
  *	  catalog scans (systable lookups), ANALYZE row sampling, and
  *	  single-row fetch by ybctid.  Unlike the interim accessors in
- *	  yb_table_scan.h, these stay, because no AM interface fits
- *	  them: tableam's analyze callbacks assume block sampling while
- *	  DocDB samples rows itself, tuple_fetch_row_version() takes a
- *	  heap TID rather than a ybctid, and
- *	  ybc_systable_begin_default_scan() serves the pg_inherits cache
- *	  that systable_beginscan() reads from.
- *	  ybc_systable_beginscan() is different: it is YB's
- *	  implementation of genam's systable_beginscan(), called only
- *	  from genam.c.  #36174 tracks replacing it with upstream's
- *	  systable_* path on the lsm and heap access methods.
+ *	  yb_table_scan.h, these stay.
  *
- *	  Each section below is the API of one implementation file.  A
- *	  contract that belongs to the callers' subsystem, such as the
- *	  format of the rows ANALYZE samples, goes in a header of that
- *	  subsystem, not here.
+ *	  Each section below is the API of one implementation file and
+ *	  says why no AM interface replaces it.  A contract that belongs
+ *	  to the callers' subsystem, such as the format of the rows
+ *	  ANALYZE samples, goes in a header of that subsystem, not here.
  *
  * Copyright (c) YugabyteDB, Inc.
  *
@@ -51,11 +42,13 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 
 /*
- * Catalog scans (yb_catalog_scan.c): ybc_systable_beginscan() is the YB
- * backend of systable_beginscan() in genam.c, and
- * ybc_systable_begin_default_scan() serves YB-only catalog readers such as
- * yb_inheritscache.c.  The SysScanDesc they return follows genam's systable
- * scan contract.
+ * Catalog scans (yb_catalog_scan.c): ybc_systable_beginscan() is YB's
+ * implementation of systable_beginscan() in genam.c and is called only from
+ * there.  #36174 tracks replacing it with upstream's systable_* path.
+ * ybc_systable_begin_default_scan() is the plain catalog scan underneath it.
+ * yb_inheritscache.c also calls that directly to fill the pg_inherits cache,
+ * because systable_beginscan() on pg_inherits reads the cache.  The
+ * SysScanDesc they return follows genam's systable scan contract.
  */
 extern SysScanDesc ybc_systable_beginscan(Relation relation,
 										  Oid indexId,
@@ -74,7 +67,8 @@ extern SysScanDesc ybc_systable_begin_default_scan(Relation relation,
 /*
  * ANALYZE row sampling (yb_sample_scan.c): the YB backend of
  * yb_acquire_sample_rows() in analyze.c, which takes the place of
- * acquire_sample_rows() for YB relations.
+ * acquire_sample_rows() for YB relations.  tableam's analyze callbacks do not
+ * fit, because they assume block sampling while DocDB samples rows itself.
  */
 typedef struct YbSampleData
 {
@@ -99,8 +93,9 @@ extern int	ybFetchSample(YbSample ybSample, HeapTuple *rows);
 
 /*
  * Single-row fetch by ybctid (yb_ybctid_scan.c): the YB counterpart of
- * heap_fetch() in heapam.c, keyed by ybctid in place of a heap TID.  Unlike
- * heap_fetch(), it takes no snapshot and reads at pggate's current read point.
+ * heap_fetch() in heapam.c, keyed by ybctid in place of a heap TID, so
+ * tableam's tuple_fetch_row_version() does not fit.  Unlike heap_fetch(), it
+ * takes no snapshot and reads at pggate's current read point.
  */
 extern bool YbFetchHeapTuple(Relation relation, Datum ybctid,
 							 HeapTuple *tuple);

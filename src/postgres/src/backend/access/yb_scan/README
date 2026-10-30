@@ -17,7 +17,8 @@ tableam, the index AM interface, and genam's systable functions.  YB extends
 those interfaces where it needs to, as with table_beginscan_*_yb() and the
 yb_ammightrecheck index AM callback, rather than going around them.  The
 groups below sort the headers by how they relate to that rule.  The comment at
-the top of each header says who includes it and what belongs in it.
+the top of each header says what belongs in it and, where only some code may
+include it, which code that is.
 
 Headers
 -------
@@ -40,9 +41,8 @@ reasons and should move to the optimizer:
 
   yb_cost.h
 
-Building pggate requests.  It should be internal to the access methods, but
-write-path code above them still calls it, and this layering does not cover
-the write path yet:
+Building pggate requests, used by the access methods and by some code above
+them.  Where request building belongs is not settled yet:
 
   yb_target.h
 
