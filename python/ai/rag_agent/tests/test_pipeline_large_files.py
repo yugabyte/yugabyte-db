@@ -217,8 +217,19 @@ class TestSingleRead:
 class TestSizeLimit:
     """Nothing over the api-server's upload cap should be chunked."""
 
-    def test_default_cap_matches_the_upload_limit(self):
-        assert DEFAULT_MAX_FILE_SIZE_BYTES == 5 * 1024 * 1024
+    # Meko api-server per-file KB upload caps, read from
+    # meko/api_server/internal/service/free_tier.go: free 5 MB,
+    # standard 50 MB, pro and above 60 MB (ProTierMaxKBFileBytes).
+    LARGEST_CALLER_CAP_BYTES = 60 * 1024 * 1024
+
+    def test_default_cap_clears_every_caller_cap(self):
+        # The worker cap is an out-of-memory guard, not a product limit. If it
+        # drops below what the api-server accepts, a paying user's upload
+        # fails here instead of indexing.
+        assert DEFAULT_MAX_FILE_SIZE_BYTES > self.LARGEST_CALLER_CAP_BYTES
+
+    def test_an_object_at_the_largest_caller_cap_is_not_rejected(self):
+        assert max_file_size_bytes() > self.LARGEST_CALLER_CAP_BYTES
 
     @pytest.mark.parametrize("raw,expected", [
         ("10485760", 10485760),
@@ -285,6 +296,29 @@ class TestSizeLimit:
         ))
 
         assert chunks == ["At the limit."]
+
+    @pytest.mark.parametrize("tier,cap", [
+        ("free", 5 * 1024 * 1024),
+        ("standard", 50 * 1024 * 1024),
+        ("pro", 60 * 1024 * 1024),
+    ])
+    @patch("rag_pipeline.partition_chunk_pipeline.boto3")
+    def test_an_upload_the_api_server_accepts_is_chunked(
+        self, mock_boto3, tier, cap
+    ):
+        # A file at each tier's per-file upload cap must index. A worker cap
+        # below one of these rejects an upload the api-server allowed.
+        make_s3_object(
+            mock_boto3,
+            f"Uploaded on the {tier} tier.\n",
+            content_length=cap,
+        )
+
+        chunks = list(stream_partition_and_chunk(
+            PIPELINE_ID, f"s3://test-bucket/{tier}.txt", {}
+        ))
+
+        assert chunks == [f"Uploaded on the {tier} tier."]
 
 
 class TestLineSplitting:

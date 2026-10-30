@@ -7,15 +7,15 @@ import requests
 from rag_pipeline.chunk import chunk, get_splitter_for_filetype
 from observability import meko_observe
 
-# Cap on a text file this worker will read into memory, since it reads the
-# whole object in one call. This is a worker limit, not something a caller
-# guarantees: dist_rag.create_source takes any s3:// URI and
-# CreateSourceProcessorForAWS_S3 queues every object of a supported type
-# without checking size, so a source pointed at an arbitrary bucket can hold
-# larger files. Raise MAX_FILE_SIZE_BYTES to index them. Meko's own upload path
-# caps uploads at the same 5 MiB in its api-server (a separate repo), which is
-# where the default comes from.
-DEFAULT_MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024  # 5 MiB
+# Guard against one get_object exhausting the worker's memory, since the whole
+# object is read in one call. It is only that guard, not a product limit, so it
+# has to stay above the largest per-file cap any caller enforces. Meko's
+# api-server allows 60 MB per file on its top tier (ProTierMaxKBFileBytes in
+# internal/service/free_tier.go; 5 MB free, 50 MB standard), and a source
+# registered through dist_rag.create_source has no size check at all, because
+# CreateSourceProcessorForAWS_S3 queues every object of a supported type. Keep
+# this above 60 MB, or raise MAX_FILE_SIZE_BYTES per deployment.
+DEFAULT_MAX_FILE_SIZE_BYTES = 64 * 1024 * 1024  # 64 MiB
 
 
 def max_file_size_bytes() -> int:
