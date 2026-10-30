@@ -1962,14 +1962,7 @@ CREATE MATERIALIZED VIEW sro_index_mv AS SELECT 1 AS c;
 CREATE UNIQUE INDEX ON sro_index_mv (c) WHERE unwanted_grant_nofail(1) > 0;
 \c -
 REFRESH MATERIALIZED VIEW CONCURRENTLY sro_index_mv;
--- YB: after the REFRESH ... CONCURRENTLY above, this one fails with "cannot commit
--- a transaction that deleted files but has no xid" (#35096). Hide the WARNING
--- "AbortTransaction while in COMMIT state" that comes with it, since psql prints
--- the two in either order.
-SET client_min_messages = error; -- YB
 REFRESH MATERIALIZED VIEW sro_index_mv;
-ERROR:  cannot commit a transaction that deleted files but has no xid
-RESET client_min_messages; -- YB
 DROP OWNED BY regress_sro_user;
 DROP ROLE regress_sro_user;
 -- Admin options
