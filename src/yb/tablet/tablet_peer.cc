@@ -51,16 +51,12 @@
 #include "yb/consensus/retryable_requests.h"
 #include "yb/consensus/state_change_context.h"
 
-#include "yb/docdb/consensus_frontier.h"
-
 #include "yb/fs/fs_manager.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/join.h"
 
 #include "yb/master/master_ddl.pb.h"
-
-#include "yb/rocksdb/db/memtable.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/periodic.h"
@@ -273,40 +269,6 @@ Status TabletPeer::InitTabletPeer(
     service_thread_pool_.store(service_thread_pool_holder_.get(), std::memory_order_release);
     strand_.reset(new rpc::Strand(service_thread_pool_holder_.get()));
     messenger_ = messenger;
-
-    tablet->SetMemTableFlushFilterFactory([log] {
-      auto largest_log_op_index = log->GetLatestEntryOpId().index;
-      return [largest_log_op_index] (const rocksdb::MemTable& memtable, bool) -> Result<bool> {
-        auto frontiers = memtable.Frontiers();
-        if (frontiers) {
-          const auto largest_memtable_op_index =
-              down_cast<const docdb::ConsensusFrontier&>(frontiers->Largest()).op_id().index;
-          // We can only flush this memtable if all operations written to it have also been written
-          // to the log (maybe not synced, if durable_wal_write is disabled, but that's OK).
-          auto should_flush = largest_memtable_op_index <= largest_log_op_index;
-          if (!should_flush) {
-            LOG(WARNING)
-              << "Skipping flush on memtable with ops ahead of log. "
-              << "Memtable index: " << largest_memtable_op_index
-              << " - log index: " << largest_log_op_index;
-          }
-          return should_flush;
-        }
-
-        // It is correct to not have frontiers when memtable is empty
-        if (memtable.IsEmpty()) {
-          return true;
-        }
-
-        // This is a degenerate case that should ideally never occur. An empty memtable got into the
-        // list of immutable memtables. We say it is OK to flush it and move on.
-        static const char* error_msg =
-            "A memtable with no frontiers set found when deciding what memtables to "
-            "flush! This should not happen.";
-        LOG(DFATAL) << error_msg;
-        return STATUS(IllegalState, error_msg);
-      };
-    });
 
     tablet_->SetCleanupPool(snapshot_cleanup_pool, &messenger_->scheduler());
 
@@ -1314,6 +1276,13 @@ Status TabletPeer::GetGCableDataSize(int64_t* retention_size) const {
   return Status::OK();
 }
 
+log::WalEntryState TabletPeer::WalState(const OpId& op_id) {
+  auto* log = log_atomic_.load(std::memory_order_acquire);
+  // No log until bootstrap completes. Replay must be able to flush, since writes stop once
+  // db_max_flushing_bytes of memtables wait for flush.
+  return log ? log->WalState(op_id) : log::WalEntryState::kDurable;
+}
+
 log::Log* TabletPeer::log() const {
   Log* log = log_atomic_.load(std::memory_order_acquire);
   LOG_IF_WITH_PREFIX(FATAL, !log) << "log() called before the log instance is initialized.";
@@ -1890,6 +1859,14 @@ Result<client::YBClient*> TabletPeer::client() const {
 int64_t TabletPeer::LeaderTerm() const {
   auto consensus = GetRaftConsensusUnsafe();
   return consensus ? consensus->LeaderTerm() : yb::OpId::kUnknownTerm;
+}
+
+Status TabletPeer::CheckTransactionMayContinue(
+    const LWOriginationInfoPB& origination_info) const {
+  if (!persistence_gate_) {
+    return Status::OK();
+  }
+  return persistence_gate_->CheckTransactionMayContinue(origination_info);
 }
 
 Result<HybridTime> TabletPeer::LeaderSafeTime() const {

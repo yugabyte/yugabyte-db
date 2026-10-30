@@ -52,6 +52,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceExistCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageCatalogUpgradeSuperUser.Action;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageCloudFederation;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ManageOtelCollector;
 import com.yugabyte.yw.commissioner.tasks.subtasks.MoveTablesTask;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistEnableMultiTenancy;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistUseClockbound;
@@ -95,6 +96,7 @@ import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
@@ -151,6 +153,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -184,6 +187,10 @@ import play.libs.Json;
  */
 @Slf4j
 public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
+
+  // Collector config rewrites queued by queueOtelCollectorConfigRewrite, by node name.
+  private final Map<String, NodeDetails> otelRewriteNodes = new LinkedHashMap<>();
+  private final Map<String, Boolean> otelRewriteIgnoreErrors = new HashMap<>();
 
   @Inject
   protected UniverseDefinitionTaskBase(BaseTaskDependencies baseTaskDependencies) {
@@ -825,6 +832,13 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // Update all server conf files because there was a master change.
     createMasterInfoUpdateTask(
         universe, currentNode, stoppingNode, ignoreMasterAddrsUpdateError, keepTserverRunning);
+    // In failover, also the old node, which stays a tserver. Failover is best effort for both: the
+    // old node is often unhealthy, and a collector error must not fail a failover.
+    Set<NodeDetails> rewriteNodes = new HashSet<>(nodeSet);
+    if (stoppingNode != null && keepTserverRunning && isStoppable) {
+      rewriteNodes.add(stoppingNode);
+    }
+    queueOtelCollectorConfigRewrite(rewriteNodes, keepTserverRunning /* ignoreErrors */);
   }
 
   public void ensureRemoteProcessState(
@@ -2577,6 +2591,15 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
+   * Whether the node's instance is a cloud VM that YBA creates and destroys. Only on public clouds:
+   * onprem nodes are pre-existing hardware, and kubernetes and local never go through instance
+   * destroy.
+   */
+  protected static boolean isCloudInstanceNode(Universe universe, NodeDetails node) {
+    return universe.getCluster(node.placementUuid).getProviderCloudType(node).isPublicCloud();
+  }
+
+  /**
    * Creates subtasks to create a set of server nodes. As the tasks are not idempotent, node states
    * are checked to determine if some tasks must be run or skipped. This state checking is ignored
    * if ignoreNodeStatus is true.
@@ -2623,12 +2646,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               // pre-existing hardware, and kubernetes and local never go through instance destroy.
               Set<NodeDetails> leftoverNodes =
                   filteredNodes.stream()
-                      .filter(
-                          n ->
-                              universe
-                                  .getCluster(n.placementUuid)
-                                  .getProviderCloudType(n)
-                                  .isPublicCloud())
+                      .filter(n -> isCloudInstanceNode(universe, n))
                       .collect(Collectors.toSet());
               if (!leftoverNodes.isEmpty()) {
                 // isForceDelete stays false: creating on top of a cleanup that silently failed is
@@ -3040,6 +3058,117 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         return 4;
       default:
         return Integer.MAX_VALUE;
+    }
+  }
+
+  protected void createManageOtelCollectorTasks(
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      List<NodeDetails> nodes,
+      boolean installOtelCollector,
+      TelemetryConfig telemetryConfig,
+      Function<NodeDetails, Map<String, String>> nodeToGflags) {
+    createManageOtelCollectorTasks(
+        userIntent, nodes, installOtelCollector, telemetryConfig, nodeToGflags, false);
+  }
+
+  protected void createManageOtelCollectorTasks(
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      List<NodeDetails> nodes,
+      boolean installOtelCollector,
+      TelemetryConfig telemetryConfig,
+      Function<NodeDetails, Map<String, String>> nodeToGflags,
+      boolean ignoreErrors) {
+    // If the node list is empty, we don't need to do anything.
+    if (nodes.isEmpty()) {
+      return;
+    }
+    String subGroupDescription =
+        String.format(
+            "AnsibleConfigureServers (%s) for: %s",
+            SubTaskGroupType.ManageOtelCollector, taskParams().nodePrefix);
+    TaskExecutor.SubTaskGroup subTaskGroup = createSubTaskGroup(subGroupDescription);
+    boolean otelCollectorEnabled =
+        installOtelCollector || getUniverse().getUniverseDetails().otelCollectorEnabled;
+    for (NodeDetails node : nodes) {
+      ManageOtelCollector.Params params = new ManageOtelCollector.Params();
+      params.nodeName = node.nodeName;
+      params.setUniverseUUID(taskParams().getUniverseUUID());
+      params.azUuid = node.azUuid;
+      params.installOtelCollector = installOtelCollector;
+      params.otelCollectorEnabled = otelCollectorEnabled;
+      params.telemetryConfig = telemetryConfig;
+      params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
+      params.gflags = nodeToGflags.apply(node);
+      params.ignoreErrors = ignoreErrors;
+
+      ManageOtelCollector task = createTask(ManageOtelCollector.class);
+      task.initialize(params);
+      task.setUserTaskUUID(getUserTaskUUID());
+      subTaskGroup.addSubTask(task);
+    }
+    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.ManageOtelCollector);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  /**
+   * Queues a collector config rewrite on the nodes for their new master role. It runs last, before
+   * the task succeeds, so it cannot delay the role change. A node fails fast if any caller asks.
+   */
+  protected void queueOtelCollectorConfigRewrite(
+      Collection<NodeDetails> nodes, boolean ignoreErrors) {
+    for (NodeDetails node : nodes) {
+      otelRewriteNodes.putIfAbsent(node.nodeName, node);
+      otelRewriteIgnoreErrors.merge(node.nodeName, ignoreErrors, Boolean::logicalAnd);
+    }
+  }
+
+  @Override
+  protected void createFinalSubTasks() {
+    super.createFinalSubTasks();
+    for (boolean ignoreErrors : new boolean[] {false, true}) {
+      createOtelCollectorConfigRewriteTasks(
+          otelRewriteNodes.values().stream()
+              .filter(n -> otelRewriteIgnoreErrors.get(n.nodeName) == ignoreErrors)
+              .collect(Collectors.toList()),
+          ignoreErrors);
+    }
+    otelRewriteNodes.clear();
+    otelRewriteIgnoreErrors.clear();
+  }
+
+  private void createOtelCollectorConfigRewriteTasks(
+      Collection<NodeDetails> nodes, boolean ignoreErrors) {
+    if (nodes.isEmpty()) {
+      return;
+    }
+    Universe universe = getUniverse();
+    TelemetryConfig telemetryConfig = OtelCollectorUtil.getCurrentTelemetryConfig(universe);
+    if (!universe.getUniverseDetails().otelCollectorEnabled
+        || !OtelCollectorUtil.isMetricsExportEnabledInUniverse(
+            telemetryConfig.getMetricsExportConfig())) {
+      return;
+    }
+    Map<UUID, List<NodeDetails>> nodesByCluster =
+        nodes.stream().collect(Collectors.groupingBy(n -> n.placementUuid));
+    for (Map.Entry<UUID, List<NodeDetails>> entry : nodesByCluster.entrySet()) {
+      Cluster cluster = universe.getCluster(entry.getKey());
+      // The collector on Kubernetes is a sidecar that helm upgrades configure.
+      List<NodeDetails> clusterNodes =
+          entry.getValue().stream()
+              .filter(n -> cluster.getProviderCloudType(n) != CloudType.kubernetes)
+              .collect(Collectors.toList());
+      if (clusterNodes.isEmpty()) {
+        continue;
+      }
+      createManageOtelCollectorTasks(
+          cluster.userIntent,
+          clusterNodes,
+          false /* installOtelCollector */,
+          telemetryConfig,
+          node ->
+              GFlagsUtil.getGFlagsForNode(
+                  node, ServerType.TSERVER, cluster, universe.getUniverseDetails().clusters),
+          ignoreErrors);
     }
   }
 
@@ -4800,5 +4929,16 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
+  }
+
+  /**
+   * Which nodes may be force-destroyed: only onprem ones, where a failed cleanup leaves the node
+   * instance decommissioned. On a cloud, a failed terminate fails the task so the node stays
+   * tracked and blacklisted. A retry is safe because destroy succeeds when the instance is already
+   * gone.
+   */
+  protected static Function<NodeDetails, Boolean> forceDestroyOnlyOnOnprem(Universe universe) {
+    Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(universe);
+    return node -> providerGetter.apply(node).getCloudCode() == CloudType.onprem;
   }
 }

@@ -838,10 +838,16 @@ class GoogleCloudAdmin():
             address = "ip-" + instance_name
             logging.info("[app] Deleting static ip {} attached to VM {}".format(
                 address, instance_name))
-            self.compute.addresses().delete(
-                project=self.project, region=region, address=address).execute()
-            logging.info("[app] Deleted static ip {} attached to VM {}".format(
-                address, instance_name))
+            try:
+                self.compute.addresses().delete(
+                    project=self.project, region=region, address=address).execute()
+                logging.info("[app] Deleted static ip {} attached to VM {}".format(
+                    address, instance_name))
+            except HttpError as e:
+                # A retry after a destroy that deleted the address but not the VM.
+                if e.resp.status != http_client.NOT_FOUND:
+                    raise
+                logging.info("[app] Static ip {} is already deleted".format(address))
         operation = self.compute.instances().delete(
             project=self.project, zone=zone, instance=instance_name).execute()
         self.waiter.wait(operation, zone=zone)

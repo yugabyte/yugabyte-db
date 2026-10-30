@@ -1334,6 +1334,22 @@ TEST_F(ClientTest, TestAsyncFlushResponseAfterSessionDropped) {
   ASSERT_EQ(flush_future.wait_for(3min), std::future_status::ready);
 }
 
+// The session releases the buffers holder before the flush callback, so the caller can reuse the
+// buffers right away.
+TEST_F(ClientTest, FlushReleasesBuffersHolderBeforeCallback) {
+  auto session = CreateSession();
+  ApplyInsertToSession(session.get(), client_table_, 1, 1, "row");
+  auto holder = std::make_shared<int>(0);
+  std::weak_ptr<int> weak_holder = holder;
+  std::promise<std::pair<Status, bool>> promise;
+  session->FlushAsync([&weak_holder, &promise](FlushStatus* flush_status) {
+    promise.set_value({flush_status->status, weak_holder.expired()});
+  }, std::move(holder));
+  auto [status, released] = promise.get_future().get();
+  ASSERT_OK(status);
+  ASSERT_TRUE(released);
+}
+
 TEST_F(ClientTest, TestSessionClose) {
   auto session = CreateSession();
   ApplyInsertToSession(session.get(), client_table_, 1, 1, "row");

@@ -625,6 +625,15 @@ class Tablet::RocksDbListener : public rocksdb::EventListener {
   RocksDbListener(Tablet& tablet, const std::string& log_prefix)
       : tablet_(tablet), log_prefix_(log_prefix) {}
 
+  void OnFlushScheduled(rocksdb::DB*, const storage::UserFrontier* largest_frontier) override {
+    // WalState starts the WAL fsync if needed, so the flush filter usually finds the memtables
+    // durable on the first attempt.
+    if (largest_frontier) {
+      tablet_.tablet_context_->WalState(
+          down_cast<const docdb::ConsensusFrontier&>(*largest_frontier).op_id());
+    }
+  }
+
   void OnFlushCompleted(rocksdb::DB*, const rocksdb::FlushJobInfo&) override {
     if (auto* participant = tablet_.transaction_participant()) {
       VLOG_WITH_PREFIX_AND_FUNC(2)
@@ -824,6 +833,7 @@ Tablet::Tablet(const TabletInitData& data)
       metadata_cache_(data.metadata_cache),
       local_tablet_filter_(data.local_tablet_filter),
       log_prefix_suffix_(data.log_prefix_suffix),
+      tablet_context_(DCHECK_NOTNULL(data.tablet_context)),
       is_sys_catalog_(data.is_sys_catalog),
       txns_enabled_(data.txns_enabled),
       allowed_history_cutoff_provider_(data.allowed_history_cutoff_provider),
@@ -1077,6 +1087,46 @@ struct Tablet::IntentsDbFlushFilterState {
   }
 };
 
+Result<bool> Tablet::RegularDbFlushFilter(const rocksdb::MemTable& memtable) {
+  auto frontiers = memtable.Frontiers();
+  if (frontiers) {
+    const auto& op_id = down_cast<const docdb::ConsensusFrontier&>(frontiers->Largest()).op_id();
+    auto wal_state = tablet_context_->WalState(op_id);
+    switch (wal_state) {
+      case log::WalEntryState::kNone:
+        YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 10)
+            << "Skipping flush on memtable with ops not in log, memtable op id: " << op_id;
+        return false;
+      case log::WalEntryState::kAppended:
+        // A power loss could drop it from the WAL while it is flushed, and bootstrap would fail
+        // with "WAL files missing". The flush is retried after the fsync.
+        return false;
+      case log::WalEntryState::kSyncFailed:
+        // Waiting could block flushes, including the shutdown one, for as long as fsync keeps
+        // failing, so risk the power loss case instead.
+        YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 10)
+            << "Flushing memtable with ops not fsynced in log, memtable op id: " << op_id;
+        return true;
+      case log::WalEntryState::kDurable:
+        return true;
+    }
+    FATAL_INVALID_ENUM_VALUE(log::WalEntryState, wal_state);
+  }
+
+  // It is correct to not have frontiers when memtable is empty
+  if (memtable.IsEmpty()) {
+    return true;
+  }
+
+  // This is a degenerate case that should ideally never occur. An empty memtable got into the
+  // list of immutable memtables. We say it is OK to flush it and move on.
+  static const char* error_msg =
+      "A memtable with no frontiers set found when deciding what memtables to "
+      "flush! This should not happen.";
+  LOG_WITH_PREFIX(DFATAL) << error_msg;
+  return STATUS(IllegalState, error_msg);
+}
+
 Result<bool> Tablet::IntentsDbFlushFilter(
     const rocksdb::MemTable& memtable, bool write_blocked,
     std::shared_ptr<Tablet::IntentsDbFlushFilterState> state) {
@@ -1087,9 +1137,11 @@ Result<bool> Tablet::IntentsDbFlushFilter(
   }
 
   auto frontiers = memtable.Frontiers();
+  OpId memtable_op_id;
   int64_t memtable_index = std::numeric_limits<int64_t>::max();
   if (frontiers) {
-    memtable_index = down_cast<const docdb::ConsensusFrontier&>(frontiers->Largest()).op_id().index;
+    memtable_op_id = down_cast<const docdb::ConsensusFrontier&>(frontiers->Largest()).op_id();
+    memtable_index = memtable_op_id.index;
 
     if (state->largest_flushed_index.empty()) {
       // We allow to flush intents DB only after regular DB.
@@ -1134,11 +1186,29 @@ Result<bool> Tablet::IntentsDbFlushFilter(
     VLOG_WITH_PREFIX_AND_FUNC(4) << "Flush ability: " << AsString(state->flush_ability);
   }
 
+  // A failed vector save cannot satisfy an intents durability dependency. Check even when flush
+  // ability was cached as kAlreadyFlushing; no further save task may remain to make progress.
+  if (state->vector_indexes) {
+    for (size_t idx = 0; idx != state->vector_indexes->size(); ++idx) {
+      if (state->flush_ability[idx + 1] != rocksdb::FlushAbility::kNoNewData &&
+          !state->Flushed(idx + 1, memtable_index)) {
+        RETURN_NOT_OK((*state->vector_indexes)[idx]->GetFlushStatus());
+      }
+    }
+  }
+
   // If regular db does not have anything to flush, it means that we have just added intents,
   // without apply, so it is OK to flush the intents RocksDB.
   if (!state->HasNewData(memtable_index)) {
     VLOG_WITH_PREFIX_AND_FUNC(4) << "No new data: " << state->ToString();
-    return true;
+    // Regular DB flushed op id does not bound this flush, so the intents must be durable in WAL.
+    // See RegularDbFlushFilter for kSyncFailed.
+    if (!frontiers) {
+      return true;
+    }
+    auto wal_state = tablet_context_->WalState(memtable_op_id);
+    return wal_state == log::WalEntryState::kDurable ||
+           wal_state == log::WalEntryState::kSyncFailed;
   }
 
   // Force flush of regular DB if we were not able to flush for too long.
@@ -1162,6 +1232,7 @@ Result<bool> Tablet::IntentsDbFlushFilter(
     }
   }
 
+  TEST_SYNC_POINT_CALLBACK("Tablet::IntentsDbFlushFilter:Blocked", this);
   return false;
 }
 
@@ -1354,13 +1425,9 @@ Status Tablet::OpenRegularDB(const rocksdb::Options& common_options) {
       docdb::CreateCompactionMetrics(tablet_metrics_entity_));
 
   regular_rocksdb_options.mem_table_flush_filter_factory = MakeMemTableFlushFilterFactory([this] {
-    {
-      std::lock_guard lock(flush_filter_mutex_);
-      if (mem_table_flush_filter_factory_) {
-        return mem_table_flush_filter_factory_();
-      }
-    }
-    return rocksdb::MemTableFilter();
+    return [this](const rocksdb::MemTable& memtable, bool) {
+      return RegularDbFlushFilter(memtable);
+    };
   });
 
   regular_rocksdb_options.listeners.push_back(
@@ -3137,18 +3204,21 @@ Status Tablet::SetAllCDCRetentionBarriersUnlocked(
                                                       initial_retention_barrier,
                                                       barrier_move_selector));
   // Intents Retention setting on txn_participant
-  // 1. cdc_sdk_intents_op_id - opid beyond which GC will not happen
+  // 1. cdc_sdk_intents_op_id - opid beyond which GC will not happen. This is same as what is
+  // persisted in the tablet metadata above.
   // 2. cdc_sdk_op_id_expiration - time limit upto which intents barrier setting holds
   // 3. min_start_ht_cdc_unstreamed_txns - time up to which intents SST files retained for CDC can
   // be deleted, provided their maximum record time is earlier than this value.
   auto txn_participant = transaction_participant();
   if (barrier_move_selector.move_cdc_sdk_min_checkpoint_op_id && txn_participant) {
+    const auto intents_op_id = metadata_->cdc_sdk_min_checkpoint_op_id();
     VLOG_WITH_PREFIX_AND_FUNC(1)
-        << "Intents opid retention duration = " << cdc_sdk_op_id_expiration
+        << "Intents op id = " << intents_op_id << " (requested " << cdc_sdk_intents_op_id
+        << "), intents opid retention duration = " << cdc_sdk_op_id_expiration
         << ", Minimum start time for CDC unstreamed txns from available gc log segments = "
         << min_start_ht_cdc_unstreamed_txns;
     txn_participant->SetIntentRetainOpIdAndTime(
-        cdc_sdk_intents_op_id, cdc_sdk_op_id_expiration, min_start_ht_cdc_unstreamed_txns);
+        intents_op_id, cdc_sdk_op_id_expiration, min_start_ht_cdc_unstreamed_txns);
     if (FLAGS_cdc_immediate_transaction_cleanup) {
       CleanupIntentFiles();
     }

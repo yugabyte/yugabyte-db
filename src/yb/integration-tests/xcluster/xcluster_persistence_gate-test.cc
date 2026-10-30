@@ -59,10 +59,13 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
+DECLARE_bool(TEST_disable_persistence_early_gate);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_persistence_gate);
 DECLARE_bool(enforce_xcluster_guarded_lease);
 DECLARE_bool(xcluster_lease_relinquish_leadership);
+DECLARE_bool(yb_enable_read_committed_isolation);
+DECLARE_double(transaction_max_missed_heartbeat_periods);
 DECLARE_uint32(xcluster_guarded_lease_duration_ms);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_string(time_source);
@@ -144,7 +147,10 @@ class XClusterPersistenceGateTest : public PgMiniTestBase {
     ASSERT_STR_CONTAINS(
         status.ToString(),
         Format("Writes to the database with OID $0 are temporarily disabled", database.oid));
+    ASSERT_STR_NOT_CONTAINS(status.ToString(), "Errors from tablet servers");
   }
+
+  void TestAbortsTransactionWaitingForLock();
 
   int64_t SumTServerRefusals() {
     int64_t refusals = 0;
@@ -160,6 +166,30 @@ class XClusterPersistenceGateTest : public PgMiniTestBase {
     return METRIC_persistence_violation_rejections
         .Instantiate(VERIFY_RESULT(GetCatalogManager())->sys_catalog()->GetMetricEntity())
         ->value();
+  }
+
+  // Cuts every TServer off from master and waits until none of them holds a lease.
+  Status CutOffTServersFromMaster() {
+    for (const auto& tserver : cluster_->mini_tablet_servers()) {
+      tserver->FailHeartbeats();
+    }
+    return WaitFor(
+        [this]() -> Result<bool> {
+          for (const auto& tserver : cluster_->mini_tablet_servers()) {
+            if (tserver->server()->GetXClusterContext().TEST_GetPersistenceBlockMap().ok()) {
+              return false;
+            }
+          }
+          return true;
+        },
+        kXClusterLeaseDuration * 3 * kTimeMultiplier, "Leases expired");
+  }
+
+  // Resumes every TServer's heartbeats to master, so their leases come back.
+  void ReconnectTServersToMaster() {
+    for (const auto& tserver : cluster_->mini_tablet_servers()) {
+      tserver->FailHeartbeats(false);
+    }
   }
 
   Result<tablet::TabletPeerPtr> GetTableLeader(const std::string& table_name) {
@@ -316,6 +346,8 @@ TEST_F(XClusterPersistenceGateTest, StopBlocksOnlyItsDatabase) {
 // Checks that a transaction that wrote before StopPersisting cannot commit after
 // StartPersisting, and that the refused commit leaves the database usable.
 TEST_F(XClusterPersistenceGateTest, StartBlocksEarlierTransaction) {
+  // So the transaction reaches its commit rather than being aborted by its heartbeat.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_persistence_early_gate) = true;
   const auto database = ASSERT_RESULT(PrepareDatabase("yugabyte"));
   auto conn = ASSERT_RESULT(ConnectToDB(database.name));
   ASSERT_OK(conn.Execute("BEGIN"));
@@ -346,6 +378,8 @@ TEST_F(XClusterPersistenceGateTest, RefusesWriteReceivedBeforeStop) {
 // Checks that a commit received before StopPersisting, but not yet appended to Raft when
 // StopPersisting returns, is refused.
 TEST_F(XClusterPersistenceGateTest, RefusesCommitReceivedBeforeStop) {
+  // So the transaction reaches its commit rather than being aborted by its heartbeat.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_persistence_early_gate) = true;
   const auto database = ASSERT_RESULT(PrepareDatabase("yugabyte"));
   auto conn = ASSERT_RESULT(ConnectToDB(database.name));
   ASSERT_OK(conn.Execute("BEGIN"));
@@ -550,6 +584,128 @@ TEST_F(XClusterPersistenceGateTest, StampsNotInWal) {
   ASSERT_GT(commits, 0);
 }
 
+// Checks that an idle transaction that wrote before StopPersisting is aborted, releasing its row
+// lock without waiting for its backend, and that the backend's next statement reports the block.
+TEST_F(XClusterPersistenceGateTest, AbortsIdleTransactionHoldingRowLock) {
+  const auto database = ASSERT_RESULT(PrepareDatabase("yugabyte"));
+  auto idle_conn = ASSERT_RESULT(ConnectToDB(database.name));
+  auto locking_conn = ASSERT_RESULT(ConnectToDB(database.name));
+  ASSERT_OK(idle_conn.Execute("INSERT INTO t VALUES (1, 1)"));
+  ASSERT_OK(idle_conn.Execute("BEGIN"));
+  ASSERT_OK(idle_conn.Execute("UPDATE t SET v = 2 WHERE k = 1"));
+  const auto initial_tserver_refusals = SumTServerRefusals();
+
+  // After StartPersisting the idle transaction is still blocked, but a new one is not, so it can
+  // take the row lock once a heartbeat refusal has aborted the idle transaction.
+  ASSERT_OK(StopPersisting(database));
+  ASSERT_OK(StartPersisting(database));
+  // The update succeeds only once the idle transaction is aborted and releases its row lock.  The
+  // timeout below only bounds the failing case: without the heartbeat gate the idle transaction
+  // keeps heartbeating and holds the lock indefinitely, and statements have no timeout by default.
+  ASSERT_OK(locking_conn.ExecuteFormat(
+      "SET statement_timeout = $0", ToMilliseconds(10s * kTimeMultiplier)));
+  ASSERT_OK(locking_conn.Execute("UPDATE t SET v = 3 WHERE k = 1"));
+  ASSERT_GT(SumTServerRefusals(), initial_tserver_refusals);
+
+  // The idle session's next statement reports the refusal that aborted its transaction.
+  const auto status = ResultToStatus(idle_conn.Fetch("SELECT * FROM t"));
+  LOG(INFO) << "Idle transaction's next statement: " << status;
+  ASSERT_NO_FATALS(ExpectBlocked(status, database));
+}
+
+// Checks that a blocked transaction queued for a lock fails rather than staying queued until its
+// statement times out.  With yb_enable_read_committed_isolation set, it fails as blocked; without
+// it (READ COMMITTED then runs as REPEATABLE READ), it may instead fail with a serialization
+// failure (40001).
+void XClusterPersistenceGateTest::TestAbortsTransactionWaitingForLock() {
+  // After its heartbeat is refused the waiter stops heartbeating, so its coordinator would also
+  // expire it after missing enough heartbeats, failing it.  Make that take far longer than the
+  // statement timeout, so only the coordinator's abort can fail the waiter in time.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_max_missed_heartbeat_periods) = 1000;
+  const auto database = ASSERT_RESULT(PrepareDatabase("yugabyte"));
+  auto holding_conn = ASSERT_RESULT(ConnectToDB(database.name));
+  auto waiting_conn = ASSERT_RESULT(ConnectToDB(database.name));
+
+  // A session-level advisory lock's transaction is not stamped and so is never aborted, so only the
+  // waiter's own abort can free the waiter.
+  ASSERT_OK(holding_conn.Fetch("SELECT pg_advisory_lock(1)"));
+  ASSERT_OK(waiting_conn.ExecuteFormat(
+      "SET statement_timeout = $0", ToMilliseconds(10s * kTimeMultiplier)));
+  ASSERT_OK(waiting_conn.Execute("BEGIN"));
+  ASSERT_OK(waiting_conn.Execute("INSERT INTO t VALUES (1, 1)"));
+
+  // Now we have the waiting connection wait on the advisory lock, causing it to queue up waiting
+  // for that lock to be freed.
+  TestThreadHolder thread_holder;
+  Status waiting_status;
+  thread_holder.AddThreadFunctor([&waiting_conn, &waiting_status] {
+    waiting_status = ResultToStatus(waiting_conn.Fetch("SELECT pg_advisory_xact_lock(1)"));
+  });
+
+  // Wait for it to actually get queued before we do StopPersisting; otherwise its heartbeat could
+  // be refused before it queues, and it would fail without ever waiting.
+  auto observer_conn = ASSERT_RESULT(ConnectToDB(database.name));
+  // By default pg_locks omits transactions younger than 1 s.
+  ASSERT_OK(observer_conn.Execute("SET yb_locks_min_txn_age = 0"));
+  ASSERT_OK(WaitFor(
+      [&observer_conn]() -> Result<bool> {
+        return VERIFY_RESULT(observer_conn.FetchRow<int64_t>(
+                   "SELECT COUNT(*) FROM pg_locks WHERE NOT granted")) > 0;
+      },
+      10s * kTimeMultiplier, "Waiting transaction queued for the advisory lock"));
+
+  ASSERT_OK(StopPersisting(database));
+  thread_holder.JoinAll();
+
+  LOG(INFO) << "Waiting transaction's statement status: " << waiting_status;
+  // The coordinator's abort fails the queued statement with a serialization failure.  With
+  // yb_enable_read_committed_isolation set, the statement runs in a subtransaction, so that failure
+  // does not end it: Postgres retries the statement, which then fails with the transaction's
+  // recorded heartbeat refusal.  Without it, the serialization failure is what Postgres reports.
+  if (!FLAGS_yb_enable_read_committed_isolation &&
+      PgsqlError(waiting_status).value() == YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE) {
+    return;
+  }
+  ASSERT_NO_FATALS(ExpectBlocked(waiting_status, database));
+}
+
+TEST_F(XClusterPersistenceGateTest, AbortsTransactionWaitingForLock) {
+  ASSERT_NO_FATALS(TestAbortsTransactionWaitingForLock());
+}
+
+class XClusterPersistenceGateReadCommittedTest : public XClusterPersistenceGateTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
+    XClusterPersistenceGateTest::SetUp();
+  }
+};
+
+TEST_F(XClusterPersistenceGateReadCommittedTest, AbortsTransactionWaitingForLock) {
+  ASSERT_NO_FATALS(TestAbortsTransactionWaitingForLock());
+}
+
+// Checks that a transaction is not aborted while its status tablet's TServer has no lease, even
+// though that TServer cannot tell whether the transaction's database is blocked.
+TEST_F(XClusterPersistenceGateTest, KeepsTransactionWithoutLease) {
+  // Every TServer loses its lease below.  With relinquishing on, the status tablet would then have
+  // no leader, so no coordinator would judge the transaction while the leases are gone.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_lease_relinquish_leadership) = false;
+
+  const auto database = ASSERT_RESULT(PrepareDatabase("yugabyte"));
+  auto conn = ASSERT_RESULT(ConnectToDB(database.name));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1, 1)"));
+
+  ASSERT_OK(CutOffTServersFromMaster());
+  // Several heartbeat intervals, each judged without a lease.
+  SleepFor(3s * kTimeMultiplier);
+  ReconnectTServersToMaster();
+
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT COUNT(*) FROM t")), 1);
+}
+
 class XClusterPersistenceGateSkewedClockTest : public XClusterPersistenceGateTest {
  protected:
   void SetUp() override {
@@ -608,6 +764,9 @@ class XClusterPersistenceGateMultiMasterTest : public XClusterPersistenceGateTes
 // master has blocked it since.  The gate must refuse the write retryably rather than let it
 // through, so the client resends it once the catalog is loaded.
 TEST_F(XClusterPersistenceGateMultiMasterTest, CatalogWriteNotJudgedByEarlierTermMap) {
+  // So the DDL's transaction, held open across StopPersisting, reaches the master gate rather than
+  // being aborted by its heartbeat.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_persistence_early_gate) = true;
   const auto database = ASSERT_RESULT(PrepareDatabase("yugabyte"));
   auto conn = ASSERT_RESULT(ConnectToDB(database.name));
   const auto first_leader_uuid = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->permanent_uuid();

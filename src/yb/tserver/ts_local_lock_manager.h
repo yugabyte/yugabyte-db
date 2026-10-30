@@ -130,6 +130,8 @@ class TSLocalLockManager {
   std::unordered_map<docdb::ObjectLockPrefix, docdb::LockState>
       TEST_GetLockStateMapForTxn(TransactionId txn) const;
   TabletId TEST_GetStatusTabletForTxn(TransactionId txn) const;
+  std::optional<CoarseTimePoint> TEST_MaxDeadlineForTxn(
+      const TransactionId& txn_id, std::optional<SubTransactionId> subtxn_id);
   void TEST_ConsumePendingSharedLockRequests();
   bool IsShutdownInProgress() const;
 

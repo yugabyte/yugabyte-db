@@ -56,6 +56,7 @@ DECLARE_uint32(cdc_wal_retention_time_secs);
 DECLARE_bool(TEST_disable_cdc_state_insert_on_setup);
 DECLARE_uint32(ysql_oid_cache_prefetch_size);
 DECLARE_uint32(xcluster_ysql_statement_timeout_sec);
+DECLARE_bool(xcluster_enable_index_backfill_replication);
 DECLARE_bool(xcluster_enable_target_applied_filter);
 
 using namespace std::placeholders;
@@ -574,7 +575,8 @@ Result<std::unique_ptr<XClusterCreateStreamsContext>> XClusterSourceManager::Cre
   // The target-applied filter is captured immutably per stream at creation.
   // Bi-directional mode keeps the legacy external_hybrid_time filter for loop-prevention.
   const bool eligible_for_use_target_applied_filter =
-      automatic_ddl_mode && FLAGS_xcluster_enable_target_applied_filter;
+      automatic_ddl_mode && FLAGS_xcluster_enable_target_applied_filter &&
+      FLAGS_xcluster_enable_index_backfill_replication;
 
   for (const auto& table_id : table_ids) {
     auto stripped_table_id = xcluster::StripSequencesDataAliasIfPresent(table_id);
