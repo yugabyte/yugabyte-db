@@ -1257,6 +1257,7 @@
         ;
 
         img-src 'self'
+            https://static.scarf.sh/
             https://cdn.cookielaw.org/logos/
             https://docs.camunda.org/
             https://docs.yugabyte.com/images/favicon.ico
