@@ -248,8 +248,9 @@ public class RpcClientCert {
     }
   }
 
-  // CertificateHelper.verifySignature handles RSA only; the chart's key can be RSA, ECDSA or
-  // Ed25519, so prove the pair by signing with the key and verifying with the cert.
+  // CertificateHelper.verifySignature handles RSA only; the chart's key can be RSA or ECDSA (which
+  // yb-client loads since #36033), so prove the pair by signing with the key and verifying with
+  // the cert.
   private static boolean isKeyOf(X509Certificate cert, String keyPem) throws Exception {
     PrivateKey key = CertificateHelper.getPrivateKey(keyPem);
     String algorithm =
