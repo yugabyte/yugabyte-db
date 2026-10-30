@@ -409,9 +409,9 @@ Status QLProcessor::CheckNodePermissions(const TreeNode* tnode) {
                 ql_env_.GetTableDesc(table->index_info().indexed_table_id(), &cache_used);
 
             if (!indexed_table) {
-              s = STATUS_SUBSTITUTE(InternalError,
-                                    "Unable to find index $0",
-                                    drop_stmt->name()->QLName());
+              s = STATUS_FORMAT(InternalError,
+                                "Unable to find index $0",
+                                drop_stmt->name()->QLName());
               break;
             }
 

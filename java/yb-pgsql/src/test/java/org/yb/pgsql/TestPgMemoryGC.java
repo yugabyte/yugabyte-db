@@ -123,8 +123,16 @@ public class TestPgMemoryGC extends BasePgSQLTest {
   }
 
   private int getWebserverPid() throws Exception {
-    Process p = Runtime.getRuntime().exec(
-      new String[] {"/bin/sh", "-c", "pgrep -f 'YSQL webserver'"});
+    // Restrict to children of this cluster's postmaster: concurrently running tests have their
+    // own YSQL webservers.
+    int backendPid;
+    try (Statement stmt = connection.createStatement()) {
+      ResultSet rs = stmt.executeQuery("SELECT pg_backend_pid()");
+      rs.next();
+      backendPid = rs.getInt(1);
+    }
+    Process p = Runtime.getRuntime().exec(new String[] {"/bin/sh", "-c", String.format(
+        "pgrep -P $(ps -o ppid= -p %d) -f 'YSQL webserver'", backendPid)});
     BufferedReader input = new BufferedReader(new InputStreamReader(p.getInputStream()));
     String line = input.readLine();
     return Integer.parseInt(line);

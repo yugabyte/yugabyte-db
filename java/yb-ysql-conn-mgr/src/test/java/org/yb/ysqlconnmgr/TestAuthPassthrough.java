@@ -325,7 +325,7 @@ public class TestAuthPassthrough extends BaseYsqlConnMgr {
       assertLoginResult(user, TEST_PASSWORD, true);
 
       adminStmt.execute("DROP ROLE " + user);
-      assertLoginResult(user, TEST_PASSWORD, false);
+      assertLoginWithPasswordResult(user, TEST_PASSWORD, false);
     });
   }
 

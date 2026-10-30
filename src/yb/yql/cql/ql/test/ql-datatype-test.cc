@@ -15,9 +15,9 @@
 
 #include "yb/common/ql_value.h"
 
-#include "yb/gutil/strings/substitute.h"
-
+#include "yb/gutil/strings/numbers.h"
 #include "yb/util/decimal.h"
+#include "yb/util/format.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
 
@@ -26,7 +26,6 @@
 using std::string;
 using std::shared_ptr;
 using std::vector;
-using strings::Substitute;
 
 namespace yb {
 namespace ql {
@@ -67,7 +66,7 @@ TEST_F(TestQLQuery, TestQLQuerySimple) {
     const char *bool_value = idx % 2 == 0 ? "true" : "false";
 
     // INSERT: Valid statement with column list.
-    stmt = Substitute(
+    stmt = Format(
       "INSERT INTO test_table"
       "(h0, h1, h2, h3, h4, h5,"
       " r0, r1, r2, r3, r4, r5,"
@@ -151,8 +150,8 @@ TEST_F(TestQLQuery, TestQLDecimalType) {
 
   string balance = "123456789123456789123456789123456789123456789123456390482039482309482309481.99";
   double rate = .01;
-  string stmt = Substitute("INSERT INTO accounts(name, balance, rate) VALUES('neil', $0, $1)",
-                    balance, rate);
+  string stmt = Format("INSERT INTO accounts(name, balance, rate) VALUES('neil', $0, $1)",
+                    balance, SimpleDtoa(rate));
   LOG(INFO) << "Executing " << stmt;
   CHECK_VALID_STMT(stmt);
   CHECK_VALID_STMT("SELECT name, balance, rate FROM accounts WHERE name='neil'");
@@ -173,8 +172,8 @@ TEST_F(TestQLQuery, TestQLVarIntType) {
 
   string balance = "123456789123456789123456789123456789123456789123456390482039482309482309481";
   double rate = .01;
-  string stmt = Substitute("INSERT INTO accounts(name, balance, rate) VALUES('sagnik', $0, $1)",
-                    balance, rate);
+  string stmt = Format("INSERT INTO accounts(name, balance, rate) VALUES('sagnik', $0, $1)",
+                    balance, SimpleDtoa(rate));
   LOG(INFO) << "Executing " << stmt;
   CHECK_VALID_STMT(stmt);
   CHECK_VALID_STMT("SELECT name, balance, rate FROM accounts WHERE name='sagnik'");
@@ -203,26 +202,26 @@ TEST_F(TestQLQuery, TestQLDecimalTypeInKey) {
   vector<double> rates = { .0001, .022, 0001, .0001 };
 
   for (size_t i = 0; i < names.size(); i++) {
-    auto insert_stmt = Substitute("INSERT INTO accounts(name, balance, rate) VALUES('$0', $1, $2)",
-                                  names[i], balances[i], rates[i]);
+    auto insert_stmt = Format("INSERT INTO accounts(name, balance, rate) VALUES('$0', $1, $2)",
+                              names[i], balances[i], SimpleDtoa(rates[i]));
     LOG(INFO) << "Executing: " << insert_stmt;
     CHECK_VALID_STMT(insert_stmt);
     auto select_stmt1 =
-        Substitute("SELECT name, balance, rate FROM accounts WHERE name = '$0' AND balance = $1",
-                   names[i], balances[i]);
+        Format("SELECT name, balance, rate FROM accounts WHERE name = '$0' AND balance = $1",
+               names[i], balances[i]);
     LOG(INFO) << "Executing: " << select_stmt1;
     CHECK_VALID_STMT(select_stmt1);
     CHECK_EXPECTED_ROW_DECIMAL(processor, names[i], balances[i], rates[i]);
 
     auto select_stmt2 =
-        Substitute("SELECT name, balance, rate FROM accounts WHERE name = '$0' AND balance > 0.001",
-                   names[i]);
+        Format("SELECT name, balance, rate FROM accounts WHERE name = '$0' AND balance > 0.001",
+               names[i]);
     LOG(INFO) << "Executing: " << select_stmt2;
     CHECK_VALID_STMT(select_stmt2);
     CHECK_EXPECTED_ROW_DECIMAL(processor, names[i], balances[i], rates[i]);
 
     auto select_stmt3 =
-        Substitute("SELECT name, balance, rate FROM accounts WHERE name = '$0' AND balance < $1",
+        Format("SELECT name, balance, rate FROM accounts WHERE name = '$0' AND balance < $1",
             names[i],
             "123456789123456789123456789123456789123456789123456390482039482309482309482.99");
     LOG(INFO) << "Executing : " << select_stmt3;
@@ -253,29 +252,29 @@ TEST_F(TestQLQuery, TestQLVarIntTypeInKey) {
   vector<double> rates = { .0001, .022, 0001, .0001 };
 
   for (size_t i = 0; i < names.size(); i++) {
-    auto insert_stmt = Substitute("INSERT INTO accounts(name, balance, rate) VALUES('$0', $1, $2)",
-                                  names[i], balances[i], rates[i]);
+    auto insert_stmt = Format("INSERT INTO accounts(name, balance, rate) VALUES('$0', $1, $2)",
+                              names[i], balances[i], SimpleDtoa(rates[i]));
     LOG(INFO) << "Executing: " << insert_stmt;
     CHECK_VALID_STMT(insert_stmt);
     auto select_stmt1 =
-        Substitute("SELECT name, balance, rate FROM accounts WHERE name = '$0' AND balance = $1",
-                   names[i], balances[i]);
+        Format("SELECT name, balance, rate FROM accounts WHERE name = '$0' AND balance = $1",
+               names[i], balances[i]);
     LOG(INFO) << "Executing: " << select_stmt1;
     CHECK_VALID_STMT(select_stmt1);
     CHECK_EXPECTED_ROW_VARINT(processor, names[i], balances[i], rates[i]);
 
     auto select_stmt2 =
-        Substitute("SELECT name, balance, rate FROM accounts WHERE name = '$0' AND balance > $1",
-                   names[i],
-                   "-99988989898988989898989876454542344567754322121356576877980000765313347");
+        Format("SELECT name, balance, rate FROM accounts WHERE name = '$0' AND balance > $1",
+               names[i],
+               "-99988989898988989898989876454542344567754322121356576877980000765313347");
     LOG(INFO) << "Executing: " << select_stmt2;
     CHECK_VALID_STMT(select_stmt2);
     CHECK_EXPECTED_ROW_VARINT(processor, names[i], balances[i], rates[i]);
 
     auto select_stmt3 =
-        Substitute("SELECT name, balance, rate FROM accounts WHERE name = '$0' AND balance < $1",
-                   names[i],
-                   "123456789123456789123456789123456789123456789123456390482039482309482309482");
+        Format("SELECT name, balance, rate FROM accounts WHERE name = '$0' AND balance < $1",
+               names[i],
+               "123456789123456789123456789123456789123456789123456390482039482309482309482");
     LOG(INFO) << "Executing : " << select_stmt3;
     CHECK_VALID_STMT(select_stmt3);
     CHECK_EXPECTED_ROW_VARINT(processor, names[i], balances[i], rates[i]);

@@ -827,4 +827,123 @@ TEST_F(ThreadPoolTraceTest, TraceContextIsPerTask) {
 
 } // namespace dist_trace_hops
 
+namespace idle_reclaim {
+
+constexpr size_t kMaxWorkers = 32;
+const auto kIdleTimeout = 200ms * kTimeMultiplier;
+constexpr int kNumIdleTimeouts = 10;
+
+// Grows the pool to kMaxWorkers, then runs one short task at a time for kNumIdleTimeouts idle
+// timeouts. Returns the number of workers still alive at the end.
+size_t LiveWorkersAfterTrickle(WorkerWakeOrder wake_order) {
+  ThreadPool pool(ThreadPoolOptions {
+    .name = "idle_reclaim",
+    .max_workers = kMaxWorkers,
+    .idle_timeout = MonoDelta(kIdleTimeout),
+    .wake_order = wake_order,
+  });
+
+  CountDownLatch all_started(kMaxWorkers);
+  CountDownLatch release(1);
+  CountDownLatch all_done(kMaxWorkers);
+  for (size_t i = 0; i != kMaxWorkers; ++i) {
+    CHECK(pool.EnqueueFunctor([&all_started, &release, &all_done] {
+      all_started.CountDown();
+      release.Wait();
+      all_done.CountDown();
+    }));
+  }
+  CHECK(all_started.WaitFor(10s * kTimeMultiplier));
+  CHECK_EQ(pool.NumWorkers(), kMaxWorkers);
+  release.CountDown();
+  CHECK(all_done.WaitFor(10s * kTimeMultiplier));
+
+  auto deadline = CoarseMonoClock::now() + kIdleTimeout * kNumIdleTimeouts;
+  size_t tasks = 0;
+  while (CoarseMonoClock::now() < deadline) {
+    CountDownLatch done(1);
+    CHECK(pool.EnqueueFunctor([&done] { done.CountDown(); }));
+    CHECK(done.WaitFor(10s * kTimeMultiplier));
+    ++tasks;
+    std::this_thread::sleep_for(1ms);
+  }
+  auto live = pool.NumWorkers();
+  LOG(INFO) << wake_order << ": " << live << " of " << kMaxWorkers << " workers alive after "
+            << tasks << " sequential tasks, " << pool.TEST_NumWorkersCreated()
+            << " workers created in total";
+  pool.Shutdown();
+  return live;
+}
+
+// Grows the pool to max_workers, then runs a trickle of one task at a time. Returns the live worker
+// count after each idle timeout.
+std::vector<size_t> LiveWorkersPerIdleTimeout(
+    WorkerWakeOrder wake_order, size_t max_workers, int idle_timeouts) {
+  ThreadPool pool(ThreadPoolOptions {
+    .name = "reclaim_speed",
+    .max_workers = max_workers,
+    .idle_timeout = MonoDelta(kIdleTimeout),
+    .wake_order = wake_order,
+  });
+  CountDownLatch all_started(max_workers);
+  CountDownLatch release(1);
+  CountDownLatch all_done(max_workers);
+  for (size_t i = 0; i != max_workers; ++i) {
+    CHECK(pool.EnqueueFunctor([&all_started, &release, &all_done] {
+      all_started.CountDown();
+      release.Wait();
+      all_done.CountDown();
+    }));
+  }
+  CHECK(all_started.WaitFor(30s * kTimeMultiplier));
+  release.CountDown();
+  CHECK(all_done.WaitFor(30s * kTimeMultiplier));
+  std::vector<size_t> live;
+  for (int i = 0; i != idle_timeouts; ++i) {
+    auto deadline = CoarseMonoClock::now() + kIdleTimeout;
+    while (CoarseMonoClock::now() < deadline) {
+      CountDownLatch done(1);
+      CHECK(pool.EnqueueFunctor([&done] { done.CountDown(); }));
+      CHECK(done.WaitFor(10s * kTimeMultiplier));
+      std::this_thread::sleep_for(100us);
+    }
+    live.push_back(pool.NumWorkers());
+  }
+  LOG(INFO) << wake_order << ": live workers after each idle timeout, starting from "
+            << max_workers << ": " << AsString(live);
+  pool.Shutdown();
+  return live;
+}
+
+} // namespace idle_reclaim
+
+// With one task in flight at a time, all but about one worker should idle out.
+TEST_F(ThreadPoolTest, IdleReclaimLifo) {
+  ASSERT_LE(idle_reclaim::LiveWorkersAfterTrickle(WorkerWakeOrder::kLifo),
+            idle_reclaim::kMaxWorkers / 2);
+}
+
+TEST_F(ThreadPoolTest, IdleReclaimMixed) {
+  ASSERT_LE(idle_reclaim::LiveWorkersAfterTrickle(WorkerWakeOrder::kMixed),
+            idle_reclaim::kMaxWorkers / 2);
+}
+
+// Mixed holds back up to 16 workers per refill, so a large pool shrinks by about 16 per idle
+// timeout; the bound allows half that.
+TEST_F(ThreadPoolTest, ReclaimSpeedLargePool) {
+  constexpr size_t kNumWorkers = 512;
+  constexpr int kNumTimeouts = 15;
+  auto lifo = idle_reclaim::LiveWorkersPerIdleTimeout(
+      WorkerWakeOrder::kLifo, kNumWorkers, kNumTimeouts);
+  ASSERT_LE(lifo.back(), kNumWorkers / 2);
+  auto mixed = idle_reclaim::LiveWorkersPerIdleTimeout(
+      WorkerWakeOrder::kMixed, kNumWorkers, kNumTimeouts);
+  ASSERT_LE(mixed.back(), kNumWorkers - 8 * kNumTimeouts);
+}
+
+// FIFO rotates through every parked worker, so none idles out. Logged for comparison only.
+TEST_F(ThreadPoolTest, IdleReclaimFifo) {
+  idle_reclaim::LiveWorkersAfterTrickle(WorkerWakeOrder::kFifo);
+}
+
 } // namespace yb::rpc

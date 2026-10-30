@@ -49,6 +49,8 @@ type Config struct {
 	Hostname       string `json:"hostname"`
 	SelfSignedCert bool   `json:"self_signed_cert"`
 	AsRoot         bool   `json:"as_root"`
+	// FIPS mode is fixed at install: reconfigure and upgrade refuse to change it.
+	FipsEnabled bool `json:"fips_enabled"`
 }
 
 type Services struct {
@@ -76,6 +78,7 @@ func New() *State {
 		Config: Config{
 			SelfSignedCert: false, // Default to false
 			AsRoot:         common.HasSudoAccess(),
+			FipsEnabled:    viper.GetBool("fips.enabled"),
 		},
 		// Initialize to false, inistall will set it to true
 		Services: Services{

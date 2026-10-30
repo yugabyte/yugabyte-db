@@ -135,9 +135,6 @@ explain (hints on, costs off) select count(*) from t1, t2, t3, (select b4 from t
 -- Hint generation for WHERE subqueries.
 explain (hints on, costs off) select count(*) from t1, t2, t3 where a1=a2 and a1=a3 and b1 in (select a4 from t4 group by a4, b4) and b2 in (select a5 from t5 group by a5, b5);
 
--- Change join order and use all merge joins.
-/*+ Leading((((t1 ANY_subquery) ANY_subquery_1) t2)) MergeJoin(t1 ANY_subquery) MergeJoin(t1 ANY_subquery ANY_subquery_1) MergeJoin(ANY_subquery ANY_subquery_1 t1 t2) */ explain (hints on, costs off) select count(*) from t1, t2 where a1=a2 and b1 in (select a4 from t4 group by a4, b4) and b2 in (select a5 from t5 group by a5, b5);
-
 -- Hint generation for VALUES clause(s). Should see no errors/warnings.
 explain (hints on, costs off) select val1.c1 from (values(1, 1), (2, 2), (3, 3)) val1(c0, c1), t0, t1, (values(1, 1), (2, 2), (3, 3)) val2(c0, c1)  where val1.c1=a0 and a0=a1 and val2.c1=val1.c1;
 
@@ -203,6 +200,7 @@ where unn1 < 4 and ch1 > ch2;
 -- Complex query;
 explain (hints on, costs off) select count(*) from t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, (select a1 x from t1, t2, t3, t4, t5, t6, t7, t8, t9, t10 where a1=a2 and a1=a3 and a1=a4 and a1=a5 and a5=a6 and a5=a7 and a5=a8 and a5=a9 and b7=1) dt where a1=a2 and a1=a3 and a1=a4 and a1=a5 and a5=a6 and a5=a7 and a5=a8 and a5=a9 and b7=1 and a1=x;
 
+-- Warns because the two top-level YbBatchedNL hints are ignored (#34351).
 /*+ Leading(((((t10 (((((((t7_1 t3_1) t6_1) t8_1) (t5_1 t4_1)) (t10_1 t9_1)) t2_1) t1_1)) ((((t9 t3) t8) (t6 t5)) (t7 t4))) t2) t1)) SeqScan(t10) SeqScan(t7_1) SeqScan(t3_1) HashJoin(t3_1 t7_1) SeqScan(t6_1) HashJoin(t3_1 t6_1 t7_1) SeqScan(t8_1) HashJoin(t3_1 t6_1 t7_1 t8_1) SeqScan(t5_1) SeqScan(t4_1) HashJoin(t4_1 t5_1) HashJoin(t3_1 t4_1 t5_1 t6_1 t7_1 t8_1) SeqScan(t10_1) SeqScan(t9_1) NestLoop(t10_1 t9_1) HashJoin(t10_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) IndexOnlyScan(t2_1 t2_a2_idx) YbBatchedNL(t10_1 t2_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) IndexOnlyScan(t1_1 t1_a1_asc_idx) YbBatchedNL(t10_1 t1_1 t2_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) NestLoop(t10 t10_1 t1_1 t2_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) SeqScan(t9) SeqScan(t3) HashJoin(t3 t9) SeqScan(t8) HashJoin(t3 t8 t9) SeqScan(t6) SeqScan(t5) HashJoin(t5 t6) HashJoin(t3 t5 t6 t8 t9) SeqScan(t7) SeqScan(t4) HashJoin(t4 t7) HashJoin(t3 t4 t5 t6 t7 t8 t9) HashJoin(t10 t10_1 t1_1 t2_1 t3 t3_1 t4 t4_1 t5 t5_1 t6 t6_1 t7 t7_1 t8 t8_1 t9 t9_1) IndexOnlyScan(t2 t2_a2_idx) YbBatchedNL(t10 t10_1 t1_1 t2 t2_1 t3 t3_1 t4 t4_1 t5 t5_1 t6 t6_1 t7 t7_1 t8 t8_1 t9 t9_1) IndexOnlyScan(t1 t1_a1_asc_idx) YbBatchedNL(t1 t10 t10_1 t1_1 t2 t2_1 t3 t3_1 t4 t4_1 t5 t5_1 t6 t6_1 t7 t7_1 t8 t8_1 t9 t9_1) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 20) Set(join_collapse_limit 20) Set(geqo false) */ explain (hints on, costs off) select count(*) from t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, (select a1 x from t1, t2, t3, t4, t5, t6, t7, t8, t9, t10 where a1=a2 and a1=a3 and a1=a4 and a1=a5 and a5=a6 and a5=a7 and a5=a8 and a5=a9 and b7=1) dt where a1=a2 and a1=a3 and a1=a4 and a1=a5 and a5=a6 and a5=a7 and a5=a8 and a5=a9 and b7=1 and a1=x;
 
 -- Correlated subquery with multiple blocks. Should not give any warnings/errors.
@@ -421,6 +419,16 @@ set pg_hint_plan.yb_bad_hint_mode to warn;
 
 -- Cannot do a ROJ so should get a warning.
 /*+ leading((t4 t5)) nestLoop(t4 t5) */ explain (costs on, uids on) select count(*) from t4 right join t5 on a4=a5;
+
+-- Change join order and use all merge joins.  The middle join has no merge
+-- clause, so its MergeJoin hint cannot be honored and gets a warning.
+/*+ Leading((((t1 ANY_subquery) ANY_subquery_1) t2)) MergeJoin(t1 ANY_subquery) MergeJoin(t1 ANY_subquery ANY_subquery_1) MergeJoin(ANY_subquery ANY_subquery_1 t1 t2) */ explain (hints on, costs off) select count(*) from t1, t2 where a1=a2 and b1 in (select a4 from t4 group by a4, b4) and b2 in (select a5 from t5 group by a5, b5);
+
+-- Same with sort-based deduping of the subqueries; the Leading order must
+-- still hold.
+set enable_hashagg to off;
+/*+ Leading((((t1 ANY_subquery) ANY_subquery_1) t2)) MergeJoin(t1 ANY_subquery) MergeJoin(t1 ANY_subquery ANY_subquery_1) MergeJoin(ANY_subquery ANY_subquery_1 t1 t2) */ explain (hints on, costs off) select count(*) from t1, t2 where a1=a2 and b1 in (select a4 from t4 group by a4, b4) and b2 in (select a5 from t5 group by a5, b5);
+reset enable_hashagg;
 
 -- Try to use hash join without an equality predicate. Should get an error, re-plan, and get first 5 rows.
 set pg_hint_plan.yb_bad_hint_mode to replan;

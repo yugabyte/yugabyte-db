@@ -625,7 +625,7 @@ class MasterSnapshotCoordinator::Impl {
     }
     // Disable concurrent RPCs to the master leader for the duration of sys catalog restore.
     if (leader_term >= 0) {
-      context_.PrepareRestore();
+      context_.PrepareRestore(restoration->restoration_id);
     }
     auto tablet = VERIFY_RESULT(operation.tablet_safe());
     LOG_SLOW_EXECUTION(INFO, 1000, "Restore sys catalog took") {
@@ -886,6 +886,7 @@ class MasterSnapshotCoordinator::Impl {
       RestoreSnapshotScheduleResponsePB* resp, int64_t leader_term, CoarseTimePoint deadline) {
     const auto snapshot_id = VERIFY_RESULT(
         GetSuitableSnapshotForRestore(schedule_id, restore_at, leader_term, deadline));
+    RETURN_NOT_OK(CheckNoYsqlDdlVerificationInProgressForSnapshot(snapshot_id));
     TxnSnapshotRestorationId restoration_id = VERIFY_RESULT(Restore(
         snapshot_id, restore_at, leader_term));
 
@@ -893,6 +894,16 @@ class MasterSnapshotCoordinator::Impl {
     resp->set_restoration_id(restoration_id.data(), restoration_id.size());
 
     return Status::OK();
+  }
+
+  Status CheckNoYsqlDdlVerificationInProgressForSnapshot(const TxnSnapshotId& snapshot_id) {
+    NamespaceId namespace_id;
+    {
+      std::lock_guard lock(mutex_);
+      const auto& snapshot = VERIFY_RESULT_REF(FindSnapshot(snapshot_id));
+      namespace_id = VERIFY_RESULT(snapshot.GetNamespaceId());
+    }
+    return context_.CheckNoYsqlDdlVerificationInProgress(namespace_id);
   }
 
   Status FillHeartbeatResponse(TSHeartbeatResponsePB* resp) {
@@ -1882,9 +1893,14 @@ class MasterSnapshotCoordinator::Impl {
     operation->set_completion_callback(
         tablet::MakeWeakSynchronizerOperationCompletionCallback(synchronizer));
 
-    RETURN_NOT_OK(context_.Submit(std::move(operation), leader_term));
-
-    return synchronizer->Wait();
+    cm_->FenceSysCatalogForRestore(restoration_id);
+    auto status = context_.Submit(std::move(operation), leader_term);
+    if (status.ok()) {
+      // Rejections such as a stale term are reported here, not by Submit.
+      status = synchronizer->Wait();
+    }
+    cm_->UnfenceSysCatalogForRestore(restoration_id);
+    return status;
   }
 
   void DeleteSnapshotAborted(
@@ -2195,6 +2211,17 @@ class MasterSnapshotCoordinator::Impl {
       if (!VERIFY_RESULT(snapshot.Complete())) {
         return STATUS(IllegalState, "The snapshot state is not complete", snapshot_id.ToString(),
                       MasterError(MasterErrorPB::SNAPSHOT_IS_NOT_READY));
+      }
+      // Reject restore to a time after the snapshot's own hybrid time; the snapshot
+      // cannot contain data from that time. Earlier timestamps are valid because
+      // tablet-level restore uses DocDB history retained in the snapshot's SST files.
+      if (phase == RestorePhase::kInitial && restore_at &&
+          restore_at > snapshot.snapshot_hybrid_time()) {
+        return STATUS_EC_FORMAT(
+            InvalidArgument, MasterError(MasterErrorPB::INVALID_REQUEST),
+            "Snapshot $0 contains data only up to $1, cannot restore it to the later time $2",
+            snapshot_id, snapshot.snapshot_hybrid_time().ToDebugString(),
+            restore_at.ToDebugString());
       }
       restore_sys_catalog = phase == RestorePhase::kInitial && !snapshot.schedule_id().IsNil();
 

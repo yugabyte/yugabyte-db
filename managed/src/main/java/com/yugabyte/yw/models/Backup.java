@@ -401,6 +401,7 @@ public class Backup extends Model {
       backup.setHasKMSHistory(
           CollectionUtils.isNotEmpty(
               EncryptionAtRestUtil.getAllUniverseKeys(backup.getUniverseUUID())));
+      params.fipsEnabled = universe.getUniverseDetails().fipsEnabled;
     }
     backup.setState(BackupState.InProgress);
     backup.setCategory(category);

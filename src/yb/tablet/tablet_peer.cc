@@ -57,7 +57,6 @@
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/join.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/master_ddl.pb.h"
 
@@ -76,6 +75,7 @@
 #include "yb/tablet/operations/truncate_operation.h"
 #include "yb/tablet/operations/update_txn_operation.h"
 #include "yb/tablet/operations/write_operation.h"
+#include "yb/tablet/persistence_gate.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet.pb.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
@@ -175,7 +175,6 @@ using consensus::StateChangeReason;
 using log::Log;
 using log::LogAnchorRegistry;
 using rpc::Messenger;
-using strings::Substitute;
 using tserver::TabletServerErrorPB;
 
 // ============================================================================
@@ -189,6 +188,7 @@ TabletPeer::TabletPeer(
     Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     MetricRegistry* metric_registry,
     TabletSplitter* tablet_splitter,
+    const PersistenceGate* persistence_gate,
     const std::shared_future<client::YBClient*>& client_future)
     : meta_(meta),
       tablet_id_(meta->raft_group_id()),
@@ -203,6 +203,7 @@ TabletPeer::TabletPeer(
       preparing_operations_counter_(operation_tracker_.LogPrefix()),
       metric_registry_(metric_registry),
       tablet_splitter_(tablet_splitter),
+      persistence_gate_(persistence_gate),
       client_future_(client_future),
       data_disk_space_checker_(meta->fs_manager()->env(), meta->data_root_dir()) {}
 
@@ -307,7 +308,7 @@ Status TabletPeer::InitTabletPeer(
       };
     });
 
-    tablet_->SetCleanupPool(snapshot_cleanup_pool, &messenger_->scheduler(), raft_pool);
+    tablet_->SetCleanupPool(snapshot_cleanup_pool, &messenger_->scheduler());
 
     ConsensusOptions options;
     options.tablet_id = meta_->raft_group_id();
@@ -484,6 +485,56 @@ Status TabletPeer::CheckOperationAllowed(const OpId& op_id, consensus::Operation
   return tablet_->CheckOperationAllowed(op_id, op_type);
 }
 
+namespace {
+
+// Rejects a write whose WritePB::ignore_after_hybrid_time is not after the hybrid time the op was
+// assigned, letting a client with a time-bounded lease stop its writes landing once the lease is
+// gone.
+Status CheckWriteFence(const consensus::LWReplicateMsg& msg) {
+  if (msg.op_type() != consensus::OperationType::WRITE_OP) {
+    return Status::OK();
+  }
+  const auto fence = HybridTime::FromPB(msg.write().ignore_after_hybrid_time());
+  if (!fence) {
+    return Status::OK();
+  }
+  // The op's own hybrid time, assigned by NotifyAddedToLeader, is when the write takes effect.
+  // An earlier clock reading would leave an unbounded window in which the op could still be
+  // assigned a time past the fence.
+  const auto hybrid_time = HybridTime(msg.hybrid_time());
+  if (fence > hybrid_time) {
+    return Status::OK();
+  }
+  return STATUS_EC_FORMAT(
+      Expired, tserver::TabletServerError(TabletServerErrorPB::WRITE_FENCE_EXPIRED),
+      "Write is fenced: ignore_after_hybrid_time $0 is not after $1", fence, hybrid_time);
+}
+
+}  // namespace
+
+Status TabletPeer::CheckReplicateAllowed(consensus::LWReplicateMsg& replicate_msg) {
+  RETURN_NOT_OK(CheckWriteFence(replicate_msg));
+  if (persistence_gate_) {
+    RETURN_NOT_OK(persistence_gate_->CheckPersistAllowed(replicate_msg));
+  }
+  // Only the persistence gate reads the stamps, so keep them out of the WAL and off the followers.
+  switch (replicate_msg.op_type()) {
+    case consensus::OperationType::WRITE_OP:
+      replicate_msg.mutable_write()->clear_origination_info();
+      break;
+    case consensus::OperationType::UPDATE_TRANSACTION_OP:
+      replicate_msg.mutable_transaction_state()->clear_origination_info();
+      break;
+    default:
+      break;
+  }
+  return Status::OK();
+}
+
+bool TabletPeer::ShouldRelinquishLeadership() {
+  return persistence_gate_ && persistence_gate_->ShouldRelinquishLeadership();
+}
+
 Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
   {
     std::lock_guard l(state_change_lock_);
@@ -586,7 +637,7 @@ void TabletPeer::CompleteShutdown() {
 
   // TODO: KUDU-183: Keep track of the pending tasks and send an "abort" message.
   LOG_SLOW_EXECUTION(WARNING, 1000,
-      Substitute("TabletPeer: tablet $0: Waiting for Operations to complete", tablet_id())) {
+      Format("TabletPeer: tablet $0: Waiting for Operations to complete", tablet_id())) {
     operation_tracker_.WaitForAllToFinish();
   }
 
@@ -717,8 +768,8 @@ bool TabletPeer::IsShutdownStarted() const {
 Status TabletPeer::CheckShutdownOrNotStarted() const {
   RaftGroupStatePB value = state_.load(std::memory_order_acquire);
   if (value != RaftGroupStatePB::SHUTDOWN && value != RaftGroupStatePB::NOT_STARTED) {
-    return STATUS(IllegalState, Substitute("The tablet is not in a shutdown state: $0",
-                                           RaftGroupStatePB_Name(value)));
+    return STATUS(IllegalState, Format("The tablet is not in a shutdown state: $0",
+                                       RaftGroupStatePB_Name(value)));
   }
 
   return Status::OK();
@@ -733,8 +784,8 @@ Status TabletPeer::WaitUntilConsensusRunning(const MonoDelta& timeout) {
     RaftGroupStatePB cached_state = state_.load(std::memory_order_acquire);
     if (cached_state == RaftGroupStatePB::QUIESCING || cached_state == RaftGroupStatePB::SHUTDOWN) {
       return STATUS(IllegalState,
-          Substitute("The tablet is already shutting down or shutdown. State: $0",
-                     RaftGroupStatePB_Name(cached_state)));
+          Format("The tablet is already shutting down or shutdown. State: $0",
+                 RaftGroupStatePB_Name(cached_state)));
     }
     if (cached_state == RUNNING && has_consensus_.load(std::memory_order_acquire) &&
         VERIFY_RESULT(GetRaftConsensus())->IsRunning()) {
@@ -743,8 +794,8 @@ Status TabletPeer::WaitUntilConsensusRunning(const MonoDelta& timeout) {
     MonoTime now(MonoTime::Now());
     MonoDelta elapsed(now.GetDeltaSince(start));
     if (elapsed.MoreThan(timeout)) {
-      return STATUS(TimedOut, Substitute("Consensus is not running after waiting for $0. State; $1",
-                                         elapsed.ToString(), RaftGroupStatePB_Name(cached_state)));
+      return STATUS(TimedOut, Format("Consensus is not running after waiting for $0. State; $1",
+                                     elapsed.ToString(), RaftGroupStatePB_Name(cached_state)));
     }
     SleepFor(MonoDelta::FromMilliseconds(1 << backoff_exp));
     backoff_exp = std::min(backoff_exp + 1, kMaxBackoffExp);
@@ -876,11 +927,7 @@ void TabletPeer::GetTabletStatusPB(TabletStatusPB* status_pb_out) {
     auto tablet = tablet_;
     if (tablet) {
       status_pb_out->set_table_type(tablet->table_type());
-      auto vector_index_finished_backfills = tablet->vector_indexes().FinishedBackfills();
-      if (vector_index_finished_backfills) {
-        *status_pb_out->mutable_vector_index_finished_backfills() =
-            std::move(*vector_index_finished_backfills);
-      }
+      tablet->vector_indexes().FillBackfillStatus(*status_pb_out);
     }
     disk_size_info.ToPB(status_pb_out);
     // Set hide status of the tablet.
@@ -961,9 +1008,9 @@ string TabletPeer::HumanReadableState() const {
   RaftGroupStatePB state = this->state();
   // If failed, any number of things could have gone wrong.
   if (state == RaftGroupStatePB::FAILED) {
-    return Substitute("$0 ($1): $2", RaftGroupStatePB_Name(state),
-                      TabletDataState_Name(data_state),
-                      error_.get()->ToString());
+    return Format("$0 ($1): $2", RaftGroupStatePB_Name(state),
+                  TabletDataState_Name(data_state),
+                  error_.get()->ToString());
   // If it's remotely bootstrapping, or tombstoned, that is the important thing
   // to show.
   } else if (!CanServeTabletData(data_state)) {
@@ -1048,10 +1095,10 @@ Result<OpId> TabletPeer::MaxPersistentOpId() const {
     // Tablet peer not yet initialized -- we could be doing tablet bootstrap still.
     return OpId::Min();
   }
-  auto flush_op_ids = VERIFY_RESULT(tablet->MaxPersistentOpId());
-  auto result = OpId::MinValid(flush_op_ids.intents, flush_op_ids.regular);
-  for (const auto& op_id : flush_op_ids.vector_indexes) {
-    result = OpId::MinValid(result, op_id);
+  auto persistent_state = VERIFY_RESULT(tablet->GetPersistentState());
+  auto result = OpId::MinValid(persistent_state.intents, persistent_state.regular);
+  for (const auto& vector_index : persistent_state.vector_indexes) {
+    result = OpId::MinValid(result, vector_index.op_id);
   }
   return result;
 }
@@ -1145,7 +1192,7 @@ Result<log::MinRetainLogIndexInfo> TabletPeer::GetEarliestNeededLogIndex(
 
   // We keep at least one committed operation in the log so that we can always recover safe time
   // during bootstrap.
-  // Last committed op id should be read before MaxPersistentOpId to avoid race condition
+  // Last committed op id should be read before Tablet::GetPersistentState to avoid race condition
   // described in MaxPersistentOpIdForDb.
   //
   // If we read last committed op id AFTER reading last persistent op id (INCORRECT):
@@ -1813,7 +1860,7 @@ size_t TabletPeer::GetNumLogSegments() const {
 }
 
 std::string TabletPeer::LogPrefix() const {
-  return Substitute("T $0 P $1 [state=$2]: ",
+  return Format("T $0 P $1 [state=$2]: ",
       tablet_id_, permanent_uuid_, RaftGroupStatePB_Name(state()));
 }
 
@@ -2132,7 +2179,8 @@ void TabletPeer::RegisterAsyncWriteCompletion(const OpId& op_id, StdStatusCallba
   callback(VerifyAsyncWriteCompletion(op_id));
 }
 
-Status TabletPeer::VerifyAsyncWriteReceived(const OpId& op_id) {
+Status TabletPeer::VerifyAsyncWriteReceived(
+    const OpId& op_id, AllowLogLookup allow_log_lookup) {
   auto committed_op_id = last_known_committed_op_id_.load(std::memory_order_acquire);
   if (op_id.term == committed_op_id.term && op_id.index <= committed_op_id.index) {
     return Status::OK();
@@ -2151,27 +2199,55 @@ Status TabletPeer::VerifyAsyncWriteReceived(const OpId& op_id) {
     return Status::OK();
   }
 
-  if (op_id.term + 1 == leader_state.term) {
-    // One term ago - the current term's NO_OP committed everything before it. Also covers
-    // a split child on its first elected term, since first_index == split_op_id.index + 1.
-    if (op_id.index < first_index) {
+  if (op_id.index < first_index) {
+    if (op_id.term + 1 == leader_state.term) {
+      // One term ago - the current term's NO_OP committed everything before it. Also covers
+      // a split child on its first elected term, since first_index == split_op_id.index + 1.
       return Status::OK();
     }
-    // Write was lost/overwritten. Tag as a transaction abort so that the query layer can
-    // transparently retry the transaction instead of surfacing an internal error.
-    return STATUS_EC_FORMAT(
-        NotFound, TransactionError(TransactionErrorCode::kAborted),
-        "Tablet $0: tablet leader changed before async write $1 was replicated (first index of "
-        "term $2 is $3). Retry the transaction.",
-        tablet_id(), op_id, leader_state.term, first_index);
+
+    if (!allow_log_lookup) {
+      return STATUS_EC_FORMAT(
+          NotFound, TransactionError(TransactionErrorCode::kAborted),
+          "Tablet $0: tablet leader moved more than once since async write $1 was issued "
+          "(write from term $2, current term is $3). Retry the transaction.",
+          tablet_id(), op_id, op_id.term, leader_state.term)
+          .CloneAndAddErrorCode(
+              tserver::TabletServerError(tserver::TabletServerErrorPB::ASYNC_WRITE_LOST));
+    }
+
+    // Two or more terms ago - an intermediate term may have overwritten the write, so validate it
+    // from the log.
+    auto log_op_id = consensus->LookupOpId(op_id.index);
+    if (log_op_id.ok() && *log_op_id == op_id) {
+      return Status::OK();
+    }
+    auto status = log_op_id.ok()
+        ? STATUS_FORMAT(
+              NotFound,
+              "Tablet $0: async write $1 was overwritten by term $2 (found $3). Retry the "
+              "transaction.",
+              tablet_id(), op_id, log_op_id->term, *log_op_id)
+        // E.g. the entry was GCed, so the write may have committed but can't be confirmed.
+        : STATUS_FORMAT(
+              NotFound,
+              "Tablet $0: async write $1 could not be verified from the log: $2. Retry the "
+              "transaction.",
+              tablet_id(), op_id, log_op_id.status().message().ToBuffer());
+    return status.CloneAndAddErrorCode(TransactionError(TransactionErrorCode::kAborted))
+        .CloneAndAddErrorCode(
+            tserver::TabletServerError(tserver::TabletServerErrorPB::ASYNC_WRITE_LOST));
   }
 
-  // Two or more terms ago - we can't verify presence without a log lookup.
+  // Write was lost/overwritten. Tag as a transaction abort so that the query layer can
+  // transparently retry the transaction instead of surfacing an internal error.
   return STATUS_EC_FORMAT(
       NotFound, TransactionError(TransactionErrorCode::kAborted),
-      "Tablet $0: tablet leader moved more than once since async write $1 was issued "
-      "(write from term $2, current term is $3). Retry the transaction.",
-      tablet_id(), op_id, op_id.term, leader_state.term);
+      "Tablet $0: tablet leader changed before async write $1 was replicated (first index of "
+      "term $2 is $3). Retry the transaction.",
+      tablet_id(), op_id, leader_state.term, first_index)
+      .CloneAndAddErrorCode(
+          tserver::TabletServerError(tserver::TabletServerErrorPB::ASYNC_WRITE_LOST));
 }
 
 Status TabletPeer::VerifyAsyncWriteCompletion(const OpId& op_id) {

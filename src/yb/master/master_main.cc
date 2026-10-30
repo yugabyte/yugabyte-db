@@ -48,6 +48,7 @@
 #include "yb/server/total_mem_watcher.h"
 
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/main_util.h"
 #include "yb/util/mem_tracker.h"
@@ -74,6 +75,7 @@ DECLARE_int32(logbuflevel);
 DECLARE_int32(webserver_port);
 DECLARE_string(rpc_bind_addresses);
 DECLARE_bool(durable_wal_write);
+DECLARE_bool(quick_leader_election_on_create);
 DECLARE_int32(stderrthreshold);
 
 DECLARE_string(metric_node_name);
@@ -93,7 +95,7 @@ static int MasterMain(int argc, char** argv) {
 #endif
 
   // Reset some default values before parsing gflags.
-  FLAGS_rpc_bind_addresses = strings::Substitute("0.0.0.0:$0", kMasterDefaultPort);
+  FLAGS_rpc_bind_addresses = Format("0.0.0.0:$0", kMasterDefaultPort);
   FLAGS_webserver_port = kMasterDefaultWebPort;
   // Hotfix for https://github.com/yugabyte/yugabyte-db/issues/8731.
   // Before enabling bloom filters for the master tablet we need to check whether master code use
@@ -102,13 +104,16 @@ static int MasterMain(int argc, char** argv) {
 
   string host_name;
   if (GetHostname(&host_name).ok()) {
-    FLAGS_metric_node_name = strings::Substitute("$0:$1", host_name, kMasterDefaultWebPort);
+    FLAGS_metric_node_name = Format("$0:$1", host_name, kMasterDefaultWebPort);
   } else {
     LOG(INFO) << "Failed to get master's host name, keeping default metric_node_name";
   }
 
   // For masters we always want to fsync the WAL files (except in testing).
   FLAGS_durable_wal_write = true;
+  // The masters of a new universe start together, so the sys catalog tablet does not need to wait
+  // a full election timeout before electing its first leader.
+  FLAGS_quick_leader_election_on_create = true;
   // Master has a lot less memory and relatively less data. So by default, let's keep the
   // RBS chunk size small.
   FLAGS_remote_bootstrap_max_chunk_size = 1_MB;

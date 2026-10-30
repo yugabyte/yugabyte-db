@@ -7,6 +7,7 @@ import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -14,6 +15,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -23,6 +25,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeManager;
@@ -331,6 +334,37 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertEquals(WITH_MASTER_UNDER_REPLICATED.size(), subTasksByPosition.size());
     assertStartNodeSequence(subTasksByPosition, true);
+  }
+
+  @Test
+  public void testStartDedicatedMasterNodeIsNotLoadBalancerTarget() {
+    // PLAT-23221: a master-only node must not be registered with the load balancer.
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        u -> {
+          Cluster primary = u.getUniverseDetails().getPrimaryCluster();
+          ApiUtils.configureDedicatedMasterFields(primary.userIntent);
+          primary.userIntent.enableLB = true;
+          primary.placementInfo.azStream().forEach(az -> az.lbName = "lb1");
+          for (NodeDetails node : u.getUniverseDetails().nodeDetailsSet) {
+            boolean dedicatedMaster = node.nodeName.equals("host-n1");
+            node.dedicatedTo = dedicatedMaster ? ServerType.MASTER : ServerType.TSERVER;
+            node.isMaster = false;
+            node.isTserver = !dedicatedMaster;
+          }
+        });
+    // Set one master atleast for master addresses to be populated.
+    Universe universe = setMasters(defaultUniverse, "host-n2");
+    setExpectedMasters(universe, "host-n1", "host-n2");
+    NodeTaskParams taskParams = new NodeTaskParams();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    TaskInfo taskInfo = submitTask(taskParams, "host-n1");
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .noneMatch(t -> t.getTaskType() == TaskType.ManageLoadBalancerGroup));
+    verify(cloudAPI, never()).manageNodeGroup(any(), any(), any(), any(), any(), any());
   }
 
   @Test

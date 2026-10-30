@@ -21,9 +21,12 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.Collections;
+import java.util.List;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
@@ -246,5 +249,15 @@ public class LokiConfig extends TelemetryProviderConfig {
                       (basicAuth.getUsername() + ":" + basicAuth.getPassword()).getBytes()));
     }
     return builder.build();
+  }
+
+  @Override
+  public List<String> secretValues() {
+    if (basicAuth == null || StringUtils.isEmpty(basicAuth.getPassword())) {
+      return Collections.emptyList();
+    }
+    // The exporter sends "Authorization: Basic base64(user:password)".
+    return nonEmpty(
+        basicAuth.getPassword(), basicAuth.getUsername() + ":" + basicAuth.getPassword());
   }
 }

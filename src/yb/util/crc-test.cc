@@ -33,7 +33,6 @@
 #include <zlib.h>
 
 #include "yb/gutil/casts.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/rocksdb/util/xxhash.h"
 
@@ -48,7 +47,6 @@ using std::string;
 namespace yb {
 namespace crc {
 
-using strings::Substitute;
 
 class CrcTest : public YBTest {
  protected:

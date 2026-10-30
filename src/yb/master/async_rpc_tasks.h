@@ -150,6 +150,7 @@ class AsyncStartElection : public RetrySpecificTSRpcTaskWithTable {
   bool SendRequest(int attempt) override;
 
  private:
+  const TabletInfoPtr tablet_;
   const TabletId tablet_id_;
   consensus::RunLeaderElectionRequestPB req_;
   consensus::RunLeaderElectionResponsePB resp_;
@@ -307,6 +308,8 @@ class AsyncAlterTable : public AsyncTabletLeaderTask {
   bool SendRequest(int attempt) override;
 
   void Finished(const Status& status) override;
+
+  void UnregisterAsyncTaskCallback() override;
 
  private:
   void HandleResponse(int attempt) override;
@@ -595,6 +598,7 @@ class AsyncAddTableToTablet : public RetryingTSRpcTaskWithTable {
  private:
   TabletId tablet_id() const override { return tablet_id_; }
 
+  Status PickReplica() override;
   void HandleResponse(int attempt) override;
   bool SendRequest(int attempt) override;
   void UnregisterAsyncTaskCallback() override;
@@ -605,6 +609,8 @@ class AsyncAddTableToTablet : public RetryingTSRpcTaskWithTable {
   tserver::AddTableToTabletResponsePB resp_;
   std::shared_ptr<std::atomic<size_t>> task_counter_;
   std::function<void(const Status&)> callback_;
+  // Set once the tserver accepted the table, so retries only re-check tablet states.
+  bool table_added_ = false;
 };
 
 // Task to remove a table from a tablet. Catalog Manager uses this task to send the request to the
@@ -764,6 +770,34 @@ class AsyncUpdateTransactionTablesVersion: public RetrySpecificTSRpcTask {
   uint64_t version_;
   StdStatusCallback callback_;
   tserver::UpdateTransactionTablesVersionResponsePB resp_;
+};
+
+// Pushes a copy of the xCluster-guarded information to one TServer.
+class AsyncApplyXClusterGuardedInfoIfNewer : public RetrySpecificTSRpcTask {
+ public:
+  AsyncApplyXClusterGuardedInfoIfNewer(
+      Master* master, ThreadPool* callback_pool, const TabletServerId& ts_uuid,
+      std::shared_ptr<const XClusterGuardedInfoPB> info, MonoTime deadline,
+      StdStatusCallback callback);
+
+  server::MonitoredTaskType type() const override {
+    return server::MonitoredTaskType::kApplyXClusterGuardedInfoIfNewer;
+  }
+
+  std::string type_name() const override { return "Apply xCluster-Guarded Info If Newer"; }
+
+  std::string description() const override;
+
+ private:
+  TabletId tablet_id() const override { return {}; }
+
+  void HandleResponse(int attempt) override;
+  bool SendRequest(int attempt) override;
+  void Finished(const Status& status) override;
+
+  const std::shared_ptr<const XClusterGuardedInfoPB> info_;
+  StdStatusCallback callback_;
+  tserver::ApplyXClusterGuardedInfoIfNewerResponsePB resp_;
 };
 
 } // namespace yb::master

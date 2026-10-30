@@ -679,7 +679,7 @@ Status ClusterConfigLoader::Visit(
     RepairOldSchemaVersionsInClusterConfig(&l.mutable_data()->pb);
 
     // Update in memory state.
-    catalog_manager_->cluster_config_ = config;
+    std::atomic_store(&catalog_manager_->cluster_config_, config);
     l.Commit();
   }
 

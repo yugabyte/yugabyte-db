@@ -269,6 +269,11 @@ bool YBCStatusIsSnapshotTooOld(YbcStatus s) {
   return FetchErrorCode(s) == YBPgErrorCode::YB_PG_SNAPSHOT_TOO_OLD;
 }
 
+// The tserver response cache was asked for an entry it does not hold, under lookup_only.
+bool YBCStatusIsResponseCacheMiss(YbcStatus s) {
+  return StatusWrapper(s)->IsIncomplete();
+}
+
 bool YBCStatusIsTryAgain(YbcStatus s) {
   return StatusWrapper(s)->IsTryAgain();
 }
@@ -283,6 +288,10 @@ bool YBCStatusIsAlreadyPresent(YbcStatus s) {
 
 bool YBCStatusIsReplicationSlotLimitReached(YbcStatus s) {
   return StatusWrapper(s)->IsReplicationSlotLimitReached();
+}
+
+bool YBCStatusIsNotSupported(YbcStatus s) {
+  return StatusWrapper(s)->IsNotSupported();
 }
 
 uint32_t YBCStatusPgsqlError(YbcStatus s) {
@@ -944,9 +953,11 @@ char* YBCDecodeRangePartitionKey(const char* partition_key, size_t key_len) {
 }
 
 // False until PG makes the first YBCSetObjectLockingInfraForCurrTxn() call of the backend from
-// StartTransaction. PgTxnManager only reads it from BeginTransaction onwards, so the
-// is_using_table_locks it sends to the tserver never comes from the unset value. The PG side does
-// read it earlier, at least from YBCIsLegacyModeForCatalogOps during sys table prefetching, where
+// StartTransaction. pggate only reads it inside a transaction, so the is_using_table_locks it sends
+// to the tserver never comes from the unset value: PgTxnManager reads it through
+// IsTableLockingEnabledForCurrentTxn() from BeginTransaction onwards, and the sequence RPCs are
+// only issued while a statement runs. The PG side does read it earlier, at least from
+// YBCIsLegacyModeForCatalogOps during sys table prefetching, where
 // YBCIsSysTablePrefetchingStarted() forces legacy mode anyway.
 static bool object_locking_infra_for_curr_txn = false;
 

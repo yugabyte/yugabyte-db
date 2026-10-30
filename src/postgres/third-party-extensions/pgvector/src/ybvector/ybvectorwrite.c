@@ -465,7 +465,15 @@ ybvectorcopartitionedbuild(Relation heap, Relation index, struct IndexInfo *inde
 	HandleYBStatus(YBCPgWaitVectorIndexReady(
 		YBCGetDatabaseOid(index), YbGetRelfileNodeId(index)));
 
-	IndexBuildResult *result = palloc0(sizeof(IndexBuildResult));
+	IndexBuildResult *result = palloc(sizeof(IndexBuildResult));
 
+	/*
+	 * TODO(#34729): this only waits for the tablets to build the index, so we
+	 * don't know the counts here.  -1 makes index_update_stats leave reltuples
+	 * alone instead of setting it to 0.  We could get the real counts from the
+	 * tablets.
+	 */
+	result->heap_tuples = -1;
+	result->index_tuples = -1;
 	return result;
 }

@@ -16,6 +16,7 @@
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
+#include "yb/dockv/doc_vector_id.h"
 #include "yb/dockv/packed_value.h"
 #include "yb/dockv/primitive_value.h"
 #include "yb/dockv/schema_packing.h"
@@ -116,8 +117,10 @@ bool IsNull(const PackableValue& value) {
 
 class ColumnPackerV1 {
  public:
-  ColumnPackerV1(const ColumnPackingData& column_data, ValueBuffer* buffer)
-      : column_data_(column_data), buffer_(*buffer) {}
+  ColumnPackerV1(
+      const ColumnPackingData& column_data, ValueBuffer* buffer,
+      VectorValueFormat vector_value_format)
+      : column_data_(column_data), buffer_(*buffer), vector_value_format_(vector_value_format) {}
 
   template <class Value>
   Status UpdateHeader(
@@ -163,6 +166,9 @@ class ColumnPackerV1 {
   }
 
   Result<bool> PackValue(PackedValueV2 value, size_t limit) {
+    if (column_data_.data_type == DataType::VECTOR) {
+      return PackVectorValueV2(value, limit);
+    }
     return PackValue(VERIFY_RESULT(UnpackQLValue(value, column_data_.data_type)), limit);
   }
 
@@ -238,13 +244,27 @@ class ColumnPackerV1 {
     return true;
   }
 
+  // V2 stores vector values without the value type byte that V1 expects, the rest is identical.
+  bool PackVectorValueV2(PackedValueV2 value, size_t limit) {
+    if (value.IsNull()) {
+      return true;
+    }
+    if (value->size() + 1 > limit && column_data_.varlen()) {
+      return false;
+    }
+    buffer_.AppendWithPrefix(DocVectorValue::ValueTypePrefix(vector_value_format_), *value);
+    return true;
+  }
+
   const ColumnPackingData& column_data_;
   ValueBuffer& buffer_;
+  VectorValueFormat vector_value_format_;
 };
 
 class ColumnPackerV2 {
  public:
-  ColumnPackerV2(const ColumnPackingData& column_data, ValueBuffer* buffer)
+  ColumnPackerV2(
+      const ColumnPackingData& column_data, ValueBuffer* buffer, VectorValueFormat)
       : data_type_(column_data.data_type), buffer_(*buffer) {}
 
   template <class Value>
@@ -259,11 +279,17 @@ class ColumnPackerV2 {
     return Status::OK();
   }
 
-  bool PackValue(const QLValuePB& value, size_t limit) {
+  Result<bool> PackValue(const QLValuePB& value, size_t limit) {
+    if (data_type_ == DataType::VECTOR && value.value_case() == QLValuePB::kBinaryValue) {
+      return PackDocdbEncodedVectorValue(value.binary_value(), limit);
+    }
     return DoPackValue(value, limit);
   }
 
-  bool PackValue(const LWQLValuePB& value, size_t limit) {
+  Result<bool> PackValue(const LWQLValuePB& value, size_t limit) {
+    if (data_type_ == DataType::VECTOR && value.value_case() == QLValuePB::kBinaryValue) {
+      return PackDocdbEncodedVectorValue(value.binary_value(), limit);
+    }
     return DoPackValue(value, limit);
   }
 
@@ -276,6 +302,9 @@ class ColumnPackerV2 {
   }
 
   Result<bool> PackValue(PackedValueV1 value, size_t limit) {
+    if (data_type_ == DataType::VECTOR && IsVectorValueType(DecodeValueEntryType(*value))) {
+      return PackDocdbEncodedVectorValue(*value, limit);
+    }
     // TODO(packed_row) direct repacking
     return PackValue(VERIFY_RESULT(UnpackQLValue(value, data_type_)), limit);
   }
@@ -317,6 +346,19 @@ class ColumnPackerV2 {
 
   void DoPackValueImpl(const PackableValue& value) {
     value.PackToV2(&buffer_);
+  }
+
+  // A DocDB encoded vector value (V1 value or schema missing value) is the V2 value prefixed with
+  // the value type byte.
+  Result<bool> PackDocdbEncodedVectorValue(Slice value, size_t limit) {
+    SCHECK(IsVectorValueType(DecodeValueEntryType(value)), Corruption,
+           "Unexpected vector value: $0", value.ToDebugHexString());
+    value.consume_byte();
+    return DoPackValue(PackedValueV2(value), limit);
+  }
+
+  static bool IsVectorValueType(ValueEntryType type) {
+    return type == ValueEntryType::kVector || type == ValueEntryType::kString;
   }
 
   void MarkColumnNull(size_t var_header_start, size_t idx) {
@@ -375,19 +417,22 @@ size_t PackedSizeLimit(size_t value) {
 
 RowPackerBase::RowPackerBase(
     std::reference_wrapper<const SchemaPacking> packing, size_t packed_size_limit,
-    const ValueControlFields& control_fields, bool is_update)
+    const ValueControlFields& control_fields, bool is_update,
+    VectorValueFormat vector_value_format)
     : packing_(packing),
       packed_size_limit_(PackedSizeLimit(packed_size_limit)),
-      is_update_(is_update) {
+      is_update_(is_update),
+      vector_value_format_(vector_value_format) {
   control_fields.AppendEncoded(&result_);
 }
 
 RowPackerBase::RowPackerBase(
     std::reference_wrapper<const SchemaPacking> packing, size_t packed_size_limit,
-    Slice control_fields, bool is_update)
+    Slice control_fields, bool is_update, VectorValueFormat vector_value_format)
     : packing_(packing),
       packed_size_limit_(PackedSizeLimit(packed_size_limit)),
-      is_update_(is_update) {
+      is_update_(is_update),
+      vector_value_format_(vector_value_format) {
   result_.Append(control_fields);
 }
 
@@ -429,7 +474,7 @@ Result<bool> RowPackerBase::DoAddValueImpl(
       return false;
     }
 
-    ColumnPacker column_packer(column_data, &result_);
+    ColumnPacker column_packer(column_data, &result_, vector_value_format_);
     size_t prev_size = result_.size();
     if (column_data.id < column_id) {
       RSTATUS_DCHECK(

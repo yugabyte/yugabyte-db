@@ -42,13 +42,13 @@
 #include "yb/dockv/reader_projection.h"
 
 #include "yb/gutil/macros.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/tablet/local_tablet_writer.h"
 #include "yb/tablet/tablet-test-base.h"
 #include "yb/tablet/tablet.h"
 
 #include "yb/util/countdown_latch.h"
+#include "yb/util/format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_graph.h"
 #include "yb/util/thread.h"
@@ -262,7 +262,7 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
   void StartThreads(int n_threads, const FunctionType &function) {
     for (int i = 0; i < n_threads; i++) {
       scoped_refptr<yb::Thread> new_thread;
-      CHECK_OK(yb::Thread::Create("test", strings::Substitute("test$0", i),
+      CHECK_OK(yb::Thread::Create("test", Format("test$0", i),
           function, this, i, &new_thread));
       threads_.push_back(new_thread);
     }

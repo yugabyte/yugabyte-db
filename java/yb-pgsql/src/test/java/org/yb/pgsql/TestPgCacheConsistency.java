@@ -18,7 +18,6 @@ import static org.yb.AssertionWrappers.*;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.util.PSQLException;
 import org.hamcrest.CoreMatchers;
-import org.junit.Assume;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -49,21 +48,19 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flags = super.getTServerFlags();
     appendToYsqlPgConf(flags, "log_statement=all");
-    // The test suite asserts for DML failing with catalog version mismatch when run
-    // immediately after DDLs, which isn't true with object locking enabled.
-    flags.put("enable_object_locking_for_table_locks", "false");
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    flags.put("ysql_enable_concurrent_ddl", "false");
-    flags.merge("allowed_preview_flags_csv", "ysql_enable_concurrent_ddl",
-        (existing, added) -> existing + "," + added);
+    // The test suite asserts for DML failing with catalog version mismatch when run immediately
+    // after DDLs, which isn't true with object locking enabled. It also asserts that a CREATE TABLE
+    // inside an aborted transaction block survives, which isn't true with transactional DDL.
+    // Therefore, the suite runs in the legacy DDL mode.
+    toggleDDLMode(flags, /* useLegacy */ true);
     return flags;
   }
 
-  private boolean isTransactionalDdlEnabled(Statement stmt) throws SQLException {
-    try (ResultSet rs = stmt.executeQuery("SHOW yb_ddl_transaction_block_enabled")) {
-      assertTrue(rs.next());
-      return "on".equalsIgnoreCase(rs.getString(1));
-    }
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    toggleDDLMode(flagMap, /* useLegacy */ true);
+    return flagMap;
   }
 
   @Test
@@ -315,6 +312,11 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
       try {
         if (disableHeartbeats) {
           for (HostAndPort hp : miniCluster.getTabletServers().keySet()) {
+            // Each SELECT waits 60 s for the catalog version, so the loop outlasts the
+            // TServers' xCluster-guarded lease, which only heartbeats renew; without the lease,
+            // the later ALTERs would be refused.  This test is not about that.
+            assertTrue(miniCluster.getClient().setFlag(
+                hp, "enforce_xcluster_guarded_lease", "false", true));
             assertTrue(miniCluster.getClient().setFlag(
                 hp, "TEST_tserver_disable_heartbeat", "true", true));
           }
@@ -405,9 +407,7 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
       waitForTServerHeartbeat();
 
       statement2.execute("BEGIN");
-      // Without transactional DDL, CREATE TABLE runs in an autonomous transaction and cannot be
-      // rolled back. With transactional DDL, it participates in the enclosing transaction and can
-      // be rolled back when the transaction aborts.
+      // CREATE TABLE runs in an autonomous transaction and cannot be rolled back.
       statement2.execute("CREATE TABLE other_table(id int)");
 
       statement2.execute("SELECT * FROM test_table");
@@ -423,13 +423,8 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
       // COMMIT will succeed as a command but will rollback the transaction due to the error above.
       statement2.execute("COMMIT");
 
-      if (isTransactionalDdlEnabled(statement2)) {
-        // CREATE TABLE was part of the aborted transaction and should be rolled back.
-        runInvalidQuery(statement2, "SELECT * FROM other_table", "does not exist");
-      } else {
-        // Check that the other table was created.
-        statement2.execute("SELECT * FROM other_table");
-      }
+      // Check that the other table was created.
+      statement2.execute("SELECT * FROM other_table");
     }
   }
 
@@ -897,10 +892,8 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
   // Check that when a query fails due to a stale catalog cache, the original error information
   // (including the hint) is preserved.
   @Test
+  @BypassConnMgr(reason = "Disabling heartbeats causes Connection Manager DDL sleeps to hang")
   public void testCatalogVersionLogging() throws Exception {
-    Assume.assumeFalse("Disabling heartbeats causes Connection Manager DDL sleeps to hang",
-        isTestRunningWithConnectionManager());
-
     try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
          Connection connection2 = getConnectionBuilder().withTServer(1).connect();
          Statement statement1 = connection1.createStatement();

@@ -15,6 +15,7 @@
 // Treenode definitions for expressions.
 //--------------------------------------------------------------------------------------------------
 
+#include "yb/util/format.h"
 #include "yb/yql/cql/ql/ptree/pt_bcall.h"
 
 #include "yb/bfql/bfql.h"
@@ -37,7 +38,6 @@ namespace ql {
 
 using std::vector;
 using std::string;
-using strings::Substitute;
 
 using yb::bfql::BFOpcode;
 using yb::bfql::BFOPCODE_NOOP;
@@ -78,7 +78,7 @@ string PTBcall::QLName(qlexpr::QLNameOption option) const {
     CHECK_GE(args_->size(), 2);
     const string column_name = args_->element(0)->QLName(option);
     const auto& type = QLType::ToCQLString(args_->element(1)->ql_type()->type_info()->type);
-    return strings::Substitute("cast($0 as $1)", column_name, type);
+    return Format("cast($0 as $1)", column_name, type);
   }
 
   string arg_names;
@@ -97,7 +97,7 @@ string PTBcall::QLName(qlexpr::QLNameOption option) const {
     }
     keyspace += "system.";
   }
-  return strings::Substitute("$0$1($2)", keyspace, name_->c_str(), arg_names);
+  return Format("$0$1($2)", keyspace, name_->c_str(), arg_names);
 }
 
 bool PTBcall::IsAggregateCall() const {
@@ -191,13 +191,13 @@ Status PTBcall::Analyze(SemContext *sem_context) {
     if (bfql::IsAggregateOpcode(tsop)) {
       if (!sem_context->allowing_aggregate()) {
         string errmsg =
-          Substitute("Aggregate function $0() cannot be called in this context", name_->c_str());
+          Format("Aggregate function $0() cannot be called in this context", name_->c_str());
         return sem_context->Error(loc(), errmsg.c_str(), ErrorCode::INVALID_ARGUMENTS);
       }
       const PTExpr::SharedPtr& expr = exprs.front();
       if (expr->expr_op() != ExprOperator::kRef &&
           (!expr->IsDummyStar() || tsop != TSOpcode::kCount)) {
-        string errmsg = Substitute("Input argument for $0 must be a column", name_->c_str());
+        string errmsg = Format("Input argument for $0 must be a column", name_->c_str());
         return sem_context->Error(expr->loc(), errmsg.c_str(), ErrorCode::INVALID_ARGUMENTS);
       }
       if (tsop == TSOpcode::kMin || tsop == TSOpcode::kMax || tsop == TSOpcode::kAvg) {
@@ -208,16 +208,16 @@ Status PTBcall::Analyze(SemContext *sem_context) {
     } else if (tsop == TSOpcode::kTtl || tsop == TSOpcode::kWriteTime) {
       const PTExpr::SharedPtr& expr = exprs.front();
       if (expr->expr_op() != ExprOperator::kRef) {
-        string errmsg = Substitute("Input argument for $0 must be a column", name_->c_str());
+        string errmsg = Format("Input argument for $0 must be a column", name_->c_str());
         return sem_context->Error(expr->loc(), errmsg.c_str(), ErrorCode::INVALID_ARGUMENTS);
       }
       const PTRef *ref = static_cast<const PTRef *>(expr.get());
       if (ref->desc()->is_primary()) {
-        string errmsg = Substitute("Input argument for $0 cannot be primary key", name_->c_str());
+        string errmsg = Format("Input argument for $0 cannot be primary key", name_->c_str());
         return sem_context->Error(expr->loc(), errmsg.c_str(), ErrorCode::INVALID_ARGUMENTS);
       }
       if (ref->desc()->ql_type()->IsParametric()) {
-        string errmsg = Substitute("Input argument for $0 is of wrong datatype", name_->c_str());
+        string errmsg = Format("Input argument for $0 is of wrong datatype", name_->c_str());
         return sem_context->Error(expr->loc(), errmsg.c_str(), ErrorCode::INVALID_ARGUMENTS);
       }
 
@@ -343,9 +343,9 @@ Status PTBcall::Analyze(SemContext *sem_context) {
                                      sem_context->expr_expected_ql_type()->main(),
                                      &result_cast_op_);
     if (!s.ok()) {
-      string err_msg = Substitute("Cannot cast builtin call return type '$0' to expected type '$1'",
-                                  pt_result->ql_type()->ToString(),
-                                  sem_context->expr_expected_ql_type()->ToString());
+      string err_msg = Format("Cannot cast builtin call return type '$0' to expected type '$1'",
+                              pt_result->ql_type()->ToString(),
+                              sem_context->expr_expected_ql_type()->ToString());
       return sem_context->Error(this, err_msg.c_str(), ErrorCode::DATATYPE_MISMATCH);
     }
 
@@ -461,7 +461,7 @@ Status PTToken::Analyze(SemContext *sem_context) {
   if (args().size() != size) {
     return sem_context->Error(
         this,
-        Substitute("Invalid $0 call, wrong number of arguments", func_name()).c_str(),
+        Format("Invalid $0 call, wrong number of arguments", func_name()).c_str(),
         ErrorCode::CQL_STATEMENT_INVALID);
   }
 
@@ -471,7 +471,7 @@ Status PTToken::Analyze(SemContext *sem_context) {
     for (const PTExpr::SharedPtr &arg : args()) {
       if (arg->expr_op() != ExprOperator::kRef) {
         return sem_context->Error(arg,
-            Substitute("Invalid $0 call, all arguments must be either column references or "
+            Format("Invalid $0 call, all arguments must be either column references or "
             "literals", func_name()).c_str(),
             ErrorCode::CQL_STATEMENT_INVALID);
       }
@@ -481,8 +481,8 @@ Status PTToken::Analyze(SemContext *sem_context) {
       if (col_ref->desc()->index() != index) {
         return sem_context->Error(
             col_ref,
-            Substitute("Invalid $0 call, found reference to unexpected column",
-                       func_name()).c_str(),
+            Format("Invalid $0 call, found reference to unexpected column",
+                   func_name()).c_str(),
             ErrorCode::CQL_STATEMENT_INVALID);
       }
       index++;
@@ -500,7 +500,7 @@ Status PTToken::Analyze(SemContext *sem_context) {
         arg->expr_op() != ExprOperator::kCollection &&
         arg->expr_op() != ExprOperator::kBindVar) {
       return sem_context->Error(arg,
-          Substitute("Invalid $0 call, all arguments must be either column references or "
+          Format("Invalid $0 call, all arguments must be either column references or "
           "literals", func_name()).c_str(),
           ErrorCode::CQL_STATEMENT_INVALID);
     }

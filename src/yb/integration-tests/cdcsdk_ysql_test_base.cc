@@ -1867,6 +1867,8 @@ Result<int64> CDCSDKYsqlTest::GetChangeRecordCount(
       } else {
         PrepareChangeRequest(&change_req, stream_id, tablet_ids[i], cp->second, i);
       }
+      // cdc_proxy_ is pinned to one tserver; let it forward to the leader if leadership moved.
+      change_req.set_serve_as_proxy(true);
 
       // If the stream is configured for explicit checkpointing, then we will populate the
       // explicit_cdc_sdk_checkpoint field as well.
@@ -1942,6 +1944,11 @@ Result<int64> CDCSDKYsqlTest::GetChangeRecordCount(
 
           tablet_ids.erase(find(tablet_ids.begin(), tablet_ids.end(), tablet_ids[i]));
 
+          break;
+        } else if (status.IsNotFound() &&
+                   change_resp.error().code() == CDCErrorPB::TABLET_NOT_FOUND) {
+          // "Not leader" (e.g. leader moved mid-read) or tablet not yet on the leader.
+          LOG(INFO) << "Retrying GetChanges on " << tablet_ids[i] << ": " << status;
           break;
         } else {
           RETURN_NOT_OK(status);
@@ -3584,8 +3591,10 @@ void CDCSDKYsqlTest::CDCSDKDropColumnsWithExplictTransaction(bool packed_row) {
   ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
-  change_resp =
-      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
+  // The txn is streamed only after its APPLY is replicated, which may lag behind commit.
+  const auto checkpoint = change_resp.cdc_sdk_checkpoint();
+  ASSERT_OK(WaitForGetChangesToFetchRecords(
+      &change_resp, stream_id, tablets, 10, /* is_explicit_checkpoint = */ true, &checkpoint));
   record_size = change_resp.cdc_sdk_proto_records_size();
   for (uint32_t idx = 0; idx < record_size; idx++) {
     const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(idx);
@@ -3703,7 +3712,9 @@ void CDCSDKYsqlTest::CDCSDKRenameColumnsWithExplictTransaction(bool packed_row) 
       kValue2ColumnName, kValue3ColumnName, &conn));
 
   GetChangesResponsePB change_resp;
-  change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  // The txn is streamed only after its APPLY is replicated, which may lag behind commit.
+  ASSERT_OK(WaitForGetChangesToFetchRecords(
+      &change_resp, stream_id, tablets, 9, /* is_explicit_checkpoint = */ true));
   uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
   // Number of columns for the above insert records should be 3.
   for (uint32_t idx = 0; idx < record_size; idx++) {
@@ -3725,8 +3736,9 @@ void CDCSDKYsqlTest::CDCSDKRenameColumnsWithExplictTransaction(bool packed_row) 
   ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
-  change_resp =
-      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
+  const auto checkpoint = change_resp.cdc_sdk_checkpoint();
+  ASSERT_OK(WaitForGetChangesToFetchRecords(
+      &change_resp, stream_id, tablets, 10, /* is_explicit_checkpoint = */ true, &checkpoint));
   record_size = change_resp.cdc_sdk_proto_records_size();
   for (uint32_t idx = 0; idx < record_size; idx++) {
     const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(idx);

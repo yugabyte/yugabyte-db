@@ -47,7 +47,6 @@
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/strip.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/env.h"
@@ -55,6 +54,7 @@
 #include "yb/util/errno.h"
 #include "yb/util/faststring.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/locks.h"
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/net/sockaddr.h"
@@ -75,7 +75,6 @@ using std::unordered_set;
 using std::vector;
 using std::string;
 using std::numeric_limits;
-using strings::Substitute;
 
 DEFINE_UNKNOWN_string(net_address_filter,
     "ipv4_external,ipv4_all,ipv6_external,ipv6_non_link_local,ipv6_all",
@@ -147,10 +146,10 @@ Status HostPort::RemoveAndGetHostPortList(
     }
     LOG(DFATAL) << out.str();
 
-    return STATUS_SUBSTITUTE(NotFound,
-                             "Cannot find $0 in addresses: $1",
-                             yb::ToString(remove),
-                             out.str());
+    return STATUS_FORMAT(NotFound,
+                         "Cannot find $0 in addresses: $1",
+                         yb::ToString(remove),
+                         out.str());
   }
 
   return Status::OK();
@@ -234,7 +233,7 @@ const string getaddrinfo_rc_to_string(int rc) {
     case EAI_SYSTEM: s = "EAI_SYSTEM"; break;
     default: s = "UNKNOWN";
   }
-  return Substitute("$0 ($1)", rc, s);
+  return Format("$0 ($1)", rc, s);
 }
 
 Result<std::unique_ptr<addrinfo, AddrinfoDeleter>> HostToInetAddrInfo(const std::string& host) {
@@ -245,7 +244,7 @@ Result<std::unique_ptr<addrinfo, AddrinfoDeleter>> HostToInetAddrInfo(const std:
   struct addrinfo* res = nullptr;
   int rc = 0;
   LOG_SLOW_EXECUTION(WARNING, 200,
-                     Substitute("resolving address for $0", host)) {
+                     Format("resolving address for $0", host)) {
     rc = getaddrinfo(host.c_str(), nullptr, &hints, &res);
   }
   if (rc != 0) {
@@ -440,13 +439,13 @@ Status GetFQDN(string* hostname) {
 
   struct addrinfo* result;
   LOG_SLOW_EXECUTION(WARNING, 200,
-                     Substitute("looking up canonical hostname for localhost $0", *hostname)) {
+                     Format("looking up canonical hostname for localhost $0", *hostname)) {
     TRACE_EVENT0("net", "getaddrinfo");
     const int rc = getaddrinfo(hostname->c_str(), nullptr, &hints, &result);
     if (rc != 0) {
       return STATUS(NetworkError,
-                    Substitute("Unable to lookup FQDN ($0), getaddrinfo returned $1",
-                               *hostname, getaddrinfo_rc_to_string(rc)),
+                    Format("Unable to lookup FQDN ($0), getaddrinfo returned $1",
+                           *hostname, getaddrinfo_rc_to_string(rc)),
                     Errno(errno));
     }
   }
@@ -513,7 +512,7 @@ void TryRunCmd(const string& cmd, vector<string>* log = NULL) {
 
 void TryRunLsof(const Endpoint& addr, vector<string>* log) {
 #if defined(__APPLE__)
-  string cmd = strings::Substitute(
+  string cmd = Format(
       "lsof -n -i 'TCP:$0' -sTCP:LISTEN ; "
       "for pid in $$(lsof -F p -n -i 'TCP:$0' -sTCP:LISTEN | cut -f 2 -dp) ; do"
       "  pstree $$pid || ps h -p $$pid;"
@@ -527,7 +526,7 @@ void TryRunLsof(const Endpoint& addr, vector<string>* log) {
   // Note the sed command to check for the process name wrapped in ().
   // Example prefix of /proc/$pid/stat output, with a process with spaces in the name:
   // 3917 (tmux: server) S 1
-  string cmd = strings::Substitute(
+  string cmd = Format(
       "export PATH=$$PATH:/usr/sbin ; "
       "lsof -n -i 'TCP:$0' -sTCP:LISTEN ; "
       "for pid in $$(lsof -F p -n -i 'TCP:$0' -sTCP:LISTEN | cut -f 2 -dp) ; do"

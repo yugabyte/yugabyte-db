@@ -1312,7 +1312,7 @@ Result<SetCDCCheckpointResponsePB> CDCServiceImpl::SetCDCCheckpoint(
   OpId checkpoint;
   HybridTime cdc_sdk_safe_time = HybridTime::kInvalid;
   bool set_latest_entry = req.bootstrap();
-  const string err_message = strings::Substitute(
+  const string err_message = Format(
       "Unable to get the latest entry op id from "
       "peer $0 and tablet $1 because its log object hasn't been initialized",
       tablet_peer->permanent_uuid(), tablet_peer->tablet_id());
@@ -2878,9 +2878,10 @@ Result<bool> CDCServiceImpl::CheckBeforeImageActive(
     // - If the tablet is colocated, we check the replica identities of this tablet's tables which
     // are present in the stream metadata's replica identity map.
     // - If the tablet is sys catalog, we check the replica identities of only tables
-    // 'pg_publication_rel', 'pg_class', 'pg_replication_origin', 'pg_publication' and optionally
-    // 'pg_attribute' (when ysql_yb_enable_replication_slot_transactional_ddl is enabled) residing
-    // in it. If before image is active for any such tables then we should return true.
+    // 'pg_publication_rel', 'pg_class', 'pg_replication_origin', 'pg_publication' and, when
+    // ysql_yb_enable_replication_slot_transactional_ddl is enabled, 'pg_attribute' and
+    // 'pg_publication_rel_prpubid_index' residing in it. If before image is active for any such
+    // tables then we should return true.
     if (is_colocated_tablet || is_sys_catalog_tablet) {
       auto table_ids = tablet_peer->tablet_metadata()->GetAllColocatedTables();
       bool replica_identity_found_for_any_table = false;
@@ -4448,7 +4449,7 @@ Result<GetLatestEntryOpIdResponsePB> CDCServiceImpl::GetLatestEntryOpId(
         GetServingTablet(tablet_id), CDCError(CDCErrorPB::INTERNAL_ERROR));
 
     if (!tablet_peer->log_available()) {
-      const string err_message = strings::Substitute(
+      const string err_message = Format(
           "Unable to get the latest entry op id from "
           "peer $0 and tablet $1 because its log object hasn't been initialized",
           tablet_peer->permanent_uuid(), tablet_peer->tablet_id());
@@ -4941,6 +4942,7 @@ Result<std::vector<TableId>> CDCServiceImpl::GetStreamableCatalogTables(
   table_ids.push_back(GetPgsqlTableId(pg_database_oid, kPgClassTableOid));
   if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) {
     table_ids.push_back(GetPgsqlTableId(pg_database_oid, kPgAttributeTableOid));
+    table_ids.push_back(GetPgsqlTableId(pg_database_oid, kPgPublicationRelPrpubidIndexOid));
   }
   table_ids.push_back(GetPgsqlTableId(pg_database_oid, kPgPublicationRelOid));
   table_ids.push_back(GetPgsqlTableId(kTemplate1Oid, kPgReplicationOriginOid));

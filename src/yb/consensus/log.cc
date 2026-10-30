@@ -60,7 +60,6 @@
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
 
 #include "yb/util/async_util.h"
@@ -261,7 +260,6 @@ using env_util::OpenFileForRandom;
 using std::shared_ptr;
 using std::unique_ptr;
 using std::string;
-using strings::Substitute;
 
 namespace {
 
@@ -638,10 +636,10 @@ Status Log::Open(const LogOptions &options,
                  CreateNewSegment create_new_segment,
                  MinStartHTRunningTxnsCallback min_start_ht_running_txns_callback) {
   RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(options.env, DirName(wal_dir)),
-                        Substitute("Failed to create table wal dir $0", DirName(wal_dir)));
+                        Format("Failed to create table wal dir $0", DirName(wal_dir)));
 
   RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(options.env, wal_dir),
-                        Substitute("Failed to create tablet wal dir $0", wal_dir));
+                        Format("Failed to create tablet wal dir $0", wal_dir));
 
   scoped_refptr<Log> new_log(new Log(options,
                                      wal_dir,
@@ -1974,7 +1972,7 @@ Status Log::Close() {
       return Status::OK();
 
     default:
-      return STATUS(IllegalState, Substitute("Bad state for Close() $0", log_state_));
+      return STATUS(IllegalState, Format("Bad state for Close() $0", log_state_));
   }
 }
 

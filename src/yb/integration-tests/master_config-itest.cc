@@ -30,12 +30,12 @@
 #include "yb/consensus/consensus.proxy.h"
 
 #include "yb/gutil/algorithm.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/external_mini_cluster.h"
 
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/format.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 #include "yb/util/test_macros.h"
@@ -45,7 +45,6 @@
 using std::string;
 using std::vector;
 using std::min;
-using strings::Substitute;
 using yb::tserver::TabletServerErrorPB;
 
 using namespace std::chrono_literals;
@@ -92,7 +91,7 @@ class MasterChangeConfigTest : public YBTest {
 
   Status CheckNumMastersWithCluster(string msg) {
     if (num_masters_ != cluster_->num_masters()) {
-      return STATUS(IllegalState, Substitute(
+      return STATUS(IllegalState, Format(
           "$0 : expected to have $1 masters but our cluster has $2 masters.",
           msg, num_masters_, cluster_->num_masters()));
     }
@@ -195,8 +194,8 @@ Status MasterChangeConfigTest::WaitForMasterLeaderToBeReady(
     now = MonoTime::Now();
   }
 
-  return STATUS(TimedOut, Substitute("Timed out as master leader $0 term not ready.",
-                                     master->bound_rpc_hostport().ToString()));
+  return STATUS(TimedOut, Format("Timed out as master leader $0 term not ready.",
+                                 master->bound_rpc_hostport().ToString()));
 }
 
 void MasterChangeConfigTest::SetCurLogIndex() {

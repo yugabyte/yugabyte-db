@@ -13,6 +13,8 @@
 
 #include "yb/tablet/tablet_snapshots.h"
 
+#include <unordered_set>
+
 #include <boost/algorithm/string/predicate.hpp>
 
 #include "yb/ash/wait_state.h"
@@ -164,6 +166,40 @@ void CleanupLastSnapshotHybridTime(
   VLOG(2) << "Cleanup snapshot ht: " << path;
   if (env.FileExists(path)) {
     WARN_NOT_OK(env.DeleteFile(path), "Failed to cleanup last snapshot time");
+  }
+}
+
+// The snapshot holds the storage of every vector index the tablet had at snapshot time, including
+// dropped ones a snapshot schedule retains and, in a clone, ones the clone does not have. The
+// tablet destroys only the storages of the indexes its metadata lists, and a storage dir is named
+// by index oid, so a later index of a clone that reuses such an oid would load its chunks.
+// Best effort: a failure here would fail the restore apply, which is fatal for the tserver, after
+// the frontier patch that keeps the restore from being replayed.
+void DeleteUnlistedVectorIndexStorages(
+    Env& env, const std::string& snapshot_dir, const RaftGroupMetadata& metadata) {
+  auto children = env.GetChildren(snapshot_dir, ExcludeDots::kTrue);
+  if (!children.ok()) {
+    LOG(WARNING) << metadata.LogPrefix() << "Failed to list " << snapshot_dir
+                 << " for vector index storages to delete: " << children.status();
+    return;
+  }
+  const auto listed_dirs_list = metadata.vector_index_dirs();
+  const std::unordered_set<std::string> listed_dirs(
+      listed_dirs_list.begin(), listed_dirs_list.end());
+  for (const auto& child : *children) {
+    if (!child.starts_with(docdb::kVectorIndexDirPrefix)) {
+      continue;
+    }
+    auto dir = docdb::GetStorageDir(metadata.rocksdb_dir(), child);
+    if (listed_dirs.contains(dir) || !env.DirExists(dir)) {
+      continue;
+    }
+    LOG(INFO) << metadata.LogPrefix() << "Deleting storage of vector index not in the tablet: "
+              << dir;
+    auto status = env.DeleteRecursively(dir);
+    LOG_IF(WARNING, !status.ok())
+        << metadata.LogPrefix() << "Failed to delete vector index storage " << dir << ": "
+        << status;
   }
 }
 
@@ -570,6 +606,10 @@ Status TabletSnapshots::Restore(SnapshotOperation* operation) {
   docdb::ConsensusFrontier frontier;
   frontier.set_op_id(operation->op_id());
   frontier.set_hybrid_time(operation->hybrid_time());
+  // The restored flushed frontier replaces the one of the snapshot, which could record a vector
+  // deletion. A restore to a time also keeps the vector indexes of the snapshot, taken later, so
+  // they could hold vectors deleted or replaced at the restored time.
+  frontier.SetHasVectorDeletion();
   RestoreMetadata restore_metadata;
   if (request.has_schema()) {
     restore_metadata.schema.emplace();
@@ -717,8 +757,13 @@ Status TabletSnapshots::RestoreCheckpoint(
 
   if (snapshot_dir.empty()) {
     // Just change rocksdb hybrid time limit, because it should be in retention interval.
-    // TODO(pitr) apply transactions and reset intents.
+    // TODO(pitr) apply intents of transactions committed at or before restore_at.
     CompleteShutdownStorages(op_pauses);
+    // Drop intents like the snapshot path does. Otherwise provisional records of transactions
+    // committed after restore_at survive and are resolved as committed by readers.
+    if (!intents_db_dir.empty() && env().FileExists(intents_db_dir)) {
+      RETURN_NOT_OK(env().DeleteRecursively(intents_db_dir));
+    }
   } else {
     // Destroy DB object.
     // TODO: snapshot current DB and try to restore it in case of failure.
@@ -766,7 +811,7 @@ Status TabletSnapshots::RestoreCheckpoint(
     // set last_applied_change_metadata_op_id field of tablet metadata.
     tablet().metadata()->SetSchema(
         *restore_metadata.schema, *restore_metadata.index_map, {} /* deleted_columns */,
-        restore_metadata.schema_version, op_id);
+        restore_metadata.schema_version, op_id, /* table_id= */ "", frontier.hybrid_time());
     tablet().metadata()->SetHidden(restore_metadata.hide);
     need_flush = true;
   }
@@ -780,7 +825,7 @@ Status TabletSnapshots::RestoreCheckpoint(
         *colocated_table_metadata.schema, *colocated_table_metadata.index_map,
         {} /* deleted_columns */,
         colocated_table_metadata.schema_version, op_id,
-        colocated_table_metadata.table_id);
+        colocated_table_metadata.table_id, frontier.hybrid_time());
     need_flush = true;
   }
 
@@ -803,6 +848,11 @@ Status TabletSnapshots::RestoreCheckpoint(
     RefreshYBMetaDataCache();
   }
 
+  // After MergeWithRestored: it can change the id, and so the storage dir, of a listed index.
+  if (!snapshot_dir.empty()) {
+    DeleteUnlistedVectorIndexStorages(env(), snapshot_dir, metadata());
+  }
+
   // Reopen database from copied checkpoint.
   // Note: db_dir == metadata()->rocksdb_dir() is still valid db dir.
   auto s = OpenStorages();
@@ -812,10 +862,12 @@ Status TabletSnapshots::RestoreCheckpoint(
   }
 
   // The restore replaced the vector index storages together with the regular DB, but the patcher
-  // above moved only the regular DB's flushed frontier to the restore op id. Stamp the same op id
-  // on the vector indexes, otherwise they keep their snapshot time OpId and bootstrap replays the
-  // rolled back writes back into them.
-  RETURN_NOT_OK(tablet().vector_indexes().ModifyFlushedFrontier(frontier));
+  // above moved only the regular DB's flushed frontier to the restore op id. Force the same op id
+  // on the vector indexes. With a lower snapshot time OpId, bootstrap would replay the rolled back
+  // writes back into them. With a higher OpId of another Raft group, e.g. the source of a clone
+  // or of an imported backup, it would skip this group's writes to them.
+  RETURN_NOT_OK(tablet().vector_indexes().ModifyFlushedFrontier(
+      frontier, rocksdb::FrontierModificationMode::kForce));
 
   LOG_WITH_PREFIX(INFO) << "Checkpoint restored from " << snapshot_dir;
   LOG_WITH_PREFIX(INFO) << "Re-enabling compactions";
@@ -1238,7 +1290,7 @@ Status TabletSnapshots::Delete(const SnapshotOperation& operation) {
 
 Status TabletSnapshots::CreateCheckpoint(
     const std::string& dir, CreateCheckpointIn create_checkpoint_in,
-    TabletSnapshots::UseTryLock use_try_lock) {
+    TabletSnapshots::UseTryLock use_try_lock, SkipVectorIndexFlush skip_vector_index_flush) {
   ScopedRWOperation scoped_read_operation(&pending_op_counter_blocking_rocksdb_shutdown_start());
   RETURN_NOT_OK(scoped_read_operation);
 
@@ -1263,8 +1315,9 @@ Status TabletSnapshots::CreateCheckpoint(
 
     TEST_PAUSE_IF_FLAG(TEST_pause_create_checkpoint);
 
-    // Order does not matter because we flush both DBs and does not have parallel writes.
-    status = DoCreateCheckpoint(dir, create_checkpoint_in);
+    // Writes can continue during the checkpoint, so DoCreateCheckpoint takes the regular DB
+    // checkpoint before it flushes and checkpoints the vector indexes.
+    status = DoCreateCheckpoint(dir, create_checkpoint_in, skip_vector_index_flush);
   }
   if (!status.ok()) {
     LOG_WITH_PREFIX(WARNING) << "Create checkpoint status: " << status;
@@ -1278,7 +1331,8 @@ Status TabletSnapshots::CreateCheckpoint(
 }
 
 Status TabletSnapshots::DoCreateCheckpoint(
-    const std::string& dir, CreateCheckpointIn create_checkpoint_in) {
+    const std::string& dir, CreateCheckpointIn create_checkpoint_in,
+    SkipVectorIndexFlush skip_vector_index_flush) {
   const auto temp_intents_dir = docdb::GetStorageDir(dir, docdb::kIntentsDirName);
   if (has_intents_db()) {
     RETURN_NOT_OK(rocksdb::checkpoint::CreateCheckpoint(&intents_db(), temp_intents_dir));
@@ -1288,6 +1342,15 @@ Status TabletSnapshots::DoCreateCheckpoint(
   // Vector indexes checkpoint must be created after rocksdb checkpoint
   // to be in sync with the flushed data.
   if (auto vector_indexes = VectorIndexesList()) {
+    if (!skip_vector_index_flush) {
+      // A vector index checkpoint only takes chunks that are already flushed. Vectors are queued
+      // inside the write that adds their row, so flushing after the regular DB checkpoint puts the
+      // vectors of every row in it into the chunks below, including rows written during the
+      // checkpoint. See #34759. A failed chunk save leaves WaitForFlush blocked, and other flush
+      // errors are only logged (#35156).
+      vector_indexes.Flush();
+      RETURN_NOT_OK(vector_indexes.WaitForFlush());
+    }
     for (const auto& vector_index : *vector_indexes) {
       const auto storage_name = docdb::GetVectorIndexStorageName(vector_index->options());
       const auto checkpoint_dir = create_checkpoint_in == CreateCheckpointIn::kSubDir

@@ -42,8 +42,8 @@
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/strings/substitute.h"
 
+#include "yb/util/format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
@@ -59,7 +59,6 @@ namespace consensus {
 using std::string;
 using std::unordered_map;
 using std::vector;
-using strings::Substitute;
 
 namespace {
 
@@ -69,7 +68,7 @@ const MonoDelta kLeaderElectionTimeout = MonoDelta::FromSeconds(10);
 static vector<string> GenVoterUUIDs(int num_voters) {
   vector<string> voter_uuids;
   for (int i = 0; i < num_voters; i++) {
-    voter_uuids.push_back(Substitute("peer-$0", i));
+    voter_uuids.push_back(Format("peer-$0", i));
   }
   return voter_uuids;
 }

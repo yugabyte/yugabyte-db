@@ -33,6 +33,7 @@
 
 #include <boost/assign/list_of.hpp>
 #include <gtest/gtest.h>
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 
 #include "yb/consensus/consensus.pb.h"
@@ -42,7 +43,6 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/split.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/cql_test_util.h"
@@ -70,7 +70,6 @@
 using std::string;
 using std::vector;
 
-using strings::Substitute;
 using yb::consensus::OpIdType;
 using yb::itest::FindTabletFollowers;
 using yb::itest::FindTabletLeader;
@@ -568,7 +567,7 @@ TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigOnSingleLeader) {
   ASSERT_OK(cluster_->master()->Restart());
 
   LOG(INFO) << "Forcing unsafe config change on tserver " << leader_ts->uuid();
-  const string& leader_addr = Substitute(
+  const string& leader_addr = Format(
       "$0:$1",
       leader_ts->registration->common().private_rpc_addresses(0).host(),
       leader_ts->registration->common().private_rpc_addresses(0).port());
@@ -649,7 +648,7 @@ TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigForConfigWithTwoNodes) {
   ASSERT_OK(cluster_->master()->Restart());
 
   LOG(INFO) << "Forcing unsafe config change on tserver " << followers[1]->uuid();
-  const string& follower1_addr = Substitute(
+  const string& follower1_addr = Format(
       "$0:$1",
       followers[1]->registration->common().private_rpc_addresses(0).host(),
       followers[1]->registration->common().private_rpc_addresses(0).port());
@@ -742,7 +741,7 @@ TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigWithFiveReplicaConfig) {
   ASSERT_OK(cluster_->master()->Restart());
 
   LOG(INFO) << "Forcing unsafe config change on tserver " << followers[1]->uuid();
-  const string& follower1_addr = Substitute(
+  const string& follower1_addr = Format(
       "$0:$1",
       followers[1]->registration->common().private_rpc_addresses(0).host(),
       followers[1]->registration->common().private_rpc_addresses(0).port());
@@ -835,7 +834,7 @@ TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigLeaderWithPendingConfig) {
 
   LOG(INFO) << "Change Config Op timed out, Sending a Replace config "
             << "command when change config op is pending on the leader.";
-  const string& leader_addr = Substitute(
+  const string& leader_addr = Format(
       "$0:$1",
       leader_ts->registration->common().private_rpc_addresses(0).host(),
       leader_ts->registration->common().private_rpc_addresses(0).port());
@@ -945,7 +944,7 @@ TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigFollowerWithPendingConfig)
 
   LOG(INFO) << "Change Config Op timed out, Sending a Replace config "
             << "command when change config op is pending on the leader.";
-  const string& leader_addr = Substitute(
+  const string& leader_addr = Format(
       "$0:$1",
       leader_ts->registration->common().private_rpc_addresses(0).host(),
       leader_ts->registration->common().private_rpc_addresses(0).port());
@@ -1034,7 +1033,7 @@ TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigWithPendingConfigsOnWAL) {
 
   LOG(INFO) << "Change Config Op timed out, Sending a Replace config "
             << "command when change config op is pending on the leader.";
-  const string& leader_addr = Substitute(
+  const string& leader_addr = Format(
       "$0:$1",
       leader_ts->registration->common().private_rpc_addresses(0).host(),
       leader_ts->registration->common().private_rpc_addresses(0).port());
@@ -1141,7 +1140,7 @@ TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigWithMultiplePendingConfigs
   // servers to trigger placement of new replicas on healthy servers when we restart later.
   cluster_->master()->Shutdown();
 
-  const string& leader_addr = Substitute(
+  const string& leader_addr = Format(
       "$0:$1",
       leader_ts->registration->common().private_rpc_addresses(0).host(),
       leader_ts->registration->common().private_rpc_addresses(0).port());

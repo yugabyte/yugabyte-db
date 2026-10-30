@@ -185,7 +185,6 @@ using ql::GetErrorCode;
 using ql::audit::IsPrepare;
 using ql::audit::ErrorIsFormatted;
 
-using strings::Substitute;
 
 //------------------------------------------------------------------------------------------------
 CQLMetrics::CQLMetrics(const scoped_refptr<yb::MetricEntity>& metric_entity)
@@ -422,7 +421,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const StartupRequest& req) 
       } else {
         return make_unique<ErrorResponse>(
             req, ErrorResponse::Code::PROTOCOL_ERROR,
-            Substitute("Unsupported compression scheme $0", value));
+            Format("Unsupported compression scheme $0", value));
       }
     }
   }

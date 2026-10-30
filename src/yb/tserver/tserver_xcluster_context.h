@@ -23,6 +23,7 @@
 #include "yb/gutil/stl_util.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/tserver/xcluster_safe_time_map.h"
+#include "yb/util/monotime.h"
 #include "yb/util/status_fwd.h"
 
 namespace yb {
@@ -40,6 +41,20 @@ class TserverXClusterContext : public TserverXClusterContextIf {
   XClusterNamespaceInfoPB_XClusterRole GetXClusterRole(
       NamespaceIdView namespace_id) const override EXCLUDES(mutex_);
 
+  Result<uint32_t> GetOidCacheInvalidationsCount() const override EXCLUDES(mutex_);
+
+  // Only ever raises the count.
+  void UpdateOidCacheInvalidationsCount(uint32_t oid_cache_invalidations_count) EXCLUDES(mutex_);
+
+  Result<std::optional<HybridTime>> GetPersistenceBlockedThrough(
+      uint32_t database_oid) const override EXCLUDES(mutex_);
+
+  Result<std::shared_ptr<const PersistenceBlockMapPB>> TEST_GetPersistenceBlockMap() const override
+      EXCLUDES(mutex_);
+
+  void UpdatePersistenceBlockMap(const PersistenceBlockMapPB& persistence_block_map)
+      EXCLUDES(mutex_);
+
   bool IsReadOnlyMode(NamespaceIdView namespace_id) const override;
   bool IsTargetAndInAutomaticMode(const NamespaceId& namespace_id) const override EXCLUDES(mutex_);
 
@@ -47,6 +62,15 @@ class TserverXClusterContext : public TserverXClusterContextIf {
   bool SafeTimeComputationRequired(const NamespaceId& namespace_id) const override;
 
   void UpdateSafeTimeMap(const XClusterNamespaceToSafeTimePBMap& safe_time_map);
+
+  void UpdateXClusterGuardedLease(MonoTime lease_expiration_time);
+
+  // See tserver_xcluster_context_if.h for specification.
+  bool HasXClusterGuardedInfoLease() const override EXCLUDES(mutex_);
+
+  // Pure check if we have an xCluster-guarded information lease; ignores
+  // enforce_xcluster_guarded_lease.
+  bool HasUnexpiredXClusterGuardedInfoLease() const EXCLUDES(mutex_);
 
   void UpdateXClusterInfoPerNamespace(
       const ::google::protobuf::Map<std::string, XClusterNamespaceInfoPB>&
@@ -67,16 +91,35 @@ class TserverXClusterContext : public TserverXClusterContextIf {
       const PgCreateTableRequestPB& req, PgCreateTable& helper) const override;
 
  private:
+  // Whether xCluster-guarded information may be given out.
+  bool HasXClusterGuardedInfoUnlocked() const REQUIRES_SHARED(mutex_);
+
+  bool HasUnexpiredLeaseUnlocked() const REQUIRES_SHARED(mutex_);
+
   XClusterSafeTimeMap safe_time_map_;
 
   mutable std::shared_mutex mutex_;
+
+  // Set to true after the first heartbeat response containing xCluster info is processed.
+  // Used as a fallback when enforce_xcluster_guarded_lease is false.
   bool have_received_a_heartbeat_ GUARDED_BY(mutex_) = false;
+
   // The set of namespaces that for this universe are targets of xCluster automatic mode
   // replication.
   std::unordered_set<NamespaceId> target_namespaces_in_automatic_mode_ GUARDED_BY(mutex_);
 
+  // Expiration time of the xCluster-guarded information lease granted by the master.
+  // Updated from heartbeat responses.
+  MonoTime xcluster_guarded_lease_expiration_ GUARDED_BY(mutex_);
+
   UnorderedStringMap<NamespaceId, XClusterNamespaceInfoPB> xcluster_info_per_namespace_
       GUARDED_BY(mutex_);
+
+  uint32_t oid_cache_invalidations_count_ GUARDED_BY(mutex_) = 0;
+
+  // Replaced, never modified, so readers can use a snapshot without holding mutex_.
+  std::shared_ptr<const PersistenceBlockMapPB> persistence_block_map_ GUARDED_BY(mutex_) =
+      std::make_shared<const PersistenceBlockMapPB>();
 
   struct CreateTableInfo {
     PgObjectId source_table_id;

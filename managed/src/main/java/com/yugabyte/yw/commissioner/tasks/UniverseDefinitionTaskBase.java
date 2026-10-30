@@ -37,14 +37,17 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodesAreSafeToTakeDown;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckTabletsMovementAvailable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckTabletsMovementAvailableForNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckUnderReplicatedTablets;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ConfigureNodeExporterTls;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ConfigureOOMServiceOnNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTableSpaces;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteCapacityReservation;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteClusterFromUniverse;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteManagedLoadBalancer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DisablePitrConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DoCapacityReservation;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DropTablespacesTask;
 import com.yugabyte.yw.commissioner.tasks.subtasks.EnablePitrConfig;
+import com.yugabyte.yw.commissioner.tasks.subtasks.EnsureManagedLoadBalancer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceExistCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageCatalogUpgradeSuperUser.Action;
@@ -98,6 +101,7 @@ import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.utils.CapacityReservationUtil;
+import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
 import com.yugabyte.yw.forms.AZUpgradeState;
 import com.yugabyte.yw.forms.AdditionalServicesStateData;
 import com.yugabyte.yw.forms.CanaryPauseState;
@@ -119,6 +123,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HookScope.TriggerType;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
@@ -127,6 +132,8 @@ import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.CrossCloudFederationTarget;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
+import com.yugabyte.yw.models.helpers.ManagedLoadBalancer;
+import com.yugabyte.yw.models.helpers.ManagedLoadBalancerState;
 import com.yugabyte.yw.models.helpers.MetricSourceState;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
@@ -713,7 +720,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param pi : the placement info in which the masters need to be placed.
    */
   public void selectNumMastersAZ(PlacementInfo pi) {
-    Cluster cluster = taskParams().getPrimaryCluster();
+    selectNumMastersAZ(pi, taskParams().getPrimaryCluster());
+  }
+
+  /**
+   * Same as {@link #selectNumMastersAZ(PlacementInfo)}, using the RF and master zones of the given
+   * primary cluster instead of the one in the task params.
+   */
+  public void selectNumMastersAZ(PlacementInfo pi, Cluster cluster) {
     UserIntent userIntent = cluster.userIntent;
     int numTotalMasters = userIntent.replicationFactor;
     PlacementInfoUtil.selectNumMastersAZ(
@@ -1217,6 +1231,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       checkAndCreateConsistencyCheckTableTask(primaryCluster);
     }
 
+    checkAndCreateYbStorageDatabaseTask(primaryCluster);
+
     // Change admin password for Admin user, as specified.
     checkAndCreateChangeAdminPasswordTask(primaryCluster);
 
@@ -1584,6 +1600,31 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
+   * Creates the task that decides node_exporter's scheme for the whole universe and changes every
+   * node if it differs (see {@link ConfigureNodeExporterTls}). Only for tasks that already touch
+   * every node, so the change restarts no exporter the user did not expect to be touched. Null when
+   * the universe runs no node_exporter that node-agent manages.
+   */
+  public SubTaskGroup createUpdateNodeExporterTlsTask(Universe universe) {
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    if (!details.extraDependencies.installNodeExporter
+        || details.clusters.stream()
+            .noneMatch(c -> NodeAgentClient.isCloudTypeSupported(c.userIntent.providerType))) {
+      return null;
+    }
+    SubTaskGroup subTaskGroup = createSubTaskGroup("ConfigureNodeExporterTls");
+    UniverseTaskParams params = new UniverseTaskParams();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    ConfigureNodeExporterTls task = createTask(ConfigureNodeExporterTls.class);
+    task.initialize(params);
+    task.setUserTaskUUID(getUserTaskUUID());
+    subTaskGroup.addSubTask(task);
+    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
    * Persists {@code userIntent.federationConfigured} per cluster. When {@code enabling}, a cluster
    * is marked true iff its provider has federated IAM enabled with an audience (a non-eligible
    * cluster like a GCP read replica stays false); when disabling, all clusters are set false.
@@ -1797,7 +1838,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         }
       }
       PlacementInfoUtil.verifyNumNodesAndRF(
-          cluster.clusterType, cluster.userIntent.numNodes, cluster.userIntent.replicationFactor);
+          cluster.clusterType,
+          cluster.userIntent.numNodes,
+          cluster.userIntent.replicationFactor,
+          opType == UniverseOpType.EDIT && univCluster != null
+              ? univCluster.userIntent.replicationFactor
+              : null);
 
       if (Util.isKubernetesBased(cluster)) {
         if (opType == UniverseOpType.EDIT
@@ -4101,10 +4147,39 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     return universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
   }
 
+  /**
+   * Records {@code targetVersion} as the software version when the user intent still holds an older
+   * one. Finalize clears prevYBSoftwareConfig, the only other record of the target.
+   */
+  protected void createUpdateSoftwareVersionTaskIfStale(
+      Universe universe, String targetVersion, SubTaskGroupType subTaskGroupType) {
+    if (!targetVersion.equals(
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion)) {
+      createUpdateSoftwareVersionTask(targetVersion, false /* isSoftwareUpdateViaVm */)
+          .setSubTaskGroupType(subTaskGroupType);
+    }
+  }
+
   protected void createFinalizeUpgradeTasks(
       boolean upgradeSystemCatalog,
       boolean finalizeCatalogUpgrade,
       boolean requireAdditionalSuperUserForCatalogUpgrade) {
+    createFinalizeUpgradeTasks(
+        upgradeSystemCatalog,
+        finalizeCatalogUpgrade,
+        requireAdditionalSuperUserForCatalogUpgrade,
+        true /* saveReadyState */);
+  }
+
+  /**
+   * Finalize subtasks, ending with the Ready state unless {@code saveReadyState} is false; a caller
+   * that passes false must save Ready (rollback disallowed) itself, together with the version.
+   */
+  protected void createFinalizeUpgradeTasks(
+      boolean upgradeSystemCatalog,
+      boolean finalizeCatalogUpgrade,
+      boolean requireAdditionalSuperUserForCatalogUpgrade,
+      boolean saveReadyState) {
     Universe universe = getUniverse();
 
     createClearSoftwareUpgradeProgressTask();
@@ -4141,9 +4216,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // This also updates intermittentMinRecoverTimeInMillis for all PITR configs
     createEnablePitrConfigTask();
 
-    createUpdateUniverseSoftwareUpgradeStateTask(
-        UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
-        false /* isSoftwareRollbackAllowed */);
+    if (saveReadyState) {
+      createUpdateUniverseSoftwareUpgradeStateTask(
+          UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
+          false /* isSoftwareRollbackAllowed */);
+    }
   }
 
   protected void createEnablePitrConfigTask() {
@@ -4428,6 +4505,77 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     subTaskGroup.addSubTask(task);
     // Add the task list to the task queue.
     getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  /**
+   * Creates the load balancers that the cluster calls for, or reconciles the ones that exist,
+   * including their zones and tags. Call it before node creation, so that a permission error fails
+   * the task before YBA creates VMs.
+   */
+  protected void createEnsureManagedLoadBalancerTasks(Cluster cluster) {
+    List<ManagedLoadBalancer> lbs = ManagedLoadBalancerUtil.planLoadBalancers(cluster);
+    if (lbs.isEmpty()) {
+      return;
+    }
+    Universe universe = getUniverse();
+    UUID customerUUID = Customer.get(universe.getCustomerId()).getUuid();
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup("EnsureManagedLoadBalancer", SubTaskGroupType.Provisioning);
+    for (ManagedLoadBalancer lb : lbs) {
+      Region region = Region.getOrBadRequest(lb.getRegionUuid());
+      UUID providerUUID = region.getProvider().getUuid();
+      EnsureManagedLoadBalancer.Params params = new EnsureManagedLoadBalancer.Params();
+      params.setUniverseUUID(universe.getUniverseUUID());
+      params.clusterUUID = cluster.uuid;
+      params.providerUUID = providerUUID;
+      params.regionUUID = lb.getRegionUuid();
+      params.regionCode = region.getCode();
+      params.lbName = lb.getName();
+      params.scheme = lb.getScheme();
+      params.azUUIDs = lb.getAzUuids();
+      params.tags =
+          ManagedLoadBalancerUtil.getTags(
+              universe.getUniverseUUID(),
+              cluster.userIntent.universeName,
+              customerUUID,
+              cluster.userIntent.getInstanceTagsForProvider(providerUUID));
+      EnsureManagedLoadBalancer task = createTask(EnsureManagedLoadBalancer.class);
+      task.initialize(params);
+      subTaskGroup.addSubTask(task);
+    }
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  /** Deletes the managed load balancers in the saved state that the filter accepts. */
+  protected void createDeleteManagedLoadBalancerTasks(
+      Predicate<ManagedLoadBalancer> filter, boolean ignoreErrors) {
+    ManagedLoadBalancerState state =
+        getUniverse().getUniverseDetails().getManagedLoadBalancerState();
+    if (state == null) {
+      return;
+    }
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup("DeleteManagedLoadBalancer", SubTaskGroupType.RemovingUnusedServers);
+    for (ManagedLoadBalancer lb : state.getLoadBalancers()) {
+      if (!filter.test(lb)) {
+        continue;
+      }
+      Region region = Region.getOrBadRequest(lb.getRegionUuid());
+      DeleteManagedLoadBalancer.Params params = new DeleteManagedLoadBalancer.Params();
+      params.setUniverseUUID(taskParams().getUniverseUUID());
+      params.clusterUUID = lb.getClusterUuid();
+      params.providerUUID = region.getProvider().getUuid();
+      params.regionUUID = lb.getRegionUuid();
+      params.regionCode = region.getCode();
+      params.lbName = lb.getName();
+      params.ignoreErrors = ignoreErrors;
+      DeleteManagedLoadBalancer task = createTask(DeleteManagedLoadBalancer.class);
+      task.initialize(params);
+      subTaskGroup.addSubTask(task);
+    }
+    if (subTaskGroup.getSubTaskCount() > 0) {
+      getRunnableTask().addSubTaskGroup(subTaskGroup);
+    }
   }
 
   protected void createTablespacesTasks(

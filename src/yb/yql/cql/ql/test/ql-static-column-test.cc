@@ -15,7 +15,6 @@
 
 #include "yb/common/ql_value.h"
 
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_ddl.pb.h"

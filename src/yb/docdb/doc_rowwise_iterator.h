@@ -122,6 +122,8 @@ class DocRowwiseIterator final : public YQLRowwiseIteratorIf {
 
   void SeekToDocKeyPrefix(Slice doc_key_prefix) override;
 
+  void SetUpperBound(Slice upper_bound) override;
+
   // Refreshes the iterator if it was in finished state.
   // filter - filter mode that should be used with refreshed iterator.
   void Refresh(SeekFilter filter);
@@ -172,6 +174,10 @@ class DocRowwiseIterator final : public YQLRowwiseIteratorIf {
 
   Slice shared_key_prefix() const;
   Slice upperbound() const;
+
+  // Exclusive upper bound of the whole scan, as configured by Init: the scan spec bound when it
+  // has one, otherwise the table upper bound.
+  Slice GetInitialUpperBound() const;
 
   Status InitIterator(
       const BloomFilterOptions& bloom_filter,
@@ -282,6 +288,9 @@ class DocRowwiseIterator final : public YQLRowwiseIteratorIf {
   size_t obsolete_keys_found_past_cutoff_ = 0;
 
   KeyBuffer prefix_buffer_;
+  // Upper bound set by SetUpperBound, empty otherwise. upperbound_scope_ refers to it while it is
+  // set.
+  KeyBuffer upper_bound_;
   std::optional<IntentAwareIteratorUpperboundScope> upperbound_scope_;
   std::optional<IntentAwareIteratorLowerboundScope> lowerbound_scope_;
 

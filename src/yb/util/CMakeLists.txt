@@ -110,8 +110,8 @@ set(UTIL_SRCS
   background_task.cc
   backoff_waiter.cc
   bitmap.cc
-  bitmap.cc
   bloom_filter.cc
+  byte_buffer.cc
   bytes_formatter.cc
   cache_metrics.cc
   cgroups.cc
@@ -127,6 +127,7 @@ set(UTIL_SRCS
   curl_util.cc
   date_time.cc
   debug-util.cc
+  dynamic_bitset.cc
   symbolize.cc
   libbacktrace_util.cc
   source_location.cc
@@ -156,6 +157,7 @@ set(UTIL_SRCS
   flags/flag_tags.cc
   flags/flags.cc
   flags/flags_callback.cc
+  format.cc
   hdr_histogram.cc
   hexdump.cc
   html_print_helper.cc
@@ -222,6 +224,7 @@ set(UTIL_SRCS
   status.cc
   status_callback.cc
   stol_utils.cc
+  storage_tier.cc
   strand.cc
   string_case.cc
   string_trim.cc
@@ -363,6 +366,14 @@ if(NOT APPLE)
 endif()
 
 #######################################
+# yb_benchmark_main
+#######################################
+
+ADD_YB_TEST_LIBRARY(yb_benchmark_main
+                    SRCS benchmark_main.cc
+                    DEPS gbenchmark gflags glog yb_util)
+
+#######################################
 # Unit tests
 #######################################
 
@@ -392,6 +403,7 @@ ADD_YB_TEST(debug-util-test)
 ADD_YB_TEST(decimal-test)
 ADD_YB_TEST(disk_space_checker-test)
 ADD_YB_TEST(drive_io_stats-test)
+ADD_YB_TEST(dynamic_bitset-test)
 ADD_YB_TEST(env-test LABELS no_tsan)
 ADD_YB_TEST(errno-test)
 ADD_YB_TEST(failure_detector-test)
@@ -535,3 +547,9 @@ YB_TEST_TARGET_LINK_LIBRARIES(pb_util-test proto_container_test_proto)
 
 ADD_YB_TEST(uint_set-test)
 YB_TEST_TARGET_LINK_LIBRARIES(uint_set-test proto_container_test_proto)
+
+#######################################
+# Microbenchmarks
+#######################################
+
+ADD_YB_BENCHMARK(mutex-benchmark DEPS absl)

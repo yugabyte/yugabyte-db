@@ -38,6 +38,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "yb/cdc/cdc_service.h"
@@ -59,7 +60,6 @@
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/numbers.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/util/options_parser.h"
@@ -83,9 +83,11 @@
 #include "yb/tserver/xcluster_poller_stats.h"
 
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/html_print_helper.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/monotime.h"
+#include "yb/util/prometheus_metric_filter.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/url-coding.h"
 
@@ -107,7 +109,6 @@ using std::endl;
 using std::shared_ptr;
 using std::vector;
 using std::string;
-using strings::Substitute;
 
 using namespace std::placeholders;  // NOLINT(build/namespaces)
 
@@ -115,6 +116,7 @@ DEFINE_UNKNOWN_bool(enable_intentsdb_page, false,
     "Enable displaying the contents of intentsdb page.");
 
 DECLARE_bool(enable_xcluster_stat_collection);
+DECLARE_bool(enable_active_table_metrics_filtering);
 
 namespace {
 
@@ -122,6 +124,8 @@ namespace {
 struct TabletPeerInfo {
   string namespace_name;
   string name;
+  // The table attributes the table's metrics carry, such as table_type.
+  yb::MetricAttributeMap metric_attributes;
   bool is_hidden;
   uint64_t num_sst_files;
   yb::tablet::TabletOnDiskSizeInfo disk_size_info;
@@ -139,6 +143,7 @@ struct TableIdentifier {
 struct TableInfo {
   string namespace_name;
   string name;
+  yb::MetricAttributeMap metric_attributes;
   bool is_hidden;
   uint64_t num_sst_files;
   yb::tablet::TabletOnDiskSizeInfo disk_size_info;
@@ -148,6 +153,7 @@ struct TableInfo {
   explicit TableInfo(TabletPeerInfo info)
       : namespace_name(info.namespace_name),
         name(info.name),
+        metric_attributes(std::move(info.metric_attributes)),
         is_hidden(info.is_hidden),
         num_sst_files(info.num_sst_files),
         disk_size_info(info.disk_size_info),
@@ -939,17 +945,17 @@ void TabletServerPathHandlers::HandleOperationsPage(const Webserver::WebRequest&
 
     peer->GetInFlightOperations(trace_type, &inflight);
     for (const auto& inflight_tx : inflight) {
-      string total_time_str = Substitute("$0 us.", inflight_tx.running_for_micros());
+      string total_time_str = Format("$0 us.", inflight_tx.running_for_micros());
       string description;
       if (trace_type == Operation::TRACE_TXNS) {
-        description = Substitute("$0, Trace: $1",
-                                  inflight_tx.description(), inflight_tx.trace_buffer());
+        description = Format("$0, Trace: $1",
+                              inflight_tx.description(), inflight_tx.trace_buffer());
       } else {
         description = inflight_tx.description();
       }
 
       if (!as_text) {
-        (*output) << Substitute(
+        (*output) << Format(
           "<tr><th>$0</th><th>$1</th><th>$2</th><th>$3</th><th>$4</th></tr>\n",
           EscapeForHtmlToString(peer->tablet_id()),
           EscapeForHtmlToString(inflight_tx.op_id().ShortDebugString()),
@@ -1029,9 +1035,9 @@ void TabletServerPathHandlers::HandleCgroupsPage(
 
 namespace {
 string TabletLink(const string& id) {
-  return Substitute("<a href=\"/tablet?id=$0\">$1</a>",
-                    UrlEncodeToString(id),
-                    EscapeForHtmlToString(id));
+  return Format("<a href=\"/tablet?id=$0\">$1</a>",
+                UrlEncodeToString(id),
+                EscapeForHtmlToString(id));
 }
 
 bool CompareByTabletId(const std::shared_ptr<TabletPeer>& a,
@@ -1097,6 +1103,8 @@ std::map<TableIdentifier, TableInfo> GetTablesInfo(
     auto info = TabletPeerInfo {
         .namespace_name = std::move(status.namespace_name()),
         .name = std::move(status.table_name()),
+        .metric_attributes =
+            peer->tablet_metadata()->primary_table_info()->CreateMetricAttributeMap(),
         .is_hidden = is_hidden,
         .num_sst_files = num_sst_files,
         .disk_size_info = yb::tablet::TabletOnDiskSizeInfo::FromPB(status),
@@ -1115,6 +1123,55 @@ std::map<TableIdentifier, TableInfo> GetTablesInfo(
   return table_map;
 }
 
+void PrintActiveTableMetricsList(
+    const ActiveTableIdsForMetrics& active_tables,
+    const std::map<TableIdentifier, TableInfo>& table_map,
+    HtmlPrintHelper* html_print_helper, std::stringstream* output) {
+  *output << "<h2>Active table metrics list</h2>\n"
+          << "<p>Scrapes of /prometheus-metrics that pass version=v2 and "
+          << "apply_table_IDs_filter=true export table-level metrics of YSQL user tables only "
+          << "for the tables in this list. Server-level metrics still cover every table.</p>\n";
+
+  auto summary_table = html_print_helper->CreateTablePrinter(
+      "active_table_metrics",
+      {"Filtering enabled", "Tables in list", "List version", "Last update"});
+  std::string last_update = "Never";
+  if (active_tables.last_update_time != 0) {
+    const auto now = static_cast<uint64_t>(GetCurrentTimeMicros());
+    last_update = Format(
+        "$0 ($1 s ago)", active_tables.last_update_time,
+        (now - std::min(now, active_tables.last_update_time)) / MonoTime::kMicrosecondsPerSecond);
+  }
+  summary_table.AddRow(
+      FLAGS_enable_active_table_metrics_filtering ? "Yes" : "No",
+      active_tables.table_ids ? std::to_string(active_tables.table_ids->size()) : "-",
+      active_tables.table_ids ? std::to_string(active_tables.list_version) : "-", last_update);
+  summary_table.Print();
+
+  if (!active_tables.table_ids) {
+    return;
+  }
+  // Tables hosted here are marked in the table above. The rest are listed so that an ID that does
+  // not match any table, for example a colocated table sent instead of its parent, is visible.
+  std::unordered_set<std::string> hosted_table_ids;
+  for (const auto& [identifier, _] : table_map) {
+    hosted_table_ids.insert(identifier.uuid);
+  }
+  std::vector<std::string> other_table_ids;
+  for (const auto& table_id : *active_tables.table_ids) {
+    if (!hosted_table_ids.contains(table_id)) {
+      other_table_ids.push_back(table_id);
+    }
+  }
+  std::sort(other_table_ids.begin(), other_table_ids.end());
+  *output << "<details><summary>" << other_table_ids.size()
+          << " table IDs in the list are not hosted on this tablet server</summary><ul>\n";
+  for (const auto& table_id : other_table_ids) {
+    *output << "<li>" << EscapeForHtmlToString(table_id) << "</li>\n";
+  }
+  *output << "</ul></details>\n";
+}
+
 }  // anonymous namespace
 
 void TabletServerPathHandlers::HandleTablesPage(const Webserver::WebRequest& req,
@@ -1124,10 +1181,31 @@ void TabletServerPathHandlers::HandleTablesPage(const Webserver::WebRequest& req
   auto peers = tserver_->tablet_manager()->GetTabletPeers();
   auto table_map = GetTablesInfo(peers);
   bool show_missing_size_footer = false;
+  const auto active_tables = tserver_->GetActiveTableIdsForMetrics();
+  // Whether a scrape that opts into active-table filtering exports the table's table-level metrics,
+  // and why. table_always_allowlist is set per scrape, so it is noted below the table instead.
+  auto TableMetricsExported = [&active_tables](
+      const std::string& table_id, const MetricEntity::AttributeMap& attributes) -> std::string {
+    if (!FLAGS_enable_active_table_metrics_filtering) {
+      return "Yes (filtering disabled)";
+    }
+    switch (GetActiveTableListExemption(attributes)) {
+      case ActiveTableListExemption::kNotYsqlTable:
+        return "Yes (not a YSQL table)";
+      case ActiveTableListExemption::kInternalTable:
+        return "Yes (created by YugabyteDB)";
+      case ActiveTableListExemption::kNone:
+        break;
+    }
+    if (!active_tables.table_ids) {
+      return "No (no list received)";
+    }
+    return active_tables.table_ids->contains(table_id) ? "Yes (in list)" : "No (not in list)";
+  };
 
   auto html_table = html_print_helper.CreateTablePrinter(
       "table", {"Namespace", "Table name", "Table UUID", "State", "Num SST Files", "On-disk size",
-                "Raft roles"});
+                "Raft roles", "Table metrics exported**"});
 
   for (const auto& table_iter : table_map) {
     const auto& identifier = table_iter.first;
@@ -1147,11 +1225,21 @@ void TabletServerPathHandlers::HandleTablesPage(const Webserver::WebRequest& req
     }
     role_counts_html << "</ul>";
 
-    html_table.AddRow(
+    auto& row = html_table.AddRow(
         EscapeForHtmlToString(info.namespace_name), EscapeForHtmlToString(info.name),
         EscapeForHtmlToString(identifier.uuid),
-        Format("$0$1", identifier.state, (info.is_hidden ? " (HIDDEN)" : "")), info.num_sst_files,
-        tables_disk_size_html, role_counts_html.str());
+        Format("$0$1", identifier.state, (info.is_hidden ? " (HIDDEN)" : "")), info.num_sst_files);
+    // The size cell is a multi-line list, which the page's sort script can only compare as text,
+    // so pass the displayed total as a numeric sort key. While that estimate is still unset the
+    // always-current active size stands in, so new tables sort by size too.
+    const auto& size_info = info.disk_size_info;
+    row.AddColumn(
+        tables_disk_size_html,
+        static_cast<size_t>(
+            size_info.total_on_disk_size > 0 ? size_info.total_on_disk_size
+                                             : size_info.active_on_disk_size));
+    row.AddColumn(role_counts_html.str());
+    row.AddColumn(TableMetricsExported(identifier.uuid, info.metric_attributes));
   }
 
   html_table.Print();
@@ -1160,6 +1248,11 @@ void TabletServerPathHandlers::HandleTablesPage(const Webserver::WebRequest& req
     *output << "<p>* Some tablets did not provide disk size estimates,"
             << " and were not added to the displayed totals.</p>";
   }
+  *output << "<p>** Whether /prometheus-metrics scrapes that pass version=v2 and "
+          << "apply_table_IDs_filter=true export the table's table-level metrics. Metrics matching "
+          << "a scrape's table_always_allowlist are exported for every table.</p>";
+
+  PrintActiveTableMetricsList(active_tables, table_map, &html_print_helper, output);
 }
 
 void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& req,
@@ -1260,13 +1353,13 @@ string TabletServerPathHandlers::ConsensusStatePBToHtml(const ConsensusStatePB& 
         : peer.permanent_uuid();
     peer_addr_or_uuid = EscapeForHtmlToString(peer_addr_or_uuid);
     string role_name = PeerRole_Name(GetConsensusRole(peer.permanent_uuid(), cstate));
-    string formatted = Substitute("$0: $1", role_name, peer_addr_or_uuid);
+    string formatted = Format("$0: $1", role_name, peer_addr_or_uuid);
     // Make the local peer bold.
     if (peer.permanent_uuid() == tserver_->instance_pb().permanent_uuid()) {
-      formatted = Substitute("<b>$0</b>", formatted);
+      formatted = Format("<b>$0</b>", formatted);
     }
 
-    html << Substitute(" <li>$0</li>\n", formatted);
+    html << Format(" <li>$0</li>\n", formatted);
   }
   html << "</ul>\n";
   return html.str();
@@ -1372,10 +1465,10 @@ void TabletServerPathHandlers::HandleIntentsDBPage(const Webserver::WebRequest& 
 string TabletServerPathHandlers::GetDashboardLine(const std::string& link,
                                                   const std::string& text,
                                                   const std::string& desc) {
-  return Substitute("  <tr><td><a href=\"$0\">$1</a></td><td>$2</td></tr>\n",
-                    EscapeForHtmlToString(link),
-                    EscapeForHtmlToString(text),
-                    EscapeForHtmlToString(desc));
+  return Format("  <tr><td><a href=\"$0\">$1</a></td><td>$2</td></tr>\n",
+                EscapeForHtmlToString(link),
+                EscapeForHtmlToString(text),
+                EscapeForHtmlToString(desc));
 }
 
 void TabletServerPathHandlers::HandleMaintenanceManagerPage(const Webserver::WebRequest& req,
@@ -1398,9 +1491,9 @@ void TabletServerPathHandlers::HandleMaintenanceManagerPage(const Webserver::Web
   for (int i = 0; i < ops_count; i++) {
     MaintenanceManagerStatusPB_MaintenanceOpPB op_pb = pb.registered_operations(i);
     if (op_pb.running() > 0) {
-      *output <<  Substitute("<tr><td>$0</td><td>$1</td></tr>\n",
-                             EscapeForHtmlToString(op_pb.name()),
-                             op_pb.running());
+      *output <<  Format("<tr><td>$0</td><td>$1</td></tr>\n",
+                         EscapeForHtmlToString(op_pb.name()),
+                         op_pb.running());
     }
   }
   *output << "</table>\n";
@@ -1410,12 +1503,12 @@ void TabletServerPathHandlers::HandleMaintenanceManagerPage(const Webserver::Web
   *output << "  <tr><th>Name</th><th>Duration</th><th>Time since op started</th></tr>\n";
   for (int i = 0; i < pb.completed_operations_size(); i++) {
     MaintenanceManagerStatusPB_CompletedOpPB op_pb = pb.completed_operations(i);
-    *output <<  Substitute("<tr><td>$0</td><td>$1</td><td>$2</td></tr>\n",
-                           EscapeForHtmlToString(op_pb.name()),
-                           HumanReadableElapsedTime::ToShortString(
-                               op_pb.duration_millis() / 1000.0),
-                           HumanReadableElapsedTime::ToShortString(
-                               op_pb.secs_since_start()));
+    *output <<  Format("<tr><td>$0</td><td>$1</td><td>$2</td></tr>\n",
+                       EscapeForHtmlToString(op_pb.name()),
+                       HumanReadableElapsedTime::ToShortString(
+                           op_pb.duration_millis() / 1000.0),
+                       HumanReadableElapsedTime::ToShortString(
+                           op_pb.secs_since_start()));
   }
   *output << "</table>\n";
 
@@ -1427,11 +1520,11 @@ void TabletServerPathHandlers::HandleMaintenanceManagerPage(const Webserver::Web
   for (int i = 0; i < ops_count; i++) {
     MaintenanceManagerStatusPB_MaintenanceOpPB op_pb = pb.registered_operations(i);
     if (op_pb.running() == 0) {
-      *output << Substitute(
+      *output << Format(
           "<tr><td>$0</td><td>$1</td><td>$2</td><td>$3</td><td>$4</td><td>$5</td></tr>\n",
-          EscapeForHtmlToString(op_pb.name()), op_pb.runnable(),
+          EscapeForHtmlToString(op_pb.name()), op_pb.runnable() ? "true" : "false",
           HumanizeBytes(op_pb.ram_anchored_bytes()),
-          HumanizeBytes(op_pb.logs_retained_bytes()), op_pb.perf_improvement(),
+          HumanizeBytes(op_pb.logs_retained_bytes()), SimpleDtoa(op_pb.perf_improvement()),
           op_pb.cdcsdk_reset_stale_retention_barrier() ? "Yes" : "No");
     }
   }
@@ -1518,8 +1611,8 @@ void TabletServerPathHandlers::HandleXClusterPage(
       xcluster_streams
           .AddRow(
               stat.stream_id_str, stat.producer_table_id, stat.producer_tablet_id, stat.state,
-              stat.avg_poll_delay_ms, StringPrintf("%.3f", stat.avg_throughput_kbps),
-              StringPrintf("%.3f", stat.mbs_sent), stat.records_sent,
+              stat.avg_poll_delay_ms, FixedPoint(stat.avg_throughput_kbps, 3),
+              FixedPoint(stat.mbs_sent, 3), stat.records_sent,
               stat.avg_get_changes_latency_ms, stat.sent_index, stat.latest_index,
               stat.last_poll_time.ToFormattedString(), stat.status)
           .SetColor(stat.status);
@@ -1541,8 +1634,8 @@ void TabletServerPathHandlers::HandleXClusterPage(
           .AddRow(
               stat.replication_group_id, stat.stream_id_str, stat.consumer_table_id,
               stat.consumer_tablet_id, stat.producer_tablet_id, stat.state, stat.avg_poll_delay_ms,
-              StringPrintf("%.3f", stat.avg_throughput_kbps),
-              StringPrintf("%.3f", stat.mbs_received), stat.records_received,
+              FixedPoint(stat.avg_throughput_kbps, 3),
+              FixedPoint(stat.mbs_received, 3), stat.records_received,
               stat.avg_get_changes_latency_ms, stat.avg_apply_latency_ms, stat.received_index,
               stat.last_poll_time.ToFormattedString(), stat.status)
           .SetColor(stat.status);

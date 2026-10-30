@@ -13,6 +13,9 @@
 
 #include "yb/hnsw/hnsw.h"
 
+#include <algorithm>
+#include <numeric>
+
 #include "usearch/index.hpp"
 
 #include "yb/hnsw/block_writer.h"
@@ -35,6 +38,10 @@ DEFINE_RUNTIME_uint64(yb_hnsw_max_block_size, 64_KB,
 
 DEFINE_RUNTIME_bool(yb_hnsw_keep_new_blocks_in_cache, false,
     "Whether to keep new generated blocks in cache after YbHnsw index is built.");
+
+DEFINE_RUNTIME_bool(yb_hnsw_reorder_vectors, true,
+    "Whether to number vectors of a new YbHnsw index in BFS order of its layers, so vectors "
+    "visited together by a search are stored in the same blocks.");
 
 #define YB_MISALIGNED_STORE(ptr, type, field, value) \
   MisalignedAssign<decltype(type::field)>(ptr, offsetof(type, field), value)
@@ -162,11 +169,69 @@ class YbHnswBuilder {
     return out_->Append(buffer.AsSlice());
   }
 
+  // Returns adapter indexes in decreasing height order, keeping index order for the same height.
+  std::vector<size_t> SortByHeight() {
+    // Number of vectors of each height, then start of each height group.
+    std::vector<size_t> group_start(header_.max_level + 2);
+    for (size_t i = 0; i != size_; ++i) {
+      ++group_start[header_.max_level - make_unsigned(inspector_.NodeLevel(i)) + 1];
+    }
+    std::partial_sum(group_start.begin(), group_start.end(), group_start.begin());
+    std::vector<size_t> result(size_);
+    for (size_t i = 0; i != size_; ++i) {
+      result[group_start[header_.max_level - make_unsigned(inspector_.NodeLevel(i))]++] = i;
+    }
+    return result;
+  }
+
+  // Returns adapter indexes in BFS order of each layer from top to bottom. Vectors of upper
+  // layers seed the BFS of lower layers, so vectors come in decreasing height order.
+  // by_height is the result of SortByHeight.
+  std::vector<size_t> LayersBfsOrder(const std::vector<size_t>& by_height) {
+    std::vector<bool> visited(size_);
+    std::vector<size_t> result;
+    result.reserve(size_);
+    auto it = by_height.begin();
+    for (auto level = header_.max_level + 1; level-- > 0;) {
+      // result is also the BFS queue.
+      size_t pos = 0;
+      auto bfs = [this, &visited, &result, &pos, level] {
+        for (; pos != result.size(); ++pos) {
+          auto neighbors = level ? inspector_.Neighbors(result[pos], level)
+                                 : inspector_.NeighborsBase(result[pos]);
+          for (auto neighbor : neighbors) {
+            if (!visited[neighbor]) {
+              DCHECK_EQ(make_unsigned(inspector_.NodeLevel(neighbor)), level);
+              visited[neighbor] = true;
+              result.push_back(neighbor);
+            }
+          }
+        }
+      };
+      bfs();
+      // Vectors of this height not reachable from vectors added so far.
+      for (; it != by_height.end() && make_unsigned(inspector_.NodeLevel(*it)) == level; ++it) {
+        if (!visited[*it]) {
+          visited[*it] = true;
+          result.push_back(*it);
+          bfs();
+        }
+      }
+    }
+    DCHECK(it == by_height.end());
+    return result;
+  }
+
   void PrepareVectors() {
     header_.layers.resize(header_.max_level + 1);
     vectors_.reserve(inspector_.Size());
     size_ = inspector_.Size();
-    for (size_t index : std::views::iota(static_cast<size_t>(0), inspector_.Size())) {
+    // Upper layers are prefixes of vector numbers, so higher vectors go first.
+    auto order = SortByHeight();
+    if (FLAGS_yb_hnsw_reorder_vectors) {
+      order = LayersBfsOrder(order);
+    }
+    for (size_t index : order) {
       const auto level = inspector_.NodeLevel(index);
       DCHECK_BETWEEN(level, 0, header_.layers.size() - 1);
       vectors_.push_back(BuildingVectorData {
@@ -179,10 +244,7 @@ class YbHnswBuilder {
     for (size_t level = header_.max_level; level > 0; --level) {
       header_.layers[level - 1].size += header_.layers[level].size;
     }
-    // TODO(vector_index) Actually we could do it in O(n)
-    std::sort(vectors_.begin(), vectors_.end(), [](const auto& lhs, const auto& rhs) {
-      return lhs.height > rhs.height;
-    });
+    DCHECK(std::ranges::is_sorted(vectors_, std::ranges::greater(), &BuildingVectorData::height));
   }
 
   Status BuildVectorDataBlocks() {

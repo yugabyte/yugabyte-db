@@ -20,7 +20,11 @@ import RenameKeyspaceOption from './RenameKeyspaceOption';
 import RestoreTablespacesOption from './RestoreTablespacesOption';
 import { RestoreFormModel } from '../../models/RestoreFormModel';
 import { getPreflightCheck } from '../../api/api';
-import { isDefinedNotNull, isNonEmptyString } from '../../../../../../utils/ObjectUtils';
+import {
+  createErrorMessage,
+  isDefinedNotNull,
+  isNonEmptyString
+} from '../../../../../../utils/ObjectUtils';
 import { isDuplicateKeyspaceExistsinUniverse } from '../../../../../../components/backupv2/components/restore/RestoreUtils';
 import { GetRestoreContext } from '../../RestoreUtils';
 import { fetchTablesInUniverse } from '../../../../../../actions/xClusterReplication';
@@ -77,8 +81,8 @@ const RestoreTarget = forwardRef<PageRef>((_, forwardRef) => {
         setDisableSubmit(false);
         setPreflightResponse(data);
       },
-      onError: () => {
-        toast.error('Preflight check failed!.');
+      onError: (error: any) => {
+        toast.error(createErrorMessage(error));
         setDisableSubmit(true);
       },
       onSettled: () => {

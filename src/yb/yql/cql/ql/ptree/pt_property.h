@@ -13,7 +13,6 @@
 
 #pragma once
 
-#include "yb/gutil/strings/substitute.h"
 #include "yb/yql/cql/ql/ptree/list_node.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
 

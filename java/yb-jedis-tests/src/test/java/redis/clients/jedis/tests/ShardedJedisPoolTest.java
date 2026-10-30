@@ -29,6 +29,7 @@ import redis.clients.jedis.tests.BaseYBClassForJedis;
 import org.yb.YBTestRunner;
 
 @RunWith(value=YBTestRunner.class)
+@Ignore("YEDIS is deprecated")
 public class ShardedJedisPoolTest extends BaseYBClassForJedis {
   private static HostAndPort redis1 = HostAndPortUtil.getRedisServers().get(0);
   private static HostAndPort redis2 = HostAndPortUtil.getRedisServers().get(1);

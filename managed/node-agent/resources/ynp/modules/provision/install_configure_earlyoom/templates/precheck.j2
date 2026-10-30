@@ -1,6 +1,6 @@
 systemd_dir="{{ yb_user_home }}/.config/systemd/user"
 config_dir="{{ yb_home_dir }}/bin"
-if grep -q "DefaultLimitMEMLOCK=500000" "/etc/systemd/system.conf"; then
+if grep -q "DefaultLimitMEMLOCK=50M" "/etc/systemd/system.conf"; then
     echo "[PASS] DefaultLimitMEMLOCK is set in /etc/systemd/system.conf"
     add_result "DefaultLimitMEMLOCK in /etc/systemd/system.conf" "PASS" \
         "DefaultLimitMEMLOCK is set in /etc/systemd/system.conf"
@@ -9,7 +9,7 @@ else
     add_result "DefaultLimitMEMLOCK in /etc/systemd/system.conf" "FAIL" \
         "DefaultLimitMEMLOCK is not set in /etc/systemd/system.conf. Run with root provisioning first."
 fi
-if grep -q "DefaultLimitMEMLOCK=500000" "/etc/systemd/user.conf"; then
+if grep -q "DefaultLimitMEMLOCK=50M" "/etc/systemd/user.conf"; then
     echo "[PASS] DefaultLimitMEMLOCK is set in /etc/systemd/user.conf"
     add_result "DefaultLimitMEMLOCK in /etc/systemd/user.conf" "PASS" \
         "DefaultLimitMEMLOCK is set in /etc/systemd/user.conf"

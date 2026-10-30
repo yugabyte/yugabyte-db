@@ -26,7 +26,6 @@ import com.azure.security.keyvault.keys.models.KeyProperties;
 import com.azure.security.keyvault.keys.models.KeyVaultKey;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.cloud.azu.AZUCloudImpl;
-import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.OffsetDateTime;
 import java.util.Arrays;
@@ -233,12 +232,8 @@ public class AzuEARServiceUtil {
    */
   public byte[] generateRandomBytes(int numBytes) {
     byte[] randomBytes = new byte[numBytes];
-    try {
-      SecureRandom.getInstanceStrong().nextBytes(randomBytes);
-    } catch (NoSuchAlgorithmException e) {
-      log.warn("Could not generate AZU random bytes, no such algorithm.");
-      return null;
-    }
+    // Not getInstanceStrong(): it resolves to SUN, not to the FIPS provider.
+    new SecureRandom().nextBytes(randomBytes);
     return randomBytes;
   }
 

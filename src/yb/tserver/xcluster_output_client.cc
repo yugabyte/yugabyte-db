@@ -526,8 +526,9 @@ Result<bool> XClusterOutputClient::ProcessChangeMetadataOp(const cdc::CDCRecordP
     processed_change_metadata_op_ = true;
   }
 
-  if (record.change_metadata_request().has_remove_table_id() ||
-      !record.change_metadata_request().add_multiple_tables().empty()) {
+  const auto& cm_request = record.change_metadata_request();
+
+  if (cm_request.has_remove_table_id() || !cm_request.add_multiple_tables().empty()) {
     // TODO (#16557): Support remove_table_id() for colocated tables / tablegroups.
     LOG_WITH_PREFIX(INFO)
         << "Ignoring change metadata request to add multiple/remove tables to tablet : "
@@ -538,25 +539,34 @@ Result<bool> XClusterOutputClient::ProcessChangeMetadataOp(const cdc::CDCRecordP
   // Ignore CHANGE_METADATA add_table for vector indexes on the target: DDL replication creates the
   // index, and apply-external-intent maintains it. Target backfill covers pre-index rows; applying
   // this CM op through the poller would be redundant.
-  if (record.change_metadata_request().has_add_table() &&
-      record.change_metadata_request().add_table().has_index_info() &&
-      record.change_metadata_request().add_table().index_info().has_vector_idx_options()) {
+  if (cm_request.has_add_table() && cm_request.add_table().has_index_info() &&
+      cm_request.add_table().index_info().has_vector_idx_options()) {
     LOG_WITH_PREFIX(INFO) << "Ignoring change metadata add_table with vector index for tablet "
                           << producer_tablet_info_.tablet_id;
     return true;
   }
 
-  if (!record.change_metadata_request().has_schema() &&
-      !record.change_metadata_request().has_add_table()) {
+  // Also ignore schema changes (e.g. ALTER INDEX RENAME) of a vector index.
+  // It has no rows of its own on this stream, so its schema version is never needed.
+  // These are the only tables with a colocation id in a non-colocated tablet, so check for that.
+  const auto& colocated_table_id = cm_request.schema().colocated_table_id();
+  if (colocated_table_id.has_colocation_id() &&
+      colocated_table_id.colocation_id() != kColocationIdNotSet && !IsColocatedTableStream()) {
+    LOG_WITH_PREFIX(INFO) << "Ignoring change metadata request for vector index "
+                          << cm_request.alter_table_id() << " with colocation id "
+                          << colocated_table_id.colocation_id() << " on tablet "
+                          << producer_tablet_info_.tablet_id;
+    return true;
+  }
+
+  if (!cm_request.has_schema() && !cm_request.has_add_table()) {
     LOG_WITH_PREFIX(INFO) << "Ignoring change metadata request for tablet : "
                           << producer_tablet_info_.tablet_id
                           << " as it does not contain any schema. ";
     return true;
   }
 
-  auto schema = record.change_metadata_request().has_add_table() ?
-                record.change_metadata_request().add_table().schema() :
-                record.change_metadata_request().schema();
+  auto schema = cm_request.has_add_table() ? cm_request.add_table().schema() : cm_request.schema();
   SchemaVersion producer_schema_version;
   {
     ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN_STATUS;
@@ -564,7 +574,7 @@ Result<bool> XClusterOutputClient::ProcessChangeMetadataOp(const cdc::CDCRecordP
     // If this is a request to add a table and we have already have a mapping for the producer
     // schema version, we can safely ignore the add table as the table and mapping was present at
     // setup_replication and we are just receiving the change metadata op for the new table
-    if (record.change_metadata_request().has_add_table()) {
+    if (cm_request.has_add_table()) {
       cdc::XClusterSchemaVersionMap* cached_schema_versions = &schema_versions_;
       if (schema.has_colocated_table_id()) {
         cached_schema_versions =
@@ -572,7 +582,7 @@ Result<bool> XClusterOutputClient::ProcessChangeMetadataOp(const cdc::CDCRecordP
       }
 
       if (cached_schema_versions &&
-          cached_schema_versions->contains(record.change_metadata_request().schema_version())) {
+          cached_schema_versions->contains(cm_request.schema_version())) {
         LOG_WITH_PREFIX(INFO) << Format(
             "Ignoring change metadata request with schema $0 for tablet $1 as mapping from "
             "producer-consumer schema version already exists",
@@ -582,7 +592,7 @@ Result<bool> XClusterOutputClient::ProcessChangeMetadataOp(const cdc::CDCRecordP
     }
 
     // Cache the producer schema version and colocation id if present
-    producer_schema_version_ = record.change_metadata_request().schema_version();
+    producer_schema_version_ = cm_request.schema_version();
     producer_schema_version = producer_schema_version_;
     if (schema.has_colocated_table_id()) {
       colocation_id_ = schema.colocated_table_id().colocation_id();

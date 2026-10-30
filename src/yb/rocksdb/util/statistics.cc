@@ -126,11 +126,7 @@ constexpr std::pair<Tickers, const char *> TickersNameMap[] = {
     {ROW_CACHE_HIT, "rocksdb_row_cache_hit"},
     {ROW_CACHE_MISS, "rocksdb_row_cache_miss"},
     {NO_TABLE_CACHE_ITERATORS, "rocksdb_no_table_cache_iterators"},
-    {BLOCK_CACHE_SINGLE_TOUCH_HIT, "rocksdb_block_cache_single_touch_hit"},
-    {BLOCK_CACHE_SINGLE_TOUCH_ADD, "rocksdb_block_cache_single_touch_add"},
     {BLOCK_CACHE_SINGLE_TOUCH_BYTES_WRITE, "rocksdb_block_cache_single_touch_bytes_write"},
-    {BLOCK_CACHE_MULTI_TOUCH_HIT, "rocksdb_block_cache_multi_touch_hit"},
-    {BLOCK_CACHE_MULTI_TOUCH_ADD, "rocksdb_block_cache_multi_touch_add"},
     {BLOCK_CACHE_MULTI_TOUCH_BYTES_WRITE, "rocksdb_block_cache_multi_touch_bytes_write"},
 
     {COMPACTION_FILES_FILTERED, "rocksdb_compaction_files_filtered"},

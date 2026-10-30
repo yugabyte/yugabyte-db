@@ -23,6 +23,8 @@ const (
 	awsStorageConfig  = "table {{.S3AccessKeyID}}\t{{.S3SecretAccessKey}}\t{{.IAMInstanceProfile}}"
 	azStorageConfig   = "table {{.AzSASToken}}"
 	gcsStorageConfig1 = "table {{.UseGCPIAM}}"
+	ociStorageConfig1 = "table {{.OCIRegion}}\t{{.OCINamespace}}\t{{.UseOCIIAM}}"
+	ociStorageConfig2 = "table {{.OCIS3AccessKeyID}}\t{{.OCIS3SecretAccessKey}}\t{{.OCIS3HostBase}}"
 )
 
 // FullStorageConfigContext to render StorageConfig Details output
@@ -119,6 +121,35 @@ func (fs *FullStorageConfigContext) Write() error {
 		}
 		fs.PostFormat(tmpl, NewStorageConfigContext())
 		fs.Output.Write([]byte("\n"))
+
+	case util.OCIStorageConfigType:
+		tmpl, err = fs.startSubsection(ociStorageConfig1)
+		if err != nil {
+			logrus.Errorf("%s", err.Error())
+			return err
+		}
+		fs.subSection("OCI Object Storage Details")
+		if err := fs.ContextFormat(tmpl, fsc.StorageConfig); err != nil {
+			logrus.Errorf("%s", err.Error())
+			return err
+		}
+		fs.PostFormat(tmpl, NewStorageConfigContext())
+		fs.Output.Write([]byte("\n"))
+
+		if fsc.StorageConfig.UseOCIIAM() != "true" {
+			tmpl, err = fs.startSubsection(ociStorageConfig2)
+			if err != nil {
+				logrus.Errorf("%s", err.Error())
+				return err
+			}
+			fs.subSection("OCI S3-Compatible Credentials")
+			if err := fs.ContextFormat(tmpl, fsc.StorageConfig); err != nil {
+				logrus.Errorf("%s", err.Error())
+				return err
+			}
+			fs.PostFormat(tmpl, NewStorageConfigContext())
+			fs.Output.Write([]byte("\n"))
+		}
 
 	}
 

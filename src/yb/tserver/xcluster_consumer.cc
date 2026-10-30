@@ -467,12 +467,22 @@ SchemaVersion XClusterConsumer::GetMinXClusterSchemaVersion(const TableId& table
   return cdc::kInvalidSchemaVersion;
 }
 
+Result<std::shared_ptr<client::XClusterRemoteClientHolder>> XClusterConsumer::CreateSourceClient(
+    const xcluster::ReplicationGroupId& replication_group_id) {
+  auto* master_addrs = FindOrNull(uuid_master_addrs_, replication_group_id);
+  RSTATUS_DCHECK(
+      master_addrs, NotFound, "Master address not found for $0", replication_group_id);
+  return client::XClusterRemoteClientHolder::Create(replication_group_id, *master_addrs);
+}
+
 void XClusterConsumer::TriggerPollForNewTablets() {
   // TODO(#24924): Check if our config is stale before starting new pollers.
 
   ACQUIRE_SHARED_LOCK_IF_ONLINE;
 
   int32_t current_cluster_config_version = cluster_config_version();
+  // Creating a source client blocks for up to cdc_read_rpc_timeout_ms, so try once per group.
+  std::unordered_set<xcluster::ReplicationGroupId> groups_without_source_client;
 
   for (const auto& entry : producer_consumer_tablet_map_from_master_) {
     const auto& producer_tablet_info = entry.producer_tablet_info;
@@ -500,6 +510,9 @@ void XClusterConsumer::TriggerPollForNewTablets() {
       }
     }
     if (start_polling) {
+      if (groups_without_source_client.contains(replication_group_id)) {
+        continue;
+      }
       std::lock_guard write_lock_pollers(pollers_map_mutex_);
       const auto leader_term = get_leader_term_func_(consumer_tablet_info.tablet_id);
 
@@ -508,21 +521,18 @@ void XClusterConsumer::TriggerPollForNewTablets() {
           !pollers_map_.contains(producer_tablet_info) && leader_term != yb::OpId::kUnknownTerm;
       if (start_polling) {
         // This is a new tablet, trigger a poll.
-        // See if we need to create a new client connection
-        if (!remote_clients_.contains(replication_group_id)) {
-          if (!uuid_master_addrs_.contains(replication_group_id)) {
-            LOG(DFATAL) << "Master address not found for " << replication_group_id;
-            return;  // Don't finish creation.  Try again on the next heartbeat.
+        // See if we need to create a new client connection.
+        // A disabled stream's poller never polls, so it doesn't need a source client.
+        auto source_client = FindPtrOrNull(remote_clients_, replication_group_id);
+        if (!source_client && !entry.disable_stream) {
+          auto result = CreateSourceClient(replication_group_id);
+          if (!result.ok()) {
+            LOG(WARNING) << "Could not create source client for " << replication_group_id << ": "
+                         << result.status();
+            groups_without_source_client.insert(replication_group_id);
+            continue;  // Try again on the next heartbeat.
           }
-
-          auto remote_client = client::XClusterRemoteClientHolder::Create(
-              replication_group_id, uuid_master_addrs_[replication_group_id]);
-          if (!remote_client) {
-            LOG(WARNING) << "Could not build messenger for " << replication_group_id << ": "
-                         << remote_client.status();
-            return;  // Don't finish creation.  Try again on the next heartbeat.
-          }
-          remote_clients_[replication_group_id] = std::move(*remote_client);
+          source_client = remote_clients_[replication_group_id] = std::move(*result);
         }
 
         // Now create the poller.
@@ -561,9 +571,8 @@ void XClusterConsumer::TriggerPollForNewTablets() {
             producer_tablet_info, consumer_tablet_info, consumer_namespace_id,
             auto_flags_version_handler_->GetAutoFlagsCompatibleVersion(
                 producer_tablet_info.replication_group_id),
-            thread_pool_.get(), rpcs_.get(), local_client_, remote_clients_[replication_group_id],
-            this, leader_term, get_leader_term_func_, entry.automatic_ddl_mode,
-            entry.disable_stream, ts_uuid_);
+            thread_pool_.get(), rpcs_.get(), local_client_, source_client, this, leader_term,
+            get_leader_term_func_, entry.automatic_ddl_mode, entry.disable_stream, ts_uuid_);
 
         if (ddl_queue_streams_.contains(producer_tablet_info.stream_id)) {
           auto source_namespace_id = GetNamespaceIdFromYsqlTableId(producer_tablet_info.table_id);
@@ -622,6 +631,10 @@ void XClusterConsumer::TriggerDeletionOfOldPollers() {
   // Shutdown outside of master_data_mutex_ lock, to not block any heartbeats.
   std::vector<std::shared_ptr<client::XClusterRemoteClientHolder>> clients_to_delete;
   std::vector<std::shared_ptr<XClusterPoller>> pollers_to_shutdown;
+  // Paused ddl_queue pollers blocked inside a replicated DDL that cannot finish while paused. This
+  // is level triggered: a DDL can start after the pause flag was set (a poll cycle already in
+  // flight still runs its DDLs), and a terminate can fail, so re-check on every pass.
+  std::vector<std::shared_ptr<XClusterPoller>> pollers_to_kill_ddl_backend;
   {
     ACQUIRE_SHARED_LOCK_IF_ONLINE;
     std::lock_guard write_lock_pollers(pollers_map_mutex_);
@@ -630,7 +643,11 @@ void XClusterConsumer::TriggerDeletionOfOldPollers() {
       std::shared_ptr<XClusterPoller> poller = it->second;
       // Check if we need to delete this poller.
       std::string reason;
-      if (ShouldContinuePolling(producer_info, *poller, reason)) {
+      const bool should_continue_polling = ShouldContinuePolling(producer_info, *poller, reason);
+      if (poller->ShouldKillStuckDdlBackend()) {
+        pollers_to_kill_ddl_backend.emplace_back(poller);
+      }
+      if (should_continue_polling) {
         ++it;
         continue;
       }
@@ -654,6 +671,31 @@ void XClusterConsumer::TriggerDeletionOfOldPollers() {
         }
       }
     }
+
+    // These pollers are no longer in pollers_map_, so ShouldContinuePolling does not update their
+    // pause state. Do it here so a stuck DDL on them is also killed when the stream is paused.
+    for (auto it = ddl_queue_pollers_with_deferred_shutdown_.begin();
+         it != ddl_queue_pollers_with_deferred_shutdown_.end();) {
+      const auto& poller = *it;
+      DCHECK(poller->IsDdlQueuePoller());
+      if (poller->IsShutdownComplete()) {
+        it = ddl_queue_pollers_with_deferred_shutdown_.erase(it);
+        continue;
+      }
+      const auto& master_it =
+          producer_consumer_tablet_map_from_master_.find(poller->GetProducerTabletInfo());
+      if (master_it != producer_consumer_tablet_map_from_master_.end()) {
+        poller->SetPaused(master_it->disable_stream);
+        if (poller->ShouldKillStuckDdlBackend()) {
+          pollers_to_kill_ddl_backend.emplace_back(poller);
+        }
+      }
+      ++it;
+    }
+  }
+
+  for (const auto& poller : pollers_to_kill_ddl_backend) {
+    poller->KillStuckDdlBackend();
   }
 
   for (const auto& poller : pollers_to_shutdown) {
@@ -662,6 +704,13 @@ void XClusterConsumer::TriggerDeletionOfOldPollers() {
 
   for (const auto& poller : pollers_to_shutdown) {
     poller->CompleteShutdown();
+  }
+
+  for (const auto& poller : pollers_to_shutdown) {
+    if (!poller->IsShutdownComplete()) {
+      DCHECK(poller->IsDdlQueuePoller());
+      ddl_queue_pollers_with_deferred_shutdown_.emplace_back(poller);
+    }
   }
 
   for (const auto& poller : pollers_to_shutdown) {

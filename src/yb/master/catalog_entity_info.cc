@@ -66,7 +66,6 @@
 
 using std::string;
 
-using strings::Substitute;
 
 DECLARE_bool(cdcsdk_enable_dynamic_tables_disable_option);
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
@@ -405,8 +404,8 @@ bool TabletInfo::colocated() const {
 }
 
 string TabletInfo::ToString() const {
-  return Substitute("$0 (table $1)", tablet_id_,
-                    (table_ != nullptr ? table_->ToString() : "MISSING"));
+  return Format("$0 (table $1)", tablet_id_,
+                (table_ != nullptr ? table_->ToString() : "MISSING"));
 }
 
 void TabletInfo::RegisterLeaderStepDownFailure(const TabletServerId& dest_leader,
@@ -488,12 +487,12 @@ bool TableInfo::IsPreparing() const {
 }
 
 string TableInfo::ToString() const {
-  return Substitute("$0 [id=$1]", LockForRead()->pb.name(), table_id_);
+  return Format("$0 [id=$1]", LockForRead()->pb.name(), table_id_);
 }
 
 string TableInfo::ToStringWithState() const {
   auto l = LockForRead();
-  return Substitute("$0 [id=$1, state=$2]",
+  return Format("$0 [id=$1, state=$2]",
       l->pb.name(), table_id_, SysTablesEntryPB::State_Name(l->pb.state()));
 }
 
@@ -1163,16 +1162,6 @@ bool TableInfo::IsXClusterDDLReplicationReplicatedDDLsTable() const {
   return LockForRead()->IsXClusterDDLReplicationReplicatedDDLsTable();
 }
 
-TablespaceId TableInfo::TablespaceIdForTableCreation() const {
-  SharedLock<decltype(lock_)> l(lock_);
-  return tablespace_id_for_table_creation_;
-}
-
-void TableInfo::SetTablespaceIdForTableCreation(const TablespaceId& tablespace_id) {
-  std::lock_guard l(lock_);
-  tablespace_id_for_table_creation_ = tablespace_id;
-}
-
 google::protobuf::RepeatedField<int> TableInfo::GetHostedStatefulServices() const {
   auto l = LockForRead();
   return l->pb.hosted_stateful_services();
@@ -1440,7 +1429,7 @@ bool NamespaceInfo::colocated() const {
 }
 
 string NamespaceInfo::ToString() const {
-  return Substitute("$0 [id=$1]", name(), namespace_id_);
+  return Format("$0 [id=$1]", name(), namespace_id_);
 }
 
 // ================================================================================================
@@ -1591,6 +1580,21 @@ const ReplicationSlotName CDCStreamInfo::GetCdcsdkYsqlReplicationSlotName() cons
   return ReplicationSlotName(l->pb.cdcsdk_ysql_replication_slot_name());
 }
 
+bool CDCStreamInfo::IsCdcsdkYsqlPublicationsBoundStream() const {
+  auto l = LockForRead();
+  return l->pb.cdcsdk_ysql_publications_bound_stream();
+}
+
+const std::string CDCStreamInfo::GetCdcsdkYsqlBoundPublicationName() const {
+  auto l = LockForRead();
+  return l->pb.cdcsdk_ysql_bound_publication_name();
+}
+
+bool CDCStreamInfo::CdcsdkYsqlIncludesNewTables() const {
+  auto l = LockForRead();
+  return l->pb.cdcsdk_ysql_include_new_tables();
+}
+
 bool CDCStreamInfo::IsConsistentSnapshotStream() const {
   auto l = LockForRead();
   return l->pb.has_cdcsdk_stream_metadata() &&
@@ -1677,7 +1681,7 @@ bool PersistentUniverseReplicationInfo::IsAutomaticDdlMode() const {
 // ================================================================================================
 std::string UniverseReplicationInfo::ToString() const {
   auto l = LockForRead();
-  return strings::Substitute("$0 [data=$1] ", id(), l->pb.ShortDebugString());
+  return Format("$0 [data=$1] ", id(), l->pb.ShortDebugString());
 }
 
 void UniverseReplicationInfo::SetSetupUniverseReplicationErrorStatus(const Status& status) {
@@ -1792,7 +1796,7 @@ void PersistentUniverseReplicationBootstrapInfo::set_into_tables_data(
 // ================================================================================================
 std::string UniverseReplicationBootstrapInfo::ToString() const {
   auto l = LockForRead();
-  return strings::Substitute("$0 [data=$1] ", id(), l->pb.ShortDebugString());
+  return Format("$0 [data=$1] ", id(), l->pb.ShortDebugString());
 }
 
 void UniverseReplicationBootstrapInfo::SetReplicationBootstrapErrorStatus(const Status& status) {

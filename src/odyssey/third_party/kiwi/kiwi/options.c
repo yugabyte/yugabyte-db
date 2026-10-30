@@ -26,7 +26,7 @@ int kiwi_parse_options_and_update_vars(kiwi_vars_t *vars, char *pgoptions,
 	}
 	int errs = 0;
 
-	char optarg_buf[KIWI_MAX_VAR_SIZE];
+	char optarg_buf[KIWI_MAX_NAME_SIZE];
 	char optval_buf[KIWI_MAX_VAR_SIZE];
 	int len = 0;
 	for (int i = 0; i < pgoptions_len; ++i) {
@@ -128,7 +128,7 @@ int kiwi_parse_options_and_update_vars(kiwi_vars_t *vars, char *pgoptions,
 
 		kiwi_long_option_rewrite(pgoptions + optarg_pos, optarg_len);
 
-		if (optarg_len + 1 >= KIWI_MAX_VAR_SIZE ||
+		if (optarg_len + 1 >= KIWI_MAX_NAME_SIZE ||
 		    optval_len + 1 >= KIWI_MAX_VAR_SIZE) {
 			break;
 		}

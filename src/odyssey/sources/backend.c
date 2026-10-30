@@ -277,21 +277,9 @@ static void yb_backend_record_prep_stmt(od_server_t *server, char *context,
 	od_instance_t *instance = server->global->instance;
 	od_client_t *client = server->client;
 
-	/*
-	 * The ack was consumed after client has detached. We might
-	 * need client->id to compute server_key, so do early return.
-	 * This only results in an additional ForceParse and has no
-	 * correctness consequences.
-	 */
-	if (client == NULL)
-		return;
-
 	int server_key_len = 0;
 	char *server_key = yb_prepare_server_key(
 		orig_name, orig_name_len, description, description_len,
-		client->id.id,
-		instance->config.yb_optimized_extended_query_protocol
-			? 0 : strlen(client->id.id),
 		&server_key_len);
 	if (server_key == NULL) {
 		od_error(&instance->logger, context, client, server,
@@ -549,6 +537,55 @@ char *yb_encode_client_cert(od_client_t *client, int *arg_len)
 	encoded[encoded_len] = '\0';
 
 	*arg_len = encoded_len + 1;
+	return encoded;
+}
+
+/*
+ * YB: Base64 encode the tls-server-end-point hash of the certificate conn mgr
+ * presented to client, for the YB_YCM_SERVER_CERT_HASH startup parameter.
+ * Returns NULL when there is none, e.g. the logical connection is not TLS;
+ * Postgres then does not offer SCRAM-SHA-256-PLUS. The caller frees the
+ * result.
+ */
+char *yb_encode_server_cert_hash(od_client_t *client, int *encoded_cert_len)
+{
+	unsigned char hash[YB_SERVER_CERT_HASH_MAX_LEN];
+	int hash_len = 0;
+
+	*encoded_cert_len = 0;
+
+	if (client == NULL || !client->startup.yb_ssl_established)
+		return NULL;
+
+	od_instance_t *instance = client->global->instance;
+
+	int rc = yb_machine_io_get_server_cert_hash(client->io.io, hash,
+						    &hash_len);
+	if (rc == -1 || hash_len <= 0) {
+		od_log(&instance->logger, "server cert hash", client, NULL,
+		       "WARNING: could not compute server certificate hash; "
+		       "SCRAM-SHA-256-PLUS will not be offered");
+		return NULL;
+	}
+	if (rc == 1)
+		od_error(&instance->logger, "server cert hash", client, NULL,
+		         "WARNING: server certificate hash not cached for this TLS "
+		         "context, computed from the session certificate");
+
+	int dst_len = pg_b64_enc_len(hash_len) + 1;
+	char *encoded = malloc(dst_len);
+	if (encoded == NULL)
+		return NULL;
+
+	int encoded_len = pg_b64_encode((char *)hash, hash_len, encoded,
+					dst_len);
+	if (encoded_len < 0) {
+		free(encoded);
+		return NULL;
+	}
+	encoded[encoded_len] = '\0';
+
+	*encoded_cert_len = encoded_len + 1;
 	return encoded;
 }
 
@@ -821,11 +858,13 @@ static inline int od_backend_startup(od_server_t *server,
 
 	od_client_t *external_client = client->yb_external_client;
 	int argc = 0;
-	const int max_default_args = 20;
+	const int max_default_args = 22;
 	int num_startup_args =
 		external_client ? external_client->yb_startup_settings.size : 0;
 	char *yb_client_cert = NULL;
 	int yb_client_cert_len = 0;
+	char *yb_server_cert_hash = NULL;
+	int yb_server_cert_hash_len = 0;
 
 	kiwi_fe_arg_t *argv = malloc(sizeof(kiwi_fe_arg_t) *
 				     (max_default_args + 2 * num_startup_args));
@@ -885,6 +924,17 @@ static inline int od_backend_startup(od_server_t *server,
 			yb_kiwi_set_fe_arg(&argv[argc++], yb_client_cert,
 					   yb_client_cert_len);
 		}
+
+		/* Forward the server certificate hash for SCRAM channel binding. */
+		yb_server_cert_hash = yb_encode_server_cert_hash(
+			external_client, &yb_server_cert_hash_len);
+		if (yb_server_cert_hash != NULL) {
+			yb_kiwi_set_fe_arg(
+				&argv[argc++],
+				YB_NAME_AND_SIZEOF(YB_YCM_SERVER_CERT_HASH));
+			yb_kiwi_set_fe_arg(&argv[argc++], yb_server_cert_hash,
+					   yb_server_cert_hash_len);
+		}
 	}
 
 	/* We only allocated max_default_args spaces for these variables, so assert that */
@@ -910,6 +960,8 @@ static inline int od_backend_startup(od_server_t *server,
 	free(argv);
 	if (yb_client_cert != NULL)
 		free(yb_client_cert);
+	if (yb_server_cert_hash != NULL)
+		free(yb_server_cert_hash);
 	if (msg == NULL)
 		return -1;
 	int rc;
@@ -1723,6 +1775,11 @@ int od_backend_ready_wait(od_server_t *server, char *context, int count,
 			machine_msg_free(msg);
 			continue;
 		} else if (type == YB_BE_YB_QUERY_ACK) {
+			yb_od_parse_queue_entry_t entry;
+			if (yb_od_parse_queue_peek(&server->parse_queue,
+						   &entry) == 0 &&
+			    entry.kind == YB_PARSE_QUEUE_QUERY)
+				yb_backend_handle_query_ack(server, context);
 			machine_msg_free(msg);
 			continue;
 		} else if (type == KIWI_BE_PARSE_COMPLETE) {

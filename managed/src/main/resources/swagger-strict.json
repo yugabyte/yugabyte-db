@@ -999,7 +999,9 @@
             "YBA_K8S_CPU_USAGE",
             "YBA_K8S_MEMORY_USAGE",
             "YBA_K8S_DISK_USAGE",
-            "OTEL_COLLECTOR_RESTART"
+            "OTEL_COLLECTOR_RESTART",
+            "NODE_EXPORTER_TLS_ROOT_NODES",
+            "NODE_EXPORTER_ROOT_NON_UNIVERSE"
           ],
           "type" : "string"
         },
@@ -1201,7 +1203,9 @@
             "YBA_K8S_CPU_USAGE",
             "YBA_K8S_MEMORY_USAGE",
             "YBA_K8S_DISK_USAGE",
-            "OTEL_COLLECTOR_RESTART"
+            "OTEL_COLLECTOR_RESTART",
+            "NODE_EXPORTER_TLS_ROOT_NODES",
+            "NODE_EXPORTER_ROOT_NON_UNIVERSE"
           ],
           "type" : "string"
         },
@@ -1499,7 +1503,9 @@
             "YBA_K8S_CPU_USAGE",
             "YBA_K8S_MEMORY_USAGE",
             "YBA_K8S_DISK_USAGE",
-            "OTEL_COLLECTOR_RESTART"
+            "OTEL_COLLECTOR_RESTART",
+            "NODE_EXPORTER_TLS_ROOT_NODES",
+            "NODE_EXPORTER_ROOT_NON_UNIVERSE"
           ],
           "type" : "string"
         },
@@ -2957,6 +2963,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "ManageCloudFederation",
+            "ConfigureNodeExporterTls",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -3005,6 +3012,8 @@
             "FetchServerConf",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
+            "EnsureManagedLoadBalancer",
+            "DeleteManagedLoadBalancer",
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
@@ -3019,7 +3028,8 @@
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
-            "RunUpgradeNodeAgent"
+            "RunUpgradeNodeAgent",
+            "CreateYbStorageDatabase"
           ],
           "type" : "string"
         },
@@ -5121,6 +5131,11 @@
     },
     "BundleInfo" : {
       "properties" : {
+        "isImageMarketplaceBased" : {
+          "description" : "WARNING: This is a preview API that could change. Whether ybImage is an OCI Marketplace image or a custom image built from one. Set by YBA for OCI bundles, and left unset when YBA cannot tell; any value in a request is ignored.",
+          "readOnly" : true,
+          "type" : "boolean"
+        },
         "ybImage" : {
           "type" : "string"
         }
@@ -5992,6 +6007,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "ManageCloudFederation",
+            "ConfigureNodeExporterTls",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -6040,6 +6056,8 @@
             "FetchServerConf",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
+            "EnsureManagedLoadBalancer",
+            "DeleteManagedLoadBalancer",
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
@@ -6054,7 +6072,8 @@
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
-            "RunUpgradeNodeAgent"
+            "RunUpgradeNodeAgent",
+            "CreateYbStorageDatabase"
           ],
           "type" : "string"
         },
@@ -9265,6 +9284,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "ManageCloudFederation",
+            "ConfigureNodeExporterTls",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -9313,6 +9333,8 @@
             "FetchServerConf",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
+            "EnsureManagedLoadBalancer",
+            "DeleteManagedLoadBalancer",
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
@@ -9327,7 +9349,8 @@
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
-            "RunUpgradeNodeAgent"
+            "RunUpgradeNodeAgent",
+            "CreateYbStorageDatabase"
           ],
           "type" : "string"
         },
@@ -10134,6 +10157,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "ManageCloudFederation",
+            "ConfigureNodeExporterTls",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -10182,6 +10206,8 @@
             "FetchServerConf",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
+            "EnsureManagedLoadBalancer",
+            "DeleteManagedLoadBalancer",
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
@@ -10196,7 +10222,8 @@
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
-            "RunUpgradeNodeAgent"
+            "RunUpgradeNodeAgent",
+            "CreateYbStorageDatabase"
           ],
           "type" : "string"
         },
@@ -11696,6 +11723,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "ManageCloudFederation",
+            "ConfigureNodeExporterTls",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -11744,6 +11772,8 @@
             "FetchServerConf",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
+            "EnsureManagedLoadBalancer",
+            "DeleteManagedLoadBalancer",
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
@@ -11758,7 +11788,8 @@
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
-            "RunUpgradeNodeAgent"
+            "RunUpgradeNodeAgent",
+            "CreateYbStorageDatabase"
           ],
           "type" : "string"
         },
@@ -12459,6 +12490,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "ManageCloudFederation",
+            "ConfigureNodeExporterTls",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -12507,6 +12539,8 @@
             "FetchServerConf",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
+            "EnsureManagedLoadBalancer",
+            "DeleteManagedLoadBalancer",
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
@@ -12521,7 +12555,8 @@
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
-            "RunUpgradeNodeAgent"
+            "RunUpgradeNodeAgent",
+            "CreateYbStorageDatabase"
           ],
           "type" : "string"
         },
@@ -12970,6 +13005,20 @@
         "hasPrev",
         "totalCount"
       ],
+      "type" : "object"
+    },
+    "ManagedLoadBalancerConfig" : {
+      "description" : "Load balancers that YBA creates and manages for a cluster",
+      "properties" : {
+        "enablePrivate" : {
+          "description" : "Create a private L4 load balancer in each region of the cluster",
+          "type" : "boolean"
+        },
+        "enablePublic" : {
+          "description" : "Create a public L4 load balancer in each region of the cluster. Not supported yet. Must be false.",
+          "type" : "boolean"
+        }
+      },
       "type" : "object"
     },
     "MasterInfo" : {
@@ -16412,12 +16461,22 @@
           ],
           "type" : "string"
         },
+        "maxFileSize" : {
+          "description" : "WARNING: This is a preview API that could change. Maximum size of the active application log file before it is rolled over, for example \"1024MB\" or \"1GB\". Minimum 256MB.",
+          "example" : "1024MB",
+          "type" : "string"
+        },
         "maxHistory" : {
           "format" : "int32",
           "minimum" : 0,
           "type" : "integer"
         },
         "rolloverPattern" : {
+          "type" : "string"
+        },
+        "totalSizeCap" : {
+          "description" : "WARNING: This is a preview API that could change. Total size of retained application log archives, for example \"20GB\". Archives are deleted oldest first once this is exceeded, so on a high volume node this binds before maxHistory and retains fewer days than maxHistory allows. Minimum 5GB.",
+          "example" : "20GB",
           "type" : "string"
         }
       },
@@ -17338,6 +17397,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "ManageCloudFederation",
+            "ConfigureNodeExporterTls",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -17386,6 +17446,8 @@
             "FetchServerConf",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
+            "EnsureManagedLoadBalancer",
+            "DeleteManagedLoadBalancer",
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
@@ -17400,7 +17462,8 @@
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
-            "RunUpgradeNodeAgent"
+            "RunUpgradeNodeAgent",
+            "CreateYbStorageDatabase"
           ],
           "type" : "string"
         },
@@ -18055,6 +18118,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "ManageCloudFederation",
+            "ConfigureNodeExporterTls",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -18103,6 +18167,8 @@
             "FetchServerConf",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
+            "EnsureManagedLoadBalancer",
+            "DeleteManagedLoadBalancer",
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
@@ -18117,7 +18183,8 @@
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
-            "RunUpgradeNodeAgent"
+            "RunUpgradeNodeAgent",
+            "CreateYbStorageDatabase"
           ],
           "type" : "string"
         },
@@ -19157,6 +19224,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "ManageCloudFederation",
+            "ConfigureNodeExporterTls",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -19205,6 +19273,8 @@
             "FetchServerConf",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
+            "EnsureManagedLoadBalancer",
+            "DeleteManagedLoadBalancer",
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
@@ -19219,7 +19289,8 @@
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
-            "RunUpgradeNodeAgent"
+            "RunUpgradeNodeAgent",
+            "CreateYbStorageDatabase"
           ],
           "type" : "string"
         },
@@ -20030,6 +20101,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "ManageCloudFederation",
+            "ConfigureNodeExporterTls",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -20078,6 +20150,8 @@
             "FetchServerConf",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
+            "EnsureManagedLoadBalancer",
+            "DeleteManagedLoadBalancer",
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
@@ -20092,7 +20166,8 @@
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
-            "RunUpgradeNodeAgent"
+            "RunUpgradeNodeAgent",
+            "CreateYbStorageDatabase"
           ],
           "type" : "string"
         },
@@ -21611,6 +21686,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "ManageCloudFederation",
+            "ConfigureNodeExporterTls",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -21659,6 +21735,8 @@
             "FetchServerConf",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
+            "EnsureManagedLoadBalancer",
+            "DeleteManagedLoadBalancer",
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
@@ -21673,7 +21751,8 @@
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
-            "RunUpgradeNodeAgent"
+            "RunUpgradeNodeAgent",
+            "CreateYbStorageDatabase"
           ],
           "type" : "string"
         },
@@ -22315,6 +22394,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "ManageCloudFederation",
+            "ConfigureNodeExporterTls",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -22363,6 +22443,8 @@
             "FetchServerConf",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
+            "EnsureManagedLoadBalancer",
+            "DeleteManagedLoadBalancer",
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
@@ -22377,7 +22459,8 @@
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
-            "RunUpgradeNodeAgent"
+            "RunUpgradeNodeAgent",
+            "CreateYbStorageDatabase"
           ],
           "type" : "string"
         },
@@ -22757,6 +22840,7 @@
               "CreateTableSpaces",
               "ManageOtelCollector",
               "ManageCloudFederation",
+              "ConfigureNodeExporterTls",
               "UpdateAndPersistAuditLoggingConfig",
               "UpdateAndPersistQueryLoggingConfig",
               "UpdateAndPersistMetricsExportConfig",
@@ -22805,6 +22889,8 @@
               "FetchServerConf",
               "DoCapacityReservation",
               "DeleteCapacityReservation",
+              "EnsureManagedLoadBalancer",
+              "DeleteManagedLoadBalancer",
               "DisablePitrConfig",
               "EnablePitrConfig",
               "UpdateAndPersistKubernetesImmutableYbc",
@@ -22819,7 +22905,8 @@
               "UpdateParentTaskParams",
               "SaveSoftwareUpgradeProgress",
               "CheckDuplicateInstance",
-              "RunUpgradeNodeAgent"
+              "RunUpgradeNodeAgent",
+              "CreateYbStorageDatabase"
             ],
             "type" : "string"
           },
@@ -23353,6 +23440,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "ManageCloudFederation",
+            "ConfigureNodeExporterTls",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -23401,6 +23489,8 @@
             "FetchServerConf",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
+            "EnsureManagedLoadBalancer",
+            "DeleteManagedLoadBalancer",
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
@@ -23415,7 +23505,8 @@
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
-            "RunUpgradeNodeAgent"
+            "RunUpgradeNodeAgent",
+            "CreateYbStorageDatabase"
           ],
           "type" : "string"
         },
@@ -24162,6 +24253,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "ManageCloudFederation",
+            "ConfigureNodeExporterTls",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -24210,6 +24302,8 @@
             "FetchServerConf",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
+            "EnsureManagedLoadBalancer",
+            "DeleteManagedLoadBalancer",
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
@@ -24224,7 +24318,8 @@
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
-            "RunUpgradeNodeAgent"
+            "RunUpgradeNodeAgent",
+            "CreateYbStorageDatabase"
           ],
           "type" : "string"
         },
@@ -25360,6 +25455,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "ManageCloudFederation",
+            "ConfigureNodeExporterTls",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -25408,6 +25504,8 @@
             "FetchServerConf",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
+            "EnsureManagedLoadBalancer",
+            "DeleteManagedLoadBalancer",
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
@@ -25422,7 +25520,8 @@
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
-            "RunUpgradeNodeAgent"
+            "RunUpgradeNodeAgent",
+            "CreateYbStorageDatabase"
           ],
           "type" : "string"
         },
@@ -26747,6 +26846,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "ManageCloudFederation",
+            "ConfigureNodeExporterTls",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -26795,6 +26895,8 @@
             "FetchServerConf",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
+            "EnsureManagedLoadBalancer",
+            "DeleteManagedLoadBalancer",
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
@@ -26809,7 +26911,8 @@
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
-            "RunUpgradeNodeAgent"
+            "RunUpgradeNodeAgent",
+            "CreateYbStorageDatabase"
           ],
           "type" : "string"
         },
@@ -27463,6 +27566,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "ManageCloudFederation",
+            "ConfigureNodeExporterTls",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -27511,6 +27615,8 @@
             "FetchServerConf",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
+            "EnsureManagedLoadBalancer",
+            "DeleteManagedLoadBalancer",
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
@@ -27525,7 +27631,8 @@
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
-            "RunUpgradeNodeAgent"
+            "RunUpgradeNodeAgent",
+            "CreateYbStorageDatabase"
           ],
           "type" : "string"
         },
@@ -28325,6 +28432,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "ManageCloudFederation",
+            "ConfigureNodeExporterTls",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -28373,6 +28481,8 @@
             "FetchServerConf",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
+            "EnsureManagedLoadBalancer",
+            "DeleteManagedLoadBalancer",
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
@@ -28387,7 +28497,8 @@
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
-            "RunUpgradeNodeAgent"
+            "RunUpgradeNodeAgent",
+            "CreateYbStorageDatabase"
           ],
           "type" : "string"
         },
@@ -29006,6 +29117,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "ManageCloudFederation",
+            "ConfigureNodeExporterTls",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -29054,6 +29166,8 @@
             "FetchServerConf",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
+            "EnsureManagedLoadBalancer",
+            "DeleteManagedLoadBalancer",
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
@@ -29068,7 +29182,8 @@
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
-            "RunUpgradeNodeAgent"
+            "RunUpgradeNodeAgent",
+            "CreateYbStorageDatabase"
           ],
           "type" : "string"
         },
@@ -29687,6 +29802,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "ManageCloudFederation",
+            "ConfigureNodeExporterTls",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -29735,6 +29851,8 @@
             "FetchServerConf",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
+            "EnsureManagedLoadBalancer",
+            "DeleteManagedLoadBalancer",
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
@@ -29749,7 +29867,8 @@
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
-            "RunUpgradeNodeAgent"
+            "RunUpgradeNodeAgent",
+            "CreateYbStorageDatabase"
           ],
           "type" : "string"
         },
@@ -30889,6 +31008,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "ManageCloudFederation",
+            "ConfigureNodeExporterTls",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -30937,6 +31057,8 @@
             "FetchServerConf",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
+            "EnsureManagedLoadBalancer",
+            "DeleteManagedLoadBalancer",
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
@@ -30951,7 +31073,8 @@
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
-            "RunUpgradeNodeAgent"
+            "RunUpgradeNodeAgent",
+            "CreateYbStorageDatabase"
           ],
           "type" : "string"
         },
@@ -31087,6 +31210,10 @@
         "kubernetesOperatorVersion" : {
           "format" : "int64",
           "type" : "integer"
+        },
+        "managedLoadBalancer" : {
+          "$ref" : "#/definitions/ManagedLoadBalancerConfig",
+          "description" : "WARNING: This is a preview API that could change. Load balancers that YBA creates, manages and deletes. Set when the universe is created. When set, it must enable at least one load balancer."
         },
         "masterDeviceInfo" : {
           "$ref" : "#/definitions/DeviceInfo",
@@ -32067,6 +32194,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "ManageCloudFederation",
+            "ConfigureNodeExporterTls",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -32115,6 +32243,8 @@
             "FetchServerConf",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
+            "EnsureManagedLoadBalancer",
+            "DeleteManagedLoadBalancer",
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
@@ -32129,7 +32259,8 @@
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
-            "RunUpgradeNodeAgent"
+            "RunUpgradeNodeAgent",
+            "CreateYbStorageDatabase"
           ],
           "type" : "string"
         },
@@ -43745,7 +43876,7 @@
         ]
       },
       "get" : {
-        "description" : "Available since YBA version 2.2.0.0.",
+        "description" : "Available since YBA version 2.2.0.0. Early access: when the runtime flag yb.api.conditional_get.enabled is set, this endpoint supports conditional requests. Send a previously returned ETag in If-None-Match to get 304 Not Modified if the universe is unchanged. Fields derived from related resources (for example DR configs or pricing) may be stale in that case.",
         "operationId" : "getUniverse",
         "parameters" : [
           {

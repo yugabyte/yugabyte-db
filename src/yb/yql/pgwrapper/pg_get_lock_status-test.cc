@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include "yb/common/common_flags.h"
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
 
@@ -27,8 +29,6 @@
 #include "yb/yql/pgwrapper/pg_locks_test_base.h"
 
 DECLARE_bool(enable_object_locking_for_table_locks);
-DECLARE_bool(ysql_enable_concurrent_ddl);
-DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_uint64(refresh_waiter_timeout_ms);
 DECLARE_double(transaction_max_missed_heartbeat_periods);
@@ -46,8 +46,6 @@ DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_int32(leader_lease_duration_ms);
 DECLARE_bool(TEST_pause_get_lock_status);
-DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
-DECLARE_bool(ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks);
 
 using namespace std::literals;
 using std::string;
@@ -81,8 +79,7 @@ class PgGetLockStatusTest : public PgLocksTestBase {
  protected:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    ToggleDDLMode(/* use_legacy = */ false);
     PgLocksTestBase::SetUp();
   }
 
@@ -999,15 +996,7 @@ class PgGetLockStatusTestDisableObjectLocks : public PgLocksTestBase {
  protected:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = false;
-    // DDL savepoint and the in-txn-block write fastpath require transactional DDL, so keep
-    // these flags consistent.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_ddl_savepoint_support) = false;
-    ANNOTATE_UNPROTECTED_WRITE(
-        FLAGS_ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks) = false;
+    ToggleDDLMode(/* use_legacy = */ true);
     PgLocksTestBase::SetUp();
   }
 };

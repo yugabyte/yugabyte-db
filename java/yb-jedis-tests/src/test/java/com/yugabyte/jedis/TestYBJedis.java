@@ -12,6 +12,7 @@
 //
 package com.yugabyte.jedis;
 
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
@@ -50,19 +51,24 @@ public class TestYBJedis extends BaseJedisTest {
     super(jedisClientType);
   }
 
-  // Run each test with Jedis, JedisCluster, and YBJedis clients.
+  // Run each test with Jedis, JedisCluster, and YBJedis clients. YEDIS is deprecated, so all tests
+  // here are ignored. The remaining smoke tests run in these subclasses, each with one client
+  // type: TestYBJedisWithJedisClient, TestYBJedisWithYBJedisClient, and
+  // TestYBJedisWithJedisClusterClient.
   @Parameterized.Parameters
   public static List<JedisClientType> jedisClients() {
     return Arrays.asList(JedisClientType.JEDIS, JEDISCLUSTER,
         JedisClientType.YBJEDIS);
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void testBasicCommands() throws Exception {
     assertEquals("OK", jedis_client.set("k1", "v1"));
     assertEquals("v1", jedis_client.get("k1"));
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void testKeysWithDelete() throws Exception {
     assertEquals("OK", jedis_client.set("k1", "v1"));
@@ -110,6 +116,7 @@ public class TestYBJedis extends BaseJedisTest {
     assertEquals(keys, jedis_client.keys("*"));
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void testZScore() throws Exception {
     Map<String, Double> pairs = new HashMap<String, Double>();
@@ -140,6 +147,7 @@ public class TestYBJedis extends BaseJedisTest {
     assertTrue(false);
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void testZRangeByScore() throws Exception {
     Map<String, Double> pairs = new HashMap<String, Double>();
@@ -206,6 +214,7 @@ public class TestYBJedis extends BaseJedisTest {
     assertTrue(false);
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void testKeys() throws Exception {
     Map <String, String> fields = new HashMap<>();
@@ -243,67 +252,14 @@ public class TestYBJedis extends BaseJedisTest {
     }
   }
 
-  @Test
-  public void testSetCommandWithOptions() throws Exception {
-    // Test with lowercase "ex" option.
-    assertEquals("OK", jedis_client.set("k_ex", "v", "ex", 2));
-    assertEquals("v", jedis_client.get("k_ex"));
-    Thread.sleep(2000);
-    assertEquals(null, jedis_client.get("k_ex"));
-
-    // Test with uppercase "EX" option.
-    assertEquals("OK", jedis_client.set("k_ex", "v", "EX", 2));
-    assertEquals("v", jedis_client.get("k_ex"));
-    Thread.sleep(2000);
-    assertEquals(null, jedis_client.get("k_ex"));
-
-    // Test with lowercase "px" option.
-    assertEquals("OK", jedis_client.set("k_px", "v", "px", 2000));
-    assertEquals("v", jedis_client.get("k_px"));
-    Thread.sleep(2000);
-    assertEquals(null, jedis_client.get("k_px"));
-
-    // Test with uppercase "PX" option.
-    assertEquals("OK", jedis_client.set("k_px", "v", "PX", 2000));
-    assertEquals("v", jedis_client.get("k_px"));
-    Thread.sleep(2000);
-    assertEquals(null, jedis_client.get("k_px"));
-
-    // Test with lowercase "nx" option.
-    assertEquals("OK", jedis_client.set("k_nx", "v", "nx"));
-    assertEquals("v", jedis_client.get("k_nx"));
-    assertEquals(null, jedis_client.set("k_nx", "v", "nx"));
-    assertEquals("v", jedis_client.get("k_nx"));
-
-    // Test with uppercase "NX" option.
-    assertEquals("OK", jedis_client.set("k_NX", "v", "NX"));
-    assertEquals("v", jedis_client.get("k_NX"));
-    assertEquals(null, jedis_client.set("k_NX", "v", "NX"));
-    assertEquals("v", jedis_client.get("k_NX"));
-
-    // Test with lowercase "xx" option.
-    assertEquals(null, jedis_client.set("k_xx", "v", "xx"));
-    assertEquals(null, jedis_client.get("k_xx"));
-    assertEquals("OK", jedis_client.set("k_xx", "v"));
-    assertEquals("v", jedis_client.get("k_xx"));
-    assertEquals("OK", jedis_client.set("k_xx", "v2", "xx"));
-    assertEquals("v2", jedis_client.get("k_xx"));
-
-    // Test with uppercase "XX" option.
-    assertEquals(null, jedis_client.set("k_XX", "v", "XX"));
-    assertEquals(null, jedis_client.get("k_XX"));
-    assertEquals("OK", jedis_client.set("k_XX", "v"));
-    assertEquals("v", jedis_client.get("k_XX"));
-    assertEquals("OK", jedis_client.set("k_XX", "v2", "XX"));
-    assertEquals("v2", jedis_client.get("k_XX"));
-  }
-
+  @Ignore("YEDIS is deprecated")
   @Test
   public void testTSAddCommand() throws Exception {
     TSValuePairs pairs = new TSValuePairs((1));
     assertEquals("OK", jedis_client.tsadd("k0", pairs.pairs));
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void testTSGetCommand() throws Exception {
     TSValuePairs pairs = new TSValuePairs((1));
@@ -313,12 +269,14 @@ public class TestYBJedis extends BaseJedisTest {
     assertEquals(pairs.MinValue(), value);
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void testTSRemCommandInvalid() throws Exception {
     // Redis table is empty, but tsrem shouldn't throw any errors.
     assertEquals("OK", jedis_client.tsrem("k0", 0));
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void testTSRemCommandOne() throws Exception {
     TSValuePairs pairs = new TSValuePairs((1));
@@ -332,6 +290,7 @@ public class TestYBJedis extends BaseJedisTest {
     assertNull(jedis_client.tsget("k0", pairs.minTS));
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void testTSRemCommandMultiple() throws Exception {
     TSValuePairs pairs = new TSValuePairs((100));
@@ -355,36 +314,7 @@ public class TestYBJedis extends BaseJedisTest {
     }
   }
 
-  @Test
-  public void testTSRangeByTimeLong() throws Exception {
-    TSValuePairs pairs = new TSValuePairs((100));
-    // Number of values to insert.
-    assertEquals("OK", jedis_client.tsadd("k0", pairs.pairs));
-
-    // Read all the values.
-    List<String> values = jedis_client.tsrangeByTime("k0", pairs.minTS, pairs.maxTS);
-    assertNotNull(values);
-    assertEquals(pairs.pairs.size() * 2, values.size());
-
-    Set<Long> seenTS = new HashSet<>();
-    Set<Long> timestamps = new TreeSet<>(pairs.pairs.keySet());
-    int i = 0;
-    for (Long timestamp : timestamps) {
-      // Verify that we don't have repeated timestamps.
-      assertFalse(seenTS.contains(timestamp));
-      seenTS.add(timestamp);
-
-      LOG.info(String.format("i=%d, timestamp=%d, received ts=%s",
-          i, timestamp, values.get(i)));
-
-      // Verify that we are reading the expected timestamp (timestamps should be sorted).
-      assertEquals(timestamp, Long.valueOf(values.get(i++)));
-
-      String expected_value = pairs.pairs.get(timestamp);
-      assertEquals(expected_value, values.get(i++));
-    }
-  }
-
+  @Ignore("YEDIS is deprecated")
   @Test
   public void testTSRangeByTimeString() throws Exception {
     TSValuePairs pairs = new TSValuePairs((100));
@@ -428,6 +358,7 @@ public class TestYBJedis extends BaseJedisTest {
     assertEquals(pairs.MinValue(), values.get(1));
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void testTSRangeByTimeInvalidString() throws Exception {
     TSValuePairs pairs = new TSValuePairs((100));
@@ -444,6 +375,7 @@ public class TestYBJedis extends BaseJedisTest {
     assertFalse(true);
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void testPool() throws Exception {
     final List<InetSocketAddress> redisContactPoints = miniCluster.getRedisContactPoints();
@@ -459,6 +391,7 @@ public class TestYBJedis extends BaseJedisTest {
     jedis.close();
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void testNX() throws Exception {
     assertEquals("OK", jedis_client.set("k1", "v1", "NX", "EX", 5));
@@ -471,6 +404,7 @@ public class TestYBJedis extends BaseJedisTest {
     assertEquals("v2", jedis_client.get("k1"));
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void TestTSLastN() throws Exception {
     Map<Long, String> ts = new HashMap<>();
@@ -507,6 +441,7 @@ public class TestYBJedis extends BaseJedisTest {
         jedis_client.tsLastN("ts_key", 20));
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void TestTSCard() throws Exception {
     Map<Long, String> ts1 = new HashMap<>();
@@ -555,6 +490,8 @@ public class TestYBJedis extends BaseJedisTest {
     }
   }
 
+  @Ignore("Run only in the client type subclasses: TestYBJedisWithJedisClusterClient and " +
+          "TestYBJedisWithYBJedisClient")
   @Test
   public void testMultipleDBs() throws Exception {
     final String secondDBName = "second";
@@ -563,104 +500,5 @@ public class TestYBJedis extends BaseJedisTest {
     List<String> dbs = Arrays.asList(DEFAULT_DB_NAME, secondDBName);
     // Do a read/writes to test everything is working correctly.
     readAndWriteFromDBs(dbs, 10);
-  }
-
-  public void ttlTest(String key, String value, long true_ttl, int max_ttl_error) throws Exception {
-    long ttl = jedis_client.ttl(key);
-    long pttl = jedis_client.pttl(key);
-    assertTrue(Math.abs(ttl - true_ttl) <= max_ttl_error);
-    assertTrue(Math.abs(pttl - true_ttl * 1000) <= max_ttl_error * 1000);
-    assertEquals(value, jedis_client.get(key));
-  }
-
-  public void expiredTest(String key) throws Exception {
-    assertNull(jedis_client.get(key));
-    assertEquals(-2L, jedis_client.ttl(key).longValue());
-    assertEquals(-2L, jedis_client.pttl(key).longValue());
-    assertEquals(0L, jedis_client.expire(key, 7).longValue());
-  }
-
-  @Test
-  public void testExpireTtl() throws Exception {
-    String k1 = "foo";
-    String k2 = "fu";
-    String k3 = "phu";
-    String value = "bar";
-    int error = 1;
-
-    // Checking expected behavior on a key with no ttl.
-    assertEquals("OK", jedis_client.set(k1, value));
-    assertEquals(value, jedis_client.get(k1));
-    assertEquals(-2L, jedis_client.ttl(k2).longValue());
-    assertEquals(-2L, jedis_client.pttl(k2).longValue());
-    assertEquals(-1L, jedis_client.ttl(k1).longValue());
-    assertEquals(-1L, jedis_client.pttl(k1).longValue());
-    // Setting a ttl and checking expected return values.
-    assertEquals(1L, jedis_client.expire(k1, 3).longValue());
-    ttlTest(k1, value, 3, error);
-    Thread.sleep(2000);
-    ttlTest(k1, value, 1, error);
-    Thread.sleep(2000);
-    expiredTest(k1);
-    // Testing functionality with SETEX.
-    assertEquals("OK", jedis_client.setex(k1, 5, value));
-    ttlTest(k1, value, 5, error);
-    // Set a new, earlier expiration.
-    assertEquals(1L, jedis_client.expire(k1, 2).longValue());
-    ttlTest(k1, value, 2, error);
-    // Check that the value expires as expected.
-    Thread.sleep(2000);
-    expiredTest(k1);
-    // Initialize with SET using the EX flag.
-    assertEquals("OK", jedis_client.set(k1, value, "EX", 2));
-    // Set a new, later, expiration.
-    assertEquals(1L, jedis_client.expire(k1, 8).longValue());
-    ttlTest(k1, value, 8, error);
-    // Checking expected return values after a while, before expiration.
-    Thread.sleep(4000);
-    ttlTest(k1, value, 4, error);
-    // Persisting the key and checking expected return values.
-    assertEquals(1L, jedis_client.persist(k1).longValue());
-    assertEquals(value, jedis_client.get(k1));
-    assertEquals(-1L, jedis_client.ttl(k1).longValue());
-    assertEquals(-1L, jedis_client.pttl(k1).longValue());
-    // Check that the key and value are still there after a while.
-    Thread.sleep(30000);
-    assertEquals(value, jedis_client.get(k1));
-    assertEquals(-1L, jedis_client.ttl(k1).longValue());
-    assertEquals(-1L, jedis_client.pttl(k1).longValue());
-    // Persist a key that does not exist.
-    assertEquals(0L, jedis_client.persist(k2).longValue());
-    // Persist a key that has no TTL.
-    assertEquals(0L, jedis_client.persist(k1).longValue());
-    // Vanilla set on a key and persisting it.
-    assertEquals("OK", jedis_client.set(k2, value));
-    assertEquals(0L, jedis_client.persist(k2).longValue());
-    assertEquals(-1L, jedis_client.ttl(k2).longValue());
-    assertEquals(-1L, jedis_client.pttl(k2).longValue());
-    // Test that setting a zero-valued TTL properly expires the value.
-    assertEquals(1L, jedis_client.expire(k2, 0).longValue());
-    expiredTest(k2);
-    // One more time with a negative TTL.
-    assertEquals("OK", jedis_client.set(k2, value));
-    assertEquals(1L, jedis_client.expire(k2, -7).longValue());
-    expiredTest(k2);
-    assertEquals("OK", jedis_client.setex(k2, -7, value));
-    expiredTest(k2);
-    // Test PExpire
-    assertEquals("OK", jedis_client.set(k2, value));
-    assertEquals(1L, jedis_client.pexpire(k2, 3200).longValue());
-    ttlTest(k2, value, 3, error);
-    Thread.sleep(1000);
-    ttlTest(k2, value, 2, error);
-    Thread.sleep(3000);
-    expiredTest(k2);
-    // Test PSetEx
-    assertEquals("OK", jedis_client.psetex(k3, 2300, value));
-    ttlTest(k3, value, 2, error);
-    Thread.sleep(1000);
-    ttlTest(k3, value, 1, error);
-    Thread.sleep(2000);
-    expiredTest(k3);
   }
 }

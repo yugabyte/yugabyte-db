@@ -13,7 +13,6 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	ybaclient "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
@@ -54,6 +53,22 @@ var createUniverseCmd = &cobra.Command{
 		}
 		initializeViper(config)
 
+		// The flags are gone, but viper still reads these keys from an old --config-template
+		// (e.g. "universe describe -o cli-yaml" output). Fail instead of silently creating
+		// an unencrypted universe.
+		for _, key := range []string{"enable-volume-encryption", "kms-config"} {
+			if v1.IsSet(key) {
+				logrus.Fatalln(
+					formatter.Colorize(
+						fmt.Sprintf("%s is no longer supported, use "+
+							"encryption-at-rest-kms-config or "+
+							"cloud-volume-encryption-kms-config (AWS only) instead\n", key),
+						formatter.RedColor,
+					),
+				)
+			}
+		}
+
 		universeName := v1.GetString("name")
 
 		if util.IsEmptyString(universeName) {
@@ -87,15 +102,6 @@ var createUniverseCmd = &cobra.Command{
 					),
 				)
 			}
-		}
-		enableVolumeEncryption := v1.GetBool("enable-volume-encryption")
-		if enableVolumeEncryption {
-			logrus.Warn(
-				formatter.Colorize(
-					"Use --cloud-volume-encryption-kms-config or --encryption-at-rest-kms-config instead",
-					formatter.YellowColor,
-				),
-			)
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
@@ -273,7 +279,7 @@ func init() {
 		"[Required] The name of the universe to be created.")
 
 	createUniverseCmd.Flags().String("provider-code", "",
-		"[Required] Provider code. Allowed values: aws, gcp, azu, onprem, kubernetes.")
+		"[Required] Provider code. Allowed values: "+util.ProviderCodesString()+".")
 
 	// fss := cliflag.NamedFlagSets{}
 	// createUniverseCmd.AddGroup()
@@ -284,7 +290,7 @@ func init() {
 			"to check the list of providers for the given provider-code. "+
 			"Fetches the first provider in the list by default.")
 	createUniverseCmd.Flags().Bool("dedicated-nodes", false,
-		"[Optional] Place Masters on dedicated nodes, (default false) for aws, azu, gcp, onprem."+
+		"[Optional] Place Masters on dedicated nodes, (default false) for aws, azu, gcp, oci, onprem."+
 			" Defaults to true for kubernetes.")
 	createUniverseCmd.Flags().String("cpu-architecture", "x86_64",
 		"[Optional] CPU architecture for nodes in all clusters. Allowed values: x86_64, aarch64.")
@@ -353,7 +359,8 @@ func init() {
 		"[Optional] Instance Type for the universe nodes. Provide the instance types for each "+
 			"cluster as a separate flag."+
 			" Defaults to \"c5.large\" for aws, \"Standard_DS2_v2\" "+
-			"for azure and \"n1-standard-1\" for gcp. Fetches the first available "+
+			"for azure, \"n1-standard-1\" for gcp and \"VM.Standard.E4.Flex\" for oci. "+
+			"Fetches the first available "+
 			"instance type for onprem providers.")
 	createUniverseCmd.Flags().IntSlice("num-volumes", []int{1, 1},
 		"[Optional] Number of volumes to be mounted on this instance at the default path."+
@@ -368,13 +375,19 @@ func init() {
 			"as a separate flag, in the following format: "+
 			"\"--mount-points 'mount-point-1-for-primary-cluster,mount-point-2-for-primary-cluster' "+
 			"--mount-points 'mount-point-1-for-read-replica,mount-point-2-for-read-replica'\". "+
-			"Defaults to null for aws, azure, gcp. Fetches the first available "+
+			"Defaults to null for aws, azure, gcp, oci. Fetches the first available "+
 			"instance mount points for onprem providers.")
+	storageTypeProviders := "aws/azure/gcp"
+	if util.IsFeatureFlagEnabled(util.PREVIEW) {
+		storageTypeProviders += "/oci"
+	}
 	createUniverseCmd.Flags().StringArray("storage-type", []string{},
 		"[Optional] Storage type (EBS for AWS) used for this instance. Provide the storage type "+
 			" of volumes for each cluster as a separate flag. "+
-			"Run \"yba provider [aws/azure/gcp] instance-type supported-storage\" to check list of supported storage types. "+
-			"Defaults to \"GP3\" for aws, \"Premium_LRS\" for azure and \"Persistent\" for gcp.")
+			"Run \"yba provider ["+storageTypeProviders+"] instance-type supported-storage\" "+
+			"to check list of supported storage types. "+
+			"Defaults to \"GP3\" for aws, \"Premium_LRS\" for azure, \"Persistent\" for gcp "+
+			"and \"OCI_Balanced\" for oci.")
 	createUniverseCmd.Flags().StringArray("storage-class", []string{},
 		"[Optional] Name of the storage class, supported for Kubernetes. Provide "+
 			"the storage type of volumes for each cluster as a separate flag. Defaults"+
@@ -403,7 +416,8 @@ func init() {
 	createUniverseCmd.Flags().String("dedicated-master-instance-type", "",
 		"[Optional] Instance Type for the dedicated master nodes in the primary cluster."+
 			" Defaults to \"c5.large\" for aws, \"Standard_DS2_v2\" "+
-			"for azure and \"n1-standard-1\" for gcp. Fetches the first available "+
+			"for azure, \"n1-standard-1\" for gcp and \"VM.Standard.E4.Flex\" for oci. "+
+			"Fetches the first available "+
 			"instance type for onprem providers.")
 	createUniverseCmd.Flags().Int("dedicated-master-num-volumes", 1,
 		"[Optional] Number of volumes to be mounted on master instance at the default path.")
@@ -414,11 +428,12 @@ func init() {
 		"[Optional] Disk mount points for master nodes. Provide comma-separated strings "+
 			"in the following format: \"--mount-points 'mount-point-1-for-master,"+
 			"mount-point-2-for-master'\""+
-			" Defaults to null for aws, azure, gcp. Fetches the first available "+
+			" Defaults to null for aws, azure, gcp, oci. Fetches the first available "+
 			"instance mount points for onprem providers.")
 	createUniverseCmd.Flags().String("dedicated-master-storage-type", "",
 		"[Optional] Storage type (EBS for AWS) used for master instance. "+
-			"Defaults to \"GP3\" for aws, \"Premium_LRS\" for azure and \"Persistent\" for gcp. "+
+			"Defaults to \"GP3\" for aws, \"Premium_LRS\" for azure, \"Persistent\" for gcp "+
+			"and \"OCI_Balanced\" for oci. "+
 			"Fetches the first available storage type for onprem providers.")
 	createUniverseCmd.Flags().String("dedicated-master-storage-class", "",
 		"[Optional] Name of the storage class for the master instance. "+
@@ -474,19 +489,6 @@ func init() {
 		"[Optional] Client Root Certificate name for Encryption in Transit, defaults to creating new"+
 			" certificate for the universe if encryption in transit in enabled. Run \"yba eit list\" "+
 			"to check the list of available certificates.")
-
-	createUniverseCmd.Flags().Bool("enable-volume-encryption", false,
-		"[Optional] Enable encryption for data stored on the tablet servers. (default false)")
-	createUniverseCmd.Flags().String("kms-config", "",
-		"[Optional] Key management service config name. "+
-			formatter.Colorize("Required when enable-volume-encryption is set to true.",
-				formatter.GreenColor))
-
-	createUniverseCmd.Flags().
-		MarkDeprecated("kms-config", "Use --cloud-volume-encryption-kms-config or --encryption-at-rest-kms-config instead.")
-	createUniverseCmd.Flags().
-		MarkDeprecated("enable-volume-encryption",
-			"Use --cloud-volume-encryption-kms-config or --encryption-at-rest-kms-config instead.")
 
 	createUniverseCmd.Flags().Bool("enable-ipv6", false,
 		"[Optional] Enable IPV6 networking for connections between the DB Servers, supported "+
@@ -547,35 +549,20 @@ func init() {
 
 	// createUniverseCmd.Flags().AddFlagSet(communicationPortsFlags)
 
-	previewFlags := pflag.FlagSet{}
-	previewFlags.String("connection-pooling", "disable",
+	createUniverseCmd.Flags().String("connection-pooling", "disable",
 		"[Optional] Connection Pooling setting for the universe. "+
 			"Enable \"yb.universe.allow_connection_pooling\" runtime configuration"+
 			" to allow enabling connection pooling in universes. Allowed values: enable, disable.")
-	previewFlags.Int("internal-ysql-server-rpc-port", 6433,
+	createUniverseCmd.Flags().Int("internal-ysql-server-rpc-port", 6433,
 		"[Optional] Internal YSQL Server RPC Port used when connection pooling is enabled.")
-	previewFlags.
-		String("cloud-volume-encryption-kms-config", "",
-			"[Optional] Key management service config name to enable cloud volume encryption, "+
-				"supported only for AWS. Run \"yba ear list\" to check the list of available kms configurations.")
-
-	previewFlags.
-		String(
-			"encryption-at-rest-kms-config",
-			"",
-			"[Optional] Key management service config name to enable YugabyteDB Anywhere's own encryption at rest."+
-				" Run \"yba ear list\" to check the list of available kms configurations.",
-		)
-	util.PreviewFlag(
-		createUniverseCmd,
-		&previewFlags,
-		[]string{
-			"connection-pooling",
-			"internal-ysql-server-rpc-port",
-			"cloud-volume-encryption-kms-config",
-			"encryption-at-rest-kms-config",
-		},
-	)
+	createUniverseCmd.Flags().String("cloud-volume-encryption-kms-config", "",
+		"[Optional] Key management service config name to enable cloud volume encryption, "+
+			"supported only for AWS. Run \"yba ear list\" to check the list of available "+
+			"kms configurations.")
+	createUniverseCmd.Flags().String("encryption-at-rest-kms-config", "",
+		"[Optional] Key management service config name to enable YugabyteDB Anywhere's own "+
+			"encryption at rest. Run \"yba ear list\" to check the list of available "+
+			"kms configurations.")
 
 	v1.BindPFlag("name", createUniverseCmd.Flags().Lookup("name"))
 	v1.BindPFlag("cpu-architecture", createUniverseCmd.Flags().Lookup("cpu-architecture"))
@@ -657,12 +644,6 @@ func init() {
 	v1.BindPFlag("root-ca", createUniverseCmd.Flags().Lookup("root-ca"))
 	v1.BindPFlag("client-root-ca", createUniverseCmd.Flags().Lookup("client-root-ca"))
 
-	v1.BindPFlag(
-		"enable-volume-encryption",
-		createUniverseCmd.Flags().Lookup("enable-volume-encryption"),
-	)
-	v1.BindPFlag("kms-config", createUniverseCmd.Flags().Lookup("kms-config"))
-
 	v1.BindPFlag("enable-ipv6", createUniverseCmd.Flags().Lookup("enable-ipv6"))
 	v1.BindPFlag("yb-db-version", createUniverseCmd.Flags().Lookup("yb-db-version"))
 	v1.BindPFlag("use-systemd", createUniverseCmd.Flags().Lookup("use-systemd"))
@@ -695,16 +676,13 @@ func init() {
 	v1.BindPFlag("spot-price", createUniverseCmd.Flags().Lookup("spot-price"))
 	v1.BindPFlag("exposing-service", createUniverseCmd.Flags().Lookup("exposing-service"))
 
-	util.PreviewFlagViperValue(
-		v1,
-		createUniverseCmd,
-		[]string{
-			"connection-pooling",
-			"internal-ysql-server-rpc-port",
-			"encryption-at-rest-kms-config",
-			"cloud-volume-encryption-kms-config",
-		},
-	)
+	v1.BindPFlag("connection-pooling", createUniverseCmd.Flags().Lookup("connection-pooling"))
+	v1.BindPFlag("internal-ysql-server-rpc-port",
+		createUniverseCmd.Flags().Lookup("internal-ysql-server-rpc-port"))
+	v1.BindPFlag("encryption-at-rest-kms-config",
+		createUniverseCmd.Flags().Lookup("encryption-at-rest-kms-config"))
+	v1.BindPFlag("cloud-volume-encryption-kms-config",
+		createUniverseCmd.Flags().Lookup("cloud-volume-encryption-kms-config"))
 
 }
 

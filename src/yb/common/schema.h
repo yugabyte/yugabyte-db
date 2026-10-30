@@ -672,6 +672,19 @@ class Schema : public MissingValueProvider {
     return num_key_columns_ - num_hash_key_columns_;
   }
 
+  // Returns the component index for the given key column. All hash columns form component 0,
+  // followed by one component per range column. Unlike get_dockey_component_idx, hash columns
+  // share a single component. If column_idx is the number of key columns, returns the total
+  // number of components.
+  static size_t HashGroupAndRangeComponentIndex(size_t column_idx, size_t num_hash_key_columns) {
+    return column_idx < num_hash_key_columns
+        ? 0 : column_idx - num_hash_key_columns + (num_hash_key_columns ? 1 : 0);
+  }
+
+  // Returns the number of hash group and range components of the schema, see
+  // HashGroupAndRangeComponentIndex.
+  static size_t NumHashGroupAndRangeComponents(const SchemaPB& schema);
+
   // Return the byte offset within the row for the given column index.
   size_t column_offset(size_t col_idx) const {
     DCHECK_LT(col_idx, cols_.size());
@@ -1301,4 +1314,3 @@ class SchemaBuilder {
 ColumnKind SortingTypeToColumnKind(SortingType sorting_type);
 
 } // namespace yb
-

@@ -20,11 +20,11 @@
 #include <string>
 
 #include "yb/common/ql_type.h"
+#include "yb/util/format.h"
 
 using std::function;
 using std::vector;
 using std::string;
-using strings::Substitute;
 
 namespace yb {
 namespace bfpg {
@@ -195,7 +195,7 @@ static Status FindMatch(
       // Found a compatible match. Make sure that it is the only match.
       if (compatible_operator != nullptr) {
         return STATUS(InvalidArgument,
-                      Substitute("Found too many matches for builtin function '$0'", ql_name));
+                      Format("Found too many matches for builtin function '$0'", ql_name));
       }
       compatible_operator = bf_operator;
     }
@@ -212,7 +212,7 @@ static Status FindMatch(
   // Returns error if no match is found.
   if (compatible_operator == nullptr) {
     return STATUS(NotFound,
-                  Substitute("Signature mismatch in call to builtin function '$0'", ql_name));
+                  Format("Signature mismatch in call to builtin function '$0'", ql_name));
   }
 
   // Returns error if the return type is not compatible.
@@ -221,14 +221,14 @@ static Status FindMatch(
       *return_type = compatible_operator->return_type();
     } else if (!IsCompatible(*return_type, compatible_operator->return_type())) {
       return STATUS(InvalidArgument,
-                    Substitute("Return-type mismatch in call to builtin function '$0'", ql_name));
+                    Format("Return-type mismatch in call to builtin function '$0'", ql_name));
     }
   }
 
   // Raise error if the function execution was not yet implemented.
   if (!compatible_operator->op_decl()->implemented()) {
     return STATUS(NotSupported,
-                  Substitute("Builtin function '$0' is not yet implemented", ql_name));
+                  Format("Builtin function '$0' is not yet implemented", ql_name));
   }
 
   *found_opcode = compatible_operator->opcode();
@@ -250,8 +250,8 @@ Status FindOpcodeByType(const string& ql_name,
                         DataType *return_type) {
   auto entry = kBfPgsqlName2Opcode.find(ql_name);
   if (entry == kBfPgsqlName2Opcode.end()) {
-    VLOG(3) << strings::Substitute("Function '$0' does not exist", ql_name);
-    return STATUS(NotFound, strings::Substitute("Function '$0' does not exist", ql_name));
+    VLOG(3) << Format("Function '$0' does not exist", ql_name);
+    return STATUS(NotFound, Format("Function '$0' does not exist", ql_name));
   }
 
   // Seek the correct overload functions in the following order:

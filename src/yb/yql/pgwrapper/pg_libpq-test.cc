@@ -38,12 +38,14 @@
 
 #include "yb/common/colocated_util.h"
 #include "yb/common/common.pb.h"
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.pb.h"
 
+#include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
@@ -84,6 +86,7 @@ METRIC_DECLARE_entity(server);
 METRIC_DECLARE_counter(rpc_inbound_calls_created);
 METRIC_DECLARE_counter(rpc_inbound_calls_failed);
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
+METRIC_DECLARE_histogram(handler_latency_yb_tserver_PgClientService_ListSlotEntries);
 
 namespace yb::pgwrapper {
 
@@ -3021,17 +3024,8 @@ TEST_F_EX(PgLibPqTest, LoadBalanceMultipleTablegroups, PgLibPqLoadBalanceMultipl
 class PgLibPqTestDisableObjectLocking : public PgLibPqTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_tserver_flags.emplace_back("--enable_object_locking_for_table_locks=false");
-    options->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
-    // DDL savepoint and the in-txn-block write fastpath require transactional DDL, so keep
-    // these flags consistent.
-    options->extra_tserver_flags.emplace_back("--ysql_yb_enable_ddl_savepoint_support=false");
-    options->extra_tserver_flags.emplace_back(
-        "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false");
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    options->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=false");
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
+    ToggleDDLMode(options->extra_tserver_flags, /* use_legacy = */ true);
+    ToggleDDLMode(options->extra_master_flags, /* use_legacy = */ true);
   }
 };
 
@@ -3397,11 +3391,8 @@ Result<string> PgLibPqTest::GetPostmasterPidViaShell(PGConn* conn) {
 class PgLibPqConcurrentDdlDml : public PgLibPqTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=true");
-    options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
-    options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=true");
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
+    ToggleDDLMode(options->extra_tserver_flags, /* use_legacy = */ false);
+    ToggleDDLMode(options->extra_master_flags, /* use_legacy = */ false);
     PgLibPqTest::UpdateMiniClusterOptions(options);
   }
 };
@@ -4716,6 +4707,377 @@ TEST_F_EX(PgLibPqTest, YbPreloadPgAuthidForAuthEnabled, PgPreloadPgAuthidEnabled
          "incur no pg_authid catalog cache misses";
 }
 
+class PgCatalogPreloadCacheListTestBase : public PgLibPqTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgLibPqTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.emplace_back("--ysql_enable_auto_analyze=false");
+    for (const auto& flag : ExtraTServerFlags()) {
+      options->extra_tserver_flags.emplace_back(flag);
+    }
+  }
+
+  virtual std::vector<std::string> ExtraTServerFlags() const { return {}; }
+
+  // A view and a partitioned table make the relcache build look up the caches it needs.
+  Status CreateTestObjects() {
+    auto conn = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, a INT, b INT)"));
+    RETURN_NOT_OK(conn.Execute("CREATE INDEX ON t (a, b)"));
+    RETURN_NOT_OK(conn.Execute("CREATE VIEW v AS SELECT * FROM t"));
+    RETURN_NOT_OK(
+        conn.Execute("CREATE TABLE p (k INT, PRIMARY KEY (k ASC)) PARTITION BY RANGE (k)"));
+    return conn.Execute("CREATE TABLE p1 PARTITION OF p FOR VALUES FROM (0) TO (10)");
+  }
+
+  // Catalog cache misses, keyed by the index of the catalog cache.
+  std::unordered_map<std::string, int64_t> GetCatalogCacheMisses() {
+    std::unordered_map<std::string, int64_t> misses;
+    for (const auto& metric : GetJsonMetrics()) {
+      const auto it = metric.labels.find("table_name");
+      if (metric.name.find("yb_ysqlserver_CatalogCacheMisses") != std::string::npos &&
+          it != metric.labels.end()) {
+        misses[it->second] += metric.value;
+      }
+    }
+    return misses;
+  }
+
+  // Runs the query and returns the catalog cache misses it caused, keyed by catalog cache index.
+  Result<std::unordered_map<std::string, int64_t>> MissesFor(
+      PGConn& conn, const std::string& query) {
+    auto before = GetCatalogCacheMisses();
+    RETURN_NOT_OK(conn.Fetch(query));
+    auto delta = GetCatalogCacheMisses();
+    for (auto& [index, misses] : delta) {
+      misses -= before[index];
+    }
+    std::erase_if(delta, [](const auto& entry) { return entry.second == 0; });
+    LOG(INFO) << "Catalog cache misses for '" << query << "': " << AsString(delta);
+    return delta;
+  }
+
+  // The caches the catalog preload looks up itself are filled whatever the flag says.
+  static void AssertNoRequiredCacheMisses(std::unordered_map<std::string, int64_t>& misses) {
+    for (const auto* index : {
+             "pg_am_oid_index", "pg_amproc_fam_proc_index", "pg_authid_oid_index",
+             "pg_opclass_oid_index", "pg_collation_oid_index", "pg_database_oid_index",
+             "pg_index_indexrelid_index", "pg_namespace_nspname_index",
+             "pg_partitioned_table_partrelid_index", "pg_class_oid_index",
+             "pg_rewrite_rel_rulename_index", "pg_type_oid_index"}) {
+      ASSERT_EQ(misses[index], 0) << index;
+    }
+  }
+
+  Status SetCacheList(const std::string& value) {
+    RETURN_NOT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_catalog_preload_cache_list", value));
+    return LoggedWaitFor(
+        [this, &value]() -> Result<bool> {
+          auto conn = VERIFY_RESULT(Connect());
+          return VERIFY_RESULT(conn.FetchRow<std::string>(
+                     "SELECT current_setting('yb_test_catalog_preload_cache_list')")) == value;
+        },
+        30s * kTimeMultiplier, "postgres reloads ysql_yb_test_catalog_preload_cache_list");
+  }
+
+  static constexpr auto kAttnameIndex = "pg_attribute_relid_attnam_index";
+  static constexpr auto kAttnumIndex = "pg_attribute_relid_attnum_index";
+  static constexpr auto kOperatorNameIndex = "pg_operator_oprname_l_r_n_index";
+  // Looks up a column of t by name.
+  static constexpr auto kAttnameQuery = "SELECT pg_get_serial_sequence('t', 'a')";
+  // The parser checks that a system column exists by looking it up by number.
+  static constexpr auto kAttnumQuery = "SELECT tableoid FROM t";
+  // Operator resolution looks up operators by name, in a list of the OPERNAMENSP cache.
+  static constexpr auto kOperatorQuery = "SELECT k FROM t WHERE a = 1";
+};
+
+struct CatalogPreloadCacheListParam {
+  std::string value;
+  bool fills_attname;
+  bool fills_attnum;
+};
+
+// Forces the full catalog preload with ysql_catalog_preload_additional_tables, so that connection
+// start-up and every full catalog cache refresh fill the catalog caches.
+class PgCatalogPreloadCacheListTest
+    : public PgCatalogPreloadCacheListTestBase,
+      public ::testing::WithParamInterface<CatalogPreloadCacheListParam> {
+ protected:
+  std::vector<std::string> ExtraTServerFlags() const override {
+    return {"--ysql_catalog_preload_additional_tables=true",
+            "--ysql_yb_test_catalog_preload_cache_list=" + GetParam().value};
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(, PgCatalogPreloadCacheListTest, ::testing::Values(
+    CatalogPreloadCacheListParam{"", true, true},
+    // A value of only whitespace counts as empty.
+    CatalogPreloadCacheListParam{" ", true, true},
+    CatalogPreloadCacheListParam{"pg_attribute", true, true},
+    CatalogPreloadCacheListParam{"pg_attribute_relid_attnam_index", true, false},
+    CatalogPreloadCacheListParam{"attnum", false, true},
+    CatalogPreloadCacheListParam{"pg_class", false, false}));
+
+TEST_P(PgCatalogPreloadCacheListTest, CacheMisses) {
+  ASSERT_OK(CreateTestObjects());
+  auto ddl_conn = ASSERT_RESULT(Connect());
+
+  // The first statement also reports the misses of the connection start-up.
+  auto conn = ASSERT_RESULT(Connect());
+  auto misses = ASSERT_RESULT(MissesFor(conn, "SELECT * FROM v, p"));
+  ASSERT_NO_FATALS(AssertNoRequiredCacheMisses(misses));
+  ASSERT_EQ(misses[kAttnameIndex], 0);
+  ASSERT_EQ(misses[kAttnumIndex], 0);
+
+  misses = ASSERT_RESULT(MissesFor(conn, kAttnameQuery));
+  ASSERT_EQ(misses[kAttnameIndex] == 0, GetParam().fills_attname);
+
+  misses = ASSERT_RESULT(MissesFor(conn, kAttnumQuery));
+  ASSERT_EQ(misses[kAttnumIndex] == 0, GetParam().fills_attnum);
+
+  // A breaking catalog version bump makes the next statement do a full catalog cache refresh,
+  // which rebuilds the relcache entry of every index, including its opclass options. Without the
+  // ATTNUM cache filled, each lookup there would scan the whole prefetched pg_attribute, so the
+  // refresh must not do any.
+  const auto refreshes_before = GetMetricValue(GetJsonMetrics(), "CatCacheRefresh");
+  ASSERT_OK(IncrementAllDBCatalogVersions(ddl_conn, IsBreakingCatalogVersionChange::kTrue));
+  WaitForCatalogVersionToPropagate();
+  misses = ASSERT_RESULT(MissesFor(conn, "SELECT * FROM v, p"));
+  ASSERT_NO_FATALS(AssertNoRequiredCacheMisses(misses));
+  ASSERT_EQ(misses[kAttnameIndex], 0);
+  ASSERT_EQ(misses[kAttnumIndex], 0);
+  ASSERT_GT(GetMetricValue(GetJsonMetrics(), "CatCacheRefresh"), refreshes_before);
+}
+
+// Setting the list turns on the catalog preload, like the additional-tables gflags, and fills
+// only the listed caches. The flag takes effect at runtime.
+TEST_F_EX(PgLibPqTest, CatalogPreloadCacheListTurnsOnPreload, PgCatalogPreloadCacheListTestBase) {
+  ASSERT_OK(CreateTestObjects());
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Fetch("SELECT 1"));
+  ASSERT_GT(ASSERT_RESULT(MissesFor(conn, kOperatorQuery))[kOperatorNameIndex], 0);
+
+  ASSERT_OK(SetCacheList("pg_operator"));
+  conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Fetch("SELECT 1"));
+  ASSERT_EQ(ASSERT_RESULT(MissesFor(conn, kOperatorQuery))[kOperatorNameIndex], 0);
+  ASSERT_GT(ASSERT_RESULT(MissesFor(conn, kAttnameQuery))[kAttnameIndex], 0);
+}
+
+class PgCatalogPreloadCacheListOldFlagTest : public PgCatalogPreloadCacheListTestBase {
+ protected:
+  std::vector<std::string> ExtraTServerFlags() const override {
+    return {"--ysql_catalog_preload_additional_table_list=pg_operator"};
+  }
+};
+
+// If both are set, the list replaces ysql_catalog_preload_additional_table_list.
+TEST_F_EX(PgLibPqTest, CatalogPreloadCacheListOverridesOldFlags,
+          PgCatalogPreloadCacheListOldFlagTest) {
+  ASSERT_OK(CreateTestObjects());
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Fetch("SELECT 1"));
+  ASSERT_EQ(ASSERT_RESULT(MissesFor(conn, kOperatorQuery))[kOperatorNameIndex], 0);
+
+  ASSERT_OK(SetCacheList("pg_attribute"));
+  conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Fetch("SELECT 1"));
+  ASSERT_GT(ASSERT_RESULT(MissesFor(conn, kOperatorQuery))[kOperatorNameIndex], 0);
+  ASSERT_EQ(ASSERT_RESULT(MissesFor(conn, kAttnameQuery))[kAttnameIndex], 0);
+}
+
+struct CatalogPreloadCacheSplitParam {
+  std::string value;
+  std::string query;
+  std::string list_index;
+  bool fills_list;
+};
+
+// Each catalog cache of pg_proc and pg_constraint can be filled on its own. The by-name function
+// lists and the foreign key lists are built only when the cache that holds them is filled.
+class PgCatalogPreloadCacheSplitTest
+    : public PgCatalogPreloadCacheListTestBase,
+      public ::testing::WithParamInterface<CatalogPreloadCacheSplitParam> {
+ protected:
+  std::vector<std::string> ExtraTServerFlags() const override {
+    return {"--ysql_yb_test_catalog_preload_cache_list=" + GetParam().value};
+  }
+};
+
+// Function lookup by name.
+constexpr auto kFunctionNameQuery = "SELECT lower('A')";
+// Planning a join of two tables reads the foreign keys of each.
+constexpr auto kForeignKeyQuery = "SELECT * FROM fk JOIN t ON fk.k = t.k";
+
+INSTANTIATE_TEST_CASE_P(, PgCatalogPreloadCacheSplitTest, ::testing::Values(
+    CatalogPreloadCacheSplitParam{
+        "PROCOID", kFunctionNameQuery, "pg_proc_proname_args_nsp_index", false},
+    CatalogPreloadCacheSplitParam{
+        "PROCNAMEARGSNSP", kFunctionNameQuery, "pg_proc_proname_args_nsp_index", true},
+    CatalogPreloadCacheSplitParam{
+        "CONSTROID", kForeignKeyQuery, "pg_constraint_conrelid_contypid_conname_index", false},
+    CatalogPreloadCacheSplitParam{
+        "YBCONSTRAINTRELIDTYPIDNAME", kForeignKeyQuery,
+        "pg_constraint_conrelid_contypid_conname_index", true}));
+
+TEST_P(PgCatalogPreloadCacheSplitTest, ListMisses) {
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, a INT)"));
+    ASSERT_OK(conn.Execute("CREATE TABLE fk (k INT REFERENCES t (k))"));
+  }
+  auto ddl_conn = ASSERT_RESULT(Connect());
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Fetch("SELECT 1"));
+  auto misses = ASSERT_RESULT(MissesFor(conn, GetParam().query));
+  ASSERT_EQ(misses[GetParam().list_index] == 0, GetParam().fills_list);
+
+  // A full catalog cache refresh fills the same caches again.
+  ASSERT_OK(IncrementAllDBCatalogVersions(ddl_conn, IsBreakingCatalogVersionChange::kTrue));
+  WaitForCatalogVersionToPropagate();
+  ASSERT_OK(conn.Fetch("SELECT 1"));
+  misses = ASSERT_RESULT(MissesFor(conn, GetParam().query));
+  ASSERT_EQ(misses[GetParam().list_index] == 0, GetParam().fills_list);
+}
+
+// With a partitioned table, the relcache build requests pg_proc and fills all its caches, also when
+// the list names only one of them or none.
+class PgCatalogPreloadCachePartitionedTest
+    : public PgCatalogPreloadCacheListTestBase,
+      public ::testing::WithParamInterface<std::string> {
+ protected:
+  std::vector<std::string> ExtraTServerFlags() const override {
+    return {"--ysql_yb_test_catalog_preload_cache_list=" + GetParam()};
+  }
+
+  static void AssertNoPgProcMisses(std::unordered_map<std::string, int64_t>& misses) {
+    ASSERT_EQ(misses["pg_proc_oid_index"], 0);
+    ASSERT_EQ(misses["pg_proc_proname_args_nsp_index"], 0);
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(, PgCatalogPreloadCachePartitionedTest,
+                        ::testing::Values("PROCOID", "PROCNAMEARGSNSP", "pg_database"));
+
+TEST_P(PgCatalogPreloadCachePartitionedTest, PgProcMisses) {
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute(
+        "CREATE TABLE p (k INT, PRIMARY KEY (k ASC)) PARTITION BY RANGE (k)"));
+    ASSERT_OK(conn.Execute("CREATE TABLE p1 PARTITION OF p FOR VALUES FROM (0) TO (10)"));
+    // Building an expression key looks up its function by OID.
+    ASSERT_OK(conn.Execute("CREATE TABLE pe (k INT) PARTITION BY RANGE ((k % 10))"));
+    ASSERT_OK(conn.Execute("CREATE TABLE pe1 PARTITION OF pe FOR VALUES FROM (0) TO (5)"));
+  }
+  auto ddl_conn = ASSERT_RESULT(Connect());
+
+  // The first statement also reports the misses of the connection start-up.
+  auto conn = ASSERT_RESULT(Connect());
+  auto misses = ASSERT_RESULT(MissesFor(conn, kFunctionNameQuery));
+  ASSERT_NO_FATALS(AssertNoPgProcMisses(misses));
+
+  ASSERT_OK(IncrementAllDBCatalogVersions(ddl_conn, IsBreakingCatalogVersionChange::kTrue));
+  WaitForCatalogVersionToPropagate();
+  misses = ASSERT_RESULT(MissesFor(conn, kFunctionNameQuery));
+  ASSERT_NO_FATALS(AssertNoPgProcMisses(misses));
+}
+
+// The tserver rejects a value that is not a comma separated list of names, so it never reaches the
+// postgres configuration file.
+TEST_F_EX(PgLibPqTest, CatalogPreloadCacheListInvalidSyntax, PgCatalogPreloadCacheListTestBase) {
+  constexpr auto kValidValue = "pg_attribute";
+  ASSERT_OK(SetCacheList(kValidValue));
+  for (const auto& invalid_value : {
+           "pg_class,",          // empty item
+           ",pg_class",
+           "pg_class,,ATTNUM",
+           "-ATTNAME",           // no exclusions
+           "\"ATTNUM\"",         // no quoting
+           "pg class"}) {
+    ASSERT_NOK(cluster_->SetFlagOnTServers(
+        "ysql_yb_test_catalog_preload_cache_list", invalid_value))
+        << "Value: '" << invalid_value << "'";
+  }
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(
+                "SELECT current_setting('yb_test_catalog_preload_cache_list')")),
+            kValidValue);
+}
+
+// Postgres ignores the items that select no preloadable catalog cache and fills the caches the
+// other items select.
+TEST_F_EX(PgLibPqTest, CatalogPreloadCacheListIgnoresUnknownNames,
+          PgCatalogPreloadCacheListTestBase) {
+  ASSERT_OK(CreateTestObjects());
+  for (const auto& value : {
+           "pg_operator,pg_nosuch",     // unknown name
+           "pg_operator,default",       // no keywords
+           "pg_operator,pg_trigger",    // has no catalog cache
+           "pg_operator,pg_inherits",   // its cache is always filled
+           "pg_operator,LANGOID"}) {    // on a catalog that is not preloadable
+    ASSERT_OK(SetCacheList(value));
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Fetch("SELECT 1"));
+    ASSERT_EQ(ASSERT_RESULT(MissesFor(conn, kOperatorQuery))[kOperatorNameIndex], 0)
+        << "Value: '" << value << "'";
+  }
+}
+
+class PgCatalogPreloadCacheListUnknownNameAtStartupTest
+    : public PgCatalogPreloadCacheListTestBase {
+ protected:
+  std::vector<std::string> ExtraTServerFlags() const override {
+    return {"--ysql_yb_test_catalog_preload_cache_list=pg_operator,pg_nosuch"};
+  }
+};
+
+// An unknown name in the list does not keep postgres from starting.
+TEST_F_EX(PgLibPqTest, CatalogPreloadCacheListUnknownNameAtStartup,
+          PgCatalogPreloadCacheListUnknownNameAtStartupTest) {
+  ASSERT_OK(CreateTestObjects());
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Fetch("SELECT 1"));
+  ASSERT_EQ(ASSERT_RESULT(MissesFor(conn, kOperatorQuery))[kOperatorNameIndex], 0);
+}
+
+// A full catalog cache refresh does not build the indexes on temp tables: loading their opclass
+// options would look up ATTNUM, which the list leaves unfilled. They are built on first use.
+TEST_F_EX(PgLibPqTest, CatalogPreloadCacheListTempIndexOptions,
+          PgCatalogPreloadCacheListTestBase) {
+  ASSERT_OK(SetCacheList("pg_class"));
+  auto ddl_conn = ASSERT_RESULT(Connect());
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TEMP TABLE tt (k INT, x TSVECTOR)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX tt_x ON tt USING gist (x tsvector_ops (siglen = 100))"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO tt SELECT g, to_tsvector('w' || g) FROM generate_series(1, 100) g"));
+  // Reports the misses of the statements above.
+  ASSERT_OK(conn.Fetch("SELECT 1"));
+
+  ASSERT_OK(IncrementAllDBCatalogVersions(ddl_conn, IsBreakingCatalogVersionChange::kTrue));
+  WaitForCatalogVersionToPropagate();
+  auto misses = ASSERT_RESULT(MissesFor(conn, "SELECT 1"));
+  ASSERT_EQ(misses[kAttnumIndex], 0);
+
+  ASSERT_TRUE(ASSERT_RESULT(conn.FetchRow<bool>(
+      "SELECT pg_get_indexdef('tt_x'::regclass) LIKE '%siglen=''100''%'")));
+  ASSERT_OK(conn.Execute("SET enable_seqscan = off"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+                "SELECT count(*) FROM tt WHERE x @@ to_tsquery('w5')")),
+            1);
+}
+
+// The list is set for the whole server, so not even a superuser can set it in a session.
+TEST_F_EX(PgLibPqTest, CatalogPreloadCacheListNotSettableInSession,
+          PgCatalogPreloadCacheListTestBase) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_NOK_STR_CONTAINS(
+      conn.Execute("SET yb_test_catalog_preload_cache_list = 'pg_class'"),
+      "cannot be changed now");
+}
+
 // Enables the regular-backend tserver response cache for the connection-auth
 // prefetch (#32063): the connection-auth prefetch batch (pg_authid, ...) is
 // served from the tserver response cache, removing the per-connection master
@@ -5938,17 +6300,8 @@ class PgLibPqTestTableLocksDisabled : public PgLibPqTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     // TODO(#28742): Fix interaction with ysql_yb_ddl_transaction_block_enabled here.
     // Enabling table locks+concurrent DDLs causes the ConcurrentAnalyzeWithDDL fail.
-    options->extra_tserver_flags.emplace_back("--enable_object_locking_for_table_locks=false");
-    options->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
-    // DDL savepoint and the in-txn-block write fastpath require transactional DDL, so keep
-    // these flags consistent.
-    options->extra_tserver_flags.emplace_back("--ysql_yb_enable_ddl_savepoint_support=false");
-    options->extra_tserver_flags.emplace_back(
-        "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false");
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    options->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=false");
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
+    ToggleDDLMode(options->extra_tserver_flags, /* use_legacy = */ true);
+    ToggleDDLMode(options->extra_master_flags, /* use_legacy = */ true);
     PgLibPqTest::UpdateMiniClusterOptions(options);
   }
 };
@@ -6115,6 +6468,117 @@ TEST_F(PgLibPqTest, DumpTabletData) {
   ASSERT_OK(ValidateTabletDataAcrossReplicas(tablet_id));
 }
 
+// pg_stat_replication must not wait for the cdc_state table when it doesn't exist (#34797).
+TEST_F(PgLibPqTest, PgStatReplicationWithoutCdcStateTable) {
+  auto list_slot_entries_calls = [this] {
+    return pg_ts->GetMetric<int64>(
+        &METRIC_ENTITY_server, "yb.tabletserver",
+        &METRIC_handler_latency_yb_tserver_PgClientService_ListSlotEntries, "total_count");
+  };
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET statement_timeout = '10s'"));
+  const auto initial_calls = ASSERT_RESULT(list_slot_entries_calls());
+
+  // No walsenders, so no ListSlotEntries RPC.
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT COUNT(*) FROM pg_stat_replication")), 0);
+  ASSERT_EQ(ASSERT_RESULT(list_slot_entries_calls()), initial_calls);
+
+  // A replication connection without a slot makes ListSlotEntries run without cdc_state.
+  auto repl_conn = ASSERT_RESULT(ConnectToDBWithReplication("yugabyte"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT COUNT(*) FROM pg_stat_replication")), 1);
+  ASSERT_EQ(ASSERT_RESULT(list_slot_entries_calls()), initial_calls + 1);
+}
+
+// YSQL upgrade re-runs a migration that fails with a serialization failure, which concurrent DDL
+// can cause (#32301).
+//
+// Flow:
+// 1. Create a database and enable yb_enable_extended_sql_codes on it, as a user could. The upgrade
+//    connection must override it, or the injected read restart (YB002) would not reach
+//    ysql_upgrade as 40001 and would not be retried.
+// 2. Make the database look one migration behind, so the UpgradeYsql RPC re-applies the newest
+//    migration to it and to no other database.
+// 3. Inject two failures with TEST_ysql_upgrade_fail_migration_attempts. Each failing attempt runs
+//    the whole script, whose statements commit, and then a new transaction block raises YB002 and
+//    is left aborted. So each retry needs a ROLLBACK and an idempotent re-run of a script whose
+//    changes are already in the catalog. With the default retry budget the upgrade succeeds and
+//    records the migration once.
+// 4. Lower ysql_upgrade_migration_max_retries to 1, so the two injected failures exhaust it. The
+//    upgrade then fails with the injected error and does not record the migration.
+//
+// Because the test re-applies whichever migration is newest, a new migration that errors when
+// re-run also fails here. TestYsqlUpgrade.upgradeIsIdempotent is what checks that a re-run leaves
+// the catalog, including OIDs, unchanged.
+TEST_F(PgLibPqTest, YsqlUpgradeRetriesSerializationFailure) {
+  constexpr auto kDbName = "upgrade_retry_db";
+
+  // Step 1: the database setting applies to every new connection to it, including the one
+  // ysql_upgrade opens.
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDbName));
+    ASSERT_OK(conn.ExecuteFormat(
+        "ALTER DATABASE $0 SET yb_enable_extended_sql_codes = true", kDbName));
+  }
+  auto conn = ASSERT_RESULT(ConnectToDB(kDbName));
+
+  // ysql_upgrade takes a database's version from the highest row in its pg_yb_migration. A fresh
+  // database holds a single row, the newest migration.
+  const auto [major, minor] = ASSERT_RESULT((conn.FetchRow<int32_t, int32_t>(
+      "SELECT major, minor FROM pg_yb_migration ORDER BY major DESC, minor DESC LIMIT 1")));
+
+  // Step 2 helper: replace the newest version row with the previous version, so the database is
+  // one migration behind. Deleting the only row instead would leave pg_yb_migration empty, and
+  // ysql_upgrade would then re-derive the version from catalog state and re-run every migration.
+  const auto [prev_major, prev_minor] =
+      minor > 0 ? std::pair(major, minor - 1) : std::pair(major - 1, 0);
+  const auto forget_latest_migration = [&]() -> Status {
+    return conn.ExecuteFormat(
+        "BEGIN;\n"
+        "SET LOCAL yb_non_ddl_txn_for_sys_tables_allowed TO true;\n"
+        "INSERT INTO pg_yb_migration (major, minor, name) SELECT $2, $3, 'test' WHERE NOT EXISTS "
+        "(SELECT 1 FROM pg_yb_migration WHERE major = $2 AND minor = $3);\n"
+        "DELETE FROM pg_yb_migration WHERE major = $0 AND minor = $1;\n"
+        "COMMIT;", major, minor, prev_major, prev_minor);
+  };
+
+  // Runs YSQL upgrade the way YBA's RunYsqlUpgrade does: the UpgradeYsql RPC on a tserver, which
+  // applies every pending migration to every database.
+  const auto run_upgrade = [this]() -> Status {
+    tserver::UpgradeYsqlRequestPB req;
+    tserver::UpgradeYsqlResponsePB resp;
+    rpc::RpcController rpc;
+    rpc.set_timeout(4min * kTimeMultiplier);
+    RETURN_NOT_OK(cluster_->GetTServerProxy<tserver::TabletServerAdminServiceProxy>(0)
+        .UpgradeYsql(req, &resp, &rpc));
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+    return Status::OK();
+  };
+
+  // ysql_upgrade inserts the version row only after the script succeeds, so the row is present
+  // exactly when the migration was applied.
+  const auto latest_migration_count = [&conn, major, minor]() {
+    return conn.FetchRow<PGUint64>(Format(
+        "SELECT COUNT(*) FROM pg_yb_migration WHERE major = $0 AND minor = $1", major, minor));
+  };
+
+  // Step 3: attempts 1 and 2 fail and are retried, attempt 3 succeeds.
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_ysql_upgrade_fail_migration_attempts", "2"));
+  ASSERT_OK(forget_latest_migration());
+  ASSERT_OK(run_upgrade());
+  ASSERT_EQ(ASSERT_RESULT(latest_migration_count()), 1U);
+
+  // Step 4: attempt 1 fails and is retried once, attempt 2 fails and the error is returned.
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_upgrade_migration_max_retries", "1"));
+  ASSERT_OK(forget_latest_migration());
+  auto status = run_upgrade();
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "Injected read restart");
+  ASSERT_EQ(ASSERT_RESULT(latest_migration_count()), 0U);
+}
+
 // Test yb-admin get_table_hash command for colocated, non-colocated tables with different number of
 // tablets, but same data returns the same XOR hash.
 TEST_F(PgLibPqTest, TestGetTableXorHash) {
@@ -6193,25 +6657,8 @@ class PgLibPqTestDropTableIfExistsCascadeRetry : public PgLibPqTest {
     // Disable object locking and transactional DDL. If they are enabled, DDL conflicts
     // are either avoided or DDL statement retries are not supported in READ COMMITTED,
     // which would prevent us from exercising the DDL retry path.
-    options->extra_master_flags.push_back("--enable_object_locking_for_table_locks=false");
-    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
-    options->extra_master_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=false");
-    options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=false");
-    // DDL savepoint and the in-txn-block write fastpath require transactional DDL, so keep
-    // these flags consistent.
-    options->extra_tserver_flags.push_back("--ysql_yb_enable_ddl_savepoint_support=false");
-    options->extra_tserver_flags.push_back(
-        "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false");
-    options->extra_master_flags.push_back("--ysql_yb_enable_ddl_savepoint_support=false");
-    options->extra_master_flags.push_back(
-        "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false");
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    options->extra_master_flags.push_back("--ysql_enable_concurrent_ddl=false");
-    options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=false");
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_master_flags, "ysql_enable_concurrent_ddl");
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
+    ToggleDDLMode(options->extra_master_flags, /* use_legacy = */ true);
+    ToggleDDLMode(options->extra_tserver_flags, /* use_legacy = */ true);
 
     // DDL statement retries are only supported in READ COMMITTED isolation.
     // In debug builds, this flag defaults to false, causing READ COMMITTED to fall back

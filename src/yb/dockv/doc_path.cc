@@ -14,13 +14,14 @@
 #include "yb/dockv/doc_path.h"
 
 #include "yb/dockv/doc_key.h"
+#include "yb/util/format.h"
 
 using std::string;
 
 namespace yb::dockv {
 
 std::string DocPath::ToString() const {
-  return strings::Substitute("DocPath($0, $1)",
+  return Format("DocPath($0, $1)",
       BestEffortDocDBKeyToStr(encoded_doc_key_), rocksdb::VectorToString(subkeys_));
 }
 

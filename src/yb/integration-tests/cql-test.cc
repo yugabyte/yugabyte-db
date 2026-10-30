@@ -39,6 +39,7 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/curl_util.h"
+#include "yb/util/format.h"
 #include "yb/util/json_document.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/random_util.h"
@@ -555,14 +556,25 @@ TEST_F(CqlTest, ReadTimeoutTest) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_read_write_timeout_ms) = 5;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_connection_timeout) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_read_deadline_check_granularity) = 1;
-  starting_time = CoarseMonoClock::now();
-  auto result = session.ExecuteAndRenderToString(
-      "select acctid from test_t WHERE custid = '123' AND roletitle = 'Manager'");
-  // Use a slightly lower bound to account for clock granularity and propagation latency on macOS.
-  ASSERT_GE(MonoDelta(CoarseMonoClock::now() - starting_time).ToMilliseconds(),
-      FLAGS_client_read_write_timeout_ms - 1);
-  // Verify that read operation failed due to passed deadline.
-  ASSERT_NOK(result);
+  Result<std::string> result = std::string();
+  // On slow builds the deadline may expire before the read is executed by the tablet (e.g. in
+  // tablet lookup or the RPC queue), retry then.
+  for (int attempt = 0; attempt < 10; ++attempt) {
+    starting_time = CoarseMonoClock::now();
+    result = session.ExecuteAndRenderToString(
+        "select acctid from test_t WHERE custid = '123' AND roletitle = 'Manager'");
+    // Use a slightly lower bound to account for clock granularity and propagation latency on
+    // macOS.
+    ASSERT_GE(MonoDelta(CoarseMonoClock::now() - starting_time).ToMilliseconds(),
+        FLAGS_client_read_write_timeout_ms - 1);
+    // Verify that read operation failed due to passed deadline.
+    ASSERT_NOK(result);
+    if (result.status().message().ToBuffer().find("Deadline for query passed") !=
+        std::string::npos) {
+      break;
+    }
+    LOG(INFO) << "Deadline expired before read execution, retrying: " << result.status();
+  }
   ASSERT_STR_CONTAINS(result.status().message().ToBuffer(), "Deadline for query passed");
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_read_write_timeout_ms) = 60000;
 }
@@ -1015,10 +1027,10 @@ TEST_F(CqlTest, TestCQLPreparedStmtStats) {
   for (int i = 0; i < 9; i += 2) {
     CassandraResult res =  ASSERT_RESULT(
         session.ExecuteWithResult(sel_prepared.Bind().Bind(0, i)));
-    ASSERT_EQ(res.RenderToString(), strings::Substitute("$0,$1", i, i));
+    ASSERT_EQ(res.RenderToString(), Format("$0,$1", i, i));
   }
 
-  ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements", ToString(addrs[0])), &buf));
+  ASSERT_OK(curl.FetchURL(Format("http://$0/statements", ToString(addrs[0])), &buf));
   JsonDocument doc;
   auto root = ASSERT_RESULT(doc.Parse(buf.ToString()));
   auto stmt_stats = root["prepared_statements"];
@@ -1070,7 +1082,7 @@ TEST_F(CqlTest, TestCQLUnpreparedStmtStats) {
 
   EasyCurl curl;
   faststring buf;
-  ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements", ToString(addrs[0])), &buf));
+  ASSERT_OK(curl.FetchURL(Format("http://$0/statements", ToString(addrs[0])), &buf));
 
   JsonDocument doc;
   auto root = ASSERT_RESULT(doc.Parse(buf.ToString()));
@@ -1097,10 +1109,10 @@ TEST_F(CqlTest, TestCQLUnpreparedStmtStats) {
   }
 
   // reset the counters and verify
-  ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements-reset",
-                                              ToString(addrs[0])), &buf));
-  ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements",
-                                              ToString(addrs[0])), &buf));
+  ASSERT_OK(curl.FetchURL(Format("http://$0/statements-reset",
+                                 ToString(addrs[0])), &buf));
+  ASSERT_OK(curl.FetchURL(Format("http://$0/statements",
+                                 ToString(addrs[0])), &buf));
 
   auto post_reset_root = ASSERT_RESULT(doc.Parse(buf.ToString()));
   auto stmt_stats_post_reset = ASSERT_RESULT(post_reset_root["unprepared_statements"].GetArray());

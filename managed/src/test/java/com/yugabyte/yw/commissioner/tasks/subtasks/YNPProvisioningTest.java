@@ -39,6 +39,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
@@ -68,6 +69,7 @@ public class YNPProvisioningTest extends FakeDBApplication {
   @Mock private NodeUniverseManager nodeUniverseManager;
 
   @Mock private RuntimeConfGetter confGetter;
+  private YNPConfigGenerator ynpConfigGenerator;
 
   @Mock ImageBundleUtil mockImageBundleUtil;
 
@@ -92,10 +94,16 @@ public class YNPProvisioningTest extends FakeDBApplication {
     when(confGetter.getConfForScope(any(Provider.class), eq(ProviderConfKeys.ybUserHomeOverride)))
         .thenReturn("");
     when(confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerRequestLogLevel)).thenReturn(0);
-    YNPConfigGenerator ynpConfigGenerator =
+    setYbaFipsEnabled(false);
+    ynpConfigGenerator =
         new YNPConfigGenerator(
             confGetter, mockCloudQueryHelper, mockImageBundleUtil, mockFileHelperService);
     ynpProvisioning = new YNPProvisioning(baseTaskDependencies, ynpConfigGenerator);
+  }
+
+  private void setYbaFipsEnabled(boolean fipsEnabled) {
+    Config staticConf = ConfigFactory.parseMap(Map.of(CommonUtils.FIPS_ENABLED, fipsEnabled));
+    lenient().when(confGetter.getStaticConf()).thenReturn(staticConf);
   }
 
   private void setTaskParams(YNPProvisioning.Params params) throws Exception {
@@ -413,6 +421,49 @@ public class YNPProvisioningTest extends FakeDBApplication {
     assertTrue(encoded.contains("/mnt/d1=22222222-2222-2222-2222-222222222222"));
 
     Files.deleteIfExists(tempFile);
+  }
+
+  @Test
+  public void testDetachedNodeConfigTakesFipsFromYba() {
+    // A node checked without a universe (adding it to an on-prem provider) has only YBA's own FIPS
+    // mode to go by, and a FIPS YBA allows nothing but FIPS universes.
+    YNPConfigGenerator.ConfigParams params =
+        YNPConfigGenerator.ConfigParams.builder()
+            .nodeAgentHome(Paths.get("/tmp/node-agent"))
+            .provider(provider)
+            .build();
+
+    assertEquals(
+        false,
+        ynpConfigGenerator.generateConfig(params).get("ynp").get("is_fips_enabled").asBoolean());
+
+    setYbaFipsEnabled(true);
+    assertEquals(
+        true,
+        ynpConfigGenerator.generateConfig(params).get("ynp").get("is_fips_enabled").asBoolean());
+  }
+
+  @Test
+  public void testUniverseConfigTakesFipsFromUniverse() {
+    Universe universe = ModelFactory.createUniverse("fips-universe", customer.getId());
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              details.fipsEnabled = true;
+              u.setUniverseDetails(details);
+            });
+    YNPConfigGenerator.ConfigParams params =
+        YNPConfigGenerator.ConfigParams.builder()
+            .nodeAgentHome(Paths.get("/tmp/node-agent"))
+            .provider(provider)
+            .universe(universe)
+            .build();
+
+    assertEquals(
+        true,
+        ynpConfigGenerator.generateConfig(params).get("ynp").get("is_fips_enabled").asBoolean());
   }
 
   @Test

@@ -43,8 +43,6 @@
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
 
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_header.pb.h"
@@ -57,6 +55,7 @@
 
 #include "yb/util/crc.h"
 #include "yb/util/env_util.h"
+#include "yb/util/format.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/stopwatch.h"
@@ -297,7 +296,7 @@ TEST_F(RemoteBootstrapServiceTest, TestBeginRBSPrunesStaleRemoteLogAnchor) {
   // an S != L source's RemoteBootstrapAnchorClient would have done on the leader before a prior
   // RBS attempt aborted.
   const string stale_owner =
-      strings::Substitute("$0-$1-$2", requestor, tablet_id, "1000.000s");
+      Format("$0-$1-$2", requestor, tablet_id, "1000.000s");
   RegisterLogAnchorResponsePB reg_resp;
   RpcController reg_ctl;
   ASSERT_OK(DoRegisterLogAnchor(stale_owner, min_index, &reg_resp, &reg_ctl));

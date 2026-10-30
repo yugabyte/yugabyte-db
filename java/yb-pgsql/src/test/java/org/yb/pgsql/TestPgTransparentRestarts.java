@@ -40,8 +40,10 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import static org.yb.util.BuildTypeUtil.getTimeoutMultiplier;
+import static org.yb.util.BuildTypeUtil.nonTsanVsTsan;
 
 import org.yb.client.YBClient;
+import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.util.CatchingThread;
 import org.yb.util.RandomUtil;
 import org.yb.util.ThreadUtil;
@@ -128,8 +130,6 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
     flags.put("ysql_output_buffer_size", String.valueOf(PG_OUTPUT_BUFFER_SIZE_BYTES));
     flags.put("yb_enable_read_committed_isolation", "true");
     flags.put("wait_queue_poll_interval_ms", "5");
-    flags.put("enable_object_locking_for_table_locks", "true");
-    flags.put("ysql_yb_ddl_transaction_block_enabled", "true");
     // Exaggerate the clock skew to make read restarts more likely.
     flags.put("max_clock_skew_usec", "2000000");
     // Scan tablets sequentially (see the NUM_TABLETS comment). With parallel reads a tablet that
@@ -138,6 +138,8 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
     // then flakily observe zero of them. Reading one tablet at a time makes surfacing depend only
     // on the first scanned tablet not being a recently-written one, which is far more reliable.
     flags.put("ysql_select_parallelism", "1");
+    // Under loaded TSAN hosts, CREATE DATABASE copying the template catalog can exceed 180s.
+    flags.put("ysql_ddl_rpc_timeout_sec", String.valueOf(nonTsanVsTsan(180, 600)));
     return flags;
   }
 
@@ -146,6 +148,13 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
     Map<String, String> flags = super.getMasterFlags();
     flags.put("max_clock_skew_usec", "2000000");
     return flags;
+  }
+
+  @Override
+  protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
+    super.customizeMiniClusterBuilder(builder);
+    // Under TSAN, restoring the initdb snapshot on the new master leader can take over 80s.
+    builder.defaultAdminOperationTimeoutMs(nonTsanVsTsan(90000, 300000));
   }
 
   @Before
@@ -1859,7 +1868,9 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
     public ConcurrentInsertParallelSelectTester(
         ConnectionBuilder cb,
         String queryString) {
-      super(cb, getLongString(), 50);
+      // Under TSAN each INSERT waits ~20s behind slow parallel SERIALIZABLE SELECTs, so 50 INSERTs
+      // overrun INSERTS_AWAIT_TIME_SEC.
+      super(cb, getLongString(), nonTsanVsTsan(50, 20));
       this.queryString = queryString;
     }
 

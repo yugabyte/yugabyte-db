@@ -26,6 +26,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -706,6 +707,50 @@ class DB {
       const int output_level, const int output_path_id = -1) {
     return CompactFiles(compact_options, DefaultColumnFamily(),
                         input_file_names, output_level, output_path_id);
+  }
+
+  // Reports the outcome of a db path move scheduled by ScheduleDBPathMove(). Runs with no DB lock
+  // held, so it may use the DB -- except that the move counts as in-flight background work until
+  // the callback returns, so waiting for background work to drain deadlocks on this very
+  // callback: no PauseBackgroundWork, CancelAllBackgroundWork(wait=true), DB close, or
+  // CompactRange with exclusive_manual_compaction (its default). Defer those to another thread.
+  //
+  // Runs on a compaction pool thread, the caller's thread if the pool rejects the task, or the
+  // thread driving shutdown -- so do not hold a lock the callback takes across ScheduleDBPathMove.
+  using DBPathMoveCompactionCallback = std::function<void(const Status&)>;
+
+  // Schedules a move of live SST `file_number` to db_paths[target_path_id] as a raw byte-for-byte
+  // copy: nothing decodes a key or a value, so the moved file is identical to the source.
+  //
+  // The move runs on the compaction/flush priority thread pool, so it is throttled like any other
+  // background work: it shares the compaction rate limiter, queues below regular compactions, and
+  // is preempted mid-copy by a higher priority task. Shutdown waits for moves to finish or abort.
+  //
+  // Returns immediately after queueing. If (and only if) this returns OK, `callback` is invoked
+  // exactly once with one of these outcomes; all but OK leave the source file untouched:
+  //   - OK: the file was copied to target_path_id and the MANIFEST updated.
+  //   - NotFound: the file is no longer live, e.g. a compaction already replaced it; a no-op.
+  //   - AlreadyPresent: the file already sits on target_path_id; a no-op.
+  //   - Aborted: a compaction holds the file and places its output itself; re-check afterwards.
+  //   - ShutdownInProgress: the DB began shutting down while the move was queued or mid-copy.
+  //   - Anything else: the copy or the MANIFEST update failed.
+  // Given a valid request on a DB that supports moves, this returns without queueing -- and
+  // without invoking `callback` -- only if the DB is shutting down.
+  //
+  // target_path_id must be a valid index into this DB's db_paths; anything else is a programming
+  // error, not a runtime condition. Moves are deliberately not held back by an in-progress
+  // exclusive manual compaction: a move never touches a file a compaction already holds (it
+  // reports Aborted instead), so it only relocates files that compaction did not take.
+  virtual Status ScheduleDBPathMove(
+      ColumnFamilyHandle* column_family, uint64_t file_number, uint32_t target_path_id,
+      DBPathMoveCompactionCallback callback) {
+    return STATUS(NotSupported, "ScheduleDBPathMove not implemented");
+  }
+
+  virtual Status ScheduleDBPathMove(
+      uint64_t file_number, uint32_t target_path_id, DBPathMoveCompactionCallback callback) {
+    return ScheduleDBPathMove(
+        DefaultColumnFamily(), file_number, target_path_id, std::move(callback));
   }
 
   // This function will wait until all currently running background processes

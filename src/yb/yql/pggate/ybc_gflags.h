@@ -85,7 +85,9 @@ typedef struct {
   const uint32_t* wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms;
   const uint64_t* ysql_catalog_prefetch_row_limit;
   const uint64_t* ysql_catalog_prefetch_size_limit;
+  const bool*     ysql_catalog_prefetch_minimize_index_scans;
   const bool*     ysql_enable_startup_client_connection_check;
+  const bool*     ysql_yb_pg_partman_use_native_txn_ddl_and_locks;
 } YbcPgGFlagsAccessor;
 
 const YbcPgGFlagsAccessor* YBCGetGFlags();

@@ -62,7 +62,6 @@ set(GUTIL_SRCS
   strings/strcat.cc
   strings/stringpiece.cc
   strings/strip.cc
-  strings/substitute.cc
   strings/util.cc
   strtoint.cc
   sysinfo.cc

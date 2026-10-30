@@ -47,17 +47,24 @@
 #include "yb/tserver/session_registry.h"
 #include "yb/tserver/pg_mutation_counter.h"
 #include "yb/tserver/pg_table_cache.h"
+#include "yb/tserver/tserver_error.h"
 
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/std_util.h"
-#include "yb/util/thread.h"
 
 using namespace std::literals;
 
 DECLARE_uint64(rpc_max_message_size);
+
+DEFINE_test_flag(uint64, thin_client_perform_delay_ms, 0,
+                 "Delay between a thin client Perform finding its session and being applied.");
+
+DEFINE_test_flag(bool, thin_client_omit_session_lost_code, false,
+                 "Send a lost thin client session's status without its error code, as older "
+                 "tservers do.");
 
 namespace yb::tserver {
 
@@ -66,21 +73,28 @@ namespace {
 // Thin clients only need the schema info of an opened table.
 using ThinOpenTableQuery = OpenTableQueryBase<ThinOpenTableRequestPB, ThinOpenTableResponsePB>;
 
+// The status for a session this tserver no longer serves. The thin client reopens on its code.
+Status SessionLostStatus(const Status& status) {
+  if (PREDICT_FALSE(FLAGS_TEST_thin_client_omit_session_lost_code)) {
+    return status;
+  }
+  return status.CloneAndAddErrorCode(TabletServerError(TabletServerErrorPB::SESSION_LOST));
+}
+
 class ThinSession;
 using ThinSessionPtr = std::shared_ptr<ThinSession>;
 
 // One Perform call: holds the rpc context with its request/response, the table lookup result and
 // the prepared operations.
 class ThinPerformQuery : public std::enable_shared_from_this<ThinPerformQuery>,
-                         public rpc::ThreadPoolTask,
                          public PgTablesQueryListener {
  public:
   using ContextHolder = rpc::TypedPBRpcContextHolder<
       LWThinPerformRequestPB, LWThinPerformResponsePB, rpc::RpcCallLWParamsImpl>;
 
-  ThinPerformQuery(ThinSessionPtr&& session, ContextHolder&& context, rpc::Messenger& messenger)
-      : session_(std::move(session)), context_(std::move(context)), messenger_(messenger),
-        tid_(Thread::UniqueThreadId()), wait_state_ptr_(ash::WaitStateInfo::CurrentWaitState()) {}
+  ThinPerformQuery(ThinSessionPtr&& session, ContextHolder&& context)
+      : session_(std::move(session)), context_(std::move(context)),
+        wait_state_ptr_(ash::WaitStateInfo::CurrentWaitState()) {}
 
   LWThinPerformRequestPB& req() { return context_.req(); }
   LWThinPerformResponsePB& resp() { return context_.resp(); }
@@ -91,17 +105,9 @@ class ThinPerformQuery : public std::enable_shared_from_this<ThinPerformQuery>,
     return SharedField(context().shared_params(), &resp().arena());
   }
 
-  const PgTablesQueryResult& tables() const { return *tables_; }
+  const PgTablesQueryResult& tables() const { return tables_; }
 
-  void Ready(const PgTablesQueryResult& tables) override {
-    tables_ = tables;
-    if (Thread::UniqueThreadId() == tid_) {
-      Run();
-    } else {
-      retained_self_ = shared_from_this();
-      messenger_.ThreadPool().Enqueue(this);
-    }
-  }
+  void Ready(PgTablesQueryResult&& tables) override;
 
   void RespondFailure(const Status& status) {
     DCHECK(!status.ok());
@@ -115,18 +121,9 @@ class ThinPerformQuery : public std::enable_shared_from_this<ThinPerformQuery>,
   std::vector<std::shared_ptr<client::YBPgsqlOp>> ops;
 
  private:
-  void Run() override;
-
-  void Done(const Status& status) override {
-    retained_self_ = nullptr;
-  }
-
   const ThinSessionPtr session_;
   ContextHolder context_;
-  rpc::Messenger& messenger_;
-  const int64_t tid_;
-  std::optional<PgTablesQueryResult> tables_;
-  std::shared_ptr<ThinPerformQuery> retained_self_;
+  PgTablesQueryResult tables_;
 
   // kept here in case the task is scheduled in another thread.
   const ash::WaitStateInfoPtr wait_state_ptr_;
@@ -156,7 +153,8 @@ class ThinSession : public ClientSessionBase,
     {
       std::lock_guard lock(mutex_);
       if (shutting_down_) {
-        query->RespondFailure(STATUS(ShutdownInProgress, "Session is shutting down"));
+        query->RespondFailure(
+            SessionLostStatus(STATUS(ShutdownInProgress, "Session is shutting down")));
         return;
       }
     }
@@ -308,7 +306,8 @@ class ThinSession : public ClientSessionBase,
   bool shutting_down_ GUARDED_BY(mutex_) = false;
 };
 
-void ThinPerformQuery::Run() {
+void ThinPerformQuery::Ready(PgTablesQueryResult&& tables) {
+  tables_ = std::move(tables);
   ADOPT_WAIT_STATE(wait_state_ptr_);
   SCOPED_WAIT_STATUS(OnCpu_Active);
   session_->Perform(shared_from_this());
@@ -323,11 +322,16 @@ class ThinClientServiceImpl::Impl : public SessionRegistryContext {
       const scoped_refptr<ClockBase>& clock, rpc::Messenger* messenger,
       PgMutationCounter* mutation_counter)
       : client_future_(client_future), clock_(clock), messenger_(*messenger),
-        mutation_counter_(mutation_counter), table_cache_(client_future),
+        mutation_counter_(mutation_counter), table_cache_(client_future, messenger_.ThreadPool()),
         session_registry_(&messenger->scheduler(), this) {}
 
   virtual ~Impl() {
     Shutdown();
+  }
+
+  // Keeps the base text, which older thin clients match.
+  Status UnknownSessionStatus(uint64_t session_id) override {
+    return SessionLostStatus(SessionRegistryContext::UnknownSessionStatus(session_id));
   }
 
   Status Heartbeat(const ThinHeartbeatRequestPB& req, ThinHeartbeatResponsePB* resp) {
@@ -359,13 +363,34 @@ class ThinClientServiceImpl::Impl : public SessionRegistryContext {
       Respond(session.status(), resp, context);
       return;
     }
+    if (const auto delay_ms = FLAGS_TEST_thin_client_perform_delay_ms;
+        PREDICT_FALSE(delay_ms > 0)) {
+      // The context keeps the request and response alive while the Perform waits.
+      auto delayed_context = std::make_shared<rpc::RpcContext>(std::move(*context));
+      messenger_.scheduler().Schedule(
+          [this, thin_session = std::move(*session), req, resp, delayed_context](
+              const Status& status) {
+            if (!status.ok()) {
+              delayed_context->RespondFailure(status);
+              return;
+            }
+            DoPerform(thin_session, req, resp, delayed_context.get());
+          },
+          delay_ms * 1ms);
+      return;
+    }
+    DoPerform(std::move(*session), req, resp, context);
+  }
+
+  void DoPerform(
+      ThinSessionPtr session, LWThinPerformRequestPB* req, LWThinPerformResponsePB* resp,
+      rpc::RpcContext* context) {
     boost::container::small_vector<TableId, 4> table_ids;
     for (const auto& op : req->ops()) {
       AddIfMissing(table_ids, op.has_read() ? op.read().table_id() : op.write().table_id());
     }
     auto query = std::make_shared<ThinPerformQuery>(
-        std::move(*session), MakeTypedPBRpcContextHolder(*req, resp, std::move(*context)),
-        messenger_);
+        std::move(session), MakeTypedPBRpcContextHolder(*req, resp, std::move(*context)));
     table_cache_.GetTables(table_ids, query);
   }
 

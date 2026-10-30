@@ -19,6 +19,7 @@ import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
@@ -63,7 +64,7 @@ import org.apache.commons.lang3.StringUtils;
 @Singleton
 public class NodeAgentPoller {
   public static final String RETENTION_DURATION_PROPERTY = "yb.node_agent.retention_duration";
-  private static final Duration POLLER_INITIAL_DELAY = Duration.ofMinutes(5);
+  private static final Duration POLLER_INITIAL_DELAY = Duration.ofMinutes(2);
   private static final String LIVE_POLLER_POOL_NAME = "node_agent.live_node_poller";
   private static final String DEAD_POLLER_POOL_NAME = "node_agent.dead_node_poller";
   private static final String UPGRADER_POOL_NAME = "node_agent.upgrader";
@@ -92,6 +93,19 @@ public class NodeAgentPoller {
               KnownAlertLabels.NODE_ADDRESS.labelName())
           .register(PrometheusRegistry.defaultRegistry);
 
+  private static final String NODE_AGENT_ROOT_NODE_EXPORTER_NAME =
+      "ybp_nodeagent_root_node_exporter";
+  private static final Gauge NODE_AGENT_ROOT_NODE_EXPORTER_GAUGE =
+      Gauge.builder()
+          .name(NODE_AGENT_ROOT_NODE_EXPORTER_NAME)
+          .help("Does the node run node_exporter from the root-level systemd unit")
+          .labelNames(
+              KnownAlertLabels.CUSTOMER_UUID.labelName(),
+              KnownAlertLabels.NODE_AGENT_UUID.labelName(),
+              KnownAlertLabels.NODE_ADDRESS.labelName(),
+              KnownAlertLabels.NODE_NAME.labelName())
+          .register(PrometheusRegistry.defaultRegistry);
+
   private static final String NODE_AGENT_CONNECTION_NAME = "ybp_nodeagent_connection";
   private static final Gauge NODE_AGENT_CONNECTION_GAUGE =
       Gauge.builder()
@@ -109,6 +123,7 @@ public class NodeAgentPoller {
   private final NodeAgentClient nodeAgentClient;
   private final NodeAgentManager nodeAgentManager;
   private final SwamperHelper swamperHelper;
+  private final com.google.inject.Provider<PlatformReplicationManager> replicationManagerProvider;
 
   private final Map<UUID, PollerTask> pollerTasks = new ConcurrentHashMap<>();
 
@@ -126,13 +141,15 @@ public class NodeAgentPoller {
       PlatformScheduler platformScheduler,
       NodeAgentManager nodeAgentManager,
       NodeAgentClient nodeAgentClient,
-      SwamperHelper swamperHelper) {
+      SwamperHelper swamperHelper,
+      com.google.inject.Provider<PlatformReplicationManager> replicationManagerProvider) {
     this.confGetter = confGetter;
     this.platformExecutorFactory = platformExecutorFactory;
     this.platformScheduler = platformScheduler;
     this.nodeAgentManager = nodeAgentManager;
     this.nodeAgentClient = nodeAgentClient;
     this.swamperHelper = swamperHelper;
+    this.replicationManagerProvider = replicationManagerProvider;
   }
 
   enum PollerTaskState {
@@ -278,8 +295,9 @@ public class NodeAgentPoller {
         swamperHelper.writeNodeAgentTargetJson(nodeAgent);
         isTargetFileWritten = true;
       }
+      PingResponse response;
       try {
-        nodeAgentClient.waitForServerReady(nodeAgent, Duration.ofSeconds(2));
+        response = nodeAgentClient.waitForServerReady(nodeAgent, Duration.ofSeconds(2));
         publishMetric(nodeAgent, NODE_AGENT_CONNECTION_GAUGE, 1);
       } catch (RuntimeException e) {
         if (lastFailedCount < MAX_FAILED_CONN_COUNT) {
@@ -322,6 +340,14 @@ public class NodeAgentPoller {
         return;
       }
       nodeAgent.heartbeat();
+      // Named after the node, so the alerts can list node names like other node alerts.
+      NODE_AGENT_ROOT_NODE_EXPORTER_GAUGE
+          .labelValues(
+              nodeAgent.getCustomerUuid().toString(),
+              nodeAgent.getUuid().toString(),
+              String.format("%s:%s", nodeAgent.getIp(), nodeAgent.getPort()),
+              nodeAgent.getName())
+          .set(response.getServerInfo().getRootNodeExporterUnit() ? 1 : 0);
       boolean wasDead = !isNodeAgentAlive();
       lastFailedCount = 0;
       if (wasDead) {
@@ -413,7 +439,7 @@ public class NodeAgentPoller {
         log.info("Starting remote upgrade for node agent {}", nodeAgent);
         // Set up the config and symlink on the remote node agent.
         nodeAgentClient.startUpgrade(nodeAgent, upgradeParam);
-        log.info("Completed remote upgrade for node agent", nodeAgent);
+        log.info("Completed remote upgrade for node agent {}", nodeAgent);
         // Point the node agent to the new cert and key locally.
         // At this point, the node agent is still with old cert and key.
         // So, this client has to trust both old and new certs.
@@ -436,6 +462,7 @@ public class NodeAgentPoller {
           nodeAgentManager.postUpgrade(nodeAgent);
           nodeAgent.finalizeUpgrade(nodeAgentHome, serverInfo.getVersion());
           log.info("Node agent {} has been upgraded successfully", nodeAgent);
+          replicationManagerProvider.get().coalesceOneOffSync();
         }
       }
     }
@@ -449,7 +476,7 @@ public class NodeAgentPoller {
   /** Starts background tasks. */
   public void init() {
     Duration pollerInterval = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentPollerInterval);
-    if (pollerInterval.isZero()) {
+    if (pollerInterval.isZero() || pollerInterval.isNegative()) {
       throw new IllegalArgumentException(
           String.format(
               "%s must be greater than 0", GlobalConfKeys.nodeAgentPollerInterval.getKey()));
@@ -493,6 +520,7 @@ public class NodeAgentPoller {
     NODE_AGENT_VERSION_MISMATCH_GAUGE.removeIf(matches);
     NODE_AGENT_SERVER_CERT_EXPIRING_GAUGE.removeIf(matches);
     NODE_AGENT_CONNECTION_GAUGE.removeIf(matches);
+    NODE_AGENT_ROOT_NODE_EXPORTER_GAUGE.removeIf(matches);
   }
 
   @VisibleForTesting

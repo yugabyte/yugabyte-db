@@ -43,6 +43,11 @@ public class AddNodeToUniverseRollbackComputer implements TaskRollbackComputer {
   }
 
   @Override
+  public boolean requiresStateTransitionDetails() {
+    return true;
+  }
+
+  @Override
   public RollbackSubmission compute(RollbackContext context) {
     TaskType taskType = context.getTaskInfo().getTaskType();
     // Second gate for direct API calls; listing already uses {@link #isEnabled()}.

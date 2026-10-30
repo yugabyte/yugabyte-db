@@ -22,12 +22,14 @@ import com.yugabyte.yw.common.TableSpaceUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.ManagedLoadBalancer;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
@@ -495,6 +497,15 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
     }
 
+    // Delete the load balancers of the cluster that the new placement does not call for, after
+    // their nodes are gone. This also cleans up a load balancer left by an edit that was rolled
+    // back.
+    List<ManagedLoadBalancer> plannedLbs = ManagedLoadBalancerUtil.planLoadBalancers(cluster);
+    createDeleteManagedLoadBalancerTasks(
+        lb ->
+            lb.getClusterUuid().equals(cluster.uuid) && plannedLbs.stream().noneMatch(lb::matches),
+        false /* ignoreErrors */);
+
     // Stop scrapping metrics from TServers that is set to be removed
     if (!newTservers.isEmpty()
         || !newMasters.isEmpty()
@@ -906,8 +917,7 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
     // Capture ADD IPs before destroy removes nodes from YBA details.
     params.destroyedNodeIps =
         nodesToDestroy.stream()
-            .filter(n -> n.cloudInfo != null && StringUtils.isNotBlank(n.cloudInfo.private_ip))
-            .map(n -> n.cloudInfo.private_ip)
+            .flatMap(n -> Util.getNodeIps(n).stream())
             .collect(Collectors.toSet());
     ConfirmEditRollbackMembership task = createTask(ConfirmEditRollbackMembership.class);
     task.initialize(params);

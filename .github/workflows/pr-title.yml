@@ -18,20 +18,24 @@ jobs:
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
-          TITLE_RE='^(\[(BACKPORT )?([0-9]+(\.[0-9]+)+)\])?'
-          TITLE_RE+='\[((#[0-9]+(,#[0-9]+)*)|([A-Z]+-[0-9]+(,[A-Z]+-[0-9]+)*))\]'
+          ISSUES_RE='\[((#[0-9]+(,#[0-9]+)*)|([A-Z]+-[0-9]+(,[A-Z]+-[0-9]+)*))\]'
+          # Titles on PG-version development branches (e.g. pg19) lead with [pgNN], and the issue
+          # ID is optional there.
+          TITLE_RE="^((\[(BACKPORT )?([0-9]+(\.[0-9]+)+)\])?${ISSUES_RE}|\[(BACKPORT )?pg[0-9]+\](${ISSUES_RE})?)"
           TITLE_RE+=' [a-zA-Z0-9_-]+(,[a-zA-Z0-9_-]+)*:'
           TITLE_RE+=' \S.{8,98}\S$'
 
           if [[ ! "$PR_TITLE" =~ $TITLE_RE ]]; then
             echo "::error ::Pull Request title must include issue ID, code area,"
             echo "::error ::  and a short description, with no extra whitespace."
+            echo "::error ::Issue ID is optional after a [pgNN] branch tag."
             echo "::error ::Issue referenced must be a github issue or YB-internal Jira ID."
             echo "::error ::Short description must be less than 100 characters."
             echo "::error ::Backport branch should be used only for non-master release branches."
             echo "::error ::Examples:"
             echo "::error ::  [#12345,#12367] area: Cool feature xyz"
             echo "::error ::  [BACKPORT 2045.1][#12345] area1,area2: Must have fix"
+            echo "::error ::  [pg19] area: PG19-only change"
             exit 1
           fi
           echo "Pull Request title is valid."
@@ -40,8 +44,8 @@ jobs:
           PR_TITLE: ${{ github.event.pull_request.title }}
           BASE_REF: ${{ github.base_ref }}
         run: |
-          BACKPORT_RE='^\[(BACKPORT )?([0-9]+(\.[0-9]+)+)\]'
-          if [[ "$BASE_REF" == "master" ]]; then
+          BACKPORT_RE='^\[(BACKPORT )?([0-9]+(\.[0-9]+)+|pg[0-9]+)\]'
+          if [[ "$BASE_REF" == master || "$BASE_REF" == feature-stack/* ]]; then
             if [[ "$PR_TITLE" =~ $BACKPORT_RE ]]; then
               echo "::error ::Pull Request title should not specify target branch for master."
               exit 1
@@ -61,6 +65,7 @@ jobs:
               echo "::error ::Examples:"
               echo "::error ::[BACKPORT 2045.1][#12345] area1,area2: Must have fix from master"
               echo "::error ::[2045.2][#12345] area: release-specific change"
+              echo "::error ::[pg19] area: PG19-only change"
               exit 1
             fi
           fi
@@ -69,7 +74,7 @@ jobs:
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
-          BACKPORT_RE='^\[BACKPORT ([0-9]+(\.[0-9]+)+)\]'
+          BACKPORT_RE='^\[BACKPORT ([0-9]+(\.[0-9]+)+|pg[0-9]+)\]'
           # Check for true backport, not just target branch in title.
           if [[ "$PR_TITLE" =~ $BACKPORT_RE ]]; then
             body="$PR_BODY"

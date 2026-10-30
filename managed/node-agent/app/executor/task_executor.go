@@ -122,8 +122,8 @@ func (te *TaskExecutor) SubmitTask(
 				util.FileLogger().Errorf(ctx, "Panic occurred: %v", string(debug.Stack()))
 				if future.state.CompareAndSwap(TaskRunning, TaskFailed) {
 					future.err = fmt.Errorf("Panic occurred: %v", err)
-					close(future.ch)
 				}
+				close(future.ch)
 			}
 		}()
 		go func() {
@@ -134,14 +134,12 @@ func (te *TaskExecutor) SubmitTask(
 			case <-te.ctx.Done():
 				if future.state.CompareAndSwap(TaskRunning, TaskAborted) {
 					future.err = errors.New("TaskExecutor is shutdown")
-					close(future.ch)
 				}
 			// Task level context.
 			case <-ctx.Done():
 				if future.state.CompareAndSwap(TaskRunning, TaskAborted) {
 					util.FileLogger().Errorf(ctx, "Task is cancelled")
 					future.err = errors.New("Task is cancelled")
-					close(future.ch)
 				}
 			}
 		}()
@@ -153,8 +151,9 @@ func (te *TaskExecutor) SubmitTask(
 		if future.state.CompareAndSwap(TaskRunning, state) {
 			future.data = data
 			future.err = err
-			close(future.ch)
 		}
+		// Close finally after the execution completes.
+		close(future.ch)
 	}()
 	return future, nil
 }

@@ -59,7 +59,6 @@
 
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/join.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
@@ -78,6 +77,7 @@
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/faststring.h"
+#include "yb/util/format.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/metrics.h"
 #include "yb/util/random.h"
@@ -1431,7 +1431,7 @@ TEST_P(AlterTableTest, TestAlterUnderWriteLoad) {
     }
     SleepFor(delay);
 
-    ASSERT_OK(AddNewI32Column(kTableName, strings::Substitute("c$0", i)));
+    ASSERT_OK(AddNewI32Column(kTableName, Format("c$0", i)));
   }
 
   stop_threads_.Store(true);
@@ -1483,7 +1483,7 @@ TEST_P(AlterTableTest, TestMultipleAlters) {
   // Issue a bunch of new alters without waiting for them to finish.
   for (size_t i = 0; i < kNumNewCols; i++) {
     std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kSplitTableName));
-    table_alterer->AddColumn(strings::Substitute("new_col$0", i))
+    table_alterer->AddColumn(Format("new_col$0", i))
                  ->Type(DataType::INT32)->NotNull();
     ASSERT_OK(table_alterer->wait(false)->Alter());
   }

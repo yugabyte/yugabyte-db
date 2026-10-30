@@ -39,6 +39,12 @@ type: indexpage
     icon="fa-thin fa-monitor-waveform">}}
 
   {{<index/item
+    title="Tablet metadata"
+    body="Look up local and cluster-wide tablet placement, leadership, and state."
+    href="tablet-metadata/"
+    icon="fa-thin fa-table-cells">}}
+
+  {{<index/item
     title="Cluster-wide database views"
     body="Query per-node statistics views across every live YB-TServer from a single YSQL session."
     href="cluster-wide-db-views/"

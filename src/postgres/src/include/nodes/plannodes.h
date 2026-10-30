@@ -429,6 +429,7 @@ typedef struct ModifyTable
 	List	   *ybReturningColumns; /* columns to fetch from DocDB */
 	List	   *ybColumnRefs;	/* colrefs to evaluate pushdown expressions */
 	bool		no_row_trigger; /* planner has checked no triggers apply */
+	bool		ybInsertOnConflictPushdownPossible; /* push conflict resolution to DocDB */
 	/*
 	 * YB: A collection of entities that are impacted by the ModifyTable query,
 	 * and their relationship to the columns that are modified by the query.
@@ -1053,6 +1054,11 @@ typedef struct NestLoop
 /*
  * Information to use for each hashable clause in a batched nested loop join.
  * This is used by the hash batching strategy of BNL.
+ *
+ * The inner side of the clause is either a column of the inner tuple
+ * (innerHashAttNo) or an expression over the inner tuple (innerHashExpr, with
+ * innerHashAttNo 0), such as the key of an expression index.  The outer side
+ * is always an expression.
  */
 typedef struct YbBNLHashClauseInfo
 {
@@ -1061,7 +1067,8 @@ typedef struct YbBNLHashClauseInfo
 								 * with. The inner side must be the left input of
 								 * this op.
 								 */
-	int			innerHashAttNo; /* Attno of inner side variable. */
+	int			innerHashAttNo; /* Attno of inner side variable, 0 if none. */
+	Expr	   *innerHashExpr;	/* Inner side expression, NULL if a variable. */
 	Expr	   *outerParamExpr; /* Outer expression of this clause. */
 	Expr	   *orig_expr;
 } YbBNLHashClauseInfo;

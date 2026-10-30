@@ -8,7 +8,9 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.ConfigureDBApiParams;
@@ -121,7 +123,6 @@ public class ConfigureDBApis extends UpgradeTaskBase {
                   taskParams().enableYCQL,
                   taskParams().enableYCQLAuth)
               .setSubTaskGroupType(getTaskSubGroupType());
-
           // update password from default to new custom password.
           createUpdateAPIPasswordTask(taskParams(), getTaskSubGroupType());
 
@@ -166,6 +167,13 @@ public class ConfigureDBApis extends UpgradeTaskBase {
                 taskParams().isYbcInstalled());
             createPersistMultiTenancyTask(mtConfig).setSubTaskGroupType(getTaskSubGroupType());
           }
+
+          // The load balancers forward the API ports, which these subtasks read when they run.
+          // Last,
+          // so a load balancer error can't leave auth on with the default password.
+          createEnsureManagedLoadBalancerTasks(universe.getUniverseDetails().getPrimaryCluster());
+          createManageLoadBalancerTasks(
+              createLoadBalancerMap(universe.getUniverseDetails(), null, null, null));
         });
   }
 
@@ -242,6 +250,24 @@ public class ConfigureDBApis extends UpgradeTaskBase {
                                         taskParams().communicationPorts, n);
                                   }))
                   .setSubTaskGroupType(getTaskSubGroupType());
+              // The collector's scrape targets come from the node's API flags and ports, which
+              // changed above. Regenerate its config from the updated node. This runs before the
+              // tserver restart (runBeforeStopping), so a newly enabled API or new port fails to
+              // scrape only until the restart, when every target on the node is down anyway.
+              TelemetryConfig telemetryConfig =
+                  OtelCollectorUtil.getCurrentTelemetryConfig(universe);
+              if (universe.getUniverseDetails().otelCollectorEnabled
+                  && OtelCollectorUtil.isMetricsExportEnabledInUniverse(
+                      telemetryConfig.getMetricsExportConfig())) {
+                createManageOtelCollectorTasks(
+                    userIntent,
+                    nodes,
+                    false,
+                    telemetryConfig,
+                    node ->
+                        GFlagsUtil.getGFlagsForNode(
+                            node, ServerType.TSERVER, currentCluster, currClusters));
+              }
             }
           },
           masterNodes,

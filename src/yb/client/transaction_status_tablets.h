@@ -24,6 +24,7 @@
 
 #include <unordered_map>
 #include <vector>
+#include <string>
 
 #include "yb/common/common_net.pb.h"
 #include "yb/common/entity_ids_types.h"
@@ -37,8 +38,12 @@ struct TransactionStatusTablets {
   struct TablespaceInfo {
     PlacementInfoPB placement_info;
     std::vector<TabletId> tablets;
+
+    std::string ToString() const;
   };
   std::unordered_map<PgOid, TablespaceInfo> tablespaces;
+
+  std::string ToString() const;
 };
 
 }  // namespace yb::client

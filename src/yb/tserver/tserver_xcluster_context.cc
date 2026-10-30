@@ -15,11 +15,19 @@
 
 #include "yb/common/pg_types.h"
 #include "yb/gutil/map-util.h"
+
 #include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/pg_create_table.h"
 #include "yb/tserver/xcluster_safe_time_map.h"
+
+#include "yb/util/flags.h"
+#include "yb/util/logging.h"
+#include "yb/util/pb_util.h"
 #include "yb/util/result.h"
 #include "yb/util/shared_lock.h"
+#include "yb/util/status_format.h"
+
+DECLARE_bool(enforce_xcluster_guarded_lease);
 
 namespace yb::tserver {
 
@@ -31,7 +39,7 @@ Result<std::optional<HybridTime>> TserverXClusterContext::GetSafeTime(
 XClusterNamespaceInfoPB_XClusterRole TserverXClusterContext::GetXClusterRole(
     NamespaceIdView namespace_id) const {
   SharedLock lock(mutex_);
-  if (!have_received_a_heartbeat_) {
+  if (!HasXClusterGuardedInfoUnlocked()) {
     return XClusterNamespaceInfoPB_XClusterRole_UNAVAILABLE;
   }
   if (auto* xcluster_info_per_namespace = FindOrNull(xcluster_info_per_namespace_, namespace_id)) {
@@ -39,6 +47,82 @@ XClusterNamespaceInfoPB_XClusterRole TserverXClusterContext::GetXClusterRole(
   } else {
     return XClusterNamespaceInfoPB_XClusterRole_NOT_AUTOMATIC_MODE;
   }
+}
+
+Result<uint32_t> TserverXClusterContext::GetOidCacheInvalidationsCount() const {
+  SharedLock lock(mutex_);
+  SCHECK(
+      HasXClusterGuardedInfoUnlocked(), IllegalState,
+      "The OID cache invalidation count is unavailable because this TServer does not hold a "
+      "current xCluster-guarded information lease; retry later");
+  return oid_cache_invalidations_count_;
+}
+
+void TserverXClusterContext::UpdateOidCacheInvalidationsCount(
+    uint32_t oid_cache_invalidations_count) {
+  std::lock_guard lock(mutex_);
+  if (oid_cache_invalidations_count > oid_cache_invalidations_count_) {
+    LOG(INFO) << "Received higher oid_cache_invalidations_count value ("
+              << oid_cache_invalidations_count << " > " << oid_cache_invalidations_count_ << ")";
+    oid_cache_invalidations_count_ = oid_cache_invalidations_count;
+  }
+}
+
+Result<std::optional<HybridTime>> TserverXClusterContext::GetPersistenceBlockedThrough(
+    uint32_t database_oid) const {
+  SharedLock lock(mutex_);
+  SCHECK(
+      HasXClusterGuardedInfoUnlocked(), IllegalState,
+      "The persistence block map is unavailable because this TServer does not hold a current "
+      "xCluster-guarded information lease; retry later");
+  const auto& blocked_through_ht = persistence_block_map_->blocked_through_ht();
+  const auto it = blocked_through_ht.find(database_oid);
+  if (it == blocked_through_ht.end()) {
+    return std::nullopt;
+  }
+  return HybridTime::FromPB(it->second);
+}
+
+Result<std::shared_ptr<const PersistenceBlockMapPB>>
+TserverXClusterContext::TEST_GetPersistenceBlockMap() const {
+  SharedLock lock(mutex_);
+  SCHECK(
+      HasXClusterGuardedInfoUnlocked(), IllegalState,
+      "The persistence block map is unavailable because this TServer does not hold a current "
+      "xCluster-guarded information lease; retry later");
+  return persistence_block_map_;
+}
+
+void TserverXClusterContext::UpdatePersistenceBlockMap(
+    const PersistenceBlockMapPB& persistence_block_map) {
+  auto new_map = std::make_shared<const PersistenceBlockMapPB>(persistence_block_map);
+  std::lock_guard lock(mutex_);
+  if (!pb_util::ArePBsEqual(*persistence_block_map_, *new_map, /*diff_str=*/nullptr)) {
+    LOG(DETAIL) << "Received persistence block map " << new_map->ShortDebugString();
+  }
+  persistence_block_map_ = std::move(new_map);
+}
+
+bool TserverXClusterContext::HasXClusterGuardedInfoLease() const {
+  SharedLock lock(mutex_);
+  return HasXClusterGuardedInfoUnlocked();
+}
+
+bool TserverXClusterContext::HasUnexpiredXClusterGuardedInfoLease() const {
+  SharedLock lock(mutex_);
+  return HasUnexpiredLeaseUnlocked();
+}
+
+bool TserverXClusterContext::HasXClusterGuardedInfoUnlocked() const {
+  if (FLAGS_enforce_xcluster_guarded_lease) {
+    return HasUnexpiredLeaseUnlocked();
+  }
+  return have_received_a_heartbeat_;
+}
+
+bool TserverXClusterContext::HasUnexpiredLeaseUnlocked() const {
+  return xcluster_guarded_lease_expiration_ &&
+         MonoTime::Now() < xcluster_guarded_lease_expiration_;
 }
 
 bool TserverXClusterContext::IsReadOnlyMode(NamespaceIdView namespace_id) const {
@@ -55,6 +139,11 @@ bool TserverXClusterContext::IsTargetAndInAutomaticMode(const NamespaceId& names
 void TserverXClusterContext::UpdateSafeTimeMap(
     const XClusterNamespaceToSafeTimePBMap& safe_time_map) {
   safe_time_map_.Update(safe_time_map);
+}
+
+void TserverXClusterContext::UpdateXClusterGuardedLease(MonoTime lease_expiration_time) {
+  std::lock_guard lock(mutex_);
+  xcluster_guarded_lease_expiration_ = lease_expiration_time;
 }
 
 void TserverXClusterContext::UpdateXClusterInfoPerNamespace(

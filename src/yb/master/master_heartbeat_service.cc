@@ -17,7 +17,6 @@
 #include <google/protobuf/repeated_field.h>
 
 #include "yb/common/common_flags.h"
-#include "yb/common/common_util.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/pg_catversions.h"
 
@@ -29,27 +28,28 @@
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_util.h"
-#include "yb/master/master_util.h"
 #include "yb/master/leader_epoch.h"
+#include "yb/master/master.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_heartbeat.service.h"
+#include "yb/master/master_tablet_service.h"
 #include "yb/master/master_service_base.h"
-#include "yb/master/master_service_base-internal.h"
+#include "yb/master/master_util.h"
+#include "yb/master/scoped_leader_shared_lock-internal.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
-#include "yb/master/ysql/ysql_manager_if.h"
 #include "yb/master/yql_partitions_vtable.h"
+#include "yb/master/ysql/ysql_manager_if.h"
+
+#include "yb/rpc/rpc_context.h"
 
 #include "yb/tserver/service_util.h"
 
 #include "yb/util/debug/trace_event.h"
-#include "yb/util/flags.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
-
-#include "yb/rpc/rpc_context.h"
 
 DEFINE_UNKNOWN_int32(tablet_report_limit, 1000,
              "Max Number of tablets to report during a single heartbeat. "
@@ -76,6 +76,15 @@ DEFINE_RUNTIME_AUTO_bool(use_tablet_report_pending_config_op_id, kLocalVolatile,
 
 DEFINE_test_flag(bool, skip_processing_tablet_metadata, false,
                  "Whether to skip processing tablet metadata for TSHeartbeat.");
+
+DEFINE_NON_RUNTIME_uint32(xcluster_guarded_lease_duration_ms, 2 * 60 * 1000,
+    "Duration of xCluster-guarded information lease in milliseconds; not safe to lower.");
+TAG_FLAG(xcluster_guarded_lease_duration_ms, advanced);
+
+DEFINE_test_flag(bool, no_grant_xcluster_guarded_lease, false,
+    "When true, master leaves the xCluster-guarded information lease out of heartbeat "
+    "responses.  TServers then cannot acquire or extend the xCluster lease.  The rest of the "
+    "heartbeat, including the xCluster-guarded information itself, is unaffected.");
 
 DEFINE_RUNTIME_int32(catalog_manager_report_batch_size, 1,
     "The max number of tablets evaluated in the heartbeat as a single SysCatalog update.");
@@ -127,6 +136,10 @@ DEFINE_RUNTIME_bool(send_leader_blacklisted_tservers_on_heartbeat, true,
     "When set, the master will send the list of leader-blacklisted tservers with no leaders "
     "on the heartbeat response.");
 TAG_FLAG(send_leader_blacklisted_tservers_on_heartbeat, advanced);
+
+DEFINE_test_flag(bool, hinted_leader_election_for_existing_tablets, false,
+    "Force hinted leader elections for existing tablets too. For tests that do restarts and "
+    "expect fast leader elections.");
 
 DEFINE_test_flag(uint64, inject_latency_during_tablet_report_ms, 0,
                  "Number of milliseconds to sleep during the processing of a tablet batch.");
@@ -190,7 +203,6 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
 
   using ReportedTablets = std::vector<ReportedTablet>;
 
-  // Returns true if report was processed, or false if full report should be requested.
   Result<bool> ProcessTabletReport(
       const TSDescriptorPtr& ts_desc,
       const NodeInstancePB& ts_instance,
@@ -312,6 +324,9 @@ Status MasterHeartbeatServiceImpl::CheckUniverseUuidMatchFromTserver(
 void MasterHeartbeatServiceImpl::PopulatePgCatalogVersionInfo(
     const TSHeartbeatRequestPB& req,
     TSHeartbeatResponsePB& resp) {
+  // Travels with the catalog version because it is consumed at the same moment: a backend about
+  // to bump the version needs to know what its last bump is still costing the leader.
+  resp.set_ysql_catalog_prefetch_load(GetYsqlCatalogPrefetchLoad());
   // When YSQL is disabled fall back to a single shared catalog version so that we still send
   // something back to legacy tservers.
   if (!FLAGS_enable_ysql) {
@@ -488,9 +503,7 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
     }
     TSDescriptorPtr& ts_desc = *desc_result;
 
-    // This is the right place to put this once we add the lease functionality in the next diff.
-    // Must stay after UpdateAndReturnTSDescriptorOrRespond.
-    // TODO(mlillibridge): adjust this comment after the lease functionality gets added.
+    // Correctness requires that this occur after UpdateAndReturnTSDescriptorOrRespond.
     auto fill_status = catalog_manager_->GetXClusterManager()->FillXClusterGuardedInfo(
         leader_term, *resp->mutable_xcluster_guarded_info());
     if (!fill_status.ok()) {
@@ -499,6 +512,10 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
     }
 
     resp->set_tablet_report_limit(FLAGS_tablet_report_limit);
+
+    if (!FLAGS_TEST_no_grant_xcluster_guarded_lease) {
+      resp->set_xcluster_guarded_lease_duration_ms(FLAGS_xcluster_guarded_lease_duration_ms);
+    }
 
     // Set the TServer metrics in TS Descriptor.
     if (req->has_metrics()) {
@@ -694,6 +711,7 @@ void MasterHeartbeatServiceImpl::DeleteOrphanedTabletReplica(
       "Report from an orphaned tablet" /* reason */, epoch);
 }
 
+// Returns true if report was processed, or false if full report should be requested.
 Result<bool> MasterHeartbeatServiceImpl::ProcessTabletReport(
     const TSDescriptorPtr& ts_desc,
     const NodeInstancePB& ts_instance,
@@ -706,22 +724,8 @@ Result<bool> MasterHeartbeatServiceImpl::ProcessTabletReport(
   }
   const auto& report = *report_ptr;
 
-  if (!ts_desc->has_tablet_report()) {
-    if (report.is_incremental()) {
-      LOG(WARNING) << "Invalid tablet report from " << ts_desc->permanent_uuid()
-                 << ": Received an incremental tablet report when a full one was needed";
-      return false;
-    } else if (report.has_full_report_seq_no() &&
-               report.full_report_seq_no() != report.sequence_number() &&
-               report.full_report_seq_no() != ts_desc->receiving_full_report_seq_no()) {
-      LOG(WARNING) << Format(
-          "$0 sent a tablet report with sequence number $1, which continues full report starting "
-          "at sequence number $2. However we expected a tablet report continuing the full report "
-          "starting at sequence number $3",
-          ts_desc->permanent_uuid(), report.sequence_number(),
-          report.full_report_seq_no(), ts_desc->receiving_full_report_seq_no());
-      return false;
-    }
+  if (!ts_desc->PreCheckTabletReport(report)) {
+    return false;
   }
 
   int num_tablets = report.updated_tablets_size();
@@ -814,14 +818,7 @@ Result<bool> MasterHeartbeatServiceImpl::ProcessTabletReport(
                 << reported_tablets.size() << " tablets.";
     }
     if (completed_full_report) {
-      // We have a tablet report only once we're done processing all the chunks of the initial
-      // report.
-      ts_desc->set_has_tablet_report(completed_full_report);
-    } else if (!ts_desc->receiving_full_report_seq_no()) {
-      LOG_WITH_FUNC(INFO)
-          << ts_desc->permanent_uuid() << " set full report seq no: "
-          << report.full_report_seq_no();
-      ts_desc->set_receiving_full_report_seq_no(report.full_report_seq_no());
+      ts_desc->CompleteFullReport(ts_instance);
     }
   }
 
@@ -1085,7 +1082,19 @@ Status MasterHeartbeatServiceImpl::ProcessTabletReportBatch(
 
   // Update the table state if all its tablets are now running.
   for (auto& [table_id, tablets] : new_running_tablets) {
-    catalog_manager_->SchedulePostTabletCreationTasks(table_info_map[table_id], epoch, tablets);
+    const auto& table_info = table_info_map[table_id];
+    catalog_manager_->SchedulePostTabletCreationTasks(table_info, epoch, tablets);
+
+    // If this is a transaction status tablet, we need to bump the transaction table versions so
+    // that tservers update their cache of usable status tablets to include this tablet.
+    // We do one incrment per status tablet here for easier testing even though one increment total
+    // is sufficient. Transaction status creations are rare, so this should not be an issue.
+    if (table_info->GetTableType() == TRANSACTION_STATUS_TABLE_TYPE) {
+      WARN_NOT_OK(
+          catalog_manager_->IncrementTransactionTablesVersion(),
+          "Failed to increment transaction status version, transaction status tablet may not be "
+          "usable until next increment");
+    }
   }
 
   // Update the relevant tablet entries in system.partitions.
@@ -1280,7 +1289,18 @@ bool MasterHeartbeatServiceImpl::ProcessCommittedConsensusState(
   }
 
   if (FLAGS_use_create_table_leader_hint && !cstate.has_leader_uuid()) {
-    catalog_manager_->StartElectionIfReady(cstate, epoch, tablet);
+    // Start hinted election only for new tablets (CREATE TABLE / split children).
+    if (tablet_lock->pb.state() == SysTabletsEntryPB::CREATING ||
+        PREDICT_FALSE(FLAGS_TEST_hinted_leader_election_for_existing_tablets)) {
+      catalog_manager_->StartElectionIfReady(cstate, epoch, tablet);
+    } else {
+      // prev_cstate aliases the dirty copy, which 6d(iv) may have overwritten.
+      VLOG(1) << "Skipping hinted leader election for existing tablet " << tablet->tablet_id()
+              << " reported by " << ts_desc->permanent_uuid() << ", tablet state: "
+              << SysTabletsEntryPB::State_Name(tablet_lock->pb.state()) << ", previous cstate: "
+              << tablet->metadata().state().pb.committed_consensus_state().ShortDebugString()
+              << ", reported cstate: " << cstate.ShortDebugString();
+    }
   }
 
   if (tablet_lock->pb.split_tablet_ids_size() > 0 && tablet_lock->is_hidden()) {
@@ -1639,9 +1659,12 @@ Status MasterHeartbeatServiceImpl::ValidateTServerUniverseOrRespond(
   }
   auto tserver_universe_uuid = *tserver_universe_uuid_res;
 
+  // Read a locked copy: tests may change this string flag concurrently.
+  std::string test_master_universe_uuid;
+  CHECK(google::GetCommandLineOption("TEST_master_universe_uuid", &test_master_universe_uuid));
   auto master_universe_uuid_res = UniverseUuid::FromString(
-      FLAGS_TEST_master_universe_uuid.empty() ? cluster_config.universe_uuid()
-                                              : FLAGS_TEST_master_universe_uuid);
+      test_master_universe_uuid.empty() ? cluster_config.universe_uuid()
+                                        : test_master_universe_uuid);
   if (!master_universe_uuid_res) {
     LOG(WARNING) << "Could not decode cluster config universe_uuid: "
                  << master_universe_uuid_res.status().ToString();

@@ -688,8 +688,8 @@ public class CustomerTask extends Model {
           return completed ? "Enabled node agent on" : "Enabling node agent on";
         case ManageCrossCloudFederation:
           return completed
-              ? "Updated cross-cloud federated IAM on"
-              : "Updating cross-cloud federated IAM on";
+              ? "Updated cross-cloud federated access on"
+              : "Updating cross-cloud federated access on";
         case CloneNamespace:
           return completed ? "Cloned Namespace" : "Cloning Namespace";
         case UpdateOOMServiceState:
@@ -744,6 +744,8 @@ public class CustomerTask extends Model {
           return "Restart";
         case ReprovisionNode:
           return "Re-provision";
+        case ManageCrossCloudFederation:
+          return "Update Cross-Cloud Federated Access";
         default:
           return toFriendlyTypeName();
       }
@@ -1148,8 +1150,8 @@ public class CustomerTask extends Model {
         LOG.debug("Universe task {} is not deletable", targetUUID);
         return false;
       }
-      // An owning retry or rollback may read the first task of its chain through
-      // originalTaskUUID, as RollbackResizeNode does for the gflag baseline.
+      // Retries and rollbacks name the first task of their chain as originalTaskUUID, which task
+      // APIs return; keep it resolvable while the chain owns the universe.
       if (isOriginalTaskOf(taskParams.updatingTaskUUID)
           || isOriginalTaskOf(taskParams.placementModificationTaskUuid)) {
         LOG.debug("Universe task {} is not deletable as it starts the owning task chain", taskUUID);

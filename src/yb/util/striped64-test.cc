@@ -34,8 +34,7 @@
 #include "yb/util/logging.h"
 #include <gtest/gtest.h>
 
-#include "yb/gutil/strings/substitute.h"
-
+#include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status_log.h"
 #include "yb/util/striped64.h"
@@ -154,7 +153,7 @@ void RunMultiTest(int64_t num_operations, int64_t num_threads) {
 TEST(Striped64Test, TestSingleIncrDecr) {
   OverrideFlagForSlowTests(
       "num_operations",
-      strings::Substitute("$0", (FLAGS_num_operations * 100)));
+      Format("$0", (FLAGS_num_operations * 100)));
   RunMultiTest(FLAGS_num_operations, 1);
 }
 
@@ -162,10 +161,10 @@ TEST(Striped64Test, TestSingleIncrDecr) {
 TEST(Striped64Test, TestMultiIncrDecr) {
   OverrideFlagForSlowTests(
       "num_operations",
-      strings::Substitute("$0", (FLAGS_num_operations * 100)));
+      Format("$0", (FLAGS_num_operations * 100)));
   OverrideFlagForSlowTests(
       "num_threads",
-      strings::Substitute("$0", (FLAGS_num_threads * 4)));
+      Format("$0", (FLAGS_num_threads * 4)));
   RunMultiTest(FLAGS_num_operations, FLAGS_num_threads);
 }
 

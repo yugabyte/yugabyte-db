@@ -32,17 +32,16 @@
 
 #include "yb/util/net/socket.h"
 
-
 #include <netinet/in.h>
 #include <sys/types.h>
 
 #include <limits>
 #include <string>
 
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 
 #include "yb/gutil/casts.h"
-#include "yb/gutil/stringprintf.h"
 
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/errno.h"
@@ -218,17 +217,17 @@ Status Socket::SetNonBlocking(bool enabled) {
   int curflags = ::fcntl(fd_, F_GETFL, 0);
   if (curflags == -1) {
     return STATUS(
-        NetworkError, StringPrintf("Failed to get file status flags on fd %d", fd_),
+        NetworkError, Format("Failed to get file status flags on fd $0", fd_),
         Errno(errno));
   }
   int newflags = (enabled) ? (curflags | O_NONBLOCK) : (curflags & ~O_NONBLOCK);
   if (::fcntl(fd_, F_SETFL, newflags) == -1) {
     if (enabled) {
       return STATUS(
-          NetworkError, StringPrintf("Failed to set O_NONBLOCK on fd %d", fd_), Errno(errno));
+          NetworkError, Format("Failed to set O_NONBLOCK on fd $0", fd_), Errno(errno));
     } else {
       return STATUS(
-          NetworkError, StringPrintf("Failed to clear O_NONBLOCK on fd %d", fd_), Errno(errno));
+          NetworkError, Format("Failed to clear O_NONBLOCK on fd $0", fd_), Errno(errno));
     }
   }
   return Status::OK();
@@ -238,7 +237,7 @@ Status Socket::IsNonBlocking(bool* is_nonblock) const {
   int curflags = ::fcntl(fd_, F_GETFL, 0);
   if (curflags == -1) {
     return STATUS(
-        NetworkError, StringPrintf("Failed to get file status flags on fd %d", fd_), Errno(errno));
+        NetworkError, Format("Failed to get file status flags on fd $0", fd_), Errno(errno));
   }
   *is_nonblock = ((curflags & O_NONBLOCK) != 0);
   return Status::OK();
@@ -433,7 +432,7 @@ Result<size_t> Socket::Write(const uint8_t *buf, ssize_t amt) {
 Result<size_t> Socket::Writev(const struct ::iovec *iov, int iov_len) {
   if (PREDICT_FALSE(iov_len <= 0)) {
     return STATUS(NetworkError,
-                  StringPrintf("Writev: invalid io vector length of %d", iov_len),
+                  Format("Writev: invalid io vector length of $0", iov_len),
                   Slice() /* msg2 */, Errno(EINVAL));
   }
   DCHECK_GE(fd_, 0);
@@ -595,7 +594,7 @@ Result<size_t> Socket::BlockingRecv(uint8_t *buf, size_t amt, const MonoTime& de
 
   if (PREDICT_FALSE(tot_read < amt)) {
     return STATUS(IOError, "Read zero bytes on a blocking Recv() call",
-        StringPrintf("Transferred %zu of %zu bytes", tot_read, amt));
+        Format("Transferred $0 of $1 bytes", tot_read, amt));
   }
 
   return tot_read;
@@ -612,7 +611,7 @@ Status Socket::SetTimeout(int opt, std::string optname, const MonoDelta& timeout
   if (::setsockopt(fd_, SOL_SOCKET, opt, &tv, optlen) == -1) {
     return STATUS(
         NetworkError,
-        StringPrintf("Failed to set %s to %s", optname.c_str(), timeout.ToString().c_str()),
+        Format("Failed to set $0 to $1", optname, timeout),
         Errno(errno));
   }
   return Status::OK();

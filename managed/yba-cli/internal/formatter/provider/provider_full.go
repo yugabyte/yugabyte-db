@@ -19,6 +19,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/azu"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/gcp"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/kubernetes"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/oci"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/onprem"
 )
 
@@ -63,6 +64,7 @@ type fullProviderContext struct {
 	AWSProvider    *aws.ProviderContext
 	GCPProvider    *gcp.ProviderContext
 	AzureProvider  *azu.ProviderContext
+	OCIProvider    *oci.ProviderContext
 	KubeProvider   *kubernetes.ProviderContext
 	OnpremProvider *onprem.ProviderContext
 }
@@ -84,6 +86,9 @@ func (fp *FullProviderContext) Write() error {
 	}
 	fpc.AzureProvider = &azu.ProviderContext{
 		Azu: cloudInfo.GetAzu(),
+	}
+	fpc.OCIProvider = &oci.ProviderContext{
+		Oci: cloudInfo.GetOci(),
 	}
 	fpc.KubeProvider = &kubernetes.ProviderContext{
 		Kube: cloudInfo.GetKubernetes(),
@@ -185,6 +190,30 @@ func (fp *FullProviderContext) Write() error {
 			return err
 		}
 		fp.PostFormat(tmpl, azu.NewProviderContext())
+	case util.OCIProviderType:
+		tmpl, err = fp.startSubsection(oci.Provider1)
+		if err != nil {
+			logrus.Errorf("%s", err.Error())
+			return err
+		}
+		fp.subSection("OCI Provider Details")
+		if err := fp.ContextFormat(tmpl, fpc.OCIProvider); err != nil {
+			logrus.Errorf("%s", err.Error())
+			return err
+		}
+		fp.PostFormat(tmpl, oci.NewProviderContext())
+		fp.Output.Write([]byte("\n"))
+
+		tmpl, err = fp.startSubsection(oci.Provider2)
+		if err != nil {
+			logrus.Errorf("%s", err.Error())
+			return err
+		}
+		if err := fp.ContextFormat(tmpl, fpc.OCIProvider); err != nil {
+			logrus.Errorf("%s", err.Error())
+			return err
+		}
+		fp.PostFormat(tmpl, oci.NewProviderContext())
 	case util.K8sProviderType:
 		tmpl, err = fp.startSubsection(kubernetes.Provider1)
 		if err != nil {

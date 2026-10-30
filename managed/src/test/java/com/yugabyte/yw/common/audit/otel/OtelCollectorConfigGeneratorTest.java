@@ -19,10 +19,13 @@ import static org.mockito.Mockito.when;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.yaml.SkipNullRepresenter;
@@ -60,9 +63,13 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.charset.Charset;
+import java.util.Base64;
+import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -628,6 +635,80 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
         assertThat(result, containsString("key: " + label.getLegacyAttributeName()));
       }
     }
+  }
+
+  // PLAT-21847: a YSQL-only node must not get a cql_export scrape target, even though the
+  // default scrapeConfigTargets requests every target.
+  @Test
+  public void generateOtelColConfigMetricsSkipsCqlTargetOnYsqlOnlyNode() {
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> u.getUniverseDetails().nodeDetailsSet.forEach(n -> n.isYqlServer = false),
+            false);
+
+    DataDogConfig config = new DataDogConfig();
+    config.setType(ProviderType.DATA_DOG);
+    config.setSite("ddsite");
+    config.setApiKey("apikey");
+    TelemetryProvider telemetryProvider =
+        createTelemetryProvider(new UUID(0, 0), "DataDog", ImmutableMap.of(), config);
+
+    MetricsExportConfig metricsExportConfig =
+        createMetricsExportConfig(
+            telemetryProvider.getUuid(), ImmutableMap.of(), 15, 10, MetricCollectionLevel.NORMAL);
+
+    String result = generateConfig(null, null, metricsExportConfig);
+
+    assertThat(result, containsString("export_type: ysql_export"));
+    assertThat(result, not(containsString("export_type: cql_export")));
+    assertThat(result, not(containsString("127.0.0.1:12000")));
+  }
+
+  @Test
+  public void yugabyteScrapeTargetsFilteredByNodeServers() {
+    Set<ScrapeConfigTargetType> all = EnumSet.allOf(ScrapeConfigTargetType.class);
+
+    // A tserver with both APIs keeps every target.
+    NodeDetails tserver = new NodeDetails();
+    assertEquals(all, OtelCollectorConfigGenerator.getYugabyteScrapeTargetsForNode(tserver, all));
+
+    // YCQL-only tserver drops YSQL.
+    NodeDetails ycqlOnly = new NodeDetails();
+    ycqlOnly.isYsqlServer = false;
+    Set<ScrapeConfigTargetType> ycqlTargets =
+        OtelCollectorConfigGenerator.getYugabyteScrapeTargetsForNode(ycqlOnly, all);
+    assertFalse(ycqlTargets.contains(ScrapeConfigTargetType.YSQL_EXPORT));
+    assertTrue(ycqlTargets.contains(ScrapeConfigTargetType.CQL_EXPORT));
+
+    // A dedicated master runs no tserver, so it drops TSERVER, YSQL and CQL, but keeps MASTER
+    // and the non-yugabyte targets.
+    NodeDetails dedicatedMaster = new NodeDetails();
+    dedicatedMaster.isMaster = true;
+    dedicatedMaster.isTserver = false;
+    dedicatedMaster.dedicatedTo = ServerType.MASTER;
+    assertEquals(
+        EnumSet.complementOf(
+            EnumSet.of(
+                ScrapeConfigTargetType.TSERVER_EXPORT,
+                ScrapeConfigTargetType.YSQL_EXPORT,
+                ScrapeConfigTargetType.CQL_EXPORT)),
+        OtelCollectorConfigGenerator.getYugabyteScrapeTargetsForNode(dedicatedMaster, all));
+
+    // A removed or stopped node has isTserver=false stored while add/start node writes its
+    // collector config. It must keep the tserver targets, because the tserver starts after.
+    NodeDetails beingReAdded = new NodeDetails();
+    beingReAdded.isTserver = false;
+    assertEquals(
+        all, OtelCollectorConfigGenerator.getYugabyteScrapeTargetsForNode(beingReAdded, all));
+
+    // MASTER_EXPORT is never dropped: isMaster is stored only after a master move writes the
+    // collector config.
+    NodeDetails tserverOnly = new NodeDetails();
+    tserverOnly.isMaster = false;
+    tserverOnly.dedicatedTo = ServerType.TSERVER;
+    assertEquals(
+        all, OtelCollectorConfigGenerator.getYugabyteScrapeTargetsForNode(tserverOnly, all));
   }
 
   private String generateConfig(
@@ -1420,6 +1501,109 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
 
     assertTrue("config should be enabled", result.isEnabled());
     assertThat(result.getConfig(), equalTo(TestUtils.readResource("audit/k8s_otel_config.yml")));
+  }
+
+  @Test
+  public void getOtelColConfigK8sExporterCredentialsAreRedactedInShellOutput() {
+    DataDogConfig dataDog = new DataDogConfig();
+    dataDog.setType(ProviderType.DATA_DOG);
+    dataDog.setSite("datadoghq.com");
+    dataDog.setApiKey("dd-0123456789abcdef0123456789abcdef");
+
+    SplunkConfig splunk = new SplunkConfig();
+    splunk.setType(ProviderType.SPLUNK);
+    splunk.setEndpoint("https://splunk:8088");
+    splunk.setToken("splunk-11111111-2222-3333-4444-555555555555");
+
+    DynatraceConfig dynatrace = new DynatraceConfig();
+    dynatrace.setType(ProviderType.DYNATRACE);
+    dynatrace.setEndpoint("https://test.live.dynatrace.com/api/v2/otlp");
+    dynatrace.setApiToken("dt0c01.DYNATRACESECRETAPITOKEN");
+
+    LokiConfig loki = new LokiConfig();
+    loki.setType(ProviderType.LOKI);
+    loki.setEndpoint("http://loki:3100");
+    loki.setAuthType(AuthType.BasicAuth);
+    AuthCredentials.BasicAuthCredentials lokiAuth = new AuthCredentials.BasicAuthCredentials();
+    lokiAuth.setUsername("loki-user");
+    lokiAuth.setPassword("loki-basic-auth-secret");
+    loki.setBasicAuth(lokiAuth);
+
+    OTLPConfig otlpBasic = new OTLPConfig();
+    otlpBasic.setType(ProviderType.OTLP);
+    otlpBasic.setEndpoint("http://otlp:3100");
+    otlpBasic.setAuthType(AuthType.BasicAuth);
+    AuthCredentials.BasicAuthCredentials otlpAuth = new AuthCredentials.BasicAuthCredentials();
+    otlpAuth.setUsername("otlp-user");
+    otlpAuth.setPassword("otlp-basic-auth-secret");
+    otlpBasic.setBasicAuth(otlpAuth);
+
+    OTLPConfig otlpBearer = new OTLPConfig();
+    otlpBearer.setType(ProviderType.OTLP);
+    otlpBearer.setEndpoint("http://otlp:3100");
+    otlpBearer.setAuthType(AuthType.BearerToken);
+    AuthCredentials.BearerToken bearerToken = new AuthCredentials.BearerToken();
+    bearerToken.setToken("otlp-bearer-token-secret");
+    otlpBearer.setBearerToken(bearerToken);
+
+    // Long enough that the default YAML width would fold it after "Bearer".
+    OTLPConfig otlpHeader = new OTLPConfig();
+    otlpHeader.setType(ProviderType.OTLP);
+    otlpHeader.setEndpoint("http://otlp:3100");
+    otlpHeader.setAuthType(AuthType.NoAuth);
+    otlpHeader.setHeaders(
+        ImmutableMap.of("x-api-key", "Bearer otlp-header-secret-" + "0123456789".repeat(6)));
+
+    Map<TelemetryProviderConfig, String> secretsByConfig = new LinkedHashMap<>();
+    secretsByConfig.put(dataDog, dataDog.getApiKey());
+    secretsByConfig.put(splunk, splunk.getToken());
+    secretsByConfig.put(dynatrace, dynatrace.getApiToken());
+    // Loki auth is header-based: the rendered credential is base64("user:password").
+    secretsByConfig.put(
+        loki,
+        Base64.getEncoder()
+            .encodeToString(
+                (loki.getBasicAuth().getUsername() + ":" + loki.getBasicAuth().getPassword())
+                    .getBytes()));
+    secretsByConfig.put(otlpBasic, otlpBasic.getBasicAuth().getPassword());
+    secretsByConfig.put(otlpBearer, otlpBearer.getBearerToken().getToken());
+    secretsByConfig.put(
+        otlpHeader, otlpHeader.getHeaders().get("x-api-key").substring("Bearer ".length()));
+
+    int i = 0;
+    for (Map.Entry<TelemetryProviderConfig, String> entry : secretsByConfig.entrySet()) {
+      TelemetryProviderConfig config = entry.getKey();
+      String secret = entry.getValue();
+      TelemetryProvider telemetryProvider =
+          createTelemetryProvider(
+              new UUID(0, i++), config.getType().name(), ImmutableMap.of("tag", "value"), config);
+      // Redaction reads the credentials to redact from the DB, not from the mocked service.
+      telemetryProvider.save();
+
+      OtelCollectorConfigGenerator.K8sOtelConfig result =
+          generator.getOtelColConfigK8s(
+              provider,
+              universe,
+              TelemetryConfig.builder()
+                  .auditLogConfig(
+                      createAuditLogConfigWithYSQL(telemetryProvider.getUuid(), ImmutableMap.of()))
+                  .build(),
+              null,
+              "%m [%p] ");
+
+      assertThat(
+          "test is only meaningful if the renderer inlines the credential",
+          result.getConfig(),
+          containsString(secret));
+
+      for (String line : result.getConfig().split("\\n")) {
+        String redacted =
+            RedactingService.redactShellProcessOutput(line, RedactionTarget.HELM_VALUES);
+        assertFalse(
+            config.getType() + " credential leaked into shell output: " + redacted,
+            redacted.contains(secret));
+      }
+    }
   }
 
   // The K8s config reaches the collector through the OTEL_CONFIG env var, and kubelet's $(VAR)

@@ -88,6 +88,14 @@ public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
   }
 
   public void verifyParams(Universe universe, NodeDetails.NodeState nodeState, boolean isFirstTry) {
+    // Only the incoming request can be corrected, so reject a bad batch size at the boundary only;
+    // on a retry the stored value is fixed and KubernetesPartitions/splitNodes degrade to
+    // sequential rolling instead of failing a task that can no longer be resubmitted.
+    if (isFirstTry && rollMaxBatchSize != null) {
+      verifyRollBatchSize("primaryBatchSize", rollMaxBatchSize.getPrimaryBatchSize());
+      verifyRollBatchSize("readReplicaBatchSize", rollMaxBatchSize.getReadReplicaBatchSize());
+    }
+
     if (clusters != null) {
       for (Cluster cluster : clusters) {
         Cluster originalCluster = universe.getCluster(cluster.uuid);
@@ -160,6 +168,18 @@ public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
     if (!isKubernetesUpgradeSupported() && Util.isKubernetesBasedUniverse(universe)) {
       throw new PlatformServiceException(
           Status.BAD_REQUEST, "Kubernetes Upgrade is not supported.");
+    }
+  }
+
+  private static void verifyRollBatchSize(String fieldName, Integer batchSize) {
+    if (batchSize != null && batchSize < 1) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST,
+          "rollMaxBatchSize."
+              + fieldName
+              + " must be at least 1, got "
+              + batchSize
+              + " (a batch size below 1 would skip rolling the servers entirely).");
     }
   }
 

@@ -28,6 +28,10 @@ For offline migration, export data [dumps](../../../migrate/migrate-steps/#expor
 
 For [live migration](../../../migrate/live-migrate/#export-data-from-source) (with [fall-forward](../../../migrate/live-fall-forward/#export-data-from-source) and [fall-back](../../../migrate/live-fall-back/#export-data-from-source)), the export data command is an alias of `export data from source` which [dumps](../../../migrate/live-migrate/#export-data-from-source) the snapshot in the `data` directory and starts capturing the new changes made to the source database.
 
+If a PostgreSQL live export fails because Debezium stopped while streaming changes, `export data` checks for schema drift and prints the result after the failure message.
+
+During live migration, `export data` skips columns whose type is built on an unsupported data type, and lists them in its unsupported-columns output. This covers domains, arrays, composites, and user-defined multiranges built on an unsupported type, as well as arrays of geometric types, `pg_lsn[]`, `txid_snapshot[]`, `timetz[]`, and arrays of range types. For the list of unsupported types, see [Datatypes not supported by Voyager during live migration](../../../known-issues/postgresql/#unsupported-datatypes-by-voyager-during-live-migration).
+
 ### Syntax
 
 Syntax for export data is as follows:

@@ -47,6 +47,10 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(value = "KMS configuration UUID")
   public UUID kmsConfigUUID = null;
 
+  // Null on backups taken before this was recorded.
+  @ApiModelProperty(value = "YbaApi Internal. Whether the source universe was FIPS-enabled")
+  public Boolean fipsEnabled = null;
+
   // Specifies the backup storage location in case of S3 it would have
   // the S3 url based on universeUUID and timestamp.
   @ApiModelProperty(value = "Storage location")

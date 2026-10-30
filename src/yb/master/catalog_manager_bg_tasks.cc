@@ -230,10 +230,10 @@ void CatalogManagerBgTasks::RunOnceAsLeader(const LeaderEpoch& epoch) {
   // Cleanup old tasks from tracker.
   catalog_manager_->tasks_tracker_->CleanupOldTasks();
 
-  // Mark unresponsive tservers.
+  // Mark unresponsive TServers.
   WARN_NOT_OK(
       catalog_manager_->master_->ts_manager()->MarkUnresponsiveTServers(epoch),
-      "Failed to update sys catalog with unresponsive tservers");
+      "Failed to update sys catalog with unresponsive TServers");
 
   TabletInfos to_delete;
   TableToTabletInfos to_process;

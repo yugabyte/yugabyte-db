@@ -78,7 +78,7 @@ func init() {
 	editPrimaryClusterCmd.Flags().SortFlags = false
 
 	editPrimaryClusterCmd.Flags().Bool("dedicated-nodes", false,
-		"[Optional] Place Masters on dedicated nodes, defaults to false for aws, azu, gcp, onprem."+
+		"[Optional] Place Masters on dedicated nodes, defaults to false for aws, azu, gcp, oci, onprem."+
 			" Defaults to true for kubernetes.")
 
 	editPrimaryClusterCmd.Flags().Int("num-nodes", 0,

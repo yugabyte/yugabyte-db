@@ -165,7 +165,7 @@ run_check_data_volumes() {
     return 0
   fi
   local count=0
-  count=$(df --local --output=target | grep '^/mnt/d[0-9]\+$' | wc -l)
+  count=$(findmnt -rn -o TARGET | grep '^/mnt/d[0-9]\+$' | wc -l)
   count="${count//[[:space:]]/}"
   if [[ "$count" -lt "$needed" ]]; then
     echo "ERROR: Not all data volumes attached: needed $needed found $count" >&2

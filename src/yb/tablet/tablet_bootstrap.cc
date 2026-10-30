@@ -63,7 +63,6 @@
 #include "yb/dockv/value_type.h"
 
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -180,7 +179,6 @@ using consensus::ConsensusBootstrapInfo;
 using consensus::ConsensusMetadata;
 using consensus::MinimumOpId;
 using consensus::MakeOpIdPB;
-using strings::Substitute;
 
 static string DebugInfo(const string& tablet_id,
                         uint64_t segment_seqno,
@@ -194,9 +192,9 @@ static string DebugInfo(const string& tablet_id,
     debug_str.resize(500);
     debug_str.append("...");
   }
-  return Substitute("Debug Info: Error playing entry $0 of segment $1 of tablet $2. "
-                    "Segment path: $3. Entry: $4", entry_idx, segment_seqno, tablet_id,
-                    segment_path, debug_str);
+  return Format("Debug Info: Error playing entry $0 of segment $1 of tablet $2. "
+                "Segment path: $3. Entry: $4", entry_idx, segment_seqno, tablet_id,
+                segment_path, debug_str);
 }
 
 // ================================================================================================
@@ -217,9 +215,9 @@ using OpIndexToEntryMap = std::map<int64_t, Entry>;
 // State kept during replay.
 struct ReplayState {
   ReplayState(
-      const DocDbOpIds& op_ids_,
+      const DocDbPersistentState& persistent_state_,
       const std::string& log_prefix_)
-      : stored_op_ids(op_ids_),
+      : persistent_state(persistent_state_),
         log_prefix(log_prefix_) {
   }
 
@@ -268,7 +266,7 @@ struct ReplayState {
 
   // ----------------------------------------------------------------------------------------------
   // State specific to RocksDB-backed tables (not transaction status table)
-  DocDbOpIds stored_op_ids;
+  DocDbPersistentState persistent_state;
 
   // Total number of log entries applied to RocksDB.
   int64_t num_entries_applied_to_rocksdb = 0;
@@ -283,12 +281,12 @@ struct ReplayState {
 };
 
 void ReplayState::UpdateCommittedFromStored() {
-  if (stored_op_ids.regular > committed_op_id) {
-    committed_op_id = stored_op_ids.regular;
+  if (persistent_state.regular > committed_op_id) {
+    committed_op_id = persistent_state.regular;
   }
 
-  if (stored_op_ids.intents > committed_op_id) {
-    committed_op_id = stored_op_ids.intents;
+  if (persistent_state.intents > committed_op_id) {
+    committed_op_id = persistent_state.intents;
   }
 }
 
@@ -372,15 +370,15 @@ void ReplayState::DumpReplayStateToStrings(
       prev_op_id,
       committed_op_id,
       pending_replicates.size(),
-      stored_op_ids.regular,
-      stored_op_ids.intents,
-      stored_op_ids.vector_indexes));
+      persistent_state.regular,
+      persistent_state.intents,
+      persistent_state.vector_indexes));
   if (num_entries_applied_to_rocksdb > 0) {
-    strings->push_back(Substitute("Log entries applied to RocksDB: $0",
-                                  num_entries_applied_to_rocksdb));
+    strings->push_back(Format("Log entries applied to RocksDB: $0",
+                              num_entries_applied_to_rocksdb));
   }
   if (!pending_replicates.empty()) {
-    strings->push_back(Substitute("Dumping REPLICATES ($0 items):", pending_replicates.size()));
+    strings->push_back(Format("Dumping REPLICATES ($0 items):", pending_replicates.size()));
     AddEntriesToStrings(pending_replicates, strings, half_limit);
   }
 }
@@ -391,20 +389,20 @@ bool ReplayState::CanApply(const log::LWLogEntryPB& entry) {
 
 OpId ReplayState::GetLowestOpIdToReplay(bool has_intents_db, const char* extra_log_prefix) const {
   auto op_id_replay_lowest =
-      has_intents_db ? std::min(stored_op_ids.regular, stored_op_ids.intents)
-                     : stored_op_ids.regular;
+      has_intents_db ? std::min(persistent_state.regular, persistent_state.intents)
+                     : persistent_state.regular;
   // A vector index flushes independently of the regular and intents DBs, and the intents flushed
-  // OpId may be advanced to match the regular one without waiting for vector indexes, so it
-  // could lag behind both of them. Replay from the lowest storage.
-  for (const auto& op_id : stored_op_ids.vector_indexes) {
-    op_id_replay_lowest = std::min(op_id_replay_lowest, op_id);
+  // OpId may be advanced to match the regular one past a vector index that holds nothing unflushed,
+  // so it could lag behind both of them. Replay from the lowest storage.
+  for (const auto& vector_index : persistent_state.vector_indexes) {
+    op_id_replay_lowest = std::min(op_id_replay_lowest, vector_index.op_id);
   }
   LOG_WITH_PREFIX(INFO)
       << extra_log_prefix
       << "op_id_replay_lowest=" << op_id_replay_lowest
-      << " (regular_op_id=" << stored_op_ids.regular
-      << ", intents_op_id=" << stored_op_ids.intents
-      << ", vector_indexes_op_ids=" << AsString(stored_op_ids.vector_indexes)
+      << " (regular_op_id=" << persistent_state.regular
+      << ", intents_op_id=" << persistent_state.intents
+      << ", vector_indexes=" << AsString(persistent_state.vector_indexes)
       << ", has_intents_db=" << has_intents_db << ")";
   return op_id_replay_lowest;
 }
@@ -587,7 +585,7 @@ class TabletBootstrap {
     // always need to know the term and index of the last logged op in order to vote, know how to
     // respond to AppendEntries(), etc.
     if (has_blocks && !needs_recovery) {
-      return STATUS(IllegalState, Substitute("Tablet $0: Found rowsets but no log "
+      return STATUS(IllegalState, Format("Tablet $0: Found rowsets but no log "
                                             "segments could be found.",
                                             tablet_id));
     }
@@ -787,7 +785,7 @@ class TabletBootstrap {
       LOG_WITH_PREFIX(INFO) << "Moving log directory " << log_dir << " to recovery directory "
                             << recovery_path << " in preparation for log replay";
       RETURN_NOT_OK_PREPEND(GetEnv()->RenameFile(log_dir, recovery_path),
-                            Substitute("Could not move log directory $0 to recovery dir $1",
+                            Format("Could not move log directory $0 to recovery dir $1",
                                       log_dir, recovery_path));
       RETURN_NOT_OK_PREPEND(GetEnv()->CreateDir(log_dir),
                             "Failed to recreate log directory " + log_dir);
@@ -838,11 +836,11 @@ class TabletBootstrap {
     LOG_WITH_PREFIX(INFO) << "Preparing to delete log recovery files and directory "
                           << recovery_path;
 
-    string tmp_path = Substitute("$0-$1", recovery_path, GetCurrentTimeMicros());
+    string tmp_path = Format("$0-$1", recovery_path, GetCurrentTimeMicros());
     LOG_WITH_PREFIX(INFO) << "Renaming log recovery dir from "  << recovery_path
                           << " to " << tmp_path;
     RETURN_NOT_OK_PREPEND(GetEnv()->RenameFile(recovery_path, tmp_path),
-                          Substitute("Could not rename old recovery dir from: $0 to: $1",
+                          Format("Could not rename old recovery dir from: $0 to: $1",
                                     recovery_path, tmp_path));
 
     if (FLAGS_skip_remove_old_recovery_dir) {
@@ -917,7 +915,7 @@ class TabletBootstrap {
         RETURN_NOT_OK(HandleReplicateMessage(entry_metadata, entry_ptr));
         break;
       default:
-        return STATUS(Corruption, Substitute("Unexpected log entry type: $0", entry.type()));
+        return STATUS(Corruption, Format("Unexpected log entry type: $0", entry.type()));
     }
     MAYBE_FAULT(FLAGS_TEST_fault_crash_during_log_replay);
     return Status::OK();
@@ -1018,13 +1016,13 @@ class TabletBootstrap {
         return PlayWriteRequest(replicate, apply_to_storages);
 
       case consensus::CHANGE_METADATA_OP:
-        return RefreshVectorIndexOpIds(PlayChangeMetadataRequest(replicate));
+        return RefreshVectorIndexStates(PlayChangeMetadataRequest(replicate));
 
       case consensus::CHANGE_CONFIG_OP:
         return PlayChangeConfigRequest(replicate);
 
       case consensus::TRUNCATE_OP:
-        return RefreshVectorIndexOpIds(PlayTruncateRequest(replicate));
+        return RefreshVectorIndexStates(PlayTruncateRequest(replicate));
 
       case consensus::NO_OP:
         return Status::OK();  // This is why it is a no-op!
@@ -1033,7 +1031,7 @@ class TabletBootstrap {
         return PlayUpdateTransactionRequest(replicate, apply_to_storages);
 
       case consensus::SNAPSHOT_OP:
-        return RefreshVectorIndexOpIds(PlayTabletSnapshotRequest(replicate));
+        return RefreshVectorIndexStates(PlayTabletSnapshotRequest(replicate));
 
       case consensus::HISTORY_CUTOFF_OP:
         return PlayHistoryCutoffRequest(replicate);
@@ -1049,7 +1047,7 @@ class TabletBootstrap {
 
       // Unexpected cases:
       case consensus::UNKNOWN_OP:
-        return STATUS(IllegalState, Substitute("Unsupported operation type: $0", op_type));
+        return STATUS(IllegalState, Format("Unsupported operation type: $0", op_type));
     }
 
     LOG_WITH_PREFIX(DFATAL) << "Invalid operation type " << op_type
@@ -1145,14 +1143,24 @@ class TabletBootstrap {
 
   // Computes which storages a replayed write must (re-)materialize into: the regular DB when this
   // op is not yet flushed there, plus each vector index that is likewise behind.
+  //
+  // An op at or below the hybrid time of a vector index precedes the index, so the live path did
+  // not apply it to the index either, and its schema packing could be GCed (GH#35124). The op
+  // hybrid time is compared, not the write one: on an xCluster target the latter is the source's,
+  // and a write applied after the index was added can be below the index hybrid time (GH#34697).
+  //
+  // TODO(vector_index): The vector index bits are positions in the current vector index list,
+  // so the result must be consumed before the list changes. See the TODO in docdb::StorageSet.
   static docdb::StorageSet ComputeApplyToStorages(
-      int64_t index, const DocDbOpIds& flushed_op_ids) {
+      int64_t index, HybridTime hybrid_time, const DocDbPersistentState& persistent_state) {
     docdb::StorageSet apply_to_storages;
-    if (index > flushed_op_ids.regular.index) {
+    apply_to_storages.Resize(persistent_state.vector_indexes.size());
+    if (index > persistent_state.regular.index) {
       apply_to_storages.SetRegularDB();
     }
-    for (size_t idx = 0; idx != flushed_op_ids.vector_indexes.size(); ++idx) {
-      if (index > flushed_op_ids.vector_indexes[idx].index) {
+    for (size_t idx = 0; idx != persistent_state.vector_indexes.size(); ++idx) {
+      const auto& vector_index = persistent_state.vector_indexes[idx];
+      if (index > vector_index.op_id.index && hybrid_time > vector_index.hybrid_time) {
         apply_to_storages.SetVectorIndex(idx);
       }
     }
@@ -1162,7 +1170,8 @@ class TabletBootstrap {
   ReplayDecision ShouldReplayOperation(
       consensus::OperationType op_type,
       const int64_t index,
-      const DocDbOpIds& flushed_op_ids,
+      HybridTime hybrid_time,
+      const DocDbPersistentState& persistent_state,
       const int64_t metadata_flushed_index,
       TransactionStatus txn_status,
       bool write_op_has_transaction) {
@@ -1174,23 +1183,23 @@ class TabletBootstrap {
         // TODO: Replaying even transactions that are flushed to both regular and intents RocksDB is
         // a temporary change. The long term change is to track write and apply operations
         // separately instead of a tracking a single "intents_flushed_index".
-        auto apply_to_storages = ComputeApplyToStorages(index, flushed_op_ids);
+        auto apply_to_storages = ComputeApplyToStorages(index, hybrid_time, persistent_state);
         VLOG_WITH_PREFIX_AND_FUNC(3)
-            << "index: " << index << " flushed_op_ids: " << flushed_op_ids.ToString()
+            << "index: " << index << " persistent_state: " << persistent_state.ToString()
             << ", apply_to_storages: " << apply_to_storages.ToString();
         return {true, apply_to_storages};
       }
       // We need promotions to persist to intents RocksDB before we can skip it.
       if (txn_status == TransactionStatus::PROMOTING) {
         VLOG_WITH_PREFIX_AND_FUNC(3)
-            << "index: " << index << " flushed_op_ids: " << flushed_op_ids.ToString();
-        return {index > flushed_op_ids.intents.index};
+            << "index: " << index << " persistent_state: " << persistent_state.ToString();
+        return {index > persistent_state.intents.index};
       }
       // For other types of transaction updates, we ignore them if they have been flushed to the
       // regular RocksDB.
       VLOG_WITH_PREFIX_AND_FUNC(3)
-          << "index: " << index << " flushed_op_ids: " << flushed_op_ids.ToString();
-      return {index > flushed_op_ids.regular.index};
+          << "index: " << index << " persistent_state: " << persistent_state.ToString();
+      return {index > persistent_state.regular.index};
     }
 
     if (metadata_flushed_index >= 0 && op_type == consensus::CHANGE_METADATA_OP) {
@@ -1206,20 +1215,20 @@ class TabletBootstrap {
       // exactly the storages that have not flushed it yet. Gating on the regular DB alone lost
       // vectors after an ungraceful restart once the regular DB flushed past the op while a vector
       // index had not (GH#32797).
-      auto apply_to_storages = ComputeApplyToStorages(index, flushed_op_ids);
+      auto apply_to_storages = ComputeApplyToStorages(index, hybrid_time, persistent_state);
       VLOG_WITH_PREFIX_AND_FUNC(3)
-          << "index: " << index << " flushed_op_ids: " << flushed_op_ids.ToString()
+          << "index: " << index << " persistent_state: " << persistent_state.ToString()
           << ", apply_to_storages: " << apply_to_storages.ToString();
       return {apply_to_storages.Any(), apply_to_storages};
     }
 
     // In most cases we assume that intents_flushed_index <= regular_flushed_index but here we are
     // trying to be resilient to violations of that assumption.
-    if (index <= std::min(flushed_op_ids.regular.index, flushed_op_ids.intents.index)) {
+    if (index <= std::min(persistent_state.regular.index, persistent_state.intents.index)) {
       // Never replay anything that is flushed to both regular and intents RocksDBs in a
       // transactional table.
       VLOG_WITH_PREFIX_AND_FUNC(3)
-          << "index: " << index << " flushed_op_ids: " << flushed_op_ids.ToString();
+          << "index: " << index << " persistent_state: " << persistent_state.ToString();
       return {false};
     }
 
@@ -1235,16 +1244,16 @@ class TabletBootstrap {
       // update (GH#31899); in a vector index, where it duplicates an already-present
       // entry. The long-term "track write and apply separately" fix in the APPLYING branch's TODO
       // above would subsume this.
-      auto apply_to_storages = ComputeApplyToStorages(index, flushed_op_ids);
+      auto apply_to_storages = ComputeApplyToStorages(index, hybrid_time, persistent_state);
       VLOG_WITH_PREFIX_AND_FUNC(3)
-          << "index: " << index << " flushed_op_ids: " << flushed_op_ids.ToString()
+          << "index: " << index << " persistent_state: " << persistent_state.ToString()
           << ", apply_to_storages: " << apply_to_storages.ToString();
-      return {index > flushed_op_ids.intents.index, apply_to_storages};
+      return {index > persistent_state.intents.index, apply_to_storages};
     }
 
     VLOG_WITH_PREFIX_AND_FUNC(3)
-        << "index: " << index << " flushed_op_ids: " << flushed_op_ids.ToString();
-    return {index > flushed_op_ids.regular.index};
+        << "index: " << index << " persistent_state: " << persistent_state.ToString();
+    return {index > persistent_state.regular.index};
   }
 
   // Performs various checks based on the OpId, and decides whether to replay the given operation.
@@ -1257,7 +1266,8 @@ class TabletBootstrap {
     const auto decision = ShouldReplayOperation(
         op_type,
         replicate.id().index(),
-        replay_state_->stored_op_ids,
+        HybridTime(replicate.hybrid_time()),
+        replay_state_->persistent_state,
         meta_->LastFlushedChangeMetadataOperationOpId().index,
         // txn_status
         replicate.has_transaction_state()
@@ -1291,35 +1301,36 @@ class TabletBootstrap {
     }
   }
 
-  Result<DocDbOpIds> GetFlushedOpIds() {
-    const auto flushed_op_ids = VERIFY_RESULT(tablet_->MaxPersistentOpId());
+  Result<DocDbPersistentState> LoadPersistentState() {
+    const auto persistent_state = VERIFY_RESULT(tablet_->GetPersistentState());
 
     if (FLAGS_force_recover_flushed_frontier) {
       // This is used very rarely to replay all log entries and recover RocksDB flushed OpId
       // metadata.
       LOG_WITH_PREFIX(WARNING)
           << "--force_recover_flushed_frontier specified, ignoring existing flushed frontiers "
-          << "from RocksDB metadata (will replay all log records): " << flushed_op_ids.ToString();
+          << "from RocksDB metadata (will replay all log records): " << persistent_state.ToString();
       // Keep one reset entry per vector index. An empty list reads as "this tablet has no vector
       // indexes" in ComputeApplyToStorages, which would replay every operation into the regular
       // DB only and leave the indexes without the data this flag exists to recover.
-      DocDbOpIds result;
-      result.vector_indexes.assign(flushed_op_ids.vector_indexes.size(), OpId());
+      DocDbPersistentState result;
+      result.vector_indexes.assign(
+          persistent_state.vector_indexes.size(), VectorIndexPersistentState());
       return result;
     }
 
     if (test_hooks_) {
-      const auto docdb_flushed_op_ids_override = test_hooks_->GetFlushedOpIdsOverride();
-      if (docdb_flushed_op_ids_override.has_value()) {
-        LOG_WITH_PREFIX(INFO) << "Using test values of flushed DocDB OpIds: "
-                              << docdb_flushed_op_ids_override->ToString();
-        return *docdb_flushed_op_ids_override;
+      const auto persistent_state_override = test_hooks_->GetPersistentStateOverride();
+      if (persistent_state_override.has_value()) {
+        LOG_WITH_PREFIX(INFO) << "Using test DocDB persistent state: "
+                              << persistent_state_override->ToString();
+        return *persistent_state_override;
       }
     }
 
     // Production codepath.
-    LOG_WITH_PREFIX(INFO) << "Flushed DocDB OpIds: " << flushed_op_ids.ToString();
-    return flushed_op_ids;
+    LOG_WITH_PREFIX(INFO) << "DocDB persistent state: " << persistent_state.ToString();
+    return persistent_state;
   }
 
   // Determines the first segment to replay based two criteria:
@@ -1576,7 +1587,7 @@ class TabletBootstrap {
   // The resulting log can be continued later on when then tablet is rebuilt and starts accepting
   // writes from clients.
   Status PlaySegments(ConsensusBootstrapInfo* consensus_info) {
-    const auto flushed_op_ids = VERIFY_RESULT(GetFlushedOpIds());
+    const auto persistent_state = VERIFY_RESULT(LoadPersistentState());
 
     if (tablet_->snapshot_coordinator()) {
       // We should load transaction aware snapshots before replaying logs, because we need them
@@ -1584,7 +1595,7 @@ class TabletBootstrap {
       RETURN_NOT_OK(tablet_->snapshot_coordinator()->Load(tablet_.get()));
     }
 
-    replay_state_ = std::make_unique<ReplayState>(flushed_op_ids, LogPrefix());
+    replay_state_ = std::make_unique<ReplayState>(persistent_state, LogPrefix());
 
     // Use only the regular DB frontier for safe time. The intents DB may contain hybrid times
     // from async writes that have not yet been Raft committed.
@@ -1604,9 +1615,9 @@ class TabletBootstrap {
     } else {
       LOG_WITH_PREFIX(INFO) << "Max persistent index in RocksDB's SSTables before bootstrap: "
                             << "regular RocksDB: "
-                            << replay_state_->stored_op_ids.regular << "; "
+                            << replay_state_->persistent_state.regular << "; "
                             << "intents RocksDB: "
-                            << replay_state_->stored_op_ids.intents;
+                            << replay_state_->persistent_state.intents;
     }
 
     // Open the log.
@@ -1913,18 +1924,18 @@ class TabletBootstrap {
     return s;
   }
 
-  // ComputeApplyToStorages maps the stored vector index OpIds onto the index list positionally, so
-  // they are refreshed after every op that can add an index, or reopen the storages and rebuild
-  // the list: a metadata change, a truncate or a snapshot restore. A test override of the flushed
-  // OpIds stays in effect, and --force_recover_flushed_frontier keeps replaying every op into
-  // every index, as in GetFlushedOpIds.
-  Status RefreshVectorIndexOpIds(const Status& play_status) {
-    auto& op_ids = replay_state_->stored_op_ids.vector_indexes;
+  // ComputeApplyToStorages maps the stored vector index states onto the index list positionally,
+  // so they are refreshed after every op that can add an index, or reopen the storages and rebuild
+  // the list: a metadata change, a truncate or a snapshot restore. A test override of the
+  // persistent state stays in effect, and --force_recover_flushed_frontier keeps replaying every op
+  // into every index, as in LoadPersistentState.
+  Status RefreshVectorIndexStates(const Status& play_status) {
+    auto& vector_indexes = replay_state_->persistent_state.vector_indexes;
     if (FLAGS_force_recover_flushed_frontier) {
-      tablet_->vector_indexes().FillMaxPersistentOpIds(op_ids, false);
-      std::fill(op_ids.begin(), op_ids.end(), OpId());
-    } else if (!test_hooks_ || !test_hooks_->GetFlushedOpIdsOverride()) {
-      tablet_->vector_indexes().FillMaxPersistentOpIds(op_ids, false);
+      tablet_->vector_indexes().FillPersistentStates(vector_indexes, false);
+      std::fill(vector_indexes.begin(), vector_indexes.end(), VectorIndexPersistentState());
+    } else if (!test_hooks_ || !test_hooks_->GetPersistentStateOverride()) {
+      tablet_->vector_indexes().FillPersistentStates(vector_indexes, false);
     }
     return play_status;
   }
@@ -2131,9 +2142,6 @@ class TabletBootstrap {
   HybridTime rocksdb_last_entry_hybrid_time_ = HybridTime::kMin;
 
   log::SkipWalWrite skip_wal_rewrite_;
-
-  // A way to inject flushed OpIds for regular and intents RocksDBs.
-  std::optional<DocDbOpIds> TEST_docdb_flushed_op_ids_;
 
   // This is populated if TEST_collect_replayed_op_ids is true.
   std::vector<OpId> TEST_replayed_op_ids_;

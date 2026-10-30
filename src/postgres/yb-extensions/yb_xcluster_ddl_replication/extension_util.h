@@ -106,4 +106,12 @@ extern char *get_typname(Oid pg_type_oid);
 
 extern bool IsExtensionDdl(CommandTag command_tag);
 
+/*
+ * Returns whether an ANALYZE of this relation is worth telling the target
+ * about. Temporary relations, system catalogs, information_schema, the
+ * extension's own tables, and any relkind other than RELKIND_RELATION /
+ * RELKIND_MATVIEW / RELKIND_PARTITIONED_TABLE are skipped.
+ */
+extern bool ShouldReplicateAnalyzedRelation(Oid relid);
+
 #endif

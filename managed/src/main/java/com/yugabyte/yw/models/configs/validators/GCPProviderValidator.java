@@ -575,24 +575,11 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
   }
 
   private String getVpcNetwork(Provider provider) {
-    String vpcNetwork = "";
-    GCPCloudInfo gcpCloudInfo = CloudInfoInterface.get(provider);
-    if (gcpCloudInfo.getVpcType() == VPCType.EXISTING) {
-      vpcNetwork = gcpCloudInfo.getDestVpcId();
-    } else if (gcpCloudInfo.getVpcType() == VPCType.HOSTVPC) {
-      vpcNetwork = gcpCloudInfo.getHostVpcId();
-    }
-    return vpcNetwork;
+    return GCPUtil.getVpcNetwork(CloudInfoInterface.get(provider));
   }
 
   private String getVpcProject(Provider provider) {
-    GCPCloudInfo gcpCloudInfo = CloudInfoInterface.get(provider);
-    String project = gcpCloudInfo.getGceProject();
-    // Check for the existence of VPC in the Shared VPC Project if provided
-    if (gcpCloudInfo.getSharedVPCProject() != null) {
-      project = gcpCloudInfo.getSharedVPCProject();
-    }
-    return project;
+    return GCPUtil.getVpcProject(CloudInfoInterface.get(provider));
   }
 
   private List<String> getFirewallTags(Provider provider, boolean addDefaultTags) {

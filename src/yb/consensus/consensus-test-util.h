@@ -55,12 +55,12 @@
 #include "yb/consensus/test_consensus_context.h"
 
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_test_util.h"
 #include "yb/server/clock.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
+#include "yb/util/format.h"
 #include "yb/util/locks.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
@@ -83,7 +83,6 @@ namespace consensus {
 
 using log::Log;
 using rpc::Messenger;
-using strings::Substitute;
 
 constexpr int kTermDivisor = 7;
 
@@ -111,7 +110,7 @@ RaftPeerPB FakeRaftPeerPB(const std::string& uuid) {
   RaftPeerPB peer_pb;
   peer_pb.set_permanent_uuid(uuid);
   auto addr = peer_pb.mutable_last_known_private_addr()->Add();
-  addr->set_host(Substitute("$0-fake-hostname", CURRENT_TEST_NAME()));
+  addr->set_host(Format("$0-fake-hostname", CURRENT_TEST_NAME()));
   addr->set_port(0);
   return peer_pb;
 }
@@ -153,9 +152,9 @@ RaftConfigPB BuildRaftConfigPBForTests(int num) {
   for (int i = 0; i < num; i++) {
     RaftPeerPB* peer_pb = raft_config.add_peers();
     peer_pb->set_member_type(PeerMemberType::VOTER);
-    peer_pb->set_permanent_uuid(Substitute("peer-$0", i));
+    peer_pb->set_permanent_uuid(Format("peer-$0", i));
     HostPortPB* hp = peer_pb->mutable_last_known_private_addr()->Add();
-    hp->set_host(Substitute("peer-$0.fake-domain-for-tests", i));
+    hp->set_host(Format("peer-$0.fake-domain-for-tests", i));
     hp->set_port(0);
   }
   return raft_config;

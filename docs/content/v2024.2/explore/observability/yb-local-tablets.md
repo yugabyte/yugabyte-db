@@ -17,18 +17,7 @@ Use YSQL `yb_local_tablets` view to fetch the metadata for [YSQL](../../../api/y
 
 While debugging a system with [Active Session History](../active-session-history/), you can join the `tablet_id` column of this view with `wait_event_aux` from [yb_active_session_history](../../../launch-and-manage/monitor-and-alert/active-session-history-monitor/#yb-active-session-history) for TServer events tied to a tablet. Because `wait_event_aux` stores only the first 15 characters of the tablet ID, use `SUBSTRING(tablet_id, 1, 15)` in the join. For an example, see [Detect a hot shard](../active-session-history/#detect-a-hot-shard).
 
-The columns of the `yb_local_tablets` view are described in the following table.
-
-| Column | Type | Description |
-| :----- | :--- | :---------- |
-| tablet_id | text | 16 byte UUID of the tablet. |
-| table_id | text | 16 byte UUID of the table which the tablet is part of. |
-| table_type | text | Type of the table. Can be YSQL, YCQL, System, or Unknown. |
-| namespace_name | text | Name of the database or the keyspace. |
-| ysql_schema_name | text | YSQL schema name. Empty for YCQL, System, and Unknown table types. |
-| table_name | text | Name of the table which the tablet is part of. |
-| partition_key_start| bytea | Start key of the partition (inclusive). |
-| partition_key_end  | bytea | End key of the partition (exclusive).|
+Columns are listed in [Tablet metadata](../../../launch-and-manage/monitor-and-alert/tablet-metadata/#yb-local-tablets).
 
 ## Examples
 

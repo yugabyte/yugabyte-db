@@ -38,6 +38,7 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 
+#include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/logging.h"
 
@@ -67,7 +68,7 @@ namespace yb::tablet {
 
 LogGCOp::LogGCOp(TabletPeer* tablet_peer, const TabletPtr& tablet)
     : MaintenanceOp(
-          StringPrintf("LogGCOp(%s)", tablet->tablet_id().c_str()),
+          Format("LogGCOp($0)", tablet->tablet_id()),
           MaintenanceOp::LOW_IO_USAGE),
       tablet_(tablet),
       tablet_peer_(tablet_peer),
@@ -124,7 +125,7 @@ scoped_refptr<AtomicGauge<uint32_t> > LogGCOp::RunningGauge() const {
 ResetStaleRetentionBarriersOp::ResetStaleRetentionBarriersOp(
     TabletPeer* tablet_peer, const TabletPtr& tablet)
     : MaintenanceOp(
-          StringPrintf("ResetStaleRetentionBarriersOp(%s)", tablet->tablet_id().c_str()),
+          Format("ResetStaleRetentionBarriersOp($0)", tablet->tablet_id()),
           MaintenanceOp::LOW_IO_USAGE),
       tablet_(tablet),
       tablet_peer_(tablet_peer),

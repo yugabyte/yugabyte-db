@@ -40,6 +40,17 @@ class MockTserverXClusterContext : public TserverXClusterContextIf {
       XClusterNamespaceInfoPB_XClusterRole, GetXClusterRole, (NamespaceIdView namespace_id),
       (const, override));
 
+  MOCK_METHOD(Result<uint32_t>, GetOidCacheInvalidationsCount, (), (const, override));
+  MOCK_METHOD(bool, HasXClusterGuardedInfoLease, (), (const, override));
+
+  MOCK_METHOD(
+      (Result<std::optional<HybridTime>>), GetPersistenceBlockedThrough, (uint32_t database_oid),
+      (const, override));
+
+  MOCK_METHOD(
+      (Result<std::shared_ptr<const PersistenceBlockMapPB>>), TEST_GetPersistenceBlockMap, (),
+      (const, override));
+
   MOCK_METHOD(bool, IsReadOnlyMode, (NamespaceIdView namespace_id), (const, override));
   MOCK_METHOD(
       bool, IsTargetAndInAutomaticMode, (const NamespaceId& namespace_id), (const, override));

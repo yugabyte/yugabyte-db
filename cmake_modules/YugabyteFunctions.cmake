@@ -863,7 +863,15 @@ function(enable_lto_if_needed)
   set(YB_TSERVER_DYNAMIC_EXE_NAME "yb-tserver${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}" PARENT_SCOPE)
 endfunction()
 
+# Adds a target that links original_exe_name's whole object closure into one statically linked,
+# LTO-optimized executable, output_exe_name. Does nothing in a non-LTO build. The output goes next
+# to the original executable when that has a RUNTIME_OUTPUT_DIRECTORY, else to the bin directory.
+# With EXCLUDE_FROM_ALL, the target is only built when requested by name.
 function(yb_add_lto_target original_exe_name output_exe_name symlink_as_names)
+  cmake_parse_arguments(ARG "EXCLUDE_FROM_ALL" "" "" ${ARGN})
+  if(ARG_UNPARSED_ARGUMENTS)
+    message(SEND_ERROR "Error: unrecognized arguments: ${ARG_UNPARSED_ARGUMENTS}")
+  endif()
   assert_vars_defined(YB_LTO_ENABLED YB_DYNAMICALLY_LINKED_EXE_SUFFIX)
   if(NOT YB_LTO_ENABLED)
     return()
@@ -878,7 +886,11 @@ function(yb_add_lto_target original_exe_name output_exe_name symlink_as_names)
   set(dynamic_exe_name "${original_exe_name}")
   message("Adding LTO target: ${output_exe_name} "
           "(LTO equivalent of ${dynamic_exe_name})")
-  set(output_executable_path "${EXECUTABLE_OUTPUT_PATH}/${output_exe_name}")
+  get_target_property(output_dir "${dynamic_exe_name}" RUNTIME_OUTPUT_DIRECTORY)
+  if(NOT output_dir)
+    set(output_dir "${EXECUTABLE_OUTPUT_PATH}")
+  endif()
+  set(output_executable_path "${output_dir}/${output_exe_name}")
 
   set(cmd_args
       "${BUILD_SUPPORT_DIR}/dependency_graph"
@@ -903,7 +915,11 @@ function(yb_add_lto_target original_exe_name output_exe_name symlink_as_names)
     DEPENDS "${dynamic_exe_name}"
   )
 
-  add_custom_target("${output_exe_name}" ALL DEPENDS "${output_executable_path}")
+  if(ARG_EXCLUDE_FROM_ALL)
+    add_custom_target("${output_exe_name}" DEPENDS "${output_executable_path}")
+  else()
+    add_custom_target("${output_exe_name}" ALL DEPENDS "${output_executable_path}")
+  endif()
   foreach(symlink_name IN LISTS symlink_as_names)
     # For each symlinked executable name (yb-master, yb-tserver) create an alias target that will
     # cause the LTO executable to be built.

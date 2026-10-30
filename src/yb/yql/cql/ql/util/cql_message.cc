@@ -25,8 +25,8 @@
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/endian.h"
-#include "yb/gutil/strings/substitute.h"
 
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
@@ -44,7 +44,6 @@ using std::unique_ptr;
 using std::string;
 using std::vector;
 using std::unordered_map;
-using strings::Substitute;
 using snappy::GetUncompressedLength;
 using snappy::MaxCompressedLength;
 using snappy::RawUncompress;
@@ -82,13 +81,13 @@ Status CQLMessage::QueryParameters::GetBindVariableValue(const std::string& name
   if (!value_map.empty()) {
     const auto itr = value_map.find(name);
     if (itr == value_map.end()) {
-      return STATUS_SUBSTITUTE(RuntimeError, "Bind variable \"$0\" not found", name);
+      return STATUS_FORMAT(RuntimeError, "Bind variable \"$0\" not found", name);
     }
     *value = &values[itr->second];
   } else {
     if (pos >= values.size()) {
       // Return error with 1-based position.
-      return STATUS_SUBSTITUTE(RuntimeError, "Bind variable at position $0 not found", pos + 1);
+      return STATUS_FORMAT(RuntimeError, "Bind variable at position $0 not found", pos + 1);
     }
     *value = &values[pos];
   }
@@ -149,7 +148,7 @@ Status CQLMessage::QueryParameters::GetBindVariable(const std::string& name,
           QL_INVALID_TYPES_IN_SWITCH:
             break;
         }
-        return STATUS_SUBSTITUTE(
+        return STATUS_FORMAT(
             NotSupported, "Unsupported datatype $0", static_cast<int>(type->main()));
       }
       Slice data(v->value);
@@ -161,7 +160,7 @@ Status CQLMessage::QueryParameters::GetBindVariable(const std::string& name,
     case Value::Kind::NOT_SET:
       return Status::OK();
   }
-  return STATUS_SUBSTITUTE(
+  return STATUS_FORMAT(
       RuntimeError, "Invalid bind variable kind $0", static_cast<int>(v->kind));
 }
 
@@ -250,8 +249,8 @@ bool CQLRequest::ParseRequest(
     error_response->reset(
         new ErrorResponse(
             header.stream_id, ErrorResponse::Code::PROTOCOL_ERROR,
-            Substitute("Invalid or unsupported protocol version $0. Supported versions are between "
-                       "$1 and $2.", header.version, kMinimumVersion, kCurrentVersion)));
+            Format("Invalid or unsupported protocol version $0. Supported versions are between "
+                   "$1 and $2.", header.version, kMinimumVersion, kCurrentVersion)));
     return false;
   }
 
@@ -481,7 +480,7 @@ Status CQLRequest::ParseInet(Endpoint* value) {
     memcpy(bytes.data(), ipaddr.data(), ipaddr.size());
     address = boost::asio::ip::address_v6(bytes);
   } else {
-    return STATUS_SUBSTITUTE(NetworkError, "Invalid size of ipaddr: $0", ipaddr.size());
+    return STATUS_FORMAT(NetworkError, "Invalid size of ipaddr: $0", ipaddr.size());
   }
   *value = Endpoint(address, port);
   DVLOG(4) << "CQL inet " << *value;
@@ -702,7 +701,7 @@ Status AuthResponseRequest::AuthQueryParameters::GetBindVariable(
     value->set_string_value(username);
     return Status::OK();
   } else {
-    return STATUS(InvalidArgument, Substitute("Bind variable position $0 out of range: ", pos));
+    return STATUS(InvalidArgument, Format("Bind variable position $0 out of range: ", pos));
   }
 }
 

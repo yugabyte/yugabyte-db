@@ -14,6 +14,8 @@
 
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_state_table.h"
+#include "yb/common/common_flags.h"
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/entity_ids.h"
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 #include "yb/tserver/ts_tablet_manager.h"
@@ -53,6 +55,7 @@ class CDCSDKConsumptionConsistentChangesTest : public CDCSDKYsqlTest {
   void TestSysCatalogRetentionBarriers(
       bool use_grpc_stream, bool use_logical_replication_stream, bool add_dummy_grpc_slot_entry);
   void TestFailureOnAddingUnqualifiedTableToVWAL(bool add_expired_table, bool use_colocated);
+  void TestVectorIndexAlterDoesNotLeakIndexSchema(bool colocated);
 };
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVirtualWAL) {
@@ -1605,6 +1608,73 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWithMultipleAl
   ASSERT_EQ(seen_ddl_records, expected_ddl_records);
   ASSERT_EQ(seen_dml_records, expected_dml_records);
   CheckRecordsConsistencyFromVWAL(consistent_change_resp_after_alter.records);
+}
+
+// A vector index shares the tablets of its indexed table, so altering the index writes a
+// CHANGE_METADATA_OP carrying the index schema into the indexed table's tablets. That schema must
+// not be streamed, neither as the indexed table's schema nor as a DDL record of its own (#33135).
+void CDCSDKConsumptionConsistentChangesTest::TestVectorIndexAlterDoesNotLeakIndexSchema(
+    bool colocated) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ASSERT_OK(SetUpWithParams(3, 1, colocated, true));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE test_vec (id int PRIMARY KEY, embedding vector(3))$0",
+      colocated ? "" : " SPLIT INTO 1 TABLETS"));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "test_vec"));
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  ASSERT_OK(conn.Execute("INSERT INTO test_vec VALUES (1, '[1, 2, 3]')"));
+  ASSERT_OK(conn.Execute(
+      "CREATE INDEX test_vec_idx ON test_vec USING ybhnsw (embedding vector_l2_ops)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_vec VALUES (2, '[4, 5, 6]')"));
+  ASSERT_OK(conn.Execute("ALTER INDEX test_vec_idx RENAME TO test_vec_idx_renamed"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_vec VALUES (3, '[7, 8, 9]')"));
+  // The table's own schema changes must still be streamed.
+  ASSERT_OK(conn.Execute("ALTER TABLE test_vec ADD COLUMN c int"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_vec VALUES (4, '[1, 1, 1]', 4)"));
+  // Moves both the table and its vector index.
+  ASSERT_OK(conn.Execute("CREATE SCHEMA s"));
+  ASSERT_OK(conn.Execute("ALTER TABLE test_vec SET SCHEMA s"));
+  ASSERT_OK(conn.Execute("INSERT INTO s.test_vec VALUES (5, '[2, 2, 2]', 5)"));
+
+  auto resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table.table_id()}, 5 /* expected_dml_records */, true /* init_virtual_wal */));
+
+  int seen_inserts = 0;
+  bool seen_ddl_with_c = false;
+  for (const auto& record : resp.records) {
+    const auto& row_message = record.row_message();
+    if (row_message.op() == RowMessage::DDL) {
+      ASSERT_EQ(row_message.table(), "test_vec") << row_message.ShortDebugString();
+      for (const auto& column : row_message.schema().column_info()) {
+        ASSERT_NE(column.name(), "ybidxbasectid") << row_message.ShortDebugString();
+        seen_ddl_with_c |= column.name() == "c";
+      }
+    } else if (row_message.op() == RowMessage::INSERT) {
+      ++seen_inserts;
+      // Rows written after ADD COLUMN have the new column.
+      const bool has_c = row_message.new_tuple(0).pg_ql_value().int32_value() >= 4;
+      ASSERT_EQ(row_message.new_tuple_size(), has_c ? 3 : 2) << row_message.ShortDebugString();
+      ASSERT_EQ(row_message.new_tuple(0).column_name(), "id");
+      ASSERT_EQ(row_message.new_tuple(1).column_name(), "embedding");
+      if (has_c) {
+        ASSERT_EQ(row_message.new_tuple(2).column_name(), "c");
+      }
+    }
+  }
+  ASSERT_EQ(seen_inserts, 5);
+  ASSERT_TRUE(seen_ddl_with_c);
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVectorIndexAlterDoesNotLeakIndexSchema) {
+  TestVectorIndexAlterDoesNotLeakIndexSchema(false /* colocated */);
+}
+
+TEST_F(
+    CDCSDKConsumptionConsistentChangesTest, TestVectorIndexAlterDoesNotLeakIndexSchemaColocated) {
+  TestVectorIndexAlterDoesNotLeakIndexSchema(true /* colocated */);
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCDCSDKConsistentStreamWithTabletSplit) {
@@ -7161,7 +7231,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestNoLossWithInvalidConsistentSt
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALDetectAddDropColumnFromPgCatalog) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+  ToggleDDLMode(/* use_legacy = */ false);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 10_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_use_byte_threshold_for_vwal_changes) = false;
@@ -7281,7 +7351,7 @@ TEST_F(
     CDCSDKConsumptionConsistentChangesTest,
     TestVWALDetectColumnRenameAndTypeChangeFromPgCatalog) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+  ToggleDDLMode(/* use_legacy = */ false);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 10_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_use_byte_threshold_for_vwal_changes) = false;
@@ -7341,7 +7411,7 @@ TEST_F(
     CDCSDKConsumptionConsistentChangesTest,
     TestVWALDetectTableRenameAndSchemaChangeFromPgCatalog) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+  ToggleDDLMode(/* use_legacy = */ false);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 10_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_use_byte_threshold_for_vwal_changes) = false;
@@ -7400,7 +7470,7 @@ TEST_F(
 // the publication refresh signal, without shipping DMLs that follow the alter in the same txn.
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALPubRefreshCutsResponseOnAlterPublication) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+  ToggleDDLMode(/* use_legacy = */ false);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
       true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 10_KB;
@@ -7506,7 +7576,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALPubRefreshCutsResponseOnA
 TEST_F(
     CDCSDKConsumptionConsistentChangesTest, TestVWALPubRefreshCutsResponseOnCreateTableAllTables) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+  ToggleDDLMode(/* use_legacy = */ false);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
       true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 10_KB;

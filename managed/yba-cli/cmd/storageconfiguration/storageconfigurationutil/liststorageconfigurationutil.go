@@ -64,6 +64,9 @@ func ListStorageConfigurationUtil(cmd *cobra.Command, commandCall, storageCode s
 			util.AzureStorageConfigType,
 			util.NFSStorageConfigType,
 		}
+		if util.IsFeatureFlagEnabled(util.PREVIEW) {
+			codes = append(codes, util.OCIStorageConfigType)
+		}
 	}
 	storageConfigsCode := make([]ybaclient.CustomerConfigUI, 0)
 	for _, c := range codes {

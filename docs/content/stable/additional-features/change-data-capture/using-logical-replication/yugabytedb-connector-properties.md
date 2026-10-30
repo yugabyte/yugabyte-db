@@ -704,6 +704,20 @@ Sending heartbeats while streaming changes requires connector version [`dz.2.5.2
 
 Default: 0
 
+{{< note title="Heartbeats with BinaryDataConverter" >}}
+
+Heartbeat records have a structured (`Struct`) key and value. If you use `io.debezium.converters.BinaryDataConverter` as the value converter, for example to write pre-serialized payloads to Kafka unchanged, configure a delegate converter for records whose value isn't binary. Otherwise, the connector task fails when it sends the first heartbeat record, with an error that includes `requires a delegate.converter.type to be configured`. For example:
+
+```properties
+value.converter=io.debezium.converters.BinaryDataConverter
+value.converter.delegate.converter.type=org.apache.kafka.connect.json.JsonConverter
+value.converter.delegate.converter.type.schemas.enable=false
+```
+
+Records whose value is already binary are still written unchanged; the delegate converter serializes only records whose value isn't binary, such as heartbeat and transaction metadata records. If `key.converter` is also `BinaryDataConverter`, configure `key.converter.delegate.converter.type` in the same way. For more information, refer to [Using Avro as the payload format](https://debezium.io/documentation/reference/stable/transformations/outbox-event-router.html#avro-as-payload-format) in the Debezium documentation.
+
+{{< /note >}}
+
 ##### heartbeat.action.query
 
 A query that the connector runs on the source database each time it sends a heartbeat record. For example, you can set it to `INSERT INTO heartbeat_table (ts) VALUES (now())`, where `heartbeat_table` is a table included in the publication, so that the connector receives a change at every heartbeat even when the other captured tables are idle.

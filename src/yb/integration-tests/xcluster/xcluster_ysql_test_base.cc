@@ -36,6 +36,7 @@
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/format.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/thread.h"
@@ -445,7 +446,7 @@ Result<YBTableName> XClusterYsqlTestBase::GetYsqlTable(
   }
   return STATUS(
       NotFound,
-      strings::Substitute("Unable to find table $0 in namespace $1", table_name, namespace_name));
+      Format("Unable to find table $0 in namespace $1", table_name, namespace_name));
 }
 
 Result<bool> XClusterYsqlTestBase::IsTableDeleted(Cluster& cluster, const YBTableName& table_name) {

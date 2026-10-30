@@ -25,7 +25,6 @@
 #include "yb/client/table_handle.h"
 
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/mini_cluster.h"

@@ -48,7 +48,6 @@
 #include "yb/dockv/reader_projection.h"
 
 #include "yb/gutil/strings/numbers.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/tablet/local_tablet_writer.h"
 #include "yb/tablet/tablet-test-util.h"
@@ -56,6 +55,7 @@
 #include "yb/tablet/tablet_metadata.h"
 
 #include "yb/util/env.h"
+#include "yb/util/format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
@@ -63,7 +63,6 @@
 using std::string;
 using std::vector;
 
-using strings::Substitute;
 
 namespace yb {
 namespace tablet {
@@ -173,8 +172,8 @@ TEST_F(TestTabletSchema, TestRenameProjection) {
   // Read and verify using the s2 schema
   keys.clear();
   for (int i = 1; i <= 4; ++i) {
-    keys.push_back(std::pair<string, string>(Substitute("{ int32_value: $0", i),
-                                             Substitute("int32_value: $0 }", i)));
+    keys.push_back(std::pair<string, string>(Format("{ int32_value: $0", i),
+                                             Format("int32_value: $0 }", i)));
   }
   VerifyTabletRows(keys);
 

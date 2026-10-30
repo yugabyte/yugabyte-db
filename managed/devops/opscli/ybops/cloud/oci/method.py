@@ -137,16 +137,35 @@ class OciDeleteRootVolumesMethod(DeleteRootVolumesMethod):
 
 
 class OciReplaceRootVolumeMethod(ReplaceRootVolumeMethod):
+    """--replacement_disk carries the target image OCID. OCI generates the new boot volume from
+    it during the instance update, so there is no disk to detach or attach beforehand.
+    """
 
     def __init__(self, base_command):
         super(OciReplaceRootVolumeMethod, self).__init__(base_command)
 
-    def _mount_root_volume(self, args, volume):
-        raise YBOpsRuntimeError("Root volume replacement not supported for OCI")
+    def add_extra_args(self):
+        super(OciReplaceRootVolumeMethod, self).add_extra_args()
+        self.parser.add_argument("--force_replacement", action="store_true", default=False,
+                                 help="Replace the boot volume even if it was already created "
+                                      "from the image, as a forced VM image upgrade does.")
+
+    def _mount_root_volume(self, host_info, image_id):
+        self.cloud.replace_boot_volume(
+            host_info, image_id, force=host_info.get("force_replacement", False))
+
+    # replace_boot_volume waits for an unfinished replacement and skips one already done itself.
+    # The base checks query cloud.get_disk, which OCI does not implement.
+    def _is_disk_mounting(self, host_info, volume_id, args):
+        return False
+
+    def _is_disk_mounted(self, host_info, volume_id, args):
+        return False
 
     def _host_info_with_current_root_volume(self, args, host_info):
         args.private_ip = host_info["private_ip"]
-        return (vars(args), None)
+        host_info["force_replacement"] = getattr(args, "force_replacement", False)
+        return (host_info, None)
 
 
 class OciQueryRegionsMethod(AbstractMethod):

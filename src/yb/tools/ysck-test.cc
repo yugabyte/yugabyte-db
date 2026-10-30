@@ -39,10 +39,10 @@
 
 #include "yb/gutil/callback.h"
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/tools/ysck.h"
 
+#include "yb/util/format.h"
 #include "yb/util/test_util.h"
 
 namespace yb {
@@ -131,7 +131,7 @@ class YsckTest : public YBTest {
         ysck_(new Ysck(cluster_)) {
     unordered_map<string, shared_ptr<YsckTabletServer>> tablet_servers;
     for (int i = 0; i < 3; i++) {
-      string name = strings::Substitute("$0", i);
+      string name = Format("$0", i);
       shared_ptr<MockYsckTabletServer> ts(new MockYsckTabletServer(name));
       InsertOrDie(&tablet_servers, ts->uuid(), ts);
     }

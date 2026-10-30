@@ -36,9 +36,12 @@
 #include <string>
 
 #include "yb/client/client_fwd.h"
+#include "yb/client/request_id_allocator.h"
 
+#include "yb/common/cdr_metadata.h"
 #include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
+#include "yb/common/origination_info.h"
 #include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/pgsql_protocol.messages.h"
 
@@ -127,16 +130,16 @@ class YBOperation {
   // Resets tablet, so it will be re-resolved on applying this operation.
   void ResetTablet();
 
-  std::optional<RetryableRequestId> request_id() const {
-    return request_id_;
+  const internal::RequestIdAllocation& retryable_request() const {
+    return retryable_request_;
   }
 
-  void set_request_id(RetryableRequestId id) {
-    request_id_ = id;
+  void set_retryable_request(const internal::RequestIdAllocation& request) {
+    retryable_request_ = request;
   }
 
-  void reset_request_id() {
-    request_id_.reset();
+  void reset_retryable_request() {
+    retryable_request_ = {};
   }
 
   // Returns the partition key of the operation.
@@ -174,9 +177,10 @@ class YBOperation {
 
   std::optional<PartitionListVersion> partition_list_version_;
 
-  // Persist retryable request ID across internal retries within the same YBSession
-  // to prevent duplicate writes due to internal retries.
-  std::optional<RetryableRequestId> request_id_;
+  // The retryable request the op was sent with, kept across the internal retries of the session,
+  // so that a retry is sent with the same id and the server rejects the duplicate. The batcher
+  // that owns the op finishes it.
+  internal::RequestIdAllocation retryable_request_;
 
   DISALLOW_COPY_AND_ASSIGN(YBOperation);
 };
@@ -504,8 +508,11 @@ class YBPgsqlWriteOp : public YBPgsqlOpSidecarBase {
   const HybridTime& write_time() const { return write_time_; }
   void SetWriteTime(const HybridTime& value) { write_time_ = value; }
 
-  uint32_t XreplOriginId() const { return xrepl_origin_id_; }
-  void SetXreplOriginId(uint32_t value) { xrepl_origin_id_ = value; }
+  const CdrMetadata& cdr_metadata() const { return cdr_metadata_; }
+  void SetCdrMetadata(const CdrMetadata& value) { cdr_metadata_ = value; }
+
+  const OriginationInfo& origination_info() const { return origination_info_; }
+  void SetOriginationInfo(const OriginationInfo& value) { origination_info_ = value; }
 
   Status GetPartitionKey(std::string* partition_key) const override;
 
@@ -528,7 +535,8 @@ class YBPgsqlWriteOp : public YBPgsqlOpSidecarBase {
   // Else could be distributed transaction (or non-transactional) depending on target table type.
   bool is_single_row_txn_ = false;
   HybridTime write_time_;
-  uint32_t xrepl_origin_id_ = 0;
+  CdrMetadata cdr_metadata_;
+  OriginationInfo origination_info_;
 };
 
 class YBPgsqlReadOp : public YBPgsqlOpSidecarBase {
@@ -568,6 +576,10 @@ class YBPgsqlReadOp : public YBPgsqlOpSidecarBase {
 
   Status GetPartitionKey(std::string* partition_key) const override;
 
+  // Table behind request_->index_request(); resolved only when the request is being traced.
+  void set_index_table(const YBTablePtr& table) { index_table_ = table; }
+  const YBTablePtr& index_table() const { return index_table_; }
+
  protected:
   Type type() const override { return PGSQL_READ; }
   OpGroup group() const override;
@@ -579,6 +591,7 @@ class YBPgsqlReadOp : public YBPgsqlOpSidecarBase {
   ReadHybridTime used_read_time_;
   // The tablet that served this operation.
   TabletId used_tablet_;
+  YBTablePtr index_table_;
 };
 
 class YBPgsqlLockOp : public YBPgsqlOp {

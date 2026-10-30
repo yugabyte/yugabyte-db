@@ -18,6 +18,7 @@
 #include <list>
 #include <memory>
 #include <optional>
+#include <span>
 #include <unordered_map>
 #include <vector>
 
@@ -78,6 +79,10 @@ class PgDml : public PgStatement {
 
   // Set HNSW read options.
   Status HnswSetReadOptions(int ef_search);
+
+  // Restrict the current vector index search to the tablets that can hold rows whose primary key
+  // columns have the given values.
+  Status ANNBindKeyFilter(std::span<const YbcPgVectorKeyColumn> columns);
 
   // Bind the whole table.
   Status BindTable();

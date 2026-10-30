@@ -32,10 +32,13 @@
 
 #include "yb/client/namespace_info.h"
 
+#include "yb/common/common_flags.h"
 #include "yb/integration-tests/create-table-itest-base.h"
 
 #include "yb/common/colocated_util.h"
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/format.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
@@ -78,9 +81,9 @@ TEST_F(CreateTableITest, DISABLED_TestCreateRedisTable) {
   const string zone = "a";
 
   const int kNumReplicas = 3;
-  vector<string> flags = {Substitute("--placement_cloud=$0", cloud),
-                          Substitute("--placement_region=$0", region),
-                          Substitute("--placement_zone=$0", zone)};
+  vector<string> flags = {Format("--placement_cloud=$0", cloud),
+                          Format("--placement_region=$0", region),
+                          Format("--placement_zone=$0", zone)};
   ASSERT_NO_FATALS(StartCluster(flags, flags, kNumReplicas));
 
   ReplicationInfoPB replication_info;
@@ -104,9 +107,9 @@ TEST_F(CreateTableITest, DISABLED_TestCreateWithPlacement) {
   const string zone = "a";
 
   const int kNumReplicas = 3;
-  vector<string> flags = {Substitute("--placement_cloud=$0", cloud),
-                          Substitute("--placement_region=$0", region),
-                          Substitute("--placement_zone=$0", zone)};
+  vector<string> flags = {Format("--placement_cloud=$0", cloud),
+                          Format("--placement_region=$0", region),
+                          Format("--placement_zone=$0", zone)};
   ASSERT_NO_FATALS(StartCluster(flags, flags, kNumReplicas));
 
   ReplicationInfoPB replication_info;
@@ -713,14 +716,11 @@ TEST_F(CreateTableITest, TestTransactionStatusTableCreation) {
   vector<string> master_flags = {
       "--txn_table_wait_min_ts_count=3"
   };
-  vector<string> tserver_flags = {
-      // TODO(#27854): We get stuck with object locking when there is no system.transactions
-      // table. Disabling it for now until we fix the underlying issue.
-      "--enable_object_locking_for_table_locks=false",
-      // Concurrent DDL requires object locking, so keep the two flags consistent.
-      "--ysql_enable_concurrent_ddl=false",
-  };
-  AppendFlagToAllowedPreviewFlagsCsv(tserver_flags, "ysql_enable_concurrent_ddl");
+  vector<string> tserver_flags;
+  // TODO(#27854): We get stuck with object locking when there is no system.transactions table.
+  // Disabling it for now until we fix the underlying issue.
+  ToggleDDLMode(tserver_flags, /* use_legacy = */ true);
+  ToggleDDLMode(master_flags, /* use_legacy = */ true);
   // We also need to enable ysql.
   ASSERT_NO_FATALS(StartCluster(tserver_flags, master_flags, 1, 1, true));
 

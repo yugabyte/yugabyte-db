@@ -1,5 +1,5 @@
 import Clipboard from 'clipboard';
-import { setCookie, deleteCookie } from 'browser-cookie-utils';
+import { setCookie, deleteCookies } from 'browser-cookie-utils';
 
 const $ = window.jQuery;
 
@@ -261,26 +261,22 @@ function observeDocsHeaderHeight() {
 }
 
 /**
- * Delete internal cookies on updating consent.
+ * Delete Functional cookies when Functional consent (C0003) is not granted.
+ * Runs on OneTrustGroupsUpdated, which OneTrust fires on every page load and on every consent change.
  */
-function deleteInternalCookies() {
-  if (activeGroups.indexOf('C0003') === -1) {
-    deleteCookie('leftMenuWidth');
-    deleteCookie('leftMenuShowHide');
-
-    deleteCookie('utm_check');
-    deleteCookie('utm_campaign');
-    deleteCookie('utm_content');
-    deleteCookie('utm_medium');
-    deleteCookie('utm_source');
-    deleteCookie('utm_term');
+function deleteFunctionalCookies() {
+  const groups = window.OnetrustActiveGroups || '';
+  if (groups.indexOf('C0003') === -1) {
+    ['leftMenuWidth', 'leftMenuShowHide', 'closeAISearchBanner', 'utm_*'].forEach((pattern) => {
+      deleteCookies(pattern);
+    });
   }
 }
 
 window.addEventListener('OneTrustGroupsUpdated', () => {
   activeGroups = window.OnetrustActiveGroups;
 
-  deleteInternalCookies();
+  deleteFunctionalCookies();
 });
 
 $(document).ready(() => {
@@ -289,16 +285,16 @@ $(document).ready(() => {
     $('body').addClass('is-safari');
   }
 
-  if (activeGroups.indexOf('C0003') === -1) {
-    deleteInternalCookies();
-  }
-
   const pageFinderContainer = document.querySelectorAll('.page-finder .finder-panel .inner-container');
   if (pageFinderContainer) {
     yugabytePageFinderList = Array.from(pageFinderContainer).map((element) => ({
       width: element.offsetWidth,
       parent: element.parentElement,
     }));
+  }
+
+  if (window.OneTrust && window.OnetrustActiveGroups) {
+    deleteFunctionalCookies();
   }
 
   let searchValue = '';
@@ -423,11 +419,15 @@ $(document).ready(() => {
       if ($('body').hasClass('dragging') && activeGroups.indexOf('C0003') > -1) {
         setCookie('leftMenuWidth', mouseMoveX, {
           timeToLive: 3,
-          unit: 'month'
+          unit: 'month',
+          sameSite: 'Strict',
+          secure: true,
         });
         setCookie('leftMenuShowHide', '', {
           timeToLive: 3,
-          unit: 'month'
+          unit: 'month',
+          sameSite: 'Strict',
+          secure: true,
         });
       }
 
@@ -460,6 +460,77 @@ $(document).ready(() => {
       if (keycode === 91) {
         $('.side-nav-collapse-toggle-2').click();
       }
+    });
+  })();
+
+  /**
+   * Copy the page's Markdown file into the clipboard.
+   */
+  (() => {
+    const button = document.querySelector('.markdown-actions button.copy-link');
+    if (!button || !navigator.clipboard) {
+      return;
+    }
+
+    const label = button.querySelector('span');
+    const originalLabel = label ? label.textContent : '';
+
+    button.addEventListener('click', () => {
+      const url = button.getAttribute('data-copy-file');
+      button.classList.add('is-copying');
+      button.classList.remove('is-copied', 'is-failed');
+      if (label) {
+        label.textContent = 'Copying...';
+      }
+
+      const pending = fetch(url).then((response) => {
+        if (!response.ok) {
+          throw new Error('File not found');
+        }
+        return response.text();
+      });
+
+      // clipboard.write must run in the click so the user gesture is still
+      // active. ClipboardItem accepts a promise and waits for the fetch.
+      // writeText after await is rejected by Safari, and by Chrome when the
+      // fetch is slow.
+      let copy;
+      try {
+        if (typeof ClipboardItem !== 'undefined' && navigator.clipboard.write) {
+          copy = navigator.clipboard.write([
+            new ClipboardItem({
+              'text/plain': pending.then((text) => new Blob([text], { type: 'text/plain' })),
+            }),
+          ]);
+        } else {
+          copy = pending.then((text) => navigator.clipboard.writeText(text));
+        }
+      } catch (error) {
+        copy = Promise.reject(error);
+      }
+
+      copy
+        .then(() => {
+          button.classList.add('is-copied');
+          if (label) {
+            label.textContent = 'Copied';
+          }
+        })
+        .catch(() => {
+          button.classList.add('is-copied', 'is-failed');
+          if (label) {
+            label.textContent = 'Failed to copy';
+          }
+        })
+        .finally(() => {
+          button.classList.remove('is-copying');
+          setTimeout(() => {
+            button.classList.remove('is-copied', 'is-failed');
+            if (label) {
+              label.textContent = originalLabel;
+            }
+          }, 2000);
+        });
     });
   })();
 
@@ -892,7 +963,9 @@ $(window).resize(() => {
     setTimeout(() => {
       setCookie('leftMenuWidth', 300, {
         timeToLive: 3,
-        unit: 'month'
+        unit: 'month',
+        sameSite: 'Strict',
+        secure: true,
       });
     }, 1000);
   }

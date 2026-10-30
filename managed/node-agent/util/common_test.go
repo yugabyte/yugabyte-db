@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestRemoveSubfolders(t *testing.T) {
@@ -61,5 +62,38 @@ func TestPlatformGetCertificateEndpoint(t *testing.T) {
 	expected := "/api/customers/c1234/certificates/my%20cert%2Fname"
 	if endpoint != expected {
 		t.Fatalf("Expected %q, got %q", expected, endpoint)
+	}
+}
+
+func TestWriteFileIfChanged(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "web.yml")
+	if err := WriteFileIfChanged(path, "a: 1\n", 0640, ""); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0640 {
+		t.Errorf("mode = %v, want 0640", info.Mode().Perm())
+	}
+	// Unchanged content leaves the file alone.
+	before := info.ModTime()
+	time.Sleep(10 * time.Millisecond)
+	if err := WriteFileIfChanged(path, "a: 1\n", 0640, ""); err != nil {
+		t.Fatal(err)
+	}
+	if info, _ = os.Stat(path); !info.ModTime().Equal(before) {
+		t.Error("unchanged content rewrote the file")
+	}
+	if err := WriteFileIfChanged(path, "", 0640, ""); err != nil {
+		t.Fatal(err)
+	}
+	if data, _ := os.ReadFile(path); len(data) != 0 {
+		t.Errorf("content = %q, want empty", data)
+	}
+	entries, _ := os.ReadDir(filepath.Dir(path))
+	if len(entries) != 1 {
+		t.Errorf("temp files left behind: %v", entries)
 	}
 }

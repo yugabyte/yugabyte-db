@@ -37,6 +37,7 @@ import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.InstanceType;
@@ -724,6 +725,29 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
         getTaskPositionsToSkip(setNamespace /* skip namespace task */, true /* skipPDBTask */),
         getTaskCountPerPosition(numNamespaces, 1));
     assertEquals(Success, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testCreateKubernetesUniverseCreatesYbStorageDb() {
+    setupUniverse(/* Create Masters */ false, /* YEDIS/REDIS enabled */ true, false);
+    setupCommon();
+    factory.globalRuntimeConf().setValue(GlobalConfKeys.createYbStorageDb.getKey(), "true");
+    when(mockYsqlQueryExecutor.executeQueryInNodeShell(any(), any(), any()))
+        .thenReturn(Json.newObject().put("result", "CREATE DATABASE"));
+    TaskInfo taskInfo = submitTask(new UniverseDefinitionTaskParams());
+    assertEquals(Success, taskInfo.getTaskState());
+    List<TaskType> taskTypes =
+        taskInfo.getSubTasks().stream()
+            .collect(Collectors.groupingBy(TaskInfo::getPosition))
+            .entrySet()
+            .stream()
+            .sorted(Map.Entry.comparingByKey())
+            .map(e -> e.getValue().get(0).getTaskType())
+            .collect(Collectors.toList());
+    assertEquals(
+        TaskType.CreateYbStorageDatabase,
+        taskTypes.get(taskTypes.indexOf(TaskType.UpdateConsistencyCheck) + 1));
+    verify(mockYsqlQueryExecutor, times(1)).executeQueryInNodeShell(any(), any(), any());
   }
 
   @Test

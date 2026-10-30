@@ -2,7 +2,7 @@
 title: Reprovision universe nodes
 headerTitle: Reprovision universe nodes
 linkTitle: Reprovision nodes
-description: Re-run node provisioning on existing universe nodes using YNP.
+description: Re-run node provisioning on existing universe nodes.
 headcontent: Re-apply OS-level settings and reinstall node agent
 menu:
   stable_yugabyte-platform:
@@ -25,9 +25,17 @@ The action applies the following OS settings:
 
 ## When to reprovision
 
-YugabyteDB Anywhere surfaces when reprovisioning would help, via health checks that report OS-setting drift on a node. For example, a process-limit or open-file warning, THP flagged as misconfigured, or a clock/NTP synchronization issue.
+YugabyteDB Anywhere applies these settings when it provisions a node. These settings can change later if an operator updates a limit or sysctl manually, or if a configuration-management process overwrites a file or stops a service. If a change is incompatible with YugabyteDB, the node is misconfigured even though the database software and data remain unchanged.
 
-The action is always available on supported universes (the same as **Reinstall Node Agent**). Run it when YugabyteDB Anywhere indicates, or when you want to apply current OS settings. Treat it like a patch to keep database nodes updated.
+Universe health checks report that drift. For example:
+
+- A process-limit or open-file warning, when `nofile` or `nproc` has been lowered.
+- A transparent hugepages warning, when THP is disabled or no longer matches the [required settings](../../prepare/server-nodes-software/#transparent-hugepages).
+- A clock or NTP warning, when chrony is stopped or the system clock is no longer synchronized.
+
+Reprovisioning writes the current settings back and reinstalls node agent as part of provisioning. You can also run it proactively, before a health check reports a problem. After you upgrade YugabyteDB Anywhere, the OS settings it expects may have changed, and existing nodes can be out of date until you reprovision them.
+
+In YugabyteDB Anywhere v2026.1.2.0 and later, **Actions > More > Reprovision Universe Nodes** is available for supported public cloud and on-premises universes whenever no other universe task is running, just like **Reinstall Node Agent**. Reinstall Node Agent reinstalls node agent. Reprovision Universe Nodes re-applies the OS settings above and reinstalls node agent as part of that provisioning.
 
 Reprovisioning performs a rolling restart, the same as a node resize or VM image upgrade. Perform it during a low-traffic period and avoid scheduled backup windows.
 
@@ -39,11 +47,19 @@ If the universe replication factor is less than 3, the universe is not available
 
 This action is not available for Kubernetes universes.
 
+It is available for universes that YugabyteDB Anywhere provisions itself: public cloud, and on-premises universes with passwordless sudo.
+
 | Deployment type | Support |
 | :-------------- | :------ |
-| Public cloud (AWS, GCP, Azure) | Full UI and API support. |
-| On-premises (with passwordless sudo) | Full UI and API support. |
-| On-premises, manual (no passwordless sudo) | Not supported. The UI hides the action. The API returns an error. Use the [`node-agent-provision.sh`](../../prepare/server-nodes-software/software-on-prem/) script instead. |
+| Public cloud (AWS, GCP, Azure, OCI) | Full UI and API support. |
+| On-premises with passwordless sudo | Full UI and API support. This is [legacy automatic provisioning](../../prepare/server-nodes-software/software-on-prem-auto/), which is deprecated and still supported: YugabyteDB Anywhere signs in and provisions the node. |
+| On-premises, manual (no passwordless sudo) | Not supported. The UI hides the action. The API returns an error. |
+
+For universes with nodes configured using [fully manual legacy provisioning](../../prepare/server-nodes-software/software-on-prem-manual/), Reprovision Universe Nodes is not available, and the API returns an error. Re-apply OS settings on those nodes by running [`node-agent-provision.sh`](../../prepare/server-nodes-software/software-on-prem/).
+
+A node prepared with `node-agent-provision.sh` runs a user-level node agent. When that node belongs to an on-premises provider where YugabyteDB Anywhere has passwordless sudo, the UI still shows the action and the API accepts the request. The task then fails its precheck, because the node is running a user-level node agent, which YugabyteDB Anywhere provisioning does not manage. Re-apply OS settings by running `node-agent-provision.sh` on the node.
+
+Reprovisioning leaves the universe on the provisioning method used to create it. It does not move a manually provisioned node onto YugabyteDB Anywhere-managed provisioning, and it does not switch a node to user-level systemd. Moving from legacy provisioning to the node agent provisioning script is optional. See [Node provisioning](../../upgrade/prepare-to-upgrade/#node-provisioning).
 
 This action does not replace [patching the Linux OS](../upgrade-nodes/) or replacing a boot disk. After a boot disk replacement, continue to follow that procedure, which reinstalls YugabyteDB software on the node.
 
@@ -66,7 +82,7 @@ YugabyteDB Anywhere starts a **ProvisionUniverseNodes** task. For each node, it 
 
 - Verifies the node is safe to take down.
 - Stops YB-Master, YB-TServer, and YB Controller processes.
-- [Provisions the nodes](../../prepare/server-nodes-software/software-on-prem/).
+- Re-applies the OS settings listed above and reinstalls node agent.
 - Starts the processes again, and waits for the server to be ready.
 
 The task is rolling, [abortable, and retryable](../retry-failed-task/).

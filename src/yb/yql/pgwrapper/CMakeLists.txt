@@ -52,9 +52,11 @@ add_dependencies(
 
 set(PQ_UTILS_SRCS
     libpq_test_utils.cc
-    libpq_utils.cc)
+    libpq_utils.cc
+    pgvector_utils.cc)
 set(PQ_UTILS_DEPS
     pq
+    vector_index
     yb_common_proto
     yb_pggate_flags)
 ADD_YB_LIBRARY(pq_utils
@@ -121,6 +123,7 @@ ADD_YB_LIBRARY(ysql_upgrade
 set(YB_TEST_LINK_LIBS
     yb_pgwrapper ql-dml-test-base pg_wrapper_test_base tools_test_utils geo_transactions_test_base
     pg_locks_test_base rocksdb_test_util rocksdb_tools yb-backup-test_base yb-tserver_util
+    yb_common_test_util
     ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(alter_schema_abort_txn-test)
 ADD_YB_TEST(alter_table_with_concurrent_txn-test)
@@ -193,6 +196,7 @@ ADD_YB_TEST(pg_op_processing_order-test)
 ADD_YB_TEST(pg_packed_insert-test)
 ADD_YB_TEST(pg_packed_row-test)
 ADD_YB_TEST(pg_perf-test)
+ADD_YB_TEST(pg_persistence_stamping-test)
 ADD_YB_TEST(pg_read_after_commit_visibility-test)
 ADD_YB_TEST(pg_read_restart_memory-test)
 ADD_YB_TEST(pg_read_time-test)
@@ -227,6 +231,7 @@ ADD_YB_TEST(pg_advisory_lock-test)
 ADD_YB_TEST(pg_yb_index_check-test)
 ADD_YB_TEST(pg_skip_prefix_lock-test)
 ADD_YB_TEST(pg_intents_flush_opid_modify-test)
+ADD_YB_TEST(pg_table_cache-test)
 ADD_YB_TEST(transaction_status_check-test)
 ADD_YB_TEST(txn_error_injection-test)
 ADD_YB_TEST(ysqlsh_history-test)

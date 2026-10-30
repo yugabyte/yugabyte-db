@@ -47,6 +47,16 @@ export interface ExportLogFormFields {
     basicAuth?: BasicAuth;
     // Dynatrace
     apiToken?: string;
+    // S3 (roleArn is distinct from CloudWatch roleARN)
+    bucket?: string;
+    directoryPrefix?: string;
+    filePrefix?: string;
+    partition?: 'hour' | 'minute';
+    marshaler?: 'OTLP_JSON' | 'SUMO_IC';
+    roleArn?: string;
+    disableSSL?: boolean;
+    forcePathStyle?: boolean;
+    includeUniverseAndNodeInPrefix?: boolean;
     // OTLP
     protocol?: string;
     bearerToken?: { token?: string };

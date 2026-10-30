@@ -4,6 +4,8 @@ headerTitle: Legacy provisioning
 linkTitle: Legacy provisioning
 description: Software requirements for on-premises provider legacy provisioning.
 headContent: Prepare a VM for deploying universes on-premises
+aliases:
+  - /stable/yugabyte-platform/prepare/server-nodes-software/software-on-prem-assist/
 menu:
   stable_yugabyte-platform:
     identifier: software-on-prem-1-intro
@@ -13,7 +15,7 @@ type: docs
 ---
 
 {{< warning title="Legacy provisioning deprecated" >}}
-Legacy provisioning of on-premises nodes is deprecated. Before you can upgrade YugabyteDB Anywhere to v2025.2, all universes must be updated to use node agent and provisioned using the [node agent script](../software-on-prem/#run-the-provisioning-script). For more information, refer to [Prepare to upgrade](../../../upgrade/prepare-to-upgrade/).
+Legacy automatic and fully manual provisioning are deprecated. For new nodes, use the [node agent script](../software-on-prem/#run-the-provisioning-script). Existing universes provisioned with these methods continue to work, and you can upgrade YugabyteDB Anywhere to v2025.2 and later without moving them. Assisted manual provisioning has been removed. For more information, refer to [Prepare to upgrade](../../../upgrade/prepare-to-upgrade/).
 {{< /warning >}}
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

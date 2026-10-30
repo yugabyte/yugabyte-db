@@ -1253,6 +1253,9 @@ public enum TaskType {
 
   ManageCloudFederation(com.yugabyte.yw.commissioner.tasks.subtasks.ManageCloudFederation.class),
 
+  ConfigureNodeExporterTls(
+      com.yugabyte.yw.commissioner.tasks.subtasks.ConfigureNodeExporterTls.class),
+
   UpdateAndPersistAuditLoggingConfig(
       com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistAuditLoggingConfig.class),
 
@@ -1367,6 +1370,12 @@ public enum TaskType {
   DeleteCapacityReservation(
       com.yugabyte.yw.commissioner.tasks.subtasks.DeleteCapacityReservation.class),
 
+  EnsureManagedLoadBalancer(
+      com.yugabyte.yw.commissioner.tasks.subtasks.EnsureManagedLoadBalancer.class),
+
+  DeleteManagedLoadBalancer(
+      com.yugabyte.yw.commissioner.tasks.subtasks.DeleteManagedLoadBalancer.class),
+
   DisablePitrConfig(com.yugabyte.yw.commissioner.tasks.subtasks.DisablePitrConfig.class),
 
   EnablePitrConfig(com.yugabyte.yw.commissioner.tasks.subtasks.EnablePitrConfig.class),
@@ -1400,7 +1409,10 @@ public enum TaskType {
 
   CheckDuplicateInstance(com.yugabyte.yw.commissioner.tasks.subtasks.CheckDuplicateInstance.class),
 
-  RunUpgradeNodeAgent(com.yugabyte.yw.commissioner.tasks.subtasks.RunUpgradeNodeAgent.class);
+  RunUpgradeNodeAgent(com.yugabyte.yw.commissioner.tasks.subtasks.RunUpgradeNodeAgent.class),
+
+  CreateYbStorageDatabase(
+      com.yugabyte.yw.commissioner.tasks.subtasks.CreateYbStorageDatabase.class);
 
   private final Class<? extends ITask> taskClass;
 

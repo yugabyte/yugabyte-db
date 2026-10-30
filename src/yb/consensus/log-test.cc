@@ -49,10 +49,10 @@
 #include "yb/consensus/opid_util.h"
 
 #include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/drive_io_stats.h"
+#include "yb/util/format.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/sync_point.h"
@@ -82,7 +82,6 @@ using std::shared_ptr;
 using std::vector;
 using std::string;
 using consensus::MakeOpId;
-using strings::Substitute;
 
 extern const char* kTestTable;
 extern const char* kTestTablet;
@@ -129,7 +128,7 @@ class LogTest : public LogTestBase {
   Status AppendNewEmptySegmentToReader(int sequence_number,
                                        int first_repl_index,
                                        LogReader* reader) {
-    string fqp = GetTestPath(strings::Substitute("wal-00000000$0", sequence_number));
+    string fqp = GetTestPath(Format("wal-00000000$0", sequence_number));
     std::unique_ptr<WritableFile> w_log_seg;
     RETURN_NOT_OK(fs_manager_->env()->NewWritableFile(fqp, &w_log_seg));
     std::unique_ptr<RandomAccessFile> r_log_seg;
@@ -1567,7 +1566,7 @@ TEST_F(LogTest, TestReadLogWithReplacedReplicates) {
   // version of a replicate message unintentionally.
   auto reader = ASSERT_RESULT(log_->GetLogReader());
   for (int gc_index = 1; gc_index < max_repl_index;) {
-    SCOPED_TRACE(Substitute("after GCing $0", gc_index));
+    SCOPED_TRACE(Format("after GCing $0", gc_index));
 
     // Test reading random ranges of indexes and verifying that we get back the
     // REPLICATE messages with the correct terms
@@ -1576,7 +1575,7 @@ TEST_F(LogTest, TestReadLogWithReplacedReplicates) {
       auto end_index = RandomUniformInt<int64_t>(start_index, max_repl_index);
       int64_t starting_op_segment_seq_num;
       {
-        SCOPED_TRACE(Substitute("Reading $0-$1", start_index, end_index));
+        SCOPED_TRACE(Format("Reading $0-$1", start_index, end_index));
         consensus::ReplicateMsgs repls;
         ASSERT_OK(reader->ReadReplicatesInRange(
             start_index, end_index, LogReader::kNoSizeLimit, log::ObeyMemoryLimit::kFalse, &repls,

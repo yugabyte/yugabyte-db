@@ -166,7 +166,6 @@ Search yugabyte db knowledge sources>
     • UI for creating on-premises providers has been modified to direct users to automatic provisioning
     • Improves the out-of-box experience
 
-  NOTE: Support for legacy node provisioning will be dropped in v2025.2. Before upgrading to v2025.2, update your node provisioning workflows to support automatic provisioning.
 
   NEW FEATURES
   ------------

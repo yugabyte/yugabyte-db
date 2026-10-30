@@ -144,6 +144,7 @@ YugabyteDB is a distributed SQL database that implements many [standard SQL](htt
 | {{<icon/yes>}} | Sequences                                            | [Auto-Increment column values](../../../explore/ysql-language-features/data-manipulation/#auto-increment-column-values) |
 | {{<icon/yes>}} | Identity columns                                     |                                                                                    |
 | {{<icon/yes>}} | Views                                                | [Views](../../../explore/ysql-language-features/advanced-features/views/)                                               |
+| {{<icon/yes>}} | Table inheritance {{<tags/feature/tp idea="2158">}}  | [Table inheritance](../the-sql-language/ddl-inherit/)                                                                   |
 | {{<icon/yes>}} | Materialized views                                   | [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views)               |
 | {{<icon/yes>}} | Window functions                                     | [Window functions](../exprs/window_functions/)                      |
 | {{<icon/yes>}} | Common table expressions                             |                                                                                    |

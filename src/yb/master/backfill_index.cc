@@ -40,7 +40,6 @@
 #include "yb/gutil/casts.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/escaping.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_manager.h"
@@ -57,6 +56,7 @@
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -148,7 +148,6 @@ namespace master {
 using namespace std::literals;
 using server::MonitoredTaskState;
 using strings::b2a_hex;
-using strings::Substitute;
 using tserver::TabletServerErrorPB;
 
 namespace {
@@ -213,7 +212,7 @@ Status MultiStageAlterTable::ClearFullyAppliedAndUpdateState(
     return STATUS(AlreadyPresent, "Table has already moved to a different version.");
   } else if (!l->is_running()) {
     LOG(WARNING) << __func__ << ": The table state is " << l->state_name() << " will stop backfill";
-    return STATUS_SUBSTITUTE(
+    return STATUS_FORMAT(
         IllegalState, "Table $0 is not in ALTERING or RUNNING state: $1",
         table->ToString(), l->state_name());
   }
@@ -263,13 +262,13 @@ Result<bool> MultiStageAlterTable::UpdateIndexPermission(
       LOG(INFO) << "The table schema version "
                 << "seems to have already been updated to " << indexed_table_pb.version()
                 << " We wanted to do this update at " << *current_version;
-      return STATUS_SUBSTITUTE(
+      return STATUS_FORMAT(
           AlreadyPresent, "Schema was already updated to $0 before we got to it (expected $1).",
           indexed_table_pb.version(), *current_version);
     } else if (!indexed_table_data.is_running()) {
       LOG(WARNING) << __func__ << ": The table state is " << indexed_table_data.state_name()
                    << " will stop backfill";
-      return STATUS_SUBSTITUTE(
+      return STATUS_FORMAT(
           IllegalState, "Table $0 is not in ALTERING or RUNNING state: $1",
           indexed_table->ToString(), indexed_table_data.state_name());
     }
@@ -828,7 +827,7 @@ const std::unordered_set<TableId> BackfillTable::indexes_to_build() const {
       std::transform(
           backfill_state.begin(), backfill_state.end(), std::back_inserter(details),
           [](const auto& kv_pair) {
-            return Substitute("$0: $1", kv_pair.first, BackfillJobPB::State_Name(kv_pair.second));
+            return Format("$0: $1", kv_pair.first, BackfillJobPB::State_Name(kv_pair.second));
           });
       LOG_WITH_PREFIX(WARNING) << "No indexes to build. backfill_state: " << yb::ToString(details);
     }
@@ -1653,8 +1652,8 @@ Status BackfillTablet::UpdateBackfilledUntil(
 
 Status GetSafeTimeForTablet::Launch() {
   tablet_->table()->AddTask(shared_from_this());
-  RETURN_NOT_OK_PREPEND(Run(), Substitute("Failed to send GetSafeTime request for $0. ",
-                                            tablet_->ToString()));
+  RETURN_NOT_OK_PREPEND(Run(), Format("Failed to send GetSafeTime request for $0. ",
+                                        tablet_->ToString()));
   // Need to print this after Run() because that's where it picks the TS which description()
   // needs.
   VLOG(3) << "Started GetSafeTimeForTablet : " << this->description();
@@ -1764,7 +1763,7 @@ Status BackfillChunk::Launch() {
   backfill_tablet_->tablet()->table()->AddTask(shared_from_this());
   Status status = Run();
   RETURN_NOT_OK_PREPEND(
-      status, Substitute(
+      status, Format(
                   "Failed to send backfill Chunk request for $0",
                   backfill_tablet_->tablet()->ToString()));
 

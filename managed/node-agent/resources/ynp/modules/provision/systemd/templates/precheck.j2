@@ -36,6 +36,7 @@ YB_USER_HOME="{{ yb_user_home }}"
 YB_USER="{{ yb_user }}"
 CGROUP_TYPE_FILE="${YB_USER_HOME}/.yugabyte/cgroup_type"
 CGROUP_V1_CPU_FILE="${YB_USER_HOME}/.yugabyte/cgroup_v1_cpu"
+USE_SYS="{{ use_system_level_systemd }}"
 {% raw %}
 if [ -f "$CGROUP_TYPE_FILE" ]; then
     cg_type=$(tr -d '\r\n' < "$CGROUP_TYPE_FILE")
@@ -72,6 +73,21 @@ if [ -f "$CGROUP_TYPE_FILE" ]; then
                     fi
                 fi
             fi
+        fi
+    elif [ "$cg_type" = "v2" ] && [ "$USE_SYS" != "True" ]; then
+        # Without ConfigureRootCgroups' user@ drop-in, yb-tserver lands in a yugabyte-db cgroup
+        # that has no cpu controller.
+        yb_uid=$(id -u "$YB_USER")
+        controllers="/sys/fs/cgroup/user.slice/user-${yb_uid}.slice/user@${yb_uid}.service/cgroup.controllers"
+        if [ ! -f "$controllers" ]; then
+            add_result "Cgroup v2 cpu delegation" "FAIL" \
+                "user@${yb_uid}.service is not running ($controllers is missing)"
+        elif grep -qw cpu "$controllers"; then
+            add_result "Cgroup v2 cpu delegation" "PASS" \
+                "cpu controller is delegated to user@${yb_uid}.service"
+        else
+            add_result "Cgroup v2 cpu delegation" "FAIL" \
+                "cpu controller is not delegated to user@${yb_uid}.service; run provisioning with --root"
         fi
     fi
 fi

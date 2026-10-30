@@ -4,15 +4,19 @@ package api.v2.mappers;
 
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 
 import api.v2.models.AuditLogConfig;
+import api.v2.models.ClusterNetworkingSpec;
 import api.v2.models.ClusterSpec;
+import api.v2.models.ManagedLoadBalancerSpec;
 import api.v2.models.QueryLogConfig;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import org.junit.Test;
 
 /**
- * Covers the edit-universe normalization: the spec -> userIntent mapping must coerce exportActive.
+ * Covers the spec -> userIntent mapping: the edit-universe normalization must coerce exportActive,
+ * and a managed load balancer request must map without enable_lb.
  */
 public class UserIntentMapperTest {
 
@@ -31,6 +35,22 @@ public class UserIntentMapperTest {
     assertFalse(
         "edit-universe must coerce audit exportActive off when no exporter is configured",
         userIntent.auditLogConfig.isExportActive());
+  }
+
+  @Test
+  public void toV1UserIntentMapsManagedLoadBalancerWithoutEnableLb() {
+    ClusterSpec spec = new ClusterSpec();
+    spec.setNetworkingSpec(
+        new ClusterNetworkingSpec()
+            .managedLoadBalancer(
+                new ManagedLoadBalancerSpec().enablePrivate(true).enablePublic(true)));
+
+    UserIntent userIntent = UserIntentMapper.INSTANCE.toV1UserIntent(spec);
+
+    assertTrue(userIntent.isManagedLoadBalancerEnabled());
+    assertTrue(userIntent.getManagedLoadBalancer().isEnablePrivate());
+    assertTrue(userIntent.getManagedLoadBalancer().isEnablePublic());
+    assertFalse(userIntent.enableLB);
   }
 
   @Test

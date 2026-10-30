@@ -35,6 +35,7 @@
 #include <algorithm>
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include <boost/algorithm/string/replace.hpp>
@@ -70,7 +71,6 @@
 #include "yb/gutil/bind.h"
 #include "yb/gutil/casts.h"
 #include "yb/gutil/stl_util.h"
-#include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/escaping.h"
 
 #include "yb/qlexpr/index.h"
@@ -124,6 +124,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
+#include "yb/util/enums.h"
 #include "yb/util/faststring.h"
 #include "yb/util/file_util.h"
 #include "yb/util/flags.h"
@@ -338,8 +339,18 @@ DEFINE_test_flag(uint32, pause_tablet_compact_flush_ms, 0,
 DEFINE_test_flag(uint32, pause_remote_pg_query_execution_ms, 0,
     "Used in tests to sleep before executing a remote PG query.");
 
+DEFINE_test_flag(uint64, persistence_reject_stamped_before_ht, 0,
+    "When nonzero, reject writes and transaction commits whose origination stamp has an "
+    "origination hybrid time below this value. Unstamped ones pass.");
+
+DEFINE_test_flag(bool, persistence_dfatal_unstamped_pgsql_write, false,
+    "DFATAL on a YSQL write without an origination stamp to a table outside template1.");
+
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(enable_tiered_storage);
 DECLARE_bool(ysql_enable_object_locking_infra);
+DECLARE_bool(enable_active_table_metrics_filtering);
+DECLARE_uint32(max_active_table_metrics_table_count);
 
 METRIC_DEFINE_gauge_uint64(server, ts_split_op_added, "Split OPs Added to Leader",
     yb::MetricUnit::kOperations, "Number of split operations added to the leader's Raft log.");
@@ -386,7 +397,6 @@ using rpc::RpcContext;
 using std::shared_ptr;
 using std::string;
 using std::vector;
-using strings::Substitute;
 using tablet::ChangeMetadataOperation;
 using tablet::CloneTabletRequestPB;
 using tablet::OnlyAbortTxnsNotUsingTableLocks;
@@ -398,6 +408,35 @@ using tablet::TabletStatusPB;
 using tablet::TruncateOperation;
 
 namespace {
+
+template <class OriginationInfo>
+Status CheckPersistenceTestRejection(const OriginationInfo& origination_info) {
+  const auto threshold = FLAGS_TEST_persistence_reject_stamped_before_ht;
+  if (PREDICT_TRUE(threshold == 0) || origination_info.origination_ht() >= threshold) {
+    return Status::OK();
+  }
+  return STATUS_FORMAT(
+      Expired,
+      "TEST: persistence rejected op with connected database $0 with origination time $1 < $2",
+      origination_info.database_oid(), HybridTime(origination_info.origination_ht()),
+      HybridTime(threshold));
+}
+
+void CheckPersistenceStampPresent(const WriteRequestMsg& req) {
+  if (PREDICT_TRUE(!FLAGS_TEST_persistence_dfatal_unstamped_pgsql_write) ||
+      req.has_origination_info()) {
+    return;
+  }
+  for (const auto& pg_req : req.pgsql_write_batch()) {
+    auto db_oid = GetPgsqlDatabaseOidByTableId(pg_req.table_id().ToBuffer());
+    // Template1 backends write unstamped, and can only write tables of database 1.
+    if (!db_oid.ok() || *db_oid != kTemplate1Oid) {
+      LOG(DFATAL) << "YSQL write without origination stamp to table " << pg_req.table_id()
+                  << " of database " << db_oid << ": " << req.ShortDebugString();
+      return;
+    }
+  }
+}
 
 Result<std::shared_ptr<consensus::RaftConsensus>> GetConsensus(const TabletPeerPtr& tablet_peer) {
   auto result = tablet_peer->GetRaftConsensus();
@@ -569,6 +608,9 @@ class WriteQueryCompletionCallback {
 
       if (status.IsTryAgain()) {
           LOG(DETAIL) << "Write failed: " << status;
+      } else if (TabletServerError(status).value() == TabletServerErrorPB::PERSISTING_BLOCKED) {
+          // Expected while persisting is stopped, once per refused write.
+          YB_LOG_EVERY_N_SECS(INFO, 10) << YB_DETAIL_LOG_PREFIX << "Write failed: " << status;
       } else {
           LOG(INFO) << "Write failed: " << status;
       }
@@ -954,7 +996,7 @@ void TabletServiceAdminImpl::BackfillIndex(
       *resp->add_failed_index_ids() = index_table_id;
       SetupErrorAndRespond(
           resp->mutable_error(),
-          STATUS_SUBSTITUTE(
+          STATUS_FORMAT(
               InvalidArgument, "Index $0 not found in index_map. Current schema is $1",
               index_table_id, our_schema_version),
           TabletServerErrorPB::OPERATION_NOT_SUPPORTED, &context);
@@ -981,7 +1023,7 @@ void TabletServiceAdminImpl::BackfillIndex(
       DCHECK_NE(our_schema_version, their_schema_version);
       SetupErrorAndRespond(
           resp->mutable_error(),
-          STATUS_SUBSTITUTE(
+          STATUS_FORMAT(
               InvalidArgument,
               "Tablet has a different schema $0 vs $1. "
               "Requested index is not ready to backfill. IndexMap: $2",
@@ -1170,7 +1212,7 @@ void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* 
                  << "\n request-schema=" << req_schema.ToString();
     SetupErrorAndRespond(
         resp->mutable_error(),
-        STATUS_SUBSTITUTE(
+        STATUS_FORMAT(
             InvalidArgument, "Tablet has a newer schema Tab $0. Req $1 vs Existing version : $2",
             req->tablet_id(), req->schema_version(), schema_version),
         TabletServerErrorPB::TABLET_HAS_A_NEWER_SCHEMA, &context);
@@ -1440,6 +1482,17 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
   }
   if (!tablet) {
     return;
+  }
+
+  if (txn_status == TransactionStatus::COMMITTED && req->state().has_origination_info()) {
+    auto status = CheckPersistenceTestRejection(req->state().origination_info());
+    if (!status.ok()) {
+      SetupErrorAndRespond(resp->mutable_error(), status, &context);
+      return;
+    }
+    TEST_SYNC_POINT_CALLBACK(
+        "TabletServiceImpl::UpdateTransaction::BeforeStampedCommitAppend",
+        const_cast<UpdateTransactionRequestPB*>(req));
   }
 
   auto state = std::make_unique<tablet::UpdateTxnOperation>(tablet.tablet);
@@ -2209,6 +2262,162 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
   context.RespondSuccess();
 }
 
+namespace {
+
+TierMigrationStatusPB::State ToTierMigrationStatePB(tablet::TierMigrationStatus::State state) {
+  switch (state) {
+    case tablet::TierMigrationStatus::State::kNone:
+      return TierMigrationStatusPB::NONE;
+    case tablet::TierMigrationStatus::State::kInProgress:
+      return TierMigrationStatusPB::IN_PROGRESS;
+    case tablet::TierMigrationStatus::State::kDone:
+      return TierMigrationStatusPB::DONE;
+    case tablet::TierMigrationStatus::State::kFailed:
+      return TierMigrationStatusPB::FAILED;
+  }
+  FATAL_INVALID_ENUM_VALUE(tablet::TierMigrationStatus::State, state);
+}
+
+void FillTierMigrationStatusPB(
+    const tablet::TierMigrationStatus& status, TierMigrationStatusPB* pb) {
+  pb->set_state(ToTierMigrationStatePB(status.state));
+  pb->set_pass_in_flight(status.pass_in_flight);
+  pb->set_files_total(status.files_total);
+  pb->set_files_moved(status.files_moved);
+  pb->set_files_failed(status.files_failed);
+  pb->set_files_deferred(status.files_deferred);
+  pb->set_obsoleted(status.obsoleted);
+  pb->set_consecutive_failed_passes(status.consecutive_failed_passes);
+  if (!status.last_error.ok()) {
+    pb->set_last_error(status.last_error.ToString());
+  }
+}
+
+// Tiered storage is a preview feature. Its admin RPCs are refused, not silently ignored, so a
+// caller never believes a migration was started or reads tier info that nothing maintains.
+template <class Resp>
+bool CheckTieredStorageEnabledOrRespond(
+    const char* method_name, Resp* resp, rpc::RpcContext* context) {
+  if (FLAGS_enable_tiered_storage) {
+    return true;
+  }
+  SetupErrorAndRespond(
+      resp->mutable_error(),
+      STATUS_FORMAT(
+          NotSupported,
+          "$0 requires tiered storage, which is disabled. Set the preview flag "
+          "--enable_tiered_storage=true to use it.",
+          method_name),
+      context);
+  return false;
+}
+
+}  // namespace
+
+void TabletServiceAdminImpl::AlterTabletTier(
+    const AlterTabletTierRequestPB* req,
+    AlterTabletTierResponsePB* resp,
+    rpc::RpcContext context) {
+  if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "AlterTabletTier", req, resp,
+                               &context)) {
+    return;
+  }
+  if (!CheckTieredStorageEnabledOrRespond("AlterTabletTier", resp, &context)) {
+    return;
+  }
+
+  auto peer_tablet = VERIFY_RESULT_OR_RETURN(LookupTabletPeerOrRespond(
+      server_->tablet_peer_lookup(), req->tablet_id(), resp, &context));
+  const auto& tablet = peer_tablet.tablet;
+  if (!tablet) {
+    SetupErrorAndRespond(
+        resp->mutable_error(), STATUS(IllegalState, "Tablet not available"), &context);
+    return;
+  }
+
+  LOG_WITH_PREFIX(INFO) << "Processing AlterTabletTier for tablet " << req->tablet_id()
+                        << " -> tier " << req->target_tier() << " from "
+                        << context.requestor_string();
+
+  const auto meta = peer_tablet.tablet_peer->tablet_metadata();
+
+  // Keep the disk already resolved for this tier when the tier is unchanged. Re-running the
+  // least-loaded-disk policy could pick a different disk within the same tier purely because the
+  // first call changed the load counts, forcing a pointless rewrite of every SST.
+  Result<uint32_t> path_id = meta->target_storage_tier() == req->target_tier()
+      ? server_->tablet_manager()->ResolveTargetTierPathId(meta)
+      : server_->tablet_manager()->SelectPathIdForTier(
+            *meta, meta->table_id(), req->target_tier());
+  if (!path_id.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), path_id.status(), &context);
+    return;
+  }
+
+  auto status = tablet->AlterTabletTier(req->target_tier(), *path_id);
+  if (!status.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), status.status(), &context);
+    return;
+  }
+
+  FillTierMigrationStatusPB(*status, resp->mutable_migration());
+  context.RespondSuccess();
+}
+
+void TabletServiceAdminImpl::GetTabletTierInfo(
+    const GetTabletTierInfoRequestPB* req,
+    GetTabletTierInfoResponsePB* resp,
+    rpc::RpcContext context) {
+  if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "GetTabletTierInfo", req, resp,
+                               &context)) {
+    return;
+  }
+  if (!CheckTieredStorageEnabledOrRespond("GetTabletTierInfo", resp, &context)) {
+    return;
+  }
+
+  auto peer_tablet = VERIFY_RESULT_OR_RETURN(LookupTabletPeerOrRespond(
+      server_->tablet_peer_lookup(), req->tablet_id(), resp, &context));
+  const auto& tablet = peer_tablet.tablet;
+  if (!tablet) {
+    SetupErrorAndRespond(
+        resp->mutable_error(), STATUS(IllegalState, "Tablet not available"), &context);
+    return;
+  }
+
+  auto info = tablet->GetTierInfo();
+  if (!info.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), info.status(), &context);
+    return;
+  }
+
+  resp->set_tablet_id(req->tablet_id());
+  if (!info->current_tier.empty()) {
+    resp->set_current_tier(info->current_tier);
+  }
+  if (!info->target_tier.empty()) {
+    resp->set_target_tier(info->target_tier);
+    resp->set_target_tier_path_id(info->target_tier_path_id);
+  }
+  resp->set_wal_dir(info->wal_dir);
+  resp->set_unmatched_sst_count(info->unmatched_sst_count);
+
+  if (info->migration.state != tablet::TierMigrationStatus::State::kNone) {
+    FillTierMigrationStatusPB(info->migration, resp->mutable_migration());
+  }
+
+  for (const auto& stats : info->tier_paths) {
+    auto* tp_pb = resp->add_tier_paths();
+    tp_pb->set_path_id(stats.path_id);
+    tp_pb->set_tier(stats.tier);
+    tp_pb->set_path(stats.path);
+    tp_pb->set_is_home(stats.is_home);
+    tp_pb->set_sst_count(stats.sst_count);
+    tp_pb->set_total_bytes(stats.total_bytes);
+  }
+
+  context.RespondSuccess();
+}
+
 void TabletServiceAdminImpl::CountIntents(
     const CountIntentsRequestPB* req,
     CountIntentsResponsePB* resp,
@@ -2614,6 +2823,15 @@ void TabletServiceAdminImpl::UpdateTransactionTablesVersion(
   server_->TransactionManager().UpdateTransactionTablesVersion(req->version(), callback);
 }
 
+void TabletServiceAdminImpl::ApplyXClusterGuardedInfoIfNewer(
+    const ApplyXClusterGuardedInfoIfNewerRequestPB* req,
+    ApplyXClusterGuardedInfoIfNewerResponsePB* resp, rpc::RpcContext context) {
+  VLOG(2) << "Received xCluster-guarded info with version "
+          << req->xcluster_guarded_info().xcluster_guarded_info_version().ShortDebugString();
+  server_->ApplyXClusterGuardedInfoIfNewer(req->xcluster_guarded_info());
+  context.RespondSuccess();
+}
+
 void TabletServiceAdminImpl::GetPgSocketDir(
     const GetPgSocketDirRequestPB* req, GetPgSocketDirResponsePB* resp, rpc::RpcContext context) {
   auto result = GetLocalPgHostPort();
@@ -2656,6 +2874,11 @@ Status TabletServiceImpl::PerformWrite(
     return STATUS(
         NotFound, "Tablet not found", req->tablet_id(),
         TabletServerError(TabletServerErrorPB::TABLET_NOT_FOUND));
+  }
+
+  CheckPersistenceStampPresent(*req);
+  if (req->has_origination_info()) {
+    RETURN_NOT_OK(CheckPersistenceTestRejection(req->origination_info()));
   }
 
   if (PREDICT_FALSE(req->has_write_batch() && !req->has_external_hybrid_time() &&
@@ -3193,8 +3416,8 @@ void ConsensusServiceImpl::GetConsensusState(const consensus::GetConsensusStateR
   ConsensusConfigType type = req->type();
   if (PREDICT_FALSE(type != CONSENSUS_CONFIG_ACTIVE && type != CONSENSUS_CONFIG_COMMITTED)) {
     HandleErrorResponse(resp, &context,
-        STATUS(InvalidArgument, Substitute("Unsupported ConsensusConfigType $0 ($1)",
-                                           ConsensusConfigType_Name(type), type)));
+        STATUS(InvalidArgument, Format("Unsupported ConsensusConfigType $0 ($1)",
+                                       ConsensusConfigType_Name(type), type)));
     return;
   }
   LeaderLeaseStatus leader_lease_status;
@@ -3593,6 +3816,55 @@ void TabletServiceImpl::GetMetrics(const GetMetricsRequestPB* req,
   }
   vector<TserverMetricsInfoPB> metrics = result.get();
   *resp->mutable_metrics() = {metrics.begin(), metrics.end()};
+  context.RespondSuccess();
+}
+
+void TabletServiceImpl::SetActiveTableIdsForMetrics(
+    const SetActiveTableIdsForMetricsRequestPB* req, SetActiveTableIdsForMetricsResponsePB* resp,
+    rpc::RpcContext context) {
+  // Reported on every response, including rejections, so the caller always learns whether any
+  // scrape can use the list it just sent.
+  resp->set_filtering_enabled(FLAGS_enable_active_table_metrics_filtering);
+
+  // DocDB table IDs are 32 hex characters, and colocation parent IDs are about twice that. The
+  // bound keeps a caller from parking arbitrarily large strings in tablet server memory.
+  constexpr size_t kMaxTableIdLength = 256;
+  // Reserve no more than the limit allows, so an oversized request cannot force a large allocation
+  // before the limit check below rejects it.
+  std::unordered_set<std::string> table_ids;
+  table_ids.reserve(std::min<size_t>(
+      req->table_ids_size(),
+      static_cast<size_t>(FLAGS_max_active_table_metrics_table_count) + 1));
+  for (const auto& table_id : req->table_ids()) {
+    if (table_id.empty() || table_id.size() > kMaxTableIdLength) {
+      SetupErrorAndRespond(
+          resp->mutable_error(),
+          STATUS_FORMAT(
+              InvalidArgument, "table_ids must be between 1 and $0 bytes long, found $1 bytes",
+              kMaxTableIdLength, table_id.size()),
+          &context);
+      return;
+    }
+    // Checked while copying, so an oversized request is rejected after at most one entry over the
+    // limit instead of after the whole request has been copied. Duplicates do not count.
+    if (table_ids.insert(table_id).second &&
+        table_ids.size() > FLAGS_max_active_table_metrics_table_count) {
+      SetupErrorAndRespond(
+          resp->mutable_error(),
+          STATUS_FORMAT(
+              InvalidArgument, "Active table list contains more than $0 tables",
+              FLAGS_max_active_table_metrics_table_count),
+          &context);
+      return;
+    }
+  }
+
+  const auto status =
+      server_->SetActiveTableIdsForMetrics(std::move(table_ids), req->list_version());
+  if (!status.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), status, &context);
+    return;
+  }
   context.RespondSuccess();
 }
 
@@ -4177,15 +4449,53 @@ void TabletServiceImpl::Shutdown() {
 
 Result<VerifyVectorIndexesResponsePB> TabletServiceImpl::VerifyVectorIndexes(
     const VerifyVectorIndexesRequestPB& req, CoarseTimePoint deadline) {
-  auto tablet_peers = server_->tablet_manager()->GetTabletPeers();
-  for (auto& peer : tablet_peers) {
+  std::vector<tablet::TabletPeerPtr> tablet_peers;
+  if (req.tablet_id().empty()) {
+    SCHECK(req.index_table_ids().empty(), InvalidArgument,
+           "Vector index ids are specified without a tablet id");
+    tablet_peers = server_->tablet_manager()->GetTabletPeers();
+  } else {
+    tablet_peers.push_back(
+        VERIFY_RESULT(LookupTabletPeer(server_->tablet_peer_lookup(), req.tablet_id()))
+            .tablet_peer);
+  }
+  VerifyVectorIndexesResponsePB resp;
+  for (const auto& peer : tablet_peers) {
     auto tablet = peer->shared_tablet_maybe_null();
     if (!tablet) {
       continue;
     }
-    RETURN_NOT_OK(tablet->vector_indexes().Verify());
+    std::vector<TableId> index_table_ids(
+        req.index_table_ids().begin(), req.index_table_ids().end());
+    if (index_table_ids.empty()) {
+      auto list = tablet->vector_indexes().List();
+      if (!list) {
+        continue;
+      }
+      for (const auto& vector_index : *list) {
+        // A deactivated index cannot be checked, see CheckVectorIndex.
+        if (!vector_index->IsDeactivated()) {
+          index_table_ids.push_back(vector_index->table_id());
+        }
+      }
+    }
+    auto consensus = peer->GetConsensus();
+    auto role = consensus.ok() ? (**consensus).role() : PeerRole::UNKNOWN_ROLE;
+    for (const auto& index_table_id : index_table_ids) {
+      auto& check = *resp.add_checks();
+      check.set_tablet_id(peer->tablet_id());
+      check.set_index_table_id(index_table_id);
+      check.set_role(role);
+      auto result = tablet->vector_indexes().Check(
+          index_table_id, req.max_inconsistencies(), deadline);
+      if (result.ok()) {
+        *check.mutable_result() = std::move(*result);
+      } else {
+        StatusToPB(result.status(), check.mutable_status());
+      }
+    }
   }
-  return VerifyVectorIndexesResponsePB();
+  return resp;
 }
 
 Result<DumpTabletDataResponsePB> TabletServiceImpl::DumpTabletData(

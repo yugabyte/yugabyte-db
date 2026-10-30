@@ -34,10 +34,10 @@
 
 #include <mutex>
 
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/stringprintf.h"
 #include "yb/gutil/walltime.h"
 #include "yb/util/locks.h"
 #include "yb/util/status.h"
@@ -123,12 +123,12 @@ void TimeSeriesCollector::BuildMetricsString(
   WallTime time_since_start, faststring *dst_buf) const {
   MutexLock l(series_lock_);
 
-  dst_buf->append(StringPrintf("{ \"scope\": \"%s\", \"time\": %.3f",
-                               scope_.c_str(), time_since_start));
+  dst_buf->append(Format("{ \"scope\": \"$0\", \"time\": $1",
+                         scope_, FixedPoint(time_since_start, 3)));
 
   for (SeriesMap::const_reference entry : series_map_) {
-    dst_buf->append(StringPrintf(", \"%s\": %.3f",
-                                 entry.first.c_str(),  entry.second->value()));
+    dst_buf->append(Format(", \"$0\": $1",
+                           entry.first, FixedPoint(entry.second->value(), 3)));
   }
   dst_buf->append("}");
 }

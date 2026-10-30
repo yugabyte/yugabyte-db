@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"node-agent/util"
 	"node-agent/ynp"
 	"node-agent/ynp/command"
@@ -253,6 +252,8 @@ func processArguments(ctx context.Context, pArgs *parsedArgs) error {
 	}
 	// Fix the types in the parsed config after merging the extra_vars.
 	pArgs.YnpConfig = config.FixParsedConfigMap(ynpConfig)
+	// Before any call to YBA. A changed mode re-executes ynp, which then gets here again.
+	applyFipsMode(config.GetBool(pArgs.YnpConfig["ynp"], "is_fips_enabled", false))
 	// Setup logger now to use the custom logger with the final logging config.
 	config.SetupLogger(ctx, pArgs.YnpConfig)
 	return nil
@@ -286,7 +287,7 @@ func loadYAMLConfig(filePath string) (map[string]map[string]any, error) {
 	}
 	configData, err := os.ReadFile(absConfigPath)
 	if err != nil {
-		return nil, fmt.Errorf("Parsing config file failed with: %v", err)
+		return nil, fmt.Errorf("Parsing config file %s failed with: %v", absConfigPath, err)
 	}
 	var ynpConfig map[string]map[string]any
 	if err := yaml.Unmarshal(configData, &ynpConfig); err != nil {
@@ -401,7 +402,7 @@ func handleCommand(
 		// Generate the config file from YBA and exit.
 		generatedFilepath, err := generateYnpConfigFileFromYba(ctx, &pArgs.Args)
 		if err != nil {
-			util.ConsoleLogger().Fatalf(ctx, "Failed to generate config file: %v", err)
+			util.ConsoleLogger().Errorf(ctx, "Failed to generate config file: %v", err)
 			return err
 		}
 		util.ConsoleLogger().Infof(ctx, "Generated config file written to: %s", generatedFilepath)
@@ -451,14 +452,16 @@ func handleCommand(
 	return nil
 }
 
+// applyFipsMode is replaced in tests, where re-executing would restart the test binary.
+var applyFipsMode = util.ApplyFipsMode
+
 func main() {
-	util.VerifyFipsMode()
+	// FIPS mode follows the config, see processArguments.
 	setupCommand(rootCmd)
 	if err := rootCmd.Execute(); err != nil {
-		if !util.IsConsoleLoggerSetup() {
-			// If logger was not set up, log to standard error as a fallback.
-			log.Printf("Error executing command: %v\n", err)
-		}
+		// The console logger writes to stdout, and YBA reports only stderr for a failed remote
+		// command, so the reason has to go to stderr as well.
+		fmt.Fprintf(os.Stderr, "Error executing command: %v\n", err)
 		exitCode := 1
 		var scriptErr *command.ScriptExitError
 		if errors.As(err, &scriptErr) {

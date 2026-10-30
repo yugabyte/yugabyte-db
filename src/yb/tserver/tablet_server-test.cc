@@ -30,19 +30,27 @@
 // under the License.
 //
 
+#include <limits>
+
+#include "yb/cdc/xcluster_types.h"
+
+#include "yb/common/entity_ids.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/consensus/log-test-base.h"
 
+#include "yb/client/yb_table_name.h"
+
 #include "yb/dockv/partition.h"
 
 #include "yb/gutil/strings/escaping.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_test_util.h"
 #include "yb/rpc/yb_rpc.h"
+
+#include "yb/master/master_defaults.h"
 
 #include "yb/server/call_home-test-util.h"
 #include "yb/server/hybrid_clock.h"
@@ -62,20 +70,23 @@
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_call_home.h"
 #include "yb/tserver/tserver_service.proxy.h"
+#include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
 
 #include "yb/util/crc.h"
 #include "yb/util/curl_util.h"
+#include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
+#include "yb/util/prometheus_metric_filter.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_log.h"
+#include "yb/util/stol_utils.h"
 
 using yb::rpc::MessengerBuilder;
 using yb::rpc::RpcController;
 using yb::server::HybridClock;
 using std::string;
-using strings::Substitute;
 
 DEFINE_NON_RUNTIME_int32(single_threaded_insert_latency_bench_warmup_rows, 100,
              "Number of rows to insert in the warmup phase of the single threaded"
@@ -85,10 +96,14 @@ DEFINE_NON_RUNTIME_int32(single_threaded_insert_latency_bench_insert_rows, 1000,
              "Number of rows to insert in the testing phase of the single threaded"
              " tablet server insert latency micro-benchmark");
 
+DECLARE_bool(enable_tiered_storage);
+DECLARE_bool(enforce_xcluster_guarded_lease);
 DECLARE_int32(metrics_retirement_age_ms);
 DECLARE_string(block_manager);
 DECLARE_string(rpc_bind_addresses);
 DECLARE_bool(disable_clock_sync_error);
+DECLARE_bool(enable_active_table_metrics_filtering);
+DECLARE_uint32(max_active_table_metrics_table_count);
 DECLARE_string(metric_node_name);
 
 // Declare these metrics prototypes for simpler unit testing of their behavior.
@@ -136,12 +151,484 @@ class TabletServerTest : public TabletServerTestBase {
   string GetWebserverDir() { return GetTestPath("webserver-docroot"); }
 };
 
+// Tiered storage is a preview feature: both of its admin RPCs are refused while the flag is off.
+TEST_F(TabletServerTest, TieredStorageRpcsRequirePreviewFlag) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = false;
+  const auto uuid = mini_server_->server()->fs_manager()->uuid();
+  {
+    AlterTabletTierRequestPB req;
+    AlterTabletTierResponsePB resp;
+    RpcController rpc;
+    req.set_dest_uuid(uuid);
+    req.set_tablet_id(kTabletId);
+    req.set_target_tier("hdd");
+    ASSERT_OK(admin_proxy_->AlterTabletTier(req, &resp, &rpc));
+    ASSERT_TRUE(resp.has_error()) << resp.DebugString();
+    auto status = StatusFromPB(resp.error().status());
+    ASSERT_TRUE(status.IsNotSupported()) << status;
+    ASSERT_STR_CONTAINS(status.ToString(), "enable_tiered_storage");
+  }
+  {
+    GetTabletTierInfoRequestPB req;
+    GetTabletTierInfoResponsePB resp;
+    RpcController rpc;
+    req.set_dest_uuid(uuid);
+    req.set_tablet_id(kTabletId);
+    ASSERT_OK(admin_proxy_->GetTabletTierInfo(req, &resp, &rpc));
+    ASSERT_TRUE(resp.has_error()) << resp.DebugString();
+    auto status = StatusFromPB(resp.error().status());
+    ASSERT_TRUE(status.IsNotSupported()) << status;
+  }
+}
+
 TEST_F(TabletServerTest, TestPingServer) {
   // Ping the server.
   server::PingRequestPB req;
   server::PingResponsePB resp;
   RpcController controller;
   ASSERT_OK(generic_proxy_->Ping(req, &resp, &controller));
+}
+
+// The active-table list applies only to YSQL tables, so this test uses one.
+class TabletServerYsqlTableTest : public TabletServerTest {
+ public:
+  TabletServerYsqlTableTest() : TabletServerTest(PGSQL_TABLE_TYPE) {}
+};
+
+TEST_F(TabletServerYsqlTableTest, ActiveTableMetricsFiltering) {
+  EasyCurl curl;
+  const auto url = Format(
+      "http://$0/prometheus-metrics?show_help=false",
+      yb::ToString(mini_server_->bound_http_addr()));
+  auto Scrape = [&](const std::string& extra_args = "") {
+    faststring buffer;
+    CHECK_OK(curl.FetchURL(url + extra_args, &buffer));
+    return buffer.ToString();
+  };
+  constexpr std::string_view kFilterArgs = "&version=v2&apply_table_IDs_filter=true";
+  auto FilteredScrape = [&](const std::string& extra_args = "") {
+    return Scrape(Format("$0$1", kFilterArgs, extra_args));
+  };
+  const auto table_label = Format(R"#(table_id="$0")#", kTableName.table_name());
+  auto GaugeValue = [](
+      const std::string& scrape, std::string_view metric_name) -> Result<uint64_t> {
+    const auto metric_pos = scrape.find(Format("$0{", metric_name));
+    if (metric_pos == std::string::npos) {
+      return STATUS_FORMAT(NotFound, "$0 not found", metric_name);
+    }
+    const auto value_pos = scrape.find("} ", metric_pos);
+    if (value_pos == std::string::npos) {
+      return STATUS_FORMAT(Corruption, "Malformed $0", metric_name);
+    }
+    const auto value_end = scrape.find_first_of(" \n", value_pos + 2);
+    if (value_end == std::string::npos) {
+      return STATUS_FORMAT(Corruption, "Malformed $0", metric_name);
+    }
+    return CheckedStoull(scrape.substr(value_pos + 2, value_end - value_pos - 2));
+  };
+  auto LastUpdateTime = [&](const std::string& scrape) {
+    return GaugeValue(scrape, "active_table_metrics_last_update_time");
+  };
+  auto TableCount = [&](const std::string& scrape) {
+    return GaugeValue(scrape, "active_table_metrics_table_count");
+  };
+  auto ListVersion = [&](const std::string& scrape) {
+    return GaugeValue(scrape, "active_table_metrics_list_version");
+  };
+
+  // The gflag is only a kill switch and defaults to on, so the URL parameters are the opt-in.
+  ASSERT_TRUE(FLAGS_enable_active_table_metrics_filtering);
+  ASSERT_EQ(FLAGS_max_active_table_metrics_table_count, 1000);
+  auto scrape = Scrape();
+  ASSERT_EQ(0, ASSERT_RESULT(LastUpdateTime(scrape)));
+  ASSERT_EQ(0, ASSERT_RESULT(TableCount(scrape)));
+  ASSERT_EQ(0, ASSERT_RESULT(ListVersion(scrape)));
+  // Existing scrape URLs retain their behavior.
+  ASSERT_STR_CONTAINS(scrape, table_label);
+  ASSERT_STR_CONTAINS(Scrape("&version=v2&apply_table_IDs_filter=false"), table_label);
+  // v1 scrapes are never filtered, because their table metrics have no server-level copy.
+  ASSERT_STR_CONTAINS(Scrape("&apply_table_IDs_filter=true"), table_label);
+  ASSERT_STR_CONTAINS(Scrape("&version=v1&apply_table_IDs_filter=true"), table_label);
+  // Opted-in scrapes emit no table metrics until the process receives its first list.
+  ASSERT_STR_NOT_CONTAINS(FilteredScrape(), table_label);
+  // Turning the kill switch off exports every table regardless of the URL parameters.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_active_table_metrics_filtering) = false;
+  ASSERT_STR_CONTAINS(FilteredScrape(), table_label);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_active_table_metrics_filtering) = true;
+  ASSERT_STR_NOT_CONTAINS(FilteredScrape(), table_label);
+  // Metrics matching table_always_allowlist are exported for every table.
+  ASSERT_STR_CONTAINS(FilteredScrape("&table_always_allowlist=log_wal_size"), table_label);
+  ASSERT_STR_NOT_CONTAINS(FilteredScrape("&table_always_allowlist=NONE"), table_label);
+
+  SetActiveTableIdsForMetricsRequestPB req;
+  SetActiveTableIdsForMetricsResponsePB resp;
+  req.add_table_ids("another-table");
+  RpcController controller;
+  ASSERT_OK(proxy_->SetActiveTableIdsForMetrics(req, &resp, &controller));
+  ASSERT_FALSE(resp.has_error()) << resp.error().DebugString();
+  ASSERT_TRUE(resp.filtering_enabled());
+  scrape = FilteredScrape();
+  const auto first_update_time = ASSERT_RESULT(LastUpdateTime(scrape));
+  ASSERT_GT(first_update_time, 0);
+  ASSERT_EQ(1, ASSERT_RESULT(TableCount(scrape)));
+  // The caller did not supply a version.
+  ASSERT_EQ(0, ASSERT_RESULT(ListVersion(scrape)));
+  ASSERT_STR_CONTAINS(Scrape(), table_label);
+  ASSERT_STR_NOT_CONTAINS(FilteredScrape(), table_label);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_active_table_metrics_filtering) = false;
+  ASSERT_STR_CONTAINS(FilteredScrape(), table_label);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_active_table_metrics_filtering) = true;
+  ASSERT_STR_NOT_CONTAINS(FilteredScrape(), table_label);
+
+  SleepFor(MonoDelta::FromMilliseconds(1));
+  req.clear_table_ids();
+  req.add_table_ids(kTableName.table_name());
+  req.set_list_version(7);
+  resp.Clear();
+  controller.Reset();
+  ASSERT_OK(proxy_->SetActiveTableIdsForMetrics(req, &resp, &controller));
+  ASSERT_FALSE(resp.has_error()) << resp.error().DebugString();
+  scrape = FilteredScrape();
+  // The version supplied by the caller is reported as is.
+  ASSERT_EQ(7, ASSERT_RESULT(ListVersion(scrape)));
+  const auto second_update_time = ASSERT_RESULT(LastUpdateTime(scrape));
+  ASSERT_GT(second_update_time, first_update_time);
+  ASSERT_STR_CONTAINS(scrape, table_label);
+
+  // The most recently received list remains active indefinitely.
+  SleepFor(MonoDelta::FromMilliseconds(100 * kTimeMultiplier));
+  ASSERT_STR_CONTAINS(FilteredScrape(), table_label);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_active_table_metrics_table_count) = 1;
+  req.add_table_ids("another-table");
+  req.set_list_version(8);
+  resp.Clear();
+  controller.Reset();
+  ASSERT_OK(proxy_->SetActiveTableIdsForMetrics(req, &resp, &controller));
+  ASSERT_TRUE(resp.has_error());
+  ASSERT_TRUE(StatusFromPB(resp.error().status()).IsInvalidArgument());
+  scrape = FilteredScrape();
+  ASSERT_EQ(ASSERT_RESULT(LastUpdateTime(scrape)), second_update_time);
+  ASSERT_EQ(7, ASSERT_RESULT(ListVersion(scrape)));
+  // Rejected updates leave the previously accepted list active.
+  ASSERT_STR_CONTAINS(scrape, table_label);
+
+  // The limit is enforced while the request is read: the request is rejected for the limit as soon
+  // as it passes it, before reaching the invalid empty ID that follows.
+  req.clear_table_ids();
+  for (int i = 0; i < 1000; ++i) {
+    req.add_table_ids(Format("spurious-table-$0", i));
+  }
+  req.add_table_ids("");
+  resp.Clear();
+  controller.Reset();
+  ASSERT_OK(proxy_->SetActiveTableIdsForMetrics(req, &resp, &controller));
+  ASSERT_TRUE(resp.has_error());
+  const auto over_limit_status = StatusFromPB(resp.error().status());
+  ASSERT_TRUE(over_limit_status.IsInvalidArgument()) << over_limit_status;
+  ASSERT_STR_CONTAINS(over_limit_status.ToString(), "more than 1 tables");
+  scrape = FilteredScrape();
+  ASSERT_EQ(ASSERT_RESULT(LastUpdateTime(scrape)), second_update_time);
+  ASSERT_STR_CONTAINS(scrape, table_label);
+
+  // The limit counts distinct table IDs, so repeating one does not consume the budget twice.
+  req.clear_table_ids();
+  req.add_table_ids(kTableName.table_name());
+  req.add_table_ids(kTableName.table_name());
+  resp.Clear();
+  controller.Reset();
+  ASSERT_OK(proxy_->SetActiveTableIdsForMetrics(req, &resp, &controller));
+  ASSERT_FALSE(resp.has_error()) << resp.error().DebugString();
+  scrape = FilteredScrape();
+  ASSERT_STR_CONTAINS(scrape, table_label);
+  ASSERT_EQ(1, ASSERT_RESULT(TableCount(scrape)));
+
+  SleepFor(MonoDelta::FromMilliseconds(1));
+  req.clear_table_ids();
+  resp.Clear();
+  controller.Reset();
+  ASSERT_OK(proxy_->SetActiveTableIdsForMetrics(req, &resp, &controller));
+  ASSERT_FALSE(resp.has_error()) << resp.error().DebugString();
+  scrape = FilteredScrape();
+  ASSERT_GT(ASSERT_RESULT(LastUpdateTime(scrape)), second_update_time);
+  ASSERT_EQ(0, ASSERT_RESULT(TableCount(scrape)));
+  ASSERT_STR_CONTAINS(Scrape(), table_label);
+  ASSERT_STR_NOT_CONTAINS(scrape, table_label);
+
+  // An empty table ID rejects the whole request, leaving the previously accepted list active.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_active_table_metrics_table_count) = 1000;
+  req.add_table_ids(kTableName.table_name());
+  req.add_table_ids("");
+  resp.Clear();
+  controller.Reset();
+  ASSERT_OK(proxy_->SetActiveTableIdsForMetrics(req, &resp, &controller));
+  ASSERT_TRUE(resp.has_error());
+  ASSERT_TRUE(StatusFromPB(resp.error().status()).IsInvalidArgument());
+  ASSERT_STR_NOT_CONTAINS(FilteredScrape(), table_label);
+  ASSERT_TRUE(resp.filtering_enabled());
+
+  // A list sent while filtering is disabled is still accepted, and the response tells the caller
+  // that no scrape is using it.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_active_table_metrics_filtering) = false;
+  req.clear_table_ids();
+  req.add_table_ids(kTableName.table_name());
+  resp.Clear();
+  controller.Reset();
+  ASSERT_OK(proxy_->SetActiveTableIdsForMetrics(req, &resp, &controller));
+  ASSERT_FALSE(resp.has_error()) << resp.error().DebugString();
+  ASSERT_FALSE(resp.filtering_enabled());
+  ASSERT_STR_CONTAINS(FilteredScrape(), table_label);
+
+  // Once filtering is enabled again, the list stored while it was off takes effect immediately.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_active_table_metrics_filtering) = true;
+  ASSERT_STR_CONTAINS(FilteredScrape(), table_label);
+  req.clear_table_ids();
+  req.add_table_ids("another-table");
+  // The largest version a caller can send, reported exactly.
+  constexpr uint32_t kLastListVersion = std::numeric_limits<uint32_t>::max();
+  req.set_list_version(kLastListVersion);
+  resp.Clear();
+  controller.Reset();
+  ASSERT_OK(proxy_->SetActiveTableIdsForMetrics(req, &resp, &controller));
+  ASSERT_FALSE(resp.has_error()) << resp.error().DebugString();
+  scrape = FilteredScrape();
+  ASSERT_STR_NOT_CONTAINS(scrape, table_label);
+  ASSERT_EQ(kLastListVersion, ASSERT_RESULT(ListVersion(scrape)));
+
+  // The /tables page shows the current list: its size and version, whether each local table is in
+  // it, and the listed IDs that match no local table.
+  faststring tables_page;
+  ASSERT_OK(curl.FetchURL(
+      Format("http://$0/tables", yb::ToString(mini_server_->bound_http_addr())), &tables_page));
+  const auto tables_page_str = tables_page.ToString();
+  ASSERT_STR_CONTAINS(tables_page_str, "Active table metrics list");
+  ASSERT_STR_CONTAINS(tables_page_str, std::to_string(kLastListVersion));
+  ASSERT_STR_CONTAINS(tables_page_str, "<li>another-table</li>");
+  ASSERT_STR_CONTAINS(
+      tables_page_str, "1 table IDs in the list are not hosted on this tablet server");
+}
+
+// Tables created by YugabyteDB itself always keep their table-level metrics, colocated tables are
+// selected through their parent table ID, and table IDs that match no table are harmless.
+TEST_F(TabletServerYsqlTableTest, ActiveTableMetricsSystemAndColocatedTables) {
+  struct TestTable {
+    std::string namespace_name;
+    std::string table_id;
+    TableType table_type;
+  };
+  // AddTestTablet uses the table ID as the table name too.
+  const std::vector<TestTable> kSystemTables = {
+      // YCQL system tables. Only YSQL tables are filtered, so these pass on table type alone.
+      {"system", "cdc_state", YQL_TABLE_TYPE},
+      {"system", "pg_advisory_locks", YQL_TABLE_TYPE},
+      // YSQL tables in the namespaces YugabyteDB creates.
+      {"system_postgres", "sequences_data", PGSQL_TABLE_TYPE},
+      {"yb_system", "pg_yb_notifications", PGSQL_TABLE_TYPE},
+      {"yb_system", "another_yb_system_table", PGSQL_TABLE_TYPE},
+      // xCluster automatic mode DDL replication tables, which live in user databases.
+      {"user_db", "ddl_queue", PGSQL_TABLE_TYPE},
+      {"user_db", "replicated_ddls", PGSQL_TABLE_TYPE},
+      // sequences_data as created before v2.3.0.0: its tablets never got a namespace_name, so only
+      // its fixed table ID identifies it.
+      {"", kPgSequencesDataTableId, PGSQL_TABLE_TYPE},
+  };
+  // All tables of a colocated database share the tablets of a parent table, and report their
+  // metrics under its ID.
+  const std::string kColocatedParentId = "00004000000030008000000000004001.colocation.parent.uuid";
+  const std::string kColocatedChildId = "000040000000300080000000000040aa";
+
+  std::vector<TestTable> tables = kSystemTables;
+  tables.push_back({"user_db", kColocatedParentId, PGSQL_TABLE_TYPE});
+  for (const auto& table : tables) {
+    const auto tablet_id = Format("tablet-$0", table.table_id);
+    ASSERT_OK(mini_server_->AddTestTablet(
+        table.namespace_name, table.table_id, tablet_id, schema_, table.table_type));
+    ASSERT_OK(WaitForTabletRunning(tablet_id.c_str()));
+  }
+
+  EasyCurl curl;
+  const auto base_url = Format("http://$0", yb::ToString(mini_server_->bound_http_addr()));
+  auto FilteredScrape = [&]() -> Result<std::string> {
+    faststring buffer;
+    RETURN_NOT_OK(curl.FetchURL(
+        base_url + "/prometheus-metrics?show_help=false&version=v2&apply_table_IDs_filter=true",
+        &buffer));
+    return buffer.ToString();
+  };
+  auto Label = [](const std::string& table_id) {
+    return Format(R"#(table_id="$0")#", table_id);
+  };
+  auto SetActiveTables = [&](const std::vector<std::string>& table_ids) -> Status {
+    SetActiveTableIdsForMetricsRequestPB req;
+    SetActiveTableIdsForMetricsResponsePB resp;
+    for (const auto& table_id : table_ids) {
+      req.add_table_ids(table_id);
+    }
+    RpcController controller;
+    RETURN_NOT_OK(proxy_->SetActiveTableIdsForMetrics(req, &resp, &controller));
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+    return Status::OK();
+  };
+  // Returns the "Table metrics exported" cell of a table's row on the /tables page.
+  auto ExportedOnTablesPage = [&](const std::string& table_id) -> Result<std::string> {
+    faststring page;
+    RETURN_NOT_OK(curl.FetchURL(base_url + "/tables", &page));
+    const auto page_str = page.ToString();
+    const auto id_pos = page_str.find(Format(">$0<", table_id));
+    SCHECK_NE(id_pos, std::string::npos, NotFound, Format("No /tables row for $0", table_id));
+    const auto row_end = page_str.find("</tr>", id_pos);
+    SCHECK_NE(row_end, std::string::npos, Corruption, "Unterminated /tables row");
+    const auto row = page_str.substr(id_pos, row_end - id_pos);
+    for (const auto* status : {"Yes (filtering disabled)", "Yes (not a YSQL table)",
+                               "Yes (created by YugabyteDB)", "Yes (in list)",
+                               "No (no list received)", "No (not in list)"}) {
+      if (row.find(status) != std::string::npos) {
+        return std::string(status);
+      }
+    }
+    return STATUS_FORMAT(NotFound, "No export status in the /tables row for $0", table_id);
+  };
+  auto CheckSystemTablesOnTablesPage = [&]() {
+    for (const auto& table : kSystemTables) {
+      SCOPED_TRACE(table.table_id);
+      ASSERT_EQ(
+          table.table_type == PGSQL_TABLE_TYPE ? "Yes (created by YugabyteDB)"
+                                               : "Yes (not a YSQL table)",
+          ASSERT_RESULT(ExportedOnTablesPage(table.table_id)));
+    }
+  };
+  auto CheckSystemTablesExported = [&](const std::string& scrape) {
+    for (const auto& table : kSystemTables) {
+      SCOPED_TRACE(table.table_id);
+      ASSERT_STR_CONTAINS(scrape, Label(table.table_id));
+    }
+  };
+
+  // Before any list arrives, an opted-in scrape still exports the system tables.
+  auto scrape = ASSERT_RESULT(FilteredScrape());
+  ASSERT_NO_FATALS(CheckSystemTablesExported(scrape));
+  ASSERT_STR_NOT_CONTAINS(scrape, Label(kTableName.table_name()));
+  ASSERT_STR_NOT_CONTAINS(scrape, Label(kColocatedParentId));
+  // The /tables page agrees, and says why.
+  ASSERT_NO_FATALS(CheckSystemTablesOnTablesPage());
+  ASSERT_EQ("No (no list received)", ASSERT_RESULT(ExportedOnTablesPage(kTableName.table_name())));
+  ASSERT_EQ("No (no list received)", ASSERT_RESULT(ExportedOnTablesPage(kColocatedParentId)));
+
+  // Table IDs that match no table, including a colocated child ID, select nothing and leave the
+  // system tables alone. They are never written to the scrape output.
+  const std::vector<std::string> kSpuriousIds = {
+      "does-not-exist", kColocatedChildId, "<script>alert(1)</script>", "table\"} 1\nfake_metric 2",
+      "\xc3\xa9t\xc3\xa9", std::string(256, 'x')};
+  ASSERT_OK(SetActiveTables(kSpuriousIds));
+  scrape = ASSERT_RESULT(FilteredScrape());
+  ASSERT_NO_FATALS(CheckSystemTablesExported(scrape));
+  ASSERT_STR_NOT_CONTAINS(scrape, Label(kTableName.table_name()));
+  ASSERT_STR_NOT_CONTAINS(scrape, Label(kColocatedParentId));
+  ASSERT_STR_NOT_CONTAINS(scrape, Label(kColocatedChildId));
+  ASSERT_STR_NOT_CONTAINS(scrape, "fake_metric");
+  ASSERT_STR_NOT_CONTAINS(scrape, "<script>");
+
+  // The /tables page lists them escaped.
+  faststring tables_page;
+  ASSERT_OK(curl.FetchURL(base_url + "/tables", &tables_page));
+  ASSERT_STR_NOT_CONTAINS(tables_page.ToString(), "<script>alert(1)</script>");
+  ASSERT_STR_CONTAINS(tables_page.ToString(), "&lt;script&gt;alert(1)&lt;/script&gt;");
+
+  // A table ID above the length bound rejects the request, leaving the previous list active.
+  ASSERT_TRUE(SetActiveTables({std::string(257, 'x')}).IsInvalidArgument());
+  ASSERT_TRUE(SetActiveTables({kColocatedParentId, std::string(257, 'x')}).IsInvalidArgument());
+  ASSERT_STR_NOT_CONTAINS(ASSERT_RESULT(FilteredScrape()), Label(kColocatedParentId));
+
+  // Listing the colocated parent exports the metrics of its colocated tables, which are reported
+  // under the parent ID.
+  ASSERT_OK(SetActiveTables({kColocatedParentId}));
+  scrape = ASSERT_RESULT(FilteredScrape());
+  ASSERT_STR_CONTAINS(scrape, Label(kColocatedParentId));
+  ASSERT_STR_NOT_CONTAINS(scrape, Label(kTableName.table_name()));
+  ASSERT_NO_FATALS(CheckSystemTablesExported(scrape));
+  ASSERT_EQ("Yes (in list)", ASSERT_RESULT(ExportedOnTablesPage(kColocatedParentId)));
+  ASSERT_EQ("No (not in list)", ASSERT_RESULT(ExportedOnTablesPage(kTableName.table_name())));
+  ASSERT_NO_FATALS(CheckSystemTablesOnTablesPage());
+
+  // With the kill switch off, every table is exported.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_active_table_metrics_filtering) = false;
+  ASSERT_EQ(
+      "Yes (filtering disabled)", ASSERT_RESULT(ExportedOnTablesPage(kTableName.table_name())));
+  ASSERT_STR_CONTAINS(ASSERT_RESULT(FilteredScrape()), Label(kTableName.table_name()));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_active_table_metrics_filtering) = true;
+
+  // Listing system tables changes nothing for them.
+  std::vector<std::string> system_table_ids;
+  for (const auto& table : kSystemTables) {
+    system_table_ids.push_back(table.table_id);
+  }
+  ASSERT_OK(SetActiveTables(system_table_ids));
+  scrape = ASSERT_RESULT(FilteredScrape());
+  ASSERT_NO_FATALS(CheckSystemTablesExported(scrape));
+  ASSERT_STR_NOT_CONTAINS(scrape, Label(kColocatedParentId));
+}
+
+// The metrics filter cannot depend on yb/master, yb/cdc or yb/common, so it repeats the names of
+// the internal tables it exempts. This keeps them in sync with the real constants.
+TEST_F(TabletServerTest, ActiveTableMetricsInternalTableConstants) {
+  auto Exemption = [](
+      const std::string& table_id, const std::string& namespace_name,
+      const std::string& table_name) {
+    return GetActiveTableListExemption({
+        {"table_id", table_id}, {"table_type", TableType_Name(PGSQL_TABLE_TYPE)},
+        {"namespace_name", namespace_name}, {"table_name", table_name}});
+  };
+  ASSERT_EQ(ActiveTableListExemption::kInternalTable,
+            Exemption("t1", master::kSystemNamespaceName, "t"));
+  ASSERT_EQ(ActiveTableListExemption::kInternalTable,
+            Exemption("t2", master::kYbSystemDbName, master::kPgYbNotificationsTableName));
+  ASSERT_EQ(ActiveTableListExemption::kInternalTable,
+            Exemption("t3", "user_db", xcluster::kDDLQueueTableName));
+  ASSERT_EQ(ActiveTableListExemption::kInternalTable,
+            Exemption("t4", "user_db", xcluster::kDDLReplicatedTableName));
+  // sequences_data is recognised by its table ID even without a namespace name.
+  ASSERT_EQ(ActiveTableListExemption::kInternalTable,
+            Exemption(kPgSequencesDataTableId, "", "sequences_data"));
+  // The filter's check matches the table type label the metrics carry.
+  ASSERT_EQ(ActiveTableListExemption::kNone, Exemption("t5", "user_db", "user_table"));
+}
+
+// Tables of APIs other than YSQL keep their table-level metrics, since the collector cannot rank
+// them.
+TEST_F(TabletServerTest, ActiveTableMetricsIgnoreYcqlTables) {
+  EasyCurl curl;
+  const auto table_label = Format(R"#(table_id="$0")#", kTableName.table_name());
+  auto FilteredScrape = [&]() -> Result<std::string> {
+    faststring buffer;
+    RETURN_NOT_OK(curl.FetchURL(
+        Format(
+            "http://$0/prometheus-metrics?show_help=false&version=v2&apply_table_IDs_filter=true",
+            yb::ToString(mini_server_->bound_http_addr())),
+        &buffer));
+    return buffer.ToString();
+  };
+  auto SetActiveTables = [&](std::initializer_list<std::string> table_ids) -> Status {
+    SetActiveTableIdsForMetricsRequestPB req;
+    SetActiveTableIdsForMetricsResponsePB resp;
+    for (const auto& table_id : table_ids) {
+      req.add_table_ids(table_id);
+    }
+    RpcController controller;
+    RETURN_NOT_OK(proxy_->SetActiveTableIdsForMetrics(req, &resp, &controller));
+    return resp.has_error() ? StatusFromPB(resp.error().status()) : Status::OK();
+  };
+
+  // Before any list arrives.
+  ASSERT_STR_CONTAINS(ASSERT_RESULT(FilteredScrape()), table_label);
+  // With a list that leaves the YCQL table out.
+  ASSERT_OK(SetActiveTables({"another-table"}));
+  ASSERT_STR_CONTAINS(ASSERT_RESULT(FilteredScrape()), table_label);
+  // With an empty list.
+  ASSERT_OK(SetActiveTables({}));
+  ASSERT_STR_CONTAINS(ASSERT_RESULT(FilteredScrape()), table_label);
 }
 
 TEST_F(TabletServerTest, TestServerClock) {
@@ -181,7 +668,7 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
     SCOPED_TRACE(resp.DebugString());
     ASSERT_EQ(server::SetFlagResponsePB::SUCCESS, resp.result());
     ASSERT_EQ(resp.msg(), "metrics_retirement_age_ms set to 12345\n");
-    ASSERT_EQ(Substitute("$0", old_val), resp.old_value());
+    ASSERT_EQ(Format("$0", old_val), resp.old_value());
     ASSERT_EQ(12345, FLAGS_metrics_retirement_age_ms);
   }
 
@@ -234,17 +721,17 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
   string addr = yb::ToString(mini_server_->bound_http_addr());
 
   // Tablets page should list tablet.
-  ASSERT_OK(c.FetchURL(Substitute("http://$0/tablets", addr),
+  ASSERT_OK(c.FetchURL(Format("http://$0/tablets", addr),
                        &buf));
   ASSERT_STR_CONTAINS(buf.ToString(), kTabletId);
 
   // Tablet page should include the schema.
-  ASSERT_OK(c.FetchURL(Substitute("http://$0/tablet?id=$1", addr, kTabletId),
+  ASSERT_OK(c.FetchURL(Format("http://$0/tablet?id=$1", addr, kTabletId),
                        &buf));
   ASSERT_STR_CONTAINS(buf.ToString(), "<th>key</th>");
   ASSERT_STR_CONTAINS(buf.ToString(), "<td>string NULLABLE VALUE</td>");
 
-  ASSERT_OK(c.FetchURL(Substitute("http://$0/tablet-consensus-status?id=$1",
+  ASSERT_OK(c.FetchURL(Format("http://$0/tablet-consensus-status?id=$1",
                        addr, kTabletId), &buf));
   ASSERT_STR_CONTAINS(buf.ToString(), kTabletId);
 
@@ -257,7 +744,7 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_metrics_retirement_age_ms) = 0;
   for (int i = 0; i < 3; i++) {
     SCOPED_TRACE(i);
-    ASSERT_OK(c.FetchURL(strings::Substitute("http://$0/jsonmetricz", addr, kTabletId),
+    ASSERT_OK(c.FetchURL(Format("http://$0/jsonmetricz", addr, kTabletId),
                                 &buf));
 
     // Check that the tablet entry shows up.
@@ -279,7 +766,7 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
 
   // Smoke-test the tracing infrastructure.
   ASSERT_OK(c.FetchURL(
-                Substitute("http://$0/tracing/json/get_buffer_percent_full", addr, kTabletId),
+                Format("http://$0/tracing/json/get_buffer_percent_full", addr, kTabletId),
                 &buf));
   ASSERT_EQ(buf.ToString(), "0");
 
@@ -288,19 +775,19 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
   string req_b64;
   Base64Escape(enable_req_json, &req_b64);
 
-  ASSERT_OK(c.FetchURL(Substitute("http://$0/tracing/json/begin_recording?$1",
-                                         addr,
-                                         req_b64), &buf));
+  ASSERT_OK(c.FetchURL(Format("http://$0/tracing/json/begin_recording?$1",
+                                     addr,
+                                     req_b64), &buf));
   ASSERT_EQ(buf.ToString(), "");
-  ASSERT_OK(c.FetchURL(Substitute("http://$0/tracing/json/end_recording", addr),
+  ASSERT_OK(c.FetchURL(Format("http://$0/tracing/json/end_recording", addr),
                        &buf));
   ASSERT_STR_CONTAINS(buf.ToString(), "__metadata");
-  ASSERT_OK(c.FetchURL(Substitute("http://$0/tracing/json/categories", addr),
+  ASSERT_OK(c.FetchURL(Format("http://$0/tracing/json/categories", addr),
                        &buf));
   ASSERT_STR_CONTAINS(buf.ToString(), "\"rpc\"");
 
   // Smoke test the pprof contention profiler handler.
-  ASSERT_OK(c.FetchURL(Substitute("http://$0/pprof/contention?seconds=1", addr),
+  ASSERT_OK(c.FetchURL(Format("http://$0/pprof/contention?seconds=1", addr),
                        &buf));
   ASSERT_STR_CONTAINS(buf.ToString(), "Discarded samples = 0");
 #if defined(__linux__)
@@ -313,7 +800,7 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
   // This parameter allow user to have percentile not to be reseted for every web page fetch.
   // Here, handler_latency_yb_tserver_TabletServerService_Write's percentile is used for testing.
   // In the begining, we expect it's value is zero.
-  ASSERT_OK(c.FetchURL(Substitute("http://$0/prometheus-metrics?reset_histograms=false", addr),
+  ASSERT_OK(c.FetchURL(Format("http://$0/prometheus-metrics?reset_histograms=false", addr),
                 &buf));
   // Find our target metric and concatenate value zero to it. metric_instance_with_zero_value is a
   // string looks like: handler_latency_yb_tserver_TabletServerService_Write{...quantile=p50...} 0
@@ -351,21 +838,21 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
   }
 
   // Check that its percentile become none zero after inserting data
-  ASSERT_OK(c.FetchURL(Substitute("http://$0/prometheus-metrics?reset_histograms=false", addr),
+  ASSERT_OK(c.FetchURL(Format("http://$0/prometheus-metrics?reset_histograms=false", addr),
                 &buf));
   ASSERT_STR_NOT_CONTAINS(buf.ToString(), metric_instance_with_zero_value);
 
   // Check that percentile should not to be reseted to zero after refreshing the page
-  ASSERT_OK(c.FetchURL(Substitute("http://$0/prometheus-metrics?reset_histograms=false", addr),
+  ASSERT_OK(c.FetchURL(Format("http://$0/prometheus-metrics?reset_histograms=false", addr),
                 &buf));
   ASSERT_STR_NOT_CONTAINS(buf.ToString(), metric_instance_with_zero_value);
 
   // Fetch the page again with reset_histograms=true to reset the percentile
-  ASSERT_OK(c.FetchURL(Substitute("http://$0/prometheus-metrics?reset_histograms=true", addr),
+  ASSERT_OK(c.FetchURL(Format("http://$0/prometheus-metrics?reset_histograms=true", addr),
                 &buf));
 
   // Verify that the percentile has been reseted back to zero
-  ASSERT_OK(c.FetchURL(Substitute("http://$0/prometheus-metrics?reset_histograms=true", addr),
+  ASSERT_OK(c.FetchURL(Format("http://$0/prometheus-metrics?reset_histograms=true", addr),
                 &buf));
   ASSERT_STR_CONTAINS(buf.ToString(), metric_instance_with_zero_value);
   tablet.reset();
@@ -696,8 +1183,8 @@ TEST_F(TabletServerTest, TestDeleteTablet) {
   // Verify that fetching metrics doesn't crash. Regression test for KUDU-638.
   EasyCurl c;
   faststring buf;
-  ASSERT_OK(c.FetchURL(strings::Substitute("http://$0/jsonmetricz",
-                                           AsString(mini_server_->bound_http_addr())),
+  ASSERT_OK(c.FetchURL(Format("http://$0/jsonmetricz",
+                              AsString(mini_server_->bound_http_addr())),
                                            &buf));
 
   // Verify that after restarting the TS, the tablet is still not in the tablet manager.
@@ -905,7 +1392,7 @@ namespace {
 void CalcTestRowChecksum(uint64_t *out, int32_t key, uint8_t string_field_defined = true) {
   QLValue value;
 
-  string strval = strings::Substitute("original$0", key);
+  string strval = Format("original$0", key);
   string buffer;
   uint32_t index = 0;
   buffer.append(pointer_cast<const char*>(&index), sizeof(index));
@@ -1135,7 +1622,9 @@ TEST_P(FlushTabletsTest, VectorIndexExcluded) {
 }
 
 TEST_F(TabletServerTest, ApplyXClusterGuardedInfoIfNewer) {
-  // The fixture's TServer has no master, so nothing else applies xCluster-guarded info.
+  // The fixture's TServer has no master, so nothing else applies xCluster-guarded info.  It also
+  // never gets a xCluster-guarded lease, so do not let the lack of one hide the applied roles.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enforce_xcluster_guarded_lease) = false;
   auto* server = mini_server_->server();
   const NamespaceId kNamespace = "namespace";
 
@@ -1149,35 +1638,109 @@ TEST_F(TabletServerTest, ApplyXClusterGuardedInfoIfNewer) {
     return info;
   };
   auto get_role = [&]() { return server->GetXClusterContext().GetXClusterRole(kNamespace); };
+  auto get_oid_cache_invalidations_count = [&]() {
+    return server->GetXClusterContext().GetOidCacheInvalidationsCount();
+  };
 
   server->ApplyXClusterGuardedInfoIfNewer(
       make_info(2, 5, XClusterNamespaceInfoPB::AUTOMATIC_SOURCE, 10));
   EXPECT_EQ(get_role(), XClusterNamespaceInfoPB::AUTOMATIC_SOURCE);
-  EXPECT_EQ(server->get_oid_cache_invalidations_count(), 10);
+  EXPECT_EQ(ASSERT_RESULT(get_oid_cache_invalidations_count()), 10);
 
   // An earlier version is ignored, even with a higher count.
   server->ApplyXClusterGuardedInfoIfNewer(
       make_info(1, 6, XClusterNamespaceInfoPB::AUTOMATIC_TARGET, 11));
   EXPECT_EQ(get_role(), XClusterNamespaceInfoPB::AUTOMATIC_SOURCE);
-  EXPECT_EQ(server->get_oid_cache_invalidations_count(), 10);
+  EXPECT_EQ(ASSERT_RESULT(get_oid_cache_invalidations_count()), 10);
 
   // The same version is ignored.
   server->ApplyXClusterGuardedInfoIfNewer(
       make_info(2, 5, XClusterNamespaceInfoPB::AUTOMATIC_TARGET, 11));
   EXPECT_EQ(get_role(), XClusterNamespaceInfoPB::AUTOMATIC_SOURCE);
-  EXPECT_EQ(server->get_oid_cache_invalidations_count(), 10);
+  EXPECT_EQ(ASSERT_RESULT(get_oid_cache_invalidations_count()), 10);
 
   // A higher count in the same term is applied.
   server->ApplyXClusterGuardedInfoIfNewer(
       make_info(2, 6, XClusterNamespaceInfoPB::AUTOMATIC_TARGET, 11));
   EXPECT_EQ(get_role(), XClusterNamespaceInfoPB::AUTOMATIC_TARGET);
-  EXPECT_EQ(server->get_oid_cache_invalidations_count(), 11);
+  EXPECT_EQ(ASSERT_RESULT(get_oid_cache_invalidations_count()), 11);
 
   // A higher term is applied, even with a lower count.
   server->ApplyXClusterGuardedInfoIfNewer(
       make_info(3, 0, XClusterNamespaceInfoPB::AUTOMATIC_SOURCE, 12));
   EXPECT_EQ(get_role(), XClusterNamespaceInfoPB::AUTOMATIC_SOURCE);
-  EXPECT_EQ(server->get_oid_cache_invalidations_count(), 12);
+  EXPECT_EQ(ASSERT_RESULT(get_oid_cache_invalidations_count()), 12);
+}
+
+// A connection can cache a prefetch for a database this tserver has not heard of yet, and the
+// fill that records the version is the only one there will be: the response cache keeps what
+// that fill left behind, every later connection is served from it, and the observer that records
+// runs only on a fill. A version arriving before the slot is therefore held and written once the
+// slot exists, or the node would hold a prefetch it never admits to holding and no connection
+// would read an older version for that database until its catalog version moved again.
+TEST_F(TabletServerTest, LastPrefetchedCatalogVersionSurvivesALateSlot) {
+  auto* server = mini_server_->server();
+  constexpr uint32_t kDbOid = 16384;
+  constexpr uint64_t kVersion = 5;
+
+  // Nothing knows this database yet, so there is nowhere to record into.
+  server->SetYsqlDbLastPrefetchedCatalogVersion(kDbOid, kVersion);
+
+  DBCatalogVersionDataPB data;
+  auto* entry = data.add_db_catalog_versions();
+  entry->set_db_oid(kDbOid);
+  entry->set_current_version(kVersion);
+  entry->set_last_breaking_version(1);
+  server->SetYsqlDBCatalogVersions(data);
+
+  GetTserverCatalogVersionInfoRequestPB req;
+  GetTserverCatalogVersionInfoResponsePB resp;
+  req.set_db_oid(kDbOid);
+  ASSERT_OK(server->get_ysql_db_oid_to_cat_version_info_map(req, &resp));
+  ASSERT_EQ(resp.entries_size(), 1);
+  ASSERT_EQ(
+      server->SharedObject()->ysql_db_last_prefetched_catalog_version(resp.entries(0).shm_index()),
+      kVersion)
+      << "a version cached before the database had a slot was dropped rather than held";
+}
+
+TEST_F(TabletServerTest, LastPrefetchedCatalogVersionHoldsNoMoreThanThereAreSlots) {
+  auto* server = mini_server_->server();
+  constexpr uint32_t kFirstDbOid = 20000;
+  constexpr uint32_t kOneTooMany = 50000;
+
+  // Fill the held map to the number of slots that exist. None of these has a slot, so a node that
+  // never allocates one -- global catalog version mode -- would otherwise keep taking more.
+  for (uint32_t i = 0; i < TServerSharedData::kMaxNumDbCatalogVersions; ++i) {
+    server->SetYsqlDbLastPrefetchedCatalogVersion(kFirstDbOid + i, 5);
+  }
+  // Refused: there is no slot left for it to be waiting for.
+  server->SetYsqlDbLastPrefetchedCatalogVersion(kOneTooMany, 7);
+  // Accepted: already held, and a newer version is what a later slot should receive.
+  server->SetYsqlDbLastPrefetchedCatalogVersion(kFirstDbOid, 9);
+
+  DBCatalogVersionDataPB data;
+  for (auto db_oid : {kOneTooMany, kFirstDbOid}) {
+    auto* entry = data.add_db_catalog_versions();
+    entry->set_db_oid(db_oid);
+    entry->set_current_version(1);
+    entry->set_last_breaking_version(1);
+  }
+  server->SetYsqlDBCatalogVersions(data);
+
+  const auto recorded = [server](uint32_t db_oid) -> Result<uint64_t> {
+    GetTserverCatalogVersionInfoRequestPB req;
+    GetTserverCatalogVersionInfoResponsePB resp;
+    req.set_db_oid(db_oid);
+    RETURN_NOT_OK(server->get_ysql_db_oid_to_cat_version_info_map(req, &resp));
+    SCHECK_EQ(resp.entries_size(), 1, IllegalState, "no slot");
+    return server->SharedObject()->ysql_db_last_prefetched_catalog_version(
+        resp.entries(0).shm_index());
+  };
+  ASSERT_EQ(ASSERT_RESULT(recorded(kOneTooMany)), 0)
+      << "a version was held past the number of slots that can ever exist";
+  ASSERT_EQ(ASSERT_RESULT(recorded(kFirstDbOid)), 9)
+      << "a database already held stopped taking newer versions once the map was full";
 }
 
 }  // namespace yb::tserver

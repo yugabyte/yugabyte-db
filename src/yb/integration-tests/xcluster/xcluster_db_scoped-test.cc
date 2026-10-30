@@ -21,6 +21,7 @@
 #include "yb/client/xcluster_client.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/common/colocated_util.h"
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/xcluster_util.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/integration-tests/xcluster/xcluster_test_utils.h"
@@ -45,14 +46,12 @@ DECLARE_bool(use_client_to_server_encryption);
 DECLARE_bool(use_node_to_node_encryption);
 DECLARE_bool(TEST_force_automatic_ddl_replication_mode);
 DECLARE_bool(TEST_return_legacy_universe_replication_info);
+DECLARE_bool(TEST_vector_index_exact);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_start);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
 DECLARE_bool(disable_xcluster_db_scoped_new_table_processing);
 DECLARE_bool(xcluster_skip_health_check_on_replication_setup);
-DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_enable_auto_analyze);
-DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
-DECLARE_bool(ysql_enable_concurrent_ddl);
 
 using namespace std::chrono_literals;
 
@@ -217,8 +216,9 @@ class XClusterDBScopedAutomaticModeTlsTest : public XClusterDBScopedAutomaticMod
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_client_to_server_encryption) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_insecure_connections) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_certs_dir) = GetCertsDir();
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_certs_for_cdc_dir) =
-        JoinPathSegments(FLAGS_certs_dir, "xCluster");
+    // Per-test dir: a shared one under the build tree races with concurrent test processes
+    // rewriting ca.crt while the master reads it.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_certs_for_cdc_dir) = GetTestPath("xCluster");
     XClusterDBScopedAutomaticModeTest::SetUp();
   }
 
@@ -954,6 +954,63 @@ TEST_F_EX(XClusterDBScopedTest, VerifyXClusterGroupSkipsVectorIndexes,
   ASSERT_OK(run.status);
   ASSERT_STR_CONTAINS(run.error, "Skipping vector index");
   ASSERT_STR_CONTAINS(run.output, R"#("result":"kMatch")#");
+}
+
+// The source attaches the replaced vector ids of a whole write batch to the batch's last row only.
+// With the target table cut into more tablets than the source's, every target tablet holding rows
+// of the batch has to tombstone them, or its index keeps returning rows at their old vectors.
+TEST_F_EX(XClusterDBScopedTest, VectorIndexUpdatesWithDifferentTabletLayouts,
+          XClusterDBScopedAutomaticModeTest) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
+  ASSERT_OK(SetUpClusters(SetupParams{.create_vector_extension = true}));
+  auto p_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+  auto c_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+  constexpr auto kCreateTable =
+      "CREATE TABLE vec_tbl (id int PRIMARY KEY, embedding vector(3)) SPLIT INTO $0 TABLETS";
+  ASSERT_OK(p_conn.ExecuteFormat(kCreateTable, 1));
+  ASSERT_OK(c_conn.ExecuteFormat(kCreateTable, 4));
+
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  ASSERT_OK(p_conn.Execute(
+      "CREATE INDEX vec_idx ON vec_tbl USING ybhnsw (embedding vector_l2_ops)"));
+  constexpr int kNumRows = 200;
+  ASSERT_OK(p_conn.ExecuteFormat(
+      "INSERT INTO vec_tbl SELECT i, ARRAY[i, i, i]::vector FROM generate_series(1, $0) i",
+      kNumRows));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Even rows are moved or deleted and odd rows stay put, so the two nearest rows to an even row's
+  // old vector are its odd neighbours.
+  constexpr auto kMove = "UPDATE vec_tbl SET embedding = ARRAY[id + 1000, id, id]::vector";
+  ASSERT_OK(p_conn.Execute("BEGIN"));
+  ASSERT_OK(p_conn.ExecuteFormat("$0 WHERE id <= 100 AND id % 2 = 0", kMove));
+  ASSERT_OK(p_conn.Execute("DELETE FROM vec_tbl WHERE id > 100 AND id <= 140 AND id % 2 = 0"));
+  ASSERT_OK(p_conn.Execute("COMMIT"));
+  // Single-row autocommit statements.
+  for (int id = 142; id < kNumRows; id += 2) {
+    ASSERT_OK(p_conn.ExecuteFormat("$0 WHERE id = $1", kMove, id));
+  }
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  constexpr auto kSearch = "SELECT id FROM vec_tbl ORDER BY embedding <-> '[$0, $0, $0]' LIMIT 2";
+  ASSERT_STR_CONTAINS(
+      ASSERT_RESULT(c_conn.FetchAllAsString("EXPLAIN (COSTS OFF) " + Format(kSearch, 0))),
+      "vec_idx");
+  std::vector<int32_t> stale_ids;
+  for (int32_t id = 2; id < kNumRows; id += 2) {
+    const std::vector<int32_t> expected{id - 1, id + 1};
+    auto ids = ASSERT_RESULT(p_conn.FetchRows<int32_t>(Format(kSearch, id)));
+    std::sort(ids.begin(), ids.end());
+    ASSERT_EQ(ids, expected) << "id: " << id;
+    ids = ASSERT_RESULT(c_conn.FetchRows<int32_t>(Format(kSearch, id)));
+    std::sort(ids.begin(), ids.end());
+    if (ids != expected) {
+      stale_ids.push_back(id);
+    }
+  }
+  ASSERT_TRUE(stale_ids.empty()) << "Stale on the target: " << AsString(stale_ids);
 }
 
 // yb_xcluster_ddl_replication.replicated_ddls records the DDL each universe executed locally, and
@@ -1969,9 +2026,7 @@ TEST_F(XClusterDBScopedTest, RangedPartitionsWithIndex) {
 TEST_F(XClusterDBScopedTest, RangedPartitionsWithIndexConcurrentDDL) {
   // Disable auto analyze becauses the query plan changes
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = true;
+  ToggleDDLMode(/* use_legacy = */ false);
   ASSERT_OK(SetUpClusters());
 
   ASSERT_OK(CheckpointReplicationGroup());

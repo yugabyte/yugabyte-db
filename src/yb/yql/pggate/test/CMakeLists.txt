@@ -24,6 +24,7 @@ add_library(pggate_test
 
 target_link_libraries(pggate_test
                       yb_pggate
+                      yb_common_test_util
                       yb_test_util
                       integration-tests
                       test_admin_client)

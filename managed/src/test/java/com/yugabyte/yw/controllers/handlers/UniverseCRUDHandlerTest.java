@@ -594,6 +594,24 @@ public class UniverseCRUDHandlerTest extends FakeDBApplication {
     // Sanity check the sibling flags from the same eligibility bucket are still master-only.
     assertEquals("true", masterFlags.get("enforce_tablet_replica_limits"));
     assertEquals("true", masterFlags.get("split_respects_tablet_replica_limits"));
+    assertNull(universe.getConfig().get(Universe.K8S_APPLY_NEW_INSTALL_GFLAGS));
+  }
+
+  @Test
+  public void maybeSetNewInstallGflags_k8sGetsYsqlFlagsAndAppliesThem() {
+    Universe universe = ModelFactory.createUniverse(customer.getId());
+    Cluster primaryCluster = newInstallGflagsCluster("2025.2.0.0", false, true);
+    primaryCluster.userIntent.providerType = Common.CloudType.kubernetes;
+
+    universeCRUDHandler.maybeSetNewInstallGflags(customer, universe, primaryCluster);
+
+    for (ServerType serverType : List.of(ServerType.MASTER, ServerType.TSERVER)) {
+      Map<String, String> flags = universe.getNewInstallGFlags(serverType);
+      assertEquals("true", flags.get("yb_enable_read_committed_isolation"));
+      assertEquals("yb_enable_cbo=on", flags.get("ysql_pg_conf_csv"));
+      assertTrue(!flags.containsKey("use_memory_defaults_optimized_for_ysql"));
+    }
+    assertEquals("true", universe.getConfig().get(Universe.K8S_APPLY_NEW_INSTALL_GFLAGS));
   }
 
   @Test

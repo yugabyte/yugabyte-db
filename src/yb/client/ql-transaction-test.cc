@@ -30,7 +30,10 @@
 #include "yb/consensus/log.h"
 #include "yb/consensus/raft_consensus.h"
 
+#include "yb/docdb/consensus_frontier.h"
+
 #include "yb/rocksdb/db.h"
+#include "yb/rocksdb/write_batch.h"
 
 #include "yb/rpc/rpc.h"
 
@@ -80,6 +83,7 @@ DECLARE_bool(TEST_transaction_allow_rerequest_status);
 
 DECLARE_int32(intents_flush_max_delay_ms);
 DECLARE_int32(log_min_seconds_to_retain);
+DECLARE_int32(priority_thread_pool_size);
 DECLARE_int32(remote_bootstrap_max_chunk_size);
 DECLARE_int32(TEST_delay_init_tablet_peer_ms);
 DECLARE_int32(TEST_inject_load_transaction_delay_ms);
@@ -88,6 +92,7 @@ DECLARE_int64(db_write_buffer_size);
 DECLARE_int64(transaction_rpc_timeout_ms);
 
 DECLARE_uint64(aborted_intent_cleanup_ms);
+DECLARE_uint64(db_max_flushing_bytes);
 DECLARE_uint64(log_segment_size_bytes);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_uint64(transaction_heartbeat_usec);
@@ -354,6 +359,33 @@ TEST_F(QLTransactionTest, WriteAfterReadRestart) {
   txn2->Abort();
 
   VerifyData();
+}
+
+// A restarted transaction keeps the origination stamp its commit carries.
+TEST_F(QLTransactionTest, RestartKeepsOriginationInfo) {
+  const auto kClockDelta = 100ms;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_clock_skew_usec) = 250'000ULL;
+
+  auto write_txn = CreateTransaction();
+  ASSERT_OK(WriteRows(CreateSession(write_txn)));
+  ASSERT_OK(write_txn->CommitFuture().get());
+
+  server::SkewedClockDeltaChanger delta_changer(-kClockDelta, skewed_clock_);
+
+  auto txn1 = CreateTransaction2(SetReadTime::kTrue);
+  const OriginationInfo origination_info{
+      .database_oid = 16384, .origination_ht = HybridTime::FromMicros(1'700'000'000'000'000)};
+  txn1->SetOriginationInfo(origination_info);
+  auto session = CreateSession(txn1);
+  auto row = SelectRow(session, KeyForTransactionAndIndex(0, 0));
+  ASSERT_NOK(row);
+  ASSERT_EQ(ql::ErrorCode::RESTART_REQUIRED, ql::GetErrorCode(row.status())) << row;
+
+  auto txn2 = ASSERT_RESULT(txn1->CreateRestartedTransaction());
+  const auto restarted_info = txn2->GetOriginationInfo();
+  ASSERT_EQ(restarted_info.database_oid, origination_info.database_oid);
+  ASSERT_EQ(restarted_info.origination_ht, origination_info.origination_ht);
+  txn2->Abort();
 }
 
 TEST_F(QLTransactionTest, Child) {
@@ -1752,8 +1784,8 @@ TEST_F_EX(QLTransactionTest, GCLogsAfterTransactionalWritesStop, QLTransactionTe
       if (!tablet) {
         continue;
       }
-      auto persistent_op_id = ASSERT_RESULT(tablet->MaxPersistentOpId());
-      if (persistent_op_id.intents.index > 10) {
+      auto persistent_state = ASSERT_RESULT(tablet->GetPersistentState());
+      if (persistent_state.intents.index > 10) {
         has_flushed_intents_db = true;
         break;
       }
@@ -2239,6 +2271,200 @@ TEST_F_EX(QLTransactionTest, ShutdownWhileLoadingTransactions, QLTransactionTest
   ASSERT_OK(ts->Restart(tserver::WaitTabletsBootstrapped::kFalse));
 
   ASSERT_OK(WaitForAllIntentsApplied(cluster_.get(), 30s * kTimeMultiplier));
+}
+
+namespace {
+
+// Thread markers for the sync point callbacks below, which get no other way to tell the threads
+// they are interested in from unrelated ones.
+thread_local bool tl_intents_flush_deadlock_writer = false;
+thread_local bool tl_intents_flush_deadlock_flush_task = false;
+
+} // namespace
+
+class IntentsFlushDeadlockTest : public QLTransactionTest {
+ protected:
+  void SetUp() override {
+    mini_cluster_opt_.num_tablet_servers = 1;
+    // Immutable memtable bytes over this limit stop writes to the DB until a flush brings them back
+    // under it. At 1 byte, a single immutable memtable does.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_max_flushing_bytes) = 1;
+    // The intents flush and the regular flush must be able to run at the same time. Mini-cluster
+    // tests run flushes on the priority thread pool, which has one worker below four CPUs.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_priority_thread_pool_size) = 4;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
+    SetNumTablets(1);
+    QLTransactionTest::SetUp();
+  }
+};
+
+// Three tablet threads wait on each other:
+//   1. A regular DB writer parked in DBImpl::DelayWrite as the write-group leader, because the
+//      regular DB's immutable memtables exceed db_max_flushing_bytes and writes are stopped until
+//      a flush brings them back under it.
+//   2. An intents DB flush job that, in Tablet::IntentsDbFlushFilter, used to force-flush the
+//      regular DB while holding the intents DB mutex. DBImpl::FlushMemTable entered the regular
+//      write thread behind the parked leader and waited for it.
+//   3. The regular DB flush that ends the stall. Its OnFlushCompleted listener calls
+//      TransactionParticipant::ProcessRecentlyAppliedTransactions, which holds the participant
+//      mutex and reads the intents DB frontier under the intents DB mutex held by (2). The parked
+//      writer is only signalled after the listener returns.
+// The intents flush job must have checked the regular DB's flush ability before the regular
+// memtable was switched, and must request its flush after the writer parked; the sync point in
+// the filter holds it in that window.
+TEST_F(IntentsFlushDeadlockTest, YB_DEBUG_ONLY_TEST(ForceFlushBehindStalledWriter)) {
+  const auto kTimeout = 30s * kTimeMultiplier;
+
+  // Unflushed regular records and unflushed intents: the filter wants the regular DB flushed
+  // before the intents memtable.
+  ASSERT_OK(WriteRows(CreateSession()));
+  auto txn = CreateTransaction();
+  ASSERT_OK(WriteRows(CreateSession(txn), /* transaction= */ 1));
+
+  auto peers = ASSERT_RESULT(ListTabletPeersForTableName(
+      cluster_.get(), table_->name().table_name(), ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 1);
+  auto tablet = ASSERT_RESULT(peers.front()->shared_tablet());
+  auto* regular_db = tablet->regular_db();
+  auto* intents_db = tablet->intents_db();
+
+  // An existing regular DB entry, so the stalled write below carries a well-formed DocDB key.
+  std::string existing_key, existing_value;
+  {
+    std::unique_ptr<rocksdb::Iterator> iter(regular_db->NewIterator(rocksdb::ReadOptions()));
+    iter->SeekToFirst();
+    ASSERT_TRUE(iter->Valid());
+    existing_key = iter->key().ToBuffer();
+    existing_value = iter->value().ToBuffer();
+  }
+
+  CountDownLatch filter_at_gate(1), filter_gate(1), flush_task_parked(1);
+  CountDownLatch flush_at_gate(1), flush_gate(1);
+  CountDownLatch writer_stalled(1);
+  std::atomic<bool> pause_next_flush{true};
+  std::atomic<int> regular_flushes{0};
+  const auto tablet_id = tablet->tablet_id();
+
+  // Everything the callbacks capture by reference is declared above this cleanup, which clears
+  // the callbacks before those objects are destroyed.
+  auto& sync_point = *SyncPoint::GetInstance();
+  auto sync_point_cleanup = ScopeExit([&] {
+    sync_point.DisableProcessing();
+    filter_gate.CountDown();
+    flush_gate.CountDown();
+    sync_point.ClearAllCallBacks();
+  });
+  // (2) Hold the intents flush job between its flush-ability check and its regular DB flush
+  // request. It keeps the intents DB mutex meanwhile.
+  sync_point.SetCallBack("Tablet::IntentsDbFlushFilter:BeforeRegularDbFlush", [&](void*) {
+    filter_at_gate.CountDown();
+    filter_gate.Wait();
+  });
+  // The requested flush runs on a pool thread; mark it so the next callback can tell it apart.
+  sync_point.SetCallBack("Tablet::FlushRegularDbForIntentsFlush:BeforeFlush", [&](void*) {
+    tl_intents_flush_deadlock_flush_task = true;
+  });
+  sync_point.SetCallBack("WriteThread::EnterUnbatched:Wait", [&](void*) {
+    if (tl_intents_flush_deadlock_flush_task) {
+      tl_intents_flush_deadlock_flush_task = false;
+      flush_task_parked.CountDown();
+    }
+  });
+  // (3) Hold this tablet's regular flush with the DB mutex released and its result not installed,
+  // so the stall it caused stays in place while the writer arrives. The sync point runs for every
+  // DB in the process, so key on the DB's log prefix ("T <tablet> ... [R]: ").
+  sync_point.SetCallBack("FlushJob::WriteLevel0Table", [&, tablet_id](void* arg) {
+    const auto& log_prefix = *static_cast<const std::string*>(arg);
+    if (log_prefix.find(tablet_id) == std::string::npos ||
+        log_prefix.find("[R]") == std::string::npos) {
+      return;
+    }
+    ++regular_flushes;
+    if (pause_next_flush.exchange(false)) {
+      flush_at_gate.CountDown();
+      flush_gate.Wait();
+    }
+  });
+  // (1)
+  sync_point.SetCallBack("DBImpl::DelayWrite:Wait", [&](void*) {
+    if (tl_intents_flush_deadlock_writer) {
+      writer_stalled.CountDown();
+    }
+  });
+  sync_point.EnableProcessing();
+
+  // (2) The filter sees unflushed regular data and no immutable memtable, may not defer, and goes
+  // to force-flush the regular DB.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_intents_flush_max_delay_ms) = 0;
+  rocksdb::FlushOptions flush_options(rocksdb::FlushReason::kTestOnly);
+  flush_options.wait = false;
+  ASSERT_OK(intents_db->Flush(flush_options));
+  ASSERT_TRUE(filter_at_gate.WaitFor(kTimeout)) << "intents flush filter did not force-flush";
+
+  // (3) Switching the regular memtable puts its bytes over the limit: regular writes stop until it
+  // is flushed.
+  ASSERT_OK(regular_db->Flush(flush_options));
+  ASSERT_TRUE(flush_at_gate.WaitFor(kTimeout)) << "regular flush did not start";
+
+  // (1)
+  struct WriterState {
+    CountDownLatch done{1};
+    Status status;
+  };
+  auto writer_state = std::make_shared<WriterState>();
+  // The regular DB's own flush filter (TabletPeer::InitTabletPeer) refuses a memtable without
+  // frontiers, and skips one whose op id is ahead of the log.
+  const auto frontier_op_id = peers.front()->GetLatestLogEntryOpId();
+  const auto frontier_ht = tablet->clock()->Now();
+  std::thread writer([regular_db, writer_state, existing_key, existing_value, frontier_op_id,
+                      frontier_ht] {
+    tl_intents_flush_deadlock_writer = true;
+    rocksdb::WriteBatch batch;
+    batch.Put(existing_key, existing_value);
+    docdb::ConsensusFrontiers frontiers;
+    docdb::set_op_id(frontier_op_id, &frontiers);
+    docdb::set_hybrid_time(frontier_ht, &frontiers);
+    batch.SetFrontiers(&frontiers);
+    rocksdb::WriteOptions write_options;
+    write_options.disableWAL = true;
+    writer_state->status = regular_db->Write(write_options, &batch);
+    writer_state->done.CountDown();
+  });
+  // If an assertion below fails while the writer is parked, wake it the way shutdown would and
+  // let it go, so that teardown can proceed.
+  auto writer_guard = ScopeExit([&] {
+    if (writer.joinable()) {
+      regular_db->StartShutdown();
+      writer.detach();
+    }
+  });
+  ASSERT_TRUE(writer_stalled.WaitFor(kTimeout)) << "regular DB writer did not stall";
+
+  // (2) requests the regular DB flush and returns, releasing the intents DB mutex. The requested
+  // flush queues behind (1) on a pool thread. Code that flushed the regular DB from inside the
+  // filter parked the intents flush job here instead, with the mutex held.
+  filter_gate.CountDown();
+  ASSERT_TRUE(flush_task_parked.WaitFor(kTimeout))
+      << "requested regular DB flush did not queue behind the writer";
+
+  // (3) completes and lifts the stall. Its listener takes the intents DB mutex, now free, and the
+  // writer is signalled.
+  flush_gate.CountDown();
+
+  const bool writer_done = writer_state->done.WaitFor(kTimeout);
+  if (writer_done) {
+    writer.join();
+  }
+  ASSERT_TRUE(writer_done) << "regular DB writer never resumed: tablet is deadlocked";
+  ASSERT_OK(writer_state->status);
+
+  // The requested flush must still be carried out: the regular DB flushes the writer's memtable,
+  // after which the intents memtable is flushable.
+  ASSERT_OK(WaitFor(
+      [&] { return regular_flushes.load() >= 2; }, kTimeout, "requested regular DB flush"));
+  ASSERT_OK(WaitFor(
+      [&] { return intents_db->GetFlushAbility() == rocksdb::FlushAbility::kNoNewData; },
+      kTimeout, "intents DB flush"));
 }
 
 } // namespace client

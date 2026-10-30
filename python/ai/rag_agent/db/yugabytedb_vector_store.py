@@ -2,6 +2,8 @@ import logging
 import psycopg
 import os
 import json
+import hashlib
+import uuid
 
 from psycopg import sql
 from db.connection_pool import ConnectionPool
@@ -10,7 +12,8 @@ from langfuse import get_client
 from observability import meko_observe
 
 
-@meko_observe(name="Execute SQL / YugabyteDB Vector Store", as_type="span", capture_input=False, capture_output=False)
+@meko_observe(name="Execute SQL / YugabyteDB Vector Store", as_type="span",
+              capture_input=False, capture_output=False)
 def execute_sql(cur, query: str, params=None, many: bool = False) -> int:
     if many:
         cur.executemany(query, params)
@@ -33,6 +36,23 @@ def execute_sql(cur, query: str, params=None, many: bool = False) -> int:
         )
 
     return rowcount
+
+
+# Chunk ids derive from (document_id, chunk position, chunk text) under this
+# namespace. Re-ingesting the same content produces the same ids, so the
+# insert skips the chunks an earlier, interrupted run already committed. A
+# chunk whose text changed gets a new id, so new content is never dropped in
+# favor of a stale chunk at the same position.
+CHUNK_ID_NAMESPACE = uuid.UUID("6f1c8a52-3d0e-4b6a-9a51-2f6d7c0e9b13")
+
+
+def chunk_id(document_id, position: int, chunk_text: str = "") -> str:
+    digest = hashlib.sha256(chunk_text.encode("utf-8")).hexdigest()
+    return str(uuid.uuid5(CHUNK_ID_NAMESPACE, f"{document_id}:{position}:{digest}"))
+
+
+class LeaseLostError(RuntimeError):
+    """The task's lease was lost mid-insert; another worker now owns the document."""
 
 
 class YugabyteDBVectorStore:
@@ -120,7 +140,8 @@ class YugabyteDBVectorStore:
         schema=None,
         metadata=None,
         batch_size=100,
-        tenant_id=None
+        tenant_id=None,
+        lease_check=None
     ):
         """
         Insert (chunk_text, embedding_vector) from iterable generator into the vector store.
@@ -138,6 +159,9 @@ class YugabyteDBVectorStore:
             batch_size: Number of records to insert per batch
             tenant_id: Optional UUID identifying the tenant. When None, the
                 row is written with SQL NULL (i.e. "no tenant").
+            lease_check: Optional callable returning False once the task's
+                lease is lost. Checked before each batch commits, so a worker
+                whose task was redelivered stops writing chunks for it.
         """
         # Resolve schema per call (caller-supplied beats constructor default).
         target_schema = schema or self.schema
@@ -154,8 +178,9 @@ class YugabyteDBVectorStore:
 
             insert_stmt = sql.SQL(
                 "INSERT INTO {schema}.{table} "
-                "(chunk_text, embeddings, document_id, tenant_id, "
-                "metadata_filters) VALUES (%s, %s, %s, %s, %s)"
+                "(id, chunk_text, embeddings, document_id, tenant_id, "
+                "metadata_filters) VALUES (%s, %s, %s, %s, %s, %s) "
+                "ON CONFLICT DO NOTHING"
             ).format(
                 schema=sql.Identifier(target_schema),
                 table=sql.Identifier(table_name),
@@ -166,9 +191,13 @@ class YugabyteDBVectorStore:
             items_yielded = 0
             for chunk_text, embedding_vector in embedding_iterator:
                 items_yielded += 1
+                # A deterministic id makes a re-run idempotent: chunks an
+                # interrupted run committed (rate limit, a worker that died)
+                # conflict and are skipped instead of stored twice. The
+                # chunker is deterministic for a given file and settings.
                 batch.append(
-                    (chunk_text, embedding_vector, document_id,
-                     tenant_id, metadata_json)
+                    (chunk_id(document_id, items_yielded, chunk_text), chunk_text,
+                     embedding_vector, document_id, tenant_id, metadata_json)
                 )
                 if len(batch) >= batch_size:
                     rows_inserted = execute_sql(
@@ -178,9 +207,11 @@ class YugabyteDBVectorStore:
                         many=True
                     )
                     total_inserted += rows_inserted
+                    self._check_lease(lease_check, document_id)
+                    # update_embeddings_persisted adds to the stored count.
                     self.pipeline_tracking.update_embeddings_persisted(
                         pipeline_id=pipeline_id,
-                        embeddings_count=total_inserted
+                        embeddings_count=rows_inserted
                     )
                     self.logger.info(
                         f"Inserted batch of {rows_inserted} rows into "
@@ -199,9 +230,10 @@ class YugabyteDBVectorStore:
                     many=True
                 )
                 total_inserted += rows_inserted
+                self._check_lease(lease_check, document_id)
                 self.pipeline_tracking.update_embeddings_persisted(
                     pipeline_id=pipeline_id,
-                    embeddings_count=total_inserted
+                    embeddings_count=rows_inserted
                 )
                 self.logger.info(
                     f"Inserted final batch of {rows_inserted} rows into "
@@ -225,6 +257,13 @@ class YugabyteDBVectorStore:
         finally:
             if conn:
                 self._return_connection(conn)
+
+    @staticmethod
+    def _check_lease(lease_check, document_id):
+        if lease_check is not None and not lease_check():
+            raise LeaseLostError(
+                f"Lease lost while inserting embeddings for document {document_id}"
+            )
 
     @meko_observe(name="Create Index / YugabyteDB Vector Store", as_type="span")
     def create_index(

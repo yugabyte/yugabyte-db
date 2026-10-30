@@ -36,13 +36,12 @@
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tserver_error.h"
 
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status_callback.h"
 #include "yb/util/status_format.h"
 
-DECLARE_bool(enable_object_locking_for_table_locks);
-DECLARE_bool(ysql_enable_object_locking_infra);
 DECLARE_bool(TEST_hide_details_for_pg_regress);
 
 namespace yb::tserver {
@@ -86,7 +85,7 @@ Result<bool> CheckUuidMatch(TabletPeerLookupIf* tablet_manager,
   const std::string& local_uuid = tablet_manager->NodeInstance().permanent_uuid();
   if (req->dest_uuid().empty()) {
     // Maintain compat in release mode, but complain.
-    std::string msg = strings::Substitute("$0: Missing destination UUID in request from $1: $2",
+    std::string msg = Format("$0: Missing destination UUID in request from $1: $2",
         method_name, requestor_string, req->ShortDebugString());
     YB_LOG_EVERY_N(DFATAL, 100) << msg;
     return true;
@@ -347,17 +346,13 @@ class CatalogVersionChecker {
      *  - the request does not carry a catalog version, or
      *  - a major version upgrade is in progress as we don't expect the catalog version
      *    to be incremented during the upgrade, or
-     *  - object locking (enable_object_locking_for_table_locks) is enabled because we
-     *    object locks and invalidation messages will ensure that any DML/ DDL reads the
-     *    latest catalog data that is required similar to PG. DocDB Schema-level
-     *    safety is still enforced separately via per-table schema version checks.
-     *    TODO(#32224): Checking for enable_object_locking_infra is not full-proof. We
-     *      should only disable the check if we are sure that no transactions operating
-     *      in the old mode are still active.
+     *  - the request comes from a transaction that uses object locks because object locks
+     *    and invalidation messages will ensure that any DML/ DDL reads the latest catalog
+     *    data that is required (similar to PG). DocDB Schema-level safety is still enforced
+     *    separately via per-table schema version checks.
      */
     if (!(request.has_ysql_db_catalog_version() || request.has_ysql_catalog_version()) ||
-        tablet_server_.SkipCatalogVersionChecks() ||
-        (FLAGS_enable_object_locking_for_table_locks && FLAGS_ysql_enable_object_locking_infra)) {
+        tablet_server_.SkipCatalogVersionChecks() || request.is_using_table_locks()) {
       VLOG(1) << "Skipping catalog version check for request: "
                 << request.ShortDebugString();
       return Status::OK();
