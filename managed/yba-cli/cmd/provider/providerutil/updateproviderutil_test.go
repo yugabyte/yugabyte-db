@@ -6,32 +6,80 @@ import (
 	"testing"
 )
 
-func TestEditClearsInstanceTemplateOnlyWhenAllowed(t *testing.T) {
-	if os.Getenv("TEST_EMPTY_INSTANCE_TEMPLATE") == "1" {
-		BuildRegionMapFromString("region-name=us-sanjose-1::instance-template=", "edit")
-		return
+const fatalCaseEnv = "TEST_REGION_MAP_FATAL_CASE"
+
+func TestBuildRegionMapInstanceTemplate(t *testing.T) {
+	cases := []struct {
+		name        string
+		allowClear  bool
+		region      string
+		operation   string
+		wantFatal   bool
+		wantPresent bool
+		wantValue   string
+	}{
+		{
+			name:        "edit keeps empty value as clear",
+			allowClear:  true,
+			region:      "region-name=r1::vnet=v1::instance-template=",
+			operation:   "edit",
+			wantPresent: true,
+			wantValue:   "",
+		},
+		{
+			name:       "edit leaves missing key absent",
+			allowClear: true,
+			region:     "region-name=r1::vnet=v1",
+			operation:  "edit",
+		},
+		{
+			name:       "add rejects empty value",
+			allowClear: true,
+			region:     "region-name=r1::vnet=v1::instance-template=",
+			operation:  "add",
+			wantFatal:  true,
+		},
+		{
+			name:      "edit rejects empty value for providers that cannot clear it",
+			region:    "region-name=r1::instance-template=",
+			operation: "edit",
+			wantFatal: true,
+		},
 	}
 
-	cleared := BuildRegionMapFromStringAllowingClearInstanceTemplate(
-		"region-name=us-sanjose-1::vnet=v1::instance-template=", "edit")
-	if v, ok := cleared["instance-template"]; !ok || v != "" {
-		t.Fatalf("empty instance-template on an allowing edit: got %q present=%v", v, ok)
+	build := func(allowClear bool, region, operation string) map[string]string {
+		if allowClear {
+			return BuildRegionMapFromStringAllowingClearInstanceTemplate(region, operation)
+		}
+		return BuildRegionMapFromString(region, operation)
 	}
 
-	kept := BuildRegionMapFromStringAllowingClearInstanceTemplate(
-		"region-name=us-sanjose-1::vnet=v1", "edit")
-	if _, ok := kept["instance-template"]; ok {
-		t.Fatal("omitted instance-template should stay unset")
+	// ValueNotFoundForKeyError exits the process, so fatal cases run in a child.
+	if name := os.Getenv(fatalCaseEnv); name != "" {
+		for _, c := range cases {
+			if c.name == name {
+				build(c.allowClear, c.region, c.operation)
+				return
+			}
+		}
+		t.Fatalf("unknown case %q", name)
 	}
 
-	set := BuildRegionMapFromString("region-name=r::instance-template=abc", "edit")
-	if set["instance-template"] != "abc" {
-		t.Fatalf("non-empty instance-template: got %q", set["instance-template"])
-	}
-
-	cmd := exec.Command(os.Args[0], "-test.run=TestEditClearsInstanceTemplateOnlyWhenAllowed")
-	cmd.Env = append(os.Environ(), "TEST_EMPTY_INSTANCE_TEMPLATE=1")
-	if err := cmd.Run(); err == nil {
-		t.Fatal("empty instance-template on a provider that cannot clear it should fail")
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if c.wantFatal {
+				cmd := exec.Command(os.Args[0], "-test.run=^TestBuildRegionMapInstanceTemplate$")
+				cmd.Env = append(os.Environ(), fatalCaseEnv+"="+c.name)
+				if err := cmd.Run(); err == nil {
+					t.Fatal("expected the parser to exit with an error")
+				}
+				return
+			}
+			got, ok := build(c.allowClear, c.region, c.operation)["instance-template"]
+			if ok != c.wantPresent || got != c.wantValue {
+				t.Fatalf("instance-template = %q (present=%v), want %q (present=%v)",
+					got, ok, c.wantValue, c.wantPresent)
+			}
+		})
 	}
 }
