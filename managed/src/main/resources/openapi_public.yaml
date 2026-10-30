@@ -62,6 +62,8 @@ tags:
   description: Operations for Telemetry Providers
 - name: Universe
   description: CRUD operations for a Universe
+- name: User
+  description: User management
 - name: YBA Instance
   description: YBA Instance operations
 paths:
@@ -4671,6 +4673,59 @@ paths:
           sourceType: endpoint
         checkOnlyPermission: false
       x-yba-api-block-operator-resource: universe
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+  /customers/{cUUID}/users:
+    parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    post:
+      operationId: createUser
+      summary: Add a user
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>Adds a local user with a system
+        role to the customer. SuperAdmin users can''t be created this way. With generate_api_token,
+        the response also carries an API token for the new user.'
+      tags:
+      - User
+      requestBody:
+        $ref: '#/components/requestBodies/UserCreateReq'
+      responses:
+        '200':
+          $ref: '#/components/responses/UserCreationResp'
+        '400':
+          description: Invalid input, such as an invalid email, a missing role, the
+            SuperAdmin role, or a password that violates the password policy
+        '401':
+          description: The request has no valid API or session token, cUUID is not
+            the caller's customer (including a customer that doesn't exist), or the
+            caller's role has no create permission on users
+        '409':
+          description: A user with this email already exists, or OIDC SSO creates
+            users automatically on this YBA
+        '500':
+          description: Server error
+      security:
+      - apiKeyAuth: []
+      - authTokenAuth: []
+      x-yba-api-audit:
+        auditTargetType: User
+        auditTargetId: obj.getUser().getInfo().getUuid().toString()
+        auditActionType: Create
+      x-yba-api-authz:
+      - requiredPermission:
+          resourceType: user
+          action: create
+        resourceLocation:
+          path: users
+          sourceType: endpoint
       x-yba-api-since: 2026.2.0.0
       x-yba-api-visibility: preview
 components:
@@ -12456,6 +12511,56 @@ components:
             description: The YugabyteDB software version to install during os upgrade.
             type: string
             example: 2024.2.0.0-b600
+    UserCreateSpec:
+      title: UserCreateSpec
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>A user to add to the customer.
+        Part of UserCreateReq.'
+      type: object
+      required:
+      - spec
+      - password
+      properties:
+        spec:
+          $ref: '#/components/schemas/UserSpec'
+        password:
+          description: Password of the user, which must satisfy the customer's password
+            policy. Ignored when OIDC SSO is enabled.
+          type: string
+          format: password
+          writeOnly: true
+        generate_api_token:
+          description: Also generate an API token for the new user and return it,
+            so that the caller doesn't have to log in as that user to get one. Refused
+            when OIDC SSO is enabled, because such users log in only through OIDC.
+          type: boolean
+          default: false
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    UserCreation:
+      title: UserCreation
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>A newly created user, with its
+        API token if one was requested. Part of UserCreationResp.'
+      type: object
+      required:
+      - user
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        api_token:
+          description: API token of the new user, to be sent in the X-AUTH-YW-API-TOKEN
+            header. Only set when generate_api_token was true.
+          type: string
+          readOnly: true
+        api_token_version:
+          description: Version of that API token. Only set when generate_api_token
+            was true.
+          type: integer
+          format: int64
+          readOnly: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
   responses:
     AuthGroupToRolesMappingResp:
       description: OK
@@ -12714,6 +12819,14 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/CheckResizeOptionsResp'
+    UserCreationResp:
+      description: The created user
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UserCreation'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
   requestBodies:
     AuthGroupToRolesMappingReq:
       required: true
@@ -13095,3 +13208,11 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/UniverseVMImageUpgradeSpec'
+    UserCreateReq:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UserCreateSpec'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
