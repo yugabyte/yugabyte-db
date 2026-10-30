@@ -423,7 +423,7 @@ public class TestMisc extends BaseYsqlConnMgr {
     testCurrvalLastvalUndefinedHelper("pooled_with_curval_lastval");
   }
 
-  // The release notes for #27024 published this misspelling, so it is kept as an alias.
+  // pooled_with_currval_lastval is a deprecated alias of pooled_with_curval_lastval.
   @Test
   public void testCurrvalLastvalUndefinedInPooledModeAlias() throws Exception {
     testCurrvalLastvalUndefinedHelper("pooled_with_currval_lastval");
