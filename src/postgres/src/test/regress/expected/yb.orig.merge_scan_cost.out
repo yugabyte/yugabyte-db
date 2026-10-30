@@ -32,8 +32,7 @@
 -- distinct without growing the tables: at the default page size their rows
 -- come back in one read request either way.
 SET yb_fetch_row_limit = 16;
--- These tests check plan shape only, so plain EXPLAIN is enough and the
--- joins over the 5000-row tables are never executed.
+-- These tests check plan shape only, so plain EXPLAIN is enough.
 \set explain 'EXPLAIN (COSTS OFF)'
 SET yb_enable_derived_saops = true;
 -- bkt_tbl's three streams keep the per-row charge under the 2% floor at this
@@ -304,7 +303,9 @@ EXPLAIN (COSTS OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT DISTINCT r1 FR
 --
 -- ORDER BY with and without LIMIT.  The merge supplies the order and
 -- should be used.
-\set query ':explain :Q SELECT r1, r2 FROM bkt16 ORDER BY r1, r2, r3 LIMIT 5;'
+\set R1 'LIMIT 5'
+\set R2
+\set query ':explain :Q SELECT r1, r2 FROM bkt16 ORDER BY r1, r2, r3 :R;'
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
@@ -317,6 +318,14 @@ EXPLAIN (COSTS OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT r1, r2 FROM bkt
          ->  Seq Scan on bkt16
 (4 rows)
 
+EXPLAIN (COSTS OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT r1, r2 FROM bkt16 ORDER BY r1, r2, r3 ;
+       QUERY PLAN        
+-------------------------
+ Sort
+   Sort Key: r1, r2, r3
+   ->  Seq Scan on bkt16
+(3 rows)
+
 EXPLAIN (COSTS OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT r1, r2 FROM bkt16 ORDER BY r1, r2, r3 LIMIT 5;
                                        QUERY PLAN                                       
 ----------------------------------------------------------------------------------------
@@ -328,19 +337,7 @@ EXPLAIN (COSTS OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT r1, r2 FROM bk
          Merge Streams: 16
 (6 rows)
 
-\set query ':explain :Q SELECT r1, r2 FROM bkt16 ORDER BY r1, r2, r3;'
-\i :run_query
-\set _echo_run_query :ECHO
-\set ECHO none
-EXPLAIN (COSTS OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT r1, r2 FROM bkt16 ORDER BY r1, r2, r3;
-       QUERY PLAN        
--------------------------
- Sort
-   Sort Key: r1, r2, r3
-   ->  Seq Scan on bkt16
-(3 rows)
-
-EXPLAIN (COSTS OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT r1, r2 FROM bkt16 ORDER BY r1, r2, r3;
+EXPLAIN (COSTS OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT r1, r2 FROM bkt16 ORDER BY r1, r2, r3 ;
                                     QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  Index Scan using bkt16_pkey on bkt16
@@ -350,6 +347,8 @@ EXPLAIN (COSTS OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT r1, r2 FROM bk
    Merge Streams: 16
 (5 rows)
 
+\unset R1
+\unset R2
 -- Merge Join on the same query the Hash Join above ran.  It consumes the
 -- order, so the merge should be used here.
 \set query ':explain :Q SELECT count(*) FROM bkt16 b JOIN r5n r ON b.r1 = r.r1;'

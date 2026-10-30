@@ -781,10 +781,11 @@ yb_finalize_merge_scan_stream_cols(IndexOptInfo *index, Relids relids,
 }
 
 /*
- * Number of streams a merge scan over stream_cols opens: the product of the
- * number of elements in each stream column's SAOP, with a single-value
- * equality column counting as one.  The cost model and EXPLAIN both report
- * this, so they must agree on it.
+ * Number of streams the planner counts for a merge scan over stream_cols:
+ * the product of the number of elements in each stream column's SAOP, with
+ * a single-value equality column counting as one.  The cost model and
+ * EXPLAIN both use it.  The executor culls the arrays before it binds them,
+ * so the scan can run fewer streams (#36359).
  */
 int
 yb_merge_scan_num_streams(List *stream_cols)

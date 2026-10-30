@@ -645,9 +645,12 @@ CREATE INDEX NONCONCURRENTLY ON r5n (r2 ASC, r3, (r4 + 0), r5, r4);
 ANALYZE r5n;
 
 -- DISTINCT
--- The merge scan path is built and costed, which is what reaches the
--- truncated pathkeys, but its order feeds a hash aggregate and a sort, so
--- the plain scan is cheaper and should be chosen (#29078).
+-- The merge sort keys stop before the expression column, which leaves the
+-- merge distinct path with fewer pathkeys than its distinct prefix (#36012).
+-- The order left cannot serve the DISTINCT, and the merge costs more than
+-- the plain scan, so the plain scan is chosen (#29078).  The merge path is
+-- still built and costed, but the Unique that #36012 guards is only made
+-- for a chosen path, so this no longer reaches it.
 SET yb_fetch_row_limit = 1024;
 -- Index only scan is off, since only a plain index scan on a colocated index
 -- needs its merge sort keys to stop before an expression column (issue #36017).

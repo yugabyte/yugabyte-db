@@ -18,8 +18,7 @@
 \set filename :abs_srcdir '/yb_commands/merge_scan_setup.sql'
 \i :filename
 
--- These tests check plan shape only, so plain EXPLAIN is enough and the
--- joins over the 5000-row tables are never executed.
+-- These tests check plan shape only, so plain EXPLAIN is enough.
 \set explain 'EXPLAIN (COSTS OFF)'
 
 SET yb_enable_derived_saops = true;
@@ -139,10 +138,12 @@ ANALYZE pbkt16_1, pbkt16_2, pbkt16_3, pbkt16;
 
 -- ORDER BY with and without LIMIT.  The merge supplies the order and
 -- should be used.
-\set query ':explain :Q SELECT r1, r2 FROM bkt16 ORDER BY r1, r2, r3 LIMIT 5;'
+\set R1 'LIMIT 5'
+\set R2
+\set query ':explain :Q SELECT r1, r2 FROM bkt16 ORDER BY r1, r2, r3 :R;'
 \i :run_query
-\set query ':explain :Q SELECT r1, r2 FROM bkt16 ORDER BY r1, r2, r3;'
-\i :run_query
+\unset R1
+\unset R2
 
 -- Merge Join on the same query the Hash Join above ran.  It consumes the
 -- order, so the merge should be used here.

@@ -179,6 +179,8 @@ double		yb_inter_zone_roundtrip_cost = YB_DEFAULT_INTER_ZONE_ROUNDTRIP_COST;
 double		yb_inter_zone_transfer_cost = YB_DEFAULT_INTER_ZONE_TRANSFER_COST;
 double		yb_local_roundtrip_cost = YB_DEFAULT_LOCAL_ROUNDTRIP_COST;
 double		yb_local_transfer_cost = YB_DEFAULT_LOCAL_TRANSFER_COST;
+double		yb_merge_scan_row_cost_factor = YB_DEFAULT_MERGE_SCAN_ROW_COST_FACTOR;
+double		yb_merge_scan_stream_cost_factor = YB_DEFAULT_MERGE_SCAN_STREAM_COST_FACTOR;
 
 
 double		recursive_worktable_factor = DEFAULT_RECURSIVE_WORKTABLE_FACTOR;
@@ -10636,14 +10638,19 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 		 * streams and then fetches base rows by ybctid in merged order, so
 		 * every matched index tuple goes through the heap before the
 		 * base-table filters apply.  A primary key, an index-only scan or an
-		 * embedded (colocated) secondary index merges the base-table result
-		 * instead.
+		 * embedded secondary index merges the base-table result instead.  As
+		 * elsewhere in this function, a colocated base relation stands in for
+		 * the embedded case (#36184).
+		 *
+		 * The planned stream count can be 0 or 1 (an empty or single-element
+		 * IN list, see #36359), and the heap still runs once per row, so
+		 * charge at least one comparison.
 		 */
 		merge_rows = (is_primary_index || index_only || baserel_is_colocated) ?
 			num_baserel_result_rows : num_index_tuples_matched;
 		merge_cost = cpu_operator_cost * merge_rows *
-			(YB_MERGE_SCAN_ROW_COST_FACTOR +
-			 YB_MERGE_SCAN_STREAM_COST_FACTOR * log2(Max(num_streams, 2)));
+			(yb_merge_scan_row_cost_factor +
+			 yb_merge_scan_stream_cost_factor * log2(Max(num_streams, 2)));
 		run_cost += Max(merge_cost, 0.02 * (startup_cost + run_cost));
 	}
 
