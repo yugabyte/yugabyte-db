@@ -237,6 +237,7 @@ class DBImpl : public DB {
                             const Slice* begin, const Slice* end);
 
   void GetLiveFilesMetaData(std::vector<LiveFileMetaData>* metadata) override;
+  void GetLiveFileNumbersNotOnPath(uint32_t path_id, std::vector<uint64_t>* out) override;
 
   yb::storage::FrontierInfo GetFrontiers(yb::storage::FrontierKinds kinds) override;
 
