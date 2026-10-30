@@ -5708,15 +5708,6 @@ ExecModifyTable(PlanState *pstate)
 					}
 					slot = ExecGetUpdateNewTuple(resultRelInfo, context.planSlot,
 												 oldSlot);
-					/*
-					 * YB_TODO_PG19MERGE:
-					 * PG commit c649fa24a42ba89bf5460c7110e4fc8eeca65959
-					 * removed ModifyTableContext.relaction, and replaced it with
-					 * ModifyTableState.mt_merge_action.
-					 */
-#if 0
-					context.relaction = NULL;
-#endif
 				}
 
 				/* Now apply the update. */
