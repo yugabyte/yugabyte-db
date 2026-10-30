@@ -273,7 +273,7 @@ class K8sInfoComponent implements SupportBundleComponent {
     for (Map.Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
       UUID azUuid = entry.getKey();
       Map<String, String> azConfig = entry.getValue();
-      String azName = AvailabilityZone.getOrBadRequest(azUuid).getName();
+      String azName = isMultiAz ? AvailabilityZone.getOrBadRequest(azUuid).getCode() : null;
       String kubernetesClusterName =
           kubernetesManagerFactory.getManager().getCurrentContext(azConfig);
       String namespace =

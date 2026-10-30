@@ -216,6 +216,7 @@ DECLARE_bool(use_fast_backward_scan);
 DECLARE_uint32(ysql_max_invalidation_message_queue_size);
 DECLARE_uint32(max_replication_slots);
 DECLARE_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms);
+DECLARE_uint32(pg_cache_response_trust_auth_lifetime_limit_ms);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_string(placement_cloud);
 DECLARE_string(placement_region);
@@ -345,6 +346,8 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
           &FLAGS_ysql_enable_startup_client_connection_check,
       .ysql_yb_pg_partman_use_native_txn_ddl_and_locks =
           &FLAGS_ysql_yb_pg_partman_use_native_txn_ddl_and_locks,
+      .pg_cache_response_trust_auth_lifetime_limit_ms =
+          &FLAGS_pg_cache_response_trust_auth_lifetime_limit_ms,
   };
   // clang-format on
   return &accessor;

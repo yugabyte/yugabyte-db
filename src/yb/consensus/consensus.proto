@@ -357,6 +357,9 @@ message ConsensusRequestPB {
 
   // If enabled, a trace will be collected for this RPC and returned in the response.
   optional bool trace_requested = 12;
+
+  // The last op replicated to all peers tracked by the leader.
+  optional OpIdPB all_replicated_op_id = 13;
 }
 
 message ConsensusResponsePB {

@@ -957,5 +957,30 @@ TEST_F(RemoteBootstrapRocksDBTest, FetchOfGcedSegmentIsDistinguishableFromEndOfL
   }
 }
 
+// TabletPeer::EnterQuiescentMode publishes the marker, checks log anchors, then deletes the
+// segments. A session that anchored after that check gets the marker, and must not plan the
+// segments, which may be deleted under it.
+TEST_F(RemoteBootstrapRocksDBTest, InitSkipsSegmentsCoveredByQuiescentMarker) {
+  auto* log = tablet_peer_->log();
+  ASSERT_NO_FATALS(RollSegmentsCoveredBySsts(
+      /* num_rolls= */ 2, /* rows_per_roll= */ 10, /* starting_key= */ 1000));
+  ASSERT_NO_FATALS(InsertOneRow(2000));
+  auto tablet = ASSERT_RESULT(tablet_peer_->shared_tablet());
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
+
+  log::QuiescentMarkerPB marker;
+  ASSERT_OK(log->CloseActiveSegment(log->GetLatestEntryOpId(), &marker));
+  ASSERT_OK(log->WriteQuiescentMarker(marker));
+  ASSERT_GT(log->num_segments(), 1);
+
+  auto session = make_scoped_refptr<RemoteBootstrapSession>(
+      tablet_peer_, "TestQuiescentSession", "FakeUUID", /* nsessions= */ nullptr);
+  ASSERT_OK(session->InitBootstrapSession());
+  ASSERT_TRUE(session->quiescent_marker().has_value());
+  ASSERT_TRUE(session->log_segments().empty());
+
+  ASSERT_GT(ASSERT_RESULT(log->DeleteSegmentsCoveredByQuiescentMarker()), 1);
+}
+
 }  // namespace tserver
 }  // namespace yb

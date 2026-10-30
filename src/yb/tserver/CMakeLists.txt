@@ -83,6 +83,7 @@ YRPC_GENERATE(
   PROTO_FILES remote_bootstrap.proto)
 set(REMOTE_BOOTSTRAP_YRPC_LIBS
   consensus_proto
+  log_proto
   yrpc
   protobuf
   rpc_header_proto

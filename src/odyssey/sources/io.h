@@ -89,6 +89,11 @@ static inline int od_io_detach(od_io_t *io)
 	return machine_io_detach(io->io);
 }
 
+static inline int od_io_poll(od_io_t *io)
+{
+	return machine_io_poll(io->io);
+}
+
 static inline int od_io_read_active(od_io_t *io)
 {
 	return machine_read_active(io->io);

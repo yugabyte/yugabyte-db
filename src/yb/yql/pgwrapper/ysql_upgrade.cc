@@ -642,10 +642,11 @@ Status YsqlUpgradeHelper::MigrateOnce(DatabaseEntry* db_entry, const Version* hi
       Format("Failed to apply migration '$0' to a database $1", next_migration_filename, db_name));
   if (min_next_oid) {
     RETURN_NOT_OK(pgconn->Execute("RESET yb_ysql_upgrade_min_next_oid"));
-    // The backend of another database reads its next OID from its catalogs once, at its first
-    // OID assignment, and then counts up from there. If that happened before this migration, it
-    // would go on to assign the OIDs that template1 has just inserted into its database. Close
-    // those connections, so that their next backends read the catalogs again.
+    // A backend of another database must not go on counting up from a next OID it read from its
+    // catalogs before this migration, or it would assign the OIDs that template1 has just
+    // inserted into its database. The backend already reads its catalogs again after every
+    // transaction (YbAtEOXact_UpgradeNextOid), but close those connections anyway, so that this
+    // does not depend on it.
     for (auto& entry : databases_) {
       if (entry.get() != db_entry) {
         entry->CloseConnection();

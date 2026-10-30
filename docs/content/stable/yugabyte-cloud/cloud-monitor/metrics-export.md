@@ -43,6 +43,6 @@ To remove metrics export from a cluster, on the cluster **Settings** tab, select
 
 If metrics aren't being exported, verify the following:
 
-- Prometheus/VictoriaMetrics is listening on port 80 or 443.
+- Prometheus, VictoriaMetrics, or self-hosted Grafana Mimir is listening on port 80 or 443. Grafana's managed Mimir already uses port 443.
 - Firewall rules allow traffic from your cluster to the listening port.
 - The URL scheme (http vs https) matches the configured port.
