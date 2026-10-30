@@ -418,14 +418,23 @@ public class TestMisc extends BaseYsqlConnMgr {
     testSequenceFunctions("SELECT lastval()");
   }
 
-  // In pooled_with_curval_lastval mode, currval/lastval before any nextval must raise PG's usual
-  // error rather than return a placeholder: currval used to return the start value, which the
-  // next nextval then handed out again.
   @Test
   public void testCurrvalLastvalUndefinedInPooledMode() throws Exception {
+    testCurrvalLastvalUndefinedHelper("pooled_with_curval_lastval");
+  }
+
+  // The release notes for #27024 published this misspelling, so it is kept as an alias.
+  @Test
+  public void testCurrvalLastvalUndefinedInPooledModeAlias() throws Exception {
+    testCurrvalLastvalUndefinedHelper("pooled_with_currval_lastval");
+  }
+
+  // currval/lastval before any nextval must raise PG's usual error. This guards against bringing
+  // back the fallback that returned the start value, which the next nextval then handed out again.
+  private void testCurrvalLastvalUndefinedHelper(String mode) throws Exception {
     restartClusterWithFlags(Collections.emptyMap(),
                             Collections.singletonMap("ysql_conn_mgr_sequence_support_mode",
-                                                     "pooled_with_curval_lastval"));
+                                                     mode));
 
     try (Connection suConn = getConnectionBuilder()
              .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)

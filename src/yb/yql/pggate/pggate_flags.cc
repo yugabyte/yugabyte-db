@@ -110,9 +110,11 @@ DEFINE_NON_RUNTIME_string(ysql_conn_mgr_sequence_support_mode, "pooled_without_c
     "In these both settings, the monotonic order of sequence is not guaranteed if the "
     "'ysql_sequence_cache_method' is set to 'connection'. To support monotonic order also set "
     "this flag to 'session'");
+// pooled_with_currval_lastval is a deprecated alias of pooled_with_curval_lastval: the release
+// notes for #27024 published that spelling. YBCGetGFlags() maps it to the documented value.
 DEFINE_validator(ysql_conn_mgr_sequence_support_mode,
     FLAG_IN_SET_VALIDATOR("session", "pooled_with_curval_lastval",
-                          "pooled_without_curval_lastval"));
+                          "pooled_without_curval_lastval", "pooled_with_currval_lastval"));
 
 // Top-level flag to enable all YSQL beta features.
 DEFINE_UNKNOWN_bool(ysql_beta_features, false,

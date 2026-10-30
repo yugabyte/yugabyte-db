@@ -1323,9 +1323,10 @@ TEST_F(PgWrapperCoDependentFlagsTest, ValidateCoDependentFlags) {
   ASSERT_NO_FATALS(expect_err({{"otel_internal_log_level", "nope"}}, "otel_internal_log_level"));
   ASSERT_NO_FATALS(expect_ok({{"otel_internal_log_level", "warning"}}));
   ASSERT_NO_FATALS(expect_err(
-      {{"ysql_conn_mgr_sequence_support_mode", "pooled_with_currval_lastval"}},
-      "ysql_conn_mgr_sequence_support_mode"));
+      {{"ysql_conn_mgr_sequence_support_mode", "pooled"}}, "ysql_conn_mgr_sequence_support_mode"));
   ASSERT_NO_FATALS(expect_ok({{"ysql_conn_mgr_sequence_support_mode", "session"}}));
+  ASSERT_NO_FATALS(expect_ok(
+      {{"ysql_conn_mgr_sequence_support_mode", "pooled_with_currval_lastval"}}));
 
   // FLAG_GT_VALUE_VALIDATOR
   ASSERT_NO_FATALS(expect_err({{"pg_client_heartbeat_interval_ms", "500"}},
