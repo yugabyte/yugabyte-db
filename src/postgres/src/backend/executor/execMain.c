@@ -2023,8 +2023,8 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 		if (yb_skip_unmodified)
 			yb_modifiedCols = bms_union(ExecGetInsertedCols(resultRelInfo,
 															estate),
-										ExecGetUpdatedCols(resultRelInfo,
-														   estate));
+										ExecGetAllUpdatedCols(resultRelInfo,
+															  estate));
 
 		for (attrChk = 1; attrChk <= natts; attrChk++)
 		{
