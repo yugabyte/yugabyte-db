@@ -222,7 +222,13 @@ class TestSingleRead:
 
 
 class TestSizeLimit:
-    """Nothing over the api-server's upload cap should be chunked."""
+    """The worker's out-of-memory guard on a whole-file read.
+
+    Not a product limit, and deliberately not the api-server's upload cap:
+    these tests require it to sit *above* every tier cap, so a file the
+    api-server accepted is never rejected here instead of indexing. What it
+    bounds is how much one task reads into memory.
+    """
 
     # Meko api-server per-file KB upload caps, from
     # meko/api_server/internal/service/free_tier.go: free 5 MB, standard
