@@ -1076,7 +1076,15 @@ class MasterSnapshotCoordinator::Impl {
         }
         // If it is PITR restore, then verify restoration and add to the queue for rpcs.
         if (!restoration->schedule_id().IsNil()) {
-          auto status = verify_statuses[restoration->restoration_id()];
+          // Became restorable after mutex_ was released above, so it was not verified.
+          // The next SysCatalogLoaded will pick it up.
+          auto it = verify_statuses.find(restoration->restoration_id());
+          if (it == verify_statuses.end()) {
+            LOG(INFO) << "PITR: Skipping restoration " << restoration->restoration_id()
+                      << ", it was not verified";
+            continue;
+          }
+          const auto& status = it->second;
           if (status.ok()) {
             LOG(INFO) << "PITR: Master metadata verified successfully for restoration "
                       << restoration->restoration_id();
