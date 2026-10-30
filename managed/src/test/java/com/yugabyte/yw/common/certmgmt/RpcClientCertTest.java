@@ -343,6 +343,40 @@ public class RpcClientCertTest extends FakeDBApplication {
   }
 
   @Test
+  public void testRetriesSecretReadOnApiError() throws Exception {
+    CertAndKey pem = newCertPem(Duration.ofDays(90));
+    when(mockKubernetesManager.getSecret(any(), anyString(), any()))
+        .thenThrow(new RuntimeException("connection reset"))
+        .thenReturn(secret(pem));
+
+    rpcClientCert.load(universe);
+
+    assertEquals(pem.cert(), localCert());
+    verify(mockKubernetesManager, times(2)).getSecret(any(), anyString(), any());
+  }
+
+  @Test
+  public void testGivesUpSecretReadAfterAttempts() throws Exception {
+    when(mockKubernetesManager.getSecret(any(), anyString(), any()))
+        .thenThrow(new RuntimeException("cluster unreachable"));
+
+    assertThrows(IllegalStateException.class, () -> rpcClientCert.load(universe));
+
+    verify(mockKubernetesManager, times(CertManagerClientCert.READ_ATTEMPTS))
+        .getSecret(any(), anyString(), any());
+  }
+
+  @Test
+  public void testMissingSecretIsNotRetried() throws Exception {
+    when(mockKubernetesManager.getSecret(any(), anyString(), any()))
+        .thenThrow(new RuntimeException("Error from server (NotFound): secrets \"x\" not found"));
+
+    assertThrows(IllegalStateException.class, () -> rpcClientCert.load(universe));
+
+    verify(mockKubernetesManager, times(1)).getSecret(any(), anyString(), any());
+  }
+
+  @Test
   public void testMissingSecretReportsItsName() throws Exception {
     when(mockKubernetesManager.getSecret(any(), anyString(), any()))
         .thenThrow(new RuntimeException("Error from server (NotFound): secrets \"x\" not found"));
