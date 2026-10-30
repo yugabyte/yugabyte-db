@@ -66,6 +66,7 @@ DECLARE_bool(enable_load_balancing);
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_bool(TEST_pause_before_remote_bootstrap);
+DECLARE_bool(TEST_skip_processing_tablet_metadata);
 DECLARE_bool(TEST_tserver_disable_heartbeat);
 DECLARE_int32(committed_config_change_role_timeout_sec);
 DECLARE_string(TEST_master_universe_uuid);
@@ -756,6 +757,128 @@ TEST_F(DriveInfoTest, DriveInfo) {
     }
     return true;
   }, 30s, "Waiting for drive info to be populated for all tablets"));
+}
+
+// Sends crafted TSHeartbeat requests from one registered tserver with the real tservers stopped,
+// so only the fields set here reach the master.
+class HeartbeatMetadataTest : public MasterHeartbeatITest {
+ public:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+    MasterHeartbeatITest::SetUp();
+    auto& catalog_mgr = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster())->catalog_manager();
+    tablets_ = ASSERT_RESULT(catalog_mgr.GetTableInfo(table_->id())->GetTablets());
+    ASSERT_GE(tablets_.size(), 2);
+    // Every tserver hosts every tablet at RF3 with 3 tservers.
+    auto replicas = tablets_[0]->GetReplicaLocations();
+    ASSERT_FALSE(replicas->empty());
+    ts_uuid_ = replicas->begin()->first;
+    ASSERT_TRUE(tablets_[1]->GetReplicaLocations()->contains(ts_uuid_));
+    for (const auto& ts : catalog_mgr.GetAllLiveNotBlacklistedTServers()) {
+      if (ts->permanent_uuid() == ts_uuid_) {
+        ts_ = ts;
+      }
+    }
+    ASSERT_TRUE(ts_);
+    universe_uuid_ = ASSERT_RESULT(catalog_mgr.GetClusterConfig()).universe_uuid();
+    ShutdownAllTServers(mini_cluster_.get());
+    master_proxy_ = std::make_unique<master::MasterHeartbeatProxy>(
+        proxy_cache_.get(), mini_cluster_->mini_master()->bound_rpc_addr());
+  }
+
+ protected:
+  Status SendHeartbeat(master::TSHeartbeatRequestPB* req) {
+    *req->mutable_common() = MakeTSToMasterCommonPB(*ts_, ts_->latest_seqno());
+    req->set_universe_uuid(universe_uuid_);
+    master::TSHeartbeatResponsePB resp;
+    rpc::RpcController rpc;
+    RETURN_NOT_OK(master_proxy_->TSHeartbeat(*req, &resp, &rpc));
+    SCHECK(!resp.has_error(), IllegalState, resp.error().ShortDebugString());
+    return Status::OK();
+  }
+
+  void AddStorageMetadata(
+      master::TSHeartbeatRequestPB* req, const TabletId& tablet_id, uint64_t sst_files_size) {
+    auto* metadata = req->add_storage_metadata();
+    metadata->set_tablet_id(tablet_id);
+    metadata->set_sst_file_size(sst_files_size);
+  }
+
+  void AddFullCompactionStatus(
+      master::TSHeartbeatRequestPB* req, const TabletId& tablet_id, uint64_t compaction_time) {
+    auto* status = req->add_full_compaction_statuses();
+    status->set_tablet_id(tablet_id);
+    status->set_full_compaction_state(tablet::IDLE);
+    status->set_last_full_compaction_time(compaction_time);
+  }
+
+  master::TabletReplica Replica(const master::TabletInfoPtr& tablet) {
+    return tablet->GetReplicaLocations()->at(ts_uuid_);
+  }
+
+  master::TabletInfos tablets_;
+  master::TSDescriptorPtr ts_;
+  TabletServerId ts_uuid_;
+  std::string universe_uuid_;
+  std::unique_ptr<master::MasterHeartbeatProxy> master_proxy_;
+};
+
+// The master looks up the tablet report's tablets and the metadata tablets in one batch; the
+// metadata entries index into that batch after the reported ones. Unknown tablet ids in the
+// metadata lists are skipped without failing the heartbeat.
+TEST_F(HeartbeatMetadataTest, MetadataAppliedToItsOwnTablet) {
+  const uint64_t kSstFilesSize = 12345;
+  const uint64_t kCompactionTime = 0x1234567;
+  const auto& reported_tablet = tablets_[0];
+  const auto& metadata_tablet = tablets_[1];
+
+  master::TSHeartbeatRequestPB req;
+  auto* report = req.mutable_tablet_report();
+  report->set_is_incremental(true);
+  report->set_sequence_number(ts_->latest_report_seqno() + 1);
+  auto* updated = report->add_updated_tablets();
+  updated->set_tablet_id(reported_tablet->id());
+  *updated->mutable_committed_consensus_state() =
+      reported_tablet->LockForRead()->pb.committed_consensus_state();
+  updated->set_state(tablet::RaftGroupStatePB::RUNNING);
+  updated->set_tablet_data_state(tablet::TabletDataState::TABLET_DATA_READY);
+  AddStorageMetadata(&req, "unknown-tablet-1", kSstFilesSize);
+  AddStorageMetadata(&req, metadata_tablet->id(), kSstFilesSize);
+  AddFullCompactionStatus(&req, reported_tablet->id(), kCompactionTime);
+  AddFullCompactionStatus(&req, "unknown-tablet-2", kCompactionTime);
+  ASSERT_OK(SendHeartbeat(&req));
+
+  ASSERT_EQ(Replica(metadata_tablet).drive_info.sst_files_size, kSstFilesSize);
+  ASSERT_NE(Replica(reported_tablet).drive_info.sst_files_size, kSstFilesSize);
+  ASSERT_EQ(
+      Replica(reported_tablet).full_compaction_status.last_full_compaction_time.ToUint64(),
+      kCompactionTime);
+  ASSERT_NE(
+      Replica(metadata_tablet).full_compaction_status.last_full_compaction_time.ToUint64(),
+      kCompactionTime);
+}
+
+TEST_F(HeartbeatMetadataTest, SkipProcessingTabletMetadataCoversCompactionStatuses) {
+  const uint64_t kSstFilesSize = 12345;
+  const uint64_t kCompactionTime = 0x1234567;
+  const auto& tablet = tablets_[0];
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_processing_tablet_metadata) = true;
+  master::TSHeartbeatRequestPB req;
+  AddStorageMetadata(&req, tablet->id(), kSstFilesSize);
+  AddFullCompactionStatus(&req, tablet->id(), kCompactionTime);
+  ASSERT_OK(SendHeartbeat(&req));
+  ASSERT_NE(Replica(tablet).drive_info.sst_files_size, kSstFilesSize);
+  ASSERT_NE(
+      Replica(tablet).full_compaction_status.last_full_compaction_time.ToUint64(),
+      kCompactionTime);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_processing_tablet_metadata) = false;
+  ASSERT_OK(SendHeartbeat(&req));
+  ASSERT_EQ(Replica(tablet).drive_info.sst_files_size, kSstFilesSize);
+  ASSERT_EQ(
+      Replica(tablet).full_compaction_status.last_full_compaction_time.ToUint64(),
+      kCompactionTime);
 }
 
 class PersistTabletServerRegistryUpgradeTest : public MasterHeartbeatITest {
