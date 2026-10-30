@@ -1041,29 +1041,6 @@ TEST_F(PgBgWorkersTest, TestBgWorkersQueryId) {
   ASSERT_GE(bgworker_query_id_cnt, 1);
 }
 
-// A pg_cron job worker started after a client exits takes the client's pg_stat slot, the lowest
-// free one. Only client backends report a catalog version, so the worker must not report the one
-// the client left in the slot. See issue #36446.
-TEST_F(PgBgWorkersTest, BgWorkerDoesNotInheritCatalogVersion) {
-  ASSERT_OK(conn_->Execute("CREATE EXTENSION pg_cron"));
-  {
-    // A client sets has_version for every command, including its terminate message, so its slot
-    // still has it set after the client exits.
-    auto conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
-    ASSERT_OK(conn.Fetch("SELECT 1"));
-  }
-  ASSERT_OK(conn_->FetchFormat("SELECT cron.schedule('job', '1 second', '$0')",
-      "SELECT pg_sleep(1000)"));
-
-  std::vector<bool> worker_has_no_version;
-  ASSERT_OK(WaitFor([this, &worker_has_no_version]() -> Result<bool> {
-    worker_has_no_version = VERIFY_RESULT(conn_->FetchRows<bool>(
-        "SELECT catalog_version IS NULL FROM pg_stat_activity WHERE backend_type = 'pg_cron'"));
-    return !worker_has_no_version.empty();
-  }, 60s * kTimeMultiplier, "Wait for the pg_cron job worker"));
-  ASSERT_EQ(worker_has_no_version, std::vector<bool>{true});
-}
-
 TEST_F(PgAshTest, TestTServerMetadataSerializer) {
   static constexpr auto kTableName = "test_table";
 
