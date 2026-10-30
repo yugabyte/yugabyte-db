@@ -41,6 +41,10 @@ spec:
               - message: rootCA cannot be set when both node-to-node and client-to-node TLS are disabled.
                 rule: >
                   self.enableNodeToNodeEncrypt || self.enableClientToNodeEncrypt || !has(self.rootCA)
+              - message: useNodeToNodeClientCerts requires enableNodeToNodeEncrypt and a rootCA.
+                rule: >
+                  !has(self.useNodeToNodeClientCerts) || !self.useNodeToNodeClientCerts
+                  || (self.enableNodeToNodeEncrypt && has(self.rootCA))
             properties:
               universeName:
                 type: string
@@ -169,6 +173,18 @@ spec:
                   client and database.
                 type: boolean
                 default: true
+              useNodeToNodeClientCerts:
+                description: >
+                  (Preview) Make masters and tservers require a client certificate signed by the
+                  root CA on node-to-node RPCs (node_to_node_encryption_use_client_certificates).
+                  YugabyteDB Anywhere presents the client certificate cert-manager issues for the
+                  universe. Supported only with a K8S_CERT_MANAGER rootCA, and only at creation:
+                  it can't be changed afterwards, and node-to-node encryption can't be turned off.
+                type: boolean
+                default: false
+                x-kubernetes-validations:
+                - message: useNodeToNodeClientCerts cannot be changed
+                  rule: self == oldSelf
               encryptionAtRest:
                 description: >
                   Encryption at rest (EAR) configuration for the universe. Omit to leave EAR off.

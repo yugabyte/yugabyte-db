@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks.check;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -32,7 +31,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
-import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -360,21 +358,8 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
   }
 
   private void appendAuditDetails(ObjectNode output) {
-    Audit audit = auditService.getFromTaskUUID(getUserTaskUUID());
-    if (audit == null) {
-      return;
-    }
-    JsonNode auditDetails = audit.getAdditionalDetails();
-    ObjectNode modifiedNode;
-    if (auditDetails != null) {
-      modifiedNode = auditDetails.deepCopy();
-    } else {
-      ObjectMapper mapper = new ObjectMapper();
-      modifiedNode = mapper.createObjectNode();
-    }
-    modifiedNode.setAll(output);
-    log.debug("Software upgrade task audit details: {}", modifiedNode);
-    auditService.updateAdditionalDetails(getUserTaskUUID(), modifiedNode);
+    log.debug("Adding PG upgrade check output to the software upgrade task audit: {}", output);
+    auditService.mergeAdditionalDetails(getUserTaskUUID(), output);
   }
 
   private String extractVersionName(String ybServerPackage) {

@@ -135,6 +135,9 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
       GFlagsUtil.validateGFlagValues(newCluster.userIntent);
       GFlagsUtil.validateFipsCompliancy(
           newCluster.userIntent, universe.getUniverseDetails().fipsEnabled);
+      GFlagsUtil.validateNodeToNodeClientCerts(
+          newCluster.userIntent,
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.useNodeToNodeClientCerts);
       hasClustersToUpdate = true;
       if (upgradeOption == UpgradeOption.NON_RESTART_UPGRADE) {
         for (NodeDetails nodeDetails : universe.getNodesInCluster(curCluster.uuid)) {

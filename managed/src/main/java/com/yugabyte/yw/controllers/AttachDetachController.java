@@ -28,6 +28,7 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
+import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.DetachUniverseFormData;
@@ -89,6 +90,8 @@ public class AttachDetachController extends AuthenticatedController {
   @Inject private ConfigHelper configHelper;
 
   @Inject private YsqlQueryExecutor ysqlQueryExecutor;
+
+  @Inject private MetricService metricService;
 
   private static final String RELEASES_PATH = "yb.releases.path";
 
@@ -358,6 +361,7 @@ public class AttachDetachController extends AuthenticatedController {
             Audit.ActionType.DeleteAttachDetachMetadata);
 
     Universe.delete(universe.getUniverseUUID());
+    metricService.markSourceRemoved(customer.getUuid(), universe.getUniverseUUID());
     return YBPSuccess.empty();
   }
 

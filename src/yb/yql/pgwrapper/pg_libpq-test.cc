@@ -6579,6 +6579,44 @@ TEST_F(PgLibPqTest, YsqlUpgradeRetriesSerializationFailure) {
   ASSERT_EQ(ASSERT_RESULT(latest_migration_count()), 0U);
 }
 
+// A retried UpgradeYsql RPC waits for the upgrade that an earlier, timed-out RPC started, instead
+// of running a second upgrade next to it (#35773).
+//
+// Flow:
+// 1. Pause upgrades once they start. The first RPC starts an upgrade and times out on the client,
+//    but the upgrade keeps running on the tserver.
+// 2. A retry waits for that upgrade until its own deadline and fails with a clear error. Without
+//    the wait, the retry would start a second upgrade.
+// 3. After the pause ends, the first upgrade finishes and a retry succeeds.
+TEST_F(PgLibPqTest, YsqlUpgradeRetryWaitsForRunningUpgrade) {
+  const auto run_upgrade = [this](MonoDelta timeout) -> Status {
+    tserver::UpgradeYsqlRequestPB req;
+    tserver::UpgradeYsqlResponsePB resp;
+    rpc::RpcController rpc;
+    rpc.set_timeout(timeout);
+    RETURN_NOT_OK(cluster_->GetTServerProxy<tserver::TabletServerAdminServiceProxy>(0)
+        .UpgradeYsql(req, &resp, &rpc));
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+    return Status::OK();
+  };
+
+  // Step 1.
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_ysql_upgrade", "true"));
+  auto status = run_upgrade(2s);
+  ASSERT_TRUE(status.IsTimedOut()) << status;
+
+  // Step 2.
+  status = run_upgrade(5s);
+  ASSERT_TRUE(status.IsTimedOut()) << status;
+  ASSERT_STR_CONTAINS(status.ToString(), "YSQL upgrade already in progress");
+
+  // Step 3.
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_ysql_upgrade", "false"));
+  ASSERT_OK(run_upgrade(4min * kTimeMultiplier));
+}
+
 // Test yb-admin get_table_hash command for colocated, non-colocated tables with different number of
 // tablets, but same data returns the same XOR hash.
 TEST_F(PgLibPqTest, TestGetTableXorHash) {

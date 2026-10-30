@@ -253,6 +253,20 @@ base(qid, descr, tmpl) as (
         'select r.a from ce.s s join @R@ r on s.x = r.a where r.a >= 4800 order by r.a'),
     (252, '1500 <= b <= 5120 fwd',
         'select r.b from ce.s s join @R@ r on s.x = r.b where r.b >= 1500 and r.b <= 5120 order by r.b'),
+    -- #35035: an inner bound on the side where the inner's keys start, with
+    -- a LIMIT: the outer rows before the bound match nothing.  262 bounds the
+    -- inner where its keys end instead: the control.  263 and 264 join on the
+    -- non-unique a, and 264 also bounds the outer.
+    (260, 'pk >= 3000 limit 10',
+        'select s.x from ce.s s join @R@ r on s.x = r.pk where r.pk >= 3000 order by s.x limit 10'),
+    (261, 'pk <= 2000 desc limit 10',
+        'select s.x from ce.s s join @R@ r on s.x = r.pk where r.pk <= 2000 order by s.x desc limit 10'),
+    (262, 'pk <= 3000 limit 10',
+        'select s.x from ce.s s join @R@ r on s.x = r.pk where r.pk <= 3000 order by s.x limit 10'),
+    (263, 'a <= 4500 desc limit 10',
+        'select s.x from ce.s s join @R@ r on s.x = r.a where r.a <= 4500 order by s.x desc limit 10'),
+    (264, 'y >= 3886, a >= 4500 limit 10',
+        'select s.y from ce.s s join @R@ r on r.a = s.y where s.y >= 3886 and r.a >= 4500 order by s.y limit 10'),
     -- #30738: same forward-scanned join, with LIMIT.  Two families:
     --   skip   -- "s.y >= 3836": the first 50 outer values (3836..3885) are all
     --             absent from r.a, then matches at y >= 3886.  NL walks the
@@ -461,7 +475,40 @@ order by qid;
 -- the bound buys no round trips (rt_rank ties them).  Descending, the same
 -- bounds stop the merge early instead -- 7717 rows on ...240 against 8741
 -- here.  The clamp charges the discarded rows to startup rather than claiming
--- a saving it does not get, and the rows agree and are not printed.
+-- a saving it does not get, and BNL's skip counts them too and charges them
+-- to its startup.  The rows agree and are not printed.
+--
+-- ...260, ...261, ...263 and ...264 (#35035) bound the inner on the side
+-- where its keys start, with a LIMIT.  The outer rows that sort before the
+-- bound match nothing, and BNL's startup includes reading them up to its
+-- first productive batch.
+--
+-- On ...263 and ...264 that puts cost_rank in line with the work, and the
+-- rows are not printed.  About 600 outer rows sort before the bound, more
+-- than BNL's LIMIT-trimmed first batch, so that batch finds nothing, and the
+-- first match comes in a full batch: the second at batch size 1024, the third
+-- at 512, after the same outer rows.  That batch's probe reads over 4000
+-- inner rows whatever the LIMIT.  BNL's startup charges that probe, and BNL
+-- is costed behind NL, which like MJ reads 1044 rows in 3 requests to BNL's
+-- 5200 in 8.  On ...264 the outer's own bound enters the skip estimate along
+-- with the inner's.
+--
+-- ...260 and ...261 print.  About 3000 outer rows sort before the bound,
+-- several batches.  BNL's startup includes the outer rows it reads, and MJ is
+-- costed ahead of BNL although BNL does less work than MJ on ...261.  On
+-- ...260 BNL is also costed behind NL, which makes 14 requests to BNL's 5.
+-- The empty batches add nothing to BNL's cost: an empty batch is charged no
+-- more than a productive probe's run cost, which a one-page probe does not
+-- have.  They cost nothing at run time either: every key in them falls
+-- outside the inner's own bound, so the scan culls them all and sends no
+-- request.  BNL is costed behind for two other reasons.  Its productive batch
+-- is costed as a probe of all its keys, while the scan probes only the few
+-- inside the bound.  And NL's LIMIT cost is interpolated from a total that
+-- charges no leading skip, so on ...260 it prices about 13 outer rows where
+-- NL reads 3009.
+--
+-- ...262 bounds the inner where its keys end and is the control: no skip, and
+-- the rankings agree, so the row is not printed.
 ------------------------------------------------------------------------------
 with m as (
     select qid, descr, label, startup_cost, total_cost, actual_rows,

@@ -145,6 +145,9 @@ YB_DEFINE_ENUM(FlushReason,
   // Intents DB idle vs raft log apply (`FLAGS_num_raft_ops_to_force_idle_intents_db_to_flush`).
   (kIdleIntents)
 
+  // Flush of an idle DB, so that its writes no longer need to be recovered from a log.
+  (kIdle)
+
   // Memtable-driven flush (`FlushScheduler::ScheduleFlush` / memtable full).
   // `ScheduleFlushes` passes `kMemtableSizeLimit` through `SwitchMemtable`.
   (kMemtableSizeLimit)

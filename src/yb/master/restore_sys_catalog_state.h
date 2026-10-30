@@ -56,7 +56,7 @@ class RestoreSysCatalogState {
   Status PrepareWriteBatch(
       const docdb::DocReadContextPtr& doc_read_context,
       docdb::SchemaPackingProvider* schema_packing_provider,
-      docdb::DocWriteBatch* write_batch, HybridTime now_ht);
+      docdb::DocWriteBatch* write_batch);
 
   void WriteToRocksDB(
       docdb::DocWriteBatch* write_batch,
@@ -145,8 +145,7 @@ class RestoreSysCatalogState {
   // Prepare write batch to delete obsolete table.
   Status PrepareTableCleanup(
       const TableId& id, SysTablesEntryPB pb, const docdb::DocReadContextPtr& doc_read_context,
-      docdb::SchemaPackingProvider* schema_packing_provider, docdb::DocWriteBatch* write_batch,
-      HybridTime now_ht);
+      docdb::SchemaPackingProvider* schema_packing_provider, docdb::DocWriteBatch* write_batch);
 
   Status IncrementLegacyCatalogVersion(
       const docdb::DocReadContextPtr& doc_read_context,

@@ -1,0 +1,19 @@
+title: UserCreation
+description: 'A newly created user, with its API token if one was requested. Part of UserCreationResp.'
+type: object
+required:
+  - user
+properties:
+  user:
+    $ref: "./User.yaml"
+  api_token:
+    description: 'API token of the new user, to be sent in the X-AUTH-YW-API-TOKEN header. Only set when generate_api_token was true.'
+    type: string
+    readOnly: true
+  api_token_version:
+    description: Version of that API token. Only set when generate_api_token was true.
+    type: integer
+    format: int64
+    readOnly: true
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview
