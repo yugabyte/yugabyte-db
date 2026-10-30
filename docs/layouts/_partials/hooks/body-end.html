@@ -1,5 +1,10 @@
 <script src="/js/site.js"></script>
 <script src="/js/trackUtm.js" type="text/plain" class="optanon-category-C0003"></script>
+
+{{- if eq (os.Getenv "SCARF_PIXEL_ENABLED") "true" -}}
+<!-- Scarf analytics pixel: production only, loaded after OneTrust records consent. -->
+<script src="/js/scarfPixel.js"></script>
+{{- end -}}
 <!-- Add target/rel on external links -->
 <script type="module">
 import detectExternalLink from 'https://cdn.jsdelivr.net/npm/detect-external-link@2/+esm';
