@@ -19,6 +19,7 @@
 #include "yb/rpc/tcp_stream.h"
 
 #include "yb/util/env.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/format.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/path_util.h"
@@ -27,14 +28,34 @@
 
 using std::string;
 
+DECLARE_bool(allow_insecure_connections);
+
 DEFINE_NON_RUNTIME_bool(use_node_to_node_encryption, false, "Use node to node encryption.");
 
 DEFINE_NON_RUNTIME_bool(node_to_node_encryption_use_client_certificates, false,
     "Should client certificates be sent and verified for encrypted node to node "
-    "communication.");
+    "communication. Requires allow_insecure_connections=false when "
+    "use_node_to_node_encryption is set.");
+
+// Client certificates only take effect with node to node encryption, so the rule is not enforced
+// without it.
+DEFINE_validator(use_node_to_node_encryption,
+    FLAG_DELAYED_COND_VALIDATOR(
+        !_value || !FINAL_FLAG_VALUE(node_to_node_encryption_use_client_certificates) ||
+            !FINAL_FLAG_VALUE(allow_insecure_connections),
+        "node_to_node_encryption_use_client_certificates requires "
+        "allow_insecure_connections=false"));
+
+DEFINE_validator(node_to_node_encryption_use_client_certificates,
+    FLAG_DELAYED_COND_VALIDATOR(
+        !_value || !FINAL_FLAG_VALUE(use_node_to_node_encryption) ||
+            !FINAL_FLAG_VALUE(allow_insecure_connections),
+        "Requires allow_insecure_connections=false when use_node_to_node_encryption is set"));
 
 DEFINE_NON_RUNTIME_string(node_to_node_encryption_required_uid, "",
-    "Allow only certificates with specified uid. Empty to allow any.");
+    "Allow only certificates with specified uid. Empty to allow any. The uid is matched against "
+    "the certificate's common name, UID attribute or otherName subject alternative name. It is "
+    "checked on server to server connections too, so every node certificate must carry it.");
 
 DEFINE_NON_RUNTIME_string(certs_dir, "",
     "Directory that contains certificate authority, private key and certificates for "

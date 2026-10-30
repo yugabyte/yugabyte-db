@@ -31,7 +31,9 @@
 
 #include "yb/util/enums.h"
 #include "yb/util/errno.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/logging.h"
+#include "yb/util/metrics.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
@@ -44,8 +46,9 @@
 
 using namespace std::literals;
 
-DEFINE_UNKNOWN_bool(allow_insecure_connections, true,
-    "Whether we should allow insecure connections.");
+DEFINE_NON_RUNTIME_bool(allow_insecure_connections, true,
+    "Whether we should allow insecure connections. Must be false when "
+    "use_node_to_node_encryption and node_to_node_encryption_use_client_certificates are set.");
 DEFINE_UNKNOWN_bool(dump_certificate_entries, false, "Whether we should dump certificate entries.");
 DEFINE_UNKNOWN_bool(verify_client_endpoint, false, "Whether client endpoint should be verified.");
 DEFINE_UNKNOWN_bool(verify_server_endpoint, true, "Whether server endpoint should be verified.");
@@ -60,6 +63,31 @@ DEFINE_UNKNOWN_string(cipher_list, "",
 
 DEFINE_UNKNOWN_string(ciphersuites, "",
               "Define the available TLSv1.3 ciphersuites.");
+
+DECLARE_bool(node_to_node_encryption_use_client_certificates);
+DECLARE_bool(use_node_to_node_encryption);
+
+// A plaintext connection carries no client certificate, so accepting one would make the client
+// certificate requirement meaningless.
+DEFINE_validator(allow_insecure_connections,
+    FLAG_DELAYED_COND_VALIDATOR(
+        !_value || !FINAL_FLAG_VALUE(use_node_to_node_encryption) ||
+            !FINAL_FLAG_VALUE(node_to_node_encryption_use_client_certificates),
+        "Must be false when use_node_to_node_encryption and "
+        "node_to_node_encryption_use_client_certificates are set"));
+
+METRIC_DEFINE_counter(server, rpc_inbound_tls_handshakes_rejected,
+                      "Inbound TLS Handshakes Rejected",
+                      yb::MetricUnit::kConnections,
+                      "Number of inbound RPC connections whose TLS handshake failed, for example "
+                      "because the client certificate was missing, untrusted or had the wrong "
+                      "UID.");
+
+METRIC_DEFINE_counter(server, rpc_inbound_insecure_connections_rejected,
+                      "Inbound Insecure Connections Rejected",
+                      yb::MetricUnit::kConnections,
+                      "Number of inbound RPC connections rejected because they did not start a TLS "
+                      "handshake.");
 
 #define YB_RPC_SSL_TYPE(name) \
   struct BOOST_PP_CAT(name, Free) { \
@@ -737,7 +765,8 @@ Status SecureContext::TEST_GenerateKeys(int bits, const std::string& common_name
 class SecureRefiner : public StreamRefiner {
  public:
   SecureRefiner(const SecureContext& context, const StreamCreateData& data)
-    : secure_context_(*context.impl_), remote_hostname_(data.remote_hostname) {
+    : secure_context_(*context.impl_), remote_hostname_(data.remote_hostname),
+      metric_entity_(data.metric_entity) {
   }
 
  private:
@@ -746,6 +775,7 @@ class SecureRefiner : public StreamRefiner {
   }
 
   Status Handshake() ON_REACTOR_THREAD override;
+  Status DoHandshake() ON_REACTOR_THREAD;
   Status Init();
 
   Status Send(OutboundDataPtr data) ON_REACTOR_THREAD override;
@@ -781,6 +811,7 @@ class SecureRefiner : public StreamRefiner {
 
   const SecureContext::Impl& secure_context_;
   const std::string remote_hostname_;
+  const scoped_refptr<MetricEntity> metric_entity_;
   RefinedStream* stream_ = nullptr;
   std::vector<std::string> certificate_entries_;
 
@@ -848,8 +879,14 @@ Status SecureRefiner::ProcessHeader() {
   }
 
   if (!FLAGS_allow_insecure_connections) {
-    return STATUS_FORMAT(NetworkError, "Insecure connection header: $0",
-                         Slice(bytes, 2).ToDebugHexString());
+    if (metric_entity_) {
+      METRIC_rpc_inbound_insecure_connections_rejected.Instantiate(metric_entity_)->Increment();
+    }
+    auto status = STATUS_FORMAT(
+        NetworkError, "Insecure connection header: $0, address: $1",
+        Slice(bytes, 2).ToDebugHexString(), stream_->Remote().address());
+    YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 10) << "Rejected connection: " << status;
+    return status;
   }
 
   return Established(RefinedStreamState::kDisabled);
@@ -913,6 +950,14 @@ void SecureRefiner::DecryptReceived() {
 }
 
 Status SecureRefiner::Handshake() {
+  auto status = DoHandshake();
+  if (!status.ok() && stream_->local_side() == LocalSide::kServer && metric_entity_) {
+    METRIC_rpc_inbound_tls_handshakes_rejected.Instantiate(metric_entity_)->Increment();
+  }
+  return status;
+}
+
+Status SecureRefiner::DoHandshake() {
   RETURN_NOT_OK(Init());
 
   DecryptReceived();
