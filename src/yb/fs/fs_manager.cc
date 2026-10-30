@@ -887,8 +887,8 @@ const std::string& FsManager::GetTierForDataRoot(
   if (it != tier_by_canonicalized_fs_root_.end()) {
     return it->second;
   }
-  static const std::string kDefault(kDefaultStorageTier);
-  return kDefault;
+  static const std::string kNoTier;
+  return kNoTier;
 }
 
 std::vector<std::string> FsManager::GetDataRootDirsForTier(const std::string& tier) const {
