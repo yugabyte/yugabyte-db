@@ -251,6 +251,7 @@ bool
 YbIsPerDbLogicalClientVersionMode()
 {
 	return (IsYugaByteEnabled() &&
+			!IsBootstrapProcessingMode() &&
 			YbGetLogicalClientVersionType() == LOGICAL_CLIENT_VERSION_UNSET &&
 			YbLogicalClientVersionTableExists());
 }
