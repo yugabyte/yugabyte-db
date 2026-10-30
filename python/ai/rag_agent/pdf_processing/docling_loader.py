@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
 import tempfile
 import threading
 from pathlib import Path
@@ -96,13 +97,30 @@ def _resolve_local_pdf_path(
     bucket, key = path.split("/", 1)
     logger.info("Downloading PDF from S3 for Docling: bucket=%s key=%s", bucket, key)
 
+    # Imported here, not at module scope, to keep this module importable
+    # without the chunking pipeline.
+    from rag_pipeline.partition_chunk_pipeline import (
+        enforce_size_limit,
+        max_file_size_bytes,
+    )
+
     s3 = boto3.client("s3")
     obj = s3.get_object(Bucket=bucket, Key=key)
-    data = obj["Body"].read()
+    # Same out-of-memory guard the text and Markdown reads use. Checked
+    # against the length S3 reports, before any of the body is pulled down, so
+    # an oversized object costs nothing. There was no size check here at all.
+    enforce_size_limit(
+        file_location,
+        obj.get("ContentLength"),
+        max_file_size_bytes(),
+        knob="MAX_FILE_SIZE_BYTES",
+    )
 
     fd, temp_path = tempfile.mkstemp(suffix=".pdf")
+    # Copied in fixed-size blocks rather than through one bytes object, so
+    # peak memory does not track the size of the PDF.
     with os.fdopen(fd, "wb") as fh:
-        fh.write(data)
+        shutil.copyfileobj(obj["Body"], fh, length=1024 * 1024)
 
     def _cleanup() -> None:
         try:

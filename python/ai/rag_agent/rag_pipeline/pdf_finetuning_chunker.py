@@ -16,7 +16,7 @@ import logging
 import os
 from typing import Any, Dict, Generator, Optional
 
-from rag_pipeline.md_parser import parse_markdown, split_embed_text
+from rag_pipeline.md_parser import split_embed_text, stream_markdown
 from observability import meko_observe
 
 PDF_MIME_TYPES = frozenset({"application/pdf"})
@@ -50,13 +50,18 @@ def chunk_pdf_whole_file(
     from pdf_processing.docling_loader import convert_pdf_to_markdown
 
     markdown = convert_pdf_to_markdown(file_location)
+    markdown_length = len(markdown)
 
-    doc = parse_markdown(markdown, source_file=file_location)
+    doc, chunks = stream_markdown(markdown, source_file=file_location)
+    del markdown
+
+    chunk_count = 0
+    for chunk in chunks:
+        chunk_count += 1
+        yield from split_embed_text(chunk.to_embed_text(doc.title))
+
     logging.info(
         f"PDF fine-tuning chunker: file={file_location}, "
-        f"markdown_length={len(markdown)} chars, "
-        f"title={doc.title!r}, chunks={doc.total_chunks}"
+        f"markdown_length={markdown_length} chars, "
+        f"title={doc.title!r}, chunks={chunk_count}"
     )
-
-    for chunk in doc.chunks:
-        yield from split_embed_text(chunk.to_embed_text(doc.title))
