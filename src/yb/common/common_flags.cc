@@ -370,6 +370,12 @@ DEFINE_RUNTIME_AUTO_bool(cdcsdk_enable_dynamic_table_addition_with_table_cleanup
     "stream.");
 TAG_FLAG(cdcsdk_enable_dynamic_table_addition_with_table_cleanup, advanced);
 
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_tablespace_read_replica_placement, kLocalPersisted,
+    false, true,
+    "Allows CREATE TABLESPACE and ALTER TABLESPACE to set the read_replica_placement option. "
+    "Releases without read replica support in tablespaces cannot parse such tablespaces, so the "
+    "option is held back until the upgrade is finalized.");
+
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_update_optimization_infra, kLocalPersisted, false, true,
     "Enables optimizations of YSQL UPDATE queries. This includes "
     "(but not limited to) skipping redundant secondary index updates "

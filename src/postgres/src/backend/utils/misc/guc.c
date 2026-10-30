@@ -2825,6 +2825,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_tablespace_read_replica_placement", PGC_SIGHUP, CLIENT_CONN_STATEMENT,
+			gettext_noop("Allows setting the read_replica_placement option on tablespaces."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_tablespace_read_replica_placement,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_allow_replication_slot_lsn_types", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Allow specifying LSN type while creating replication slot"),
 			NULL,
