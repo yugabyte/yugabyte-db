@@ -208,6 +208,9 @@ public class TestPushdownCompatibilityMode extends BasePgSQLTest {
     SetMixedModeSaopPushdown("true");
     CheckExprs(prefix, expressions, "0");
     CheckExprs(prefix, expressions, "11");
+    CheckExprs(prefix, expressions, "15");
+    // PG19 as the source of the next major upgrade.
+    CheckExprs(prefix, expressions, "19");
   }
 
   /* CheckFailure
@@ -252,18 +255,22 @@ public class TestPushdownCompatibilityMode extends BasePgSQLTest {
       if (expr.behaviour == Behaviour.kNotPushable) {
         CheckFilters(prefix, kLocalFilter, expr);
       } else if (expr.behaviour == Behaviour.kPushable) {
-        if (compatibility == "11")
+        if (!compatibility.equals("0"))
           CheckFilters(prefix, kLocalFilter, expr);
         else
           CheckFilters(prefix, kStorageFilter, expr);
       } else if (expr.behaviour == Behaviour.kMMPushable) {
-        CheckFilters(prefix, kStorageFilter, expr);
+        // Only 11 has a mixed mode safe list; any later major upgrade pushes nothing down.
+        if (!compatibility.equals("0") && !compatibility.equals("11"))
+          CheckFilters(prefix, kLocalFilter, expr);
+        else
+          CheckFilters(prefix, kStorageFilter, expr);
       } else {
         CheckFailure(prefix, expr);
       }
     }
 
-    if (compatibility == "11") {
+    if (compatibility.equals("11")) {
       /* Retry any SAOP expressions with SAOP pushdown disabled */
       SetMixedModeSaopPushdown("false");
       for (Expression expr : exprs) {
