@@ -475,9 +475,12 @@ TEST_F(PgCronTest, LauncherStampsFreshOriginationTime) {
   // Refuse work that originated before now.  The launchers started before now, so a launcher
   // still stamping its start time would have its writes to cron.job_run_details refused, exit,
   // and be restarted by the postmaster; the unchanged pids rule that out.
+  // The cutoff is taken before a delay so that a launcher transaction already in flight when the
+  // flag is set (legitimately originated before the cutoff) has finished by then.
+  const auto cutoff = HybridTime::FromMicros(GetCurrentTimeMicros());
+  SleepFor(5s);
   ASSERT_OK(cluster_->SetFlagOnTServers(
-      "TEST_persistence_reject_stamped_before_ht",
-      std::to_string(HybridTime::FromMicros(GetCurrentTimeMicros()).ToUint64())));
+      "TEST_persistence_reject_stamped_before_ht", std::to_string(cutoff.ToUint64())));
   const auto row_count = ASSERT_RESULT(GetRowCount());
   ASSERT_OK(WaitForRowCountAbove(row_count + 3));
   ASSERT_EQ(ASSERT_RESULT(GetLauncherPids()), launcher_pids);
