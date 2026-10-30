@@ -53,6 +53,7 @@ import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+import com.yugabyte.yw.common.certmgmt.RpcClientCert;
 import com.yugabyte.yw.common.certmgmt.providers.VaultPKI;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -900,7 +901,12 @@ public class UniverseCRUDHandler {
       c.userIntent.setFederationConfigured(federationConfigured);
 
       isK8s = c.userIntent.getAllCloudTypes().contains(Common.CloudType.kubernetes);
-      c.validate(!cloudEnabled, isAuthEnforced, taskParams.fipsEnabled, taskParams.nodeDetailsSet);
+      c.validate(
+          !cloudEnabled,
+          isAuthEnforced,
+          taskParams.fipsEnabled,
+          taskParams.getPrimaryCluster().userIntent.useNodeToNodeClientCerts,
+          taskParams.nodeDetailsSet);
       ManagedLoadBalancerUtil.validateNewCluster(
           c, taskParams.getPrimaryCluster(), confGetter, cloudAPIFactory);
       // Enforce user tags.
@@ -1135,6 +1141,7 @@ public class UniverseCRUDHandler {
     }
 
     checkGeoPartitioningParameters(customer, taskParams, OpType.CREATE);
+    RpcClientCert.validate(taskParams);
     validateTmpDirGflagConsistency(taskParams);
     validateOciInstanceTags(taskParams);
 
@@ -1469,10 +1476,12 @@ public class UniverseCRUDHandler {
    */
   public UUID update(Customer customer, Universe u, UniverseDefinitionTaskParams taskParams) {
     checkCanEdit(customer, u);
+    validateFipsGFlagsForUpdate(u, taskParams);
     checkTaskParamsForUpdate(u, taskParams);
     // enforce user tags for cloud instances.
     for (Cluster cluster : taskParams.clusters) {
       validateUserTags(customer, cluster.userIntent);
+      GFlagsUtil.validateGFlagValues(cluster.userIntent);
     }
     validateOciInstanceTags(taskParams);
     if (u.isYbcEnabled()) {
@@ -1491,6 +1500,9 @@ public class UniverseCRUDHandler {
     // Set helm naming style into params
     taskParams.useNewHelmNamingStyle = u.getUniverseDetails().useNewHelmNamingStyle;
 
+    // Clients such as the CLI omit it; new nodes need it to get the OTEL collector.
+    taskParams.otelCollectorEnabled = u.getUniverseDetails().otelCollectorEnabled;
+
     // Set existing LBs into taskParams
     taskParams.setExistingLBs(u.getUniverseDetails().clusters);
 
@@ -1499,6 +1511,25 @@ public class UniverseCRUDHandler {
       return updateCluster(customer, u, taskParams);
     } else {
       return updatePrimaryCluster(customer, u, taskParams);
+    }
+  }
+
+  private static void validateFipsGFlagsForUpdate(
+      Universe u, UniverseDefinitionTaskParams taskParams) {
+    if (!u.getUniverseDetails().fipsEnabled) {
+      return;
+    }
+    for (Cluster cluster : taskParams.clusters) {
+      Cluster current = u.getUniverseDetails().getClusterByUuid(cluster.uuid);
+      // Only gflags this edit changes, so a universe already storing a non-true value stays
+      // editable; configure sets the flag to true on its nodes regardless.
+      if (current != null
+          && Objects.equals(cluster.userIntent.specificGFlags, current.userIntent.specificGFlags)
+          && Objects.equals(cluster.userIntent.masterGFlags, current.userIntent.masterGFlags)
+          && Objects.equals(cluster.userIntent.tserverGFlags, current.userIntent.tserverGFlags)) {
+        continue;
+      }
+      GFlagsUtil.validateFipsCompliancy(cluster.userIntent, true);
     }
   }
 
@@ -1820,6 +1851,9 @@ public class UniverseCRUDHandler {
               + universe.getUniverseUUID());
     }
 
+    // The new cluster follows the universe, whatever the request says.
+    taskParams.fipsEnabled = universe.getUniverseDetails().fipsEnabled;
+
     for (Cluster cluster : taskParams.clusters) {
       validateUserTags(customer, cluster.userIntent);
     }
@@ -1840,6 +1874,8 @@ public class UniverseCRUDHandler {
 
     // Set helm naming style into params
     taskParams.useNewHelmNamingStyle = universe.getUniverseDetails().useNewHelmNamingStyle;
+    // Clients such as the CLI omit it; new nodes need it to get the OTEL collector.
+    taskParams.otelCollectorEnabled = universe.getUniverseDetails().otelCollectorEnabled;
 
     List<Cluster> newReadOnlyClusters = taskParams.getReadOnlyClusters();
     List<Cluster> newAddOnClusters = taskParams.getAddOnClusters();
@@ -1902,7 +1938,11 @@ public class UniverseCRUDHandler {
     boolean isAuthEnforced = confGetter.getConfForScope(customer, CustomerConfKeys.isAuthEnforced);
     addOnCluster.userIntent.providerType = Common.CloudType.valueOf(provider.getCode());
     addOnCluster.validate(
-        !cloudEnabled, isAuthEnforced, taskParams.fipsEnabled, taskParams.nodeDetailsSet);
+        !cloudEnabled,
+        isAuthEnforced,
+        taskParams.fipsEnabled,
+        primaryCluster.userIntent.useNodeToNodeClientCerts,
+        taskParams.nodeDetailsSet);
     addOnCluster.userIntent.enableNodeToNodeEncrypt =
         primaryCluster.userIntent.enableNodeToNodeEncrypt;
     addOnCluster.userIntent.enableClientToNodeEncrypt =
@@ -1994,7 +2034,11 @@ public class UniverseCRUDHandler {
         runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled");
     boolean isAuthEnforced = confGetter.getConfForScope(customer, CustomerConfKeys.isAuthEnforced);
     readOnlyCluster.validate(
-        !cloudEnabled, isAuthEnforced, taskParams.fipsEnabled, taskParams.nodeDetailsSet);
+        !cloudEnabled,
+        isAuthEnforced,
+        taskParams.fipsEnabled,
+        primaryCluster.userIntent.useNodeToNodeClientCerts,
+        taskParams.nodeDetailsSet);
     if (readOnlyCluster.userIntent.specificGFlags != null) {
       SpecificGFlags primaryGFlags = primaryCluster.userIntent.specificGFlags;
       if (primaryGFlags != null) {
@@ -2917,6 +2961,9 @@ public class UniverseCRUDHandler {
           && curCluster.clusterType == ClusterType.PRIMARY) {
         throw new PlatformServiceException(BAD_REQUEST, "RF change is not available");
       }
+      // Fixed at creation. Clients that predate the field send false, so keep the current value.
+      newCluster.userIntent.useNodeToNodeClientCerts =
+          curCluster.userIntent.useNodeToNodeClientCerts;
       ManagedLoadBalancerUtil.validateEditedCluster(
           universe.getUniverseDetails().getPrimaryCluster(), curCluster, newCluster);
       UserIntent newIntent = newCluster.userIntent;

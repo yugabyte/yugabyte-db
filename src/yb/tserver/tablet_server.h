@@ -117,6 +117,7 @@ namespace tserver {
 
 class GetYSQLLeaseInfoResponsePB;
 class PgClientServiceImpl;
+class TabletServiceBackupImpl;
 class TServerCgroupManager;
 class TserverAutoFlagsManager;
 class TserverXClusterContext;
@@ -457,6 +458,12 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   Status XClusterHandleMasterHeartbeatResponse(
       const master::TSHeartbeatResponsePB& resp, MonoTime lease_expiration_time);
 
+  // Whether a master heartbeat response has told this tserver if it is an xCluster producer.
+  // Until then xCluster reports no WAL retention for its tablets.
+  bool XClusterProducerStateKnown() const {
+    return xcluster_producer_state_known_.load(std::memory_order_acquire);
+  }
+
   void ApplyXClusterGuardedInfoIfNewer(const XClusterGuardedInfoPB& info)
       EXCLUDES(xcluster_guarded_info_version_mutex_);
 
@@ -574,6 +581,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void PersistClusterYsqlDbOldestPinnedReadTimesIfNeeded(const master::DbOidToHybridTimeMap& pins);
 
   std::atomic<bool> initted_{false};
+
+  std::atomic<bool> xcluster_producer_state_known_{false};
 
   // If true, all heartbeats will be seen as failed.
   Atomic32 fail_heartbeats_for_tests_;
@@ -701,6 +710,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // An instance to remote bootstrap service. This pointer is no longer valid after
   // RpcAndWebServerBase is shut down.
   std::weak_ptr<RemoteBootstrapServiceImpl> remote_bootstrap_service_;
+  std::weak_ptr<TabletServiceBackupImpl> backup_service_;
 
   struct PgClientServiceHolder;
 

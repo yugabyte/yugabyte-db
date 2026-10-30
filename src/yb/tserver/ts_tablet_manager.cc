@@ -107,6 +107,7 @@
 #include "yb/tserver/remote_bootstrap_client.h"
 #include "yb/tserver/remote_bootstrap_session.h"
 #include "yb/tserver/remote_snapshot_transfer_client.h"
+#include "yb/tserver/tablet_flusher.h"
 #include "yb/tserver/tablet_limits.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tier_migration_reconciler.h"
@@ -138,6 +139,7 @@
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/storage_tier.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
 
@@ -380,6 +382,7 @@ DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(db_history_retention_pin_max_txn_age_sec);
 DECLARE_bool(enable_db_history_retention_pins);
 DECLARE_uint32(vector_index_num_compactions_limit);
+DECLARE_int32(quiescent_tablet_idle_sec);
 
 namespace yb::tserver {
 
@@ -507,6 +510,11 @@ std::string SnapshotIdToString(const std::string& snapshot_id) {
   return uuid.IsNil() ? snapshot_id : uuid.ToString();
 }
 
+// The longest wait between quiescent checks, so that new tablets and quiescent_tablet_idle_sec
+// raised from 0 are picked up. Other flag changes reach a tablet at its next queued check.
+// A shorter idle period shortens the wait, so a new tablet is checked within two idle periods.
+constexpr auto kQuiescentTabletsMaxCheckInterval = 60s;
+
 } // namespace
 
 void TSTabletManager::VerifyTabletData() {
@@ -632,6 +640,7 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
     .max_workers = rpc::ThreadPoolOptions::kUnlimitedWorkers
   });
 
+  tablet_flusher_ = std::make_unique<TabletFlusher>(server_->metric_entity());
   CHECK_GT(FLAGS_snapshot_cleanup_pool_size, 0);
   CHECK_OK(ThreadPoolBuilder("snapshot-cleanup")
                .set_min_threads(1)
@@ -1009,6 +1018,11 @@ Status TSTabletManager::Init() {
         MonoDelta::FromSeconds(bg_superblock_flush_interval_secs).ToChronoMilliseconds()));
     RETURN_NOT_OK(superblock_flush_bg_task_->Init());
   }
+
+  // The first run sets the interval to the earliest due check.
+  quiescent_tablets_bg_task_ = std::make_unique<BackgroundTask>(
+      [this] { EnterQuiescentModeForIdleTablets(); }, "tablet manager", "quiescent tablets", 1s);
+  RETURN_NOT_OK(quiescent_tablets_bg_task_->Init());
 
   RETURN_NOT_OK(mem_manager_->Init());
 
@@ -1606,7 +1620,7 @@ Status TSTabletManager::ApplyTabletSplit(
     RETURN_NOT_OK(cmeta->Flush());
 
     const auto& dest_wal_dir = tcmeta.raft_group_metadata->wal_dir();
-    RETURN_NOT_OK(raft_log->CopyTo(dest_wal_dir, split_op_id));
+    RETURN_NOT_OK(raft_log->CopyTo(dest_wal_dir, split_op_id, new_tablet_id));
 
     MAYBE_FAULT(FLAGS_TEST_fault_crash_in_split_after_log_copied);
 
@@ -1955,6 +1969,8 @@ Status HandleReplacingStaleTablet(
 
 Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB& req) {
   const TabletId& tablet_id = req.tablet_id();
+  TEST_SYNC_POINT_CALLBACK(
+      "TSTabletManager::StartRemoteBootstrap", const_cast<TabletId*>(&tablet_id));
   if (FLAGS_reject_rbs_for_deleted_tablet) {
     SharedLock<RWMutex> shared_lock(mutex_);
     SCHECK(
@@ -2618,6 +2634,7 @@ void TSTabletManager::OpenTablet(
             .allow_compaction_failures = allow_compaction_failures,
         },
         .log_prefix_suffix = " P " + tablet_peer->permanent_uuid(),
+        .tablet_context = tablet_peer.get(),
         .transaction_participant_context = tablet_peer.get(),
         .local_tablet_filter = std::bind(&TSTabletManager::PreserveLocalLeadersOnly, this, _1),
         .transaction_coordinator_context = tablet_peer.get(),
@@ -2880,6 +2897,8 @@ void TSTabletManager::StartShutdown() {
     }
   }
 
+  tablet_flusher_->StartShutdown();
+
   TEST_PAUSE_IF_FLAG(TEST_pause_after_ts_manager_started_quiescing);
 
   for (auto& callback : flag_callbacks_) {
@@ -2917,6 +2936,10 @@ void TSTabletManager::StartShutdown() {
   full_compaction_manager_->Shutdown();
 
   tier_migration_reconciler_->Shutdown();
+
+  if (quiescent_tablets_bg_task_) {
+    quiescent_tablets_bg_task_->Shutdown();
+  }
 
   // Wait for all remote operations to finish.
   WaitForRemoteSessionsToEnd(TabletRemoteSessionType::kBootstrap, kDebugBootstrapString);
@@ -2958,6 +2981,7 @@ void TSTabletManager::StartShutdown() {
 }
 
 void TSTabletManager::CompleteShutdown() {
+  tablet_flusher_->CompleteShutdown();
   tablet_metadata_validator_->CompleteShutdown();
 
   for (const TabletPeerPtr& peer : shutting_down_peers_) {
@@ -3097,6 +3121,13 @@ Status TSTabletManager::RegisterTabletUnlocked(const TabletId& tablet_id,
   }
 
   LOG_WITH_PREFIX(INFO) << "Registered tablet " << tablet_id;
+
+  {
+    // The log is opened after registration, so its last append time is later than this.
+    std::lock_guard lock(quiescent_checks_mutex_);
+    quiescent_checks_.push(
+        {CoarseMonoClock::Now() + tablet::QuiescentTabletIdleTime(), tablet_peer});
+  }
 
   return Status::OK();
 }
@@ -4355,6 +4386,45 @@ void TSTabletManager::FlushDirtySuperblocks() {
       }
     }
   }
+}
+
+void TSTabletManager::EnterQuiescentModeForIdleTablets() {
+  // Before the first master heartbeat xCluster reports no WAL retention, so a tablet of an
+  // xCluster producer could delete WAL that a consumer still needs.
+  if (!server_->XClusterProducerStateKnown()) {
+    quiescent_tablets_bg_task_->SetInterval(1s);
+    return;
+  }
+  const auto now = CoarseMonoClock::Now();
+  auto next_run = now + std::min<CoarseDuration>(
+      kQuiescentTabletsMaxCheckInterval, tablet::QuiescentTabletIdleTime());
+  while (FLAGS_quiescent_tablet_idle_sec > 0) {
+    QuiescentCheck check;
+    {
+      std::lock_guard lock(quiescent_checks_mutex_);
+      if (quiescent_checks_.empty()) {
+        break;
+      }
+      if (quiescent_checks_.top().time > now) {
+        next_run = std::min(next_run, quiescent_checks_.top().time);
+        break;
+      }
+      check = quiescent_checks_.top();
+      quiescent_checks_.pop();
+    }
+    if (shutdown_started_.load(std::memory_order_acquire)) {
+      return;
+    }
+    auto peer = check.peer.lock();
+    if (!peer) {
+      continue;
+    }
+    check.time = peer->MaybeEnterQuiescentMode(now);
+    std::lock_guard lock(quiescent_checks_mutex_);
+    quiescent_checks_.push(std::move(check));
+  }
+  quiescent_tablets_bg_task_->SetInterval(std::max(
+      std::chrono::duration_cast<std::chrono::milliseconds>(next_run - now), 1ms));
 }
 
 void TSTabletManager::WaitForRemoteSessionsToEnd(

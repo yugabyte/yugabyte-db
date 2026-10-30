@@ -215,7 +215,7 @@ public class AnsibleDestroyServer extends NodeTaskBase {
       if (!taskParams().isForceDelete) {
         throw e;
       } else {
-        log.debug(
+        log.warn(
             "Ignoring error deleting instance {} due to isForceDelete being set.",
             taskParams().nodeName,
             e);
@@ -231,7 +231,7 @@ public class AnsibleDestroyServer extends NodeTaskBase {
         if (!taskParams().isForceDelete) {
           throw e;
         } else {
-          log.debug(
+          log.warn(
               "Ignoring error deleting volumes for {} due to isForceDelete being set.",
               taskParams().nodeName,
               e);
@@ -264,7 +264,7 @@ public class AnsibleDestroyServer extends NodeTaskBase {
         if (!taskParams().isForceDelete) {
           throw e;
         } else {
-          log.debug(
+          log.warn(
               "Ignoring error deleting node agent {} due to isForceDelete being set.",
               taskParams().nodeName,
               e);

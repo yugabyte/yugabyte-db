@@ -34,6 +34,8 @@
 
 #include <atomic>
 #include <memory>
+#include <mutex>
+#include <queue>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -112,6 +114,7 @@ typedef std::vector<TabletCreationMetadata> SplitTabletsCreationMetadata;
 
 typedef Callback<void(tablet::TabletPeerPtr)> ConsensusChangeCallback;
 
+class TabletFlusher;
 class TabletMetadataValidator;
 
 // If 'expr' fails, log a message, tombstone the given tablet, and return the
@@ -198,6 +201,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   ThreadPool* tablet_prepare_pool() const { return tablet_prepare_pool_.get(); }
   ThreadPool* raft_pool() const { return raft_pool_.get(); }
   ThreadPool* snapshot_cleanup_pool() const { return snapshot_cleanup_pool_.get(); }
+  TabletFlusher& tablet_flusher() const { return *tablet_flusher_; }
   rpc::ThreadPool* raft_notifications_pool() const {
     return raft_notifications_pool_.get();
   }
@@ -732,6 +736,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   void FlushDirtySuperblocks();
 
+  void EnterQuiescentModeForIdleTablets();
+
   // Helper functions to reduce code duplication between RemoteBootstrap and RemoteSnapshotTransfer
   // flows.
   typedef std::unordered_map<std::string, int> RemoteSessionSourceAddresses;
@@ -883,6 +889,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Bounded process-wide pool for physical tablet snapshot directory cleanup.
   std::unique_ptr<ThreadPool> snapshot_cleanup_pool_;
+  std::unique_ptr<TabletFlusher> tablet_flusher_;
 
   // Thread pool for appender threads, shared between all tablets.
   std::unique_ptr<ThreadPool> append_pool_;
@@ -997,6 +1004,22 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Background task for periodically flushing the superblocks.
   std::unique_ptr<BackgroundTask> superblock_flush_bg_task_;
+
+  std::unique_ptr<BackgroundTask> quiescent_tablets_bg_task_;
+
+  struct QuiescentCheck {
+    CoarseTimePoint time;
+    tablet::TabletPeerWeakPtr peer;
+
+    // Reversed, so that the top of the priority queue is the earliest check.
+    bool operator<(const QuiescentCheck& rhs) const {
+      return time > rhs.time;
+    }
+  };
+
+  std::mutex quiescent_checks_mutex_;
+  // Tablets ordered by the time when they could enter the quiescent mode.
+  std::priority_queue<QuiescentCheck> quiescent_checks_ GUARDED_BY(quiescent_checks_mutex_);
 
   std::unique_ptr<FullCompactionManager> full_compaction_manager_;
 

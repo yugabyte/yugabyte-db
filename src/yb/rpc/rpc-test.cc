@@ -1026,6 +1026,38 @@ TEST_F(TestRpc, LocalCallTimeout) {
       "Buffers released after the handler responded"));
 }
 
+// A local call releases the buffers holder before the caller gets the response, so the caller
+// can reuse the buffers right away.
+TEST_F(TestRpc, LocalCallReleasesBuffersHolderBeforeResponse) {
+  HostPort server_addr;
+  StartTestServer(&server_addr);
+  HostPort empty_addr;
+  Proxy p(server_messenger(), empty_addr);
+
+  rpc_test::SleepRequestPB req;
+  req.set_sleep_micros(1000);
+  rpc_test::SleepResponsePB resp;
+  auto holder = std::make_shared<int>(0);
+  std::weak_ptr<int> weak_holder = holder;
+
+  RpcController controller;
+  controller.set_timeout(30s);
+  controller.set_local_call_buffers_holder(std::move(holder));
+  // Runs the callback right when the handler responds.
+  controller.set_invoke_callback_mode(InvokeCallbackMode::kReactorThread);
+  std::atomic<bool> released_before_response{false};
+  CountDownLatch latch(1);
+  p.AsyncRequest(
+      CalculatorServiceMethods::SleepMethod(), nullptr, req, &resp, &controller,
+      [&weak_holder, &released_before_response, &latch] {
+        released_before_response = weak_holder.expired();
+        latch.CountDown();
+      });
+  latch.Wait();
+  ASSERT_OK(controller.status());
+  ASSERT_TRUE(released_before_response);
+}
+
 #if YB_GPERFTOOLS_TCMALLOC
 
 namespace {

@@ -310,6 +310,75 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
     assertStartNodeSequence(subTasksByPosition, false);
   }
 
+  // PLAT-23125: a node can lose its master while stopped, so start node rewrites its collector
+  // config for its current roles.
+  @Test
+  public void testStartNodeRewritesOtelCollectorWhenMetricsExportEnabled() {
+    assertEquals(Map.of("host-n1", false), startNodeWithMetricsExport(false /* startMaster */));
+  }
+
+  // The master start refreshes the node, so the later refresh for a lost master must not run
+  // again (PLAT-23125).
+  @Test
+  public void testStartNodeWithMasterStartRewritesOtelCollectorOnce() {
+    assertEquals(Map.of("host-n1", false), startNodeWithMetricsExport(true /* startMaster */));
+  }
+
+  // A dedicated tserver node never runs a master, so its start must not rewrite the collector.
+  @Test
+  public void testStartDedicatedTserverNodeSkipsOtelCollectorRewrite() {
+    assertEquals(Map.of(), startNodeWithMetricsExport(false, true /* dedicatedTserver */));
+  }
+
+  private Map<String, Boolean> startNodeWithMetricsExport(boolean startMaster) {
+    return startNodeWithMetricsExport(startMaster, false /* dedicatedTserver */);
+  }
+
+  // Returns ignoreErrors of each ManageOtelCollector subtask, by node name.
+  private Map<String, Boolean> startNodeWithMetricsExport(
+      boolean startMaster, boolean dedicatedTserver) {
+    Universe current = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    if (startMaster) {
+      current =
+          Universe.saveDetails(
+              current.getUniverseUUID(),
+              u -> u.getUniverseDetails().nodeDetailsSet.forEach(n -> n.isMaster = false));
+    }
+    setMasters(current, "host-n2");
+    if (startMaster) {
+      setExpectedMasters(current, "host-n1", "host-n2");
+    }
+    if (dedicatedTserver) {
+      Universe.saveDetails(
+          current.getUniverseUUID(),
+          u -> u.getNode("host-n1").dedicatedTo = UniverseTaskBase.ServerType.TSERVER);
+    }
+    Universe universe = enableMetricsExport(defaultUniverse.getUniverseUUID());
+    NodeTaskParams taskParams = new NodeTaskParams();
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
+    TaskInfo taskInfo = submitTask(taskParams, "host-n1");
+    assertEquals(
+        taskInfo.getErrorMessage()
+            + taskInfo.getSubTasks().stream()
+                .filter(t -> t.getTaskState() == TaskInfo.State.Failure)
+                .map(t -> t.getTaskType() + ": " + t.getErrorMessage())
+                .collect(Collectors.toList()),
+        TaskInfo.State.Success,
+        taskInfo.getTaskState());
+    List<TaskInfo> refreshes =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.ManageOtelCollector)
+            .collect(Collectors.toList());
+    if (!refreshes.isEmpty()) {
+      assertOtelRewritesRunLast(taskInfo);
+    }
+    return refreshes.stream()
+        .collect(
+            Collectors.toMap(
+                t -> t.getTaskParams().get("nodeName").asText(),
+                t -> t.getTaskParams().get("ignoreErrors").asBoolean()));
+  }
+
   @Test
   public void testStartNodeWithUnderReplicatedMaster_WithoutReadOnlyCluster_NodeFromPrimary() {
     Universe universe = defaultUniverse;

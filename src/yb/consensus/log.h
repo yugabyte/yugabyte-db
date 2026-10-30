@@ -39,6 +39,7 @@
 #include <condition_variable>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 
 #include <boost/atomic.hpp>
@@ -259,7 +260,17 @@ class Log : public RefCountedThreadSafe<Log> {
   // returns (0, 0)
   OpId GetLatestEntryOpId() const;
 
+  // Returns the state of the entry with op_id. Starts a background fsync when it is kAppended.
+  WalEntryState WalState(const OpId& op_id) EXCLUDES(background_sync_token_mutex_);
+
   int64_t GetMinReplicateIndex() const;
+
+  // Returns the index of the earliest op in the log.
+  Result<int64_t> EarliestOpIndex() const EXCLUDES(state_lock_);
+
+  // Returns the lowest index at which a log anchor can be registered: a peer whose last op has
+  // this index can be sent the following ops. It is L for a quiescent log, whose ops start at L+1.
+  Result<int64_t> MinAnchorableIndex() const EXCLUDES(state_lock_);
 
   // Runs the garbage collector on the set of previous segments. Segments that only refer to in-mem
   // state that has been flushed are candidates for garbage collection.
@@ -317,11 +328,13 @@ class Log : public RefCountedThreadSafe<Log> {
   Result<bool>  ReuseAsActiveSegment(
       const scoped_refptr<ReadableLogSegment>& recover_segment) EXCLUDES(active_segment_mutex_);
 
-  // For a log created with CreateNewSegment::kFalse, this is used to finish log initialization by
-  // either allocating a new segment or reused left in-progress segment that doesn't have footer.
-  Status EnsureSegmentInitialized();
+  // For a log created with CreateNewSegment::kFalse, this is used to finish log initialization.
+  // Reuses the left in-progress segment that doesn't have footer. Otherwise the next segment is
+  // allocated by the first append.
+  Status EnsureSegmentInitialized() EXCLUDES(state_lock_);
 
-  Status EnsureSegmentInitializedUnlocked() REQUIRES(state_lock_);
+  Status EnsureSegmentInitializedUnlocked(CreateNewSegment create_new_segment)
+      REQUIRES(state_lock_);
 
   // Returns the total size of the current segments, in bytes.
   // Returns 0 if the log is shut down.
@@ -406,9 +419,50 @@ class Log : public RefCountedThreadSafe<Log> {
   // If max_included_op_id is specified - only part of the log up to and including
   // max_included_op_id is copied.
   // Flushes necessary files and uses hard links where it is safe.
-  Status CopyTo(const std::string& dest_wal_dir, OpId max_included_op_id = OpId());
+  // The quiescent marker, if any, is copied with dest_tablet_id.
+  Status CopyTo(
+      const std::string& dest_wal_dir, OpId max_included_op_id = OpId(),
+      const std::string& dest_tablet_id = std::string());
 
-  // Waits until all entries flushed, then reset last received op id to specified one.
+  // Closes the active segment without starting a new one, if the last appended op is
+  // expected_last_op_id. Runs on the appender thread. Fills marker with the values of that op,
+  // except monotonic_counter.
+  // Returns TryAgain if another op was appended.
+  Status CloseActiveSegment(const OpId& expected_last_op_id, QuiescentMarkerPB* marker);
+
+  // Durably writes the quiescent marker to the WAL dir and makes it the marker of this log.
+  Status WriteQuiescentMarker(const QuiescentMarkerPB& marker) EXCLUDES(state_lock_);
+
+  // Deletes segments that contain only ops covered by the marker. Returns the number of deleted
+  // segments.
+  Result<size_t> DeleteSegmentsCoveredByQuiescentMarker() EXCLUDES(state_lock_);
+
+  // Returns true if the segment is closed and the marker covers all its ops. Covered segments
+  // form a prefix of the log.
+  static bool SegmentCoveredByQuiescentMarker(
+      const ReadableLogSegment& segment, const QuiescentMarkerPB& marker);
+
+  // Returns when a REPLICATE message was last appended, or when the log was opened.
+  CoarseTimePoint last_append_time() const {
+    return last_append_time_.load(std::memory_order_acquire);
+  }
+
+  // Returns the op id of the quiescent marker, or an empty op id if the log has no marker.
+  OpId quiescent_marker_op_id() const;
+
+  std::optional<QuiescentMarkerPB> quiescent_marker() const EXCLUDES(state_lock_);
+
+  // Looks up the op id for the given index in the log reader or the quiescent marker.
+  Result<OpId> LookupOpId(int64_t op_index) const EXCLUDES(state_lock_);
+
+  static std::string QuiescentMarkerPath(const std::string& wal_dir);
+
+  static Result<QuiescentMarkerPB> ReadQuiescentMarkerFile(Env* env, const std::string& wal_dir);
+
+  static Status WriteQuiescentMarkerFile(
+      Env* env, const std::string& wal_dir, const QuiescentMarkerPB& marker);
+
+  // Waits until all entries flushed, then resets last appended, synced and durable op ids to op_id.
   Status ResetLastSyncedEntryOpId(const OpId& op_id);
 
   Status TEST_WriteCorruptedEntryBatchAndSync();
@@ -490,6 +544,27 @@ class Log : public RefCountedThreadSafe<Log> {
   // Writes the footer and closes the current segment.
   Status CloseCurrentSegment() EXCLUDES(active_segment_mutex_);
 
+  // Starts a new active segment, when there is none.
+  Status StartActiveSegment() EXCLUDES(active_segment_mutex_);
+
+  // Waits for the segment allocation in progress, if any, and drops the allocated segment.
+  Status DropAllocatedSegment();
+
+  Status DoCloseActiveSegment(const OpId& expected_last_op_id, QuiescentMarkerPB* marker)
+      EXCLUDES(state_lock_, active_segment_mutex_);
+
+  // Loads the quiescent marker from the WAL dir, if there is one, and continues the log after it.
+  // Deletes the temp files of marker writes that a crash interrupted.
+  Status LoadQuiescentMarker(const std::vector<std::string>& wal_dir_files) REQUIRES(state_lock_);
+
+  // Trims from the reader the prefix of segments that contain only ops covered by the quiescent
+  // marker, and returns them. The caller deletes their files.
+  Status TrimSegmentsCoveredByQuiescentMarkerUnlocked(SegmentSequence* segments)
+      REQUIRES(state_lock_);
+
+  // Deletes files of segments that were trimmed from the reader.
+  Status DeleteSegmentFiles(const SegmentSequence& segments, bool update_metrics);
+
   // Sets 'out' to a newly created temporary file (see Env::NewTempWritableFile()) for a placeholder
   // segment. Sets 'result_path' to the fully qualified path to the unique filename created for the
   // segment.
@@ -544,7 +619,15 @@ class Log : public RefCountedThreadSafe<Log> {
   // - time interval/unsynced data exceeds upper limits
   //   time upper limit: interval_durable_wal_write_
   //   data upper limit: bytes_durable_wal_write_mb_ (MB)
-  Status DoSync() EXCLUDES(active_segment_mutex_);
+  // written_op_id must already be written to the log; it is durable once DoSync succeeds.
+  // Without it, the last synced entry op id is read under active_segment_mutex_, so it cannot race
+  // with the reset in DoResetLastSyncedEntryOpId.
+  Status DoSync(std::optional<OpId> written_op_id) EXCLUDES(active_segment_mutex_);
+
+  // Runs on the appender thread, which owns last_appended_entry_op_id_.
+  void DoResetLastSyncedEntryOpId(
+      const OpId& op_id, const StatusCallback& callback, const Status& status)
+      EXCLUDES(active_segment_mutex_);
 
   // Calls ::DoSync and resets fsync_task_in_queue_.
   void DoSyncAndResetTaskInQueue() EXCLUDES(active_segment_mutex_);
@@ -679,9 +762,26 @@ class Log : public RefCountedThreadSafe<Log> {
   // NOTE: this op is not necessarily durable unless gflag durable_wal_write is true.
   boost::atomic<OpId> last_synced_entry_op_id_{OpId()};
 
+  // The last known OpId for a REPLICATE message that is fsynced, with all entries before it.
+  // Lowered by ResetLastSyncedEntryOpId, since the replacing tail could have an earlier term.
+  std::atomic<OpId> last_durable_entry_op_id_{OpId()};
+
+  // Whether the last fsync failed.
+  std::atomic<bool> sync_failed_{false};
+
   // The last know OpId for a REPLICATE message appended to this log (any segment).
   // This variable is not accessed concurrently.
   OpId last_appended_entry_op_id_;
+
+  // Hybrid time and restart-safe batch time of the last appended REPLICATE message.
+  HybridTime last_appended_entry_hybrid_time_;
+  uint64_t last_appended_entry_time_ = 0;
+
+  std::atomic<CoarseTimePoint> last_append_time_{CoarseMonoClock::Now()};
+
+  // Ops up to the quiescent marker op id are durable outside of the WAL. See QuiescentMarkerPB.
+  std::optional<QuiescentMarkerPB> quiescent_marker_ GUARDED_BY(state_lock_);
+  boost::atomic<OpId> quiescent_marker_op_id_{OpId()};
 
   OpId last_submitted_op_id_;
 
@@ -782,6 +882,7 @@ class Log : public RefCountedThreadSafe<Log> {
   // The current replicated index that CDC has read.  Used for CDC read cache optimization.
   std::atomic<int64_t> cdc_min_replicated_index_{std::numeric_limits<int64_t>::max()};
 
+  // Also serializes quiescent marker writes and deletions of segments covered by it with Close.
   std::mutex log_copy_mutex_;
 
   // Used by GetSegmentsToGCUnlocked() as an anchor.

@@ -261,6 +261,7 @@ TableInfo::TableInfo(const TableInfo& other,
       pg_table_id(other.pg_table_id),
       skip_table_tombstone_check(other.skip_table_tombstone_check),
       deleted_cols(other.deleted_cols),
+      cdcsdk_schema_version_boundaries(other.cdcsdk_schema_version_boundaries),
       vector_index_deactivated_ht(other.vector_index_deactivated_ht) {
   this->deleted_cols.insert(this->deleted_cols.end(), deleted_cols.begin(), deleted_cols.end());
   CompleteInit();
@@ -287,6 +288,7 @@ TableInfo::TableInfo(const TableInfo& other,
       pg_table_id(other.pg_table_id),
       skip_table_tombstone_check(other.skip_table_tombstone_check),
       deleted_cols(other.deleted_cols),
+      cdcsdk_schema_version_boundaries(other.cdcsdk_schema_version_boundaries),
       vector_index_deactivated_ht(other.vector_index_deactivated_ht) {
   CompleteInit();
 }
@@ -310,7 +312,13 @@ TableInfo::TableInfo(const TableInfo& other, SchemaVersion min_schema_version)
       pg_table_id(other.pg_table_id),
       skip_table_tombstone_check(other.skip_table_tombstone_check),
       deleted_cols(other.deleted_cols),
+      cdcsdk_schema_version_boundaries(other.cdcsdk_schema_version_boundaries),
       vector_index_deactivated_ht(other.vector_index_deactivated_ht) {
+  // Prune boundaries together with the packings dropped by this copy.
+  const auto min_version = std::min(min_schema_version, other.schema_version);
+  cdcsdk_schema_version_boundaries.erase(
+      cdcsdk_schema_version_boundaries.begin(),
+      cdcsdk_schema_version_boundaries.lower_bound(min_version));
   CompleteInit();
 }
 
@@ -373,6 +381,11 @@ Status TableInfo::DoLoadFromPB(Primary primary, const TableInfoPB& pb) {
     deleted_cols.push_back(col);
   }
 
+  for (const auto& boundary : pb.cdcsdk_schema_version_boundaries()) {
+    cdcsdk_schema_version_boundaries.emplace(
+        boundary.schema_version(), OpId::FromPB(boundary.op_id()));
+  }
+
   return Status::OK();
 }
 
@@ -432,6 +445,11 @@ void TableInfo::ToPB(TableInfoPB* pb) const {
 
   for (const DeletedColumn& deleted_col : deleted_cols) {
     deleted_col.CopyToPB(pb->mutable_deleted_cols()->Add());
+  }
+  for (const auto& [version, boundary_op_id] : cdcsdk_schema_version_boundaries) {
+    auto* boundary = pb->add_cdcsdk_schema_version_boundaries();
+    boundary->set_schema_version(version);
+    boundary_op_id.ToPB(boundary->mutable_op_id());
   }
   pb->set_hybrid_time(hybrid_time.ToPB());
   op_id.ToPB(pb->mutable_op_id());
@@ -510,6 +528,7 @@ bool TableInfo::TEST_Equals(const TableInfo& lhs, const TableInfo& rhs) {
                           cotable_id,
                           schema_version,
                           deleted_cols,
+                          cdcsdk_schema_version_boundaries,
                           wal_retention_secs,
                           vector_index_deactivated_ht) &&
          DereferencedEqual(lhs.doc_read_context,
@@ -662,44 +681,6 @@ Status KvStoreInfo::MergeWithRestored(
       snapshot_kvstoreinfo, primary_table_id, colocated, overwrite);
 }
 
-// The snapshot lists every vector index that was on the tablet, including invalid indexes the
-// dump omitted and indexes dropped while a snapshot schedule still retained the tablet. Those
-// have no local table. A local vector index with no snapshot entry is the one whose options and
-// restored graph can disagree.
-Result<std::unordered_set<ColocationId>> SnapshotVectorIndexColocationIds(
-    const google::protobuf::RepeatedPtrField<TableInfoPB>& snapshot_tables) {
-  std::unordered_set<ColocationId> ids;
-  for (const auto& snapshot_table : snapshot_tables) {
-    if (!snapshot_table.index_info().has_vector_idx_options()) {
-      continue;
-    }
-    const auto& schema = snapshot_table.schema();
-    SCHECK(
-        schema.has_colocated_table_id() && schema.colocated_table_id().has_colocation_id(),
-        Corruption, "Snapshot vector index $0 has no colocation id", snapshot_table.table_name());
-    ids.insert(schema.colocated_table_id().colocation_id());
-  }
-  return ids;
-}
-
-Status CheckLocalVectorIndexesInSnapshot(
-    const TableInfoMap& tables, const std::unordered_set<ColocationId>& snapshot_colocation_ids) {
-  for (const auto& [table_id, table_info] : tables) {
-    if (!table_info->IsVectorIndex()) {
-      continue;
-    }
-    SCHECK(
-        table_info->schema().has_colocation_id(), Corruption,
-        "Local vector index $0 has no colocation id", table_id);
-    const auto colocation_id = table_info->schema().colocation_id();
-    SCHECK(
-        snapshot_colocation_ids.find(colocation_id) != snapshot_colocation_ids.end(), Corruption,
-        "Local vector index $0 colocation id $1 has no snapshot counterpart", table_id,
-        colocation_id);
-  }
-  return Status::OK();
-}
-
 // CREATE INDEX on the restore cluster fills the local vector_idx_options, but the restored chunk
 // files were written with the snapshot superblock's:
 // - ysql_dump assigns dense DocDB ids and CREATE INDEX records that column id.
@@ -761,13 +742,17 @@ Status KvStoreInfo::RestoreMissingValuesAndMergeTableSchemaPackings(
           table_info->ToString());
     }
     if (overwrite) {
-      auto snapshot_colocation_ids = VERIFY_RESULT(
-          SnapshotVectorIndexColocationIds(snapshot_kvstoreinfo.tables()));
       for (const auto& snapshot_table : snapshot_kvstoreinfo.tables()) {
         if (!snapshot_table.index_info().has_vector_idx_options()) {
           continue;
         }
-        const auto colocation_id = snapshot_table.schema().colocated_table_id().colocation_id();
+        const auto& snapshot_schema = snapshot_table.schema();
+        SCHECK(
+            snapshot_schema.has_colocated_table_id() &&
+                snapshot_schema.colocated_table_id().has_colocation_id(),
+            Corruption, "Snapshot vector index $0 has no colocation id",
+            snapshot_table.table_name());
+        const auto colocation_id = snapshot_schema.colocated_table_id().colocation_id();
         auto it = colocation_to_table.find(colocation_id);
         if (it == colocation_to_table.end()) {
           // The dump does not recreate an invalid index, or one dropped while a snapshot schedule
@@ -778,7 +763,9 @@ Status KvStoreInfo::RestoreMissingValuesAndMergeTableSchemaPackings(
         }
         RETURN_NOT_OK(RestoreVectorIndexOptions(it->second.get(), snapshot_table));
       }
-      RETURN_NOT_OK(CheckLocalVectorIndexesInSnapshot(tables, snapshot_colocation_ids));
+      // A local vector index with no snapshot entry, e.g. one created after the snapshot and kept
+      // by an in-place restore, gets no restored storage. If it was open, the restore wiped its
+      // storage, so it reopens empty and is backfilled after the restore.
     }
     return Status::OK();
   }
@@ -796,10 +783,6 @@ Status KvStoreInfo::RestoreMissingValuesAndMergeTableSchemaPackings(
     if (overwrite) {
       RETURN_NOT_OK(RestoreVectorIndexOptions(target_table, snapshot_table_pb));
     }
-  }
-  if (overwrite) {
-    RETURN_NOT_OK(CheckLocalVectorIndexesInSnapshot(
-        tables, VERIFY_RESULT(SnapshotVectorIndexColocationIds(snapshot_kvstoreinfo.tables()))));
   }
   return Status::OK();
 }
@@ -1730,6 +1713,12 @@ void RaftGroupMetadata::SetSchemaUnlocked(const Schema& schema,
       colocation_it->second = new_table_info;
     }
   }
+  // While under CDCSDK replication, record the outgoing schema version's boundary. WAL entries
+  // below this op id can only be packed with that version or older ones, so OldSchemaGC must retain
+  // their packings until the CDCSDK checkpoint passes it.
+  if (is_under_cdc_sdk_replication_ && op_id.valid() && version > it->second->schema_version) {
+    new_table_info->cdcsdk_schema_version_boundaries.emplace(it->second->schema_version, op_id);
+  }
   VLOG_WITH_PREFIX(1) << raft_group_id_ << " Updating table " << target_table_id
                       << " to Schema version " << version
                       << " from \n" << AsString(it->second)
@@ -2403,6 +2392,26 @@ void RaftGroupMetadata::EnableSchemaGC() {
       << "Disable GC counter underflow: " << disable_schema_gc_counter_;
 }
 
+SchemaVersion RaftGroupMetadata::MinCDCSDKSchemaVersionToRetainUnlocked(
+    const TableInfo& table_info) const {
+  // No active CDCSDK stream on the tablet: no constraint.
+  if (!is_under_cdc_sdk_replication_ || !cdc_sdk_min_checkpoint_op_id_.valid() ||
+      cdc_sdk_min_checkpoint_op_id_ == OpId::Max()) {
+    return std::numeric_limits<SchemaVersion>::max();
+  }
+  // Any WAL entry CDCSDK may still stream is at an index >= this bound. WAL entries are immutable
+  // and invisible to the RocksDB frontiers which OldSchemaGC relies on, so the packings of the
+  // versions they were packed with must be retained explicitly. Keep every version that was still
+  // current at some op id >= the bound, i.e. whose boundary op id is above it.
+  const auto bound = std::min(cdc_sdk_min_checkpoint_op_id_.index, cdc_min_replicated_index_);
+  auto min_version = table_info.schema_version;
+  for (auto it = table_info.cdcsdk_schema_version_boundaries.rbegin();
+       it != table_info.cdcsdk_schema_version_boundaries.rend() && it->second.index > bound; ++it) {
+    min_version = it->first;
+  }
+  return min_version;
+}
+
 Status RaftGroupMetadata::OldSchemaGC(
     const docdb::CotableSchemaVersionMap& versions) {
   bool need_flush = false;
@@ -2422,9 +2431,11 @@ Status RaftGroupMetadata::OldSchemaGC(
       }
       const auto& schema_packing_storage = it->second->doc_read_context->schema_packing_storage;
       const auto min_active = schema_packing_storage.registry().MinActiveVersion();
-      const auto new_min_schema_version =
-          min_active.has_value() && min_active.value() < schema_version ? min_active.value()
-                                                                        : schema_version;
+      auto new_min_schema_version = min_active.has_value() && min_active.value() < schema_version
+                                        ? min_active.value()
+                                        : schema_version;
+      new_min_schema_version =
+          std::min(new_min_schema_version, MinCDCSDKSchemaVersionToRetainUnlocked(*it->second));
       if (!schema_packing_storage.HasVersionBelow(new_min_schema_version)) {
         continue;
       }

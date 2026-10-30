@@ -118,6 +118,8 @@ DECLARE_uint32(client_request_id_shards);
 DECLARE_uint64(consensus_max_batch_size_bytes);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_load_balancing);
+DECLARE_bool(enable_quiescent_tablets);
+DECLARE_int32(quiescent_tablet_idle_sec);
 DECLARE_bool(enable_ysql);
 DECLARE_uint32(external_intent_cleanup_secs);
 DECLARE_int32(global_log_cache_size_limit_mb);
@@ -3734,6 +3736,36 @@ TEST_F_EX(XClusterTest, IsBootstrapRequired, XClusterTestNoParam) {
   // Table with data should require a bootstrap.
   ASSERT_OK(InsertRowsInProducer(0, 1));
   ASSERT_TRUE(ASSERT_RESULT(producer_client()->IsBootstrapRequired({producer_table_->id()})));
+}
+
+// A table whose tablets replaced their WAL with a quiescent marker is bootstrapped at the marker
+// and replicates the writes made after it.
+TEST_F_EX(XClusterTest, BootstrapQuiescentTablets, XClusterTestNoParam) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_quiescent_tablets) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_quiescent_tablet_idle_sec) = 1;
+  const uint32_t kReplicationFactor = 3, kTabletCount = 2, kNumMasters = 1, kNumTservers = 3;
+  ASSERT_OK(SetUpWithParams(
+      {kTabletCount}, {kTabletCount}, kReplicationFactor, kNumMasters, kNumTservers));
+  ASSERT_OK(InsertRowsInProducer(0, 100));
+  ASSERT_OK(WaitFor([this]() {
+    auto peers = ListTableActiveTabletPeers(producer_cluster(), producer_table_->id());
+    if (peers.size() != kTabletCount * kReplicationFactor) {
+      return false;
+    }
+    for (const auto& peer : peers) {
+      if (!peer->IsQuiescent()) {
+        return false;
+      }
+    }
+    return true;
+  }, 30s * kTimeMultiplier, "Producer tablets quiescent"));
+
+  auto bootstrap_ids = ASSERT_RESULT(
+      BootstrapProducer(producer_cluster(), producer_client(), producer_tables_));
+  ASSERT_OK(SetupUniverseReplication(producer_tables_, bootstrap_ids));
+  ASSERT_OK(CorrectlyPollingAllTablets(kTabletCount));
+  ASSERT_OK(InsertRowsInProducer(100, 200));
+  ASSERT_OK(VerifyNumRecordsOnConsumer(100));
 }
 
 TEST_F_EX(XClusterTest, TestStats, XClusterTestNoParam) {
