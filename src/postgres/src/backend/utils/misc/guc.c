@@ -917,6 +917,7 @@ static bool yb_conn_mgr_modifying_defaults = false;
 bool		yb_test_skip_binding_scan_keys;
 bool		yb_enable_advanced_index_cond_fold;
 static bool yb_bypass_cond_recheck;
+static bool yb_deprecated_enable_object_locking_infra;
 static bool yb_pushdown_is_not_null;
 static bool yb_pushdown_strict_inequality;
 static bool yb_conn_mgr_selective_deallocate;
@@ -2804,11 +2805,22 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"enable_object_locking_infra", PGC_SIGHUP, LOCK_MANAGEMENT,
+			gettext_noop("DEPRECATED: no-op."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_deprecated_enable_object_locking_infra,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_object_locking_infra", PGC_SIGHUP, LOCK_MANAGEMENT,
 			gettext_noop("Allow enabling object-level locking for table locks."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
-		&enable_object_locking_infra,
+		&yb_enable_object_locking_infra,
 		true,
 		NULL, NULL, NULL
 	},

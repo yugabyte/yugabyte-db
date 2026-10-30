@@ -231,6 +231,10 @@ DEFINE_NON_RUNTIME_bool(enable_object_locking_for_table_locks,
     "AcquireObject(Global)Lock, ReleaseObject(Global)Lock. These APIs are used to "
     "implement pg table locks.");
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, enable_object_locking_infra, kLocalPersisted, false, true,
+    "DEPRECATED: no-op. Use ysql_yb_enable_object_locking_infra.");
+// Replaces enable_object_locking_infra, which 2025.2 and 2026.1 already promote, so that upgrades
+// from those releases keep object locking off until the upgrade is finalized.
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_object_locking_infra, kLocalPersisted, false, true,
     "Auto flag that controls whether table-level object locking can be safely enabled "
     "during upgrade. Both this flag and enable_object_locking_for_table_locks "
     "must be true to enable the feature.");
