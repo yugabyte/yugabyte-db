@@ -274,3 +274,83 @@ SELECT * FROM base ORDER BY a;
  32 | bazzyyx | t
 (3 rows)
 
+-- GH-34438: Test DELETE RETURNING with partitions out-of-order.
+CREATE TABLE part7 (xdrop INT4, c BOOL, b TEXT, a INT4 NOT NULL);
+ALTER TABLE part7 DROP COLUMN xdrop;
+ALTER TABLE base ATTACH PARTITION part7 FOR VALUES FROM (71) TO (81);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+TRUNCATE base;
+INSERT INTO base VALUES (11, 'p1', TRUE), (12, 'p1', FALSE), (13, 'p1', TRUE),
+  (21, 'p2', TRUE), (22, 'p2', FALSE), (31, 'p3', TRUE), (32, 'p3', FALSE),
+  (71, 'p7', TRUE), (72, 'p7', FALSE), (73, 'p7', TRUE), (74, 'p7', FALSE),
+  (75, 'p7', TRUE), (76, 'p7', FALSE);
+DELETE FROM base WHERE b = 'p1' AND c RETURNING *;
+ a  | b  | c 
+----+----+---
+ 11 | p1 | t
+ 13 | p1 | t
+(2 rows)
+
+DELETE FROM base WHERE a = 12 RETURNING *;
+ a  | b  | c 
+----+----+---
+ 12 | p1 | f
+(1 row)
+
+DELETE FROM base WHERE c = FALSE AND a < 40 RETURNING b, a, tableoid::regclass;
+ b  | a  | tableoid 
+----+----+----------
+ p2 | 22 | part2
+ p3 | 32 | part3
+(2 rows)
+
+DELETE FROM base WHERE a IN (71, 72) RETURNING a, b, c, a * 2 AS a2;
+ a  | b  | c | a2  
+----+----+---+-----
+ 71 | p7 | t | 142
+ 72 | p7 | f | 144
+(2 rows)
+
+WITH d AS (DELETE FROM base WHERE b = 'p3' RETURNING *) SELECT * FROM d;
+ a  | b  | c 
+----+----+---
+ 31 | p3 | t
+(1 row)
+
+DELETE FROM part7 WHERE a = 73 RETURNING *;
+ c | b  | a  
+---+----+----
+ t | p7 | 73
+(1 row)
+
+-- The wholerow junk column is also fetched for tables with a secondary index
+-- or row triggers.
+CREATE INDEX ON base (b);
+DELETE FROM base WHERE a = 74 RETURNING *;
+ a  | b  | c 
+----+----+---
+ 74 | p7 | f
+(1 row)
+
+DROP INDEX base_b_idx;
+CREATE FUNCTION base_row_trig() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN RETURN OLD; END $$;
+CREATE TRIGGER part7_del BEFORE DELETE ON part7 FOR EACH ROW
+  EXECUTE FUNCTION base_row_trig();
+DELETE FROM base WHERE b = 'p7' RETURNING *;
+ a  | b  | c 
+----+----+---
+ 75 | p7 | t
+ 76 | p7 | f
+(2 rows)
+
+SELECT * FROM base ORDER BY a;
+ a  | b  | c 
+----+----+---
+ 21 | p2 | t
+(1 row)
+
+DROP TRIGGER part7_del ON part7;
+DROP FUNCTION base_row_trig();
