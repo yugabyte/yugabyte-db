@@ -13369,8 +13369,9 @@ Status CatalogManager::BuildLocationsForTablet(
       hide_time = HybridTime(l_tablet->pb.hide_hybrid_time());
     }
   }
-  const bool hidden_tablet_cleared_by_cdc =
-      tablet_hidden && hide_time.is_valid() &&
+  // A split does not hide the table, so the parent stays and the split error adds its children.
+  const bool hidden_table_released_by_cdc =
+      tablet_hidden && hide_time.is_valid() && tablet->table()->started_hiding() &&
       IsHiddenTabletClearedByCDC(tablet->table()->id(), hide_time);
   {
     auto l_tablet = tablet->LockForRead();
@@ -13398,8 +13399,8 @@ Status CatalogManager::BuildLocationsForTablet(
           l_tablet->pb.state_msg());
     }
     InitializeTabletLocationsPB(tablet->tablet_id(), l_tablet->pb, locs_pb);
-    if (hidden_tablet_cleared_by_cdc) {
-      locs_pb->set_is_hidden_table_cleared_by_cdc(true);
+    if (hidden_table_released_by_cdc) {
+      locs_pb->set_hidden_table_released_by_cdc(true);
     }
     locs = tablet->GetReplicaLocations();
     locs_pb->set_stale(locs->empty());
