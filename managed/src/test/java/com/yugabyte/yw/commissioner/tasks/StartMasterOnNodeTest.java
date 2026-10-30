@@ -4,10 +4,13 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -238,6 +241,53 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertEquals(START_MASTER_TASK_SEQUENCE.size(), subTasksByPosition.size());
     assertStartMasterSequence(subTasksByPosition);
+  }
+
+  // PLAT-23125: the master-start configure step only updates gflags and does not write the
+  // collector config, so the new master must get its collector config rewritten.
+  @Test
+  public void testStartMasterOnNodeRewritesOtelCollectorWhenMetricsExportEnabled() {
+    enableMetricsExport(defaultUniverse.getUniverseUUID());
+    Universe universe =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              for (NodeDetails node : u.getUniverseDetails().nodeDetailsSet) {
+                node.isMaster = false;
+              }
+            });
+    NodeTaskParams taskParams = new NodeTaskParams();
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
+    TaskInfo taskInfo = submitTask(taskParams, "host-n2");
+    assertEquals(
+        taskInfo.getErrorMessage()
+            + taskInfo.getSubTasks().stream()
+                .filter(t -> t.getTaskState() == Failure)
+                .map(t -> t.getTaskType() + ": " + t.getErrorMessage())
+                .collect(Collectors.toList()),
+        Success,
+        taskInfo.getTaskState());
+
+    List<TaskInfo> refreshes =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.ManageOtelCollector)
+            .collect(Collectors.toList());
+    assertEquals(1, refreshes.size());
+    // Not best effort outside failover, so a failure that leaves the collector stopped shows.
+    assertFalse(refreshes.get(0).getTaskParams().get("ignoreErrors").asBoolean());
+    // After the quorum change and the master address update, so a slow node cannot delay them.
+    int lastAddressUpdate =
+        taskInfo.getSubTasks().stream()
+            .filter(
+                t ->
+                    t.getTaskType() == TaskType.ChangeMasterConfig
+                        || (t.getTaskType() == TaskType.AnsibleConfigureServers
+                            && t.getTaskParams().path("updateMasterAddrsOnly").asBoolean()))
+            .mapToInt(TaskInfo::getPosition)
+            .max()
+            .getAsInt();
+    assertTrue(refreshes.get(0).getPosition() > lastAddressUpdate);
+    assertOtelRewritesRunLast(taskInfo);
   }
 
   @Test

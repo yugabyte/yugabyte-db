@@ -7,6 +7,9 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.yugabyte.yw.commissioner.Common;
@@ -14,6 +17,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType;
@@ -32,19 +36,24 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
+import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.provider.region.KubernetesRegionInfo;
 import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
 
 @RunWith(JUnitParamsRunner.class)
 public class UniverseCRUDHandlerTest extends FakeDBApplication {
@@ -106,6 +115,52 @@ public class UniverseCRUDHandlerTest extends FakeDBApplication {
     } else {
       throw new IllegalArgumentException("Unsupported type " + field.getType());
     }
+  }
+
+  // PLAT-23125: adding a read replica without otelCollectorEnabled in the request must not skip the
+  // OTEL collector on the new nodes.
+  @Test
+  public void createClusterCarriesOtelCollectorEnabledFromUniverse() {
+    Universe universe = ModelFactory.createFromConfig(provider, "otel-rr", "r1-az1-3-3");
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(), u -> u.getUniverseDetails().otelCollectorEnabled = true);
+    UniverseDefinitionTaskParams.UserIntent rrIntent =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.clone();
+    rrIntent.numNodes = 1;
+    rrIntent.replicationFactor = 1;
+    UniverseDefinitionTaskParams.Cluster asyncCluster =
+        new UniverseDefinitionTaskParams.Cluster(
+            UniverseDefinitionTaskParams.ClusterType.ASYNC, rrIntent);
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
+    taskParams.clusters =
+        new ArrayList<>(
+            Arrays.asList(universe.getUniverseDetails().getPrimaryCluster(), asyncCluster));
+    taskParams.nodeDetailsSet = universe.getUniverseDetails().nodeDetailsSet;
+    taskParams.expectedUniverseVersion = -1;
+    PlacementInfoUtil.updateUniverseDefinition(
+        taskParams,
+        customer.getId(),
+        asyncCluster.uuid,
+        UniverseConfigureTaskParams.ClusterOperationType.CREATE);
+    taskParams.clusters =
+        new ArrayList<>(Collections.singletonList(taskParams.getClusterByUuid(asyncCluster.uuid)));
+    taskParams.nodeDetailsSet =
+        taskParams.nodeDetailsSet.stream()
+            .filter(n -> n.isInPlacement(asyncCluster.uuid))
+            .collect(Collectors.toSet());
+    // As sent by a client that omits the field.
+    taskParams.otelCollectorEnabled = false;
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(FakeDBApplication.buildTaskInfo(null, TaskType.ReadOnlyClusterCreate));
+
+    universeCRUDHandler.createCluster(customer, universe, taskParams);
+
+    ArgumentCaptor<UniverseDefinitionTaskParams> captor =
+        ArgumentCaptor.forClass(UniverseDefinitionTaskParams.class);
+    verify(mockCommissioner).submit(any(TaskType.class), captor.capture());
+    assertTrue(captor.getValue().otelCollectorEnabled);
   }
 
   @Test
