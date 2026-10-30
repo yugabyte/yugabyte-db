@@ -328,6 +328,12 @@ message TSHeartbeatResponsePB {
   // on top of it.
   optional YsqlCatalogPrefetchLoadPB ysql_catalog_prefetch_load = 37;
 
+  // Set when the master applied every entry of the request's storage_metadata. The tserver only
+  // sends storage metadata that changed since the master last applied it, so until it sees this it
+  // keeps resending (older masters, a master that skipped the metadata for lack of time, or one
+  // that does not know a tablet or its replica on this tserver yet).
+  optional bool tablet_metadata_processed = 39;
+
   optional encryption.UniverseKeyRegistryPB universe_key_registry = 11;
 
   optional cdc.ConsumerRegistryPB consumer_registry = 12;
