@@ -996,7 +996,7 @@ class Tablet : public AbstractTablet,
 
   // After a regular DB flush, advances the flushed OpId of deactivated vector indexes that hold
   // nothing unflushed to the regular DB's.
-  Status MayAdvanceDeactivatedVectorIndexesFlushedOpId();
+  Status MayAdvanceIdleVectorIndexesFlushedOpId();
 
   bool is_sys_catalog() const { return is_sys_catalog_; }
   bool IsTransactionalRequest(bool is_ysql_request) const override;
