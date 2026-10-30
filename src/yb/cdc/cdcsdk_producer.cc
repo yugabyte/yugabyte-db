@@ -1744,7 +1744,7 @@ Status PopulateCDCSDKWriteRecordWithInvalidSchemaRetry(
       }
     }
 
-    auto status = PopulateCDCSDKWriteRecord(
+    status = PopulateCDCSDKWriteRecord(
         msg, metadata, tablet_peer, enum_oid_label_map, composite_atts_map, request_source,
         cached_schema_details, schema_packing_storages, resp, client, throughput_metrics);
   }
