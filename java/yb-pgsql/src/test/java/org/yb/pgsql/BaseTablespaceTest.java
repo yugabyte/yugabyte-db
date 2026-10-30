@@ -239,8 +239,11 @@ public abstract class BaseTablespaceTest extends BasePgSQLTest {
 
   protected YBTable getTableFromName(final String table) throws Exception {
     final YBClient client = miniCluster.getClient();
+    // ListTables uses substring matching, which also returns automatically named indexes.
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tables =
-      client.getTablesList(table).getTableInfoList();
+      client.getTablesList(table).getTableInfoList().stream()
+        .filter(info -> info.getName().equals(table))
+        .collect(Collectors.toList());
     assertEquals("More than one table found with name " + table, 1, tables.size());
     return client.openTableByUUID(
       tables.get(0).getId().toStringUtf8());
