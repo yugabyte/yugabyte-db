@@ -1408,10 +1408,9 @@ TEST_F(PgCatalogPrefetchAdmissionTest, RejectedPrefetchIsRetried) {
 }
 
 // Preloading makes a connection's prefetch a long sequence of paged reads, and a limit of one lets
-// one such sequence hold the only slot for all of them. A connection arriving meanwhile is rejected
-// over and over on a single retrier, and that is where the delay the rejection carries earns its
-// keep: these connections take tens of seconds with it and upwards of four minutes without it.
-// See issue #36187.
+// one such sequence hold the only slot for all of them. A connection arriving meanwhile is
+// rejected over and over on a single retrier, and that is where the delay the rejection carries
+// earns its keep. See issue #36187.
 class PgCatalogPrefetchSaturationTest : public PgCatalogPrefetchAdmissionTest {
  protected:
   void SetUp() override {
@@ -1422,20 +1421,26 @@ class PgCatalogPrefetchSaturationTest : public PgCatalogPrefetchAdmissionTest {
 
 TEST_F(PgCatalogPrefetchSaturationTest, RepeatedRejectionsDoNotStallConnections) {
   constexpr size_t kNumConnections = 16;
-  // Too few connections leave the slot free between sequences, so each one is rejected only once
-  // or twice and both retry schedules cost the same. Checked rather than assumed, because the test
-  // would still pass while proving nothing.
-  constexpr int64_t kMinRejections = 40;
-  // Measured with the delay: 9 s release, 35 s fastdebug, 54 s asan. Without it, 133 s to 460 s.
-  // Whether some connection keeps losing the slot is a race, so this catches the slow schedule
-  // without catching it every run: 4 runs of 4 in fastdebug, 3 of 6 in release. Neither 12 nor 24
-  // connections did better than 16, and 24 raised the quick runs to about 67 s, close enough to
-  // the deadline below to risk failing for the wrong reason.
+  // Enough to show the limit shed work, and deliberately no tighter. The rejection count does not
+  // separate the two retry schedules -- 52 to 75 of them with the hint against 33 to 120 without,
+  // across the runs quoted below -- and it moves the wrong way, because a faster retry sends more
+  // requests to a master that is still full. A threshold calibrated to the hinted arm therefore
+  // fails in the unhinted one, which is the arm this test exists to catch.
+  constexpr int64_t kMinRejections = static_cast<int64_t>(kNumConnections);
+  // The CI run in issue #36187 lost an AdminExecutePgsql to a 120 s timeout, so this bounds that
+  // symptom rather than being a tuned threshold.
+  //
+  // Release, 8 runs with the hint: 3.6 s to 6.5 s. Twelve runs with
+  // --master_ysql_catalog_prefetch_rejection_delay_ms=0, which restores the old schedule without
+  // changing code: eight under 10 s, the other four 33 s, 67 s, 197 s and 525 s. Whether a
+  // connection keeps losing the only slot is a race, so the unhinted schedule trips this deadline
+  // in 2 runs of 12 rather than in every run.
   constexpr int64_t kDeadlineMs = 120000;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_max_concurrent_ysql_catalog_prefetches) = 1;
 
   const auto rejections_before = Rejections();
+  const auto admissions_before = NewAdmissions();
   const auto start = MonoTime::Now();
   TestThreadHolder threads;
   for (size_t i = 0; i < kNumConnections; ++i) {
@@ -1447,6 +1452,12 @@ TEST_F(PgCatalogPrefetchSaturationTest, RepeatedRejectionsDoNotStallConnections)
   threads.JoinAll();
   const auto elapsed = MonoTime::Now() - start;
 
+  // One opening read per connection reaches admission whatever the retry schedule does afterwards
+  // -- OnlyTheFirstReadOfAConnectionCountsAsNew pins that per-connection count at one -- so this
+  // holds in both arms and says the elapsed time below measures 16 contended prefetches.
+  ASSERT_EQ(NewAdmissions() - admissions_before, static_cast<int64_t>(kNumConnections))
+      << "a connection prefetched without passing through admission, so the limit was not what "
+         "the timing below measured";
   ASSERT_GE(Rejections() - rejections_before, kMinRejections)
       << "the limit did not stay saturated, so neither retry schedule was exercised";
   ASSERT_LT(elapsed.ToMilliseconds(), kDeadlineMs)

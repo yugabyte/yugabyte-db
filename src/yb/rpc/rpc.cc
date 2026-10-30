@@ -106,7 +106,12 @@ bool RpcRetrier::HandleResponse(
     if (err &&
         err->has_code() &&
         err->code() == ErrorStatusPB::ERROR_SERVER_TOO_BUSY) {
-      auto status = DelayedRetry(rpc, controller_status, BackoffStrategy::kExponential);
+      // A server that said how long to wait knows better than the doubling below, which is meant
+      // for a server that may be down rather than one shedding load it will shed for a moment.
+      auto status = err->has_retry_after_ms()
+          ? DelayedRetry(rpc, controller_status,
+                         MonoDelta::FromMilliseconds(err->retry_after_ms()))
+          : DelayedRetry(rpc, controller_status, BackoffStrategy::kExponential);
       if (!status.ok()) {
         *out_status = status;
         return false;

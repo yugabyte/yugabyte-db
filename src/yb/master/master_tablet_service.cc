@@ -31,9 +31,8 @@
 #include "yb/master/scoped_leader_shared_lock-internal.h"
 #include "yb/master/ysql/ysql_manager.h"
 
+#include "yb/rpc/retry_after.h"
 #include "yb/rpc/rpc_context.h"
-
-#include "yb/tserver/tserver_error.h"
 
 #include "yb/util/cgroups.h"
 #include "yb/util/flag_validators.h"
@@ -74,11 +73,16 @@ DEFINE_validator(master_new_ysql_catalog_prefetch_percent,
 
 DEFINE_RUNTIME_uint32(master_ysql_catalog_prefetch_rejection_delay_ms, 100,
     "How long a client is told to wait before retrying a catalog prefetch the leader shed. The "
-    "client adds this to its retry delay once per rejection, so the wait grows linearly instead "
-    "of doubling, which is what an unhinted retryable error gets. Doubling suits a server that is "
-    "down; it badly overshoots here, because an admission slot is held for a single read rather "
-    "than for a whole prefetch and so frees many times a second. 0 attaches no delay, which "
-    "leaves the client on its own doubling schedule.");
+    "client adds this to its retry delay once per rejection and retries the same master, so the "
+    "k-th consecutive rejection of one request waits about k times this value: linear growth, "
+    "where an unhinted retryable error doubles. Doubling suits a server that is down; it badly "
+    "overshoots here, because an admission slot is held for a single read rather than for a "
+    "whole prefetch and so frees many times a second. Nothing caps the accumulated wait, as "
+    "nothing caps RpcRetrier's own rpc::BackoffStrategy::kLinear; only the doubling is clamped, "
+    "because that one reaches its ceiling in eight steps. The request's deadline is the only "
+    "bound here, and it is checked when a retry fires rather than when it is scheduled, so "
+    "the client sleeps the whole delay and then fails as TimedOut if that put it past the "
+    "deadline. 0 sends no hint, leaving the client on its own doubling schedule.");
 
 METRIC_DEFINE_gauge_int64(server, ysql_catalog_prefetches_in_progress,
                           "YSQL Catalog Prefetches In Progress",
@@ -263,16 +267,16 @@ Result<std::shared_ptr<void>> MasterTabletServiceImpl::AdmitRead(
     const auto delay_ms = FLAGS_master_ysql_catalog_prefetch_rejection_delay_ms;
     Status status;
     if (delay_ms > 0) {
-      // A ServiceUnavailable carrying a delay is sent as a response error, and the client waits
-      // that delay before retrying it. See DoSetupErrorAndRespond.
+      // rpc::RetryAfter rather than tserver::TabletServerDelay: a TabletServerDelay would make
+      // DoSetupErrorAndRespond send this as a response error, and the client answers one of those
+      // by demoting the master leader it should be retrying. RetryAfter leaves the rejection the
+      // bare ServiceUnavailable that read_query.h documents, so it still becomes
+      // ERROR_SERVER_TOO_BUSY and is still retried against the same peer, only sooner.
       status = STATUS_EC_FORMAT(
-          ServiceUnavailable,
-          tserver::TabletServerDelay(std::chrono::milliseconds(delay_ms)),
+          ServiceUnavailable, rpc::RetryAfter(std::chrono::milliseconds(delay_ms)),
           "Rejecting catalog prefetch: $0", reason);
     } else {
-      // One with no delay is sent as ERROR_SERVER_TOO_BUSY instead, which the client paces on a
-      // schedule of its own. Attaching a delay of zero would not do this: a zero delay is still a
-      // delay, and the client honours it by retrying without pausing.
+      // No hint, so the client keeps its own doubling schedule.
       status = STATUS_FORMAT(ServiceUnavailable, "Rejecting catalog prefetch: $0", reason);
     }
     // Throttled the way the write path throttles its own rejections. Without a line here the only
