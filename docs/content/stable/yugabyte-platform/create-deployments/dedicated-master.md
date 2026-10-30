@@ -45,7 +45,7 @@ You can place YB-Master processes as follows:
 
 - **Place Masters on the same nodes as T-Servers** (Shared): This is the default. In this mode, 15% of the total memory available on the node goes to YB-Master and 85% goes to YB-TServer.
 
-    You can override the memory allocation using the [--default_memory_limit_to_ram_ratio](../../../reference/configuration/yb-tserver/#default-memory-limit-to-ram-ratio) flag for non-Kubernetes deployments. For Kubernetes deployments, memory limits are controlled via Kubernetes resource specifications in the Helm chart, and `--default_memory_limit_to_ram_ratio` does not apply.
+    You can override the memory allocation using the [--default_memory_limit_to_ram_ratio](../../../reference/configuration/yb-tserver/#default-memory-limit-to-ram-ratio) flag for non-Kubernetes deployments. For Kubernetes deployments, `--default_memory_limit_to_ram_ratio` does not apply. You set pod memory in the [Kubernetes instance settings](../create-universes-wizard/#kubernetes). In v2026.1.3.0 and later, YugabyteDB Anywhere sets `memoryLimitHardPercentage` to 70% for the TServer and leaves the master at 85%.
 
 - **Place Masters on dedicated nodes** (Dedicated Masters): In this mode, nodes dedicated to Master processes are selected when the universe is created (or equivalently, during the `/universe_configure` REST API call). Placing YB-Masters on dedicated nodes eliminates the need to configure or share memory.
 

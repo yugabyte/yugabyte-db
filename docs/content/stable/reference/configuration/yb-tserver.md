@@ -768,6 +768,17 @@ Default: `0`
 
 Deprecated in v2025.2.3.0. Use [yb_max_merge_scan_streams](#yb-max-merge-scan-streams) instead.
 
+##### yb_refresh_matview_in_place
+
+{{% tags/wrap %}}
+
+Default: `false`
+{{% /tags/wrap %}}
+
+When `true`, [REFRESH MATERIALIZED VIEW](../../../api/ysql/the-sql-language/statements/ddl_refresh_matview/) deletes all rows from the [materialized view](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) and inserts the new query result into the same table. When `false`, refresh builds a new table and swaps it in.
+
+During a YSQL major upgrade, refresh always runs in place, regardless of this setting.
+
 ## Networking
 
 ### RPC and binding addresses
@@ -2851,6 +2862,24 @@ Default: `false`
 Enable server-server (node-to-node) encryption between YugabyteDB YB-Master and YB-TServer servers in a cluster or universe. To work properly, all YB-Master servers must also have their [--use_node_to_node_encryption](../yb-master/#use-node-to-node-encryption) setting enabled.
 
 When enabled, [--allow_insecure_connections](#allow-insecure-connections) should be set to false to disallow insecure connections.
+
+##### --openssl_require_fips
+
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+{{<tags/feature/t-server>}}
+Default: `false`
+{{% /tags/wrap %}}
+
+Requires the YB-TServer and its YSQL processes to use the OpenSSL FIPS provider. In v2026.1.3.0 and later, this includes YSQL Connection Manager. When enabled, these processes fail to start if the FIPS provider can't be loaded.
+
+Set the same value on every YB-Master and YB-TServer. See [--openssl_require_fips](../yb-master/#openssl-require-fips) for the YB-Master.
+
+The flag selects the OpenSSL FIPS provider. To encrypt client connections, also enable [use_client_to_server_encryption](#use-client-to-server-encryption).
+
+When [ysql_enable_auth](#ysql-enable-auth) is enabled, the auto-generated `ysql_hba.conf` entry uses `scram-sha-256` and ignores `ysql_auth_method`. Rules in [ysql_hba_conf_csv](#ysql-hba-conf-csv) are checked first, so an earlier `md5` rule still applies to the connections it matches. A role whose password is stored as an MD5 hash cannot sign in through the SCRAM rule until you change that password. [Migrate existing MD5 passwords](../../../secure/authentication/password-authentication/#migrate-existing-md5-passwords-to-scram-sha-256) before you enable this flag.
+
+The flag also sets `pgcrypto.builtin_crypto_enabled` to `fips`. pgcrypto then rejects built-in algorithms that are not FIPS-validated.
 
 ##### --cipher_list
 
