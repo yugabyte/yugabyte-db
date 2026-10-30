@@ -4942,8 +4942,8 @@ TEST_P(PgCatalogPreloadCacheSplitTest, ListMisses) {
   ASSERT_EQ(misses[GetParam().list_index] == 0, GetParam().fills_list);
 }
 
-// With a partitioned table, the relcache build requests pg_proc and fills all its caches, also when
-// the list names only one of them or none.
+// With a partitioned table, the relcache build requests pg_proc and pg_range and fills all their
+// caches, also when the list names only some of them or none.
 class PgCatalogPreloadCachePartitionedTest
     : public PgCatalogPreloadCacheListTestBase,
       public ::testing::WithParamInterface<std::string> {
@@ -4952,16 +4952,19 @@ class PgCatalogPreloadCachePartitionedTest
     return {"--ysql_yb_test_catalog_preload_cache_list=" + GetParam()};
   }
 
-  static void AssertNoPgProcMisses(std::unordered_map<std::string, int64_t>& misses) {
+  static void AssertNoPrefilledCacheMisses(std::unordered_map<std::string, int64_t>& misses) {
     ASSERT_EQ(misses["pg_proc_oid_index"], 0);
     ASSERT_EQ(misses["pg_proc_proname_args_nsp_index"], 0);
+    ASSERT_EQ(misses["pg_range_rngtypid_index"], 0);
+    ASSERT_EQ(misses["pg_range_rngmultitypid_index"], 0);
   }
 };
 
 INSTANTIATE_TEST_CASE_P(, PgCatalogPreloadCachePartitionedTest,
-                        ::testing::Values("PROCOID", "PROCNAMEARGSNSP", "pg_database"));
+                        ::testing::Values("PROCOID", "PROCNAMEARGSNSP", "pg_attribute",
+                                          "pg_database"));
 
-TEST_P(PgCatalogPreloadCachePartitionedTest, PgProcMisses) {
+TEST_P(PgCatalogPreloadCachePartitionedTest, PrefilledCacheMisses) {
   {
     auto conn = ASSERT_RESULT(Connect());
     ASSERT_OK(conn.Execute(
@@ -4970,18 +4973,32 @@ TEST_P(PgCatalogPreloadCachePartitionedTest, PgProcMisses) {
     // Building an expression key looks up its function by OID.
     ASSERT_OK(conn.Execute("CREATE TABLE pe (k INT) PARTITION BY RANGE ((k % 10))"));
     ASSERT_OK(conn.Execute("CREATE TABLE pe1 PARTITION OF pe FOR VALUES FROM (0) TO (5)"));
+    // Sorting the bounds of a range-type key looks up the range type.
+    ASSERT_OK(conn.Execute("CREATE TABLE pr (r int4range) PARTITION BY RANGE (r)"));
+    ASSERT_OK(conn.Execute(
+        "CREATE TABLE pr1 PARTITION OF pr FOR VALUES FROM ('[1,2)') TO ('[5,6)')"));
+    ASSERT_OK(conn.Execute(
+        "CREATE TABLE pr2 PARTITION OF pr FOR VALUES FROM ('[5,6)') TO ('[9,10)')"));
   }
   auto ddl_conn = ASSERT_RESULT(Connect());
 
   // The first statement also reports the misses of the connection start-up.
   auto conn = ASSERT_RESULT(Connect());
   auto misses = ASSERT_RESULT(MissesFor(conn, kFunctionNameQuery));
-  ASSERT_NO_FATALS(AssertNoPgProcMisses(misses));
+  ASSERT_NO_FATALS(AssertNoPrefilledCacheMisses(misses));
 
+  // The type cache keeps the range info of int4range across the refresh, so only a key type that
+  // the backend has not seen yet makes the refresh look up pg_range. A multirange key looks up both
+  // the multirange and its range.
+  ASSERT_OK(ddl_conn.Execute("CREATE TABLE pm (m int8multirange) PARTITION BY RANGE (m)"));
+  ASSERT_OK(ddl_conn.Execute(
+      "CREATE TABLE pm1 PARTITION OF pm FOR VALUES FROM ('{[1,2)}') TO ('{[5,6)}')"));
+  ASSERT_OK(ddl_conn.Execute(
+      "CREATE TABLE pm2 PARTITION OF pm FOR VALUES FROM ('{[5,6)}') TO ('{[9,10)}')"));
   ASSERT_OK(IncrementAllDBCatalogVersions(ddl_conn, IsBreakingCatalogVersionChange::kTrue));
   WaitForCatalogVersionToPropagate();
   misses = ASSERT_RESULT(MissesFor(conn, kFunctionNameQuery));
-  ASSERT_NO_FATALS(AssertNoPgProcMisses(misses));
+  ASSERT_NO_FATALS(AssertNoPrefilledCacheMisses(misses));
 }
 
 // The tserver rejects a value that is not a comma separated list of names, so it never reaches the
