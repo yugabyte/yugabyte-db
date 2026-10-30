@@ -2364,6 +2364,14 @@ YBCRestartWriteTransaction()
 		RollbackAndReleaseCurrentSubTransaction();
 
 	/*
+	 * Control may have escaped a function with a SET clause, such as
+	 * SET role, which leaves undoing it to the abort; without this the retry
+	 * runs with the function's settings.  Keep the transaction's own level: a
+	 * SET earlier in an extended-protocol batch is not replayed.
+	 */
+	AtEOXact_GUC(false, CurrentTransactionState->gucNestLevel + 1);
+
+	/*
 	 * Presence of triggers pushes additional snapshots. Pop all of them. Given
 	 * that we restart the writes only when we haven't sent any data back to the
 	 * user, removing all snapshots is safe.

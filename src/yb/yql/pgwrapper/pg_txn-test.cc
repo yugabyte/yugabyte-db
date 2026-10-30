@@ -1332,4 +1332,67 @@ TEST_F(PgTxnTest, ColumnTombstoneCollectedByPartialCompaction) {
       "1, NULL");
 }
 
+// A query-layer retry must not undo a SET ROLE that ran earlier in the same
+// transaction and is not replayed. In an extended-protocol batch, SET ROLE
+// does not advance the command id, so a later statement in the batch may
+// still be retried. Scenario: one pipeline sends SET ROLE alice and then
+// SELECT f(), where f returns current_user and raises a retriable kAborted
+// (YB001) on its first attempt only; the retried f must still run as alice.
+// This needs libpq pipeline mode, which pg_regress's psql cannot drive.
+TEST_F(PgTxnTest, BatchedRetryKeepsSetRole) {
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("CREATE SEQUENCE attempt"));
+    ASSERT_OK(conn.Execute("CREATE ROLE alice"));
+    ASSERT_OK(conn.Execute("GRANT USAGE ON SEQUENCE attempt TO alice"));
+    ASSERT_OK(conn.Execute(
+        "CREATE FUNCTION f() RETURNS TEXT LANGUAGE plpgsql AS $$\n"
+        "BEGIN\n"
+        "  IF nextval('attempt') = 1 THEN\n"
+        "    RAISE EXCEPTION 'injected kAborted' USING ERRCODE = 'YB001';\n"
+        "  END IF;\n"
+        "  RETURN current_user;\n"
+        "END $$"));
+    ASSERT_OK(conn.Execute("GRANT EXECUTE ON FUNCTION f() TO alice"));
+  }
+
+  const auto conn_str = Format(
+      "host=$0 port=$1 dbname=yugabyte user=$2", pg_host_port().host(),
+      pg_host_port().port(), PGConnSettings::kDefaultUser);
+  PGConnPtr conn(PQconnectdb(conn_str.c_str()));
+  ASSERT_EQ(PQstatus(conn.get()), CONNECTION_OK) << PQerrorMessage(conn.get());
+  ASSERT_EQ(PQenterPipelineMode(conn.get()), 1) << PQerrorMessage(conn.get());
+  for (const auto* query : {"SET ROLE alice", "SELECT f()"}) {
+    ASSERT_EQ(
+        PQsendQueryParams(
+            conn.get(), query, 0, nullptr, nullptr, nullptr, nullptr, 0),
+        1)
+        << PQerrorMessage(conn.get());
+  }
+  ASSERT_EQ(PQpipelineSync(conn.get()), 1) << PQerrorMessage(conn.get());
+
+  std::string user_seen_by_f;
+  for (bool done = false; !done;) {
+    PGResultPtr res(PQgetResult(conn.get()));
+    if (!res) {
+      ASSERT_NE(PQstatus(conn.get()), CONNECTION_BAD)
+          << PQerrorMessage(conn.get());
+      continue;
+    }
+    switch (PQresultStatus(res.get())) {
+      case PGRES_PIPELINE_SYNC:
+        done = true;
+        break;
+      case PGRES_TUPLES_OK:
+        user_seen_by_f = PQgetvalue(res.get(), 0, 0);
+        break;
+      case PGRES_COMMAND_OK:
+        break;
+      default:
+        FAIL() << PQresultErrorMessage(res.get());
+    }
+  }
+  ASSERT_EQ(user_seen_by_f, "alice");
+}
+
 } // namespace yb::pgwrapper
