@@ -53,6 +53,7 @@ void od_config_init(od_config_t *config)
 	config->client_max = 0;
 	config->client_max_routing = 0;
 	config->server_login_retry = 1;
+	config->cancel_timeout_ms = 5U * 1000U; /* 5 seconds */
 	config->cache_coroutine = 0;
 	config->cache_msg_gc_size = 0;
 	config->coroutine_stack_size = 4;
@@ -83,6 +84,7 @@ void od_config_reload(od_config_t *current_config, od_config_t *new_config)
 	current_config->client_max = new_config->client_max;
 	current_config->client_max_routing = new_config->client_max_routing;
 	current_config->server_login_retry = new_config->server_login_retry;
+	current_config->cancel_timeout_ms = new_config->cancel_timeout_ms;
 
 	/* YB: Update log flags on config reload as well */
 	current_config->log_debug = new_config->log_debug;
@@ -353,6 +355,8 @@ void od_config_print(od_config_t *config, od_logger_t *logger)
 	       config->client_max_routing);
 	od_log(logger, "config", NULL, NULL, "server_login_retry      %d",
 	       config->server_login_retry);
+	od_log(logger, "config", NULL, NULL, "cancel_timeout_ms         %u",
+	       config->cancel_timeout_ms);
 	od_log(logger, "config", NULL, NULL, "cache_msg_gc_size       %d",
 	       config->cache_msg_gc_size);
 	od_log(logger, "config", NULL, NULL, "cache_coroutine         %d",

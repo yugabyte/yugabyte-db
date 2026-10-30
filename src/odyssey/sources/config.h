@@ -80,6 +80,7 @@ struct od_config {
 	int client_max;
 	int client_max_routing;
 	int server_login_retry;
+	_Atomic int cancel_timeout_ms;
 	int reserve_session_server_connection;
 	/*  */
 	int cache_coroutine;

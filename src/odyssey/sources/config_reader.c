@@ -69,6 +69,7 @@ typedef enum {
 	OD_LCLIENT_MAX,
 	OD_LCLIENT_MAX_ROUTING,
 	OD_LSERVER_LOGIN_RETRY,
+	OD_LCANCEL_TIMEOUT_MS,
 	OD_LCLIENT_LOGIN_TIMEOUT,
 	OD_LCLIENT_FWD_ERROR,
 	OD_LPRESERVE_SESSION_SERVER_CONN,
@@ -242,6 +243,7 @@ static od_keyword_t od_config_keywords[] = {
 	od_keyword("client_max", OD_LCLIENT_MAX),
 	od_keyword("client_max_routing", OD_LCLIENT_MAX_ROUTING),
 	od_keyword("server_login_retry", OD_LSERVER_LOGIN_RETRY),
+	od_keyword("cancel_timeout_ms", OD_LCANCEL_TIMEOUT_MS),
 	od_keyword("client_login_timeout", OD_LCLIENT_LOGIN_TIMEOUT),
 	od_keyword("client_fwd_error", OD_LCLIENT_FWD_ERROR),
 	od_keyword("reserve_session_server_connection",
@@ -2402,6 +2404,15 @@ static int od_config_reader_parse(od_config_reader_t *reader,
 				goto error;
 			}
 			continue;
+		/* cancel_timeout_ms */
+		case OD_LCANCEL_TIMEOUT_MS: {
+			int val;
+			if (!od_config_reader_number(reader, &val)) {
+				goto error;
+			}
+			config->cancel_timeout_ms = val;
+			continue;
+		}
 		/* readahead */
 		case OD_LREADAHEAD:
 			if (!od_config_reader_number(reader,
