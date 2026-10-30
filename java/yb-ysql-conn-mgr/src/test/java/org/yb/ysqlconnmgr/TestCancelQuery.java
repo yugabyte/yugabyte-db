@@ -50,6 +50,7 @@ public class TestCancelQuery extends BaseYsqlConnMgr {
   // Outlasts WAIT_TIMEOUT_MS, so a long sleep only finishes in time if the cancel lands.
   private static final int LONG_SLEEP_S = 60;
   private static final int SHORT_SLEEP_S = 5;
+  private static final int RACE_ITERATIONS = 100;
 
   private final ExecutorService executor = Executors.newCachedThreadPool();
 
@@ -320,6 +321,47 @@ public class TestCancelQuery extends BaseYsqlConnMgr {
       holder1.commit();
       assertCompleted(result);
       holder2.commit();
+    }
+  }
+
+  @Test
+  public void testLateCancelDoesNotHitNextClient() throws Exception {
+    try (Connection holder = connMgrConn();
+         Connection a = connMgrConn();
+         Connection b = connMgrConn();
+         Statement aStmt = a.createStatement();
+         Statement bStmt = b.createStatement()) {
+      holder.setAutoCommit(false);
+      backendPid(holder);
+
+      int bCanceled = 0;
+      for (int i = 0; i < RACE_ITERATIONS; i++) {
+        Future<?> aResult = executor.submit(() -> {
+          aStmt.execute("SELECT pg_sleep(0.05)");
+          return null;
+        });
+        Future<?> bResult = executor.submit(() -> {
+          Thread.sleep(2);
+          bStmt.execute("SELECT pg_sleep(0.1)");
+          return null;
+        });
+        Thread.sleep(44 + 2 * (i % 4));
+        aStmt.cancel();
+
+        try {
+          aResult.get(WAIT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+        } catch (ExecutionException e) {
+          assertSqlState(e.getCause(), QUERY_CANCELED);
+        }
+        try {
+          bResult.get(WAIT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+        } catch (ExecutionException e) {
+          assertSqlState(e.getCause(), QUERY_CANCELED);
+          bCanceled++;
+        }
+      }
+      assertEquals(0, bCanceled);
+      holder.commit();
     }
   }
 }

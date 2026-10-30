@@ -2967,6 +2967,8 @@ void od_frontend(void *arg)
 		od_router_cancel_init(&cancel);
 		rc = od_router_cancel(router, &client->startup.key, &cancel);
 		if (rc == 0) {
+			if (od_unlikely(instance->config.TEST_yb_cancel_delay_ms > 0))
+				machine_sleep(instance->config.TEST_yb_cancel_delay_ms);
 			od_cancel(client->global, cancel.storage, &cancel.key,
 				  &cancel.id);
 			od_router_cancel_free(&cancel);
