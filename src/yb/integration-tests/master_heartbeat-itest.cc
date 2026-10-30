@@ -23,6 +23,7 @@
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/common_consensus_util.h"
 #include "yb/common/common_net.h"
 #include "yb/common/common_types.pb.h"
 
@@ -48,6 +49,8 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_controller.h"
+
+#include "yb/server/clock.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
@@ -83,6 +86,7 @@ DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_int32(tablet_report_limit);
 DECLARE_int32(replication_factor);
 DECLARE_uint64(TEST_inject_latency_during_tablet_report_ms);
+DECLARE_uint32(maximum_tablet_leader_lease_expired_secs);
 
 METRIC_DECLARE_histogram(handler_latency_yb_master_MasterHeartbeat_TSHeartbeat);
 
@@ -823,62 +827,353 @@ class HeartbeatMetadataTest : public MasterHeartbeatITest {
   std::unique_ptr<master::MasterHeartbeatProxy> master_proxy_;
 };
 
-// The master looks up the tablet report's tablets and the metadata tablets in one batch; the
-// metadata entries index into that batch after the reported ones. Unknown tablet ids in the
-// metadata lists are skipped without failing the heartbeat.
-TEST_F(HeartbeatMetadataTest, MetadataAppliedToItsOwnTablet) {
+// leader_info entries are applied on their own, not joined onto storage_metadata. The fixture
+// makes the sending tserver the leader of led_ and a follower of followed_.
+class HeartbeatLeaderInfoTest : public HeartbeatMetadataTest {
+ public:
+  void SetUp() override {
+    HeartbeatMetadataTest::SetUp();
+    led_ = tablets_[0];
+    followed_ = tablets_[1];
+    SetRole(led_, PeerRole::LEADER);
+    SetRole(followed_, PeerRole::FOLLOWER);
+    for (const auto& tablet : {led_, followed_}) {
+      tablet->TEST_set_last_time_with_valid_leader(kLongAgo);
+    }
+  }
+
+ protected:
+  static constexpr MonoTime kLongAgo = MonoTime::kMin;
+  static constexpr MicrosTime kMinuteMicros = 60 * 1000000ULL;
+
+  void SetRole(const master::TabletInfoPtr& tablet, PeerRole role) {
+    auto replicas = std::make_shared<master::TabletReplicaMap>(*tablet->GetReplicaLocations());
+    for (auto& [uuid, replica] : *replicas) {
+      replica.role = uuid == ts_uuid_ ? role : PeerRole::FOLLOWER;
+    }
+    tablet->SetReplicaLocations(replicas);
+  }
+
+  void AddLeaderInfo(
+      master::TSHeartbeatRequestPB* req, const TabletId& tablet_id,
+      consensus::LeaderLeaseStatus status, MicrosTime ht_lease_exp = 0) {
+    auto* info = req->add_leader_info();
+    info->set_tablet_id(tablet_id);
+    info->set_leader_lease_status(status);
+    if (ht_lease_exp != 0) {
+      info->set_ht_lease_expiration(ht_lease_exp);
+    }
+  }
+
+  MicrosTime NowMicros() {
+    return CHECK_RESULT(mini_cluster_->GetLeaderMiniMaster())
+        ->master()->clock()->Now().GetPhysicalValueMicros();
+  }
+
+  master::TabletLeaderLeaseInfo Lease(const master::TabletInfoPtr& tablet) {
+    return Replica(tablet).leader_lease_info;
+  }
+
+  void AddTabletReport(
+      master::TSHeartbeatRequestPB* req, const master::TabletInfoPtr& tablet,
+      const consensus::ConsensusStatePB& cstate) {
+    auto* report = req->mutable_tablet_report();
+    report->set_is_incremental(true);
+    report->set_sequence_number(ts_->latest_report_seqno() + 1);
+    auto* updated = report->add_updated_tablets();
+    updated->set_tablet_id(tablet->id());
+    *updated->mutable_committed_consensus_state() = cstate;
+    updated->set_state(tablet::RaftGroupStatePB::RUNNING);
+    updated->set_tablet_data_state(tablet::TabletDataState::TABLET_DATA_READY);
+  }
+
+  // Reports a new term with the given leader, which makes the master rebuild the replica map.
+  Status ReportNewTerm(const master::TabletInfoPtr& tablet, const std::string& leader_uuid) {
+    auto cstate = tablet->LockForRead()->pb.committed_consensus_state();
+    cstate.set_leader_uuid(leader_uuid);
+    cstate.set_current_term(cstate.current_term() + 1);
+    master::TSHeartbeatRequestPB req;
+    AddTabletReport(&req, tablet, cstate);
+    return SendHeartbeat(&req);
+  }
+
+  std::string OtherPeer(const master::TabletInfoPtr& tablet) {
+    const auto cstate = tablet->LockForRead()->pb.committed_consensus_state();
+    for (const auto& peer : cstate.config().peers()) {
+      if (peer.permanent_uuid() != ts_uuid_) {
+        return peer.permanent_uuid();
+      }
+    }
+    return std::string();
+  }
+
+  master::TabletInfoPtr led_;
+  master::TabletInfoPtr followed_;
+};
+
+// The master looks up the tablet report's tablets and the three metadata lists in one batch; each
+// list indexes into that batch after the one before it. Unknown tablet ids are skipped without
+// failing the heartbeat.
+TEST_F(HeartbeatLeaderInfoTest, MetadataAppliedToItsOwnTablet) {
   const uint64_t kSstFilesSize = 12345;
   const uint64_t kCompactionTime = 0x1234567;
-  const auto& reported_tablet = tablets_[0];
-  const auto& metadata_tablet = tablets_[1];
+  const auto lease_exp = NowMicros() + kMinuteMicros;
 
   master::TSHeartbeatRequestPB req;
-  auto* report = req.mutable_tablet_report();
-  report->set_is_incremental(true);
-  report->set_sequence_number(ts_->latest_report_seqno() + 1);
-  auto* updated = report->add_updated_tablets();
-  updated->set_tablet_id(reported_tablet->id());
-  *updated->mutable_committed_consensus_state() =
-      reported_tablet->LockForRead()->pb.committed_consensus_state();
-  updated->set_state(tablet::RaftGroupStatePB::RUNNING);
-  updated->set_tablet_data_state(tablet::TabletDataState::TABLET_DATA_READY);
+  AddTabletReport(&req, followed_, followed_->LockForRead()->pb.committed_consensus_state());
   AddStorageMetadata(&req, "unknown-tablet-1", kSstFilesSize);
-  AddStorageMetadata(&req, metadata_tablet->id(), kSstFilesSize);
-  AddFullCompactionStatus(&req, reported_tablet->id(), kCompactionTime);
-  AddFullCompactionStatus(&req, "unknown-tablet-2", kCompactionTime);
+  AddStorageMetadata(&req, followed_->id(), kSstFilesSize);
+  AddLeaderInfo(&req, "unknown-tablet-2", consensus::LeaderLeaseStatus::HAS_LEASE, lease_exp);
+  AddLeaderInfo(&req, led_->id(), consensus::LeaderLeaseStatus::HAS_LEASE, lease_exp);
+  AddFullCompactionStatus(&req, led_->id(), kCompactionTime);
+  AddFullCompactionStatus(&req, "unknown-tablet-3", kCompactionTime);
   ASSERT_OK(SendHeartbeat(&req));
 
-  ASSERT_EQ(Replica(metadata_tablet).drive_info.sst_files_size, kSstFilesSize);
-  ASSERT_NE(Replica(reported_tablet).drive_info.sst_files_size, kSstFilesSize);
+  ASSERT_EQ(Replica(followed_).drive_info.sst_files_size, kSstFilesSize);
+  ASSERT_NE(Replica(led_).drive_info.sst_files_size, kSstFilesSize);
+  ASSERT_EQ(Lease(led_).ht_lease_expiration, lease_exp);
+  ASSERT_EQ(Lease(followed_), master::TabletLeaderLeaseInfo{});
   ASSERT_EQ(
-      Replica(reported_tablet).full_compaction_status.last_full_compaction_time.ToUint64(),
-      kCompactionTime);
+      Replica(led_).full_compaction_status.last_full_compaction_time.ToUint64(), kCompactionTime);
   ASSERT_NE(
-      Replica(metadata_tablet).full_compaction_status.last_full_compaction_time.ToUint64(),
+      Replica(followed_).full_compaction_status.last_full_compaction_time.ToUint64(),
       kCompactionTime);
 }
 
-TEST_F(HeartbeatMetadataTest, SkipProcessingTabletMetadataCoversCompactionStatuses) {
+TEST_F(HeartbeatLeaderInfoTest, SkipProcessingTabletMetadataCoversAllLists) {
   const uint64_t kSstFilesSize = 12345;
   const uint64_t kCompactionTime = 0x1234567;
-  const auto& tablet = tablets_[0];
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_processing_tablet_metadata) = true;
   master::TSHeartbeatRequestPB req;
-  AddStorageMetadata(&req, tablet->id(), kSstFilesSize);
-  AddFullCompactionStatus(&req, tablet->id(), kCompactionTime);
+  AddStorageMetadata(&req, led_->id(), kSstFilesSize);
+  AddLeaderInfo(
+      &req, led_->id(), consensus::LeaderLeaseStatus::HAS_LEASE, NowMicros() + kMinuteMicros);
+  AddFullCompactionStatus(&req, led_->id(), kCompactionTime);
   ASSERT_OK(SendHeartbeat(&req));
-  ASSERT_NE(Replica(tablet).drive_info.sst_files_size, kSstFilesSize);
+  ASSERT_NE(Replica(led_).drive_info.sst_files_size, kSstFilesSize);
+  ASSERT_EQ(Lease(led_), master::TabletLeaderLeaseInfo{});
   ASSERT_NE(
-      Replica(tablet).full_compaction_status.last_full_compaction_time.ToUint64(),
-      kCompactionTime);
+      Replica(led_).full_compaction_status.last_full_compaction_time.ToUint64(), kCompactionTime);
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_processing_tablet_metadata) = false;
   ASSERT_OK(SendHeartbeat(&req));
-  ASSERT_EQ(Replica(tablet).drive_info.sst_files_size, kSstFilesSize);
+  ASSERT_EQ(Replica(led_).drive_info.sst_files_size, kSstFilesSize);
+  ASSERT_TRUE(Lease(led_).initialized);
   ASSERT_EQ(
-      Replica(tablet).full_compaction_status.last_full_compaction_time.ToUint64(),
-      kCompactionTime);
+      Replica(led_).full_compaction_status.last_full_compaction_time.ToUint64(), kCompactionTime);
+}
+
+TEST_F(HeartbeatLeaderInfoTest, LeaderInfoAppliedWithoutStorageMetadata) {
+  const auto lease_exp = NowMicros() + kMinuteMicros;
+  master::TSHeartbeatRequestPB req;
+  AddLeaderInfo(&req, "unknown-tablet", consensus::LeaderLeaseStatus::HAS_LEASE, lease_exp);
+  AddLeaderInfo(&req, led_->id(), consensus::LeaderLeaseStatus::HAS_LEASE, lease_exp);
+  AddLeaderInfo(&req, followed_->id(), consensus::LeaderLeaseStatus::HAS_LEASE, lease_exp);
+  ASSERT_OK(SendHeartbeat(&req));
+
+  auto lease = Lease(led_);
+  ASSERT_TRUE(lease.initialized);
+  ASSERT_EQ(lease.leader_lease_status, consensus::LeaderLeaseStatus::HAS_LEASE);
+  ASSERT_EQ(lease.ht_lease_expiration, lease_exp);
+  ASSERT_GT(led_->last_time_with_valid_leader(), kLongAgo);
+
+  // The entry from a follower leaves its replica and the tablet's leader time untouched.
+  ASSERT_EQ(Lease(followed_), master::TabletLeaderLeaseInfo{});
+  ASSERT_EQ(followed_->last_time_with_valid_leader(), kLongAgo);
+
+  // An entry from a tserver that is not a replica of the tablet is ignored.
+  auto replicas = std::make_shared<master::TabletReplicaMap>(*followed_->GetReplicaLocations());
+  replicas->erase(ts_uuid_);
+  followed_->SetReplicaLocations(replicas);
+  req.Clear();
+  AddLeaderInfo(&req, followed_->id(), consensus::LeaderLeaseStatus::HAS_LEASE, lease_exp);
+  ASSERT_OK(SendHeartbeat(&req));
+  ASSERT_EQ(followed_->GetReplicaLocations(), replicas);
+}
+
+TEST_F(HeartbeatLeaderInfoTest, HeartbeatsWithoutLeaseAreCounted) {
+  master::TSHeartbeatRequestPB req;
+  AddLeaderInfo(&req, led_->id(), consensus::LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE);
+  ASSERT_OK(SendHeartbeat(&req));
+  ASSERT_OK(SendHeartbeat(&req));
+
+  auto lease = Lease(led_);
+  ASSERT_TRUE(lease.initialized);
+  ASSERT_EQ(lease.leader_lease_status, consensus::LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE);
+  ASSERT_EQ(lease.heartbeats_without_leader_lease, 2u);
+  ASSERT_EQ(lease.ht_lease_expiration, 0u);
+  ASSERT_EQ(led_->last_time_with_valid_leader(), kLongAgo);
+
+  req.Clear();
+  AddLeaderInfo(&req, led_->id(), consensus::LeaderLeaseStatus::HAS_LEASE, NowMicros());
+  ASSERT_OK(SendHeartbeat(&req));
+  ASSERT_EQ(Lease(led_).heartbeats_without_leader_lease, 0u);
+}
+
+TEST_F(HeartbeatLeaderInfoTest, LeaseExpirationRules) {
+  // Expired for longer than the flag allows: reported, but not a valid leader.
+  const auto too_old =
+      NowMicros() - FLAGS_maximum_tablet_leader_lease_expired_secs * 1000000ULL - kMinuteMicros;
+  master::TSHeartbeatRequestPB req;
+  AddLeaderInfo(&req, led_->id(), consensus::LeaderLeaseStatus::HAS_LEASE, too_old);
+  ASSERT_OK(SendHeartbeat(&req));
+  ASSERT_EQ(Lease(led_).leader_lease_status, consensus::LeaderLeaseStatus::HAS_LEASE);
+  ASSERT_EQ(Lease(led_).ht_lease_expiration, 0u);
+  ASSERT_EQ(led_->last_time_with_valid_leader(), kLongAgo);
+
+  // A lease expiring earlier than the one already recorded does not move anything.
+  const auto lease_exp = NowMicros() + kMinuteMicros;
+  req.Clear();
+  AddLeaderInfo(&req, led_->id(), consensus::LeaderLeaseStatus::HAS_LEASE, lease_exp);
+  ASSERT_OK(SendHeartbeat(&req));
+  ASSERT_EQ(Lease(led_).ht_lease_expiration, lease_exp);
+  led_->TEST_set_last_time_with_valid_leader(kLongAgo);
+  req.Clear();
+  AddLeaderInfo(&req, led_->id(), consensus::LeaderLeaseStatus::HAS_LEASE, lease_exp - 1);
+  ASSERT_OK(SendHeartbeat(&req));
+  ASSERT_EQ(Lease(led_).ht_lease_expiration, lease_exp);
+  ASSERT_EQ(led_->last_time_with_valid_leader(), kLongAgo);
+
+  // An RF1 leader reports an infinite lease; once the tablet grows past RF1 the first finite
+  // lease is lower than that and is still accepted.
+  req.Clear();
+  AddLeaderInfo(
+      &req, led_->id(), consensus::LeaderLeaseStatus::HAS_LEASE,
+      consensus::kInfiniteHybridTimeLeaseExpiration);
+  ASSERT_OK(SendHeartbeat(&req));
+  ASSERT_EQ(Lease(led_).ht_lease_expiration, consensus::kInfiniteHybridTimeLeaseExpiration);
+  led_->TEST_set_last_time_with_valid_leader(kLongAgo);
+  req.Clear();
+  AddLeaderInfo(&req, led_->id(), consensus::LeaderLeaseStatus::HAS_LEASE, lease_exp);
+  ASSERT_OK(SendHeartbeat(&req));
+  ASSERT_EQ(Lease(led_).ht_lease_expiration, lease_exp);
+  ASSERT_GT(led_->last_time_with_valid_leader(), kLongAgo);
+}
+
+// The replica map is copied only when an entry actually changes, so a repeated heartbeat
+// leaves the same map in place.
+TEST_F(HeartbeatLeaderInfoTest, ReplicaMapCopiedOnlyOnChange) {
+  master::TSHeartbeatRequestPB req;
+  AddStorageMetadata(&req, led_->id(), 12345);
+  AddLeaderInfo(
+      &req, led_->id(), consensus::LeaderLeaseStatus::HAS_LEASE, NowMicros() + kMinuteMicros);
+  AddFullCompactionStatus(&req, led_->id(), 0x1234567);
+  const auto before = led_->GetReplicaLocations();
+  ASSERT_OK(SendHeartbeat(&req));
+  const auto after_first = led_->GetReplicaLocations();
+  ASSERT_NE(after_first, before);
+  ASSERT_OK(SendHeartbeat(&req));
+  ASSERT_EQ(led_->GetReplicaLocations(), after_first);
+
+  // The same holds for a heartbeat carrying only an unchanged leader_info entry.
+  master::TSHeartbeatRequestPB leader_only;
+  *leader_only.add_leader_info() = req.leader_info(0);
+  ASSERT_OK(SendHeartbeat(&leader_only));
+  ASSERT_EQ(led_->GetReplicaLocations(), after_first);
+}
+
+// A consensus-state change that keeps the leader rebuilds the replica map without losing its
+// lease state.
+TEST_F(HeartbeatLeaderInfoTest, LeaseKeptWhenLeaderStaysAcrossRebuild) {
+  const auto lease_exp = NowMicros() + kMinuteMicros;
+  master::TSHeartbeatRequestPB req;
+  AddLeaderInfo(&req, led_->id(), consensus::LeaderLeaseStatus::HAS_LEASE, lease_exp);
+  ASSERT_OK(SendHeartbeat(&req));
+  const auto lease = Lease(led_);
+  ASSERT_EQ(lease.ht_lease_expiration, lease_exp);
+
+  const auto before = led_->GetReplicaLocations();
+  ASSERT_OK(ReportNewTerm(led_, ts_uuid_));
+  ASSERT_NE(led_->GetReplicaLocations(), before);
+  ASSERT_EQ(Replica(led_).role, PeerRole::LEADER);
+  ASSERT_EQ(Lease(led_), lease);
+}
+
+// Followers no longer send leader_info, so the lease state of a replica that stops being the
+// leader is reset when the replica map is rebuilt from a consensus state change.
+TEST_F(HeartbeatLeaderInfoTest, LeaseResetWhenLeadershipMoves) {
+  master::TSHeartbeatRequestPB req;
+  AddLeaderInfo(
+      &req, led_->id(), consensus::LeaderLeaseStatus::HAS_LEASE, NowMicros() + kMinuteMicros);
+  ASSERT_OK(SendHeartbeat(&req));
+  ASSERT_TRUE(Lease(led_).initialized);
+
+  const auto new_leader = OtherPeer(led_);
+  ASSERT_FALSE(new_leader.empty());
+  ASSERT_OK(ReportNewTerm(led_, new_leader));
+
+  ASSERT_EQ(Replica(led_).role, PeerRole::FOLLOWER);
+  ASSERT_EQ(Lease(led_), master::TabletLeaderLeaseInfo{});
+  ASSERT_EQ(led_->GetReplicaLocations()->at(new_leader).role, PeerRole::LEADER);
+}
+
+// Live tservers: leader_info travels in real heartbeats and the master's lease state follows a
+// real leadership move. Five tservers at RF3, so no tserver hosts every tablet.
+class HeartbeatLeaderInfoLiveTest : public MasterHeartbeatITest {
+ public:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) = 500;
+    MasterHeartbeatITest::SetUp();
+  }
+
+  size_t num_tablet_servers() override { return 5; }
+
+ protected:
+  // One leader holding an initialized HAS_LEASE entry, every other replica at the default.
+  static bool LeaseStateConsistent(const master::TabletInfoPtr& tablet) {
+    size_t leaders = 0;
+    for (const auto& [uuid, replica] : *tablet->GetReplicaLocations()) {
+      const auto& lease = replica.leader_lease_info;
+      if (replica.role == PeerRole::LEADER) {
+        ++leaders;
+        if (!lease.initialized ||
+            lease.leader_lease_status != consensus::LeaderLeaseStatus::HAS_LEASE ||
+            lease.ht_lease_expiration == 0 || lease.heartbeats_without_leader_lease != 0) {
+          return false;
+        }
+      } else if (lease != master::TabletLeaderLeaseInfo{}) {
+        return false;
+      }
+    }
+    return leaders == 1;
+  }
+
+  static bool AllLeaseStatesConsistent(const master::TabletInfos& tablets) {
+    return std::all_of(tablets.begin(), tablets.end(), LeaseStateConsistent);
+  }
+};
+
+TEST_F(HeartbeatLeaderInfoLiveTest, LeaseFollowsLeadership) {
+  const auto kTimeout = MonoDelta::FromSeconds(60 * kTimeMultiplier);
+  auto& catalog_mgr = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster())->catalog_manager();
+  auto tablets = ASSERT_RESULT(catalog_mgr.GetTableInfo(table_->id())->GetTablets());
+  ASSERT_OK(WaitFor(
+      [&] { return AllLeaseStatesConsistent(tablets); }, kTimeout,
+      "Every leader reports a lease, no follower holds one"));
+
+  auto tablet = tablets[0];
+  TabletServerId old_leader, new_leader;
+  for (const auto& [uuid, replica] : *tablet->GetReplicaLocations()) {
+    if (replica.role == PeerRole::LEADER) {
+      old_leader = uuid;
+    } else if (new_leader.empty()) {
+      new_leader = uuid;
+    }
+  }
+  ASSERT_FALSE(old_leader.empty());
+  ASSERT_FALSE(new_leader.empty());
+  ASSERT_OK(TransferLeadership(mini_cluster_.get(), tablet->id(), new_leader, kTimeout));
+
+  ASSERT_OK(WaitFor(
+      [&] {
+        auto replicas = tablet->GetReplicaLocations();
+        return replicas->at(old_leader).role == PeerRole::FOLLOWER &&
+               replicas->at(new_leader).role == PeerRole::LEADER &&
+               AllLeaseStatesConsistent(tablets);
+      },
+      kTimeout, "Lease moved from the old leader to the new one"));
 }
 
 class PersistTabletServerRegistryUpgradeTest : public MasterHeartbeatITest {
