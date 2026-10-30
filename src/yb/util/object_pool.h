@@ -35,13 +35,12 @@
 
 #include <stdint.h>
 
-#include <functional>
-
-#if defined(__APPLE__)
-#include <thread>
-#else
+#if !defined(__APPLE__)
 #include <sched.h>
 #endif
+
+#include <functional>
+#include <thread>
 
 #include <boost/container/stable_vector.hpp>
 #include <boost/lockfree/stack.hpp>
@@ -203,10 +202,10 @@ class ThreadSafeObjectPool {
   explicit ThreadSafeObjectPool(Factory factory = DefaultFactory<T>(),
                                 Deleter deleter = std::default_delete<T>())
       : factory_(std::move(factory)), deleter_(std::move(deleter)) {
-    // Need the actual number of CPUs, so we do not use the Gflag value
-    size_t num_cpus = base::RawNumCPUs();
-    pools_.reserve(num_cpus);
-    while (pools_.size() != num_cpus) {
+    // Indexed by sched_getcpu(), so pools_ must cover the CPU id space, not the count of CPUs.
+    size_t num_pools = base::MaxCPUIndex() + 1;
+    pools_.reserve(num_pools);
+    while (pools_.size() != num_pools) {
       pools_.emplace_back(50);
     }
   }
@@ -237,14 +236,22 @@ class ThreadSafeObjectPool {
   }
 
  private:
+  // Picks a pool without knowing the current CPU, by spreading over the calling thread instead.
+  size_t PoolIndexForThread() const {
+    return std::hash<std::thread::id>()(std::this_thread::get_id()) % pools_.size();
+  }
+
   size_t GetCPU() const {
 #if defined(__APPLE__)
     // OSX doesn't have a way to get the CPU, so we'll pick a random one.
-    return std::hash<std::thread::id>()(std::this_thread::get_id()) % pools_.size();
+    return PoolIndexForThread();
 #else
-    size_t cpu = sched_getcpu();
-    DCHECK_LT(cpu, pools_.size());
-    return cpu;
+    auto cpu = sched_getcpu();
+    if (PREDICT_FALSE(cpu < 0)) {
+      return PoolIndexForThread();
+    }
+    // Pools are thread-safe and interchangeable, so wrap a CPU id beyond the cached MaxCPUIndex().
+    return static_cast<size_t>(cpu) % pools_.size();
 #endif // defined(__APPLE__)
   }
 

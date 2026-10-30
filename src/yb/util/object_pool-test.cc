@@ -30,9 +30,16 @@
 // under the License.
 //
 
+#ifdef __linux__
+#include <sched.h>
+#endif
+
 #include "yb/util/logging.h"
 #include <gtest/gtest.h>
 
+#include "yb/gutil/sysinfo.h"
+
+#include "yb/util/errno.h"
 #include "yb/util/object_pool.h"
 
 namespace yb {
@@ -97,5 +104,57 @@ TEST(TestObjectPool, TestScopedPtr) {
   }
   ASSERT_EQ(0, MyClass::instance_count());
 }
+
+#ifdef __linux__
+
+namespace {
+
+// Restores the affinity mask of the calling thread on destruction, so pinning does not leak into
+// the rest of the test binary.
+struct ScopedThreadAffinity {
+  cpu_set_t original;
+
+  ScopedThreadAffinity() { PCHECK(sched_getaffinity(0, sizeof(original), &original) == 0); }
+  ~ScopedThreadAffinity() { PCHECK(sched_setaffinity(0, sizeof(original), &original) == 0); }
+};
+
+} // namespace
+
+// ThreadSafeObjectPool picks a pool using sched_getcpu(), so every CPU the process may be scheduled
+// on has to map to a pool. Pins the calling thread to each allowed CPU in turn and takes and
+// releases an object from there.
+TEST(TestThreadSafeObjectPool, TakeAndReleaseOnEveryCpu) {
+  MyClass::ResetCount();
+  {
+    ScopedThreadAffinity affinity;
+    ThreadSafeObjectPool<MyClass> pool;
+
+    int cpus_covered = 0;
+    for (int cpu = 0; cpu != CPU_SETSIZE; ++cpu) {
+      if (!CPU_ISSET(cpu, &affinity.original)) {
+        continue;
+      }
+
+      cpu_set_t single;
+      CPU_ZERO(&single);
+      CPU_SET(cpu, &single);
+      ASSERT_EQ(sched_setaffinity(0, sizeof(single), &single), 0) << ErrnoToString(errno);
+      ASSERT_EQ(sched_getcpu(), cpu) << "a single-CPU mask must leave the thread nowhere else";
+
+      auto* object = pool.Take();
+      ASSERT_NE(object, nullptr);
+      pool.Release(object);
+      ++cpus_covered;
+    }
+
+    LOG(INFO) << "Exercised the pool on " << cpus_covered << " CPUs, max CPU index "
+              << base::MaxCPUIndex() << ", online CPUs " << base::RawNumCPUs();
+    ASSERT_GT(cpus_covered, 0);
+  }
+
+  ASSERT_EQ(0, MyClass::instance_count()) << "pool destruction must free every pooled object";
+}
+
+#endif // __linux__
 
 } // namespace yb

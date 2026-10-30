@@ -57,8 +57,8 @@ namespace base {
 // value of sched_getcpu().
 extern int NumCPUs();
 
-// Use the default value for when gflags are not initialized yet (i.e. spinlock.cc)
-// or if we need the actual number of CPUs (i.e. object_pool.h)
+// Return the number of online CPUs. Like NumCPUs(), but ignoring the --num_cpus flag override.
+// Use when gflags are not initialized yet (i.e. spinlock.cc).
 extern int RawNumCPUs();
 
 // Return the maximum CPU index that may be returned by sched_getcpu(). For example, on
