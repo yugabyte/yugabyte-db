@@ -1078,9 +1078,8 @@ class PgRowLockWithConcurrentDdlTest : public PgMiniTestBase {
 //      is invalidated many times during the execution of a statement).
 //   8. After switching to the catalog snapshot, the row lock buffer is flushed with the
 //      CatalogSnapshot's read time serial number. Since this is > T2, the row is not found.
-// TODO(#30682): Enable this in debug builds.
 TEST_F_EX(PgRowLockTest,
-          YB_RELEASE_ONLY_TEST(MissingYbctidsDuringExplicitRowLock),
+          MissingYbctidsDuringExplicitRowLock,
           PgRowLockWithConcurrentDdlTest) {
   constexpr auto kTestDuration = 10s;
   const std::string kTableName = "read_committed_il_table";

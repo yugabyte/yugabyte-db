@@ -1529,6 +1529,11 @@ AtEOXact_Inval(bool isCommit)
  * We can forget about CurrentCmdInvalidMsgs too, since those changes haven't
  * touched the caches yet.
  *
+ * YB Note: unlike upstream, YB caches catalog rows as it writes them, so
+ * some of CurrentCmdInvalidMsgs may have reached the caches. Without
+ * processing them, a ROLLBACK TO or a query-layer retry after a DDL that
+ * failed mid-statement leaves entries for objects that were never created.
+ *
  * In any case, pop the transaction stack.  We need not physically free memory
  * here, since CurTransactionContext is about to be emptied anyway
  * (if aborting).  Beware of the possibility of aborting the same nesting
@@ -1596,6 +1601,9 @@ AtEOSubXact_Inval(bool isCommit)
 	}
 	else
 	{
+		if (IsYugaByteEnabled())
+			AppendInvalidationMessages(&myInfo->PriorCmdInvalidMsgs,
+									   &myInfo->CurrentCmdInvalidMsgs);
 		ProcessInvalidationMessages(&myInfo->PriorCmdInvalidMsgs,
 									LocalExecuteInvalidationMessage);
 

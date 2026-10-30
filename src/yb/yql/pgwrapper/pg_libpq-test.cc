@@ -6704,6 +6704,16 @@ class PgLibPqTestDropTableIfExistsCascadeRetry : public PgLibPqTest {
     options->extra_master_flags.push_back("--yb_enable_read_committed_isolation=true");
     options->extra_tserver_flags.push_back("--yb_enable_read_committed_isolation=true");
   }
+
+  Status ExecuteWithCatalogWritesAborted(
+      PGConn& conn, const std::string& query) {
+    RETURN_NOT_OK(cluster_->SetFlagOnMasters(
+        "TEST_respond_write_with_abort_probability", "1"));
+    auto status = conn.Execute(query);
+    RETURN_NOT_OK(cluster_->SetFlagOnMasters(
+        "TEST_respond_write_with_abort_probability", "0"));
+    return status;
+  }
 };
 
 // Test for #29871: SMgrRelation hashtable corrupted during DDL retry.
@@ -6738,8 +6748,6 @@ TEST_F(PgLibPqTestDropTableIfExistsCascadeRetry, DropTableIfExistsCascadeRetryCr
   // aborted transaction clears the relcache, causing RelationIdGetRelation
   // to return NULL on the second attempt.
   // If the bug is present, this will crash with SIGSEGV.
-  // If the bug is fixed, the retry will gracefully fail with an error because
-  // the relation is already dropped in the relcache.
   auto status = conn.Execute(
       "DO $$ \n"
       "BEGIN \n"
@@ -6748,7 +6756,9 @@ TEST_F(PgLibPqTestDropTableIfExistsCascadeRetry, DropTableIfExistsCascadeRetryCr
       "  DROP TABLE IF EXISTS drop_retry_test_crash CASCADE; \n"
       "END $$;");
 
-  ASSERT_NOK_STR_CONTAINS(status, "could not open relation with OID");
+  ASSERT_NOK_STR_CONTAINS(
+      status,
+      "failed DROP operation as requested (yb_max_query_layer_retries set to");
 
   // Verify that the catalog is NOT corrupted.
   // Note that this test runs with transactional DDL disabled! This means
@@ -6759,6 +6769,73 @@ TEST_F(PgLibPqTestDropTableIfExistsCascadeRetry, DropTableIfExistsCascadeRetryCr
   // The fact that this SELECT succeeds proves that the table exists in BOTH
   // the PostgreSQL catalog and DocDB (no split-brain corruption).
   ASSERT_OK(conn.FetchMatrix("SELECT * FROM drop_retry_test_crash", 0, 1));
+}
+
+// #34751: a retried CREATE TABLE IF NOT EXISTS reused catalog cache entries
+// written by the failed attempt, so it skipped or failed on a table that was
+// never created.
+TEST_F(PgLibPqTestDropTableIfExistsCascadeRetry, CreateTableRetryAfterAbort) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET yb_max_query_layer_retries = 1"));
+
+  ASSERT_NOK_STR_CONTAINS(
+      ExecuteWithCatalogWritesAborted(
+          conn, "CREATE TABLE IF NOT EXISTS t (k INT PRIMARY KEY)"),
+      "yb_max_query_layer_retries set to 1");
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1)"));
+}
+
+// #34751, through an index.
+TEST_F(PgLibPqTestDropTableIfExistsCascadeRetry, CreateIndexRetryAfterAbort) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET yb_max_query_layer_retries = 1"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT)"));
+
+  ASSERT_NOK_STR_CONTAINS(
+      ExecuteWithCatalogWritesAborted(
+          conn, "CREATE INDEX IF NOT EXISTS i ON t (k)"),
+      "yb_max_query_layer_retries set to 1");
+  ASSERT_OK(conn.Execute("CREATE INDEX i ON t (k)"));
+}
+
+// #34751 inside a transaction block: the failed CREATE runs in the READ
+// COMMITTED internal subtransaction, whose abort used to drop the messages
+// for catalog rows already cached. The retry fails, ROLLBACK ends the
+// block, and the test expects a plain CREATE TABLE of the same name to
+// succeed.
+TEST_F(PgLibPqTestDropTableIfExistsCascadeRetry,
+       CreateTableRetryInTransactionBlock) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET yb_max_query_layer_retries = 1"));
+  ASSERT_OK(conn.Execute("BEGIN"));
+
+  ASSERT_NOK_STR_CONTAINS(
+      ExecuteWithCatalogWritesAborted(
+          conn, "CREATE TABLE IF NOT EXISTS t (k INT PRIMARY KEY)"),
+      "yb_max_query_layer_retries set to 1");
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1)"));
+}
+
+// #34751 through ROLLBACK TO SAVEPOINT: with no retry, the failed CREATE's
+// cached catalog rows must still go away when the savepoint rolls back.
+// The test expects the same CREATE TABLE IF NOT EXISTS to create the table
+// after ROLLBACK TO, so the INSERT succeeds.
+TEST_F(PgLibPqTestDropTableIfExistsCascadeRetry,
+       CreateTableAfterRollbackToSavepoint) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET yb_max_query_layer_retries = 0"));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("SAVEPOINT s"));
+
+  ASSERT_NOK(ExecuteWithCatalogWritesAborted(
+      conn, "CREATE TABLE IF NOT EXISTS t (k INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("ROLLBACK TO s"));
+  ASSERT_OK(conn.Execute("CREATE TABLE IF NOT EXISTS t (k INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1)"));
+  ASSERT_OK(conn.Execute("COMMIT"));
 }
 
 class PgMinimalPrefetchStaleRelcacheTest : public PgLibPqTest {
