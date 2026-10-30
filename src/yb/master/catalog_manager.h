@@ -1112,11 +1112,18 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
     // Set the current committed config.
   Status GetCurrentConfig(consensus::ConsensusStatePB *cpb) const override;
 
+  // Lock-free committed_op_index of the sys catalog's committed config.
+  Result<int64_t> GetCommittedConfigIndex() const;
+
   // Return OK if this CatalogManager is a leader in a consensus configuration and if
   // the required leader state (metadata for tables and tablets) has
   // been successfully loaded into memory. CatalogManager must be
   // initialized before calling this method.
   Status CheckIsLeaderAndReady() const override;
+
+  // Lock-free: this master's sys catalog role is LEADER and leader_ready_term_ is its term. These
+  // are the checks CheckIsLeaderAndReady adds to a passed ScopedLeaderSharedLock; use inside one.
+  Status CheckLeaderRoleAndReadyTerm() const;
 
   Status IsEpochValid(const LeaderEpoch& epoch) const;
 

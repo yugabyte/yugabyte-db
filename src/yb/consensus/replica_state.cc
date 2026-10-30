@@ -337,6 +337,14 @@ ConsensusStatePB ReplicaState::GetConsensusStateFromCache() const {
   return cmeta_->GetConsensusStateFromCache();
 }
 
+std::pair<PeerRole, int64_t> ReplicaState::GetRoleAndTerm() const {
+  return cmeta_->GetRoleAndTerm();
+}
+
+int64_t ReplicaState::GetCommittedConfigIndex() const {
+  return cmeta_->committed_config_index();
+}
+
 PeerRole ReplicaState::GetActiveRoleUnlocked() const {
   DCHECK(IsLocked());
   return cmeta_->active_role();
