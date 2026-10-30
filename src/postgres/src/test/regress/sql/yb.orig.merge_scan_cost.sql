@@ -120,11 +120,10 @@ ANALYZE pbkt16_1, pbkt16_2, pbkt16_3, pbkt16;
 -- over them.  Every partition should take the Seq Scan under the join and
 -- the plain distinct index scan under the DISTINCT.  Before #29078, the
 -- largest partition took the merge under the join, and every partition did
--- under the DISTINCT.  Parallel workers are off for the join because the
--- rows each worker takes vary from run to run.
+-- under the DISTINCT.
 \set query ':explain :Q SELECT count(*) FROM pbkt16 p JOIN r5n r ON p.r1 = r.r1;'
-\set Q1 '/*+HashJoin(p r) Leading((p r)) Set(max_parallel_workers_per_gather 0) Set(yb_max_merge_scan_streams 0)*/'
-\set Q2 '/*+HashJoin(p r) Leading((p r)) Set(max_parallel_workers_per_gather 0) Set(yb_max_merge_scan_streams 64)*/'
+\set Q1 '/*+HashJoin(p r) Leading((p r)) Set(yb_max_merge_scan_streams 0)*/'
+\set Q2 '/*+HashJoin(p r) Leading((p r)) Set(yb_max_merge_scan_streams 64)*/'
 \i :run_query
 \set Q1 :off
 \set Q2 :on
