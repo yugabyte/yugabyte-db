@@ -3179,7 +3179,7 @@ TEST_P(PgVectorIndexColocationOnlyTest, FlushFailureFailsCheckpoint) {
     }
 
     sync_point->ClearAllCallBacks();
-    sync_point->SetCallBack(point, [test_thread, test_thread_only, &kInjectedError](void* arg) {
+    sync_point->SetCallBack(point, [test_thread, test_thread_only, kInjectedError](void* arg) {
       if (!test_thread_only || std::this_thread::get_id() == test_thread) {
         *static_cast<Status*>(arg) = STATUS(IOError, kInjectedError);
       }
