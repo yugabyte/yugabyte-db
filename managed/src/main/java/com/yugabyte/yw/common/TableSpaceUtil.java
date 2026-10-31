@@ -101,6 +101,16 @@ public class TableSpaceUtil {
       crzs.add(crz);
       validatePlacement(primaryClusterPlacement, pb);
 
+      if (pb.maxNumReplicas != null && pb.maxNumReplicas < pb.minNumReplicas) {
+        String msg =
+            String.format(
+                "Maximum replicas %d is less than minimum replicas %d for cloud %s, region %s,"
+                    + " zone %s",
+                pb.maxNumReplicas, pb.minNumReplicas, pb.cloud, pb.region, pb.zone);
+        log.warn(msg);
+        throw new PlatformServiceException(BAD_REQUEST, msg);
+      }
+
       if (pb.leaderPreference != null) {
         leaderPreferences.add(pb.leaderPreference);
       }
