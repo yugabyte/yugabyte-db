@@ -1771,6 +1771,8 @@ extern bool YbIsInvalidationMessageEnabled();
 
 extern bool YbRefreshMatviewInPlace();
 
+extern void YbSetInRefreshMatviewSpi(bool in_refresh_matview_spi);
+
 extern void YbForceSendInvalMessages();
 
 extern long YbGetPeakRssKb();
