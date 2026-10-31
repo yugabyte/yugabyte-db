@@ -843,11 +843,19 @@ struct TestParamTraits<PgVectorIndexTestParam> {
     return std::get<2>(param);
   }
 
+  // Every pair of values (colocation x engine, colocation x packing, engine x packing) appears at
+  // least once, and the production default (hnswlib with packing V2) runs both colocated and
+  // distributed. The full 2x2x3 product costs 12 cluster starts per test for little extra
+  // coverage.
   static auto TestParamGenerator() {
-    return testing::Combine(
-        testing::Bool(),
-        testing::ValuesIn(kVectorIndexEngineArray),
-        testing::ValuesIn(kPackingModeArray));
+    return testing::Values(
+        ParamType{true, VectorIndexEngine::kYbHnswHnswlib, PackingMode::kV2},
+        ParamType{false, VectorIndexEngine::kYbHnswHnswlib, PackingMode::kV2},
+        ParamType{true, VectorIndexEngine::kYbHnswHnswlib, PackingMode::kV1},
+        ParamType{false, VectorIndexEngine::kYbHnswHnswlib, PackingMode::kNone},
+        ParamType{true, VectorIndexEngine::kYbHnswUsearch, PackingMode::kNone},
+        ParamType{false, VectorIndexEngine::kYbHnswUsearch, PackingMode::kV1},
+        ParamType{false, VectorIndexEngine::kYbHnswUsearch, PackingMode::kV2});
   }
 
   static auto TestParamNameGenerator() {
