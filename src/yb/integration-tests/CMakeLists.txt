@@ -272,6 +272,8 @@ ADD_YB_TEST(encryption-test)
 ADD_YB_TEST(pg_cron-test)
 YB_TEST_TARGET_LINK_LIBRARIES(pg_cron-test pg_wrapper_test_base)
 ADD_YB_TEST(pg_partman-test)
+# The test needs built-ins that a stale initial sys catalog snapshot lacks.
+ADD_YB_TEST_DEPENDENCIES(pg_partman-test initial_sys_catalog_snapshot)
 ADD_YB_TEST(secure_connection_test)
 ADD_YB_TEST(skip_prefix_locks_enable_disable_test)
 ADD_YB_TEST(system_table_delete-test)
