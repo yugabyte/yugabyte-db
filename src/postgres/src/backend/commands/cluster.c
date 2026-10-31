@@ -662,7 +662,8 @@ rebuild_relation(Relation OldHeap, Oid indexOid, bool verbose)
 							   accessMethod,
 							   relpersistence,
 							   AccessExclusiveLock,
-							   true /* yb_copy_split_options */ );
+							   true /* yb_copy_split_options */ ,
+							   NULL /* yb_split_options */ );
 
 	/* Copy the heap data into the new table in the desired order */
 	copy_table_data(OIDNewHeap, tableOid, indexOid, verbose,
@@ -696,7 +697,8 @@ rebuild_relation(Relation OldHeap, Oid indexOid, bool verbose)
 Oid
 make_new_heap(Oid OIDOldHeap, Oid NewTableSpace, Oid NewAccessMethod,
 			  char relpersistence, LOCKMODE lockmode,
-			  bool yb_copy_split_options)
+			  bool yb_copy_split_options,
+			  YbOptSplit *yb_split_options)
 {
 	TupleDesc	OldHeapDesc;
 	char		NewHeapName[NAMEDATALEN];
@@ -776,6 +778,7 @@ make_new_heap(Oid OIDOldHeap, Oid NewTableSpace, Oid NewAccessMethod,
 	if (IsYugaByteEnabled() && relpersistence != RELPERSISTENCE_TEMP)
 		YbRelationSetNewRelfileNode(OldHeap, OIDNewHeap,
 									yb_copy_split_options,
+									yb_split_options,
 									false /* is_truncate */ );
 
 	ReleaseSysCache(tuple);
