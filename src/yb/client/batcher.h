@@ -102,7 +102,8 @@ class TxnBatcherIf {
   virtual void Flushed(
       const internal::InFlightOps& ops,
       const std::optional<SubTransactionMetadataPB>& subtransaction_pb,
-      const ReadHybridTime& used_read_time, const Status& status) = 0;
+      const ReadHybridTime& used_read_time, ConsistentReadPoint* read_point,
+      const Status& status) = 0;
 
   // Returns the flush failure that made this transaction abort itself, or an OK status if the
   // transaction was not aborted this way. Operations that failed because of such an abort should
@@ -117,6 +118,7 @@ class TxnBatcherIf {
       ForceConsistentRead force_consistent_read,
       CoarseTimePoint deadline,
       Initial initial,
+      ConsistentReadPoint* read_point,
       Waiter waiter) = 0;
 
   virtual ~TxnBatcherIf() = default;
@@ -171,7 +173,7 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
       YBClient* client,
       const YBSessionPtr& session,
       YBTransactionPtr transaction,
-      ConsistentReadPoint* read_point,
+      std::shared_ptr<ConsistentReadPoint> read_point,
       bool force_consistent_read,
       int64_t leader_term,
       ThreadSafeArenaPtr arena);
@@ -237,7 +239,7 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
   }
 
   ConsistentReadPoint* read_point() {
-    return read_point_;
+    return read_point_.get();
   }
 
   void SetForceConsistentRead(ForceConsistentRead value) {
@@ -411,7 +413,9 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
   YBTransactionPtr transaction_;
 
   // The consistent read point for this batch if it is specified.
-  ConsistentReadPoint* read_point_ = nullptr;
+  // Pinned for the batcher's lifetime: the session may switch to another read point while this
+  // batcher still builds requests or processes responses.
+  std::shared_ptr<ConsistentReadPoint> read_point_;
 
   // Force consistent read on transactional table, even we have only single shard commands.
   ForceConsistentRead force_consistent_read_;
