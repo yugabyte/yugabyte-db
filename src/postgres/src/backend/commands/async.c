@@ -612,6 +612,10 @@ static TransactionId ybNotifsPollerProcessingXid = InvalidTransactionId;
  * Invalid, we skip all non-BEGIN entries because the listener started scanning
  * mid-transaction and must not deliver a partial transaction (doing so would
  * also break duplicate detection if the poller crashes and replays).
+ *
+ * The xids come from the replication slot's virtual WAL and are only unique
+ * within one incarnation of the slot, so this state is reset whenever the
+ * backend registers as a listener (see Exec_ListenPreCommit).
  */
 typedef struct YbListenerQueueScanCurrentXactState
 {
@@ -1418,9 +1422,17 @@ Exec_ListenPreCommit(void)
 	 * YB note: In YB, the queue only contains the committed notifications.
 	 * These notifications were committed before this LISTEN, so we can safely
 	 * set max to head.
+	 *
+	 * The duplicate-txn scan state is reset along with the position, since
+	 * xids are only unique within one slot incarnation.
 	 */
 	if (IsYugaByteEnabled())
+	{
 		max = head;
+		ybListenerQueueScanCurrentXactState.begin_xid = InvalidTransactionId;
+		ybListenerQueueScanCurrentXactState.scanned_notifs = 0;
+		ybListenerQueueScanCurrentXactState.notifs_to_skip = 0;
+	}
 
 	QUEUE_BACKEND_POS(MyBackendId) = max;
 	QUEUE_BACKEND_PID(MyBackendId) = MyProcPid;
@@ -3446,6 +3458,7 @@ ybAsyncQueueHandleBeginEntry(const AsyncQueueEntry *qe)
 
 	ybListenerQueueScanCurrentXactState.begin_xid = qe->xid;
 	ybListenerQueueScanCurrentXactState.scanned_notifs = 0;
+	ybListenerQueueScanCurrentXactState.notifs_to_skip = 0;
 }
 
 /*
