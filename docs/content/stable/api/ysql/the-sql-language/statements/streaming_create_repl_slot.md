@@ -34,15 +34,13 @@ The name of the replication slot. The name of the replication slot must be **uni
 
 The name of the output plugin used for logical decoding.
 
-### NOEXPORT_SNAPSHOT / USE_SNAPSHOT
+### EXPORT_SNAPSHOT / NOEXPORT_SNAPSHOT / USE_SNAPSHOT
 
-Determines whether the snapshot will be consumed by the client during slot initialization:
+Determines how the client consumes the snapshot of the database that is established when the slot is created. See [Initial snapshot](../../../../../additional-features/change-data-capture/using-logical-replication/key-concepts/#initial-snapshot) in the logical replication key concepts.
 
-- USE_SNAPSHOT: the client will consume the snapshot. This option can only be used inside a transaction, and CREATE_REPLICATION_SLOT must be the first command run in that transaction.
-- NOEXPORT_SNAPSHOT: the snapshot will be used for logical decoding only.
-
-These options are only available if the YB-TServer flag [ysql_enable_pg_export_snapshot](../../../../../explore/ysql-language-features/advanced-features/snapshot-synchronization) is set to true. When the flag is true, USE_SNAPSHOT is the default behavior. If the flag is not set, the snapshot options are not applicable and will be ignored.
-
+- EXPORT_SNAPSHOT (default): the command returns the name of an exported snapshot in the `snapshot_name` field. Use it with `SET TRANSACTION SNAPSHOT` in a `REPEATABLE READ` transaction on another connection to read the tables as of slot creation. As in PostgreSQL, the exported snapshot is valid until this connection runs its next command. Requires the YB-TServer flag [ysql_enable_pg_export_snapshot](../../../../../explore/ysql-language-features/advanced-features/snapshot-synchronization).
+- USE_SNAPSHOT: the client reads the snapshot on this connection. This option can only be used inside a transaction, and CREATE_REPLICATION_SLOT must be the first command run in that transaction. The `snapshot_name` field contains the hybrid time of the snapshot.
+- NOEXPORT_SNAPSHOT: the snapshot is used for logical decoding only. The database does not retain row history as of slot creation for tables whose replica identity does not need it, so an initial snapshot of such tables can't be taken reliably for this slot.
 
 ## Examples
 
