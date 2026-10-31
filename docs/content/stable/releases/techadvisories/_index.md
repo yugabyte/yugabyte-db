@@ -21,6 +21,12 @@ For an RSS feed of all technical advisories, point your feed reader to the [RSS 
 {{%table%}}
 | Advisory&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Synopsis | Product | Affected Versions | Date |
 | :------------------------------- | :------- | :-----: | :---------------: | :--- |
+| {{<ta 19066>}}
+| CDC stream creation may time out on namespaces with a large number of tablets
+| {{<product "cdc">}}
+| {{<release "2025.2.4.0">}}+,<br>{{<release "2026.1.1.0">}}+
+| {{<nobreak "28 October 2026">}}
+|
 | {{<ta 33558>}}
 | High memory usage and potential out-of-memory errors during ordered secondary index scans
 | {{<product "ysql">}}
