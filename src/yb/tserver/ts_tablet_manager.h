@@ -699,7 +699,24 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   std::string TabletLogPrefix(const TabletId& tablet_id) const;
 
-  void CleanupCheckpoints();
+  // Deletes leftover remote bootstrap checkpoint dirs and fills startup_vector_index_storages_.
+  void ScanTabletDataDirsOnStartup();
+
+  // Deletes the startup_vector_index_storages_ entries of tablets that are not in tablet_dir_names
+  // (base names of the loaded tablets' RocksDB dirs) and whose RocksDB dir is gone: tablets dropped
+  // with storages they did not list, since DeleteTabletData destroys only the listed ones. Called
+  // from Init, before RPC services start, so no tablet can be created meanwhile.
+  void DeleteStartupVectorIndexStoragesOfDeletedTablets(
+      const std::unordered_set<std::string>& tablet_dir_names);
+
+  // Deletes the startup_vector_index_storages_ entries of meta's tablet that meta does not list. A
+  // crash during a restore, or a restore on a build before #35006, leaves such storages. Called
+  // before the peer starts, so no operation can add an index meanwhile, and for a tablet that
+  // bootstraps, after bootstrap: Tablet::AddTableInMemory creates the storage of a new index before
+  // the superblock listing it is flushed, and replay adds such an index back if its ADD_TABLE is
+  // known committed. One applied before its commit was logged stays pending until the peer starts,
+  // so the sweep deletes its storage, and applying it creates the storage again and backfills it.
+  void DeleteStartupUnlistedVectorIndexStorages(const tablet::RaftGroupMetadata& meta);
 
   void LogCacheGC(MemTracker* log_cache_mem_tracker, size_t required);
 
@@ -841,6 +858,12 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // bootstrap, creation, or deletion is in-progress
   TransitionInProgressMap transition_in_progress_ GUARDED_BY(transition_in_progress_mutex_);
   mutable std::mutex transition_in_progress_mutex_;
+
+  // Paths of the vector index storages ("<tablet dir>.vi-*") found at startup, keyed by the base
+  // name of the tablet's RocksDB dir.
+  std::unordered_map<std::string, std::vector<std::string>> startup_vector_index_storages_
+      GUARDED_BY(startup_vector_index_storages_mutex_);
+  std::mutex startup_vector_index_storages_mutex_;
 
   // Tablets to include in the next tablet report. When a tablet is added/removed/added
   // locally and needs to be reported to the master, an entry is added to this map.

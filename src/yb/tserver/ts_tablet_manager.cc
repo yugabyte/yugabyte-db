@@ -70,6 +70,7 @@
 #include "yb/consensus/state_change_context.h"
 
 #include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/docdb_util.h"
 
 #include "yb/fs/fs_manager.h"
 
@@ -131,6 +132,7 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
+#include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/priority_thread_pool.h"
 #include "yb/util/scope_exit.h"
@@ -840,7 +842,7 @@ Status TSTabletManager::Init() {
   }
 #endif
 
-  CleanupCheckpoints();
+  ScanTabletDataDirsOnStartup();
 
   // Search for tablets in the metadata dir.
   auto tablet_ids = VERIFY_RESULT(fs_manager_->ListTabletIds(CleanupTemporaryFiles::kTrue));
@@ -958,6 +960,23 @@ Status TSTabletManager::Init() {
     // duplicate-superblock FATAL, before any replacement replica exists, so nothing has been lost
     // and the fix is to remount and restart.
     RETURN_NOT_OK(fs_manager_->CertifyDataRoots(evidence));
+  }
+
+  {
+    std::unordered_set<std::string> tablet_dir_names;
+    {
+      std::lock_guard lock(metas.ready_metas_mutex);
+      for (const auto& meta : metas.ready_metas) {
+        tablet_dir_names.insert(BaseName(meta->rocksdb_dir()));
+      }
+    }
+    {
+      std::lock_guard lock(metas.non_ready_metas_mutex);
+      for (const auto& meta : metas.non_ready_metas) {
+        tablet_dir_names.insert(BaseName(meta->rocksdb_dir()));
+      }
+    }
+    DeleteStartupVectorIndexStoragesOfDeletedTablets(tablet_dir_names);
   }
 
   // Validator should be created before tablets are open.
@@ -1084,7 +1103,9 @@ Status TSTabletManager::RegisterServiceCallback(
   return Status::OK();
 }
 
-void TSTabletManager::CleanupCheckpoints() {
+void TSTabletManager::ScanTabletDataDirsOnStartup() {
+  const auto vector_index_infix = "." + docdb::kVectorIndexDirPrefix;
+  decltype(startup_vector_index_storages_) vector_index_storages;
   for (const auto& data_root : fs_manager_->GetDataRootDirs()) {
     auto tables_dir = JoinPathSegments(data_root, FsManager::kRocksDBDirName);
     auto tables = fs_manager_->env()->GetChildren(tables_dir, ExcludeDots::kTrue);
@@ -1095,15 +1116,22 @@ void TSTabletManager::CleanupCheckpoints() {
     }
     for (const auto& table : *tables) {
       auto table_dir = JoinPathSegments(tables_dir, table);
-      auto tablets = fs_manager_->env()->GetChildren(table_dir, ExcludeDots::kTrue);
-      if (!tablets.ok()) {
+      // A tablet's RocksDB dir and its sibling storage dirs: <tablet dir>.intents, .snapshots and
+      // .vi-*.
+      auto children = fs_manager_->env()->GetChildren(table_dir, ExcludeDots::kTrue);
+      if (!children.ok()) {
         LOG_WITH_PREFIX(WARNING)
-            << "Failed to get tablets in " << table_dir << ": " << tablets.status();
+            << "Failed to list " << table_dir << ": " << children.status();
         continue;
       }
-      for (const auto& tablet : *tablets) {
+      for (const auto& child : *children) {
+        auto vector_index_pos = child.find(vector_index_infix);
+        if (vector_index_pos != std::string::npos) {
+          vector_index_storages[child.substr(0, vector_index_pos)].push_back(
+              JoinPathSegments(table_dir, child));
+        }
         auto checkpoints_dir = JoinPathSegments(
-            table_dir, tablet, RemoteBootstrapSession::kCheckpointsDir);
+            table_dir, child, RemoteBootstrapSession::kCheckpointsDir);
         if (fs_manager_->env()->FileExists(checkpoints_dir)) {
           LOG_WITH_PREFIX(INFO) << "Cleaning up checkpoints dir: " << yb::ToString(checkpoints_dir);
           auto status = fs_manager_->env()->DeleteRecursively(checkpoints_dir);
@@ -1112,6 +1140,56 @@ void TSTabletManager::CleanupCheckpoints() {
       }
     }
   }
+  std::lock_guard lock(startup_vector_index_storages_mutex_);
+  startup_vector_index_storages_ = std::move(vector_index_storages);
+}
+
+void TSTabletManager::DeleteStartupVectorIndexStoragesOfDeletedTablets(
+    const std::unordered_set<std::string>& tablet_dir_names) {
+  auto* env = fs_manager_->env();
+  std::lock_guard lock(startup_vector_index_storages_mutex_);
+  for (auto it = startup_vector_index_storages_.begin();
+       it != startup_vector_index_storages_.end();) {
+    const auto& [tablet_dir_name, paths] = *it;
+    if (tablet_dir_names.contains(tablet_dir_name)) {
+      ++it;
+      continue;
+    }
+    for (const auto& path : paths) {
+      // A tablet whose superblock is missing but whose RocksDB dir is still there was not deleted,
+      // e.g. its superblock is on a data root that is not mounted.
+      if (env->DirExists(JoinPathSegments(DirName(path), tablet_dir_name))) {
+        continue;
+      }
+      LOG_WITH_PREFIX(INFO) << "Deleting vector index storage of a deleted tablet: " << path;
+      WARN_NOT_OK(
+          env->DeleteRecursively(path), Format("Failed to delete vector index storage $0", path));
+    }
+    it = startup_vector_index_storages_.erase(it);
+  }
+}
+
+void TSTabletManager::DeleteStartupUnlistedVectorIndexStorages(
+    const tablet::RaftGroupMetadata& meta) {
+  const auto tablet_dir_name = BaseName(meta.rocksdb_dir());
+  std::vector<std::string> paths;
+  {
+    std::lock_guard lock(startup_vector_index_storages_mutex_);
+    auto it = startup_vector_index_storages_.find(tablet_dir_name);
+    if (it == startup_vector_index_storages_.end()) {
+      return;
+    }
+    paths = std::move(it->second);
+    startup_vector_index_storages_.erase(it);
+  }
+  // Only the storage names: the paths are checked against meta's rocksdb_dir, so a leftover on
+  // another data root is skipped.
+  std::vector<std::string> storage_names;
+  storage_names.reserve(paths.size());
+  for (const auto& path : paths) {
+    storage_names.push_back(BaseName(path).substr(tablet_dir_name.size() + 1));
+  }
+  meta.DeleteUnlistedVectorIndexStorages(storage_names);
 }
 
 // Schedules a background task if the interval is > 0.
@@ -2710,6 +2788,8 @@ void TSTabletManager::OpenTablet(
     }
   }
 
+  DeleteStartupUnlistedVectorIndexStorages(*meta);
+
   auto pool_tag = PoolTagForTablet(tablet);
   auto service_thread_pool = server_->messenger()->TaggedThreadPool(pool_tag);
   if (!service_thread_pool.ok()) {
@@ -3656,6 +3736,7 @@ Status TSTabletManager::DoHandleNonReadyTabletOnStartup(
     // Passing no OpId will retain the last_logged_opid that was previously in the metadata.
     RETURN_NOT_OK(DeleteTabletData(meta, data_state, fs_manager_->uuid(), yb::OpId()));
   }
+  DeleteStartupUnlistedVectorIndexStorages(*meta);
 
   // Register TOMBSTONED tablets and mark dirty so that they get reported to the Master,
   // which allows us to permanently delete replica tombstones when a table gets deleted.
