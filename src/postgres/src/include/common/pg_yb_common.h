@@ -143,7 +143,9 @@ extern bool YBQueryDiagnosticsTestRaceCondition();
  * Use the YB_PG_PDEATHSIG environment variable to set the signal to be sent to
  * the current process in case the parent process dies. This is Linux-specific
  * and can only be done from the child process (the postmaster, initdb or
- * pg_upgrade). The parent process here is yb-master or yb-tserver.
+ * pg_upgrade). The parent process here is yb-master or yb-tserver. If
+ * YB_PG_PARENT_PID is set and that process is no longer our parent, the
+ * signal is raised immediately.
  */
 extern void YBSetParentDeathSignal();
 
