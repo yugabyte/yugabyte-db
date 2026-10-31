@@ -57,10 +57,11 @@ XClusterCheckpointNamespaceTask::XClusterCheckpointNamespaceTask(
           std::move(validate_epoch_func), async_task_pool, messenger, outbound_replication_group,
           epoch),
       namespace_id_(namespace_id),
+      replication_group_id_(outbound_replication_group.Id()),
       outbound_replication_group_(outbound_replication_group) {}
 
 std::string XClusterCheckpointNamespaceTask::description() const {
-  return Format("XClusterCheckpointNamespaceTask [$0]", outbound_replication_group_.Id());
+  return Format("XClusterCheckpointNamespaceTask [$0]", replication_group_id_);
 }
 
 Status XClusterCheckpointNamespaceTask::FirstStep() {
