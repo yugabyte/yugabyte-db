@@ -4761,6 +4761,50 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     conn.close();
   }
 
+  /**
+   * The shared-memory array that backs pg_stat_replication_slots on each node has
+   * max_replication_slots (GUC, default 10) entries, while the max_replication_slots gflag can
+   * allow more slots. Streaming from more slots than the array holds must not write past its end,
+   * which is where the walsender state lives. In debug builds such a write also fails the bounds
+   * assertion in ReplicationSlotIndex.
+   */
+  @Test
+  public void testStreamFromMoreSlotsThanStatsArray() throws Exception {
+    final int numSlots = 12;
+    Map<String, String> flags = Collections.singletonMap("max_replication_slots", "20");
+    restartClusterWithFlags(flags, flags);
+
+    // A postmaster restart on tserver 0 (after a crash or a stuck spinlock PANIC) would end this
+    // session, so it doubles as the check that nothing crashed.
+    try (Connection observer = getConnectionBuilder().withTServer(0).connect();
+         Statement stmt = observer.createStatement()) {
+      stmt.execute("CREATE TABLE test_table (a int primary key)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE test_table");
+      assertOneRow(stmt, "SHOW max_replication_slots", "10");
+
+      // Starting a stream acquires its slot, which keeps an array entry until the slot is
+      // dropped.
+      for (int i = 0; i < numSlots; i++) {
+        String slotName = "test_slot_" + i;
+        try (Connection conn = getConnectionBuilder().withTServer(0).replicationConnect()) {
+          PGReplicationConnection replConnection =
+              conn.unwrap(PGConnection.class).getReplicationAPI();
+          createSlot(replConnection, slotName, YB_OUTPUT_PLUGIN_NAME);
+          PGReplicationStream stream = replConnection.replicationStream()
+              .logical()
+              .withSlotName(slotName)
+              .withStartPosition(LogSequenceNumber.valueOf(0L))
+              .withSlotOption("proto_version", 1)
+              .withSlotOption("publication_names", "pub")
+              .start();
+          stream.close();
+        }
+      }
+
+      assertOneRow(stmt, "SELECT count(*) FROM pg_stat_replication_slots", (long) numSlots);
+    }
+  }
+
   @Test
   public void testPgVectorWithLogicalReplication() throws Exception {
     final String slotName = "test_pgvector_cdc_slot";

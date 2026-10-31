@@ -82,6 +82,13 @@ pgstat_report_replslot(ReplicationSlot *slot, const PgStat_StatReplSlotEntry *re
 	PgStat_StatReplSlotEntry *statent;
 	int			idx = get_replslot_index(NameStr(slot->data.name));
 
+	/*
+	 * YB: the slot has no ReplicationSlotCtl entry when the array was full as
+	 * it was acquired, see ReplicationSlotAcquire. Keep no stats for it.
+	 */
+	if (idx == -1)
+		return;
+
 	entry_ref = pgstat_get_entry_ref_locked(PGSTAT_KIND_REPLSLOT, InvalidOid,
 											idx, false);
 	shstatent = (PgStatShared_ReplSlot *) entry_ref->shared_stats;
