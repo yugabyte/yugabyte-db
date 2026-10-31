@@ -25,6 +25,7 @@
 
 #include "yb/common/common_net.h"
 #include "yb/common/common_types.pb.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/casts.h"
 
@@ -34,6 +35,7 @@
 #include "yb/integration-tests/yb_table_test_base.h"
 
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
 #include "yb/master/master_backup.proxy.h"
@@ -60,6 +62,10 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 using namespace std::literals;
+
+DECLARE_uint64(TEST_delay_sys_catalog_reload_secs);
+DECLARE_int32(blacklist_progress_initial_delay_secs);
+DECLARE_bool(wait_for_full_tablet_reports_on_blacklist_completion);
 
 DECLARE_bool(enable_load_balancing);
 DECLARE_int32(heartbeat_interval_ms);
@@ -333,6 +339,81 @@ TEST_F(MasterHeartbeatITest, IgnoreEarlierHeartbeatFromSameTSProcess) {
     // heartbeat.
     ASSERT_EQ(ts->num_live_replicas(), 1);
   }
+}
+
+TEST_F(MasterHeartbeatITest, BlacklistCompletionWaitsForTabletReports) {
+  ASSERT_FALSE(FLAGS_wait_for_full_tablet_reports_on_blacklist_completion);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_persist_tserver_registry) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  CreateTable();
+  auto* mini_master = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster());
+  auto& catalog_mgr = mini_master->catalog_manager_impl();
+  const auto table = table_name();
+  auto table_info = catalog_mgr.GetTableInfoFromNamespaceNameAndTableName(
+      table.namespace_type(), table.namespace_name(), table.table_name());
+  auto tablet = ASSERT_RESULT(table_info->GetTablets())[0];
+  ASSERT_OK(WaitFor([&] {
+    return tablet->GetReplicaLocations()->size() == 3 && catalog_mgr.AreTabletReportsComplete();
+  }, 30s * kTimeMultiplier, "Full tablet reports received"));
+  const auto hosting_uuid = tablet->GetReplicaLocations()->begin()->first;
+  auto hosting_desc = ASSERT_RESULT(mini_master->ts_manager().LookupTSByUUID(hosting_uuid));
+  master::MasterClusterClient cluster_client(master::MasterClusterProxy(
+      proxy_cache_.get(), mini_master->bound_rpc_addr()));
+  ASSERT_OK(cluster_client.BlacklistHost(
+      HostPortPB(hosting_desc->GetRegistration().private_rpc_addresses(0))));
+  ASSERT_OK(WaitFor([&] {
+    const auto descs = mini_master->ts_manager().GetAllDescriptors();
+    return std::all_of(descs.begin(), descs.end(), [](const auto& desc) {
+      return desc->LockForRead()->pb.persisted();
+    });
+  }, 30s * kTimeMultiplier, "Tserver registry persisted"));
+
+  // Consume the election grace period during catalog load, before tservers can send reports.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_disable_heartbeat) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_blacklist_progress_initial_delay_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_sys_catalog_reload_secs) = 3;
+  ShutdownAllMasters(mini_cluster_.get());
+  ASSERT_OK(StartAllMasters(mini_cluster_.get()));
+  mini_master = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster());
+  ASSERT_OK(mini_master->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_sys_catalog_reload_secs) = 0;
+  auto& reloaded_catalog = mini_master->catalog_manager_impl();
+  ASSERT_EQ(mini_master->ts_manager().GetAllDescriptors().size(), 3);
+  ASSERT_FALSE(reloaded_catalog.AreTabletReportsComplete());
+  ASSERT_GT(reloaded_catalog.TimeSinceElectedLeader(),
+            MonoDelta::FromSeconds(FLAGS_blacklist_progress_initial_delay_secs));
+
+  auto completion = [&]() -> Result<double> {
+    master::MasterClusterProxy proxy(proxy_cache_.get(), mini_master->bound_rpc_addr());
+    master::GetLoadMovePercentRequestPB req;
+    master::GetLoadMovePercentResponsePB resp;
+    rpc::RpcController rpc;
+    rpc.set_timeout(30s * kTimeMultiplier);
+    RETURN_NOT_OK(proxy.GetLoadMoveCompletion(req, &resp, &rpc));
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+    return resp.percent();
+  };
+  ASSERT_EQ(ASSERT_RESULT(completion()), 100);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_wait_for_full_tablet_reports_on_blacklist_completion) = true;
+  ASSERT_EQ(ASSERT_RESULT(completion()), 0);
+  // The runtime escape hatch must also work while a live tserver has not reported.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_wait_for_full_tablet_reports_on_blacklist_completion) = false;
+  ASSERT_EQ(ASSERT_RESULT(completion()), 100);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_wait_for_full_tablet_reports_on_blacklist_completion) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_disable_heartbeat) = false;
+  ASSERT_OK(WaitFor([&] { return reloaded_catalog.AreTabletReportsComplete(); },
+                    60s * kTimeMultiplier, "Full tablet reports after failover"));
+  auto reloaded_tablet =
+      ASSERT_RESULT(reloaded_catalog.GetTableInfo(table_info->id())->GetTablets())[0];
+  ASSERT_TRUE(reloaded_tablet->GetReplicaLocations()->contains(hosting_uuid));
+  ASSERT_LT(ASSERT_RESULT(completion()), 100);
+
+  // Re-registration clears this bit, but does not discard the reconstructed replica maps.
+  hosting_desc = ASSERT_RESULT(mini_master->ts_manager().LookupTSByUUID(hosting_uuid));
+  hosting_desc->set_has_tablet_report(false);
+  ASSERT_TRUE(reloaded_catalog.AreTabletReportsComplete());
 }
 
 // Verifies the timed-lock heartbeat path (ProcessTabletReportBatch, #10304). When the master cannot
