@@ -43,7 +43,10 @@ class VectorIndexList {
 
   void EnableAutoCompactions();
   void Compact(rocksdb::CompactionReason reason);
-  void Flush();
+  // Flushes every index, also after one fails, and returns the first failure. An index that is
+  // shutting down is skipped, since only a drop shuts down a single index; Tablet::Flush reports
+  // tablet shutdown itself.
+  Status Flush();
   Status WaitForCompaction();
   Status WaitForFlush();
   // Returns true if this list is empty or every index has compacted inherited parent data for
@@ -157,6 +160,7 @@ class TabletVectorIndexes :
 
   void StartShutdown();
   void CompleteShutdown(std::vector<std::string>& out_paths);
+  bool ShutdownStarted() const { return !shutdown_controller_.IsRunning(); }
   // Adds finished and failed vector index backfills to the tablet status.
   void FillBackfillStatus(TabletStatusPB& tablet_status);
 

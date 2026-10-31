@@ -2276,6 +2276,10 @@ Status VectorLSM<Vector, DistanceResult>::Flush(bool wait) {
 
   RETURN_NOT_OK(RUNNING_STATUS());
 
+  Status injected;
+  TEST_SYNC_POINT_CALLBACK("VectorLSM::Flush:Status", &injected);
+  RETURN_NOT_OK(injected);
+
   std::promise<Status> promise;
   {
     std::lock_guard lock(mutex_);
@@ -2311,7 +2315,10 @@ Status VectorLSM<Vector, DistanceResult>::ModifyChunkFrontiers(
   WritableFile* manifest_file = nullptr;
   {
     std::lock_guard lock(mutex_);
-    RETURN_NOT_OK(failed_status_);
+    // Not RETURN_NOT_OK: it would move the failure out of the member, see AdvanceFlushedFrontier.
+    if (!failed_status_.ok()) {
+      return failed_status_;
+    }
     SCHECK(!mutable_chunk_ || !mutable_chunk_->num_entries, IllegalState,
            "Cannot modify chunk frontiers of a vector index with unflushed entries");
     for (const auto& chunk : immutable_chunks_) {
@@ -2362,7 +2369,11 @@ Result<bool> VectorLSM<Vector, DistanceResult>::AdvanceFlushedFrontier(
   ImmutableChunkPtr chunk;
   {
     std::lock_guard lock(mutex_);
-    RETURN_NOT_OK(failed_status_);
+    // RETURN_NOT_OK on a non-const lvalue moves from it. That would clear failed_status_, and a
+    // chunk whose save failed would then keep WaitForFlush and CompleteShutdown waiting forever.
+    if (!failed_status_.ok()) {
+      return failed_status_;
+    }
     if (mutable_chunk_ && mutable_chunk_->num_entries) {
       return false;
     }

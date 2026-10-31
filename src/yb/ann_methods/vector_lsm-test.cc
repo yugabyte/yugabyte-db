@@ -1005,6 +1005,42 @@ TEST_F(VectorLSMHnswlibTest, AdvanceFlushedFrontierKeepsOneFrontierOnlyChunk) {
   ASSERT_EQ(flushed_vertex_id(lsm), expected);
 }
 
+// Reporting a failed chunk save must not clear it: the chunk stays in the updates queue, so the
+// flush wait and shutdown return only while the index stays failed.
+TEST_F(VectorLSMHnswlibTest, SaveFailureSurvivesFrontierUpdates) {
+  constexpr size_t kDimensions = 4;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kDefaultChunkSize));
+  ASSERT_OK(InsertCube(lsm, kDimensions, kDefaultChunkSize));
+  ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+
+  auto* sync = SyncPoint::GetInstance();
+  sync->SetCallBack("VectorLSM::DoSaveChunk:Status", [](void* arg) {
+    *static_cast<Status*>(arg) = STATUS(IOError, "injected chunk save failure");
+  });
+  sync->EnableProcessing();
+  auto cleanup = ScopeExit([sync] {
+    sync->DisableProcessing();
+    sync->ClearAllCallBacks();
+  });
+  ASSERT_TRUE(lsm.Flush(/* wait = */ true).IsIOError());
+  sync->DisableProcessing();
+
+  TestFrontiers frontiers;
+  frontiers.Largest().SetVertexId(VectorId::GenerateRandom());
+  for (int i = 0; i != 2; ++i) {
+    auto advanced = lsm.AdvanceFlushedFrontier(frontiers);
+    ASSERT_NOK(advanced);
+    ASSERT_TRUE(advanced.status().IsIOError()) << advanced.status();
+    ASSERT_TRUE(lsm.ModifyChunkFrontiers([](storage::UserFrontiers&) {}).IsIOError());
+  }
+  ASSERT_TRUE(lsm.GetFlushStatus().IsIOError());
+  ASSERT_TRUE(lsm.WaitForFlush().IsIOError());
+}
+
 // Unlike adding a chunk, ModifyChunkFrontiers can move the flushed frontier backwards, and the
 // change survives reopening the index. It refuses while entries are unflushed.
 TEST_F(VectorLSMHnswlibTest, ModifyChunkFrontiers) {
