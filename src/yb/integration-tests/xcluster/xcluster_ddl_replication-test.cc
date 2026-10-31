@@ -126,6 +126,7 @@ DECLARE_bool(TEST_pause_vector_reverse_mapping_repair);
 DECLARE_string(TEST_skip_async_insert_packed_schema_for_tablet_id);
 DECLARE_bool(TEST_skip_oid_advance_on_restore);
 DECLARE_int32(TEST_sleep_before_vector_index_backfill_seconds);
+DECLARE_int32(TEST_slowdown_backfill_by_ms);
 DECLARE_bool(TEST_tserver_disable_heartbeat);
 DECLARE_bool(TEST_vector_index_exact);
 DECLARE_bool(TEST_xcluster_block_first_poll);
@@ -7789,6 +7790,52 @@ class XClusterDDLReplicationIndexBackfillTest : public XClusterDDLReplicationTes
     ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>(index_count_stmt)), kNumRows);
     ASSERT_OK(VerifyWrittenRecords(std::vector<TableName>{kTableName}));
   }
+
+  // Runs an UPDATE inside the source's index backfill window, so the source writes an index
+  // tombstone at a time after the backfill read time. The target must end up with no index entry
+  // for the pre-UPDATE value.
+  void TestConcurrentUpdateDuringBackfill(bool colocated) {
+    auto params = XClusterDDLReplicationTestBase::kDefaultParams;
+    params.is_colocated = colocated;
+    ASSERT_OK(SetUpClustersAndReplication(params));
+    ASSERT_OK(CreateBaseTable());
+
+    // One sleep at the top of BackfillIndexesForYsql, so this is the whole window for the UPDATE.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_slowdown_backfill_by_ms) = 3000 * kTimeMultiplier;
+    StringWaiterLogSink target_deferred_log("Skipping local index backfill for indexed_table");
+    // Logged before the slowdown sleep, so the read time is already chosen when this fires.
+    StringWaiterLogSink backfill_started_log("Begin BackfillIndexesForYsql");
+
+    TestThreadHolder thread_holder;
+    thread_holder.AddThreadFunctor([this]() {
+      auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+      ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0 ON $1($2 ASC)", kIndexName, kTableName, kCol));
+    });
+    ASSERT_OK(backfill_started_log.WaitFor(kTimeout));
+    ASSERT_OK(producer_conn_->ExecuteFormat("UPDATE $0 SET $1 = -$1", kTableName, kCol));
+
+    thread_holder.JoinAll();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_slowdown_backfill_by_ms) = 0;
+    ASSERT_OK(target_deferred_log.WaitFor(kTimeout));
+
+    // Every value is negative now, so an index scan of the positive range must return nothing, and
+    // each cluster's index must agree with its own base table.
+    const auto scan_stmt = Format(
+        "/*+ IndexScan($0) */ SELECT COUNT(*) FROM $1 WHERE $2 > 0", kIndexName, kTableName, kCol);
+    const auto index_check =
+        Format("SELECT COUNT(*) FROM yb_index_check('$0'::regclass)", kIndexName);
+    ASSERT_OK(producer_conn_->Execute("SET enable_seqscan = off"));
+    ASSERT_OK(consumer_conn_->Execute("SET enable_seqscan = off"));
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+    ASSERT_OK(LoggedWaitFor(
+        [&]() -> Result<bool> { return consumer_conn_->HasIndexScan(scan_stmt); }, kTimeout,
+        "Replicated backfill index ready on consumer"));
+    ASSERT_OK(VerifyWrittenRecords(std::vector<TableName>{kTableName}));
+    ASSERT_EQ(ASSERT_RESULT(producer_conn_->FetchRow<int64_t>(scan_stmt)), 0);
+    ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>(scan_stmt)), 0);
+    ASSERT_EQ(ASSERT_RESULT(producer_conn_->FetchRow<int64_t>(index_check)), 0);
+    ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>(index_check)), 0);
+  }
 };
 
 // Base case, flag on, and index backfill replicated from source.
@@ -7907,6 +7954,15 @@ TEST_F(XClusterDDLReplicationIndexBackfillTest, TargetWaitsForReplicatedBackfill
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
   VerifyFilterTargetAppliedBit(/*expected=*/true);
   VerifyIndex("Replicated backfill index ready on consumer after backfill unblocked");
+}
+
+// An UPDATE during the source's index backfill must leave no stale index entry on the target.
+TEST_F(XClusterDDLReplicationIndexBackfillTest, ConcurrentUpdateDuringBackfill) {
+  TestConcurrentUpdateDuringBackfill(/*colocated=*/false);
+}
+
+TEST_F(XClusterDDLReplicationIndexBackfillTest, ConcurrentUpdateDuringBackfillColocated) {
+  TestConcurrentUpdateDuringBackfill(/*colocated=*/true);
 }
 
 TEST_F(XClusterDDLReplicationTest, CreatePartitionSkipsDefaultPartitionScanOnTarget) {
