@@ -12,12 +12,15 @@
 
 #include <algorithm>
 
+#include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_state_table.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/entity_ids.h"
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
+#include "yb/master/master.h"
+#include "yb/master/master_tserver.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/util/flags.h"
 #include "yb/util/test_macros.h"
@@ -6960,7 +6963,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestRetentionBarriersPropagateToF
 
   ASSERT_LT(initial_wal_barrier, OpId::Max().index);
   ASSERT_LT(initial_intents_barrier, OpId::Max());
-  ASSERT_LT(initial_history_barrier, HybridTime::kMax);
+  ASSERT_LT(initial_history_barrier, HybridTime::kInvalid);
 
   ASSERT_OK(WriteRows(0 /* start */, 10 /* end */, &test_cluster_));
 
@@ -6993,7 +6996,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestRetentionBarriersPropagateToF
       ASSERT_LT(initial_wal_barrier, wal_barrier);
       ASSERT_LT(intents_barrier, OpId::Max());
       ASSERT_LT(initial_intents_barrier, intents_barrier);
-      ASSERT_LT(history_barrier, HybridTime::kMax);
+      ASSERT_LT(history_barrier, HybridTime::kInvalid);
       ASSERT_LT(initial_history_barrier, history_barrier);
     }
   };
@@ -7004,28 +7007,47 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestRetentionBarriersPropagateToF
   // Sleep for a few multiples of the stale interval to ensure barriers won't be released because
   // CDCMasterBgTask is correctly refreshing them.
   SleepFor(
-      MonoDelta::FromSeconds(
-          FLAGS_cdc_min_replicated_index_considered_stale_secs_master * 2 * kTimeMultiplier));
+      MonoDelta::FromSeconds(FLAGS_cdc_min_replicated_index_considered_stale_secs_master * 2));
   check_all_masters_barriers();
+
+  auto* cluster = test_cluster_.mini_cluster_.get();
+  // The stale interval is raised while waiting because the new leader's first CDCMasterBgTask
+  // run can be delayed (e.g. sys_catalog lookup in sanitizer builds), letting followers go stale.
+  auto wait_for_leader_propagation = [&](const std::string& expected_leader_uuid) {
+    ASSERT_OK(WaitFor([&]() -> Result<bool> {
+      auto leader = cluster->GetLeaderMiniMaster();
+      if (!leader.ok() ||
+          (!expected_leader_uuid.empty() &&
+           (*leader)->permanent_uuid() != expected_leader_uuid)) {
+        return false;
+      }
+      return (*leader)->master()->tablet_server()->GetCDCService()
+          ->HasCDCMasterBgTaskRunOnce();
+    }, MonoDelta::FromSeconds(60 * kTimeMultiplier), "New leader did not propagate barriers"));
+  };
 
   // Step down the master leader to simulate a failover. Then verify that retention barriers on all
   // masters are still valid (ahead of initial barriers). On the new leader, the barriers should not
   // have been reset despite the stale sleep, because the leader propagation kept refreshing them.
-  ASSERT_OK(test_cluster_.mini_cluster_->StepDownMasterLeader("" /* new_leader_uuid */));
-  // Wait for the new leader to be elected and CDCMasterBgTask to run.
-  SleepFor(
-      MonoDelta::FromSeconds(
-          FLAGS_update_min_cdc_indices_master_interval_secs * 5 * kTimeMultiplier));
+  auto old_leader = ASSERT_RESULT(cluster->GetLeaderMiniMaster());
+  auto new_leader_uuid =
+      cluster->mini_master(old_leader == cluster->mini_master(0) ? 1 : 0)->permanent_uuid();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs_master) = 14400;
+  ASSERT_OK(cluster->StepDownMasterLeader(new_leader_uuid));
+  ASSERT_NO_FATALS(wait_for_leader_propagation(new_leader_uuid));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs_master) = 10;
+  SleepFor(MonoDelta::FromSeconds(10 * 2));
   check_all_masters_barriers();
 
   // Restart all 3 masters and verify barriers are still propagated after a full cycle.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs_master) = 14400;
   for (size_t i = 0; i < num_masters; i++) {
-    ASSERT_OK(test_cluster_.mini_cluster_->mini_master(i)->Restart());
+    ASSERT_OK(cluster->mini_master(i)->Restart());
   }
-  ASSERT_OK(test_cluster_.mini_cluster_->WaitForAllTabletServers());
-  SleepFor(
-      MonoDelta::FromSeconds(
-          FLAGS_update_min_cdc_indices_master_interval_secs * 5 * kTimeMultiplier));
+  ASSERT_OK(cluster->WaitForAllTabletServers());
+  ASSERT_NO_FATALS(wait_for_leader_propagation("" /* expected_leader_uuid */));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs_master) = 10;
+  SleepFor(MonoDelta::FromSeconds(10 * 2));
   check_all_masters_barriers();
 }
 
