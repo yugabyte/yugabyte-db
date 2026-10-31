@@ -49,12 +49,13 @@ DEFINE_RUNTIME_AUTO_bool(ysql_yb_enable_advisory_locks, kLocalPersisted, false, 
     "Whether to enable advisory locks.");
 
 DEFINE_RUNTIME_PG_FLAG(int32, yb_major_version_upgrade_compatibility, 0,
-    "The compatibility level to use during a YSQL Major version upgrade. Allowed values are 0 and "
-    "11.");
+    "The compatibility level to use during a YSQL Major version upgrade. Allowed values are 0, 11, "
+    "15 and 19.");
 // When 11 is removed from this allow-list, also drop the version-11 handling of
 // ScalarArrayOpExpr: the custom _out/_read functions in outfuncs.c and readfuncs.c, and its
 // custom_read_write attribute in primnodes.h.
-DEFINE_validator(ysql_yb_major_version_upgrade_compatibility, FLAG_IN_SET_VALIDATOR(0, 11));
+DEFINE_validator(ysql_yb_major_version_upgrade_compatibility,
+    FLAG_IN_SET_VALIDATOR(0, 11, 15, 19));
 
 // DevNote: If this flag is changed to runtime then it needs to be converted to RUNTIME_PG_FLAG,
 // and pggate/webserver/ybc_pg_webserver_wrapper.cc needs to be updated to use the guc instead of

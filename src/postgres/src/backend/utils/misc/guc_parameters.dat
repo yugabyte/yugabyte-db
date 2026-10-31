@@ -4735,7 +4735,7 @@
 },
 
 { name => 'yb_major_version_upgrade_compatibility', type => 'int', context => 'PGC_SIGHUP', group => 'CUSTOM_OPTIONS',
-  short_desc => 'The compatibility level to use during a YSQL Major version upgrade. Allowed values are 0 and 11.',
+  short_desc => 'The compatibility level to use during a YSQL Major version upgrade. Allowed values are 0, 11, 15 and 19.',
   flags => 'GUC_NOT_IN_SAMPLE',
   variable => 'yb_major_version_upgrade_compatibility',
   boot_val => '0',
