@@ -3414,8 +3414,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   bool CDCSDKShouldRetainHiddenTablet(const TabletId& tablet_id) EXCLUDES(mutex_);
 
-  // True when hide_time is behind every logical slot's restart time.
-  bool IsHiddenTabletClearedByCDC(const TableId& table_id, HybridTime hide_time) EXCLUDES(mutex_);
+  // Min restart time across the logical slots on table_id, or invalid if there are none or the
+  // cdc_state read fails.
+  HybridTime GetMinRestartTimeAcrossSlotsForTable(const TableId& table_id) EXCLUDES(mutex_);
 
   bool CDCSDKShouldRetainHiddenColocatedTable(const TableId& table_id) EXCLUDES(mutex_);
 

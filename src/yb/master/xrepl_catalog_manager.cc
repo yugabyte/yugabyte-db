@@ -6663,14 +6663,16 @@ bool CatalogManager::CDCSDKShouldRetainHiddenTablet(const TabletId& tablet_id) {
   return retained_by_cdcsdk_.contains(tablet_id);
 }
 
-bool CatalogManager::IsHiddenTabletClearedByCDC(const TableId& table_id, HybridTime hide_time) {
+HybridTime CatalogManager::GetMinRestartTimeAcrossSlotsForTable(const TableId& table_id) {
   SharedLock read_lock(mutex_);
   auto min_restart_time_result =
       GetMinRestartTimeAcrossSlots(GetCDCSDKStreamsForTable(table_id));
-  if (!min_restart_time_result.ok() || !min_restart_time_result->is_valid()) {
-    return false;
+  if (!min_restart_time_result.ok()) {
+    LOG(WARNING) << "Failed to read the min restart time across slots for table " << table_id
+                 << ": " << min_restart_time_result.status();
+    return HybridTime::kInvalid;
   }
-  return hide_time < *min_restart_time_result;
+  return *min_restart_time_result;
 }
 
 bool CatalogManager::CDCSDKShouldRetainHiddenColocatedTable(const TableId& table_id) {

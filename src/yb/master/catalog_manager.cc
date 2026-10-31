@@ -13360,19 +13360,6 @@ Status CatalogManager::BuildLocationsForTablet(
   }
   std::shared_ptr<const TabletReplicaMap> locs;
   consensus::ConsensusStatePB cstate;
-  bool tablet_hidden = false;
-  HybridTime hide_time;
-  {
-    auto l_tablet = tablet->LockForRead();
-    tablet_hidden = l_tablet->is_hidden();
-    if (tablet_hidden && l_tablet->pb.has_hide_hybrid_time()) {
-      hide_time = HybridTime(l_tablet->pb.hide_hybrid_time());
-    }
-  }
-  // A split does not hide the table, so the parent stays and the split error adds its children.
-  const bool hidden_table_released_by_cdc =
-      tablet_hidden && hide_time.is_valid() && tablet->table()->started_hiding() &&
-      IsHiddenTabletClearedByCDC(tablet->table()->id(), hide_time);
   {
     auto l_tablet = tablet->LockForRead();
 
@@ -13399,9 +13386,6 @@ Status CatalogManager::BuildLocationsForTablet(
           l_tablet->pb.state_msg());
     }
     InitializeTabletLocationsPB(tablet->tablet_id(), l_tablet->pb, locs_pb);
-    if (hidden_table_released_by_cdc) {
-      locs_pb->set_hidden_table_released_by_cdc(true);
-    }
     locs = tablet->GetReplicaLocations();
     locs_pb->set_stale(locs->empty());
     locs_pb->set_raft_config_opid_index(
@@ -13512,6 +13496,7 @@ Status CatalogManager::GetTableLocations(
   // Don't return TabletLocations for deleted tables as they may not exist.
   // However, do return the TabletLocations for hidden tables as those are
   // needed for supporting SELECT AS-OF, DB-Clone, XCluster, PITR.
+  bool table_started_hiding;
   {
     auto table_lock = table->LockForRead();
     if (table_lock->started_deleting()) {
@@ -13521,6 +13506,13 @@ Status CatalogManager::GetTableLocations(
     }
     resp->set_table_type(table_lock->pb.table_type());
     resp->set_partition_list_version(table_lock->pb.partition_list_version());
+    table_started_hiding = table_lock->started_hiding();
+  }
+
+  // The virtual WAL always sets include_inactive
+  HybridTime min_restart_time;
+  if (req->include_inactive() && table_started_hiding) {
+    min_restart_time = GetMinRestartTimeAcrossSlotsForTable(table->id());
   }
 
   std::vector<TabletInfoPtr> tablets = VERIFY_RESULT(table->GetTabletsInRange(req));
@@ -13546,6 +13538,15 @@ Status CatalogManager::GetTableLocations(
         return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, status);
       }
       resp->mutable_tablet_locations()->RemoveLast();
+      continue;
+    }
+    if (min_restart_time.is_valid()) {
+      auto l_tablet = tablet->LockForRead();
+      // Same condition the CDC deletion task uses.
+      if (l_tablet->is_hidden() && l_tablet->pb.has_hide_hybrid_time() &&
+          HybridTime(l_tablet->pb.hide_hybrid_time()) < min_restart_time) {
+        locs_pb->set_hidden_table_released_by_cdc(true);
+      }
     }
   }
 
