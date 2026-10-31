@@ -69,6 +69,7 @@ typedef enum
 
 /* YB includes */
 #include "catalog/pg_yb_role_profile.h"
+#include "commands/extension.h"
 #include "commands/yb_profile.h"
 #include "pg_yb_utils.h"
 #include "yb/yql/pggate/ybc_gflags.h"
@@ -364,7 +365,13 @@ CreateRole(ParseState *pstate, CreateRoleStmt *stmt)
 	/* Check some permissions first */
 	if (!superuser_arg(currentUserId) && !yb_bypassrls_by_admin)
 	{
-		if (!has_createrole_privilege(currentUserId))
+		/*
+		 * YB: A yb_extension member may run an extension script that creates
+		 * a role (e.g. orafce's orafce_set_umask) without CREATEROLE.  The
+		 * attribute checks below still apply.
+		 */
+		if (!has_createrole_privilege(currentUserId) &&
+			!(IsYbExtensionUser(currentUserId) && creating_extension))
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 					 errmsg("permission denied to create role"),
