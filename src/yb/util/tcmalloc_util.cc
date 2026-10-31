@@ -13,6 +13,9 @@
 #include "yb/util/tcmalloc_util.h"
 
 #include <cstdint>
+#include <limits>
+#include <mutex>
+#include <thread>
 
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
@@ -23,9 +26,15 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/status_log.h"
 #include "yb/util/tcmalloc_impl_util.h"
+#include "yb/util/thread.h"
 
 #if YB_GPERFTOOLS_TCMALLOC
 #include <gperftools/heap-profiler.h>
+#endif
+
+#if YB_GOOGLE_TCMALLOC
+// Not exposed through MallocExtension.
+extern "C" void TCMalloc_Internal_SetPerCpuCachesDynamicSlabGrowThreshold(double v);
 #endif
 
 using yb::operator""_MB;
@@ -188,6 +197,18 @@ void TCMallocReleaseMemoryToSystemIgnoringRecentDemand(int64_t bytes) {
 #endif
 }
 
+void TCMallocReleaseAllFreeMemory(bool drain_cpu_caches) {
+#if YB_GOOGLE_TCMALLOC
+  if (drain_cpu_caches && tcmalloc::MallocExtension::PerCpuCachesActive()) {
+    static const int num_cpus = static_cast<int>(std::thread::hardware_concurrency());
+    for (int cpu = 0; cpu < num_cpus; ++cpu) {
+      tcmalloc::MallocExtension::ReleaseCpuMemory(cpu);
+    }
+  }
+#endif
+  TCMallocReleaseMemoryToSystemIgnoringRecentDemand(std::numeric_limits<int64_t>::max());
+}
+
 #if YB_GOOGLE_TCMALLOC
 // Sets the given property to the given value in Google tcmalloc using a Set... function and
 // immediately calls the corresponding Get... function to verify the effective new value of the
@@ -285,6 +306,38 @@ void SetTCMallocSamplingPeriod(int64_t sample_period_bytes) {
   tcmalloc::MallocExtension::SetProfileSamplingRate(sample_period_bytes);
 #elif YB_GPERFTOOLS_TCMALLOC
   MallocExtension::instance()->SetProfileSamplingRate(sample_period_bytes);
+#endif
+}
+
+Status StartTCMallocBackgroundThread() {
+#if YB_GOOGLE_TCMALLOC
+  static std::mutex mutex;
+  static bool started = false;
+  std::lock_guard lock(mutex);
+  if (started) {
+    return Status::OK();
+  }
+  if (!tcmalloc::MallocExtension::NeedsProcessBackgroundActions()) {
+    LOG(INFO) << "TCMalloc background actions are not supported on this platform";
+    return Status::OK();
+  }
+  // The background loop periodically grows the per-CPU slab when caches overflow, which costs
+  // several MB of metadata per process. That is a poor trade for processes with few allocating
+  // threads, such as Postgres backends, so keep the slab at its initial size.
+  TCMalloc_Internal_SetPerCpuCachesDynamicSlabGrowThreshold(std::numeric_limits<double>::max());
+  RETURN_NOT_OK(Thread::Create(
+      "tcmalloc", "tcmalloc_bkgrnd", [] { tcmalloc::MallocExtension::ProcessBackgroundActions(); },
+      nullptr));
+  started = true;
+#endif
+  return Status::OK();
+}
+
+void SetTCMallocBackgroundReleaseRate(int64_t bytes_per_sec) {
+#if YB_GOOGLE_TCMALLOC
+  tcmalloc::MallocExtension::SetBackgroundReleaseRate(
+      tcmalloc::MallocExtension::BytesPerSecond{static_cast<size_t>(std::max<int64_t>(
+          bytes_per_sec, 0))});
 #endif
 }
 
