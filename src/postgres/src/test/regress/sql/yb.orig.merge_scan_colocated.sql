@@ -645,12 +645,20 @@ CREATE INDEX NONCONCURRENTLY ON r5n (r2 ASC, r3, (r4 + 0), r5, r4);
 ANALYZE r5n;
 
 -- DISTINCT
--- With larger response pages, merge scan is the cheaper plan for this query.
+-- The merge sort keys stop before the expression column, which leaves the
+-- merge distinct path with fewer pathkeys than its distinct prefix, the
+-- state #36012 guards against.  That path is only cheapest as a backward
+-- scan, whose per-group discount has to beat the per-row merge charge
+-- (#29078), which it does at two streams and not at four.  With larger
+-- response pages it is then within add_path's fuzz of the plain scan and
+-- wins on pathkeys.  Without the #36012 reset of yb_distinct_nkeys in
+-- yb_finalize_merge_scan_stream_cols, the merge-on EXPLAIN fails an
+-- assertion.
 SET yb_fetch_row_limit = 1024;
 -- Index only scan is off, since only a plain index scan on a colocated index
 -- needs its merge sort keys to stop before an expression column (issue #36017).
 SET enable_indexonlyscan = off;
-\set query ':P :Q SELECT DISTINCT r3, r4 + 0, r5, r4 FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY r3, r4 + 0, r5, r4 LIMIT 5;'
+\set query ':P :Q SELECT DISTINCT r3, r4 + 0, r5, r4 FROM r5n WHERE r2 IN (0, 1) ORDER BY r3, r4 + 0, r5, r4 LIMIT 5;'
 \i :run_query
 RESET enable_indexonlyscan;
 SET yb_fetch_row_limit = 16;
