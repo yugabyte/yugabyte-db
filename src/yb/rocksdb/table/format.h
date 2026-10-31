@@ -24,6 +24,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <optional>
 #include <string>
 #include "yb/util/slice.h"
 #include "yb/rocksdb/status_fwd.h"
@@ -67,8 +68,18 @@ class BlockHandle {
   uint64_t size() const { return size_; }
   void set_size(uint64_t _size) { size_ = _size; }
 
+  // Upper-level index entries only: number of data blocks in the file up to the end of this block.
+  // Not encoded by AppendEncodedTo/DecodeFrom, which the footer and metaindex also use.
+  const std::optional<uint64_t>& cumulative_entry_count() const { return cumulative_entry_count_; }
+  void set_cumulative_entry_count(uint64_t count) { cumulative_entry_count_ = count; }
+
   void AppendEncodedTo(std::string* dst) const;
   Status DecodeFrom(Slice* input);
+  // AppendEncodedTo/DecodeFrom plus cumulative_entry_count, if present. For index entry values.
+  // DecodeIndexValueFrom leaves bytes that don't start with the count's tag unread, so later
+  // formats can add other tags.
+  void AppendIndexValueTo(std::string* dst) const;
+  Status DecodeIndexValueFrom(Slice* input);
 
   // Return a string that contains the copy of handle.
   std::string ToString(bool hex = true) const;
@@ -99,6 +110,7 @@ class BlockHandle {
  private:
   uint64_t offset_ = 0;
   uint64_t size_ = 0;
+  std::optional<uint64_t> cumulative_entry_count_;
 
   static const BlockHandle kNullBlockHandle;
 };
