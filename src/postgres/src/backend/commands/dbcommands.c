@@ -1908,6 +1908,9 @@ yb_removing_database_from_system:
 	 */
 	if (IsYugaByteEnabled())
 	{
+		int			yb_tries = 0;
+
+yb_recheck_connections:
 		/*
 		 * YB: If attempting to drop a database when Connection Manager is
 		 * enabled, sleep until guarantee of shared memory being updated for
@@ -1953,6 +1956,15 @@ yb_removing_database_from_system:
 			if (YbIsYsqlConnMgrWarmupModeEnabled())
 				yb_net_client_connections = yb_num_logical_conn;
 		}
+
+		/*
+		 * YB: Conn mgr stats can lag a disconnecting logical client (e.g. one
+		 * whose backend FORCE just terminated), so re-read them a few times
+		 * when they are the only reason to fail.
+		 */
+		if (yb_net_client_connections > 0 && notherbackends == 0 &&
+			npreparedxacts == 0 && YbIsClientYsqlConnMgr() && ++yb_tries < 5)
+			goto yb_recheck_connections;
 
 		/*
 		 * yb_net_client_connections can be negative if there are broken physical connections
