@@ -257,6 +257,75 @@ void CDCSDKYsqlTest::TestCDCLagMetric(CDCCheckpointType checkpoint_type) {
 
 CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(CDCSDKYsqlTest, TestCDCLagMetric);
 
+// Sent lag must not spike when a peer becomes leader again, before it serves GetChanges.
+TEST_F(CDCSDKYsqlTest, TestSentLagNoSpikeAfterLeaderChange) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_metrics_interval_ms) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName, 1));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version = */ nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  const auto tablet_id = tablets[0].tablet_id();
+
+  auto stream_id =
+      ASSERT_RESULT(CreateDBStreamBasedOnCheckpointType(cdc::CDCCheckpointType::IMPLICIT));
+  ASSERT_FALSE(ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets)).has_error());
+
+  ASSERT_OK(WriteRowsHelper(0, 1, &test_cluster_, true));
+  GetChangesResponsePB change_resp;
+  ASSERT_OK(WaitForGetChangesToFetchRecords(&change_resp, stream_id, tablets, 1));
+  change_resp =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
+
+  size_t leader_index = 0;
+  size_t follower_index = 0;
+  GetTabletLeaderAndAnyFollowerIndex(tablets, &leader_index, &follower_index);
+  auto* cdc_service = CDCService(test_cluster()->mini_tablet_server(leader_index)->server());
+  ASSERT_OK(WaitFor(
+      [&] { return cdc_service->CDCEnabled(); }, MonoDelta::FromSeconds(30), "IsCDCEnabled"));
+  auto metrics = ASSERT_RESULT(GetCDCSDKTabletMetrics(
+      *cdc_service, tablet_id, stream_id, CreateMetricsEntityIfNotFound::kFalse));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return metrics->cdcsdk_sent_lag_micros->value() == 0 &&
+               metrics->cdcsdk_last_sent_physicaltime->value() > 0;
+      },
+      MonoDelta::FromSeconds(10) * kTimeMultiplier, "Caught up"));
+
+  // Move leadership away long enough for commit time to pass the old last-sent time, and let the
+  // new leader stream the next row so the stream itself stays caught up.
+  StartYbAdminClient();
+  ASSERT_OK(StepDownLeader(follower_index, tablet_id));
+  SleepFor(MonoDelta::FromSeconds(5) * kTimeMultiplier);
+  ASSERT_OK(WriteRowsHelper(1, 2, &test_cluster_, true));
+  auto cp = change_resp.cdc_sdk_checkpoint();
+  ASSERT_OK(WaitForGetChangesToFetchRecords(
+      &change_resp, stream_id, tablets, 1, /* is_explicit_checkpoint */ false, &cp));
+
+  ASSERT_OK(StepDownLeader(leader_index, tablet_id));
+  ASSERT_OK(WaitFor(
+      [&] {
+        for (const auto& peer : test_cluster()->GetTabletPeers(leader_index)) {
+          if (peer && peer->tablet_id() == tablet_id) {
+            return peer->IsLeaderAndReady();
+          }
+        }
+        return false;
+      },
+      MonoDelta::FromSeconds(30) * kTimeMultiplier, "Original leader is ready"));
+
+  // No GetChanges. UpdateMetrics is the only thing that can publish sent lag now.
+  const auto deadline = MonoTime::Now() + MonoDelta::FromSeconds(3) * kTimeMultiplier;
+  while (MonoTime::Now() < deadline) {
+    ASSERT_LT(metrics->cdcsdk_sent_lag_micros->value(), 2 * 1000 * 1000)
+        << "last_sent=" << metrics->cdcsdk_last_sent_physicaltime->value();
+    SleepFor(MonoDelta::FromMilliseconds(100));
+  }
+}
+
 // Begin transaction, perform some operations and abort transaction.
 // Expected records: 0. In case of non consistent snapshot streams we receive 1 DDL.
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(AbortAllWriteOperations)) {
