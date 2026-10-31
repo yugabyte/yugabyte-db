@@ -959,14 +959,12 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   }
 
   Result<TransactionMetadata> metadata() EXCLUDES(mutex_) {
-    {
-      std::lock_guard lock(mutex_);
-      if (!status_.ok()) {
-        return status_;
-      }
-      if (!ready_) {
-        return STATUS_FORMAT(IllegalState, "Transaction not ready");
-      }
+    std::lock_guard lock(mutex_);
+    if (!status_.ok()) {
+      return status_;
+    }
+    if (!ready_) {
+      return STATUS_FORMAT(IllegalState, "Transaction not ready");
     }
     return metadata_;
   }
