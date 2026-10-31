@@ -13,7 +13,9 @@
 
 #pragma once
 
+#include <mutex>
 #include <shared_mutex>
+#include <unordered_set>
 
 #include "yb/common/entity_ids_types.h"
 
@@ -130,6 +132,10 @@ class TabletVectorIndexes :
 
   void LaunchBackfillsIfNecessary();
 
+  // Writes, in the background, the vector reverse mapping entries of the rows the table had on the
+  // tablet before it was added, see TableInfoPB::vector_reverse_mapping_repair_pending.
+  void ScheduleReverseMappingRepair(const TableId& table_id) EXCLUDES(tasks_mutex_);
+
   // Reloads TableInfo::vector_index_deactivated_ht of every index from the tablet metadata, after
   // an alter changed the index map of an indexed table, and flushes the deactivated indexes.
   void RefreshDeactivation() EXCLUDES(vector_indexes_mutex_);
@@ -212,6 +218,11 @@ class TabletVectorIndexes :
       const docdb::DocVectorIndexPtr& vector_index, const TableInfo& indexed_table, Slice key,
       HybridTime backkfill_ht, OpId op_id);
 
+  Status RepairReverseMapping(const TableId& table_id);
+
+  // Records status as the backfill result of the vector indexes of indexed_table_id.
+  std::vector<docdb::DocVectorIndexPtr> IndexesOf(const TableId& indexed_table_id);
+
   Status DoCreateIndex(
       const TableInfo& index_table, const TableInfoPtr& indexed_table, bool allow_inplace_insert)
       REQUIRES(vector_indexes_mutex_);
@@ -249,6 +260,14 @@ class TabletVectorIndexes :
   std::atomic<bool> backfills_launched_{false};
   // A backfill asked for a retry and no retry has evaluated the indexes since.
   std::atomic<bool> backfill_retry_pending_{false};
+
+  std::mutex tasks_mutex_;
+  // Tables with a reverse mapping repair queued or running.
+  std::unordered_set<TableId> repairs_in_flight_ GUARDED_BY(tasks_mutex_);
+  // Tables whose repair failed with an error that is not retried until the tablet restarts.
+  std::unordered_set<TableId> failed_repairs_ GUARDED_BY(tasks_mutex_);
+  // Vector indexes with a backfill queued or running.
+  std::unordered_set<TableId> backfills_in_flight_ GUARDED_BY(tasks_mutex_);
 };
 
 }  // namespace yb::tablet

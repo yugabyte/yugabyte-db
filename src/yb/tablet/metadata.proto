@@ -107,6 +107,11 @@ message TableInfoPB {
   // table's index map. The index can stay on the tablet after that, e.g. while a snapshot schedule
   // retains a dropped index, but rows written after this time are not added to it.
   optional fixed64 vector_index_deactivated_ht = 18;
+
+  // For a colocated table that owns the vector reverse mapping: the tablet had rows of the table
+  // before the table was added, without their reverse mapping entries, and has not written them
+  // yet. Vector indexes of the table are not backfilled until it has.
+  optional bool vector_reverse_mapping_repair_pending = 20;
 }
 
 // KV-store meta data. Single KV-store is backed by one or two RocksDB instances, depending on
