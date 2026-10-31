@@ -395,7 +395,7 @@ TEST_F(YsqlMajorUpgradeRpcsTest, MasterCrashWhileNamespacePreparing) {
 }
 
 // Make sure a namespace left in PREPARING before the upgrade is still reaped.
-TEST_F(YsqlMajorUpgradeRpcsTest, StaleNamespaceIsStillReaped) {
+TEST_F(YsqlMajorUpgradeRpcsTest, YB_RELEASE_ONLY_TEST(StaleNamespaceIsStillReaped)) {
   const std::string kStaleDb = "stale_db";
 
   // Hang the creation so the database stays in PREPARING on disk. The hook has to be one the old
