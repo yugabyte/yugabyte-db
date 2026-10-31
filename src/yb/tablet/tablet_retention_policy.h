@@ -84,6 +84,7 @@ class TabletRetentionPolicy : public docdb::HistoryRetentionPolicy {
   const server::ClockPtr clock_;
   const AllowedHistoryCutoffProvider allowed_history_cutoff_provider_;
   RaftGroupMetadata& metadata_;
+  const bool is_sys_catalog_;
   const std::string log_prefix_;
   const bool apply_history_cutoff_floor_;
 

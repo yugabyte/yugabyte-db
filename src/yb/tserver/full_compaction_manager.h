@@ -15,12 +15,16 @@
 
 #pragma once
 
+#include <functional>
 #include <map>
 #include <unordered_map>
+#include <vector>
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/hybrid_time.h"
+
+#include "yb/server/server_fwd.h"
 
 #include "yb/tablet/tablet_fwd.h"
 
@@ -101,7 +105,11 @@ class KeyStatsSlidingWindow {
 
 class FullCompactionManager {
  public:
-  explicit FullCompactionManager(TSTabletManager* ts_tablet_manager);
+  using TabletPeersProvider = std::function<std::vector<tablet::TabletPeerPtr>()>;
+
+  // peers_fn returns the tablet peers to consider for full compactions. clock provides the
+  // current time used to compute the next compaction times.
+  FullCompactionManager(TabletPeersProvider peers_fn, server::ClockPtr clock);
 
   // Checks if the gflag values for the compaction frequency and jitter factor have changed
   // since the last runs, and resets to those values if so. Then, runs DoScheduleFullCompactions().
@@ -160,7 +168,7 @@ class FullCompactionManager {
   FRIEND_TEST(TsTabletManagerTest, FullCompactionCalculateNextCompaction);
   FRIEND_TEST(TsTabletManagerTest, CompactionsEvenlySpreadByJitter);
 
-  // Iterates through all tablets owned by the tablet manager, scheduling full compactions
+  // Iterates through all tablets returned by the peers provider, scheduling full compactions
   // on any tablets that are eligible for full compaction. When a new compaction is scheduled,
   // the tablet is removed from the in-memory map of next compaction times
   // (next_compact_time_per_tablet_).
@@ -170,7 +178,7 @@ class FullCompactionManager {
   // sliding window of stats.
   void CollectDocDBStats(const std::vector<tablet::TabletPeerPtr>& peers);
 
-  // Removes obsolete entries (i.e. entries that no longer exist in the TsTabletManager)
+  // Removes obsolete entries (i.e. entries that the peers provider no longer returns)
   // from in-memory record-keeping maps, specifically next_compact_time_per_tablet_
   // and tablet_stats_window_.
   void CleanupIfNecessary(const std::vector<tablet::TabletPeerPtr>& peers);
@@ -216,8 +224,10 @@ class FullCompactionManager {
   void ResetFrequencyAndJitterIfNeeded(
       MonoDelta compaction_frequency, int jitter_factor);
 
-  // Tablet manager that owns this full compaction manager.
-  TSTabletManager* ts_tablet_manager_;
+  // Returns the tablet peers to consider for full compactions.
+  const TabletPeersProvider peers_fn_;
+
+  const server::ClockPtr clock_;
 
   // Amount of time expected between full compactions.
   MonoDelta compaction_frequency_;
