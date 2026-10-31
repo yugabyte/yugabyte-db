@@ -26,6 +26,8 @@ import org.yb.Schema;
 import org.yb.ColumnSchema;
 import org.yb.CommonNet;
 import org.yb.YBTestRunner;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.util.SkipOnASAN;
 import org.yb.util.SkipOnTSAN;
@@ -35,7 +37,9 @@ import static org.yb.AssertionWrappers.assertTrue;
 @SkipOnTSAN
 @SkipOnASAN
 @RunWith(value=YBTestRunner.class)
-public class TestReadReplicas extends TestYBClient {
+public class TestReadReplicas extends BaseYBClientTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestReadReplicas.class);
+
   private static final String PLACEMENT_CLOUD = "testCloud";
   private static final String PLACEMENT_REGION = "testRegion";
   private static final String PLACEMENT_ZONE = "testZone";
@@ -51,7 +55,7 @@ public class TestReadReplicas extends TestYBClient {
     final String readOnlyNewTsPlacement = "readOnlyNew";
 
     // Destroy the cluster so we can create a new one.
-    destroyMiniCluster();
+    destroyClientAndMiniCluster();
 
     List<Map<String, String>> perTserverFlags = new ArrayList<>();
 
