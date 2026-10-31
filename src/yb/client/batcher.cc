@@ -172,10 +172,7 @@ bool OpForceSnapshotRead(const YBOperation& op) {
 // For per-RPC flags. Unlike skip_intents, which decides Batcher::transaction() and so must agree
 // across every op in the batcher, these only shape the request of one RPC, and each RPC builds its
 // own request. A group is one (tablet, op group) pair, so its ops share a table except on a
-// colocated tablet. Colocated user relations never carry read_at_in_txn_limit, and PgClientSession
-// forces every non-row-marked read of a SERIALIZABLE catalog snapshot Perform, so a sys catalog
-// group disagrees only if one Perform mixes row-marked and plain catalog reads. Checked below
-// rather than assumed.
+// colocated tablet. Checked below rather than assumed.
 Result<bool> GroupAgreesOn(
     const InFlightOpsGroup& group, bool (*pred)(const YBOperation&), const char* name) {
   const auto result = pred(*group.begin->yb_op);
@@ -768,8 +765,11 @@ Result<std::shared_ptr<AsyncRpc>> Batcher::CreateRpc(
     .allow_local_calls_in_curr_thread = allow_local_calls_in_curr_thread,
     .need_consistent_read = need_consistent_read,
     .skip_intents = SkipIntents(),
+    // Colocated relations never carry read_at_in_txn_limit.
     .read_at_in_txn_limit =
         VERIFY_RESULT(GroupAgreesOn(group, OpReadAtInTxnLimit, "read_at_in_txn_limit")),
+    // On the sys catalog tablet, a SERIALIZABLE transaction's forced snapshot reads and row-marked
+    // reads must come in separate flushes.
     .force_snapshot_read =
         VERIFY_RESULT(GroupAgreesOn(group, OpForceSnapshotRead, "force_snapshot_read")),
     .arena = arena_,
