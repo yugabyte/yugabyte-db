@@ -780,6 +780,44 @@ TEST_F(MasterTest, TestHeartbeatFromRegisteredTSPersisted) {
   ASSERT_EQ(list_resp.servers(0).instance_id().permanent_uuid(), kUUID);
 }
 
+// The master Raft config rides on a heartbeat only while the tserver's config index is behind.
+TEST_F(MasterTest, HeartbeatMasterConfigOnlyWhenBehind) {
+  const char* kTsUUID = "my-ts-uuid";
+
+  TSToMasterCommonPB common;
+  common.mutable_ts_instance()->set_permanent_uuid(kTsUUID);
+  common.mutable_ts_instance()->set_instance_seqno(1);
+  const auto universe_uuid =
+      ASSERT_RESULT(mini_master_->catalog_manager().GetClusterConfig()).universe_uuid();
+
+  // The lock-free index must agree with the locked config read it replaces.
+  const auto committed_index =
+      ASSERT_RESULT(mini_master_->catalog_manager_impl().GetCommittedConfigIndex());
+  consensus::ConsensusStatePB cpb;
+  ASSERT_OK(mini_master_->catalog_manager().GetCurrentConfig(&cpb));
+  ASSERT_EQ(cpb.config().committed_op_index(), committed_index);
+
+  auto heartbeat = [&](int64_t config_index) -> Result<TSHeartbeatResponsePB> {
+    TSHeartbeatRequestPB req;
+    TSHeartbeatResponsePB resp;
+    req.mutable_common()->CopyFrom(common);
+    req.set_universe_uuid(universe_uuid);
+    req.set_config_index(config_index);
+    RETURN_NOT_OK(proxy_heartbeat_->TSHeartbeat(req, &resp, ResetAndGetController()));
+    return resp;
+  };
+
+  auto resp = ASSERT_RESULT(heartbeat(committed_index - 1));
+  ASSERT_TRUE(resp.has_master_config());
+  ASSERT_EQ(committed_index, resp.master_config().committed_op_index());
+
+  resp = ASSERT_RESULT(heartbeat(committed_index));
+  ASSERT_FALSE(resp.has_master_config());
+
+  resp = ASSERT_RESULT(heartbeat(committed_index + 1));
+  ASSERT_FALSE(resp.has_master_config());
+}
+
 TEST_F(MasterTest, TestListTablesWithoutMasterCrash) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_slow_table_create_secs) = 10;
 
