@@ -9315,6 +9315,39 @@ YbIsReadCommittedTxn()
 	return IsYBReadCommitted() && !YbIsSeparateDDLOrInitDBMode();
 }
 
+/*
+ * #35522: relaxed read-after-commit visibility removes the uncertainty
+ * window, so a write or row lock can miss a row that another node committed
+ * just before and leave the data inconsistent: a parent DELETE whose foreign
+ * key check misses a child row leaves an orphan. So relaxed mode enforces
+ * the READ ONLY transaction checks, unless the GUC disables them.
+ *
+ * So this check must follow the XactReadOnly checks closely. Each backend
+ * XactReadOnly check that rejects a write, row lock or DDL has a
+ * YbIsRelaxedReadOnly check next to it. A new XactReadOnly check without one
+ * lets the statement run in relaxed mode.
+ *
+ * SERIALIZABLE read-write transactions are exempt: they do not pick a read
+ * time in the query layer and never hit read restart errors. A SERIALIZABLE
+ * READ ONLY transaction runs as SNAPSHOT, but XactReadOnly already rejects
+ * its writes and DDL. Fast-path writes never hit read restart errors either.
+ * The check still rejects them, for simplicity: the executor picks the fast
+ * path only after the check.
+ *
+ * The check also applies after the transaction reads at a relaxed read time,
+ * until the transaction ends. A RESET, or in autocommit a function's SET
+ * clause or a SET in its body, can switch the GUC back to strict after that
+ * read, but the transaction keeps the relaxed read time.
+ */
+bool
+YbIsRelaxedReadOnly()
+{
+	return (yb_read_after_commit_visibility == YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY ||
+			yb_txn_read_after_commit_visibility == YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY) &&
+		!yb_disable_relaxed_read_after_commit_visibility_guardrail &&
+		!IsolationIsSerializable();
+}
+
 bool
 YbSkipPgSnapshotManagement()
 {

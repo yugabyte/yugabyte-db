@@ -2067,14 +2067,6 @@ void YBCPgSetClampUncertaintyWindow(bool clamp) {
   return pgapi->SetClampUncertaintyWindow(clamp);
 }
 
-YbcStatus YBCPgSetInTxnBlock(bool in_txn_blk) {
-  return ToYBCStatus(pgapi->SetInTxnBlock(in_txn_blk));
-}
-
-YbcStatus YBCPgSetReadOnlyStmt(bool read_only_stmt) {
-  return ToYBCStatus(pgapi->SetReadOnlyStmt(read_only_stmt));
-}
-
 YbcStatus YBCPgSetDdlStateInPlainTransaction() {
   return ToYBCStatus(pgapi->SetDdlStateInPlainTransaction());
 }

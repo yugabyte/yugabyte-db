@@ -384,6 +384,10 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_toast_catcache_threshold, 2048, // 2 KB
 DEFINE_RUNTIME_PG_FLAG(string, yb_read_after_commit_visibility, "strict",
   "Determines the behavior of read-after-commit-visibility guarantee.");
 
+DEFINE_RUNTIME_PG_FLAG(bool, yb_disable_relaxed_read_after_commit_visibility_guardrail, false,
+  "Allow writes, row locks and DDL under relaxed read-after-commit visibility.");
+TAG_FLAG(ysql_yb_disable_relaxed_read_after_commit_visibility_guardrail, advanced);
+
 DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_fkey_catcache, true,
     "Enable preloading of foreign key information into the relation cache.");
 

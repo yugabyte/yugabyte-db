@@ -950,6 +950,16 @@ TEST_F(PgReadTimeTest, CheckRelaxedReadAfterCommitVisibility) {
   ASSERT_OK(conn.Execute("SET yb_read_after_commit_visibility TO relaxed"));
   ASSERT_OK(conn.Execute("SET log_statement = 'all'"));
 
+  // #35522: by default, relaxed mode rejects row locks and writes.
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_NOK_STR_CONTAINS(
+      conn.FetchFormat("SELECT * FROM $0 WHERE k=1 FOR UPDATE", kTable),
+      "cannot execute SELECT FOR UPDATE under relaxed read-after-commit "
+      "visibility");
+  ASSERT_OK(conn.RollbackTransaction());
+  ASSERT_OK(conn.Execute(
+      "SET yb_disable_relaxed_read_after_commit_visibility_guardrail = on"));
+
   // 1. no pipeline, single operation in first batch, no distributed txn
   for (const auto& table_name : {kTable, kSingleTabletTable}) {
     // TODO(#30357): Clamp uncertainty window in the storage layer.
@@ -1042,6 +1052,122 @@ TEST_F(PgReadTimeTest, CheckRelaxedReadAfterCommitVisibility) {
         ASSERT_OK(conn.ExecuteFormat("CALL insert_rows_$0(121, 150)", kSingleTabletTable));
       });
   ASSERT_OK(ResetMaxBatchSize(&conn));
+}
+
+// #35522: relaxed mode removes the uncertainty window, so a write or row lock
+// can miss a row that another node committed just before and leave the data
+// inconsistent. Relaxed mode therefore enforces the READ ONLY transaction
+// checks unless yb_disable_relaxed_read_after_commit_visibility_guardrail is
+// on.
+//
+// Scenario: under relaxed mode, each statement that a READ ONLY transaction
+// rejects fails with the relaxed-mode error: INSERT, UPDATE, DELETE, SELECT
+// FOR UPDATE, SELECT FOR SHARE, nextval(), COPY FROM, DDL, and a write inside
+// a function that a SELECT calls. A write to a temporary table, a plain
+// SELECT, and writes, row locks and DDL under SERIALIZABLE succeed. With the
+// GUC off, every statement succeeds.
+TEST_F(PgReadTimeTest, RelaxedModeRejectsWrites) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1)"));
+  ASSERT_OK(conn.Execute("CREATE SEQUENCE s"));
+  ASSERT_OK(conn.Execute("CREATE TEMP TABLE tmp (k INT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION insert_row(v INT) RETURNS INT LANGUAGE plpgsql AS "
+      "$$BEGIN INSERT INTO t VALUES (v); RETURN v; END$$"));
+
+  ASSERT_OK(conn.Execute("SET yb_read_after_commit_visibility = relaxed"));
+  const std::vector<std::string> rejected = {
+      "INSERT INTO t VALUES (2)",
+      "UPDATE t SET k = 3 WHERE k = 1",
+      "DELETE FROM t WHERE k = 3",
+      "SELECT k FROM t WHERE k = 2 FOR UPDATE",
+      "SELECT k FROM t WHERE k = 2 FOR SHARE",
+      "SELECT nextval('s')",
+      "COPY t FROM '/dev/null'",
+      "CREATE TABLE t2 (k INT)",
+      "SELECT insert_row(4)",
+  };
+  for (const auto& statement : rejected) {
+    SCOPED_TRACE(statement);
+    ASSERT_NOK_STR_CONTAINS(
+        conn.Execute(statement), "under relaxed read-after-commit visibility");
+  }
+  ASSERT_OK(conn.Execute("INSERT INTO tmp VALUES (1)"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT k FROM t")), 1);
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (5)"));
+  ASSERT_OK(conn.Fetch("SELECT k FROM t WHERE k = 1 FOR UPDATE"));
+  ASSERT_OK(conn.CommitTransaction());
+  ASSERT_OK(conn.Execute("SET default_transaction_isolation = serializable"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t3 (k INT)"));
+  ASSERT_OK(conn.Execute("RESET default_transaction_isolation"));
+
+  ASSERT_OK(conn.Execute(
+      "SET yb_disable_relaxed_read_after_commit_visibility_guardrail = on"));
+  for (const auto& statement : rejected) {
+    SCOPED_TRACE(statement);
+    ASSERT_OK(statement.starts_with("SELECT")
+                  ? ResultToStatus(conn.Fetch(statement))
+                  : conn.Execute(statement));
+  }
+}
+
+// #35522: after a transaction reads at a relaxed read time, its later writes
+// can run at that read time. A RESET, or in autocommit a function's SET clause
+// or a SET in its body, can switch the GUC back to strict. A write after that
+// must still fail.
+//
+// Scenario: under relaxed mode, an autocommit SELECT reads, then calls a
+// function that switches back to strict mode in one of these ways and inserts
+// a row. Each insert must fail with the relaxed-mode error, and the table stays
+// empty. ALTER ROLE ... SET only stores the value, so it works inside a
+// transaction block, and login applies it.
+TEST_F(PgReadTimeTest, RelaxedModeCheckStaysOnForTransaction) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION insert_row_set_clause(v INT) RETURNS INT "
+      "LANGUAGE plpgsql SET yb_read_after_commit_visibility = strict AS "
+      "$$BEGIN INSERT INTO t VALUES (v); RETURN v; END$$"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION insert_row_set_statement(v INT) RETURNS INT "
+      "LANGUAGE plpgsql AS "
+      "$$BEGIN PERFORM count(*) FROM t; "
+      "SET yb_read_after_commit_visibility = strict; "
+      "INSERT INTO t VALUES (v); RETURN v; END$$"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION insert_row_reset(v INT) RETURNS INT "
+      "LANGUAGE plpgsql AS "
+      "$$BEGIN PERFORM count(*) FROM t; "
+      "RESET yb_read_after_commit_visibility; "
+      "INSERT INTO t VALUES (v); RETURN v; END$$"));
+
+  constexpr auto kRelaxedError = "under relaxed read-after-commit visibility";
+  ASSERT_OK(conn.Execute("SET yb_read_after_commit_visibility = relaxed"));
+  // The subquery reads t at a relaxed read time before the SET clause applies.
+  // The call uses its count, or the planner drops the unused aggregate.
+  for (const auto* call :
+       {"SELECT insert_row_set_clause(c::int + 1) FROM (SELECT count(*) AS c FROM t) s",
+        "SELECT insert_row_set_statement(2)", "SELECT insert_row_reset(3)"}) {
+    SCOPED_TRACE(call);
+    ASSERT_NOK_STR_CONTAINS(conn.Fetch(call), kRelaxedError);
+  }
+  ASSERT_OK(conn.Execute("RESET yb_read_after_commit_visibility"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM t")), 0);
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute(
+      "ALTER ROLE CURRENT_USER SET yb_read_after_commit_visibility = relaxed"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+  {
+    auto login_conn = ASSERT_RESULT(Connect());
+    ASSERT_EQ(
+        ASSERT_RESULT(login_conn.FetchRow<std::string>("SHOW yb_read_after_commit_visibility")),
+        "relaxed");
+  }
+  ASSERT_OK(conn.Execute("ALTER ROLE CURRENT_USER RESET yb_read_after_commit_visibility"));
 }
 
 TEST_F(PgReadTimeTest, CheckDeferredReadAfterCommitVisibility) {
@@ -1632,6 +1758,8 @@ TEST_P(PgBackfillReadTimeTest, PrecedesClampDefer) {
   auto internal = ASSERT_RESULT(CreateInternalPGConnBuilder(
       pg_host_port(), "yugabyte", /*user=*/"postgres", auth_key,
       /* deadline= */ std::nullopt).Connect());
+  ASSERT_OK(internal.Execute(
+      "SET yb_disable_relaxed_read_after_commit_visibility_guardrail = on"));
 
   for (const auto* mode : {"relaxed", "deferred"}) {
     ASSERT_OK(internal.ExecuteFormat("SET yb_read_after_commit_visibility = '$0'", mode));
@@ -1740,6 +1868,8 @@ TEST_P(PgFastPathWriteTest, PrecedesClampDefer) {
   ASSERT_NO_FATALS(SetSessionIsolation(&conn));
   ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
   ASSERT_OK(conn.Execute("SET yb_disable_transactional_writes = 1"));
+  ASSERT_OK(conn.Execute(
+      "SET yb_disable_relaxed_read_after_commit_visibility_guardrail = on"));
 
   const auto csv_filename = GetTestPath("pg_read_time-test-fastpath-copy.csv");
   GenerateCSVFileForCopy(csv_filename, 1 /* num_rows */);
@@ -2134,8 +2264,14 @@ TEST_P(PgClampDeferReadTest, PrecedesEnsureReadTime) {
   }
 }
 
+// A lock at ShareUpdateExclusiveLock or stronger asks pggate to clamp the
+// uncertainty window. A statement that already picked its read time must keep
+// it. A function reads, takes such a lock and reads again while other sessions
+// insert. Both reads must count only the seed rows.
 TEST_P(PgClampDeferReadTest, DoesNotApplyIfReadTimeIsAlreadyPicked) {
-  if (isolation() != IsolationLevel::SNAPSHOT_ISOLATION) {
+  // Only table locks request the clamp, and table locks come with concurrent
+  // DDL.
+  if (isolation() != IsolationLevel::SNAPSHOT_ISOLATION || !IsConcurrentDdl()) {
     return;
   }
   auto setup = ASSERT_RESULT(Connect());
@@ -2150,7 +2286,7 @@ TEST_P(PgClampDeferReadTest, DoesNotApplyIfReadTimeIsAlreadyPicked) {
       "CREATE FUNCTION clamp_after_read_time() RETURNS bigint AS "
       "'BEGIN"
       "   PERFORM count(*) FROM t WHERE k <= $0;"
-      "   SET yb_read_after_commit_visibility = relaxed;"
+      "   LOCK TABLE t IN SHARE ROW EXCLUSIVE MODE;"
       "   RETURN (SELECT count(*) FROM t WHERE k <= $0);"
       " END' LANGUAGE plpgsql", kSeedRows));
 
@@ -2158,7 +2294,6 @@ TEST_P(PgClampDeferReadTest, DoesNotApplyIfReadTimeIsAlreadyPicked) {
   StartConcurrentInserts(&threads, "t", kWriterStartKey);
 
   RunFor(10s * kTimeMultiplier, [&reader] {
-    ASSERT_OK(reader.Execute("SET yb_read_after_commit_visibility = strict"));
     ASSERT_EQ(
         ASSERT_RESULT(reader.FetchRow<PGUint64>("SELECT clamp_after_read_time()")), kSeedRows);
   });
