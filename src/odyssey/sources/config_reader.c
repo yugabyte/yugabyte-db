@@ -69,6 +69,7 @@ typedef enum {
 	OD_LCLIENT_MAX,
 	OD_LCLIENT_MAX_ROUTING,
 	OD_LSERVER_LOGIN_RETRY,
+	OD_LCANCEL_TIMEOUT_MS,
 	OD_LCLIENT_LOGIN_TIMEOUT,
 	OD_LCLIENT_FWD_ERROR,
 	OD_LPRESERVE_SESSION_SERVER_CONN,
@@ -157,6 +158,7 @@ typedef enum {
 	OD_YB_MAX_POOLS,
 	OD_YB_JITTER_TIME,
 	OD_TEST_YB_AUTH_DELAY_MS,
+	OD_TEST_YB_CANCEL_DELAY_MS,
 	OD_YB_ALTER_GUC_ADOPTION_STRATEGY,
 	OD_YB_ALTER_GUC_STALE_BACKEND_TTL_MS,
 	OD_YB_TCMALLOC_GC_INTERVAL,
@@ -242,6 +244,7 @@ static od_keyword_t od_config_keywords[] = {
 	od_keyword("client_max", OD_LCLIENT_MAX),
 	od_keyword("client_max_routing", OD_LCLIENT_MAX_ROUTING),
 	od_keyword("server_login_retry", OD_LSERVER_LOGIN_RETRY),
+	od_keyword("cancel_timeout_ms", OD_LCANCEL_TIMEOUT_MS),
 	od_keyword("client_login_timeout", OD_LCLIENT_LOGIN_TIMEOUT),
 	od_keyword("client_fwd_error", OD_LCLIENT_FWD_ERROR),
 	od_keyword("reserve_session_server_connection",
@@ -354,6 +357,7 @@ static od_keyword_t od_config_keywords[] = {
 	od_keyword("yb_max_pools", OD_YB_MAX_POOLS),
 	od_keyword("yb_jitter_time", OD_YB_JITTER_TIME),
 	od_keyword("TEST_yb_auth_delay_ms", OD_TEST_YB_AUTH_DELAY_MS),
+	od_keyword("TEST_yb_cancel_delay_ms", OD_TEST_YB_CANCEL_DELAY_MS),
 	od_keyword("yb_alter_guc_adoption_strategy",
 		   OD_YB_ALTER_GUC_ADOPTION_STRATEGY),
 	od_keyword("yb_alter_guc_stale_backend_ttl_ms",
@@ -2402,6 +2406,15 @@ static int od_config_reader_parse(od_config_reader_t *reader,
 				goto error;
 			}
 			continue;
+		/* cancel_timeout_ms */
+		case OD_LCANCEL_TIMEOUT_MS: {
+			int val;
+			if (!od_config_reader_number(reader, &val)) {
+				goto error;
+			}
+			config->cancel_timeout_ms = val;
+			continue;
+		}
 		/* readahead */
 		case OD_LREADAHEAD:
 			if (!od_config_reader_number(reader,
@@ -2652,6 +2665,13 @@ static int od_config_reader_parse(od_config_reader_t *reader,
 		case OD_TEST_YB_AUTH_DELAY_MS:
 			if (!od_config_reader_number(
 				    reader, &config->TEST_yb_auth_delay_ms)) {
+				goto error;
+			}
+			continue;
+		/* TEST_yb_cancel_delay_ms */
+		case OD_TEST_YB_CANCEL_DELAY_MS:
+			if (!od_config_reader_number(
+				    reader, &config->TEST_yb_cancel_delay_ms)) {
 				goto error;
 			}
 			continue;
