@@ -328,6 +328,8 @@ extern int yb_major_version_upgrade_compatibility;
 
 extern bool yb_upgrade_to_pg15_completed;
 
+extern bool yb_upgrade_to_pg19_completed;
+
 extern bool yb_debug_log_catcache_events;
 
 extern bool yb_debug_log_snapshot_mgmt;

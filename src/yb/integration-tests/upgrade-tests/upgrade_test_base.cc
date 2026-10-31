@@ -13,6 +13,8 @@
 
 #include "yb/integration-tests/upgrade-tests/upgrade_test_base.h"
 
+#include <tuple>
+
 #include <boost/algorithm/string/trim.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/xml_parser.hpp>
@@ -192,24 +194,22 @@ Status RestartDaemonInVersion(T& daemon, const std::string& bin_path) {
 
 void WaitForAutoFlagApply() { SleepFor(FLAGS_auto_flags_apply_delay_ms * 1ms + 3s); }
 
-// This is a pg15 version which supports upgrade only from certain versions.
+// This is a pg19 version which supports upgrade only from certain versions.
 // Check if the given version is supported for upgrade.
 bool IsUpgradeSupported(const std::string& from_version) {
   auto parts = StringSplit(from_version, '.');
-  CHECK_GE(parts.size(), 2);
+  CHECK_EQ(parts.size(), 4);
   int major = std::stoi(parts[0]);
   auto minor = std::stoi(parts[1]);
+  auto patch = std::stoi(parts[2]);
   CHECK_GT(major, 0);
   CHECK_GT(minor, 0);
 
-  // Stable releases in the older 2 dot numbering scheme are not supported.
-  // Only preview release after 2.25 are supported.
+  // Only versions that accept ysql_yb_major_version_upgrade_compatibility=15 are supported.
   if (major == 2) {
-    return minor >= 25;
+    return minor >= 31;
   }
-
-  // Only 2024.2.0.0 and later are supported.
-  return major > 2024 || (major == 2024 && minor >= 2);
+  return std::make_tuple(major, minor, patch) >= std::make_tuple(2026, 1, 4);
 }
 
 Status ValidateYsqlMigrationCompatibility(const std::string& old_version_base_path) {
@@ -288,7 +288,7 @@ void UpgradeTestBase::SetUp() {
   }
 
   if (!IsUpgradeSupported(old_version_info_.version)) {
-    GTEST_SKIP() << "PG15 upgrade not supported from version " << old_version_info_.version;
+    GTEST_SKIP() << "PG19 upgrade not supported from version " << old_version_info_.version;
   }
 
   ExternalMiniClusterITestBase::SetUp();

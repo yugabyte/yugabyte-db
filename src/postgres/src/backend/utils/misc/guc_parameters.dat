@@ -5432,6 +5432,13 @@
   boot_val => 'true',
 },
 
+{ name => 'yb_upgrade_to_pg19_completed', type => 'bool', context => 'PGC_SIGHUP', group => 'CUSTOM_OPTIONS',
+  short_desc => 'Indicates the state of YSQL major upgrade to PostgreSQL version 19. Do not modify this manually.',
+  flags => 'GUC_NOT_IN_SAMPLE',
+  variable => 'yb_upgrade_to_pg19_completed',
+  boot_val => 'true',
+},
+
 { name => 'yb_use_cluster_config_for_geolocation_costing', type => 'bool', context => 'PGC_USERSET', group => 'QUERY_TUNING_METHOD',
   short_desc => 'When no tablespace is assigned to table, use cluster replication info to estimate network costs',
   flags => 'GUC_EXPLAIN',
