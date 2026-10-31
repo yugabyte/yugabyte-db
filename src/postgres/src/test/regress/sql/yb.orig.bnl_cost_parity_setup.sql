@@ -443,7 +443,8 @@ from
 ------------------------------------------------------------------------------
 -- Two-column keys.
 --
--- ce.s2 and ce.r2 are the key of yb.orig.bnl_cost_parity's 6xx section:
+-- ce.s2 and ce.r2 are the key of yb.orig.bnl_cost_parity's 6xx section and
+-- of yb.orig.bnl_inner_estimate's 3xxxx cases:
 --   ce.s2 : ce.s's ids and z shuffle with the pair
 --           (g, h) = ((id - 1) / 10 + 1, (id - 1) % 10 + 1), one pair per id.
 --   ce.r2 : every (g, h) of the 128 x 128 grid, one row each, so g and h are
@@ -452,13 +453,21 @@ from
 --           rows under a hash primary key.
 -- An outer row has its inner row iff its g <= 128, that is iff id <= 1280.
 --
--- ce.s3 and ce.r3 are the key of yb.orig.bnl_inner_estimate:
---   ce.r3 : h unique over 1..12345 and g = (h - 1) % 16 + 1, so the leading
---           column has fewer values than any batch and the second column one
---           row per value.  ce.r3C is its colocated twin and ce.r3H holds the
---           same rows under a hash primary key.
+-- ce.s3 and ce.r3 are the key of yb.orig.bnl_inner_estimate's 2xxxx cases:
+--   ce.r3 : h unique over 1..12345 and g = (h - 1) % 16 + 1, so g follows
+--           from h and has 16 values, and h has one row per value.  ce.r3C
+--           is its colocated twin and ce.r3H holds the same rows under a hash
+--           primary key.
 --   ce.s3 : ce.s's ids and z shuffle with the (g, h) of ce.r3's row h = id, so
 --           every outer row has its inner row.
+--
+-- ce.s4 and ce.r4 are the key of yb.orig.bnl_cost_parity's 7xx section, the
+-- tables #19549 reports:
+--   ce.r4 : (a, b) = (i / 100, i % 100) for the even i in 1..10000, 5000
+--           rows.  ce.r4C is its colocated twin.
+--   ce.s4 : the same pairs for the i in 1..10000 divisible by 3, 3333 rows,
+--           so an outer row has its inner row iff its i is even, and the
+--           outer read in key order feeds each batch consecutive inner keys.
 ------------------------------------------------------------------------------
 drop table if exists ce.s2 cascade;
 create table ce.s2 (
@@ -536,6 +545,32 @@ insert into ce.r3H select * from ce.r3;
 analyze ce.r3;
 analyze ce.r3C;
 analyze ce.r3H;
+
+drop table if exists ce.s4 cascade;
+create table ce.s4 (
+    a int,
+    b int,
+    primary key (a asc, b asc)
+) with (colocation = on);
+insert into ce.s4
+    select i / 100, i % 100 from generate_series(1, 10000) i where i % 3 = 0;
+analyze ce.s4;
+
+drop table if exists ce.r4 cascade;
+create table ce.r4 (
+    a int,
+    b int,
+    primary key (a asc, b asc)
+) with (colocation = off);
+insert into ce.r4
+    select i / 100, i % 100 from generate_series(1, 10000) i where i % 2 = 0;
+
+create table ce.r4C (like ce.r4 including constraints including indexes)
+    with (colocation = on);
+insert into ce.r4C select * from ce.r4;
+
+analyze ce.r4;
+analyze ce.r4C;
 
 -- bnl_inner_queries: each query joins outer s to inner r on the key under
 -- test and runs as a BNL at batch size bs.
