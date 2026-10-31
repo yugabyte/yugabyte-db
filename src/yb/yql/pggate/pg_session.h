@@ -85,7 +85,8 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
   [[nodiscard]] const ReadHybridTime& catalog_read_time() const { return catalog_read_time_; }
 
   void SetHistoricalReadContext(
-      const ReadHybridTime& read_time, std::string transaction_id);
+      const ReadHybridTime& read_time, std::string transaction_id,
+      std::vector<uint32_t> aborted_subtxn_set);
   void ResetHistoricalReadContext();
 
   //------------------------------------------------------------------------------------------------
@@ -298,6 +299,8 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
   struct HistoricalReadContext {
     ReadHybridTime read_time;
     std::string transaction_id;
+    // Run length encoded as in SubtxnSetPB.
+    std::vector<uint32_t> aborted_subtxn_set;
   };
   std::optional<HistoricalReadContext> historical_read_context_;
 

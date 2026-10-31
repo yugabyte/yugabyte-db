@@ -939,6 +939,10 @@ message PgPerformOptionsPB {
   // Only applicable when use_historical_read_session is true.
   bytes historical_read_transaction_id = 36;
 
+  // Subtransactions of historical_read_transaction_id rolled back to a savepoint.
+  // Only applicable when historical_read_transaction_id is set.
+  SubtxnSetPB historical_read_aborted_subtxns = 40;
+
   // OID of the database the backend is connected to; 0 until the backend knows it.
   uint32 connected_database_oid = 37;
 

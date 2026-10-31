@@ -55,6 +55,15 @@ static XLogRecPtr last_txn_begin_lsn = InvalidXLogRecPtr;
 static XLogRecPtr last_filtered_commit_lsn = InvalidXLogRecPtr;
 
 /*
+ * Aborted subtransactions sent on the last BEGIN record. Transactions are not
+ * interleaved and each one is decoded and replayed before the next BEGIN is
+ * read, so this is the transaction whose records are being processed.
+ */
+static char last_txn_docdb_txn_id[37] = "";
+static uint32_t *last_txn_aborted_subtxn_set = NULL;
+static int	last_txn_aborted_subtxn_set_size = 0;
+
+/*
  * Marker to refresh publication's tables list. If set to true call
  * UpdatePublicationTableList before calling next GetConsistentChanges.
  */
@@ -140,6 +149,8 @@ static void YbResetVirtualWalCatalogSnapshot(void);
 static void PreProcessBeforeFetchingNextBatch();
 
 static void TrackUnackedTransaction(YbVirtualWalRecord *record);
+static void TrackAbortedSubtxnSet(YbVirtualWalRecord *record);
+static void ResetAbortedSubtxnSet(void);
 static void AckFilteredTransactions(void);
 static XLogRecPtr CalculateRestartLSN(XLogRecPtr confirmed_flush);
 static void CleanupAckedTransactions(XLogRecPtr confirmed_flush);
@@ -267,6 +278,9 @@ void
 YBCDestroyVirtualWal()
 {
 	YBCDestroyVirtualWalForCDC();
+
+	/* Allocated in virtual_wal_context, so free it before deleting that. */
+	ResetAbortedSubtxnSet();
 
 	if (unacked_txn_list_context)
 		MemoryContextDelete(unacked_txn_list_context);
@@ -408,6 +422,8 @@ YbSetVirtualWalCatalogSnapshot(uint64_t read_time_ht, uint64_t in_txn_limit_ht,
 	if (*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl)
 	{
 		uint64_t	read_time = read_time_ht;
+		const uint32_t *aborted_subtxn_set;
+		int			aborted_subtxn_set_size;
 
 		if (in_txn_limit_ht != PG_UINT64_MAX)
 		{
@@ -417,6 +433,9 @@ YbSetVirtualWalCatalogSnapshot(uint64_t read_time_ht, uint64_t in_txn_limit_ht,
 			Assert(docdb_txn_id != NULL && docdb_txn_id[0] != '\0');
 		}
 
+		aborted_subtxn_set = YBCGetAbortedSubtxnSet(docdb_txn_id,
+													&aborted_subtxn_set_size);
+
 		elog(DEBUG2,
 			 "Setting historical read context for catalog snapshot to "
 			 "read_time_ht: %" PRIu64 ", in_txn_limit_ht: %" PRIu64
@@ -424,7 +443,9 @@ YbSetVirtualWalCatalogSnapshot(uint64_t read_time_ht, uint64_t in_txn_limit_ht,
 			 read_time, in_txn_limit_ht, docdb_txn_id);
 		YBCSetHistoricalReadContextAndInvalidateCaches(read_time,
 													   in_txn_limit_ht,
-													   docdb_txn_id);
+													   docdb_txn_id,
+													   aborted_subtxn_set,
+													   aborted_subtxn_set_size);
 		CatalogCacheFlushCatalog(PublicationRelationId);
 	}
 	else
@@ -752,7 +773,10 @@ YBCReadRecord(List *publication_names)
 
 	/* record should be non-null, but be conservative and check. */
 	if (record)
+	{
 		TrackUnackedTransaction(record);
+		TrackAbortedSubtxnSet(record);
+	}
 
 	return record;
 }
@@ -878,6 +902,54 @@ TrackUnackedTransaction(YbVirtualWalRecord *record)
 	}
 
 	MemoryContextSwitchTo(caller_context);
+}
+
+static void
+TrackAbortedSubtxnSet(YbVirtualWalRecord *record)
+{
+	if (record->action != YB_PG_ROW_MESSAGE_ACTION_BEGIN)
+		return;
+
+	ResetAbortedSubtxnSet();
+	if (!record->has_docdb_txn_id)
+		return;
+
+	strlcpy(last_txn_docdb_txn_id, record->docdb_txn_id,
+			sizeof(last_txn_docdb_txn_id));
+	if (record->aborted_subtxn_set_size > 0)
+	{
+		size_t		size = sizeof(uint32_t) * record->aborted_subtxn_set_size;
+
+		last_txn_aborted_subtxn_set = MemoryContextAlloc(virtual_wal_context,
+														 size);
+		memcpy(last_txn_aborted_subtxn_set, record->aborted_subtxn_set, size);
+		last_txn_aborted_subtxn_set_size = record->aborted_subtxn_set_size;
+	}
+}
+
+static void
+ResetAbortedSubtxnSet(void)
+{
+	if (last_txn_aborted_subtxn_set)
+		pfree(last_txn_aborted_subtxn_set);
+	last_txn_docdb_txn_id[0] = '\0';
+	last_txn_aborted_subtxn_set = NULL;
+	last_txn_aborted_subtxn_set_size = 0;
+}
+
+/* Get the aborted subtxn set of the transaction currently being decoded. */
+const uint32_t *
+YBCGetAbortedSubtxnSet(const char *docdb_txn_id, int *size)
+{
+	if (docdb_txn_id[0] == '\0' || last_txn_docdb_txn_id[0] == '\0')
+	{
+		*size = 0;
+		return NULL;
+	}
+
+	Assert(strcmp(docdb_txn_id, last_txn_docdb_txn_id) == 0);
+	*size = last_txn_aborted_subtxn_set_size;
+	return last_txn_aborted_subtxn_set;
 }
 
 /*
