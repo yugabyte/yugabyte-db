@@ -2285,13 +2285,14 @@ When YSQL authentication is enabled, you can sign into ysqlsh using the default 
 ##### --ysql_enable_profile
 
 {{% tags/wrap %}}
+{{<tags/feature/t-server>}}
 {{<tags/feature/restart-needed>}}
 Default: `false`
 {{% /tags/wrap %}}
 
 Enables YSQL [login profiles](../../../secure/enable-authentication/ysql-login-profiles/).
 
-When YSQL login profiles are enabled, you can set limits on the number of failed login attempts made by users.
+When YSQL login profiles are enabled, you can set limits on the number of failed login attempts made by users. Set the flag to `true` on every YB-Master and every YB-TServer. The YB-Master setting is required before a YSQL major upgrade from PostgreSQL 11 to PostgreSQL 15 if login profiles are in use.
 
 ##### --pgsql_proxy_bind_address
 
