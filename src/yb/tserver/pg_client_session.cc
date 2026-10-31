@@ -49,6 +49,7 @@
 #include "yb/common/pgsql_error.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction_error.h"
 #include "yb/common/transaction_priority.h"
@@ -3708,6 +3709,27 @@ class PgClientSession::Impl {
         IsTxnUsingTableLocks(options.is_using_table_locks()),
         context_.metrics,
         MakeOriginationInfo(options.origination_ht())));
+    if (options.uses_catalog_snapshot()) {
+      // PrepareOperations has already applied the ops to the session. A failed check must drop
+      // them, or they would go out with the next flush.
+      CancelableScopeExit abort_se{[session] { session->Abort(); }};
+      const auto serializable =
+          data->transaction && data->transaction->isolation() == SERIALIZABLE_ISOLATION;
+      for (const auto& op_data : data->ops) {
+        RSTATUS_DCHECK(
+            op_data.op->table()->InternalSchema().table_properties().is_ysql_catalog_table(),
+            IllegalState, "Non-catalog op on $0 uses the catalog snapshot",
+            op_data.op->table()->name());
+        if (!op_data.op->read_only()) {
+          continue;
+        }
+        auto& read_op = down_cast<client::YBPgsqlReadOp&>(*op_data.op);
+        if (serializable && !IsValidRowMarkType(GetRowMarkTypeFromPB(read_op.request()))) {
+          read_op.set_force_snapshot_read();
+        }
+      }
+      abort_se.Cancel();
+    }
     if (VLOG_IS_ON(2) || options.trace_requested()) {
       const auto& read_point = *session->read_point();
       const char* session_kind_str =
@@ -3994,8 +4016,8 @@ class PgClientSession::Impl {
         // Therefore, override the restarted read point here with the current time.
         // This override loses the restart read information until TODO(#31142) is fixed.
         RSTATUS_DCHECK(
-          !(txn && txn->isolation() == SERIALIZABLE_ISOLATION),
-          IllegalState, "Clamping does not apply to SERIALIZABLE txns.");
+          options.uses_catalog_snapshot() || !(txn && txn->isolation() == SERIALIZABLE_ISOLATION),
+          IllegalState, "Clamping applies to SERIALIZABLE txns only for catalog snapshot reads.");
         session.read_point()->SetCurrentReadTime(ClampUncertaintyWindow::kTrue);
         VLOG_WITH_PREFIX(2) << "Clamping read time to " << session.read_point()->GetReadTime();
       }
@@ -4091,8 +4113,8 @@ class PgClientSession::Impl {
       // TODO(#30357): Measure the performance of picking time here instead of the storage layer.
       if (read_time_options.clamp_uncertainty_window() && !session.read_point()->GetReadTime()) {
         RSTATUS_DCHECK(
-          !(txn && txn->isolation() == SERIALIZABLE_ISOLATION),
-          IllegalState, "Clamping does not apply to SERIALIZABLE txns.");
+          options.uses_catalog_snapshot() || !(txn && txn->isolation() == SERIALIZABLE_ISOLATION),
+          IllegalState, "Clamping applies to SERIALIZABLE txns only for catalog snapshot reads.");
         session.read_point()->SetCurrentReadTime(ClampUncertaintyWindow::kTrue);
         VLOG_WITH_PREFIX(2) << "Clamping read time to " << session.read_point()->GetReadTime();
       }
