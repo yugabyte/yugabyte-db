@@ -13,6 +13,8 @@
 
 #include "yb/util/dist_trace.h"
 
+#include <cstring>
+
 #include "opentelemetry/context/propagation/global_propagator.h"
 #include "opentelemetry/exporters/otlp/otlp_http_exporter_factory.h"
 #include "opentelemetry/exporters/otlp/otlp_http_exporter_options.h"
@@ -28,6 +30,7 @@
 
 #include "yb/util/flag_validators.h"
 #include "yb/util/flags/flags_callback.h"
+#include "yb/util/logging.h"
 #include "yb/util/signal_util.h"
 
 DEFINE_NON_RUNTIME_PREVIEW_string(otel_collector_traces_endpoint, "",
@@ -63,6 +66,10 @@ DEFINE_NON_RUNTIME_uint32(otel_batch_max_export_batch_size, 512,
 DEFINE_NON_RUNTIME_string(otel_internal_log_level, "info",
     "Minimum OpenTelemetry SDK internal log level forwarded to YugabyteDB logging. Allowed "
     "values are debug, info, warning, error, and none.");
+
+DEFINE_RUNTIME_int32(otel_dropped_span_log_interval_secs, 10,
+    "Minimum interval in seconds between two OpenTelemetry dropped-span warnings. The next logged "
+    "warning reports how many were suppressed. 0 logs every dropped span.");
 
 DEFINE_validator(otel_batch_max_queue_size,
     FLAG_GE_FLAG_VALIDATOR(otel_batch_max_export_batch_size));
@@ -157,6 +164,10 @@ internal_log::LogLevel GetOtelInternalLogLevel() {
   return internal_log::LogLevel::Info;
 }
 
+// The batch span processor logs this once per dropped span, on the query path. A full queue would
+// otherwise flood the logs and slow queries with a synchronous log write per span.
+constexpr const char* kOtelDroppedSpanMessage = "queue is full - dropping span";
+
 class YbOtelLogHandler : public internal_log::LogHandler {
  public:
   void Handle(
@@ -166,6 +177,12 @@ class YbOtelLogHandler : public internal_log::LogHandler {
 
     const char* safe_file = file ? file : "unknown";
     const char* safe_msg = msg ? msg : "";
+
+    if (level == internal_log::LogLevel::Warning && strstr(safe_msg, kOtelDroppedSpanMessage)) {
+      YB_LOG_EVERY_N_SECS(WARNING, FLAGS_otel_dropped_span_log_interval_secs)
+          << "[" << safe_file << ":" << line << "]: " << safe_msg;
+      return;
+    }
 
     switch (level) {
       case internal_log::LogLevel::Error:
