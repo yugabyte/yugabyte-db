@@ -6119,8 +6119,7 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		/* TODO(jason): once it becomes stable, this can be PGC_USERSET. */
-		{"yb_insert_on_conflict_read_batch_size", PGC_SUSET, CLIENT_CONN_STATEMENT,
+		{"yb_insert_on_conflict_read_batch_size", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Maximum batch size for arbiter index reads during INSERT ON CONFLICT."),
 			gettext_noop("A value of 0 disables this feature."),
 			0
