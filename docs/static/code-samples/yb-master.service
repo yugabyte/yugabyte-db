@@ -7,6 +7,8 @@ Description=yugabyte-master
 [Service]
 RestartForceExitStatus=SIGPIPE
 EnvironmentFile=/etc/sysconfig/mycompany_env
+# Lets TCMalloc use per-CPU caches. Remove on Linux kernels 6.19.0 through 7.0.13.
+Environment=GLIBC_TUNABLES=glibc.pthread.rseq=0
 StartLimitInterval=0
 ExecStart=/bin/bash -c '/opt/misc/yugabyte/bin/yb-master \
 --fs_data_dirs=/opt/data/1/yugabyte \

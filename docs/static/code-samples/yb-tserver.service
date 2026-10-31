@@ -7,6 +7,8 @@ Description=yugabyte-tserver
 [Service]
 RestartForceExitStatus=SIGPIPE
 EnvironmentFile=/etc/sysconfig/mycompany_env
+# Lets TCMalloc use per-CPU caches. Remove on Linux kernels 6.19.0 through 7.0.13.
+Environment=GLIBC_TUNABLES=glibc.pthread.rseq=0
 StartLimitInterval=0
 ExecStart=/bin/bash -c '/opt/misc/yugabyte/bin/yb-tserver \
 --tserver_master_addrs=n1.node.gce-us-east1.mycompany:7100,n2.node.gce-us-central1.mycompany:7100,n3.node.gce-us-west1.mycompany:7100 \
