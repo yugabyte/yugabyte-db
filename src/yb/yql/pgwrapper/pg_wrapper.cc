@@ -503,6 +503,15 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_log_heap_snapshot_on_exit_threshold, -1,
     "approximate memory usage of each malloc call stack if its peak RSS "
     "is greater than or equal to this threshold in KB. Set to -1 to disable.");
 
+DEFINE_NON_RUNTIME_PG_FLAG(bool, yb_enable_memory_watcher, false,
+    "Start a background worker that, when available memory is low, logs the PostgreSQL "
+    "processes using the most memory and asks the largest ones to log their heap snapshots.");
+
+DEFINE_RUNTIME_PG_FLAG(int32, yb_memory_watcher_threshold_pct, 15,
+    "The memory watcher reports when the memory available on the node, or in a memory-limited "
+    "cgroup containing PostgreSQL, is below this percentage of the total. Set this above the OOM "
+    "killer's threshold. 0 disables the reports.");
+
 DEFINE_RUNTIME_PG_FLAG(int32, yb_startup_free_memory_release_threshold, 0,
     "When a backend finishes connection startup, if the TCMalloc page heap holds at least this "
     "much free memory in KB, return that memory to the operating system. Connection startup "

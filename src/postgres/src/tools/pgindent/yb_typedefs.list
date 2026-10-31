@@ -140,6 +140,8 @@ YbLockMechanism
 YbLockRowsStateInfo
 YbLogicalClientVersionType
 YbLsmBuildState
+YbMemoryWatcherPeak
+YbMemoryWatcherProc
 YbMergeScanInfo
 YbMergeScanStreamColInfo
 YbNLBatchStatus

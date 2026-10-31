@@ -133,6 +133,7 @@
 #include "utils/syscache.h"
 #include "yb/util/debug/leak_annotations.h"
 #include "yb_ash.h"
+#include "yb_memory_watcher.h"
 #include "yb_qpm.h"
 #include "yb_query_diagnostics.h"
 #include "yb_tcmalloc_utils.h"
@@ -3623,6 +3624,20 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_memory_watcher", PGC_POSTMASTER, RESOURCES_MEM,
+			gettext_noop("Start a background worker that, when available memory "
+						 "is low, logs the PostgreSQL processes using the most "
+						 "memory and asks the largest ones to log their heap "
+						 "snapshots."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_memory_watcher,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_update_optimization_infra", PGC_SIGHUP, QUERY_TUNING_OTHER,
 			gettext_noop("Enables optimizations of YSQL UPDATE queries. This includes "
 						 "(but not limited to) skipping redundant secondary index updates "
@@ -6480,6 +6495,49 @@ static struct config_int ConfigureNamesInt[] =
 		-1,
 		-1,
 		INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_memory_watcher_interval", PGC_SIGHUP, RESOURCES_MEM,
+			gettext_noop("How often the memory watcher checks available memory."),
+			NULL,
+			GUC_UNIT_MS | GUC_NOT_IN_SAMPLE
+		},
+		&yb_memory_watcher_interval_ms,
+		1000,
+		10,
+		INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_memory_watcher_threshold_pct", PGC_SIGHUP, RESOURCES_MEM,
+			gettext_noop("The memory watcher reports when the memory available "
+						 "on the node, or in a memory-limited cgroup containing "
+						 "PostgreSQL, is below this percentage of the total."),
+			gettext_noop("Set this above the OOM killer's threshold, so the "
+						 "report comes before processes are killed. "
+						 "0 disables the reports."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_memory_watcher_threshold_pct,
+		15,
+		0,
+		100,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_memory_watcher_report_interval", PGC_SIGHUP, RESOURCES_MEM,
+			gettext_noop("Minimum time between two memory watcher reports."),
+			NULL,
+			GUC_UNIT_S | GUC_NOT_IN_SAMPLE
+		},
+		&yb_memory_watcher_report_interval_s,
+		60,
+		1,
+		INT_MAX / 1000,
 		NULL, NULL, NULL
 	},
 
