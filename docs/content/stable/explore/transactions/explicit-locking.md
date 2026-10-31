@@ -38,7 +38,7 @@ The following types of row locks are supported:
 - FOR SHARE
 - FOR KEY SHARE
 
-The following example uses the FOR UPDATE row lock with the [fail-on-conflict](../../../architecture/transactions/concurrency-control/#fail-on-conflict) concurrency control policy. First, a row is selected for update, thereby locking it, and subsequently updated. A concurrent transaction should not be able to abort this transaction by updating the value of that row after the row is locked.
+The following example uses the FOR UPDATE row lock with the [fail-on-conflict](../../../architecture/transactions/concurrency-control/#fail-on-conflict) concurrency control policy. First, a row is selected for update, thereby locking it, and subsequently updated. A concurrent transaction should not be able to abort this transaction by updating the value of that row after the row is locked. To run it, set the YB-TServer flag `enable_wait_queues=false`; with the default (`true`), YSQL uses [Wait-on-Conflict](../../../architecture/transactions/concurrency-control/#wait-on-conflict), and the `UPDATE` in the second session waits for the first transaction to finish instead of failing.
 
 {{% explore-setup-single-new %}}
 
@@ -72,19 +72,21 @@ yugabyte=# SELECT * from t WHERE k='k1' FOR UPDATE;
 (1 row)
 ```
 
-Before completing the transaction, try to update the same key in your other session using a basic update statement, as follows:
+Before completing the transaction, try to update the same key in your other session using a basic update statement. Run it in Repeatable Read: if [Read Committed](../../../architecture/transactions/read-committed/) is enabled (the default for new yugabyted universes from v2025.2), its statements get the highest priority, so the update would abort the first transaction instead.
 
 ```sql
+yugabyte=# SET default_transaction_isolation = 'repeatable read';
 yugabyte=# UPDATE t SET v='v1.1' WHERE k='k1';
 ```
 
 ```output
-ERROR:  All transparent retries exhausted. Operation failed. Try again: bb3aace4-5de2-41f9-981e-d9ca06671419 Conflicts with higher priority transaction: d4dadbf8-ca81-4bbd-b68c-067023f8ee6b
+ERROR:  could not serialize access due to concurrent update (yb_max_query_layer_retries set to 60 are exhausted)
+DETAIL:  76b24e3f-0c02-4327-aa2b-03d0131a4324 conflicts with higher priority transaction (our pri: 16630872171744615563, their pri: 18446744069445049097): 2069d5c1-4651-4bcb-a29e-da5e047d181e [repeatable read]
 ```
 
 This operation fails because it conflicts with the row-level lock and as per Fail-on-Conflict concurrency control policy, the transaction aborts itself because it has a lower priority.
 
-Note that the error message appears after all [best-effort statement retries](../../../architecture/transactions/concurrency-control/#best-effort-internal-retries-for-first-statement-in-a-transaction) have been exhausted.
+Note that the error message appears after all [best-effort statement retries](../../../architecture/transactions/concurrency-control/#best-effort-internal-retries-for-first-statement-in-a-transaction) have been exhausted. The number of retries is set by the `yb_max_query_layer_retries` YSQL configuration parameter (60 by default).
 
 Finally, in the first session, update the row and commit the transaction, as follows:
 
