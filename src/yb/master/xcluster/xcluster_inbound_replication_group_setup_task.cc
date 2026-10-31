@@ -21,6 +21,7 @@
 #include "yb/common/colocated_util.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/common_net.pb.h"
+#include "yb/common/schema.h"
 #include "yb/common/xcluster_util.h"
 
 #include "yb/gutil/bind.h"
@@ -51,6 +52,19 @@
 // check_bootstrap_required flag by default.
 DEFINE_RUNTIME_bool(check_bootstrap_required, false,
     "Is it necessary to check whether bootstrap is required for Universe Replication.");
+
+DEFINE_RUNTIME_bool(xcluster_skip_schema_validation_on_setup, false,
+    "When set, xCluster setup logs a warning instead of failing when a source table's schema does "
+    "not match its target table's. Use only to unblock setup when the schemas are known to hold "
+    "the same data; replicating between tables whose schemas really differ writes wrong data to "
+    "the target.");
+TAG_FLAG(xcluster_skip_schema_validation_on_setup, unsafe);
+
+DEFINE_RUNTIME_bool(xcluster_skip_index_column_name_check_on_setup, false,
+    "When set, xCluster setup does not compare the column names of YSQL indexes. Set it to set "
+    "up replication of an index whose indexed column was renamed on the source before the target "
+    "was created from a backup of it.");
+TAG_FLAG(xcluster_skip_index_column_name_check_on_setup, advanced);
 
 DEFINE_RUNTIME_uint32(xcluster_ensure_sequence_updates_in_wal_timeout_sec, 3 * 60,
     "Timeout for XClusterEnsureSequenceUpdatesAreInWal RPCs.");
@@ -993,14 +1007,33 @@ Result<GetTableSchemaResponsePB> XClusterTableSetupTask::ValidateSourceSchemaAnd
     Schema target_schema;
     RETURN_NOT_OK(SchemaFromPB(table_schema_resp.schema(), &target_schema));
 
-    // We now have a table match. Validate the schema.
-    SCHECK(
-        target_schema.EquivalentForDataCopy(source_schema), IllegalState,
-        Format(
-            "Source and target schemas don't match: "
-            "Source: $0, Target: $1, Source schema: $2, Target schema: $3",
-            source_table_info.table_id, table_schema_resp.identifier().table_id(),
-            source_table_info.schema.ToString(), table_schema_resp.schema().DebugString()));
+    // We now have a table match.  Validate the schema.
+    //
+    // RENAME COLUMN does not rename index columns (in PG or DocDB), but a restore recreates
+    // indexes with the current names, so a restored index can differ from its source only in
+    // column names.  Skip the names in automatic mode, where the target is always a restore.
+    // Other modes keep them by default, since otherwise, manually created indexes on the target
+    // could pass with a different column of the same type.
+    const bool is_ysql_index_pair = is_ysql_table && source_table_info.index_info.has_value() &&
+                                    table_schema_resp.has_index_info();
+    const bool skip_index_column_names =
+        is_ysql_index_pair && (parent_task_->data_.automatic_ddl_mode ||
+                               FLAGS_xcluster_skip_index_column_name_check_on_setup);
+    const bool schemas_match = target_schema.EquivalentForDataCopy(
+        source_schema,
+        skip_index_column_names ? ColumnSchema::CompareType : ColumnSchema::CompareByDefault);
+    if (!schemas_match) {
+      const auto mismatch = Format(
+          "Source and target schemas don't match$0: "
+          "Source: $1, Target: $2, Source schema: $3, Target schema: $4",
+          skip_index_column_names ? " (index column names not compared)" : "",
+          source_table_info.table_id, table_schema_resp.identifier().table_id(),
+          source_table_info.schema.ToString(), table_schema_resp.schema().DebugString());
+      SCHECK(FLAGS_xcluster_skip_schema_validation_on_setup, IllegalState, mismatch);
+      LOG_WITH_PREFIX(WARNING) << mismatch
+                               << ". Continuing because xcluster_skip_schema_validation_on_setup "
+                                  "is set";
+    }
     break;
   }
 

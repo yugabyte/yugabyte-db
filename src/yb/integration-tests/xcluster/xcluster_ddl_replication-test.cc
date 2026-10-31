@@ -707,6 +707,59 @@ TEST_F(XClusterDDLReplicationTest, YB_DISABLE_TEST(BootstrappingWithNoTables)) {
   ASSERT_OK(CreateReplicationFromCheckpoint());
 }
 
+// Sets up replication, from a backup and restore, of an index whose column was renamed on the
+// source before setup, so its column name differs from the target's, and checks that rows
+// replicate through the index, also after a column rename and an index rename on the source.
+TEST_F(XClusterDDLReplicationTest, RenameIndexedColumn) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "This test does not work with yb_backup.py";
+  }
+
+  auto params = XClusterDDLReplicationTestBase::kDefaultParams;
+  params.start_yb_controller_servers = true;
+  ASSERT_OK(SetUpClusters(params));
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE t (key int PRIMARY KEY, a int)"));
+  ASSERT_OK(producer_conn_->Execute("CREATE INDEX t_a_idx ON t (a)"));
+  ASSERT_OK(producer_conn_->Execute("ALTER TABLE t RENAME COLUMN a TO a2"));
+
+  ASSERT_OK(CheckpointReplicationGroupOnNamespaces({namespace_name}));
+  ASSERT_OK(BackupFromProducer());
+  ASSERT_OK(RestoreToConsumer());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  const auto kIndexColumnNameQuery =
+      "SELECT attname FROM pg_attribute WHERE attrelid = 't_a_idx'::regclass AND attnum = 1";
+  ASSERT_EQ(ASSERT_RESULT(producer_conn_->FetchRow<std::string>(kIndexColumnNameQuery)), "a");
+  ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<std::string>(kIndexColumnNameQuery)), "a2");
+
+  auto count_on_target_through_index = [this](
+      const std::string& index, const std::string& column) -> Result<int64_t> {
+    const auto query = Format(
+        "/*+ IndexOnlyScan(t $0) */ SELECT count(*) FROM t WHERE $1 >= 0", index, column);
+    const auto plan = VERIFY_RESULT(consumer_conn_->FetchAllAsString("EXPLAIN " + query));
+    SCHECK_FORMAT(
+        plan.find(index) != std::string::npos, IllegalState, "Expected a scan of $0, got: $1",
+        index, plan);
+    return consumer_conn_->FetchRow<int64_t>(query);
+  };
+
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO t SELECT i, i FROM generate_series(1, 50) AS i"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_EQ(ASSERT_RESULT(count_on_target_through_index("t_a_idx", "a2")), 50);
+
+  ASSERT_OK(producer_conn_->Execute("ALTER TABLE t RENAME COLUMN a2 TO a3"));
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO t SELECT i, i FROM generate_series(51, 60) AS i"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_EQ(ASSERT_RESULT(count_on_target_through_index("t_a_idx", "a3")), 60);
+
+  // Renaming an index bumps its schema version, so the target has to map a new source index
+  // schema whose column names still differ from its own.
+  ASSERT_OK(producer_conn_->Execute("ALTER INDEX t_a_idx RENAME TO t_a_idx2"));
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO t SELECT i, i FROM generate_series(61, 70) AS i"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_EQ(ASSERT_RESULT(count_on_target_through_index("t_a_idx2", "a3")), 70);
+}
+
 TEST_F(XClusterDDLReplicationTest, CreateTable) {
   ASSERT_OK(SetUpClustersAndReplication());
 

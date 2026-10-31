@@ -114,11 +114,41 @@ Do new names and terms match the vocabulary the codebase already uses for the sa
 
 Regardless of PR type, give these areas extra attention:
 
-- **`src/yb/master/`** (catalog manager, leader election) — concurrency and state-machine correctness.
+- **`src/yb/master/`** (catalog manager, leader election) — concurrency and state-machine correctness. See [Catalog manager changes](#catalog-manager-changes).
 - **`src/yb/tablet/`** and **`src/yb/docdb/`** — write/read path, MVCC, transaction handling.
 - **`src/yb/cdc/`** and **`src/yb/cdc_consumer/`** — replication-stream correctness, idempotency.
 - **`src/postgres/`** — PostgreSQL-fork merges; double-check that upstream Postgres semantics are preserved. Also check the diff against the fork conventions in `.claude/skills/pg-code-style-guide/SKILL.md`: YB additions yb-prefixed and clustered behind `/* YB ... */` marker comments, upstream-owned lines left byte-identical (no style fixes or rewrapping), and regress test changes respecting the upstream-named / `yb.port.*` / `yb.orig.*` taxonomy. Flag violations — they surface as merge conflicts on the next PG major-version merge.
 - **`managed/`** (YBA platform) — orchestration logic, especially around node lifecycle and cluster-wide ops.
+
+## Catalog manager changes
+
+For changes to catalog objects (namespaces, tables, tablets, and other COW objects) in `src/yb/master/`, check:
+
+1. **Lock order.** Every acquisition follows the [lock order](#catalog-manager-lock-order) below. Flag an inversion at HIGH.
+2. **Failover between persisted steps.** An operation that persists several states to the sys catalog can stop after any of them when the master leader fails. For each persisted intermediate state, check that the new leader resumes the operation to completion or rolls it back, and that it does not leave an object stuck in that state. Flag a state that no code path on the new leader picks up at HIGH.
+3. **Deadlocks with other operations.** List the other operations that can run on the same objects at the same time, such as tserver heartbeats, the load balancer, tablet splitting, background tasks, DDL rollback, backfill, xCluster/CDC, and snapshot restore. Check each one for a lock cycle with the change, including cycles through waits that are not locks, such as a lock held while waiting for an RPC callback that needs the same lock. Flag a possible deadlock at HIGH.
+4. **Hold time of `CatalogManager::mutex_`.** `CatalogManager::mutex_` must be held as briefly as possible and never across an RPC, a sys catalog write, or other IO. It is a spinlock and most master leader RPCs take it, so a thread that blocks while holding it stalls those RPCs and burns CPU in the waiting threads (#23040). Long holds of COW locks can also stall other operations, but `mutex_` is far more sensitive. The leader shared lock is held for the whole duration of many RPCs and does not have this restriction. Flag at HIGH, unless it is an already existing issue, then it is MEDIUM.
+
+### Catalog manager lock order
+
+Code in `src/yb/master/` must acquire locks in this order. A thread that holds a lock may only acquire locks that come later in the list.
+
+1. `ScopedLeaderSharedLock::leader_shared_lock_`, usually taken with the `SCOPED_LEADER_SHARED_LOCK` macro.
+2. `CatalogManager::mutex_`.
+3. Namespace COW locks (`NamespaceInfo`), sorted by `namespace_id`.
+4. Table COW locks (`TableInfo`), sorted by `table_id`.
+5. Tablet COW locks (`TabletInfo`), sorted by `tablet_id`.
+6. `CatalogManager::state_lock_` (this position is less certain).
+
+COW lock means the read/write/commit lock of a copy-on-write catalog object (`src/yb/util/rwc_lock.h`). Several objects of the same kind must be locked in id order; an unsorted loop over tablets or tables that takes write locks is a deadlock risk.
+
+Commit COW write locks in the reverse order of acquisition: a lock acquired later commits earlier. This applies to all COW objects: tablets commit before their table, and of two tables the one with the larger `table_id` commits first. A commit on object A waits until every reader of A releases its read lock. If the committing thread still holds a write lock on an object B that comes after A, a reader that holds A and then tries to lock B (a correct acquisition order) waits for the writer, while the writer waits for that reader: deadlock. Heartbeat processing is one such reader: it holds a table read lock while it takes tablet write locks (#10304, #32090). Debug builds assert the table/tablet case through the held-tablet-write-lock count in `src/yb/master/catalog_entity_info.h`. Code paths exempt from that assert are marked with `TableCommitLockAssertSuppression` (`src/yb/util/cow_object.h`).
+
+Inversions to flag at HIGH:
+
+- A COW lock taken before `CatalogManager::mutex_` on the same thread, or a `SCOPED_LEADER_SHARED_LOCK` taken while `mutex_` or a COW lock is held.
+- Several objects of one kind locked without sorting by id.
+- A COW write lock committed while the same thread still holds a write lock acquired after it, for example a table committed before its tablets.
 
 ## What to ignore entirely
 

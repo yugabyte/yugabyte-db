@@ -107,6 +107,7 @@
 #include "catalog/pg_statistic_ext.h"
 #include "catalog/pg_type_d.h"
 #include "executor/ybExpr.h"
+#include "optimizer/yb_merge_scan.h"
 #include "optimizer/ybplan.h"
 #include "pg_yb_utils.h"
 #include "utils/syscache.h"
@@ -178,6 +179,8 @@ double		yb_inter_zone_roundtrip_cost = YB_DEFAULT_INTER_ZONE_ROUNDTRIP_COST;
 double		yb_inter_zone_transfer_cost = YB_DEFAULT_INTER_ZONE_TRANSFER_COST;
 double		yb_local_roundtrip_cost = YB_DEFAULT_LOCAL_ROUNDTRIP_COST;
 double		yb_local_transfer_cost = YB_DEFAULT_LOCAL_TRANSFER_COST;
+double		yb_merge_scan_row_cost_factor = YB_DEFAULT_MERGE_SCAN_ROW_COST_FACTOR;
+double		yb_merge_scan_stream_cost_factor = YB_DEFAULT_MERGE_SCAN_STREAM_COST_FACTOR;
 
 
 double		recursive_worktable_factor = DEFAULT_RECURSIVE_WORKTABLE_FACTOR;
@@ -10610,17 +10613,48 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	if (!enable_indexscan)
 		startup_cost += disable_cost;
 
-	/* TODO(#29078): cost this better. */
 	if (path->yb_index_path_info.merge_scan_stream_cols)
 	{
 		/*
-		 * We need merge index scans to cost higher than plain index scans to
-		 * avoid doing merge scan where it doesn't give any gains for upper
-		 * nodes.  Make them cost twice of STD_FUZZ_FACTOR higher, where
-		 * STD_FUZZ_FACTOR = 1.01.
+		 * The merge's own work: per row passed up, a constant overhead plus
+		 * one heap step to pick the next row from the streams, about
+		 * log2(streams) comparisons, on top of the index scan's cost.  A
+		 * merge scan must never beat the same index scan without the merge:
+		 * it wins a slot only where an upper node uses its order.  The floor
+		 * keeps it at least 2 % above that scan where the term is smaller,
+		 * outside add_path's fuzz, so the plain path survives and stays the
+		 * cheapest.  Part of the floor goes on startup_cost: a join or Limit
+		 * over the two scans can be within the fuzz on total cost, and
+		 * add_path then falls back to startup_cost before pathkeys.
 		 */
-		startup_cost *= 1.02;
-		run_cost *= 1.02;
+		int			num_streams =
+			yb_merge_scan_num_streams(path->yb_index_path_info.merge_scan_stream_cols);
+		Cardinality merge_rows;
+		Cost		merge_cost;
+		Cost		plain_startup_cost = startup_cost;
+		Cost		plain_total_cost = startup_cost + run_cost;
+
+		/*
+		 * A secondary index with its own read request merges the index
+		 * streams and then fetches base rows by ybctid in merged order, so
+		 * every matched index tuple goes through the heap before the
+		 * base-table filters apply.  A primary key, an index-only scan or an
+		 * embedded secondary index merges the base-table result instead.  As
+		 * elsewhere in this function, a colocated base relation stands in for
+		 * the embedded case.
+		 *
+		 * The planned stream count can be 0 or 1 (an empty or single-element
+		 * IN list, see #36359), and the heap still runs once per row, so
+		 * charge at least one comparison.
+		 */
+		merge_rows = (is_primary_index || index_only || baserel_is_colocated) ?
+			num_baserel_result_rows : num_index_tuples_matched;
+		merge_cost = cpu_operator_cost * merge_rows *
+			(yb_merge_scan_row_cost_factor +
+			 yb_merge_scan_stream_cost_factor * log2(Max(num_streams, 2)));
+		startup_cost = plain_startup_cost * 1.02;
+		run_cost += Max(merge_cost, 0.02 * plain_total_cost) -
+			0.02 * plain_startup_cost;
 	}
 
 	/*

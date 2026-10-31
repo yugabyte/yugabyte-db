@@ -6380,6 +6380,100 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   }
 
   @Test
+  public void testSecondConsumerAcquiresSlotAfterHeartbeatLoss() throws Exception {
+    Map<String, String> tserverFlags = getTServerFlagsWithExclusiveLock();
+    tserverFlags.put("transaction_heartbeat_usec", Integer.toString(500000 * kMultiplier));
+    tserverFlags.put("transaction_max_missed_heartbeat_periods", "2");
+    tserverFlags.put("transaction_check_interval_usec", Integer.toString(200000 * kMultiplier));
+    restartClusterWithFlags(getMasterFlags(), tserverFlags);
+
+    String slotName = "heartbeat_loss_slot";
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS t_heartbeat_loss");
+      stmt.execute("CREATE TABLE t_heartbeat_loss(k int primary key, v text)");
+    }
+
+    Connection replConn0 = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replApi0 =
+        replConn0.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replApi0, slotName, "test_decoding");
+
+    PGReplicationStream stream0 = replApi0.replicationStream()
+        .logical()
+        .withSlotName(slotName)
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .start();
+
+    PGReplicationStream stream1 = null;
+    Connection replConn1 = null;
+    try {
+      // Heartbeats stop reaching the coordinator, so the transaction that holds the slot expires
+      // and its lock goes away. Same outcome as a partition between them.
+      for (HostAndPort tServer : miniCluster.getTabletServers().keySet()) {
+        assertTrue(miniCluster.getClient().setFlag(
+            tServer, "transaction_disable_heartbeat_in_tests", "true", true));
+      }
+
+      final int maxAttempts = 30;
+      final int sleepBetweenAttemptsMs = 2000 * kMultiplier;
+      for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          replConn1 = getConnectionBuilder().withTServer(1).replicationConnect();
+          PGReplicationConnection replApi1 =
+              replConn1.unwrap(PGConnection.class).getReplicationAPI();
+          stream1 = replApi1.replicationStream()
+              .logical()
+              .withSlotName(slotName)
+              .withStartPosition(LogSequenceNumber.valueOf(0L))
+              .start();
+          LOG.info("Second consumer acquired slot on attempt {}", attempt);
+          break;
+        } catch (PSQLException e) {
+          if (replConn1 != null) {
+            replConn1.close();
+            replConn1 = null;
+          }
+          if (attempt == maxAttempts) {
+            throw e;
+          }
+          LOG.info("Attempt {} failed, retrying in {}ms: {}", attempt, sleepBetweenAttemptsMs,
+                   e.getMessage());
+          Thread.sleep(sleepBetweenAttemptsMs);
+        }
+      }
+      assertNotNull("Expected a second consumer to acquire the slot", stream1);
+
+      PGReplicationStream closingStream = stream0;
+      Connection closingConn = replConn0;
+      stream0 = null;
+      replConn0 = null;
+      closingStream.close();
+      closingConn.close();
+
+      try (Connection conn = getConnectionBuilder().withTServer(0).connect();
+           Statement stmt = conn.createStatement();
+           ResultSet res = stmt.executeQuery("SELECT 1")) {
+        assertTrue(res.next());
+        assertEquals(1, res.getInt(1));
+      }
+    } finally {
+      if (stream0 != null) {
+        stream0.close();
+      }
+      if (replConn0 != null) {
+        replConn0.close();
+      }
+      if (stream1 != null) {
+        stream1.close();
+      }
+      if (replConn1 != null) {
+        replConn1.close();
+      }
+    }
+  }
+
+  @Test
   public void testSlotLockReleasedOnTserverCrash() throws Exception {
     restartClusterWithFlags(getMasterFlags(), getTServerFlagsWithExclusiveLock());
 
