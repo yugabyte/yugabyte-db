@@ -7468,7 +7468,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   private void addConcurrentDdlFlags(Map<String, String> flags) {
     toggleDDLMode(flags, /* useLegacy */ false);
-    flags.put("ysql_enable_object_locking_infra", "true");
+    flags.put("ysql_yb_enable_object_locking_infra", "true");
   }
 
   @Test
