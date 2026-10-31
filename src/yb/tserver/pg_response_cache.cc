@@ -212,7 +212,9 @@ class Data {
         creation_time_(creation_time),
         readiness_deadline_(readiness_deadline) {}
 
-  void Set(PgResponseCache::Response&& value) {
+  void Set(
+      PgResponseCache::Response&& value, PgResponseCache::KeyGroup group,
+      uint64_t catalog_version) {
     if (PREDICT_FALSE(FLAGS_TEST_pg_response_cache_catalog_read_time_usec > 0) &&
         value.response->has_catalog_read_time()) {
       TEST_UpdateCatalogReadTime(
@@ -239,6 +241,20 @@ class Data {
       response = &*response_;
       state_.store(new_state, std::memory_order_release);
     }
+    // Logged before the loop, not after, because a node that is about to run out of memory dies
+    // inside it.
+    //
+    // The waiter count is the point: every waiter receives the response here, and connections that
+    // arrived one at a time go on to build their catalog caches together. The byte count is the
+    // response itself, not what a backend grows to holding it -- a few MB here has been seen to
+    // become a few hundred MB of relcache. The fill duration is here because anything that delays
+    // the filler, such as the master shedding its prefetch, lengthens the queue behind it. The
+    // group and the catalog version say which database refilled and at which version. Neither
+    // identifies one fill: a paged prefetch caches every page under a key of its own, and a global
+    // catalog version bump moves every database to the same version at once.
+    VLOG(1) << "Fill complete for group " << group << " catalog version " << catalog_version
+            << " after " << MonoDelta(CoarseMonoClock::Now() - creation_time_) << ", releasing "
+            << waiters.size() << " waiters, " << sz << " bytes each";
     for (auto waiter : waiters) {
       waiter->Apply(*response);
     }
@@ -496,7 +512,7 @@ class PgResponseCache::Impl : private GarbageCollector {
           }
         }
       }
-      empty_data->Set(std::move(response));
+      empty_data->Set(std::move(response), group, version);
       // After the entry is set, so an observer can rely on the entry being readable.
       if (observer && is_final_round) {
         observer(group, version);
