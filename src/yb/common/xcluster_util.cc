@@ -16,8 +16,12 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/ysql_utils.h"
 #include "yb/gutil/strings/util.h"
+#include "yb/util/flags.h"
+#include "yb/util/path_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+
+DECLARE_string(certs_for_cdc_dir);
 
 namespace yb::xcluster {
 
@@ -49,6 +53,14 @@ ReplicationGroupId GetOriginalReplicationGroupId(const ReplicationGroupId& repli
     clean_id.remove_suffix(sizeof(kAlterReplicationGroupSuffix) - 1 /* exclude \0 ending */);
   }
   return ReplicationGroupId(clean_id.ToString());
+}
+
+std::string GetRemoteUniverseCertsDir(const ReplicationGroupId& replication_group_id) {
+  if (FLAGS_certs_for_cdc_dir.empty()) {
+    return std::string();
+  }
+  return JoinPathSegments(
+      FLAGS_certs_for_cdc_dir, GetOriginalReplicationGroupId(replication_group_id).ToString());
 }
 
 std::string ShortReplicationType(XClusterReplicationType type) {

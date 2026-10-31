@@ -14,18 +14,28 @@
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
+#include "yb/client/table.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/xcluster_client.h"
 #include "yb/client/yb_op.h"
 
 #include "yb/common/ql_value.h"
 
+#include "yb/master/master_client.pb.h"
+#include "yb/master/xcluster_rpc_tasks.h"
+
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
 #include "yb/rpc/secure_stream.h"
 
 #include "yb/rpc/secure.h"
 
+#include "yb/server/server_base.proxy.h"
+
 #include "yb/util/size_literals.h"
 #include "yb/util/env_util.h"
+#include "yb/util/path_util.h"
+#include "yb/util/scope_exit.h"
 
 #include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
@@ -193,13 +203,82 @@ TEST_F_EX(SecureConnectionTest, ClientCertificates, SecureConnectionWithClientCe
 }
 
 // A context cannot present a client certificate when it was given no node name to load one by.
-// The cross-universe xCluster clients pass an empty name deliberately, so this combination is
-// reachable from --node_to_node_encryption_use_client_certificates, not just from miswiring.
 TEST(SecureContextTest, ClientCertificatesRequireNodeName) {
   auto context =
       rpc::CreateSecureContext(GetCertsDir(), rpc::UseClientCerts::kTrue, /*node_name=*/"");
   ASSERT_NOK(context);
   ASSERT_STR_CONTAINS(context.status().ToString(), "without a node name");
+}
+
+class SecureConnectionRemoteUniverseClientTest : public SecureConnectionTest {
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_node_to_node_encryption_use_client_certificates) = true;
+    SecureConnectionTest::SetUp();
+  }
+};
+
+// The clients xCluster builds for another universe, here pointed at this one, must present the
+// local node certificate when client certificates are required.
+TEST_F_EX(
+    SecureConnectionTest, RemoteUniverseClient, SecureConnectionRemoteUniverseClientTest) {
+  TestSimpleOps();
+
+  const xcluster::ReplicationGroupId kReplicationGroupId("remote_universe_client");
+  auto master_addrs = cluster_->GetMasterAddresses();
+  auto master_hps = ASSERT_RESULT(HostPort::ParseStrings(master_addrs, 0));
+
+  auto remote_client =
+      ASSERT_RESULT(client::XClusterRemoteClientHolder::Create(kReplicationGroupId, master_hps));
+  ASSERT_OK(remote_client->GetYbClient().ListTables());
+  ASSERT_OK(remote_client->ReloadCertificates());
+  ASSERT_OK(remote_client->GetYbClient().ListTables());
+
+  auto rpc_tasks = ASSERT_RESULT(
+      master::XClusterRpcTasks::CreateWithMasterAddrs(kReplicationGroupId, master_addrs));
+  ASSERT_OK(rpc_tasks->GetTableLocations(table_->id()));
+}
+
+// With client certificates off locally, a certificate placed for the remote universe after the
+// context was created is presented once the context is reloaded.
+TEST_F_EX(
+    SecureConnectionTest, RemoteUniverseClientCertificatePlacedLater,
+    SecureConnectionRemoteUniverseClientTest) {
+  // The cluster keeps requiring client certificates; contexts created from now on act as a
+  // universe that does not send them on its own.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_node_to_node_encryption_use_client_certificates) = false;
+
+  auto* env = Env::Default();
+  const auto remote_certs_dir = JoinPathSegments(GetTestDataDirectory(), "remote_certs");
+  ASSERT_OK(env->CreateDirs(remote_certs_dir));
+  ASSERT_OK(env_util::CopyFile(
+      env, JoinPathSegments(FLAGS_certs_dir, "ca.crt"),
+      JoinPathSegments(remote_certs_dir, "ca.crt")));
+
+  auto messenger_builder = CreateMiniClusterMessengerBuilder();
+  auto secure_context = ASSERT_RESULT(
+      rpc::SetupRemoteUniverseSecureContext(remote_certs_dir, &messenger_builder));
+  auto messenger = ASSERT_RESULT(messenger_builder.Build());
+  auto se = ScopeExit([&messenger] { messenger->Shutdown(); });
+  rpc::ProxyCache proxy_cache(messenger.get());
+  server::GenericServiceProxy proxy(&proxy_cache, cluster_->mini_master()->bound_rpc_addr());
+  auto ping = [&proxy] {
+    server::PingRequestPB req;
+    server::PingResponsePB resp;
+    rpc::RpcController controller;
+    controller.set_timeout(2s);
+    return proxy.Ping(req, &resp, &controller);
+  };
+  ASSERT_NOK(ping());
+
+  // Each server's certificate, so the one named after the local node is among them.
+  for (const auto& file : ASSERT_RESULT(env->GetChildren(FLAGS_certs_dir, ExcludeDots::kTrue))) {
+    if (file.starts_with("node.")) {
+      ASSERT_OK(env_util::CopyFile(
+          env, JoinPathSegments(FLAGS_certs_dir, file), JoinPathSegments(remote_certs_dir, file)));
+    }
+  }
+  ASSERT_OK(rpc::ReloadRemoteUniverseSecureContext(secure_context.get(), remote_certs_dir));
+  ASSERT_OK(ping());
 }
 
 class SecureConnectionVerifyNameOnlyTest : public SecureConnectionTest {

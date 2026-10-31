@@ -26,13 +26,11 @@
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/secure_stream.h"
 #include "yb/rpc/secure.h"
-#include "yb/util/path_util.h"
 #include "yb/util/status_format.h"
 
 #include "yb/server/clock.h"
 
 DECLARE_bool(use_node_to_node_encryption);
-DECLARE_string(certs_for_cdc_dir);
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_bool(TEST_running_test);
 DECLARE_string(placement_cloud);
@@ -69,15 +67,10 @@ Status XClusterRemoteClientHolder::Init(const std::vector<HostPort>& remote_mast
 
   rpc::MessengerBuilder messenger_builder("xcluster-remote");
   messenger_builder.UseLocalHostOutboundIpBaseInTests();
-  std::string certs_dir;
-
   if (FLAGS_use_node_to_node_encryption) {
-    if (!FLAGS_certs_for_cdc_dir.empty()) {
-      certs_dir = JoinPathSegments(FLAGS_certs_for_cdc_dir, replication_group_id_.ToString());
-    }
-    secure_context_ = VERIFY_RESULT(rpc::SetupSecureContext(
-        certs_dir, /*root_dir=*/"", /*name=*/"", rpc::SecureContextType::kInternal,
-        &messenger_builder));
+    secure_context_ =
+        VERIFY_RESULT(rpc::SetupRemoteUniverseSecureContext(
+            xcluster::GetRemoteUniverseCertsDir(replication_group_id_), &messenger_builder));
   }
   messenger_ = VERIFY_RESULT(messenger_builder.Build());
   messenger_->SetMetadataSerializerFactory(std::make_unique<ash::MetadataSerializerFactory>());
@@ -119,13 +112,8 @@ Status XClusterRemoteClientHolder::ReloadCertificates() {
     return Status::OK();
   }
 
-  std::string cert_dir;
-  if (!FLAGS_certs_for_cdc_dir.empty()) {
-    cert_dir = JoinPathSegments(FLAGS_certs_for_cdc_dir, replication_group_id_.ToString());
-  }
-
-  return rpc::ReloadSecureContextKeysAndCertificates(
-      secure_context_.get(), cert_dir, "" /* node_name */);
+  return rpc::ReloadRemoteUniverseSecureContext(
+      secure_context_.get(), xcluster::GetRemoteUniverseCertsDir(replication_group_id_));
 }
 
 XClusterClient& XClusterRemoteClientHolder::GetXClusterClient() {
