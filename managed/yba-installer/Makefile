@@ -198,7 +198,7 @@ ${BIN_DIR}/${BIN_NAME}:
 	CGO_ENABLED=0 GOOS=${GOOS} GOARCH=${GOARCH} GOFIPS140=${GOFIPS140} go build -a -o $@ -tags ${BUILD_TAGS} -ldflags=" \
 	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components/ybactl.Version=${VERSION}' \
 	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components/ybactl.BuildID=${BUILD_ID}' \
-	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/cmd.PostgresVersion=${POSTGRES_VERSION}' \
+	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common.PostgresVersion=${POSTGRES_VERSION}' \
 	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/cmd.PrometheusVersion=${PROMETHEUS_VERSION}' \
 	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/cmd.PerfAdvisorVersion=${PERF_ADVISOR_VERSION}' \
 	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/cmd.NodeExporterVersion=${NODE_EXPORTER_VERSION}'"
