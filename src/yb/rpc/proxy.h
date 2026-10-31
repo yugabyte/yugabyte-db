@@ -168,6 +168,10 @@ class Proxy {
     return remote_;
   }
 
+  const Protocol* TEST_protocol() const {
+    return protocol_;
+  }
+
  private:
   void Resolve();
   void HandleResolve(const Result<IpAddress>& result);

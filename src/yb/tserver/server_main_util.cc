@@ -309,6 +309,7 @@ Status MasterTServerParseFlagsAndInit(
     << GetTimePidString(Env::Default()->NowMicros(), getpid()) << std::endl;
 
   RETURN_NOT_OK(GetPrivateIpMode());
+  RETURN_NOT_OK(GetNodeToNodePlaintextMode());
 
   LOG(INFO) << "NumCPUs determined to be: " << NumEffectiveCPUs();
 
