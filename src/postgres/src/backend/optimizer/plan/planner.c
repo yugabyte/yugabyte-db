@@ -1640,6 +1640,9 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 			limit_tuples = (double) count_est + (double) offset_est;
 	}
 
+	/* YB: keep the bound for the scan first-fetch trim; see PlannerInfo */
+	root->yb_limit_tuples = limit_tuples;
+
 	/* Make tuple_fraction accessible to lower-level routines */
 	root->tuple_fraction = tuple_fraction;
 

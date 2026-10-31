@@ -14,7 +14,9 @@
 #include "yb/master/tablet_split_manager.h"
 
 #include <algorithm>
+#include <array>
 #include <optional>
+#include <utility>
 
 #include "yb/common/constants.h"
 #include "yb/common/schema.h"
@@ -22,6 +24,7 @@
 #include "yb/consensus/metadata.pb.h"
 
 #include "yb/gutil/map-util.h"
+#include "yb/gutil/strings/join.h"
 
 #include "yb/dockv/partition.h"
 
@@ -39,6 +42,7 @@
 
 #include "yb/util/cgroups.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
@@ -58,6 +62,9 @@ DEFINE_RUNTIME_int32(process_split_tablet_candidates_interval_msec, 0,
 DEPRECATE_FLAG(int32, max_queued_split_candidates, "10_2022");
 
 DECLARE_bool(enable_automatic_tablet_splitting);
+DECLARE_int64(tablet_force_split_threshold_bytes);
+DECLARE_int64(tablet_split_high_phase_size_threshold_bytes);
+DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
 
 DEFINE_RUNTIME_uint64(outstanding_tablet_split_limit, 0,
     "Limit of the number of outstanding tablet splits. Limitation is disabled if this "
@@ -93,6 +100,10 @@ DEFINE_RUNTIME_uint64(prevent_split_for_ttl_tables_for_seconds, 86400,
 DEFINE_RUNTIME_uint64(prevent_split_for_small_key_range_tablets_for_seconds, 300,
     "Seconds between checks for whether to split a tablet whose key range is too small "
     "to be split. Checks are disabled if this value is set to 0.");
+
+DEFINE_RUNTIME_uint64(tablet_split_rejected_candidates_log_interval_secs, 900,
+    "Minimum seconds between summarized logs of tablets/tables rejected as automatic split "
+    "candidates. Set to 0 to log a summary on every automatic tablet splitting pass.");
 
 DEFINE_RUNTIME_bool(sort_automatic_tablet_splitting_candidates, true,
     "Whether we should sort candidates for new automatic tablet splits, so that low phase takes "
@@ -153,7 +164,6 @@ METRIC_DEFINE_gauge_uint64(cluster, outstanding_tablet_splits,
 
 namespace yb::master {
 
-using strings::Substitute;
 using namespace std::literals;
 
 namespace {
@@ -173,6 +183,18 @@ int64_t GetOutstandingTabletSplitLimitPerTserver() {
     return value;
   }();
   return cpu_based_value;
+}
+
+int64_t PhaseThresholdBytes(SplitPhase phase) {
+  switch (phase) {
+    case SplitPhase::kLow:
+      return FLAGS_tablet_split_low_phase_size_threshold_bytes;
+    case SplitPhase::kHigh:
+      return FLAGS_tablet_split_high_phase_size_threshold_bytes;
+    case SplitPhase::kFinal:
+      return FLAGS_tablet_force_split_threshold_bytes;
+  }
+  FATAL_INVALID_ENUM_VALUE(SplitPhase, phase);
 }
 
 template <typename IdType>
@@ -390,7 +412,7 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
   // #15998
   if (!table->GetHostedStatefulServices().empty()) {
     return STATUS_EC_FORMAT(
-        IllegalState, MasterError(MasterErrorPB::INVALID_REQUEST),
+        NotSupported, MasterError(MasterErrorPB::INVALID_REQUEST),
         "Tablet splitting is not supported on tables that host stateful services, table: $0",
         *table);
   }
@@ -494,15 +516,15 @@ void TabletSplitManager::DisableSplittingFor(
     const MonoDelta& disable_duration, const std::string& feature_name) {
   DCHECK(!feature_name.empty());
   UniqueLock<decltype(disabled_sets_mutex_)> lock(disabled_sets_mutex_);
-  LOG(INFO) << Substitute("Disabling tablet splitting for $0 milliseconds for feature $1.",
-                          disable_duration.ToMilliseconds(), feature_name);
+  LOG(INFO) << Format("Disabling tablet splitting for $0 milliseconds for feature $1.",
+                      disable_duration.ToMilliseconds(), feature_name);
   splitting_disabled_until_[feature_name] = CoarseMonoClock::Now() + disable_duration;
 }
 
 void TabletSplitManager::ReenableSplittingFor(const std::string& feature_name) {
   DCHECK(!feature_name.empty());
   UniqueLock<decltype(disabled_sets_mutex_)> lock(disabled_sets_mutex_);
-  LOG(INFO) << Substitute("Re-enabling tablet splitting for feature $0.", feature_name);
+  LOG(INFO) << Format("Re-enabling tablet splitting for feature $0.", feature_name);
   splitting_disabled_until_.erase(feature_name);
 }
 
@@ -685,8 +707,10 @@ class TabletReplicaMapCache {
 class OutstandingSplitState {
  public:
   OutstandingSplitState(
-      const TabletInfoMap& tablet_info_map, TabletReplicaMapCache* replica_cache):
-      tablet_info_map_{tablet_info_map}, replica_cache_{replica_cache} {}
+      const TabletInfoMap& tablet_info_map, TabletReplicaMapCache* replica_cache,
+      bool should_log_rejections)
+      : tablet_info_map_{tablet_info_map}, replica_cache_{replica_cache},
+        should_log_rejections_{should_log_rejections} {}
 
   // Helper method to determine if more splits can be scheduled, or if we should exit early.
   bool CanSplitMoreGlobal() const {
@@ -771,10 +795,9 @@ class OutstandingSplitState {
           tservers_with_outstanding_compaction.end());
     }
     if (inserted_compacting_split && !was_scheduled_for_split) {
-      // Track split_tablet_id as an ongoing split on its tservers. This is required since it is
-      // possible that one of the split children is not running yet, but we still want to count
-      // the split against the limits of the tservers on which the children will eventually
-      // appear.
+      // Also track against the parent's replicas: split_child being "running" only means it has
+      // a reported leader, not that every replica has heartbeated in, so its replica map below
+      // may still be incomplete.
       TrackTserverSplits(split_tablet_id, split_tablet_id);
     }
     TrackTserverSplits(split_tablet_id, *replica_cache_->GetOrAdd(split_child));
@@ -787,6 +810,75 @@ class OutstandingSplitState {
     YB_LOG_EVERY_N_SECS(INFO, 900)
         << Format("Outstanding post-split compactions (tablet id -> tservers): $0",
                   AsString(compacting_splits_));
+  }
+
+  void MaybeRecordRejectedCandidate(
+      const TabletId& tablet_id, uint64_t leader_sst_size, const Status& rejection_status,
+      SplitPhase phase) {
+    if (!should_log_rejections_) {
+      return;
+    }
+    TryRecordRejectedCandidate(tablet_id, leader_sst_size, rejection_status, phase);
+  }
+
+  // Whether a rejection of a tablet of this size may be worth recording this pass: only on a
+  // logging pass, and only if the tablet is over the low phase threshold, below which no phase
+  // would split it. A caller that must look up the tablet's phase to record the rejection checks
+  // this first, so the lookup is skipped for the many tablets that are simply too small.
+  bool MayRecordRejection(uint64_t leader_sst_size) const {
+    return should_log_rejections_ &&
+           static_cast<int64_t>(leader_sst_size) > PhaseThresholdBytes(SplitPhase::kLow);
+  }
+
+  // Returns whether a summary was logged.
+  bool MaybeLogRejectedCandidates() {
+    std::vector<std::string> phase_summaries;
+    for (auto phase : {SplitPhase::kLow, SplitPhase::kHigh, SplitPhase::kFinal}) {
+      auto& bucket = rejected_candidates_by_phase_[std::to_underlying(phase)];
+      if (bucket.seen == 0) {
+        continue;
+      }
+      std::sort(
+          bucket.largest.begin(), bucket.largest.end(),
+          [](const auto& c1, const auto& c2) { return c1.leader_sst_size > c2.leader_sst_size; });
+      phase_summaries.push_back(Format(
+          "$0 phase (threshold $1): $2 tablet(s) rejected. Largest $3, with rejection reasons: "
+          "$4",
+          phase, PhaseThresholdBytes(phase), bucket.seen, bucket.largest.size(),
+          AsString(bucket.largest)));
+    }
+    if (phase_summaries.empty()) {
+      return false;
+    }
+    LOG(INFO) << Format(
+        "Automatic split candidates were rejected despite exceeding their table's current "
+        "split-phase threshold: $0", JoinStrings(phase_summaries, "; "));
+    return true;
+  }
+
+  // Records a table-level rejection, keeping the first kMaxLoggedRejectedTables seen (there is no
+  // per-table size to rank by). NotSupported rejections are skipped: the table cannot be split as
+  // it is and would fill the capped list on every pass.
+  void MaybeRecordRejectedTable(const TableId& table_id, const Status& rejection_status) {
+    if (!should_log_rejections_ || rejection_status.IsNotSupported()) {
+      return;
+    }
+    ++rejected_tables_seen_;
+    if (rejected_tables_.size() < kMaxLoggedRejectedTables) {
+      rejected_tables_.push_back(RejectedTable{table_id, rejection_status});
+    }
+  }
+
+  // Returns whether a summary was logged.
+  bool MaybeLogRejectedTables() const {
+    if (rejected_tables_.empty()) {
+      return false;
+    }
+    LOG(INFO) << Format(
+        "$0 table(s) were rejected as automatic split candidates. First $1, with rejection "
+        "reasons: $2",
+        rejected_tables_seen_, rejected_tables_.size(), AsString(rejected_tables_));
+    return true;
   }
 
   const SplitsToScheduleMap& GetSplitsToSchedule() const {
@@ -816,6 +908,8 @@ class OutstandingSplitState {
     // Add any new splits to the set of splits to schedule (while respecting the max number of
     // outstanding splits).
     if (!CanSplitMoreGlobal()) {
+      RecordCandidatesBlockedByGlobalLimit(
+          new_split_candidates_.begin(), new_split_candidates_.end());
       return;
     }
 
@@ -830,27 +924,40 @@ class OutstandingSplitState {
       }
       VLOG(3) << Format("Filtering out candidates below $0 of their table's largest candidate",
                         FLAGS_tablet_split_min_size_ratio);
-      std::erase_if(new_split_candidates_, [&largest_per_table](const auto& candidate) {
-        const auto threshold = static_cast<uint64_t>(
-            FLAGS_tablet_split_min_size_ratio *
-            largest_per_table.at(candidate.tablet->table()->id()));
+      std::erase_if(new_split_candidates_, [this, &largest_per_table](const auto& candidate) {
+        const auto largest = largest_per_table.at(candidate.tablet->table()->id());
+        const auto threshold = static_cast<uint64_t>(FLAGS_tablet_split_min_size_ratio * largest);
         if (candidate.leader_sst_size < threshold) {
           VLOG(4) << "Rejected: " << candidate.ToString();
+          if (should_log_rejections_) {
+            TryRecordRejectedCandidate(
+                candidate.tablet->id(), candidate.leader_sst_size,
+                STATUS_FORMAT(
+                    IllegalState,
+                    "Deferred behind a larger candidate of the same table: size is below "
+                    "tablet_split_min_size_ratio ($0) of the largest one ($1)",
+                    FLAGS_tablet_split_min_size_ratio, largest),
+                candidate.phase);
+          }
           return true;
         }
         return false;
       });
       sort(new_split_candidates_.begin(), new_split_candidates_.end(), LowPhaseLargestFirst);
     }
-    for (const auto& candidate : new_split_candidates_) {
+    for (auto it = new_split_candidates_.begin(); it != new_split_candidates_.end(); ++it) {
+      const auto& candidate = *it;
       VLOG(4) << Format("Processing split candidate $0 of size $1",
           candidate.tablet->id(), candidate.leader_sst_size);
       if (!CanSplitMoreGlobal()) {
+        RecordCandidatesBlockedByGlobalLimit(it, new_split_candidates_.end());
         break;
       }
       auto replicas = replica_cache_->GetOrAdd(*candidate.tablet);
       if (Status s = CanSplitMoreOnReplicas(*replicas); !s.ok()) {
         VLOG(4) << Format("Not scheduling split for tablet $0. $1", candidate.tablet->id(), s);
+        MaybeRecordRejectedCandidate(
+            candidate.tablet->id(), candidate.leader_sst_size, s, candidate.phase);
         continue;
       }
       splits_to_schedule_[candidate.tablet->id()] = candidate.leader_sst_size;
@@ -859,8 +966,13 @@ class OutstandingSplitState {
   }
 
  private:
+  static constexpr size_t kMaxLoggedRejectedSplitCandidates = 10;
+  static constexpr size_t kMaxLoggedRejectedTables = 20;
+
   const TabletInfoMap& tablet_info_map_;
   TabletReplicaMapCache* replica_cache_;
+  // Whether this pass should log rejected candidates/tables.
+  const bool should_log_rejections_;
   // Splits which are tracked by an AsyncGetTabletSplitKey or AsyncSplitTablet task. Not tracked
   // per phase: an in flight split consumes a slot regardless of why it was scheduled.
   std::unordered_set<TabletId> splits_with_task_;
@@ -882,6 +994,82 @@ class OutstandingSplitState {
   };
   // New split candidates. The chosen candidates are eventually added to splits_to_schedule.
   std::vector<SplitCandidate> new_split_candidates_;
+
+  struct RejectedSplitCandidate {
+    TabletId tablet_id;
+    uint64_t leader_sst_size;
+    Status rejection_status;
+
+    std::string ToString() const {
+      return YB_STRUCT_TO_STRING(tablet_id, leader_sst_size, rejection_status);
+    }
+  };
+
+  // Per phase, the largest kMaxLoggedRejectedSplitCandidates rejected tablets seen this pass, and
+  // the uncapped count so the summary can say how many were rejected while listing only those.
+  struct RejectedCandidateBucket {
+    std::vector<RejectedSplitCandidate> largest;  // Unordered; sorted when logged.
+    size_t seen = 0;
+  };
+
+  // Keep a rejection only if the tablet already exceeds the table's current split-phase size
+  // threshold. Stored per phase so a final-phase table's larger tablets don't crowd a
+  // low-phase table's out of the logged top N. Capped on insert, so a pass stores at most
+  // kMaxLoggedRejectedSplitCandidates entries per phase.
+  void TryRecordRejectedCandidate(
+      const TabletId& tablet_id, uint64_t leader_sst_size, const Status& rejection_status,
+      SplitPhase phase) {
+    if (static_cast<int64_t>(leader_sst_size) <= PhaseThresholdBytes(phase)) {
+      return;
+    }
+    auto& bucket = rejected_candidates_by_phase_[std::to_underlying(phase)];
+    ++bucket.seen;
+    if (bucket.largest.size() < kMaxLoggedRejectedSplitCandidates) {
+      bucket.largest.push_back(
+          RejectedSplitCandidate{tablet_id, leader_sst_size, rejection_status});
+      return;
+    }
+    auto smallest = std::min_element(
+        bucket.largest.begin(), bucket.largest.end(),
+        [](const auto& c1, const auto& c2) { return c1.leader_sst_size < c2.leader_sst_size; });
+    if (leader_sst_size > smallest->leader_sst_size) {
+      *smallest = RejectedSplitCandidate{tablet_id, leader_sst_size, rejection_status};
+    }
+  }
+
+  // Records the candidates in [begin, end) as blocked by the global outstanding split limit.
+  // No-op on non-logging passes.
+  void RecordCandidatesBlockedByGlobalLimit(
+      std::vector<SplitCandidate>::const_iterator begin,
+      std::vector<SplitCandidate>::const_iterator end) {
+    if (!should_log_rejections_) {
+      return;
+    }
+    const auto status = STATUS_FORMAT(
+        IllegalState,
+        "Outstanding split limit ($0) reached; not scheduling remaining split candidates this "
+        "round", FLAGS_outstanding_tablet_split_limit);
+    for (auto it = begin; it != end; ++it) {
+      TryRecordRejectedCandidate(it->tablet->id(), it->leader_sst_size, status, it->phase);
+    }
+  }
+
+  // Rejected candidates that exceeded their table's phase threshold, one bucket per phase.
+  std::array<RejectedCandidateBucket, kElementsInSplitPhase> rejected_candidates_by_phase_;
+
+  struct RejectedTable {
+    TableId table_id;
+    Status rejection_status;
+
+    std::string ToString() const {
+      return YB_STRUCT_TO_STRING(table_id, rejection_status);
+    }
+  };
+
+  // Table-level rejections, capped at kMaxLoggedRejectedTables.
+  std::vector<RejectedTable> rejected_tables_;
+  // The uncapped count.
+  size_t rejected_tables_seen_ = 0;
 
   std::unordered_map<TabletServerId, std::unordered_set<TabletId>> ts_to_ongoing_splits_;
 
@@ -933,23 +1121,37 @@ void TabletSplitManager::DoSplitting(
   // splitting. This is most critical for tables that frequently switch between being valid and
   // invalid for splitting (e.g. for tables with frequent PITR schedules).
   // https://github.com/yugabyte/yugabyte-db/issues/11459
+
+  const auto now = CoarseMonoClock::Now();
+  const auto log_interval =
+      std::chrono::seconds(FLAGS_tablet_split_rejected_candidates_log_interval_secs);
+  const bool should_log_rejections =
+      last_rejections_logged_time_ <= now - log_interval &&
+      last_rejections_collected_time_ <= now - log_interval / 10;
+  if (should_log_rejections) {
+    last_rejections_collected_time_ = now;
+  }
+
+  TabletReplicaMapCache replica_cache;
+  OutstandingSplitState state(tablet_info_map, &replica_cache, should_log_rejections);
+
   std::vector<TableInfoPtr> valid_tables;
   for (const auto& table : tables) {
     Status status = ValidateSplitCandidateTable(table);
     if (!status.ok()) {
       VLOG(3) << "Skipping table for splitting. " << status;
+      state.MaybeRecordRejectedTable(table->id(), status);
       continue;
     }
     status = catalog_manager_.XReplValidateSplitCandidateTable(table->id());
     if (!status.ok()) {
       VLOG(3) << "Skipping table for splitting. " << status;
+      state.MaybeRecordRejectedTable(table->id(), status);
       continue;
     }
     valid_tables.push_back(table);
   }
 
-  TabletReplicaMapCache replica_cache;
-  OutstandingSplitState state(tablet_info_map, &replica_cache);
   for (const auto& table : valid_tables) {
     VLOG(3) << "Processing ongoing split tasks for table " << table->id();
     for (const auto& task : table->GetTasks()) {
@@ -975,7 +1177,12 @@ void TabletSplitManager::DoSplitting(
   for (const auto& table : valid_tables) {
     VLOG(3) << Format("Processing table $0 for split", table->id());
     auto tablets_result = table->GetTablets();
-    if (!tablets_result) continue;
+    if (!tablets_result) {
+      YB_LOG_EVERY_N_SECS(WARNING, 900) << "Skipping tablet splitting for table "
+                                        << table->id() << ": failed to get tablets: "
+                                        << tablets_result.status();
+      continue;
+    }
     for (const auto& tablet : *tablets_result) {
       VLOG(4) << Format("Processing tablet $0 for split", tablet->id());
       if (state.HasSplitWithTask(tablet->id())) {
@@ -1020,16 +1227,21 @@ void TabletSplitManager::DoSplitting(
       }
 
       VLOG(4) << Format("Evaluating tablet $0 as a split candidate", tablet->id());
+      // Fetched outside the lambda: a rejected tablet's size decides whether the rejection is
+      // worth logging.
+      auto drive_info_opt = tablet->GetLeaderReplicaDriveInfo();
+      // Set when ValidateSplitCandidateTablet finds that the tablet cannot be split as it is.
+      bool unsplittable_as_is = false;
       auto ValidateAutomaticSplitCandidateTablet = [&]() -> Result<AutomaticSplitCandidate> {
-        auto drive_info_opt = tablet->GetLeaderReplicaDriveInfo();
-        if (!drive_info_opt.ok()) {
-          return drive_info_opt.status();
-        }
+        RETURN_NOT_OK(drive_info_opt);
         std::shared_ptr<TabletInfo> parent = nullptr;
         if (!parent_id.empty()) {
           parent = FindPtrOrNull(tablet_info_map, parent_id);
         }
-        RETURN_NOT_OK(ValidateSplitCandidateTablet(*tablet, parent));
+        if (auto s = ValidateSplitCandidateTablet(*tablet, parent); !s.ok()) {
+          unsplittable_as_is = s.IsNotSupported();
+          return s;
+        }
         const auto phase = VERIFY_RESULT(
             catalog_manager_.ShouldSplitValidCandidate(*tablet, drive_info_opt.get()));
 
@@ -1047,7 +1259,20 @@ void TabletSplitManager::DoSplitting(
       Result<AutomaticSplitCandidate> result = ValidateAutomaticSplitCandidateTablet();
       if (!result.ok()) {
         VLOG(4) << Format("Should not split tablet $0. ", tablet->tablet_id())
-                           << result.status();
+                << result.status();
+        if (!unsplittable_as_is && drive_info_opt.ok() &&
+            state.MayRecordRejection(drive_info_opt->sst_files_size)) {
+          // ShouldSplitValidCandidate returns the phase only for a tablet it accepts, so the
+          // phase of a rejected tablet is looked up to file the rejection under it.
+          const auto phase = catalog_manager_.GetTableSplitPhase(tablet->table());
+          if (phase.ok()) {
+            state.MaybeRecordRejectedCandidate(
+                tablet->id(), drive_info_opt->sst_files_size, result.status(), *phase);
+          } else {
+            VLOG(3) << Format("Not logging the rejection of tablet $0: $1",
+                              tablet->id(), phase.status());
+          }
+        }
         continue;
       }
       state.AddCandidate(tablet, result->leader_sst_size, result->phase);
@@ -1060,6 +1285,11 @@ void TabletSplitManager::DoSplitting(
   state.ProcessCandidates();
   metric_outstanding_tablet_splits_->set_value(state.GetOutstandingSplitCount());
   state.MaybeLogCompactingSplits();
+  const bool logged_candidates = state.MaybeLogRejectedCandidates();
+  const bool logged_tables = state.MaybeLogRejectedTables();
+  if (logged_candidates || logged_tables) {
+    last_rejections_logged_time_ = now;
+  }
   // Schedule any new splits and any splits that need to be restarted.
   ScheduleSplits(state.GetSplitsToSchedule(), epoch);
 }

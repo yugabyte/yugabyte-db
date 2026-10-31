@@ -144,6 +144,16 @@ message TabletServerErrorPB {
     // The thin client session is unknown to this tablet server or is shutting down, so the client
     // must open a new one.
     SESSION_LOST = 35;
+
+    // A pipelined (async) write acked by an earlier leader cannot be verified on the current one:
+    // it was overwritten after the leader change, or is more than one term old.
+    ASYNC_WRITE_LOST = 36;
+
+    // The persistence gate refused a YSQL write or commit: xCluster has stopped persisting its
+    // database (Expired, final), or this tablet server cannot tell because it holds no
+    // xCluster-guarded information lease (ServiceUnavailable, retryable).  The op did not take
+    // effect.
+    PERSISTING_BLOCKED = 37;
   }
 
   // The error code.

@@ -23,10 +23,12 @@
 
 #include "yb/rocksdb/util/random.h"
 
+#include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/slice.h"
+#include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/tsan_util.h"
@@ -148,8 +150,9 @@ Status NaiveDecodeEncodedStr(Slice* slice, string* result) {
     if (*p == END_OF_STRING) {
       ++p;
       if (p == end) {
-        return STATUS(Corruption, StringPrintf("Encoded string ends with only one \\0x%02x ",
-                                               END_OF_STRING));
+        return STATUS_FORMAT(
+            Corruption, "Encoded string ends with only one \\0x$0 ",
+            HexString(static_cast<uint8_t>(END_OF_STRING), 2));
       }
       if (*p == END_OF_STRING) {
         // Found two END_OF_STRING characters, this is the end of the encoded string.
@@ -163,10 +166,13 @@ Status NaiveDecodeEncodedStr(Slice* slice, string* result) {
         }
         ++p;
       } else {
-        return STATUS(Corruption, StringPrintf(
+        return STATUS_FORMAT(
+            Corruption,
             "Invalid sequence in encoded string: "
-            R"#(\0x%02x\0x%02x (must be either \0x%02x\0x%02x or \0x%02x\0x%02x))#",
-            END_OF_STRING, *p, END_OF_STRING, END_OF_STRING, END_OF_STRING, END_OF_STRING_ESCAPE));
+            R"#(\0x$0\0x$1 (must be either \0x$0\0x$0 or \0x$0\0x$2))#",
+            HexString(static_cast<uint8_t>(END_OF_STRING), 2),
+            HexString(static_cast<uint8_t>(*p), 2),
+            HexString(static_cast<uint8_t>(END_OF_STRING_ESCAPE), 2));
       }
     } else {
       if (result != nullptr) {

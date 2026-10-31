@@ -311,7 +311,6 @@ using std::shared_ptr;
 using std::string;
 using std::unique_ptr;
 using std::weak_ptr;
-using strings::Substitute;
 using tserver::TabletServerErrorPB;
 
 namespace {
@@ -672,6 +671,21 @@ Status RaftConsensus::DoStartElection(const LeaderElectionData& data, PreElected
           election_name, state_->GetActiveConfigUnlocked());
     }
 
+    if (state_->context()->ShouldRelinquishLeadership()) {
+      // Handled as a lost election so that a replica that keeps failing to elect itself backs off
+      // as it would after losing, and the originator of a leader transfer to it learns that it
+      // lost.  A queued transfer is dropped so that it does not retrigger on every update.
+      state_->ClearPendingElectionOpIdUnlocked();
+      failed_elections_since_stable_leader_.fetch_add(1, std::memory_order_acq_rel);
+      SnoozeFailureDetector(DO_NOT_LOG, LeaderElectionExpBackoffDeltaUnlocked());
+      lock.unlock();
+      YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 30)
+          << "Not starting " << election_name << ": this replica must not seek leadership "
+          << "(no xCluster-guarded information lease)";
+      NotifyOriginatorAboutLostElection(data.originator_uuid);
+      return Status::OK();
+    }
+
     // Default is to start the election now. But if we are starting a pending election, see if
     // there is an op id pending upon indeed and if it has been committed to the log. The op id
     // could have been cleared if the pending election has already been started or another peer
@@ -791,8 +805,8 @@ Status RaftConsensus::WaitUntilLeaderForTests(const MonoDelta& timeout) {
     SleepFor(MonoDelta::FromMilliseconds(10));
   }
 
-  return STATUS(TimedOut, Substitute("Peer $0 is not leader of tablet $1 after $2. Role: $3",
-                                     peer_uuid(), tablet_id(), timeout.ToString(), role()));
+  return STATUS(TimedOut, Format("Peer $0 is not leader of tablet $1 after $2. Role: $3",
+                                 peer_uuid(), tablet_id(), timeout.ToString(), role()));
 }
 
 Status RaftConsensus::CheckNoLiveServersInTransitionUnlocked() {
@@ -873,6 +887,12 @@ void RaftConsensus::CheckDelayedStepDown(const Status& status) {
 }
 
 Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDownResponsePB* resp) {
+  return StepDown(req, resp, IgnorePeersInTransition::kFalse);
+}
+
+Status RaftConsensus::StepDown(
+    const LeaderStepDownRequestPB* req, LeaderStepDownResponsePB* resp,
+    IgnorePeersInTransition ignore_peers_in_transition) {
   TRACE_EVENT0("consensus", "RaftConsensus::StepDown");
   ReplicaState::UniqueLock lock;
   RETURN_NOT_OK(state_->LockForConfigChange(&lock));
@@ -901,10 +921,13 @@ Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDow
   // the WAL anchors, and a successor may have GCed those segments. A lost transitioning peer does
   // not block; promotion is leader-driven (#29795).
   if (auto s = CheckNoLiveServersInTransitionUnlocked(); !s.ok()) {
-    LOG_WITH_PREFIX(INFO) << s;
-    resp->mutable_error()->set_code(TabletServerErrorPB::LEADER_NOT_READY_TO_STEP_DOWN);
-    StatusToPB(s, resp->mutable_error()->mutable_status());
-    return Status::OK();
+    if (!ignore_peers_in_transition) {
+      LOG_WITH_PREFIX(INFO) << s;
+      resp->mutable_error()->set_code(TabletServerErrorPB::LEADER_NOT_READY_TO_STEP_DOWN);
+      StatusToPB(s, resp->mutable_error()->mutable_status());
+      return Status::OK();
+    }
+    LOG_WITH_PREFIX(INFO) << "Stepping down anyway since ignore_peers_in_transition is set: " << s;
   }
 
   std::string new_leader_uuid;
@@ -1383,32 +1406,13 @@ Status RaftConsensus::AppendNewRoundsToQueueUnlocked(
   return status;
 }
 
-bool RaftConsensus::CheckWriteFenceUnlocked(const ConsensusRoundPtr& round) {
-  const auto& msg = *round->replicate_msg();
-  if (msg.op_type() != OperationType::WRITE_OP) {
-    return true;
-  }
-  const auto fence = HybridTime::FromPB(msg.write().ignore_after_hybrid_time());
-  if (!fence) {
-    return true;
-  }
-  // The op's own hybrid time, assigned by NotifyAddedToLeader, is when the write takes effect.
-  // An earlier clock reading would leave an unbounded window in which the op could still be
-  // assigned a time past the fence.
-  const auto hybrid_time = HybridTime(msg.hybrid_time());
-  if (fence > hybrid_time) {
-    return true;
-  }
-  auto status = STATUS_EC_FORMAT(
-      Expired, tserver::TabletServerError(TabletServerErrorPB::WRITE_FENCE_EXPIRED),
-      "Write is fenced: ignore_after_hybrid_time $0 is not after $1", fence, hybrid_time);
+void RaftConsensus::RejectRoundUnlocked(const ConsensusRoundPtr& round, const Status& status) {
   // Rejection goes through ReplicaState to undo the retryable-request registration. The driver
   // still holds the op id, so its failure path also removes the op from MVCC.
   RollbackIdAndDeleteOpId(round->replicate_msg(), /* should_exists = */ false);
   state_->NotifyReplicationFinishedUnlocked(
       round, status, OpId::kUnknownTerm, /* applied_op_ids = */ nullptr);
   round->BindToTerm(OpId::kUnknownTerm);  // Mark round as non replicating.
-  return false;
 }
 
 Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(
@@ -1449,10 +1453,12 @@ Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(
     AtomicFlagSleepMs(&FLAGS_TEST_delay_before_added_to_leader_ms);
     RETURN_NOT_OK(round->NotifyAddedToLeader(op_id, committed_op_id));
 
-    // After NotifyAddedToLeader, so the fence is judged against the op's assigned hybrid time.
+    // After NotifyAddedToLeader, so the op is judged by its assigned hybrid time.
     // After RegisterRetryableRequest, so a resend of an already-replicated id answers
-    // AlreadyPresent rather than a fence rejection.
-    if (!CheckWriteFenceUnlocked(round)) {
+    // AlreadyPresent rather than a rejection.
+    auto allowed = state_->context()->CheckReplicateAllowed(*round->replicate_msg());
+    if (!allowed.ok()) {
+      RejectRoundUnlocked(round, allowed);
       continue;
     }
 
@@ -1602,8 +1608,8 @@ void RaftConsensus::NotifyFailedFollower(const string& uuid,
                                          int64_t term,
                                          const std::string& reason) {
   // Common info used in all of the log messages within this method.
-  string fail_msg = Substitute("Processing failure of peer $0 in term $1 ($2): ",
-                               uuid, term, reason);
+  string fail_msg = Format("Processing failure of peer $0 in term $1 ($2): ",
+                           uuid, term, reason);
 
   if (!FLAGS_evict_failed_followers) {
     LOG_WITH_PREFIX(INFO) << fail_msg << "Eviction of failed followers is disabled. Doing nothing.";
@@ -1696,7 +1702,7 @@ Status RaftConsensus::Update(
     if (MonoTime::Now() < withold_replica_updates_until_) {
       LOG(INFO) << "Rejecting Update for tablet: " << tablet_id()
                 << " tserver uuid: " << peer_uuid();
-      return STATUS_SUBSTITUTE(IllegalState,
+      return STATUS_FORMAT(IllegalState,
           "Rejected: --TEST_follower_reject_update_consensus_requests_seconds is set to $0",
           FLAGS_TEST_follower_reject_update_consensus_requests_seconds);
     }
@@ -1823,9 +1829,9 @@ std::string RaftConsensus::LeaderRequest::OpsRangeString() const {
   if (!messages.empty()) {
     const auto& first_op = (*messages.begin())->id();
     const auto& last_op = (*messages.rbegin())->id();
-    strings::SubstituteAndAppend(&ret, "$0.$1-$2.$3",
-                                 first_op.term(), first_op.index(),
-                                 last_op.term(), last_op.index());
+    ret += Format("$0.$1-$2.$3",
+                  first_op.term(), first_op.index(),
+                  last_op.term(), last_op.index());
   }
   ret.push_back(']');
   return ret;
@@ -2212,6 +2218,11 @@ Result<RaftConsensus::UpdateReplicaResult> RaftConsensus::UpdateReplica(
   // 4 - Mark operations as committed
   RETURN_NOT_OK(MarkOperationsAsCommittedUnlocked(request, deduped_req, last_from_leader));
 
+  if (request.has_all_replicated_op_id()) {
+    all_replicated_index_from_leader_.store(
+        request.all_replicated_op_id().index(), std::memory_order_release);
+  }
+
   // Fill the response with the current state. We will not mutate anymore state until
   // we actually reply to the leader, we'll just wait for the messages to be durable.
   FillConsensusResponseOKUnlocked(response);
@@ -2584,7 +2595,7 @@ Status RaftConsensus::RequestVote(const VoteRequestPB* request, VoteResponsePB* 
   // The term advanced.
   if (request->candidate_term() > state_->GetCurrentTermUnlocked() && !preelection) {
     RETURN_NOT_OK_PREPEND(HandleTermAdvanceUnlocked(request->candidate_term()),
-        Substitute("Could not step down in RequestVote. Current term: $0, candidate term: $1",
+        Format("Could not step down in RequestVote. Current term: $0, candidate term: $1",
             state_->GetCurrentTermUnlocked(), request->candidate_term()));
   }
 
@@ -2756,7 +2767,7 @@ Status RaftConsensus::ChangeConfig(
   }
   if (PREDICT_FALSE(req.tablet_id() != tablet_id())) {
     *error_code = TabletServerErrorPB::INVALID_CONFIG;
-    return STATUS_SUBSTITUTE(
+    return STATUS_FORMAT(
         InvalidArgument,
         "ChangeConfig request received for a different tablet at RaftConsensus serving tablet $0. "
         "ChangeConfigRequestPB: $1", tablet_id(), req.ShortDebugString());
@@ -2767,8 +2778,8 @@ Status RaftConsensus::ChangeConfig(
   bool use_hostport = req.has_use_host() && req.use_host();
 
   if (type != REMOVE_SERVER && use_hostport) {
-    return STATUS_SUBSTITUTE(InvalidArgument, "Cannot set use_host for change config type $0, "
-                             "only allowed with REMOVE_SERVER.", type);
+    return STATUS_FORMAT(InvalidArgument, "Cannot set use_host for change config type $0, "
+                         "only allowed with REMOVE_SERVER.", type);
   }
 
   if (PREDICT_FALSE(FLAGS_TEST_return_error_on_change_config != 0.0 && type == CHANGE_ROLE)) {
@@ -2782,8 +2793,8 @@ Status RaftConsensus::ChangeConfig(
   const RaftPeerPB& server = req.server();
   if (!use_hostport && !server.has_permanent_uuid()) {
     return STATUS(InvalidArgument,
-                  Substitute("server must have permanent_uuid or use_host specified: $0",
-                             req.ShortDebugString()));
+                  Format("server must have permanent_uuid or use_host specified: $0",
+                         req.ShortDebugString()));
   }
   {
     ReplicaState::UniqueLock lock;
@@ -2810,11 +2821,11 @@ Status RaftConsensus::ChangeConfig(
     if (req.has_cas_config_opid_index()) {
       if (committed_config.committed_op_index() != req.cas_config_opid_index()) {
         *error_code = TabletServerErrorPB::CAS_FAILED;
-        return STATUS(IllegalState, Substitute("Request specified cas_config_opid_index "
-                                               "of $0 but the committed config has opid_index "
-                                               "of $1",
-                                               req.cas_config_opid_index(),
-                                               committed_config.committed_op_index()));
+        return STATUS(IllegalState, Format("Request specified cas_config_opid_index "
+                                           "of $0 but the committed config has opid_index "
+                                           "of $1",
+                                           req.cas_config_opid_index(),
+                                           committed_config.committed_op_index()));
       }
     }
 
@@ -2826,20 +2837,20 @@ Status RaftConsensus::ChangeConfig(
         if (IsRaftConfigMember(server_uuid, committed_config)) {
           *error_code = TabletServerErrorPB::ADD_CHANGE_CONFIG_ALREADY_PRESENT;
           return STATUS(IllegalState,
-              Substitute("Server with UUID $0 is already a member of the config. RaftConfig: $1",
+              Format("Server with UUID $0 is already a member of the config. RaftConfig: $1",
                         server_uuid, committed_config.ShortDebugString()));
         }
         if (!server.has_member_type()) {
           return STATUS(InvalidArgument,
-                        Substitute("Server must have member_type specified. Request: $0",
-                                   req.ShortDebugString()));
+                        Format("Server must have member_type specified. Request: $0",
+                               req.ShortDebugString()));
         }
         if (server.member_type() != PeerMemberType::PRE_VOTER &&
             server.member_type() != PeerMemberType::PRE_OBSERVER) {
           return STATUS(InvalidArgument,
-              Substitute("Server with UUID $0 must be of member_type PRE_VOTER or PRE_OBSERVER. "
-                         "member_type received: $1", server_uuid,
-                         PeerMemberType_Name(server.member_type())));
+              Format("Server with UUID $0 must be of member_type PRE_VOTER or PRE_OBSERVER. "
+                     "member_type received: $1", server_uuid,
+                     PeerMemberType_Name(server.member_type())));
         }
         if (server.last_known_private_addr().empty()) {
           return STATUS(InvalidArgument, "server must have last_known_addr specified",
@@ -2868,16 +2879,16 @@ Status RaftConsensus::ChangeConfig(
         if (server_uuid == peer_uuid()) {
           *error_code = TabletServerErrorPB::LEADER_NEEDS_STEP_DOWN;
           return STATUS(InvalidArgument,
-              Substitute("Cannot remove peer $0 from the config because it is the leader. "
-                         "Force another leader to be elected to remove this server. "
-                         "Active consensus state: $1", server_uuid,
-                         state_->ConsensusStateUnlocked(CONSENSUS_CONFIG_ACTIVE)
-                            .ShortDebugString()));
+              Format("Cannot remove peer $0 from the config because it is the leader. "
+                     "Force another leader to be elected to remove this server. "
+                     "Active consensus state: $1", server_uuid,
+                     state_->ConsensusStateUnlocked(CONSENSUS_CONFIG_ACTIVE)
+                        .ShortDebugString()));
         }
         if (!RemoveFromRaftConfig(&new_config, req)) {
           *error_code = TabletServerErrorPB::REMOVE_CHANGE_CONFIG_NOT_PRESENT;
           return STATUS(NotFound,
-              Substitute("Server with UUID $0 not a member of the config. RaftConfig: $1",
+              Format("Server with UUID $0 not a member of the config. RaftConfig: $1",
                         server_uuid, committed_config.ShortDebugString()));
         }
         break;
@@ -2885,23 +2896,23 @@ Status RaftConsensus::ChangeConfig(
       case CHANGE_ROLE:
         if (server_uuid == peer_uuid()) {
           return STATUS(InvalidArgument,
-              Substitute("Cannot change role of peer $0 because it is the leader. Force "
-                         "another leader to be elected. Active consensus state: $1", server_uuid,
-                         state_->ConsensusStateUnlocked(CONSENSUS_CONFIG_ACTIVE)
-                             .ShortDebugString()));
+              Format("Cannot change role of peer $0 because it is the leader. Force "
+                     "another leader to be elected. Active consensus state: $1", server_uuid,
+                     state_->ConsensusStateUnlocked(CONSENSUS_CONFIG_ACTIVE)
+                         .ShortDebugString()));
         }
         VLOG(3) << "config before CHANGE_ROLE: " << new_config.DebugString();
 
         if (!GetMutableRaftConfigMember(&new_config, server_uuid, &new_peer).ok()) {
           return STATUS(NotFound,
-            Substitute("Server with UUID $0 not a member of the config. RaftConfig: $1",
-                       server_uuid, new_config.ShortDebugString()));
+            Format("Server with UUID $0 not a member of the config. RaftConfig: $1",
+                   server_uuid, new_config.ShortDebugString()));
         }
         if (new_peer->member_type() != PeerMemberType::PRE_OBSERVER &&
             new_peer->member_type() != PeerMemberType::PRE_VOTER) {
-          return STATUS(IllegalState, Substitute("Cannot change role of server with UUID $0 "
-                                                 "because its member type is $1",
-                                                 server_uuid, new_peer->member_type()));
+          return STATUS(IllegalState, Format("Cannot change role of server with UUID $0 "
+                                             "because its member type is $1",
+                                             server_uuid, new_peer->member_type()));
         }
         if (new_peer->member_type() == PeerMemberType::PRE_OBSERVER) {
           new_peer->set_member_type(PeerMemberType::OBSERVER);
@@ -2912,8 +2923,8 @@ Status RaftConsensus::ChangeConfig(
         VLOG(3) << "config after CHANGE_ROLE: " << new_config.DebugString();
         break;
       default:
-        return STATUS(InvalidArgument, Substitute("Unsupported type $0",
-                                                  ChangeConfigType_Name(type)));
+        return STATUS(InvalidArgument, Format("Unsupported type $0",
+                                              ChangeConfigType_Name(type)));
     }
 
     auto cc_replicate = rpc::MakeSharedMessage<LWReplicateMsg>();
@@ -2994,12 +3005,12 @@ Status RaftConsensus::UnsafeChangeConfig(
     retained_peer_uuids.insert(peer_uuid);
     if (!IsRaftConfigMember(peer_uuid, committed_config)) {
       *error_code = TabletServerErrorPB::INVALID_CONFIG;
-      return STATUS(InvalidArgument, Substitute("Peer with uuid $0 is not in the committed  "
-                                                "config on this replica, rejecting the  "
-                                                "unsafe config change request for tablet $1. "
-                                                "Committed config: $2",
-                                                peer_uuid, req.tablet_id(),
-                                                yb::ToString(committed_config)));
+      return STATUS(InvalidArgument, Format("Peer with uuid $0 is not in the committed  "
+                                            "config on this replica, rejecting the  "
+                                            "unsafe config change request for tablet $1. "
+                                            "Committed config: $2",
+                                            peer_uuid, req.tablet_id(),
+                                            yb::ToString(committed_config)));
     }
   }
 
@@ -3021,13 +3032,13 @@ Status RaftConsensus::UnsafeChangeConfig(
   // in the latest config is definitely not caught up with the latest leader's log.
   if (!IsRaftConfigVoter(local_peer_uuid, new_config)) {
     *error_code = TabletServerErrorPB::INVALID_CONFIG;
-    return STATUS(InvalidArgument, Substitute("Local replica uuid $0 is not "
-                                              "a VOTER in the new config, "
-                                              "rejecting the unsafe config "
-                                              "change request for tablet $1. "
-                                              "Rejected config: $2" ,
-                                              local_peer_uuid, req.tablet_id(),
-                                              yb::ToString(new_config)));
+    return STATUS(InvalidArgument, Format("Local replica uuid $0 is not "
+                                          "a VOTER in the new config, "
+                                          "rejecting the unsafe config "
+                                          "change request for tablet $1. "
+                                          "Rejected config: $2" ,
+                                          local_peer_uuid, req.tablet_id(),
+                                          yb::ToString(new_config)));
   }
   new_config.set_unsafe_config_change(true);
   int64 replicate_opid_index = preceding_opid.index + 1;
@@ -3037,10 +3048,10 @@ Status RaftConsensus::UnsafeChangeConfig(
   Status s = VerifyRaftConfig(new_config, UNCOMMITTED_QUORUM);
   if (!s.ok()) {
     *error_code = TabletServerErrorPB::INVALID_CONFIG;
-    return STATUS(InvalidArgument, Substitute("The resulting new config for tablet $0  "
-                                              "from passed parameters has failed raft "
-                                              "config sanity check: $1",
-                                              req.tablet_id(), s.ToString()));
+    return STATUS(InvalidArgument, Format("The resulting new config for tablet $0  "
+                                          "from passed parameters has failed raft "
+                                          "config sanity check: $1",
+                                          req.tablet_id(), s.ToString()));
   }
 
   // Prepare the consensus request as if the request is being generated
@@ -3307,11 +3318,11 @@ Status RaftConsensus::RequestVoteRespondInvalidTerm(const VoteRequestPB* request
 Status RaftConsensus::RequestVoteRespondVoteAlreadyGranted(const VoteRequestPB* request,
                                                            VoteResponsePB* response) {
   FillVoteResponseVoteGranted(*request, response);
-  LOG(INFO) << Substitute("$0: Already granted yes vote for candidate $1 in term $2. "
-                          "Re-sending same reply.",
-                          GetRequestVoteLogPrefix(*request),
-                          request->candidate_uuid(),
-                          request->candidate_term());
+  LOG(INFO) << Format("$0: Already granted yes vote for candidate $1 in term $2. "
+                      "Re-sending same reply.",
+                      GetRequestVoteLogPrefix(*request),
+                      request->candidate_uuid(),
+                      request->candidate_term());
   return Status::OK();
 }
 
@@ -3354,12 +3365,12 @@ Status RaftConsensus::RequestVoteRespondLeaderIsAlive(const VoteRequestPB* reque
 Status RaftConsensus::RequestVoteRespondIsBusy(const VoteRequestPB* request,
                                                VoteResponsePB* response) {
   FillVoteResponseVoteDenied(ConsensusErrorPB::CONSENSUS_BUSY, response);
-  string msg = Substitute("$0: Denying vote to candidate $1 for term $2 because "
-                          "replica is already servicing an update from a current leader "
-                          "or another vote.",
-                          GetRequestVoteLogPrefix(*request),
-                          request->candidate_uuid(),
-                          request->candidate_term());
+  string msg = Format("$0: Denying vote to candidate $1 for term $2 because "
+                      "replica is already servicing an update from a current leader "
+                      "or another vote.",
+                      GetRequestVoteLogPrefix(*request),
+                      request->candidate_uuid(),
+                      request->candidate_term());
   LOG(INFO) << msg;
   StatusToPB(STATUS(ServiceUnavailable, msg),
              response->mutable_consensus_error()->mutable_status());
@@ -3383,10 +3394,10 @@ Status RaftConsensus::RequestVoteRespondVoteGranted(const VoteRequestPB* request
   // vote. When disk latency is high, this should help reduce churn.
   SnoozeFailureDetector(DO_NOT_LOG, additional_backoff);
 
-  LOG(INFO) << Substitute("$0: Granting yes vote for candidate $1 in term $2.",
-                          GetRequestVoteLogPrefix(*request),
-                          request->candidate_uuid(),
-                          state_->GetCurrentTermUnlocked());
+  LOG(INFO) << Format("$0: Granting yes vote for candidate $1 in term $2.",
+                      GetRequestVoteLogPrefix(*request),
+                      request->candidate_uuid(),
+                      state_->GetCurrentTermUnlocked());
   return Status::OK();
 }
 
@@ -3808,6 +3819,12 @@ OpId RaftConsensus::GetAllAppliedOpId() {
   return queue_->GetAllAppliedOpId();
 }
 
+int64_t RaftConsensus::GetAllReplicatedIndex() const {
+  return std::max(
+      queue_->GetAllReplicatedOpId().index,
+      all_replicated_index_from_leader_.load(std::memory_order_acquire));
+}
+
 Status RaftConsensus::CheckReadyAsRbsSource() {
   OpId pending_split_op_id;
   {
@@ -3935,8 +3952,8 @@ Status RaftConsensus::IncrementTermUnlocked(FlushConsensusMeta flush) {
 
 Status RaftConsensus::HandleTermAdvanceUnlocked(ConsensusTerm new_term, FlushConsensusMeta flush) {
   if (new_term <= state_->GetCurrentTermUnlocked()) {
-    return STATUS(IllegalState, Substitute("Can't advance term to: $0 current term: $1 is higher.",
-                                           new_term, state_->GetCurrentTermUnlocked()));
+    return STATUS(IllegalState, Format("Can't advance term to: $0 current term: $1 is higher.",
+                                       new_term, state_->GetCurrentTermUnlocked()));
   }
 
   if (state_->GetActiveRoleUnlocked() == PeerRole::LEADER) {
@@ -4008,6 +4025,10 @@ size_t RaftConsensus::LogCacheSize() {
 
 size_t RaftConsensus::EvictLogCache(size_t bytes_to_evict) {
   return queue_->EvictLogCache(bytes_to_evict);
+}
+
+Result<OpId> RaftConsensus::LookupOpId(int64_t op_index) const {
+  return queue_->LookupOpId(op_index);
 }
 
 Result<RetryableRequests> RaftConsensus::GetRetryableRequests() const {

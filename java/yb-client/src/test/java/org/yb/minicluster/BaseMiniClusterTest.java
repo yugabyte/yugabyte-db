@@ -502,6 +502,62 @@ public class BaseMiniClusterTest extends BaseYBTest {
     return "yb_max_query_layer_retries=" + max_retries;
   }
 
+  /**
+   * The flags that make up the new DDL mode which allows:
+   * - DDLs in a transaction block and
+   * - concurrency with other DMLs and
+   * - concurrency with other DDLs
+   *
+   * They are validated against each other in common_flags.cc, so they can only be moved together.
+   */
+  private static final String[] NEW_DDL_MODE_FLAGS = {
+      "ysql_yb_ddl_transaction_block_enabled",
+      "enable_object_locking_for_table_locks",
+      "ysql_enable_concurrent_ddl"};
+
+  // These require transactional DDL, so the legacy mode has to turn them off with it. The new mode
+  // leaves them at their default rather than forcing them on, so that a build whose default is off
+  // keeps them off and a test that wants them on can say so itself.
+  private static final String[] FLAGS_DEPENDING_ON_TXNAL_DDL = {
+      "ysql_yb_enable_ddl_savepoint_support",
+      "ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks"};
+
+  /**
+   * Selects the DDL mode the cluster runs in. Transactional DDL, object locking, and concurrent DDL
+   * are enabled/ disabled together, per the cross-flag validators in common_flags.cc, so a test
+   * must move all three at once or the daemons FATAL at startup.
+   *
+   * <p>DDL savepoint support and the new relation fastpath write in transaction blocks require
+   * transactional DDL, so the legacy mode turns them off too. The new mode leaves them at their
+   * default: a test that needs one of them on says so itself, after calling this.
+   *
+   * @param flagMap the map of flags to mutate
+   * @param useLegacy select the legacy mode, where DDLs neither take object locks nor run inside
+   *                  the enclosing transaction block
+   */
+  protected static void toggleDDLMode(Map<String, String> flagMap, boolean useLegacy) {
+    for (String flag : NEW_DDL_MODE_FLAGS) {
+      flagMap.put(flag, String.valueOf(!useLegacy));
+    }
+    if (useLegacy) {
+      for (String flag : FLAGS_DEPENDING_ON_TXNAL_DDL) {
+        flagMap.put(flag, "false");
+      }
+    }
+  }
+
+  /** See {@link #toggleDDLMode(Map, boolean)}; selects the mode on the masters and the TServers. */
+  protected static void toggleDDLMode(MiniYBClusterBuilder builder, boolean useLegacy) {
+    for (String flag : NEW_DDL_MODE_FLAGS) {
+      builder.addCommonFlag(flag, String.valueOf(!useLegacy));
+    }
+    if (useLegacy) {
+      for (String flag : FLAGS_DEPENDING_ON_TXNAL_DDL) {
+        builder.addCommonFlag(flag, "false");
+      }
+    }
+  }
+
   public void findAndKillMasterLeader() throws Exception {
     HostAndPort masterHostAndPort = miniCluster.getClient().getLeaderMasterHostAndPort();
     miniCluster.killMasterOnHostPort(masterHostAndPort);

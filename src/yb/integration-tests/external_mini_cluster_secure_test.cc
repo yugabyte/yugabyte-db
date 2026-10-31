@@ -24,6 +24,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/file_util.h"
 #include "yb/util/env_util.h"
+#include "yb/util/format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
 #include "yb/util/subprocess.h"
@@ -114,7 +115,7 @@ class ExternalMiniClusterSecureTest :
     auto command = ToStringVector(
         GetToolPath("yb-admin"), "--master_addresses", cluster_->GetMasterAddresses(),
         "--certs_dir_name", ToolCertDirectory(), "--timeout_ms", "5000",
-        strings::Substitute("--client_node_name=$0", client_node), what);
+        Format("--client_node_name=$0", client_node), what);
     LOG(INFO) << "Running " << ToString(command);
     return Subprocess::Call(command);
   }
@@ -124,7 +125,7 @@ class ExternalMiniClusterSecureTest :
     auto command = yb::ToStringVector(
         GetToolPath("yb-ts-cli"), "--server_address", server,
         "--certs_dir_name", ToolCertDirectory(),
-        strings::Substitute("--client_node_name=$0", client_node), what);
+        Format("--client_node_name=$0", client_node), what);
     LOG(INFO) << "Running " << ToString(command);
     return Subprocess::Call(command);
   }

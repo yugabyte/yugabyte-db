@@ -53,7 +53,7 @@ Status BlockAccessCipherStream::Init() {
       cipher = EVP_aes_256_ctr();
       break;
     default:
-      return STATUS_SUBSTITUTE(IllegalState, "Expected key size to be one of 16, 24, 32, found $0.",
+      return STATUS_FORMAT(IllegalState, "Expected key size to be one of 16, 24, 32, found $0.",
           encryption_params_->key_size);
   }
 

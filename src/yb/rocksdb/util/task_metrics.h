@@ -97,6 +97,7 @@ struct RocksDBTaskStateMetrics {
   RocksDBTaskMetrics background;
   RocksDBTaskMetrics full;
   RocksDBTaskMetrics postsplit;
+  RocksDBTaskMetrics db_path_move_compaction;
 
   // Returns a pointer to the RocksDBTaskMetrics struct that corresponds to the
   // given CompactionReason.
@@ -131,6 +132,10 @@ struct RocksDBTaskStateMetrics {
       // Post-split compactions.
       case CompactionReason::kPostSplitCompaction:
         return &postsplit;
+      // DB path moves (DB::ScheduleDBPathMove): not a real compaction, tracked separately so they
+      // don't inflate/deflate the background-compaction bucket's counts.
+      case CompactionReason::kDBPathMoveCompaction:
+        return &db_path_move_compaction;
     }
     FATAL_INVALID_ENUM_VALUE(CompactionReason, reason);
   }
@@ -174,7 +179,9 @@ struct RocksDBPriorityThreadPoolMetrics {
     ROCKSDB_TASK_METRICS_DEFINE(entity, BOOST_PP_CAT(name, _full_compaction), \
         label " RocksDB Full Compaction"); \
     ROCKSDB_TASK_METRICS_DEFINE(entity, BOOST_PP_CAT(name, _post_split_compaction), \
-        label " RocksDB Post-Split Compaction")
+        label " RocksDB Post-Split Compaction"); \
+    ROCKSDB_TASK_METRICS_DEFINE(entity, BOOST_PP_CAT(name, _db_path_move), \
+        label " RocksDB DB Path Move")
 
 #define ROCKSDB_PRIORITY_THREAD_POOL_METRICS_DEFINE(entity) \
     ROCKSDB_COMPACTION_TASK_METRICS_TYPE_DEFINE( \
@@ -208,7 +215,8 @@ struct RocksDBPriorityThreadPoolMetrics {
   rocksdb::RocksDBTaskStateMetrics { \
     ROCKSDB_TASK_METRICS_INSTANCE(entity, BOOST_PP_CAT(name, _background_compaction)), \
     ROCKSDB_TASK_METRICS_INSTANCE(entity, BOOST_PP_CAT(name, _full_compaction)), \
-    ROCKSDB_TASK_METRICS_INSTANCE(entity, BOOST_PP_CAT(name, _post_split_compaction)) \
+    ROCKSDB_TASK_METRICS_INSTANCE(entity, BOOST_PP_CAT(name, _post_split_compaction)), \
+    ROCKSDB_TASK_METRICS_INSTANCE(entity, BOOST_PP_CAT(name, _db_path_move)) \
   }
 
 

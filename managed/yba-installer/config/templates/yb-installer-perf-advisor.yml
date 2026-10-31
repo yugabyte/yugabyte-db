@@ -10,9 +10,9 @@ services:
       spring.web.resources.static-locations=file://{{ installRoot }}/perf-advisor/ui
 
       # Spring Boot DataSource Configuration
-      spring.datasource.username=postgres
-      spring.datasource.url=jdbc:postgresql://localhost:{{ yamlPath "postgres.install.port" }}/ts
-      spring.datasource.password={{ yamlPath "postgres.install.password" }}
+      spring.datasource.username={{ .DB.Username }}
+      spring.datasource.url=jdbc:postgresql://{{ .DB.Host }}:{{ .DB.Port }}/{{ .DB.Name }}
+      spring.datasource.password={{ .DB.Password }}
       spring.profiles.active=api,task-runner,collector
 
       # Perf Advisor Security Configuration

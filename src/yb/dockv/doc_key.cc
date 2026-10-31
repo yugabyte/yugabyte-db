@@ -26,10 +26,9 @@
 #include "yb/dockv/primitive_value.h"
 #include "yb/dockv/value_type.h"
 
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/util/compare_util.h"
 #include "yb/util/enums.h"
+#include "yb/util/format.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
@@ -39,7 +38,6 @@
 using std::ostringstream;
 using std::string;
 
-using strings::Substitute;
 
 using yb::util::CompareVectors;
 using yb::util::CompareUsingLessThan;
@@ -50,9 +48,12 @@ namespace {
 
 // Checks whether slice starts with primitive value.
 // Valid cases are end of group or primitive value starting with value type.
-Result<bool> HasPrimitiveValue(Slice* slice, AllowSpecial allow_special) {
+template <bool kDescribeErrors>
+typename DecodePolicy<kDescribeErrors>::template ResultType<bool> HasPrimitiveValue(
+    Slice* slice, AllowSpecial allow_special) {
+  using Policy = DecodePolicy<kDescribeErrors>;
   if (PREDICT_FALSE(slice->empty())) {
-    return STATUS(Corruption, "Unexpected end of key when decoding document key");
+    return DOCKV_DECODE_ERROR("Unexpected end of key when decoding document key");
   }
   KeyEntryType current_value_type = static_cast<KeyEntryType>(*slice->data());
   if (current_value_type == KeyEntryType::kGroupEnd) {
@@ -64,56 +65,67 @@ Result<bool> HasPrimitiveValue(Slice* slice, AllowSpecial allow_special) {
     return true;
   }
 
-  return STATUS_FORMAT(Corruption, "Expected a primitive value type, got $0", current_value_type);
+  return DOCKV_DECODE_ERROR("Expected a primitive value type, got $0", current_value_type);
 }
 
 constexpr auto kNumValuesNoLimit = std::numeric_limits<int>::max();
 
 // Consumes up to n_values_limit primitive values from key until group end is found.
 // Callback is called for each value and responsible for consuming this single value from slice.
-template<class Callback>
-Status ConsumePrimitiveValuesFromKey(
+template<bool kDescribeErrors, class Callback>
+typename DecodePolicy<kDescribeErrors>::StatusType ConsumePrimitiveValuesFromKey(
     Slice* slice, AllowSpecial allow_special, Callback callback,
     int n_values_limit = kNumValuesNoLimit) {
-  const auto initial_slice(*slice);  // For error reporting.
+  using Policy = DecodePolicy<kDescribeErrors>;
+  [[maybe_unused]] const auto initial_slice(*slice);  // For error reporting.
   for (; n_values_limit > 0; --n_values_limit) {
-    if (!VERIFY_RESULT(HasPrimitiveValue(slice, allow_special))) {
-      return Status::OK();
+    if (!DOCKV_DECODE_VERIFY_RESULT(HasPrimitiveValue<kDescribeErrors>(slice, allow_special))) {
+      return Policy::Ok();
     }
 
-    RETURN_NOT_OK_PREPEND(callback(),
-        Substitute("while consuming primitive values from $0",
-                   initial_slice.ToDebugHexString()));
+    if constexpr (kDescribeErrors) {
+      RETURN_NOT_OK_PREPEND(callback(),
+          Format("while consuming primitive values from $0",
+                 initial_slice.ToDebugHexString()));
+    } else {
+      DOCKV_DECODE_RETURN_NOT_OK(callback());
+    }
   }
-  return Status::OK();
+  return Policy::Ok();
 }
 
-Status ConsumePrimitiveValuesFromKey(Slice* slice, AllowSpecial allow_special,
-                                     boost::container::small_vector_base<Slice>* result,
-                                     int n_values_limit = kNumValuesNoLimit) {
-  return ConsumePrimitiveValuesFromKey(slice, allow_special, [slice, result]() -> Status {
+template <bool kDescribeErrors>
+typename DecodePolicy<kDescribeErrors>::StatusType ConsumePrimitiveValuesFromKey(
+    Slice* slice, AllowSpecial allow_special, boost::container::small_vector_base<Slice>* result,
+    int n_values_limit = kNumValuesNoLimit) {
+  using Policy = DecodePolicy<kDescribeErrors>;
+  return ConsumePrimitiveValuesFromKey<kDescribeErrors>(
+      slice, allow_special, [slice, result]() -> typename Policy::StatusType {
     auto begin = slice->data();
-    RETURN_NOT_OK(KeyEntryValue::DecodeKey(slice, /* out */ nullptr));
+    DOCKV_DECODE_RETURN_NOT_OK(KeyEntryValue::DecodeKey<kDescribeErrors>(slice, /* out */ nullptr));
     if (result) {
       result->emplace_back(begin, slice->data());
     }
-    return Status::OK();
+    return Policy::Ok();
   }, n_values_limit);
 }
 
-Status ConsumePrimitiveValuesFromKey(
+template <bool kDescribeErrors>
+typename DecodePolicy<kDescribeErrors>::StatusType ConsumePrimitiveValuesFromKey(
     Slice* slice, AllowSpecial allow_special, KeyEntryValues* result,
     int n_values_limit = kNumValuesNoLimit) {
-  return ConsumePrimitiveValuesFromKey(slice, allow_special, [slice, result] {
+  using Policy = DecodePolicy<kDescribeErrors>;
+  return ConsumePrimitiveValuesFromKey<kDescribeErrors>(
+      slice, allow_special, [slice, result]() -> typename Policy::StatusType {
     result->emplace_back();
-    return result->back().DecodeFromKey(slice);
+    return result->back().template DecodeFromKey<kDescribeErrors>(slice);
   }, n_values_limit);
 }
 
 } // namespace
 
 Result<bool> ConsumePrimitiveValueFromKey(Slice* slice) {
-  if (!VERIFY_RESULT(HasPrimitiveValue(slice, AllowSpecial::kFalse))) {
+  if (!VERIFY_RESULT(HasPrimitiveValue<true>(slice, AllowSpecial::kFalse))) {
     return false;
   }
   RETURN_NOT_OK(KeyEntryValue::DecodeKey(slice, nullptr /* out */));
@@ -121,7 +133,7 @@ Result<bool> ConsumePrimitiveValueFromKey(Slice* slice) {
 }
 
 Status ConsumePrimitiveValuesFromKey(Slice* slice, KeyEntryValues* result) {
-  return ConsumePrimitiveValuesFromKey(slice, AllowSpecial::kFalse, result);
+  return ConsumePrimitiveValuesFromKey<true>(slice, AllowSpecial::kFalse, result);
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -399,7 +411,7 @@ yb::Status DocKey::PartiallyDecode(Slice *slice,
                                    boost::container::small_vector_base<Slice>* out) {
   CHECK_NOTNULL(out);
   DocKeyDecoder decoder(*slice);
-  RETURN_NOT_OK(DoDecode(
+  RETURN_NOT_OK(DoDecode<true>(
       &decoder, DocKeyPart::kWholeDocKey, AllowSpecial::kFalse, DecodeDocKeyCallback(out)));
   *slice = decoder.left_input();
   return Status::OK();
@@ -417,30 +429,86 @@ Result<DocKeyHash> DocKey::DecodeHash(const Slice& slice) {
 Result<size_t> DocKey::EncodedSize(Slice slice, DocKeyPart part, AllowSpecial allow_special) {
   auto initial_begin = slice.cdata();
   DocKeyDecoder decoder(slice);
-  RETURN_NOT_OK(DoDecode(&decoder, part, allow_special, DummyCallback()));
+  RETURN_NOT_OK(DoDecode<true>(&decoder, part, allow_special, DummyCallback()));
   return decoder.left_input().cdata() - initial_begin;
 }
 
+std::optional<size_t> DocKey::TryGetEncodedSize(
+    Slice slice, DocKeyPart part, AllowSpecial allow_special) {
+  auto initial_begin = slice.cdata();
+  DocKeyDecoder decoder(slice);
+  if (!DoDecode<false>(&decoder, part, allow_special, DummyCallback()).ok()) {
+    return std::nullopt;
+  }
+  return decoder.left_input().cdata() - initial_begin;
+}
+
+namespace {
+
+class HashPresenceAwareDummyCallback : public DummyCallback {
+ public:
+  explicit HashPresenceAwareDummyCallback(bool* hash_present) : hash_present_(hash_present) {}
+
+  void SetHash(const bool hash_present, const DocKeyHash hash = 0) const {
+    *hash_present_ = hash_present;
+  }
+
+ private:
+  bool* hash_present_;
+};
+
+} // namespace
+
 Result<std::pair<size_t, bool>> DocKey::EncodedSizeAndHashPresent(Slice slice, DocKeyPart part) {
-  class HashPresenceAwareDummyCallback : public DummyCallback {
-   public:
-    explicit HashPresenceAwareDummyCallback(bool* hash_present) : hash_present_(hash_present) {}
-
-    void SetHash(const bool hash_present, const DocKeyHash hash = 0) const {
-      *hash_present_ = hash_present;
-    }
-
-   private:
-    bool* hash_present_;
-  };
-
   auto initial_begin = slice.cdata();
   DocKeyDecoder decoder(slice);
   bool hash_present = false;
   HashPresenceAwareDummyCallback callback(&hash_present);
-  RETURN_NOT_OK(DoDecode(&decoder, part, AllowSpecial::kFalse, callback));
+  RETURN_NOT_OK(DoDecode<true>(&decoder, part, AllowSpecial::kFalse, callback));
   // TODO: left_input() should be called remaining_input().
   return std::make_pair(decoder.left_input().cdata() - initial_begin, hash_present);
+}
+
+std::optional<std::pair<size_t, bool>> DocKey::TryGetEncodedSizeAndHashPresent(
+    Slice slice, DocKeyPart part) {
+  auto initial_begin = slice.cdata();
+  DocKeyDecoder decoder(slice);
+  bool hash_present = false;
+  HashPresenceAwareDummyCallback callback(&hash_present);
+  if (!DoDecode<false>(&decoder, part, AllowSpecial::kFalse, callback).ok()) {
+    return std::nullopt;
+  }
+  return std::make_pair(decoder.left_input().cdata() - initial_begin, hash_present);
+}
+
+Result<std::optional<size_t>> DocKey::EncodedHashGroupAndRangeComponentsSize(
+    Slice slice, size_t num_components) {
+  const auto* begin = slice.data();
+  size_t num_decoded = 0;
+  if (num_components) {
+    // Also skips the cotable or colocation id, which is not a hash group.
+    auto [hash_part_size, hash_present] = VERIFY_RESULT(
+        EncodedSizeAndHashPresent(slice, DocKeyPart::kUpToHash));
+    slice.remove_prefix(hash_part_size);
+    num_decoded = hash_present ? 1 : 0;
+  }
+  for (; num_decoded < num_components; ++num_decoded) {
+    if (slice.empty() || slice[0] == KeyEntryTypeAsChar::kGroupEnd) {
+      return std::nullopt;
+    }
+    RETURN_NOT_OK(KeyEntryValue::DecodeKey(&slice, /* out= */ nullptr));
+  }
+  return slice.data() - begin;
+}
+
+Result<size_t> DocKey::EncodedHashGroupAndRangeComponentsSizeStrict(
+    Slice slice, size_t num_components) {
+  auto result = VERIFY_RESULT(EncodedHashGroupAndRangeComponentsSize(slice, num_components));
+  SCHECK(
+      result, Corruption,
+      Format("Key $0 has fewer than $1 hash group and range components",
+             slice.ToDebugHexString(), num_components));
+  return *result;
 }
 
 Result<DocKeySizes> DocKey::EncodedHashPartAndDocKeySizes(
@@ -449,7 +517,7 @@ Result<DocKeySizes> DocKey::EncodedHashPartAndDocKeySizes(
   auto initial_begin = slice.data();
   DocKeyDecoder decoder(slice);
   EncodedSizesCallback callback(&decoder);
-  RETURN_NOT_OK(DoDecode(
+  RETURN_NOT_OK(DoDecode<true>(
       &decoder, DocKeyPart::kWholeDocKey, allow_special, callback));
   return DocKeySizes {
     .hash_part_size = static_cast<size_t>(callback.range_group_start() - initial_begin),
@@ -462,7 +530,7 @@ Result<PrefixAndDocKeySizes> DocKey::EncodedPrefixAndDocKeySizes(
   auto initial_begin = slice.data();
   DocKeyDecoder decoder(slice);
   EncodedPrefixAndDocKeySizesCallback callback(&decoder);
-  RETURN_NOT_OK(DoDecode(
+  RETURN_NOT_OK(DoDecode<true>(
       &decoder, DocKeyPart::kWholeDocKey, allow_special, callback));
   return PrefixAndDocKeySizes {
     .prefix_size = static_cast<size_t>(callback.prefix_end() - initial_begin),
@@ -505,7 +573,7 @@ class DocKey::DecodeFromCallback {
 Status DocKey::DecodeFrom(Slice *slice, DocKeyPart part_to_decode, AllowSpecial allow_special) {
   Clear();
   DocKeyDecoder decoder(*slice);
-  RETURN_NOT_OK(DoDecode(&decoder, part_to_decode, allow_special, DecodeFromCallback(this)));
+  RETURN_NOT_OK(DoDecode<true>(&decoder, part_to_decode, allow_special, DecodeFromCallback(this)));
   *slice = decoder.left_input();
   return Status::OK();
 }
@@ -515,6 +583,12 @@ Result<size_t> DocKey::DecodeFrom(
   Slice copy = slice;
   RETURN_NOT_OK(DecodeFrom(&copy, part_to_decode, allow_special));
   return slice.size() - copy.size();
+}
+
+bool DocKey::IsDecodable(Slice slice, DocKeyPart part_to_decode, AllowSpecial allow_special) {
+  DocKey key;
+  DocKeyDecoder decoder(slice);
+  return DoDecode<false>(&decoder, part_to_decode, allow_special, DecodeFromCallback(&key)).ok();
 }
 
 namespace {
@@ -538,54 +612,69 @@ int MaxRangeComponentsToDecode(const DocKeyPart part_to_decode, const bool hash_
 
 } // namespace
 
-template<class Callback>
-yb::Status DocKey::DoDecode(DocKeyDecoder* decoder,
-                            DocKeyPart part_to_decode,
-                            AllowSpecial allow_special,
-                            const Callback& callback) {
+template<bool kDescribeErrors, class Callback>
+typename DecodePolicy<kDescribeErrors>::StatusType DocKey::DoDecode(
+    DocKeyDecoder* decoder,
+    DocKeyPart part_to_decode,
+    AllowSpecial allow_special,
+    const Callback& callback) {
+  using Policy = DecodePolicy<kDescribeErrors>;
   Uuid cotable_id;
   ColocationId colocation_id;
-  if (VERIFY_RESULT(decoder->DecodeCotableId(&cotable_id))) {
+  if (DOCKV_DECODE_VERIFY_RESULT(decoder->template DecodeCotableId<kDescribeErrors>(&cotable_id))) {
     callback.SetCoTableId(cotable_id);
-  } else if (VERIFY_RESULT(decoder->DecodeColocationId(&colocation_id))) {
+  } else if (DOCKV_DECODE_VERIFY_RESULT(
+                 decoder->template DecodeColocationId<kDescribeErrors>(&colocation_id))) {
     callback.SetColocationId(colocation_id);
   }
 
   switch (part_to_decode) {
     case DocKeyPart::kUpToId:
-      return Status::OK();
+      return Policy::Ok();
     case DocKeyPart::kUpToHashCode: FALLTHROUGH_INTENDED;
     case DocKeyPart::kUpToHash: FALLTHROUGH_INTENDED;
     case DocKeyPart::kUpToHashOrFirstRange: FALLTHROUGH_INTENDED;
     case DocKeyPart::kWholeDocKey:
       uint16_t hash_code;
-      const auto hash_present = VERIFY_RESULT(decoder->DecodeHashCode(&hash_code, allow_special));
+      const auto hash_present = DOCKV_DECODE_VERIFY_RESULT(
+          decoder->template DecodeHashCode<kDescribeErrors>(&hash_code, allow_special));
       if (hash_present) {
         callback.SetHash(/* present */ true, hash_code);
         if (part_to_decode == DocKeyPart::kUpToHashCode) {
-          return Status::OK();
+          return Policy::Ok();
         }
-        RETURN_NOT_OK_PREPEND(
-            ConsumePrimitiveValuesFromKey(
-                decoder->mutable_input(), allow_special, callback.hashed_group()),
-            "Error when decoding hashed components of a document key");
+        auto status = ConsumePrimitiveValuesFromKey<kDescribeErrors>(
+            decoder->mutable_input(), allow_special, callback.hashed_group());
+        if (!status.ok()) {
+          if constexpr (kDescribeErrors) {
+            return status.CloneAndPrepend(
+                "Error when decoding hashed components of a document key");
+          } else {
+            return ProbeFailure();
+          }
+        }
       } else {
         callback.SetHash(/* present */ false);
       }
       if (decoder->left_input().empty()) {
-        return Status::OK();
+        return Policy::Ok();
       }
       // The rest are range components.
       const auto max_components_to_decode =
           MaxRangeComponentsToDecode(part_to_decode, hash_present);
       if (max_components_to_decode > 0) {
-        RETURN_NOT_OK_PREPEND(
-            ConsumePrimitiveValuesFromKey(
-                decoder->mutable_input(), allow_special, callback.range_group(),
-                max_components_to_decode),
-            "Error when decoding range components of a document key");
+        auto status = ConsumePrimitiveValuesFromKey<kDescribeErrors>(
+            decoder->mutable_input(), allow_special, callback.range_group(),
+            max_components_to_decode);
+        if (!status.ok()) {
+          if constexpr (kDescribeErrors) {
+            return status.CloneAndPrepend("Error when decoding range components of a document key");
+          } else {
+            return ProbeFailure();
+          }
+        }
       }
-      return Status::OK();
+      return Policy::Ok();
   }
   FATAL_INVALID_ENUM_VALUE(DocKeyPart, part_to_decode);
 }
@@ -594,7 +683,7 @@ yb::Status DocKey::FullyDecodeFrom(const rocksdb::Slice& slice) {
   rocksdb::Slice mutable_slice = slice;
   Status status = DecodeFrom(&mutable_slice);
   if (!mutable_slice.empty()) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
+    return STATUS_FORMAT(InvalidArgument,
         "Expected all bytes of the slice to be decoded into DocKey, found $0 extra bytes",
         mutable_slice.size());
   }
@@ -643,7 +732,7 @@ string DocKey::ToString(AutoDecodeKeys auto_decode_keys) const {
   }
 
   if (hash_present_) {
-    result += StringPrintf("0x%04x", hash_);
+    result += Format("0x$0", HexString(hash_, 4));
     result += ", ";
   }
 
@@ -858,7 +947,7 @@ Status SubDocKey::DoDecode(rocksdb::Slice* slice,
     auto decode_result = DecodeSubkey(slice, callback);
     RETURN_NOT_OK_PREPEND(
         decode_result,
-        Substitute("While decoding SubDocKey $0", ToShortDebugStr(original_bytes)));
+        Format("While decoding SubDocKey $0", ToShortDebugStr(original_bytes)));
     if (!decode_result.get()) {
       break;
     }
@@ -868,7 +957,7 @@ Status SubDocKey::DoDecode(rocksdb::Slice* slice,
       callback.doc_hybrid_time() = DocHybridTime::kInvalid;
       return Status::OK();
     }
-    return STATUS_SUBSTITUTE(
+    return STATUS_FORMAT(
         Corruption,
         "Found too few bytes in the end of a SubDocKey for a type-prefixed hybrid_time: $0",
         ToShortDebugStr(*slice));
@@ -891,7 +980,7 @@ Status SubDocKey::FullyDecodeFrom(const rocksdb::Slice& slice,
   rocksdb::Slice mutable_slice = slice;
   RETURN_NOT_OK(DecodeFrom(&mutable_slice, require_hybrid_time));
   if (!mutable_slice.empty()) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
+    return STATUS_FORMAT(InvalidArgument,
         "Expected all bytes of the slice to be decoded into SubDocKey, found $0 extra bytes: $1",
         mutable_slice.size(), mutable_slice.ToDebugHexString());
   }
@@ -1226,25 +1315,34 @@ DocKeyEncoderAfterTableIdStep DocKeyEncoder::Schema(const class Schema& schema) 
   }
 }
 
-Result<bool> DocKeyDecoder::DecodeCotableId(Uuid* uuid) {
+template <bool kDescribeErrors>
+typename DecodePolicy<kDescribeErrors>::template ResultType<bool> DocKeyDecoder::DecodeCotableId(
+    Uuid* uuid) {
+  using Policy = DecodePolicy<kDescribeErrors>;
   if (!input_.TryConsumeByte(KeyEntryTypeAsChar::kTableId)) {
     return false;
   }
 
   if (input_.size() < kUuidSize) {
-    return STATUS_FORMAT(
-        Corruption, "Not enough bytes for cotable id: $0", input_.ToDebugHexString());
+    return DOCKV_DECODE_ERROR("Not enough bytes for cotable id: $0", input_.ToDebugHexString());
   }
 
   if (uuid) {
-    *uuid = VERIFY_RESULT(Uuid::FromComparable(input_.Prefix(kUuidSize)));
+    *uuid = DOCKV_DECODE_VERIFY_RESULT(Uuid::FromComparable(input_.Prefix(kUuidSize)));
   }
   input_.remove_prefix(kUuidSize);
 
   return true;
 }
 
-Result<bool> DocKeyDecoder::DecodeColocationId(ColocationId* colocation_id) {
+Result<bool> DocKeyDecoder::DecodeCotableId(Uuid* uuid) {
+  return DecodeCotableId<true>(uuid);
+}
+
+template <bool kDescribeErrors>
+typename DecodePolicy<kDescribeErrors>::template ResultType<bool>
+DocKeyDecoder::DecodeColocationId(ColocationId* colocation_id) {
+  using Policy = DecodePolicy<kDescribeErrors>;
   if (input_.empty() || input_[0] != KeyEntryTypeAsChar::kColocationId) {
     return false;
   }
@@ -1252,8 +1350,8 @@ Result<bool> DocKeyDecoder::DecodeColocationId(ColocationId* colocation_id) {
   input_.consume_byte();
 
   if (input_.size() < sizeof(ColocationId)) {
-    return STATUS_FORMAT(
-        Corruption, "Not enough bytes for a colocation id: $0", input_.ToDebugHexString());
+    return DOCKV_DECODE_ERROR(
+        "Not enough bytes for a colocation id: $0", input_.ToDebugHexString());
   }
 
   static_assert(
@@ -1267,7 +1365,14 @@ Result<bool> DocKeyDecoder::DecodeColocationId(ColocationId* colocation_id) {
   return true;
 }
 
-Result<bool> DocKeyDecoder::DecodeHashCode(uint16_t* out, AllowSpecial allow_special) {
+Result<bool> DocKeyDecoder::DecodeColocationId(ColocationId* colocation_id) {
+  return DecodeColocationId<true>(colocation_id);
+}
+
+template <bool kDescribeErrors>
+typename DecodePolicy<kDescribeErrors>::template ResultType<bool> DocKeyDecoder::DecodeHashCode(
+    uint16_t* out, AllowSpecial allow_special) {
+  using Policy = DecodePolicy<kDescribeErrors>;
   if (input_.empty()) {
     return false;
   }
@@ -1280,7 +1385,7 @@ Result<bool> DocKeyDecoder::DecodeHashCode(uint16_t* out, AllowSpecial allow_spe
 
   auto good_value_type = allow_special || !IsSpecialKeyEntryType(first_value_type);
   if (!good_value_type) {
-    return STATUS_FORMAT(Corruption,
+    return DOCKV_DECODE_ERROR(
         "Expected first value type to be primitive or GroupEnd, got $0 in $1",
         first_value_type, input_.ToDebugHexString());
   }
@@ -1290,8 +1395,7 @@ Result<bool> DocKeyDecoder::DecodeHashCode(uint16_t* out, AllowSpecial allow_spe
   }
 
   if (input_.size() < sizeof(DocKeyHash) + 1) {
-    return STATUS_FORMAT(
-        Corruption,
+    return DOCKV_DECODE_ERROR(
         "Could not decode a 16-bit hash component of a document key: only $0 bytes left",
         input_.size());
   }
@@ -1304,6 +1408,10 @@ Result<bool> DocKeyDecoder::DecodeHashCode(uint16_t* out, AllowSpecial allow_spe
   }
   input_.remove_prefix(sizeof(DocKeyHash) + 1);
   return true;
+}
+
+Result<bool> DocKeyDecoder::DecodeHashCode(uint16_t* out, AllowSpecial allow_special) {
+  return DecodeHashCode<true>(out, allow_special);
 }
 
 Status DocKeyDecoder::DecodeKeyEntryValue(AllowSpecial allow_special) {
@@ -1333,7 +1441,7 @@ bool DocKeyDecoder::GroupEnded() const {
 }
 
 Result<bool> DocKeyDecoder::HasPrimitiveValue(AllowSpecial allow_special) {
-  return dockv::HasPrimitiveValue(&input_, allow_special);
+  return dockv::HasPrimitiveValue<true>(&input_, allow_special);
 }
 
 Status DocKeyDecoder::DecodeToKeys() {

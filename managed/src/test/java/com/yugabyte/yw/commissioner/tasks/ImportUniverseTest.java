@@ -54,6 +54,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -320,6 +321,8 @@ public class ImportUniverseTest extends CommissionerBaseTest {
   private void verifyUniverse(Universe universe) {
     assertEquals(masterIps.size() + tserverIps.size(), universe.getNodes().size());
     Cluster cluster = universe.getUniverseDetails().getPrimaryCluster();
+    // The detector is not stubbed here, so no node has a recorded layout.
+    universe.getNodes().forEach(n -> assertNull(n.nodeExporterSystemdLevel));
     Map<String, String> masterSpecificGFlags =
         cluster.userIntent.specificGFlags.getPerProcessFlags().value.get(ServerType.MASTER);
     Map<String, String> tserverSpecificGFlags =
@@ -365,6 +368,35 @@ public class ImportUniverseTest extends CommissionerBaseTest {
         Universe.maybeGetUniverseByName(defaultCustomer.getId(), taskParams.universeName)
             .orElseThrow();
     verifyUniverse(universe);
+  }
+
+  @Test
+  public void testImportUniverseRecordsNodeExporterLayoutPerNode() {
+    String rootIp = tserverIps.get(0);
+    doAnswer(
+            i -> {
+              NodeAgent nodeAgent = i.getArgument(0);
+              return Optional.of(
+                  nodeAgent.getIp().equals(rootIp)
+                      ? NodeDetails.NodeExporterSystemdLevel.ROOT
+                      : NodeDetails.NodeExporterSystemdLevel.USER);
+            })
+        .when(mockNodeAgentClient)
+        .detectNodeExporterSystemdLevel(any());
+    ImportUniverseTaskParams taskParams = createTaskParams();
+    TaskInfo taskInfo = submitTask(taskParams);
+    // Nodes on both layouts are imported; exporter TLS waits until all of them are USER.
+    assertEquals(Success, taskInfo.getTaskState());
+    Universe universe =
+        Universe.maybeGetUniverseByName(defaultCustomer.getId(), taskParams.universeName)
+            .orElseThrow();
+    for (NodeDetails node : universe.getNodes()) {
+      assertEquals(
+          node.cloudInfo.private_ip.equals(rootIp)
+              ? NodeDetails.NodeExporterSystemdLevel.ROOT
+              : NodeDetails.NodeExporterSystemdLevel.USER,
+          node.nodeExporterSystemdLevel);
+    }
   }
 
   @Test

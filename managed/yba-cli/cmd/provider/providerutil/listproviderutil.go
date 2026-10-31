@@ -47,13 +47,7 @@ func ListProviderUtil(cmd *cobra.Command, commandCall, providerCode string) {
 			util.FatalHTTPError(response, err, callSite, "List")
 		}
 	} else if util.IsEmptyString(commandCall) {
-		codes := []string{
-			util.AWSProviderType,
-			util.GCPProviderType,
-			util.AzureProviderType,
-			util.OnpremProviderType,
-			util.K8sProviderType}
-		for _, c := range codes {
+		for _, c := range util.ProviderCodes() {
 			providerListRequest = providerListRequest.ProviderCode(c)
 			rCode, response, err := providerListRequest.Execute()
 			if err != nil {

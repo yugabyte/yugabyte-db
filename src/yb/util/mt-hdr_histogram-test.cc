@@ -35,7 +35,7 @@
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/substitute.h"
+#include "yb/util/format.h"
 #include "yb/util/hdr_histogram.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
@@ -78,7 +78,7 @@ TEST_F(MtHdrHistogramTest, ConcurrentWriteTest) {
 
   auto threads = new scoped_refptr<yb::Thread>[num_threads_];
   for (int i = 0; i < num_threads_; i++) {
-    CHECK_OK(yb::Thread::Create("test", strings::Substitute("thread-$0", i),
+    CHECK_OK(yb::Thread::Create("test", Format("thread-$0", i),
         IncrementSameHistValue, &hist, kValue, num_times_, &threads[i]));
   }
   for (int i = 0; i < num_threads_; i++) {
@@ -100,7 +100,7 @@ TEST_F(MtHdrHistogramTest, ConcurrentCopyWhileWritingTest) {
 
   auto threads = new scoped_refptr<yb::Thread>[num_threads_];
   for (int i = 0; i < num_threads_; i++) {
-    CHECK_OK(yb::Thread::Create("test", strings::Substitute("thread-$0", i),
+    CHECK_OK(yb::Thread::Create("test", Format("thread-$0", i),
         IncrementSameHistValue, &hist, kValue, num_times_, &threads[i]));
   }
 

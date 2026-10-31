@@ -8,6 +8,7 @@ import {
   getInferredOutageCount,
   getExpertAvailabilityZonesOrEmpty,
   getExpertNodesStepDefaultPlacement,
+  getExpertRfOptions,
   getGuidedNodesStepReplicationFactor,
   getNodeCount,
   getNodeSpec,
@@ -73,6 +74,20 @@ function expertBaseRegionLevel(regions: Region[], resilienceFactor = 1) {
   };
 }
 
+describe('getExpertRfOptions', () => {
+  it('returns base options when flag is off', () => {
+    expect(getExpertRfOptions(false)).toEqual([1, 3, 5, 7]);
+  });
+
+  it('includes 9 when flag is on', () => {
+    expect(getExpertRfOptions(true)).toEqual([1, 3, 5, 7, 9]);
+  });
+
+  it('preserves RF 9 in options when current RF is 9 and flag is off', () => {
+    expect(getExpertRfOptions(false, 9)).toEqual([1, 3, 5, 7, 9]);
+  });
+});
+
 describe('getExpertNodesStepDefaultPlacement', () => {
   it('returns null for guided mode', () => {
     expect(
@@ -112,9 +127,33 @@ describe('getExpertNodesStepDefaultPlacement', () => {
     expect(out!.replicationFactor).toBe(3);
   });
 
-  it('returns null when region count is outside Figma table (e.g. 8)', () => {
+  it('returns null when region count is outside Figma table (e.g. 8) without RF9 flag', () => {
     const regions = Array.from({ length: 8 }, (_, i) => makeRegion(`r${i}`, 4));
     expect(getExpertNodesStepDefaultPlacement(expertBase(regions) as any)).toBeNull();
+    expect(getExpertNodesStepDefaultPlacement(expertBase(regions) as any, false)).toBeNull();
+  });
+
+  it('8 regions with RF9 flag: RF 9, 8 AZs, total nodes >= 9', () => {
+    const regions = Array.from({ length: 8 }, (_, i) => makeRegion(`r${i}`, 2));
+    const out = getExpertNodesStepDefaultPlacement(expertBase(regions) as any, true);
+    expect(out).not.toBeNull();
+    expect(out!.replicationFactor).toBe(9);
+    expect(getAZCount(out!.availabilityZones)).toBe(8);
+    expect(getNodeCount(out!.availabilityZones)).toBeGreaterThanOrEqual(9);
+  });
+
+  it('9 regions with RF9 flag: RF 9, 9 AZs, total nodes >= 9', () => {
+    const regions = Array.from({ length: 9 }, (_, i) => makeRegion(`r${i}`, 2));
+    const out = getExpertNodesStepDefaultPlacement(expertBase(regions) as any, true);
+    expect(out).not.toBeNull();
+    expect(out!.replicationFactor).toBe(9);
+    expect(getAZCount(out!.availabilityZones)).toBe(9);
+    expect(getNodeCount(out!.availabilityZones)).toBeGreaterThanOrEqual(9);
+  });
+
+  it('returns null for 10 regions even with RF9 flag', () => {
+    const regions = Array.from({ length: 10 }, (_, i) => makeRegion(`r${i}`, 2));
+    expect(getExpertNodesStepDefaultPlacement(expertBase(regions) as any, true)).toBeNull();
   });
 
   it('1 region, >2 AZs: RF 3, up to 3 AZs, total nodes >= 3', () => {
@@ -246,11 +285,18 @@ describe('toExpertResilienceForDefaults / getExpertAvailabilityZonesOrEmpty', ()
     expect(out.replicationFactor).toBe(3);
   });
 
-  it('returns empty zones when expert tables do not apply (e.g. 8 regions)', () => {
+  it('returns empty zones when expert tables do not apply (e.g. 8 regions without RF9 flag)', () => {
     const regions = Array.from({ length: 8 }, (_, i) => makeRegion(`r${i}`, 4));
     const out = getExpertAvailabilityZonesOrEmpty(expertBase(regions, 7) as any);
     expect(out.availabilityZones).toEqual({});
     expect(out.replicationFactor).toBe(7);
+  });
+
+  it('fills 8-region defaults when RF9 flag is on', () => {
+    const regions = Array.from({ length: 8 }, (_, i) => makeRegion(`r${i}`, 2));
+    const out = getExpertAvailabilityZonesOrEmpty(expertBase(regions, 7) as any, true);
+    expect(out.replicationFactor).toBe(9);
+    expect(getAZCount(out.availabilityZones)).toBe(8);
   });
 
   it('getPlacementRegions without zones skips guided assign in expert mode', () => {
@@ -452,12 +498,15 @@ const minimalOtherAdvanced = (): OtherAdvancedProps => ({
   instanceTags: [],
   awsArnString: '',
   useSystemd: true,
-  accessKeyCode: ''
+  accessKeyCodeByProvider: {}
 });
 
 describe('effectiveUseDedicatedNodes', () => {
   const base = (): createUniverseFormProps => ({
     activeStep: 1,
+    placementsByProvider: {},
+    nodesByProvider: {},
+    instanceByProvider: {},
     nodesAvailabilitySettings: {
       availabilityZones: {},
       useDedicatedNodes: false
@@ -540,16 +589,21 @@ describe('getNodeSpec / mapCreateUniversePayload (K8s as dedicated)', () => {
         cloud: CloudType.kubernetes,
         universeName: 'u1',
         databaseVersion: '2.20.0.0-b0',
-        providerConfiguration: {
-          uuid: 'prov-k8s',
-          code: CloudType.kubernetes,
-          name: 'k8s',
-          active: true,
-          customerUUID: 'cust',
-          imageBundles: [],
-          isOnPremManuallyProvisioned: false
-        } as any
+        providerConfigurations: [
+          {
+            uuid: 'prov-k8s',
+            code: CloudType.kubernetes,
+            name: 'k8s',
+            active: true,
+            customerUUID: 'cust',
+            imageBundles: [],
+            isOnPremManuallyProvisioned: false
+          } as any
+        ]
       },
+      placementsByProvider: {},
+      nodesByProvider: {},
+      instanceByProvider: {},
       resilienceAndRegionsSettings: {
         ...expertBase([region], 1),
         [RESILIENCE_TYPE]: ResilienceType.SINGLE_NODE,
@@ -666,5 +720,157 @@ describe('getNodeSpec / mapCreateUniversePayload (K8s as dedicated)', () => {
   it('mapCreateUniversePayload sets dedicated_nodes true for K8s when toggle is false', () => {
     const payload = mapCreateUniversePayload(k8sForm() as createUniverseFormProps);
     expect(payload.spec?.clusters?.[0]?.node_spec?.dedicated_nodes).toBe(true);
+  });
+});
+
+describe('mapCreateUniversePayload multi-provider', () => {
+  const device = (volumeSize: number) => ({
+    numVolumes: 1,
+    volumeSize,
+    storageClass: null,
+    storageType: 'GP3' as const,
+    mountPoints: null,
+    diskIops: 3000,
+    throughput: 125
+  });
+
+  const instanceFor = (bundle: string, instanceType: string, volumeSize: number) => ({
+    arch: ArchitectureType.X86_64,
+    imageBundleUUID: bundle,
+    useSpotInstance: false,
+    instanceType,
+    masterInstanceType: null,
+    deviceInfo: device(volumeSize),
+    masterDeviceInfo: null,
+    keepMasterTserverSame: true,
+    enableEbsVolumeEncryption: false,
+    ebsKmsConfigUUID: null
+  });
+
+  function multiForm(): createUniverseFormProps {
+    const awsRegion = { ...makeRegion('us-west-2', 1), providerUuid: 'prov-aws' };
+    const gcpRegion = { ...makeRegion('us-central1', 1), providerUuid: 'prov-gcp' };
+    return {
+      activeStep: 9,
+      generalSettings: {
+        cloud: [CloudType.aws, CloudType.gcp],
+        universeName: 'multi-u1',
+        databaseVersion: '2.20.0.0-b0',
+        providerConfigurations: [
+          {
+            uuid: 'prov-aws',
+            code: CloudType.aws,
+            name: 'aws',
+            active: true,
+            customerUUID: 'cust',
+            imageBundles: [],
+            isOnPremManuallyProvisioned: false
+          } as any,
+          {
+            uuid: 'prov-gcp',
+            code: CloudType.gcp,
+            name: 'gcp',
+            active: true,
+            customerUUID: 'cust',
+            imageBundles: [],
+            isOnPremManuallyProvisioned: false
+          } as any
+        ]
+      },
+      placementsByProvider: {
+        'prov-aws': expertBase([awsRegion], 3) as any,
+        'prov-gcp': expertBase([gcpRegion], 3) as any
+      },
+      nodesByProvider: {
+        'prov-aws': {
+          availabilityZones: {
+            'us-west-2': [
+              { name: 'Z0', uuid: 'us-west-2-zu-0', nodeCount: 1, preffered: 1 }
+            ]
+          },
+          useDedicatedNodes: false
+        },
+        'prov-gcp': {
+          availabilityZones: {
+            'us-central1': [
+              { name: 'Z0', uuid: 'us-central1-zu-0', nodeCount: 2, preffered: 2 }
+            ]
+          },
+          useDedicatedNodes: false
+        }
+      },
+      instanceByProvider: {
+        'prov-aws': instanceFor('bundle-aws', 'c5.large', 100),
+        'prov-gcp': instanceFor('bundle-gcp', 'n1-standard-4', 200)
+      },
+      resilienceAndRegionsSettings: {
+        ...expertBase([awsRegion, gcpRegion], 3),
+        [REGIONS_FIELD]: []
+      } as any,
+      nodesAvailabilitySettings: {
+        availabilityZones: {},
+        useDedicatedNodes: false,
+        replicationFactor: 3
+      },
+      instanceSettings: instanceFor('', 'c5.large', 100),
+      databaseSettings: {
+        ysql: { enable: true, enable_auth: false, password: '' },
+        ycql: { enable: true, enable_auth: false, password: '' },
+        gFlags: [],
+        enableConnectionPooling: false,
+        enablePGCompatibitilty: false
+      },
+      securitySettings: {
+        enableIPV6: false,
+        kmsConfig: ''
+      } as any,
+      proxySettings: {
+        enableProxyServer: false,
+        secureWebProxy: false,
+        secureWebProxyServer: '',
+        webProxy: false,
+        webProxyServer: '',
+        byPassProxyList: false,
+        byPassProxyListValues: []
+      } as any,
+      otherAdvancedSettings: {
+        ...minimalOtherAdvanced(),
+        accessKeyCodeByProvider: {
+          'prov-aws': 'aws-key',
+          'prov-gcp': 'gcp-key'
+        },
+        instanceTags: [{ name: 'env', value: 'test' }]
+      }
+    };
+  }
+
+  it('emits provider_specs + one cloud per provider, omits provider_spec/node_spec', () => {
+    const payload = mapCreateUniversePayload(multiForm());
+    const cluster = payload.spec?.clusters?.[0];
+    expect(cluster?.provider_spec).toBeUndefined();
+    expect(cluster?.node_spec).toBeUndefined();
+    expect(cluster?.provider_specs).toHaveLength(2);
+    expect(cluster?.num_nodes).toBe(3);
+    expect(cluster?.placement_spec?.cloud_list).toHaveLength(2);
+    expect(cluster?.placement_spec?.cloud_list?.map((c) => c.uuid)).toEqual([
+      'prov-aws',
+      'prov-gcp'
+    ]);
+    expect(cluster?.placement_spec?.cloud_list?.every((c) => c.default_region == null)).toBe(true);
+    expect(
+      cluster?.partitions_spec?.[0]?.placement?.cloud_list?.every((c) => c.default_region == null)
+    ).toBe(true);
+
+    const awsSpec = cluster?.provider_specs?.find((p) => p.provider === 'prov-aws');
+    const gcpSpec = cluster?.provider_specs?.find((p) => p.provider === 'prov-gcp');
+    expect(awsSpec?.image_bundle_uuid).toBe('bundle-aws');
+    expect(gcpSpec?.image_bundle_uuid).toBe('bundle-gcp');
+    expect(awsSpec?.access_key_code).toBe('aws-key');
+    expect(gcpSpec?.access_key_code).toBe('gcp-key');
+    expect(awsSpec?.nodes_specs?.tserver_specification?.instance_type).toBe('c5.large');
+    expect(gcpSpec?.nodes_specs?.tserver_specification?.instance_type).toBe('n1-standard-4');
+    expect(awsSpec?.instance_tags).toEqual({ env: 'test' });
+    expect(cluster?.instance_tags).toEqual({ env: 'test' });
+    expect(awsSpec?.networking_spec).toEqual(cluster?.networking_spec);
   });
 });

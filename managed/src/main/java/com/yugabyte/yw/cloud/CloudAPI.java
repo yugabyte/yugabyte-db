@@ -93,6 +93,7 @@ public interface CloudAPI {
    *
    * @param zones the availability zones that the load balancer serves. A cloud whose load balancer
    *     has no per-zone setting ignores them.
+   * @param ports the TCP ports that the load balancer forwards to the nodes.
    * @return the address that the cloud gives the load balancer.
    */
   default String ensureManagedLoadBalancer(
@@ -100,6 +101,7 @@ public interface CloudAPI {
       String regionCode,
       String name,
       List<AvailabilityZone> zones,
+      List<Integer> ports,
       Map<String, String> tags) {
     throw new UnsupportedOperationException(
         "Managed load balancers are not supported by this cloud provider");

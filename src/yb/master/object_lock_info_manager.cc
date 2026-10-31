@@ -29,8 +29,6 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/common/ysql_operation_lease.h"
 
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
@@ -87,6 +85,10 @@ DEFINE_test_flag(bool, allow_unknown_txn_release_request, false,
 DEFINE_test_flag(bool, pause_obj_lock_release_before_persist, false,
     "If true, pause before persisting release request acked from all tservers.");
 
+DEFINE_test_flag(bool, pause_obj_lock_acquire_before_relaunch_check, false,
+    "If true, pause after an acquire request is acked by all tservers, before checking whether "
+    "the fanout must be relaunched for lease changes.");
+
 DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
 DECLARE_int32(send_wait_for_report_interval_ms);
 DECLARE_bool(enable_object_locking_for_table_locks);
@@ -98,7 +100,6 @@ namespace master {
 using namespace std::literals;
 using namespace std::placeholders;
 using server::MonitoredTaskState;
-using strings::Substitute;
 using tserver::AcquireObjectLockRequestPB;
 using tserver::AcquireObjectLockResponsePB;
 using tserver::ReleaseObjectLockRequestPB;
@@ -138,6 +139,31 @@ constexpr bool kIsReleaseRequest = false;
 
 template <>
 constexpr bool kIsReleaseRequest<ReleaseObjectLockRequestPB> = true;
+
+void AddLeaseEpochFloor(
+    const std::string& uuid, const SysObjectLockEntryPB::LeaseInfoPB& lease_info,
+    google::protobuf::RepeatedPtrField<tserver::LeaseEpochFloorPB>& floors) {
+  if (!lease_info.has_lease_epoch()) {
+    return;
+  }
+  auto ignore_lease_epochs_before = lease_info.lease_epoch();
+  if (!lease_info.live_lease() &&
+      ignore_lease_epochs_before != std::numeric_limits<uint64_t>::max()) {
+    ++ignore_lease_epochs_before;
+  }
+  if (ignore_lease_epochs_before == 0) {
+    return;
+  }
+  auto* floor = floors.Add();
+  floor->set_session_host_uuid(uuid);
+  floor->set_ignore_lease_epochs_before(ignore_lease_epochs_before);
+}
+
+// Lease state of a tserver that an acquire fanout was launched to.
+struct LiveLeaseSnapshotEntry {
+  std::shared_ptr<ObjectLockInfo> object_lock_info;
+  uint64_t lease_epoch;
+};
 
 }  // namespace
 
@@ -234,6 +260,16 @@ class ObjectLockInfoManager::Impl {
   std::shared_ptr<CountDownLatch> ReleaseLocksHeldByExpiredLeaseEpoch(
       const std::string& tserver_uuid, uint64 max_lease_epoch_to_release,
       std::optional<LeaderEpoch> leader_epoch);
+
+  // Reads each tserver's lease state once, so that the floors, the returned live tservers and
+  // live_leases (if not null) reflect the same view. Fails if the requestor's lease epoch is no
+  // longer live, since the floors would make every tserver reject the request.
+  Result<TSDescriptorVector> PopulateLeaseEpochFloorsAndGetLiveTServers(
+      tserver::AcquireObjectLockRequestPB& req,
+      std::vector<LiveLeaseSnapshotEntry>* live_leases) const EXCLUDES(mutex_);
+  void PopulateLeaseEpochFloorsUnlocked(
+      google::protobuf::RepeatedPtrField<tserver::LeaseEpochFloorPB>& floors) const
+      REQUIRES(mutex_);
 
   std::unordered_map<std::string, TServerLeaseInfo> GetLeaseInfos() const EXCLUDES(mutex_);
 
@@ -409,10 +445,13 @@ class UpdateAllTServers : public std::enable_shared_from_this<UpdateAllTServers<
   std::string LogPrefix() const override;
 
  private:
-  void LaunchRpcs();
-  void LaunchRpcsFrom(size_t from_idx);
+  // Returns false if there were no tservers to launch for.
+  Result<bool> LaunchRpcs();
+  bool DoLaunchRpcs();
   void Done(size_t i, const Status& s);
   void CheckForDone();
+  // Returns true if relaunched.
+  Result<bool> RelaunchIfNecessary();
   void DoneAll();
   Status AfterRpcs();
   void DoCallbackAndRespond(const Status& s);
@@ -428,7 +467,12 @@ class UpdateAllTServers : public std::enable_shared_from_this<UpdateAllTServers<
   TSDescriptorVector ts_descriptors_;
   std::atomic<size_t> ts_pending_;
   std::vector<Status> statuses_;
-  const Req req_;
+  // Only modified between fanouts, when no UpdateTServer task reads it.
+  Req req_;
+  // Acquire only: lease state of the initial fanout's tservers. An entry is removed once a relaunch
+  // was done for its lease change, which bounds the number of relaunches by the initial size.
+  std::vector<LiveLeaseSnapshotEntry> live_leases_;
+  size_t num_relaunches_ = 0;
   const TransactionId txn_id_;
   LeaderEpoch epoch_;
   std::optional<StdStatusCallback> callback_;
@@ -977,6 +1021,7 @@ tserver::DdlLockEntriesPB ObjectLockInfoManager::Impl::ExportObjectLockInfoUnloc
       }
     }
   }
+  PopulateLeaseEpochFloorsUnlocked(*entries.mutable_lease_epoch_floors());
   VLOG(3) << "Exported " << yb::ToString(entries);
   return entries;
 }
@@ -1091,10 +1136,10 @@ void ObjectLockInfoManager::Impl::PopulateDbCatalogVersionCache(ReleaseObjectLoc
   if (!req.populate_db_catalog_info()) {
     return;
   }
-  // Captured before the read below, and handed to InstallPgCatalogVersionsSnapshot() at the end:
+  // Captured before the read below, and handed to Install() at the end:
   // it is what lets that call notice a leader stepdown that reset the cache in between, and
   // decline rather than repopulating it with pre-stepdown data.
-  const auto cache_generation = catalog_manager_.GetPgCatalogVersionsCacheGeneration();
+  const auto cache_generation = catalog_manager_.pg_catalog_versions_cache().Generation();
 
   // TODO: Currently, we fetch and send catalog version of all dbs because the cache invalidation
   // logic on the tserver side expects a full report. Fix it and then optimize the below to only
@@ -1152,7 +1197,7 @@ void ObjectLockInfoManager::Impl::PopulateDbCatalogVersionCache(ReleaseObjectLoc
   // `messages` is passed by value, i.e. copied, because the loop below moves it into the request.
   // Installing after that loop instead would cache empty message lists for real versions, which a
   // tserver merging them against genuine content reports as a message_list mismatch DFATAL.
-  catalog_manager_.InstallPgCatalogVersionsSnapshot(
+  catalog_manager_.pg_catalog_versions_cache().Install(
       cache_generation, read_ht, std::move(versions), fingerprint, update_messages, messages);
 
   if (!messages) {
@@ -1438,6 +1483,72 @@ ObjectLockInfoManager::Impl::GetLeaseInfos() const {
   return result;
 }
 
+Result<TSDescriptorVector> ObjectLockInfoManager::Impl::PopulateLeaseEpochFloorsAndGetLiveTServers(
+    AcquireObjectLockRequestPB& req, std::vector<LiveLeaseSnapshotEntry>* live_leases) const {
+  std::unordered_map<std::string, TSDescriptorPtr> descriptors_by_uuid;
+  for (auto& desc : master_.ts_manager()->GetAllDescriptors()) {
+    descriptors_by_uuid.emplace(desc->id(), std::move(desc));
+  }
+  auto& floors = *req.mutable_lease_epoch_floors();
+  floors.Clear();
+  if (live_leases) {
+    live_leases->clear();
+  }
+  TSDescriptorVector live_descriptors;
+  bool requestor_lease_live = false;
+  std::vector<std::string> uuids_without_descriptor;
+  {
+    LockGuard lock(mutex_);
+    for (const auto& [uuid, object_info] : object_lock_infos_map_) {
+      auto l = object_info->LockForRead();
+      const auto& lease_info = l->pb.lease_info();
+      AddLeaseEpochFloor(uuid, lease_info, floors);
+      if (!lease_info.live_lease()) {
+        continue;
+      }
+      if (uuid == req.session_host_uuid() && lease_info.lease_epoch() == req.lease_epoch()) {
+        requestor_lease_live = true;
+      }
+      auto it = descriptors_by_uuid.find(uuid);
+      if (it == descriptors_by_uuid.end()) {
+        uuids_without_descriptor.push_back(uuid);
+        continue;
+      }
+      live_descriptors.push_back(it->second);
+      if (live_leases) {
+        live_leases->push_back(LiveLeaseSnapshotEntry{
+            .object_lock_info = object_info,
+            .lease_epoch = lease_info.lease_epoch(),
+        });
+      }
+    }
+  }
+  for (const auto& uuid : uuids_without_descriptor) {
+    // A tserver that registered after the descriptors were read is bootstrapped with the persisted
+    // lock, so it is safe to skip. Otherwise the descriptor is gone, which needs operator
+    // intervention since leases are only granted to registered tservers: disabling the persisted
+    // ts registry, or removing the tserver with a CLI tool. Skipping such a tserver can let its
+    // DMLs run concurrently with a conflicting DDL.
+    if (!master_.ts_manager()->LookupTSByUUID(uuid).ok()) {
+      LOG(DFATAL) << "TServer " << uuid << " has a live YSQL lease but no tserver descriptor, "
+                  << "skipping it in the object lock fanout";
+    }
+  }
+  if (!requestor_lease_live) {
+    return STATUS_FORMAT(
+        InvalidArgument, "Requestor $0 no longer has a live lease with lease epoch $1",
+        req.session_host_uuid(), req.lease_epoch());
+  }
+  return live_descriptors;
+}
+
+void ObjectLockInfoManager::Impl::PopulateLeaseEpochFloorsUnlocked(
+    google::protobuf::RepeatedPtrField<tserver::LeaseEpochFloorPB>& floors) const {
+  for (const auto& [uuid, object_info] : object_lock_infos_map_) {
+    AddLeaseEpochFloor(uuid, object_info->LockForRead()->pb.lease_info(), floors);
+  }
+}
+
 void ObjectLockInfoManager::Impl::BootstrapLocksPostLoad() {
   CHECK_OK(ts_local_lock_manager_during_catalog_loading()->BootstrapDdlObjectLocks(
       ExportObjectLockInfoForMaster()));
@@ -1707,41 +1818,61 @@ std::string UpdateAllTServers<Req>::LogPrefix() const {
 }
 
 template <class Req>
-void UpdateAllTServers<Req>::LaunchRpcs() {
-  // todo(zdrudi): special case for 0 tservers with a live lease. This doesn't work.
+Result<bool> UpdateAllTServers<Req>::LaunchRpcs() {
   ts_descriptors_ = object_lock_info_manager_.GetAllTSDescriptorsWithALiveLease();
   statuses_ = std::vector<Status>{ts_descriptors_.size(), STATUS(Uninitialized, "")};
 
-  LaunchRpcsFrom(0);
+  return DoLaunchRpcs();
+}
+
+template <>
+Result<bool> UpdateAllTServers<AcquireObjectLockRequestPB>::LaunchRpcs() {
+  ts_descriptors_ =
+      VERIFY_RESULT(object_lock_info_manager_.PopulateLeaseEpochFloorsAndGetLiveTServers(
+          req_, num_relaunches_ == 0 ? &live_leases_ : nullptr));
+  statuses_ = std::vector<Status>{ts_descriptors_.size(), STATUS(Uninitialized, "")};
+  return DoLaunchRpcs();
 }
 
 template <class Req>
 Status UpdateAllTServers<Req>::Launch() {
   TRACE_FUNC();
-  LaunchRpcs();
+  auto launched = LaunchRpcs();
+  if (!launched.ok()) {
+    DoCallbackAndRespond(launched.status());
+  } else if (!*launched) {
+    CheckForDone();
+  }
   return Status::OK();
 }
 
 template <class Req>
-void UpdateAllTServers<Req>::LaunchRpcsFrom(size_t start_idx) {
-  TRACE("Launching for $0 TServers from $1", ts_descriptors_.size(), start_idx);
-  ts_pending_ = ts_descriptors_.size() - start_idx;
-  VLOG(1) << __func__ << " launching for " << ts_pending_ << " tservers.";
-  for (size_t i = start_idx; i < ts_descriptors_.size(); ++i) {
+bool UpdateAllTServers<Req>::DoLaunchRpcs() {
+  // Once the last task is scheduled, its Done may run CheckForDone, which can relaunch and
+  // reassign ts_descriptors_. So ts_descriptors_ must not be read after scheduling the last task.
+  const auto num_tservers = ts_descriptors_.size();
+  TRACE("Launching for $0 TServers", num_tservers);
+  ts_pending_ = num_tservers;
+  if (!ts_pending_) {
+    return false;
+  }
+  VLOG(1) << __func__ << " launching for " << num_tservers << " tservers.";
+  for (size_t i = 0; i < num_tservers; ++i) {
     auto ts_uuid = ts_descriptors_[i]->permanent_uuid();
     VLOG(1) << "Launching for " << ts_uuid;
 
     auto task = TServerTaskFor(
         ts_uuid,
         std::bind(&UpdateAllTServers<Req>::Done, this->shared_from_this(), i, _1));
-    auto s =  catalog_manager_.ScheduleTask(task);
+    auto s = catalog_manager_.ScheduleTask(task);
     if (!s.ok()) {
-      Done(i,
-           s.CloneAndPrepend(Format(
-               "Failed to schedule request to UpdateTServer to $0 for $1", ts_uuid,
-               request().DebugString())));
+      // Calls Done through the task's finisher, unless ScheduleTask already aborted the task (and
+      // so called Done). In that case Done may have relaunched, so req_ must not be read here.
+      task->AbortAndReturnPrevState(s.CloneAndPrepend(Format(
+          "Failed to schedule $0 request to tserver $1", ObjectLockOpName<Req>(), ts_uuid)));
     }
   }
+  return true;
 }
 
 template <class Req>
@@ -1773,8 +1904,55 @@ void UpdateAllTServers<Req>::CheckForDone() {
       return;
     }
   }
-
+  auto relaunched = RelaunchIfNecessary();
+  if (!relaunched.ok()) {
+    DoCallbackAndRespond(relaunched.status());
+    return;
+  }
+  if (*relaunched) {
+    return;
+  }
   DoneAll();
+}
+
+template <class Req>
+Result<bool> UpdateAllTServers<Req>::RelaunchIfNecessary() {
+  return false;
+}
+
+// A tserver dropped from the fanout for losing its lease never acked, so recipients still hold the
+// floor computed for its old lease and would admit its stale ops. Relaunch to all live tservers
+// with fresh floors, and stop tracking the tservers whose lease change was just covered.
+// Only tservers of the initial fanout are tracked: a tserver that got its lease later was
+// bootstrapped with this persisted lock, so its conflicting ops block on the lock locally.
+template <>
+Result<bool> UpdateAllTServers<AcquireObjectLockRequestPB>::RelaunchIfNecessary() {
+  TEST_PAUSE_IF_FLAG(TEST_pause_obj_lock_acquire_before_relaunch_check);
+  std::vector<std::string> changed_uuids;
+  {
+    // A master that lost leadership no longer gets lease updates, so it could miss a lease change
+    // and grant the lock without propagating the new floor.
+    SCOPED_LEADER_SHARED_LOCK(leader_lock, &catalog_manager_);
+    RETURN_NOT_OK(CheckLeaderLockStatus(leader_lock, epoch_));
+    std::erase_if(live_leases_, [&changed_uuids](const LiveLeaseSnapshotEntry& entry) {
+      auto l = entry.object_lock_info->LockForRead();
+      const auto& lease_info = l->pb.lease_info();
+      if (lease_info.live_lease() && lease_info.lease_epoch() == entry.lease_epoch) {
+        return false;
+      }
+      changed_uuids.push_back(entry.object_lock_info->id());
+      return true;
+    });
+  }
+  if (changed_uuids.empty()) {
+    return false;
+  }
+  ++num_relaunches_;
+  LOG_WITH_PREFIX(INFO) << "YSQL lease of tservers " << AsString(changed_uuids)
+                        << " changed during the fanout, relaunch " << num_relaunches_
+                        << " with fresh lease epoch floors";
+  TRACE_TO(trace(), "Relaunching");
+  return LaunchRpcs();
 }
 
 template <class Req>

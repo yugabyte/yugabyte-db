@@ -64,7 +64,6 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/split.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
 
 #include "yb/integration-tests/external_mini_cluster.h"
@@ -74,6 +73,7 @@
 
 #include "yb/util/blocking_queue.h"
 #include "yb/util/curl_util.h"
+#include "yb/util/format.h"
 #include "yb/util/hdr_histogram.h"
 #include "yb/util/random.h"
 #include "yb/util/status_log.h"
@@ -423,13 +423,13 @@ class PeriodicWebUIChecker {
 
     ts_pages.push_back("/metrics");
     ts_pages.push_back("/tablets");
-    ts_pages.push_back(strings::Substitute("/transactions?tablet_id=$0", tablet_id));
+    ts_pages.push_back(Format("/transactions?tablet_id=$0", tablet_id));
     ts_pages.push_back("/api/v1/meta-cache");
 
     // Generate list of urls for each master and tablet server
     for (size_t i = 0; i < cluster.num_masters(); i++) {
       for (std::string page : master_pages) {
-        urls_.push_back(strings::Substitute(
+        urls_.push_back(Format(
             "http://$0$1",
             cluster.master(i)->bound_http_hostport().ToString(),
             page));
@@ -437,7 +437,7 @@ class PeriodicWebUIChecker {
     }
     for (size_t i = 0; i < cluster.num_tablet_servers(); i++) {
       for (std::string page : ts_pages) {
-        urls_.push_back(strings::Substitute(
+        urls_.push_back(Format(
             "http://$0$1",
             cluster.tablet_server(i)->bound_http_hostport().ToString(),
             page));
@@ -780,7 +780,7 @@ Status LinkedListTester::WaitAndVerify(
         //
         // Together these conditions mean that if we don't get the expected rows back something
         // is wrong with the read path or with the write path and we should fail immediately.
-        return STATUS(Corruption, strings::Substitute("Got wrong row count on snapshot. "
+        return STATUS(Corruption, Format("Got wrong row count on snapshot. "
             "Expected: $0, Got:$1", (*iter).second, seen));
       }
 
@@ -922,7 +922,7 @@ Status LinkedListVerifier::VerifyData(int64_t* verified_count, bool log_errors) 
   }
 
   if (expected_ != *verified_count) {
-    return STATUS(IllegalState, strings::Substitute(
+    return STATUS(IllegalState, Format(
         "Missing rows, but with no broken link in the chain. This means that "
         "a suffix of the inserted rows went missing. Expected=$0, seen=$1.",
         expected_, *verified_count));

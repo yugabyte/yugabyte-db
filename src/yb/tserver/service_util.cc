@@ -30,6 +30,7 @@
 #include "yb/tserver/tserver_types.messages.h"
 
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 
@@ -408,10 +409,10 @@ Status CheckWriteThrottling(double score, tablet::TabletPeer* tablet_peer) {
   auto soft_limit_exceeded_result = tablet->mem_tracker()->AnySoftLimitExceeded(score);
   if (soft_limit_exceeded_result.exceeded) {
     tablet->metrics()->Increment(tablet::TabletCounters::kLeaderMemoryPressureRejections);
-    string msg = StringPrintf(
-        "Soft memory limit exceeded for %s (at %.2f%% of capacity), score: %.2f",
-        soft_limit_exceeded_result.tracker_path.c_str(),
-        soft_limit_exceeded_result.current_capacity_pct, score);
+    string msg = Format(
+        "Soft memory limit exceeded for $0 (at $1% of capacity), score: $2",
+        soft_limit_exceeded_result.tracker_path,
+        FixedPoint(soft_limit_exceeded_result.current_capacity_pct, 2), FixedPoint(score, 2));
     if (soft_limit_exceeded_result.current_capacity_pct >=
             FLAGS_memory_limit_warn_threshold_percentage) {
       YB_LOG_EVERY_N_SECS(WARNING, 1) << "Rejecting Write request: " << msg;

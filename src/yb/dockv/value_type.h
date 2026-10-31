@@ -131,6 +131,8 @@ namespace yb::dockv {
     ((kSubTransactionId, 'n')) /* ASCII code 110 */ \
     ((kBson, 'o')) /* ASCII code 111 */ \
     ((kBsonDescending, 'p')) /* ASCII code 112 */ \
+    /* CDR source metadata, optionally present at the start of a value. */ \
+    ((kCdrMetadata, 'q')) /* ASCII code 113 */ \
     /* Timestamp value in microseconds */ \
     ((kTimestamp, 's'))  /* ASCII code 115 */ \
     /* TTL value in milliseconds, optionally present at the start of a value. */ \
@@ -344,6 +346,27 @@ inline bool IsMergeRecord(const Slice& value) {
 
 inline bool IsColumnId(KeyEntryType type) {
   return type == KeyEntryType::kColumnId || type == KeyEntryType::kSystemColumnId;
+}
+
+// Whether a value begins with a control field rather than with its primitive value. Lets a caller
+// that only wants the primitive value skip the decode on the overwhelmingly common unadorned value.
+// This list has to hold every marker the encoder can write first, and it is maintained by hand
+// alongside the encoder and decoder in value.cc.
+inline bool IsControlFieldMarker(KeyEntryType type) {
+  switch (type) {
+    case KeyEntryType::kMergeFlags: [[fallthrough]];
+    case KeyEntryType::kHybridTime: [[fallthrough]];
+    case KeyEntryType::kTtl: [[fallthrough]];
+    case KeyEntryType::kUserTimestamp: [[fallthrough]];
+    case KeyEntryType::kCdrMetadata:
+      return true;
+    default:
+      return false;
+  }
+}
+
+inline bool StartsWithControlField(Slice value) {
+  return IsControlFieldMarker(DecodeKeyEntryType(value));
 }
 
 YB_DEFINE_ENUM(PackedRowVersion, (kV1)(kV2));

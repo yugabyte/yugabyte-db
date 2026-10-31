@@ -60,10 +60,10 @@
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
 
 #include "yb/util/async_util.h"
+#include "yb/util/atomic.h"
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/long_operation_tracker.h"
@@ -97,12 +97,16 @@ using namespace std::placeholders;
 
 METRIC_DECLARE_gauge_int64(log_wal_sync_overdue_ms);
 
+DEFINE_RUNTIME_AUTO_bool(enable_quiescent_tablets, kLocalPersisted, false, true,
+    "Replace WAL segments of an idle tablet with a quiescent marker, so its bootstrap reads no "
+    "WAL. Binaries without this feature cannot bootstrap such a tablet.");
+
 // Log retention configuration.
 // -----------------------------
 DEFINE_RUNTIME_int32(log_min_segments_to_retain, 2,
     "The minimum number of past log segments to keep at all times,"
     " regardless of what is required for durability. "
-    "Must be at least 1.");
+    "Must be at least 1. A tablet in the quiescent mode (enable_quiescent_tablets) keeps none.");
 TAG_FLAG(log_min_segments_to_retain, advanced);
 
 DEFINE_RUNTIME_int32(log_min_seconds_to_retain, 900,
@@ -112,7 +116,9 @@ DEFINE_RUNTIME_int32(log_min_seconds_to_retain, 900,
     "set long enough such that a tablet server which has temporarily failed can be "
     "restarted within the given time period. If a server is down for longer than this "
     "amount of time, it is possible that its tablets will be re-replicated on other "
-    "machines. This value should match follower_unavailable_considered_failed_sec.");
+    "machines. This value should match follower_unavailable_considered_failed_sec. "
+    "A tablet in the quiescent mode (enable_quiescent_tablets) keeps no segments; it enters "
+    "the mode only when every peer has its last op.");
 TAG_FLAG(log_min_seconds_to_retain, advanced);
 
 // Flag to enable background log sync. When enabled, we DON'T wait for performing fsync until
@@ -255,13 +261,17 @@ DEFINE_RUNTIME_AUTO_bool(store_last_wal_op_log_ht, kLocalPersisted, false, true,
 static std::string kSegmentPlaceholderFilePrefix = ".tmp.newsegment";
 static std::string kSegmentPlaceholderFileTemplate = kSegmentPlaceholderFilePrefix + "XXXXXX";
 
+// Must not match IsLogFileName.
+static constexpr auto kQuiescentMarkerFileName = "quiescent_marker";
+// WritePBContainerToPath writes the marker to such a temp file and renames it.
+static constexpr auto kQuiescentMarkerTempFilePrefix = "quiescent_marker.tmp.";
+
 namespace yb::log {
 
 using env_util::OpenFileForRandom;
 using std::shared_ptr;
 using std::unique_ptr;
 using std::string;
-using strings::Substitute;
 
 namespace {
 
@@ -272,7 +282,17 @@ bool IsRolloverMarkerType(LogEntryTypePB type) {
 
 bool IsMarkerType(LogEntryTypePB type) {
   return IsRolloverMarkerType(type) ||
-         type == LogEntryTypePB::FLUSH_MARKER;
+         type == LogEntryTypePB::FLUSH_MARKER ||
+         type == LogEntryTypePB::CLOSE_SEGMENT_MARKER;
+}
+
+Status FsyncFile(Env* env, const std::string& path) {
+  RWFileOptions opts;
+  opts.mode = Env::OPEN_EXISTING;
+  std::unique_ptr<RWFile> file;
+  RETURN_NOT_OK(env->NewRWFile(opts, path, &file));
+  RETURN_NOT_OK(file->Sync());
+  return file->Close();
 }
 
 // int64 max is the "no constraint" sentinel for WAL retention indexes, so print it as "<max_int>"
@@ -395,6 +415,10 @@ class Log::LogEntryBatch {
 
   // Segment sequence number for this entry batch.
   int64_t active_segment_sequence_number_;
+
+  // Arguments of CLOSE_SEGMENT_MARKER.
+  OpId expected_last_op_id_;
+  QuiescentMarkerPB* quiescent_marker_ = nullptr;
 
   enum LogEntryState {
     kEntryInitialized,
@@ -638,10 +662,10 @@ Status Log::Open(const LogOptions &options,
                  CreateNewSegment create_new_segment,
                  MinStartHTRunningTxnsCallback min_start_ht_running_txns_callback) {
   RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(options.env, DirName(wal_dir)),
-                        Substitute("Failed to create table wal dir $0", DirName(wal_dir)));
+                        Format("Failed to create table wal dir $0", DirName(wal_dir)));
 
   RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(options.env, wal_dir),
-                        Substitute("Failed to create tablet wal dir $0", wal_dir));
+                        Format("Failed to create tablet wal dir $0", wal_dir));
 
   scoped_refptr<Log> new_log(new Log(options,
                                      wal_dir,
@@ -758,12 +782,22 @@ int64_t Log::WalSyncOverdueMs() const {
 Status Log::Init() {
   std::lock_guard write_lock(state_lock_);
   CHECK_EQ(kLogInitialized, log_state_);
+  const auto wal_dir_files = VERIFY_RESULT(get_env()->GetChildren(wal_dir_, ExcludeDots::kTrue));
+  RETURN_NOT_OK(LoadQuiescentMarker(wal_dir_files));
   // Init the index
   log_index_ = VERIFY_RESULT(LogIndex::NewLogIndex(wal_dir_));
   // Reader for previous segments.
   reader_ = VERIFY_RESULT(LogReader::Open(
       get_env(), log_index_, log_prefix_, wal_dir_, table_metric_entity_.get(),
-      tablet_metric_entity_.get(), read_wal_mem_tracker_));
+      tablet_metric_entity_.get(), read_wal_mem_tracker_, &wal_dir_files));
+
+  // Segments covered by the marker remain when entering the mode crashed, or gave up after writing
+  // the marker. The wal size metric still counts them only after an in-process reopen: otherwise it
+  // is zero and loaded from the remaining segments below.
+  SegmentSequence leftover_segments;
+  RETURN_NOT_OK(TrimSegmentsCoveredByQuiescentMarkerUnlocked(&leftover_segments));
+  RETURN_NOT_OK(DeleteSegmentFiles(
+      leftover_segments, /* update_metrics= */ metrics_ && metrics_->wal_size->value() != 0));
 
   // The case where we are continuing an existing log.  We must pick up where the previous WAL left
   // off in terms of sequence numbers.
@@ -804,7 +838,7 @@ Status Log::Init() {
   }
 
   if (create_new_segment_at_start_) {
-    RETURN_NOT_OK(EnsureSegmentInitializedUnlocked());
+    RETURN_NOT_OK(EnsureSegmentInitializedUnlocked(CreateNewSegment::kTrue));
   }
   return Status::OK();
 }
@@ -850,6 +884,84 @@ Status Log::CloseCurrentSegment() {
   return status;
 }
 
+Status Log::StartActiveSegment() {
+  if (allocation_state() == SegmentAllocationState::kAllocationNotStarted) {
+    RETURN_NOT_OK(AsyncAllocateSegment());
+  }
+  auto status = allocation_status_.Get();
+  if (!status.ok()) {
+    allocation_state_.store(
+        SegmentAllocationState::kAllocationNotStarted, std::memory_order_release);
+    return status;
+  }
+  RETURN_NOT_OK(SwitchToAllocatedSegment());
+  VLOG_WITH_PREFIX(1) << "Started log segment " << active_segment_->path();
+  return Status::OK();
+}
+
+Status Log::DropAllocatedSegment() {
+  if (allocation_state() == SegmentAllocationState::kAllocationNotStarted) {
+    return Status::OK();
+  }
+  auto status = allocation_status_.Get();
+  allocation_state_.store(SegmentAllocationState::kAllocationNotStarted, std::memory_order_release);
+  next_max_segment_size_.reset();
+  if (!status.ok() || !next_segment_file_) {
+    return Status::OK();
+  }
+  next_segment_file_.reset();
+  return get_env()->DeleteFile(next_segment_path_);
+}
+
+Status Log::CloseActiveSegment(const OpId& expected_last_op_id, QuiescentMarkerPB* marker) {
+  auto entry_batch = VERIFY_RESULT(ReserveMarker(CLOSE_SEGMENT_MARKER));
+  entry_batch->expected_last_op_id_ = expected_last_op_id;
+  entry_batch->quiescent_marker_ = marker;
+  Synchronizer s;
+  RETURN_NOT_OK(AsyncAppend(std::move(entry_batch), s.AsStatusCallback()));
+  RETURN_NOT_OK(s.Wait());
+  if (!marker->has_op_id()) {
+    return STATUS_FORMAT(
+        TryAgain, "Ops were appended after $0, segment not closed", expected_last_op_id);
+  }
+  return Status::OK();
+}
+
+// Leaves the marker empty, rather than failing the append, if the last appended op id differs.
+Status Log::DoCloseActiveSegment(const OpId& expected_last_op_id, QuiescentMarkerPB* marker) {
+  marker->Clear();
+  if (last_appended_entry_op_id_ != expected_last_op_id) {
+    VLOG_WITH_PREFIX(1) << "Not closing active segment, last appended op id "
+                        << last_appended_entry_op_id_ << ", expected " << expected_last_op_id;
+    return Status::OK();
+  }
+  RETURN_NOT_OK(DropAllocatedSegment());
+  if (active_segment_) {
+    WriteLatestMinStartTimeRunningTxnsInFooterBuilder();
+    RETURN_NOT_OK(DoSync(last_appended_entry_op_id_));
+    RETURN_NOT_OK(CloseCurrentSegment());
+    {
+      std::lock_guard lock(state_lock_);
+      RETURN_NOT_OK(ReplaceSegmentInReaderUnlocked());
+    }
+    {
+      std::lock_guard lock(active_segment_mutex_);
+      active_segment_.reset();
+    }
+    LOG_WITH_PREFIX(INFO) << "Closed active segment at " << last_appended_entry_op_id_;
+  }
+  // The first segment after the marker starts at the initial size, as after a restart.
+  cur_max_segment_size_ = (options_.initial_segment_size_bytes + 1) / 2;
+  // The segments with ops up to the marker are about to be deleted.
+  min_replicate_index_.store(last_appended_entry_op_id_.index + 1, std::memory_order_release);
+  marker->set_tablet_id(tablet_id_);
+  last_appended_entry_op_id_.ToPB(marker->mutable_op_id());
+  marker->set_hybrid_time(last_appended_entry_hybrid_time_.ToUint64());
+  marker->set_entry_time(last_appended_entry_time_);
+  marker->set_last_segment_sequence_number(active_segment_sequence_number_);
+  return Status::OK();
+}
+
 Status Log::RollOver() {
   if (pre_log_rollover_callback_) {
     pre_log_rollover_callback_();
@@ -870,7 +982,7 @@ Status Log::RollOver() {
         "Last appended OpId in segment $0: $1", active_segment_->path(),
         last_appended_entry_op_id_.ToString());
 
-    RETURN_NOT_OK(DoSync());
+    RETURN_NOT_OK(DoSync(last_appended_entry_op_id_));
     RETURN_NOT_OK(CloseCurrentSegment());
 
     RETURN_NOT_OK(SwitchToAllocatedSegment());
@@ -976,6 +1088,11 @@ Status Log::DoAppend(LogEntryBatch* entry_batch, SkipWalWrite skip_wal_write) {
     LOG_IF(DFATAL, entry_batch_data.size() <= 0 && !entry_batch->IsMarker())
         << "Cannot call DoAppend() with no data";
 
+    if (entry_batch->IsSingleEntryOfType(CLOSE_SEGMENT_MARKER)) {
+      return DoCloseActiveSegment(
+          entry_batch->expected_last_op_id_, entry_batch->quiescent_marker_);
+    }
+
     if (entry_batch->IsRolloverMarker()) {
       VLOG_WITH_PREFIX_AND_FUNC(1) << "Got marker " << LogEntryTypePB_Name(entry_batch->type_);
       const auto has_entries =
@@ -1012,6 +1129,10 @@ Status Log::DoAppend(LogEntryBatch* entry_batch, SkipWalWrite skip_wal_write) {
     // If there is no data to write return OK.
     if (PREDICT_FALSE(entry_batch_bytes == 0)) {
       return Status::OK();
+    }
+
+    if (!active_segment_) {
+      RETURN_NOT_OK(StartActiveSegment());
     }
 
     // If the size of this entry overflows the current segment, get a new one.
@@ -1080,6 +1201,10 @@ Status Log::DoAppend(LogEntryBatch* entry_batch, SkipWalWrite skip_wal_write) {
   // startup.
   if (entry_batch->HasReplicateEntries()) {
     last_appended_entry_op_id_ = entry_batch->MaxReplicateOpId();
+    last_appended_entry_hybrid_time_ =
+        HybridTime(entry_batch->entry_batch_pb_->entry().back().replicate().hybrid_time());
+    last_appended_entry_time_ = entry_batch->entry_batch_pb_->mono_time();
+    last_append_time_.store(CoarseMonoClock::Now(), std::memory_order_release);
   }
 
   CHECK_OK(UpdateIndexForBatch(*entry_batch));
@@ -1204,10 +1329,10 @@ Result<bool> Log::ReuseAsActiveSegment(const scoped_refptr<ReadableLogSegment>& 
 
 Status Log::EnsureSegmentInitialized() {
   std::lock_guard write_lock(state_lock_);
-  return EnsureSegmentInitializedUnlocked();
+  return EnsureSegmentInitializedUnlocked(CreateNewSegment::kFalse);
 }
 
-Status Log::EnsureSegmentInitializedUnlocked() {
+Status Log::EnsureSegmentInitializedUnlocked(CreateNewSegment create_new_segment) {
   if (log_state_ == LogState::kLogWriting) {
     // New segment already created.
     return Status::OK();
@@ -1228,15 +1353,20 @@ Status Log::EnsureSegmentInitializedUnlocked() {
     if (!last_segment->HasFooter()) {
       // Reuse this segment as writable active_segment.
       reuse_last_segment = VERIFY_RESULT(ReuseAsActiveSegment(last_segment));
+      if (!reuse_last_segment) {
+        // A crash could leave its tail unsynced, while the next sync of the log marks the entries
+        // replayed from it durable.
+        WARN_NOT_OK(FsyncFile(get_env(), last_segment->path()),
+                    Format("Failed to fsync $0", last_segment->path()));
+      }
     }
   }
-  // Allocate new segment as writable active_segment.
-  if (!reuse_last_segment) {
-    RETURN_NOT_OK(AsyncAllocateSegment());
-    RETURN_NOT_OK(allocation_status_.Get());
-    RETURN_NOT_OK(SwitchToAllocatedSegment());
+  if (reuse_last_segment) {
+    log_index_->SetMinIndexedSegmentNumber(active_segment_sequence_number_);
+  } else if (create_new_segment) {
+    RETURN_NOT_OK(StartActiveSegment());
   }
-  log_index_->SetMinIndexedSegmentNumber(active_segment_sequence_number_);
+  // Otherwise the first append starts a new segment.
 
   RETURN_NOT_OK(appender_->Init());
   log_state_ = LogState::kLogWriting;
@@ -1269,12 +1399,23 @@ Status Log::EnsureSegmentInitializedUnlocked() {
 // ::DoSync should not be called directly, instead we should call ::Sync and that might execute
 // this function in-line or as a task in the background or could just return because an fsync
 // might not be necessary. We only call ::DoSync directly before we call ::CloseCurrentSegment
-Status Log::DoSync() {
+Status Log::DoSync(std::optional<OpId> written_op_id) {
   // Acquire the lock over active_segment_ to prevent segment rollover in the interim.
   SCOPED_WAIT_STATUS(WAL_Sync);
   std::lock_guard lock(active_segment_mutex_);
+  if (!active_segment_) {
+    // Every entry is in a segment synced when closed, in the unreused last segment that
+    // EnsureSegmentInitialized fsynced, or is covered by the quiescent marker.
+    periodic_sync_needed_.store(false, std::memory_order_release);
+    periodic_sync_unsynced_bytes_.store(0, std::memory_order_release);
+    UpdateAtomicMax(&last_durable_entry_op_id_, written_op_id.value_or(GetLatestEntryOpId()));
+    return Status::OK();
+  }
   if (active_segment_->IsClosed()) {
     return Status::OK();
+  }
+  if (!written_op_id) {
+    written_op_id = GetLatestEntryOpId();
   }
 
   Status status;
@@ -1285,6 +1426,10 @@ Status Log::DoSync() {
     SCOPED_LATENCY_METRIC(metrics_, sync_latency);
     status = active_segment_->Sync();
   }
+  if (status.ok()) {
+    UpdateAtomicMax(&last_durable_entry_op_id_, *written_op_id);
+  }
+  sync_failed_.store(!status.ok(), std::memory_order_release);
 
   return status;
 }
@@ -1300,7 +1445,7 @@ Status Log::DoSync() {
 // determine if there is a pending fsync task corresponding to the current active segment.
 void Log::DoSyncAndResetTaskInQueue() {
   ADOPT_WAIT_STATE(background_synchronizer_wait_state_);
-  auto status = DoSync();
+  auto status = DoSync(std::nullopt);
   if (!status.ok()) {
     // ensure that fsync gets called on the subsequent call to Log::Sync() function
     periodic_sync_needed_.store(true);
@@ -1467,7 +1612,7 @@ Status Log::Sync() {
       break;
     }
     case SyncType::kForceFsync: {
-      RETURN_NOT_OK(DoSync());
+      RETURN_NOT_OK(DoSync(last_appended_entry_op_id_));
       break;
     }
   }
@@ -1477,7 +1622,9 @@ Status Log::Sync() {
 
 Status Log::UpdateSegmentReadableOffset() {
   // Update the reader on how far it can read the active segment.
-  RETURN_NOT_OK(reader_->UpdateLastSegmentOffset(active_segment_->written_offset()));
+  if (active_segment_) {
+    RETURN_NOT_OK(reader_->UpdateLastSegmentOffset(active_segment_->written_offset()));
+  }
   {
     std::lock_guard write_lock(last_synced_entry_op_id_mutex_);
     last_synced_entry_op_id_.store(last_appended_entry_op_id_, boost::memory_order_release);
@@ -1701,8 +1848,37 @@ OpId Log::GetLatestEntryOpId() const {
   return last_synced_entry_op_id_.load(boost::memory_order_acquire);
 }
 
+WalEntryState Log::WalState(const OpId& op_id) {
+  if (op_id > GetLatestEntryOpId()) {
+    return WalEntryState::kNone;
+  }
+  if (op_id <= last_durable_entry_op_id_.load(std::memory_order_acquire)) {
+    return WalEntryState::kDurable;
+  }
+  if (sync_failed_.load(std::memory_order_acquire)) {
+    return WalEntryState::kSyncFailed;
+  }
+  SubmitBackgroundSync();
+  return WalEntryState::kAppended;
+}
+
 int64_t Log::GetMinReplicateIndex() const {
   return min_replicate_index_.load(std::memory_order_acquire);
+}
+
+Result<int64_t> Log::EarliestOpIndex() const {
+  auto result = VERIFY_RESULT(GetLogReader())->GetMinReplicateIndex();
+  if (result == -1) { // No finalized log files yet.  Query the active log.
+    result = GetMinReplicateIndex();
+  }
+  return result;
+}
+
+Result<int64_t> Log::MinAnchorableIndex() const {
+  const auto result = VERIFY_RESULT(EarliestOpIndex());
+  // LookupOpId answers for the marker op id, which the ops after it need as the preceding op.
+  const auto marker_op_id = quiescent_marker_op_id();
+  return !marker_op_id.empty() && result == marker_op_id.index + 1 ? marker_op_id.index : result;
 }
 
 OpId Log::WaitForSafeOpIdToApply(const OpId& min_allowed, MonoDelta duration) {
@@ -1778,21 +1954,8 @@ Status Log::GC(const MinRetainLogIndexInfo& min_retain_log_index_info, int32_t* 
 
     // Now that they are no longer referenced by the Log, delete the files.
     *num_gced = 0;
-    for (const scoped_refptr<ReadableLogSegment>& segment : segments_to_delete) {
-      LOG_WITH_PREFIX(DETAIL)
-          << "Deleting log segment in path: " << segment->path()
-          << " (GCed ops < " << segment->footer().max_replicate_index() + 1
-          << ")";
-      RETURN_NOT_OK(get_env()->DeleteFile(segment->path()));
-      (*num_gced)++;
-
-      if (metrics_) {
-        metrics_->wal_size->IncrementBy(-1 * segment->file_size());
-        VLOG_WITH_PREFIX(4)
-            << "Decremented wal size by " << segment->file_size()
-            << " to " << metrics_->wal_size->value();
-      }
-    }
+    RETURN_NOT_OK(DeleteSegmentFiles(segments_to_delete, /* update_metrics= */ true));
+    *num_gced = static_cast<int32_t>(segments_to_delete.size());
 
     // Determine the minimum remaining replicate index in order to properly GC the index chunks.
     int64_t min_remaining_op_idx = reader_->GetMinReplicateIndex();
@@ -1936,6 +2099,9 @@ Status Log::Close() {
 
   WriteLatestMinStartTimeRunningTxnsInFooterBuilder();
 
+  // Waits for a quiescent marker write or segment deletion in progress. They refuse to run on a
+  // closed log, whose WAL dir may be deleted and recreated by remote bootstrap.
+  std::lock_guard log_copy_lock(log_copy_mutex_);
   std::lock_guard l(state_lock_);
   switch (log_state_) {
     case kLogWriting:
@@ -1954,9 +2120,11 @@ Status Log::Close() {
       }
       // Now that we have shut background_sync_threadpool_token_, don't call ::Sync.
       // call ::DoSync instead.
-      RETURN_NOT_OK(DoSync());
-      RETURN_NOT_OK(CloseCurrentSegment());
-      RETURN_NOT_OK(ReplaceSegmentInReaderUnlocked());
+      if (active_segment_) {
+        RETURN_NOT_OK(DoSync(last_appended_entry_op_id_));
+        RETURN_NOT_OK(CloseCurrentSegment());
+        RETURN_NOT_OK(ReplaceSegmentInReaderUnlocked());
+      }
       log_state_ = kLogClosed;
       if (background_synchronizer_wait_state_) {
         yb::ash::RaftLogWaitStatesTracker().Untrack(background_synchronizer_wait_state_);
@@ -1974,7 +2142,7 @@ Status Log::Close() {
       return Status::OK();
 
     default:
-      return STATUS(IllegalState, Substitute("Bad state for Close() $0", log_state_));
+      return STATUS(IllegalState, Format("Bad state for Close() $0", log_state_));
   }
 }
 
@@ -2103,43 +2271,48 @@ Result<bool> Log::CopySegmentUpTo(
   FATAL_INVALID_ENUM_VALUE(SegmentOpIdRelation, relation);
 }
 
-Status Log::CopyTo(const std::string& dest_wal_dir, const OpId max_included_op_id) {
+Status Log::CopyTo(
+    const std::string& dest_wal_dir, const OpId max_included_op_id,
+    const std::string& dest_tablet_id) {
   VLOG_WITH_PREFIX_AND_FUNC(1) << "dest_wal_dir: " << dest_wal_dir
                                << " max_included_op_id: " << AsString(max_included_op_id);
   // We mainly need log_copy_mutex_ to simplify managing of log_copy_min_index_.
+  // It also keeps DeleteSegmentsCoveredByQuiescentMarker from deleting segments being copied.
   std::lock_guard log_copy_lock(log_copy_mutex_);
   auto se = ScopeExit([this]() {
     std::lock_guard l(state_lock_);
     log_copy_min_index_ = std::numeric_limits<int64_t>::max();
   });
 
+  // If the log is not yet open for writing (kLogInitialized, e.g. when SPLIT_OP is replayed
+  // during tablet bootstrap), open it first so we can rollover current active segment if it is
+  // not empty.
+  RETURN_NOT_OK(EnsureSegmentInitialized());
+  // Rollover current active segment if it is not empty.
+  RETURN_NOT_OK(AllocateSegmentAndRollOver());
+
   SegmentSequence segments;
+  std::optional<QuiescentMarkerPB> marker;
   {
     UniqueLock<PerCpuRwMutex> l(state_lock_);
-    SCHECK(
-        log_state_ == kLogInitialized || log_state_ == kLogWriting, IllegalState,
-        Format("Invalid log state: $0", log_state_));
-    {
-      ReverseLock<decltype(l)> rlock(l);
-      // If the log is not yet open for writing (kLogInitialized, e.g. when SPLIT_OP is replayed
-      // during tablet bootstrap), open it first so we can rollover current active segment if it is
-      // not empty.
-      RETURN_NOT_OK(EnsureSegmentInitialized());
-      // Rollover current active segment if it is not empty.
-      RETURN_NOT_OK(AllocateSegmentAndRollOver());
-    }
-
     SCHECK_EQ(log_state_, kLogWriting, IllegalState, Format("Invalid log state: $0", log_state_));
     RETURN_NOT_OK(reader_->GetSegmentsSnapshot(&segments));
+    marker = quiescent_marker_;
 
-    // We skip the last snapshot segment because it might be mutable and is either:
+    // We skip the last snapshot segment if it is active, because it might be mutable and is either:
     // 1) A segment that was empty when we tried to rollover at the beginning of the
     // function.
     // 2) A segment that was created after calling AllocateSegmentAndRollOver above (or
     // created even after by concurrent operations).
     // In both cases segments in snapshot prior to the last one contain all operations that
     // were present in log before calling Log::CopyTo and not yet GCed.
-    RETURN_NOT_OK(segments.pop_back());
+    // Only the active segment has no footer.
+    if (!segments.empty()) {
+      const ReadableLogSegmentPtr& last_segment = VERIFY_RESULT(segments.back());
+      if (!last_segment->HasFooter()) {
+        RETURN_NOT_OK(segments.pop_back());
+      }
+    }
 
     // At this point all segments in `segments` are closed and immutable.
     // Looking for first op index.
@@ -2169,6 +2342,14 @@ Status Log::CopyTo(const std::string& dest_wal_dir, const OpId max_included_op_i
       options_.env->CreateDir(dest_wal_dir),
       Format("Failed to create tablet WAL dir $0", dest_wal_dir));
 
+  if (marker) {
+    SCHECK(
+        !dest_tablet_id.empty(), InvalidArgument,
+        "Log with quiescent marker requires dest tablet id");
+    marker->set_tablet_id(dest_tablet_id);
+    RETURN_NOT_OK(WriteQuiescentMarkerFile(options_.env, dest_wal_dir, *marker));
+  }
+
   for (const auto& segment : segments) {
     if (VERIFY_RESULT(CopySegmentUpTo(segment.get(), dest_wal_dir, max_included_op_id))) {
       break;
@@ -2176,6 +2357,152 @@ Status Log::CopyTo(const std::string& dest_wal_dir, const OpId max_included_op_i
   }
 
   return Status::OK();
+}
+
+std::string Log::QuiescentMarkerPath(const std::string& wal_dir) {
+  return JoinPathSegments(wal_dir, kQuiescentMarkerFileName);
+}
+
+Status Log::LoadQuiescentMarker(const std::vector<std::string>& wal_dir_files) {
+  bool has_marker = false;
+  for (const auto& file : wal_dir_files) {
+    if (!file.starts_with(kQuiescentMarkerFileName)) {
+      continue;
+    }
+    if (file == kQuiescentMarkerFileName) {
+      has_marker = true;
+    } else if (file.starts_with(kQuiescentMarkerTempFilePrefix)) {
+      // A crash during a marker write leaves its temp file, which nothing else deletes.
+      LOG_WITH_PREFIX(INFO) << "Deleting quiescent marker temp file " << file;
+      RETURN_NOT_OK(get_env()->DeleteFile(JoinPathSegments(wal_dir_, file)));
+    }
+  }
+  if (!has_marker) {
+    return Status::OK();
+  }
+  auto& marker = quiescent_marker_.emplace(
+      VERIFY_RESULT(ReadQuiescentMarkerFile(get_env(), wal_dir_)));
+  SCHECK_EQ(
+      marker.tablet_id(), tablet_id_, Corruption,
+      Format("Quiescent marker in $0 belongs to another tablet", wal_dir_));
+  LOG_WITH_PREFIX(INFO) << "Quiescent marker: " << marker.ShortDebugString();
+  const auto op_id = OpId::FromPB(marker.op_id());
+  quiescent_marker_op_id_.store(op_id, boost::memory_order_release);
+  last_appended_entry_op_id_ = op_id;
+  last_synced_entry_op_id_.store(op_id, boost::memory_order_release);
+  last_appended_entry_hybrid_time_ = HybridTime(marker.hybrid_time());
+  last_appended_entry_time_ = marker.entry_time();
+  // Segments are numbered after the ones that the marker replaced.
+  active_segment_sequence_number_ = std::max<uint64_t>(
+      active_segment_sequence_number_, marker.last_segment_sequence_number());
+  min_replicate_index_.store(op_id.index + 1, std::memory_order_release);
+  return Status::OK();
+}
+
+Result<QuiescentMarkerPB> Log::ReadQuiescentMarkerFile(Env* env, const std::string& wal_dir) {
+  return pb_util::ReadPBContainerFromPath<QuiescentMarkerPB>(env, QuiescentMarkerPath(wal_dir));
+}
+
+Status Log::WriteQuiescentMarkerFile(
+    Env* env, const std::string& wal_dir, const QuiescentMarkerPB& marker) {
+  return pb_util::WritePBContainerToPath(
+      env, QuiescentMarkerPath(wal_dir), marker, pb_util::OVERWRITE, pb_util::SYNC);
+}
+
+Status Log::WriteQuiescentMarker(const QuiescentMarkerPB& marker) {
+  SCHECK_EQ(marker.tablet_id(), tablet_id_, InvalidArgument, "Quiescent marker of another tablet");
+  const auto op_id = OpId::FromPB(marker.op_id());
+  SCHECK_GE(op_id, quiescent_marker_op_id(), InvalidArgument, "Quiescent marker moves backward");
+  std::lock_guard log_copy_lock(log_copy_mutex_);
+  {
+    PerCpuRwSharedLock lock(state_lock_);
+    SCHECK_EQ(log_state_, kLogWriting, IllegalState, "Log is not open");
+  }
+  RETURN_NOT_OK(WriteQuiescentMarkerFile(get_env(), wal_dir_, marker));
+  LOG_WITH_PREFIX(INFO) << "Wrote quiescent marker: " << marker.ShortDebugString();
+  std::lock_guard lock(state_lock_);
+  quiescent_marker_ = marker;
+  quiescent_marker_op_id_.store(op_id, boost::memory_order_release);
+  return Status::OK();
+}
+
+Status Log::TrimSegmentsCoveredByQuiescentMarkerUnlocked(SegmentSequence* segments) {
+  segments->clear();
+  if (!quiescent_marker_) {
+    return Status::OK();
+  }
+  RETURN_NOT_OK(reader_->GetSegmentsSnapshot(segments));
+  auto it = segments->begin();
+  while (it != segments->end() && SegmentCoveredByQuiescentMarker(**it, *quiescent_marker_)) {
+    ++it;
+  }
+  segments->truncate(it);
+  if (segments->empty()) {
+    return Status::OK();
+  }
+  const ReadableLogSegmentPtr& last_segment = VERIFY_RESULT(segments->back());
+  return reader_->TrimSegmentsUpToAndIncluding(last_segment->header().sequence_number());
+}
+
+bool Log::SegmentCoveredByQuiescentMarker(
+    const ReadableLogSegment& segment, const QuiescentMarkerPB& marker) {
+  return segment.HasFooter() &&
+         segment.footer().max_replicate_index() <= marker.op_id().index();
+}
+
+// No directory fsync: a segment whose deletion a crash loses is deleted again, by GC or, when the
+// quiescent marker covers it, by Init.
+Status Log::DeleteSegmentFiles(const SegmentSequence& segments, bool update_metrics) {
+  for (const auto& segment : segments) {
+    LOG_WITH_PREFIX(DETAIL)
+        << "Deleting log segment in path: " << segment->path()
+        << " (ops < " << segment->footer().max_replicate_index() + 1 << ")";
+    RETURN_NOT_OK(get_env()->DeleteFile(segment->path()));
+    if (update_metrics && metrics_) {
+      metrics_->wal_size->IncrementBy(-segment->file_size());
+      VLOG_WITH_PREFIX(4)
+          << "Decremented wal size by " << segment->file_size()
+          << " to " << metrics_->wal_size->value();
+    }
+  }
+  return Status::OK();
+}
+
+Result<size_t> Log::DeleteSegmentsCoveredByQuiescentMarker() {
+  std::lock_guard log_copy_lock(log_copy_mutex_);
+  SegmentSequence segments;
+  scoped_refptr<LogIndex> log_index;
+  int64_t marker_index;
+  {
+    std::lock_guard lock(state_lock_);
+    SCHECK_EQ(log_state_, kLogWriting, IllegalState, "Log is not open");
+    RETURN_NOT_OK(TrimSegmentsCoveredByQuiescentMarkerUnlocked(&segments));
+    if (segments.empty()) {
+      return 0;
+    }
+    log_index = log_index_;
+    marker_index = quiescent_marker_->op_id().index();
+  }
+  RETURN_NOT_OK(DeleteSegmentFiles(segments, /* update_metrics= */ true));
+  log_index->GC(marker_index + 1);
+  return segments.size();
+}
+
+OpId Log::quiescent_marker_op_id() const {
+  return quiescent_marker_op_id_.load(boost::memory_order_acquire);
+}
+
+std::optional<QuiescentMarkerPB> Log::quiescent_marker() const {
+  PerCpuRwSharedLock lock(state_lock_);
+  return quiescent_marker_;
+}
+
+Result<OpId> Log::LookupOpId(int64_t op_index) const {
+  const auto marker_op_id = this->quiescent_marker_op_id();
+  if (!marker_op_id.empty() && op_index == marker_op_id.index) {
+    return marker_op_id;
+  }
+  return VERIFY_RESULT(GetLogReader())->LookupOpId(op_index);
 }
 
 uint64_t Log::NextSegmentDesiredSize() {
@@ -2373,14 +2700,33 @@ Status Log::TEST_SubmitFuncToAppendToken(const std::function<void()>& func) {
 }
 
 Status Log::ResetLastSyncedEntryOpId(const OpId& op_id) {
-  RETURN_NOT_OK(WaitUntilAllFlushed());
+  auto reserved_entry_batch = VERIFY_RESULT(ReserveMarker(FLUSH_MARKER));
+  Synchronizer s;
+  RETURN_NOT_OK(AsyncAppend(
+      std::move(reserved_entry_batch),
+      Bind(&Log::DoResetLastSyncedEntryOpId, Unretained(this), op_id, s.AsStatusCallback())));
+  return s.Wait();
+}
 
+void Log::DoResetLastSyncedEntryOpId(
+    const OpId& op_id, const StatusCallback& callback, const Status& status) {
+  if (!status.ok()) {
+    callback.Run(status);
+    return;
+  }
+
+  // Otherwise the next sync on the appender thread would bring back the replaced tail.
+  last_appended_entry_op_id_ = op_id;
   OpId old_value;
   {
     std::lock_guard write_lock(last_synced_entry_op_id_mutex_);
     old_value = last_synced_entry_op_id_.load(boost::memory_order_acquire);
     last_synced_entry_op_id_.store(op_id, boost::memory_order_release);
     YB_PROFILE(last_synced_entry_op_id_cond_.notify_all());
+  }
+  {
+    std::lock_guard lock(active_segment_mutex_);
+    UpdateAtomicMin(&last_durable_entry_op_id_, op_id);
   }
   LOG_WITH_PREFIX(INFO) << "Reset last synced entry op id from " << old_value << " to " << op_id;
   if (old_value.term < op_id.term) {
@@ -2389,7 +2735,7 @@ Status Log::ResetLastSyncedEntryOpId(const OpId& op_id) {
                 << "old_value: " << old_value << ", op_id: " << op_id;
   }
 
-  return Status::OK();
+  callback.Run(Status::OK());
 }
 
 HybridTime Log::GetMinStartHTOfRunningTxnsFromGCSegments() const {

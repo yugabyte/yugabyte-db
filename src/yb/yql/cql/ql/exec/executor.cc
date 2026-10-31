@@ -13,6 +13,7 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include "yb/util/format.h"
 #include "yb/yql/cql/ql/exec/executor.h"
 
 #include "yb/ash/wait_state.h"
@@ -104,7 +105,6 @@ using client::YBTableAlterer;
 using client::YBTableCreator;
 using client::YBTableName;
 using client::YBTableType;
-using strings::Substitute;
 
 #define RETURN_STMT_NOT_OK(s, reset_async_calls) do {                      \
     auto&& _s = (s);                                                       \
@@ -846,7 +846,7 @@ Status Executor::GetOffsetOrLimit(
 
   if (expr_pb.has_value() && IsNull(expr_pb.value())) {
     return exec_context_->Error(get_val(tnode),
-                                Substitute("$0 value cannot be null.", clause_type).c_str(),
+                                Format("$0 value cannot be null.", clause_type).c_str(),
                                 ErrorCode::INVALID_ARGUMENTS);
   }
 
@@ -856,7 +856,7 @@ Status Executor::GetOffsetOrLimit(
 
   if (expr_pb.value().int32_value() < 0) {
     return exec_context_->Error(get_val(tnode),
-                                Substitute("$0 value cannot be negative.", clause_type).c_str(),
+                                Format("$0 value cannot be negative.", clause_type).c_str(),
                                 ErrorCode::INVALID_ARGUMENTS);
   }
   *value = expr_pb.value().int32_value();
@@ -2584,7 +2584,12 @@ Status Executor::ProcessOpStatus(const PTDmlStmt* stmt,
   }
 
   // If we got an error we need to manually produce a result in the op.
-  if (stmt->IsWriteOp() && stmt->returns_status()) {
+  // For a single statement, schema version mismatch is not reported as status, so the statement
+  // is retried instead. Batches keep reporting it, since other ops of the batch may have been
+  // applied and retrying the whole batch would re-execute them.
+  if (stmt->IsWriteOp() && stmt->returns_status() &&
+      (IsReturnsStatusBatch() ||
+       resp.status() != QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH)) {
     std::vector<ColumnSchema> columns;
     const auto& schema = stmt->table()->schema();
     columns.reserve(stmt->table()->schema().num_columns() + 2);

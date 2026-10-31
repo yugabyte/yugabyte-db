@@ -3,17 +3,30 @@ package com.yugabyte.yw.commissioner.tasks;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
+import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.ClusterAZ;
 import com.yugabyte.yw.models.helpers.LoadBalancerConfig;
 import com.yugabyte.yw.models.helpers.LoadBalancerPlacement;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import java.util.Collections;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -62,6 +75,8 @@ public class UpdateLoadBalancerConfig extends UniverseDefinitionTaskBase {
             updateUniverse(u, taskParams());
           };
       saveUniverseDetails(updater);
+      // After the save: the gflags follow the new load balancer settings.
+      createRebindProxiesTasks();
 
       createMarkUniverseUpdateSuccessTasks()
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
@@ -73,6 +88,83 @@ public class UpdateLoadBalancerConfig extends UniverseDefinitionTaskBase {
     } finally {
       unlockUniverseForUpdate(universe.getUniverseUUID());
     }
+  }
+
+  /**
+   * Restarts, one at a time, the tservers whose YSQL or YCQL proxy doesn't listen where its gflags
+   * now say: GFlagsUtil binds the proxies of a GCP cluster with a load balancer to 0.0.0.0. A node
+   * whose running proxies already match is skipped.
+   */
+  private void createRebindProxiesTasks() {
+    Universe universe = getUniverse();
+    boolean cloudEnabled =
+        confGetter.getConfForScope(
+            Customer.get(universe.getCustomerId()), CustomerConfKeys.cloudEnabled);
+    Set<ServerType> tserver = EnumSet.of(ServerType.TSERVER);
+    for (Cluster cluster : universe.getUniverseDetails().clusters) {
+      if (!GFlagsUtil.listensOnLoadBalancerAddress(cluster)) {
+        continue;
+      }
+      for (NodeDetails node : universe.getNodesInCluster(cluster.uuid)) {
+        if (!node.isTserver
+            || node.state != NodeState.Live
+            || !needsProxyRebind(universe, cluster, node, cloudEnabled)) {
+          continue;
+        }
+        List<NodeDetails> nodes = Collections.singletonList(node);
+        stopProcessesOnNodes(
+            nodes,
+            tserver,
+            false /* removeMasterFromQuorum */,
+            false /* deconfigure */,
+            false /* flushTablets */,
+            false /* ignoreStopError */,
+            SubTaskGroupType.StoppingNodeProcesses);
+        createGFlagsOverrideTasks(nodes, ServerType.TSERVER);
+        startProcessesOnNode(
+            node,
+            tserver,
+            SubTaskGroupType.StartingNodeProcesses,
+            false /* addMasterToQuorum */,
+            true /* wasStopped */,
+            true /* waitForServerReady */);
+      }
+    }
+  }
+
+  private boolean needsProxyRebind(
+      Universe universe, Cluster cluster, NodeDetails node, boolean cloudEnabled) {
+    Map<String, String> target =
+        GFlagsUtil.calculateFinalGFlags(
+            node,
+            getAnsibleConfigureServerParams(
+                cluster.userIntent,
+                node,
+                ServerType.TSERVER,
+                UpgradeTaskType.GFlags,
+                UpgradeTaskSubType.None),
+            cluster.userIntent,
+            universe,
+            GFlagsUtil.getGFlagsForNode(
+                node, ServerType.TSERVER, cluster, universe.getUniverseDetails().clusters),
+            config,
+            confGetter);
+    Map<String, String> running =
+        GFlagsUtil.getActualGFlags(
+            node,
+            ServerType.TSERVER,
+            universe,
+            true /* inMemory */,
+            nodeUniverseManager,
+            nodeUIApiHelper,
+            cloudEnabled);
+    // Unknown: a restart is safe, a skip may leave the load balancer unable to connect.
+    if (running == null) {
+      return true;
+    }
+    return Stream.of(GFlagsUtil.PSQL_PROXY_BIND_ADDRESS, GFlagsUtil.CSQL_PROXY_BIND_ADDRESS)
+        .filter(target::containsKey)
+        .anyMatch(flag -> !Objects.equals(target.get(flag), running.get(flag)));
   }
 
   private void compareLBs(

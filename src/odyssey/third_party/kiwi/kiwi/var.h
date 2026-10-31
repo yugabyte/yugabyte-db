@@ -55,7 +55,8 @@ struct kiwi_var {
 #endif
 	char name[KIWI_MAX_NAME_SIZE];
 	int name_len;
-	char value[KIWI_MAX_VAR_SIZE];
+	char value_buf[KIWI_MAX_VAR_SIZE];
+	char *value;
 	int value_len;
 };
 
@@ -98,6 +99,7 @@ static inline void kiwi_var_init(kiwi_var_t *var, char *name, int name_len)
 		memcpy(var->name, name, name_len);
 #endif
 	var->name_len = name_len;
+	var->value = var->value_buf;
 	var->value_len = 0;
 }
 
@@ -106,9 +108,33 @@ static inline int kiwi_var_set(kiwi_var_t *var, kiwi_var_type_t type,
 			       char *value, int value_len)
 {
 	var->type = type;
-	if (value_len > (int)sizeof(var->value))
-		return -1;
-	memcpy(var->value, value, value_len);
+	if (value_len > (int)sizeof(var->value_buf)) {
+		/*
+		 * the value does not fit into the inline buffer,
+		 * keep it on the heap;
+		 * a heap buffer always has at least value_len bytes,
+		 * so it can be reused for a shorter value
+		 */
+		char *heap;
+		if (var->value == var->value_buf) {
+			heap = malloc(value_len);
+		} else if (value_len > var->value_len) {
+			heap = realloc(var->value, value_len);
+		} else {
+			heap = var->value;
+		}
+		if (heap == NULL) {
+			return -1;
+		}
+		memcpy(heap, value, value_len);
+		var->value = heap;
+	} else {
+		if (var->value != var->value_buf) {
+			free(var->value);
+			var->value = var->value_buf;
+		}
+		memcpy(var->value, value, value_len);
+	}
 	var->value_len = value_len;
 	return 0;
 }
@@ -116,7 +142,35 @@ static inline int kiwi_var_set(kiwi_var_t *var, kiwi_var_type_t type,
 static inline void kiwi_var_unset(kiwi_var_t *var)
 {
 	var->type = KIWI_VAR_UNDEF;
+	if (var->value != var->value_buf) {
+		free(var->value);
+		var->value = var->value_buf;
+	}
 	var->value_len = 0;
+}
+#endif
+
+static inline void kiwi_var_free(kiwi_var_t *var)
+{
+#ifdef YB_GUC_SUPPORT_VIA_SHMEM
+	kiwi_var_unset(var);
+#else
+	if (var->value != var->value_buf) {
+		free(var->value);
+		var->value = var->value_buf;
+	}
+	var->value_len = 0;
+#endif
+}
+
+#ifdef YB_GUC_SUPPORT_VIA_SHMEM
+static inline void kiwi_vars_free(kiwi_vars_t *vars)
+{
+	kiwi_var_type_t type;
+	type = KIWI_VAR_CLIENT_ENCODING;
+	for (; type < KIWI_VAR_MAX; type++) {
+		kiwi_var_free(&vars->vars[type]);
+	}
 }
 #endif
 
@@ -150,31 +204,73 @@ static inline kiwi_var_t *kiwi_vars_get(kiwi_vars_t *vars, kiwi_var_type_t type)
 }
 #else
 
+static inline int yb_kiwi_var_set(kiwi_var_t *var, char *value, int value_len);
+
+/*
+ * YB: vars live in an array that is realloc'd and shifted, which leaves an
+ * inline var's value pointing at its old slot. A value is on the heap iff it
+ * does not fit into value_buf (see yb_kiwi_var_set), so re-point the rest.
+ */
+static inline void yb_kiwi_vars_fix_inline_values(kiwi_vars_t *vars)
+{
+	for (int i = 0; i < vars->size; i++) {
+		kiwi_var_t *var = &vars->vars[i];
+		if (var->value_len <= (int)sizeof(var->value_buf))
+			var->value = var->value_buf;
+	}
+}
+
 /* Dynamically allocate a new GUC variable. */
 static inline void yb_kiwi_var_push(kiwi_vars_t *vars, char *name, int name_len,
 				    char *value, int value_len)
 {
-	vars->size++;
-	if (vars->size == 1)
+	/* YB: name is a fixed-size buffer; length includes the NUL */
+	if (name_len > KIWI_MAX_NAME_SIZE)
+		return;
+
+	if (vars->size == 0)
 		vars->vars = malloc(sizeof(kiwi_var_t));
 	else
 		/* TODO (rbarigidad): Double list size rather than incrementing by 1 */
-		vars->vars = realloc(vars->vars, vars->size * sizeof(kiwi_var_t));
+		vars->vars = realloc(vars->vars, (vars->size + 1) * sizeof(kiwi_var_t));
+	/* Fix up only the existing vars, the new slot is not initialized yet */
+	yb_kiwi_vars_fix_inline_values(vars);
+	vars->size++;
 
 	kiwi_var_t *var = &vars->vars[vars->size - 1];
 	memcpy(var->name, name, name_len);
 
 	var->name_len = name_len;
-	memcpy(var->value, value, value_len);
-	var->value_len = value_len;
+	var->value = var->value_buf;
+	var->value_len = 0;
+	if (yb_kiwi_var_set(var, value, value_len) == -1)
+		vars->size--;
 }
 
 static inline int yb_kiwi_var_set(kiwi_var_t *var, char *value, int value_len)
 {
-	if (value_len > (int)sizeof(var->value))
-		return -1;
-
-	memcpy(var->value, value, value_len);
+	/* YB: same heap fallback as upstream kiwi_var_set() */
+	if (value_len > (int)sizeof(var->value_buf)) {
+		char *heap;
+		if (var->value == var->value_buf) {
+			heap = malloc(value_len);
+		} else if (value_len > var->value_len) {
+			heap = realloc(var->value, value_len);
+		} else {
+			heap = var->value;
+		}
+		if (heap == NULL) {
+			return -1;
+		}
+		memcpy(heap, value, value_len);
+		var->value = heap;
+	} else {
+		if (var->value != var->value_buf) {
+			free(var->value);
+			var->value = var->value_buf;
+		}
+		memcpy(var->value, value, value_len);
+	}
 	var->value_len = value_len;
 	return 0;
 }
@@ -271,6 +367,8 @@ static inline void kiwi_vars_init(kiwi_vars_t *vars,
 static inline void yb_kiwi_vars_free(kiwi_vars_t *vars)
 {
 #ifndef YB_GUC_SUPPORT_VIA_SHMEM
+	for (int i = 0; i < vars->size; i++)
+		kiwi_var_free(&vars->vars[i]);
 	free(vars->vars);
 	vars->vars = NULL;
 	vars->size = 0;
@@ -350,12 +448,15 @@ static inline void yb_kiwi_vars_remove_if_exists(kiwi_vars_t *vars, char *name,
 	if (idx_to_remove == -1)
 		return;
 
+	kiwi_var_free(&vars->vars[idx_to_remove]);
+
 	/* Shift elements to the left to fill the gap we have created */
 	for (int i = idx_to_remove; i + 1 < vars->size; i++) {
 		vars->vars[i] = vars->vars[i + 1];
 	}
 	vars->size--;
 	vars->vars = realloc(vars->vars, vars->size * sizeof(kiwi_var_t));
+	yb_kiwi_vars_fix_inline_values(vars);
 #endif
 }
 
@@ -440,7 +541,7 @@ static inline int kiwi_enquote(char *src, char *dst, int dst_len)
 		if (*src == '\'')
 			*pos++ = '\'';
 		else if (*src == '\\') {
-			*dst++ = '\\';
+			*pos++ = '\\';
 		}
 		*pos++ = *src++;
 	}
@@ -527,15 +628,15 @@ yb_kiwi_add_var_to_query(kiwi_var_t *var, char *query, int pos, int query_len)
 		if (strlen(var->value) == 0 ||
 		    strcmp(var->value, "\"\"") == 0 ||
 		    yb_only_white_space(var->value)) {
-			memcpy(query + pos, "\'\'", 2);
 			if (query_len < pos + 2)
 				return -1;
+			memcpy(query + pos, "\'\'", 2);
 			pos += 2;
 		} else {
 			int copy_len = var->value_len - 1;
-			memcpy(query + pos, var->value, copy_len);
 			if (query_len < pos + copy_len)
 				return -1;
+			memcpy(query + pos, var->value, copy_len);
 			pos += copy_len;
 		}
 	} else {

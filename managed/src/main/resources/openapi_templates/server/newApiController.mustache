@@ -56,6 +56,7 @@ import com.yugabyte.yw.controllers.AbstractPlatformController;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.http.conditional.ConditionalGet;
 import com.yugabyte.yw.common.operator.annotations.BlockOperatorResource;
 import com.yugabyte.yw.common.operator.annotations.OperatorResourceTypes;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
@@ -110,6 +111,11 @@ public class {{classname}}Controller extends {{#operations.operation}}{{#-first}
   {{/-last}}
   {{/noAuthz}}
   {{/vendorExtensions.x-yba-api-authz}}
+  {{#vendorExtensions.x-yba-api-conditional-get}}
+  @ConditionalGet(
+      value = {{provider}}.class{{#resourcePathSegment}},
+      resourcePathSegment = "{{resourcePathSegment}}"{{/resourcePathSegment}})
+  {{/vendorExtensions.x-yba-api-conditional-get}}
   {{#vendorExtensions.x-yba-api-block-operator-resource}}
   @BlockOperatorResource(
       resource =

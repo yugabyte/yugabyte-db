@@ -51,10 +51,10 @@ yb-admin \
 
 ### Online help
 
-To display the online help, run `yb-admin --help` from the YugabyteDB home directory.
+To list all operations, run `yb-admin` with no arguments from the YugabyteDB home directory.
 
 ```sh
-./bin/yb-admin --help
+./bin/yb-admin
 ```
 
 ## Commands
@@ -598,7 +598,7 @@ Verify this in the Master UI by opening the **YB-Master UI** (`<master_host>:700
 
 Setting placement for tables is not supported for clusters with read-replicas or leader affinity policies enabled.
 
-Use this command to create custom placement policies only for YCQL tables or transaction status tables. For YSQL tables, use [Tablespaces](../../explore/going-beyond-sql/tablespaces) instead.
+Use this command to create custom placement policies only for YCQL tables or transaction status tables. For YSQL tables, use [CREATE TABLESPACE](../../api/ysql/the-sql-language/statements/ddl_create_tablespace/) instead.
 {{< /note >}}
 
 #### create_transaction_table

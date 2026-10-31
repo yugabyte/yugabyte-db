@@ -19,9 +19,12 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.common.DeltaEvaluator;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -180,7 +183,7 @@ public class RollbackResizeNodeTest extends UpgradeTaskTest {
                 u.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags = beforeFlags);
 
     seedFailedResize(/* changeInstance */ true, /* growVolume */ false, /* changeIops */ false);
-    persistFailedResizeForward(NEW_INSTANCE_TYPE, targetFlags);
+    seedFailedResizeTargetGFlags(targetFlags);
 
     ResizeNodeParams rollbackParams = createRollbackParams();
     rollbackParams.getPrimaryCluster().userIntent.specificGFlags = beforeFlags;
@@ -208,9 +211,84 @@ public class RollbackResizeNodeTest extends UpgradeTaskTest {
   }
 
   @Test
+  public void testRollbackRevertsGFlagsWithoutOriginalTask() {
+    SpecificGFlags beforeFlags =
+        SpecificGFlags.construct(Map.of("master-before", "1"), Map.of("tserver-before", "2"));
+    SpecificGFlags targetFlags =
+        SpecificGFlags.construct(
+            Map.of("master-before", "5", "added-master", "x"), Map.of("added-tserver", "y"));
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u ->
+                u.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags = beforeFlags);
+
+    seedFailedResize(/* changeInstance */ true, /* growVolume */ false, /* changeIops */ false);
+    seedFailedResizeTargetGFlags(targetFlags);
+
+    ResizeNodeParams rollbackParams = createRollbackParams();
+    rollbackParams.setOriginalTaskUUID(UUID.randomUUID());
+    rollbackParams.getPrimaryCluster().userIntent.specificGFlags = beforeFlags;
+    rollbackParams.masterGFlags = new HashMap<>();
+    rollbackParams.tserverGFlags = new HashMap<>();
+    TaskInfo taskInfo = submitRollback(rollbackParams);
+    assertEquals(Success, taskInfo.getTaskState());
+    assertGFlagRevertConfTasks(gflagConfSubtasks(taskInfo));
+  }
+
+  /**
+   * Legacy top-level gflags: the freeze target carries the forward maps while YBA DB still holds
+   * before. Rollback must rewrite every node from that target, not from YBA DB.
+   */
+  @Test
+  public void testRollbackRevertsLegacyGFlagsOnEveryNode() {
+    Map<String, String> beforeMaster = new HashMap<>(Map.of("master-before", "1"));
+    Map<String, String> beforeTserver = new HashMap<>(Map.of("tserver-before", "2"));
+    Map<String, String> targetMaster =
+        new HashMap<>(Map.of("master-before", "5", "added-master", "x"));
+    Map<String, String> targetTserver = new HashMap<>(Map.of("added-tserver", "y"));
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              UserIntent intent = u.getUniverseDetails().getPrimaryCluster().userIntent;
+              intent.specificGFlags = null;
+              intent.masterGFlags = beforeMaster;
+              intent.tserverGFlags = beforeTserver;
+            });
+
+    seedFailedResize(/* changeInstance */ true, /* growVolume */ false, /* changeIops */ false);
+    seedFailedResizeTargetLegacyGFlags(targetMaster, targetTserver);
+
+    ResizeNodeParams rollbackParams = createRollbackParams();
+    rollbackParams.getPrimaryCluster().userIntent.specificGFlags = null;
+    rollbackParams.masterGFlags = new HashMap<>(beforeMaster);
+    rollbackParams.tserverGFlags = new HashMap<>(beforeTserver);
+    TaskInfo taskInfo = submitRollback(rollbackParams);
+    assertEquals(Success, taskInfo.getTaskState());
+
+    List<TaskInfo> confUpdates = gflagConfSubtasks(taskInfo);
+    Set<String> confNodes =
+        confUpdates.stream()
+            .map(t -> t.getTaskParams().get("nodeName").asText())
+            .collect(Collectors.toSet());
+    Set<String> universeNodes =
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).getNodes().stream()
+            .map(n -> n.nodeName)
+            .collect(Collectors.toSet());
+    assertEquals(universeNodes, confNodes);
+    assertGFlagRevertConfTasks(confUpdates);
+
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    UserIntent intent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    assertNull(intent.specificGFlags);
+    assertEquals(beforeMaster, intent.masterGFlags);
+    assertEquals(beforeTserver, intent.tserverGFlags);
+  }
+
+  @Test
   public void testRollbackInstanceOnlyHasNoGFlagsConfUpdates() {
     seedFailedResize(/* changeInstance */ true, /* growVolume */ false, /* changeIops */ false);
-    persistFailedResizeForward(NEW_INSTANCE_TYPE, null);
     ResizeNodeParams rollbackParams = createRollbackParams();
     rollbackParams.masterGFlags = new HashMap<>();
     rollbackParams.tserverGFlags = new HashMap<>();
@@ -233,7 +311,7 @@ public class RollbackResizeNodeTest extends UpgradeTaskTest {
                 u.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags = beforeFlags);
 
     seedFailedResize(/* changeInstance */ true, /* growVolume */ false, /* changeIops */ false);
-    persistFailedResizeForward(NEW_INSTANCE_TYPE, targetFlags);
+    seedFailedResizeTargetGFlags(targetFlags);
     String alreadyBefore =
         Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).getNodes().stream()
             .findFirst()
@@ -413,6 +491,139 @@ public class RollbackResizeNodeTest extends UpgradeTaskTest {
   public void testRollbackResizeNodeRetryLastNodeState() throws InterruptedException {
     seedFailedResize(/* changeInstance */ true, /* growVolume */ false, /* changeIops */ false);
     ResizeNodeParams rollbackParams = createRollbackParams();
+    TaskInfo taskInfo = abortRollbackAtLastInstanceChange(rollbackParams);
+
+    Date expectedFailedTaskCreateTime = rollbackParams.getFailedTaskCreateTime();
+    CustomerTask retryTask =
+        customerTaskManager.retryCustomerTask(defaultCustomer.getUuid(), taskInfo.getUuid());
+    taskInfo = waitForTask(retryTask.getTaskUUID());
+    assertEquals(Success, taskInfo.getTaskState());
+    ResizeNodeParams retriedParams =
+        Json.fromJson(taskInfo.getTaskParams(), ResizeNodeParams.class);
+    assertEquals(
+        expectedFailedTaskCreateTime.getTime(), retriedParams.getFailedTaskCreateTime().getTime());
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    for (NodeDetails node : universe.getNodes()) {
+      assertEquals(NodeDetails.NodeState.Live, node.state);
+      assertEquals(DEFAULT_INSTANCE_TYPE, node.cloudInfo.instance_type);
+    }
+    assertNull(universe.getStateTransitionDetails());
+  }
+
+  @Test
+  public void testRollbackRejectedOnOci() {
+    // PLAT-23226: the task refuses a first run on OCI even when submitted without the computer.
+    seedFailedResize(/* changeInstance */ true, /* growVolume */ false, /* changeIops */ false);
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u ->
+                u.getUniverseDetails().getPrimaryCluster().userIntent.providerType =
+                    Common.CloudType.oci);
+    PlatformServiceException ex =
+        assertThrows(PlatformServiceException.class, () -> submitRollback(createRollbackParams()));
+    assertThat(ex.getMessage(), containsString("not supported on oci"));
+  }
+
+  @Test
+  public void testRollbackRetryAllowedOnOci() throws InterruptedException {
+    // PLAT-23226: a rollback that already started must still finish on retry. It owns the
+    // universe, so refusing it would leave the universe locked with nothing left to run.
+    seedFailedResize(/* changeInstance */ true, /* growVolume */ false, /* changeIops */ false);
+    TaskInfo taskInfo = abortRollbackAtLastInstanceChange(createRollbackParams());
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u ->
+                u.getUniverseDetails().getPrimaryCluster().userIntent.providerType =
+                    Common.CloudType.oci);
+
+    CustomerTask retryTask =
+        customerTaskManager.retryCustomerTask(defaultCustomer.getUuid(), taskInfo.getUuid());
+    assertEquals(Success, waitForTask(retryTask.getTaskUUID()).getTaskState());
+  }
+
+  @Test
+  public void testRollbackOnOciSubmitSaysWhy() {
+    // PLAT-23226: a failed OCI resize has oci in its own params too. Submit must still give the
+    // reason rather than a generic "cannot be rolled back".
+    factory.globalRuntimeConf().setValue("yb.task.allow_resize_node_rollback", "true");
+    seedFailedResize(/* changeInstance */ true, /* growVolume */ false, /* changeIops */ false);
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u ->
+                u.getUniverseDetails().getPrimaryCluster().userIntent.providerType =
+                    Common.CloudType.oci);
+    TaskInfo failedTask = TaskInfo.getOrBadRequest(failedResizeTaskUuid);
+    failedTask.setTaskParams(Json.toJson(createRollbackParams()));
+    failedTask.save();
+    CustomerTask.create(
+        defaultCustomer,
+        defaultUniverse.getUniverseUUID(),
+        failedResizeTaskUuid,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.ResizeNode,
+        "fake-name");
+
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                customerTaskManager.rollbackCustomerTask(
+                    defaultCustomer.getUuid(), failedResizeTaskUuid));
+    assertThat(ex.getMessage(), containsString("not supported on oci"));
+  }
+
+  @Test
+  public void testListingHidesRollbackOnOci() {
+    factory.globalRuntimeConf().setValue("yb.task.allow_resize_node_rollback", "true");
+    ResizeNodeParams ociParams = createRollbackParams();
+    ociParams.getPrimaryCluster().userIntent.providerType = Common.CloudType.oci;
+
+    assertTrue(listingCanRollback(Json.toJson(createRollbackParams())));
+    assertFalse(listingCanRollback(Json.toJson(ociParams)));
+    // Params that don't bind are left to submit rather than breaking the task list.
+    assertTrue(listingCanRollback(Json.parse("{\"clusters\": \"not-a-list\"}")));
+  }
+
+  /** Lists a failed ResizeNode with these params that owns the universe, as the task list does. */
+  private boolean listingCanRollback(JsonNode failedParams) {
+    TaskInfo taskInfo = new TaskInfo(TaskType.ResizeNode, null);
+    taskInfo.setTaskParams(failedParams);
+    taskInfo.setOwner("");
+    taskInfo.setYbaVersion(Util.getYbaVersion());
+    taskInfo.setTaskState(TaskInfo.State.Failure);
+    taskInfo.save();
+    UUID universeUuid = defaultUniverse.getUniverseUUID();
+    CustomerTask.create(
+        defaultCustomer,
+        universeUuid,
+        taskInfo.getUuid(),
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.ResizeNode,
+        "fake-name");
+    // Re-fetch so the OneToOne TaskInfo join is populated (create() does not load it).
+    CustomerTask customerTask =
+        CustomerTask.getOrBadRequest(defaultCustomer.getUuid(), taskInfo.getUuid());
+    Map<UUID, Set<String>> owners =
+        ImmutableMap.of(universeUuid, ImmutableSet.of(taskInfo.getUuid().toString()));
+    return commissioner
+        .buildTaskStatus(
+            customerTask,
+            Collections.emptyList(),
+            owners,
+            owners,
+            Collections.emptySet(),
+            ImmutableMap.of(universeUuid, customerTask))
+        .orElseThrow(() -> new AssertionError("expected task status"))
+        .get("canRollback")
+        .asBoolean();
+  }
+
+  /** Runs a rollback of the seeded failed resize and aborts it at its last instance change. */
+  private TaskInfo abortRollbackAtLastInstanceChange(ResizeNodeParams rollbackParams)
+      throws InterruptedException {
     rollbackParams.expectedUniverseVersion = -1;
     rollbackParams.creatingUser = defaultUser;
     rollbackParams.sleepAfterMasterRestartMillis = 5;
@@ -427,9 +638,8 @@ public class RollbackResizeNodeTest extends UpgradeTaskTest {
         CustomerTask.TargetType.Universe,
         CustomerTask.TaskType.RollbackResizeNode,
         "fake-name");
+    CommissionerBaseTest.waitForTaskPaused(taskUUID, commissioner);
     TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
-    CommissionerBaseTest.waitForTaskPaused(taskInfo.getUuid(), commissioner);
-    taskInfo = TaskInfo.getOrBadRequest(taskInfo.getUuid());
     int i = 0;
     int lastNodeUpdatePosition = 0;
     for (TaskInfo subTask : taskInfo.getSubTasks()) {
@@ -439,21 +649,11 @@ public class RollbackResizeNodeTest extends UpgradeTaskTest {
       i++;
     }
     setAbortPosition(lastNodeUpdatePosition);
-    commissioner.resumeTask(taskInfo.getUuid());
-    taskInfo = waitForTask(taskInfo.getUuid());
+    commissioner.resumeTask(taskUUID);
+    taskInfo = waitForTask(taskUUID);
     assertEquals(Aborted, taskInfo.getTaskState());
     clearAbortOrPausePositions();
-
-    CustomerTask retryTask =
-        customerTaskManager.retryCustomerTask(defaultCustomer.getUuid(), taskInfo.getUuid());
-    taskInfo = waitForTask(retryTask.getTaskUUID());
-    assertEquals(Success, taskInfo.getTaskState());
-    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
-    for (NodeDetails node : universe.getNodes()) {
-      assertEquals(NodeDetails.NodeState.Live, node.state);
-      assertEquals(DEFAULT_INSTANCE_TYPE, node.cloudInfo.instance_type);
-    }
-    assertNull(universe.getStateTransitionDetails());
+    return taskInfo;
   }
 
   @Test
@@ -607,26 +807,42 @@ public class RollbackResizeNodeTest extends UpgradeTaskTest {
     return taskInfo.getUuid();
   }
 
-  private void persistFailedResizeForward(String instanceType, SpecificGFlags specificGFlags) {
-    ResizeNodeParams forward = new ResizeNodeParams();
-    forward.setUniverseUUID(defaultUniverse.getUniverseUUID());
-    forward.upgradeOption = UpgradeOption.ROLLING_UPGRADE;
-    forward.clusters =
-        Json.fromJson(
-                Json.toJson(
-                    Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
-                        .getUniverseDetails()),
-                UniverseDefinitionTaskParams.class)
-            .clusters;
-    forward.getPrimaryCluster().userIntent.instanceType = instanceType;
-    if (specificGFlags != null) {
-      forward.getPrimaryCluster().userIntent.specificGFlags = specificGFlags;
-    }
-    forward.masterGFlags = new HashMap<>();
-    forward.tserverGFlags = new HashMap<>();
-    TaskInfo failedInfo = TaskInfo.getOrBadRequest(failedResizeTaskUuid);
-    failedInfo.setTaskParams(Json.toJson(forward));
-    failedInfo.save();
+  /**
+   * Rebuilds the freeze-captured delta so its target carries {@code targetFlags}. Matches what
+   * {@link ResizeNode#getTargetUniverseDetails()} records for a specificGFlags resize.
+   */
+  private void seedFailedResizeTargetGFlags(SpecificGFlags targetFlags) {
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    StateTransitionDetails details = universe.getStateTransitionDetails();
+    UniverseDefinitionTaskParams before = details.getBeforeUniverseDetails();
+    UniverseDefinitionTaskParams target = details.getTargetUniverseDetails();
+    target.getPrimaryCluster().userIntent.specificGFlags = targetFlags;
+    JsonNode delta = DeltaEvaluator.buildDeltaJsonTree(before, target);
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> u.setStateTransitionDetails(new StateTransitionDetails(true, delta)));
+  }
+
+  /**
+   * Rebuilds the freeze-captured delta so its target carries legacy top-level gflag maps. Matches
+   * what {@link ResizeNode#getTargetUniverseDetails()} records for a non-specificGFlags resize.
+   */
+  private void seedFailedResizeTargetLegacyGFlags(
+      Map<String, String> targetMaster, Map<String, String> targetTserver) {
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    StateTransitionDetails details = universe.getStateTransitionDetails();
+    UniverseDefinitionTaskParams before = details.getBeforeUniverseDetails();
+    UniverseDefinitionTaskParams target = details.getTargetUniverseDetails();
+    UserIntent targetIntent = target.getPrimaryCluster().userIntent;
+    targetIntent.specificGFlags = null;
+    targetIntent.masterGFlags = targetMaster;
+    targetIntent.tserverGFlags = targetTserver;
+    JsonNode delta = DeltaEvaluator.buildDeltaJsonTree(before, target);
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> u.setStateTransitionDetails(new StateTransitionDetails(true, delta)));
   }
 
   private List<TaskInfo> gflagConfSubtasks(TaskInfo taskInfo) {
@@ -667,6 +883,10 @@ public class RollbackResizeNodeTest extends UpgradeTaskTest {
     UserIntent intent = params.getPrimaryCluster().userIntent;
     intent.instanceType = DEFAULT_INSTANCE_TYPE;
     params.setOriginalTaskUUID(failedResizeTaskUuid);
+    if (failedResizeTaskUuid != null) {
+      TaskInfo.maybeGet(failedResizeTaskUuid)
+          .ifPresent(ti -> params.setFailedTaskCreateTime(ti.getCreateTime()));
+    }
     return params;
   }
 

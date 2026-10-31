@@ -17,8 +17,6 @@
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
 
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -257,7 +255,7 @@ void ConfigureTCMalloc(int64_t mem_limit) {
   }
 
   if (FLAGS_heap_profile_path.empty()) {
-    const auto path = strings::Substitute(
+    const auto path = Format(
         "$0/$1.$2", FLAGS_tmp_dir, google::ProgramInvocationShortName(), getpid());
     CHECK_OK(SET_FLAG_DEFAULT_AND_CURRENT(heap_profile_path, path));
   }

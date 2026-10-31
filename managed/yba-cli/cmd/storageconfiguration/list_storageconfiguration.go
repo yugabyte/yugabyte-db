@@ -8,6 +8,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/storageconfiguration/storageconfigurationutil"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
@@ -33,7 +34,11 @@ func init() {
 
 	listStorageConfigurationCmd.Flags().StringP("name", "n", "",
 		"[Optional] Name of the storage configuration.")
+	allowedCodes := "s3, gcs, nfs, az"
+	if util.IsFeatureFlagEnabled(util.PREVIEW) {
+		allowedCodes += ", oci"
+	}
 	listStorageConfigurationCmd.Flags().StringP("code", "c", "",
 		"[Optional] Code of the storage configuration, defaults to list all"+
-			" storage configurations. Allowed values: s3, gcs, nfs, az.")
+			" storage configurations. Allowed values: "+allowedCodes+".")
 }

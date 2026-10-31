@@ -72,6 +72,13 @@ EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = power(2, 3 - k) WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k % 2 = 0;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v2 = CASE WHEN v1 % 2 = 0 THEN v2 * 3 ELSE v2 *2 END WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v2 = CASE v1 WHEN 1 THEN v2 * 2 ELSE v2 END WHERE k = 1;
+-- Nullable identity SET must not corrupt the identity column (GH-33845).
+-- With pushdown disabled, the identity target falls back to the non-single-row path.
+EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 2, v2 = v2 WHERE k = 1;
+-- With pushdown enabled, the identity target is evaluated by DocDB on the fast path.
+SET yb_enable_expression_pushdown TO on;
+EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 2, v2 = v2 WHERE k = 1;
+SET yb_enable_expression_pushdown TO off;
 
 --
 -- Test single-row UPDATE/DELETE execution.
@@ -89,6 +96,21 @@ SELECT * FROM single_row;
 
 DELETE FROM single_row WHERE k = 1;
 SELECT * FROM single_row;
+
+-- Nullable identity SET must preserve the column value (GH-33845).
+INSERT INTO single_row VALUES (1, 1, 1);
+UPDATE single_row SET v1 = 42, v2 = v2 WHERE k = 1;
+SELECT * FROM single_row;
+DELETE FROM single_row WHERE k = 1;
+
+-- Same validation under pushdown enabled exercises the fast-path fix (GH-33845).
+SET yb_enable_expression_pushdown TO on;
+INSERT INTO single_row VALUES (1, 1, 1);
+EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 42, v2 = v2 WHERE k = 1;
+UPDATE single_row SET v1 = 42, v2 = v2 WHERE k = 1;
+SELECT * FROM single_row;
+DELETE FROM single_row WHERE k = 1;
+SET yb_enable_expression_pushdown TO off;
 
 --
 -- Test UPDATE/DELETEs of non-existent data return no rows.
@@ -1073,6 +1095,25 @@ UPDATE single_row_not_null_constraints_partitioned SET v1 = v1 + 1, v2 = v2 WHER
 UPDATE single_row_not_null_constraints_partitioned SET v2 = NULL WHERE k = 1;
 SELECT * FROM single_row_not_null_constraints_partitioned ORDER BY k;
 
+-- Nullable identity SET on partitioned table must preserve value (GH-33845).
+CREATE TABLE single_row_nullable_partitioned (k int PRIMARY KEY, v1 int, v2 int) PARTITION BY RANGE (k);
+CREATE TABLE nullable_partitioned_1 PARTITION OF single_row_nullable_partitioned FOR VALUES FROM (1) TO (10);
+INSERT INTO nullable_partitioned_1 VALUES (1, 1, 1);
+EXPLAIN (COSTS FALSE) UPDATE single_row_nullable_partitioned SET v1 = 2, v2 = v2 WHERE k = 1;
+UPDATE single_row_nullable_partitioned SET v1 = 2, v2 = v2 WHERE k = 1;
+SELECT * FROM single_row_nullable_partitioned ORDER BY k;
+DELETE FROM single_row_nullable_partitioned WHERE k = 1;
+
+-- Same validation under pushdown enabled exercises the fast-path fix on
+-- partitioned tables (GH-33845).
+SET yb_enable_expression_pushdown TO on;
+INSERT INTO nullable_partitioned_1 VALUES (1, 1, 1);
+EXPLAIN (COSTS FALSE) UPDATE single_row_nullable_partitioned SET v1 = 42, v2 = v2 WHERE k = 1;
+UPDATE single_row_nullable_partitioned SET v1 = 42, v2 = v2 WHERE k = 1;
+SELECT * FROM single_row_nullable_partitioned ORDER BY k;
+DELETE FROM single_row_nullable_partitioned WHERE k = 1;
+SET yb_enable_expression_pushdown TO off;
+
 -- Cleanup.
 DROP FUNCTION next_v3;
 DROP FUNCTION assign_one_plus_param_to_v1;
@@ -1086,6 +1127,8 @@ DROP TABLE single_row_no_primary_key;
 DROP TABLE single_row_range_asc_primary_key;
 DROP TABLE single_row_range_desc_primary_key;
 DROP TABLE single_row_not_null_constraints;
+DROP TABLE single_row_not_null_constraints_partitioned;
+DROP TABLE single_row_nullable_partitioned;
 DROP TABLE single_row_check_constraints;
 DROP TABLE single_row_check_constraints2;
 DROP TABLE single_row_decimal;

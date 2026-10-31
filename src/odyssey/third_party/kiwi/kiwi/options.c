@@ -26,7 +26,7 @@ int kiwi_parse_options_and_update_vars(kiwi_vars_t *vars, char *pgoptions,
 	}
 	int errs = 0;
 
-	char optarg_buf[KIWI_MAX_VAR_SIZE];
+	char optarg_buf[KIWI_MAX_NAME_SIZE];
 	char optval_buf[KIWI_MAX_VAR_SIZE];
 	int len = 0;
 	for (int i = 0; i < pgoptions_len; ++i) {
@@ -128,19 +128,35 @@ int kiwi_parse_options_and_update_vars(kiwi_vars_t *vars, char *pgoptions,
 
 		kiwi_long_option_rewrite(pgoptions + optarg_pos, optarg_len);
 
-		if (optarg_len + 1 >= KIWI_MAX_VAR_SIZE ||
-		    optval_len + 1 >= KIWI_MAX_VAR_SIZE) {
+		if (optarg_len + 1 >= KIWI_MAX_NAME_SIZE) {
+			++errs;
 			break;
+		}
+
+		/*
+		 * YB: the value may not fit into the stack buffer - fall back
+		 * to the heap in that case, as upstream does.
+		 */
+		char *optval = optval_buf;
+		char *optval_heap = NULL;
+		if (optval_len + 1 > (int)sizeof(optval_buf)) {
+			optval_heap = malloc(optval_len + 1);
+			if (optval_heap == NULL) {
+				++errs;
+				break;
+			}
+			optval = optval_heap;
 		}
 
 		memcpy(optarg_buf, pgoptions + optarg_pos, optarg_len);
 		optarg_buf[optarg_len] = 0;
 
-		memcpy(optval_buf, pgoptions + optval_pos, optval_len);
-		optval_buf[optval_len] = 0;
+		memcpy(optval, pgoptions + optval_pos, optval_len);
+		optval[optval_len] = 0;
 
-		kiwi_vars_update(vars, optarg_buf, optarg_len + 1, optval_buf,
+		kiwi_vars_update(vars, optarg_buf, optarg_len + 1, optval,
 				 optval_len + 1);
+		free(optval_heap);
 		i = j + 1;
 	}
 

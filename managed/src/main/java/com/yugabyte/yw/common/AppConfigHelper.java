@@ -6,6 +6,7 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.config.RuntimeConfService;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -26,6 +27,10 @@ public class AppConfigHelper {
 
   public static String getDevopsHomePath() {
     return config.getString(YB_DEVOPS_PATH);
+  }
+
+  public static boolean isFipsEnabled() {
+    return config.getBoolean(CommonUtils.FIPS_ENABLED);
   }
 
   public static List<String> getRefreshableClients() {

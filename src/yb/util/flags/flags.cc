@@ -55,9 +55,9 @@
 
 #include <boost/algorithm/string/case_conv.hpp>
 #include "yb/gutil/strings/join.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/util/flags/auto_flags_util.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/path_util.h"
 #include "yb/util/status_format.h"
@@ -228,7 +228,7 @@ DECLARE_bool(help);
 TAG_FLAG(help, stable);
 
 DECLARE_bool(helpfull);
-// We hide --helpfull because it's the same as --help for now.
+// Hidden because --help already dumps every flag, unless a program handles --help itself.
 TAG_FLAG(helpfull, stable);
 TAG_FLAG(helpfull, hidden);
 
@@ -286,7 +286,7 @@ bool IsStringFlagAllowed(const std::string& flag_name);
 namespace {
 
 void AppendXMLTag(const char* tag, const string& txt, string* r) {
-  strings::SubstituteAndAppend(r, "<$0>$1</$0>", tag, EscapeForHtmlToString(txt));
+  *r += Format("<$0>$1</$0>", tag, EscapeForHtmlToString(txt));
 }
 
 YB_STRONGLY_TYPED_BOOL(OnlyDisplayDefaultFlagValue);
@@ -397,10 +397,10 @@ void DumpFlagsXMLAndExit(OnlyDisplayDefaultFlagValue only_display_default_values
 
   cout << "<?xml version=\"1.0\"?>" << endl;
   cout << "<AllFlags>" << endl;
-  cout << strings::Substitute(
+  cout << Format(
               "<program>$0</program>", EscapeForHtmlToString(GetStaticProgramName()))
        << endl;
-  cout << strings::Substitute(
+  cout << Format(
       "<usage>$0</usage>",
       EscapeForHtmlToString(google::ProgramUsage())) << endl;
 
@@ -714,6 +714,7 @@ void ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
     PromoteAllAutoFlags();
   }
 
+  // A program that handles --help before this parse must let these print-and-exit flags through.
   if (FLAGS_helpxml) {
     DumpFlagsXMLAndExit(OnlyDisplayDefaultFlagValue::kFalse);
   } else if (FLAGS_dump_flags_xml) {
@@ -1059,6 +1060,15 @@ bool ValidatePercentageFlag(const char* flag_name, int value) {
 bool IsUsageMessageSet() {
   // If it's not initialized it returns: "Warning: SetUsageMessage() never called".
   return !StringStartsWithOrEquals(google::ProgramUsage(), "Warning:");
+}
+
+bool FlagTakesSeparateValue(std::string_view arg) {
+  if (!arg.starts_with('-') || arg.find('=') != std::string_view::npos) {
+    return false;
+  }
+  arg.remove_prefix(arg.starts_with("--") ? 2 : 1);
+  CommandLineFlagInfo info;
+  return google::GetCommandLineFlagInfo(std::string(arg).c_str(), &info) && info.type != "bool";
 }
 
 void FlagValidatorSink::send(

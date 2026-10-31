@@ -25,6 +25,7 @@
 
 #include "yb/gutil/casts.h"
 
+#include "yb/util/format.h"
 #include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_case.h"
@@ -52,7 +53,6 @@ const std::string kCompactionClassPrefix = "org.apache.cassandra.db.compaction."
 
 }
 
-using strings::Substitute;
 
 // These property names need to be lowercase, since identifiers are converted to lowercase by the
 // scanner phase and as a result if we're doing string matching everything should be lowercase.
@@ -101,7 +101,7 @@ PTTableProperty::~PTTableProperty() {
 
 
 Status PTTableProperty::AnalyzeSpeculativeRetry(const string &val) {
-  string generic_error = Substitute("Invalid value $0 for option 'speculative_retry'", val);
+  string generic_error = Format("Invalid value $0 for option 'speculative_retry'", val);
 
   // Accepted values: ALWAYS, Xpercentile, Nms, NONE.
   if (val == common::kSpeculativeRetryAlways || val == common::kSpeculativeRetryNone) {
@@ -121,7 +121,7 @@ Status PTTableProperty::AnalyzeSpeculativeRetry(const string &val) {
     RETURN_NOT_OK(percentile);
 
     if (*percentile < 0.0 || *percentile > 100.0) {
-      return STATUS(InvalidArgument, Substitute(
+      return STATUS(InvalidArgument, Format(
           "Invalid value $0 for PERCENTILE option 'speculative_retry': "
           "must be between 0.0 and 100.0", numeric_val));
     }
@@ -140,7 +140,7 @@ Status PTTableProperty::Analyze(SemContext *sem_context) {
   const auto& table_property_name = lhs_->c_str();
   auto iterator = kPropertyDataTypes.find(table_property_name);
   if (iterator == kPropertyDataTypes.end()) {
-    return sem_context->Error(this, Substitute("Unknown property '$0'", lhs_->c_str()).c_str(),
+    return sem_context->Error(this, Format("Unknown property '$0'", lhs_->c_str()).c_str(),
                               ErrorCode::INVALID_TABLE_PROPERTY);
   }
 
@@ -154,8 +154,8 @@ Status PTTableProperty::Analyze(SemContext *sem_context) {
                                                              &double_val));
       if (double_val <= 0.0 || double_val > 1.0) {
         return sem_context->Error(this,
-            Substitute("$0 must be larger than 0 and less than or equal to 1.0 (got $1)",
-                       table_property_name, std::to_string(double_val)).c_str(),
+            Format("$0 must be larger than 0 and less than or equal to 1.0 (got $1)",
+                   table_property_name, std::to_string(double_val)).c_str(),
             ErrorCode::INVALID_ARGUMENTS);
       }
       break;
@@ -166,7 +166,7 @@ Status PTTableProperty::Analyze(SemContext *sem_context) {
                                                              &double_val));
       if (double_val < 0.0 || double_val > 1.0) {
         return sem_context->Error(this,
-            Substitute(
+            Format(
                 "$0 must be larger than or equal to 0 and smaller than or equal to 1.0 (got $1)",
                 table_property_name, std::to_string(double_val)).c_str(),
             ErrorCode::INVALID_ARGUMENTS);
@@ -176,9 +176,9 @@ Status PTTableProperty::Analyze(SemContext *sem_context) {
       RETURN_SEM_CONTEXT_ERROR_NOT_OK(GetIntValueFromExpr(rhs_, table_property_name, &int_val));
       // TTL value is entered by user in seconds, but we store internally in milliseconds.
       if (!common::IsValidTTLSeconds(int_val)) {
-        return sem_context->Error(this, Substitute("Valid ttl range : [$0, $1]",
-                                                   common::kCassandraMinTtlSeconds,
-                                                   common::kCassandraMaxTtlSeconds).c_str(),
+        return sem_context->Error(this, Format("Valid ttl range : [$0, $1]",
+                                               common::kCassandraMinTtlSeconds,
+                                               common::kCassandraMaxTtlSeconds).c_str(),
                                   ErrorCode::INVALID_ARGUMENTS);
       }
       break;
@@ -187,8 +187,8 @@ Status PTTableProperty::Analyze(SemContext *sem_context) {
       RETURN_SEM_CONTEXT_ERROR_NOT_OK(GetIntValueFromExpr(rhs_, table_property_name, &int_val));
       if (int_val < 0) {
         return sem_context->Error(this,
-                                  Substitute("$0 must be greater than or equal to 0 (got $1)",
-                                             table_property_name, std::to_string(int_val)).c_str(),
+                                  Format("$0 must be greater than or equal to 0 (got $1)",
+                                         table_property_name, std::to_string(int_val)).c_str(),
                                   ErrorCode::INVALID_ARGUMENTS);
       }
       break;
@@ -199,8 +199,8 @@ Status PTTableProperty::Analyze(SemContext *sem_context) {
       RETURN_SEM_CONTEXT_ERROR_NOT_OK(GetIntValueFromExpr(rhs_, table_property_name, &int_val));
       if (int_val < 1) {
         return sem_context->Error(this,
-                                  Substitute("$0 must be greater than or equal to 1 (got $1)",
-                                             table_property_name, std::to_string(int_val)).c_str(),
+                                  Format("$0 must be greater than or equal to 1 (got $1)",
+                                         table_property_name, std::to_string(int_val)).c_str(),
                                   ErrorCode::INVALID_ARGUMENTS);
       }
       break;
@@ -218,8 +218,8 @@ Status PTTableProperty::Analyze(SemContext *sem_context) {
     case KVProperty::kCompression: FALLTHROUGH_INTENDED;
     case KVProperty::kTransactions:
       return sem_context->Error(this,
-                                Substitute("Invalid value for option '$0'. Value must be a map",
-                                           table_property_name).c_str(),
+                                Format("Invalid value for option '$0'. Value must be a map",
+                                       table_property_name).c_str(),
                                 ErrorCode::DATATYPE_MISMATCH);
     case KVProperty::kNumTablets:
       RETURN_SEM_CONTEXT_ERROR_NOT_OK(GetIntValueFromExpr(rhs_, table_property_name, &int_val));
@@ -318,11 +318,11 @@ Status PTTablePropertyListNode::Analyze(SemContext *sem_context) {
       // If we can find pc->yb_name() in the order-by list, it means the order of the columns is
       // incorrect.
       if (order_tnodes.find(pc->yb_name()) != order_tnodes.end()) {
-        msg = Substitute("Columns in the CLUSTERING ORDER directive must be in same order as "
-                         "the clustering key columns order ($0 must appear before $1)",
-                         pc->yb_name(), *order_column_iter);
+        msg = Format("Columns in the CLUSTERING ORDER directive must be in same order as "
+                     "the clustering key columns order ($0 must appear before $1)",
+                     pc->yb_name(), *order_column_iter);
       } else {
-        msg = Substitute("Missing CLUSTERING ORDER for column $0", pc->yb_name());
+        msg = Format("Missing CLUSTERING ORDER for column $0", pc->yb_name());
       }
       return sem_context->Error(tnode, msg.c_str(), ErrorCode::INVALID_TABLE_PROPERTY);
     }
@@ -354,14 +354,14 @@ Status PTTableProperty::SetTableProperty(yb::TableProperties *table_property) co
   ToLowerCase(lhs_->c_str(), &table_property_name);
   auto iterator = kPropertyDataTypes.find(table_property_name);
   if (iterator == kPropertyDataTypes.end()) {
-    return STATUS(InvalidArgument, Substitute("$0 is not a valid table property", lhs_->c_str()));
+    return STATUS(InvalidArgument, Format("$0 is not a valid table property", lhs_->c_str()));
   }
   switch (iterator->second) {
     case KVProperty::kDefaultTimeToLive: {
       // TTL value is entered by user in seconds, but we store internally in milliseconds.
       int64_t val;
       if (!GetIntValueFromExpr(rhs_, table_property_name, &val).ok()) {
-        return STATUS(InvalidArgument, Substitute("Invalid value for default_time_to_live"));
+        return STATUS(InvalidArgument, Format("Invalid value for default_time_to_live"));
       }
       table_property->SetDefaultTimeToLive(val * MonoTime::kMillisecondsPerSecond);
       break;
@@ -421,11 +421,11 @@ Status PTTablePropertyMap::Analyze(SemContext *sem_context) {
   auto iterator = kPropertyDataTypes.find(property_name);
   if (iterator == kPropertyDataTypes.end()) {
     if (IsValidProperty(property_name)) {
-      return sem_context->Error(this, Substitute("Invalid map value for property '$0'",
-                                                 property_name).c_str(),
+      return sem_context->Error(this, Format("Invalid map value for property '$0'",
+                                             property_name).c_str(),
                                 ErrorCode::DATATYPE_MISMATCH);
     }
-    return sem_context->Error(this, Substitute("Unknown property '$0'", property_name).c_str(),
+    return sem_context->Error(this, Format("Unknown property '$0'", property_name).c_str(),
                               ErrorCode::INVALID_TABLE_PROPERTY);
   }
 
@@ -457,7 +457,7 @@ Status PTTablePropertyMap::SetTableProperty(yb::TableProperties *table_property)
   ToLowerCase(lhs_->c_str(), &table_property_name);
   auto iterator = kPropertyDataTypes.find(table_property_name);
   if (iterator == kPropertyDataTypes.end()) {
-    return STATUS(InvalidArgument, Substitute("$0 is not a valid table property", lhs_->c_str()));
+    return STATUS(InvalidArgument, Format("$0 is not a valid table property", lhs_->c_str()));
   }
   switch (iterator->second) {
     case PropertyMapType::kCaching: FALLTHROUGH_INTENDED;
@@ -518,7 +518,7 @@ Status PTTablePropertyMap::AnalyzeCompaction() {
       class_subproperties_iter = Compaction::kClassSubproperties.find(class_name);
       if (class_subproperties_iter == Compaction::kClassSubproperties.end()) {
         return STATUS(InvalidArgument,
-                      Substitute("Unable to find compaction strategy class '$0'", class_name));
+                      Format("Unable to find compaction strategy class '$0'", class_name));
       }
       continue;
     }
@@ -564,8 +564,8 @@ Status PTTablePropertyMap::AnalyzeCompaction() {
       case Compaction::Subproperty::kTombstoneCompactionInterval:
         RETURN_NOT_OK(GetIntValueFromExpr(subproperty->rhs(), subproperty_name, &int_val));
         if (int_val <= 0) {
-          return STATUS(InvalidArgument, Substitute("$0 must be greater than 0, but was $1",
-                                                    subproperty_name, std::to_string(int_val)));
+          return STATUS(InvalidArgument, Format("$0 must be greater than 0, but was $1",
+                                                subproperty_name, std::to_string(int_val)));
         }
         break;
       case Compaction::Subproperty::kBucketHigh:
@@ -581,7 +581,7 @@ Status PTTablePropertyMap::AnalyzeCompaction() {
         if (Compaction::kWindowUnits.find(str_val) ==
             Compaction::kWindowUnits.end()) {
           return STATUS(InvalidArgument,
-                        Substitute("$0 is not valid for '$1'", str_val, subproperty_name));
+                        Format("$0 is not valid for '$1'", str_val, subproperty_name));
         }
         break;
       case Compaction::Subproperty::kEnabled: FALLTHROUGH_INTENDED;
@@ -593,8 +593,8 @@ Status PTTablePropertyMap::AnalyzeCompaction() {
       case Compaction::Subproperty::kMaxSstableAgeDays:
         RETURN_NOT_OK(GetDoubleValueFromExpr(subproperty->rhs(), subproperty_name, &double_val));
         if (double_val < 0) {
-          return STATUS(InvalidArgument, Substitute("$0 must be non-negative, but was $1",
-                                                    subproperty_name, std::to_string(double_val)));
+          return STATUS(InvalidArgument, Format("$0 must be non-negative, but was $1",
+                                                subproperty_name, std::to_string(double_val)));
         }
         break;;
       case Compaction::Subproperty::kMaxThreshold:
@@ -604,8 +604,8 @@ Status PTTablePropertyMap::AnalyzeCompaction() {
       case Compaction::Subproperty::kMinSstableSize:
         RETURN_NOT_OK(GetIntValueFromExpr(subproperty->rhs(), subproperty_name, &int_val));
         if (int_val < 0) {
-          return STATUS(InvalidArgument, Substitute("$0 must be non-negative, but was $1",
-                                                    subproperty_name, std::to_string(int_val)));
+          return STATUS(InvalidArgument, Format("$0 must be non-negative, but was $1",
+                                                subproperty_name, std::to_string(int_val)));
         }
         break;
       case Compaction::Subproperty::kMinThreshold:
@@ -616,8 +616,8 @@ Status PTTablePropertyMap::AnalyzeCompaction() {
                             "removed, set the compaction option 'enabled' to false instead");
         } else if (min_threshold < 2) {
           return STATUS(InvalidArgument,
-                        Substitute("Min compaction threshold cannot be less than 2 (got $0)",
-                                   min_threshold));
+                        Format("Min compaction threshold cannot be less than 2 (got $0)",
+                               min_threshold));
         }
         break;
       case Compaction::Subproperty::kTimestampResolution:
@@ -625,26 +625,26 @@ Status PTTablePropertyMap::AnalyzeCompaction() {
         if (Compaction::kTimestampResolutionUnits.find(str_val) ==
             Compaction::kTimestampResolutionUnits.end()) {
           return STATUS(InvalidArgument,
-                        Substitute("$0 is not valid for '$1'", str_val, subproperty_name));
+                        Format("$0 is not valid for '$1'", str_val, subproperty_name));
         }
         break;
       case Compaction::Subproperty::kTombstoneThreshold:
         RETURN_NOT_OK(GetDoubleValueFromExpr(subproperty->rhs(), subproperty_name, &double_val));
         if (double_val <= 0) {
-          return STATUS(InvalidArgument, Substitute("$0 must be greater than 0, but was $1",
-                                                    subproperty_name, std::to_string(double_val)));
+          return STATUS(InvalidArgument, Format("$0 must be greater than 0, but was $1",
+                                                subproperty_name, std::to_string(double_val)));
         }
         break;
     }
   }
 
   if (bucket_high <= bucket_low) {
-    return STATUS(InvalidArgument, Substitute("'bucket_high' value ($0) is less than or equal to "
+    return STATUS(InvalidArgument, Format("'bucket_high' value ($0) is less than or equal to "
         "'bucket_low' value ($1)", std::to_string(bucket_high), std::to_string(bucket_low)));
   }
 
   if (max_threshold <= min_threshold) {
-    return STATUS(InvalidArgument, Substitute("'max_threshold' value ($0) is less than or equal to "
+    return STATUS(InvalidArgument, Format("'max_threshold' value ($0) is less than or equal to "
         "'min_threshold' value ($1)", std::to_string(max_threshold),
         std::to_string(min_threshold)));
   }
@@ -668,7 +668,7 @@ Status PTTablePropertyMap::AnalyzeCaching() {
       if (common::IsValidCachingKeysString(str_val)) {
         continue;
       }
-      return STATUS(InvalidArgument, Substitute("Invalid value for caching sub-option '$0': only "
+      return STATUS(InvalidArgument, Format("Invalid value for caching sub-option '$0': only "
           "'$1' and '$2' are allowed", common::kCachingKeys, common::kCachingAll,
           common::kCachingNone));
     } else if (subproperty_name == common::kCachingRowsPerPartition) {
@@ -682,11 +682,11 @@ Status PTTablePropertyMap::AnalyzeCaching() {
           continue;
         }
       }
-      return STATUS(InvalidArgument, Substitute("Invalid value for caching sub-option '$0': only "
+      return STATUS(InvalidArgument, Format("Invalid value for caching sub-option '$0': only "
           "'$1', '$2' and integer values are allowed", common::kCachingRowsPerPartition,
           common::kCachingAll, common::kCachingNone));
     }
-    return STATUS(InvalidArgument, Substitute("Invalid caching sub-options $0: only '$1' and "
+    return STATUS(InvalidArgument, Format("Invalid caching sub-options $0: only '$1' and "
         "'$2' are allowed", subproperty_name, common::kCachingKeys,
         common::kCachingRowsPerPartition));
   }
@@ -726,7 +726,7 @@ Status PTTablePropertyMap::AnalyzeCompression() {
     ToLowerCase(subproperty->lhs()->c_str(), &subproperty_name);
     auto iter = Compression::kSubpropertyDataTypes.find(subproperty_name);
     if (iter == Compression::kSubpropertyDataTypes.end()) {
-      return STATUS(InvalidArgument, Substitute("Unknown compression option $0", subproperty_name));
+      return STATUS(InvalidArgument, Format("Unknown compression option $0", subproperty_name));
     }
 
     int64_t int_val;
@@ -736,8 +736,8 @@ Status PTTablePropertyMap::AnalyzeCompression() {
       case Compression::Subproperty::kChunkLengthKb:
         RETURN_NOT_OK(GetIntValueFromExpr(subproperty->rhs(), subproperty_name, &int_val));
         if (int_val > std::numeric_limits<int32_t>::max() / 1024) {
-          return STATUS(InvalidArgument, Substitute("Value of $0 is too large ($1)",
-                                                    subproperty_name, int_val));
+          return STATUS(InvalidArgument, Format("Value of $0 is too large ($1)",
+                                                subproperty_name, int_val));
         }
         break;
       case Compression::Subproperty::kClass:
@@ -745,8 +745,8 @@ Status PTTablePropertyMap::AnalyzeCompression() {
       case Compression::Subproperty::kCrcCheckChance:
         RETURN_NOT_OK(GetDoubleValueFromExpr(subproperty->rhs(), subproperty_name, &double_val));
         if (double_val < 0.0 || double_val > 1.0) {
-          return STATUS(InvalidArgument, Substitute("$0 should be between 0.0 and 1.0",
-                                                    subproperty_name));
+          return STATUS(InvalidArgument, Format("$0 should be between 0.0 and 1.0",
+                                                subproperty_name));
         }
         break;
       case Compression::Subproperty::kEnabled:
@@ -765,8 +765,8 @@ Status PTTablePropertyMap::AnalyzeTransactions(SemContext *sem_context) {
     ToLowerCase(subproperty->lhs()->c_str(), &subproperty_name);
     auto iter = Transactions::kSubpropertyDataTypes.find(subproperty_name);
     if (iter == Transactions::kSubpropertyDataTypes.end()) {
-      return STATUS(InvalidArgument, Substitute("Unknown transactions option $0",
-                                                subproperty_name));
+      return STATUS(InvalidArgument, Format("Unknown transactions option $0",
+                                            subproperty_name));
     }
 
     bool bool_val;
@@ -778,12 +778,12 @@ Status PTTablePropertyMap::AnalyzeTransactions(SemContext *sem_context) {
       case Transactions::Subproperty::kConsistencyLevel:
         if (sem_context->current_create_table_stmt()->opcode() != TreeNodeOpcode::kPTCreateIndex) {
           return STATUS(InvalidArgument,
-                        Substitute("Unknown property '$0'", subproperty_name).c_str());
+                        Format("Unknown property '$0'", subproperty_name).c_str());
         }
         RETURN_NOT_OK(GetStringValueFromExpr(subproperty->rhs(), true, subproperty_name, &str_val));
         if (str_val != Transactions::kConsistencyLevelUserEnforced) {
           return STATUS(InvalidArgument,
-                        Substitute("Invalid value for property '$0'", subproperty_name).c_str());
+                        Format("Invalid value for property '$0'", subproperty_name).c_str());
         }
         break;
     }

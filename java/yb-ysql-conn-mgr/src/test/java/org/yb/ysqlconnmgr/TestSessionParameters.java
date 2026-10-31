@@ -30,15 +30,18 @@ import java.util.Map;
 import java.util.Set;
 import java.util.HashSet;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
+import org.yb.util.Pair;
 import org.yb.util.RequiresLinux;
 import org.yb.client.TestUtils;
 import org.yb.util.ProcessUtil;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
+import com.google.common.base.Strings;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.PGConnection;
 
@@ -128,6 +131,16 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
     new SessionParameter("IntervalStyle", "postgres", "sql_standard",
       new ExceptionType[] {}),
     new SessionParameter("search_path", "\"$user\", public", "test",
+      new ExceptionType[] {}),
+    // Conn mgr stores a value inline up to 127 characters (128 bytes with the NUL) and
+    // on the heap beyond, cover both sides of that boundary.
+    new SessionParameter("search_path", "\"$user\", public", buildSearchPath(127),
+      new ExceptionType[] {}),
+    new SessionParameter("search_path", "\"$user\", public", buildSearchPath(128),
+      new ExceptionType[] {}),
+    new SessionParameter("search_path", "\"$user\", public", buildSearchPath(129),
+      new ExceptionType[] {}),
+    new SessionParameter("search_path", "\"$user\", public", buildSearchPath(1000),
       new ExceptionType[] {}),
     // JDBC sends TimeZone in the startup packet, and it can't be overridden using startup options
     new SessionParameter("TimeZone", "UTC", "EST",
@@ -737,6 +750,91 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
     }
   }
 
+  // Builds a search_path of exactly `length` characters. Each identifier is kept well under
+  // NAMEDATALEN since conn mgr replays search_path unquoted, and PG truncates longer identifiers.
+  private static String buildSearchPath(int length) {
+    final int maxIdentLen = 40;
+    final String separator = ", ";
+    StringBuilder sb = new StringBuilder();
+    while (sb.length() < length) {
+      if (sb.length() > 0)
+        sb.append(separator);
+      int remaining = length - sb.length();
+      int identLen = maxIdentLen;
+      if (remaining <= maxIdentLen)
+        identLen = remaining;
+      else if (remaining - maxIdentLen <= separator.length())
+        identLen = remaining - separator.length() - 1;
+      sb.append('s').append(Strings.repeat("x", identLen - 1));
+    }
+    return sb.toString();
+  }
+
+  // Long search_path values set via SET are covered through SessionParameters. This covers the
+  // paths that list can't: custom GUCs, and replay of long values received in the startup packet.
+  @Test
+  public void testLongParameterValues() throws Exception {
+    try (Connection conn = getConnectionBuilder()
+                               .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                               .connect();
+         Statement stmt = conn.createStatement()) {
+      // Quoted, since checkSetStatements() sends values unquoted and PG would truncate them.
+      final String customValue = Strings.repeat("v", 1000);
+      SessionParameter customSp = new SessionParameter("test_conn_mgr.long_value", "",
+          customValue, new ExceptionType[] {});
+      stmt.execute(String.format("SET %s = '%s'", customSp.parameterName, customValue));
+      assertEquals("custom GUC value mismatch after SET", customValue,
+          fetchParameterValue(stmt, customSp));
+      checkValueOnNewPhysicalConnection(stmt, customSp, customValue);
+
+      try (Connection otherConn = getConnectionBuilder()
+                                      .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                                      .connect();
+           Statement otherStmt = otherConn.createStatement();
+           ResultSet rs = otherStmt.executeQuery(String.format(
+               "SELECT current_setting('%s', true)", customSp.parameterName))) {
+        assertTrue("expected one row for current_setting", rs.next());
+        String leaked = rs.getString(1);
+        assertTrue(String.format("custom GUC leaked to another logical connection: %s", leaked),
+            leaked == null || leaked.isEmpty());
+      }
+    }
+
+    // Set via the startup packet's options parameter. testStartupParameters() only checks the
+    // value on the first backend, check that it is also replayed on another one.
+    for (SessionParameter sp : SessionParameters) {
+      if (!sp.parameterName.equals("search_path") || sp.expectedValue.length() < 127)
+        continue;
+      try (Connection conn = getConnectionBuilder()
+                                 .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                                 .withOptions(String.format("-c search_path=%s",
+                                     sp.expectedValue.replace(" ", "\\ ")))
+                                 .connect();
+           Statement stmt = conn.createStatement()) {
+        assertEquals(String.format("search_path of length %d from startup options",
+            sp.expectedValue.length()),
+            sp.expectedValue, fetchParameterValue(stmt, sp));
+        checkValueOnNewLogicalConnection(sp);
+        checkValueOnNewPhysicalConnection(stmt, sp, sp.expectedValue);
+      }
+    }
+
+    // Set as a startup packet parameter. PG truncates application_name to NAMEDATALEN - 1.
+    final String applicationName = Strings.repeat("a", 200);
+    final String expectedApplicationName = applicationName.substring(0, 63);
+    SessionParameter appNameSp = new SessionParameter("application_name", "",
+        expectedApplicationName, new ExceptionType[] {});
+    try (Connection conn = getConnectionBuilder()
+                               .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                               .withApplicationName(applicationName)
+                               .connect();
+         Statement stmt = conn.createStatement()) {
+      assertEquals("application_name from startup packet", expectedApplicationName,
+          fetchParameterValue(stmt, appNameSp));
+      checkValueOnNewPhysicalConnection(stmt, appNameSp, expectedApplicationName);
+    }
+  }
+
   @Test
   public void testInvalidStartupParameter() throws Exception {
     // Test that setting an invalid parameter in startup packet fails at the time of database
@@ -1009,5 +1107,39 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
     restartClusterWithAdditionalFlags(java.util.Collections.emptyMap(), tserverFlags);
 
     updateRuntimeFlagPGCBackend();
+  }
+
+  // With a single backend, B's query resets the backend to defaults, so A's next query has to
+  // replay both its startup parameter ('G' packet) and its SET on it. Postgres reports those
+  // GUC_REPORT variables again, but A already knows their values and must not be sent a
+  // ParameterStatus for them. A SET issued by A afterwards must still be reported.
+  @Test
+  public void testNoParameterStatusDuringDeploy() throws Exception {
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), SINGLE_BACKEND_FLAGS);
+
+    try (WireConn a = rawConnBuilder().startupParam("application_name", "deploy_a").connect();
+         WireConn b = rawConnBuilder().connect()) {
+      PipelineResult r = a.createPipeline()
+          .query("SET TimeZone = 'America/Sao_Paulo'")
+          .run();
+      assertEquals(Arrays.asList(new Pair<>("TimeZone", "America/Sao_Paulo")),
+          r.parameterStatuses());
+
+      r = b.createPipeline()
+          .query("SHOW TimeZone").rowCount(1)
+          .run();
+      assertEquals(Collections.emptyList(), r.parameterStatuses());
+
+      r = a.createPipeline()
+          .query("SHOW application_name").row("deploy_a")
+          .query("SHOW TimeZone").row("America/Sao_Paulo")
+          .run();
+      assertEquals(Collections.emptyList(), r.parameterStatuses());
+
+      r = a.createPipeline()
+          .query("SET TimeZone = 'UTC'")
+          .run();
+      assertEquals(Arrays.asList(new Pair<>("TimeZone", "UTC")), r.parameterStatuses());
+    }
   }
 }

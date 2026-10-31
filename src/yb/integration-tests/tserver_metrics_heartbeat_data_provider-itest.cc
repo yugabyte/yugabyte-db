@@ -46,6 +46,7 @@
 DECLARE_int32(scheduled_full_compaction_frequency_hours);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_bool(TEST_pause_before_full_compaction);
+DECLARE_bool(enable_tiered_storage);
 
 namespace yb {
 namespace tserver {
@@ -54,6 +55,7 @@ class TServerMetricsHeartbeatDataProviderITest : public MiniClusterTestWithClien
  public:
   void SetUp() override {
     YBMiniClusterTestBase::SetUp();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = EnableTieredStorage();
     cluster_.reset(new MiniCluster(MiniClusterOptions()));
     ASSERT_OK(cluster_->Start());
     ASSERT_OK(CreateClient());
@@ -63,6 +65,8 @@ class TServerMetricsHeartbeatDataProviderITest : public MiniClusterTestWithClien
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = false;
     MiniClusterTestWithClient::DoTearDown();
   }
+
+  virtual bool EnableTieredStorage() const { return true; }
 
   Result<bool> AddDataSatisfies(
       std::function<Result<bool>(const master::TSHeartbeatRequestPB&)> metrics_check) {
@@ -103,6 +107,29 @@ TEST_F(TServerMetricsHeartbeatDataProviderITest, PathMetricsCarryStorageTier) {
           }
           // Default cluster: no labels set, so all tiers should equal the default.
           if (pm.storage_tier() != kDefaultStorageTier) {
+            return false;
+          }
+        }
+        return true;
+      })));
+}
+
+class TServerMetricsHeartbeatTieredStorageDisabledITest
+    : public TServerMetricsHeartbeatDataProviderITest {
+ public:
+  bool EnableTieredStorage() const override { return false; }
+};
+
+// With tiered storage disabled (the default), path metrics carry no storage_tier at all, so the
+// master-side API looks exactly as it did before the feature.
+TEST_F(TServerMetricsHeartbeatTieredStorageDisabledITest, PathMetricsOmitStorageTier) {
+  ASSERT_TRUE(ASSERT_RESULT(AddDataSatisfies(
+      [](const master::TSHeartbeatRequestPB& req) -> Result<bool> {
+        if (!req.has_metrics() || req.metrics().path_metrics_size() == 0) {
+          return false;
+        }
+        for (const auto& pm : req.metrics().path_metrics()) {
+          if (pm.has_storage_tier()) {
             return false;
           }
         }

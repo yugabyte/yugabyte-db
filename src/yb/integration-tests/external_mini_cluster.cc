@@ -1317,10 +1317,14 @@ Status ExternalMiniCluster::StartMasters() {
   // TEST_master_min_live_tservers_before_initdb does not deadlock against tservers that
   // haven't been started yet. See the comment block in Start() for details.
 
-  // Trigger an election to avoid an unnecessary 3s wait on every cluster startup.
+  // Trigger an election to avoid an unnecessary 3s wait on every cluster startup. Masters that
+  // already elected a leader on their own (quick_leader_election_on_create) skip it, so it does
+  // not depose that leader.
   if (!masters_.empty()) {
     WARN_NOT_OK(WaitForMastersToCommitUpTo(0), "Masters did not commit opid 0 in time");
-    WARN_NOT_OK(StartElection(RandomElement(masters_).get()), "Could not start election");
+    WARN_NOT_OK(
+        StartElection(RandomElement(masters_).get(), /* initial_election = */ true),
+        "Could not start election");
   }
 
   return Status::OK();
@@ -1392,14 +1396,14 @@ Result<bool> ExternalMiniCluster::is_ts_stale(int ts_idx, MonoDelta deadline) {
   bool is_stale = false, is_ts_found = false;
   for (int i = 0; i < resp.servers_size(); i++) {
     if (!resp.servers(i).has_instance_id()) {
-      return STATUS_SUBSTITUTE(
+      return STATUS_FORMAT(
         Uninitialized,
         "ListTabletServers RPC returned a TS with uninitialized instance id."
       );
     }
 
     if (!resp.servers(i).instance_id().has_permanent_uuid()) {
-      return STATUS_SUBSTITUTE(
+      return STATUS_FORMAT(
         Uninitialized,
         "ListTabletServers RPC returned a TS with uninitialized UUIDs."
       );
@@ -1412,7 +1416,7 @@ Result<bool> ExternalMiniCluster::is_ts_stale(int ts_idx, MonoDelta deadline) {
   }
 
   if (!is_ts_found) {
-    return STATUS_SUBSTITUTE(
+    return STATUS_FORMAT(
         NotFound,
         "Given TS not found in ListTabletServers RPC."
     );
@@ -2296,13 +2300,14 @@ uint16_t ExternalMiniCluster::AllocateFreePort() {
   return GetFreePort(&free_port_file_locks_.back());
 }
 
-Status ExternalMiniCluster::StartElection(ExternalMaster* master) {
+Status ExternalMiniCluster::StartElection(ExternalMaster* master, bool initial_election) {
   auto master_sock = master->bound_rpc_addr();
   auto master_proxy = std::make_shared<ConsensusServiceProxy>(proxy_cache_.get(), master_sock);
 
   RunLeaderElectionRequestPB req;
   req.set_dest_uuid(master->uuid());
   req.set_tablet_id(yb::master::kSysCatalogTabletId);
+  req.set_initial_election(initial_election);
   RunLeaderElectionResponsePB resp;
   RpcController rpc;
   rpc.set_timeout(opts_.timeout);

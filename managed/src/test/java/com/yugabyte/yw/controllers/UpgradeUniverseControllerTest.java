@@ -11,10 +11,12 @@ import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static org.hamcrest.CoreMatchers.allOf;
+import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
@@ -28,6 +30,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
+import static play.mvc.Http.Status.FORBIDDEN;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -62,9 +65,12 @@ import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.RuntimeConfigCache;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.AZUpgradeStep;
@@ -466,6 +472,76 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     assertEquals(Integer.valueOf(2), taskParams.rollMaxBatchSize.getPrimaryBatchSize());
     assertEquals(Integer.valueOf(2), taskParams.rollMaxBatchSize.getReadReplicaBatchSize());
     assertAuditEntry(1, customer.getUuid());
+  }
+
+  @Test
+  public void testKubernetesOverridesUpgradeWithLineBreakInGFlag() {
+    Universe universe = prepareK8sUniverseForOverridesUpgrade("Overrides Line Break Universe");
+    Result result =
+        assertPlatformException(
+            () ->
+                runUpgrade(
+                    universe,
+                    p -> p.universeOverrides = "gflags:\n  tserver:\n    tmp_dir: \"/tmp\\n--a=b\"",
+                    KubernetesOverridesUpgradeParams.class,
+                    "kubernetes_overrides"));
+    assertBadRequest(result, "GFlag tmp_dir cannot contain a line break");
+    verify(mockCommissioner, never()).submit(any(), any());
+  }
+
+  @Test
+  public void testKubernetesOverridesUpgradeCannotReadFipsGFlagFromEnvOnFipsUniverse() {
+    Universe universe = prepareK8sUniverseForOverridesUpgrade("Overrides FIPS Env Universe");
+    Universe fipsUniverse =
+        Universe.saveDetails(
+            universe.getUniverseUUID(), u -> u.getUniverseDetails().fipsEnabled = true);
+    Result result =
+        assertPlatformException(
+            () ->
+                runUpgrade(
+                    fipsUniverse,
+                    p ->
+                        p.universeOverrides =
+                            "gflags:\n  tserver:\n    tryfromenv: openssl_require_fips\n"
+                                + "tserver:\n  extraEnv:\n"
+                                + "  - name: FLAGS_openssl_require_fips\n    value: \"false\"",
+                    KubernetesOverridesUpgradeParams.class,
+                    "kubernetes_overrides"));
+    assertBadRequest(
+        result,
+        "A FIPS enabled universe cannot read openssl_require_fips from the environment, but"
+            + " tryfromenv in the Kubernetes universe overrides (gflags.tserver) lists it.");
+    verify(mockCommissioner, never()).submit(any(), any());
+  }
+
+  @Test
+  public void testKubernetesOverridesUpgradeCannotDisableFipsOnFipsUniverse() {
+    Universe universe = prepareK8sUniverseForOverridesUpgrade("Overrides FIPS Universe");
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              details.fipsEnabled = true;
+              u.setUniverseDetails(details);
+            });
+
+    Universe fipsUniverse = universe;
+    Result result =
+        assertPlatformException(
+            () ->
+                runUpgrade(
+                    fipsUniverse,
+                    p ->
+                        p.universeOverrides =
+                            "gflags:\n  tserver:\n    openssl_require_fips: \"false\"",
+                    KubernetesOverridesUpgradeParams.class,
+                    "kubernetes_overrides"));
+    assertBadRequest(
+        result,
+        "A FIPS enabled universe needs openssl_require_fips set to true or left unset, but the"
+            + " Kubernetes universe overrides (gflags.tserver) set it to false.");
+    verify(mockCommissioner, never()).submit(any(), any());
   }
 
   @Test
@@ -1399,6 +1475,50 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     assertThat(task.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
     assertThat(task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.GFlagsUpgrade)));
     assertAuditEntry(1, customer.getUuid());
+  }
+
+  @Test
+  public void testGFlagsUpgradeWithLineBreakInValue() {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.GFlagsUpgrade);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    UUID universeUUID = createUniverse(customer.getId()).getUniverseUUID();
+
+    String url =
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/gflags";
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.set("masterGFlags", Json.parse("{ \"master-flag\": \"123\"}"));
+    bodyJson.set(
+        "tserverGFlags", Json.newObject().put("tmp_dir", "/tmp\n--openssl_require_fips=false"));
+    Result result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+    assertBadRequest(result, "GFlag tmp_dir cannot contain a line break");
+    verify(mockCommissioner, never()).submit(any(), any());
+  }
+
+  @Test
+  public void testGFlagsUpgradeCannotDisableFipsOnFipsUniverse() {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.GFlagsUpgrade);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    UUID universeUUID = createUniverse(customer.getId()).getUniverseUUID();
+    Universe.saveDetails(universeUUID, u -> u.getUniverseDetails().fipsEnabled = true);
+
+    String url =
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/gflags";
+    // The deprecated masterGFlags/tserverGFlags maps, as opposed to specificGFlags.
+    for (ObjectNode tserverGFlags :
+        List.of(
+            Json.newObject().put(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "false"),
+            Json.newObject().put("tryfromenv", GFlagsUtil.OPENSSL_REQUIRE_FIPS))) {
+      ObjectNode bodyJson = Json.newObject();
+      bodyJson.set("masterGFlags", Json.parse("{ \"master-flag\": \"123\"}"));
+      bodyJson.set("tserverGFlags", tserverGFlags);
+      Result result =
+          assertPlatformException(
+              () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+      assertBadRequest(result, "FIPS enabled universe");
+    }
+    verify(mockCommissioner, never()).submit(any(), any());
   }
 
   @Test
@@ -2547,5 +2667,51 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
           universe.setUniverseDetails(universeDetails);
         };
     Universe.saveDetails(universeUUID, updater);
+  }
+
+  /**
+   * This class mocks the runtime config, where the block for operator-owned resources reads false,
+   * and the handler caches it. Turn the block on, as it is by default.
+   */
+  private RuntimeConfigCache enableOperatorBlock() {
+    when(mockConfig.getBoolean(GlobalConfKeys.blockOperatorApiResources.getKey())).thenReturn(true);
+    RuntimeConfigCache cache = app.injector().instanceOf(RuntimeConfigCache.class);
+    cache.invalidateCache();
+    return cache;
+  }
+
+  @Test
+  public void testRollbackUpgradeBlockedForOperatorOwnedUniverse() {
+    RuntimeConfigCache cache = enableOperatorBlock();
+    try {
+      Universe.saveDetails(
+          defaultUniverse.getUniverseUUID(),
+          u -> u.getUniverseDetails().isKubernetesOperatorControlled = true);
+      defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+
+      Result result = runUpgrade(defaultUniverse, p -> {}, RollbackUpgradeParams.class, "rollback");
+
+      assertEquals(FORBIDDEN, result.status());
+      assertThat(contentAsString(result), containsString("controlled by kubernetes operator"));
+      verifyNoActions();
+    } finally {
+      cache.invalidateCache();
+    }
+  }
+
+  @Test
+  public void testRollbackUpgradeNotBlockedForUniverseNotOwnedByOperator() {
+    RuntimeConfigCache cache = enableOperatorBlock();
+    try {
+      PlatformServiceException exception =
+          assertThrows(
+              PlatformServiceException.class,
+              () -> runUpgrade(defaultUniverse, p -> {}, RollbackUpgradeParams.class, "rollback"));
+
+      // Past the operator check: the handler rejects it, since no upgrade is there to roll back.
+      assertNotEquals(FORBIDDEN, exception.getHttpStatus());
+    } finally {
+      cache.invalidateCache();
+    }
   }
 }

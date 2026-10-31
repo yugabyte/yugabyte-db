@@ -40,7 +40,6 @@
 #include <boost/range/adaptor/indirected.hpp>
 
 #include "yb/gutil/strings/stringpiece.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
 
 #include "yb/util/flags.h"
@@ -89,8 +88,6 @@ DEFINE_RUNTIME_uint32(tracing_max_children_per_trace, 10,
     "max number of child traces. 0 means unbounded.");
 TAG_FLAG(tracing_max_children_per_trace, advanced);
 namespace yb {
-
-using strings::internal::SubstituteArg;
 
 __thread Trace* Trace::threadlocal_trace_ = nullptr;
 
@@ -367,7 +364,7 @@ scoped_refptr<Trace>  Trace::MaybeGetNewTraceForParent(Trace* parent) {
   return MaybeGetNewTrace();
 }
 
-void Trace::SubstituteAndTrace(
+void Trace::FormatAndTrace(
     const char* file_path, int line_number, CoarseTimePoint now, GStringPiece format) {
   auto msg_len = format.size();
   DCHECK_NE(msg_len, 0) << "Bad format specification";
@@ -377,25 +374,8 @@ void Trace::SubstituteAndTrace(
   AddEntry(entry);
 }
 
-void Trace::SubstituteAndTrace(const char* file_path,
-                               int line_number,
-                               CoarseTimePoint now,
-                               GStringPiece format,
-                               const SubstituteArg& arg0, const SubstituteArg& arg1,
-                               const SubstituteArg& arg2, const SubstituteArg& arg3,
-                               const SubstituteArg& arg4, const SubstituteArg& arg5,
-                               const SubstituteArg& arg6, const SubstituteArg& arg7,
-                               const SubstituteArg& arg8, const SubstituteArg& arg9) {
-  const SubstituteArg* const args_array[] = {
-    &arg0, &arg1, &arg2, &arg3, &arg4, &arg5, &arg6, &arg7, &arg8, &arg9, nullptr
-  };
-
-  int msg_len = strings::internal::SubstitutedSize(format, args_array);
-  DCHECK_NE(msg_len, 0) << "Bad format specification";
-  TraceEntry* entry = NewEntry(msg_len, file_path, line_number, now);
-  if (entry == nullptr) return;
-  SubstituteToBuffer(format, args_array, entry->message);
-  AddEntry(entry);
+char* Trace::EntryMessage(TraceEntry* entry) {
+  return entry->message;
 }
 
 size_t Trace::NumEntries() const {

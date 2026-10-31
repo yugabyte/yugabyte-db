@@ -338,9 +338,6 @@ od_frontend_attach(od_client_t *client, char *context,
 
 	bool wait_for_idle = false;
 	for (;;) {
-		if (yb_is_route_invalid(route))
-			return OD_EATTACH;
-
 		od_router_status_t status;
 		status = od_router_attach(router, client, wait_for_idle, client);
 		if (status != OD_ROUTER_OK) {
@@ -354,11 +351,25 @@ od_frontend_attach(od_client_t *client, char *context,
 		}
 
 		od_server_t *server = client->server;
-		if (server->io.io && !machine_connected(server->io.io)) {
-			od_log(&instance->logger, context, client, server,
-			       "server disconnected, close connection and retry attach");
-			od_router_close(router, client);
-			continue;
+		if (server->io.io &&
+		    ((od_route_t *)server->route)->rule->pool->attach_check) {
+			int rc = od_io_poll(&server->io);
+			if (rc != 0) {
+				od_error(&instance->logger, context, client,
+					 server,
+					 "server fd poll failed, errno=%d (%s)",
+					 machine_errno(),
+					 strerror(machine_errno()));
+			}
+
+			if (!machine_connected(server->io.io)) {
+				od_log(&instance->logger, context, client,
+				       server,
+				       "server disconnected (%s), close connection and retry attach",
+				       od_io_error(&server->io));
+				od_router_close(router, client);
+				continue;
+			}
 		}
 		od_debug(&instance->logger, context, client, server,
 			 "client %s%.*s attached to %s%.*s",
@@ -851,9 +862,20 @@ static void yb_undo_parse_queue_entry(od_server_t *server,
 				  &value_ptr);
 		break;
 	}
+	case YB_PARSE_QUEUE_QUERY:
+		if (server->sync_request > server->sync_reply) {
+			server->sync_request--;
+		} else {
+			od_instance_t *instance = server->global->instance;
+			od_error(&instance->logger, "parse queue cleanup",
+				 client, server,
+				 "discarded Query with no pending sync request");
+		}
+		server->yb_unnamed_prep_stmt_client_id =
+			entry->prev_unnamed_client_id;
+		break;
 	case YB_PARSE_QUEUE_UNNAMED_PARSE:
 	case YB_PARSE_QUEUE_UNNAMED_CLOSE:
-	case YB_PARSE_QUEUE_QUERY:
 		server->yb_unnamed_prep_stmt_client_id =
 			entry->prev_unnamed_client_id;
 		break;
@@ -1011,7 +1033,8 @@ static od_frontend_status_t od_frontend_remote_server(od_relay_t *relay,
 			"Refusing to parse unexpected 'S' ParameterStatus message from Postgres");
 		break;
 	case YB_CONN_MGR_PARAMETER_STATUS:
-		rc = od_backend_update_parameter(server, "main", data, size, 0);
+		rc = od_backend_update_parameter(server, "main", data, size,
+						 is_deploy);
 		if (rc == -1)
 			return relay->error_read;
 		break;
@@ -1360,13 +1383,11 @@ static inline machine_msg_t *od_frontend_rewrite_msg(char *data, int size,
 
 /*
  * YB: Prepare the key using which we identify the index of the server hashmap to search.
- * For optimized mode, the client_id_len parameter is set to 0.
  */
 char *yb_prepare_server_key(char *stmt_name, int stmt_name_len, char *query_string,
-								 int query_string_len, char *client_id, int client_id_len,
-								 int *server_key_len)
+								 int query_string_len, int *server_key_len)
 {
-	*server_key_len = (stmt_name_len - 1) + query_string_len + client_id_len;
+	*server_key_len = (stmt_name_len - 1) + query_string_len;
 	char *server_key = (char *)malloc(*server_key_len + 1);
 	if (server_key == NULL) {
 		return NULL;
@@ -1375,12 +1396,10 @@ char *yb_prepare_server_key(char *stmt_name, int stmt_name_len, char *query_stri
 	/*
 	 * Prune \0 at the end of only stmt_name. It is possible that
 	 * the query_string contains information about parameters being used, so do
-	 * not prune it. Client ID length is sent via strlen(), so no need for
-	 * pruning it.
+	 * not prune it.
 	 */
 	memcpy(server_key, stmt_name, stmt_name_len - 1);
 	memcpy(server_key + stmt_name_len - 1 , query_string, query_string_len);
-	memcpy(server_key + stmt_name_len + query_string_len - 1, client_id, client_id_len);
 	server_key[*server_key_len] = '\0';
 
 	return server_key;
@@ -1610,17 +1629,9 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				break;
 			}
 
-			yb_od_hash_64_t body_hash =
-				yb_od_murmur_hash_64(desc->data, desc->len);
-
-			yb_od_hash_64_t client_hash = yb_od_murmur_hash_64(
-				client->id.id, strlen(client->id.id));
-
 			int server_key_len = 0;
 			char *server_key = yb_prepare_server_key(operator_name, operator_name_len,
 						desc->data, desc->len,
-						client->id.id,
-						instance->config.yb_optimized_extended_query_protocol ? 0 : strlen(client->id.id),
 						&server_key_len);
 
 			if (!server_key) {
@@ -1786,6 +1797,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 
 			assert(client->prep_stmt_ids);
 
+#ifndef YB_SUPPORT_FOUND
 			int opname_start_offset =
 				kiwi_be_parse_opname_offset(data, size);
 			if (opname_start_offset < 0) {
@@ -1798,10 +1810,6 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				size - opname_start_offset -
 					desc.operator_name_len);
 
-			yb_od_hash_64_t client_hash = yb_od_murmur_hash_64(
-				client->id.id, strlen(client->id.id));
-
-#ifndef YB_SUPPORT_FOUND
 			if (od_hashmap_insert(client->prep_stmt_ids, keyhash,
 					      &key, &value_ptr)) {
 				if (value_ptr->len != desc.description_len ||
@@ -1878,8 +1886,6 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 			int server_key_len = 0;
 			char *server_key = yb_prepare_server_key(desc.operator_name, desc.operator_name_len,
 						desc.description, desc.description_len,
-						client->id.id,
-						instance->config.yb_optimized_extended_query_protocol ? 0 : strlen(client->id.id),
 						&server_key_len);
 
 			if (!server_key) {
@@ -2047,16 +2053,9 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				break;
 			}
 
-			yb_od_hash_64_t body_hash =
-				yb_od_murmur_hash_64(desc->data, desc->len);
-			yb_od_hash_64_t client_hash = yb_od_murmur_hash_64(
-				client->id.id, strlen(client->id.id));
-
 			int server_key_len = 0;
 			char *server_key = yb_prepare_server_key(operator_name, operator_name_len,
 						desc->data, desc->len,
-						client->id.id,
-						instance->config.yb_optimized_extended_query_protocol ? 0 : strlen(client->id.id),
 						&server_key_len);
 
 			if (!server_key) {
@@ -2833,6 +2832,9 @@ static void od_application_name_add_host(od_client_t *client)
 	int length =
 		od_snprintf(app_name_with_host, KIWI_MAX_VAR_SIZE, "%.*s - %s",
 			    app_name_len, app_name, peer_name);
+	if (length >= KIWI_MAX_VAR_SIZE) {
+		length = KIWI_MAX_VAR_SIZE - 1;
+	}
 #ifndef YB_GUC_SUPPORT_VIA_SHMEM
 	kiwi_vars_update(&client->yb_vars_session, "application_name", 17,
 			 app_name_with_host, length + 1); // return code ignored

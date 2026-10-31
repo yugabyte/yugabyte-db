@@ -712,7 +712,12 @@ public class AWSCloudImplTest extends FakeDBApplication {
                 .build());
 
     awsCloudImpl.ensureManagedLoadBalancer(
-        defaultProvider, "us-east-1", LB_NAME, lbZones(), Map.of("universe-name", "u1"));
+        defaultProvider,
+        "us-east-1",
+        LB_NAME,
+        lbZones(),
+        List.of(5433),
+        Map.of("universe-name", "u1"));
 
     ArgumentCaptor<CreateLoadBalancerRequest> create =
         ArgumentCaptor.forClass(CreateLoadBalancerRequest.class);
@@ -737,7 +742,7 @@ public class AWSCloudImplTest extends FakeDBApplication {
             PlatformServiceException.class,
             () ->
                 awsCloudImpl.ensureManagedLoadBalancer(
-                    defaultProvider, "us-east-1", LB_NAME, lbZones(), Map.of()));
+                    defaultProvider, "us-east-1", LB_NAME, lbZones(), List.of(5433), Map.of()));
 
     assertEquals(BAD_REQUEST, e.getHttpStatus());
   }
@@ -756,7 +761,12 @@ public class AWSCloudImplTest extends FakeDBApplication {
 
     String dnsName =
         awsCloudImpl.ensureManagedLoadBalancer(
-            defaultProvider, "us-east-1", LB_NAME, lbZones(), Map.of("universe-name", "u1"));
+            defaultProvider,
+            "us-east-1",
+            LB_NAME,
+            lbZones(),
+            List.of(5433),
+            Map.of("universe-name", "u1"));
 
     assertEquals(lb.dnsName(), dnsName);
     ArgumentCaptor<ModifyLoadBalancerAttributesRequest> attributes =
@@ -772,7 +782,12 @@ public class AWSCloudImplTest extends FakeDBApplication {
     givenNlb(existingNlb("us-east-1a", "subnet-a", "us-east-1b", "subnet-b"));
 
     awsCloudImpl.ensureManagedLoadBalancer(
-        defaultProvider, "us-east-1", LB_NAME, lbZones(), Map.of("universe-name", "u1"));
+        defaultProvider,
+        "us-east-1",
+        LB_NAME,
+        lbZones(),
+        List.of(5433),
+        Map.of("universe-name", "u1"));
 
     verify(mockElbClient, never()).createLoadBalancer(any(CreateLoadBalancerRequest.class));
     ArgumentCaptor<ModifyLoadBalancerAttributesRequest> attributes =
@@ -790,7 +805,12 @@ public class AWSCloudImplTest extends FakeDBApplication {
     givenNlb(existingNlb("us-east-1a", "subnet-other", "us-east-1c", "subnet-c"));
 
     awsCloudImpl.ensureManagedLoadBalancer(
-        defaultProvider, "us-east-1", LB_NAME, lbZones(), Map.of("universe-name", "u1"));
+        defaultProvider,
+        "us-east-1",
+        LB_NAME,
+        lbZones(),
+        List.of(5433),
+        Map.of("universe-name", "u1"));
 
     // SetSubnets replaces the list, and removing a subnet drops the connections in its zone.
     ArgumentCaptor<SetSubnetsRequest> setSubnets = ArgumentCaptor.forClass(SetSubnetsRequest.class);

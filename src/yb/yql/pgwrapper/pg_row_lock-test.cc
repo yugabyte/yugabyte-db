@@ -15,6 +15,7 @@
 #include <string_view>
 #include <thread>
 
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/pgsql_error.h"
 
 #include "yb/util/logging.h"
@@ -26,13 +27,10 @@
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
-DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_bool(ysql_skip_row_lock_for_update);
 DECLARE_bool(ysql_yb_enable_advisory_locks);
-DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
-DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_bool(skip_prefix_locks);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_string(ysql_pg_conf_csv);
@@ -266,9 +264,7 @@ class PgRowLockTestDisableObjectLock : public PgRowLockTest {
  protected:
   void SetUp() override {
     // Test verifies "<lock mode> not supported yet" errors when object locking is disabled.
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
+    ToggleDDLMode(/* use_legacy = */ true);
     PgRowLockTest::SetUp();
   }
 };
@@ -1059,9 +1055,7 @@ class PgRowLockWithConcurrentDdlTest : public PgMiniTestBase {
  protected:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = true;
+    ToggleDDLMode(/* use_legacy = */ false);
     PgMiniTestBase::SetUp();
   }
 };

@@ -464,6 +464,7 @@ _outModifyTable(StringInfo str, const ModifyTable *node)
 	WRITE_NODE_FIELD(yb_skip_entities);
 	WRITE_NODE_FIELD(yb_update_affected_entities);
 	WRITE_BOOL_FIELD(no_row_trigger);
+	WRITE_BOOL_FIELD(ybInsertOnConflictPushdownPossible);
 }
 
 static void

@@ -8,6 +8,7 @@ import { toast } from 'react-toastify';
 
 import { fetchTaskUntilItCompletes } from '@app/actions/xClusterReplication';
 import { YBLoadingCircleIcon } from '@app/components/common/indicators';
+import { ProviderCode } from '@app/components/configRedesign/providerRedesign/constants';
 import { YBButton, YBModal, type YBModalProps } from '@app/redesign/components';
 import { YBStepper } from '@app/redesign/components/YBStepper/YBStepper';
 import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
@@ -16,6 +17,7 @@ import { RBAC_ERR_MSG_NO_PERM } from '@app/redesign/features/rbac/common/validat
 import {
   api,
   dbReleaseQueryKey,
+  providerQueryKey,
   runtimeConfigQueryKey,
   universeQueryKey
 } from '@app/redesign/helpers/api';
@@ -23,10 +25,11 @@ import { useRefreshSoftwareUpgradeTasksCache } from '@app/redesign/helpers/cache
 import { RuntimeConfigKey } from '@app/redesign/helpers/constants';
 import { assertUnreachableCase, handleServerError } from '@app/utils/errorHandlingUtils';
 import { getUniverse, startSoftwareUpgrade } from '@app/v2/api/universe/universe';
-import type {
-  Universe,
-  UniverseSoftwareUpgradeReqBody,
-  YBATaskRespResponse
+import {
+  ClusterSpecClusterType,
+  type Universe,
+  type UniverseSoftwareUpgradeReqBody,
+  type YBATaskRespResponse
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 
 import { CurrentDbUpgradeFormStep } from './CurrentDbUpgradeFormStep';
@@ -128,6 +131,17 @@ export const DbUpgradeModal = ({
 
   const currentDbVersion = universeDetailsQuery.data?.spec?.yb_software_version ?? '';
   const currentReleaseArchitecture = universeDetailsQuery.data?.info?.arch;
+  const primaryProviderUuid = universeDetailsQuery.data?.spec?.clusters?.find(
+    (cluster) => cluster.cluster_type === ClusterSpecClusterType.PRIMARY
+  )?.provider_spec?.provider;
+
+  const providerQuery = useQuery(
+    providerQueryKey.detail(primaryProviderUuid ?? ''),
+    () => api.fetchProvider(primaryProviderUuid),
+    { enabled: !!primaryProviderUuid }
+  );
+  const targetReleasePlatform =
+    providerQuery.data?.code === ProviderCode.KUBERNETES ? 'KUBERNETES' : 'LINUX';
 
   const universeRuntimeConfigsQuery = useQuery(
     runtimeConfigQueryKey.universeScope(currentUniverseUuid),
@@ -151,11 +165,13 @@ export const DbUpgradeModal = ({
     releasesList,
     currentDbVersion,
     currentReleaseArchitecture,
-    shouldSkipVersionChecks
+    shouldSkipVersionChecks,
+    targetReleasePlatform
   );
 
   const areModalQueriesReady =
     !universeDetailsQuery.isLoading &&
+    !providerQuery.isLoading &&
     !universeRuntimeConfigsQuery.isLoading &&
     !dbReleasesQuery.isLoading &&
     !!universeDetailsQuery.data;

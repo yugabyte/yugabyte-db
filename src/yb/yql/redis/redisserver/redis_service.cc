@@ -44,6 +44,7 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/memory/mc_types.h"
 #include "yb/util/metrics.h"
@@ -63,7 +64,6 @@ using yb::operator""_MB;
 using namespace std::literals;
 using namespace std::placeholders;
 using yb::client::YBMetaDataCache;
-using strings::Substitute;
 using yb::rpc::Connection;
 
 DEFINE_REDIS_histogram_EX(error,
@@ -1527,7 +1527,7 @@ void RedisServiceImpl::Impl::Handle(rpc::InboundCallPtr call_ptr) {
       continue;
     } else if (!AllowedInClientMode(cmd_info, conn_context->ClientMode())) {
       RespondWithFailure(
-          call, idx, Substitute(
+          call, idx, Format(
                          "Command $0 not allowed in client mode $1.", cmd_info->name,
                          yb::ToString(conn_context->ClientMode())));
       continue;

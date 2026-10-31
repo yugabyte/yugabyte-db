@@ -58,6 +58,14 @@ DEFINE_RUNTIME_uint64(xcluster_ddl_queue_analyze_mutation_count, 1000000000000,
     "covers tables of up to ten trillion rows with the default scale factor of 0.1. Note that "
     "this does not bypass the auto analyze cooldown for the table.");
 
+DEFINE_RUNTIME_uint32(xcluster_ddl_queue_terminate_backend_new_conn_timeout_ms, 5000,
+    "Timeout for opening the Postgres connection used to terminate the backend running a "
+    "replicated DDL.");
+
+DEFINE_RUNTIME_uint32(xcluster_ddl_queue_terminate_backend_min_query_running_time_ms, 1000,
+    "Only terminate the Postgres backend of a paused xCluster ddl_queue poller if its current "
+    "query has been running for at least this long.");
+
 DEFINE_test_flag(bool, xcluster_ddl_queue_handler_cache_connection, true,
     "Whether we should cache the ddl_queue handler's connection, or always recreate it.");
 
@@ -83,6 +91,8 @@ DEFINE_test_flag(string, xcluster_ddl_queue_handler_fail_ddl_matching, "",
     "If non-empty, the ddl_queue handler fails only the ddl commands whose query contains this "
     "substring.");
 
+DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_enable_object_locking_infra);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(ysql_yb_enable_advisory_locks);
 DECLARE_bool(ysql_enable_auto_analyze);
@@ -381,12 +391,69 @@ XClusterDDLQueueHandler::XClusterDDLQueueHandler(
 
 XClusterDDLQueueHandler::~XClusterDDLQueueHandler() {}
 
+bool XClusterDDLQueueHandler::HasDdlInFlight() const {
+  return ddl_in_flight_.load(std::memory_order_acquire);
+}
+
+std::string XClusterDDLQueueHandler::GetRunningDdlDescription() const {
+  std::lock_guard l(running_ddl_mutex_);
+  return running_ddl_description_.empty() ? "none" : running_ddl_description_;
+}
+
+void XClusterDDLQueueHandler::KillPgConnection() {
+  if (!ddl_in_flight_.load(std::memory_order_acquire)) {
+    VLOG_WITH_PREFIX(1) << "KillPgConnection: no DDL in flight, nothing to terminate";
+    return;
+  }
+
+  // Open a separate short-lived connection to issue the terminate.
+  const auto deadline =
+      CoarseMonoClock::Now() +
+      MonoDelta::FromMilliseconds(FLAGS_xcluster_ddl_queue_terminate_backend_new_conn_timeout_ms);
+  auto conn = connect_to_pg_func_(namespace_name_, deadline);
+  if (!conn.ok()) {
+    // Will retry on the consumer's next pass.
+    YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 30)
+        << "Failed to connect to PostgreSQL to terminate the backend: " << conn.status();
+    return;
+  }
+
+  // Read the flag and the pid together, after the connection is open.
+  if (!ddl_in_flight_.load(std::memory_order_acquire)) {
+    return;
+  }
+  auto pid = pg_backend_pid_.load(std::memory_order_acquire);
+  if (pid == 0) {
+    VLOG_WITH_PREFIX(1) << "KillPgConnection: no backend pid recorded, nothing to terminate";
+    return;
+  }
+
+  auto terminated = pgwrapper::TryTerminateBackendWithRunningQuery(
+      *conn, static_cast<int>(pid),
+      FLAGS_xcluster_ddl_queue_terminate_backend_min_query_running_time_ms);
+  if (!terminated.ok()) {
+    // Will retry on the consumer's next pass.
+    YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 30)
+        << "Failed to terminate PostgreSQL backend " << pid << ": " << terminated.status();
+    return;
+  }
+  if (!*terminated) {
+    VLOG_WITH_PREFIX(1) << "PostgreSQL backend " << pid
+                        << " is not running a long query or has already exited";
+    return;
+  }
+
+  LOG_WITH_PREFIX(INFO) << "Terminated PostgreSQL backend " << pid
+                        << " to abort a replicated DDL, since replication has been paused";
+  pg_backend_pid_.compare_exchange_strong(pid, 0);
+}
+
 void XClusterDDLQueueHandler::Shutdown() {
   if (pg_conn_ && FLAGS_ysql_yb_enable_advisory_locks &&
       FLAGS_xcluster_ddl_queue_advisory_lock_key != 0) {
     // Optimistically unlock the advisory lock so we don't have to wait for the connection to close.
     // Use Fetch since pg_advisory_unlock_all() returns a (void) row.
-    auto s = ResultToStatus(pg_conn_->Fetch("SELECT pg_advisory_unlock_all()"));
+    auto s = ResultToStatus(pg_conn_->Fetch("SELECT pg_catalog.pg_advisory_unlock_all()"));
     // Alright if we fail here, log an error and wait for the connection to close normally.
     WARN_NOT_OK(s, "Encountered error unlocking advisory lock for xCluster DDL queue handler");
     pg_conn_.reset();
@@ -397,7 +464,9 @@ bool XClusterDDLQueueHandler::ShouldUseTransactionalDDL(
     const std::vector<XClusterDDLQueryInfo>& queries) const {
   return queries.size() > 1 &&
          FLAGS_xcluster_ddl_queue_enable_transactional_ddl &&
-         FLAGS_ysql_yb_ddl_transaction_block_enabled;
+         FLAGS_ysql_yb_ddl_transaction_block_enabled &&
+         // ysql_yb_ddl_transaction_block_enabled depends on object locking
+         FLAGS_enable_object_locking_for_table_locks && FLAGS_ysql_enable_object_locking_infra;
 }
 
 Status XClusterDDLQueueHandler::ProcessQueriesForCommitTime(const HybridTime& commit_time) {
@@ -436,6 +505,7 @@ Status XClusterDDLQueueHandler::ProcessQueriesForCommitTime(const HybridTime& co
       LOG_WITH_PREFIX(WARNING)
           << "Failed to ABORT transactional DDL batch, dropping connection: " << abort_status;
       pg_conn_.reset();
+      pg_backend_pid_.store(0, std::memory_order_release);
     }
   });
 
@@ -445,13 +515,22 @@ Status XClusterDDLQueueHandler::ProcessQueriesForCommitTime(const HybridTime& co
         kSupportedCommandTags.contains(query_info.command_tag), InvalidArgument,
         "Found unsupported command tag $0", query_info.command_tag);
 
+    {
+      std::lock_guard l(running_ddl_mutex_);
+      running_ddl_description_ = Format(
+          "$0 (ddl_end_time: $1, query_id: $2)", query_info.command_tag, query_info.ddl_end_time,
+          query_info.query_id);
+    }
+
     // Register source table mappings for new relations before running the DDL.
     // CREATE TABLE on the target needs the mapping to exist before it executes.
     std::unordered_set<YsqlFullTableName> new_relations;
-    auto relation_cleanup = ScopeExit([this, &new_relations]() {
+    auto cleanup = ScopeExit([this, &new_relations]() {
       for (const auto& new_rel : new_relations) {
         xcluster_context_.ClearSourceTableInfoMappingForCreateTable(new_rel);
       }
+      std::lock_guard l(running_ddl_mutex_);
+      running_ddl_description_.clear();
     });
     RETURN_NOT_OK(ProcessNewRelations(query_info, new_relations, commit_time));
 
@@ -492,6 +571,12 @@ Status XClusterDDLQueueHandler::ExecuteCommittedDDLs() {
     //    We need to wait until we get a safe apply time before processing this batch.
     return Status::OK();
   }
+
+  // Marks this handler as processing the DDL batch, so that a pause can terminate the backend if
+  // the batch cannot complete.
+  ddl_in_flight_.store(true, std::memory_order_release);
+  auto ddl_in_flight_clearer =
+      ScopeExit([this] { ddl_in_flight_.store(false, std::memory_order_release); });
 
   SCHECK(
       !FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start, InternalError,
@@ -613,12 +698,15 @@ Status XClusterDDLQueueHandler::ProcessDDLQuery(const XClusterDDLQueryInfo& quer
   }
 
   // Set needed session variables as on source.
+  // Use set_config instead of SET to handle quoted strings.
   for (const auto& [name, value] : query_info.variables) {
     if (!IsAllowedGucVariable(name)) {
       LOG_WITH_PREFIX(WARNING) << "Ignoring unexpected variable in DDL queue entry: " << name;
       continue;
     }
-    setup_query << Format("SET $0 = $1;", name, pgwrapper::PqEscapeLiteral(value));
+    setup_query << Format(
+        "SELECT pg_catalog.set_config($0, $1, false);", pgwrapper::PqEscapeLiteral(name),
+        pgwrapper::PqEscapeLiteral(value));
   }
 
   const auto& fail_ddl_matching = FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl_matching;
@@ -636,7 +724,8 @@ Status XClusterDDLQueueHandler::ProcessDDLQuery(const XClusterDDLQueryInfo& quer
   RETURN_NOT_OK(
       // The SELECT here can't be last; otherwise, RunAndLogQuery complains that rows are returned.
       RunAndLogQuery(
-          "SELECT pg_catalog.yb_xcluster_set_next_oid_assignments('{}');SET ROLE NONE;"));
+          "SELECT pg_catalog.yb_xcluster_set_next_oid_assignments('{}');SET ROLE NONE;"
+          "RESET search_path;"));
   return Status::OK();
 }
 
@@ -799,6 +888,8 @@ Status XClusterDDLQueueHandler::RunDdlQueueHandlerPrepareQueries(pgwrapper::PGCo
   query << "SET yb_xcluster_consistency_level = tablet;";
   // Allow writes on target (read-only) cluster.
   query << "SET yb_non_ddl_txn_for_sys_tables_allowed = 1;";
+  // Keep reading the catalog as of now even when yb_read_time is set (see GetRowsToProcess).
+  query << "SET yb_read_time_skip_catalog = 1;";
   // Skip any data loads on the target since those records will be replicated (note that concurrent
   // index backfill uses a different flow). Skip sequence restart for TRUNCATE TABLE.
   query << "SET yb_xcluster_automatic_mode_target_ddl=true;";
@@ -834,12 +925,14 @@ Status XClusterDDLQueueHandler::RunDdlQueueHandlerPrepareQueries(pgwrapper::PGCo
 Status XClusterDDLQueueHandler::InitPGConnection() {
   if (!FLAGS_TEST_xcluster_ddl_queue_handler_cache_connection) {
     pg_conn_.reset();
+    pg_backend_pid_.store(0, std::memory_order_release);
   }
   if (pg_conn_ && pg_conn_->ConnStatus() != CONNECTION_OK) {
     YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 30)
         << "Dropping unhealthy PostgreSQL connection (status " << pg_conn_->ConnStatus()
         << "), will reconnect";
     pg_conn_.reset();
+    pg_backend_pid_.store(0, std::memory_order_release);
   }
   if (pg_conn_) {
     return Status::OK();
@@ -861,7 +954,12 @@ Status XClusterDDLQueueHandler::InitPGConnection() {
 
   RETURN_NOT_OK(RunDdlQueueHandlerPrepareQueries(pg_conn.get()));
 
+  // Record the backend pid now, while the connection is idle. It cannot be fetched later from
+  // another thread wanting to terminate a stuck DDL, since the connection will be busy by then.
+  const auto backend_pid = static_cast<uint32_t>(pg_conn->BackendPID());
+
   pg_conn_ = std::move(pg_conn);
+  pg_backend_pid_.store(backend_pid, std::memory_order_release);
   return Status::OK();
 }
 
@@ -886,10 +984,15 @@ Result<HybridTime> XClusterDDLQueueHandler::GetPublishedXClusterSafeTime() {
 Result<std::vector<std::tuple<int64, int64, std::string>>>
 XClusterDDLQueueHandler::GetRowsToProcess(const HybridTime& commit_time) {
   // Since applies can come out of order, need to read at the apply_safe_time and not latest.
-  // Use yb_disable_catalog_version_check since we do not need to read from the latest catalog (the
-  // extension tables should not change).
+  // The catalog is read as of now instead (yb_read_time_skip_catalog).  Reading it as of the
+  // commit time fails when the commit time is from before the restore created ddl_queue on the
+  // target.  That is safe because the extension tables keep their definition and storage.
+  // yb_disable_catalog_version_check is needed to SET yb_read_time in a multi-statement query
+  // since that runs as a transaction block.  Skipping the check is fine because a new yb_read_time
+  // reloads the catalog anyway.
   RETURN_NOT_OK(pg_conn_->ExecuteFormat(
-      "SET ROLE NONE; SET yb_disable_catalog_version_check = 1; SET yb_read_time TO '$0 ht'",
+      "RESET search_path; SET ROLE NONE; SET yb_disable_catalog_version_check = 1; "
+      "SET yb_read_time TO '$0 ht'",
       commit_time.ToUint64()));
   auto rows = VERIFY_RESULT((pg_conn_->FetchRows<int64_t, int64_t, std::string>(Format(
       "/*+ MergeJoin(q r) */ "

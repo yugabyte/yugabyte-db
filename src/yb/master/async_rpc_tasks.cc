@@ -28,6 +28,7 @@
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/format.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
@@ -45,6 +46,7 @@ DEFINE_test_flag(string, skip_async_insert_packed_schema_for_tablet_id, "",
 DECLARE_int32(tablet_creation_timeout_ms);
 DECLARE_int32(TEST_slowdown_alter_table_rpcs_ms);
 
+DECLARE_bool(TEST_hinted_leader_election_for_existing_tablets);
 DECLARE_bool(ysql_yb_enable_alter_table_rewrite);
 
 namespace yb::master {
@@ -55,7 +57,6 @@ using std::string;
 using std::shared_ptr;
 using std::vector;
 
-using strings::Substitute;
 using consensus::RaftPeerPB;
 using server::MonitoredTaskState;
 using server::MonitoredTaskType;
@@ -248,6 +249,7 @@ AsyncStartElection::AsyncStartElection(Master *master,
                                        LeaderEpoch epoch)
   : RetrySpecificTSRpcTaskWithTable(master, callback_pool, permanent_uuid,
         tablet->table(), std::move(epoch), /* async_task_throttler */ nullptr),
+    tablet_(tablet),
     tablet_id_(tablet->tablet_id()) {
   // May not honor unresponsive deadline, refer to UnresponsiveDeadline().
   deadline_ = start_timestamp_;
@@ -278,6 +280,13 @@ std::string AsyncStartElection::description() const {
 }
 
 bool AsyncStartElection::SendRequest(int attempt) {
+  // A tablet leaves CREATING once a leader is reported. Retrying past that would run an
+  // ELECT_EVEN_IF_LEADER_IS_ALIVE election against that leader.
+  if (tablet_->LockForRead()->pb.state() != SysTabletsEntryPB::CREATING &&
+      PREDICT_TRUE(!FLAGS_TEST_hinted_leader_election_for_existing_tablets)) {
+    AbortTask(STATUS(Aborted, "Tablet is no longer new"));
+    return false;
+  }
   LOG_WITH_PREFIX(INFO) << Format(
       "Hinted Leader start election at $0 for tablet $1, attempt $2",
       permanent_uuid_, tablet_id_, attempt);
@@ -585,6 +594,12 @@ void AsyncAlterTable::Finished(const Status& status) {
   // it's safe to call OnComplete here without worrying about per-attempt double-counting.
   if (cdc_alter_batch_tracker_) {
     cdc_alter_batch_tracker_->OnComplete(status);
+  }
+}
+
+void AsyncAlterTable::UnregisterAsyncTaskCallback() {
+  if (state() == MonitoredTaskState::kFailed && table_) {
+    master_->catalog_manager()->HandleAlterTableTaskFailed(*table_);
   }
 }
 
@@ -961,8 +976,8 @@ std::string AsyncTryStepDown::description() const {
 }
 
 Status AsyncTryStepDown::PrepareRequest(int attempt) {
-  LOG_WITH_PREFIX(INFO) << Substitute("Prep Leader step down $0, leader_uuid=$1, change_ts_uuid=$2",
-                                      attempt, permanent_uuid(), change_config_ts_uuid_);
+  LOG_WITH_PREFIX(INFO) << Format("Prep Leader step down $0, leader_uuid=$1, change_ts_uuid=$2",
+                                  attempt, permanent_uuid(), change_config_ts_uuid_);
   if (attempt > 1) {
     return STATUS(RuntimeError, "Retry is not allowed");
   }
@@ -1006,7 +1021,7 @@ bool AsyncTryStepDown::SendRequest(int attempt) {
 void AsyncTryStepDown::HandleResponse(int attempt) {
   if (!rpc_.status().ok()) {
     AbortTask(rpc_.status());
-    LOG_WITH_PREFIX(WARNING) << Substitute(
+    LOG_WITH_PREFIX(WARNING) << Format(
         "Got error on stepdown for tablet $0 with leader $1, attempt $2 and error $3",
         tablet_->tablet_id(), permanent_uuid(), attempt, rpc_.status().ToString());
 
@@ -1074,13 +1089,13 @@ AsyncAddTableToTablet::AsyncAddTableToTablet(
 }
 
 string AsyncAddTableToTablet::description() const {
-  return Substitute("AddTableToTablet RPC ($0) ($1)", table_->ToString(), tablet_->ToString());
+  return Format("AddTableToTablet RPC ($0) ($1)", table_->ToString(), tablet_->ToString());
 }
 
 void AsyncAddTableToTablet::HandleResponse(int attempt) {
   if (!rpc_.status().ok()) {
     AbortTask(rpc_.status());
-    LOG_WITH_PREFIX(WARNING) << Substitute(
+    LOG_WITH_PREFIX(WARNING) << Format(
         "Got error when adding table $0 to tablet $1, attempt $2 and error $3",
         table_->ToString(), tablet_->ToString(), attempt, rpc_.status().ToString());
     return;
@@ -1110,8 +1125,15 @@ void AsyncAddTableToTablet::HandleResponse(int attempt) {
     TransitionToFailedState(MonitoredTaskState::kRunning, tablets_running_result.status());
     return;
   }
-  LOG_IF(DFATAL, !*tablets_running_result)
-      << "Not all tablets are running while processing AddTableToTablet response";
+  if (!*tablets_running_result) {
+    // A vector index shares the indexed table's tablets, which may include split children the
+    // master has not yet seen RUNNING. Wait for them without resending the RPC: re-adding a
+    // vector index to a tablet is not idempotent.
+    LOG_WITH_PREFIX(INFO) << "Not all tablets are running yet, waiting before promoting table";
+    table_added_ = true;
+    TransitionToWaitingState(MonitoredTaskState::kRunning);
+    return;
+  }
   if (--*task_counter_ == 0) {
     VLOG_WITH_FUNC(1) << "Marking table " << table_->ToString() << " as RUNNING";
     Status s = master_->catalog_manager()->PromoteTableToRunningState(table_, epoch());
@@ -1127,9 +1149,19 @@ void AsyncAddTableToTablet::HandleResponse(int attempt) {
   TransitionToCompleteState();
 }
 
+Status AsyncAddTableToTablet::PickReplica() {
+  // No RPC is sent once the table is added, so the tablet may already be gone (split parent).
+  return table_added_ ? Status::OK() : RetryingTSRpcTaskWithTable::PickReplica();
+}
+
 bool AsyncAddTableToTablet::SendRequest(int attempt) {
   if (PREDICT_FALSE(FLAGS_TEST_stuck_add_tablet_to_table_task_enabled)) {
     LOG_WITH_FUNC(WARNING) << "Causing the task to get stuck";
+    return true;
+  }
+  if (table_added_) {
+    // resp_ still holds the successful response, so HandleResponse only re-checks tablet states.
+    RpcCallback();
     return true;
   }
 
@@ -1163,13 +1195,13 @@ AsyncRemoveTableFromTablet::AsyncRemoveTableFromTablet(
 }
 
 string AsyncRemoveTableFromTablet::description() const {
-  return Substitute("RemoveTableFromTablet RPC ($0) ($1)", table_->ToString(), tablet_->ToString());
+  return Format("RemoveTableFromTablet RPC ($0) ($1)", table_->ToString(), tablet_->ToString());
 }
 
 void AsyncRemoveTableFromTablet::HandleResponse(int attempt) {
   if (!rpc_.status().ok()) {
     AbortTask(rpc_.status());
-    LOG_WITH_PREFIX(WARNING) << Substitute(
+    LOG_WITH_PREFIX(WARNING) << Format(
         "Got error when removing table $0 from tablet $1, attempt $2 and error $3",
         table_->ToString(), tablet_->ToString(), attempt, rpc_.status().ToString());
     return;

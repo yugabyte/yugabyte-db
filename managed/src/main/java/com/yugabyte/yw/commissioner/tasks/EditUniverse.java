@@ -12,20 +12,17 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.CanRollback;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.utils.CapacityReservationUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
-import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Arrays;
@@ -36,7 +33,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -147,16 +143,13 @@ public class EditUniverse extends EditUniverseTaskBase {
         if (cluster.clusterType == ClusterType.PRIMARY && dedicatedNodesChanged.get()) {
           updateGFlagsForTservers(cluster, universe);
         }
-        Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(universe);
         editCluster(
             universe,
             clusters,
             cluster,
             getNodesInCluster(cluster.uuid, addedMasters),
             getNodesInCluster(cluster.uuid, removedMasters),
-            node ->
-                providerGetter.apply(node).getCloudCode()
-                    == CloudType.onprem /* force destroy servers */,
+            forceDestroyOnlyOnOnprem(universe),
             false /* moveMastersFirst */);
         // Updating placement info and userIntent in DB
         createUpdateUniverseIntentTask(cluster);
@@ -168,6 +161,11 @@ public class EditUniverse extends EditUniverseTaskBase {
           && !Objects.equals(
               universe.getUniverseDetails().communicationPorts, taskParams().communicationPorts)) {
         createUpdateUniverseCommunicationPortsTask(taskParams().communicationPorts);
+        // The load balancers were reconciled above with the old ports.
+        for (Cluster cluster : clusters) {
+          createEnsureManagedLoadBalancerTasks(cluster);
+        }
+        createManageLoadBalancerTasks(createLoadBalancerMap(taskParams(), null, null, null));
       }
       if (primaryRFChanged.get()) {
         createMasterLeaderStepdownTask();
@@ -187,6 +185,14 @@ public class EditUniverse extends EditUniverseTaskBase {
           createConfigureCloudFederationTasks(
               cluster.userIntent, taskParams().getNodesInCluster(cluster.uuid), true);
         }
+      }
+
+      // A full move leaves only nodes it added. Only here, after the old nodes are gone, are they
+      // all the nodes left, so the move may decide the universe's node_exporter scheme.
+      if (taskParams().nodeDetailsSet.stream()
+          .filter(n -> n.state != NodeDetails.NodeState.ToBeRemoved)
+          .allMatch(n -> n.state == NodeDetails.NodeState.ToBeAdded)) {
+        createUpdateNodeExporterTlsTask(universe);
       }
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.

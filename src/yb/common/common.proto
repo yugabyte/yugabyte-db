@@ -135,10 +135,13 @@ enum PgVectorIndexType {
   HNSW = 3;
 }
 
+// DEPRECATED_* backends stored chunks in the native usearch/hnswlib file formats. They are no
+// longer created or loaded: a tablet with such an index fails to open, and DROP INDEX cannot be
+// applied by a tablet that is not running, so these indexes must be dropped before upgrading.
 enum HnswBackend {
-  USEARCH = 0;
+  DEPRECATED_USEARCH = 0;
   YB_HNSW_USEARCH = 1;
-  HNSWLIB = 2;
+  DEPRECATED_HNSWLIB = 2;
   YB_HNSW_HNSWLIB = 3;
 };
 
@@ -172,6 +175,13 @@ message PgVectorIdxOptionsPB {
   // an index must not mix vectors with and without payload. Always set for an index of a table
   // with TablePropertiesPB::skip_vector_reverse_mapping set.
   optional bool store_payload = 10;
+
+  // Number of leading primary-key components that identify the vector tenant and are stored in
+  // the payload. All hash columns form a single hash-group component, followed by one component
+  // per range column. 0 means the vectors have no tenant.
+  // Set by master at index creation only for hnswlib indexes that store payload. Always less than
+  // Schema::NumHashGroupAndRangeComponents, so the tenant never covers the full primary key.
+  optional uint32 tenant_hash_group_and_range_components = 11;
 }
 
 message PgHnswReadOptionsPB {
@@ -185,6 +195,11 @@ message PgVectorReadOptionsPB {
   oneof index_params {
     PgHnswReadOptionsPB hnsw_options = 3;
   }
+  // Prefixes of the partition keys of the rows matching the query: the partition key itself (the
+  // encoded hash code) for a hash partitioned table, the leading range components without the
+  // group end for a range partitioned table. When set and the vector_index_enable_pk_routing
+  // AutoFlag is on, PgClient only searches the partitions whose key ranges these prefixes overlap.
+  repeated bytes partition_key_prefixes = 5;
 }
 
 message TablePropertiesPB {
@@ -536,6 +551,13 @@ message ReadHybridTimePB {
   optional fixed64 local_limit_ht = 5;
 }
 
+// Stamp on writes and commits issued on behalf of a YSQL backend: the database the backend is
+// connected to, and the hybrid time the work originated at (see StopPersisting/StartPersisting).
+message OriginationInfoPB {
+  optional uint32 database_oid = 1;
+  optional fixed64 origination_ht = 2;
+}
+
 // For clarification of field meaning see comments of appropriate fields in YBTransaction::Impl
 message ChildTransactionDataPB {
   optional TransactionMetadataPB metadata = 1;
@@ -825,6 +847,16 @@ message CDCSDKStreamCreateOptionsPB {
   optional ReplicationSlotOrderingMode ordering_mode =
     13 [default = ReplicationSlotOrderingMode_UNSPECIFIED];
   optional CDCSDKBoundTableIds bound_table_ids = 14;
+  // Publication this stream is statically bound to (publication-scoped replication slots).
+  // Bound by name rather than oid since publication oids are not preserved across a YSQL
+  // major upgrade.
+  optional string bound_publication_name = 15;
+  // Member tables of bound_publication_name, as PG resolved them when creating the slot. Empty for
+  // a FOR ALL TABLES publication, whose stream takes every eligible table.
+  optional CDCSDKBoundTableIds bound_publication_table_ids = 16;
+  // Whether bound_publication_name is a FOR ALL TABLES publication, i.e. whether tables created
+  // later join it.
+  optional bool bound_publication_all_tables = 17 [default = false];
 }
 
 message CDCSDKBoundTableIds {

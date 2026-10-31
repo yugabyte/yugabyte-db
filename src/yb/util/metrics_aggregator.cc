@@ -15,6 +15,8 @@
 
 #include "yb/util/metrics_aggregator.h"
 
+#include "yb/gutil/map-util.h"
+
 #include "yb/util/debug.h"
 #include "yb/util/metrics.h"
 #include "yb/util/status_format.h"
@@ -104,6 +106,12 @@ MetricsAggregator::CreateOrFindPreAggregatedMetricValueHolder(
     const std::string& aggregation_id,
     const char* type,
     const char* description) {
+  auto aggregated_metric_info = FindPreAggregatedMetricInfo(
+      metric_name, default_aggregation_levels, metric_entity_type, aggregation_id);
+  if (aggregated_metric_info) {
+    return aggregated_metric_info->CreateOrFindPreAggregatedValueHolder(aggregation_id);
+  }
+
   UniqueLock lock(mutex_);
 
   auto& attributes_ptr_by_aggregation_id =
@@ -136,10 +144,34 @@ MetricsAggregator::CreateOrFindPreAggregatedMetricValueHolder(
   }
   // Copy the shared_ptr before releasing the lock to avoid a dangling reference if the map
   // rehashes or the entry is erased by another thread (e.g. CleanupRetiredMetrics).
-  auto aggregated_metric_info = aggregated_metric_info_ref;
+  aggregated_metric_info = aggregated_metric_info_ref;
   lock.unlock();
 
   return aggregated_metric_info->CreateOrFindPreAggregatedValueHolder(aggregation_id);
+}
+
+std::shared_ptr<PreAggregatedMetricInfo> MetricsAggregator::FindPreAggregatedMetricInfo(
+    const std::string& metric_name,
+    AggregationLevels default_aggregation_levels,
+    const std::string& metric_entity_type,
+    const std::string& aggregation_id) const {
+  SharedLock lock(mutex_);
+  auto* attributes_ptr_by_aggregation_id =
+      FindOrNull(attributes_ptr_by_metric_entity_type_and_aggregation_id_, metric_entity_type);
+  if (!attributes_ptr_by_aggregation_id) {
+    return nullptr;
+  }
+  // Checks the pointer in place: copying it would contend on its reference count.
+  auto has_attributes = [attributes_ptr_by_aggregation_id](const std::string& id) {
+    auto* attributes_ptr = FindOrNull(*attributes_ptr_by_aggregation_id, id);
+    return attributes_ptr && *attributes_ptr;
+  };
+  if (!has_attributes(aggregation_id) ||
+      ((default_aggregation_levels & kServerLevel) &&
+       !has_attributes(kServerLevelAggregationId))) {
+    return nullptr;
+  }
+  return FindPtrOrNull(pre_aggregated_metric_info_by_metric_name_, metric_name);
 }
 
 Status MetricsAggregator::ReplaceAttributes(

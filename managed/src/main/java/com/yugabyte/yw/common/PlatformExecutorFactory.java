@@ -15,6 +15,7 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import java.time.Duration;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadFactory;
@@ -54,6 +55,10 @@ public class PlatformExecutorFactory {
     return config.getInt(getPath(poolName, ".queue_capacity"));
   }
 
+  private Duration coalescingDelay(String poolName) {
+    return config.getDuration(getPath(poolName, ".coalescing_delay"));
+  }
+
   private String getPath(String poolName, String confKey) {
     return "yb." + poolName + confKey;
   }
@@ -81,7 +86,7 @@ public class PlatformExecutorFactory {
         ybCorePoolSize(configPoolName),
         ybMaxPoolSize(configPoolName),
         Duration.ofSeconds(keepAliveDuration(configPoolName).getSeconds()),
-        ybQueueCapacity(configPoolName),
+        newQueue(ybQueueCapacity(configPoolName)),
         namedThreadFactory,
         Duration.ZERO,
         false);
@@ -99,6 +104,19 @@ public class PlatformExecutorFactory {
         poolName, poolSize, poolSize, Duration.ZERO, Integer.MAX_VALUE, namedThreadFactory);
   }
 
+  public ThreadPoolExecutor createCoalescingDelayExecutor(
+      String poolName, ThreadFactory namedThreadFactory) {
+    Duration delay = coalescingDelay(poolName);
+    // No core thread so that execute() always goes through the queue and its delay.
+    return createExecutor(
+        poolName,
+        0 /* corePoolSize */,
+        1 /* maxPoolSize */,
+        delay.plusMinutes(1) /* keepAliveTime */,
+        new CoalescingDelayQueue<>(delay),
+        namedThreadFactory);
+  }
+
   public ThreadPoolExecutor createExecutor(
       String poolName,
       int corePoolSize,
@@ -111,10 +129,30 @@ public class PlatformExecutorFactory {
         corePoolSize,
         maxPoolSize,
         keepAliveTime,
-        queueCapacity,
+        newQueue(queueCapacity),
+        namedThreadFactory);
+  }
+
+  public ThreadPoolExecutor createExecutor(
+      String poolName,
+      int corePoolSize,
+      int maxPoolSize,
+      Duration keepAliveTime,
+      BlockingQueue<Runnable> queue,
+      ThreadFactory namedThreadFactory) {
+    return createExecutor(
+        poolName,
+        corePoolSize,
+        maxPoolSize,
+        keepAliveTime,
+        queue,
         namedThreadFactory,
         PlatformThreadPoolExecutor.DEFAULT_QUEUE_OFFER_TIMEOUT,
         true);
+  }
+
+  private static BlockingQueue<Runnable> newQueue(int queueCapacity) {
+    return queueCapacity <= 0 ? new SynchronousQueue<>() : new LinkedBlockingQueue<>(queueCapacity);
   }
 
   private ThreadPoolExecutor createExecutor(
@@ -122,7 +160,7 @@ public class PlatformExecutorFactory {
       int corePoolSize,
       int maxPoolSize,
       Duration keepAliveTime,
-      int queueCapacity,
+      BlockingQueue<Runnable> queue,
       ThreadFactory namedThreadFactory,
       Duration queueOfferTimeout,
       boolean addShutdownHook) {
@@ -132,9 +170,7 @@ public class PlatformExecutorFactory {
             maxPoolSize,
             keepAliveTime.getSeconds(),
             TimeUnit.SECONDS,
-            queueCapacity <= 0
-                ? new SynchronousQueue<>()
-                : new LinkedBlockingQueue<>(queueCapacity),
+            queue,
             namedThreadFactory,
             queueOfferTimeout);
     if (!addShutdownHook) {

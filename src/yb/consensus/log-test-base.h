@@ -51,7 +51,6 @@
 #include "yb/fs/fs_manager.h"
 
 #include "yb/gutil/bind.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
 
 #include "yb/rpc/lightweight_message.h"
@@ -62,6 +61,7 @@
 #include "yb/tserver/tserver.pb.h"
 
 #include "yb/util/async_util.h"
+#include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
@@ -345,12 +345,12 @@ class LogTestBase : public YBTest {
     std::string dump;
     for (const scoped_refptr<ReadableLogSegment>& segment : segments) {
       dump.append("------------\n");
-      strings::SubstituteAndAppend(&dump, "Segment: $0, Path: $1\n",
-                                   segment->header().sequence_number(), segment->path());
-      strings::SubstituteAndAppend(&dump, "Header: $0\n",
-                                   segment->header().ShortDebugString());
+      dump += Format("Segment: $0, Path: $1\n",
+                     segment->header().sequence_number(), segment->path());
+      dump += Format("Header: $0\n",
+                     segment->header().ShortDebugString());
       if (segment->HasFooter()) {
-        strings::SubstituteAndAppend(&dump, "Footer: $0\n", segment->footer().ShortDebugString());
+        dump += Format("Footer: $0\n", segment->footer().ShortDebugString());
       } else {
         dump.append("Footer: None or corrupt.");
       }

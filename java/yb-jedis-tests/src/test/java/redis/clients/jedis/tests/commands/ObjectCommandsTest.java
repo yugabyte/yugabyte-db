@@ -13,6 +13,7 @@ import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
 
 @RunWith(value=YBTestRunner.class)
+@Ignore("YEDIS is deprecated")
 public class ObjectCommandsTest extends JedisCommandTestBase {
 
   private String key = "mylist";

@@ -64,7 +64,6 @@
 #include "yb/util/string_util.h"
 #include "yb/util/tsan_util.h"
 
-using strings::Substitute;
 using yb::client::YBTableName;
 using yb::client::YBTableType;
 

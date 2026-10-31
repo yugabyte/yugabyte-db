@@ -148,9 +148,7 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_pool_timeout, 0,
     "milliseconds for an available server. Disconnect client on timeout reach. "
     "If the value is set to zero, the client waits for the server connection indefinitely");
 
-DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_optimized_extended_query_protocol, true,
-    "Enable optimized extended query protocol in Ysql Connection Manager. "
-    "If set to false, extended query protocol handling is fully correct but unoptimized.");
+DEPRECATE_FLAG(bool, ysql_conn_mgr_optimized_extended_query_protocol, "10_2026");
 
 DEPRECATE_FLAG(bool, ysql_conn_mgr_enable_prep_stmt_close, "07_2026");
 DEPRECATE_FLAG(bool, ysql_conn_mgr_enable_parse_queue_tracking, "09_2026");
@@ -225,6 +223,12 @@ DEFINE_NON_RUNTIME_CONN_MGR_FLAG(uint32, socket_listen_backlog, 128,
     "Connection Manager's listening socket (the backlog argument to listen(2)). "
     "Incoming connections beyond this limit may be refused or dropped during connection bursts.");
 
+DEFINE_NON_RUNTIME_CONN_MGR_FLAG(bool, pool_attach_check, true,
+    "When enabled, before attaching a pooled backend connection to a client, Ysql Connection "
+    "Manager checks whether the backend has closed its socket (for example after "
+    "pg_terminate_backend() or a backend crash). Such a connection is discarded and another "
+    "backend is used, instead of failing the client's query with a broken connection error.");
+
 DEFINE_NON_RUNTIME_CONN_MGR_FLAG(bool, full_tls_handshake, true,
     "When true, Ysql Connection Manager builds its server SSL_CTX via PostgreSQL's "
     "be_tls_init() so the client-facing TLS handshake honours the full set of "
@@ -241,6 +245,10 @@ DEFINE_NON_RUNTIME_CONN_MGR_FLAG(bool, cert_auth, true,
     "such rules see a client that presented none. Requires ysql_conn_mgr_full_tls_handshake, "
     "which is what makes the connection manager verify the client certificate the same way "
     "PostgreSQL would.");
+
+DEFINE_test_flag(uint32, ysql_conn_mgr_shutdown_delay_ms, 0,
+    "Time (in ms) that Ysql Connection Manager waits during SIGINT/SIGTERM shutdown before the "
+    "process exits.");
 
 namespace {
 
@@ -395,6 +403,12 @@ Status YsqlConnMgrWrapper::Start() {
   // also be inherited from this process's environment, so pass the intent separately. It refuses
   // to start if the provider did not come up.
   proc_->SetEnv(YSQL_CONN_MGR_REQUIRE_FIPS, FLAGS_openssl_require_fips ? "true" : "false");
+
+  unsetenv("YB_YSQL_CONN_MGR_TEST_SHUTDOWN_DELAY_MS");
+  if (FLAGS_TEST_ysql_conn_mgr_shutdown_delay_ms > 0) {
+    proc_->SetEnv("YB_YSQL_CONN_MGR_TEST_SHUTDOWN_DELAY_MS",
+                  std::to_string(FLAGS_TEST_ysql_conn_mgr_shutdown_delay_ms));
+  }
 
 #ifdef THREAD_SANITIZER
   // Disable thread leak detection for the Ysql Connection Manager (Odyssey) process.

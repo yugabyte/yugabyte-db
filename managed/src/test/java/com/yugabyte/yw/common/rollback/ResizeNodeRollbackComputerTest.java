@@ -304,6 +304,8 @@ public class ResizeNodeRollbackComputerTest extends FakeDBApplication {
     assertEquals(DEFAULT_DISK_THROUGHPUT, restored.deviceInfo.throughput.intValue());
     // expectedUniverseVersion is disabled so the resubmit does not race.
     assertEquals(Integer.valueOf(-1), rollbackParams.expectedUniverseVersion);
+    // Azure cooldown clock for RollbackResizeNode precheck; same create time the submit gate used.
+    assertEquals(twoDaysAgo, rollbackParams.getFailedTaskCreateTime());
   }
 
   @Test
@@ -606,6 +608,79 @@ public class ResizeNodeRollbackComputerTest extends FakeDBApplication {
     PlatformServiceException ex =
         assertThrows(PlatformServiceException.class, () -> computer.compute(context));
     assertTrue(ex.getMessage().contains("Kubernetes"));
+  }
+
+  @Test
+  public void computeRefusesOciUniverse() {
+    // PLAT-23226: OCI has no cloud snapshot, so rollback could miss a shape change YBA hasn't
+    // saved.
+    enableRollback();
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u ->
+                u.getUniverseDetails().getPrimaryCluster().userIntent.providerType =
+                    Common.CloudType.oci);
+    seedStateTransitionDetailsForResize(NEW_VOLUME_SIZE);
+    ResizeNodeParams failedParams = failedResizeParams(NEW_VOLUME_SIZE);
+    RollbackContext context = buildContext(failedParams, DateUtils.addHours(new Date(), -48));
+
+    PlatformServiceException ex =
+        assertThrows(PlatformServiceException.class, () -> computer.compute(context));
+    assertTrue(ex.getMessage(), ex.getMessage().contains("not supported on oci"));
+  }
+
+  @Test
+  public void computeRefusesOciInMultiCloudProviderSpecifications() {
+    enableRollback();
+    Provider ociProvider = ModelFactory.ociProvider(customer);
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> {
+              UserIntent intent = u.getUniverseDetails().getPrimaryCluster().userIntent;
+              UUID providerUUID = intent.maybeGetSingleProviderUUID().get();
+              // Read before the first spec exists; afterwards lookups resolve from the spec.
+              Common.CloudType providerType = intent.getProviderType(providerUUID);
+              TestUtils.specificationProviderInitializer(intent, providerUUID)
+                  .setProviderType(providerType)
+                  .setAccessCode(intent.accessKeyCode)
+                  .setInstanceTags(intent.instanceTags)
+                  .setDeviceInfo(intent.deviceInfo)
+                  .setInstanceType(intent.instanceType);
+              TestUtils.specificationProviderInitializer(intent, ociProvider.getUuid())
+                  .setProviderType(Common.CloudType.oci)
+                  .setInstanceType(intent.instanceType)
+                  .setDeviceInfo(intent.deviceInfo.clone());
+            });
+    seedStateTransitionDetailsForResize(NEW_VOLUME_SIZE);
+    ResizeNodeParams failedParams = failedResizeParams(NEW_VOLUME_SIZE);
+    RollbackContext context = buildContext(failedParams, DateUtils.addHours(new Date(), -48));
+
+    PlatformServiceException ex =
+        assertThrows(PlatformServiceException.class, () -> computer.compute(context));
+    assertTrue(ex.getMessage(), ex.getMessage().contains("not supported on oci"));
+  }
+
+  @Test
+  public void canRollbackFromParamsRefusesOnlyCloudsWithoutSnapshot() {
+    ResizeNodeParams aws = failedResizeParams(NEW_VOLUME_SIZE);
+    ResizeNodeParams oci = failedResizeParams(NEW_VOLUME_SIZE);
+    oci.getPrimaryCluster().userIntent.providerType = Common.CloudType.oci;
+    // A request that left the provider type out is decided at submit, against the universe.
+    ResizeNodeParams unknown = failedResizeParams(NEW_VOLUME_SIZE);
+    unknown.getPrimaryCluster().userIntent.providerType = Common.CloudType.unknown;
+
+    assertTrue(computer.canRollbackFromParams(failedResizeTask(aws)));
+    assertFalse(computer.canRollbackFromParams(failedResizeTask(oci)));
+    assertTrue(computer.canRollbackFromParams(failedResizeTask(unknown)));
+  }
+
+  private static TaskInfo failedResizeTask(ResizeNodeParams params) {
+    TaskInfo taskInfo = new TaskInfo(TaskType.ResizeNode, null);
+    taskInfo.setTaskParams(Json.toJson(params));
+    taskInfo.setTaskState(TaskInfo.State.Failure);
+    return taskInfo;
   }
 
   @Test

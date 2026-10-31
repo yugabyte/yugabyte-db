@@ -267,6 +267,16 @@ message TSHeartbeatRequestPB {
   map<uint32, YsqlDbOldestPinnedReadTime> ts_ysql_db_oldest_pinned_read_times = 24;
 }
 
+// Load levels are defined by the admission thresholds in master_tablet_service: BUSY means new
+// prefetches are being turned away, SUPER_BUSY means even the reads continuing one already begun
+// are refused.
+enum YsqlCatalogPrefetchLoadPB {
+  YSQL_CATALOG_PREFETCH_LOAD_UNKNOWN = 0;
+  YSQL_CATALOG_PREFETCH_LOAD_LOW = 1;
+  YSQL_CATALOG_PREFETCH_LOAD_BUSY = 2;
+  YSQL_CATALOG_PREFETCH_LOAD_SUPER_BUSY = 3;
+}
+
 message TSHeartbeatResponsePB {
   optional MasterErrorPB error = 1;
 
@@ -307,6 +317,12 @@ message TSHeartbeatResponsePB {
 
   optional tserver.DBCatalogVersionDataPB db_catalog_version_data = 20;
   optional tserver.DBCatalogInvalMessagesDataPB db_catalog_inval_messages_data = 28;
+
+  // How heavily loaded the leader currently is with YSQL catalog prefetches. Bumping the catalog
+  // version sends every tserver in the cluster back here for a fresh prefetch, so a backend about
+  // to commit a DDL uses this to wait for the previous wave to drain rather than stacking another
+  // on top of it.
+  optional YsqlCatalogPrefetchLoadPB ysql_catalog_prefetch_load = 37;
 
   optional encryption.UniverseKeyRegistryPB universe_key_registry = 11;
 

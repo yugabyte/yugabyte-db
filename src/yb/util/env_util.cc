@@ -38,7 +38,6 @@
 
 #include <boost/container/small_vector.hpp>
 
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
 #include "yb/util/env.h"
 #include "yb/util/errno.h"
@@ -48,7 +47,6 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
-using strings::Substitute;
 using std::shared_ptr;
 using std::string;
 
@@ -110,7 +108,7 @@ std::pair<Status, std::string> FindRootDir(const std::string& search_for_dir) {
   }
 
   return {
-      STATUS_SUBSTITUTE(
+      STATUS_FORMAT(
           NotFound,
           "Unable to find '$0' directory by starting the search at path $1 and walking up "
           "directory structure",
@@ -180,8 +178,8 @@ Status ReadFully(RandomAccessFile* file, uint64_t offset, size_t n,
     DCHECK_LE(this_result.size(), rem);
     if (this_result.size() == 0) {
       // EOF
-      return STATUS(IOError, Substitute("EOF trying to read $0 bytes at offset $1",
-                                        n, offset));
+      return STATUS(IOError, Format("EOF trying to read $0 bytes at offset $1",
+                                    n, offset));
     }
 
     if (first_read && this_result.size() == n) {
@@ -255,17 +253,17 @@ ScopedFileDeleter::~ScopedFileDeleter() {
   if (should_delete_) {
     bool is_dir;
     Status s = env_->IsDirectory(path_, &is_dir);
-    WARN_NOT_OK(s, Substitute(
+    WARN_NOT_OK(s, Format(
         "Failed to determine if path is a directory: $0", path_));
     if (!s.ok()) {
       return;
     }
     if (is_dir) {
       WARN_NOT_OK(env_->DeleteDir(path_),
-                  Substitute("Failed to remove directory: $0", path_));
+                  Format("Failed to remove directory: $0", path_));
     } else {
       WARN_NOT_OK(env_->DeleteFile(path_),
-          Substitute("Failed to remove file: $0", path_));
+          Format("Failed to remove file: $0", path_));
     }
   }
 }

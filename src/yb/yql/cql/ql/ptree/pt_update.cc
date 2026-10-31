@@ -15,6 +15,7 @@
 // Treenode implementation for UPDATE statements.
 //--------------------------------------------------------------------------------------------------
 
+#include "yb/util/format.h"
 #include "yb/yql/cql/ql/ptree/pt_update.h"
 
 #include "yb/common/common.pb.h"
@@ -240,8 +241,8 @@ Status MultipleColumnSetError(const ColumnDesc* const col_desc,
                               SemContext* sem_context) {
   return sem_context->Error(
       assign_expr,
-      strings::Substitute("Multiple incompatible setting of column $0.",
-                          col_desc->name()).c_str(),
+      Format("Multiple incompatible setting of column $0.",
+             col_desc->name()).c_str(),
       ErrorCode::INVALID_ARGUMENTS);
 }
 

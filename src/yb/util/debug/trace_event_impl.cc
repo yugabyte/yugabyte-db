@@ -24,6 +24,8 @@
 #include <list>
 #include <vector>
 
+#include "yb/gutil/strings/numbers.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 
 #include "yb/gutil/bind.h"
@@ -32,7 +34,6 @@
 #include "yb/gutil/mathlimits.h"
 #include "yb/gutil/singleton.h"
 #include "yb/gutil/stl_util.h"
-#include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/util.h"
@@ -60,7 +61,6 @@ namespace debug {
 
 using base::SpinLockHolder;
 
-using strings::SubstituteAndAppend;
 using std::string;
 using std::vector;
 
@@ -672,10 +672,10 @@ void TraceEvent::AppendValueAsJSON(unsigned char type,
       *out += value.as_bool ? "true" : "false";
       break;
     case TRACE_VALUE_TYPE_UINT:
-      SubstituteAndAppend(out, "$0", static_cast<uint64>(value.as_uint));
+      *out += Format("$0", static_cast<uint64>(value.as_uint));
       break;
     case TRACE_VALUE_TYPE_INT:
-      SubstituteAndAppend(out, "$0", static_cast<int64>(value.as_int));
+      *out += Format("$0", static_cast<int64>(value.as_int));
       break;
     case TRACE_VALUE_TYPE_DOUBLE: {
       // FIXME: base/json/json_writer.cc is using the same code,
@@ -683,7 +683,7 @@ void TraceEvent::AppendValueAsJSON(unsigned char type,
       std::string real;
       double val = value.as_double;
       if (MathLimits<double>::IsFinite(val)) {
-        real = strings::Substitute("$0", val);
+        real = SimpleDtoa(val);
         // Ensure that the number has a .0 if there's no decimal or 'e'.  This
         // makes sure that when we read the JSON back, it's interpreted as a
         // real rather than an int.
@@ -709,15 +709,13 @@ void TraceEvent::AppendValueAsJSON(unsigned char type,
       } else {
         real = "\"Infinity\"";
       }
-      SubstituteAndAppend(out, "$0", real);
+      *out += Format("$0", real);
       break;
     }
     case TRACE_VALUE_TYPE_POINTER:
       // JSON only supports double and int numbers.
       // So as not to lose bits from a 64-bit pointer, output as a hex string.
-      StringAppendF(out, "\"0x%" PRIx64 "\"", static_cast<uint64>(
-                                     reinterpret_cast<intptr_t>(
-                                     value.as_pointer)));
+      *out += Format("\"0x$0\"", HexString(reinterpret_cast<uintptr_t>(value.as_pointer)));
       break;
     case TRACE_VALUE_TYPE_STRING:
     case TRACE_VALUE_TYPE_COPY_STRING:
@@ -736,14 +734,14 @@ void TraceEvent::AppendAsJSON(std::string* out) const {
   int process_id = TraceLog::GetInstance()->process_id();
   // Category group checked at category creation time.
   DCHECK(!strchr(name_, '"'));
-  StringAppendF(out,
-      "{\"cat\":\"%s\",\"pid\":%i,\"tid\":%" PRId64 ",\"ts\":%" PRId64 ","
-      "\"ph\":\"%c\",\"name\":\"%s\",\"args\":{",
+  *out += Format(
+      "{\"cat\":\"$0\",\"pid\":$1,\"tid\":$2,\"ts\":$3,"
+      "\"ph\":\"$4\",\"name\":\"$5\",\"args\":{",
       TraceLog::GetCategoryGroupName(category_group_enabled_),
       process_id,
       thread_id_,
       time_int64,
-      phase_,
+      std::string_view(&phase_, 1),
       name_);
 
   // Output argument names and values, stop at first NULL argument name.
@@ -764,24 +762,24 @@ void TraceEvent::AppendAsJSON(std::string* out) const {
   if (phase_ == TRACE_EVENT_PHASE_COMPLETE) {
     int64 duration = duration_;
     if (duration != -1)
-      StringAppendF(out, ",\"dur\":%" PRId64, duration);
+      *out += Format(",\"dur\":$0", duration);
     if (thread_timestamp_ >= 0) {
       int64 thread_duration = thread_duration_;
       if (thread_duration != -1)
-        StringAppendF(out, ",\"tdur\":%" PRId64, thread_duration);
+        *out += Format(",\"tdur\":$0", thread_duration);
     }
   }
 
   // Output tts if thread_timestamp is valid.
   if (thread_timestamp_ >= 0) {
     int64 thread_time_int64 = thread_timestamp_;
-    StringAppendF(out, ",\"tts\":%" PRId64, thread_time_int64);
+    *out += Format(",\"tts\":$0", thread_time_int64);
   }
 
   // If id_ is set, print it out as a hex string so we don't loose any
   // bits (it might be a 64-bit pointer).
   if (flags_ & TRACE_EVENT_FLAG_HAS_ID)
-    StringAppendF(out, ",\"id\":\"0x%" PRIx64 "\"", static_cast<uint64>(id_));
+    *out += Format(",\"id\":\"0x$0\"", HexString(static_cast<uint64>(id_)));
 
   // Instant events also output their scope.
   if (phase_ == TRACE_EVENT_PHASE_INSTANT) {
@@ -799,7 +797,7 @@ void TraceEvent::AppendAsJSON(std::string* out) const {
         scope = TRACE_EVENT_SCOPE_NAME_THREAD;
         break;
     }
-    StringAppendF(out, ",\"s\":\"%c\"", scope);
+    *out += Format(",\"s\":\"$0\"", std::string_view(&scope, 1));
   }
 
   *out += "}";
@@ -1913,9 +1911,7 @@ std::string TraceLog::EventToConsoleMessage(unsigned char phase,
     thread_colors_[thread_name] = (thread_colors_.size() % 6) + 1;
 
   std::ostringstream log;
-  log << StringPrintf("%s: \x1b[0;3%dm",
-                            thread_name.c_str(),
-                            thread_colors_[thread_name]);
+  log << Format("$0: \x1b[0;3$1m", thread_name, thread_colors_[thread_name]);
 
   size_t depth = 0;
   if (thread_event_start_times_.find(thread_id) !=
@@ -1928,7 +1924,7 @@ std::string TraceLog::EventToConsoleMessage(unsigned char phase,
   if (trace_event)
     trace_event->AppendPrettyPrinted(&log);
   if (phase == TRACE_EVENT_PHASE_END)
-    log << StringPrintf(" (%.3f ms)", duration / 1000.0f);
+    log << " (" << FixedPoint(duration / 1000.0f, 3) << " ms)";
 
   log << "\x1b[0;m";
 
@@ -2275,8 +2271,8 @@ void CategoryFilter::WriteString(const StringList& values,
   int token_cnt = 0;
   for (const auto& value : values) {
     if (token_cnt > 0 || prepend_comma)
-      StringAppendF(out, ",");
-    StringAppendF(out, "%s%s", (included ? "" : "-"), value.c_str());
+      *out += ',';
+    *out += Format("$0$1", (included ? "" : "-"), value);
     ++token_cnt;
   }
 }
@@ -2287,9 +2283,8 @@ void CategoryFilter::WriteString(const StringList& delays,
   int token_cnt = 0;
   for (const auto& delay : delays) {
     if (token_cnt > 0 || prepend_comma)
-      StringAppendF(out, ",");
-    StringAppendF(out, "%s%s)", kSyntheticDelayCategoryFilterPrefix,
-                  delay.c_str());
+      *out += ',';
+    *out += Format("$0$1)", kSyntheticDelayCategoryFilterPrefix, delay);
     ++token_cnt;
   }
 }

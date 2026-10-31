@@ -64,11 +64,9 @@
 #include "yb/dockv/partition.h"
 
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/split.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/async_rbs_info_task.h"
 #include "yb/master/catalog_entity_info.h"
@@ -101,6 +99,7 @@
 
 #include "yb/util/curl_util.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/hash_util.h"
 #include "yb/util/html_print_helper.h"
 #include "yb/util/jsonwriter.h"
@@ -286,7 +285,6 @@ using std::string;
 using std::stringstream;
 using std::unique_ptr;
 using std::min;
-using strings::Substitute;
 using server::MonitoredTask;
 
 using namespace std::placeholders;
@@ -636,7 +634,7 @@ void MasterPathHandlers::TServerDisplay(
       }
     }
     html_row.AddColumn(std::move(tserver_info.server_id));
-    html_row.AddColumn(StringPrintf("%.1fs", tserver_info.time_since_heartbeat.ToSeconds()));
+    html_row.AddColumn(FixedPoint(tserver_info.time_since_heartbeat.ToSeconds(), 1) + "s");
 
     if (desc->IsBlacklisted(blacklist)) {
       tserver_info.color = tserver_info.color == "Green" ? kYBOrange : tserver_info.color;
@@ -687,8 +685,8 @@ void MasterPathHandlers::TServerDisplay(
     html_row.AddColumn(desc->num_sst_files());
     html_row.AddColumn(HumanizeBytes(desc->total_sst_file_size()));
     html_row.AddColumn(HumanizeBytes(desc->uncompressed_sst_file_size()));
-    html_row.AddColumn(StringPrintf("%.1f", desc->read_ops_per_sec()));
-    html_row.AddColumn(StringPrintf("%.1f", desc->write_ops_per_sec()));
+    html_row.AddColumn(FixedPoint(desc->read_ops_per_sec(), 1));
+    html_row.AddColumn(FixedPoint(desc->write_ops_per_sec(), 1));
 
     html_row.AddColumn(tserver_info.placement);
 
@@ -744,7 +742,7 @@ void TServerClockDisplay(
     LocalTserverInfo tserver_info(*desc);
 
     html_row.AddColumn(std::move(tserver_info.server_id));
-    html_row.AddColumn(StringPrintf("%.1fs", tserver_info.time_since_heartbeat.ToSeconds()));
+    html_row.AddColumn(FixedPoint(tserver_info.time_since_heartbeat.ToSeconds(), 1) + "s");
     html_row.AddColumn(tserver_info.FormattedStatus());
 
     // Render physical time.
@@ -763,7 +761,7 @@ void TServerClockDisplay(
       html_row.AddColumn(std::move(uptime));
     }
 
-    html_row.AddColumn(StringPrintf("%.2fms", desc->heartbeat_rtt().ToMicroseconds() / 1000.0));
+    html_row.AddColumn(FixedPoint(desc->heartbeat_rtt().ToMicroseconds() / 1000.0, 2) + "ms");
 
     html_row.AddColumn(tserver_info.placement);
   }
@@ -790,7 +788,7 @@ void MasterPathHandlers::DisplayUniverseSummary(
        universe_counts.per_placement_cluster_counts) {
     auto placement_uuid_entry = Format(
         "$0 $1", placement_uuid == live_id ? "Primary Cluster" : "Read Replica", placement_uuid);
-    std::string limit_entry = "N/A";
+    std::string limit_entry = "limit undefined";
     if (cluster_counts.tablet_replica_limit.has_value()) {
       limit_entry = Format(
           cluster_counts.active_tablet_peer_count > *cluster_counts.tablet_replica_limit
@@ -1081,7 +1079,7 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
 
         // Some stats may be repeated as strings due to backwards compatability.
         jw.String("time_since_hb");
-        jw.String(StringPrintf("%.1fs", desc->TimeSinceHeartbeat().ToSeconds()));
+        jw.String(FixedPoint(desc->TimeSinceHeartbeat().ToSeconds(), 1) + "s");
         jw.String("time_since_hb_sec");
         jw.Double(desc->TimeSinceHeartbeat().ToSeconds());
 
@@ -1369,12 +1367,16 @@ string MasterPathHandlers::GetParentTableOid(scoped_refptr<TableInfo> parent_tab
   return std::to_string(*parent_result);
 }
 
+// The "Total" line of the on-disk size column, also used as that column's sort key.
+uint64 GetOnDiskTotalSize(const TabletReplicaDriveInfo& info) {
+  return info.sst_files_size + info.wal_files_size + info.vector_index_size;
+}
+
 string GetOnDiskSizeInHtml(const TabletReplicaDriveInfo &info) {
   std::ostringstream disk_size_html;
   disk_size_html << "<ul>"
                  << "<li>" << "Total: "
-                 << HumanizeBytes(
-                        info.sst_files_size + info.wal_files_size + info.vector_index_size)
+                 << HumanizeBytes(GetOnDiskTotalSize(info))
                  << "<li>" << "WAL Files: "
                  << HumanizeBytes(info.wal_files_size)
                  << "<li>" << "SST Files: "
@@ -1404,6 +1406,9 @@ void MasterPathHandlers::HandleAllTables(
   // The first stores user tables, the second index tables, the third parent tables,
   // and the fourth system tables.
   StringMap ordered_tables[kNumTypes];
+  // Total bytes behind each table's kOnDiskSize cell, keyed like ordered_tables; it is the
+  // numeric sort key for that column.
+  std::unordered_map<TableId, uint64> on_disk_size_bytes;
   bool has_tablegroups[kNumTypes];
   bool has_colocated_tables[kNumTypes];
   bool show_missing_size_footer[kNumTypes];
@@ -1479,6 +1484,8 @@ void MasterPathHandlers::HandleAllTables(
       auto tablets_result = table->GetTablets();
       if (!tablets_result) continue;
       bool table_has_missing_size = false;
+      // Sum the leader replica of each tablet, so the result is one copy of the data rather
+      // than the total across all replicas.
       for (const auto& tablet : *tablets_result) {
         auto drive_info = tablet->GetLeaderReplicaDriveInfo();
         if (drive_info.ok()) {
@@ -1494,6 +1501,7 @@ void MasterPathHandlers::HandleAllTables(
       }
 
       table_row[kOnDiskSize] = GetOnDiskSizeInHtml(aggregated_drive_info);
+      on_disk_size_bytes[table->id()] = GetOnDiskTotalSize(aggregated_drive_info);
       if (table_has_missing_size) {
         table_row[kOnDiskSize] += "*";
       }
@@ -1535,7 +1543,7 @@ void MasterPathHandlers::HandleAllTables(
       }
 
       if (type_index != kSystemTable) {
-        columns.push_back("On-disk size");
+        columns.push_back("On-disk size (leader replicas)");
       }
 
       auto html_table = html_print_helper.CreateTablePrinter("table", type_index, columns);
@@ -1561,11 +1569,20 @@ void MasterPathHandlers::HandleAllTables(
         }
 
         if (type_index != kSystemTable) {
-          row.AddColumn(table.second[kOnDiskSize]);
+          // The cell is a multi-line list, which the page's sort script can only compare as
+          // text, so pass the total bytes as the sort key to get a numeric sort.
+          auto size_it = on_disk_size_bytes.find(table.first);
+          row.AddColumn(
+              table.second[kOnDiskSize],
+              size_it == on_disk_size_bytes.end() ? 0 : size_it->second);
         }
       }
       html_table.Print();
 
+      if (type_index != kSystemTable) {
+        (*output) << "<p>On-disk sizes are summed over the leader replica of each tablet,"
+                  << " i.e. one copy of the data, not the total across all replicas.</p>";
+      }
       if (show_missing_size_footer[type_index]) {
         (*output) << "<p>* Some tablets did not provide disk size estimates,"
                   << " and were not added to the displayed totals.</p>";
@@ -1665,6 +1682,8 @@ void MasterPathHandlers::HandleAllTablesJSON(
       auto tablets_result = table->GetTablets();
       if (!tablets_result) continue;
       bool table_has_missing_size = false;
+      // Sum the leader replica of each tablet, so the result is one copy of the data rather
+      // than the total across all replicas.
       for (const auto& tablet : *tablets_result) {
         auto drive_info = tablet->GetLeaderReplicaDriveInfo();
         if (drive_info.ok()) {
@@ -1727,6 +1746,8 @@ void MasterPathHandlers::HandleAllTablesJSON(
       }
 
       if (type_index != kSystemTable) {
+        // Leader replicas only (one copy of the data); see the aggregation above. The field
+        // name is kept as-is because yugabyted-ui reads it.
         jw.String("on_disk_size");
         jw.StartObject();
         jw.String("wal_files_size");
@@ -1807,7 +1828,7 @@ void MasterPathHandlers::HandleNamespacesHTML(
                 << "  <th>Colocated</th>\n";
 
       for (const auto& namespace_row : *namespaces) {
-        (*output) << Substitute(
+        (*output) << Format(
             "<tr>"
             "<td>$0</td>"
             "<td>$1</td>"

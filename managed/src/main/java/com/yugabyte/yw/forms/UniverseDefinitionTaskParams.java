@@ -90,6 +90,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   public static final String UPDATING_TASK_UUID_FIELD = "updatingTaskUUID";
   public static final String PLACEMENT_MODIFICATION_TASK_UUID_FIELD =
       "placementModificationTaskUuid";
+  public static final String IS_KUBERNETES_OPERATOR_CONTROLLED_FIELD =
+      "isKubernetesOperatorControlled";
 
   public static final Set<SoftwareUpgradeState> IN_PROGRESS_UNIV_SOFTWARE_UPGRADE_STATES =
       ImmutableSet.of(
@@ -678,6 +680,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         boolean validateGFlagsConsistency,
         boolean isAuthEnforced,
         boolean isFipsEnabled,
+        boolean useNodeToNodeClientCerts,
         Set<NodeDetails> nodes) {
       if (uuid == null) {
         throw new IllegalStateException("Cluster uuid should not be null");
@@ -742,7 +745,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       if (validateGFlagsConsistency) {
         GFlagsUtil.checkGflagsAndIntentConsistency(userIntent);
       }
+      GFlagsUtil.validateGFlagValues(userIntent);
       GFlagsUtil.validateFipsCompliancy(userIntent, isFipsEnabled);
+      GFlagsUtil.validateNodeToNodeClientCerts(userIntent, useNodeToNodeClientCerts);
       if (userIntent.specificGFlags != null) {
         if (clusterType == ClusterType.PRIMARY
             && userIntent.specificGFlags.isInheritFromPrimary()) {
@@ -815,11 +820,13 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
               .filter(n -> hasEphemeralStorage(cloudType, n.cloudInfo.instance_type, deviceInfo))
               .findFirst()
               .isPresent();
-      if (cloudType == CloudType.aws && hasEphemeralStorage) {
-        // Ephemeral storage AWS instances should not have storage type
+      if ((cloudType == CloudType.aws || cloudType == CloudType.oci) && hasEphemeralStorage) {
+        // Local-disk AWS / OCI shapes should not have a remote storage type
         if (deviceInfo.storageType != null) {
           throw new PlatformServiceException(
-              BAD_REQUEST, "AWS instance with ephemeral storage can't have storageType set");
+              BAD_REQUEST,
+              cloudType.name().toUpperCase()
+                  + " instance with ephemeral storage can't have storageType set");
         }
       } else {
         if (cloudType.isRequiresStorageType() && deviceInfo.storageType == null) {
@@ -946,6 +953,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           && deviceInfo.storageType == PublicCloudConstants.StorageType.Scratch) {
         return true;
       }
+    } else if (providerType == CloudType.oci) {
+      return instanceType != null
+          && (instanceType.contains("DenseIO") || instanceType.contains("HPC"));
     }
     return false;
   }
@@ -1366,6 +1376,16 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     @ApiModelProperty() public boolean enableClientToNodeEncrypt = false;
 
+    @ApiModelProperty(
+        value =
+            "WARNING: This is a preview API that could change. Servers require a client cert on"
+                + " RPC (node_to_node_encryption_use_client_certificates). Supported only on"
+                + " Kubernetes universes whose node-to-node encryption uses a cert-manager"
+                + " (K8SCertManager) root CA; VM universes and Kubernetes universes with other root"
+                + " CA types are not supported. Can only be set at universe creation.")
+    @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2026.2.0.0")
+    public boolean useNodeToNodeClientCerts = false;
+
     @Deprecated
     @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2025.1")
     @ApiModelProperty(
@@ -1691,6 +1711,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.enableYEDIS = enableYEDIS;
       newUserIntent.enableNodeToNodeEncrypt = enableNodeToNodeEncrypt;
       newUserIntent.enableClientToNodeEncrypt = enableClientToNodeEncrypt;
+      newUserIntent.useNodeToNodeClientCerts = useNodeToNodeClientCerts;
       newUserIntent.instanceTags = new HashMap<>(instanceTags);
       newUserIntent.enableLB = enableLB;
       if (deviceInfo != null) {
@@ -2815,6 +2836,16 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return new File(xClusterInfo.sourceRootCertDirPath);
     }
     return null;
+  }
+
+  /**
+   * Returns true if task {@code taskUuid} owns this universe, as the updating task or the placement
+   * modification task. Retry and rollback eligibility both require it.
+   */
+  @JsonIgnore
+  public boolean isOwnedByTask(UUID taskUuid) {
+    return taskUuid != null
+        && (taskUuid.equals(updatingTaskUUID) || taskUuid.equals(placementModificationTaskUuid));
   }
 
   @JsonIgnore

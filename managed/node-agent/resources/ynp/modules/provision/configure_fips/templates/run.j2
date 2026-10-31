@@ -77,7 +77,8 @@ configure_fips() {
 
   enable_fips_redhat || return 1
   touch "$FIPS_REBOOT_MARKER"
-  echo "FIPS mode will be active after the node reboots."
+  echo "FIPS mode will be active after the node reboots. Reboot it before adding it to" \
+    "YugabyteDB Anywhere."
 }
 
 if ! configure_fips; then

@@ -71,6 +71,10 @@ static bool ris_contain_references_to(PlannerInfo *root, List *rinfos,
 /* YB declarations */
 static void yb_propagate_subqueryscan_fields(YbPathInfo *parent_fields,
 											 RelOptInfo *rel, Path *subpath);
+static ParamPathInfo *yb_get_partitioned_parampathinfo(PlannerInfo *root,
+													   RelOptInfo *rel,
+													   List *subpaths,
+													   Relids required_outer);
 
 
 /*****************************************************************************
@@ -1929,35 +1933,25 @@ create_append_path(PlannerInfo *root,
 	 * we don't have "root", too.)
 	 */
 	if (root && rel->reloptkind == RELOPT_BASEREL && IS_PARTITIONED_REL(rel))
-	{
-		/* YB */
-		if (subpaths)
-		{
-			List	   *groups = NIL;
+		pathnode->path.param_info =
+			yb_get_partitioned_parampathinfo(root, rel, subpaths,
+											 required_outer);	/* YB */
 
-			/* YB: Accumulate batching info from subpaths for this "baserel". */
-			Assert(yb_has_same_batching_reqs(subpaths));
-
-			root->yb_cur_batched_relids =
-				YB_PATH_REQ_OUTER_BATCHED((Path *) linitial(subpaths));
-
-			/*
-			 * The parent's movable clauses can miss a group that a child's
-			 * index condition batches on, and children can batch different
-			 * clauses, so pass on the union of the children's groups.
-			 */
-			foreach(l, subpaths)
-				groups = list_concat(groups,
-									 YB_PATH_BATCHED_GROUPS((Path *) lfirst(l)));
-			root->yb_cur_batched_groups = groups;
-		}
-
-		pathnode->path.param_info = get_baserel_parampathinfo(root,
-															  rel,
-															  required_outer);
-		root->yb_cur_batched_relids = NULL;
-		root->yb_cur_batched_groups = NIL;
-	}
+	/*
+	 * YB: Unlike upstream, an Append over batched paths of a partition that
+	 * is itself partitioned gets a full ParamPathInfo, because a join over
+	 * that Append needs the batching and the clauses the join must re-apply,
+	 * which get_appendrel_parampathinfo does not record.  An Append over
+	 * unbatched paths needs neither: the scans below it enforce the join
+	 * clauses.
+	 */
+	else if (yb_enable_base_scans_cost_model && root &&
+			 rel->reloptkind == RELOPT_OTHER_MEMBER_REL &&
+			 IS_PARTITIONED_REL(rel) && subpaths != NIL &&
+			 YB_PATH_NEEDS_BATCHED_RELS((Path *) linitial(subpaths)))
+		pathnode->path.param_info =
+			yb_get_partitioned_parampathinfo(root, rel, subpaths,
+											 required_outer);
 	else
 		pathnode->path.param_info = get_appendrel_parampathinfo(rel,
 																required_outer);
@@ -5555,11 +5549,12 @@ yb_create_unique_path(PlannerInfo *root,
  *
  * Cost
  * ====
- * Distinct index scans are so useful because they are retrieved efficiently
- * and pull fewer tuples from the underlying storage. Hence, we need to adjust
- * the cost accordingly. For that, we first estimate the number of distinct
- * tuples that will be returned by the prefix and then scale down the cost of
- * the path by the selectivity of the scan.
+ * Under the YB cost model the copy is costed anew by yb_cost_index, which
+ * reads the prefix length off the path and models the scan's skip loop: one
+ * row read and one skip per prefix group, with seek-forward standing in for
+ * the skip's seek when groups are small.  Its row estimate is the number of
+ * groups that yield a row.  Under the legacy cost model the regular scan's
+ * run cost is scaled down by the ratio of distinct groups to rows.
  *
  * Unique Node
  * ===========
@@ -5617,6 +5612,8 @@ yb_create_unique_path(PlannerInfo *root,
  * 			index scan. This value is sent to DocDB as a scan parameter.
  * 'yb_distinct_nkeys' is the number of pathkeys corresponding to the distinct
  * 			prefix.
+ * 'loop_count' is the number of repetitions of the scan, as for
+ * 			create_index_path.
  *
  * Returns a polymorphic path.
  * - either a bare distinct index scan path
@@ -5627,16 +5624,12 @@ yb_create_distinct_index_path(PlannerInfo *root,
 							  IndexOptInfo *index,
 							  IndexPath *basepath,
 							  int yb_distinct_prefixlen,
-							  int yb_distinct_nkeys)
+							  int yb_distinct_nkeys,
+							  double loop_count)
 {
 	IndexPath  *pathnode = makeNode(IndexPath);
-	int			numDistinctRows;
+	Cardinality	numDistinctRows;
 	bool		ignore_prefix_for_uniqkeys;
-	List	   *prefixExprs;
-	ListCell   *lc;
-	int			i;
-	Selectivity selectivity;
-	double		run_cost = 0;
 
 	/*
 	 * XXX: Memcpy'ing the index scan path the same way it is done in the
@@ -5670,34 +5663,57 @@ yb_create_distinct_index_path(PlannerInfo *root,
 		yb_get_uniqkeys(index,
 						ignore_prefix_for_uniqkeys ? 0 : yb_distinct_prefixlen);
 
+	/*
+	 * A range-partitioned index whose prefix misses some of the pathkeys
+	 * gets no Unique node on top (see below), so DocDB may return duplicate
+	 * rows from different tablets and the path has no uniqkeys.  Clear them
+	 * before the costing, which reads them.
+	 */
+	if (index->nhashcolumns == 0 && yb_distinct_nkeys < 0)
+		pathnode->path.yb_path_info.yb_uniqkeys = NIL;
+
 	/* Estimate cost. */
-	prefixExprs = NIL;
-	i = 0;
-	foreach(lc, index->indextlist)
+	if (IsYugaByteEnabled() &&
+		yb_enable_base_scans_cost_model &&
+		index->relam == LSM_AM_OID)
 	{
-		TargetEntry *tle;
-
-		if (i >= yb_distinct_prefixlen)
-			break;
-
-		tle = (TargetEntry *) lfirst(lc);
-		prefixExprs = lappend(prefixExprs, tle->expr);
-		i++;
+		yb_cost_index(pathnode, root, loop_count, false /* partial_path */ );
+		numDistinctRows = pathnode->path.rows;
 	}
-	pathnode->path.rows = clamp_row_est(pathnode->path.rows);
-	numDistinctRows = estimate_num_groups(root,
-										  prefixExprs,
-										  pathnode->path.rows,
-										  NULL,
-										  NULL);
-	selectivity = ((Cost) numDistinctRows) / ((Cost) pathnode->path.rows);
+	else
+	{
+		List	   *prefixExprs = NIL;
+		ListCell   *lc;
+		int			i = 0;
+		Selectivity selectivity;
+		double		run_cost;
 
-	run_cost = pathnode->path.total_cost - pathnode->path.startup_cost;
-	run_cost *= selectivity;
-	pathnode->path.total_cost = pathnode->path.startup_cost + run_cost;
-	pathnode->path.rows = numDistinctRows;
-	pathnode->indextotalcost *= selectivity;
-	pathnode->indexselectivity *= selectivity;
+		foreach(lc, index->indextlist)
+		{
+			TargetEntry *tle;
+
+			if (i >= yb_distinct_prefixlen)
+				break;
+
+			tle = (TargetEntry *) lfirst(lc);
+			prefixExprs = lappend(prefixExprs, tle->expr);
+			i++;
+		}
+		pathnode->path.rows = clamp_row_est(pathnode->path.rows);
+		numDistinctRows = estimate_num_groups(root,
+											  prefixExprs,
+											  pathnode->path.rows,
+											  NULL,
+											  NULL);
+		selectivity = ((Cost) numDistinctRows) / ((Cost) pathnode->path.rows);
+
+		run_cost = pathnode->path.total_cost - pathnode->path.startup_cost;
+		run_cost *= selectivity;
+		pathnode->path.total_cost = pathnode->path.startup_cost + run_cost;
+		pathnode->path.rows = numDistinctRows;
+		pathnode->indextotalcost *= selectivity;
+		pathnode->indexselectivity *= selectivity;
+	}
 
 	Assert(yb_distinct_prefixlen >= index->nhashcolumns);
 	/*
@@ -5762,12 +5778,6 @@ yb_create_distinct_index_path(PlannerInfo *root,
 			return (Path *)
 				yb_create_unique_path(root, index->rel, (Path *) pathnode,
 									  yb_distinct_nkeys, numDistinctRows);
-
-		/*
-		 * Unique path cannot be added on top => possible duplicate tuples
-		 * => no uniqkeys.
-		 */
-		pathnode->path.yb_path_info.yb_uniqkeys = NIL;
 	}
 
 	return (Path *) pathnode;
@@ -5822,4 +5832,44 @@ yb_propagate_subqueryscan_fields(YbPathInfo *parent_fields, RelOptInfo *rel,
 		yb_convert_subquery_uniqkeys(rel,
 									 subpath->yb_path_info.yb_uniqkeys,
 									 make_tlist_from_pathtarget(subpath->pathtarget));
+}
+
+/*
+ * yb_get_partitioned_parampathinfo
+ *		Get the ParamPathInfo of an Append over subpaths of a partitioned rel
+ *		from get_baserel_parampathinfo, with the subpaths' batched outer rels
+ *		and batch groups.
+ */
+static ParamPathInfo *
+yb_get_partitioned_parampathinfo(PlannerInfo *root, RelOptInfo *rel,
+								 List *subpaths, Relids required_outer)
+{
+	ParamPathInfo *ppi;
+
+	if (subpaths)
+	{
+		List	   *groups = NIL;
+		ListCell   *l;
+
+		Assert(yb_has_same_batching_reqs(subpaths));
+
+		root->yb_cur_batched_relids =
+			YB_PATH_REQ_OUTER_BATCHED((Path *) linitial(subpaths));
+
+		/*
+		 * The parent's movable clauses can miss a group that a child's index
+		 * condition batches on, and children can batch different clauses, so
+		 * pass on the union of the children's groups.
+		 */
+		foreach(l, subpaths)
+			groups = list_concat(groups,
+								 YB_PATH_BATCHED_GROUPS((Path *) lfirst(l)));
+		root->yb_cur_batched_groups = groups;
+	}
+
+	ppi = get_baserel_parampathinfo(root, rel, required_outer);
+	root->yb_cur_batched_relids = NULL;
+	root->yb_cur_batched_groups = NIL;
+
+	return ppi;
 }

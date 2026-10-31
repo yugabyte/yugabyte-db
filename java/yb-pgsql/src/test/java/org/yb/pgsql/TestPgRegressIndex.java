@@ -40,11 +40,14 @@ public class TestPgRegressIndex extends BasePgRegressTest {
     // Disable auto analyze because it aborts the SQL snippet:
     // force_cache_refresh which increments catalog version explictly.
     flagMap.put("ysql_enable_auto_analyze", "false");
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    flagMap.put("enable_object_locking_for_table_locks", "false");
-    flagMap.put("ysql_enable_concurrent_ddl", "false");
-    flagMap.merge("allowed_preview_flags_csv", "ysql_enable_concurrent_ddl",
-        (e, a) -> e + "," + a);
+    toggleDDLMode(flagMap, /* useLegacy */ true);
+    return flagMap;
+  }
+
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    toggleDDLMode(flagMap, /* useLegacy */ true);
     return flagMap;
   }
 

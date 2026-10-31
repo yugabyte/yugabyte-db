@@ -14,15 +14,17 @@ type: indexpage
 
 There are no set-up charges or commitments to begin using YugabyteDB Aeon. At the end of the month, you are automatically charged for that month's usage.
 
-Review your usage and plan details, manage your billing information, and review invoices from the **Usage & Billing** page.
+Each account in your organization has its own billing profile. Review usage and plan details, billing information, and invoices from the account **Usage & Billing** page.
 
 For information on available plans and their features, refer to [YugabyteDB Pricing](https://www.yugabyte.com/pricing/).
+
+For a [consolidated view](../managed-security/manage-accounts/#view-organization-billing) of billing for all accounts in your organization, in the **Account Switcher** menu, choose your organization and select **Billing**.
 
 {{<index/block>}}
 
   {{<index/item
     title="Manage billing"
-    body="Manage your billing profile and payment methods, view usage, and view invoices."
+    body="Manage account billing profiles and payment methods, view usage, and view invoices."
     href="cloud-billing-profile/"
     icon="fa-thin fa-file-invoice-dollar">}}
 

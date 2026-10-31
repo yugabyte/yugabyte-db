@@ -14,7 +14,6 @@
 #include "yb/master/permissions_manager.h"
 
 #include "yb/gutil/casts.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager.h"
@@ -28,6 +27,7 @@
 #include "yb/rpc/rpc_context.h"
 
 #include "yb/util/crypt.h"
+#include "yb/util/format.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/trace.h"
@@ -38,7 +38,6 @@ using std::vector;
 
 using yb::util::kBcryptHashSize;
 using yb::util::bcrypt_hashpw;
-using strings::Substitute;
 
 DECLARE_bool(ycql_cache_login_info);
 
@@ -126,7 +125,7 @@ Status PermissionsManager::PrepareDefaultRoles(int64_t term) {
   // TODO: refactor interface to be more c++ like...
   int ret = bcrypt_hashpw(kDefaultCassandraPassword, hash);
   if (ret != 0) {
-    return STATUS_SUBSTITUTE(IllegalState, "Could not hash password, reason: $0", ret);
+    return STATUS_FORMAT(IllegalState, "Could not hash password, reason: $0", ret);
   }
 
   // Create in memory object.
@@ -159,7 +158,7 @@ Status PermissionsManager::GrantPermissions(
   scoped_refptr<RoleInfo> rp;
   rp = FindPtrOrNull(roles_map_, role_name);
   if (rp == nullptr) {
-    const Status s = STATUS_SUBSTITUTE(NotFound, "Role $0 was not found", role_name);
+    const Status s = STATUS_FORMAT(NotFound, "Role $0 was not found", role_name);
     return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
   }
 
@@ -188,7 +187,7 @@ Status PermissionsManager::GrantPermissions(
     }
     Status s = catalog_manager_->sys_catalog_->Upsert(catalog_manager_->leader_ready_term(), rp);
     if (!s.ok()) {
-      s = s.CloneAndPrepend(Substitute(
+      s = s.CloneAndPrepend(Format(
           "An error occurred while updating permissions in sys-catalog: $0", s.ToString()));
       LOG(WARNING) << s;
       return CheckIfNoLongerLeaderAndSetupError(s, resp);
@@ -227,8 +226,8 @@ Status PermissionsManager::IncrementRolesVersionUnlocked() {
   const uint64_t roles_version = l.mutable_data()->pb.security_config().roles_version();
   if (roles_version == std::numeric_limits<uint64_t>::max()) {
     DFATAL_OR_RETURN_NOT_OK(
-        STATUS_SUBSTITUTE(IllegalState,
-                          "Roles version reached max allowable integer: $0", roles_version));
+        STATUS_FORMAT(IllegalState,
+                      "Roles version reached max allowable integer: $0", roles_version));
   }
   l.mutable_data()->pb.mutable_security_config()->set_roles_version(roles_version + 1);
 
@@ -352,7 +351,7 @@ Status PermissionsManager::CreateRole(
     if (req->superuser()) {
       scoped_refptr<RoleInfo> creator_role = FindPtrOrNull(roles_map_, req->creator_role_name());
       if (creator_role == nullptr) {
-        s = STATUS_SUBSTITUTE(NotFound, "role $0 does not exist", req->creator_role_name());
+        s = STATUS_FORMAT(NotFound, "role $0 does not exist", req->creator_role_name());
         return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
       }
 
@@ -363,7 +362,7 @@ Status PermissionsManager::CreateRole(
       }
     }
     if (FindPtrOrNull(roles_map_, req->name()) != nullptr) {
-      s = STATUS_SUBSTITUTE(AlreadyPresent, "Role $0 already exists", req->name());
+      s = STATUS_FORMAT(AlreadyPresent, "Role $0 already exists", req->name());
       return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_ALREADY_PRESENT, s);
     }
     s = CreateRoleUnlocked(
@@ -399,7 +398,7 @@ Status PermissionsManager::AlterRole(
 
   auto role = FindPtrOrNull(roles_map_, req->name());
   if (role == nullptr) {
-    s = STATUS_SUBSTITUTE(NotFound, "Role $0 does not exist", req->name());
+    s = STATUS_FORMAT(NotFound, "Role $0 does not exist", req->name());
     return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
   }
 
@@ -416,8 +415,8 @@ Status PermissionsManager::AlterRole(
     if (req->has_superuser()) {
       auto current_role = FindPtrOrNull(roles_map_, req->current_role());
       if (current_role == nullptr) {
-        s = STATUS_SUBSTITUTE(NotFound, "Internal error: role $0 does not exist",
-                              req->current_role());
+        s = STATUS_FORMAT(NotFound, "Internal error: role $0 does not exist",
+                          req->current_role());
         return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
       }
 
@@ -481,7 +480,7 @@ Status PermissionsManager::DeleteRole(
 
   auto role = FindPtrOrNull(roles_map_, req->name());
   if (role == nullptr) {
-    s = STATUS_SUBSTITUTE(NotFound, "Role $0 does not exist", req->name());
+    s = STATUS_FORMAT(NotFound, "Role $0 does not exist", req->name());
     return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
   }
 
@@ -533,8 +532,8 @@ Status PermissionsManager::DeleteRole(
       // a SUPERUSER too.
       auto current_role = FindPtrOrNull(roles_map_, req->current_role());
       if (current_role == nullptr) {
-        s = STATUS_SUBSTITUTE(NotFound, "Internal error: role $0 does not exist",
-                              req->current_role());
+        s = STATUS_FORMAT(NotFound, "Internal error: role $0 does not exist",
+                          req->current_role());
         return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
       }
 
@@ -584,7 +583,7 @@ Status PermissionsManager::GrantRevokeRole(
       // Ignore the request. This is what Apache Cassandra does.
       return Status::OK();
     }
-    auto s = STATUS_SUBSTITUTE(InvalidArgument,
+    auto s = STATUS_FORMAT(InvalidArgument,
         "$0 is a member of $1", req->recipient_role(), req->granted_role());
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
   }
@@ -605,14 +604,14 @@ Status PermissionsManager::GrantRevokeRole(
     scoped_refptr<RoleInfo> granted_role;
     granted_role = FindPtrOrNull(roles_map_, req->granted_role());
     if (granted_role == nullptr) {
-      s = STATUS_SUBSTITUTE(NotFound, role_not_found_msg_str, req->granted_role());
+      s = STATUS_FORMAT(NotFound, role_not_found_msg_str, req->granted_role());
       return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
     }
 
     scoped_refptr<RoleInfo> recipient_role;
     recipient_role = FindPtrOrNull(roles_map_, req->recipient_role());
     if (recipient_role == nullptr) {
-      s = STATUS_SUBSTITUTE(NotFound, role_not_found_msg_str, req->recipient_role());
+      s = STATUS_FORMAT(NotFound, role_not_found_msg_str, req->recipient_role());
       return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
     }
 
@@ -637,8 +636,8 @@ Status PermissionsManager::GrantRevokeRole(
         }
 
         if (!direct_member) {
-          s = STATUS_SUBSTITUTE(InvalidArgument, "$0 is not a member of $1",
-                                req->recipient_role(), req->granted_role());
+          s = STATUS_FORMAT(InvalidArgument, "$0 is not a member of $1",
+                            req->recipient_role(), req->granted_role());
           return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
         }
 
@@ -653,8 +652,8 @@ Status PermissionsManager::GrantRevokeRole(
         if (IsMemberOf(req->granted_role(), req->recipient_role()) ||
             IsMemberOf(req->recipient_role(), req->granted_role()) ||
             req->granted_role() == req->recipient_role()) {
-          s = STATUS_SUBSTITUTE(InvalidArgument, "$0 is a member of $1",
-                                req->recipient_role(), req->granted_role());
+          s = STATUS_FORMAT(InvalidArgument, "$0 is a member of $1",
+                            req->recipient_role(), req->granted_role());
           return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
         }
         metadata->add_member_of(req->granted_role());
@@ -662,7 +661,7 @@ Status PermissionsManager::GrantRevokeRole(
             catalog_manager_->leader_ready_term(), recipient_role);
       }
       if (!s.ok()) {
-        s = s.CloneAndPrepend(Substitute(
+        s = s.CloneAndPrepend(Format(
             "An error occurred while updating roles in sys-catalog: $0", s.ToString()));
         LOG(WARNING) << s.ToString();
         return CheckIfNoLongerLeaderAndSetupError(s, resp);
@@ -814,7 +813,7 @@ Status PermissionsManager::GetPermissions(
     return Status::OK();
   } else if (request_version && permissions_cache->version() < *request_version) {
     LOG(WARNING) << "GetPermissionsRequestPB version is greater than master's version";
-    Status s = STATUS_SUBSTITUTE(IllegalState,
+    Status s = STATUS_FORMAT(IllegalState,
         "GetPermissionsRequestPB version $0 is greater than master's version $1. "
         "Should call GetPermissions again",  *request_version,
         permissions_cache->version());
@@ -859,7 +858,7 @@ Status PermissionsManager::GrantRevokePermission(
     scoped_refptr<RoleInfo> role;
     role = FindPtrOrNull(roles_map_, req->resource_name());
     if (role == nullptr) {
-      s = STATUS_SUBSTITUTE(NotFound, "Resource <role $0> does not exist", req->role_name());
+      s = STATUS_FORMAT(NotFound, "Resource <role $0> does not exist", req->role_name());
       return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
     }
   }
@@ -867,7 +866,7 @@ Status PermissionsManager::GrantRevokePermission(
   scoped_refptr<RoleInfo> rp;
   rp = FindPtrOrNull(roles_map_, req->role_name());
   if (rp == nullptr) {
-    s = STATUS_SUBSTITUTE(InvalidArgument, "Role $0 doesn't exist", req->role_name());
+    s = STATUS_FORMAT(InvalidArgument, "Role $0 doesn't exist", req->role_name());
     return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
   }
 
@@ -923,7 +922,7 @@ Status PermissionsManager::GrantRevokePermission(
       if (permission_iter == current_resource->permissions().end() && !req->revoke()) {
         // Verify that the permission is supported by the resource.
         if (!valid_permission_for_resource(req->permission(), req->resource_type())) {
-          s = STATUS_SUBSTITUTE(InvalidArgument, "Invalid permission $0 for resource type $1",
+          s = STATUS_FORMAT(InvalidArgument, "Invalid permission $0 for resource type $1",
               req->permission(), ResourceType_Name(req->resource_type()));
           // This should never happen because invalid permissions get rejected in the analysis part.
           // So crash the process if in debug mode.
@@ -954,7 +953,7 @@ Status PermissionsManager::GrantRevokePermission(
 
     s = catalog_manager_->sys_catalog_->Upsert(catalog_manager_->leader_ready_term(), rp);
     if (!s.ok()) {
-      s = s.CloneAndPrepend(Substitute(
+      s = s.CloneAndPrepend(Format(
           "An error occurred while updating permissions in sys-catalog: $0", s.ToString()));
       LOG(WARNING) << s.ToString();
       return CheckIfNoLongerLeaderAndSetupError(s, resp);

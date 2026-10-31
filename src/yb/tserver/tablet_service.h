@@ -34,6 +34,7 @@
 #include <functional>
 #include <future>
 #include <memory>
+#include <mutex>
 #include <set>
 #include <string>
 #include <type_traits>
@@ -205,6 +206,10 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
                   GetMetricsResponsePB* resp,
                   rpc::RpcContext context) override;
 
+  void SetActiveTableIdsForMetrics(
+      const SetActiveTableIdsForMetricsRequestPB* req, SetActiveTableIdsForMetricsResponsePB* resp,
+      rpc::RpcContext context) override;
+
   void PgRemoteExec(const PgRemoteExecRequestPB* req,
                     PgRemoteExecResponsePB* resp,
                     rpc::RpcContext context) override;
@@ -323,6 +328,14 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
                     FlushTabletsResponsePB* resp,
                     rpc::RpcContext context) override;
 
+  void AlterTabletTier(const AlterTabletTierRequestPB* req,
+                       AlterTabletTierResponsePB* resp,
+                       rpc::RpcContext context) override;
+
+  void GetTabletTierInfo(const GetTabletTierInfoRequestPB* req,
+                         GetTabletTierInfoResponsePB* resp,
+                         rpc::RpcContext context) override;
+
   void CountIntents(const CountIntentsRequestPB* req,
                     CountIntentsResponsePB* resp,
                     rpc::RpcContext context) override;
@@ -431,6 +444,9 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
   std::atomic<int32_t> num_tablets_backfilling_{0};
   std::atomic<int32_t> TEST_num_test_retry_calls_{0};
   scoped_refptr<yb::AtomicGauge<uint64_t>> ts_split_op_added_;
+
+  // Held while a YSQL upgrade runs, so that only one runs at a time.
+  std::timed_mutex ysql_upgrade_mutex_;
 };
 
 class ConsensusServiceImpl : public consensus::ConsensusServiceIf {

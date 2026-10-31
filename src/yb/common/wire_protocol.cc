@@ -38,7 +38,6 @@
 #include "yb/gutil/port.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/fastmem.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/util/enums.h"
 #include "yb/util/errno.h"
 #include "yb/util/faststring.h"

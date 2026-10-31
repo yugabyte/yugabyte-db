@@ -412,7 +412,7 @@ Once again, the function finishes without an _assert_ violation—showing that a
 ## The semantics for the moment-interval overloads of "+" and "-" for pure days interval values
 
 {{< tip title="See the 'sensitivity of timestamptz-interval arithmetic to the current timezone' section for a complementary definition of the semantics of arithmetic that uses pure days 'interval' values." >}}
-The explanations that this page presents for the semantics of moment-_interval_ arithmetic for the three different kinds of _interval_ (pure seconds, pure days, and pure months) are oriented to the use-cases that motivate the distinctions. The explanation of the pure days semantics is inextricably bound up with the timezone notion and how this, in turn, determines the _UTC offset_.
+The explanations that this page presents for the semantics of moment-_interval_ arithmetic for the three different kinds of _interval_ (pure seconds, pure days, and pure months) are oriented to the use cases that motivate the distinctions. The explanation of the pure days semantics is inextricably bound up with the timezone notion and how this, in turn, determines the _UTC offset_.
 
 See the section [The sensitivity of _timestamptz-interval_ arithmetic to the current timezone](../../../../timezones/timezone-sensitive-operations/timestamptz-interval-day-arithmetic/) in the "Timezones and _UTC offsets_" section for a code example and discussion that models the rules in a different, but ultimately equivalent, way from this present subsection's approach. For a complex topic like this, it helps to solidify your mental model by examining relevant scenarios from different angles.
 {{< /tip >}}

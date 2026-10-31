@@ -152,6 +152,11 @@ platform:
    # Example: [10.0.0.1, 172.16.0.0/16] or [0.0.0.0/0] to trust all proxies.
    trusted_proxies: []
 
+   # Lets a SuperAdmin register more than one customer (yb.multiTenant).
+   # OIDC SSO logins fail on a multi-tenant YBA, so don't combine this with useOauth: setting
+   # it on an install that already uses SSO breaks SSO login after reconfigure.
+   multi_tenant: false
+
    # Maximum open file descriptors
    fd_limit: 16384
 
@@ -192,7 +197,9 @@ postgres:
 
 
    # Specify the connection parameters to an existing postgres db.
-   # A database named 'yugaware' must already be created on this host.
+   # A database named 'yugaware' must already be created on this host. With perfAdvisor.enabled,
+   # Perf Advisor's database 'ts' is created there by yba-ctl if the user may create databases;
+   # otherwise create it beforehand too.
    useExisting:
       enabled: false # enable to use an existing postgres install
       username: ""

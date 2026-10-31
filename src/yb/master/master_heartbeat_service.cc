@@ -32,6 +32,7 @@
 #include "yb/master/master.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_heartbeat.service.h"
+#include "yb/master/master_tablet_service.h"
 #include "yb/master/master_service_base.h"
 #include "yb/master/master_util.h"
 #include "yb/master/scoped_leader_shared_lock-internal.h"
@@ -79,6 +80,11 @@ DEFINE_test_flag(bool, skip_processing_tablet_metadata, false,
 DEFINE_NON_RUNTIME_uint32(xcluster_guarded_lease_duration_ms, 2 * 60 * 1000,
     "Duration of xCluster-guarded information lease in milliseconds; not safe to lower.");
 TAG_FLAG(xcluster_guarded_lease_duration_ms, advanced);
+
+DEFINE_test_flag(bool, no_grant_xcluster_guarded_lease, false,
+    "When true, master leaves the xCluster-guarded information lease out of heartbeat "
+    "responses.  TServers then cannot acquire or extend the xCluster lease.  The rest of the "
+    "heartbeat, including the xCluster-guarded information itself, is unaffected.");
 
 DEFINE_RUNTIME_int32(catalog_manager_report_batch_size, 1,
     "The max number of tablets evaluated in the heartbeat as a single SysCatalog update.");
@@ -130,6 +136,10 @@ DEFINE_RUNTIME_bool(send_leader_blacklisted_tservers_on_heartbeat, true,
     "When set, the master will send the list of leader-blacklisted tservers with no leaders "
     "on the heartbeat response.");
 TAG_FLAG(send_leader_blacklisted_tservers_on_heartbeat, advanced);
+
+DEFINE_test_flag(bool, hinted_leader_election_for_existing_tablets, false,
+    "Force hinted leader elections for existing tablets too. For tests that do restarts and "
+    "expect fast leader elections.");
 
 DEFINE_test_flag(uint64, inject_latency_during_tablet_report_ms, 0,
                  "Number of milliseconds to sleep during the processing of a tablet batch.");
@@ -193,7 +203,6 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
 
   using ReportedTablets = std::vector<ReportedTablet>;
 
-  // Returns true if report was processed, or false if full report should be requested.
   Result<bool> ProcessTabletReport(
       const TSDescriptorPtr& ts_desc,
       const NodeInstancePB& ts_instance,
@@ -315,6 +324,9 @@ Status MasterHeartbeatServiceImpl::CheckUniverseUuidMatchFromTserver(
 void MasterHeartbeatServiceImpl::PopulatePgCatalogVersionInfo(
     const TSHeartbeatRequestPB& req,
     TSHeartbeatResponsePB& resp) {
+  // Travels with the catalog version because it is consumed at the same moment: a backend about
+  // to bump the version needs to know what its last bump is still costing the leader.
+  resp.set_ysql_catalog_prefetch_load(GetYsqlCatalogPrefetchLoad());
   // When YSQL is disabled fall back to a single shared catalog version so that we still send
   // something back to legacy tservers.
   if (!FLAGS_enable_ysql) {
@@ -501,7 +513,9 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
 
     resp->set_tablet_report_limit(FLAGS_tablet_report_limit);
 
-    resp->set_xcluster_guarded_lease_duration_ms(FLAGS_xcluster_guarded_lease_duration_ms);
+    if (!FLAGS_TEST_no_grant_xcluster_guarded_lease) {
+      resp->set_xcluster_guarded_lease_duration_ms(FLAGS_xcluster_guarded_lease_duration_ms);
+    }
 
     // Set the TServer metrics in TS Descriptor.
     if (req->has_metrics()) {
@@ -697,6 +711,7 @@ void MasterHeartbeatServiceImpl::DeleteOrphanedTabletReplica(
       "Report from an orphaned tablet" /* reason */, epoch);
 }
 
+// Returns true if report was processed, or false if full report should be requested.
 Result<bool> MasterHeartbeatServiceImpl::ProcessTabletReport(
     const TSDescriptorPtr& ts_desc,
     const NodeInstancePB& ts_instance,
@@ -709,22 +724,8 @@ Result<bool> MasterHeartbeatServiceImpl::ProcessTabletReport(
   }
   const auto& report = *report_ptr;
 
-  if (!ts_desc->has_tablet_report()) {
-    if (report.is_incremental()) {
-      LOG(WARNING) << "Invalid tablet report from " << ts_desc->permanent_uuid()
-                 << ": Received an incremental tablet report when a full one was needed";
-      return false;
-    } else if (report.has_full_report_seq_no() &&
-               report.full_report_seq_no() != report.sequence_number() &&
-               report.full_report_seq_no() != ts_desc->receiving_full_report_seq_no()) {
-      LOG(WARNING) << Format(
-          "$0 sent a tablet report with sequence number $1, which continues full report starting "
-          "at sequence number $2. However we expected a tablet report continuing the full report "
-          "starting at sequence number $3",
-          ts_desc->permanent_uuid(), report.sequence_number(),
-          report.full_report_seq_no(), ts_desc->receiving_full_report_seq_no());
-      return false;
-    }
+  if (!ts_desc->PreCheckTabletReport(report)) {
+    return false;
   }
 
   int num_tablets = report.updated_tablets_size();
@@ -817,14 +818,7 @@ Result<bool> MasterHeartbeatServiceImpl::ProcessTabletReport(
                 << reported_tablets.size() << " tablets.";
     }
     if (completed_full_report) {
-      // We have a tablet report only once we're done processing all the chunks of the initial
-      // report.
-      ts_desc->set_has_tablet_report(completed_full_report);
-    } else if (!ts_desc->receiving_full_report_seq_no()) {
-      LOG_WITH_FUNC(INFO)
-          << ts_desc->permanent_uuid() << " set full report seq no: "
-          << report.full_report_seq_no();
-      ts_desc->set_receiving_full_report_seq_no(report.full_report_seq_no());
+      ts_desc->CompleteFullReport(ts_instance);
     }
   }
 
@@ -1295,7 +1289,18 @@ bool MasterHeartbeatServiceImpl::ProcessCommittedConsensusState(
   }
 
   if (FLAGS_use_create_table_leader_hint && !cstate.has_leader_uuid()) {
-    catalog_manager_->StartElectionIfReady(cstate, epoch, tablet);
+    // Start hinted election only for new tablets (CREATE TABLE / split children).
+    if (tablet_lock->pb.state() == SysTabletsEntryPB::CREATING ||
+        PREDICT_FALSE(FLAGS_TEST_hinted_leader_election_for_existing_tablets)) {
+      catalog_manager_->StartElectionIfReady(cstate, epoch, tablet);
+    } else {
+      // prev_cstate aliases the dirty copy, which 6d(iv) may have overwritten.
+      VLOG(1) << "Skipping hinted leader election for existing tablet " << tablet->tablet_id()
+              << " reported by " << ts_desc->permanent_uuid() << ", tablet state: "
+              << SysTabletsEntryPB::State_Name(tablet_lock->pb.state()) << ", previous cstate: "
+              << tablet->metadata().state().pb.committed_consensus_state().ShortDebugString()
+              << ", reported cstate: " << cstate.ShortDebugString();
+    }
   }
 
   if (tablet_lock->pb.split_tablet_ids_size() > 0 && tablet_lock->is_hidden()) {

@@ -165,7 +165,7 @@ bool result = DoSomething(
 
 ### String substitution functions
 
-For string substitution and formatting functions (`Format`, `Substitute`, `StringPrintf`, and so on) avoid putting substitution parameters on the same line as the format string, unless the entire function call fits on one line:
+For string substitution and formatting functions (such as `Format`) avoid putting substitution parameters on the same line as the format string, unless the entire function call fits on one line:
 
 ```cpp
 // Suppose this is the right margin -----------------------------------------------------------> |
@@ -261,6 +261,10 @@ void Tablet::EmitRocksDBMetrics(std::shared_ptr<rocksdb::Statistics> rocksdb_sta
                                 JsonWriter* writer,
                                 const MetricJsonOptions& opts) {
 ```
+
+### Passing small and large values
+
+Pass small value types such as `HybridTime` by value, and larger ones such as `EncodedDocHybridTime` by const reference.
 
 ### Pointer and reference parameters and variables
 
@@ -610,13 +614,43 @@ Result<int> foo();
 
 ### String formatting
 
-Use the `Format` function to produce formatted strings, rather than the older `Substitute` function.
+Use the `Format` function to produce formatted strings. Don't use `StringPrintf`.
 
-While the two functions have similar syntax, with inline substitution parameters `$0`, `$1`, and so on, `Format` has several advantages:
+`Format` uses inline substitution parameters `$0`, `$1`, and so on, and has several advantages:
 
 * It uses the `ToString` utility, so it can convert many different types of objects to strings, such as collections, protobufs, or any class with a `ToString` member function.
 * You don't need to call `arg.ToString()`. Just pass `arg` to the `Format` function as-is, and it will call `ToString` for you.
-* `Format` is a bit faster than `Substitute` on some benchmarks.
+
+`Format` has no printf-style field specifiers. When you need fixed precision, padding, or hex output, pass one of the helpers from `yb/util/format.h` as an argument:
+
+```cpp
+Format("Took $0 s", FixedPoint(seconds, 3));         // printf("%.3f")
+Format("wal-$0", ZeroPadded(sequence_number, 9));    // printf("%09d")
+Format("0x$0", HexString(hash, 4));                  // printf("%04x")
+Format("$0|", PadRight(name, 20));                   // printf("%-20s")
+```
+
+Note that `Format` prints a `bool` as `1` or `0` and a `char` as its numeric value. Use `std::string_view(&c, 1)` to print a single character.
+
+### Preferred utilities
+
+In new code, use the following utilities rather than the legacy forms that do the same job:
+
+| Use | Instead of |
+| --- | --- |
+| `CheckedStol`, `CheckedStoll`, `CheckedStoInt` and the other `CheckedSto*` functions in `yb/util/stol_utils.h`, which return a `Result` instead of throwing | `std::sto*`, `safe_strto*` |
+| `std::function` | `boost::function` |
+| `std::optional` | `boost::optional` |
+| `ScopeExit` from `yb/util/scope_exit.h` | `BOOST_SCOPE_EXIT`, `absl::Cleanup` |
+| `yb::Thread` | `std::thread` |
+| The `TPtr` alias from the module's `*_fwd.h`, such as `using LogReaderPtr = std::shared_ptr<LogReader>;` (add one if missing) | `std::shared_ptr<LogReader>` spelled out |
+| Including the owning module's `*_fwd.h` | A hand-written forward declaration of another library's type |
+| `YB_STRONGLY_TYPED_BOOL` from `yb/util/strongly_typed_bool.h` | A bare `bool` parameter |
+| Explicit arguments at the call sites | Default argument values, especially on virtual functions |
+| `YB_STRUCT_TO_STRING` or `YB_FIELDS_TO_STRING` from `yb/util/tostring.h`, in a `ToString` defined in the `.cc` file | A hand-written list of fields in `ToString` |
+| `AsString` | `yb::ToString` |
+| `CollectionToString` | Building a vector just to print it |
+| `narrow_cast` or `trim_cast` from `yb/gutil/casts.h` | A raw narrowing cast |
 
 ### consensus::OpId
 

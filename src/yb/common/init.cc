@@ -39,11 +39,11 @@
 
 #include "yb/gutil/cpu.h"
 #include "yb/gutil/strings/split.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/path_util.h"
 #include "yb/util/status.h"
@@ -88,7 +88,7 @@ auto show_version_callback = flags_callback_internal::RegisterGlobalFlagUpdateCa
 const char* kTopLevelDataDirName = "yb-data";
 
 Status BadCPUStatus(const base::CPU& cpu, const char* instruction_set) {
-  return STATUS(NotSupported, strings::Substitute(
+  return STATUS(NotSupported, Format(
       "The CPU on this system ($0) does not support the $1 instruction "
       "set which is required for running YB.",
       cpu.cpu_brand(), instruction_set));
@@ -126,7 +126,7 @@ Status SetupLogDir(const std::string& server_type) {
     Status s = SetupRootDir(Env::Default(), data_paths[0], server_type, &out_dir, &created);
     if (!s.ok()) {
       return STATUS(
-          InvalidArgument, strings::Substitute(
+          InvalidArgument, Format(
           "Cannot create directory for logging, please check the --fs_data_dirs parameter "
           "(Passed: $0). Path does not exist: $1\nDetails: $2",
           FLAGS_fs_data_dirs, data_paths[0], s.ToString()));

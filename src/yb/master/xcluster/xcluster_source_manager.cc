@@ -23,6 +23,7 @@
 #include "yb/client/client.h"
 #include "yb/client/xcluster_client.h"
 
+#include "yb/common/common_flags.h"
 #include "yb/common/xcluster_util.h"
 
 #include "yb/master/catalog_manager.h"
@@ -32,6 +33,7 @@
 #include "yb/master/xcluster/add_table_to_xcluster_source_task.h"
 #include "yb/master/xcluster/master_xcluster_util.h"
 #include "yb/master/xcluster/xcluster_catalog_entity.h"
+#include "yb/master/xcluster/xcluster_manager.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/master/xcluster/xcluster_outbound_replication_group_tasks.h"
 #include "yb/master/xcluster/xcluster_outbound_replication_group.h"
@@ -56,6 +58,7 @@ DECLARE_uint32(cdc_wal_retention_time_secs);
 DECLARE_bool(TEST_disable_cdc_state_insert_on_setup);
 DECLARE_uint32(ysql_oid_cache_prefetch_size);
 DECLARE_uint32(xcluster_ysql_statement_timeout_sec);
+DECLARE_bool(xcluster_enable_index_backfill_replication);
 DECLARE_bool(xcluster_enable_target_applied_filter);
 
 using namespace std::placeholders;
@@ -281,6 +284,8 @@ XClusterSourceManager::InitOutboundReplicationGroup(
           std::bind(&XClusterSourceManager::SetupDDLReplicationExtension, this, _1, _2),
       .drop_ddl_replication_extension_func =
           std::bind(&XClusterSourceManager::DropDDLReplicationExtensionIfExists, this, _1, _2),
+      .start_persisting_func =
+          std::bind(&XClusterSourceManager::StartPersistingAfterCheckpoint, this, _1, _2),
   };
 
   return std::make_shared<XClusterOutboundReplicationGroup>(
@@ -574,7 +579,8 @@ Result<std::unique_ptr<XClusterCreateStreamsContext>> XClusterSourceManager::Cre
   // The target-applied filter is captured immutably per stream at creation.
   // Bi-directional mode keeps the legacy external_hybrid_time filter for loop-prevention.
   const bool eligible_for_use_target_applied_filter =
-      automatic_ddl_mode && FLAGS_xcluster_enable_target_applied_filter;
+      automatic_ddl_mode && FLAGS_xcluster_enable_target_applied_filter &&
+      FLAGS_xcluster_enable_index_backfill_replication;
 
   for (const auto& table_id : table_ids) {
     auto stripped_table_id = xcluster::StripSequencesDataAliasIfPresent(table_id);
@@ -1209,10 +1215,12 @@ Status XClusterSourceManager::PopulateXClusterStatusJson(JsonWriter& jw) const {
   jw.StartArray();
   for (const auto& [table_id, streams] : GetAllStreams()) {
     for (const auto& stream : streams) {
+      jw.StartObject();
       jw.String("stream_id");
       jw.String(stream->StreamId().ToString());
       jw.String("metadata");
       jw.Protobuf(stream->LockForRead()->pb);
+      jw.EndObject();
     }
   }
   jw.EndArray();
@@ -1489,6 +1497,19 @@ Status XClusterSourceManager::SetupDDLReplicationExtension(
 
   return master::SetupDDLReplicationExtension(
       catalog_manager_, namespace_id, XClusterDDLReplicationRole::kSource, std::move(callback));
+}
+
+Status XClusterSourceManager::StartPersistingAfterCheckpoint(
+    const NamespaceId& namespace_id, const LeaderEpoch& epoch) const {
+  if (!IsPersistenceGateEnforced()) {
+    // Mid-upgrade, before every process can enforce the persistence gate: keep the old behavior.
+    LOG(WARNING) << "Persistence gate not enforced; not blocking writes started before namespace "
+                 << namespace_id << " was checkpointed";
+    return Status::OK();
+  }
+  return catalog_manager_.GetXClusterManagerImpl()->StartPersisting(
+      {namespace_id},
+      MonoTime::Now() + MonoDelta::FromSeconds(FLAGS_xcluster_ysql_statement_timeout_sec), epoch);
 }
 
 Status XClusterSourceManager::DropDDLReplicationExtensionIfExists(

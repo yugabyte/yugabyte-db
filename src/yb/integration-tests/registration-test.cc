@@ -58,6 +58,7 @@
 
 #include "yb/util/curl_util.h"
 #include "yb/util/faststring.h"
+#include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
@@ -66,6 +67,7 @@ DECLARE_int32(heartbeat_interval_ms);
 DECLARE_int32(yb_num_shards_per_tserver);
 DECLARE_bool(enable_ysql);
 DECLARE_int32(TEST_mini_cluster_registration_wait_time_sec);
+DECLARE_bool(TEST_hinted_leader_election_for_existing_tablets);
 
 METRIC_DECLARE_counter(rows_inserted);
 
@@ -94,6 +96,9 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
     // To prevent automatic creation of the transaction status table.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = false;
 
+    // TestTabletReports expects leaders to be elected within its fixed sleep after a restart.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hinted_leader_election_for_existing_tablets) = true;
+
     YBMiniClusterTestBase::SetUp();
 
     cluster_.reset(new MiniCluster(MiniClusterOptions()));
@@ -108,7 +113,7 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
     EasyCurl c;
     faststring buf;
     std::string addr = yb::ToString(cluster_->mini_master()->bound_http_addr());
-    ASSERT_OK(c.FetchURL(strings::Substitute("http://$0/tablet-servers", addr), &buf));
+    ASSERT_OK(c.FetchURL(Format("http://$0/tablet-servers", addr), &buf));
 
     // Should include the TS UUID
     string expected_uuid =

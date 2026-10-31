@@ -1253,6 +1253,9 @@ public enum TaskType {
 
   ManageCloudFederation(com.yugabyte.yw.commissioner.tasks.subtasks.ManageCloudFederation.class),
 
+  ConfigureNodeExporterTls(
+      com.yugabyte.yw.commissioner.tasks.subtasks.ConfigureNodeExporterTls.class),
+
   UpdateAndPersistAuditLoggingConfig(
       com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistAuditLoggingConfig.class),
 
@@ -1409,7 +1412,9 @@ public enum TaskType {
   RunUpgradeNodeAgent(com.yugabyte.yw.commissioner.tasks.subtasks.RunUpgradeNodeAgent.class),
 
   CreateYbStorageDatabase(
-      com.yugabyte.yw.commissioner.tasks.subtasks.CreateYbStorageDatabase.class);
+      com.yugabyte.yw.commissioner.tasks.subtasks.CreateYbStorageDatabase.class),
+
+  WaitForRpcClientCert(com.yugabyte.yw.commissioner.tasks.subtasks.WaitForRpcClientCert.class);
 
   private final Class<? extends ITask> taskClass;
 

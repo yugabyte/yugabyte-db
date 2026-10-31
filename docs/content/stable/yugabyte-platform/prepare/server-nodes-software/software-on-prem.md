@@ -29,6 +29,10 @@ Using the `node-agent-provision.sh` script, you can automatically provision a VM
 
 - VMs are accessible to YugabyteDB Anywhere over ports 9070 and 443. See [Networking requirements](../../networking/) for more information.
 
+### Create data directories or mount points
+
+Configure data directories or mount points for the node (typically `/data`). If you have multiple data drives, these might be for example `/mnt/d0`, `/mnt/d1`, and so on. The data drives must be accessible to the `yugabyte` user that will be created by the script.
+
 ## How to prepare the nodes for use in a database cluster
 
 After you have created the VMs with the operating system and additional software, you must further prepare the VMs as follows:
@@ -38,6 +42,12 @@ After you have created the VMs with the operating system and additional software
 1. Run the provisioning script (as root or via sudo).
 
 These steps prepare the node for use by YugabyteDB Anywhere, including setting ulimits and transparent hugepages. If you have already [installed YugabyteDB Anywhere](../../../install-yugabyte-platform/) and it is running (recommended), the script additionally creates (or updates) an [on-premises provider](../../../configure-yugabyte-platform/on-premises/) with the node already added.
+
+{{< tip title="Brownfield provisioning (Re-provision existing nodes)" >}}
+
+For brownfield use cases where the nodes are already added to the node instances of the provider, you can generate config files. See [Generate configuration files](#generate-configuration-files).
+
+{{< /tip >}}
 
 Root or sudo privileges are only required to provision the nodes. After the node is provisioned (with [YugabyteDB Anywhere node agent](/stable/faq/yugabyte-platform/#what-is-a-node-agent) installed), sudo is no longer required.
 
@@ -69,36 +79,34 @@ tar -xvzf node-agent.tar.gz && cd {{<yb-version version="stable" format="build">
 
 #### Direct download
 
-Alternatively, the node agent package is included in the YBA Installer package. Download and extract the YBA Installer by entering the following commands:
+Alternatively, obtain the node agent package from the YBA Installer package.
 
-```sh
-wget https://downloads.yugabyte.com/releases/{{<yb-version version="stable" format="long">}}/yba_installer_full-{{<yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
-tar -xf yba_installer_full-{{<yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
-cd yba_installer_full-{{<yb-version version="stable" format="build">}}/
-```
+1. Download and extract the YBA Installer by entering the following commands:
 
-Extract the yugabundle package:
+    ```sh
+    wget https://downloads.yugabyte.com/releases/{{<yb-version version="stable" format="long">}}/yba_installer_full-{{<yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
+    tar -xf yba_installer_full-{{<yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
+    cd yba_installer_full-{{<yb-version version="stable" format="build">}}/
+    ```
 
-```sh
-tar -xf yugabundle-{{<yb-version version="stable" format="build">}}-centos-x86_64.tar.gz
-cd yugabyte-{{<yb-version version="stable" format="build">}}/
-```
+1. Extract the yugabundle package:
 
-Extract the node agent package and go to the `scripts` directory:
+    ```sh
+    tar -xf yugabundle-{{<yb-version version="stable" format="build">}}-centos-x86_64.tar.gz
+    cd yugabyte-{{<yb-version version="stable" format="build">}}/
+    ```
 
-```sh
-tar -xf node_agent-{{<yb-version version="stable" format="build">}}-linux-amd64.tar.gz && cd {{<yb-version version="stable" format="build">}}/scripts/
-```
+1. Extract the node agent package and go to the `scripts` directory:
 
-or
+    ```sh
+    tar -xf node_agent-{{<yb-version version="stable" format="build">}}-linux-amd64.tar.gz && cd {{<yb-version version="stable" format="build">}}/scripts/
+    ```
 
-```sh
-tar -xf node_agent-{{<yb-version version="stable" format="build">}}-linux-arm64.tar.gz && cd {{<yb-version version="stable" format="build">}}/scripts/
-```
+    On ARM, run:
 
-### Create data directories or mount points
-
-Configure data directories or mount points for the node (typically `/data`). If you have multiple data drives, these might be for example `/mnt/d0`, `/mnt/d1`, and so on. The data drives must be accessible to the `yugabyte` user that will be created by the script.
+    ```sh
+    tar -xf node_agent-{{<yb-version version="stable" format="build">}}-linux-arm64.tar.gz && cd {{<yb-version version="stable" format="build">}}/scripts/
+    ```
 
 ### Modify the configuration file
 
@@ -165,57 +173,83 @@ After the node is provisioned, reboot the node.
 
 If the preflight check fails, rebooting the node may solve some issues (for example, incorrect ulimit settings).
 
-#### Run root or non-root
+### Split-team provisioning
 
-Use the `--noroot` flag to run only the modules specific to the `yugabyte` user. The script must be run as the user `yugabyte`.
+By default (no flag), `sudo ./node-agent-provision.sh` performs a full provision as root. Use this when a single administrator can run the entire flow.
 
-Use the `--root` flag to run only the modules that require root privileges. Modules which do not require root are skipped. The script must be run as the user `root`.
+To separate privileged OS work from user-scoped YugabyteDB Anywhere onboarding, you can split provisioning between two teams using the `--root` and `--noroot` flags:
 
-#### Verify provisioning
+1. **OS / infrastructure**: Has root or sudo on the VM. Opens the [required ports](../../networking/) and installs the [additional software](../#additional-software), then runs `--root`.
+2. **DB / platform**: Runs as `yugabyte` with no sudo. Installs and registers node agent with YugabyteDB Anywhere.
+
+This way, DB operators never need sudo after OS prep, and both teams use the same tooling.
+
+**How it works**
+
+Both teams download the node agent package from the running YugabyteDB Anywhere instance and use the same `node-agent-provision.sh` script and configuration file (with YugabyteDB Anywhere URL, API token, node identity, and provider details).
+
+1. The OS team runs the script as root using the `--root` flag. This runs only modules that need elevated privileges (create the `yugabyte` user, chrony/THP/ulimits/sysctl, sudoers, and root systemd units). Non-root modules are skipped.
+
+    ```sh
+    sudo ./node-agent-provision.sh --root
+    ```
+
+2. The DB team runs `--noroot` as the `yugabyte` user. This runs only user-scoped work (user systemd, cgroups where applicable, network/node-agent setup, and registering the node with YugabyteDB Anywhere). Root modules are skipped.
+
+    ```sh
+    ./node-agent-provision.sh --noroot
+    ```
+
+### Per-node overrides
+
+Using the `--config_override` flag (available in v2025.2.4.0 and later), you can use a single `node-agent-provision.yaml` configuration file for a fleet (for specifying YugabyteDB Anywhere URL, API token, chrony servers, home directories, provider defaults, and so on), while varying only a few fields per VM (such as node IP/FQDN, node name, zone, mount points, and so on) from the command line.
+
+You can pass as many overrides as needed.
+
+Without `--config_override`, per-node changes require either:
+
+- Maintaining a separate YAML copy per node, or
+- Editing the shared file before every run (error-prone and awkward for automation).
+
+**How it works**
+
+1. Keep one common provision YAML checked into ops tooling or shared across the OS/DB teams.
+2. For each node, run the script with that file and pass only the node-specific deltas:
+
+    ```sh
+    ./node-agent-provision.sh \
+        --config_override yba.node_external_fqdn=\"db-node-03.example.com\" \
+        --config_override ynp.node_ip=\"10.1.2.3\" \
+        --config_override yba.node_name=\"db-node-03\"
+    ```
+
+The value after `=` is JSON, and it must match that field's type in the provision configuration: a quoted string, a number, `true` or `false`, or a JSON array. Nested fields use dotted paths, such as `yba.instance_type.name`.
+
+For example:
+
+- Override chrony servers (list of strings) under ynp:
+
+    ```sh
+    ./node-agent-provision.sh --config_override ynp.chrony_servers=[\"s1\",\"s2\"]
+    ```
+
+- Override FQDN and YugabyteDB Anywhere URL at the same time:
+
+    ```sh
+    ./node-agent-provision.sh --config_override yba.node_external_fqdn=\"my-new-fqdn\" --config_override yba.url=\"https://new-yba-url.com\"
+    ```
+
+## Verify provisioning
 
 After running the script and rebooting the VM, you can verify that provisioning was successful and YugabyteDB Anywhere can communicate with the node by navigating to `https://<yugabytedbanywhere-host-ip>/nodeagent`, where `yugabytedbanywhere-host-ip` is the IP address hosting your YugabyteDB Anywhere instance.
 
 The page lists the node agents that have been activated and their status.
 
-#### Preflight check
+## Generate configuration files
 
-For troubleshooting, you can run the script's preflight checks separately as follows:
+Use the `--generate_config` flag to generate a new YAML config by pulling information from YugabyteDB Anywhere without actually executing any other command. Use this for brownfield use cases where the nodes are already added to the node instances of the provider and they need to be _re-provisioned_. This option allows you to generate the configuration YAML file without having to manually create it. The YugabyteDB Anywhere URL, API token, and the node FQDN/IP added to node instances in the provider minimally are required in `node-agent-provision.yaml`. (Available in v2025.2.4.0 and later.)
 
-```sh
-sudo ./node-agent-provision.sh --preflight_check
-```
-
-Use the `--preflight_check_out_file` flag (v2025.2.4.0 and later) to specify the file path for the preflight_check output. Only the check JSON output is saved. You can read and parse the files for automation.
-
-#### Override configuration
-
-You can use the `--config_override` flag to override settings in the configuration file from the command line. You can pass as many overrides as needed. The data types are validated strictly. Use periods to indicate the nesting level for the override. (Available in v2025.2.4.0 and later.)
-
-Examples:
-
-Override the FQDN (string type) under yba:
-
-```sh
-./node-agent-provision.sh --config_override yba.node_external_fqdn=\"my-new-fqdn\"
-```
-
-Override chrony servers (list of strings) under ynp:
-
-```sh
-./node-agent-provision.sh --config_override ynp.chrony_servers=[\"s1\",\"s2\"]
-```
-
-Override FQDN and YBA URL at the same time:
-
-```sh
-./node-agent-provision.sh --config_override ynp.node_external_fqdn=\"my-new-fqdn\" --config_override yba.url=\"https://new-yba-url.com\"
-```
-
-Note this only overrides fields like yba.url that are used for fetching data from YugabyteDB Anywhere, not the data fetched from YugabyteDB Anywhere.
-
-#### Generate a configuration file
-
-Use the `--generate_config` flag to generate a new yaml config by pulling information from YugabyteDB Anywhere without actually executing any other command. Use this for brownfield use-cases where the nodes are already added to the node instances of the provider and they need to be _re-provisioned_. This option allows you to generate the configuration YAML file without having to manually create it. The YugabyteDB Anywhere URL, API token, and the node FQDN/IP added to node instances in the provider minimally are required in `node-agent-provision.yaml`. (Available in v2025.2.4.0 and later.)
+When you combine [--config_override](#per-node-overrides) with `--generate_config`, overrides apply to fields used to contact YugabyteDB Anywhere (for example, `yba.url`), not to values that YugabyteDB Anywhere returns into the generated file.
 
 The generated file is named `node-agent-provision-generated.yaml`.
 
@@ -232,6 +266,16 @@ To do a dry run with the generated configuration file:
 ```sh
 ./node-agent-provision.sh  --generate_and_run --dry_run
 ```
+
+## Preflight check
+
+For troubleshooting, you can run the script's preflight checks separately as follows:
+
+```sh
+sudo ./node-agent-provision.sh --preflight_check
+```
+
+Use the `--preflight_check_out_file` flag (v2025.2.4.0 and later) to specify the file path for the preflight_check output. Only the check JSON output is saved. You can read and parse the files for automation.
 
 ## sudo whitelist
 

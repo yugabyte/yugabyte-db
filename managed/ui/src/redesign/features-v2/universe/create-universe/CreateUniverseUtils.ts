@@ -20,6 +20,9 @@ export {
   getExpertNodesStepDefaultPlacement,
   toExpertResilienceForDefaults,
   getExpertAvailabilityZonesOrEmpty,
+  getExpertRfOptions,
+  getExpertDefaultRfs,
+  maxExpertRfOption,
   getPlacementRegions,
   getAZCount,
   distributeReplicationFactorAcrossAzs

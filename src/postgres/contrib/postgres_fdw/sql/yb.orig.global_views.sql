@@ -4,6 +4,16 @@
 -- by the test framework, simulating per-node data like pg_stat_statements.
 --
 
+-- Most queries below run through the parameterized-query helper: :P runs
+-- each query first under EXPLAIN and then for its result.
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set yb_commands_dir :abs_srcdir '/../../src/test/regress/yb_commands'
+\set filename :yb_commands_dir '/parameterized_query.sql'
+\i :filename
+\set explain 'EXPLAIN (VERBOSE, COSTS OFF)'
+\set P1 ':explain'
+\set P2
+
 -- Install required extensions
 CREATE EXTENSION file_fdw;
 
@@ -69,116 +79,119 @@ OPTIONS (schema_name 'public', table_name 'local_node_metrics');
 -- Basic SELECT: verify data from all 3 nodes (11 rows total).
 -- server_uuid is excluded because its value varies per tserver and run.
 --
-EXPLAIN (VERBOSE, COSTS OFF)
+SELECT $$
+:P
 SELECT node_id, metric_name, metric_value, event_count, total_bytes,
        ratio, is_healthy, tag, status, created_at, updated_at
 FROM "gv$node_metrics" ORDER BY node_id, metric_name;
-SELECT node_id, metric_name, metric_value, event_count, total_bytes,
-       ratio, is_healthy, tag, status, created_at, updated_at
-FROM "gv$node_metrics" ORDER BY node_id, metric_name;
+$$ AS query \gset
+\i :run_query
 
 --
 -- WHERE clause tests: one per type
 --
 
 -- int4
-EXPLAIN (VERBOSE, COSTS OFF)
+SELECT $$
+:P
 SELECT node_id, metric_name FROM "gv$node_metrics"
 WHERE node_id IN (1, 3)
 ORDER BY node_id, metric_name;
-SELECT node_id, metric_name FROM "gv$node_metrics"
-WHERE node_id IN (1, 3)
-ORDER BY node_id, metric_name;
+$$ AS query \gset
+\i :run_query
 
 -- float4 (real)
-EXPLAIN (VERBOSE, COSTS OFF)
+SELECT $$
+:P
 SELECT node_id, metric_name, metric_value FROM "gv$node_metrics"
 WHERE metric_value > 70
 ORDER BY node_id, metric_name;
-SELECT node_id, metric_name, metric_value FROM "gv$node_metrics"
-WHERE metric_value > 70
-ORDER BY node_id, metric_name;
+$$ AS query \gset
+\i :run_query
 
 -- varchar (variable-length string)
-EXPLAIN (VERBOSE, COSTS OFF)
+SELECT $$
+:P
 SELECT node_id, metric_name, status FROM "gv$node_metrics"
 WHERE status = 'active'
 ORDER BY node_id, metric_name;
-SELECT node_id, metric_name, status FROM "gv$node_metrics"
-WHERE status = 'active'
-ORDER BY node_id, metric_name;
+$$ AS query \gset
+\i :run_query
 
 -- boolean
-EXPLAIN (VERBOSE, COSTS OFF)
+SELECT $$
+:P
 SELECT node_id, metric_name, is_healthy FROM "gv$node_metrics"
 WHERE is_healthy = false
 ORDER BY node_id, metric_name;
-SELECT node_id, metric_name, is_healthy FROM "gv$node_metrics"
-WHERE is_healthy = false
-ORDER BY node_id, metric_name;
+$$ AS query \gset
+\i :run_query
 
 -- int8 (bigint)
-EXPLAIN (VERBOSE, COSTS OFF)
+SELECT $$
+:P
 SELECT node_id, metric_name, total_bytes FROM "gv$node_metrics"
 WHERE total_bytes > 8000000000
 ORDER BY node_id, metric_name;
-SELECT node_id, metric_name, total_bytes FROM "gv$node_metrics"
-WHERE total_bytes > 8000000000
-ORDER BY node_id, metric_name;
+$$ AS query \gset
+\i :run_query
 
 -- float8 (double precision)
-EXPLAIN (VERBOSE, COSTS OFF)
+SELECT $$
+:P
 SELECT node_id, metric_name, ratio FROM "gv$node_metrics"
 WHERE ratio > 0.7
 ORDER BY node_id, metric_name;
-SELECT node_id, metric_name, ratio FROM "gv$node_metrics"
-WHERE ratio > 0.7
-ORDER BY node_id, metric_name;
+$$ AS query \gset
+\i :run_query
 
 -- char(5) (fixed-length string)
-EXPLAIN (VERBOSE, COSTS OFF)
+SELECT $$
+:P
 SELECT node_id, metric_name, tag FROM "gv$node_metrics"
 WHERE tag LIKE 'CPU%'
 ORDER BY node_id;
-SELECT node_id, metric_name, tag FROM "gv$node_metrics"
-WHERE tag LIKE 'CPU%'
-ORDER BY node_id;
+$$ AS query \gset
+\i :run_query
 
 -- enum
-EXPLAIN (VERBOSE, COSTS OFF)
+SELECT $$
+:P
 SELECT node_id, metric_name, status FROM "gv$node_metrics"
 WHERE status = 'critical'::metric_status
 ORDER BY node_id, metric_name;
-SELECT node_id, metric_name, status FROM "gv$node_metrics"
-WHERE status = 'critical'::metric_status
-ORDER BY node_id, metric_name;
+$$ AS query \gset
+\i :run_query
 
 -- timestamp (without TZ)
-EXPLAIN (VERBOSE, COSTS OFF)
+SELECT $$
+:P
 SELECT node_id, metric_name, created_at FROM "gv$node_metrics"
 WHERE created_at >= '2025-02-01'::timestamp
 ORDER BY node_id, metric_name;
-SELECT node_id, metric_name, created_at FROM "gv$node_metrics"
-WHERE created_at >= '2025-02-01'::timestamp
-ORDER BY node_id, metric_name;
+$$ AS query \gset
+\i :run_query
 
 -- timestamptz (with TZ)
-EXPLAIN (VERBOSE, COSTS OFF)
+SELECT $$
+:P
 SELECT node_id, metric_name, updated_at FROM "gv$node_metrics"
 WHERE updated_at < '2025-02-01 00:00:00+00'::timestamptz
 ORDER BY node_id, updated_at;
-SELECT node_id, metric_name, updated_at FROM "gv$node_metrics"
-WHERE updated_at < '2025-02-01 00:00:00+00'::timestamptz
-ORDER BY node_id, updated_at;
+$$ AS query \gset
+\i :run_query
 
 --
 -- Aggregate queries
 --
-EXPLAIN (VERBOSE, COSTS OFF)
+SELECT $$
+:P
 SELECT COUNT(*) FROM "gv$node_metrics";
-SELECT COUNT(*) FROM "gv$node_metrics";
+$$ AS query \gset
+\i :run_query
 
-EXPLAIN (VERBOSE, COSTS OFF)
+SELECT $$
+:P
 SELECT metric_name,
        COUNT(*) AS node_count,
        SUM(event_count) AS total_events,
@@ -186,47 +199,42 @@ SELECT metric_name,
 FROM "gv$node_metrics"
 GROUP BY metric_name
 ORDER BY metric_name;
-SELECT metric_name,
-       COUNT(*) AS node_count,
-       SUM(event_count) AS total_events,
-       SUM(total_bytes) AS total_bytes_sum
-FROM "gv$node_metrics"
-GROUP BY metric_name
-ORDER BY metric_name;
+$$ AS query \gset
+\i :run_query
 
 -- Aggregate on boolean
-EXPLAIN (VERBOSE, COSTS OFF)
+SELECT $$
+:P
 SELECT is_healthy, COUNT(*) AS cnt
 FROM "gv$node_metrics"
 GROUP BY is_healthy
 ORDER BY is_healthy;
-SELECT is_healthy, COUNT(*) AS cnt
-FROM "gv$node_metrics"
-GROUP BY is_healthy
-ORDER BY is_healthy;
+$$ AS query \gset
+\i :run_query
 
 -- Aggregate on timestamp
-EXPLAIN (VERBOSE, COSTS OFF)
+SELECT $$
+:P
 SELECT MIN(created_at) AS earliest, MAX(created_at) AS latest
 FROM "gv$node_metrics";
-SELECT MIN(created_at) AS earliest, MAX(created_at) AS latest
-FROM "gv$node_metrics";
+$$ AS query \gset
+\i :run_query
 
 --
 -- Aggregate pushdown by server_uuid
--- Each EXPLAIN is followed by a deterministic result check. server_uuid is
--- not selected (its value is random per run); the checks group by server_uuid
--- and order by the aggregates, whose per-tserver values are fixed by the data.
+-- server_uuid is not selected (its value is random per run); the queries group
+-- by server_uuid and order by the aggregates, whose per-tserver values are
+-- fixed by the data.
 
 -- GROUP BY server_uuid: count(*) pushed to each tserver.
-EXPLAIN (VERBOSE, COSTS OFF)
-SELECT server_uuid, COUNT(*) AS cnt
-FROM "gv$node_metrics"
-GROUP BY server_uuid;
+SELECT $$
+:P
 SELECT COUNT(*) AS cnt
 FROM "gv$node_metrics"
 GROUP BY server_uuid
 ORDER BY cnt;
+$$ AS query \gset
+\i :run_query
 
 -- One group per tserver; counts sum to 11 rows.
 SELECT COUNT(*) AS num_server_groups, SUM(cnt) AS total_rows
@@ -234,347 +242,266 @@ FROM (SELECT server_uuid, COUNT(*) AS cnt
       FROM "gv$node_metrics" GROUP BY server_uuid) s;
 
 -- Without GROUP BY on server_uuid count(*) is not pushed down
-EXPLAIN (VERBOSE, COSTS OFF)
+SELECT $$
+:P
 SELECT COUNT(*) FROM "gv$node_metrics";
-SELECT COUNT(*) FROM "gv$node_metrics";
+$$ AS query \gset
+\i :run_query
 
 -- GROUP BY a non-partition-key column: only a partial aggregate is pushed
 -- below the Append. Each node_id lives on a single tserver, but the planner
 -- cannot know that, so it must not pick a full per-tserver aggregate.
-EXPLAIN (VERBOSE, COSTS OFF)
-SELECT node_id, COUNT(*) FROM "gv$node_metrics"
-GROUP BY node_id;
+SELECT $$
+:P
 SELECT node_id, COUNT(*) FROM "gv$node_metrics"
 GROUP BY node_id
 ORDER BY node_id;
+$$ AS query \gset
+\i :run_query
 
 -- Superset of the partition key: still fully pushed down.
-EXPLAIN (VERBOSE, COSTS OFF)
-SELECT server_uuid, metric_name, COUNT(*) AS cnt, SUM(event_count) AS events
-FROM "gv$node_metrics"
-GROUP BY server_uuid, metric_name;
+SELECT $$
+:P
 SELECT metric_name, COUNT(*) AS cnt, SUM(event_count) AS events
 FROM "gv$node_metrics"
 GROUP BY server_uuid, metric_name
 ORDER BY metric_name, cnt, events;
+$$ AS query \gset
+\i :run_query
 
--- Numeric: sum/avg/min/max/count(col).
-EXPLAIN (VERBOSE, COSTS OFF)
-SELECT server_uuid, SUM(event_count), AVG(metric_value),
-       MIN(total_bytes), MAX(ratio), COUNT(node_id)
-FROM "gv$node_metrics"
-GROUP BY server_uuid;
-SELECT SUM(event_count), AVG(metric_value),
-       MIN(total_bytes), MAX(ratio), COUNT(node_id)
+-- Aggregates pushed to each tserver, by type:
+-- - Q1: numeric (sum/avg/min/max/count(col))
+-- - Q2: statistical (stddev/variance)
+-- - Q3: boolean (bool_and/bool_or)
+-- - Q4: temporal and text min/max
+\set Q1 'SUM(event_count), AVG(metric_value), MIN(total_bytes), MAX(ratio), COUNT(node_id)'
+\set Q2 'STDDEV(metric_value), VARIANCE(event_count)'
+\set Q3 'BOOL_AND(is_healthy), BOOL_OR(is_healthy)'
+\set Q4 'MIN(created_at), MAX(updated_at), MIN(metric_name), MAX(tag)'
+SELECT $$
+:P
+SELECT :Q
 FROM "gv$node_metrics"
 GROUP BY server_uuid
-ORDER BY 1, 2, 3, 4, 5;
-
--- Statistical: stddev/variance.
-EXPLAIN (VERBOSE, COSTS OFF)
-SELECT server_uuid, STDDEV(metric_value), VARIANCE(event_count)
-FROM "gv$node_metrics"
-GROUP BY server_uuid;
-SELECT STDDEV(metric_value), VARIANCE(event_count)
-FROM "gv$node_metrics"
-GROUP BY server_uuid
-ORDER BY 1, 2;
-
--- Boolean: bool_and/bool_or.
-EXPLAIN (VERBOSE, COSTS OFF)
-SELECT server_uuid, BOOL_AND(is_healthy), BOOL_OR(is_healthy)
-FROM "gv$node_metrics"
-GROUP BY server_uuid;
-SELECT BOOL_AND(is_healthy), BOOL_OR(is_healthy)
-FROM "gv$node_metrics"
-GROUP BY server_uuid
-ORDER BY 1, 2;
-
--- Temporal and text min/max.
-EXPLAIN (VERBOSE, COSTS OFF)
-SELECT server_uuid, MIN(created_at), MAX(updated_at),
-       MIN(metric_name), MAX(tag)
-FROM "gv$node_metrics"
-GROUP BY server_uuid;
-SELECT MIN(created_at), MAX(updated_at),
-       MIN(metric_name), MAX(tag)
-FROM "gv$node_metrics"
-GROUP BY server_uuid
-ORDER BY 1, 2, 3, 4;
+ORDER BY :Q;
+$$ AS query \gset
+\i :run_query
+\unset Q3
+\unset Q4
 
 -- enable_partitionwise_aggregate = off: the GROUP BY server_uuid aggregate is
 -- no longer pushed down. Rows are pulled back from each tserver and aggregated
 -- locally (plain HashAggregate over the Append); the result stays correct.
 SET enable_partitionwise_aggregate = off;
-EXPLAIN (VERBOSE, COSTS OFF)
-SELECT server_uuid, COUNT(*) AS cnt
-FROM "gv$node_metrics"
-GROUP BY server_uuid;
+SELECT $$
+:P
 SELECT COUNT(*) AS num_server_groups, SUM(cnt) AS total_rows
 FROM (SELECT server_uuid, COUNT(*) AS cnt
       FROM "gv$node_metrics" GROUP BY server_uuid) s;
+$$ AS query \gset
+\i :run_query
 RESET enable_partitionwise_aggregate;
 
 --
 -- HAVING clause
 --
-EXPLAIN (VERBOSE, COSTS OFF)
+SELECT $$
+:P
 SELECT status, COUNT(*) AS cnt
 FROM "gv$node_metrics"
 GROUP BY status
 HAVING COUNT(*) >= 2
 ORDER BY status;
-SELECT status, COUNT(*) AS cnt
-FROM "gv$node_metrics"
-GROUP BY status
-HAVING COUNT(*) >= 2
-ORDER BY status;
+$$ AS query \gset
+\i :run_query
 
 --
 -- DISTINCT
 --
-EXPLAIN (VERBOSE, COSTS OFF)
-SELECT DISTINCT metric_name FROM "gv$node_metrics" ORDER BY metric_name;
-SELECT DISTINCT metric_name FROM "gv$node_metrics" ORDER BY metric_name;
-
-EXPLAIN (VERBOSE, COSTS OFF)
-SELECT DISTINCT status FROM "gv$node_metrics" ORDER BY status;
-SELECT DISTINCT status FROM "gv$node_metrics" ORDER BY status;
-
-EXPLAIN (VERBOSE, COSTS OFF)
-SELECT DISTINCT is_healthy FROM "gv$node_metrics" ORDER BY is_healthy;
-SELECT DISTINCT is_healthy FROM "gv$node_metrics" ORDER BY is_healthy;
+\set Q1 metric_name
+\set Q2 status
+\set Q3 is_healthy
+SELECT $$
+:P
+SELECT DISTINCT :Q FROM "gv$node_metrics" ORDER BY :Q;
+$$ AS query \gset
+\i :run_query
+\unset Q3
 
 --
 -- LIMIT
 --
-EXPLAIN (VERBOSE, COSTS OFF)
+SELECT $$
+:P
 SELECT node_id, metric_name, metric_value FROM "gv$node_metrics"
 ORDER BY metric_value DESC LIMIT 3;
-SELECT node_id, metric_name, metric_value FROM "gv$node_metrics"
-ORDER BY metric_value DESC LIMIT 3;
+$$ AS query \gset
+\i :run_query
 
-EXPLAIN (VERBOSE, COSTS OFF)
+SELECT $$
+:P
 SELECT node_id, metric_name, event_count FROM "gv$node_metrics"
 ORDER BY event_count ASC LIMIT 5;
-SELECT node_id, metric_name, event_count FROM "gv$node_metrics"
-ORDER BY event_count ASC LIMIT 5;
+$$ AS query \gset
+\i :run_query
 
 --
 -- Subqueries
 --
--- Single parameter: scalar subquery result bound as $1
-EXPLAIN (VERBOSE, COSTS OFF)
+-- Scalar subquery results bound as parameters:
+-- - Q1: one parameter ($1)
+-- - Q2: two parameters ($1 and $2)
+-- - Q3: a NULL parameter (subquery over an empty result set)
+-- - Q4: mixed NULL and non-NULL parameters ($1 is a real value, $2 is NULL)
+\set avg '(SELECT AVG(metric_value) FROM "gv$node_metrics")'
+\set avg_empty '(SELECT AVG(metric_value) FROM "gv$node_metrics" WHERE node_id = 999)'
+\set min '(SELECT MIN(event_count) FROM "gv$node_metrics")'
+\set min_empty '(SELECT MIN(event_count) FROM "gv$node_metrics" WHERE node_id = 999)'
+\set Q1 'metric_value > :avg'
+\set Q2 'metric_value > :avg AND event_count > :min'
+\set Q3 'metric_value > :avg_empty'
+\set Q4 'metric_value > :avg AND event_count > :min_empty'
+SELECT $$
+:P
 SELECT node_id, metric_name, metric_value
 FROM "gv$node_metrics"
-WHERE metric_value > (SELECT AVG(metric_value) FROM "gv$node_metrics")
+WHERE :Q
 ORDER BY node_id, metric_name;
-SELECT node_id, metric_name, metric_value
-FROM "gv$node_metrics"
-WHERE metric_value > (SELECT AVG(metric_value) FROM "gv$node_metrics")
-ORDER BY node_id, metric_name;
+$$ AS query \gset
+\i :run_query
+\unset Q3
+\unset Q4
 
--- Two parameters: two scalar subquery results bound as $1 and $2
-EXPLAIN (VERBOSE, COSTS OFF)
-SELECT node_id, metric_name, metric_value
-FROM "gv$node_metrics"
-WHERE metric_value > (SELECT AVG(metric_value) FROM "gv$node_metrics")
-  AND event_count > (SELECT MIN(event_count) FROM "gv$node_metrics")
-ORDER BY node_id, metric_name;
-SELECT node_id, metric_name, metric_value
-FROM "gv$node_metrics"
-WHERE metric_value > (SELECT AVG(metric_value) FROM "gv$node_metrics")
-  AND event_count > (SELECT MIN(event_count) FROM "gv$node_metrics")
-ORDER BY node_id, metric_name;
-
--- NULL parameter: subquery over empty result set returns NULL
-EXPLAIN (VERBOSE, COSTS OFF)
-SELECT node_id, metric_name, metric_value
-FROM "gv$node_metrics"
-WHERE metric_value > (SELECT AVG(metric_value) FROM "gv$node_metrics"
-                      WHERE node_id = 999)
-ORDER BY node_id, metric_name;
-SELECT node_id, metric_name, metric_value
-FROM "gv$node_metrics"
-WHERE metric_value > (SELECT AVG(metric_value) FROM "gv$node_metrics"
-                      WHERE node_id = 999)
-ORDER BY node_id, metric_name;
-
--- Mixed NULL and non-NULL parameters: $1 is a real value, $2 is NULL
-EXPLAIN (VERBOSE, COSTS OFF)
-SELECT node_id, metric_name, metric_value
-FROM "gv$node_metrics"
-WHERE metric_value > (SELECT AVG(metric_value) FROM "gv$node_metrics")
-  AND event_count > (SELECT MIN(event_count) FROM "gv$node_metrics"
-                     WHERE node_id = 999)
-ORDER BY node_id, metric_name;
-SELECT node_id, metric_name, metric_value
-FROM "gv$node_metrics"
-WHERE metric_value > (SELECT AVG(metric_value) FROM "gv$node_metrics")
-  AND event_count > (SELECT MIN(event_count) FROM "gv$node_metrics"
-                     WHERE node_id = 999)
-ORDER BY node_id, metric_name;
-
-EXPLAIN (VERBOSE, COSTS OFF)
+SELECT $$
+:P
 SELECT node_id, metric_name
 FROM "gv$node_metrics"
 WHERE status IN (SELECT DISTINCT status FROM "gv$node_metrics" WHERE status != 'active')
 ORDER BY node_id, metric_name;
-SELECT node_id, metric_name
-FROM "gv$node_metrics"
-WHERE status IN (SELECT DISTINCT status FROM "gv$node_metrics" WHERE status != 'active')
-ORDER BY node_id, metric_name;
+$$ AS query \gset
+\i :run_query
 
--- Empty string subquery parameter
-EXPLAIN (VERBOSE, COSTS OFF)
+-- Empty-string and NULL subquery parameters
+\set Q1 'metric_name = (SELECT ''''::varchar)'
+\set Q2 'tag IS NOT DISTINCT FROM (SELECT NULL::char(5))'
+SELECT $$
+:P
 SELECT node_id, metric_name, tag
 FROM "gv$node_metrics"
-WHERE metric_name = (SELECT ''::varchar)
+WHERE :Q
 ORDER BY node_id, metric_name;
-SELECT node_id, metric_name, tag
-FROM "gv$node_metrics"
-WHERE metric_name = (SELECT ''::varchar)
-ORDER BY node_id, metric_name;
-
--- NULL subquery parameter
-EXPLAIN (VERBOSE, COSTS OFF)
-SELECT node_id, metric_name, tag
-FROM "gv$node_metrics"
-WHERE tag IS NOT DISTINCT FROM (SELECT NULL::char(5))
-ORDER BY node_id, metric_name;
-SELECT node_id, metric_name, tag
-FROM "gv$node_metrics"
-WHERE tag IS NOT DISTINCT FROM (SELECT NULL::char(5))
-ORDER BY node_id, metric_name;
+$$ AS query \gset
+\i :run_query
 
 --
 -- JOIN with an inline VALUES list
 --
-EXPLAIN (VERBOSE, COSTS OFF)
+SELECT $$
+:P
 SELECT ni.node_name, gv.metric_name, gv.event_count
 FROM "gv$node_metrics" gv
 JOIN (VALUES (1, 'alpha'), (2, 'beta'), (3, 'gamma'))
      AS ni(node_id, node_name) ON gv.node_id = ni.node_id
 ORDER BY ni.node_name, gv.metric_name;
-SELECT ni.node_name, gv.metric_name, gv.event_count
-FROM "gv$node_metrics" gv
-JOIN (VALUES (1, 'alpha'), (2, 'beta'), (3, 'gamma'))
-     AS ni(node_id, node_name) ON gv.node_id = ni.node_id
-ORDER BY ni.node_name, gv.metric_name;
+$$ AS query \gset
+\i :run_query
 
 --
 -- UNION of filtered results
 --
-EXPLAIN (VERBOSE, COSTS OFF)
+SELECT $$
+:P
 SELECT node_id, metric_name, status FROM "gv$node_metrics" WHERE status = 'critical'
 UNION ALL
 SELECT node_id, metric_name, status FROM "gv$node_metrics" WHERE status = 'warning'
 ORDER BY node_id, metric_name;
-SELECT node_id, metric_name, status FROM "gv$node_metrics" WHERE status = 'critical'
-UNION ALL
-SELECT node_id, metric_name, status FROM "gv$node_metrics" WHERE status = 'warning'
-ORDER BY node_id, metric_name;
+$$ AS query \gset
+\i :run_query
 
 --
 -- ORDER BY with expressions
 --
-EXPLAIN (VERBOSE, COSTS OFF)
+SELECT $$
+:P
 SELECT node_id, metric_name,
        (metric_value * event_count)::int AS weighted_value
 FROM "gv$node_metrics"
 ORDER BY weighted_value DESC
 LIMIT 5;
-SELECT node_id, metric_name,
-       (metric_value * event_count)::int AS weighted_value
-FROM "gv$node_metrics"
-ORDER BY weighted_value DESC
-LIMIT 5;
+$$ AS query \gset
+\i :run_query
 
 --
 -- Type-specific queries
 --
 
 -- Bigint arithmetic
-EXPLAIN (VERBOSE, COSTS OFF)
+SELECT $$
+:P
 SELECT node_id, metric_name,
        total_bytes,
        (total_bytes / 1000000000) AS total_gb
 FROM "gv$node_metrics"
 ORDER BY total_bytes DESC
 LIMIT 3;
-SELECT node_id, metric_name,
-       total_bytes,
-       (total_bytes / 1000000000) AS total_gb
-FROM "gv$node_metrics"
-ORDER BY total_bytes DESC
-LIMIT 3;
+$$ AS query \gset
+\i :run_query
 
 -- Float8 rounding
-EXPLAIN (VERBOSE, COSTS OFF)
+SELECT $$
+:P
 SELECT node_id, metric_name,
        ratio,
        ROUND(ratio::numeric, 2) AS ratio_rounded
 FROM "gv$node_metrics"
 ORDER BY node_id, metric_name;
-SELECT node_id, metric_name,
-       ratio,
-       ROUND(ratio::numeric, 2) AS ratio_rounded
-FROM "gv$node_metrics"
-ORDER BY node_id, metric_name;
+$$ AS query \gset
+\i :run_query
 
 -- Boolean logic
-EXPLAIN (VERBOSE, COSTS OFF)
+SELECT $$
+:P
 SELECT node_id, metric_name,
        is_healthy,
        NOT is_healthy AS is_unhealthy
 FROM "gv$node_metrics"
 ORDER BY node_id, metric_name;
-SELECT node_id, metric_name,
-       is_healthy,
-       NOT is_healthy AS is_unhealthy
-FROM "gv$node_metrics"
-ORDER BY node_id, metric_name;
+$$ AS query \gset
+\i :run_query
 
 -- Char padding
-EXPLAIN (VERBOSE, COSTS OFF)
+SELECT $$
+:P
 SELECT node_id, tag,
        LENGTH(tag) AS tag_len
 FROM "gv$node_metrics"
 ORDER BY tag;
-SELECT node_id, tag,
-       LENGTH(tag) AS tag_len
-FROM "gv$node_metrics"
-ORDER BY tag;
+$$ AS query \gset
+\i :run_query
 
 -- Timestamp extract
-EXPLAIN (VERBOSE, COSTS OFF)
+SELECT $$
+:P
 SELECT node_id, metric_name,
        EXTRACT(MONTH FROM created_at) AS month,
        EXTRACT(YEAR FROM created_at) AS year
 FROM "gv$node_metrics"
 ORDER BY created_at
 LIMIT 3;
-SELECT node_id, metric_name,
-       EXTRACT(MONTH FROM created_at) AS month,
-       EXTRACT(YEAR FROM created_at) AS year
-FROM "gv$node_metrics"
-ORDER BY created_at
-LIMIT 3;
+$$ AS query \gset
+\i :run_query
 
 -- Timestamptz arithmetic
-EXPLAIN (VERBOSE, COSTS OFF)
+SELECT $$
+:P
 SELECT node_id, metric_name,
        updated_at,
        updated_at + interval '1 hour' AS updated_at_plus_1h
 FROM "gv$node_metrics"
 ORDER BY updated_at
 LIMIT 3;
-SELECT node_id, metric_name,
-       updated_at,
-       updated_at + interval '1 hour' AS updated_at_plus_1h
-FROM "gv$node_metrics"
-ORDER BY updated_at
-LIMIT 3;
+$$ AS query \gset
+\i :run_query
 
 --
 -- Function pushdown behavior
@@ -582,23 +509,23 @@ LIMIT 3;
 
 -- Stable function (NOW()) in predicate: not pushed down because
 -- contain_mutable_functions() rejects non-immutable expressions.
-EXPLAIN (VERBOSE, COSTS OFF)
+SELECT $$
+:P
 SELECT node_id, metric_name, updated_at FROM "gv$node_metrics"
 WHERE updated_at < NOW()
 ORDER BY node_id, metric_name;
-SELECT node_id, metric_name, updated_at FROM "gv$node_metrics"
-WHERE updated_at < NOW()
-ORDER BY node_id, metric_name;
+$$ AS query \gset
+\i :run_query
 
 -- Immutable built-in function (ABS) in predicate: pushed down because
 -- the function is built-in and immutable.
-EXPLAIN (VERBOSE, COSTS OFF)
+SELECT $$
+:P
 SELECT node_id, metric_name, event_count FROM "gv$node_metrics"
 WHERE ABS(event_count) > 100
 ORDER BY node_id, metric_name;
-SELECT node_id, metric_name, event_count FROM "gv$node_metrics"
-WHERE ABS(event_count) > 100
-ORDER BY node_id, metric_name;
+$$ AS query \gset
+\i :run_query
 
 -- User-defined function in predicate: not pushed down because
 -- postgres_fdw only considers built-in functions shippable.
@@ -609,13 +536,13 @@ BEGIN
 END;
 $$;
 
-EXPLAIN (VERBOSE, COSTS OFF)
+SELECT $$
+:P
 SELECT node_id, metric_name, metric_value FROM "gv$node_metrics"
 WHERE is_high_value(metric_value)
 ORDER BY node_id, metric_name;
-SELECT node_id, metric_name, metric_value FROM "gv$node_metrics"
-WHERE is_high_value(metric_value)
-ORDER BY node_id, metric_name;
+$$ AS query \gset
+\i :run_query
 
 --
 -- Global views for yb_active_session_history and pg_stat_statements.
@@ -721,8 +648,12 @@ CREATE FOREIGN TABLE IF NOT EXISTS "gv$pg_stat_statements" (
 SERVER gv_server
 OPTIONS (schema_name 'public', table_name 'pg_stat_statements_with_server_uuid');
 
--- ASH with current_timestamp (stable, not pushed down)
-EXPLAIN (VERBOSE, COSTS OFF)
+-- ASH filtered by current_timestamp (stable, not pushed down) and by a
+-- literal timestamp (immutable, pushed down).
+\set Q1 'current_timestamp - interval ''20 minutes'''
+\set Q2 '''2026-04-03 13:28:25.640388+05:30'''
+SELECT $$
+:explain
 SELECT
     query_id,
     wait_event_component,
@@ -732,7 +663,7 @@ SELECT
 FROM
     "gv$yb_active_session_history"
 WHERE
-    sample_time >= current_timestamp - interval '20 minutes'
+    sample_time >= :Q
 GROUP BY
     query_id,
     wait_event_component,
@@ -743,32 +674,18 @@ ORDER BY
     wait_event_component,
     wait_event_type
 LIMIT 10;
+$$ AS query \gset
+\i :run_query
 
--- ASH with literal timestamp (immutable, pushed down)
-EXPLAIN (VERBOSE, COSTS OFF)
-SELECT
-    query_id,
-    wait_event_component,
-    wait_event,
-    wait_event_type,
-    COUNT(*)
-FROM
-    "gv$yb_active_session_history"
-WHERE
-    sample_time >= '2026-04-03 13:28:25.640388+05:30'
-GROUP BY
-    query_id,
-    wait_event_component,
-    wait_event,
-    wait_event_type
-ORDER BY
-    query_id,
-    wait_event_component,
-    wait_event_type
-LIMIT 10;
-
--- ASH JOIN pg_stat_statements with current_timestamp
-EXPLAIN (VERBOSE, COSTS OFF)
+-- ASH JOIN pg_stat_statements ordered by columns of both tables, of only
+-- ASH, and of only pg_stat_statements, each with the same two filters
+\set Q1 'query, wait_event_component, wait_event_type'
+\set Q2 'wait_event_component, wait_event_type'
+\set Q3 query
+\set R1 'current_timestamp - interval ''20 minutes'''
+\set R2 '''2026-04-03 13:28:25.640388+05:30'''
+SELECT $$
+:explain
 SELECT
     SUBSTRING(query, 1, 50) AS query,
     wait_event_component,
@@ -782,95 +699,18 @@ JOIN
 ON
     query_id = queryid
 WHERE
-    sample_time >= current_timestamp - interval '20 minutes'
+    sample_time >= :R
 GROUP BY
     query,
     wait_event_component,
     wait_event,
     wait_event_type
 ORDER BY
-    query,
-    wait_event_component,
-    wait_event_type
+    :Q
 LIMIT 10;
-
--- ASH JOIN pg_stat_statements with literal timestamp
-EXPLAIN (VERBOSE, COSTS OFF)
-SELECT
-    SUBSTRING(query, 1, 50) AS query,
-    wait_event_component,
-    wait_event,
-    wait_event_type,
-    COUNT(*)
-FROM
-    "gv$yb_active_session_history"
-JOIN
-    "gv$pg_stat_statements"
-ON
-    query_id = queryid
-WHERE
-    sample_time >= '2026-04-03 13:28:25.640388+05:30'
-GROUP BY
-    query,
-    wait_event_component,
-    wait_event,
-    wait_event_type
-ORDER BY
-    query,
-    wait_event_component,
-    wait_event_type
-LIMIT 10;
-
--- ASH JOIN pg_stat_statements with ORDER BY only on ASH
-EXPLAIN (VERBOSE, COSTS OFF)
-SELECT
-    SUBSTRING(query, 1, 50) AS query,
-    wait_event_component,
-    wait_event,
-    wait_event_type,
-    COUNT(*)
-FROM
-    "gv$yb_active_session_history"
-JOIN
-    "gv$pg_stat_statements"
-ON
-    query_id = queryid
-WHERE
-    sample_time >= '2026-04-03 13:28:25.640388+05:30'
-GROUP BY
-    query,
-    wait_event_component,
-    wait_event,
-    wait_event_type
-ORDER BY
-    wait_event_component,
-    wait_event_type
-LIMIT 10;
-
--- ASH JOIN pg_stat_statements with ORDER BY only on pg_stat_statements
-EXPLAIN (VERBOSE, COSTS OFF)
-SELECT
-    SUBSTRING(query, 1, 50) AS query,
-    wait_event_component,
-    wait_event,
-    wait_event_type,
-    COUNT(*)
-FROM
-    "gv$yb_active_session_history"
-JOIN
-    "gv$pg_stat_statements"
-ON
-    query_id = queryid
-WHERE
-    sample_time >= '2026-04-03 13:28:25.640388+05:30'
-GROUP BY
-    query,
-    wait_event_component,
-    wait_event,
-    wait_event_type
-ORDER BY
-    query
-LIMIT 10;
+$$ AS query \gset
+\i :run_query
+\unset Q3
 
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT query_id, queryid
@@ -888,16 +728,14 @@ SET enable_hashjoin = off;
 SET enable_mergejoin = off;
 SET enable_material = off;
 
-EXPLAIN (VERBOSE, COSTS OFF)
+SELECT $$
+:P
 SELECT d.label, gv.metric_name, gv.event_count
 FROM gv_driver_nodes d, "gv$node_metrics" gv
 WHERE gv.node_id = d.node_id
 ORDER BY d.label, gv.metric_name;
-
-SELECT d.label, gv.metric_name, gv.event_count
-FROM gv_driver_nodes d, "gv$node_metrics" gv
-WHERE gv.node_id = d.node_id
-ORDER BY d.label, gv.metric_name;
+$$ AS query \gset
+\i :run_query
 
 RESET enable_material;
 RESET enable_hashjoin;

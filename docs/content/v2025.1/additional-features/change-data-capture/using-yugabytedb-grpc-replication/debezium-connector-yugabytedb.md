@@ -17,30 +17,34 @@ The YugabyteDB gRPC Connector is based on the Debezium Connector, and captures r
 
 ## Connector compatibility
 
-The connector is compatible with the following versions of YugabyteDB.
+When installing the connector for the first time, always use the latest stable release, whatever version of YugabyteDB you have. After it's installed, you don't need to change it when you upgrade YugabyteDB, as long as you stay on the same major version (such as v2026.1).
 
-| YugabyteDB | Connector |
-| :--- | :--- |
-| 2.14 | 1.9.5.y.3 |
-| 2.16 | 1.9.5.y.24 |
-| 2.18.2 | 1.9.5.y.33.2 |
-| 2.20 | 1.9.5.y.220.4 |
-| 2024.1 | dz.1.9.5.yb.grpc.2024.1 |
-| 2024.2 | dz.1.9.5.yb.grpc.2024.2.3 |
-| 2025.1 | dz.1.9.5.yb.grpc.2025.1 |
-| 2025.2 | dz.1.9.5.yb.grpc.2025.2 |
+Exceptions:
 
-Starting with YugabyteDB v2024.1, the connector uses the following naming convention:
+- YugabyteDB v2026.1.2.0 and later require connector version `dz.1.9.5.yb.grpc.2026.1.2` or later, including when you upgrade from an earlier v2026.1 release.
+- YugabyteDB v2024.2 requires connector version `dz.1.9.5.yb.grpc.2024.2.3` or later.
+
+Starting with YugabyteDB v2024.1, connector versions follow this scheme:
 
 ```output
-dz.<Debezium Release>.yb.grpc.<YugabyteDB Version>.<Patch>
+dz.<debezium-base>.yb.grpc.<yugabytedb-series>.<connector-patch>[.SNAPSHOT.<n>]
 ```
 
-* Debezium Release - Debezium release the connector is based on
-* YugabyteDB Version - version of YugabyteDB the connector works with
-* Patch - patch release version, if applicable
+| Component | Example | Description |
+| :---- | :------ | :------ |
+| `dz.<debezium-base>` | `dz.1.9.5` | Upstream Debezium release the connector is built on (the gRPC connector uses Debezium 1.9.5). |
+| `yb.grpc` | `yb.grpc` | Identifies the gRPC-protocol connector (distinct from the logical replication connector). |
+| `<yugabytedb-series>` | `2025.2` | YugabyteDB release series the build is aligned to. |
+| `<connector-patch>` | `.3` | Connector patch in that series. Higher is more recent. |
+| `.SNAPSHOT.<n>` | `.SNAPSHOT.1` | Pre-release. Don't use in production. |
 
-The connector is backward compatible with previous releases of YugabyteDB unless stated otherwise. For the latest YugabyteDB preview version, use the latest available connector.
+Release tags carry a leading `v`. For example, version `dz.1.9.5.yb.grpc.2025.2` is tagged `vdz.1.9.5.yb.grpc.2025.2`.
+
+Starting with `dz.1.9.5.yb.grpc.2026.1.2.0.1`, the YugabyteDB part is the full four-part release and the trailing number is the connector patch for that database version. For example, `dz.1.9.5.yb.grpc.2026.1.2.0.2` is connector patch 2 for YugabyteDB v2026.1.2.0.
+
+Apart from the exceptions above, a connector release supports every YugabyteDB release in the release series it was built for, and all earlier releases, but *not later release series*. For example, connector release `dz.1.9.5.yb.grpc.2026.1.2.0.2` supports YugabyteDB v2025.2 and earlier, and every v2026.1 release (including those after v2026.1.2.0), but not v2026.2 or later.
+
+Also, if a connector release for a particular version is not available, then it is recommended to use the latest released connector.
 
 In addition, the connector supports Kafka Connect v2.x and later.
 
@@ -1103,7 +1107,23 @@ Advanced connector configuration properties:
 | tombstones.on.delete | `true` | Controls whether a delete event is followed by a tombstone event.<br/><br/> `true` - a delete operation is represented by a delete event and a subsequent tombstone event.<br/><br/> `false` - only a delete event is emitted.<br/><br/> After a source record is deleted, emitting a tombstone event (the default behavior) allows Kafka to completely delete all events that pertain to the key of the deleted row in case log compaction is enabled for the topic. |
 | auto.add.new.tables | `true` | Controls whether the connector should keep polling the server to check if any new table has been added to the configured change data stream ID. If a new table has been found in the stream ID and if it has been included in the `table.include.list`, the connector will be restarted automatically. |
 | new.table.poll.interval.ms | 300000 | The interval at which the poller thread will poll the server to check if there are any new tables in the configured change data stream ID. |
+| heartbeat.interval.ms | 0 | Requires connector version `dz.1.9.5.yb.grpc.2026.1.2` or later. Earlier versions accept this property but don't send heartbeats.<br/><br/>How often, in milliseconds, the connector sends a heartbeat record for each tablet to the heartbeat topic (see `heartbeat.topics.prefix`). When Kafka Connect commits a heartbeat record, the connector advances that tablet's checkpoint on the server, even if the connector emits no change events for the tablet (for example, because a single message transformation (SMT) filters out all of its records). This allows YugabyteDB to clear WAL that is no longer needed. The connector sends heartbeats during both the snapshot and streaming phases. The default value of `0` disables heartbeats.<br/><br/>If you filter records using an SMT, enable heartbeats and make sure that the SMT doesn't drop the heartbeat records. If you use `BinaryDataConverter` as the value converter, also configure a delegate converter as described in the note following this table. |
+| heartbeat.topics.prefix | `__debezium-heartbeat` | Controls the name of the topic to which the connector sends heartbeat records. The topic name has the pattern `<heartbeat.topics.prefix>.<database.server.name>`. For example, if `database.server.name` is `dbserver1`, the default topic name is `__debezium-heartbeat.dbserver1`.<br/><br/>If automatic topic creation is disabled on your Kafka cluster, create the heartbeat topic before you enable heartbeats. |
 | transaction.ordering | `false` | Whether to order transactions by their commit time.<br/>{{< warning title="Deprecation Notice" >}} This configuration property has been deprecated. For more details, see [transaction ordering](#transaction-ordering). {{< /warning >}} |
+
+{{< note title="Heartbeats with BinaryDataConverter" >}}
+
+Heartbeat records have a structured (`Struct`) key and value. If you use `io.debezium.converters.BinaryDataConverter` as the value converter, for example to write pre-serialized payloads to Kafka unchanged, configure a delegate converter for records whose value isn't binary. Otherwise, the connector task fails when it sends the first heartbeat record, with an error that includes `requires a delegate.converter.type to be configured`. For example:
+
+```properties
+value.converter=io.debezium.converters.BinaryDataConverter
+value.converter.delegate.converter.type=org.apache.kafka.connect.json.JsonConverter
+value.converter.delegate.converter.type.schemas.enable=false
+```
+
+Records whose value is already binary are still written unchanged; the delegate converter serializes only records whose value isn't binary, such as heartbeat and transaction metadata records. If `key.converter` is also `BinaryDataConverter`, configure `key.converter.delegate.converter.type` in the same way. For more information, refer to [Using Avro as the payload format](https://debezium.io/documentation/reference/stable/transformations/outbox-event-router.html#avro-as-payload-format) in the Debezium documentation.
+
+{{< /note >}}
 
 ### Transformers
 

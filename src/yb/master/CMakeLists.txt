@@ -81,6 +81,7 @@ set(MASTER_SRCS
   catalog_loading_state.cc
   catalog_manager.cc
   catalog_manager_bg_tasks.cc
+  catalog_manager_cdc_bg_tasks.cc
   catalog_manager_ext.cc
   catalog_manager_util.cc
   cdcsdk_manager.cc
@@ -118,6 +119,7 @@ set(MASTER_SRCS
   multi_step_monitored_task.cc
   object_lock_info_manager.cc
   permissions_manager.cc
+  pg_catalog_versions_cache.cc
   post_tablet_create_task_base.cc
   restoration_state.cc
   restore_sys_catalog_state.cc
@@ -146,6 +148,7 @@ set(MASTER_SRCS
   xcluster/add_table_to_xcluster_target_task.cc
   xcluster/handle_new_schema_for_automatic_xcluster_target_task.cc
   xcluster/master_xcluster_util.cc
+  xcluster/persistence_block_map.cc
   xcluster/xcluster_bootstrap_helper.cc
   xcluster/xcluster_catalog_entity.cc
   xcluster/xcluster_config.cc
@@ -275,6 +278,7 @@ ADD_YB_TEST(master_cluster_test)
 ADD_YB_TEST(master_tablet_service_test)
 ADD_YB_TEST(master_xrepl-test)
 ADD_YB_TEST(multi_step_monitored_task-test)
+ADD_YB_TEST(pg_catalog_versions_cache-test)
 ADD_YB_TEST(restore_sys_catalog_state_test)
 ADD_YB_TEST(stateful_service-test)
 ADD_YB_TEST(sys_catalog-test)

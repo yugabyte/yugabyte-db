@@ -24,6 +24,7 @@
 #include "yb/integration-tests/external_mini_cluster_fs_inspector.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/format.h"
 #include "yb/util/path_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -161,7 +162,7 @@ TEST_F(PggateTestTableSize, TestSimpleTable) {
   YbcPgExpr expr_salary;
   CHECK_YBC_STATUS(YBCTestNewConstantFloat4(pg_stmt, seed + 1.0*seed/10.0, false, &expr_salary));
   YbcPgExpr expr_job;
-  std::string job = strings::Substitute("Job_title_$0", seed);
+  std::string job = Format("Job_title_$0", seed);
   CHECK_YBC_STATUS(YBCTestNewConstantText(pg_stmt, job.c_str(), false, &expr_job));
 
   // Set column value to be inserted.
@@ -188,7 +189,7 @@ TEST_F(PggateTestTableSize, TestSimpleTable) {
     CHECK_YBC_STATUS(YBCPgUpdateConstInt2(expr_depcnt, seed, false));
     CHECK_YBC_STATUS(YBCPgUpdateConstInt4(expr_projcnt, 100 + seed, false));
     CHECK_YBC_STATUS(YBCPgUpdateConstFloat4(expr_salary, seed + 1.0*seed/10.0, false));
-    job = strings::Substitute("Job_title_$0", seed);
+    job = Format("Job_title_$0", seed);
     CHECK_YBC_STATUS(YBCPgUpdateConstBinary(expr_job, job.c_str(), job.size(), false));
   }
 

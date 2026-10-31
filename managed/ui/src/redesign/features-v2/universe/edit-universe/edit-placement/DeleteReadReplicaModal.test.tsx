@@ -16,9 +16,11 @@ vi.mock('@yugabyte-ui-library/core', async (importOriginal) => {
     children,
     open,
     onSubmit,
-    buttonProps
+    buttonProps,
+    actionsInfo
   }: {
     children?: ReactNode;
+    actionsInfo?: ReactNode;
     open: boolean;
     onSubmit?: () => void;
     buttonProps?: { primary?: { disabled?: boolean; dataTestId?: string; loading?: boolean } };
@@ -28,6 +30,7 @@ vi.mock('@yugabyte-ui-library/core', async (importOriginal) => {
     return (
       <div data-testid="delete-read-replica-modal-wrapper">
         {children}
+        {actionsInfo}
         <button
           type="button"
           data-testid={testId}
@@ -154,8 +157,26 @@ describe('DeleteReadReplicaModal', () => {
         expect.objectContaining({
           uniUUID: 'uni-99',
           clsUUID: 'cls-88',
+          params: { isForceDelete: false },
           cUUID: 'customer-1'
         }),
+        expect.any(Object)
+      );
+    });
+  });
+
+  it('sends isForceDelete when the force delete checkbox is ticked', async () => {
+    const user = userEvent.setup();
+    renderModal({ universeDisplayName: 'Exact-Universe-Name' });
+    await user.type(screen.getByTestId('validate-universename'), 'Exact-Universe-Name');
+    await user.click(screen.getByRole('checkbox'));
+    const submit = screen.getByTestId('submit-delete-read-replica');
+    await waitFor(() => expect(submit).not.toBeDisabled());
+    await user.click(submit);
+
+    await waitFor(() => {
+      expect(hoisted.mutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ params: { isForceDelete: true } }),
         expect.any(Object)
       );
     });

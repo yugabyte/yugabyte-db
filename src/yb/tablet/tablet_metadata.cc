@@ -55,7 +55,6 @@
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/sys_catalog_constants.h"
 
@@ -70,6 +69,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"
@@ -82,6 +82,8 @@
 #include "yb/util/trace.h"
 
 DEPRECATE_FLAG(bool, enable_tablet_orphaned_block_deletion, "10_2022");
+
+DECLARE_bool(enable_tiered_storage);
 
 DEFINE_test_flag(bool, invalidate_last_change_metadata_op, false,
     "Used in tests to update last_flushed_change_metadata_op_id to -1.-1 to simulate "
@@ -124,7 +126,6 @@ METRIC_DEFINE_entity(table);
 
 using std::string;
 
-using strings::Substitute;
 
 namespace yb::tablet {
 
@@ -259,7 +260,9 @@ TableInfo::TableInfo(const TableInfo& other,
       hybrid_time(other.hybrid_time),
       pg_table_id(other.pg_table_id),
       skip_table_tombstone_check(other.skip_table_tombstone_check),
-      deleted_cols(other.deleted_cols) {
+      deleted_cols(other.deleted_cols),
+      cdcsdk_schema_version_boundaries(other.cdcsdk_schema_version_boundaries),
+      vector_index_deactivated_ht(other.vector_index_deactivated_ht) {
   this->deleted_cols.insert(this->deleted_cols.end(), deleted_cols.begin(), deleted_cols.end());
   CompleteInit();
 }
@@ -284,7 +287,9 @@ TableInfo::TableInfo(const TableInfo& other,
       hybrid_time(other.hybrid_time),
       pg_table_id(other.pg_table_id),
       skip_table_tombstone_check(other.skip_table_tombstone_check),
-      deleted_cols(other.deleted_cols) {
+      deleted_cols(other.deleted_cols),
+      cdcsdk_schema_version_boundaries(other.cdcsdk_schema_version_boundaries),
+      vector_index_deactivated_ht(other.vector_index_deactivated_ht) {
   CompleteInit();
 }
 
@@ -306,7 +311,14 @@ TableInfo::TableInfo(const TableInfo& other, SchemaVersion min_schema_version)
       hybrid_time(other.hybrid_time),
       pg_table_id(other.pg_table_id),
       skip_table_tombstone_check(other.skip_table_tombstone_check),
-      deleted_cols(other.deleted_cols) {
+      deleted_cols(other.deleted_cols),
+      cdcsdk_schema_version_boundaries(other.cdcsdk_schema_version_boundaries),
+      vector_index_deactivated_ht(other.vector_index_deactivated_ht) {
+  // Prune boundaries together with the packings dropped by this copy.
+  const auto min_version = std::min(min_schema_version, other.schema_version);
+  cdcsdk_schema_version_boundaries.erase(
+      cdcsdk_schema_version_boundaries.begin(),
+      cdcsdk_schema_version_boundaries.lower_bound(min_version));
   CompleteInit();
 }
 
@@ -332,7 +344,20 @@ Result<TableInfoPtr> TableInfo::LoadFromPB(
       SkipTableTombstoneCheck::kFalse, PrivateTag());
   RETURN_NOT_OK(result->DoLoadFromPB(primary, pb));
   result->CompleteInit();
+  // Repairs superblocks written by a restore that kept the restored columns as deleted.
+  result->EraseDeletedColumnsInSchema();
   return result;
+}
+
+// A PITR to before a DROP COLUMN brings the column back into the schema. Compaction discards a
+// deleted column's values, and its vector reverse mapping entries, once the drop is older than the
+// history cutoff, whatever their write time. So a column in the current schema must not stay
+// deleted. Only valid for the table's current schema: InsertPackedSchemaForXClusterTarget builds
+// a TableInfo from the source's older schema, which can still contain locally dropped columns.
+void TableInfo::EraseDeletedColumnsInSchema() {
+  std::erase_if(deleted_cols, [this](const DeletedColumn& deleted_col) {
+    return schema().find_column_by_id(deleted_col.id) != Schema::kColumnNotFound;
+  });
 }
 
 Status TableInfo::DoLoadFromPB(Primary primary, const TableInfoPB& pb) {
@@ -357,6 +382,9 @@ Status TableInfo::DoLoadFromPB(Primary primary, const TableInfoPB& pb) {
   if (pb.has_wal_retention_secs()) {
     wal_retention_secs = pb.wal_retention_secs();
   }
+  if (pb.has_vector_index_deactivated_ht()) {
+    vector_index_deactivated_ht = HybridTime::FromPB(pb.vector_index_deactivated_ht());
+  }
 
   RETURN_NOT_OK(dockv::PartitionSchema::FromPB(pb.partition_schema(), schema(), &partition_schema));
 
@@ -364,6 +392,11 @@ Status TableInfo::DoLoadFromPB(Primary primary, const TableInfoPB& pb) {
     DeletedColumn col;
     RETURN_NOT_OK(DeletedColumn::FromPB(deleted_col, &col));
     deleted_cols.push_back(col);
+  }
+
+  for (const auto& boundary : pb.cdcsdk_schema_version_boundaries()) {
+    cdcsdk_schema_version_boundaries.emplace(
+        boundary.schema_version(), OpId::FromPB(boundary.op_id()));
   }
 
   return Status::OK();
@@ -426,10 +459,18 @@ void TableInfo::ToPB(TableInfoPB* pb) const {
   for (const DeletedColumn& deleted_col : deleted_cols) {
     deleted_col.CopyToPB(pb->mutable_deleted_cols()->Add());
   }
+  for (const auto& [version, boundary_op_id] : cdcsdk_schema_version_boundaries) {
+    auto* boundary = pb->add_cdcsdk_schema_version_boundaries();
+    boundary->set_schema_version(version);
+    boundary_op_id.ToPB(boundary->mutable_op_id());
+  }
   pb->set_hybrid_time(hybrid_time.ToPB());
   op_id.ToPB(pb->mutable_op_id());
   pb->set_pg_table_id(pg_table_id);
   pb->set_skip_table_tombstone_check(skip_table_tombstone_check);
+  if (vector_index_deactivated_ht.is_valid()) {
+    pb->set_vector_index_deactivated_ht(vector_index_deactivated_ht.ToPB());
+  }
 }
 
 const Schema& TableInfo::schema() const {
@@ -500,7 +541,9 @@ bool TableInfo::TEST_Equals(const TableInfo& lhs, const TableInfo& rhs) {
                           cotable_id,
                           schema_version,
                           deleted_cols,
-                          wal_retention_secs) &&
+                          cdcsdk_schema_version_boundaries,
+                          wal_retention_secs,
+                          vector_index_deactivated_ht) &&
          DereferencedEqual(lhs.doc_read_context,
                            rhs.doc_read_context,
                            &docdb::DocReadContext::TEST_Equals) &&
@@ -601,14 +644,18 @@ Status KvStoreInfo::LoadFromPB(
     // synthesize a single in-memory home entry to guarantee DB::Open always gets at least one
     // db_paths slot. For local superblocks this is upgraded to the full per-disk list (and
     // persisted) in RaftGroupMetadata::LoadFromSuperBlock, which has the FsManager.
-    if (tier_paths.empty()) {
+    // With tiered storage disabled tier_paths stays empty and RocksDB opens with its default
+    // single path, exactly as before the feature existed.
+    if (tier_paths.empty() && FLAGS_enable_tiered_storage) {
       tier_paths.push_back({
           .path_id = 0,
           .tier    = kDefaultStorageTier,
           .path    = rocksdb_dir,
       });
     }
+    target_tier_path_id = pb.target_tier_path_id();
   }
+  target_storage_tier = pb.target_storage_tier();
   lower_bound_key = pb.lower_bound_key();
   upper_bound_key = pb.upper_bound_key();
   rocksdb_parent_data_compacted = pb.rocksdb_parent_data_compacted();
@@ -647,64 +694,26 @@ Status KvStoreInfo::MergeWithRestored(
       snapshot_kvstoreinfo, primary_table_id, colocated, overwrite);
 }
 
-// The snapshot lists every vector index that was on the tablet, including invalid indexes the
-// dump omitted and indexes dropped while a snapshot schedule still retained the tablet. Those
-// have no local table. A local vector index with no snapshot entry is the one whose options and
-// restored graph can disagree.
-Result<std::unordered_set<ColocationId>> SnapshotVectorIndexColocationIds(
-    const google::protobuf::RepeatedPtrField<TableInfoPB>& snapshot_tables) {
-  std::unordered_set<ColocationId> ids;
-  for (const auto& snapshot_table : snapshot_tables) {
-    if (!snapshot_table.index_info().has_vector_idx_options()) {
-      continue;
-    }
-    const auto& schema = snapshot_table.schema();
-    SCHECK(
-        schema.has_colocated_table_id() && schema.colocated_table_id().has_colocation_id(),
-        Corruption, "Snapshot vector index $0 has no colocation id", snapshot_table.table_name());
-    ids.insert(schema.colocated_table_id().colocation_id());
-  }
-  return ids;
-}
-
-Status CheckLocalVectorIndexesInSnapshot(
-    const TableInfoMap& tables, const std::unordered_set<ColocationId>& snapshot_colocation_ids) {
-  for (const auto& [table_id, table_info] : tables) {
-    if (!table_info->IsVectorIndex()) {
-      continue;
-    }
-    SCHECK(
-        table_info->schema().has_colocation_id(), Corruption,
-        "Local vector index $0 has no colocation id", table_id);
-    const auto colocation_id = table_info->schema().colocation_id();
-    SCHECK(
-        snapshot_colocation_ids.find(colocation_id) != snapshot_colocation_ids.end(), Corruption,
-        "Local vector index $0 colocation id $1 has no snapshot counterpart", table_id,
-        colocation_id);
-  }
-  return Status::OK();
-}
-
-// ysql_dump assigns dense DocDB ids and CREATE INDEX records that id. The snapshot superblock
-// still has the source vector_idx_options, including the column id and the permanent index id
-// the restored graph files are stored under. SetSchema keeps the local index_info, so copy the
-// snapshot options onto the local index, matched by colocation id. table_id stays local.
+// CREATE INDEX on the restore cluster fills the local vector_idx_options, but the restored chunk
+// files were written with the snapshot superblock's:
+// - ysql_dump assigns dense DocDB ids and CREATE INDEX records that column id.
+// - id is the permanent index id the restored graph files are stored under.
+// - hnsw.backend, store_payload and tenant_hash_group_and_range_components come from
+//   --vector_index_backend, --vector_index_store_payload and
+//   --vector_index_tenant_hash_group_and_range_components; they set the chunk file names, whether
+//   each vector carries a ybctid, and the tenant of each vector.
+// SetSchema keeps the local index_info, so copy the snapshot options onto the local index,
+// matched by colocation id. table_id stays local.
 Status RestoreVectorIndexOptions(TableInfo* target, const TableInfoPB& snapshot_table) {
   if (!snapshot_table.index_info().has_vector_idx_options() || !target->IsVectorIndex()) {
     return Status::OK();
   }
   const auto& source_options = snapshot_table.index_info().vector_idx_options();
-  // TODO(#34559): when column_id and id already match, this keeps the restore cluster's
-  // backend and store_payload, which CREATE INDEX took from that cluster's flags. The restored
-  // chunk files were written with the source values, so this assumes both clusters share
-  // --vector_index_backend and --vector_index_store_payload.
-  if (target->index_info->vector_idx_options().column_id() == source_options.column_id() &&
-      target->index_info->vector_idx_options().id() == source_options.id()) {
+  std::string diff;
+  if (pb_util::ArePBsEqual(target->index_info->vector_idx_options(), source_options, &diff)) {
     return Status::OK();
   }
-  LOG(INFO) << "Restoring vector index options for " << target->table_id << " column id "
-            << target->index_info->vector_idx_options().column_id() << " -> "
-            << source_options.column_id();
+  LOG(INFO) << "Restoring vector index options for " << target->table_id << ": " << diff;
   IndexInfoPB index_info_pb;
   target->index_info->ToPB(&index_info_pb);
   *index_info_pb.mutable_vector_idx_options() = source_options;
@@ -746,13 +755,17 @@ Status KvStoreInfo::RestoreMissingValuesAndMergeTableSchemaPackings(
           table_info->ToString());
     }
     if (overwrite) {
-      auto snapshot_colocation_ids = VERIFY_RESULT(
-          SnapshotVectorIndexColocationIds(snapshot_kvstoreinfo.tables()));
       for (const auto& snapshot_table : snapshot_kvstoreinfo.tables()) {
         if (!snapshot_table.index_info().has_vector_idx_options()) {
           continue;
         }
-        const auto colocation_id = snapshot_table.schema().colocated_table_id().colocation_id();
+        const auto& snapshot_schema = snapshot_table.schema();
+        SCHECK(
+            snapshot_schema.has_colocated_table_id() &&
+                snapshot_schema.colocated_table_id().has_colocation_id(),
+            Corruption, "Snapshot vector index $0 has no colocation id",
+            snapshot_table.table_name());
+        const auto colocation_id = snapshot_schema.colocated_table_id().colocation_id();
         auto it = colocation_to_table.find(colocation_id);
         if (it == colocation_to_table.end()) {
           // The dump does not recreate an invalid index, or one dropped while a snapshot schedule
@@ -763,7 +776,9 @@ Status KvStoreInfo::RestoreMissingValuesAndMergeTableSchemaPackings(
         }
         RETURN_NOT_OK(RestoreVectorIndexOptions(it->second.get(), snapshot_table));
       }
-      RETURN_NOT_OK(CheckLocalVectorIndexesInSnapshot(tables, snapshot_colocation_ids));
+      // A local vector index with no snapshot entry, e.g. one created after the snapshot and kept
+      // by an in-place restore, gets no restored storage. If it was open, the restore wiped its
+      // storage, so it reopens empty and is backfilled after the restore.
     }
     return Status::OK();
   }
@@ -781,10 +796,6 @@ Status KvStoreInfo::RestoreMissingValuesAndMergeTableSchemaPackings(
     if (overwrite) {
       RETURN_NOT_OK(RestoreVectorIndexOptions(target_table, snapshot_table_pb));
     }
-  }
-  if (overwrite) {
-    RETURN_NOT_OK(CheckLocalVectorIndexesInSnapshot(
-        tables, VERIFY_RESULT(SnapshotVectorIndexColocationIds(snapshot_kvstoreinfo.tables()))));
   }
   return Status::OK();
 }
@@ -844,6 +855,12 @@ void KvStoreInfo::ToPB(const TableId& primary_table_id, KvStoreInfoPB* pb) const
     tppb->set_tier(tp.tier);
     tppb->set_path(tp.path);
   }
+  if (target_storage_tier.empty()) {
+    pb->clear_target_storage_tier();
+  } else {
+    pb->set_target_storage_tier(target_storage_tier);
+  }
+  pb->set_target_tier_path_id(target_tier_path_id);
   if (lower_bound_key.empty()) {
     pb->clear_lower_bound_key();
   } else {
@@ -898,6 +915,8 @@ bool KvStoreInfo::TEST_Equals(const KvStoreInfo& lhs, const KvStoreInfo& rhs) {
   return YB_STRUCT_EQUALS(kv_store_id,
                           rocksdb_dir,
                           tier_paths,
+                          target_storage_tier,
+                          target_tier_path_id,
                           lower_bound_key,
                           upper_bound_key,
                           rocksdb_parent_data_compacted,
@@ -992,14 +1011,22 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateNew(
     wal_top_dir = wal_root_dirs[0];
   }
 
-  const string table_dir_name = Substitute("table-$0", data.table_info->table_id);
+  const string table_dir_name = Format("table-$0", data.table_info->table_id);
   const string tablet_dir_name = MakeTabletDirName(data.raft_group_id);
   const string wal_dir = JoinPathSegments(wal_top_dir, table_dir_name, tablet_dir_name);
   const string rocksdb_dir = JoinPathSegments(
       data_top_dir, FsManager::kRocksDBDirName, table_dir_name, tablet_dir_name);
 
   RaftGroupMetadataPtr ret(new RaftGroupMetadata(data, rocksdb_dir, wal_dir));
-  ret->kv_store_.tier_paths = BuildTierPaths(fs_manager, rocksdb_dir);
+  if (FLAGS_enable_tiered_storage) {
+    ret->kv_store_.tier_paths = BuildTierPaths(fs_manager, rocksdb_dir);
+    ret->kv_store_.target_storage_tier = data.target_storage_tier;
+  } else if (!data.target_storage_tier.empty()) {
+    LOG(WARNING) << "Ignoring target storage tier \"" << data.target_storage_tier
+                 << "\" for tablet " << data.raft_group_id
+                 << " because tiered storage is disabled (--enable_tiered_storage=false)";
+  }
+  ret->kv_store_.target_tier_path_id = 0;
   RETURN_NOT_OK(ret->Flush());
   return ret;
 }
@@ -1122,6 +1149,33 @@ void RaftGroupMetadata::TEST_SetTierPaths(std::vector<TierPathInfo> paths) {
   kv_store_.tier_paths = std::move(paths);
 }
 
+std::string RaftGroupMetadata::target_storage_tier() const {
+  std::lock_guard lock(data_mutex_);
+  return kv_store_.target_storage_tier;
+}
+
+uint32_t RaftGroupMetadata::target_tier_path_id() const {
+  std::lock_guard lock(data_mutex_);
+  return kv_store_.target_tier_path_id;
+}
+
+Status RaftGroupMetadata::SetTargetTier(const std::string& target_tier, uint32_t target_path_id) {
+  {
+    std::lock_guard lock(data_mutex_);
+    kv_store_.target_storage_tier = target_tier;
+    kv_store_.target_tier_path_id = target_path_id;
+  }
+  return Flush();
+}
+
+Status RaftGroupMetadata::ClearTargetTierPathId() {
+  {
+    std::lock_guard lock(data_mutex_);
+    kv_store_.target_tier_path_id = 0;
+  }
+  return Flush();
+}
+
 Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
                                            const OpId& last_logged_opid) {
   CHECK(delete_type == TABLET_DATA_DELETED ||
@@ -1206,8 +1260,7 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
     LOG_IF_WITH_PREFIX(WARNING, !s.ok()) << "Unable to delete intents directory " << intents_dir;
   }
 
-  for (const auto& info : GetAllColocatedVectorIndexes()) {
-    auto storage_dir = vector_index_dir(info->index_info->vector_idx_options());
+  for (const auto& storage_dir : vector_index_dirs()) {
     auto status = fs_manager_->env()->DeleteRecursively(storage_dir);
     if (status.ok()) {
       LOG_WITH_PREFIX(INFO) << "Successfully destroyed vector index storage at: " << storage_dir;
@@ -1250,12 +1303,12 @@ Status RaftGroupMetadata::DeleteSuperBlock() {
   std::lock_guard lock(data_mutex_);
   if (tablet_data_state_ != TABLET_DATA_DELETED) {
     return STATUS(IllegalState,
-        Substitute("Tablet $0 is not in TABLET_DATA_DELETED state. "
-                   "Call DeleteTabletData(TABLET_DATA_DELETED) first. "
-                   "Tablet data state: $1 ($2)",
-                   raft_group_id_,
-                   TabletDataState_Name(tablet_data_state_),
-                   tablet_data_state_));
+        Format("Tablet $0 is not in TABLET_DATA_DELETED state. "
+               "Call DeleteTabletData(TABLET_DATA_DELETED) first. "
+               "Tablet data state: $1 ($2)",
+               raft_group_id_,
+               TabletDataState_Name(tablet_data_state_),
+               tablet_data_state_));
   }
 
   string path = VERIFY_RESULT(FilePath());
@@ -1359,7 +1412,7 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
     // synthesized a single in-memory home entry). Rebuild the full per-disk pin list for this node
     // via BuildTierPaths so an existing tablet can participate in tiered storage after a binary
     // upgrade, and persist it (Flush() below) so this runs once rather than on every restart.
-    if (local_superblock && !raft_group_id_.empty() &&
+    if (FLAGS_enable_tiered_storage && local_superblock && !raft_group_id_.empty() &&
         superblock.kv_store().tier_paths_size() == 0 &&
         fs_manager_ != nullptr && !kv_store_.rocksdb_dir.empty()) {
       kv_store_.tier_paths = BuildTierPaths(fs_manager_, kv_store_.rocksdb_dir);
@@ -1522,7 +1575,7 @@ Status RaftGroupMetadata::SaveToDiskUnlocked(
   RETURN_NOT_OK_PREPEND(pb_util::WritePBContainerToPath(
                             fs_manager_->encrypted_env(), path, pb,
                             pb_util::OVERWRITE, pb_util::SYNC),
-                        Substitute("Failed to write Raft group metadata $0", raft_group_id_));
+                        Format("Failed to write Raft group metadata $0", raft_group_id_));
 
   return Status::OK();
 }
@@ -1550,7 +1603,7 @@ Status RaftGroupMetadata::ReadSuperBlockFromDisk(
     Env* env, const std::string& path, RaftGroupReplicaSuperBlockPB* superblock) {
   RETURN_NOT_OK_PREPEND(
       pb_util::ReadPBContainerFromPath(env, path, superblock),
-      Substitute("Could not load Raft group metadata from $0", path));
+      Format("Could not load Raft group metadata from $0", path));
   return Status::OK();
 }
 
@@ -1625,9 +1678,10 @@ void RaftGroupMetadata::SetSchema(const Schema& schema,
                                   const std::vector<DeletedColumn>& deleted_cols,
                                   const SchemaVersion version,
                                   const OpId& op_id,
-                                  const TableId& table_id) {
+                                  const TableId& table_id,
+                                  HybridTime hybrid_time) {
   std::lock_guard lock(data_mutex_);
-  SetSchemaUnlocked(schema, index_map, deleted_cols, version, op_id, table_id);
+  SetSchemaUnlocked(schema, index_map, deleted_cols, version, op_id, table_id, hybrid_time);
 }
 
 void RaftGroupMetadata::SetSchemaUnlocked(const Schema& schema,
@@ -1635,7 +1689,8 @@ void RaftGroupMetadata::SetSchemaUnlocked(const Schema& schema,
                                   const std::vector<DeletedColumn>& deleted_cols,
                                   const SchemaVersion version,
                                   const OpId& op_id,
-                                  const TableId& table_id) {
+                                  const TableId& table_id,
+                                  HybridTime hybrid_time) {
   DCHECK(data_mutex_.is_locked());
   DCHECK(schema.has_column_ids());
   TableId target_table_id = table_id.empty() ? primary_table_id_ : table_id;
@@ -1646,6 +1701,7 @@ void RaftGroupMetadata::SetSchemaUnlocked(const Schema& schema,
                                                             index_map,
                                                             deleted_cols,
                                                             version);
+  new_table_info->EraseDeletedColumnsInSchema();
   if (target_table_id != primary_table_id_) {
     if (schema.table_properties().is_ysql_catalog_table()) {
       // TODO(alex): cotable_id should be copied from original schema, do we need this section?
@@ -1671,11 +1727,19 @@ void RaftGroupMetadata::SetSchemaUnlocked(const Schema& schema,
       colocation_it->second = new_table_info;
     }
   }
+  // While under CDCSDK replication, record the outgoing schema version's boundary. WAL entries
+  // below this op id can only be packed with that version or older ones, so OldSchemaGC must retain
+  // their packings until the CDCSDK checkpoint passes it.
+  if (is_under_cdc_sdk_replication_ && op_id.valid() && version > it->second->schema_version) {
+    new_table_info->cdcsdk_schema_version_boundaries.emplace(it->second->schema_version, op_id);
+  }
   VLOG_WITH_PREFIX(1) << raft_group_id_ << " Updating table " << target_table_id
                       << " to Schema version " << version
                       << " from \n" << AsString(it->second)
                       << " to \n" << AsString(new_table_info);
+  auto old_index_map = it->second->index_map;
   it->second.swap(new_table_info);
+  UpdateVectorIndexDeactivationUnlocked(*old_index_map, index_map, hybrid_time);
   // Update op id if it is a change metadata operation.
   // We don't update if the passed op id is invalid. Cases when this will happen:
   // 1. If we are replaying during tablet bootstrap and last_flushed_change_metadata_op_id
@@ -1685,6 +1749,49 @@ void RaftGroupMetadata::SetSchemaUnlocked(const Schema& schema,
   // we get a new change metadata operation request post tablet bootstrap.
   // 2. During remote bootstrap in RemoteBootstrapClient::Start.
   OnChangeMetadataOperationAppliedUnlocked(op_id);
+}
+
+void RaftGroupMetadata::UpdateVectorIndexDeactivationUnlocked(
+    const IndexMap& old_index_map, const IndexMap& new_index_map, HybridTime hybrid_time) {
+  // Removed by a DROP INDEX alter, or by a restore to before the index was created. A snapshot
+  // schedule can keep the index on the tablet, but no restore needs its rows written after
+  // hybrid_time: after a drop, a restore can bring it back only as of a time before the YSQL
+  // commit, which precedes this operation, and after a restore to before its creation, bringing it
+  // back would be a forward restore. Remote bootstrap passes no hybrid time and leaves the map as
+  // is.
+  if (hybrid_time.is_valid()) {
+    for (const auto& [index_id, _] : old_index_map) {
+      if (!new_index_map.contains(index_id)) {
+        SetVectorIndexDeactivatedHtUnlocked(index_id, hybrid_time);
+      }
+    }
+  }
+  // Added back by a restore to before the drop. A newly created index has no cutoff to clear.
+  for (const auto& [index_id, _] : new_index_map) {
+    if (!old_index_map.contains(index_id)) {
+      SetVectorIndexDeactivatedHtUnlocked(index_id, HybridTime());
+    }
+  }
+}
+
+void RaftGroupMetadata::SetVectorIndexDeactivatedHtUnlocked(
+    const TableId& index_id, HybridTime hybrid_time) {
+  auto it = kv_store_.tables.find(index_id);
+  if (it == kv_store_.tables.end() || !it->second->IsVectorIndex() ||
+      it->second->vector_index_deactivated_ht == hybrid_time) {
+    return;
+  }
+  LOG_WITH_PREFIX(INFO)
+      << "Vector index " << index_id << " deactivated hybrid time: "
+      << it->second->vector_index_deactivated_ht << " -> " << hybrid_time;
+  const auto& old_info = *it->second;
+  auto new_info = std::make_shared<TableInfo>(
+      old_info, old_info.schema(), *old_info.index_map, std::vector<DeletedColumn>(),
+      old_info.schema_version);
+  new_info->vector_index_deactivated_ht = hybrid_time;
+  auto status = SetTableInfoUnlocked(it, new_info);
+  LOG_IF_WITH_PREFIX(DFATAL, !status.ok())
+      << "Failed to set deactivated hybrid time of vector index " << index_id << ": " << status;
 }
 
 void RaftGroupMetadata::InsertPackedSchemaForXClusterTarget(
@@ -1749,9 +1856,10 @@ void RaftGroupMetadata::SetSchemaAndTableName(
     const Schema& schema, const IndexMap& index_map,
     const std::vector<DeletedColumn>& deleted_cols,
     const SchemaVersion version, const std::string& namespace_name,
-    const std::string& table_name, const OpId& op_id, const TableId& table_id) {
+    const std::string& table_name, const OpId& op_id, const TableId& table_id,
+    HybridTime hybrid_time) {
   std::lock_guard lock(data_mutex_);
-  SetSchemaUnlocked(schema, index_map, deleted_cols, version, op_id, table_id);
+  SetSchemaUnlocked(schema, index_map, deleted_cols, version, op_id, table_id, hybrid_time);
   SetTableNameUnlocked(namespace_name, table_name, op_id, table_id);
 }
 
@@ -2298,8 +2406,28 @@ void RaftGroupMetadata::EnableSchemaGC() {
       << "Disable GC counter underflow: " << disable_schema_gc_counter_;
 }
 
+SchemaVersion RaftGroupMetadata::MinCDCSDKSchemaVersionToRetainUnlocked(
+    const TableInfo& table_info) const {
+  // No active CDCSDK stream on the tablet: no constraint.
+  if (!is_under_cdc_sdk_replication_ || !cdc_sdk_min_checkpoint_op_id_.valid() ||
+      cdc_sdk_min_checkpoint_op_id_ == OpId::Max()) {
+    return std::numeric_limits<SchemaVersion>::max();
+  }
+  // Any WAL entry CDCSDK may still stream is at an index >= this bound. WAL entries are immutable
+  // and invisible to the RocksDB frontiers which OldSchemaGC relies on, so the packings of the
+  // versions they were packed with must be retained explicitly. Keep every version that was still
+  // current at some op id >= the bound, i.e. whose boundary op id is above it.
+  const auto bound = std::min(cdc_sdk_min_checkpoint_op_id_.index, cdc_min_replicated_index_);
+  auto min_version = table_info.schema_version;
+  for (auto it = table_info.cdcsdk_schema_version_boundaries.rbegin();
+       it != table_info.cdcsdk_schema_version_boundaries.rend() && it->second.index > bound; ++it) {
+    min_version = it->first;
+  }
+  return min_version;
+}
+
 Status RaftGroupMetadata::OldSchemaGC(
-    const std::unordered_map<Uuid, SchemaVersion>& versions) {
+    const docdb::CotableSchemaVersionMap& versions) {
   bool need_flush = false;
   {
     std::lock_guard lock(data_mutex_);
@@ -2317,9 +2445,11 @@ Status RaftGroupMetadata::OldSchemaGC(
       }
       const auto& schema_packing_storage = it->second->doc_read_context->schema_packing_storage;
       const auto min_active = schema_packing_storage.registry().MinActiveVersion();
-      const auto new_min_schema_version =
-          min_active.has_value() && min_active.value() < schema_version ? min_active.value()
-                                                                        : schema_version;
+      auto new_min_schema_version = min_active.has_value() && min_active.value() < schema_version
+                                        ? min_active.value()
+                                        : schema_version;
+      new_min_schema_version =
+          std::min(new_min_schema_version, MinCDCSDKSchemaVersionToRetainUnlocked(*it->second));
       if (!schema_packing_storage.HasVersionBelow(new_min_schema_version)) {
         continue;
       }
@@ -2494,12 +2624,18 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateSplitChildMetadata(
   // Rebuild tier_paths for the child tablet. ToSuperBlock() above copied the parent's paths, but
   // the child lives in its own rocksdb_dir, so each slot needs its own directory derived from the
   // same data root as the parent slot. BuildTierPaths derives all slots from the child's home dir.
+  // With tiered storage disabled the child gets no tier_paths unless the parent already spans
+  // several disks (written while the feature was on); then the slots are rebuilt so the child can
+  // still reach SST files on non-home disks.
+  const bool rebuild_tier_paths = FLAGS_enable_tiered_storage || kv_store.tier_paths_size() > 1;
   kv_store.clear_tier_paths();
-  for (const auto& tp : BuildTierPaths(fs_manager_, child_rocksdb_dir)) {
-    auto* tppb = kv_store.add_tier_paths();
-    tppb->set_path_id(tp.path_id);
-    tppb->set_tier(tp.tier);
-    tppb->set_path(tp.path);
+  if (rebuild_tier_paths) {
+    for (const auto& tp : BuildTierPaths(fs_manager_, child_rocksdb_dir)) {
+      auto* tppb = kv_store.add_tier_paths();
+      tppb->set_path_id(tp.path_id);
+      tppb->set_tier(tp.tier);
+      tppb->set_path(tp.path);
+    }
   }
 
   partition.ToPB(superblock.mutable_partition());
@@ -2879,6 +3015,40 @@ std::string RaftGroupMetadata::vector_index_dir(
     const PgVectorIdxOptionsPB& vector_index_options) const {
   return docdb::GetStorageDir(
       kv_store_.rocksdb_dir, docdb::GetVectorIndexStorageName(vector_index_options));
+}
+
+std::vector<std::string> RaftGroupMetadata::vector_index_dirs() const {
+  const auto infos = GetAllColocatedVectorIndexes();
+  std::vector<std::string> result;
+  result.reserve(infos.size());
+  for (const auto& info : infos) {
+    result.push_back(vector_index_dir(info->index_info->vector_idx_options()));
+  }
+  return result;
+}
+
+void RaftGroupMetadata::DeleteUnlistedVectorIndexStorages(
+    const std::vector<std::string>& storage_names) const {
+  if (storage_names.empty()) {
+    return;
+  }
+  auto* env = fs_manager_->env();
+  const auto listed_dirs_list = vector_index_dirs();
+  const std::unordered_set<std::string> listed_dirs(
+      listed_dirs_list.begin(), listed_dirs_list.end());
+  for (const auto& storage_name : storage_names) {
+    if (!storage_name.starts_with(docdb::kVectorIndexDirPrefix)) {
+      continue;
+    }
+    auto dir = docdb::GetStorageDir(kv_store_.rocksdb_dir, storage_name);
+    if (listed_dirs.contains(dir) || !env->DirExists(dir)) {
+      continue;
+    }
+    LOG_WITH_PREFIX(INFO) << "Deleting storage of vector index not in the tablet: " << dir;
+    auto status = env->DeleteRecursively(dir);
+    LOG_IF_WITH_PREFIX(WARNING, !status.ok())
+        << "Failed to delete vector index storage " << dir << ": " << status;
+  }
 }
 
 docdb::KeyBounds RaftGroupMetadata::MakeKeyBounds() const {

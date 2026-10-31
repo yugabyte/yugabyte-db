@@ -75,6 +75,31 @@ public class KubernetesUtilTest extends FakeDBApplication {
   }
 
   @Test
+  public void testIsMCSEnabled() {
+    // AWS universe: user intent is not kubernetes, so this returns false
+    // without looking up a provider.
+    Universe vmUniverse = ModelFactory.createUniverse("vm-universe", customer.getId());
+    assertFalse(KubernetesUtil.isMCSEnabled(vmUniverse));
+
+    Pair<UniverseDefinitionTaskParams, List<AvailabilityZone>> pair =
+        addClusterAndNodeDetailsK8s("2024.2.0.0-b2", false /* createRR */);
+    UniverseDefinitionTaskParams params = pair.getFirst();
+    params.setUniverseUUID(UUID.randomUUID());
+    Universe k8sUniverse = Universe.create(params, customer.getId());
+
+    // Zones exist, but none has a pod address template.
+    assertFalse(KubernetesUtil.isMCSEnabled(k8sUniverse));
+
+    pair.getSecond()
+        .get(0)
+        .updateConfig(
+            ImmutableMap.of(
+                "KUBE_POD_ADDRESS_TEMPLATE", "{pod_name}.{namespace}.svc.{cluster_domain}"));
+    pair.getSecond().get(0).save();
+    assertTrue(KubernetesUtil.isMCSEnabled(k8sUniverse));
+  }
+
+  @Test
   public void testExtraNSScopedServiceToRemoveRRDeleteDifferentNS() throws IOException {
     Pair<UniverseDefinitionTaskParams, List<AvailabilityZone>> pair =
         addClusterAndNodeDetailsK8s("2024.2.0.0-b2", true /* createRR */);
@@ -379,6 +404,30 @@ public class KubernetesUtilTest extends FakeDBApplication {
           KubernetesUtil.getCoreCountForUniverseForServer(
               universeParams.getPrimaryCluster().userIntent, finalAzOverrides, node);
       assertEquals(expected, coreCount, 0.1);
+    }
+  }
+
+  @Test
+  public void testCoreCountParsesMilliCoresAndDefaultsAMissingSpec() throws IOException {
+    Pair<UniverseDefinitionTaskParams, List<AvailabilityZone>> pair =
+        addClusterAndNodeDetailsK8s("2024.2.0.0-b2", false /* createRR */);
+    UniverseDefinitionTaskParams universeParams = pair.getFirst();
+    UserIntent userIntent = universeParams.getPrimaryCluster().userIntent;
+    userIntent.tserverK8SNodeResourceSpec = null;
+    userIntent.masterK8SNodeResourceSpec = null;
+    Map<UUID, Map<String, Object>> milliCoreOverrides =
+        KubernetesUtil.getFinalOverrides(
+            universeParams.getPrimaryCluster(),
+            "resource:\n  tserver:\n    requests:\n      cpu: 500m\n",
+            userIntent.azOverrides);
+    double defaultCores = new UserIntent.K8SNodeResourceSpec().cpuCoreCount;
+    for (NodeDetails node : universeParams.nodeDetailsSet) {
+      assertEquals(
+          defaultCores, KubernetesUtil.getCoreCountForUniverseForServer(userIntent, null, node), 0);
+      assertEquals(
+          node.isTserver ? 0.5 : defaultCores,
+          KubernetesUtil.getCoreCountForUniverseForServer(userIntent, milliCoreOverrides, node),
+          0.001);
     }
   }
 
@@ -730,5 +779,15 @@ public class KubernetesUtilTest extends FakeDBApplication {
     pod.put("runAsUser", 10001);
     values.put("podSecurityContext", pod);
     assertThrows(IllegalStateException.class, () -> KubernetesUtil.getEffectiveDbRunAsUser(values));
+  }
+
+  @Test
+  public void testIsNodeExporterSidecarSupported() {
+    assertTrue(KubernetesUtil.isNodeExporterSidecarSupported("2026.2.0.0-b1"));
+    assertTrue(KubernetesUtil.isNodeExporterSidecarSupported("2026.2.1.0-b5"));
+    assertFalse(KubernetesUtil.isNodeExporterSidecarSupported("2026.1.2.0-b100"));
+    assertTrue(KubernetesUtil.isNodeExporterSidecarSupported("2.31.0.0-b615"));
+    assertFalse(KubernetesUtil.isNodeExporterSidecarSupported("2.31.0.0-b614"));
+    assertFalse(KubernetesUtil.isNodeExporterSidecarSupported(null));
   }
 }

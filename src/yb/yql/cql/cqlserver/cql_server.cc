@@ -18,8 +18,6 @@
 #include "yb/client/client.h"
 #include "yb/client/meta_data_cache.h"
 
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/master/master_heartbeat.pb.h"
 
 #include "yb/rpc/connection.h"
@@ -34,6 +32,7 @@
 #include "yb/rpc/secure_stream.h"
 
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/net/dns_resolver.h"
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
@@ -210,8 +209,8 @@ void CQLServer::CQLNodeListRefresh(const boost::system::error_code &ec) {
     s = messenger_->QueueEventOnAllReactors(cqlserver_event_list, SOURCE_LOCATION());
   }
   if (!s.ok()) {
-    LOG (WARNING) << strings::Substitute("Failed to push events: [$0], due to: $1",
-                                         cqlserver_event_list->ToString(), s.ToString());
+    LOG (WARNING) << Format("Failed to push events: [$0], due to: $1",
+                            cqlserver_event_list->ToString(), s.ToString());
   }
 
   RescheduleTimer();

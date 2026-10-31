@@ -17,6 +17,7 @@ import {
 import { getFaultToleranceNeeded, getEffectiveReplicationFactorForResilience } from './resilienceReplication';
 import { PlacementRegion } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { AZ_NOT_PREFERRED } from '../helpers/constants';
+import { getEffectiveAvailabilityZones } from '../helpers/nodesByProvider';
 
 export const getNodeCount = (availabilityZones: NodeAvailabilityProps['availabilityZones']) => {
   if (keys(availabilityZones).length === 0) {
@@ -40,16 +41,21 @@ export type DedicatedTserverMasterCounts = {
  */
 export const getDedicatedTserverMasterCounts = (
   resilienceAndRegionsSettings: ResilienceAndRegionsProps | undefined,
-  nodesAvailabilitySettings: NodeAvailabilityProps | undefined
+  nodesAvailabilitySettings: NodeAvailabilityProps | undefined,
+  nodesByProvider?: Record<string, NodeAvailabilityProps> | null
 ): DedicatedTserverMasterCounts | null => {
   if (!nodesAvailabilitySettings?.useDedicatedNodes || !resilienceAndRegionsSettings) {
     return null;
   }
 
+  const availabilityZones = getEffectiveAvailabilityZones(
+    nodesAvailabilitySettings,
+    nodesByProvider
+  );
   const tserver =
     resilienceAndRegionsSettings.resilienceType === ResilienceType.SINGLE_NODE
       ? 1
-      : getNodeCount(nodesAvailabilitySettings.availabilityZones);
+      : getNodeCount(availabilityZones);
   const master = getEffectiveReplicationFactorForResilience(
     resilienceAndRegionsSettings,
     nodesAvailabilitySettings
@@ -202,6 +208,27 @@ export const assignRegionsAZNodeByReplicationFactor = (
     return selectedZonesByRegion;
   }
 
+  // Region-level: exactly one AZ per region; put that region's full node share on it.
+  // (Spreading nodes across every zone in the region created multiple AZs — wrong for REGION_LEVEL.)
+  if (faultToleranceType === FaultToleranceType.REGION_LEVEL) {
+    regions.forEach((region, index) => {
+      const nodeCount = getNodeCountNeeded(faultToleranceNeeded, regions.length, index);
+      const zone = region.zones?.[0];
+      if (!zone || nodeCount <= 0) {
+        updatedRegions[region.code] = [];
+        return;
+      }
+      updatedRegions[region.code] = [
+        {
+          ...zone,
+          nodeCount,
+          preffered: AZ_NOT_PREFERRED
+        }
+      ];
+    });
+    return updatedRegions;
+  }
+
   values(regions).forEach((region, index) => {
     const nodeCount = getNodeCountNeeded(faultToleranceNeeded, regions.length, index);
 
@@ -233,10 +260,36 @@ export type ExpertNodesStepDefaultPlacement = {
 };
 
 const EXPERT_SINGLE_REGION_DEFAULT_RF = 3;
-const EXPERT_DEFAULT_RFS = [3, 5, 7] as const;
+const EXPERT_RF_OPTIONS_BASE = [1, 3, 5, 7] as const;
+const EXPERT_DEFAULT_RFS_BASE = [3, 5, 7] as const;
+const EXPERT_RF_9 = 9;
 
-function expertMultiRegionRfAndAzCount(regionCount: number): { rf: number; azCount: number } | null {
-  const rf = EXPERT_DEFAULT_RFS.find((v) => v >= regionCount);
+/** Expert RF segmented-control options. Keeps RF 9 visible when current RF is 9 even if the flag is off. */
+export function getExpertRfOptions(enablePrimaryRf9: boolean, currentRf?: number): number[] {
+  const options: number[] = enablePrimaryRf9
+    ? [...EXPERT_RF_OPTIONS_BASE, EXPERT_RF_9]
+    : [...EXPERT_RF_OPTIONS_BASE];
+  if (currentRf === EXPERT_RF_9 && !options.includes(EXPERT_RF_9)) {
+    options.push(EXPERT_RF_9);
+  }
+  return options;
+}
+
+/** Multi-region default RF ladder used by expert empty-zone placement. */
+export function getExpertDefaultRfs(enablePrimaryRf9: boolean): readonly number[] {
+  return enablePrimaryRf9 ? [...EXPERT_DEFAULT_RFS_BASE, EXPERT_RF_9] : EXPERT_DEFAULT_RFS_BASE;
+}
+
+export function maxExpertRfOption(enablePrimaryRf9: boolean, currentRf?: number): number {
+  const options = getExpertRfOptions(enablePrimaryRf9, currentRf);
+  return options[options.length - 1] ?? 7;
+}
+
+function expertMultiRegionRfAndAzCount(
+  regionCount: number,
+  enablePrimaryRf9: boolean
+): { rf: number; azCount: number } | null {
+  const rf = getExpertDefaultRfs(enablePrimaryRf9).find((v) => v >= regionCount);
   if (rf === undefined) return null;
   const azCount = regionCount === 2 ? rf : regionCount;
   return { rf, azCount };
@@ -387,7 +440,8 @@ export function reduceExpertNodeCountsToAtMostRf(
  * Returns null when defaults do not apply.
  */
 export function getExpertNodesStepDefaultPlacement(
-  resilience: ResilienceAndRegionsProps
+  resilience: ResilienceAndRegionsProps,
+  enablePrimaryRf9 = false
 ): ExpertNodesStepDefaultPlacement | null {
   if (resilience[RESILIENCE_FORM_MODE] !== ResilienceFormMode.EXPERT_MODE) {
     return null;
@@ -445,7 +499,7 @@ export function getExpertNodesStepDefaultPlacement(
     };
   }
 
-  const spec = expertMultiRegionRfAndAzCount(regions.length);
+  const spec = expertMultiRegionRfAndAzCount(regions.length, enablePrimaryRf9);
   if (!spec) {
     return null;
   }
@@ -478,10 +532,11 @@ export function toExpertResilienceForDefaults(
  * When expert tables do not apply, returns empty zones with the given RF.
  */
 export function getExpertAvailabilityZonesOrEmpty(
-  resilience: ResilienceAndRegionsProps
+  resilience: ResilienceAndRegionsProps,
+  enablePrimaryRf9 = false
 ): ExpertNodesStepDefaultPlacement {
   const expertResilience = toExpertResilienceForDefaults(resilience);
-  const placement = getExpertNodesStepDefaultPlacement(expertResilience);
+  const placement = getExpertNodesStepDefaultPlacement(expertResilience, enablePrimaryRf9);
   if (placement) {
     return placement;
   }

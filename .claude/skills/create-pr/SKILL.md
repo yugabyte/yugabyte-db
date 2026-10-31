@@ -90,7 +90,7 @@ Infer as much as you can from context first, then **batch-confirm with the user 
    - `managed/` → `YBA`
    - `yugabyted-ui/` → `yugabyted`
    - `docs/` → `Docs`
-   - `.claude/`, `AGENTS.md`, `CLAUDE.md` → `ClaudeCode`
+   - `.claude/`, `AGENTS.md` → `Agents`
    - `build-support/`, `cmake_modules/`, `.github/` → `Build`
    - mixed/cross-cutting → ask the user
 
@@ -111,7 +111,7 @@ Examples:
 **Pass only the `<Component>: <Title>` part to `create-pr.sh -t`** — the script prepends `[<issue>] ` from `-i` automatically. The script validates both inputs and rejects invalid ones with `exit 1`:
 
 - `-i`: must be a GH issue (`#NNNN` or bare `NNNN`) or a JIRA key (`PROJECT-NNN`, where `PROJECT` is uppercase letters only — no digits). A **comma-separated list** is also accepted for a change that closes several issues (e.g. `31151,#31152`) — the script joins the tokens with `,` and renders them as `[#a,#b] <Component>: <Title>`. The list must be **all GH or all JIRA**; mixing them, or putting a space after the comma, is rejected by `.github/workflows/pr-title.yml` (which gates every PR that touches code — it carries `paths-ignore` for `README.md` and `docs/**`). Anything else is rejected by the script.
-- `-t`: must match `^[A-Za-z][A-Za-z0-9]+:[[:space:]].+` — i.e. a Component prefix (letter-led, alphanumeric, ≥2 chars), then `: `, then a non-empty description. Known components: `DocDB`, `YSQL`, `YCQL`, `YBA`, `CDC`, `xCluster`, `yugabyted`, `Docs`, `ClaudeCode`, `Build`.
+- `-t`: must match `^[A-Za-z][A-Za-z0-9]+:[[:space:]].+` — i.e. a Component prefix (letter-led, alphanumeric, ≥2 chars), then `: `, then a non-empty description. Known components: `DocDB`, `YSQL`, `YCQL`, `YBA`, `CDC`, `xCluster`, `yugabyted`, `Docs`, `Agents`, `Build`.
 
 If the user supplies a title that already includes `[<issue>] ` or doesn't match the format, fix it before calling the script — don't rely on the script's auto-strip (it only handles the leading `[*] ` case) and don't surprise the user with an `exit 1` after they confirmed the metadata.
 
@@ -222,7 +222,7 @@ A stack is for a feature that splits into several dependent changes. Reach for i
 - **Never push to `yugabyte/yugabyte-db`, or use `gh pr create`.** Always use the create-pr.sh script. (A `feature-stack/<feature>/<change>` branch does go to upstream, through `git-push.sh` and `gh stack`. That is the sanctioned stacked-PR path; see [Stacked PRs](#stacked-prs).)
 - The title format is strict: `[<issue>] <Component>: <Title>`. Don't deviate.
 - **Never rewrite a PR's history once it is ready for review** (see [Pushing follow-up commits](#pushing-follow-up-commits)); `git-push.sh` refuses such a push. Stack branches are the exception; see [Stacked PRs](#stacked-prs).
-- CI runs automatically on GitHub PRs, so there is no `trigger jenkins` step (unlike the Phorge `create-review` skill). Note that a **draft PR runs only the cheap checks** — `bld-*.yml` all gate on `github.event.pull_request.draft == false` — so leaving a PR in draft until it's genuinely ready is a real cost saving, not just a notification setting.
+- Jenkins does not start on push: some `bld-*` run waits for approval in the `jenkins` environment, and merge needs a passing build on the latest commit. Don't trigger it automatically; when the user says the PR is ready for CI, run `.agents/scripts/trigger-jenkins.sh <pr-number>` (or they click "Review deployments" -> Approve on the PR).
 - `gh pr create --repo yugabyte/yugabyte-db` opens the PR in the upstream repo even when the branch lives on a fork — the `head:` field is inferred from the tracking branch.
 - **`gh pr edit` is broken on this repo** — it errors with `GraphQL: Projects (classic) is being deprecated... (repository.pullRequest.projectCards)`. This affects `--body-file`, `--add-reviewer`, `--add-label`, and other post-creation edit flags. For any post-creation update to PR body / reviewers / labels, use the REST API directly:
   - **Body update:** `jq -Rs '{body: .}' < new-body.md | gh api -X PATCH /repos/yugabyte/yugabyte-db/pulls/<num> --input -`

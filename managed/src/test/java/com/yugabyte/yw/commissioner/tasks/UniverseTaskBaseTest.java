@@ -41,7 +41,9 @@ import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.rollback.TaskRollbackModule;
 import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
+import com.yugabyte.yw.forms.AllowedUniverseTasksResp;
 import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
@@ -51,6 +53,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.LoadBalancerConfig;
@@ -59,6 +62,7 @@ import com.yugabyte.yw.models.helpers.ManagedLoadBalancer;
 import com.yugabyte.yw.models.helpers.ManagedLoadBalancerState;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -637,6 +641,62 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
     assertEquals(3456, universeTaskBase.getSleepTimeForProcess(UniverseTaskBase.ServerType.MASTER));
     assertEquals(
         4567, universeTaskBase.getSleepTimeForProcess(UniverseTaskBase.ServerType.TSERVER));
+  }
+
+  private static UniverseTaskBase.AllowedTasks allowedTasksForFailedTask(TaskType lockedTaskType) {
+    TaskInfo taskInfo = new TaskInfo(lockedTaskType, null);
+    taskInfo.setTaskState(TaskInfo.State.Failure);
+    return UniverseTaskBase.getAllowedTasksOnFailure(taskInfo);
+  }
+
+  @Test
+  public void testAllowedTasksAfterFailedEditDropReprovision() {
+    UniverseTaskBase.AllowedTasks allowedTasks = allowedTasksForFailedTask(TaskType.EditUniverse);
+    assertTrue(allowedTasks.isRestricted());
+    assertFalse(allowedTasks.getTaskTypes().contains(TaskType.ProvisionUniverseNodes));
+    assertTrue(allowedTasks.getTaskTypes().contains(TaskType.ReinstallNodeAgent));
+  }
+
+  @Test
+  public void testNoPlacementTaskAllowedOnBrokenUniverse() {
+    // PLAT-23213: an allowed placement task would take over the failed task's placement lock and
+    // rollback checkpoint. A failed ReplaceNodeInUniverse has no rerun or rollback of its own, so
+    // its allowed tasks are exactly the broken-universe list.
+    Set<TaskType> allowedTaskTypes =
+        allowedTasksForFailedTask(TaskType.ReplaceNodeInUniverse).getTaskTypes();
+    assertFalse(allowedTaskTypes.isEmpty());
+    for (TaskType taskType : allowedTaskTypes) {
+      // A placement task's failure freezes the universe; any other task's does not.
+      assertFalse(taskType.name(), allowedTasksForFailedTask(taskType).isRestricted());
+    }
+  }
+
+  @Test
+  public void testAllowedTasksAfterFailedRollbackDropReprovision() {
+    for (TaskType rollbackType : TaskRollbackModule.PLACEMENT_ROLLBACK_TASK_TYPES.values()) {
+      UniverseTaskBase.AllowedTasks allowedTasks = allowedTasksForFailedTask(rollbackType);
+      Set<TaskType> taskTypes = allowedTasks.getTaskTypes();
+      assertTrue(rollbackType.name(), allowedTasks.isRestricted());
+      assertFalse(rollbackType.name(), taskTypes.contains(TaskType.ProvisionUniverseNodes));
+      assertTrue(rollbackType.name(), taskTypes.contains(TaskType.DestroyUniverse));
+      assertTrue(rollbackType.name(), taskTypes.contains(TaskType.DestroyKubernetesUniverse));
+      assertTrue(rollbackType.name(), taskTypes.contains(TaskType.ReinstallNodeAgent));
+      assertTrue(rollbackType.name(), taskTypes.contains(TaskType.CreateSupportBundle));
+    }
+  }
+
+  @Test
+  public void testAllowedTaskIdsAfterFailedRollbackMatchUiActions() {
+    // The UI freezes an action when its "<task>_<target>" id is missing from taskIds.
+    Set<String> taskIds =
+        new AllowedUniverseTasksResp(allowedTasksForFailedTask(TaskType.RollbackEditUniverse))
+            .getTaskIds();
+    assertTrue(taskIds.contains("Delete_Universe"));
+    assertTrue(taskIds.contains("Install_NodeAgent"));
+    assertFalse(taskIds.contains("ProvisionUniverseNodes_Universe"));
+    assertFalse(taskIds.contains("Update_NodeAgent"));
+    assertFalse(taskIds.contains("RegisterWithPACollector_Universe"));
+    assertFalse(taskIds.contains("UnregisterFromPACollector_Universe"));
   }
 
   private class TestUniverseTaskBase extends UniverseTaskBase {

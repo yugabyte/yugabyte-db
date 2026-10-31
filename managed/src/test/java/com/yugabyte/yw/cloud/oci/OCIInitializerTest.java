@@ -9,15 +9,18 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ConfigHelper.ConfigType;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.InstanceType.VolumeType;
 import com.yugabyte.yw.models.PriceComponent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -98,8 +101,203 @@ public class OCIInitializerTest extends FakeDBApplication {
     assertEquals("OptimizedX9", OCIPriceUtil.familyFromShape("VM.Optimized3.Flex"));
     assertEquals("E2Micro", OCIPriceUtil.familyFromShape("VM.Standard.E2.1.Micro"));
     assertEquals("E2", OCIPriceUtil.familyFromShape("VM.Standard.E2.2"));
-    assertEquals(null, OCIPriceUtil.familyFromShape("VM.DenseIO.E4.Flex"));
+    assertEquals("DenseIOE4", OCIPriceUtil.familyFromShape("VM.DenseIO.E4.Flex"));
+    assertEquals("DenseIOE4", OCIPriceUtil.familyFromShape("BM.DenseIO.E4.128"));
+    assertEquals("DenseIOE5", OCIPriceUtil.familyFromShape("VM.DenseIO.E5.Flex"));
+    assertEquals("DenseIOE5", OCIPriceUtil.familyFromShape("BM.DenseIO.E5.128"));
+    assertEquals("DenseIOX7", OCIPriceUtil.familyFromShape("VM.DenseIO2.16"));
+    assertEquals("DenseIOX7", OCIPriceUtil.familyFromShape("BM.DenseIO2.52"));
+    assertEquals("HPCX7", OCIPriceUtil.familyFromShape("BM.HPC2.36"));
+    assertEquals("HPCE5", OCIPriceUtil.familyFromShape("BM.HPC.E5.144"));
+    assertEquals(null, OCIPriceUtil.familyFromShape("VM.DenseIO.E6.Ax.Flex"));
     assertEquals(null, OCIPriceUtil.familyFromShape("VM.GPU.A10.1"));
+  }
+
+  @Test
+  public void testInitializePreservesYamlNvmeWhenApiOmitsLocalDisks() {
+    Map<String, Object> instanceTypeMetadata =
+        Map.of(
+            "VM.DenseIO2.16",
+            Map.of(
+                "numCores",
+                16,
+                "memSizeGB",
+                240,
+                "instanceTypeDetails",
+                Map.of(
+                    "volumeDetailsList",
+                    List.of(
+                        Map.of("volumeSizeGB", 6400, "volumeType", "NVME"),
+                        Map.of("volumeSizeGB", 6400, "volumeType", "NVME")))));
+    when(mockConfigHelper.getConfig(ConfigType.OCIInstanceTypeMetadata))
+        .thenReturn(instanceTypeMetadata);
+    ObjectNode apiTypes = Json.newObject();
+    apiTypes.set("VM.DenseIO2.16", Json.newObject().put("numCores", 16).put("memSizeGb", 240.0));
+    when(mockCloudQueryHelper.getInstanceTypes(anyList(), anyString())).thenReturn(apiTypes);
+
+    ociInitializer.initialize(customer.getUuid(), provider.getUuid());
+
+    InstanceType instanceType = InstanceType.get(provider.getUuid(), "VM.DenseIO2.16");
+    assertNotNull(instanceType);
+    assertEquals(2, instanceType.getInstanceTypeDetails().volumeDetailsList.size());
+    assertEquals(
+        VolumeType.NVME, instanceType.getInstanceTypeDetails().volumeDetailsList.get(0).volumeType);
+    assertEquals(
+        6400,
+        instanceType.getInstanceTypeDetails().volumeDetailsList.get(0).volumeSizeGB.intValue());
+  }
+
+  @Test
+  public void testInitializeUsesApiLocalDisksForFixedDenseIO() {
+    when(mockConfigHelper.getConfig(ConfigType.OCIInstanceTypeMetadata)).thenReturn(Map.of());
+    ObjectNode apiTypes = Json.newObject();
+    apiTypes.set(
+        "BM.DenseIO.E4.128",
+        Json.newObject()
+            .put("numCores", 128)
+            .put("memSizeGb", 2048.0)
+            .put("localDisks", 8)
+            .put("localDisksInGbs", 54400));
+    when(mockCloudQueryHelper.getInstanceTypes(anyList(), anyString())).thenReturn(apiTypes);
+
+    ociInitializer.initialize(customer.getUuid(), provider.getUuid());
+
+    InstanceType instanceType = InstanceType.get(provider.getUuid(), "BM.DenseIO.E4.128");
+    assertNotNull(instanceType);
+    assertEquals(8, instanceType.getInstanceTypeDetails().volumeDetailsList.size());
+    assertEquals(
+        VolumeType.NVME, instanceType.getInstanceTypeDetails().volumeDetailsList.get(0).volumeType);
+    assertEquals(
+        6800,
+        instanceType.getInstanceTypeDetails().volumeDetailsList.get(0).volumeSizeGB.intValue());
+  }
+
+  @Test
+  public void testInitializeKeepsYamlFlexTripleWhenApiReportsMaxDisks() {
+    Map<String, Object> instanceTypeMetadata =
+        Map.of(
+            "VM.DenseIO.E5.Flex",
+            Map.of(
+                "numCores",
+                8,
+                "memSizeGB",
+                96,
+                "instanceTypeDetails",
+                Map.of(
+                    "volumeDetailsList",
+                    List.of(Map.of("volumeSizeGB", 6800, "volumeType", "NVME")))));
+    when(mockConfigHelper.getConfig(ConfigType.OCIInstanceTypeMetadata))
+        .thenReturn(instanceTypeMetadata);
+    ObjectNode apiTypes = Json.newObject();
+    apiTypes.set(
+        "VM.DenseIO.E5.Flex",
+        Json.newObject()
+            .put("numCores", 8)
+            .put("memSizeGb", 96.0)
+            .put("localDisks", 6)
+            .put("localDisksInGbs", 40800));
+    when(mockCloudQueryHelper.getInstanceTypes(anyList(), anyString())).thenReturn(apiTypes);
+
+    ociInitializer.initialize(customer.getUuid(), provider.getUuid());
+
+    InstanceType instanceType = InstanceType.get(provider.getUuid(), "VM.DenseIO.E5.Flex");
+    assertNotNull(instanceType);
+    assertEquals(8.0, instanceType.getNumCores(), 0.0);
+    assertEquals(96.0, instanceType.getMemSizeGB(), 0.0);
+    assertEquals(1, instanceType.getInstanceTypeDetails().volumeDetailsList.size());
+    assertEquals(
+        VolumeType.NVME, instanceType.getInstanceTypeDetails().volumeDetailsList.get(0).volumeType);
+    assertEquals(
+        6800,
+        instanceType.getInstanceTypeDetails().volumeDetailsList.get(0).volumeSizeGB.intValue());
+  }
+
+  @Test
+  public void testInitializePrefersYamlFlexResourcesOverApi() {
+    Map<String, Object> instanceTypeMetadata =
+        Map.of(
+            "VM.DenseIO.E4.Flex",
+            Map.of(
+                "numCores",
+                8,
+                "memSizeGB",
+                128,
+                "instanceTypeDetails",
+                Map.of(
+                    "volumeDetailsList",
+                    List.of(Map.of("volumeSizeGB", 6800, "volumeType", "NVME")))));
+    when(mockConfigHelper.getConfig(ConfigType.OCIInstanceTypeMetadata))
+        .thenReturn(instanceTypeMetadata);
+    ObjectNode apiTypes = Json.newObject();
+    apiTypes.set(
+        "VM.DenseIO.E4.Flex",
+        Json.newObject()
+            .put("numCores", 2)
+            .put("memSizeGb", 16.0)
+            .put("localDisks", 6)
+            .put("localDisksInGbs", 40800));
+    when(mockCloudQueryHelper.getInstanceTypes(anyList(), anyString())).thenReturn(apiTypes);
+
+    ociInitializer.initialize(customer.getUuid(), provider.getUuid());
+
+    InstanceType instanceType = InstanceType.get(provider.getUuid(), "VM.DenseIO.E4.Flex");
+    assertNotNull(instanceType);
+    assertEquals(8.0, instanceType.getNumCores(), 0.0);
+    assertEquals(128.0, instanceType.getMemSizeGB(), 0.0);
+    assertEquals(1, instanceType.getInstanceTypeDetails().volumeDetailsList.size());
+  }
+
+  @Test
+  public void testInitializeSkipsApiFlexNvmeDefaults() {
+    when(mockConfigHelper.getConfig(ConfigType.OCIInstanceTypeMetadata)).thenReturn(Map.of());
+    ObjectNode apiTypes = Json.newObject();
+    apiTypes.set(
+        "VM.DenseIO.E5.Flex",
+        Json.newObject()
+            .put("numCores", 1)
+            .put("memSizeGb", 16.0)
+            .put("localDisks", 6)
+            .put("localDisksInGbs", 40800));
+    when(mockCloudQueryHelper.getInstanceTypes(anyList(), anyString())).thenReturn(apiTypes);
+
+    ociInitializer.initialize(customer.getUuid(), provider.getUuid());
+
+    assertEquals(null, InstanceType.get(provider.getUuid(), "VM.DenseIO.E5.Flex"));
+  }
+
+  @Test
+  public void testInitializeKeepsSsdDefaultForGpuLocalDisks() {
+    when(mockConfigHelper.getConfig(ConfigType.OCIInstanceTypeMetadata)).thenReturn(Map.of());
+    ObjectNode apiTypes = Json.newObject();
+    apiTypes.set(
+        "BM.GPU4.8",
+        Json.newObject()
+            .put("numCores", 52)
+            .put("memSizeGb", 768.0)
+            .put("localDisks", 4)
+            .put("localDisksInGbs", 27200));
+    when(mockCloudQueryHelper.getInstanceTypes(anyList(), anyString())).thenReturn(apiTypes);
+
+    ociInitializer.initialize(customer.getUuid(), provider.getUuid());
+
+    InstanceType instanceType = InstanceType.get(provider.getUuid(), "BM.GPU4.8");
+    assertNotNull(instanceType);
+    assertEquals(
+        VolumeType.SSD, instanceType.getInstanceTypeDetails().volumeDetailsList.get(0).volumeType);
+  }
+
+  @Test
+  public void testHasEphemeralStorageForOciDenseIO() {
+    assertEquals(
+        true,
+        UniverseDefinitionTaskParams.hasEphemeralStorage(
+            CloudType.oci, "VM.DenseIO.E4.Flex", null));
+    assertEquals(
+        true, UniverseDefinitionTaskParams.hasEphemeralStorage(CloudType.oci, "BM.HPC2.36", null));
+    assertEquals(
+        false,
+        UniverseDefinitionTaskParams.hasEphemeralStorage(
+            CloudType.oci, "VM.Standard.E4.Flex", null));
   }
 
   @Test
@@ -140,5 +338,32 @@ public class OCIInitializerTest extends FakeDBApplication {
     assertNotNull(blockVpu);
     assertEquals(
         OCIPriceUtil.monthlyToHourly(0.0017), blockVpu.getPriceDetails().pricePerHour, 1e-9);
+
+    PriceComponent denseE4Ocpu =
+        PriceComponent.get(
+            provider.getUuid(), region.getCode(), OCIPriceUtil.ocpuComponentCode("DenseIOE4"));
+    assertNotNull(denseE4Ocpu);
+    assertEquals(0.025, denseE4Ocpu.getPriceDetails().pricePerHour, 0.0001);
+    PriceComponent denseE4Nvme =
+        PriceComponent.get(
+            provider.getUuid(), region.getCode(), OCIPriceUtil.nvmeComponentCode("DenseIOE4"));
+    assertNotNull(denseE4Nvme);
+    assertEquals(0.0612, denseE4Nvme.getPriceDetails().pricePerHour, 0.0001);
+
+    PriceComponent denseX7Ocpu =
+        PriceComponent.get(
+            provider.getUuid(), region.getCode(), OCIPriceUtil.ocpuComponentCode("DenseIOX7"));
+    assertNotNull(denseX7Ocpu);
+    assertEquals(0.1275, denseX7Ocpu.getPriceDetails().pricePerHour, 0.0001);
+    assertEquals(
+        null,
+        PriceComponent.get(
+            provider.getUuid(), region.getCode(), OCIPriceUtil.nvmeComponentCode("DenseIOX7")));
+
+    PriceComponent hpcX7Ocpu =
+        PriceComponent.get(
+            provider.getUuid(), region.getCode(), OCIPriceUtil.ocpuComponentCode("HPCX7"));
+    assertNotNull(hpcX7Ocpu);
+    assertEquals(0.075, hpcX7Ocpu.getPriceDetails().pricePerHour, 0.0001);
   }
 }
