@@ -17,6 +17,8 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
+#include "yb/util/status_fwd.h"
+
 namespace yb::tools {
 
 // Return a secure context if needed, otherwise nullptr.
@@ -27,5 +29,12 @@ namespace yb::tools {
 // ca.crt alone, so it does not have to hold client certificates.
 Result<std::unique_ptr<rpc::SecureContext>> CreateSecureContextIfNeeded(
     rpc::MessengerBuilder& messenger_builder, const std::string& certs_dir = {});
+
+// A cluster that requires client certificates rejects the TLS handshake of a tool that presents
+// none, and the tool only sees a network error or timeout. Unless a server.conf passed with
+// --flagfile told CreateSecureContextIfNeeded about the requirement, the tool can't tell this
+// apart from an unreachable server. Returns status with a hint naming --client_node_name appended
+// when it is such an error and the flags select TLS without a client certificate.
+Status AddClientCertificateHint(const Status& status);
 
 } // namespace yb::tools
