@@ -6,10 +6,12 @@ alter database seeknext_test set yb_explain_hide_non_deterministic_fields = off;
 alter database seeknext_test set yb_enable_cbo = on;
 \c seeknext_test
 set client_min_messages to 'warning';
--- Colocation IDs are random, and a scan at either end of the colocated
--- tablet measures different steps than one between other key ranges.  These
--- non-empty tables hold the lowest and highest IDs, so no measured relation
--- sits at an end.
+-- Colocation IDs are random, and the relation that holds the highest ID
+-- ends the tablet: a backward scan's bound seek lands past the last key and
+-- PreparePrev falls back to SeekToLast, one seek more and one prev fewer
+-- than between other relations, which moves 27010/28010 inside their
+-- tolerance.  tablet_last takes the highest ID so that no measured relation
+-- ends the tablet; tablet_first takes the lowest, where no count moved.
 create table tablet_first (k int primary key) with (colocation_id = 16384);
 create table tablet_last (k int primary key) with (colocation_id = 4294967295);
 insert into tablet_first values (1);
