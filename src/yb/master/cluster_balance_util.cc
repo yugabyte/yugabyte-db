@@ -1083,7 +1083,7 @@ Status PerTableLoadState::RemoveRunningTablet(
   per_tablet_meta_[tablet_id].running -= num_erased;
   bool found = false;
   for (auto &path : meta_ts.path_to_tablets) {
-    if (path.second.erase(tablet_id) == 0) {
+    if (path.second.erase(tablet_id) != 0) {
       found = true;
       break;
     }
