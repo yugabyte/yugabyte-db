@@ -17,11 +17,12 @@ section holding a single block larger than _MAX_FORCED_PIECE_BYTES is cut
 mid-block, because nothing else bounds it. The chunk still holds all the text,
 but the rows after the cut parse as prose rather than as table cells.
 
-The count of chunks out of this walk is unchanged there, since chunks flush on
-headings only, but the number of rows finally stored is not: split_embed_text
-cuts each chunk at MAX_EMBED_CHARS, and the shorter prose rendering yields
-fewer pieces. Measured on the scale stack with a 4 MiB single table, 231 rows
-became 203.
+The count of chunks out of this walk is unchanged there, because chunks flush
+on headings only and the forced cut is never taken before a setext underline
+or an indented line, the two places a cut could add or drop a heading. The
+number of rows finally stored is not unchanged: split_embed_text cuts each
+chunk at MAX_EMBED_CHARS, and the shorter prose rendering yields fewer pieces.
+Measured on the scale stack with a 4 MiB single table, 231 rows became 203.
 """
 
 import gc
@@ -269,6 +270,65 @@ CASES = {
     "tilde fence may hold a backtick": "# A\n\n~~~ a`b\n## x\n~~~\n\nafter\n",
     "heading with no blank line before it": "# A\ntext\n## B\nmore\n",
     "quote then fence then heading": "> q\n```\nx\n```\n## H2\n",
+    # Second review round. An HTML opener indented 4 spaces is indented code,
+    # not HTML; arming its terminator inverted the fence state and cut a
+    # heading out of a later real fence.
+    "indented html comment is code": (
+        "# A\n\n    <!--\n\n```html\n-->\n```\n\n## B\n\ntext\n\n"
+        "```\ncode\n\n## inside\n```\n"
+    ),
+    "indented php opener is code": "# A\n\n    <?php\n\n## B\n\nbody\n",
+    "indented pre is code": "# A\n\n    <pre>\n\n## B\n\nbody\n",
+    # A paragraph that starts with an inline tag is a paragraph, not an HTML
+    # block, so the fence after it is still a fence.
+    "inline tag paragraph then fence": (
+        "<b>Note:</b> text\n```\ncode\n\nmore\n```\n\n## B\n\nx\n"
+    ),
+    # Rule 7: a complete unknown tag alone on its line is an HTML block, but
+    # not when it would interrupt a paragraph.
+    "custom tag alone starts html block": (
+        "# A\n\n<custom>\n```\n\n```\ncode\n\n## x\n```\n"
+    ),
+    "custom tag after text is paragraph": (
+        "# A\n\ntext\n<custom>\n\n## B\n\nbody\n"
+    ),
+    # Fences nested in a list item or a blockquote were invisible to the
+    # scanner, so a blank-line cut could land inside one.
+    "fence nested in a list item": (
+        "# A\n\n1.  Step\n\n    ```bash\n    cmd\n\n    ## not a heading\n"
+        "    ```\n\n## B\n\nbody\n"
+    ),
+    "fence nested in a blockquote": (
+        "# A\n\n> ```\n> code\n>\n> ## not a heading\n> ```\n\n## B\n\nx\n"
+    ),
+    "html block then blank then heading": (
+        "# A\n\n<div>\nx\n</div>\n\n## B\n\nbody\n"
+    ),
+    # mistune orders a quote-then-list run by the block after the next blank
+    # line: alone it is [block_quote, list], before a heading it is [list,
+    # block_quote]. Found by the random generator once it produced lines with
+    # no blank after them. The blank and the block after it are held.
+    "quote then list then blank then heading": (
+        "# A\n\n> code\n- a\n- b\n\n## B\n\nbody\n"
+    ),
+    "quote then numbered list then blank then heading": (
+        "# A\n\n> code\n1. a\n\n## B\n\nbody\n"
+    ),
+    "quote, lazy text, list, blank, heading": (
+        "# A\n\n> code\nmore\n- a\n\n## B\n\nbody\n"
+    ),
+    "nested quote then list then blank then heading": (
+        "# A\n\n> > code\n- a\n\n## B\n\nbody\n"
+    ),
+    "quote then list, blank, text, blank, heading": (
+        "# A\n\n> code\n- a\n\ntext\n\n## B\n\nbody\n"
+    ),
+    "quote then list then blank then rule": (
+        "# A\n\n> code\n- a\n\n---\n\n## B\n\nbody\n"
+    ),
+    "quote, blank, list, blank, heading is unaffected": (
+        "# A\n\n> code\n\n- a\n\n## B\n\nbody\n"
+    ),
 }
 
 
@@ -334,6 +394,13 @@ class TestStreamingMatchesTheWholeDocumentWalk:
             "[r]: http://x\n", "see [r]\n", "```\n", "    ```\n",
             "``` a`b\n", "~~~\n", "## H2\n", "    indented code\n",
             "<div>\n", "<pre>x</pre>\n", "| a |\n", "|---|\n", "- item\n",
+            # Second review round: indented HTML, nested fences, custom and
+            # inline tags, setext underlines, indented headings.
+            "    <!--\n", "    <?php\n", "-->\n", "?>\n",
+            "1.  Step\n", "    ```bash\n", "    cmd\n", "    ```\n",
+            "> ```\n", "> code\n", "> ```\n", ">\n",
+            "<custom>\n", "</custom>\n", "<b>Note:</b> text\n",
+            "Title\n", "=====\n", "  ## X\n", "|a1|b1|c1|\n", "|--|--|--|\n",
         ]
         rng = random.Random(7)
         for i in range(400):
@@ -344,6 +411,88 @@ class TestStreamingMatchesTheWholeDocumentWalk:
             _, streamed = stream_markdown(text)
             assert chunks_as_data(list(streamed)) == \
                 chunks_as_data(expected), f"random document {i}: {text!r}"
+
+
+# A rule-7 HTML block may not interrupt a paragraph. Whether "<custom>" on a
+# line of its own is HTML or paragraph text therefore depends on the line
+# before it, and the scanner has to agree with mistune about that for every
+# kind of previous line: either direction of disagreement can move a cut when
+# a fence follows. Each entry is (what precedes "<custom>", how mistune treats
+# the tag), verified on mistune 3.4.0.
+RULE7_PREVIOUS_LINES = {
+    "paragraph text": ("text\n", "text"),
+    "list item": ("- a\n", "text"),
+    "numbered item": ("1. a\n", "text"),
+    "quote line": ("> q\n", "text"),
+    "lazy indented continuation": ("text\n    more\n", "text"),
+    "ATX heading": ("# H\n", "html"),
+    "thematic break ---": ("---\n", "html"),
+    "thematic break ***": ("***\n", "html"),
+    "thematic break - - -": ("- - -\n", "html"),
+    "setext ===": ("Title\n=====\n", "html"),
+    "setext --": ("Title\n--\n", "html"),
+    "lone === is a paragraph": ("\n===\n", "text"),
+    "table": ("| a | b |\n|---|---|\n| 1 | 2 |\n", "html"),
+    "table, one column": ("| a |\n|---|\n", "html"),
+    "pipes but no delimiter row": ("| a |\n| b |\n", "text"),
+    "closed fence": ("```\nx\n```\n", "html"),
+    "html block": ("<div>\n", "html"),
+    "indented code after blank": ("\n    code\n", "html"),
+    "blank line": ("\n", "html"),
+    "start of document": ("", "html"),
+}
+
+# Two tails that each punish one direction of error. If the scanner calls the
+# tag HTML when mistune calls it text, the fence right after it goes untracked
+# and its internal blank line inverts the fence state; if it calls the tag
+# text when mistune calls it HTML, the scanner tracks a fence that mistune
+# treats as HTML content. Both end with a heading inside a real fence, which
+# is where a wrong cut would land.
+RULE7_TAILS = {
+    "fence with internal blank, then heading in a fence": (
+        "```\nx\n\ny\n```\n\n## B\n\n```\ncode\n\n## inside\n```\n"
+    ),
+    "empty fence pair, then heading in a fence": (
+        "```\n\n```\ncode\n\n## inside\n```\n"
+    ),
+}
+
+
+class TestRule7HtmlBlocks:
+    """The scanner agrees with mistune on when "<custom>" is an HTML block."""
+
+    @pytest.mark.parametrize("previous", list(RULE7_PREVIOUS_LINES))
+    def test_the_scanner_agrees_with_mistune(self, previous):
+        prefix, expected = RULE7_PREVIOUS_LINES[previous]
+        body = prefix + "<custom>\nafter\n"
+        tokens = [t["type"] for t in (REFERENCE_PARSER(body) or [])]
+        mistune_says = "html" if "block_html" in tokens else "text"
+        assert mistune_says == expected, (
+            f"the table above is wrong for {previous!r}: mistune gives "
+            f"{tokens}"
+        )
+
+        scanner = md_parser._BlockScanner()
+        for line in _normalise(prefix).split("\n")[:-1]:
+            scanner.feed(line)
+        scanner.feed("<custom>")
+        scanner_says = "html" if scanner._html_until_blank else "text"
+        assert scanner_says == expected, (
+            f"after {previous!r} mistune treats <custom> as {expected}, the "
+            f"scanner as {scanner_says}"
+        )
+
+    @pytest.mark.parametrize("previous", list(RULE7_PREVIOUS_LINES))
+    @pytest.mark.parametrize("tail", list(RULE7_TAILS))
+    def test_parity_holds_across_the_tag(self, previous, tail):
+        import frontmatter
+
+        prefix, _ = RULE7_PREVIOUS_LINES[previous]
+        text = "# A\n\n" + prefix + "<custom>\n" + RULE7_TAILS[tail]
+        expected = reference_walk(frontmatter.loads(text).content)
+        _, streamed = stream_markdown(text)
+
+        assert chunks_as_data(list(streamed)) == chunks_as_data(expected)
 
 
 class TestBlockTokensMatchMistune:
@@ -466,9 +615,72 @@ class TestSourceSectionSplitting:
         "intro\n\n# A\n\nx\n",
         "> quote\n\n## H2\n\nbody\n",
         "> q\n```\nx\n```\n\n## H2\n\nbody\n",
+        # The blank line that ends an HTML block is itself top-level. An
+        # earlier version reported it as not, which swallowed this split and
+        # weakened the memory bound on HTML-heavy documents.
+        "# A\n\n<div>\nx\n</div>\n\n## B\n\nbody\n",
+        "# A\n\n<custom>\n\n## B\n\nbody\n",
     ])
     def test_a_blank_line_restores_the_split(self, text):
-        assert len(self.sections(text)) > 1
+        assert len(self.sections(text)) == 2
+
+    @pytest.mark.parametrize("text,reason", [
+        ("# A\n\n> q\n- a\n\n## B\n\nbody\n", "list directly after a quote"),
+        ("# A\n\n> q\nlazy\n1. a\n\n## B\n\nbody\n",
+         "list after a lazy quote line"),
+        ("# A\n\n> > q\n* a\n\n## B\n\nbody\n", "list after a nested quote"),
+    ])
+    def test_the_block_after_a_quote_then_list_run_is_held(self, text, reason):
+        """mistune parses that run by the block after the blank line.
+
+        Alone, "> q\\n- a\\n\\n" is [block_quote, list]; before a heading it is
+        [list, block_quote]. A cut at the blank hands mistune the run without
+        its deciding block and the chunk text comes out in a different order.
+        Only one block is consulted, so the hold is one block long.
+        """
+        assert len(self.sections(text)) == 1, f"split after {reason}"
+
+    @pytest.mark.parametrize("text", [
+        # A blank line between the quote and the list breaks the run.
+        "# A\n\n> q\n\n- a\n\n## B\n\nbody\n",
+        # The hold is one block long: once text has followed the run, the
+        # next heading splits normally.
+        "# A\n\n> q\n- a\n\ntext\n\n## B\n\nbody\n",
+        # A quote without a list in its run is not held.
+        "# A\n\n> q\nlazy\n\n## B\n\nbody\n",
+    ])
+    def test_the_hold_is_exactly_one_block(self, text):
+        assert len(self.sections(text)) == 2
+
+    @pytest.mark.parametrize("text,reason", [
+        ("# A\n\n    <!--\n\n## B\n\nbody\n", "indented comment opener"),
+        ("# A\n\n    <?php\n\n## B\n\nbody\n", "indented php opener"),
+        ("# A\n\n    <pre>\n\n## B\n\nbody\n", "indented pre opener"),
+        ("# A\n\n    <div>\n\n## B\n\nbody\n", "indented div"),
+    ])
+    def test_indented_html_is_code_and_does_not_arm_a_terminator(
+        self, text, reason
+    ):
+        # At 4 spaces mistune parses the line as indented code. Arming the
+        # terminator kept the scanner in HTML mode to the end of the document
+        # or, worse, until a terminator inside a real fence, inverting the
+        # fence state.
+        assert len(self.sections(text)) == 2, (
+            f"{reason} should not suppress the later split"
+        )
+
+    @pytest.mark.parametrize("text,reason", [
+        ("# A\n\n1.  Step\n\n    ```\n    x\n\n    ## y\n    ```\n",
+         "fence nested in a list item"),
+        ("# A\n\n> ```\n> x\n>\n> ## y\n> ```\n", "fence nested in a quote"),
+    ])
+    def test_a_nested_fence_is_tracked(self, text, reason):
+        s = _normalise(text)
+        scanner = md_parser._BlockScanner()
+        verdicts = [scanner.feed(line) for line in s.split("\n")]
+        inner = [v for v, line in zip(verdicts, s.split("\n"))
+                 if "## y" in line]
+        assert inner == [False], f"{reason}: heading inside fence reported top-level"
 
     def test_the_first_line_may_be_a_heading(self):
         # Start of source counts as preceded by a blank line.
@@ -488,56 +700,86 @@ class TestSourceSectionSplitting:
 
 
 class TestFenceClosing:
-    """One helper decides this, so the two line scans cannot disagree."""
+    """One pair of helpers decides this for both cuts."""
 
-    @pytest.mark.parametrize("line,fence,closes", [
+    @pytest.mark.parametrize("opener,line,closes", [
         ("```", "```", True),
-        ("````", "```", True),
-        ("```", "````", False),
+        ("```", "````", True),
+        ("````", "```", False),
         ("~~~", "~~~", True),
-        ("```", "~~~", False),
-        ("  ```", "```", True),
-        ("   ```", "```", True),
+        ("~~~", "```", False),
+        ("```", "  ```", True),
+        ("```", "   ```", True),
         # Four spaces makes it indented code, and mistune does not accept it
         # as a closer. Treating it as one left the scanner outside a code
         # block mistune still had open, so a later heading became a cut point
         # inside the code.
+        ("```", "    ```", False),
+        ("```", "\t```", False),
+        ("```", "``` ", True),
+        ("```", "```python", False),
+        ("```", "x```", False),
+        ("```", "", False),
+        # A fence nested in a list item closes at an indent within 3 of its
+        # opener's, either way. That is CommonMark's rule inside a container.
+        ("    ```", "    ```", True),
+        ("    ```", "      ```", True),
+        ("      ```", "    ```", True),
         ("    ```", "```", False),
-        ("\t```", "```", False),
-        ("``` ", "```", True),
-        ("```python", "```", False),
-        ("x```", "```", False),
-        ("", "```", False),
+        # So a stray fence run at top level cannot close a nested fence, which
+        # would invert the scanner's fence state against mistune's.
+        ("    ```", "        ```", False),
+        # Inside a blockquote the closer needs the same quote depth.
+        ("> ```", "> ```", True),
+        ("> ```", "```", False),
+        ("> > ```", "> > ```", True),
+        ("> > ```", "> ```", False),
     ])
-    def test_fence_closes(self, line, fence, closes):
+    def test_fence_closes(self, opener, line, closes):
+        fence = _fence_opens(opener)
+        assert fence is not None, f"{opener!r} should open a fence"
         assert _fence_closes(line, fence) is closes
 
-    @pytest.mark.parametrize("line,run", [
-        ("```", "```"),
-        ("~~~", "~~~"),
-        ("```python", "```"),
-        ("  ```py", "```"),
-        ("````", "````"),
+    @pytest.mark.parametrize("line,run,nested", [
+        ("```", "```", False),
+        ("~~~", "~~~", False),
+        ("```python", "```", False),
+        ("  ```py", "```", False),
+        ("````", "````", False),
         # A backtick fence's info string may not hold a backtick, so this is
         # not a fence at all. Treating it as one paired the scanner's fences
         # differently from mistune's.
-        ("``` a`b", None),
-        ("```` x`y", None),
+        ("``` a`b", None, None),
+        ("```` x`y", None, None),
         # A tilde fence may: the info string only bars the fence character.
-        ("~~~ a`b", "~~~"),
-        ("text", None),
-        ("", None),
+        ("~~~ a`b", "~~~", False),
+        # Nested fences, which an earlier version did not see at all, so a
+        # blank-line cut could land inside one.
+        ("    ```bash", "```", True),
+        ("\t```", "```", True),
+        ("> ```", "```", True),
+        ("> > ~~~", "~~~", True),
+        ("text", None, None),
+        ("", None, None),
     ])
-    def test_fence_opens(self, line, run):
-        assert _fence_opens(line) == run
+    def test_fence_opens(self, line, run, nested):
+        fence = _fence_opens(line)
+        if run is None:
+            assert fence is None
+        else:
+            assert fence is not None
+            assert fence.run == run
+            assert fence.nested is nested
 
 
 class TestSharedScannerAgreement:
-    """The section split and the ref-def scan use one state machine.
+    """A container hides both a split point and a link definition.
 
-    They have to agree on what is inside a container. An earlier version
-    tracked fences in both and HTML in only one, which seeded link definitions
-    out of HTML comments and changed chunk text.
+    The split uses `_BlockScanner`; the definitions come from block-parsing
+    the pieces and keeping what mistune registers, with no line scan of their
+    own. These cases pin that neither route reads anything out of a fence or
+    an HTML block. An earlier version that scanned lines for definitions
+    tracked fences but not HTML, and seeded one out of an HTML comment.
     """
 
     @pytest.mark.parametrize("container", [
@@ -647,11 +889,17 @@ def single_fence_document(target_bytes: int) -> str:
 
 
 class TestOversizedSectionPieces:
-    """A section too big to parse in one call is cut again at blank lines.
+    """A section too big to parse in one call is cut again.
 
     Without this, a document whose only column-0 heading is at the top is a
     single section, and the block token list for the whole file is live at
     once: the pre-change multiplier, about 92x for tables.
+
+    Two cuts. At top-level blank lines first, which leaves the parse alone.
+    Then, past `_MAX_FORCED_PIECE_BYTES`, mid-block, for a single table or
+    list with no blank line in it; that one changes the block's text, which
+    `test_a_forced_cut_changes_the_parse_of_that_block` pins, and is never
+    taken before a line that would add or drop a heading.
     """
 
     def test_a_small_section_is_not_cut(self):
@@ -683,6 +931,56 @@ class TestOversizedSectionPieces:
             assert piece.count("```") % 2 == 0, (
                 "a piece ended inside a fenced block"
             )
+
+    @pytest.mark.parametrize("underline", ["=====", "-----", "  ===", "---"])
+    def test_a_forced_cut_is_not_taken_before_a_setext_underline(
+        self, underline
+    ):
+        """Cutting between "Title" and its underline drops the heading.
+
+        Alone, "=====" is a paragraph and "---" a thematic break. A cut there
+        changes heading_path and chunk_index for every later chunk, far wider
+        than the documented one-block divergence.
+        """
+        filler = "x" * 79 + "\n"
+        # Enough filler to reach the forced threshold exactly at "Title", so
+        # the next line, the underline, is where the forced cut would fall.
+        n = md_parser._MAX_FORCED_PIECE_BYTES // len(filler) + 1
+        text = "# A\n\n" + filler * n + "Title\n" + underline + "\nafter\n"
+
+        pieces = list(md_parser._iter_section_pieces(text))
+
+        for piece in pieces:
+            lines = piece.split("\n")
+            assert lines[0].strip() != underline.strip(), (
+                "a piece starts with the setext underline, cut off from its "
+                "title"
+            )
+        # And the parse is the same as the whole-document walk's.
+        expected = reference_walk(text)
+        _, streamed = stream_markdown(text)
+        got = list(streamed)
+        assert [c.heading_path for c in got] == \
+            [c.heading_path for c in expected]
+
+    def test_a_forced_cut_is_not_taken_before_an_indented_line(self):
+        """"  ## X" inside a list item is not a heading; cut loose, it is."""
+        item = "- item line that is long enough to matter here\n"
+        n = md_parser._MAX_FORCED_PIECE_BYTES // len(item) + 1
+        text = "# A\n\n" + item * n + "  ## X\n" + item * 3
+
+        pieces = list(md_parser._iter_section_pieces(text))
+
+        for piece in pieces:
+            assert not piece.startswith("  ## X"), (
+                "a piece starts with the indented heading, promoted to top "
+                "level"
+            )
+        expected = reference_walk(text)
+        _, streamed = stream_markdown(text)
+        got = list(streamed)
+        assert [c.heading_path for c in got] == \
+            [c.heading_path for c in expected]
 
     def test_a_forced_cut_changes_the_parse_of_that_block(self):
         """The one place chunk output is knowingly not identical.

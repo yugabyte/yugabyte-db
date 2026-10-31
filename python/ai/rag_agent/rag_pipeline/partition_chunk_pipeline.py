@@ -23,19 +23,21 @@ from observability import meko_observe
 # prose, 242 MB for fenced code, 250 MB for table-heavy, 303 MB for a single
 # section of prose.
 #
-# The worst shape measures 1,211 MB: a table-heavy document with no column-0
-# ATX heading, which is one chunk holding every table in the file. What
-# dominates there is the chunk under construction, not the parser - the
-# TableBlock rows for the whole document are live at once - so it is a property
-# of one-chunk-per-heading-section, not of the read cap.
+# The expensive shape is a table-heavy document with no column-0 ATX heading,
+# which is one chunk holding every table in the file. What dominates there is
+# the chunk under construction, not the parser: md_parser._table_to_block
+# keeps one str per cell, so the cost scales with cells per source byte, and
+# the TableBlock rows for the whole document are live at once. That is a
+# property of one-chunk-per-heading-section, not of the read cap, and it has
+# no fixed ceiling. Measured at 64 MiB: 1,211 MB with 3-column tables of
+# 6-byte cells ("| r1 | v1 | w1 |"), 1,887 MB with 8-column tables of 2-byte
+# cells ("|a1|b1|...|h1|"). A denser table costs more again.
 #
-# That 1,211 MB is per task. A worker claims one task at a time, so it is also
-# the per-pod figure; concurrency comes from how many rag-agent replicas run,
-# which is set in the agentic-cloud helm chart rather than by anything here.
-# Size the text pod's memory limit above 1,211 MB before raising this cap.
-#
-# Do not quote a single multiplier for this path. It ranges 3.0x to 18.9x at
-# this cap, by shape alone.
+# Those figures are per task. A worker claims one task at a time, so they are
+# also per pod; concurrency is how many rag-agent replicas run, set in the
+# agentic-cloud helm chart rather than by anything here. Size the text pod's
+# memory limit above the densest table you expect to index, not above a
+# number quoted here, and do not quote a single multiplier for this path.
 DEFAULT_MAX_FILE_SIZE_BYTES = 64 * 1024 * 1024  # 64 MiB
 
 
