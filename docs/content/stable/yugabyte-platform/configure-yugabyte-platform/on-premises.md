@@ -18,9 +18,9 @@ Before you can deploy universes to private clouds using YugabyteDB Anywhere, you
 
 With on-premises providers, VMs are _not_ auto-created by YugabyteDB Anywhere; you must create your VMs, install the Linux operating system and additional software, provision them with YugabyteDB software, and then add them to the provider's free pool of nodes.
 
-## Automatic provisioning
+## Node agent provisioning script
 
-Using the YugabyteDB Anywhere node agent package, you can provision VMs, create an on-premises provider, and add the VMs to the provider.
+Using the YugabyteDB Anywhere node agent provisioning script, you can provision VMs, create an on-premises provider, and add the VMs to the provider.
 
 Before provisioning nodes, ensure YugabyteDB Anywhere is [installed](../../install-yugabyte-platform/) and running.
 
@@ -48,17 +48,18 @@ Before provisioning nodes, ensure YugabyteDB Anywhere is [installed](../../insta
 
     Refer to [Automatically provision on-premises nodes](../../prepare/server-nodes-software/software-on-prem/).
 
+<!--
 ### Create a provider manually
 
 _If the on-premises provider wasn't created when provisioning the VMs_, you can manually create the provider using the YugabyteDB Anywhere UI. Refer to [Manage the provider configuration](../on-premises-provider/). Note: You must enable the **Manually Provision Nodes** option (under **Advanced**).
 
-_If the instance type and instances weren't created when provisioning the VMs_, you can manually add the provisioned VMs to the provider. Obtain the IP addresses of the provisioned VMs from your system administrator. You need these to add the nodes to the provider. Refer to [Add nodes to the on-premises provider](../on-premises-nodes/).
+_If the instance type and instances weren't created when provisioning the VMs_, you can manually add the provisioned VMs to the provider. Obtain the IP addresses of the provisioned VMs from your system administrator. You need these to add the nodes to the provider. Refer to [Add nodes to the on-premises provider](../on-premises-nodes/).-->
 
 ## Legacy provisioning
 
 {{< warning title="Legacy provisioning deprecated" >}}
 
-Legacy provisioning is being phased out. Going forward, [automatic provisioning](#automatic-provisioning) is strongly recommended.
+Legacy provisioning is being phased out. For information about why the older methods are being replaced, see [Why the script exists](../../prepare/server-nodes-software/software-on-prem/#why-the-script-exists). [Provisioning with the node agent script](#node-agent-provisioning-script) is recommended for new universes when YugabyteDB Anywhere has no sudo. Existing universes provisioned with these methods continue to work. For information about which provisioning method to use, and what methods are supported, see [Choose a provisioning method](../../prepare/server-nodes-software/software-on-prem/#choose-a-provisioning-method).
 
 {{< /warning >}}
 
@@ -98,7 +99,6 @@ In YugabyteDB Anywhere, navigate to the provider you created in Stage 2 and do t
     | :--- | :--- | :--- |
     | Legacy automatic | YugabyteDB Anywhere is provided an SSH user with sudo access for the nodes it needs to provision. For example, the `ec2-user` for AWS EC2 instances. | No action. YugabyteDB Anywhere will automatically provision the VMs that you add. |
     | Legacy fully manual | Neither YugabyteDB Anywhere nor the user has access to an SSH user with sudo access; only a local (non-SSH) user is available with sudo access. | Follow a sequence of steps to [provision each VM manually](../../prepare/server-nodes-software/software-on-prem-manual/) before adding the VM to the pool. |
-  <!-- | Legacy assisted&nbsp;manual (deprecated) | The SSH user requires a password for sudo access. | [Run a script](../on-premises-script/), provided by YugabyteDB Anywhere, to provision each VM, providing credentials for the SSH user with sudo access. | -->
 
 1. Add the VMs (instances) to the provider.
 
