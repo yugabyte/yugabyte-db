@@ -13,6 +13,7 @@
 #include "yb/cdc/cdc_service.h"
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <memory>
 
@@ -1656,6 +1657,35 @@ void CDCServiceImpl::GetChanges(
       resp->mutable_error(),
       CDCErrorPB::INVALID_REQUEST,
       context);
+
+  // Fingerprint corrupt tablet_id at GetChanges ingress. A normal tablet UUID is
+  // 32 hex chars; size-32 non-hex content (e.g. pointer-shaped junk under local
+  // VirtualWAL RPC) is the #33468-class signal we want in logs before later sites
+  // detonate. Log only - do not attempt to repair.
+  {
+    const auto& tid = req->tablet_id();
+    if (tid.size() == 32) {
+      bool all_hex = true;
+      for (unsigned char c : tid) {
+        if (!std::isxdigit(c)) {
+          all_hex = false;
+          break;
+        }
+      }
+      if (!all_hex) {
+        static constexpr char kHex[] = "0123456789abcdef";
+        std::string hex;
+        hex.reserve(tid.size() * 2);
+        for (unsigned char c : tid) {
+          hex.push_back(kHex[c >> 4]);
+          hex.push_back(kHex[c & 0xf]);
+        }
+        LOG(ERROR) << "CORRUPT tablet_id bytes: size=" << tid.size() << " hex=" << hex
+                   << " stream_id="
+                   << (req->has_stream_id() ? req->stream_id() : req->db_stream_id());
+      }
+    }
+  }
 
   ash::WaitStateInfo::UpdateCurrentTabletId(req->tablet_id());
 
