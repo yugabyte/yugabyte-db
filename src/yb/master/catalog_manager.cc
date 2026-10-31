@@ -12661,7 +12661,7 @@ Status CatalogManager::ProcessPendingAssignmentsPerTable(
       tablet->table()->SetCreateTableErrorStatus(s);
       break;
     } else {
-      LOG_WITH_FUNC(INFO)
+      VLOG_WITH_FUNC(1)
           << "Selected replicas for tablet " << tablet->id() << ": "
           << AsString(tablet->mutable_metadata()->mutable_dirty()->pb.committed_consensus_state());
       ok_status_tables.emplace(tablet->table().get());
@@ -12869,7 +12869,7 @@ Status CatalogManager::SelectReplicasForTablet(
     RETURN_NOT_OK(SelectReplicasForPlacement(ts_descs, placement, config, per_table_state));
   }
 
-  LOG_WITH_FUNC(INFO)
+  VLOG_WITH_FUNC(1)
       << "Initial tserver uuids for tablet " << tablet->tablet_id() << " [table_id="
       << tablet->table()->id() << "]: "
       << CollectionToString(config->peers(), [](const auto& p) { return p.permanent_uuid(); });
@@ -12879,8 +12879,8 @@ Status CatalogManager::SelectReplicasForTablet(
   // initial leader after it receives a quorum of reports from bootstrapped replicas.
   RETURN_NOT_OK(SelectProtegeForTablet(tablet, config, global_state));
 
-  LOG(INFO) << "Initial tserver protege for tablet " << tablet->tablet_id() << ": "
-            << tablet->InitiaLeaderElectionProtege();
+  VLOG(1) << "Initial tserver protege for tablet " << tablet->tablet_id() << ": "
+          << tablet->InitiaLeaderElectionProtege();
 
   VLOG_WITH_FUNC(3) << "Committed consensus state has been updated to: " << AsString(cstate);
 
