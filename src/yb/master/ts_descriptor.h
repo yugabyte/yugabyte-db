@@ -149,7 +149,9 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   // from the heartbeat request. This method also validates that this is the latest heartbeat
   // request received from the tserver. If not, this method does no mutations and returns an error
   // status.
-  Status UpdateFromHeartbeat(const TSHeartbeatRequestPB& req, const TSDescriptor::WriteLock& lock);
+  Status UpdateFromHeartbeat(
+      const TSHeartbeatRequestPB& req, const TSDescriptor::WriteLock& lock,
+      YsqlDbPinIndex& pin_index);
 
   // Return the amount of time since the last heartbeat received from this TS.
   MonoDelta TimeSinceHeartbeat() const;
@@ -273,10 +275,10 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
     return hybrid_time_;
   }
 
-  DbOidToHybridTimeMap GetYsqlDbOldestPinnedReadTimes() const;
-
   bool has_ysql_db_pins() const;
   void ResetYsqlDbPins();
+  // Drops this tserver's pins from the cluster index; for a tserver that stops being live.
+  void ClearYsqlDbPins(YsqlDbPinIndex& pin_index) EXCLUDES(mutex_);
 
   MonoDelta heartbeat_rtt() const {
     SharedLock<decltype(mutex_)> l(mutex_);
@@ -379,7 +381,8 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   // Transition this TServer to UNRESPONSIVE and/or DEFINITELY_NO_LEASE if enough time has passed
   // since its last heartbeat.
-  std::optional<TSDescriptor::WriteLock> MaybeUpdateLiveness(MonoTime time) EXCLUDES(mutex_);
+  std::optional<TSDescriptor::WriteLock> MaybeUpdateLiveness(
+      MonoTime time, YsqlDbPinIndex& pin_index) EXCLUDES(mutex_);
 
   // TSManager's tserver-list change counter at the last change tservers see (registration,
   // state); the key of this tserver's entry in TSManager::tserver_list_changes_.
@@ -393,6 +396,9 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
  private:
   mutable rw_spinlock mutex_;
   std::atomic<uint32_t> tserver_list_stamp_{0};
+
+  void ClearYsqlDbPinsUnlocked(YsqlDbPinIndex& pin_index) REQUIRES(mutex_);
+
   template <class TProxy>
   Status GetOrCreateProxy(std::shared_ptr<TProxy>* result, std::shared_ptr<TProxy>* result_cache);
 
@@ -501,7 +507,7 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   std::atomic<uint32> pending_leader_drain_notification_{0};
 
   // Per-database oldest read HybridTime pinned by live PG transactions on this tserver.
-  DbOidToHybridTimeMap ts_ysql_db_oldest_pinned_read_times_ GUARDED_BY(mutex_);
+  OrderedDbOidToHybridTimeMap ts_ysql_db_oldest_pinned_read_times_ GUARDED_BY(mutex_);
 
   std::string placement_id_ GUARDED_BY(mutex_);
 

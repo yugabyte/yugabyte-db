@@ -219,6 +219,7 @@ Result<TSManager::RegistrationMutationData> TSManager::ComputeRegistrationMutati
             l->pb.ShortDebugString());
       }
       l.mutable_data()->pb.set_state(SysTabletServerEntryPB::REPLACED);
+      ts_desc->ClearYsqlDbPins(ysql_db_pin_index_);
       reg_data.replaced_descs.push_back(ts_desc);
       reg_data.replaced_desc_locks.push_back(std::move(l));
     }
@@ -243,7 +244,7 @@ Result<TSDescriptorPtr> TSManager::LookupAndUpdateTSFromHeartbeat(
   auto desc = VERIFY_RESULT(LookupTS(heartbeat_request.common().ts_instance()));
   auto lock = desc->LockForWrite();
   const bool was_live = lock->IsLive();
-  RETURN_NOT_OK(desc->UpdateFromHeartbeat(heartbeat_request, lock));
+  RETURN_NOT_OK(desc->UpdateFromHeartbeat(heartbeat_request, lock, ysql_db_pin_index_));
   RETURN_NOT_OK(UpsertIfRequired(epoch, sys_catalog_, desc));
   lock.Commit();
   if (!was_live) {
@@ -273,7 +274,8 @@ Result<TSDescriptorPtr> TSManager::RegisterInternal(
         instance, registration, std::move(local_master_cloud_info), proxy_cache,
         RegisteredThroughHeartbeat(request.has_value())));
     if (request.has_value()) {
-      RETURN_NOT_OK(reg_data.desc->UpdateFromHeartbeat(*request, reg_data.registered_desc_lock));
+      RETURN_NOT_OK(reg_data.desc->UpdateFromHeartbeat(
+          *request, reg_data.registered_desc_lock, ysql_db_pin_index_));
     }
     std::tie(ts_desc, callback) =
         VERIFY_RESULT(DoRegistrationMutation(instance, registration, std::move(reg_data), epoch));
@@ -422,47 +424,39 @@ size_t TSManager::NumLiveDescriptors() const {
       [](const auto& entry) -> bool { return entry.second->IsLive(); });
 }
 
-DbOidToHybridTimeMap AggregateYsqlDbOldestPinnedReadTimes(const TSDescriptorVector& descs) {
-  DbOidToHybridTimeMap pins;
-  for (const auto& desc : descs) {
-    for (const auto& [db_oid, pin] : desc->GetYsqlDbOldestPinnedReadTimes()) {
-      auto [it, inserted] = pins.emplace(db_oid, pin);
-      if (!inserted && pin < it->second) {
-        it->second = pin;
-      }
-    }
-  }
-  return pins;
-}
-
-DbOidToHybridTimeMap TSManager::GetClusterYsqlDbOldestPinnedReadTimes() const {
-  TSDescriptorVector descs;
-  GetAllLiveDescriptors(&descs);
-  return AggregateYsqlDbOldestPinnedReadTimes(descs);
+OrderedDbOidToHybridTimeMap TSManager::GetClusterYsqlDbOldestPinnedReadTimes() const {
+  return ysql_db_pin_index_.Get();
 }
 
 ClusterYsqlDbPins TSManager::GetClusterYsqlDbPinsForPublishing(
     MonoDelta time_since_elected_leader) const {
-  TSDescriptorVector descs;
-  GetAllLiveDescriptors(&descs);
-
-  bool all_pins_ready = true;
-  for (const auto& desc : descs) {
-    all_pins_ready = all_pins_ready && desc->has_ysql_db_pins();
+  bool all_pins_ready = ysql_db_pins_all_reported_.load(std::memory_order_acquire);
+  if (!all_pins_ready) {
+    TSDescriptorVector descs;
+    GetAllLiveDescriptors(&descs);
+    all_pins_ready = std::all_of(
+        descs.begin(), descs.end(), [](const auto& desc) { return desc->has_ysql_db_pins(); });
+    if (all_pins_ready) {
+      ysql_db_pins_all_reported_.store(true, std::memory_order_release);
+    }
   }
-  auto pins = AggregateYsqlDbOldestPinnedReadTimes(descs);
 
   // If persist_tserver_registry is disabled the new leader cannot load the previous leader's live
   // TSDescriptors, so a tserver that has not heartbeated this leader yet is completely unknown
   // and missing its pins. all_pins_ready is therefore not accurate, so wait out the post-failover
   // registration window to best-effort register all live tservers.
   return ClusterYsqlDbPins{
-      .pins = std::move(pins),
+      .pins = ysql_db_pin_index_.Get(),
       .ready = all_pins_ready &&
                (FLAGS_persist_tserver_registry ||
                 time_since_elected_leader >=
                     MonoDelta::FromSeconds(FLAGS_initial_tserver_registration_duration_secs)),
   };
+}
+
+void TSManager::ResetClusterYsqlDbPins() {
+  ysql_db_pin_index_.Clear();
+  ysql_db_pins_all_reported_.store(false, std::memory_order_release);
 }
 
 Status TSManager::MarkUnresponsiveTServers(const LeaderEpoch& epoch) {
@@ -475,7 +469,7 @@ Status TSManager::MarkUnresponsiveTServers(const LeaderEpoch& epoch) {
     std::vector<TSDescriptor*> newly_unresponsive_descs;
     for (const auto& [id, desc] : servers_by_id_) {
       const bool was_live = desc->IsLive();
-      auto lock_opt = desc->MaybeUpdateLiveness(current_time);
+      auto lock_opt = desc->MaybeUpdateLiveness(current_time, ysql_db_pin_index_);
       if (lock_opt) {
         if (was_live && !(*lock_opt)->IsLive()) {
           newly_unresponsive_descs.push_back(desc.get());

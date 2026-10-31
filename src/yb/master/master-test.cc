@@ -66,6 +66,7 @@
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_constants.h"
 #include "yb/master/ts_manager.h"
+#include "yb/master/ysql_db_pin_index.h"
 
 #include "yb/rpc/connection_context.h"
 #include "yb/rpc/messenger.h"
@@ -3360,6 +3361,68 @@ Status MasterTest::PublishYsqlHistoryRetentionPin() {
   return status;
 }
 
+TEST(YsqlDbPinIndexTest, MinAcrossTservers) {
+  YsqlDbPinIndex index;
+  index.Update("ts1", {}, {{1001, HybridTime(100)}, {1002, HybridTime(200)}});
+  index.Update("ts2", {}, {{1001, HybridTime(50)}});
+
+  OrderedDbOidToHybridTimeMap expected{{1001, HybridTime(50)}, {1002, HybridTime(200)}};
+  ASSERT_EQ(index.Get(), expected);
+}
+
+// A tserver's new report replaces its previous one: moved pins move, missing dbs drop out, new dbs
+// appear, untouched dbs stay.
+TEST(YsqlDbPinIndexTest, ReportReplacesPreviousReport) {
+  YsqlDbPinIndex index;
+  OrderedDbOidToHybridTimeMap first{
+      {1001, HybridTime(100)}, {1002, HybridTime(200)}, {1004, HybridTime(400)}};
+  OrderedDbOidToHybridTimeMap second{
+      {1001, HybridTime(150)}, {1003, HybridTime(300)}, {1004, HybridTime(400)}};
+  index.Update("ts1", {}, first);
+  index.Update("ts1", first, second);
+
+  ASSERT_EQ(index.Get(), second);
+}
+
+// Two tservers pinning the same time are two entries, so dropping one keeps the minimum.
+TEST(YsqlDbPinIndexTest, EqualPinsAreCountedPerTserver) {
+  YsqlDbPinIndex index;
+  OrderedDbOidToHybridTimeMap pins{{1001, HybridTime(100)}};
+  index.Update("ts1", {}, pins);
+  index.Update("ts2", {}, pins);
+
+  index.Remove("ts1", pins);
+  ASSERT_EQ(index.Get(), pins);
+
+  index.Remove("ts2", pins);
+  ASSERT_TRUE(index.Get().empty());
+}
+
+TEST(YsqlDbPinIndexTest, MinRisesWhenOldestHolderLeaves) {
+  YsqlDbPinIndex index;
+  OrderedDbOidToHybridTimeMap ts1_pins{{1001, HybridTime(50)}};
+  index.Update("ts1", {}, ts1_pins);
+  index.Update("ts2", {}, {{1001, HybridTime(100)}});
+
+  index.Update("ts1", ts1_pins, {});
+
+  OrderedDbOidToHybridTimeMap expected{{1001, HybridTime(100)}};
+  ASSERT_EQ(index.Get(), expected);
+}
+
+TEST(YsqlDbPinIndexTest, ClearDropsEverything) {
+  YsqlDbPinIndex index;
+  index.Update("ts1", {}, {{1001, HybridTime(100)}});
+
+  index.Clear();
+  ASSERT_TRUE(index.Get().empty());
+
+  // Entries added after a clear are not mixed with the cleared ones.
+  index.Update("ts1", {}, {{1001, HybridTime(200)}});
+  OrderedDbOidToHybridTimeMap expected{{1001, HybridTime(200)}};
+  ASSERT_EQ(index.Get(), expected);
+}
+
 // Pins reported by a single ts are echoed back in the response as the cluster-wide pins.
 TEST_F(MasterTest, YsqlDbOldestPinnedReadTimesHeartbeatRoundTrip) {
   const std::string kTsUUID = "ts-pins-1";
@@ -3586,6 +3649,53 @@ TEST_F(MasterTest, YsqlDbOldestPinnedReadTimesExcludesDeadTserver) {
   ASSERT_EQ(resp.cluster_ysql_db_oldest_pinned_read_times().at(1001).db_level_oldest_read_time(),
             HybridTime(100).ToPB())
       << "dead ts1's older pin must not affect the cluster min";
+}
+
+// A tserver that was marked unresponsive contributes again once it heartbeats, also when it
+// reports the same pins as before.
+TEST_F(MasterTest, YsqlDbOldestPinnedReadTimesReturningTserverCountsAgain) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 3000;
+  const std::string kTs1 = "ts-pins-1", kTs2 = "ts-pins-2";
+  ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTs1, 1));
+  ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTs2, 1));
+
+  ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(kTs1, 1, {{1001, HybridTime(50)}}));
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    RETURN_NOT_OK(SendYsqlDbOldestPinnedReadTimesHeartbeat(kTs2, 1, {{1001, HybridTime(100)}}));
+    return mini_master_->master()->ts_manager()->NumLiveDescriptors() == 1;
+  }, MonoDelta::FromSeconds(30), "ts1 marked unresponsive"));
+
+  ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(kTs1, 1, {{1001, HybridTime(50)}}));
+  auto resp = ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(
+      kTs2, 1, {{1001, HybridTime(100)}}));
+  ASSERT_EQ(resp.cluster_ysql_db_oldest_pinned_read_times().at(1001).db_level_oldest_read_time(),
+            HybridTime(50).ToPB());
+}
+
+// A tserver replaced by a new instance registering at its address no longer contributes to the
+// cluster min.
+TEST_F(MasterTest, YsqlDbOldestPinnedReadTimesExcludesReplacedTserver) {
+  const std::string kTs1 = "ts-pins-1", kTs2 = "ts-pins-2";
+  ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTs1, 1));
+  ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTs2, 1));
+  ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(kTs1, 1, {{1001, HybridTime(50)}}));
+  ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(kTs2, 1, {{1001, HybridTime(100)}}));
+
+  // ts1 registered at the first SendNewTSRegistrationHeartbeat address.
+  TSToMasterCommonPB common;
+  common.mutable_ts_instance()->set_permanent_uuid("ts-pins-3");
+  common.mutable_ts_instance()->set_instance_seqno(2);
+  TSRegistrationPB reg;
+  *reg.mutable_common()->add_private_rpc_addresses() = MakeHostPortPB("localhost", 1000);
+  *reg.mutable_common()->add_http_addresses() = MakeHostPortPB("localhost", 2000);
+  *reg.mutable_resources() = master::ResourcesPB();
+  ASSERT_RESULT(SendHeartbeat(common, reg));
+
+  auto resp = ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(
+      kTs2, 1, {{1001, HybridTime(100)}}));
+  ASSERT_EQ(resp.cluster_ysql_db_oldest_pinned_read_times().at(1001).db_level_oldest_read_time(),
+            HybridTime(100).ToPB())
+      << "replaced ts1's older pin must not affect the cluster min";
 }
 
 TEST_F(MasterTest, TestQosMaxDbCount) {
