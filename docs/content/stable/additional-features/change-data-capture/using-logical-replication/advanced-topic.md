@@ -115,6 +115,8 @@ As the publication was created for ALL TABLES, ALTER PUBLICATION is not required
 
 Available in v2026.1 and later.
 
+The mode is fixed per slot when the slot is created. A slot created with implicit publication can't stream if `ysql_yb_enable_implicit_dynamic_tables_logical_replication` is later set to `false`.
+
 When implicit publication is enabled (the default), changes to a publication are reflected in the logical replication polling tables list at the correct commit time. No events from newly added tables are missed. This behavior matches PostgreSQL. (Implicit publication applies only to the logical replication model of CDC.)
 
 Regardless of lag, a logical replication stream detects publication changes at the correct point in time and streams all events from the altered publication from that point forward.
