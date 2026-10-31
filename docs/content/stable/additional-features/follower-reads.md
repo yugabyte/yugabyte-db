@@ -14,17 +14,43 @@ rightNav:
   hideH4: true
 ---
 
-YugabyteDB normally serves a read from the tablet leader to ensure the result is up to date. Follower reads allow you to serve the read from the closest replica instead, allowing for lower read latencies, at the cost of the read being slightly stale. The result is timeline consistent: writes are not returned out of order. You can specify the staleness of the reads.
+YugabyteDB normally serves a read from the tablet leader to ensure the result is up to date. Follower reads allow you to serve the read from the closest replica instead, allowing for lower read latencies, at the cost of the read being slightly stale. The result is timeline consistent: writes are not returned out of order. In YSQL, you can specify the staleness of the reads.
 
-Writes still go to the leader. A follower read is stale even when the closest replica is the leader, because the read time is `now` minus the staleness interval.
+Writes still go to the leader. A YSQL follower read returns data as of the current time minus the staleness interval, even when the replica that serves it has newer data.
 
 For an illustration of how this pattern can benefit multi-region applications, see [Follower reads for global applications](../../develop/build-global-apps/follower-reads/). For a walkthrough, see [Follower reads](../../explore/going-beyond-sql/follower-reads-ysql/) in Explore.
 
-[Read replica](../../deploy/multi-dc/read-replica-clusters/) clusters also use follower reads.
+A [read replica](../../deploy/multi-dc/read-replica-clusters/) cluster serves reads only as follower reads. With follower reads off, the read goes to the tablet leader in the primary cluster.
 
-## How far behind a follower may be
+## Read time and staleness
 
-When the follower's safe time is further behind now than [--max_stale_read_bound_time_ms](../../reference/configuration/yb-tserver/#max-stale-read-bound-time-ms) (default 60000, 60 seconds), the read is forwarded to the leader. This applies to YSQL follower reads and to YCQL reads at consistency `ONE`. Raise the flag when the follower and the leader are far apart.
+A YSQL follower read runs at one consistent read time: the current time minus [yb_follower_read_staleness_ms](../../reference/configuration/yb-tserver/#yb-follower-read-staleness-ms).
+YCQL has no staleness setting. A follower serves a YCQL read at its safe time, which is the latest time for which it has all the data. So the result is as old as the follower's lag behind the current time. If that lag is more than `--max_stale_read_bound_time_ms`, the follower rejects the read (region (A) in the following timeline).
+
+## When a follower can serve the read
+
+What happens to a follower read depends on where the follower's safe time falls on this timeline:
+
+```output
+  follower safe time falls here:
+        │       (A)       │           (B)            │            (C)            │
+  ──────┼─────────────────┼──────────────────────────┼───────────────────────────┼──▶ time
+                   now − max_stale            now − staleness                   now
+  (A) The follower is too far behind. It rejects the read, and the client retries at the leader.
+      Applies to YSQL and YCQL.
+  (B) YSQL: the follower does not yet have all the data at the read time.
+            avoid_waiting = true (default): it rejects the read, and the client retries at the leader.
+            avoid_waiting = false: it waits until it catches up, then serves the read.
+      YCQL: the follower serves the read at its safe time.
+  (C) YSQL: the follower serves the read at now − staleness.
+      YCQL: the follower serves the read at its safe time.
+```
+
+- `max_stale` is [--max_stale_read_bound_time_ms](../../reference/configuration/yb-tserver/#max-stale-read-bound-time-ms) (default 60 seconds). Raise it if followers fall in (A) too often, for example when they are far from the leader. Setting it to `0` turns off the check.
+- `staleness` is [yb_follower_read_staleness_ms](../../reference/configuration/yb-tserver/#yb-follower-read-staleness-ms) (default 30 seconds). A shorter value makes it more likely that a follower is in (B). Don't set it to less than twice [raft_heartbeat_interval_ms](../../reference/configuration/yb-tserver/#raft-heartbeat-interval-ms). On an idle tablet, a follower's safe time advances only when a leader heartbeat arrives, so the safe time can be up to one heartbeat interval behind the current time.
+- `avoid_waiting` is [--ysql_follower_reads_avoid_waiting_for_safe_time](../../reference/configuration/yb-tserver/#ysql-follower-reads-avoid-waiting-for-safe-time) (default `true`). Retrying at the leader is usually faster than waiting for the follower to catch up.
+
+A rejected read is always retried at the tablet leader, not at another follower. The `consistent_prefix_failed_reads` metric counts these retries.
 
 ## YSQL
 
@@ -50,38 +76,10 @@ Mark the transaction read only in one of these ways:
 - `SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY` applies to later statements and transaction blocks in the session.
 - [SET default_transaction_read_only = TRUE](../../reference/configuration/yb-tserver/#default-transaction-read-only) applies to later statements and transaction blocks in the session.
 
-Avoid using `pg_hint_plan` to mark a statement read only. It can work in some cases, but it relies on side effects and has known issues. See [GH17024](https://github.com/yugabyte/yugabyte-db/issues/17024) and [GH17135](https://github.com/yugabyte/yugabyte-db/issues/17135).
-
-### Staleness
-
-[yb_follower_read_staleness_ms](../../reference/configuration/yb-tserver/#yb-follower-read-staleness-ms) sets how far in the past the read runs. The default is 30000 (30 seconds). The read executes at hybrid time of about `now` minus this value. YSQL returns no data newer than this interval, even when a local replica has it, so the result stays consistent. YCQL uses a [looser consistency model](#ycql).
-
-A shorter interval makes it more likely that a follower is behind and the read is redirected to the leader. Set the value to at least twice the maximum clock skew ([--max_clock_skew_usec](../../reference/configuration/yb-tserver/#max-clock-skew-usec), 500 ms by default). YugabyteDB rejects a smaller value.
-
-Because the read time is always in the past, the result is stale even when the closest replica is the tablet leader.
-
-The `consistent_prefix_failed_reads` metric counts follower reads that could not be served by the closest replica and were retried at the leader.
-
-### When a follower can serve the read
-
-A follower serves the read only when both of the following are true:
-
-- The follower is no further behind now than [--max_stale_read_bound_time_ms](#how-far-behind-a-follower-may-be). This is checked on every follower read and doesn't depend on `yb_follower_read_staleness_ms`. A follower that is further behind rejects the read and the client retries it at the leader. Setting the flag to `0` turns off this check.
-- The follower's safe time has reached the read time (`now` minus `yb_follower_read_staleness_ms`).
-
-If the follower hasn't reached the read time, the behavior depends on [--ysql_follower_reads_avoid_waiting_for_safe_time](../../reference/configuration/yb-tserver/#ysql-follower-reads-avoid-waiting-for-safe-time):
-
-- `true` (default): when the client specified the read time, the follower rejects the read and the client retries it at the leader, which is typically faster than waiting. Latency then depends on how far the leader is from the client.
-- `false`: the follower waits for its safe time to catch up, then serves the read.
-
-When the follower's safe time is at least `current_time - staleness` and within [--max_stale_read_bound_time_ms](#how-far-behind-a-follower-may-be) of now, the follower can serve the read without waiting. If `yb_follower_read_staleness_ms` is greater than that bound, a follower whose safe time reaches the read time still sends the read to the leader.
-
-When the follower is behind that time, the read is redirected to another replica. Latency then depends on where that replica is.
-
-[--ysql_follower_reads_avoid_waiting_for_safe_time](../../reference/configuration/yb-tserver/#ysql-follower-reads-avoid-waiting-for-safe-time) (default `true`) rejects a follower read whose read time is not yet safe on that follower. The read goes to the leader instead of waiting for safe time to catch up.
+Avoid using `pg_hint_plan` to mark a statement read only. It can work in some cases, but it relies on side effects and has known issues (see {{<issue 17024>}} and {{<issue 17135>}}).
 
 ## YCQL
 
-YCQL follower reads require consistency level `ONE`. The default is `QUORUM`. `ONE` changes only reads. YCQL writes stay strongly consistent. In [ycqlsh](../../api/ycqlsh/), set it with `CONSISTENCY ONE`. See [CONSISTENCY](../../api/ycqlsh/#consistency). These reads use the same [staleness bound](#how-far-behind-a-follower-may-be).
+YCQL follower reads require consistency level `ONE`. Set `ONE` explicitly in your driver, or with `CONSISTENCY ONE` in ycqlsh. For the default level and the other levels, see [CONSISTENCY](../../api/ycqlsh/#consistency). `ONE` changes only reads. YCQL writes stay strongly consistent. The timeline in [When a follower can serve the read](#when-a-follower-can-serve-the-read) shows when a follower serves a YCQL read.
 
-For a walkthrough, see [Follower reads](../../explore/going-beyond-sql/follower-reads-ysql/) in Explore.
+For a full example, see the YCQL tab in [Follower reads](../../explore/going-beyond-sql/follower-reads-ysql/#example) in Explore.

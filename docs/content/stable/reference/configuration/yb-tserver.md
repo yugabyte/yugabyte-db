@@ -569,7 +569,11 @@ Controls whether or not reading from followers is enabled. For more information,
 Default: `30000` (30 seconds)
 {{% /tags/wrap %}}
 
-Sets the maximum allowable staleness. Although the default is recommended, you can set the staleness to a shorter value. The tradeoff is the shorter the staleness, the more likely some reads may be redirected to the leader if the follower isn't sufficiently caught up. You shouldn't set `yb_follower_read_staleness_ms` to less than 2x the `raft_heartbeat_interval_ms` (which by default is 500 ms).
+The staleness of YSQL follower reads, in milliseconds. A follower read runs at the current time minus this value. Although the default is recommended, you can set a shorter value. A shorter value makes it more likely that a follower has not caught up to the read time. Such a read is retried at the leader, or waits for the follower to catch up, depending on [--ysql_follower_reads_avoid_waiting_for_safe_time](#ysql-follower-reads-avoid-waiting-for-safe-time).
+
+Don't set it to less than twice [raft_heartbeat_interval_ms](#raft-heartbeat-interval-ms) (500 ms by default).
+
+For more information, see [Follower reads](../../../additional-features/follower-reads/#when-a-follower-can-serve-the-read).
 
 ##### default_transaction_read_only
 
