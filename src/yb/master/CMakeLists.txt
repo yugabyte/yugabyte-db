@@ -289,6 +289,8 @@ ADD_YB_TEST(xcluster/xcluster_outbound_replication_group-test)
 ADD_YB_TEST(xcluster/xcluster_safe_time_service-test)
 YB_TEST_TARGET_LINK_LIBRARIES(xcluster/xcluster_outbound_replication_group-test yb_client_mock)
 
+ADD_YB_BENCHMARK(cluster_config-benchmark DEPS master integration-tests)
+
 # Actual master executable. In LTO mode, can also act as the tablet server if executed through a
 # symlink named as the tablet server executable.
 add_executable("${YB_MASTER_DYNAMIC_EXE_NAME}" master_main.cc)

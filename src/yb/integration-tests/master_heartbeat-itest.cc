@@ -511,8 +511,14 @@ TEST_F(MasterHeartbeatITest, PopulateHeartbeatResponseWhenRegistrationRequired) 
   ASSERT_OK(heartbeat_proxy.TSHeartbeat(hb_req, &hb_resp, &rpc));
   ASSERT_FALSE(hb_resp.has_error()) << StatusFromPB(hb_resp.error().status());
   ASSERT_TRUE(hb_resp.needs_reregister());
+  ASSERT_TRUE(hb_resp.needs_full_tablet_report());
   ASSERT_GT(hb_resp.snapshots_info().schedules_size(), 0);
   ASSERT_EQ(hb_resp.snapshots_info().schedules(0).id(), resp.snapshot_schedule_id());
+  ASSERT_FALSE(hb_resp.has_xcluster_guarded_info());
+  ASSERT_FALSE(hb_resp.has_xcluster_guarded_lease_duration_ms());
+  ASSERT_FALSE(hb_resp.has_tablet_report_limit());
+  ASSERT_FALSE(hb_resp.has_deprecated_oid_cache_invalidations_count());
+  ASSERT_EQ(hb_resp.tservers_size(), 0);
 }
 
 class MasterHeartbeatITestOneTServer : public YBMiniClusterTestBase<MiniCluster> {
