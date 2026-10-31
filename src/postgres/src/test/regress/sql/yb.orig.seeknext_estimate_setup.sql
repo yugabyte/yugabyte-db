@@ -9,6 +9,15 @@ alter database seeknext_test set yb_enable_cbo = on;
 \c seeknext_test
 set client_min_messages to 'warning';
 
+-- Colocation IDs are random, and a scan at either end of the colocated
+-- tablet measures different steps than one between other key ranges.  These
+-- non-empty tables hold the lowest and highest IDs, so no measured relation
+-- sits at an end.
+create table tablet_first (k int primary key) with (colocation_id = 16384);
+create table tablet_last (k int primary key) with (colocation_id = 4294967295);
+insert into tablet_first values (1);
+insert into tablet_last values (1);
+
 drop function if exists explain_query_json cascade;
 create function explain_query_json(query_sql text, with_analyze bool)
 returns table (explain_line json)
