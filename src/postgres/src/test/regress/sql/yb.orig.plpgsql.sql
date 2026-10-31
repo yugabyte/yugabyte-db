@@ -417,3 +417,15 @@ SET ROLE worker;
 CALL change_data('Try Security Invoker');  -- error: permission denied
 RESET ROLE;
 SELECT * FROM secret_data;
+
+-- Return a NULL record variable from a function returning a domain over a
+-- composite (#36141).
+CREATE TYPE null_ret_ct AS (a int, b int);
+CREATE DOMAIN null_ret_cd AS null_ret_ct;
+CREATE DOMAIN null_ret_cd_nn AS null_ret_ct NOT NULL;
+CREATE FUNCTION null_ret_f() RETURNS null_ret_cd AS $$
+DECLARE v null_ret_ct; BEGIN RETURN v; END $$ LANGUAGE plpgsql;
+CREATE FUNCTION null_ret_f_nn() RETURNS null_ret_cd_nn AS $$
+DECLARE v null_ret_ct; BEGIN RETURN v; END $$ LANGUAGE plpgsql;
+SELECT null_ret_f() IS NULL;
+SELECT null_ret_f_nn();  -- error: domain does not allow null values
