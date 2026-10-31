@@ -15,13 +15,22 @@
 
 #include "yb/common/ql_protocol.messages.h"
 #include "yb/common/ql_type.h"
+#include "yb/common/read_hybrid_time.h"
 #include "yb/common/schema.h"
 
 #include "yb/gutil/casts.h"
 
+#include "yb/util/flags.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
 #include "yb/util/write_buffer.h"
+
+DEFINE_UNKNOWN_bool(ycql_consistent_transactional_paging, false,
+            "Whether to enforce consistency of data returned for second page and beyond for YCQL "
+            "queries on transactional tables. If true, read restart errors could be returned to "
+            "prevent inconsistency. If false, no read restart errors are returned but the data may "
+            "be stale. The latter is preferable for long scans. The data returned for the first "
+            "page of results is never stale regardless of this flag.");
 
 namespace yb {
 
@@ -172,6 +181,15 @@ void CQLFinishCollection(const WriteBufferPos& start_pos, WriteBuffer* buffer) {
   char encoded_coll_size[sizeof(uint32_t)];
   NetworkByteOrder::Store32(encoded_coll_size, static_cast<uint32_t>(coll_size));
   CHECK_OK(buffer->Write(start_pos, encoded_coll_size, sizeof(uint32_t)));
+}
+
+ReadHybridTime PagingReadTime(const ReadHybridTime& read_time) {
+  if (FLAGS_ycql_consistent_transactional_paging) {
+    return read_time;
+  }
+  // Using SingleTime will help avoid read restarts on second page and later but will
+  // potentially produce stale results on those pages.
+  return ReadHybridTime::SingleTime(read_time.read);
 }
 
 } // namespace yb

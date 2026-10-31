@@ -77,6 +77,7 @@ DECLARE_bool(cql_always_return_metadata_in_execute_response);
 DECLARE_bool(cql_check_table_schema_in_paging_state);
 DECLARE_bool(use_cassandra_authentication);
 DECLARE_bool(ycql_allow_non_authenticated_password_reset);
+DECLARE_bool(ycql_consistent_transactional_paging);
 DECLARE_bool(TEST_disable_connection_timeout);
 DECLARE_uint32(TEST_read_deadline_check_granularity);
 DECLARE_uint64(arena_warn_threshold_bytes);
@@ -1377,6 +1378,131 @@ TEST_F(CqlTest, AlteredPrepareForIndexWithPaging_MetadataInExecResp) {
       /* check_schema_in_paging =*/false,
       /* metadata_in_exec_resp =*/true);
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+// Every page of a paged SELECT reads at the read time of page 1 (GH #33610). Each scenario reads
+// page 1, sets v = 1 on a row that a later page reads, reads the remaining pages, and expects that
+// row to still show v = 0. Table t has 2 tablets, and tablet 1 holds N of the 20 rows (N = 13).
+//
+//   scenario                      query                        page size  page 1 ends
+//   control                       SELECT id, v FROM t          N - 1      inside tablet 1
+//   full scan, tablet boundary    SELECT id, v FROM t          N          on tablet 1's last row
+//   IN on the hash key            ... WHERE id IN (1, 2)       1          on key 1's only row
+//   IN on a covered index key     ... WHERE w IN (1, 2)        1          on key 1's only row
+//   IN on an uncovered index key  ... WHERE u IN (1, 2)        1          on key 1's only row
+//
+// Key 1 is the IN key that page 1 returns; the updated row is the other one. The index scenarios
+// get their paging state from the index scan. Every scenario except the control fails without the
+// fix: the later page reads at a new read time and shows v = 1.
+//
+// Each scenario runs with ycql_consistent_transactional_paging off and on. Off: the later pages
+// show v = 0. On: they show v = 0 or fail with a read restart error, but never show v = 1.
+TEST_F(CqlTest, PagingReadTimeAtPartitionBoundary) {
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  ASSERT_OK(session.ExecuteQuery(
+      "CREATE TABLE t (id INT PRIMARY KEY, v INT, w INT, u INT) "
+      "WITH tablets = 2 AND transactions = {'enabled': true}"));
+  ASSERT_OK(session.ExecuteQuery("CREATE INDEX covered ON t (w) INCLUDE (v) WITH tablets = 2"));
+  ASSERT_OK(session.ExecuteQuery("CREATE INDEX uncovered ON t (u) WITH tablets = 2"));
+  WaitForReadPermsOnAllIndexes("t", {"covered", "uncovered"});
+  constexpr int kNumRows = 20;
+  for (int i = 0; i < kNumRows; ++i) {
+    ASSERT_OK(session.ExecuteQuery(
+        Format("INSERT INTO t (id, v, w, u) VALUES ($0, 0, $0, $0)", i)));
+  }
+
+  // With 2 tablets, the first tablet owns hash codes [0, 0x8000) and a full scan reads it first.
+  int rows_in_first_tablet = 0;
+  int id_in_second_tablet = -1;
+  {
+    CassandraStatement stmt("SELECT id, partition_hash(id) FROM t");
+    stmt.SetPageSize(kNumRows);
+    auto res = ASSERT_RESULT(session.ExecuteWithResult(stmt));
+    ASSERT_FALSE(res.HasMorePages());
+    auto it = res.CreateIterator();
+    while (it.Next()) {
+      auto row = it.Row();
+      int32_t id, hash;
+      row.Get(0, &id);
+      row.Get(1, &hash);
+      if (hash < 0x8000) {
+        ++rows_in_first_tablet;
+      } else {
+        id_in_second_tablet = id;
+      }
+    }
+  }
+  ASSERT_GT(rows_in_first_tablet, 0);
+  ASSERT_GE(id_in_second_tablet, 0);
+  LOG(INFO) << "Rows in first tablet: " << rows_in_first_tablet
+            << ", updated row in second tablet: " << id_in_second_tablet;
+
+  // Returns v of `updated_id` as the pages after page 1 read it. These pages use their own session
+  // because the driver closes a connection that returns a read restart error.
+  auto read_after_update = [&](const std::string& query, int page_size,
+                               int updated_id) -> Result<int32_t> {
+    RETURN_NOT_OK(session.ExecuteQuery(Format("UPDATE t SET v = 0 WHERE id = $0", updated_id)));
+    auto paging_session = VERIFY_RESULT(EstablishSession(driver_.get()));
+    CassandraStatement stmt(query);
+    stmt.SetPageSize(page_size);
+    auto res = VERIFY_RESULT(paging_session.ExecuteWithResult(stmt));
+    SCHECK(res.HasMorePages(), IllegalState, "Expected more than one page");
+    RETURN_NOT_OK(session.ExecuteQuery(Format("UPDATE t SET v = 1 WHERE id = $0", updated_id)));
+    std::optional<int32_t> seen;
+    while (res.HasMorePages()) {
+      stmt.SetPagingState(res);
+      res = VERIFY_RESULT(paging_session.ExecuteWithResult(stmt));
+      auto it = res.CreateIterator();
+      while (it.Next()) {
+        auto row = it.Row();
+        int32_t id, v;
+        row.Get(0, &id);
+        row.Get(1, &v);
+        if (id == updated_id) {
+          seen = v;
+        }
+      }
+    }
+    SCHECK(seen.has_value(), IllegalState, Format("Row $0 not read after page 1", updated_id));
+    return *seen;
+  };
+
+  struct Case {
+    std::string query;
+    int page_size;
+    int updated_id;
+  };
+  std::vector<Case> cases = {
+      {"SELECT id, v FROM t", rows_in_first_tablet - 1, id_in_second_tablet},
+      {"SELECT id, v FROM t", rows_in_first_tablet, id_in_second_tablet},
+  };
+  for (const std::string query : {"SELECT id, v FROM t WHERE id IN (1, 2)",
+                                  "SELECT id, v FROM t WHERE w IN (1, 2)",
+                                  "SELECT id, v FROM t WHERE u IN (1, 2)"}) {
+    // Page 1 returns one of the two ids, and page 2 returns the other.
+    CassandraStatement stmt(query);
+    stmt.SetPageSize(1);
+    auto res = ASSERT_RESULT(session.ExecuteWithResult(stmt));
+    auto it = res.CreateIterator();
+    ASSERT_TRUE(it.Next());
+    int32_t first_id;
+    it.Row().Get(0, &first_id);
+    cases.push_back({query, 1, first_id == 1 ? 2 : 1});
+  }
+
+  for (const bool consistent_paging : {false, true}) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ycql_consistent_transactional_paging) = consistent_paging;
+    for (const auto& c : cases) {
+      SCOPED_TRACE(Format("$0, page size $1, consistent paging $2",
+                          c.query, c.page_size, consistent_paging));
+      auto v = read_after_update(c.query, c.page_size, c.updated_id);
+      if (consistent_paging && !v.ok() &&
+          v.status().message().ToBuffer().find("Restart read required") != std::string::npos) {
+        continue;
+      }
+      EXPECT_EQ(ASSERT_RESULT(std::move(v)), 0);
+    }
+  }
 }
 
 TEST_F(CqlTest, PasswordReset) {
