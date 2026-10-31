@@ -279,7 +279,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     // Telemetry export state to render into the otel collector overrides, populated via
     // KubernetesTaskBase.getDesiredTelemetryConfig: the persisted export_telemetry_config row for
     // regular helm flows, or the desired state while the export-telemetry configure task runs.
-    // When null (no persisted row yet), helm overrides fall back to the userIntent copies.
+    // When null (no persisted row yet), helm overrides render no telemetry export.
     public TelemetryConfig telemetryConfig = null;
     // Only set false for create universe case initially
     public boolean masterJoinExistingCluster = true;
@@ -1521,17 +1521,12 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       // Only audit/query logging contribute PostgreSQL settings; don't touch the gflag for
       // metrics-only or log-only (master/tserver glog) configs.
       if (telemetryConfig.requiresYsqlPgConfCsv()) {
-        String combinedPGConfCSV =
-            GFlagsUtil.mergeCSVs(
-                tserverGFlags.getOrDefault(GFlagsUtil.YSQL_PG_CONF_CSV, ""),
-                GFlagsUtil.getYsqlPgConfCsv(telemetryConfig.getAuditLogConfig()),
-                true);
-        combinedPGConfCSV =
-            GFlagsUtil.mergeCSVs(
-                combinedPGConfCSV,
-                GFlagsUtil.getYsqlPgConfCsv(telemetryConfig.getQueryLogConfig()),
-                true);
-        tserverGFlags.put(GFlagsUtil.YSQL_PG_CONF_CSV, combinedPGConfCSV);
+        tserverGFlags.put(
+            GFlagsUtil.YSQL_PG_CONF_CSV,
+            GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv(
+                tserverGFlags.get(GFlagsUtil.YSQL_PG_CONF_CSV),
+                GFlagsUtil.getYsqlPgConfCsv(
+                    telemetryConfig.getAuditLogConfig(), telemetryConfig.getQueryLogConfig())));
       }
       String logLinePrefix =
           GFlagsUtil.getLogLinePrefix(

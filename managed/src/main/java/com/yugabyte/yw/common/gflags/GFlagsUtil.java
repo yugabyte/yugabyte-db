@@ -63,6 +63,7 @@ import com.yugabyte.yw.models.helpers.exporters.query.YSQLQueryLogConfig;
 import java.io.IOException;
 import java.io.StringReader;
 import java.io.StringWriter;
+import java.io.UncheckedIOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
@@ -237,8 +238,11 @@ public class GFlagsUtil {
   public static final String YSQL_HBA_REQUIRES_AUTH_ERROR =
       "Cannot set ysql_hba_conf_csv or ysql_hba_conf while YSQL auth is disabled";
 
+  private static final CSVFormat CSV_FORMAT =
+      CSVFormat.DEFAULT.builder().setRecordSeparator("").build();
   private static final Pattern LOG_LINE_PREFIX_PATTERN =
-      Pattern.compile("^\"?\\s*log_line_prefix\\s*=\\s*'?([^']+)'?\\s*\"?$");
+      Pattern.compile(
+          "^\"?\\s*log_line_prefix\\s*=\\s*'?([^']+)'?\\s*\"?$", Pattern.CASE_INSENSITIVE);
   private static final String DEFAULT_LOG_LINE_PREFIX = "%m [%p] ";
 
   public static final Set<String> GFLAGS_FORBIDDEN_TO_OVERRIDE =
@@ -436,7 +440,17 @@ public class GFlagsUtil {
       }
     }
 
-    extra_gflags.putAll(getYSQLGFlags(taskParam, universe, useHostname, useSecondaryIp));
+    Map<String, String> ysqlGFlags =
+        getYSQLGFlags(taskParam, universe, useHostname, useSecondaryIp);
+    // Merge, don't replace: the tserver defaults above can carry new install ysql_pg_conf_csv
+    // entries (e.g. yb_enable_cbo=on).
+    if (ysqlGFlags.containsKey(YSQL_PG_CONF_CSV)) {
+      ysqlGFlags.put(
+          YSQL_PG_CONF_CSV,
+          overrideWithTelemetryYsqlPgConfCsv(
+              extra_gflags.get(YSQL_PG_CONF_CSV), ysqlGFlags.get(YSQL_PG_CONF_CSV)));
+    }
+    extra_gflags.putAll(ysqlGFlags);
     extra_gflags.putAll(getYCQLGFlags(taskParam, universe, useHostname, useSecondaryIp));
     extra_gflags.putAll(getCertsAndTlsGFlags(taskParam, universe));
 
@@ -1006,9 +1020,13 @@ public class GFlagsUtil {
   }
 
   public static String getYsqlPgConfCsv(AnsibleConfigureServers.Params taskParams) {
-    String auditLogYsqlPgConfCsv = getYsqlPgConfCsv(taskParams.getAuditLogConfig());
-    String queryLogYsqlPgConfCsv = getYsqlPgConfCsv(taskParams.getQueryLogConfig());
-    return GFlagsUtil.mergeCSVs(auditLogYsqlPgConfCsv, queryLogYsqlPgConfCsv, true);
+    return getYsqlPgConfCsv(taskParams.getAuditLogConfig(), taskParams.getQueryLogConfig());
+  }
+
+  public static String getYsqlPgConfCsv(
+      AuditLogConfig auditLogConfig, QueryLogConfig queryLogConfig) {
+    return GFlagsUtil.mergeCSVs(
+        getYsqlPgConfCsv(auditLogConfig), getYsqlPgConfCsv(queryLogConfig), true);
   }
 
   public static String getYsqlPgConfCsv(AuditLogConfig auditLogConfig) {
@@ -1790,6 +1808,14 @@ public class GFlagsUtil {
     // Merge the `ysql_hba_conf_csv` post pre-processing the hba conf for jwt if required.
     mergeCSVs(userGFlags, platformGFlags, YSQL_HBA_CONF_CSV, false);
     mergeCSVs(userGFlags, platformGFlags, YSQL_PG_CONF_CSV, true);
+    // User entries win over platform defaults, but telemetry entries win over user entries.
+    // getYSQLGFlags adds telemetry only with YSQL enabled, so do the same here.
+    if (userGFlags.containsKey(YSQL_PG_CONF_CSV) && taskParams.enableYSQL) {
+      userGFlags.put(
+          YSQL_PG_CONF_CSV,
+          overrideWithTelemetryYsqlPgConfCsv(
+              userGFlags.get(YSQL_PG_CONF_CSV), getYsqlPgConfCsv(taskParams)));
+    }
     mergeCSVs(userGFlags, platformGFlags, ALLOWED_PREVIEW_FLAGS_CSV, true);
 
     // timestamp_hitory_retention_sec gflag should be max of platform and user values
@@ -2092,46 +2118,23 @@ public class GFlagsUtil {
   }
 
   public static String mergeCSVs(String csv1, String csv2, boolean mergeKeyValues) {
-    StringWriter writer = new StringWriter();
-    try {
-      CSVFormat csvFormat = CSVFormat.DEFAULT.builder().setRecordSeparator("").build();
-      try (CSVPrinter csvPrinter = new CSVPrinter(writer, csvFormat)) {
-        Set<String> existingKeys = new HashSet<>();
-        Set<String> records = new LinkedHashSet<>();
-        CSVParser parser = new CSVParser(new StringReader(csv1), csvFormat);
-        for (CSVRecord record : parser) {
-          appendEntries(record, records, existingKeys, mergeKeyValues);
+    Set<String> existingKeys = new HashSet<>();
+    Set<String> records = new LinkedHashSet<>();
+    for (String csv : Arrays.asList(csv1, csv2)) {
+      for (String entry : parseCSVEntries(csv)) {
+        if (mergeKeyValues) {
+          Optional<String> key = getKey(entry);
+          if (key.isPresent()) {
+            if (existingKeys.contains(key.get())) {
+              continue;
+            }
+            existingKeys.add(key.get());
+          }
         }
-        parser = new CSVParser(new StringReader(csv2), csvFormat);
-        for (CSVRecord record : parser) {
-          appendEntries(record, records, existingKeys, mergeKeyValues);
-        }
-        csvPrinter.printRecord(records);
-        csvPrinter.flush();
+        records.add(entry);
       }
-    } catch (IOException ignored) {
-      // can't really happen
     }
-    return writer.toString();
-  }
-
-  private static void appendEntries(
-      CSVRecord record, Set<String> result, Set<String> existingKeys, boolean mergeKeyValues) {
-    record
-        .toList()
-        .forEach(
-            entry -> {
-              if (mergeKeyValues) {
-                Optional<String> key = getKey(entry);
-                if (key.isPresent()) {
-                  if (existingKeys.contains(key.get())) {
-                    return;
-                  }
-                  existingKeys.add(key.get());
-                }
-              }
-              result.add(entry);
-            });
+    return printCSVEntries(records);
   }
 
   private static Optional<String> getKey(String keyValue) {
@@ -2143,6 +2146,68 @@ public class GFlagsUtil {
       return Optional.of(keyValue.substring(0, equalIndex).trim());
     }
     return Optional.empty();
+  }
+
+  /**
+   * Overrides base ysql_pg_conf_csv entries with telemetry ones in place (keys match in any case,
+   * as in PostgreSQL) and appends the rest, so an unchanged base keeps its order.
+   */
+  public static String overrideWithTelemetryYsqlPgConfCsv(String baseCsv, String telemetryCsv) {
+    if (StringUtils.isEmpty(telemetryCsv)) {
+      return mergeCSVs(StringUtils.defaultString(baseCsv), "", true);
+    }
+    Map<String, String> telemetryEntries = new LinkedHashMap<>();
+    for (String entry : parseCSVEntries(telemetryCsv)) {
+      telemetryEntries.putIfAbsent(getCaseInsensitiveKey(entry), entry);
+    }
+    Set<String> baseKeys = new HashSet<>();
+    Set<String> appliedTelemetryKeys = new HashSet<>();
+    Set<String> result = new LinkedHashSet<>();
+    for (String entry : parseCSVEntries(StringUtils.defaultString(baseCsv))) {
+      String telemetryKey = getCaseInsensitiveKey(entry);
+      if (telemetryEntries.containsKey(telemetryKey)) {
+        if (appliedTelemetryKeys.add(telemetryKey)) {
+          result.add(telemetryEntries.get(telemetryKey));
+        }
+      } else if (baseKeys.add(getKey(entry).orElse(entry))) {
+        result.add(entry);
+      }
+    }
+    telemetryEntries.forEach(
+        (key, entry) -> {
+          if (!appliedTelemetryKeys.contains(key)) {
+            result.add(entry);
+          }
+        });
+    return printCSVEntries(result);
+  }
+
+  private static String getCaseInsensitiveKey(String entry) {
+    return getKey(entry).orElse(entry).toLowerCase(Locale.ROOT);
+  }
+
+  private static List<String> parseCSVEntries(String csv) {
+    List<String> entries = new ArrayList<>();
+    try (CSVParser parser =
+        new CSVParser(new StringReader(StringUtils.defaultString(csv)), CSV_FORMAT)) {
+      for (CSVRecord record : parser) {
+        entries.addAll(record.toList());
+      }
+    } catch (IOException e) {
+      throw new UncheckedIOException("Failed to parse CSV", e);
+    }
+    return entries;
+  }
+
+  private static String printCSVEntries(Collection<String> entries) {
+    StringWriter writer = new StringWriter();
+    try (CSVPrinter csvPrinter = new CSVPrinter(writer, CSV_FORMAT)) {
+      csvPrinter.printRecord(entries);
+      csvPrinter.flush();
+    } catch (IOException e) {
+      throw new UncheckedIOException("Failed to print CSV", e);
+    }
+    return writer.toString();
   }
 
   public static void mergeCSVs(
@@ -2622,37 +2687,22 @@ public class GFlagsUtil {
   }
 
   public static String getLogLinePrefix(QueryLogConfig queryLogConfig, String ysqlPgConfCsv) {
-    // Priority 1: User specificGFlags take precedence when explicitly set
-    String userLogLinePrefix = extractLogLinePrefixFromCsv(ysqlPgConfCsv);
-    if (!DEFAULT_LOG_LINE_PREFIX.equals(userLogLinePrefix)) {
-      return userLogLinePrefix;
-    }
-    // Priority 2: Fall back to query log API's log_line_prefix if available
+    // Telemetry over user, as in the ysql_pg_conf_csv merge, so the collector uses PG's prefix.
     if (queryLogConfig != null
         && queryLogConfig.getYsqlQueryLogConfig() != null
+        && queryLogConfig.getYsqlQueryLogConfig().isEnabled()
         && StringUtils.isNotEmpty(queryLogConfig.getYsqlQueryLogConfig().getLogLinePrefix())) {
       return queryLogConfig.getYsqlQueryLogConfig().getLogLinePrefix();
     }
-    // Priority 3: Return default
-    return DEFAULT_LOG_LINE_PREFIX;
+    return extractLogLinePrefixFromCsv(ysqlPgConfCsv);
   }
 
   private static String extractLogLinePrefixFromCsv(String pgConfCsv) {
-    if (StringUtils.isEmpty(pgConfCsv)) {
-      return DEFAULT_LOG_LINE_PREFIX;
-    }
-    try {
-      CSVParser parser = new CSVParser(new StringReader(pgConfCsv), CSVFormat.DEFAULT);
-      for (CSVRecord record : parser) {
-        for (String entry : record.toList()) {
-          Matcher matcher = LOG_LINE_PREFIX_PATTERN.matcher(entry);
-          if (matcher.matches()) {
-            return matcher.group(1);
-          }
-        }
+    for (String entry : parseCSVEntries(pgConfCsv)) {
+      Matcher matcher = LOG_LINE_PREFIX_PATTERN.matcher(entry);
+      if (matcher.matches()) {
+        return matcher.group(1);
       }
-    } catch (IOException e) {
-      throw new RuntimeException("Failed to parse CSV", e);
     }
     return DEFAULT_LOG_LINE_PREFIX;
   }

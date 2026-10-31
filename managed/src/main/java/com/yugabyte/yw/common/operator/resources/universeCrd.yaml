@@ -968,8 +968,8 @@ spec:
                           logLinePrefix:
                             description: >
                               printf-style prefix for each postgres log line, for example
-                              "%m [%p] ". A log_line_prefix set through gFlags takes precedence
-                              over this value.
+                              "%m [%p] ". When query logging is enabled, this value takes
+                              precedence over a log_line_prefix set through gFlags.
                             type: string
                       exporters:
                         description: >

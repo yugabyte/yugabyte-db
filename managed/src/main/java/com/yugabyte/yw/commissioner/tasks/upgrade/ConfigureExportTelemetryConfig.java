@@ -8,6 +8,7 @@ import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.commissioner.tasks.subtasks.SetFlagInMemory;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.ExportTelemetryConfigParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -15,8 +16,11 @@ import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
@@ -77,7 +81,49 @@ public class ConfigureExportTelemetryConfig extends UpgradeTaskBase {
 
           // Update the swamper target file.
           createSwamperTargetUpdateTask(false /* removeFile */);
+
+          // Non-restart: match the running ysql_pg_conf_csv to the new files and collector. Runs
+          // last, after the save, and is best effort; the next restart applies the files anyway.
+          if (taskParams().upgradeOption == UpgradeTaskParams.UpgradeOption.NON_RESTART_UPGRADE) {
+            createSetYsqlPgConfCsvInMemoryTasks(
+                universe, mastersAndTservers.mastersList, ServerType.MASTER);
+            createSetYsqlPgConfCsvInMemoryTasks(
+                universe, mastersAndTservers.tserversList, ServerType.TSERVER);
+          }
         });
+  }
+
+  private void createSetYsqlPgConfCsvInMemoryTasks(
+      Universe universe, List<NodeDetails> nodes, ServerType serverType) {
+    // Skip nodes with nothing to set; the requested config is not saved yet.
+    List<NodeDetails> nodesToUpdate =
+        nodes.stream()
+            .filter(
+                node -> {
+                  Map<String, String> gflags = new HashMap<>();
+                  addUserYsqlPgConfCsv(gflags, universe, node, serverType);
+                  return SetFlagInMemory.getInMemoryYsqlPgConfCsv(
+                          universe,
+                          node.nodeName,
+                          serverType,
+                          gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV),
+                          taskParams().getTelemetryConfig())
+                      != null;
+                })
+            .collect(Collectors.toList());
+    if (nodesToUpdate.isEmpty()) {
+      return;
+    }
+    createSetFlagInMemoryTasks(
+            nodesToUpdate,
+            serverType,
+            (node, params) -> {
+              params.force = true;
+              params.ignoreErrors = true;
+              params.gflags = new HashMap<>();
+              addUserYsqlPgConfCsv(params.gflags, universe, node, serverType);
+            })
+        .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
   }
 
   private void createConfigureTelemetryAndOtelCollectorTasks(

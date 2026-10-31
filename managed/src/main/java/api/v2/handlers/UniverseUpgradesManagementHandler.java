@@ -74,7 +74,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.VMImageUpgradeParams;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.ExportTelemetryConfig;
 import com.yugabyte.yw.models.Release;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
@@ -551,10 +550,7 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
   public api.v2.models.TelemetryConfig getExportTelemetryConfig(UUID cUUID, UUID uniUUID) {
     Customer customer = Customer.getOrBadRequest(cUUID);
     Universe.getOrBadRequest(uniUUID, customer);
-    TelemetryConfig stored =
-        ExportTelemetryConfig.getForUniverse(uniUUID)
-            .map(ExportTelemetryConfig::getTelemetryConfig)
-            .orElse(null);
+    TelemetryConfig stored = OtelCollectorUtil.getPersistedTelemetryConfig(uniUUID);
     if (stored == null) {
       return new api.v2.models.TelemetryConfig();
     }
