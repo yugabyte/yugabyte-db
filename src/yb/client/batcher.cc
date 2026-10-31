@@ -170,9 +170,8 @@ bool OpForceSnapshotRead(const YBOperation& op) {
 }
 
 // For per-RPC flags. Unlike skip_intents, which decides Batcher::transaction() and so must agree
-// across every op in the batcher, these only shape the request of one RPC, and each RPC builds its
-// own request. A group is one (tablet, op group) pair, so its ops share a table except on a
-// colocated tablet. Checked below rather than assumed.
+// across every op in the batcher, these shape the request of one RPC, which all ops of a group
+// share, so the ops must agree. Checked below rather than assumed.
 Result<bool> GroupAgreesOn(
     const InFlightOpsGroup& group, bool (*pred)(const YBOperation&), const char* name) {
   const auto result = pred(*group.begin->yb_op);
@@ -765,7 +764,7 @@ Result<std::shared_ptr<AsyncRpc>> Batcher::CreateRpc(
     .allow_local_calls_in_curr_thread = allow_local_calls_in_curr_thread,
     .need_consistent_read = need_consistent_read,
     .skip_intents = SkipIntents(),
-    // Colocated relations never carry read_at_in_txn_limit.
+    // Set per relation and never on colocated ones, so the ops of a group agree.
     .read_at_in_txn_limit =
         VERIFY_RESULT(GroupAgreesOn(group, OpReadAtInTxnLimit, "read_at_in_txn_limit")),
     // On the sys catalog tablet, a SERIALIZABLE transaction's forced snapshot reads and row-marked
