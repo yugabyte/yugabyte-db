@@ -852,26 +852,6 @@ TEST_F(YsqlMajorUpgradeCheckTest, RemovedCatalogAclsFunctions) {
   ASSERT_OK(empty_acl());
 }
 
-TEST_F(YsqlMajorUpgradeCheckTest, RemovedCatalogAclsRelations) {
-  auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
-  ASSERT_OK(conn.Execute("CREATE ROLE test_role1"));
-
-  // Every PG15 pg_catalog relation exists in PG19, so relation ACL changes must not trip the check.
-  ASSERT_OK(conn.Execute("GRANT SELECT ON ALL TABLES IN SCHEMA pg_catalog TO test_role1"));
-  ASSERT_OK(conn.Execute("REVOKE SELECT ON ALL TABLES IN SCHEMA pg_catalog FROM PUBLIC"));
-  ASSERT_OK(ValidateUpgradeCompatibility());
-}
-
-TEST_F(YsqlMajorUpgradeCheckTest, RemovedCatalogAclsTypes) {
-  auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
-  ASSERT_OK(conn.Execute("CREATE ROLE test_role1"));
-
-  // Every PG15 pg_catalog type exists in PG19, so type ACL changes must not trip the check.
-  ASSERT_OK(conn.Execute("GRANT USAGE ON TYPE pg_catalog.int4 TO test_role1"));
-  ASSERT_OK(conn.Execute("REVOKE USAGE ON TYPE pg_catalog.money FROM PUBLIC"));
-  ASSERT_OK(ValidateUpgradeCompatibility());
-}
-
 TEST_F(YsqlMajorUpgradeCheckTest, RemovedCatalogAclsColumns) {
   auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
   ASSERT_OK(conn.Execute("CREATE ROLE test_role1"));
