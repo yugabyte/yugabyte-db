@@ -214,7 +214,11 @@ Status ObjectLockSharedStateManager::SetupShared(SharedMemoryBackingAllocator& a
 
 Result<ObjectLockSharedStateHolder> ObjectLockSharedStateManager::AllocateShared() {
   UniqueLock lock(mutex_);
-  WaitOnConditionVariable(&start_cond_, &lock, [this] REQUIRES(mutex_) { return !stopped_; });
+  WaitOnConditionVariable(
+      &start_cond_, &lock, [this] REQUIRES(mutex_) { return !stopped_ || shutdown_; });
+  if (shutdown_) {
+    return STATUS(ShutdownInProgress, "Object lock shared state manager is shut down");
+  }
   auto state = VERIFY_RESULT(DCHECK_NOTNULL(allocator_)->MakeUnique<ObjectLockSharedState>(
       *allocator_, exclusive_intents_));
   auto* ptr = state.get();
@@ -265,6 +269,14 @@ void ObjectLockSharedStateManager::Stop() {
     write_locks_.clear();
     VLOG(1) << "Stopped ObjectLockSharedStateManager";
   }
+}
+
+void ObjectLockSharedStateManager::Shutdown() {
+  {
+    std::lock_guard lock(mutex_);
+    shutdown_ = true;
+  }
+  start_cond_.notify_all();
 }
 
 void ObjectLockSharedStateManager::ConsumePendingSharedLockRequests(

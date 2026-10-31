@@ -334,7 +334,7 @@ Result<std::string> MasterTabletServer::GetUniverseUuid() const {
   return STATUS_FORMAT(InternalError, "Unexpected call of GetUniverseUuid()");
 }
 
-std::optional<docdb::ObjectLockSharedStateHolder>
+Result<std::optional<docdb::ObjectLockSharedStateHolder>>
 MasterTabletServer::AllocateObjectLockSharedState() const {
   return std::nullopt;
 }
