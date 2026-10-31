@@ -26,6 +26,7 @@ import com.yugabyte.yw.models.ImageBundleDetails.BundleInfo;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.AzureCloudInfo;
@@ -49,6 +50,7 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.HashSet;
@@ -867,6 +869,7 @@ public class CloudProviderHelper {
       }
     }
     checkCloudInfoFieldsInUseProvider(providerCloudInfo, editProviderCloudInfo);
+    checkFederatedIamNotInUse(provider, editProviderReq);
 
     // Collect existing and current regions into maps
     Map<String, Region> existingRegions =
@@ -1204,6 +1207,56 @@ public class CloudProviderHelper {
       ((ObjectNode) kubernetesInfo).remove(KUBE_CONFIG_FIELDS);
     }
     return detailsJson;
+  }
+
+  /**
+   * Nodes of a universe with federated IAM configured were set up from the provider's federation
+   * settings, so those settings cannot change while any universe is marked configured: not turned
+   * off, not pointed elsewhere, and not turned back on at all for a universe still marked from
+   * before, whose old targets are no longer known. The universe-level disable clears the mark
+   * without needing the targets.
+   */
+  private void checkFederatedIamNotInUse(Provider provider, Provider editProviderReq) {
+    if (federationSettingsNodesUse(provider).equals(federationSettingsNodesUse(editProviderReq))) {
+      return;
+    }
+    UUID providerUUID = provider.getUuid();
+    List<String> federatedUniverses =
+        Customer.get(provider.getCustomerUUID()).getUniversesForProvider(providerUUID).stream()
+            .filter(
+                u ->
+                    u.getUniverseDetails().clusters.stream()
+                        .anyMatch(
+                            c ->
+                                c.userIntent.isFederationConfigured()
+                                    && c.userIntent.getAllProviderUUIDs().contains(providerUUID)))
+            .map(Universe::getName)
+            .sorted()
+            .collect(Collectors.toList());
+    if (!federatedUniverses.isEmpty()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Federated IAM settings cannot be modified while universes use them: %s. Disable"
+                  + " cross cloud federated IAM on those universes first.",
+              String.join(", ", federatedUniverses)));
+    }
+  }
+
+  /**
+   * The federation settings a node is configured from: the audience, and the role ARN for S3. A
+   * node never federates to the cloud it runs on, so on an AWS or GCP provider the target for its
+   * own cloud is not read by any node.
+   */
+  private static Set<List<Object>> federationSettingsNodesUse(Provider provider) {
+    CloudType providerCloud = provider.getCloudCode();
+    return CloudInfoInterface.getCrossCloudFederationTargets(provider).stream()
+        .filter(t -> providerCloud == CloudType.onprem || t.targetCloud != providerCloud)
+        .map(
+            t ->
+                Arrays.<Object>asList(
+                    t.targetCloud, t.audience, t.targetCloud == CloudType.aws ? t.roleArn : null))
+        .collect(Collectors.toSet());
   }
 
   private void checkCloudInfoFieldsInUseProvider(
