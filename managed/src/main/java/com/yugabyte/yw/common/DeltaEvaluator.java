@@ -8,7 +8,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
-import java.util.Collections;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -77,6 +78,28 @@ public final class DeltaEvaluator {
         return DeltaType.UNKNOWN;
       }
       return DeltaType.fromString(node.get("$deltaType").asText());
+    }
+  }
+
+  /** Class representing an ordered delta node with its original index and delta type. */
+  static class OrderedDeltaNode {
+    private final int originalIndex;
+    private final DeltaType deltaType;
+    private final JsonNode node;
+
+    public OrderedDeltaNode(int originalIndex, DeltaType deltaType, JsonNode node) {
+      this.originalIndex = originalIndex;
+      this.deltaType = deltaType;
+      this.node = node;
+    }
+
+    public static Comparator<OrderedDeltaNode> getComparator() {
+      return (a, b) -> {
+        if (a.originalIndex != b.originalIndex) {
+          return Integer.compare(a.originalIndex, b.originalIndex);
+        }
+        return a.deltaType == DeltaType.DELETE ? -1 : 1;
+      };
     }
   }
 
@@ -248,61 +271,71 @@ public final class DeltaEvaluator {
       if (!newData.isArray()) {
         return DeltaNode.createReplaceJsonNode(currentData, newData);
       }
-
-      List<JsonNode> currentList = new ArrayList<>();
-      for (JsonNode element : currentData) {
-        currentList.add(element);
-      }
-      Collections.sort(currentList, (a, b) -> arrayElementComparator.compare(path, a, b));
-      List<JsonNode> newList = new ArrayList<>();
-      for (JsonNode element : newData) {
-        newList.add(element);
-      }
-      // Original order is not preserved.
-      Collections.sort(newList, (a, b) -> arrayElementComparator.compare(path, a, b));
-
-      ArrayNode deltaArray = MAPPER.createArrayNode();
+      // Sort the original indices based on the comparator on the elements.
+      Integer[] currentDataOrder = sortedIndices(path, currentData, arrayElementComparator);
+      Integer[] newDataOrder = sortedIndices(path, newData, arrayElementComparator);
+      List<OrderedDeltaNode> orderedDeltaNodes = new ArrayList<>();
       boolean hasChanges = false;
       int i = 0;
       int j = 0;
-      while (i < currentList.size() && j < newList.size()) {
-        int cmp = arrayElementComparator.compare(path, currentList.get(i), newList.get(j));
-        if (cmp < 0) {
-          deltaArray.add(MAPPER.valueToTree(DeltaNode.createDeleteJsonNode(currentList.get(i))));
-          hasChanges = true;
-          i++;
-        } else if (cmp > 0) {
-          deltaArray.add(MAPPER.valueToTree(DeltaNode.createAddJsonNode(newList.get(j))));
-          hasChanges = true;
-          j++;
+      while (i < currentDataOrder.length || j < newDataOrder.length) {
+        int cmp;
+        if (i >= currentDataOrder.length) {
+          // Newly element.
+          cmp = 1;
+        } else if (j >= newDataOrder.length) {
+          // Deleted element.
+          cmp = -1;
         } else {
-          JsonNode oldElement = currentList.get(i);
-          JsonNode newElement = newList.get(j);
+          cmp =
+              arrayElementComparator.compare(
+                  path, currentData.get(currentDataOrder[i]), newData.get(newDataOrder[j]));
+        }
+        if (cmp < 0) {
+          // Deleted case.
+          int currentOriginalIdx = currentDataOrder[i++];
+          JsonNode deltaNode =
+              MAPPER.valueToTree(
+                  DeltaNode.createDeleteJsonNode(currentData.get(currentOriginalIdx)));
+          orderedDeltaNodes.add(
+              new OrderedDeltaNode(currentOriginalIdx, DeltaType.DELETE, deltaNode));
+          hasChanges = true;
+        } else if (cmp > 0) {
+          // Added case.
+          int newOriginalIdx = newDataOrder[j++];
+          JsonNode deltaNode =
+              MAPPER.valueToTree(DeltaNode.createAddJsonNode(newData.get(newOriginalIdx)));
+          orderedDeltaNodes.add(new OrderedDeltaNode(newOriginalIdx, DeltaType.ADD, deltaNode));
+          hasChanges = true;
+        } else {
+          // Matched case - check if they are equal or need a nested delta.
+          int currentOriginalIdx = currentDataOrder[i++];
+          int newOriginalIdx = newDataOrder[j++];
+          JsonNode oldElement = currentData.get(currentOriginalIdx);
+          JsonNode newElement = newData.get(newOriginalIdx);
           if (!oldElement.equals(newElement)) {
-            JsonNode result =
+            JsonNode deltaNode =
                 buildDeltaJsonTree(path, oldElement, newElement, arrayElementComparator);
-
-            deltaArray.add(result);
+            orderedDeltaNodes.add(
+                new OrderedDeltaNode(newOriginalIdx, DeltaType.REPLACE, deltaNode));
             hasChanges = true;
           } else {
-            deltaArray.add(newElement);
+            orderedDeltaNodes.add(
+                new OrderedDeltaNode(newOriginalIdx, DeltaType.REPLACE, newElement));
           }
-          i++;
-          j++;
         }
       }
-      // Process the remaining elements in both.
-      while (i < currentList.size()) {
-        deltaArray.add(MAPPER.valueToTree(DeltaNode.createDeleteJsonNode(currentList.get(i))));
-        hasChanges = true;
-        i++;
+      if (hasChanges) {
+        ArrayNode deltaArray = MAPPER.createArrayNode();
+        // Sort back to the original order of the elements, with deletes first if there are multiple
+        // changes at the same index.
+        orderedDeltaNodes.sort(OrderedDeltaNode.getComparator());
+        for (OrderedDeltaNode delta : orderedDeltaNodes) {
+          deltaArray.add(delta.node);
+        }
+        return deltaArray;
       }
-      while (j < newList.size()) {
-        deltaArray.add(MAPPER.valueToTree(DeltaNode.createAddJsonNode(newList.get(j))));
-        hasChanges = true;
-        j++;
-      }
-      return hasChanges ? deltaArray : newData;
+      return newData;
     }
     if (currentData.isObject()) {
       if (currentData.equals(newData)) {
@@ -331,5 +364,17 @@ public final class DeltaEvaluator {
       return newData;
     }
     return DeltaNode.createReplaceJsonNode(currentData, newData);
+  }
+
+  private static Integer[] sortedIndices(
+      String path, JsonNode array, ArrayElementComparator arrayElementComparator) {
+    // Record the original indices of the elements first.
+    Integer[] indices = new Integer[array.size()];
+    for (int idx = 0; idx < array.size(); idx++) {
+      indices[idx] = idx;
+    }
+    Arrays.sort(
+        indices, (i, j) -> arrayElementComparator.compare(path, array.get(i), array.get(j)));
+    return indices;
   }
 }

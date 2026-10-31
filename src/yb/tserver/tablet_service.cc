@@ -35,6 +35,7 @@
 #include <algorithm>
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include <boost/algorithm/string/replace.hpp>
@@ -104,6 +105,7 @@
 #include "yb/tserver/pg_txn_snapshot_manager.h"
 #include "yb/tserver/read_query.h"
 #include "yb/tserver/service_util.h"
+#include "yb/tserver/tablet_flusher.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_local_lock_manager.h"
 #include "yb/tserver/ts_tablet_manager.h"
@@ -259,6 +261,9 @@ DEFINE_test_flag(bool, pause_tserver_get_split_key, false,
 DEFINE_test_flag(bool, pause_wait_for_ysql_backends_catalog_version, false,
     "Pause any WaitForYsqlBackendsCatalogVersion requests until flags is reset.");
 
+DEFINE_test_flag(bool, pause_ysql_upgrade, false,
+    "Pause any UpgradeYsql requests, after they start the upgrade, until flag is reset.");
+
 DEFINE_test_flag(bool, pause_wait_for_lockers, false,
     "Pause any WaitForLockers requests until flags is reset.");
 
@@ -346,7 +351,10 @@ DEFINE_test_flag(bool, persistence_dfatal_unstamped_pgsql_write, false,
     "DFATAL on a YSQL write without an origination stamp to a table outside template1.");
 
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(enable_tiered_storage);
 DECLARE_bool(ysql_enable_object_locking_infra);
+DECLARE_bool(enable_active_table_metrics_filtering);
+DECLARE_uint32(max_active_table_metrics_table_count);
 
 METRIC_DEFINE_gauge_uint64(server, ts_split_op_added, "Split OPs Added to Leader",
     yb::MetricUnit::kOperations, "Number of split operations added to the leader's Raft log.");
@@ -604,6 +612,9 @@ class WriteQueryCompletionCallback {
 
       if (status.IsTryAgain()) {
           LOG(DETAIL) << "Write failed: " << status;
+      } else if (TabletServerError(status).value() == TabletServerErrorPB::PERSISTING_BLOCKED) {
+          // Expected while persisting is stopped, once per refused write.
+          YB_LOG_EVERY_N_SECS(INFO, 10) << YB_DETAIL_LOG_PREFIX << "Write failed: " << status;
       } else {
           LOG(INFO) << "Write failed: " << status;
       }
@@ -1483,6 +1494,9 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
       SetupErrorAndRespond(resp->mutable_error(), status, &context);
       return;
     }
+    TEST_SYNC_POINT_CALLBACK(
+        "TabletServiceImpl::UpdateTransaction::BeforeStampedCommitAppend",
+        const_cast<UpdateTransactionRequestPB*>(req));
   }
 
   auto state = std::make_unique<tablet::UpdateTxnOperation>(tablet.tablet);
@@ -1972,169 +1986,9 @@ void TabletServiceAdminImpl::DeleteTablet(const DeleteTabletRequestPB* req,
 
 namespace {
 
-class TabletsFlusherBase {
- public:
-  explicit TabletsFlusherBase(
-      const TabletServiceAdminImpl& service,
-      const TSTabletManager::TabletPtrs& tablets,
-      FlushTabletsResponsePB& resp)
-    : service_(service), tablets_(tablets), resp_(resp)
-  {}
-
-  virtual ~TabletsFlusherBase() = default;
-
-  Status Run();
-
-  auto LogPrefix() const {
-    return service_.LogPrefix();
-  }
-
- private:
-  virtual Status Flush(const tablet::TabletPtr& tablet) = 0;
-  virtual Status WaitForFlush(const tablet::TabletPtr& tablet) = 0;
-
-  const TabletServiceAdminImpl& service_;
-  const TSTabletManager::TabletPtrs& tablets_;
-  FlushTabletsResponsePB& resp_;
-};
-
-Status TabletsFlusherBase::Run() {
-  for (const auto& tablet : tablets_) {
-    resp_.set_failed_tablet_id(tablet->tablet_id());
-    RETURN_NOT_OK(Flush(tablet));
-
-    // Refer to https://github.com/yugabyte/yugabyte-db/issues/16116.
-    if (!FLAGS_TEST_skip_force_superblock_flush) {
-      RETURN_NOT_OK(tablet->FlushSuperblock(tablet::OnlyIfDirty::kTrue));
-    }
-    resp_.clear_failed_tablet_id();
-  }
-
-  // Wait for end of all flush operations.
-  for (const auto& tablet : tablets_) {
-    resp_.set_failed_tablet_id(tablet->tablet_id());
-    RETURN_NOT_OK(WaitForFlush(tablet));
-    resp_.clear_failed_tablet_id();
-  }
-
-  return Status::OK();
-}
-
-class TabletsFlusher final : public TabletsFlusherBase {
- public:
-  explicit TabletsFlusher(
-    const TabletServiceAdminImpl& service,
-      const TSTabletManager::TabletPtrs& tablets,
-      const tablet::FlushFlags flush_flags,
-      FlushTabletsResponsePB& resp)
-      : TabletsFlusherBase(service, tablets, resp),
-        flush_flags_(flush_flags) {
-    VLOG_WITH_PREFIX(1) << "TabletsFlusher: flush_flags: " << std::to_underlying(flush_flags_);
-  }
-
- private:
-  Status Flush(const tablet::TabletPtr& tablet) override {
-    return tablet->Flush(
-        tablet::FlushMode::kAsync, flush_flags_, rocksdb::FlushReason::kAdminFlush);
-  }
-
-  Status WaitForFlush(const tablet::TabletPtr& tablet) override {
-    return tablet->WaitForFlush();
-  }
-
-  const tablet::FlushFlags flush_flags_;
-};
-
-class VectorIndexFlusher : public TabletsFlusherBase {
- public:
-  explicit VectorIndexFlusher(
-      const TabletServiceAdminImpl& service,
-      const TSTabletManager::TabletPtrs& tablets,
-      TableIds&& vector_index_ids,
-      FlushTabletsResponsePB& resp)
-      : TabletsFlusherBase(service, tablets, resp),
-        vector_index_ids_(std::move(vector_index_ids)) {
-    VLOG_WITH_PREFIX(1) << "VectorIndexFlusher: vector index ids: "
-                        << (vector_index_ids_.size() ? AsString(vector_index_ids_) : "all");
-  }
-
- private:
-  Status Flush(const tablet::TabletPtr& tablet) override {
-    auto [it, inserted] = tablet_vector_indexes_.try_emplace(
-      tablet->tablet_id(),
-      tablet->vector_indexes().Collect(vector_index_ids_)
-    );
-
-    if (!inserted) {
-      LOG_WITH_PREFIX(DFATAL)
-          << "Flush of vector indexes is already running for tablet " << tablet->tablet_id();
-      return Status::OK();
-    }
-
-    it->second.Flush();
-    return Status::OK();
-  }
-
-  Status WaitForFlush(const tablet::TabletPtr& tablet) override {
-    auto it = tablet_vector_indexes_.find(tablet->tablet_id());
-    if (it == tablet_vector_indexes_.end()) {
-      LOG_WITH_PREFIX(DFATAL) << "Vector indexes are not found for tablet " << tablet->tablet_id();
-      return Status::OK();
-    }
-
-    return it->second.WaitForFlush();
-  }
-
-  TableIds vector_index_ids_;
-  std::unordered_map<TabletId, tablet::VectorIndexList> tablet_vector_indexes_;
-};
-
-bool IsRegularOnly(const FlushTabletsRequestPB& req) {
-  return req.flags() == tablet::FLUSH_COMPACT_REGULAR_FOR_TEST_ONLY;
-}
-
 bool IsVectorIndexOnly(const FlushTabletsRequestPB& req) {
   return (req.flags() == tablet::FLUSH_COMPACT_VECTOR_INDEX_ONLY) ||
          (req.flags() == tablet::FLUSH_COMPACT_DEFAULT && req.vector_index_ids_size());
-}
-
-auto CopyVectorIndexIds(const FlushTabletsRequestPB& req) {
-  return TableIds{ req.vector_index_ids().begin(), req.vector_index_ids().end() };
-}
-
-Status TriggerFlush(
-    const TabletServiceAdminImpl& service,
-    const TSTabletManager::TabletPtrs& tablets,
-    const FlushTabletsRequestPB& req,
-    FlushTabletsResponsePB& resp) {
-  // FlushCompactFlags for FLUSH operation:
-  // 1. FLUSH_COMPACT_DEFAULT
-  //    Flush regular + intents + vector indexes. If vector_index_ids field is not empty,
-  //    the value is treated as FLUSH_COMPACT_VECTOR_INDEX_ONLY.
-  //
-  // 2. FLUSH_COMPACT_REGULAR_FOR_TEST_ONLY
-  //    Flush only regular db, used in tests only.
-  //
-  // 3. FLUSH_COMPACT_VECTOR_INDEX_EXCLUDED
-  //    Not applicable for FLUSH operation.
-  //
-  // 4. FLUSH_COMPACT_VECTOR_INDEX_ONLY
-  //    Flush only vector indexes. Empty vector_index_ids means all vector indexes.
-  //
-  // 5. FLUSH_COMPACT_ALL
-  //    Flush regular + intents + vector indexes. Empty vector_index_ids means all vector indexes.
-  DCHECK_EQ(req.operation(), FlushTabletsRequestPB::FLUSH);
-  SCHECK_FORMAT(
-    req.flags() != tablet::FLUSH_COMPACT_VECTOR_INDEX_EXCLUDED, InvalidArgument,
-    "Flag [$0] is not supported for FLUSH operation", req.flags());
-
-  if (IsVectorIndexOnly(req)) {
-    return VectorIndexFlusher{ service, tablets, CopyVectorIndexIds(req), resp }.Run();
-  }
-
-  const tablet::FlushFlags flush_flags =
-      IsRegularOnly(req) ? tablet::FlushFlags::kRegular : tablet::FlushFlags::kAllDbs;
-  return TabletsFlusher{ service, tablets, flush_flags, resp }.Run();
 }
 
 Result<TableIdsPtr> CollectVectorIndexesForCompaction(const FlushTabletsRequestPB& req) {
@@ -2144,7 +1998,7 @@ Result<TableIdsPtr> CollectVectorIndexesForCompaction(const FlushTabletsRequestP
     return nullptr;
   }
 
-  return std::make_shared<TableIds>(CopyVectorIndexIds(req));
+  return std::make_shared<TableIds>(req.vector_index_ids().begin(), req.vector_index_ids().end());
 }
 
 Status TriggerCompact(
@@ -2229,10 +2083,22 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
   }
   switch (req->operation()) {
     case FlushTabletsRequestPB::FLUSH: {
-      RETURN_UNKNOWN_ERROR_IF_NOT_OK(
-          TriggerFlush(*this, tablet_ptrs, *req, *resp),
-          resp, &context);
-      break;
+      auto deadline = context.GetClientDeadline();
+      auto shared_context = std::make_shared<rpc::RpcContext>(std::move(context));
+      auto status = server_->tablet_manager()->tablet_flusher().Submit(
+          std::move(tablet_ptrs), *req, deadline,
+          [shared_context, resp](const Status& status, const TabletId& failed_tablet_id) {
+            if (!status.ok()) {
+              resp->set_failed_tablet_id(failed_tablet_id);
+              SetupErrorAndRespond(resp->mutable_error(), status, shared_context.get());
+            } else {
+              shared_context->RespondSuccess();
+            }
+          });
+      if (!status.ok()) {
+        SetupErrorAndRespond(resp->mutable_error(), status, shared_context.get());
+      }
+      return;
     }
     case FlushTabletsRequestPB::COMPACT: {
       RETURN_UNKNOWN_ERROR_IF_NOT_OK(
@@ -2283,6 +2149,25 @@ void FillTierMigrationStatusPB(
   }
 }
 
+// Tiered storage is a preview feature. Its admin RPCs are refused, not silently ignored, so a
+// caller never believes a migration was started or reads tier info that nothing maintains.
+template <class Resp>
+bool CheckTieredStorageEnabledOrRespond(
+    const char* method_name, Resp* resp, rpc::RpcContext* context) {
+  if (FLAGS_enable_tiered_storage) {
+    return true;
+  }
+  SetupErrorAndRespond(
+      resp->mutable_error(),
+      STATUS_FORMAT(
+          NotSupported,
+          "$0 requires tiered storage, which is disabled. Set the preview flag "
+          "--enable_tiered_storage=true to use it.",
+          method_name),
+      context);
+  return false;
+}
+
 }  // namespace
 
 void TabletServiceAdminImpl::AlterTabletTier(
@@ -2291,6 +2176,9 @@ void TabletServiceAdminImpl::AlterTabletTier(
     rpc::RpcContext context) {
   if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "AlterTabletTier", req, resp,
                                &context)) {
+    return;
+  }
+  if (!CheckTieredStorageEnabledOrRespond("AlterTabletTier", resp, &context)) {
     return;
   }
 
@@ -2337,6 +2225,9 @@ void TabletServiceAdminImpl::GetTabletTierInfo(
     rpc::RpcContext context) {
   if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "GetTabletTierInfo", req, resp,
                                &context)) {
+    return;
+  }
+  if (!CheckTieredStorageEnabledOrRespond("GetTabletTierInfo", resp, &context)) {
     return;
   }
 
@@ -2620,7 +2511,23 @@ void TabletServiceAdminImpl::UpgradeYsql(
     return;
   }
 
+  // A caller that times out does not stop the upgrade it started, so its retry can arrive while
+  // that upgrade is still running. Two upgrades running at once apply the same migrations to the
+  // same databases and fail each other with serialization errors. Wait for the running upgrade
+  // instead. If it succeeded, this upgrade finds nothing left to do. Reserve 1s to respond before
+  // the caller's deadline.
+  std::unique_lock lock(ysql_upgrade_mutex_, std::defer_lock);
+  if (!lock.try_lock_until(context.GetClientDeadline() - 1s)) {
+    SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS(TimedOut, "Timed out waiting for a YSQL upgrade already in progress"),
+        &context);
+    return;
+  }
+
   LOG(INFO) << "Starting YSQL upgrade";
+
+  TEST_PAUSE_IF_FLAG(TEST_pause_ysql_upgrade);
 
   pgwrapper::YsqlUpgradeHelper upgrade_helper(server_->pgsql_proxy_bind_address(),
                                               server_->GetSharedMemoryPostgresAuthKey(),
@@ -3784,6 +3691,55 @@ void TabletServiceImpl::GetMetrics(const GetMetricsRequestPB* req,
   context.RespondSuccess();
 }
 
+void TabletServiceImpl::SetActiveTableIdsForMetrics(
+    const SetActiveTableIdsForMetricsRequestPB* req, SetActiveTableIdsForMetricsResponsePB* resp,
+    rpc::RpcContext context) {
+  // Reported on every response, including rejections, so the caller always learns whether any
+  // scrape can use the list it just sent.
+  resp->set_filtering_enabled(FLAGS_enable_active_table_metrics_filtering);
+
+  // DocDB table IDs are 32 hex characters, and colocation parent IDs are about twice that. The
+  // bound keeps a caller from parking arbitrarily large strings in tablet server memory.
+  constexpr size_t kMaxTableIdLength = 256;
+  // Reserve no more than the limit allows, so an oversized request cannot force a large allocation
+  // before the limit check below rejects it.
+  std::unordered_set<std::string> table_ids;
+  table_ids.reserve(std::min<size_t>(
+      req->table_ids_size(),
+      static_cast<size_t>(FLAGS_max_active_table_metrics_table_count) + 1));
+  for (const auto& table_id : req->table_ids()) {
+    if (table_id.empty() || table_id.size() > kMaxTableIdLength) {
+      SetupErrorAndRespond(
+          resp->mutable_error(),
+          STATUS_FORMAT(
+              InvalidArgument, "table_ids must be between 1 and $0 bytes long, found $1 bytes",
+              kMaxTableIdLength, table_id.size()),
+          &context);
+      return;
+    }
+    // Checked while copying, so an oversized request is rejected after at most one entry over the
+    // limit instead of after the whole request has been copied. Duplicates do not count.
+    if (table_ids.insert(table_id).second &&
+        table_ids.size() > FLAGS_max_active_table_metrics_table_count) {
+      SetupErrorAndRespond(
+          resp->mutable_error(),
+          STATUS_FORMAT(
+              InvalidArgument, "Active table list contains more than $0 tables",
+              FLAGS_max_active_table_metrics_table_count),
+          &context);
+      return;
+    }
+  }
+
+  const auto status =
+      server_->SetActiveTableIdsForMetrics(std::move(table_ids), req->list_version());
+  if (!status.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), status, &context);
+    return;
+  }
+  context.RespondSuccess();
+}
+
 void TabletServiceImpl::PgRemoteExec(
     const PgRemoteExecRequestPB* req, PgRemoteExecResponsePB* resp,
     rpc::RpcContext context) {
@@ -4365,15 +4321,53 @@ void TabletServiceImpl::Shutdown() {
 
 Result<VerifyVectorIndexesResponsePB> TabletServiceImpl::VerifyVectorIndexes(
     const VerifyVectorIndexesRequestPB& req, CoarseTimePoint deadline) {
-  auto tablet_peers = server_->tablet_manager()->GetTabletPeers();
-  for (auto& peer : tablet_peers) {
+  std::vector<tablet::TabletPeerPtr> tablet_peers;
+  if (req.tablet_id().empty()) {
+    SCHECK(req.index_table_ids().empty(), InvalidArgument,
+           "Vector index ids are specified without a tablet id");
+    tablet_peers = server_->tablet_manager()->GetTabletPeers();
+  } else {
+    tablet_peers.push_back(
+        VERIFY_RESULT(LookupTabletPeer(server_->tablet_peer_lookup(), req.tablet_id()))
+            .tablet_peer);
+  }
+  VerifyVectorIndexesResponsePB resp;
+  for (const auto& peer : tablet_peers) {
     auto tablet = peer->shared_tablet_maybe_null();
     if (!tablet) {
       continue;
     }
-    RETURN_NOT_OK(tablet->vector_indexes().Verify());
+    std::vector<TableId> index_table_ids(
+        req.index_table_ids().begin(), req.index_table_ids().end());
+    if (index_table_ids.empty()) {
+      auto list = tablet->vector_indexes().List();
+      if (!list) {
+        continue;
+      }
+      for (const auto& vector_index : *list) {
+        // A deactivated index cannot be checked, see CheckVectorIndex.
+        if (!vector_index->IsDeactivated()) {
+          index_table_ids.push_back(vector_index->table_id());
+        }
+      }
+    }
+    auto consensus = peer->GetConsensus();
+    auto role = consensus.ok() ? (**consensus).role() : PeerRole::UNKNOWN_ROLE;
+    for (const auto& index_table_id : index_table_ids) {
+      auto& check = *resp.add_checks();
+      check.set_tablet_id(peer->tablet_id());
+      check.set_index_table_id(index_table_id);
+      check.set_role(role);
+      auto result = tablet->vector_indexes().Check(
+          index_table_id, req.max_inconsistencies(), deadline);
+      if (result.ok()) {
+        *check.mutable_result() = std::move(*result);
+      } else {
+        StatusToPB(result.status(), check.mutable_status());
+      }
+    }
   }
-  return VerifyVectorIndexesResponsePB();
+  return resp;
 }
 
 Result<DumpTabletDataResponsePB> TabletServiceImpl::DumpTabletData(

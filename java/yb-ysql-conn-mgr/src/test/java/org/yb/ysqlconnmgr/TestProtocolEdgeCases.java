@@ -113,4 +113,68 @@ public class TestProtocolEdgeCases extends BaseYsqlConnMgr {
 
         }
     }
+
+    // A simple Query pipelined behind a failing extended-protocol message is discarded by the
+    // backend's ignore_till_sync window and gets no ReadyForQuery. ConnMgr must not keep counting
+    // it as a pending sync, or the relay paused at the following Sync never resumes and the Query
+    // pipelined after the Sync is never forwarded.
+    @Test
+    public void testQueryDiscardedBeforeSync() throws Exception {
+        try (WireConn conn = rawConnBuilder().socketTimeoutMs(15000).connect()) {
+            conn.createPipeline()
+                .executePortal("").expectError("34000", "portal \"\" does not exist")
+                .query("DROP TABLE IF EXISTS t_discarded")
+                .sync()
+                .query("SELECT 1").row("1")
+                .run();
+
+            conn.createPipeline()
+                .query("SELECT 1").row("1")
+                .executePortal("").expectError("34000", "portal \"\" does not exist")
+                .query("DROP TABLE IF EXISTS t_discarded")
+                .query("DROP TABLE IF EXISTS t_discarded")
+                .sync()
+                .query("SELECT 2").row("2")
+                .run();
+        }
+    }
+
+    // A client disconnects mid-Query on a backend holding more prepared statements than
+    // ysql_conn_mgr_max_prepared_statements.
+    // 1. BEGIN keeps the client attached, so no detach-time reset evicts s1/s2 before the
+    //    disconnect.
+    // 2. The reset path, not the relay, receives the Query's YbQueryAck.
+    // 3. Reset's LRU cleanup then sends a Sync of its own, and its ROLLBACK ends the open
+    //    transaction so the backend goes back to the pool.
+    // 4. The next client on that backend must not hang at its first Sync.
+    @Test
+    public void testQueryAckDuringResetWithLruCleanup() throws Exception {
+        Map<String, String> tserverFlags = new HashMap<>(SINGLE_BACKEND_FLAGS);
+        tserverFlags.put("ysql_conn_mgr_max_prepared_statements", "1");
+        restartClusterWithAdditionalFlags(Collections.emptyMap(), tserverFlags);
+
+        String pid;
+        try (WireConn conn = rawConnBuilder().connect()) {
+            pid = conn.createPipeline()
+                .query("BEGIN")
+                .query("SELECT pg_backend_pid()").label("pid")
+                .parse("s1", "SELECT 1")
+                .parse("s2", "SELECT 2")
+                .sync()
+                .run()
+                .value("pid");
+            conn.sendRaw(PgWireProtocol.buildQuery("SELECT pg_sleep(2)"));
+            Thread.sleep(500);
+            conn.closeAbruptly();
+        }
+
+        try (WireConn conn = rawConnBuilder().socketTimeoutMs(15000).connect()) {
+            PipelineResult r = conn.createPipeline()
+                .parse("SELECT 1").bind().execute().row("1")
+                .sync()
+                .query("SELECT pg_backend_pid()").label("pid")
+                .run();
+            assertEquals("Expected the single pooled backend to be reused", pid, r.value("pid"));
+        }
+    }
 }

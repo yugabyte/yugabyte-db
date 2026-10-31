@@ -10,6 +10,7 @@ import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -59,15 +60,10 @@ public class ConfigureNodeExporterTls extends UniverseTaskBase {
   public void run() {
     refreshUnrecordedNodes();
     Universe universe = getUniverse();
-    // YBM runs its own collectors, which scrape the exporters over plain HTTP.
-    boolean cloudEnabled =
-        confGetter.getConfForScope(
-            Customer.get(universe.getCustomerId()), CustomerConfKeys.cloudEnabled);
     boolean https =
         Universe.shouldEnableNodeExporterHttps(
             universe,
-            !cloudEnabled
-                && confGetter.getConfForScope(universe, UniverseConfKeys.nodeExporterTlsEnabled));
+            isNodeExporterTlsAllowed(confGetter, Customer.get(universe.getCustomerId()), universe));
     if (https != universe.isNodeExporterHttps()) {
       switchNodes(universe, https);
       // The scrapers read the flag from the universe, so it is saved first. The pending mark goes
@@ -89,6 +85,14 @@ public class ConfigureNodeExporterTls extends UniverseTaskBase {
     }
     refreshOtelCollectors(universe);
     saveUniverseDetails(u -> u.updateConfig(ImmutableMap.of(SCRAPERS_PENDING, "false")));
+  }
+
+  /** Whether YBA's config lets the universe serve node_exporter over HTTPS. */
+  public static boolean isNodeExporterTlsAllowed(
+      RuntimeConfGetter confGetter, Customer customer, Universe universe) {
+    // YBM runs its own collectors, which scrape the exporters over plain HTTP.
+    return confGetter.getConfForScope(universe, UniverseConfKeys.nodeExporterTlsEnabled)
+        && !confGetter.getConfForScope(customer, CustomerConfKeys.cloudEnabled);
   }
 
   private void switchNodes(Universe universe, boolean https) {

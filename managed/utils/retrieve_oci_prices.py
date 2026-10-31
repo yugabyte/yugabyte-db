@@ -26,8 +26,15 @@ UPDATE_INTERVAL = timedelta(weeks=4)
 DATE_FORMAT = "%Y-%m-%d"
 
 # displayName patterns mapping to family key. Order matters (more specific first).
-# Dense I/O, GPU, Ax, VMware, Free, and Cloud@Customer are intentionally excluded.
+# GPU, Ax, VMware, Free, and Cloud@Customer are intentionally excluded.
+# Dense I/O E4/E5 bill a separate NVMe TB meter. Dense I/O X7 and HPC include
+# local NVMe in the OCPU rate, so they stay distinct from Standard X7 / E5.
 COMPUTE_FAMILY_PATTERNS = [
+    (re.compile(r"Dense\s*I/?O.*E5", re.I), "DenseIOE5"),
+    (re.compile(r"Dense\s*I/?O.*E4", re.I), "DenseIOE4"),
+    (re.compile(r"Dense\s*I/?O.*X7", re.I), "DenseIOX7"),
+    (re.compile(r"\bHPC\b.*E5", re.I), "HPCE5"),
+    (re.compile(r"\bHPC\b.*X7", re.I), "HPCX7"),
     (re.compile(r"Compute - Optimized - X9", re.I), "OptimizedX9"),
     (re.compile(r"Compute - Standard - X9", re.I), "X9"),
     (re.compile(r"Compute - Standard - E6(?!.*Ax)", re.I), "E6"),
@@ -45,7 +52,6 @@ COMPUTE_FAMILY_PATTERNS = [
 ]
 
 SKIP_NAME_PATTERNS = [
-    re.compile(r"Dense\s*I/?O", re.I),
     re.compile(r"\bGPU\b", re.I),
     re.compile(r"\bAx\b", re.I),
     re.compile(r"VMware", re.I),
@@ -95,6 +101,15 @@ def is_memory_meter(display_name, metric_name):
     return "Gigabyte" in metric or "Memory" in display_name
 
 
+def is_nvme_meter(display_name, metric_name):
+    return "nvme" in f"{display_name} {metric_name}".lower()
+
+
+# Bare-metal rows are ingested only for local-NVMe families. Standard BM shapes share
+# the VM SKU rates. HPC and Dense I/O X7 are published as bare-metal meters.
+BARE_METAL_FAMILIES = {"DenseIOE4", "DenseIOE5", "DenseIOX7", "HPCE5", "HPCX7"}
+
+
 def parse_products(items):
     compute_families = {}
     block_volume = {}
@@ -107,19 +122,24 @@ def parse_products(items):
         if usd is None:
             continue
 
-        if category == "Compute - Virtual Machine":
+        if category in ("Compute - Virtual Machine", "Compute - Bare Metal"):
             family = match_compute_family(display_name)
             if not family:
+                continue
+            if category == "Compute - Bare Metal" and family not in BARE_METAL_FAMILIES:
                 continue
             family_rates = compute_families.setdefault(
                 family, {"ocpuPerHour": 0.0, "memoryGbPerHour": 0.0}
             )
             if is_ocpu_meter(display_name, metric_name):
                 family_rates["ocpuPerHour"] = usd
+            elif is_nvme_meter(display_name, metric_name):
+                # Oracle bills local NVMe per terabyte-hour, separate from OCPU.
+                family_rates["nvmeTbPerHour"] = usd
             elif is_memory_meter(display_name, metric_name):
                 family_rates["memoryGbPerHour"] = usd
             else:
-                # Older shapes bill OCPU only (e.g. E2, X5, X7, B1).
+                # Older shapes bill OCPU only (e.g. E2, X5, X7, B1, Dense I/O X7, HPC).
                 family_rates["ocpuPerHour"] = usd
 
         elif category == "Storage - Block Volumes":
@@ -158,6 +178,14 @@ def main():
         raise RuntimeError("No standard compute family prices found in OCI product list")
     if "storageGbPerMonth" not in block_volume or "vpuPerGbPerMonth" not in block_volume:
         raise RuntimeError("Missing OCI block volume meters in product list")
+    for family in ("DenseIOE4", "DenseIOE5"):
+        rates = compute_families.get(family) or {}
+        if rates.get("ocpuPerHour", 0) <= 0 or "nvmeTbPerHour" not in rates:
+            raise RuntimeError(f"Missing OCI Dense I/O OCPU or NVMe meter for {family}")
+    for family in ("DenseIOX7", "HPCX7", "HPCE5"):
+        rates = compute_families.get(family) or {}
+        if rates.get("ocpuPerHour", 0) <= 0:
+            raise RuntimeError(f"Missing OCI OCPU meter for {family}")
 
     logging.info(
         "Parsed %d compute families and block volume meters", len(compute_families)

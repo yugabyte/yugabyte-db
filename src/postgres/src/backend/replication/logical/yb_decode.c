@@ -32,12 +32,15 @@
 #include "replication/walsender_private.h"
 #include "replication/yb_decode.h"
 #include "replication/yb_virtual_wal_client.h"
+#include "utils/catcache.h"
 #include "utils/rel.h"
 #include "yb/yql/pggate/util/ybc_guc.h"
 #include "yb/yql/pggate/ybc_gflags.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 static void YBDecodeDDL(LogicalDecodingContext *ctx, XLogReaderState *record);
+static void YBDecodePublicationRefresh(LogicalDecodingContext *ctx,
+									   XLogReaderState *record);
 static void YBDecodeInsert(LogicalDecodingContext *ctx, XLogReaderState *record);
 static void YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record);
 static void YBDecodeDelete(LogicalDecodingContext *ctx, XLogReaderState *record);
@@ -134,6 +137,12 @@ YBLogicalDecodingProcessRecord(LogicalDecodingContext *ctx,
 				break;
 			}
 
+		case YB_PG_ROW_MESSAGE_ACTION_PUBLICATION_REFRESH:
+			{
+				YBDecodePublicationRefresh(ctx, record);
+				break;
+			}
+
 		case YB_PG_ROW_MESSAGE_ACTION_COMMIT:
 			{
 				YBDecodeCommit(ctx, record);
@@ -181,6 +190,32 @@ YBDecodeDDL(LogicalDecodingContext *ctx, XLogReaderState *record)
 	change->action = YB_REORDER_BUFFER_CHANGE_DDL;
 	change->origin_id = yb_record->xrepl_origin_id;
 	change->data.yb_ddl.table_oid = yb_record->table_oid;
+
+	ReorderBufferProcessXid(ctx->reorder, yb_record->xid,
+							ctx->reader->ReadRecPtr);
+	ReorderBufferQueueChange(ctx->reorder, yb_record->xid,
+							 ctx->reader->ReadRecPtr, change,
+							 false /* toast_insert */ );
+
+	/* Remember to invalidate caches before reorder-buffer replay. */
+	ctx->yb_inval_catalog_on_decode_commit = true;
+}
+
+/*
+ * Queue a publication invalidation marker, so that replay drops the output
+ * plugin's publication info at this point of the transaction and rebuilds it
+ * from the catalog as of the following changes.
+ */
+static void
+YBDecodePublicationRefresh(LogicalDecodingContext *ctx,
+						   XLogReaderState *record)
+{
+	const YbVirtualWalRecord *yb_record = record->yb_virtual_wal_record;
+	ReorderBufferChange *change = ReorderBufferGetChange(ctx->reorder);
+
+	Assert(*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl);
+
+	change->action = YB_REORDER_BUFFER_CHANGE_PUBLICATION_INVALIDATION;
 
 	ReorderBufferProcessXid(ctx->reorder, yb_record->xid,
 							ctx->reader->ReadRecPtr);
@@ -503,14 +538,17 @@ YBDecodeCommit(LogicalDecodingContext *ctx, XLogReaderState *record)
 		 yb_record->xid, commit_lsn, end_lsn);
 
 	/*
-	 * If this transaction block contains a DDL, we need to invalidate the
-	 * caches so that the reorderbuffer replay doesn't read future catalog
-	 * entries.
+	 * If this transaction block contains a DDL or a publication refresh, we
+	 * need to invalidate the caches so that the reorderbuffer replay doesn't
+	 * read future catalog entries. Publication refresh reads, for example,
+	 * cache pg_publication rows as of a point later than the changes queued
+	 * before it.
 	 */
 	if (ctx->yb_inval_catalog_on_decode_commit)
 	{
 		Assert(*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl);
 		YBCInvalidateCachesForHistoricalReadContext();
+		ResetCatalogCaches();
 	}
 
 	ReorderBufferCommit(ctx->reorder, yb_record->xid, commit_lsn, end_lsn,
@@ -705,6 +743,8 @@ YBHandleRelcacheRefresh(LogicalDecodingContext *ctx, XLogReaderState *record)
 		case YB_PG_ROW_MESSAGE_ACTION_BEGIN:
 			yb_switch_fallthrough();
 		case YB_PG_ROW_MESSAGE_ACTION_COMMIT:
+			yb_switch_fallthrough();
+		case YB_PG_ROW_MESSAGE_ACTION_PUBLICATION_REFRESH:
 			return;
 	}
 }

@@ -89,7 +89,24 @@ insert into queries values
         select b from r where b <= 500 and b % 100 <= 33$$),
 
     (DEFAULT, $$/*+ BitmapScan(r) */
-        select b from r where b <= 500 and b % 100 <= 33 and non_pushable(b) <= 500$$)
+        select b from r where b <= 500 and b % 100 <= 33 and non_pushable(b) <= 500$$),
+
+    -- a has 10 rows per value (i_r_a).  A distinct index scan returns one row
+    -- per group, so at every stage its estimate should be one tenth of the
+    -- plain scan's over the same predicates: the index condition on groups,
+    -- the storage filter on the prefix column passing or failing whole
+    -- groups, the local filter on the output.
+    (DEFAULT, $$select a from r where a <= 500$$),
+
+    (DEFAULT, $$select a from r where a <= 500 and a % 100 <= 33$$),
+
+    (DEFAULT, $$select a from r where a <= 500 and a % 100 <= 33 and non_pushable(a) <= 500$$),
+
+    (DEFAULT, $$select distinct a from r where a <= 500$$),
+
+    (DEFAULT, $$select distinct a from r where a <= 500 and a % 100 <= 33$$),
+
+    (DEFAULT, $$select distinct a from r where a <= 500 and a % 100 <= 33 and non_pushable(a) <= 500$$)
 ;
 
 drop type if exists index_plan_rows cascade;

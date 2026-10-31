@@ -610,6 +610,7 @@ LaunchParallelWorkers(ParallelContext *pcxt)
 		 */
 		if (YBCIsRestartReadPointRequested())
 			return;
+		YBFlushBufferedOperations(YBCMakeFlushDebugContextParallelWorkers());
 		HandleYBStatus(YBCPgEnsureReadPoint());
 	}
 

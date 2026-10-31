@@ -45,6 +45,7 @@
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.pb.h"
 
+#include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
@@ -85,6 +86,7 @@ METRIC_DECLARE_entity(server);
 METRIC_DECLARE_counter(rpc_inbound_calls_created);
 METRIC_DECLARE_counter(rpc_inbound_calls_failed);
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
+METRIC_DECLARE_histogram(handler_latency_yb_tserver_PgClientService_ListSlotEntries);
 
 namespace yb::pgwrapper {
 
@@ -6464,6 +6466,155 @@ TEST_F(PgLibPqTest, DumpTabletData) {
   }
 
   ASSERT_OK(ValidateTabletDataAcrossReplicas(tablet_id));
+}
+
+// pg_stat_replication must not wait for the cdc_state table when it doesn't exist (#34797).
+TEST_F(PgLibPqTest, PgStatReplicationWithoutCdcStateTable) {
+  auto list_slot_entries_calls = [this] {
+    return pg_ts->GetMetric<int64>(
+        &METRIC_ENTITY_server, "yb.tabletserver",
+        &METRIC_handler_latency_yb_tserver_PgClientService_ListSlotEntries, "total_count");
+  };
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET statement_timeout = '10s'"));
+  const auto initial_calls = ASSERT_RESULT(list_slot_entries_calls());
+
+  // No walsenders, so no ListSlotEntries RPC.
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT COUNT(*) FROM pg_stat_replication")), 0);
+  ASSERT_EQ(ASSERT_RESULT(list_slot_entries_calls()), initial_calls);
+
+  // A replication connection without a slot makes ListSlotEntries run without cdc_state.
+  auto repl_conn = ASSERT_RESULT(ConnectToDBWithReplication("yugabyte"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT COUNT(*) FROM pg_stat_replication")), 1);
+  ASSERT_EQ(ASSERT_RESULT(list_slot_entries_calls()), initial_calls + 1);
+}
+
+// YSQL upgrade re-runs a migration that fails with a serialization failure, which concurrent DDL
+// can cause (#32301).
+//
+// Flow:
+// 1. Create a database and enable yb_enable_extended_sql_codes on it, as a user could. The upgrade
+//    connection must override it, or the injected read restart (YB002) would not reach
+//    ysql_upgrade as 40001 and would not be retried.
+// 2. Make the database look one migration behind, so the UpgradeYsql RPC re-applies the newest
+//    migration to it and to no other database.
+// 3. Inject two failures with TEST_ysql_upgrade_fail_migration_attempts. Each failing attempt runs
+//    the whole script, whose statements commit, and then a new transaction block raises YB002 and
+//    is left aborted. So each retry needs a ROLLBACK and an idempotent re-run of a script whose
+//    changes are already in the catalog. With the default retry budget the upgrade succeeds and
+//    records the migration once.
+// 4. Lower ysql_upgrade_migration_max_retries to 1, so the two injected failures exhaust it. The
+//    upgrade then fails with the injected error and does not record the migration.
+//
+// Because the test re-applies whichever migration is newest, a new migration that errors when
+// re-run also fails here. TestYsqlUpgrade.upgradeIsIdempotent is what checks that a re-run leaves
+// the catalog, including OIDs, unchanged.
+TEST_F(PgLibPqTest, YsqlUpgradeRetriesSerializationFailure) {
+  constexpr auto kDbName = "upgrade_retry_db";
+
+  // Step 1: the database setting applies to every new connection to it, including the one
+  // ysql_upgrade opens.
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDbName));
+    ASSERT_OK(conn.ExecuteFormat(
+        "ALTER DATABASE $0 SET yb_enable_extended_sql_codes = true", kDbName));
+  }
+  auto conn = ASSERT_RESULT(ConnectToDB(kDbName));
+
+  // ysql_upgrade takes a database's version from the highest row in its pg_yb_migration. A fresh
+  // database holds a single row, the newest migration.
+  const auto [major, minor] = ASSERT_RESULT((conn.FetchRow<int32_t, int32_t>(
+      "SELECT major, minor FROM pg_yb_migration ORDER BY major DESC, minor DESC LIMIT 1")));
+
+  // Step 2 helper: replace the newest version row with the previous version, so the database is
+  // one migration behind. Deleting the only row instead would leave pg_yb_migration empty, and
+  // ysql_upgrade would then re-derive the version from catalog state and re-run every migration.
+  const auto [prev_major, prev_minor] =
+      minor > 0 ? std::pair(major, minor - 1) : std::pair(major - 1, 0);
+  const auto forget_latest_migration = [&]() -> Status {
+    return conn.ExecuteFormat(
+        "BEGIN;\n"
+        "SET LOCAL yb_non_ddl_txn_for_sys_tables_allowed TO true;\n"
+        "INSERT INTO pg_yb_migration (major, minor, name) SELECT $2, $3, 'test' WHERE NOT EXISTS "
+        "(SELECT 1 FROM pg_yb_migration WHERE major = $2 AND minor = $3);\n"
+        "DELETE FROM pg_yb_migration WHERE major = $0 AND minor = $1;\n"
+        "COMMIT;", major, minor, prev_major, prev_minor);
+  };
+
+  // Runs YSQL upgrade the way YBA's RunYsqlUpgrade does: the UpgradeYsql RPC on a tserver, which
+  // applies every pending migration to every database.
+  const auto run_upgrade = [this]() -> Status {
+    tserver::UpgradeYsqlRequestPB req;
+    tserver::UpgradeYsqlResponsePB resp;
+    rpc::RpcController rpc;
+    rpc.set_timeout(4min * kTimeMultiplier);
+    RETURN_NOT_OK(cluster_->GetTServerProxy<tserver::TabletServerAdminServiceProxy>(0)
+        .UpgradeYsql(req, &resp, &rpc));
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+    return Status::OK();
+  };
+
+  // ysql_upgrade inserts the version row only after the script succeeds, so the row is present
+  // exactly when the migration was applied.
+  const auto latest_migration_count = [&conn, major, minor]() {
+    return conn.FetchRow<PGUint64>(Format(
+        "SELECT COUNT(*) FROM pg_yb_migration WHERE major = $0 AND minor = $1", major, minor));
+  };
+
+  // Step 3: attempts 1 and 2 fail and are retried, attempt 3 succeeds.
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_ysql_upgrade_fail_migration_attempts", "2"));
+  ASSERT_OK(forget_latest_migration());
+  ASSERT_OK(run_upgrade());
+  ASSERT_EQ(ASSERT_RESULT(latest_migration_count()), 1U);
+
+  // Step 4: attempt 1 fails and is retried once, attempt 2 fails and the error is returned.
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_upgrade_migration_max_retries", "1"));
+  ASSERT_OK(forget_latest_migration());
+  auto status = run_upgrade();
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "Injected read restart");
+  ASSERT_EQ(ASSERT_RESULT(latest_migration_count()), 0U);
+}
+
+// A retried UpgradeYsql RPC waits for the upgrade that an earlier, timed-out RPC started, instead
+// of running a second upgrade next to it (#35773).
+//
+// Flow:
+// 1. Pause upgrades once they start. The first RPC starts an upgrade and times out on the client,
+//    but the upgrade keeps running on the tserver.
+// 2. A retry waits for that upgrade until its own deadline and fails with a clear error. Without
+//    the wait, the retry would start a second upgrade.
+// 3. After the pause ends, the first upgrade finishes and a retry succeeds.
+TEST_F(PgLibPqTest, YsqlUpgradeRetryWaitsForRunningUpgrade) {
+  const auto run_upgrade = [this](MonoDelta timeout) -> Status {
+    tserver::UpgradeYsqlRequestPB req;
+    tserver::UpgradeYsqlResponsePB resp;
+    rpc::RpcController rpc;
+    rpc.set_timeout(timeout);
+    RETURN_NOT_OK(cluster_->GetTServerProxy<tserver::TabletServerAdminServiceProxy>(0)
+        .UpgradeYsql(req, &resp, &rpc));
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+    return Status::OK();
+  };
+
+  // Step 1.
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_ysql_upgrade", "true"));
+  auto status = run_upgrade(2s);
+  ASSERT_TRUE(status.IsTimedOut()) << status;
+
+  // Step 2.
+  status = run_upgrade(5s);
+  ASSERT_TRUE(status.IsTimedOut()) << status;
+  ASSERT_STR_CONTAINS(status.ToString(), "YSQL upgrade already in progress");
+
+  // Step 3.
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_ysql_upgrade", "false"));
+  ASSERT_OK(run_upgrade(4min * kTimeMultiplier));
 }
 
 // Test yb-admin get_table_hash command for colocated, non-colocated tables with different number of

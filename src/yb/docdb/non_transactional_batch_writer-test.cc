@@ -17,6 +17,7 @@
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb-test.h"
 
+#include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/doc_vector_index.h"
 #include "yb/docdb/rocksdb_writer.h"
@@ -24,6 +25,8 @@
 #include "yb/dockv/dockv_fwd.h"
 #include "yb/dockv/key_entry_value.h"
 #include "yb/dockv/partition.h"
+
+#include "yb/util/fast_varint.h"
 
 #include "yb/vector_index/vector_index_fwd.h"
 
@@ -62,7 +65,12 @@ class CountingVectorIndex : public DocVectorIndex {
   const std::string& path() const override { LOG(FATAL) << "Unexpected call"; }
   const DocVectorIndexContext& context() const override { LOG(FATAL) << "Unexpected call"; }
   const DocVectorIndexMetrics& metrics() const override { LOG(FATAL) << "Unexpected call"; }
+  bool HasReverseMapping() const override { LOG(FATAL) << "Unexpected call"; }
+  Result<DocVectorIndexViewPtr> CreateImmutableView() override {
+    LOG(FATAL) << "Unexpected call";
+  }
   size_t EstimateNumVectorsForBytes(size_t) const override { LOG(FATAL) << "Unexpected call"; }
+  size_t DefaultChunkCapacity() const override { LOG(FATAL) << "Unexpected call"; }
   Result<DocVectorIndexSearchResult> Search(
       Slice, const vector_index::SearchOptions&, bool, DocVectorIndexReverseMappingReader&)
       override {
@@ -73,7 +81,8 @@ class CountingVectorIndex : public DocVectorIndex {
   Status Compact() override { LOG(FATAL) << "Unexpected call"; }
   Status WaitForCompaction() override { LOG(FATAL) << "Unexpected call"; }
   Status Flush() override { LOG(FATAL) << "Unexpected call"; }
-  Status ModifyFlushedFrontier(const ConsensusFrontier&) override {
+  Status ModifyFlushedFrontier(
+      const ConsensusFrontier&, rocksdb::FrontierModificationMode) override {
     LOG(FATAL) << "Unexpected call";
   }
   Result<bool> AdvanceFlushedOpId(const OpId&) override { LOG(FATAL) << "Unexpected call"; }
@@ -82,11 +91,9 @@ class CountingVectorIndex : public DocVectorIndex {
     LOG(FATAL) << "Unexpected call";
   }
   storage::FlushAbility GetFlushAbility() override { LOG(FATAL) << "Unexpected call"; }
+  Status GetFlushStatus() const override { LOG(FATAL) << "Unexpected call"; }
   Status CreateCheckpoint(const std::string&) override { LOG(FATAL) << "Unexpected call"; }
   const std::string& ToString() const override { LOG(FATAL) << "Unexpected call"; }
-  Result<bool> HasVectorId(const vector_index::VectorId&) const override {
-    LOG(FATAL) << "Unexpected call";
-  }
   Status Destroy() override { LOG(FATAL) << "Unexpected call"; }
   Result<size_t> TotalEntries() const override { LOG(FATAL) << "Unexpected call"; }
   uint64_t OnDiskSize() const override { LOG(FATAL) << "Unexpected call"; }
@@ -119,12 +126,14 @@ class NonTransactionalBatchWriterTest : public DocDBTestBase {
       const DocVectorIndexesPtr& vector_indexes = nullptr,
       const StorageSet& apply_to_storages = StorageSet::All(),
       TableType table_type = TableType::PGSQL_TABLE_TYPE,
-      std::atomic<bool>* can_advance_intents_flush_op_id = nullptr) {
+      std::atomic<bool>* can_advance_intents_flush_op_id = nullptr,
+      XClusterTargetApplied xcluster_target_applied = XClusterTargetApplied::kFalse) {
     ConsensusFrontiers frontiers;
     rocksdb::WriteBatch intents_write_batch;
     NonTransactionalBatchWriter batcher(
         put_batch, write_ht, batch_ht, intents_db(), &intents_write_batch, *this, frontiers,
-        vector_indexes, apply_to_storages, table_type, can_advance_intents_flush_op_id);
+        vector_indexes, apply_to_storages, table_type, can_advance_intents_flush_op_id,
+        xcluster_target_applied);
 
     rocksdb::WriteBatch regular_write_batch;
     regular_write_batch.SetFrontiers(&frontiers);
@@ -725,6 +734,60 @@ SubDocKey(DocKey([], ["row1"]), [ColumnId(11); HT{ physical: 6000 }]) -> \
   )#");
 }
 
+// GH#32556: xCluster direct (non-transactional) apply writes every row at the producer hybrid time
+// of its own record, while the request's write hybrid time is the time of the first record only.
+// The table-owned reverse mapping must be written at the row's hybrid time. Otherwise a read in
+// between sees the reverse mapping without the row version it points at, while a vector search
+// takes the mapping as proof that the row exists and holds the vector. The vector index feed must
+// be gated by the row's hybrid time too: a deactivated index must not get rows written after its
+// cutoff.
+TEST_F(NonTransactionalBatchWriterTest, ExternalWriteVectorReverseMappingHybridTime) {
+  const auto vector_id1 = ASSERT_RESULT(vector_index::VectorIdFromString(
+      "10000000-2000-3000-4000-000000000001"));
+  const auto vector_id2 = ASSERT_RESULT(vector_index::VectorIdFromString(
+      "10000000-2000-3000-4000-000000000002"));
+
+  const auto kFirstRecordHT = 6000_usec_ht;
+  const auto kSecondRecordHT = 6500_usec_ht;
+  const auto kBatchHT = 9000_usec_ht;
+  const auto kIndexDeactivatedHT = 6200_usec_ht;
+
+  auto index = MakeCountingIndex();
+  index->SetDeactivatedHybridTime(kIndexDeactivatedHT);
+  auto indexes = std::make_shared<DocVectorIndexes>();
+  indexes->push_back(index);
+
+  docdb::LWKeyValueWriteBatchPB put_batch(&arena_);
+  auto add_external_write = [&put_batch](
+      const std::string& row, const vector_index::VectorId& vector_id, HybridTime ht) {
+    const DocKey doc_key(MakeKeyEntryValues(row));
+    auto* write_pair = put_batch.add_write_pairs();
+    write_pair->dup_key(EncodeDocPathKey(
+        DocPath(doc_key.Encode(), KeyEntryValue::MakeColumnId(ColumnId(11)))).AsSlice());
+    write_pair->dup_value(EncodeTableOwnedVectorColumnValue(vector_id));
+    write_pair->set_external_hybrid_time(ht.ToUint64());
+  };
+  add_external_write("row1", vector_id1, kFirstRecordHT);
+  add_external_write("row2", vector_id2, kSecondRecordHT);
+  ASSERT_OK(SendWriteBatch(
+      put_batch, kFirstRecordHT, kBatchHT, indexes, StorageSet::All(), TableType::PGSQL_TABLE_TYPE,
+      /* can_advance_intents_flush_op_id= */ nullptr, XClusterTargetApplied::kTrue));
+
+  // Only row1 is written before the index was deactivated.
+  EXPECT_EQ(index->inserted_entries(), 1);
+
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+MetaKey(VectorId(10000000-2000-3000-4000-000000000001), [HT{ physical: 6000 }]) -> \
+    SubDocKey(DocKey([], ["row1"]), [ColumnId(11)])
+MetaKey(VectorId(10000000-2000-3000-4000-000000000002), [HT{ physical: 6500 w: 1 }]) -> \
+    SubDocKey(DocKey([], ["row2"]), [ColumnId(11)])
+SubDocKey(DocKey([], ["row1"]), [ColumnId(11); HT{ physical: 6000 }]) -> \
+    VECTOR_DATA(561000000020003000400000000000000111)
+SubDocKey(DocKey([], ["row2"]), [ColumnId(11); HT{ physical: 6500 w: 1 }]) -> \
+    VECTOR_DATA(561000000020003000400000000000000211)
+  )#");
+}
+
 // GH#32694: whenever the writer fills the intents write batch, it must clear the tablet's
 // can_advance_intents_flush_op_id_.
 TEST_F(NonTransactionalBatchWriterTest, ClearsCanAdvanceIntentsFlushOpId) {
@@ -767,6 +830,58 @@ TEST_F(NonTransactionalBatchWriterTest, ClearsCanAdvanceIntentsFlushOpId) {
       put_batch, kWriteHT, kBatchHT, /* vector_indexes= */ nullptr, StorageSet::All(),
       TableType::PGSQL_TABLE_TYPE, &can_advance));
   ASSERT_FALSE(can_advance.load());
+}
+
+// GH#35538: an xCluster target write carries no table_schema_version, so only the batch writer
+// puts the schema versions of its packed rows into the frontiers, which packing GC reads.
+TEST_F(NonTransactionalBatchWriterTest, PackedRowSchemaVersionReachesFrontiers) {
+  const Uuid involved_tablet = ASSERT_RESULT(Uuid::FromString(kTabletUUID));
+  const TransactionId txn = ASSERT_RESULT(FullyDecodeTransactionId(kTxnId));
+  const DocKey doc_key(MakeKeyEntryValues("row1"));
+  const auto kBatchHT = 5000_usec_ht;
+  const auto kWriteHT = 6000_usec_ht;
+
+  // Only the packed row header is read on the write path.
+  auto packed_row = [](SchemaVersion version) {
+    std::string result(1, dockv::ValueEntryTypeAsChar::kPackedRowV1);
+    FastAppendUnsignedVarInt(version, &result);
+    return result;
+  };
+  auto smallest_schema_versions = [this] {
+    CotableSchemaVersionMap result;
+    auto smallest = regular_db_->GetInMemoryFrontier(storage::UpdateUserValueType::kSmallest);
+    if (smallest) {
+      down_cast<ConsensusFrontier&>(*smallest).MakeExternalSchemaVersionsAtMost(&result);
+    }
+    return AsString(result);
+  };
+  auto expected = [](SchemaVersion version) {
+    return AsString(CotableSchemaVersionMap{{Uuid::Nil(), version}});
+  };
+  // YQL keeps the vector indexes updater, which decodes the row, out of the write path.
+  auto send = [&](const docdb::LWKeyValueWriteBatchPB& put_batch) {
+    return SendWriteBatch(
+        put_batch, kWriteHT, kBatchHT, /* vector_indexes= */ nullptr, StorageSet::All(),
+        TableType::YQL_TABLE_TYPE);
+  };
+
+  docdb::LWKeyValueWriteBatchPB put_batch(&arena_);
+  auto* write_pair = put_batch.add_write_pairs();
+  write_pair->dup_key(doc_key.Encode().AsSlice());
+  write_pair->dup_value(packed_row(3));
+  ASSERT_OK(send(put_batch));
+  ASSERT_EQ(smallest_schema_versions(), expected(3));
+
+  // External transaction apply.
+  put_batch.Clear();
+  AddExternalIntentsWritePair(
+      &put_batch, txn, kMinSubTransactionId, {{DocPath(doc_key.Encode()), packed_row(2)}},
+      involved_tablet);
+  ASSERT_OK(send(put_batch));
+  put_batch.Clear();
+  AddApplyExternalTxn(&put_batch, txn, kWriteHT);
+  ASSERT_OK(send(put_batch));
+  ASSERT_EQ(smallest_schema_versions(), expected(2));
 }
 
 }  // namespace yb::docdb

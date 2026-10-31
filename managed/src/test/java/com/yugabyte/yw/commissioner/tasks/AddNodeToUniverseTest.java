@@ -32,6 +32,8 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeActionType;
@@ -672,6 +674,72 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
     verifyMasterAddressUpdateAffectedNodes(subTasksByPosition, 3);
   }
 
+  // PLAT-23125: a node that gains a master gets one fail-fast refresh, after the address updates.
+  @Test
+  public void testAddNodeWithUnderReplicatedMasterRewritesOtelCollector() {
+    UniverseModifyBaseTest.mockMasterAndPeerRoles(
+        mockClient, ImmutableList.of("10.0.0.1", "10.0.0.2", "10.0.0.3"));
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        getNodeUpdater(
+            DEFAULT_NODE_NAME,
+            node -> {
+              node.isMaster = false;
+              node.isTserver = false;
+            }));
+    Universe universe = enableMetricsExport(defaultUniverse.getUniverseUUID());
+
+    TaskInfo taskInfo =
+        submitTask(universe.getUniverseUUID(), DEFAULT_NODE_NAME, universe.getVersion());
+    assertEquals(Success, taskInfo.getTaskState());
+
+    List<TaskInfo> refreshes =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.ManageOtelCollector)
+            .collect(Collectors.toList());
+    assertEquals(1, refreshes.size());
+    assertEquals(DEFAULT_NODE_NAME, refreshes.get(0).getTaskParams().get("nodeName").asText());
+    assertFalse(refreshes.get(0).getTaskParams().get("ignoreErrors").asBoolean());
+    int lastAddressUpdate =
+        taskInfo.getSubTasks().stream()
+            .filter(
+                t ->
+                    t.getTaskType() == TaskType.AnsibleConfigureServers
+                        && t.getTaskParams().path("updateMasterAddrsOnly").asBoolean())
+            .mapToInt(TaskInfo::getPosition)
+            .max()
+            .getAsInt();
+    assertTrue(refreshes.get(0).getPosition() > lastAddressUpdate);
+    assertOtelRewritesRunLast(taskInfo);
+  }
+
+  @Test
+  public void testAddDedicatedMasterNodeIsNotLoadBalancerTarget() {
+    // PLAT-23221: a master-only node must not be registered with the load balancer.
+    UniverseModifyBaseTest.mockMasterAndPeerRoles(
+        mockClient, ImmutableList.of("10.0.0.1", "10.0.0.2", "10.0.0.3"));
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        u -> {
+          Cluster primary = u.getUniverseDetails().getPrimaryCluster();
+          ApiUtils.configureDedicatedMasterFields(primary.userIntent);
+          primary.userIntent.enableLB = true;
+          primary.placementInfo.azStream().forEach(az -> az.lbName = "lb1");
+          NodeDetails node = u.getNode(DEFAULT_NODE_NAME);
+          node.dedicatedTo = ServerType.MASTER;
+          node.isMaster = false;
+          node.isTserver = false;
+        });
+
+    TaskInfo taskInfo = submitTask(defaultUniverse.getUniverseUUID(), DEFAULT_NODE_NAME, -1);
+    assertEquals(Success, taskInfo.getTaskState());
+
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .noneMatch(t -> t.getTaskType() == TaskType.ManageLoadBalancerGroup));
+    verify(cloudAPI, never()).manageNodeGroup(any(), any(), any(), any(), any(), any());
+  }
+
   @Test
   public void testAddUnknownNode() {
     PlatformServiceException exception =
@@ -798,5 +866,40 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
         TaskType.AddNodeToUniverse,
         taskParams);
     checkUniverseNodesStates(taskParams.getUniverseUUID());
+  }
+
+  // A retry re-reads isMaster=true, so addMaster is false; the refresh must still be planned.
+  @Test
+  public void testAddNodeRetriesWithMetricsExport() {
+    UniverseModifyBaseTest.mockMasterAndPeerRoles(
+        mockClient, ImmutableList.of("10.0.0.1", "10.0.0.2", "10.0.0.3"));
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        getNodeUpdater(DEFAULT_NODE_NAME, node -> node.isMaster = false));
+    Universe universe = enableMetricsExport(defaultUniverse.getUniverseUUID());
+
+    NodeTaskParams taskParams = new NodeTaskParams();
+    taskParams.clusters.addAll(universe.getUniverseDetails().clusters);
+    taskParams.nodeDetailsSet = new HashSet<>(universe.getUniverseDetails().nodeDetailsSet);
+    taskParams.expectedUniverseVersion = universe.getVersion();
+    taskParams.nodeName = DEFAULT_NODE_NAME;
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
+    taskParams.azUuid = AvailabilityZone.getByCode(defaultProvider, AZ_CODE).getUuid();
+    taskParams.creatingUser = defaultUser;
+    TestUtils.setFakeHttpContext(defaultUser);
+    super.verifyTaskRetries(
+        defaultCustomer,
+        CustomerTask.TaskType.Add,
+        CustomerTask.TargetType.Universe,
+        universe.getUniverseUUID(),
+        TaskType.AddNodeToUniverse,
+        taskParams);
+  }
+
+  @Test
+  public void testAddNodeIsAbortable() {
+    // The task list reports abortable from the @Abortable annotation, which gates the Abort button.
+    assertTrue(Commissioner.isTaskTypeAbortable(TaskType.AddNodeToUniverse));
+    assertTrue(Commissioner.isTaskTypeAbortable(TaskType.RollbackAddNodeToUniverse));
   }
 }

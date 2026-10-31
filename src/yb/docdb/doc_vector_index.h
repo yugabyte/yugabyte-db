@@ -14,6 +14,7 @@
 #pragma once
 
 #include <mutex>
+#include <optional>
 
 #include "yb/common/column_id.h"
 #include "yb/common/doc_hybrid_time.h"
@@ -38,6 +39,7 @@
 #include "yb/tablet/tablet_fwd.h"
 
 #include "yb/util/kv_util.h"
+#include "yb/util/lw_function.h"
 #include "yb/util/metrics.h"
 #include "yb/util/status.h"
 #include "yb/util/strongly_typed_bool.h"
@@ -79,6 +81,34 @@ struct DocVectorIndexSearchResultEntry {
 
 using DocVectorIndexSearchResultEntries = std::vector<DocVectorIndexSearchResultEntry>;
 
+struct DocVectorIndexEntry {
+  vector_index::VectorId vector_id;
+
+  // The vector in the YSQL encoding, the same as EncodedDocVectorValue::data of the row.
+  Slice vector;
+
+  // Empty when the index stores no payloads, see DocVectorIndex::StoresPayload.
+  Slice payload;
+};
+
+using DocVectorIndexEntryCallback = LWFunction<Status(const DocVectorIndexEntry&)>;
+
+// Read-only view of the index chunks in the manifest when the view was created, which accept no
+// inserts. Flush and WaitForFlush the index first to cover every vector inserted before the view.
+// The view keeps its chunks alive while it exists.
+class DocVectorIndexView {
+ public:
+  virtual ~DocVectorIndexView() = default;
+
+  virtual Status ForEachVector(const DocVectorIndexEntryCallback& callback) const = 0;
+
+  // Number of vectors in the view, including the ones of deleted and updated rows that
+  // compaction has not removed yet.
+  virtual size_t NumVectors() const = 0;
+};
+
+using DocVectorIndexViewPtr = std::unique_ptr<DocVectorIndexView>;
+
 struct DocVectorIndexSearchResult {
   bool could_have_more_data;
   DocVectorIndexSearchResultEntries entries;
@@ -110,6 +140,9 @@ class DocVectorIndexContext {
   virtual ~DocVectorIndexContext() = default;
   virtual Result<DocVectorIndexReverseMappingReaderPtr> CreateReverseMappingReader(
       const ReadHybridTime& read_ht, DocDBStatistics* statistics) const = 0;
+
+  // Bounds of the keys served by the tablet. Initialized only for a tablet created by a split.
+  virtual const KeyBounds& key_bounds() const = 0;
 };
 
 using DocVectorIndexContextPtr = std::unique_ptr<DocVectorIndexContext>;
@@ -134,6 +167,8 @@ struct InsertOptions {
   size_t chunk_size = 0;
   rocksdb::Cache::ReservationMode reservation_mode =
       rocksdb::Cache::ReservationMode::kAlways;
+  // See vector_index::VectorLSMInsertContext::chunk_holds.
+  vector_index::VectorLSMChunkHolds* chunk_holds = nullptr;
 };
 
 class DocVectorIndex {
@@ -156,6 +191,11 @@ class DocVectorIndex {
   // reverse mapping, which leaves the payload as the only way to resolve a row.
   virtual bool StoresPayload() const = 0;
 
+  // Whether the indexed table writes the reverse mapping, see TableWritesReverseMapping.
+  virtual bool HasReverseMapping() const = 0;
+
+  virtual Result<DocVectorIndexViewPtr> CreateImmutableView() = 0;
+
   virtual Status Insert(
       const DocVectorIndexInsertEntries& entries, const InsertOptions& options) = 0;
 
@@ -163,6 +203,9 @@ class DocVectorIndex {
   // of vectors that fit into the specified byte budget. Used to size new chunks based on memory
   // rather than vector count.
   virtual size_t EstimateNumVectorsForBytes(size_t bytes_limit) const = 0;
+
+  // Capacity of a new mutable chunk when the insert does not specify one.
+  virtual size_t DefaultChunkCapacity() const = 0;
 
   virtual Result<DocVectorIndexSearchResult> Search(
       Slice vector, const vector_index::SearchOptions& options, bool could_have_missing_entries,
@@ -178,14 +221,16 @@ class DocVectorIndex {
   // on an index that is known to reflect everything up to it, but cannot reach it by flushing,
   // because a truncate or a restore replaced its storage.
   //
-  // The stamp only moves the flushed OpId forward: the flushed frontier is the maximum over the
-  // index chunks. That covers a truncate and a restore within the same Raft group, whose chunks
-  // carry lower OpIds. It cannot bring an index back from OpIds of another Raft group, the way
-  // RocksDBPatcher::ModifyFlushedFrontier resets the per file OpIds of the SST files.
+  // With kUpdate, the stamp only moves the flushed OpId forward: the flushed frontier is the
+  // maximum over the index chunks. That covers a truncate and a restore within the same Raft group,
+  // whose chunks carry lower OpIds. kForce first sets the OpId of every chunk to the one of
+  // `frontier`, for a restore whose chunks carry OpIds of another Raft group, which can be higher.
+  // It needs an index without unflushed data and with compactions off, as right after a restore.
   //
   // Each stamp adds a frontier only chunk that stays in the manifest until a full compaction, so
   // it is reserved for storage replacement and not used to advance an idle index.
-  virtual Status ModifyFlushedFrontier(const ConsensusFrontier& frontier) = 0;
+  virtual Status ModifyFlushedFrontier(
+      const ConsensusFrontier& frontier, rocksdb::FrontierModificationMode mode) = 0;
 
   // Advances the flushed OpId of an index that holds nothing unflushed, without a chunk file.
   // Unlike ModifyFlushedFrontier, repeated calls keep a single frontier only chunk, so it can be
@@ -205,9 +250,11 @@ class DocVectorIndex {
   storage::UserFrontierPtr GetInMemoryFrontier(storage::UpdateUserValueType type);
 
   virtual storage::FlushAbility GetFlushAbility() = 0;
+
+  // Returns terminal failure without waiting for in-flight saves.
+  virtual Status GetFlushStatus() const = 0;
   virtual Status CreateCheckpoint(const std::string& out) = 0;
   virtual const std::string& ToString() const = 0;
-  virtual Result<bool> HasVectorId(const vector_index::VectorId& vector_id) const = 0;
   virtual Status Destroy() = 0;
   virtual Result<size_t> TotalEntries() const = 0;
 
@@ -242,6 +289,9 @@ class DocVectorIndex {
   // Returns true if all inherited parent-tablet chunks have been compacted away.
   // Caches the true result; ComputeParentDataCompacted() is the uncached check.
   bool ParentDataCompacted();
+
+  // Whether the row with the specified key belongs to the indexed table.
+  bool IsIndexedTableKey(Slice key) const;
 
   // Writes reverse mapping for the vector id in `value`.
   // kInvalidColumnId means legacy raw-ybctid format; otherwise V1 value format.

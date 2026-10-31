@@ -1162,16 +1162,6 @@ bool TableInfo::IsXClusterDDLReplicationReplicatedDDLsTable() const {
   return LockForRead()->IsXClusterDDLReplicationReplicatedDDLsTable();
 }
 
-TablespaceId TableInfo::TablespaceIdForTableCreation() const {
-  SharedLock<decltype(lock_)> l(lock_);
-  return tablespace_id_for_table_creation_;
-}
-
-void TableInfo::SetTablespaceIdForTableCreation(const TablespaceId& tablespace_id) {
-  std::lock_guard l(lock_);
-  tablespace_id_for_table_creation_ = tablespace_id;
-}
-
 google::protobuf::RepeatedField<int> TableInfo::GetHostedStatefulServices() const {
   auto l = LockForRead();
   return l->pb.hosted_stateful_services();
@@ -1588,6 +1578,21 @@ HybridTime CDCStreamInfo::GetConsistentSnapshotHybridTime() const {
 const ReplicationSlotName CDCStreamInfo::GetCdcsdkYsqlReplicationSlotName() const {
   auto l = LockForRead();
   return ReplicationSlotName(l->pb.cdcsdk_ysql_replication_slot_name());
+}
+
+bool CDCStreamInfo::IsCdcsdkYsqlPublicationsBoundStream() const {
+  auto l = LockForRead();
+  return l->pb.cdcsdk_ysql_publications_bound_stream();
+}
+
+const std::string CDCStreamInfo::GetCdcsdkYsqlBoundPublicationName() const {
+  auto l = LockForRead();
+  return l->pb.cdcsdk_ysql_bound_publication_name();
+}
+
+bool CDCStreamInfo::CdcsdkYsqlIncludesNewTables() const {
+  auto l = LockForRead();
+  return l->pb.cdcsdk_ysql_include_new_tables();
 }
 
 bool CDCStreamInfo::IsConsistentSnapshotStream() const {

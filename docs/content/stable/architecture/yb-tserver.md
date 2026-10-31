@@ -50,7 +50,7 @@ YugabyteDB allows compactions to be externally triggered on a table using the [`
 
 ## Statistics-based full compactions to improve read performance
 
-YugabyteDB tracks the number of key-value pairs that are read at the DocDB level over a sliding period (dictated by the [auto_compact_stat_window_seconds](../../reference/configuration/yb-tserver#auto-compact-stat-window-seconds) YB-TServer flag). If YugabyteDB detects an overwhelming amount of the DocDB reads in a tablet are skipping over tombstoned and obsolete keys, then a full compaction will be triggered to remove the unnecessary keys.
+YugabyteDB tracks the number of key-value pairs that are read at the DocDB level over a sliding period (dictated by the [auto_compact_stat_window_seconds](../../reference/configuration/yb-tserver/#auto-compact-stat-window-seconds) YB-TServer flag). If YugabyteDB detects an overwhelming amount of the DocDB reads in a tablet are skipping over tombstoned and obsolete keys, then a full compaction will be triggered to remove the unnecessary keys.
 
 Once all of the following conditions are met in the sliding window, full compaction is automatically triggered on the tablet:
 
@@ -62,7 +62,7 @@ While this feature is compatible with tables with TTL, YugabyteDB won't schedule
 
 ## Scheduled full compactions
 
- YugabyteDB allows full compactions overall data in a tablet to be scheduled automatically using the [scheduled_full_compaction_frequency_hours](../../reference/configuration/yb-tserver#scheduled-full-compaction-frequency-hours) and [scheduled_full_compaction_jitter_factor_percentage](../../reference/configuration/yb-tserver#scheduled-full-compaction-jitter-factor-percentage) YB-TServer flags. This can be useful for performance and disk space reclamation for workloads with a large number of overwrites or deletes on a regular basis. This can be used with tables with TTL as well but is not compatible with the [TTL file expiration](/stable/develop/learn/ttl-data-expiration-ycql/#efficient-data-expiration-for-ttl) feature.
+ YugabyteDB allows full compactions overall data in a tablet to be scheduled automatically using the [scheduled_full_compaction_frequency_hours](../../reference/configuration/yb-tserver/#scheduled-full-compaction-frequency-hours) and [scheduled_full_compaction_jitter_factor_percentage](../../reference/configuration/yb-tserver/#scheduled-full-compaction-jitter-factor-percentage) YB-TServer flags. This can be useful for performance and disk space reclamation for workloads with a large number of overwrites or deletes on a regular basis. This can be used with tables with TTL as well but is not compatible with the [TTL file expiration](/stable/develop/learn/ttl-data-expiration-ycql/#efficient-data-expiration-for-ttl) feature.
 
 ## Server-global memstore limit
 
@@ -78,4 +78,4 @@ On multi-SSD machines, the data (SSTable) and WAL (Raft write-ahead log) for var
 
 ## High availability
 
-The failure of a YB-TServer hosting follower tablets has no impact on the write path. If there are any leader tablets present in a failed YB-TServer, the raft group for that tablet [elects](../docdb-replication/raft#leader-election) a new leader on a different YB-TServer. The unavailability window is approximately 3 seconds (assuming the default heartbeat interval of 500 ms) in the event of a failure of the tablet peer leader.
+The failure of a YB-TServer hosting follower tablets has no impact on the write path. If there are any leader tablets present in a failed YB-TServer, the raft group for that tablet [elects](../docdb-replication/raft/#leader-election) a new leader on a different YB-TServer. The unavailability window is approximately 3 seconds (assuming the default heartbeat interval of 500 ms) in the event of a failure of the tablet peer leader.

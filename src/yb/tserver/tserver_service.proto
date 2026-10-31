@@ -43,6 +43,7 @@ import "yb/common/transaction.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/rpc/lightweight_message.proto";
 import "yb/rpc/service.proto";
+import "yb/tablet/tablet.proto";
 import "yb/tablet/tablet_types.proto";
 import "yb/tablet/operations.proto";
 import "yb/tserver/tserver.proto";
@@ -166,6 +167,9 @@ service TabletServerService {
 
   rpc GetMetrics(GetMetricsRequestPB) returns (GetMetricsResponsePB);
 
+  rpc SetActiveTableIdsForMetrics(SetActiveTableIdsForMetricsRequestPB)
+      returns (SetActiveTableIdsForMetricsResponsePB);
+
   rpc AdminExecutePgsql(AdminExecutePgsqlRequestPB)
       returns (AdminExecutePgsqlResponsePB);
 
@@ -267,6 +271,28 @@ message GetMetricsRequestPB {
 message GetMetricsResponsePB {
   repeated TserverMetricsInfoPB metrics  = 1;
   optional TabletServerErrorPB error = 2;
+}
+
+message SetActiveTableIdsForMetricsRequestPB {
+  // The complete set of tables whose table-level metrics should be exported by
+  // /prometheus-metrics. Each request replaces the previous set.
+  repeated string table_ids = 1;
+
+  // Version of this list, chosen by the caller, for example a counter it increments whenever the
+  // list changes. The tablet server stores it with the list and reports it through the
+  // active_table_metrics_list_version gauge and the /tables page, so the caller can find tablet
+  // servers that hold an older list. Zero or unset means no version. 32 bits keep every value exact
+  // in Prometheus, which stores gauge values as doubles.
+  optional uint32 list_version = 2;
+}
+
+message SetActiveTableIdsForMetricsResponsePB {
+  optional TabletServerErrorPB error = 1;
+
+  // State of enable_active_table_metrics_filtering on this tablet server. The list is stored
+  // either way, but no scrape uses it while this is false, so the caller can surface that its
+  // list is not being applied.
+  optional bool filtering_enabled = 2;
 }
 
 message GetLogLocationRequestPB {
@@ -671,10 +697,29 @@ message GetLocalPgTxnSnapshotResponsePB {
 }
 
 message VerifyVectorIndexesRequestPB {
+  // Tablet to check, every tablet of the server when unset.
+  optional bytes tablet_id = 1;
+  // Vector indexes to check, every active vector index of the tablet when empty.
+  // Requires tablet_id.
+  repeated bytes index_table_ids = 2;
+  // Inconsistencies to report per index, server default when 0.
+  optional uint32 max_inconsistencies = 3;
+}
+
+// Outcome of checking one vector index of one tablet replica, see CheckVectorIndex.
+message VectorIndexReplicaCheckPB {
+  optional bytes tablet_id = 1;
+  optional bytes index_table_id = 2;
+  optional PeerRole role = 3;
+  // Why the replica was not checked, e.g. the index backfill is still in progress. Unset when
+  // the check ran and produced the result.
+  optional AppStatusPB status = 4;
+  optional tablet.VectorIndexCheckResultPB result = 5;
 }
 
 message VerifyVectorIndexesResponsePB {
   optional TabletServerErrorPB error = 1;
+  repeated VectorIndexReplicaCheckPB checks = 2;
 }
 
 message DumpTabletDataRequestPB {

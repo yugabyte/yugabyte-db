@@ -133,6 +133,13 @@ void SyncPoint::ProcessInternal(const std::string& point, void* cb_arg) {
   YB_PROFILE(cv_.notify_all());
 }
 
+SyncPointScope::~SyncPointScope() {
+  sync_point_->DisableProcessing();
+  sync_point_->ClearAllCallBacks();
+  // Also clears the trace.
+  sync_point_->LoadDependency({});
+}
+
 void TEST_sync_point(const std::string& point, void* cb_arg) {
   if (PREDICT_FALSE(FLAGS_TEST_enable_sync_points)) {
     SyncPoint::GetInstance()->Process(point, cb_arg);

@@ -2514,4 +2514,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + "V1 API still pretend to use old schema.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> conditionalGetEnabled =
+      new ConfKeyInfo<>(
+          "yb.api.conditional_get.enabled",
+          ScopeType.GLOBAL,
+          "HTTP conditional GET (ETag / 304)",
+          "When enabled, eligible single-resource GET endpoints may return 304 Not Modified when"
+              + " the client sends a matching If-None-Match ETag, skipping heavy response"
+              + " construction. When disabled, those endpoints always return a full 200 body.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC, ConfKeyTags.FEATURE_FLAG));
 }

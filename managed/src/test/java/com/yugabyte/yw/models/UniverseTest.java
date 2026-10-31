@@ -23,7 +23,6 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Sets;
 import com.google.common.net.HostAndPort;
@@ -38,6 +37,7 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeActionType;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ProviderInitializer;
 import com.yugabyte.yw.common.SpecificationProviderInitializer;
 import com.yugabyte.yw.common.TestUtils;
@@ -54,6 +54,7 @@ import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -82,12 +83,16 @@ public class UniverseTest extends FakeDBApplication {
   private Provider defaultProvider;
   private Customer defaultCustomer;
   private CertificateHelper certificateHelper;
+  private RuntimeConfGetter mockConfGetter;
 
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
     certificateHelper = new CertificateHelper(app.injector().instanceOf(RuntimeConfGetter.class));
+    //    mockConfGetter = Mockito.mock(RuntimeConfGetter.class);
+    //    when(mockConfGetter.getStaticConf()).thenReturn(Mockito.mock(Config.class));
+    mockConfGetter = app.injector().instanceOf(RuntimeConfGetter.class);
   }
 
   @Test
@@ -367,9 +372,9 @@ public class UniverseTest extends FakeDBApplication {
     Region r1 = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
     Region r2 = Region.create(defaultProvider, "region-2", "Region 2", "yb-image-1");
     Region r3 = Region.create(defaultProvider, "region-3", "Region 3", "yb-image-1");
-    AvailabilityZone.createOrThrow(r1, "az-1", "AZ 1", "subnet-1");
-    AvailabilityZone.createOrThrow(r2, "az-2", "AZ 2", "subnet-2");
-    AvailabilityZone.createOrThrow(r3, "az-3", "AZ 3", "subnet-3");
+    AvailabilityZone z1 = AvailabilityZone.createOrThrow(r1, "az-1", "AZ 1", "subnet-1");
+    AvailabilityZone z2 = AvailabilityZone.createOrThrow(r2, "az-2", "AZ 2", "subnet-2");
+    AvailabilityZone z3 = AvailabilityZone.createOrThrow(r3, "az-3", "AZ 3", "subnet-3");
     List<UUID> regionList = new ArrayList<>();
     regionList.add(r1.getUuid());
     regionList.add(r2.getUuid());
@@ -396,6 +401,10 @@ public class UniverseTest extends FakeDBApplication {
     deviceInfo.diskIops = 1000;
     deviceInfo.volumeSize = 100;
 
+    PlacementInfo placementInfo = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(z1.getUuid(), placementInfo);
+    PlacementInfoUtil.addPlacementZone(z2.getUuid(), placementInfo);
+    PlacementInfoUtil.addPlacementZone(z3.getUuid(), placementInfo);
     TestUtils.initUserIntent(userIntent, defaultProvider, instanceType, deviceInfo, "demo-access");
 
     u = Universe.saveDetails(u.getUniverseUUID(), ApiUtils.mockUniverseUpdater(userIntent));
@@ -404,15 +413,14 @@ public class UniverseTest extends FakeDBApplication {
             u.getUniverseUUID(),
             universe -> {
               UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-              universeDetails.getPrimaryCluster().regions = ImmutableList.of(r1, r2, r3);
+              universeDetails.getPrimaryCluster().placementInfo = placementInfo;
               universe.setUniverseDetails(universeDetails);
             });
 
     Context context = new Context(getApp().config(), u);
     UniverseResourceDetails resourceDetails =
         UniverseResourceDetails.create(u.getUniverseDetails(), context);
-    JsonNode universeJson =
-        Json.toJson(new UniverseResp(u, null, resourceDetails, null, null, null));
+    JsonNode universeJson = Json.toJson(UniverseResp.create(u, null, mockConfGetter));
     assertThat(
         universeJson.get("universeUUID").asText(),
         allOf(notNullValue(), equalTo(u.getUniverseUUID().toString())));

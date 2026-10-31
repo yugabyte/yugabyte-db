@@ -180,7 +180,8 @@ Result<OpId> RemoteBootstrapSession::CreateSnapshot(int retry) {
   kv_store->clear_rocksdb_files();
   auto status = tablet->snapshots().CreateCheckpoint(checkpoint_dir_,
       tablet::CreateCheckpointIn::kSubDir,
-      tablet::TabletSnapshots::UseTryLock::kTrue);
+      tablet::TabletSnapshots::UseTryLock::kTrue,
+      tablet::TabletSnapshots::SkipVectorIndexFlush::kTrue);
   if (status.ok()) {
     auto max_retries = FLAGS_rbs_init_max_number_of_retries;
     if (max_retries != 0) {
@@ -258,6 +259,11 @@ Status RemoteBootstrapSession::InitBootstrapSession() {
   string anchor_owner_token = Format("RemoteBootstrap-$0", session_id_);
   tablet_peer_->log_anchor_registry()->Register(
       rbs_min_op_idx, anchor_owner_token, &log_anchor_);
+
+  // The log anchor keeps the tablet from replacing segments with a newer marker, which the
+  // checkpoint below might not cover. TabletPeer::EnterQuiescentMode checks anchors after it
+  // publishes the marker.
+  quiescent_marker_ = tablet_peer_->log()->quiescent_marker();
 
   OpId last_logged_opid;
   for (int retry = 0;; ++retry) {
@@ -416,6 +422,19 @@ Status RemoteBootstrapSession::InitBootstrapSession() {
   min_segments_to_keep = std::min(min_segments_to_keep, log_segments_.size());
   num_to_skip = std::min(num_to_skip, log_segments_.size() - min_segments_to_keep);
 
+  // The destination's Log::Init deletes segments that the marker covers. They may also be deleted
+  // here right now, if TabletPeer::EnterQuiescentMode checked anchors before we registered ours.
+  if (quiescent_marker_) {
+    size_t num_covered = 0;
+    for (const auto& segment : log_segments_) {
+      if (!log::Log::SegmentCoveredByQuiescentMarker(*segment, *quiescent_marker_)) {
+        break;
+      }
+      ++num_covered;
+    }
+    num_to_skip = std::max(num_to_skip, num_covered);
+  }
+
   LOG_WITH_PREFIX(INFO)
       << "Computed WAL segments to ship: keeping=" << log_segments_.size() - num_to_skip
       << " (skipping " << num_to_skip << " of " << log_segments_.size()
@@ -424,6 +443,8 @@ Status RemoteBootstrapSession::InitBootstrapSession() {
       << ", min_segments_to_keep=" << min_segments_to_keep
       << ", lazy_sb_flush="
       << tablet_peer_->tablet_metadata()->IsLazySuperblockFlushEnabled()
+      << ", quiescent_marker_index="
+      << (quiescent_marker_ ? quiescent_marker_->op_id().index() : -1)
       << ", last_logged_opid=" << last_logged_opid << ")";
 
   while (!log_segments_.empty() && num_to_skip) {

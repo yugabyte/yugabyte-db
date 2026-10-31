@@ -988,6 +988,76 @@ TEST_F(TestRpc, DumpLocalCall) {
   latch.Wait();
 }
 
+// A local call with a buffers holder times out at its deadline, while the handler keeps using
+// the buffers until it responds.
+TEST_F(TestRpc, LocalCallTimeout) {
+  constexpr auto kSleep = 2s;
+  HostPort server_addr;
+  StartTestServer(&server_addr);
+  HostPort empty_addr;
+  Proxy p(server_messenger(), empty_addr);
+
+  struct Buffers {
+    rpc_test::SleepRequestPB req;
+    rpc_test::SleepResponsePB resp;
+  };
+  auto buffers = std::make_shared<Buffers>();
+  buffers->req.set_sleep_micros(narrow_cast<uint32_t>(ToMicroseconds(kSleep)));
+  buffers->req.set_deferred(true);
+  auto& req = buffers->req;
+  auto& resp = buffers->resp;
+  std::weak_ptr<Buffers> weak_buffers = buffers;
+
+  RpcController controller;
+  controller.set_timeout(MonoDelta::FromMilliseconds(200));
+  controller.set_local_call_buffers_holder(std::move(buffers));
+  CountDownLatch latch(1);
+  const auto start = CoarseMonoClock::now();
+  p.AsyncRequest(
+      CalculatorServiceMethods::SleepMethod(), nullptr, req, &resp, &controller,
+      latch.CountDownCallback());
+  latch.Wait();
+  ASSERT_LT(CoarseMonoClock::now() - start, kSleep);
+  ASSERT_TRUE(controller.status().IsTimedOut()) << controller.status();
+  ASSERT_FALSE(weak_buffers.expired());
+
+  ASSERT_OK(WaitFor(
+      [&weak_buffers] { return weak_buffers.expired(); }, kSleep * 2,
+      "Buffers released after the handler responded"));
+}
+
+// A local call releases the buffers holder before the caller gets the response, so the caller
+// can reuse the buffers right away.
+TEST_F(TestRpc, LocalCallReleasesBuffersHolderBeforeResponse) {
+  HostPort server_addr;
+  StartTestServer(&server_addr);
+  HostPort empty_addr;
+  Proxy p(server_messenger(), empty_addr);
+
+  rpc_test::SleepRequestPB req;
+  req.set_sleep_micros(1000);
+  rpc_test::SleepResponsePB resp;
+  auto holder = std::make_shared<int>(0);
+  std::weak_ptr<int> weak_holder = holder;
+
+  RpcController controller;
+  controller.set_timeout(30s);
+  controller.set_local_call_buffers_holder(std::move(holder));
+  // Runs the callback right when the handler responds.
+  controller.set_invoke_callback_mode(InvokeCallbackMode::kReactorThread);
+  std::atomic<bool> released_before_response{false};
+  CountDownLatch latch(1);
+  p.AsyncRequest(
+      CalculatorServiceMethods::SleepMethod(), nullptr, req, &resp, &controller,
+      [&weak_holder, &released_before_response, &latch] {
+        released_before_response = weak_holder.expired();
+        latch.CountDown();
+      });
+  latch.Wait();
+  ASSERT_OK(controller.status());
+  ASSERT_TRUE(released_before_response);
+}
+
 #if YB_GPERFTOOLS_TCMALLOC
 
 namespace {

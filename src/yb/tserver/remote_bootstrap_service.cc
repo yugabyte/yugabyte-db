@@ -229,6 +229,9 @@ void RemoteBootstrapServiceImpl::BeginRemoteBootstrapSession(
   resp->mutable_superblock()->CopyFrom(session->tablet_superblock());
   resp->mutable_initial_committed_cstate()->CopyFrom(session->initial_committed_cstate());
   resp->set_retryable_requests_file_flushed(session->has_retryable_requests_file());
+  if (session->quiescent_marker()) {
+    *resp->mutable_quiescent_marker() = *session->quiescent_marker();
+  }
 
   auto const& log_segments = session->log_segments();
   resp->mutable_deprecated_wal_segment_seqnos()->Reserve(narrow_cast<int>(log_segments.size()));
@@ -658,22 +661,18 @@ void RemoteBootstrapServiceImpl::RegisterLogAnchor(
       Format("Tablet is not running yet: $0", req->tablet_id()));
 
   const auto requested_log_index = req->op_id().index();
-  auto log_reader_result = tablet_peer->log()->GetLogReader();
+  auto min_anchorable_index = tablet_peer->log()->MinAnchorableIndex();
   RPC_RETURN_NOT_OK(
-      log_reader_result,
+      min_anchorable_index,
       RemoteBootstrapErrorPB::TABLET_NOT_FOUND,
       Format("LogReader not available for tablet: $0", req->tablet_id()));
-  int64_t min_available_log_index = (*log_reader_result)->GetMinReplicateIndex();
-  if (min_available_log_index == -1) {
-    min_available_log_index = tablet_peer->log()->GetMinReplicateIndex();
-  }
 
-  if (requested_log_index < min_available_log_index) {
+  if (requested_log_index < *min_anchorable_index) {
     RPC_RETURN_APP_ERROR(
         RemoteBootstrapErrorPB::REMOTE_LOG_ANCHOR_FAILURE,
         Format("Cannot register LogAnchor"),
-        STATUS_FORMAT(NotFound, "Requested LogAnchor index($0) < min_available_log_index($1)",
-                      requested_log_index, min_available_log_index));
+        STATUS_FORMAT(NotFound, "Requested LogAnchor index($0) < min_anchorable_index($1)",
+                      requested_log_index, *min_anchorable_index));
   }
 
   MAYBE_FAULT(FLAGS_TEST_fault_crash_on_rbs_anchor_register);

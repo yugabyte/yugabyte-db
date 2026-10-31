@@ -39,6 +39,7 @@ import {
   resolveConnectionPoolingPorts,
   shouldSyncConnectionPoolingPorts
 } from './helpers/syncConnectionPoolingPorts';
+import { normalizeProviderConfigurations, primaryCloudCode } from './helpers/providerConfigurations';
 
 export enum CreateUniverseSteps {
   GENERAL_SETTINGS = 1,
@@ -58,6 +59,12 @@ export type createUniverseFormProps = {
   resilienceAndRegionsSettings?: ResilienceAndRegionsProps;
   nodesAvailabilitySettings?: NodeAvailabilityProps;
   instanceSettings?: InstanceSettingProps;
+  /** Per-provider placement (regions). Filled by multi Resilience Guided/Expert. */
+  placementsByProvider: Record<string, ResilienceAndRegionsProps>;
+  /** Per-provider nodes. AZ maps are region-scoped within each provider uuid. */
+  nodesByProvider: Record<string, NodeAvailabilityProps>;
+  /** Per-provider hardware stubs. */
+  instanceByProvider: Record<string, InstanceSettingProps>;
   databaseSettings?: DatabaseSettingsProps;
   securitySettings?: SecuritySettingsProps;
   proxySettings?: ProxyAdvancedProps;
@@ -65,8 +72,15 @@ export type createUniverseFormProps = {
   resilienceType?: ResilienceType;
 };
 
+export const emptyProviderSlots = {
+  placementsByProvider: {} as Record<string, ResilienceAndRegionsProps>,
+  nodesByProvider: {} as Record<string, NodeAvailabilityProps>,
+  instanceByProvider: {} as Record<string, InstanceSettingProps>
+};
+
 export const initialCreateUniverseFormState: createUniverseFormProps = {
   activeStep: CreateUniverseSteps.GENERAL_SETTINGS,
+  ...emptyProviderSlots,
   resilienceAndRegionsSettings: {
     [RESILIENCE_TYPE]: ResilienceType.REGULAR,
     [RESILIENCE_FORM_MODE]: ResilienceFormMode.GUIDED,
@@ -134,7 +148,7 @@ export const initialCreateUniverseFormState: createUniverseFormProps = {
     instanceTags: [],
     awsArnString: '',
     useSystemd: true,
-    accessKeyCode: '',
+    accessKeyCodeByProvider: {},
     universeOverrides: '',
     azOverrides: {}
   }
@@ -159,7 +173,10 @@ export const createUniverseFormMethods = (context: createUniverseFormProps) => (
   }),
   saveGeneralSettings: (data: GeneralSettingsProps) => ({
     ...context,
-    generalSettings: data
+    generalSettings: {
+      ...data,
+      providerConfigurations: normalizeProviderConfigurations(data.providerConfigurations)
+    }
   }),
   saveResilienceAndRegionsSettings: (data: ResilienceAndRegionsProps) => ({
     ...context,
@@ -173,9 +190,24 @@ export const createUniverseFormMethods = (context: createUniverseFormProps) => (
     ...context,
     instanceSettings: data
   }),
+  savePlacementsByProvider: (data: Record<string, ResilienceAndRegionsProps>) => ({
+    ...context,
+    placementsByProvider: data
+  }),
+  saveNodesByProvider: (data: Record<string, NodeAvailabilityProps>) => ({
+    ...context,
+    nodesByProvider: data
+  }),
+  saveInstanceByProvider: (data: Record<string, InstanceSettingProps>) => ({
+    ...context,
+    instanceByProvider: data
+  }),
+  clearProviderSlots: () => ({
+    ...context,
+    ...emptyProviderSlots
+  }),
   saveDatabaseSettings: (data: DatabaseSettingsProps) => {
-    const providerCode =
-      context.generalSettings?.providerConfiguration?.code ?? context.generalSettings?.cloud;
+    const providerCode = primaryCloudCode(context.generalSettings);
     // K8s cannot override ports — clear any stale override state.
     const databaseSettings =
       providerCode === CloudType.kubernetes ? clearConnectionPoolingPortOverrides(data) : data;
@@ -209,8 +241,7 @@ export const createUniverseFormMethods = (context: createUniverseFormProps) => (
     proxySettings: data
   }),
   saveOtherAdvancedSettings: (data: OtherAdvancedProps) => {
-    const providerCode =
-      context.generalSettings?.providerConfiguration?.code ?? context.generalSettings?.cloud;
+    const providerCode = primaryCloudCode(context.generalSettings);
     const syncedPorts = resolveConnectionPoolingPorts(
       data,
       context.databaseSettings?.enableConnectionPooling

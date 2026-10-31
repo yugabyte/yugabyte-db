@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.CanRollback;
@@ -13,7 +14,10 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.ManagedLoadBalancer;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.StateTransitionDetails;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -42,6 +46,17 @@ import lombok.extern.slf4j.Slf4j;
 @Retryable
 @CanRollback(enabled = false)
 public class RollbackEditUniverse extends EditUniverseTaskBase {
+
+  /** Task runtime info, inherited by a retry of this task. */
+  public static class RuntimeInfo {
+    /**
+     * Nodes the failed edit added, by name, as seen by this or an earlier attempt. The destroy
+     * removes them from the universe details, so a retry can no longer find them there, but their
+     * IPs still have to leave the master blacklist.
+     */
+    @JsonProperty("addedNodes")
+    Map<String, NodeDetails> addedNodes = new HashMap<>();
+  }
 
   private StateTransitionDetails stateTransitionDetails;
   private UniverseDefinitionTaskParams before;
@@ -120,6 +135,7 @@ public class RollbackEditUniverse extends EditUniverseTaskBase {
               taskParams().expectedUniverseVersion, null /* Txn callback */);
 
       Set<NodeDetails> nodesToDestroy = collectAddedNodesToDestroy(universe, before);
+      Set<NodeDetails> addedNodes = rememberAddedNodes(nodesToDestroy);
       // Revert CSP tags on Live-before AND Live-after survivors before destroy.
       createRevertInstanceTagsTasks(universe, before, target);
 
@@ -135,7 +151,7 @@ public class RollbackEditUniverse extends EditUniverseTaskBase {
         createDestroyServerTasks(
                 universe,
                 nodesToDestroy,
-                node -> true /* isForceDelete */,
+                forceDestroyOnlyOnOnprem(universe),
                 true /* deleteNode */,
                 true /* deleteRootVolumes */,
                 true /* skipDestroyPrecheck */)
@@ -149,10 +165,10 @@ public class RollbackEditUniverse extends EditUniverseTaskBase {
       // Clear orphaned server_blacklist from the pre-checkpoint ADD blacklist step, including
       // destroyed ADD IPs so they can be reused (on-prem DECOMMISSIONED skip is in
       // ModifyBlackList).
-      createClearOrphanedServerBlacklistTasks(universe, before, nodesToDestroy);
+      createClearOrphanedServerBlacklistTasks(universe, before, addedNodes);
 
       // Master should only report Live-before (plus transient destroyed ADD IPs).
-      createConfirmBeforeLiveMembershipTasks(before, nodesToDestroy);
+      createConfirmBeforeLiveMembershipTasks(before, addedNodes);
 
       // Delete before restore: the restore drops the state of load balancers that the failed edit
       // created, for example for a new region.
@@ -193,5 +209,19 @@ public class RollbackEditUniverse extends EditUniverseTaskBase {
       }
     }
     log.info("Finished {} task.", getName());
+  }
+
+  /**
+   * Returns the added nodes of this attempt plus those of earlier attempts. Only the steps that
+   * need their IPs use the result; destroying them must stay on the nodes still in the universe
+   * details.
+   */
+  private Set<NodeDetails> rememberAddedNodes(Set<NodeDetails> currentAddedNodes) {
+    RuntimeInfo info =
+        updateRuntimeInfo(
+            RuntimeInfo.class,
+            runtimeInfo ->
+                currentAddedNodes.forEach(n -> runtimeInfo.addedNodes.put(n.getNodeName(), n)));
+    return new HashSet<>(info.addedNodes.values());
   }
 }

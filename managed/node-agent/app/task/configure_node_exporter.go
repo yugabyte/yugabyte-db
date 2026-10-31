@@ -20,6 +20,9 @@ import (
 
 const (
 	nodeExporterService = "node_exporter.service"
+	// RootNodeExporterUnit is the root-level unit that YBA versions before 2026.2 laid out. It runs
+	// node_exporter as prometheus, which can't read the node certificate.
+	RootNodeExporterUnit = "/etc/systemd/system/" + nodeExporterService
 	// Must match web_config in the YNP node_exporter run.j2, which creates the file empty and
 	// passes it to --web.config.file.
 	nodeExporterWebConfigSubpath = "node_exporter/web.yml"

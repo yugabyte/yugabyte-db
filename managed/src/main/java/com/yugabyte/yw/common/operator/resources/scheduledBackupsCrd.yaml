@@ -137,16 +137,25 @@ spec:
                   description: Include tablespace information in the backup.
                   type: boolean
                   default: false
+                  x-kubernetes-validations:
+                  - message: useTablespaces cannot be changed
+                    rule: self == oldSelf
                 useRoles:
                   description: Backup global YSQL roles.
                   type: boolean
                   default: false
+                  x-kubernetes-validations:
+                  - message: useRoles cannot be changed
+                    rule: self == oldSelf
                 usePrivileges:
                   description: >
                     Backup privileges for roles.
                     If false, --no-privileges will be added to the backup command.
                   type: boolean
                   default: true
+                  x-kubernetes-validations:
+                  - message: usePrivileges cannot be changed
+                    rule: self == oldSelf
               required:
               - backupType
               - storageConfig

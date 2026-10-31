@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <algorithm>
 #include <memory>
 #include <optional>
 #include <queue>
@@ -158,7 +159,6 @@ using google::protobuf::RepeatedPtrField;
 
 using rpc::RpcContext;
 using pb_util::ParseFromSlice;
-using client::internal::RemoteTabletServer;
 using client::internal::RemoteTabletPtr;
 
 namespace master {
@@ -167,6 +167,20 @@ namespace {
 Status PrepareVectorIndexesIfNecessary(
     CatalogManager& catalog_manager, const TableInfoPtr& table, bool is_clone,
     const LeaderEpoch& epoch);
+
+// Import keeps the snapshot's vector index options, so reject a snapshot with a deprecated backend
+// before the import creates its objects, instead of restoring tablets that fail to open. For YSQL
+// restore and clone, the schema dump has already created the database and its tables by then.
+Status ValidateSnapshotVectorIndexBackends(const SnapshotInfoPB& snapshot_pb) {
+  for (const auto& backup_entry : snapshot_pb.backup_entries()) {
+    const auto& entry = backup_entry.entry();
+    if (entry.type() == SysRowEntryType::TABLE) {
+      RETURN_NOT_OK(ValidateVectorIndexBackend(
+          entry.id(), VERIFY_RESULT(ParseFromSlice<SysTablesEntryPB>(entry.data()))));
+    }
+  }
+  return Status::OK();
+}
 }  // namespace
 
 Result<TableDescription> TableWithTabletsEntries::DescribeTable(
@@ -960,6 +974,8 @@ Status CatalogManager::DoImportSnapshotMeta(
         MasterError(MasterErrorPB::SNAPSHOT_FAILED));
   }
 
+  RETURN_NOT_OK(ValidateSnapshotVectorIndexBackends(snapshot_pb));
+
   bool is_clone = clone_target_namespace_name.has_value();
   bool use_relfilenode =
       UseRelfilenodeForTableMatch(snapshot_pb) && !FLAGS_import_snapshot_using_table_name;
@@ -1085,6 +1101,7 @@ Status CatalogManager::ImportSnapshotPreprocess(
       case SysRowEntryType::TSERVER_REGISTRATION: FALLTHROUGH_INTENDED;
       case SysRowEntryType::OBJECT_LOCK_ENTRY: FALLTHROUGH_INTENDED;
       case SysRowEntryType::HISTORY_RETENTION_PIN: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::PERSISTENCE_BLOCK_MAP: FALLTHROUGH_INTENDED;
       case SysRowEntryType::UNKNOWN:
         FATAL_INVALID_ENUM_VALUE(SysRowEntryType, entry.type());
     }
@@ -2507,8 +2524,10 @@ Status CatalogManager::ImportTableEntry(
     //   sequentially. If a column was dropped from the indexed table before the snapshot was
     //   taken, the snapshotted and restored tables can have different column ids. Phase 3 fixes
     //   the indexed table's column ids when it imports that table.
-    // - hnsw.backend and store_payload come from --vector_index_backend and
-    //   --vector_index_store_payload, which can differ between the two clusters.
+    // - hnsw.backend, store_payload and tenant_hash_group_and_range_components come from
+    //   --vector_index_backend, --vector_index_store_payload and
+    //   --vector_index_tenant_hash_group_and_range_components, which can differ between the two
+    //   clusters.
     // - id names the tablet's vector index directory. The tablet takes it from the snapshot
     //   superblock, so the restored files are found under the snapshot's id.
     // Here in phase 4, while importing the vector index, we copy the snapshot's options, if
@@ -3180,8 +3199,7 @@ Status CatalogManager::RestoreSysCatalogCommon(
   MAYBE_FAULT(FLAGS_TEST_crash_during_sys_catalog_restoration);
 
   // Restore the other tables.
-  RETURN_NOT_OK(state->PrepareWriteBatch(
-      doc_read_context, schema_packing_provider, write_batch, master_->clock()->Now()));
+  RETURN_NOT_OK(state->PrepareWriteBatch(doc_read_context, schema_packing_provider, write_batch));
 
   // Updates the restoration state to indicate that sys catalog phase has completed.
   // Also, initializes the master side perceived list of tables/tablets/namespaces
@@ -3298,7 +3316,7 @@ Status CatalogManager::RestoreSysCatalog(
   if (!s.ok() && leader_mode) {
     LOG_WITH_PREFIX_AND_FUNC(INFO)
         << "PITR: Accepting RPCs to the master leader because of restoration failure: " << s;
-    restoring_sys_catalog_ = false;
+    ClearRestoringSysCatalogIfNotFenced();
   }
   // As RestoreSysCatalog is synchronous on Master it should be ok to set the completion
   // status in case of validation failures so that it gets propagated back to the client before
@@ -3443,12 +3461,18 @@ void CatalogManager::RemoveHiddenColocatedTableFromTablet(
       continue;
     }
 
-    LOG(INFO) << "Removing hidden colocated table " << table->name() << " from its parent tablet";
+    LOG(INFO) << "Removing hidden table " << table->name() << " from tablet "
+              << tablet_info->tablet_id();
     auto call = std::make_shared<AsyncRemoveTableFromTablet>(
         master_, AsyncTaskPool(), tablet_info, table, epoch);
     table->AddTask(call);
     WARN_NOT_OK(ScheduleTask(call), "Failed to send RemoveTableFromTablet request");
-    table->ClearTabletMaps();
+    // Only drop this tablet from the table. A vector index is hosted by every tablet of its indexed
+    // table, and the others may still be retained by a snapshot schedule.
+    auto tablet_lock = tablet_info->LockForWrite();
+    WARN_NOT_OK(
+        table->RemoveTablet(tablet_info->tablet_id()),
+        Format("Failed to remove tablet $0 from $1", tablet_info->tablet_id(), AsString(*table)));
   }
 }
 
@@ -3825,16 +3849,6 @@ Status CatalogManager::GetUDTypeMetadata(
   return Status::OK();
 }
 
-
-Result<RemoteTabletServer *> CatalogManager::GetLeaderTServer(
-    client::internal::RemoteTabletPtr tablet) {
-  auto ts = tablet->LeaderTServer();
-  if (ts == nullptr) {
-    return STATUS(NotFound, "Tablet leader not found for tablet", tablet->tablet_id());
-  }
-  return ts;
-}
-
 Result<bool> CatalogManager::IsTableUndergoingPitrRestore(const TableInfo& table_info) {
   return master_->snapshot_coordinator().IsTableUndergoingPitrRestore(table_info);
 }
@@ -3851,14 +3865,18 @@ Result<size_t> CatalogManager::GetNumLiveTServersForActiveCluster() {
   return ts_descs.size();
 }
 
-// This function is used to fence other work in the catalog manager which modifies tables or tablets
-// with PITR restores. It is called during the apply of the RESTORE_SYS_CATALOG raft op.
+// These functions fence other work in the catalog manager which modifies tables or tablets with
+// PITR restores. The leader that submits a RESTORE_SYS_CATALOG op fences in
+// FenceSysCatalogForRestore before submitting it. PrepareRestore, called during the apply of the
+// op, only fences if this node did not fence for that op (e.g. it was submitted in an earlier
+// term). Fencing during apply can deadlock: IncrementPitrCount waits for in-flight sys catalog
+// writes, whose raft ops may be queued behind the restore op.
 //
-// Ideally this function would use the leader lock to wait for all async tasks and rpc handlers
+// Ideally the fence would use the leader lock to wait for all async tasks and rpc handlers
 // accessing catalog entities to return, but this is not possible:
-//  *  exclusively acquiring the CatalogManager::leader_mutex_ here introduces a lock inversion with
-//     ReplicaState::update_lock_.
-//  *  waiting to acquire the leader mutex here can add unbounded delay to a raft op apply,
+//  *  exclusively acquiring the CatalogManager::leader_mutex_ during apply introduces a lock
+//     inversion with ReplicaState::update_lock_.
+//  *  waiting to acquire the leader mutex during apply can add unbounded delay to a raft op apply,
 //     preventing raft heartbeats.
 //
 // Much existing code in the catalog manager acquires the locks in this order:
@@ -3868,15 +3886,59 @@ Result<size_t> CatalogManager::GetNumLiveTServersForActiveCluster() {
 // work (1) and preventing any new work until the sys catalog is reloaded (2).
 //   (1) Any logical unit of work in the catalog manager should grab a LeaderEpoch when it begins.
 //     The sys catalog mutation API for tables and tablets checks LeaderEpoch::pitr_count. If the
-//     catalog work began before PrepareRestore was called and tried to write after PrepareRestore
-//     was called, then the work's cached pitr_count will not match the sys catalog's pitr_count and
-//     the write will fail.
+//     catalog work began before the fence and tried to write after it, then the work's cached
+//     pitr_count will not match the sys catalog's pitr_count and the write will fail.
 //   (2) ScopedLeaderSharedLock checks restoring_sys_catalog_ and fails if it is set, so any new
 //     tasks will fail.
-void CatalogManager::PrepareRestore() {
-  LOG_WITH_PREFIX(INFO) << "Disabling concurrent RPCs since restoration is ongoing";
+void CatalogManager::PrepareRestore(const TxnSnapshotRestorationId& restoration_id) {
   restoring_sys_catalog_ = true;
+  {
+    std::lock_guard lock(restore_fence_mutex_);
+    auto it = std::find(fenced_restorations_.begin(), fenced_restorations_.end(), restoration_id);
+    if (it != fenced_restorations_.end()) {
+      fenced_restorations_.erase(it);
+      return;
+    }
+  }
+  LOG_WITH_PREFIX(INFO) << "Disabling concurrent RPCs since restoration is ongoing";
   sys_catalog_->IncrementPitrCount();
+}
+
+void CatalogManager::FenceSysCatalogForRestore(const TxnSnapshotRestorationId& restoration_id) {
+  LOG_WITH_PREFIX(INFO) << "Disabling concurrent RPCs before submitting sys catalog restore "
+                        << restoration_id;
+  {
+    std::lock_guard lock(restore_fence_mutex_);
+    fenced_restorations_.push_back(restoration_id);
+  }
+  restoring_sys_catalog_ = true;
+  // Called without restore_fence_mutex_: this waits for writes whose ops may be queued behind
+  // another restore op, whose apply takes the mutex in PrepareRestore.
+  // The bump is not undone if the op is never applied. In-flight work then fails with Aborted as
+  // if a restore had happened, and new work picks up the new count.
+  sys_catalog_->IncrementPitrCount();
+}
+
+void CatalogManager::UnfenceSysCatalogForRestore(const TxnSnapshotRestorationId& restoration_id) {
+  {
+    std::lock_guard lock(restore_fence_mutex_);
+    auto it = std::find(fenced_restorations_.begin(), fenced_restorations_.end(), restoration_id);
+    if (it == fenced_restorations_.end()) {
+      // Consumed by PrepareRestore: the op was applied and the reload clears the flag.
+      return;
+    }
+    fenced_restorations_.erase(it);
+  }
+  LOG_WITH_PREFIX(INFO) << "Sys catalog restore " << restoration_id
+                        << " was not applied on this node, dropping its fence";
+  ClearRestoringSysCatalogIfNotFenced();
+}
+
+void CatalogManager::ClearRestoringSysCatalogIfNotFenced() {
+  std::lock_guard lock(restore_fence_mutex_);
+  if (fenced_restorations_.empty()) {
+    restoring_sys_catalog_ = false;
+  }
 }
 
 Status CatalogManager::GetYsqlYbSystemTableInfo(

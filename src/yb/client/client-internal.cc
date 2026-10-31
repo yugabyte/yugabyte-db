@@ -338,6 +338,9 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetUniverseReplications);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetUniverseReplicationInfo);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, WaitForReplicationDrain);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, XClusterEnsureSequenceUpdatesAreInWal);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, XClusterStopPersisting);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, XClusterStartPersisting);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, XClusterGetPersistenceBlockMap);
 
 #define YB_CLIENT_SPECIALIZE_SIMPLE_EX_EACH(i, data, set) YB_CLIENT_SPECIALIZE_SIMPLE_EX set
 
@@ -630,8 +633,12 @@ Status YBClient::Data::IsCreateTableInProgress(
     return STATUS(InternalError, "Cannot query IsCreateTableInProgress without table info");
   }
 
+  // This check is fast, so use the default RPC timeout.  The deadline is for the whole create,
+  // which can be long (e.g., xcluster_automatic_target_create_table_ddl_rpc_timeout_sec).
+  const auto rpc_deadline = std::min(deadline, CoarseMonoClock::Now() + default_rpc_timeout_);
   auto status = SyncLeaderMasterRpc(
-      deadline, req, &resp, "IsCreateTableDone", &master::MasterDdlProxy::IsCreateTableDoneAsync);
+      rpc_deadline, req, &resp, "IsCreateTableDone",
+      &master::MasterDdlProxy::IsCreateTableDoneAsync);
 
   *create_in_progress = !resp.done();
   return status;
@@ -1493,6 +1500,52 @@ class GetTableSchemaRpc
   master::TableIdentifierPB table_identifier_;
   YBTableInfo* info_;
   master::GetTableSchemaResponsePB* resp_copy_;
+};
+
+// Gets a namespace's info from the leader master. See ClientMasterRpc.
+class GetNamespaceInfoRpc
+    : public ClientMasterRpc<master::GetNamespaceInfoRequestPB,
+                             master::GetNamespaceInfoResponsePB> {
+ public:
+  GetNamespaceInfoRpc(YBClient* client,
+                      const NamespaceId& namespace_id,
+                      std::shared_ptr<master::GetNamespaceInfoResponsePB> resp,
+                      StdStatusCallback user_cb,
+                      CoarseTimePoint deadline)
+      : ClientMasterRpc(client, deadline),
+        resp_copy_(std::move(resp)),
+        user_cb_(std::move(user_cb)) {
+    req_.mutable_namespace_()->set_id(namespace_id);
+  }
+
+  std::string ToString() const override {
+    return Format(
+        "GetNamespaceInfoRpc(namespace_id: $0, num_attempts: $1)",
+        req_.namespace_().id(), num_attempts());
+  }
+
+  ~GetNamespaceInfoRpc() override = default;
+
+ private:
+  void CallRemoteMethod() override {
+    master_ddl_proxy()->GetNamespaceInfoAsync(
+        req_, &resp_, mutable_retrier()->mutable_controller(),
+        std::bind(&GetNamespaceInfoRpc::Finished, this, Status::OK()));
+  }
+
+  void ProcessResponse(const Status& status) override {
+    if (status.ok()) {
+      resp_copy_->Swap(&resp_);
+    } else {
+      LOG(WARNING) << ToString() << " failed: " << status.ToString();
+    }
+    user_cb_(status);
+  }
+
+  // Held rather than borrowed so that the response outlives the RPC regardless of what the
+  // caller does after starting it.
+  std::shared_ptr<master::GetNamespaceInfoResponsePB> resp_copy_;
+  StdStatusCallback user_cb_;
 };
 
 // Gets all table schemas for a tablegroup from the leader master. See ClientMasterRpc.
@@ -2581,6 +2634,22 @@ Status YBClient::Data::GetTablegroupSchemaById(
       info.get(),
       deadline);
   return Status::OK();
+}
+
+void YBClient::Data::GetNamespaceInfo(
+    YBClient* client,
+    const NamespaceId& namespace_id,
+    CoarseTimePoint deadline,
+    std::shared_ptr<master::GetNamespaceInfoResponsePB> resp,
+    StdStatusCallback callback) {
+  auto rpc = std::make_shared<internal::GetNamespaceInfoRpc>(
+      client, namespace_id, std::move(resp), callback, deadline);
+  // Registration fails once rpcs_ is shutting down, and an rpc rejected there is aborted before
+  // it is sent, so its own callback never runs. Report that to the caller here.
+  auto status = rpcs_.RegisterAndStartStatus(rpc, rpc->RpcHandle());
+  if (!status.ok()) {
+    callback(status);
+  }
 }
 
 Result<IndexPermissions> YBClient::Data::GetIndexPermissions(

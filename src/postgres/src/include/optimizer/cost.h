@@ -46,6 +46,7 @@
 /* LSM Lookup costs */
 #define YB_DEFAULT_DOCDB_NEXT_CPU_CYCLES 5
 #define YB_DEFAULT_SEEK_COST_FACTOR 0.4
+#define YB_DEFAULT_PREV_COST_FACTOR 2.4
 
 /* YB: DocDB row decode and process cost */
 #define YB_DEFAULT_DOCDB_MERGE_CPU_CYCLES 5
@@ -143,6 +144,7 @@ extern PGDLLIMPORT double yb_inter_zone_transfer_cost;
 extern PGDLLIMPORT double yb_local_roundtrip_cost;
 extern PGDLLIMPORT double yb_local_transfer_cost;
 extern PGDLLIMPORT double yb_seek_cost_factor;
+extern PGDLLIMPORT double yb_prev_cost_factor;
 extern PGDLLIMPORT bool yb_enable_bitmapscan;
 extern PGDLLIMPORT bool yb_enable_geolocation_costing;
 

@@ -9,11 +9,7 @@ import { useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { useTranslation } from 'react-i18next';
 import { Typography, makeStyles } from '@material-ui/core';
-import {
-  OperationBannerVariant,
-  YBButton,
-  YBOperationBanner
-} from '@yugabyte-ui-library/core';
+import { OperationBannerVariant, YBButton, YBOperationBanner } from '@yugabyte-ui-library/core';
 
 import { showTaskInDrawer } from '@app/actions/tasks';
 import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
@@ -33,7 +29,6 @@ import InfoIcon from '@app/redesign/assets/info.svg';
 interface EditUniverseTaskBannerProps {
   task: Task;
   universeUuid: string;
-  onDismiss: () => void;
 }
 
 const BANNER_TEST_ID = 'edit-universe-task-banner';
@@ -73,15 +68,11 @@ const useStyles = makeStyles((theme) => ({
 /**
  * Banner for an edit universe task (VM or Kubernetes), covering the whole task lifecycle.
  *
- * In progress and success show View Details; failure and abort add retry / roll back, gated on
- * the task's `retryable` / `canRollback` flags. Precheck-only edits are excluded by
- * {@link getIsEditUniverseTask}.
+ * In progress shows View Details. Failure and abort use the error banner and add retry / roll
+ * back, gated on the task's `retryable` / `canRollback` flags. Precheck-only edits are excluded
+ * by {@link getIsEditUniverseTask}.
  */
-export const EditUniverseTaskBanner = ({
-  task,
-  universeUuid,
-  onDismiss
-}: EditUniverseTaskBannerProps) => {
+export const EditUniverseTaskBanner = ({ task, universeUuid }: EditUniverseTaskBannerProps) => {
   const [isRetryConfirmModalOpen, setIsRetryConfirmModalOpen] = useState(false);
   const [isRollbackConfirmModalOpen, setIsRollbackConfirmModalOpen] = useState(false);
   const dispatch = useDispatch();
@@ -136,22 +127,22 @@ export const EditUniverseTaskBanner = ({
           icon={<OperationBannerLoadingIcon />}
           title={t('inProgress.title')}
           message={t('inProgress.description')}
-          content={
-            <OperationBannerProgressContent progressPercent={task.percentComplete ?? 0} />
-          }
+          content={<OperationBannerProgressContent progressPercent={task.percentComplete ?? 0} />}
           dataTestId={BANNER_TEST_ID}
           action={viewDetailsButton}
         />
       );
       break;
     case TaskState.FAILURE:
-    case TaskState.ABORTED:
+    case TaskState.ABORTED: {
+      const isTaskAborted = task.status === TaskState.ABORTED;
       bannerComponent = (
         <YBOperationBanner
           variant={OperationBannerVariant.Error}
           dense
           minHeight={46}
-          title={t('failed.title')}
+          title={t(isTaskAborted ? 'aborted.title' : 'failed.title')}
+          {...(isTaskAborted ? { message: t('aborted.description') } : {})}
           content={
             <OperationBannerProgressContent
               progressPercent={task.percentComplete ?? 0}
@@ -218,6 +209,7 @@ export const EditUniverseTaskBanner = ({
         />
       );
       break;
+    }
     case TaskState.SUCCESS:
     case TaskState.UNKNOWN:
       bannerComponent = null;

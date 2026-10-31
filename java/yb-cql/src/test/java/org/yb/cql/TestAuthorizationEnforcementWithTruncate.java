@@ -29,7 +29,7 @@ import com.datastax.driver.core.exceptions.UnauthorizedException;
 
 // This test enables ycql_require_drop_privs_for_truncate flag.
 @RunWith(value=YBTestRunner.class)
-public class TestAuthorizationEnforcementWithTruncate extends TestAuthorizationEnforcement {
+public class TestAuthorizationEnforcementWithTruncate extends BaseAuthorizationEnforcementTest {
   private static final Logger LOG =
     LoggerFactory.getLogger(org.yb.cql.TestAuthorizationEnforcementWithTruncate.class);
 

@@ -339,7 +339,7 @@ template <class R>
 class MergingPgDocOpFetchStream : public PgDocOpFetchStream {
  public:
   MergingPgDocOpFetchStream(
-      PgDocFetchCallback fetch_func, const std::vector<PgsqlOpPtr>& ops, size_t nattrs);
+      PgDocFetchCallback fetch_func, const std::vector<PgsqlOpPtr>& ops);
 
   virtual ~MergingPgDocOpFetchStream() = default;
 
@@ -359,7 +359,6 @@ class MergingPgDocOpFetchStream : public PgDocOpFetchStream {
 
   // The list of streams participating in merge sort.
   std::list<DocResultStream<R>> read_streams_;
-  size_t nattrs_;
 
   struct StreamComparator {
     bool operator()(DocResultStream<R>* a, DocResultStream<R>* b) const {

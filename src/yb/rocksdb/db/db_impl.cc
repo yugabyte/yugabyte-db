@@ -2306,13 +2306,18 @@ Result<FileNumbersHolder> DBImpl::FlushMemTableToOutputFile(
         << cfd->current()->storage_info()->LevelSummary(&tmp);
   }
 
-  if (!file_number_holder.ok() && !file_number_holder.status().IsShutdownInProgress()
-      && db_options_.paranoid_checks && bg_error_.ok()) {
-    // if a bad error happened (not ShutdownInProgress) and paranoid_checks is
-    // true, mark DB read-only
+  if (!file_number_holder.ok() && bg_error_.ok() &&
+      (flush_job.filter_failed() ||
+       (!file_number_holder.status().IsShutdownInProgress() && db_options_.paranoid_checks))) {
+    // A failed dependency cannot be retried indefinitely, even with paranoid checks disabled or
+    // when the dependency (rather than this DB) is shutting down. Wake waiters with the error.
     bg_error_.TrySet(file_number_holder.status());
   }
   RETURN_NOT_OK(file_number_holder);
+  if (!flush_job.picked_memtables()) {
+    // Nothing was flushed, so there is no flush or file to report.
+    return file_number_holder;
+  }
   MAYBE_FAULT(FLAGS_fault_crash_after_rocksdb_flush);
   // may temporarily unlock and lock the mutex.
   NotifyOnFlushCompleted(
@@ -3803,8 +3808,12 @@ ColumnFamilyData* DBImpl::PopFirstFromFlushQueue(FlushReason* flush_reason_out) 
 
 void DBImpl::SchedulePendingFlush(ColumnFamilyData* cfd, FlushReason reason) {
   if (!cfd->pending_flush() && cfd->imm()->IsFlushPending()) {
-    for (auto listener : db_options_.listeners) {
-      listener->OnFlushScheduled(this);
+    if (!db_options_.listeners.empty()) {
+      auto largest_frontier =
+          cfd->imm()->GetFrontier({}, yb::storage::UpdateUserValueType::kLargest);
+      for (auto listener : db_options_.listeners) {
+        listener->OnFlushScheduled(this, largest_frontier.get());
+      }
     }
     VLOG_WITH_PREFIX_AND_FUNC(2) << "Flush scheduled for CF: " << cfd->GetName()
                                  << ", reason: " << ToString(reason);
@@ -3952,6 +3961,7 @@ void DBImpl::WaitAfterBackgroundError(
             "Waiting after background $0 error: $1, Accumulated background error counts: $2",
             job_name, s, error_cnt).c_str());
     LogFlush(db_options_.info_log);
+    TEST_SYNC_POINT_CALLBACK("DBImpl::WaitAfterBackgroundError", this);
     env_->SleepForMicroseconds(1000000);
     mutex_.Lock();
   }
@@ -3992,6 +4002,7 @@ void DBImpl::BackgroundJobComplete(
 }
 
 void DBImpl::BackgroundCallFlush(ColumnFamilyData* cfd) {
+  TEST_SYNC_POINT_CALLBACK("DBImpl::BackgroundCallFlush:Start", this);
   bool made_progress = false;
   JobContext job_context(next_job_id_.fetch_add(1), true);
 
@@ -5593,13 +5604,25 @@ Status DBImpl::SingleDelete(const WriteOptions& write_options,
 }
 
 Status DBImpl::Write(const WriteOptions& write_options, WriteBatch* my_batch) {
-  return WriteImpl(write_options, my_batch, nullptr);
+  auto status = WriteImpl(write_options, my_batch, nullptr);
+  // A successful write returns only once its batch is visible to readers, also when the batch
+  // was written by the leader of a write group.
+  if (my_batch) {
+    my_batch->Applied(status);
+  }
+  return status;
 }
 
 Status DBImpl::WriteWithCallback(const WriteOptions& write_options,
                                  WriteBatch* my_batch,
                                  WriteCallback* callback) {
-  return WriteImpl(write_options, my_batch, callback);
+  auto status = WriteImpl(write_options, my_batch, callback);
+  // A successful write returns only once its batch is visible to readers, also when the batch
+  // was written by the leader of a write group.
+  if (my_batch) {
+    my_batch->Applied(status);
+  }
+  return status;
 }
 
 Status DBImpl::WriteImpl(const WriteOptions& write_options,

@@ -14,7 +14,12 @@
     crossButton.addEventListener('click', (event) => {
       event.currentTarget.parentNode.classList.add('hidden');
       if (activeGroups.indexOf('C0003') > -1) {
-        browserCookieUtils.setCookie('closeAISearchBanner', 1);
+        browserCookieUtils.setCookie('closeAISearchBanner', 1, {
+          timeToLive: 1,
+          unit: 'month',
+          sameSite: 'Strict',
+          secure: true,
+        });
       }
     });
   }

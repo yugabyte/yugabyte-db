@@ -9,6 +9,8 @@ menu:
     identifier: managed-integrations
     parent: cloud-monitor
     weight: 600
+rightNav:
+  hideH4: true
 type: docs
 ---
 
@@ -35,11 +37,13 @@ Currently, you can export data to the following tools.
 | :---------- | :--------- | :------------ |
 | [Datadog](#datadog) | Database query logs<br>Database audit logs | [Yes](https://docs.datadoghq.com/integrations/yugabytedb_managed/#data-collected) |
 | [Grafana Cloud](#grafana-cloud) | | [Yes](https://grafana.com/grafana/dashboards/12620-yugabytedb/) |
+| [Grafana Mimir](#grafana-mimir) | | Yes |
 | [Sumo Logic](#sumo-logic) | | Yes |
 | [Prometheus](#prometheus) | | Yes |
 | [VictoriaMetrics](#victoriametrics) | | Yes |
 | [Google Cloud Logging](#google-cloud-logging) | Database audit logs | |
 | [New Relic](#new-relic) | | Yes |
+| [Tsuga](#tsuga) | Database query logs<br>Database audit logs | Yes |
 | [Amazon S3](#amazon-s3) | Database query logs<br>Database audit logs | |
 
 <!--| [Dynatrace](#dynatrace) | | Yes |-->
@@ -101,6 +105,77 @@ To create an export configuration, do the following:
 1. Enter your Grafana Cloud Access policy token.
 1. Enter your Grafana Cloud instance ID and zone. Obtain these by navigating to the Grafana Cloud portal, selecting your stack, and on the Grafana tile, clicking **Details**. They are displayed under **Instance Details**.
 1. Optionally, click **Download** to download the Grafana Cloud dashboard template. You can [import this JSON format template](https://grafana.com/docs/grafana-cloud/visualizations/dashboards/manage-dashboards/#export-and-import-dashboards) into your Grafana account and use it as a starting point for visualizing your cluster data in Grafana. The dashboard is also available from the [Grafana Dashboards](https://grafana.com/grafana/dashboards/19887-yugabytedb-managed-clusters/) page.
+1. Click **Test Configuration** to make sure your connection is working.
+1. Click **Create Configuration**.
+
+### Grafana Mimir
+
+The [Grafana Mimir](https://grafana.com/docs/mimir/latest/) integration requires the following:
+
+- Grafana Mimir instance that accepts [OpenTelemetry (OTLP) metrics](https://grafana.com/docs/mimir/latest/configure/configure-otel-collector/). You can use Grafana's managed Mimir or a self-hosted instance.
+- OTLP endpoint URL for that instance
+- Authorization header used to authenticate with Grafana Mimir
+- For a multi-tenant instance, the tenant organization ID. Grafana Mimir reads this value from the [`X-Scope-OrgID`](https://grafana.com/docs/mimir/latest/references/http-api/#authentication) header
+
+Grafana's managed Mimir has a public DNS record and is reachable on port 443. You don't need to change networking to export metrics to that endpoint.
+
+#### Self-hosted Grafana Mimir
+
+Self-hosted Grafana Mimir is only available for clusters deployed on AWS or GCP. It has the same networking requirements as [Prometheus](#prometheus) and [VictoriaMetrics](#victoriametrics).
+
+- Grafana Mimir instance
+  - Deployed in a VPC on AWS or GCP.
+
+  - VPC hosting the Grafana Mimir instance has the following Inbound Security Group rules:
+    - Allow HTTP inbound traffic on port 80 for the Grafana Mimir endpoint URL (HTTP).
+    - Allow HTTPS inbound traffic on port 443 for the Grafana Mimir endpoint URL (HTTPS).
+
+    See [Control traffic to your AWS resources using security groups](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-security-groups.html) in the AWS documentation, or [VPC firewall rules](https://cloud.google.com/firewall/docs/firewalls) in the Google Cloud documentation.
+
+  - Endpoint URL that is publicly resolvable and maps to the private IP of the Grafana Mimir instance.
+
+    The endpoint URL must have a publicly accessible DNS record so that its hostname can be resolved globally. Typically, this involves adding the URL to a public DNS zone. For example, in AWS, you would add the endpoint URL to a Public Hosted Zone in Route 53.
+
+    To verify that the endpoint is publicly resolvable, you can use a tool such as nslookup.
+
+    The Grafana Mimir instance itself should not be publicly accessible, but must be reachable from your YugabyteDB Aeon cluster via VPC peering (see YugabyteDB Aeon requirements below).
+
+  - Grafana Mimir listening on the HTTP or HTTPS port that matches the endpoint URL you provide.
+
+    The Metrics Exporter connects using the port implied by the URL scheme: port 80 for `http://` and port 443 for `https://`. Cluster nodes allow outbound traffic only on those ports. The default Grafana Mimir listen port (8080) is not supported and export fails if Mimir is only reachable on 8080. You can save an endpoint that includes another port, such as `http://mimir.yourcompany.com:8080/otlp`, but the nodes drop that traffic and metrics are not exported. Configure Mimir to listen on port 80 or 443, or place a reverse proxy such as nginx in front of Mimir to terminate HTTP/HTTPS on 80 or 443 and forward traffic to Mimir.
+
+- YugabyteDB Aeon cluster from which you want to export metrics
+  - Cluster deployed in VPCs on AWS, or a VPC in GCP. See [VPCs](../../cloud-basics/cloud-vpcs/cloud-add-vpc/).
+  - VPCs are peered with the VPC hosting Grafana Mimir. See [Peer VPCs](../../cloud-basics/cloud-vpcs/cloud-add-vpc-aws/).
+
+    As each region of a cluster deployed in AWS has its own VPC, make sure that _all_ the VPCs are peered and allow inbound access from Grafana Mimir; this also applies to regions you add or change after deployment, and to read replicas. In GCP, clusters are deployed in a single VPC.
+
+  For information on VPC networking in YugabyteDB Aeon, see [VPC network overview](../../cloud-basics/cloud-vpcs/cloud-vpc-intro/).
+
+#### Create configuration
+
+To create an export configuration, do the following:
+
+1. On the **Integrations** page, click **Configure** for the **Grafana Mimir** integration or, if a configuration is already available, **Add Configuration**.
+1. Enter a name for the configuration.
+1. Enter the Grafana Mimir OTLP endpoint URL where you want to send metrics.
+
+    The URL must be in the form
+
+    ```sh
+    http://mimir.yourcompany.com/otlp
+    ```
+
+    or, for HTTPS,
+
+    ```sh
+    https://mimir.yourcompany.com/otlp
+    ```
+
+    Omit a custom port from the URL. The exporter targets port 80 for HTTP and port 443 for HTTPS. For a self-hosted instance, do not use the default port 8080.
+
+1. Enter the Authorization header value. The value must start with `Bearer ` or `Basic `, including the space. For example, `Bearer <token>` or `Basic <Base64-encoded username:password>`.
+1. Optionally, enter the Grafana Mimir organization ID. This is sent as the `X-Scope-OrgID` header. Leave the field blank if your Grafana Mimir instance isn't multi-tenant.
 1. Click **Test Configuration** to make sure your connection is working.
 1. Click **Create Configuration**.
 
@@ -271,6 +346,26 @@ To create an export configuration, do the following:
     - US Endpoint: `https://otlp.nr-data.net`
     - EU Endpoint: `https://otlp.eu01.nr-data.net`
 1. Enter the license key for the New Relic account you want to use for data ingest. Keys are available under **User menu > API Keys** in the New Relic platform.
+1. Click **Test Configuration** to make sure your connection is working.
+1. Click **Create Configuration**.
+
+### Tsuga
+
+The [Tsuga](https://www.tsuga.com/) integration requires the following:
+
+- Tsuga account
+- URL of your Tsuga OTLP endpoint
+- Tsuga API token; the token is sent as an `Authorization: Bearer` header
+
+To create an export configuration, do the following:
+
+1. On the **Integrations** page, click **Configure** for the **Tsuga** integration or, if a configuration is already available, **Add Configuration**.
+1. Enter a name for the configuration.
+1. Enter the Tsuga OTLP endpoint URL where you want to send metrics and logs. For example, `intake.yourcompany.tsuga.com/api/v1/otlp`.
+
+    Enter the endpoint without `/v1/metrics` or `/v1/logs`. Those paths are appended automatically.
+
+1. Enter the Tsuga API token. Enter the token only; `Bearer` is added automatically.
 1. Click **Test Configuration** to make sure your connection is working.
 1. Click **Create Configuration**.
 

@@ -40,6 +40,7 @@
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_util.h"
+#include "yb/consensus/log.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/retryable_requests.h"
 
@@ -81,6 +82,7 @@
 
 using namespace yb::size_literals;
 
+DECLARE_bool(enable_tiered_storage);
 DECLARE_int32(remote_bootstrap_begin_session_timeout_ms);
 
 DECLARE_int32(remote_bootstrap_end_session_timeout_sec);
@@ -302,7 +304,14 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
   // target_storage_tier (e.g. "ssd"/"hdd") is intentionally left as-is; still applies on this new
   // replica. target_tier_path_id must be cleared. TSTabletManager will re-resolve it the first time
   // this tablet is opened (via ResolveTargetTierPathId), since RBS always lands data on path_id 0.
+  // With tiered storage disabled this node writes no tier intent, same as CreateTablet.
   kv_store->clear_target_tier_path_id();
+  if (!FLAGS_enable_tiered_storage && kv_store->has_target_storage_tier()) {
+    LOG_WITH_PREFIX(WARNING) << "Ignoring target storage tier \"" << kv_store->target_storage_tier()
+                             << "\" of the source replica because tiered storage is disabled "
+                             << "(--enable_tiered_storage=false)";
+    kv_store->clear_target_storage_tier();
+  }
 
   superblock_->set_tablet_data_state(tablet::TABLET_DATA_COPYING);
   wal_seqnos_.assign(resp.deprecated_wal_segment_seqnos().begin(),
@@ -311,6 +320,11 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
     first_wal_seqno_ = resp.first_wal_segment_seqno();
   } else {
     first_wal_seqno_ = 0;
+  }
+  if (resp.has_quiescent_marker()) {
+    quiescent_marker_ = resp.quiescent_marker();
+  } else {
+    quiescent_marker_.reset();
   }
   remote_committed_cstate_.reset(resp.release_initial_committed_cstate());
 
@@ -611,6 +625,12 @@ Status RemoteBootstrapClient::DownloadWALs() {
   // fsync() parent dir.
   RETURN_NOT_OK_PREPEND(env().SyncDir(wal_table_top_dir),
                         Format("Failed to sync WAL table directory $0", wal_table_top_dir));
+
+  // Downloaded segments may start after the marker.
+  if (quiescent_marker_) {
+    LOG_WITH_PREFIX(INFO) << "Writing quiescent marker: " << quiescent_marker_->ShortDebugString();
+    RETURN_NOT_OK(log::Log::WriteQuiescentMarkerFile(&env(), wal_dir, *quiescent_marker_));
+  }
 
   // Download the WAL segments.
   uint64_t counter = 0;

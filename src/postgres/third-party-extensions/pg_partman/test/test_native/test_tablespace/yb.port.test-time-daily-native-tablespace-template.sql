@@ -13,10 +13,14 @@ CREATE TABLESPACE mytablespace LOCATION ''; -- YB: Requires folder creation for 
 
 -- Currently doesn't test that the child tables and indexes are in the given tablespace (pgtap doesn't have that test). Just tests the code paths. 
 
+-- YB: Gate the tests that need yb_pg_partman_check_native_txn_ddl_and_locks() to be true.
+SELECT pg_catalog.yb_pg_partman_check_native_txn_ddl_and_locks()::int AS yb_use_txn_ddl_and_locks \gset
 \set ON_ERROR_ROLLBACK 1
 \set ON_ERROR_STOP false \\ -- YB: Not stopping on error as ALTER INDEX to set tablespace for primary key index will fail
 
--- BEGIN; YB: Transactional DDL not supported
+\if :yb_use_txn_ddl_and_locks
+BEGIN;
+\endif \\ -- YB
 SELECT set_config('search_path','partman, public',false);
 
 SELECT plan(74);
@@ -212,5 +216,7 @@ SELECT is_indexed('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMEST
 
 SELECT * FROM finish();
 
--- ROLLBACK; YB: Transactional DDL not supported
+\if :yb_use_txn_ddl_and_locks
+ROLLBACK;
+\endif \\ -- YB
 

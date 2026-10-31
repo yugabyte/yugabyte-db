@@ -14,11 +14,13 @@ import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ConfigureNodeExporterTls;
 import com.yugabyte.yw.common.AccessKeyRotationUtil;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.ConfigHelper;
@@ -50,7 +52,9 @@ import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -165,6 +169,26 @@ public class UniverseMetricProvider implements MetricsProvider {
                   PlatformMetrics.UNIVERSE_IS_SYSTEMD,
                   statusValue(
                       universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd)));
+          // The node_exporter TLS alert fires where HTTPS is allowed but the exporters serve HTTP.
+          universeGroup.metric(
+              createUniverseMetric(
+                  customer,
+                  universe,
+                  PlatformMetrics.UNIVERSE_NODE_EXPORTER_HTTPS_ALLOWED,
+                  statusValue(
+                      universe
+                              .getUniverseDetails()
+                              .getPrimaryCluster()
+                              .userIntent
+                              .enableNodeToNodeEncrypt
+                          && ConfigureNodeExporterTls.isNodeExporterTlsAllowed(
+                              confGetter, customer, universe))));
+          universeGroup.metric(
+              createUniverseMetric(
+                  customer,
+                  universe,
+                  PlatformMetrics.UNIVERSE_NODE_EXPORTER_HTTPS,
+                  statusValue(universe.isNodeExporterHttps())));
           Double encryptionKeyExpiryDays =
               getEncryptionKeyExpiryDays(
                   activeEncryptionKeys.get(universe.getUniverseUUID()), kmsConfigMap);
@@ -259,12 +283,7 @@ public class UniverseMetricProvider implements MetricsProvider {
                 universe.getUniverseDetails().getPrimaryCluster().userIntent;
             boolean isK8SUniverse = Util.isKubernetesBasedUniverse(universe);
             Map<UUID, Map<String, Object>> finalUniverseOverridesAZMap =
-                isK8SUniverse
-                    ? KubernetesUtil.getFinalOverrides(
-                        universe.getUniverseDetails().getPrimaryCluster(),
-                        primaryUserIntent.universeOverrides,
-                        primaryUserIntent.azOverrides)
-                    : null;
+                isK8SUniverse ? getFinalOverridesForAllZones(universe, primaryUserIntent) : null;
             for (NodeDetails nodeDetails : universe.getUniverseDetails().nodeDetailsSet) {
               if (nodeDetails.cloudInfo == null || nodeDetails.cloudInfo.private_ip == null) {
                 // Node IP is missing - node is being created
@@ -438,6 +457,20 @@ public class UniverseMetricProvider implements MetricsProvider {
       }
     }
     return metricSaveGroups;
+  }
+
+  // Applying the primary cluster's overrides to every cluster's zones, since read replica pods
+  // are deployed with them.
+  @VisibleForTesting
+  static Map<UUID, Map<String, Object>> getFinalOverridesForAllZones(
+      Universe universe, UserIntent primaryUserIntent) throws IOException {
+    Map<UUID, Map<String, Object>> result = new HashMap<>();
+    for (UniverseDefinitionTaskParams.Cluster cluster : universe.getUniverseDetails().clusters) {
+      result.putAll(
+          KubernetesUtil.getFinalOverrides(
+              cluster, primaryUserIntent.universeOverrides, primaryUserIntent.azOverrides));
+    }
+    return result;
   }
 
   private Metric createUniverseMetric(

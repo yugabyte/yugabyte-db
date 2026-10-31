@@ -1,0 +1,112 @@
+-- Cost parity of the four join methods over a partitioned inner relation, with
+-- the planner's own choice.  The joins are yb.orig.bnl_cost_parity's #30580
+-- unique-key probes with ce.rP, a partitioned copy of ce.r, as the inner; one
+-- partition of ce.rP is itself partitioned.  The batched nested loop takes the
+-- batch in every partition and does the least work.  chosen is the join method
+-- planned when the hint fixes only the join order.  Without an Append whose
+-- partitions all take the batch, the BNL rows fail the plan validation and
+-- chosen is never BNL (#35384, #35551).
+--
+-- With a 256-row outer the planner chooses the batched nested loop on cost.
+-- With a 1024-row outer it chooses the merge join: the batched nested loop is
+-- costed as if every key of the batch matched in every partition, including
+-- the partitions that run-time pruning skips, which comes to about the
+-- partition count times its cost over ce.r (#35742).
+--
+-- DEPENDENCY: yb.orig.bnl_cost_parity_setup
+--
+-- The columns are those of yb.orig.bnl_cost_parity's #30580 report.  Unlike
+-- that report, this one also prints the queries whose cost and work orders
+-- agree, because the planner's choice of the batched nested loop on the
+-- 256-row outers is part of the assertion.
+\c bnl_cost_parity_test
+set client_min_messages to 'warning';
+create table ce.rP (
+    pk int,
+    a int,
+    a5 int,
+    b int,
+    c char(10),
+    d int,
+    e int,
+    bl bool,
+    v char(666),
+    primary key (pk asc)
+) partition by range (pk);
+create table ce.rP_lo partition of ce.rP for values from (minvalue) to (4000)
+    with (colocation = off);
+create table ce.rP_mid partition of ce.rP for values from (4000) to (8000)
+    partition by range (pk);
+create table ce.rP_mid_lo partition of ce.rP_mid for values from (4000) to (6000)
+    with (colocation = off);
+create table ce.rP_mid_hi partition of ce.rP_mid for values from (6000) to (8000)
+    with (colocation = off);
+create table ce.rP_hi partition of ce.rP for values from (8000) to (maxvalue)
+    with (colocation = off);
+alter table ce.rP alter column e set statistics 10000;
+insert into ce.rP select * from ce.r;
+analyze ce.rP;
+delete from queries;
+insert into queries (qid, descr, query)
+with outers(qoff, n) as (
+    values (0, 256), (10, 1024)
+),
+base(qid, descr, tmpl) as (
+    values
+    (601, 'pk inner',
+        'select s.id from ce.s s join ce.rP r on r.pk = s.id where s.z <= @N@ and r.e <= 600 order by s.id'),
+    (602, 'pk semi',
+        'select s.id from ce.s s where s.z <= @N@ and exists (select 1 from ce.rP r where r.pk = s.id and r.e <= 600) order by s.id'),
+    (603, 'pk anti',
+        'select s.id from ce.s s where s.z <= @N@ and not exists (select 1 from ce.rP r where r.pk = s.id and r.e <= 600) order by s.id')
+)
+select b.qid + o.qoff, b.descr || ' ' || o.n || '-outer',
+       replace(b.tmpl, '@N@', o.n::text)
+from base b, outers o;
+-- Plan validation, as in yb.orig.bnl_cost_parity, except that the inner's
+-- first scanned relation is a partition, aliased r_<n>.  Expect no rows.
+select qid, label, join_node_type, outer_alias, inner_alias, method_ok
+from join_plans
+where not (method_ok and outer_alias = 's' and inner_alias ~ '^r_[0-9]+$')
+order by qid, label;
+ qid | label | join_node_type | outer_alias | inner_alias | method_ok 
+-----+-------+----------------+-------------+-------------+-----------
+(0 rows)
+
+set yb_bnl_batch_size = 1024;
+with m as (
+    select qid, descr, label, total_cost, actual_rows,
+           read_reqs, rows_scanned,
+           table_reads, index_reads,
+           rank() over (partition by qid order by total_cost, startup_cost) cost_rank,
+           rank() over (partition by qid order by read_reqs, rows_scanned)  rt_rank
+    from join_costs
+)
+select qid, descr,
+       rank_labels(array_agg(label order by cost_rank, label),
+                   array_agg(cost_rank order by cost_rank, label))               cost_rank,
+       chosen,
+       rank_labels(array_agg(label order by rt_rank, label),
+                   array_agg(rt_rank order by rt_rank, label))                   rt_rank,
+       string_agg(cost_mask(total_cost), ' ' order by cost_rank, label)          total_cost,
+       string_agg(round(read_reqs)::bigint::text, ' ' order by rt_rank, label)   read_reqs,
+       string_agg(round(rows_scanned)::bigint::text, ' ' order by rt_rank, label) rows_scanned,
+       string_agg(round(table_reads)::bigint::text, ' ' order by rt_rank, label) table_reads,
+       string_agg(round(index_reads)::bigint::text, ' ' order by rt_rank, label) index_reads,
+       max(actual_rows)                                                          actual_rows
+from m join join_choice using (qid)
+group by qid, descr, chosen
+order by qid;
+ qid |        descr        |  cost_rank   | chosen |   rt_rank    |      total_cost      | read_reqs  |     rows_scanned      | table_reads | index_reads | actual_rows 
+-----+---------------------+--------------+--------+--------------+----------------------+------------+-----------------------+-------------+-------------+-------------
+ 601 | pk inner 256-outer  | BNL MJ HJ NL | BNL    | BNL MJ HJ NL | ### #### #### #####  | 3 6 8 257  | 768 15275 12857 5376  | 2 6 7 257   | 1 0 1 0     |         126
+ 602 | pk semi 256-outer   | BNL MJ HJ NL | BNL    | BNL MJ HJ NL | ### #### #### #####  | 3 6 8 257  | 768 15275 12857 5376  | 2 6 7 257   | 1 0 1 0     |         126
+ 603 | pk anti 256-outer   | BNL MJ HJ NL | BNL    | BNL MJ HJ NL | ### #### #### #####  | 3 6 8 257  | 768 15275 12857 5376  | 2 6 7 257   | 1 0 1 0     |         130
+ 611 | pk inner 1024-outer | MJ BNL HJ NL | MJ     | BNL MJ HJ NL | #### #### #### ##### | 4 7 8 1026 | 6144 15275 14393 6144 | 4 7 7 1026  | 0 0 1 0     |         484
+ 612 | pk semi 1024-outer  | MJ BNL HJ NL | MJ     | BNL MJ HJ NL | #### #### #### ##### | 4 7 8 1026 | 6144 15275 14393 6144 | 4 7 7 1026  | 0 0 1 0     |         484
+ 613 | pk anti 1024-outer  | MJ BNL HJ NL | MJ     | BNL MJ HJ NL | #### #### #### ##### | 3 7 8 1026 | 3072 15275 14393 6144 | 2 7 7 1026  | 1 0 1 0     |         540
+(6 rows)
+
+reset yb_bnl_batch_size;
+delete from queries;
+drop table ce.rP;

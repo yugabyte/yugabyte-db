@@ -45,6 +45,7 @@
 | "Minimum Kubernetes Memory Size" | "yb.kubernetes.min_memory_size_gb" | "PROVIDER" | "Minimum Kubernetes Memory Size" | "Integer" |
 | "Maximum Kubernetes Memory Size" | "yb.kubernetes.max_memory_size_gb" | "PROVIDER" | "Maximum Kubernetes Memory Size" | "Integer" |
 | "Remote tmp directory" | "yb.filepaths.remoteTmpDirectory" | "PROVIDER" | "A remote temporary directory should be used for performing operations on nodes within the provider scope." | "String" |
+| "Skip tmp_dir gflag consistency check" | "yb.filepaths.skip_tmp_dir_gflag_consistency_check" | "PROVIDER" | "When true, skips the on-prem create-universe precheck that requires provider remoteTmpDirectory to match master/tserver tmp_dir gflags." | "Boolean" |
 | "Polling interval for GCP Opertion status" | "yb.gcp.operations.status_polling_interval" | "PROVIDER" | "Interval to poll the status of an ongoing GCP resource creation operation." | "Duration" |
 | "GCP Operation Timeout interval" | "yb.gcp.operations.timeout_interval" | "PROVIDER" | "Timeout interval to wait for GCP resource creation operations to complete sucessfully." | "Duration" |
 | "Make YBC listen on 0.0.0.0" | "yb.ybc_flags.listen_on_all_interfaces_k8s" | "PROVIDER" | "Makes YBC bind on all network interfaces" | "Boolean" |
@@ -233,6 +234,7 @@
 | "Node Agent Max Describe Output Buffer Lines" | "yb.node_agent.max_describe_output_buffer_lines" | "GLOBAL" | "Maximum number of lines to buffer in memory for node agent describe output" | "Integer" |
 | "Task Executor Shutdown Max Wait Time" | "yb.task_executor.shutdown_max_wait_time" | "GLOBAL" | "Maximum time to wait for task executor to shutdown gracefully before forcefully terminating it" | "Duration" |
 | "Node Agent Health Checker Disabled" | "yb.node_agent.health_checker.disabled" | "GLOBAL" | "Node agent checker offloaded to run asynchronously on its own schedule" | "Boolean" |
+| "HTTP conditional GET (ETag / 304)" | "yb.api.conditional_get.enabled" | "GLOBAL" | "When enabled, eligible single-resource GET endpoints may return 304 Not Modified when the client sends a matching If-None-Match ETag, skipping heavy response construction. When disabled, those endpoints always return a full 200 body." | "Boolean" |
 | "Clock Skew" | "yb.alert.max_clock_skew_ms" | "UNIVERSE" | "Default threshold for Clock Skew alert" | "Duration" |
 | "Health Log Output" | "yb.health.logOutput" | "UNIVERSE" | "It determines whether to log the output of the node health check script to the console" | "Boolean" |
 | "Node Checkout Time" | "yb.health.nodeCheckTimeoutSec" | "UNIVERSE" | "The timeout (in seconds) for node check operation as part of universe health check" | "Integer" |
@@ -296,7 +298,7 @@
 | "Performance Advisor hot shard interval mins" | "yb.perf_advisor.hot_shard_interval_mins" | "UNIVERSE" | "Defines time interval for hot hard recommendation check, in minutes" | "Integer" |
 | "Performance Advisor hot shard minimal writes" | "yb.perf_advisor.hot_shard_min_node_writes" | "UNIVERSE" | "Defines min writes for hot shard recommendation to be raised" | "Integer" |
 | "Performance Advisor hot shard minimal reads" | "yb.perf_advisor.hot_shard_min_node_reads" | "UNIVERSE" | "Defines min reads for hot shard recommendation to be raised" | "Integer" |
-| "Skip TLS Cert Validation" | "yb.tls.skip_cert_validation" | "UNIVERSE" | "Used to skip certificates validation for the configure phase.Possible values - ALL, HOSTNAME, NONE" | "SkipCertValidationType" |
+| "Skip TLS Cert Validation" | "yb.tls.skip_cert_validation" | "UNIVERSE" | "Used to skip certificates validation for the configure phase.Possible values - ALL, HOSTNAME, REQUIRE_SAN, NONE" | "SkipCertValidationType" |
 | "Clean Orphan snapshots" | "yb.snapshot_cleanup.delete_orphan_on_startup" | "UNIVERSE" | "Clean orphan(non-scheduled) snapshots on Yugaware startup/restart" | "Boolean" |
 | "Enable https on Master/TServer UI" | "yb.node_ui.https.enabled" | "UNIVERSE" | "Allow https on Master/TServer UI for a universe" | "Boolean" |
 | "Helm Timeout in Seconds" | "yb.helm.timeout_secs" | "UNIVERSE" | "Timeout used for internal universe-level helm operations like install/upgrade in secs" | "Long" |
@@ -400,6 +402,7 @@
 | "Whether to alert for unexpected masters/tservers in universe" | "yb.health_checks.unexpected_servers_check_enabled" | "UNIVERSE" | "Whether to alert for unexpected masters/tservers in universe" | "Boolean" |
 | "Enable NFS Backup precheck" | "yb.backup.enable_nfs_precheck" | "UNIVERSE" | "Enable/disable check which verifies free space on NFS mount before backup." | "Boolean" |
 | "NFS precheck buffer space" | "yb.backup.nfs_precheck_buffer_kb" | "UNIVERSE" | "Amount of space (in KB) we want as buffer for NFS precheck" | "Long" |
+| "Kubernetes master volume cleanup ready timeout" | "yb.kubernetes.master_pvc_gc_ready_timeout" | "UNIVERSE" | "How long removing unused master volumes after a Kubernetes edit waits for the master StatefulSet to have all its pods ready before failing the task" | "Duration" |
 | "Wait after each pod restart in rolling operations" | "yb.kubernetes.operator.rolling_ops_wait_after_each_pod_ms" | "UNIVERSE" | "Time to wait after each pod restart before restarting the next pod in rolling operations" | "Integer" |
 | "Backup and restore to use pre roles behaviour" | "ybc.revert_to_pre_roles_behaviour" | "UNIVERSE" | "Have YBC use the pre roles backup and restore behaviour" | "Boolean" |
 | "Enable backups during DDL" | "yb.backup.enable_backups_during_ddl" | "UNIVERSE" | "Have YBC ysql-dump use read-time as of snapshot time to support backups during DDL" | "Boolean" |
@@ -417,9 +420,11 @@
 | "Delay between tserver restarts in rolling operations" | "yb.upgrade.sleep_after_tserver_restart_ms" | "UNIVERSE" | "Default delay (ms) between tserver restarts in rolling operations (Delay Between Servers). Used when task params do not override." | "Integer" |
 | "Enable All Nodes Script APIs" | "yb.node_script.enabled" | "UNIVERSE" | "Enables the all node script APIs for this universe" | "Boolean" |
 | "Enable Canary Upgrade" | "yb.upgrade.enable_canary_upgrade" | "UNIVERSE" | "Enable canary upgrade for the universe" | "Boolean" |
+| "Allow OCI boot volume replacement with Marketplace-based images" | "yb.oci.allow_boot_volume_replace_for_marketplace_based_images" | "UNIVERSE" | "When enabled, the OCI VM image upgrade precheck no longer blocks Marketplace images or custom images built from one. Use only when YBA's record of an image is wrong or missing." | "Boolean" |
 | "Number of nodes to move in a given batch during full move" | "yb.task.full_move.roll_batch_size" | "UNIVERSE" | "Set numer of nodes to move in a given batch during full move. Default is 0 which means no batching, i.e. move all pods in a single go" | "Long" |
 | "Run Immediate Backup On Schedule Resume" | "yb.backup.run_immediate_backup_on_resume" | "UNIVERSE" | "When true, resumes a stopped backup schedule by running a full or incremental backup immediately instead of waiting for the next scheduled time. This will only change the default functionality, and which can still be overwritten with an api payload." | "Boolean" |
 | "Allow users to enable multi-tenancy" | "yb.universe.allow_multi_tenancy" | "UNIVERSE" | "If this flag is enabled, user will be able to enable the multi-tenancy QoS feature on universes." | "Boolean" |
 | "Flush Tablets Timeout on Stop TServer" | "yb.task.flush_tablets_timeout_on_stop_tserver" | "UNIVERSE" | "Timeout for flushing tablets when stopping tserver" | "Duration" |
 | "Skip YCQL precheck when enabling multi-tenancy" | "yb.universe.multitenancy_skip_ycql_precheck" | "UNIVERSE" | "If this flag is enabled, the precheck that requires YCQL to be disabled is skipped" | "Boolean" |
 | "Node Agent Server Wait Timeout" | "yb.node_agent.server.wait_timeout" | "UNIVERSE" | "Timeout for waiting for node agent server to be ready" | "Duration" |
+| "Enable the node_exporter sidecar on Kubernetes universes" | "yb.kubernetes.node_exporter.enabled" | "UNIVERSE" | "Run a node_exporter sidecar in every Kubernetes pod for disk and network metrics. Pods change at their next Helm operation, for example a Kubernetes overrides edit" | "Boolean" |
