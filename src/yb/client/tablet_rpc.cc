@@ -246,6 +246,8 @@ void TabletInvoker::Execute(TabletIdView tablet_id, bool leader_only) {
 
 
     if (refresh_cache) {
+      // Otherwise a failure of this lookup would be blamed on the previous attempt's TServer.
+      current_ts_ = nullptr;
       client_->LookupTabletById(tablet_id_,
                                 table_,
                                 include_hidden_,
@@ -347,7 +349,7 @@ Status TabletInvoker::FailToNewReplica(const Status& reason,
           FollowerData{
               .status = STATUS(IllegalState, "Not the leader"), .time = CoarseMonoClock::now()});
     }
-  } else {
+  } else if (current_ts_) {
     VLOG(1) << "Failing " << command_->ToString() << " to a new replica: " << reason
             << ", old replica: " << yb::ToString(current_ts_);
 
@@ -366,6 +368,10 @@ Status TabletInvoker::FailToNewReplica(const Status& reason,
                    << current_ts_->ToString()
                    << " as failed. Replicas: " << tablet_->ReplicasAsString();
     }
+  } else {
+    // A failed tablet lookup reaches here via Done() before any TServer was selected, so there is
+    // no replica to blame; just retry.
+    VLOG(1) << "Retrying " << command_->ToString() << " with no replica selected: " << reason;
   }
   auto status = retrier_->DelayedRetry(command_, reason);
   if (!status.ok()) {
