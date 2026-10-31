@@ -1977,6 +1977,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Call before scanning replica maps; callers must hold the leader lock against catalog reloads.
   bool AreTabletReportsComplete();
 
+  // Recomputes the heartbeat hint from replica maps, throttled and gated by its runtime flags.
+  void RefreshDrainedBlacklistedTServers();
+  std::vector<TabletServerId> GetDrainedBlacklistedTServers() const;
+  void ResetDrainedBlacklistedTServers();
+
   std::shared_ptr<YsqlTablespaceManager> GetTablespaceManager() const;
 
   Result<std::map<std::string, KeyRange>> GetTableKeyRanges(const TableId& table_id);
@@ -3540,6 +3545,12 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   std::atomic<uintptr_t> tablet_locations_version_{0};
 
   std::atomic<bool> tablet_reports_complete_{false};
+
+  mutable simple_spinlock drained_blacklisted_tservers_lock_;
+  std::vector<TabletServerId> drained_blacklisted_tservers_
+      GUARDED_BY(drained_blacklisted_tservers_lock_);
+  CoarseTimePoint drained_blacklisted_tservers_refreshed_at_
+      GUARDED_BY(drained_blacklisted_tservers_lock_);
 
   std::unique_ptr<rpc::ScheduledTaskTracker> refresh_yql_partitions_task_;
 

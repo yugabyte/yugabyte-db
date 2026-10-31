@@ -1164,6 +1164,11 @@ class YBClient {
 
   void MarkTServersAsFollowers(const std::vector<std::string>& ts_uuids);
 
+  // Applies drain hints to the shared client's cached replicas. A live tserver absent from the
+  // hint can be used again after a metadata refresh. See MetaCache::UpdateDrainedTServers.
+  void UpdateDrainedTServers(
+      const std::vector<std::string>& drained, const std::vector<std::string>& live);
+
   // Uses the TabletConsensusInfo piggybacked from a response to
   // refresh a RemoteTablet in metacache. Returns true if the
   // RemoteTablet was indeed refreshed, false otherwise.
@@ -1203,6 +1208,7 @@ class YBClient {
   friend class XClusterRemoteClientHolder;
 
   FRIEND_TEST(ClientTest, TestGetTabletServerBlacklist);
+  FRIEND_TEST(ClientTest, TestDrainedTServerReplicasStayFailedAcrossRefresh);
   FRIEND_TEST(ClientTest, TestMasterDown);
   FRIEND_TEST(ClientTest, TestMasterLookupPermits);
   FRIEND_TEST(ClientTest, MetaCacheIgnoreNonTargetTable);

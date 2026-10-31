@@ -503,6 +503,20 @@ Status HeartbeatPoller::TryHeartbeat() {
       server_.MarkTServersAsFollowers(blacklisted_uuids);
     }
 
+    // A response that asks us to re-register was built before the master knew this instance and
+    // carries none of the per-cluster lists, so it says nothing about who is drained or live.
+    if (!resp.needs_reregister()) {
+      std::vector<std::string> drained_uuids(
+          resp.blacklisted_tservers_with_no_tablets().begin(),
+          resp.blacklisted_tservers_with_no_tablets().end());
+      std::vector<std::string> live_uuids;
+      live_uuids.reserve(resp.tservers_size());
+      for (const auto& ts_info : resp.tservers()) {
+        live_uuids.push_back(ts_info.tserver_instance().permanent_uuid());
+      }
+      server_.UpdateDrainedTServers(drained_uuids, live_uuids);
+    }
+
     // At this point we know resp is a successful heartbeat response from the master so set it as
     // the last heartbeat response. This invalidates resp so we should use last_hb_response_ instead
     // below (hence using the nested scope for resp until here).
