@@ -985,13 +985,6 @@ YbAshMain(Datum main_arg)
 
 	BackgroundWorkerInitializeConnection(NULL, NULL, 0);
 
-	/*
-	 * pgstat_bestart keeps the previous occupant's has_version, so after a
-	 * restart into a slot freed by a client backend, the collector would
-	 * report that client's catalog snapshot.  The collector holds none.
-	 */
-	yb_pgstat_set_has_catalog_version(false);
-
 	/* We will always get CPU events in ASH, so don't sample ASH collector */
 	MyProc->yb_is_ash_metadata_set = false;
 
