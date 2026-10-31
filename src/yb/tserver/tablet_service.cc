@@ -2004,8 +2004,7 @@ class VectorIndexFlusher : public TabletsFlusherBase {
       return Status::OK();
     }
 
-    it->second.Flush();
-    return Status::OK();
+    return it->second.Flush();
   }
 
   Status WaitForFlush(const tablet::TabletPtr& tablet) override {
