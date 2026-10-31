@@ -39,7 +39,8 @@ public class ApiActionCreator implements ActionCreator {
   @Inject
   public ApiActionCreator(PlatformExecutorFactory executorFactory) {
     this.executor =
-        executorFactory.createExecutor(
+        // Non-blocking, so a full queue never holds the calling dispatcher thread.
+        executorFactory.createNonBlockingExecutor(
             POOL_NAME,
             new ThreadFactoryBuilder().setNameFormat("api-executor-%d").setDaemon(true).build());
   }

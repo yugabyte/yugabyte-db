@@ -4,7 +4,9 @@ package com.yugabyte.yw.common;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
@@ -94,6 +96,42 @@ public class PlatformThreadPoolExecutorTest {
     // All including the queued one must get executed
     // Wait for all of them to complete otherwise exception is thrown
     execCount.await(10, TimeUnit.SECONDS);
+    executor.shutdown();
+  }
+
+  // With a zero queue offer timeout, a full pool rejects a task without blocking the caller.
+  @Test
+  public void testZeroQueueOfferTimeoutRejectsRightAway() throws InterruptedException {
+    BlockingQueue<Runnable> queue = new LinkedBlockingQueue<>(1);
+    CountDownLatch latch = new CountDownLatch(1);
+    CountDownLatch started = new CountDownLatch(1);
+    PlatformThreadPoolExecutor executor =
+        new PlatformThreadPoolExecutor(
+            1, // core pool size
+            1, // max pool size
+            10,
+            TimeUnit.SECONDS,
+            queue,
+            Executors.defaultThreadFactory(),
+            Duration.ZERO);
+    executor.submit(
+        () -> {
+          try {
+            started.countDown();
+            latch.await();
+          } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+          }
+        });
+    started.await();
+    // Fills the queue
+    executor.submit(() -> {});
+    long startNanos = System.nanoTime();
+    assertThrows(RejectedExecutionException.class, () -> executor.submit(() -> {}));
+    // The default timeout would block for 3s
+    Duration rejectTime = Duration.ofNanos(System.nanoTime() - startNanos);
+    assertTrue(rejectTime.compareTo(Duration.ofSeconds(1)) < 0);
+    latch.countDown();
     executor.shutdown();
   }
 
