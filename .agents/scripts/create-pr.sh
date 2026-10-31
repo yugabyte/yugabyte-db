@@ -60,6 +60,8 @@
 #   3  lint failed -- fix as a NEW commit (do not amend), then re-run
 #   5  stack branch: `gh stack push` failed -- read its message
 #   6  stack branch: the PR was opened as a draft but `gh stack link` failed
+#   7  stack branch: pushed, but git-push.sh could not set a PR's new base --
+#      the message gives the command
 
 set -euo pipefail
 
@@ -266,9 +268,10 @@ is_stack_branch=false
 [[ "$current_branch" =~ ^feature-stack/ ]] && is_stack_branch=true
 
 # A stack layer's base is the unmerged layer below it, or the trunk for the
-# bottom one. Layers get their PRs bottom-up: `gh stack link` would open a PR
-# with a generated title for a lower layer that has none, and that title
-# fails the pr-title check.
+# bottom one. Every layer below must already have a PR: `gh stack link` would
+# open one with a generated title, and that title fails the pr-title check.
+# Layers above may have PRs (a layer inserted into an existing stack, or a PR
+# recreated in place); git-push.sh moves the PR right above onto this branch.
 if $is_stack_branch; then
   if ! gh stack --help >/dev/null 2>&1; then
     echo "error: stacked PRs need the gh-stack extension, which is not" >&2
@@ -295,7 +298,7 @@ print(s["trunk"])
 print(below[-1]["name"] if below else s["trunk"])
 print(" ".join(b["name"] for b in below if not has_pr(b)))
 print(" ".join(str(b["pr"]["number"]) for b in below if has_pr(b)))
-print(" ".join(b["name"] for b in above if has_pr(b)))' "$current_branch" \
+print(" ".join(str(b["pr"]["number"]) for b in above if has_pr(b)))' "$current_branch" \
       <<< "$stack_json")
   if (( ${#_stack[@]} != 5 )); then
     echo "error: ${current_branch} is not an unmerged layer of the local gh stack." >&2
@@ -305,7 +308,7 @@ print(" ".join(b["name"] for b in above if has_pr(b)))' "$current_branch" \
   stack_parent="${_stack[1]}"
   stack_below_without_pr="${_stack[2]}"
   stack_below_prs="${_stack[3]}"
-  stack_above_with_pr="${_stack[4]}"
+  stack_above_prs="${_stack[4]}"
   if (( base_given )) && [[ "$base_branch" != "$stack_parent" ]]; then
     echo "error: -b ${base_branch} does not match the layer below" >&2
     echo "       ${current_branch} in the stack (${stack_parent}). Drop -b." >&2
@@ -315,12 +318,6 @@ print(" ".join(b["name"] for b in above if has_pr(b)))' "$current_branch" \
   if [[ -n "$stack_below_without_pr" ]]; then
     echo "error: open PRs bottom-up. These lower layers have no PR yet:" >&2
     echo "         ${stack_below_without_pr}" >&2
-    exit 1
-  fi
-  if [[ -n "$stack_above_with_pr" ]]; then
-    echo "error: layers above ${current_branch} already have PRs" >&2
-    echo "       (${stack_above_with_pr}). Open PRs bottom-up; see the" >&2
-    echo "       gh-stack skill to restructure the stack." >&2
     exit 1
   fi
 fi
@@ -489,14 +486,18 @@ if [[ -n "$reviewers" && "$pr_num" =~ ^[0-9]+$ ]]; then
 fi
 
 if $is_stack_branch; then
-  echo ">>> gh stack link --base ${stack_trunk} ${stack_below_prs} ${pr_num}"
+  stack_prs="${stack_below_prs} ${pr_num} ${stack_above_prs}"
+  echo ">>> gh stack link --base ${stack_trunk} ${stack_prs}"
   if ! gh stack link --remote "$UPSTREAM_REMOTE" --base "$stack_trunk" \
-         $stack_below_prs "$pr_num"; then
+         $stack_prs; then
     echo "" >&2
     echo "error: PR #${pr_num} was opened as a draft, but linking it into the" >&2
     echo "       stack failed. Fix the cause above, then link it with" >&2
+    if [[ -n "${stack_above_prs// }" ]]; then
+      echo "         gh stack unstack <stack-number>   # if GitHub will not insert it" >&2
+    fi
     echo "         gh stack link --remote ${UPSTREAM_REMOTE} --base ${stack_trunk}" \
-         "${stack_below_prs} ${pr_num}" >&2
+         ${stack_prs} >&2
     (( draft )) || echo "       and mark it ready with: gh pr ready ${pr_num} -R ${GH_REPO}" >&2
     exit 6
   fi
