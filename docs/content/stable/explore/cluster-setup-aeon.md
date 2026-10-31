@@ -41,21 +41,21 @@ Use the following instructions to set up universes for running the examples in E
 
 ## Set up YugabyteDB cluster
 
-You can run examples using a cluster on YugabyteDB Aeon, assuming you have [Created an account](https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=Cloud_signup) in YugabyteDB Aeon.
+You can run examples using a cluster on YugabyteDB Aeon, assuming you have [signed up](https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=Cloud_signup).
 
-### Sandbox cluster
+Before you can create a cluster in YugabyteDB Aeon, you need to [add your billing profile and payment method](/stable/yugabyte-cloud/cloud-admin/cloud-billing-profile/), or you can [request a free trial](/stable/yugabyte-cloud/managed-freetrial/).
 
-Most examples in Explore can be run using the free [Sandbox](/stable/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/) cluster.
+### Single-node cluster
 
-If you haven't already created your sandbox cluster, sign in to YugabyteDB Aeon, on the **Clusters** page click **Add Cluster**, and follow the instructions in the **Create Cluster** wizard.
+Most examples can be run on a single-node cluster.
+
+To create a single region single-node cluster, refer to [Create a single-region cluster](/stable/yugabyte-cloud/cloud-basics/create-clusters/create-single-region/). Set **Fault tolerance** to **None** and **Nodes** to 1.
 
 Save your cluster credentials in a convenient location. You will use them to connect to your cluster.
 
 ### Multi-node universe
 
-Before you can create a multi-node cluster in YugabyteDB Aeon, you need to [add your billing profile and payment method](/stable/yugabyte-cloud/cloud-admin/cloud-billing-profile/), or you can [request a free trial](/stable/yugabyte-cloud/managed-freetrial/).
-
-To create a single region three-node cluster, refer to [Create a single-region cluster](/stable/yugabyte-cloud/cloud-basics/create-clusters/create-single-region/). Set **Fault tolerance** to **None** and **Nodes** to 3.
+To create a single region three-node cluster, refer to [Create a single-region cluster](/stable/yugabyte-cloud/cloud-basics/create-clusters/create-single-region/). Set **Fault tolerance** to **Node** or **Zone** and **Nodes** to 3.
 
 To create a multi-region cluster, refer to [Replicate across regions](/stable/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-multisync/).
 

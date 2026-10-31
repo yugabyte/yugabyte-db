@@ -21,7 +21,7 @@ type: docs
 
 In this chapter, you'll learn how to do the following:
 
-* Deploy a free YugabyteDB Aeon instance.
+* Deploy a YugabyteDB Aeon instance.
 * Connect the application to the YugabyteDB Aeon cluster.
 
 **Prerequisites**
@@ -30,37 +30,23 @@ You need to complete [Chapter 4](../chapter4-going-global) of the tutorial befor
 
 ## Start YugabyteDB Aeon cluster
 
-[YugabyteDB Aeon](http://cloud.yugabyte.com/) is a fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on Amazon Web Services (AWS), Microsoft Azure, and Google Cloud Platform (GCP). The service offers a **free sandbox cluster** for everyone wishing to use YugabyteDB in a real cloud environment.
+[YugabyteDB Aeon](http://cloud.yugabyte.com/) is a fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on Amazon Web Services (AWS), Microsoft Azure, and Google Cloud Platform (GCP).
 
-Follow these steps to deploy a free YugabyteDB Aeon instance:
+Before you can create a cluster in YugabyteDB Aeon, you need to [add your billing profile and payment method](/stable/yugabyte-cloud/cloud-admin/cloud-billing-profile/), or you can [request a free trial](/stable/yugabyte-cloud/managed-freetrial/).
+
+Follow these steps to deploy a YugabyteDB Aeon distributed cluster:
 
 1. Create a YugabyteDB Aeon account: <https://cloud.yugabyte.com/signup>
 
-1. Begin creating the free cluster by clicking on the **Create Cluster** button.
+1. Begin creating the cluster by clicking on the **Create Cluster** button.
 
-    ![Create Cluster](/images/tutorials/build-and-learn/chapter5-create-free-cluster.png)
+1. Choose the **Set Up Distributed** cluster option and follow the instructions in the wizard.
 
-1. Choose the **Sandbox** cluster option:
+    - On the **Network Access** page, click on the **Add Current IP Address** button to add the address of your machine (where you run the YugaPlus application) to the IP Allow list.
 
-    ![Sandbox Cluster](/images/tutorials/build-and-learn/chapter5-choose-sandbox.png)
+    - On the **DB Credentials** page, download the file with your cluster credentials.
 
-1. Select a preferred cloud provider and region (note, Microsoft Azure is available only for paid clusters):
-
-    ![Select Cloud](/images/tutorials/build-and-learn/chapter5-select-cloud.png)
-
-1. Click on the **Add Current IP Address** button to add the address of your machine (where you run the YugaPlus application) to the IP Allow list:
-
-    ![Add Address](/images/tutorials/build-and-learn/chapter5-add-your-address.png)
-
-1. **Make sure to download** the file with your cluster credentials:
-
-    ![Download Credentials](/images/tutorials/build-and-learn/chapter5-download-credentials.png)
-
-1. Wait while the cluster is being created:
-
-    ![Cluster Creation](/images/tutorials/build-and-learn/chapter5-cluster-creation-process.png)
-
-Spinning up and configuring your sandbox instance can take up to 5 minutes. During this time, the system is preparing everything you need to get started with your YugabyteDB Aeon instance.
+Spinning up and configuring your instance can take up to 5 minutes. During this time, the system is preparing everything you need to get started with your YugabyteDB Aeon instance.
 
 ## Connect the application to YugabyteDB Aeon
 
@@ -70,7 +56,7 @@ First, rebuild the YugaPlus backend image to remove one of the database migratio
 
 1. Use `Ctrl+C` or run `{yugaplus-project-dir}/docker compose stop` to stop the YugaPlus application containers.
 
-1. Rename the `V2__create_geo_partitioned_user_library.sql` file to `skip_create_geo_partitioned_user_library.sql` making sure it's not applied during the database migration phase. The YugabyteDB Aeon sandbox instance can't be used for the geo-partitioning use case that explored in chapter 4.
+1. Rename the `V2__create_geo_partitioned_user_library.sql` file to `skip_create_geo_partitioned_user_library.sql` making sure it's not applied during the database migration phase.
 
     ```shell
     cd {yugaplus-project-dir}/backend/src/main/resources/db/migration/

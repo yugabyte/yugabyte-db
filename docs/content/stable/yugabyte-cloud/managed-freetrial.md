@@ -8,10 +8,12 @@ menu:
     identifier: managed-freetrial
     parent: yugabytedb-managed
     weight: 20
+    params:
+      hide: true
 type: docs
 ---
 
-To go beyond the capabilities of the [Sandbox cluster](../cloud-basics/create-clusters/create-clusters-free/), start a free trial to receive free credits towards creating [Dedicated clusters](../cloud-basics/) and exploring other features in YugabyteDB Aeon.
+To go beyond the capabilities of the free [Serverless Postgres](../serverless/) tier, start a free trial to receive free credits towards creating [Distributed Postgres clusters](../cloud-basics/) and exploring other features in YugabyteDB Aeon.
 
 To start a free trial:
 
