@@ -66,9 +66,12 @@ public class TableSpaceStructures {
     }
   }
 
+  // Tablespaces can be created outside YBA with placement keys this class doesn't model; ignore
+  // them so that one such tablespace doesn't break listing, restore and tablespace tasks.
   @EqualsAndHashCode
   @NoArgsConstructor
   @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+  @JsonIgnoreProperties(ignoreUnknown = true)
   public static class PlacementBlock {
     @ApiModelProperty(value = "Cloud")
     @NotNull
@@ -89,6 +92,12 @@ public class TableSpaceStructures {
     @JsonAlias("minNumReplicas")
     @Min(1)
     public int minNumReplicas;
+
+    @ApiModelProperty(value = "Maximum replicas")
+    @JsonInclude(value = JsonInclude.Include.NON_NULL)
+    @JsonAlias("maxNumReplicas")
+    @Min(1)
+    public Integer maxNumReplicas;
 
     @ApiModelProperty(value = "Leader preference")
     @JsonInclude(value = JsonInclude.Include.NON_NULL)
@@ -141,6 +150,7 @@ public class TableSpaceStructures {
     public String description;
   }
 
+  @JsonIgnoreProperties(ignoreUnknown = true)
   static class TableSpaceOptions {
     @JsonProperty("num_replicas")
     public int numReplicas;
