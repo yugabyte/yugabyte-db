@@ -106,6 +106,7 @@
 #include "yb/yql/pggate/ybc_gflags.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "yb_dist_trace.h"
+#include "yb_oom_cancel.h"
 #include "yb_tcmalloc_utils.h"
 #include "yb_ysql_conn_mgr_helper.h"
 #include <arpa/inet.h>
@@ -4068,6 +4069,9 @@ ProcessInterrupts(void)
 
 	if (LogHeapSnapshotPending)
 		ProcessLogHeapSnapshotInterrupt();
+
+	if (YbOomCancelPending)
+		YbProcessOomCancelInterrupt(DoingCommandRead);
 }
 
 
@@ -6658,6 +6662,10 @@ PostgresMain(const char *dbname, const char *username)
 		 */
 		pqsignal(SIGCHLD, SIG_DFL); /* system() requires this on some
 									 * platforms */
+
+		/* YB: also accept OOM cancel requests on SIGUSR1 */
+		if (YBIsEnabledInPostgresEnvVar())
+			YbSetupOomCancelSignalHandler();
 	}
 
 	/* Early initialization */
@@ -6883,6 +6891,9 @@ PostgresMain(const char *dbname, const char *username)
 		 */
 		MemoryContextSwitchTo(TopMemoryContext);
 		FlushErrorState();
+
+		/* YB: return the memory an OOM-canceled statement freed */
+		YbReleaseFreeMemoryAfterOomCancel();
 
 		/*
 		 * If we were handling an extended-query-protocol message, initiate
