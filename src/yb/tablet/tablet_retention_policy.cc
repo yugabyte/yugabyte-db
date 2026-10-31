@@ -131,13 +131,24 @@ HybridTime TabletRetentionPolicy::ProposedHistoryCutoff() {
   absl::MutexLock lock(&mutex_);
   // TODO(Sanket): Since this is only for statistics collection, for the master
   // there will be some imprecision which should be followed up in a diff.
+  if (FLAGS_enable_history_cutoff_propagation) {
+    return committed_history_cutoff_information_.primary_cutoff_ht;
+  }
+  // Keys newer than the allowed cutoff (held back by xCluster, CDC, PITR, or a database
+  // retention pin) cannot be removed by a compaction, so they must not count towards
+  // triggering one.
+  auto result = ClockBasedHistoryCutoff(clock_.get());
+  result.MakeAtMost(allowed_primary_cutoff_);
+  return result;
+}
 
-  // TODO: (Github issue #33033) ProposedHistoryCutoff is pure clock based and ignores the
-  // allowed-history-cutoff provider, which triggers compaction frequently when snapshots
-  // are being retained (by xCluster, PITR, long running DDLs, etc). Follow-up needed.
-  return FLAGS_enable_history_cutoff_propagation
-      ? committed_history_cutoff_information_.primary_cutoff_ht :
-        ClockBasedHistoryCutoff(clock_.get());
+void TabletRetentionPolicy::RefreshAllowedHistoryCutoff() {
+  if (!allowed_history_cutoff_provider_) {
+    return;
+  }
+  auto allowed_cutoff = allowed_history_cutoff_provider_(&metadata_);
+  absl::MutexLock lock(&mutex_);
+  allowed_primary_cutoff_ = allowed_cutoff.primary_cutoff_ht;
 }
 
 Status TabletRetentionPolicy::RegisterReaderTimestamp(HybridTime timestamp) {
@@ -237,6 +248,7 @@ HistoryCutoff TabletRetentionPolicy::SanitizeHistoryCutoff(
   if (allowed_history_cutoff_provider_) {
     provided_allowed_cutoff = allowed_history_cutoff_provider_(&metadata_);
     LOG_WITH_PREFIX_AND_FUNC(DETAIL) << ", cutoff from the provider " << provided_allowed_cutoff;
+    allowed_primary_cutoff_ = provided_allowed_cutoff.primary_cutoff_ht;
   }
   docdb::HistoryCutoff allowed_cutoff = provided_allowed_cutoff;
   allowed_cutoff = ConstructMinCutoff(allowed_cutoff, proposed_cutoff);

@@ -1004,6 +1004,9 @@ class ScheduledFullCompactionsTest : public CompactionTest {
   void AutoCompactionBasedOnStats(
       const std::function<Status()>& delete_fn, const int end_files_expected);
 
+  // Deletes 90% of the rows written by the workload.
+  Status DeleteMostRows();
+
   bool sequential_write() override {
     return true;
   }
@@ -1412,30 +1415,80 @@ void ScheduledFullCompactionsTest::AutoCompactionBasedOnStats(
   ASSERT_TRUE(CheckEachDbHasExactlyNumFiles(end_files_expected));
 }
 
+Status ScheduledFullCompactionsTest::DeleteMostRows() {
+  const auto num_rows = workload_->rows_inserted();
+  const auto rows_to_delete = num_rows * 90 / 100;
+  LOG(INFO) << num_rows << " rows written to single tablet. "
+      << rows_to_delete << " rows will be deleted";
+  // Delete a large number of the rows, starting with id = 0 and going sequentially.
+  auto session = client_->NewSession(60s);
+  client::TableHandle table;
+  RETURN_NOT_OK(table.Open(workload_->table_name(), client_.get()));
+  std::vector<client::YBOperationPtr> ops;
+  for (int32_t i = 0; i < rows_to_delete; i++) {
+    const auto op = table.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_DELETE);
+    auto* const req = op->mutable_request();
+    QLAddInt32HashValue(req, i);
+    ops.push_back(op);
+  }
+  session->Apply(ops);
+  return session->TEST_FlushAndGetOpsErrors().status;
+}
+
 TEST_F(ScheduledFullCompactionsTest, AutoCompactionsBasedOnStatsDelete) {
   // Setup the workload to only a single tablet (to simplify stats), and collect the stats.
   SetupWorkload(IsolationLevel::NON_TRANSACTIONAL, 1 /* num_tablets */);
-  const auto delete_fn = [&]() -> Status {
-      const auto num_rows = workload_->rows_inserted();
-      const auto rows_to_delete = num_rows * 90 / 100;
-      LOG(INFO) << num_rows << " rows written to single tablet. "
-          << rows_to_delete << " rows will be deleted";
-      // Delete a large number of the rows, starting with id = 0 and going sequentially.
-      auto session = client_->NewSession(60s);
-      client::TableHandle table;
-      RETURN_NOT_OK(table.Open(workload_->table_name(), client_.get()));
-      std::vector<client::YBOperationPtr> ops;
-      for (int32_t i = 0; i < rows_to_delete; i++) {
-        const auto op = table.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_DELETE);
-        auto* const req = op->mutable_request();
-        QLAddInt32HashValue(req, i);
-        ops.push_back(op);
-      }
-      session->Apply(ops);
-      return session->TEST_FlushAndGetOpsErrors().status;
-  };
+  AutoCompactionBasedOnStats([this] { return DeleteMostRows(); }, 1);
+}
 
-  AutoCompactionBasedOnStats(delete_fn, 1);
+// Obsolete keys newer than the allowed history cutoff cannot be removed by a full compaction, so
+// they must not trigger one.
+TEST_F(ScheduledFullCompactionsTest, AutoCompactionsBasedOnStatsRespectAllowedHistoryCutoff) {
+  SetupWorkload(IsolationLevel::NON_TRANSACTIONAL, 1 /* num_tablets */);
+  auto compact_manager = cluster_->GetTabletManager(0)->full_compaction_manager();
+  compact_manager->TEST_SetCheckIntervalSec(1);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_compact_min_obsolete_keys_found) = 10;
+
+  const auto table_id = ASSERT_RESULT(FindTable(cluster_.get(), workload_->table_name()))->id();
+  const auto tablet_ids = ListTabletIdsForTable(cluster_.get(), table_id);
+  ASSERT_EQ(tablet_ids.size(), 1);
+  const auto tablet_id = *tablet_ids.begin();
+  const auto peers = ListTableTabletPeers(cluster_.get(), table_id);
+
+  constexpr int kNumFilesToWrite = 10;
+  constexpr int kNumRowsToRead = 100;
+  ASSERT_OK(WriteAtLeastFilesPerDb(kNumFilesToWrite));
+
+  // Hold history back to before the deletes, as a lagging CDC stream would.
+  const auto retained_ht = clock_->Now();
+  for (const auto& peer : peers) {
+    ASSERT_OK(peer->set_cdc_sdk_safe_time(retained_ht));
+  }
+  ASSERT_OK(DeleteMostRows());
+
+  compact_manager->ScheduleFullCompactions();
+  ASSERT_OK(ReadAtLeastRowsOk(kNumRowsToRead));
+  compact_manager->ScheduleFullCompactions();
+  auto stats = compact_manager->TEST_CurrentWindowStats(tablet_id);
+  ASSERT_GT(workload_->rows_read_empty(), 0);
+  ASSERT_GE(stats.total, kNumRowsToRead);
+  ASSERT_EQ(stats.obsolete_cutoff, 0);
+  ASSERT_FALSE(compact_manager->ShouldCompactBasedOnStats(tablet_id));
+  ASSERT_EQ(compact_manager->num_scheduled_last_execution(), 0);
+
+  // Once the history is released, the deleted rows are reclaimable and trigger a compaction.
+  for (const auto& peer : peers) {
+    ASSERT_OK(peer->set_cdc_sdk_safe_time(HybridTime::kInvalid));
+  }
+  compact_manager->ScheduleFullCompactions();
+  const auto rows_read_empty_before = workload_->rows_read_empty();
+  ASSERT_OK(ReadAtLeastRowsOk(kNumRowsToRead));
+  rocksdb_listener_->Reset();
+  compact_manager->ScheduleFullCompactions();
+  stats = compact_manager->TEST_CurrentWindowStats(tablet_id);
+  ASSERT_EQ(stats.obsolete_cutoff, workload_->rows_read_empty() - rows_read_empty_before);
+  ASSERT_EQ(compact_manager->num_scheduled_last_execution(), 1);
+  ASSERT_OK(WaitForNumCompactionsPerDb(1));
 }
 
 TEST_F(ScheduledFullCompactionsTest, AutoCompactionsBasedOnStatsTTL) {
