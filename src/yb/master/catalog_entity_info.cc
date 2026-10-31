@@ -314,18 +314,22 @@ void TabletInfo::UpdateReplicaLocations(const std::string& ts_uuid, const Tablet
   it->second.UpdateFrom(replica);
 }
 
-void TabletInfo::UpdateReplicaInfo(
+bool TabletInfo::UpdateReplicaInfo(
     const std::string& ts_uuid, const TabletReplicaDriveInfo& drive_info) {
   std::lock_guard l(lock_);
   auto it = replica_locations_->find(ts_uuid);
-  if (it == replica_locations_->end() || it->second.drive_info == drive_info) {
-    return;
+  if (it == replica_locations_->end()) {
+    return false;
+  }
+  if (it->second.drive_info == drive_info) {
+    return true;
   }
   VLOG_WITH_FUNC(3) << "T " << id() << " P " << ts_uuid << ": " << drive_info.ToString();
   // Make a new shared_ptr, copying the data, to ensure we don't race against access to data from
   // clients that already have the old shared_ptr.
   replica_locations_ = std::make_shared<TabletReplicaMap>(*replica_locations_);
   (*replica_locations_)[ts_uuid].UpdateDriveInfo(drive_info);
+  return true;
 }
 
 void TabletInfo::ProcessLeaderInfo(

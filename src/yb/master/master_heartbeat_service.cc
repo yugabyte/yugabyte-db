@@ -264,7 +264,8 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
   bool ReplicaMapDiffersFromConsensusState(
       const TabletInfoPtr& tablet, const ConsensusStatePB& cstate);
 
-  void ProcessTabletMetadata(
+  // Returns false if the master does not know the tablet or has no replica of it on ts_uuid yet.
+  bool ProcessTabletMetadata(
       const std::string& ts_uuid,
       const TabletInfoPtr& tablet,
       const TabletDriveStorageMetadataPB& storage_metadata);
@@ -578,12 +579,16 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
       safe_time_left = CoarseMonoClock::Now() + (FLAGS_heartbeat_rpc_timeout_ms * 1ms / 2);
       if (process_metadata && rpc.GetClientDeadline() > safe_time_left) {
         size_t idx = num_reported_tablets;
+        // Replica entries come from tablet reports, which are chunked; metadata for a tablet not
+        // yet reported finds none and the tserver resends it.
+        bool all_applied = true;
         for (const auto& metadata : req->storage_metadata()) {
-          ProcessTabletMetadata(ts_desc->id(), tablets[idx++], metadata);
+          all_applied &= ProcessTabletMetadata(ts_desc->id(), tablets[idx++], metadata);
         }
         for (const auto& info : req->leader_info()) {
           ProcessLeaderInfo(ts_desc->id(), tablets[idx++], info);
         }
+        resp->set_tablet_metadata_processed(all_applied);
 
         // Only process the full compaction statuses if we have plenty of time to process the work
         // (> 50% of timeout).
@@ -1564,14 +1569,14 @@ bool IsHtLeaseExpiredForTooLong(MicrosTime now, MicrosTime ht_lease_exp) {
       FLAGS_maximum_tablet_leader_lease_expired_secs;
 }
 
-void MasterHeartbeatServiceImpl::ProcessTabletMetadata(
+bool MasterHeartbeatServiceImpl::ProcessTabletMetadata(
     const std::string& ts_uuid,
     const TabletInfoPtr& tablet,
     const TabletDriveStorageMetadataPB& storage_metadata) {
   const string& tablet_id = storage_metadata.tablet_id();
   if (!tablet) {
     VLOG(1) << Format("Tablet $0 not found", tablet_id);
-    return;
+    return false;
   }
   auto drive_info = TabletReplicaDriveInfo {
     .sst_files_size = storage_metadata.sst_file_size(),
@@ -1582,7 +1587,7 @@ void MasterHeartbeatServiceImpl::ProcessTabletMetadata(
     .vector_index_size = storage_metadata.vector_index_size(),
     .has_active_vector_index_backfill = storage_metadata.has_active_vector_index_backfill(),
   };
-  tablet->UpdateReplicaInfo(ts_uuid, drive_info);
+  return tablet->UpdateReplicaInfo(ts_uuid, drive_info);
 }
 
 void MasterHeartbeatServiceImpl::ProcessLeaderInfo(
