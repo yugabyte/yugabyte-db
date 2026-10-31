@@ -74,6 +74,24 @@ public class PlatformExecutorFactory {
         namedThreadFactory);
   }
 
+  /**
+   * Like {@link #createExecutor(String, ThreadFactory)}, but a task submitted while the pool and
+   * its queue are full is rejected right away instead of blocking the submitting thread. The pool
+   * is not shut down with the application shutdown hooks: the caller shuts it down.
+   */
+  public ThreadPoolExecutor createNonBlockingExecutor(
+      String configPoolName, ThreadFactory namedThreadFactory) {
+    return createExecutor(
+        configPoolName,
+        ybCorePoolSize(configPoolName),
+        ybMaxPoolSize(configPoolName),
+        Duration.ofSeconds(keepAliveDuration(configPoolName).getSeconds()),
+        newQueue(ybQueueCapacity(configPoolName)),
+        namedThreadFactory,
+        Duration.ZERO,
+        false);
+  }
+
   public ThreadPoolExecutor createExecutor(
       String poolName, int corePoolSize, int maxPoolSize, ThreadFactory namedThreadFactory) {
     return createExecutor(
@@ -111,7 +129,7 @@ public class PlatformExecutorFactory {
         corePoolSize,
         maxPoolSize,
         keepAliveTime,
-        queueCapacity <= 0 ? new SynchronousQueue<>() : new LinkedBlockingQueue<>(queueCapacity),
+        newQueue(queueCapacity),
         namedThreadFactory);
   }
 
@@ -122,6 +140,30 @@ public class PlatformExecutorFactory {
       Duration keepAliveTime,
       BlockingQueue<Runnable> queue,
       ThreadFactory namedThreadFactory) {
+    return createExecutor(
+        poolName,
+        corePoolSize,
+        maxPoolSize,
+        keepAliveTime,
+        queue,
+        namedThreadFactory,
+        PlatformThreadPoolExecutor.DEFAULT_QUEUE_OFFER_TIMEOUT,
+        true);
+  }
+
+  private static BlockingQueue<Runnable> newQueue(int queueCapacity) {
+    return queueCapacity <= 0 ? new SynchronousQueue<>() : new LinkedBlockingQueue<>(queueCapacity);
+  }
+
+  private ThreadPoolExecutor createExecutor(
+      String poolName,
+      int corePoolSize,
+      int maxPoolSize,
+      Duration keepAliveTime,
+      BlockingQueue<Runnable> queue,
+      ThreadFactory namedThreadFactory,
+      Duration queueOfferTimeout,
+      boolean addShutdownHook) {
     ThreadPoolExecutor executor =
         new PlatformThreadPoolExecutor(
             corePoolSize,
@@ -129,7 +171,11 @@ public class PlatformExecutorFactory {
             keepAliveTime.getSeconds(),
             TimeUnit.SECONDS,
             queue,
-            namedThreadFactory);
+            namedThreadFactory,
+            queueOfferTimeout);
+    if (!addShutdownHook) {
+      return executor;
+    }
     shutdownHookHandler.addShutdownHook(
         executor,
         (exec) -> {

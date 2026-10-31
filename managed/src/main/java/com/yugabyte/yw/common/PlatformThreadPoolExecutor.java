@@ -27,7 +27,7 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 class PlatformThreadPoolExecutor extends MDCAwareThreadPoolExecutor {
 
-  private final Duration QUEUE_OFFER_TIMEOUT = Duration.ofSeconds(3);
+  static final Duration DEFAULT_QUEUE_OFFER_TIMEOUT = Duration.ofSeconds(3);
 
   PlatformThreadPoolExecutor(
       int corePoolSize,
@@ -51,6 +51,28 @@ class PlatformThreadPoolExecutor extends MDCAwareThreadPoolExecutor {
       TimeUnit unit,
       BlockingQueue<Runnable> queue,
       ThreadFactory threadFactory) {
+    this(
+        corePoolSize,
+        maximumPoolSize,
+        keepAliveTime,
+        unit,
+        queue,
+        threadFactory,
+        DEFAULT_QUEUE_OFFER_TIMEOUT);
+  }
+
+  /**
+   * @param queueOfferTimeout how long a submitting thread waits for room in the full queue before
+   *     the task is rejected. Zero rejects right away.
+   */
+  PlatformThreadPoolExecutor(
+      int corePoolSize,
+      int maximumPoolSize,
+      long keepAliveTime,
+      TimeUnit unit,
+      BlockingQueue<Runnable> queue,
+      ThreadFactory threadFactory,
+      Duration queueOfferTimeout) {
     super(
         corePoolSize,
         maximumPoolSize,
@@ -65,7 +87,7 @@ class PlatformThreadPoolExecutor extends MDCAwareThreadPoolExecutor {
           }
           // Add to the original queue
           try {
-            if (queue.offer(runnable, QUEUE_OFFER_TIMEOUT.getSeconds(), TimeUnit.SECONDS)) {
+            if (queue.offer(runnable, queueOfferTimeout.toMillis(), TimeUnit.MILLISECONDS)) {
               if (log.isDebugEnabled()) {
                 log.debug(
                     "Queueing task - pool size: {}, active size: {}, "
