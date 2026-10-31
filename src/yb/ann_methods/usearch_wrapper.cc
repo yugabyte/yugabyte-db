@@ -190,7 +190,7 @@ class UsearchIndex :
     return Status::OK();
   }
 
-  Result<size_t> DoInsertVector(VectorId vector_id, const Vector& v) {
+  Result<size_t> DoInsertVector(VectorId vector_id, const Vector& v, Slice /* payload */) {
     // addPoint grows the node and vector tape arenas; the per-thread search contexts buffer
     // does not change, so only the data tracker is updated.
     auto se = UpdateDataConsumptionOnExit();
@@ -235,6 +235,7 @@ class UsearchIndex :
 
   Result<std::vector<vector_index::VectorWithDistance<DistanceResult>>> DoSearch(
       const Vector& query_vector, const vector_index::SearchOptions& options) const {
+    SCHECK(options.tenant.empty(), NotSupported, "Usearch vector indexes have no tenants");
     std::vector<vector_index::VectorWithDistance<DistanceResult>> result_vec;
     if (index_.size() == 0) {
       return result_vec;
