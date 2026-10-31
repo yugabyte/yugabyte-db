@@ -2347,10 +2347,27 @@ StartTransaction(void)
 /*
  * Recreates the state required to restart the write that received a transaction
  * conflict.
+ *
+ * Goal: afterwards the backend should behave as if the transaction had
+ * aborted and the client had replayed the same command in a new transaction.
+ * State that AbortTransaction resets, or that a new local transaction id
+ * invalidates, must be reset here too; #30540 broke this for plpgsql.
+ *
+ * GUC state is the deliberate exception.  AbortTransaction undoes it with
+ * AtEOXact_GUC, but the retry stays inside the client's transaction block,
+ * so undoing it would also drop settings the block made before the retried
+ * command, such as the isolation level from BEGIN ISOLATION LEVEL
+ * SERIALIZABLE.  As a result, GUCs from a function's SET clause outlive a
+ * retry of that function.
+ *
+ * Known gap: the retry does not restore the user id that a SECURITY DEFINER
+ * function set.
  */
 void
 YBCRestartWriteTransaction()
 {
+	VirtualTransactionId vxid;
+
 	/*
 	 * Roll back every open savepoint / subtransaction so the trans_stack is
 	 * clean before we recreate the top-level write state. Without this, the
@@ -2369,6 +2386,13 @@ YBCRestartWriteTransaction()
 	 * user, removing all snapshots is safe.
 	 */
 	PopAllActiveSnapshots();
+
+	/*
+	 * The release below drops resources that callback owners, such as
+	 * plpgsql's simple-expression refcounts (#30540), still believe they
+	 * hold.  AbortTransaction tells them first; so must the retry.
+	 */
+	CallXactCallbacks(XACT_EVENT_ABORT);
 
 	if (TopTransactionResourceOwner != NULL)
 	{
@@ -2391,6 +2415,18 @@ YBCRestartWriteTransaction()
 	 */
 	AfterTriggerEndXact(false /* isCommit */ );
 	AfterTriggerBeginXact();
+
+	/*
+	 * A replayed command would run in a new transaction with a new lxid.
+	 * Per-transaction caches keyed on the lxid (plpgsql simple expressions,
+	 * SQL function caches, sequence locks) depend on that to drop state the
+	 * release above invalidated (#30540).
+	 */
+	VirtualXactLockTableCleanup();
+	vxid.backendId = MyBackendId;
+	vxid.localTransactionId = GetNextLocalTransactionId();
+	VirtualXactLockTableInsert(vxid);
+	MyProc->lxid = vxid.localTransactionId;
 }
 
 /*
