@@ -70,8 +70,8 @@ public class PlatformExecutorFactory {
   }
 
   /**
-   * Like {@link #createExecutor(String, ThreadFactory)}, but a task submitted while the pool and its
-   * queue are full is rejected right away instead of blocking the submitting thread.
+   * Like {@link #createExecutor(String, ThreadFactory)}, but a task submitted while the pool and
+   * its queue are full is rejected right away instead of blocking the submitting thread.
    */
   public ThreadPoolExecutor createNonBlockingExecutor(
       String configPoolName, ThreadFactory namedThreadFactory) {
