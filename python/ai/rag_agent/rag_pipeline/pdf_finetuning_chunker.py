@@ -55,6 +55,15 @@ def chunk_pdf_whole_file(
     doc, chunks = stream_markdown(markdown, source_file=file_location)
     del markdown
 
+    # Logged before the walk as well as after it, so a document that fails
+    # part way through still leaves a line; the summary below needs the chunk
+    # count, which is only known at the end.
+    logging.info(
+        f"PDF fine-tuning chunker: file={file_location}, "
+        f"markdown_length={markdown_length} chars, "
+        f"title={doc.title!r}, starting"
+    )
+
     chunk_count = 0
     for chunk in chunks:
         chunk_count += 1

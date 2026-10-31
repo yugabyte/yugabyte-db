@@ -4,7 +4,7 @@ import re
 import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable, Iterator, MutableMapping, Sequence
+from typing import Any, Iterable, Iterator, MutableMapping, Optional, Sequence
 
 import frontmatter
 import mistune
@@ -184,14 +184,40 @@ _HTML_TERMINATED = (
 )
 _HTML_DECL_OPEN = re.compile(r"[ ]{0,3}<![A-Za-z]")
 _HTML_DECL_CLOSE = re.compile(r">")
+# Four spaces of indent makes a line indented code, not a container marker.
+# A tab counts too: it advances to the next 4-column tab stop, and mistune
+# does not accept a tab-indented line as a fence closer either (verified on
+# 3.4.0: "```\n\t```\n# H1\n" parses to one block_code, no heading).
+_OVER_INDENTED = re.compile(r"(?:[ ]{4}|[ ]{0,3}\t)")
+
+
+def _fence_opens(line: str) -> Optional[str]:
+    """The fence run `line` opens, or None.
+
+    A backtick fence's info string may not contain a backtick, so ``` a`b is
+    not a fence at all. Getting that wrong pairs the scanner's fences
+    differently from mistune's and moves a split point into a code block.
+    """
+    match = _FENCE_OPEN.match(line)
+    if not match:
+        return None
+    run = match.group(1)
+    if run[0] == "`" and "`" in line[match.end():]:
+        return None
+    return run
 
 
 def _fence_closes(line: str, fence: str) -> bool:
     """True when `line` closes a fence opened with the run `fence`.
 
     A closer is a run of the same character, at least as long as the opener,
-    with nothing else on the line.
+    with nothing else on the line, indented at most 3 spaces. The indent
+    matters: at 4 spaces mistune does not accept the line as a closer, so
+    treating it as one leaves the scanner outside a code block that mistune
+    still has open.
     """
+    if _OVER_INDENTED.match(line):
+        return False
     stripped = line.strip()
     return (len(stripped) >= len(fence)
             and set(stripped) == {fence[0]})
@@ -216,7 +242,13 @@ class _BlockScanner:
         """Consume `line`; True only if it is a plain top-level line.
 
         False while inside, opening or closing a fenced code block or any
-        flavour of HTML block, so the caller never acts on such a line.
+        flavour of HTML block, so the caller never acts on such a line. A
+        blockquote needs no tracking: a split point requires a preceding blank
+        line, which closes one.
+
+        Every judgement here is deliberately conservative: reporting a line as
+        not top-level only costs a cut point, and so memory, while reporting
+        one wrongly moves a cut into a block and changes chunk text.
         """
         if self._fence is not None:
             if _fence_closes(line, self._fence):
@@ -233,9 +265,14 @@ class _BlockScanner:
                 self._html_until_blank = False
             return False
 
-        fence_open = _FENCE_OPEN.match(line)
-        if fence_open:
-            self._fence = fence_open.group(1)
+        if not line.strip():
+            # A blank line is itself top-level: _iter_source_sections and
+            # _iter_section_pieces both key off exactly these.
+            return True
+
+        fence_run = _fence_opens(line)
+        if fence_run:
+            self._fence = fence_run
             return False
 
         for marker, closer in _HTML_TERMINATED:
@@ -285,16 +322,34 @@ def _iter_source_sections(s: str) -> Iterator[str]:
     is whatever preceded the first heading. Splitting here is what keeps peak
     memory flat: the block parser is handed one section at a time instead of
     the whole document.
+
+    A heading only counts when a top-level blank line precedes it. That rule
+    carries the correctness of this whole approach, so it is worth stating
+    why. A blank line ends every CommonMark block except the ones the scanner
+    already tracks, so after one, no container is open that mistune would
+    keep a following heading inside. Without the rule, a heading after a
+    blockquote line became a split point, while mistune keeps it in the
+    quote; and in the general case mistune's token *order* can depend on what
+    follows, so cutting mid-construct is not something a pre-split scanner can
+    get right. A heading with no blank line before it is therefore left in
+    place, which costs a cut point and nothing else: `_iter_section_pieces`
+    still bounds the section.
     """
     scanner = _BlockScanner()
     start = 0
+    # The start of the source counts as preceded by a blank line.
+    after_blank = True
 
     for pos, eol in _iter_line_spans(s):
         line = s[pos:eol]
-        if scanner.feed(line) and _ATX_HEADING.match(line):
+        top_level = scanner.feed(line)
+        if top_level and after_blank and _ATX_HEADING.match(line):
             if pos > start:
                 yield s[start:pos]
             start = pos
+        # Only a top-level blank line separates blocks; one inside a fence or
+        # an HTML block does not, and feed() reports those as not top-level.
+        after_blank = top_level and not line.strip()
 
     if start < len(s):
         yield s[start:]
@@ -308,77 +363,40 @@ def _normalise(body: str) -> str:
     return s
 
 
-# Opening line of a link reference definition. Deliberately loose: it only
-# decides which lines to hand to mistune, which then decides what counts.
-_REF_DEF_START = re.compile(r"[ ]{0,3}\[[^\]]*\]:")
-# Blockquote markers and list-item markers, which a definition can sit behind.
-# mistune parses a blockquote or list item with a child state that shares the
-# parent's env, so a definition in one is registered document-wide and has to
-# be seeded like any other.
-_QUOTE_MARKER = re.compile(r"[ ]{0,3}>[ ]?")
-_LIST_MARKER = re.compile(r"[ ]{0,3}(?:[-*+]|\d{1,9}[.)])[ ]+")
-# A definition's destination and title may sit on the lines after its label,
-# so a couple of following lines go with it.
-_REF_DEF_TRAILING_LINES = 2
-
-
-def _strip_container_markers(line: str) -> str:
-    """Strip leading blockquote and list markers from `line`."""
-    while True:
-        quote = _QUOTE_MARKER.match(line)
-        if not quote:
-            break
-        line = line[quote.end():]
-    item = _LIST_MARKER.match(line)
-    return line[item.end():] if item else line
-
-
 def _seed_ref_links(s: str, env: MutableMapping[str, Any]) -> None:
     """Register the document's link reference definitions up front.
 
     A whole-document parse collects every ``[label]: url`` before any inline
     text is parsed, so a definition below a use still resolves. Parsing one
-    section at a time would only see definitions already passed, so the
-    candidate lines are gathered first and handed to the real block parser,
-    which populates ``env["ref_links"]``.
+    section at a time would only see definitions already passed, hence this
+    pass, which populates ``env["ref_links"]`` before the real walk starts.
 
-    Uses the same :class:`_BlockScanner` as the section split, so a line that
-    merely looks like a definition inside a fence, an HTML comment or a raw
-    HTML block is not seeded. Getting that wrong changes chunk text: mistune
-    keeps the first definition for a label, so a commented-out one would
-    shadow the real one and turn ``[r1]`` into a link the whole-document parse
-    leaves as text.
+    Rather than guess which lines are definitions, this block-parses the
+    source a second time and throws the tokens away, keeping only what mistune
+    registered in ``env``. Guessing was wrong in both directions. Picking lines
+    that merely look like definitions seeded one that cannot interrupt a
+    paragraph, so ``Title`` followed by ``[r]: http://x`` resolved a reference
+    mistune leaves as literal text; and matching only at column 0-3 missed a
+    definition behind a blockquote or list marker, or one whose destination is
+    on the next line.
 
-    Blockquote and list markers are stripped before matching, and the next
-    couple of lines travel with a definition, so a destination on its own line
-    is not lost. mistune decides what is really a definition; anything else in
-    the gathered lines parses to a paragraph and registers nothing.
+    The pass walks the same sections and pieces as the real one, so it is
+    bounded by ``_MAX_SECTION_BYTES`` like everything else, and it is skipped
+    entirely unless the source holds something that could be a definition.
     """
-    candidates: list[str] = []
-    scanner = _BlockScanner()
-    trailing = 0
-    for start, end in _iter_line_spans(s):
-        line = s[start:end]
-        if not scanner.feed(line):
-            trailing = 0
-            continue
-        stripped = _strip_container_markers(line)
-        if _REF_DEF_START.match(stripped):
-            candidates.append(stripped)
-            trailing = _REF_DEF_TRAILING_LINES
-        elif trailing and stripped.strip():
-            candidates.append(stripped)
-            trailing -= 1
-        else:
-            trailing = 0
-
-    if not candidates:
+    if "]:" not in s:
         return
 
-    state = _MD_PARSER.block.state_cls()
-    state.env = env
-    state.process(_normalise("\n".join(candidates)))
-    _MD_PARSER.block.parse(state)
+    for section in _iter_source_sections(s):
+        for piece in _iter_section_pieces(section):
+            state = _MD_PARSER.block.state_cls()
+            state.env = env
+            state.process(_normalise(piece))
+            for hook in _MD_PARSER.before_parse_hooks:
+                hook(_MD_PARSER, state)
+            _MD_PARSER.block.parse(state)
+            # Only env matters here; the tokens are rebuilt by the real walk.
+            state.tokens.clear()
 
 
 # Largest section handed to the block parser in one call. A section is parsed
@@ -418,6 +436,13 @@ def _iter_section_pieces(section: str) -> Iterator[str]:
     the cut lose their header row and become a paragraph, and a list becomes
     two lists. That is accepted, because the alternative is a worker that runs
     out of memory on input the api-server accepted.
+
+    This changes the number of rows stored, not just their text. The chunk
+    count out of this walk is unchanged, since chunks flush on headings only,
+    but ``split_embed_text`` then cuts each chunk at ``MAX_EMBED_CHARS``, and
+    the prose rendering of the cut rows is shorter than the table rendering.
+    Measured on the scale stack with a 4 MiB single table: 231 rows before,
+    203 after, with every row's text still present.
 
     A cut is never taken inside a fenced code block or an HTML block, both
     because the scanner reports those lines as not top-level and because they

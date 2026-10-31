@@ -14,9 +14,14 @@ chunks the whole-document walk emitted, or the embeddings change.
 There is one deliberate exception, pinned by
 TestOversizedSectionPieces.test_a_forced_cut_changes_the_parse_of_that_block: a
 section holding a single block larger than _MAX_FORCED_PIECE_BYTES is cut
-mid-block, because nothing else bounds it. The chunk still holds all the text
-and the chunk count is unchanged; the rows after the cut parse as prose rather
-than as table cells.
+mid-block, because nothing else bounds it. The chunk still holds all the text,
+but the rows after the cut parse as prose rather than as table cells.
+
+The count of chunks out of this walk is unchanged there, since chunks flush on
+headings only, but the number of rows finally stored is not: split_embed_text
+cuts each chunk at MAX_EMBED_CHARS, and the shorter prose rendering yields
+fewer pieces. Measured on the scale stack with a 4 MiB single table, 231 rows
+became 203.
 """
 
 import gc
@@ -34,6 +39,7 @@ from rag_pipeline.md_parser import (
     _extract_links,
     _extract_text,
     _fence_closes,
+    _fence_opens,
     _iter_block_tokens,
     _iter_source_sections,
     _normalise,
@@ -246,6 +252,23 @@ CASES = {
     "ref def destination and title on later lines": (
         '# A\n\nsee [r1]\n\n## B\n\n[r1]:\nhttp://x\n"t"\n'
     ),
+    # Raised in review, all four verified against mistune 3.4.0 and the
+    # CommonMark reference. Each was a cut the scanner took that mistune's own
+    # parse does not, which moves chunk text and so chunk ids.
+    "heading straight after a quote line": "> quote\n## H2\n",
+    "heading after a quote, blank line between": "> quote\n\n## H2\n",
+    "heading after a lazy quote continuation": "> quote\nText\n## H2\n",
+    "ref def cannot interrupt a paragraph": "Title\n[r]: http://x\n### H3\n",
+    "ref def after a table row": (
+        "| a |\n|---|\n| 1 |\n[r]: http://x\n### H3\nsee [r]\n"
+    ),
+    "fence closer indented four spaces": "```\n    ```\n# H1\n",
+    "backtick in a fence info string": (
+        "# A\n``` a`b\n## inside?\n```\n## B\nz\n"
+    ),
+    "tilde fence may hold a backtick": "# A\n\n~~~ a`b\n## x\n~~~\n\nafter\n",
+    "heading with no blank line before it": "# A\ntext\n## B\nmore\n",
+    "quote then fence then heading": "> q\n```\nx\n```\n## H2\n",
 }
 
 
@@ -304,6 +327,13 @@ class TestStreamingMatchesTheWholeDocumentWalk:
             "#hashtag\n\n", "####### seven\n\n", "# A ###\n\n",
             "Sub\n---\n\n", "> ## quoted\n\n", "````\n```\n## x\n````\n\n",
             "- item\n\n      ```\n      ## deep\n      ```\n\n",
+            # Single lines, so the generator also produces the no-blank-line
+            # pile-ups that found the four review cases. Without these every
+            # fragment ended in a blank line, which hid them.
+            "> quote\n", "   > indented quote\n", "text line\n",
+            "[r]: http://x\n", "see [r]\n", "```\n", "    ```\n",
+            "``` a`b\n", "~~~\n", "## H2\n", "    indented code\n",
+            "<div>\n", "<pre>x</pre>\n", "| a |\n", "|---|\n", "- item\n",
         ]
         rng = random.Random(7)
         for i in range(400):
@@ -411,6 +441,39 @@ class TestSourceSectionSplitting:
         # as the end would split inside them and invent a heading.
         assert len(self.sections(text)) == 1, f"split inside a {reason}"
 
+    @pytest.mark.parametrize("text,reason", [
+        ("> quote\n## H2\n", "straight after a blockquote line"),
+        ("> quote\nText\n## H2\n", "after a lazy quote continuation"),
+        ("Title\n## H2\n", "straight after a paragraph"),
+        ("- item\n## H2\n", "straight after a list item"),
+        ("| a |\n|---|\n| 1 |\n## H2\n", "straight after a table row"),
+        ("# A\ntext\n## B\n", "no blank line anywhere"),
+    ])
+    def test_a_heading_needs_a_blank_line_before_it(self, text, reason):
+        """The rule that carries this approach's correctness.
+
+        mistune keeps a heading inside an open blockquote, and in the general
+        case its token *order* can depend on what follows, so cutting
+        mid-construct is not something a line scanner can get right. Requiring
+        a preceding blank line means no container is open at a cut. The cost is
+        only a missed cut point, and `_iter_section_pieces` still bounds the
+        section.
+        """
+        assert len(self.sections(text)) == 1, f"split {reason}"
+
+    @pytest.mark.parametrize("text", [
+        "# A\n\nx\n\n## B\n\ny\n",
+        "intro\n\n# A\n\nx\n",
+        "> quote\n\n## H2\n\nbody\n",
+        "> q\n```\nx\n```\n\n## H2\n\nbody\n",
+    ])
+    def test_a_blank_line_restores_the_split(self, text):
+        assert len(self.sections(text)) > 1
+
+    def test_the_first_line_may_be_a_heading(self):
+        # Start of source counts as preceded by a blank line.
+        assert self.sections("# A\n\nx\n\n## B\n\ny\n")[0] == "# A\n\nx\n\n"
+
     def test_setext_heading_is_not_a_split_point(self):
         # It is still parsed as a heading inside its section; it just does not
         # start a new one.
@@ -434,6 +497,13 @@ class TestFenceClosing:
         ("~~~", "~~~", True),
         ("```", "~~~", False),
         ("  ```", "```", True),
+        ("   ```", "```", True),
+        # Four spaces makes it indented code, and mistune does not accept it
+        # as a closer. Treating it as one left the scanner outside a code
+        # block mistune still had open, so a later heading became a cut point
+        # inside the code.
+        ("    ```", "```", False),
+        ("\t```", "```", False),
         ("``` ", "```", True),
         ("```python", "```", False),
         ("x```", "```", False),
@@ -441,6 +511,25 @@ class TestFenceClosing:
     ])
     def test_fence_closes(self, line, fence, closes):
         assert _fence_closes(line, fence) is closes
+
+    @pytest.mark.parametrize("line,run", [
+        ("```", "```"),
+        ("~~~", "~~~"),
+        ("```python", "```"),
+        ("  ```py", "```"),
+        ("````", "````"),
+        # A backtick fence's info string may not hold a backtick, so this is
+        # not a fence at all. Treating it as one paired the scanner's fences
+        # differently from mistune's.
+        ("``` a`b", None),
+        ("```` x`y", None),
+        # A tilde fence may: the info string only bars the fence character.
+        ("~~~ a`b", "~~~"),
+        ("text", None),
+        ("", None),
+    ])
+    def test_fence_opens(self, line, run):
+        assert _fence_opens(line) == run
 
 
 class TestSharedScannerAgreement:

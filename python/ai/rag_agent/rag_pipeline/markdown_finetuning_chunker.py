@@ -38,13 +38,19 @@ def chunk_markdown_whole_file(
     # the other copy of the file while the chunks are still being produced.
     del full_text
 
+    # Logged before the walk as well as after it. The summary below needs the
+    # chunk count, which is only known at the end, so on its own it would go
+    # missing for exactly the documents that failed part way through.
+    logging.info(
+        f"Markdown fine-tuning chunker: file={file_location}, "
+        f"length={text_length} chars, title={doc.title!r}, starting"
+    )
+
     chunk_count = 0
     for chunk in chunks:
         chunk_count += 1
         yield from split_embed_text(chunk.to_embed_text(doc.title))
 
-    # Logged on the way out, not on the way in: the chunk count is only known
-    # once the document has been walked.
     logging.info(
         f"Markdown fine-tuning chunker: file={file_location}, "
         f"length={text_length} chars, "
