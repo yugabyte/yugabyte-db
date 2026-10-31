@@ -1706,6 +1706,51 @@ TEST_P(PgVectorIndexTest, StartupDeletesStorageOfUnlistedIndex) {
   }
 }
 
+// DROP destroys only the vector index storages the tablet lists, so it leaves one a restore left,
+// e.g. on a build before #35006. The tserver deletes it at startup. See issue #35895.
+TEST_P(PgVectorIndexTest, StartupDeletesStorageOfDroppedTablet) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+
+  auto* env = Env::Default();
+  std::vector<std::string> rocksdb_dirs;
+  std::vector<std::string> unlisted_dirs;
+  {
+    auto conn = ASSERT_RESULT(MakeIndexAndFill(16));
+    for (const auto& peer : ListTabletPeersWithVectorIndexes(cluster_.get())) {
+      const auto& meta = *peer->tablet_metadata();
+      rocksdb_dirs.push_back(meta.rocksdb_dir());
+      auto dir =
+          docdb::GetStorageDir(meta.rocksdb_dir(), docdb::kVectorIndexDirPrefix + "99999");
+      ASSERT_OK(env->CreateDir(dir));
+      ASSERT_OK(WriteStringToFile(env, "chunk", JoinPathSegments(dir, "1.yb_hnsw")));
+      unlisted_dirs.push_back(std::move(dir));
+    }
+    ASSERT_FALSE(unlisted_dirs.empty());
+    // Dropping a colocated table keeps its tablet.
+    if (!IsColocated()) {
+      ASSERT_OK(conn.Execute("DROP TABLE test"));
+    }
+  }
+  if (IsColocated()) {
+    auto conn = ASSERT_RESULT(PgMiniTestBase::Connect());
+    ASSERT_OK(conn.Execute("DROP DATABASE colocated_db"));
+  }
+
+  ASSERT_OK(WaitFor([env, &rocksdb_dirs]() {
+    return std::none_of(rocksdb_dirs.begin(), rocksdb_dirs.end(), [env](const auto& dir) {
+      return env->DirExists(dir);
+    });
+  }, 30s * kTimeMultiplier, "Tablet data deleted"));
+  for (const auto& dir : unlisted_dirs) {
+    ASSERT_TRUE(env->DirExists(dir)) << dir;
+  }
+
+  ASSERT_OK(RestartCluster());
+  for (const auto& dir : unlisted_dirs) {
+    ASSERT_FALSE(env->DirExists(dir)) << dir;
+  }
+}
+
 // Tablet::AddTableInMemory creates the storage of a new vector index before the superblock that
 // lists the index is flushed. Rolling the superblocks back to before the index simulates a crash in
 // that window: bootstrap replays the index back, so the startup sweep must keep its storage.

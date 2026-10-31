@@ -955,6 +955,23 @@ Status TSTabletManager::Init() {
     RETURN_NOT_OK(fs_manager_->CertifyDataRoots(evidence));
   }
 
+  {
+    std::unordered_set<std::string> tablet_dir_names;
+    {
+      std::lock_guard lock(metas.ready_metas_mutex);
+      for (const auto& meta : metas.ready_metas) {
+        tablet_dir_names.insert(BaseName(meta->rocksdb_dir()));
+      }
+    }
+    {
+      std::lock_guard lock(metas.non_ready_metas_mutex);
+      for (const auto& meta : metas.non_ready_metas) {
+        tablet_dir_names.insert(BaseName(meta->rocksdb_dir()));
+      }
+    }
+    DeleteStartupVectorIndexStoragesOfDeletedTablets(tablet_dir_names);
+  }
+
   // Validator should be created before tablets are open.
   tablet_metadata_validator_ = std::make_unique<TabletMetadataValidator>(LogPrefix(), this);
 
@@ -1099,7 +1116,7 @@ void TSTabletManager::ScanTabletDataDirsOnStartup() {
         auto vector_index_pos = child.find(vector_index_infix);
         if (vector_index_pos != std::string::npos) {
           vector_index_storages[child.substr(0, vector_index_pos)].push_back(
-              child.substr(vector_index_pos + 1));
+              JoinPathSegments(table_dir, child));
         }
         auto checkpoints_dir = JoinPathSegments(
             table_dir, child, RemoteBootstrapSession::kCheckpointsDir);
@@ -1115,17 +1132,50 @@ void TSTabletManager::ScanTabletDataDirsOnStartup() {
   startup_vector_index_storages_ = std::move(vector_index_storages);
 }
 
+void TSTabletManager::DeleteStartupVectorIndexStoragesOfDeletedTablets(
+    const std::unordered_set<std::string>& tablet_dir_names) {
+  auto* env = fs_manager_->env();
+  std::lock_guard lock(startup_vector_index_storages_mutex_);
+  for (auto it = startup_vector_index_storages_.begin();
+       it != startup_vector_index_storages_.end();) {
+    const auto& [tablet_dir_name, paths] = *it;
+    if (tablet_dir_names.contains(tablet_dir_name)) {
+      ++it;
+      continue;
+    }
+    for (const auto& path : paths) {
+      // A tablet whose superblock is missing but whose RocksDB dir is still there was not deleted,
+      // e.g. its superblock is on a data root that is not mounted.
+      if (env->DirExists(JoinPathSegments(DirName(path), tablet_dir_name))) {
+        continue;
+      }
+      LOG_WITH_PREFIX(INFO) << "Deleting vector index storage of a deleted tablet: " << path;
+      WARN_NOT_OK(
+          env->DeleteRecursively(path), Format("Failed to delete vector index storage $0", path));
+    }
+    it = startup_vector_index_storages_.erase(it);
+  }
+}
+
 void TSTabletManager::DeleteStartupUnlistedVectorIndexStorages(
     const tablet::RaftGroupMetadata& meta) {
-  std::vector<std::string> storage_names;
+  const auto tablet_dir_name = BaseName(meta.rocksdb_dir());
+  std::vector<std::string> paths;
   {
     std::lock_guard lock(startup_vector_index_storages_mutex_);
-    auto it = startup_vector_index_storages_.find(BaseName(meta.rocksdb_dir()));
+    auto it = startup_vector_index_storages_.find(tablet_dir_name);
     if (it == startup_vector_index_storages_.end()) {
       return;
     }
-    storage_names = std::move(it->second);
+    paths = std::move(it->second);
     startup_vector_index_storages_.erase(it);
+  }
+  // Only the storage names: the paths are checked against meta's rocksdb_dir, so a leftover on
+  // another data root is skipped.
+  std::vector<std::string> storage_names;
+  storage_names.reserve(paths.size());
+  for (const auto& path : paths) {
+    storage_names.push_back(BaseName(path).substr(tablet_dir_name.size() + 1));
   }
   meta.DeleteUnlistedVectorIndexStorages(storage_names);
 }
