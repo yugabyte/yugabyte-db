@@ -394,7 +394,8 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
           },
       .checkpoint_xcluster_streams_func =
           [](const std::vector<std::pair<TableId, xrepl::StreamId>>&, StreamCheckpointLocation,
-             const LeaderEpoch&, bool, std::function<void(Result<bool>)> user_callback) {
+             const LeaderEpoch&, bool, std::function<void(Result<bool>)> user_callback,
+             const std::vector<TabletId>&) {
             user_callback(false);  // No bootstrap required.
             return Status::OK();
           },
@@ -409,6 +410,10 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
         return resp;
       },
       .get_alive_streams_func = [this](const std::vector<TableId>&) { return xcluster_streams; },
+      .get_stream_bootstrap_tablets_func =
+          [](const xrepl::StreamId&) -> Result<std::vector<TabletId>> {
+        return std::vector<TabletId>();
+      },
       .upsert_to_sys_catalog_func =
           [](const LeaderEpoch&, XClusterOutboundReplicationGroupInfo*,
              const std::vector<scoped_refptr<CDCStreamInfo>>&) { return Status::OK(); },
