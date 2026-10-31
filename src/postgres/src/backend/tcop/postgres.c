@@ -1323,7 +1323,7 @@ yb_maybe_start_trace_root_span(const char *query_string, bool is_query_string_re
  * Execute a "simple Query" protocol message.
  */
 static void
-exec_simple_query(const char *query_string)
+exec_simple_query(const char *query_string, CommandTag yb_command_tag)
 {
 	CommandDest dest = whereToSendOutput;
 	MemoryContext oldcontext;
@@ -1335,15 +1335,12 @@ exec_simple_query(const char *query_string)
 	char		msec_str[32];
 
 	const char *yb_redacted_query_string;
-	CommandTag	yb_command_tag;
 
 	/*
 	 * Report query to various monitoring facilities.
 	 */
 	debug_query_string = query_string;
 
-	/* Use YbParseCommandTag to suppress error warnings. */
-	yb_command_tag = YbParseCommandTag(query_string);
 	yb_redacted_query_string = YbRedactPasswordIfExists(query_string,
 														yb_command_tag);
 	pgstat_report_activity(STATE_RUNNING, yb_redacted_query_string);
@@ -2076,8 +2073,11 @@ exec_bind_message(StringInfo input_message)
 	 */
 	debug_query_string = psrc->query_string;
 
-	/* Use YbParseCommandTag to suppress error warnings. */
-	yb_command_tag = YbParseCommandTag(psrc->query_string);
+	/*
+	 * YB: psrc->commandTag is the tag of the statement's raw parse tree, so
+	 * there is no need to re-parse the query text on every Bind.
+	 */
+	yb_command_tag = psrc->commandTag;
 	yb_redacted_query_string = YbRedactPasswordIfExists(psrc->query_string,
 														yb_command_tag);
 	pgstat_report_activity(STATE_RUNNING, yb_redacted_query_string);
@@ -6283,9 +6283,11 @@ yb_exec_query_wrapper(MemoryContext exec_context,
 }
 
 static void
-yb_exec_simple_query_impl(const void *query_string)
+yb_exec_simple_query_impl(const void *retry_data_arg)
 {
-	exec_simple_query((const char *) query_string);
+	const YBQueryRetryData *retry_data = retry_data_arg;
+
+	exec_simple_query(retry_data->query_string, retry_data->command_tag);
 }
 
 /*
@@ -6302,8 +6304,12 @@ yb_exec_simple_query(const char *query_string, MemoryContext exec_context)
 		.command_tag = YbParseCommandTag(query_string),
 	};
 
+	/*
+	 * The functor only receives its context argument, so retry_data is passed
+	 * again for it to get both the query string and the command tag.
+	 */
 	yb_exec_query_wrapper(exec_context, &retry_data,
-						  &yb_exec_simple_query_impl, query_string);
+						  &yb_exec_simple_query_impl, &retry_data);
 
 	/*
 	 * Fetch the updated session execution stats at the end of each query, so
