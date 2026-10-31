@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <atomic>
 #include <limits>
+#include <map>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -111,6 +112,7 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_user_ddls_preempt_auto_analyze, true,
     "yb_enable_invalidation_messages is enabled.");
 
 DECLARE_bool(TEST_ash_debug_aux);
+DECLARE_bool(TEST_ysql_yb_enable_replication_slot_transactional_ddl);
 
 /* Constants for replication slot LSN types */
 const std::string YBC_LSN_TYPE_SEQUENCE = "SEQUENCE";
@@ -3065,30 +3067,37 @@ YbcStatus YBCPgGetCDCConsistentChanges(
 
     static constexpr size_t OMITTED_VALUE = std::numeric_limits<size_t>::max();
 
-    // column_name -> (index in old tuples, index in new tuples).
+    const bool use_attr_num = FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl;
+    auto has_col_key = [use_attr_num](const auto& datum) {
+      return use_attr_num ? datum.has_col_attr_num() : datum.has_column_name();
+    };
+    auto col_key = [use_attr_num](const auto& datum) {
+      return use_attr_num ? std::make_pair(datum.col_attr_num(), std::string())
+                          : std::make_pair(0, datum.column_name());
+    };
+
+    // (attnum, column name) -> (index in old tuples, index in new tuples).
     // OMITTED_VALUE indicates omission.
     // For insert: all the columns will be of form (OMITTED_VALUE, <index>).
     // For delete: all the columns will be of form (<index>, OMITTED_VALUE) or
     // won't exist in the map depending on the record type (replica identity) of the stream.
     // For update: both old and new tuples will be present.
-    std::unordered_map<std::string, std::pair<size_t, size_t>> col_name_idx_map;
+    std::map<std::pair<int32_t, std::string>, std::pair<size_t, size_t>> col_idx_map;
     int new_tuple_idx = 0;
     for (const auto &new_tuple : row_message_pb.new_tuple()) {
-      if (new_tuple.has_column_name()) {
-        col_name_idx_map.emplace(
-            new_tuple.column_name(), std::make_pair(OMITTED_VALUE, new_tuple_idx));
+      if (has_col_key(new_tuple)) {
+        col_idx_map.emplace(col_key(new_tuple), std::make_pair(OMITTED_VALUE, new_tuple_idx));
       }
       new_tuple_idx++;
     }
     int old_tuple_idx = 0;
     for (const auto& old_tuple : row_message_pb.old_tuple()) {
-      if (old_tuple.has_column_name()) {
-        auto itr = col_name_idx_map.find(old_tuple.column_name());
-        if (itr != col_name_idx_map.end()) {
+      if (has_col_key(old_tuple)) {
+        auto itr = col_idx_map.find(col_key(old_tuple));
+        if (itr != col_idx_map.end()) {
           itr->second.first = old_tuple_idx;
         } else {
-          col_name_idx_map.emplace(
-              old_tuple.column_name(), std::make_pair(old_tuple_idx, OMITTED_VALUE));
+          col_idx_map.emplace(col_key(old_tuple), std::make_pair(old_tuple_idx, OMITTED_VALUE));
         }
       }
       old_tuple_idx++;
@@ -3105,15 +3114,15 @@ YbcStatus YBCPgGetCDCConsistentChanges(
       table_oid = tableDesc->pg_table_id().object_oid;
     }
 
-    auto col_count = narrow_cast<int>(col_name_idx_map.size());
+    auto col_count = narrow_cast<int>(col_idx_map.size());
     YbcPgDatumMessage *cols = nullptr;
     if (col_count > 0) {
       cols = static_cast<YbcPgDatumMessage *>(YBCPAlloc(sizeof(YbcPgDatumMessage) * col_count));
 
       int tuple_idx = 0;
-      for (const auto& col_idxs : col_name_idx_map) {
+      for (const auto& col_idxs : col_idx_map) {
         YbcPgTypeAttrs type_attrs{-1 /* typmod */};
-        const auto& column_name = col_idxs.first;
+        const auto& [column_attr_num, column_name] = col_idxs.first;
 
         // Before Op value aka Before Image.
         uint64 before_op_datum = 0;
@@ -3154,7 +3163,8 @@ YbcStatus YBCPgGetCDCConsistentChanges(
         }
 
         auto col = &cols[tuple_idx++];
-        col->column_name = YBCPAllocStdString(column_name);
+        col->column_name = use_attr_num ? nullptr : YBCPAllocStdString(column_name);
+        col->column_attr_num = column_attr_num;
         col->after_op_datum = after_op_datum;
         col->after_op_is_null = after_op_is_null;
         col->after_op_is_omitted = after_op_is_omitted;
