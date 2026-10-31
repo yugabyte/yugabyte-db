@@ -256,7 +256,7 @@ Change the type of an existing column. The following semantics apply:
 - A `USING` clause must be included when there is no implicit assignment cast available from the old type to the new type.
 - Alter type is not supported for partitioned tables. See {{<issue 16980>}}.
 - Alter type is not supported for tables with rules (limitation inherited from PostgreSQL).
-- Alter type is not supported for tables with CDC streams if a table rewrite is required. See {{<issue 27766>}}.
+- Alter type requiring a table rewrite is not supported for tables with gRPC CDC streams, or for colocated tables with CDC logical replication streams. For non-colocated tables with logical replication streams, see [Streaming DDLs causing table rewrite](../../../../../additional-features/change-data-capture/using-logical-replication/advanced-topic/#streaming-ddls-causing-table-rewrite) for the conditions under which it is allowed. See {{<issue 27766>}} and {{<issue 31908>}}.
 - Alter type is not supported for tables under xCluster replication if a table rewrite is required, except when using [automatic mode](../../../../../architecture/docdb-replication/async-replication/#transactional-replication).
 
 ##### Table rewrites
