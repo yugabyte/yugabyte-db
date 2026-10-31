@@ -82,6 +82,10 @@ class PlatformThreadPoolExecutor extends MDCAwareThreadPoolExecutor {
         threadFactory);
     super.setRejectedExecutionHandler(
         (runnable, executor) -> {
+          if (executor.isShutdown()) {
+            // No worker would pick the task up from the queue.
+            new AbortPolicy().rejectedExecution(runnable, executor);
+          }
           // Add to the original queue
           try {
             if (queue.offer(runnable, queueOfferTimeout.toMillis(), TimeUnit.MILLISECONDS)) {

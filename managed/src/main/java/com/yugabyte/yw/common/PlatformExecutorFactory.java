@@ -71,7 +71,8 @@ public class PlatformExecutorFactory {
 
   /**
    * Like {@link #createExecutor(String, ThreadFactory)}, but a task submitted while the pool and
-   * its queue are full is rejected right away instead of blocking the submitting thread.
+   * its queue are full is rejected right away instead of blocking the submitting thread. The pool
+   * is not shut down with the application shutdown hooks: the caller shuts it down.
    */
   public ThreadPoolExecutor createNonBlockingExecutor(
       String configPoolName, ThreadFactory namedThreadFactory) {
@@ -82,7 +83,8 @@ public class PlatformExecutorFactory {
         Duration.ofSeconds(keepAliveDuration(configPoolName).getSeconds()),
         ybQueueCapacity(configPoolName),
         namedThreadFactory,
-        Duration.ZERO);
+        Duration.ZERO,
+        false);
   }
 
   public ThreadPoolExecutor createExecutor(
@@ -111,7 +113,8 @@ public class PlatformExecutorFactory {
         keepAliveTime,
         queueCapacity,
         namedThreadFactory,
-        PlatformThreadPoolExecutor.DEFAULT_QUEUE_OFFER_TIMEOUT);
+        PlatformThreadPoolExecutor.DEFAULT_QUEUE_OFFER_TIMEOUT,
+        true);
   }
 
   private ThreadPoolExecutor createExecutor(
@@ -121,7 +124,8 @@ public class PlatformExecutorFactory {
       Duration keepAliveTime,
       int queueCapacity,
       ThreadFactory namedThreadFactory,
-      Duration queueOfferTimeout) {
+      Duration queueOfferTimeout,
+      boolean addShutdownHook) {
     ThreadPoolExecutor executor =
         new PlatformThreadPoolExecutor(
             corePoolSize,
@@ -133,6 +137,9 @@ public class PlatformExecutorFactory {
                 : new LinkedBlockingQueue<>(queueCapacity),
             namedThreadFactory,
             queueOfferTimeout);
+    if (!addShutdownHook) {
+      return executor;
+    }
     shutdownHookHandler.addShutdownHook(
         executor,
         (exec) -> {

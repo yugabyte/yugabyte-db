@@ -135,6 +135,20 @@ public class PlatformThreadPoolExecutorTest {
     executor.shutdown();
   }
 
+  // A shut down pool rejects a task even when its queue has room, as no worker would run it.
+  @Test
+  public void testRejectsAfterShutdown() {
+    PlatformThreadPoolExecutor executor =
+        new PlatformThreadPoolExecutor(
+            1, // core pool size
+            1, // max pool size
+            10,
+            TimeUnit.SECONDS,
+            new LinkedBlockingQueue<>(10));
+    executor.shutdown();
+    assertThrows(RejectedExecutionException.class, () -> executor.submit(() -> {}));
+  }
+
   // The number of tasks is more than the core pool size but
   // lesser than the max pool size.
   // Only the required number of threads must be created.

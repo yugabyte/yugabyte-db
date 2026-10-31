@@ -9,9 +9,11 @@ import com.yugabyte.yw.common.PlatformExecutorFactory;
 import java.lang.reflect.Method;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.pekko.Done;
+import org.apache.pekko.actor.CoordinatedShutdown;
 import play.http.ActionCreator;
 import play.libs.concurrent.ClassLoaderExecution;
 import play.mvc.Action;
@@ -34,15 +36,26 @@ public class ApiActionCreator implements ActionCreator {
 
   private static final String POOL_NAME = "api_executor";
 
-  private final Executor executor;
+  private final ExecutorService executor;
 
   @Inject
-  public ApiActionCreator(PlatformExecutorFactory executorFactory) {
+  public ApiActionCreator(
+      PlatformExecutorFactory executorFactory, CoordinatedShutdown coordinatedShutdown) {
     this.executor =
         // Non-blocking, so a full queue never holds the calling dispatcher thread.
         executorFactory.createNonBlockingExecutor(
             POOL_NAME,
             new ThreadFactoryBuilder().setNameFormat("api-executor-%d").setDaemon(true).build());
+    // The server drains in-flight requests up to the service-requests-done phase, and they need
+    // the pool until then. Running tasks are not interrupted; a request submitted after this is
+    // rejected with 503.
+    coordinatedShutdown.addTask(
+        CoordinatedShutdown.PhaseServiceStop(),
+        "api-executor-shutdown",
+        () -> {
+          executor.shutdown();
+          return CompletableFuture.completedFuture(Done.done());
+        });
   }
 
   @Override
