@@ -36,19 +36,23 @@ What happens to a follower read depends on where the follower's safe time falls 
         │       (A)       │           (B)            │            (C)            │
   ──────┼─────────────────┼──────────────────────────┼───────────────────────────┼──▶ time
                    now − max_stale            now − staleness                   now
-  (A) The follower is too far behind. It rejects the read, and the client retries at the leader.
-      Applies to YSQL and YCQL.
-  (B) YSQL: the follower does not yet have all the data at the read time.
-            avoid_waiting = true (default): it rejects the read, and the client retries at the leader.
-            avoid_waiting = false: it waits until it catches up, then serves the read.
-      YCQL: the follower serves the read at its safe time.
-  (C) YSQL: the follower serves the read at now − staleness.
-      YCQL: the follower serves the read at its safe time.
 ```
 
-- `max_stale` is [--max_stale_read_bound_time_ms](../../reference/configuration/yb-tserver/#max-stale-read-bound-time-ms) (default 60 seconds). Raise it if followers fall in (A) too often, for example when they are far from the leader. Setting it to `0` turns off the check.
-- `staleness` is [yb_follower_read_staleness_ms](../../reference/configuration/yb-tserver/#yb-follower-read-staleness-ms) (default 30 seconds). A shorter value makes it more likely that a follower is in (B). Don't set it to less than twice [raft_heartbeat_interval_ms](../../reference/configuration/yb-tserver/#raft-heartbeat-interval-ms). On an idle tablet, a follower's safe time advances only when a leader heartbeat arrives, so the safe time can be up to one heartbeat interval behind the current time.
+| Time | API | What happens |
+| :--- | :--- | :--- |
+| (A)  | YSQL and YCQL | The follower is too far behind. It rejects the read, and the client retries at the leader. |
+| (B)  | YSQL | The follower does not yet have all the data at the read time.<ul><li>avoid_waiting = true (default): it rejects the read, and the client retries at the leader.</li><li>avoid_waiting = false: it waits until it catches up, then serves the read.</li></ul> |
+|      | YCQL | The follower serves the read at its safe time. |
+| (C)  | YSQL | The follower serves the read at `now−staleness`. |
+|      | YCQL | The follower serves the read at its safe time. |
+
+Where:
+
+- `max_stale` is [--max_stale_read_bound_time_ms](../../reference/configuration/yb-tserver/#max-stale-read-bound-time-ms) (default 60 seconds). Raise it if followers fall in (A) too often. For example, when they are far from the leader. Setting it to `0` turns off the check.
+- `staleness` is [yb_follower_read_staleness_ms](../../reference/configuration/yb-tserver/#yb-follower-read-staleness-ms) (default 30 seconds). A shorter value makes it more likely that a follower is in (B). YugabyteDB rejects a value less than twice [--max_clock_skew_usec](../../reference/configuration/yb-tserver/#max-clock-skew-usec) (500 ms by default, so the minimum is 1000 ms). Also keep it at least twice [raft_heartbeat_interval_ms](../../reference/configuration/yb-tserver/#raft-heartbeat-interval-ms) (500 ms by default). On an idle tablet, a follower's safe time advances only when a leader heartbeat arrives, so it can sit one heartbeat interval behind the current time. A read time only one interval back then falls in (B).
 - `avoid_waiting` is [--ysql_follower_reads_avoid_waiting_for_safe_time](../../reference/configuration/yb-tserver/#ysql-follower-reads-avoid-waiting-for-safe-time) (default `true`). Retrying at the leader is usually faster than waiting for the follower to catch up.
+
+The timeline shows `now − max_stale` to the left of `now − staleness`. This order is only correct when `staleness` is less than `max_stale` (the default). If staleness is greater, the read time would be older than the max-stale bound. A follower that already has the data at the read time can still be in (A), because that check compares the follower's lag with the current time and runs before the read-time check.
 
 A rejected read is always retried at the tablet leader, not at another follower. The `consistent_prefix_failed_reads` metric counts these retries.
 
@@ -80,6 +84,6 @@ Avoid using `pg_hint_plan` to mark a statement read only. It can work in some ca
 
 ## YCQL
 
-YCQL follower reads require consistency level `ONE`. Set `ONE` explicitly in your driver, or with `CONSISTENCY ONE` in ycqlsh. For the default level and the other levels, see [CONSISTENCY](../../api/ycqlsh/#consistency). `ONE` changes only reads. YCQL writes stay strongly consistent. The timeline in [When a follower can serve the read](#when-a-follower-can-serve-the-read) shows when a follower serves a YCQL read.
+YCQL follower reads require consistency level `ONE`. Set `ONE` explicitly in your driver, or with `CONSISTENCY ONE` in ycqlsh. `LOCAL_ONE` reads from the tablet leader, as does the default `QUORUM`. For every level, see [CONSISTENCY](../../api/ycqlsh/#consistency). `ONE` changes only reads. YCQL writes stay strongly consistent. The timeline in [When a follower can serve the read](#when-a-follower-can-serve-the-read) shows when a follower serves a YCQL read.
 
 For a full example, see the YCQL tab in [Follower reads](../../explore/going-beyond-sql/follower-reads-ysql/#example) in Explore.
