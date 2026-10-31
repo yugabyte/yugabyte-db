@@ -148,6 +148,10 @@ DEFINE_RUNTIME_bool(vector_index_no_deletions_skip_filter_check, true,
     "Whether to skip filter check during vector index search if table does not have "
     "updates/deletions.");
 
+DEFINE_RUNTIME_bool(ysql_filter_before_decoding_columns, true,
+    "Whether DocDB evaluates a pushed down filter on a packed row after decoding only the columns "
+    "the filter reads, so other columns of rows that do not match are not decoded.");
+
 DECLARE_uint64(rpc_max_message_size);
 DECLARE_double(max_buffer_size_to_rpc_limit_ratio);
 DECLARE_bool(vector_index_dump_stats);
@@ -567,10 +571,17 @@ Result<std::unique_ptr<YQLRowwiseIteratorIf>> CreateYbctidIterator(
       data.read_operation_data, bounds, data.pending_op, skip_seek);
 }
 
-class FilteringIterator {
+class FilteringIterator : public PgRowFilter {
  public:
   explicit FilteringIterator(std::unique_ptr<YQLRowwiseIteratorIf>* iterator_holder)
       : iterator_holder_(*iterator_holder) {}
+
+  ~FilteringIterator() {
+    // The iterator could outlive this object, e.g. when it is reused by the next FilteringIterator.
+    if (row_filter_set_ && iterator_holder_) {
+      doc_iterator().SetRowFilter(nullptr, {});
+    }
+  }
 
   Status Init(
       const PgsqlReadOperationData& data,
@@ -581,6 +592,7 @@ class FilteringIterator {
     // For an index request the table iterator is positioned by tuple id, see FetchTuple.
     iterator_holder_ = VERIFY_RESULT(CreateIterator(
         data, request, projection, read_context, SkipSeek(request.has_index_request())));
+    SetRowFilter();
     return Status::OK();
   }
 
@@ -596,11 +608,12 @@ class FilteringIterator {
     } else {
       Refresh();
     }
+    SetRowFilter();
     return Status::OK();
   }
 
   void Refresh() {
-    down_cast<DocRowwiseIterator&>(*iterator_holder_).Refresh(SeekFilter::kAll);
+    doc_iterator().Refresh(SeekFilter::kAll);
   }
 
   Result<FetchResult> FetchNext(dockv::PgTableRow* table_row) {
@@ -643,7 +656,29 @@ class FilteringIterator {
     return !request.where_clauses().empty();
   }
 
+  Result<bool> Match(const dockv::PgTableRow& row) override {
+    return filter_->Exec(row);
+  }
+
  private:
+  DocRowwiseIterator& doc_iterator() const {
+    return down_cast<DocRowwiseIterator&>(*iterator_holder_);
+  }
+
+  // Lets the iterator evaluate the filter, so it could skip decoding columns the filter does not
+  // read.
+  void SetRowFilter() {
+    if (!filter_ || !FLAGS_ysql_filter_before_decoding_columns) {
+      return;
+    }
+    auto columns = filter_->ReferencedColumns();
+    if (!columns) {
+      return;
+    }
+    doc_iterator().SetRowFilter(this, std::move(*columns));
+    row_filter_set_ = true;
+  }
+
   Status InitCommon(
       const PgsqlReadRequestMsg& request, const Schema& schema,
       const dockv::ReaderProjection& projection) {
@@ -664,6 +699,9 @@ class FilteringIterator {
   }
 
   Result<bool> MatchFilter(const dockv::PgTableRow& row) {
+    if (row_filter_set_) {
+      return doc_iterator().row_filter_matched();
+    }
     return !filter_ || VERIFY_RESULT(filter_->Exec(row));
   }
 
@@ -673,6 +711,9 @@ class FilteringIterator {
 
   std::unique_ptr<YQLRowwiseIteratorIf>& iterator_holder_;
   std::optional<DocPgExprExecutor> filter_;
+  bool row_filter_set_ = false;
+
+  DISALLOW_COPY_AND_ASSIGN(FilteringIterator);
 };
 
 template <typename T>
