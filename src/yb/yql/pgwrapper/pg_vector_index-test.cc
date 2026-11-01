@@ -7280,8 +7280,9 @@ TEST_F(PgVectorIndexUtilTest, StoredPayloadRestoreToTime) {
 
   ASSERT_OK(RestartCluster());
   conn = ASSERT_RESULT(Connect());
-  ASSERT_TRUE(ASSERT_RESULT(HasVectorDeletion()));
+  // The query waits for the tablet leader, which HasVectorDeletion requires.
   ASSERT_EQ(ASSERT_RESULT(NearestIds(conn, kNumRows)), "[1, 2, 3, 4, 5]");
+  ASSERT_TRUE(ASSERT_RESULT(HasVectorDeletion()));
 }
 
 // A committed transaction is visible through its intents until it is applied, while the index
