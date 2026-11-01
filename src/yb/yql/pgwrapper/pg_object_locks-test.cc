@@ -1829,6 +1829,121 @@ TEST_F(PgObjectLocksTest, TestPgLocksBlockedByForObjectLocksMultiNode) {
   ASSERT_OK(waiter_future.get());
 }
 
+// A tserver that does not process the master's release fan-out must not keep DMLs on the other
+// tservers waiting for the DDL's exclusive lock.
+TEST_F(PgObjectLocksTest, StuckTServerDoesNotBlockDmlOnHealthyTServers) {
+  constexpr auto kDmlStatementTimeoutMs = 60000 * kTimeMultiplier;
+  auto* ddl_ts = cluster_->tablet_server(0);
+  auto* healthy_ts = cluster_->tablet_server(1);
+  auto* stuck_ts = cluster_->tablet_server(2);
+
+  auto ddl_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ddl_ts));
+  ASSERT_OK(ddl_conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(ddl_conn.Execute("INSERT INTO test SELECT generate_series(1, 10), 0"));
+
+  auto healthy_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*healthy_ts));
+  auto stuck_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*stuck_ts));
+  for (auto* conn : {&healthy_conn, &stuck_conn}) {
+    ASSERT_OK(conn->ExecuteFormat("SET statement_timeout = $0", kDmlStatementTimeoutMs));
+    ASSERT_OK(conn->Fetch("SELECT * FROM test"));
+  }
+
+  ASSERT_OK(ddl_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(ddl_conn.Execute("ALTER TABLE test ADD COLUMN v1 INT"));
+
+  auto healthy_dml = std::async(std::launch::async, [&healthy_conn] {
+    return healthy_conn.Execute("UPDATE test SET v = v + 1 WHERE k = 1");
+  });
+  auto stuck_dml = std::async(std::launch::async, [&stuck_conn] {
+    return stuck_conn.Execute("UPDATE test SET v = v + 1 WHERE k = 2");
+  });
+  ASSERT_EQ(healthy_dml.wait_for(2s * kTimeMultiplier), std::future_status::timeout);
+  ASSERT_EQ(stuck_dml.wait_for(0s), std::future_status::timeout);
+
+  LogWaiter pause_waiter(stuck_ts, "Pausing due to flag TEST_pause_release_object_locks");
+  ASSERT_OK(cluster_->SetFlag(stuck_ts, "TEST_pause_release_object_locks", "true"));
+  auto commit_future = std::async(std::launch::async, [&ddl_conn] {
+    return ddl_conn.CommitTransaction();
+  });
+  ASSERT_OK(pause_waiter.WaitFor(30s * kTimeMultiplier));
+
+  ASSERT_EQ(healthy_dml.wait_for(30s * kTimeMultiplier), std::future_status::ready);
+  ASSERT_OK(healthy_dml.get());
+  auto ddl_ts_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ddl_ts));
+  ASSERT_OK(ddl_ts_conn.ExecuteFormat("SET statement_timeout = $0", kDmlStatementTimeoutMs));
+  ASSERT_OK(ddl_ts_conn.Execute("UPDATE test SET v = v + 1 WHERE k = 3"));
+
+  ASSERT_EQ(stuck_dml.wait_for(0s), std::future_status::timeout);
+
+  ASSERT_OK(cluster_->SetFlag(stuck_ts, "TEST_pause_release_object_locks", "false"));
+  ASSERT_OK(stuck_dml.get());
+  ASSERT_OK(commit_future.get());
+  ASSERT_EQ(ASSERT_RESULT(ddl_ts_conn.FetchRow<PGUint64>(
+      "SELECT COUNT(*) FROM test WHERE v = 1")), 3);
+}
+
+// A tserver that does not process the master's acquire fan-out keeps a DDL waiting while the DDL
+// holds its exclusive lock on the other tservers. statement_timeout must bound that wait, and the
+// failed DDL must release its locks on the healthy tservers.
+TEST_F(PgObjectLocksTest, StatementTimeoutBoundsDdlAcquireOnStuckTServer) {
+  constexpr auto kDdlStatementTimeoutMs = 3000 * kTimeMultiplier;
+  constexpr auto kDmlStatementTimeoutMs = 60000 * kTimeMultiplier;
+  auto* ddl_ts = cluster_->tablet_server(0);
+  auto* healthy_ts = cluster_->tablet_server(1);
+  auto* stuck_ts = cluster_->tablet_server(2);
+
+  auto ddl_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ddl_ts));
+  ASSERT_OK(ddl_conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(ddl_conn.Execute("INSERT INTO test SELECT generate_series(1, 10), 0"));
+
+  auto healthy_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*healthy_ts));
+  auto stuck_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*stuck_ts));
+  for (auto* conn : {&healthy_conn, &stuck_conn}) {
+    ASSERT_OK(conn->ExecuteFormat("SET statement_timeout = $0", kDmlStatementTimeoutMs));
+    ASSERT_OK(conn->Fetch("SELECT * FROM test"));
+  }
+
+  LogWaiter block_waiter(
+      stuck_ts, "Blocking acquire request to simulate out-of-order requests");
+  ASSERT_OK(cluster_->SetFlag(stuck_ts, "TEST_block_acquires_to_simulate_out_of_order", "true"));
+
+  ASSERT_OK(ddl_conn.ExecuteFormat("SET statement_timeout = $0", kDdlStatementTimeoutMs));
+  const auto ddl_start = MonoTime::Now();
+  auto ddl_future = std::async(std::launch::async, [&ddl_conn] {
+    return ddl_conn.Execute("ALTER TABLE test ADD COLUMN v1 INT");
+  });
+  ASSERT_OK(block_waiter.WaitFor(MonoDelta::FromMilliseconds(kDdlStatementTimeoutMs)));
+
+  auto healthy_dml = std::async(std::launch::async, [&healthy_conn] {
+    return healthy_conn.Execute("UPDATE test SET v = v + 1 WHERE k = 1");
+  });
+  ASSERT_EQ(healthy_dml.wait_for(1s), std::future_status::timeout);
+
+  const auto ddl_status = ddl_future.get();
+  const auto ddl_elapsed = MonoTime::Now() - ddl_start;
+  LOG(INFO) << "DDL returned after " << ddl_elapsed << ": " << ddl_status;
+  ASSERT_NOK(ddl_status);
+  ASSERT_STR_CONTAINS(ddl_status.ToString(), "canceling statement due to statement timeout");
+  ASSERT_LT(
+      ddl_elapsed,
+      MonoDelta::FromMilliseconds(
+          kDdlStatementTimeoutMs + FLAGS_pg_client_extra_timeout_ms + 5000 * kTimeMultiplier));
+
+  ASSERT_EQ(healthy_dml.wait_for(30s * kTimeMultiplier), std::future_status::ready);
+  ASSERT_OK(healthy_dml.get());
+  ASSERT_OK(ddl_conn.ExecuteFormat("SET statement_timeout = $0", kDmlStatementTimeoutMs));
+  ASSERT_OK(ddl_conn.Execute("UPDATE test SET v = v + 1 WHERE k = 2"));
+
+  LogWaiter unblock_waiter(stuck_ts, "Unblocking acquire request");
+  ASSERT_OK(cluster_->SetFlag(
+      stuck_ts, "TEST_release_blocked_acquires_to_simulate_out_of_order", "true"));
+  ASSERT_OK(cluster_->SetFlag(stuck_ts, "TEST_block_acquires_to_simulate_out_of_order", "false"));
+  ASSERT_OK(unblock_waiter.WaitFor(30s * kTimeMultiplier));
+  ASSERT_OK(stuck_conn.Execute("UPDATE test SET v = v + 1 WHERE k = 3"));
+  ASSERT_EQ(ASSERT_RESULT(ddl_conn.FetchRow<PGUint64>(
+      "SELECT COUNT(*) FROM test WHERE v = 1")), 3);
+}
+
 YB_STRONGLY_TYPED_BOOL(DoMasterFailover);
 YB_STRONGLY_TYPED_BOOL(UseExplicitLocksInsteadOfDdl);
 class PgObjecLocksTestOutOfOrderMessageHandling

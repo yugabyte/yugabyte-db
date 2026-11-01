@@ -270,6 +270,9 @@ DEFINE_test_flag(bool, pause_wait_for_lockers, false,
 DEFINE_test_flag(bool, fail_wait_for_lockers, false,
     "Fail any WaitForLockers requests received by this tserver.");
 
+DEFINE_test_flag(bool, pause_release_object_locks, false,
+    "Pause any ReleaseObjectLocks requests until flag is reset.");
+
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_uint64(rocksdb_max_file_size_for_compaction);
 DECLARE_uint64(rpc_max_message_size);
@@ -4142,6 +4145,7 @@ void TabletServiceImpl::AcquireObjectLocks(
 void TabletServiceImpl::ReleaseObjectLocks(
     const ReleaseObjectLockRequestPB* req, ReleaseObjectLockResponsePB* resp,
     rpc::RpcContext context) {
+  TEST_PAUSE_IF_FLAG(TEST_pause_release_object_locks);
   TRACE("Start ReleaseObjectLocks");
   VLOG(2) << "Received ReleaseObjectLocks RPC: " << req->DebugString();
   if (!FLAGS_enable_object_locking_for_table_locks) {
