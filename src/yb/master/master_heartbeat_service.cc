@@ -207,6 +207,7 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
       const TSDescriptorPtr& ts_desc,
       const NodeInstancePB& ts_instance,
       const TabletReportPB* report_ptr,
+      const TabletInfoPtr* reported_tablet_infos,
       const LeaderEpoch& epoch,
       TabletReportUpdatesPB* report_update,
       rpc::RpcContext* rpc);
@@ -226,7 +227,9 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
       const TabletId& tablet_id, const LeaderEpoch& epoch, const TSDescriptorPtr& ts_desc);
 
   std::pair<MasterHeartbeatServiceImpl::ReportedTablets, std::vector<TabletId>>
-      GetReportedAndOrphanedTablets(const RepeatedPtrField<ReportedTabletPB>& updated_tablets);
+      GetReportedAndOrphanedTablets(
+          const RepeatedPtrField<ReportedTabletPB>& updated_tablets,
+          const TabletInfoPtr* updated_tablet_infos);
 
   bool ProcessCommittedConsensusState(
       const TSDescriptorPtr& ts_desc,
@@ -263,11 +266,13 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
 
   void ProcessTabletMetadata(
       const std::string& ts_uuid,
+      const TabletInfoPtr& tablet,
       const TabletDriveStorageMetadataPB& storage_metadata,
       const std::optional<TabletLeaderMetricsPB>& leader_metrics);
 
   void ProcessTabletReplicaFullCompactionStatus(
-      const TabletServerId& ts_uuid, const FullCompactionStatusPB& full_compaction_status);
+      const TabletServerId& ts_uuid, const TabletInfoPtr& tablet,
+      const FullCompactionStatusPB& full_compaction_status);
 
   // Returns Status::OK if the validation succeeded and processing of the request should continue,
   // otherwise non-OK if processing of the heartbeat should stop. Also sets rpc appropriately.
@@ -522,9 +527,34 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
       ts_desc->UpdateMetrics(req->metrics());
     }
 
+    // One catalog lookup per heartbeat for the tablet report and the metrics below: the shared
+    // lock taken per tablet is the master's hot spot with thousands of tservers.
+    std::vector<TabletId> tablet_ids;
+    if (req->has_tablet_report()) {
+      for (const auto& reported : req->tablet_report().updated_tablets()) {
+        tablet_ids.push_back(reported.tablet_id());
+      }
+    }
+    const size_t num_reported_tablets = tablet_ids.size();
+    // Only process metadata if we have plenty of time to process the work (> 50% of timeout).
+    auto safe_time_left = CoarseMonoClock::Now() + (FLAGS_heartbeat_rpc_timeout_ms * 1ms / 2);
+    const bool process_metadata =
+        (!req->has_tablet_report() || req->tablet_report().is_incremental()) &&
+        rpc.GetClientDeadline() > safe_time_left &&
+        PREDICT_TRUE(!ANNOTATE_UNPROTECTED_READ(FLAGS_TEST_skip_processing_tablet_metadata));
+    if (process_metadata) {
+      for (const auto& metadata : req->storage_metadata()) {
+        tablet_ids.push_back(metadata.tablet_id());
+      }
+      for (const auto& full_compaction_status : req->full_compaction_statuses()) {
+        tablet_ids.push_back(full_compaction_status.tablet_id());
+      }
+    }
+    auto tablets = catalog_manager_->GetTabletInfos(tablet_ids);
+
     auto process_tablet_report_result = ProcessTabletReport(
         ts_desc, req->common().ts_instance(),
-        req->has_tablet_report() ? &req->tablet_report() : nullptr,
+        req->has_tablet_report() ? &req->tablet_report() : nullptr, tablets.data(),
         l.epoch(),
         resp->mutable_tablet_report(), &rpc);
     if (!process_tablet_report_result.ok()) {
@@ -537,38 +567,37 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
     }
 
     if (!req->has_tablet_report() || req->tablet_report().is_incremental()) {
-      // Only process metadata if we have plenty of time to process the work (> 50% of
-      // timeout).
-      auto safe_time_left = CoarseMonoClock::Now() + (FLAGS_heartbeat_rpc_timeout_ms * 1ms / 2);
-      if (rpc.GetClientDeadline() > safe_time_left &&
-          PREDICT_TRUE(!ANNOTATE_UNPROTECTED_READ(FLAGS_TEST_skip_processing_tablet_metadata))) {
+      // Re-check the deadline: the tablet report may have used up the time.
+      safe_time_left = CoarseMonoClock::Now() + (FLAGS_heartbeat_rpc_timeout_ms * 1ms / 2);
+      if (process_metadata && rpc.GetClientDeadline() > safe_time_left) {
         std::unordered_map<TabletId, TabletLeaderMetricsPB> id_to_leader_metrics;
         for (auto& info : req->leader_info()) {
           id_to_leader_metrics[info.tablet_id()] = info;
         }
+        size_t idx = num_reported_tablets;
         for (const auto& metadata : req->storage_metadata()) {
           std::optional<TabletLeaderMetricsPB> leader_metrics;
           auto iter = id_to_leader_metrics.find(metadata.tablet_id());
           if (iter != id_to_leader_metrics.end()) {
             leader_metrics = iter->second;
           }
-          ProcessTabletMetadata(ts_desc->id(), metadata, leader_metrics);
+          ProcessTabletMetadata(ts_desc->id(), tablets[idx++], metadata, leader_metrics);
+        }
+
+        // Only process the full compaction statuses if we have plenty of time to process the work
+        // (> 50% of timeout).
+        safe_time_left = CoarseMonoClock::Now() + (FLAGS_heartbeat_rpc_timeout_ms * 1ms / 2);
+        if (rpc.GetClientDeadline() > safe_time_left) {
+          for (const auto& full_compaction_status : req->full_compaction_statuses()) {
+            ProcessTabletReplicaFullCompactionStatus(
+                ts_desc->permanent_uuid(), tablets[idx++], full_compaction_status);
+          }
         }
       }
 
       for (const auto& consumer_replication_state : req->xcluster_consumer_replication_status()) {
         catalog_manager_->GetXClusterManager()->StoreConsumerReplicationStatus(
             consumer_replication_state);
-      }
-
-      // Only process the full compaction statuses if we have plenty of time to process the work (>
-      // 50% of timeout).
-      safe_time_left = CoarseMonoClock::Now() + (FLAGS_heartbeat_rpc_timeout_ms * 1ms / 2);
-      if (rpc.GetClientDeadline() > safe_time_left) {
-        for (const auto& full_compaction_status : req->full_compaction_statuses()) {
-          ProcessTabletReplicaFullCompactionStatus(
-              ts_desc->permanent_uuid(), full_compaction_status);
-        }
       }
     }
 
@@ -643,16 +672,10 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
 
 std::pair<MasterHeartbeatServiceImpl::ReportedTablets, std::vector<TabletId>>
     MasterHeartbeatServiceImpl::GetReportedAndOrphanedTablets(
-    const RepeatedPtrField<ReportedTabletPB>& updated_tablets) {
+    const RepeatedPtrField<ReportedTabletPB>& updated_tablets,
+    const TabletInfoPtr* updated_tablet_infos) {
   MasterHeartbeatServiceImpl::ReportedTablets reported_tablets;
   std::vector<TabletId> orphaned_tablets;
-
-  // Get tablet objects for all updated tablets.
-  std::vector<TabletId> updated_tablet_ids;
-  std::transform(
-      updated_tablets.begin(), updated_tablets.end(),
-      std::back_inserter(updated_tablet_ids), [](const auto& pb) { return pb.tablet_id();});
-  auto updated_tablet_infos = catalog_manager_->GetTabletInfos(updated_tablet_ids);
 
   // Get table objects for all updated colocated tables.
   std::vector<TableId> updated_table_ids;
@@ -723,6 +746,7 @@ Result<bool> MasterHeartbeatServiceImpl::ProcessTabletReport(
     const TSDescriptorPtr& ts_desc,
     const NodeInstancePB& ts_instance,
     const TabletReportPB* report_ptr,
+    const TabletInfoPtr* reported_tablet_infos,
     const LeaderEpoch& epoch,
     TabletReportUpdatesPB* report_update,
     rpc::RpcContext* rpc) {
@@ -747,7 +771,7 @@ Result<bool> MasterHeartbeatServiceImpl::ProcessTabletReport(
   // the server should have, compare vs the ones being reported, and somehow mark
   // any that have been "lost" (eg somehow the tablet metadata got corrupted or something).
   auto [reported_tablets, orphaned_tablets] =
-      GetReportedAndOrphanedTablets(report.updated_tablets());
+      GetReportedAndOrphanedTablets(report.updated_tablets(), reported_tablet_infos);
 
   // Process any delete requests from orphaned tablets, identified above.
   for (const auto& tablet_id : orphaned_tablets) {
@@ -1538,15 +1562,14 @@ bool IsHtLeaseExpiredForTooLong(MicrosTime now, MicrosTime ht_lease_exp) {
 
 void MasterHeartbeatServiceImpl::ProcessTabletMetadata(
     const std::string& ts_uuid,
+    const TabletInfoPtr& tablet,
     const TabletDriveStorageMetadataPB& storage_metadata,
     const std::optional<TabletLeaderMetricsPB>& leader_metrics) {
   const string& tablet_id = storage_metadata.tablet_id();
-  auto tablet_result = catalog_manager_->GetTabletInfo(tablet_id);
-  if (!tablet_result) {
+  if (!tablet) {
     VLOG(1) << Format("Tablet $0 not found", tablet_id);
     return;
   }
-  auto& tablet = *tablet_result;
   MicrosTime new_ht_lease_exp = 0;
   uint64 new_heartbeats_without_leader_lease = 0;
   consensus::LeaderLeaseStatus leader_lease_status =
@@ -1601,7 +1624,8 @@ void MasterHeartbeatServiceImpl::ProcessTabletMetadata(
 }
 
 void MasterHeartbeatServiceImpl::ProcessTabletReplicaFullCompactionStatus(
-    const TabletServerId& ts_uuid, const FullCompactionStatusPB& full_compaction_status) {
+    const TabletServerId& ts_uuid, const TabletInfoPtr& tablet,
+    const FullCompactionStatusPB& full_compaction_status) {
   if (!full_compaction_status.has_tablet_id()) {
     VLOG(1) << "Tablet id not found";
     return;
@@ -1621,13 +1645,12 @@ void MasterHeartbeatServiceImpl::ProcessTabletReplicaFullCompactionStatus(
     return;
   }
 
-  const auto result = catalog_manager_->GetTabletInfo(tablet_id);
-  if (!result.ok()) {
-    LOG_WITH_FUNC(WARNING) << result;
+  if (!tablet) {
+    LOG_WITH_FUNC(WARNING) << Format("Tablet $0 not found", tablet_id);
     return;
   }
 
-  (*result)->UpdateReplicaFullCompactionStatus(
+  tablet->UpdateReplicaFullCompactionStatus(
       ts_uuid, FullCompactionStatus{
                    full_compaction_status.full_compaction_state(),
                    HybridTime(full_compaction_status.last_full_compaction_time())});
