@@ -503,6 +503,16 @@ Status HeartbeatPoller::TryHeartbeat() {
       server_.MarkTServersAsFollowers(blacklisted_uuids);
     }
 
+    // A response that asks us to re-register is built before the master fills in any per-cluster
+    // list, so it says nothing about the leader blacklist; keep the current set in that case.
+    // Otherwise apply the list on every heartbeat, including an empty one: that is how a tserver
+    // taken off the leader blacklist (or a master that stops sending the list) clears the
+    // exclusion. The client ignores an update that changes nothing.
+    if (!resp.needs_reregister()) {
+      server_.UpdateLeaderBlacklistedTServers(std::vector<std::string>(
+          resp.leader_blacklisted_tservers().begin(), resp.leader_blacklisted_tservers().end()));
+    }
+
     // At this point we know resp is a successful heartbeat response from the master so set it as
     // the last heartbeat response. This invalidates resp so we should use last_hb_response_ instead
     // below (hence using the nested scope for resp until here).

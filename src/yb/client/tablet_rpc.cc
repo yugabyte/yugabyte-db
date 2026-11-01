@@ -65,6 +65,12 @@ DEFINE_test_flag(bool, always_return_consensus_info_for_succeeded_rpc, yb::kIsDe
 DEFINE_RUNTIME_bool(enable_metacache_partial_refresh, true,
     "If set, we will attempt to refresh the tablet metadata cache with a TabletConsensusInfoPB in "
     "the tablet invoker.");
+DEFINE_RUNTIME_bool(follower_reads_avoid_leader_blacklisted_tservers, false,
+    "When set, follower (CONSISTENT_PREFIX) reads are not routed to tservers on the leader "
+    "blacklist as long as the tablet has a replica elsewhere, so that a tserver being drained for "
+    "maintenance stops receiving reads once it is blacklisted rather than once it is down. "
+    "Retries are unaffected and go to the leader as before.");
+TAG_FLAG(follower_reads_avoid_leader_blacklisted_tservers, advanced);
 
 using namespace std::placeholders;
 
@@ -109,6 +115,23 @@ void TabletInvoker::SelectTabletServerWithConsistentPrefix() {
   }
 
   std::vector<RemoteTabletServer*> candidates;
+  if (FLAGS_follower_reads_avoid_leader_blacklisted_tservers) {
+    auto leader_blacklisted = client_->data_->meta_cache_->leader_blacklisted_tservers();
+    if (!leader_blacklisted->empty()) {
+      current_ts_ = client_->data_->SelectTServer(
+          tablet_.get(), YBClient::ReplicaSelection::CLOSEST_REPLICA, *leader_blacklisted,
+          &candidates);
+      if (current_ts_) {
+        VLOG(1) << "Using tserver: " << yb::ToString(current_ts_)
+                << " (skipped leader blacklisted replicas)";
+        return;
+      }
+      // Every replica is leader blacklisted (e.g. RF1, or the whole cluster is being drained).
+      // A read still has to go somewhere, so fall through to the regular selection.
+      VLOG(1) << "All replicas of tablet " << tablet_id_ << " are leader blacklisted: "
+              << AsString(*leader_blacklisted) << ", ignoring the blacklist for this read";
+    }
+  }
   current_ts_ = client_->data_->SelectTServer(tablet_.get(),
                                               YBClient::ReplicaSelection::CLOSEST_REPLICA, {},
                                               &candidates);
