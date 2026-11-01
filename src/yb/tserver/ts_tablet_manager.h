@@ -414,8 +414,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // per-drive min-count policy as GetAndRegisterDataAndWalDir, but restricts the candidate set
   // to data roots tagged with target_tier in FsManager (from --fs_data_dirs parsing).
   //
-  // This is the primitive that AlterTabletTier will call to resolve which path_id to pass to
-  // ScheduleDBPathMove when migrating SSTs to a different tier.
+  // The AlterTabletTier RPC handler calls this for a request that names a different tier than
+  // the persisted one; the migration's moves then target the returned path_id.
   //
   // This call is read-only: it only reads table_data_assignment_map_ / data_dirs_per_drive_
   // (via PickMinLoadDataRootUnlocked) and does not write to them. Callers that actually
