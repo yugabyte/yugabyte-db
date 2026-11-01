@@ -2172,13 +2172,11 @@ Status PgApiImpl::BeginTransaction(int64_t start_time, uint64_t origination_time
 }
 
 Status PgApiImpl::RecreateTransaction() {
-  ClearSessionState();
-  return pg_txn_manager_->RecreateTransaction();
+  return pg_txn_manager_->RecreateTransaction(ClearSessionState());
 }
 
 Status PgApiImpl::RestartTransaction() {
-  ClearSessionState();
-  return pg_txn_manager_->RestartTransaction();
+  return pg_txn_manager_->RestartTransaction(ClearSessionState());
 }
 
 Status PgApiImpl::ResetTransactionReadPoint(bool is_catalog_snapshot) {

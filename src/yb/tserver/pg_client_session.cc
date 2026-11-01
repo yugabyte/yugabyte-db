@@ -2140,6 +2140,14 @@ class PgClientSession::Impl {
     return status;
   }
 
+  Status ApplyTransactionRestart(
+      const PgApplyTransactionRestartRequestPB& req, PgApplyTransactionRestartResponsePB* resp,
+      rpc::RpcContext* context) {
+    VLOG_WITH_PREFIX_AND_FUNC(2) << req.ShortDebugString();
+    return ResultToStatus(
+        SetupSession(req.options(), context->GetClientDeadline(), /* arena= */ nullptr));
+  }
+
   Status RollbackToSubTransaction(
       const PgRollbackToSubTransactionRequestPB& req, PgRollbackToSubTransactionResponsePB* resp,
       rpc::RpcContext* context) {

@@ -1002,6 +1002,17 @@ class PgClient::Impl : public BigDataFetcher {
     return ResponseStatus(resp);
   }
 
+  Status ApplyTransactionRestart(tserver::PgPerformOptionsPB* options) {
+    tserver::PgApplyTransactionRestartRequestPB req;
+    req.set_session_id(session_id_);
+    options->Swap(req.mutable_options());
+
+    tserver::PgApplyTransactionRestartResponsePB resp;
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::ApplyTransactionRestart,
+        req, resp, PggateRPC::kApplyTransactionRestart));
+    return ResponseStatus(resp);
+  }
+
   Status InsertSequenceTuple(int64_t db_oid,
                              int64_t seq_oid,
                              uint64_t ysql_catalog_version,
@@ -2352,6 +2363,10 @@ Result<client::TabletServersInfo> PgClient::ListLiveTabletServers(bool primary_o
 Status PgClient::RollbackToSubTransaction(
     SubTransactionId id, tserver::PgPerformOptionsPB* options) {
   return impl_->RollbackToSubTransaction(id, options);
+}
+
+Status PgClient::ApplyTransactionRestart(tserver::PgPerformOptionsPB* options) {
+  return impl_->ApplyTransactionRestart(options);
 }
 
 Status PgClient::ValidatePlacement(tserver::PgValidatePlacementRequestPB* req) {

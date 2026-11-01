@@ -68,6 +68,7 @@ class PgSessionGuard;
     (DropTablegroup) \
     (FetchData) \
     (RollbackToSubTransaction) \
+    (ApplyTransactionRestart) \
     (TruncateTable) \
     (WaitForBackendsCatalogVersion) \
     (AcquireAdvisoryLock) \

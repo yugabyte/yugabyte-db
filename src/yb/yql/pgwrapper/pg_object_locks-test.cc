@@ -2261,10 +2261,10 @@ TEST_F(PgObjectLocksFastpathTest, TestReadOnlyTransaction) {
   }
 }
 
-// GH #35007: a REPEATABLE READ txn whose first statement is transparently retried must still hold
-// its table locks afterwards, so a conflicting DDL waits for it. The retry re-acquires the locks
-// before the tserver learns of the restart, and the tserver releases all of the session's locks
-// when it does.
+// GH #35007, #36262: a REPEATABLE READ txn whose first statement is transparently retried must
+// still hold its table locks afterwards, so a conflicting DDL waits for it. Applying the restart on
+// the tserver releases all of the session's fastpath locks, so it must happen before the retry
+// re-acquires them.
 class PgObjectLocksRetryTest : public PgObjectLocksFastpathTest {
  protected:
   void SetUp() override {
