@@ -457,6 +457,13 @@ Result<ApplyTransactionState> GetIntentsBatchForCDC(
                 intent_iter.value(), &transaction_id_slice));
             write_id = decoded_value.write_id;
 
+            // Match ApplyIntentsContext: empty top-level intents are conflict locks,
+            // not changes to regular records.
+            if (dockv::IsTopLevelIntentKey(intent.doc_path) && decoded_value.body.empty()) {
+              reverse_index_iter.Next();
+              continue;
+            }
+
             if (decoded_value.body.starts_with(dockv::ValueEntryTypeAsChar::kRowLock)) {
               reverse_index_iter.Next();
               continue;
