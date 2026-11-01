@@ -5480,8 +5480,8 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest,
        TestGetChangesSucceedsAfterVWALRefreshAndHiddenTabletDeletion) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_rewrite_for_cdcsdk_table) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_interval_secs) = 0;
-  // Wide enough that the rebuild below happens while the tablet still exists, after which the
-  // background task deletes it.
+  // Wide enough that the rebuild below usually runs before the background task deletes the
+  // tablet; the asserts around the rebuild fail the test if it does not.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 15;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
       true;
@@ -5510,14 +5510,30 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest,
   ASSERT_OK(PollTillRestartTimeExceedsTableHideTime(
       stream_id, dropped_table, no_replacement_table));
 
+  // Ask with include_inactive, as the virtual WAL does, so the master sets the release flag.
+  YBTableName dropped_table_by_id;
+  dropped_table_by_id.set_table_id(dropped_table.table_id());
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> dropped_tablets;
-  ASSERT_OK(test_client()->GetTabletsFromTableId(
-      dropped_table.table_id(), 0, &dropped_tablets));
+  auto get_dropped_tablets = [&]() {
+    return test_client()->GetTablets(
+        dropped_table_by_id, 0, &dropped_tablets, nullptr, RequireTabletsRunning::kFalse,
+        master::IncludeInactive::kTrue);
+  };
+  ASSERT_OK(get_dropped_tablets());
+  ASSERT_FALSE(dropped_tablets.empty());
+  for (const auto& tablet : dropped_tablets) {
+    ASSERT_TRUE(tablet.hidden_table_released_by_cdc()) << tablet.tablet_id();
+  }
 
   ASSERT_OK(DestroyVirtualWAL(kVWALSessionId1));
   ASSERT_OK(InitVirtualWAL(
       stream_id, {dropped_table.table_id(), live_table.table_id()}, kVWALSessionId1,
       nullptr /* vslot_hash_range */, true /* include_oid_to_relfilenode */));
+
+  // The tablets still exist after the rebuild, so the rebuild saw them flagged and skipped them
+  // rather than missing them because the deletion task had already run.
+  ASSERT_OK(get_dropped_tablets());
+  ASSERT_FALSE(dropped_tablets.empty());
 
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
