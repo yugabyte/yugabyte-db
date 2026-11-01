@@ -314,7 +314,7 @@ public class PitrControllerTest extends FakeDBApplication {
             () ->
                 createPitrConfig(defaultUniverse.getUniverseUUID(), "YSQL", "yugabyte", bodyJson));
     JsonNode resultJson = Json.parse(contentAsString(r));
-    assertValue(resultJson, "error", "PITR Config interval cannot be less than retention period");
+    assertValue(resultJson, "error", "PITR Config interval must be less than retention period");
     assertEquals(BAD_REQUEST, r.status());
     verify(mockCommissioner, never()).submit(any(), any());
   }
@@ -324,9 +324,45 @@ public class PitrControllerTest extends FakeDBApplication {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     ObjectNode bodyJson = defaultPitrConfigBodyJson();
-    assertThrows(
-        IllegalArgumentException.class,
-        () -> createPitrConfig(defaultUniverse.getUniverseUUID(), "YQL", "yugabyte", bodyJson));
+    // PGSQL_TABLE_TYPE is the internal table type, easily confused with the API's YSQL.
+    for (String tableType : new String[] {"YQL", "PGSQL_TABLE_TYPE"}) {
+      Result r =
+          assertPlatformException(
+              () ->
+                  createPitrConfig(
+                      defaultUniverse.getUniverseUUID(), tableType, "yugabyte", bodyJson));
+      assertEquals(BAD_REQUEST, r.status());
+      assertValue(
+          Json.parse(contentAsString(r)),
+          "error",
+          "Invalid table type " + tableType + ". Allowed values: YSQL, YCQL");
+    }
+    verify(mockCommissioner, never()).submit(any(), any());
+  }
+
+  @Test
+  public void testCreatePitrConfigWithIntervalEqualToRetention() {
+    ObjectNode bodyJson = pitrConfigBodyJson(DEFAULT_INTERVAL_SEC);
+    Result r =
+        assertPlatformException(
+            () ->
+                createPitrConfig(defaultUniverse.getUniverseUUID(), "YSQL", "yugabyte", bodyJson));
+    assertBadRequest(r, "PITR Config interval must be less than retention period");
+    verify(mockCommissioner, never()).submit(any(), any());
+  }
+
+  @Test
+  public void testUpdatePitrConfigWithIntervalNotLessThanRetention() {
+    PitrConfig pitrConfig = createPitrConfigInDb();
+    UpdatePitrConfigParams params = defaultUpdatePitrConfigParams(pitrConfig.getUuid());
+    params.retentionPeriodInSeconds = DEFAULT_INTERVAL_SEC;
+    Result r =
+        assertPlatformException(
+            () ->
+                updatePitrConfig(
+                    defaultUniverse.getUniverseUUID(), pitrConfig.getUuid(), Json.toJson(params)));
+    assertBadRequest(r, "PITR Config interval must be less than retention period");
+    verify(mockCommissioner, never()).submit(any(), any());
   }
 
   @Test

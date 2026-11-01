@@ -49,6 +49,8 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.EnumUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.yb.CommonTypes.TableType;
 import org.yb.client.ListSnapshotSchedulesResponse;
 import org.yb.client.SnapshotScheduleInfo;
@@ -125,17 +127,17 @@ public class PitrConfigHelper {
           BAD_REQUEST, "Cannot enable PITR when the universe is not in ready state");
     }
 
-    if (taskParams.retentionPeriodInSeconds <= 0L) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "PITR Config retention period cannot be less than 1 second");
-    }
+    validateRetentionAndInterval(taskParams.retentionPeriodInSeconds, taskParams.intervalInSeconds);
 
-    if (taskParams.retentionPeriodInSeconds <= taskParams.intervalInSeconds) {
+    ApiType apiType = EnumUtils.getEnum(ApiType.class, tableType);
+    if (apiType == null) {
       throw new PlatformServiceException(
-          BAD_REQUEST, "PITR Config interval cannot be less than retention period");
+          BAD_REQUEST,
+          String.format(
+              "Invalid table type %s. Allowed values: %s",
+              tableType, StringUtils.join(ApiType.values(), ", ")));
     }
-
-    TableType type = BackupUtil.API_TYPE_TO_TABLE_TYPE_MAP.get(ApiType.valueOf(tableType));
+    TableType type = BackupUtil.API_TYPE_TO_TABLE_TYPE_MAP.get(apiType);
     Optional<PitrConfig> pitrConfig = PitrConfig.maybeGet(universeUUID, type, keyspaceName);
     if (pitrConfig.isPresent()) {
       throw new PlatformServiceException(BAD_REQUEST, "PITR Config is already present");
@@ -239,15 +241,7 @@ public class PitrConfigHelper {
     checkCompatibleYbVersion(
         universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
 
-    if (taskParams.retentionPeriodInSeconds <= 0L) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "PITR Config retention period cannot be less than 1 second");
-    }
-
-    if (taskParams.retentionPeriodInSeconds <= taskParams.intervalInSeconds) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "PITR Config interval cannot be less than retention period");
-    }
+    validateRetentionAndInterval(taskParams.retentionPeriodInSeconds, taskParams.intervalInSeconds);
 
     if (taskParams.retentionPeriodInSeconds == pitrConfig.getRetentionPeriod()
         && taskParams.intervalInSeconds == pitrConfig.getScheduleInterval()) {
@@ -543,6 +537,17 @@ public class PitrConfigHelper {
   static final class SnapshotSchedulesUnavailableException extends RuntimeException {
     SnapshotSchedulesUnavailableException(String message) {
       super(message);
+    }
+  }
+
+  private static void validateRetentionAndInterval(long retentionSec, long intervalSec) {
+    if (retentionSec <= 0L) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "PITR Config retention period cannot be less than 1 second");
+    }
+    if (retentionSec <= intervalSec) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "PITR Config interval must be less than retention period");
     }
   }
 }
