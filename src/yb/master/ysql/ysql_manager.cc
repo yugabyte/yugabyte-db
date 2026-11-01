@@ -147,6 +147,14 @@ Result<bool> YsqlManager::StartRunningInitDbIfNeeded(const LeaderEpoch& epoch) {
     return false;
   }
 
+  // The sys catalog can be reloaded in the same term (e.g. single master gets both
+  // TABLET_PEER_STARTED and NEW_LEADER_ELECTED), while initdb from the previous load still runs.
+  // Checked before pg_proc_exists_ so a running initdb is neither restarted nor marked done early.
+  if (ysql_initdb_and_major_upgrade_helper_->IsOperationRunning()) {
+    LOG(INFO) << "initdb is already running";
+    return true;
+  }
+
   if (pg_proc_exists_.load(std::memory_order_acquire)) {
     LOG(INFO) << "Table pg_proc exists, assuming initdb has already been run";
     // Mark initdb as done, in case it was done externally.
