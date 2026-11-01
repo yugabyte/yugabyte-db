@@ -579,33 +579,36 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
       *resp->add_tservers() = desc->GetTSInformationPB();
     }
 
-    auto cluster_config = server_->catalog_manager()->GetClusterConfig();
-    if (cluster_config) {
-      if (!FLAGS_skip_fields_moved_to_xcluster_guarded_info) {
-        resp->set_deprecated_oid_cache_invalidations_count(
-            cluster_config->oid_cache_invalidations_count());
+    if (!FLAGS_skip_fields_moved_to_xcluster_guarded_info) {
+      auto invalidations_count = catalog_manager_->GetOidCacheInvalidationsCount();
+      if (invalidations_count) {
+        resp->set_deprecated_oid_cache_invalidations_count(*invalidations_count);
+      } else {
+        LOG(WARNING) << "Could not get OID cache invalidations count for heartbeat response: "
+                     << invalidations_count.status().ToUserMessage();
       }
+    }
 
-      uint32_t leader_drain_version = ts_desc->pending_leader_drain_notification();
-      if (leader_drain_version && FLAGS_send_leader_blacklisted_tservers_on_heartbeat) {
-        auto leader_blacklist = ToBlacklistSet(
-            GetBlacklist(*cluster_config, /*blacklist_leader=*/ true));
+    uint32_t leader_drain_version = ts_desc->pending_leader_drain_notification();
+    if (leader_drain_version && FLAGS_send_leader_blacklisted_tservers_on_heartbeat) {
+      auto leader_blacklist = catalog_manager_->BlacklistSetFromPB(/*leader_blacklist=*/true);
+      if (leader_blacklist) {
         auto leaders_drained = !std::any_of(descs.begin(), descs.end(), [&](const auto& desc) {
-          return IsBlacklisted(desc->GetRegistration(), leader_blacklist) &&
+          return IsBlacklisted(desc->GetRegistration(), *leader_blacklist) &&
                  desc->leader_count() != 0;
         });
         if (leaders_drained) {
           for (const auto& desc : descs) {
-            if (IsBlacklisted(desc->GetRegistration(), leader_blacklist)) {
+            if (IsBlacklisted(desc->GetRegistration(), *leader_blacklist)) {
               resp->add_leader_blacklisted_tservers_with_no_leaders(desc->permanent_uuid());
             }
           }
           ts_desc->exchg_pending_leader_drain_notification(leader_drain_version, 0);
         }
+      } else {
+        LOG(WARNING) << "Could not get leader blacklist for heartbeat response: "
+                     << leader_blacklist.status().ToUserMessage();
       }
-    } else {
-      LOG(WARNING) << "Could not get cluster config for heartbeat response: "
-                   << cluster_config.status().ToUserMessage();
     }
 
     uint64_t transaction_tables_version = catalog_manager_->GetTransactionTablesVersion();
@@ -1641,15 +1644,13 @@ Status MasterHeartbeatServiceImpl::ValidateTServerUniverseOrRespond(
     const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp, rpc::RpcContext* rpc) {
   // At the time of this check, we need to know that we're the master leader to access the
   // cluster config.
-  auto cluster_config_result = catalog_manager_->GetClusterConfig();
-  if (!cluster_config_result.ok()) {
-    auto& s = cluster_config_result.status();
+  auto cluster_config_uuids = catalog_manager_->GetClusterConfigUuids();
+  if (!cluster_config_uuids.ok()) {
+    auto& s = cluster_config_uuids.status();
     LOG(WARNING) << "Unable to get cluster configuration: " << s.ToString();
     rpc->RespondFailure(s);
     return s;
   }
-  const auto& cluster_config = *cluster_config_result;
-
   auto tserver_universe_uuid_res = UniverseUuid::FromString(req.universe_uuid());
   if (!tserver_universe_uuid_res) {
     LOG(WARNING) << "Could not decode request universe_uuid: "
@@ -1663,7 +1664,7 @@ Status MasterHeartbeatServiceImpl::ValidateTServerUniverseOrRespond(
   std::string test_master_universe_uuid;
   CHECK(google::GetCommandLineOption("TEST_master_universe_uuid", &test_master_universe_uuid));
   auto master_universe_uuid_res = UniverseUuid::FromString(
-      test_master_universe_uuid.empty() ? cluster_config.universe_uuid()
+      test_master_universe_uuid.empty() ? cluster_config_uuids->universe_uuid
                                         : test_master_universe_uuid);
   if (!master_universe_uuid_res) {
     LOG(WARNING) << "Could not decode cluster config universe_uuid: "
@@ -1698,7 +1699,7 @@ Status MasterHeartbeatServiceImpl::ValidateTServerUniverseOrRespond(
     return s;
   }
   if (req.has_registration()) {
-    resp->set_cluster_uuid(cluster_config.cluster_uuid());
+    resp->set_cluster_uuid(cluster_config_uuids->cluster_uuid);
   }
 
   return Status::OK();

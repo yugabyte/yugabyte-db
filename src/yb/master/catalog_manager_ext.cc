@@ -3707,28 +3707,28 @@ bool ShouldResendRegistry(
 
 Status CatalogManager::FillHeartbeatResponse(const TSHeartbeatRequestPB& req,
                                              TSHeartbeatResponsePB* resp) {
-  SysClusterConfigEntryPB cluster_config = VERIFY_RESULT(GetClusterConfig());
-  RETURN_NOT_OK(FillHeartbeatResponseEncryption(cluster_config, req, resp));
-  FillHeartbeatResponseClusterConfig(cluster_config, req, resp);
-  RETURN_NOT_OK(master_->snapshot_coordinator().FillHeartbeatResponse(resp));
-  return FillHeartbeatResponseCDC(cluster_config, req, resp);
-}
-
-Status CatalogManager::FillHeartbeatResponseEncryption(
-    const SysClusterConfigEntryPB& cluster_config,
-    const TSHeartbeatRequestPB& req,
-    TSHeartbeatResponsePB* resp) {
-  const auto& ts_uuid = req.common().ts_instance().permanent_uuid();
-  if (!cluster_config.has_encryption_info() ||
-      !ShouldResendRegistry(ts_uuid, req.has_registration(), &should_send_universe_key_registry_,
-                            &should_send_universe_key_registry_mutex_)) {
-    return Status::OK();
+  auto cluster_config = ClusterConfig();
+  SCHECK_NOTNULL(cluster_config);
+  std::optional<EncryptionInfoPB> encryption_info;
+  {
+    auto l = cluster_config->LockForRead();
+    const auto& config = l->pb;
+    if (config.has_encryption_info() &&
+        ShouldResendRegistry(
+            req.common().ts_instance().permanent_uuid(), req.has_registration(),
+            &should_send_universe_key_registry_, &should_send_universe_key_registry_mutex_)) {
+      encryption_info = config.encryption_info();
+    }
+    FillHeartbeatResponseClusterConfig(config, req, resp);
   }
 
-  const auto& encryption_info = cluster_config.encryption_info();
-  RETURN_NOT_OK(encryption_manager_->FillHeartbeatResponseEncryption(encryption_info, resp));
-
-  return Status::OK();
+  // Key lookup can perform file I/O, and the other managers acquire their own locks. Do not
+  // delay cluster-config commits while waiting for them.
+  if (encryption_info) {
+    RETURN_NOT_OK(encryption_manager_->FillHeartbeatResponseEncryption(*encryption_info, resp));
+  }
+  RETURN_NOT_OK(master_->snapshot_coordinator().FillHeartbeatResponse(resp));
+  return FillHeartbeatResponseCDC(req, resp);
 }
 
 void CatalogManager::FillHeartbeatResponseClusterConfig(
@@ -3738,6 +3738,9 @@ void CatalogManager::FillHeartbeatResponseClusterConfig(
   if (req.cluster_config_version() < cluster_config.version()) {
     resp->set_cluster_config_version(cluster_config.version());
     *resp->mutable_cluster_replication_info() = cluster_config.replication_info();
+    if (cluster_config.has_consumer_registry()) {
+      *resp->mutable_consumer_registry() = cluster_config.consumer_registry();
+    }
   }
 }
 

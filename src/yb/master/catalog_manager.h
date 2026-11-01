@@ -1146,6 +1146,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // on the server, the change will fail and the client will have to retry the get, as someone
   // must have updated the config in the meantime.
   Result<SysClusterConfigEntryPB> GetClusterConfig() override;
+  struct ClusterConfigUuids {
+    std::string universe_uuid;
+    std::string cluster_uuid;
+  };
+  Result<ClusterConfigUuids> GetClusterConfigUuids();
   Result<int32_t> GetClusterConfigVersion();
   Result<uint32_t> GetOidCacheInvalidationsCount();
 
@@ -3316,18 +3321,12 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Result<std::optional<CDCStreamInfoPtr>> GetReplicationSlotStreamForDelete(
       const ReplicationSlotName& slot_name, bool force_delete) REQUIRES_SHARED(mutex_);
 
-  Status FillHeartbeatResponseEncryption(
-      const SysClusterConfigEntryPB& cluster_config,
-      const TSHeartbeatRequestPB& req,
-      TSHeartbeatResponsePB* resp);
-
   void FillHeartbeatResponseClusterConfig(
       const SysClusterConfigEntryPB& cluster_config,
       const TSHeartbeatRequestPB& req,
       TSHeartbeatResponsePB* resp);
 
   Status FillHeartbeatResponseCDC(
-      const SysClusterConfigEntryPB& cluster_config,
       const TSHeartbeatRequestPB& req,
       TSHeartbeatResponsePB* resp);
 
