@@ -16,6 +16,14 @@
  *	  The goal is to eventually replace each one with a proper
  *	  tableam callback or existing API.
  *
+ *	  #32268 tracks that replacement for the accessors already here.
+ *	  Besides yb_table_scan.c, only the executor nodes it covers
+ *	  (nodeYbSeqscan.c, nodeTidscan.c, and nodeYbBitmapTablescan.c)
+ *	  include this header.  A new YB-specific operation goes through
+ *	  tableam, extending it if needed.  Add an accessor here only
+ *	  when that is blocked on #32268 itself, and list it there.
+ *	  yb_table_scan.c defines only the accessors declared here.
+ *
  * Copyright (c) YugabyteDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
