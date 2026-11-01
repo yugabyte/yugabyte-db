@@ -73,6 +73,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import kamon.instrumentation.play.GuiceModule;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
@@ -2291,6 +2292,77 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     assertTrue(
         "query receiver 'filelog/query_logs_ysql' must be present, yaml=" + overridesYaml,
         overridesYaml.contains("filelog/query_logs_ysql"));
+  }
+
+  @Test
+  public void testHelmInstallQueryLogPgConfWinsOverUserPgConf() throws IOException {
+    defaultUserIntent.tserverGFlags =
+        new HashMap<>(ImmutableMap.of(GFlagsUtil.YSQL_PG_CONF_CSV, "log_statement=ddl"));
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            ApiUtils.mockUniverseUpdater(defaultUserIntent, "host", true));
+    com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig awsConfig =
+        new com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig();
+    awsConfig.setType(com.yugabyte.yw.models.helpers.telemetry.ProviderType.AWS_CLOUDWATCH);
+    awsConfig.setAccessKey("ak");
+    awsConfig.setSecretKey("sk");
+    awsConfig.setLogGroup("lg");
+    awsConfig.setLogStream("ls");
+    awsConfig.setRegion("us-west-2");
+    com.yugabyte.yw.models.TelemetryProvider tp = new com.yugabyte.yw.models.TelemetryProvider();
+    tp.setUuid(UUID.randomUUID());
+    tp.setCustomerUUID(defaultCustomer.getUuid());
+    tp.setName("aws-tp");
+    tp.setConfig(awsConfig);
+    tp.setTags(ImmutableMap.of());
+    tp.save();
+
+    com.yugabyte.yw.models.helpers.exporters.query.YSQLQueryLogConfig ysqlQueryLogConfig =
+        new com.yugabyte.yw.models.helpers.exporters.query.YSQLQueryLogConfig();
+    ysqlQueryLogConfig.setEnabled(true);
+    ysqlQueryLogConfig.setLogStatement(
+        com.yugabyte.yw.models.helpers.exporters.query.YSQLQueryLogConfig.YSQLLogStatement.MOD);
+    com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig queryLogConfig =
+        new com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig();
+    queryLogConfig.setYsqlQueryLogConfig(ysqlQueryLogConfig);
+    com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig queryExporter =
+        new com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig();
+    queryExporter.setExporterUuid(tp.getUuid());
+    queryLogConfig.setUniverseLogsExporterConfig(ImmutableList.of(queryExporter));
+
+    createExecutor(
+            KubernetesCommandExecutor.CommandType.HELM_INSTALL,
+            true,
+            com.yugabyte.yw.common.export.TelemetryConfig.builder()
+                .queryLogConfig(queryLogConfig)
+                .build())
+        .run();
+
+    ArgumentCaptor<String> overrideFile = ArgumentCaptor.forClass(String.class);
+    verify(kubernetesManager, times(1))
+        .helmInstall(
+            any(UUID.class),
+            any(String.class),
+            any(Map.class),
+            any(UUID.class),
+            any(String.class),
+            any(String.class),
+            overrideFile.capture());
+    String overridesYaml =
+        FileUtils.readFileToString(new File(overrideFile.getValue()), Charset.defaultCharset());
+    List<String> pgConfLines =
+        overridesYaml
+            .lines()
+            .filter(line -> line.contains(GFlagsUtil.YSQL_PG_CONF_CSV))
+            .collect(Collectors.toList());
+    assertTrue(
+        "tserver ysql_pg_conf_csv must take log_statement from the query log config, yaml="
+            + overridesYaml,
+        pgConfLines.stream().anyMatch(line -> line.contains("log_statement=MOD")));
+    assertTrue(
+        "user log_statement must be replaced, yaml=" + overridesYaml,
+        pgConfLines.stream().noneMatch(line -> line.contains("log_statement=ddl")));
   }
 
   @Test
