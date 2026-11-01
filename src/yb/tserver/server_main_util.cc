@@ -63,6 +63,7 @@ DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 DECLARE_bool(ysql_yb_pg_partman_use_native_txn_ddl_and_locks);
 DECLARE_string(ysql_pg_conf_csv);
 DECLARE_string(ysql_yb_enable_cbo);
+DECLARE_bool(tcmalloc_enable_background_actions);
 
 namespace yb {
 
@@ -268,6 +269,14 @@ void WarnIfPgPartmanFlagHasNoEffect() {
   }
 }
 
+// Enables the Google TCMalloc background actions on tserver by default. A flag set explicitly by
+// the user is respected as-is.
+void AdjustTCMallocFlagsIfNeeded() {
+  if (google::GetCommandLineFlagInfoOrDie("tcmalloc_enable_background_actions").is_default) {
+    CHECK_OK(SET_FLAG_DEFAULT_AND_CURRENT(tcmalloc_enable_background_actions, true));
+  }
+}
+
 }  // anonymous namespace
 
 Status MasterTServerParseFlagsAndInit(
@@ -319,6 +328,7 @@ Status MasterTServerParseFlagsAndInit(
   if (!is_master) {
     AdjustAutoAnalyzeFlagIfNeeded();
     WarnIfPgPartmanFlagHasNoEffect();
+    AdjustTCMallocFlagsIfNeeded();
   }
 
   MemTracker::ConfigureTCMalloc();
