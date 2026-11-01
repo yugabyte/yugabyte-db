@@ -108,6 +108,10 @@ DEFINE_test_flag(string, ysql_pg_upgrade_dump_pid_dir, "",
                  "If set, each ysql_dump that pg_upgrade runs creates a file named after its pid "
                  "in this directory, then waits for a signal instead of dumping.");
 
+DEFINE_test_flag(int32, pg_delay_before_parent_death_signal_ms, 0,
+                 "Delay postgres processes started by this server for this many milliseconds "
+                 "before they ask to be signaled when this server dies.");
+
 // Default to 5MB
 DEFINE_NON_RUNTIME_string(pg_mem_tracker_tcmalloc_gc_release_bytes, std::to_string(5 * 1024 * 1024),
     "Overriding the gflag mem_tracker_tcmalloc_gc_release_bytes "
@@ -737,6 +741,17 @@ DEFINE_validator(ysql_yb_enable_cbo,
                           "legacy_ignore_stats_bnl_mode"));
 
 namespace {
+// See YBSetParentDeathSignal in pg_yb_common.c for how these are used.
+void SetParentDeathSignalEnv(Subprocess& proc, int signal) {
+  proc.SetEnv("YB_PG_PDEATHSIG", Format("$0", signal));
+  proc.SetEnv("YB_PG_PARENT_PID", Format("$0", getpid()));
+  if (FLAGS_TEST_pg_delay_before_parent_death_signal_ms > 0) {
+    proc.SetEnv(
+        "FLAGS_TEST_pg_delay_before_parent_death_signal_ms",
+        Format("$0", FLAGS_TEST_pg_delay_before_parent_death_signal_ms));
+  }
+}
+
 // Append any Pg gFlag with non default value, or non-promoted AutoFlag
 void AppendPgGFlags(vector<string>* lines) {
   vector<CommandLineFlagInfo> flags;
@@ -1151,8 +1166,7 @@ Status PgWrapper::Start() {
   }
   proc_->SetEnv("FLAGS_tmp_dir", FLAGS_tmp_dir);
 
-  // See YBSetParentDeathSignal in pg_yb_common.c for how this is used.
-  proc_->SetEnv("YB_PG_PDEATHSIG", Format("$0", SIGINT));
+  SetParentDeathSignalEnv(*proc_, SIGINT);
   proc_->InheritNonstandardFd(address_negotiator_fd_);
   SetCommonEnv(&*proc_, /* yb_enabled */ true);
 
@@ -1228,8 +1242,7 @@ Status PgWrapper::InitDb(InitdbParams initdb_params) {
 
   Subprocess initdb_subprocess(initdb_program_path, initdb_args);
   initdb_subprocess.InheritNonstandardFd(address_negotiator_fd_);
-  // See YBSetParentDeathSignal in pg_yb_common.c for how this is used.
-  initdb_subprocess.SetEnv("YB_PG_PDEATHSIG", Format("$0", SIGTERM));
+  SetParentDeathSignalEnv(initdb_subprocess, SIGTERM);
   bool global_initdb = std::holds_alternative<GlobalInitdbParams>(initdb_params);
   SetCommonEnv(&initdb_subprocess, global_initdb);
 
@@ -1305,9 +1318,8 @@ Status PgWrapper::RunPgUpgrade(const PgUpgradeParams& param) {
   LOG(INFO) << "Launching pg_upgrade: " << AsString(args);
 
   Subprocess pg_upgrade(program_path, args);
-  // See YBSetParentDeathSignal in pg_yb_common.c for how this is used.
   // Keep SIGTERM: system() ignores SIGINT, so pg_upgrade's forwarding handler would miss it.
-  pg_upgrade.SetEnv("YB_PG_PDEATHSIG", Format("$0", SIGTERM));
+  SetParentDeathSignalEnv(pg_upgrade, SIGTERM);
   if (!FLAGS_TEST_ysql_pg_upgrade_dump_pid_dir.empty()) {
     pg_upgrade.SetEnv(
         "FLAGS_TEST_ysql_pg_upgrade_dump_pid_dir", FLAGS_TEST_ysql_pg_upgrade_dump_pid_dir);
