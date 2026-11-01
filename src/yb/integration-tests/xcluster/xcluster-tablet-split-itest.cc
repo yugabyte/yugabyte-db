@@ -1327,6 +1327,9 @@ class NotSupportedTabletSplitITest : public CdcTabletSplitITest {
     if (restart_server) {
       // Now try to restart the cluster and check that tablet splitting still fails.
       RETURN_NOT_OK(cluster_->RestartSync());
+      // Later splits fail with "No leader found" if issued before re-election completes.
+      RETURN_NOT_OK(WaitForTableLeaders(
+          cluster_.get(), table_->id(), 30s * kTimeMultiplier, RequireLeaderIsReady::kTrue));
 
       s = SplitTabletAndValidate(split_hash_code, kDefaultNumRows);
       EXPECT_NOK(s);
