@@ -2627,6 +2627,24 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_disable_relaxed_read_after_commit_visibility_guardrail",
+			PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Allow writes, row locks and DDL under "
+						 "yb_read_after_commit_visibility = relaxed, which "
+						 "otherwise fail as in a READ ONLY transaction."),
+			gettext_noop("Relaxed mode removes the uncertainty window, so a "
+						 "write or row lock can miss a row that another node "
+						 "committed just before and leave the data "
+						 "inconsistent. Turn on only with great caution and "
+						 "understanding of that risk."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_disable_relaxed_read_after_commit_visibility_guardrail,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_non_ddl_txn_for_sys_tables_allowed", PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("Enables the use of regular transactions for operating on system catalog tables in case a DDL transaction has not been started."),
 			NULL,
@@ -8484,9 +8502,12 @@ static struct config_enum ConfigureNamesEnum[] =
 						 " show \"ERROR:  Query error: Restart read required at: ...\". The database"
 						 " attempts to retry on such errors internally but that is not always possible."
 						 " (b) relaxed: With this option, the read-after-commit-visibility guarantee is"
-						 " relaxed. Do not see read restart errors but may miss recent updates with"
-						 " staleness bounded by clock skew. This mode does not apply to"
-						 " serializable isolation level and fast path writes."
+						 " relaxed. Reads do not see read restart errors, but may"
+						 " miss rows that another node committed up to one clock"
+						 " skew before the read. Writes, row locks and DDL fail as"
+						 " in a READ ONLY transaction. Serializable read-write"
+						 " transactions are allowed: this option does not change"
+						 " their reads."
 						 " (c) deferred: Defers read point. Higher latency but read-after-commit-visibility"
 						 " guarantee is maintained."
 			),
@@ -18053,6 +18074,16 @@ check_yb_password_reuse(int *newVal, void **extra, GucSource source)
 static bool
 yb_check_no_txn(int *newVal, void **extra, GucSource source)
 {
+	/*
+	 * Check only a session SET, which includes a function's SET clause, and
+	 * make the connection sticky only for it. Login applies role, database and
+	 * client settings in its own transaction. Connection Manager replays a
+	 * value that the client already set. CREATE FUNCTION ... SET and ALTER
+	 * ROLE ... SET only validate a value for later use.
+	 */
+	if (source != PGC_S_SESSION)
+		return true;
+
 	if (IsTransactionBlock())
 	{
 		GUC_check_errdetail("Cannot be set within a txn block.");

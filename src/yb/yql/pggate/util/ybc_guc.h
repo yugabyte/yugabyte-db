@@ -313,6 +313,19 @@ typedef enum {
 extern int yb_read_after_commit_visibility;
 
 /*
+ * The yb_read_after_commit_visibility mode in effect when the transaction
+ * picked its read time, or -1 before that. The read time keeps this mode: a
+ * RESET, or in autocommit a function's SET clause or a SET in its body, can
+ * change the GUC later.
+ *
+ * TODO(#36028): RESET skips the GUC's check hook, so it can change the GUC
+ * where SET cannot.
+ */
+extern int yb_txn_read_after_commit_visibility;
+
+extern bool yb_disable_relaxed_read_after_commit_visibility_guardrail;
+
+/*
  * Controls which transactions publish a per-database history retention pin, protecting their
  * read snapshot from history cutoff advancement cluster-wide.
  */

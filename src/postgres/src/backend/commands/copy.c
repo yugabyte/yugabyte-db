@@ -357,6 +357,10 @@ DoCopy(ParseState *pstate, const CopyStmt *stmt,
 		if (XactReadOnly && !rel->rd_islocaltemp)
 			PreventCommandIfReadOnly("COPY FROM");
 
+		/* YB */
+		if (YbIsRelaxedReadOnly() && !rel->rd_islocaltemp)
+			PreventCommandIfReadOnly("COPY FROM");
+
 		cstate = BeginCopyFrom(pstate, rel, whereClause,
 							   stmt->filename, stmt->is_program,
 							   NULL, stmt->attlist, stmt->options);

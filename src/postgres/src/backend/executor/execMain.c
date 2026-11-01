@@ -189,11 +189,13 @@ standard_ExecutorStart(QueryDesc *queryDesc, int eflags)
 	 * We have lower-level defenses in CommandCounterIncrement and elsewhere
 	 * against performing unsafe operations in parallel mode, but this gives a
 	 * more user-friendly error message.
-	 *
-	 * YB: We also notify pggate whether the statement is read only.
 	 */
-	if ((IsYugaByteEnabled() || XactReadOnly || IsInParallelMode()) &&
+	if ((XactReadOnly || IsInParallelMode()) &&
 		!(eflags & EXEC_FLAG_EXPLAIN_ONLY))
+		ExecCheckXactReadOnly(queryDesc->plannedstmt);
+
+	/* YB */
+	if (YbIsRelaxedReadOnly() && !(eflags & EXEC_FLAG_EXPLAIN_ONLY))
 		ExecCheckXactReadOnly(queryDesc->plannedstmt);
 
 	/*
@@ -816,14 +818,11 @@ ExecCheckRTEPermsModified(Oid relOid, Oid userid, Bitmapset *modifiedCols,
  * Note: in a Hot Standby this would need to reject writes to temp
  * tables just as we do in parallel mode; but an HS standby can't have created
  * any temp tables in the first place, so no need to check that.
- *
- * YB: We also notify pggate whether the statement is read only.
  */
 static void
 ExecCheckXactReadOnly(PlannedStmt *plannedstmt)
 {
 	ListCell   *l;
-	bool		yb_is_read_only = true;
 
 	/*
 	 * Fail if write permissions are requested in parallel mode for table
@@ -843,21 +842,10 @@ ExecCheckXactReadOnly(PlannedStmt *plannedstmt)
 			continue;
 
 		PreventCommandIfReadOnly(CreateCommandName((Node *) plannedstmt));
-		yb_is_read_only = false;
 	}
 
 	if (plannedstmt->commandType != CMD_SELECT || plannedstmt->hasModifyingCTE)
-	{
 		PreventCommandIfParallelMode(CreateCommandName((Node *) plannedstmt));
-		yb_is_read_only = false;
-	}
-
-	if (IsYugaByteEnabled())
-	{
-		if (plannedstmt->rowMarks)
-			yb_is_read_only = false;
-		HandleYBStatus(YBCPgSetReadOnlyStmt(yb_is_read_only));
-	}
 }
 
 
