@@ -133,7 +133,7 @@
 
 [[redirects]]
   from = "/explore/tunable-reads/"
-  to = "/stable/explore/going-beyond-sql/follower-reads-ycql/"
+  to = "/stable/explore/going-beyond-sql/follower-reads-ysql/"
 
 [[redirects]]
   from = "/explore/*"
@@ -354,11 +354,11 @@
 
 [[redirects]]
   from = "/preview/explore/follower-reads/fr-ycql/"
-  to = "/stable/explore/going-beyond-sql/follower-reads-ycql/"
+  to = "/stable/explore/going-beyond-sql/follower-reads-ysql/"
 
 [[redirects]]
   from = "/preview/explore/high-performance/tunable-reads/"
-  to = "/stable/explore/going-beyond-sql/follower-reads-ycql/"
+  to = "/stable/explore/going-beyond-sql/follower-reads-ysql/"
 
 [[redirects]]
   from = "/preview/explore/linear-scalability/macos/"
@@ -370,7 +370,7 @@
 
 [[redirects]]
   from = "/preview/explore/multi-region-deployments/follower-reads-ycql/"
-  to = "/stable/explore/going-beyond-sql/follower-reads-ycql/"
+  to = "/stable/explore/going-beyond-sql/follower-reads-ysql/"
 
 [[redirects]]
   from = "/preview/explore/multi-region-deployments/follower-reads-ysql/"

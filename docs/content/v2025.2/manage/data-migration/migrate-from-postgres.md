@@ -45,7 +45,7 @@ To verify that the extensions your applications use are available in YugabyteDB,
 
 ## Data distribution schemes
 
-PostgreSQL is a monolithic database that stores your data on a single machine, while YugabyteDB is a distributed SQL database that distributes table rows across nodes in the cluster using two [data distribution](../../../explore/going-beyond-sql/data-sharding/) methods: [Hash](../../../explore/going-beyond-sql/data-sharding/#hash-sharding) sharding and [Range](../../../explore/going-beyond-sql/data-sharding/#range-sharding) sharding. This is a very key difference in modeling your data, as you have to understand how your data is distributed to write optimal queries to store and retrieve data.
+PostgreSQL is a monolithic database that stores your data on a single machine, while YugabyteDB is a distributed SQL database that distributes table rows across nodes in the cluster using two [data distribution](../../../architecture/docdb-sharding/sharding/) methods: [Hash](../../../architecture/docdb-sharding/sharding/#hash-sharding) sharding and [Range](../../../architecture/docdb-sharding/sharding/#range-sharding) sharding. This is a very key difference in modeling your data, as you have to understand how your data is distributed to write optimal queries to store and retrieve data.
 
 In hash sharding, rows are distributed based on a hash of the primary key and stored ordered on the hash of the primary key. This leads to a very good distribution of data but no useful ordering. This is great for point lookups like the following:
 

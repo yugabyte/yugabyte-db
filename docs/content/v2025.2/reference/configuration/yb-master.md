@@ -2459,7 +2459,7 @@ Specifies the default transaction isolation level.
 
 Valid values: `serializable`, `'repeatable read'`, `'read committed'`, and `'read uncommitted'`.
 
-[Read Committed isolation](../../../explore/transactions/isolation-levels/) is supported only if the YB-Master flag `yb_enable_read_committed_isolation` is set to `true`.
+[Read Committed isolation](../../../architecture/transactions/read-committed/) is supported only if the YB-Master flag `yb_enable_read_committed_isolation` is set to `true`.
 
 For new universes running v2025.2 or later, `yb_enable_read_committed_isolation` is set to `true` by default when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon.
 
@@ -2472,11 +2472,11 @@ If `yb_enable_read_committed_isolation` is `false`, the Read Committed isolation
 Default: `false`
 {{% /tags/wrap %}}
 
-Enables Read Committed isolation.
+Enables [Read Committed isolation](../../../architecture/transactions/read-committed/).
 
 For new universes running v2025.2 or later, `yb_enable_read_committed_isolation` is set to `true` by default when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon.
 
-When set to false, Read Committed (and Read Uncommitted) isolation level of YSQL fall back to the stricter [Snapshot isolation](../../../explore/transactions/isolation-levels/). See also the [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag.
+When set to false, Read Committed (and Read Uncommitted) isolation level of YSQL fall back to the stricter Snapshot isolation. See also the [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag.
 
 ##### --pg_client_use_shared_memory
 

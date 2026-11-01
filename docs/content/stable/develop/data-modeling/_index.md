@@ -21,10 +21,10 @@ To understand how to create and manage tables, schemas, and databases, see [Sche
 
 ## Sharding
 
-In YugabyteDB, table data is split into tablets, and distributed across multiple nodes in the cluster. Applications can connect to any node for storing and retrieving data. Because reads and writes can span multiple nodes, it's crucial to consider how table data is sharded and distributed when modeling your data. To design your tables and indexes for fast retrieval and storage in YugabyteDB, you first need to understand the [data distribution](../../explore/going-beyond-sql/data-sharding) schemes: Hash and Range sharding.
+In YugabyteDB, table data is split into tablets, and distributed across multiple nodes in the cluster. Applications can connect to any node for storing and retrieving data. Because reads and writes can span multiple nodes, it's crucial to consider how table data is sharded and distributed when modeling your data. To design your tables and indexes for fast retrieval and storage in YugabyteDB, you first need to understand the [data distribution](../../architecture/docdb-sharding/sharding/) schemes: Hash and Range sharding.
 
-{{<lead link="../../explore/going-beyond-sql/data-sharding/">}}
-To learn more about data distribution schemes, see [Configurable data sharding](../../explore/going-beyond-sql/data-sharding/).
+{{<lead link="../../architecture/docdb-sharding/sharding/">}}
+To learn more about data distribution schemes, see [Hash and range sharding](../../architecture/docdb-sharding/sharding/).
 {{</lead>}}
 
 ## Primary keys

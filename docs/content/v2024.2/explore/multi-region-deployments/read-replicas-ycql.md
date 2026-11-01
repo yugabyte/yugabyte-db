@@ -17,12 +17,12 @@ type: docs
 
 YugabyteDB supports the following types of reads:
 
-- [Follower reads](../../going-beyond-sql/follower-reads-ycql/) that enable spreading the read workload across all replicas in the primary cluster.
-- Observer reads that use read replicas. Read replicas are created as a separate cluster that may be located in a different region, possibly closer to the consumers of the data which would result in lower-latency access and enhanced support of analytics workloads.
+- [Follower reads](../../../additional-features/follower-reads/#ycql) spread the read workload across replicas in the primary cluster.
+- Observer reads are follower reads served by a read replica cluster. The replica is a separate set of nodes, often in another region, that asynchronously copies the primary data. Those nodes serve a read only when the application uses follower reads.
 
 A data center (also known as a [universe](../../../architecture/key-concepts/#universe)) can have one primary cluster and several read replica clusters.
 
-Stale reads are possible with an upper bound on the amount of staleness. Reads are guaranteed to be timeline-consistent. You need to set the consistency level to `ONE` in your application to work with follower reads or observer reads. In addition, you have to set the application's local data center to the read replica cluster's region.
+Stale reads have an upper bound, and they are timeline-consistent. Set the consistency level to [ONE](../../../additional-features/follower-reads/#ycql) to read from a follower in the primary cluster or from a read replica. The default `QUORUM` still reads from the tablet leader. Also set the application's local data center to the read replica cluster's region so the read is routed there.
 
 ## Prerequisites
 
@@ -189,7 +189,7 @@ The following illustration demonstrates the result of executing the preceding co
 
 ![Primary cluster reads](/images/explore/multi-region-deployments/read-replicas5.png)
 
-The following command directs the `CL.ONE` reads to the read replica cluster (as observer reads) in region `r2`:
+The following command directs the `CL.ONE` reads to the read replica cluster (as observer reads) in region `r2`. `--with_local_dc r2` routes the reads there. `--local_reads` sets the consistency level to `ONE` so the replica can serve them. See [Follower reads](../../../additional-features/follower-reads/#ycql).
 
 ```shell
 java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
@@ -282,4 +282,4 @@ For additional information, see [Fault Tolerance](../../fault-tolerance/macos/).
 ## Learn more
 
 - [Read replica architecture](../../../architecture/docdb-replication/read-replicas)
-- [Follower reads](../../going-beyond-sql/follower-reads-ycql/)
+- [Follower reads](../../../additional-features/follower-reads/#ycql)
