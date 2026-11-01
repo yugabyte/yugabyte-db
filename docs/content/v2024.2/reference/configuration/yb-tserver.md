@@ -1936,14 +1936,14 @@ Default: true
 
 ##### yb_insert_on_conflict_read_batch_size
 
-{{<tags/feature/ea idea="1455">}} Set the level of batching for [INSERT ... ON CONFLICT](../../../api/ysql/the-sql-language/statements/dml_insert/#on-conflict-clause). Set to 0 to disable batching. Batching is always disabled for the following:
+{{<tags/feature/ea idea="1455">}} Maximum batch size for arbiter index reads during [INSERT ... ON CONFLICT](../../../api/ysql/the-sql-language/statements/dml_insert/#on-conflict-clause). Only a superuser can change this setting. Batching is always disabled for the following:
 
 - temporary relations
 - foreign relations
 - system relations
 - relations that have row triggers (excluding those created internally for FOREIGN KEY constraints)
 
-The higher the number, the more batching is done. 1024 is recommended.
+A value of 1024 is recommended. In v2024.2.0.0, the default is 1, and setting the parameter to 1 disables batching. Starting in v2024.2.1.0, the default is 0, and setting it to 0 disables batching.
 
 Default: 0 (disabled)
 
