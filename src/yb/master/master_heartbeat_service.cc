@@ -267,8 +267,12 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
   void ProcessTabletMetadata(
       const std::string& ts_uuid,
       const TabletInfoPtr& tablet,
-      const TabletDriveStorageMetadataPB& storage_metadata,
-      const std::optional<TabletLeaderMetricsPB>& leader_metrics);
+      const TabletDriveStorageMetadataPB& storage_metadata);
+
+  void ProcessLeaderInfo(
+      const std::string& ts_uuid,
+      const TabletInfoPtr& tablet,
+      const TabletLeaderMetricsPB& leader_info);
 
   void ProcessTabletReplicaFullCompactionStatus(
       const TabletServerId& ts_uuid, const TabletInfoPtr& tablet,
@@ -546,6 +550,9 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
       for (const auto& metadata : req->storage_metadata()) {
         tablet_ids.push_back(metadata.tablet_id());
       }
+      for (const auto& info : req->leader_info()) {
+        tablet_ids.push_back(info.tablet_id());
+      }
       for (const auto& full_compaction_status : req->full_compaction_statuses()) {
         tablet_ids.push_back(full_compaction_status.tablet_id());
       }
@@ -570,18 +577,12 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
       // Re-check the deadline: the tablet report may have used up the time.
       safe_time_left = CoarseMonoClock::Now() + (FLAGS_heartbeat_rpc_timeout_ms * 1ms / 2);
       if (process_metadata && rpc.GetClientDeadline() > safe_time_left) {
-        std::unordered_map<TabletId, TabletLeaderMetricsPB> id_to_leader_metrics;
-        for (auto& info : req->leader_info()) {
-          id_to_leader_metrics[info.tablet_id()] = info;
-        }
         size_t idx = num_reported_tablets;
         for (const auto& metadata : req->storage_metadata()) {
-          std::optional<TabletLeaderMetricsPB> leader_metrics;
-          auto iter = id_to_leader_metrics.find(metadata.tablet_id());
-          if (iter != id_to_leader_metrics.end()) {
-            leader_metrics = iter->second;
-          }
-          ProcessTabletMetadata(ts_desc->id(), tablets[idx++], metadata, leader_metrics);
+          ProcessTabletMetadata(ts_desc->id(), tablets[idx++], metadata);
+        }
+        for (const auto& info : req->leader_info()) {
+          ProcessLeaderInfo(ts_desc->id(), tablets[idx++], info);
         }
 
         // Only process the full compaction statuses if we have plenty of time to process the work
@@ -1487,7 +1488,10 @@ void MasterHeartbeatServiceImpl::UpdateTabletReplicasAfterConfigChange(
     auto replica = CreateNewReplicaForLocalMemory(ts_desc, &consensus_state, report, replica_state);
     if (existing_replica) {
       replica.UpdateDriveInfo(existing_replica->drive_info);
-      replica.UpdateLeaderLeaseInfo(existing_replica->leader_lease_info);
+      // Lease state is kept only for the leader.
+      if (replica.role == PeerRole::LEADER) {
+        replica.UpdateLeaderLeaseInfo(existing_replica->leader_lease_info);
+      }
     }
     auto result = replica_locations.get()->insert({ts_desc->id(), replica});
     LOG_IF(FATAL, !result.second) << "duplicate uuid: " << ts_desc->id();
@@ -1563,54 +1567,12 @@ bool IsHtLeaseExpiredForTooLong(MicrosTime now, MicrosTime ht_lease_exp) {
 void MasterHeartbeatServiceImpl::ProcessTabletMetadata(
     const std::string& ts_uuid,
     const TabletInfoPtr& tablet,
-    const TabletDriveStorageMetadataPB& storage_metadata,
-    const std::optional<TabletLeaderMetricsPB>& leader_metrics) {
+    const TabletDriveStorageMetadataPB& storage_metadata) {
   const string& tablet_id = storage_metadata.tablet_id();
   if (!tablet) {
     VLOG(1) << Format("Tablet $0 not found", tablet_id);
     return;
   }
-  MicrosTime new_ht_lease_exp = 0;
-  uint64 new_heartbeats_without_leader_lease = 0;
-  consensus::LeaderLeaseStatus leader_lease_status =
-      consensus::LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE;
-  bool leader_lease_info_initialized = false;
-  if (leader_metrics.has_value()) {
-    auto existing_leader_lease_info = tablet->GetLeaderLeaseInfoIfLeader(ts_uuid);
-    // If the peer is the current leader, update the counter to track heartbeats that
-    // the tablet doesn't have a valid lease.
-    if (existing_leader_lease_info) {
-      const auto& leader_info = *leader_metrics;
-      leader_lease_status = leader_info.leader_lease_status();
-      leader_lease_info_initialized = true;
-      if (leader_info.leader_lease_status() == consensus::LeaderLeaseStatus::HAS_LEASE) {
-        auto ht_lease_exp = leader_info.ht_lease_expiration();
-        auto current_ht_lease_exp = existing_leader_lease_info->ht_lease_expiration;
-        // If the reported ht lease from the leader is expired for more than
-        // FLAGS_maximum_tablet_leader_lease_expired_secs, the leader shouldn't be treated
-        // as a valid leader.
-        // If the tablet has been changed from RF1 to any RF>1, the newly reported ht_lease_exp
-        // is always less than that reported when it was RF1 (kInfiniteHybridTimeLeaseExpiration).
-        // We should also treat such ht_lease_exp as valid.
-        // See https://github.com/yugabyte/yugabyte-db/issues/24575.
-        if ((ht_lease_exp >= current_ht_lease_exp ||
-                 current_ht_lease_exp == consensus::kInfiniteHybridTimeLeaseExpiration) &&
-            !IsHtLeaseExpiredForTooLong(
-                master_->clock()->Now().GetPhysicalValueMicros(), ht_lease_exp)) {
-          new_ht_lease_exp = ht_lease_exp;
-          tablet->UpdateLastTimeWithValidLeader();
-        }
-      } else {
-        new_heartbeats_without_leader_lease =
-            existing_leader_lease_info->heartbeats_without_leader_lease + 1;
-      }
-    }
-  }
-  TabletLeaderLeaseInfo leader_lease_info{
-        leader_lease_info_initialized,
-        leader_lease_status,
-        new_ht_lease_exp,
-        new_heartbeats_without_leader_lease};
   auto drive_info = TabletReplicaDriveInfo {
     .sst_files_size = storage_metadata.sst_file_size(),
     .wal_files_size = storage_metadata.wal_file_size(),
@@ -1620,7 +1582,24 @@ void MasterHeartbeatServiceImpl::ProcessTabletMetadata(
     .vector_index_size = storage_metadata.vector_index_size(),
     .has_active_vector_index_backfill = storage_metadata.has_active_vector_index_backfill(),
   };
-  tablet->UpdateReplicaInfo(ts_uuid, drive_info, leader_lease_info);
+  tablet->UpdateReplicaInfo(ts_uuid, drive_info);
+}
+
+void MasterHeartbeatServiceImpl::ProcessLeaderInfo(
+    const std::string& ts_uuid,
+    const TabletInfoPtr& tablet,
+    const TabletLeaderMetricsPB& leader_info) {
+  if (!tablet) {
+    VLOG(1) << Format("Tablet $0 not found", leader_info.tablet_id());
+    return;
+  }
+  const auto leader_lease_status = leader_info.leader_lease_status();
+  const auto ht_lease_exp = leader_info.ht_lease_expiration();
+  tablet->ProcessLeaderInfo(
+      ts_uuid, leader_lease_status, ht_lease_exp,
+      leader_lease_status == consensus::LeaderLeaseStatus::HAS_LEASE &&
+          IsHtLeaseExpiredForTooLong(
+              master_->clock()->Now().GetPhysicalValueMicros(), ht_lease_exp));
 }
 
 void MasterHeartbeatServiceImpl::ProcessTabletReplicaFullCompactionStatus(
