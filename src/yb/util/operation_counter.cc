@@ -49,6 +49,10 @@ void OperationCounter::Shutdown() {
   }
 }
 
+bool OperationCounter::ReadyToShutdown() const {
+  return value_.load(std::memory_order_acquire) == 0;
+}
+
 void OperationCounter::Release() {
   value_.fetch_sub(1, std::memory_order_acq_rel);
 }
