@@ -670,6 +670,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
       // We won't be doing full compactions on the catalog tablet.
       .full_compaction_pool = nullptr,
       .admin_triggered_compaction_pool = nullptr,
+      .intent_cleanup_pool = raft_pool(),
       // We don't support splitting the catalog tablet, this field is unneeded.
       .post_split_compaction_added = nullptr,
       // Metadata cache is not used on master.
