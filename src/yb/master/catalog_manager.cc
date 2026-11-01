@@ -1577,6 +1577,11 @@ Status CatalogManager::VisitSysCatalog(SysCatalogLoadingState* state) {
     // Clear internal maps and run data loaders.
     RETURN_NOT_OK(RunLoaders(state));
 
+    if (!cluster_config_) {
+      DCHECK_LT(universe_created_term_, term);
+      universe_created_term_ = term;
+    }
+
     // Prepare various default system configurations.
     RETURN_NOT_OK(PrepareDefaultSysConfig(term));
 
@@ -13791,6 +13796,11 @@ bool CatalogManager::IsLoadBalancerEnabled() {
 
 MonoDelta CatalogManager::TimeSinceElectedLeader() const {
   return MonoTime::Now() - time_elected_leader_.load();
+}
+
+bool CatalogManager::IsUniverseCreatedInTerm(int64_t term) const {
+  AssertLeaderLockAcquiredForReading();
+  return universe_created_term_ == term;
 }
 
 Status CatalogManager::GoIntoShellMode() {
