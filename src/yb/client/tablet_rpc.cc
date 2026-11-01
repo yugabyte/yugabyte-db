@@ -521,6 +521,13 @@ bool TabletInvoker::Done(Status* status) {
       if (tablet_ != nullptr && current_ts_ != nullptr) {
         tablet_->MarkReplicaFailed(current_ts_, *status);
       }
+      // Keep the root cause from earlier attempts, e.g. "Connection refused", unless
+      // RpcRetrier::DoRetry already appended it to the deadline message.
+      const auto& last_error = retrier_->last_error();
+      if (!last_error.ok() && !last_error.IsTimedOut() &&
+          status->message().ToBuffer().find(last_error.ToString()) == std::string::npos) {
+        *status = status->CloneAndAppend(last_error.ToString());
+      }
     }
     std::string current_ts_string;
     if (current_ts_) {
