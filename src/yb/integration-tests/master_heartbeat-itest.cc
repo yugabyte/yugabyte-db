@@ -20,6 +20,7 @@
 
 #include "yb/client/client.h"
 #include "yb/client/table.h"
+#include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_table_name.h"
 
@@ -52,8 +53,10 @@
 
 #include "yb/server/clock.h"
 
+#include "yb/tserver/heartbeater.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/backoff_waiter.h"
@@ -763,6 +766,102 @@ TEST_F(DriveInfoTest, DriveInfo) {
   }, 30s, "Waiting for drive info to be populated for all tablets"));
 }
 
+// Incremental reports carry at most tablet_report_limit tablets while storage metadata covers
+// every running one, so metadata for a tablet not yet reported finds no replica entry.
+class HeartbeatStorageMetadataCatchUpTest : public MasterHeartbeatITest {
+ public:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_report_limit) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) = 1;
+    MasterHeartbeatITest::SetUp();
+  }
+
+ protected:
+  int num_tablets() override { return 3; }
+
+  // Holds heartbeats until every tserver runs all tablets, so the first report carries one tablet
+  // while the storage metadata covers all of them.
+  void CreateTable() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_disable_heartbeat) = true;
+    const auto tn = table_name();
+    ASSERT_OK(client_->CreateNamespaceIfNotExists(tn.namespace_name(), tn.namespace_type()));
+    client::YBSchemaBuilder b;
+    b.AddColumn("k")->Type(DataType::BINARY)->NotNull()->HashPrimaryKey();
+    b.AddColumn("v")->Type(DataType::BINARY)->NotNull();
+    ASSERT_OK(b.Build(&schema_));
+    ASSERT_OK(NewTableCreator()->table_name(tn).schema(&schema_).wait(false).Create());
+    table_exists_ = true;
+    const auto table_id = ASSERT_RESULT(client::GetTableId(client_.get(), tn));
+    ASSERT_OK(WaitFor([this, &table_id]() {
+      for (const auto& ts : mini_cluster_->mini_tablet_servers()) {
+        size_t running = 0;
+        for (const auto& peer : ts->server()->tablet_manager()->GetTabletPeersWithTableId(
+                 table_id)) {
+          running += peer->state() == tablet::RaftGroupStatePB::RUNNING;
+        }
+        if (running < static_cast<size_t>(num_tablets())) {
+          return false;
+        }
+      }
+      return true;
+    }, 30s, "Waiting for every tserver to run all tablets of the table"));
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_disable_heartbeat) = false;
+  }
+
+  std::optional<bool> LastConfirmed(size_t ts_idx) {
+    return mini_cluster_->mini_tablet_server(ts_idx)->server()->heartbeater()
+        ->TEST_last_tablet_metadata_processed();
+  }
+};
+
+TEST_F(HeartbeatStorageMetadataCatchUpTest, ConfirmedOnlyOnceAllReplicasKnown) {
+  auto& catalog_mgr = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster())->catalog_manager();
+  auto tablets = ASSERT_RESULT(catalog_mgr.GetTableInfo(table_->id())->GetTablets());
+  ASSERT_EQ(tablets.size(), static_cast<size_t>(num_tablets()));
+
+  // Responses sent while the master still lacked replica entries must not confirm the metadata,
+  // or the tserver never resends it.
+  std::set<size_t> unconfirmed;
+  auto status = WaitFor([&]() {
+    for (size_t i = 0; i < num_tablet_servers(); ++i) {
+      if (LastConfirmed(i) == false) {
+        unconfirmed.insert(i);
+      }
+    }
+    for (const auto& tablet : tablets) {
+      auto replicas = tablet->GetReplicaLocations();
+      if (replicas->size() < num_tablet_servers()) {
+        return false;
+      }
+      for (const auto& [uuid, replica] : *replicas) {
+        if (replica.drive_info.wal_files_size == 0) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }, 30s, "Waiting for the master to hold drive info for every replica", 10ms, 1.0);
+  std::string drive_infos;
+  for (const auto& tablet : tablets) {
+    for (const auto& [uuid, replica] : *tablet->GetReplicaLocations()) {
+      drive_infos += Format("\nT $0 P $1: $2", tablet->id(), uuid, replica.drive_info.ToString());
+    }
+  }
+  ASSERT_TRUE(status.ok()) << status << drive_infos;
+  ASSERT_FALSE(unconfirmed.empty());
+
+  // Caught up, so the responses confirm again and the tservers stop resending.
+  ASSERT_OK(WaitFor([&]() {
+    for (size_t i = 0; i < num_tablet_servers(); ++i) {
+      if (LastConfirmed(i) != true) {
+        return false;
+      }
+    }
+    return true;
+  }, 10s, "Waiting for every tserver's storage metadata to be confirmed"));
+}
+
 // Sends crafted TSHeartbeat requests from one registered tserver with the real tservers stopped,
 // so only the fields set here reach the master.
 class HeartbeatMetadataTest : public MasterHeartbeatITest {
@@ -791,14 +890,19 @@ class HeartbeatMetadataTest : public MasterHeartbeatITest {
   }
 
  protected:
-  Status SendHeartbeat(master::TSHeartbeatRequestPB* req) {
+  Result<master::TSHeartbeatResponsePB> SendHeartbeatForResponse(
+      master::TSHeartbeatRequestPB* req) {
     *req->mutable_common() = MakeTSToMasterCommonPB(*ts_, ts_->latest_seqno());
     req->set_universe_uuid(universe_uuid_);
     master::TSHeartbeatResponsePB resp;
     rpc::RpcController rpc;
     RETURN_NOT_OK(master_proxy_->TSHeartbeat(*req, &resp, &rpc));
     SCHECK(!resp.has_error(), IllegalState, resp.error().ShortDebugString());
-    return Status::OK();
+    return resp;
+  }
+
+  Status SendHeartbeat(master::TSHeartbeatRequestPB* req) {
+    return ResultToStatus(SendHeartbeatForResponse(req));
   }
 
   void AddStorageMetadata(
@@ -962,6 +1066,43 @@ TEST_F(HeartbeatLeaderInfoTest, SkipProcessingTabletMetadataCoversAllLists) {
   ASSERT_TRUE(Lease(led_).initialized);
   ASSERT_EQ(
       Replica(led_).full_compaction_status.last_full_compaction_time.ToUint64(), kCompactionTime);
+}
+
+// The tserver stops resending a tablet's storage metadata once a response confirms it was
+// processed, so the bit must follow whether the master actually processed it.
+TEST_F(HeartbeatLeaderInfoTest, TabletMetadataProcessedOnlyWhenProcessed) {
+  const uint64_t kSstFilesSize = 12345;
+  master::TSHeartbeatRequestPB req;
+  AddStorageMetadata(&req, led_->id(), kSstFilesSize);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_processing_tablet_metadata) = true;
+  ASSERT_FALSE(ASSERT_RESULT(SendHeartbeatForResponse(&req)).tablet_metadata_processed());
+  ASSERT_NE(Replica(led_).drive_info.sst_files_size, kSstFilesSize);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_processing_tablet_metadata) = false;
+  ASSERT_TRUE(ASSERT_RESULT(SendHeartbeatForResponse(&req)).tablet_metadata_processed());
+  ASSERT_EQ(Replica(led_).drive_info.sst_files_size, kSstFilesSize);
+}
+
+// Storage metadata for a tablet the master holds no replica entry for yet (the tablet report that
+// adds it has not arrived) is dropped, so the response must not confirm it.
+TEST_F(HeartbeatLeaderInfoTest, TabletMetadataNotConfirmedWhenReplicaUnknown) {
+  const uint64_t kSstFilesSize = 12345;
+  auto replicas_with_ts = followed_->GetReplicaLocations();
+  auto replicas_without_ts = std::make_shared<master::TabletReplicaMap>(*replicas_with_ts);
+  ASSERT_EQ(replicas_without_ts->erase(ts_uuid_), 1);
+  followed_->SetReplicaLocations(replicas_without_ts);
+
+  master::TSHeartbeatRequestPB req;
+  AddStorageMetadata(&req, led_->id(), kSstFilesSize);
+  AddStorageMetadata(&req, followed_->id(), kSstFilesSize);
+  ASSERT_FALSE(ASSERT_RESULT(SendHeartbeatForResponse(&req)).tablet_metadata_processed());
+  ASSERT_EQ(Replica(led_).drive_info.sst_files_size, kSstFilesSize);
+  ASSERT_FALSE(followed_->GetReplicaLocations()->contains(ts_uuid_));
+
+  followed_->SetReplicaLocations(std::make_shared<master::TabletReplicaMap>(*replicas_with_ts));
+  ASSERT_TRUE(ASSERT_RESULT(SendHeartbeatForResponse(&req)).tablet_metadata_processed());
+  ASSERT_EQ(Replica(followed_).drive_info.sst_files_size, kSstFilesSize);
 }
 
 TEST_F(HeartbeatLeaderInfoTest, LeaderInfoAppliedWithoutStorageMetadata) {

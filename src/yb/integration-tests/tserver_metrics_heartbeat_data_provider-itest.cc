@@ -19,9 +19,14 @@
 
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
+#include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
+#include "yb/client/table_handle.h"
+#include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
+
+#include "yb/common/ql_protocol_util.h"
 
 #include "yb/consensus/raft_consensus.h"
 
@@ -49,6 +54,8 @@ DECLARE_int32(scheduled_full_compaction_frequency_hours);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_bool(TEST_pause_before_full_compaction);
 DECLARE_bool(enable_tiered_storage);
+DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
+DECLARE_bool(tserver_heartbeat_metrics_send_storage_metadata_on_change);
 
 namespace yb {
 namespace tserver {
@@ -353,6 +360,159 @@ TEST_F(TServerLeaderInfoHeartbeatDataProviderITest, LeaderInfoOnlyForLedTablets)
         return leaders == kNumTablets;
       },
       30s * kTimeMultiplier, "Waiting for every tablet leader to report its lease"));
+}
+
+class TServerStorageMetadataHeartbeatDataProviderITest
+    : public TServerMetricsHeartbeatDataProviderITest {
+ public:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) = 1;
+    TServerMetricsHeartbeatDataProviderITest::SetUp();
+    const client::YBTableName kTableName(
+        YQL_DATABASE_CQL, "my_keyspace", "storage-metadata-table");
+    ASSERT_OK(client_->CreateNamespaceIfNotExists(
+        kTableName.namespace_name(), kTableName.namespace_type()));
+    // A hash key, so the table really gets kNumTablets and a row lands in exactly one of them.
+    client::YBSchema schema;
+    client::YBSchemaBuilder builder;
+    builder.AddColumn("key")->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
+    ASSERT_OK(builder.Build(&schema));
+    ASSERT_OK(table_.Create(kTableName, kNumTablets, schema, client_.get()));
+    // One provider per tserver, kept across heartbeats like the real heartbeater does.
+    for (const auto& tablet_server : cluster_->mini_tablet_servers()) {
+      providers_.push_back(
+          std::make_unique<TServerMetricsHeartbeatDataProvider>(tablet_server->server()));
+    }
+  }
+
+ protected:
+  static constexpr int kNumTablets = 3;
+  using TabletIds = std::set<TabletId>;
+
+  static master::TSHeartbeatResponsePB Unacked() { return {}; }
+
+  static master::TSHeartbeatResponsePB Acked() {
+    master::TSHeartbeatResponsePB resp;
+    resp.set_tablet_metadata_processed(true);
+    return resp;
+  }
+
+  static master::TSHeartbeatResponsePB FullReportRequested() {
+    master::TSHeartbeatResponsePB resp;
+    resp.set_needs_full_tablet_report(true);
+    return resp;
+  }
+
+  // One metrics heartbeat from every tserver: build the request after last_resp, then hand the
+  // provider this heartbeat's response. Returns the storage_metadata tablet ids each tserver sent.
+  std::vector<TabletIds> Heartbeat(
+      const master::TSHeartbeatResponsePB& last_resp, const master::TSHeartbeatResponsePB& resp) {
+    std::vector<TabletIds> sent;
+    for (auto& provider : providers_) {
+      SleepFor(5ms);  // Let the metrics period elapse.
+      master::TSHeartbeatRequestPB req;
+      // The tablet report provider answers a full-report request with a non-incremental report.
+      if (last_resp.needs_full_tablet_report()) {
+        req.mutable_tablet_report()->set_is_incremental(false);
+      }
+      provider->AddData(last_resp, &req);
+      TabletIds ids;
+      for (const auto& metadata : req.storage_metadata()) {
+        ids.insert(metadata.tablet_id());
+      }
+      sent.push_back(std::move(ids));
+      provider->OnHeartbeatResponse(resp);
+    }
+    return sent;
+  }
+
+  static bool AllEmpty(const std::vector<TabletIds>& sent) {
+    return std::all_of(sent.begin(), sent.end(), [](const auto& ids) { return ids.empty(); });
+  }
+
+  TabletIds TestTablets(size_t ts_idx) {
+    TabletIds ids;
+    for (const auto& peer : cluster_->mini_tablet_server(ts_idx)->server()->tablet_manager()
+                                ->GetTabletPeersWithTableId(table_->id())) {
+      ids.insert(peer->tablet_id());
+    }
+    return ids;
+  }
+
+  // Every tserver reports every tablet it hosts, the test table's among them.
+  void AssertAllTablets(const std::vector<TabletIds>& sent) {
+    ASSERT_EQ(sent.size(), providers_.size());
+    TabletIds all_test_tablets;
+    for (size_t i = 0; i < sent.size(); ++i) {
+      auto test_tablets = TestTablets(i);
+      ASSERT_TRUE(std::includes(
+          sent[i].begin(), sent[i].end(), test_tablets.begin(), test_tablets.end()));
+      all_test_tablets.insert(test_tablets.begin(), test_tablets.end());
+    }
+    ASSERT_EQ(all_test_tablets.size(), static_cast<size_t>(kNumTablets));
+  }
+
+  void InsertRow(int32_t key) {
+    auto session = client_->NewSession(30s);
+    auto insert = table_.NewInsertOp(session->arena());
+    QLAddInt32HashValue(insert->mutable_request(), key);
+    ASSERT_OK(session->TEST_ApplyAndFlush(insert));
+  }
+
+  client::TableHandle table_;
+  std::vector<std::unique_ptr<TServerMetricsHeartbeatDataProvider>> providers_;
+};
+
+TEST_F(TServerStorageMetadataHeartbeatDataProviderITest, SentUntilAcked) {
+  auto all = Heartbeat(Unacked(), Unacked());
+  ASSERT_NO_FATALS(AssertAllTablets(all));
+  // Not confirmed by the master, so sent again; this response confirms it.
+  ASSERT_EQ(Heartbeat(Unacked(), Acked()), all);
+  ASSERT_TRUE(AllEmpty(Heartbeat(Acked(), Acked())));
+  ASSERT_TRUE(AllEmpty(Heartbeat(Acked(), Acked())));
+}
+
+TEST_F(TServerStorageMetadataHeartbeatDataProviderITest, ResentOnlyForChangedTablets) {
+  auto all = Heartbeat(Unacked(), Acked());
+  ASSERT_NO_FATALS(AssertAllTablets(all));
+  ASSERT_TRUE(AllEmpty(Heartbeat(Acked(), Acked())));
+
+  // One row grows the WAL and total size by far less than the change threshold.
+  ASSERT_NO_FATALS(InsertRow(1));
+  ASSERT_TRUE(AllEmpty(Heartbeat(Acked(), Acked())));
+
+  // Flushing turns the row into an SST file, an exact-compare field.
+  ASSERT_OK(cluster_->FlushTablets());
+  auto changed = Heartbeat(Acked(), Acked());
+  TabletIds changed_test_tablets;
+  for (size_t i = 0; i < changed.size(); ++i) {
+    ASSERT_LT(changed[i].size(), all[i].size());
+    ASSERT_TRUE(std::includes(all[i].begin(), all[i].end(), changed[i].begin(), changed[i].end()));
+    auto test_tablets = TestTablets(i);
+    std::set_intersection(
+        changed[i].begin(), changed[i].end(), test_tablets.begin(), test_tablets.end(),
+        std::inserter(changed_test_tablets, changed_test_tablets.begin()));
+  }
+  // The row landed in exactly one tablet, and only that tablet gained an SST file.
+  ASSERT_EQ(changed_test_tablets.size(), 1);
+  ASSERT_TRUE(AllEmpty(Heartbeat(Acked(), Acked())));
+}
+
+TEST_F(TServerStorageMetadataHeartbeatDataProviderITest, ResentAfterFullReport) {
+  auto all = Heartbeat(Unacked(), Acked());
+  ASSERT_NO_FATALS(AssertAllTablets(all));
+  // A full tablet report carries no storage metadata and forgets what the master confirmed.
+  ASSERT_TRUE(AllEmpty(Heartbeat(FullReportRequested(), Acked())));
+  ASSERT_EQ(Heartbeat(Acked(), Acked()), all);
+  ASSERT_TRUE(AllEmpty(Heartbeat(Acked(), Acked())));
+}
+
+TEST_F(TServerStorageMetadataHeartbeatDataProviderITest, AlwaysSentWhenDisabled) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_send_storage_metadata_on_change) =
+      false;
+  auto all = Heartbeat(Unacked(), Acked());
+  ASSERT_NO_FATALS(AssertAllTablets(all));
+  ASSERT_EQ(Heartbeat(Acked(), Acked()), all);
 }
 
 }  // namespace tserver
