@@ -53,6 +53,7 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_yb_catalog_version.h"
+#include "commands/trigger.h"
 #include "executor/ybExpr.h"
 #include "optimizer/yb_merge_scan.h"
 #include "optimizer/ybplan.h"
@@ -3340,7 +3341,7 @@ has_applicable_triggers(Relation rel, CmdType operation, Bitmapset *updated_attr
 	AttrNumber	conkey[INDEX_MAX_KEYS];
 	AttrNumber	confkey[INDEX_MAX_KEYS];
 	int			numfks = 0;
-	int			relid = RelationGetRelid(rel);
+	int			relid PG_USED_FOR_ASSERTS_ONLY = RelationGetRelid(rel);
 	AttrNumber	attr_offset = YBGetFirstLowInvalidAttributeNumber(rel);
 
 	/* If there no triggers we are done. */
@@ -3374,12 +3375,20 @@ has_applicable_triggers(Relation rel, CmdType operation, Bitmapset *updated_attr
 			DeconstructFkConstraintRow(tp, &numfks, conkey, confkey, NULL, NULL, NULL, NULL, NULL);
 
 			Assert(relid == contup->conrelid || relid == contup->confrelid);
-			bool		con_is_base_rel = relid == contup->conrelid;
+			/*
+			 * A self-referencing foreign key has this relation on both
+			 * sides. Only the trigger function tells which side's keys the
+			 * trigger checks.
+			 */
+			bool		is_referencing_side =
+				RI_FKey_trigger_type(trig->tgfoid) == RI_TRIGGER_FK;
 
 			for (int j = 0; j < numfks; j++)
 			{
-				if ((con_is_base_rel && bms_is_member(conkey[j] - attr_offset, updated_attrs)) ||
-					(!con_is_base_rel && bms_is_member(confkey[j] - attr_offset, updated_attrs)))
+				if ((is_referencing_side &&
+					 bms_is_member(conkey[j] - attr_offset, updated_attrs)) ||
+					(!is_referencing_side &&
+					 bms_is_member(confkey[j] - attr_offset, updated_attrs)))
 				{
 					ReleaseSysCache(tp);
 					return true;
