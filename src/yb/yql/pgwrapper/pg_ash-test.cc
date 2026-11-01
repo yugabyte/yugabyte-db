@@ -182,6 +182,9 @@ class PgAshWritePipeliningTest : public PgAshTest {
     // usually replicated before it even arrives.
     options->extra_tserver_flags.push_back(Format(
         "--TEST_delay_update_consensus_requests_ms=$0", 2 * kTimeMultiplier * kSamplingIntervalMs));
+    // Load balancer ChangeConfig ops carry no query_id and would show up as unattributed
+    // Raft_WaitingForReplication samples.
+    options->extra_master_flags.push_back("--enable_load_balancing=false");
   }
 };
 
