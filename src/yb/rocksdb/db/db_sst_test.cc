@@ -985,11 +985,14 @@ TEST_F(DBTest, DBWithMaxSpaceAllowedRandomized) {
 
   int reached_max_space_on_flush = 0;
   int reached_max_space_on_compaction = 0;
+  // Use the size seen by SstFileManager: listing the directory races with concurrent deletion of
+  // obsolete files that SstFileManager still counts at the time of the check.
+  SstFileManagerImpl* sfm = nullptr;
   yb::SyncPoint::GetInstance()->SetCallBack(
       "DBImpl::FlushMemTableToOutputFile:MaxAllowedSpaceReached",
       [&](void* arg) {
         bg_error_set = true;
-        GetAllSSTFiles(&total_sst_files_size);
+        total_sst_files_size = sfm->GetTotalSize();
         reached_max_space_on_flush++;
       });
 
@@ -997,7 +1000,7 @@ TEST_F(DBTest, DBWithMaxSpaceAllowedRandomized) {
       "CompactionJob::FinishCompactionOutputFile:MaxAllowedSpaceReached",
       [&](void* arg) {
         bg_error_set = true;
-        GetAllSSTFiles(&total_sst_files_size);
+        total_sst_files_size = sfm->GetTotalSize();
         reached_max_space_on_compaction++;
       });
 
@@ -1007,7 +1010,7 @@ TEST_F(DBTest, DBWithMaxSpaceAllowedRandomized) {
     yb::SyncPoint::GetInstance()->ClearTrace();
     yb::SyncPoint::GetInstance()->EnableProcessing();
     std::shared_ptr<SstFileManager> sst_file_manager(ASSERT_RESULT(NewSstFileManager(env_)));
-    auto sfm = static_cast<SstFileManagerImpl*>(sst_file_manager.get());
+    sfm = static_cast<SstFileManagerImpl*>(sst_file_manager.get());
 
     Options options = CurrentOptions();
     options.sst_file_manager = sst_file_manager;
@@ -1032,6 +1035,12 @@ TEST_F(DBTest, DBWithMaxSpaceAllowedRandomized) {
     }
     ASSERT_TRUE(bg_error_set);
     ASSERT_GE(total_sst_files_size, limit_mb * 1024 * 1024);
+    // Cross-check the counter against disk once quiesced. TEST_WaitForCompact returns early on
+    // bg error, so Close() to wait for background work and purge obsolete files.
+    Close();
+    uint64_t on_disk_size = 0;
+    ASSERT_EQ(sfm->GetTrackedFiles(), GetAllSSTFiles(&on_disk_size));
+    ASSERT_EQ(sfm->GetTotalSize(), on_disk_size);
     yb::SyncPoint::GetInstance()->DisableProcessing();
   }
 
