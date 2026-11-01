@@ -235,6 +235,16 @@ bool PreloadAdditionalCatalogListValidator(const char* flag_name, const std::str
   return true;
 }
 
+// Postgres compares this value with strcmp, so the deprecated alias is mapped here, once.
+const char* SequenceSupportMode() {
+  if (FLAGS_ysql_conn_mgr_sequence_support_mode == "pooled_with_currval_lastval") {
+    LOG(WARNING) << "ysql_conn_mgr_sequence_support_mode=pooled_with_currval_lastval is "
+                 << "deprecated, use pooled_with_curval_lastval";
+    return "pooled_with_curval_lastval";
+  }
+  return FLAGS_ysql_conn_mgr_sequence_support_mode.c_str();
+}
+
 }  // namespace
 
 DEFINE_validator(ysql_catalog_preload_additional_table_list, PreloadAdditionalCatalogListValidator);
@@ -293,7 +303,7 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
           &FLAGS_TEST_ysql_log_perdb_allocated_new_objectid,
       .ysql_block_dangerous_roles = &FLAGS_ysql_block_dangerous_roles,
       .ysql_sequence_cache_method = FLAGS_ysql_sequence_cache_method.c_str(),
-      .ysql_conn_mgr_sequence_support_mode = FLAGS_ysql_conn_mgr_sequence_support_mode.c_str(),
+      .ysql_conn_mgr_sequence_support_mode = SequenceSupportMode(),
       .ysql_conn_mgr_max_query_size = &FLAGS_ysql_conn_mgr_max_query_size,
       .ysql_conn_mgr_wait_timeout_ms = &FLAGS_ysql_conn_mgr_wait_timeout_ms,
       .ysql_enable_neghit_full_inheritscache =
