@@ -50,24 +50,40 @@ class ConcurrentIsolationLevelsTest : public ExternalMiniClusterITestBase {
   }
 
   void InsertWithIsolationLevel(IsolationLevel isolation_level, int thread_id, int num_inserts) {
+    constexpr int kMaxAttemptsPerKey = 100;
     auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    int total_retries = 0;
 
     for (int i = 0; i < num_inserts; ++i) {
       // Use a combination of thread_id and counter to ensure unique keys
       int32_t key = thread_id * num_inserts + i;
       std::string isolation_str = IsolationLevel_Name(isolation_level);
-      ASSERT_OK(conn.StartTransaction(isolation_level));
-
-      // Insert the row
-      ASSERT_OK(conn.ExecuteFormat(
-          "INSERT INTO test_table (key, value, thread_id, isolation_level) VALUES "
-            "($0, $1, $2, '$3')",
-          key, i, thread_id, isolation_str));
-      ASSERT_OK(conn.CommitTransaction());
+      // A serializable txn in skip_prefix_locks mode conflicts with every concurrent write to the
+      // table, so back-to-back serializable inserts can exhaust the query layer retries of a
+      // snapshot insert. Retry such serialization failures at the application level.
+      for (int attempt = 1;; ++attempt) {
+        ASSERT_OK(conn.StartTransaction(isolation_level));
+        auto status = conn.ExecuteFormat(
+            "INSERT INTO test_table (key, value, thread_id, isolation_level) VALUES "
+              "($0, $1, $2, '$3')",
+            key, i, thread_id, isolation_str);
+        if (status.ok()) {
+          status = conn.CommitTransaction();
+        }
+        if (status.ok()) {
+          break;
+        }
+        ASSERT_STR_CONTAINS(status.ToString(), "could not serialize access");
+        ASSERT_LT(attempt, kMaxAttemptsPerKey) << "Insert of key " << key << " failed: " << status;
+        ++total_retries;
+        LOG(INFO) << "Retrying insert of key " << key << ": " << status;
+        ASSERT_OK(conn.RollbackTransaction());
+      }
     }
 
     LOG(INFO) << "Thread " << thread_id << " completed " << num_inserts
-              << " inserts with isolation level " << IsolationLevel_Name(isolation_level);
+              << " inserts with isolation level " << IsolationLevel_Name(isolation_level)
+              << " and " << total_retries << " serialization failure retries";
   }
 
   void VerifyInserts(int expected_snapshot_inserts, int expected_serializable_inserts) {
