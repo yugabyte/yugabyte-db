@@ -69,6 +69,9 @@ class YsqlInitDBAndMajorUpgradeHandler {
   // The upgrade is completed after it has been finalized.
   bool IsMajorUpgradeInProgress() const { return ysql_major_upgrade_in_progress_; }
 
+  // Is a global initdb or ysql major catalog operation currently running?
+  bool IsOperationRunning() const { return is_running_; }
+
   Result<YsqlMajorCatalogUpgradeState> GetYsqlMajorCatalogUpgradeState() const;
 
   // Are we allowed to perform updates to the ysql catalog?
