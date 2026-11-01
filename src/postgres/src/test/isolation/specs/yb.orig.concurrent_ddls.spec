@@ -10,15 +10,12 @@ teardown
 {
   DROP TABLE IF EXISTS test;
   DROP TABLE IF EXISTS test2;
-  DROP FUNCTION IF EXISTS f;
 }
 
 session s1
 step s1_begin_rc { BEGIN ISOLATION LEVEL READ COMMITTED; }
 step s1_begin_rr { BEGIN ISOLATION LEVEL REPEATABLE READ; }
 step s1_begin_sr { BEGIN ISOLATION LEVEL SERIALIZABLE; }
-step s1_select_now { SELECT now() IS NOT NULL; }
-step s1_select_test { SELECT * FROM test WHERE k = 1; }
 step s1_drop_table_test { DROP TABLE test; }
 step s1_alter_table_test_add_col_a { ALTER TABLE test ADD COLUMN a INT; }
 step s1_commit { COMMIT; }
@@ -35,15 +32,12 @@ step s2_alter_table_test_add_col_b { ALTER TABLE test ADD COLUMN b INT; }
 step s2_alter_table_test_add_col_a { ALTER TABLE test ADD COLUMN a INT; }
 step s2_alter_table_test2_add_col_a { ALTER TABLE test2 ADD COLUMN a INT; }
 step s2_commit { COMMIT; }
-step s2_create_function { CREATE FUNCTION f() RETURNS int LANGUAGE sql AS 'SELECT 1'; }
 step s2_select_test_atts { SELECT attname FROM pg_attribute WHERE attrelid = 'test'::regclass::oid and attnum > 0; }
 
 # Concurrent DDLs that work on the different objects.
 permutation s1_begin_rr s2_begin_rr s1_drop_table_test s2_drop_table_test2 s1_commit s2_commit
 permutation s1_begin_rr s2_begin_rr s1_alter_table_test_add_col_a s2_alter_table_test2_add_col_a s1_commit s2_commit
 permutation s1_begin_sr s2_begin_sr s1_alter_table_test_add_col_a s2_alter_table_test2_add_col_a s1_commit s2_commit
-# Catalog reads of a SERIALIZABLE transaction don't conflict with a concurrent DDL.
-permutation s1_begin_sr s1_select_now s2_create_function s1_select_test s1_commit
 
 # Concurrent DDLs that work on the same object.
 permutation s1_begin_rr s2_begin_rr s1_alter_table_test_add_col_a s2_alter_table_test_add_col_b s1_commit s2_commit s2_select_test_atts

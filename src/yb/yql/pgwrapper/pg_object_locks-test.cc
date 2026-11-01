@@ -1295,6 +1295,53 @@ TEST_F(PgObjectLocksTest, ConcurrentAlterSelect) {
   testConcurrentAlterSelect(false);
 }
 
+// TODO(#36589): Flip the final assertion to expect both privileges once concurrent GRANTs on one
+// relation no longer lose an update.
+//
+// GRANT takes no object lock that conflicts with another GRANT, and its tuple lock is a no-op with
+// object locking. So s1 commits its GRANT between s2's read of the pg_class row and its write, and
+// s2 writes back an ACL computed before s1's change.
+TEST_F(PgObjectLocksTest, ConcurrentRepeatableReadGrantsLoseUpdate) {
+  auto* ts = cluster_->tablet_server(0);
+  auto setup_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts));
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE test1 (k INT, v INT)"));
+  ASSERT_OK(setup_conn.Execute("CREATE ROLE role2"));
+  ASSERT_OK(setup_conn.Execute("CREATE ROLE role3"));
+
+  auto conn1 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts));
+  auto conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts));
+  // Long enough for s1's GRANT to commit while s2 is between its read and its write.
+  const auto delay_ms = 10000 * kTimeMultiplier;
+  ASSERT_OK(conn2.ExecuteFormat("SET yb_test_delay_relation_grant_update_ms = $0", delay_ms));
+
+  LogWaiter s2_paused(ts, Format("sleeping for $0 ms before updating relacl", delay_ms));
+  Status s2_status;
+  std::atomic<bool> s2_done{false};
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&conn2, &s2_status, &s2_done] {
+    s2_status = conn2.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ");
+    if (s2_status.ok()) {
+      s2_status = conn2.Execute("GRANT UPDATE ON TABLE test1 TO role3");
+    }
+    if (s2_status.ok()) {
+      s2_status = conn2.Execute("COMMIT");
+    }
+    s2_done = true;
+  });
+
+  ASSERT_OK(s2_paused.WaitFor(MonoDelta::FromSeconds(30 * kTimeMultiplier)));
+  ASSERT_OK(conn1.Execute("GRANT SELECT ON TABLE test1 TO role2"));
+  // s1 must finish inside s2's pause, or this run did not exercise the race.
+  ASSERT_FALSE(s2_done.load()) << "s2 resumed before s1 finished; raise the delay";
+  thread_holder.JoinAll();
+  ASSERT_OK(s2_status);
+
+  const auto relacl = ASSERT_RESULT(setup_conn.FetchRow<std::string>(
+      "SELECT relacl::text FROM pg_class WHERE relname = 'test1'"));
+  ASSERT_STR_CONTAINS(relacl, "role3=w/");
+  ASSERT_STR_NOT_CONTAINS(relacl, "role2=r/");
+}
+
 // Uses a longer YSQL operation lease TTL. On oversubscribed hosts a transient stall of the tserver
 // lease refresher can otherwise expire the lease and kill an in-flight PG backend mid-statement.
 class PgObjectLocksTestLongLease : public PgObjectLocksTest {

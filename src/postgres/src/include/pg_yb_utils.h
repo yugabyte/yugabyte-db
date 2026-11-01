@@ -905,6 +905,12 @@ extern int	yb_test_delay_after_applying_inval_message_ms;
 extern int	yb_test_delay_set_local_tserver_inval_message_ms;
 
 /*
+ * If > 0, GRANT/REVOKE on a relation sleeps for this many ms between reading
+ * its pg_class row and writing it back.
+ */
+extern int	yb_test_delay_relation_grant_update_ms;
+
+/*
  * If > 0, sleep for this many ms before committing the DDL
  */
 extern double yb_test_delay_next_ddl;

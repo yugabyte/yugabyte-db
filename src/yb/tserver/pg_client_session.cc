@@ -3682,10 +3682,10 @@ class PgClientSession::Impl {
         IsTxnUsingTableLocks(options.is_using_table_locks()),
         context_.metrics,
         MakeOriginationInfo(options.origination_ht())));
+    // PrepareOperations has already applied the ops to the session. Failing out before the flush
+    // must drop them, or they would go out with the next one.
+    CancelableScopeExit abort_se{[session] { session->Abort(); }};
     if (options.uses_catalog_snapshot()) {
-      // PrepareOperations has already applied the ops to the session. A failed check must drop
-      // them, or they would go out with the next flush.
-      CancelableScopeExit abort_se{[session] { session->Abort(); }};
       const auto serializable =
           data->transaction && data->transaction->isolation() == SERIALIZABLE_ISOLATION;
       for (const auto& op_data : data->ops) {
@@ -3701,7 +3701,6 @@ class PgClientSession::Impl {
           read_op.set_force_snapshot_read();
         }
       }
-      abort_se.Cancel();
     }
     if (VLOG_IS_ON(2) || options.trace_requested()) {
       const auto& read_point = *session->read_point();
@@ -3735,6 +3734,7 @@ class PgClientSession::Impl {
     }
 
     applier_se.Cancel();
+    abort_se.Cancel();
     session->FlushAsync([this, data, trace, trace_created_locally,
                          start_time](client::FlushStatus* flush_status) {
       ADOPT_TRACE(trace.get());
