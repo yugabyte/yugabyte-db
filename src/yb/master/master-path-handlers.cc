@@ -607,9 +607,9 @@ void MasterPathHandlers::TServerDisplay(
   auto html_table = html_print_helper.CreateTablePrinter(
       Format("$0_tserver", current_uuid),
       {"Server", "Time since heartbeat", "Status & Uptime", "User Tablet-Peers / Leaders",
-       "System Tablet-Peers / Leaders", "RAM Used", "Used / Total Disk Space", "Num SST Files",
-       "Total SST Files Size", "Uncompressed SST </br>Files Size", "Read ops/sec", "Write ops/sec",
-       "Placement", "Active Tablet-Peers", "YSQL Lease Expiry & Epoch"});
+       "System Tablet-Peers / Leaders", "RAM Used", "Used / Total Disk Space", "Storage Tiers",
+       "Num SST Files", "Total SST Files Size", "Uncompressed SST </br>Files Size", "Read ops/sec",
+       "Write ops/sec", "Placement", "Active Tablet-Peers", "YSQL Lease Expiry & Epoch"});
 
   int max_peers = 0;
   for (const auto& desc : descs) {
@@ -681,6 +681,8 @@ void MasterPathHandlers::TServerDisplay(
             Format("$0 / $1", HumanizeBytes(used_disk_space), HumanizeBytes(total_disk_space)));
       }
     }
+
+    html_row.AddColumn(JoinStrings(desc->GetStorageTiers(), ", "));
 
     html_row.AddColumn(desc->num_sst_files());
     html_row.AddColumn(HumanizeBytes(desc->total_sst_file_size()));
@@ -1120,6 +1122,13 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
         jw.String(HumanizeBytes(desc->uncompressed_sst_file_size()));
         jw.String("uncompressed_sst_file_size_bytes");
         jw.Uint64(desc->uncompressed_sst_file_size());
+
+        jw.String("storage_tiers");
+        jw.StartArray();
+        for (const auto& tier : desc->GetStorageTiers()) {
+          jw.String(tier);
+        }
+        jw.EndArray();
 
         jw.String("path_metrics");
         jw.StartArray();

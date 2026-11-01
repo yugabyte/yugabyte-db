@@ -496,14 +496,35 @@ TEST_F(StorageTierTest, DuplicatePaths) {
   ASSERT_EQ(1u, dirs.size());
 }
 
-// Unknown root returns "ssd" (kDefaultStorageTier) from GetTierForDataRoot.
-TEST_F(StorageTierTest, UnknownRootReturnsDefault) {
-  auto path_e = GetTestPath("path_e");
-  ASSERT_OK(env_->CreateDir(path_e));
+// A WAL-only root is not a data root, so it has no tier: a node whose data dirs are all hdd must
+// not advertise its WAL disk as an ssd data disk.
+TEST_F(StorageTierTest, WalOnlyRootHasNoTier) {
+  auto data_path = GetTestPath("hdd0");
+  auto wal_path = GetTestPath("wal0");
+  ASSERT_OK(env_->CreateDir(data_path));
+  ASSERT_OK(env_->CreateDir(wal_path));
 
-  auto mgr = MakeFsManager({path_e}, {{path_e, "ssd"}});
+  auto mgr = MakeFsManager({data_path}, {{data_path, "hdd"}}, {wal_path});
 
-  ASSERT_EQ("ssd", mgr->GetTierForDataRoot("/nonexistent/root"));
+  const auto& by_tier = mgr->GetDataRootsByTier();
+  ASSERT_EQ(1u, by_tier.size());
+  ASSERT_EQ(1u, by_tier.count("hdd"));
+
+  size_t hdd_roots = 0;
+  size_t untiered_roots = 0;
+  for (const auto& fs_root : mgr->GetFsRootDirs()) {
+    const auto& tier = mgr->GetTierForDataRoot(fs_root);
+    if (tier == "hdd") {
+      ++hdd_roots;
+    } else if (tier.empty()) {
+      ++untiered_roots;
+    } else {
+      FAIL() << "Unexpected tier for root " << fs_root << ": " << tier;
+    }
+  }
+  ASSERT_EQ(1u, hdd_roots);
+  ASSERT_EQ(1u, untiered_roots);
+  ASSERT_EQ("", mgr->GetTierForDataRoot("/nonexistent/root"));
 }
 
 // A label outside the static set {ssd, hdd} is rejected at init time.

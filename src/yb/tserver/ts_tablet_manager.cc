@@ -116,6 +116,7 @@
 #include "yb/tserver/tablet_validator.h"
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_admin.pb.h"
+#include "yb/tserver/tserver_error.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
 
 #include "yb/util/backoff_waiter.h"
@@ -3882,8 +3883,8 @@ Result<uint32_t> TSTabletManager::SelectPathIdForTier(
   // These are the same directory strings used as keys in table_data_assignment_map_.
   const auto candidate_dirs = fs_manager_->GetDataRootDirsForTier(target_tier);
   if (candidate_dirs.empty()) {
-    return STATUS_FORMAT(
-        NotFound,
+    return STATUS_EC_FORMAT(
+        NotFound, TabletServerError(TabletServerErrorPB::STORAGE_TIER_NOT_AVAILABLE),
         "No data roots configured for tier '$0' on this node (tablet $1)",
         target_tier, meta.raft_group_id());
   }

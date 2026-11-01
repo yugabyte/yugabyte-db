@@ -59,6 +59,8 @@
 #include "yb/master/master_client.proxy.h"
 #include "yb/master/master_cluster_client.h"
 #include "yb/master/master_ddl.proxy.h"
+#include "yb/master/master_replication.pb.h"
+#include "yb/master/master_replication.proxy.h"
 #include "yb/master/master_ysql_lease_client.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_heartbeat.proxy.h"
@@ -91,6 +93,7 @@
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/storage_tier.h"
 #include "yb/util/thread.h"
 
 using std::make_shared;
@@ -117,6 +120,8 @@ DECLARE_int32(qos_max_db_count);
 DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
 DECLARE_int32(tserver_unresponsive_timeout_ms);
 DECLARE_uint32(initial_tserver_registration_duration_secs);
+DECLARE_bool(catalog_manager_check_ts_count_for_create_table);
+DECLARE_bool(enable_tiered_storage);
 
 METRIC_DECLARE_gauge_uint64(block_cache_usage);
 
@@ -778,6 +783,56 @@ TEST_F(MasterTest, TestHeartbeatFromRegisteredTSPersisted) {
   list_resp = ASSERT_RESULT(cluster_client_->ListLiveTabletServers());
   ASSERT_EQ(list_resp.servers_size(), 1);
   ASSERT_EQ(list_resp.servers(0).instance_id().permanent_uuid(), kUUID);
+}
+
+// A placement that names a storage tier only counts tservers that registered that tier, so a
+// cluster with none of them rejects the replication info instead of creating tablets nowhere. A
+// placement without a tier is unconstrained, so an all-hdd cluster still accepts it.
+TEST_F(MasterTest, ValidateReplicationInfoRequiresTserversOnStorageTier) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_check_ts_count_for_create_table) = true;
+  for (int i = 0; i < 3; ++i) {
+    TSRegistrationPB reg;
+    *reg.mutable_common()->add_private_rpc_addresses() = MakeHostPortPB("localhost", 1000 + i);
+    *reg.mutable_common()->add_http_addresses() = MakeHostPortPB("localhost", 2000 + i);
+    reg.mutable_common()->add_storage_tiers("hdd");
+    TSToMasterCommonPB common;
+    common.mutable_ts_instance()->set_permanent_uuid(Format("ts-$0", i));
+    common.mutable_ts_instance()->set_instance_seqno(1);
+    ASSERT_RESULT(SendHeartbeat(common, reg));
+  }
+
+  auto validate = [this](const std::string& storage_tier)
+      -> Result<ValidateReplicationInfoResponsePB> {
+    ValidateReplicationInfoRequestPB req;
+    auto* live_replicas = req.mutable_replication_info()->mutable_live_replicas();
+    live_replicas->set_num_replicas(3);
+    if (!storage_tier.empty()) {
+      live_replicas->set_storage_tier(storage_tier);
+    }
+    ValidateReplicationInfoResponsePB resp;
+    RETURN_NOT_OK(
+        proxy_replication_->ValidateReplicationInfo(req, &resp, ResetAndGetController()));
+    return resp;
+  };
+
+  auto resp = ASSERT_RESULT(validate(kDefaultStorageTier));
+  ASSERT_TRUE(resp.has_error()) << resp.ShortDebugString();
+  ASSERT_STR_CONTAINS(
+      resp.error().status().message(),
+      "No live tablet server has registered a data directory on storage tier ssd");
+
+  resp = ASSERT_RESULT(validate("hdd"));
+  ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
+
+  resp = ASSERT_RESULT(validate(""));
+  ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
+
+  // With tiered storage off the tier is not acted on, so the ssd placement is validated as
+  // untiered and the all-hdd cluster accepts it.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = false;
+  resp = ASSERT_RESULT(validate(kDefaultStorageTier));
+  ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
 }
 
 TEST_F(MasterTest, TestListTablesWithoutMasterCrash) {
