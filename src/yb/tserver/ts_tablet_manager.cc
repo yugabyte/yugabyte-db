@@ -3316,9 +3316,10 @@ void TSTabletManager::GetTabletPeersUnlocked(
       continue;
     }
     if (user_tablets_only) {
-      auto tablet_ptr = peer->shared_tablet_maybe_null();
-      if (tablet_ptr && (tablet_ptr->metadata()->namespace_name() == master::kSystemNamespaceName ||
-                         tablet_ptr->metadata()->namespace_name() == master::kYbSystemDbName)) {
+      // Use the peer's metadata, not its tablet: a remote bootstrapping peer has no tablet yet.
+      const auto& meta = peer->tablet_metadata();
+      if (meta && (meta->namespace_name() == master::kSystemNamespaceName ||
+                   meta->namespace_name() == master::kYbSystemDbName)) {
         continue;
       }
     }
