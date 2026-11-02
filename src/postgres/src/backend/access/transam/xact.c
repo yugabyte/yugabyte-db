@@ -2364,6 +2364,16 @@ YBCRestartWriteTransaction()
 		RollbackAndReleaseCurrentSubTransaction();
 
 	/*
+	 * An error can leave a function with a SET clause, such as SET role,
+	 * before the function pops its GUC level.  Only the abort pops it;
+	 * without this, the retry would run with the function's settings.  Keep
+	 * the transaction's own level: it holds the BEGIN ISOLATION LEVEL options
+	 * and the SETs from earlier statements of an extended-protocol batch,
+	 * and the retry replays neither.
+	 */
+	AtEOXact_GUC(false, CurrentTransactionState->gucNestLevel + 1);
+
+	/*
 	 * Presence of triggers pushes additional snapshots. Pop all of them. Given
 	 * that we restart the writes only when we haven't sent any data back to the
 	 * user, removing all snapshots is safe.

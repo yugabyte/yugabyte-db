@@ -6333,6 +6333,10 @@ yb_exec_query_wrapper_one_attempt(MemoryContext exec_context,
 								  int attempt,
 								  bool *retry)
 {
+	Oid			save_userid;
+	int			save_sec_context;
+
+	GetUserIdAndSecContext(&save_userid, &save_sec_context);
 	elog(DEBUG2, "yb_exec_query_wrapper attempt %d for %s", attempt, retry_data->query_string);
 	YBSaveOutputBufferPosition(!yb_is_begin_transaction(retry_data->command_tag));
 	PG_TRY();
@@ -6350,6 +6354,12 @@ yb_exec_query_wrapper_one_attempt(MemoryContext exec_context,
 		if (IsInParallelMode())
 			YbClearParallelContexts();
 		YBResetOperationTracking();
+		/*
+		 * An error can leave a SECURITY DEFINER function before it switches
+		 * the user back.  Only the abort undoes that, and the retry skips the
+		 * abort; without this, the retry would start as the function owner.
+		 */
+		SetUserIdAndSecContext(save_userid, save_sec_context);
 		yb_attempt_to_retry_on_error(attempt, retry_data, exec_context);
 	}
 	PG_END_TRY();

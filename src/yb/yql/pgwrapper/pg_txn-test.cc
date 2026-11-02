@@ -1332,4 +1332,122 @@ TEST_F(PgTxnTest, ColumnTombstoneCollectedByPartialCompaction) {
       "1, NULL");
 }
 
+// A query-layer retry must keep a SET ROLE that ran earlier in the same
+// transaction, because the retry does not replay it. In an extended-protocol
+// batch, SET ROLE does not advance the command id, so a later statement in
+// the batch can still be retried. Scenario: one pipeline sends SET ROLE alice
+// and then SELECT f(). f returns current_user and raises a retriable
+// kAborted (YB001) on its first call only. The retried f must run as alice.
+// The test needs libpq pipeline mode, which pg_regress's psql cannot drive.
+TEST_F(PgTxnTest, BatchedRetryKeepsSetRole) {
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("CREATE SEQUENCE attempt"));
+    ASSERT_OK(conn.Execute("CREATE ROLE alice"));
+    ASSERT_OK(conn.Execute("GRANT USAGE ON SEQUENCE attempt TO alice"));
+    ASSERT_OK(conn.Execute(
+        "CREATE FUNCTION f() RETURNS TEXT LANGUAGE plpgsql AS $$\n"
+        "BEGIN\n"
+        "  IF nextval('attempt') = 1 THEN\n"
+        "    RAISE EXCEPTION 'injected kAborted' USING ERRCODE = 'YB001';\n"
+        "  END IF;\n"
+        "  RETURN current_user;\n"
+        "END $$"));
+    ASSERT_OK(conn.Execute("GRANT EXECUTE ON FUNCTION f() TO alice"));
+  }
+
+  const auto conn_str = Format(
+      "host=$0 port=$1 dbname=yugabyte user=$2", pg_host_port().host(),
+      pg_host_port().port(), PGConnSettings::kDefaultUser);
+  PGConnPtr conn(PQconnectdb(conn_str.c_str()));
+  ASSERT_EQ(PQstatus(conn.get()), CONNECTION_OK) << PQerrorMessage(conn.get());
+  ASSERT_EQ(PQenterPipelineMode(conn.get()), 1) << PQerrorMessage(conn.get());
+  for (const auto* query : {"SET ROLE alice", "SELECT f()"}) {
+    ASSERT_EQ(
+        PQsendQueryParams(
+            conn.get(), query, 0, nullptr, nullptr, nullptr, nullptr, 0),
+        1)
+        << PQerrorMessage(conn.get());
+  }
+  ASSERT_EQ(PQpipelineSync(conn.get()), 1) << PQerrorMessage(conn.get());
+
+  std::string user_seen_by_f;
+  for (bool done = false; !done;) {
+    PGResultPtr res(PQgetResult(conn.get()));
+    if (!res) {
+      ASSERT_NE(PQstatus(conn.get()), CONNECTION_BAD)
+          << PQerrorMessage(conn.get());
+      continue;
+    }
+    switch (PQresultStatus(res.get())) {
+      case PGRES_PIPELINE_SYNC:
+        done = true;
+        break;
+      case PGRES_TUPLES_OK:
+        user_seen_by_f = PQgetvalue(res.get(), 0, 0);
+        break;
+      case PGRES_COMMAND_OK:
+        break;
+      default:
+        FAIL() << PQresultErrorMessage(res.get());
+    }
+  }
+  ASSERT_EQ(user_seen_by_f, "alice");
+}
+
+// The same for a plain SET before a retried write. The retry pops the GUC
+// levels that the failed attempt pushed, and must keep the transaction's own
+// level, which holds the earlier SET. Scenario: one pipeline sends
+// SET work_mem = '7MB' and then INSERT INTO t VALUES (f()). f returns
+// work_mem and raises a retriable kAborted (YB001) on its first call only.
+// The retried INSERT must write 7MB. f is STABLE: a volatile plpgsql function
+// advances the command id, and then the batch is not retried.
+TEST_F(PgTxnTest, BatchedRetryKeepsSet) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE SEQUENCE attempt"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t (v TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION f() RETURNS TEXT LANGUAGE plpgsql STABLE AS $$\n"
+      "BEGIN\n"
+      "  IF nextval('attempt') = 1 THEN\n"
+      "    RAISE EXCEPTION 'injected kAborted' USING ERRCODE = 'YB001';\n"
+      "  END IF;\n"
+      "  RETURN current_setting('work_mem');\n"
+      "END $$"));
+
+  const auto conn_str = Format(
+      "host=$0 port=$1 dbname=yugabyte user=$2", pg_host_port().host(),
+      pg_host_port().port(), PGConnSettings::kDefaultUser);
+  PGConnPtr batch_conn(PQconnectdb(conn_str.c_str()));
+  ASSERT_EQ(PQstatus(batch_conn.get()), CONNECTION_OK) << PQerrorMessage(batch_conn.get());
+  ASSERT_EQ(PQenterPipelineMode(batch_conn.get()), 1) << PQerrorMessage(batch_conn.get());
+  for (const auto* query : {"SET work_mem = '7MB'", "INSERT INTO t VALUES (f())"}) {
+    ASSERT_EQ(
+        PQsendQueryParams(
+            batch_conn.get(), query, 0, nullptr, nullptr, nullptr, nullptr, 0),
+        1)
+        << PQerrorMessage(batch_conn.get());
+  }
+  ASSERT_EQ(PQpipelineSync(batch_conn.get()), 1) << PQerrorMessage(batch_conn.get());
+
+  for (bool done = false; !done;) {
+    PGResultPtr res(PQgetResult(batch_conn.get()));
+    if (!res) {
+      ASSERT_NE(PQstatus(batch_conn.get()), CONNECTION_BAD)
+          << PQerrorMessage(batch_conn.get());
+      continue;
+    }
+    switch (PQresultStatus(res.get())) {
+      case PGRES_PIPELINE_SYNC:
+        done = true;
+        break;
+      case PGRES_COMMAND_OK:
+        break;
+      default:
+        FAIL() << PQresultErrorMessage(res.get());
+    }
+  }
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>("SELECT v FROM t")), "7MB");
+}
+
 } // namespace yb::pgwrapper
