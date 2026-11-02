@@ -65,6 +65,7 @@ DEFINE_test_flag(bool, disable_release_object_locks_on_ddl_verification, false,
 DEFINE_test_flag(int32, ysql_ddl_atomicity_alter_table_request_delay_ms, 0,
   "Inject delay before sending ALTER TABLE request as part of DDL atomicity rollback.");
 
+DECLARE_bool(enable_table_rewrite_for_cdcsdk_table);
 DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
 
@@ -758,6 +759,17 @@ Status CatalogManager::YsqlDdlTxnDropTableHelper(
       return Status::OK();
     }
     verifier_state->processed_tables.insert(table->id());
+  }
+
+  if (success && FLAGS_enable_table_rewrite_for_cdcsdk_table) {
+    // A table created and dropped (e.g. rewritten) in one txn may not have been added to its
+    // CDCSDK streams by the bg task yet. Add it now so that the drop retains it for streaming.
+    TableStreamIdsMap table_to_streams;
+    auto s = FindCDCSDKStreamsForAddedTables(&table_to_streams, &table->id());
+    if (s.ok() && !table_to_streams.empty()) {
+      s = ProcessNewTablesForCDCSDKStreams(table_to_streams, txn_data.epoch);
+    }
+    WARN_NOT_OK(s, Format("Failed to add table $0 to CDCSDK streams", table->id()));
   }
 
   return DeleteTableInternal(&dtreq, &dtresp, nullptr /* rpc */, txn_data.epoch);

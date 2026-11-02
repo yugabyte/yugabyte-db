@@ -2374,12 +2374,18 @@ Status CatalogManager::DropXReplStreams(
 }
 
 Status CatalogManager::FindCDCSDKStreamsForAddedTables(
-    TableStreamIdsMap* table_to_unprocessed_streams_map) {
+    TableStreamIdsMap* table_to_unprocessed_streams_map, const TableId* only_table_id) {
   std::unordered_map<NamespaceId, std::unordered_set<TableId>> namespace_to_unprocessed_table_map;
   {
     SharedLock lock(cdcsdk_unprocessed_table_mutex_);
     int32_t found_unprocessed_tables = 0;
     for (const auto& [ns_id, table_ids] : namespace_to_cdcsdk_unprocessed_table_map_) {
+      if (only_table_id) {
+        if (table_ids.contains(*only_table_id)) {
+          namespace_to_unprocessed_table_map[ns_id].insert(*only_table_id);
+        }
+        continue;
+      }
       for (const auto& table_id : table_ids) {
         namespace_to_unprocessed_table_map[ns_id].insert(table_id);
         if (++found_unprocessed_tables >= FLAGS_cdcsdk_table_processing_limit_per_run) {
@@ -3101,6 +3107,13 @@ Status CatalogManager::ProcessNewTablesForCDCSDKStreams(
 
       auto stream_lock = stream->LockForWrite();
       if (stream_lock->is_deleting()) {
+        continue;
+      }
+
+      // The bg task and a DDL txn drop can both process the same new table.
+      if (std::find(
+              stream_lock->table_id().begin(), stream_lock->table_id().end(), table_id) !=
+          stream_lock->table_id().end()) {
         continue;
       }
 
