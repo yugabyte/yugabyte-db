@@ -1316,18 +1316,22 @@ DEALLOCATE sr_cross_pd;
 RESET plan_cache_mode;
 
 -- A timestamptz column: the value is converted when the statement runs, in
--- the time zone it runs in.
+-- the time zone it runs in.  The generic plan made in New York also runs in
+-- UTC, so a conversion done at planning would update the wrong row.
 SET TimeZone = 'America/New_York';
 CREATE TABLE sr_cross_tstz (k timestamptz PRIMARY KEY, v int);
 INSERT INTO sr_cross_tstz VALUES ('2000-01-02 00:00-05', 0), ('2000-01-02 00:00+00', 0), ('2000-01-03 00:00+00', 0);
+SET plan_cache_mode = force_generic_plan;
 PREPARE sr_cross_pt(int) AS UPDATE sr_cross_tstz SET v = $1 WHERE k = DATE '2000-01-02';
 EXPLAIN (COSTS OFF) EXECUTE sr_cross_pt(1);
 EXECUTE sr_cross_pt(1);
 SET TimeZone = 'UTC';
 EXECUTE sr_cross_pt(2);
+SELECT generic_plans, custom_plans FROM pg_prepared_statements WHERE name = 'sr_cross_pt';
 UPDATE sr_cross_tstz SET v = 3 WHERE k = '2000-01-03 00:00'::timestamp;
 SELECT * FROM sr_cross_tstz ORDER BY k;
 DEALLOCATE sr_cross_pt;
+RESET plan_cache_mode;
 RESET TimeZone;
 
 -- A text column with name values, and a name column with text values.  A
