@@ -76,9 +76,10 @@ class PgResponseCacheTest : public YBTest {
 
 // A caller that claims an entry for filling can go away without storing a response:
 // pg_client_session.cc returns early between taking the setter and flushing, on SetupSession or
-// PrepareOperations. Without FillGuard nothing completes that entry, so everything queued on it
-// waits out its own deadline, and is destroyed un-responded if the entry's readiness deadline
-// passes first. FillGuard completes it as a failure instead, which releases them at once.
+// PrepareOperations. Without the abandon guard on the setter, nothing completes that entry, so
+// everything queued on it waits out its own deadline, and is destroyed un-responded if the
+// entry's readiness deadline passes first. SetAbandoned completes it as a failure instead, which
+// releases them at once.
 TEST_F(PgResponseCacheTest, AbandonedFillReleasesItsWaiters) {
   ThreadSafeArena arena;
   auto& filler_info = MakeCachingInfo(arena);
