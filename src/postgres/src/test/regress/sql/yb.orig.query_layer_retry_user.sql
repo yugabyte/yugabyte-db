@@ -82,13 +82,67 @@ SELECT sre();
 SELECT current_user;
 COMMIT;
 
+--
+-- srs() sets search_path with a SET clause.  After the retry, an unqualified
+-- name in the same transaction must resolve through the caller's
+-- search_path: rt is public.rt, not retry_s.rt.
+--
+CREATE SCHEMA retry_s;
+CREATE TABLE rt (v text);
+INSERT INTO rt VALUES ('public');
+CREATE TABLE retry_s.rt (v text);
+INSERT INTO retry_s.rt VALUES ('retry_s');
+CREATE SEQUENCE srs_attempt;
+CREATE FUNCTION srs() RETURNS int LANGUAGE plpgsql SET search_path = retry_s AS $$
+BEGIN
+  IF nextval('public.srs_attempt') = 1 THEN
+    RAISE EXCEPTION 'injected kAborted' USING ERRCODE = 'YB001';
+  END IF;
+  RETURN 1;
+END $$;
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+SELECT srs();
+SELECT v FROM rt;
+COMMIT;
+
+--
+-- sdp() is SECURITY DEFINER and also sets search_path with a SET clause, so
+-- the failed attempt leaks both the user switch and a GUC level.  After the
+-- retry, current_user must be retry_alice and rt must be public.rt.
+--
+CREATE SEQUENCE sdp_attempt;
+GRANT SELECT ON rt TO retry_alice;
+CREATE FUNCTION sdp() RETURNS int LANGUAGE plpgsql SECURITY DEFINER
+  SET search_path = retry_s AS $$
+BEGIN
+  IF nextval('public.sdp_attempt') = 1 THEN
+    RAISE EXCEPTION 'injected kAborted' USING ERRCODE = 'YB001';
+  END IF;
+  RETURN 1;
+END $$;
+GRANT EXECUTE ON FUNCTION sdp() TO retry_alice;
+SET ROLE retry_alice;
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+SELECT sdp();
+SELECT current_user;
+SELECT v FROM rt;
+COMMIT;
+RESET ROLE;
+
 DROP FUNCTION sd();
 DROP FUNCTION sr();
 DROP FUNCTION sde();
 DROP FUNCTION sre();
+DROP FUNCTION srs();
+DROP FUNCTION sdp();
 DROP SEQUENCE sd_attempt;
 DROP SEQUENCE sr_attempt;
 DROP SEQUENCE sde_attempt;
 DROP SEQUENCE sre_attempt;
+DROP SEQUENCE srs_attempt;
+DROP SEQUENCE sdp_attempt;
+DROP TABLE rt;
+DROP TABLE retry_s.rt;
+DROP SCHEMA retry_s;
 DROP ROLE retry_alice;
 DROP ROLE retry_bob;
