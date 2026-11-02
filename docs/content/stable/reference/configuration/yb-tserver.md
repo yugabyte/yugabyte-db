@@ -3278,7 +3278,11 @@ Default: `60`
 
 The time, in seconds, that the [pg_cron](../../../additional-features/pg-extensions/extension-pgcron/) leader holds its lease.
 
-When the pg_cron leader moves to another node, the old leader lets its running jobs continue for at least `pg_cron_leader_lease_sec` minus 15 seconds before canceling them, and the new leader waits about this long before it starts running jobs. Increase this value to give long-running jobs more time to complete during a planned leader change; a larger value also delays jobs after any leader change. For more information, see [Failures and leader changes](../../../additional-features/pg-extensions/extension-pgcron/#failures-and-leader-changes).
+In v2026.1.4.0 and later, when the pg_cron leader moves to another node, the old leader lets its running jobs continue for at least `pg_cron_leader_lease_sec` minus 15 seconds before canceling them, and the new leader waits about this long before it starts running jobs. Increase this value to give long-running jobs more time to complete during a planned leader change; a larger value also delays jobs after any leader change.
+
+In earlier v2026.1 releases, a leader change cancels running jobs immediately, and the new leader runs no jobs for the first minute.
+
+For more information, see [Failures and leader changes](../../../additional-features/pg-extensions/extension-pgcron/#failures-and-leader-changes).
 
 Set this flag on all YB-TServers. The value must be greater than `--pg_cron_leadership_refresh_sec` (default `10`).
 
