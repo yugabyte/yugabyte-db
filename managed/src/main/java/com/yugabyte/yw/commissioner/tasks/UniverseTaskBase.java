@@ -1289,15 +1289,30 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   /**
    * Captures the delta between the clean pre-task universe definition and the intended target
    * definition. Invoked from the freeze callback wrapper in {@link #createFreezeUniverseTask} after
-   * the freeze callback, using the pre-lock snapshot as {@code beforeUDTP}.
+   * the freeze callback, using the pre-lock snapshot as {@code beforeUDTP}. A rerun of an attempt
+   * that left the rollback-safe window keeps that attempt's pre-edit state as "before" instead, and
+   * stays not rollbackable.
    */
   protected void captureStateTransitionDelta(
       Universe universe,
       UniverseDefinitionTaskParams beforeUDTP,
       UniverseDefinitionTaskParams targetUDTP) {
+    // A checkpoint is still here only if an earlier attempt failed and this rerun took over its
+    // placement lock. If that attempt crossed its rollback checkpoint (left the rollback-safe
+    // window), the current universe is no longer the real pre-edit state. Keep the earlier
+    // checkpoint's "before", which still is, and stay non-rollbackable.
+    StateTransitionDetails existing = universe.getStateTransitionDetails();
+    boolean rollbackSafe = existing == null || existing.isRollbackSafe();
+    UniverseDefinitionTaskParams before = beforeUDTP;
+    if (!rollbackSafe) {
+      log.info(
+          "Universe {} keeps the pre-edit state and rollbackSafe=false of an earlier failed attempt",
+          universe.getUniverseUUID());
+      before = existing.getBeforeUniverseDetails();
+    }
     JsonNode delta =
-        DeltaEvaluator.buildDeltaJsonTree(beforeUDTP, targetUDTP, new NodeDetailsArrayComparator());
-    universe.setStateTransitionDetails(new StateTransitionDetails(true, delta));
+        DeltaEvaluator.buildDeltaJsonTree(before, targetUDTP, new NodeDetailsArrayComparator());
+    universe.setStateTransitionDetails(new StateTransitionDetails(rollbackSafe, delta));
   }
 
   /**
