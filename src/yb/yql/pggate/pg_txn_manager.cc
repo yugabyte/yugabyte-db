@@ -294,9 +294,10 @@ Status PgTxnManager::BeginTransaction(int64_t start_time, uint64_t origination_t
   return RecreateTransaction(SavePriority::kFalse);
 }
 
-Status PgTxnManager::RecreateTransaction() {
+Status PgTxnManager::RecreateTransaction(SetupPerformOptionsAccessorTag tag) {
   VLOG_TXN_STATE(2);
-  return RecreateTransaction(SavePriority::kTrue);
+  RETURN_NOT_OK(RecreateTransaction(SavePriority::kTrue));
+  return ApplyTransactionRestart(tag);
 }
 
 Status PgTxnManager::RecreateTransaction(SavePriority save_priority) {
@@ -468,9 +469,23 @@ Status PgTxnManager::CalculateIsolation(
   return Status::OK();
 }
 
-Status PgTxnManager::RestartTransaction() {
+Status PgTxnManager::RestartTransaction(SetupPerformOptionsAccessorTag tag) {
   need_restart_ = true;
-  return Status::OK();
+  return ApplyTransactionRestart(tag);
+}
+
+// The tserver releases all of the old transaction's object locks when it applies a restart or
+// replacement. That has to happen before the retry re-acquires its locks: fastpath locks are not
+// tagged with a transaction, so a later release would drop them too.
+Status PgTxnManager::ApplyTransactionRestart(SetupPerformOptionsAccessorTag tag) {
+  if (!IsTableLockingEnabledForCurrentTxn()) {
+    return Status::OK();
+  }
+  tserver::PgPerformOptionsPB options;
+  RETURN_NOT_OK(SetupPerformOptions(
+      tag, options, NonTransactionalWrites::kFalse, /* read_time_action= */ {},
+      SkipReadTimeOptions::kTrue));
+  return client_->ApplyTransactionRestart(&options);
 }
 
 // Reset to a new read point. This corresponds to a new latest snapshot.
@@ -1171,6 +1186,8 @@ bool PgTxnManager::TryAcquireObjectLock(
   if (IsDdlMode() && !IsDdlModeWithRegularTransactionBlock()) {
     return false;
   }
+
+  DCHECK(!need_restart_) << "A pending restart would release locks taken here";
 
   if (!client_->TryAcquireObjectLockInSharedMemory(
         active_sub_transaction_id_, lock_id, lock_type)) {

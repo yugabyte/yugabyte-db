@@ -2166,6 +2166,14 @@ class PgClientSession::Impl {
     return status;
   }
 
+  Status ApplyTransactionRestart(
+      const PgApplyTransactionRestartRequestPB& req, PgApplyTransactionRestartResponsePB* resp,
+      rpc::RpcContext* context) {
+    VLOG_WITH_PREFIX_AND_FUNC(2) << req.ShortDebugString();
+    return ResultToStatus(
+        SetupSession(req.options(), context->GetClientDeadline(), /* arena= */ nullptr));
+  }
+
   Status RollbackToSubTransaction(
       const PgRollbackToSubTransactionRequestPB& req, PgRollbackToSubTransactionResponsePB* resp,
       rpc::RpcContext* context) {
@@ -4161,6 +4169,7 @@ class PgClientSession::Impl {
       if (options.use_existing_priority()) {
         saved_priority_ = txn->GetPriority();
       }
+      TEST_SYNC_POINT("PgClientSession::ReplaceTransaction");
       RETURN_NOT_OK(ReleaseObjectLocksIfNecessary(txn, kSessionKind, deadline));
       txn->Abort();
       ClearTransaction(*session);
@@ -4319,6 +4328,7 @@ class PgClientSession::Impl {
   }
 
   Status RestartTransaction(PgClientSessionKind kind, CoarseTimePoint deadline) {
+    TEST_SYNC_POINT("PgClientSession::RestartTransaction");
     auto& session_data = GetSessionData(kind);
     auto& session = *session_data.session;
     auto& txn = session_data.transaction;

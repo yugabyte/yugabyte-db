@@ -84,6 +84,8 @@ service PgClientService {
   rpc ReserveOids(PgReserveOidsRequestPB) returns (PgReserveOidsResponsePB);
   rpc RollbackToSubTransaction(PgRollbackToSubTransactionRequestPB)
       returns (PgRollbackToSubTransactionResponsePB);
+  rpc ApplyTransactionRestart(PgApplyTransactionRestartRequestPB)
+      returns (PgApplyTransactionRestartResponsePB);
 
   rpc TabletServerCount(PgTabletServerCountRequestPB) returns (PgTabletServerCountResponsePB);
   rpc TruncateTable(PgTruncateTableRequestPB) returns (PgTruncateTableResponsePB);
@@ -992,6 +994,17 @@ message PgRollbackToSubTransactionRequestPB {
 }
 
 message PgRollbackToSubTransactionResponsePB {
+  AppStatusPB status = 1;
+}
+
+// Applies a transaction restart or replacement that pggate made locally for a query layer retry,
+// so that the old transaction's object locks are released before the retry re-acquires them.
+message PgApplyTransactionRestartRequestPB {
+  uint64 session_id = 1;
+  PgPerformOptionsPB options = 2;
+}
+
+message PgApplyTransactionRestartResponsePB {
   AppStatusPB status = 1;
 }
 

@@ -83,8 +83,9 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   Status CalculateIsolation(
       bool read_only_op, YbcTxnPriorityRequirement txn_priority_requirement,
       IsLocalObjectLockOp is_local_object_lock_op = IsLocalObjectLockOp::kFalse);
-  Status RecreateTransaction();
-  Status RestartTransaction();
+  // Used by query layer retries. Both apply the change on the tserver before returning.
+  Status RecreateTransaction(SetupPerformOptionsAccessorTag tag);
+  Status RestartTransaction(SetupPerformOptionsAccessorTag tag);
   Status ResetTransactionReadPoint(bool is_catalog_snapshot);
   Status EnsureReadPoint();
   Status RestartReadPoint();
@@ -244,6 +245,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   void ResetTxnAndSession();
   void StartNewSession();
+  Status ApplyTransactionRestart(SetupPerformOptionsAccessorTag tag);
   Status RecreateTransaction(SavePriority save_priority);
   Status SetupReadTimeOptions(
       tserver::PgPerformOptionsPB::ReadTimeOptionsPB& read_time_options,
