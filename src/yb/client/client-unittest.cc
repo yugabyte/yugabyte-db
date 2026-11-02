@@ -38,7 +38,30 @@
 #include <gtest/gtest.h>
 
 #include "yb/client/client-internal.h"
+#include "yb/client/client.h"
+#include "yb/client/meta_cache.h"
 #include "yb/client/schema.h"
+
+#include "yb/common/wire_protocol.h"
+
+#include "yb/master/master_client.pb.h"
+
+#include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
+#include "yb/rpc/rpc_test_util.h"
+#include "yb/rpc/secure.h"
+#include "yb/rpc/secure_stream.h"
+#include "yb/rpc/tcp_stream.h"
+
+#include "yb/server/clock.h"
+
+#include "yb/tserver/tserver_service.proxy.h"
+
+#include "yb/util/flags.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/test_macros.h"
+
+DECLARE_string(use_node_to_node_plaintext);
 
 namespace yb {
 namespace client {
@@ -103,6 +126,72 @@ TEST(ClientUnitTest, TestSchemaBuilder_SingleKey_GoodSchema) {
   b.AddColumn("b")->Type(DataType::INT32);
   b.AddColumn("c")->Type(DataType::INT32)->NotNull();
   ASSERT_EQ("OK", b.Build(&s).ToString());
+}
+
+namespace {
+
+CloudInfoPB Placement(const std::string& zone) {
+  CloudInfoPB result;
+  result.set_placement_cloud("cloud");
+  result.set_placement_region("region");
+  result.set_placement_zone(zone);
+  return result;
+}
+
+master::TSInfoPB TabletServerIn(const std::string& host, const std::string& zone) {
+  master::TSInfoPB result;
+  result.set_permanent_uuid(host);
+  auto* address = result.add_private_rpc_addresses();
+  address->set_host(host);
+  address->set_port(9100);
+  *result.mutable_cloud_info() = Placement(zone);
+  return result;
+}
+
+} // namespace
+
+// A client reaches a tablet server in plaintext only when it applies use_node_to_node_plaintext.
+// One that does not, like the client XClusterRemoteClientHolder builds for another universe, stays
+// on the messenger's default transport even toward a server whose placement names match its own.
+TEST(ClientUnitTest, NodeToNodePlaintextAppliesOnlyToClientsThatApplyIt) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_node_to_node_plaintext) = "zone";
+
+  // A messenger holding the secure transport, keys generated in process as rpc's SecureTest
+  // builds one.
+  rpc::SecureContext secure_context(
+      rpc::RequireClientCertificate::kFalse, rpc::UseClientCertificate::kFalse);
+  ASSERT_OK(secure_context.TEST_GenerateKeys(2048, "127.0.0.1", rpc::MatchingCertKeyPair::kTrue));
+  rpc::MessengerBuilder builder("test");
+  builder.UseDefaultConnectionContextFactory();
+  builder.SetListenProtocol(rpc::SecureStreamProtocol());
+  builder.SetUncompressedProtocol(rpc::SecureStreamProtocol());
+  builder.AddStreamFactory(
+      rpc::SecureStreamProtocol(),
+      rpc::SecureStreamFactory(
+          rpc::TcpStream::Factory(), MemTracker::GetRootTracker(), &secure_context));
+  auto messenger = rpc::CreateAutoShutdownMessengerHolder(ASSERT_RESULT(builder.Build()));
+  const auto* encrypted = &messenger->ProtocolFor(rpc::Encrypted::kTrue);
+  const auto* unencrypted = &messenger->ProtocolFor(rpc::Encrypted::kFalse);
+  ASSERT_NE(encrypted, unencrypted);
+
+  for (bool apply : {false, true}) {
+    SCOPED_TRACE(apply ? "applies the flag" : "does not apply the flag");
+    auto client = ASSERT_RESULT(YBClientBuilder()
+        .add_master_server_addr("127.0.0.1")
+        .set_skip_master_leader_resolution(true)
+        .set_cloud_info_pb(Placement("zone1"))
+        .apply_node_to_node_plaintext(apply)
+        .Build(messenger.get()));
+
+    internal::RemoteTabletServer same_zone(TabletServerIn("ts-same-zone", "zone1"));
+    internal::RemoteTabletServer other_zone(TabletServerIn("ts-other-zone", "zone2"));
+    ASSERT_EQ(
+        ASSERT_RESULT(same_zone.ObtainProxy(*client))->proxy().TEST_protocol(),
+        apply ? unencrypted : encrypted);
+    ASSERT_EQ(
+        ASSERT_RESULT(other_zone.ObtainProxy(*client))->proxy().TEST_protocol(), encrypted);
+  }
 }
 
 } // namespace client

@@ -40,6 +40,7 @@
 #include <gtest/gtest_prod.h>
 
 #include "yb/common/common_net.pb.h"
+#include "yb/common/wire_protocol.h"
 #include "yb/common/hybrid_time.h"
 
 #include "yb/gutil/thread_annotations.h"
@@ -49,6 +50,8 @@
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_heartbeat.fwd.h"
 
+#include "yb/rpc/proxy.h"
+#include "yb/rpc/proxy_context.h"
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/util/locks.h"
@@ -389,7 +392,17 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   FRIEND_TEST(TestTSDescriptor, TestReplicaCreationsDecay);
   friend class LoadBalancerMockedBase;
 
+  // An address to reach this server at and whether a connection to it is encrypted, as the
+  // master's own placement and the server's decide it. Both come from one read of the
+  // registration, so a re-registration cannot pair one registration's address with another's
+  // placement.
+  struct SelectedEndpoint {
+    HostPort host_port;
+    rpc::Encrypted encrypted;
+  };
+
   // Uses DNS to resolve registered hosts to a single endpoint.
+  Result<SelectedEndpoint> SelectEndpointUnlocked() const REQUIRES_SHARED(mutex_);
   Result<HostPort> GetHostPortUnlocked() const REQUIRES_SHARED(mutex_);
 
   void DecayRecentReplicaCreationsUnlocked() REQUIRES(mutex_);
@@ -512,9 +525,11 @@ Status TSDescriptor::GetOrCreateProxy(std::shared_ptr<TProxy>* result,
       *result = *result_cache;
       return Status::OK();
     }
-    auto hostport = VERIFY_RESULT(GetHostPortUnlocked());
+    auto selected = VERIFY_RESULT(SelectEndpointUnlocked());
     if (!(*result_cache)) {
-      *result_cache = std::make_shared<TProxy>(proxy_cache_, hostport);
+      *result_cache = std::make_shared<TProxy>(
+          proxy_cache_, selected.host_port,
+          &proxy_cache_->GetContext()->ProtocolFor(selected.encrypted));
     }
     *result = *result_cache;
   }

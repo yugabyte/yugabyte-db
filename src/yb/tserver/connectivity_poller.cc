@@ -112,7 +112,7 @@ class ConnectivityPoller::Impl : public MasterLeaderPollerInterface {
       : uuid_(uuid),
         cloud_info_(server.MakeCloudInfoPB()),
         log_prefix_(server::MakeServerLogPrefix(uuid)),
-        finder_(server.messenger(), server.proxy_cache(), nullptr),
+        finder_(server.messenger(), server.proxy_cache(), nullptr, cloud_info_),
         poll_scheduler_(finder_, *this) {
   }
 

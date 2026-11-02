@@ -59,6 +59,9 @@ AsyncClientInitializer::AsyncClientInitializer(
 
   // Build cloud_info_pb.
   client_builder_->set_cloud_info_pb(opts->MakeCloudInfoPB());
+  // This client belongs to the node that runs it, so its connections stay inside the universe
+  // whose placement names use_node_to_node_plaintext compares.
+  client_builder_->apply_node_to_node_plaintext();
 
   if (!tserver_uuid.empty()) {
     client_builder_->set_tserver_uuid(tserver_uuid);

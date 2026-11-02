@@ -429,6 +429,11 @@ YBClientBuilder& YBClientBuilder::set_num_reactors(int32_t num_reactors) {
   return *this;
 }
 
+YBClientBuilder& YBClientBuilder::apply_node_to_node_plaintext(bool should_apply) {
+  data_->apply_node_to_node_plaintext_ = should_apply;
+  return *this;
+}
+
 YBClientBuilder& YBClientBuilder::set_cloud_info_pb(const CloudInfoPB& cloud_info_pb) {
   data_->cloud_info_pb_ = cloud_info_pb;
   return *this;
@@ -528,6 +533,10 @@ Status YBClientBuilder::DoBuild(rpc::Messenger* messenger,
              callback_threadpool_size));
   c->data_->threadpool_ = std::move(tp);
 
+  // Set before the first leader master lookup, whose proxies take their transport from both.
+  c->data_->cloud_info_pb_ = data_->cloud_info_pb_;
+  c->data_->apply_node_to_node_plaintext_ = data_->apply_node_to_node_plaintext_;
+
   // Let's allow for plenty of time for discovering the master the first
   // time around.
   auto deadline = CoarseMonoClock::Now() + c->default_admin_operation_timeout();
@@ -547,7 +556,6 @@ Status YBClientBuilder::DoBuild(rpc::Messenger* messenger,
 
   c->data_->clock_ = clock;
 
-  c->data_->cloud_info_pb_ = data_->cloud_info_pb_;
   c->data_->uuid_ = data_->uuid_;
 
   client->swap(c);
