@@ -35,6 +35,7 @@ on:
 
 jobs:
   yb-csi:
+    runs-on: ubuntu-latest
     steps:
       - name: CSI-status
         run: echo "https://csiweb.dev.yugabyte.com/pull/${{ github.event.pull_request.number }}"
