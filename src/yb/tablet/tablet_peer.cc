@@ -51,16 +51,12 @@
 #include "yb/consensus/retryable_requests.h"
 #include "yb/consensus/state_change_context.h"
 
-#include "yb/docdb/consensus_frontier.h"
-
 #include "yb/fs/fs_manager.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/join.h"
 
 #include "yb/master/master_ddl.pb.h"
-
-#include "yb/rocksdb/db/memtable.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/periodic.h"
@@ -75,6 +71,7 @@
 #include "yb/tablet/operations/truncate_operation.h"
 #include "yb/tablet/operations/update_txn_operation.h"
 #include "yb/tablet/operations/write_operation.h"
+#include "yb/tablet/persistence_gate.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet.pb.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
@@ -131,13 +128,21 @@ DEFINE_RUNTIME_uint32(log_retention_diagnostics_min_age_secs, 0,
     "the first retained segment is at least this old in seconds. 0 disables.");
 TAG_FLAG(log_retention_diagnostics_min_age_secs, advanced);
 
+DEFINE_RUNTIME_int32(quiescent_tablet_idle_sec, 600,
+    "A tablet enters the quiescent mode after nothing was appended to its log for this many "
+    "seconds. 0 disables entering the mode.");
+
 DECLARE_int32(ysql_transaction_abort_timeout_ms);
 
 DECLARE_bool(cdc_immediate_transaction_cleanup);
+DECLARE_bool(enable_quiescent_tablets);
 
 DECLARE_uint64(cdc_intent_retention_ms);
 
 DECLARE_bool(enable_flush_retryable_requests);
+DECLARE_bool(force_recover_flushed_frontier);
+DECLARE_bool(skip_wal_replay_from_beginning_with_cdc);
+DECLARE_bool(skip_wal_rewrite);
 
 namespace yb::tablet {
 
@@ -187,6 +192,7 @@ TabletPeer::TabletPeer(
     Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     MetricRegistry* metric_registry,
     TabletSplitter* tablet_splitter,
+    const PersistenceGate* persistence_gate,
     const std::shared_future<client::YBClient*>& client_future)
     : meta_(meta),
       tablet_id_(meta->raft_group_id()),
@@ -201,6 +207,7 @@ TabletPeer::TabletPeer(
       preparing_operations_counter_(operation_tracker_.LogPrefix()),
       metric_registry_(metric_registry),
       tablet_splitter_(tablet_splitter),
+      persistence_gate_(persistence_gate),
       client_future_(client_future),
       data_disk_space_checker_(meta->fs_manager()->env(), meta->data_root_dir()) {}
 
@@ -271,41 +278,7 @@ Status TabletPeer::InitTabletPeer(
     strand_.reset(new rpc::Strand(service_thread_pool_holder_.get()));
     messenger_ = messenger;
 
-    tablet->SetMemTableFlushFilterFactory([log] {
-      auto largest_log_op_index = log->GetLatestEntryOpId().index;
-      return [largest_log_op_index] (const rocksdb::MemTable& memtable, bool) -> Result<bool> {
-        auto frontiers = memtable.Frontiers();
-        if (frontiers) {
-          const auto largest_memtable_op_index =
-              down_cast<const docdb::ConsensusFrontier&>(frontiers->Largest()).op_id().index;
-          // We can only flush this memtable if all operations written to it have also been written
-          // to the log (maybe not synced, if durable_wal_write is disabled, but that's OK).
-          auto should_flush = largest_memtable_op_index <= largest_log_op_index;
-          if (!should_flush) {
-            LOG(WARNING)
-              << "Skipping flush on memtable with ops ahead of log. "
-              << "Memtable index: " << largest_memtable_op_index
-              << " - log index: " << largest_log_op_index;
-          }
-          return should_flush;
-        }
-
-        // It is correct to not have frontiers when memtable is empty
-        if (memtable.IsEmpty()) {
-          return true;
-        }
-
-        // This is a degenerate case that should ideally never occur. An empty memtable got into the
-        // list of immutable memtables. We say it is OK to flush it and move on.
-        static const char* error_msg =
-            "A memtable with no frontiers set found when deciding what memtables to "
-            "flush! This should not happen.";
-        LOG(DFATAL) << error_msg;
-        return STATUS(IllegalState, error_msg);
-      };
-    });
-
-    tablet_->SetCleanupPool(snapshot_cleanup_pool, &messenger_->scheduler(), raft_pool);
+    tablet_->SetCleanupPool(snapshot_cleanup_pool, &messenger_->scheduler());
 
     ConsensusOptions options;
     options.tablet_id = meta_->raft_group_id();
@@ -509,8 +482,27 @@ Status CheckWriteFence(const consensus::LWReplicateMsg& msg) {
 
 }  // namespace
 
-Status TabletPeer::CheckReplicateAllowed(const consensus::LWReplicateMsg& replicate_msg) {
-  return CheckWriteFence(replicate_msg);
+Status TabletPeer::CheckReplicateAllowed(consensus::LWReplicateMsg& replicate_msg) {
+  RETURN_NOT_OK(CheckWriteFence(replicate_msg));
+  if (persistence_gate_) {
+    RETURN_NOT_OK(persistence_gate_->CheckPersistAllowed(replicate_msg));
+  }
+  // Only the persistence gate reads the stamps, so keep them out of the WAL and off the followers.
+  switch (replicate_msg.op_type()) {
+    case consensus::OperationType::WRITE_OP:
+      replicate_msg.mutable_write()->clear_origination_info();
+      break;
+    case consensus::OperationType::UPDATE_TRANSACTION_OP:
+      replicate_msg.mutable_transaction_state()->clear_origination_info();
+      break;
+    default:
+      break;
+  }
+  return Status::OK();
+}
+
+bool TabletPeer::ShouldRelinquishLeadership() {
+  return persistence_gate_ && persistence_gate_->ShouldRelinquishLeadership();
 }
 
 Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
@@ -953,6 +945,133 @@ Status TabletPeer::RunLogGC(bool rollover) {
   return log_->GC(min_log_index, &num_gced);
 }
 
+CoarseDuration QuiescentTabletIdleTime() {
+  return std::max(FLAGS_quiescent_tablet_idle_sec, 1) * 1s;
+}
+
+CoarseTimePoint TabletPeer::MaybeEnterQuiescentMode(CoarseTimePoint now) {
+  const auto idle_time = QuiescentTabletIdleTime();
+  const auto next_check = now + idle_time;
+  if (!FLAGS_enable_quiescent_tablets || !CheckRunning().ok()) {
+    return next_check;
+  }
+  auto* log = log_atomic_.load(std::memory_order_acquire);
+  const auto can_enter_at = log->last_append_time() + idle_time;
+  if (can_enter_at > now) {
+    return can_enter_at;
+  }
+  if (IsQuiescent()) {
+    return next_check;
+  }
+  auto consensus = GetRaftConsensus();
+  auto status = consensus.ok()
+      ? EnterQuiescentMode((*consensus)->GetLastReceivedOpId()) : consensus.status();
+  if (status.IsTryAgain() || status.IsNotSupported()) {
+    VLOG_WITH_PREFIX(1) << "Not entering quiescent mode: " << status;
+  } else {
+    WARN_NOT_OK(status, LogPrefix() + "Failed to enter quiescent mode");
+  }
+  return next_check;
+}
+
+bool TabletPeer::IsQuiescent() const {
+  auto* log = log_atomic_.load(std::memory_order_acquire);
+  if (!log) {
+    return false;
+  }
+  const auto marker_op_id = log->quiescent_marker_op_id();
+  return !marker_op_id.empty() && log->num_segments() == 0 &&
+         log->GetLatestEntryOpId() == marker_op_id;
+}
+
+Status TabletPeer::EnterQuiescentMode(const OpId& op_id) {
+  SCHECK_GT(op_id.index, 0, TryAgain, "Empty log");
+  auto tablet = VERIFY_RESULT(shared_tablet());
+  if (tablet->is_sys_catalog() ||
+      tablet->table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+    return STATUS(NotSupported, "Tablet type");
+  }
+  // Each of these makes bootstrap depend on WAL that the marker replaces.
+  if (!FLAGS_skip_wal_rewrite || FLAGS_force_recover_flushed_frontier ||
+      !FLAGS_skip_wal_replay_from_beginning_with_cdc) {
+    return STATUS(NotSupported, "WAL replay flags");
+  }
+  // Retryable requests that the replaced segments hold must be persisted.
+  if (!FlushBootstrapStateEnabled()) {
+    return STATUS(NotSupported, "Bootstrap state flush is disabled");
+  }
+  if (log_->GetXReplMinReplicatedIndex() != std::numeric_limits<int64_t>::max() ||
+      is_under_cdc_sdk_replication()) {
+    return STATUS(NotSupported, "Tablet has xCluster or CDC streams");
+  }
+  // The table asks to keep WAL for a time, which CDC stream setup sets.
+  if (meta_->wal_retention_secs() != 0) {
+    return STATUS(NotSupported, "Table WAL retention is set");
+  }
+
+  auto consensus = VERIFY_RESULT(GetRaftConsensus());
+  const auto committed_op_id = consensus->GetLastCommittedOpId();
+  if (committed_op_id != op_id) {
+    return STATUS_FORMAT(TryAgain, "Last op $0, committed $1", op_id, committed_op_id);
+  }
+  if (consensus->GetPendingConfigOpId().is_valid_not_empty()) {
+    return STATUS(TryAgain, "Pending config change");
+  }
+  // A peer behind op_id could only catch up through remote bootstrap.
+  const auto all_replicated_index = consensus->GetAllReplicatedIndex();
+  if (all_replicated_index < op_id.index) {
+    return STATUS_FORMAT(TryAgain, "Replicated to all peers up to $0", all_replicated_index);
+  }
+  // An operation stays tracked until it is applied, so this also checks that op_id was applied.
+  if (!operation_tracker_.GetPendingOperations().empty()) {
+    return STATUS(TryAgain, "Pending operations");
+  }
+  auto* participant = tablet->transaction_participant();
+  if (participant) {
+    // Right after start the loader may not have loaded the transactions from the intents DB yet.
+    if (!participant->AllTransactionsLoaded()) {
+      return STATUS(TryAgain, "Transactions not loaded");
+    }
+    if (participant->GetNumRunningTransactions() != 0) {
+      return STATUS(TryAgain, "Running transactions");
+    }
+  }
+  // Remote bootstrap sessions and split parents anchor the segments.
+  int64_t min_anchor_index;
+  if (log_anchor_registry_->GetEarliestRegisteredLogIndex(&min_anchor_index).ok()) {
+    return STATUS_FORMAT(TryAgain, "Log anchored at $0", min_anchor_index);
+  }
+
+  RETURN_NOT_OK(tablet->Flush(
+      FlushMode::kSync, FlushFlags::kAllDbs, rocksdb::FlushReason::kIdle));
+  const auto earliest_needed_index = VERIFY_RESULT(tablet->EarliestNeededLogIndex(
+      op_id, [](const std::string&, int64_t, const std::string&) {}));
+  if (earliest_needed_index != std::numeric_limits<int64_t>::max()) {
+    return STATUS_FORMAT(TryAgain, "Storage needs log from $0", earliest_needed_index);
+  }
+  RETURN_NOT_OK(tablet->FlushSuperblock(OnlyIfDirty::kTrue));
+  auto status = FlushBootstrapState();
+  if (status.IsAlreadyPresent()) {
+    return status.CloneAndReplaceCode(Status::kTryAgain);
+  }
+  RETURN_NOT_OK(status);
+
+  log::QuiescentMarkerPB marker;
+  RETURN_NOT_OK(log_->CloseActiveSegment(op_id, &marker));
+  marker.set_monotonic_counter(*tablet->monotonic_counter());
+  RETURN_NOT_OK(log_->WriteQuiescentMarker(marker));
+
+  // The marker is published before this check, so a remote bootstrap session that anchors the log
+  // later takes the marker and a RocksDB checkpoint made after the flush above.
+  if (log_anchor_registry_->GetEarliestRegisteredLogIndex(&min_anchor_index).ok()) {
+    return STATUS_FORMAT(TryAgain, "Log anchored at $0, segments kept", min_anchor_index);
+  }
+  const auto num_deleted = VERIFY_RESULT(log_->DeleteSegmentsCoveredByQuiescentMarker());
+  LOG_WITH_PREFIX(INFO) << "Entered quiescent mode at " << op_id << ", deleted " << num_deleted
+                        << " log segments";
+  return Status::OK();
+}
+
 Result<TabletPtr> TabletPeer::shared_tablet() const {
   // Note that there is still a possible race condition between the time we check the tablet state
   // and the time we access the tablet shared pointer through the weak pointer.
@@ -1073,10 +1192,10 @@ Result<OpId> TabletPeer::MaxPersistentOpId() const {
     // Tablet peer not yet initialized -- we could be doing tablet bootstrap still.
     return OpId::Min();
   }
-  auto flush_op_ids = VERIFY_RESULT(tablet->MaxPersistentOpId());
-  auto result = OpId::MinValid(flush_op_ids.intents, flush_op_ids.regular);
-  for (const auto& op_id : flush_op_ids.vector_indexes) {
-    result = OpId::MinValid(result, op_id);
+  auto persistent_state = VERIFY_RESULT(tablet->GetPersistentState());
+  auto result = OpId::MinValid(persistent_state.intents, persistent_state.regular);
+  for (const auto& vector_index : persistent_state.vector_indexes) {
+    result = OpId::MinValid(result, vector_index.op_id);
   }
   return result;
 }
@@ -1170,7 +1289,7 @@ Result<log::MinRetainLogIndexInfo> TabletPeer::GetEarliestNeededLogIndex(
 
   // We keep at least one committed operation in the log so that we can always recover safe time
   // during bootstrap.
-  // Last committed op id should be read before MaxPersistentOpId to avoid race condition
+  // Last committed op id should be read before Tablet::GetPersistentState to avoid race condition
   // described in MaxPersistentOpIdForDb.
   //
   // If we read last committed op id AFTER reading last persistent op id (INCORRECT):
@@ -1290,6 +1409,13 @@ Status TabletPeer::GetGCableDataSize(int64_t* retention_size) const {
         << diagnostics.details;
   }
   return Status::OK();
+}
+
+log::WalEntryState TabletPeer::WalState(const OpId& op_id) {
+  auto* log = log_atomic_.load(std::memory_order_acquire);
+  // No log until bootstrap completes. Replay must be able to flush, since writes stop once
+  // db_max_flushing_bytes of memtables wait for flush.
+  return log ? log->WalState(op_id) : log::WalEntryState::kDurable;
 }
 
 log::Log* TabletPeer::log() const {
@@ -1868,6 +1994,14 @@ Result<client::YBClient*> TabletPeer::client() const {
 int64_t TabletPeer::LeaderTerm() const {
   auto consensus = GetRaftConsensusUnsafe();
   return consensus ? consensus->LeaderTerm() : yb::OpId::kUnknownTerm;
+}
+
+Status TabletPeer::CheckTransactionMayContinue(
+    const LWOriginationInfoPB& origination_info) const {
+  if (!persistence_gate_) {
+    return Status::OK();
+  }
+  return persistence_gate_->CheckTransactionMayContinue(origination_info);
 }
 
 Result<HybridTime> TabletPeer::LeaderSafeTime() const {

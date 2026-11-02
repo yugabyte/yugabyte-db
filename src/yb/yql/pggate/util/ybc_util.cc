@@ -290,6 +290,10 @@ bool YBCStatusIsReplicationSlotLimitReached(YbcStatus s) {
   return StatusWrapper(s)->IsReplicationSlotLimitReached();
 }
 
+bool YBCStatusIsNotSupported(YbcStatus s) {
+  return StatusWrapper(s)->IsNotSupported();
+}
+
 uint32_t YBCStatusPgsqlError(YbcStatus s) {
   return std::to_underlying(FetchErrorCode(s));
 }
@@ -949,10 +953,12 @@ char* YBCDecodeRangePartitionKey(const char* partition_key, size_t key_len) {
 }
 
 // False until PG makes the first YBCSetObjectLockingInfraForCurrTxn() call of the backend from
-// StartTransaction. PgTxnManager reads it through IsTableLockingEnabledForCurrentTxn() from
-// BeginTransaction onwards, so the is_using_table_locks it sends to the tserver never comes from
-// the unset value. The PG side does read it earlier, at least from YBCIsLegacyModeForCatalogOps
-// during sys table prefetching, where YBCIsSysTablePrefetchingStarted() forces legacy mode anyway.
+// StartTransaction. pggate only reads it inside a transaction, so the is_using_table_locks it sends
+// to the tserver never comes from the unset value: PgTxnManager reads it through
+// IsTableLockingEnabledForCurrentTxn() from BeginTransaction onwards, and the sequence RPCs are
+// only issued while a statement runs. The PG side does read it earlier, at least from
+// YBCIsLegacyModeForCatalogOps during sys table prefetching, where
+// YBCIsSysTablePrefetchingStarted() forces legacy mode anyway.
 static bool object_locking_infra_for_curr_txn = false;
 
 void YBCSetObjectLockingInfraForCurrTxn() {

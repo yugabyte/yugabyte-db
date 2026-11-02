@@ -12,6 +12,7 @@ import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 import com.google.common.net.HostAndPort;
@@ -235,6 +236,60 @@ public class FinalizeUpgradeTest extends UpgradeTaskTest {
                     .setCode(Code.UNKNOWN_ERROR)
                     .build())
             .build());
+  }
+
+  @Test
+  public void testFinalizeYsqlMajorUpgradeWithStaleUniverseVersion() throws Exception {
+    // PLAT-23182: older builds could leave PreFinalize with the old version still in the user
+    // intent. Finalize has to take the upgrade's target from prevYBSoftwareConfig instead.
+    UniverseDefinitionTaskParams.PrevYBSoftwareConfig ybSoftwareConfig =
+        new UniverseDefinitionTaskParams.PrevYBSoftwareConfig();
+    ybSoftwareConfig.setAutoFlagConfigVersion(1);
+    ybSoftwareConfig.setSoftwareVersion("2.21.0.0-b1");
+    ybSoftwareConfig.setTargetUpgradeSoftwareVersion("2.21.0.0-b2");
+    TestHelper.updateUniversePrevSoftwareConfig(defaultUniverse, ybSoftwareConfig);
+    TestHelper.updateUniverseVersion(defaultUniverse, "2.21.0.0-b1");
+    when(mockSoftwareUpgradeHelper.isYsqlMajorVersionUpgradeRequired(
+            any(), eq("2.21.0.0-b1"), eq("2.21.0.0-b2")))
+        .thenReturn(true);
+    when(mockClient.getYsqlMajorCatalogUpgradeState())
+        .thenReturn(
+            new GetYsqlMajorCatalogUpgradeStateResponse(
+                0L, null, null, YsqlMajorCatalogUpgradeState.YSQL_MAJOR_CATALOG_UPGRADE_DONE));
+    FinalizeUpgradeParams params = new FinalizeUpgradeParams();
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    TaskInfo taskInfo = submitTask(params);
+
+    assertEquals(Success, taskInfo.getTaskState());
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .anyMatch(t -> t.getTaskType() == TaskType.FinalizeYsqlMajorCatalogUpgrade));
+    // The target is recorded, since finalize clears prevYBSoftwareConfig, its only other record.
+    UniverseDefinitionTaskParams details =
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).getUniverseDetails();
+    assertEquals(
+        UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready, details.softwareUpgradeState);
+    assertNull(details.prevYBSoftwareConfig);
+    assertEquals("2.21.0.0-b2", details.getPrimaryCluster().userIntent.ybSoftwareVersion);
+  }
+
+  @Test
+  public void testFinalizeKeepsRecordedVersion() {
+    FinalizeUpgradeParams params = new FinalizeUpgradeParams();
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    TaskInfo taskInfo = submitTask(params);
+
+    assertEquals(Success, taskInfo.getTaskState());
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .noneMatch(t -> t.getTaskType() == TaskType.UpdateSoftwareVersion));
+    assertEquals(
+        "2.21.0.0-b2",
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .ybSoftwareVersion);
   }
 
   @Test

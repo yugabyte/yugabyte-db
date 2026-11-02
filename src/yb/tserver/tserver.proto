@@ -114,6 +114,10 @@ message WriteRequestPB {
 
   // Set for writes issued on behalf of a YSQL backend.
   optional OriginationInfoPB origination_info = 29;
+
+  // Source commit time of the transaction being applied, as a HybridTime, travelling with
+  // xrepl_origin_id.
+  optional fixed64 xrepl_source_write_ht = 30;
 }
 
 message WriteResponsePB {

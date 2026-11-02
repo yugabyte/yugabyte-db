@@ -100,6 +100,8 @@ DECLARE_int32(scheduled_full_compaction_frequency_hours);
 DECLARE_int32(scheduled_full_compaction_jitter_factor_percentage);
 DECLARE_int32(auto_compact_memory_cleanup_interval_sec);
 DECLARE_bool(allow_encryption_at_rest);
+DECLARE_bool(enable_tiered_storage);
+DECLARE_bool(enforce_xcluster_guarded_lease);
 DECLARE_int32(db_block_cache_num_shard_bits);
 DECLARE_int32(num_cpus);
 DECLARE_bool(enable_db_history_retention_pins);
@@ -152,6 +154,9 @@ class TsTabletManagerTest : public YBTest {
 
     // Disallow encryption at rest as there is no master.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_encryption_at_rest) = false;
+
+    // There is no master to grant the xCluster-guarded information lease.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enforce_xcluster_guarded_lease) = false;
 
     mini_server_ = std::make_unique<MiniTabletServer>(paths, paths, 0, *options_result, 0);
   }
@@ -923,10 +928,13 @@ class TsTabletManagerTieredDriveTest : public TsTabletManagerTest {
     auto options_result = TabletServerOptions::CreateTabletServerOptions();
     ASSERT_OK(options_result);
 
-    // Disable AutoFlags management and encryption at rest, same as the base fixture (there's
-    // no master here).
+    // Disable AutoFlags management, encryption at rest, and the xCluster-guarded information
+    // lease, same as the base fixture (there's no master here).
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_disable_auto_flags_management) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_encryption_at_rest) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enforce_xcluster_guarded_lease) = false;
+    // Tiered drives only exist with the preview feature on.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = true;
 
     // Build paths: drive-0 and drive-1 are ssd; drive-2 and drive-3 are hdd.
     // MiniTabletServer copies data_paths straight into fs_opts.data_paths and does NOT parse a
@@ -1091,6 +1099,40 @@ TEST_F(TsTabletManagerTieredDriveTest, ResolveTargetTierPathIdRepairsStaleId) {
   ASSERT_EQ(meta->target_tier_path_id(), repaired_pid);
 }
 
+// Tiered storage disabled: ResolveTargetTierPathId acts on no tier preference. It drops the
+// cached disk so flushes and compactions target home, keeps target_storage_tier so the intent is
+// honored again once the feature is enabled, and never consults the disk layout.
+TEST_F(TsTabletManagerTieredDriveTest, ResolveTargetTierPathIdIgnoresTargetWhenDisabled) {
+  std::shared_ptr<tablet::TabletPeer> peer;
+  ASSERT_OK(CreateNewTablet(kTableId, kTabletId, schema_, &peer));
+  auto meta = peer->tablet_metadata();
+  std::unordered_map<uint32_t, std::string> tier_by_path_id;
+  for (const auto& tp : meta->tier_paths()) {
+    tier_by_path_id[tp.path_id] = tp.tier;
+  }
+
+  auto hdd_pid = ASSERT_RESULT(tablet_manager_->SelectPathIdForTier(*meta, kTableId, "hdd"));
+  ASSERT_NE(hdd_pid, 0u);
+  ASSERT_OK(meta->SetTargetTier("hdd", hdd_pid));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = false;
+  auto pid = ASSERT_RESULT(tablet_manager_->ResolveTargetTierPathId(meta));
+  ASSERT_EQ(pid, 0u);
+  ASSERT_EQ(meta->target_tier_path_id(), 0u);
+  ASSERT_EQ(meta->target_storage_tier(), "hdd");
+  tablet::RaftGroupReplicaSuperBlockPB on_disk;
+  ASSERT_OK(meta->ReadSuperBlockFromDisk(&on_disk));
+  ASSERT_EQ(on_disk.kv_store().target_tier_path_id(), 0u);
+  ASSERT_EQ(on_disk.kv_store().target_storage_tier(), "hdd");
+
+  // Re-enabled: the kept intent resolves back to an hdd disk and is persisted again.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = true;
+  auto resolved_pid = ASSERT_RESULT(tablet_manager_->ResolveTargetTierPathId(meta));
+  ASSERT_EQ(tier_by_path_id.at(resolved_pid), "hdd")
+      << "Resolved path_id " << resolved_pid << " is not an hdd disk";
+  ASSERT_EQ(meta->target_tier_path_id(), resolved_pid);
+}
+
 // ---------------------------------------------------------------------------
 // TierMigrationReconciler: the tserver thread that converges tablets on their target tier.
 // The pass logic itself (kDone / kFailed) is covered per tablet in
@@ -1170,6 +1212,20 @@ class TierMigrationReconcilerTest : public TsTabletManagerTieredDriveTest {
   // Ticks fast: the tests below wait on the thread rather than call RunPass themselves.
   int32_t reconcile_interval_sec_ = 1;
 };
+
+// With the preview flag off the reconciler thread never starts, whatever the interval says.
+class TierMigrationReconcilerDisabledTest : public TsTabletManagerTest {
+ protected:
+  void CreateMiniTabletServer() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tier_migration_reconcile_interval_sec) = 1;
+    TsTabletManagerTest::CreateMiniTabletServer();
+  }
+};
+
+TEST_F(TierMigrationReconcilerDisabledTest, ThreadNotStartedWhenTieredStorageDisabled) {
+  ASSERT_FALSE(tablet_manager_->tier_migration_reconciler()->TEST_thread_running());
+}
 
 // A tablet with a persisted target and nothing else (no AlterTabletTier pass) is converged by the
 // thread alone.

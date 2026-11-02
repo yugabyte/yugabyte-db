@@ -109,6 +109,14 @@ public class SupportBundleUtil {
     return dateToday;
   }
 
+  /**
+   * Truncates a date to midnight local time. Needed when comparing a caller-supplied instant
+   * against dates parsed out of log file names, which carry no time of day.
+   */
+  public Date getDateWithoutTime(Date date) {
+    return new DateTime(date).withTimeAtStartOfDay().toDate();
+  }
+
   public Date getDateFromBundleFileName(String fileName) throws ParseException {
     SimpleDateFormat bundleSdf = new SimpleDateFormat("yyyyMMddHHmmss.SSS");
     SimpleDateFormat newSdf = new SimpleDateFormat("yyyy-MM-dd");

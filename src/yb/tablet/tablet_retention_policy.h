@@ -45,6 +45,11 @@ class TabletRetentionPolicy : public docdb::HistoryRetentionPolicy {
   docdb::HistoryCutoff UpdateCommittedHistoryCutoff(
       docdb::HistoryCutoff new_value);
 
+  // Seeds the committed history cutoff and the floor for compaction primary cutoffs from the
+  // history cutoff in the flushed frontier: the highest cutoff of a past compaction or, with
+  // propagation, of a propagated history cutoff operation.
+  void SeedHistoryCutoffFromFlushedFrontier(docdb::HistoryCutoff value);
+
   // Returns history cutoff for propagation.
   // It is used at tablet leader while creating request for peer.
   // Invalid hybrid time is returned when history cutoff should not be propagated.
@@ -70,6 +75,8 @@ class TabletRetentionPolicy : public docdb::HistoryRetentionPolicy {
 
   HybridTime GetEarliestAllowedReadHt() REQUIRES(mutex_);
 
+  void ApplyUsedHistoryCutoffFloor(docdb::HistoryCutoff* history_cutoff) REQUIRES(mutex_);
+
   const std::string& LogPrefix() const {
     return log_prefix_;
   }
@@ -78,12 +85,17 @@ class TabletRetentionPolicy : public docdb::HistoryRetentionPolicy {
   const AllowedHistoryCutoffProvider allowed_history_cutoff_provider_;
   RaftGroupMetadata& metadata_;
   const std::string log_prefix_;
+  const bool apply_history_cutoff_floor_;
 
   mutable absl::Mutex mutex_;
   // Set of active read timestamps.
   std::multiset<HybridTime> active_readers_ GUARDED_BY(mutex_);
   docdb::HistoryCutoff committed_history_cutoff_information_ GUARDED_BY(mutex_)
       = { HybridTime::kMin, HybridTime::kMin };
+  // Highest primary cutoff handed out by GetRetentionDirective or found in the flushed frontier at
+  // open. Unlike committed_history_cutoff_information_, UpdateCommittedHistoryCutoff does not
+  // advance it, because a propagated cutoff can be above an active local reader.
+  HybridTime used_history_cutoff_floor_ GUARDED_BY(mutex_);
   CoarseTimePoint next_history_cutoff_propagation_ GUARDED_BY(mutex_) = CoarseTimePoint::min();
   int disable_counter_ GUARDED_BY(mutex_) = 0;
 };

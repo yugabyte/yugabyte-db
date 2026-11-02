@@ -957,15 +957,6 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
     return LockForRead()->IsXClusterDDLReplicationTable();
   }
 
-  // Provides the ID of the tablespace that will be used to determine
-  // where the tablets for this table should be placed when the table
-  // is first being created.
-  TablespaceId TablespaceIdForTableCreation() const;
-
-  // Set the tablespace to use during table creation. This will determine
-  // where the tablets of the newly created table should reside.
-  void SetTablespaceIdForTableCreation(const TablespaceId& tablespace_id);
-
   void SetMatview();
 
   google::protobuf::RepeatedField<int> GetHostedStatefulServices() const;
@@ -1065,13 +1056,6 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // The last error Status of the currently running CreateTable. Will be OK, if freshly constructed
   // object, or if the CreateTable was successful.
   Status create_table_error_;
-
-  // This field denotes the tablespace id that the user specified while
-  // creating the table. This will be used only to place tablets at the time
-  // of table creation. At all other times, this information needs to be fetched
-  // from PG catalog tables because the user may have used Alter Table to change
-  // the table's tablespace.
-  TablespaceId tablespace_id_for_table_creation_;
 
   // This field denotes the table is under xcluster bootstrapping. This is used to prevent create
   // table from completing. Not needed once D23712 lands.
@@ -1485,6 +1469,16 @@ class CDCStreamInfo : public RefCountedThreadSafe<CDCStreamInfo>,
   const NamespaceId namespace_id() const;
 
   const ReplicationSlotName GetCdcsdkYsqlReplicationSlotName() const;
+
+  // Whether the stream's table set is governed by the publication it is bound to.
+  bool IsCdcsdkYsqlPublicationsBoundStream() const;
+
+  // Name of the publication this stream is statically bound to. Non-empty exactly when
+  // IsCdcsdkYsqlPublicationsBoundStream() returns true.
+  const std::string GetCdcsdkYsqlBoundPublicationName() const;
+
+  // Whether a newly created table joins this publications bound stream.
+  bool CdcsdkYsqlIncludesNewTables() const;
 
   bool IsConsistentSnapshotStream() const;
 

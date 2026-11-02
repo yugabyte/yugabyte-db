@@ -66,6 +66,7 @@
 #include "yb/tablet/mvcc.h"
 #include "yb/tablet/operations/operation.h"
 #include "yb/tablet/operation_filter.h"
+#include "yb/tablet/tablet_context.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/transaction_intent_applier.h"
@@ -716,11 +717,11 @@ class Tablet : public AbstractTablet,
   // Returns true if a RocksDB-backed tablet has any SSTables.
   Result<bool> HasSSTables() const;
 
-  // Returns the maximum persistent op id from all SSTables in RocksDB.
-  // First for regular records and second for intents.
+  // Returns the maximum persistent op ids of the regular DB, the intents DB and each vector index,
+  // plus the hybrid time of each vector index.
   // When invalid_if_no_new_data is true then function would return invalid op id when no new
   // data is present in corresponding db.
-  Result<DocDbOpIds> MaxPersistentOpId(bool invalid_if_no_new_data = false) const;
+  Result<DocDbPersistentState> GetPersistentState(bool invalid_if_no_new_data = false) const;
 
   // Returns the maximum persistent hybrid_time across all SSTables in RocksDB.
   Result<HybridTime> MaxPersistentHybridTime() const;
@@ -926,11 +927,6 @@ class Tablet : public AbstractTablet,
     ht_lease_provider_ = std::move(provider);
   }
 
-  void SetMemTableFlushFilterFactory(std::function<rocksdb::MemTableFilter()> factory) {
-    std::lock_guard lock(flush_filter_mutex_);
-    mem_table_flush_filter_factory_ = std::move(factory);
-  }
-
   // When a compaction starts with a particular "history cutoff" timestamp, it calls this function
   // to disallow reads at a time lower than that history cutoff timestamp, to avoid reading
   // invalid/incomplete data.
@@ -1005,9 +1001,7 @@ class Tablet : public AbstractTablet,
   bool is_sys_catalog() const { return is_sys_catalog_; }
   bool IsTransactionalRequest(bool is_ysql_request) const override;
 
-  void SetCleanupPool(
-      ThreadPool* snapshot_cleanup_pool, rpc::Scheduler* scheduler,
-      ThreadPool* intent_cleanup_pool);
+  void SetCleanupPool(ThreadPool* snapshot_cleanup_pool, rpc::Scheduler* scheduler);
 
   TabletSnapshots& snapshots() {
     return *snapshots_;
@@ -1656,6 +1650,8 @@ class Tablet : public AbstractTablet,
   Result<HybridTime> DoGetSafeTime(
       RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const override;
 
+  Result<bool> RegularDbFlushFilter(const rocksdb::MemTable& memtable);
+
   struct IntentsDbFlushFilterState;
   Result<bool> IntentsDbFlushFilter(
       const rocksdb::MemTable& memtable, bool write_blocked,
@@ -1675,6 +1671,11 @@ class Tablet : public AbstractTablet,
 
   // Tries to find intent .SST files that could be deleted and remove them.
   void DoCleanupIntentFiles();
+
+  // Flushes the regular DB on behalf of IntentsDbFlushFilter, which must not do it itself. Posts
+  // the flush on cleanup_intent_files_token_.
+  Status RequestRegularDbFlushForIntentsFlush();
+  void FlushRegularDbForIntentsFlush();
 
   void RegularDbFilesChanged();
 
@@ -1696,19 +1697,24 @@ class Tablet : public AbstractTablet,
 
   docdb::HistoryCutoff AllowedHistoryCutoff();
 
-  mutable std::mutex flush_filter_mutex_;
-  std::function<rocksdb::MemTableFilter()> mem_table_flush_filter_factory_
-      GUARDED_BY(flush_filter_mutex_);
-
   client::LocalTabletFilter local_tablet_filter_;
 
   // This is typically "P <peer_id>", so we can get a log prefix "T <tablet_id> P <peer_id>: ".
   std::string log_prefix_suffix_;
 
+  TabletContext* const tablet_context_;
+
   IsSysCatalogTablet is_sys_catalog_;
   TransactionsEnabled txns_enabled_;
 
+  // Serial token on TabletInitData::intent_cleanup_pool for intent SST file cleanup and for the
+  // regular DB flushes requested by the intents DB flush filter. Null without a transaction
+  // participant.
   std::unique_ptr<ThreadPoolToken> cleanup_intent_files_token_;
+
+  // Set while a regular DB flush posted by RequestRegularDbFlushForIntentsFlush has not run yet,
+  // so the intents flush filter's retries do not post another.
+  std::atomic<bool> regular_db_flush_for_intents_posted_{false};
 
   std::unique_ptr<TabletSnapshots> snapshots_;
 

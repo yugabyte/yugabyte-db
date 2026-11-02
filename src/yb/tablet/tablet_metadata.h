@@ -120,6 +120,13 @@ struct TableInfo {
   // make sure this vector doesn't grow too large.
   std::vector<DeletedColumn> deleted_cols;
 
+  // For each schema version that is no longer current, the boundary op id past which WAL entries
+  // can no longer be packed with it. The entries below the boundary are packed with this version or
+  // older ones. Maintained while the tablet is under CDC replication so that OldSchemaGC retains
+  // the packings needed to decode WAL entries CDC may still stream. Entries are pruned together
+  // with their packings.
+  std::map<SchemaVersion, OpId> cdcsdk_schema_version_boundaries;
+
   // We use the retention time from the primary table.
   uint32_t wal_retention_secs = 0;
 
@@ -208,6 +215,8 @@ struct TableInfo {
   static TableInfoPtr TEST_Create(Args&&... args) {
     return TEST_CreateWithLogPrefix("TEST: ", std::forward<Args>(args)...);
   }
+
+  void EraseDeletedColumnsInSchema();
 
  private:
   Status DoLoadFromPB(Primary primary, const TableInfoPB& pb);
@@ -466,6 +475,12 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   std::string intents_rocksdb_dir() const;
   std::string snapshots_dir() const;
   std::string vector_index_dir(const PgVectorIdxOptionsPB& vector_index_options) const;
+  // Storage dirs of the vector indexes this tablet lists.
+  std::vector<std::string> vector_index_dirs() const;
+  // Deletes the storage dir of each "vi-*" name in storage_names, see
+  // docdb::GetVectorIndexStorageName, whose index this tablet does not list. Ignores other names.
+  // DeleteTabletData destroys only the storages of listed indexes. Best effort.
+  void DeleteUnlistedVectorIndexStorages(const std::vector<std::string>& storage_names) const;
 
   const std::string& lower_bound_key() const { return kv_store_.lower_bound_key; }
   const std::string& upper_bound_key() const { return kv_store_.upper_bound_key; }
@@ -533,6 +548,14 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   std::optional<uint64_t> post_split_compaction_file_number_upper_bound() const {
     std::lock_guard<MutexType> lock(data_mutex_);
     return kv_store_.post_split_compaction_file_number_upper_bound;
+  }
+
+  // Returns rocksdb_parent_data_compacted and post_split_compaction_file_number_upper_bound read
+  // under one lock, so that a concurrent OnPostSplitCompactionDone() is never seen half-applied.
+  std::pair<bool, std::optional<uint64_t>> post_split_compaction_state() const {
+    std::lock_guard<MutexType> lock(data_mutex_);
+    return {kv_store_.rocksdb_parent_data_compacted,
+            kv_store_.post_split_compaction_file_number_upper_bound};
   }
 
   void set_post_split_compaction_file_number_upper_bound(uint64_t value) {
@@ -791,9 +814,15 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   bool UsePartialRangeKeyIntents() const;
 
   // versions is a map from table id to min schema version that should be kept for this table.
-  Status OldSchemaGC(const std::unordered_map<Uuid, SchemaVersion>& versions);
+  Status OldSchemaGC(const docdb::CotableSchemaVersionMap& versions);
   void DisableSchemaGC();
   void EnableSchemaGC();
+
+  // Min schema version whose packing must be retained for CDCSDK. WAL entries the streams may
+  // still read can be packed with it or newer versions. No constraint (i.e max) when the tablet is
+  // not under CDCSDK replication.
+  SchemaVersion MinCDCSDKSchemaVersionToRetainUnlocked(const TableInfo& table_info) const
+      REQUIRES(data_mutex_);
 
   Result<docdb::CompactionSchemaInfo> CotablePacking(
       const Uuid& cotable_id, uint32_t schema_version, HybridTime history_cutoff) override;

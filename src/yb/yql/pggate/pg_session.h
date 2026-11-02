@@ -257,7 +257,8 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
 
   NonTransactionalWrites OpsHaveNonTransactionalWrites(const PgsqlOps& operations) const;
 
-  Status SetReadTimeIfPresent(const PgsqlOps& operations, tserver::PgPerformOptionsPB& options);
+  Status SetReadTimeIfPresent(
+      const PgsqlOps& operations, bool has_catalog_ops, tserver::PgPerformOptionsPB& options);
   Status CheckConflictWithYbReadTime(const PgsqlOps& operations);
 
   template<class Generator>

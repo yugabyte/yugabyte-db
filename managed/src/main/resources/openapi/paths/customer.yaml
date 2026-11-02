@@ -73,3 +73,41 @@
       noAuthz: true
     x-yba-api-since: 2026.2.0.0
     x-yba-api-visibility: preview
+'/customers/{cUUID}/host-cloud-info':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  get:
+    operationId: getHostCloudInfo
+    summary: Get the YBA host's cloud info
+    description: 'Returns the public cloud and region that YBA runs on, and the instance metadata used to create a provider in the host''s VPC. Replaces the v1 host_info.'
+    tags:
+      - Customer
+    responses:
+      '200':
+        $ref: "../components/responses/HostCloudInfoResp.yaml"
+      '401':
+        description: 'The request has no valid API or session token, cUUID is not the caller''s customer (including a customer that doesn''t exist), or the caller''s role has no read permission on the customer'
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+      - authTokenAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
