@@ -41,6 +41,7 @@ bool YBCStatusIsSnapshotTooOld(YbcStatus s);
 bool YBCStatusIsResponseCacheMiss(YbcStatus s);
 bool YBCStatusIsTryAgain(YbcStatus s);
 bool YBCStatusIsTimedOut(YbcStatus s);
+bool YBCStatusIsExpired(YbcStatus s);
 bool YBCStatusIsAlreadyPresent(YbcStatus s);
 bool YBCStatusIsReplicationSlotLimitReached(YbcStatus s);
 bool YBCStatusIsNotSupported(YbcStatus s);

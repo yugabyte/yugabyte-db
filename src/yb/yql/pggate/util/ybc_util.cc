@@ -282,6 +282,10 @@ bool YBCStatusIsTimedOut(YbcStatus s) {
   return StatusWrapper(s)->IsTimedOut();
 }
 
+bool YBCStatusIsExpired(YbcStatus s) {
+  return StatusWrapper(s)->IsExpired();
+}
+
 bool YBCStatusIsAlreadyPresent(YbcStatus s) {
   return StatusWrapper(s)->IsAlreadyPresent();
 }
