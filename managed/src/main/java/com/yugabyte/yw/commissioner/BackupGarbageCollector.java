@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_NFS;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
@@ -88,6 +89,8 @@ public class BackupGarbageCollector {
   private static final String OCI = Util.OCI;
   private static final String NFS = Util.NFS;
   private static final int BACKUP_DELETION_MAX_RETRIES_COUNT = 3;
+  // The wait before the second try within one deletion attempt; it doubles after each try.
+  @VisibleForTesting long deleteRetryInitialSleepMs = 5000;
 
   public static final Gauge DELETE_BACKUP_FAILURE =
       Gauge.builder()
@@ -195,8 +198,17 @@ public class BackupGarbageCollector {
                 "Error occurred while deleting backups associated with {} storage config",
                 config.getConfigName());
           } finally {
-            config.delete();
-            log.info("Customer Storage config {} is deleted", config.getConfigName());
+            // A backup whose delete failed and was queued again, or was not reached this run, still
+            // needs the config: deleting it now would leave the backup's files behind.
+            if (Backup.findIfBackupsDeletingWithCustomerConfig(
+                customer.getUuid(), config.getConfigUUID())) {
+              log.info(
+                  "Customer Storage config {} is kept until its backups are deleted",
+                  config.getConfigName());
+            } else {
+              config.delete();
+              log.info("Customer Storage config {} is deleted", config.getConfigName());
+            }
           }
         }
         // Delete remaining backups queued for deletion.
@@ -405,7 +417,7 @@ public class BackupGarbageCollector {
             CloudUtil cloudUtil = storageUtilFactory.getCloudUtil(customerConfig.getName());
             backupLocationsMap = BackupUtil.getBackupLocations(backup);
             int numRetries = 0;
-            long sleepTimeInMilliSeconds = 5000;
+            long sleepTimeInMilliSeconds = deleteRetryInitialSleepMs;
             while (numRetries < BACKUP_DELETION_MAX_RETRIES_COUNT && !deletedSuccessfully) {
               if (cloudUtil.deleteKeyIfExists(
                       configData,
@@ -423,16 +435,7 @@ public class BackupGarbageCollector {
               backup.delete();
               log.info("Backup {} is successfully deleted", backupUUID);
             } else {
-              int retryCount = backup.getRetryCount();
-              if (retryCount < backupDeleteRetryCount) {
-                retryCount++;
-                backup.setRetryCount(retryCount);
-                backup.transitionState(Backup.BackupState.QueuedForDeletion);
-                log.info("Backup {} deletion failed on attempt {}", backupUUID, retryCount);
-              } else {
-                backup.transitionState(Backup.BackupState.FailedToDelete);
-                log.info("Backup {} deletion failed", backupUUID);
-              }
+              requeueOrFailDeletion(backup, backupDeleteRetryCount);
             }
             break;
           case NFS:
@@ -449,16 +452,7 @@ public class BackupGarbageCollector {
                 backup.delete();
                 log.info("Backup {} is successfully deleted", backupUUID);
               } else {
-                int retryCount = backup.getRetryCount();
-                if (retryCount < backupDeleteRetryCount) {
-                  retryCount++;
-                  backup.setRetryCount(retryCount);
-                  backup.transitionState(Backup.BackupState.QueuedForDeletion);
-                  log.info("Backup {} deletion failed on attempt {}", backupUUID, retryCount);
-                } else {
-                  backup.transitionState(Backup.BackupState.FailedToDelete);
-                  log.info("Backup {} deletion failed", backupUUID);
-                }
+                requeueOrFailDeletion(backup, backupDeleteRetryCount);
               }
             } else {
               deletedSuccessfully = true;
@@ -500,6 +494,23 @@ public class BackupGarbageCollector {
   private Boolean isUniversePresent(Backup backup) {
     Optional<Universe> universe = Universe.maybeGet(backup.getBackupInfo().getUniverseUUID());
     return universe.isPresent();
+  }
+
+  /**
+   * Queues a backup whose deletion failed for another attempt, or marks it FailedToDelete once its
+   * requeues are used up.
+   */
+  private void requeueOrFailDeletion(Backup backup, int maxRequeues) {
+    UUID backupUUID = backup.getBackupUUID();
+    int retryCount = backup.getRetryCount();
+    if (retryCount < maxRequeues) {
+      retryCount++;
+      backup.requeueForDeletion(retryCount);
+      log.info("Backup {} deletion failed on attempt {}", backupUUID, retryCount);
+    } else {
+      backup.transitionState(Backup.BackupState.FailedToDelete);
+      log.info("Backup {} deletion failed", backupUUID);
+    }
   }
 
   private boolean deleteScriptBackup(List<BackupTableParams> backupList) {

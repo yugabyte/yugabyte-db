@@ -72,8 +72,30 @@ public class CustomerConfigService {
 
   public void delete(UUID customerUUID, UUID configUUID) {
     CustomerConfig customerConfig = getOrBadRequest(customerUUID, configUUID);
+    if (customerConfig.getType() == ConfigType.STORAGE) {
+      checkNoBackupsBeingDeleted(customerConfig);
+    }
     configValidator.validateConfigRemoval(customerConfig);
     customerConfig.delete();
+  }
+
+  /**
+   * Refuses to remove a storage config right away while backups stored with it are being deleted:
+   * the garbage collector would then find no config for them and leave their files behind. The V2
+   * delete is unaffected: it queues the config, which the garbage collector removes only once none
+   * of its backups is still being deleted.
+   */
+  public void checkNoBackupsBeingDeleted(CustomerConfig storageConfig) {
+    if (Backup.findIfBackupsDeletingWithCustomerConfig(
+        storageConfig.getCustomerUUID(), storageConfig.getConfigUUID())) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Backups stored with configuration "
+              + storageConfig.getConfigName()
+              + " are still being deleted, which can take a few garbage collector runs. Try"
+              + " again once their deletion finishes, or use the V2 delete, which removes the"
+              + " configuration once it does.");
+    }
   }
 
   public Set<UUID> getAssociatedUniverseUUIDS(CustomerConfig storageConfig) {
