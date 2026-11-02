@@ -129,18 +129,43 @@ SELECT v FROM rt;
 COMMIT;
 RESET ROLE;
 
+--
+-- spr() has no SET clause and is not SECURITY DEFINER.  Its body runs a
+-- plain SET ROLE on the first call only, then raises YB001.  That SET is at
+-- the transaction's own GUC level, which the restart keeps, and the retried
+-- call does not run it again.  After the retry, current_user must be the
+-- caller and the role setting none, as after an abort and a replay.
+--
+CREATE SEQUENCE spr_attempt;
+CREATE FUNCTION spr() RETURNS int LANGUAGE plpgsql AS $$
+BEGIN
+  IF nextval('spr_attempt') = 1 THEN
+    SET ROLE retry_bob;
+    RAISE EXCEPTION 'injected kAborted' USING ERRCODE = 'YB001';
+  END IF;
+  RETURN 1;
+END $$;
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+SELECT spr();
+SELECT current_user, current_setting('role') AS role;
+COMMIT;
+SELECT current_user, current_setting('role') AS role;
+RESET ROLE;
+
 DROP FUNCTION sd();
 DROP FUNCTION sr();
 DROP FUNCTION sde();
 DROP FUNCTION sre();
 DROP FUNCTION srs();
 DROP FUNCTION sdp();
+DROP FUNCTION spr();
 DROP SEQUENCE sd_attempt;
 DROP SEQUENCE sr_attempt;
 DROP SEQUENCE sde_attempt;
 DROP SEQUENCE sre_attempt;
 DROP SEQUENCE srs_attempt;
 DROP SEQUENCE sdp_attempt;
+DROP SEQUENCE spr_attempt;
 DROP TABLE rt;
 DROP TABLE retry_s.rt;
 DROP SCHEMA retry_s;
