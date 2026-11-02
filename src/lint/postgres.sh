@@ -244,6 +244,11 @@ else
                 fi
                 expect_newline=false
                 continue
+              elif [ -z "$line" ]; then
+                # When the YB includes block is surrounded by blank lines,
+                # diff may attribute the blank line before the block, rather
+                # than the one after, to the YB side.
+                continue
               elif [[ "$line" != '/* YB includes */' ]]; then
                 echo 'error:include_not_in_yb_includes_block:'\
 'YB-added includes should be put in a YB includes block'\
