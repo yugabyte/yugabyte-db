@@ -1549,7 +1549,13 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ScopeType.GLOBAL,
           "Read GCP instance templates",
           "Read the instance template configured on a GCP region and carry its settings over to"
-              + " the nodes YBA creates, currently its CMEK disk encryption keys. Requires"
+              + " the nodes YBA creates, currently its CMEK disk encryption keys and its"
+              + " enable-oslogin metadata. With OS Login on, YBA imports its SSH key into the OS"
+              + " Login profile of its GCP principal, and the SSH user (from the universe's Linux"
+              + " version, or the provider if the Linux version does not set one) must be that"
+              + " profile's POSIX username. YBA never removes that key from the profile, so"
+              + " rotating or deleting the access key does not revoke it on OS Login nodes;"
+              + " remove it with gcloud compute os-login ssh-keys remove. Requires"
               + " compute.instanceTemplates.get, which is not needed to pass the template to"
               + " instance creation as a source.",
           ConfDataType.BooleanType,
