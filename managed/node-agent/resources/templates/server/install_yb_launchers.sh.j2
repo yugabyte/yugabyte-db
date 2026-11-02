@@ -8,20 +8,21 @@
     The module scripts do not run with set -e, so a failed install exits here instead of leaving
     the units pointing at a missing file. #}
 # Reads the launcher from stdin and installs it as bin/$1, owned by the yb user.
+# install creates a new file in bin/, so it gets bin/'s SELinux label. A file moved from the
+# temp dir would keep tmp_t, which systemd may not be allowed to exec.
 install_yb_launcher() {
     local dest="{{ yb_home_dir }}/bin/$1"
+    local owner_args=()
     local tmp_file
-    tmp_file=$(mktemp) || return 1
-    if cat > "$tmp_file" && chmod 755 "$tmp_file"; then
-        if [ "$SUDO_ACCESS" = "true" ]; then
-            chown {{ yb_user }}:{{ yb_user }} "$tmp_file" &&
-                su - {{ yb_user }} -c "mv ${tmp_file} ${dest}" && return 0
-        else
-            mv "$tmp_file" "$dest" && return 0
-        fi
+    local rc
+    if [ "$SUDO_ACCESS" = "true" ]; then
+        owner_args=(-o {{ yb_user }} -g {{ yb_user }})
     fi
+    tmp_file=$(mktemp) || return 1
+    cat > "$tmp_file" && install -C -m 0755 "${owner_args[@]}" "$tmp_file" "$dest"
+    rc=$?
     rm -f "$tmp_file"
-    return 1
+    return $rc
 }
 
 if [ -d "{{ yb_home_dir }}/bin" ]; then
