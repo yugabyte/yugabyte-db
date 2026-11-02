@@ -80,6 +80,7 @@ typedef struct {
   const uint64_t* ysql_catalog_prefetch_row_limit;
   const uint64_t* ysql_catalog_prefetch_size_limit;
   const bool*     ysql_enable_startup_client_connection_check;
+  const uint32_t* pg_cache_response_trust_auth_lifetime_limit_ms;
 } YbcPgGFlagsAccessor;
 
 const YbcPgGFlagsAccessor* YBCGetGFlags();
