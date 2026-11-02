@@ -727,6 +727,9 @@ TEST_F(SnapshotTest, SameTermMembershipChangeRejectsPreflight) {
       ListTabletPeersForTableName(cluster_.get(), kTableName.table_name()));
   ASSERT_EQ(peers.size(), 3);
   const auto tablet_id = peers.front()->tablet_id();
+  // Workload setup does not wait for the tablet leader election to finish.
+  ASSERT_OK(WaitUntilTabletHasLeader(
+      cluster_.get(), tablet_id, CoarseMonoClock::Now() + 10s, RequireLeaderIsReady::kTrue));
   auto* leader = GetLeaderForTablet(cluster_.get(), tablet_id);
   ASSERT_NE(leader, nullptr);
   auto leader_peer = ASSERT_RESULT(GetLeaderPeerForTablet(cluster_.get(), tablet_id));
