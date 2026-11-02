@@ -15,12 +15,12 @@ boto==2.49.0
 boto3==1.42.46
 botocore==1.42.46
 cachetools==4.2.4
-certifi==2026.7.22
+certifi==2026.10.23
 cffi==2.1.0
 charset-normalizer==3.4.9
 click==8.4.2
 cryptography==50.0.0
-deepdiff==8.6.1
+deepdiff==8.6.2
 distro==1.5.0
 fabric==2.2.1
 geomet==0.2.1.post1
@@ -52,10 +52,10 @@ pip==26.1.2
 portalocker==2.10.1
 protobuf==6.33.5
 psycopg2==2.9.12
-pyasn1==0.6.4
+pyasn1==0.6.5
 pyasn1_modules==0.4.2
 pycparser==3.0
-PyJWT==2.13.0
+PyJWT==2.15.1
 PyNaCl==1.6.2
 pyparsing==3.3.2
 python-dateutil==2.8.2
@@ -72,6 +72,6 @@ setuptools==80.10.2
 six==1.17.0
 typing_extensions==4.16.0
 uritemplate==3.0.1
-urllib3==2.7.0
+urllib3==2.8.0
 wheel==0.47.0
 yb-cassandra-driver==3.29.1.1
