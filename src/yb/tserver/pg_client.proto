@@ -997,8 +997,6 @@ message PgRollbackToSubTransactionResponsePB {
   AppStatusPB status = 1;
 }
 
-// Applies a transaction restart or replacement that pggate made locally for a query layer retry,
-// so that the old transaction's object locks are released before the retry re-acquires them.
 message PgRestartTransactionForRetryRequestPB {
   uint64 session_id = 1;
   PgPerformOptionsPB options = 2;

@@ -1450,7 +1450,7 @@ Status PgSession::AcquireObjectLock(
   }
   auto fastpath_lock_type = docdb::MakeObjectLockFastpathLockType(TableLockType(mode));
   if (!is_session_lock && fastpath_lock_type &&
-      pg_txn_manager_->TryAcquireObjectLock(lock_id, *fastpath_lock_type)) {
+      VERIFY_RESULT(pg_txn_manager_->TryAcquireObjectLock(lock_id, *fastpath_lock_type))) {
     return Status::OK();
   }
   VLOG(1) << "Lock acquisition via shared memory not available";

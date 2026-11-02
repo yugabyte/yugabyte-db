@@ -474,13 +474,7 @@ Status PgTxnManager::RestartTransaction(SetupPerformOptionsAccessorTag tag) {
   return RestartTransactionForRetry(tag);
 }
 
-// The tserver releases all of the old transaction's object locks when it applies a restart or
-// replacement. That has to happen before the retry re-acquires its locks: fastpath locks are not
-// tagged with a transaction, so a later release would drop them too.
 Status PgTxnManager::RestartTransactionForRetry(SetupPerformOptionsAccessorTag tag) {
-  if (!IsTableLockingEnabledForCurrentTxn()) {
-    return Status::OK();
-  }
   tserver::PgPerformOptionsPB options;
   RETURN_NOT_OK(SetupPerformOptions(
       tag, options, NonTransactionalWrites::kFalse, /* read_time_action= */ {},
@@ -1178,7 +1172,7 @@ Status PgTxnManager::RollbackToSubTransaction(
   return client_->RollbackToSubTransaction(id, &options);
 }
 
-bool PgTxnManager::TryAcquireObjectLock(
+Result<bool> PgTxnManager::TryAcquireObjectLock(
     const YbcObjectLockId& lock_id, docdb::ObjectLockFastpathLockType lock_type) {
   // It is safe to use fast path locking only for statements that would eventually be associated
   // with kPlain type at PgClientSession, since fast path locking always assigns locks under the
@@ -1187,7 +1181,7 @@ bool PgTxnManager::TryAcquireObjectLock(
     return false;
   }
 
-  DCHECK(!need_restart_) << "A pending restart would release locks taken here";
+  RSTATUS_DCHECK(!need_restart_, IllegalState, "A pending restart would release locks taken here");
 
   if (!client_->TryAcquireObjectLockInSharedMemory(
         active_sub_transaction_id_, lock_id, lock_type)) {

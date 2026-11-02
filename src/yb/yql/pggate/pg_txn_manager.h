@@ -171,7 +171,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   [[nodiscard]] bool has_exported_snapshots() const { return has_exported_snapshots_; }
   void ClearExportedTxnSnapshots();
   Status RollbackToSubTransaction(SetupPerformOptionsAccessorTag tag, SubTransactionId id);
-  [[nodiscard]] bool TryAcquireObjectLock(
+  Result<bool> TryAcquireObjectLock(
       const YbcObjectLockId& lock_id, docdb::ObjectLockFastpathLockType lock_type);
 
   Status AcquireObjectLock(
