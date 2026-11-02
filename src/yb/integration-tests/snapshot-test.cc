@@ -798,6 +798,10 @@ TEST_F(SnapshotTest, LocalFlushCapacityRejectsBeforeFollowerFlush) {
       ListTabletPeersForTableName(cluster_.get(), kTableName.table_name()));
   ASSERT_EQ(peers.size(), 6);
   const auto snapshot_tablet_id = peers.front()->tablet_id();
+  // Setup does not wait for every tablet of a multi-tablet table to elect a leader.
+  ASSERT_OK(WaitUntilTabletHasLeader(
+      cluster_.get(), snapshot_tablet_id, CoarseMonoClock::Now() + 30s,
+      RequireLeaderIsReady::kTrue));
   auto* leader = GetLeaderForTablet(cluster_.get(), snapshot_tablet_id);
   ASSERT_NE(leader, nullptr);
   // Occupy the leader's only flush slot with a different tablet hosted on the same server.
