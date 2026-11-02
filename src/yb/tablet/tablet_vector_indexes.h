@@ -220,8 +220,11 @@ class TabletVectorIndexes :
 
   Status RepairReverseMapping(const TableId& table_id);
 
-  // Records status as the backfill result of the vector indexes of indexed_table_id.
+  // The vector indexes of indexed_table_id.
   std::vector<docdb::DocVectorIndexPtr> IndexesOf(const TableId& indexed_table_id);
+
+  // The error of the failed repair of indexed_table_id, OK when it has not failed.
+  Status RepairFailure(const TableId& indexed_table_id) EXCLUDES(tasks_mutex_);
 
   Status DoCreateIndex(
       const TableInfo& index_table, const TableInfoPtr& indexed_table, bool allow_inplace_insert)
@@ -265,7 +268,7 @@ class TabletVectorIndexes :
   // Tables with a reverse mapping repair queued or running.
   std::unordered_set<TableId> repairs_in_flight_ GUARDED_BY(tasks_mutex_);
   // Tables whose repair failed with an error that is not retried until the tablet restarts.
-  std::unordered_set<TableId> failed_repairs_ GUARDED_BY(tasks_mutex_);
+  std::unordered_map<TableId, Status> failed_repairs_ GUARDED_BY(tasks_mutex_);
   // Vector indexes with a backfill queued or running.
   std::unordered_set<TableId> backfills_in_flight_ GUARDED_BY(tasks_mutex_);
 };

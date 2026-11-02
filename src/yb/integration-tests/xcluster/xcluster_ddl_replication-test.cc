@@ -119,6 +119,7 @@ DECLARE_bool(TEST_block_apply_intent);
 DECLARE_int32(TEST_delay_at_start_of_schedule_post_tablet_create_tasks_ms);
 DECLARE_bool(TEST_disable_tablet_deletion);
 DECLARE_bool(TEST_fail_vector_index_backfill);
+DECLARE_bool(TEST_fail_vector_reverse_mapping_repair);
 DECLARE_bool(TEST_force_get_checkpoint_from_cdc_state);
 DECLARE_int32(TEST_pause_at_start_of_setup_replication_group_ms);
 DECLARE_bool(TEST_pause_vector_reverse_mapping_repair);
@@ -6334,6 +6335,25 @@ TEST_F(XClusterDDLReplicationColocatedVectorTest, CreateIndexDuringRepair) {
   ASSERT_NO_FATALS(ExpectSameResults({
       SearchQuery("vec_test", "[0, 0, 0]", 200),
       SearchQuery("vec_test", "[1, 2, 1]", 10)}));
+}
+
+// A failed repair fails the backfill of an index created on the table afterwards, rather than
+// holding it back forever.
+TEST_F(XClusterDDLReplicationColocatedVectorTest, RepairFailureFailsIndexBackfill) {
+  ASSERT_OK(SetUpColocatedVectorReplication());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_vector_reverse_mapping_repair) = true;
+  HoldConsumerDdls();
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE vec_test (id int PRIMARY KEY, embedding vector(3))"));
+  ASSERT_OK(producer_conn_->ExecuteFormat(kInsert, "vec_test", 1, 100));
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE INDEX vec_test_idx ON vec_test USING ybhnsw (embedding vector_l2_ops)"));
+
+  // The replayed CREATE INDEX fails with the repair's error, which the DDL queue logs.
+  StringWaiterLogSink create_index_failed(
+      "Vector index backfill failed on tablet");
+  ASSERT_OK(ReleaseConsumerDdls());
+  ASSERT_OK(create_index_failed.WaitFor(kTimeout));
 }
 
 // The consumer tservers restart with the repair pending, which Start relaunches.

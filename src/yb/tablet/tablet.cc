@@ -3437,8 +3437,8 @@ namespace {
 
 // Buffers the entries VectorIndexesUpdater writes, so they can be written after the scan that
 // produced them, and writes them as a DirectWriter.
-class BufferedReverseMappingWriter : public rocksdb::DirectWriteHandler,
-                                     public rocksdb::DirectWriter {
+class BufferedReverseMappingWriter
+    : public rocksdb::DirectWriteHandler, public rocksdb::DirectWriter {
  public:
   std::pair<Slice, Slice> Put(const SliceParts& key, const SliceParts& value) override {
     auto& entry = entries_.emplace_back(
@@ -3538,6 +3538,11 @@ Status Tablet::WriteMissingVectorReverseMappings(const TableInfo& table_info, co
 
   const auto start = MonoTime::Now();
   const auto table_key_prefix = table_info.doc_read_context->table_key_prefix();
+  // An empty prefix would scan, and write entries for, every table of the tablet.
+  SCHECK_FORMAT(
+      table_key_prefix.starts_with(dockv::KeyEntryTypeAsChar::kColocationId), IllegalState,
+      "Unexpected key prefix of colocated table $0: $1", table_info.table_id,
+      table_key_prefix.ToDebugHexString());
   docdb::ConsensusFrontiers write_frontiers;
   write_frontiers.Smallest().set_op_id(op_id);
   write_frontiers.Largest().set_op_id(op_id);
@@ -3592,8 +3597,14 @@ Status Tablet::WriteMissingVectorReverseMappings(const TableInfo& table_info, co
       /* indexes= */ nullptr, *metadata_, frontiers, docdb::StorageSet::All(), chunk_holds);
   for (iter->Seek(table_key_prefix);
        iter->Valid() && iter->key().starts_with(table_key_prefix); iter->Next()) {
-    if (++num_scanned % kEntriesPerWrite == 0 && IsShutdownRequested()) {
-      return STATUS(ShutdownInProgress, "Tablet is shutting down");
+    if (++num_scanned % kEntriesPerWrite == 0) {
+      // Raised while pending operations are drained, for a shutdown but also for a truncate or a
+      // restore, which wait for this scan otherwise. The latter return TryAgain to repeat the
+      // repair once the storages are back.
+      if (auto status = abort_pending_op_source_.AbortStatus(); !status.ok()) {
+        return IsShutdownRequested()
+            ? status : STATUS_FORMAT(TryAgain, "Storages are being replaced: $0", status);
+      }
     }
     auto [key, doc_ht] = VERIFY_RESULT(decode_key());
     if (doc_ht <= table_tombstone_time) {

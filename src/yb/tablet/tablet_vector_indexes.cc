@@ -62,6 +62,10 @@ DEFINE_test_flag(bool, pause_vector_reverse_mapping_repair, false,
     "Hold the vector reverse mapping repair of a colocated table, see "
     "TableInfoPB::vector_reverse_mapping_repair_pending, before it starts.");
 
+DEFINE_test_flag(bool, fail_vector_reverse_mapping_repair, false,
+    "Make vector reverse mapping repairs fail with an injected error. Logged as a warning, not "
+    "DFATAL.");
+
 DEFINE_test_flag(bool, fail_vector_index_backfill, false,
     "Make vector index backfills fail with an injected error. Logged as a warning, not DFATAL.");
 
@@ -91,6 +95,7 @@ namespace yb::tablet {
 namespace {
 
 constexpr auto kInjectedBackfillFailure = "Injected vector index backfill failure";
+constexpr auto kInjectedRepairFailure = "Injected vector reverse mapping repair failure";
 
 class IndexReverseMappingReader : public docdb::DocVectorIndexReverseMappingReader {
  public:
@@ -393,9 +398,15 @@ Status TabletVectorIndexes::DoCreateIndex(
     repair_pending = (**current).vector_reverse_mapping_repair_pending;
   }
   if (repair_pending && !bootstrap) {
-    LOG_WITH_PREFIX(INFO)
-        << "Waiting for the reverse mapping repair of " << indexed_table->table_id
-        << " to backfill " << index_table.table_id;
+    // A failed repair is not repeated until the tablet restarts, so the backfill would wait
+    // forever, and with it a CREATE INDEX waiting for the backfill.
+    if (auto failure = RepairFailure(indexed_table->table_id); !failure.ok()) {
+      vector_index->SetBackfillStatus(failure);
+    } else {
+      LOG_WITH_PREFIX(INFO)
+          << "Waiting for the reverse mapping repair of " << indexed_table->table_id
+          << " to backfill " << index_table.table_id;
+    }
   }
 
   // A restore that reactivates the index relaunches its backfill, see ScheduleBackfillAfterRestore.
@@ -774,10 +785,14 @@ void TabletVectorIndexes::LaunchBackfillsIfNecessary() {
         continue;
     }
     if ((**indexed_table_info_res).vector_reverse_mapping_repair_pending) {
-      // Launched again by the repair once it is done.
-      LOG_WITH_PREFIX_AND_FUNC(INFO)
-          << "Waiting for the reverse mapping repair of " << indexed_table_id << " to backfill "
-          << AsString(*vector_index);
+      // Launched again by the repair once it is done, unless it failed.
+      if (auto failure = RepairFailure(indexed_table_id); !failure.ok()) {
+        vector_index->SetBackfillStatus(failure);
+      } else {
+        LOG_WITH_PREFIX_AND_FUNC(INFO)
+            << "Waiting for the reverse mapping repair of " << indexed_table_id
+            << " to backfill " << AsString(*vector_index);
+      }
       continue;
     }
 
@@ -833,7 +848,7 @@ void TabletVectorIndexes::ScheduleReverseMappingRepair(const TableId& table_id) 
       repairs_in_flight_.erase(table_id);
       if (!status.ok() && !status.IsTryAgain() && !status.IsShutdownInProgress()) {
         // Not repeated until the tablet restarts: the scan would most likely fail the same way.
-        failed_repairs_.insert(table_id);
+        failed_repairs_.emplace(table_id, status);
       }
     }
     if (status.ok()) {
@@ -848,12 +863,25 @@ void TabletVectorIndexes::ScheduleReverseMappingRepair(const TableId& table_id) 
       ScheduleBackfillRetry(FLAGS_vector_index_backfill_retry_delay_ms * 1ms);
     } else if (!status.IsShutdownInProgress()) {
       // The table's vector indexes stay held back, so fail the backfills someone may wait for.
-      LOG_WITH_PREFIX(DFATAL) << "Reverse mapping repair of " << table_id << " failed: " << status;
+      // Injected by tests, don't crash the debug build for it.
+      if (status.message() == Slice(kInjectedRepairFailure)) {
+        LOG_WITH_PREFIX(WARNING)
+            << "Reverse mapping repair of " << table_id << " failed: " << status;
+      } else {
+        LOG_WITH_PREFIX(DFATAL)
+            << "Reverse mapping repair of " << table_id << " failed: " << status;
+      }
       for (const auto& vector_index : IndexesOf(table_id)) {
         vector_index->SetBackfillStatus(status);
       }
     }
   });
+}
+
+Status TabletVectorIndexes::RepairFailure(const TableId& indexed_table_id) {
+  std::lock_guard lock(tasks_mutex_);
+  auto it = failed_repairs_.find(indexed_table_id);
+  return it == failed_repairs_.end() ? Status::OK() : it->second;
 }
 
 std::vector<docdb::DocVectorIndexPtr> TabletVectorIndexes::IndexesOf(
@@ -881,6 +909,9 @@ Status TabletVectorIndexes::RepairReverseMapping(const TableId& table_id) {
   }
   if (tablet().IsShutdownRequested()) {
     return STATUS(ShutdownInProgress, "Tablet is shutting down");
+  }
+  if (FLAGS_TEST_fail_vector_reverse_mapping_repair) {
+    return STATUS(IOError, kInjectedRepairFailure);
   }
   auto table_info = metadata().GetTableInfo(table_id);
   if (!table_info.ok() || !(**table_info).vector_reverse_mapping_repair_pending) {
