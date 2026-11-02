@@ -1,8 +1,8 @@
 module node-agent
 
-go 1.26.6
+go 1.26.10
 
-replace golang.org/x/crypto => golang.org/x/crypto v0.54.0
+replace golang.org/x/crypto => golang.org/x/crypto v0.57.0
 
 require (
 	github.com/apex/log v1.9.0
@@ -18,8 +18,8 @@ require (
 	github.com/spf13/cobra v1.5.0
 	github.com/spf13/viper v1.12.0
 	github.com/thoas/go-funk v0.9.2
-	golang.org/x/crypto v0.54.0
-	golang.org/x/net v0.56.0
+	golang.org/x/crypto v0.57.0
+	golang.org/x/net v0.60.0
 	google.golang.org/grpc v1.77.0
 	google.golang.org/protobuf v1.36.10
 	gopkg.in/ini.v1 v1.66.4
@@ -59,7 +59,7 @@ require (
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/subosito/gotenv v1.3.0 // indirect
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56 // indirect
-	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.40.0 // indirect
+	golang.org/x/sys v0.48.0 // indirect
+	golang.org/x/text v0.42.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251022142026-3a174f9686a8 // indirect
 )
