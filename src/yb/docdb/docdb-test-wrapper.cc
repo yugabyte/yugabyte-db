@@ -21,6 +21,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/yb_partition.h"
 
+DECLARE_bool(drop_sst_files_hidden_by_hybrid_time_filter);
 DECLARE_bool(ysql_enable_cdr_metadata);
 
 namespace yb {
@@ -1925,6 +1926,51 @@ TEST_P(DocDBTestWrapper, SetHybridTimeFilterSingleFile) {
       SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(10); HT{ physical: 1000 }]) -> 1
       SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(10); HT{ physical: 2000 }]) -> 2
   )#");
+}
+
+// A restore removes the files whose keys are all newer than its hybrid time filter, and keeps the
+// filter on the files that also have older keys.
+TEST_P(DocDBTestWrapper, SetHybridTimeFilterRemovesHiddenFiles) {
+  for (bool drop_hidden_files : {false, true}) {
+    SCOPED_TRACE(Format("drop_hidden_files: $0", drop_hidden_files));
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_drop_sst_files_hidden_by_hybrid_time_filter) =
+        drop_hidden_files;
+    ASSERT_OK(DestroyRocksDB());
+    ASSERT_OK(ReopenRocksDB());
+
+    // A file with keys on both sides of the filter, then one with keys only after it.
+    for (int i = 1; i <= 3; ++i) {
+      ASSERT_OK(WriteSimple(i));
+    }
+    ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
+    for (int i = 4; i <= 5; ++i) {
+      ASSERT_OK(WriteSimple(i));
+    }
+    ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
+    ASSERT_EQ(rocksdb()->GetLiveFilesMetaData().size(), 2);
+
+    CloseRocksDB();
+    {
+      RocksDBPatcher patcher(rocksdb_dir_, regular_db_options_);
+      ASSERT_OK(patcher.Load());
+      ASSERT_OK(patcher.SetHybridTimeFilter(std::nullopt, HybridTime::FromMicros(2000)));
+      ASSERT_TRUE(patcher.TEST_ContainsHybridTimeFilter());
+    }
+    // The removed file is deleted by the patcher, not left for the next DB open.
+    std::vector<std::string> children;
+    ASSERT_OK(regular_db_options_.env->GetChildren(rocksdb_dir_, &children));
+    auto num_sst_files = std::count_if(children.begin(), children.end(), [](const auto& name) {
+      return name.ends_with(".sst");
+    });
+    ASSERT_EQ(num_sst_files, drop_hidden_files ? 1 : 2);
+    ASSERT_OK(OpenRocksDB());
+    ASSERT_EQ(rocksdb()->GetLiveFilesMetaData().size(), drop_hidden_files ? 1 : 2);
+
+    ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+        SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(10); HT{ physical: 1000 }]) -> 1
+        SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(10); HT{ physical: 2000 }]) -> 2
+    )#");
+  }
 }
 
 TEST_P(DocDBTestWrapper, SetHybridTimeFilter) {

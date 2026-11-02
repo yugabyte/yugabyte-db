@@ -69,6 +69,7 @@
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_statistics.h"
 #include "yb/docdb/docdb_util.h"
+#include "yb/docdb/properties_collector/key_hybrid_time_range_collector.h"
 #include "yb/docdb/properties_collector/sst_stats_aggregator.h"
 #include "yb/docdb/properties_collector/sst_stats_collector.h"
 #include "yb/docdb/properties_collector/sst_stats_metrics.h"
@@ -1397,6 +1398,10 @@ Status Tablet::OpenRegularDB(const rocksdb::Options& common_options) {
         tablet_options_, docdb::StorageDbType::kRegular, regular_rocksdb_options.info_log.get(),
         std::move(table_options));
   }
+
+  // Lets a restore to a point in time remove the files that it hides entirely, see
+  // RocksDBPatcher::SetHybridTimeFilter.
+  docdb::AddKeyHybridTimeRangeCollector(&regular_rocksdb_options);
 
   if (FLAGS_docdb_enable_sst_stats_collector) {
     regular_rocksdb_options.table_properties_collector_factories.push_back(

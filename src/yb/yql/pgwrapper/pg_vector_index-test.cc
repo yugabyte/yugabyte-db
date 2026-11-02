@@ -31,6 +31,7 @@
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/log.h"
 
+#include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_vector_index.h"
 
@@ -51,6 +52,7 @@
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/sst_dump_tool.h"
+#include "yb/rocksdb/statistics.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_introspection.pb.h"
@@ -7282,6 +7284,64 @@ TEST_F(PgVectorIndexUtilTest, StoredPayloadRestoreToTime) {
   conn = ASSERT_RESULT(Connect());
   ASSERT_TRUE(ASSERT_RESULT(HasVectorDeletion()));
   ASSERT_EQ(ASSERT_RESULT(NearestIds(conn, kNumRows)), "[1, 2, 3, 4, 5]");
+}
+
+// A restore to a time before most of the vectors were written removes the SST file holding them
+// rather than leaving it behind a hybrid time filter: every index candidate check would otherwise
+// step over all of its entries, so search time grew with the square of the rolled back vectors.
+TEST_F(PgVectorIndexUtilTest, RestoreToTimeRemovesHiddenFiles) {
+  client::SnapshotTestUtil snapshot_util;
+  snapshot_util.SetProxy(&client_->proxy_cache());
+  snapshot_util.SetCluster(cluster_.get());
+
+  constexpr size_t kNumRows = 100;
+  constexpr size_t kNumRolledBackRows = 5000;
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  auto schedule_id = ASSERT_RESULT(snapshot_util.CreateSchedule(
+      nullptr, YQL_DATABASE_PGSQL, DbName(),
+      client::WaitSnapshot::kTrue, 1s * kTimeMultiplier, 60s * kTimeMultiplier));
+  auto restore_at = cluster_->mini_master(0)->Now();
+  // Closer to the query vector than any of the restored rows, so a search goes through all of them.
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test SELECT i, ('[' || v || ', ' || v || ', ' || v || ']')::vector "
+      "FROM generate_series($0, $1) i, LATERAL (SELECT i * 0.0001 AS v) t",
+      kNumRows + 1, kNumRows + kNumRolledBackRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(snapshot_util.WaitScheduleSnapshot(schedule_id, cluster_->mini_master(0)->Now()));
+  ASSERT_OK(snapshot_util.RestoreSnapshotSchedule(schedule_id, restore_at));
+
+  conn = ASSERT_RESULT(Connect());
+
+  auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 1);
+  auto tablet = ASSERT_RESULT(peers.front()->shared_tablet());
+  for (const auto& file : tablet->regular_db()->GetLiveFilesMetaData()) {
+    SCOPED_TRACE(file.ToString());
+    ASSERT_TRUE(file.largest.user_frontier);
+    ASSERT_FALSE(down_cast<docdb::ConsensusFrontier&>(*file.largest.user_frontier).HasFilter());
+  }
+
+  // The rolled back rows are closer to the query vector, so they are not found.
+  ASSERT_EQ(ASSERT_RESULT(NearestIds(conn, 3)), "[1, 2, 3]");
+  ASSERT_NE(tablet->regulardb_statistics(), nullptr);
+  auto& statistics = *tablet->regulardb_statistics();
+  auto data_blocks = [&statistics] {
+    return statistics.getTickerCount(rocksdb::BLOCK_CACHE_DATA_HIT) +
+           statistics.getTickerCount(rocksdb::BLOCK_CACHE_DATA_MISS);
+  };
+  constexpr int kNumSearches = 3;
+  auto start_blocks = data_blocks();
+  for (int i = 0; i != kNumSearches; ++i) {
+    ASSERT_EQ(ASSERT_RESULT(NearestIds(conn, 3)), "[1, 2, 3]");
+  }
+  // With the rolled back rows kept behind the filter, a search read about 53K data blocks.
+  auto data_blocks_per_search = (data_blocks() - start_blocks) / kNumSearches;
+  LOG(INFO) << "Data blocks per search: " << data_blocks_per_search;
+  ASSERT_LT(data_blocks_per_search, kNumRows);
 }
 
 // A committed transaction is visible through its intents until it is applied, while the index

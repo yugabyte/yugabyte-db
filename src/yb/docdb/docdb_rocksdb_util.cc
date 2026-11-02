@@ -31,6 +31,7 @@
 #include "yb/docdb/docdb_statistics.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/key_bounds.h"
+#include "yb/docdb/properties_collector/key_hybrid_time_range_collector.h"
 #include "yb/docdb/read_operation_data.h"
 
 #include "yb/gutil/casts.h"
@@ -126,6 +127,12 @@ DEFINE_NON_RUNTIME_uint64(rocksdb_max_manifest_file_size, 10_MB,
 DEFINE_NON_RUNTIME_bool(rocksdb_persist_options_file, false,
     "Write the RocksDB OPTIONS file on every DB open and options change. Nothing reads it, and "
     "with many tablets the rewrites are a noticeable share of the bootstrap I/O.");
+
+DEFINE_RUNTIME_bool(drop_sst_files_hidden_by_hybrid_time_filter, true,
+    "When a restore to a point in time (PITR, clone, transactional snapshot) sets a hybrid time "
+    "filter on the regular RocksDB, remove the SST files whose keys are all newer than the filter "
+    "instead of keeping them hidden behind it until a compaction. Only files that record the "
+    "hybrid time range of their keys qualify.");
 
 DEFINE_RUNTIME_bool(rocksdb_advise_random_on_open, true,
     "If set to true, will hint the underlying file system that the file access pattern is random, "
@@ -846,6 +853,17 @@ class RocksDBPatcherHelper {
     add_edit_->AddCleanedFile(level, fmd);
   }
 
+  void DeleteFile(int level, const rocksdb::FileMetaData& fmd) {
+    delete_edit_->DeleteFile(level, fmd.fd.GetNumber());
+  }
+
+  Result<std::optional<KeyHybridTimeRange>> GetKeyHybridTimeRange(
+      const rocksdb::FileMetaData& fmd) {
+    std::shared_ptr<const rocksdb::TableProperties> properties;
+    RETURN_NOT_OK(cfd_->current()->GetTableProperties(&properties, &fmd));
+    return docdb::GetKeyHybridTimeRange(properties->user_collected_properties);
+  }
+
   rocksdb::VersionEdit& Edit() {
     return *add_edit_;
   }
@@ -945,8 +963,9 @@ class RocksDBPatcher::Impl {
 
   Status SetHybridTimeFilter(std::optional<uint32_t> db_oid, HybridTime value) {
     RocksDBPatcherHelper helper(&version_set_);
+    std::vector<rocksdb::FileDescriptor> dropped_files;
 
-    helper.IterateFiles([&helper, db_oid, value](
+    helper.IterateFiles([&helper, &dropped_files, db_oid, value](
         int level, const rocksdb::FileMetaData& file) {
       if (!file.largest.user_frontier) {
         return;
@@ -981,6 +1000,25 @@ class RocksDBPatcher::Impl {
         helper.ModifyFile(level, fmd);
         return;
       } /* if (db_oid) */
+      // A file whose keys are all hidden by the filter would stay in the DB until a compaction,
+      // and every read that reaches it would step over all of its entries
+      // (rocksdb::FilteringIterator). Remove it, as such a compaction would.
+      if (FLAGS_drop_sst_files_hidden_by_hybrid_time_filter) {
+        auto existing_filter = consensus_frontier.GlobalFilter();
+        auto filter = existing_filter.is_valid() ? std::min(existing_filter, value) : value;
+        auto key_ht_range = helper.GetKeyHybridTimeRange(file);
+        if (!key_ht_range.ok()) {
+          LOG(WARNING) << "Failed to read the key hybrid time range of " << file.ToString() << ": "
+                       << key_ht_range.status();
+        } else if (*key_ht_range && (**key_ht_range).min > filter) {
+          LOG(INFO) << "Removing " << file.ToString() << ", all its keys are hidden by hybrid time "
+                    << "filter " << filter << ", key hybrid time range "
+                    << AsString(**key_ht_range);
+          helper.DeleteFile(level, file);
+          dropped_files.push_back(file.fd);
+          return;
+        }
+      }
       if (HybridTime(consensus_frontier.GlobalFilter()) <= value) {
         LOG(INFO) << "No need to set hybrid time filter since the largest frontier already"
                   << " has an older filter. Largest frontier HT "
@@ -994,7 +1032,25 @@ class RocksDBPatcher::Impl {
       helper.ModifyFile(level, fmd);
     });
 
-    return helper.Apply(options_, imm_cf_options_);
+    RETURN_NOT_OK(helper.Apply(options_, imm_cf_options_));
+
+    // The patched directory could be a snapshot that is never opened as a DB, so the removed files
+    // are deleted here rather than left to the obsolete file deletion of a DB open. They are hard
+    // links to the files of the source directory.
+    for (const auto& fd : dropped_files) {
+      if (fd.GetPathId() >= options_.db_paths.size()) {
+        LOG(WARNING) << "Not deleting removed file " << fd.GetNumber() << ", unknown path id "
+                     << fd.GetPathId();
+        continue;
+      }
+      auto base_path = rocksdb::MakeTableFileName(
+          options_.db_paths[fd.GetPathId()].path, fd.GetNumber());
+      for (const auto& path : {base_path, rocksdb::TableBaseToDataFileName(base_path)}) {
+        auto status = options_.env->DeleteFile(path);
+        LOG_IF(WARNING, !status.ok()) << "Failed to delete removed file " << path << ": " << status;
+      }
+    }
+    return Status::OK();
   }
 
   Status ModifyFlushedFrontier(
