@@ -1332,13 +1332,13 @@ TEST_F(PgTxnTest, ColumnTombstoneCollectedByPartialCompaction) {
       "1, NULL");
 }
 
-// A query-layer retry must not undo a SET ROLE that ran earlier in the same
-// transaction and is not replayed. In an extended-protocol batch, SET ROLE
-// does not advance the command id, so a later statement in the batch may
-// still be retried. Scenario: one pipeline sends SET ROLE alice and then
-// SELECT f(), where f returns current_user and raises a retriable kAborted
-// (YB001) on its first attempt only; the retried f must still run as alice.
-// This needs libpq pipeline mode, which pg_regress's psql cannot drive.
+// A query-layer retry must keep a SET ROLE that ran earlier in the same
+// transaction, because the retry does not replay it. In an extended-protocol
+// batch, SET ROLE does not advance the command id, so a later statement in
+// the batch can still be retried. Scenario: one pipeline sends SET ROLE alice
+// and then SELECT f(). f returns current_user and raises a retriable
+// kAborted (YB001) on its first call only. The retried f must run as alice.
+// The test needs libpq pipeline mode, which pg_regress's psql cannot drive.
 TEST_F(PgTxnTest, BatchedRetryKeepsSetRole) {
   {
     auto conn = ASSERT_RESULT(Connect());
@@ -1395,12 +1395,13 @@ TEST_F(PgTxnTest, BatchedRetryKeepsSetRole) {
   ASSERT_EQ(user_seen_by_f, "alice");
 }
 
-// The same for a plain SET before a retried write: the retry rolls back the
-// GUC changes of the failed attempt, and must stop short of a SET that ran
-// earlier in the batch, which is not replayed. Scenario: one pipeline sends
-// SET work_mem = '7MB' and then INSERT INTO t VALUES (f()), where f returns
-// work_mem and raises a retriable kAborted (YB001) on its first attempt only;
-// the retried INSERT must write 7MB.
+// The same for a plain SET before a retried write. The retry pops the GUC
+// levels that the failed attempt pushed, and must keep the transaction's own
+// level, which holds the earlier SET. Scenario: one pipeline sends
+// SET work_mem = '7MB' and then INSERT INTO t VALUES (f()). f returns
+// work_mem and raises a retriable kAborted (YB001) on its first call only.
+// The retried INSERT must write 7MB. f is STABLE: a volatile plpgsql function
+// advances the command id, and then the batch is not retried.
 TEST_F(PgTxnTest, BatchedRetryKeepsSet) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE SEQUENCE attempt"));

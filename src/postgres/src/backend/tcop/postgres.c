@@ -6309,9 +6309,9 @@ yb_exec_query_wrapper_one_attempt(MemoryContext exec_context,
 			YbClearParallelContexts();
 		YBResetOperationTracking();
 		/*
-		 * Control may have escaped a SECURITY DEFINER function, which leaves
-		 * undoing its user switch to the abort; without this the retry runs
-		 * with the definer's privileges.
+		 * An error can leave a SECURITY DEFINER function before it switches
+		 * the user back.  Only the abort undoes that, and the retry skips the
+		 * abort; without this, the retry would start as the function owner.
 		 */
 		SetUserIdAndSecContext(save_userid, save_sec_context);
 		yb_attempt_to_retry_on_error(attempt, retry_data, exec_context);

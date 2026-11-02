@@ -2364,10 +2364,11 @@ YBCRestartWriteTransaction()
 		RollbackAndReleaseCurrentSubTransaction();
 
 	/*
-	 * Control may have escaped a function with a SET clause, such as
-	 * SET role, which leaves undoing it to the abort; without this the retry
-	 * runs with the function's settings.  Keep the transaction's own level: a
-	 * SET earlier in an extended-protocol batch is not replayed.
+	 * An error can leave a function with a SET clause, such as SET role,
+	 * before the function pops its GUC level.  Only the abort pops it;
+	 * without this, the retry would run with the function's settings.  Keep
+	 * the transaction's own level: it holds SETs from earlier statements of
+	 * an extended-protocol batch, which the retry does not replay.
 	 */
 	AtEOXact_GUC(false, CurrentTransactionState->gucNestLevel + 1);
 
