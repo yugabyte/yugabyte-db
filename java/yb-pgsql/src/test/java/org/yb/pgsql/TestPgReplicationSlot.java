@@ -6497,6 +6497,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         .withStartPosition(LogSequenceNumber.valueOf(0L))
         .start();
 
+    assertTrue(miniCluster.getClient().waitForLoadBalancerIdle(120 * 1000));
+
     int numTservers = miniCluster.getNumTServers();
 
     // Resolve tserver index 0's RPC HostAndPort deterministically.
