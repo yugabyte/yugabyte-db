@@ -7,3 +7,4 @@
 test: yb.orig.transactions
 test: yb.orig.internal_subtransactions
 test: yb.orig.txn_read_point_visibility
+test: yb.orig.query_layer_retry_user
