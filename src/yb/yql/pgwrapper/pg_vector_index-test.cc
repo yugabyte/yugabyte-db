@@ -116,9 +116,8 @@ DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_use_packed_row_v2);
 DECLARE_bool(TEST_disable_wal_retention_time);
 DECLARE_bool(TEST_fail_vector_index_backfill);
-DECLARE_bool(TEST_modify_flushed_frontier_snapshot_op);
 DECLARE_bool(TEST_skip_process_apply);
-DECLARE_bool(TEST_skip_restore_flushed_op_id_stamps);
+DECLARE_bool(TEST_skip_vector_index_stamp_after_restore_reopen);
 DECLARE_bool(TEST_use_custom_varz);
 DECLARE_bool(TEST_vector_index_corrupt_inserted_payloads);
 DECLARE_bool(TEST_vector_index_corrupt_inserted_vectors);
@@ -195,7 +194,7 @@ namespace yb::pgwrapper {
 
 YB_STRONGLY_TYPED_BOOL(AddFilter);
 YB_STRONGLY_TYPED_BOOL(Backfill);
-YB_STRONGLY_TYPED_BOOL(CrashBeforeRestoreStamps);
+YB_STRONGLY_TYPED_BOOL(CrashAfterRestoreReopen);
 YB_STRONGLY_TYPED_BOOL(NonTransactionalWrites);
 YB_STRONGLY_TYPED_BOOL(NullVectorBeforeSchemaChange);
 YB_STRONGLY_TYPED_BOOL(WaitForIntents);
@@ -885,7 +884,7 @@ class PgVectorIndexTest : public PgVectorIndexTestParamsDecorator<PgVectorIndexT
   void TestNullVectorsInIntents(bool commit);
   void TestBootstrapAfterSchemaChange(
       NullVectorBeforeSchemaChange null_vector, NonTransactionalWrites non_transactional_writes);
-  void TestSnapshotRestoreNonTransactionalWrites(CrashBeforeRestoreStamps crash_before_stamps);
+  void TestSnapshotRestoreNonTransactionalWrites(CrashAfterRestoreReopen crash_after_reopen);
 };
 
 MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgVectorIndexTest);
@@ -2094,7 +2093,7 @@ TEST_P(PgVectorIndexTest, SnapshotScheduleRestoreBeforeDropColumn) {
 }
 
 void PgVectorIndexTest::TestSnapshotRestoreNonTransactionalWrites(
-    CrashBeforeRestoreStamps crash_before_stamps) {
+    CrashAfterRestoreReopen crash_after_reopen) {
   constexpr size_t kNumRows = 16;
 
   // One tablet, so every replica's vector index holds all the rows.
@@ -2124,21 +2123,13 @@ void PgVectorIndexTest::TestSnapshotRestoreNonTransactionalWrites(
   ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kRegular));
 
   auto snapshot_id = ASSERT_RESULT(snapshot_util.PickSuitableSnapshot(schedule_id, hybrid_time));
-  if (crash_before_stamps) {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_restore_flushed_op_id_stamps) = true;
-    // The tserver keeps running past the skipped stamps. Keep the RESTORE_FINISHED op that follows
-    // the restore from moving the flushed OpId of the regular DB past it, which a crash would not
-    // get to do.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_modify_flushed_frontier_snapshot_op) = false;
-  }
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_vector_index_stamp_after_restore_reopen) =
+      crash_after_reopen.get();
   ASSERT_OK(snapshot_util.RestoreSnapshot(snapshot_id, hybrid_time));
-  // The replay of the restore on bootstrap has to stamp. RestoreSnapshot returns once the leader
-  // applied the restore, so a follower can still apply it after this point, with the stamps.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_restore_flushed_op_id_stamps) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_vector_index_stamp_after_restore_reopen) = false;
 
   DisableFlushOnShutdown(*cluster_, true);
   ASSERT_OK(RestartCluster());
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_modify_flushed_frontier_snapshot_op) = true;
 
   auto indexes = ListVectorIndexes(cluster_.get());
   ASSERT_FALSE(indexes.empty());
@@ -2147,19 +2138,18 @@ void PgVectorIndexTest::TestSnapshotRestoreNonTransactionalWrites(
   }
 }
 
-// A restore replaces the vector index storage together with the regular DB, but only the regular
-// DB's flushed frontier is patched to the restore op id. The vector indexes must be stamped with
-// it too, otherwise bootstrap starts replay at their older flushed OpId and re-inserts the rolled
-// back writes into them. See issue #32797.
+// A restore replaces the vector index storage together with the regular DB. The vector indexes
+// must get the restore op id like the regular DB, otherwise bootstrap starts replay at their older
+// flushed OpId and re-inserts the rolled back writes into them. See issue #32797.
 TEST_P(PgVectorIndexTest, SnapshotRestoreNonTransactionalWrites) {
-  TestSnapshotRestoreNonTransactionalWrites(CrashBeforeRestoreStamps::kFalse);
+  TestSnapshotRestoreNonTransactionalWrites(CrashAfterRestoreReopen::kFalse);
 }
 
-// A crash after the restore reopens the storages but before it stamps the restore op id must not
-// leave the vector indexes at the snapshot's OpIds. Bootstrap has to replay the restore, which
-// stamps them again. See issue #35077.
-TEST_P(PgVectorIndexTest, SnapshotRestoreCrashBeforeStamps) {
-  TestSnapshotRestoreNonTransactionalWrites(CrashBeforeRestoreStamps::kTrue);
+// Once the regular DB has the restore op id, bootstrap does not replay the restore. A crash right
+// after the restore reopens the storages must find the vector indexes at the restore op id too,
+// not at the snapshot's OpIds. See issue #35077.
+TEST_P(PgVectorIndexTest, SnapshotRestoreCrashAfterReopen) {
+  TestSnapshotRestoreNonTransactionalWrites(CrashAfterRestoreReopen::kTrue);
 }
 
 // Bootstrap replays the writes that a vector index has not flushed into it, so packing GC must

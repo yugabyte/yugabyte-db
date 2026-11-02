@@ -13,6 +13,8 @@
 
 #include "yb/tablet/tablet_snapshots.h"
 
+#include <set>
+
 #include <boost/algorithm/string/predicate.hpp>
 
 #include "yb/ash/wait_state.h"
@@ -27,8 +29,6 @@
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_util.h"
-
-#include "yb/gutil/casts.h"
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/util/file_util.h"
@@ -125,9 +125,9 @@ DEFINE_test_flag(bool, pause_create_checkpoint, false,
 DEFINE_test_flag(int32, snapshot_cleanup_retry_delay_ms, 0,
     "If positive, override the snapshot cleanup retry backoff in tests.");
 
-DEFINE_test_flag(bool, skip_restore_flushed_op_id_stamps, false,
-    "If true, a checkpoint restore does not move the vector indexes and the regular DB to the "
-    "restore op id after reopening them, as if the tserver crashed right after the reopen.");
+DEFINE_test_flag(bool, skip_vector_index_stamp_after_restore_reopen, false,
+    "If true, a checkpoint restore does not stamp the restore op id on the vector indexes after "
+    "reopening them, as if the tserver crashed right after the reopen.");
 
 namespace yb::tablet {
 
@@ -758,6 +758,31 @@ Status TabletSnapshots::RestoreCheckpoint(
     }
   }
 
+  // The restore replaced the vector index storages together with the regular DB. Force the
+  // restore op id on the vector indexes. With a lower snapshot time OpId, bootstrap would replay
+  // the rolled back writes back into them. With a higher OpId of another Raft group, e.g. the
+  // source of a clone or of an imported backup, it would skip this group's writes to them.
+  // It is done before the regular DB patch below: once the regular DB has the restore op id,
+  // bootstrap does not replay the restore, so a crash after it must find the vector indexes
+  // stamped. The storages are those of the snapshot and, for a restore without one, those of the
+  // listed indexes. The restored metadata, which can rename them, is not merged yet.
+  {
+    std::set<std::string> vector_index_dirs;
+    for (auto& dir : metadata().vector_index_dirs()) {
+      vector_index_dirs.insert(std::move(dir));
+    }
+    if (!snapshot_dir.empty()) {
+      for (const auto& child : VERIFY_RESULT(env().GetChildren(snapshot_dir, ExcludeDots::kTrue))) {
+        if (child.starts_with(docdb::kVectorIndexDirPrefix)) {
+          vector_index_dirs.insert(docdb::GetStorageDir(db_dir, child));
+        }
+      }
+    }
+    for (const auto& dir : vector_index_dirs) {
+      RETURN_NOT_OK(docdb::ForceVectorIndexStorageOpId(dir, frontier.op_id()));
+    }
+  }
+
   {
     rocksdb::Options rocksdb_options;
     tablet().InitRocksDBOptions(
@@ -765,15 +790,8 @@ Status TabletSnapshots::RestoreCheckpoint(
     docdb::RocksDBPatcher patcher(db_dir, rocksdb_options);
 
     RETURN_NOT_OK(patcher.Load());
-    // The regular DB reaches the restore op id only after the vector indexes do, below. Until then
-    // its flushed OpId stays just under the restore op, so a crash in between replays the restore
-    // on bootstrap, and the replay replaces and stamps the vector indexes again. With the restore
-    // op id here, bootstrap would skip the restore and keep the vector indexes at the OpIds of the
-    // restored chunks.
-    auto patched_frontier = frontier;
-    patched_frontier.set_op_id(OpId(frontier.op_id().term, frontier.op_id().index - 1));
     RETURN_NOT_OK(patcher.ModifyFlushedFrontier(
-        patched_frontier, VERIFY_RESULT(GetCotableIdsMap(snapshot_dir))));
+        frontier, VERIFY_RESULT(GetCotableIdsMap(snapshot_dir))));
     if (restore_at) {
       RETURN_NOT_OK(patcher.SetHybridTimeFilter(std::nullopt, restore_at));
     }
@@ -849,21 +867,11 @@ Status TabletSnapshots::RestoreCheckpoint(
     return s;
   }
 
-  if (!FLAGS_TEST_skip_restore_flushed_op_id_stamps) {
-    // The restore replaced the vector index storages together with the regular DB. Force the
-    // restore op id on the vector indexes. With a lower snapshot time OpId, bootstrap would replay
-    // the rolled back writes back into them. With a higher OpId of another Raft group, e.g. the
-    // source of a clone or of an imported backup, it would skip this group's writes to them.
+  // The storages stamped above already have the restore op id. This covers a listed index whose
+  // storage the restore did not bring, e.g. one created after the snapshot.
+  if (!FLAGS_TEST_skip_vector_index_stamp_after_restore_reopen) {
     RETURN_NOT_OK(tablet().vector_indexes().ModifyFlushedFrontier(
-        frontier, rocksdb::FrontierModificationMode::kForce));
-
-    // Now the restore no longer needs to be replayed. The regular DB holds nothing unflushed yet,
-    // so its flushed frontier is the one patched above, short of the restore op id.
-    auto flushed_frontier = regular_db().GetFlushedFrontier();
-    SCHECK(flushed_frontier, IllegalState, "Restored regular DB has no flushed frontier");
-    down_cast<docdb::ConsensusFrontier&>(*flushed_frontier).set_op_id(frontier.op_id());
-    RETURN_NOT_OK(regular_db().ModifyFlushedFrontier(
-        std::move(flushed_frontier), rocksdb::FrontierModificationMode::kForce));
+        frontier, rocksdb::FrontierModificationMode::kUpdate));
   }
 
   LOG_WITH_PREFIX(INFO) << "Checkpoint restored from " << snapshot_dir;
