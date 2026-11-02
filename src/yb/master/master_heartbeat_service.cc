@@ -167,6 +167,7 @@ using namespace std::placeholders;
 using consensus::ConsensusStatePB;
 using consensus::PeerMemberType;
 using tablet::RaftGroupStatePB;
+using tablet::TABLET_DATA_COPYING;
 using tablet::TABLET_DATA_DELETED;
 using tablet::TABLET_DATA_TOMBSTONED;
 
@@ -864,9 +865,17 @@ bool ShouldDeleteNonMember(
     int64_t prev_opid_index,
     int64_t report_opid_index,
     const TSDescriptorPtr& ts_desc) {
+  // A replica in remote bootstrap or still starting up reports no Raft config yet. A tombstone
+  // decided from such a report would be retried until the replica runs and could then delete a
+  // replica that the leader has re-added in a pending config (the CAS check on the tserver sees
+  // only the committed config). The tserver reports again once running, with the pending config
+  // op id received at RBS, so decide then.
   if (!FLAGS_master_tombstone_evicted_tablet_replicas ||
     report.tablet_data_state() == TABLET_DATA_TOMBSTONED ||
-    report.tablet_data_state() == TABLET_DATA_DELETED) {
+    report.tablet_data_state() == TABLET_DATA_DELETED ||
+    report.tablet_data_state() == TABLET_DATA_COPYING ||
+    (!report.has_committed_consensus_state() &&
+     (report.state() == tablet::NOT_STARTED || report.state() == tablet::BOOTSTRAPPING))) {
     return false;
   }
 
