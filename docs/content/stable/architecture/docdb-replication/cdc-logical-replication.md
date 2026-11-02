@@ -52,7 +52,7 @@ CDC continues to serve changes from the hidden tablets to the client until that 
 
 The restart time is the latest commit time acknowledged by the CDC client. When the restart time across all replication slots passes the hide time of these tablets, the tablets are marked as available for deletion and are subsequently deleted.
 
-In versions earlier than v2026.1, such DDLs are blocked when logical replication is active on the database.
+In versions earlier than v2026.1, DDLs that cause a table rewrite and `TRUNCATE` are blocked when logical replication is active on the database, and `DROP TABLE` deletes the tablets immediately, so changes not yet streamed are lost.
 
 ### Data flow
 
