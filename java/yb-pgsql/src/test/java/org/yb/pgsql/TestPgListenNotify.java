@@ -1278,6 +1278,45 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     }
   }
 
+  /**
+   * A backend that re-LISTENs while another backend keeps the node's poller alive must keep
+   * suppressing that poller's replays of a transaction it received before UNLISTEN.
+   */
+  @Test
+  public void testNoDuplicateAfterRelistenWithSamePoller() throws Exception {
+    final String channel = "relisten_replay";
+
+    try {
+      // The poller now crashes after every queue write, before the CDC ack, so it keeps
+      // replaying the same transaction.
+      setFatalAfterNotifsQueueWriteFlag(true);
+      Thread.sleep(2000);
+
+      try (Connection aConn = getConnectionBuilder().withTServer(0).connect();
+           Statement aStmt = aConn.createStatement();
+           Connection bConn = getConnectionBuilder().withTServer(0).connect();
+           Statement bStmt = bConn.createStatement();
+           Connection notifierConn = getConnectionBuilder().withTServer(0).connect();
+           Statement notifierStmt = notifierConn.createStatement()) {
+        aStmt.execute("LISTEN " + channel);
+        bStmt.execute("LISTEN " + channel);
+        notifierStmt.execute("NOTIFY " + channel + ", 'x'");
+        assertEquals(Arrays.asList("x"),
+            payloadsOf(waitForNotification(aConn, channel, "x")));
+
+        // B keeps the same poller and slot, so A must still recognize the replays of 'x'.
+        aStmt.execute("UNLISTEN " + channel);
+        aStmt.execute("LISTEN " + channel);
+        waitAndAssertNoNotifications(aConn,
+            "Replay of a transaction received before UNLISTEN was delivered again");
+      }
+    } finally {
+      setFatalAfterNotifsQueueWriteFlag(false);
+    }
+
+    verifyListenNotifyWorks();
+  }
+
   private static void notifyInTransaction(Statement stmt, String channel, String... payloads)
       throws Exception {
     stmt.execute("BEGIN");

@@ -618,21 +618,25 @@ static TimestampTz ybNotifsPollerId = 0;
  * also break duplicate detection if the poller crashes and replays).
  *
  * The xids come from the replication slot's virtual WAL and are only unique
- * within one incarnation of the slot, so this state is reset whenever the
- * backend registers as a listener (see Exec_ListenPreCommit).
+ * within one incarnation of the slot.  Each incarnation has its own poller
+ * (YbNotifsPollerShmemData.poller_id), and a backend only scans entries from
+ * the poller it registered under, so this state is reset when the backend
+ * registers under a different poller (see Exec_ListenPreCommit).
  */
 typedef struct YbListenerQueueScanCurrentXactState
 {
 	TransactionId begin_xid;
 	int			scanned_notifs;
 	int			notifs_to_skip;
+	TimestampTz poller_id;		/* poller whose entries this state describes */
 } YbListenerQueueScanCurrentXactState;
 
 static YbListenerQueueScanCurrentXactState ybListenerQueueScanCurrentXactState =
 {
 	.begin_xid = InvalidTransactionId,
 	.scanned_notifs = 0,
-	.notifs_to_skip = 0
+	.notifs_to_skip = 0,
+	.poller_id = 0
 };
 
 /*
@@ -1461,15 +1465,22 @@ Exec_ListenPreCommit(void)
 	 * These notifications were committed before this LISTEN, so we can safely
 	 * set max to head.
 	 *
-	 * The duplicate-txn scan state is reset here too; see
-	 * YbListenerQueueScanCurrentXactState.
+	 * The duplicate-txn scan state is reset here too if the poller changed;
+	 * see YbListenerQueueScanCurrentXactState.
 	 */
 	if (IsYugaByteEnabled())
 	{
+		bool		found;
+		TimestampTz poller_id = ybShmemNotifsPollerData(&found)->poller_id;
+
 		max = head;
-		ybListenerQueueScanCurrentXactState.begin_xid = InvalidTransactionId;
-		ybListenerQueueScanCurrentXactState.scanned_notifs = 0;
-		ybListenerQueueScanCurrentXactState.notifs_to_skip = 0;
+		if (ybListenerQueueScanCurrentXactState.poller_id != poller_id)
+		{
+			ybListenerQueueScanCurrentXactState.begin_xid = InvalidTransactionId;
+			ybListenerQueueScanCurrentXactState.scanned_notifs = 0;
+			ybListenerQueueScanCurrentXactState.notifs_to_skip = 0;
+			ybListenerQueueScanCurrentXactState.poller_id = poller_id;
+		}
 	}
 
 	QUEUE_BACKEND_POS(MyBackendId) = max;
