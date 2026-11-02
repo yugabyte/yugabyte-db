@@ -287,12 +287,33 @@ TEST_F(CDCSDKYsqlTest, TestSentLagNoSpikeAfterLeaderChange) {
                metrics->cdcsdk_last_sent_physicaltime->value() > 0;
       },
       MonoDelta::FromSeconds(10) * kTimeMultiplier, "Caught up"));
+  const auto old_last_sent_micros = metrics->cdcsdk_last_sent_physicaltime->value();
 
-  // Move leadership away long enough for commit time to pass the old last-sent time, and let the
-  // new leader stream the next row so the stream itself stays caught up.
+  auto original_leader_peer = [&]() -> std::shared_ptr<tablet::TabletPeer> {
+    for (const auto& peer : test_cluster()->GetTabletPeers(leader_index)) {
+      if (peer && peer->tablet_id() == tablet_id) {
+        return peer;
+      }
+    }
+    return nullptr;
+  };
+
+  // Move leadership away, and let the new leader stream the next row so the stream itself stays
+  // caught up.
   StartYbAdminClient();
   ASSERT_OK(StepDownLeader(follower_index, tablet_id));
-  SleepFor(MonoDelta::FromSeconds(5) * kTimeMultiplier);
+  ASSERT_OK(WaitFor(
+      [&] {
+        auto peer = original_leader_peer();
+        return peer && !peer->IsLeaderAndReady() &&
+               metrics->cdcsdk_last_sent_physicaltime->value() == 0;
+      },
+      MonoDelta::FromSeconds(30) * kTimeMultiplier, "Original leader cleared last-sent"));
+  // The next row must commit more than 2s after the old last-sent time, so a stale last-sent
+  // would show as a spike.
+  ASSERT_OK(WaitFor(
+      [&] { return GetCurrentTimeMicros() - old_last_sent_micros > 3 * 1000 * 1000; },
+      MonoDelta::FromSeconds(10) * kTimeMultiplier, "Commit time past the old last-sent time"));
   ASSERT_OK(WriteRowsHelper(1, 2, &test_cluster_, true));
   auto cp = change_resp.cdc_sdk_checkpoint();
   ASSERT_OK(WaitForGetChangesToFetchRecords(
@@ -301,12 +322,8 @@ TEST_F(CDCSDKYsqlTest, TestSentLagNoSpikeAfterLeaderChange) {
   ASSERT_OK(StepDownLeader(leader_index, tablet_id));
   ASSERT_OK(WaitFor(
       [&] {
-        for (const auto& peer : test_cluster()->GetTabletPeers(leader_index)) {
-          if (peer && peer->tablet_id() == tablet_id) {
-            return peer->IsLeaderAndReady();
-          }
-        }
-        return false;
+        auto peer = original_leader_peer();
+        return peer && peer->IsLeaderAndReady();
       },
       MonoDelta::FromSeconds(30) * kTimeMultiplier, "Original leader is ready"));
 
