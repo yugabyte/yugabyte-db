@@ -39,6 +39,7 @@
 /* YB includes */
 #include "commands/async.h"
 #include "yb_ash.h"
+#include "yb_memory_watcher.h"
 #include "yb_query_diagnostics.h"
 
 /*
@@ -145,6 +146,9 @@ static const struct
 	},
 	{
 		"YbNotifsPollerMain", YbNotifsPollerMain
+	},
+	{
+		"YbMemoryWatcherMain", YbMemoryWatcherMain
 	}
 };
 

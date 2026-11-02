@@ -23,6 +23,7 @@ OBJS = \
 	yb_index_check.o \
 	yb_internal_conn.o \
 	yb_jumblefuncs.o \
+	yb_memory_watcher.o \
 	yb_pg_conf_validator.o \
 	yb_qpm.o \
 	yb_query_diagnostics.o \
