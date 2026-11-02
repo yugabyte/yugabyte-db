@@ -1232,6 +1232,7 @@ nextval_internal(Oid relid, bool check_permissions)
 Datum
 currval_oid(PG_FUNCTION_ARGS)
 {
+	/* YB: a pooled backend serves many clients, so its currval is not theirs */
 	if (YbIsClientYsqlConnMgr() && (strcmp((YBCGetGFlags()->ysql_conn_mgr_sequence_support_mode),
 										   "pooled_without_curval_lastval") == 0))
 	{
@@ -1270,6 +1271,7 @@ currval_oid(PG_FUNCTION_ARGS)
 Datum
 lastval(PG_FUNCTION_ARGS)
 {
+	/* YB: a pooled backend serves many clients, so its lastval is not theirs */
 	if (YbIsClientYsqlConnMgr() && (strcmp((YBCGetGFlags()->ysql_conn_mgr_sequence_support_mode),
 										   "pooled_without_curval_lastval") == 0))
 	{

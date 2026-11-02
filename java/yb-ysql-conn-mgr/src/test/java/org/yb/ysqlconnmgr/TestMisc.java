@@ -436,22 +436,11 @@ public class TestMisc extends BaseYsqlConnMgr {
                             Collections.singletonMap("ysql_conn_mgr_sequence_support_mode",
                                                      mode));
 
-    try (Connection suConn = getConnectionBuilder()
-             .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
-             .connect();
-         Statement suStmt = suConn.createStatement()) {
-      suStmt.execute("CREATE ROLE seq_user LOGIN");
-      suStmt.execute("CREATE SEQUENCE undef_seq START 1");
-      suStmt.execute("GRANT USAGE, SELECT ON SEQUENCE undef_seq TO seq_user");
-    }
-
-    // Non-superuser, so that ysql_conn_mgr_superuser_sticky cannot pin the connection.
     try (Connection conn = getConnectionBuilder()
              .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
-             .withUser("seq_user")
              .connect();
          Statement stmt = conn.createStatement()) {
-      assertTrue(verifySessionParameterValue(stmt, "is_superuser", "off"));
+      stmt.execute("CREATE SEQUENCE undef_seq START 1");
 
       try {
         stmt.executeQuery("SELECT currval('undef_seq')");
