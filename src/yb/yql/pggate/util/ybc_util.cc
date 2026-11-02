@@ -962,7 +962,7 @@ char* YBCDecodeRangePartitionKey(const char* partition_key, size_t key_len) {
 static bool object_locking_infra_for_curr_txn = false;
 
 void YBCSetObjectLockingInfraForCurrTxn() {
-  object_locking_infra_for_curr_txn = enable_object_locking_infra;
+  object_locking_infra_for_curr_txn = yb_enable_object_locking_infra;
 }
 
 bool YBCIsObjectLockingInfraEnabled() {
