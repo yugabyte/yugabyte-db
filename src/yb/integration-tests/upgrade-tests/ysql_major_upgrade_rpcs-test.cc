@@ -396,7 +396,7 @@ TEST_F(YsqlMajorUpgradeRpcsTest, YB_RELEASE_ONLY_TEST(MasterCrashWhileNamespaceP
 }
 
 // Make sure a namespace left in PREPARING before the upgrade is still reaped.
-TEST_F(YsqlMajorUpgradeRpcsTest, YB_RELEASE_ONLY_TEST(StaleNamespaceIsStillReaped)) {
+TEST_F(YsqlMajorUpgradeRpcsTest, StaleNamespaceIsStillReaped) {
   const std::string kStaleDb = "stale_db";
 
   // Hang the creation so the database stays in PREPARING on disk. The hook has to be one the old
@@ -418,8 +418,9 @@ TEST_F(YsqlMajorUpgradeRpcsTest, YB_RELEASE_ONLY_TEST(StaleNamespaceIsStillReape
   thread_holder.JoinAll();
 
   // The row carries no NEXT_VER_PREPARING marker, so the loader reaps it instead of keeping it as a
-  // database the upgrade is rebuilding.
-  ASSERT_OK(WaitForNamespaceState(kStaleDb, master::SysNamespaceEntryPB::DELETING));
+  // database the upgrade is rebuilding, and the reap drops it in full even though the upgrade is in
+  // progress.
+  ASSERT_OK(WaitForNamespaceState(kStaleDb, master::SysNamespaceEntryPB::DELETED));
 }
 
 // Make sure ysql major catalog upgrade works with a master crash during the upgrade.

@@ -193,8 +193,9 @@ YB_DEFINE_ENUM(YsqlDdlSubTransactionRollbackState,
     (kDdlSubTxnRollbackPostProcessingFailed));
 
 YB_DEFINE_ENUM(DeleteYsqlDBTablesType,
-    (kNormal)                // Reglar DB drop. Can we used during both normal operations and major
-                             // upgrade.
+    (kNormal)                // Regular DB drop: delete every table of the database.
+    (kMajorUpgradeDrop)      // pg_upgrade dropping a database during a ysql major upgrade: delete
+                             // only the current version catalog tables.
     (kMajorUpgradeRollback)  // Delete all rows and tables of the current catalog in order to
                              // rollback a ysql major upgrade. This can only be used during a ysql
                              // major version upgrade.
