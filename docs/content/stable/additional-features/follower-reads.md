@@ -52,8 +52,6 @@ Where:
 - `staleness` is [yb_follower_read_staleness_ms](../../reference/configuration/yb-tserver/#yb-follower-read-staleness-ms) (default 30 seconds). A shorter value makes it more likely that a follower is in (B). YugabyteDB rejects a value less than twice [--max_clock_skew_usec](../../reference/configuration/yb-tserver/#max-clock-skew-usec) (500 ms by default, so the minimum is 1000 ms). Also keep it at least twice [raft_heartbeat_interval_ms](../../reference/configuration/yb-tserver/#raft-heartbeat-interval-ms) (500 ms by default). On an idle tablet, a follower's safe time advances only when a leader heartbeat arrives, so it can sit one heartbeat interval behind the current time. A read time only one interval back then falls in (B).
 - `avoid_waiting` is [--ysql_follower_reads_avoid_waiting_for_safe_time](../../reference/configuration/yb-tserver/#ysql-follower-reads-avoid-waiting-for-safe-time) (default `true`). Retrying at the leader is usually faster than waiting for the follower to catch up.
 
-The timeline shows `now − max_stale` to the left of `now − staleness`. This order is only correct when `staleness` is less than `max_stale` (the default). If staleness is greater, the read time would be older than the max-stale bound. A follower that already has the data at the read time can still be in (A), because that check compares the follower's lag with the current time and runs before the read-time check.
-
 A rejected read is always retried at the tablet leader, not at another follower. The `consistent_prefix_failed_reads` metric counts these retries.
 
 ## YSQL
