@@ -31,6 +31,7 @@
 
 #include "yb/server/server_base_options.h"
 
+#include "yb/tserver/pg_cache_util.h"
 #include "yb/tserver/pg_client.service.h"
 #include "yb/tserver/pg_txn_snapshot_manager.h"
 
@@ -67,7 +68,6 @@ class TserverXClusterContextIf;
     (GetActiveTransactionList) \
     (GetCatalogMasterVersion) \
     (GetDatabaseInfo) \
-    (IsDatabaseColocated) \
     (GetIndexBackfillProgress) \
     (GetLockStatus) \
     (GetReplicationSlot) \
@@ -132,6 +132,7 @@ class TserverXClusterContextIf;
 // PG_CLIENT_SESSION_ASYNC_METHODS).
 #define YB_PG_CLIENT_ASYNC_METHODS \
     (FinishTransaction) \
+    (IsDatabaseColocated) \
     (OpenTable) \
     (TriggerRelcacheInitConnection) \
     /**/
@@ -162,9 +163,8 @@ class PgClientServiceImpl : public PgClientServiceIf {
       const PgPerformRequestMsg* req, PgPerformResponseMsg* resp,
       rpc::RpcContext context) override;
 
-  void InvalidateTableCache();
-  void InvalidateTableCache(const std::unordered_map<uint32_t, uint64_t>& db_oids_updated,
-                            const std::unordered_set<uint32_t>& db_oids_deleted);
+  void InvalidateTableCache(const std::optional<PgTableCacheInvalidationFilter>& filter);
+
   Result<PgTxnSnapshot> GetLocalPgTxnSnapshot(const PgTxnSnapshotLocalId& snapshot_id);
 
   // Returns the current per-database read-time pins registered by local PG sessions,

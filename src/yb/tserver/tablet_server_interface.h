@@ -14,7 +14,9 @@
 #pragma once
 
 #include <future>
+#include <string>
 #include <string_view>
+#include <unordered_set>
 
 #include "yb/ash/wait_state.h"
 
@@ -101,6 +103,12 @@ class TabletServerIf : public LocalTabletServer {
       uint32_t db_oid, bool is_breaking_change, uint64_t new_catalog_version,
       const std::optional<std::string>& message_list) = 0;
 
+  // Records that this node now has a cached sys table prefetch for db_oid at catalog_version, so
+  // that a backend starting up can read the catalog at that version locally instead of fetching it
+  // from the master leader. Ignored for a database this node has no catalog version slot for, and
+  // never moves the recorded version backwards.
+  virtual void SetYsqlDbLastPrefetchedCatalogVersion(uint32_t db_oid, uint64_t catalog_version) = 0;
+
   // Asynchronously triggers an internal superuser PG connection that rebuilds the relcache init
   // file for `req.database_name()`. The callback is invoked once the operation finishes (or fails)
   // with the final Status. Implementations must not block the caller's thread waiting for the
@@ -160,6 +168,11 @@ class TabletServerIf : public LocalTabletServer {
 
   virtual Result<std::vector<tablet::TabletStatusPB>> GetLocalTabletsMetadata() const = 0;
   virtual Result<std::vector<TserverMetricsInfoPB>> GetMetrics() const = 0;
+
+  // Replaces the set of table IDs whose table-level metrics are exported by scrapes that opt into
+  // active-table filtering. list_version is the caller's version of the list, zero if none.
+  virtual Status SetActiveTableIdsForMetrics(
+      std::unordered_set<std::string> table_ids, uint32_t list_version) = 0;
 
   virtual Result<pgwrapper::PGConn> CreateInternalPGConn(
       const std::string& database_name, std::string_view user = kDefaultInternalPgUser,

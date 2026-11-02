@@ -201,6 +201,9 @@ class SchemaPackingStorage {
 
   void AddSchema(SchemaVersion version, const Schema& schema);
 
+  // Adds an already-built packing under the given version. No-op if the version is present.
+  void AddPacking(SchemaVersion version, const SchemaPacking& packing);
+
   Status LoadFromPB(const google::protobuf::RepeatedPtrField<SchemaPackingPB>& schemas);
   Status MergeWithRestored(
       SchemaVersion schema_version, const SchemaPB& schema,

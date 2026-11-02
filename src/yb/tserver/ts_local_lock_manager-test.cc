@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include "yb/client/client.h"
+
 #include "yb/common/common_flags.h"
 #include "yb/common/ddl_mode-test-util.h"
 #include "yb/tserver/ts_local_lock_manager.h"
@@ -20,6 +22,8 @@
 #include "yb/docdb/object_lock_data.h"
 #include "yb/docdb/object_lock_shared_state.h"
 #include "yb/docdb/object_lock_shared_state_manager.h"
+
+#include "yb/master/master_ddl.pb.h"
 
 #include "yb/rpc/thread_pool.h"
 
@@ -117,7 +121,8 @@ class TSLocalLockManagerTest : public TabletServerTestBase {
       const ObjectLockOwner& owner, uint32_t database_id, const std::vector<uint32_t>& relation_ids,
       const std::vector<TableLockType>& lock_types,
       CoarseTimePoint deadline = CoarseTimePoint::max(), LockStateMap* state_map = nullptr,
-      TransactionId bg_txn = TransactionId::Nil()) {
+      TransactionId bg_txn = TransactionId::Nil(),
+      std::optional<uint64_t> start_time = std::nullopt) {
     SCHECK_EQ(relation_ids.size(), lock_types.size(), IllegalState, "Expected equal sizes");
     tserver::AcquireObjectLockRequestPB req;
     owner.PopulateLockRequest(&req);
@@ -130,7 +135,7 @@ class TSLocalLockManagerTest : public TabletServerTestBase {
       lock->set_object_sub_oid(kDefaultObjectSubId);
       lock->set_lock_type(lock_types[i]);
     }
-    req.set_propagated_hybrid_time(MonoTime::Now().ToUint64());
+    req.set_propagated_hybrid_time(start_time.value_or(MonoTime::Now().ToUint64()));
     if (!bg_txn.IsNil()) {
       req.set_background_transaction_id(bg_txn.data(), bg_txn.size());
     }
@@ -936,6 +941,73 @@ TEST_F(TSLocalLockManagerTest, TestTimedOutResumeSignalsNextWaiter) {
   ASSERT_OK(next.get());
   ASSERT_OK(ReleaseLocksForOwner(kTxn3));
 }
+
+// A DML queued behind a DDL only because of the DDL's queued request (and not any conflicting
+// holder) shouldn't slip through when the DDL request times out at Poll. The DDL's retry carries
+// its original start time, re-enters the queue ahead of the DML, and is granted first.
+TEST_F(TSLocalLockManagerTest, TestPollTimedOutWaiterDoesNotResumeNextWaiter) {
+  ASSERT_OK(LockRelation(kTxn1, kDatabase1, kObject1, TableLockType::ROW_EXCLUSIVE));
+
+  std::atomic<bool> dml_resumed{false};
+  SyncPoint::GetInstance()->SetCallBack("WaiterEntry::Resume", [&](void* arg) {
+    if (*static_cast<TransactionId*>(arg) == kTxn3.txn_id) {
+      dml_resumed.store(true);
+    }
+  });
+  SyncPoint::GetInstance()->ClearTrace();
+  SyncPoint::GetInstance()->EnableProcessing();
+  auto disable_sync_point = ScopeExit([] {
+    SyncPoint::GetInstance()->DisableProcessing();
+    SyncPoint::GetInstance()->ClearAllCallBacks();
+  });
+
+  const auto ddl_start_time = MonoTime::Now().ToUint64();
+  auto lock_ddl = [&](CoarseTimePoint deadline) {
+    return LockRelations(
+        kTxn2, kDatabase1, {kObject1}, {TableLockType::SHARE}, deadline,
+        /*state_map=*/nullptr, /*bg_txn=*/TransactionId::Nil(), ddl_start_time);
+  };
+
+  auto ddl = std::async(std::launch::async, [&] {
+    return lock_ddl(CoarseMonoClock::Now() + 2s * kTimeMultiplier);
+  });
+  ASSERT_OK(WaitFor([&] {
+    return WaitingLocksSize() >= 1;
+  }, 5s * kTimeMultiplier, "DDL should wait on the DML holder"));
+  auto dml = std::async(std::launch::async, [&] {
+    return LockRelation(
+        kTxn3, kDatabase1, kObject1, TableLockType::ROW_EXCLUSIVE, CoarseMonoClock::Now() + 60s);
+  });
+  ASSERT_OK(WaitFor([&] {
+    return WaitingLocksSize() >= 2;
+  }, 5s * kTimeMultiplier, "DML should queue behind the waiting DDL"));
+
+  auto ddl_status = ddl.get();
+  ASSERT_NOK(ddl_status);
+  ASSERT_STR_CONTAINS(ddl_status.ToString(), "Failed to acquire object locks within deadline");
+  // Give an erroneously scheduled resumption of the DML a chance to run.
+  SleepFor(500ms * kTimeMultiplier);
+  ASSERT_FALSE(dml_resumed.load()) << "DML resumed on the DDL's Poll timeout";
+  ASSERT_EQ(dml.wait_for(0s), std::future_status::timeout);
+
+  ddl = std::async(std::launch::async, [&] {
+    return lock_ddl(CoarseMonoClock::Now() + 60s);
+  });
+  ASSERT_OK(WaitFor([&] {
+    return WaitingLocksSize() >= 2;
+  }, 5s * kTimeMultiplier, "DDL retry should re-enter the wait-queue"));
+  ASSERT_FALSE(dml_resumed.load());
+
+  ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+  ASSERT_OK(ddl.get());
+  SleepFor(500ms * kTimeMultiplier);
+  ASSERT_FALSE(dml_resumed.load()) << "DML resumed ahead of the DDL retry";
+  ASSERT_EQ(dml.wait_for(0s), std::future_status::timeout);
+
+  ASSERT_OK(ReleaseLocksForOwner(kTxn2));
+  ASSERT_OK(dml.get());
+  ASSERT_OK(ReleaseLocksForOwner(kTxn3));
+}
 #endif
 
 TEST_F(TSLocalLockManagerTest, YB_LINUX_DEBUG_ONLY_TEST(TestFastpathCrash)) {
@@ -1319,6 +1391,37 @@ TEST_F(TSLocalLockManagerTest, TestFastpathOverflow) {
   ASSERT_TRUE(ReleaseLocksPgFastpath(kTxn2.txn_id));
 
   ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+}
+
+
+// A release naming specific objects leaves the subtxn's other locks held, so it must keep the
+// subtxn's tracked acquire deadline. Otherwise the later release-all of the subtxn finds no
+// deadline and schedules no lost-message retry.
+TEST_F(TSLocalLockManagerTest, NamedReleaseKeepsDeadlineForReleaseAll) {
+  // No master is needed: the retries are scheduled far enough out that shutdown aborts them before
+  // they use the client.
+  auto client = ASSERT_RESULT(client::YBClientBuilder()
+      .add_master_server_addr("127.0.0.1:1")
+      .set_skip_master_leader_resolution(true)
+      .Build());
+  auto lock_manager = mini_server_->server()->ts_local_lock_manager();
+  const auto& txn_id = kTxn1.txn_id;
+  const auto subtxn_id = kTxn1.subtxn_id;
+  const auto deadline = CoarseMonoClock::Now() + 1h;
+  lm_->TrackDeadlineForGlobalAcquire(txn_id, subtxn_id, deadline);
+
+  auto named_release = std::make_shared<master::ReleaseObjectLocksGlobalRequestPB>();
+  auto* lock = named_release->add_object_locks();
+  lock->set_database_oid(kDatabase1);
+  lock->set_relation_oid(kObject1);
+  lock->set_lock_type(TableLockType::NONE);
+  lm_->ScheduleReleaseForLostMessages(*client, lock_manager, txn_id, subtxn_id, named_release);
+  ASSERT_EQ(lm_->TEST_MaxDeadlineForTxn(txn_id, subtxn_id), deadline);
+
+  lm_->ScheduleReleaseForLostMessages(
+      *client, lock_manager, txn_id, subtxn_id,
+      std::make_shared<master::ReleaseObjectLocksGlobalRequestPB>());
+  ASSERT_EQ(lm_->TEST_MaxDeadlineForTxn(txn_id, subtxn_id), std::nullopt);
 }
 
 } // namespace yb::tserver

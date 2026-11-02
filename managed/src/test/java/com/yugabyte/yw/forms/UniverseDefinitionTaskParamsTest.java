@@ -13,8 +13,10 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ProviderInitializer;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.AZOverrides;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -45,7 +47,7 @@ public class UniverseDefinitionTaskParamsTest extends FakeDBApplication {
     IllegalStateException ex =
         assertThrows(
             IllegalStateException.class,
-            () -> cluster.validate(false, false, false, Collections.emptySet()));
+            () -> cluster.validate(false, false, false, false, Collections.emptySet()));
 
     assertTrue(ex.getMessage().contains(MASTER_FIELDS_ERROR));
 
@@ -55,7 +57,7 @@ public class UniverseDefinitionTaskParamsTest extends FakeDBApplication {
     IllegalStateException exGcp =
         assertThrows(
             IllegalStateException.class,
-            () -> clusterGcp.validate(false, false, false, Collections.emptySet()));
+            () -> clusterGcp.validate(false, false, false, false, Collections.emptySet()));
 
     assertTrue(exGcp.getMessage().contains(MASTER_FIELDS_ERROR));
   }
@@ -68,7 +70,7 @@ public class UniverseDefinitionTaskParamsTest extends FakeDBApplication {
     IllegalStateException ex =
         assertThrows(
             IllegalStateException.class,
-            () -> cluster.validate(false, false, false, Collections.emptySet()));
+            () -> cluster.validate(false, false, false, false, Collections.emptySet()));
 
     assertTrue(ex.getMessage().contains(MASTER_FIELDS_ERROR));
 
@@ -78,7 +80,7 @@ public class UniverseDefinitionTaskParamsTest extends FakeDBApplication {
     IllegalStateException exGcp =
         assertThrows(
             IllegalStateException.class,
-            () -> clusterGcp.validate(false, false, false, Collections.emptySet()));
+            () -> clusterGcp.validate(false, false, false, false, Collections.emptySet()));
 
     assertTrue(exGcp.getMessage().contains(MASTER_FIELDS_ERROR));
   }
@@ -87,10 +89,27 @@ public class UniverseDefinitionTaskParamsTest extends FakeDBApplication {
   public void validateAllowsMasterFieldsWhenDedicatedNodesEnabled() {
     Cluster cluster =
         buildClusterForMasterFieldsValidation(true, true, true, Common.CloudType.kubernetes);
-    cluster.validate(false, false, false, Collections.emptySet());
+    cluster.validate(false, false, false, false, Collections.emptySet());
     Cluster clusterGcp =
         buildClusterForMasterFieldsValidation(true, true, true, Common.CloudType.gcp);
-    clusterGcp.validate(false, false, false, Collections.emptySet());
+    clusterGcp.validate(false, false, false, false, Collections.emptySet());
+  }
+
+  @Test
+  public void validateChecksClientCertGFlagsAgainstPrimarySetting() {
+    // A read replica's own intent leaves useNodeToNodeClientCerts false; the primary's applies.
+    Cluster cluster =
+        buildClusterForMasterFieldsValidation(true, true, true, Common.CloudType.kubernetes);
+    cluster.userIntent.tserverGFlags =
+        new HashMap<>(Map.of(GFlagsUtil.NODE_TO_NODE_REQUIRED_UID, "yugabyte"));
+
+    cluster.validate(false, false, false, false, Collections.emptySet());
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> cluster.validate(false, false, false, true, Collections.emptySet()));
+
+    assertTrue(ex.getMessage(), ex.getMessage().contains(GFlagsUtil.NODE_TO_NODE_REQUIRED_UID));
   }
 
   @Test

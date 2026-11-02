@@ -313,6 +313,13 @@ SELECT object_name, start_hash_code, end_hash_code, start_range, end_range
 FROM yb_get_tablet_metadata()
 WHERE tablet_id = '00000000000000000000000000000000';
 
+-- ============================================================
+-- yb_tablegroup_size
+-- ============================================================
+-- Parent-size checks need drive-info heartbeats and live in
+-- PgTableSizeTest. An unknown oid errors without waiting.
+SELECT yb_tablegroup_size(0);
+
 -- Cleanup
 \c yugabyte yugabyte
 DROP DATABASE colocated_db;

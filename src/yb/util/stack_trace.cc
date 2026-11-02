@@ -367,6 +367,15 @@ void StackTrace::Collect(int skip_frames) {
     int max_frames = skip_frames + arraysize(frames_);
     void** buffer = static_cast<void**>(alloca((max_frames) * sizeof(void*)));
     num_frames_ = backtrace(buffer, max_frames);
+    // Sanitizer backtrace() interceptors add their own frame on top, so anchor skipping on our
+    // caller's frame instead of assuming buffer[0] is this function.
+    void* caller = __builtin_return_address(0);
+    for (int i = 1; i < num_frames_; ++i) {
+      if (buffer[i] == caller) {
+        skip_frames += i - 1;
+        break;
+      }
+    }
     if (num_frames_ > skip_frames) {
       num_frames_ -= skip_frames;
       memmove(frames_, buffer + skip_frames, num_frames_ * sizeof(void*));

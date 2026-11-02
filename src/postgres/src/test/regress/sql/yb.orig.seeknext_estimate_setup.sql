@@ -9,6 +9,17 @@ alter database seeknext_test set yb_enable_cbo = on;
 \c seeknext_test
 set client_min_messages to 'warning';
 
+-- Colocation IDs are random, and the relation that holds the highest ID
+-- ends the tablet: a backward scan's bound seek lands past the last key and
+-- PreparePrev falls back to SeekToLast, one seek more and one prev fewer
+-- than between other relations, which moves 27010/28010 inside their
+-- tolerance.  tablet_last takes the highest ID so that no measured relation
+-- ends the tablet; tablet_first takes the lowest, where no count moved.
+create table tablet_first (k int primary key) with (colocation_id = 16384);
+create table tablet_last (k int primary key) with (colocation_id = 4294967295);
+insert into tablet_first values (1);
+insert into tablet_last values (1);
+
 drop function if exists explain_query_json cascade;
 create function explain_query_json(query_sql text, with_analyze bool)
 returns table (explain_line json)
@@ -127,6 +138,206 @@ create table rC (like r including constraints including indexes including statis
     with (colocation = on);
 insert into rC select * from r;
 analyze rC;
+
+-- Composite primary key for distinct scans of the base table itself: g
+-- repeats every value 10 times, so a distinct scan on it skips from group to
+-- group with a seek.
+create table rp (
+    g int,
+    pk int,
+    v int,
+    primary key (g asc, pk asc)
+) with (colocation = off);
+
+insert into rp select (i - 1) / 10 + 1, i, i from generate_series(1, 12345) i;
+
+analyze rp;
+
+create table rpC (like rp including constraints including indexes including statistics)
+    with (colocation = on);
+insert into rpC select * from rp;
+analyze rpC;
+
+-- Composite primary key whose leading column is unique, so a distinct scan on
+-- it sees one row per group: the group is left by a skip whether or not its
+-- row passes the condition on the second key column.
+create table rq (
+    u int,
+    k int,
+    v int,
+    primary key (u asc, k asc)
+) with (colocation = off);
+
+insert into rq select i, i % 10 + 1, i from generate_series(1, 12345) i;
+
+analyze rq;
+
+create table rqC (like rq including constraints including indexes including statistics)
+    with (colocation = on);
+insert into rqC select * from rq;
+analyze rqC;
+
+-- Composite primary key whose second column positions the scan inside each
+-- group: g repeats every value 10 times with k running 0..9 inside the group,
+-- so a condition on k that first matches past the seek-forward threshold
+-- costs a seek from the group's first row to the match.  The g values sit
+-- 100 apart, which leaves room for IN lists whose values fall between groups.
+create table ps (
+    g int,
+    k int,
+    primary key (g asc, k asc)
+) with (colocation = off);
+
+insert into ps select (i / 10) * 100, i % 10 from generate_series(0, 9999) i;
+
+analyze ps;
+
+create table psC (like ps including constraints including indexes including statistics)
+    with (colocation = on);
+insert into psC select * from ps;
+analyze psC;
+
+-- ps's rows under a descending second key column: a forward scan meets k from
+-- 9 down to 0 in each group, so an upper bound on k decides where the first
+-- match sits and a lower bound matches the group's first row.
+create table psd (
+    g int,
+    k int,
+    primary key (g asc, k desc)
+) with (colocation = off);
+
+insert into psd select g, k from ps;
+
+analyze psd;
+
+create table psdC (like psd including constraints including indexes including statistics)
+    with (colocation = on);
+insert into psdC select * from psd;
+analyze psdC;
+
+-- A secondary index whose column after the prefix is nullable: each g group
+-- holds three rows with a NULL k and the values k = 0..9.  The column is
+-- descending, so NULLS FIRST: a forward scan meets the NULLs before any
+-- value, a backward scan after every value.
+create table pn (
+    pk int,
+    g int,
+    k int,
+    primary key (pk asc)
+) with (colocation = off);
+
+create index nonconcurrently pn_g_k_idx on pn (g asc, k desc);
+
+insert into pn
+    select i, (i / 13) * 100, case when i % 13 < 3 then null else i % 13 - 3 end
+    from generate_series(0, 12999) i;
+
+analyze pn;
+
+create table pnC (like pn including constraints including indexes including statistics)
+    with (colocation = on);
+insert into pnC select * from pn;
+analyze pnC;
+
+-- pn's rows under an ascending, so NULLS LAST, column after the prefix: a
+-- backward scan meets the NULLs before any value, a forward scan after every
+-- value.
+create table pna (
+    pk int,
+    g int,
+    k int,
+    primary key (pk asc)
+) with (colocation = off);
+
+create index nonconcurrently pna_g_k_idx on pna (g asc, k asc);
+
+insert into pna select * from pn;
+
+analyze pna;
+
+create table pnaC (like pna including constraints including indexes including statistics)
+    with (colocation = on);
+insert into pnaC select * from pna;
+analyze pnaC;
+
+-- pn's rows under a partial index that leaves the NULLs out.
+create table pnp (
+    pk int,
+    g int,
+    k int,
+    primary key (pk asc)
+) with (colocation = off);
+
+create index nonconcurrently pnp_g_k_idx on pnp (g asc, k asc) where k is not null;
+
+insert into pnp select * from pn;
+
+analyze pnp;
+
+create table pnpC (like pnp including constraints including indexes including statistics)
+    with (colocation = on);
+insert into pnpC select * from pnp;
+analyze pnpC;
+
+-- An enum column after the prefix, ten labels per g group.  The opfamily
+-- compares enum labels as anyenum rather than as the enum type itself.
+create type pe_label as enum ('e0', 'e1', 'e2', 'e3', 'e4', 'e5', 'e6', 'e7', 'e8', 'e9');
+
+create table pe (
+    g int,
+    m pe_label,
+    primary key (g asc, m asc)
+) with (colocation = off);
+
+insert into pe select (i / 10) * 100, ('e' || i % 10)::pe_label from generate_series(0, 9999) i;
+
+analyze pe;
+
+create table peC (like pe including constraints including indexes including statistics)
+    with (colocation = on);
+insert into peC select * from pe;
+analyze peC;
+
+-- A two-column prefix (a, b) whose groups hold five rows each, one per value
+-- of c.  The ndistinct statistics give the planner the (a, b) group count;
+-- without them PostgreSQL clamps a multi-column group count to a tenth of
+-- the rows, which halves it here.  c's statistics target makes ANALYZE read
+-- every row: a skip inside a five-row group sits next to the seek-forward
+-- threshold, where a sampling error in c's frequencies moves the estimate.
+create table pt (
+    a int,
+    b int,
+    c int,
+    primary key (a asc, b asc, c asc)
+) with (colocation = off);
+
+alter table pt alter column c set statistics 200;
+
+insert into pt select a, b, c from generate_series(1, 200) a, generate_series(1, 50) b, generate_series(1, 5) c;
+
+create statistics pt_ab (ndistinct) on a, b from pt;
+
+analyze pt;
+
+create table ptC (like pt including constraints including indexes including statistics)
+    with (colocation = on);
+alter table ptC alter column c set statistics 200;
+insert into ptC select * from pt;
+analyze ptC;
+
+-- Hash-sharded primary key: the hash code leads the prefix, so a distinct scan
+-- on h skips from hash group to hash group inside each tablet.  Hash-sharded
+-- tables cannot be colocated, so there is no rhC.
+create table rh (
+    h int,
+    r int,
+    v int,
+    primary key ((h) hash, r asc)
+) with (colocation = off) split into 3 tablets;
+
+insert into rh select i / 10, i % 10, i from generate_series(0, 9999) i;
+
+analyze rh;
 
 
 drop table if exists queries cascade;

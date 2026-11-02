@@ -59,7 +59,7 @@ This repo **squash-merges** every PR, so the per-commit history of a branch is p
 - **Don't collapse commits locally yourself** (no `git rebase -i ... squash`, no hand-merging commits). The squash happens automatically at merge time on GitHub.
 - The first commit on a branch can carry the PR's overall message style; subsequent commits should have short, scoped subject lines (`Fix lint warnings`, `Address review: rename foo to bar`).
 - **`## Upgrade/Rollback safety` section in PR descriptions.** Required for any change that affects upgrade-rollback compatibility — wire-format (`.proto`) changes, gflag default flips that alter observable behavior, catalog schema bumps, on-disk-format changes, RPC-versioning tweaks, migration scripts. Spell out forward/backward behavior on a mixed-version cluster and what rollback looks like. `create-pr.sh` enforces this mechanically for `.proto` changes; for other upgrade-relevant changes the rule is soft — include the section anyway.
-- **PR titles must match `[<issue>] <Component>: <Title>`.** `<issue>` is `#NNNN` for GitHub issues or `PROJECT-NNN` for JIRA. `<Component>` is one of `DocDB`, `YSQL`, `YCQL`, `YBA`, `CDC`, `xCluster`, `yugabyted`, `Docs`, `ClaudeCode`, `Build` (or another component agreed with the team). `create-pr.sh` enforces this mechanically. Backport titles keep the same shape with a `[BACKPORT <release-branch>]` prefix.
+- **PR titles must match `[<issue>] <Component>: <Title>`.** `<issue>` is `#NNNN` for GitHub issues or `PROJECT-NNN` for JIRA. `<Component>` is one of `DocDB`, `YSQL`, `YCQL`, `YBA`, `CDC`, `xCluster`, `yugabyted`, `Docs`, `Agents`, `Build` (or another component agreed with the team). `create-pr.sh` enforces this mechanically. Backport titles keep the same shape with a `[BACKPORT <release-branch>]` prefix.
 - **Always push via `.agents/scripts/git-push.sh`** — never via raw `git push` (deny-listed in `.claude/settings.json`). The helper runs lint and never rebases.
 - **Never rewrite a PR's history once it is ready for review** — no rebase, amend, reset, or force-push after the PR leaves draft (a stack branch is the exception; see below). Renewing the SHAs marks every reviewer line comment "outdated" and destroys the diff-since-last-look, which is the main thing a returning reviewer wants. `git-push.sh` enforces this: for a ready PR it pushes only a fast-forward and otherwise exits `4` with how to recover; there is no override. With no PR, or a draft one, it force-pushes a rewritten branch with `--force-with-lease`.
 - **Refresh a ready-for-review PR branch with a merge, not a rebase** (except a stack branch). `git merge upstream/master` when you need the base's newer commits. The merge commit is harmless: the PR is squash-merged, so it never reaches `master`. `git-push.sh` reports how far behind the branch is but never merges for you — picking up the base mid-review is the author's call.
@@ -207,8 +207,8 @@ passes flags through. `--target benchmarks` builds all of them.
     --benchmark-args '--benchmark_filter=AbslMutex'
 ```
 
-Use a release build; debug and sanitizer builds only check that benchmarks compile. For numbers
-closest to a release server binary, use an LTO build: `./yb_build.sh release --full-lto
+Use a release build; debug and sanitizer builds run too, but their numbers are not meaningful. For
+numbers closest to a release server binary, use an LTO build: `./yb_build.sh release --full-lto
 --cxx-benchmark <name>` builds and runs `<name>-lto`, the benchmark statically linked as one LTO
 unit the way `yb-server` is, so inlining across YB libraries is included. That link is slow and
 needs a lot of memory, so `<name>-lto` is built only when `--cxx-benchmark` asks for it, never by a

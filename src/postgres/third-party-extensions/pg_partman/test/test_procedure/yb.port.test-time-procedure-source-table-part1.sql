@@ -1,5 +1,7 @@
 -- ########## TIME DAILY TESTS NATIVE PROCEDURE ##########
 -- Other tests: native, default out of bounds data, partition and undo with procedures instead of functions
+-- YB: Gate the tests that need yb_pg_partman_check_native_txn_ddl_and_locks() to be true.
+SELECT pg_catalog.yb_pg_partman_check_native_txn_ddl_and_locks()::int AS yb_use_txn_ddl_and_locks \gset
 
 \set ON_ERROR_STOP true
 
@@ -36,9 +38,11 @@ SELECT has_table('partman_test', 'template_time_taptest_table', 'Check that temp
 
 SELECT create_parent('partman_test.time_taptest_table', 'col3', 'native', 'daily', p_template_table := 'partman_test.template_time_taptest_table');
 
--- YB: default partition creation is disabled
--- TODO(#3109): Re-enable it after transactional DDL support.
+\if :yb_use_txn_ddl_and_locks
+SELECT has_table('partman_test', 'time_taptest_table_default', 'Check time_taptest_table_default exists');
+\else \\ -- YB
 SELECT hasnt_table('partman_test', 'time_taptest_table_default', 'Check time_taptest_table_default does not exists');
+\endif \\ -- YB
 SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), 'Check time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD')||' exists');
 SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), 
     'Check time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD')||' exists');

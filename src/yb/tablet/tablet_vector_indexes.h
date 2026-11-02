@@ -43,7 +43,10 @@ class VectorIndexList {
 
   void EnableAutoCompactions();
   void Compact(rocksdb::CompactionReason reason);
-  void Flush();
+  // Flushes every index, also after one fails, and returns the first failure. An index that is
+  // shutting down is skipped, since only a drop shuts down a single index; Tablet::Flush reports
+  // tablet shutdown itself.
+  Status Flush();
   Status WaitForCompaction();
   Status WaitForFlush();
   // Returns true if this list is empty or every index has compacted inherited parent data for
@@ -157,6 +160,7 @@ class TabletVectorIndexes :
 
   void StartShutdown();
   void CompleteShutdown(std::vector<std::string>& out_paths);
+  bool ShutdownStarted() const { return !shutdown_controller_.IsRunning(); }
   // Adds finished and failed vector index backfills to the tablet status.
   void FillBackfillStatus(TabletStatusPB& tablet_status);
 
@@ -165,10 +169,17 @@ class TabletVectorIndexes :
 
   // Stamps `frontier` as flushed on every vector index, see
   // DocVectorIndex::ModifyFlushedFrontier.
-  Status ModifyFlushedFrontier(const docdb::ConsensusFrontier& frontier);
+  Status ModifyFlushedFrontier(
+      const docdb::ConsensusFrontier& frontier, rocksdb::FrontierModificationMode mode);
 
-  void FillMaxPersistentOpIds(
-      boost::container::small_vector_base<OpId>& out, bool invalid_if_no_new_data);
+  void FillPersistentStates(
+      boost::container::small_vector_base<VectorIndexPersistentState>& out,
+      bool invalid_if_no_new_data);
+
+  // Lowers the schema versions in `min_schema_versions` to those of the data the indexes have not
+  // flushed. Bootstrap replays it into them, decoding the rows with the schema packings they were
+  // written with, even if the regular DB repacked them (GH#35466).
+  void FillMinSchemaVersion(docdb::CotableSchemaVersionMap* min_schema_versions) const;
 
   bool TEST_HasIndexes() const {
     return has_vector_indexes_.load();
@@ -214,6 +225,8 @@ class TabletVectorIndexes :
 
   docdb::DocVectorIndexPtr RemoveTableFromList(const TableId& table_id)
       REQUIRES(vector_indexes_mutex_);
+
+  void DestroySkippedIndexStorage(const TableId& table_id) EXCLUDES(vector_indexes_mutex_);
 
   const VectorIndexThreadPoolProvider thread_pool_provider_;
   const VectorIndexCompactionTokenProvider compaction_token_provider_;

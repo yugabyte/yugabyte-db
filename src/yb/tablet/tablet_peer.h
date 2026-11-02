@@ -53,6 +53,7 @@
 #include "yb/tablet/preparer.h"
 #include "yb/tablet/tablet_bootstrap_state_flusher.h"
 #include "yb/tablet/tablet_bootstrap_state_manager.h"
+#include "yb/tablet/tablet_context.h"
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/transaction_coordinator.h"
@@ -142,6 +143,9 @@ YB_DEFINE_ENUM(TabletObjectState,
     (kAvailable)
     (kDestroyed));
 
+// A tablet enters the quiescent mode after nothing was appended to its log for this time.
+CoarseDuration QuiescentTabletIdleTime();
+
 // A peer is a tablet consensus configuration, which coordinates writes to tablets.
 // Each time Write() is called this class appends a new entry to a replicated
 // state machine through a consensus algorithm, which makes sure that other
@@ -149,6 +153,7 @@ YB_DEFINE_ENUM(TabletObjectState,
 // class also splits the work and coordinates multi-threaded execution.
 class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
                    public consensus::ConsensusContext,
+                   public TabletContext,
                    public TransactionParticipantContext,
                    public TransactionCoordinatorContext,
                    public WriteQueryContext {
@@ -157,6 +162,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   // Creates TabletPeer.
   // `tablet_splitter` will be used for applying split tablet Raft operation.
+  // `persistence_gate` may refuse to let stamped YSQL writes and commits replicate, and may have
+  // this tablet's transaction coordinator abort stamped pending transactions; nullptr does neither.
   TabletPeer(
       const RaftGroupMetadataPtr& meta,
       const consensus::RaftPeerPB& local_peer_pb,
@@ -165,6 +172,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
       Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
       MetricRegistry* metric_registry,
       TabletSplitter* tablet_splitter,
+      const PersistenceGate* persistence_gate,
       const std::shared_future<client::YBClient*>& client_future);
 
   ~TabletPeer() override;
@@ -406,6 +414,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   bool IsLeaderAndReady() const;
   bool IsNotLeader() const;
 
+  Status CheckTransactionMayContinue(const LWOriginationInfoPB& origination_info) const override;
+
   Result<HybridTime> HtLeaseExpiration() const override;
 
   const scoped_refptr<log::LogAnchorRegistry>& log_anchor_registry() const {
@@ -431,6 +441,18 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   // Tells the tablet's log to garbage collect.
   Status RunLogGC(bool rollover = false);
+
+  // Enters the quiescent mode if nothing was appended to the log for quiescent_tablet_idle_sec.
+  // Returns when the tablet should be checked next, always after now.
+  // Called from one thread.
+  CoarseTimePoint MaybeEnterQuiescentMode(CoarseTimePoint now);
+
+  // Flushes all storages and replaces the WAL segments with a quiescent marker at op_id, the last
+  // op in the log. Returns TryAgain if the tablet is not idle at op_id.
+  Status EnterQuiescentMode(const OpId& op_id);
+
+  // Returns true if the log has no segments and its quiescent marker is the last op.
+  bool IsQuiescent() const;
 
   // Register the maintenance ops associated with this peer's tablet, also invokes
   // Tablet::RegisterMaintenanceOps().
@@ -664,6 +686,9 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   Result<HybridTime> ReportReadRestart() override;
 
   Result<FixedHybridTimeLease> HybridTimeLease(HybridTime min_allowed, CoarseTimePoint deadline);
+
+  log::WalEntryState WalState(const OpId& op_id) override;
+
   Result<HybridTime> PreparePeerRequest() override;
   Status MajorityReplicated(const OpId& committed_op_id) override;
   void BecomeReplica() override;
@@ -673,6 +698,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   rpc::Scheduler& scheduler() const override;
   Status CheckOperationAllowed(
       const OpId& op_id, consensus::OperationType op_type) override;
+  Status CheckReplicateAllowed(consensus::LWReplicateMsg& replicate_msg) override;
+  bool ShouldRelinquishLeadership() override;
   // Return granular types of on-disk size of this tablet replica, in bytes.
   TabletOnDiskSizeInfo GetOnDiskSizeInfoUnlocked() const REQUIRES(lock_);
 
@@ -692,6 +719,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   std::shared_ptr<consensus::RaftConsensus> GetRaftConsensusUnsafe() const EXCLUDES(lock_);
 
   TabletSplitter* tablet_splitter_;
+
+  const PersistenceGate* const persistence_gate_;
 
   std::shared_future<client::YBClient*> client_future_;
   mutable std::atomic<client::YBClient*> client_cache_{nullptr};

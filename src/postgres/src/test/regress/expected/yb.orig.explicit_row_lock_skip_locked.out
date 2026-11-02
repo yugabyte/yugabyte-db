@@ -2386,6 +2386,85 @@ SELECT * FROM yb_lockrows_max_read_aheads('SELECT sub.k, t_multi.v FROM (SELECT 
 (0 rows)
 
 ROLLBACK;
+SET enable_material = off;
+BEGIN;
+SELECT t_a.id, s.id FROM t_a, (SELECT * FROM t_a FOR UPDATE SKIP LOCKED) AS s WHERE t_a.id < 3;
+ id | id 
+----+----
+  1 |  1
+  1 |  2
+  1 |  3
+  1 |  4
+  1 |  5
+  1 |  6
+  1 |  7
+  1 |  8
+  1 |  9
+  2 |  1
+  2 |  2
+  2 |  3
+  2 |  4
+  2 |  5
+  2 |  6
+  2 |  7
+  2 |  8
+  2 |  9
+(18 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {5}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {5}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {6}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {6}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {7}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {7}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {8}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {8}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {9}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {9}
+(18 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_a.id, s.id FROM t_a, (SELECT * FROM t_a FOR UPDATE SKIP LOCKED) AS s WHERE t_a.id < 3;
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Nested Loop (actual rows=18 loops=1)
+   ->  Index Scan using t_a_pkey on t_a (actual rows=2 loops=1)
+         Index Cond: (id < 3)
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 2
+   ->  Subquery Scan on s (actual rows=9 loops=2)
+         ->  LockRows (actual rows=9 loops=2)
+               ->  Seq Scan on t_a t_a_1 (actual rows=9 loops=2)
+                     Storage Table Read Requests: 1
+                     Storage Table Read Ops: 1
+                     Storage Table Rows Scanned: 9
+ Storage Read Requests: 21
+ Storage Read Ops: 21
+ Storage Rows Scanned: 38
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(17 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('SELECT t_a.id, s.id FROM t_a, (SELECT * FROM t_a FOR UPDATE SKIP LOCKED) AS s WHERE t_a.id < 3');
+   yb_lockrows_max_read_aheads   
+---------------------------------
+               Max Read Ahead: N
+(1 row)
+
+ROLLBACK;
+RESET enable_material;
 BEGIN;
 WITH locked_a AS (SELECT id FROM t_a ORDER BY ord LIMIT 3 FOR UPDATE SKIP LOCKED), locked_b AS (SELECT cid, parent_id FROM t_b ORDER BY ord LIMIT 9 FOR UPDATE SKIP LOCKED) SELECT locked_a.id, locked_b.cid FROM locked_a JOIN locked_b ON locked_a.id = locked_b.parent_id ORDER BY locked_a.id, locked_b.cid;
  id | cid 

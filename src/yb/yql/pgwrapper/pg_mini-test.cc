@@ -1848,9 +1848,13 @@ TEST_F_EX(PgMiniTest, TruncateVisibleThroughTombstoneCache, PgMiniTestSingleNode
   // Trigger guard 2: prove the TRUNCATE took the tombstone path. The bytes on disk are
   // correct - this is a read-path bug - so the dump (not a SELECT) is the right probe for
   // this guard; do not "simplify" the wrongness assertions below to use the dump.
+  // The tombstone is a DDL txn intent applied to regular DB asynchronously after commit.
   auto tablet = ASSERT_RESULT(peer->shared_tablet());
-  auto dump = tablet->TEST_DocDBDumpStr();
-  ASSERT_TRUE(DumpHasTableTombstone(dump, kColocationId))
+  std::string dump;
+  ASSERT_TRUE(WaitFor([&] {
+    dump = tablet->TEST_DocDBDumpStr();
+    return DumpHasTableTombstone(dump, kColocationId);
+  }, 30s * kTimeMultiplier, "Table tombstone applied").ok())
       << "TRUNCATE did not write a table-level tombstone (rewrite path taken?). Dump:\n" << dump;
 
   // The stale read, served through the cached pre-truncate tombstone time.
@@ -1948,8 +1952,12 @@ TEST_F_EX(PgMiniTest, TruncateTombstoneCacheHealedByRestart, PgMiniTestSingleNod
     auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
     ASSERT_EQ(peers.size(), 1);
     auto tablet = ASSERT_RESULT(peers.front()->shared_tablet());
-    ASSERT_TRUE(DumpHasTableTombstone(tablet->TEST_DocDBDumpStr(), kColocationId))
-        << "TRUNCATE did not write a table-level tombstone (rewrite path taken?)";
+    std::string dump;
+    ASSERT_TRUE(WaitFor([&] {
+      dump = tablet->TEST_DocDBDumpStr();
+      return DumpHasTableTombstone(dump, kColocationId);
+    }, 30s * kTimeMultiplier, "Table tombstone applied").ok())
+        << "TRUNCATE did not write a table-level tombstone (rewrite path taken?). Dump:\n" << dump;
   }
 
   ASSERT_OK(RestartCluster());

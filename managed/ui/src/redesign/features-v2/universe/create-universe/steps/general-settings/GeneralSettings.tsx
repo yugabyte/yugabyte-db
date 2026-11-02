@@ -13,6 +13,7 @@ import { FormProvider, useForm } from 'react-hook-form';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
 import { yupResolver } from '@hookform/resolvers/yup';
+import { CloudType } from '../../../../../features/universe/universe-form/utils/dto';
 import {
   UniverseNameField,
   ProviderConfigurationField,
@@ -43,12 +44,19 @@ import { GeneralSettingsProps } from './dtos';
 import {
   CLOUD,
   DATABASE_VERSION,
-  PROVIDER_CONFIGURATION,
+  PROVIDER_CONFIGURATIONS,
   UNIVERSE_NAME
 } from '../../fields/FieldNames';
 import ShuffleIcon from '../../../../../assets/shuffle.svg';
 import { StyledPanel, StyledHeader, StyledContent } from '../../components/DefaultComponents';
 import { Box } from '@material-ui/core';
+import {
+  cloudCodes,
+  crossedProviderCountBoundary,
+  ENABLE_MULTI_PROVIDER_CREATE,
+  includesKubernetesCloud
+} from '../../helpers/providerConfigurations';
+import { providerUuidSetKey } from '../../helpers/instanceByProvider';
 
 const CONTROL_WIDTH = '480px';
 
@@ -60,7 +68,9 @@ export const GeneralSettings = forwardRef<StepsRef>((_, forwardRef) => {
       saveGeneralSettings,
       saveResilienceAndRegionsSettings,
       saveNodesAvailabilitySettings,
-      saveInstanceSettings
+      saveInstanceSettings,
+      saveInstanceByProvider,
+      clearProviderSlots
     }
   ] = (useContext(CreateUniverseContext) as unknown) as CreateUniverseContextMethods;
 
@@ -106,25 +116,60 @@ export const GeneralSettings = forwardRef<StepsRef>((_, forwardRef) => {
   );
 
   const { errors } = methods.formState;
-  const cloud = methods.watch('cloud');
-  const providerConfiguration = methods.watch(PROVIDER_CONFIGURATION);
-  const previousProviderUuidRef = useRef(providerConfiguration?.uuid);
-
+  const cloud = methods.watch(CLOUD);
+  // Library toggle stores multi mode as a cloud array.
+  const multiUi = ENABLE_MULTI_PROVIDER_CREATE && Array.isArray(cloud);
+  const selectedClouds = cloudCodes(cloud);
+  const providerConfigurations = methods.watch(PROVIDER_CONFIGURATIONS);
+  const primaryProviderUuid = providerConfigurations?.[0]?.uuid;
+  const providerCount = providerConfigurations?.length ?? 0;
+  const previousPrimaryUuidRef = useRef(primaryProviderUuid);
+  const previousProviderCountRef = useRef(providerCount);
+  const providerSetKey = providerUuidSetKey(providerConfigurations);
+  const previousProviderSetKeyRef = useRef(providerSetKey);
   useEffect(() => {
-    const providerUuid = providerConfiguration?.uuid;
-    const previousProviderUuid = previousProviderUuidRef.current;
-    previousProviderUuidRef.current = providerUuid;
+    const previousPrimaryUuid = previousPrimaryUuidRef.current;
+    const previousCount = previousProviderCountRef.current;
+    previousPrimaryUuidRef.current = primaryProviderUuid;
+    previousProviderCountRef.current = providerCount;
 
-    // Selecting the initial provider is not a provider change. This also prevents
-    // returning to this step from clearing the previously configured placement.
-    if (!previousProviderUuid || previousProviderUuid === providerUuid) return;
+    const crossedBoundary = crossedProviderCountBoundary(previousCount, providerCount);
+    // N=1: selecting the initial provider is not a change. Returning to this step must not
+    // clear placement. Multi: crossing 1↔2+ always clears Placement/Nodes/Hardware + stubs.
+    const primaryChangedWhileSingle =
+      previousCount <= 1 &&
+      providerCount <= 1 &&
+      !!previousPrimaryUuid &&
+      previousPrimaryUuid !== primaryProviderUuid;
+
+    if (!crossedBoundary && !primaryChangedWhileSingle) return;
 
     resetProviderDependentSettings({
       saveResilienceAndRegionsSettings,
       saveNodesAvailabilitySettings,
-      saveInstanceSettings
+      saveInstanceSettings,
+      clearProviderSlots
     });
-  }, [providerConfiguration?.uuid]);
+  }, [primaryProviderUuid, providerCount]);
+
+  // Stay in multi: any uuid-set change wipes HW only (placements/nodes keep their own rules).
+  useEffect(() => {
+    const previousKey = previousProviderSetKeyRef.current;
+    previousProviderSetKeyRef.current = providerSetKey;
+    if (providerCount < 2 || previousKey === providerSetKey) return;
+    // 1↔2+ already cleared via clearProviderSlots above; skip first paint / empty→empty.
+    if (!previousKey) return;
+    saveInstanceByProvider({});
+  }, [providerSetKey, providerCount, saveInstanceByProvider]);
+
+  // The library span toggle cannot be disabled. Kubernetes stays single-cloud.
+  useEffect(() => {
+    if (!Array.isArray(cloud) || !includesKubernetesCloud(cloud)) return;
+    const rest = cloud.filter((code) => code && code !== CloudType.kubernetes);
+    methods.setValue(CLOUD, rest.length ? rest : cloud.find(Boolean) ?? '', {
+      shouldValidate: true
+    });
+  }, [cloud, methods]);
 
   return (
     <FormProvider {...methods}>
@@ -152,21 +197,37 @@ export const GeneralSettings = forwardRef<StepsRef>((_, forwardRef) => {
             />
           </div>
           <Box maxWidth={740}>
-          <CloudField<GeneralSettingsProps> name={CLOUD} label={t('cloudProvider')} />
-          </Box>
-          {cloud && (
-            <ProviderConfigurationField<GeneralSettingsProps>
-              name={PROVIDER_CONFIGURATION}
-              label={t('providerconfiguration')}
-              placeholder={t('providerConfigurationPlaceholder')}
-              sx={{
-                width: CONTROL_WIDTH
-              }}
-              filterByProvider={cloud}
-              dataTestId="provider-configuration-field"
-              disabled={!cloud}
+            <CloudField<GeneralSettingsProps>
+              name={CLOUD}
+              label={t('cloudProvider')}
+              showMultiToggle={ENABLE_MULTI_PROVIDER_CREATE}
+              multiToggleLabel={t('spanAcrossProviders')}
+              disableKubernetes={multiUi}
             />
-          )}
+          </Box>
+          {multiUi
+            ? selectedClouds.map((code) => (
+                <ProviderConfigurationField<GeneralSettingsProps>
+                  key={code}
+                  name={PROVIDER_CONFIGURATIONS}
+                  label={t('providerConfigurationForCloud', { cloud: code.toUpperCase() })}
+                  placeholder={t('providerConfigurationPlaceholder')}
+                  sx={{ width: CONTROL_WIDTH }}
+                  filterByProvider={code}
+                  dataTestId={`provider-configuration-field-${code}`}
+                />
+              ))
+            : !!selectedClouds[0] && (
+                <ProviderConfigurationField<GeneralSettingsProps>
+                  name={PROVIDER_CONFIGURATIONS}
+                  label={t('providerconfiguration')}
+                  placeholder={t('providerConfigurationPlaceholder')}
+                  sx={{ width: CONTROL_WIDTH }}
+                  filterByProvider={selectedClouds[0]}
+                  dataTestId="provider-configuration-field"
+                  disabled={!selectedClouds[0]}
+                />
+              )}
           <DatabaseVersionField<GeneralSettingsProps>
             name={DATABASE_VERSION}
             label={t('databaseVersion')}
@@ -175,7 +236,7 @@ export const GeneralSettings = forwardRef<StepsRef>((_, forwardRef) => {
               width: CONTROL_WIDTH
             }}
             dataTestId="database-version-field"
-            disabled={!cloud}
+            disabled={!selectedClouds.length}
           />
         </StyledContent>
       </StyledPanel>

@@ -129,8 +129,10 @@ public class NodeAgentHandler {
           && certificateInfo.getCertType() != CertConfigType.SelfSigned) {
         throw new PlatformServiceException(
             BAD_REQUEST,
-            "Only CustomCertHostPath or SelfSigned type certificate is supported for node"
-                + " agent registration");
+            String.format(
+                "Certificate %s is of type %s, but only CustomCertHostPath or SelfSigned type"
+                    + " certificate is supported for node agent registration",
+                certificateInfo.getLabel(), certificateInfo.getCertType()));
       }
       log.info(
           "Using certificate {}({}) for node agent registration",

@@ -1,0 +1,26 @@
+title: AzuHostInfo
+description: Azure VM metadata of the YBA host. Part of HostCloudInfo.
+type: object
+properties:
+  subscription_id:
+    description: Azure subscription of the VM
+    type: string
+    readOnly: true
+  resource_group:
+    description: Resource group of the VM
+    type: string
+    readOnly: true
+  vm_id:
+    description: Azure VM ID
+    type: string
+    readOnly: true
+  private_ip:
+    description: Private IP address of the VM's first network interface
+    type: string
+    readOnly: true
+  region:
+    description: Azure region (location) of the VM
+    type: string
+    readOnly: true
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview

@@ -648,9 +648,12 @@ Result<bool> PerTableLoadState::CanAddTabletToTabletServer(
   }
 
   if (to_placement) {
-    auto projected_count = FindWithDefault(
-        per_tablet_meta_.at(tablet_id).placement_replica_counts, *to_placement, 0uz);
-    if (!from_ts.empty()) {
+    const auto& tablet_meta = per_tablet_meta_.at(tablet_id);
+    auto projected_count =
+        FindWithDefault(tablet_meta.placement_replica_counts, *to_placement, 0uz);
+    // The source is only removed once the add makes the tablet over-replicated, which an
+    // under-replicated tablet never reaches.
+    if (!from_ts.empty() && !tablet_meta.is_under_replicated) {
       const auto from_placement = GetValidPlacement(from_ts);
       if (from_placement && cloud_equal_to()(*from_placement, *to_placement)) {
         DCHECK_GT(projected_count, 0);
@@ -804,9 +807,18 @@ Result<bool> PerTableLoadState::CanSelectWrongPlacementReplicaToMove(
       }
     }
     if (fallback_to_uuid.empty()) {
+      const auto from_placement = GetValidPlacement(from_uuid);
+      const bool blocked_by_max = tablet_meta.is_under_replicated && from_placement &&
+          FindWithDefault(tablet_meta.placement_replica_counts, *from_placement, 0uz) >=
+              PlacementBlockMaxReplicas(*from_placement);
       YB_LOG_EVERY_N_SECS(INFO, 10) << Format(
           "Cannot move tablet $0 from blacklisted tablet server $1: no eligible destination tablet "
-          "servers", tablet_id, from_uuid);
+          "servers$2", tablet_id, from_uuid,
+          blocked_by_max
+              ? Format(". Placement $0 is at its max_num_replicas and the tablet is "
+                       "under-replicated; add tservers where its missing replicas can go",
+                       from_placement->ShortDebugString())
+              : std::string());
     }
   }
 

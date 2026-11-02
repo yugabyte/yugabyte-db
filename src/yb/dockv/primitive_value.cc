@@ -774,6 +774,7 @@ std::string PrimitiveValue::ValueToString() const {
     case KeyEntryType::kMaxByte: FALLTHROUGH_INTENDED; \
     case KeyEntryType::kMergeFlags: FALLTHROUGH_INTENDED; \
     case KeyEntryType::kObsoleteIntentPrefix: FALLTHROUGH_INTENDED; \
+    case KeyEntryType::kCdrMetadata: FALLTHROUGH_INTENDED; \
     case KeyEntryType::kTtl: FALLTHROUGH_INTENDED; \
     case KeyEntryType::kUserTimestamp: \
       break
@@ -3360,6 +3361,7 @@ std::string KeyEntryValue::ToString(AutoDecodeKeys auto_decode_keys) const {
     case KeyEntryType::kGroupEndDescending: FALLTHROUGH_INTENDED;
     case KeyEntryType::kTtl: FALLTHROUGH_INTENDED;
     case KeyEntryType::kUserTimestamp: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kCdrMetadata: FALLTHROUGH_INTENDED;
     case KeyEntryType::kObsoleteIntentPrefix: FALLTHROUGH_INTENDED;
     case KeyEntryType::kExternalIntents: FALLTHROUGH_INTENDED;
     case KeyEntryType::kGreaterThanIntentType:

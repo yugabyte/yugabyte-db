@@ -61,3 +61,8 @@ extern struct YbUpdateAffectedEntities *YbComputeAffectedEntitiesForRelation(Mod
 																			 Bitmapset *update_attrs);
 
 extern AttrNumber yb_get_federated_tserver_uuid_attno(Oid relid);
+
+struct PlannerInfo;
+
+extern bool YbIocPushdownPossible(struct PlannerInfo *root,
+								  ModifyTable *node);
