@@ -5709,6 +5709,21 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   /**
+   * Removes tservers that were just deleted from the server blacklist, after waiting {@code
+   * yb.edit.wait_before_blacklist_clear} (when set) so the master stops treating them as live first.
+   */
+  public void createClearTserverBlacklistTasks(Universe universe, Collection<NodeDetails> tservers) {
+    Duration sleepBeforeClear =
+        confGetter.getConfForScope(universe, UniverseConfKeys.ybEditWaitDurationBeforeBlacklistClear);
+    if (sleepBeforeClear.compareTo(Duration.ZERO) > 0) {
+      createWaitForDurationSubtask(universe, sleepBeforeClear)
+          .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
+    }
+    createModifyBlackListTask(null /* addNodes */, tservers, false /* isLeaderBlacklist */)
+        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+  }
+
+  /**
    * Creates a task to add/remove nodes from blacklist on server.
    *
    * @param addNodes The nodes that have to be added to the blacklist.
