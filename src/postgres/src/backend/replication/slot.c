@@ -262,12 +262,30 @@ YbTryAcquireReplicationSlotLock(const char *slot_name, bool wait)
 	return true;
 }
 
-/* YB: Release the slot advisory lock and clear the sentinel. */
+/*
+ * YB: Warn and clear yb_slot_locktag for ERRCODE_YB_TXN_ABORTED and
+ * ERRCODE_YB_TXN_LOCK_NOT_FOUND. Those mean the lock is already gone,
+ * and ERROR during walsender cleanup re-enters that cleanup until the
+ * error stack overflows. Any other status is still raised as ERROR.
+ */
 static void
 YbReleaseReplicationSlotLock(void)
 {
-	HandleYBStatus(YBCReleaseAdvisoryLock(GetYBAdvisoryLockId(yb_slot_locktag),
-										  YB_ADVISORY_LOCK_EXCLUSIVE));
+	YbcStatus	status;
+	int			sqlerrcode;
+
+	status = YBCReleaseAdvisoryLock(GetYBAdvisoryLockId(yb_slot_locktag),
+									YB_ADVISORY_LOCK_EXCLUSIVE);
+	sqlerrcode = status ? YBCStatusPgsqlError(status) : 0;
+	if (sqlerrcode == ERRCODE_YB_TXN_ABORTED ||
+		sqlerrcode == ERRCODE_YB_TXN_LOCK_NOT_FOUND)
+	{
+		MemSet(&yb_slot_locktag, 0, sizeof(yb_slot_locktag));
+		HandleYBStatusAtErrorLevel(status, WARNING);
+		return;
+	}
+
+	HandleYBStatus(status);
 	MemSet(&yb_slot_locktag, 0, sizeof(yb_slot_locktag));
 }
 

@@ -69,10 +69,12 @@ class XClusterOutboundReplicationGroup
         upsert_to_sys_catalog_func;
     const std::function<Status(const LeaderEpoch& epoch, XClusterOutboundReplicationGroupInfo*)>
         delete_from_sys_catalog_func;
+
     const std::function<Status(const NamespaceId&, StdStatusCallback)>
         setup_ddl_replication_extension_func;
     const std::function<Status(const NamespaceId&, const xcluster::ReplicationGroupId&)>
         drop_ddl_replication_extension_func;
+    const std::function<Status(const NamespaceId&, const LeaderEpoch&)> start_persisting_func;
   };
 
   explicit XClusterOutboundReplicationGroup(
@@ -169,6 +171,11 @@ class XClusterOutboundReplicationGroup
 
   Status SetupDDLReplicationExtension(
       const NamespaceId& namespace_id, StdStatusCallback callback) const;
+
+  // In automatic mode, except on switchover, refuses user YSQL writes and commits to namespace_id
+  // that originated before this call.
+  Status MaybeBlockWritesStartedBeforeCheckpoint(
+      const NamespaceId& namespace_id, const LeaderEpoch& epoch) const;
 
  private:
   friend class XClusterOutboundReplicationGroupMocked;
