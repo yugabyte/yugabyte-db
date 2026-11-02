@@ -40,6 +40,10 @@ class LogicalClientVersionUpgradeTest : public UpgradeTestBase {
   }
 };
 
+// Databases created and dropped on the current version before finalize must leave
+// pg_yb_logical_client_version as the old version expects it after rollback: the created database
+// is reachable (the old version FATALs on connect if its row is missing), and every database has
+// exactly one row with no row left behind for the dropped one.
 TEST_F(LogicalClientVersionUpgradeTest, CreateDatabaseBeforeRollback) {
   ASSERT_OK(StartClusterInOldVersion());
   ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes, /*auto_finalize=*/false));
@@ -52,6 +56,8 @@ TEST_F(LogicalClientVersionUpgradeTest, CreateDatabaseBeforeRollback) {
       "ON v.db_oid = d.oid WHERE v.db_oid IS NULL OR d.oid IS NULL")), 0);
 }
 
+// Per-database rows written before finalize are replaced by V100's db_oid = 0 row at finalize, and
+// CREATE/DROP DATABASE after finalize stop writing per-database rows.
 TEST_F(LogicalClientVersionUpgradeTest, CreateDatabaseBeforeFinalize) {
   ASSERT_OK(StartClusterInOldVersion());
   ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes, /*auto_finalize=*/false));

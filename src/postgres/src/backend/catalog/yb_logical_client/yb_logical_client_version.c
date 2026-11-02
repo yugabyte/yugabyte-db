@@ -247,6 +247,14 @@ YbGetMasterLogicalClientVersionTableEntryYbctid(Relation logical_client_version_
 	return ybctid;
 }
 
+/*
+ * Releases before the coarse-grained logical client version read a
+ * per-database row on every connection and fail the connection if it is
+ * missing. Until the V100 migration replaces those rows with the DefaultOid
+ * row at finalize, a rollback to such a release is still possible, so
+ * CREATE/DROP DATABASE must keep the per-database rows in sync. The
+ * DefaultOid row being present means V100 has run.
+ */
 bool
 YbNeedsLegacyPerDbLogicalClientVersionRows()
 {
@@ -315,6 +323,12 @@ YbDeleteMasterDBLogicalClientVersionTableEntry(Oid db_oid)
 				(errmsg("%s: deleting master logical client version for database %u",
 						__func__, db_oid)));
 	HandleYBStatus(YBCPgDmlExecWriteOp(delete_stmt, &rows_affected_count));
+	
+	/*
+	 * The row may be missing if the database was created during the upgrade by a build
+	 * that did not write per-database rows. The delete is then a no-op, so the number of
+	 * affected rows is not checked.
+	 */
 
 	RelationClose(rel);
 }
