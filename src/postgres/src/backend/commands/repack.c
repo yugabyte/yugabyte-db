@@ -1204,9 +1204,9 @@ make_new_heap(Oid OIDOldHeap, Oid NewTableSpace, Oid NewAccessMethod,
 	Assert(OIDNewHeap != InvalidOid);
 
 	if (IsYugaByteEnabled() && relpersistence != RELPERSISTENCE_TEMP)
-		YbRelationSetNewRelfileNode(OldHeap, OIDNewHeap,
-									yb_copy_split_options,
-									false /* is_truncate */ );
+		YbRelationSetNewRelfileNumber(OldHeap, OIDNewHeap,
+									  yb_copy_split_options,
+									  false /* is_truncate */ );
 
 	ReleaseSysCache(tuple);
 

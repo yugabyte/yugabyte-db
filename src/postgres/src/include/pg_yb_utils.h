@@ -1661,9 +1661,9 @@ extern void YbATCopyPrimaryKeyToCreateStmt(Relation rel,
 										   Relation pg_constraint,
 										   CreateStmt *create_stmt);
 
-extern void YbIndexSetNewRelfileNode(Relation indexRel, Oid relfileNodeId,
-									 bool yb_copy_split_options,
-									 YbOptSplit *preserved_index_split_options);
+extern void YbIndexSetNewRelfileNumber(Relation indexRel, Oid newRelfileNumber,
+									   bool yb_copy_split_options,
+									   YbOptSplit *preserved_index_split_options);
 
 /*
  * Returns the ordering type for a primary key. By default, the first element of
@@ -1679,9 +1679,9 @@ extern bool YbIsUpdateOptimizationEnabled();
 
 extern bool YbIsIocPushdownEnabled(OnConflictAction action);
 
-extern void YbRelationSetNewRelfileNode(Relation rel, Oid relfileNodeId,
-										bool yb_copy_split_options,
-										bool is_truncate);
+extern void YbRelationSetNewRelfileNumber(Relation rel, Oid newRelfileNumber,
+										  bool yb_copy_split_options,
+										  bool is_truncate);
 
 extern Relation YbGetRelationWithOverwrittenReplicaIdentity(Oid relid,
 															char replident);

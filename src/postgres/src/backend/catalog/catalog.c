@@ -810,9 +810,9 @@ YbGetAllRelfilenodes()
 }
 
 static bool
-YbDoesRelfilenodeExist(HTAB *htab, Oid relfilenode)
+YbDoesRelfilenumberExist(HTAB *htab, Oid relfilenumber)
 {
-	return htab && hash_search(htab, &relfilenode, HASH_FIND, NULL);
+	return htab && hash_search(htab, &relfilenumber, HASH_FIND, NULL);
 }
 
 /*
@@ -890,7 +890,7 @@ GetNewRelFileNumber(Oid reltablespace, Relation pg_class, char relpersistence)
 		 * YB: also check for existing relfilenode in the pg_class catalog table.
 		 */
 	} while (DoesRelFileExist(&rlocator) ||
-			 YbDoesRelfilenodeExist(htab, rlocator.locator.relNumber));
+			 YbDoesRelfilenumberExist(htab, rlocator.locator.relNumber));
 
 	return rlocator.locator.relNumber;
 }

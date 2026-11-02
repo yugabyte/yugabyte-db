@@ -7253,8 +7253,8 @@ RelationSetNewRelfilenumber(Relation relation, char persistence,
 			 * This is not required for primary indexes, as they are
 			 * an implicit part of the base table.
 			 */
-			YbIndexSetNewRelfileNode(relation, newrelfilenumber,
-									 yb_copy_split_options, preserved_index_split_options);
+			YbIndexSetNewRelfileNumber(relation, newrelfilenumber,
+									   yb_copy_split_options, preserved_index_split_options);
 		else if (relation->rd_rel->relkind == RELKIND_RELATION ||
 				 relation->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
 		{
@@ -7265,9 +7265,9 @@ RelationSetNewRelfilenumber(Relation relation, char persistence,
 			 */
 			YBCDropTable(relation);
 			/* Create a new DocDB table for the relation. */
-			YbRelationSetNewRelfileNode(relation, newrelfilenumber,
-										yb_copy_split_options,
-										true /* is_truncate */ );
+			YbRelationSetNewRelfileNumber(relation, newrelfilenumber,
+										  yb_copy_split_options,
+										  true /* is_truncate */ );
 		}
 	}
 	else

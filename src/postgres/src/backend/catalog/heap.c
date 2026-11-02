@@ -1431,11 +1431,11 @@ heap_create_with_catalog(const char *relname,
 		if (yb_binary_restore && !yb_ignore_pg_class_oids)
 			yb_heap_pg_class_oids_supplied = true;
 
-		bool		yb_heap_relfilenode_supplied = IsBinaryUpgrade && !yb_binary_restore &&
+		bool		yb_heap_relfilenumber_supplied = IsBinaryUpgrade && !yb_binary_restore &&
 			!yb_extension_upgrade;
 
 		if (yb_binary_restore && !yb_ignore_relfilenode_ids)
-			yb_heap_relfilenode_supplied = true;
+			yb_heap_relfilenumber_supplied = true;
 
 		/* Use binary-upgrade override for pg_class.oid and relfilenumber */
 		if (yb_heap_pg_class_oids_supplied)
@@ -1480,7 +1480,7 @@ heap_create_with_catalog(const char *relname,
 				 */
 				if ((RELKIND_HAS_STORAGE(relkind) ||
 					 (IsYugaByteEnabled() && relkind == RELKIND_PARTITIONED_TABLE)) &&
-					yb_heap_relfilenode_supplied)
+					yb_heap_relfilenumber_supplied)
 				{
 					if (!RelFileNumberIsValid(binary_upgrade_next_heap_pg_class_relfilenumber))
 						ereport(ERROR,

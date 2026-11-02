@@ -8944,13 +8944,13 @@ YbATCopyPrimaryKeyToCreateStmt(Relation rel, Relation pg_constraint,
 /*
  * In YB, a "relfilenode" corresponds to a DocDB table.
  * This function creates a new DocDB table for the given index,
- * with UUID corresponding to the given relfileNodeId. It is used when a
+ * with UUID corresponding to the given newRelfileNumber. It is used when a
  * user index is re-indexed.
  */
 void
-YbIndexSetNewRelfileNode(Relation indexRel, Oid newRelfileNodeId,
-						 bool yb_copy_split_options,
-						 YbOptSplit *preserved_index_split_options)
+YbIndexSetNewRelfileNumber(Relation indexRel, Oid newRelfileNumber,
+						   bool yb_copy_split_options,
+						   YbOptSplit *preserved_index_split_options)
 {
 	bool		isNull;
 	HeapTuple	indexTuple;
@@ -9019,7 +9019,7 @@ YbIndexSetNewRelfileNode(Relation indexRel, Oid newRelfileNodeId,
 				   indexedRel->yb_table_properties->tablegroup_oid,
 				   InvalidOid /* colocation ID */ ,
 				   indexRel->rd_rel->reltablespace,
-				   newRelfileNodeId,
+				   newRelfileNumber,
 				   !indexRel->yb_table_properties ?
 					   InvalidOid : YbGetRelfileNodeId(indexRel) /* oldRelfileNodeId */ ,
 				   indclass ? indclass->values : NULL);
@@ -9124,11 +9124,11 @@ YbIsIocPushdownEnabled(OnConflictAction action)
 /*
  * In YB, a "relfilenode" corresponds to a DocDB table.
  * This function creates a new DocDB table for the given table,
- * with UUID corresponding to the given relfileNodeId.
+ * with UUID corresponding to the given newRelfileNumber.
  */
 void
-YbRelationSetNewRelfileNode(Relation rel, Oid newRelfileNodeId,
-							bool yb_copy_split_options, bool is_truncate)
+YbRelationSetNewRelfileNumber(Relation rel, Oid newRelfileNumber,
+							  bool yb_copy_split_options, bool is_truncate)
 {
 	CreateStmt *dummyStmt = makeNode(CreateStmt);
 
@@ -9173,7 +9173,7 @@ YbRelationSetNewRelfileNode(Relation rel, Oid newRelfileNodeId,
 				   RelationGetNamespace(rel),
 				   YbGetTableProperties(rel)->tablegroup_oid,
 				   InvalidOid, rel->rd_rel->reltablespace,
-				   newRelfileNodeId,
+				   newRelfileNumber,
 				   rel->rd_rel->relfilenode,
 				   is_truncate);
 

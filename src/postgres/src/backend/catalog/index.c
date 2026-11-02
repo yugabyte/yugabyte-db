@@ -991,10 +991,6 @@ index_create(Relation heapRelation,
 
 		bool		yb_index_relfilenumber_supplied = IsBinaryUpgrade && !yb_binary_restore;
 
-		/*
-		 * YB_TODO_PG19MERGE rename yb_ignore_relfilenode_id (and other
-		 * instances of "relfilenode") to use "relfilenumber" instead.
-		 */
 		if (yb_binary_restore && !yb_ignore_relfilenode_ids)
 			yb_index_relfilenumber_supplied = true;
 		/* Use binary-upgrade override for pg_class.oid and relfilenumber */
