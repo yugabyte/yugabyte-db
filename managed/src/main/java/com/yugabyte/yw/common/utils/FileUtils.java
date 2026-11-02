@@ -53,6 +53,14 @@ public class FileUtils {
     }
   }
 
+  public static String readFileToString(File file) {
+    try {
+      return Files.readString(file.toPath(), StandardCharsets.UTF_8);
+    } catch (IOException e) {
+      throw new RuntimeException("Unable to read file " + file, e);
+    }
+  }
+
   public static void writeStringToFile(File file, String contents) throws Exception {
     try (FileWriter writer = new FileWriter(file)) {
       writer.write(contents);
