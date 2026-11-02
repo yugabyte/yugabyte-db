@@ -870,7 +870,14 @@ retry:
 
 		if (!slot_for_array)
 		{
-			for (int i = 0; i < *YBCGetGFlags()->ysql_max_replication_slots; i++)
+			/*
+			 * The array has max_replication_slots (GUC) entries, which can be
+			 * fewer than the max_replication_slots gflag. Never look past it:
+			 * the shared memory that follows holds the replication origin and
+			 * walsender state. If the array is full, no
+			 * pg_stat_replication_slots counters are kept for the slot.
+			 */
+			for (int i = 0; i < max_replication_slots; i++)
 			{
 				ReplicationSlot *temp_s = &ReplicationSlotCtl->replication_slots[i];
 
@@ -880,13 +887,19 @@ retry:
 					break;
 				}
 			}
-			memset(&slot_for_array->data, 0, sizeof(ReplicationSlotPersistentData));
-			namestrcpy(&slot_for_array->data.name, name);
-			pgstat_create_replslot(slot_for_array);
+			if (slot_for_array)
+			{
+				memset(&slot_for_array->data, 0, sizeof(ReplicationSlotPersistentData));
+				namestrcpy(&slot_for_array->data.name, name);
+				pgstat_create_replslot(slot_for_array);
+			}
 		}
 
-		slot_for_array->in_use = true;
-		pgstat_acquire_replslot(slot_for_array);
+		if (slot_for_array)
+		{
+			slot_for_array->in_use = true;
+			pgstat_acquire_replslot(slot_for_array);
+		}
 
 		return;
 	}
