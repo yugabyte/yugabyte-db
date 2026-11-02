@@ -917,6 +917,34 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
     }
   }
 
+  // With a single backend, a PGC_BACKEND startup parameter of A must be undone when the backend
+  // is reset for B, and reapplied when A is deployed again.
+  @Test
+  public void testBackendContextStartupParameterDoesNotLeak() throws Exception {
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), SINGLE_BACKEND_FLAGS);
+
+    try (Connection connA = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .withOptions("-c ignore_system_indexes=on")
+            .connect();
+         Connection connB = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .connect();
+         Statement stmtA = connA.createStatement();
+         Statement stmtB = connB.createStatement()) {
+      for (int i = 0; i < 3; i++) {
+        try (ResultSet rs = stmtA.executeQuery("SHOW ignore_system_indexes")) {
+          assertTrue("SHOW ignore_system_indexes should return a row", rs.next());
+          assertEquals("A's startup value should be applied", "on", rs.getString(1));
+        }
+        try (ResultSet rs = stmtB.executeQuery("SHOW ignore_system_indexes")) {
+          assertTrue("SHOW ignore_system_indexes should return a row", rs.next());
+          assertEquals("A's startup value should not leak to B", "off", rs.getString(1));
+        }
+      }
+    }
+  }
+
   @Test
   public void testUpdatingRuntimeFlagPGCSession() throws Exception {
     try (
