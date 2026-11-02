@@ -900,8 +900,16 @@ main(int argc, char **argv)
 
 			case 29:
 				/*
-				 * YB_TODO_PG19MERGE: remove once yb-controller switches to
-				 * --statistics.
+				 * YB_TODO: remove once yb-controller switches to --statistics.
+				 * GHI: https://github.com/yugabyte/yugabyte-db/issues/36658
+				 *
+				 * yb-controller 2.2.0.4-b11, pinned in managed/src/main/resources/ybc_version.conf,
+				 * probes "ysql_dump --help" for '--with-statistics' and invokes the dump with
+				 * '--schema-only --with-statistics'.
+				 * yb-controller must switch to '--no-data --statistics' and stop probing for
+				 * '--with-statistics'. Once it does, remove this case 29, the '--with-statistics'
+				 * option, the 'yb_with_statistics' variable, its term in 'dumpStatistics',
+				 * and the '--with-statistics' line in help().
 				 */
 				yb_with_statistics = true;
 				break;
