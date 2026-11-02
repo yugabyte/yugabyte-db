@@ -41,7 +41,7 @@ You can now run SQL against your Serverless Postgres database, and connect appli
 
 ### What's next
 
-- [Manage branches and compute](../serverless/#manage-a-cluster) - add branches, add compute endpoints, and resize compute.
+- [Manage branches and compute](../serverless/manage/) - add branches, add compute endpoints, and resize compute.
 
 ## Go distributed with Distributed Postgres
 
