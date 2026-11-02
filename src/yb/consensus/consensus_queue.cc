@@ -78,6 +78,7 @@ using namespace yb::size_literals;
 DECLARE_uint64(rpc_max_message_size);
 
 DECLARE_uint64(consensus_max_batch_size_bytes);
+DECLARE_bool(enable_quiescent_tablets);
 DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 
@@ -579,6 +580,9 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     }
 
     request->set_caller_term(queue_state_.current_term);
+    if (FLAGS_enable_quiescent_tablets) {
+      queue_state_.all_replicated_op_id.ToPB(request->mutable_all_replicated_op_id());
+    }
     unreachable_time =
         MonoTime::Now().GetDeltaSince(peer->last_successful_communication_time);
     if (member_type) *member_type = peer->member_type;
@@ -1139,6 +1143,7 @@ Result<const PeerMessageQueue::TrackedPeer*> PeerMessageQueue::FindClosestPeerFo
   LocalityLevel best_locality_level =
       TablespaceParser::GetLocalityLevel(src_cloud_info, local_peer_pb_.cloud_info());
   PeerMessageQueue::TrackedPeer* rbs_source = local_peer_;
+  const auto min_anchorable_index = VERIFY_RESULT(log_cache_.min_anchorable_index());
   for (auto it = peers_map_.begin(); it != peers_map_.end(); it++) {
     // don't consider locality of remote_tracked_peer with itself
     if (!it->second->cloud_info.has_value() || remote_tracked_peer == it->second ||
@@ -1147,14 +1152,15 @@ Result<const PeerMessageQueue::TrackedPeer*> PeerMessageQueue::FindClosestPeerFo
     }
 
     // Consider only those followers as rbs source which are in the same term as the leader
-    // and have last_received_opid >= leader log's min available index.
+    // and have last_received_opid >= leader log's min anchorable index, since the source anchors
+    // the leader's log at its last op.
     // TODO: Add a gflag that sets the max allowed difference between the leader's last
     // logged opid and that of the rbs source. Reject peer as an rbs source if
     // leader->last_received.index - remote_peer->last_received.index > flag_value
     OpId remote_last_received_opid = it->second->last_received;
     if (it->second->member_type != PeerMemberType::VOTER ||
         remote_last_received_opid.term != queue_state_.current_term ||
-        remote_last_received_opid.index < VERIFY_RESULT(log_cache_.earliest_op_index()) ||
+        remote_last_received_opid.index < min_anchorable_index ||
         !it->second->is_last_exchange_successful) {
       continue;
     }
@@ -1758,6 +1764,11 @@ PeerMessageQueue::TrackedPeer PeerMessageQueue::GetTrackedPeerForTests(string uu
 OpId PeerMessageQueue::TEST_GetAllReplicatedIndex() const {
   LockGuard lock(queue_lock_);
   return queue_state_.all_replicated_op_id;
+}
+
+OpId PeerMessageQueue::GetAllReplicatedOpId() const {
+  LockGuard lock(queue_lock_);
+  return queue_state_.mode == Mode::LEADER ? queue_state_.all_replicated_op_id : OpId::Min();
 }
 
 OpId PeerMessageQueue::GetAllAppliedOpId() const {

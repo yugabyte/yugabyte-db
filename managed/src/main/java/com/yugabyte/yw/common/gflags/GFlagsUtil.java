@@ -137,6 +137,10 @@ public class GFlagsUtil {
   public static final String WEBSERVER_PORT = "webserver_port";
   public static final String WEBSERVER_INTERFACE = "webserver_interface";
   public static final String OPENSSL_REQUIRE_FIPS = "openssl_require_fips";
+  public static final String USE_CLIENT_CERTIFICATES =
+      "node_to_node_encryption_use_client_certificates";
+  public static final String NODE_TO_NODE_REQUIRED_UID = "node_to_node_encryption_required_uid";
+  public static final String VERIFY_CLIENT_ENDPOINT = "verify_client_endpoint";
   public static final String REDIS_PROXY_BIND_ADDRESS = "redis_proxy_bind_address";
   public static final String REDIS_PROXY_WEBSERVER_PORT = "redis_proxy_webserver_port";
   public static final String POSTMASTER_CGROUP = "postmaster_cgroup";
@@ -1317,6 +1321,19 @@ public class GFlagsUtil {
           CloudType.oci,
           CloudType.onprem);
 
+  private static final Set<String> GFLAGS_FROM_ENV = ImmutableSet.of("fromenv", "tryfromenv");
+
+  private static final String FIPS_GFLAG_ENV_VAR = "FLAGS_" + OPENSSL_REQUIRE_FIPS;
+
+  // Both keep "FIPS enabled universe", which clients and tests match on.
+  private static final String FIPS_GFLAG_REQUIRED =
+      "A FIPS enabled universe needs " + OPENSSL_REQUIRE_FIPS + " set to true or left unset";
+  private static final String FIPS_GFLAG_FROM_ENV =
+      "A FIPS enabled universe cannot read " + OPENSSL_REQUIRE_FIPS + " from the environment";
+
+  private static final Pattern HELM_EXTRA_ENV_NAME =
+      Pattern.compile("(^|\\.)extraEnv\\[\\d+\\]\\.name$");
+
   /**
    * Make sure FIPS related GFlags are not overridden, and that the provider is one whose nodes can
    * be put into FIPS mode.
@@ -1336,47 +1353,67 @@ public class GFlagsUtil {
             String.format(
                 "FIPS compliant universes are not supported on provider(s): %s", nonSupported));
       }
-      if (userIntent.specificGFlags == null) {
-        // Create still accepts the deprecated maps and converts them to specificGFlags only after
-        // this check runs.
-        checkFipsGFlagNotDisabled(userIntent.masterGFlags);
-        checkFipsGFlagNotDisabled(userIntent.tserverGFlags);
-      } else if (!userIntent.specificGFlags.isInheritFromPrimary()) {
-        Collection<UUID> azUuids = new ArrayList<>(Collections.singletonList(null));
-        if (userIntent.specificGFlags.getPerAZ() != null) {
-          azUuids.addAll(userIntent.specificGFlags.getPerAZ().keySet());
-        }
-        for (UUID azUuid : azUuids) {
-          checkFipsGFlagNotDisabled(
-              userIntent.specificGFlags.getGFlags(azUuid, UniverseTaskBase.ServerType.MASTER));
-          checkFipsGFlagNotDisabled(
-              userIntent.specificGFlags.getGFlags(azUuid, ServerType.TSERVER));
-        }
-      }
-      validateFipsCompliancyOfHelmOverrides(
+      getUserGFlagMaps(userIntent).forEach(GFlagsUtil::checkFipsGFlagNotDisabled);
+      validateHelmOverridesGFlags(
           userIntent.universeOverrides, userIntent.azOverrides, fipsEnabled);
     }
   }
 
-  private static void checkFipsGFlagNotDisabled(@Nullable Map<String, String> gflags) {
-    if (gflags != null
-        && gflags.containsKey(OPENSSL_REQUIRE_FIPS)
-        && !"true".equals(gflags.get(OPENSSL_REQUIRE_FIPS))) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "FIPS enabled YBAnywhere only supports FIPS enabled universe");
+  /** Validates the values of the gflags a user intent sets, in gflags and in K8s overrides. */
+  public static void validateGFlagValues(UniverseDefinitionTaskParams.UserIntent userIntent) {
+    getUserGFlagMaps(userIntent).values().forEach(GFlagsUtil::checkNoLineBreaks);
+    validateHelmOverridesGFlags(
+        userIntent.universeOverrides, userIntent.azOverrides, false /* fipsEnabled */);
+  }
+
+  /** A user intent's gflag maps, keyed by where they come from, for error messages. */
+  private static Map<String, Map<String, String>> getUserGFlagMaps(
+      UniverseDefinitionTaskParams.UserIntent userIntent) {
+    Map<String, Map<String, String>> result = new LinkedHashMap<>();
+    if (userIntent.specificGFlags == null) {
+      // Create still accepts the deprecated maps and converts them to specificGFlags only after
+      // the checks run.
+      result.put("master gflags", userIntent.masterGFlags);
+      result.put("tserver gflags", userIntent.tserverGFlags);
+    } else if (!userIntent.specificGFlags.isInheritFromPrimary()) {
+      Collection<UUID> azUuids = new ArrayList<>(Collections.singletonList(null));
+      if (userIntent.specificGFlags.getPerAZ() != null) {
+        azUuids.addAll(userIntent.specificGFlags.getPerAZ().keySet());
+      }
+      for (UUID azUuid : azUuids) {
+        String az =
+            azUuid == null
+                ? ""
+                : " of AZ "
+                    + AvailabilityZone.maybeGet(azUuid)
+                        .map(AvailabilityZone::getCode)
+                        .orElse(azUuid.toString());
+        result.put(
+            "master gflags" + az, userIntent.specificGFlags.getGFlags(azUuid, ServerType.MASTER));
+        result.put(
+            "tserver gflags" + az, userIntent.specificGFlags.getGFlags(azUuid, ServerType.TSERVER));
+      }
     }
+    return result;
   }
 
   /**
-   * Kubernetes helm overrides carry gflags too (gflags.master and gflags.tserver in the values) and
-   * are merged over the gflags YBA generates, so they could turn the FIPS gflag off where the
-   * gflags API refuses to.
+   * useNodeToNodeClientCerts owns node_to_node_encryption_use_client_certificates, so the gflag
+   * can't be set by hand, except to false on a universe without it; while it is on, the identity
+   * checks the chart's client cert can't pass stay off.
    */
-  public static void validateFipsCompliancyOfHelmOverrides(
-      String universeOverrides, Map<String, String> azOverrides, boolean fipsEnabled) {
-    if (!fipsEnabled) {
-      return;
-    }
+  public static void validateNodeToNodeClientCerts(
+      UniverseDefinitionTaskParams.UserIntent userIntent, boolean useClientCerts) {
+    getUserGFlagMaps(userIntent)
+        .values()
+        .forEach(gflags -> checkClientCertGFlags(gflags, "", useClientCerts));
+    validateNodeToNodeClientCertsOfHelmOverrides(
+        userIntent.universeOverrides, userIntent.azOverrides, useClientCerts);
+  }
+
+  /** As above for helm overrides. */
+  public static void validateNodeToNodeClientCertsOfHelmOverrides(
+      String universeOverrides, Map<String, String> azOverrides, boolean useClientCerts) {
     List<String> overrides = new ArrayList<>();
     overrides.add(universeOverrides);
     if (azOverrides != null) {
@@ -1384,17 +1421,159 @@ public class GFlagsUtil {
     }
     for (String overridesYaml : overrides) {
       Map<String, String> flatOverrides = flattenHelmOverrides(overridesYaml);
-      for (String server : List.of("master", "tserver")) {
-        String value = flatOverrides.get("gflags." + server + "." + OPENSSL_REQUIRE_FIPS);
-        if (value != null && !value.equals("true")) {
-          throw new PlatformServiceException(
-              BAD_REQUEST,
-              String.format(
-                  "FIPS enabled YBAnywhere only supports FIPS enabled universe: Kubernetes"
-                      + " overrides cannot set %s %s to %s",
-                  server, OPENSSL_REQUIRE_FIPS, value));
+      checkClientCertGFlags(flatOverrides, "gflags.master.", useClientCerts);
+      checkClientCertGFlags(flatOverrides, "gflags.tserver.", useClientCerts);
+    }
+  }
+
+  private static void checkClientCertGFlags(
+      @Nullable Map<String, String> gflags, String prefix, boolean useClientCerts) {
+    if (gflags == null) {
+      return;
+    }
+    // false is allowed where it changes nothing, so universes that set it before this check keep
+    // passing edits and gflags upgrades.
+    String value = gflags.get(prefix + USE_CLIENT_CERTIFICATES);
+    if (value != null && (useClientCerts || !"false".equalsIgnoreCase(value))) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Don't set %s; YugabyteDB Anywhere sets it from useNodeToNodeClientCerts, chosen at"
+                  + " universe creation. Remove it with a gflags upgrade.",
+              USE_CLIENT_CERTIFICATES));
+    }
+    if (useClientCerts
+        && (StringUtils.isNotBlank(gflags.get(prefix + NODE_TO_NODE_REQUIRED_UID))
+            || "true".equalsIgnoreCase(gflags.get(prefix + VERIFY_CLIENT_ENDPOINT)))) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "useNodeToNodeClientCerts doesn't support %s or %s: YugabyteDB Anywhere's"
+                  + " client certificate matches neither",
+              NODE_TO_NODE_REQUIRED_UID, VERIFY_CLIENT_ENDPOINT));
+    }
+  }
+
+  /**
+   * @param source where the gflags come from, as in "the tserver gflags of AZ az-1"
+   */
+  public static void checkFipsGFlagNotDisabled(
+      String source, @Nullable Map<String, String> gflags) {
+    if (gflags == null) {
+      return;
+    }
+    if (gflags.containsKey(OPENSSL_REQUIRE_FIPS)
+        && !"true".equals(gflags.get(OPENSSL_REQUIRE_FIPS))) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "%s, but the %s set it to %s.",
+              FIPS_GFLAG_REQUIRED, source, gflags.get(OPENSSL_REQUIRE_FIPS)));
+    }
+    String fromEnvFlag = getFipsGFlagFromEnvFlag(gflags);
+    if (fromEnvFlag != null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "%s, but %s in the %s lists it.", FIPS_GFLAG_FROM_ENV, fromEnvFlag, source));
+    }
+  }
+
+  /**
+   * The gflags library's fromenv and tryfromenv take a list of gflags to read from FLAGS_<name>
+   * environment variables, a way to set the FIPS gflag without its own key. Returns the one that
+   * lists it, if any.
+   */
+  @Nullable
+  private static String getFipsGFlagFromEnvFlag(Map<String, String> gflags) {
+    return GFLAGS_FROM_ENV.stream()
+        .filter(
+            flag ->
+                gflags.get(flag) != null
+                    && Arrays.stream(gflags.get(flag).split(","))
+                        .anyMatch(name -> name.trim().equals(OPENSSL_REQUIRE_FIPS)))
+        .findFirst()
+        .orElse(null);
+  }
+
+  /**
+   * Each gflag is written to the server's flagfile as one --name=value line, so a line break in a
+   * name or value adds a line of its own, which can override a gflag YBA sets.
+   */
+  public static void checkNoLineBreaks(@Nullable Map<String, String> gflags) {
+    if (gflags == null) {
+      return;
+    }
+    gflags.forEach(
+        (name, value) -> {
+          if (StringUtils.containsAny(name, "\r\n")
+              || (value != null && StringUtils.containsAny(value, "\r\n"))) {
+            throw new PlatformServiceException(
+                BAD_REQUEST, String.format("GFlag %s cannot contain a line break", name.trim()));
+          }
+        });
+  }
+
+  /**
+   * Kubernetes helm overrides carry gflags too (gflags.master and gflags.tserver in the values) and
+   * are merged over the gflags YBA generates, so they could inject gflag lines or, on a FIPS
+   * universe, turn the FIPS gflag off where the gflags API refuses to.
+   */
+  public static void validateHelmOverridesGFlags(
+      String universeOverrides, Map<String, String> azOverrides, boolean fipsEnabled) {
+    Map<String, String> overrides = new LinkedHashMap<>();
+    overrides.put("Kubernetes universe overrides", universeOverrides);
+    if (azOverrides != null) {
+      azOverrides.forEach((az, yaml) -> overrides.put("Kubernetes overrides of AZ " + az, yaml));
+    }
+    for (Map.Entry<String, String> entry : overrides.entrySet()) {
+      String overridesYaml = entry.getValue();
+      Map<String, String> flatOverrides;
+      try {
+        flatOverrides = flattenHelmOverrides(overridesYaml);
+      } catch (PlatformServiceException e) {
+        if (fipsEnabled) {
+          throw e;
         }
+        // Left to the overrides validation; helm cannot render gflags from them either.
+        continue;
       }
+      validateHelmValuesGFlags(flatOverrides, fipsEnabled, entry.getKey());
+    }
+  }
+
+  /**
+   * Same checks as {@link #validateHelmOverridesGFlags} on flattened helm values, for the values a
+   * task renders.
+   */
+  public static void validateHelmValuesGFlags(
+      Map<String, String> flatValues, boolean fipsEnabled, String source) {
+    for (String server : List.of("master", "tserver")) {
+      String prefix = "gflags." + server + ".";
+      Map<String, String> gflags = new HashMap<>();
+      flatValues.forEach(
+          (key, value) -> {
+            if (key.startsWith(prefix)) {
+              gflags.put(key.substring(prefix.length()), value);
+            }
+          });
+      checkNoLineBreaks(gflags);
+      if (!fipsEnabled) {
+        continue;
+      }
+      checkFipsGFlagNotDisabled(String.format("%s (gflags.%s)", source, server), gflags);
+    }
+    if (fipsEnabled) {
+      flatValues.forEach(
+          (key, value) -> {
+            if (HELM_EXTRA_ENV_NAME.matcher(key).find() && FIPS_GFLAG_ENV_VAR.equals(value)) {
+              throw new PlatformServiceException(
+                  BAD_REQUEST,
+                  String.format(
+                      "%s, but the %s set environment variable %s (%s).",
+                      FIPS_GFLAG_FROM_ENV, source, FIPS_GFLAG_ENV_VAR, key));
+            }
+          });
     }
   }
 
@@ -1514,9 +1693,10 @@ public class GFlagsUtil {
   }
 
   /**
-   * Process user gflags: 1) merge some CSV gflags. 2) remove gflags that are forbidden to override
-   * (if not allowOverrideAll) 3) check host and port for proxy bind addresses gflags if user
-   * specified both.
+   * Process user gflags: 1) merge some CSV gflags. 2) reset gflags that are forbidden to override
+   * (if not allowOverrideAll) to the platform value; not removed, since the node agent path passes
+   * platform and user gflags merged in one map. 3) check host and port for proxy bind addresses
+   * gflags if user specified both.
    *
    * @param node - node details
    * @param userGFlags - glfags specified by user
@@ -1530,6 +1710,16 @@ public class GFlagsUtil {
       boolean allowOverrideAll,
       RuntimeConfGetter confGetter,
       AnsibleConfigureServers.Params taskParams) {
+    // Values stored before the API checks existed must not reach the flagfile either.
+    checkNoLineBreaks(userGFlags);
+    String fromEnvFlag = getFipsGFlagFromEnvFlag(userGFlags);
+    if ("true".equals(platformGFlags.get(OPENSSL_REQUIRE_FIPS)) && fromEnvFlag != null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "%s, but %s in the gflags of node %s lists it.",
+              FIPS_GFLAG_FROM_ENV, fromEnvFlag, node.nodeName));
+    }
     mergeCSVs(userGFlags, platformGFlags, UNDEFOK, false);
     if (!allowOverrideAll) {
       GFLAGS_FORBIDDEN_TO_OVERRIDE.forEach(
@@ -1538,11 +1728,11 @@ public class GFlagsUtil {
                 && platformGFlags.containsKey(gflag)
                 && !userGFlags.get(gflag).equals(platformGFlags.get(gflag))) {
               LOG.warn(
-                  "Removing {} from user gflags, values mismatch: user {} platform {}",
+                  "Overriding {} in user gflags, values mismatch: user {} platform {}",
                   gflag,
                   userGFlags.get(gflag),
                   platformGFlags.get(gflag));
-              userGFlags.remove(gflag);
+              userGFlags.put(gflag, platformGFlags.get(gflag));
             }
           });
     }
@@ -1552,11 +1742,11 @@ public class GFlagsUtil {
         && userGFlags.containsKey(OPENSSL_REQUIRE_FIPS)
         && !"true".equals(userGFlags.get(OPENSSL_REQUIRE_FIPS))) {
       LOG.warn(
-          "Removing {}={} from user gflags of FIPS universe node {}",
+          "Overriding {}={} with true in user gflags of FIPS universe node {}",
           OPENSSL_REQUIRE_FIPS,
           userGFlags.get(OPENSSL_REQUIRE_FIPS),
           node.nodeName);
-      userGFlags.remove(OPENSSL_REQUIRE_FIPS);
+      userGFlags.put(OPENSSL_REQUIRE_FIPS, "true");
     }
 
     if (userGFlags.containsKey(PSQL_PROXY_BIND_ADDRESS)) {

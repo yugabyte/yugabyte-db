@@ -97,7 +97,7 @@ DECLARE_int32(xcluster_automatic_target_create_table_ddl_rpc_timeout_sec);
 DECLARE_uint32(xcluster_ddl_tables_retention_secs);
 DECLARE_uint32(xcluster_max_old_schema_versions);
 DECLARE_uint32(xcluster_poller_task_delay_considered_stuck_secs);
-DECLARE_bool(xcluster_enable_target_applied_filter);
+DECLARE_bool(xcluster_enable_index_backfill_replication);
 DECLARE_bool(enforce_xcluster_guarded_lease);
 DECLARE_uint32(xcluster_guarded_lease_duration_ms);
 DECLARE_bool(xcluster_target_manual_override);
@@ -154,28 +154,6 @@ class XClusterDDLReplicationTest : public XClusterDDLReplicationTestBase {
     TEST_SETUP_SUPER(XClusterDDLReplicationTestBase);
     // DDLs need to to be processed sequentially, so increase the timeout.
     propagation_timeout_ *= 2;
-  }
-
-  Status SetUpClustersAndCheckpointReplicationGroup(
-      const SetupParams& params = XClusterDDLReplicationTestBase::kDefaultParams) {
-    RETURN_NOT_OK(SetUpClusters(params));
-    LOG(INFO) << "SetupClusters done";
-
-    RETURN_NOT_OK(
-        CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
-    LOG(INFO) << "CheckpointReplicationGroup done";
-    // Bootstrap here would have no effect because the database is empty so we skip it for the test.
-    return Status::OK();
-  }
-
-  Status SetUpClustersAndReplication(
-      const SetupParams& params = XClusterDDLReplicationTestBase::kDefaultParams) {
-    RETURN_NOT_OK(SetUpClustersAndCheckpointReplicationGroup(params));
-    LOG(INFO) << "SetUpClustersAndCheckpointReplicationGroup done";
-
-    RETURN_NOT_OK(CreateReplicationFromCheckpoint());
-    LOG(INFO) << "CreateReplicationFromCheckpoint done";
-    return Status::OK();
   }
 
   // Sets up RF1 clusters replicating table vec_test (id int, embedding vector(3)) of a single
@@ -256,11 +234,6 @@ class XClusterDDLReplicationTest : public XClusterDDLReplicationTestBase {
         bootstrap_required, IllegalState, "Bootstrap should always be required for Automatic mode");
 
     return AddNamespaceToXClusterReplication(source_db_id, target_db_id);
-  }
-
-  Result<HybridTime> GetXClusterSafeTime() {
-    return consumer_client()->GetXClusterSafeTimeForNamespace(
-        VERIFY_RESULT(GetNamespaceId(consumer_client())), master::XClusterSafeTimeFilter::NONE);
   }
 
   void CheckIndexRebuild(const std::string& table, const std::string& index,
@@ -732,6 +705,59 @@ TEST_F(XClusterDDLReplicationTest, YB_DISABLE_TEST(BootstrappingWithNoTables)) {
   ASSERT_OK(BackupFromProducer());
   ASSERT_OK(RestoreToConsumer());
   ASSERT_OK(CreateReplicationFromCheckpoint());
+}
+
+// Sets up replication, from a backup and restore, of an index whose column was renamed on the
+// source before setup, so its column name differs from the target's, and checks that rows
+// replicate through the index, also after a column rename and an index rename on the source.
+TEST_F(XClusterDDLReplicationTest, RenameIndexedColumn) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "This test does not work with yb_backup.py";
+  }
+
+  auto params = XClusterDDLReplicationTestBase::kDefaultParams;
+  params.start_yb_controller_servers = true;
+  ASSERT_OK(SetUpClusters(params));
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE t (key int PRIMARY KEY, a int)"));
+  ASSERT_OK(producer_conn_->Execute("CREATE INDEX t_a_idx ON t (a)"));
+  ASSERT_OK(producer_conn_->Execute("ALTER TABLE t RENAME COLUMN a TO a2"));
+
+  ASSERT_OK(CheckpointReplicationGroupOnNamespaces({namespace_name}));
+  ASSERT_OK(BackupFromProducer());
+  ASSERT_OK(RestoreToConsumer());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  const auto kIndexColumnNameQuery =
+      "SELECT attname FROM pg_attribute WHERE attrelid = 't_a_idx'::regclass AND attnum = 1";
+  ASSERT_EQ(ASSERT_RESULT(producer_conn_->FetchRow<std::string>(kIndexColumnNameQuery)), "a");
+  ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<std::string>(kIndexColumnNameQuery)), "a2");
+
+  auto count_on_target_through_index = [this](
+      const std::string& index, const std::string& column) -> Result<int64_t> {
+    const auto query = Format(
+        "/*+ IndexOnlyScan(t $0) */ SELECT count(*) FROM t WHERE $1 >= 0", index, column);
+    const auto plan = VERIFY_RESULT(consumer_conn_->FetchAllAsString("EXPLAIN " + query));
+    SCHECK_FORMAT(
+        plan.find(index) != std::string::npos, IllegalState, "Expected a scan of $0, got: $1",
+        index, plan);
+    return consumer_conn_->FetchRow<int64_t>(query);
+  };
+
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO t SELECT i, i FROM generate_series(1, 50) AS i"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_EQ(ASSERT_RESULT(count_on_target_through_index("t_a_idx", "a2")), 50);
+
+  ASSERT_OK(producer_conn_->Execute("ALTER TABLE t RENAME COLUMN a2 TO a3"));
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO t SELECT i, i FROM generate_series(51, 60) AS i"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_EQ(ASSERT_RESULT(count_on_target_through_index("t_a_idx", "a3")), 60);
+
+  // Renaming an index bumps its schema version, so the target has to map a new source index
+  // schema whose column names still differ from its own.
+  ASSERT_OK(producer_conn_->Execute("ALTER INDEX t_a_idx RENAME TO t_a_idx2"));
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO t SELECT i, i FROM generate_series(61, 70) AS i"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_EQ(ASSERT_RESULT(count_on_target_through_index("t_a_idx2", "a3")), 70);
 }
 
 TEST_F(XClusterDDLReplicationTest, CreateTable) {
@@ -2566,44 +2592,6 @@ TEST_F(XClusterDDLReplicationTest, HandleEarlierApplySafeTime) {
   ASSERT_OK(VerifyWrittenRecords(std::vector<TableName>{kTableName}));
 }
 
-class XClusterDDLReplicationSwitchoverTest : public XClusterDDLReplicationTest {
- public:
-  bool SetReplicationDirection(ReplicationDirection direction) override {
-    if (XClusterDDLReplicationTest::SetReplicationDirection(direction)) {
-      std::swap(cluster_A_, cluster_B_);
-      return true;
-    }
-    return false;
-  }
-
-  // Perform switchover from A->B to B->A.
-  Status Switchover() {
-    LOG(INFO) << "===== Beginning switchover: checkpoint B";
-    SetReplicationDirection(ReplicationDirection::BToA);
-    RETURN_NOT_OK(CheckpointReplicationGroup(
-        kBackwardsReplicationGroupId, /*require_no_bootstrap_needed=*/false));
-    LOG(INFO) << "===== Switchover: set up replication from B to A";
-    SetReplicationDirection(ReplicationDirection::BToA);
-    RETURN_NOT_OK(CreateReplicationFromCheckpoint(
-        cluster_A_->mini_cluster_->GetMasterAddresses(), kBackwardsReplicationGroupId));
-    LOG(INFO) << "===== Continuing switchover: drop replication from A to B";
-    SetReplicationDirection(ReplicationDirection::AToB);
-    RETURN_NOT_OK(DeleteOutboundReplicationGroup());
-    LOG(INFO) << "===== Finishing switchover: wait for B to no longer be in readonly mode";
-    SetReplicationDirection(ReplicationDirection::BToA);
-    RETURN_NOT_OK(WaitForReadOnlyModeOnAllTServers(
-        VERIFY_RESULT(GetNamespaceId(producer_client())), /*is_read_only=*/false, cluster_B_));
-    LOG(INFO) << "===== Switchover done";
-
-    return Status::OK();
-  }
-
-  Cluster* cluster_A_ = &producer_cluster_;
-  Cluster* cluster_B_ = &consumer_cluster_;
-  const xcluster::ReplicationGroupId kBackwardsReplicationGroupId =
-      xcluster::ReplicationGroupId("backwards_replication");
-};
-
 TEST_F(XClusterDDLReplicationSwitchoverTest, SwitchoverWithWorkload) {
   // Set up replication from A to B.
   ASSERT_OK(SetUpClustersAndReplication());
@@ -2972,12 +2960,14 @@ TEST_F(XClusterDDLReplicationSwitchoverTest, PgCron) {
     return conn.FetchRow<pgwrapper::PGUint64>(
         Format("SELECT COUNT(*) FROM cron_table WHERE a = '$0'", cluster_name));
   };
-  // A job in flight on A when switchover takes away its pg_cron leadership is expectedly marked
-  // failed with "pg_cron leader changed"; ignore that.
+  // A job in flight on A when switchover makes A a target is expectedly marked failed; ignore
+  // that.  Either pg_cron notices the role change first ("pg_cron leader changed"), or A refuses
+  // the job's write and/or the launcher's next write about the run, so B's pg_cron marks the run
+  // failed once it becomes leader ("server restarted").
   auto get_failed_runs = [&](pgwrapper::PGConn& conn) -> Result<uint64_t> {
     return conn.FetchRow<pgwrapper::PGUint64>(
         "SELECT COUNT(*) FROM cron.job_run_details WHERE status = 'failed' "
-        "AND return_message <> 'pg_cron leader changed'");
+        "AND return_message NOT IN ('pg_cron leader changed', 'server restarted')");
   };
 
   SleepFor(30s);
@@ -3004,8 +2994,9 @@ TEST_F(XClusterDDLReplicationSwitchoverTest, PgCron) {
   failed_runs = ASSERT_RESULT(get_failed_runs(conn_A));
   ASSERT_EQ(failed_runs, 0);
 
-  // Make sure target did not attempt to perform any writes.
-  ASSERT_EQ(sync_point_instance_count, 0);
+  // A run in flight on A when it becomes a target may have its write and/or the launcher's next
+  // bookkeeping write refused (the launcher exits on that refusal), but A must not keep retrying.
+  ASSERT_LE(sync_point_instance_count, 2);
 }
 
 using XClusterDDLReplicationFailoverTest = XClusterDDLReplicationSwitchoverTest;
@@ -7245,7 +7236,7 @@ TEST_F(XClusterDDLReplicationIndexBackfillTest, ReplicatedFromSource) {
 // Flag off, so the target falls back to the legacy behavior of running its own local backfill.
 // Also verify changing the flag after the stream is created does not affect the backfill decision.
 TEST_F(XClusterDDLReplicationIndexBackfillTest, LegacyLocalBackfill) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_enable_target_applied_filter) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_enable_index_backfill_replication) = false;
   ASSERT_OK(SetUpClustersAndReplication());
   ASSERT_OK(CreateBaseTable());
 
@@ -7257,8 +7248,8 @@ TEST_F(XClusterDDLReplicationIndexBackfillTest, LegacyLocalBackfill) {
   ASSERT_OK(producer_conn_->ExecuteFormat(
       "CREATE INDEX $0 ON $1($2 ASC)", kIndexName, kTableName, kCol));
 
-  // Promote the flag after the stream already exists, which should not affect backfill decision.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_enable_target_applied_filter) = true;
+  // Turn the flag on after the stream already exists, which should not affect backfill decision.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_enable_index_backfill_replication) = true;
 
   // Unblock the replication to the target and the target takes the local backfill path.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 0;

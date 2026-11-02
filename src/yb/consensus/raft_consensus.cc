@@ -2218,6 +2218,11 @@ Result<RaftConsensus::UpdateReplicaResult> RaftConsensus::UpdateReplica(
   // 4 - Mark operations as committed
   RETURN_NOT_OK(MarkOperationsAsCommittedUnlocked(request, deduped_req, last_from_leader));
 
+  if (request.has_all_replicated_op_id()) {
+    all_replicated_index_from_leader_.store(
+        request.all_replicated_op_id().index(), std::memory_order_release);
+  }
+
   // Fill the response with the current state. We will not mutate anymore state until
   // we actually reply to the leader, we'll just wait for the messages to be durable.
   FillConsensusResponseOKUnlocked(response);
@@ -3812,6 +3817,12 @@ OpId RaftConsensus::GetLastAppliedOpId() {
 
 OpId RaftConsensus::GetAllAppliedOpId() {
   return queue_->GetAllAppliedOpId();
+}
+
+int64_t RaftConsensus::GetAllReplicatedIndex() const {
+  return std::max(
+      queue_->GetAllReplicatedOpId().index,
+      all_replicated_index_from_leader_.load(std::memory_order_acquire));
 }
 
 Status RaftConsensus::CheckReadyAsRbsSource() {

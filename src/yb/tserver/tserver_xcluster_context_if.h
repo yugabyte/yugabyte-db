@@ -58,8 +58,13 @@ class TserverXClusterContextIf {
   virtual Result<std::shared_ptr<const PersistenceBlockMapPB>> TEST_GetPersistenceBlockMap()
       const = 0;
 
-  // Without enforce_xcluster_guarded_lease, this is not a lease check: it returns whether
-  // xCluster information from a master heartbeat response has been applied yet.
+  // Whether this TServer may treat its xCluster-guarded information as current.
+  //
+  // When enforce_xcluster_guarded_lease is true (i.e., after upgrade), this is equivalent to do we
+  // have an unexpired lease?
+  //
+  // Otherwise, we assume yes once we have received a heartbeat from master for backward
+  // compatibility/upgrade reasons.
   virtual bool HasXClusterGuardedInfoLease() const = 0;
 
   virtual bool IsReadOnlyMode(NamespaceIdView namespace_id) const = 0;

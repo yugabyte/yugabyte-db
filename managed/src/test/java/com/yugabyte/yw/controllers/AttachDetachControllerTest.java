@@ -8,6 +8,8 @@ import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.ModelFactory.testCustomer;
 import static com.yugabyte.yw.common.ModelFactory.testUser;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -36,18 +38,21 @@ import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AttachDetachSpec;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.MetricKey;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.YugawareProperty;
+import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import java.io.File;
@@ -493,6 +498,60 @@ public class AttachDetachControllerTest extends FakeDBApplication {
         Boolean.valueOf(importedUniverse.getConfig().get("takeBackups")));
     assertEquals(false, importedUniverse.getUniverseDetails().updateInProgress);
     assertEquals(true, importedUniverse.getUniverseDetails().updateSucceeded);
+  }
+
+  @Test
+  public void testDeleteMetadataRemovesUniverseMetrics() {
+    MetricKey key = universeMetric(mainUniverse);
+    Result result =
+        doRequestWithAuthToken(
+            "POST",
+            "/api/customers/"
+                + customer.getUuid()
+                + "/universes/"
+                + mainUniverseUUID
+                + "/delete_metadata",
+            authToken);
+    assertOk(result);
+    assertNull(metricService.get(key));
+  }
+
+  @Test
+  public void testV2DeleteMetadataRemovesUniverseMetrics() {
+    mainUniverse =
+        Universe.saveDetails(
+            mainUniverseUUID,
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              details.universeDetached = true;
+              details.getPrimaryCluster().userIntent.ybSoftwareVersion = "2024.2.0.0-b2";
+              u.setUniverseDetails(details);
+            });
+    MetricKey key = universeMetric(mainUniverse);
+    Result result =
+        doRequestWithAuthToken(
+            "DELETE",
+            "/api/v2/customers/"
+                + customer.getUuid()
+                + "/universes/"
+                + mainUniverseUUID
+                + "/attach-detach-metadata",
+            authToken);
+    assertOk(result);
+    assertNull(metricService.get(key));
+  }
+
+  private MetricKey universeMetric(Universe universe) {
+    metricService.setOkStatusMetric(
+        MetricService.buildMetricTemplate(PlatformMetrics.UNIVERSE_EXISTS, universe));
+    MetricKey key =
+        MetricKey.builder()
+            .customerUuid(customer.getUuid())
+            .name(PlatformMetrics.UNIVERSE_EXISTS.getMetricName())
+            .sourceUuid(universe.getUniverseUUID())
+            .build();
+    assertNotNull(metricService.get(key));
+    return key;
   }
 
   private Result detachUniverse(JsonNode bodyJson) {

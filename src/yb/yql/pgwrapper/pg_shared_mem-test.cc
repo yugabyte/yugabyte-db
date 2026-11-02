@@ -26,13 +26,18 @@
 #include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/metrics.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "yb/yql/pgwrapper/pg_test_utils.h"
 
 using namespace std::literals;
+
+METRIC_DECLARE_histogram(handler_latency_yb_tserver_PgClientService_Perform);
+METRIC_DECLARE_event_stats(pg_client_exchange_response_size);
 
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(pg_client_use_shared_memory);
@@ -350,6 +355,57 @@ TEST_F(PgSharedMemTest, Batches) {
 
   auto value = AsString(ASSERT_RESULT(conn.FetchRows<int32_t>("SELECT * FROM t ORDER BY key")));
   ASSERT_EQ(value, "[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]");
+}
+
+class PgSharedMemSingleTServerTest : public PgSharedMemTest {
+ protected:
+  size_t NumTabletServers() override {
+    return 1;
+  }
+};
+
+struct PerformCount {
+  size_t rpc;
+  size_t shared_mem;
+};
+
+struct PerformCountDescriber : public MetricWatcherDeltaDescriberTraits<PerformCount, 2> {
+  explicit PerformCountDescriber(std::reference_wrapper<const MetricEntity> entity)
+      : descriptors{
+            Descriptor{
+                &delta.rpc, entity, METRIC_handler_latency_yb_tserver_PgClientService_Perform},
+            Descriptor{&delta.shared_mem, entity, METRIC_pg_client_exchange_response_size}} {}
+
+  DeltaType delta;
+  Descriptors descriptors;
+};
+
+// Back-to-back Performs with local tablet calls should all go over the shared memory exchange,
+// i.e. the tserver should release the exchange before pggate gets the response. GH #36032.
+// SKIP LOCKED locks each row with a separate Perform.
+TEST_F_EX(PgSharedMemTest, BackToBackLocalPerforms, PgSharedMemSingleTServerTest) {
+  constexpr int kNumRows = 50;
+  constexpr int kNumStatements = 20;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value INT)"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t SELECT i, i FROM generate_series(1, $0) i", kNumRows));
+
+  MetricWatcher<PerformCountDescriber> watcher(
+      std::cref(*cluster_->mini_tablet_server(kPgTsIndex)->server()->metric_entity()));
+  auto delta = ASSERT_RESULT(watcher.Delta([&conn]() -> Status {
+    for (int i = 0; i != kNumStatements; ++i) {
+      RETURN_NOT_OK(conn.Fetch("SELECT * FROM t FOR UPDATE SKIP LOCKED"));
+    }
+    return Status::OK();
+  }));
+  LOG(INFO) << "Performs over RPC: " << delta.rpc
+            << ", over shared memory: " << delta.shared_mem;
+  ASSERT_GE(delta.rpc + delta.shared_mem, kNumRows * kNumStatements);
+  // The exchange stays busy for a moment after the response, so a few Performs could still go
+  // over RPC.
+  ASSERT_LE(delta.rpc * 10, delta.shared_mem);
 }
 
 class PgSharedMemBigTimeoutTest : public PgSharedMemTest {

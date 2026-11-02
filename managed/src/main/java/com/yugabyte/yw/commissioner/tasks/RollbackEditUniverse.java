@@ -152,7 +152,7 @@ public class RollbackEditUniverse extends EditUniverseTaskBase {
         createDestroyServerTasks(
                 universe,
                 nodesToDestroy,
-                node -> true /* isForceDelete */,
+                forceDestroyOnlyOnOnprem(universe),
                 true /* deleteNode */,
                 true /* deleteRootVolumes */,
                 true /* skipDestroyPrecheck */)

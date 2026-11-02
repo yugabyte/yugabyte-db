@@ -22,6 +22,7 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/entity_ids_types.h"
 
+#include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/docdb_compaction_context.h"
 
 #include "yb/gutil/dynamic_annotations.h"
@@ -36,6 +37,9 @@
 #include "yb/master/sys_catalog_constants.h"
 #include "yb/master/tasks_tracker.h"
 
+#include "yb/tablet/tablet_peer.h"
+
+#include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
@@ -46,6 +50,8 @@
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tostring.h"
 
+DECLARE_bool(enable_quiescent_tablets);
+DECLARE_int32(quiescent_tablet_idle_sec);
 DECLARE_bool(ysql_use_packed_row_v2);
 DECLARE_bool(ysql_mark_update_packed_row);
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
@@ -55,6 +61,7 @@ DECLARE_bool(TEST_disable_apply_committed_transactions);
 DECLARE_bool(cdcsdk_enable_publication_scoped_replication_slots);
 DECLARE_bool(cdc_pg_create_grpc_stream);
 DECLARE_bool(ysql_yb_enable_listen_notify);
+DECLARE_int32(TEST_slowdown_alter_table_rpcs_ms);
 
 namespace yb {
 
@@ -903,6 +910,60 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(SingleShardInsert4Rows)) {
   }
   LOG(INFO) << "Got " << count[1] << " insert records";
   CheckCount(expected_count, count);
+}
+
+// A stream set up on a tablet whose WAL was replaced with a quiescent marker gets the changes made
+// after the setup, and keeps the tablet out of the mode.
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(StreamOnQuiescentTablet)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_quiescent_tablets) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_quiescent_tablet_idle_sec) = 1;
+  auto tablets = ASSERT_RESULT(SetUpCluster());
+  ASSERT_EQ(tablets.size(), 1);
+  ASSERT_OK(WriteRows(1 /* start */, 5 /* end */, &test_cluster_));
+
+  const auto& tablet_id = tablets[0].tablet_id();
+  auto all_peers_quiescent = [this, &tablet_id] {
+    size_t num_peers = 0;
+    for (size_t i = 0; i != test_cluster()->num_tablet_servers(); ++i) {
+      auto peer = test_cluster()->mini_tablet_server(i)->server()->tablet_manager()->LookupTablet(
+          tablet_id);
+      if (!peer) {
+        continue;
+      }
+      if (!peer->IsQuiescent()) {
+        return false;
+      }
+      ++num_peers;
+    }
+    return num_peers != 0;
+  };
+  ASSERT_OK(WaitFor(all_peers_quiescent, 30s * kTimeMultiplier, "Tablet quiescent"));
+
+  auto stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(
+      stream_id, tablets, OpId::Min(), /* cdc_sdk_safe_time= */ 0, /* initial_checkpoint= */ true,
+      /* tablet_idx= */ 0, /* bootstrap= */ true));
+  ASSERT_FALSE(set_resp.has_error());
+  ASSERT_OK(WriteRows(5 /* start */, 7 /* end */, &test_cluster_));
+
+  GetChangesResponsePB change_resp;
+  ASSERT_OK(WaitForGetChangesToFetchRecords(&change_resp, stream_id, tablets, 2));
+  uint32_t count[] = {0, 0, 0, 0, 0, 0};
+  ExpectedRecord expected_records[] = {{5, 6}, {6, 7}};
+  size_t num_inserts = 0;
+  for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+    if (record.row_message().op() != RowMessage::INSERT) {
+      continue;
+    }
+    ASSERT_LT(num_inserts, std::size(expected_records));
+    CheckRecord(record, expected_records[num_inserts], count);
+    ++num_inserts;
+  }
+  ASSERT_EQ(num_inserts, std::size(expected_records));
+
+  // The WAL retention that the stream set up keeps the tablet out of the mode.
+  SleepFor(3s * kTimeMultiplier);
+  ASSERT_FALSE(all_peers_quiescent());
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(DropDatabase)) {
@@ -3420,6 +3481,41 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestDeletedStreamRowsRemoved)) {
   VerifyStreamDeletedFromCdcState(test_client(), stream_id, kCDCSDKSlotEntryTabletId, 30);
 }
 
+TEST_F(CDCSDKYsqlTest, TestCDCSDKStreamCleanupIndependentOfCatalogBgThread) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 60 * 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_cdc_bg_task_wait_ms) = 100;
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(
+      CreateTable(&test_cluster_, test_namespace_name, kTableName, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+  // CreateTable wakes catalog bgtasks for tablet assignment. Let that tick finish so the catalog
+  // loop is sitting in its 60s wait before we mark streams DELETING.
+  SleepFor(MonoDelta::FromSeconds(2 * kTimeMultiplier));
+
+  auto cdcsdk_stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  auto xcluster_stream_id =
+      ASSERT_RESULT(cdc::CreateXClusterStream(*test_client(), table.table_id()));
+
+  ASSERT_TRUE(DeleteCDCStream(cdcsdk_stream_id));
+  ASSERT_OK(test_client()->DeleteCDCStream(xcluster_stream_id, true /* force_delete */));
+
+  VerifyStreamDeletedFromCdcState(
+      test_client(), cdcsdk_stream_id, tablets[0].tablet_id(), 10 * kTimeMultiplier);
+  VerifyStreamDeletedFromCdcState(
+      test_client(), cdcsdk_stream_id, kCDCSDKSlotEntryTabletId, 10 * kTimeMultiplier);
+  ASSERT_NOK(GetCDCStreamTableIds(cdcsdk_stream_id));
+
+  SleepFor(MonoDelta::FromSeconds(2 * kTimeMultiplier));
+  auto cdc_state_table = MakeCDCStateTable(test_client());
+  auto xcluster_row = ASSERT_RESULT(
+      cdc_state_table.TryFetchEntry({tablets[0].tablet_id(), xcluster_stream_id}));
+  ASSERT_TRUE(xcluster_row.has_value());
+}
+
 // Here we are creating a table test_table_1 and a CDC stream ex:- stream-id-1.
 // Now create another table test_table_2 and create another stream ex:- stream-id-2 on the same
 // namespace. stream-id-1 and stream-id-2 are now associated with test_table_1. drop test_table_1,
@@ -4997,7 +5093,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAdd100TableToNamespaceWithAct
 
 TEST_F(
     CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddTableToNamespaceWithActiveStreamMasterRestart)) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 60 * 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_cdc_bg_task_wait_ms) = 60 * 1000;
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
   const uint32_t num_tablets = 3;
@@ -5189,7 +5285,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddTableToNamespaceWithMultip
 
 TEST_F(
     CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddTableWithMultipleActiveStreamsMasterRestart)) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 60 * 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_cdc_bg_task_wait_ms) = 60 * 1000;
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
   const uint32_t num_tablets = 3;
@@ -6038,7 +6134,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMetricObjectRemovalAfterStrea
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_metrics_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 50;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_cdc_bg_task_wait_ms) = 50;
 
   ASSERT_OK(SetUpWithParams(1, 1, false));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
@@ -8186,7 +8282,7 @@ TEST_F(CDCSDKYsqlTest, TestTableRewriteOperationsForgRPCStream) {
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestUnrelatedTableDropUponTserverRestart)) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 50000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_cdc_bg_task_wait_ms) = 50000;
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto old_table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "old_table"));
 
@@ -9537,7 +9633,7 @@ void CDCSDKYsqlTest::TestDisableOfDynamicTableAdditionOnCDCStream(
     bool use_consistent_snapshot_stream) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) =
       use_consistent_snapshot_stream;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_cdc_bg_task_wait_ms) = 100;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_dynamic_tables_disable_option) = true;
   // Setup cluster.
   ASSERT_OK(SetUpWithParams(3, 3, false));
@@ -9909,7 +10005,7 @@ void CDCSDKYsqlTest::TestNonEligibleTableRemovalFromCDCStream(bool use_consisten
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) =
       use_consistent_snapshot_stream;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_cdc_bg_task_wait_ms) = 100;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_add_indexes_to_stream) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = false;
   // Setup cluster.
@@ -10274,7 +10370,7 @@ TEST_F(
 
 TEST_F(CDCSDKYsqlTest, TestUserTableCleanupWithDropTable) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_cdc_bg_task_wait_ms) = 1;
   SyncPoint::GetInstance()->LoadDependency(
       {{"ProcessTablesToBeRemovedFromCDCSDKStreams::ValidationCompleted", "DropTable::Start"},
        {"DropTable::Done",
@@ -10355,7 +10451,7 @@ TEST_F(CDCSDKYsqlTest, TestUserTableCleanupWithDropTable) {
 
 TEST_F(CDCSDKYsqlTest, TestUserTableCleanupWithDeleteCDCStream) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_cdc_bg_task_wait_ms) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   SyncPoint::GetInstance()->LoadDependency(
       {{"ProcessTablesToBeRemovedFromCDCSDKStreams::ValidationCompleted", "DeleteStream::Start"},
@@ -10411,7 +10507,7 @@ TEST_F(CDCSDKYsqlTest, TestUserTableCleanupWithDeleteCDCStream) {
 TEST_F(CDCSDKYsqlTest, TestNonEligibleTableCleanupWithDropTable) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_cdc_bg_task_wait_ms) = 100;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_add_indexes_to_stream) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = false;
   SyncPoint::GetInstance()->LoadDependency(
@@ -10524,7 +10620,7 @@ TEST_F(CDCSDKYsqlTest, TestNonEligibleTableCleanupWithDropTable) {
 TEST_F(CDCSDKYsqlTest, TestNonEligibleTableCleanupWithDeleteStream) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_cdc_bg_task_wait_ms) = 100;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_add_indexes_to_stream) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_disable_deleted_stream_cleanup) = true;
@@ -11265,7 +11361,7 @@ TEST_F(CDCSDKYsqlTest, TestCleanupOfExpiredTableForLogicalReplicationStream) {
 // metadata are cleaned up by the master bg thread after a master restart.
 TEST_F(CDCSDKYsqlTest, TestNonEligibleTableRemovalFromReplicationSlotStream) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_cdc_bg_task_wait_ms) = 100;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_add_indexes_to_stream) = true;
   ASSERT_OK(SetUpWithParams(1, 1, false /* colocated */));
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
@@ -11344,7 +11440,7 @@ TEST_F(CDCSDKYsqlTest, TestNonEligibleTableRemovalFromReplicationSlotStream) {
 TEST_F(CDCSDKYsqlTest, TestInEligibleTableEntriesRemovalFromCDCStateTable) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_master_interval_secs) = 1;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_cdc_bg_task_wait_ms) = 100;
   ASSERT_OK(SetUpWithParams(1, 1, false /* colocated */));
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
@@ -13255,7 +13351,7 @@ void CDCSDKYsqlTest::TestStreamsDroppedOnDBDropAndMasterRestart(
     const std::string& sync_point_name, bool use_logical_replication) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 10 * 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_cdc_bg_task_wait_ms) = 10 * 1000;
 
   ASSERT_OK(SetUpWithParams(
       1 /* rf */, 1 /* num_masters */, false /* colocated */,
@@ -13355,7 +13451,7 @@ TEST_F(CDCSDKYsqlTest, TestStreamWithoutNamespaceDrops) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   // ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   // ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 0;
-  // ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 10 * 1000;
+  // ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_cdc_bg_task_wait_ms) = 10 * 1000;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_disable_deleted_stream_cleanup) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_disable_stream_drop_during_db_drop) = true;
 
@@ -14676,7 +14772,7 @@ TEST_F(CDCSDKYsqlTest, TestTableBoundStreamRejectsWithReplicationSlot) {
 }
 
 TEST_F(CDCSDKYsqlTest, TestTableBoundStreamDisablesDynamicAddition) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_cdc_bg_task_wait_ms) = 100;
   ASSERT_OK(SetUpWithParams(3, 1, /* colocated */ false));
 
   auto bound_table = ASSERT_RESULT(CreateTable(
@@ -15258,10 +15354,151 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentsNotRetainedAfterDropin
       "Timed out waiting for intent SST file cleanup after dropping the CDC stream"));
 }
 
+// Verifies that GetChanges streams rows written after the master has persisted a schema change but
+// before the tablet applied it. Such rows are packed with the previous schema version, which a cold
+// schema packing cache (such as tserver restart) can resolve only from the tablet metadata. A
+// sys_catalog lookup at the rows' hybrid times returns the new version.
+TEST_F(CDCSDKYsqlTest, TestSchemaPackingNotFoundForConcurrentDDLAndDML) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+
+  ASSERT_OK(SetUpWithParams(1 /* replication_factor */, 1 /* num_masters */));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
+  // Stream creation bumps the schema version too (wal_retention_secs alter), so take the
+  // baseline from the sys catalog only now.
+  const auto initial_version =
+      ASSERT_RESULT(
+          test_client()->GetTableSchemaFromSysCatalog(
+              table_id, std::numeric_limits<uint64_t>::max()))
+          .second;
+
+  // Hold back the master -> tserver ALTER RPCs: the master persists the bumped schema version
+  // while the tablet keeps packing rows with the old one.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_slowdown_alter_table_rpcs_ms) = 120000;
+
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([this] {
+    auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+    ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx ON $0($1)", kTableName, kValueColumnName));
+  });
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto schema_and_version = VERIFY_RESULT(test_client()->GetTableSchemaFromSysCatalog(
+            table_id, std::numeric_limits<uint64_t>::max()));
+        return schema_and_version.second > initial_version;
+      },
+      MonoDelta::FromSeconds(30 * kTimeMultiplier),
+      "Timed out waiting for the master-side schema version bump"));
+
+  // Poisoned rows: packed with the old schema version, hybrid times map to the new one.
+  ASSERT_OK(WriteRows(1 /* start */, 11 /* end */, &test_cluster_));
+  ASSERT_OK(WriteRowsHelper(11 /* start */, 21 /* end */, &test_cluster_, true /* flag */));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_slowdown_alter_table_rpcs_ms) = 0;
+  thread_holder.JoinAll();
+
+  auto change_resp = ASSERT_RESULT(GetChangesFromCDCWithoutRetry(stream_id, tablets, nullptr));
+  // 20 inserts, each single-shard write wrapped in its own BEGIN/COMMIT pair and the multi-shard
+  // transaction in one, plus 3 DDL records: the initial schema image (v1) and the index build's
+  // backfill (v2) and ready (v3) phase alters.
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 45);
+}
+
+// Verifies that an old schema version's packing survives full compactions while the CDCSDK
+// checkpoint is behind the schema change, and is GC'ed once the checkpoint moves past it.
+// Single-shard writes are used so that no intent SST files pin the old packing.
+TEST_F(CDCSDKYsqlTest, TestSchemaPackingRetentionForCDCSDK) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_interval_secs) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  // Rows must be repackable to the new version right away, so that the schema packing of the old
+  // version is held by the CDCSDK schema-version-boundary hold alone, not by the RocksDB file
+  // frontiers.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+
+  ASSERT_OK(SetUpWithParams(
+      1 /* replication_factor */, 1 /* num_masters */, false /* colocated */,
+      true /* cdc_populate_safepoint_record */));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  tablet::TabletPeerPtr tablet_peer;
+  for (const auto& peer : test_cluster()->GetTabletPeers(0)) {
+    if (peer->tablet_id() == tablets[0].tablet_id()) {
+      tablet_peer = peer;
+    }
+  }
+  ASSERT_NE(tablet_peer, nullptr);
+
+  const auto old_version =
+      ASSERT_RESULT(tablet_peer->tablet_metadata()->GetTableInfo(table_id))->schema_version;
+  auto has_old_packing = [&]() -> Result<bool> {
+    auto table_info = VERIFY_RESULT(tablet_peer->tablet_metadata()->GetTableInfo(table_id));
+    return table_info->doc_read_context->schema_packing_storage.HasVersion(old_version);
+  };
+
+  auto wait_for_barriers_past = [&](int64_t index) -> Status {
+    return WaitFor(
+        [&]() -> Result<bool> { return tablet_peer->cdc_sdk_min_checkpoint_op_id().index > index; },
+        MonoDelta::FromSeconds(60 * kTimeMultiplier),
+        "Timed out waiting for CDCSDK retention barriers");
+  };
+  auto full_compact_table = [&]() -> Status {
+    return WaitForFlushTables(
+        {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+        /* is_compaction = */ true);
+  };
+
+  ASSERT_OK(WriteRows(1 /* start */, 11 /* end */, &test_cluster_));
+  const auto initial_index = tablet_peer->cdc_sdk_min_checkpoint_op_id().index;
+  ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table_id}, 10 /* expected_dml_records */, true /* init_virtual_wal */));
+  // The virtual WAL persists the restart position forwarded by the ack on the next poll.
+  ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table_id}, 0 /* expected_dml_records */, false /* init_virtual_wal */));
+  ASSERT_OK(wait_for_barriers_past(initial_index));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(AddColumn(&test_cluster_, test_namespace_name, kTableName, kValue2ColumnName, &conn));
+
+  // The compaction repacks the stored rows to the new version, so the old packing survives on
+  // the CDCSDK schema-version-boundary hold alone.
+  ASSERT_OK(full_compact_table());
+  ASSERT_TRUE(ASSERT_RESULT(has_old_packing()));
+
+  const auto held_index = tablet_peer->cdc_sdk_min_checkpoint_op_id().index;
+  ASSERT_OK(WriteRows(11 /* start */, 12 /* end */, &test_cluster_));
+  ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table_id}, 1 /* expected_dml_records */, false /* init_virtual_wal */));
+  ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table_id}, 0 /* expected_dml_records */, false /* init_virtual_wal */));
+  ASSERT_OK(wait_for_barriers_past(held_index));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        RETURN_NOT_OK(full_compact_table());
+        return !VERIFY_RESULT(has_old_packing());
+      },
+      MonoDelta::FromSeconds(60 * kTimeMultiplier),
+      "Timed out waiting for the old schema packing to be GC'ed"));
+}
+
 void CDCSDKYsqlTest::TestPublicationsBoundStreamsAcrossMasterRestart(
     bool bind_to_all_tables_pub, const std::string& output_plugin_name) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_publication_scoped_replication_slots) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_cdc_bg_task_wait_ms) = 100;
   ASSERT_OK(SetUpWithParams(1 /* replication_factor */, 1 /* num_masters */));
 
   auto table1 = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "test1"));
@@ -15462,7 +15699,7 @@ TEST_F(CDCSDKYsqlTest, TestSlotWithoutPublicationIgnoresPublications) {
 
 TEST_F(CDCSDKYsqlTest, TestAllTablesPublicationBoundStreamWithTableCreatedDuringSlotCreation) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_publication_scoped_replication_slots) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_cdc_bg_task_wait_ms) = 100;
   ASSERT_OK(SetUpWithParams(1 /* replication_factor */, 1 /* num_masters */));
 
   auto table1 = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "test1"));
