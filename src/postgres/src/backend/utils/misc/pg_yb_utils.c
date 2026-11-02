@@ -1344,6 +1344,13 @@ typedef struct
 	 * increment the catalog version. See YbDdlCannotIncrementCatalogVersion.
 	 */
 	bool		stmt_cannot_increment_version;
+	/*
+	 * Set only while REFRESH MATERIALIZED VIEW runs its own temp-table DDL
+	 * through SPI (see matview.c), so that those statements are told apart
+	 * from any other SPI DDL: from event triggers fired by the REFRESH, or from
+	 * a function, procedure or DO block later in the same transaction.
+	 */
+	bool		in_refresh_matview_spi;
 	CommandTag	current_stmt_ddl_command_tag;
 	CommandTag	last_stmt_ddl_command_tag;
 	/*
@@ -3855,7 +3862,7 @@ YbIsTopLevelOrAtomicStatement(ProcessUtilityContext context)
 {
 	return context == PROCESS_UTILITY_TOPLEVEL ||
 		(context == PROCESS_UTILITY_QUERY &&
-		 ddl_transaction_state.current_stmt_node_tag != T_RefreshMatViewStmt);
+		 !ddl_transaction_state.in_refresh_matview_spi);
 }
 
 /*
@@ -3948,8 +3955,8 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 	/*
 	 * Note: REFRESH MATVIEW (CONCURRENTLY) executes subcommands using SPI.
 	 * So, if the context is PROCESS_UTILITY_QUERY (command triggered using
-	 * SPI), and the current original node tag is T_RefreshMatViewStmt, do
-	 * not update the original node tag.
+	 * SPI) and in_refresh_matview_spi is set, do not update the original node
+	 * tag.
 	 */
 	if (YbIsTopLevelOrAtomicStatement(context))
 	{
@@ -3983,8 +3990,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 		Assert(context == PROCESS_UTILITY_SUBCOMMAND ||
 			   context == PROCESS_UTILITY_QUERY_NONATOMIC ||
 			   (context == PROCESS_UTILITY_QUERY &&
-				ddl_transaction_state.current_stmt_node_tag ==
-				T_RefreshMatViewStmt));
+				ddl_transaction_state.in_refresh_matview_spi));
 
 		is_version_increment = false;
 		is_breaking_change = false;
@@ -4264,7 +4270,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 				 * REFRESH MATVIEW (CONCURRENTLY), we are only dropping temporary
 				 * tables, and do not need to increment catalog version.
 				 */
-				if (ddl_transaction_state.current_stmt_node_tag == T_RefreshMatViewStmt)
+				if (ddl_transaction_state.in_refresh_matview_spi)
 					is_version_increment = false;
 				else
 				{
@@ -4836,6 +4842,8 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 		ddl_transaction_state.global_ddl_command_tag;
 	const CommandTag prev_breaking_ddl_command_tag =
 		ddl_transaction_state.breaking_ddl_command_tag;
+	const bool	prev_in_refresh_matview_spi =
+		ddl_transaction_state.in_refresh_matview_spi;
 	const YbDdlModeOptional ddl_mode =
 		YbGetDdlMode(pstmt, context, &should_run_in_autonomous_transaction);
 
@@ -4992,6 +5000,13 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 			 */
 			YBResetDdlState();
 		}
+		/*
+		 * matview.c clears in_refresh_matview_spi only on success. A plpgsql
+		 * EXCEPTION block may catch this error and let the transaction go on
+		 * to run more DDL.
+		 */
+		ddl_transaction_state.in_refresh_matview_spi =
+			prev_in_refresh_matview_spi;
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
@@ -9694,6 +9709,12 @@ YbRefreshMatviewInPlace()
 {
 	return yb_refresh_matview_in_place ||
 		YBCPgYsqlMajorVersionUpgradeInProgress();
+}
+
+void
+YbSetInRefreshMatviewSpi(bool in_refresh_matview_spi)
+{
+	ddl_transaction_state.in_refresh_matview_spi = in_refresh_matview_spi;
 }
 
 static bool
