@@ -1666,6 +1666,15 @@ Result<std::shared_ptr<XClusterRpcTasks>> UniverseReplicationInfoBase::GetOrCrea
   return rpc_task;
 }
 
+Status UniverseReplicationInfoBase::ReloadCertificates() {
+  std::shared_ptr<XClusterRpcTasks> xcluster_rpc_tasks;
+  {
+    std::lock_guard l(lock_);
+    xcluster_rpc_tasks = xcluster_rpc_tasks_;
+  }
+  return xcluster_rpc_tasks ? xcluster_rpc_tasks->ReloadCertificates() : Status::OK();
+}
+
 // ================================================================================================
 // PersistentUniverseReplicationInfo
 // ================================================================================================
