@@ -656,6 +656,57 @@ public class MetricQueryHelperTest extends FakeDBApplication {
   // With a server type selected, a k8s_ key keeps the containers its definition names, while
   // the container_ keys get the selected pods' DB containers.
   @Test
+  public void testNodeExporterKeysOnAScopedKubernetesView() {
+    MetricConfig.loadConfig(
+        new Yaml().load(getClass().getClassLoader().getResourceAsStream("metric/metrics.yml")));
+    Universe universe =
+        ModelFactory.createUniverse("k8s-sidecar", customer.getId(), CloudType.kubernetes);
+    Provider provider =
+        Provider.getOrBadRequest(
+            UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
+    Region region = Region.create(provider, "region-1", "Region 1", "default-image");
+    AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
+    NodeDetails node = ApiUtils.getDummyNodeDetails(1, NodeDetails.NodeState.Live);
+    node.isTserver = true;
+    node.cloudInfo.kubernetesPodName = "yb-tserver-0";
+    node.cloudInfo.kubernetesNamespace = "k8s-sidecar";
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u ->
+                u.getUniverseDetails().nodeDetailsSet = new HashSet<>(Collections.singleton(node)));
+    MetricQueryParams params = new MetricQueryParams();
+    params.setNodePrefix(universe.getUniverseDetails().nodePrefix);
+    params.setStart(1481147528L);
+    params.setEnd(1481147648L);
+    params.setServerType(UniverseTaskBase.ServerType.TSERVER);
+    params.setMetrics(
+        ImmutableList.of(
+            "k8s_node_exporter_memory_usage",
+            "node_exporter_check",
+            "node_exporter_collector_success"));
+    when(mockApiHelper.getRequest(anyString(), anyMap(), anyMap()))
+        .thenReturn(Json.parse("{\"status\":\"success\",\"data\":{\"result\":[]}}"));
+
+    metricQueryHelper.query(customer, params);
+
+    ArgumentCaptor<Map> queryParam = ArgumentCaptor.forClass(Map.class);
+    verify(mockApiHelper, times(3)).getRequest(anyString(), anyMap(), queryParam.capture());
+    Map<String, String> queries = new HashMap<>();
+    for (Map<String, String> captured : queryParam.getAllValues()) {
+      queries.put(captured.get("queryKey"), captured.get("query"));
+    }
+    String memory = queries.get("k8s_node_exporter_memory_usage");
+    assertTrue(memory, memory.contains("container_name=\"yb-node-exporter\""));
+    assertTrue(memory, memory.contains("pod_name=\"yb-tserver-0\""));
+    for (String key : ImmutableList.of("node_exporter_check", "node_exporter_collector_success")) {
+      String query = queries.get(key);
+      assertTrue(query, query.contains("exported_instance=\"" + node.nodeName + "\""));
+      assertFalse(query, query.contains("pod_name"));
+    }
+  }
+
+  @Test
   @SuppressWarnings("unchecked")
   public void testKubernetesKeysKeepTheirContainersInAScopedView() {
     MetricConfig.loadConfig(

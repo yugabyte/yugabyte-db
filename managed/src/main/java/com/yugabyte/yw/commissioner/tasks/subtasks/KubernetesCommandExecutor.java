@@ -1795,8 +1795,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       }
     }
     // Done after all overrides, so none can turn the sidecar on or off or move its port.
-    if (confGetter.getConfForScope(universeFromDB, UniverseConfKeys.k8sNodeExporterEnabled)
-        && KubernetesUtil.isNodeExporterSidecarSupported(taskParams().ybSoftwareVersion)) {
+    if (KubernetesUtil.isNodeExporterSidecarEnabled(
+        taskParams().ybSoftwareVersion, universeFromDB, confGetter)) {
       Map<String, Object> nodeExporter = getOrCreateMap(overrides, "nodeExporter");
       nodeExporter.put("enabled", true);
       nodeExporter.put("port", universeFromDBParams.communicationPorts.nodeExporterPort);
