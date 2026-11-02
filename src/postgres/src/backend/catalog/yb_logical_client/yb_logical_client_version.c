@@ -323,7 +323,7 @@ YbDeleteMasterDBLogicalClientVersionTableEntry(Oid db_oid)
 				(errmsg("%s: deleting master logical client version for database %u",
 						__func__, db_oid)));
 	HandleYBStatus(YBCPgDmlExecWriteOp(delete_stmt, &rows_affected_count));
-	
+
 	/*
 	 * The row may be missing if the database was created during the upgrade by a build
 	 * that did not write per-database rows. The delete is then a no-op, so the number of
