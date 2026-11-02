@@ -7303,6 +7303,8 @@ TEST_F(PgVectorIndexUtilTest, RestoreToTimeRemovesHiddenFiles) {
   auto schedule_id = ASSERT_RESULT(snapshot_util.CreateSchedule(
       nullptr, YQL_DATABASE_PGSQL, DbName(),
       client::WaitSnapshot::kTrue, 1s * kTimeMultiplier, 60s * kTimeMultiplier));
+  // So the rolled back rows land in a file of their own, which the restore can remove.
+  ASSERT_OK(cluster_->FlushTablets());
   auto restore_at = cluster_->mini_master(0)->Now();
   // Closer to the query vector than any of the restored rows, so a search goes through all of them.
   ASSERT_OK(conn.ExecuteFormat(

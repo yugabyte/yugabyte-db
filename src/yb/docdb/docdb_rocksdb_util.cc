@@ -947,7 +947,8 @@ class RocksDBPatcherHelper {
 class RocksDBPatcher::Impl {
  public:
   Impl(const std::string& dbpath, const rocksdb::Options& options)
-      : options_(SanitizeOptions(dbpath, &comparator_, options)),
+      : dbpath_(dbpath),
+        options_(SanitizeOptions(dbpath, &comparator_, options)),
         imm_cf_options_(options_),
         env_options_(options_),
         cf_options_(options_),
@@ -1033,10 +1034,26 @@ class RocksDBPatcher::Impl {
     });
 
     RETURN_NOT_OK(helper.Apply(options_, imm_cf_options_));
+    if (dropped_files.empty()) {
+      return Status::OK();
+    }
+
+    // The patched directory can be the live regular DB of the tablet (a PITR without a snapshot
+    // directory), where a removed file is the only copy of its data. Apply does not fsync the
+    // directory after pointing CURRENT at the new MANIFEST, so a crash could bring back the old
+    // MANIFEST, which still lists the removed files. Delete them only once that is durable.
+    std::unique_ptr<rocksdb::Directory> db_directory;
+    auto status = options_.env->NewDirectory(dbpath_, &db_directory);
+    if (status.ok()) {
+      status = db_directory->Fsync();
+    }
+    if (!status.ok()) {
+      LOG(WARNING) << "Not deleting removed files, failed to fsync " << dbpath_ << ": " << status;
+      return Status::OK();
+    }
 
     // The patched directory could be a snapshot that is never opened as a DB, so the removed files
-    // are deleted here rather than left to the obsolete file deletion of a DB open. They are hard
-    // links to the files of the source directory.
+    // are deleted here rather than left to the obsolete file deletion of a DB open.
     for (const auto& fd : dropped_files) {
       if (fd.GetPathId() >= options_.db_paths.size()) {
         LOG(WARNING) << "Not deleting removed file " << fd.GetNumber() << ", unknown path id "
@@ -1149,6 +1166,7 @@ class RocksDBPatcher::Impl {
   rocksdb::WriteBuffer write_buffer_{1_KB};
   std::shared_ptr<rocksdb::Cache> block_cache_{rocksdb::NewLRUCache(1_MB)};
 
+  const std::string dbpath_;
   rocksdb::Options options_;
   rocksdb::ImmutableCFOptions imm_cf_options_;
   rocksdb::EnvOptions env_options_;
