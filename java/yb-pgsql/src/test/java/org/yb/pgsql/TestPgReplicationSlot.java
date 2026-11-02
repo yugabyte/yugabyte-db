@@ -56,6 +56,7 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
+import org.yb.client.LocatedTablet;
 import org.yb.client.TestUtils;
 import org.yb.pgsql.PgOutputMessageDecoder.*;
 import org.yb.util.BuildTypeUtil;
@@ -6491,18 +6492,20 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
     createSlot(replApi0, slotName, "test_decoding");
 
-    // Make sure pg_advisory_locks has a copy on every tserver before tserver 0 is killed.
+    // Wait until every pg_advisory_locks tablet has a voter on each tserver, so that killing
+    // tserver 0 leaves each tablet with a majority.
     TestUtils.waitFor(() -> {
-      try (Statement stmt = connection.createStatement()) {
-        stmt.execute("SELECT pg_advisory_lock(1)");
-        stmt.execute("SELECT pg_advisory_unlock(1)");
-        return true;
+      try {
+        List<LocatedTablet> tablets = miniCluster.getClient()
+            .openTable("system", "pg_advisory_locks").getTabletsLocations(10000);
+        return !tablets.isEmpty() && tablets.stream().allMatch(t ->
+            t.getReplicas().size() == miniCluster.getNumTServers() &&
+            t.getReplicas().stream().allMatch(r -> r.getMemberType().equals("VOTER")));
       } catch (Exception e) {
-        LOG.info("Advisory locks table not ready yet: {}", e.getMessage());
+        LOG.info("pg_advisory_locks not ready yet: {}", e.getMessage());
         return false;
       }
-    }, 60000);
-    assertTrue(miniCluster.getClient().waitForLoadBalancerIdle(120 * 1000));
+    }, 120000);
 
     PGReplicationStream stream0 = replApi0.replicationStream()
         .logical()
