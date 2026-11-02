@@ -247,6 +247,77 @@ YbGetMasterLogicalClientVersionTableEntryYbctid(Relation logical_client_version_
 	return ybctid;
 }
 
+bool
+YbIsPerDbLogicalClientVersionMode()
+{
+	return (IsYugaByteEnabled() &&
+			!IsBootstrapProcessingMode() &&
+			YbGetLogicalClientVersionType() == LOGICAL_CLIENT_VERSION_UNSET &&
+			YbLogicalClientVersionTableExists());
+}
+
+void
+YbCreateMasterDBLogicalClientVersionTableEntry(Oid db_oid)
+{
+	Relation	rel = RelationIdGetRelation(YBLogicalClientVersionRelationId);
+
+	YbcPgStatement insert_stmt = YbNewInsert(rel, YB_SINGLE_SHARD_TRANSACTION);
+
+	Datum		ybctid = YbGetMasterLogicalClientVersionTableEntryYbctid(rel, db_oid);
+
+	YbcPgExpr	ybctid_expr = YBCNewConstant(insert_stmt, BYTEAOID, InvalidOid,
+											 ybctid, false /* is_null */ );
+
+	HandleYBStatus(YBCPgDmlBindColumn(insert_stmt, YBTupleIdAttributeNumber,
+									  ybctid_expr));
+
+	AttrNumber	attnum = Anum_pg_yb_logical_client_version_current_version;
+	Datum		initial_version = 1;
+	YbcPgExpr	initial_version_expr = YBCNewConstant(insert_stmt, INT8OID,
+													  InvalidOid,
+													  initial_version,
+													  false /* is_null */ );
+
+	HandleYBStatus(YBCPgDmlBindColumn(insert_stmt, attnum,
+									  initial_version_expr));
+
+	int			rows_affected_count = 0;
+
+	if (*YBCGetGFlags()->log_ysql_catalog_versions)
+		ereport(LOG,
+				(errmsg("%s: creating master logical client version for database %u",
+						__func__, db_oid)));
+	HandleYBStatus(YBCPgDmlExecWriteOp(insert_stmt, &rows_affected_count));
+
+	RelationClose(rel);
+}
+
+void
+YbDeleteMasterDBLogicalClientVersionTableEntry(Oid db_oid)
+{
+	Relation	rel = RelationIdGetRelation(YBLogicalClientVersionRelationId);
+
+	YbcPgStatement delete_stmt = YbNewDelete(rel, YB_SINGLE_SHARD_TRANSACTION);
+
+	Datum		ybctid = YbGetMasterLogicalClientVersionTableEntryYbctid(rel, db_oid);
+
+	YbcPgExpr	ybctid_expr = YBCNewConstant(delete_stmt, BYTEAOID, InvalidOid,
+											 ybctid, false /* is_null */ );
+
+	HandleYBStatus(YBCPgDmlBindColumn(delete_stmt, YBTupleIdAttributeNumber,
+									  ybctid_expr));
+
+	int			rows_affected_count = 0;
+
+	if (*YBCGetGFlags()->log_ysql_catalog_versions)
+		ereport(LOG,
+				(errmsg("%s: deleting master logical client version for database %u",
+						__func__, db_oid)));
+	HandleYBStatus(YBCPgDmlExecWriteOp(delete_stmt, &rows_affected_count));
+
+	RelationClose(rel);
+}
+
 YbLogicalClientVersionType
 YbGetLogicalClientVersionType()
 {
