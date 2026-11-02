@@ -198,20 +198,48 @@ TabletInfo::TabletInfo(const TableInfoPtr& table, TabletId tablet_id)
     : tablet_id_(std::move(tablet_id)),
       table_(table),
       last_update_time_(MonoTime::Now()),
-      last_time_with_valid_leader_(last_update_time_) {
+      last_time_with_valid_leader_(last_update_time_),
+      counts_replica_load_(!table || !table->is_system()) {
   if (tablet_id_ == kSysCatalogTabletId) {
     mutable_metadata()->SetExcludeFromHeldTabletWriteLockCount();
   }
 }
 
-TabletInfo::~TabletInfo() = default;
+TabletInfo::~TabletInfo() {
+  StopCountingReplicaLoad();
+}
+
+namespace {
+
+void AddReplicaLoad(const TabletReplicaMap& replicas, int64_t delta) {
+  for (const auto& [_, replica] : replicas) {
+    if (auto ts_desc = replica.ts_desc.lock()) {
+      ts_desc->AddReplicaLoad(delta);
+    }
+  }
+}
+
+}  // namespace
 
 void TabletInfo::SetReplicaLocations(
     std::shared_ptr<TabletReplicaMap> replica_locations) {
   std::lock_guard l(lock_);
   LeaderChangeReporter leader_change_reporter(this);
   last_update_time_ = MonoTime::Now();
+  if (counts_replica_load_) {
+    // Add before removing so a concurrent reader never sees the count dip below the true value.
+    AddReplicaLoad(*replica_locations, 1);
+    AddReplicaLoad(*replica_locations_, -1);
+  }
   replica_locations_ = replica_locations;
+}
+
+void TabletInfo::StopCountingReplicaLoad() {
+  std::lock_guard l(lock_);
+  if (counts_replica_load_) {
+    AddReplicaLoad(*replica_locations_, -1);
+    counts_replica_load_ = false;
+  }
 }
 
 Status TabletInfo::CheckRunning() const {
