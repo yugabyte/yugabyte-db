@@ -370,4 +370,7 @@ extern PGDLLIMPORT int io_method;
 extern PGDLLIMPORT int io_max_concurrency;
 
 
+/* YB declarations */
+extern bool YbAioHasBackendState(ProcNumber procno);
+
 #endif							/* AIO_H */

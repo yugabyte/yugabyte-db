@@ -137,6 +137,7 @@
 #include "pg_yb_utils.h"
 #include "replication/slot.h"
 #include "replication/syncrep.h"
+#include "storage/aio.h"
 #include "storage/procarray.h"
 #include "storage/procsignal.h"
 #include "storage/sinvaladt.h"
@@ -310,9 +311,6 @@ static int	Shutdown = NoShutdown;
 
 static bool FatalError = false; /* T if recovering from backend crash */
 
-/* Crashed before fully acquiring a lock, or with unexpected error code.  */
-static bool YbCrashInUnmanageableState = false;
-
 static char *YbBackendOomScoreAdj = NULL;
 
 /*
@@ -464,8 +462,9 @@ static void process_pm_child_exit(void);
 static void process_pm_reload_request(void);
 static void process_pm_shutdown_request(void);
 static void dummy_handler(SIGNAL_ARGS);
-static void CleanupBackend(PMChild *bp, int exitstatus);
-static void HandleChildCrash(int pid, int exitstatus, const char *procname);
+static void CleanupBackend(PMChild *bp, int exitstatus, bool yb_crash_in_unmanageable_state);
+static void HandleChildCrash(int pid, int exitstatus, const char *procname,
+							 bool yb_crash_in_unmanageable_state);
 static void LogChildExit(int lev, const char *procname,
 						 int pid, int exitstatus);
 static void PostmasterStateMachine(void);
@@ -493,12 +492,9 @@ static bool StartBackgroundWorker(RegisteredBgWorker *rw);
 static void InitPostmasterDeathWatchHandle(void);
 
 /* YB declarations */
-/*
- * YB_TODO_PG19MERGE: only caller (reaper) is currently #if 0'd; drop
- * pg_attribute_unused() when it is re-enabled.
- */
-pg_attribute_unused() static bool YbCleanupKilledProcess(PGPROC *proc);
+static bool YbCleanupKilledProcess(PGPROC *proc);
 static bool YbIsAuxBackendAllowed(BackendType type);
+static bool YbCleanupExitedChild(int pid, int exitstatus);
 
 #ifdef WIN32
 #define WNOHANG 0				/* ignored, so any integer value will do */
@@ -2469,118 +2465,14 @@ process_pm_child_exit(void)
 	while ((pid = waitpid(-1, &exitstatus, WNOHANG)) > 0)
 	{
 		PMChild    *pmchild;
-		/*
-		 * YB_TODO_PG19MERGE:
-		 * upstream PG commit a78af0427015449269fb7d9d8c6057cfcb740149
-		 * changed the logic to use PMChild slots.
-		 */
-#if 0
-		int			i;
-		bool		foundProcStruct = false;
 
 		/*
-		 * YB: We perform the following tasks when a process crashes
-		 * 1. If the killed process held no locks during a crash, we avoid
-		 *    postmaster restarts.
-		 * 2. If the killed process has acquired or is in the process acquiring
-		 *    a lock we take a conservative approach and restart the postmaster.
-		 * 3. If a process is killed before it can have a Proc struct assigned,
-		 *    we take a conservative approach and restart the postmaster.
-		 *    Examples of spinlocks accessed during process creation are:
-		 *    XLogCtl->info_lck, ProcStructLock.
+		 * YB: Clean up after a killed child before the per-type branches
+		 * below, since each of them may call HandleChildCrash(), which
+		 * consults the result.
 		 */
-		for (i = 0; i < ProcGlobal->allProcCount; i++)
-		{
-			PGPROC	   *proc = &ProcGlobal->allProcs[i];
+		bool		yb_crash_in_unmanageable_state = !YbCleanupExitedChild(pid, exitstatus);
 
-			if (!proc || proc->pid != pid)
-				continue;
-
-			foundProcStruct = true;
-
-			/*
-			 * We take a conservative approach and restart the postmaster if
-			 * a process dies while holding a lock. Otherwise, we can do some
-			 * cleanup.
-			 */
-			if (proc->ybProcState.lwlock_acquired ||
-				proc->ybProcState.spinlocks_acquired > 0)
-			{
-				YbCrashInUnmanageableState = true;
-				ereport(WARNING,
-						(errmsg("terminating active server processes due to backend crash while "
-								"acquiring %s", proc->ybProcState.lwlock_acquired ? "LWLock" : "SpinLock")));
-				break;
-			}
-
-			if (!WIFSIGNALED(exitstatus))
-				break;
-
-			if (WTERMSIG(exitstatus) != SIGABRT &&
-				WTERMSIG(exitstatus) != SIGKILL &&
-				WTERMSIG(exitstatus) != SIGSEGV)
-			{
-				YbCrashInUnmanageableState = true;
-				ereport(WARNING,
-						(errmsg("terminating active server processes due to backend crash from "
-								"unexpected error code %d",
-								WTERMSIG(exitstatus))));
-				break;
-			}
-
-			/*
-			 * We can't know what the parent of a background requires to properly clean this up.
-			 * ReportBackgroundWorkerExit seems like it should do the trick, there's complexity
-			 * caused by latches.
-			 */
-			if (proc->backendType == B_BG_WORKER)
-			{
-				YbCrashInUnmanageableState = true;
-				ereport(WARNING,
-						(errmsg("terminating active server processes due to backend worker "
-								"crash")));
-				break;
-			}
-
-			if (!proc->ybProcState.initialization_completed)
-			{
-				YbCrashInUnmanageableState = true;
-				ereport(WARNING,
-						(errmsg("terminating active server processes due to backend crash of a "
-								"process while it was initializing")));
-				break;
-			}
-
-			if (proc->ybProcState.termination_started)
-			{
-				YbCrashInUnmanageableState = true;
-				ereport(WARNING,
-						(errmsg("terminating active server processes due to backend crash of a "
-								"process while it was terminating")));
-				break;
-			}
-
-			if (proc->ybProcState.entered_crit_section)
-			{
-				YbCrashInUnmanageableState = true;
-				ereport(WARNING,
-						(errmsg("terminating active server processes due to backend crash of a "
-								"process while it was in a critical section")));
-				break;
-			}
-
-			elog(INFO, "cleaning up after process with pid %d exited with status %d",
-				 pid, exitstatus);
-			if (!YbCleanupKilledProcess(proc))
-			{
-				YbCrashInUnmanageableState = true;
-				ereport(WARNING,
-						(errmsg("terminating active server processes due to backend crash that is "
-								"unable to be cleaned up")));
-			}
-			break;
-		}
-#endif
 		/*
 		 * Check if this child was a startup process.
 		 */
@@ -2659,7 +2551,8 @@ process_pm_child_exit(void)
 				else
 					StartupStatus = STARTUP_CRASHED;
 				HandleChildCrash(pid, exitstatus,
-								 _("startup process"));
+								 _("startup process"),
+								 yb_crash_in_unmanageable_state);
 				continue;
 			}
 
@@ -2672,8 +2565,6 @@ process_pm_child_exit(void)
 			ReachedNormalRunning = true;
 			UpdatePMState(PM_RUN);
 			connsAllowed = true;
-
-			YbCrashInUnmanageableState = false;
 
 			/*
 			 * At the next iteration of the postmaster's main loop, we will
@@ -2706,7 +2597,8 @@ process_pm_child_exit(void)
 			BgWriterPMChild = NULL;
 			if (!EXIT_STATUS_0(exitstatus))
 				HandleChildCrash(pid, exitstatus,
-								 _("background writer process"));
+								 _("background writer process"),
+								 yb_crash_in_unmanageable_state);
 			continue;
 		}
 
@@ -2739,7 +2631,8 @@ process_pm_child_exit(void)
 				 * exit) is treated as a crash.
 				 */
 				HandleChildCrash(pid, exitstatus,
-								 _("checkpointer process"));
+								 _("checkpointer process"),
+								 yb_crash_in_unmanageable_state);
 			}
 
 			continue;
@@ -2756,7 +2649,8 @@ process_pm_child_exit(void)
 			WalWriterPMChild = NULL;
 			if (!EXIT_STATUS_0(exitstatus))
 				HandleChildCrash(pid, exitstatus,
-								 _("WAL writer process"));
+								 _("WAL writer process"),
+								 yb_crash_in_unmanageable_state);
 			continue;
 		}
 
@@ -2772,7 +2666,8 @@ process_pm_child_exit(void)
 			WalReceiverPMChild = NULL;
 			if (!EXIT_STATUS_0(exitstatus) && !EXIT_STATUS_1(exitstatus))
 				HandleChildCrash(pid, exitstatus,
-								 _("WAL receiver process"));
+								 _("WAL receiver process"),
+								 yb_crash_in_unmanageable_state);
 			continue;
 		}
 
@@ -2787,7 +2682,8 @@ process_pm_child_exit(void)
 			WalSummarizerPMChild = NULL;
 			if (!EXIT_STATUS_0(exitstatus))
 				HandleChildCrash(pid, exitstatus,
-								 _("WAL summarizer process"));
+								 _("WAL summarizer process"),
+								 yb_crash_in_unmanageable_state);
 			continue;
 		}
 
@@ -2803,7 +2699,8 @@ process_pm_child_exit(void)
 			AutoVacLauncherPMChild = NULL;
 			if (!EXIT_STATUS_0(exitstatus))
 				HandleChildCrash(pid, exitstatus,
-								 _("autovacuum launcher process"));
+								 _("autovacuum launcher process"),
+								 yb_crash_in_unmanageable_state);
 			continue;
 		}
 
@@ -2819,7 +2716,8 @@ process_pm_child_exit(void)
 			PgArchPMChild = NULL;
 			if (!EXIT_STATUS_0(exitstatus) && !EXIT_STATUS_1(exitstatus))
 				HandleChildCrash(pid, exitstatus,
-								 _("archiver process"));
+								 _("archiver process"),
+								 yb_crash_in_unmanageable_state);
 			continue;
 		}
 
@@ -2852,7 +2750,8 @@ process_pm_child_exit(void)
 			SlotSyncWorkerPMChild = NULL;
 			if (!EXIT_STATUS_0(exitstatus) && !EXIT_STATUS_1(exitstatus))
 				HandleChildCrash(pid, exitstatus,
-								 _("slot sync worker process"));
+								 _("slot sync worker process"),
+								 yb_crash_in_unmanageable_state);
 			continue;
 		}
 
@@ -2860,7 +2759,8 @@ process_pm_child_exit(void)
 		if (maybe_reap_io_worker(pid))
 		{
 			if (!EXIT_STATUS_0(exitstatus) && !EXIT_STATUS_1(exitstatus))
-				HandleChildCrash(pid, exitstatus, _("io worker"));
+				HandleChildCrash(pid, exitstatus, _("io worker"),
+								 yb_crash_in_unmanageable_state);
 
 			/*
 			 * A worker that exited with an error might have brought the pool
@@ -2877,44 +2777,13 @@ process_pm_child_exit(void)
 		}
 
 		/*
-		 * YB_TODO_PG19MERGE: re-port YB's changes
-		 * YB: If there is no proc struct (and the crash is unexpected),
-		 * restart. We need to check for an unexpected exit because if a
-		 * connection attempt is made while the database system is starting up,
-		 * that backend will fail. We do not want to restart the postmaster in
-		 * those cases because the postmaster may end up in a restart loop.
-		 * EXIT_STATUS_0 is normal termination, and EXIT_STATUS_1 is the
-		 * process responding to a termination request or terminating with a
-		 * FATAL.
-		 */
-#if 0
-		if (!foundProcStruct && !EXIT_STATUS_0(exitstatus) && !EXIT_STATUS_1(exitstatus))
-		{
-			YbCrashInUnmanageableState = true;
-			ereport(WARNING,
-					(errmsg("terminating active server processes due to backend crash of a "
-							"partially initialized process")));
-		}
-
-		CleanupBackend(pid, exitstatus);
-		if (!YbCrashInUnmanageableState && !FatalError)
-		{
-			/*
-			 * Since this is not a fatal crash, we are pursuing a clean exit. All
-			 * we need to do is to clear the pgstat entry of the dead backend
-			 * pid. In case of postmaster restart, it is unnecessary as all the
-			 * shared memory state will be reset.
-			 */
-			yb_pgstat_clear_entry_pid(pid);
-		}
-#endif
-		/*
 		 * Was it a backend or a background worker?
 		 */
 		pmchild = FindPostmasterChildByPid(pid);
 		if (pmchild)
 		{
-			CleanupBackend(pmchild, exitstatus);
+			CleanupBackend(pmchild, exitstatus,
+						   yb_crash_in_unmanageable_state);
 		}
 
 		/*
@@ -2924,7 +2793,8 @@ process_pm_child_exit(void)
 		else
 		{
 			if (!EXIT_STATUS_0(exitstatus) && !EXIT_STATUS_1(exitstatus))
-				HandleChildCrash(pid, exitstatus, _("untracked child process"));
+				HandleChildCrash(pid, exitstatus, _("untracked child process"),
+								 yb_crash_in_unmanageable_state);
 			else
 				LogChildExit(LOG, _("untracked child process"), pid, exitstatus);
 		}
@@ -2948,6 +2818,7 @@ process_pm_child_exit(void)
  *   - Had not started exiting (ybTerminationStarted)
  *   - Is not in a critical section (ybEnteredCriticalSection);
  *   - Does not have any PG lock state and is not in a lock group.
+ *   - Has no asynchronous I/O in progress.
  *
  * Returns true if the process was successfully cleaned up.
  * Returns false without modifying any shared state, if it cannot be cleaned up.
@@ -2980,6 +2851,12 @@ YbCleanupKilledProcess(PGPROC *proc)
 	if (proc->lockGroupLeader != NULL)
 	{
 		elog(WARNING, "cannot cleanup after a process in a lockgroup");
+		return false;
+	}
+
+	if (YbAioHasBackendState(GetNumberFromPGProc(proc)))
+	{
+		elog(WARNING, "cannot cleanup after a process that left AIO state behind");
 		return false;
 	}
 
@@ -3023,7 +2900,8 @@ YbCleanupKilledProcess(PGPROC *proc)
  */
 static void
 CleanupBackend(PMChild *bp,
-			   int exitstatus)	/* child's exit status. */
+			   int exitstatus,	/* child's exit status. */
+			   bool yb_crash_in_unmanageable_state)
 {
 	char		namebuf[MAXPGPATH];
 	const char *procname;
@@ -3109,8 +2987,16 @@ CleanupBackend(PMChild *bp,
 	 */
 	if (crashed)
 	{
-		HandleChildCrash(bp_pid, exitstatus, procname);
-		return;
+		HandleChildCrash(bp_pid, exitstatus, procname,
+						 yb_crash_in_unmanageable_state);
+		if (yb_crash_in_unmanageable_state)
+			return;
+
+		/*
+		 * YB: The crash was survived and HandleChildCrash() has logged it, so
+		 * handle the rest of the exit like a normal one.
+		 */
+		logged = true;
 	}
 
 	/*
@@ -3198,9 +3084,6 @@ HandleFatalError(QuitSignalReason reason, bool consider_sigabrt)
 	 *
 	 * We could exclude dead-end children here, but at least when sending
 	 * SIGABRT it seems better to include them.
-	 *
-	 * YB_TODO_PG19MERGE: re-port the YB modifications from the disabled PG15
-	 * based `HandleChildCrash` body below into this function.
 	 */
 	TerminateChildren(sigtosend);
 
@@ -3271,7 +3154,8 @@ HandleFatalError(QuitSignalReason reason, bool consider_sigabrt)
  * The caller has already released its PMChild slot.
  */
 static void
-HandleChildCrash(int pid, int exitstatus, const char *procname)
+HandleChildCrash(int pid, int exitstatus, const char *procname,
+				 bool yb_crash_in_unmanageable_state)
 {
 	/*
 	 * We only log messages and send signals if this is the first process
@@ -3283,6 +3167,17 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 	if (FatalError || Shutdown == ImmediateShutdown)
 		return;
 
+	/*
+	 * YB: The postmaster has already released the killed child's shared
+	 * state successfully, so the other children can keep running.
+	 */
+	if (!yb_crash_in_unmanageable_state)
+	{
+		LogChildExit(WARNING, procname, pid, exitstatus);
+		yb_pgstat_clear_entry_pid(pid);
+		return;
+	}
+
 	LogChildExit(LOG, procname, pid, exitstatus);
 	ereport(LOG,
 			(errmsg("terminating any other active server processes")));
@@ -3293,267 +3188,6 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 	 */
 	HandleFatalError(PMQUIT_FOR_CRASH, true);
 }
-
-/*
- * YB_TODO_PG19MERGE: the YB PG15-era HandleChildCrash body is preserved below.
- * Port YB changes to the new HandleChildCrash/HandleFatalError above.
- */
-#if 0
-static void
-HandleChildCrash(int pid, int exitstatus, const char *procname)
-{
-	dlist_mutable_iter iter;
-	slist_iter	siter;
-	Backend    *bp;
-	bool		take_action;
-
-	/*
-	 * We only log messages and send signals if this is the first process
-	 * crash and we're not doing an immediate shutdown; otherwise, we're only
-	 * here to update postmaster's idea of live processes.  If we have already
-	 * signaled children, nonzero exit status is to be expected, so don't
-	 * clutter log.
-	 */
-	take_action = !FatalError && Shutdown != ImmediateShutdown;
-	/*
-	 * If we enable the flag yb_pg_terminate_child_backend to false, it means
-	 * that if a child has crashed in a safe state, we need not do a postmaster
-	 * restart. We check for that condition in determine if we need to restart
-	 * postmaster (the variable take_action determines that).
-	 */
-	if (YBIsEnabledInPostgresEnvVar() && !YBShouldRestartAllChildrenIfOneCrashes())
-	{
-		take_action = take_action && YbCrashInUnmanageableState;
-	}
-
-	if (take_action)
-	{
-		int			level = YBIsEnabledInPostgresEnvVar() ? INFO : LOG;
-
-		LogChildExit(level, procname, pid, exitstatus);
-		ereport(level,
-				(errmsg("terminating any other active server processes")));
-		SetQuitSignalReason(PMQUIT_FOR_CRASH);
-	}
-
-	/* Process background workers. */
-	slist_foreach(siter, &BackgroundWorkerList)
-	{
-		RegisteredBgWorker *rw;
-
-		rw = slist_container(RegisteredBgWorker, rw_lnode, siter.cur);
-		if (rw->rw_pid == 0)
-			continue;			/* not running */
-		if (rw->rw_pid == pid)
-		{
-			/*
-			 * Found entry for freshly-dead worker, so remove it.
-			 */
-			(void) ReleasePostmasterChildSlot(rw->rw_child_slot);
-			dlist_delete(&rw->rw_backend->elem);
-#ifdef EXEC_BACKEND
-			ShmemBackendArrayRemove(rw->rw_backend);
-#endif
-			free(rw->rw_backend);
-			rw->rw_backend = NULL;
-			rw->rw_pid = 0;
-			rw->rw_child_slot = 0;
-			/* don't reset crashed_at */
-			/* don't report child stop, either */
-			/* Keep looping so we can signal remaining workers */
-		}
-		else
-		{
-			/*
-			 * This worker is still alive.  Unless we did so already, tell it
-			 * to commit hara-kiri.
-			 *
-			 * SIGQUIT is the special signal that says exit without proc_exit
-			 * and let the user know what's going on. But if SendStop is set
-			 * (-T on command line), then we send SIGSTOP instead, so that we
-			 * can get core dumps from all backends by hand.
-			 */
-			if (take_action)
-			{
-				ereport(INFO,	/* YB: change level */
-						(errmsg_internal("sending %s to process %d",
-										 (SendStop ? "SIGSTOP" : "SIGQUIT"),
-										 (int) rw->rw_pid)));
-				signal_child(rw->rw_pid, (SendStop ? SIGSTOP : SIGQUIT));
-			}
-		}
-	}
-
-	/* Process regular backends */
-	dlist_foreach_modify(iter, &BackendList)
-	{
-		bp = dlist_container(Backend, elem, iter.cur);
-
-		if (bp->pid == pid)
-		{
-			/*
-			 * Found entry for freshly-dead backend, so remove it.
-			 */
-			if (!bp->dead_end)
-			{
-				(void) ReleasePostmasterChildSlot(bp->child_slot);
-#ifdef EXEC_BACKEND
-				ShmemBackendArrayRemove(bp);
-#endif
-			}
-			dlist_delete(iter.cur);
-			free(bp);
-			/* Keep looping so we can signal remaining backends */
-		}
-		else
-		{
-			/*
-			 * This backend is still alive.  Unless we did so already, tell it
-			 * to commit hara-kiri.
-			 *
-			 * SIGQUIT is the special signal that says exit without proc_exit
-			 * and let the user know what's going on. But if SendStop is set
-			 * (-T on command line), then we send SIGSTOP instead, so that we
-			 * can get core dumps from all backends by hand.
-			 *
-			 * We could exclude dead_end children here, but at least in the
-			 * SIGSTOP case it seems better to include them.
-			 *
-			 * Background workers were already processed above; ignore them
-			 * here.
-			 */
-			if (bp->bkend_type == BACKEND_TYPE_BGWORKER)
-				continue;
-
-			if (take_action)
-			{
-				ereport(DEBUG2,
-						(errmsg_internal("sending %s to process %d",
-										 (SendStop ? "SIGSTOP" : "SIGQUIT"),
-										 (int) bp->pid)));
-				signal_child(bp->pid, (SendStop ? SIGSTOP : SIGQUIT));
-			}
-		}
-	}
-
-	/* Take care of the startup process too */
-	if (pid == StartupPID)
-	{
-		StartupPID = 0;
-		/* Caller adjusts StartupStatus, so don't touch it here */
-	}
-	else if (StartupPID != 0 && take_action)
-	{
-		ereport(DEBUG2,
-				(errmsg_internal("sending %s to process %d",
-								 (SendStop ? "SIGSTOP" : "SIGQUIT"),
-								 (int) StartupPID)));
-		signal_child(StartupPID, (SendStop ? SIGSTOP : SIGQUIT));
-		StartupStatus = STARTUP_SIGNALED;
-	}
-
-	/* Take care of the bgwriter too */
-	if (pid == BgWriterPID)
-		BgWriterPID = 0;
-	else if (BgWriterPID != 0 && take_action)
-	{
-		ereport(DEBUG2,
-				(errmsg_internal("sending %s to process %d",
-								 (SendStop ? "SIGSTOP" : "SIGQUIT"),
-								 (int) BgWriterPID)));
-		signal_child(BgWriterPID, (SendStop ? SIGSTOP : SIGQUIT));
-	}
-
-	/* Take care of the checkpointer too */
-	if (pid == CheckpointerPID)
-		CheckpointerPID = 0;
-	else if (CheckpointerPID != 0 && take_action)
-	{
-		ereport(DEBUG2,
-				(errmsg_internal("sending %s to process %d",
-								 (SendStop ? "SIGSTOP" : "SIGQUIT"),
-								 (int) CheckpointerPID)));
-		signal_child(CheckpointerPID, (SendStop ? SIGSTOP : SIGQUIT));
-	}
-
-	/* Take care of the walwriter too */
-	if (pid == WalWriterPID)
-		WalWriterPID = 0;
-	else if (WalWriterPID != 0 && take_action)
-	{
-		ereport(DEBUG2,
-				(errmsg_internal("sending %s to process %d",
-								 (SendStop ? "SIGSTOP" : "SIGQUIT"),
-								 (int) WalWriterPID)));
-		signal_child(WalWriterPID, (SendStop ? SIGSTOP : SIGQUIT));
-	}
-
-	/* Take care of the walreceiver too */
-	if (pid == WalReceiverPID)
-		WalReceiverPID = 0;
-	else if (WalReceiverPID != 0 && take_action)
-	{
-		ereport(DEBUG2,
-				(errmsg_internal("sending %s to process %d",
-								 (SendStop ? "SIGSTOP" : "SIGQUIT"),
-								 (int) WalReceiverPID)));
-		signal_child(WalReceiverPID, (SendStop ? SIGSTOP : SIGQUIT));
-	}
-
-	/* Take care of the autovacuum launcher too */
-	if (pid == AutoVacPID)
-		AutoVacPID = 0;
-	else if (AutoVacPID != 0 && take_action)
-	{
-		ereport(DEBUG2,
-				(errmsg_internal("sending %s to process %d",
-								 (SendStop ? "SIGSTOP" : "SIGQUIT"),
-								 (int) AutoVacPID)));
-		signal_child(AutoVacPID, (SendStop ? SIGSTOP : SIGQUIT));
-	}
-
-	/* Take care of the archiver too */
-	if (pid == PgArchPID)
-		PgArchPID = 0;
-	else if (PgArchPID != 0 && take_action)
-	{
-		ereport(DEBUG2,
-				(errmsg_internal("sending %s to process %d",
-								 (SendStop ? "SIGSTOP" : "SIGQUIT"),
-								 (int) PgArchPID)));
-		signal_child(PgArchPID, (SendStop ? SIGSTOP : SIGQUIT));
-	}
-
-	/*
-	 * YB: during shutdown fall through so pmState advances; otherwise a child
-	 * killed after the shutdown signal (e.g. the checkpointer after the
-	 * SIGKILL timeout) leaves the postmaster stuck in PM_SHUTDOWN.
-	 */
-	if (YBIsEnabledInPostgresEnvVar() && !YBShouldRestartAllChildrenIfOneCrashes() &&
-		!take_action && Shutdown == NoShutdown)
-		return;
-
-	/* We do NOT restart the syslogger */
-
-	if (Shutdown != ImmediateShutdown)
-		FatalError = true;
-
-	/* We now transit into a state of waiting for children to die */
-	if (pmState == PM_RECOVERY ||
-		pmState == PM_HOT_STANDBY ||
-		pmState == PM_RUN ||
-		pmState == PM_STOP_BACKENDS ||
-		pmState == PM_SHUTDOWN)
-		pmState = PM_WAIT_BACKENDS;
-
-	/*
-	 * .. and if this doesn't happen quickly enough, now the clock is ticking
-	 * for us to kill them without mercy.
-	 */
-	if (AbortStartTime == 0)
-		AbortStartTime = time(NULL);
-}
-#endif /* end YB PG15-era HandleChildCrash reference body */
 
 /*
  * Log the death of a child process.
@@ -5548,4 +5182,126 @@ YbIsAuxBackendAllowed(BackendType type)
 		default:
 			return false;
 	}
+}
+
+/*
+ * YbCleanupExitedChild - clean up after a child whose exit hooks did not run.
+ *
+ * Called for every child reaped in process_pm_child_exit(). A child that dies
+ * without running its exit hooks leaves behind its PGPROC, and shared state
+ * in shared memory. If that state is consistent, release it here on the child's
+ * behalf so that the postmaster doesn't have to restart all children.
+ *
+ * Returns true if the child's shared state was released.  In every other case
+ * a crash leads to a full restart.
+ */
+static bool
+YbCleanupExitedChild(int pid, int exitstatus)
+{
+	PGPROC	   *proc = NULL;
+
+	/*
+	 * Nothing to do if every crash restarts anyway: cleaning up shared memory
+	 * that is about to be reinitialized is wasted work.
+	 */
+	if (!YBIsEnabledInPostgresEnvVar() ||
+		YBShouldRestartAllChildrenIfOneCrashes() ||
+		FatalError || Shutdown != NoShutdown)
+		return false;
+
+	/* A pid is not reused until it has been reaped, so a match is exact. */
+	for (int i = 0; i < ProcGlobal->allProcCount; i++)
+	{
+		if (ProcGlobal->allProcs[i].pid == pid)
+		{
+			proc = &ProcGlobal->allProcs[i];
+			break;
+		}
+	}
+
+	if (proc == NULL)
+	{
+		/*
+		 * Either the child ran its exit hooks (ProcKill and AuxiliaryProcKill
+		 * reset the pid), or it never owned a PGPROC.  In the latter case it
+		 * may have died holding freeProcsLock while acquiring or releasing
+		 * one; that spinlock is tracked only in process-local memory (see
+		 * YbSwitchToSharedProcState()), so an abnormal exit must restart.
+		 */
+		if (!EXIT_STATUS_0(exitstatus) && !EXIT_STATUS_1(exitstatus))
+			ereport(WARNING,
+					(errmsg("terminating active server processes due to backend crash of a "
+							"partially initialized process")));
+		return false;
+	}
+
+	if (WIFSIGNALED(exitstatus) &&
+		WTERMSIG(exitstatus) != SIGKILL &&
+		WTERMSIG(exitstatus) != SIGABRT &&
+		WTERMSIG(exitstatus) != SIGSEGV)
+	{
+		ereport(WARNING,
+				(errmsg("terminating active server processes due to backend crash from "
+						"unexpected error code %d",
+						WTERMSIG(exitstatus))));
+		return false;
+	}
+
+	if (proc->ybProcState.lwlock_acquired ||
+		proc->ybProcState.spinlocks_acquired > 0)
+	{
+		ereport(WARNING,
+				(errmsg("terminating active server processes due to backend crash while "
+						"acquiring %s", proc->ybProcState.lwlock_acquired ? "LWLock" : "SpinLock")));
+		return false;
+	}
+
+	/*
+	 * The postmaster cannot know what a background worker's registrant needs
+	 * to clean up after it.
+	 */
+	if (proc->backendType == B_BG_WORKER)
+	{
+		ereport(WARNING,
+				(errmsg("terminating active server processes due to backend worker "
+						"crash")));
+		return false;
+	}
+
+	if (!proc->ybProcState.initialization_completed)
+	{
+		ereport(WARNING,
+				(errmsg("terminating active server processes due to backend crash of a "
+						"process while it was initializing")));
+		return false;
+	}
+
+	if (proc->ybProcState.termination_started)
+	{
+		ereport(WARNING,
+				(errmsg("terminating active server processes due to backend crash of a "
+						"process while it was terminating")));
+		return false;
+	}
+
+	if (proc->ybProcState.entered_crit_section)
+	{
+		ereport(WARNING,
+				(errmsg("terminating active server processes due to backend crash of a "
+						"process while it was in a critical section")));
+		return false;
+	}
+
+	elog(INFO, "cleaning up after process with pid %d exited with status %d",
+		 pid, exitstatus);
+
+	if (!YbCleanupKilledProcess(proc))
+	{
+		ereport(WARNING,
+				(errmsg("terminating active server processes due to backend crash that is "
+						"unable to be cleaned up")));
+		return false;
+	}
+
+	return true;
 }

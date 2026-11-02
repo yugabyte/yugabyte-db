@@ -1370,3 +1370,41 @@ check_yb_io_method(int *newval, void **extra, GucSource source)
 	}
 	return true;
 }
+
+/*
+ * YbAioHasBackendState - did a regular backend leave any AIO state behind?
+ *
+ * Used by the postmaster to decide whether it can clean up after a killed
+ * backend. The postmaster does not release AIO state, so any state is treated
+ * as unmanageable. The backend is dead, so its state is read without locking.
+ *
+ * Every handle the backend owns is checked because of a possible race in
+ * pgaio_io_acquire_nb(): the function removes a handle from idle_ios before it
+ * records it in handed_out_io, and a backend killed in between is silently
+ * leaked.
+ *
+ * TODO(kramanathan): It is possible for the postmaster to clear the backend's
+ * AIO in most cases.
+ */
+bool
+YbAioHasBackendState(ProcNumber procno)
+{
+	PgAioBackend *backend_state;
+
+	Assert(procno >= 0 && procno < MaxBackends);
+	backend_state = &pgaio_ctl->backend_state[procno];
+
+	if (backend_state->handed_out_io != NULL ||
+		backend_state->in_batchmode ||
+		backend_state->num_staged_ios > 0 ||
+		dclist_count(&backend_state->idle_ios) != (uint32) io_max_concurrency)
+		return true;
+
+	for (int i = 0; i < io_max_concurrency; i++)
+	{
+		if (pgaio_ctl->io_handles[backend_state->io_handle_off + i].state != PGAIO_HS_IDLE)
+			return true;
+	}
+
+	return false;
+}

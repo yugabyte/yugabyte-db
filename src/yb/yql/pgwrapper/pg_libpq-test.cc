@@ -3448,6 +3448,84 @@ TEST_F_EX(PgLibPqTest,
   ASSERT_EQ(row, (decltype(row){"SELECT pg_stat_statements_reset()", "Terminated by SIGKILL"}));
 }
 
+// The postmaster does not release AIO state, so a backend killed while holding any must restart
+// every child. test_aio leaves that state outside a critical section and without locks, so the AIO
+// check can validate that the postmaster refuses the cleanup.
+namespace {
+
+constexpr auto kAioStateWarning = "cannot cleanup after a process that left AIO state behind";
+
+Status WaitForPgSleep(PGConn* conn, int32_t pid) {
+  return WaitFor([conn, pid]() -> Result<bool> {
+    auto wait_event = VERIFY_RESULT(conn->FetchRow<std::string>(Format(
+        "SELECT COALESCE(wait_event, '') FROM pg_stat_activity WHERE pid = $0", pid)));
+    return wait_event == "PgSleep";
+  }, 30s * kTimeMultiplier, Format("Backend $0 to sleep", pid));
+}
+
+Status WaitForRestart(PGConn* conn) {
+  return WaitFor([conn]() -> Result<bool> {
+    return !conn->Fetch("SELECT 1").ok();
+  }, 30s * kTimeMultiplier, "Postmaster to restart all children");
+}
+
+} // namespace
+
+TEST_F(PgLibPqTest, TestPgBackendKillWithAioHandle) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto other_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE EXTENSION test_aio"));
+  const auto pid = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT pg_backend_pid()"));
+
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&conn] {
+    // handle_get() keeps its handle until the statement ends.
+    ASSERT_NOK(conn.Fetch("SELECT handle_get(), pg_sleep(600)"));
+  });
+  ASSERT_OK(WaitForPgSleep(&other_conn, pid));
+
+  LogWaiter log_waiter(cluster_->tablet_server(0), kAioStateWarning);
+  ASSERT_EQ(kill(pid, SIGKILL), 0);
+  ASSERT_OK(log_waiter.WaitFor(30s * kTimeMultiplier));
+  thread_holder.JoinAll();
+  ASSERT_OK(WaitForRestart(&other_conn));
+}
+
+TEST_F(PgLibPqTest, TestPgBackendKillInAioBatchMode) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto other_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE EXTENSION test_aio"));
+  const auto pid = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT pg_backend_pid()"));
+
+  // Batch mode stays on until the transaction ends.
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Fetch("SELECT batch_start()"));
+
+  LogWaiter log_waiter(cluster_->tablet_server(0), kAioStateWarning);
+  ASSERT_EQ(kill(pid, SIGKILL), 0);
+  ASSERT_OK(log_waiter.WaitFor(30s * kTimeMultiplier));
+  ASSERT_OK(WaitForRestart(&other_conn));
+}
+
+TEST_F(PgLibPqTest, TestPgBackendKillAfterAioHandleReleased) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto other_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE EXTENSION test_aio"));
+  const auto pid = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT pg_backend_pid()"));
+  ASSERT_OK(conn.Fetch("SELECT handle_get_release()"));
+
+  LogWaiter log_waiter(cluster_->tablet_server(0), kAioStateWarning);
+  ASSERT_EQ(kill(pid, SIGKILL), 0);
+
+  // The dead backend leaves pg_stat_activity only if the postmaster cleaned up after it; a restart
+  // would instead break other_conn and fail the wait.
+  ASSERT_OK(WaitFor([&other_conn, pid]() -> Result<bool> {
+    return VERIFY_RESULT(other_conn.FetchRow<int64_t>(Format(
+        "SELECT COUNT(*) FROM pg_stat_activity WHERE pid = $0", pid))) == 0;
+  }, 30s * kTimeMultiplier, Format("Backend $0 to be cleaned up", pid)));
+  ASSERT_FALSE(log_waiter.IsEventOccurred());
+}
+
 TEST_F_EX(PgLibPqTest,
           YB_DISABLE_TEST_IN_TSAN(TestWebserverKill),
           PgLibPqYSQLBackendCrash) {
