@@ -34,49 +34,64 @@ class KeyHybridTimeRangeCollector : public rocksdb::TablePropertiesCollector {
     if (!valid_) {
       return Status::OK();
     }
-    // A properties collector must never fail the table build. A key without a decodable hybrid time
-    // leaves the file without a range, so nothing relies on it.
-    auto doc_ht = DocHybridTime::DecodeFromEnd(key);
-    if (!doc_ht.ok()) {
+    // A properties collector must never fail the table build. A key without a hybrid time leaves
+    // the file without a range, so nothing relies on it.
+    auto size = DocHybridTime::GetEncodedSize(key);
+    if (!size.ok()) {
       valid_ = false;
       return Status::OK();
     }
-    auto ht = doc_ht->hybrid_time();
-    if (!min_.is_valid() || ht < min_) {
-      min_ = ht;
+    // Runs for every key of every flush and compaction, so the hybrid times are compared encoded
+    // and only the two extremes are decoded. Encoded hybrid times sort in reverse time order.
+    auto encoded = key.Suffix(*size);
+    if (newest_.empty() || encoded.compare(newest_.AsSlice()) < 0) {
+      newest_.Assign(encoded);
     }
-    if (!max_.is_valid() || ht > max_) {
-      max_ = ht;
+    if (oldest_.empty() || encoded.compare(oldest_.AsSlice()) > 0) {
+      oldest_.Assign(encoded);
     }
     return Status::OK();
   }
 
   // Called more than once, see properties_collector/README.md.
   Status Finish(rocksdb::UserCollectedProperties* properties) override {
-    if (valid_ && min_.is_valid()) {
+    if (auto range = Range()) {
       using K = KeyHybridTimeRangePropertyKeys;
-      (*properties)[std::string(K::kMinKeyHt)] = std::to_string(min_.ToUint64());
-      (*properties)[std::string(K::kMaxKeyHt)] = std::to_string(max_.ToUint64());
+      (*properties)[std::string(K::kMinKeyHt)] = std::to_string(range->min.ToUint64());
+      (*properties)[std::string(K::kMaxKeyHt)] = std::to_string(range->max.ToUint64());
     }
     return Status::OK();
   }
 
   rocksdb::UserCollectedProperties GetReadableProperties() const override {
-    if (!valid_ || !min_.is_valid()) {
+    auto range = Range();
+    if (!range) {
       return {};
     }
     return {
-      {std::string(KeyHybridTimeRangePropertyKeys::kMinKeyHt), min_.ToString()},
-      {std::string(KeyHybridTimeRangePropertyKeys::kMaxKeyHt), max_.ToString()},
+      {std::string(KeyHybridTimeRangePropertyKeys::kMinKeyHt), range->min.ToString()},
+      {std::string(KeyHybridTimeRangePropertyKeys::kMaxKeyHt), range->max.ToString()},
     };
   }
 
   const char* Name() const override { return kCollectorName; }
 
  private:
+  std::optional<KeyHybridTimeRange> Range() const {
+    if (!valid_ || oldest_.empty()) {
+      return std::nullopt;
+    }
+    auto oldest = oldest_.Decode();
+    auto newest = newest_.Decode();
+    if (!oldest.ok() || !newest.ok()) {
+      return std::nullopt;
+    }
+    return KeyHybridTimeRange{.min = oldest->hybrid_time(), .max = newest->hybrid_time()};
+  }
+
   bool valid_ = true;
-  HybridTime min_;
-  HybridTime max_;
+  EncodedDocHybridTime oldest_;
+  EncodedDocHybridTime newest_;
 };
 
 class KeyHybridTimeRangeCollectorFactory : public rocksdb::TablePropertiesCollectorFactory {
