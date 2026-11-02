@@ -1011,9 +1011,9 @@ yb_check_cluster_versions(void)
 	/* cluster versions should already have been obtained */
 	Assert(old_cluster.major_version != 0);
 
-	if (GET_MAJOR_VERSION(old_cluster.major_version) > 1100)
+	if (GET_MAJOR_VERSION(old_cluster.major_version) != 1500)
 		pg_fatal("This version of the utility can only be used for checking "
-				 "YSQL version 11. The cluster is currently on YSQL version %s",
+				 "YSQL version 15. The cluster is currently on YSQL version %s",
 				 old_cluster.major_version_str);
 
 	check_ok();
@@ -2749,8 +2749,8 @@ yb_check_upgrade_compatibility_guc(PGconn *old_cluster_conn)
 
 	res = executeQueryOrDie(old_cluster_conn, "SHOW yb_major_version_upgrade_compatibility");
 
-	if (strncmp(PQgetvalue(res, 0, 0), "11", 2))
-		pg_fatal("yb_major_version_upgrade_compatibility must be set to 11");
+	if (strcmp(PQgetvalue(res, 0, 0), "15"))
+		pg_fatal("yb_major_version_upgrade_compatibility must be set to 15");
 
 	PQclear(res);
 

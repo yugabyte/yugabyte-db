@@ -541,7 +541,8 @@ AlterSequence(ParseState *pstate, AlterSeqStmt *stmt)
 		{
 			memset(&seq_data, 0, sizeof(seq_data));
 			/* Not used, but init_params checks it. */
-			seq_data.last_value = seqform->seqmin;
+			last_value = seqform->seqmin;
+			seq_data.last_value = last_value;
 		}
 
 		newdataform = &seq_data;

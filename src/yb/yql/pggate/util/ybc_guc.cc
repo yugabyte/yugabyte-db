@@ -131,6 +131,11 @@ int yb_major_version_upgrade_compatibility = 0;
 // progress.
 bool yb_upgrade_to_pg15_completed = true;
 
+// Indicates that the upgrade to the PostgreSQL version 19 has been completed.
+// Use YBCPgYsqlMajorVersionUpgradeInProgress in order to know if the YSQL major upgrade is in
+// progress.
+bool yb_upgrade_to_pg19_completed = true;
+
 bool yb_disable_auto_analyze = false;
 
 bool yb_extension_upgrade = false;

@@ -225,7 +225,7 @@ def main() -> int:
             "platform": os_platform,
             "architecture": architecture,
             "minimum_yba_version": min_yba_version,
-            "ysql_major_version": "15",
+            "ysql_major_version": "19",
             }
     if args.yba_mode and args.yba_mode.lower() == "true":
         if not git_repo_dir:

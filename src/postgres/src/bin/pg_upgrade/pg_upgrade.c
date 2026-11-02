@@ -185,6 +185,9 @@ main(int argc, char **argv)
 	 */
 	if (is_yugabyte_enabled())
 	{
+		/* YB: The actual upgrade has no old data dir to read PG_VERSION from. */
+		if (!user_opts.check)
+			yb_get_old_cluster_version();
 		yb_check_cluster_versions();
 	}
 	else

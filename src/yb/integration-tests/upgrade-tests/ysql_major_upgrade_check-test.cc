@@ -163,8 +163,8 @@ TEST_F(YsqlMajorUpgradeCheckTest, PgUpgradeChecks) {
 
   // Running validation on the upgraded cluster should fail since its already on the higher version.
   ASSERT_OK(ValidateUpgradeCompatibilityFailure(
-      "This version of the utility can only be used for checking YSQL version 11. The cluster is "
-      "currently on YSQL version 15"));
+      "This version of the utility can only be used for checking YSQL version 15. The cluster is "
+      "currently on YSQL version 19"));
 }
 
 TEST_F(YsqlMajorUpgradeCheckTest, CheckUpgradeCompatibilityGuc) {
@@ -186,7 +186,7 @@ TEST_F(YsqlMajorUpgradeCheckTest, CheckUpgradeCompatibilityGuc) {
   ASSERT_OK(WaitForClusterToStabilize());
 
   auto log_waiter =
-      cluster_->GetMasterLogWaiter("yb_major_version_upgrade_compatibility must be set to 11");
+      cluster_->GetMasterLogWaiter("yb_major_version_upgrade_compatibility must be set to 15");
   ASSERT_NOK_STR_CONTAINS(PerformYsqlMajorCatalogUpgrade(), kPgUpgradeFailedError);
   ASSERT_TRUE(log_waiter.IsEventOccurred());
 }
