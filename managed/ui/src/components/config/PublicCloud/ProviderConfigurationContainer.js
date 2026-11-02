@@ -29,11 +29,7 @@ import {
   fetchCustomerTasksFailure,
   fetchCustomerTasksSuccess
 } from '../../../actions/tasks';
-import {
-  fetchHostInfo,
-  fetchHostInfoSuccess,
-  fetchHostInfoFailure
-} from '../../../actions/customers';
+import { loadHostInfo } from '../../../actions/customers';
 import { toast } from 'react-toastify';
 
 const mapDispatchToProps = (dispatch) => {
@@ -206,13 +202,7 @@ const mapDispatchToProps = (dispatch) => {
       dispatch(closeDialog());
     },
     fetchHostInfo: () => {
-      dispatch(fetchHostInfo()).then((response) => {
-        if (response.payload.status !== 200) {
-          dispatch(fetchHostInfoFailure(response.payload));
-        } else {
-          dispatch(fetchHostInfoSuccess(response.payload));
-        }
-      });
+      loadHostInfo(dispatch);
     }
   };
 };
