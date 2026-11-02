@@ -1831,7 +1831,8 @@ TEST_F(PgObjectLocksTest, TestPgLocksBlockedByForObjectLocksMultiNode) {
 
 // A tserver that does not process the master's release fan-out must not keep DMLs on the other
 // tservers waiting for the DDL's exclusive lock.
-TEST_F(PgObjectLocksTest, StuckTServerDoesNotBlockDmlOnHealthyTServers) {
+TEST_F_EX(PgObjectLocksTest, StuckTServerDoesNotBlockDmlOnHealthyTServers,
+          PgObjectLocksTestLongLease) {
   constexpr auto kDmlStatementTimeoutMs = 60000 * kTimeMultiplier;
   auto* ddl_ts = cluster_->tablet_server(0);
   auto* healthy_ts = cluster_->tablet_server(1);
@@ -1885,7 +1886,8 @@ TEST_F(PgObjectLocksTest, StuckTServerDoesNotBlockDmlOnHealthyTServers) {
 // A tserver that does not process the master's acquire fan-out keeps a DDL waiting while the DDL
 // holds its exclusive lock on the other tservers. statement_timeout must bound that wait, and the
 // failed DDL must release its locks on the healthy tservers.
-TEST_F(PgObjectLocksTest, StatementTimeoutBoundsDdlAcquireOnStuckTServer) {
+TEST_F_EX(PgObjectLocksTest, StatementTimeoutBoundsDdlAcquireOnStuckTServer,
+          PgObjectLocksTestLongLease) {
   constexpr auto kDdlStatementTimeoutMs = 3000 * kTimeMultiplier;
   constexpr auto kDmlStatementTimeoutMs = 60000 * kTimeMultiplier;
   auto* ddl_ts = cluster_->tablet_server(0);
