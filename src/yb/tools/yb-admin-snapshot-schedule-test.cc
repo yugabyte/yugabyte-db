@@ -2043,6 +2043,13 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, RestoreWithBac
   ASSERT_OK(conn.Execute("INSERT INTO test_table "
       "SELECT generate_series(1, 100), md5(random()::text)"));
 
+  // The restore time below is the wall-clock midpoint of CREATE INDEX. Left alone, the backfill is
+  // a ~3 s slice of a DDL that spends most of its time waiting for backends to reach the new
+  // catalog version, so whether the midpoint lands inside it depends on cluster timing (on ASAN
+  // with a single master it missed by 0.2 s). Stretching the backfill well past that wait keeps
+  // the midpoint inside it.
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_slowdown_backfill_by_ms", "20000"));
+
   // Clone to half way through the backfill.
   auto t1 = ASSERT_RESULT(GetCurrentTime());
   ASSERT_OK(conn.Execute("CREATE INDEX test_table_idx ON test_table (value)"));
