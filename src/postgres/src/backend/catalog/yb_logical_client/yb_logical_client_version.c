@@ -250,10 +250,10 @@ YbGetMasterLogicalClientVersionTableEntryYbctid(Relation logical_client_version_
 /*
  * Releases before the coarse-grained logical client version read a
  * per-database row on every connection and fail the connection if it is
- * missing. Until the V100 migration replaces those rows with the DefaultOid
- * row at finalize, a rollback to such a release is still possible, so
+ * missing. Until the migration that replaces those rows with the DefaultOid
+ * row runs at finalize, a rollback to such a release is still possible, so
  * CREATE/DROP DATABASE must keep the per-database rows in sync. The
- * DefaultOid row being present means V100 has run.
+ * DefaultOid row being present means that migration has run.
  */
 bool
 YbNeedsLegacyPerDbLogicalClientVersionRows()

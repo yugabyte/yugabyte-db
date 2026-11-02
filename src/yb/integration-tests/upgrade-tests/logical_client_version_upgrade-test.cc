@@ -24,9 +24,10 @@ constexpr auto kDroppedDb = "dropped_before_finalize";
 
 } // namespace
 
-// 2025.1 reads a per-database row of pg_yb_logical_client_version on every connection. The V100
-// migration replaces those rows with a single db_oid = 0 row, so until it runs at finalize,
-// CREATE/DROP DATABASE on the current version must keep the per-database rows in sync.
+// 2025.1 reads a per-database row of pg_yb_logical_client_version on every connection. The
+// coarse-grained logical client version migration replaces those rows with a single db_oid = 0
+// row, so until it runs at finalize, CREATE/DROP DATABASE on the current version must keep the
+// per-database rows in sync.
 class LogicalClientVersionUpgradeTest : public UpgradeTestBase {
  public:
   LogicalClientVersionUpgradeTest() : UpgradeTestBase(kBuild_2025_1_1_0) {}
@@ -56,7 +57,7 @@ TEST_F(LogicalClientVersionUpgradeTest, CreateDatabaseBeforeRollback) {
       "ON v.db_oid = d.oid WHERE v.db_oid IS NULL OR d.oid IS NULL")), 0);
 }
 
-// Per-database rows written before finalize are replaced by V100's db_oid = 0 row at finalize, and
+// Per-database rows written before finalize are replaced by the db_oid = 0 row at finalize, and
 // CREATE/DROP DATABASE after finalize stop writing per-database rows.
 TEST_F(LogicalClientVersionUpgradeTest, CreateDatabaseBeforeFinalize) {
   ASSERT_OK(StartClusterInOldVersion());
