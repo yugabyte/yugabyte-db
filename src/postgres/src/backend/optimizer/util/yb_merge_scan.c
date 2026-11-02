@@ -476,6 +476,34 @@ ybFindPathkeyTle(List *tlist, EquivalenceClass *ec, Relids relids,
 }
 
 /*
+ * Whether ec has a member that is a plain column of the relation relids,
+ * possibly relabeled.
+ */
+static bool
+ybEclassHasRelVar(EquivalenceClass *ec, Relids relids)
+{
+	ListCell   *lc2;
+	bool		found = false;
+
+	foreach(lc2, ec->ec_members)
+	{
+		EquivalenceMember *em = (EquivalenceMember *) lfirst(lc2);
+		if (bms_equal(em->em_relids, relids))
+		{
+			Expr	   *expr = em->em_expr;
+			while (IsA(expr, RelabelType))
+				expr = ((RelabelType *) expr)->arg;
+			if (IsA(expr, Var))
+			{
+				found = true;
+				break;
+			}
+		}
+	}
+	return found;
+}
+
+/*
  * Get sort info for given pathkeys corresponding to tlist.  In case a pathkey
  * matches multiple columns in tlist, avoid the columns that are pinned as
  * stream key columns.
@@ -625,9 +653,18 @@ ybEqualityIndexClause(IndexOptInfo *index, List *indexclauses, int indexcol)
 /*
  * Settle the stream key columns of an index path, the columns each merge
  * stream binds to one value.  stream_cols holds the SAOP columns the pathkeys
- * walk picked.  build_index_paths calls this once the path's pathkeys are
- * final, after truncate_useless_pathkeys, with the path's index clauses, so
- * that the path's costing and its plan see the same stream keys.
+ * walk picked.  build_index_paths calls this after truncate_useless_pathkeys,
+ * with the path's index clauses, so that the path's costing and its plan see
+ * the same stream keys.  The pathkeys are final only after this call, which
+ * can truncate them on an embedded index.
+ *
+ * On an embedded index, such as a colocated index, pggate compares each merge
+ * sort value in the table row.  So when embedded, *pathkeys is truncated
+ * before the first pathkey whose EquivalenceClass has no plain column of the
+ * relation, and *yb_distinct_nkeys is set to -1 if the truncation cuts into
+ * the pathkeys that span the distinct prefix.
+ * TODO(#34267): the merge compares the index column the pathkey resolves to,
+ * which can be an expression column even when the class has a plain column.
  *
  * Each index column before the last merge sort column is one of:
  *
@@ -662,7 +699,8 @@ ybEqualityIndexClause(IndexOptInfo *index, List *indexclauses, int indexcol)
 List *
 yb_finalize_merge_scan_stream_cols(IndexOptInfo *index, Relids relids,
 								   List *stream_cols, List *indexclauses,
-								   List *pathkeys)
+								   List **pathkeys, int *yb_distinct_nkeys,
+								   bool embedded)
 {
 	List	   *result = NIL;
 	ListCell   *lc;
@@ -679,13 +717,28 @@ yb_finalize_merge_scan_stream_cols(IndexOptInfo *index, Relids relids,
 	}
 
 	/* Find the merge sort columns as yb_get_sort_info_from_pathkeys does. */
-	foreach(lc, pathkeys)
+	foreach(lc, *pathkeys)
 	{
 		PathKey    *pathkey = lfirst_node(PathKey, lc);
 		EquivalenceMember *em;
 		TargetEntry *tle = ybFindPathkeyTle(index->indextlist,
 											pathkey->pk_eclass, relids,
 											saop_idxs, &em);
+
+		if (embedded && !ybEclassHasRelVar(pathkey->pk_eclass, relids))
+		{
+			*pathkeys = list_truncate(*pathkeys, foreach_current_index(lc));
+
+			/*
+			 * yb_distinct_nkeys is the number of pathkeys that span the
+			 * distinct prefix, or -1 if they do not span it.  The truncation
+			 * can cut into those pathkeys, and then they no longer span the
+			 * prefix.
+			 */
+			if (*yb_distinct_nkeys > list_length(*pathkeys))
+				*yb_distinct_nkeys = -1;
+			break;
+		}
 
 		/* Not an ordering the merge can compare on. */
 		if (!tle)
