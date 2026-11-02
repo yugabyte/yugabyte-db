@@ -28,12 +28,14 @@
 #include "postgres_fe.h"
 
 #include <limits.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #ifdef HAVE_SYS_PRCTL_H
 #include <sys/prctl.h>
 #endif
+#include <unistd.h>
 
 #include "common/pg_yb_common.h"
 #include "utils/elog.h"
@@ -305,6 +307,28 @@ YBQueryDiagnosticsTestRaceCondition()
 	return cached_value;
 }
 
+#ifdef HAVE_SYS_PRCTL_H
+/*
+ * PR_SET_PDEATHSIG only covers a parent that dies after the prctl() call.
+ * If the parent that spawned us (YB_PG_PARENT_PID) is already gone, we have
+ * been reparented and must deliver the signal ourselves, or be orphaned.
+ * The variable is unset so that our own children do not compare against it.
+ */
+static void
+yb_raise_if_parent_already_died(int pdeathsig)
+{
+	char	   *parent_pid_str = getenv("YB_PG_PARENT_PID");
+	long int	parent_pid;
+
+	if (!parent_pid_str)
+		return;
+	parent_pid = strtol(parent_pid_str, NULL, 10);
+	unsetenv("YB_PG_PARENT_PID");
+	if (parent_pid > 0 && getppid() != (pid_t) parent_pid)
+		raise(pdeathsig);
+}
+#endif
+
 void
 YBSetParentDeathSignal()
 {
@@ -325,6 +349,7 @@ YBSetParentDeathSignal()
 				 * portable ways to prevent orphans when parent is killed.
 				 */
 				prctl(PR_SET_PDEATHSIG, pdeathsig);
+				yb_raise_if_parent_already_died((int) pdeathsig);
 			}
 			else
 			{
