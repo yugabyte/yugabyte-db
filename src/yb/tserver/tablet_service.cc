@@ -270,6 +270,14 @@ DEFINE_test_flag(bool, pause_wait_for_lockers, false,
 DEFINE_test_flag(bool, fail_wait_for_lockers, false,
     "Fail any WaitForLockers requests received by this tserver.");
 
+DEFINE_test_flag(bool, fail_release_object_locks, false,
+    "Fail any ReleaseObjectLocks requests received by the tserver whose uuid is "
+    "TEST_fail_release_object_locks_on_tserver_uuid.");
+
+DEFINE_test_flag(string, fail_release_object_locks_on_tserver_uuid, "",
+    "The tserver that TEST_fail_release_object_locks applies to. Set it before enabling that flag "
+    "and leave it unchanged while releases may be in flight.");
+
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_uint64(rocksdb_max_file_size_for_compaction);
 DECLARE_uint64(rpc_max_message_size);
@@ -4148,6 +4156,13 @@ void TabletServiceImpl::ReleaseObjectLocks(
     LOG_WITH_FUNC(INFO)
         << "Flag enable_object_locking_for_table_locks disabled. Ignoring release request.";
     return context.RespondSuccess();
+  }
+
+  if (PREDICT_FALSE(FLAGS_TEST_fail_release_object_locks) &&
+      FLAGS_TEST_fail_release_object_locks_on_tserver_uuid == server_->permanent_uuid()) {
+    return SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS(TimedOut, "TEST_fail_release_object_locks_on_tserver_uuid set"), &context);
   }
 
   if (auto s = CheckLocalLeaseEpoch(GetRecipientLeaseEpoch(*req)); !s.ok()) {
