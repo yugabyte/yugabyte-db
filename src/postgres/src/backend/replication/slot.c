@@ -218,8 +218,12 @@ YbTryAcquireReplicationSlotLock(const char *slot_name, bool wait)
 		 * failures (tablet leader election, unreachable tserver).  Escalate to
 		 * WARNING after YB_SLOT_WAIT_WARN_RETRIES attempts so that the latter
 		 * case is diagnosable from the server log at default log_min_messages.
+		 *
+		 * Expired means the lock was granted only after the request outlived
+		 * the retryable request timeout, so the write was rejected; retry it.
 		 */
-		if (wait && status && YBCStatusIsTimedOut(status))
+		if (wait && status &&
+			(YBCStatusIsTimedOut(status) || YBCStatusIsExpired(status)))
 		{
 			int			loglevel;
 
