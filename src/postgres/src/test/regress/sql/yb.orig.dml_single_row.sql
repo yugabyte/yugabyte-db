@@ -1215,6 +1215,32 @@ SELECT * FROM sr_cross_part ORDER BY k;
 UPDATE sr_cross_part SET v = 2 WHERE k = 150::bigint;
 SELECT * FROM sr_cross_part ORDER BY k;
 
+-- A two-column key: 4294967297 and 4294967298 are 2^32 + 1 and 2^32 + 2, their
+-- low 32 bits are the keys 1 and 2.  A generic plan checks the values of both
+-- columns in its one-time filter.
+CREATE TABLE sr_cross_two (a int, b int, v int, PRIMARY KEY (a, b));
+INSERT INTO sr_cross_two VALUES (1, 1, 0), (1, 2, 0), (2, 1, 0);
+UPDATE sr_cross_two SET v = 1 WHERE a = 4294967297 AND b = 1;
+EXPLAIN (COSTS OFF) UPDATE sr_cross_two SET v = 2 WHERE a = 1::bigint AND b = 2::bigint;
+UPDATE sr_cross_two SET v = 2 WHERE a = 1::bigint AND b = 2::bigint;
+SET plan_cache_mode = force_generic_plan;
+PREPARE sr_cross_p2(bigint, bigint) AS UPDATE sr_cross_two SET v = 3 WHERE a = $1 AND b = $2;
+EXPLAIN (COSTS OFF) EXECUTE sr_cross_p2(2, 1);
+EXECUTE sr_cross_p2(2, 4294967297);
+EXECUTE sr_cross_p2(4294967298, 1);
+EXECUTE sr_cross_p2(2, 1);
+SELECT * FROM sr_cross_two ORDER BY a, b;
+DEALLOCATE sr_cross_p2;
+RESET plan_cache_mode;
+
+-- An ascending (range) key.
+CREATE TABLE sr_cross_asc (k int, v int, PRIMARY KEY (k ASC));
+INSERT INTO sr_cross_asc VALUES (1, 0), (2, 0);
+UPDATE sr_cross_asc SET v = 1 WHERE k = 4294967297;
+EXPLAIN (COSTS OFF) UPDATE sr_cross_asc SET v = 2 WHERE k = 2::bigint;
+UPDATE sr_cross_asc SET v = 2 WHERE k = 2::bigint;
+SELECT * FROM sr_cross_asc ORDER BY k;
+
 -- A value that needs no conversion is the key as is: a varchar column with
 -- text values, and a domain column with values of the domain's base type.
 CREATE TABLE sr_cross_varchar (k varchar PRIMARY KEY, v int);
@@ -1344,6 +1370,8 @@ CALL check_fast_path_txn('UPDATE sr_cross_int2 SET v = 6 WHERE k = 1::bigint', t
 CALL check_fast_path_txn('UPDATE sr_cross_int8 SET v = 6 WHERE k = 2::int', true);
 CALL check_fast_path_txn('UPDATE sr_cross_int8 SET v = 6 WHERE k = 2::smallint', true);
 CALL check_fast_path_txn('UPDATE sr_cross_part SET v = 6 WHERE k = 150::bigint', true);
+CALL check_fast_path_txn('UPDATE sr_cross_two SET v = 6 WHERE a = 1::bigint AND b = 1::bigint', true);
+CALL check_fast_path_txn('UPDATE sr_cross_asc SET v = 6 WHERE k = 1::bigint', true);
 CALL check_fast_path_txn('UPDATE sr_cross_real SET v = 6 WHERE k = 1.5::float8', true);
 CALL check_fast_path_txn('UPDATE sr_cross_double SET v = 6 WHERE k = 1.5::real', true);
 CALL check_fast_path_txn('UPDATE sr_cross_date SET v = 6 WHERE k = ''2000-01-02''::timestamp', true);
@@ -1362,7 +1390,8 @@ RESET plan_cache_mode;
 CALL check_fast_path_txn('UPDATE sr_cross_dst SET v = 6 WHERE k = ''2024-03-10 01:30-05''::timestamptz', false);
 CALL check_fast_path_txn('UPDATE sr_cross_skip SET v = 6 WHERE k = ''2011-12-29 00:00+14''::timestamptz', false);
 
-DROP TABLE sr_cross_int4, sr_cross_int2, sr_cross_int8, sr_cross_part, sr_cross_varchar,
-	sr_cross_domain, sr_cross_real, sr_cross_double, sr_cross_date, sr_cross_ts, sr_cross_tstz,
-	sr_cross_text, sr_cross_name, sr_cross_dst, sr_cross_skip;
+DROP TABLE sr_cross_int4, sr_cross_int2, sr_cross_int8, sr_cross_part, sr_cross_two,
+	sr_cross_asc, sr_cross_varchar, sr_cross_domain, sr_cross_real, sr_cross_double,
+	sr_cross_date, sr_cross_ts, sr_cross_tstz, sr_cross_text, sr_cross_name, sr_cross_dst,
+	sr_cross_skip;
 DROP DOMAIN sr_cross_dom;

@@ -3756,7 +3756,6 @@ yb_single_row_key_value(Expr *expr, Oid coltype, Oid opno, Oid inputcollid,
 	bool		checks_passed;
 	const YbKeyCast *cast;
 
-	/* The value already has the column's type, so it is the key as is. */
 	if (valtype == coltype)
 		return expr;
 
@@ -3777,10 +3776,7 @@ yb_single_row_key_value(Expr *expr, Oid coltype, Oid opno, Oid inputcollid,
 	if (cast == NULL)
 		return NULL;
 
-	/*
-	 * key becomes the expression that casts expr to the column's type, such
-	 * as int4(expr).  The cast runs later.  NULL means there is no such cast.
-	 */
+	/* The cast as an expression, such as int4(expr); NULL if there is none. */
 	key = coerce_to_target_type(NULL, (Node *) expr, valtype, basetype, -1,
 								COERCION_EXPLICIT, COERCE_IMPLICIT_CAST, -1);
 	if (key == NULL)
@@ -3811,10 +3807,9 @@ yb_single_row_key_value(Expr *expr, Oid coltype, Oid opno, Oid inputcollid,
 	}
 
 	/*
-	 * cond says whether key can be used.  make_ands_explicit joins the checks
-	 * with AND into one condition, and eval_const_expressions then evaluates
-	 * as much of it as possible now.  The result is true, false, or a smaller
-	 * condition if some part is not known yet, as with a parameter.
+	 * Evaluate as much of the checks as possible now.  cond is true, false,
+	 * or a smaller condition when part of it is known only at execution, as
+	 * with a parameter.
 	 */
 	cond = eval_const_expressions(NULL, (Node *) make_ands_explicit(checks));
 
@@ -3839,7 +3834,6 @@ yb_single_row_key_value(Expr *expr, Oid coltype, Oid opno, Oid inputcollid,
 	else
 		key = eval_const_expressions(NULL, key);
 
-	/* Label key with the column's type. */
 	return (Expr *) makeRelabelType((Expr *) key, coltype, -1,
 									get_typcollation(coltype),
 									COERCE_IMPLICIT_CAST);
@@ -3876,6 +3870,11 @@ yb_single_row_key_value(Expr *expr, Oid coltype, Oid opno, Oid inputcollid,
  * The result_tlist also contains the values for the primary key columns
  * extracted from the WHERE clause. Primary key values in the result_tlist are
  * defined in both UPDATE and DELETE cases.
+ *
+ * The result_quals list gets the conditions that yb_single_row_key_value could
+ * not decide at planning time, such as the range guard for a parameter of
+ * another type than its key column.  The Result node checks them once at
+ * execution, before anything is written; if one is false, no row matches.
  *
  * The returning_cols list contains YbExprColrefDesc nodes that represent
  * columns that need to be fetched from DocDB. The reason why we may need to
