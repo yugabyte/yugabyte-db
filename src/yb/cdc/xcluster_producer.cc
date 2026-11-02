@@ -146,8 +146,14 @@ Status PopulateWriteRecord(
         record->set_operation(CDCRecordPB::WRITE);
       }
 
-      // Process intent records.
-      record->set_time(msg.hybrid_time());
+      // Index backfill writes are stamped on the source with the backfill read time carried in
+      // external_hybrid_time. Forward it so the target stamps them identically. The WAL op time
+      // can be later than a concurrent UPDATE's delete of the old index entry, which would leave
+      // the stale entry on the target (#35645). Only target-applied-filter streams see such
+      // writes; the legacy filter drops them in GetChangesForXCluster.
+      record->set_time(
+          msg.write().has_external_hybrid_time() ? msg.write().external_hybrid_time()
+                                                 : msg.hybrid_time());
       if (batch.has_transaction()) {
         auto* transaction_state = record->mutable_transaction_state();
         transaction_state->set_transaction_id(batch.transaction().transaction_id().ToBuffer());

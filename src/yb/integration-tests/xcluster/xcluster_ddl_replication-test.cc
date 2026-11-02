@@ -115,6 +115,7 @@ DECLARE_int32(ysql_sequence_cache_minval);
 DECLARE_bool(ysql_yb_enable_update_reltuples_after_create_index);
 DECLARE_int32(ysql_yb_major_version_upgrade_compatibility);
 
+DECLARE_uint64(TEST_backfill_paging_size);
 DECLARE_bool(TEST_block_apply_intent);
 DECLARE_int32(TEST_delay_at_start_of_schedule_post_tablet_create_tasks_ms);
 DECLARE_bool(TEST_disable_tablet_deletion);
@@ -123,6 +124,7 @@ DECLARE_bool(TEST_force_get_checkpoint_from_cdc_state);
 DECLARE_int32(TEST_pause_at_start_of_setup_replication_group_ms);
 DECLARE_string(TEST_skip_async_insert_packed_schema_for_tablet_id);
 DECLARE_bool(TEST_skip_oid_advance_on_restore);
+DECLARE_int32(TEST_slowdown_backfill_by_ms);
 DECLARE_int32(TEST_sleep_before_vector_index_backfill_seconds);
 DECLARE_bool(TEST_tserver_disable_heartbeat);
 DECLARE_bool(TEST_vector_index_exact);
@@ -7231,6 +7233,52 @@ TEST_F(XClusterDDLReplicationIndexBackfillTest, ReplicatedFromSource) {
       "INSERT INTO $0 SELECT i, i % 7 FROM generate_series(501, 550) AS i", kTableName));
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
   ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>(IndexCountStmt())), 550);
+}
+
+// Rows rewritten while the source backfill is still running must not leave stale entries on the
+// target. The source stamps backfilled entries at the backfill read time, which is older than the
+// UPDATE's delete of the old entry. The producer has to forward that time instead of the WAL op
+// time, or the replicated entry lands after the replicated delete and the stale entry wins.
+TEST_F(XClusterDDLReplicationIndexBackfillTest, ConcurrentUpdateDuringReplicatedBackfill) {
+  // Backfill in small pages with a pause before each so the UPDATE can land between pages.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_backfill_paging_size) = 50;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_slowdown_backfill_by_ms) = 1000;
+  ASSERT_OK(SetUpClustersAndReplication());
+  ASSERT_OK(CreateBaseTable());
+
+  StringWaiterLogSink first_page_done_log("Done BackfillIndexes at");
+  StringWaiterLogSink target_defer_backfill_log("Skipping local index backfill for indexed_table");
+
+  // CREATE INDEX blocks its connection until the backfill finishes, so run it on its own thread.
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([this] {
+    auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+    ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0 ON $1($2 ASC)", kIndexName, kTableName, kCol));
+  });
+
+  // Once the first page is backfilled, rewrite every indexed value. Later pages are then backfilled
+  // after the UPDATE but at the earlier backfill read time, so the UPDATE must win on both sides.
+  ASSERT_OK(first_page_done_log.WaitFor(kTimeout));
+  ASSERT_OK(producer_conn_->ExecuteFormat("UPDATE $0 SET $1 = $1 + 100", kTableName, kCol));
+  thread_holder.JoinAll();
+
+  ASSERT_OK(target_defer_backfill_log.WaitFor(kTimeout));
+  VerifyFilterTargetAppliedBit(/*expected=*/true);
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  VerifyIndex("Replicated backfill index ready on consumer");
+
+  // Index entries for the pre-UPDATE values must be gone on both sides.
+  const auto stale_count_stmt = Format(
+      "/*+ IndexScan($0) */ SELECT COUNT(*) FROM $1 WHERE $2 < 100", kIndexName, kTableName, kCol);
+  ASSERT_EQ(ASSERT_RESULT(producer_conn_->FetchRow<int64_t>(stale_count_stmt)), 0);
+  ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>(stale_count_stmt)), 0);
+
+  const auto full_scan = Format(
+      "/*+ IndexScan($0) */ SELECT key, $1 FROM $2 WHERE $1 >= 0 ORDER BY $1, key", kIndexName,
+      kCol, kTableName);
+  ASSERT_EQ(
+      ASSERT_RESULT(producer_conn_->FetchAllAsString(full_scan)),
+      ASSERT_RESULT(consumer_conn_->FetchAllAsString(full_scan)));
 }
 
 // Flag off, so the target falls back to the legacy behavior of running its own local backfill.
