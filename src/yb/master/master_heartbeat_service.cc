@@ -536,6 +536,12 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
       resp->set_needs_full_tablet_report(true);
     }
 
+    // The tserver marks this replication status as sent once we reply, so always process it.
+    for (const auto& consumer_replication_state : req->xcluster_consumer_replication_status()) {
+      catalog_manager_->GetXClusterManager()->StoreConsumerReplicationStatus(
+          consumer_replication_state);
+    }
+
     if (!req->has_tablet_report() || req->tablet_report().is_incremental()) {
       // Only process metadata if we have plenty of time to process the work (> 50% of
       // timeout).
@@ -554,11 +560,6 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
           }
           ProcessTabletMetadata(ts_desc->id(), metadata, leader_metrics);
         }
-      }
-
-      for (const auto& consumer_replication_state : req->xcluster_consumer_replication_status()) {
-        catalog_manager_->GetXClusterManager()->StoreConsumerReplicationStatus(
-            consumer_replication_state);
       }
 
       // Only process the full compaction statuses if we have plenty of time to process the work (>
