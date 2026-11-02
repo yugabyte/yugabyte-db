@@ -1582,8 +1582,15 @@ Status XClusterSourceManager::MarkIndexBackfillCompleted(
     const auto& index_id = index_info->id();
     // Not under tables_to_stream_map_mutex_: IsCheckpointedAgainAfterBackfill takes it.
     for (const auto& stream : GetStreamsForTable(index_id, /*include_dropped=*/true)) {
-      if (anchor_stream_ids.contains(stream->StreamId()) ||
-          !IsCheckpointedAgainAfterBackfill(*index_info, *stream)) {
+      if (anchor_stream_ids.contains(stream->StreamId())) {
+        continue;
+      }
+      if (!IsCheckpointedAgainAfterBackfill(*index_info, *stream)) {
+        if (stream->LockForRead()->pb.xcluster_use_target_applied_filter()) {
+          LOG(INFO) << "Skipping past-backfill checkpoint of xCluster stream "
+                    << stream->StreamId() << " of index " << index_id
+                    << " because backfill writes are replicated to the target";
+        }
         continue;
       }
       // A recorded checkpoint is never redone.
