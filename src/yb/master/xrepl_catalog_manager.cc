@@ -6399,6 +6399,7 @@ void CatalogManager::ProcessXReplHiddenObjectDeletionPeriodically() {
 }
 
 void CatalogManager::DoProcessCDCSDKHiddenObjectDeletion() {
+  TEST_SYNC_POINT("DoProcessCDCSDKHiddenObjectDeletion::Start");
   std::unordered_map<TabletId, HiddenReplicationTabletInfo> hidden_tablets;
   std::unordered_map<TableId, std::pair<TabletId, HybridTime>> hidden_colocated_tables;
   {

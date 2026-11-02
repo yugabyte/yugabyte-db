@@ -20,6 +20,7 @@
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/util/flags.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/test_macros.h"
 
 namespace yb {
@@ -5472,7 +5473,6 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestHiddenTableDeletesAfterComple
   }
 }
 
-
 // Restart time can pass a dropped tablet's hide time before the virtual WAL is rebuilt. The
 // rebuild must leave that released hidden tablet off the poll list. After the master then deletes
 // the tablet, GetChanges still succeeds.
@@ -5480,9 +5480,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest,
        TestGetChangesSucceedsAfterVWALRefreshAndHiddenTabletDeletion) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_rewrite_for_cdcsdk_table) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_interval_secs) = 0;
-  // Wide enough that the rebuild below usually runs before the background task deletes the
-  // tablet; the asserts around the rebuild fail the test if it does not.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 15;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
       true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_publication_list_refresh_interval_secs) = 3600;
@@ -5490,6 +5488,19 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest,
   ASSERT_OK(SetUpWithParams(
       1 /* rf */, 1 /* num_masters */, false /* colocated */,
       true /* populate_safepoint_record */));
+
+  // Hold the CDC deletion task until after the rebuild, so the tablet and its cdc_state rows still
+  // exist then and only hidden_table_released_by_cdc can leave the tablet off the rebuilt poll
+  // list.
+  SyncPoint::GetInstance()->LoadDependency(
+      {{"CDCTest::VWALRebuilt", "DoProcessCDCSDKHiddenObjectDeletion::Start"}});
+  SyncPoint::GetInstance()->EnableProcessing();
+  // On an early failure, unblock the task so cluster shutdown does not hang on it.
+  auto release_deletion_task = ScopeExit([] {
+    TEST_SYNC_POINT("CDCTest::VWALRebuilt");
+    SyncPoint::GetInstance()->DisableProcessing();
+  });
+
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   auto dropped_table =
       ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "dropped_table"));
@@ -5510,7 +5521,8 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest,
   ASSERT_OK(PollTillRestartTimeExceedsTableHideTime(
       stream_id, dropped_table, no_replacement_table));
 
-  // Ask with include_inactive, as the virtual WAL does, so the master sets the release flag.
+  // Ask with include_inactive, as the virtual WAL does, so the master sets
+  // hidden_table_released_by_cdc.
   YBTableName dropped_table_by_id;
   dropped_table_by_id.set_table_id(dropped_table.table_id());
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> dropped_tablets;
@@ -5530,10 +5542,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest,
       stream_id, {dropped_table.table_id(), live_table.table_id()}, kVWALSessionId1,
       nullptr /* vslot_hash_range */, true /* include_oid_to_relfilenode */));
 
-  // The tablets still exist after the rebuild, so the rebuild saw them flagged and skipped them
-  // rather than missing them because the deletion task had already run.
-  ASSERT_OK(get_dropped_tablets());
-  ASSERT_FALSE(dropped_tablets.empty());
+  TEST_SYNC_POINT("CDCTest::VWALRebuilt");
 
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
