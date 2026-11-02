@@ -6491,13 +6491,24 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
     createSlot(replApi0, slotName, "test_decoding");
 
+    // Make sure pg_advisory_locks has a copy on every tserver before tserver 0 is killed.
+    TestUtils.waitFor(() -> {
+      try (Statement stmt = connection.createStatement()) {
+        stmt.execute("SELECT pg_advisory_lock(1)");
+        stmt.execute("SELECT pg_advisory_unlock(1)");
+        return true;
+      } catch (Exception e) {
+        LOG.info("Advisory locks table not ready yet: {}", e.getMessage());
+        return false;
+      }
+    }, 60000);
+    assertTrue(miniCluster.getClient().waitForLoadBalancerIdle(120 * 1000));
+
     PGReplicationStream stream0 = replApi0.replicationStream()
         .logical()
         .withSlotName(slotName)
         .withStartPosition(LogSequenceNumber.valueOf(0L))
         .start();
-
-    assertTrue(miniCluster.getClient().waitForLoadBalancerIdle(120 * 1000));
 
     int numTservers = miniCluster.getNumTServers();
 
