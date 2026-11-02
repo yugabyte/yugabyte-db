@@ -49,6 +49,7 @@ check_root_systemd_services() {
         chmod 644 "${systemd_dir}/{{ service_file }}"
     fi
 {% endfor %}
+{% include "install_yb_launchers.sh.j2" %}
 {% endif %}
 
 {% if configure_cgroup == 'True' %}
