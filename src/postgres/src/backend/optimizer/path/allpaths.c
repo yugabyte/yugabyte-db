@@ -4307,14 +4307,16 @@ standard_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
 				Assert(IS_JOIN_REL(ybRel));
 
 				/*
-				 * Assuming that only join paths exist in the space
-				 * of enumerated joins.
+				 * Assuming that only join paths, possibly under a Gather or
+				 * Gather Merge, exist in the space of enumerated joins.
 				 */
 				switch (ybRel->cheapest_total_path->type)
 				{
 					case T_NestPath:
 					case T_MergePath:
 					case T_HashPath:
+					case T_GatherPath:
+					case T_GatherMergePath:
 						break;
 					default:
 						ereport(ERROR,
