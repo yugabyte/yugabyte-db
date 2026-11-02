@@ -2517,11 +2517,20 @@ typedef struct PlaceHolderVar
  * outer relation Var and Var_i is an inner relation Var, might be turned into
  * (Var_i IN (BVar_o(0),BVar_o(1),BVar_o(0)...)) where BVar_o(i) represents the
  * ith batched variable of Var_o.
+ *
+ * share is the number of outer values the expression is estimated with when
+ * it shares a batch with other batched clauses of the same scan, and
+ * rows_scale the factor that raises the estimate of those clauses to one row
+ * per probe tuple.  Both are set only on the copies yb_batched_clauses makes
+ * for estimation; 0 stands for the whole batch (yb_batch_expr_size) and for
+ * no scaling.
  */
 typedef struct YbBatchedExpr
 {
 	Expr		xpr;
 	Expr	   *orig_expr;		/* Original Var this is a batched version of. */
+	double		share;			/* outer values estimated with, or 0 */
+	double		rows_scale;		/* factor to one row per probe, or 0 */
 } YbBatchedExpr;
 
 /*
