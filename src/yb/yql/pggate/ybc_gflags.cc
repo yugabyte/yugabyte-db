@@ -207,10 +207,10 @@ DECLARE_bool(ysql_enable_colocated_tables_with_tablespaces);
 DECLARE_bool(TEST_ysql_enable_db_logical_client_version_mode);
 DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 DECLARE_bool(ysql_yb_pg_partman_use_native_txn_ddl_and_locks);
+DECLARE_bool(ysql_yb_enable_replication_slot_transactional_ddl);
 
 DECLARE_bool(TEST_generate_ybrowid_sequentially);
 DECLARE_bool(TEST_ysql_log_perdb_allocated_new_objectid);
-DECLARE_bool(TEST_ysql_yb_enable_replication_slot_transactional_ddl);
 
 DECLARE_bool(use_fast_backward_scan);
 DECLARE_uint32(ysql_max_invalidation_message_queue_size);
@@ -324,8 +324,8 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .TEST_enable_obj_tuple_locks = &FLAGS_TEST_enable_obj_tuple_locks,
       .TEST_force_use_explicit_row_lock_skip_locked_read_ahead_optimization =
           &FLAGS_TEST_force_use_explicit_row_lock_skip_locked_read_ahead_optimization,
-      .TEST_ysql_yb_enable_replication_slot_transactional_ddl =
-          &FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl,
+      .ysql_yb_enable_replication_slot_transactional_ddl =
+          &FLAGS_ysql_yb_enable_replication_slot_transactional_ddl,
       .wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms =
           &FLAGS_wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms,
       .ysql_catalog_prefetch_row_limit = &FLAGS_ysql_catalog_prefetch_row_limit,

@@ -97,7 +97,7 @@ YBLogicalDecodingProcessRecord(LogicalDecodingContext *ctx,
 				 record->yb_virtual_wal_record->table_oid,
 				 record->yb_virtual_wal_record->xid,
 				 record->yb_virtual_wal_record->commit_time_ht);
-			if (*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl)
+			if (*YBCGetGFlags()->ysql_yb_enable_replication_slot_transactional_ddl)
 			{
 				YBDecodeDDL(ctx, record);
 			}
@@ -182,7 +182,7 @@ YBDecodeDDL(LogicalDecodingContext *ctx, XLogReaderState *record)
 	const YbVirtualWalRecord *yb_record = record->yb_virtual_wal_record;
 	ReorderBufferChange *change = ReorderBufferGetChange(ctx->reorder);
 
-	Assert(*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl);
+	Assert(*YBCGetGFlags()->ysql_yb_enable_replication_slot_transactional_ddl);
 	Assert(ctx->reader->ReadRecPtr == yb_record->lsn);
 	Assert(yb_record->record_time_ht != 0);
 	Assert(yb_record->has_docdb_txn_id);
@@ -213,7 +213,7 @@ YBDecodePublicationRefresh(LogicalDecodingContext *ctx,
 	const YbVirtualWalRecord *yb_record = record->yb_virtual_wal_record;
 	ReorderBufferChange *change = ReorderBufferGetChange(ctx->reorder);
 
-	Assert(*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl);
+	Assert(*YBCGetGFlags()->ysql_yb_enable_replication_slot_transactional_ddl);
 
 	change->action = YB_REORDER_BUFFER_CHANGE_PUBLICATION_INVALIDATION;
 
@@ -546,7 +546,7 @@ YBDecodeCommit(LogicalDecodingContext *ctx, XLogReaderState *record)
 	 */
 	if (ctx->yb_inval_catalog_on_decode_commit)
 	{
-		Assert(*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl);
+		Assert(*YBCGetGFlags()->ysql_yb_enable_replication_slot_transactional_ddl);
 		YBCInvalidateCachesForHistoricalReadContext();
 		ResetCatalogCaches();
 	}
@@ -670,7 +670,7 @@ YBHandleRelcacheRefresh(LogicalDecodingContext *ctx, XLogReaderState *record)
 	{
 		case YB_PG_ROW_MESSAGE_ACTION_DDL:
 			{
-				if (*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl)
+				if (*YBCGetGFlags()->ysql_yb_enable_replication_slot_transactional_ddl)
 					YBCInvalidateCachesForHistoricalReadContext();
 				else
 				{
@@ -754,7 +754,7 @@ YbDmlHistoricalReadParams(const YbVirtualWalRecord *yb_record,
 						  uint64_t *read_time, uint64_t *in_txn_limit,
 						  const char **txn_id)
 {
-	if (!*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl)
+	if (!*YBCGetGFlags()->ysql_yb_enable_replication_slot_transactional_ddl)
 		return false;
 
 	if (yb_record->has_docdb_txn_id)

@@ -113,7 +113,7 @@ DECLARE_bool(ysql_yb_enable_consistent_replication_from_hash_range);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 DECLARE_bool(enable_table_rewrite_for_cdcsdk_table);
 DECLARE_bool(cdc_enable_local_rpc_in_virtual_wal);
-DECLARE_bool(TEST_ysql_yb_enable_replication_slot_transactional_ddl);
+DECLARE_bool(ysql_yb_enable_replication_slot_transactional_ddl);
 
 namespace yb::cdc {
 
@@ -277,7 +277,7 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
     table_list.emplace(pg_publication_rel_table_id_);
     table_list.emplace(pg_replication_origin_table_id_);
     table_list.emplace(pg_publication_table_id_);
-    if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) {
+    if (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) {
       pg_attribute_table_id_ = GetPgsqlTableId(pg_database_oid_, kPgAttributeTableOid);
       table_list.emplace(pg_attribute_table_id_);
       pg_publication_rel_prpubid_index_table_id_ =
@@ -285,7 +285,7 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
       table_list.emplace(pg_publication_rel_prpubid_index_table_id_);
     }
     VLOG_WITH_PREFIX(1) << "Successfully added the catalog tables pg_class"
-                        << (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl
+                        << (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl
                                 ? ", pg_attribute, pg_publication_rel_prpubid_index"
                                 : "")
                         << ", pg_publication_rel, pg_replication_origin and pg_publication to the "
@@ -757,7 +757,7 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
             pub_refresh_trigger == PubRefreshTrigger::kPublicationUpdated;
         bool needs_table_list_refresh = true;
         last_pub_refresh_time = unique_id->GetCommitTime();
-        if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) {
+        if (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) {
           DCHECK(record->row_message().has_record_time());
           DCHECK(record->row_message().has_transaction_id());
           // We don't advance last_seen_unique_record_id_ for a table rewrite, since the rewritten
@@ -794,7 +794,7 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
       // record won't have a BEGIN/COMMIT if the txn didn't involve any user tablets.
       // For example: auto commit ALTER TABLE ADD COLUMN needs an enclosing BEGIN/COMMIT to be
       // sent to the walsender.
-      if (!FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ||
+      if (!FLAGS_ysql_yb_enable_replication_slot_transactional_ddl ||
           !(record->row_message().op() == RowMessage_Op_BEGIN ||
             record->row_message().op() == RowMessage_Op_COMMIT ||
             (IsDmlOnPgCatalogTableForDetectingDDL(record) &&
@@ -813,7 +813,7 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
     if (record->row_message().op() == RowMessage_Op_DDL) {
       // When detecting DDL from catalog DML, discard the legacy CHANGE_METADATA_OP DDL records.
       // TODO(#30813): Skip sending the legacy DDL records from GetChanges.
-      if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) {
+      if (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) {
         VLOG_WITH_PREFIX(4) << "Discarding legacy DDL record: " << record->ShortDebugString();
         continue;
       }
@@ -1274,7 +1274,7 @@ Status CDCSDKVirtualWAL::AddRecordToVirtualWalPriorityQueue(
     auto record = tablet_queue->front();
     bool is_publication_refresh_record =
         tablet_id == kPublicationRefreshTabletID ||
-        (!FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
+        (!FLAGS_ysql_yb_enable_replication_slot_transactional_ddl &&
          tablet_id == master::kSysCatalogTabletId);
     bool result =
         CDCSDKUniqueRecordID::CanFormUniqueRecordId(is_publication_refresh_record, record);
@@ -1964,14 +1964,14 @@ std::vector<TabletId> CDCSDKVirtualWAL::GetTabletIdsFromVirtualWAL() {
 bool CDCSDKVirtualWAL::IsCatalogTableEligibleForCDC(const TableId& table_id) const {
   return table_id == pg_class_table_id_ || table_id == pg_publication_rel_table_id_ ||
          table_id == pg_replication_origin_table_id_ || table_id == pg_publication_table_id_ ||
-         (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
+         (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl &&
           (table_id == pg_attribute_table_id_ ||
            table_id == pg_publication_rel_prpubid_index_table_id_));
 }
 
 bool CDCSDKVirtualWAL::IsDmlOnPgCatalogTableForDetectingDDL(
     const std::shared_ptr<CDCSDKProtoRecordPB>& record) const {
-  if (!FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) {
+  if (!FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) {
     return false;
   }
 
@@ -2021,12 +2021,12 @@ CDCSDKVirtualWAL::PubRefreshTrigger CDCSDKVirtualWAL::DeterminePubRefreshFromMas
 
     return PubRefreshTrigger::kTableCreated;
   } else if (table_id == pg_publication_rel_table_id_ ||
-             (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
+             (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl &&
               table_id == pg_publication_rel_prpubid_index_table_id_)) {
     // With transactional DDL only the prpubid index entry triggers the refresh. It is written after
     // its pg_publication_rel row (for both insert and delete), so a read at its record_time sees
     // the row and the index entry together..
-    if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
+    if (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl &&
         table_id == pg_publication_rel_table_id_) {
       return PubRefreshTrigger::kNone;
     }
@@ -2067,7 +2067,7 @@ CDCSDKVirtualWAL::PubRefreshTrigger CDCSDKVirtualWAL::DeterminePubRefreshFromMas
     return PubRefreshTrigger::kPublicationUpdated;
   }
 
-  if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
+  if (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl &&
     table_id == pg_attribute_table_id_) {
     return PubRefreshTrigger::kNone;
   }
