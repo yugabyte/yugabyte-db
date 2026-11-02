@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -349,7 +349,7 @@ void QLStressTest::TestRetryWrites(bool restarts) {
   SetAtomicFlag(0.25, &FLAGS_TEST_respond_write_failed_probability);
 
   const bool transactional = table_.table()->schema().table_properties().is_transactional();
-  boost::optional<TransactionManager> txn_manager;
+  std::optional<TransactionManager> txn_manager;
   if (transactional) {
     txn_manager = CreateTxnManager();
   }
@@ -366,7 +366,7 @@ void QLStressTest::TestRetryWrites(bool restarts) {
         YBTransactionPtr txn;
         if (txn_manager &&
             RandomActWithProbability(kTransactionalWriteProbability)) {
-          txn = std::make_shared<YBTransaction>(txn_manager.get_ptr());
+          txn = std::make_shared<YBTransaction>(&txn_manager.value());
           ASSERT_OK(txn->Init(IsolationLevel::SNAPSHOT_ISOLATION));
           session->SetTransaction(txn);
         } else {
@@ -562,13 +562,19 @@ TEST_F_EX(QLStressTest, ShortTimeLeaderDoesNotReplicateNoOp, QLStressTestSingleT
   tablet::TabletPeerPtr temp_leader = followers[0];
   tablet::TabletPeerPtr always_follower = followers[1];
 
+  // Both followers must have the leader's last op before they reject updates: temp_leader takes
+  // over below through a non-forced step-down, which a follower that is behind can never accept.
   ASSERT_OK(WaitFor(
-      [old_leader, always_follower]() -> Result<bool> {
+      [old_leader, &followers]() -> Result<bool> {
         auto leader_op_id = VERIFY_RESULT(old_leader->GetConsensus())->GetLastReceivedOpId();
-        auto follower_op_id = VERIFY_RESULT(always_follower->GetConsensus())->GetLastReceivedOpId();
-        return follower_op_id == leader_op_id;
+        for (const auto& follower : followers) {
+          if (VERIFY_RESULT(follower->GetConsensus())->GetLastReceivedOpId() != leader_op_id) {
+            return false;
+          }
+        }
+        return true;
       },
-      5s, "Follower catch up"));
+      5s, "Followers catch up"));
 
   for (const auto& follower : followers) {
     ASSERT_RESULT(follower->GetRaftConsensus())->TEST_RejectMode(consensus::RejectMode::kAll);
