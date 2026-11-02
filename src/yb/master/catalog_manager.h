@@ -1707,7 +1707,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   using TableStreamIdsMap = std::unordered_map<TableId, std::list<CDCStreamInfoPtr>>;
 
   // Find all CDCSDK streams which do not have metadata for the newly added tables.
-  Status FindCDCSDKStreamsForAddedTables(TableStreamIdsMap* table_to_unprocessed_streams_map);
+  // If only_table_id is set, consider just that unprocessed table instead of a batch.
+  Status FindCDCSDKStreamsForAddedTables(
+      TableStreamIdsMap* table_to_unprocessed_streams_map,
+      const TableId* only_table_id = nullptr);
 
   // Find all CDCSDK streams that contain non eligible tables like indexes, mat views etc. in
   // their metadata.
