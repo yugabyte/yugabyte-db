@@ -3332,6 +3332,8 @@ TEST_P(PgVectorIndexColocationOnlyTest, CloneRemapsVectorIndexMap) {
 // chunks, and DROP DATABASE of the clone would leave the dir behind. See issue #35006.
 TEST_P(PgVectorIndexColocationOnlyTest, CloneDropsStorageOfIndexNotInClone) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+  // Cloning a database is off by default on this branch.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_db_clone) = true;
 
   constexpr size_t kNumRows = 8;
   const std::string kLaterIndexName = "later_vi";
