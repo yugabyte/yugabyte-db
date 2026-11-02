@@ -12,6 +12,7 @@ on:
       - '.cursor/**'
       - '.git/**'
       - '.github/**'
+      - '!.github/workflows/bld-db.yml'
       - '.gitignore'
       - 'architecture/**'
       - 'arcanist/**'
