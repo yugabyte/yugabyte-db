@@ -1423,8 +1423,8 @@ Exec_ListenPreCommit(void)
 	 * These notifications were committed before this LISTEN, so we can safely
 	 * set max to head.
 	 *
-	 * The duplicate-txn scan state is reset along with the position, since
-	 * xids are only unique within one slot incarnation.
+	 * The duplicate-txn scan state is reset here too; see
+	 * YbListenerQueueScanCurrentXactState.
 	 */
 	if (IsYugaByteEnabled())
 	{
