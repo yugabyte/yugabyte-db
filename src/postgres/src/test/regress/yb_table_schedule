@@ -1,5 +1,8 @@
 # src/test/regress/yb_table_schedule
 # This schedule is for non-ported tests only.
+#
+# The table tests are split between this schedule and yb_table2_schedule so that
+# each test method stays well within its timeout.
 
 test: yb.orig.alter_table
 test: yb.orig.alter_table_rewrite
