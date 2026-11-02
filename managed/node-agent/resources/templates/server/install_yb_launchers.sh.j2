@@ -9,7 +9,8 @@
     the units pointing at a missing file. #}
 # Reads the launcher from stdin and installs it as bin/$1, owned by the yb user.
 # install creates a new file in bin/, so it gets bin/'s SELinux label. A file moved from the
-# temp dir would keep tmp_t, which systemd may not be allowed to exec.
+# temp dir would keep tmp_t, which systemd may not be allowed to exec. No -C: a launcher an
+# earlier run left with the wrong label is rewritten even when its content is unchanged.
 install_yb_launcher() {
     local dest="{{ yb_home_dir }}/bin/$1"
     local owner_args=()
@@ -19,7 +20,7 @@ install_yb_launcher() {
         owner_args=(-o {{ yb_user }} -g {{ yb_user }})
     fi
     tmp_file=$(mktemp) || return 1
-    cat > "$tmp_file" && install -C -m 0755 "${owner_args[@]}" "$tmp_file" "$dest"
+    cat > "$tmp_file" && install -m 0755 "${owner_args[@]}" "$tmp_file" "$dest"
     rc=$?
     rm -f "$tmp_file"
     return $rc
