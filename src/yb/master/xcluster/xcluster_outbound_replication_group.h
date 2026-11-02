@@ -52,15 +52,20 @@ class XClusterOutboundReplicationGroup
         const std::vector<TableId>&, const LeaderEpoch&, bool /* automatic_ddl_mode */,
         bool /* allow_hidden_table */, bool /* is_wal_anchor */)>
         create_xcluster_streams_func;
+    // The last argument optionally overrides the tablets of an OpId 0 checkpoint.
     const std::function<Status(
         const std::vector<std::pair<TableId, xrepl::StreamId>>&, StreamCheckpointLocation,
-        const LeaderEpoch&, bool, std::function<void(Result<bool>)>)>
+        const LeaderEpoch&, bool, std::function<void(Result<bool>)>,
+        const std::vector<TabletId>&)>
         checkpoint_xcluster_streams_func;
     const std::function<Result<DeleteCDCStreamResponsePB>(
         const DeleteCDCStreamRequestPB&, const LeaderEpoch&)>
         delete_cdc_stream_func;
     const std::function<std::unordered_set<xrepl::StreamId>(const std::vector<TableId>&)>
         get_alive_streams_func;
+    // The tablets covered by the stream's checkpoint, or empty if they have not been recorded.
+    const std::function<Result<std::vector<TabletId>>(const xrepl::StreamId&)>
+        get_stream_bootstrap_tablets_func;
 
     // SysCatalog functions.
     const std::function<Status(
@@ -256,6 +261,7 @@ class XClusterOutboundReplicationGroup
       const NamespaceId& namespace_id, const TableId& table_id, bool needs_wal_anchor,
       const LeaderEpoch& epoch) EXCLUDES(mutex_);
 
+  // completion_cb is not invoked if an error is returned.
   Status CheckpointNewTable(
       const NamespaceId& namespace_id, const TableId& table_id, const LeaderEpoch& epoch,
       StdStatusCallback completion_cb) EXCLUDES(mutex_);

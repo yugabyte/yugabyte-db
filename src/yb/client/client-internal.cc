@@ -332,6 +332,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, DeleteUniverseReplication);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, RepairOutboundXClusterReplicationGroupAddTable);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, RepairOutboundXClusterReplicationGroupRemoveTable);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, DeleteXClusterWalAnchorStreams);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, RecordXClusterStreamBootstrapInfo);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetXClusterOutboundReplicationGroups);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetXClusterOutboundReplicationGroupInfo);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetUniverseReplications);
@@ -2101,7 +2102,8 @@ class GetCDCStreamRpc : public ClientMasterRpc<GetCDCStreamRequestPB, GetCDCStre
       ObjectId* object_id,
       std::unordered_map<std::string, std::string>* options,
       CoarseTimePoint deadline,
-      bool* xcluster_use_target_applied_filter);
+      bool* xcluster_use_target_applied_filter,
+      std::vector<TabletId>* xcluster_bootstrap_tablet_ids);
 
   std::string ToString() const override;
 
@@ -2116,6 +2118,7 @@ class GetCDCStreamRpc : public ClientMasterRpc<GetCDCStreamRequestPB, GetCDCStre
   ObjectId* object_id_;
   std::unordered_map<std::string, std::string>* options_;
   bool* xcluster_use_target_applied_filter_;
+  std::vector<TabletId>* xcluster_bootstrap_tablet_ids_;
 };
 
 GetCDCStreamRpc::GetCDCStreamRpc(
@@ -2125,13 +2128,15 @@ GetCDCStreamRpc::GetCDCStreamRpc(
     TableId* object_id,
     std::unordered_map<std::string, std::string>* options,
     CoarseTimePoint deadline,
-    bool* xcluster_use_target_applied_filter)
+    bool* xcluster_use_target_applied_filter,
+    std::vector<TabletId>* xcluster_bootstrap_tablet_ids)
     : ClientMasterRpc(client, deadline),
       user_cb_(std::move(user_cb)),
       stream_id_(stream_id),
       object_id_(DCHECK_NOTNULL(object_id)),
       options_(DCHECK_NOTNULL(options)),
-      xcluster_use_target_applied_filter_(xcluster_use_target_applied_filter) {
+      xcluster_use_target_applied_filter_(xcluster_use_target_applied_filter),
+      xcluster_bootstrap_tablet_ids_(xcluster_bootstrap_tablet_ids) {
   req_.set_stream_id(stream_id_.ToString());
 }
 
@@ -2166,6 +2171,11 @@ void GetCDCStreamRpc::ProcessResponse(const Status& status) {
 
     if (xcluster_use_target_applied_filter_) {
       *xcluster_use_target_applied_filter_ = resp_.stream().xcluster_use_target_applied_filter();
+    }
+
+    if (xcluster_bootstrap_tablet_ids_) {
+      const auto& tablet_ids = resp_.stream().xcluster_bootstrap_info().checkpointed_tablet_ids();
+      xcluster_bootstrap_tablet_ids_->assign(tablet_ids.begin(), tablet_ids.end());
     }
   }
   user_cb_(status);
@@ -2273,6 +2283,71 @@ class GetTableLocationsRpc
   }
 
   GetTableLocationsCallback user_cb_;
+};
+
+class GetTabletLocationsRpc
+    : public ClientMasterRpc<
+          master::GetTabletLocationsRequestPB, master::GetTabletLocationsResponsePB> {
+ public:
+  GetTabletLocationsRpc(
+      YBClient* client, const std::vector<TabletId>& tablet_ids,
+      master::IncludeHidden include_hidden, GetTabletLocationsCallback user_cb,
+      CoarseTimePoint deadline)
+      : ClientMasterRpc(client, deadline), user_cb_(std::move(user_cb)) {
+    req_.mutable_tablet_ids()->Reserve(narrow_cast<int>(tablet_ids.size()));
+    for (const auto& tablet_id : tablet_ids) {
+      req_.add_tablet_ids(tablet_id);
+    }
+    req_.set_include_hidden(include_hidden);
+  }
+
+  std::string ToString() const override {
+    return Format(
+        "GetTabletLocationsRpc(tablet_ids: $0, include_hidden: $1, num_attempts: $2)",
+        AsString(req_.tablet_ids()), req_.include_hidden(), num_attempts());
+  }
+
+  ~GetTabletLocationsRpc() override = default;
+
+ private:
+  void CallRemoteMethod() override {
+    master_client_proxy()->GetTabletLocationsAsync(
+        req_, &resp_, mutable_retrier()->mutable_controller(),
+        std::bind(&GetTabletLocationsRpc::Finished, this, Status::OK()));
+  }
+
+  bool ShouldRetry(const Status& status) override {
+    if (status.IsShutdownInProgress() || status.IsAborted() || status.IsNotFound() ||
+        status.IsInvalidArgument()) {
+      // Permanent errors.
+      LOG(WARNING) << ToString() << " failed: " << status;
+      return false;
+    }
+    if (!status.ok()) {
+      YB_LOG_EVERY_N_SECS(WARNING, 10)
+          << ToString() << ": error getting tablet locations: " << status << ", retrying.";
+      return true;
+    }
+    for (const auto& error : resp_.errors()) {
+      if (StatusFromPB(error.status()).IsServiceUnavailable()) {
+        YB_LOG_EVERY_N_SECS(WARNING, 10)
+            << ToString() << ": tablet " << error.tablet_id() << " is not running, retrying.";
+        resp_.Clear();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  void ProcessResponse(const Status& status) override {
+    if (status.ok()) {
+      user_cb_(&resp_);
+    } else {
+      user_cb_(status);
+    }
+  }
+
+  GetTabletLocationsCallback user_cb_;
 };
 
 // A simple RPC that keeps retrying if resp has not_ready set.
@@ -2812,7 +2887,8 @@ void YBClient::Data::GetCDCStream(
     std::shared_ptr<std::unordered_map<std::string, std::string>> options,
     CoarseTimePoint deadline,
     StdStatusCallback callback,
-    std::shared_ptr<bool> xcluster_use_target_applied_filter) {
+    std::shared_ptr<bool> xcluster_use_target_applied_filter,
+    std::shared_ptr<std::vector<TabletId>> xcluster_bootstrap_tablet_ids) {
   auto rpc = StartRpc<internal::GetCDCStreamRpc>(
       client,
       callback,
@@ -2820,7 +2896,8 @@ void YBClient::Data::GetCDCStream(
       object_id.get(),
       options.get(),
       deadline,
-      xcluster_use_target_applied_filter.get());
+      xcluster_use_target_applied_filter.get(),
+      xcluster_bootstrap_tablet_ids.get());
 }
 
 void YBClient::Data::DeleteNotServingTablet(
@@ -2857,6 +2934,14 @@ void YBClient::Data::GetTableLocations(
   auto rpc = StartRpc<internal::GetTableLocationsRpc>(
       client, table_id, max_tablets, require_tablets_running, partitions_only,
       callback, deadline);
+}
+
+void YBClient::Data::GetTabletLocations(
+    YBClient* client, const std::vector<TabletId>& tablet_ids,
+    master::IncludeHidden include_hidden, CoarseTimePoint deadline,
+    GetTabletLocationsCallback callback) {
+  auto rpc = StartRpc<internal::GetTabletLocationsRpc>(
+      client, tablet_ids, include_hidden, std::move(callback), deadline);
 }
 
 void YBClient::Data::LeaderMasterDetermined(const Status& status,
