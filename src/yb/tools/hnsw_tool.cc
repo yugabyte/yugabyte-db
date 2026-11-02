@@ -27,6 +27,8 @@
 #include "yb/ann_methods/hnswlib_wrapper.h"
 #include "yb/ann_methods/usearch_wrapper.h"
 
+#include "yb/tools/pgvector_wrapper.h"
+
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/strip.h"
 #include "yb/gutil/thread_annotations.h"
@@ -79,16 +81,8 @@ using namespace yb::vector_index;  // NOLINT
 
 YB_DEFINE_ENUM(HnswAction, HNSW_ACTIONS);
 
-
-VectorId UIntToVectorId(uint64_t value) {
-  VectorId id = VectorId::Nil();
-  BigEndian::Store64(id.data(), value);
-  return id;
-}
-
-uint64_t VectorIdToUInt(VectorId value) {
-  return BigEndian::Load64(value.data());
-}
+// --ann_method values, parsed case-insensitively with an optional `k` prefix.
+YB_DEFINE_ENUM(BenchmarkAnnMethod, (kUsearch)(kHnswlib)(kPgVector));
 
 // ------------------------------------------------------------------------------------------------
 // Help command
@@ -131,13 +125,16 @@ struct BenchmarkArguments {
   std::string build_vecs_path;
   std::string ground_truth_path;
   std::string query_vecs_path;
-  ann_methods::ANNMethodKind ann_method;
+  BenchmarkAnnMethod ann_method;
   std::string yb_hnsw_dir;
   std::string yb_hnsw_variants = "yb_hnsw_reorder_vectors=false;yb_hnsw_reorder_vectors=true";
   size_t block_cache_size_mb = 16384;
   std::string ef_values_comma_sep;
   size_t num_search_repeats = 0;
   size_t search_time_ms = 1000;
+
+  // Used only with --ann_method pgvector, from the --pg_* options.
+  PgVectorConfig pg_vector;
 
   // Parsed version of k_values.
   std::set<size_t> k_values;
@@ -197,6 +194,13 @@ struct BenchmarkArguments {
     if (!yb_hnsw_dir.empty() && num_index_shards != 1) {
       return STATUS(InvalidArgument, "yb_hnsw_dir is not supported with multiple index shards");
     }
+    if (ann_method == BenchmarkAnnMethod::kPgVector && num_index_shards != 1) {
+      return STATUS(InvalidArgument, "pgvector is not supported with multiple index shards");
+    }
+    // A named index or bigint ids point at existing data, which must not be modified.
+    pg_vector.read_only =
+        !pg_vector.index.empty() || pg_vector.id_type == PgVectorIdType::kBigint;
+    pg_vector.num_connections = std::max(num_indexing_threads, num_query_threads);
     return Status::OK();
   }
 };
@@ -224,6 +228,10 @@ std::unique_ptr<OptionsDescription> BenchmarkOptions() {
 #define BOOL_SWITCH_ARG_FIELD(field_name) \
     BOOST_PP_STRINGIZE(field_name), po::bool_switch(&args.field_name)
 
+#define PG_VECTOR_ARG(field_name) \
+    "pg_" BOOST_PP_STRINGIZE(field_name), \
+    po::value(&args.pg_vector.field_name)->default_value(args.pg_vector.field_name)
+
 #define HNSW_OPTION_ARG(field_name) \
     BOOST_PP_STRINGIZE(field_name), \
     po::value(&args.hnsw_options.field_name)->default_value(default_hnsw_options.field_name)
@@ -234,10 +242,15 @@ std::unique_ptr<OptionsDescription> BenchmarkOptions() {
 
   const auto ann_method_help =
       Format("Approximate nearest neighbor search method to use. Possible values: $0.",
-             ValidEnumValuesCommaSeparatedForHelp<ann_methods::ANNMethodKind>());
+             ValidEnumValuesCommaSeparatedForHelp<BenchmarkAnnMethod>());
   const auto distance_kind_help =
       Format("What kind of distance function (metric) to use. Possible values: $0." +
              ValidEnumValuesCommaSeparatedForHelp<DistanceKind>());
+  const auto pg_id_type_help =
+      Format("PgVector backend: type of the table's `id` column. Possible values: $0. Use Bigint "
+             "for tables loaded by other tools whose ids are the input vector indexes. Like "
+             "--pg_index, Bigint never modifies the cluster.",
+             ValidEnumValuesCommaSeparatedForHelp<PgVectorIdType>());
 
   result->desc.add_options()
       (OPTIONAL_ARG_FIELD(ann_method),
@@ -307,6 +320,27 @@ std::unique_ptr<OptionsDescription> BenchmarkOptions() {
       (BOOL_SWITCH_ARG_FIELD(validate_ground_truth),
        "Validate the ground truth data provided in a file by recomputing our own ground truth "
        "result sets using brute-force precise nearest neighbor search. Could be slow.")
+      (PG_VECTOR_ARG(host),
+       "PgVector backend: YSQL host.")
+      (PG_VECTOR_ARG(port),
+       "PgVector backend: YSQL port.")
+      (PG_VECTOR_ARG(user),
+       "PgVector backend: YSQL user.")
+      (PG_VECTOR_ARG(password),
+       "PgVector backend: YSQL password.")
+      (PG_VECTOR_ARG(database),
+       "PgVector backend: YSQL database.")
+      (PG_VECTOR_ARG(table),
+       "PgVector backend: table to load and query. It is reused when it has the expected row "
+       "count, `id` and `embedding` column types, and a ready ybhnsw index with the same "
+       "distance and m, m0 and ef_construction. Otherwise it is dropped and recreated.")
+      (PG_VECTOR_ARG(index),
+       "PgVector backend: name of an existing ybhnsw index on --pg_table. When set, the "
+       "cluster is never modified and the tool fails if the index is missing or not ready.")
+      (PG_VECTOR_ARG(id_type),
+       pg_id_type_help.c_str() /* Boost copies the string internally */)
+      (PG_VECTOR_ARG(batch_size)->notifier(OptionLowerBound("pg_batch_size", 1)),
+       "PgVector backend: number of vectors per COPY batch.")
       (OPTIONAL_ARG_FIELD_WITH_LOWER_BOUND(num_index_shards, 1),
        "For experiments that try to take advantage of a large number of cores, this allows to "
        "create multiple instances of the vector index and insert into them concurrently.")
@@ -440,7 +474,14 @@ class BenchmarkTool {
         std::thread::hardware_concurrency(),
         std::thread::hardware_concurrency(),
         rocksdb::Cache::ReservationMode::kAlways));
-    RETURN_NOT_OK(BuildIndex());
+
+    // The pgvector backend may find the dataset already loaded.
+    auto* pg_vector_index_info = dynamic_cast<PgVectorIndexInfo*>(vector_index_.get());
+    if (pg_vector_index_info && pg_vector_index_info->DataAlreadyExists()) {
+      LOG(INFO) << "Skipping build/insert phase (backend reports data is already loaded)";
+    } else {
+      RETURN_NOT_OK(BuildIndex());
+    }
 
     RETURN_NOT_OK(Validate());
 
@@ -977,17 +1018,27 @@ class BenchmarkTool {
   // For simplicity, vector id is based on the index of input vector.
   static constexpr size_t kMinUintVectorId = 100;
 
-  VectorId InputVectorIndexToVectorId(size_t input_vector_index) {
-    CHECK_LE(input_vector_index, indexed_vector_source_->num_points());
+  size_t vertex_id_offset() const {
+    // Bigint pgvector tables are keyed by the input vector index itself.
+    if (args_.ann_method == BenchmarkAnnMethod::kPgVector &&
+        args_.pg_vector.id_type == PgVectorIdType::kBigint) {
+      return 0;
+    }
     // Start from a small but round number to avoid making assumptions that the 0-based index of
     // a vector in the input file is the same as its vertex id.
-    return UIntToVectorId(input_vector_index + kMinUintVectorId);
+    return kMinUintVectorId;
+  }
+
+  VectorId InputVectorIndexToVectorId(size_t input_vector_index) {
+    CHECK_LE(input_vector_index, indexed_vector_source_->num_points());
+    return UIntToVectorId(input_vector_index + vertex_id_offset());
   }
 
   size_t VertexIdToInputVectorIndex(VectorId vertex_id) {
     auto uint_vertex_id = VectorIdToUInt(vertex_id);
-    CHECK_GE(uint_vertex_id, kMinUintVectorId);
-    size_t index = uint_vertex_id - kMinUintVectorId;
+    const auto offset = vertex_id_offset();
+    CHECK_GE(uint_vertex_id, offset);
+    size_t index = uint_vertex_id - offset;
     CHECK_GE(index, 0);
     CHECK_LT(index, indexed_vector_source_->num_points());
     return index;
@@ -1038,7 +1089,21 @@ class BenchmarkTool {
   std::vector<InputVector> input_vectors_;
 };
 
-template<ann_methods::ANNMethodKind ann_method_kind,
+// Maps the --ann_method values implemented in ann_methods/ to their ANNMethodKind.
+template<BenchmarkAnnMethod method>
+struct ANNMethodKindFor;
+
+template<>
+struct ANNMethodKindFor<BenchmarkAnnMethod::kUsearch> {
+  static constexpr auto kValue = ann_methods::ANNMethodKind::kUsearch;
+};
+
+template<>
+struct ANNMethodKindFor<BenchmarkAnnMethod::kHnswlib> {
+  static constexpr auto kValue = ann_methods::ANNMethodKind::kHnswlib;
+};
+
+template<BenchmarkAnnMethod ann_method_kind,
          DistanceKind distance_kind,
          IndexableVectorType InputVector,
          IndexableVectorType IndexedVector>
@@ -1051,9 +1116,16 @@ std::optional<Status> BenchmarkExecuteHelper(
       args.hnsw_options.distance_kind == distance_kind &&
       input_coordinate_kind == CoordinateTypeTraits<typename InputVector::value_type>::kKind) {
     PreVectorIndexFactory<IndexedVector, IndexedDistanceResult> pre_index_factory =
-        [](const HNSWOptions& options, const hnsw::BlockCachePtr& block_cache) {
-      return CHECK_RESULT((ann_methods::ANNMethodTraits<ann_method_kind>::template
-          CreateIndexTraits<IndexedVector, IndexedDistanceResult>(block_cache, options)));
+        [pg_config = args.pg_vector](
+            const HNSWOptions& options, const hnsw::BlockCachePtr& block_cache)
+            -> VectorIndexTraitsPtr<IndexedVector, IndexedDistanceResult> {
+      if constexpr (ann_method_kind == BenchmarkAnnMethod::kPgVector) {
+        return CreatePgVectorIndexTraits<IndexedVector, IndexedDistanceResult>(options, pg_config);
+      } else {
+        return CHECK_RESULT((ann_methods::ANNMethodTraits<
+            ANNMethodKindFor<ann_method_kind>::kValue>::template
+                CreateIndexTraits<IndexedVector, IndexedDistanceResult>(block_cache, options)));
+      }
     };
     return BenchmarkTool<InputVector, InputDistanceResult, IndexedVector, IndexedDistanceResult>(
         args, pre_index_factory).Execute();
@@ -1082,21 +1154,25 @@ Status BenchmarkExecute(const BenchmarkArguments& args) {
     ((Usearch, L2Squared,    uint8_t,    float  ))        \
     ((Hnswlib, L2Squared,    float,      float  ))        \
     ((Hnswlib, L2Squared,    uint8_t,    float))          \
+    ((PgVector, L2Squared,   float,      float  ))        \
     /* Cosine similarity */                               \
     ((Usearch, Cosine,       float,      float  ))        \
     ((Usearch, Cosine,       uint8_t,    float  ))        \
+    ((PgVector, Cosine,      float,      float  ))        \
     /* Inner product */                                   \
     ((Usearch, InnerProduct, float,      float  ))        \
     ((Usearch, InnerProduct, uint8_t,    float  ))        \
     ((Hnswlib, InnerProduct, float,      float  ))        \
-    ((Hnswlib, InnerProduct, uint8_t,    float  ))
+    ((Hnswlib, InnerProduct, uint8_t,    float  ))        \
+    ((PgVector, InnerProduct, float,     float  ))
 
 #define YB_VECTOR_INDEX_BENCHMARK_HELPER(method, distance_enum_element, input_type, indexed_type) \
     if (auto status = BenchmarkExecuteHelper< \
-            ann_methods::ANNMethodKind::BOOST_PP_CAT(k, method), \
+            BenchmarkAnnMethod::BOOST_PP_CAT(k, method), \
             distance_enum_element, \
             std::vector<input_type>, \
-            std::vector<indexed_type>>(args_copy, input_coordinate_kind); status.has_value()) { \
+            std::vector<indexed_type>>(args_copy, input_coordinate_kind); \
+        status.has_value()) { \
         return *status; \
       }
 
