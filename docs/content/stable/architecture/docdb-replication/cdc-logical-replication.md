@@ -66,7 +66,7 @@ The initial snapshot data for each table is consumed by executing a correspondin
 
 First, a `SET LOCAL yb_read_time TO '<consistent_point commit time> ht'` command should be executed on the connection (session). The SELECT statement corresponding to the snapshot query should then be executed as part of the same transaction.
 
-The HybridTime value to use in the `SET LOCAL yb_read_time` command is the value of the `snapshot_name` field that is returned by the `CREATE_REPLICATION_SLOT` command. Alternatively, it can be obtained by querying the `pg_replication_slots` view.
+The HybridTime value to use in the `SET LOCAL yb_read_time` command is the `yb_restart_commit_ht` of the slot in the `pg_replication_slots` view. The `snapshot_name` field returned by the `CREATE_REPLICATION_SLOT` command contains this value only when the slot is created with `USE_SNAPSHOT`; with the default `EXPORT_SNAPSHOT`, it contains an exported snapshot name for use with `SET TRANSACTION SNAPSHOT`. See [Initial snapshot](../../../additional-features/change-data-capture/using-logical-replication/key-concepts/#initial-snapshot) in the logical replication key concepts.
 
 During Snapshot consumption, the snapshot data from all tables will be from the same consistent state (`consistent_point`). At the end of Snapshot consumption, the state of the target system is at/based on the `consistent_point`. History of the tables as of the `consistent_point` is retained on the source until the snapshot is consumed.
 

@@ -194,15 +194,17 @@ cdc_enable_dynamic_schema_changes | Auto flag that guards feature deployment. Th
 
 The [initial snapshot](../../../../architecture/docdb-replication/cdc-logical-replication/#initial-snapshot) data for a table is consumed by executing a snapshot query (SELECT statement). To ensure that the streaming phase continues exactly from where the snapshot left, this snapshot query is executed as of a specific database state. In YugabyteDB, this database state is represented by a value of `HybridTime`. Changes due to transactions with commit time strictly greater than this snapshot `HybridTime` will be consumed during the streaming phase.
 
-The consistent database state on which the snapshot query is to be executed is specified using the following command:
+The consistent database state on which the snapshot query is to be executed is specified using the following commands:
 
 ```sql
+SET yb_disable_catalog_version_check = true;
+BEGIN;
 SET LOCAL yb_read_time TO '<consistent_point commit time> ht';
 ```
 
-This command should first be executed on the connection (session). The SELECT statement corresponding to the snapshot query should then be executed as part of the same transaction. The HybridTime value to use in the `SET LOCAL yb_read_time` command is the value of the `snapshot_name` field that is returned by the [CREATE REPLICATION SLOT](../../../../api/ysql/the-sql-language/statements/#streaming-replication-protocol-statements) command.
+The SELECT statement corresponding to the snapshot query should then be executed as part of the same transaction. `yb_disable_catalog_version_check` must be set first, because `yb_read_time` can't otherwise be set inside a transaction block.
 
-You can also obtain this value by executing the following query:
+The HybridTime value to use is the `yb_restart_commit_ht` of the slot, which you can obtain by executing the following query:
 
 ```sql
 select yb_restart_commit_ht
@@ -210,6 +212,8 @@ from pg_replication_slots where slot_name = <slot_name>;
 ```
 
 For more information on the `pg_replication_slots` catalog view, refer to [pg_replication_slots](../monitor/#pg-replication-slots).
+
+The `snapshot_name` field returned by the [CREATE_REPLICATION_SLOT](../../../../api/ysql/the-sql-language/statements/streaming_create_repl_slot/) command contains this HybridTime only when the slot is created with `USE_SNAPSHOT`. With the default `EXPORT_SNAPSHOT` (v2025.2.2 and later), it contains an exported snapshot name instead, to be used with `SET TRANSACTION SNAPSHOT` in a `REPEATABLE READ` transaction on another connection, in place of the commands above. See [Initial snapshot](../key-concepts/#initial-snapshot) in Key concepts.
 
 ### Using the HYBRID_TIME LSN
 
@@ -287,8 +291,8 @@ GRANT EXECUTE ON PROCEDURE appuser.disable_catalog_version_check TO appuser;
 With this setup, the command to be executed by the application user as part of the transaction prior to executing the snapshot SELECT query would be:
 
 ```sql
-CALL set_yb_read_time('<consistent_point commit time> ht');
 CALL disable_catalog_version_check();
+CALL set_yb_read_time('<consistent_point commit time> ht');
 ```
 
 ## Replication origins
