@@ -249,13 +249,18 @@ public class ResizeNodeRollbackComputerTest extends FakeDBApplication {
 
   @Test
   public void isEnabledFollowsRuntimeFlag() {
-    assertFalse(computer.isEnabled());
-    enableRollback();
     assertTrue(computer.isEnabled());
+    mutableConfigFactory
+        .globalRuntimeConf()
+        .setValue("yb.task.allow_resize_node_rollback", "false");
+    assertFalse(computer.isEnabled());
   }
 
   @Test
   public void computeRejectsWhenFlagOff() {
+    mutableConfigFactory
+        .globalRuntimeConf()
+        .setValue("yb.task.allow_resize_node_rollback", "false");
     seedStateTransitionDetailsForResize(NEW_VOLUME_SIZE);
     moveUniverseIntentToTarget(NEW_VOLUME_SIZE);
     ResizeNodeParams failedParams = failedResizeParams(NEW_VOLUME_SIZE);
