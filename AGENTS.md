@@ -29,13 +29,14 @@ When working on DB code (`src/`), refer to `src/AGENTS.md` for build and test gu
 ### Meko datapacks (`MEKO.md`)
 
 A `MEKO.md` lists the Meko datapacks that hold context for the folder it sits in, with each one's
-ID and what it covers; the root's [MEKO.md](MEKO.md) covers the whole repo. Like `REVIEW.md`, it
-belongs to its subtree: use every `MEKO.md` from the root down to the files you're working on.
-Search their datapacks before any work here, even before reading the code.
+ID and what it covers; the root's [MEKO.md](MEKO.md) covers the whole repo. Use every `MEKO.md`
+from the root down to the files you're working on. Search their datapacks before any work here,
+even before reading the code.
 
 Save new facts to the datapack in those `MEKO.md` files that owns the topic, or, when none does,
-to your project's datapack. A datapack that starts holding context for part of the repo gets a
-row in that part's `MEKO.md`.
+to your project's datapack. A datapack its row says not to write to, such as the gotchas
+datapack, never owns the topic. A datapack that starts holding context for part of the repo gets
+a row in that part's `MEKO.md`.
 
 What to save in Meko, and what not to:
 
