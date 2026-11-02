@@ -6189,6 +6189,45 @@ rangeSplitClause(Oid relid, YbcPgTableDesc yb_tabledesc,
 }
 
 /*
+ * Convert a split point value of type typid into the A_Const that a SPLIT AT
+ * VALUES clause would carry for it.
+ */
+Node *
+YbSplitValueToNode(Datum value, Oid typid)
+{
+	StringInfo	str = makeStringInfo();
+
+	appendDatumToString(str, value, typid, pg_get_client_encoding(),
+						true /* use_double_quotes */ );
+	Node	   *node = nodeRead(str->data, str->len);
+	A_Const    *n = makeNode(A_Const);
+
+	switch (node->type)
+	{
+		case T_Integer:
+			n->val.ival = *((Integer *) node);
+			break;
+		case T_Float:
+			n->val.fval = *((Float *) node);
+			break;
+		case T_Boolean:
+			n->val.boolval = *((Boolean *) node);
+			break;
+		case T_String:
+			n->val.sval = *((String *) node);
+			break;
+		case T_BitString:
+			n->val.bsval = *((BitString *) node);
+			break;
+		default:
+			ereport(ERROR,
+					(errmsg("unexpected node type %d",
+							node->type)));
+	}
+	return (Node *) n;
+}
+
+/*
  * This function is used to retrieve a range partitioned table's split points
  * as a list of list of Exprs.
  */
@@ -6221,7 +6260,6 @@ getRangeSplitPointsList(Oid relid, YbcPgTableDesc yb_tabledesc,
 			switch (split_datums[split_datum_idx].datum_kind)
 			{
 					ColumnRef  *c;
-					StringInfo	str;
 
 				case YB_YQL_DATUM_LIMIT_MIN:
 					c = makeNode(ColumnRef);
@@ -6234,38 +6272,9 @@ getRangeSplitPointsList(Oid relid, YbcPgTableDesc yb_tabledesc,
 					split_point = lappend(split_point, c);
 					break;
 				default:
-					str = makeStringInfo();
-					appendDatumToString(str,
-										split_datums[split_datum_idx].datum,
-										pkeys_atttypid[col_idx],
-										pg_get_client_encoding(),
-										true /* use_double_quotes */ );
-					Node	   *value = nodeRead(str->data, str->len);
-					A_Const    *n = makeNode(A_Const);
-
-					switch (value->type)
-					{
-						case T_Integer:
-							n->val.ival = *((Integer *) value);
-							break;
-						case T_Float:
-							n->val.fval = *((Float *) value);
-							break;
-						case T_Boolean:
-							n->val.boolval = *((Boolean *) value);
-							break;
-						case T_String:
-							n->val.sval = *((String *) value);
-							break;
-						case T_BitString:
-							n->val.bsval = *((BitString *) value);
-							break;
-						default:
-							ereport(ERROR,
-									(errmsg("unexpected node type %d",
-											value->type)));
-					}
-					split_point = lappend(split_point, n);
+					split_point = lappend(split_point,
+										  YbSplitValueToNode(split_datums[split_datum_idx].datum,
+															 pkeys_atttypid[col_idx]));
 			}
 		}
 		*split_points = lappend(*split_points, split_point);
@@ -9162,7 +9171,8 @@ YbIsIocPushdownEnabled(OnConflictAction action)
  */
 void
 YbRelationSetNewRelfileNode(Relation rel, Oid newRelfileNodeId,
-							bool yb_copy_split_options, bool is_truncate)
+							bool yb_copy_split_options,
+							YbOptSplit *split_options, bool is_truncate)
 {
 	CreateStmt *dummyStmt = makeNode(CreateStmt);
 
@@ -9189,14 +9199,15 @@ YbRelationSetNewRelfileNode(Relation rel, Oid newRelfileNodeId,
 	ReleaseSysCache(tuple);
 
 	/*
-	 * If yb_copy_split_options is true, we want to preserve the current
-	 * table's split state (including any automatic tablet splitting that
-	 * may have occurred). Otherwise, use default split options.
-	 *
-	 * Future work: When yb_copy_split_options is false, we could read from
-	 * the yb_presplit reloption to restore the original split configuration.
+	 * split_options, if given, are used as is: ALTER TYPE on a range key
+	 * column passes the old split points converted to the new key type.
+	 * Otherwise, if yb_copy_split_options is true, we want to preserve the
+	 * current table's split state (including any automatic tablet splitting
+	 * that may have occurred). Otherwise, use default split options.
 	 */
-	if (yb_copy_split_options)
+	if (split_options)
+		dummyStmt->split_options = split_options;
+	else if (yb_copy_split_options)
 	{
 		YbGetTableProperties(rel);
 		dummyStmt->split_options = YbGetSplitOptions(rel);

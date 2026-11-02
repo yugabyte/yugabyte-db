@@ -7133,6 +7133,7 @@ RelationSetNewRelfilenode(Relation relation, char persistence,
 			/* Create a new DocDB table for the relation. */
 			YbRelationSetNewRelfileNode(relation, newrelfilenode,
 										yb_copy_split_options,
+										NULL /* split_options */ ,
 										true /* is_truncate */ );
 		}
 	}

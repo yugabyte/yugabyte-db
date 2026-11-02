@@ -12,6 +12,8 @@
 //
 package org.yb.pgsql;
 
+import java.util.Map;
+
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
@@ -22,6 +24,13 @@ import org.yb.YBTestRunner;
  */
 @RunWith(value=YBTestRunner.class)
 public class TestPgRegressSplitOptions extends BasePgRegressTest {
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("ysql_suppress_unsafe_alter_notice", "true");
+    return flagMap;
+  }
+
   @Override
   public int getTestMethodTimeoutSec() {
     return 600;
