@@ -2842,6 +2842,9 @@ static void od_application_name_add_host(od_client_t *client)
 	int length =
 		od_snprintf(app_name_with_host, KIWI_MAX_VAR_SIZE, "%.*s - %s",
 			    app_name_len, app_name, peer_name);
+	if (length >= KIWI_MAX_VAR_SIZE) {
+		length = KIWI_MAX_VAR_SIZE - 1;
+	}
 #ifndef YB_GUC_SUPPORT_VIA_SHMEM
 	kiwi_vars_update(&client->yb_vars_session, "application_name", 17,
 			 app_name_with_host, length + 1); // return code ignored
