@@ -3348,6 +3348,13 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Result<HybridTime> GetMinRestartTimeAcrossSlots(
       const std::unordered_set<xrepl::StreamId>& stream_ids) REQUIRES_SHARED(mutex_);
 
+  bool AreLogicalReplicationStreams(const std::unordered_set<xrepl::StreamId>& stream_ids)
+      REQUIRES_SHARED(mutex_);
+
+  // Reads cdc_state, so callers must not hold mutex_ on a request path.
+  Result<HybridTime> ReadMinRestartTimeAcrossSlots(
+      const std::unordered_set<xrepl::StreamId>& stream_ids);
+
   Result<std::unordered_map<xrepl::StreamId, std::optional<HybridTime>>>
   GetCDCSDKStreamCreationTimeMap(const std::unordered_set<xrepl::StreamId>& stream_ids)
       REQUIRES_SHARED(mutex_);
