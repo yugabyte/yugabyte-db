@@ -26,6 +26,28 @@ For agents that want to deploy, configure and run YugabyteDB refer to instructio
 
 When working on DB code (`src/`), refer to `src/AGENTS.md` for build and test guidance
 
+### Meko datapacks (`MEKO.md`)
+
+A `MEKO.md` lists the Meko datapacks that hold context for the folder it sits in, with each one's
+ID and what it covers; the root's [MEKO.md](MEKO.md) covers the whole repo. Like `REVIEW.md`, it
+belongs to its subtree: use every `MEKO.md` from the root down to the files you're working on,
+as AgentK's local code review does. Search their datapacks before any work here, even before
+reading the code. Datapacks are shared per person: ask a datapack's owner for access.
+
+Save new facts to the datapack in those `MEKO.md` files that owns the topic, or, when none does,
+to your project's datapack (AgentK makes one for each project). A datapack that starts holding
+context for part of the repo gets a row in that part's `MEKO.md`.
+
+What to save in Meko, and what not to:
+
+- **Don't save** secrets (passwords, tokens, keys, connection strings with credentials), what's in
+  flight this session (that's for plans and tasks), anything the code or `git log` already says,
+  or the story of a fixed bug: its cause, fix and check live in the commit and the issue. Keep
+  only a trap the fix doesn't prevent, in one sentence.
+- **Do save** facts the code doesn't hold, such as why a design is the way it is and the
+  alternatives it rejected, and the sharp edges a future session would otherwise rediscover the
+  hard way.
+
 ## Cursor Cloud specific instructions
 
 ### Environment
