@@ -305,8 +305,7 @@ TEST_F(CreateTableITest, TestSpreadReplicasEvenly) {
 }
 
 // Global replica load breaks ties between tservers with equal load for the table being created.
-// It comes from the live tablet count each tserver reports in its heartbeat.
-TEST_F(CreateTableITest, GlobalLoadFromHeartbeatBreaksTies) {
+TEST_F(CreateTableITest, GlobalLoadBreaksTies) {
   const int kNumServers = 3;
   vector<string> ts_flags = {"--never_fsync", "--heartbeat_interval_ms=100"};
   vector<string> master_flags = {"--enable_load_balancing=false", "--replication_factor=1"};
@@ -327,7 +326,8 @@ TEST_F(CreateTableITest, GlobalLoadFromHeartbeatBreaksTies) {
     return count;
   };
 
-  // Two single-replica tablets land on two of the three tservers.
+  // Two single-replica tablets land on two of the three tservers. Wait until the master has
+  // their replicas in its tablet locations; that is where it counts the global load from.
   std::unique_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
   ASSERT_OK(table_creator->table_name(kTableName)
             .schema(&client_schema)
@@ -335,20 +335,27 @@ TEST_F(CreateTableITest, GlobalLoadFromHeartbeatBreaksTies) {
             .Create());
   int idle_ts = -1;
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    int placed = 0;
+    google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+    RETURN_NOT_OK(client_->GetTablets(
+        kTableName, -1, &tablets, /* partition_list_version = */ nullptr,
+        RequireTabletsRunning::kFalse));
+    std::set<std::string> hosting;
+    for (const auto& tablet : tablets) {
+      for (const auto& replica : tablet.replicas()) {
+        hosting.insert(replica.ts_info().permanent_uuid());
+      }
+    }
+    if (tablets.size() != 2 || hosting.size() != 2) {
+      return false;
+    }
     idle_ts = -1;
     for (int i = 0; i < kNumServers; i++) {
-      int count = VERIFY_RESULT(running_tablets(i, kTableName));
-      placed += count;
-      if (count == 0) {
+      if (!hosting.contains(cluster_->tablet_server(i)->uuid())) {
         idle_ts = i;
       }
     }
-    return placed == 2 && idle_ts >= 0;
-  }, 30s * kTimeMultiplier, "First table running"));
-
-  // Give every tserver a few heartbeats to report its live tablet count.
-  SleepFor(MonoDelta::FromSeconds(1));
+    return idle_ts >= 0;
+  }, 30s * kTimeMultiplier, "First table placed"));
 
   // The new table's tablet has equal (zero) table load everywhere, so it goes to the tserver
   // with the fewest replicas overall.

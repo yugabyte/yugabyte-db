@@ -326,6 +326,9 @@ class TabletInfo : public MetadataCowWrapper<PersistentTabletInfo> {
   // TODO: Make Set/Update private so users are forced to use the catalog manager wrappers which
   // update the tablet locations version.
   void SetReplicaLocations(std::shared_ptr<TabletReplicaMap> replica_locations);
+  // Removes this tablet's replicas from their tservers' replica load; later replica changes do not
+  // count. Called when the tablet is deleted.
+  void StopCountingReplicaLoad() EXCLUDES(lock_);
   std::shared_ptr<const TabletReplicaMap> GetReplicaLocations() const;
   Result<TSDescriptorPtr> GetLeader() const;
   Result<TabletReplicaDriveInfo> GetLeaderReplicaDriveInfo() const;
@@ -425,6 +428,9 @@ class TabletInfo : public MetadataCowWrapper<PersistentTabletInfo> {
   // reported. The map is keyed by tablet server UUID.
   std::shared_ptr<TabletReplicaMap> replica_locations_ GUARDED_BY(lock_) =
       std::make_shared<TabletReplicaMap>();
+
+  // Whether replica_locations_ is counted in TSDescriptor::replica_load_.
+  bool counts_replica_load_ GUARDED_BY(lock_);
 
   // Reported schema version (in-memory only).
   std::unordered_map<TableId, uint32_t> reported_schema_version_ GUARDED_BY(lock_);
