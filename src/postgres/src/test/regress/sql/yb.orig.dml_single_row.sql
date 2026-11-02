@@ -1152,3 +1152,217 @@ DROP TABLE t_temp;
 DROP TYPE rt;
 DROP TYPE two_int;
 DROP TYPE two_text;
+
+--
+-- Test single-row UPDATE/DELETE where the WHERE value has another type than the
+-- primary key column (GH#35476).  A value must not be reinterpreted as the
+-- column type: statements must update the same rows as they do in PostgreSQL.
+--
+CREATE TABLE sr_cross_int4 (k int PRIMARY KEY, v int);
+INSERT INTO sr_cross_int4 VALUES (-2147483648, 0), (1, 0), (2, 0), (3, 0), (2147483647, 0);
+CREATE TABLE sr_cross_int2 (k smallint PRIMARY KEY, v int);
+INSERT INTO sr_cross_int2 VALUES (-32768, 0), (1, 0), (2, 0), (32767, 0);
+CREATE TABLE sr_cross_int8 (k bigint PRIMARY KEY, v int);
+INSERT INTO sr_cross_int8 VALUES (-1, 0), (2, 0), (4294967295, 0);
+
+-- bigint values that do not fit an int4 column match no row.  Their low 32 bits
+-- are the keys 1 and 2.
+UPDATE sr_cross_int4 SET v = 1 WHERE k = 4294967297;
+DELETE FROM sr_cross_int4 WHERE k = 4294967298;
+-- One past either end of the int4 range.
+UPDATE sr_cross_int4 SET v = 1 WHERE k = 2147483648;
+UPDATE sr_cross_int4 SET v = 1 WHERE k = -2147483649;
+SELECT * FROM sr_cross_int4 ORDER BY k;
+-- bigint values that fit still use single-row.
+EXPLAIN (COSTS OFF) UPDATE sr_cross_int4 SET v = 5 WHERE k = 2::bigint;
+UPDATE sr_cross_int4 SET v = 5 WHERE k = 2::bigint;
+UPDATE sr_cross_int4 SET v = 5 WHERE k = 2147483647::bigint;
+UPDATE sr_cross_int4 SET v = 5 WHERE k = -2147483648::bigint;
+SELECT * FROM sr_cross_int4 ORDER BY k;
+
+-- Same for smallint with int4 and bigint values.
+UPDATE sr_cross_int2 SET v = 1 WHERE k = 65537;
+DELETE FROM sr_cross_int2 WHERE k = 4294967298;
+UPDATE sr_cross_int2 SET v = 1 WHERE k = 32768;
+UPDATE sr_cross_int2 SET v = 1 WHERE k = -32769;
+SELECT * FROM sr_cross_int2 ORDER BY k;
+
+-- A wider column holds every narrower value: single-row.
+EXPLAIN (COSTS OFF) UPDATE sr_cross_int8 SET v = 1 WHERE k = -1;
+UPDATE sr_cross_int8 SET v = 1 WHERE k = -1;
+SELECT * FROM sr_cross_int8 ORDER BY k;
+
+-- A bind parameter in a generic plan, which is still single-row, gives the same
+-- result.
+SET plan_cache_mode = force_generic_plan;
+PREPARE sr_cross_p(bigint) AS UPDATE sr_cross_int4 SET v = 9 WHERE k = $1;
+EXPLAIN (COSTS OFF) EXECUTE sr_cross_p(3);
+EXECUTE sr_cross_p(4294967297);
+EXECUTE sr_cross_p(2147483648);
+EXECUTE sr_cross_p(NULL);
+EXECUTE sr_cross_p(3);
+SELECT * FROM sr_cross_int4 ORDER BY k;
+DEALLOCATE sr_cross_p;
+RESET plan_cache_mode;
+
+-- Partitioned table: 4294967446 is 2^32 + 150, its low 32 bits are the key 150.
+CREATE TABLE sr_cross_part (k int PRIMARY KEY, v int) PARTITION BY RANGE (k);
+CREATE TABLE sr_cross_part_lo PARTITION OF sr_cross_part FOR VALUES FROM (MINVALUE) TO (100);
+CREATE TABLE sr_cross_part_hi PARTITION OF sr_cross_part FOR VALUES FROM (100) TO (MAXVALUE);
+INSERT INTO sr_cross_part VALUES (1, 0), (150, 0);
+UPDATE sr_cross_part SET v = 1 WHERE k = 4294967446;
+SELECT * FROM sr_cross_part ORDER BY k;
+UPDATE sr_cross_part SET v = 2 WHERE k = 150::bigint;
+SELECT * FROM sr_cross_part ORDER BY k;
+
+-- A value that needs no conversion is the key as is: a varchar column with
+-- text values, and a domain column with values of the domain's base type.
+CREATE TABLE sr_cross_varchar (k varchar PRIMARY KEY, v int);
+INSERT INTO sr_cross_varchar VALUES ('a', 0), ('b', 0);
+EXPLAIN (COSTS OFF) UPDATE sr_cross_varchar SET v = 1 WHERE k = 'a';
+UPDATE sr_cross_varchar SET v = 1 WHERE k = 'a';
+SET plan_cache_mode = force_generic_plan;
+PREPARE sr_cross_pv(text) AS UPDATE sr_cross_varchar SET v = 2 WHERE k = $1;
+EXPLAIN (COSTS OFF) EXECUTE sr_cross_pv('b');
+EXECUTE sr_cross_pv('b');
+SELECT * FROM sr_cross_varchar ORDER BY k;
+DEALLOCATE sr_cross_pv;
+RESET plan_cache_mode;
+CREATE DOMAIN sr_cross_dom AS int;
+CREATE TABLE sr_cross_domain (k sr_cross_dom PRIMARY KEY, v int);
+INSERT INTO sr_cross_domain VALUES (1, 0), (2, 0);
+EXPLAIN (COSTS OFF) UPDATE sr_cross_domain SET v = 1 WHERE k = 1;
+UPDATE sr_cross_domain SET v = 1 WHERE k = 1;
+SELECT * FROM sr_cross_domain ORDER BY k;
+
+-- Values of other types are converted with the cast between the types.  A
+-- real column with double values: only a double that is a real matches.
+CREATE TABLE sr_cross_real (k real PRIMARY KEY, v int);
+INSERT INTO sr_cross_real VALUES (0, 0), (0.1, 0), (1.5, 0), (2.5, 0), ('NaN', 0);
+EXPLAIN (COSTS OFF) UPDATE sr_cross_real SET v = 1 WHERE k = 1.5;
+UPDATE sr_cross_real SET v = 1 WHERE k = 1.5;
+UPDATE sr_cross_real SET v = 1 WHERE k = 0.1;
+UPDATE sr_cross_real SET v = 1 WHERE k = 0.10000000149011612;
+UPDATE sr_cross_real SET v = 1 WHERE k = 'NaN'::float8;
+-- Doubles that the cast to real rejects match no row.
+UPDATE sr_cross_real SET v = 1 WHERE k = 1e300;
+UPDATE sr_cross_real SET v = 1 WHERE k = 1e-50;
+SELECT * FROM sr_cross_real ORDER BY k;
+SET plan_cache_mode = force_generic_plan;
+PREPARE sr_cross_pr(float8) AS UPDATE sr_cross_real SET v = 2 WHERE k = $1;
+EXPLAIN (COSTS OFF) EXECUTE sr_cross_pr(2.5);
+EXECUTE sr_cross_pr(2.5);
+EXECUTE sr_cross_pr(0.1);
+EXECUTE sr_cross_pr(1e300);
+EXECUTE sr_cross_pr(1e-50);
+EXECUTE sr_cross_pr(NULL);
+SELECT * FROM sr_cross_real ORDER BY k;
+DEALLOCATE sr_cross_pr;
+RESET plan_cache_mode;
+
+-- A double column with a real value.
+CREATE TABLE sr_cross_double (k float8 PRIMARY KEY, v int);
+INSERT INTO sr_cross_double VALUES (0.1, 0), (0.10000000149011612, 0), (1.5, 0);
+EXPLAIN (COSTS OFF) UPDATE sr_cross_double SET v = 1 WHERE k = '0.1'::real;
+UPDATE sr_cross_double SET v = 1 WHERE k = '0.1'::real;
+SELECT * FROM sr_cross_double ORDER BY k;
+
+-- A date column with timestamp values: only a midnight matches.
+CREATE TABLE sr_cross_date (k date PRIMARY KEY, v int);
+INSERT INTO sr_cross_date VALUES ('2000-01-01', 0), ('2000-01-02', 0), ('infinity', 0);
+EXPLAIN (COSTS OFF) UPDATE sr_cross_date SET v = 1 WHERE k = '2000-01-02 00:00:00'::timestamp;
+UPDATE sr_cross_date SET v = 1 WHERE k = '2000-01-02 00:00:00'::timestamp;
+UPDATE sr_cross_date SET v = 1 WHERE k = '2000-01-01 00:00:00.000001'::timestamp;
+UPDATE sr_cross_date SET v = 1 WHERE k = 'infinity'::timestamp;
+SELECT * FROM sr_cross_date ORDER BY k;
+
+-- A timestamp column with date values.  A date past the timestamp range
+-- matches no row.
+CREATE TABLE sr_cross_ts (k timestamp PRIMARY KEY, v int);
+INSERT INTO sr_cross_ts VALUES ('2000-01-02 00:00', 0), ('2000-01-02 10:00', 0);
+UPDATE sr_cross_ts SET v = 1 WHERE k = DATE '2000-01-02';
+SET plan_cache_mode = force_generic_plan;
+PREPARE sr_cross_pd(date) AS UPDATE sr_cross_ts SET v = 2 WHERE k = $1;
+EXPLAIN (COSTS OFF) EXECUTE sr_cross_pd('2000-01-02');
+EXECUTE sr_cross_pd('294277-01-01');
+SELECT * FROM sr_cross_ts ORDER BY k;
+DEALLOCATE sr_cross_pd;
+RESET plan_cache_mode;
+
+-- A timestamptz column: the value is converted when the statement runs, in
+-- the time zone it runs in.
+SET TimeZone = 'America/New_York';
+CREATE TABLE sr_cross_tstz (k timestamptz PRIMARY KEY, v int);
+INSERT INTO sr_cross_tstz VALUES ('2000-01-02 00:00-05', 0), ('2000-01-02 00:00+00', 0), ('2000-01-03 00:00+00', 0);
+PREPARE sr_cross_pt(int) AS UPDATE sr_cross_tstz SET v = $1 WHERE k = DATE '2000-01-02';
+EXPLAIN (COSTS OFF) EXECUTE sr_cross_pt(1);
+EXECUTE sr_cross_pt(1);
+SET TimeZone = 'UTC';
+EXECUTE sr_cross_pt(2);
+UPDATE sr_cross_tstz SET v = 3 WHERE k = '2000-01-03 00:00'::timestamp;
+SELECT * FROM sr_cross_tstz ORDER BY k;
+DEALLOCATE sr_cross_pt;
+RESET TimeZone;
+
+-- A text column with name values, and a name column with text values.  A
+-- name holds 63 bytes, so a longer text matches no row.
+CREATE TABLE sr_cross_text (k text COLLATE "C" PRIMARY KEY, v int);
+INSERT INTO sr_cross_text VALUES ('bbbb', 0), ('dddd', 0);
+EXPLAIN (COSTS OFF) UPDATE sr_cross_text SET v = 1 WHERE k = 'bbbb'::name;
+UPDATE sr_cross_text SET v = 1 WHERE k = 'bbbb'::name;
+UPDATE sr_cross_text SET v = 1 WHERE k = 'dddd'::name;
+SELECT * FROM sr_cross_text ORDER BY k;
+CREATE TABLE sr_cross_name (k name PRIMARY KEY, v int);
+INSERT INTO sr_cross_name VALUES ('abc', 0), (repeat('a', 63), 0);
+EXPLAIN (COSTS OFF) UPDATE sr_cross_name SET v = 1 WHERE k = 'abc'::text;
+UPDATE sr_cross_name SET v = 1 WHERE k = 'abc'::text;
+UPDATE sr_cross_name SET v = 1 WHERE k = repeat('a', 64);
+SELECT length(k), v FROM sr_cross_name ORDER BY k;
+
+-- A timestamp or date column with a timestamptz value uses the scan: where
+-- the time zone skips an hour or a day, the value equals two keys.
+SET TimeZone = 'America/New_York';
+CREATE TABLE sr_cross_dst (k timestamp PRIMARY KEY, v int);
+INSERT INTO sr_cross_dst VALUES ('2024-03-10 01:30', 0), ('2024-03-10 02:30', 0), ('2024-03-10 03:30', 0);
+EXPLAIN (COSTS OFF) UPDATE sr_cross_dst SET v = 1 WHERE k = '2024-03-10 03:30-04'::timestamptz;
+UPDATE sr_cross_dst SET v = 1 WHERE k = '2024-03-10 03:30-04'::timestamptz;
+SELECT * FROM sr_cross_dst ORDER BY k;
+SET TimeZone = 'Pacific/Apia';
+CREATE TABLE sr_cross_skip (k date PRIMARY KEY, v int);
+INSERT INTO sr_cross_skip VALUES ('2011-12-29', 0), ('2011-12-30', 0), ('2011-12-31', 0);
+UPDATE sr_cross_skip SET v = 1 WHERE k = '2011-12-31 00:00+14'::timestamptz;
+SELECT * FROM sr_cross_skip ORDER BY k;
+RESET TimeZone;
+
+-- Each pair of value type and column type above keeps the single-shard fast
+-- path.  A timestamp or date column with a timestamptz value uses the scan,
+-- so it does not.
+CALL check_fast_path_txn('UPDATE sr_cross_int4 SET v = 6 WHERE k = 1::bigint', true);
+CALL check_fast_path_txn('UPDATE sr_cross_int4 SET v = 6 WHERE k = 1::smallint', true);
+CALL check_fast_path_txn('UPDATE sr_cross_int2 SET v = 6 WHERE k = 1::int', true);
+CALL check_fast_path_txn('UPDATE sr_cross_int2 SET v = 6 WHERE k = 1::bigint', true);
+CALL check_fast_path_txn('UPDATE sr_cross_int8 SET v = 6 WHERE k = 2::int', true);
+CALL check_fast_path_txn('UPDATE sr_cross_int8 SET v = 6 WHERE k = 2::smallint', true);
+CALL check_fast_path_txn('UPDATE sr_cross_part SET v = 6 WHERE k = 150::bigint', true);
+CALL check_fast_path_txn('UPDATE sr_cross_real SET v = 6 WHERE k = 1.5::float8', true);
+CALL check_fast_path_txn('UPDATE sr_cross_double SET v = 6 WHERE k = 1.5::real', true);
+CALL check_fast_path_txn('UPDATE sr_cross_date SET v = 6 WHERE k = ''2000-01-02''::timestamp', true);
+CALL check_fast_path_txn('UPDATE sr_cross_ts SET v = 6 WHERE k = ''2000-01-02''::date', true);
+SET TimeZone = 'UTC';
+CALL check_fast_path_txn('UPDATE sr_cross_tstz SET v = 6 WHERE k = ''2000-01-03''::date', true);
+CALL check_fast_path_txn('UPDATE sr_cross_tstz SET v = 6 WHERE k = ''2000-01-03 00:00''::timestamp', true);
+RESET TimeZone;
+CALL check_fast_path_txn('UPDATE sr_cross_text SET v = 6 WHERE k = ''bbbb''::name', true);
+CALL check_fast_path_txn('UPDATE sr_cross_name SET v = 6 WHERE k = ''abc''::text', true);
+SET plan_cache_mode = force_generic_plan;
+PREPARE sr_cross_pf(bigint) AS UPDATE sr_cross_int4 SET v = 7 WHERE k = $1;
+CALL check_fast_path_txn('EXECUTE sr_cross_pf(1)', true);
+DEALLOCATE sr_cross_pf;
+RESET plan_cache_mode;
+CALL check_fast_path_txn('UPDATE sr_cross_dst SET v = 6 WHERE k = ''2024-03-10 01:30-05''::timestamptz', false);
+CALL check_fast_path_txn('UPDATE sr_cross_skip SET v = 6 WHERE k = ''2011-12-29 00:00+14''::timestamptz', false);
+
+DROP TABLE sr_cross_int4, sr_cross_int2, sr_cross_int8, sr_cross_part, sr_cross_varchar,
+	sr_cross_domain, sr_cross_real, sr_cross_double, sr_cross_date, sr_cross_ts, sr_cross_tstz,
+	sr_cross_text, sr_cross_name, sr_cross_dst, sr_cross_skip;
+DROP DOMAIN sr_cross_dom;

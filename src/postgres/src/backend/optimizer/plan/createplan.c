@@ -56,11 +56,16 @@
 #include "executor/ybExpr.h"
 #include "optimizer/yb_merge_scan.h"
 #include "optimizer/ybplan.h"
+#include "parser/parse_coerce.h"
 #include "pg_yb_utils.h"
+#include "utils/date.h"
+#include "utils/float.h"
 #include "utils/fmgroids.h"
 #include "utils/rel.h"
 #include "utils/selfuncs.h"
 #include "utils/syscache.h"
+#include "utils/timestamp.h"
+#include "utils/typcache.h"
 
 
 /*
@@ -141,6 +146,7 @@ static bool yb_single_row_update_or_delete_path(PlannerInfo *root,
 												List **modify_tlist,
 												List **column_refs,
 												List **result_tlist,
+												List **result_quals,
 												List **returning_cols,
 												bool *no_row_trigger,
 												List **no_update_index_list);
@@ -3490,6 +3496,356 @@ yb_fetch_subpaths(ModifyTablePath *path, IndexPath **index_path,
 }
 
 /*
+ * yb_make_guard_clause
+ *
+ * Return "expr op c", c being a constant of type ctype and op the operator of
+ * the btree strategy between the types, from the operator family of the type
+ * of expr.
+ */
+static Expr *
+yb_make_guard_clause(Expr *expr, int16 strategy, Oid ctype, Datum c)
+{
+	Oid			exprtype = exprType((Node *) expr);
+	Oid			opfamily = lookup_type_cache(exprtype,
+											 TYPECACHE_BTREE_OPFAMILY)->btree_opf;
+	int16		typlen;
+	bool		typbyval;
+	Expr	   *clause;
+
+	get_typlenbyval(ctype, &typlen, &typbyval);
+	clause = make_opclause(get_opfamily_member(opfamily, exprtype, ctype,
+											   strategy),
+						   BOOLOID, false, (Expr *) copyObject(expr),
+						   (Expr *) makeConst(ctype, -1, InvalidOid, typlen, c,
+											  false, typbyval),
+						   InvalidOid, InvalidOid);
+	set_opfuncid((OpExpr *) clause);
+	return clause;
+}
+
+/* Guard functions for yb_key_casts, below. */
+
+/*
+ * The cast to a smallint or int column fails outside the column type's range,
+ * so the guard is expr >= min AND expr <= max.
+ */
+static Expr *
+yb_guard_integer_range(Expr *expr, Oid coltype)
+{
+	Oid			valtype = exprType((Node *) expr);
+	int64		min = (coltype == INT2OID) ? PG_INT16_MIN : PG_INT32_MIN;
+	int64		max = (coltype == INT2OID) ? PG_INT16_MAX : PG_INT32_MAX;
+	bool		is8 = (valtype == INT8OID);
+	Expr	   *ge_min;
+	Expr	   *le_max;
+
+	ge_min = yb_make_guard_clause(expr, BTGreaterEqualStrategyNumber, valtype,
+								  is8 ? Int64GetDatum(min) :
+								  Int32GetDatum((int32) min));
+	le_max = yb_make_guard_clause(expr, BTLessEqualStrategyNumber, valtype,
+								  is8 ? Int64GetDatum(max) :
+								  Int32GetDatum((int32) max));
+	return make_andclause(list_make2(ge_min, le_max));
+}
+
+/*
+ * The cast from double to real, dtof(), fails for a finite double that does
+ * not fit in a real:
+ *
+ *   magnitude >= 2^128 - 2^103 (about 3.4 * 10^38)  -> rounds to infinity,
+ *                                                      "overflow" error
+ *   0 < magnitude <= 2^-150 (about 7.0 * 10^-46)    -> rounds to zero,
+ *                                                      "underflow" error
+ *
+ * 0, NaN, -Infinity and Infinity convert fine.  So the guard is
+ *
+ *   expr is 0, NaN, -Infinity or Infinity
+ *   OR lo < expr < hi
+ *   OR -hi < expr < -lo
+ *
+ * where lo = 2^-150 and hi = 2^128 - 2^103.
+ */
+static Expr *
+yb_guard_float4(Expr *expr, Oid coltype)
+{
+	double		lo = ldexp(1.0, -150);
+	double		hi = ldexp(1.0, 128) - ldexp(1.0, 103);
+	List	   *ok = NIL;
+	Expr	   *gt;
+	Expr	   *lt;
+
+	ok = lappend(ok, yb_make_guard_clause(expr, BTEqualStrategyNumber, FLOAT8OID,
+										  Float8GetDatum(0.0)));
+	ok = lappend(ok, yb_make_guard_clause(expr, BTEqualStrategyNumber, FLOAT8OID,
+										  Float8GetDatum(get_float8_nan())));
+	ok = lappend(ok, yb_make_guard_clause(expr, BTEqualStrategyNumber, FLOAT8OID,
+										  Float8GetDatum(get_float8_infinity())));
+	ok = lappend(ok, yb_make_guard_clause(expr, BTEqualStrategyNumber, FLOAT8OID,
+										  Float8GetDatum(-get_float8_infinity())));
+
+	/* lo < expr < hi */
+	gt = yb_make_guard_clause(expr, BTGreaterStrategyNumber, FLOAT8OID,
+							  Float8GetDatum(lo));
+	lt = yb_make_guard_clause(expr, BTLessStrategyNumber, FLOAT8OID,
+							  Float8GetDatum(hi));
+	ok = lappend(ok, make_andclause(list_make2(gt, lt)));
+
+	/* -hi < expr < -lo */
+	lt = yb_make_guard_clause(expr, BTLessStrategyNumber, FLOAT8OID,
+							  Float8GetDatum(-lo));
+	gt = yb_make_guard_clause(expr, BTGreaterStrategyNumber, FLOAT8OID,
+							  Float8GetDatum(-hi));
+	ok = lappend(ok, make_andclause(list_make2(lt, gt)));
+
+	return make_orclause(ok);
+}
+
+/*
+ * date2timestamp() fails for a date on or after 294277-01-01, as the last
+ * timestamp is 294276-12-31 23:59:59.999999.  Dates start on the same day as
+ * timestamps, so there is no lower bound.  The date 'infinity' converts to
+ * the timestamp 'infinity' but is larger than every other date, so it is
+ * allowed separately: the guard is expr < 294277-01-01 OR expr = 'infinity'.
+ */
+static Expr *
+yb_guard_date_to_timestamp(Expr *expr, Oid coltype)
+{
+	Expr	   *lt_end;
+	Expr	   *eq_inf;
+
+	lt_end = yb_make_guard_clause(expr, BTLessStrategyNumber, DATEOID,
+								  DateADTGetDatum(TIMESTAMP_END_JULIAN -
+												  POSTGRES_EPOCH_JDATE));
+	eq_inf = yb_make_guard_clause(expr, BTEqualStrategyNumber, DATEOID,
+								  DateADTGetDatum(DATEVAL_NOEND));
+	return make_orclause(list_make2(lt_end, eq_inf));
+}
+
+/*
+ * A date or timestamp converts to timestamptz as local time in the session's
+ * time zone, so whether it fits in the timestamptz range depends on the time
+ * zone.  The guard is (expr >= min AND expr <= max) OR expr = '-infinity' OR
+ * expr = 'infinity', where min and max are the smallest and largest
+ * timestamptz: 4714-11-24 00:00 UTC BC and 294276-12-31 23:59:59.999999 UTC.
+ * These comparisons handle overflow instead of failing.  They also depend on
+ * the time zone, so the guard is evaluated only when the statement runs.
+ */
+static Expr *
+yb_guard_timestamptz(Expr *expr, Oid coltype)
+{
+	Oid			valtype = exprType((Node *) expr);
+	bool		isdate = (valtype == DATEOID);
+	Expr	   *ge_min;
+	Expr	   *le_max;
+	Expr	   *eq_neg_inf;
+	Expr	   *eq_inf;
+
+	ge_min = yb_make_guard_clause(expr, BTGreaterEqualStrategyNumber,
+								  TIMESTAMPTZOID,
+								  TimestampTzGetDatum(MIN_TIMESTAMP));
+	le_max = yb_make_guard_clause(expr, BTLessEqualStrategyNumber,
+								  TIMESTAMPTZOID,
+								  TimestampTzGetDatum(END_TIMESTAMP - 1));
+	eq_neg_inf = yb_make_guard_clause(expr, BTEqualStrategyNumber, valtype,
+									  isdate ?
+									  DateADTGetDatum(DATEVAL_NOBEGIN) :
+									  TimestampGetDatum(DT_NOBEGIN));
+	eq_inf = yb_make_guard_clause(expr, BTEqualStrategyNumber, valtype,
+								  isdate ? DateADTGetDatum(DATEVAL_NOEND) :
+								  TimestampGetDatum(DT_NOEND));
+	return make_orclause(list_make3(make_andclause(list_make2(ge_min, le_max)),
+									eq_neg_inf, eq_inf));
+}
+
+/*
+ * The pairs of a value type and a primary key column type for which the single
+ * row path converts the value with the cast to the column type.
+ *
+ * guard: builds a condition that is false for the values the cast rejects, or
+ * NULL if the cast rejects none.  Such a value equals no key: for example, no
+ * int4 equals 2^32 + 1.
+ *
+ * lossy: a flag that is true if the cast can silently change the value.  When
+ * lossy is true, we need to add a check that the key converts back to the
+ * value; if it does not, the value equals no key.  For example, 0.1 as a real
+ * is 0.10000000149011612, not 0.1, so 0.1 equals no key.
+ *
+ * The check does not work for one kind of lossy pair: a timestamp or date key
+ * compared with a timestamptz value.  These pairs are not in the table and
+ * use the scan path.  When the clocks skip an hour for daylight saving time,
+ * two timestamps convert to the same timestamptz.  For example, in New York
+ * the clocks jumped from 02:00 to 03:00 on 2024-03-10, so:
+ *
+ *   timestamp 2024-03-10 02:30 -> timestamptz 2024-03-10 07:30 UTC
+ *   timestamp 2024-03-10 03:30 -> timestamptz 2024-03-10 07:30 UTC
+ *
+ * PG's = converts the key, so if a timestamp key column holds both,
+ * DELETE ... WHERE k = '2024-03-10 03:30-04'::timestamptz deletes both rows,
+ * but the single row path can delete only one.
+ *
+ * The other direction, a timestamptz key with a timestamp or date value, is
+ * fine: PG's = converts the value instead, and value -> one timestamptz ->
+ * at most one key.
+ */
+typedef struct YbKeyCast
+{
+	Oid			valtype;
+	Oid			coltype;
+	Expr	   *(*guard) (Expr *expr, Oid coltype);
+	bool		lossy;
+} YbKeyCast;
+
+static const YbKeyCast yb_key_casts[] =
+{
+	{INT4OID, INT2OID, yb_guard_integer_range, false},
+	{INT8OID, INT2OID, yb_guard_integer_range, false},
+	{INT8OID, INT4OID, yb_guard_integer_range, false},
+	{INT2OID, INT4OID, NULL, false},
+	{INT2OID, INT8OID, NULL, false},
+	{INT4OID, INT8OID, NULL, false},
+	{FLOAT8OID, FLOAT4OID, yb_guard_float4, true},
+	{FLOAT4OID, FLOAT8OID, NULL, false},
+	{TIMESTAMPOID, DATEOID, NULL, true},
+	{DATEOID, TIMESTAMPOID, yb_guard_date_to_timestamp, false},
+	{DATEOID, TIMESTAMPTZOID, yb_guard_timestamptz, false},
+	{TIMESTAMPOID, TIMESTAMPTZOID, yb_guard_timestamptz, false},
+	{TEXTOID, NAMEOID, NULL, true},
+	{NAMEOID, TEXTOID, NULL, false},
+};
+
+/*
+ * yb_find_key_cast
+ *
+ * Return the yb_key_casts entry for a value of type valtype and a column of
+ * type coltype, or NULL if there is none.
+ */
+static const YbKeyCast *
+yb_find_key_cast(Oid valtype, Oid coltype)
+{
+	int			i;
+
+	for (i = 0; i < lengthof(yb_key_casts); i++)
+	{
+		if (yb_key_casts[i].valtype == valtype &&
+			yb_key_casts[i].coltype == coltype)
+			return &yb_key_casts[i];
+	}
+	return NULL;
+}
+
+/*
+ * yb_single_row_key_value
+ *
+ * Helper function for yb_single_row_update_or_delete_path.  Return an
+ * expression of type coltype for the one primary key value that
+ * "column opno expr" can match, or NULL to use the scan path instead.  expr can
+ * be of another type of the column's operator family, as in
+ * int4_col = int8_value; yb_key_casts lists the conversions.  expr is
+ * evaluated more than once, which is fine as an index qual never contains a
+ * volatile function.
+ */
+static Expr *
+yb_single_row_key_value(Expr *expr, Oid coltype, Oid opno, Oid inputcollid,
+						List **quals)
+{
+	Oid			valtype = exprType((Node *) expr);
+	Oid			basetype = getBaseType(coltype);
+	List	   *checks = NIL;
+	Node	   *key;
+	Node	   *cond;
+	bool		checks_passed;
+	const YbKeyCast *cast;
+
+	/* The value already has the column's type, so it is the key as is. */
+	if (valtype == coltype)
+		return expr;
+
+	/*
+	 * True if the value's bytes mean the same value in the column's type: then
+	 * only the type label changes.
+	 */
+	if (IsBinaryCoercible(valtype, basetype))
+		return (Expr *) makeRelabelType(expr, coltype, -1,
+										get_typcollation(coltype),
+										COERCE_IMPLICIT_CAST);
+
+	/*
+	 * Find the conversion for this pair of types.  A pair not in yb_key_casts
+	 * uses the scan path.
+	 */
+	cast = yb_find_key_cast(valtype, basetype);
+	if (cast == NULL)
+		return NULL;
+
+	/*
+	 * key becomes the expression that casts expr to the column's type, such
+	 * as int4(expr).  The cast runs later.  NULL means there is no such cast.
+	 */
+	key = coerce_to_target_type(NULL, (Node *) expr, valtype, basetype, -1,
+								COERCION_EXPLICIT, COERCE_IMPLICIT_CAST, -1);
+	if (key == NULL)
+		return NULL;
+
+	/*
+	 * The guard is an expression that is false for the values the cast
+	 * rejects, such as expr >= -2^31 AND expr <= 2^31 - 1 for an int4 column.
+	 * If the guard is false, the value is guaranteed to match no value in the
+	 * column. The guard is before the check.  Without the guard, the check
+	 * casts every value, and the cast can raise an error. For example,
+	 * casting 10^300 to real raises an error, as real only goes up to about
+	 * 3.4 * 10^38.
+	 */
+	if (cast->guard)
+		checks = lappend(checks, cast->guard(expr, basetype));
+
+	/* key is correct only if it converts back to expr. */
+	if (cast->lossy)
+	{
+		Expr	   *eq = make_opclause(opno, BOOLOID, false,
+									   (Expr *) copyObject(key),
+									   (Expr *) copyObject(expr),
+									   InvalidOid, inputcollid);
+
+		set_opfuncid((OpExpr *) eq);
+		checks = lappend(checks, eq);
+	}
+
+	/*
+	 * cond says whether key can be used.  make_ands_explicit joins the checks
+	 * with AND into one condition, and eval_const_expressions then evaluates
+	 * as much of it as possible now.  The result is true, false, or a smaller
+	 * condition if some part is not known yet, as with a parameter.
+	 */
+	cond = eval_const_expressions(NULL, (Node *) make_ands_explicit(checks));
+
+	/*
+	 * checks_passed is true if cond is the constant true: the value is
+	 * already known to pass the guard and the check, so key can be used and
+	 * the cast cannot fail.  It is false when cond is (1) not known until the
+	 * statement runs, as with a parameter of a prepared statement, (2) NULL,
+	 * or (3) false, as the value fails the guard or the check and no key
+	 * matches.
+	 */
+	checks_passed = IsA(cond, Const) &&
+		!castNode(Const, cond)->constisnull &&
+		DatumGetBool(castNode(Const, cond)->constvalue);
+
+	/*
+	 * If checks_passed is false, leave the decision and cast to the runtime.
+	 * Otherwise compute as much of key as possible now.
+	 */
+	if (!checks_passed)
+		*quals = lappend(*quals, cond);
+	else
+		key = eval_const_expressions(NULL, key);
+
+	/* Label key with the column's type. */
+	return (Expr *) makeRelabelType((Expr *) key, coltype, -1,
+									get_typcollation(coltype),
+									COERCE_IMPLICIT_CAST);
+}
+
+/*
  * yb_single_row_update_or_delete_path
  *
  * Returns whether a path can support a YB single row modify. The advantage of
@@ -3537,6 +3893,7 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 									List **modify_tlist,
 									List **column_refs,
 									List **result_tlist,
+									List **result_quals,
 									List **returning_cols,
 									bool *no_row_trigger,
 									List **no_update_index_list)
@@ -3991,17 +4348,15 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 		}
 		var = castNode(Var, leftop);
 
-		/*
-		 * If const expression has a different type than the column (var), wrap in a relabel
-		 * expression with the proper type so it is coerced at execution time.
-		 */
-		if (IsA(expr, Const) && castNode(Const, expr)->consttype != var->vartype)
+		/* The value may be of another type than the column. */
+		expr = yb_single_row_key_value(expr, var->vartype,
+									   castNode(OpExpr, clause)->opno,
+									   castNode(OpExpr, clause)->inputcollid,
+									   result_quals);
+		if (expr == NULL)
 		{
-			expr = (Expr *) makeRelabelType(expr,
-											var->vartype,
-											-1,
-											get_typcollation(var->vartype),
-											COERCE_IMPLICIT_CAST);
+			RelationClose(relation);
+			return false;
 		}
 
 		tle = makeNode(TargetEntry);
@@ -4193,6 +4548,7 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 	Path	   *subpath = best_path->subpath;
 	Plan	   *subplan;
 	List	   *result_tlist = NIL;
+	List	   *result_quals = NIL;
 	List	   *modify_tlist = NIL;
 	bool		no_row_trigger = false;
 	List	   *no_update_index_list = NIL;
@@ -4210,13 +4566,14 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 	yb_is_single_row_update_or_delete =
 		yb_single_row_update_or_delete_path(root, best_path, &modify_tlist,
 											&column_refs, &result_tlist,
+											&result_quals,
 											&returning_cols, &no_row_trigger,
 											(best_path->operation == CMD_UPDATE ?
 											 &no_update_index_list :
 											 NULL));
 	if (yb_is_single_row_update_or_delete)
 	{
-		subplan = (Plan *) make_result(result_tlist, NULL, NULL);
+		subplan = (Plan *) make_result(result_tlist, (Node *) result_quals, NULL);
 		copy_generic_path_info(subplan, best_path->subpath);
 	}
 	else
