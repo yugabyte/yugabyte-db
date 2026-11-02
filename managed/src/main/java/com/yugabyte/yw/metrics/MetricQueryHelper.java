@@ -290,6 +290,7 @@ public class MetricQueryHelper {
           // Check if the universe is using newNamingStyle.
           if (newNamingStyle) {
             Set<String> nodePrefixes = new HashSet<String>();
+            Set<String> tserverClaimPatterns = new HashSet<>();
             for (Cluster cluster : universe.getUniverseDetails().clusters) {
               Provider provider =
                   Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
@@ -307,10 +308,13 @@ public class MetricQueryHelper {
                           cluster.clusterType == ClusterType.ASYNC,
                           newNamingStyle);
                   nodePrefixes.add(helmRelease + "-yb-tserver-(.*)");
+                  tserverClaimPatterns.add("(.*)-" + helmRelease + "-yb-tserver-(.*)");
                 }
               }
             }
             filterJson.put(nodeFilterLabel, StringUtils.join(nodePrefixes, '|'));
+            // Kubelet volume series carry no pod name, so the claim selects this universe's pods.
+            filterJson.put(PVC, StringUtils.join(tserverClaimPatterns, '|'));
           }
         }
       } else {
