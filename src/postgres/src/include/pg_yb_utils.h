@@ -352,6 +352,7 @@ extern bool yb_check_test_catalog_preload_cache_list(char **newval, void **extra
 extern void yb_assign_test_catalog_preload_cache_list(const char *newval,
 													  void *extra);
 extern bool YbCatalogPreloadCacheListIsSet(void);
+extern void YbReportCatalogPreloadCacheList(void);
 
 /*
  * Since DDL metadata in master DocDB and postgres system tables is not modified
