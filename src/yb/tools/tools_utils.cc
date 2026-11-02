@@ -13,18 +13,51 @@
 
 #include "yb/tools/tools_utils.h"
 
+#include <tuple>
+#include <utility>
+
 #include "yb/rpc/secure.h"
 #include "yb/rpc/secure_stream.h"
 
 #include "yb/util/flags.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 DEFINE_NON_RUNTIME_string(certs_dir_name, "",
-    "Directory with certificates to use for secure server connection.");
+    "Directory with certificates to use for secure server connection. Falls back to "
+    "--certs_dir when empty.");
+DEFINE_NON_RUNTIME_string(client_node_name, "",
+    "Name of the client certificate to present to the server: node.<name>.crt and "
+    "node.<name>.key from the certificates directory. Required when the cluster runs with "
+    "--node_to_node_encryption_use_client_certificates. Falls back to --cert_node_filename "
+    "when empty.");
+
+DECLARE_string(cert_node_filename);
 DECLARE_string(certs_dir);
-DEFINE_NON_RUNTIME_string(client_node_name, "", "Client node name.");
+DECLARE_bool(node_to_node_encryption_use_client_certificates);
 
 namespace yb::tools {
+
+namespace {
+
+// Returns the certificates directory and the client certificate name that the flags select.
+std::pair<std::string, std::string> CertsDirAndClientNodeNameFromFlags() {
+  if (!FLAGS_certs_dir_name.empty()) {
+    return {FLAGS_certs_dir_name, FLAGS_client_node_name};
+  }
+  // --certs_dir, --cert_node_filename and --node_to_node_encryption_use_client_certificates come in
+  // when the tool is run with --flagfile pointing at a server's server.conf. --cert_node_filename
+  // names a certificate in that --certs_dir only. Use it only when that server.conf requires
+  // client certificates, so that a tool talking to a cluster that doesn't require them never has
+  // to read the node's private key.
+  auto client_node_name = FLAGS_client_node_name;
+  if (client_node_name.empty() && FLAGS_node_to_node_encryption_use_client_certificates) {
+    client_node_name = FLAGS_cert_node_filename;
+  }
+  return {FLAGS_certs_dir, client_node_name};
+}
+
+} // namespace
 
 // Return a secure context if needed, otherwise nullptr.
 Result<std::unique_ptr<rpc::SecureContext>> CreateSecureContextIfNeeded(
@@ -36,19 +69,39 @@ Result<std::unique_ptr<rpc::SecureContext>> CreateSecureContextIfNeeded(
   auto certs_dir_name = certs_dir;
   std::string cert_name;
   if (certs_dir_name.empty()) {
-    certs_dir_name = FLAGS_certs_dir_name;
-    if (certs_dir_name.empty()) {
-      certs_dir_name = FLAGS_certs_dir;
-    }
-    cert_name = FLAGS_client_node_name;
+    std::tie(certs_dir_name, cert_name) = CertsDirAndClientNodeNameFromFlags();
   }
   if (certs_dir_name.empty()) {
     return nullptr;
   }
+  // The tool only knows the cluster requires client certificates when a server.conf passed with
+  // --flagfile says so. In that case fail early with an actionable message, because otherwise the
+  // server rejects the TLS handshake and the tool only sees a connection timeout.
+  SCHECK(
+      !cert_name.empty() || !certs_dir.empty() ||
+          !FLAGS_node_to_node_encryption_use_client_certificates,
+      InvalidArgument,
+      "--node_to_node_encryption_use_client_certificates is set, but no client certificate was "
+      "specified. Pass --client_node_name=<name> to use node.<name>.crt and node.<name>.key "
+      "from $0", certs_dir_name);
   auto secure_context = VERIFY_RESULT(rpc::CreateSecureContext(
       certs_dir_name, rpc::UseClientCerts(!cert_name.empty()), cert_name));
   rpc::ApplySecureContext(secure_context.get(), &messenger_builder);
   return secure_context;
+}
+
+Status AddClientCertificateHint(const Status& status) {
+  if (!status.IsNetworkError() && !status.IsTimedOut() && !status.IsServiceUnavailable()) {
+    return status;
+  }
+  auto [certs_dir_name, client_node_name] = CertsDirAndClientNodeNameFromFlags();
+  if (certs_dir_name.empty() || !client_node_name.empty()) {
+    return status;
+  }
+  return status.CloneAndAppend(
+      "No client certificate was presented. If the cluster runs with "
+      "--node_to_node_encryption_use_client_certificates, pass --client_node_name=<name> to use "
+      "node.<name>.crt and node.<name>.key from " + certs_dir_name);
 }
 
 } // namespace yb::tools
