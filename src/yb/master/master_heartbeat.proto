@@ -394,6 +394,15 @@ message TSHeartbeatResponsePB {
   // If present, this heartbeat response grants the TServer a xCluster-guarded information lease
   // of this duration from when the TServer sent the heartbeat request.
   optional uint32 xcluster_guarded_lease_duration_ms = 36;
+
+  // Tag 37 is taken by blacklisted_tservers_with_no_tablets, in flight under #34721.
+
+  // UUIDs of every registered tserver currently on the leader blacklist, whether or not its
+  // leaders have drained yet. Unlike leader_blacklisted_tservers_with_no_leaders, this is the full
+  // current set and is sent on every heartbeat, so removal from the blacklist is observed too.
+  // Tservers use it to keep follower (CONSISTENT_PREFIX) reads off these tservers when
+  // --follower_reads_avoid_leader_blacklisted_tservers is set.
+  repeated string leader_blacklisted_tservers = 38;
 }
 
 service MasterHeartbeat {

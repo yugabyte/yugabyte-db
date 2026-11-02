@@ -14,7 +14,9 @@
 #include <atomic>
 #include <fstream>
 #include <limits>
+#include <numeric>
 #include <optional>
+#include <set>
 #include <thread>
 #include <string_view>
 
@@ -59,6 +61,7 @@
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_participant.h"
 
@@ -111,6 +114,7 @@ DECLARE_bool(enable_schema_packing_gc);
 DECLARE_bool(enable_tracing);
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(flush_rocksdb_on_shutdown);
+DECLARE_bool(follower_reads_avoid_leader_blacklisted_tservers);
 DECLARE_bool(pg_client_use_shared_memory);
 DECLARE_bool(rocksdb_disable_compactions);
 DECLARE_bool(use_bootstrap_intent_ht_filter);
@@ -590,6 +594,103 @@ TEST_F(PgMiniTest, MultiColFollowerReads) {
   row = ASSERT_RESULT((conn.FetchRow<int32_t, std::string, std::string>(
       "SELECT * FROM t WHERE k = 1")));
   ASSERT_EQ(row, (decltype(row){1, "NEW", "NEW"}));
+}
+
+// Leader blacklisting a tserver keeps YSQL follower reads off it once the tserver-embedded clients
+// have learned about it on the master heartbeat, and un-blacklisting brings the reads back.
+// Postgres is attached to tserver kPgTsIndex, whose replica is the closest one and so serves every
+// follower read until that tserver is blacklisted.
+TEST_F(PgMiniTest, FollowerReadsAvoidLeaderBlacklistedTServers) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_follower_reads_avoid_leader_blacklisted_tservers) = true;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  constexpr int kNumRows = 100;
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t SELECT i, i FROM generate_series(1, $0) AS i", kNumRows));
+  const auto table_id = ASSERT_RESULT(GetTableIDFromTableName("t"));
+  const auto tablet_id = ListTableActiveTabletPeers(cluster_.get(), table_id).front()->tablet_id();
+
+  // Follower reads happen at now - staleness, so wait that long for the rows to become visible.
+  constexpr int32_t kStalenessMs = 4000 * kTimeMultiplier;
+  ASSERT_OK(conn.ExecuteFormat("SET yb_follower_read_staleness_ms = $0", kStalenessMs));
+  ASSERT_OK(conn.Execute("SET yb_read_from_followers = true"));
+  ASSERT_OK(conn.Execute("SET default_transaction_read_only = true"));
+  SleepFor(MonoDelta::FromMilliseconds(kStalenessMs));
+
+  const auto num_tservers = cluster_->num_tablet_servers();
+  const auto pg_ts_uuid = cluster_->mini_tablet_server(kPgTsIndex)->server()->permanent_uuid();
+
+  // consistent_prefix_read_requests of the table's replica on each tserver.
+  auto count_follower_reads = [&]() -> std::vector<uint64_t> {
+    std::vector<uint64_t> counts(num_tservers);
+    for (const auto& peer : ListTableActiveTabletPeers(cluster_.get(), table_id)) {
+      for (size_t i = 0; i < num_tservers; ++i) {
+        if (cluster_->mini_tablet_server(i)->server()->permanent_uuid() == peer->permanent_uuid()) {
+          counts[i] = CHECK_RESULT(peer->shared_tablet())->metrics()->Get(
+              tablet::TabletCounters::kConsistentPrefixReadRequests);
+        }
+      }
+    }
+    return counts;
+  };
+
+  constexpr int kNumReads = 5;
+  auto run_reads = [&](std::vector<uint64_t>* delta) {
+    auto before = count_follower_reads();
+    for (int i = 0; i < kNumReads; ++i) {
+      ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT COUNT(*) FROM t")), kNumRows);
+    }
+    auto after = count_follower_reads();
+    for (size_t i = 0; i < num_tservers; ++i) {
+      (*delta)[i] = after[i] - before[i];
+    }
+    LOG(INFO) << "Follower reads per tserver: " << AsString(*delta);
+  };
+
+  // The master pushes the leader blacklist to every tserver on the heartbeat.
+  auto wait_for_blacklist_on_all_tservers = [&](const std::set<std::string>& expected) {
+    return WaitFor([&]() -> Result<bool> {
+      for (size_t i = 0; i < num_tservers; ++i) {
+        if (cluster_->mini_tablet_server(i)->server()->client()->TEST_LeaderBlacklistedTServers() !=
+            expected) {
+          return false;
+        }
+      }
+      return true;
+    }, 30s * kTimeMultiplier, "leader blacklist propagated to all tservers");
+  };
+
+  // The local replica serves every follower read.
+  std::vector<uint64_t> delta(num_tservers);
+  ASSERT_NO_FATALS(run_reads(&delta));
+  ASSERT_GE(delta[kPgTsIndex], kNumReads);
+
+  // Leader blacklist the Postgres tserver: once every tserver knows, the reads move to the other
+  // replicas. Also wait for the load balancer to move the leader away, so that a read bounced to
+  // the leader (should a follower not be caught up) cannot land on the blacklisted tserver either.
+  ASSERT_OK(cluster_->AddTServerToLeaderBlacklist(kPgTsIndex));
+  ASSERT_OK(wait_for_blacklist_on_all_tservers({pg_ts_uuid}));
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto leader = GetLeaderPeerForTablet(cluster_.get(), tablet_id);
+    return leader.ok() && (*leader)->permanent_uuid() != pg_ts_uuid;
+  }, 30s * kTimeMultiplier, "leader moved off the leader blacklisted tserver"));
+  ASSERT_NO_FATALS(run_reads(&delta));
+  ASSERT_EQ(delta[kPgTsIndex], 0);
+  ASSERT_GE(std::accumulate(delta.begin(), delta.end(), uint64_t{0}), kNumReads);
+
+  // Taking the tserver off the blacklist brings the reads back to the local replica.
+  ASSERT_OK(cluster_->ClearBlacklist());
+  ASSERT_OK(wait_for_blacklist_on_all_tservers({}));
+  ASSERT_NO_FATALS(run_reads(&delta));
+  ASSERT_GE(delta[kPgTsIndex], kNumReads);
+
+  // With the flag off the blacklist is ignored.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_follower_reads_avoid_leader_blacklisted_tservers) = false;
+  ASSERT_OK(cluster_->AddTServerToLeaderBlacklist(kPgTsIndex));
+  ASSERT_OK(wait_for_blacklist_on_all_tservers({pg_ts_uuid}));
+  ASSERT_NO_FATALS(run_reads(&delta));
+  ASSERT_GE(delta[kPgTsIndex], kNumReads);
 }
 
 TEST_F(PgMiniTest, Simple) {
