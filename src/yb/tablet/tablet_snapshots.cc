@@ -28,6 +28,8 @@
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_util.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/util/file_util.h"
 #include "yb/rocksdb/utilities/checkpoint.h"
@@ -122,6 +124,10 @@ DEFINE_test_flag(bool, pause_create_checkpoint, false,
 
 DEFINE_test_flag(int32, snapshot_cleanup_retry_delay_ms, 0,
     "If positive, override the snapshot cleanup retry backoff in tests.");
+
+DEFINE_test_flag(bool, skip_restore_flushed_op_id_stamps, false,
+    "If true, a checkpoint restore does not move the vector indexes and the regular DB to the "
+    "restore op id after reopening them, as if the tserver crashed right after the reopen.");
 
 namespace yb::tablet {
 
@@ -759,8 +765,15 @@ Status TabletSnapshots::RestoreCheckpoint(
     docdb::RocksDBPatcher patcher(db_dir, rocksdb_options);
 
     RETURN_NOT_OK(patcher.Load());
+    // The regular DB reaches the restore op id only after the vector indexes do, below. Until then
+    // its flushed OpId stays just under the restore op, so a crash in between replays the restore
+    // on bootstrap, and the replay replaces and stamps the vector indexes again. With the restore
+    // op id here, bootstrap would skip the restore and keep the vector indexes at the OpIds of the
+    // restored chunks.
+    auto patched_frontier = frontier;
+    patched_frontier.set_op_id(OpId(frontier.op_id().term, frontier.op_id().index - 1));
     RETURN_NOT_OK(patcher.ModifyFlushedFrontier(
-        frontier, VERIFY_RESULT(GetCotableIdsMap(snapshot_dir))));
+        patched_frontier, VERIFY_RESULT(GetCotableIdsMap(snapshot_dir))));
     if (restore_at) {
       RETURN_NOT_OK(patcher.SetHybridTimeFilter(std::nullopt, restore_at));
     }
@@ -816,8 +829,7 @@ Status TabletSnapshots::RestoreCheckpoint(
   // dropped ones a snapshot schedule retains and, in a clone, ones the clone does not have. A
   // storage dir is named by index oid, so a later index of a clone that reuses such an oid would
   // load its chunks. Best effort: a failure here would fail the restore apply, which is fatal for
-  // the tserver, after the frontier patch that keeps the restore from being replayed. A crash
-  // before this point is covered by the startup sweep in TSTabletManager.
+  // the tserver. A crash before this point is covered by the startup sweep in TSTabletManager.
   // Runs after MergeWithRestored: it can change the id, and so the storage dir, of a listed index.
   if (!snapshot_dir.empty()) {
     auto children = env().GetChildren(snapshot_dir, ExcludeDots::kTrue);
@@ -837,13 +849,22 @@ Status TabletSnapshots::RestoreCheckpoint(
     return s;
   }
 
-  // The restore replaced the vector index storages together with the regular DB, but the patcher
-  // above moved only the regular DB's flushed frontier to the restore op id. Force the same op id
-  // on the vector indexes. With a lower snapshot time OpId, bootstrap would replay the rolled back
-  // writes back into them. With a higher OpId of another Raft group, e.g. the source of a clone
-  // or of an imported backup, it would skip this group's writes to them.
-  RETURN_NOT_OK(tablet().vector_indexes().ModifyFlushedFrontier(
-      frontier, rocksdb::FrontierModificationMode::kForce));
+  if (!FLAGS_TEST_skip_restore_flushed_op_id_stamps) {
+    // The restore replaced the vector index storages together with the regular DB. Force the
+    // restore op id on the vector indexes. With a lower snapshot time OpId, bootstrap would replay
+    // the rolled back writes back into them. With a higher OpId of another Raft group, e.g. the
+    // source of a clone or of an imported backup, it would skip this group's writes to them.
+    RETURN_NOT_OK(tablet().vector_indexes().ModifyFlushedFrontier(
+        frontier, rocksdb::FrontierModificationMode::kForce));
+
+    // Now the restore no longer needs to be replayed. The regular DB holds nothing unflushed yet,
+    // so its flushed frontier is the one patched above, short of the restore op id.
+    auto flushed_frontier = regular_db().GetFlushedFrontier();
+    SCHECK(flushed_frontier, IllegalState, "Restored regular DB has no flushed frontier");
+    down_cast<docdb::ConsensusFrontier&>(*flushed_frontier).set_op_id(frontier.op_id());
+    RETURN_NOT_OK(regular_db().ModifyFlushedFrontier(
+        std::move(flushed_frontier), rocksdb::FrontierModificationMode::kForce));
+  }
 
   LOG_WITH_PREFIX(INFO) << "Checkpoint restored from " << snapshot_dir;
   LOG_WITH_PREFIX(INFO) << "Re-enabling compactions";
