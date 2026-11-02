@@ -798,7 +798,7 @@ TEST_F(SnapshotTest, LocalFlushCapacityRejectsBeforeFollowerFlush) {
       ListTabletPeersForTableName(cluster_.get(), kTableName.table_name()));
   ASSERT_EQ(peers.size(), 6);
   const auto snapshot_tablet_id = peers.front()->tablet_id();
-  // Setup does not wait for every tablet of a multi-tablet table to elect a leader.
+  // Setup returns once each tablet has elected a leader, but that leader may not be ready yet.
   ASSERT_OK(WaitUntilTabletHasLeader(
       cluster_.get(), snapshot_tablet_id, CoarseMonoClock::Now() + 30s,
       RequireLeaderIsReady::kTrue));
