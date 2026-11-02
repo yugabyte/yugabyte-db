@@ -5201,15 +5201,13 @@ Result<std::string> Tablet::LookupTierDir(uint32_t path_id) const {
       InvalidArgument, "Tablet $0 has no directory pinned for path_id $1", tablet_id(), path_id);
 }
 
-std::vector<uint64_t> Tablet::CollectTierMigrationCandidates(const std::string& target_dir) const {
+std::vector<uint64_t> Tablet::CollectTierMigrationCandidates(uint32_t target_path_id) const {
   std::vector<uint64_t> candidates;
-  if (!regular_db_) {
-    return candidates;
-  }
-  for (const auto& file : regular_db_->GetLiveFilesMetaData()) {
-    if (file.db_path != target_dir) {
-      candidates.push_back(file.name_id);
-    }
+  if (regular_db_) {
+    // Not GetLiveFilesMetaData: the reconciler scans every targeted tablet each pass, converged
+    // ones included, and that builds a LiveFileMetaData per live SST under the DB mutex when only
+    // the file numbers are wanted.
+    regular_db_->GetLiveFileNumbersNotOnPath(target_path_id, &candidates);
   }
   return candidates;
 }
@@ -5282,7 +5280,7 @@ Result<TierReconcileResult> Tablet::RunTierMigrationPass(
     state_before = status.state;
   }
 
-  auto candidates = CollectTierMigrationCandidates(target_dir);
+  auto candidates = CollectTierMigrationCandidates(target_path_id);
   result.candidates = candidates.size();
   // Lets a test change the target between the scan and the verdict on it.
   DEBUG_ONLY_TEST_SYNC_POINT("Tablet::RunTierMigrationPass:AfterScan");

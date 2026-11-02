@@ -21,6 +21,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+#include <algorithm>
 #include <future>
 #include <limits>
 #include <mutex>
@@ -638,6 +639,60 @@ TEST_F(DBPathMoveCompactionTest, NoOpOutcomesArriveThroughCallback) {
   ASSERT_FALSE(db_->GetLiveFilesMetaData()[0].being_compacted);
   ASSERT_OK(MoveFileAndWait(file_number, kTargetPathId));
   ASSERT_EQ(target_path_, LiveFilePaths().begin()->second);
+}
+
+// GetLiveFileNumbersNotOnPath is what the tier migration reconciler scans with, so it has to name
+// exactly the files GetLiveFilesMetaData shows off the path, in every column family, and skip a
+// dropped column family the same way.
+TEST_F(DBPathMoveCompactionTest, LiveFileNumbersNotOnPath) {
+  // The accessor returns files in version order, which the test does not care about.
+  const auto not_on_path = [this](uint32_t path_id) {
+    std::vector<uint64_t> result;
+    db_->GetLiveFileNumbersNotOnPath(path_id, &result);
+    std::sort(result.begin(), result.end());
+    return result;
+  };
+  const auto sorted = [](std::vector<uint64_t> file_numbers) {
+    std::sort(file_numbers.begin(), file_numbers.end());
+    return file_numbers;
+  };
+
+  const uint64_t home_a = WriteFileWithKey("a", "v");
+  const uint64_t home_b = WriteFileWithKey("b", "v");
+  const uint64_t to_move = WriteFileWithKey("c", "v");
+  ASSERT_EQ(not_on_path(kTargetPathId), sorted({home_a, home_b, to_move}));
+  ASSERT_TRUE(not_on_path(kHomePathId).empty());
+
+  ASSERT_OK(MoveFileAndWait(to_move, kTargetPathId));
+  // The move writes its copy under a new file number; find it by where it sits.
+  uint64_t on_target = 0;
+  for (const auto& [file_number, path] : LiveFilePaths()) {
+    if (path == target_path_) {
+      ASSERT_EQ(on_target, 0u) << "more than one file on the target path";
+      on_target = file_number;
+    }
+  }
+  ASSERT_NE(on_target, 0u);
+  ASSERT_EQ(not_on_path(kTargetPathId), sorted({home_a, home_b}));
+  ASSERT_EQ(not_on_path(kHomePathId), std::vector<uint64_t>{on_target});
+
+  // A second column family's files count, until the family is dropped.
+  CreateColumnFamilies({"cf1"}, CurrentOptions());
+  ColumnFamilyHandle* cf1 = handles_.back();
+  ASSERT_OK(db_->Put(WriteOptions(), cf1, "d", "v"));
+  ASSERT_OK(db_->Flush(FlushOptions(), cf1));
+  uint64_t cf1_file = 0;
+  for (const auto& file : db_->GetLiveFilesMetaData()) {
+    if (file.column_family_name == "cf1") {
+      cf1_file = file.name_id;
+    }
+  }
+  ASSERT_NE(cf1_file, 0u);
+  ASSERT_EQ(not_on_path(kTargetPathId), sorted({home_a, home_b, cf1_file}));
+
+  ASSERT_OK(db_->DropColumnFamily(cf1));
+  ASSERT_EQ(not_on_path(kTargetPathId), sorted({home_a, home_b}));
+  ASSERT_EQ(not_on_path(kHomePathId), std::vector<uint64_t>{on_target});
 }
 
 #ifndef NDEBUG
