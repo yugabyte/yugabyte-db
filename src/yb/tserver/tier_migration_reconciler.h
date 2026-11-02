@@ -65,7 +65,8 @@ class TierMigrationReconciler {
   explicit TierMigrationReconciler(TSTabletManager* ts_tablet_manager);
   ~TierMigrationReconciler();
 
-  // Starts the periodic thread unless FLAGS_tier_migration_reconcile_interval_sec is 0.
+  // Starts the periodic thread unless tiered storage is disabled or
+  // FLAGS_tier_migration_reconcile_interval_sec is 0.
   Status Init();
   void Shutdown();
 

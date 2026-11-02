@@ -664,6 +664,7 @@ YbcStatus YBCPgDecodePKColumnsFromBasectid(
 YbcStatus YBCPgStartOperationsBuffering();
 YbcStatus YBCPgStopOperationsBuffering();
 void YBCPgResetOperationsBuffering();
+void YBCPgClearSessionState();
 YbcStatus YBCPgFlushBufferedOperations(const YbcFlushDebugContext *debug_context);
 YbcStatus YBCPgAdjustOperationsBuffering(int multiple);
 
@@ -1047,6 +1048,10 @@ YbcStatus YBCPgNewCreateReplicationSlot(const char *slot_name,
                                         YbcPgReplicationSlotSnapshotAction snapshot_action,
                                         YbcLsnType lsn_type,
                                         YbcOrderingMode ordering_mode,
+                                        const char *yb_publication_name,
+                                        const YbcPgOid *yb_publication_relfilenodes,
+                                        size_t yb_num_publication_tables,
+                                        bool yb_publication_all_tables,
                                         YbcPgStatement *handle);
 YbcStatus YBCPgExecCreateReplicationSlot(YbcPgStatement handle,
                                          uint64_t *consistent_snapshot_time);

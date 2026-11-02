@@ -37,14 +37,17 @@ export function usePersistStepFormValues<T extends FieldValues>(
 export function resetProviderDependentSettings({
   saveResilienceAndRegionsSettings,
   saveNodesAvailabilitySettings,
-  saveInstanceSettings
+  saveInstanceSettings,
+  clearProviderSlots
 }: Pick<
   CreateUniverseSavers,
   | 'saveResilienceAndRegionsSettings'
   | 'saveNodesAvailabilitySettings'
   | 'saveInstanceSettings'
+  | 'clearProviderSlots'
 >): void {
   saveResilienceAndRegionsSettings(initialCreateUniverseFormState.resilienceAndRegionsSettings!);
   saveNodesAvailabilitySettings(initialCreateUniverseFormState.nodesAvailabilitySettings!);
   saveInstanceSettings(initialCreateUniverseFormState.instanceSettings!);
+  clearProviderSlots();
 }

@@ -16,6 +16,8 @@ NODE_AGENT_REGISTRY_PATH=""
 
 # Yugabyte Anywhere SSL cert verification option.
 SKIP_VERIFY_CERT=""
+# Yugabyte Anywhere is FIPS enabled, so node agent runs in FIPS mode.
+FIPS_ENABLED="false"
 #Disable node to Yugabyte Anywhere connection.
 DISABLE_EGRESS="false"
 SILENT_INSTALL="false"
@@ -496,6 +498,8 @@ Options:
     DEPRECATED: Username of the installation. A sudo user can install service for a non-sudo user.
   --skip_verify_cert (OPTIONAL)
     Specify to skip Yugabyte Anywhere server cert verification during install.
+  --fips_enabled (REQUIRED if Yugabyte Anywhere is FIPS enabled)
+    Run node agent in FIPS mode.
   --certificate_name (OPTIONAL for install command)
     YBA certificate config name (label) to use for node-agent TLS.
   --airgap (OPTIONAL)
@@ -645,6 +649,9 @@ main() {
     setup_node_agent_dir
     extract_package
     setup_symlink
+    if [ "$FIPS_ENABLED" = "true" ]; then
+      NODE_AGENT_CONFIG_ARGS+=(--fips_enabled)
+    fi
     node-agent node configure ${NODE_AGENT_CONFIG_ARGS[@]}
     if [ $? -ne 0 ]; then
       echo "Node agent setup failed."
@@ -703,6 +710,9 @@ while [[ $# -gt 0 ]]; do
     ;;
     --skip_verify_cert)
       SKIP_VERIFY_CERT="true"
+    ;;
+    --fips_enabled)
+      FIPS_ENABLED="true"
     ;;
     --disable_egress)
       DISABLE_EGRESS="true"

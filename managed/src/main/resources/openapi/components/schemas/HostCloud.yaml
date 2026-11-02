@@ -1,0 +1,9 @@
+title: HostCloud
+description: Public cloud that YBA runs on.
+type: string
+enum:
+  - aws
+  - gcp
+  - azu
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview

@@ -68,6 +68,8 @@ class SnapshotCoordinatorContext {
       const std::unordered_map<std::string, SysRowEntryType>& objects,
       const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables) = 0;
 
+  virtual Status CheckNoYsqlDdlVerificationInProgress(const NamespaceId& namespace_id) const = 0;
+
   virtual void CleanupHiddenObjects(
       const ScheduleMinRestoreTime& schedule_min_restore_time, const LeaderEpoch& epoch) = 0;
 
@@ -75,7 +77,7 @@ class SnapshotCoordinatorContext {
 
   virtual Status Submit(std::unique_ptr<tablet::Operation> operation, int64_t leader_term) = 0;
 
-  virtual void PrepareRestore() = 0;
+  virtual void PrepareRestore(const TxnSnapshotRestorationId& restoration_id) = 0;
 
   virtual rpc::Scheduler& Scheduler() = 0;
 

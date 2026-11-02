@@ -64,6 +64,7 @@
 #include "yb/master/master_heartbeat.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog.h"
+#include "yb/master/sys_catalog_constants.h"
 #include "yb/master/ts_manager.h"
 
 #include "yb/rpc/connection_context.h"
@@ -79,6 +80,7 @@
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/tserver_admin.service.h"
+#include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
@@ -168,6 +170,31 @@ TEST_F(MasterTest, TestPingServer) {
   rpc::ProxyCache proxy_cache(client_messenger_.get());
   server::GenericServiceProxy generic_proxy(&proxy_cache, mini_master_->bound_rpc_addr());
   ASSERT_OK(generic_proxy.Ping(req, &resp, ResetAndGetController()));
+}
+
+// Masters do not take an active table list, and their scrapes are never filtered by one.
+TEST_F(MasterTest, ActiveTableMetricsNotSupported) {
+  rpc::ProxyCache proxy_cache(client_messenger_.get());
+  tserver::TabletServerServiceProxy proxy(&proxy_cache, mini_master_->bound_rpc_addr());
+  tserver::SetActiveTableIdsForMetricsRequestPB req;
+  tserver::SetActiveTableIdsForMetricsResponsePB resp;
+  req.add_table_ids(kSysCatalogTableId);
+  ASSERT_OK(proxy.SetActiveTableIdsForMetrics(req, &resp, ResetAndGetController()));
+  ASSERT_TRUE(resp.has_error());
+  ASSERT_TRUE(StatusFromPB(resp.error().status()).IsNotSupported())
+      << resp.error().DebugString();
+
+  // An opted-in scrape, with an always-export list that matches nothing, still exports the
+  // sys catalog table metrics.
+  EasyCurl curl;
+  faststring buffer;
+  ASSERT_OK(curl.FetchURL(
+      Format(
+          "http://$0/prometheus-metrics?show_help=false&version=v2&apply_table_IDs_filter=true"
+          "&table_always_allowlist=NONE",
+          yb::ToString(mini_master_->bound_http_addr())),
+      &buffer));
+  ASSERT_STR_CONTAINS(buffer.ToString(), Format(R"#(table_id="$0")#", kSysCatalogTableId));
 }
 
 // Test that shutting down a MiniMaster without starting it does not

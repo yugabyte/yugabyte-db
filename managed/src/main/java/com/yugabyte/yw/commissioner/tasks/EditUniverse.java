@@ -12,20 +12,17 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.CanRollback;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.utils.CapacityReservationUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
-import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Arrays;
@@ -36,7 +33,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -147,16 +143,13 @@ public class EditUniverse extends EditUniverseTaskBase {
         if (cluster.clusterType == ClusterType.PRIMARY && dedicatedNodesChanged.get()) {
           updateGFlagsForTservers(cluster, universe);
         }
-        Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(universe);
         editCluster(
             universe,
             clusters,
             cluster,
             getNodesInCluster(cluster.uuid, addedMasters),
             getNodesInCluster(cluster.uuid, removedMasters),
-            node ->
-                providerGetter.apply(node).getCloudCode()
-                    == CloudType.onprem /* force destroy servers */,
+            forceDestroyOnlyOnOnprem(universe),
             false /* moveMastersFirst */);
         // Updating placement info and userIntent in DB
         createUpdateUniverseIntentTask(cluster);

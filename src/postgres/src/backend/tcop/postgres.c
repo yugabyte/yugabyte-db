@@ -220,6 +220,15 @@ static bool yb_need_cache_refresh = false;
  */
 static bool yb_is_multi_statement_query = false;
 
+/*
+ * YB: template1's shared catalog version at which, and the time when, this auth
+ * passthrough control backend started its auth catalog table prefetcher.  The
+ * version is YB_CATCACHE_VERSION_UNINITIALIZED when the prefetcher is stopped.
+ * Only consulted while prefetching is started.
+ */
+static uint64_t yb_auth_cat_table_prefetch_shared_version = YB_CATCACHE_VERSION_UNINITIALIZED;
+static TimestampTz yb_auth_cat_table_prefetch_time = 0;
+
 static long YbNumCatalogCacheRefreshes = 0;
 static long YbNumCatalogCacheDeltaRefreshes = 0;
 
@@ -4750,12 +4759,17 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
  * up needing to do another cache refresh later.
  * See the comment for yb_catalog_cache_version in 'pg_yb_utils.h' for
  * more details.
+ *
+ * Must be called with prefetching stopped: otherwise the catalog reads issued
+ * here are answered from prefetched rows that can predate the version
+ * recorded.  See YBStopAuthPrefetcher().
  */
 static void
 YBRefreshCache()
 {
 	YbNumCatalogCacheRefreshes++;
 	Assert(OidIsValid(MyDatabaseId));
+	Assert(!YBCIsSysTablePrefetchingStarted());
 
 	/*
 	 * Check that we are not already inside a transaction or we might end up
@@ -4957,6 +4971,34 @@ YBRefreshCacheWrapper(uint64_t catalog_master_version, bool is_retry)
 	PG_END_TRY();
 }
 
+/*
+ * An auth passthrough control backend keeps its auth prefetcher started across
+ * authentications, which makes it the only backend that can reach a catalog
+ * cache refresh with prefetching started.  Every refresh path that can run
+ * there must call this first.
+ */
+static void
+YBStopAuthPrefetcher(void)
+{
+	if (!YBCIsSysTablePrefetchingStarted())
+		return;
+
+	Assert(YbIsAuthPassthroughControlBackend());
+	YBCStopSysTablePrefetching();
+	yb_auth_cat_table_prefetch_shared_version = YB_CATCACHE_VERSION_UNINITIALIZED;
+}
+
+/*
+ * For refreshes reachable while an auth passthrough control backend still has
+ * its auth prefetcher started.
+ */
+static void
+YBStopAuthPrefetcherAndRefreshCache(uint64_t catalog_master_version, bool is_retry)
+{
+	YBStopAuthPrefetcher();
+	YBRefreshCacheWrapper(catalog_master_version, is_retry);
+}
+
 static bool
 YBTableSchemaVersionMismatchError(ErrorData *edata, char **table_id)
 {
@@ -5114,7 +5156,8 @@ YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 
 		/* Refresh cache now so that the retry uses latest version. */
 		if (need_global_cache_refresh)
-			YBRefreshCacheWrapper(catalog_master_version, true /* is_retry */ );
+			YBStopAuthPrefetcherAndRefreshCache(catalog_master_version,
+												true /* is_retry */ );
 
 		*need_retry = true;
 	}
@@ -5324,13 +5367,16 @@ YBCheckSharedCatalogCacheVersion()
 						__func__, shared_catalog_version)));
 	}
 	if (need_global_cache_refresh)
-		YBRefreshCacheWrapper(YB_CATCACHE_VERSION_UNINITIALIZED,
-							  false /* is_retry */ );
+		YBStopAuthPrefetcherAndRefreshCache(YB_CATCACHE_VERSION_UNINITIALIZED,
+											false /* is_retry */ );
 	else
 	{
 		yb_pgstat_set_catalog_version(local_catalog_version);
 		if (yb_test_preload_catalog_tables)
+		{
+			YBStopAuthPrefetcher();
 			YBRefreshCache();
+		}
 	}
 }
 
@@ -6957,8 +7003,8 @@ PostgresMain(const char *dbname, const char *username)
 				long		stats_timeout;
 
 				if (yb_need_cache_refresh)
-					YBRefreshCacheWrapper(YB_CATCACHE_VERSION_UNINITIALIZED,
-										  true /* is_retry */ );
+					YBStopAuthPrefetcherAndRefreshCache(YB_CATCACHE_VERSION_UNINITIALIZED,
+														true /* is_retry */ );
 
 				/*
 				 * Process incoming notifies (including self-notifies), if
@@ -7859,8 +7905,63 @@ PostgresMain(const char *dbname, const char *username)
 					MyProcPort->yb_forwarded_cert_parse_failed = false;
 					MyProcPort->yb_logical_conn_server_cert_hash_len = 0;
 
-					if (!YBCIsSysTablePrefetchingStarted() &&
-						YbUseTserverResponseCacheForAuth(YbGetSharedCatalogVersion()))
+					uint64_t	shared_catalog_version;
+
+					HandleYBStatus(YBCGetSharedCatalogVersion(&shared_catalog_version));
+
+					/*
+					 * With yb_read_time set, YbRunWithPrefetcher would bypass
+					 * the response cache and read each table at yb_read_time,
+					 * so skip the prefetch and use the standard catalog
+					 * lookups, as when the response cache is not used for
+					 * auth.
+					 */
+					bool		use_response_cache =
+						yb_read_time == 0 &&
+						YbUseTserverResponseCacheForAuth(shared_catalog_version);
+
+					int			prefetch_lifetime_ms =
+						*YBCGetGFlags()->pg_cache_response_trust_auth_lifetime_limit_ms;
+					bool		prefetch_expired =
+						TimestampDifferenceExceeds(yb_auth_cat_table_prefetch_time,
+												   GetCurrentTimestamp(),
+												   prefetch_lifetime_ms);
+
+					/*
+					 * A previous auth on this control backend may have left
+					 * its prefetcher started.  Reuse its entries only while
+					 * template1's shared catalog version, which keys the
+					 * response cache entry they came from (see
+					 * YbRunWithPrefetcher), is unchanged, and for at most
+					 * pg_cache_response_trust_auth_lifetime_limit_ms, the
+					 * tserver's lifetime for that entry.  The top-of-loop
+					 * version check usually stops the prefetcher first, but
+					 * can miss a bump after a full refresh takes master's
+					 * version ahead of shared memory.  ALTER DATABASE (other
+					 * than RENAME and OWNER TO), and any shared catalog DDL
+					 * with ysql_disable_global_impact_ddl_statements, change
+					 * prefetched rows without bumping template1's version, so
+					 * such a change can take up to about twice the limit to be
+					 * seen: the entry may already be nearly the limit old when
+					 * prefetched, and is then reused for up to the limit.
+					 * Rows already in this backend's catalog caches stay until
+					 * its next cache refresh either way.
+					 *
+					 * YbRunWithPrefetcher reads the version again, so the
+					 * entries may be pinned to a newer version than the one
+					 * recorded below; the next auth then just prefetches
+					 * again.
+					 */
+					bool		reuse_prefetched_auth_catalog_tables =
+						use_response_cache &&
+						YBCIsSysTablePrefetchingStarted() &&
+						yb_auth_cat_table_prefetch_shared_version == shared_catalog_version &&
+						!prefetch_expired;
+
+					if (!reuse_prefetched_auth_catalog_tables)
+						YBStopAuthPrefetcher();
+
+					if (!YBCIsSysTablePrefetchingStarted() && use_response_cache)
 					{
 						/*
 						 * Use catalog table entries from the Tserver's response
@@ -7874,10 +7975,23 @@ PostgresMain(const char *dbname, const char *username)
 						 * from the Tserver's response cache when prefetching is
 						 * started.
 						 */
+						elog(LOG,
+							 "YB auth passthrough: prefetching catalogs at "
+							 "shared catalog version %" PRIu64,
+							 shared_catalog_version);
+						TimestampTz prefetch_time = GetCurrentTimestamp();
+
 						start_xact_command();
 						YbPrefetchRequiredData(false);
 						finish_xact_command();
+						yb_auth_cat_table_prefetch_shared_version = shared_catalog_version;
+						yb_auth_cat_table_prefetch_time = prefetch_time;
 					}
+					else if (reuse_prefetched_auth_catalog_tables)
+						elog(DEBUG1,
+							 "YB auth passthrough: reusing prefetched auth catalog "
+							 "tables at shared catalog version %" PRIu64,
+							 shared_catalog_version);
 
 					/* Store a copy of the old context */
 					char	   *db_name = MyProcPort->database_name;
@@ -8032,16 +8146,6 @@ PostgresMain(const char *dbname, const char *username)
 							  &(ip_address_1->sin_addr));
 
 					MyProcPort->authn_id = authn_id;
-
-
-					/*
-					 * Stop prefetching to allow invalidation messages to be processed.
-					 * Refer to `YBRefreshCacheUsingInvalMsgs` for more details.
-					 * If this is skipped, the local cache is never invalidated,
-					 * and the subsequent queries will use the stale cache.
-					 */
-					if (YBCIsSysTablePrefetchingStarted())
-						YBCStopSysTablePrefetching();
 
 					send_ready_for_query = true;
 				}

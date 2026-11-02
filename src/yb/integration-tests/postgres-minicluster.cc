@@ -48,6 +48,12 @@ Status PostgresMiniCluster::InitPostgres(size_t pg_ts_idx, uint16_t pg_port) {
   LOG(INFO) << "Starting PostgreSQL server listening on " << pg_process_conf.listen_addresses << ":"
             << pg_process_conf.pg_port << ", data: " << pg_process_conf.data_dir
             << ", pgsql webserver port: " << FLAGS_pgsql_proxy_webserver_port;
+  // Destroying the old supervisor deregisters its callbacks from the TServer, so it must go before
+  // the new one registers its own.
+  if (pg_supervisor_) {
+    pg_supervisor_->Stop();
+    pg_supervisor_.reset();
+  }
   pg_supervisor_ = std::make_unique<pgwrapper::PgSupervisor>(pg_process_conf, pg_ts->server());
   RETURN_NOT_OK(pg_supervisor_->StartAndMaybePause());
 

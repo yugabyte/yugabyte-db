@@ -28,6 +28,8 @@
 #include "yb/rocksdb/status_fwd.h"
 #include "yb/rocksdb/table_properties.h"
 
+#include "yb/storage/storage_fwd.h"
+
 #include "yb/util/enums.h"
 
 namespace rocksdb {
@@ -142,6 +144,9 @@ YB_DEFINE_ENUM(FlushReason,
 
   // Intents DB idle vs raft log apply (`FLAGS_num_raft_ops_to_force_idle_intents_db_to_flush`).
   (kIdleIntents)
+
+  // Flush of an idle DB, so that its writes no longer need to be recovered from a log.
+  (kIdle)
 
   // Memtable-driven flush (`FlushScheduler::ScheduleFlush` / memtable full).
   // `ScheduleFlushes` passes `kMemtableSizeLimit` through `SwitchMemtable`.
@@ -317,12 +322,13 @@ class EventListener {
  public:
 
   // A call-back function which will be called whenever a RocksDB
-  // memstore flush is scheduled.
+  // memstore flush is scheduled. largest_frontier is the largest frontier of the
+  // memtables waiting for flush, or null when they have none.
   //
   // Note that the this function must be implemented in a way such that
   // it should not run for an extended period of time before the function
   // returns.  Otherwise, RocksDB may be blocked.
-  virtual void OnFlushScheduled(DB* db) {}
+  virtual void OnFlushScheduled(DB* db, const yb::storage::UserFrontier* largest_frontier) {}
 
   // A call-back function to RocksDB which will be called whenever a
   // registered RocksDB flushes a file.  The default implementation is

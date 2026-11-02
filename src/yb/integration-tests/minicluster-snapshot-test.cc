@@ -2239,7 +2239,8 @@ TEST_F(SysCatalogRestoreWithWritePipeliningTest, YB_DEBUG_ONLY_TEST(DdlTransacti
   SleepFor(500ms);
 
   ASSERT_OK(source_conn_->Execute("BEGIN ISOLATION LEVEL READ COMMITTED"));
-  ASSERT_OK(source_conn_->Execute("CREATE TABLE table1 (i int)"));
+  // Not CREATE TABLE: an uncommitted table would be under DDL verification and block the restore.
+  ASSERT_OK(source_conn_->Execute("CREATE VIEW view1 AS SELECT 1"));
 
   auto restoration_id = ASSERT_RESULT(
       RestoreSnapshotSchedule(master_backup_proxy_.get(), schedule_id_, restore_ht, kTimeout));

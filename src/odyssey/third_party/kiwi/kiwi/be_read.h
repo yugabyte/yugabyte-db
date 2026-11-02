@@ -32,6 +32,13 @@ static inline void kiwi_be_startup_init(kiwi_be_startup_t *su)
 	kiwi_var_init(&su->replication, NULL, 0);
 }
 
+static inline void kiwi_be_startup_free(kiwi_be_startup_t *su)
+{
+	kiwi_var_free(&su->user);
+	kiwi_var_free(&su->database);
+	kiwi_var_free(&su->replication);
+}
+
 /*
  * YB: PG limits names to NAMEDATALEN size, which is set to 64 in code. Database
  * and user names longer than that are truncated to first 63 characters followed by

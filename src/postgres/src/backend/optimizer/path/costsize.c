@@ -107,7 +107,7 @@
 #include "catalog/pg_statistic_ext.h"
 #include "catalog/pg_type_d.h"
 #include "executor/ybExpr.h"
-#include "optimizer/prep.h"
+#include "optimizer/yb_merge_scan.h"
 #include "optimizer/ybplan.h"
 #include "pg_yb_utils.h"
 #include "utils/syscache.h"
@@ -179,6 +179,8 @@ double		yb_inter_zone_roundtrip_cost = YB_DEFAULT_INTER_ZONE_ROUNDTRIP_COST;
 double		yb_inter_zone_transfer_cost = YB_DEFAULT_INTER_ZONE_TRANSFER_COST;
 double		yb_local_roundtrip_cost = YB_DEFAULT_LOCAL_ROUNDTRIP_COST;
 double		yb_local_transfer_cost = YB_DEFAULT_LOCAL_TRANSFER_COST;
+double		yb_merge_scan_row_cost_factor = YB_DEFAULT_MERGE_SCAN_ROW_COST_FACTOR;
+double		yb_merge_scan_stream_cost_factor = YB_DEFAULT_MERGE_SCAN_STREAM_COST_FACTOR;
 
 
 double		recursive_worktable_factor = DEFAULT_RECURSIVE_WORKTABLE_FACTOR;
@@ -7173,7 +7175,8 @@ yb_expand_whole_row_attrs(Bitmapset *attrs, AttrNumber minattr, Oid relid)
  *
  * DocDB sends ybctid in the cases where no columns are being projected
  * from the table. This happens when there is no columns in the select list
- * and no local filters. In these cases, pathtarget->width is 0.
+ * and no local filters. Additionally, this also happens when the select
+ * list contains count(*). In these cases, pathtarget->width is 0.
  *
  * One exception to the above rule is when no columns are being projected
  * but filters are used in the query which are pushed down as index
@@ -7182,10 +7185,6 @@ yb_expand_whole_row_attrs(Bitmapset *attrs, AttrNumber minattr, Oid relid)
  *
  * When columns are being projected, either in select list or in local
  * filters then these columns are returned from DocDB.
- *
- * The one partial-aggregate row DocDB returns for a scan that feeds a
- * pushed-down Agg is sized by yb_agg_pushdown_result_width instead; this
- * function is not reached in that mode.
  */
 static int32
 yb_get_docdb_result_width(Path *path, PlannerInfo *root, bool is_index_path,
@@ -7247,6 +7246,19 @@ yb_get_docdb_result_width(Path *path, PlannerInfo *root, bool is_index_path,
 		/*
 		 * Collect the attributes used in each expression in the target
 		 * list.
+		 */
+
+		/*
+		 * TODO(#20955) : pathtarget->exprs may have aggregate functions
+		 * which are pushed down to DocDB. We cannot detect aggregate
+		 * pushdown during query planning at this time. So we haven't
+		 * modeled this properly here for now.
+		 *
+		 * We assume that agg functions cannot be pushed down, and all
+		 * columns used as input to these functions will need to be
+		 * transferred. This produces inaccurate results in some cases,
+		 * documented in the test TestPgEstimatedDocdbResultWidth.java in
+		 * method testDocdbResultWidthEstimationAggregateFunctions().
 		 */
 		foreach(lc, path->pathtarget->exprs)
 		{
@@ -7350,14 +7362,33 @@ yb_get_docdb_result_width(Path *path, PlannerInfo *root, bool is_index_path,
 	}
 
 	/*
-	 * result_width may be 0 in the following case,
+	 * result_width may be 0 in following cases,
 	 * * No columns are projected from the base table,
 	 *   - eg. SELECT 0 FROM test;
 	 *   - In this case, DocDB will return the ybctid for each row.
+	 * * Aggregate function such as count(*) is pushed down to DocDB.
+	 *   - In this case, DocDB will return the count of rows in INT type.
 	 */
 	if (result_width == 0)
 	{
-		if (is_index_path && list_length(index_conditions) == 0)
+		if (root->parse->hasAggs)
+		{
+			/*
+			 * For queries with count(*), the pathtarget->width is 0.
+			 * Additionally, count(*) gets pushed down to DocDB only if there
+			 * are no local filters. We try to handle that case here.
+			 *
+			 * We may false positively identify some cases where count(*)
+			 * cannot be pushed down to DocDB here and this should be improved
+			 * in TODO(#20955).
+			 *
+			 * When count(*) is pushed down, DocDB returns 9 bytes which
+			 * includes 1 byte for null indicator and 8 bytes for number of
+			 * rows.
+			 */
+			result_width = 9;
+		}
+		else if (is_index_path && list_length(index_conditions) == 0)
 		{
 			Assert(index_path != NULL);
 			result_width = yb_get_ybctid_width(baserel_oid,
@@ -7525,117 +7556,6 @@ yb_add_remote_filter_cost(PlannerInfo *root,
 }
 
 /*
- * Partial-aggregate rows DocDB returns from each read request of a scan that
- * feeds a pushed-down Agg: one per group, and only a plain Agg is pushed
- * down, so one.  A GROUP BY pushdown would replace this with the AggPath's
- * group estimate; the cost functions size the scan's rows and pages from it.
- */
-#define YB_AGG_PUSHDOWN_NUM_GROUPS 1.0
-
-/*
- * yb_agg_pushdown_result_width
- *	  Width of a partial-aggregate row, of which DocDB returns one per group
- *	  from each read request of a scan that feeds a pushed-down Agg.
- *
- * One column per pushed aggregate: a null indicator byte, the transition
- * type's average width (get_typavgwidth) and, for a variable-length type,
- * DocDB's 8-byte length prefix (as yb_get_docdb_result_width charges).
- * avg: only avg over int2 and int4 is pushed down, rewritten by the executor
- * as a sum and a count that DocDB returns as two plain int8 columns.
- * PostgreSQL declares its transition type as int8[], but DocDB returns two
- * int8 values, not an array, so that is what the width counts.
- */
-static int32
-yb_agg_pushdown_result_width(PlannerInfo *root)
-{
-	int32		width = 0;
-	ListCell   *lc;
-
-	foreach(lc, root->agginfos)
-	{
-		Aggref	   *aggref = ((AggInfo *) lfirst(lc))->representative_aggref;
-		Oid			transtype = aggref->aggtranstype;
-		int32		typmod = -1;
-
-		if (transtype == INT8ARRAYOID)	/* avg: its sum and count */
-		{
-			width += 2 * (1 + 8);
-			continue;
-		}
-
-		if (aggref->args != NIL)
-		{
-			TargetEntry *tle = linitial_node(TargetEntry, aggref->args);
-
-			typmod = exprTypmod((Node *) tle->expr);
-		}
-		width += 1 + get_typavgwidth(transtype, typmod);
-		if (get_typlen(transtype) < 0)
-			width += 8;
-	}
-	Assert(width > 0);
-
-	return width;
-}
-
-/*
- * yb_make_agg_pushdown_info
- *	  What a scan costed as the input of the Agg planned from 'root' takes
- *	  from that Agg; see YbAggPushdownInfo.
- *
- * The rows per request are YB_AGG_PUSHDOWN_NUM_GROUPS, which a GROUP BY
- * pushdown would carry here as the AggPath's group estimate.  AGGSPLIT_SIMPLE
- * prices the transition function even under a Partial Agg, since DocDB runs
- * the transition and only the combine happens in the Finalize Agg.
- */
-YbAggPushdownInfo *
-yb_make_agg_pushdown_info(PlannerInfo *root)
-{
-	YbAggPushdownInfo *info = palloc0(sizeof(YbAggPushdownInfo));
-
-	info->result_width = yb_agg_pushdown_result_width(root);
-	get_agg_clause_costs(root, AGGSPLIT_SIMPLE, &info->agg_costs);
-	return info;
-}
-
-/*
- * yb_agg_pushdown_result_pages
- *	  Responses the partial-aggregate rows of one read request take: one row
- *	  per group (YB_AGG_PUSHDOWN_NUM_GROUPS), paginated like any result rows.
- */
-static Cardinality
-yb_agg_pushdown_result_pages(int32 docdb_result_width)
-{
-	Cardinality	pages;
-
-	yb_get_pagination_metrics(YB_AGG_PUSHDOWN_NUM_GROUPS, docdb_result_width,
-							  &pages, NULL);
-	return pages;
-}
-
-/*
- * yb_add_agg_transition_cost
- *	  Charge the transition work of the pushed-down aggregates on the scan.
- *
- * DocDB applies the transition functions (aggtransfn) to every row that
- * passes the storage filters, so the work is DocDB work: the
- * row-proportional part is split by first_batch_frac like a storage filter.
- * The Agg above still charges its transition cost over the scan's rows
- * (cost_agg), but those are the collapsed one-row-per-request stream, a
- * negligible amount.
- */
-static void
-yb_add_agg_transition_cost(const AggClauseCosts *agg_costs,
-						   Cardinality num_tuples, double first_batch_frac,
-						   Cost *startup_cost, Cost *run_cost)
-{
-	*startup_cost += agg_costs->transCost.startup;
-	yb_charge_startup_cost_by_first_batch(agg_costs->transCost.per_tuple *
-										  num_tuples, first_batch_frac,
-										  startup_cost, run_cost);
-}
-
-/*
  * yb_cost_seqscan
  *		Determines and returns the cost of scanning a relation sequentially.
  *		This is simlar to cost_seqscan function but tailored for YB.
@@ -7643,16 +7563,9 @@ yb_add_agg_transition_cost(const AggClauseCosts *agg_costs,
  * 'baserel' is the relation to be scanned
  * 'param_info' is the ParamPathInfo if this is a parameterized path, else NULL
  *
- * With path->yb_agg_pushdown set, the scan is costed as the input of a
- * pushed-down Agg: DocDB returns one partial-aggregate row per group from
- * each read request (YB_AGG_PUSHDOWN_NUM_GROUPS), so the request count is 1
- * for a serial scan and the per-executor range count for a parallel one, the
- * scan's rows and transfer bytes are the groups times the requests, and the
- * aggregate transition work is charged here per matched row
- * (yb_add_agg_transition_cost).  Per-row DocDB work (block reads, storage
- * filters, one next per row) is the same as for an ordinary scan; the
- * per-page terms (a seek and a roundtrip per response, a next between
- * responses) follow the request count.
+ * TODO(#20955) : Aggregate pushdown to DocDB is not modeled. We should detect
+ * if aggregate functions are being pushed down, in which case we need not
+ * transfer rows from DocDB to pggate.
  */
 void
 yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
@@ -7677,7 +7590,6 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	List	   *local_clauses = NIL;
 	ListCell   *lc;
 	Cardinality	remote_filtered_rows;
-	Cardinality	docdb_result_rows;
 	Cardinality	num_result_pages;
 	Cardinality	num_nexts;
 	Cardinality	num_seeks;
@@ -7741,25 +7653,18 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 			local_clauses = lappend(local_clauses, ri);
 	}
 
-	/* A pushed-down Agg takes a scan without local quals. */
-	Assert(!path->yb_agg_pushdown || local_clauses == NIL);
-
 	remote_filtered_rows =
 		clamp_row_est(baserel->tuples *
 					  clauselist_selectivity(root, pushed_down_clauses,
 											 baserel->relid, JOIN_INNER, NULL));
 
-	if (path->yb_agg_pushdown)
-		docdb_result_width = path->yb_agg_pushdown->result_width;
-	else
-		docdb_result_width =
-			yb_get_docdb_result_width(path, root,
-									  false,	/* is_index_path */
-									  false,	/* is_primary_index */
-									  false,	/* is_index_only */
-									  NIL,	/* index_conditions */
-									  local_clauses,
-									  baserel, reloid);
+	docdb_result_width = yb_get_docdb_result_width(path, root,
+												   false,	/* is_index_path */
+												   false,	/* is_primary_index */
+												   false,	/* is_index_only */
+												   NIL, /* index_conditions */
+												   local_clauses,
+												   baserel, reloid);
 
 	yb_get_roundtrip_transfer_costs(tablespace_id,
 									&roundtrip_cost,
@@ -7783,28 +7688,9 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 
 		path->rows = clamp_row_est(path->rows / parallel_divisor);
 	}
-	else if (path->yb_agg_pushdown)
-		num_result_pages = 1.0;	/* one request */
 	else
 		yb_get_pagination_metrics(remote_filtered_rows, docdb_result_width,
 								  &num_result_pages, NULL);
-
-	/*
-	 * A pushed-down Agg receives one row per group from each request, and a
-	 * request's rows paginate like any result rows.  num_result_pages so far
-	 * is the request count: one, or the per-executor ranges.
-	 */
-	if (path->yb_agg_pushdown)
-	{
-		Cardinality	num_requests = num_result_pages;
-
-		docdb_result_rows = YB_AGG_PUSHDOWN_NUM_GROUPS * num_requests;
-		num_result_pages = num_requests *
-			yb_agg_pushdown_result_pages(docdb_result_width);
-		path->rows = clamp_row_est(docdb_result_rows);
-	}
-	else
-		docdb_result_rows = remote_filtered_rows;
 
 	num_seeks = num_result_pages;
 	num_nexts = (num_result_pages - 1) + (adjusted_baserel_tuples - 1);
@@ -7840,7 +7726,7 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	/* Network roundtrip cost is added to startup cost */
 	startup_cost += roundtrip_cost;
 	run_cost += (num_result_pages - 1) * roundtrip_cost;
-	yb_charge_startup_cost_by_first_batch(docdb_result_rows *
+	yb_charge_startup_cost_by_first_batch(remote_filtered_rows *
 										  docdb_result_width *
 										  transfer_cost / MEGA,
 										  first_batch_frac,
@@ -7849,11 +7735,6 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	yb_add_remote_filter_cost(root, pushed_down_clauses,
 							  adjusted_baserel_tuples, first_batch_frac,
 							  &startup_cost, &run_cost);
-
-	if (path->yb_agg_pushdown)
-		yb_add_agg_transition_cost(&path->yb_agg_pushdown->agg_costs,
-								   remote_filtered_rows, first_batch_frac,
-								   &startup_cost, &run_cost);
 
 	/* tlist eval costs are paid per output row, not per tuple scanned */
 	startup_cost += path->pathtarget->cost.startup;
@@ -8394,22 +8275,15 @@ yb_estimate_seeks_nexts_in_index_scan(PlannerInfo *root,
 	pfree(num_groups_of_index_key_prefixes);
 }
 
-/*
- * yb_get_non_pushable_attnums
- *	  The base-table attnums an Index Only Scan on 'index' decodes out of
- *	  ybidxbasectid rather than reads: the primary-key columns missing from
- *	  the index, which plancat.c appends as the last yb_num_decoded_pk_cols
- *	  entries of indexkeys.  DocDB can neither filter nor aggregate over them.
- */
-Bitmapset *
+static Bitmapset *
 yb_get_non_pushable_attnums(IndexOptInfo *index)
 {
 	Bitmapset  *non_pushable_attnums = NULL;
 	int			phys_natts = index->ncolumns - index->yb_num_decoded_pk_cols;
 
-	for (int i = phys_natts; i < index->ncolumns; i++)
-		non_pushable_attnums = bms_add_member(non_pushable_attnums,
-											  index->indexkeys[i]);
+		for (int i = phys_natts; i < index->ncolumns; i++)
+			non_pushable_attnums = bms_add_member(non_pushable_attnums,
+												  index->indexkeys[i]);
 	return non_pushable_attnums;
 }
 
@@ -8475,22 +8349,15 @@ yb_bitmap_index_selectivity(IndexPath *path,
  * yb_base_table_result_pages
  *	  Number of read responses (pages) the base-table fetch of a scan takes.
  *
- * Four sources, in priority order:
+ * Three sources:
  *   - precomputed_result_pages > 0: caller already sized the page count
  *     (e.g. colocated parallel, where DocDB bundles index+table into a
  *     single RPC per parallel index range).  Used as-is; the floor/cap
  *     blocks below still apply.
  *   - parallel without precomputed: byte-cap by the RPC layer's
  *     max-response size (parallel scans lift yb_fetch_*_limit; see
- *     yb_scan.c).  The per-executor range count reaches the result through
- *     the caller's floor or cap.
- *   - serial with agg_pushdown: one request; the ybctid-batch floors below
- *     raise it to one per batch.
- *   - serial otherwise: yb_get_pagination_metrics().
- *
- * For a pushed-down Agg the result is the request count: each request's
- * partial-aggregate rows take yb_agg_pushdown_result_pages responses, which
- * the caller applies.
+ *     yb_scan.c).
+ *   - serial without precomputed: yb_get_pagination_metrics().
  */
 static Cardinality
 yb_base_table_result_pages(Path *path,
@@ -8500,8 +8367,7 @@ yb_base_table_result_pages(Path *path,
 						   Cardinality precomputed_result_pages,
 						   Cardinality max_result_pages,
 						   Cardinality ybctid_batches_floor,
-						   bool fetch_via_ybctid_batches,
-						   bool agg_pushdown)
+						   bool fetch_via_ybctid_batches)
 {
 	Cardinality	result_pages;
 
@@ -8515,8 +8381,6 @@ yb_base_table_result_pages(Path *path,
 		if (result_pages < 1.0)
 			result_pages = 1.0;
 	}
-	else if (agg_pushdown)
-		result_pages = 1.0;		/* one request */
 	else
 	{
 		yb_get_pagination_metrics(result_tuples, docdb_result_width,
@@ -8554,12 +8418,10 @@ yb_base_table_result_pages(Path *path,
 
 /*
  * yb_add_base_table_fetch_cost
- *	  Cost of looking up `tuples` base-table rows and returning the
- *	  `result_tuples` in `result_pages` responses (yb_base_table_result_pages);
- *	  the row-proportional part is split by first_batch_frac
- *	  (yb_charge_startup_cost_by_first_batch).  result_tuples is the rows that
- *	  pass the storage filters, or one partial-aggregate row per response
- *	  when the scan feeds a pushed-down Agg.
+ *	  Cost of looking up `tuples` base-table rows and shipping the
+ *	  `result_tuples` that pass the storage filters in `result_pages`
+ *	  responses (yb_base_table_result_pages); the row-proportional part is
+ *	  split by first_batch_frac (yb_charge_startup_cost_by_first_batch).
  */
 static void
 yb_add_base_table_fetch_cost(Cardinality tuples,
@@ -9669,17 +9531,9 @@ yb_estimate_distinct_index_scan(PlannerInfo *root,
  *	   fetches corresponding base table rows.  The cost of base table access is
  *	   computed by `yb_cost_bitmap_table_scan`.
  *
- * With path->path.yb_agg_pushdown set, the scan is costed as the input of a
- * pushed-down Agg: each DocDB read request returns one partial-aggregate row
- * per group (YB_AGG_PUSHDOWN_NUM_GROUPS), so the result streams are not
- * paginated by width.  Serial: one request for a PK, index-only or colocated
- * scan, one table request per ybctid batch for a non-colocated secondary
- * index scan.  Parallel: the per-executor range count.  The scan's rows are
- * the groups times the requests, the transfer bytes those rows times the
- * aggregate row width, and the aggregate transition work is DocDB work
- * charged here per matched row (yb_add_agg_transition_cost).  The ybctid
- * stream (c) and the bitmap (bmscan_*) values are the same as for an
- * ordinary scan.
+ * TODO(#20955) : Aggregate pushdown to DocDB is not modeled. We should detect
+ * if aggregate functions are being pushed down, in which case we need not
+ * transfer rows from DocDB to pggate.
  *
  * This scan is costed as if it pulls all of its rows, even when it is the
  * inner of a Batched Nested Loop whose LIMIT-driven first-batch optimization
@@ -9775,8 +9629,6 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	Cardinality	distinct_result_groups = 0;
 	Cardinality	distinct_rows_examined = 0;
 	double		distinct_seek_forward_frac = 0.0;
-	bool		agg_pushdown = (path->path.yb_agg_pushdown != NULL);
-	Cardinality	agg_pushdown_rows = 0;	/* rows the pushed-down Agg gets */
 
 	/* Should only be applied to base relations */
 	Assert(IsA(baserel, RelOptInfo) && IsA(index, IndexOptInfo));
@@ -9881,15 +9733,6 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 								non_pushable_attnums);
 
 	bms_free(non_pushable_attnums);
-
-	/*
-	 * A pushed-down Agg takes a scan without local quals: the eligibility
-	 * check follows create_indexscan_plan, which drops the quals the index
-	 * conditions imply.  extract_nonindex_conditions skips that proof, so any
-	 * qual left in local_clauses here is one the scan does not evaluate.
-	 */
-	if (agg_pushdown)
-		local_clauses = NIL;
 
 	/*
 	 * Sort the index conditions into `index_conditions_on_each_column`.
@@ -10300,9 +10143,6 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	first_fetch_limit = yb_first_fetch_limit(root, &path->path,
 											 local_clauses != NIL);
 
-	/* A LIMIT never trims an aggregate's input (yb_first_fetch_limit). */
-	Assert(!agg_pushdown || first_fetch_limit == 0);
-
 	index_tuple_width = yb_get_index_tuple_width(index, baserel_oid,
 												 is_primary_index);
 
@@ -10345,17 +10185,13 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	ybctid_width = yb_get_ybctid_width(baserel_oid, index, is_primary_index);
 	path->ybctid_width = ybctid_width;
 
-	if (agg_pushdown)
-		docdb_result_width = path->path.yb_agg_pushdown->result_width;
-	else
-		docdb_result_width =
-			yb_get_docdb_result_width(&path->path, root,
-									  true,	/* is_index_path */
-									  is_primary_index,
-									  index_only,
-									  index_conditions,
-									  local_clauses,
-									  baserel, baserel_oid);
+	docdb_result_width = yb_get_docdb_result_width(&path->path, root,
+												   true,	/* is_index_path */
+												   is_primary_index,
+												   index_only,
+												   index_conditions,
+												   local_clauses,
+												   baserel, baserel_oid);
 
 	/*
 	 * Effective per-row width of an on-disk secondary index entry: the
@@ -10429,28 +10265,14 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 											disk_index_tuple_width,
 											num_executors,
 											saop_pages_per_worker);
-		else if (agg_pushdown)
-			index_result_num_pages = 1.0;	/* one request */
 		else
 			yb_get_pagination_metrics(num_index_tuples_matched,
 									  docdb_result_width,
 									  &index_result_num_pages, NULL);
 
-		/* One row per group from each request; see yb_cost_seqscan. */
-		if (agg_pushdown)
-		{
-			Cardinality	num_requests = index_result_num_pages;
-
-			agg_pushdown_rows = YB_AGG_PUSHDOWN_NUM_GROUPS *
-				num_requests;
-			index_result_num_pages = num_requests *
-				yb_agg_pushdown_result_pages(docdb_result_width);
-		}
-
 		index_result_transfer_cost =
 			yb_data_transfer_cost(index_result_num_pages,
-								  (agg_pushdown ? agg_pushdown_rows :
-								   num_index_tuples_matched) *
+								  num_index_tuples_matched *
 								  docdb_result_width,
 								  index_roundtrip_cost,
 								  index_transfer_cost);
@@ -10468,7 +10290,6 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	{
 		Cardinality	precomputed_result_pages = 0;
 		Cardinality	max_baserel_result_pages = 0;
-		bool		fetch_via_ybctid_batches = !baserel_is_colocated;
 
 		if (path->path.parallel_workers > 0)
 		{
@@ -10500,26 +10321,8 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 									   max_baserel_result_pages,
 									   baserel_is_colocated
 									   ? 0 : ybctid_num_pages, /* ybctid_batches_floor */
-									   fetch_via_ybctid_batches,
-									   agg_pushdown);
-
-		/*
-		 * One row per group from each request, the ybctid batch count
-		 * yb_base_table_result_pages returned; see yb_cost_seqscan.
-		 */
-		if (agg_pushdown)
-		{
-			Cardinality	num_requests = num_baserel_result_pages;
-
-			agg_pushdown_rows = YB_AGG_PUSHDOWN_NUM_GROUPS *
-				num_requests;
-			num_baserel_result_pages = num_requests *
-				yb_agg_pushdown_result_pages(docdb_result_width);
-		}
+									   !baserel_is_colocated); /* fetch_via_ybctid_batches */
 	}
-
-	if (agg_pushdown)
-		path->path.rows = clamp_row_est(agg_pushdown_rows);
 
 	/*
 	 * First response sizing per result stream (see yb_first_fetch_limit for
@@ -10758,13 +10561,11 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	{
 		Relation	base_rel = RelationIdGetRelation(baserel_oid);
 		Oid			baserel_tablespace_id = base_rel->rd_rel->reltablespace;
-		Cardinality	docdb_result_rows = (agg_pushdown ? agg_pushdown_rows :
-										 num_baserel_result_rows);
 
 		RelationClose(base_rel);
 
 		yb_add_base_table_fetch_cost(num_index_tuples_matched,
-									 docdb_result_rows,
+									 num_baserel_result_rows,
 									 docdb_result_width,
 									 num_baserel_result_pages,
 									 baserel_per_seek_cost, per_next_cost,
@@ -10785,18 +10586,6 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 									  &startup_cost, &run_cost);
 		}
 	}
-
-	/*
-	 * DocDB evaluates the pushed-down aggregate transitions on every row that
-	 * passes the storage filters; the Agg above only combines one row per
-	 * response (path->path.rows).  Charged after the bmscan_* snapshot, since
-	 * a Bitmap Index Scan returns ybctids, not an aggregate row.
-	 */
-	if (agg_pushdown)
-		yb_add_agg_transition_cost(&path->path.yb_agg_pushdown->agg_costs,
-								   num_baserel_result_rows,
-								   table_first_batch_frac,
-								   &startup_cost, &run_cost);
 
 	path->yb_plan_info.estimated_ybctid_width = ybctid_width;
 	path->yb_plan_info.estimated_docdb_result_width = docdb_result_width;
@@ -10824,17 +10613,48 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	if (!enable_indexscan)
 		startup_cost += disable_cost;
 
-	/* TODO(#29078): cost this better. */
 	if (path->yb_index_path_info.merge_scan_stream_cols)
 	{
 		/*
-		 * We need merge index scans to cost higher than plain index scans to
-		 * avoid doing merge scan where it doesn't give any gains for upper
-		 * nodes.  Make them cost twice of STD_FUZZ_FACTOR higher, where
-		 * STD_FUZZ_FACTOR = 1.01.
+		 * The merge's own work: per row passed up, a constant overhead plus
+		 * one heap step to pick the next row from the streams, about
+		 * log2(streams) comparisons, on top of the index scan's cost.  A
+		 * merge scan must never beat the same index scan without the merge:
+		 * it wins a slot only where an upper node uses its order.  The floor
+		 * keeps it at least 2 % above that scan where the term is smaller,
+		 * outside add_path's fuzz, so the plain path survives and stays the
+		 * cheapest.  Part of the floor goes on startup_cost: a join or Limit
+		 * over the two scans can be within the fuzz on total cost, and
+		 * add_path then falls back to startup_cost before pathkeys.
 		 */
-		startup_cost *= 1.02;
-		run_cost *= 1.02;
+		int			num_streams =
+			yb_merge_scan_num_streams(path->yb_index_path_info.merge_scan_stream_cols);
+		Cardinality merge_rows;
+		Cost		merge_cost;
+		Cost		plain_startup_cost = startup_cost;
+		Cost		plain_total_cost = startup_cost + run_cost;
+
+		/*
+		 * A secondary index with its own read request merges the index
+		 * streams and then fetches base rows by ybctid in merged order, so
+		 * every matched index tuple goes through the heap before the
+		 * base-table filters apply.  A primary key, an index-only scan or an
+		 * embedded secondary index merges the base-table result instead.  As
+		 * elsewhere in this function, a colocated base relation stands in for
+		 * the embedded case.
+		 *
+		 * The planned stream count can be 0 or 1 (an empty or single-element
+		 * IN list, see #36359), and the heap still runs once per row, so
+		 * charge at least one comparison.
+		 */
+		merge_rows = (is_primary_index || index_only || baserel_is_colocated) ?
+			num_baserel_result_rows : num_index_tuples_matched;
+		merge_cost = cpu_operator_cost * merge_rows *
+			(yb_merge_scan_row_cost_factor +
+			 yb_merge_scan_stream_cost_factor * log2(Max(num_streams, 2)));
+		startup_cost = plain_startup_cost * 1.02;
+		run_cost += Max(merge_cost, 0.02 * plain_total_cost) -
+			0.02 * plain_startup_cost;
 	}
 
 	/*
@@ -10971,10 +10791,6 @@ yb_get_bitmap_index_quals(PlannerInfo *root, Path *bitmapqual,
  * 'loop_count' is the number of repetitions of the indexscan to factor into
  *		estimates of caching behavior
  *
- * With path->yb_agg_pushdown set, the table fetch returns one
- * partial-aggregate row per group from each ybctid batch (see yb_cost_seqscan
- * for the mode); the index phase is the same as for an ordinary scan.
- *
  * Note: the component IndexPaths in bitmapqual should have been costed
  * using the same loop_count.
  */
@@ -11005,7 +10821,6 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	Cardinality	tuples_fetched;
 	Cardinality	pages_fetched;
 	Cardinality	result_tuples;
-	Cardinality	docdb_result_rows;
 	QualCost	qual_cost;
 	List	   *indexquals;
 	ListCell   *l;
@@ -11100,9 +10915,6 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 								baserel_oid,
 								NULL);
 
-	/* A pushed-down Agg takes a scan without local quals. */
-	Assert(!path->yb_agg_pushdown || local_clauses == NIL);
-
 	tuples_fetched = clamp_row_est(adjusted_baserel_tuples *
 								   clauselist_selectivity(root, indexquals,
 														  baserel->relid,
@@ -11135,17 +10947,13 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	per_next_cost = ((yb_docdb_next_cpu_cycles * cpu_operator_cost) +
 					 per_merge_cost);
 
-	if (path->yb_agg_pushdown)
-		docdb_result_width = path->yb_agg_pushdown->result_width;
-	else
-		docdb_result_width =
-			yb_get_docdb_result_width(path, root,
-									  false,	/* is_index_path */
-									  false,	/* is_primary_index */
-									  false,	/* is_index_only */
-									  NIL,	/* index_conditions */
-									  local_clauses,
-									  baserel, baserel_oid);
+	docdb_result_width = yb_get_docdb_result_width(path, root,
+												   false,	/* is_index_path */
+												   false,	/* is_primary_index */
+												   false,	/* is_index_only */
+												   NIL, /* index_conditions */
+												   local_clauses,
+												   baserel, baserel_oid);
 
 	Cardinality	num_seeks = 0;
 	Cardinality	num_nexts = 0;
@@ -11157,25 +10965,7 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 								   0,	/* precomputed_result_pages */
 								   0,	/* max_result_pages */
 								   0.0,	/* ybctid_batches_floor */
-								   true,	/* fetch_via_ybctid_batches */
-								   path->yb_agg_pushdown);
-
-	/*
-	 * A pushed-down Agg receives one row per group from each request, the
-	 * ybctid batch count yb_base_table_result_pages returned; see
-	 * yb_cost_seqscan.
-	 */
-	if (path->yb_agg_pushdown)
-	{
-		Cardinality	num_requests = result_pages;
-
-		docdb_result_rows = YB_AGG_PUSHDOWN_NUM_GROUPS * num_requests;
-		result_pages = num_requests *
-			yb_agg_pushdown_result_pages(docdb_result_width);
-		path->rows = clamp_row_est(docdb_result_rows);
-	}
-	else
-		docdb_result_rows = result_tuples;
+								   true);	/* fetch_via_ybctid_batches */
 
 	/*
 	 * Charge the first response batch of the ybctid-driven table fetch to
@@ -11196,7 +10986,7 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 										  &startup_cost, &run_cost);
 
 	yb_add_base_table_fetch_cost(tuples_fetched,
-								 docdb_result_rows,
+								 result_tuples,
 								 docdb_result_width,
 								 result_pages,
 								 per_seek_cost,
@@ -11211,11 +11001,6 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	yb_add_remote_filter_cost(root, remote_table_quals,
 							  tuples_fetched, first_batch_frac,
 							  &startup_cost, &run_cost);
-
-	if (path->yb_agg_pushdown)
-		yb_add_agg_transition_cost(&path->yb_agg_pushdown->agg_costs,
-								   result_tuples, first_batch_frac,
-								   &startup_cost, &run_cost);
 
 	path->yb_plan_info.estimated_docdb_result_width = docdb_result_width;
 	path->yb_plan_info.estimated_num_seeks = num_seeks;
@@ -11277,27 +11062,20 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
  * We require only that the OUTER is sorted on a join key: take the leading
  * outer pathkey and find a mergejoinable join clause whose equivalence class
  * matches it (no inner pathkey is needed).  Both sides' statistics are used,
- * in different roles: the INNER histogram supplies a single boundary value --
- * its lowest join key (highest for a DESC outer) -- and the OUTER's own
- * statistics estimate the fraction of outer rows that sort before that
- * boundary.  This is the outer half of what initial_cost_mergejoin derives.
- *
- * We make that fraction FILTER-AWARE
- * (yb_bnl_outer_skip_selectivity): the full-column fraction ignores the outer
- * scan's own restriction, so multiplying it by the already restricted
- * outer_path_rows over-counts the skip whenever the outer is itself bounded
- * to start at/above the inner's matching range (e.g. "outer.k >= c" with
+ * in different roles: the INNER supplies a single boundary value, its first
+ * join key in the outer's sort order, and the OUTER's own statistics estimate
+ * the fraction of outer rows that sort before that boundary.  This is the
+ * outer half of what initial_cost_mergejoin derives, and
+ * yb_bnl_outer_skip_selectivity seeds it as mergejoinscansel does and adjusts
+ * it with yb_adjust_scansel_for_restrictions: the outer's own range bounds
+ * remove leading mismatches the full column counts (e.g. "outer.k >= c" with
  * c >= min(inner.k) has NO leading mismatch, yet the full-column fraction is
- * large).  Conditioning the fraction on the outer relation's baserestrictinfo
- * collapses it to ~0 there while preserving a genuine low-key prefix.  Merge
- * join conditions its start fraction on the join key's own range bounds
- * instead, which also reach a join-relation outer, whose restriction list
- * here is empty, and it tightens the fraction by the inner's range bounds,
- * which do not move this skip.
+ * large), and the inner's bound on the side where its keys start moves its
+ * first key, since the inner's restrictions apply on every probe.
  *
  * Returns 0 (the conservative fallback merge join also uses) when the outer is
  * unsorted, no mergejoinable join clause matches the leading pathkey, or the
- * stats/bounds needed for a filter-aware estimate are unavailable.
+ * statistics the estimate needs are unavailable.
  */
 static double
 yb_bnl_outer_skip_rows(PlannerInfo *root, Path *outer_path,
@@ -11345,8 +11123,7 @@ yb_bnl_outer_skip_rows(PlannerInfo *root, Path *outer_path,
 			yb_bnl_outer_skip_selectivity(root, (Node *) rinfo->clause,
 										  opathkey->pk_opfamily,
 										  opathkey->pk_strategy,
-										  outer_path->parent->relids,
-										  outer_path->parent->baserestrictinfo);
+										  outer_path->parent->relids);
 		if (outerstartsel < 0.0)
 			return 0.0;
 

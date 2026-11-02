@@ -913,7 +913,8 @@ Status PgApiImpl::InsertSequenceTuple(
     int64_t db_oid, int64_t seq_oid, uint64_t ysql_catalog_version,
     int64_t last_val, bool is_called) {
   return pg_client_.InsertSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, last_val, is_called);
+      db_oid, seq_oid, ysql_catalog_version,
+      pg_txn_manager_->IsTableLockingEnabledForCurrentTxn(), last_val, is_called);
 }
 
 Status PgApiImpl::UpdateSequenceTupleConditionally(
@@ -921,7 +922,8 @@ Status PgApiImpl::UpdateSequenceTupleConditionally(
     int64_t last_val, bool is_called, int64_t expected_last_val, bool expected_is_called,
     bool *skipped) {
   *skipped = VERIFY_RESULT(pg_client_.UpdateSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, last_val, is_called,
+      db_oid, seq_oid, ysql_catalog_version,
+      pg_txn_manager_->IsTableLockingEnabledForCurrentTxn(), last_val, is_called,
       expected_last_val, expected_is_called));
   return Status::OK();
 }
@@ -930,7 +932,8 @@ Status PgApiImpl::UpdateSequenceTuple(
     int64_t db_oid, int64_t seq_oid, uint64_t ysql_catalog_version,
     int64_t last_val, bool is_called, bool* skipped) {
   auto result = VERIFY_RESULT(pg_client_.UpdateSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, last_val,
+      db_oid, seq_oid, ysql_catalog_version,
+      pg_txn_manager_->IsTableLockingEnabledForCurrentTxn(), last_val,
       is_called, std::nullopt, std::nullopt));
   if (skipped) {
     *skipped = result;
@@ -943,7 +946,8 @@ Status PgApiImpl::FetchSequenceTuple(
     uint32_t fetch_count, int64_t inc_by, int64_t min_value, int64_t max_value, bool cycle,
     int64_t *first_value, int64_t *last_value) {
   auto res = VERIFY_RESULT(pg_client_.FetchSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, fetch_count, inc_by,
+      db_oid, seq_oid, ysql_catalog_version,
+      pg_txn_manager_->IsTableLockingEnabledForCurrentTxn(), fetch_count, inc_by,
       min_value, max_value, cycle));
   *first_value = res.first;
   *last_value = res.second;
@@ -958,7 +962,7 @@ Status PgApiImpl::ReadSequenceTuple(
   const auto actual_yb_read_time = yb_read_time ? std::optional(yb_read_time) : std::nullopt;
   const auto res = VERIFY_RESULT(pg_client_.ReadSequenceTuple(
       db_oid, seq_oid, actual_ysql_catalog_version,
-      actual_yb_read_time));
+      pg_txn_manager_->IsTableLockingEnabledForCurrentTxn(), actual_yb_read_time));
   if (last_val) {
     *last_val = res.first;
   }
@@ -2618,11 +2622,14 @@ void PgApiImpl::RestoreSessionState(const YbcPgSessionState& session_data) {
 Status PgApiImpl::NewCreateReplicationSlot(
     const char* slot_name, const char* plugin_name, PgOid database_oid,
     YbcPgReplicationSlotSnapshotAction snapshot_action, YbcLsnType lsn_type,
-    YbcOrderingMode ordering_mode, PgStatement** handle) {
+    YbcOrderingMode ordering_mode, const char* yb_publication_name,
+    const PgOid* yb_publication_relfilenodes, size_t yb_num_publication_tables,
+    bool yb_publication_all_tables, PgStatement** handle) {
   return AddToCurrentPgMemctx(
       std::make_unique<PgCreateReplicationSlot>(
           pg_session_, slot_name, plugin_name, database_oid, snapshot_action, lsn_type,
-          ordering_mode),
+          ordering_mode, yb_publication_name, yb_publication_relfilenodes,
+          yb_num_publication_tables, yb_publication_all_tables),
       handle);
 }
 

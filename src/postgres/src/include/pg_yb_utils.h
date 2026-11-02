@@ -703,6 +703,12 @@ extern bool yb_enable_fkey_batched_docdb_lookup_when_types_mismatch;
 extern bool yb_enable_nop_alter_role_optimization;
 
 /*
+ * Skip rebuild of expression and partial indexes during ALTER COLUMN ... TYPE
+ * when the table is not rewritten.
+ */
+extern bool yb_alter_type_reuse_expr_and_partial_indexes;
+
+/*
  * Compatibility option to ignore FREEZE with COPY FROM.
  */
 extern bool yb_ignore_freeze_with_copy;
@@ -1423,6 +1429,9 @@ void		YbUpdateSessionStats(YbInstrumentation *yb_instr);
 
 extern bool check_yb_read_time(char **newval, void **extra, GucSource source);
 extern void assign_yb_read_time(const char *newval, void *extra);
+extern bool check_yb_read_time_skip_catalog(bool *newval, void **extra,
+											GucSource source);
+extern void assign_yb_read_time_skip_catalog(bool newval, void *extra);
 
 extern uint64_t yb_origination_time;
 extern void YbRefreshOriginationTime(void);

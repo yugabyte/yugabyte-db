@@ -23,6 +23,7 @@
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
 #include "yb/util/status_format.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/two_group_mutex.h"
 
 #include "yb/vector_index/coordinate_types.h"
@@ -217,6 +218,8 @@ class IndexWrapperWithExternalPayload : public IndexWrapperBase<Impl, Vector, Di
   Status Reserve(
       size_t num_vectors, size_t max_concurrent_inserts, size_t max_concurrent_reads,
       rocksdb::Cache::ReservationMode reservation_mode) override {
+    TEST_SYNC_POINT_CALLBACK("VectorIndex::Reserve:NumVectors", &num_vectors);
+
     RETURN_NOT_OK(this->impl().DoReserve(
         num_vectors, max_concurrent_inserts, max_concurrent_reads, reservation_mode));
     if (payloads_) {

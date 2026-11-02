@@ -444,6 +444,16 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Disable Slow queries command logging in the Yugabyte Anywhere Logs",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> paActiveTableMetricsEnabled =
+      new ConfKeyInfo<>(
+          "yb.pa.active_table_metrics.enabled",
+          ScopeType.UNIVERSE,
+          "Perf Advisor Collector active table metrics",
+          "Have Perf Advisor Collector push the universe's most active and largest tables to its"
+              + " TServers, so Prometheus scrapes that opt into filtering keep table-level metrics"
+              + " only for those tables",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> perfAdvisorEnabled =
       new ConfKeyInfo<>(
           "yb.perf_advisor.enabled",
@@ -623,7 +633,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           ScopeType.UNIVERSE,
           "Skip TLS Cert Validation",
           "Used to skip certificates validation for the configure phase."
-              + "Possible values - ALL, HOSTNAME, NONE",
+              + "Possible values - ALL, HOSTNAME, REQUIRE_SAN, NONE",
           ConfDataType.SkipCertValdationEnum,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> deleteOrphanSnapshotOnStartup =
@@ -2053,5 +2063,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Node Agent Server Wait Timeout",
           "Timeout for waiting for node agent server to be ready",
           ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> k8sNodeExporterEnabled =
+      new ConfKeyInfo<>(
+          "yb.kubernetes.node_exporter.enabled",
+          ScopeType.UNIVERSE,
+          "Enable the node_exporter sidecar on Kubernetes universes",
+          "Run a node_exporter sidecar in every Kubernetes pod for disk and network metrics."
+              + " Pods change at their next Helm operation, for example a Kubernetes overrides"
+              + " edit",
+          ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

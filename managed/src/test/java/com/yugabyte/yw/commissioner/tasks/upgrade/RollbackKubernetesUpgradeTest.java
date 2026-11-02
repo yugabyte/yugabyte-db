@@ -89,6 +89,72 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
   }
 
   @Test
+  public void testRollbackAbortedBeforeReadyFailsRollbackAndRetryCompletes() throws Exception {
+    // Rollback saves the old version before the Ready state, so an abort between the two leaves
+    // RollingBack, which the failure handler turns into RollbackFailed.
+    setupUniverseSingleAZ(false, true);
+    UniverseDefinitionTaskParams.PrevYBSoftwareConfig ybSoftwareConfig =
+        new UniverseDefinitionTaskParams.PrevYBSoftwareConfig();
+    ybSoftwareConfig.setAutoFlagConfigVersion(1);
+    ybSoftwareConfig.setSoftwareVersion(YB_SOFTWARE_VERSION_OLD);
+    ybSoftwareConfig.setTargetUpgradeSoftwareVersion(YB_SOFTWARE_VERSION_NEW);
+    TestHelper.updateUniversePrevSoftwareConfig(defaultUniverse, ybSoftwareConfig);
+    TestHelper.updateUniverseIsRollbackAllowed(defaultUniverse, true);
+    TestHelper.updateUniverseVersion(defaultUniverse, YB_SOFTWARE_VERSION_NEW);
+    TestHelper.updateUniverseSoftwareUpgradeState(
+        defaultUniverse, SoftwareUpgradeState.PreFinalize);
+    RollbackUpgradeParams taskParams = new RollbackUpgradeParams();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.nodePrefix = NODE_PREFIX;
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.sleepAfterMasterRestartMillis = 0;
+    taskParams.sleepAfterTServerRestartMillis = 0;
+
+    UUID taskUuid;
+    TaskInfo taskInfo;
+    try {
+      setPausePosition(0);
+      taskUuid = commissioner.submit(TaskType.RollbackKubernetesUpgrade, taskParams);
+      CustomerTask.create(
+          defaultCustomer,
+          taskParams.getUniverseUUID(),
+          taskUuid,
+          CustomerTask.TargetType.Universe,
+          CustomerTask.TaskType.RollbackUpgrade,
+          defaultUniverse.getName());
+      waitForTaskPaused(taskUuid);
+      // The rollback subtasks are created only after the freeze runs.
+      setPausePosition(firstSubTaskPosition(taskUuid, TaskType.FreezeUniverse) + 1);
+      commissioner.resumeTask(taskUuid);
+      waitForTaskPaused(taskUuid);
+      setAbortPosition(lastSubTaskPosition(taskUuid, TaskType.UpdateUniverseState));
+      commissioner.resumeTask(taskUuid);
+      taskInfo = waitForTask(taskUuid);
+    } finally {
+      clearAbortOrPausePositions();
+    }
+
+    assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertEquals(
+        SoftwareUpgradeState.RollbackFailed,
+        defaultUniverse.getUniverseDetails().softwareUpgradeState);
+    assertEquals(
+        YB_SOFTWARE_VERSION_OLD,
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
+
+    CustomerTask retry = customerTaskManager.retryCustomerTask(defaultCustomer.getUuid(), taskUuid);
+    taskInfo = waitForTask(retry.getTaskUUID());
+
+    assertEquals(Success, taskInfo.getTaskState());
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertEquals(
+        SoftwareUpgradeState.Ready, defaultUniverse.getUniverseDetails().softwareUpgradeState);
+    assertFalse(defaultUniverse.getUniverseDetails().isSoftwareRollbackAllowed);
+  }
+
+  @Test
   public void testRollbackUpgradeSingleAZ() {
     setupUniverseSingleAZ(false, true);
     UniverseDefinitionTaskParams.PrevYBSoftwareConfig ybSoftwareConfig =

@@ -81,6 +81,12 @@ message CDCStreamInfoPB {
 
   // See SysCDCStreamEntryPB.xcluster_is_wal_anchor.
   optional bool xcluster_is_wal_anchor = 19 [default = false];
+
+  // See SysCDCStreamEntryPB.cdcsdk_ysql_publications_bound_stream.
+  optional bool cdcsdk_ysql_publications_bound_stream = 20 [default = false];
+
+  // See SysCDCStreamEntryPB.cdcsdk_ysql_bound_publication_name.
+  optional string cdcsdk_ysql_bound_publication_name = 21;
 }
 
 message ValidateReplicationInfoRequestPB {
