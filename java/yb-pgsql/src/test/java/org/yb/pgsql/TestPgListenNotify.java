@@ -28,6 +28,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 import org.json.JSONObject;
 import org.yb.minicluster.Metrics;
 import org.yb.minicluster.MiniYBDaemon;
@@ -411,6 +412,213 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     }
     fail("Notifications poller did not restart within 30 seconds");
     return -1;
+  }
+
+  /**
+   * A postmaster restart keeps the notifications poller registered, since it restarts after a
+   * crash, but loses the shared memory that tracks it. The poller from before the restart must
+   * exit instead of running alongside the one the next LISTEN starts, where it would take that
+   * LISTEN's session down when its own replication slot is dropped.
+   *
+   * Scenario:
+   *   1. Session 1 listens, which starts the poller.
+   *   2. The poller is killed with SIGKILL, so the postmaster restarts all backends.
+   *   3. Session 2 listens on the same node, which starts a new poller.
+   *   4. Exactly one poller runs, and session 2 receives a notification and stays connected.
+   */
+  @Test
+  public void testStalePollerExitsAfterPostmasterRestart() throws Exception {
+    final String channel = "stale_poller";
+
+    try (Connection listener1 = getConnectionBuilder().withTServer(0).connect()) {
+      int pollerPid;
+      try (Statement stmt = listener1.createStatement()) {
+        stmt.execute("LISTEN " + channel);
+        pollerPid = getPollerPid(stmt);
+      }
+
+      // Unlike SIGTERM, a bg worker killed by a signal restarts all backends.
+      ProcessUtil.signalProcess(pollerPid, "KILL");
+      LOG.info("Sent SIGKILL to notifications poller (pid " + pollerPid + ")");
+      TestUtils.waitFor(() -> {
+        try (Statement stmt = listener1.createStatement()) {
+          stmt.execute("SELECT 1");
+          return false;
+        } catch (SQLException e) {
+          return true;
+        }
+      }, Timeouts.adjustTimeoutSecForBuildType(30_000));
+    }
+
+    try (Connection listener2 = connectWithRetry(0);
+         Statement stmt2 = listener2.createStatement()) {
+      // Leave time for the old poller to be relaunched.
+      Thread.sleep(Timeouts.adjustTimeoutSecForBuildType(3000));
+      stmt2.execute("LISTEN " + channel);
+      Thread.sleep(Timeouts.adjustTimeoutSecForBuildType(3000));
+
+      List<Row> pollers = getRowList(stmt2,
+          "SELECT pid FROM pg_stat_activity WHERE backend_type = 'notifications poller'");
+      assertEquals("Expected exactly one notifications poller, got " + pollers,
+          1, pollers.size());
+
+      try (Connection notifier = getConnectionBuilder().connect();
+           Statement notifierStmt = notifier.createStatement()) {
+        notifierStmt.execute("NOTIFY " + channel + ", '" + PAYLOAD + "'");
+      }
+      waitForNotification(listener2, channel, PAYLOAD);
+
+      // Also fails if session 2 was terminated in the meantime.
+      waitAndAssertNoNotifications(listener2, "No further notifications expected");
+    }
+  }
+
+  /**
+   * A first LISTEN that fails while its notifications poller initializes must not leave that
+   * poller running, and the poller must not complete the start of the next LISTEN's poller.
+   *
+   * Scenario:
+   *   1. Poller initialization is delayed on tserver 0.
+   *   2. Session 1 listens, and is cancelled while it waits for its poller to initialize.
+   *   3. Session 2 listens on the same node, which starts a new poller.
+   *   4. Exactly one poller runs, and session 2 receives a notification once.
+   */
+  @Test
+  public void testCancelledFirstListenLeavesOnePoller() throws Exception {
+    final String channel = "cancelled_listen";
+    final String listenQuery = "LISTEN " + channel;
+    final long initDelayMs = Timeouts.adjustTimeoutSecForBuildType(8000);
+
+    setPollerInitDelay(0, initDelayMs);
+    try {
+      try (Connection listener1 = getConnectionBuilder().withTServer(0).connect();
+           Statement stmt = listener1.createStatement();
+           Connection canceller = getConnectionBuilder().withTServer(0).connect();
+           Statement cancellerStmt = canceller.createStatement()) {
+        AtomicReference<SQLException> listenError = new AtomicReference<>();
+        Thread listenThread = new Thread(() -> {
+          try {
+            stmt.execute(listenQuery);
+          } catch (SQLException e) {
+            listenError.set(e);
+          }
+        });
+        listenThread.start();
+
+        // LISTEN waits for its poller at commit, where statement_timeout no longer applies, so
+        // cancel it directly, once a poller has started after it: the handle is published then.
+        TestUtils.waitFor(() -> getSingleRow(cancellerStmt,
+            "SELECT EXISTS (SELECT 1 FROM pg_stat_activity l, pg_stat_activity p"
+                + " WHERE l.query = '" + listenQuery + "' AND l.state = 'active'"
+                + " AND p.backend_type = 'notifications poller'"
+                + " AND p.backend_start > l.query_start)").getBoolean(0),
+            Timeouts.adjustTimeoutSecForBuildType(30_000));
+        cancellerStmt.execute("SELECT pg_cancel_backend(pid) FROM pg_stat_activity"
+            + " WHERE query = '" + listenQuery + "' AND state = 'active'");
+
+        listenThread.join(Timeouts.adjustTimeoutSecForBuildType(60_000));
+        assertTrue("LISTEN should have been cancelled", listenError.get() != null);
+        LOG.info("Expected LISTEN failure: {}", listenError.get().getMessage());
+        assertTrue("Error should mention the cancel",
+            listenError.get().getMessage().contains("canceling statement due to user request"));
+      }
+
+      try (Connection listener2 = getConnectionBuilder().withTServer(0).connect();
+           Statement stmt2 = listener2.createStatement()) {
+        stmt2.execute("LISTEN " + channel);
+
+        List<Row> pollers = getRowList(stmt2,
+            "SELECT pid FROM pg_stat_activity WHERE backend_type = 'notifications poller'");
+        assertEquals("Expected exactly one notifications poller, got " + pollers,
+            1, pollers.size());
+
+        try (Connection notifier = getConnectionBuilder().connect();
+             Statement notifierStmt = notifier.createStatement()) {
+          notifierStmt.execute("NOTIFY " + channel + ", '" + PAYLOAD + "'");
+        }
+        waitForNotification(listener2, channel, PAYLOAD);
+        waitAndAssertNoNotifications(listener2, "Expected the notification only once");
+      }
+    } finally {
+      setPollerInitDelay(0, 0);
+    }
+  }
+
+  /**
+   * A LISTEN that fails before it starts a notifications poller must not terminate other bg
+   * workers. The poller handle in shared memory is zeroed once a poller stops, and a zeroed handle
+   * names bg worker slot 0, which holds a static worker: the YSQL webserver.
+   *
+   * Scenario:
+   *   1. A session on tserver 0 listens and unlistens, which starts and stops a poller.
+   *   2. With the replication slot limit reached, a LISTEN on tserver 0 fails to create its slot.
+   *   3. The YSQL webserver of tserver 0 is still up.
+   */
+  @Test
+  public void testFailedListenKeepsYsqlWebserver() throws Exception {
+    final String channel = "failed_listen";
+    MiniYBDaemon ts0 = miniCluster.getTabletServers().get(getRpcHostPortForTServer(0));
+
+    // The replication slot limit and the slot below stay in place.
+    markClusterNeedsRecreation();
+
+    try (Connection conn = getConnectionBuilder().withTServer(0).connect();
+         Statement stmt = conn.createStatement()) {
+      stmt.execute("LISTEN " + channel);
+      stmt.execute("UNLISTEN " + channel);
+    }
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("SELECT pg_create_logical_replication_slot('webserver_slot', 'pgoutput')");
+    }
+    setMaxReplicationSlots("1");
+
+    try (Connection conn = getConnectionBuilder().withTServer(0).connect();
+         Statement stmt = conn.createStatement()) {
+      stmt.execute("LISTEN " + channel);
+      fail("LISTEN should have failed due to replication slot limit");
+    } catch (SQLException e) {
+      LOG.info("Expected LISTEN failure: {}", e.getMessage());
+      assertTrue("Error should mention replication slots",
+          e.getMessage().contains("all replication slots are in use"));
+    }
+
+    // A terminated webserver exits as soon as it sees the signal.
+    Thread.sleep(Timeouts.adjustTimeoutSecForBuildType(3000));
+    TestUtils.waitForServer(ts0.getLocalhostIP(), ts0.getPgsqlWebPort(), 5000);
+  }
+
+  /**
+   * Sets the notifications poller initialization delay on the given tserver, and waits until its
+   * postmaster has loaded it: pollers started before then would not wait.
+   */
+  private void setPollerInitDelay(int tserverIndex, long delayMs) throws Exception {
+    setServerFlag(getRpcHostPortForTServer(tserverIndex),
+        "ysql_yb_test_notifs_poller_init_delay_ms", String.valueOf(delayMs));
+    TestUtils.waitFor(() -> {
+      try (Connection conn = getConnectionBuilder().withTServer(tserverIndex).connect();
+           Statement stmt = conn.createStatement()) {
+        return getSingleRow(stmt, "SELECT setting FROM pg_settings"
+            + " WHERE name = 'yb_test_notifs_poller_init_delay_ms'")
+            .getString(0).equals(String.valueOf(delayMs));
+      }
+    }, Timeouts.adjustTimeoutSecForBuildType(30_000));
+  }
+
+  /**
+   * Connects to the given tserver, retrying while its postmaster restarts.
+   */
+  private Connection connectWithRetry(int tserverIndex) throws Exception {
+    long deadline = System.currentTimeMillis() + Timeouts.adjustTimeoutSecForBuildType(60_000);
+    while (true) {
+      try {
+        return getConnectionBuilder().withTServer(tserverIndex).connect();
+      } catch (SQLException e) {
+        if (System.currentTimeMillis() > deadline)
+          throw e;
+        Thread.sleep(500);
+      }
+    }
   }
 
   /**
