@@ -96,6 +96,36 @@ public class TestCustomGucStickiness extends BaseYsqlConnMgr {
   }
 
   @Test
+  public void testSetLocal() throws Exception {
+    try (Connection conn = getConnectionBuilder()
+             .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR).connect();
+         Statement stmt = conn.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("SET LOCAL pgaudit.log = 'read'");
+      assertPgauditLog(stmt, "read");
+      stmt.execute("COMMIT");
+      assertPgauditLog(stmt, "ddl");
+      assertStickyConnections("yugabyte", 0);
+    }
+  }
+
+  @Test
+  public void testFunctionSetClause() throws Exception {
+    try (Connection conn = getConnectionBuilder()
+             .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR).connect();
+         Statement stmt = conn.createStatement()) {
+      stmt.execute("CREATE FUNCTION audit_log_in_fn() RETURNS text LANGUAGE sql " +
+                   "SET pgaudit.log = 'read' AS $$ SELECT current_setting('pgaudit.log') $$");
+      try (ResultSet rs = stmt.executeQuery("SELECT audit_log_in_fn()")) {
+        assertTrue(rs.next());
+        assertEquals("read", rs.getString(1));
+      }
+      assertPgauditLog(stmt, "ddl");
+      assertStickyConnections("yugabyte", 0);
+    }
+  }
+
+  @Test
   public void testStartupParameter() throws Exception {
     try (Connection conn = getConnectionBuilder()
              .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
