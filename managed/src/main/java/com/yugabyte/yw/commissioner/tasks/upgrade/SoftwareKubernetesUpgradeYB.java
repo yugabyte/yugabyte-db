@@ -220,7 +220,7 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
 
           // A per-AZ image override can leave pods Ready on the old build. Fail before recording
           // the upgrade or promoting auto flags.
-          createCheckSoftwareVersionTask(universe.getNodes(), newVersion)
+          createCheckSoftwareVersionTaskForPods(universe, newVersion)
               .setSubTaskGroupType(getTaskSubGroupType());
 
           if (ysqlMajorVersionUpgrade) {

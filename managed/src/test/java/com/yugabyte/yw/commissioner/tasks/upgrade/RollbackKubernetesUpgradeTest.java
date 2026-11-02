@@ -31,9 +31,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -283,20 +281,13 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
     TestHelper.updateUniverseVersion(defaultUniverse, YB_SOFTWARE_VERSION_NEW);
 
     UUID staleAz = defaultUniverse.getNodes().iterator().next().azUuid;
-    Set<String> staleNodeIps =
-        defaultUniverse.getNodes().stream()
-            .filter(node -> staleAz.equals(node.azUuid))
-            .map(node -> node.cloudInfo.private_ip)
-            .collect(Collectors.toSet());
     when(mockYBClient.getServerVersion(any(), anyString(), anyInt()))
         .thenAnswer(
-            invocation -> {
-              String ip = invocation.getArgument(1);
-              if (staleNodeIps.contains(ip)) {
-                return Optional.of(YB_SOFTWARE_VERSION_NEW);
-              }
-              return Optional.of(YB_SOFTWARE_VERSION_OLD);
-            });
+            invocation ->
+                Optional.of(
+                    isNodeInAz(invocation.getArgument(1), staleAz)
+                        ? YB_SOFTWARE_VERSION_NEW
+                        : YB_SOFTWARE_VERSION_OLD));
 
     RollbackUpgradeParams taskParams = new RollbackUpgradeParams();
     TaskInfo taskInfo = submitTask(taskParams);
@@ -358,13 +349,5 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
 
     assertEquals(taskInfo.getErrorMessage(), Success, taskInfo.getTaskState());
     assertReadReplicaCommandsTargetReadReplica(taskInfo, readReplica);
-  }
-
-  private void assertCheckSoftwareVersionRanForAllNodes(TaskInfo taskInfo) {
-    assertEquals(
-        defaultUniverse.getNodes().size(),
-        taskInfo.getSubTasks().stream()
-            .filter(task -> task.getTaskType() == TaskType.CheckSoftwareVersion)
-            .count());
   }
 }

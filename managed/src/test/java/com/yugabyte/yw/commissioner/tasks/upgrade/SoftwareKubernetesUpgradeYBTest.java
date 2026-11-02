@@ -45,7 +45,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.junit.Before;
@@ -846,20 +845,13 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
         .setValue(UniverseConfKeys.autoFlagUpdateSleepTimeInMilliSeconds.getKey(), "0ms");
 
     UUID staleAz = defaultUniverse.getNodes().iterator().next().azUuid;
-    Set<String> staleNodeIps =
-        defaultUniverse.getNodes().stream()
-            .filter(node -> staleAz.equals(node.azUuid))
-            .map(node -> node.cloudInfo.private_ip)
-            .collect(Collectors.toSet());
     when(mockYBClient.getServerVersion(any(), anyString(), anyInt()))
         .thenAnswer(
-            invocation -> {
-              String ip = invocation.getArgument(1);
-              if (staleNodeIps.contains(ip)) {
-                return Optional.of(YB_SOFTWARE_VERSION_OLD);
-              }
-              return Optional.of(YB_SOFTWARE_VERSION_NEW);
-            });
+            invocation ->
+                Optional.of(
+                    isNodeInAz(invocation.getArgument(1), staleAz)
+                        ? YB_SOFTWARE_VERSION_OLD
+                        : YB_SOFTWARE_VERSION_NEW));
 
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
     taskParams.ybSoftwareVersion = YB_SOFTWARE_VERSION_NEW;
@@ -882,13 +874,5 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
     assertEquals(
         UniverseDefinitionTaskParams.SoftwareUpgradeState.UpgradeFailed,
         defaultUniverse.getUniverseDetails().softwareUpgradeState);
-  }
-
-  private void assertCheckSoftwareVersionRanForAllNodes(TaskInfo taskInfo) {
-    assertEquals(
-        defaultUniverse.getNodes().size(),
-        taskInfo.getSubTasks().stream()
-            .filter(task -> task.getTaskType() == TaskType.CheckSoftwareVersion)
-            .count());
   }
 }

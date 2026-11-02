@@ -168,7 +168,7 @@ public class RollbackKubernetesUpgrade extends KubernetesUpgradeTaskBase {
                   reconcilePgDataOwnership));
 
           // Fail the rollback if any pod is still reporting the pre-rollback version.
-          createCheckSoftwareVersionTask(universe.getNodes(), targetVersion)
+          createCheckSoftwareVersionTaskForPods(universe, targetVersion)
               .setSubTaskGroupType(getTaskSubGroupType());
 
           if (ysqlMajorVersionUpgrade) {
