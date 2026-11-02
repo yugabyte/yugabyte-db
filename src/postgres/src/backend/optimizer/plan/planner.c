@@ -469,6 +469,10 @@ standard_planner(Query *parse, const char *query_string, int cursorOptions,
 	 * trying to create their own parallel workers.
 	 *
 	 * YB: TODO GHI 23549: enable parallel query in serializable isolation.
+	 *
+	 * YB: A parallel worker reads only committed catalog rows, so after a DDL
+	 * in this transaction block it fails on the leader's uncommitted changes,
+	 * e.g. "invalid attnum 3" for a column the block added (#30978, #34740).
 	 */
 	if ((cursorOptions & CURSOR_OPT_PARALLEL_OK) != 0 &&
 		IsUnderPostmaster &&
@@ -476,7 +480,8 @@ standard_planner(Query *parse, const char *query_string, int cursorOptions,
 		!parse->hasModifyingCTE &&
 		max_parallel_workers_per_gather > 0 &&
 		!IsParallelWorker() &&
-		!IsolationIsSerializable())
+		!IsolationIsSerializable() &&
+		!(IsYugaByteEnabled() && YBGetDdlUseRegularTransactionBlock()))
 	{
 		/* all the cheap tests pass, so scan the query tree */
 		glob->maxParallelHazard = max_parallel_hazard(parse);
