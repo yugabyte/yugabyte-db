@@ -76,6 +76,13 @@ func newYbHome(t *testing.T, withBin bool) string {
 // (no sudo), returning its combined output.
 func runScript(t *testing.T, ybHome string, configureCgroup bool) ([]byte, error) {
 	t.Helper()
+	return runScriptIn(t, t.TempDir(), ybHome, configureCgroup)
+}
+
+// runScriptIn is runScript with scratch as the script's working files and TMPDIR.
+func runScriptIn(
+	t *testing.T, scratch, ybHome string, configureCgroup bool) ([]byte, error) {
+	t.Helper()
 	cgroup := "False"
 	if configureCgroup {
 		cgroup = "True"
@@ -94,7 +101,6 @@ func runScript(t *testing.T, ybHome string, configureCgroup bool) ([]byte, error
 	if err != nil {
 		t.Fatalf("render templates: %v", err)
 	}
-	scratch := t.TempDir()
 	scriptPath := filepath.Join(scratch, "run.sh")
 	if err := os.WriteFile(
 		scriptPath, []byte(rendered.RenderedContent("run")), 0o700); err != nil {
@@ -212,11 +218,19 @@ func TestRunFailsWhenLauncherInstallFails(t *testing.T) {
 		t.Fatalf("chmod %s: %v", bin, err)
 	}
 	t.Cleanup(func() { os.Chmod(bin, 0o755) })
-	output, err := runScript(t, ybHome, false /* configureCgroup */)
+	scratch := t.TempDir()
+	output, err := runScriptIn(t, scratch, ybHome, false /* configureCgroup */)
 	if err == nil {
 		t.Fatalf("script succeeded although the launcher could not be installed:\n%s", output)
 	}
 	if !strings.Contains(string(output), "Failed to install "+bin+"/yb-server-exec.sh") {
 		t.Fatalf("script did not report the failed install:\n%s", output)
+	}
+	leftover, err := filepath.Glob(filepath.Join(scratch, "tmp.*"))
+	if err != nil {
+		t.Fatalf("glob temp files: %v", err)
+	}
+	if len(leftover) > 0 {
+		t.Fatalf("failed install left temp files behind: %v", leftover)
 	}
 }
