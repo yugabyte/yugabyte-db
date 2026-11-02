@@ -6474,6 +6474,28 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     }
   }
 
+  private void waitForSystemTablesFullyReplicated(String... tableNames) throws Exception {
+    TestUtils.waitFor(() -> {
+      for (String tableName : tableNames) {
+        try {
+          List<LocatedTablet> tablets = miniCluster.getClient()
+              .openTable("system", tableName).getTabletsLocations(10000);
+          boolean fullyReplicated = !tablets.isEmpty() && tablets.stream().allMatch(t ->
+              t.getReplicas().size() == miniCluster.getNumTServers() &&
+              t.getReplicas().stream().allMatch(r -> r.getMemberType().equals("VOTER")));
+          if (!fullyReplicated) {
+            LOG.info("system.{} is not fully replicated yet", tableName);
+            return false;
+          }
+        } catch (Exception e) {
+          LOG.info("system.{} not ready yet: {}", tableName, e.getMessage());
+          return false;
+        }
+      }
+      return true;
+    }, 120000);
+  }
+
   @Test
   public void testSlotLockReleasedOnTserverCrash() throws Exception {
     restartClusterWithFlags(getMasterFlags(), getTServerFlagsWithExclusiveLock());
@@ -6492,20 +6514,9 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
     createSlot(replApi0, slotName, "test_decoding");
 
-    // Wait until every pg_advisory_locks tablet has a voter on each tserver, so that killing
-    // tserver 0 leaves each tablet with a majority.
-    TestUtils.waitFor(() -> {
-      try {
-        List<LocatedTablet> tablets = miniCluster.getClient()
-            .openTable("system", "pg_advisory_locks").getTabletsLocations(10000);
-        return !tablets.isEmpty() && tablets.stream().allMatch(t ->
-            t.getReplicas().size() == miniCluster.getNumTServers() &&
-            t.getReplicas().stream().allMatch(r -> r.getMemberType().equals("VOTER")));
-      } catch (Exception e) {
-        LOG.info("pg_advisory_locks not ready yet: {}", e.getMessage());
-        return false;
-      }
-    }, 120000);
+    // The master can create these tables while only two tservers are up. Wait for a voter on
+    // each tserver so that killing tserver 0 leaves every tablet with a majority.
+    waitForSystemTablesFullyReplicated("pg_advisory_locks", "transactions");
 
     PGReplicationStream stream0 = replApi0.replicationStream()
         .logical()
