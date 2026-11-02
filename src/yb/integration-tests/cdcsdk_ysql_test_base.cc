@@ -3080,15 +3080,14 @@ void CDCSDKYsqlTest::WaitUntilSplitIsSuccesful(
         if (!status.ok()) {
           return false;
         }
-        SleepFor(MonoDelta::FromSeconds(10));
-
-        google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_after_split;
-        status = test_client()->GetTablets(table, 0, &tablets_after_split, nullptr);
-        if (!status.ok()) {
-          return false;
-        }
-
-        return (tablets_after_split.size() == expected_num_tablets);
+        // If the split does not show up, retry it.
+        return WaitFor(
+            [this, &table, expected_num_tablets]() -> Result<bool> {
+              google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_after_split;
+              RETURN_NOT_OK(test_client()->GetTablets(table, 0, &tablets_after_split, nullptr));
+              return tablets_after_split.size() == expected_num_tablets;
+            },
+            MonoDelta::FromSeconds(30), "Wait for split tablets").ok();
       },
       MonoDelta::FromSeconds(120), "Tablet Split not succesful"));
 }
