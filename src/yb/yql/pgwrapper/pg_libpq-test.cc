@@ -3493,6 +3493,59 @@ TEST_F_EX(PgLibPqTest, YB_LINUX_ONLY_TEST(TestOomScoreAdjPGWebserver), PgLibPqYS
   ASSERT_EQ(oom_score_adj, expected_webserver_oom_score);
 }
 
+// A userspace OOM killer asks a backend to cancel its statement by sending SIGUSR1 through
+// sigqueue() with a value only it uses. The statement fails with an out-of-memory error, the
+// session survives, and the statement is recorded in yb_terminated_queries. Any other SIGUSR1
+// changes nothing.
+TEST_F(PgLibPqTest, YB_LINUX_ONLY_TEST(OomCancelRequest)) {
+  constexpr int kOomCancelSigval = 0x59424f4d;
+  auto conn = ASSERT_RESULT(Connect());
+  auto observer = ASSERT_RESULT(Connect());
+  const auto backend_pid = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT pg_backend_pid()"));
+
+  auto send = [backend_pid](int value) {
+    return sigqueue(backend_pid, SIGUSR1, sigval{.sival_int = value});
+  };
+  auto run_async = [&conn, &observer, backend_pid](const std::string& query)
+      -> Result<std::future<Status>> {
+    auto status = std::async(std::launch::async, [&conn, query] {
+      return ResultToStatus(conn.Fetch(query));
+    });
+    RETURN_NOT_OK(WaitFor([&observer, backend_pid, &query]() -> Result<bool> {
+      return VERIFY_RESULT(observer.FetchRow<PGUint64>(Format(
+          "SELECT COUNT(*) FROM pg_stat_activity WHERE pid = $0 AND state = 'active' "
+          "AND query = '$1'", backend_pid, query))) == 1;
+    }, 10s * kTimeMultiplier, "Wait for the statement to start"));
+    return status;
+  };
+
+  {
+    auto status = ASSERT_RESULT(run_async("SELECT pg_sleep(3)"));
+    ASSERT_EQ(kill(backend_pid, SIGUSR1), 0);
+    ASSERT_EQ(send(kOomCancelSigval + 1), 0);
+    ASSERT_OK(status.get());
+  }
+
+  ASSERT_EQ(send(kOomCancelSigval), 0);
+  ASSERT_OK(conn.Fetch("SELECT 1"));
+
+  {
+    auto status = ASSERT_RESULT(run_async("SELECT pg_sleep(600)"));
+    ASSERT_EQ(send(kOomCancelSigval), 0);
+    ASSERT_EQ(status.wait_for(30s * kTimeMultiplier), std::future_status::ready);
+    auto s = status.get();
+    ASSERT_NOK(s);
+    ASSERT_STR_CONTAINS(s.ToString(), "out of memory");
+  }
+
+  ASSERT_OK(conn.Fetch("SELECT 1"));
+
+  auto [query, reason] = ASSERT_RESULT((observer.FetchRow<std::string, std::string>(
+      "SELECT query_text, termination_reason FROM yb_terminated_queries")));
+  ASSERT_EQ(query, "SELECT pg_sleep(600)");
+  ASSERT_STR_CONTAINS(reason, "canceled by userspace OOM killer");
+}
+
 class PgLibPqPgssQtextLeakTest : public PgLibPqTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     PgLibPqTest::UpdateMiniClusterOptions(options);

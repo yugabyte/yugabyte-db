@@ -48,6 +48,7 @@
 /* YB includes */
 #include "catalog/yb_catalog_version.h"
 #include "pg_yb_utils.h"
+#include "yb_oom_cancel.h"
 
 /*
  * We don't want to waste a lot of memory on an error queue which, most of
@@ -1351,6 +1352,10 @@ ParallelWorkerMain(Datum main_arg)
 	/* Establish signal handlers. */
 	pqsignal(SIGTERM, die);
 	BackgroundWorkerUnblockSignals();
+
+	/* YB: also accept OOM cancel requests on SIGUSR1 */
+	if (YBIsEnabledInPostgresEnvVar())
+		YbSetupOomCancelSignalHandler();
 
 	/* Determine and set our parallel worker number. */
 	Assert(ParallelWorkerNumber == -1);
