@@ -104,6 +104,7 @@ If you are using pg_cron with xCluster:
 
 - In v2025.1.0 or earlier, or if you are using [semi-automatic or manual mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-semi-automatic/), you must install pg_cron on a separate database that is not part of the xCluster configuration.
 - In v2025.1.1 or later in [automatic mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-automatic/), you can install pg_cron on the same database.
+- In v2025.1.1 or later in automatic mode, pg_cron doesn't run jobs on the xCluster target universe. Jobs run only on the primary, and move to the new primary after a switchover or failover. Leave the `cron.yb_enable_on_xcluster_target` configuration parameter at its default (`false`). The cron database on the target is read-only, so with the parameter set to `true`, pg_cron fails to start jobs there (it can't allocate a run ID) instead of running them.
 
 For more information on xCluster limitations, refer to [Limitations](../../../architecture/docdb-replication/async-replication/#limitations).
 
