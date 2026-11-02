@@ -118,6 +118,8 @@ DECLARE_uint32(client_request_id_shards);
 DECLARE_uint64(consensus_max_batch_size_bytes);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_load_balancing);
+DECLARE_bool(enable_quiescent_tablets);
+DECLARE_int32(quiescent_tablet_idle_sec);
 DECLARE_bool(enable_ysql);
 DECLARE_uint32(external_intent_cleanup_secs);
 DECLARE_int32(global_log_cache_size_limit_mb);
@@ -617,6 +619,9 @@ class XClusterTestNoParam : public XClusterYcqlTestBase {
 
 };
 
+// Runs each test with both transactional and non-transactional tables. Tests that don't need both,
+// such as tests that never write data, should use the XClusterTestNoParam fixture so they only run
+// once.
 class XClusterTest : public XClusterTestNoParam,
                      public testing::WithParamInterface<XClusterTestParams> {
  public:
@@ -637,7 +642,7 @@ TEST_P(XClusterTest, SetupUniverseReplicationWithTLSEncryption) {
   ASSERT_OK(TestSetupUniverseReplication(EnableTLSEncryption::kTrue));
 }
 
-TEST_P(XClusterTest, SetupUniverseReplicationErrorChecking) {
+TEST_F_EX(XClusterTest, SetupUniverseReplicationErrorChecking, XClusterTestNoParam) {
   ASSERT_OK(SetUpWithParams({1}, 1));
   rpc::RpcController rpc;
   auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
@@ -965,7 +970,7 @@ TEST_P(XClusterTest, SetupUniverseReplicationWithProducerBootstrapId) {
 }
 
 // Test for #2250 to verify that replication for tables with the same prefix gets set up correctly.
-TEST_P(XClusterTest, SetupUniverseReplicationMultipleTables) {
+TEST_F_EX(XClusterTest, SetupUniverseReplicationMultipleTables, XClusterTestNoParam) {
   // Setup the two clusters without any tables.
   ASSERT_OK(SetUpWithParams({}, 1));
 
@@ -999,7 +1004,7 @@ TEST_P(XClusterTest, SetupUniverseReplicationMultipleTables) {
   ASSERT_OK(DeleteUniverseReplication());
 }
 
-TEST_P(XClusterTest, SetupUniverseReplicationLargeTableCount) {
+TEST_F_EX(XClusterTest, SetupUniverseReplicationLargeTableCount, XClusterTestNoParam) {
   if (IsSanitizer()) {
     LOG(INFO) << "Skipping slow test";
     return;
@@ -1134,7 +1139,7 @@ TEST_P(XClusterTest, SetupUniverseReplicationBootstrapStateUpdate) {
   ASSERT_OK(DeleteUniverseReplication());
 }
 
-TEST_P(XClusterTest, BootstrapAndSetupLargeTableCount) {
+TEST_F_EX(XClusterTest, BootstrapAndSetupLargeTableCount, XClusterTestNoParam) {
   if (IsSanitizer()) {
     LOG(INFO) << "Skipping slow test";
     return;
@@ -1226,7 +1231,7 @@ TEST_P(XClusterTest, BootstrapAndSetupLargeTableCount) {
   ASSERT_TRUE(passed_test);
 }
 
-TEST_P(XClusterTest, PollWithConsumerRestart) {
+TEST_F_EX(XClusterTest, PollWithConsumerRestart, XClusterTestNoParam) {
   // Avoid long delays with node failures so we can run with more aggressive test timing
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_failure_delay_exponent) = 7;  // 2^7 == 128ms
 
@@ -1838,7 +1843,7 @@ TEST_P(XClusterTest, BiDirectionalWritesWithLargeBatches) {
   ASSERT_OK(VerifyNumRecordsOnProducer(2 * kNumRowsToWrite));
 }
 
-TEST_P(XClusterTest, AlterUniverseReplicationMasters) {
+TEST_F_EX(XClusterTest, AlterUniverseReplicationMasters, XClusterTestNoParam) {
   // Tablets = Servers + 1 to stay simple but ensure round robin gives a tablet to everyone.
   uint32_t t_count = 2;
   int master_count = 3;
@@ -2129,7 +2134,7 @@ TEST_F_EX(XClusterTest, ToggleReplicationEnabled, XClusterTestNoParam) {
   ASSERT_OK(VerifyReplicationError(consumer_table_->id(), stream_id, std::nullopt));
 }
 
-TEST_P(XClusterTest, TestDeleteUniverse) {
+TEST_F_EX(XClusterTest, TestDeleteUniverse, XClusterTestNoParam) {
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
 
   ASSERT_OK(SetUpWithParams({8, 4}, {6, 6}, replication_factor));
@@ -2152,7 +2157,7 @@ TEST_P(XClusterTest, TestDeleteUniverse) {
   ASSERT_OK(CorrectlyPollingAllTablets(0));
 }
 
-TEST_P(XClusterTest, TestWalRetentionSet) {
+TEST_F_EX(XClusterTest, TestWalRetentionSet, XClusterTestNoParam) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_wal_retention_time_secs) = 8 * 3600;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
 
@@ -2456,7 +2461,7 @@ TEST_P(XClusterTest, TestInsertDeleteWorkloadWithRestart) {
   ASSERT_OK(DeleteUniverseReplication());
 }
 
-TEST_P(XClusterTest, TestDeleteCDCStreamWithMissingStreams) {
+TEST_F_EX(XClusterTest, TestDeleteCDCStreamWithMissingStreams, XClusterTestNoParam) {
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
 
   ASSERT_OK(SetUpWithParams({8, 4}, {6, 6}, replication_factor));
@@ -2513,7 +2518,7 @@ TEST_P(XClusterTest, TestDeleteCDCStreamWithMissingStreams) {
   ASSERT_OK(CorrectlyPollingAllTablets(0));
 }
 
-TEST_P(XClusterTest, TestAlterWhenProducerIsInaccessible) {
+TEST_F_EX(XClusterTest, TestAlterWhenProducerIsInaccessible, XClusterTestNoParam) {
   ASSERT_OK(SetUpWithParams({1}, 1));
 
   ASSERT_OK(SetupReplication());
@@ -2544,7 +2549,7 @@ TEST_P(XClusterTest, TestAlterWhenProducerIsInaccessible) {
   ASSERT_FALSE(is_done.status().ok());
 }
 
-TEST_P(XClusterTest, TestFailedUniverseDeletion) {
+TEST_F_EX(XClusterTest, TestFailedUniverseDeletion, XClusterTestNoParam) {
   ASSERT_OK(SetUpWithParams({8, 4}, {6, 6}, 3));
 
   auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
@@ -2577,7 +2582,7 @@ TEST_P(XClusterTest, TestFailedUniverseDeletion) {
   ASSERT_TRUE(StatusFromPB(new_resp.error().status()).IsNotFound());
 }
 
-TEST_P(XClusterTest, TestFailedDeleteOnRestart) {
+TEST_F_EX(XClusterTest, TestFailedDeleteOnRestart, XClusterTestNoParam) {
   // Setup the consumer and producer cluster.
   ASSERT_OK(SetUpWithParams({8, 4}, {6, 6}, 3));
 
@@ -2625,7 +2630,7 @@ TEST_P(XClusterTest, TestFailedDeleteOnRestart) {
   ASSERT_TRUE(new_resp.has_error());
 }
 
-TEST_P(XClusterTest, TestFailedAlterUniverseOnRestart) {
+TEST_F_EX(XClusterTest, TestFailedAlterUniverseOnRestart, XClusterTestNoParam) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_exit_unfinished_merging) = true;
 
   // Setup the consumer and producer cluster.
@@ -2678,7 +2683,7 @@ TEST_P(XClusterTest, TestFailedAlterUniverseOnRestart) {
   ASSERT_TRUE(StatusFromPB(new_resp.error().status()).IsNotFound());
 }
 
-TEST_P(XClusterTest, TestAlterUniverseRemoveTableAndDrop) {
+TEST_F_EX(XClusterTest, TestAlterUniverseRemoveTableAndDrop, XClusterTestNoParam) {
   // Create 2 tables and start replication.
   ASSERT_OK(SetUpWithParams({1, 1}, 1));
 
@@ -3731,6 +3736,36 @@ TEST_F_EX(XClusterTest, IsBootstrapRequired, XClusterTestNoParam) {
   // Table with data should require a bootstrap.
   ASSERT_OK(InsertRowsInProducer(0, 1));
   ASSERT_TRUE(ASSERT_RESULT(producer_client()->IsBootstrapRequired({producer_table_->id()})));
+}
+
+// A table whose tablets replaced their WAL with a quiescent marker is bootstrapped at the marker
+// and replicates the writes made after it.
+TEST_F_EX(XClusterTest, BootstrapQuiescentTablets, XClusterTestNoParam) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_quiescent_tablets) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_quiescent_tablet_idle_sec) = 1;
+  const uint32_t kReplicationFactor = 3, kTabletCount = 2, kNumMasters = 1, kNumTservers = 3;
+  ASSERT_OK(SetUpWithParams(
+      {kTabletCount}, {kTabletCount}, kReplicationFactor, kNumMasters, kNumTservers));
+  ASSERT_OK(InsertRowsInProducer(0, 100));
+  ASSERT_OK(WaitFor([this]() {
+    auto peers = ListTableActiveTabletPeers(producer_cluster(), producer_table_->id());
+    if (peers.size() != kTabletCount * kReplicationFactor) {
+      return false;
+    }
+    for (const auto& peer : peers) {
+      if (!peer->IsQuiescent()) {
+        return false;
+      }
+    }
+    return true;
+  }, 30s * kTimeMultiplier, "Producer tablets quiescent"));
+
+  auto bootstrap_ids = ASSERT_RESULT(
+      BootstrapProducer(producer_cluster(), producer_client(), producer_tables_));
+  ASSERT_OK(SetupUniverseReplication(producer_tables_, bootstrap_ids));
+  ASSERT_OK(CorrectlyPollingAllTablets(kTabletCount));
+  ASSERT_OK(InsertRowsInProducer(100, 200));
+  ASSERT_OK(VerifyNumRecordsOnConsumer(100));
 }
 
 TEST_F_EX(XClusterTest, TestStats, XClusterTestNoParam) {

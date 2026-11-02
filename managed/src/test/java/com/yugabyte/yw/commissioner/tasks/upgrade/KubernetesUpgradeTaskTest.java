@@ -7,6 +7,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -22,11 +23,17 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -34,7 +41,10 @@ import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodList;
@@ -61,6 +71,7 @@ import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterClusterOuterClass;
 import org.yb.master.MasterClusterOuterClass.GetAutoFlagsConfigResponsePB;
 import org.yb.master.MasterClusterOuterClass.PromoteAutoFlagsResponsePB;
+import play.libs.Json;
 
 public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
 
@@ -387,5 +398,79 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
       assertNull(e.getMessage());
     }
     return null;
+  }
+
+  /** Adds a one-node read replica cluster in the primary's zone. */
+  protected Cluster addReadReplicaCluster() {
+    Cluster primary = defaultUniverse.getUniverseDetails().getPrimaryCluster();
+    UserIntent rrIntent = primary.userIntent.clone();
+    rrIntent.numNodes = 1;
+    rrIntent.replicationFactor = 1;
+    PlacementAZ primaryAz = primary.placementInfo.cloudList.get(0).regionList.get(0).azList.get(0);
+    PlacementInfo rrPlacement = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(primaryAz.uuid, rrPlacement, 1, 1, false);
+    Cluster readReplica = new Cluster(ClusterType.ASYNC, rrIntent);
+    readReplica.placementInfo = rrPlacement;
+    AvailabilityZone zone = AvailabilityZone.getOrBadRequest(primaryAz.uuid);
+    NodeDetails node =
+        KubernetesUtil.getKubernetesNodeName(
+            0, zone.getCode(), ServerType.TSERVER, false, true /* isReadCluster */, 0);
+    node.nodeUuid = UUID.randomUUID();
+    node.placementUuid = readReplica.uuid;
+    node.azUuid = zone.getUuid();
+    node.cloudInfo = new CloudSpecificInfo();
+    node.cloudInfo.cloud = zone.getProviderCloudCode().name();
+    node.cloudInfo.region = zone.getRegion().getCode();
+    node.cloudInfo.az = zone.getCode();
+    node.cloudInfo.private_ip = node.nodeName + ".svc.cluster.local";
+    node.isTserver = true;
+    node.isMaster = false;
+    node.isYsqlServer = true;
+    node.state = NodeDetails.NodeState.Live;
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              details.clusters.add(readReplica);
+              details.nodeDetailsSet.add(node);
+              u.setUniverseDetails(details);
+            });
+    return readReplica;
+  }
+
+  /**
+   * The read replica's POD_INFO and helm upgrade commands must target the read replica releases
+   * (PLAT-23200). POD_INFO carries the read replica placement. A helm upgrade carries a per-AZ
+   * placement, and in these test universes only the read replica's has no masters.
+   */
+  protected void assertReadReplicaCommandsTargetReadReplica(
+      TaskInfo taskInfo, Cluster readReplica) {
+    JsonNode readReplicaPlacement = Json.toJson(readReplica.getOverallPlacement());
+    List<JsonNode> readReplicaCommands =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.KubernetesCommandExecutor)
+            .map(TaskInfo::getTaskParams)
+            .filter(
+                p ->
+                    readReplicaPlacement.equals(p.get("placementInfo"))
+                        || (CommandType.HELM_UPGRADE.name().equals(p.path("commandType").asText())
+                            && p.path("placementInfo").findValues("replicationFactor").stream()
+                                .allMatch(rf -> rf.asInt() == 0)))
+            .collect(Collectors.toList());
+    String commands =
+        readReplicaCommands.stream()
+            .map(p -> p.path("commandType").asText() + "/" + p.path("isReadOnlyCluster"))
+            .collect(Collectors.toList())
+            .toString();
+    for (CommandType commandType : List.of(CommandType.POD_INFO, CommandType.HELM_UPGRADE)) {
+      assertTrue(
+          "No read replica " + commandType + " in " + commands,
+          readReplicaCommands.stream()
+              .anyMatch(p -> commandType.name().equals(p.path("commandType").asText())));
+    }
+    assertTrue(
+        "Read replica commands: " + commands,
+        readReplicaCommands.stream().allMatch(p -> p.path("isReadOnlyCluster").asBoolean()));
   }
 }

@@ -61,13 +61,15 @@ METRIC_DEFINE_counter(server, pg_response_cache_lookup_only_hits,
                       "PgClientService Response Cache Lookup Only Hits",
                       yb::MetricUnit::kCacheHits,
                       "Number of lookup-only queries to PgClientService response cache that were "
-                      "served, each one a backend that read the catalog at a version this node "
-                      "already held instead of fetching it from the master leader");
+                      "served from a catalog version this node already held rather than fetched "
+                      "from the master leader. A connection start issues one per prefetch "
+                      "request, so this counts requests rather than connections");
 METRIC_DEFINE_counter(server, pg_response_cache_lookup_only_misses,
                       "PgClientService Response Cache Lookup Only Misses",
                       yb::MetricUnit::kCacheQueries,
                       "Number of lookup-only queries to PgClientService response cache that found "
-                      "nothing, each one a backend that fell back to a full catalog prefetch");
+                      "nothing cached, after which the connection falls back to a full catalog "
+                      "prefetch. Counts requests rather than connections");
 METRIC_DEFINE_counter(server, pg_response_cache_queries,
                       "PgClientService Response Cache Queries",
                       yb::MetricUnit::kCacheQueries,
@@ -208,7 +210,9 @@ class Data {
         creation_time_(creation_time),
         readiness_deadline_(readiness_deadline) {}
 
-  void Set(PgResponseCache::Response&& value) {
+  void Set(
+      PgResponseCache::Response&& value, PgResponseCache::KeyGroup group,
+      uint64_t catalog_version) {
     if (PREDICT_FALSE(FLAGS_TEST_pg_response_cache_catalog_read_time_usec > 0) &&
         value.response->has_catalog_read_time()) {
       TEST_UpdateCatalogReadTime(
@@ -235,6 +239,20 @@ class Data {
       response = &*response_;
       state_.store(new_state, std::memory_order_release);
     }
+    // Logged before the loop, not after, because a node that is about to run out of memory dies
+    // inside it.
+    //
+    // The waiter count is the point: every waiter receives the response here, and connections that
+    // arrived one at a time go on to build their catalog caches together. The byte count is the
+    // response itself, not what a backend grows to holding it -- a few MB here has been seen to
+    // become a few hundred MB of relcache. The fill duration is here because anything that delays
+    // the filler, such as the master shedding its prefetch, lengthens the queue behind it. The
+    // group and the catalog version say which database refilled and at which version. Neither
+    // identifies one fill: a paged prefetch caches every page under a key of its own, and a global
+    // catalog version bump moves every database to the same version at once.
+    VLOG(1) << "Fill complete for group " << group << " catalog version " << catalog_version
+            << " after " << MonoDelta(CoarseMonoClock::Now() - creation_time_) << ", releasing "
+            << waiters.size() << " waiters, " << sz << " bytes each";
     for (auto waiter : waiters) {
       waiter->Apply(*response);
     }
@@ -492,7 +510,7 @@ class PgResponseCache::Impl : private GarbageCollector {
           }
         }
       }
-      empty_data->Set(std::move(response));
+      empty_data->Set(std::move(response), group, version);
       // After the entry is set, so an observer can rely on the entry being readable.
       if (observer && is_final_round) {
         observer(group, version);
@@ -512,7 +530,11 @@ class PgResponseCache::Impl : private GarbageCollector {
     // A response another query is still filling is not one this can serve, since waiting for it
     // would mean registering as a waiter on an entry this query does not own.
     const auto* response = data ? data->ReadyResponse() : nullptr;
-    if (!response || PREDICT_FALSE(FLAGS_TEST_pg_response_cache_force_lookup_only_miss) ||
+    // An entry whose fill failed still holds a response, since Set stores it before recording the
+    // failure and ReadyResponse does not consult the state. Serving one counts a hit for something
+    // the caller cannot start from, and it falls back either way.
+    if (!response || !IsOk(*response) ||
+        PREDICT_FALSE(FLAGS_TEST_pg_response_cache_force_lookup_only_miss) ||
         PREDICT_FALSE(FLAGS_TEST_pg_response_cache_force_lookup_only_miss_on_final_request &&
                       cache_info->completes_connection_prefetch())) {
       lookup_only_misses_->Increment();

@@ -11,6 +11,7 @@
 // under the License.
 
 #include <algorithm>
+#include <chrono>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -40,6 +41,7 @@
 #include "yb/gutil/strings/escaping.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/dist_trace.h"
+#include "yb/util/dist_trace_test_util.h"
 #include "yb/util/enums.h"
 #include "yb/util/format.h"
 #include "yb/util/logging_test_util.h"
@@ -61,6 +63,7 @@ DECLARE_string(otel_internal_log_level);
 DECLARE_uint32(otel_batch_max_queue_size);
 DECLARE_uint32(otel_batch_schedule_delay_ms);
 DECLARE_uint32(otel_batch_max_export_batch_size);
+METRIC_DECLARE_counter(handler_latency_yb_master_MasterDdl_ReleaseObjectLocksGlobal);
 
 namespace yb::pgwrapper {
 
@@ -74,30 +77,12 @@ namespace otlp_trace = opentelemetry::proto::trace::v1;
 static constexpr auto kOtelBatchMaxQueueSize = 4096;
 static constexpr auto kOtelBatchMaxExportBatchSize = 512;
 static constexpr auto kOtelBatchScheduleDelayMs = 100;
+// Pinned at cluster start so TestLostMessageLockReleaseNotTraced can compute the acquire deadline.
+static constexpr auto kPgClientExtraTimeoutMs = 2000;
 static const auto kSharedMemoryPerformSpanName =
     tserver::GetSharedMemSpanName(tserver::PgSharedExchangeReqType::PERFORM);
 static const auto kSharedMemoryObjectLockSpanName =
     tserver::GetSharedMemSpanName(tserver::PgSharedExchangeReqType::ACQUIRE_OBJECT_LOCK);
-
-// Sets otel_collector_traces_endpoint for the object's lifetime, keeping g_dist_trace_enabled
-// in sync (google::FlagSaver restores the flag without rerunning its callback).
-class TEST_ScopedSetOtelCollectorEndpoint {
- public:
-  explicit TEST_ScopedSetOtelCollectorEndpoint(const std::string& endpoint)
-      : saved_endpoint_(FLAGS_otel_collector_traces_endpoint) {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_collector_traces_endpoint) = endpoint;
-    ANNOTATE_UNPROTECTED_WRITE(dist_trace::internal::g_dist_trace_enabled) = !endpoint.empty();
-  }
-
-  ~TEST_ScopedSetOtelCollectorEndpoint() {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_collector_traces_endpoint) = saved_endpoint_;
-    ANNOTATE_UNPROTECTED_WRITE(dist_trace::internal::g_dist_trace_enabled) =
-        !saved_endpoint_.empty();
-  }
-
- private:
-  std::string saved_endpoint_;
-};
 
 YB_DEFINE_ENUM(QueryExecMode, (kFetch)(kExecute));
 YB_STRONGLY_TYPED_BOOL(IsUtility);
@@ -989,6 +974,8 @@ class DistTraceTest : public LibPqTestBase {
     options->replication_factor = 1;
     // Force object locks over the exchange (fastpath produces no request, hence no span).
     options->extra_tserver_flags.push_back("--enable_object_lock_fastpath=false");
+    options->extra_tserver_flags.push_back(
+        Format("--pg_client_extra_timeout_ms=$0", kPgClientExtraTimeoutMs));
     options->extra_tserver_flags.push_back(
         Format("--pg_client_use_shared_memory=$0", UsePgClientSharedMemory()));
     if (UsePgClientSharedMemory()) {
@@ -2833,13 +2820,21 @@ TEST_F(DistTraceTest, TestBackfillBackendJoinsQueryTrace) {
 
   ASSERT_EQ(backend_span.trace_id, tp.trace_id);
   ASSERT_EQ(backend_span.op_name, "query");
+
+  // BackfillIndex is a plain-protobuf RPC; its stub drains req.tablet_id without lightweight types.
+  const auto tablet_ids = ASSERT_RESULT(FetchTabletIds("backfill_trace_test"));
+  ASSERT_OK(WaitForSpanWithAttr(
+      tp.trace_id, "rpc yb.tserver.TabletServerAdminService.BackfillIndex", "req.tablet_id",
+      [&tablet_ids](const std::string& tablet_id) {
+        return std::find(tablet_ids.begin(), tablet_ids.end(), tablet_id) != tablet_ids.end();
+      }));
 }
 
 // The tracer provider uses a parent-based sampler: a span under an unsampled (-00) remote
 // parent is not recorded, while a span under a sampled parent or with no parent is.
 TEST_F(DistTraceRpcTest, TestSpanUnderUnsampledParentIsDropped) {
   google::FlagSaver flag_saver;
-  TEST_ScopedSetOtelCollectorEndpoint endpoint_setter(collector_.Url());
+  dist_trace::ScopedTestDistTrace endpoint_setter(collector_.Url());
   dist_trace::InitDistTrace("ysql" /* service_name */, "dist-trace-sampler-test");
   auto cleanup = ScopeExit([] {
     dist_trace::ShutdownDistTrace();
@@ -2883,9 +2878,54 @@ TEST_F(DistTraceRpcTest, TestSpanUnderUnsampledParentIsDropped) {
   ASSERT_TRUE(root->GetContext().IsSampled());
 }
 
+// Every global object-lock release is followed by a second one at the acquire deadline, in case an
+// acquire retry landed late. That deadline release must not join and stretch the DDL's trace.
+TEST_F(DistTraceTest, TestLostMessageLockReleaseNotTraced) {
+  static constexpr auto kReleaseSpan = "rpc yb.master.MasterService.ReleaseObjectLocksGlobal";
+  // The second release fires lock_timeout + pg_client_extra_timeout_ms after the acquire.
+  static constexpr auto kLockTimeout = 3s * kTimeMultiplier;
+  static constexpr auto kPgClientExtraTimeout = kPgClientExtraTimeoutMs * 1ms;
+  static constexpr auto kAcquireDeadline = kLockTimeout + kPgClientExtraTimeout;
+
+  // First catalog access on a fresh connection preloads the relcache; keep that out of the timing.
+  ASSERT_OK(conn_->Fetch("SELECT 1 FROM pg_class LIMIT 1"));
+
+  auto tp = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat("SET lock_timeout = '$0s'", kLockTimeout.count()));
+  ASSERT_OK(conn_->ExecuteFormat("SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+  const auto ddl_start = std::chrono::steady_clock::now();
+  ASSERT_OK(conn_->Execute("CREATE TABLE lost_release_test (id int PRIMARY KEY)"));
+
+  // The detached release leaves no span, so count its arrivals on the master instead.
+  auto master_releases = [this]() -> Result<int64_t> {
+    int64_t result = 0;
+    for (auto* master : cluster_->master_daemons()) {
+      result += VERIFY_RESULT(master->GetMetric<int64>(
+          &METRIC_ENTITY_server, "yb.master",
+          &METRIC_handler_latency_yb_master_MasterDdl_ReleaseObjectLocksGlobal, "total_count"));
+    }
+    return result;
+  };
+
+  ASSERT_OK(collector_.VerifySpanCountInTrace(tp.trace_id, kReleaseSpan, 1));
+  SleepFor(kOtelBatchScheduleDelayMs * kTimeMultiplier * 5ms);
+  const auto releases_after_ddl = collector_.FindSpansByName(tp.trace_id, kReleaseSpan).size();
+  const auto master_releases_after_ddl = ASSERT_RESULT(master_releases());
+  // The acquire happened after ddl_start, so a baseline taken before the deadline cannot already
+  // contain the deadline release.
+  ASSERT_LT(std::chrono::steady_clock::now() - ddl_start, kAcquireDeadline)
+      << "baseline taken after the acquire deadline, a leaked release would go unnoticed";
+
+  SleepFor(kAcquireDeadline + kOtelBatchScheduleDelayMs * kTimeMultiplier * 10ms);
+  ASSERT_GT(ASSERT_RESULT(master_releases()), master_releases_after_ddl)
+      << "the deadline release never reached the master";
+  ASSERT_EQ(collector_.FindSpansByName(tp.trace_id, kReleaseSpan).size(), releases_after_ddl)
+      << "the deadline release joined the DDL trace";
+}
+
 TEST_F(DistTraceRpcTest, TestOtelInternalMessagesAreLogged) {
   google::FlagSaver flag_saver;
-  TEST_ScopedSetOtelCollectorEndpoint endpoint_setter(collector_.Url());
+  dist_trace::ScopedTestDistTrace endpoint_setter(collector_.Url());
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_internal_log_level) = "debug";
 
   static constexpr auto kError = "otel internal error";
@@ -2916,7 +2956,7 @@ TEST_F(DistTraceRpcTest, TestOtelInternalMessagesAreLogged) {
 
 TEST_F(DistTraceRpcTest, TestOtelInternalLogLevelDefaultsToInfo) {
   google::FlagSaver flag_saver;
-  TEST_ScopedSetOtelCollectorEndpoint endpoint_setter(collector_.Url());
+  dist_trace::ScopedTestDistTrace endpoint_setter(collector_.Url());
 
   static constexpr auto kError = "otel default internal error";
   static constexpr auto kInfo = "otel default internal info";
@@ -2942,7 +2982,7 @@ TEST_F(DistTraceRpcTest, TestOtelInternalLogLevelDefaultsToInfo) {
 
 TEST_F(DistTraceRpcTest, TestOtelInternalLogLevelGFlagControlsSdkFiltering) {
   google::FlagSaver flag_saver;
-  TEST_ScopedSetOtelCollectorEndpoint endpoint_setter(collector_.Url());
+  dist_trace::ScopedTestDistTrace endpoint_setter(collector_.Url());
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_internal_log_level) = "error";
 
   static constexpr auto kError = "otel error threshold internal error";
@@ -2973,7 +3013,7 @@ TEST_F(DistTraceRpcTest, TestOtelInternalLogLevelGFlagControlsSdkFiltering) {
 
 TEST_F(DistTraceRpcTest, TestOtelInternalLogLevelNoneSuppressesAllMessages) {
   google::FlagSaver flag_saver;
-  TEST_ScopedSetOtelCollectorEndpoint endpoint_setter(collector_.Url());
+  dist_trace::ScopedTestDistTrace endpoint_setter(collector_.Url());
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_internal_log_level) = "none";
 
   static constexpr auto kError = "otel none threshold internal error";
@@ -3092,7 +3132,7 @@ TEST_F(DistTraceRpcTest, TestCursorFetchEmitsNodeSpanPerMessage) {
 
 TEST_F(DistTraceRpcTest, TestErroredRpcSpanStatus) {
   google::FlagSaver flag_saver;
-  TEST_ScopedSetOtelCollectorEndpoint endpoint_setter(collector_.Url());
+  dist_trace::ScopedTestDistTrace endpoint_setter(collector_.Url());
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_batch_schedule_delay_ms) = kOtelBatchScheduleDelayMs;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_batch_max_export_batch_size) =
       kOtelBatchMaxExportBatchSize;

@@ -3170,10 +3170,7 @@ YbFinishStaleCatalogPrefetch(void)
 	PG_END_TRY();
 
 	YbUpdateCatalogCacheVersion(YbStaleCatalogPrefetchTargetVersion);
-	if (!yb_enable_invalidate_table_cache_entry || YbGetNeedInvalidateAllTableCache())
-		HandleYBStatus(YBCPgInvalidateCache(YbGetCatalogCacheVersion()));
-	else
-		HandleYBStatus(YBCPgUpdateTableCacheMinVersion(YbGetCatalogCacheVersion()));
+	YbUpdatePggateTableCacheAfterApply();
 
 	YbReleaseStaleCatalogPrefetchMessages();
 
@@ -3184,6 +3181,16 @@ YbFinishStaleCatalogPrefetch(void)
 	 */
 	YbIncrementCatCacheDeltaRefreshes();
 	YbIncrementStaleCatalogPrefetches();
+
+	/*
+	 * The backend now reports the version it caught up to, and the shared version may already
+	 * have moved past it. Startup takes more locks after this -- process_settings reads
+	 * pg_db_role_setting -- so AcceptInvalidationMessages can reach YbMaybeRefreshCache with
+	 * neither the prefetcher nor the flag above suppressing it. It refreshes incrementally, or
+	 * fully where that newer gap has no usable run of messages, discarding the catalog this just
+	 * assembled. Slower, not wrong: the YBCStopSysTablePrefetching above dropped the prefetcher's
+	 * read time with it, so the reads that rebuild the caches are not pinned to the older one.
+	 */
 }
 
 /*
@@ -4117,6 +4124,14 @@ YbPrefetchRequiredDataImpl(YbRunWithPrefetcherContext *ctx,
 	 * and why only this call can record one: a connection reads every request back, so a
 	 * partial set would send it to the master leader anyway. Which prefetches are allowed to
 	 * record at all is decided by is_full_connection_start in YbRunWithPrefetcher.
+	 *
+	 * Beyond the core tables this round adds only pg_auth_members and pg_db_role_setting, and
+	 * both are names ysql_catalog_preload_additional_table_list accepts. An operator who lists
+	 * them leaves nothing registered here, YbPrefetch issues no request, and with no request
+	 * there is nothing to cache and no version recorded -- the stale read then stays unavailable
+	 * on that node, in the preload configuration it is meant for. Issuing the round regardless
+	 * would need pggate to accept a prefetch with no tables registered, which its Prefetch
+	 * DCHECKs against.
 	 */
 	status = YbPrefetch(prefetcher, ctx->completes_connection_prefetch);
 	if (status)
@@ -10890,4 +10905,66 @@ YbIndexAttHasOptionsProc(Relation indexrel, AttrNumber attnum)
 	return (indexrel->rd_indam->amoptsprocnum != 0 &&
 			OidIsValid(index_getprocid(indexrel, attnum,
 									   indexrel->rd_indam->amoptsprocnum)));
+}
+
+/*
+ * YbRelationGetUnConstifiedIndexExpressions -- RelationGetIndexExpressions,
+ * but without constant folding.
+ *
+ * The expression tree is returned exactly as stored in indexprs of pg_index.
+ * This form is not cached, since rd_indexprs holds the folded one.
+ */
+List *
+YbRelationGetUnConstifiedIndexExpressions(Relation relation)
+{
+	List	   *result;
+	Datum		exprsDatum;
+	bool		isnull;
+	char	   *exprsString;
+
+	if (relation->rd_indextuple == NULL ||
+		heap_attisnull(relation->rd_indextuple, Anum_pg_index_indexprs, NULL))
+		return NIL;
+
+	exprsDatum = heap_getattr(relation->rd_indextuple,
+							  Anum_pg_index_indexprs,
+							  GetPgIndexDescriptor(),
+							  &isnull);
+	Assert(!isnull);
+	exprsString = TextDatumGetCString(exprsDatum);
+	result = (List *) stringToNode(exprsString);
+	pfree(exprsString);
+
+	return result;
+}
+
+/*
+ * YbRelationGetUnConstifiedIndexPredicate -- RelationGetIndexPredicate, but
+ * without constant folding  and conversion to implicit-AND form.
+ *
+ * The expression tree is returned exactly as stored in indpred of pg_index.
+ * This form is not cached, since indpred holds the folded one.
+ */
+Node *
+YbRelationGetUnConstifiedIndexPredicate(Relation relation)
+{
+	Node	   *result;
+	Datum		predDatum;
+	bool		isnull;
+	char	   *predString;
+
+	if (relation->rd_indextuple == NULL ||
+		heap_attisnull(relation->rd_indextuple, Anum_pg_index_indpred, NULL))
+		return NULL;
+
+	predDatum = heap_getattr(relation->rd_indextuple,
+							 Anum_pg_index_indpred,
+							 GetPgIndexDescriptor(),
+							 &isnull);
+	Assert(!isnull);
+	predString = TextDatumGetCString(predDatum);
+	result = (Node *) stringToNode(predString);
+	pfree(predString);
+
+	return result;
 }

@@ -356,6 +356,10 @@ message PgsqlWriteRequestPB {
 
   // ON CONFLICT resolution for a PGSQL_INSERT.
   optional PgsqlOnConflictAction on_conflict_action = 33 [default = PGSQL_ON_CONFLICT_NONE];
+
+  // Set when the transaction uses object locks. The tserver skips the catalog version check only
+  // for such requests.
+  optional bool is_using_table_locks = 34 [default = false];
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -658,6 +662,17 @@ message PgsqlReadRequestPB {
   // master bounds how many it serves at a time. NONE is never bounded, which keeps an older
   // client working against a newer master.
   optional YsqlCatalogPrefetchKindPB catalog_prefetch_kind = 48;
+
+  // Whether the prefetcher that issued this has already had a request served in this session. A
+  // connection start is several separately keyed requests -- the large relcache preload, then a
+  // few small tables -- and only the first of them is work the master has not already committed
+  // to. Paging state alone cannot say this: the opening request of each of those carries none,
+  // so without this the master would hold every one of them to the limit meant for prefetches it
+  // has not started, and could shed a connection that had already paid for the large read.
+  optional bool catalog_prefetch_continuation = 49;
+
+  // See PgsqlWriteRequestPB::is_using_table_locks.
+  optional bool is_using_table_locks = 50 [default = false];
 }
 
 //--------------------------------------------------------------------------------------------------

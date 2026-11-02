@@ -10,6 +10,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -22,6 +23,7 @@ import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
@@ -38,6 +40,7 @@ import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
+import play.libs.Json;
 
 public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
 
@@ -91,6 +94,72 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
     assertFalse(defaultUniverse.getUniverseDetails().isSoftwareRollbackAllowed);
     assertEquals(
         SoftwareUpgradeState.Ready, defaultUniverse.getUniverseDetails().softwareUpgradeState);
+  }
+
+  @Test
+  public void testRollbackAbortedBeforeReadyFailsRollbackAndRetryCompletes() throws Exception {
+    // Rollback saves the old version before the Ready state, so an abort between the two leaves
+    // RollingBack, which the failure handler turns into RollbackFailed.
+    setupUniverseSingleAZ(false, true);
+    UniverseDefinitionTaskParams.PrevYBSoftwareConfig ybSoftwareConfig =
+        new UniverseDefinitionTaskParams.PrevYBSoftwareConfig();
+    ybSoftwareConfig.setAutoFlagConfigVersion(1);
+    ybSoftwareConfig.setSoftwareVersion(YB_SOFTWARE_VERSION_OLD);
+    ybSoftwareConfig.setTargetUpgradeSoftwareVersion(YB_SOFTWARE_VERSION_NEW);
+    TestHelper.updateUniversePrevSoftwareConfig(defaultUniverse, ybSoftwareConfig);
+    TestHelper.updateUniverseIsRollbackAllowed(defaultUniverse, true);
+    TestHelper.updateUniverseVersion(defaultUniverse, YB_SOFTWARE_VERSION_NEW);
+    TestHelper.updateUniverseSoftwareUpgradeState(
+        defaultUniverse, SoftwareUpgradeState.PreFinalize);
+    RollbackUpgradeParams taskParams = new RollbackUpgradeParams();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.nodePrefix = NODE_PREFIX;
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.sleepAfterMasterRestartMillis = 0;
+    taskParams.sleepAfterTServerRestartMillis = 0;
+
+    UUID taskUuid;
+    TaskInfo taskInfo;
+    try {
+      setPausePosition(0);
+      taskUuid = commissioner.submit(TaskType.RollbackKubernetesUpgrade, taskParams);
+      CustomerTask.create(
+          defaultCustomer,
+          taskParams.getUniverseUUID(),
+          taskUuid,
+          CustomerTask.TargetType.Universe,
+          CustomerTask.TaskType.RollbackUpgrade,
+          defaultUniverse.getName());
+      waitForTaskPaused(taskUuid);
+      // The rollback subtasks are created only after the freeze runs.
+      setPausePosition(firstSubTaskPosition(taskUuid, TaskType.FreezeUniverse) + 1);
+      commissioner.resumeTask(taskUuid);
+      waitForTaskPaused(taskUuid);
+      setAbortPosition(lastSubTaskPosition(taskUuid, TaskType.UpdateUniverseState));
+      commissioner.resumeTask(taskUuid);
+      taskInfo = waitForTask(taskUuid);
+    } finally {
+      clearAbortOrPausePositions();
+    }
+
+    assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertEquals(
+        SoftwareUpgradeState.RollbackFailed,
+        defaultUniverse.getUniverseDetails().softwareUpgradeState);
+    assertEquals(
+        YB_SOFTWARE_VERSION_OLD,
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
+
+    CustomerTask retry = customerTaskManager.retryCustomerTask(defaultCustomer.getUuid(), taskUuid);
+    taskInfo = waitForTask(retry.getTaskUUID());
+
+    assertEquals(Success, taskInfo.getTaskState());
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertEquals(
+        SoftwareUpgradeState.Ready, defaultUniverse.getUniverseDetails().softwareUpgradeState);
+    assertFalse(defaultUniverse.getUniverseDetails().isSoftwareRollbackAllowed);
   }
 
   @Test
@@ -248,6 +317,47 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
     assertEquals(
         YB_SOFTWARE_VERSION_NEW,
         defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
+  }
+
+  @Test
+  public void testYsqlMajorRollbackTreatsReadReplicaAsReadReplica() throws Exception {
+    // PLAT-23200: same compatibility-flag helm step as the upgrade, run on rollback.
+    setupUniverseK8sSingleAZWithYSQL(true, true);
+    Cluster readReplica = addReadReplicaCluster();
+    UniverseDefinitionTaskParams.PrevYBSoftwareConfig ybSoftwareConfig =
+        new UniverseDefinitionTaskParams.PrevYBSoftwareConfig();
+    ybSoftwareConfig.setAutoFlagConfigVersion(1);
+    ybSoftwareConfig.setSoftwareVersion(YB_SOFTWARE_VERSION_OLD);
+    ybSoftwareConfig.setTargetUpgradeSoftwareVersion(YB_SOFTWARE_VERSION_NEW);
+    ybSoftwareConfig.setAllTserversUpgradedToYsqlMajorVersion(true);
+    TestHelper.updateUniversePrevSoftwareConfig(defaultUniverse, ybSoftwareConfig);
+    TestHelper.updateUniverseIsRollbackAllowed(defaultUniverse, true);
+    TestHelper.updateUniverseVersion(defaultUniverse, YB_SOFTWARE_VERSION_NEW);
+    when(mockSoftwareUpgradeHelper.isYsqlMajorVersionUpgradeRequired(
+            any(), anyString(), anyString()))
+        .thenReturn(true);
+    lenient()
+        .when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean()))
+        .thenReturn(true);
+    lenient()
+        .when(
+            mockYsqlQueryExecutor.executeQueryInNodeShell(
+                any(), any(), any(), anyBoolean(), anyBoolean()))
+        .thenReturn(Json.newObject());
+
+    RollbackUpgradeParams taskParams = new RollbackUpgradeParams();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.nodePrefix = NODE_PREFIX;
+    // Adding the read replica bumped the universe version past what submitTask expects.
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.sleepAfterMasterRestartMillis = 0;
+    taskParams.sleepAfterTServerRestartMillis = 0;
+    TaskInfo taskInfo =
+        waitForTask(commissioner.submit(TaskType.RollbackKubernetesUpgrade, taskParams));
+
+    assertEquals(taskInfo.getErrorMessage(), Success, taskInfo.getTaskState());
+    assertReadReplicaCommandsTargetReadReplica(taskInfo, readReplica);
   }
 
   private void assertCheckSoftwareVersionRanForAllNodes(TaskInfo taskInfo) {

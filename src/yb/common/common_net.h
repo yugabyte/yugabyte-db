@@ -29,6 +29,11 @@ CloudInfoPB MakeCloudInfoPB(std::string&& cloud, std::string&& region, std::stri
 int32_t GetEffectiveMaxNumReplicas(
     const PlacementBlockPB& placement_block, int32_t resolved_placement_rf);
 
+bool PlacementInfoHasMaxNumReplicas(const PlacementInfoPB& placement_info);
+
+// Returns true if any of cloud, region or zone is unset, i.e. the cloud_info is a prefix.
+bool IsWildcardCloudInfo(const CloudInfoPB& cloud_info);
+
 bool IsCloudInfoEqual(const CloudInfoPB& lhs, const CloudInfoPB& rhs);
 
 bool CloudInfoContainsCloudInfo(const CloudInfoPB& lhs, const CloudInfoPB& rhs);

@@ -32,6 +32,7 @@
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
+#include "yb/tablet/tablet_context.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 
@@ -197,6 +198,7 @@ Status MiniSysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMeta
       Bind(&DoNothing::fn),
       metric_registry_.get(),
       nullptr, // tablet_splitter
+      nullptr, // persistence_gate
       client_future);
 
   tablet::TabletInitData tablet_init_data = {
@@ -212,6 +214,7 @@ Status MiniSysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMeta
       .tablet_options = tablet_options_,
       .mutable_tablet_options = tablet::MutableTabletOptions{},
       .log_prefix_suffix = "",
+      .tablet_context = &tablet::StandaloneTabletContext::Instance(),
       .transaction_participant_context = tablet_peer_.get(),
       .local_tablet_filter = nullptr,
       .transaction_coordinator_context = nullptr,
@@ -225,7 +228,9 @@ Status MiniSysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMeta
       .auto_flags_manager = nullptr,
       .full_compaction_pool = nullptr,
       .admin_triggered_compaction_pool = nullptr,
+      .intent_cleanup_pool = thread_pool_.get(),
       .post_split_compaction_added = nullptr,
+      .tier_migration_hooks = nullptr,
       .metadata_cache = nullptr,
   };
 

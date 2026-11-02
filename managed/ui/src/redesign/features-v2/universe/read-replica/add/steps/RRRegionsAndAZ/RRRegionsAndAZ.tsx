@@ -55,8 +55,10 @@ import { useYBToast } from '@app/redesign/features-v2/universe/create-universe/h
 const { Box, styled, Typography } = mui;
 
 const StyledOuterPanel = styled('div')(({ theme }) => ({
-  width: '720px',
+  width: '100%',
   maxWidth: '720px',
+  minWidth: 0,
+  boxSizing: 'border-box',
   borderRadius: '8px',
   border: `1px solid ${theme.palette.grey[200]}`,
   overflow: 'hidden',
@@ -169,9 +171,7 @@ function RRPlacementMap({
   }, [primaryPins, draftRrPins]);
 
   return (
-    <Box
-      sx={{ width: '360px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '16px' }}
-    >
+    <Box sx={{ width: '100%', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '16px' }}>
       <YBMaps
         mapHeight={362}
         dataTestId="yb-maps-rr-regions-az"
@@ -362,7 +362,15 @@ export const RRRegionsAndAZ = forwardRef<StepsRef>((_, ref) => {
             </IconButton>
           </StyledBanner>
         )}
-        <Box sx={{ display: 'flex', flexDirection: 'row', gap: '16px', alignItems: 'flex-start' }}>
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '24px',
+            width: '100%',
+            minWidth: 0
+          }}
+        >
           <StyledOuterPanel>
             <StyledPanelHeader>
               <Typography

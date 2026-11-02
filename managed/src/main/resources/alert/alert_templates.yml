@@ -894,6 +894,7 @@ templates:
 
   MEMORY_CONSUMPTION:
     name: Memory Consumption
+    universeType: VM
     description: Average node memory consumption percentage for 10 minutes is above
       threshold
     queryTemplate: max by (universe_uuid) ((avg_over_time(node_memory_MemTotal_bytes{universe_uuid="__universeUuid__"}[10m])
@@ -1062,6 +1063,7 @@ templates:
 
   NODE_CPU_USAGE:
     name: DB node CPU usage
+    universeType: VM
     description: Average node CPU usage percentage for is above threshold.
       Aggregation period is set via yb.alert.cpu_usage_interval_secs runtime property
     queryTemplate: count by(universe_uuid) ((avg by (universe_uuid, node_name)
@@ -1153,6 +1155,7 @@ templates:
 
   NODE_DISK_USAGE:
     name: DB node data disk usage
+    universeType: VM
     description: Node data disk usage percentage is above threshold
     queryTemplate: count by (universe_uuid) (count by (universe_uuid, node_name)
       (100 - (sum without (saved_name) (node_filesystem_free_bytes{mountpoint=~"__mountPoints__",
@@ -2860,3 +2863,137 @@ templates:
         serve node_exporter over TLS until node-agent-provision.sh is re-run with root on them.
 
         Affected nodes: {{ $labels.affected_node_names }}
+
+  DB_K8S_CPU_USAGE:
+    name: DB container CPU usage
+    description: Average DB container CPU usage, as a percentage of the pod's CPU request, is
+      above threshold. Aggregation period is set via yb.alert.cpu_usage_interval_secs runtime
+      property
+    universeType: K8S
+    queryTemplate: count by (universe_uuid) ((sum by (universe_uuid, node_name)
+      (max by (container_name, pod_name, namespace)
+      (rate(container_cpu_usage_seconds_total{container_name=~"yb-master|yb-tserver",
+      namespace=~"__k8sNamespaces__",pod_name=~"__k8sPodNames__"}[{{ range }}s]))
+      / on (container_name, pod_name, namespace) group_left(universe_uuid, node_name)
+      max by (container_name, pod_name, namespace, universe_uuid, node_name)
+      (ybp_container_resource_requests_cpu_cores{universe_uuid="__universeUuid__"})) * 100)
+      {{ query_condition }} {{ query_threshold }})
+    createForNewCustomer: true
+    defaultThresholdMap:
+      WARNING:
+        paramName: yb.alert.max_cpu_usage_pct_warn
+      SEVERE:
+        paramName: yb.alert.max_cpu_usage_pct_severe
+    parameters:
+      range: yb.alert.cpu_usage_interval_secs
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: PERCENT
+    thresholdMaxValue: 100.0
+    thresholdUnitName: '%'
+    testAlertSettings:
+      customValue: 1.0
+      generateValueFromThreshold: false
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "(sum by (universe_uuid, node_name)
+        (max by (container_name, pod_name, namespace)
+        (rate(container_cpu_usage_seconds_total{container_name=~'yb-master|yb-tserver'}[{{ range }}s]))
+        / on (container_name, pod_name, namespace) group_left(universe_uuid, node_name)
+        max by (container_name, pod_name, namespace, universe_uuid, node_name)
+        (ybp_container_resource_requests_cpu_cores{universe_uuid='{{ $labels.universe_uuid }}'})) * 100)
+        {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        Average DB container CPU usage for universe '{{ $labels.source_name }}'
+        is above {{ $labels.threshold }}% of the CPU request on {{ $value | printf "%.0f" }} pod(s).
+
+        Affected nodes: {{ $labels.affected_node_names }}
+
+  DB_K8S_MEMORY_USAGE:
+    name: DB container memory usage
+    description: DB container memory usage, excluding page cache, as a percentage of the
+      container's memory limit, averaged over 10 minutes, is above threshold
+    universeType: K8S
+    queryTemplate: max by (universe_uuid) (max by (universe_uuid, node_name)
+      ((max by (container_name, pod_name, namespace) (avg_over_time(container_memory_usage_bytes{
+      container_name=~"yb-master|yb-tserver",namespace=~"__k8sNamespaces__",pod_name=~"__k8sPodNames__"}[10m]))
+      - max by (container_name, pod_name, namespace) (avg_over_time(container_memory_cache{
+      container_name=~"yb-master|yb-tserver",namespace=~"__k8sNamespaces__",pod_name=~"__k8sPodNames__"}[10m])))
+      / (max by (container_name, pod_name, namespace) (avg_over_time(container_spec_memory_limit_bytes{
+      container_name=~"yb-master|yb-tserver",namespace=~"__k8sNamespaces__",pod_name=~"__k8sPodNames__"}[10m])) > 0)
+      * on (container_name, pod_name, namespace) group_left(universe_uuid, node_name)
+      (0 * max by (container_name, pod_name, namespace, universe_uuid, node_name)
+      (ybp_container_resource_requests_cpu_cores{universe_uuid="__universeUuid__"}) + 1)))
+      * 100 {{ query_condition }} {{ query_threshold }}
+    defaultThresholdMap:
+      SEVERE:
+        paramName: yb.alert.max_memory_cons_pct
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: PERCENT
+    thresholdMaxValue: 100.0
+    thresholdUnitName: '%'
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "max by (universe_uuid, node_name)
+        ((max by (container_name, pod_name, namespace)
+        (avg_over_time(container_memory_usage_bytes{container_name=~'yb-master|yb-tserver'}[10m]))
+        - max by (container_name, pod_name, namespace)
+        (avg_over_time(container_memory_cache{container_name=~'yb-master|yb-tserver'}[10m])))
+        / (max by (container_name, pod_name, namespace)
+        (avg_over_time(container_spec_memory_limit_bytes{container_name=~'yb-master|yb-tserver'}[10m])) > 0)
+        * on (container_name, pod_name, namespace) group_left(universe_uuid, node_name)
+        (0 * max by (container_name, pod_name, namespace, universe_uuid, node_name)
+        (ybp_container_resource_requests_cpu_cores{universe_uuid='{{ $labels.universe_uuid }}'}) + 1))
+        * 100 {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        Average DB container memory usage for universe '{{ $labels.source_name }}'
+        is above {{ $labels.threshold }}% of the memory limit. Max value is {{ $value | printf "%.0f" }}%.
+
+        Affected nodes: {{ $labels.affected_node_names }}
+
+  DB_K8S_DATA_VOLUME_USAGE:
+    name: DB data volume usage
+    description: DB pod data volume usage percentage is above threshold
+    universeType: K8S
+    queryTemplate: count by (universe_uuid) (count by (universe_uuid, node_name)
+      (label_replace(max by (namespace, persistentvolumeclaim)
+      (kubelet_volume_stats_used_bytes{namespace=~"__k8sNamespaces__"})
+      / max by (namespace, persistentvolumeclaim)
+      (kubelet_volume_stats_capacity_bytes{namespace=~"__k8sNamespaces__"}),
+      "pod_name", "$2", "persistentvolumeclaim", "(.*-)?datadir[0-9]+-(.+)")
+      * on (namespace, pod_name) group_left(universe_uuid, node_name)
+      (0 * max by (namespace, pod_name, universe_uuid, node_name)
+      (ybp_container_resource_requests_cpu_cores{universe_uuid="__universeUuid__"}) + 1)
+      * 100 {{ query_condition }} {{ query_threshold }}))
+    createForNewCustomer: true
+    defaultThresholdMap:
+      SEVERE:
+        paramName: yb.alert.max_node_disk_usage_pct_severe
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: PERCENT
+    thresholdMaxValue: 100.0
+    thresholdUnitName: '%'
+    testAlertSettings:
+      customValue: 1.0
+      generateValueFromThreshold: false
+    labels:
+      affected_volumes: >-
+        {{ range $index, $element := query "label_replace(max by (namespace, persistentvolumeclaim)
+        (kubelet_volume_stats_used_bytes) / max by (namespace, persistentvolumeclaim)
+        (kubelet_volume_stats_capacity_bytes),
+        'pod_name', '$2', 'persistentvolumeclaim', '(.*-)?datadir[0-9]+-(.+)')
+        * on (namespace, pod_name) group_left(universe_uuid, node_name)
+        (0 * max by (namespace, pod_name, universe_uuid, node_name)
+        (ybp_container_resource_requests_cpu_cores{universe_uuid='{{ $labels.universe_uuid }}'}) + 1)
+        * 100 {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}:{{ $element.Labels.persistentvolumeclaim }}{{ end }}
+    annotations:
+      summary: >-
+        DB data volume usage for universe '{{ $labels.source_name }}' is above {{ $labels.threshold }}% on {{ $value | printf "%.0f" }} pod(s).
+
+        Affected volumes:
+
+        {{ $labels.affected_volumes }}

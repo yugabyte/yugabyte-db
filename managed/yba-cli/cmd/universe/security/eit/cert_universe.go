@@ -80,7 +80,9 @@ var certEncryptionInTransitCmd = &cobra.Command{
 					formatter.RedColor))
 		}
 
-		primaryUserIntent := clusters[0].GetUserIntent()
+		primaryCluster, _ := universeutil.MustFindPrimaryCluster(
+			clusters, universeName, universeUUID)
+		primaryUserIntent := primaryCluster.GetUserIntent()
 		enableClientToNodeEncrypt := primaryUserIntent.GetEnableClientToNodeEncrypt()
 
 		upgradeOption, err := cmd.Flags().GetString("upgrade-option")

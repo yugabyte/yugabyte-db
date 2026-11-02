@@ -317,7 +317,7 @@ libraryDependencies ++= Seq(
   // aarch64 binaries (same PG 14.5) so the embedded server starts natively there.
   "io.zonky.test.postgres" % "embedded-postgres-binaries-darwin-arm64v8" % "14.5.0" % Test,
   "org.springframework" % "spring-test" % "5.3.9" % Test,
-  "com.yugabyte" % "yba-client-v2" % "1.8.9" % Test,
+  "com.yugabyte" % "yba-client-v2" % "1.8.13" % Test,
   "io.fabric8" % "kubernetes-server-mock" % "6.14.0" % Test
 )
 
@@ -767,7 +767,7 @@ lazy val javaGenV2Client = project.in(file("client/java"))
     openApiConfigFile := "client/java/openapi-java-config-v2.json",
     openApiGlobalProperties += ("skipFormModel" -> "false"),
     openApiTemplateDir := (baseDirectory.value / resDir / "openapi_templates/clients/v2").absolutePath,
-    version := "1.8.9",
+    version := "1.8.13",
     openApiHttpUserAgent := s"yba-java-client/${version.value}",
     target := file("client/java/target/v2"),
   )
@@ -1089,33 +1089,34 @@ runPlatform := {
 dependencyOverrides += "org.bouncycastle" % "bc-fips" % bouncyCastleFipsVersion
 dependencyOverrides += "org.bouncycastle" % "bcutil-fips" % bouncyCastleUtilFipsVersion
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.124-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.4-b11"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.125-SNAPSHOT"
+libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.4-b12"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b35"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",
-  "io.netty" % "netty-codec-haproxy" % "4.1.137.Final",
+  "io.netty" % "netty-codec-haproxy" % "4.1.139.Final",
   "io.projectreactor.netty" % "reactor-netty-http" % "1.0.39",
   "org.slf4j" % "slf4j-ext" % "1.7.26",
 )
 
 
 dependencyOverrides += "org.reflections" % "reflections" % "0.10.2"
-dependencyOverrides += "io.netty" % "netty-all" % "4.1.137.Final"
-dependencyOverrides += "io.netty" % "netty-codec-http" % "4.1.137.Final"
-dependencyOverrides += "io.netty" % "netty-codec-http2" % "4.1.137.Final"
+dependencyOverrides += "io.netty" % "netty-all" % "4.1.139.Final"
+dependencyOverrides += "io.netty" % "netty-codec-http" % "4.1.139.Final"
+dependencyOverrides += "io.netty" % "netty-codec-http2" % "4.1.139.Final"
 // netty-all does not force these core modules, so they stay at the next-highest
-// requested version (4.1.130) and must be pinned explicitly to reach 4.1.137.
-dependencyOverrides += "io.netty" % "netty-buffer" % "4.1.137.Final"
-dependencyOverrides += "io.netty" % "netty-codec" % "4.1.137.Final"
-dependencyOverrides += "io.netty" % "netty-common" % "4.1.137.Final"
-dependencyOverrides += "io.netty" % "netty-handler" % "4.1.137.Final"
-dependencyOverrides += "io.netty" % "netty-transport" % "4.1.137.Final"
-dependencyOverrides += "io.netty" % "netty-transport-sctp" % "4.1.137.Final"
+// requested version (4.1.130) and must be pinned explicitly to reach 4.1.139.
+dependencyOverrides += "io.netty" % "netty-buffer" % "4.1.139.Final"
+dependencyOverrides += "io.netty" % "netty-codec" % "4.1.139.Final"
+dependencyOverrides += "io.netty" % "netty-common" % "4.1.139.Final"
+dependencyOverrides += "io.netty" % "netty-handler" % "4.1.139.Final"
+dependencyOverrides += "io.netty" % "netty-transport" % "4.1.139.Final"
+dependencyOverrides += "io.netty" % "netty-transport-sctp" % "4.1.139.Final"
 
-// Play pulls the at.yawk fork of lz4-java transitively; pinned for CVE-2026-59949.
-dependencyOverrides += "at.yawk.lz4" % "lz4-java" % "1.11.1"
+// Play pulls the at.yawk fork of lz4-java transitively; pinned for CVE-2026-59949 and
+// CVE-2026-106451.
+dependencyOverrides += "at.yawk.lz4" % "lz4-java" % "1.11.4"
 
 // cron-utils pulls org.glassfish:javax.el 3.0.0 (CVE-2021-28170), which has no fixed release.
 // The fix shipped as org.glassfish:jakarta.el 3.0.4, which keeps the javax.el package.
@@ -1165,7 +1166,7 @@ val pekkoOverrides = pekkoLibs.map(_ % pekkoVersion)
 
 dependencyOverrides ++= pekkoOverrides
 
-val jacksonVersion         = "2.22.2"
+val jacksonVersion         = "2.22.4"
 // jackson-annotations dropped the patch component from 2.20 onward: it publishes 2.20, 2.21,
 // 2.22, so it cannot follow jacksonVersion.
 val jacksonAnnotationsVersion = "2.22"

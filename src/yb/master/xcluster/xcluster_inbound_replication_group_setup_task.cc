@@ -19,7 +19,9 @@
 #include "yb/client/xcluster_client.h"
 
 #include "yb/common/colocated_util.h"
+#include "yb/common/common_flags.h"
 #include "yb/common/common_net.pb.h"
+#include "yb/common/schema.h"
 #include "yb/common/xcluster_util.h"
 
 #include "yb/gutil/bind.h"
@@ -44,11 +46,25 @@
 #include "yb/util/flags/auto_flags_util.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
+#include "yb/util/sync_point.h"
 
 // TODO: Bootstrap check sends multiple RPCs. Consider converting it to one RPC when enabling
 // check_bootstrap_required flag by default.
 DEFINE_RUNTIME_bool(check_bootstrap_required, false,
     "Is it necessary to check whether bootstrap is required for Universe Replication.");
+
+DEFINE_RUNTIME_bool(xcluster_skip_schema_validation_on_setup, false,
+    "When set, xCluster setup logs a warning instead of failing when a source table's schema does "
+    "not match its target table's. Use only to unblock setup when the schemas are known to hold "
+    "the same data; replicating between tables whose schemas really differ writes wrong data to "
+    "the target.");
+TAG_FLAG(xcluster_skip_schema_validation_on_setup, unsafe);
+
+DEFINE_RUNTIME_bool(xcluster_skip_index_column_name_check_on_setup, false,
+    "When set, xCluster setup does not compare the column names of YSQL indexes. Set it to set "
+    "up replication of an index whose indexed column was renamed on the source before the target "
+    "was created from a backup of it.");
+TAG_FLAG(xcluster_skip_index_column_name_check_on_setup, advanced);
 
 DEFINE_RUNTIME_uint32(xcluster_ensure_sequence_updates_in_wal_timeout_sec, 3 * 60,
     "Timeout for XClusterEnsureSequenceUpdatesAreInWal RPCs.");
@@ -287,6 +303,7 @@ Status XClusterInboundReplicationGroupSetupTask::FirstStep() {
 Status XClusterInboundReplicationGroupSetupTask::SetupDDLReplicationExtension() {
   bool need_to_bootstrap_sequences_data = false;
   if (data_.automatic_ddl_mode) {
+    std::vector<NamespaceId> switchover_namespace_ids;
     for (const auto& namespace_id : data_.target_namespace_ids) {
       auto namespace_name = VERIFY_RESULT(catalog_manager_.FindNamespaceById(namespace_id))->name();
       bool is_switchover = xcluster_manager_.IsNamespaceInAutomaticModeSource(namespace_id);
@@ -301,10 +318,15 @@ Status XClusterInboundReplicationGroupSetupTask::SetupDDLReplicationExtension() 
           sync.AsStdStatusCallback()));
       RETURN_NOT_OK_PREPEND(sync.Wait(), "Failed to setup xCluster DDL replication extension");
 
-      if (!is_switchover) {
+      if (is_switchover) {
+        switchover_namespace_ids.push_back(namespace_id);
+      } else {
         // ALTERs to add/remove a table, and remove namespace do not reach this function.
         need_to_bootstrap_sequences_data = true;
       }
+    }
+    if (!switchover_namespace_ids.empty()) {
+      RETURN_NOT_OK(BlockWritesStartedAsSource(switchover_namespace_ids));
     }
   }
 
@@ -316,6 +338,37 @@ Status XClusterInboundReplicationGroupSetupTask::SetupDDLReplicationExtension() 
     ScheduleNextStep(
         [self = shared_from(this)] { return self->CreateTableTasks(); }, "CreateTableTasks");
   }
+  return Status::OK();
+}
+
+// Ensure that we refuse user YSQL writes and commits to namespace_ids, including those that
+// originated before this call.
+Status XClusterInboundReplicationGroupSetupTask::BlockWritesStartedAsSource(
+    const std::vector<NamespaceId>& namespace_ids) {
+  if (!IsPersistenceGateEnforced()) {
+    // Mid-upgrade, before every process can enforce the persistence gate: keep the old behavior.
+    LOG_WITH_PREFIX(WARNING) << "Persistence gate not enforced; not blocking writes started while "
+                             << AsString(namespace_ids) << " were xCluster sources";
+    return Status::OK();
+  }
+
+  const auto deadline =
+      MonoTime::Now() + MonoDelta::FromSeconds(FLAGS_xcluster_ysql_statement_timeout_sec);
+
+  // Propagate the TARGET role first.  Once it reaches every TServer, PgClientSession refuses new
+  // DMLs to these databases, so any DML that passed that check before the role arrived originated
+  // before the StartPersisting call below, which refuses it.  Exception: some DMLs are allowed
+  // through the PgClientSession gate, including index backfill writes.
+  RETURN_NOT_OK_PREPEND(
+      xcluster_manager_.PropagateXClusterGuardedInfo(deadline),
+      "Failed to propagate the xCluster target role");
+
+  RETURN_NOT_OK_PREPEND(
+      xcluster_manager_.StartPersisting(namespace_ids, deadline, epoch_),
+      "Failed to block writes started while the databases were xCluster sources");
+  LOG_WITH_PREFIX(INFO) << "Blocked transactions started while " << AsString(namespace_ids)
+                        << " were xCluster sources";
+  TEST_SYNC_POINT("XClusterInboundReplicationGroupSetupTask::AfterBlockWritesStartedAsSource");
   return Status::OK();
 }
 
@@ -954,14 +1007,33 @@ Result<GetTableSchemaResponsePB> XClusterTableSetupTask::ValidateSourceSchemaAnd
     Schema target_schema;
     RETURN_NOT_OK(SchemaFromPB(table_schema_resp.schema(), &target_schema));
 
-    // We now have a table match. Validate the schema.
-    SCHECK(
-        target_schema.EquivalentForDataCopy(source_schema), IllegalState,
-        Format(
-            "Source and target schemas don't match: "
-            "Source: $0, Target: $1, Source schema: $2, Target schema: $3",
-            source_table_info.table_id, table_schema_resp.identifier().table_id(),
-            source_table_info.schema.ToString(), table_schema_resp.schema().DebugString()));
+    // We now have a table match.  Validate the schema.
+    //
+    // RENAME COLUMN does not rename index columns (in PG or DocDB), but a restore recreates
+    // indexes with the current names, so a restored index can differ from its source only in
+    // column names.  Skip the names in automatic mode, where the target is always a restore.
+    // Other modes keep them by default, since otherwise, manually created indexes on the target
+    // could pass with a different column of the same type.
+    const bool is_ysql_index_pair = is_ysql_table && source_table_info.index_info.has_value() &&
+                                    table_schema_resp.has_index_info();
+    const bool skip_index_column_names =
+        is_ysql_index_pair && (parent_task_->data_.automatic_ddl_mode ||
+                               FLAGS_xcluster_skip_index_column_name_check_on_setup);
+    const bool schemas_match = target_schema.EquivalentForDataCopy(
+        source_schema,
+        skip_index_column_names ? ColumnSchema::CompareType : ColumnSchema::CompareByDefault);
+    if (!schemas_match) {
+      const auto mismatch = Format(
+          "Source and target schemas don't match$0: "
+          "Source: $1, Target: $2, Source schema: $3, Target schema: $4",
+          skip_index_column_names ? " (index column names not compared)" : "",
+          source_table_info.table_id, table_schema_resp.identifier().table_id(),
+          source_table_info.schema.ToString(), table_schema_resp.schema().DebugString());
+      SCHECK(FLAGS_xcluster_skip_schema_validation_on_setup, IllegalState, mismatch);
+      LOG_WITH_PREFIX(WARNING) << mismatch
+                               << ". Continuing because xcluster_skip_schema_validation_on_setup "
+                                  "is set";
+    }
     break;
   }
 

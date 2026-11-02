@@ -80,6 +80,7 @@ const (
 	PlatformVersionUpdateKey  = "platform.update_version"
 	PlatformSkipVerifyCertKey = "platform.skip_verify_cert"
 	PlatformCaCertPathKey     = "platform.ca_cert_path"
+	PlatformFipsEnabledKey    = "platform.fips_enabled"
 
 	// Node config keys.
 	NodeIpKey                     = "node.ip"
@@ -110,8 +111,7 @@ const (
 	NodeAgentRegistryHomeKey = "node_agent_home"
 
 	// JWT claims.
-	JwtClaimsExpiryKey  = "exp"
-	JwtClaimsSessionKey = "ses"
+	JwtClaimsExpiryKey = "exp"
 
 	// GlobalRuntimeScopeUuid is the UUID for global scope for runtime configs.
 	GlobalRuntimeConfigScopeUuid = "00000000-0000-0000-0000-000000000000"

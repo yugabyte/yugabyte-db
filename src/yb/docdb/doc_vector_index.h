@@ -140,6 +140,9 @@ class DocVectorIndexContext {
   virtual ~DocVectorIndexContext() = default;
   virtual Result<DocVectorIndexReverseMappingReaderPtr> CreateReverseMappingReader(
       const ReadHybridTime& read_ht, DocDBStatistics* statistics) const = 0;
+
+  // Bounds of the keys served by the tablet. Initialized only for a tablet created by a split.
+  virtual const KeyBounds& key_bounds() const = 0;
 };
 
 using DocVectorIndexContextPtr = std::unique_ptr<DocVectorIndexContext>;
@@ -201,6 +204,9 @@ class DocVectorIndex {
   // rather than vector count.
   virtual size_t EstimateNumVectorsForBytes(size_t bytes_limit) const = 0;
 
+  // Capacity of a new mutable chunk when the insert does not specify one.
+  virtual size_t DefaultChunkCapacity() const = 0;
+
   virtual Result<DocVectorIndexSearchResult> Search(
       Slice vector, const vector_index::SearchOptions& options, bool could_have_missing_entries,
       DocVectorIndexReverseMappingReader& reverse_mapping_reader) = 0;
@@ -244,6 +250,9 @@ class DocVectorIndex {
   storage::UserFrontierPtr GetInMemoryFrontier(storage::UpdateUserValueType type);
 
   virtual storage::FlushAbility GetFlushAbility() = 0;
+
+  // Returns terminal failure without waiting for in-flight saves.
+  virtual Status GetFlushStatus() const = 0;
   virtual Status CreateCheckpoint(const std::string& out) = 0;
   virtual const std::string& ToString() const = 0;
   virtual Status Destroy() = 0;
@@ -280,6 +289,9 @@ class DocVectorIndex {
   // Returns true if all inherited parent-tablet chunks have been compacted away.
   // Caches the true result; ComputeParentDataCompacted() is the uncached check.
   bool ParentDataCompacted();
+
+  // Whether the row with the specified key belongs to the indexed table.
+  bool IsIndexedTableKey(Slice key) const;
 
   // Writes reverse mapping for the vector id in `value`.
   // kInvalidColumnId means legacy raw-ybctid format; otherwise V1 value format.

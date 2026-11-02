@@ -17,6 +17,7 @@
 
 #include "yb/common/clock.h"
 #include "yb/common/colocated_util.h"
+#include "yb/common/common_flags.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/common/hybrid_time.h"
 
@@ -74,7 +75,15 @@ DEFINE_RUNTIME_AUTO_bool(xcluster_enable_target_applied_filter, kExternal, false
     "When promoted, new xCluster streams in unidirectional automatic-DDL-mode replication "
     "groups use WritePB.xcluster_target_applied (instead of has_external_hybrid_time) as the "
     "producer's loop-prevention predicate, allowing index backfill writes to replicate "
-    "end-to-end. Bi-directional and pre-existing streams are unaffected.");
+    "end-to-end. Bi-directional and pre-existing streams are unaffected. NOTE: If you want to "
+    "disable the feature, use xcluster_enable_index_backfill_replication instead.");
+
+DEFINE_RUNTIME_bool(xcluster_enable_index_backfill_replication, true,
+    "In xCluster automatic DDL replication mode, replicate index backfill writes from the source "
+    "instead of running the backfill again on the target. The source master checks this when it "
+    "creates an xCluster stream, so setting it to false only affects streams created afterwards. "
+    "Existing streams keep the behavior they were created with. Note that this also includes "
+    "colocated streams and indexes.");
 
 DEFINE_RUNTIME_AUTO_bool(enable_xcluster_wal_anchor_stream_infra, kExternal, false, true,
     "Auto infra flag for the xCluster WAL_ANCHOR stream feature. NOTE: If you want to disable "
@@ -167,7 +176,8 @@ XClusterManager::XClusterManager(
       catalog_manager_(catalog_manager),
       sys_catalog_(sys_catalog),
       xcluster_config_(std::make_unique<XClusterConfig>(&sys_catalog_)),
-      persistence_block_map_(std::make_unique<PersistenceBlockMap>(&sys_catalog_)) {
+      persistence_block_map_(
+          std::make_unique<PersistenceBlockMap>(catalog_manager, &sys_catalog_)) {
   // No need to run cleaning task as soon as we start; delay it to make startup faster.
   time_of_last_clean_tables_task_run_ = CoarseMonoClock::Now();
 }
@@ -393,21 +403,43 @@ Result<std::vector<uint32_t>> XClusterManager::GetYsqlUserDatabaseOids(
   return db_oids;
 }
 
-// TODO(mlillibridge): StopPersisting and StartPersisting must return NotSupported unless both
-// enforce_xcluster_guarded_lease and the persistence gate AutoFlag are on: without the former
-// PropagateXClusterGuardedInfo does nothing, and without the latter nothing enforces the map.
+namespace {
+
+// Without enforce_xcluster_guarded_lease, PropagateXClusterGuardedInfo does nothing and some
+// TServers may not have gate code, and, without enable_persistence_gate, nothing enforces the map;
+// either way a success would promise a guarantee nobody delivers.
+Status CheckPersistenceGateEnforced() {
+  SCHECK(
+      IsPersistenceGateEnforced(), NotSupported,
+      "The persistence gate is not enforced: it requires --enable_persistence_gate and "
+      "--enforce_xcluster_guarded_lease");
+  return Status::OK();
+}
+
+} // namespace
 
 Status XClusterManager::StopPersisting(
     const std::vector<NamespaceId>& namespace_ids, MonoTime deadline, const LeaderEpoch& epoch) {
+  RETURN_NOT_OK(CheckPersistenceGateEnforced());
   std::lock_guard l(persisting_calls_mutex_);
   const auto db_oids = VERIFY_RESULT(GetYsqlUserDatabaseOids(namespace_ids));
   RETURN_NOT_OK(persistence_block_map_->SetBlockedThrough(epoch, db_oids, HybridTime::kMax));
   LOG(INFO) << "Stopped persisting for databases " << AsString(namespace_ids);
-  return PropagateXClusterGuardedInfo(deadline);
+  RETURN_NOT_OK(PropagateXClusterGuardedInfo(deadline));
+
+  // An op that passed the gate against the old map got its hybrid time from its TServer's clock
+  // before that TServer applied the new map, so before propagation finished, i.e., before now.
+  // That clock is at most max_clock_skew_usec ahead of ours, so the op's time is at most now +
+  // max_clock_skew_usec; we wait until our clock is strictly past that.  WaitUntil returns once
+  // the clock reaches its target, hence the extra microsecond.
+  return ResultToStatus(WaitUntil(
+      master_.clock(), master_.clock()->Now().AddMicroseconds(FLAGS_max_clock_skew_usec + 1),
+      ToCoarse(deadline)));
 }
 
 Status XClusterManager::StartPersisting(
     const std::vector<NamespaceId>& namespace_ids, MonoTime deadline, const LeaderEpoch& epoch) {
+  RETURN_NOT_OK(CheckPersistenceGateEnforced());
   std::lock_guard l(persisting_calls_mutex_);
   const auto db_oids = VERIFY_RESULT(GetYsqlUserDatabaseOids(namespace_ids));
   // The extra microsecond keeps blocked_through_ht above any pre-call origination time whatever its
@@ -431,6 +463,11 @@ Status XClusterManager::StartPersisting(
 
 Result<SysPersistenceBlockMapEntryPB> XClusterManager::GetPersistenceBlockMap() const {
   return persistence_block_map_->GetEntry();
+}
+
+Result<std::optional<HybridTime>> XClusterManager::GetPersistenceBlockedThrough(
+    int64_t term, uint32_t database_oid) const {
+  return persistence_block_map_->GetBlockedThrough(term, database_oid);
 }
 
 Status XClusterManager::ErasePersistenceBlock(

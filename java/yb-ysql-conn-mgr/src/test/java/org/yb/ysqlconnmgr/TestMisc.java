@@ -528,6 +528,45 @@ public class TestMisc extends BaseYsqlConnMgr {
   }
 
   @Test
+  public void testAttachAfterBackendTerminated() throws Exception {
+    // With warmup disabled the test user's pool has a single backend, so the
+    // next query is attached to the terminated one.
+    disableWarmupModeAndRestartCluster();
+
+    try (Connection suConn = getConnectionBuilder()
+             .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+             .connect();
+         Statement suStmt = suConn.createStatement()) {
+      suStmt.execute("CREATE ROLE test_user LOGIN");
+
+      try (Connection conn = getConnectionBuilder()
+               .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+               .withUser("test_user")
+               .connect();
+           Statement stmt = conn.createStatement()) {
+        int terminatedPid = getProcessId(stmt);
+        assertNotEquals("Failed to obtain the process ID.", terminatedPid, -1);
+
+        try (ResultSet rs = suStmt.executeQuery(
+                 String.format("SELECT pg_terminate_backend(%d)", terminatedPid))) {
+          assertTrue(rs.next());
+          assertTrue("pg_terminate_backend failed for pid " + terminatedPid,
+                     rs.getBoolean(1));
+        }
+
+        // Give the backend time to exit and close its socket.
+        Thread.sleep(1000);
+
+        // The pooled server is dead; connection manager must skip it instead
+        // of failing the query.
+        int newPid = getProcessId(stmt);
+        assertNotEquals("Failed to obtain the process ID.", newPid, -1);
+        assertNotEquals("Query ran on the terminated backend", terminatedPid, newPid);
+      }
+    }
+  }
+
+  @Test
   public void testLargeDbAndUserNames() throws Exception {
     // Test that database and user names longer than 63 characters are truncated
     // to 63 characters and connections succeed.
@@ -592,6 +631,28 @@ public class TestMisc extends BaseYsqlConnMgr {
     } catch (Exception e) {
       LOG.error("Failed to connect with 70-character user name", e);
       fail();
+    }
+  }
+
+  @Test
+  public void testSessionParameterWithBackslash() throws Exception {
+    // A session setting containing a backslash must be replayed correctly
+    // when the logical connection is attached to the backend again.
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), SINGLE_BACKEND_FLAGS);
+    String value = "C:\\dir\\file";
+
+    ConnectionBuilder connBuilder = getConnectionBuilder()
+        .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR);
+    try (Connection conn1 = connBuilder.connect();
+         Statement stmt1 = conn1.createStatement();
+         Connection conn2 = connBuilder.connect();
+         Statement stmt2 = conn2.createStatement()) {
+      stmt1.execute(String.format("SET myapp.path = '%s'", value));
+      // conn2 uses the only backend, so conn1's setting is replayed on its next query.
+      stmt2.execute("SELECT 1");
+      ResultSet rs = stmt1.executeQuery("SHOW myapp.path");
+      assertTrue("No result from SHOW myapp.path", rs.next());
+      assertEquals(value, rs.getString(1));
     }
   }
 }

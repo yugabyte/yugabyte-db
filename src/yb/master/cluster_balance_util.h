@@ -430,6 +430,7 @@ class PerTableLoadState {
   // enforced here, with one exemption: if from_ts is in the same placement block as to_ts, the
   // move is allowed even if the block is at its maximum, since the remove that follows restores
   // the block to its cap (this keeps e.g. blacklist-driven same-block moves from deadlocking).
+  // The exemption does not apply to under-replicated tablets, as no remove follows the add.
   // Callers must pass from_ts explicitly (empty if none) to make that decision conscious.
   Result<bool> CanAddTabletToTabletServer(
       const TabletId& tablet_id, const TabletServerId& to_ts, const TabletServerId& from_ts);

@@ -27,7 +27,6 @@ import com.yugabyte.yw.metrics.data.AlertData;
 import com.yugabyte.yw.metrics.data.AlertsResponse;
 import com.yugabyte.yw.metrics.data.ResponseStatus;
 import com.yugabyte.yw.models.*;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.time.Instant;
 import java.util.*;
@@ -64,6 +63,16 @@ public class MetricQueryHelper {
   public static final String CONTAINER_METRIC_PREFIX = "container";
   public static final String KUBELET_VOLUME_METRIC_PREFIX = "kubelet_volume";
   public static final String CONTAINER_VOLUME_METRIC_PREFIX = "container_volume";
+  public static final String K8S_METRIC_PREFIX = "k8s";
+  public static final String K8S_VOLUME_METRIC_PREFIX = "k8s_volume";
+
+  /** The series a metrics.yml key reads: a pod's cAdvisor series, a volume claim's, or neither. */
+  public enum KubernetesKind {
+    POD,
+    VOLUME,
+    NONE
+  }
+
   private static final String NODE_PREFIX = "node_prefix";
   public static final String NAMESPACE = "namespace";
 
@@ -190,14 +199,18 @@ public class MetricQueryHelper {
           null);
     }
 
-    // Given we have a limitation on not being able to rename the pod labels in
-    // kubernetes cadvisor metrics, we try to see if the metric being queried is for
-    // container or not, and use pod_name vs exported_instance accordingly.
-    // Expect for container metrics, all the metrics would with node_prefix and exported_instance.
-    boolean hasContainerMetric =
-        metricSettingsMap.keySet().stream().anyMatch(s -> s.startsWith(CONTAINER_METRIC_PREFIX));
-    String universeFilterLabel = hasContainerMetric ? NAMESPACE : NODE_PREFIX;
-    String nodeFilterLabel = hasContainerMetric ? POD_NAME : EXPORTED_INSTANCE;
+    // Choosing filters per key, since cAdvisor and kubelet series have no node_prefix and one
+    // request can mix them with node keys.
+    Map<String, String> nodeFilters = new LinkedHashMap<>();
+    Map<String, String> k8sFilters = new LinkedHashMap<>();
+    // Kept apart from k8sFilters so the container keys keep their tserver-only pod pattern.
+    Map<String, String> k8sKeyDefaultFilters = new LinkedHashMap<>();
+    // DB-container filter for the container keys only, set when nodes are selected; a k8s key
+    // names its own containers.
+    String dbContainerFilter = null;
+    boolean hasKubernetesKey =
+        metricSettingsMap.keySet().stream()
+            .anyMatch(key -> getKubernetesKind(key) != KubernetesKind.NONE);
 
     // Filters shared across every metric in the request go into the ALL bucket of
     // filterOverrides. Per-metric entries added below take precedence on a key-by-key basis
@@ -215,7 +228,8 @@ public class MetricQueryHelper {
     if (StringUtils.isEmpty(metricQueryParams.getNodePrefix())) {
       String universePrefixes =
           String.join("|", Universe.getNodePrefixesForCustomer(customer.getId()));
-      allFilters.put(universeFilterLabel, universePrefixes);
+      nodeFilters.put(NODE_PREFIX, universePrefixes);
+      k8sFilters.put(NAMESPACE, universePrefixes);
     } else {
       final String nodePrefix = metricQueryParams.getNodePrefix();
       List<UUID> universeUuids =
@@ -275,7 +289,7 @@ public class MetricQueryHelper {
         }
       }
       // Check if it is a Kubernetes deployment.
-      if (hasContainerMetric) {
+      if (hasKubernetesKey) {
 
         boolean newNamingStyle = universe.getUniverseDetails().useNewHelmNamingStyle;
 
@@ -292,6 +306,7 @@ public class MetricQueryHelper {
           Set<String> podNames = new HashSet<>();
           Set<String> containerNames = new HashSet<>();
           Set<String> pvcNames = new HashSet<>();
+          Set<String> dataClaimNames = new HashSet<>();
           Set<String> namespaces = new HashSet<>();
           for (NodeDetails node : nodesToFilter) {
             String podName = node.getK8sPodName();
@@ -301,49 +316,78 @@ public class MetricQueryHelper {
             podNames.add(podName);
             containerNames.add(containerName);
             pvcNames.add(pvcName);
+            dataClaimNames.add("(.*)datadir[0-9]+-" + podName);
             namespaces.add(namespace);
           }
-          allFilters.put(nodeFilterLabel, StringUtils.join(podNames, '|'));
-          allFilters.put(CONTAINER_NAME, StringUtils.join(containerNames, '|'));
-          allFilters.put(PVC, StringUtils.join(pvcNames, '|'));
-          allFilters.put(universeFilterLabel, StringUtils.join(namespaces, '|'));
+          k8sFilters.put(POD_NAME, StringUtils.join(podNames, '|'));
+          dbContainerFilter = StringUtils.join(containerNames, '|');
+          k8sFilters.put(PVC, StringUtils.join(pvcNames, '|'));
+          k8sFilters.put(NAMESPACE, StringUtils.join(namespaces, '|'));
+          k8sKeyDefaultFilters.put(PVC, StringUtils.join(dataClaimNames, '|'));
         } else {
-          allFilters.put(
-              universeFilterLabel, getNamespacesFilter(universe, nodePrefix, newNamingStyle));
+          k8sFilters.put(NAMESPACE, getNamespacesFilter(universe, nodePrefix, newNamingStyle));
           // Check if the universe is using newNamingStyle.
           if (newNamingStyle) {
             Set<String> nodePrefixes = new HashSet<String>();
+            Set<String> podPatterns = new HashSet<>();
+            Set<String> tserverClaimPatterns = new HashSet<>();
+            Set<String> claimPatterns = new HashSet<>();
             for (Cluster cluster : universe.getUniverseDetails().clusters) {
               Provider provider = Util.getSingleProvider(cluster);
               for (Region r : provider.getRegions()) {
                 for (AvailabilityZone az : r.getZones()) {
                   boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
+                  // Release names take the zone code on a multi-zone provider, else null.
+                  String azName = isMultiAZ ? az.getCode() : null;
                   String helmRelease =
                       KubernetesUtil.getHelmReleaseName(
                           isMultiAZ,
                           nodePrefix,
                           universe.getName(),
-                          az.getName(),
+                          azName,
                           cluster.clusterType == ClusterType.ASYNC,
                           newNamingStyle);
                   nodePrefixes.add(helmRelease + "-yb-tserver-(.*)");
+                  podPatterns.add(helmRelease + "-yb-(master|tserver)-(.*)");
+                  tserverClaimPatterns.add("(.*)-" + helmRelease + "-yb-tserver-(.*)");
+                  claimPatterns.add(
+                      "(.*)datadir[0-9]+-" + helmRelease + "-yb-(master|tserver)-(.*)");
                 }
               }
             }
-            allFilters.put(nodeFilterLabel, StringUtils.join(nodePrefixes, '|'));
+            k8sFilters.put(POD_NAME, StringUtils.join(nodePrefixes, '|'));
+            // Kubelet volume series carry no pod name, so the claim selects this universe's pods.
+            k8sFilters.put(PVC, StringUtils.join(tserverClaimPatterns, '|'));
+            k8sKeyDefaultFilters.put(POD_NAME, StringUtils.join(podPatterns, '|'));
+            k8sKeyDefaultFilters.put(PVC, StringUtils.join(claimPatterns, '|'));
+          } else {
+            k8sKeyDefaultFilters.put(PVC, "(.*)datadir[0-9]+-yb-(master|tserver)-(.*)");
           }
         }
-      } else {
-        allFilters.put(universeFilterLabel, metricQueryParams.getNodePrefix());
-        if (CollectionUtils.isNotEmpty(nodesToFilter)) {
-          Set<String> nodeNames =
-              nodesToFilter.stream().map(NodeDetails::getNodeName).collect(Collectors.toSet());
-          allFilters.put(nodeFilterLabel, StringUtils.join(nodeNames, '|'));
-        }
-
-        filterOverrides.putAll(
-            getFilterOverrides(customer, nodePrefix, metricSettingsMap.keySet()));
       }
+      nodeFilters.put(NODE_PREFIX, metricQueryParams.getNodePrefix());
+      if (CollectionUtils.isNotEmpty(nodesToFilter)) {
+        Set<String> nodeNames =
+            nodesToFilter.stream().map(NodeDetails::getNodeName).collect(Collectors.toSet());
+        nodeFilters.put(EXPORTED_INSTANCE, StringUtils.join(nodeNames, '|'));
+      }
+      filterOverrides.putAll(getFilterOverrides(customer, nodePrefix, metricSettingsMap.keySet()));
+    }
+    for (String metricKey : metricSettingsMap.keySet()) {
+      KubernetesKind kind = getKubernetesKind(metricKey);
+      Map<String, String> keyFilters = new LinkedHashMap<>();
+      if (kind == KubernetesKind.NONE) {
+        keyFilters.putAll(nodeFilters);
+      } else {
+        keyFilters.putAll(k8sFilters);
+        if (metricKey.startsWith(K8S_METRIC_PREFIX)) {
+          keyFilters.putAll(k8sKeyDefaultFilters);
+        } else if (dbContainerFilter != null) {
+          keyFilters.put(CONTAINER_NAME, dbContainerFilter);
+        }
+      }
+      keyFilters.putAll(filterOverrides.getOrDefault(metricKey, Map.of()));
+      filterOverrides.put(metricKey, keyFilters);
     }
     if (StringUtils.isNotEmpty(metricQueryParams.getTableName())) {
       allFilters.put("table_name", metricQueryParams.getTableName());
@@ -617,19 +661,19 @@ public class MetricQueryHelper {
 
     for (UniverseDefinitionTaskParams.Cluster cluster : universe.getUniverseDetails().clusters) {
       Provider provider = Util.getSingleProvider(cluster);
-      for (Region r : Region.getByProvider(provider.getUuid())) {
-        for (AvailabilityZone az : AvailabilityZone.getAZsForRegion(r.getUuid())) {
-          boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
-          Map<String, String> zoneConfig = CloudInfoInterface.fetchEnvVars(az);
-          namespaces.add(
-              KubernetesUtil.getKubernetesNamespace(
-                  isMultiAZ,
-                  nodePrefix,
-                  az.getCode(),
-                  zoneConfig,
-                  newNamingStyle,
-                  cluster.clusterType == ClusterType.ASYNC));
-        }
+      boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
+      for (Map.Entry<UUID, Map<String, String>> zone :
+          KubernetesUtil.getConfigPerProviderZone(provider).entrySet()) {
+        String azName =
+            isMultiAZ ? AvailabilityZone.getOrBadRequest(zone.getKey()).getCode() : null;
+        namespaces.add(
+            KubernetesUtil.getKubernetesNamespace(
+                isMultiAZ,
+                nodePrefix,
+                azName,
+                zone.getValue(),
+                newNamingStyle,
+                cluster.clusterType == ClusterType.ASYNC));
       }
     }
 
@@ -693,6 +737,69 @@ public class MetricQueryHelper {
             .allMatch(metricSettings -> isPlatformMetric(metricSettings.getMetric()));
 
     return isAllMetricsPlatformLevel && isAllMetricsWithSettingsPlatformLevel;
+  }
+
+  // A full move adds the StatefulSet index to the pod name, as in yb-tserver-1-0.
+  static final String ALERT_K8S_DB_POD_PATTERN = "yb-(master|tserver)(-[0-9]+)?-[0-9]+";
+
+  /**
+   * Selects the universe's pods by namespace and pod name, because cAdvisor and kubelet series have
+   * no universe label and each universe's alert rule would otherwise read every pod.
+   */
+  public static Map<String, String> getAlertKubernetesSelectors(Universe universe) {
+    String nodePrefix = universe.getUniverseDetails().nodePrefix;
+    boolean newNamingStyle = universe.getUniverseDetails().useNewHelmNamingStyle;
+    Set<String> namespaces = new TreeSet<>();
+    Set<String> podNames = new TreeSet<>();
+    for (Cluster cluster : universe.getUniverseDetails().clusters) {
+      Provider provider = Util.getSingleProvider(cluster);
+      boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
+      for (Map.Entry<UUID, Map<String, String>> zone :
+          KubernetesUtil.getConfigPerProviderZone(provider).entrySet()) {
+        String azName =
+            isMultiAZ ? AvailabilityZone.getOrBadRequest(zone.getKey()).getCode() : null;
+        for (boolean isReadOnlyCluster : new boolean[] {false, true}) {
+          namespaces.add(
+              KubernetesUtil.getKubernetesNamespace(
+                  isMultiAZ,
+                  nodePrefix,
+                  azName,
+                  zone.getValue(),
+                  newNamingStyle,
+                  isReadOnlyCluster));
+          if (newNamingStyle) {
+            podNames.add(
+                KubernetesUtil.getHelmReleaseName(
+                        isMultiAZ,
+                        nodePrefix,
+                        universe.getName(),
+                        azName,
+                        isReadOnlyCluster,
+                        newNamingStyle)
+                    + "-"
+                    + ALERT_K8S_DB_POD_PATTERN);
+          }
+        }
+      }
+    }
+    // Matching the release in new naming style, since several universes can share a namespace.
+    return Map.of(
+        "__k8sNamespaces__",
+        String.join("|", namespaces),
+        "__k8sPodNames__",
+        newNamingStyle ? String.join("|", podNames) : ALERT_K8S_DB_POD_PATTERN);
+  }
+
+  public static KubernetesKind getKubernetesKind(String metricKey) {
+    if (metricKey.startsWith(K8S_VOLUME_METRIC_PREFIX)
+        || metricKey.startsWith(CONTAINER_VOLUME_METRIC_PREFIX)
+        || metricKey.startsWith(KUBELET_VOLUME_METRIC_PREFIX)) {
+      return KubernetesKind.VOLUME;
+    }
+    if (metricKey.startsWith(K8S_METRIC_PREFIX) || metricKey.startsWith(CONTAINER_METRIC_PREFIX)) {
+      return KubernetesKind.POD;
+    }
+    return KubernetesKind.NONE;
   }
 
   public static String getDataMountPoints(Universe universe) {

@@ -31,6 +31,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef HAVE_SYS_PRCTL_H
+#include <sys/prctl.h>
+#endif
 
 #include "common/pg_yb_common.h"
 #include "utils/elog.h"
@@ -300,4 +303,43 @@ YBQueryDiagnosticsTestRaceCondition()
 		cached_value = YBCIsEnvVarTrue("FLAGS_TEST_ysql_yb_query_diagnostics_race_condition");
 	}
 	return cached_value;
+}
+
+void
+YBSetParentDeathSignal()
+{
+#ifdef HAVE_SYS_PRCTL_H
+	char	   *pdeathsig_str = getenv("YB_PG_PDEATHSIG");
+
+	if (pdeathsig_str)
+	{
+		char	   *end_ptr = NULL;
+		long int	pdeathsig = strtol(pdeathsig_str, &end_ptr, 10);
+
+		if (end_ptr == pdeathsig_str + strlen(pdeathsig_str))
+		{
+			if (pdeathsig >= 1 && pdeathsig <= 31)
+			{
+				/*
+				 * TODO: prctl(PR_SET_PDEATHSIG) is Linux-specific, look into
+				 * portable ways to prevent orphans when parent is killed.
+				 */
+				prctl(PR_SET_PDEATHSIG, pdeathsig);
+			}
+			else
+			{
+				fprintf(stderr,
+						"Error: YB_PG_PDEATHSIG is an invalid signal value: %ld",
+						pdeathsig);
+			}
+
+		}
+		else
+		{
+			fprintf(stderr,
+					"Error: failed to parse the value of YB_PG_PDEATHSIG: %s",
+					pdeathsig_str);
+		}
+	}
+#endif
 }

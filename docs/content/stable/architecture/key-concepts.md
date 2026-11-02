@@ -61,7 +61,7 @@ Follower reads are particularly beneficial in applications that can tolerate sta
 
 ## Hybrid time
 
-Hybrid time/timestamp is a monotonically increasing timestamp derived using [Hybrid Logical clock](../transactions/transactions-overview/#hybrid-logical-clocks). Multiple aspects of YugabyteDB's transaction model are based on hybrid time. {{<link dest="../transactions/transactions-overview#hybrid-logical-clocks">}}
+Hybrid time/timestamp is a monotonically increasing timestamp derived using [Hybrid Logical clock](../transactions/transactions-overview/#hybrid-logical-clocks). Multiple aspects of YugabyteDB's transaction model are based on hybrid time. {{<link dest="../transactions/transactions-overview/#hybrid-logical-clocks">}}
 
 ## Isolation levels
 
@@ -78,6 +78,8 @@ YugabyteDB tries to keep the number of leaders evenly distributed across the [no
 ## Leader election
 
 Raft elects one replica as leader in each replica group. For user [tablets](#tablet), that replica is the [tablet leader](#tablet-leader). For the [sys catalog](#sys-catalog), it is the [sys catalog leader](#sys-catalog-leader) (the active [master](#master-server)). {{<link dest="../docdb-replication/raft/#leader-election">}}
+
+A slow leader keeps committing writes while it still has a quorum and can persist them. Followers start an election only when heartbeats are missed. A leader that keeps heartbeating while its WAL is stalled keeps leadership, including when local storage writes are failing. {{<link dest="../../explore/fault-tolerance/handling-gray-failures/">}}
 
 ## Leader affinity
 
@@ -119,7 +121,7 @@ In a distributed database, a network partition can interrupt heartbeats, replica
 
 A partial network partition is a less clear-cut form in which communication fails only on some paths, intermittently, or in one direction. Partial network partitions are a common type of [gray failure](../../explore/fault-tolerance/handling-gray-failures/).
 
-In YugabyteDB, Raft consensus handles network partitions by requiring a majority of replicas to elect a leader and commit writes. This prevents split brain and preserves consistency.
+In YugabyteDB, Raft consensus handles network partitions by requiring a majority of replicas to elect a leader and commit writes. This prevents split brain and preserves consistency. A leader that can still reach a majority and persist writes keeps committing them.
 
 ## Node
 

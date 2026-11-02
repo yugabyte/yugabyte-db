@@ -9,8 +9,8 @@ GOOS ?= $(shell uname -s | tr A-Z a-z)
 GOARCH := $(shell test "$$(uname -m)" = "x86_64" && echo amd64 || echo arm64)
 
 # The FIPS 140-3 validated build of the Go Cryptographic Module: v1.0.0 is CMVP certificate
-# #5247. Building with it links that module and defaults the binary to GODEBUG=fips140=on, which
-# "go version -m <binary>" records. Overridable so a build can be pointed at a newer module once
+# #5247. Building with it links that module; main.go defaults the binary to GODEBUG=fips140=off,
+# which "go version -m <binary>" records. Overridable so a build can be pointed at a newer module once
 # one is certified, but the default is the certified one - not the newest.
 GOFIPS140 ?= v1.0.0
 

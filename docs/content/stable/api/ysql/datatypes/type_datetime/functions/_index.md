@@ -53,12 +53,12 @@ The following tables list all of the general purpose _date_time_ built-in functi
 
 |                                                                                                 | **return data type** |
 | ----------------------------------------------------------------------------------------------- | -------------------- |
-| [make_date()](./creating-date-time-values#function-make-date-returns-date)                      | date                 |
-| [make_time()](./creating-date-time-values#function-make-time-returns-plain-time)                | (plain) time         |
-| [make_timestamp()](./creating-date-time-values#function-make-timestamp-returns-plain-timestamp) | (plain) timestamp    |
-| [make_timestamptz()](./creating-date-time-values#function-make-timestamptz-returns-timestamptz) | timestamptz          |
-| [to_timestamp()](./creating-date-time-values#function-to-timestamp-returns-timestamptz)         | timestamptz          |
-| [make_interval()](./creating-date-time-values#function-make-interval-returns-interval)          | interval             |
+| [make_date()](./creating-date-time-values/#function-make-date-returns-date)                      | date                 |
+| [make_time()](./creating-date-time-values/#function-make-time-returns-plain-time)                | (plain) time         |
+| [make_timestamp()](./creating-date-time-values/#function-make-timestamp-returns-plain-timestamp) | (plain) timestamp    |
+| [make_timestamptz()](./creating-date-time-values/#function-make-timestamptz-returns-timestamptz) | timestamptz          |
+| [to_timestamp()](./creating-date-time-values/#function-to-timestamp-returns-timestamptz)         | timestamptz          |
+| [make_interval()](./creating-date-time-values/#function-make-interval-returns-interval)          | interval             |
 
 ## Functions for manipulating date-time values
 
@@ -66,8 +66,8 @@ The following tables list all of the general purpose _date_time_ built-in functi
 
 |                                                                                                                                                                  | **return data type**                       |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| [date_trunc()](./manipulating-date-time-values#function-date-trunc-returns-plain-timestamp-timestamptz-interval)                                                 | plain timestamp \| timestamptz \| interval |
-| [justify_days() \| justify_hours() \| justify_interval()](./manipulating-date-time-values#function-justify-days-justify-hours-justify-interval-returns-interval) | interval                                   |
+| [date_trunc()](./manipulating-date-time-values/#function-date-trunc-returns-plain-timestamp-timestamptz-interval)                                                 | plain timestamp \| timestamptz \| interval |
+| [justify_days() \| justify_hours() \| justify_interval()](./manipulating-date-time-values/#function-justify-days-justify-hours-justify-interval-returns-interval) | interval                                   |
 
 ## Functions that return the current date-time moment
 
@@ -140,9 +140,9 @@ For this reason, this section won't say any more about the _timeofday()_ builtin
 
 |                                                                               | **return data type** |
 | ----------------------------------------------------------------------------- | -------------------- |
-| [pg_sleep()](./delaying-execution#function-pg-sleep-returns-void)             | void                 |
-| [pg_sleep_for()](./delaying-execution#function-pg-sleep-for-returns-void)     | void                 |
-| [pg_sleep_until()](./delaying-execution#function-pg-sleep-until-returns-void) | void                 |
+| [pg_sleep()](./delaying-execution/#function-pg-sleep-returns-void)             | void                 |
+| [pg_sleep_for()](./delaying-execution/#function-pg-sleep-for-returns-void)     | void                 |
+| [pg_sleep_until()](./delaying-execution/#function-pg-sleep-until-returns-void) | void                 |
 
 ## Miscellaneous functions
 
@@ -150,8 +150,8 @@ For this reason, this section won't say any more about the _timeofday()_ builtin
 
 |                                                                                                                              | **return data type**                       |
 | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| [isfinite()](./miscellaneous#function-isfinite-returns-boolean)                                                              | boolean                                    |
-| [age()](./miscellaneous#function-age-returns-interval)                                                                       | interval                                   |
-| [extract() \| date_part()](./miscellaneous#function-extract-function-date-part-returns-double-precision)                     | double-precision                           |
-| [timezone() \| at time zone operator](./miscellaneous#function-timezone-at-time-zone-operator-returns-timestamp-timestamptz) | time \| timetz \| timestamp \| timestamptz |
-| [overlaps operator](./miscellaneous#overlaps-operator-returns-boolean)                                                       | boolean                                    |
+| [isfinite()](./miscellaneous/#function-isfinite-returns-boolean)                                                              | boolean                                    |
+| [age()](./miscellaneous/#function-age-returns-interval)                                                                       | interval                                   |
+| [extract() \| date_part()](./miscellaneous/#function-extract-function-date-part-returns-double-precision)                     | double-precision                           |
+| [timezone() \| at time zone operator](./miscellaneous/#function-timezone-at-time-zone-operator-returns-timestamp-timestamptz) | time \| timetz \| timestamp \| timestamptz |
+| [overlaps operator](./miscellaneous/#overlaps-operator-returns-boolean)                                                       | boolean                                    |

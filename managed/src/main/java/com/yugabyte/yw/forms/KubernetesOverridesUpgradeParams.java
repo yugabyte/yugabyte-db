@@ -41,8 +41,22 @@ public class KubernetesOverridesUpgradeParams extends UpgradeTaskParams {
           "The universe type must be kubernetes to use k8s overrides upgrade API.");
     }
 
-    GFlagsUtil.validateFipsCompliancyOfHelmOverrides(
+    GFlagsUtil.validateHelmOverridesGFlags(
         universeOverrides, azOverrides, universe.getUniverseDetails().fipsEnabled);
+    GFlagsUtil.validateNodeToNodeClientCertsOfHelmOverrides(
+        universeOverrides, azOverrides, userIntent.useNodeToNodeClientCerts);
+
+    if (isFirstTry && !userIntent.enableYSQLAuth) {
+      Map<String, String> newHbaOverrides =
+          GFlagsUtil.getYsqlHbaHelmOverrides(universeOverrides, azOverrides);
+      if (!newHbaOverrides.isEmpty()
+          && !newHbaOverrides.equals(
+              GFlagsUtil.getYsqlHbaHelmOverrides(
+                  userIntent.universeOverrides, userIntent.azOverrides))) {
+        throw new PlatformServiceException(
+            Status.BAD_REQUEST, GFlagsUtil.YSQL_HBA_REQUIRES_AUTH_ERROR);
+      }
+    }
 
     // Verify service endpoints
     try {

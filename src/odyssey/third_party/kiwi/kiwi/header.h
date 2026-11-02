@@ -131,6 +131,20 @@ static inline char *kiwi_fe_type_to_string(int type)
 	return "Unknown";
 }
 
+static inline bool yb_kiwi_fe_is_internal_type(int type)
+{
+	switch (type) {
+	case KIWI_FE_AUTH:
+	case KIWI_FE_SET_SESSION_PARAMETER:
+	case YB_KIWI_FE_YB_PARSE:
+	case KIWI_FE_SET_GUC_DEFAULTS:
+	case KIWI_FE_RESET_ALL_AND_RESET_GUC_DEFAULTS:
+	case YB_KIWI_FE_YB_THROW_ERROR:
+		return true;
+	}
+	return false;
+}
+
 static inline char *kiwi_be_type_to_string(int type)
 {
 	switch (type) {

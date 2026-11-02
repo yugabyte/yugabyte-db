@@ -1,5 +1,7 @@
 -- ########## TIME HOURLY TESTS ##########
 -- Additional tests: Testing nonsuperuser
+-- YB: Gate the tests that need yb_pg_partman_check_native_txn_ddl_and_locks() to be true.
+SELECT pg_catalog.yb_pg_partman_check_native_txn_ddl_and_locks()::int AS yb_use_txn_ddl_and_locks \gset
 \set ON_ERROR_ROLLBACK 1
 \set ON_ERROR_STOP true
 
@@ -7,10 +9,16 @@
 -- NOTE: THIS FILE MUST BE RUN AS partman_basic AND CONNECT TO THE DATABASE THAT RAN PART 1 TO EFFECTIVLELY TEST AS NONSUPERUSER
 --      Ex  pg_prove -ovf -U partman_basic -d mydb test/test_native/test_nonsuperuser/test-time-hourly-nonsuperuser-part2.sql
 
--- BEGIN; YB: Transactional DDL not supported
+\if :yb_use_txn_ddl_and_locks
+BEGIN;
+\endif \\ -- YB
 SELECT set_config('search_path','partman, public',false);
 
+\if :yb_use_txn_ddl_and_locks
+SELECT plan(54);
+\else \\ -- YB
 SELECT plan(28); -- YB: decreased number of tests
+\endif \\ -- YB
 
 CREATE TABLE partman_test.time_taptest_table (col1 serial, col2 text, col3 timestamp NOT NULL DEFAULT now()) PARTITION BY RANGE (col3);
 CREATE TABLE partman_test.time_taptest_undo (LIKE partman_test.time_taptest_table);
@@ -57,9 +65,9 @@ SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table_p'|
 INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(11,20), CURRENT_TIMESTAMP + '1 hour'::interval);
 INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(21,25), CURRENT_TIMESTAMP + '2 hours'::interval);
 
--- YB: default partition creation is disabled.
--- TODO(#3109): Re-enable it after transactional DDL support.
--- SELECT is_empty('SELECT * FROM partman_test.time_taptest_table_default', 'Check that default table has had no data inserted to it'); --YB: Disabled default partition
+\if :yb_use_txn_ddl_and_locks
+SELECT is_empty('SELECT * FROM partman_test.time_taptest_table_default', 'Check that default table has had no data inserted to it');
+\endif \\ -- YB
 SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table', ARRAY[25], 'Check count from time_taptest_table');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)+'1 hour'::interval, 'YYYY_MM_DD_HH24MI'), 
     ARRAY[10], 'Check count from time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)+'1 hour'::interval, 'YYYY_MM_DD_HH24MI'));
@@ -93,12 +101,10 @@ SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(date_trunc('h
 SELECT col_is_pk('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)+'8 hours'::interval, 'YYYY_MM_DD_HH24MI'), ARRAY['col1'], 
     'Check for primary key in time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)+'8 hours'::interval, 'YYYY_MM_DD_HH24MI'));
 
--- YB: default partition creation is disabled
--- TODO(#3109): Re-enable it after transactional DDL support.
--- INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(200,210), CURRENT_TIMESTAMP + '20 hours'::interval);
--- SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.time_taptest_table_default', ARRAY[11], 'Check that data outside trigger scope goes to default');
+\if :yb_use_txn_ddl_and_locks
+INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(200,210), CURRENT_TIMESTAMP + '20 hours'::interval);
+SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.time_taptest_table_default', ARRAY[11], 'Check that data outside trigger scope goes to default');
 
-/* YB: undo_partition not supported
 -- Keep tables after undoing
 SELECT undo_partition('partman_test.time_taptest_table', 20, p_target_table := 'partman_test.time_taptest_undo');
 SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)-'1 hour'::interval, 'YYYY_MM_DD_HH24MI'), 
@@ -149,8 +155,10 @@ SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hou
     'Check time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)+'8 hours'::interval, 'YYYY_MM_DD_HH24MI')||' still exists');
 SELECT is_empty('SELECT * FROM partman_test.time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)+'8 hours'::interval, 'YYYY_MM_DD_HH24MI'), 
     'Check time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)+'8 hours'::interval, 'YYYY_MM_DD_HH24MI')||' is empty');
-*/ -- YB
+\endif \\ -- YB
 
 
 SELECT * FROM finish();
--- ROLLBACK; YB: Transactional DDL not supported
+\if :yb_use_txn_ddl_and_locks
+ROLLBACK;
+\endif \\ -- YB

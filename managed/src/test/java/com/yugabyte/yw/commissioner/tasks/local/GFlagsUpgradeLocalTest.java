@@ -1001,6 +1001,8 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
     UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
     userIntent.ybSoftwareVersion = dbVersion;
     userIntent.enableYSQL = true;
+    userIntent.enableYSQLAuth = true;
+    userIntent.ysqlPassword = "qqWER123!!";
     userIntent.specificGFlags =
         SpecificGFlags.construct(
             buildMasterGFlagsForValidation(false /* includeInvalidGFlags */),

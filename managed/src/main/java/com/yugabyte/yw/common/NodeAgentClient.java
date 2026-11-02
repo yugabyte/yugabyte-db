@@ -112,10 +112,13 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.GeneralSecurityException;
 import java.security.PrivateKey;
+import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -316,13 +319,12 @@ public class NodeAgentClient {
         try {
           String certPath = config.getCertPath().toString();
           log.trace("Using cert path {} for node agent {}", certPath, config.nodeAgent);
-          SslContext sslcontext =
-              GrpcSslContexts.forClient()
-                  .trustManager(CertificateHelper.getCertsFromFile(certPath))
-                  .build();
-          channelBuilder = channelBuilder.sslContext(sslcontext);
+          Collection<X509Certificate> caCerts = CertificateHelper.getCertsFromFile(certPath);
+          SslContext sslContext =
+              GrpcSslContexts.forClient().trustManager(new NodeAgentTrustManager(caCerts)).build();
+          channelBuilder = channelBuilder.sslContext(sslContext);
           channelBuilder.intercept(interceptor);
-        } catch (SSLException e) {
+        } catch (GeneralSecurityException | SSLException e) {
           String errMsg =
               String.format(
                   "SSL context creation for gRPC client failed for node agent %s", nodeAgent);
@@ -714,7 +716,6 @@ public class NodeAgentClient {
     return Jwts.builder()
         .setIssuer("https://www.yugabyte.com")
         .setSubject("Platform")
-        .claim("ses", UUID.randomUUID())
         .setExpiration(Date.from(Instant.now().plusSeconds(tokenLifetime.getSeconds())))
         .signWith(privateKey, SignatureAlgorithm.RS512)
         .compact();
@@ -944,6 +945,13 @@ public class NodeAgentClient {
         nodeAgent.updateServerInfo(response.getServerInfo());
         return response;
       } catch (StatusRuntimeException e) {
+        if (e.getStatus().getCode() == Code.CANCELLED
+            && (Thread.currentThread().isInterrupted()
+                || e.getCause() instanceof InterruptedException)) {
+          log.warn("Ping to node agent {} interrupted", nodeAgent);
+          Thread.currentThread().interrupt();
+          throw e;
+        }
         nodeAgent.updateLastError(new YBAError(YBAError.Code.CONNECTION_ERROR, e.getMessage()));
         if (e.getStatus().getCode() != Code.UNAVAILABLE
             && e.getStatus().getCode() != Code.DEADLINE_EXCEEDED) {
