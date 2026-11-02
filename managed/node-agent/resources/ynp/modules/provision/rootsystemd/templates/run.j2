@@ -55,6 +55,7 @@ echo '{% include service_file %}' > "$tmp_file"
 mv "$tmp_file" "${systemd_dir}/{{ service_file }}"
 chmod 644 "${systemd_dir}/{{ service_file }}"
 {% endfor %}
+{% include "install_yb_launchers.sh.j2" %}
 echo '{% include "yb_user_sudoers.j2" %}' > "$yb_user_sudoers_file"
 if ! visudo -cf "$yb_user_sudoers_file"; then
     echo "Failed to validate $yb_user_sudoers_file"
