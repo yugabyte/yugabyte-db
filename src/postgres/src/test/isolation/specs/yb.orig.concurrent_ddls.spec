@@ -37,11 +37,13 @@ step s2_select_test_atts { SELECT attname FROM pg_attribute WHERE attrelid = 'te
 # Concurrent DDLs that work on the different objects.
 permutation s1_begin_rr s2_begin_rr s1_drop_table_test s2_drop_table_test2 s1_commit s2_commit
 permutation s1_begin_rr s2_begin_rr s1_alter_table_test_add_col_a s2_alter_table_test2_add_col_a s1_commit s2_commit
+permutation s1_begin_sr s2_begin_sr s1_alter_table_test_add_col_a s2_alter_table_test2_add_col_a s1_commit s2_commit
 
 # Concurrent DDLs that work on the same object.
 permutation s1_begin_rr s2_begin_rr s1_alter_table_test_add_col_a s2_alter_table_test_add_col_b s1_commit s2_commit s2_select_test_atts
 permutation s1_begin_rr s2_begin_rr s1_alter_table_test_add_col_a s2_alter_table_test_add_col_a s1_commit s2_commit s2_select_test_atts
 permutation s1_begin_rr s2_begin_rr s1_alter_table_test_add_col_a s2_alter_table_test_add_col_b s1_rollback s2_commit s2_select_test_atts
+permutation s1_begin_sr s2_begin_sr s1_alter_table_test_add_col_a s2_alter_table_test_add_col_b s1_commit s2_commit s2_select_test_atts
 
 # TODO(#34413): The following test cases fail when run with the full cache
 # invalidation fallback (TestPgRegressIsolationObjectLockingFullInval): s2 gets

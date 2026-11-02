@@ -2118,6 +2118,14 @@ ExecGrant_Relation(InternalGrant *istmt)
 				newtuple = heap_modify_tuple(tuple, RelationGetDescr(relation),
 											 values, nulls, replaces);
 
+				/* YB: test hook to let another session commit in this window. */
+				if (yb_test_delay_relation_grant_update_ms > 0)
+				{
+					elog(LOG, "sleeping for %d ms before updating relacl",
+						 yb_test_delay_relation_grant_update_ms);
+					pg_usleep(yb_test_delay_relation_grant_update_ms * 1000L);
+				}
+
 				CatalogTupleUpdate(relation, &newtuple->t_self, newtuple);
 				UnlockTuple(relation, &tuple->t_self, InplaceUpdateTupleLock);
 

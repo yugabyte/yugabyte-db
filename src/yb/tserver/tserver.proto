@@ -292,6 +292,10 @@ message ReadRequestPB {
   // Last pending async write of each term, which the server verifies is in its log before serving
   // the read (see TabletPeer::VerifyAsyncWriteReceived).
   repeated OpIdPB pending_async_write_op_ids = 22;
+
+  // Serve the read as a snapshot read at read_time within the transaction, without read intents or
+  // conflict resolution, whatever the transaction's isolation level. Requires read_time.
+  optional bool force_snapshot_read = 23;
 }
 
 message ReadResponsePB {

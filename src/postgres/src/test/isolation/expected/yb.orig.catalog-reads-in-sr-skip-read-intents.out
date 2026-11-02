@@ -1,0 +1,55 @@
+Parsed test spec with 2 sessions
+
+starting permutation: s1_begin_sr s1_select_now s2_create_function s1_select_test s1_commit
+step s1_begin_sr: BEGIN ISOLATION LEVEL SERIALIZABLE;
+step s1_select_now: SELECT now() IS NOT NULL;
+?column?
+--------
+t       
+(1 row)
+
+step s2_create_function: CREATE FUNCTION f() RETURNS int LANGUAGE sql AS 'SELECT 1';
+step s1_select_test: SELECT * FROM test WHERE k = 1;
+k|v
+-+-
+1|1
+(1 row)
+
+step s1_commit: COMMIT;
+
+starting permutation: s1_begin_sr s1_alter_table_test_add_col_a s1_select_test s1_commit
+step s1_begin_sr: BEGIN ISOLATION LEVEL SERIALIZABLE;
+step s1_alter_table_test_add_col_a: ALTER TABLE test ADD COLUMN a INT;
+step s1_select_test: SELECT * FROM test WHERE k = 1;
+k|v|a
+-+-+-
+1|1| 
+(1 row)
+
+step s1_commit: COMMIT;
+
+starting permutation: s1_begin_sr s1_select_test s2_alter_table_test_add_col_b s1_select_test s1_commit s2_select_test_atts
+step s1_begin_sr: BEGIN ISOLATION LEVEL SERIALIZABLE;
+step s1_select_test: SELECT * FROM test WHERE k = 1;
+k|v
+-+-
+1|1
+(1 row)
+
+step s2_alter_table_test_add_col_b: ALTER TABLE test ADD COLUMN b INT; <waiting ...>
+step s1_select_test: SELECT * FROM test WHERE k = 1;
+k|v
+-+-
+1|1
+(1 row)
+
+step s1_commit: COMMIT;
+step s2_alter_table_test_add_col_b: <... completed>
+step s2_select_test_atts: SELECT attname FROM pg_attribute WHERE attrelid = 'test'::regclass::oid and attnum > 0;
+attname
+-------
+k      
+v      
+b      
+(3 rows)
+

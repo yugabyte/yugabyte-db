@@ -948,6 +948,9 @@ message PgPerformOptionsPB {
   // Source commit time of the transaction being applied, as a HybridTime, travelling with
   // xrepl_origin_id.
   fixed64 xrepl_source_write_ht = 39;
+
+  // This op uses the read_time_serial_no of the CatalogSnapshot in Postgres.
+  bool uses_catalog_snapshot = 40;
 }
 
 message PgRequestSequenceNumPB {
