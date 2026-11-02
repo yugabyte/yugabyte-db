@@ -26,10 +26,13 @@ import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.State;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails.NodeExporterSystemdLevel;
 import com.yugabyte.yw.models.helpers.YBAError;
 import com.yugabyte.yw.nodeagent.AbortTaskRequest;
 import com.yugabyte.yw.nodeagent.ConfigureCloudFederationInput;
 import com.yugabyte.yw.nodeagent.ConfigureCloudFederationOutput;
+import com.yugabyte.yw.nodeagent.ConfigureNodeExporterInput;
+import com.yugabyte.yw.nodeagent.ConfigureNodeExporterOutput;
 import com.yugabyte.yw.nodeagent.ConfigureServerInput;
 import com.yugabyte.yw.nodeagent.ConfigureServerOutput;
 import com.yugabyte.yw.nodeagent.ConfigureServiceInput;
@@ -109,10 +112,13 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.GeneralSecurityException;
 import java.security.PrivateKey;
+import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -313,13 +319,12 @@ public class NodeAgentClient {
         try {
           String certPath = config.getCertPath().toString();
           log.trace("Using cert path {} for node agent {}", certPath, config.nodeAgent);
-          SslContext sslcontext =
-              GrpcSslContexts.forClient()
-                  .trustManager(CertificateHelper.getCertsFromFile(certPath))
-                  .build();
-          channelBuilder = channelBuilder.sslContext(sslcontext);
+          Collection<X509Certificate> caCerts = CertificateHelper.getCertsFromFile(certPath);
+          SslContext sslContext =
+              GrpcSslContexts.forClient().trustManager(new NodeAgentTrustManager(caCerts)).build();
+          channelBuilder = channelBuilder.sslContext(sslContext);
           channelBuilder.intercept(interceptor);
-        } catch (SSLException e) {
+        } catch (GeneralSecurityException | SSLException e) {
           String errMsg =
               String.format(
                   "SSL context creation for gRPC client failed for node agent %s", nodeAgent);
@@ -711,7 +716,6 @@ public class NodeAgentClient {
     return Jwts.builder()
         .setIssuer("https://www.yugabyte.com")
         .setSubject("Platform")
-        .claim("ses", UUID.randomUUID())
         .setExpiration(Date.from(Instant.now().plusSeconds(tokenLifetime.getSeconds())))
         .signWith(privateKey, SignatureAlgorithm.RS512)
         .compact();
@@ -967,6 +971,26 @@ public class NodeAgentClient {
   public ShellResponse executeCommand(
       NodeAgent nodeAgent, List<String> command, ShellProcessContext context) {
     return executeCommand(nodeAgent, command, context, false);
+  }
+
+  /**
+   * node_exporter layout on the node, from its unit files: USER if the DB user has a user-level
+   * unit, ROOT if only the root-level one exists, empty if neither does.
+   */
+  public Optional<NodeExporterSystemdLevel> detectNodeExporterSystemdLevel(NodeAgent nodeAgent) {
+    // systemd reads user units from the user's passwd home, which can differ from the provider's
+    // yb home; bash resolves ~user from passwd.
+    String userUnit =
+        "~" + NodeManager.YUGABYTE_USER + "/.config/systemd/user/node_exporter.service";
+    if (executeCommand(nodeAgent, ImmutableList.of("bash", "-c", "test -f " + userUnit)).code
+        == 0) {
+      return Optional.of(NodeExporterSystemdLevel.USER);
+    }
+    String rootUnit = "/etc/systemd/system/node_exporter.service";
+    if (executeCommand(nodeAgent, ImmutableList.of("test", "-f", rootUnit)).code == 0) {
+      return Optional.of(NodeExporterSystemdLevel.ROOT);
+    }
+    return Optional.empty();
   }
 
   public ShellResponse executeCommand(NodeAgent nodeAgent, List<String> command) {
@@ -1287,6 +1311,18 @@ public class NodeAgentClient {
       builder.setUser(user);
     }
     return runAsyncTask(nodeAgent, builder.build(), ConfigureCloudFederationOutput.class);
+  }
+
+  public ConfigureNodeExporterOutput runConfigureNodeExporter(
+      NodeAgent nodeAgent, ConfigureNodeExporterInput input, String user) {
+    SubmitTaskRequest.Builder builder =
+        SubmitTaskRequest.newBuilder()
+            .setConfigureNodeExporterInput(input)
+            .setTaskId(UUID.randomUUID().toString());
+    if (StringUtils.isNotBlank(user)) {
+      builder.setUser(user);
+    }
+    return runAsyncTask(nodeAgent, builder.build(), ConfigureNodeExporterOutput.class);
   }
 
   public SetupCGroupOutput runSetupCGroupInput(

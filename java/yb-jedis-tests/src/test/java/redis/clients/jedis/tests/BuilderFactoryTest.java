@@ -2,6 +2,7 @@ package redis.clients.jedis.tests;
 
 import static org.yb.AssertionWrappers.assertEquals;
 
+import org.junit.Ignore;
 import org.junit.Test;
 
 import redis.clients.jedis.BuilderFactory;
@@ -13,6 +14,7 @@ import redis.clients.jedis.tests.BaseYBClassForJedis;
 import org.yb.YBTestRunner;
 
 @RunWith(value=YBTestRunner.class)
+@Ignore("YEDIS is deprecated")
 public class BuilderFactoryTest extends BaseYBClassForJedis {
   @Test
   public void buildDouble() {

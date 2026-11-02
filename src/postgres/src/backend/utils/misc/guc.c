@@ -336,6 +336,11 @@ static bool call_string_check_hook(const struct config_generic *conf, char **new
 static bool call_enum_check_hook(const struct config_generic *conf, int *newval,
 								 void **extra, GucSource source, int elevel);
 
+/* YB declarations */
+
+static const char *YbFormatConfigValue(const struct config_generic *record,
+									   const union config_var_val *val,
+									   char *buffer, size_t bufsize);
 
 /*
  * This function handles both actual config file (re)loads and execution of
@@ -5122,36 +5127,8 @@ GetConfigOption(const char *name, bool missing_ok, bool restrict_privileged)
 				 errmsg("permission denied to examine \"%s\"", name),
 				 errdetail("Only roles with privileges of the \"%s\" role may examine this parameter.",
 						   "pg_read_all_settings")));
-
-	switch (record->vartype)
-	{
-		case PGC_BOOL:
-			return *record->_bool.variable ? "on" : "off";
-
-		case PGC_INT:
-			snprintf(buffer, sizeof(buffer), "%d",
-					 *record->_int.variable);
-			return buffer;
-
-		case PGC_OID:
-			snprintf(buffer, sizeof(buffer), "%u",
-					 *record->_oid.variable);
-			return buffer;
-
-		case PGC_REAL:
-			snprintf(buffer, sizeof(buffer), "%g",
-					 *record->_real.variable);
-			return buffer;
-
-		case PGC_STRING:
-			return *record->_string.variable ?
-				*record->_string.variable : "";
-
-		case PGC_ENUM:
-			return config_enum_lookup_by_value(record,
-											   *record->_enum.variable);
-	}
-	return NULL;
+	/* YB: Format the value for the given option */
+	return YbFormatConfigValue(record, NULL /* val */ , buffer, sizeof(buffer));
 }
 
 /*
@@ -8157,6 +8134,111 @@ yb_check_toast_catcache_threshold(int *newVal, void **extra, GucSource source)
 }
 
 /*
+ * yb_allow_prehashed_passwords is a cluster switch. It may be set from the
+ * configuration file, for every role (ALTER ROLE ALL SET, applied as
+ * PGC_S_GLOBAL), or by a superuser SET (PGC_S_SESSION). YSQL_CONN_MGR is the
+ * same SET restored by the connection manager. PGC_S_TEST is the validation
+ * pass; it does not say whether the target is one role or all roles, so
+ * AlterSetting rejects the per-role and per-database forms.
+ */
+static bool
+yb_prehashed_password_source_allowed(GucSource source)
+{
+	switch (source)
+	{
+		case PGC_S_DEFAULT:
+		case PGC_S_FILE:
+		case PGC_S_ARGV:
+		case PGC_S_GLOBAL:
+		case PGC_S_TEST:
+		case PGC_S_SESSION:
+		case YSQL_CONN_MGR:
+			return true;
+		default:
+			return false;
+	}
+}
+
+bool
+check_yb_allow_prehashed_passwords(bool *newVal, void **extra, GucSource source)
+{
+	if (!yb_prehashed_password_source_allowed(source))
+	{
+		GUC_check_errdetail("This parameter can only be set via ysql_pg_conf_csv "
+							"(config file), ALTER ROLE ALL SET, or SET.");
+		return false;
+	}
+
+	/*
+	 * ysql_pg_conf_csv is applied in file order, as PGC_S_FILE and the other
+	 * sources below PGC_S_CLIENT. Rejecting a conflicting pair there keeps the
+	 * postmaster from starting. CREATE and ALTER ROLE still refuse it, as do
+	 * SET and the ALTER ROLE validation pass.
+	 */
+	if (*newVal &&
+		source >= PGC_S_CLIENT &&
+		(yb_password_reuse_history > 0 || yb_password_reuse_interval > 0))
+	{
+		GUC_check_errdetail("Pre-hashed passwords cannot be accepted while a password reuse "
+							"policy is in force.");
+		GUC_check_errhint("Set yb_password_reuse_history and yb_password_reuse_interval to 0 first.");
+		return false;
+	}
+	return true;
+}
+
+/*
+ * Password policy GUCs may be set for one role (ALTER ROLE ... SET, applied
+ * as PGC_S_USER) or for every role (ALTER ROLE ALL SET, applied as
+ * PGC_S_GLOBAL), and from the configuration file (ysql_pg_conf_csv,
+ * PGC_S_FILE). Session, connection, and per-database sources are rejected.
+ * PGC_S_TEST is the validation pass of ALTER ROLE ... SET.
+ */
+static bool
+yb_password_policy_source_allowed(GucSource source)
+{
+	switch (source)
+	{
+		case PGC_S_DEFAULT:
+		case PGC_S_FILE:
+		case PGC_S_ARGV:
+		case PGC_S_TEST:
+		case PGC_S_USER:
+		case PGC_S_GLOBAL:
+			return true;
+		default:
+			return false;
+	}
+}
+
+/*
+ * Mutual exclusion with yb_allow_prehashed_passwords is enforced on the
+ * ALTER ROLE validation pass. A conflicting value in the configuration file
+ * is not rejected here, so it cannot keep a backend from starting;
+ * CREATE/ALTER ROLE still refuses the combination.
+ */
+bool
+check_yb_password_reuse(int *newVal, void **extra, GucSource source)
+{
+	if (!yb_password_policy_source_allowed(source))
+	{
+		GUC_check_errdetail("This parameter can only be set via ysql_pg_conf_csv "
+							"(config file), ALTER ROLE ... SET, or ALTER ROLE ALL SET.");
+		return false;
+	}
+
+	if (source == PGC_S_TEST &&
+		*newVal > 0 && yb_allow_prehashed_passwords)
+	{
+		GUC_check_errdetail("A password reuse policy cannot be enforced while pre-hashed "
+							"passwords are accepted.");
+		GUC_check_errhint("Set yb_allow_prehashed_passwords to off first.");
+		return false;
+	}
+	return true;
+}
+
+/*
  * YB: yb_check_no_txn
  *
  * Do not allow users to set yb_read_after_commit_visibility
@@ -8755,30 +8837,145 @@ check_yb_enable_new_relation_fastpath_write_in_txn_blocks(bool *newval, void **e
 	return check_skip_intents_internal("yb_enable_new_relation_fastpath_write_in_txn_blocks", newval, source);
 }
 
-/*
- * Password validity is a policy that may be overridden for a specific role
- * (ALTER ROLE ... SET) or for all roles (ALTER ROLE ALL SET, applied via
- * PGC_S_GLOBAL), but never per-session, per-connection, or per-database.
- * PGC_S_TEST is used internally to validate if the current user has sufficient
- * privileges to execute the ALTER ROLE command. Thus, PGC_S_TEST is also
- * whitelisted.
- */
 bool
 yb_check_password_validity_source(int *newVal, void **extra, GucSource source)
 {
-	switch (source)
+	if (!yb_password_policy_source_allowed(source))
 	{
-		case PGC_S_DEFAULT:
-		case PGC_S_FILE:
-		case PGC_S_ARGV:
-		case PGC_S_TEST:
-		case PGC_S_USER:
-		case PGC_S_GLOBAL:
-			return true;
-		default:
-			GUC_check_errdetail("yb_password_validity can only be set via "
-								"ysql_pg_conf_csv (config file), or for a "
-								"specific role via ALTER ROLE ... SET.");
-			return false;
+		GUC_check_errdetail("yb_password_validity can only be set via "
+							"ysql_pg_conf_csv (config file), or for a "
+							"specific role via ALTER ROLE ... SET.");
+		return false;
 	}
+	return true;
+}
+
+/*
+ * YB: Render a GUC's value as a string.
+ *
+ * val supplies a value that was parsed but not assigned; NULL reads the
+ * variable's current value.  Integers, reals and OIDs are written into buffer;
+ * the other types return a pointer the caller does not own, and PGC_STRING may
+ * return NULL for a supplied val.
+ */
+static const char *
+YbFormatConfigValue(const struct config_generic *record,
+					const union config_var_val *val,
+					char *buffer, size_t bufsize)
+{
+	switch (record->vartype)
+	{
+		case PGC_BOOL:
+			if (val)
+				return val->boolval ? "on" : "off";
+			return *record->_bool.variable ? "on" : "off";
+
+		case PGC_INT:
+			snprintf(buffer, bufsize, "%d",
+					 val ? val->intval : *record->_int.variable);
+			return buffer;
+
+		case PGC_OID:
+			snprintf(buffer, bufsize, "%u",
+					 val ? val->oidval : *record->_oid.variable);
+			return buffer;
+
+		case PGC_REAL:
+			snprintf(buffer, bufsize, "%g",
+					 val ? val->realval : *record->_real.variable);
+			return buffer;
+
+		case PGC_STRING:
+			if (val)
+				return val->stringval;
+			return *record->_string.variable ?
+				*record->_string.variable : "";
+
+		case PGC_ENUM:
+			return config_enum_lookup_by_value(record,
+											   val ? val->enumval :
+											   *record->_enum.variable);
+	}
+	return NULL;
+}
+
+/*
+ * YB: Resolve a raw configuration value and return its canonical spelling.
+ *
+ * A NULL value returns the GUC's boot_val.  The value is validated but never
+ * assigned, so only its check hook runs.  The caller must have run
+ * build_guc_variables().
+ *
+ * The result is palloc'd in the current memory context.
+ */
+char *
+YbResolveGucValue(const char *name, const char *value)
+{
+	struct config_generic *record;
+	union config_var_val newval;
+	void	   *newextra = NULL;
+	char	   *result = NULL;
+	const char *formatted;
+	char		buffer[256];
+
+	record = find_option(name, false, false, ERROR);
+	if (record == NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("unrecognized configuration parameter \"%s\"", name)));
+
+	if (value == NULL)
+	{
+		switch (record->vartype)
+		{
+			case PGC_BOOL:
+				newval.boolval = record->_bool.boot_val;
+				break;
+			case PGC_INT:
+				newval.intval = record->_int.boot_val;
+				break;
+			case PGC_OID:
+				newval.oidval = record->_oid.boot_val;
+				break;
+			case PGC_REAL:
+				newval.realval = record->_real.boot_val;
+				break;
+			case PGC_STRING:
+				/* Not guc_strdup'd, hence the "value != NULL" guard on the free below. */
+				newval.stringval = (char *) record->_string.boot_val;
+				break;
+			case PGC_ENUM:
+				newval.enumval = record->_enum.boot_val;
+				break;
+		}
+	}
+	else if (!parse_and_validate_value(record, value, PGC_S_FILE, ERROR,
+									   &newval, &newextra))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("invalid value for parameter \"%s\": \"%s\"",
+						name, value)));
+
+	formatted = YbFormatConfigValue(record, &newval, buffer, sizeof(buffer));
+	result = pstrdup(formatted ? formatted : "");
+
+	if (record->vartype == PGC_STRING && value != NULL)
+		guc_free(newval.stringval);
+
+	if (newextra)
+		guc_free(newextra);
+
+	return result;
+}
+
+/*
+ * YB: Whether a config file may name this parameter: the same test
+ * ProcessConfigFileInternal() applies before accepting a file.  The caller must
+ * have run build_guc_variables().
+ */
+bool
+YbIsValidConfigFileName(const char *name)
+{
+	return find_option(name, false, true, LOG) != NULL ||
+		valid_custom_variable_name(name);
 }

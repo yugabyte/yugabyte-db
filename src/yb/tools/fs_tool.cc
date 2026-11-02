@@ -285,6 +285,7 @@ Status FsTool::DumpTabletData(const std::string& tablet_id) {
       .full_compaction_pool = nullptr,
       .admin_triggered_compaction_pool = nullptr,
       .post_split_compaction_added = nullptr,
+      .tier_migration_hooks = nullptr,
       .metadata_cache = nullptr
   };
   Tablet t(tablet_init_data);

@@ -25,6 +25,7 @@
 #include "yb/util/enums.h"
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/format.h"
+#include "yb/util/logging.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
@@ -32,6 +33,8 @@
 
 using std::string;
 using std::vector;
+
+DECLARE_bool(enable_tiered_storage);
 
 DEFINE_RUNTIME_bool(enable_tablespace_validation, true, "Whether to enable extended validation for "
     "tablespaces. This can be set to false to allow ysql_dump to succeed when creating tablespaces "
@@ -92,6 +95,30 @@ Status AppendPlacementDetails(
       " Provided $0: $1", ReplicaPlacementOptionName(replica_type), placement_str));
 }
 
+// Tiered storage is a preview feature, so "storage_tier" is only honored with the flag on. DDL
+// (fail_on_validation_error) rejects it; the master's catalog refresh drops it with a warning so
+// a tablespace created while the feature was on keeps the rest of its placement policy.
+Status CheckStorageTierAllowed(
+    PlacementInfoPB* placement_info, ReplicaType replica_type, bool fail_on_validation_error) {
+  if (FLAGS_enable_tiered_storage || !placement_info->has_storage_tier()) {
+    return Status::OK();
+  }
+  if (fail_on_validation_error) {
+    return STATUS_FORMAT(
+        NotSupported,
+        "\"storage_tier\" in $0 requires tiered storage, which is disabled. Set the preview flag "
+        "--enable_tiered_storage=true to use it.",
+        ReplicaPlacementOptionName(replica_type));
+  }
+  // Rate-limited: the master re-reads every tablespace on each refresh (every 30s by default).
+  YB_LOG_EVERY_N_SECS(WARNING, 300)
+      << "Ignoring \"storage_tier\" \"" << placement_info->storage_tier() << "\" in "
+      << ReplicaPlacementOptionName(replica_type)
+      << " because tiered storage is disabled (--enable_tiered_storage=false)";
+  placement_info->clear_storage_tier();
+  return Status::OK();
+}
+
 }  // namespace
 
 // TODO(#26671): When we start using this for the yb-admin APIs as well, we should take into
@@ -116,6 +143,7 @@ Status ValidateReplicationInfo(const ReplicationInfoPB& replication_info) {
     }
 
     const auto& placements = replicas->placement_blocks();
+    const bool has_explicit_max = PlacementInfoHasMaxNumReplicas(*replicas);
 
     int64_t total_min_replicas = 0;
     int64_t total_max_replicas = 0;
@@ -123,6 +151,12 @@ Status ValidateReplicationInfo(const ReplicationInfoPB& replication_info) {
       if (i->min_num_replicas() <= 0) {
         return STATUS_FORMAT(
             Corruption, "min_num_replicas ($0) must be > 0", i->min_num_replicas());
+      }
+      if (has_explicit_max && IsWildcardCloudInfo(i->cloud_info())) {
+        return STATUS_FORMAT(
+            Corruption,
+            "max_num_replicas is not supported in combination with wildcard placement blocks: $0",
+            i->cloud_info().ShortDebugString());
       }
       // min_num_replicas > 0 is enforced above, so this also rejects non-positive maxima.
       if (i->has_max_num_replicas() && i->max_num_replicas() < i->min_num_replicas()) {
@@ -383,6 +417,13 @@ Result<ReplicationInfoPB> TablespaceParser::FromJson(
       ReadReplicaPlacementInfoFromJson(
           read_replica_placement_document, replication_info),
       ReplicaType::kReadOnly, read_replica_placement));
+
+  RETURN_NOT_OK(CheckStorageTierAllowed(
+      replication_info.mutable_live_replicas(), ReplicaType::kLive, fail_on_validation_error));
+  for (auto& read_replica : *replication_info.mutable_read_replicas()) {
+    RETURN_NOT_OK(
+        CheckStorageTierAllowed(&read_replica, ReplicaType::kReadOnly, fail_on_validation_error));
+  }
 
   auto status = ValidateReplicationInfo(replication_info);
   if (fail_on_validation_error && FLAGS_enable_tablespace_validation) {

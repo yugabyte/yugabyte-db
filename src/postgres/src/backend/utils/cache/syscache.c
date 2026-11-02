@@ -1445,6 +1445,18 @@ YbSysCacheComputeHashValue(int cache_id, Datum v1, Datum v2, Datum v3, Datum v4)
 }
 
 /*
+ * See YbCatCachePrefetchList().
+ */
+void
+YbSysCachePrefetchList(int cache_id, Datum key1, int nfull_keys,
+					   const Datum *full_keys)
+{
+	Assert(cache_id >= 0 && cache_id < SysCacheSize &&
+		   SysCache[cache_id] != NULL);
+	YbCatCachePrefetchList(SysCache[cache_id], key1, nfull_keys, full_keys);
+}
+
+/*
  * Copies data from the cacheinfo array to the supplied values array.
  * The values array is expected to have space for at least 10 Datums.
  */

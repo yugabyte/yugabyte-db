@@ -91,6 +91,7 @@
 #include "yb/tablet/metadata.pb.h"
 #include "yb/tablet/operations/clone_operation.h"
 #include "yb/tablet/operations/split_operation.h"
+#include "yb/tablet/persistence_gate.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_fwd.h"
@@ -108,12 +109,14 @@
 #include "yb/tserver/remote_snapshot_transfer_client.h"
 #include "yb/tserver/tablet_limits.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/tier_migration_reconciler.h"
 #include "yb/tserver/tserver_cgroup_manager.h"
 #include "yb/tserver/tablet_validator.h"
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_admin.pb.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/cgroups.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/long_operation_tracker.h"
@@ -339,10 +342,15 @@ DEFINE_test_flag(bool, crash_before_clone_target_marked_ready, false,
 DEFINE_test_flag(bool, crash_before_mark_clone_attempted, false,
     "Whether to crash before marking a clone op as completed on the source tablet.");
 
+DEFINE_test_flag(bool, wait_for_split_parent_running_on_open, false,
+    "Split children wait in OpenTablet until the split parent's retryable requests are "
+    "available.");
+
 DEFINE_NON_RUNTIME_uint32(vector_index_concurrent_writes, 0,
     "Number of threads used by vector index thread pool. 0 - use number of CPUs for it.");
 
 DECLARE_bool(docdb_enable_sst_stats_collector);
+DECLARE_bool(enable_tiered_storage);
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(disable_deadlock_detection);
 DECLARE_bool(lazily_flush_superblock);
@@ -688,6 +696,8 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
 
   full_compaction_manager_ = std::make_unique<FullCompactionManager>(this);
 
+  tier_migration_reconciler_ = std::make_unique<TierMigrationReconciler>(this);
+
   tablet_options_.priority_thread_pool_metrics =
       std::make_shared<rocksdb::RocksDBPriorityThreadPoolMetrics>(
           ROCKSDB_PRIORITY_THREAD_POOL_METRICS_INSTANCE(server_->metric_entity()));
@@ -698,6 +708,28 @@ TSTabletManager::~TSTabletManager() {
 
 Status TSTabletManager::Init() {
   CHECK_EQ(state(), MANAGER_INITIALIZING);
+
+  // The term is unused: a TServer's map does not depend on the term its tablet leaders are in.
+  // Without a lease the TServer cannot know whether StopPersisting has blocked a database, so it
+  // fails closed.
+  persistence_gate_ = std::make_unique<tablet::PersistenceGate>(
+      [&xcluster_context = server_->GetXClusterContext(),
+       tserver_uuid = server_->permanent_uuid()](
+          int64_t /*op_term*/, uint32_t database_oid) -> Result<std::optional<HybridTime>> {
+        auto blocked_through = xcluster_context.GetPersistenceBlockedThrough(database_oid);
+        if (!blocked_through.ok()) {
+          // Retryable: the client retries ServiceUnavailable as if this TServer were no longer the
+          // leader, so the op succeeds once this TServer regains its lease or the tablet's
+          // leadership moves to one that has one.
+          return STATUS_FORMAT(
+              ServiceUnavailable,
+              "Tablet server $0 cannot accept YSQL writes: it holds no xCluster lease (cannot "
+              "reach master)",
+              tserver_uuid);
+        }
+        return blocked_through;
+      },
+      server_->metric_entity());
 
   tablet_options_.env = server_->GetEnv();
   tablet_options_.rocksdb_env = server_->GetRocksDBEnv();
@@ -915,6 +947,9 @@ Status TSTabletManager::Init() {
     state_ = MANAGER_RUNNING;
   }
 
+  // Before any OpenTablet runs: each one wakes the reconciler when its tablet is up.
+  RETURN_NOT_OK(tier_migration_reconciler_->Init());
+
   // Now submit the "Open" task for each.
   {
     std::lock_guard lock(metas.ready_metas_mutex);
@@ -927,8 +962,9 @@ Status TSTabletManager::Init() {
           meta->raft_group_id(), "opening tablet", &deleter));
 
       TabletPeerPtr tablet_peer = VERIFY_RESULT(CreateAndRegisterTabletPeer(meta, NEW_PEER));
-      RETURN_NOT_OK(open_tablet_pool_->SubmitFunc(
-          std::bind(&TSTabletManager::OpenTablet, this, meta, deleter)));
+      RETURN_NOT_OK(open_tablet_pool_->SubmitFunc(std::bind(
+          &TSTabletManager::OpenTablet, this, meta, deleter,
+          CopyRetryableRequestsFromParent::kFalse)));
     }
   }
 
@@ -1202,8 +1238,9 @@ Result<TabletPeerPtr> TSTabletManager::CreateNewTablet(
   TabletPeerPtr new_peer = VERIFY_RESULT(CreateAndRegisterTabletPeer(meta, NEW_PEER));
 
   // We can run this synchronously since there is nothing to bootstrap.
-  RETURN_NOT_OK(
-      open_tablet_pool_->SubmitFunc(std::bind(&TSTabletManager::OpenTablet, this, meta, deleter)));
+  RETURN_NOT_OK(open_tablet_pool_->SubmitFunc(std::bind(
+      &TSTabletManager::OpenTablet, this, meta, deleter,
+      CopyRetryableRequestsFromParent::kFalse)));
 
   return new_peer;
 }
@@ -1314,7 +1351,8 @@ Status TSTabletManager::StartSubtabletsSplit(
 
 void TSTabletManager::CreatePeerAndOpenTablet(
     const tablet::RaftGroupMetadataPtr& meta,
-    const scoped_refptr<TransitionInProgressDeleter>& deleter) {
+    const scoped_refptr<TransitionInProgressDeleter>& deleter,
+    CopyRetryableRequestsFromParent copy_retryable_requests_from_parent) {
   Status s = ResultToStatus(CreateAndRegisterTabletPeer(meta, NEW_PEER));
   if (!s.ok()) {
     s = s.CloneAndPrepend("Failed to create and register tablet peer");
@@ -1327,7 +1365,8 @@ void TSTabletManager::CreatePeerAndOpenTablet(
     }
     return;
   }
-  s = open_tablet_pool_->SubmitFunc(std::bind(&TSTabletManager::OpenTablet, this, meta, deleter));
+  s = open_tablet_pool_->SubmitFunc(std::bind(
+      &TSTabletManager::OpenTablet, this, meta, deleter, copy_retryable_requests_from_parent));
   if (!s.ok()) {
     s = s.CloneAndPrepend(Format("Failed to schedule opening tablet $0", meta->raft_group_id()));
     if (s.IsShutdownInProgress()) {
@@ -1441,14 +1480,7 @@ Status TSTabletManager::ApplyTabletSplit(
       }
   }};
 
-  std::unique_ptr<ConsensusMetadata> cmeta = VERIFY_RESULT(ConsensusMetadata::Create(
-      fs_manager_, tablet_id, fs_manager_->uuid(), committed_raft_config.value(),
-      split_op_id.term));
-  if (request->has_split_parent_leader_uuid()) {
-    cmeta->set_leader_uuid(request->split_parent_leader_uuid().ToBuffer());
-    LOG_WITH_PREFIX(INFO) << "Using Raft config: " << committed_raft_config->ShortDebugString();
-  }
-  cmeta->set_split_parent_tablet_id(tablet_id);
+  LOG_WITH_PREFIX(INFO) << "Using Raft config: " << committed_raft_config->ShortDebugString();
 
   for (auto& tcmeta : tcmetas) {
     const auto& new_tablet_id = tcmeta.tablet_id;
@@ -1462,10 +1494,13 @@ Status TSTabletManager::ApplyTabletSplit(
               << ", split_generation: " << tcmeta.raft_group_metadata->split_generation();
 
     // Store consensus metadata.
-    // Here we reuse the same cmeta instance for both new tablets. This is safe, because:
-    // 1) Their consensus metadata only differ by tablet id.
-    // 2) Flush() will save it into a new path corresponding to tablet ID we set before flushing.
-    cmeta->set_tablet_id(new_tablet_id);
+    auto cmeta = ConsensusMetadata::CreateUnflushed(
+        fs_manager_, new_tablet_id, fs_manager_->uuid(), committed_raft_config.value(),
+        split_op_id.term);
+    if (request->has_split_parent_leader_uuid()) {
+      cmeta->set_leader_uuid(request->split_parent_leader_uuid().ToBuffer());
+    }
+    cmeta->set_split_parent_tablet_id(tablet_id);
     RETURN_NOT_OK(cmeta->Flush());
 
     const auto& dest_wal_dir = tcmeta.raft_group_metadata->wal_dir();
@@ -1502,7 +1537,7 @@ Status TSTabletManager::ApplyTabletSplit(
     // See https://github.com/yugabyte/yugabyte-db/issues/4312 for more details.
     RETURN_NOT_OK(apply_pool_->SubmitFunc(std::bind(
         &TSTabletManager::CreatePeerAndOpenTablet, this, tcmeta.raft_group_metadata,
-        tcmeta.transition_deleter)));
+        tcmeta.transition_deleter, CopyRetryableRequestsFromParent::kTrue)));
   }
 
   unregister_wal_se.Cancel();
@@ -1623,8 +1658,15 @@ Status TSTabletManager::DoApplyCloneTablet(
   for (const auto& colocated_table : ToRepeatedPtrField(request->colocated_tables())) {
     LOG(INFO) << Format(
         "Adding table $0 to the tablet: $1", colocated_table.table_id(), target_tablet_id);
-    colocated_tables_infos.push_back(VERIFY_RESULT(
-        tablet::TableInfo::LoadFromPB(log_prefix, target_table_id, colocated_table)));
+    auto table_info = VERIFY_RESULT(
+        tablet::TableInfo::LoadFromPB(log_prefix, target_table_id, colocated_table));
+    // The master leaves the hybrid time of colocated_tables entries unset. A vector index only
+    // takes intent applies committed after it, so an invalid one keeps every transactional write to
+    // the clone out of the index.
+    if (!table_info->hybrid_time.is_valid()) {
+      table_info->hybrid_time = operation->hybrid_time();
+    }
+    colocated_tables_infos.push_back(std::move(table_info));
   }
   // Setup raft group metadata. If we crash between here and when we set the tablet data state to
   // TABLET_DATA_READY, the tablet will be deleted on the next bootstrap.
@@ -1680,7 +1722,8 @@ Status TSTabletManager::DoApplyCloneTablet(
   // in case of reverse lock order in some other thread.
   // See https://github.com/yugabyte/yugabyte-db/issues/4312 for more details.
   RETURN_NOT_OK(apply_pool_->SubmitFunc(std::bind(
-      &TSTabletManager::CreatePeerAndOpenTablet, this, target_meta, *transition_deleter_result)));
+      &TSTabletManager::CreatePeerAndOpenTablet, this, target_meta, *transition_deleter_result,
+      CopyRetryableRequestsFromParent::kFalse)));
   unregister_wal_se.Cancel();
 
   return Status::OK();
@@ -1942,7 +1985,7 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
   MAYBE_FAULT(FLAGS_TEST_fault_crash_after_rb_finish_before_open);
 
   LOG(INFO) << kLogPrefix << "Remote bootstrap: Opening tablet";
-  OpenTablet(meta, nullptr);
+  OpenTablet(meta, nullptr, CopyRetryableRequestsFromParent::kFalse);
   // If OpenTablet fails, tablet_peer->error() will be set.
   RETURN_NOT_OK(ShutdownAndTombstoneTabletPeerNotOk(
       tablet_peer->error(), tablet_peer, meta, fs_manager_->uuid(),
@@ -2037,6 +2080,7 @@ Result<TabletPeerPtr> TSTabletManager::CreateAndRegisterTabletPeer(
       Bind(&TSTabletManager::ApplyChange, Unretained(this), tablet_id),
       metric_registry_,
       this,
+      persistence_gate_.get(),
       server_->client_future()));
   std::lock_guard lock(mutex_);
   RETURN_NOT_OK(RegisterTabletUnlocked(tablet_id, tablet_peer, mode));
@@ -2326,8 +2370,10 @@ Status MaybeAssignPerDbCgroups(
 } // namespace
 #endif
 
-void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
-                                 const scoped_refptr<TransitionInProgressDeleter>& deleter) {
+void TSTabletManager::OpenTablet(
+    const RaftGroupMetadataPtr& meta,
+    const scoped_refptr<TransitionInProgressDeleter>& deleter,
+    CopyRetryableRequestsFromParent copy_retryable_requests_from_parent) {
   string tablet_id = meta->raft_group_id();
   TRACE_EVENT1("tserver", "TSTabletManager::OpenTablet",
                "tablet_id", tablet_id);
@@ -2381,8 +2427,21 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
   retryable_requests.SetServerClock(server_->Clock());
   retryable_requests.SetRequestTimeout(FLAGS_retryable_request_timeout_secs);
 
-  if (FLAGS_enable_copy_retryable_requests_from_parent &&
-          cmeta->has_split_parent_tablet_id()) {
+  if (FLAGS_TEST_wait_for_split_parent_running_on_open && cmeta->has_split_parent_tablet_id()) {
+    s = WaitFor(
+        [this, &cmeta] { return GetTabletRetryableRequests(cmeta->split_parent_tablet_id()).ok(); },
+        30s * kTimeMultiplier, "split parent running");
+    if (!s.ok()) {
+      tablet_peer->SetFailed(s);
+      return;
+    }
+  }
+
+  // Copying is only valid before the child has replicated writes of its own. Every other open
+  // rebuilds retryable requests from the child's bootstrap state and WAL, which includes the
+  // parent's WAL up to the split op.
+  if (copy_retryable_requests_from_parent && FLAGS_enable_copy_retryable_requests_from_parent &&
+      cmeta->has_split_parent_tablet_id()) {
     auto parent_tablet_requests = GetTabletRetryableRequests(cmeta->split_parent_tablet_id());
     if (parent_tablet_requests.ok()) {
       retryable_requests.CopyFrom(*parent_tablet_requests);
@@ -2476,7 +2535,9 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         .wait_queue_cgroup = wait_queue_cgroup,
         .full_compaction_pool = full_compaction_pool(),
         .admin_triggered_compaction_pool = admin_triggered_compaction_pool(),
+        .intent_cleanup_pool = raft_pool(),
         .post_split_compaction_added = ts_post_split_compaction_added_,
+        .tier_migration_hooks = tier_migration_reconciler_->tablet_hooks(),
         .metadata_cache = metadata_cache,
         .get_min_xcluster_schema_version =
             std::bind(&TabletServer::GetMinXClusterSchemaVersion, server_, _1, _2),
@@ -2628,6 +2689,11 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
   }
 
   tablet_metadata_validator_->ScheduleValidation(*tablet->metadata());
+
+  // A tablet that arrives with a target tier (restart, remote bootstrap, split child, creation
+  // from a tablespace) may have SSTs on the wrong disk; converge it now rather than after the
+  // reconciler's next interval.
+  tier_migration_reconciler_->Wake();
 }
 
 Status TSTabletManager::TriggerAdminCompaction(
@@ -2746,6 +2812,8 @@ void TSTabletManager::StartShutdown() {
   mem_manager_->Shutdown();
 
   full_compaction_manager_->Shutdown();
+
+  tier_migration_reconciler_->Shutdown();
 
   // Wait for all remote operations to finish.
   WaitForRemoteSessionsToEnd(TabletRemoteSessionType::kBootstrap, kDebugBootstrapString);
@@ -3500,16 +3568,18 @@ void TSTabletManager::GetAndRegisterDataAndWalDir(FsManager* fs_manager,
   // For this fallback to be safe long-term, the master's load balancer needs to detect a
   // replica that isn't respecting its tablespace's tier placement and reconcile it
   // (locally via AlterTabletTier, or RBS).
-  const std::string effective_target_tier =
-      target_tier.empty() ? kDefaultStorageTier : target_tier;
   std::vector<string> candidate_dirs = data_root_dirs;
-  auto tier_dirs = fs_manager->GetDataRootDirsForTier(effective_target_tier);
-  if (tier_dirs.empty()) {
-    LOG(WARNING) << Format(
-        "No data roots configured for target storage tier '$0' on this node; falling back to "
-        "default disk selection for tablet $1", effective_target_tier, tablet_id);
-  } else {
-    candidate_dirs = std::move(tier_dirs);
+  if (FLAGS_enable_tiered_storage) {
+    const std::string effective_target_tier =
+        target_tier.empty() ? kDefaultStorageTier : target_tier;
+    auto tier_dirs = fs_manager->GetDataRootDirsForTier(effective_target_tier);
+    if (tier_dirs.empty()) {
+      LOG(WARNING) << Format(
+          "No data roots configured for target storage tier '$0' on this node; falling back to "
+          "default disk selection for tablet $1", effective_target_tier, tablet_id);
+    } else {
+      candidate_dirs = std::move(tier_dirs);
+    }
   }
 
   // Find the data directory with the least count of tablets for this table.
@@ -3682,6 +3752,20 @@ std::string TSTabletManager::PickMinLoadDataRootUnlocked(
 
 Result<uint32_t> TSTabletManager::ResolveTargetTierPathId(
     const tablet::RaftGroupMetadataPtr& meta) {
+  if (!FLAGS_enable_tiered_storage) {
+    // Preview feature off: no tier preference is acted on. The intent (target_storage_tier) is
+    // kept so it is honored again once the feature is enabled; only the cached disk is dropped,
+    // since OpenRegularDB and compactions trust it as the target for new files.
+    if (meta->target_tier_path_id() != 0) {
+      LOG(INFO) << "TieredStorage ResolveTargetTierPathId: tablet=" << meta->raft_group_id()
+                << " target_tier=" << meta->target_storage_tier()
+                << " is kept but not acted on while tiered storage is disabled; new files land "
+                << "on home (path_id 0)";
+      RETURN_NOT_OK(meta->ClearTargetTierPathId());
+    }
+    return 0;
+  }
+
   const auto target_tier = meta->target_storage_tier();
   if (target_tier.empty()) {
     // No tier preference persisted for this tablet (e.g. pre-tiered-storage tablet, or the

@@ -6657,6 +6657,61 @@ TEST_F_EX(
       << "the restored tablet's teardown flush waited out intents_flush_max_delay_ms";
 }
 
+// A PITR restore must not move a database's next-OID counters backwards. A TServer takes OIDs by
+// advancing master's counter past a batch of them and caching that batch, so OIDs that master has
+// given out but that nothing has used yet sit below the counter. Moving the counter back below
+// them makes master give those same OIDs out again to whoever asks for OIDs next.
+//
+// Both OID spaces are checked by reserving directly from master, which is the call a TServer uses
+// to fill its cache.
+TEST_F(YbAdminSnapshotScheduleTestWithYsql, PgsqlPitrDoesNotRewindOidCounter) {
+  constexpr uint32_t kOidsToReserve = 100;
+
+  auto schedule_id = ASSERT_RESULT(PreparePg());
+
+  // The OID counters live on the database's namespace entry in master's sys catalog.
+  master::GetNamespaceInfoResponsePB namespace_info;
+  ASSERT_OK(client_->GetNamespaceInfo(
+      client::kTableName.namespace_name(), YQLDatabase::YQL_DATABASE_PGSQL, &namespace_info));
+  const std::string& namespace_id = namespace_info.namespace_().id();
+
+  struct ReservedOids {
+    uint32_t first;      // First OID of the batch master gave out.
+    uint32_t past_last;  // First OID master has not given out yet.
+  };
+  // Asking for next_oid 0 means master hands out from wherever its counter stands, rather than
+  // from a position we supply, which is what makes a counter that moved backwards visible here.
+  auto reserve_oids = [this, &namespace_id](bool use_secondary_space) -> Result<ReservedOids> {
+    ReservedOids reserved;
+    RETURN_NOT_OK(client_->ReservePgsqlOids(
+        namespace_id, /*next_oid=*/0, kOidsToReserve, use_secondary_space, &reserved.first,
+        &reserved.past_last));
+    return reserved;
+  };
+
+  LOG(INFO) << "Noting restore time";
+  auto time = ASSERT_RESULT(GetCurrentTime());
+
+  // Reserved after the restore time, so a restore that moves the counters back forgets that these
+  // OIDs were ever given out. A TServer that had asked for them would still be holding them.
+  auto normal_before_restore = ASSERT_RESULT(reserve_oids(/*use_secondary_space=*/false));
+  auto secondary_before_restore = ASSERT_RESULT(reserve_oids(/*use_secondary_space=*/true));
+
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+  auto normal_after_restore = ASSERT_RESULT(reserve_oids(/*use_secondary_space=*/false));
+  auto secondary_after_restore = ASSERT_RESULT(reserve_oids(/*use_secondary_space=*/true));
+
+  EXPECT_GE(normal_after_restore.first, normal_before_restore.past_last)
+      << "The restore moved the normal space counter backwards: master had already given out "
+      << "every OID below " << normal_before_restore.past_last << ", then started again at "
+      << normal_after_restore.first;
+  EXPECT_GE(secondary_after_restore.first, secondary_before_restore.past_last)
+      << "The restore moved the secondary space counter backwards: master had already given out "
+      << "every OID below " << secondary_before_restore.past_last << ", then started again at "
+      << secondary_after_restore.first;
+}
+
 // Fixture for the clone-with-multiple-colocation-parents repro. We need the
 // PG-side gflag `ysql_enable_colocated_tables_with_tablespaces` enabled (it
 // is NON_RUNTIME and defaults to false) on both master and tserver so that

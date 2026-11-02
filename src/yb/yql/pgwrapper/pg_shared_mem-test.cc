@@ -431,16 +431,18 @@ TEST_F(PgSharedMemTest, ConnectionShutdown) {
 
 // The test checks PgClientService detects postgres process (with in-flight RPC) termination faster
 // than session expiration based on heartbeat and performs required session cleanup actions.
-TEST_F(PgSharedMemTest, ConnectionWithInFlightRPCShutdown) {
+TEST_F_EX(PgSharedMemTest, ConnectionWithInFlightRPCShutdown, PgSharedMemBigTimeoutTest) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY) SPLIT INTO 1 TABLETS"));
 
-  constexpr auto kNumIterations = 16;
-  constexpr auto kWaitTimeout = 5s * kTimeMultiplier;
+  constexpr auto kNumIterations = RegularBuildVsSanitizers(16, 8);
+  constexpr auto kQueryMinExecutionTimeMs = 5000;
+  constexpr auto kWaitTimeout = 1ms * kQueryMinExecutionTimeMs * kTimeMultiplier;
 
   {
     // Slowdown some further queries to simulate in-flight RPC
-    auto flag_guard = ChangeFlagTemporary(FLAGS_TEST_slowdown_pgsql_aggregate_read_ms, 5000);
+    auto flag_guard = ChangeFlagTemporary(
+        FLAGS_TEST_slowdown_pgsql_aggregate_read_ms, kQueryMinExecutionTimeMs);
     TestThreadHolder thread_holder;
     for ([[maybe_unused]] const auto _ : std::views::iota(0, kNumIterations)) {
       auto aux_conn = ASSERT_RESULT(Connect());

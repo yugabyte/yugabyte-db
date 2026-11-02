@@ -638,10 +638,7 @@ Result<std::string> PartitionSchema::GetLexicographicMiddleKey(
 }
 
 bool PartitionSchema::HasOverlap(
-    const std::string& key_start,
-    const std::string& key_end,
-    const std::string& other_key_start,
-    const std::string& other_key_end) {
+    Slice key_start, Slice key_end, Slice other_key_start, Slice other_key_end) {
   return (other_key_end.empty() || key_start < other_key_end) &&
          (key_end.empty() || other_key_start < key_end);
 }

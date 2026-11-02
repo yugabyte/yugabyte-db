@@ -535,6 +535,14 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
     return kv_store_.post_split_compaction_file_number_upper_bound;
   }
 
+  // Returns rocksdb_parent_data_compacted and post_split_compaction_file_number_upper_bound read
+  // under one lock, so that a concurrent OnPostSplitCompactionDone() is never seen half-applied.
+  std::pair<bool, std::optional<uint64_t>> post_split_compaction_state() const {
+    std::lock_guard<MutexType> lock(data_mutex_);
+    return {kv_store_.rocksdb_parent_data_compacted,
+            kv_store_.post_split_compaction_file_number_upper_bound};
+  }
+
   void set_post_split_compaction_file_number_upper_bound(uint64_t value) {
     std::lock_guard<MutexType> lock(data_mutex_);
     kv_store_.post_split_compaction_file_number_upper_bound = value;
@@ -791,7 +799,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   bool UsePartialRangeKeyIntents() const;
 
   // versions is a map from table id to min schema version that should be kept for this table.
-  Status OldSchemaGC(const std::unordered_map<Uuid, SchemaVersion>& versions);
+  Status OldSchemaGC(const docdb::CotableSchemaVersionMap& versions);
   void DisableSchemaGC();
   void EnableSchemaGC();
 

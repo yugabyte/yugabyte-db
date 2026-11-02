@@ -144,8 +144,7 @@ public class CustomerTaskHandler {
       Customer customer, List<CustomerTask> customerTaskList) {
     Map<UUID, List<CustomerTaskFormData>> taskListMap = new HashMap<>();
     Map<UUID, CustomerTask> lastTaskByTargetMap = buildLastTaskByTargetMap(customerTaskList);
-    Map<UUID, Set<String>> allowRetryTasksByTargetMap =
-        buildAllowRetryTasksByTargetMap(customer, null /* specific target UUID */);
+    TaskOwners taskOwners = buildTaskOwners(customer, null /* specific target UUID */);
     List<List<CustomerTask>> batches =
         Lists.partition(
             customerTaskList,
@@ -159,7 +158,8 @@ public class CustomerTaskHandler {
             .buildTaskStatus(
                 task,
                 subTaskInfos.getOrDefault(task.getTaskUUID(), Collections.emptyList()),
-                allowRetryTasksByTargetMap,
+                taskOwners.updating(),
+                taskOwners.placementLock(),
                 lastTaskByTargetMap)
             .ifPresent(
                 taskProgress -> {
@@ -184,12 +184,15 @@ public class CustomerTaskHandler {
     if (lastCustomerTask != null) {
       lastTaskByTargetMap.put(lastCustomerTask.getTargetUUID(), lastCustomerTask);
     }
-    Map<UUID, Set<String>> allowRetryTasksByTargetMap =
-        buildAllowRetryTasksByTargetMap(customer, customerTask.getTargetUUID());
+    TaskOwners taskOwners = buildTaskOwners(customer, customerTask.getTargetUUID());
     List<TaskInfo> subTaskInfos = customerTask.getTaskInfo().getSubTasks();
     commissioner
         .buildTaskStatus(
-            customerTask, subTaskInfos, allowRetryTasksByTargetMap, lastTaskByTargetMap)
+            customerTask,
+            subTaskInfos,
+            taskOwners.updating(),
+            taskOwners.placementLock(),
+            lastTaskByTargetMap)
         .ifPresent(
             taskProgress -> {
               CustomerTaskFormData taskData = buildCustomerTaskFromData(customerTask, taskProgress);
@@ -209,8 +212,7 @@ public class CustomerTaskHandler {
         TaskInfo.getSubTasks(
             tasks.stream().map(CustomerTask::getTaskUUID).collect(Collectors.toSet()));
     Map<UUID, CustomerTask> lastTaskByTargetMap = buildLastTaskByTargetMap(tasks);
-    Map<UUID, Set<String>> allowRetryTasksByTargetMap =
-        buildAllowRetryTasksByTargetMap(customer, null /* specific target */);
+    TaskOwners taskOwners = buildTaskOwners(customer, null /* specific target */);
     List<CustomerTaskFormData> taskList =
         tasks.parallelStream()
             .map(
@@ -219,7 +221,8 @@ public class CustomerTaskHandler {
                         .buildTaskStatus(
                             r,
                             subTaskInfos.getOrDefault(r.getTaskUUID(), Collections.emptyList()),
-                            allowRetryTasksByTargetMap,
+                            taskOwners.updating(),
+                            taskOwners.placementLock(),
                             lastTaskByTargetMap)
                         .map(taskProgress -> buildCustomerTaskFromData(r, taskProgress))
                         .orElse(null))
@@ -314,26 +317,30 @@ public class CustomerTaskHandler {
                 (c1, c2) -> c1.getCompletionTime().after(c2.getCompletionTime()) ? c1 : c2));
   }
 
-  private Map<UUID, Set<String>> buildAllowRetryTasksByTargetMap(
-      Customer customer, @Nullable UUID targetUuid) {
-    Map<UUID, Set<String>> allowRetryTasksByTargetMap = new HashMap<>();
-    Map<UUID, String> updatingTaskByTargetMap =
-        commissioner.getUpdatingTaskUUIDsForTargets(customer.getId(), targetUuid);
-    Map<UUID, String> placementModificationTaskByTargetMap =
-        commissioner.getPlacementModificationTaskUUIDsForTargets(customer.getId(), targetUuid);
+  /**
+   * Per universe, the task UUIDs that own it. {@code updating} (updatingTaskUUID plus
+   * placementModificationTaskUuid) gates retry; {@code placementLock}
+   * (placementModificationTaskUuid only) gates checkpoint-based rollback.
+   */
+  private record TaskOwners(
+      Map<UUID, Set<String>> updating, Map<UUID, Set<String>> placementLock) {}
 
-    updatingTaskByTargetMap.forEach(
-        (universeUUID, taskUUID) ->
-            allowRetryTasksByTargetMap
-                .computeIfAbsent(universeUUID, k -> new HashSet<>())
-                .add(taskUUID));
-    placementModificationTaskByTargetMap.forEach(
-        (universeUUID, taskUUID) ->
-            allowRetryTasksByTargetMap
-                .computeIfAbsent(universeUUID, k -> new HashSet<>())
-                .add(taskUUID));
-
-    return allowRetryTasksByTargetMap;
+  private TaskOwners buildTaskOwners(Customer customer, @Nullable UUID targetUuid) {
+    Map<UUID, Set<String>> updating = new HashMap<>();
+    Map<UUID, Set<String>> placementLock = new HashMap<>();
+    commissioner
+        .getUpdatingTaskUUIDsForTargets(customer.getId(), targetUuid)
+        .forEach(
+            (universeUUID, taskUUID) ->
+                updating.computeIfAbsent(universeUUID, k -> new HashSet<>()).add(taskUUID));
+    commissioner
+        .getPlacementModificationTaskUUIDsForTargets(customer.getId(), targetUuid)
+        .forEach(
+            (universeUUID, taskUUID) -> {
+              updating.computeIfAbsent(universeUUID, k -> new HashSet<>()).add(taskUUID);
+              placementLock.computeIfAbsent(universeUUID, k -> new HashSet<>()).add(taskUUID);
+            });
+    return new TaskOwners(updating, placementLock);
   }
 
   private TaskPagedQuery toPagedQuery(UUID cUUID, TaskPagedQuerySpec spec) {

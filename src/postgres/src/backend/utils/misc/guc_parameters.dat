@@ -3719,6 +3719,14 @@
   boot_val => 'true',
 },
 
+{ name => 'yb_allow_prehashed_passwords', type => 'bool', context => 'PGC_SUSET', group => 'CONN_AUTH_AUTH',
+  short_desc => 'Allows a role to be given an already-hashed password.',
+  long_desc => 'A pre-hashed password cannot be inspected, so no password policy can be enforced while this is on.',
+  variable => 'yb_allow_prehashed_passwords',
+  boot_val => 'true',
+  check_hook => 'check_yb_allow_prehashed_passwords',
+},
+
 { name => 'yb_allow_replication_slot_lsn_types', type => 'bool', context => 'PGC_SUSET', group => 'DEVELOPER_OPTIONS',
   short_desc => 'Allow specifying LSN type while creating replication slot',
   flags => 'GUC_NOT_IN_SAMPLE',
@@ -4004,6 +4012,16 @@
   boot_val => 'false',
 },
 
+{ name => 'yb_dist_trace_sample_rate', type => 'real', context => 'PGC_SIGHUP', group => 'DEVELOPER_OPTIONS',
+  short_desc => 'Fraction of queries without a traceparent that are distributed-traced.',
+  long_desc => 'Set through the ysql_yb_dist_trace_sample_rate yb-tserver flag.',
+  flags => 'GUC_NOT_IN_SAMPLE',
+  variable => 'yb_dist_trace_sample_rate',
+  boot_val => '0.0',
+  min => '0.0',
+  max => '1.0',
+},
+
 { name => 'yb_dist_tracecontext', type => 'string', context => 'PGC_USERSET', group => 'DEVELOPER_OPTIONS',
   short_desc => 'Sets the W3C trace context (traceparent) for distributed tracing.',
   flags => 'GUC_NOT_IN_SAMPLE',
@@ -4247,6 +4265,15 @@
   boot_val => 'true',
 },
 
+# Gated by the yb_enable_ioc_do_nothing_pushdown preview flag in
+# pg_wrapper.cc. TODO: before enabling by default, add an infra
+# AutoFlag that pushdown also requires.
+{ name => 'yb_enable_ioc_do_nothing_pushdown', type => 'bool', context => 'PGC_USERSET', group => 'QUERY_TUNING_METHOD',
+  short_desc => 'Push INSERT ... ON CONFLICT DO NOTHING conflict resolution down to DocDB.',
+  variable => 'yb_enable_ioc_do_nothing_pushdown',
+  boot_val => 'false',
+},
+
 { name => 'yb_enable_listen_notify', type => 'bool', context => 'PGC_SIGHUP', group => 'DEVELOPER_OPTIONS',
   short_desc => 'Enables LISTEN/NOTIFY.',
   flags => 'GUC_NOT_IN_SAMPLE',
@@ -4456,6 +4483,14 @@
   short_desc => 'Enables distributed tracing for SPI (Server Programming Interface) calls.',
   flags => 'GUC_NOT_IN_SAMPLE',
   variable => 'yb_enable_spi_dist_tracing',
+  boot_val => 'true',
+},
+
+{ name => 'yb_enable_stale_catalog_prefetch', type => 'bool', context => 'PGC_SIGHUP', group => 'CLIENT_CONN_OTHER',
+  short_desc => 'Let a connection start from a catalog version this node already has cached.',
+  long_desc => 'A connection beginning while the master leader reports that it is shedding catalog prefetches reads the catalog at a version this node already holds, rather than fetching the whole catalog from the leader, and applies the invalidation messages in between before it runs anything. Turning this off makes every connection fetch from the leader as before, and returns the read a backend makes ahead of authentication to the ordinary admission priority on the master.',
+  flags => 'GUC_NOT_IN_SAMPLE',
+  variable => 'yb_enable_stale_catalog_prefetch',
   boot_val => 'true',
 },
 
@@ -4867,6 +4902,29 @@
   max => 'INT_MAX',
 },
 
+# Count window only: an unbounded count would retain every password forever.
+{ name => 'yb_password_reuse_history', type => 'int', context => 'PGC_SUSET', group => 'CONN_AUTH_AUTH',
+  short_desc => 'Number of most recent passwords per role that may not be reused.',
+  long_desc => 'A value of 0 disables the count-based part of the password reuse policy. The upper bound limits only this count.',
+  variable => 'yb_password_reuse_history',
+  boot_val => '0',
+  min => '0',
+  max => '1024',
+  check_hook => 'check_yb_password_reuse',
+},
+
+# Capped at 100 years. Rows inside the interval are kept even when the count is 0.
+{ name => 'yb_password_reuse_interval', type => 'int', context => 'PGC_SUSET', group => 'CONN_AUTH_AUTH',
+  short_desc => 'Sets the minimum amount of time before a password may be reused.',
+  long_desc => 'A value of 0 disables the time-based part of the password reuse policy. A non-zero value keeps one row per password change for the whole interval, and yb_password_reuse_history does not limit those rows.',
+  flags => 'GUC_UNIT_MIN',
+  variable => 'yb_password_reuse_interval',
+  boot_val => '0',
+  min => '0',
+  max => '52560000',
+  check_hook => 'check_yb_password_reuse',
+},
+
 { name => 'yb_password_validity', type => 'int', context => 'PGC_SUSET', group => 'CONN_AUTH_AUTH',
   short_desc => 'Sets how long a newly set or changed password remains valid.',
   long_desc => 'A value of zero implies no password expiration. When a CREATE ROLE or ALTER ROLE specifies the VALID UNTIL clause, the VALID UNTIL clause takes precedence over this setting.',
@@ -5048,6 +5106,15 @@
   assign_hook => 'assign_yb_read_time',
 },
 
+{ name => 'yb_read_time_skip_catalog', type => 'bool', context => 'PGC_SUSET', group => 'CUSTOM_OPTIONS',
+  short_desc => 'Makes yb_read_time apply only to reads of user tables; the catalog is read as of now.',
+  flags => 'GUC_NOT_IN_SAMPLE',
+  variable => 'yb_read_time_skip_catalog',
+  boot_val => 'false',
+  check_hook => 'check_yb_read_time_skip_catalog',
+  assign_hook => 'assign_yb_read_time_skip_catalog',
+},
+
 { name => 'yb_refresh_matview_in_place', type => 'bool', context => 'PGC_USERSET', group => 'CUSTOM_OPTIONS',
   short_desc => 'Refresh materialized views in place.',
   flags => 'GUC_NOT_IN_SAMPLE',
@@ -5070,6 +5137,15 @@
   variable => 'yb_reorderbuffer_max_memory_kb',
   boot_val => '4096',
   min => '64',
+  max => 'INT_MAX',
+},
+
+{ name => 'yb_replication_slot_wait_max_retries', type => 'int', context => 'PGC_SUSET', group => 'DEVELOPER_OPTIONS',
+  short_desc => 'Maximum advisory-lock RPC timeout retries for DROP_REPLICATION_SLOT ... WAIT before giving up with an error. 0 retries indefinitely.',
+  flags => 'GUC_NOT_IN_SAMPLE',
+  variable => 'yb_replication_slot_wait_max_retries',
+  boot_val => '0',
+  min => '0',
   max => 'INT_MAX',
 },
 
@@ -5223,6 +5299,13 @@
   short_desc => 'When set, the next increment catalog version will fail right before it\'s done. This only works when catalog version is stored in pg_yb_catalog_version.',
   flags => 'GUC_NOT_IN_SAMPLE',
   variable => 'yb_test_fail_next_inc_catalog_version',
+  boot_val => 'false',
+},
+
+{ name => 'yb_test_fail_stale_catalog_message_check', type => 'bool', context => 'PGC_SUSET', group => 'DEVELOPER_OPTIONS',
+  short_desc => 'When set, the invalidation messages that would carry a connection from a catalog version cached on this node to the current one always look unusable, so the connection does a full prefetch instead.',
+  flags => 'GUC_NOT_IN_SAMPLE',
+  variable => 'yb_test_fail_stale_catalog_message_check',
   boot_val => 'false',
 },
 

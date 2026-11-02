@@ -4529,7 +4529,8 @@ SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_oute
          Storage Table Read Ops: #
          Storage Table Rows Scanned: #
          Estimated Seeks: #
-         Estimated Nexts And Prevs: #
+         Estimated Nexts: #
+         Estimated Prevs: #
          Estimated Table Roundtrips: #
          Estimated Index Roundtrips: #
          Estimated Docdb Result Width: #
@@ -4539,11 +4540,12 @@ SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_oute
          Storage Table Read Ops: #
          Storage Table Rows Scanned: #
          Estimated Seeks: #
-         Estimated Nexts And Prevs: #
+         Estimated Nexts: #
+         Estimated Prevs: #
          Estimated Table Roundtrips: #
          Estimated Index Roundtrips: #
          Estimated Docdb Result Width: #
-(22 rows)
+(24 rows)
 
 -- LIMIT 10 at four rows per outer row: 3 outer rows sized and used
 SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_outer o JOIN fb_inner i ON i.k = o.v LIMIT 10');
@@ -4560,7 +4562,8 @@ SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_oute
                Storage Table Read Ops: #
                Storage Table Rows Scanned: #
                Estimated Seeks: #
-               Estimated Nexts And Prevs: #
+               Estimated Nexts: #
+               Estimated Prevs: #
                Estimated Table Roundtrips: #
                Estimated Index Roundtrips: #
                Estimated Docdb Result Width: #
@@ -4571,11 +4574,12 @@ SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_oute
                Storage Table Read Ops: #
                Storage Table Rows Scanned: #
                Estimated Seeks: #
-               Estimated Nexts And Prevs: #
+               Estimated Nexts: #
+               Estimated Prevs: #
                Estimated Table Roundtrips: #
                Estimated Index Roundtrips: #
                Estimated Docdb Result Width: #
-(26 rows)
+(28 rows)
 
 -- OFFSET counts toward the rows the LIMIT needs: 30 rows, 8 outer rows
 SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_outer o JOIN fb_inner i ON i.k = o.v LIMIT 10 OFFSET 20');
@@ -4592,7 +4596,8 @@ SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_oute
                Storage Table Read Ops: #
                Storage Table Rows Scanned: #
                Estimated Seeks: #
-               Estimated Nexts And Prevs: #
+               Estimated Nexts: #
+               Estimated Prevs: #
                Estimated Table Roundtrips: #
                Estimated Index Roundtrips: #
                Estimated Docdb Result Width: #
@@ -4603,11 +4608,12 @@ SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_oute
                Storage Table Read Ops: #
                Storage Table Rows Scanned: #
                Estimated Seeks: #
-               Estimated Nexts And Prevs: #
+               Estimated Nexts: #
+               Estimated Prevs: #
                Estimated Table Roundtrips: #
                Estimated Index Roundtrips: #
                Estimated Docdb Result Width: #
-(26 rows)
+(28 rows)
 
 -- sorted BNL: the ordered outer lets the LIMIT stop after the first batch
 SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_outer o JOIN fb_inner i ON i.k = o.v ORDER BY o.k LIMIT 10');
@@ -4624,7 +4630,8 @@ SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_oute
                Storage Table Read Ops: #
                Storage Table Rows Scanned: #
                Estimated Seeks: #
-               Estimated Nexts And Prevs: #
+               Estimated Nexts: #
+               Estimated Prevs: #
                Estimated Table Roundtrips: #
                Estimated Index Roundtrips: #
                Estimated Docdb Result Width: #
@@ -4635,11 +4642,12 @@ SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_oute
                Storage Table Read Ops: #
                Storage Table Rows Scanned: #
                Estimated Seeks: #
-               Estimated Nexts And Prevs: #
+               Estimated Nexts: #
+               Estimated Prevs: #
                Estimated Table Roundtrips: #
                Estimated Index Roundtrips: #
                Estimated Docdb Result Width: #
-(26 rows)
+(28 rows)
 
 -- a Sort between the LIMIT and the join: the planner sizes the first batch,
 -- the executor cannot trim it
@@ -4659,7 +4667,8 @@ SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_oute
                      Storage Table Read Ops: #
                      Storage Table Rows Scanned: #
                      Estimated Seeks: #
-                     Estimated Nexts And Prevs: #
+                     Estimated Nexts: #
+                     Estimated Prevs: #
                      Estimated Table Roundtrips: #
                      Estimated Index Roundtrips: #
                      Estimated Docdb Result Width: #
@@ -4669,11 +4678,12 @@ SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_oute
                      Storage Table Read Ops: #
                      Storage Table Rows Scanned: #
                      Estimated Seeks: #
-                     Estimated Nexts And Prevs: #
+                     Estimated Nexts: #
+                     Estimated Prevs: #
                      Estimated Table Roundtrips: #
                      Estimated Index Roundtrips: #
                      Estimated Docdb Result Width: #
-(27 rows)
+(29 rows)
 
 -- the estimate needs more than a full batch for the LIMIT: the planner does
 -- not size the first batch, the executor still trims it to the LIMIT count
@@ -4690,7 +4700,8 @@ SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_oute
                Storage Table Read Ops: #
                Storage Table Rows Scanned: #
                Estimated Seeks: #
-               Estimated Nexts And Prevs: #
+               Estimated Nexts: #
+               Estimated Prevs: #
                Estimated Table Roundtrips: #
                Estimated Index Roundtrips: #
                Estimated Docdb Result Width: #
@@ -4702,11 +4713,12 @@ SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_oute
                Storage Table Read Ops: #
                Storage Table Rows Scanned: #
                Estimated Seeks: #
-               Estimated Nexts And Prevs: #
+               Estimated Nexts: #
+               Estimated Prevs: #
                Estimated Table Roundtrips: #
                Estimated Index Roundtrips: #
                Estimated Docdb Result Width: #
-(26 rows)
+(28 rows)
 
 -- parameterized LIMIT and OFFSET: a custom plan sees the values and sizes the
 -- first batch; a generic plan cannot, so only the executor's trim shows
@@ -4727,7 +4739,8 @@ SELECT explain_first_batch('EXECUTE fb_limit(10)');
                Storage Table Read Ops: #
                Storage Table Rows Scanned: #
                Estimated Seeks: #
-               Estimated Nexts And Prevs: #
+               Estimated Nexts: #
+               Estimated Prevs: #
                Estimated Table Roundtrips: #
                Estimated Index Roundtrips: #
                Estimated Docdb Result Width: #
@@ -4738,11 +4751,12 @@ SELECT explain_first_batch('EXECUTE fb_limit(10)');
                Storage Table Read Ops: #
                Storage Table Rows Scanned: #
                Estimated Seeks: #
-               Estimated Nexts And Prevs: #
+               Estimated Nexts: #
+               Estimated Prevs: #
                Estimated Table Roundtrips: #
                Estimated Index Roundtrips: #
                Estimated Docdb Result Width: #
-(26 rows)
+(28 rows)
 
 SELECT explain_first_batch('EXECUTE fb_offset(20)');
                                  explain_first_batch                                  
@@ -4758,7 +4772,8 @@ SELECT explain_first_batch('EXECUTE fb_offset(20)');
                Storage Table Read Ops: #
                Storage Table Rows Scanned: #
                Estimated Seeks: #
-               Estimated Nexts And Prevs: #
+               Estimated Nexts: #
+               Estimated Prevs: #
                Estimated Table Roundtrips: #
                Estimated Index Roundtrips: #
                Estimated Docdb Result Width: #
@@ -4769,11 +4784,12 @@ SELECT explain_first_batch('EXECUTE fb_offset(20)');
                Storage Table Read Ops: #
                Storage Table Rows Scanned: #
                Estimated Seeks: #
-               Estimated Nexts And Prevs: #
+               Estimated Nexts: #
+               Estimated Prevs: #
                Estimated Table Roundtrips: #
                Estimated Index Roundtrips: #
                Estimated Docdb Result Width: #
-(26 rows)
+(28 rows)
 
 SET plan_cache_mode = force_generic_plan;
 SELECT explain_first_batch('EXECUTE fb_limit(10)');
@@ -4789,7 +4805,8 @@ SELECT explain_first_batch('EXECUTE fb_limit(10)');
                Storage Table Read Ops: #
                Storage Table Rows Scanned: #
                Estimated Seeks: #
-               Estimated Nexts And Prevs: #
+               Estimated Nexts: #
+               Estimated Prevs: #
                Estimated Table Roundtrips: #
                Estimated Index Roundtrips: #
                Estimated Docdb Result Width: #
@@ -4799,11 +4816,12 @@ SELECT explain_first_batch('EXECUTE fb_limit(10)');
                Storage Table Read Ops: #
                Storage Table Rows Scanned: #
                Estimated Seeks: #
-               Estimated Nexts And Prevs: #
+               Estimated Nexts: #
+               Estimated Prevs: #
                Estimated Table Roundtrips: #
                Estimated Index Roundtrips: #
                Estimated Docdb Result Width: #
-(24 rows)
+(26 rows)
 
 SELECT explain_first_batch('EXECUTE fb_limit(40)');
                                  explain_first_batch                                  
@@ -4818,7 +4836,8 @@ SELECT explain_first_batch('EXECUTE fb_limit(40)');
                Storage Table Read Ops: #
                Storage Table Rows Scanned: #
                Estimated Seeks: #
-               Estimated Nexts And Prevs: #
+               Estimated Nexts: #
+               Estimated Prevs: #
                Estimated Table Roundtrips: #
                Estimated Index Roundtrips: #
                Estimated Docdb Result Width: #
@@ -4828,11 +4847,12 @@ SELECT explain_first_batch('EXECUTE fb_limit(40)');
                Storage Table Read Ops: #
                Storage Table Rows Scanned: #
                Estimated Seeks: #
-               Estimated Nexts And Prevs: #
+               Estimated Nexts: #
+               Estimated Prevs: #
                Estimated Table Roundtrips: #
                Estimated Index Roundtrips: #
                Estimated Docdb Result Width: #
-(24 rows)
+(26 rows)
 
 SELECT explain_first_batch('EXECUTE fb_offset(20)');
                                  explain_first_batch                                  
@@ -4847,7 +4867,8 @@ SELECT explain_first_batch('EXECUTE fb_offset(20)');
                Storage Table Read Ops: #
                Storage Table Rows Scanned: #
                Estimated Seeks: #
-               Estimated Nexts And Prevs: #
+               Estimated Nexts: #
+               Estimated Prevs: #
                Estimated Table Roundtrips: #
                Estimated Index Roundtrips: #
                Estimated Docdb Result Width: #
@@ -4857,11 +4878,12 @@ SELECT explain_first_batch('EXECUTE fb_offset(20)');
                Storage Table Read Ops: #
                Storage Table Rows Scanned: #
                Estimated Seeks: #
-               Estimated Nexts And Prevs: #
+               Estimated Nexts: #
+               Estimated Prevs: #
                Estimated Table Roundtrips: #
                Estimated Index Roundtrips: #
                Estimated Docdb Result Width: #
-(24 rows)
+(26 rows)
 
 RESET plan_cache_mode;
 DEALLOCATE fb_limit;
@@ -4882,7 +4904,8 @@ SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_oute
                Storage Table Read Ops: #
                Storage Table Rows Scanned: #
                Estimated Seeks: #
-               Estimated Nexts And Prevs: #
+               Estimated Nexts: #
+               Estimated Prevs: #
                Estimated Table Roundtrips: #
                Estimated Index Roundtrips: #
                Estimated Docdb Result Width: #
@@ -4893,11 +4916,12 @@ SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_oute
                Storage Table Read Ops: #
                Storage Table Rows Scanned: #
                Estimated Seeks: #
-               Estimated Nexts And Prevs: #
+               Estimated Nexts: #
+               Estimated Prevs: #
                Estimated Table Roundtrips: #
                Estimated Index Roundtrips: #
                Estimated Docdb Result Width: #
-(25 rows)
+(27 rows)
 
 RESET yb_bnl_optimize_first_batch;
 RESET yb_explain_hide_non_deterministic_fields;
@@ -5230,3 +5254,420 @@ SELECT COUNT(*) FROM w1, w2, w3, w4
 (1 row)
 
 DROP TABLE w1, w2, w3, w4;
+-- #35565: a Unique outer child of BNL must not return a key twice. Unique
+-- remembers its last returned tuple in its result slot, and BNL must not
+-- store its own tuples there. The inner index is hash-sharded, so the
+-- tuple BNL stores last differs from the one Unique returned last. The
+-- DISTINCT join must count every row of bnl_uniq exactly once (45).
+CREATE TABLE bnl_uniq (k1 int, k2 int, v int PRIMARY KEY);
+CREATE INDEX ON bnl_uniq (k1 HASH, k2 ASC);
+INSERT INTO bnl_uniq SELECT i, i % 3, i FROM generate_series(1, 30) i;
+INSERT INTO bnl_uniq SELECT i, i % 3, i + 100
+  FROM generate_series(1, 30) i WHERE i % 2 = 0;
+SET yb_prefer_bnl = off;
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off)
+    Set(yb_enable_distinct_pushdown off) */
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM bnl_uniq t
+  JOIN (SELECT DISTINCT k1, k2 FROM bnl_uniq) d
+    ON t.k1 = d.k1 AND t.k2 = d.k2;
+                                                   QUERY PLAN                                                   
+----------------------------------------------------------------------------------------------------------------
+ Aggregate
+   ->  YB Batched Nested Loop Join
+         Join Filter: ((t.k1 = bnl_uniq.k1) AND (t.k2 = bnl_uniq.k2))
+         ->  Unique
+               ->  Sort
+                     Sort Key: bnl_uniq.k1, bnl_uniq.k2
+                     ->  Index Only Scan using bnl_uniq_k1_k2_idx on bnl_uniq
+         ->  Index Only Scan using bnl_uniq_k1_k2_idx on bnl_uniq t
+               Index Cond: (ROW(k1, k2) = ANY (ARRAY[ROW(bnl_uniq.k1, bnl_uniq.k2), ROW($1, $4), ROW($2, $5)]))
+(9 rows)
+
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off)
+    Set(yb_enable_distinct_pushdown off) */
+SELECT count(*) FROM bnl_uniq t
+  JOIN (SELECT DISTINCT k1, k2 FROM bnl_uniq) d
+    ON t.k1 = d.k1 AND t.k2 = d.k2;
+ count 
+-------
+    45
+(1 row)
+
+-- #35565: the same rule on BNL's other writes into its outer slot: the
+-- tuplestore batch (hashing off) and the left-join pass that returns
+-- unmatched outer rows. With t.v > 100 only the 15 even keys match one row
+-- each and the 15 odd keys come back unmatched, so the left joins must
+-- return 30; the inner join must still return 45. Hashing is turned off by
+-- a session SET because the executor reads it after a hint's Set() has
+-- been reverted.
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off)
+    Set(yb_enable_distinct_pushdown off) */
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM (SELECT DISTINCT k1, k2 FROM bnl_uniq) d
+  LEFT JOIN bnl_uniq t ON t.k1 = d.k1 AND t.k2 = d.k2 AND t.v > 100;
+                                                   QUERY PLAN                                                   
+----------------------------------------------------------------------------------------------------------------
+ Aggregate
+   ->  YB Batched Nested Loop Left Join
+         Join Filter: ((t.k1 = bnl_uniq.k1) AND (t.k2 = bnl_uniq.k2))
+         ->  Unique
+               ->  Sort
+                     Sort Key: bnl_uniq.k1, bnl_uniq.k2
+                     ->  Index Only Scan using bnl_uniq_k1_k2_idx on bnl_uniq
+         ->  Index Scan using bnl_uniq_k1_k2_idx on bnl_uniq t
+               Index Cond: (ROW(k1, k2) = ANY (ARRAY[ROW(bnl_uniq.k1, bnl_uniq.k2), ROW($1, $4), ROW($2, $5)]))
+               Storage Filter: (v > 100)
+(10 rows)
+
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off)
+    Set(yb_enable_distinct_pushdown off) */
+SELECT count(*) FROM (SELECT DISTINCT k1, k2 FROM bnl_uniq) d
+  LEFT JOIN bnl_uniq t ON t.k1 = d.k1 AND t.k2 = d.k2 AND t.v > 100;
+ count 
+-------
+    30
+(1 row)
+
+SET yb_bnl_enable_hashing = off;
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off)
+    Set(yb_enable_distinct_pushdown off) */
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM bnl_uniq t
+  JOIN (SELECT DISTINCT k1, k2 FROM bnl_uniq) d
+    ON t.k1 = d.k1 AND t.k2 = d.k2;
+                                                   QUERY PLAN                                                   
+----------------------------------------------------------------------------------------------------------------
+ Aggregate
+   ->  YB Batched Nested Loop Join
+         Join Filter: ((t.k1 = bnl_uniq.k1) AND (t.k2 = bnl_uniq.k2))
+         Batch Matching: Tuplestore
+         ->  Unique
+               ->  Sort
+                     Sort Key: bnl_uniq.k1, bnl_uniq.k2
+                     ->  Index Only Scan using bnl_uniq_k1_k2_idx on bnl_uniq
+         ->  Index Only Scan using bnl_uniq_k1_k2_idx on bnl_uniq t
+               Index Cond: (ROW(k1, k2) = ANY (ARRAY[ROW(bnl_uniq.k1, bnl_uniq.k2), ROW($1, $4), ROW($2, $5)]))
+(10 rows)
+
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off)
+    Set(yb_enable_distinct_pushdown off) */
+SELECT count(*) FROM bnl_uniq t
+  JOIN (SELECT DISTINCT k1, k2 FROM bnl_uniq) d
+    ON t.k1 = d.k1 AND t.k2 = d.k2;
+ count 
+-------
+    45
+(1 row)
+
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off)
+    Set(yb_enable_distinct_pushdown off) */
+SELECT count(*) FROM (SELECT DISTINCT k1, k2 FROM bnl_uniq) d
+  LEFT JOIN bnl_uniq t ON t.k1 = d.k1 AND t.k2 = d.k2 AND t.v > 100;
+ count 
+-------
+    30
+(1 row)
+
+RESET yb_bnl_enable_hashing;
+-- #35565: the planner builds a Unique on its own, so the bug needs no
+-- DISTINCT in the query. Each query must count every row of bnl_uniq once
+-- (45): an IN subquery uniquified as the outer of the join, a UNION, and a
+-- DISTINCT ON.
+SET yb_enable_cbo = on;
+/*+ Leading((d t)) YbBatchedNL(d t) Set(yb_bnl_batch_size 3)
+    Set(enable_hashagg off) */
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM bnl_uniq t WHERE t.k1 IN (SELECT d.k1 FROM bnl_uniq d);
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ Aggregate
+   ->  YB Batched Nested Loop Join
+         Join Filter: (t.k1 = d.k1)
+         ->  Unique
+               ->  Sort
+                     Sort Key: d.k1
+                     ->  Index Only Scan using bnl_uniq_k1_k2_idx on bnl_uniq d
+         ->  Index Only Scan using bnl_uniq_k1_k2_idx on bnl_uniq t
+               Index Cond: (k1 = ANY (ARRAY[d.k1, $1, $2]))
+(9 rows)
+
+/*+ Leading((d t)) YbBatchedNL(d t) Set(yb_bnl_batch_size 3)
+    Set(enable_hashagg off) */
+SELECT count(*) FROM bnl_uniq t WHERE t.k1 IN (SELECT d.k1 FROM bnl_uniq d);
+ count 
+-------
+    45
+(1 row)
+
+SET yb_bnl_enable_hashing = off;
+/*+ Leading((d t)) YbBatchedNL(d t) Set(yb_bnl_batch_size 3)
+    Set(enable_hashagg off) */
+SELECT count(*) FROM bnl_uniq t WHERE t.k1 IN (SELECT d.k1 FROM bnl_uniq d);
+ count 
+-------
+    45
+(1 row)
+
+RESET yb_bnl_enable_hashing;
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off) */
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM (SELECT k1 FROM bnl_uniq UNION SELECT k2 FROM bnl_uniq) d
+  JOIN bnl_uniq t ON t.k1 = d.k1;
+                                          QUERY PLAN                                           
+-----------------------------------------------------------------------------------------------
+ Aggregate
+   ->  YB Batched Nested Loop Join
+         Join Filter: (bnl_uniq.k1 = t.k1)
+         ->  Unique
+               ->  Sort
+                     Sort Key: bnl_uniq.k1
+                     ->  Append
+                           ->  Index Only Scan using bnl_uniq_k1_k2_idx on bnl_uniq
+                           ->  Index Only Scan using bnl_uniq_k1_k2_idx on bnl_uniq bnl_uniq_1
+         ->  Index Only Scan using bnl_uniq_k1_k2_idx on bnl_uniq t
+               Index Cond: (k1 = ANY (ARRAY[bnl_uniq.k1, $1, $2]))
+(11 rows)
+
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off) */
+SELECT count(*) FROM (SELECT k1 FROM bnl_uniq UNION SELECT k2 FROM bnl_uniq) d
+  JOIN bnl_uniq t ON t.k1 = d.k1;
+ count 
+-------
+    45
+(1 row)
+
+SET yb_bnl_enable_hashing = off;
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off) */
+SELECT count(*) FROM (SELECT k1 FROM bnl_uniq UNION SELECT k2 FROM bnl_uniq) d
+  JOIN bnl_uniq t ON t.k1 = d.k1;
+ count 
+-------
+    45
+(1 row)
+
+RESET yb_bnl_enable_hashing;
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off)
+    Set(yb_enable_distinct_pushdown off) */
+EXPLAIN (COSTS OFF)
+SELECT count(*)
+  FROM (SELECT DISTINCT ON (k1) k1, v FROM bnl_uniq ORDER BY k1, v) d
+  JOIN bnl_uniq t ON t.k1 = d.k1;
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Aggregate
+   ->  YB Batched Nested Loop Join
+         Join Filter: (bnl_uniq.k1 = t.k1)
+         ->  Unique
+               ->  Sort
+                     Sort Key: bnl_uniq.k1, bnl_uniq.v
+                     ->  Seq Scan on bnl_uniq
+         ->  Index Only Scan using bnl_uniq_k1_k2_idx on bnl_uniq t
+               Index Cond: (k1 = ANY (ARRAY[bnl_uniq.k1, $1, $2]))
+(9 rows)
+
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off)
+    Set(yb_enable_distinct_pushdown off) */
+SELECT count(*)
+  FROM (SELECT DISTINCT ON (k1) k1, v FROM bnl_uniq ORDER BY k1, v) d
+  JOIN bnl_uniq t ON t.k1 = d.k1;
+ count 
+-------
+    45
+(1 row)
+
+SET yb_bnl_enable_hashing = off;
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off)
+    Set(yb_enable_distinct_pushdown off) */
+SELECT count(*)
+  FROM (SELECT DISTINCT ON (k1) k1, v FROM bnl_uniq ORDER BY k1, v) d
+  JOIN bnl_uniq t ON t.k1 = d.k1;
+ count 
+-------
+    45
+(1 row)
+
+RESET yb_bnl_enable_hashing;
+-- #35565: semi and anti joins return outer rows through the same slot on
+-- their single-match and unmatched-outer passes. 15 even keys match a row
+-- with v > 100, so the semi join must return 15; with the extra
+-- k1 % 4 = 0 filter only 7 keys match, so the anti join must return 23.
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off)
+    Set(yb_enable_distinct_pushdown off) */
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM (SELECT DISTINCT k1, k2 FROM bnl_uniq) d
+  WHERE EXISTS (SELECT 1 FROM bnl_uniq t
+                WHERE t.k1 = d.k1 AND t.k2 = d.k2 AND t.v > 100);
+                                                   QUERY PLAN                                                   
+----------------------------------------------------------------------------------------------------------------
+ Aggregate
+   ->  YB Batched Nested Loop Semi Join
+         Join Filter: ((bnl_uniq.k1 = t.k1) AND (bnl_uniq.k2 = t.k2))
+         ->  Unique
+               ->  Sort
+                     Sort Key: bnl_uniq.k1, bnl_uniq.k2
+                     ->  Index Only Scan using bnl_uniq_k1_k2_idx on bnl_uniq
+         ->  Index Scan using bnl_uniq_k1_k2_idx on bnl_uniq t
+               Index Cond: (ROW(k1, k2) = ANY (ARRAY[ROW(bnl_uniq.k1, bnl_uniq.k2), ROW($1, $4), ROW($2, $5)]))
+               Storage Filter: (v > 100)
+(10 rows)
+
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off)
+    Set(yb_enable_distinct_pushdown off) */
+SELECT count(*) FROM (SELECT DISTINCT k1, k2 FROM bnl_uniq) d
+  WHERE EXISTS (SELECT 1 FROM bnl_uniq t
+                WHERE t.k1 = d.k1 AND t.k2 = d.k2 AND t.v > 100);
+ count 
+-------
+    15
+(1 row)
+
+SET yb_bnl_enable_hashing = off;
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off)
+    Set(yb_enable_distinct_pushdown off) */
+SELECT count(*) FROM (SELECT DISTINCT k1, k2 FROM bnl_uniq) d
+  WHERE EXISTS (SELECT 1 FROM bnl_uniq t
+                WHERE t.k1 = d.k1 AND t.k2 = d.k2 AND t.v > 100);
+ count 
+-------
+    15
+(1 row)
+
+RESET yb_bnl_enable_hashing;
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off)
+    Set(yb_enable_distinct_pushdown off) */
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM (SELECT DISTINCT k1, k2 FROM bnl_uniq) d
+  WHERE NOT EXISTS (SELECT 1 FROM bnl_uniq t
+                    WHERE t.k1 = d.k1 AND t.k2 = d.k2 AND t.v > 100
+                      AND t.k1 % 4 = 0);
+                                                   QUERY PLAN                                                   
+----------------------------------------------------------------------------------------------------------------
+ Aggregate
+   ->  YB Batched Nested Loop Anti Join
+         Join Filter: ((t.k1 = bnl_uniq.k1) AND (t.k2 = bnl_uniq.k2))
+         ->  Unique
+               ->  Sort
+                     Sort Key: bnl_uniq.k1, bnl_uniq.k2
+                     ->  Index Only Scan using bnl_uniq_k1_k2_idx on bnl_uniq
+         ->  Index Scan using bnl_uniq_k1_k2_idx on bnl_uniq t
+               Index Cond: (ROW(k1, k2) = ANY (ARRAY[ROW(bnl_uniq.k1, bnl_uniq.k2), ROW($1, $4), ROW($2, $5)]))
+               Storage Index Filter: ((k1 % 4) = 0)
+               Storage Filter: (v > 100)
+(11 rows)
+
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off)
+    Set(yb_enable_distinct_pushdown off) */
+SELECT count(*) FROM (SELECT DISTINCT k1, k2 FROM bnl_uniq) d
+  WHERE NOT EXISTS (SELECT 1 FROM bnl_uniq t
+                    WHERE t.k1 = d.k1 AND t.k2 = d.k2 AND t.v > 100
+                      AND t.k1 % 4 = 0);
+ count 
+-------
+    23
+(1 row)
+
+SET yb_bnl_enable_hashing = off;
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off)
+    Set(yb_enable_distinct_pushdown off) */
+SELECT count(*) FROM (SELECT DISTINCT k1, k2 FROM bnl_uniq) d
+  WHERE NOT EXISTS (SELECT 1 FROM bnl_uniq t
+                    WHERE t.k1 = d.k1 AND t.k2 = d.k2 AND t.v > 100
+                      AND t.k1 % 4 = 0);
+ count 
+-------
+    23
+(1 row)
+
+RESET yb_bnl_enable_hashing;
+-- #35565: a SetOp with ALL returns its result slot once per copy of a row.
+-- Batch size 2 puts a group's second copy after the batch boundary, so
+-- each join must return 75. On master the Subquery Scan above the SetOp
+-- projects into its own slot, so these pass without the fix; they guard
+-- the PG18 SetOp, which BNL reaches directly.
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 2) Set(enable_hashagg off) */
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM (SELECT k1 FROM bnl_uniq
+                      EXCEPT ALL SELECT k1 FROM bnl_uniq WHERE v > 200) d
+  JOIN bnl_uniq t ON t.k1 = d.k1;
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Aggregate
+   ->  YB Batched Nested Loop Join
+         Join Filter: (d.k1 = t.k1)
+         ->  Subquery Scan on d
+               ->  SetOp Except All
+                     ->  Sort
+                           Sort Key: "*SELECT* 1".k1
+                           ->  Append
+                                 ->  Subquery Scan on "*SELECT* 1"
+                                       ->  Index Only Scan using bnl_uniq_k1_k2_idx on bnl_uniq
+                                 ->  Subquery Scan on "*SELECT* 2"
+                                       ->  Seq Scan on bnl_uniq bnl_uniq_1
+                                             Storage Filter: (v > 200)
+         ->  Index Only Scan using bnl_uniq_k1_k2_idx on bnl_uniq t
+               Index Cond: (k1 = ANY (ARRAY[d.k1, $1]))
+(15 rows)
+
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 2) Set(enable_hashagg off) */
+SELECT count(*) FROM (SELECT k1 FROM bnl_uniq
+                      EXCEPT ALL SELECT k1 FROM bnl_uniq WHERE v > 200) d
+  JOIN bnl_uniq t ON t.k1 = d.k1;
+ count 
+-------
+    75
+(1 row)
+
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 2) */
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM (SELECT k1 FROM bnl_uniq
+                      INTERSECT ALL SELECT k1 FROM bnl_uniq) d
+  JOIN bnl_uniq t ON t.k1 = d.k1;
+                                             QUERY PLAN                                              
+-----------------------------------------------------------------------------------------------------
+ Aggregate
+   ->  YB Batched Nested Loop Join
+         Join Filter: (d.k1 = t.k1)
+         ->  Subquery Scan on d
+               ->  HashSetOp Intersect All
+                     ->  Append
+                           ->  Subquery Scan on "*SELECT* 1"
+                                 ->  Index Only Scan using bnl_uniq_k1_k2_idx on bnl_uniq
+                           ->  Subquery Scan on "*SELECT* 2"
+                                 ->  Index Only Scan using bnl_uniq_k1_k2_idx on bnl_uniq bnl_uniq_1
+         ->  Index Only Scan using bnl_uniq_k1_k2_idx on bnl_uniq t
+               Index Cond: (k1 = ANY (ARRAY[d.k1, $1]))
+(12 rows)
+
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 2) */
+SELECT count(*) FROM (SELECT k1 FROM bnl_uniq
+                      INTERSECT ALL SELECT k1 FROM bnl_uniq) d
+  JOIN bnl_uniq t ON t.k1 = d.k1;
+ count 
+-------
+    75
+(1 row)
+
+SET yb_bnl_enable_hashing = off;
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 2) Set(enable_hashagg off) */
+SELECT count(*) FROM (SELECT k1 FROM bnl_uniq
+                      EXCEPT ALL SELECT k1 FROM bnl_uniq WHERE v > 200) d
+  JOIN bnl_uniq t ON t.k1 = d.k1;
+ count 
+-------
+    75
+(1 row)
+
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 2) */
+SELECT count(*) FROM (SELECT k1 FROM bnl_uniq
+                      INTERSECT ALL SELECT k1 FROM bnl_uniq) d
+  JOIN bnl_uniq t ON t.k1 = d.k1;
+ count 
+-------
+    75
+(1 row)
+
+RESET yb_bnl_enable_hashing;
+RESET yb_prefer_bnl;
+RESET yb_enable_cbo;
+DROP TABLE bnl_uniq;

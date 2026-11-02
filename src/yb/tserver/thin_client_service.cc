@@ -54,7 +54,6 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/std_util.h"
-#include "yb/util/thread.h"
 
 using namespace std::literals;
 
@@ -88,15 +87,14 @@ using ThinSessionPtr = std::shared_ptr<ThinSession>;
 // One Perform call: holds the rpc context with its request/response, the table lookup result and
 // the prepared operations.
 class ThinPerformQuery : public std::enable_shared_from_this<ThinPerformQuery>,
-                         public rpc::ThreadPoolTask,
                          public PgTablesQueryListener {
  public:
   using ContextHolder = rpc::TypedPBRpcContextHolder<
       LWThinPerformRequestPB, LWThinPerformResponsePB, rpc::RpcCallLWParamsImpl>;
 
-  ThinPerformQuery(ThinSessionPtr&& session, ContextHolder&& context, rpc::Messenger& messenger)
-      : session_(std::move(session)), context_(std::move(context)), messenger_(messenger),
-        tid_(Thread::UniqueThreadId()), wait_state_ptr_(ash::WaitStateInfo::CurrentWaitState()) {}
+  ThinPerformQuery(ThinSessionPtr&& session, ContextHolder&& context)
+      : session_(std::move(session)), context_(std::move(context)),
+        wait_state_ptr_(ash::WaitStateInfo::CurrentWaitState()) {}
 
   LWThinPerformRequestPB& req() { return context_.req(); }
   LWThinPerformResponsePB& resp() { return context_.resp(); }
@@ -107,17 +105,9 @@ class ThinPerformQuery : public std::enable_shared_from_this<ThinPerformQuery>,
     return SharedField(context().shared_params(), &resp().arena());
   }
 
-  const PgTablesQueryResult& tables() const { return *tables_; }
+  const PgTablesQueryResult& tables() const { return tables_; }
 
-  void Ready(const PgTablesQueryResult& tables) override {
-    tables_ = tables;
-    if (Thread::UniqueThreadId() == tid_) {
-      Run();
-    } else {
-      retained_self_ = shared_from_this();
-      messenger_.ThreadPool().Enqueue(this);
-    }
-  }
+  void Ready(PgTablesQueryResult&& tables) override;
 
   void RespondFailure(const Status& status) {
     DCHECK(!status.ok());
@@ -131,18 +121,9 @@ class ThinPerformQuery : public std::enable_shared_from_this<ThinPerformQuery>,
   std::vector<std::shared_ptr<client::YBPgsqlOp>> ops;
 
  private:
-  void Run() override;
-
-  void Done(const Status& status) override {
-    retained_self_ = nullptr;
-  }
-
   const ThinSessionPtr session_;
   ContextHolder context_;
-  rpc::Messenger& messenger_;
-  const int64_t tid_;
-  std::optional<PgTablesQueryResult> tables_;
-  std::shared_ptr<ThinPerformQuery> retained_self_;
+  PgTablesQueryResult tables_;
 
   // kept here in case the task is scheduled in another thread.
   const ash::WaitStateInfoPtr wait_state_ptr_;
@@ -325,7 +306,8 @@ class ThinSession : public ClientSessionBase,
   bool shutting_down_ GUARDED_BY(mutex_) = false;
 };
 
-void ThinPerformQuery::Run() {
+void ThinPerformQuery::Ready(PgTablesQueryResult&& tables) {
+  tables_ = std::move(tables);
   ADOPT_WAIT_STATE(wait_state_ptr_);
   SCOPED_WAIT_STATUS(OnCpu_Active);
   session_->Perform(shared_from_this());
@@ -340,7 +322,7 @@ class ThinClientServiceImpl::Impl : public SessionRegistryContext {
       const scoped_refptr<ClockBase>& clock, rpc::Messenger* messenger,
       PgMutationCounter* mutation_counter)
       : client_future_(client_future), clock_(clock), messenger_(*messenger),
-        mutation_counter_(mutation_counter), table_cache_(client_future),
+        mutation_counter_(mutation_counter), table_cache_(client_future, messenger_.ThreadPool()),
         session_registry_(&messenger->scheduler(), this) {}
 
   virtual ~Impl() {
@@ -408,8 +390,7 @@ class ThinClientServiceImpl::Impl : public SessionRegistryContext {
       AddIfMissing(table_ids, op.has_read() ? op.read().table_id() : op.write().table_id());
     }
     auto query = std::make_shared<ThinPerformQuery>(
-        std::move(session), MakeTypedPBRpcContextHolder(*req, resp, std::move(*context)),
-        messenger_);
+        std::move(session), MakeTypedPBRpcContextHolder(*req, resp, std::move(*context)));
     table_cache_.GetTables(table_ids, query);
   }
 

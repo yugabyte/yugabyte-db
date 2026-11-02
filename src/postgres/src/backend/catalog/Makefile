@@ -16,6 +16,8 @@ include $(top_builddir)/src/Makefile.global
 SUBDIRS = yb_catalog yb_logical_client
 
 OBJS = \
+	yb_password_history.o \
+	\
 	aclchk.o \
 	catalog.o \
 	dependency.o \

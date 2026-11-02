@@ -260,6 +260,8 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
             gFlagsParams.resetMasterState = true;
             gFlagsParams.masterJoinExistingCluster = false;
           });
+      // Every node is new, so the universe's node_exporter scheme can be decided once for all.
+      createUpdateNodeExporterTlsTask(universe);
 
       if (deleteCapacityReservation) {
         createDeleteCapacityReservationTask();

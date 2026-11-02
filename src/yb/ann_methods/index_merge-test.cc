@@ -14,7 +14,6 @@
 #include <thread>
 
 #include "yb/ann_methods/hnswlib_wrapper.h"
-#include "yb/ann_methods/usearch_wrapper.h"
 
 #include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
@@ -148,14 +147,6 @@ class IndexMergeTest : public YBTest {
     VerifyExpectedVertexIds(all_results, MergeValues(data_a.vector_ids));
   }
 
-  void TestGetVector(const VectorIndexTraitsPtr<FloatVector, float>& index_traits) {
-    auto data = CreateAndFillIndex(index_traits, 0, input_vectors_.size());
-    for (size_t i = 0; i < input_vectors_.size(); ++i) {
-      auto vector = ASSERT_RESULT(data.index->GetVector(data.vector_ids[i]));
-      ASSERT_EQ(vector, input_vectors_[i]);
-    }
-  }
-
   void SetUp() override {
     const HNSWOptions hnsw_options = {
           .dimensions = 3,
@@ -164,11 +155,7 @@ class IndexMergeTest : public YBTest {
           .distance_kind = DistanceKind::kL2Squared};
 
     hnswlib_index_traits_ = CHECK_RESULT((CreateHnswlibIndexTraits<FloatVector, float>(
-        /* block_cache= */ nullptr, hnsw_options, HnswBackend::HNSWLIB,
-        /* mem_tracker= */ nullptr)));
-    usearch_index_traits_ = CHECK_RESULT((CreateUsearchIndexTraits<FloatVector, float>(
-        /* block_cache= */ nullptr, hnsw_options, HnswBackend::USEARCH,
-        /* mem_tracker= */ nullptr)));
+        /* block_cache= */ nullptr, hnsw_options, /* mem_tracker= */ nullptr)));
   }
 
   const std::vector<std::vector<float>> input_vectors_ = {
@@ -178,28 +165,16 @@ class IndexMergeTest : public YBTest {
     {1.0f, 1.1f, 1.2f}
   };
 
-  VectorIndexTraitsPtr<FloatVector, float> hnswlib_index_traits_, usearch_index_traits_;
+  VectorIndexTraitsPtr<FloatVector, float> hnswlib_index_traits_;
 };
 
 TEST_F(IndexMergeTest, TestMergeHnswlibIndices) {
   TestMergeIndices(hnswlib_index_traits_);
 }
 
-TEST_F(IndexMergeTest, TestMergeUsearchIndices) {
-  TestMergeIndices(usearch_index_traits_);
-}
-
 // Test case to verify merging an empty index with a non-empty one.
 TEST_F(IndexMergeTest, TestMergeWithEmptyHnswlibIndex) {
   TestMergeWithEmptyIndex(hnswlib_index_traits_);
-}
-
-TEST_F(IndexMergeTest, TestMergeUsearchWithEmptyUsearchIndex) {
-  TestMergeWithEmptyIndex(usearch_index_traits_);
-}
-
-TEST_F(IndexMergeTest, TestGetVectorUsearchIndex) {
-  TestGetVector(usearch_index_traits_);
 }
 
 }  // namespace yb::ann_methods

@@ -335,7 +335,7 @@ func (fear *FullEARContext) Write() error {
 		fear.Output.Write([]byte("\n"))
 
 		// The server treats a missing auth type as API_KEY.
-		if !strings.EqualFold(fearc.OCIEAR.Oci.AuthType, util.OCIKmsAuthTypeInstancePrincipal) {
+		if !strings.EqualFold(fearc.OCIEAR.Oci.AuthType, util.OCIAuthTypeInstancePrincipal) {
 			tmpl, err = fear.startSubsection(oci.EAR2)
 			if err != nil {
 				logrus.Errorf("%s", err.Error())

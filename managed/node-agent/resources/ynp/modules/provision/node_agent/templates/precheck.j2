@@ -87,21 +87,25 @@ if [ "$http_status" -ge 200 ] && [ "$http_status" -lt 300 ]; then
 
     # Extract IPs using sed and grep
     ips=$(echo "$response_body" | grep -o '"ip":"[a-zA-Z0-9.:_-]*"' | cut -d '"' -f4)
+    # Node is added to the YBA provider with node_external_fqdn.
     for ip in $ips; do
-        if [[ "$ip" == "{{ node_ip }}" ]]; then
+        if [[ "$ip" == "{{ node_external_fqdn }}" ]]; then
             matched=true
             break
         fi
     done
 else
-    echo "Node addition to the provider failed: {{ node_ip }}"
-    add_result "Node addition failed" "FAIL" "Node addition to the provider failed: {{ node_ip }}"
+    echo "Node addition to the provider failed: {{ node_external_fqdn }}"
+    add_result "Node addition failed" "FAIL" \
+        "Node addition to the provider failed: {{ node_external_fqdn }}"
 fi
 
 if [[ $matched == false ]]; then
-    echo "Node addition to the provider failed: {{ node_ip }}"
-    add_result "Node addition failed" "FAIL" "Node addition to the provider failed: {{ node_ip }}"
+    echo "Node addition to the provider failed: {{ node_external_fqdn }}"
+    add_result "Node addition failed" "FAIL" \
+        "Node addition to the provider failed: {{ node_external_fqdn }}"
 else
-    echo "Node addition to the provider passed: {{ node_ip }}"
-    add_result "Node addition passed" "PASS" "Node addition to the provider passed: {{ node_ip }}"
+    echo "Node addition to the provider passed: {{ node_external_fqdn }}"
+    add_result "Node addition passed" "PASS" \
+        "Node addition to the provider passed: {{ node_external_fqdn }}"
 fi

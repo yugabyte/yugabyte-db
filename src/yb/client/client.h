@@ -128,6 +128,7 @@ struct CDCSDKStreamInfo {
   tserver::PGReplicationSlotLsnType replication_slot_lsn_type;
   bool allow_tables_without_primary_key;
   bool detect_publication_changes_implicitly;
+  std::string bound_publication_name;
   std::unordered_map<std::string, std::string> options;
 
   template <class PB>
@@ -145,6 +146,9 @@ struct CDCSDKStreamInfo {
     }
     pb->set_allow_tables_without_primary_key(allow_tables_without_primary_key);
     pb->set_detect_publication_changes_implicitly(detect_publication_changes_implicitly);
+    if (!bound_publication_name.empty()) {
+      pb->set_bound_publication_name(bound_publication_name);
+    }
   }
 
   template <class PB>
@@ -166,6 +170,7 @@ struct CDCSDKStreamInfo {
             pb.cdc_stream_info_options().cdcsdk_ysql_replication_slot_lsn_type()),
         .allow_tables_without_primary_key = pb.allow_tables_without_primary_key(),
         .detect_publication_changes_implicitly = pb.detect_publication_changes_implicitly(),
+        .bound_publication_name = pb.cdcsdk_ysql_bound_publication_name(),
         .options = std::move(options)};
 
     return stream_info;
@@ -673,7 +678,10 @@ class YBClient {
       uint64_t* consistent_snapshot_time_out = nullptr,
       const std::optional<ReplicationSlotLsnType>& lsn_type = std::nullopt,
       const std::optional<ReplicationSlotOrderingMode>& ordering_mode = std::nullopt,
-      const std::vector<TableId>& bound_table_ids = {});
+      const std::vector<TableId>& bound_table_ids = {},
+      const std::optional<std::string>& bound_publication_name = std::nullopt,
+      const std::vector<TableId>& bound_publication_table_ids = {},
+      bool bound_publication_all_tables = false);
 
   // Delete multiple CDC streams.
   Status DeleteCDCStream(

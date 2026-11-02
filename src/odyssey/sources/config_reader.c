@@ -162,6 +162,7 @@ typedef enum {
 	OD_YB_MAX_PREPARED_STATEMENTS,
 	OD_YB_WAIT_FOR_RFQ_ON_SYNC,
 	OD_YB_BACKEND_DRAIN_TIMEOUT_MS,
+	OD_YB_DATA_DIRECTORY,
 	OD_YB_LTLS_MAX_PROTOCOL_VERSION,
 	OD_YB_LTLS_PREFER_SERVER_CIPHERS,
 	OD_YB_LTLS_ECDH_CURVE,
@@ -362,6 +363,7 @@ static od_keyword_t od_config_keywords[] = {
 		   OD_YB_WAIT_FOR_RFQ_ON_SYNC),
 	od_keyword("yb_backend_drain_timeout_ms",
 		   OD_YB_BACKEND_DRAIN_TIMEOUT_MS),
+	od_keyword("yb_data_directory", OD_YB_DATA_DIRECTORY),
 	/* TLS */
 	od_keyword("yb_tls_max_protocol_version", OD_YB_LTLS_MAX_PROTOCOL_VERSION),
 	od_keyword("yb_tls_prefer_server_ciphers",
@@ -2700,6 +2702,13 @@ static int od_config_reader_parse(od_config_reader_t *reader,
 			config->yb_backend_drain_timeout_ms = val;
 			continue;
 		}
+		/* yb_data_directory */
+		case OD_YB_DATA_DIRECTORY:
+			if (!od_config_reader_string(
+				    reader, &config->yb_data_directory)) {
+				goto error;
+			}
+			continue;
 		default:
 			od_config_reader_error(reader, &token,
 					       "unexpected parameter");

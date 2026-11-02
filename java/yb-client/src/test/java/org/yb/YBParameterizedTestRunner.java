@@ -14,6 +14,7 @@
  */
 package org.yb;
 
+import org.junit.Ignore;
 import org.junit.runner.Description;
 import org.junit.runner.Runner;
 import org.junit.runner.manipulation.Filter;
@@ -46,23 +47,32 @@ public class YBParameterizedTestRunner extends Parameterized {
       return;
     }
     if (ConfForTesting.onlyCollectingTests()) {
+      Filter collectingFilter = new Filter() {
+        @Override
+        public boolean shouldRun(Description description) {
+          // @Ignore'd methods are only skipped during collection, so that regular runs still
+          // report them as skipped.
+          if (!TestFilterUtil.METHOD_FILTER.shouldRun(description) ||
+              description.getAnnotation(Ignore.class) != null) {
+            return false;
+          }
+          TestUtils.reportCollectedTest(description.getClassName(), description.getMethodName());
+          return true;
+        }
+
+        @Override
+        public String describe() {
+          return "test collection with annotation filtering";
+        }
+      };
       for (Runner runner : super.getChildren()) {
         BlockJUnit4ClassRunnerWithParameters r = ((BlockJUnit4ClassRunnerWithParameters) runner);
-        r.filter(new Filter() {
-          @Override
-          public boolean shouldRun(Description description) {
-            if (!TestFilterUtil.METHOD_FILTER.shouldRun(description)) {
-              return false;
-            }
-            TestUtils.reportCollectedTest(description.getClassName(), description.getMethodName());
-            return true;
-          }
-
-          @Override
-          public String describe() {
-            return "test collection with annotation filtering";
-          }
-        });
+        try {
+          r.filter(collectingFilter);
+        } catch (NoTestsRemainException e) {
+          LOG.info("No tests to collect in " + klass.getName() + " for parameters " +
+                   r.getDescription().getDisplayName());
+        }
       }
     }
   }

@@ -157,6 +157,12 @@ class PgExpr {
   const YbcPgTypeAttrs type_attrs_;
 };
 
+InternalType InternalTypeOf(const YbcPgTypeEntity* type_entity);
+
+void DatumToQLValue(
+    const YbcPgTypeEntity* type_entity, bool collate_is_valid_non_c, const char* collation_sortkey,
+    uint64_t datum, bool is_null, LWQLValuePB* ql_value);
+
 class PgConstant : public PgExpr {
  public:
   PgConstant(ThreadSafeArena* arena,

@@ -122,6 +122,11 @@ DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_replication_slot_exclusive_lock, 
     "Acquire a cluster-wide exclusive advisory lock while a replication slot is "
     "in use so that only one consumer can use it at a time across the universe.");
 
+DEFINE_RUNTIME_PG_FLAG(int32, yb_replication_slot_wait_max_retries, 0,
+    "Maximum number of advisory-lock RPC timeout retries for "
+    "DROP_REPLICATION_SLOT ... WAIT before giving up with an error. "
+    "0 (default) retries indefinitely.");
+
 DEFINE_NON_RUNTIME_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication, true,
     "When set to true, modifications to publication will be reflected implicitly. "
     "This replaces the previous mechanism of periodic publication refresh with PG "
@@ -229,6 +234,20 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, enable_object_locking_infra, kLocalPersisted, 
     "Auto flag that controls whether table-level object locking can be safely enabled "
     "during upgrade. Both this flag and enable_object_locking_for_table_locks "
     "must be true to enable the feature.");
+
+DEFINE_NON_RUNTIME_bool(ysql_yb_pg_partman_use_native_txn_ddl_and_locks,
+    kEnableObjectLockingForTableLocks,
+    "When this is true and transactional DDL, table level locks, and DDL savepoint support are "
+    "all in effect, pg_partman uses those features and advisory locks, which lets it create "
+    "default partitions and run undo_partition. Otherwise pg_partman behaves as if this were "
+    "false. If ysql_yb_enable_advisory_locks is false, the pg_partman functions that take "
+    "advisory locks fail. If partition sets have default partitions, then before turning this "
+    "off, or turning off one of those features, move the rows out of those default partitions "
+    "with partition_data_time or partition_data_id and drop them. Otherwise run_maintenance skips "
+    "those sets, retention included, and rows collect in their default partitions. Once this is "
+    "in effect again, run_maintenance fails with \"updated partition constraint for default "
+    "partition ... would be violated by some row\" until partition_data_time or partition_data_id "
+    "moves those rows out.");
 
 DEFINE_RUNTIME_bool(pg_client_use_shared_memory, !yb::kIsMac,
                     "Use shared memory for executing read and write pg client queries");
@@ -404,11 +423,25 @@ DEFINE_NON_RUNTIME_bool(enable_qos, false, "Enable the QoS feature.");
 DEFINE_NON_RUNTIME_bool(is_yb_managed, false,
   "If true instance is running in a YugabyteDB managed environment (YBM)");
 
+DEFINE_RUNTIME_AUTO_bool(enforce_xcluster_guarded_lease, kLocalPersisted, false, true,
+    "Should the xCluster-guarded information lease be enforced?  If so, the xCluster role for a "
+    "namespace will be reported as UNAVAILABLE if the TServer does not have a current lease.");
+
+DEFINE_RUNTIME_bool(enable_persistence_gate, true,
+    "Whether to refuse YSQL writes and commits to databases whose persisting xCluster has stopped. "
+    " Takes effect only once enforce_xcluster_guarded_lease is on.");
+TAG_FLAG(enable_persistence_gate, advanced);
+TAG_FLAG(enable_persistence_gate, hidden);
+
 namespace yb {
 
 void InitCommonFlags() {
   // Note! Autoflags are in non-promoted state (are set to the initial value) during execution of
   // this function. Be very careful in manipulations with such flags.
+}
+
+bool IsPersistenceGateEnforced() {
+  return FLAGS_enable_persistence_gate && FLAGS_enforce_xcluster_guarded_lease;
 }
 
 } // namespace yb

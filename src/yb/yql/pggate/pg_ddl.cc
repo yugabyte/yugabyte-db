@@ -21,6 +21,7 @@
 #include "yb/common/constants.h"
 #include "yb/common/pg_system_attr.h"
 
+#include "yb/util/debug.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
@@ -30,8 +31,13 @@
 
 DEFINE_RUNTIME_int32(ysql_ddl_rpc_timeout_sec, 180, "Timeout for YSQL DDL operations.");
 
-DEFINE_RUNTIME_int32(xcluster_automatic_target_create_table_ddl_rpc_timeout_sec, 60 * 60,
-    "Timeout for YSQL Create Table DDL operations on xCluster automatic target databases.");
+// Release defaults to 7 days, since index backfills on large tables can be slow.
+// Debug builds DFATAL on large RPC timeouts, so use 1 hour there.
+DEFINE_NON_RUNTIME_int32(xcluster_automatic_target_create_table_ddl_rpc_timeout_sec,
+    yb::kIsDebug ? 60 * 60 : 7 * 24 * 60 * 60,
+    "Timeout for YSQL Create Table DDL operations on xCluster automatic target databases. This "
+    "includes waiting for the new table to replicate its data from the source (e.g., from an index "
+    "backfill, a table rewrite or a CREATE TABLE AS).");
 
 DECLARE_int32(max_num_tablets_for_table);
 DECLARE_int32(ysql_clone_pg_schema_rpc_timeout_ms);
@@ -546,11 +552,21 @@ Status PgDropDBSequences::Exec() {
 PgCreateReplicationSlot::PgCreateReplicationSlot(
     const PgSessionPtr& pg_session, const char* slot_name, const char* plugin_name,
     PgOid database_oid, YbcPgReplicationSlotSnapshotAction snapshot_action, YbcLsnType lsn_type,
-    YbcOrderingMode yb_ordering_mode)
+    YbcOrderingMode yb_ordering_mode, const char* yb_publication_name,
+    const PgOid* yb_publication_relfilenodes, size_t yb_num_publication_tables,
+    bool yb_publication_all_tables)
     : BaseType(pg_session) {
   req_.set_database_oid(database_oid);
   req_.set_replication_slot_name(slot_name);
   req_.set_output_plugin_name(plugin_name);
+  if (yb_publication_name) {
+    req_.set_bound_publication_name(yb_publication_name);
+    req_.set_bound_publication_all_tables(yb_publication_all_tables);
+    for (size_t i = 0; i < yb_num_publication_tables; ++i) {
+      req_.add_bound_publication_table_ids(
+          PgObjectId(database_oid, yb_publication_relfilenodes[i]).GetYbTableId());
+    }
+  }
 
   switch (snapshot_action) {
     case YB_REPLICATION_SLOT_NOEXPORT_SNAPSHOT:

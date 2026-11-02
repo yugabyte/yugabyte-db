@@ -198,7 +198,19 @@ Status TSDescriptor::UpdateFromHeartbeat(
     hybrid_time_ = HybridTime::FromPB(req.ts_hybrid_time());
     heartbeat_rtt_ = MonoDelta::FromMicroseconds(req.rtt_us());
     if (req.has_tablet_report()) {
-      latest_report_seqno_ = std::max(latest_report_seqno_, req.tablet_report().sequence_number());
+      const auto& report = req.tablet_report();
+      latest_report_seqno_ = std::max(latest_report_seqno_, report.sequence_number());
+
+      // If a full report is starting, set our state to that so we don't mix up
+      // continuation chunks from different full reports
+      if (!report.is_incremental() && report.has_full_report_seq_no() &&
+          report.full_report_seq_no() == report.sequence_number()) {
+        if (receiving_full_report_seq_no_ != report.full_report_seq_no()) {
+          LOG_WITH_FUNC(INFO) << permanent_uuid() << " set full report seq no: "
+                              << report.full_report_seq_no();
+        }
+        receiving_full_report_seq_no_ = report.full_report_seq_no();
+      }
     }
     if (req.has_faulty_drive()) {
       has_faulty_drive_ = req.faulty_drive();
@@ -285,9 +297,47 @@ std::optional<int32_t> TSDescriptor::receiving_full_report_seq_no() const {
   return receiving_full_report_seq_no_;
 }
 
-void TSDescriptor::set_receiving_full_report_seq_no(int32_t value) {
+// Returns true if the master can process the report.
+bool TSDescriptor::PreCheckTabletReport(const TabletReportPB& report) const {
+  SharedLock lock(mutex_);
+  // With a complete full report the master does not need another one, and a rejection would make
+  // the tserver send one. E.g. the master completes a full report but the tserver times out on the
+  // last chunk and sends the unacknowledged tablets again as a continuation.
+  if (has_tablet_report_) {
+    return true;
+  }
+  if (report.is_incremental()) {
+    LOG(WARNING) << "Invalid tablet report from " << permanent_uuid()
+                 << ": Received an incremental tablet report when a full one was needed";
+    return false;
+  }
+  // 1. receiving_full_report_seq_no_ is set to the latest full report seen, including the current
+  //    one. Reject chunks of older full reports.
+  // 2. Tservers before 22708c2eda7 (#26554) do not set full_report_seq_no, so the master cannot
+  //    tell which full report this chunk belongs to. Accept it as before.
+  if (!report.has_full_report_seq_no() ||
+      report.full_report_seq_no() == receiving_full_report_seq_no_) {
+    return true;
+  }
+  LOG(WARNING) << Format(
+      "$0 sent a tablet report with sequence number $1, which continues full report starting "
+      "at sequence number $2. However we expected a tablet report continuing the full report "
+      "starting at sequence number $3",
+      permanent_uuid(), report.sequence_number(), report.full_report_seq_no(),
+      receiving_full_report_seq_no_);
+  return false;
+}
+
+// Marks the full report complete after its last chunk is processed, unless the tserver restarted
+// meanwhile.
+void TSDescriptor::CompleteFullReport(const NodeInstancePB& ts_instance) {
+  auto cow_lock = LockForRead();
   std::lock_guard lock(mutex_);
-  receiving_full_report_seq_no_ = value;
+  // A tserver that restarts while its previous process's report is processed re-registers, and the
+  // new process relies on the master to ask it for a full report.
+  if (cow_lock->pb.instance_seqno() == ts_instance.instance_seqno()) {
+    set_has_tablet_report_unlocked(true);
+  }
 }
 
 bool TSDescriptor::has_faulty_drive() const {

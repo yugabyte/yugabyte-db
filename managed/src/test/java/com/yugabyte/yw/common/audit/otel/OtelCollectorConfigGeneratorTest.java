@@ -19,6 +19,7 @@ import static org.mockito.Mockito.when;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
@@ -63,10 +64,12 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.charset.Charset;
 import java.util.Base64;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -632,6 +635,80 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
         assertThat(result, containsString("key: " + label.getLegacyAttributeName()));
       }
     }
+  }
+
+  // PLAT-21847: a YSQL-only node must not get a cql_export scrape target, even though the
+  // default scrapeConfigTargets requests every target.
+  @Test
+  public void generateOtelColConfigMetricsSkipsCqlTargetOnYsqlOnlyNode() {
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> u.getUniverseDetails().nodeDetailsSet.forEach(n -> n.isYqlServer = false),
+            false);
+
+    DataDogConfig config = new DataDogConfig();
+    config.setType(ProviderType.DATA_DOG);
+    config.setSite("ddsite");
+    config.setApiKey("apikey");
+    TelemetryProvider telemetryProvider =
+        createTelemetryProvider(new UUID(0, 0), "DataDog", ImmutableMap.of(), config);
+
+    MetricsExportConfig metricsExportConfig =
+        createMetricsExportConfig(
+            telemetryProvider.getUuid(), ImmutableMap.of(), 15, 10, MetricCollectionLevel.NORMAL);
+
+    String result = generateConfig(null, null, metricsExportConfig);
+
+    assertThat(result, containsString("export_type: ysql_export"));
+    assertThat(result, not(containsString("export_type: cql_export")));
+    assertThat(result, not(containsString("127.0.0.1:12000")));
+  }
+
+  @Test
+  public void yugabyteScrapeTargetsFilteredByNodeServers() {
+    Set<ScrapeConfigTargetType> all = EnumSet.allOf(ScrapeConfigTargetType.class);
+
+    // A tserver with both APIs keeps every target.
+    NodeDetails tserver = new NodeDetails();
+    assertEquals(all, OtelCollectorConfigGenerator.getYugabyteScrapeTargetsForNode(tserver, all));
+
+    // YCQL-only tserver drops YSQL.
+    NodeDetails ycqlOnly = new NodeDetails();
+    ycqlOnly.isYsqlServer = false;
+    Set<ScrapeConfigTargetType> ycqlTargets =
+        OtelCollectorConfigGenerator.getYugabyteScrapeTargetsForNode(ycqlOnly, all);
+    assertFalse(ycqlTargets.contains(ScrapeConfigTargetType.YSQL_EXPORT));
+    assertTrue(ycqlTargets.contains(ScrapeConfigTargetType.CQL_EXPORT));
+
+    // A dedicated master runs no tserver, so it drops TSERVER, YSQL and CQL, but keeps MASTER
+    // and the non-yugabyte targets.
+    NodeDetails dedicatedMaster = new NodeDetails();
+    dedicatedMaster.isMaster = true;
+    dedicatedMaster.isTserver = false;
+    dedicatedMaster.dedicatedTo = ServerType.MASTER;
+    assertEquals(
+        EnumSet.complementOf(
+            EnumSet.of(
+                ScrapeConfigTargetType.TSERVER_EXPORT,
+                ScrapeConfigTargetType.YSQL_EXPORT,
+                ScrapeConfigTargetType.CQL_EXPORT)),
+        OtelCollectorConfigGenerator.getYugabyteScrapeTargetsForNode(dedicatedMaster, all));
+
+    // A removed or stopped node has isTserver=false stored while add/start node writes its
+    // collector config. It must keep the tserver targets, because the tserver starts after.
+    NodeDetails beingReAdded = new NodeDetails();
+    beingReAdded.isTserver = false;
+    assertEquals(
+        all, OtelCollectorConfigGenerator.getYugabyteScrapeTargetsForNode(beingReAdded, all));
+
+    // MASTER_EXPORT is never dropped: isMaster is stored only after a master move writes the
+    // collector config.
+    NodeDetails tserverOnly = new NodeDetails();
+    tserverOnly.isMaster = false;
+    tserverOnly.dedicatedTo = ServerType.TSERVER;
+    assertEquals(
+        all, OtelCollectorConfigGenerator.getYugabyteScrapeTargetsForNode(tserverOnly, all));
   }
 
   private String generateConfig(

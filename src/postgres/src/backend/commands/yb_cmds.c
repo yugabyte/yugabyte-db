@@ -43,6 +43,7 @@
 #include "catalog/pg_class.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_database.h"
+#include "catalog/pg_publication.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_type_d.h"
@@ -1321,6 +1322,38 @@ ybFetchDefaultConstraintExpr(const ColumnDef *column, Relation rel)
 	return result;
 }
 
+/*
+ * Whether an ALTER TABLE subcommand on a partitioned table needs to trickle
+ * down to its child partitions in DocDB.
+ */
+static bool
+YbATCmdAltersPartitions(AlterTableCmd *cmd)
+{
+	return (cmd->subtype == AT_DropExpression ||
+			(cmd->recurse &&
+			 (cmd->subtype == AT_AddColumn ||
+			  cmd->subtype == AT_DropColumn ||
+			  cmd->subtype == AT_AddConstraint ||
+			  cmd->subtype == AT_DropConstraint ||
+			  cmd->subtype == AT_ValidateConstraint)));
+}
+
+bool
+YbATAltersPartitions(List **subcmds, int subcmds_size)
+{
+	ListCell   *lcmd;
+
+	for (int cmd_idx = 0; cmd_idx < subcmds_size; ++cmd_idx)
+	{
+		foreach(lcmd, subcmds[cmd_idx])
+		{
+			if (YbATCmdAltersPartitions((AlterTableCmd *) lfirst(lcmd)))
+				return true;
+		}
+	}
+	return false;
+}
+
 static List *
 YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 						int *col, bool *needsYBAlter,
@@ -1331,28 +1364,14 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 	Oid			relationId = RelationGetRelid(rel);
 	Oid			relfileNodeId = YbGetRelfileNodeId(rel);
 
-	if (isPartitionOfAlteredTable)
-	{
-		/*
-		 * This function was invoked on a child partition table to reflect
-		 * the effects of Alter on its parent.
-		 */
-		if (!(cmd->subtype == AT_DropExpression ||
-			  (cmd->recurse &&
-			   (cmd->subtype == AT_AddColumn ||
-				cmd->subtype == AT_DropColumn ||
-				cmd->subtype == AT_AddConstraint ||
-				cmd->subtype == AT_DropConstraint ||
-				cmd->subtype == AT_ValidateConstraint))))
-		{
-			/*
-			 * This is not an alter command on a partitioned table that
-			 * needs to trickle down to its child partitions. Nothing to
-			 * do.
-			 */
-			return handles;
-		}
-	}
+	/*
+	 * When invoked on a child partition table to reflect the effects of
+	 * Alter on its parent, there is nothing to do for commands that don't
+	 * trickle down to the child partitions.
+	 */
+	if (isPartitionOfAlteredTable && !YbATCmdAltersPartitions(cmd))
+		return handles;
+
 	switch (cmd->subtype)
 	{
 		case AT_AddColumn:
@@ -1566,6 +1585,19 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 					}
 					ReleaseSysCache(typeTuple);
 				}
+
+				/*
+				 * These take ShareUpdateExclusiveLock, which doesn't conflict
+				 * with concurrent writers, and change nothing those writers
+				 * depend on. A schema version bump would fail them with a
+				 * non-retryable schema version mismatch inside a transaction
+				 * block.
+				 */
+				if (YBCIsObjectLockingEnabled() &&
+					(cmd->subtype == AT_ValidateConstraint ||
+					 cmd->subtype == AT_SetStatistics))
+					break;
+
 				/*
 				 * For these cases a YugaByte metadata does not need to be updated
 				 * but we still need to increment the schema version.
@@ -2215,6 +2247,47 @@ YBCValidatePlacements(const char *live_placement_info,
 /* ------------------------------------------------------------------------- */
 /*  Replication Slot Functions. */
 
+/*
+ * Resolve the publication a slot is being bound to: whether it is a FOR ALL
+ * TABLES publication, and otherwise its member tables as relfilenodes.  Errors
+ * out if the publication does not exist.  The array is allocated in the
+ * caller's memory context.
+ */
+static void
+YbGetPublicationRelfileNodes(const char *publication_name, Oid **relfilenodes,
+							 size_t *num_tables, bool *all_tables)
+{
+	MemoryContext caller_context = CurrentMemoryContext;
+	bool		is_in_txn = IsTransactionOrTransactionBlock();
+	Publication *publication;
+	List	   *tables = NIL;
+	ListCell   *lc;
+	size_t		table_idx = 0;
+
+	/* The walsender runs replication commands outside of a transaction. */
+	if (!is_in_txn)
+		StartTransactionCommand();
+
+	publication = GetPublicationByName(publication_name, false /* missing_ok */ );
+	*all_tables = publication->alltables;
+	if (!publication->alltables)
+		tables = GetIncludedPublicationRelations(publication->oid,
+												 publication->pubviaroot ?
+												 PUBLICATION_PART_ROOT :
+												 PUBLICATION_PART_LEAF);
+
+	*num_tables = list_length(tables);
+	*relfilenodes = MemoryContextAlloc(caller_context,
+									   sizeof(Oid) * Max(*num_tables, 1));
+	foreach(lc, tables)
+		(*relfilenodes)[table_idx++] =
+			YbGetRelfileNodeIdFromRelId(lfirst_oid(lc));
+
+	if (!is_in_txn)
+		AbortCurrentTransaction();
+	MemoryContextSwitchTo(caller_context);
+}
+
 void
 YBCCreateReplicationSlot(const char *slot_name,
 						 const char *plugin_name,
@@ -2222,9 +2295,13 @@ YBCCreateReplicationSlot(const char *slot_name,
 						 uint64_t *consistent_snapshot_time,
 						 YbCRSLsnType lsn_type,
 						 YbCRSOrderingMode yb_ordering_mode,
-						 Oid database_oid)
+						 Oid database_oid,
+						 const char *yb_publication_name)
 {
 	YbcPgStatement handle;
+	Oid		   *publication_relfilenodes = NULL;
+	size_t		num_publication_tables = 0;
+	bool		publication_all_tables = false;
 
 	YbcPgReplicationSlotSnapshotAction repl_slot_snapshot_action;
 
@@ -2256,13 +2333,30 @@ YBCCreateReplicationSlot(const char *slot_name,
 	if (yb_ordering_mode == YB_CRS_ROW)
 		repl_slot_ordering_mode = YB_REPLICATION_SLOT_ORDERING_MODE_ROW;
 
+	/*
+	 * The master starts a publication bound slot with exactly these tables, so
+	 * it never has to look the publication up itself.
+	 */
+	if (yb_publication_name != NULL)
+		YbGetPublicationRelfileNodes(yb_publication_name,
+									 &publication_relfilenodes,
+									 &num_publication_tables,
+									 &publication_all_tables);
+
 	HandleYBStatus(YBCPgNewCreateReplicationSlot(slot_name,
 												 plugin_name,
 												 database_oid,
 												 repl_slot_snapshot_action,
 												 repl_slot_lsn_type,
 												 repl_slot_ordering_mode,
+												 yb_publication_name,
+												 publication_relfilenodes,
+												 num_publication_tables,
+												 publication_all_tables,
 												 &handle));
+
+	if (publication_relfilenodes != NULL)
+		pfree(publication_relfilenodes);
 
 	YbcStatus	status = YBCPgExecCreateReplicationSlot(handle, consistent_snapshot_time);
 
@@ -2282,6 +2376,18 @@ YBCCreateReplicationSlot(const char *slot_name,
 				(errcode(ERRCODE_CONFIGURATION_LIMIT_EXCEEDED),
 				 errmsg("all replication slots are in use"),
 				 errhint("Free one or increase max_replication_slots.")));
+	}
+
+	if (yb_publication_name != NULL && YBCStatusIsNotSupported(status))
+	{
+		YBCFreeStatus(status);
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("replication slot cannot be bound to a publication"),
+				 errdetail("Binding a replication slot to a publication requires "
+						   "the yb-master flag "
+						   "cdcsdk_enable_publication_scoped_replication_slots "
+						   "to be enabled.")));
 	}
 
 	HandleYBStatus(status);

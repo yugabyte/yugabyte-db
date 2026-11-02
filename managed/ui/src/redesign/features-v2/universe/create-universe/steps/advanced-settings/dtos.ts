@@ -19,6 +19,8 @@ export interface OtherAdvancedProps {
   nodeExporterPort: number;
   ybControllerRpcPort: number;
   instanceTags: InstanceTag[];
+  // Runtime-config dev tags were already offered once in this create flow.
+  userTagsSeeded?: boolean;
   awsArnString: string;
   useSystemd: boolean;
   accessKeyCode: string;

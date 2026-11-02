@@ -30,12 +30,15 @@ ifneq (,$(with_system_tzdata))
 override CPPFLAGS += '-DSYSTEMTZDIR="$(with_system_tzdata)"'
 endif
 
+# YB: TODO(#34884): initdb uses no symbol from yb_util.  Remove this block once
+# it is decided whether initdb should keep the tcmalloc that
+# YB_PG_EXE_LD_FLAGS_AFTER_YB_LIBS links in.
 ifndef YB_BUILD_ROOT
 $(error YB_BUILD_ROOT is not set)
 endif
 
 LIBS += -L$(YB_BUILD_ROOT)/lib
-LIBS += -lyb_util -lyb_pggate $(YB_PG_EXE_LD_FLAGS_AFTER_YB_LIBS)
+LIBS += -lyb_util $(YB_PG_EXE_LD_FLAGS_AFTER_YB_LIBS)
 
 OBJS = \
 	$(WIN32RES) \

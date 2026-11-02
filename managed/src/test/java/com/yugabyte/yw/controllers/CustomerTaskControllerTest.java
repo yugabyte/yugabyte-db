@@ -107,7 +107,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
             status,
             percentComplete,
             responseJson);
-    when(mockCommissioner.buildTaskStatus(eq(task), any(), any(), any()))
+    when(mockCommissioner.buildTaskStatus(eq(task), any(), any(), any(), any()))
         .thenReturn(Optional.of(responseJson));
     when(mockCommissioner.getUpdatingTaskUUIDsForTargets(any(), any()))
         .thenReturn(Collections.emptyMap());
@@ -778,7 +778,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
         99.0,
         "TLS Toggle ON",
         responseJson);
-    when(mockCommissioner.buildTaskStatus(any(), any(), any(), any()))
+    when(mockCommissioner.buildTaskStatus(any(), any(), any(), any(), any()))
         .thenReturn(Optional.of(responseJson));
     Result result =
         doRequestWithAuthToken("GET", "/api/customers/" + customer.getUuid() + "/tasks", authToken);
@@ -820,7 +820,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     responseJson.put("retryable", false);
     responseJson.put("canRollback", false);
 
-    when(mockCommissioner.buildTaskStatus(eq(task), any(), any(), any()))
+    when(mockCommissioner.buildTaskStatus(eq(task), any(), any(), any(), any()))
         .thenReturn(Optional.of(responseJson));
     when(mockCommissioner.getUpdatingTaskUUIDsForTargets(any(), any()))
         .thenReturn(Collections.emptyMap());
@@ -852,7 +852,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
             10.0,
             responseJson);
     responseJson.put("originalTaskUUID", originalTaskUuid.toString());
-    when(mockCommissioner.buildTaskStatus(eq(task), any(), any(), any()))
+    when(mockCommissioner.buildTaskStatus(eq(task), any(), any(), any(), any()))
         .thenReturn(Optional.of(responseJson));
     when(mockCommissioner.getUpdatingTaskUUIDsForTargets(any(), any()))
         .thenReturn(Collections.emptyMap());

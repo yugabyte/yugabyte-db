@@ -518,67 +518,74 @@ public class CertificateHelper {
       writeCertBundleToCertPath(x509CACerts, certPath);
 
       CertificateInfo cert;
-      switch (certType) {
-        case SelfSigned:
-          {
-            writeKeyFileContentToKeyPath(getPrivateKey(keyContent), keyPath);
-            cert =
-                CertificateInfo.create(
-                    rootCA_UUID,
-                    customerUUID,
-                    label,
-                    certStart,
-                    certExpiry,
-                    keyPath,
-                    certPath,
-                    certType);
-            break;
-          }
-        case CustomCertHostPath:
-          {
-            cert =
-                CertificateInfo.create(
-                    rootCA_UUID,
-                    customerUUID,
-                    label,
-                    certStart,
-                    certExpiry,
-                    certPath,
-                    customCertInfo);
-            break;
-          }
-        case CustomServerCert:
-          {
-            cert =
-                CertificateInfo.create(
-                    rootCA_UUID,
-                    customerUUID,
-                    label,
-                    certStart,
-                    certExpiry,
-                    certPath,
-                    customServerCertInfo);
-            break;
-          }
-        case K8SCertManager:
-          {
-            keyPath = null;
-            cert =
-                CertificateInfo.create(
-                    rootCA_UUID,
-                    customerUUID,
-                    label,
-                    certStart,
-                    certExpiry,
-                    keyPath,
-                    certPath,
-                    certType);
-            break;
-          }
-        default:
-          {
-            throw new PlatformServiceException(BAD_REQUEST, "certType should be valid.");
-          }
+      try {
+        switch (certType) {
+          case SelfSigned:
+            {
+              writeKeyFileContentToKeyPath(getPrivateKey(keyContent), keyPath);
+              cert =
+                  CertificateInfo.create(
+                      rootCA_UUID,
+                      customerUUID,
+                      label,
+                      certStart,
+                      certExpiry,
+                      keyPath,
+                      certPath,
+                      certType);
+              break;
+            }
+          case CustomCertHostPath:
+            {
+              cert =
+                  CertificateInfo.create(
+                      rootCA_UUID,
+                      customerUUID,
+                      label,
+                      certStart,
+                      certExpiry,
+                      certPath,
+                      customCertInfo);
+              break;
+            }
+          case CustomServerCert:
+            {
+              cert =
+                  CertificateInfo.create(
+                      rootCA_UUID,
+                      customerUUID,
+                      label,
+                      certStart,
+                      certExpiry,
+                      certPath,
+                      customServerCertInfo);
+              break;
+            }
+          case K8SCertManager:
+            {
+              keyPath = null;
+              cert =
+                  CertificateInfo.create(
+                      rootCA_UUID,
+                      customerUUID,
+                      label,
+                      certStart,
+                      certExpiry,
+                      keyPath,
+                      certPath,
+                      certType);
+              break;
+            }
+          default:
+            {
+              throw new PlatformServiceException(BAD_REQUEST, "certType should be valid.");
+            }
+        }
+      } catch (RuntimeException e) {
+        // E.g. the label was taken by a concurrent request (unique_label_per_customer). Nothing
+        // references the files written above, so remove them, the key in particular.
+        FileData.deleteFiles(getCADirPath(storagePath, customerUUID, rootCA_UUID), true);
+        throw e;
       }
       log.info(
           "Uploaded cert label {} (uuid {}) of type {} at paths"

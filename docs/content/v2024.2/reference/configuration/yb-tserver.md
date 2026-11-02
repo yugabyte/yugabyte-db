@@ -702,7 +702,7 @@ Default: `false`
 
 Specifies the TCP/IP bind addresses for the YSQL API. The default value of `0.0.0.0:5433` allows listening for all IPv4 addresses access to localhost on port `5433`. The `--pgsql_proxy_bind_address` value overwrites `listen_addresses` (default value of `127.0.0.1:5433`) that controls which interfaces accept connection attempts.
 
-To specify fine-grained access control over who can access the server, use [`--ysql_hba_conf`](#ysql-hba-conf).
+To specify fine-grained access control over who can access the server, use [`--ysql_hba_conf_csv`](#ysql-hba-conf-csv).
 
 Default: `0.0.0.0:5433`
 
@@ -724,7 +724,16 @@ For details on using `--ysql_hba_conf_csv` to specify client authentication, ref
 
 If a setting includes a comma (`,`) or double quotes (`"`), the setting should be enclosed in double quotes. In addition, double quotes inside the quoted text should be doubled (`""`).
 
-Suppose you have two fields: `host all all 127.0.0.1/0 password` and `host all all 0.0.0.0/0 ldap ldapserver=***** ldapsearchattribute=cn ldapport=3268 ldapbinddn=***** ldapbindpasswd="*****"`.
+Suppose you have two fields:
+
+```text
+host all all 127.0.0.1/0 password
+```
+and
+
+```text
+host all all 0.0.0.0/0 ldap ldapserver=***** ldapsearchattribute=cn ldapport=3268 ldapbinddn=***** ldapbindpasswd="*****"
+```
 
 Because the second field includes double quotes (`"`) around one of the settings, you need to double the quotes and enclose the entire field in quotes, as follows:
 

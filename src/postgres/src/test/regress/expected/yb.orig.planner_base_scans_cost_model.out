@@ -1,6 +1,8 @@
 -- This file tests the YB CBO base scans cost model in non-colocated tables.
 SET yb_enable_base_scans_cost_model = ON;
 SET yb_enable_optimizer_statistics = ON;
+-- TODO(#35145): move this costing-code test (#22772) to
+-- yb.orig.planner_costing_sanity.
 CREATE TABLE test (v1 INT, v2 INT, v3 INT);
 CREATE INDEX test_index ON test ((v1) HASH, v2 ASC) INCLUDE (v3);
 EXPLAIN (COSTS OFF) SELECT * FROM test WHERE v2 > 100;
@@ -175,3 +177,31 @@ EXPLAIN (COSTS OFF) SELECT * FROM t_26235;
  Seq Scan on t_26235
 (1 row)
 
+--------------------------------------------------------------------------------
+-- #33145 : Prefer forward index scan over backward when ASC and DESC indexes
+--          both satisfy ORDER BY.  DocDB Prevs cost more than Nexts.
+--------------------------------------------------------------------------------
+CREATE TABLE t_33145 (k1 INT, k2 INT);
+CREATE INDEX t_33145_asc ON t_33145 (k1 ASC, k2 ASC);
+CREATE INDEX t_33145_desc ON t_33145 (k1 DESC, k2 DESC);
+INSERT INTO t_33145 (SELECT s / 5, s % 5 FROM generate_series(1, 10000) s);
+ANALYZE t_33145;
+SET yb_enable_base_scans_cost_model = ON;
+-- Restrict to index-only paths so we compare forward vs backward index costs.
+SET enable_seqscan = OFF;
+-- Prefer forward Index Only Scan on t_33145_desc over Backward on t_33145_asc
+EXPLAIN (COSTS OFF) SELECT * FROM t_33145 ORDER BY k1 DESC, k2 DESC;
+                  QUERY PLAN                   
+-----------------------------------------------
+ Index Only Scan using t_33145_desc on t_33145
+(1 row)
+
+-- Prefer forward Index Only Scan on t_33145_asc over Backward on t_33145_desc
+EXPLAIN (COSTS OFF) SELECT * FROM t_33145 ORDER BY k1 ASC, k2 ASC;
+                  QUERY PLAN                  
+----------------------------------------------
+ Index Only Scan using t_33145_asc on t_33145
+(1 row)
+
+SET enable_seqscan = ON;
+DROP TABLE t_33145;

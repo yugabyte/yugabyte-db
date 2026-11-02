@@ -570,6 +570,10 @@ TEST_F(PgStatStatementsTest, PreparedWhileUntrackedNotLeaked) {
   ASSERT_OK(conn1.Execute("INSERT INTO vault VALUES ('secret_1')"));
   ASSERT_OK(conn1.Fetch("SELECT pg_stat_statements_reset()"));
 
+  // Each statement below has a different shape, so it gets its own queryId.
+  // With a shared queryId, the first statement's entry or mark would also cover
+  // the later ones, and they would not test their own path.
+
   // Prepared inside a DO block, which is nested and so not tracked.  The value
   // comes from the table, so it is not in the DO statement's own text.
   ASSERT_OK(conn2.Execute(
@@ -579,7 +583,7 @@ TEST_F(PgStatStatementsTest, PreparedWhileUntrackedNotLeaked) {
 
   // Prepared while tracking is off.
   ASSERT_OK(conn2.Execute("SET pg_stat_statements.track = 'none'"));
-  ASSERT_OK(conn2.Execute("PREPARE stmt2 AS SELECT 'secret_2'"));
+  ASSERT_OK(conn2.Execute("PREPARE stmt2 AS SELECT length('secret_2')"));
   ASSERT_OK(conn2.Execute("SET pg_stat_statements.track = 'top'"));
   ASSERT_OK(conn2.Fetch("EXECUTE stmt2"));
 
@@ -594,7 +598,7 @@ TEST_F(PgStatStatementsTest, PreparedWhileUntrackedNotLeaked) {
   PGResultPtr set_none(PQexec(raw_conn.get(), "SET pg_stat_statements.track = 'none'"));
   ASSERT_EQ(PQresultStatus(set_none.get()), PGRES_COMMAND_OK);
   PGResultPtr prep_result(PQprepare(
-      raw_conn.get(), "stmt3", "SELECT 'secret_3'", 0, nullptr));
+      raw_conn.get(), "stmt3", "SELECT upper('secret_3')", 0, nullptr));
   ASSERT_EQ(PQresultStatus(prep_result.get()), PGRES_COMMAND_OK);
   PGResultPtr set_top(PQexec(raw_conn.get(), "SET pg_stat_statements.track = 'top'"));
   ASSERT_EQ(PQresultStatus(set_top.get()), PGRES_COMMAND_OK);

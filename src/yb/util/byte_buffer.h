@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <bit>
 #include <cstddef>
 #include <string>
 
@@ -23,6 +24,12 @@ namespace yb {
 struct NoopConsumer {
   void Add(int64_t delta) {}
 };
+
+namespace byte_buffer::internal {
+
+[[noreturn]] void FatalAllocationFailed(size_t capacity, size_t old_capacity);
+
+} // namespace byte_buffer::internal
 
 // Utility class to store arbitrary amount of byte with inplace buffer of specified size.
 template <size_t SmallLen, class Consumer = NoopConsumer>
@@ -289,8 +296,26 @@ class ByteBufferBase {
 
     bool was_big = big();
     const auto old_capacity = capacity_;
-    while ((capacity_ <<= 1ULL) < capacity) {}
+
+    // Grow to the smallest power of two multiple of capacity_ that fits the request. Unlike
+    // max(2 * capacity_, capacity), a large request is rounded up too, leaving room for the small
+    // appends that usually follow. A single doubling covers most requests; if it wraps around,
+    // it falls through to the else. When the rounded capacity does not fit in size_t, the
+    // requested capacity is taken as is and the allocation below fails explicitly.
+    if (const auto doubled = capacity_ << 1; doubled >= capacity) [[likely]] {
+      capacity_ = doubled;
+    } else {
+      // Number of doublings needed: the smallest shift such that capacity_ << shift >= capacity.
+      const size_t shift = std::bit_width((capacity - 1) / capacity_);
+      // capacity_ << shift fits in size_t only if shift does not exceed the leading zero bits.
+      const size_t max_shift = std::countl_zero(capacity_);
+      capacity_ = shift <= max_shift ? capacity_ << shift : capacity;
+    }
+
     char* new_buffer = static_cast<char*>(malloc(capacity_));
+    if (!new_buffer) [[unlikely]] {
+      byte_buffer::internal::FatalAllocationFailed(capacity_, old_capacity);
+    }
     consumer_.Add(capacity_);
     char*& big_buffer = big_buffer_;
     if (was_big) {
@@ -300,6 +325,7 @@ class ByteBufferBase {
     } else {
       memcpy(new_buffer, small_buffer_, keep_size);
     }
+
     return big_buffer = new_buffer;
   }
 

@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Tab } from 'react-bootstrap';
 import { useTranslation } from 'react-i18next';
 import { withRouter } from 'react-router';
 import { Box, Typography } from '@material-ui/core';
 import { PerfAdvisorOverviewDashboard } from '../AttachUniverseToPerfAdvisor/PerfAdvisorOverviewDashboard';
 import { PaRegistrationMode } from '../../../redesign/features/PerfAdvisor/api';
+import { PERF_ADVISOR_PATH } from '@app/redesign/helpers/constants';
 import { isPaDrilldownUrl } from '../AttachUniverseToPerfAdvisor/perfAdvisorUrlHelpers';
+import { usePerfAdvisorRuntimeConfigs } from '../AttachUniverseToPerfAdvisor/usePerfAdvisorRuntimeConfigs';
 import { YBTabsPanel } from '../../../components/panels';
 
 interface PerfAdvisorTabsProps {
@@ -21,9 +23,23 @@ interface PerfAdvisorTabsProps {
 export const ConfigTabKey = {
   CLUSTER_LOAD: 'clusterLoad',
   METRICS: 'metricsNew',
+  DATABASES: 'databases',
   ANOMALIES: 'anomalies'
 } as const;
 export type ConfigTabKey = (typeof ConfigTabKey)[keyof typeof ConfigTabKey];
+
+const PATH_TAB_KEYS: string[] = [
+  ConfigTabKey.CLUSTER_LOAD,
+  ConfigTabKey.METRICS,
+  ConfigTabKey.DATABASES
+];
+
+const asPathTabKey = (value: unknown): ConfigTabKey | undefined =>
+  typeof value === 'string' && PATH_TAB_KEYS.includes(value) ? (value as ConfigTabKey) : undefined;
+
+// The tab is the first segment after `/perfAdvisor` (`/perfAdvisor/databases/<db>/tables`).
+const getTabFromPath = (pathname: string | undefined): ConfigTabKey | undefined =>
+  asPathTabKey(pathname?.match(new RegExp(`/${PERF_ADVISOR_PATH}/([^/?#]+)`))?.[1]);
 
 const PerfAdvisorTabsComponent = ({
   universeUuid,
@@ -35,53 +51,30 @@ const PerfAdvisorTabsComponent = ({
   router
 }: PerfAdvisorTabsProps) => {
   const { t } = useTranslation();
+  const runtimeConfigs = usePerfAdvisorRuntimeConfigs();
 
-  // Get tab from URL query params (react-router v3 style)
-  const tabFromUrl = (location?.query?.tab as ConfigTabKey) || ConfigTabKey.CLUSTER_LOAD;
-  const [tabToDisplay, setTabToDisplay] = useState<ConfigTabKey>(tabFromUrl);
+  const perfAdvisorBasePath = `/universes/${universeUuid}/${PERF_ADVISOR_PATH}`;
+  const tabToDisplay = getTabFromPath(location?.pathname) ?? ConfigTabKey.CLUSTER_LOAD;
 
+  // Put the tab in the path: default `/perfAdvisor` to Cluster Load, and move a
+  // `?tab=<key>` link (and `subTab`) onto `/perfAdvisor/<key>`.
   useEffect(() => {
-    // Update state when URL tab changes
-    if (location?.query?.tab) {
-      setTabToDisplay(location.query.tab as ConfigTabKey);
-    }
-  }, [location?.query?.tab]);
-
-  // Handle initial tab setup and subtab cleanup
-  useEffect(() => {
-    if (!router || !location) return;
-
-    const currentTab = location.query?.tab as ConfigTabKey;
-    const currentQuery = location.query || {};
-
-    // If no tab is specified in the URL, set default tab with subTab
-    if (!currentTab) {
-      const currentLocation = { ...location };
-      currentLocation.query = {
-        ...currentQuery, // Preserve all existing params (duration, etc.)
-        tab: ConfigTabKey.CLUSTER_LOAD
-      };
-      router.replace(currentLocation);
+    // The pane stays mounted while the universe tab fades out, so ignore paths outside PA.
+    if (!router || !location?.pathname?.startsWith(perfAdvisorBasePath) || isPaDrilldownUrl()) {
       return;
     }
-
-    // Build new query object, removing subtab params that don't belong to current tab
-    const newQuery = { ...currentQuery };
-    let needsUpdate = false;
-
-    // Remove subTab if current tab doesn't use it (or if it's not clusterLoad)
-    if (currentTab !== ConfigTabKey.CLUSTER_LOAD && currentQuery.subTab) {
-      delete newQuery.subTab;
-      needsUpdate = true;
+    const { tab, subTab, ...restQuery } = location.query ?? {};
+    const pathTab = getTabFromPath(location.pathname);
+    const queryTab = asPathTabKey(tab);
+    if (pathTab && tab === undefined && subTab === undefined) {
+      return;
     }
-
-    // Update URL if we removed any subtab params
-    if (needsUpdate) {
-      const currentLocation = { ...location };
-      currentLocation.query = newQuery;
-      router.replace(currentLocation);
-    }
-  }, [location?.query?.tab, location?.query?.metricsTab, router, location]);
+    const pathname =
+      pathTab && (!queryTab || queryTab === pathTab)
+        ? location.pathname
+        : `${perfAdvisorBasePath}/${queryTab ?? ConfigTabKey.CLUSTER_LOAD}`;
+    router.replace({ pathname, query: restQuery });
+  }, [router, location, perfAdvisorBasePath]);
 
   const tabConfig = [
     {
@@ -91,7 +84,15 @@ const PerfAdvisorTabsComponent = ({
     {
       key: ConfigTabKey.METRICS,
       title: t('clusterDetail.troubleshoot.perfAdvisorMetricsTab')
-    }
+    },
+    ...(runtimeConfigs.showDatabasesView
+      ? [
+          {
+            key: ConfigTabKey.DATABASES,
+            title: t('clusterDetail.troubleshoot.perfAdvisorDatabasesTab')
+          }
+        ]
+      : [])
   ];
 
   // In online mode this collector scrapes the universe but keeps nothing - every view below reads
@@ -99,9 +100,7 @@ const PerfAdvisorTabsComponent = ({
   if (registrationMode === PaRegistrationMode.ONLINE) {
     return (
       <Box p={4} data-testid="PerfAdvisorTabs-OnlineMode">
-        <Typography variant="body1">
-          {t('clusterDetail.troubleshoot.onlineModeTitle')}
-        </Typography>
+        <Typography variant="body1">{t('clusterDetail.troubleshoot.onlineModeTitle')}</Typography>
         <Box mt={1}>
           <Typography variant="body2" color="textSecondary">
             {t('clusterDetail.troubleshoot.onlineModeSubText')}
@@ -131,6 +130,7 @@ const PerfAdvisorTabsComponent = ({
       <YBTabsPanel
         defaultTab={tabToDisplay}
         activeTab={tabToDisplay}
+        routePrefix={`${perfAdvisorBasePath}/`}
         id="perf-advisor-config-tab-panel"
       >
         {tabConfig.map((tab) => (

@@ -26,6 +26,8 @@
 
 #include "postgres.h"
 
+#include <pthread.h>
+
 #include "access/htup_details.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_type_d.h"
@@ -43,6 +45,8 @@
 #include "pg_yb_utils.h"
 #include "utils/acl.h"
 #include "utils/array.h"
+#include "utils/guc.h"
+#include "utils/guc_tables.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/numeric.h"
@@ -887,5 +891,122 @@ YbgCheckUsermap(const char *usermap_name, const char *pg_role,
 	PG_SETUP_ERROR_REPORTING();
 	*matched = check_usermap(usermap_name, pg_role, auth_user,
 							 case_insensitive) == STATUS_OK;
+	PG_STATUS_OK();
+}
+
+/*
+ * A process outside a backend never runs InitializeGUCOptions(), so the array
+ * find_option() searches is unbuilt.  Build it once: build_guc_variables()
+ * replaces that global on each call.  pthread_once so this does not depend on
+ * the caller's locking.
+ */
+static void
+YbEnsureGucVariablesBuilt(void)
+{
+	static pthread_once_t guc_variables_built = PTHREAD_ONCE_INIT;
+
+	pthread_once(&guc_variables_built, &build_guc_variables);
+}
+
+/*
+ * Resolve a raw GUC value the way the postmaster would: base units for GUC_UNIT_*
+ * integers, "on"/"off" for booleans, canonical names for enums.  Validated, never
+ * assigned.  A NULL value returns the setting's compiled-in default.
+ *
+ * *canonical is allocated in the current memory context, which the caller owns.
+ */
+YbgStatus
+YbgResolveGucValue(const char *name, const char *value, const char **canonical)
+{
+	PG_SETUP_ERROR_REPORTING();
+
+	YbEnsureGucVariablesBuilt();
+	*canonical = YbResolveGucValue(name, value);
+	PG_STATUS_OK();
+}
+
+/*
+ * Return, for each of the nnames settings in names, the last value assigned to it by
+ * config_file - or NULL where nothing assigns it.  values must hold nnames entries.
+ *
+ * Values are raw file text; pass one to YbgResolveGucValue for what PG resolves it to.
+ * The path must be absolute: a relative one needs DataDir, unset outside a backend.
+ * A file that cannot be read, does not parse, or names an unknown parameter fails the
+ * call rather than returning partial values, as a PostgreSQL reload applies nothing then.
+ *
+ * The returned strings are allocated in the current memory context, which the caller owns.
+ *
+ * Not thread-safe: guc-file.l keeps its scanner state in process-wide globals.  Callers
+ * must serialize; conn mgr does so under YsqlConnMgrSupervisor's mtx_.
+ */
+YbgStatus
+YbGetConfigFileValues(const char *config_file, const char **names, int nnames,
+					   const char **values)
+{
+	ConfigVariable *head = NULL;
+	ConfigVariable *tail = NULL;
+	ConfigVariable *item;
+	bool		parsed;
+	int			i;
+
+	PG_SETUP_ERROR_REPORTING();
+
+	for (i = 0; i < nnames; i++)
+		values[i] = NULL;
+
+	/* A relative path resolves against DataDir, which a tserver never sets. */
+	if (!is_absolute_path(config_file))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("configuration file path must be absolute: \"%s\"",
+						config_file)));
+
+	/*
+	 * LOG, not ERROR: throwing from inside the parser skips the free of its
+	 * malloc'd flex buffer.  It returns false instead, raised below.
+	 */
+	parsed = ParseConfigFile(config_file, true /* strict */ ,
+							 NULL /* calling_file */ , 0 /* calling_lineno */ ,
+							 0 /* depth */ , LOG, &head, &tail);
+
+	/*
+	 * The parser logged each problem already.  Fail rather than return partial
+	 * values.
+	 */
+	if (!parsed)
+	{
+		FreeConfigVariables(head);
+		ereport(ERROR,
+				(errcode(ERRCODE_CONFIG_FILE_ERROR),
+				 errmsg("configuration file \"%s\" contains errors",
+						config_file)));
+	}
+
+	YbEnsureGucVariablesBuilt();
+
+	/* File order, so the last assignment wins.  A named entry always has a value. */
+	for (item = head; item != NULL; item = item->next)
+	{
+		if (item->ignore)
+			continue;
+		/* The entries are palloc'd, so the caller's memory context frees them. */
+		if (!YbIsValidConfigFileName(item->name))
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("unrecognized configuration parameter \"%s\" in file \"%s\" line %d",
+							item->name, item->filename, item->sourceline)));
+
+		for (i = 0; i < nnames; i++)
+		{
+			if (pg_strcasecmp(item->name, names[i]) == 0)
+			{
+				values[i] = pstrdup(item->value);
+				break;
+			}
+		}
+	}
+
+	FreeConfigVariables(head);
+
 	PG_STATUS_OK();
 }

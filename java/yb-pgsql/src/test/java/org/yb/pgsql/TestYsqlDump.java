@@ -416,6 +416,39 @@ public class TestYsqlDump extends BasePgSQLTest {
   }
 
   @Test
+  public void ysqlDumpAllSkipsYbSystem() throws Exception {
+    // The master creates yb_system once LISTEN/NOTIFY is enabled. A dump that drops or recreates
+    // it would break LISTEN/NOTIFY on the restore target.
+    restartClusterWithClusterBuilder(cb -> {
+      cb.addCommonFlag("ysql_yb_enable_listen_notify", "true");
+    });
+    BasePgListenNotifyTest.waitForNotificationsTableReady(connection, getConnectionBuilder());
+    final String userDb = "dumpall_user_db";
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE DATABASE " + userDb);
+    }
+
+    File ysqlDumpAllExec = new File(PgRegressBuilder.getPgBinDir(), "ysql_dumpall");
+    File actual = new File(TestUtils.getClassResourceDir(getClass()),
+        "results/yb.orig.ysql_dumpall_skips_yb_system.out");
+    actual.getParentFile().mkdirs();
+    ProcessUtil.executeSimple(Arrays.asList(
+        ysqlDumpAllExec.toString(),
+        "-h", getPgHost(0),
+        "-p", Integer.toString(getPgPort(0)),
+        "-U", DEFAULT_PG_USER,
+        "--clean",
+        "-f", actual.toString()
+    ), "ysql_dumpall");
+
+    String dump = FileUtils.readFileToString(actual, StandardCharsets.UTF_8);
+    assertFalse("ysql_dumpall output references yb_system", dump.contains("yb_system"));
+    // The skip must not hide user databases from dropDBs() or dumpDatabases().
+    assertTrue("missing DROP of " + userDb, dump.contains("DROP DATABASE " + userDb + ";"));
+    assertTrue("missing CREATE of " + userDb, dump.contains("CREATE DATABASE " + userDb + " "));
+  }
+
+  @Test
   public void ysqlDumpColocatedDB() throws Exception {
     ysqlDumpTester(
         "ysql_dump" /* binaryName */,

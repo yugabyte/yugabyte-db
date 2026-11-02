@@ -2836,6 +2836,8 @@ CommitTransaction(void)
 	AtEOXact_ApplyLauncher(true);
 	AtEOXact_LogicalRepWorkers(true);
 	AtEOXact_LogicalCtl();
+	if (IsYugaByteEnabled())
+		YbAtEOXact_ReplicationOrigin();
 	pgstat_report_xact_timestamp(0);
 
 	ResourceOwnerDelete(TopTransactionResourceOwner);
@@ -3145,6 +3147,8 @@ PrepareTransaction(void)
 	AtEOXact_ApplyLauncher(false);
 	AtEOXact_LogicalRepWorkers(false);
 	AtEOXact_LogicalCtl();
+	if (IsYugaByteEnabled())
+		YbAtEOXact_ReplicationOrigin();
 	pgstat_report_xact_timestamp(0);
 
 	CurrentResourceOwner = NULL;
@@ -3388,6 +3392,14 @@ AbortTransaction(void)
 		AtEOXact_LogicalCtl();
 		pgstat_report_xact_timestamp(0);
 	}
+
+	/*
+	 * YB: This is done outside the block above, which is skipped when the
+	 * transaction fails before creating a resource owner.  A stale stamp has
+	 * to be cleared on every exit.
+	 */
+	if (IsYugaByteEnabled())
+		YbAtEOXact_ReplicationOrigin();
 
 	YBCAbortTransaction();
 	YB_DIST_TRACE_END_SPAN();
@@ -6010,6 +6022,9 @@ AbortSubTransaction(void)
 			 TransStateAsString(s->state));
 
 	s->state = TRANS_ABORT;
+
+	if (IsYugaByteEnabled())
+		YBCPgClearSessionState();
 
 	/*
 	 * Reset user ID which might have been changed transiently.  (See notes in

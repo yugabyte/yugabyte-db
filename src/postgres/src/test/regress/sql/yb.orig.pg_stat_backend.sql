@@ -4,12 +4,24 @@
 -- Avoid outputting beid, pid, dbid, catalog_version since those can vary
 -- between runs.
 --
+-- With Connection Manager, the output depends on yb.orig.pg_stat running
+-- right before this test in yb_pg_stat_schedule: its test_db and colocated_db
+-- sessions stay pooled and show up below with their last statement.  Changing
+-- the database connections or the final statements in yb.orig.pg_stat
+-- requires updating yb.orig.pg_stat_backend_1.out.
+--
 
--- Test pg_stat_activity view.  The four rows correspond to checkpointer,
--- this connection, the java test, and the ASH collector.
+-- Test pg_stat_activity view.  Without Connection Manager, the four rows
+-- correspond to checkpointer, this connection, the java test, and the ASH
+-- collector.  With Connection Manager (yb.orig.pg_stat_backend_1.out), the
+-- connections are yb-conn-mgr worker connections, and the output also has the
+-- control connection and the idle pooled backends that yb.orig.pg_stat left
+-- in test_db and colocated_db.  Those rows share usename, so datname and
+-- backend_type break the ties.
 SELECT datname, usename, state, query, backend_type,
        catalog_version IS NOT null AS has_catalog_snapshot
-    FROM pg_stat_activity ORDER BY usename;
+    FROM pg_stat_activity
+    ORDER BY usename, datname, backend_type;
 
 -- Test yb_pg_stat_get_backend_catalog_version.
 -- beid depends on backend slot assignment order, so do not output it.
@@ -29,7 +41,8 @@ JOIN pg_stat_activity s ON pg_stat_get_backend_pid(beid) = s.pid
 CROSS JOIN yb_pg_stat_get_backend_catalog_version(beid) AS be_catalog_version
 WHERE be_catalog_version IS NOT NULL;
 
--- Test pg_stat_get_backend_dbid for backends with yugabyte database.
+-- Test pg_stat_get_backend_dbid for backends with yugabyte database.  With
+-- Connection Manager, this also includes its control connection.
 SELECT backend_type,
        d.datname AS database_name
 FROM pg_stat_get_backend_idset() AS beid

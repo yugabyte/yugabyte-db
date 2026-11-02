@@ -905,7 +905,7 @@ Add the following to your configuration file:
 
 ```yaml
 ...
-inititate-cutover-to-target:
+initiate-cutover-to-target:
   prepare-for-fall-back: true
 ...
 ```

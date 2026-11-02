@@ -165,7 +165,7 @@ public class CheckUpgrade extends ServerSubTaskBase {
 
       Set<String> oldTserverAutoFlags =
           autoFlagUtil.getPromotedAutoFlags(universe, ServerType.TSERVER, -1);
-      if (!CollectionUtils.isNotEmpty(oldTserverAutoFlags)) {
+      if (CollectionUtils.isNotEmpty(oldTserverAutoFlags)) {
         Set<String> newTserverAutoFlags =
             gFlagsValidation.extractAutoFlags(newVersion, "yb-tserver").autoFlagDetails.stream()
                 .map(flag -> flag.name)

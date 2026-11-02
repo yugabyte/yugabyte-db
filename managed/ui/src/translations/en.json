@@ -189,8 +189,9 @@
         "loadBalanceInProgress": "Cluster load balancing in progress"
       },
       "encryptionAtRest": {
-        "title": "Manage encryption at-Rest",
-        "enableEAR": "Enable encryption at-Rest for this Universe",
+        "title": "Edit Encryption at Rest",
+        "enableEAR": "Enable encryption at Rest for this Universe",
+        "keyRetentionNote": "<bold>Note!</bold> Encryption at rest requires the encryption key to be retained once <br /> enabled. This requirement remains after encryption is disabled.   <a>Learn more</a>",
         "kmsConfig": "Key management service config",
         "selectKMSConfig": "Select key management service config",
         "rotateKMSConfig": "Rotate key management service config",
@@ -518,59 +519,63 @@
             "retry": "Retry"
           },
           "precheckInProgress": {
-            "title": "Upgrade pre-check in progress.",
+            "title": "Database upgrade pre-check in progress.",
             "description": "Some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>"
           },
           "precheckIssuesFound": {
-            "title": "Upgrade pre-check found issues.",
-            "description": "Universe does not meet DB upgrade requirements.",
+            "title": "Database upgrade pre-check found issues.",
+            "description": "Universe does not meet database upgrade requirements.",
             "descriptionPg15": "Universe does not meet PG15 upgrade requirements."
           },
           "precheckPassed": {
             "title": "Pre-check passed · <dateLabel>{{date}}</dateLabel>.",
             "descriptionPg15": "Universe is ready for PG15 upgrade.",
-            "description": "Universe is ready for DB upgrade."
+            "description": "Universe is ready for database upgrade."
           },
           "upgradingSoftware": {
-            "title": "Upgrading software.",
+            "title": "Upgrading database.",
             "description": "Some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>",
             "descriptionMajorDbUpgrade": "DDLs and some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>"
           },
           "softwareUpgradeFailed": {
-            "title": "Software upgrade failed."
+            "title": "Database upgrade failed."
           },
           "upgradePausedForMonitoring": {
-            "title": "Upgrade paused for monitoring.",
+            "title": "Database upgrade paused for monitoring.",
             "description": "Review universe health, then resume or roll back."
           },
           "finalizeOrRollBack": {
-            "title": "Finalize or Roll Back Upgrade.",
+            "title": "Finalize or roll back database upgrade.",
             "description": "Assess universe performance and finalize or roll back.",
             "rollBack": "Roll Back",
             "finalizeUpgradeNow": "Finalize Upgrade Now"
           },
           "upgradeAborted": {
-            "title": "Upgrade aborted.",
+            "title": "Database upgrade aborted.",
+            "description": "The upgrade was stopped by a user."
+          },
+          "upgradeCanceled": {
+            "title": "Database upgrade canceled.",
             "description": "Upgrade was canceled because universe does not meet upgrade requirements."
           },
           "rollingBack": {
-            "title": "Rolling back upgrade.",
+            "title": "Rolling back database upgrade.",
             "description": "Some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>",
             "descriptionMajorDbUpgrade": "DDLs and some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>"
           },
           "rollbackFailed": {
-            "title": "Failed to roll back."
+            "title": "Database upgrade failed to roll back."
           },
           "finalizing": {
-            "title": "Finalizing upgrade.",
+            "title": "Finalizing database upgrade.",
             "description": "Some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>",
             "descriptionMajorDbUpgrade": "DDLs and some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>"
           },
           "finalizeFailed": {
-            "title": "Failed to finalize upgrade."
+            "title": "Failed to finalize database upgrade."
           },
           "upgradeCompleted": {
-            "title": "Upgrade completed. Universe is now on {{targetDbVersion}}.",
+            "title": "Database upgrade completed. Universe is now on {{targetDbVersion}}.",
             "description": "Assess performance and <rollBackLinkButton>roll back</rollBackLinkButton> if needed."
           }
         }
@@ -1147,6 +1152,7 @@
         "perfAdvisorInsightsTab": "Insights",
         "perfAdvisorQueriesTab": "Queries",
         "perfAdvisorMetricsTab": "Metrics",
+        "perfAdvisorDatabasesTab": "Databases",
         "tpServiceUrlHelperText": "Please do not append '/' at the end of the URL",
         "registrationSuccess": "Registered to Perf Advisor service successfully",
         "registrationFailed": "Failed to register to Perf Advisor service",
@@ -3094,6 +3100,7 @@
       "banner": {
         "viewDetails": "View Details",
         "retry": "Retry",
+        "abortedDescription": "The upgrade was stopped by a user.",
         "taskProgress": "{{percent}}%",
         "opNotAvailable": "Some operations are not available while the current operation is in progress",
         "softwareUpgradeFailed": "Software Upgrade Failed",
@@ -3110,6 +3117,10 @@
         },
         "failed": {
           "title": "Failed to update universe."
+        },
+        "aborted": {
+          "title": "Universe update aborted.",
+          "description": "The update was stopped by a user."
         },
         "actions": {
           "viewDetails": "View Details",
@@ -3565,6 +3576,46 @@
           "disableRequestFailed": "Metrics export disable request failed:",
           "updateRequestFailed": "Metrics export update request failed:"
         }
+      },
+      "s3": {
+        "advanced": "Advanced",
+        "bucket": "S3 Bucket",
+        "bucketTooltip": "Name of the S3 bucket where logs will be written.",
+        "bucketPlaceholder": "my-telemetry-bucket",
+        "region": "Region",
+        "regionTooltip": "AWS region of the S3 bucket (for example, us-west-2).",
+        "regionPlaceholder": "us-west-2",
+        "accessKey": "Access Key",
+        "accessKeyTooltip": "AWS access key ID used to authenticate to S3.",
+        "secretKey": "Secret Key",
+        "secretKeyTooltip": "AWS secret access key used to authenticate to S3.",
+        "directoryPrefix": "Directory Prefix",
+        "directoryPrefixTooltip": "Root directory (key prefix) inside the bucket. Defaults to yb-logs/.",
+        "directoryPrefixPlaceholder": "yb-logs/",
+        "filePrefix": "File Prefix",
+        "filePrefixTooltip": "Prefix prepended to each exported object name. Defaults to yb-otel-.",
+        "filePrefixPlaceholder": "yb-otel-",
+        "partition": "Partition",
+        "partitionTooltip": "Time granularity for partition directories under the prefix.",
+        "partitionHour": "Hour",
+        "partitionMinute": "Minute",
+        "marshaler": "Marshaler",
+        "marshalerTooltip": "Encoding for exported objects. Defaults to OTLP JSON. Sumo Logic IC is for logs only.",
+        "marshalerOtlpJson": "OTLP JSON",
+        "marshalerSumoIc": "Sumo Logic IC",
+        "roleArn": "Role ARN",
+        "roleArnTooltip": "Optional IAM role ARN to assume when writing to the bucket. Must start with arn:.",
+        "roleArnPlaceholder": "arn:aws:iam::123456789012:role/example",
+        "endpoint": "Endpoint",
+        "endpointTooltip": "Optional endpoint override for S3-compatible object stores. If omitted, the endpoint is derived from region and bucket.",
+        "endpointPlaceholder": "https://",
+        "disableSSL": "Disable SSL",
+        "disableSSLTooltip": "Connect to the endpoint over plain HTTP instead of HTTPS.",
+        "forcePathStyle": "Force Path Style",
+        "forcePathStyleTooltip": "Use path-style addressing (bucket in the path). Required by most S3-compatible stores.",
+        "includeUniverseAndNodeInPrefix": "Include Universe and Node in Prefix",
+        "includeUniverseAndNodeInPrefixTooltip": "Append the universe UUID and node name to the directory prefix (for example, yb-logs/<universe-uuid>/<node-name>).",
+        "validationFieldRequired": "This field is required"
       }
     },
     "userAuth": {
@@ -4219,7 +4270,6 @@
           "minValue": "{{field}} must be at least {{min}}",
           "maxValue": "{{field}} must be at most {{max}}",
           "invalidStorageClass": "Invalid storage class",
-          "invalidMountPoint": "Mount point must be a valid path starting with '/'",
           "invalidStorageType": "Invalid storage type",
           "required": "{{field}} is required"
         },
@@ -4325,7 +4375,8 @@
           "label": "Enable Encryption At Rest",
           "kmsConfig": "Key Management Service Config",
           "kmsConfigPlaceHolder": "Select",
-          "kmsValidationMsg": "This KMS configuration is already used for EBS volume encryption."
+          "kmsValidationMsg": "This KMS configuration is already used for EBS volume encryption.",
+          "helpText": "<b>Note!</b> Encryption at rest requires the encryption key to be retained once enabled.<br/> This requirement remains after encryption is disabled. <a>Learn more</a>"
         },
         "eitField": {
           "useSameCert": "Use the same certificate for Node-to-Node and Client-to-Node encryption.",
@@ -4723,7 +4774,10 @@
           "volumeSizeGib": "Volume Size (Gib)",
           "storageClass": "Storage Class",
           "addAvailabilityZone": "Add Availability Zone",
-          "applyingChanges": "Applying changes..."
+          "applyingChanges": "Applying changes...",
+          "note": "Note!",
+          "futureGlobalChange": "Future changes to global storage settings will not apply to nodes with storage overrides.",
+          "storageChangeExcludedZones": "Changes to storage volume, size, and class will not apply to availability zones with storage overrides:"
         }
       },
       "security": {
@@ -5210,7 +5264,6 @@
           "minValue": "{{field}} must be at least {{min}}",
           "maxValue": "{{field}} must be at most {{max}}",
           "invalidStorageClass": "Invalid storage class",
-          "invalidMountPoint": "Mount point must be a valid path starting with '/'",
           "invalidStorageType": "Invalid storage type",
           "required": "{{field}} is required",
           "regionRequired": "Select a region.",

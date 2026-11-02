@@ -114,6 +114,25 @@ public class PreflightNodeCheck extends NodeTaskBase {
     log.info("YNP preflight check for universe node {} ran successfully", taskParams().nodeName);
   }
 
+  // A universe already serving exporter TLS would lose it, so it only takes user-level nodes. The
+  // node's layout is not recorded here: the node is saved to the universe only after the prechecks,
+  // and the scheme decision re-reads manually provisioned nodes anyway.
+  private void checkNodeExporterSystemdLevel(NodeAgent nodeAgent) {
+    if (taskParams().getUniverseUUID() == null || !getUniverse().isNodeExporterHttps()) {
+      return;
+    }
+    if (nodeAgentClient.detectNodeExporterSystemdLevel(nodeAgent).orElse(null)
+        != NodeDetails.NodeExporterSystemdLevel.USER) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Node %s does not run the user-level node_exporter unit, which this universe needs"
+                  + " because it serves node_exporter over TLS. Re-run node-agent-provision.sh on"
+                  + " the node.",
+              taskParams().nodeName));
+    }
+  }
+
   @Override
   public void run() {
     log.info("Running preflight checks for node {}.", taskParams().nodeName);
@@ -122,6 +141,7 @@ public class PreflightNodeCheck extends NodeTaskBase {
     if (provider.isManualOnprem()) {
       // Node agent must already be present and running for onprem manual (non-sudo).
       NodeAgent nodeAgent = nodeAgentClient.getAndUpgradeOrThrow(instance.getDetails().ip);
+      checkNodeExporterSystemdLevel(nodeAgent);
       if (confGetter.getGlobalConf(GlobalConfKeys.disableYnpNodePreflightCheck)) {
         // Run preflight_checks.sh.
         runLegacyPreflightChecks();

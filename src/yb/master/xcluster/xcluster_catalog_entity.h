@@ -29,6 +29,13 @@ class XClusterConfigInfo : public SingletonMetadataCowWrapper<PersistentXCluster
 
 DECLARE_SINGLETON_LOADER_CLASS(XClusterConfig, std::string, SysXClusterConfigEntryPB);
 
+struct PersistentPersistenceBlockMapInfo : public Persistent<SysPersistenceBlockMapEntryPB> {};
+
+class PersistenceBlockMapInfo
+    : public SingletonMetadataCowWrapper<PersistentPersistenceBlockMapInfo> {};
+
+DECLARE_SINGLETON_LOADER_CLASS(PersistenceBlockMap, std::string, SysPersistenceBlockMapEntryPB);
+
 struct PersistentXClusterSafeTimeInfo : public Persistent<XClusterSafeTimePB> {};
 
 class XClusterSafeTimeInfo : public SingletonMetadataCowWrapper<PersistentXClusterSafeTimeInfo> {

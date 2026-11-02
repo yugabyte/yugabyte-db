@@ -18,34 +18,46 @@ import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.common.RegexMatcher;
+import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.forms.CreatePitrConfigParams;
+import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
+import org.yb.CommonTypes;
+import org.yb.client.DeleteSnapshotScheduleResponse;
 import org.yb.client.GetYsqlMajorCatalogUpgradeStateResponse;
 import org.yb.client.IsInitDbDoneResponse;
 import org.yb.client.IsYsqlMajorCatalogUpgradeDoneResponse;
+import org.yb.client.ListSnapshotSchedulesResponse;
 import org.yb.client.PromoteAutoFlagsResponse;
+import org.yb.client.SnapshotScheduleInfo;
 import org.yb.client.StartYsqlMajorCatalogUpgradeResponse;
 import org.yb.client.UpgradeYsqlResponse;
 import org.yb.client.YBClientApi;
@@ -272,6 +284,219 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
   }
 
   @Test
+  public void testSoftwareUpgradeWithoutFinalizeKeepsPitr() throws Exception {
+    // PLAT-23184: a no-finalize upgrade ends in Ready, which never re-creates PITR schedules, so it
+    // must not delete them.
+    PitrConfig pitrConfig = runUpgradeWithPitrConfig(false /* requireFinalize */);
+    assertFalse(PitrConfig.getOrBadRequest(pitrConfig.getUuid()).isDisabled());
+    verify(mockClient, never()).deleteSnapshotSchedule(any());
+    assertEquals(
+        UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
+        defaultUniverse.getUniverseDetails().softwareUpgradeState);
+  }
+
+  @Test
+  public void testSoftwareUpgradeWithFinalizeDisablesPitr() throws Exception {
+    // Finalize or rollback re-creates the schedules, so an upgrade that waits for finalize still
+    // disables them.
+    PitrConfig pitrConfig = runUpgradeWithPitrConfig(true /* requireFinalize */);
+    assertTrue(PitrConfig.getOrBadRequest(pitrConfig.getUuid()).isDisabled());
+    verify(mockClient, times(1)).deleteSnapshotSchedule(pitrConfig.getUuid());
+    assertEquals(
+        UniverseDefinitionTaskParams.SoftwareUpgradeState.PreFinalize,
+        defaultUniverse.getUniverseDetails().softwareUpgradeState);
+  }
+
+  /** Runs a successful multi-AZ upgrade on a universe with one PITR config. */
+  private PitrConfig runUpgradeWithPitrConfig(boolean requireFinalize) throws Exception {
+    softwareKubernetesUpgrade.setUserTaskUUID(UUID.randomUUID());
+    setupUniverseMultiAZ(false, true);
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.autoFlagUpdateSleepTimeInMilliSeconds.getKey(), "0ms");
+    when(mockSoftwareUpgradeHelper.checkUpgradeRequireFinalize(anyString(), anyString()))
+        .thenReturn(requireFinalize);
+
+    CreatePitrConfigParams params = new CreatePitrConfigParams();
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.customerUUID = defaultCustomer.getUuid();
+    params.name = "test-pitr";
+    params.keyspaceName = "test-keyspace";
+    params.tableType = CommonTypes.TableType.YQL_TABLE_TYPE;
+    params.retentionPeriodInSeconds = 86400L;
+    params.intervalInSeconds = 3600L;
+    PitrConfig pitrConfig = PitrConfig.create(UUID.randomUUID(), params);
+    SnapshotScheduleInfo scheduleInfo =
+        new SnapshotScheduleInfo(
+            pitrConfig.getUuid(),
+            3600L,
+            86400L,
+            Collections.emptyList(),
+            "test-keyspace",
+            UUID.randomUUID(),
+            CommonTypes.YQLDatabase.YQL_DATABASE_CQL);
+    ListSnapshotSchedulesResponse listResponse = mock(ListSnapshotSchedulesResponse.class);
+    lenient()
+        .when(listResponse.getSnapshotScheduleInfoList())
+        .thenReturn(Collections.singletonList(scheduleInfo));
+    lenient().when(mockClient.listSnapshotSchedules(isNull())).thenReturn(listResponse);
+    lenient()
+        .when(mockClient.deleteSnapshotSchedule(pitrConfig.getUuid()))
+        .thenReturn(mock(DeleteSnapshotScheduleResponse.class));
+
+    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
+    taskParams.ybSoftwareVersion = YB_SOFTWARE_VERSION_NEW;
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskState() == TaskInfo.State.Failure)
+            .map(t -> t.getTaskType() + ": " + t.getErrorMessage())
+            .collect(Collectors.toList())
+            .toString(),
+        Success,
+        taskInfo.getTaskState());
+    assertEquals(
+        requireFinalize,
+        taskInfo.getSubTasks().stream()
+            .anyMatch(t -> t.getTaskType() == TaskType.DisablePitrConfig));
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    return pitrConfig;
+  }
+
+  @Test
+  public void testAbortBeforeVersionUpdateFailsUpgradeAndRetryCompletes() throws Exception {
+    abortBeforeVersionUpdateThenRetry(true /* requireFinalize */, true /* rollbackSupport */);
+  }
+
+  @Test
+  public void testAbortBeforeVersionUpdateWithoutFinalizeFailsUpgradeAndRetryCompletes()
+      throws Exception {
+    abortBeforeVersionUpdateThenRetry(false /* requireFinalize */, true /* rollbackSupport */);
+  }
+
+  @Test
+  public void testAutoFinalizeAbortBeforeVersionUpdateFailsUpgradeAndRetryCompletes()
+      throws Exception {
+    // With rollbackSupport=false the upgrade finalizes itself, then saves Ready with the version.
+    abortBeforeVersionUpdateThenRetry(true /* requireFinalize */, false /* rollbackSupport */);
+  }
+
+  /**
+   * PLAT-23182: aborts just before UpdateSoftwareVersion, the last upgrade subtask, which also
+   * saves the end state. The upgrade must be left UpgradeFailed on the old version, and a retry
+   * must finish it.
+   */
+  private void abortBeforeVersionUpdateThenRetry(boolean requireFinalize, boolean rollbackSupport)
+      throws Exception {
+    softwareKubernetesUpgrade.setUserTaskUUID(UUID.randomUUID());
+    setupUniverseSingleAZ(false, true);
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.autoFlagUpdateSleepTimeInMilliSeconds.getKey(), "0ms");
+    when(mockSoftwareUpgradeHelper.checkUpgradeRequireFinalize(anyString(), anyString()))
+        .thenReturn(requireFinalize);
+    if (!rollbackSupport) {
+      // RunYsqlUpgrade, which the in-task finalize runs.
+      when(mockClient.upgradeYsql(any(HostAndPort.class), anyBoolean()))
+          .thenReturn(new UpgradeYsqlResponse(1000, "", null));
+      when(mockClient.getIsInitDbDone())
+          .thenReturn(new IsInitDbDoneResponse(1000, "", true, true, null, null));
+    }
+    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
+    taskParams.ybSoftwareVersion = YB_SOFTWARE_VERSION_NEW;
+    taskParams.rollbackSupport = rollbackSupport;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.nodePrefix = NODE_PREFIX;
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.sleepAfterMasterRestartMillis = 0;
+    taskParams.sleepAfterTServerRestartMillis = 0;
+    TaskInfo taskInfo;
+    try {
+      setPausePosition(0);
+      UUID taskUuid = commissioner.submit(TaskType.SoftwareKubernetesUpgradeYB, taskParams);
+      waitForTaskPaused(taskUuid);
+      // The upgrade subtasks are created only after the freeze runs.
+      setPausePosition(firstSubTaskPosition(taskUuid, TaskType.FreezeUniverse) + 1);
+      commissioner.resumeTask(taskUuid);
+      waitForTaskPaused(taskUuid);
+      setAbortPosition(firstSubTaskPosition(taskUuid, TaskType.UpdateSoftwareVersion));
+      commissioner.resumeTask(taskUuid);
+      taskInfo = waitForTask(taskUuid);
+    } finally {
+      clearAbortOrPausePositions();
+    }
+
+    assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertEquals(
+        UniverseDefinitionTaskParams.SoftwareUpgradeState.UpgradeFailed,
+        defaultUniverse.getUniverseDetails().softwareUpgradeState);
+    assertEquals(
+        YB_SOFTWARE_VERSION_OLD,
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
+
+    CustomerTask.create(
+        defaultCustomer,
+        defaultUniverse.getUniverseUUID(),
+        taskInfo.getUuid(),
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.SoftwareUpgrade,
+        defaultUniverse.getName());
+    CustomerTask retry =
+        customerTaskManager.retryCustomerTask(defaultCustomer.getUuid(), taskInfo.getUuid());
+    TaskInfo retryTask = waitForTask(retry.getTaskUUID());
+
+    assertEquals(Success, retryTask.getTaskState());
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertEquals(
+        requireFinalize && rollbackSupport
+            ? UniverseDefinitionTaskParams.SoftwareUpgradeState.PreFinalize
+            : UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
+        defaultUniverse.getUniverseDetails().softwareUpgradeState);
+    assertEquals(rollbackSupport, defaultUniverse.getUniverseDetails().isSoftwareRollbackAllowed);
+    assertEquals(
+        YB_SOFTWARE_VERSION_NEW,
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
+  }
+
+  @Test
+  public void testFinalizeWithStaleUniverseVersionRecordsTarget() throws InterruptedException {
+    // PLAT-23182: older builds could leave PreFinalize with the old version still in the user
+    // intent. Finalize takes the target from prevYBSoftwareConfig and records it, since it clears
+    // prevYBSoftwareConfig.
+    setupUniverseSingleAZ(false, true);
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.autoFlagUpdateSleepTimeInMilliSeconds.getKey(), "0ms");
+    UniverseDefinitionTaskParams.PrevYBSoftwareConfig prev =
+        new UniverseDefinitionTaskParams.PrevYBSoftwareConfig();
+    prev.setAutoFlagConfigVersion(1);
+    prev.setSoftwareVersion(YB_SOFTWARE_VERSION_OLD);
+    prev.setTargetUpgradeSoftwareVersion(YB_SOFTWARE_VERSION_NEW);
+    TestHelper.updateUniversePrevSoftwareConfig(defaultUniverse, prev);
+    TestHelper.updateUniverseIsRollbackAllowed(defaultUniverse, true);
+    TestHelper.updateUniverseVersion(defaultUniverse, YB_SOFTWARE_VERSION_OLD);
+    TestHelper.updateUniverseSoftwareUpgradeState(
+        defaultUniverse, UniverseDefinitionTaskParams.SoftwareUpgradeState.PreFinalize);
+    FinalizeUpgradeParams params = new FinalizeUpgradeParams();
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.expectedUniverseVersion = -1;
+    params.upgradeSystemCatalog = false;
+
+    TaskInfo taskInfo =
+        waitForTask(commissioner.submit(TaskType.FinalizeKubernetesUpgrade, params));
+
+    assertEquals(Success, taskInfo.getTaskState());
+    UniverseDefinitionTaskParams details =
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).getUniverseDetails();
+    assertEquals(
+        UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready, details.softwareUpgradeState);
+    assertNull(details.prevYBSoftwareConfig);
+    assertEquals(YB_SOFTWARE_VERSION_NEW, details.getPrimaryCluster().userIntent.ybSoftwareVersion);
+  }
+
+  @Test
   public void testSoftwareKubernetesUpgradeRetries() {
     softwareKubernetesUpgrade.setUserTaskUUID(UUID.randomUUID());
     setupUniverseSingleAZ(false, true);
@@ -298,6 +523,80 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
     assertEquals(
         UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
         defaultUniverse.getUniverseDetails().softwareUpgradeState);
+  }
+
+  @Test
+  public void testYsqlMajorUpgradeTreatsReadReplicaAsReadReplica() throws Exception {
+    // PLAT-23200: the YSQL major compatibility-flag helm step runs POD_INFO and a non-restart helm
+    // upgrade for every cluster. For the read replica it must pass isReadOnlyCluster=true;
+    // otherwise POD_INFO looks up the primary release with the read replica's placement and
+    // replaces the primary's nodes, and the helm upgrade resizes the primary release.
+    softwareKubernetesUpgrade.setUserTaskUUID(UUID.randomUUID());
+    setupUniverseK8sSingleAZWithYSQL(true, true);
+    Cluster readReplica = addReadReplicaCluster();
+    setCheckNodesAreSafeToTakeDown(mockClient);
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.waitAttemptsForMajorCatalogUpgrade.getKey(), "0");
+    when(mockSoftwareUpgradeHelper.isYsqlMajorVersionUpgradeRequired(
+            any(), anyString(), anyString()))
+        .thenReturn(true);
+    when(mockSoftwareUpgradeHelper.isAllMasterUpgradedToYsqlMajorVersion(any(), anyString()))
+        .thenReturn(false);
+    when(mockSoftwareUpgradeHelper.checkUpgradeRequireFinalize(anyString(), anyString()))
+        .thenReturn(true);
+    // Same DB-side stubs as testYsqlMajorUpgradeRetryRollsMastersBeforeCreateUser.
+    lenient()
+        .when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean()))
+        .thenReturn(true);
+    lenient()
+        .when(mockClient.getYsqlMajorCatalogUpgradeState())
+        .thenReturn(
+            new GetYsqlMajorCatalogUpgradeStateResponse(
+                0L,
+                null,
+                null,
+                YsqlMajorCatalogUpgradeState
+                    .YSQL_MAJOR_CATALOG_UPGRADE_PENDING_FINALIZE_OR_ROLLBACK));
+    lenient()
+        .when(mockClient.isYsqlMajorCatalogUpgradeDone())
+        .thenReturn(new IsYsqlMajorCatalogUpgradeDoneResponse(0L, null, null, true));
+    lenient()
+        .when(mockClient.startYsqlMajorCatalogUpgrade())
+        .thenReturn(new StartYsqlMajorCatalogUpgradeResponse(0L, null, null));
+    lenient()
+        .when(mockYsqlQueryExecutor.runUserDbCommands(anyString(), anyString(), any()))
+        .thenReturn(Json.newObject());
+    lenient()
+        .when(
+            mockYsqlQueryExecutor.executeQueryInNodeShell(
+                any(), any(), any(), anyBoolean(), anyBoolean()))
+        .thenReturn(Json.newObject());
+    lenient().when(mockNodeUniverseManager.getRemoteTmpDir(any(), any())).thenReturn("/tmp");
+    lenient()
+        .when(
+            mockKubernetesManager.executeCommandInPodContainer(
+                any(), nullable(String.class), nullable(String.class), anyString(), anyList()))
+        .thenAnswer(
+            invocation -> {
+              List<String> cmd = invocation.getArgument(4);
+              return Arrays.asList("uname", "-m").equals(cmd) ? "x86_64" : "";
+            });
+
+    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
+    taskParams.ybSoftwareVersion = YB_SOFTWARE_VERSION_NEW;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.nodePrefix = NODE_PREFIX;
+    // Adding the read replica bumped the universe version past what submitTask expects.
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.sleepAfterMasterRestartMillis = 5;
+    taskParams.sleepAfterTServerRestartMillis = 5;
+    TaskInfo taskInfo =
+        waitForTask(commissioner.submit(TaskType.SoftwareKubernetesUpgradeYB, taskParams));
+
+    assertEquals(taskInfo.getErrorMessage(), Success, taskInfo.getTaskState());
+    assertReadReplicaCommandsTargetReadReplica(taskInfo, readReplica);
   }
 
   @Test

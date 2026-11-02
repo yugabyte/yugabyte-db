@@ -35,6 +35,7 @@
 #include <algorithm>
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include <boost/algorithm/string/replace.hpp>
@@ -346,7 +347,10 @@ DEFINE_test_flag(bool, persistence_dfatal_unstamped_pgsql_write, false,
     "DFATAL on a YSQL write without an origination stamp to a table outside template1.");
 
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(enable_tiered_storage);
 DECLARE_bool(ysql_enable_object_locking_infra);
+DECLARE_bool(enable_active_table_metrics_filtering);
+DECLARE_uint32(max_active_table_metrics_table_count);
 
 METRIC_DEFINE_gauge_uint64(server, ts_split_op_added, "Split OPs Added to Leader",
     yb::MetricUnit::kOperations, "Number of split operations added to the leader's Raft log.");
@@ -604,6 +608,9 @@ class WriteQueryCompletionCallback {
 
       if (status.IsTryAgain()) {
           LOG(DETAIL) << "Write failed: " << status;
+      } else if (TabletServerError(status).value() == TabletServerErrorPB::PERSISTING_BLOCKED) {
+          // Expected while persisting is stopped, once per refused write.
+          YB_LOG_EVERY_N_SECS(INFO, 10) << YB_DETAIL_LOG_PREFIX << "Write failed: " << status;
       } else {
           LOG(INFO) << "Write failed: " << status;
       }
@@ -1483,6 +1490,9 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
       SetupErrorAndRespond(resp->mutable_error(), status, &context);
       return;
     }
+    TEST_SYNC_POINT_CALLBACK(
+        "TabletServiceImpl::UpdateTransaction::BeforeStampedCommitAppend",
+        const_cast<UpdateTransactionRequestPB*>(req));
   }
 
   auto state = std::make_unique<tablet::UpdateTxnOperation>(tablet.tablet);
@@ -2283,6 +2293,25 @@ void FillTierMigrationStatusPB(
   }
 }
 
+// Tiered storage is a preview feature. Its admin RPCs are refused, not silently ignored, so a
+// caller never believes a migration was started or reads tier info that nothing maintains.
+template <class Resp>
+bool CheckTieredStorageEnabledOrRespond(
+    const char* method_name, Resp* resp, rpc::RpcContext* context) {
+  if (FLAGS_enable_tiered_storage) {
+    return true;
+  }
+  SetupErrorAndRespond(
+      resp->mutable_error(),
+      STATUS_FORMAT(
+          NotSupported,
+          "$0 requires tiered storage, which is disabled. Set the preview flag "
+          "--enable_tiered_storage=true to use it.",
+          method_name),
+      context);
+  return false;
+}
+
 }  // namespace
 
 void TabletServiceAdminImpl::AlterTabletTier(
@@ -2291,6 +2320,9 @@ void TabletServiceAdminImpl::AlterTabletTier(
     rpc::RpcContext context) {
   if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "AlterTabletTier", req, resp,
                                &context)) {
+    return;
+  }
+  if (!CheckTieredStorageEnabledOrRespond("AlterTabletTier", resp, &context)) {
     return;
   }
 
@@ -2337,6 +2369,9 @@ void TabletServiceAdminImpl::GetTabletTierInfo(
     rpc::RpcContext context) {
   if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "GetTabletTierInfo", req, resp,
                                &context)) {
+    return;
+  }
+  if (!CheckTieredStorageEnabledOrRespond("GetTabletTierInfo", resp, &context)) {
     return;
   }
 
@@ -3784,6 +3819,55 @@ void TabletServiceImpl::GetMetrics(const GetMetricsRequestPB* req,
   context.RespondSuccess();
 }
 
+void TabletServiceImpl::SetActiveTableIdsForMetrics(
+    const SetActiveTableIdsForMetricsRequestPB* req, SetActiveTableIdsForMetricsResponsePB* resp,
+    rpc::RpcContext context) {
+  // Reported on every response, including rejections, so the caller always learns whether any
+  // scrape can use the list it just sent.
+  resp->set_filtering_enabled(FLAGS_enable_active_table_metrics_filtering);
+
+  // DocDB table IDs are 32 hex characters, and colocation parent IDs are about twice that. The
+  // bound keeps a caller from parking arbitrarily large strings in tablet server memory.
+  constexpr size_t kMaxTableIdLength = 256;
+  // Reserve no more than the limit allows, so an oversized request cannot force a large allocation
+  // before the limit check below rejects it.
+  std::unordered_set<std::string> table_ids;
+  table_ids.reserve(std::min<size_t>(
+      req->table_ids_size(),
+      static_cast<size_t>(FLAGS_max_active_table_metrics_table_count) + 1));
+  for (const auto& table_id : req->table_ids()) {
+    if (table_id.empty() || table_id.size() > kMaxTableIdLength) {
+      SetupErrorAndRespond(
+          resp->mutable_error(),
+          STATUS_FORMAT(
+              InvalidArgument, "table_ids must be between 1 and $0 bytes long, found $1 bytes",
+              kMaxTableIdLength, table_id.size()),
+          &context);
+      return;
+    }
+    // Checked while copying, so an oversized request is rejected after at most one entry over the
+    // limit instead of after the whole request has been copied. Duplicates do not count.
+    if (table_ids.insert(table_id).second &&
+        table_ids.size() > FLAGS_max_active_table_metrics_table_count) {
+      SetupErrorAndRespond(
+          resp->mutable_error(),
+          STATUS_FORMAT(
+              InvalidArgument, "Active table list contains more than $0 tables",
+              FLAGS_max_active_table_metrics_table_count),
+          &context);
+      return;
+    }
+  }
+
+  const auto status =
+      server_->SetActiveTableIdsForMetrics(std::move(table_ids), req->list_version());
+  if (!status.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), status, &context);
+    return;
+  }
+  context.RespondSuccess();
+}
+
 void TabletServiceImpl::PgRemoteExec(
     const PgRemoteExecRequestPB* req, PgRemoteExecResponsePB* resp,
     rpc::RpcContext context) {
@@ -4365,15 +4449,53 @@ void TabletServiceImpl::Shutdown() {
 
 Result<VerifyVectorIndexesResponsePB> TabletServiceImpl::VerifyVectorIndexes(
     const VerifyVectorIndexesRequestPB& req, CoarseTimePoint deadline) {
-  auto tablet_peers = server_->tablet_manager()->GetTabletPeers();
-  for (auto& peer : tablet_peers) {
+  std::vector<tablet::TabletPeerPtr> tablet_peers;
+  if (req.tablet_id().empty()) {
+    SCHECK(req.index_table_ids().empty(), InvalidArgument,
+           "Vector index ids are specified without a tablet id");
+    tablet_peers = server_->tablet_manager()->GetTabletPeers();
+  } else {
+    tablet_peers.push_back(
+        VERIFY_RESULT(LookupTabletPeer(server_->tablet_peer_lookup(), req.tablet_id()))
+            .tablet_peer);
+  }
+  VerifyVectorIndexesResponsePB resp;
+  for (const auto& peer : tablet_peers) {
     auto tablet = peer->shared_tablet_maybe_null();
     if (!tablet) {
       continue;
     }
-    RETURN_NOT_OK(tablet->vector_indexes().Verify());
+    std::vector<TableId> index_table_ids(
+        req.index_table_ids().begin(), req.index_table_ids().end());
+    if (index_table_ids.empty()) {
+      auto list = tablet->vector_indexes().List();
+      if (!list) {
+        continue;
+      }
+      for (const auto& vector_index : *list) {
+        // A deactivated index cannot be checked, see CheckVectorIndex.
+        if (!vector_index->IsDeactivated()) {
+          index_table_ids.push_back(vector_index->table_id());
+        }
+      }
+    }
+    auto consensus = peer->GetConsensus();
+    auto role = consensus.ok() ? (**consensus).role() : PeerRole::UNKNOWN_ROLE;
+    for (const auto& index_table_id : index_table_ids) {
+      auto& check = *resp.add_checks();
+      check.set_tablet_id(peer->tablet_id());
+      check.set_index_table_id(index_table_id);
+      check.set_role(role);
+      auto result = tablet->vector_indexes().Check(
+          index_table_id, req.max_inconsistencies(), deadline);
+      if (result.ok()) {
+        *check.mutable_result() = std::move(*result);
+      } else {
+        StatusToPB(result.status(), check.mutable_status());
+      }
+    }
   }
-  return VerifyVectorIndexesResponsePB();
+  return resp;
 }
 
 Result<DumpTabletDataResponsePB> TabletServiceImpl::DumpTabletData(

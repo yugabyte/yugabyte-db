@@ -43,6 +43,16 @@ export const OTLP_PROTOCOLS = [
   { label: 'HTTP', value: 'HTTP' }
 ];
 
+export const S3_PARTITIONS = [
+  { labelKey: 'partitionHour', value: 'hour' },
+  { labelKey: 'partitionMinute', value: 'minute' }
+];
+
+export const S3_MARSHALERS = [
+  { labelKey: 'marshalerOtlpJson', value: 'OTLP_JSON' },
+  { labelKey: 'marshalerSumoIc', value: 'SUMO_IC' }
+];
+
 export const TelemetryType = {
   LOGS: 'logs',
   METRICS: 'metrics'

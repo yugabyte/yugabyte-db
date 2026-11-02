@@ -91,7 +91,11 @@ services:
       {{- end }}
 
       - job_name: "node"
+        # Fallback for targets without a __scheme__ label; YBA labels HTTPS universes itself.
         scheme: {{ yamlPath "prometheus.scrapeConfig.node.scheme" }}
+        # DB node exporters serve the node-to-node certificate, signed by a per-universe CA.
+        tls_config:
+            insecure_skip_verify: true
         file_sd_configs:
           - files:
             - '{{ .DataDir }}/swamper_targets/node.*.json'

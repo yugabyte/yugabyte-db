@@ -774,6 +774,7 @@ std::string PrimitiveValue::ValueToString() const {
     case KeyEntryType::kMaxByte: FALLTHROUGH_INTENDED; \
     case KeyEntryType::kMergeFlags: FALLTHROUGH_INTENDED; \
     case KeyEntryType::kObsoleteIntentPrefix: FALLTHROUGH_INTENDED; \
+    case KeyEntryType::kCdrMetadata: FALLTHROUGH_INTENDED; \
     case KeyEntryType::kTtl: FALLTHROUGH_INTENDED; \
     case KeyEntryType::kUserTimestamp: \
       break
@@ -1270,8 +1271,16 @@ size_t EncodedValueSize(const LWQLValuePB& value) {
   return counter.value();
 }
 
+template <bool kDescribeErrors>
+typename DecodePolicy<kDescribeErrors>::StatusType KeyEntryValue::DecodeFromKey(Slice* slice) {
+  return DecodeKey<kDescribeErrors>(slice, this);
+}
+
+template Status KeyEntryValue::DecodeFromKey<true>(Slice* slice);
+template ProbeStatus KeyEntryValue::DecodeFromKey<false>(Slice* slice);
+
 Status KeyEntryValue::DecodeFromKey(Slice* slice) {
-  return DecodeKey(slice, this);
+  return DecodeFromKey<true>(slice);
 }
 
 Result<KeyEntryValue> KeyEntryValue::FullyDecodeFromKey(const Slice& slice) {
@@ -1288,12 +1297,15 @@ Result<KeyEntryValue> KeyEntryValue::FullyDecodeFromKey(const Slice& slice) {
   return result;
 }
 
-Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
+template <bool kDescribeErrors>
+typename DecodePolicy<kDescribeErrors>::StatusType KeyEntryValue::DecodeKey(
+    Slice* slice, KeyEntryValue* out) {
+  using Policy = DecodePolicy<kDescribeErrors>;
   // A copy for error reporting.
   const auto input_slice = *slice;
 
   if (slice->empty()) {
-    return STATUS_FORMAT(Corruption,
+    return DOCKV_DECODE_ERROR(
         "Cannot decode a primitive value in the key encoding format from an empty slice: $0",
         ToShortDebugStr(input_slice));
   }
@@ -1311,34 +1323,34 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
   switch (type) {
     CASE_EMPTY_KEY_ENTRY_TYPES
       type_ref = type;
-      return Status::OK();
+      return Policy::Ok();
 
     case KeyEntryType::kCollStringDescending:  FALLTHROUGH_INTENDED;
     case KeyEntryType::kStringDescending: {
       if (out) {
         string result;
-        RETURN_NOT_OK(DecodeComplementZeroEncodedStr(slice, &result));
+        DOCKV_DECODE_RETURN_NOT_OK(DecodeComplementZeroEncodedStr<kDescribeErrors>(slice, &result));
         new (&out->str_val_) string(std::move(result));
       } else {
-        RETURN_NOT_OK(DecodeComplementZeroEncodedStr(slice, nullptr));
+        DOCKV_DECODE_RETURN_NOT_OK(DecodeComplementZeroEncodedStr<kDescribeErrors>(slice, nullptr));
       }
       // Only set type to string after string field initialization succeeds.
       type_ref = type;
-      return Status::OK();
+      return Policy::Ok();
     }
 
     case KeyEntryType::kCollString: FALLTHROUGH_INTENDED;
     case KeyEntryType::kString: {
       if (out) {
         string result;
-        RETURN_NOT_OK(DecodeZeroEncodedStr(slice, &result));
+        DOCKV_DECODE_RETURN_NOT_OK(DecodeZeroEncodedStr<kDescribeErrors>(slice, &result));
         new (&out->str_val_) string(std::move(result));
       } else {
-        RETURN_NOT_OK(DecodeZeroEncodedStr(slice, nullptr));
+        DOCKV_DECODE_RETURN_NOT_OK(DecodeZeroEncodedStr<kDescribeErrors>(slice, nullptr));
       }
       // Only set type to string after string field initialization succeeds.
       type_ref = type;
-      return Status::OK();
+      return Policy::Ok();
     }
 
     case KeyEntryType::kFrozenDescending:
@@ -1356,18 +1368,18 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
           if (frozen_val) {
             out->frozen_val_ = frozen_val.release();
           }
-          return Status::OK();
+          return Policy::Ok();
         } else {
           if (frozen_val) {
             frozen_val->emplace_back();
-            RETURN_NOT_OK(DecodeKey(slice, &frozen_val->back()));
+            DOCKV_DECODE_RETURN_NOT_OK(DecodeKey<kDescribeErrors>(slice, &frozen_val->back()));
           } else {
-            RETURN_NOT_OK(DecodeKey(slice, nullptr));
+            DOCKV_DECODE_RETURN_NOT_OK(DecodeKey<kDescribeErrors>(slice, nullptr));
           }
         }
       }
 
-      return STATUS(Corruption, "Reached end of slice looking for frozen group end marker");
+      return DOCKV_DECODE_ERROR("Reached end of slice looking for frozen group end marker");
     }
 
     case KeyEntryType::kDecimalDescending: FALLTHROUGH_INTENDED;
@@ -1375,7 +1387,7 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
       util::Decimal decimal;
       Slice slice_temp(slice->data(), slice->size());
       size_t num_decoded_bytes = 0;
-      RETURN_NOT_OK(decimal.DecodeFromComparable(slice_temp, &num_decoded_bytes));
+      DOCKV_DECODE_RETURN_NOT_OK(decimal.DecodeFromComparable(slice_temp, &num_decoded_bytes));
       if (type == KeyEntryType::kDecimalDescending) {
         // When we encode a descending decimal, we do a bitwise negation of each byte, which changes
         // the sign of the number. This way we reverse the sorting order. decimal.Negate() restores
@@ -1387,7 +1399,7 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
       }
       slice->remove_prefix(num_decoded_bytes);
       type_ref = type;
-      return Status::OK();
+      return Policy::Ok();
     }
 
     case KeyEntryType::kVarIntDescending: FALLTHROUGH_INTENDED;
@@ -1395,7 +1407,7 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
       yb::VarInt varint;
       Slice slice_temp(slice->data(), slice->size());
       size_t num_decoded_bytes = 0;
-      RETURN_NOT_OK(varint.DecodeFromComparable(slice_temp, &num_decoded_bytes));
+      DOCKV_DECODE_RETURN_NOT_OK(varint.DecodeFromComparable(slice_temp, &num_decoded_bytes));
       if (type == KeyEntryType::kVarIntDescending) {
         varint.Negate();
       }
@@ -1404,29 +1416,27 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
       }
       slice->remove_prefix(num_decoded_bytes);
       type_ref = type;
-      return Status::OK();
+      return Policy::Ok();
     }
 
     case KeyEntryType::kGinNull: {
       if (slice->size() < sizeof(uint8_t)) {
-        return STATUS_FORMAT(Corruption,
-                             "Not enough bytes to decode an 8-bit integer: $0",
-                             slice->size());
+        return DOCKV_DECODE_ERROR("Not enough bytes to decode an 8-bit integer: $0",
+                                 slice->size());
       }
       if (out) {
         out->gin_null_val_ = slice->data()[0];
       }
       slice->remove_prefix(sizeof(uint8_t));
       type_ref = type;
-      return Status::OK();
+      return Policy::Ok();
     }
 
     case KeyEntryType::kInt32Descending: FALLTHROUGH_INTENDED;
     case KeyEntryType::kInt32:
       if (slice->size() < sizeof(int32_t)) {
-        return STATUS_FORMAT(Corruption,
-                             "Not enough bytes to decode a 32-bit integer: $0",
-                             slice->size());
+        return DOCKV_DECODE_ERROR("Not enough bytes to decode a 32-bit integer: $0",
+                                 slice->size());
       }
       if (out) {
         out->int32_val_ = BigEndian::Load32(slice->data()) ^ kInt32SignBitFlipMask;
@@ -1436,16 +1446,15 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
       }
       slice->remove_prefix(sizeof(int32_t));
       type_ref = type;
-      return Status::OK();
+      return Policy::Ok();
 
     case KeyEntryType::kColocationId: FALLTHROUGH_INTENDED;
     case KeyEntryType::kUInt32Descending: FALLTHROUGH_INTENDED;
     case KeyEntryType::kSubTransactionId: FALLTHROUGH_INTENDED;
     case KeyEntryType::kUInt32:
       if (slice->size() < sizeof(uint32_t)) {
-        return STATUS_FORMAT(Corruption,
-                             "Not enough bytes to decode a 32-bit integer: $0",
-                             slice->size());
+        return DOCKV_DECODE_ERROR("Not enough bytes to decode a 32-bit integer: $0",
+                                 slice->size());
       }
       if (out) {
         out->uint32_val_ = BigEndian::Load32(slice->data());
@@ -1455,14 +1464,13 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
       }
       slice->remove_prefix(sizeof(uint32_t));
       type_ref = type;
-      return Status::OK();
+      return Policy::Ok();
 
     case KeyEntryType::kUInt64Descending: FALLTHROUGH_INTENDED;
     case KeyEntryType::kUInt64:
       if (slice->size() < sizeof(uint64_t)) {
-        return STATUS_FORMAT(Corruption,
-                             "Not enough bytes to decode a 64-bit integer: $0",
-                             slice->size());
+        return DOCKV_DECODE_ERROR("Not enough bytes to decode a 64-bit integer: $0",
+                                 slice->size());
       }
       if (out) {
         out->uint64_val_ = BigEndian::Load64(slice->data());
@@ -1472,14 +1480,13 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
       }
       slice->remove_prefix(sizeof(uint64_t));
       type_ref = type;
-      return Status::OK();
+      return Policy::Ok();
 
     case KeyEntryType::kInt64Descending: FALLTHROUGH_INTENDED;
     case KeyEntryType::kInt64: FALLTHROUGH_INTENDED;
     case KeyEntryType::kArrayIndex:
       if (slice->size() < sizeof(int64_t)) {
-        return STATUS_FORMAT(Corruption,
-            "Not enough bytes to decode a 64-bit integer: $0",
+        return DOCKV_DECODE_ERROR("Not enough bytes to decode a 64-bit integer: $0",
             slice->size());
       }
       if (out) {
@@ -1490,26 +1497,24 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
       }
       slice->remove_prefix(sizeof(int64_t));
       type_ref = type;
-      return Status::OK();
+      return Policy::Ok();
 
     case KeyEntryType::kUInt16Hash:
       if (slice->size() < sizeof(uint16_t)) {
-        return STATUS(Corruption, Format("Not enough bytes to decode a 16-bit hash: $0",
-                                         slice->size()));
+        return DOCKV_DECODE_ERROR("Not enough bytes to decode a 16-bit hash: $0", slice->size());
       }
       if (out) {
         out->uint16_val_ = BigEndian::Load16(slice->data());
       }
       slice->remove_prefix(sizeof(uint16_t));
       type_ref = type;
-      return Status::OK();
+      return Policy::Ok();
 
     case KeyEntryType::kTimestampDescending: FALLTHROUGH_INTENDED;
     case KeyEntryType::kTimestamp: {
       if (slice->size() < sizeof(Timestamp)) {
-        return STATUS(Corruption,
-            Format("Not enough bytes to decode a Timestamp: $0, need $1",
-                slice->size(), sizeof(Timestamp)));
+        return DOCKV_DECODE_ERROR("Not enough bytes to decode a Timestamp: $0, need $1",
+            slice->size(), sizeof(Timestamp));
       }
       if (out) {
         const auto uint64_timestamp = DecodeInt64FromKey(*slice);
@@ -1522,98 +1527,98 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
       }
       slice->remove_prefix(sizeof(Timestamp));
       type_ref = type;
-      return Status::OK();
+      return Policy::Ok();
     }
 
     case KeyEntryType::kInetaddress:
     case KeyEntryType::kInetaddressDescending: {
-      using Decoder = Status(*)(Slice*, std::string*);
-      Decoder decoder = &DecodeComplementZeroEncodedStr;
+      using Decoder = typename Policy::StatusType(*)(Slice*, std::string*);
+      Decoder decoder = &DecodeComplementZeroEncodedStr<kDescribeErrors>;
       if (type == KeyEntryType::kInetaddress) {
-        decoder = &DecodeZeroEncodedStr;
+        decoder = &DecodeZeroEncodedStr<kDescribeErrors>;
       }
       std::unique_ptr<InetAddress> inetaddress_val(out ? new InetAddress() : nullptr);
       if (inetaddress_val) {
         std::string bytes;
-        RETURN_NOT_OK(decoder(slice, &bytes));
-        RETURN_NOT_OK(inetaddress_val->FromSlice(bytes));
+        DOCKV_DECODE_RETURN_NOT_OK(decoder(slice, &bytes));
+        DOCKV_DECODE_RETURN_NOT_OK(inetaddress_val->FromSlice(bytes));
       } else {
-        RETURN_NOT_OK(decoder(slice, nullptr));
+        DOCKV_DECODE_RETURN_NOT_OK(decoder(slice, nullptr));
       }
       type_ref = type;
       if (inetaddress_val) {
         out->inetaddress_val_ = inetaddress_val.release();
       }
-      return Status::OK();
+      return Policy::Ok();
     }
 
     case KeyEntryType::kTransactionApplyState: FALLTHROUGH_INTENDED;
     case KeyEntryType::kExternalTransactionId: FALLTHROUGH_INTENDED;
     case KeyEntryType::kVectorId:
       if (slice->size() < boost::uuids::uuid::static_size()) {
-        return STATUS_FORMAT(Corruption, "Not enough bytes for UUID: $0", slice->size());
+        return DOCKV_DECODE_ERROR("Not enough bytes for UUID: $0", slice->size());
       }
       if (out) {
-        out->uuid_val_ = VERIFY_RESULT(Uuid::FromSlice(
+        out->uuid_val_ = DOCKV_DECODE_VERIFY_RESULT(Uuid::FromSlice(
             slice->Prefix(boost::uuids::uuid::static_size())));
       }
       slice->remove_prefix(boost::uuids::uuid::static_size());
       type_ref = type;
-      return Status::OK();
+      return Policy::Ok();
 
     case KeyEntryType::kTransactionId: FALLTHROUGH_INTENDED;
     case KeyEntryType::kTableId: FALLTHROUGH_INTENDED;
     case KeyEntryType::kUuid: {
       if (out) {
         string bytes;
-        RETURN_NOT_OK(DecodeZeroEncodedStr(slice, &bytes));
-        new(&out->uuid_val_) Uuid(VERIFY_RESULT(Uuid::FromComparable(bytes)));
+        DOCKV_DECODE_RETURN_NOT_OK(DecodeZeroEncodedStr<kDescribeErrors>(slice, &bytes));
+        new(&out->uuid_val_) Uuid(DOCKV_DECODE_VERIFY_RESULT(Uuid::FromComparable(bytes)));
       } else {
-        RETURN_NOT_OK(DecodeZeroEncodedStr(slice, nullptr));
+        DOCKV_DECODE_RETURN_NOT_OK(DecodeZeroEncodedStr<kDescribeErrors>(slice, nullptr));
       }
       type_ref = type;
-      return Status::OK();
+      return Policy::Ok();
     }
 
     case KeyEntryType::kUuidDescending: {
       if (out) {
         string bytes;
-        RETURN_NOT_OK(DecodeComplementZeroEncodedStr(slice, &bytes));
-        new(&out->uuid_val_) Uuid(VERIFY_RESULT(Uuid::FromComparable(bytes)));
+        DOCKV_DECODE_RETURN_NOT_OK(DecodeComplementZeroEncodedStr<kDescribeErrors>(slice, &bytes));
+        new(&out->uuid_val_) Uuid(DOCKV_DECODE_VERIFY_RESULT(Uuid::FromComparable(bytes)));
       } else {
-        RETURN_NOT_OK(DecodeComplementZeroEncodedStr(slice, nullptr));
+        DOCKV_DECODE_RETURN_NOT_OK(DecodeComplementZeroEncodedStr<kDescribeErrors>(slice, nullptr));
       }
       type_ref = type;
-      return Status::OK();
+      return Policy::Ok();
     }
 
     case KeyEntryType::kColumnId: FALLTHROUGH_INTENDED;
     case KeyEntryType::kSystemColumnId: {
       if (out) {
-        out->column_id_val_ = VERIFY_RESULT(ColumnId::Decode(slice));
+        out->column_id_val_ = DOCKV_DECODE_VERIFY_RESULT(ColumnId::Decode(slice));
       } else {
-        RETURN_NOT_OK(ColumnId::Decode(slice));
+        DOCKV_DECODE_RETURN_NOT_OK(ColumnId::Decode(slice));
       }
 
       type_ref = type;
-      return Status::OK();
+      return Policy::Ok();
     }
 
     case KeyEntryType::kHybridTime: {
       if (out) {
-        new (&out->hybrid_time_val_) DocHybridTime(VERIFY_RESULT(DocHybridTime::DecodeFrom(slice)));
+        new (&out->hybrid_time_val_) DocHybridTime(
+            DOCKV_DECODE_VERIFY_RESULT(DocHybridTime::DecodeFrom(slice)));
       } else {
-        RETURN_NOT_OK(DocHybridTime::DecodeFrom(slice));
+        DOCKV_DECODE_RETURN_NOT_OK(DocHybridTime::DecodeFrom(slice));
       }
 
       type_ref = KeyEntryType::kHybridTime;
-      return Status::OK();
+      return Policy::Ok();
     }
 
     case KeyEntryType::kTransactionMetadataUpdateTime: {
       if (slice->size() < sizeof(uint64_t)) {
-        return STATUS_FORMAT(
-            Corruption, "Invalid number of bytes for a TransactionMetadataUpdateTime: $0",
+        return DOCKV_DECODE_ERROR("Invalid number of bytes for a TransactionMetadataUpdateTime: $0",
             slice->size());
       }
       if (out) {
@@ -1621,27 +1626,27 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
       }
       slice->remove_prefix(sizeof(uint64_t));
       type_ref = KeyEntryType::kTransactionMetadataUpdateTime;
-      return Status::OK();
+      return Policy::Ok();
     }
 
     case KeyEntryType::kIntentTypeSet: FALLTHROUGH_INTENDED;
     case KeyEntryType::kObsoleteIntentTypeSet: FALLTHROUGH_INTENDED;
     case KeyEntryType::kObsoleteIntentType: {
       if (slice->empty()) {
-        return STATUS_FORMAT(Corruption, "Not enough bytes to decode a TypeSet");
+        return DOCKV_DECODE_ERROR("Not enough bytes to decode a TypeSet");
       }
       uint16_t value = static_cast<uint16_t>(slice->consume_byte());
       if (out) {
         out->uint16_val_ = value;
       }
       type_ref = type;
-      return Status::OK();
+      return Policy::Ok();
     }
 
     case KeyEntryType::kFloatDescending: FALLTHROUGH_INTENDED;
     case KeyEntryType::kFloat: {
       if (slice->size() < sizeof(float_t)) {
-        return STATUS_FORMAT(Corruption, "Not enough bytes to decode a float: $0", slice->size());
+        return DOCKV_DECODE_ERROR("Not enough bytes to decode a float: $0", slice->size());
       }
       if (out) {
         if (type == KeyEntryType::kFloatDescending) {
@@ -1652,12 +1657,12 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
       }
       slice->remove_prefix(sizeof(float_t));
       type_ref = type;
-      return Status::OK();
+      return Policy::Ok();
     }
     case KeyEntryType::kDoubleDescending: FALLTHROUGH_INTENDED;
     case KeyEntryType::kDouble: {
       if (slice->size() < sizeof(double_t)) {
-        return STATUS_FORMAT(Corruption, "Not enough bytes to decode a float: $0", slice->size());
+        return DOCKV_DECODE_ERROR("Not enough bytes to decode a float: $0", slice->size());
       }
       if (out) {
         if (type == KeyEntryType::kDoubleDescending) {
@@ -1668,40 +1673,46 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
       }
       slice->remove_prefix(sizeof(double_t));
       type_ref = type;
-      return Status::OK();
+      return Policy::Ok();
     }
 
     case KeyEntryType::kBson: {
       if (out) {
         string result;
-        RETURN_NOT_OK(BsonKeyFromComparableBinary(slice, &result));
+        DOCKV_DECODE_RETURN_NOT_OK(BsonKeyFromComparableBinary(slice, &result));
         new (&out->str_val_) string(std::move(result));
       } else {
-        RETURN_NOT_OK(BsonKeyFromComparableBinary(slice, nullptr));
+        DOCKV_DECODE_RETURN_NOT_OK(BsonKeyFromComparableBinary(slice, nullptr));
       }
       type_ref = type;
-      return Status::OK();
+      return Policy::Ok();
     }
 
     case KeyEntryType::kBsonDescending: {
       if (out) {
         string result;
-        RETURN_NOT_OK(BsonKeyFromComparableBinaryDescending(slice, &result));
+        DOCKV_DECODE_RETURN_NOT_OK(BsonKeyFromComparableBinaryDescending(slice, &result));
         new (&out->str_val_) string(std::move(result));
       } else {
-        RETURN_NOT_OK(BsonKeyFromComparableBinaryDescending(slice, nullptr));
+        DOCKV_DECODE_RETURN_NOT_OK(BsonKeyFromComparableBinaryDescending(slice, nullptr));
       }
       type_ref = type;
-      return Status::OK();
+      return Policy::Ok();
     }
 
     IGNORE_SPECIAL_KEY_ENTRY_TYPES;
   }
-  return STATUS_FORMAT(
-      Corruption,
-      "Cannot decode value type $0 from the key encoding format: $1",
+  return DOCKV_DECODE_ERROR("Cannot decode value type $0 from the key encoding format: $1",
       type,
       ToShortDebugStr(input_slice));
+}
+
+
+template Status KeyEntryValue::DecodeKey<true>(Slice* slice, KeyEntryValue* out);
+template ProbeStatus KeyEntryValue::DecodeKey<false>(Slice* slice, KeyEntryValue* out);
+
+Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
+  return DecodeKey<true>(slice, out);
 }
 
 Status PrimitiveValue::DecodeFromValue(const Slice& rocksdb_slice) {
@@ -3350,6 +3361,7 @@ std::string KeyEntryValue::ToString(AutoDecodeKeys auto_decode_keys) const {
     case KeyEntryType::kGroupEndDescending: FALLTHROUGH_INTENDED;
     case KeyEntryType::kTtl: FALLTHROUGH_INTENDED;
     case KeyEntryType::kUserTimestamp: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kCdrMetadata: FALLTHROUGH_INTENDED;
     case KeyEntryType::kObsoleteIntentPrefix: FALLTHROUGH_INTENDED;
     case KeyEntryType::kExternalIntents: FALLTHROUGH_INTENDED;
     case KeyEntryType::kGreaterThanIntentType:

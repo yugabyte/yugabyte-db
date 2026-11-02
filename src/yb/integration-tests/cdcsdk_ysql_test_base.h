@@ -958,6 +958,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   void TestXClusterTablesNotAddedToStream(
       bool use_logical_replication_stream, bool enable_xcluster_before_stream_creation);
 
+  void TestPublicationsBoundStreamsAcrossMasterRestart(
+      bool bind_to_all_tables_pub, const std::string& output_plugin_name);
+
   void TestMetricObjectRemovalAfterStreamDeletion(bool use_logical_replication);
 
   Status CreateTables(

@@ -222,7 +222,8 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
 
   void FillTable(int begin, int end, const TableHandle& table) {
     ASSERT_OK(WaitForTableLeaders(cluster_.get(), table->id(), 10s * kTimeMultiplier));
-    ASSERT_OK(WaitAllReplicasSynchronizedWithLeader(cluster_.get(), 10s * kTimeMultiplier));
+    ASSERT_OK(WaitAllReplicasSynchronizedWithLeader(
+        cluster_.get(), 10s * kTimeMultiplier, RequireLeaderIsReady::kFalse));
     LOG(INFO) << "Start filling table";
     {
       auto session = CreateSession();
@@ -836,7 +837,7 @@ TEST_F(QLTabletTest, WaitFlush) {
       if (!tablet) {
         continue;
       }
-      auto flushed_op_id = ASSERT_RESULT(tablet->MaxPersistentOpId()).regular;
+      auto flushed_op_id = ASSERT_RESULT(tablet->GetPersistentState()).regular;
       auto latest_entry_op_id = peer->log()->GetLatestEntryOpId();
       ASSERT_LE(flushed_op_id.index, latest_entry_op_id.index);
     }
@@ -848,7 +849,7 @@ TEST_F(QLTabletTest, WaitFlush) {
     if (!tablet) {
       continue;
     }
-    auto flushed_op_id = ASSERT_RESULT(tablet->MaxPersistentOpId()).regular;
+    auto flushed_op_id = ASSERT_RESULT(tablet->GetPersistentState()).regular;
     ASSERT_GE(flushed_op_id.index, 100);
   }
 

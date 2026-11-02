@@ -1,7 +1,9 @@
 package common
 
 import (
+	"bytes"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -97,6 +99,26 @@ func TestIsSubdirectory(t *testing.T) {
 	if isSubdir, err := IsSubdirectory(base, target); err == nil {
 		if !isSubdir {
 			t.Fatalf("/opt/yugabyte/test/nested/ is a subdirectory of /opt/yugabyte")
+		}
+	}
+}
+
+func TestConfUpdaterDoesNotDuplicateEntries(t *testing.T) {
+	conf := "#data_directory = 'ConfigDir'\t\t# use data in another directory\nport = 5432\n"
+	updater := ConfUpdater{Entries: []ConfEntry{
+		{Key: "data_directory", Value: "/opt/yugabyte/data/postgres", Quotes: true},
+		{Key: "port", Value: "5433", Quotes: false},
+	}}
+	for pass := 1; pass <= 2; pass++ {
+		var out bytes.Buffer
+		if err := updater.Update(strings.NewReader(conf), &out); err != nil {
+			t.Fatalf("pass %d: %s", pass, err)
+		}
+		conf = out.String()
+		for _, want := range []string{"data_directory = '/opt/yugabyte/data/postgres'\n", "port = 5433\n"} {
+			if n := strings.Count(conf, want); n != 1 {
+				t.Fatalf("pass %d: found %q %d times in:\n%s", pass, want, n, conf)
+			}
 		}
 	}
 }

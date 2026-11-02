@@ -230,7 +230,8 @@ repack_setup_logical_decoding(Oid relid)
 						  false, false,
 						  NULL /* yb_plugin_name */ , CRS_NOEXPORT_SNAPSHOT,
 						  NULL /* yb_consistent_snapshot_time */ ,
-						  CRS_SEQUENCE, YB_CRS_TRANSACTION);
+						  CRS_SEQUENCE, YB_CRS_TRANSACTION,
+						  NULL /* yb_publication_name */ );
 
 	EnsureLogicalDecodingEnabled();
 

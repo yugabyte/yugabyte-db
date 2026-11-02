@@ -47,6 +47,9 @@ scrape_configs:
          - '/opt/yugabyte/swamper_targets/otel.*.json'
 
  - job_name: "node"
+   # DB node exporters serve the node-to-node certificate, signed by a per-universe CA.
+   tls_config:
+     insecure_skip_verify: true
    file_sd_configs:
      - files:
        - '/opt/yugabyte/swamper_targets/node.*.json'

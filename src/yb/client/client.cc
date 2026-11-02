@@ -1609,7 +1609,10 @@ Result<xrepl::StreamId> YBClient::CreateCDCSDKStreamForNamespace(
     uint64_t *consistent_snapshot_time_out,
     const std::optional<ReplicationSlotLsnType>& lsn_type,
     const std::optional<ReplicationSlotOrderingMode>& ordering_mode,
-    const std::vector<TableId>& bound_table_ids) {
+    const std::vector<TableId>& bound_table_ids,
+    const std::optional<std::string>& bound_publication_name,
+    const std::vector<TableId>& bound_publication_table_ids,
+    bool bound_publication_all_tables) {
   CreateCDCStreamRequestPB req;
 
   if (populate_namespace_id_as_table_id) {
@@ -1645,6 +1648,16 @@ Result<xrepl::StreamId> YBClient::CreateCDCSDKStreamForNamespace(
     auto* bound = req.mutable_cdcsdk_stream_create_options()->mutable_bound_table_ids();
     for (const auto& id : bound_table_ids) {
       bound->add_table_ids(id);
+    }
+  }
+  if (bound_publication_name.has_value()) {
+    auto* create_options = req.mutable_cdcsdk_stream_create_options();
+    create_options->set_bound_publication_name(*bound_publication_name);
+    create_options->set_bound_publication_all_tables(bound_publication_all_tables);
+    // Set even when empty: an empty publication binds the stream to no tables.
+    auto* member_ids = create_options->mutable_bound_publication_table_ids();
+    for (const auto& id : bound_publication_table_ids) {
+      member_ids->add_table_ids(id);
     }
   }
 

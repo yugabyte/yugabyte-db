@@ -34,17 +34,32 @@ AlterSetting(Oid databaseid, Oid roleid, VariableSetStmt *setstmt)
 	 *  1. ALTER ROLE ... SET: set a variable for a specific role
 	 *  2. ALTER ROLE ALL SET: set a variable for all roles
 	 *  3. ALTER DATABASE ... SET: set a variable for a specific database
-	 *  4. ALTER ROLE ... IN DATABASE ... SET: set a variable for a specific role within a database
+	 *  4. ALTER ROLE ... IN DATABASE ... SET: set a variable for a specific
+	 *     role within a database
 	 *
-	 * Password validity only makes sense in the context of (1) and (2). Roles
-	 * are global across databases, and hence password validity for a role
-	 * cannot be enforced at a database-scope.
+	 * Password validity and password reuse are properties of the role, which
+	 * is global across databases, so they only make sense in (1) and (2).
+	 * Those pass databaseid InvalidOid.
+	 *
+	 * yb_allow_prehashed_passwords is a cluster switch, so only (2) is
+	 * accepted. A per-role value is applied in that role's session and can
+	 * skip a reuse policy that is on for the cluster.
 	 */
-	if (setstmt->name && strcmp(setstmt->name, "yb_password_validity") == 0 &&
-		databaseid != InvalidOid)
+	if (setstmt->name && databaseid != InvalidOid &&
+		(strcmp(setstmt->name, "yb_password_validity") == 0 ||
+		 strcmp(setstmt->name, "yb_password_reuse_history") == 0 ||
+		 strcmp(setstmt->name, "yb_password_reuse_interval") == 0))
 		ereport(ERROR,
 				(errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM),
 				 errmsg("parameter \"%s\" can only be set for a specific role",
+						setstmt->name)));
+
+	if (setstmt->name &&
+		strcmp(setstmt->name, "yb_allow_prehashed_passwords") == 0 &&
+		(databaseid != InvalidOid || OidIsValid(roleid)))
+		ereport(ERROR,
+				(errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM),
+				 errmsg("parameter \"%s\" can only be set for all roles",
 						setstmt->name)));
 
 	valuestr = ExtractSetVariableArgs(setstmt);

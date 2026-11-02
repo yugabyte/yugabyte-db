@@ -776,6 +776,24 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     MDC.remove(Commissioner.SUBTASK_PAUSE_POSITION_PROPERTY);
   }
 
+  /** Position of the first subtask of {@code taskType} created so far by the task. */
+  public static int firstSubTaskPosition(UUID taskUuid, TaskType taskType) {
+    return TaskInfo.getOrBadRequest(taskUuid).getSubTasks().stream()
+        .filter(t -> t.getTaskType() == taskType)
+        .mapToInt(TaskInfo::getPosition)
+        .min()
+        .orElseThrow();
+  }
+
+  /** Position of the last subtask of {@code taskType} created so far by the task. */
+  public static int lastSubTaskPosition(UUID taskUuid, TaskType taskType) {
+    return TaskInfo.getOrBadRequest(taskUuid).getSubTasks().stream()
+        .filter(t -> t.getTaskType() == taskType)
+        .mapToInt(TaskInfo::getPosition)
+        .max()
+        .orElseThrow();
+  }
+
   public void verifyTaskRetries(
       Customer customer,
       CustomerTask.TaskType customerTaskType,

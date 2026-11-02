@@ -34,6 +34,7 @@ import static org.mockito.Mockito.when;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PrometheusConfigHelper;
 import com.yugabyte.yw.common.ShellProcessHandler;
@@ -74,6 +75,8 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
   @Rule public MockitoRule rule = MockitoJUnit.rule();
   @Mock Config mockConfig;
 
+  @Mock PlatformExecutorFactory mockPlatformExecutorFactory;
+
   @Mock PlatformScheduler mockPlatformScheduler;
 
   @Mock ShellProcessHandler shellProcessHandler;
@@ -108,6 +111,7 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
     backupManager =
         spy(
             new PlatformReplicationManager(
+                mockPlatformExecutorFactory,
                 mockPlatformScheduler,
                 mockReplicationUtil,
                 mockFileDataService,
@@ -260,6 +264,7 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
     setupConfig(prometheusHost, dbUsername, dbPassword, dbHost, dbPort, isYbaInstaller);
     PlatformReplicationManager backupManager =
         new PlatformReplicationManager(
+            mockPlatformExecutorFactory,
             mockPlatformScheduler,
             mockReplicationUtil,
             mockFileDataService,
@@ -317,6 +322,7 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
       PlatformReplicationManager backupManager =
           spy(
               new PlatformReplicationManager(
+                  mockPlatformExecutorFactory,
                   mockPlatformScheduler,
                   mockReplicationUtil,
                   mockFileDataService,

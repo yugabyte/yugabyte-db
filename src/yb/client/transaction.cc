@@ -110,7 +110,8 @@ DEFINE_test_flag(int32, old_txn_status_abort_delay_ms, 0,
                  "Inject delay before sending abort to old transaction status tablet.");
 
 DEFINE_test_flag(int32, new_txn_status_initial_heartbeat_delay_ms, 0,
-                 "Inject delay before sending initial heartbeat to new transaction status tablet.");
+                 "Inject delay before sending the initial heartbeat to the new status tablet of a "
+                 "transaction being promoted.");
 
 DEFINE_test_flag(uint64, override_transaction_priority, 0,
                  "Override priority of transactions if nonzero.");
@@ -832,23 +833,9 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       return false;
     }
 
-    if (!FLAGS_auto_promote_nonlocal_transactions_to_global) {
-      auto tablet_id = op->tablet->tablet_id();
-      auto status = STATUS_FORMAT(
-            IllegalState, "Nonlocal tablet accessed in local transaction: tablet $0", tablet_id);
-      VLOG_WITH_PREFIX(4) << "Prepare, rejected: " << status;
-      return status;
-    }
-
-    VLOG_WITH_PREFIX(2) << "Prepare, rejected (promotion required)";
     // We start the promotion first, to avoid sending transaction status move RPCs to tablets
     // that were first involved in the transaction with this batch of changes.
-    auto status = StartPromotionToGlobal();
-    if (!status.ok()) {
-      LOG(DFATAL) << "Prepare for transaction " << metadata_.transaction_id
-                  << " rejected (promotion failed): " << status;
-      return status;
-    }
+    RETURN_NOT_OK(StartPromotionToGlobal(op));
     return true;
   }
 
@@ -858,15 +845,34 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       if (metadata_.locality.IsGlobal()) {
         return Status::OK();
       }
+      RETURN_NOT_OK(CheckRunningUnlocked());
       RETURN_NOT_OK(StartPromotionToGlobal());
     }
     DoPromoteToGlobal(deadline);
     return Status::OK();
   }
 
-  Status StartPromotionToGlobal() REQUIRES(mutex_) {
+  Status StartPromotionToGlobal(internal::InFlightOp* violating_op = nullptr) REQUIRES(mutex_) {
     if (metadata_.locality.IsGlobal()) {
-      return STATUS(IllegalState, "Global transactions cannot be promoted");
+      auto status = STATUS(IllegalState, "Global transactions cannot be promoted");
+      LOG_WITH_PREFIX(DFATAL) << "Promotion failed: " << status;
+      return status;
+    }
+
+    if (!FLAGS_auto_promote_nonlocal_transactions_to_global) {
+      auto status = violating_op
+          ? STATUS_FORMAT(
+                IllegalState, "Nonlocal tablet accessed in local transaction: tablet $0",
+                violating_op->tablet->tablet_id())
+          : STATUS(
+                IllegalState, "FLAGS_auto_promote_nonlocal_transactions_to_global set to false");
+      VLOG_WITH_PREFIX(4) << (violating_op ? "Prepare, rejected: " : "EnsureGlobal, rejected: ")
+                          << status;
+      return status;
+    }
+
+    if (violating_op) {
+      VLOG_WITH_PREFIX(2) << "Prepare, rejected (promotion required)";
     }
 
     auto running_state = TransactionState::kRunning;
@@ -1484,6 +1490,11 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     remote_abort_callback_ = std::move(callback);
   }
 
+  void PromotionCallback(std::function<void(TabletId)> callback) {
+    std::lock_guard lock(mutex_);
+    promotion_callback_ = std::move(callback);
+  }
+
  private:
   void CompleteConstruction() {
     LOG_IF(FATAL, !IsAcceptableAtomicImpl(log_prefix_.tag));
@@ -1909,6 +1920,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       std::lock_guard lock(mutex_);
       cleanup_waiter_.swap(waiter);
       old_status_tablet_state_.store(OldTransactionState::kAborted, std::memory_order_release);
+      LOG_IF_WITH_PREFIX(DFATAL, promotion_callback_)
+          << "promotion callback not called yet at time of old transaction abort";
     }
 
     if (waiter) {
@@ -2014,7 +2027,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
                         SendHeartbeatToNewTablet(promoting));
         }
       };
-      if (PREDICT_FALSE(FLAGS_TEST_new_txn_status_initial_heartbeat_delay_ms > 0)) {
+      if (PREDICT_FALSE(FLAGS_TEST_new_txn_status_initial_heartbeat_delay_ms > 0) && promoting) {
         manager_->client()->messenger()->scheduler().Schedule(
             std::move(send_new_heartbeat),
             std::chrono::milliseconds(FLAGS_TEST_new_txn_status_initial_heartbeat_delay_ms));
@@ -2350,6 +2363,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
                 state != TransactionState::kAborted) {
               LOG_WITH_PREFIX(DFATAL) << "Transaction status promoted but not in promoting state";
             }
+            ExecutePromotionCallback();
             SendUpdateTransactionPromotingRpcs();
           }
           FALLTHROUGH_INTENDED;
@@ -2364,7 +2378,6 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
           FALLTHROUGH_INTENDED;
         case TransactionStatus::PENDING:
           ASH_ENABLE_CONCURRENT_UPDATES();
-          SET_WAIT_STATUS(OnCpu_Passive);
           manager_->client()->messenger()->scheduler().Schedule(
               [this, weak_transaction, send_to_new_tablet, id = metadata_.transaction_id,
                   wait_state = wait_state_](
@@ -2445,6 +2458,21 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     }
   }
 
+  void ExecutePromotionCallback() {
+    TRACE_TO(trace_, __func__);
+    std::function<void(TabletId)> promotion_callback;
+    TabletId status_tablet;
+    {
+      std::lock_guard lock(mutex_);
+      if (!promotion_callback_) {
+        return;
+      }
+      promotion_callback.swap(promotion_callback_);
+      status_tablet = status_tablet_->tablet_id();
+    }
+    promotion_callback(std::move(status_tablet));
+  }
+
   void SendUpdateTransactionPromotingRpcs() EXCLUDES(mutex_) {
     TRACE_TO(trace_, __func__);
     VLOG_WITH_PREFIX(2) << "SendUpdateTransactionPromotingRpcs()";
@@ -2488,7 +2516,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     VLOG_WITH_PREFIX(2) << "DoSendUpdateTransactionPromotingRpcs()";
 
     std::vector<TabletId> participant_tablets;
-    std::function<void(const TabletId&)> start_location_update;
+    std::function<void(TabletId)> start_location_update;
     tserver::UpdateTransactionRequestPB req;
     {
       UniqueLock lock(mutex_);
@@ -2747,7 +2775,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
   // This is a pointer to the wait state that was created while
   // processing the inbound call, we use this to update the
-  // threadlocal wait state ptr when changing threads.
+  // threadlocal wait state ptr when changing threads. That call may still be in flight, so
+  // don't overwrite its wait status just to mark a pending timer.
   const ash::WaitStateInfoPtr wait_state_;
 
   std::atomic<MicrosTime> start_;
@@ -2866,6 +2895,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   OriginationInfo origination_info_ GUARDED_BY(mutex_);
 
   std::function<void(void)> remote_abort_callback_ GUARDED_BY(mutex_);
+  std::function<void(TabletId)> promotion_callback_ GUARDED_BY(mutex_);
 };
 
 CoarseTimePoint AdjustDeadline(CoarseTimePoint deadline) {
@@ -3128,6 +3158,10 @@ void YBTransaction::SetOriginId(uint32_t origin_id) { impl_->SetOriginId(origin_
 
 void YBTransaction::RemoteAbortCallback(std::function<void(void)> callback) {
   impl_->RemoteAbortCallback(std::move(callback));
+}
+
+void YBTransaction::PromotionCallback(std::function<void(TabletId)> callback) {
+  impl_->PromotionCallback(std::move(callback));
 }
 
 } // namespace client

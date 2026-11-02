@@ -43,6 +43,7 @@
 #include "utils/varlena.h"
 
 /* YB includes */
+#include "common/base64.h"
 #include "common/pg_yb_common.h"
 #include "common/pg_yb_conn_mgr_protocol.h"
 #include "pg_yb_utils.h"
@@ -199,6 +200,7 @@ BackendInitialize(ClientSocket *client_sock, CAC_state cac)
 	port->yb_is_tserver_auth_method = false;
 	port->yb_is_ssl_enabled_in_logical_conn = false;
 	port->yb_forwarded_cert_parse_failed = false;
+	port->yb_logical_conn_server_cert_hash_len = 0;
 
 	/*
 	 * We arrange to do _exit(1) if we receive SIGTERM or timeout while trying
@@ -551,6 +553,7 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 	char		yb_logical_conn_type = 'U'; /* Unencrypted */
 	bool		yb_logical_conn_type_provided = false;
 	char	   *yb_client_cert = NULL;
+	char	   *yb_server_cert_hash_b64 = NULL;
 	YbInternalConnKind yb_internal_conn_kind = YB_INTERNAL_CONN_KIND_NONE;
 	bool		yb_is_control_conn = false;
 	bool		yb_is_auth_via_conn_mgr = false;
@@ -886,6 +889,9 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 					 && strcmp(nameptr, YB_YCM_CLIENT_CERT) == 0)
 				yb_client_cert = pstrdup(valptr);
 			else if (YBIsEnabledInPostgresEnvVar()
+					 && strcmp(nameptr, YB_YCM_SERVER_CERT_HASH) == 0)
+				yb_server_cert_hash_b64 = pstrdup(valptr);
+			else if (YBIsEnabledInPostgresEnvVar()
 					 && strcmp(nameptr, YB_YCM_IS_CONTROL_CONN) == 0)
 			{
 				if (!parse_bool(valptr, &yb_is_control_conn))
@@ -1039,6 +1045,39 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 
 			port->yb_is_ssl_enabled_in_logical_conn =
 				yb_logical_conn_type == 'E';
+		}
+
+		if (yb_server_cert_hash_b64 != NULL)
+		{
+			int			b64len = strlen(yb_server_cert_hash_b64);
+			int			hashlen;
+			uint8	   *decoded;
+
+			/*
+			 * Like the client certificate, only the connection manager may
+			 * state which certificate it presented to the logical client;
+			 * SCRAM channel binding is checked against it.
+			 */
+			if (!yb_is_auth_via_conn_mgr)
+				ereport(FATAL,
+						(errcode(ERRCODE_PROTOCOL_VIOLATION),
+						 errmsg("%s must only be provided when the client is "
+								"the connection manager",
+								YB_YCM_SERVER_CERT_HASH)));
+
+			decoded = palloc(pg_b64_dec_len(b64len));
+			hashlen = pg_b64_decode(yb_server_cert_hash_b64, b64len, decoded,
+									pg_b64_dec_len(b64len));
+			if (hashlen <= 0 || hashlen > YB_SERVER_CERT_HASH_MAX_LEN)
+				ereport(FATAL,
+						(errcode(ERRCODE_PROTOCOL_VIOLATION),
+						 errmsg("invalid value for parameter \"%s\"",
+								YB_YCM_SERVER_CERT_HASH)));
+
+			memcpy(port->yb_logical_conn_server_cert_hash, decoded, hashlen);
+			port->yb_logical_conn_server_cert_hash_len = hashlen;
+			pfree(decoded);
+			pfree(yb_server_cert_hash_b64);
 		}
 
 		if (yb_client_cert != NULL)

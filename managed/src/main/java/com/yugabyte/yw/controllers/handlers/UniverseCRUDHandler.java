@@ -1135,6 +1135,7 @@ public class UniverseCRUDHandler {
     }
 
     checkGeoPartitioningParameters(customer, taskParams, OpType.CREATE);
+    validateTmpDirGflagConsistency(taskParams);
     validateOciInstanceTags(taskParams);
 
     // Only tasks write this state. Universe.create() below would save a copy sent by the client.
@@ -1892,7 +1893,7 @@ public class UniverseCRUDHandler {
       throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
-    taskParams.clusters.add(primaryCluster);
+    taskParams.clusters.add(0, primaryCluster);
 
     // Set the provider code.
     Provider provider = Util.getSingleProvider(addOnCluster);
@@ -1977,7 +1978,9 @@ public class UniverseCRUDHandler {
     if (primaryCluster.userIntent.specificGFlags != null) {
       primaryGflagGroups = primaryCluster.userIntent.specificGFlags.getGflagGroups();
     }
-    taskParams.clusters.add(primaryCluster);
+    // Add the primary cluster at the beginning of the cluster list.
+    // TODO fix all other places where cluster at index 0 is assumed to be the primary cluster.
+    taskParams.clusters.add(0, primaryCluster);
     validateConsistency(primaryCluster, readOnlyCluster);
 
     if (readOnlyCluster.userIntent.provider != null) {
@@ -2942,7 +2945,7 @@ public class UniverseCRUDHandler {
         throw new PlatformServiceException(BAD_REQUEST, "Cannot change geo partitions state");
       }
       if (!CollectionUtils.isEmpty(newCluster.getPartitions())) {
-        PlacementInfoUtil.validatePartitions(newCluster);
+        PlacementInfoUtil.validatePartitions(newCluster, curCluster);
         Map<UUID, UniverseDefinitionTaskParams.PartitionInfo> currentMap =
             curCluster.getPartitions().stream().collect(Collectors.toMap(g -> g.getUuid(), g -> g));
         Map<UUID, UniverseDefinitionTaskParams.PartitionInfo> newMap =
@@ -3169,6 +3172,9 @@ public class UniverseCRUDHandler {
         newInstallGFlags.value,
         universe.getName());
     universe.setNewInstallGFlags(newInstallGFlags);
+    if (primaryCluster != null && Util.isKubernetesBased(primaryCluster)) {
+      universe.updateConfig(Map.of(Universe.K8S_APPLY_NEW_INSTALL_GFLAGS, Boolean.toString(true)));
+    }
   }
 
   // This method enforces the user tags provided in runtime config.
@@ -3204,6 +3210,30 @@ public class UniverseCRUDHandler {
               String.format(
                   "Invalid value for %s (accepted values: %s)",
                   userTag, StringUtils.join(acceptedValuesSet, ", ")));
+      }
+    }
+  }
+
+  private void validateTmpDirGflagConsistency(UniverseDefinitionTaskParams taskParams) {
+    for (Cluster cluster : taskParams.clusters) {
+      if (!cluster.userIntent.getAllCloudTypes().contains(Common.CloudType.onprem)) {
+        continue;
+      }
+      for (UUID providerUuid : cluster.userIntent.getAllProviderUUIDs()) {
+        Provider provider = Provider.getOrBadRequest(providerUuid);
+        if (!provider.getCloudCode().equals(Common.CloudType.onprem)) {
+          continue;
+        }
+        if (confGetter.getConfForScope(
+            provider, ProviderConfKeys.skipTmpDirGflagConsistencyCheck)) {
+          continue;
+        }
+        String tmpDirErrMsg =
+            GFlagsUtil.checkTmpDirGflagConsistency(
+                confGetter, provider, cluster, taskParams.clusters);
+        if (tmpDirErrMsg != null) {
+          throw new PlatformServiceException(BAD_REQUEST, tmpDirErrMsg);
+        }
       }
     }
   }
