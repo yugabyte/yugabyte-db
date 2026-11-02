@@ -3351,7 +3351,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   bool AreLogicalReplicationStreams(const std::unordered_set<xrepl::StreamId>& stream_ids)
       REQUIRES_SHARED(mutex_);
 
-  // Reads cdc_state, so callers must not hold mutex_ on a request path.
   Result<HybridTime> ReadMinRestartTimeAcrossSlots(
       const std::unordered_set<xrepl::StreamId>& stream_ids);
 
