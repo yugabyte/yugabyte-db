@@ -1913,8 +1913,15 @@ TEST_F_EX(ObjectLockTest, AcquireAndReleaseDDLLockAcrossMasterFailover, MultiMas
   DumpMasterAndTServerLocks(cluster_.get(), "Before step down");
   LOG(INFO) << "Stepping down from " << leader_master1->ToString();
   ASSERT_OK(cluster_->StepDownMasterLeader());
+  // Graceful step down may be delayed, so the old leader can still report itself as leader.
+  master::MiniMaster* leader_master2 = nullptr;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        leader_master2 = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
+        return leader_master2 != leader_master1;
+      },
+      kTimeout, "Wait for master leader change"));
   ASSERT_OK(cluster_->WaitForTabletServerCount(num_ts));
-  auto* leader_master2 = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
   auto master_local_lock_manager2 = leader_master2->master()
                                         ->catalog_manager_impl()
                                         ->object_lock_info_manager()
