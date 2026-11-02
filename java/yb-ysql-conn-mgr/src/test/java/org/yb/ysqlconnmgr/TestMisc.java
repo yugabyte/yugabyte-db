@@ -547,15 +547,14 @@ public class TestMisc extends BaseYsqlConnMgr {
         int terminatedPid = getProcessId(stmt);
         assertNotEquals("Failed to obtain the process ID.", terminatedPid, -1);
 
-        try (ResultSet rs = suStmt.executeQuery(
-                 String.format("SELECT pg_terminate_backend(%d)", terminatedPid))) {
+        // Wait for the backend to exit and close its socket; a fixed sleep is
+        // not enough in slow (e.g. TSAN) builds.
+        try (ResultSet rs = suStmt.executeQuery(String.format(
+                 "SELECT pg_terminate_backend(%d, 60000)", terminatedPid))) {
           assertTrue(rs.next());
           assertTrue("pg_terminate_backend failed for pid " + terminatedPid,
                      rs.getBoolean(1));
         }
-
-        // Give the backend time to exit and close its socket.
-        Thread.sleep(1000);
 
         // The pooled server is dead; connection manager must skip it instead
         // of failing the query.
