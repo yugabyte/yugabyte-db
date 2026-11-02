@@ -12227,6 +12227,9 @@ Status CatalogManager::DeleteOrHideTabletsAndSendRequests(
   for (auto& tablet_data : tablets_data) {
     LOG(INFO) << (hide_only ? "Hid" : "Deleted") << " tablet " << tablet_data.tablet->tablet_id();
     tablet_data.lock.Commit();
+    if (!hide_only) {
+      tablet_data.tablet->StopCountingReplicaLoad();
+    }
   }
 
   TEST_SYNC_POINT("CatalogManager::DeleteOrHideTabletsAndSendRequests::AddToMaps");
@@ -14431,9 +14434,8 @@ Result<CMGlobalLoadState> CatalogManager::InitializeGlobalLoadState(
     const TSDescriptorVector& ts_descs) {
   CMGlobalLoadState state;
   for (const auto& ts : ts_descs) {
-    // Global load is only a tie-breaker, so the tserver's last heartbeat count is good enough and
-    // avoids walking every tablet in the cluster.
-    state.per_ts_replica_load_[ts->permanent_uuid()] = ts->num_live_replicas();
+    state.per_ts_replica_load_[ts->permanent_uuid()] =
+        narrow_cast<uint32_t>(std::max<int64_t>(ts->replica_load(), 0));
     state.per_ts_protege_load_[ts->permanent_uuid()];
   }
   return state;
