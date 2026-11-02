@@ -2312,6 +2312,9 @@ class CDCServiceTestMinSpace : public CDCServiceTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_segments_to_retain) = 1;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 1;
+    // On fast hardware the segments are younger than log_min_seconds_to_retain when the test asks
+    // what can be GCed; skip time-based retention so only the CDC and min-space policies apply.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_wal_retention_time) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_wal_retention_time_secs) = 1;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_log_retention_by_op_idx) = true;
     // We want the logs to be GCed because of space, not because they exceeded the maximum time to
@@ -2359,12 +2362,6 @@ TEST_F(CDCServiceTestMinSpace, TestLogRetentionByOpId_MinSpace) {
   for (int i = 1; i <= 5000; i++) {
     WriteTestRow(i, kRowCount + i, "key" + std::to_string(i), tablet_id, proxy);
   }
-
-  // Ensure closed segments age past FLAGS_log_min_seconds_to_retain (1s) so that
-  // ApplyTimeRetentionPolicy doesn't truncate them out of the GC list. On fast hardware the
-  // write loop above can complete in well under a second, making every closed segment too
-  // young to be eligible for GC.
-  SleepFor(MonoDelta::FromSeconds(2));
 
   log::SegmentSequence segment_sequence;
   ASSERT_OK(tablet_peer->log()->TEST_GetSegmentsToGC(
