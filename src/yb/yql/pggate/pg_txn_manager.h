@@ -245,7 +245,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   void ResetTxnAndSession();
   void StartNewSession();
-  Status ApplyTransactionRestart(SetupPerformOptionsAccessorTag tag);
+  Status RestartTransactionForRetry(SetupPerformOptionsAccessorTag tag);
   Status RecreateTransaction(SavePriority save_priority);
   Status SetupReadTimeOptions(
       tserver::PgPerformOptionsPB::ReadTimeOptionsPB& read_time_options,

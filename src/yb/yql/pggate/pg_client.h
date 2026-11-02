@@ -273,7 +273,7 @@ class PgClient {
 
   Status RollbackToSubTransaction(SubTransactionId id, tserver::PgPerformOptionsPB* options);
 
-  Status ApplyTransactionRestart(tserver::PgPerformOptionsPB* options);
+  Status RestartTransactionForRetry(tserver::PgPerformOptionsPB* options);
 
   Status ValidatePlacement(tserver::PgValidatePlacementRequestPB* req);
 

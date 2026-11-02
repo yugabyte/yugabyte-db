@@ -1002,14 +1002,14 @@ class PgClient::Impl : public BigDataFetcher {
     return ResponseStatus(resp);
   }
 
-  Status ApplyTransactionRestart(tserver::PgPerformOptionsPB* options) {
-    tserver::PgApplyTransactionRestartRequestPB req;
+  Status RestartTransactionForRetry(tserver::PgPerformOptionsPB* options) {
+    tserver::PgRestartTransactionForRetryRequestPB req;
     req.set_session_id(session_id_);
     options->Swap(req.mutable_options());
 
-    tserver::PgApplyTransactionRestartResponsePB resp;
-    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::ApplyTransactionRestart,
-        req, resp, PggateRPC::kApplyTransactionRestart));
+    tserver::PgRestartTransactionForRetryResponsePB resp;
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::RestartTransactionForRetry,
+        req, resp, PggateRPC::kRestartTransactionForRetry));
     return ResponseStatus(resp);
   }
 
@@ -2380,8 +2380,8 @@ Status PgClient::RollbackToSubTransaction(
   return impl_->RollbackToSubTransaction(id, options);
 }
 
-Status PgClient::ApplyTransactionRestart(tserver::PgPerformOptionsPB* options) {
-  return impl_->ApplyTransactionRestart(options);
+Status PgClient::RestartTransactionForRetry(tserver::PgPerformOptionsPB* options) {
+  return impl_->RestartTransactionForRetry(options);
 }
 
 Status PgClient::ValidatePlacement(tserver::PgValidatePlacementRequestPB* req) {

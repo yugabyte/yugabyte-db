@@ -2166,9 +2166,9 @@ class PgClientSession::Impl {
     return status;
   }
 
-  Status ApplyTransactionRestart(
-      const PgApplyTransactionRestartRequestPB& req, PgApplyTransactionRestartResponsePB* resp,
-      rpc::RpcContext* context) {
+  Status RestartTransactionForRetry(
+      const PgRestartTransactionForRetryRequestPB& req,
+      PgRestartTransactionForRetryResponsePB* resp, rpc::RpcContext* context) {
     VLOG_WITH_PREFIX_AND_FUNC(2) << req.ShortDebugString();
     return ResultToStatus(
         SetupSession(req.options(), context->GetClientDeadline(), /* arena= */ nullptr));
