@@ -262,7 +262,8 @@ TableInfo::TableInfo(const TableInfo& other,
       skip_table_tombstone_check(other.skip_table_tombstone_check),
       deleted_cols(other.deleted_cols),
       cdcsdk_schema_version_boundaries(other.cdcsdk_schema_version_boundaries),
-      vector_index_deactivated_ht(other.vector_index_deactivated_ht) {
+      vector_index_deactivated_ht(other.vector_index_deactivated_ht),
+      vector_reverse_mapping_repair_pending(other.vector_reverse_mapping_repair_pending) {
   this->deleted_cols.insert(this->deleted_cols.end(), deleted_cols.begin(), deleted_cols.end());
   CompleteInit();
 }
@@ -289,7 +290,8 @@ TableInfo::TableInfo(const TableInfo& other,
       skip_table_tombstone_check(other.skip_table_tombstone_check),
       deleted_cols(other.deleted_cols),
       cdcsdk_schema_version_boundaries(other.cdcsdk_schema_version_boundaries),
-      vector_index_deactivated_ht(other.vector_index_deactivated_ht) {
+      vector_index_deactivated_ht(other.vector_index_deactivated_ht),
+      vector_reverse_mapping_repair_pending(other.vector_reverse_mapping_repair_pending) {
   CompleteInit();
 }
 
@@ -313,7 +315,8 @@ TableInfo::TableInfo(const TableInfo& other, SchemaVersion min_schema_version)
       skip_table_tombstone_check(other.skip_table_tombstone_check),
       deleted_cols(other.deleted_cols),
       cdcsdk_schema_version_boundaries(other.cdcsdk_schema_version_boundaries),
-      vector_index_deactivated_ht(other.vector_index_deactivated_ht) {
+      vector_index_deactivated_ht(other.vector_index_deactivated_ht),
+      vector_reverse_mapping_repair_pending(other.vector_reverse_mapping_repair_pending) {
   // Prune boundaries together with the packings dropped by this copy.
   const auto min_version = std::min(min_schema_version, other.schema_version);
   cdcsdk_schema_version_boundaries.erase(
@@ -385,6 +388,7 @@ Status TableInfo::DoLoadFromPB(Primary primary, const TableInfoPB& pb) {
   if (pb.has_vector_index_deactivated_ht()) {
     vector_index_deactivated_ht = HybridTime::FromPB(pb.vector_index_deactivated_ht());
   }
+  vector_reverse_mapping_repair_pending = pb.vector_reverse_mapping_repair_pending();
 
   RETURN_NOT_OK(dockv::PartitionSchema::FromPB(pb.partition_schema(), schema(), &partition_schema));
 
@@ -471,6 +475,9 @@ void TableInfo::ToPB(TableInfoPB* pb) const {
   if (vector_index_deactivated_ht.is_valid()) {
     pb->set_vector_index_deactivated_ht(vector_index_deactivated_ht.ToPB());
   }
+  if (vector_reverse_mapping_repair_pending) {
+    pb->set_vector_reverse_mapping_repair_pending(true);
+  }
 }
 
 const Schema& TableInfo::schema() const {
@@ -543,7 +550,8 @@ bool TableInfo::TEST_Equals(const TableInfo& lhs, const TableInfo& rhs) {
                           deleted_cols,
                           cdcsdk_schema_version_boundaries,
                           wal_retention_secs,
-                          vector_index_deactivated_ht) &&
+                          vector_index_deactivated_ht,
+                          vector_reverse_mapping_repair_pending) &&
          DereferencedEqual(lhs.doc_read_context,
                            rhs.doc_read_context,
                            &docdb::DocReadContext::TEST_Equals) &&
@@ -1870,7 +1878,8 @@ Result<TableInfoPtr> RaftGroupMetadata::AddTable(
     const dockv::PartitionSchema& partition_schema, const std::optional<IndexInfo>& index_info,
     const SchemaVersion schema_version, const OpId& op_id, HybridTime ht,
     const TableId& pg_table_id, const SkipTableTombstoneCheck skip_table_tombstone_check,
-    const google::protobuf::RepeatedPtrField<dockv::SchemaPackingPB>& old_schema_packings) {
+    const google::protobuf::RepeatedPtrField<dockv::SchemaPackingPB>& old_schema_packings,
+    bool vector_reverse_mapping_repair_pending) {
   DCHECK(schema.has_column_ids());
   std::lock_guard lock(data_mutex_);
   Primary primary(table_id == primary_table_id_);
@@ -1901,6 +1910,8 @@ Result<TableInfoPtr> RaftGroupMetadata::AddTable(
     RETURN_NOT_OK(new_table_info->doc_read_context->schema_packing_storage.InsertSchemas(
         old_schema_packings, /* could_be_present */ false, dockv::OverwriteSchemaPacking::kFalse));
   }
+
+  new_table_info->vector_reverse_mapping_repair_pending = vector_reverse_mapping_repair_pending;
 
   auto& tables = kv_store_.tables;
   auto[iter, inserted] = tables.emplace(table_id, new_table_info);
@@ -2915,6 +2926,22 @@ OpId RaftGroupMetadata::MinUnflushedChangeMetadataOpId() const {
   MutexLock l_flush(flush_lock_);
   std::lock_guard lock(data_mutex_);
   return min_unflushed_change_metadata_op_id_;
+}
+
+Status RaftGroupMetadata::SetVectorReverseMappingRepairPending(
+    const TableId& table_id, bool pending) {
+  std::lock_guard lock(data_mutex_);
+  auto it = kv_store_.tables.find(table_id);
+  if (it == kv_store_.tables.end()) {
+    RETURN_TABLE_NOT_FOUND(table_id, kv_store_.tables);
+  }
+  if (it->second->vector_reverse_mapping_repair_pending == pending) {
+    return Status::OK();
+  }
+  const auto& old_info = *it->second;
+  auto new_info = std::make_shared<TableInfo>(old_info, old_info.schema());
+  new_info->vector_reverse_mapping_repair_pending = pending;
+  return SetTableInfoUnlocked(it, new_info);
 }
 
 Status RaftGroupMetadata::OnBackfillDone(

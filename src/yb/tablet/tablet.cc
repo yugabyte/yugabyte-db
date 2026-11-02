@@ -33,6 +33,7 @@
 #include "yb/tablet/tablet.h"
 
 #include <algorithm>
+#include <deque>
 #include <tuple>
 #include <utility>
 
@@ -46,6 +47,7 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/common/pgsql_error.h"
+#include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/transaction.h"
@@ -78,9 +80,11 @@
 #include "yb/docdb/rocksdb_writer.h"
 
 #include "yb/dockv/key_bytes.h"
+#include "yb/dockv/value.h"
 #include "yb/dockv/value_type.h"
 
 #include "yb/gutil/casts.h"
+#include "yb/gutil/endian.h"
 
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/memtable.h"
@@ -3383,13 +3387,20 @@ Status Tablet::AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id
     index_info.emplace(table_info.index_info());
   }
 
+  // Decided before the table is added, so that the mark goes into the superblock together with the
+  // table: a flush in between would record this operation as applied without the mark.
+  const bool repair_pending = !metadata_->GetTableInfo(table_info.table_id()).ok() &&
+      NeedsVectorReverseMappingRepair(schema, table_info.old_schema_packings());
   auto table_info_ptr = VERIFY_RESULT(metadata_->AddTable(
       table_info.table_id(), table_info.namespace_name(), table_info.namespace_id(),
       table_info.table_name(),
       table_info.table_type(), schema, qlexpr::IndexMap(), partition_schema, index_info,
       table_info.schema_version(), op_id, ht, table_info.pg_table_id(),
       SkipTableTombstoneCheck(table_info.skip_table_tombstone_check()),
-      table_info.old_schema_packings()));
+      table_info.old_schema_packings(), repair_pending));
+  if (repair_pending && state_ != State::kBootstrapping) {
+    vector_indexes_->ScheduleReverseMappingRepair(table_info.table_id());
+  }
 
   if (table_info_ptr->NeedVectorIndex()) {
     auto indexed_table_info = VERIFY_RESULT(metadata_->GetTableInfo(
@@ -3431,6 +3442,187 @@ Status Tablet::AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id
     }
   }
 
+  return Status::OK();
+}
+
+namespace {
+
+// Buffers the entries VectorIndexesUpdater writes, so they can be written after the scan that
+// produced them, and writes them as a DirectWriter.
+class BufferedReverseMappingWriter : public rocksdb::DirectWriteHandler,
+                                     public rocksdb::DirectWriter {
+ public:
+  std::pair<Slice, Slice> Put(const SliceParts& key, const SliceParts& value) override {
+    auto& entry = entries_.emplace_back(
+        std::string(key.SumSizes(), '\0'), std::string(value.SumSizes(), '\0'));
+    key.CopyAllTo(entry.first.data());
+    value.CopyAllTo(entry.second.data());
+    return {entry.first, entry.second};
+  }
+
+  void SingleDelete(const Slice& key) override {
+    LOG(DFATAL) << "Unexpected single delete: " << key.ToDebugHexString();
+  }
+
+  Status Apply(rocksdb::DirectWriteHandler& handler) override {
+    for (const auto& [key, value] : entries_) {
+      Slice key_slice(key);
+      Slice value_slice(value);
+      handler.Put({&key_slice, 1}, {&value_slice, 1});
+    }
+    return Status::OK();
+  }
+
+  size_t size() const {
+    return entries_.size();
+  }
+
+  void Clear() {
+    entries_.clear();
+  }
+
+ private:
+  // A deque keeps the slices Put returns valid.
+  std::deque<std::pair<std::string, std::string>> entries_;
+};
+
+// A vector column added by an ALTER before an xCluster target's CREATE TABLE is only in the old
+// packings the table is created with.
+bool HasVectorColumn(
+    const Schema& schema,
+    const google::protobuf::RepeatedPtrField<dockv::SchemaPackingPB>& old_schema_packings) {
+  for (const auto& column : schema.columns()) {
+    if (column.type()->main() == DataType::VECTOR) {
+      return true;
+    }
+  }
+  for (const auto& packing : old_schema_packings) {
+    for (const auto& column : packing.columns()) {
+      if (column.data_type() == PersistentDataType::VECTOR) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+} // namespace
+
+// An automatic mode xCluster target applies the rows of a new colocated table before the DDL queue
+// creates the table there (#34504). With no packing for the colocation id, the apply path wrote
+// none of the reverse mapping entries the table owns.
+bool Tablet::NeedsVectorReverseMappingRepair(
+    const Schema& schema,
+    const google::protobuf::RepeatedPtrField<dockv::SchemaPackingPB>& old_schema_packings) {
+  const auto& table_properties = schema.table_properties();
+  if (!schema.has_colocation_id() || !table_properties.owns_vector_reverse_mapping() ||
+      !table_properties.writes_vector_reverse_mapping() || !regular_db_ ||
+      !HasVectorColumn(schema, old_schema_packings)) {
+    return false;
+  }
+  // The key prefix of a colocated YSQL table, as DocReadContext::UpdateKeyPrefix builds it.
+  char table_key_prefix_buffer[1 + sizeof(ColocationId)];
+  table_key_prefix_buffer[0] = dockv::KeyEntryTypeAsChar::kColocationId;
+  BigEndian::Store32(table_key_prefix_buffer + 1, schema.colocation_id());
+  const Slice table_key_prefix(table_key_prefix_buffer, sizeof(table_key_prefix_buffer));
+
+  rocksdb::ReadOptions read_options;
+  read_options.fill_cache = false;
+  std::unique_ptr<rocksdb::Iterator> iter(regular_db_->NewIterator(read_options));
+  iter->Seek(table_key_prefix);
+  if (iter->Valid()) {
+    return iter->key().starts_with(table_key_prefix);
+  }
+  if (!iter->status().ok()) {
+    // A spurious repair only costs a scan, a missed one leaves the rows unreachable.
+    LOG_WITH_PREFIX(WARNING)
+        << "Failed to check for rows of colocation " << schema.colocation_id()
+        << " applied before its table, repairing its reverse mapping: " << iter->status();
+    return true;
+  }
+  return false;
+}
+
+// Writes the entries each at the write time of the value it maps, as the apply path would have, so
+// later tombstones of those vectors still win.
+Status Tablet::WriteMissingVectorReverseMappings(const TableInfo& table_info, const OpId& op_id) {
+  constexpr size_t kEntriesPerWrite = 10000;
+
+  const auto start = MonoTime::Now();
+  const auto table_key_prefix = table_info.doc_read_context->table_key_prefix();
+  docdb::ConsensusFrontiers write_frontiers;
+  write_frontiers.Smallest().set_op_id(op_id);
+  write_frontiers.Largest().set_op_id(op_id);
+  BufferedReverseMappingWriter writer;
+  size_t num_scanned = 0;
+  size_t num_written = 0;
+  auto write = [this, &writer, &write_frontiers, &num_written] {
+    if (writer.size() == 0) {
+      return;
+    }
+    rocksdb::WriteBatch write_batch;
+    write_batch.SetDirectWriter(&writer);
+    WriteToRocksDB(write_frontiers, &write_batch, docdb::StorageDbType::kRegular);
+    num_written += writer.size();
+    writer.Clear();
+  };
+
+  // Raw entries, every version: the rows were applied at their source commit times, which can be
+  // above the hybrid time of the operation that added the table.
+  rocksdb::ReadOptions read_options;
+  read_options.fill_cache = false;
+  std::unique_ptr<rocksdb::Iterator> iter(regular_db_->NewIterator(read_options));
+  auto decode_key = [&iter]() -> Result<std::pair<Slice, DocHybridTime>> {
+    Slice key = iter->key();
+    auto doc_ht = VERIFY_RESULT(DocHybridTime::DecodeFromEnd(&key));
+    SCHECK(
+        key.ends_with(dockv::KeyEntryTypeAsChar::kHybridTime), Corruption,
+        Format("Missing hybrid time marker: $0", iter->key().ToDebugHexString()));
+    key.remove_suffix(1);
+    return std::pair(key, doc_ht);
+  };
+
+  // The colocation id can be reused after a DROP TABLE, whose rows stay behind the table tombstone
+  // until compaction removes them. They are not rows of this table.
+  dockv::KeyBytes table_tombstone_key(table_key_prefix);
+  table_tombstone_key.AppendKeyEntryType(dockv::KeyEntryType::kGroupEnd);
+  DocHybridTime table_tombstone_time = DocHybridTime::kMin;
+  for (iter->Seek(table_tombstone_key.AsSlice());
+       iter->Valid() && iter->key().starts_with(table_tombstone_key.AsSlice()); iter->Next()) {
+    auto [key, doc_ht] = VERIFY_RESULT(decode_key());
+    // A colocated DROP or TRUNCATE writes the tombstone in a transaction, with control fields.
+    auto is_tombstone = dockv::Value::IsTombstoned(iter->value());
+    if (key == table_tombstone_key.AsSlice() && is_tombstone.ok() && *is_tombstone) {
+      table_tombstone_time = std::max(table_tombstone_time, doc_ht);
+    }
+  }
+  RETURN_NOT_OK(iter->status());
+
+  docdb::ConsensusFrontiers frontiers;
+  vector_index::VectorLSMChunkHolds chunk_holds;
+  docdb::VectorIndexesUpdater updater(
+      /* indexes= */ nullptr, *metadata_, frontiers, docdb::StorageSet::All(), chunk_holds);
+  for (iter->Seek(table_key_prefix);
+       iter->Valid() && iter->key().starts_with(table_key_prefix); iter->Next()) {
+    if (++num_scanned % kEntriesPerWrite == 0 && IsShutdownRequested()) {
+      return STATUS(ShutdownInProgress, "Tablet is shutting down");
+    }
+    auto [key, doc_ht] = VERIFY_RESULT(decode_key());
+    if (doc_ht <= table_tombstone_time) {
+      continue;
+    }
+    RETURN_NOT_OK(updater.Feed(writer, key, iter->value(), doc_ht));
+    if (writer.size() >= kEntriesPerWrite) {
+      write();
+    }
+  }
+  RETURN_NOT_OK(iter->status());
+  write();
+
+  LOG_WITH_PREFIX(INFO)
+      << "Scanned " << num_scanned << " entries of " << table_info.table_id << " for reverse "
+      << "mapping entries applied before the table, wrote " << num_written << " in "
+      << MonoTime::Now() - start;
   return Status::OK();
 }
 
