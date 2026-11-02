@@ -515,7 +515,8 @@ std::string SnapshotIdToString(const std::string& snapshot_id) {
 // The longest wait between quiescent checks, so that new tablets and quiescent_tablet_idle_sec
 // raised from 0 are picked up. Other flag changes reach a tablet at its next queued check.
 // A shorter idle period shortens the wait, so a new tablet is checked within two idle periods.
-constexpr auto kQuiescentTabletsMaxCheckInterval = 60s;
+// TODO: Reduce to 60s when enabling quiescent tablets by default.
+constexpr auto kQuiescentTabletsMaxCheckInterval = 24h;
 
 } // namespace
 

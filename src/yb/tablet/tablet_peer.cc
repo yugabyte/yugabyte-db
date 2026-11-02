@@ -128,7 +128,8 @@ DEFINE_RUNTIME_uint32(log_retention_diagnostics_min_age_secs, 0,
     "the first retained segment is at least this old in seconds. 0 disables.");
 TAG_FLAG(log_retention_diagnostics_min_age_secs, advanced);
 
-DEFINE_RUNTIME_int32(quiescent_tablet_idle_sec, 600,
+// TODO: Restore the default to 600 when enabling quiescent tablets by default.
+DEFINE_RUNTIME_int32(quiescent_tablet_idle_sec, 0,
     "A tablet enters the quiescent mode after nothing was appended to its log for this many "
     "seconds. 0 disables entering the mode.");
 
@@ -946,7 +947,9 @@ Status TabletPeer::RunLogGC(bool rollover) {
 }
 
 CoarseDuration QuiescentTabletIdleTime() {
-  return std::max(FLAGS_quiescent_tablet_idle_sec, 1) * 1s;
+  // While disabled, the time only spaces out checks that do nothing, so keep it long.
+  const auto idle_sec = FLAGS_quiescent_tablet_idle_sec;
+  return idle_sec != 0 ? CoarseDuration(std::max(idle_sec, 1) * 1s) : CoarseDuration(1h);
 }
 
 CoarseTimePoint TabletPeer::MaybeEnterQuiescentMode(CoarseTimePoint now) {
