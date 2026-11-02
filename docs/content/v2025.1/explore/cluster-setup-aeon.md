@@ -41,7 +41,7 @@ You can run examples using a cluster on YugabyteDB Aeon, assuming you have [Crea
 
 ### Sandbox cluster
 
-Most examples in Explore can be run using the free [Sandbox](/stable/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/) cluster.
+Most examples in Explore can be run using the free [Sandbox](/stable/yugabyte-cloud/serverless/#sandbox-clusters) cluster.
 
 If you haven't already created your sandbox cluster, sign in to YugabyteDB Aeon, on the **Clusters** page click **Add Cluster**, and follow the instructions in the **Create Cluster** wizard.
 

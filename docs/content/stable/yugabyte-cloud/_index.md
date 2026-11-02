@@ -29,26 +29,23 @@ YugabyteDB Managed is now YugabyteDB Aeon! [Learn more](https://www.yugabyte.com
 
 {{< sections/2-boxes >}}
   {{< sections/bottom-image-box
-    title="Sign up to create a Sandbox cluster"
-    description="Sign up, log in, and follow the built-in tutorial to create your first cluster, and build a sample application. No credit card required."
-    buttonText="Sign up"
-    buttonTarget="_blank"
-    buttonUrl="https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=YBM_signup"
-    button2Text="Learn more"
-    button2Url="cloud-quickstart"
-    imageAlt="Yugabyte cloud" imageUrl="/images/homepage/yugabyte-in-cloud.svg"
+    title="Serverless Postgres"
+    description="Agentic Multitenant PostgreSQL for AI agents and bursty or idle workloads. Free up to 1 vCPU. Fully managed by Yugabyte."
+    buttonText="Learn more"
+    buttonUrl="serverless/"
+    imageAlt="Serverless Postgres" imageUrl="/images/homepage/serverless-postgres.svg"
   >}}
 
   {{< sections/bottom-image-box
-    title="Deploy dedicated clusters"
-    description="Deploy single- and multi-region production clusters on Amazon Web Services (AWS), Microsoft Azure, and Google Cloud Platform (GCP)."
+    title="Distributed Postgres"
+    description="Deploy single- and multi-region YugabyteDB clusters on Amazon Web Services (AWS), Microsoft Azure, and Google Cloud Platform (GCP)."
     buttonText="Learn more"
     buttonUrl="cloud-basics/"
-    imageAlt="Locally Laptop" imageUrl="/images/homepage/locally-laptop.svg"
+    imageAlt="Distributed Postgres" imageUrl="/images/homepage/locally-laptop.svg"
   >}}
 {{< /sections/2-boxes >}}
 
-## Cluster basics
+## Distributed cluster basics
 
 {{< sections/3-boxes>}}
   {{< sections/3-box-card
