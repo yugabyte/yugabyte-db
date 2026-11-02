@@ -60,6 +60,7 @@
 
 DECLARE_string(otel_collector_traces_endpoint);
 DECLARE_string(otel_internal_log_level);
+DECLARE_int32(otel_dropped_span_log_interval_secs);
 DECLARE_uint32(otel_batch_max_queue_size);
 DECLARE_uint32(otel_batch_schedule_delay_ms);
 DECLARE_uint32(otel_batch_max_export_batch_size);
@@ -3040,6 +3041,56 @@ TEST_F(DistTraceRpcTest, TestOtelInternalLogLevelNoneSuppressesAllMessages) {
   ASSERT_EQ(warning_waiter.GetEventCount(), 0);
   ASSERT_EQ(info_waiter.GetEventCount(), 0);
   ASSERT_EQ(debug_waiter.GetEventCount(), 0);
+}
+
+// The per-span "queue is full" warning logs at most once per otel_dropped_span_log_interval_secs
+// with a suppressed count. Other SDK messages are not throttled.
+TEST_F(DistTraceRpcTest, TestOtelDroppedSpanLogThrottled) {
+  google::FlagSaver flag_saver;
+  TEST_ScopedSetOtelCollectorEndpoint endpoint_setter(collector_.Url());
+  // A long interval keeps the burst inside one window even on slow builds.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_dropped_span_log_interval_secs) = 3600;
+
+  static constexpr auto kDroppedSpan = "BatchSpanProcessor queue is full - dropping span.";
+  static constexpr auto kOther = "otel unthrottled internal warning";
+  static constexpr int kCount = 100;
+
+  RegexWaiterLogSink dropped_waiter("W.*queue is full - dropping span.*");
+  RegexWaiterLogSink suppressed_waiter(Format(
+      "W.*queue is full - dropping span.*\\[suppressed $0 similar messages\\].*", kCount - 1));
+  RegexWaiterLogSink other_waiter(Format("W.*$0.*", kOther));
+
+  dist_trace::InitDistTrace("ysql" /* service_name */, "dist-trace-otel-dropped-span-log-test");
+  auto cleanup = ScopeExit([] {
+    dist_trace::ShutdownDistTrace();
+  });
+
+  for (int i = 0; i < kCount; ++i) {
+    OTEL_INTERNAL_LOG_WARN(kDroppedSpan);
+    OTEL_INTERNAL_LOG_WARN(kOther);
+  }
+
+  ASSERT_OK(dropped_waiter.WaitFor(5s * kTimeMultiplier));
+  ASSERT_OK(WaitFor(
+      [&] { return other_waiter.GetEventCount() == kCount; }, 5s * kTimeMultiplier,
+      "all unthrottled messages logged"));
+  ASSERT_EQ(dropped_waiter.GetEventCount(), 1);
+
+  // The throttler reads the interval on each call, so a runtime change applies to the next message.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_dropped_span_log_interval_secs) = 1;
+  SleepFor(1500ms);
+  OTEL_INTERNAL_LOG_WARN(kDroppedSpan);
+
+  ASSERT_OK(suppressed_waiter.WaitFor(5s * kTimeMultiplier));
+  ASSERT_EQ(dropped_waiter.GetEventCount(), 2);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_dropped_span_log_interval_secs) = 0;
+  for (int i = 0; i < 5; ++i) {
+    OTEL_INTERNAL_LOG_WARN(kDroppedSpan);
+  }
+  ASSERT_OK(WaitFor(
+      [&] { return dropped_waiter.GetEventCount() == 7; }, 5s * kTimeMultiplier,
+      "every dropped-span message logged with interval 0"));
 }
 
 // A multi-row scan must emit exactly one executor-node span (not one per
