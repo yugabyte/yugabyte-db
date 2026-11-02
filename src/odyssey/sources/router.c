@@ -517,6 +517,9 @@ static inline int od_router_gc_cb(od_route_t *route, void **argv)
 		goto done;
 
 clean:
+	if (route->yb_cancels_in_flight > 0)
+		goto done;
+
 	/* remove route from route pool */
 	assert(pool->count > 0);
 	pool->count--;
@@ -1341,14 +1344,9 @@ od_router_status_t od_router_attach(od_router_t *router,
 	od_route_lock(route);
 
 attach:
-	od_pg_server_pool_set(&route->server_pool, server, OD_SERVER_ACTIVE);
 	od_client_pool_set(&route->client_pool, client_for_router,
 			   OD_CLIENT_ACTIVE);
-
-	client_for_router->server = server;
-	server->client = client_for_router;
-	server->idle_time = 0;
-	server->key_client = client_for_router->key;
+	od_server_attach_client(server, client_for_router);
 
 	if (route->id.logical_rep) {
 		/*
@@ -1463,8 +1461,7 @@ void od_router_detach(od_router_t *router, od_client_t *client)
 
 	od_route_lock(route);
 
-	client->server = NULL;
-	server->client = NULL;
+	od_server_detach_client(server);
 	if (route->rule->pool->reserve_prepared_statement) {
 		if (!yb_od_parse_queue_empty(&server->parse_queue)) {
 			int pq_count = yb_od_parse_queue_count(&server->parse_queue);
@@ -1538,9 +1535,6 @@ void od_router_detach(od_router_t *router, od_client_t *client)
 			od_pg_server_pool_set(&route->server_pool, server,
 					      OD_SERVER_UNDEF);
 			od_backend_close(server);
-		} else {
-			od_pg_server_pool_set(&route->server_pool, server,
-					      OD_SERVER_IDLE);
 		}
 	} else {
 		od_instance_t *instance = server->global->instance;
@@ -1572,9 +1566,8 @@ void od_router_close(od_router_t *router, od_client_t *client)
 	od_route_lock(route);
 
 	od_client_pool_set(&route->client_pool, client, OD_CLIENT_PENDING);
+	od_server_detach_client(server);
 	od_pg_server_pool_set(&route->server_pool, server, OD_SERVER_UNDEF);
-	client->server = NULL;
-	server->client = NULL;
 	server->route = NULL;
 
 	od_route_unlock(route);
@@ -1606,9 +1599,15 @@ static inline int od_router_cancel_cb(od_route_t *route, void **argv)
 		cancel->id = server->id;
 		cancel->key = server->key;
 		cancel->storage = od_rules_storage_copy(route->rule->storage);
-		od_route_unlock(route);
-		if (cancel->storage == NULL)
+		if (cancel->storage == NULL) {
+			od_route_unlock(route);
 			return -1;
+		}
+		cancel->server = server;
+		cancel->yb_route = route;
+		od_server_cancel_begin(server);
+		route->yb_cancels_in_flight++;
+		od_route_unlock(route);
 		return 1;
 	}
 
