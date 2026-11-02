@@ -622,6 +622,10 @@ void XClusterPersistenceGateTest::TestAbortsTransactionWaitingForLock() {
   // expire it after missing enough heartbeats, failing it.  Make that take far longer than the
   // statement timeout, so only the coordinator's abort can fail the waiter in time.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_max_missed_heartbeat_periods) = 1000;
+  // A leader move of a status or advisory lock tablet would strand the waiter on the old leader
+  // or fail the pg_locks query.
+  ASSERT_OK(cluster_->WaitForLoadBalancerToStabilize(60s * kTimeMultiplier));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
   const auto database = ASSERT_RESULT(PrepareDatabase("yugabyte"));
   auto holding_conn = ASSERT_RESULT(ConnectToDB(database.name));
   auto waiting_conn = ASSERT_RESULT(ConnectToDB(database.name));
@@ -636,8 +640,9 @@ void XClusterPersistenceGateTest::TestAbortsTransactionWaitingForLock() {
 
   // Now we have the waiting connection wait on the advisory lock, causing it to queue up waiting
   // for that lock to be freed.
-  TestThreadHolder thread_holder;
+  // Declared before thread_holder so it outlives the thread on an early return.
   Status waiting_status;
+  TestThreadHolder thread_holder;
   thread_holder.AddThreadFunctor([&waiting_conn, &waiting_status] {
     waiting_status = ResultToStatus(waiting_conn.Fetch("SELECT pg_advisory_xact_lock(1)"));
   });
