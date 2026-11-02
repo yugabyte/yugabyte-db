@@ -345,35 +345,6 @@ class Data {
   DISALLOW_COPY_AND_ASSIGN(Data);
 };
 
-// Held by the setter handed to whichever caller claimed an entry for filling. pg_client_session
-// takes that setter and then may return early before the flush -- SetupSession and
-// PrepareOperations both can -- which destroys it without ever storing a response. Completing
-// the entry here is what releases the callers queued behind that claim.
-class FillGuard {
- public:
-  FillGuard(std::shared_ptr<Data> data, PgResponseCache::KeyGroup group, uint64_t catalog_version)
-      : data_(std::move(data)), group_(group), catalog_version_(catalog_version) {}
-
-  ~FillGuard() {
-    if (data_) {
-      data_->SetAbandoned(group_, catalog_version_);
-    }
-  }
-
-  void Store(PgResponseCache::Response&& response) {
-    // Moved out first, so the destructor above finds nothing to give back.
-    auto data = std::move(data_);
-    data->Set(std::move(response), group_, catalog_version_);
-  }
-
- private:
-  std::shared_ptr<Data> data_;
-  const PgResponseCache::KeyGroup group_;
-  const uint64_t catalog_version_;
-
-  DISALLOW_COPY_AND_ASSIGN(FillGuard);
-};
-
 class Value {
  public:
   Value() = default;
@@ -544,11 +515,18 @@ class PgResponseCache::Impl : private GarbageCollector {
       }
       return Setter();
     }
-    return [guard = std::make_shared<FillGuard>(
-                std::move(data), cache_info->key_group(), cache_info->catalog_version()),
+    const auto group = cache_info->key_group();
+    const auto version = cache_info->catalog_version();
+    // pg_client_session takes this setter and can return early before the flush -- SetupSession
+    // and PrepareOperations both can -- destroying it without ever storing a response. Completing
+    // the entry then is what releases the callers queued behind this fill.
+    auto abandon = [data, group, version] { data->SetAbandoned(group, version); };
+    return [data = std::move(data),
+            abandon_guard =
+                std::make_shared<CancelableScopeExit<decltype(abandon)>>(std::move(abandon)),
             observer = fill_observer_,
-            group = cache_info->key_group(),
-            version = cache_info->catalog_version(),
+            group,
+            version,
             completes_connection_prefetch =
                 cache_info->completes_connection_prefetch()](Response&& response) {
       // A prefetch is paged. pggate keeps issuing reads while any operation still returns paging
@@ -566,7 +544,8 @@ class PgResponseCache::Impl : private GarbageCollector {
           }
         }
       }
-      guard->Store(std::move(response));
+      abandon_guard->Cancel();
+      data->Set(std::move(response), group, version);
       // After the entry is set, so an observer can rely on the entry being readable.
       if (observer && is_final_round) {
         observer(group, version);
