@@ -197,7 +197,7 @@ Batcher::Batcher(
     YBClient* client,
     const YBSessionPtr& session,
     YBTransactionPtr transaction,
-    ConsistentReadPoint* read_point,
+    std::shared_ptr<ConsistentReadPoint> read_point,
     bool force_consistent_read,
     int64_t leader_term,
     ThreadSafeArenaPtr arena)
@@ -205,7 +205,7 @@ Batcher::Batcher(
       weak_session_(session),
       async_rpc_metrics_(session->async_rpc_metrics()),
       transaction_(std::move(transaction)),
-      read_point_(read_point),
+      read_point_(std::move(read_point)),
       force_consistent_read_(force_consistent_read),
       leader_term_(leader_term),
       arena_(std::move(arena)) {}
@@ -630,7 +630,7 @@ void Batcher::ExecuteOperations(Initial initial) {
     // If transaction is not yet ready to do it, then it will notify as via provided when
     // it could be done.
     if (!transaction->batcher_if().Prepare(
-        &ops_info_, force_consistent_read_, deadline_, initial,
+        &ops_info_, force_consistent_read_, deadline_, initial, read_point_.get(),
         std::bind(&Batcher::TransactionReady, shared_from_this(),
         ash::WaitStateInfo::CurrentWaitState(), _1))) {
       return;
@@ -818,7 +818,8 @@ void Batcher::Flushed(
       // YBSession::AddErrorsAndRunCallback.
       // https://github.com/yugabyte/yugabyte-db/issues/7984.
       transaction->batcher_if().Flushed(
-          ops, ops_info_.metadata.subtransaction_pb, flush_extra_result.used_read_time, status);
+          ops, ops_info_.metadata.subtransaction_pb, flush_extra_result.used_read_time,
+          read_point_.get(), status);
     }
   }
   if (status.ok() && read_point_) {

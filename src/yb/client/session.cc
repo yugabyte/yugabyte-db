@@ -74,7 +74,8 @@ YBSession::YBSession(
 }
 
 void YBSession::RestartNonTxnReadPoint(const Restart restart) {
-  const auto& read_point = batcher_config_.non_transactional_read_point;
+  const auto& read_point = batcher_config_.read_point_override
+      ? batcher_config_.read_point_override : batcher_config_.non_transactional_read_point;
   DCHECK_NOTNULL(read_point.get());
   if (restart && read_point->IsRestartRequired()) {
     read_point->Restart();
@@ -161,7 +162,8 @@ internal::BatcherPtr CreateBatcher(
   CHECK_NOTNULL(session);
 
   auto batcher = std::make_shared<internal::Batcher>(
-      config.client, session, config.transaction, config.read_point(), config.force_consistent_read,
+      config.client, session, config.transaction, config.shared_read_point(),
+      config.force_consistent_read,
       config.leader_term, config.arena);
   batcher->SetRejectionScoreSource(config.rejection_score_source);
   return batcher;
@@ -307,7 +309,24 @@ void YBSession::SetInTxnLimit(HybridTime value) {
 }
 
 ConsistentReadPoint* YBSession::BatcherConfig::read_point() const {
+  if (read_point_override) {
+    return read_point_override.get();
+  }
   return transaction ? &transaction->read_point() : non_transactional_read_point.get();
+}
+
+std::shared_ptr<ConsistentReadPoint> YBSession::BatcherConfig::shared_read_point() const {
+  if (read_point_override) {
+    return read_point_override;
+  }
+  if (transaction) {
+    return std::shared_ptr<ConsistentReadPoint>(transaction, &transaction->read_point());
+  }
+  return non_transactional_read_point;
+}
+
+void YBSession::SetReadPointOverride(std::shared_ptr<ConsistentReadPoint> read_point) {
+  batcher_config_.read_point_override = std::move(read_point);
 }
 
 

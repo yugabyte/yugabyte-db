@@ -451,6 +451,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
                ForceConsistentRead force_consistent_read,
                CoarseTimePoint deadline,
                Initial initial,
+               ConsistentReadPoint* read_point,
                Waiter waiter) override EXCLUDES(mutex_) {
     VLOG_WITH_PREFIX(2) << "Prepare(" << force_consistent_read << ", " << initial << ", "
                         << AsString(ops_info->groups) << ")";
@@ -499,7 +500,9 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       // snapshot.
       // For snapshot isolation, if read time was not yet picked, we have to choose it now, if
       // there multiple tablets that will process first request.
-      SetReadTimeIfNeeded(ops_info->groups.size() > 1 || force_consistent_read);
+      SetReadTimeIfNeeded(
+          read_point ? *read_point : read_point_,
+          ops_info->groups.size() > 1 || force_consistent_read);
     }
     // Populate the transaction's metadata alone for the passed 'ops_info'.
     // 'ops_info->metadata.subtransaction_pb' has already been set upsteam in Batcher::FlushAsync.
@@ -520,7 +523,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   void Flushed(
       const internal::InFlightOps& ops,
       const std::optional<SubTransactionMetadataPB>& subtransaction_pb,
-      const ReadHybridTime& used_read_time, const Status& status) EXCLUDES(mutex_) override {
+      const ReadHybridTime& used_read_time, ConsistentReadPoint* read_point,
+      const Status& status) EXCLUDES(mutex_) override {
     TRACE_TO(trace_, "Flushed $0 ops. with Status $1", ops.size(), status.ToString());
     VLOG_WITH_PREFIX(5) << "Flushed: " << yb::ToString(ops)
                         << ", used_read_time: " << used_read_time << ", status: " << status;
@@ -543,7 +547,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
       if (status.ok()) {
         if (used_read_time && metadata_.isolation != IsolationLevel::SERIALIZABLE_ISOLATION) {
-          const bool read_point_already_set = static_cast<bool>(read_point_.GetReadTime());
+          auto& batch_read_point = read_point ? *read_point : read_point_;
+          const bool read_point_already_set = static_cast<bool>(batch_read_point.GetReadTime());
           if (read_point_already_set) {
 #ifndef NDEBUG
             // Display details of operations before crashing in debug mode.
@@ -554,13 +559,13 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
             }
 #endif
             LOG_WITH_PREFIX(DFATAL)
-                << "Read time already picked (" << read_point_.GetReadTime()
+                << "Read time already picked (" << batch_read_point.GetReadTime()
                 << ", but server replied with used read time: " << used_read_time;
           }
           // TODO: Update local limit for the tablet id which sent back the used read time
-          read_point_.SetReadTime(used_read_time, ConsistentReadPoint::HybridTimeMap());
+          batch_read_point.SetReadTime(used_read_time, ConsistentReadPoint::HybridTimeMap());
           VLOG_WITH_PREFIX(3)
-              << "Update read time from used read time: " << read_point_.GetReadTime();
+              << "Update read time from used read time: " << batch_read_point.GetReadTime();
         }
         const std::string* prev_tablet_id = nullptr;
         for (const auto& op : ops) {
@@ -1535,11 +1540,15 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   }
 
   void SetReadTimeIfNeeded(bool do_it) {
-    if (!read_point_.GetReadTime() && do_it &&
+    SetReadTimeIfNeeded(read_point_, do_it);
+  }
+
+  void SetReadTimeIfNeeded(ConsistentReadPoint& read_point, bool do_it) {
+    if (!read_point.GetReadTime() && do_it &&
         (metadata_.isolation == IsolationLevel::SNAPSHOT_ISOLATION ||
          metadata_.isolation == IsolationLevel::READ_COMMITTED)) {
       VLOG_WITH_PREFIX(2) << "Setting current read time as read point for distributed txn";
-      read_point_.SetCurrentReadTime();
+      read_point.SetCurrentReadTime();
     }
   }
 
