@@ -1950,8 +1950,13 @@ TEST_F_EX(ObjectLockTest, AcquireAndReleaseDDLLockAcrossMasterFailover, MultiMas
 TEST_F(MultiMasterObjectLockTest, TServerCanAcquireLeaseAfterProlongedPartition) {
   size_t idx = 0;
   // Get the leader master to be located with the tserver which we are going to isolate.
-  ASSERT_RESULT(cluster_->StepDownMasterLeader(MasterUuid(idx)));
-  CHECK_EQ(idx, cluster_->LeaderMasterIdx());
+  if (cluster_->LeaderMasterIdx() != static_cast<ssize_t>(idx)) {
+    ASSERT_RESULT(cluster_->StepDownMasterLeader(MasterUuid(idx)));
+  }
+  // Step down to the protege completes asynchronously.
+  ASSERT_OK(WaitFor(
+      [&]() { return cluster_->LeaderMasterIdx() == static_cast<ssize_t>(idx); }, 30s,
+      "Wait for master leader to move to the isolated node"));
 
   auto kLeaseTimeout = MonoDelta::FromMilliseconds(FLAGS_master_ysql_operation_lease_ttl_ms);
   ASSERT_OK(
