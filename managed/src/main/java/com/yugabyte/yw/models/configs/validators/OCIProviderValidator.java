@@ -73,16 +73,7 @@ public class OCIProviderValidator extends ProviderFieldsValidator {
 
     validatePrivateKeys(provider, processedProvider, validationErrorsMap);
 
-    if (provider.getDetails() != null
-        && CollectionUtils.isNotEmpty(provider.getDetails().ntpServers)) {
-      try {
-        validateNTPServers(provider.getDetails().ntpServers);
-      } catch (PlatformServiceException e) {
-        validationErrorsMap.put(
-            processedProvider.get("details").get("ntpServers").get(0).get("jsonPath").asText(),
-            e.getMessage());
-      }
-    }
+    validateNtpServers(provider, processedProvider, validationErrorsMap);
 
     validateHostedZone(provider, processedProvider, validationErrorsMap);
 

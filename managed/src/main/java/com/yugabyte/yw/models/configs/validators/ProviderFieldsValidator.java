@@ -20,11 +20,13 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.helpers.BaseBeanValidator;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CrossCloudFederationTarget;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
@@ -142,6 +144,28 @@ public abstract class ProviderFieldsValidator extends BaseBeanValidator {
     return true;
   }
 
+  /**
+   * Validates each NTP server and keys a failure to that server's entry in {@code processedJson}.
+   */
+  public void validateNtpServers(
+      Provider provider, JsonNode processedJson, SetMultimap<String, String> validationErrorsMap) {
+    if (provider.getDetails() == null
+        || CollectionUtils.isEmpty(provider.getDetails().ntpServers)) {
+      return;
+    }
+    List<String> ntpServers = provider.getDetails().ntpServers;
+    JsonNode ntpArrayJson = processedJson.get("details").get("ntpServers");
+    int maxNTPServerValidateCount =
+        runtimeConfGetter.getStaticConf().getInt("yb.provider.validate_ntp_server_count");
+    for (int i = 0; i < Math.min(maxNTPServerValidateCount, ntpServers.size()); i++) {
+      try {
+        validateNTPServers(Collections.singletonList(ntpServers.get(i)));
+      } catch (PlatformServiceException e) {
+        validationErrorsMap.put(ntpArrayJson.get(i).get("jsonPath").asText(), e.getMessage());
+      }
+    }
+  }
+
   public void validatePrivateKey(List<AccessKey> allAccessKeys) {
     for (AccessKey accessKey : allAccessKeys) {
       String privateKeyContent = accessKey.getKeyInfo().sshPrivateKeyContent;
@@ -157,13 +181,14 @@ public abstract class ProviderFieldsValidator extends BaseBeanValidator {
       ArrayNode accessKeysJson = (ArrayNode) processedJson.get("allAccessKeys");
       int keyIndex = 0;
       for (AccessKey accessKey : provider.getAllAccessKeys()) {
+        // KeyInfo omits null fields from JSON, so a key sent without content has no leaf node.
+        JsonNode contentJson =
+            accessKeysJson.get(keyIndex).path("keyInfo").path("sshPrivateKeyContent");
         String keyJsonPath =
-            accessKeysJson
-                .get(keyIndex++)
-                .get("keyInfo")
-                .get("sshPrivateKeyContent")
-                .get("jsonPath")
-                .asText();
+            contentJson.has("jsonPath")
+                ? contentJson.get("jsonPath").asText()
+                : String.format("$.allAccessKeys[%d].keyInfo.sshPrivateKeyContent", keyIndex);
+        keyIndex++;
         String privateKeyContent = accessKey.getKeyInfo().sshPrivateKeyContent;
         if (!CertificateHelper.isValidRsaKey(privateKeyContent)) {
           validationErrorsMap.put(keyJsonPath, "Not a valid RSA key!");
