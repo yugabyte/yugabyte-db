@@ -232,10 +232,16 @@ DEFINE_NON_RUNTIME_bool(enable_object_locking_for_table_locks,
     "implement pg table locks.");
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, enable_object_locking_infra, kLocalPersisted, false, true,
     "DEPRECATED: no-op. Use ysql_yb_enable_object_locking_infra.");
-// Replaces enable_object_locking_infra, which 2025.2 and 2026.1 already promote, so that upgrades
-// from those releases run in legacy mode until the upgrade is finalized. This assumes the source
-// cluster has enable_object_locking_for_table_locks off; if it is on, upgraded tservers drop back
-// to legacy mode until finalize while the not-yet-upgraded ones keep using object locks.
+// Gates the new mode for DDLs/DMLs: transactional DDL, object locking for table locks, and
+// concurrent DDL. While it is false, a transaction runs in legacy mode, as if those features
+// were off.
+//
+// Replaces enable_object_locking_infra, which 2025.2 and 2026.1 already promote. As an AutoFlag
+// that starts unpromoted on upgrade, it keeps every transaction in legacy mode until finalize,
+// i.e. until all nodes run the new binary. So the mixed-mode handling only has to deal with new
+// mode and legacy mode transactions that both come from new binaries. This assumes the pre-upgrade
+// cluster has the features off. If they are on, upgraded tservers drop back to legacy mode until
+// finalize, while the not-yet-upgraded ones keep using the features.
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_object_locking_infra, kLocalPersisted, false, true,
     "Auto flag that controls whether table-level object locking can be safely enabled "
     "during upgrade. Both this flag and enable_object_locking_for_table_locks "
