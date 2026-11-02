@@ -31,15 +31,20 @@ on:
       - 'sample/**'
       - 'src/lint/**'
 
-# The jenkins environment requires approval, so the job waits until a yugabyte-dev member
-# approves it. A newer run for the same PR cancels the older one, if it is still waiting.
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
 
 jobs:
+  yb-csi:
+  steps:
+    - name: CSI-status
+      run: echo "https://csiweb.dev.yugabyte.com/pull/${{ github.event.pull_request.number }}"
+
   bld-db:
     environment: jenkins
+    # The jenkins environment requires approval, so the job waits until a yugabyte-dev member
+    # approves it. A newer run for the same PR cancels the older one, if it is still waiting.
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
     runs-on: ybdbghr
     steps:
       - name: Build Trigger
