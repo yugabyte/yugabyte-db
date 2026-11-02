@@ -251,10 +251,9 @@ class Data {
     // identifies one fill: a paged prefetch caches every page under a key of its own, and a global
     // catalog version bump moves every database to the same version at once.
     //
-    // The outcome separates a fill that stored a catalog from one whose read failed. Both
-    // release their waiters here; only the first hands them a catalog. A filler that went away
-    // without storing anything never reaches this point, since it gives up its claim instead
-    // (see ReleaseClaim).
+    // The outcome separates a fill that stored a catalog from one that did not: a read that
+    // failed, or a filler that went away without storing anything (see SetAbandoned). All three
+    // release their waiters here; only the first hands them a catalog.
     const auto* const outcome =
         new_state == DataState::kReadyOK ? "Fill complete" : "Fill failed";
     VLOG(1) << outcome << " for group " << group << " catalog version " << catalog_version
@@ -271,16 +270,23 @@ class Data {
     }
   }
 
-  // Give up the claim on an entry whose filler went away without storing anything. Nothing
-  // else clears running_, so without this the entry stays claimed for the rest of its life: no
-  // later caller can take the fill over, and every one that arrives queues behind a fill that
-  // will never land. Clearing it lets the next caller become the filler and serve everyone
-  // already queued. The queue is left in place on purpose -- a waiter can only be released by a
-  // response, and failing them here would turn a timeout the client already handles into a
-  // connection error it cannot act on.
-  void ReleaseClaim() EXCLUDES(mutex_) {
-    std::lock_guard lock(mutex_);
-    running_ = false;
+  // Complete an entry whose filler went away without storing anything. Set() is the only thing
+  // that drains waiters_, and PgResponseCacheWaiter takes nothing but a response, so an error
+  // response is the only way to release callers already queued. Handing them one is what a fill
+  // whose read failed already does: pg_client_session calls the setter with the failed status
+  // and Set() passes it on. Leaving them queued instead costs a postgres backend apiece until
+  // their own deadlines expire, and leaves them to be destroyed un-responded if the entry's
+  // readiness deadline passes first.
+  //
+  // Completing as a failure also leaves the entry in the state that already means "do not serve
+  // this": IsValid() is false for kReadyFailure, so the next caller rebuilds it and fills afresh
+  // rather than inheriting the failure.
+  void SetAbandoned(PgResponseCache::KeyGroup group, uint64_t catalog_version) {
+    auto msg = rpc::MakeSharedMessage<PgPerformResponseMsg>();
+    StatusToPB(
+        STATUS(Aborted, "Catalog response cache fill was abandoned by its filler"),
+        msg->mutable_status());
+    Set(PgResponseCache::Response(*msg, {}), group, catalog_version);
   }
 
   [[nodiscard]] bool IsValid(CoarseTimePoint now, uint64_t version) const {
@@ -341,8 +347,8 @@ class Data {
 
 // Held by the setter handed to whichever caller claimed an entry for filling. pg_client_session
 // takes that setter and then may return early before the flush -- SetupSession and
-// PrepareOperations both can -- which destroys it without ever storing a response. Giving the
-// claim back here is what lets a later caller take the fill over.
+// PrepareOperations both can -- which destroys it without ever storing a response. Completing
+// the entry here is what releases the callers queued behind that claim.
 class FillGuard {
  public:
   FillGuard(std::shared_ptr<Data> data, PgResponseCache::KeyGroup group, uint64_t catalog_version)
@@ -350,7 +356,7 @@ class FillGuard {
 
   ~FillGuard() {
     if (data_) {
-      data_->ReleaseClaim();
+      data_->SetAbandoned(group_, catalog_version_);
     }
   }
 

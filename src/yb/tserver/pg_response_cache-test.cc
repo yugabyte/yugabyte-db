@@ -76,12 +76,10 @@ class PgResponseCacheTest : public YBTest {
 
 // A caller that claims an entry for filling can go away without storing a response:
 // pg_client_session.cc returns early between taking the setter and flushing, on SetupSession or
-// PrepareOperations. Without FillGuard that entry stays claimed with nobody able to complete it, so
-// no later caller can take the fill over and everything arriving behind it queues on a fill that
-// will never land. FillGuard gives the claim back instead, which is what this test checks: the
-// callers already queued are not failed, and the next one to arrive fills the entry and serves
-// them.
-TEST_F(PgResponseCacheTest, AbandonedFillLetsTheNextCallerTakeOver) {
+// PrepareOperations. Without FillGuard nothing completes that entry, so everything queued on it
+// waits out its own deadline, and is destroyed un-responded if the entry's readiness deadline
+// passes first. FillGuard completes it as a failure instead, which releases them at once.
+TEST_F(PgResponseCacheTest, AbandonedFillReleasesItsWaiters) {
   ThreadSafeArena arena;
   auto& filler_info = MakeCachingInfo(arena);
   auto& waiter_info = MakeCachingInfo(arena);
@@ -100,23 +98,16 @@ TEST_F(PgResponseCacheTest, AbandonedFillLetsTheNextCallerTakeOver) {
 
   // The filler abandons the fill: the setter is destroyed without ever being invoked.
   setter = {};
-  ASSERT_EQ(queued_waiter->applied(), 0)
-      << "giving up the claim must not fail the caller already queued; only a response releases "
-      << "a waiter, and a connection error here is worse for a client than the timeout it would "
-      << "otherwise see";
+  ASSERT_EQ(queued_waiter->applied(), 1)
+      << "a caller queued behind an abandoned fill was never told the fill is not coming, so it "
+      << "waits out its own deadline holding a backend, and is destroyed un-responded if the "
+      << "entry is replaced first";
 
-  // The claim is gone, so the next caller to arrive is asked to fill rather than queued behind
-  // a fill that will never land.
+  // The entry is left in the state that means "do not serve this", so the next caller rebuilds
+  // it and fills afresh rather than inheriting the failure.
   auto next_waiter = std::make_shared<CountingWaiter>();
   auto next_setter = ASSERT_RESULT(cache_->Get(&next_info, deadline, next_waiter));
-  ASSERT_TRUE(next_setter)
-      << "an entry whose filler went away stays claimed, so no later caller can take the fill "
-      << "over and everything queued on it waits out its own deadline";
-
-  // Filling it serves the caller that was queued behind the abandoned attempt.
-  next_setter(MakeResponse());
-  ASSERT_EQ(queued_waiter->applied(), 1)
-      << "the caller queued behind the abandoned fill was not served by the fill that replaced it";
+  ASSERT_TRUE(next_setter) << "an entry completed as a failure must not be served or reused";
 }
 
 // A fill can outlive the readiness deadline of the entry it is filling. The filler's setter holds
