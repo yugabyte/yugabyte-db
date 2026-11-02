@@ -1233,6 +1233,11 @@ Result<bool> Executor::FetchMoreRows(const PTSelectStmt* tnode,
         // condition on the partition columns.
         query_state->set_next_partition_index(tnode_context->current_partition_index());
 
+        // The next page must read at this page's read time (GH #33610).
+        if (!query_state->has_read_time()) {
+          query_state->set_read_time(PagingReadTime(GetSession()->read_point()->GetReadTime()));
+        }
+
         // Write paging state to the node's rows_result to prepare for future batches.
         RETURN_NOT_OK(tnode_context->ComposeRowsResultForUser(nullptr, true /* for_new_batches */));
       }
