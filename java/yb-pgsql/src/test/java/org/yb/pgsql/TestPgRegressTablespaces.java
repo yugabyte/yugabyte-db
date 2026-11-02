@@ -61,6 +61,10 @@ public class TestPgRegressTablespaces extends BasePgRegressTest {
     builder.perTServerFlags(perTserverZonePlacementFlags);
     builder.numTservers(perTserverZonePlacementFlags.size());
     builder.addMasterFlags(masterFlags);
+    // The schedule exercises the tablespace storage_tier option, which is behind the
+    // tiered-storage preview flag.
+    builder.addCommonFlag("enable_tiered_storage", "true");
+    builder.addCommonFlag("allowed_preview_flags_csv", "enable_tiered_storage");
   }
 
   @Override

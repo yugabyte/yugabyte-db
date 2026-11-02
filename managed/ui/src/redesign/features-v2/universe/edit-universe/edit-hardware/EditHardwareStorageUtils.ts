@@ -210,6 +210,31 @@ export const onlyVolumeSizeIncreased = (
 const storageUnchanged = (a: NormalizedStorage, b: NormalizedStorage) =>
   a.volumeSize === b.volumeSize && storageEqualExceptVolume(a, b);
 
+const storageClassOf = (value: string | null) => value?.trim() || null;
+
+/** Volume count, volume size, or storage class. Cores, memory, and IOPS do not count. */
+export const k8sVolumeStorageChanged = (
+  current: NormalizedStorage,
+  next: NormalizedStorage
+): boolean =>
+  current.volumeSize !== next.volumeSize ||
+  current.numVolumes !== next.numVolumes ||
+  storageClassOf(current.storageClass) !== storageClassOf(next.storageClass);
+
+export const showInstanceStorageOverrideNote = (
+  mode: 'cluster' | 'tserver' | 'master' | 'readReplica',
+  currentTserver: NormalizedStorage,
+  nextTserver: NormalizedStorage,
+  currentMaster: NormalizedStorage,
+  nextMaster: NormalizedStorage
+): boolean => {
+  const tserverChanged = k8sVolumeStorageChanged(currentTserver, nextTserver);
+  const masterChanged = k8sVolumeStorageChanged(currentMaster, nextMaster);
+  if (mode === 'master') return masterChanged;
+  if (mode === 'cluster') return tserverChanged || masterChanged;
+  return tserverChanged;
+};
+
 const k8sSpecEqual = (a: K8NodeSpec | null | undefined, b: K8NodeSpec | null | undefined) =>
   (a?.cpuCoreCount ?? null) === (b?.cpuCoreCount ?? null) &&
   (a?.memoryGib ?? null) === (b?.memoryGib ?? null);

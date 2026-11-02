@@ -67,4 +67,4 @@ In the preceding command, `<yb-local-address>` is the address where the Yugabyte
 
 If ycqlsh can connect, the issue is likely a network issue with the original client not being able to access the node where YugabyteDB is running.
 
-See also [Are YB-Master and YB-TServer endpoints accessible?](../../nodes/check-processes#are-the-yb-master-and-yb-tserver-endpoints-accessible)
+See also [Are YB-Master and YB-TServer endpoints accessible?](../../nodes/check-processes/#are-the-yb-master-and-yb-tserver-endpoints-accessible)

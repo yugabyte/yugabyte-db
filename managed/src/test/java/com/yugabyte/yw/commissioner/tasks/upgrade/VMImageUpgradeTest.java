@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -18,6 +19,7 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.PublicCloudConstants.StorageType;
 import com.yugabyte.yw.commissioner.Common;
@@ -75,6 +77,7 @@ import java.util.UUID;
 import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import org.apache.commons.lang3.ArrayUtils;
 import org.jetbrains.annotations.NotNull;
 import org.junit.Before;
 import org.junit.Test;
@@ -654,6 +657,237 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
         .addSimultaneousTasks(TaskType.DeleteRootVolumes, defaultUniverse.getNodes().size())
         .addTask(TaskType.MarkUniverseForHealthScriptReUpload, null)
         .verifyTasks(taskInfo.getSubTasks());
+  }
+
+  @Test
+  public void testVMImageUpgradeMulticloudOci() {
+    ImageBundle awsBundle =
+        ImageBundle.create(defaultProvider, "ib-1", getImageBundleDetails(1), true);
+    ImageBundle ociBundle = addOciNodes();
+    UUID clusterUuid = defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid;
+
+    VMImageUpgradeParams taskParams = new VMImageUpgradeParams();
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.machineImages = null;
+    taskParams.imageBundles =
+        Arrays.asList(
+            new VMImageUpgradeParams.ImageBundleUpgradeInfo(
+                clusterUuid, awsBundle.getUuid(), defaultProvider.getUuid()),
+            new VMImageUpgradeParams.ImageBundleUpgradeInfo(
+                clusterUuid, ociBundle.getUuid(), ociBundle.getProvider().getUuid()));
+    for (AvailabilityZone az : Arrays.asList(az1, az2, az3)) {
+      when(mockNodeManager.nodeCommand(
+              eq(NodeCommandType.Create_Root_Volumes),
+              argThat(new CreateRootVolumesMatcher(az.getUuid()))))
+          .thenReturn(
+              ShellResponse.create(
+                  0,
+                  String.format(
+                      "{\"boot_disks_per_zone\":[\"root-volume-%s\"], "
+                          + "\"root_device_name\":\"/dev/sda1\"}",
+                      az.getCode())));
+    }
+
+    TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
+    if (taskInfo.getTaskState() == TaskInfo.State.Failure) {
+      throw new IllegalStateException(
+          "Task failed " + LocalProviderUniverseTestBase.getAllErrorsStr(taskInfo));
+    }
+
+    JsonNode awsVolume =
+        Json.newObject().put("numVolumes", "1").put("machineImage", "region-1-yb-image");
+    MockUpgrade mockUpgrade = initMockUpgrade();
+    mockUpgrade
+        .precheckTasks(ArrayUtils.add(getPrecheckTasks(true), TaskType.CheckOCIImageEligibility))
+        // OCI nodes need no volumes created up front.
+        .addSimultaneousTasks(TaskType.CreateRootVolumes, awsVolume, awsVolume, awsVolume)
+        .upgradeRound(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, true)
+        .withContext(getUpgradeContext(mockUpgrade))
+        .tserverTasks(
+            TaskType.ReplaceRootVolume,
+            TaskType.UpdateUniverseFields,
+            TaskType.SetupYNP,
+            TaskType.YNPProvisioning,
+            TaskType.InstallNodeAgent,
+            TaskType.SetNodeStatus,
+            TaskType.CheckLocale,
+            TaskType.CheckGlibc,
+            TaskType.AnsibleConfigureServers,
+            TaskType.AnsibleClusterServerCtl,
+            TaskType.AnsibleConfigureServers)
+        .masterTasks(TaskType.AnsibleClusterServerCtl, TaskType.AnsibleConfigureServers)
+        .applyRound()
+        .addTask(TaskType.ConfigureNodeExporterTls, null)
+        .addTask(TaskType.UpdateUniverseFields, null)
+        .addTask(TaskType.UpdateClusterUserIntent, null)
+        .addSimultaneousTasks(TaskType.DeleteRootVolumes, defaultUniverse.getNodes().size())
+        .addTask(TaskType.MarkUniverseForHealthScriptReUpload, null)
+        .verifyTasks(taskInfo.getSubTasks());
+
+    // Both OCI nodes are in one region, so they share the precheck entries.
+    JsonNode checkParams = getOciImageCheckParams(taskInfo);
+    assertOciBundleImages(checkParams.get("targetImages"), ociBundle.getUuid());
+    assertOciBundleImages(
+        checkParams.get("currentImages"),
+        defaultUniverse
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .getImageBundleUUIDForProvider(ociBundle.getProvider().getUuid()));
+
+    Map<String, ReplaceRootVolume.Params> replaced = getReplaceRootVolumeParams();
+    assertEquals(defaultUniverse.getNodes().size(), replaced.size());
+    for (String nodeName : Arrays.asList("host-n4", "host-n5")) {
+      assertEquals("oci-target-image", replaced.get(nodeName).replacementDisk);
+      assertFalse(replaced.get(nodeName).forceReplacement);
+    }
+  }
+
+  @Test
+  public void testVMImageUpgradeOciNodesOnTargetImage() {
+    ImageBundle ociBundle = addOciNodes();
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> u.getNode("host-n4").machineImage = "oci-target-image");
+
+    TaskInfo taskInfo = submitOciOnlyUpgrade(ociBundle, false);
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .noneMatch(t -> t.getTaskType() == TaskType.CreateRootVolumes));
+    JsonNode checkParams = getOciImageCheckParams(taskInfo);
+    assertOciBundleImages(checkParams.get("targetImages"), ociBundle.getUuid());
+    assertEquals(1, checkParams.get("currentImages").size());
+    Map<String, ReplaceRootVolume.Params> replaced = getReplaceRootVolumeParams();
+    assertEquals(Collections.singleton("host-n5"), replaced.keySet());
+    assertFalse(replaced.get("host-n5").forceReplacement);
+
+    // Both nodes now run the target image, so only a forced upgrade replaces their boot volumes.
+    Mockito.clearInvocations(mockNodeManager);
+    taskInfo = submitOciOnlyUpgrade(ociBundle, true);
+    checkParams = getOciImageCheckParams(taskInfo);
+    assertOciBundleImages(checkParams.get("currentImages"), ociBundle.getUuid());
+    replaced = getReplaceRootVolumeParams();
+    assertEquals(ImmutableSet.of("host-n4", "host-n5"), replaced.keySet());
+    replaced.values().forEach(p -> assertTrue(p.forceReplacement));
+  }
+
+  private TaskInfo submitOciOnlyUpgrade(ImageBundle ociBundle, boolean force) {
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    VMImageUpgradeParams taskParams = new VMImageUpgradeParams();
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.machineImages = null;
+    taskParams.forceVMImageUpgrade = force;
+    taskParams.imageBundles =
+        Collections.singletonList(
+            new VMImageUpgradeParams.ImageBundleUpgradeInfo(
+                taskParams.clusters.get(0).uuid,
+                ociBundle.getUuid(),
+                ociBundle.getProvider().getUuid()));
+    TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
+    if (taskInfo.getTaskState() == TaskInfo.State.Failure) {
+      throw new IllegalStateException(
+          "Task failed " + LocalProviderUniverseTestBase.getAllErrorsStr(taskInfo));
+    }
+    return taskInfo;
+  }
+
+  /**
+   * Adds OCI nodes host-n4 and host-n5 in region-2 to the primary cluster, running the image of the
+   * universe's OCI bundle, and returns another OCI bundle to upgrade them to.
+   */
+  private ImageBundle addOciNodes() {
+    Provider ociProvider = ModelFactory.ociProvider(defaultCustomer);
+    Region ociRegion = Region.create(ociProvider, "region-2", "Region 2", "yb-image-2");
+    AvailabilityZone ociAz = AvailabilityZone.createOrThrow(ociRegion, "ad-1", "AD 1", "subnet-4");
+    ImageBundle currentBundle =
+        ImageBundle.create(
+            ociProvider, "ib-oci-current", getOciImageBundleDetails("oci-current-image"), true);
+    ImageBundle targetBundle =
+        ImageBundle.create(
+            ociProvider, "ib-oci-target", getOciImageBundleDetails("oci-target-image"), false);
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              Cluster primary = details.getPrimaryCluster();
+              UserIntent intent = primary.userIntent;
+              UUID awsProviderUuid = intent.maybeGetSingleProviderUUID().get();
+              DeviceInfo deviceInfo = new DeviceInfo();
+              deviceInfo.storageType = StorageType.Persistent;
+              deviceInfo.numVolumes = 1;
+              TestUtils.specificationProviderInitializer(intent, awsProviderUuid)
+                  .setProviderType(CloudType.aws)
+                  .setInstanceType(intent.getBaseInstanceType(awsProviderUuid))
+                  .setDeviceInfo(deviceInfo);
+              TestUtils.specificationProviderInitializer(intent, ociProvider.getUuid())
+                  .setProviderType(CloudType.oci)
+                  .setInstanceType("VM.Standard.E4.Flex")
+                  .setDeviceInfo(deviceInfo.clone());
+              intent.setProviderImageBundleUUID(ociProvider.getUuid(), currentBundle.getUuid());
+              PlacementInfoUtil.addPlacementZone(
+                  ociAz.getUuid(), primary.placementInfo, 1, 2, false);
+              for (NodeDetails node : details.nodeDetailsSet) {
+                node.cloudInfo.region = "region-1";
+                node.cloudInfo.cloud = CloudType.aws.toString();
+              }
+              for (int idx = intent.numNodes + 1; idx <= intent.numNodes + 2; idx++) {
+                NodeDetails node = new NodeDetails();
+                node.nodeIdx = idx;
+                node.placementUuid = primary.uuid;
+                node.nodeName = "host-n" + idx;
+                node.isMaster = true;
+                node.isTserver = true;
+                node.cloudInfo = new CloudSpecificInfo();
+                node.cloudInfo.private_ip = "10.0.0." + idx;
+                node.cloudInfo.az = ociAz.getCode();
+                node.cloudInfo.region = ociRegion.getCode();
+                node.cloudInfo.cloud = CloudType.oci.toString();
+                node.azUuid = ociAz.getUuid();
+                node.state = NodeDetails.NodeState.Live;
+                details.nodeDetailsSet.add(node);
+              }
+              for (NodeDetails node : details.nodeDetailsSet) {
+                node.nodeUuid = UUID.randomUUID();
+              }
+              intent.numNodes += 2;
+            });
+    return targetBundle;
+  }
+
+  private static ImageBundleDetails getOciImageBundleDetails(String image) {
+    ImageBundleDetails details = new ImageBundleDetails();
+    details.setArch(Architecture.x86_64);
+    ImageBundleDetails.BundleInfo info = new ImageBundleDetails.BundleInfo();
+    info.setYbImage(image);
+    info.setIsImageMarketplaceBased(false);
+    details.setRegions(new HashMap<>(Collections.singletonMap("region-2", info)));
+    return details;
+  }
+
+  private static JsonNode getOciImageCheckParams(TaskInfo taskInfo) {
+    List<TaskInfo> checks =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.CheckOCIImageEligibility)
+            .collect(Collectors.toList());
+    assertEquals(1, checks.size());
+    return checks.get(0).getTaskParams();
+  }
+
+  private static void assertOciBundleImages(JsonNode images, UUID bundleUuid) {
+    assertEquals(images.toString(), 1, images.size());
+    assertEquals(bundleUuid.toString(), images.get(0).get("imageBundleUuid").asText());
+    assertEquals("region-2", images.get(0).get("regionCode").asText());
+  }
+
+  private Map<String, ReplaceRootVolume.Params> getReplaceRootVolumeParams() {
+    ArgumentCaptor<NodeTaskParams> captor = ArgumentCaptor.forClass(NodeTaskParams.class);
+    verify(mockNodeManager, atLeast(1))
+        .nodeCommand(eq(NodeCommandType.Replace_Root_Volume), captor.capture());
+    return captor.getAllValues().stream()
+        .map(p -> (ReplaceRootVolume.Params) p)
+        .collect(Collectors.toMap(p -> p.nodeName, p -> p));
   }
 
   @NotNull

@@ -37,6 +37,7 @@ import {
 
 //icons
 import ErrorIcon from '../../../../../assets/error-new.svg';
+import { getPrimaryProvider } from '../../helpers/providerConfigurations';
 
 const { Box, styled, Typography } = mui;
 
@@ -66,7 +67,7 @@ export const DatabaseSettings = forwardRef<StepsRef>((_, forwardRef) => {
     )?.value === 'true';
   // Prefer Advanced ports on remount so Database and Advanced stay in sync.
   // Internal YSQL falls back to the default when connection pooling is off.
-  const providerCode = generalSettings?.providerConfiguration?.code ?? generalSettings?.cloud;
+  const providerCode = getPrimaryProvider(generalSettings)?.code ?? generalSettings?.cloud;
   const hideOverridePorts = !canOverrideCommunicationPorts(providerCode);
   const syncedCpPorts = shouldSyncConnectionPoolingPorts(providerCode)
     ? resolveConnectionPoolingPorts(

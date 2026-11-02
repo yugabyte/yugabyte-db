@@ -83,6 +83,7 @@ YbDdlMode
 YbDdlModeOptional
 YbDdlOriginalStmtState
 YbDdlTransactionState
+YbDefaultOpClassScanState
 YbDefaultSysScan
 YbDefaultSysScanData
 YbDetailSorter
@@ -339,6 +340,8 @@ YbcPgLocalTabletsDescriptor
 YbcPgMemctx
 YbcPgMetricsCaptureType
 YbcPgOid
+YbcPgOnConflictAction
+YbcPgOnConflictOutcome
 YbcPgPrepareParameters
 YbcPgReplicaIdentityDescriptor
 YbcPgReplicationSlotSnapshotAction

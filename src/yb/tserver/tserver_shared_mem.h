@@ -100,6 +100,22 @@ class TServerSharedData {
     return db_catalog_versions_[index].load(std::memory_order_acquire);
   }
 
+  // The newest catalog version this node has a whole connection start's prefetch cached for, per
+  // database. A backend starting up can read the catalog at this version from the local response
+  // cache instead of fetching a fresh copy from the master leader, and applies the invalidation
+  // messages between that version and the current one before it finishes starting up. Written only
+  // when the last request of such a prefetch is cached, so it describes a set that is wholly here
+  // rather than what some backend believes it fetched.
+  void SetYsqlDbLastPrefetchedCatalogVersion(size_t index, uint64_t version) {
+    DCHECK_LT(index, kMaxNumDbCatalogVersions);
+    db_last_prefetched_catalog_versions_[index].store(version, std::memory_order_release);
+  }
+
+  uint64_t ysql_db_last_prefetched_catalog_version(size_t index) const {
+    DCHECK_LT(index, kMaxNumDbCatalogVersions);
+    return db_last_prefetched_catalog_versions_[index].load(std::memory_order_acquire);
+  }
+
   // Last known catalog prefetch load on the master leader, refreshed from the heartbeat. Read by
   // postgres backends before they bump the catalog version, which is what sends the whole cluster
   // to the leader to prefetch again.
@@ -177,6 +193,8 @@ class TServerSharedData {
   std::atomic<bool> fully_initialized_{false};
 
   std::atomic<uint32_t> ysql_catalog_prefetch_load_{0};
+
+  std::atomic<uint64_t> db_last_prefetched_catalog_versions_[kMaxNumDbCatalogVersions] = {0};
 };
 
 using SharedMemoryReadyCallback = std::function<void()>;

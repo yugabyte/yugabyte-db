@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.api.v2;
 
+import static com.yugabyte.yw.commissioner.tasks.NodeExporterSidecarTestUtil.SUPPORTED_VERSION;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -20,6 +21,7 @@ import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParamsV2;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
@@ -29,6 +31,7 @@ import com.yugabyte.yw.forms.SupportBundleFormDataV2;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.SupportBundleV2;
 import com.yugabyte.yw.models.SupportBundleV2StatusType;
 import com.yugabyte.yw.models.Universe;
@@ -360,6 +363,53 @@ public class SupportBundleApiControllerTest extends FakeDBApplication {
     assertEquals(
         EnumSet.of(PrometheusMetricsType.MASTER_EXPORT, PrometheusMetricsType.NODE_EXPORT),
         bundleData.prometheusMetricsTypes);
+  }
+
+  @Test
+  public void testCreateSupportBundleK8sKeepsNodeExportWhileSidecarEnabled() {
+    assertEquals(
+        EnumSet.of(PrometheusMetricsType.MASTER_EXPORT, PrometheusMetricsType.NODE_EXPORT),
+        submittedK8sPrometheusTypes(SUPPORTED_VERSION, "true" /* key */));
+  }
+
+  // The pods may still run the sidecar.
+  @Test
+  public void testCreateSupportBundleK8sDropsNodeExportWithKeyOff() {
+    assertEquals(
+        EnumSet.of(PrometheusMetricsType.MASTER_EXPORT),
+        submittedK8sPrometheusTypes(SUPPORTED_VERSION, "false" /* key */));
+  }
+
+  @Test
+  public void testCreateSupportBundleK8sDropsNodeExportBeforeSupportedVersion() {
+    assertEquals(
+        EnumSet.of(PrometheusMetricsType.MASTER_EXPORT),
+        submittedK8sPrometheusTypes("2026.1.2.0-b100", "true" /* key */));
+  }
+
+  /**
+   * Requests MASTER_EXPORT and NODE_EXPORT for a new Kubernetes universe at the given DB version
+   * with the given universe-scoped key, and returns the Prometheus types handed to the task.
+   */
+  private EnumSet<PrometheusMetricsType> submittedK8sPrometheusTypes(
+      String ybSoftwareVersion, String key) {
+    Universe k8s =
+        ModelFactory.createUniverse("k8s-universe-v2", customer.getId(), CloudType.kubernetes);
+    k8s =
+        Universe.saveDetails(
+            k8s.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              details.getPrimaryCluster().userIntent.ybSoftwareVersion = ybSoftwareVersion;
+              u.setUniverseDetails(details);
+            });
+    RuntimeConfigEntry.upsert(k8s, "yb.kubernetes.node_exporter.enabled", key);
+    ObjectNode body = ybaComponentRequest();
+    body.set("prometheus_metrics_types", Json.newArray().add("MASTER_EXPORT").add("NODE_EXPORT"));
+
+    Result result = createSupportBundle(customer.getUuid(), k8s.getUniverseUUID(), body);
+    assertEquals(OK, result.status());
+    return EnumSet.copyOf(submittedBundleData().prometheusMetricsTypes);
   }
 
   /**

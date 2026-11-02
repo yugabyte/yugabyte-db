@@ -32,6 +32,8 @@
 
 #include "yb/rocksdb/write_batch.h"
 
+#include "yb/vector_index/vector_index_fwd.h"
+
 namespace yb {
 namespace docdb {
 
@@ -172,6 +174,9 @@ class IntentsWriterContext {
 
   virtual Status Complete(rocksdb::DirectWriteHandler& handler, bool transaction_finished) = 0;
 
+  // Called from IntentsWriter::WriteApplied.
+  virtual void WriteApplied() {}
+
   const TransactionId& transaction_id() const {
     return transaction_id_;
   }
@@ -231,6 +236,7 @@ class IntentsWriter : public rocksdb::DirectWriter {
                 const Slice& key_to_apply = Slice());
 
   Status Apply(rocksdb::DirectWriteHandler& handler) override;
+  void WriteApplied() override;
   bool key_applied() { return key_applied_; }
 
  private:
@@ -276,13 +282,22 @@ class FrontierSchemaVersionUpdater {
 
 class VectorIndexesUpdater {
  public:
+  // The vectors are inserted with holds on their chunks added to chunk_holds, see
+  // vector_index::VectorLSMInsertContext::chunk_holds.
   VectorIndexesUpdater(
       DocVectorIndexesPtr indexes, SchemaPackingProvider& schema_packing_provider,
-      ConsensusFrontiers& frontiers, const StorageSet& apply_to_storages, HybridTime commit_ht,
-      std::reference_wrapper<IntraTxnWriteId> write_id, bool xcluster_target = false);
+      ConsensusFrontiers& frontiers, const StorageSet& apply_to_storages,
+      vector_index::VectorLSMChunkHolds& chunk_holds, bool xcluster_target = false);
 
-  Status Feed(rocksdb::DirectWriteHandler& handler, Slice key, Slice value);
+  // write_time is the time the regular record is written at. The reverse mapping entry is written
+  // at the same time, and the vector index feed is gated by it.
+  Status Feed(
+      rocksdb::DirectWriteHandler& handler, Slice key, Slice value, DocHybridTime write_time);
   Status Complete();
+
+  // Whether an index this update applies to takes the row with the specified key, written at
+  // write_ht.
+  bool AppliesToRow(Slice key, HybridTime write_ht) const;
 
  private:
   template <class Decoder>
@@ -304,7 +319,8 @@ class VectorIndexesUpdater {
     return apply_to_storages_.TestVectorIndex(index);
   }
 
-  bool IntentApplyShouldUpdateVectorIndex(const DocVectorIndex& vector_index) const;
+  bool IntentApplyShouldUpdateVectorIndex(
+      const DocVectorIndex& vector_index, HybridTime write_ht) const;
 
   // Whether the table with the specified key prefix writes the vector reverse mapping. Fixed at
   // table creation, so it does not depend on the schema version the row is packed with.
@@ -314,12 +330,19 @@ class VectorIndexesUpdater {
   SchemaPackingProvider& schema_packing_provider_;
   ConsensusFrontiers& frontiers_;
   StorageSet apply_to_storages_;
-  const HybridTime commit_ht_;
-  const IntraTxnWriteId& write_id_;
+  vector_index::VectorLSMChunkHolds& chunk_holds_;
   const bool xcluster_target_;
+  // Write time of the record being fed, see Feed.
+  DocHybridTime write_time_;
 
-  // TODO(#30819 vector_index) Optimize memory management
-  std::vector<DocVectorIndexInsertEntries> batches_;
+  struct IndexBatch {
+    // TODO(#30819 vector_index) Optimize memory management
+    DocVectorIndexInsertEntries entries;
+    // Got a row to apply to the index, possibly with a NULL vector, see Complete.
+    bool should_apply = false;
+  };
+
+  std::vector<IndexBatch> batches_;
   // The table the cached values below belong to, they are all replaced when it changes.
   KeyBuffer table_key_prefix_;
   std::optional<bool> table_writes_vector_reverse_mapping_;
@@ -342,6 +365,8 @@ class ApplyIntentsContext : public IntentsWriterContextBase,
       DocVectorIndexesPtr vector_indexes, const StorageSet& apply_to_storages,
       TableType table_type, ApplyIntentsContextCompleteListener complete_listener);
 
+  ~ApplyIntentsContext() override;
+
   void Start(const std::optional<Slice>& first_key) override;
 
   Result<bool> Entry(
@@ -351,6 +376,9 @@ class ApplyIntentsContext : public IntentsWriterContextBase,
   Status Complete(rocksdb::DirectWriteHandler& handler, bool finished) override;
 
   Status DeleteVectorIds(Slice key, Slice ids, rocksdb::DirectWriteHandler& handler) override;
+
+  // Releases the holds on the vector index chunks the applied intents were inserted into.
+  void WriteApplied() override;
 
  private:
   Result<bool> StoreApplyState(const Slice& key, rocksdb::DirectWriteHandler& handler);
@@ -372,6 +400,9 @@ class ApplyIntentsContext : public IntentsWriterContextBase,
 
   ApplyIntentsContextCompleteListener complete_listener_;
   rocksdb::DB* intents_db_;
+
+  // Released by WriteApplied, at the latest on destruction.
+  vector_index::VectorLSMChunkHolds chunk_holds_;
 };
 
 class RemoveIntentsContext : public IntentsWriterContext {
@@ -419,6 +450,8 @@ class NonTransactionalBatchWriter : public rocksdb::DirectWriter,
       std::atomic<bool>* can_advance_intents_flush_op_id,
       XClusterTargetApplied xcluster_target_applied);
 
+  ~NonTransactionalBatchWriter() override;
+
   bool Empty() const;
 
   Status Apply(rocksdb::DirectWriteHandler& handler) override;
@@ -429,6 +462,12 @@ class NonTransactionalBatchWriter : public rocksdb::DirectWriter,
   // cache "no tombstone" under the already-raised watermark; this second notify bumps generation
   // and clears that poison. No-op when no such tombstone was seen.
   void FlushPendingTableTombstoneNotifies();
+
+  // Releases the holds on the vector index chunks this writer inserted into. This has to happen as
+  // soon as the regular DB write returned, before the intents DB write of the same op: when that
+  // write stalls, the intents DB flush waits for the vector indexes to flush, which a held chunk
+  // blocks.
+  void WriteApplied() override;
 
  private:
   // Reads all stored external intents for provided transactions and prepares batches that will
@@ -471,6 +510,9 @@ class NonTransactionalBatchWriter : public rocksdb::DirectWriter,
     HybridTime write_ht;
   };
   std::vector<PendingTableTombstoneNotify> pending_table_tombstone_notifies_;
+
+  // Released by WriteApplied, at the latest on destruction.
+  vector_index::VectorLSMChunkHolds chunk_holds_;
 };
 
 // Context class for dumping intents records for a transaction.

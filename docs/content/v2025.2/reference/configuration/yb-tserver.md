@@ -1271,7 +1271,7 @@ Number of seconds to retain log files. Log files older than this value will be d
 Default: `102400`
 {{% /tags/wrap %}}
 
-Stop retaining logs if the space available for the logs falls below this limit, specified in megabytes. As with `log_max_seconds_to_retain`, this flag is ignored if a log segment contains unflushed entries.
+Stop retaining logs if the space available for the logs falls below this limit, specified in kilobytes. As with `log_max_seconds_to_retain`, this flag is ignored if a log segment contains unflushed entries.
 
 ##### --cdc_intent_retention_ms
 
@@ -2079,9 +2079,68 @@ Default: `50`
 
 Assigns an extra priority to automatic (minor) compactions when automatic tablet splitting is enabled. This deprioritizes post-split compactions and ensures that smaller compactions are not starved. Suggested values are between 0 and 50.
 
-### Vector Index LSM compaction flags
+### Vector Index LSM flags
 
-Use these flags to control background compaction of Vector LSM chunk files used by [vector indexes](../../../additional-features/pg-extensions/extension-pgvector/#vector-indexing).
+Use these flags to control the memory and background compaction of Vector LSM chunks used by [vector indexes](../../../additional-features/pg-extensions/extension-pgvector/#vector-indexing).
+
+##### --vector_index_initial_chunk_memstore_size_mb
+
+{{% tags/wrap %}}
+
+Default: `256`
+{{% /tags/wrap %}}
+
+Available in v2025.2.9.0 and later.
+
+In-memory size, in megabytes, of a vector index mutable chunk: the in-memory chunk that new vectors are inserted into before it is flushed to disk. The size is converted to a number of vectors using the index's per-vector memory estimate, so the more dimensions the vectors have, the fewer vectors a chunk holds. A chunk holds the smaller of this number of vectors and [`--vector_index_initial_chunk_size`](#vector-index-initial-chunk-size). Set to `0` for no memory limit.
+
+A chunk can be larger than this size when a single insert batch does not fit in it, or when vector index backfill sizes its own chunk (`--vector_index_backfill_single_chunk_size_bytes` is non-zero). Backfill also inserts rows in batches of at most the same number of vectors, which bounds the memory each batch uses.
+
+##### --vector_index_initial_chunk_size
+
+{{% tags/wrap %}}
+
+Default: `100000`
+{{% /tags/wrap %}}
+
+Number of vectors in a vector index mutable chunk: the in-memory chunk that new vectors are inserted into before it is flushed to disk. A chunk holds the smaller of this number and the number of vectors that fit into [`--vector_index_initial_chunk_memstore_size_mb`](#vector-index-initial-chunk-memstore-size-mb). Set to `0` for no limit by the number of vectors; if both flags are `0`, each chunk is sized to the batch of vectors inserted into it. Avoid setting both flags to `0`: vector index backfill then inserts all of a tablet's rows in one batch and builds a single chunk for the whole tablet.
+
+As with the memory limit, a chunk can be larger when a single insert batch does not fit in it, or when vector index backfill sizes its own chunk (`--vector_index_backfill_single_chunk_size_bytes` is non-zero).
+
+##### --vector_index_compaction_chunk_max_memstore_size_mb
+
+{{% tags/wrap %}}
+
+Default: `0`
+{{% /tags/wrap %}}
+
+Available in v2025.2.6.0 and later.
+
+Maximum in-memory size in megabytes for a single output chunk built during Vector LSM compaction. When set to `0` (the default), the limit comes from [`--vector_index_compaction_chunk_max_memstore_size_percentage`](#vector-index-compaction-chunk-max-memstore-size-percentage). When set to a non-zero value, the output is split into multiple chunks bounded by the specified memory budget.
+
+This flag takes priority over [`--vector_index_compaction_chunk_max_memstore_size_percentage`](#vector-index-compaction-chunk-max-memstore-size-percentage). When concurrent compactions are allowed ([`--vector_index_num_compactions_limit`](#vector-index-num-compactions-limit) is not `1`), you should set this flag instead of relying on the percentage-based limit.
+
+Before v2025.2.9.0, this flag was named `--vector_index_compaction_chunk_max_mem_store_size_mb`. The old name is still accepted, but its value is ignored.
+
+##### --vector_index_compaction_chunk_max_memstore_size_percentage
+
+{{% tags/wrap %}}
+
+Default: `60`
+{{% /tags/wrap %}}
+
+Available in v2025.2.6.0 and later.
+
+Maximum in-memory size for a single output chunk built during Vector LSM compaction, expressed as a percentage of the vector index block cache capacity. A value of `0` means no limit (single output chunk). Values above `100` are treated as `100`.
+
+This flag is ignored when:
+
+- [`--vector_index_compaction_chunk_max_memstore_size_mb`](#vector-index-compaction-chunk-max-memstore-size-mb) is set to a non-zero value
+- Concurrent compactions are allowed ([`--vector_index_num_compactions_limit`](#vector-index-num-compactions-limit) is not `1`)
+
+When both this flag and the MB-based limit are at their defaults, chunked compaction is enabled with output chunks capped at 60% of the vector index block cache capacity, which reduces the risk of out-of-memory (OOM) errors during compaction.
+
+Before v2025.2.9.0, this flag was named `--vector_index_compaction_chunk_max_mem_store_size_percentage`. The old name is still accepted, but its value is ignored.
 
 ##### --vector_index_num_compactions_limit
 
@@ -2091,6 +2150,8 @@ Default: `1`
 {{% /tags/wrap %}}
 
 Maximum number of concurrent Vector LSM compactions per tablet server. Set to `0` for no per-tserver limit.
+
+When this flag is not `1` (concurrent compactions are allowed), [`--vector_index_compaction_chunk_max_memstore_size_percentage`](#vector-index-compaction-chunk-max-memstore-size-percentage) is ignored. Set an absolute limit with [`--vector_index_compaction_chunk_max_memstore_size_mb`](#vector-index-compaction-chunk-max-memstore-size-mb) instead, and account for total memory across concurrent merges.
 
 ##### --vector_index_files_number_compaction_trigger
 
@@ -2593,6 +2654,24 @@ Enable server-server (node-to-node) encryption between YugabyteDB YB-Master and 
 
 When enabled, [--allow_insecure_connections](#allow-insecure-connections) should be set to false to disallow insecure connections.
 
+##### --openssl_require_fips
+
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+{{% tags/feature/t-server %}}
+Default: `false`
+{{% /tags/wrap %}}
+
+Requires the YB-TServer and its YSQL processes to use the OpenSSL FIPS provider. In v2025.2.8.0 and later, this includes YSQL Connection Manager. When enabled, these processes fail to start if the FIPS provider can't be loaded.
+
+Set the same value on every YB-Master and YB-TServer. See [--openssl_require_fips](../yb-master/#openssl-require-fips) for the YB-Master.
+
+The flag selects the OpenSSL FIPS provider. To encrypt client connections, also enable [use_client_to_server_encryption](#use-client-to-server-encryption).
+
+When [ysql_enable_auth](#ysql-enable-auth) is enabled, the auto-generated `ysql_hba.conf` entry uses `scram-sha-256` and ignores `ysql_auth_method`. Rules in [ysql_hba_conf_csv](#ysql-hba-conf-csv) are checked first, so an earlier `md5` rule still applies to the connections it matches. A role whose password is stored as an MD5 hash cannot sign in through the SCRAM rule until you change that password. [Migrate existing MD5 passwords](../../../secure/authentication/password-authentication/#migrate-existing-md5-passwords-to-scram-sha-256) before you enable this flag.
+
+The flag also sets `pgcrypto.builtin_crypto_enabled` to `fips`. pgcrypto then rejects built-in algorithms that are not FIPS-validated.
+
 ##### --cipher_list
 
 {{% tags/wrap %}}
@@ -2713,7 +2792,7 @@ Default: `0.0.0.0:5433`
 
 Specifies the TCP/IP bind addresses for the YSQL API. The default value of `0.0.0.0:5433` allows listening for all IPv4 addresses access to localhost on port `5433`. The `--pgsql_proxy_bind_address` value overwrites `listen_addresses` (default value of `127.0.0.1:5433`) that controls which interfaces accept connection attempts.
 
-To specify fine-grained access control over who can access the server, use [--ysql_hba_conf](#ysql-hba-conf).
+To specify fine-grained access control over who can access the server, use [--ysql_hba_conf_csv](#ysql-hba-conf-csv).
 
 ##### --pgsql_proxy_webserver_port
 
@@ -2733,17 +2812,31 @@ Deprecated. Use `--ysql_hba_conf_csv` instead.
 ##### --ysql_hba_conf_csv
 
 {{% tags/wrap %}}
-{{<tags/feature/restart-needed>}}
+
 Default: `"host all all 0.0.0.0/0 trust,host all all ::0/0 trust"`
 {{% /tags/wrap %}}
 
 Specifies a comma-separated list of PostgreSQL client authentication settings that is written to the `ysql_hba.conf` file. To see the current values in the `ysql_hba.conf` file, run the `SHOW hba_file;` statement and then view the file. Because the file is autogenerated, direct edits are overwritten by the autogenerated content.
 
+The `--ysql_hba_conf_csv` flag is read on start-up of your cluster. If you edit the file on an active cluster, you need to restart your yb-tserver processes for changes to take effect.
+
+Changes to `--ysql_hba_conf_csv` should be applied to all yb-tserver servers in a rolling upgrade, making sure that all YB-TServers are not stopped at the same time.
+
 For details on using `--ysql_hba_conf_csv` to specify client authentication, refer to [Host-based authentication](../../../secure/authentication/host-based-authentication/).
 
 If a setting includes a comma (`,`) or double quotes (`"`), the setting should be enclosed in double quotes. In addition, double quotes inside the quoted text should be doubled (`""`).
 
-Suppose you have two fields: `host all all 127.0.0.1/0 password` and `host all all 0.0.0.0/0 ldap ldapserver=***** ldapsearchattribute=cn ldapport=3268 ldapbinddn=***** ldapbindpasswd="*****"`.
+Suppose you have two fields:
+
+```text
+host all all 127.0.0.1/0 password
+```
+
+and
+
+```text
+host all all 0.0.0.0/0 ldap ldapserver=***** ldapsearchattribute=cn ldapport=3268 ldapbinddn=***** ldapbindpasswd="*****"
+```
 
 Because the second field includes double quotes (`"`) around one of the settings, you need to double the quotes and enclose the entire field in quotes, as follows:
 
@@ -2757,6 +2850,25 @@ To set the flag, join the fields using a comma (`,`) and enclose the final flag 
 --ysql_hba_conf_csv='host all all 127.0.0.1/0 password,"host all all 0.0.0.0/0 ldap ldapserver=***** ldapsearchattribute=cn ldapport=3268 ldapbinddn=***** ldapbindpasswd=""*****"""'
 ```
 
+##### --ysql_ident_conf_csv
+
+{{% tags/wrap %}}
+
+Default: `""`
+{{% /tags/wrap %}}
+
+Specifies a comma-separated list of PostgreSQL user name mapping rules that is written to the `ysql_ident.conf` file. These rules define mappings from external users to database roles. See [Authentication methods](../../../secure/authentication/) for details.
+
+The `--ysql_ident_conf_csv` flag is read on start-up of your cluster. If you edit the file on an active cluster, you need to restart your yb-tserver processes for changes to take effect.
+
+Changes to `--ysql_ident_conf_csv` should be applied to all yb-tserver servers in a rolling upgrade, making sure that all YB-TServers are not stopped at the same time.
+
+For example:
+
+```sh
+--ysql_ident_conf_csv='map_x user_foo yb_user_foo'
+```
+
 ##### --ysql_pg_conf
 
 {{% tags/wrap %}}{{<tags/feature/deprecated>}}{{<tags/feature/restart-needed>}}{{% /tags/wrap %}}
@@ -2766,10 +2878,22 @@ Deprecated. Use `--ysql_pg_conf_csv` instead.
 ##### --ysql_pg_conf_csv
 
 {{% tags/wrap %}}
-{{<tags/feature/restart-needed>}}
 {{% /tags/wrap %}}
 
 Comma-separated list of PostgreSQL server configuration parameters that is appended to the `postgresql.conf` file. If internal quotation marks are required, surround each configuration pair having single quotation marks with double quotation marks.
+
+This flag can be updated at runtime without restarting the YugabyteDB server. However, whether an individual PostgreSQL parameter takes effect depends on its configuration context:
+
+- **Reloadable parameters** (context: `sighup`): Take effect immediately when the configuration is reloaded
+- **Startup-only parameters** (context: `postmaster`): Require a PostgreSQL server restart to take effect
+
+For example, `shared_buffers` is a postmaster parameter; changing it via `ysql_pg_conf_csv` will update the configuration file, but the new value won't become active until PostgreSQL restarts.
+
+To check if a parameter can be reloaded dynamically, query the `pg_settings` table:
+
+```sql
+SELECT name, context, pending_restart FROM pg_settings WHERE name = 'parameter_name';
+```
 
 For example:
 

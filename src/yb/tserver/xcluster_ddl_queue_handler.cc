@@ -395,6 +395,11 @@ bool XClusterDDLQueueHandler::HasDdlInFlight() const {
   return ddl_in_flight_.load(std::memory_order_acquire);
 }
 
+std::string XClusterDDLQueueHandler::GetRunningDdlDescription() const {
+  std::lock_guard l(running_ddl_mutex_);
+  return running_ddl_description_.empty() ? "none" : running_ddl_description_;
+}
+
 void XClusterDDLQueueHandler::KillPgConnection() {
   if (!ddl_in_flight_.load(std::memory_order_acquire)) {
     VLOG_WITH_PREFIX(1) << "KillPgConnection: no DDL in flight, nothing to terminate";
@@ -510,13 +515,22 @@ Status XClusterDDLQueueHandler::ProcessQueriesForCommitTime(const HybridTime& co
         kSupportedCommandTags.contains(query_info.command_tag), InvalidArgument,
         "Found unsupported command tag $0", query_info.command_tag);
 
+    {
+      std::lock_guard l(running_ddl_mutex_);
+      running_ddl_description_ = Format(
+          "$0 (ddl_end_time: $1, query_id: $2)", query_info.command_tag, query_info.ddl_end_time,
+          query_info.query_id);
+    }
+
     // Register source table mappings for new relations before running the DDL.
     // CREATE TABLE on the target needs the mapping to exist before it executes.
     std::unordered_set<YsqlFullTableName> new_relations;
-    auto relation_cleanup = ScopeExit([this, &new_relations]() {
+    auto cleanup = ScopeExit([this, &new_relations]() {
       for (const auto& new_rel : new_relations) {
         xcluster_context_.ClearSourceTableInfoMappingForCreateTable(new_rel);
       }
+      std::lock_guard l(running_ddl_mutex_);
+      running_ddl_description_.clear();
     });
     RETURN_NOT_OK(ProcessNewRelations(query_info, new_relations, commit_time));
 
@@ -874,6 +888,8 @@ Status XClusterDDLQueueHandler::RunDdlQueueHandlerPrepareQueries(pgwrapper::PGCo
   query << "SET yb_xcluster_consistency_level = tablet;";
   // Allow writes on target (read-only) cluster.
   query << "SET yb_non_ddl_txn_for_sys_tables_allowed = 1;";
+  // Keep reading the catalog as of now even when yb_read_time is set (see GetRowsToProcess).
+  query << "SET yb_read_time_skip_catalog = 1;";
   // Skip any data loads on the target since those records will be replicated (note that concurrent
   // index backfill uses a different flow). Skip sequence restart for TRUNCATE TABLE.
   query << "SET yb_xcluster_automatic_mode_target_ddl=true;";
@@ -968,8 +984,12 @@ Result<HybridTime> XClusterDDLQueueHandler::GetPublishedXClusterSafeTime() {
 Result<std::vector<std::tuple<int64, int64, std::string>>>
 XClusterDDLQueueHandler::GetRowsToProcess(const HybridTime& commit_time) {
   // Since applies can come out of order, need to read at the apply_safe_time and not latest.
-  // Use yb_disable_catalog_version_check since we do not need to read from the latest catalog (the
-  // extension tables should not change).
+  // The catalog is read as of now instead (yb_read_time_skip_catalog).  Reading it as of the
+  // commit time fails when the commit time is from before the restore created ddl_queue on the
+  // target.  That is safe because the extension tables keep their definition and storage.
+  // yb_disable_catalog_version_check is needed to SET yb_read_time in a multi-statement query
+  // since that runs as a transaction block.  Skipping the check is fine because a new yb_read_time
+  // reloads the catalog anyway.
   RETURN_NOT_OK(pg_conn_->ExecuteFormat(
       "RESET search_path; SET ROLE NONE; SET yb_disable_catalog_version_check = 1; "
       "SET yb_read_time TO '$0 ht'",

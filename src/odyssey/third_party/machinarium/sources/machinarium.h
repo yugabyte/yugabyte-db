@@ -206,6 +206,8 @@ MACHINE_API int machine_io_attach(machine_io_t *);
 
 MACHINE_API int machine_io_detach(machine_io_t *);
 
+MACHINE_API int machine_io_poll(machine_io_t *);
+
 MACHINE_API char *machine_error(machine_io_t *);
 
 MACHINE_API int machine_fd(machine_io_t *);
@@ -223,6 +225,9 @@ MACHINE_API int machine_io_verify(machine_io_t *, char *common_name);
 
 MACHINE_API int yb_machine_io_get_peer_cert_der(machine_io_t *, unsigned char **buf,
 					     int *len);
+
+MACHINE_API int yb_machine_io_get_server_cert_hash(machine_io_t *,
+						unsigned char *buf, int *len);
 
 MACHINE_API int yb_machine_io_is_socket_closed(machine_io_t *obj);
 

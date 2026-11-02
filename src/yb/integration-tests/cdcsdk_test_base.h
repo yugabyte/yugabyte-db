@@ -263,11 +263,10 @@ class CDCSDKTestBase : public YBTest {
       const std::string& replication_slot_name, CDCRecordType record_type = CDCRecordType::CHANGE);
 
   Result<xrepl::StreamId> CreateConsistentSnapshotStreamWithReplicationSlot(
-      const std::string& replication_slot_name,
-      CDCSDKSnapshotOption snapshot_option,
-      bool verify_snapshot_name,
-      std::string namespace_name,
-      const std::string& output_plugin_name = "pgoutput");
+      const std::string& replication_slot_name, CDCSDKSnapshotOption snapshot_option,
+      bool verify_snapshot_name, std::string namespace_name,
+      const std::string& output_plugin_name = "pgoutput",
+      const std::string& bound_publication_name = "");
 
   // Delegating overload: uses test_namespace_name when caller omits namespace_name.
   Result<xrepl::StreamId> CreateConsistentSnapshotStreamWithReplicationSlot(

@@ -860,6 +860,14 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
       break;
     }
 
+    // Intents alone are not the whole row, e.g. a column set to NULL reads as not found. So this
+    // mode returns every row with intents.
+    if (seek_filter_ == SeekFilter::kIntentsOnly) {
+      RETURN_NOT_OK(FillRow(table_row));
+      prev_doc_found_ = DocReaderResult::kFoundNotFinished;
+      break;
+    }
+
     RETURN_NOT_OK(AdvanceIteratorToNextDesiredRow(/* row_finished= */ false,
                                                   /* current_fetched_row_skipped */ true));
   }

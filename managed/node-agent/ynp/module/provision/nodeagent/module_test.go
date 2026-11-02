@@ -596,6 +596,7 @@ func TestCreateInstanceIfNotExists(t *testing.T) {
 			name: "existing instance type matching mounts",
 			instanceType: &model.NodeInstanceType{
 				InstanceTypeCode: "c5.large",
+				Active:           true,
 				Details: model.NodeInstanceTypeDetails{
 					VolumeDetailsList: []model.VolumeDetails{
 						{MountPath: "/mnt/d0"},
@@ -609,6 +610,7 @@ func TestCreateInstanceIfNotExists(t *testing.T) {
 			name: "existing instance type mismatched mounts",
 			instanceType: &model.NodeInstanceType{
 				InstanceTypeCode: "c5.large",
+				Active:           true,
 				Details: model.NodeInstanceTypeDetails{
 					VolumeDetailsList: []model.VolumeDetails{
 						{MountPath: "/mnt/d0"},
@@ -622,6 +624,7 @@ func TestCreateInstanceIfNotExists(t *testing.T) {
 			name: "existing instance type mounts different order",
 			instanceType: &model.NodeInstanceType{
 				InstanceTypeCode: "c5.large",
+				Active:           true,
 				Details: model.NodeInstanceTypeDetails{
 					VolumeDetailsList: []model.VolumeDetails{
 						{MountPath: "/mnt/d0"},
@@ -631,6 +634,21 @@ func TestCreateInstanceIfNotExists(t *testing.T) {
 			},
 			mountPoints: "['/mnt/d1', '/mnt/d0']",
 			wantErr:     "mount paths",
+		},
+		{
+			// Inactive types are not listed by the installer, so they are recreated and their
+			// old mounts are not enforced.
+			name: "inactive instance type creates payload",
+			instanceType: &model.NodeInstanceType{
+				InstanceTypeCode: "c5.large",
+				Details: model.NodeInstanceTypeDetails{
+					VolumeDetailsList: []model.VolumeDetails{
+						{MountPath: "/mnt/d0"},
+					},
+				},
+			},
+			mountPoints: "['/mnt/d0', '/mnt/d1']",
+			wantCreate:  true,
 		},
 		{
 			name:        "instance type missing creates payload",

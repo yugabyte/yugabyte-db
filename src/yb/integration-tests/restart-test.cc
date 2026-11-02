@@ -11,11 +11,15 @@
 // under the License.
 //
 
+#include <unistd.h>
+
 #include "yb/client/client.h"
 
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_reader.h"
 #include "yb/consensus/raft_consensus.h"
+
+#include "yb/fs/fs_manager.h"
 
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_table_test_base.h"
@@ -27,7 +31,11 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/env.h"
+#include "yb/util/errno.h"
+#include "yb/util/path_util.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
@@ -36,6 +44,8 @@ using std::string;
 using namespace std::literals;
 
 DECLARE_bool(TEST_simulate_abrupt_server_restart);
+
+DECLARE_bool(allow_encryption_at_rest);
 
 DECLARE_bool(TEST_disable_flush_on_shutdown);
 
@@ -48,6 +58,10 @@ DECLARE_bool(enable_flush_retryable_requests);
 DECLARE_bool(TEST_asyncrpc_finished_set_timedout);
 
 DECLARE_int32(retryable_request_timeout_secs);
+
+DECLARE_int32(interval_durable_wal_write_ms);
+
+DECLARE_int32(bytes_durable_wal_write_mb);
 
 namespace yb {
 namespace integration_tests {
@@ -133,9 +147,11 @@ TEST_F(RestartTest, WalFooterProperlyInitialized) {
   ASSERT_OK(tablet_server->WaitStarted());
   log::SegmentSequence segments;
   auto log_reader = ASSERT_RESULT(tablet_peer->log()->GetLogReader());
-  ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
-
-  ASSERT_EQ(2, segments.size());
+  // The second segment is started by the first append after restart.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    RETURN_NOT_OK(log_reader->GetSegmentsSnapshot(&segments));
+    return segments.size() == 2;
+  }, 10s * kTimeMultiplier, "Second segment"));
   log::ReadableLogSegmentPtr segment = ASSERT_RESULT(segments.front());
   ASSERT_TRUE(segment->HasFooter());
   ASSERT_TRUE(segment->footer().has_close_timestamp_micros());
@@ -201,15 +217,18 @@ TEST_F(RestartTest, BootstrapReplaysUnflushedWritesFromWAL) {
   ASSERT_NO_FATALS(check_all_keys_present(kNumRows));
 
   // The previously-active segment should now have a footer rebuilt by tail-scan during bootstrap.
-  // With reuse_unclosed_segment_threshold_bytes = -1 and an abrupt prior shutdown, bootstrap is
-  // guaranteed to close the prior segment and allocate a fresh tail, so >= 2 segments must exist.
+  // With reuse_unclosed_segment_threshold_bytes = -1 and an abrupt prior shutdown, bootstrap does
+  // not reuse the prior segment. A new one is started by the first append after the restart, which
+  // this replica may receive after the scan.
   {
     auto* ts = mini_cluster()->mini_tablet_server(0);
     auto peer = ASSERT_RESULT(ts->server()->tablet_manager()->GetServingTablet(tablet_id));
     log::SegmentSequence segments;
     auto log_reader = ASSERT_RESULT(peer->log()->GetLogReader());
-    ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
-    ASSERT_GE(segments.size(), 2);
+    ASSERT_OK(WaitFor([&]() -> Result<bool> {
+      RETURN_NOT_OK(log_reader->GetSegmentsSnapshot(&segments));
+      return segments.size() >= 2;
+    }, 10s * kTimeMultiplier, "Second segment"));
     log::ReadableLogSegmentPtr first = ASSERT_RESULT(segments.front());
     ASSERT_TRUE(first->HasFooter()) << "first segment missing footer after bootstrap";
   }
@@ -388,6 +407,301 @@ TEST_F(PersistRetryableRequestsTest, TestRetryableWriteWithoutPersistence) {
 TEST_F(PersistRetryableRequestsTest, TestRetryableRequestsFileTooOld) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_flush_retryable_requests) = true;
   return TestRetryableWrite(/* wait_file_to_expire */ true);
+}
+
+// Tracks how much of each written file was fsynced, so WAL segments can be cut back to that size
+// as a power loss would.
+class PowerLossEnv : public EnvWrapper {
+ public:
+  PowerLossEnv() : EnvWrapper(Env::Default()) {}
+
+  Status NewWritableFile(
+      const WritableFileOptions& opts, const std::string& fname,
+      std::unique_ptr<WritableFile>* result) override {
+    RETURN_NOT_OK(EnvWrapper::NewWritableFile(opts, fname, result));
+    Track(opts, fname, result);
+    return Status::OK();
+  }
+
+  Status NewTempWritableFile(
+      const WritableFileOptions& opts, const std::string& name_template,
+      std::string* created_filename, std::unique_ptr<WritableFile>* result) override {
+    RETURN_NOT_OK(EnvWrapper::NewTempWritableFile(opts, name_template, created_filename, result));
+    Track(opts, *created_filename, result);
+    return Status::OK();
+  }
+
+  // Bootstrap fsyncs an unclosed WAL segment it does not reuse through RWFile.
+  Status NewRWFile(
+      const RWFileOptions& opts, const std::string& fname,
+      std::unique_ptr<RWFile>* result) override {
+    RETURN_NOT_OK(EnvWrapper::NewRWFile(opts, fname, result));
+    std::lock_guard lock(mutex_);
+    auto it = files_.find(fname);
+    if (it != files_.end()) {
+      auto target = std::move(*result);
+      *result = std::make_unique<SyncTrackingRWFile>(std::move(target), it->second);
+    }
+    return Status::OK();
+  }
+
+  // WAL segments are created under a temporary name and renamed once their header is synced.
+  Status RenameFile(const std::string& src, const std::string& target) override {
+    RETURN_NOT_OK(EnvWrapper::RenameFile(src, target));
+    std::lock_guard lock(mutex_);
+    auto it = files_.find(src);
+    if (it != files_.end()) {
+      auto state = std::move(it->second);
+      files_.erase(it);
+      files_[target] = std::move(state);
+    }
+    return Status::OK();
+  }
+
+  uint64_t UnsyncedWalBytes() {
+    uint64_t result = 0;
+    std::lock_guard lock(mutex_);
+    for (const auto& [path, state] : files_) {
+      if (IsWalSegment(path)) {
+        result += state->written_size.load() - state->synced_size.load();
+      }
+    }
+    return result;
+  }
+
+  // Truncates WAL segments to the size they had at their last fsync.
+  Status DropUnsyncedWalData() {
+    std::lock_guard lock(mutex_);
+    for (const auto& [path, state] : files_) {
+      if (!IsWalSegment(path) || !FileExists(path)) {
+        continue;
+      }
+      auto synced_size = state->synced_size.load();
+      auto size = VERIFY_RESULT(GetFileSize(path));
+      if (size <= synced_size) {
+        continue;
+      }
+      LOG(INFO) << "Truncating " << path << " from " << size << " to " << synced_size;
+      RETURN_NOT_OK(STATUS_FROM_ERRNO_IF_NONZERO_RV(path, truncate(path.c_str(), synced_size)));
+    }
+    return Status::OK();
+  }
+
+ private:
+  struct FileState {
+    explicit FileState(uint64_t size) : written_size(size), synced_size(size) {}
+
+    std::atomic<uint64_t> written_size;
+    std::atomic<uint64_t> synced_size;
+  };
+  using FileStatePtr = std::shared_ptr<FileState>;
+
+  class File : public WritableFileWrapper {
+   public:
+    File(std::unique_ptr<WritableFile> target, FileStatePtr state, bool sync_on_close)
+        : WritableFileWrapper(std::move(target)), state_(std::move(state)),
+          sync_on_close_(sync_on_close) {}
+
+    Status Append(const Slice& data) override {
+      RETURN_NOT_OK(WritableFileWrapper::Append(data));
+      state_->written_size += data.size();
+      return Status::OK();
+    }
+
+    Status AppendSlices(const Slice* slices, size_t num) override {
+      RETURN_NOT_OK(WritableFileWrapper::AppendSlices(slices, num));
+      for (size_t i = 0; i != num; ++i) {
+        state_->written_size += slices[i].size();
+      }
+      return Status::OK();
+    }
+
+    Status Sync() override {
+      return SyncAndTrack([this] { return WritableFileWrapper::Sync(); });
+    }
+
+    Status Fsync() override {
+      return SyncAndTrack([this] { return WritableFileWrapper::Fsync(); });
+    }
+
+    Status Close() override {
+      if (sync_on_close_) {
+        return SyncAndTrack([this] { return WritableFileWrapper::Close(); });
+      }
+      return WritableFileWrapper::Close();
+    }
+
+   private:
+    template <class F>
+    Status SyncAndTrack(const F& sync) {
+      // Only bytes appended before the sync started are guaranteed to be durable.
+      auto size = state_->written_size.load();
+      RETURN_NOT_OK(sync());
+      UpdateAtomicMax(&state_->synced_size, size);
+      return Status::OK();
+    }
+
+    const FileStatePtr state_;
+    const bool sync_on_close_;
+  };
+
+  // WAL segments are written through WritableFile, so RWFile only has to track syncs.
+  class SyncTrackingRWFile : public RWFile {
+   public:
+    SyncTrackingRWFile(std::unique_ptr<RWFile> target, FileStatePtr state)
+        : target_(std::move(target)), state_(std::move(state)) {}
+
+    Status Read(uint64_t offset, size_t length, Slice* result, uint8_t* scratch) const override {
+      return target_->Read(offset, length, result, scratch);
+    }
+
+    Status Write(uint64_t offset, const Slice& data) override {
+      return target_->Write(offset, data);
+    }
+
+    Status PreAllocate(uint64_t offset, size_t length) override {
+      return target_->PreAllocate(offset, length);
+    }
+
+    Status PunchHole(uint64_t offset, size_t length) override {
+      return target_->PunchHole(offset, length);
+    }
+
+    Status Flush(FlushMode mode, uint64_t offset, size_t length) override {
+      return target_->Flush(mode, offset, length);
+    }
+
+    Status Sync() override {
+      auto size = state_->written_size.load();
+      RETURN_NOT_OK(target_->Sync());
+      UpdateAtomicMax(&state_->synced_size, size);
+      return Status::OK();
+    }
+
+    Status Close() override {
+      return target_->Close();
+    }
+
+    Result<uint64_t> Size() const override {
+      return target_->Size();
+    }
+
+    const std::string& filename() const override {
+      return target_->filename();
+    }
+
+   private:
+    const std::unique_ptr<RWFile> target_;
+    const FileStatePtr state_;
+  };
+
+  void Track(
+      const WritableFileOptions& opts, const std::string& fname,
+      std::unique_ptr<WritableFile>* file) {
+    auto state = std::make_shared<FileState>((*file)->Size());
+    auto target = std::move(*file);
+    *file = std::make_unique<File>(std::move(target), state, opts.sync_on_close);
+    std::lock_guard lock(mutex_);
+    files_[fname] = std::move(state);
+  }
+
+  static bool IsWalSegment(const std::string& path) {
+    return FsManager::IsWalSegmentFileName(BaseName(path));
+  }
+
+  std::mutex mutex_;
+  std::map<std::string, FileStatePtr> files_ GUARDED_BY(mutex_);
+};
+
+class PowerLossTest : public RestartTest {
+ protected:
+  void SetUp() override {
+    auto env = std::make_unique<PowerLossEnv>();
+    power_loss_env_ = env.get();
+    ts_env_ = std::move(env);
+    RestartTest::SetUp();
+  }
+
+  void BeforeStartCluster() override {
+    // Otherwise tablets use an encrypted env that bypasses ts_env_.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_encryption_at_rest) = false;
+    // Fsync WAL only when forced to: segment allocation, rollover or close.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_interval_durable_wal_write_ms) = 3600 * 1000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_bytes_durable_wal_write_mb) = 1024;
+  }
+
+  size_t num_tablet_servers() override { return 1; }
+
+  using Rows = std::vector<std::pair<std::string, std::string>>;
+
+  // Returns the written rows sorted.
+  Rows WriteRows(int num_rows) {
+    Rows result;
+    for (int i = 0; i != num_rows; ++i) {
+      result.emplace_back(Format("key_$0", i), Format("value_$0", i));
+      PutKeyValue(result.back().first, result.back().second);
+    }
+    std::sort(result.begin(), result.end());
+    return result;
+  }
+
+  void CheckRows(const Rows& expected) {
+    auto rows = GetScanResults(client::TableRange(table_));
+    std::sort(rows.begin(), rows.end());
+    ASSERT_EQ(rows, expected);
+  }
+
+  // Shuts down without closing the WAL, as a crash would.
+  void ShutdownAbruptly(tserver::MiniTabletServer* ts) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_abrupt_server_restart) = true;
+    ts->Shutdown();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_abrupt_server_restart) = false;
+  }
+
+  PowerLossEnv* power_loss_env_ = nullptr;
+};
+
+// Power loss drops the WAL tail that was not fsynced. A memtable flush done before the power loss
+// must not have persisted operations from that tail, otherwise the flushed op id is ahead of the
+// WAL and bootstrap fails with "WAL files missing".
+// https://github.com/yugabyte/yugabyte-db/issues/34197
+TEST_F(PowerLossTest, FlushAheadOfUnsyncedWal) {
+  auto expected_rows = WriteRows(10);
+
+  // Otherwise the WAL tail is already durable and the scenario is not exercised.
+  ASSERT_GT(power_loss_env_->UnsyncedWalBytes(), 0U);
+
+  auto* ts = mini_cluster()->mini_tablet_server(0);
+  ASSERT_OK(ts->FlushTablets());
+
+  ShutdownAbruptly(ts);
+  ASSERT_OK(power_loss_env_->DropUnsyncedWalData());
+
+  ASSERT_OK(ts->Start());
+  ASSERT_NO_FATALS(CheckRows(expected_rows));
+}
+
+// A process crash leaves the WAL tail unsynced. When bootstrap does not reuse that segment, it must
+// fsync it, since flushes may then persist the entries replayed from it.
+TEST_F(PowerLossTest, FlushReplayedFromUnreusedSegment) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_reuse_unclosed_segment_threshold_bytes) = -1;
+  auto expected_rows = WriteRows(10);
+  ASSERT_GT(power_loss_env_->UnsyncedWalBytes(), 0U);
+
+  // Process crash: neither the shutdown flush nor the WAL close syncs the WAL.
+  auto* ts = mini_cluster()->mini_tablet_server(0);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_flush_on_shutdown) = true;
+  ShutdownAbruptly(ts);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_flush_on_shutdown) = false;
+
+  ASSERT_OK(ts->Start());
+  ASSERT_OK(ts->FlushTablets());
+
+  ShutdownAbruptly(ts);
+  ASSERT_OK(power_loss_env_->DropUnsyncedWalData());
+
+  ASSERT_OK(ts->Start());
+  ASSERT_NO_FATALS(CheckRows(expected_rows));
 }
 
 } // namespace integration_tests
