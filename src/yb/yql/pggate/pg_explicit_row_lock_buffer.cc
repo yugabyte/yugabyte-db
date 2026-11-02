@@ -55,7 +55,13 @@ class ExplicitRowLockBuffer::Impl {
 
   Status Flush(std::optional<ErrorStatusAdditionalInfo>& error_info) {
     const auto has_pending = HasPendingLocks();
-    VLOG(5) << "Flush has pending: " <<  has_pending << " intents size: " << intents_.size();
+    VLOG(5) << "Flush has pending: " <<  has_pending << " intents size: " << intents_.size()
+            << " flushing: " << flushing_;
+    // The Perform for a catalog batch switches to the catalog read point, which flushes all
+    // buffered entities, this buffer included. The pending intents are the ones being sent.
+    if (flushing_) {
+      return Status::OK();
+    }
     return has_pending ? DoFlush(error_info) : Status::OK();
   }
 
@@ -141,7 +147,10 @@ class ExplicitRowLockBuffer::Impl {
 
   Status DoFlush(std::optional<ErrorStatusAdditionalInfo>& error_info) {
     DCHECK(HasPendingLocks());
+    DCHECK(!flushing_);
+    flushing_ = true;
     auto status = DoFlushImpl();
+    flushing_ = false;
     if (!status.ok()) {
       error_info.emplace(
           info_->pg_wait_policy,
@@ -223,6 +232,7 @@ class ExplicitRowLockBuffer::Impl {
   LightweightYbctidSet ybctids_set_;
   std::unordered_set<YbcIsExplicitlyLockedRowSkippedCheckHandle> skipped_;
   std::vector<SkippableLockInfo> skippable_;
+  bool flushing_ = false;
 };
 
 ExplicitRowLockBuffer::ExplicitRowLockBuffer(PgSession& session)

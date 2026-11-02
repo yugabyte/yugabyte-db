@@ -2447,7 +2447,9 @@ Status PgApiImpl::AddExplicitRowLockIntent(
           .rowmark = params.rowmark,
           .pg_wait_policy = params.pg_wait_policy,
           .docdb_wait_policy = params.docdb_wait_policy,
-          .database_id = table_id.database_oid},
+          .database_id = table_id.database_oid,
+          .is_catalog = VERIFY_RESULT(LoadTable(table_id))->schema().table_properties()
+                            .is_ysql_catalog_table()},
       .lock_key{table_id.object_oid, ybctid},
       .table_locality = locality_info,
       .error_info = adapter};
