@@ -142,6 +142,7 @@ Status Operation::AddedToLeader(const OpId& op_id, const OpId& committed_op_id) 
   if (PREDICT_FALSE(FLAGS_TEST_fail_operation_added_to_leader)) {
     return STATUS(IllegalState, "TEST: simulated AddedToLeader failure");
   }
+  RETURN_NOT_OK(ValidateLeaderOpId(op_id));
   HybridTime hybrid_time;
   auto tablet = VERIFY_RESULT(tablet_safe());
   if (use_mvcc()) {
