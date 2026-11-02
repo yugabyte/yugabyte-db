@@ -33,10 +33,9 @@ ID and what it covers; the root's [MEKO.md](MEKO.md) covers the whole repo. Use 
 from the root down to the files you're working on. Search their datapacks before any work here,
 even before reading the code.
 
-Save new facts to the datapack in those `MEKO.md` files that owns the topic, or, when none does,
-to your project's datapack. A datapack its row says not to write to, such as the gotchas
-datapack, never owns the topic. A datapack that starts holding context for part of the repo gets
-a row in that part's `MEKO.md`.
+Save new facts to the datapack in those `MEKO.md` files that owns the topic. A datapack its row
+says not to write to, such as the gotchas datapack, never owns the topic. A datapack that starts
+holding context for part of the repo gets a row in that part's `MEKO.md`.
 
 What to save in Meko, and what not to:
 
