@@ -1,0 +1,466 @@
+Parsed test spec with 3 sessions
+
+starting permutation: s3_rr s3_modes s3_multi s3_info_schema s3_join s3_unbatched s3_commit
+step s3_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s3_modes: 
+  SELECT relname FROM pg_class WHERE oid = 'pg_class'::regclass FOR UPDATE;
+  SELECT relname FROM pg_class WHERE oid = 'pg_class'::regclass FOR NO KEY UPDATE;
+  SELECT relname FROM pg_class WHERE oid = 'pg_class'::regclass FOR SHARE;
+  SELECT relname FROM pg_class WHERE oid = 'pg_class'::regclass FOR KEY SHARE;
+
+relname 
+--------
+pg_class
+(1 row)
+
+relname 
+--------
+pg_class
+(1 row)
+
+relname 
+--------
+pg_class
+(1 row)
+
+relname 
+--------
+pg_class
+(1 row)
+
+step s3_multi: 
+  SELECT count(*) > 50 AS many FROM (
+    SELECT oid FROM pg_class WHERE relnamespace = 'pg_catalog'::regnamespace FOR SHARE) s;
+
+many
+----
+t   
+(1 row)
+
+step s3_info_schema: 
+  SELECT feature_id FROM information_schema.sql_features
+  ORDER BY feature_id, sub_feature_id LIMIT 1 FOR UPDATE;
+
+feature_id
+----------
+B011      
+(1 row)
+
+step s3_join: 
+  SELECT k, relname FROM (
+    SELECT t.k, c.relname FROM t JOIN pg_class c ON c.oid = t.reloid FOR UPDATE) s
+  ORDER BY k;
+
+k|relname 
+-+--------
+1|pg_class
+2|pg_type 
+3|pg_proc 
+(3 rows)
+
+step s3_unbatched: 
+  SET LOCAL yb_explicit_row_locking_batch_size = 1;
+  SELECT relname FROM pg_class WHERE oid = 'pg_class'::regclass FOR UPDATE;
+
+relname 
+--------
+pg_class
+(1 row)
+
+step s3_commit: COMMIT;
+
+starting permutation: s3_rc s3_modes s3_multi s3_info_schema s3_join s3_unbatched s3_commit
+step s3_rc: BEGIN ISOLATION LEVEL READ COMMITTED;
+step s3_modes: 
+  SELECT relname FROM pg_class WHERE oid = 'pg_class'::regclass FOR UPDATE;
+  SELECT relname FROM pg_class WHERE oid = 'pg_class'::regclass FOR NO KEY UPDATE;
+  SELECT relname FROM pg_class WHERE oid = 'pg_class'::regclass FOR SHARE;
+  SELECT relname FROM pg_class WHERE oid = 'pg_class'::regclass FOR KEY SHARE;
+
+relname 
+--------
+pg_class
+(1 row)
+
+relname 
+--------
+pg_class
+(1 row)
+
+relname 
+--------
+pg_class
+(1 row)
+
+relname 
+--------
+pg_class
+(1 row)
+
+step s3_multi: 
+  SELECT count(*) > 50 AS many FROM (
+    SELECT oid FROM pg_class WHERE relnamespace = 'pg_catalog'::regnamespace FOR SHARE) s;
+
+many
+----
+t   
+(1 row)
+
+step s3_info_schema: 
+  SELECT feature_id FROM information_schema.sql_features
+  ORDER BY feature_id, sub_feature_id LIMIT 1 FOR UPDATE;
+
+feature_id
+----------
+B011      
+(1 row)
+
+step s3_join: 
+  SELECT k, relname FROM (
+    SELECT t.k, c.relname FROM t JOIN pg_class c ON c.oid = t.reloid FOR UPDATE) s
+  ORDER BY k;
+
+k|relname 
+-+--------
+1|pg_class
+2|pg_type 
+3|pg_proc 
+(3 rows)
+
+step s3_unbatched: 
+  SET LOCAL yb_explicit_row_locking_batch_size = 1;
+  SELECT relname FROM pg_class WHERE oid = 'pg_class'::regclass FOR UPDATE;
+
+relname 
+--------
+pg_class
+(1 row)
+
+step s3_commit: COMMIT;
+
+starting permutation: s3_ser s3_modes s3_multi s3_info_schema s3_join s3_unbatched s3_commit
+step s3_ser: BEGIN ISOLATION LEVEL SERIALIZABLE;
+step s3_modes: 
+  SELECT relname FROM pg_class WHERE oid = 'pg_class'::regclass FOR UPDATE;
+  SELECT relname FROM pg_class WHERE oid = 'pg_class'::regclass FOR NO KEY UPDATE;
+  SELECT relname FROM pg_class WHERE oid = 'pg_class'::regclass FOR SHARE;
+  SELECT relname FROM pg_class WHERE oid = 'pg_class'::regclass FOR KEY SHARE;
+
+relname 
+--------
+pg_class
+(1 row)
+
+relname 
+--------
+pg_class
+(1 row)
+
+relname 
+--------
+pg_class
+(1 row)
+
+relname 
+--------
+pg_class
+(1 row)
+
+step s3_multi: 
+  SELECT count(*) > 50 AS many FROM (
+    SELECT oid FROM pg_class WHERE relnamespace = 'pg_catalog'::regnamespace FOR SHARE) s;
+
+many
+----
+t   
+(1 row)
+
+step s3_info_schema: 
+  SELECT feature_id FROM information_schema.sql_features
+  ORDER BY feature_id, sub_feature_id LIMIT 1 FOR UPDATE;
+
+feature_id
+----------
+B011      
+(1 row)
+
+step s3_join: 
+  SELECT k, relname FROM (
+    SELECT t.k, c.relname FROM t JOIN pg_class c ON c.oid = t.reloid FOR UPDATE) s
+  ORDER BY k;
+
+k|relname 
+-+--------
+1|pg_class
+2|pg_type 
+3|pg_proc 
+(3 rows)
+
+step s3_unbatched: 
+  SET LOCAL yb_explicit_row_locking_batch_size = 1;
+  SELECT relname FROM pg_class WHERE oid = 'pg_class'::regclass FOR UPDATE;
+
+relname 
+--------
+pg_class
+(1 row)
+
+step s3_commit: COMMIT;
+
+starting permutation: s1_rr s1_lock_t s2_ra_on s2_rr s2_skip_tc s2_skip_ct s2_commit s1_commit
+step s1_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_lock_t: SELECT k FROM t WHERE k = 2 FOR UPDATE;
+k
+-
+2
+(1 row)
+
+step s2_ra_on: SET yb_explicit_row_lock_skip_locked_max_read_ahead = 10;
+step s2_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s2_skip_tc: 
+  SELECT k, relname FROM (
+    SELECT t.k, c.relname FROM t JOIN pg_class c ON c.oid = t.reloid
+    FOR UPDATE OF t SKIP LOCKED FOR UPDATE OF c SKIP LOCKED) s
+  ORDER BY k;
+
+k|relname 
+-+--------
+1|pg_class
+3|pg_proc 
+(2 rows)
+
+step s2_skip_ct: 
+  SELECT k, relname FROM (
+    SELECT t.k, c.relname FROM t JOIN pg_class c ON c.oid = t.reloid
+    FOR UPDATE OF c SKIP LOCKED FOR UPDATE OF t SKIP LOCKED) s
+  ORDER BY k;
+
+k|relname 
+-+--------
+1|pg_class
+3|pg_proc 
+(2 rows)
+
+step s2_commit: COMMIT;
+step s1_commit: COMMIT;
+
+starting permutation: s1_rr s1_lock_t s2_ra_off s2_rr s2_skip_tc s2_skip_ct s2_commit s1_commit
+step s1_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_lock_t: SELECT k FROM t WHERE k = 2 FOR UPDATE;
+k
+-
+2
+(1 row)
+
+step s2_ra_off: SET yb_explicit_row_lock_skip_locked_max_read_ahead = 1;
+step s2_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s2_skip_tc: 
+  SELECT k, relname FROM (
+    SELECT t.k, c.relname FROM t JOIN pg_class c ON c.oid = t.reloid
+    FOR UPDATE OF t SKIP LOCKED FOR UPDATE OF c SKIP LOCKED) s
+  ORDER BY k;
+
+k|relname 
+-+--------
+1|pg_class
+3|pg_proc 
+(2 rows)
+
+step s2_skip_ct: 
+  SELECT k, relname FROM (
+    SELECT t.k, c.relname FROM t JOIN pg_class c ON c.oid = t.reloid
+    FOR UPDATE OF c SKIP LOCKED FOR UPDATE OF t SKIP LOCKED) s
+  ORDER BY k;
+
+k|relname 
+-+--------
+1|pg_class
+3|pg_proc 
+(2 rows)
+
+step s2_commit: COMMIT;
+step s1_commit: COMMIT;
+
+starting permutation: s1_rc s1_lock_t s2_ra_on s2_rc s2_skip_tc s2_skip_ct s2_commit s1_commit
+step s1_rc: BEGIN ISOLATION LEVEL READ COMMITTED;
+step s1_lock_t: SELECT k FROM t WHERE k = 2 FOR UPDATE;
+k
+-
+2
+(1 row)
+
+step s2_ra_on: SET yb_explicit_row_lock_skip_locked_max_read_ahead = 10;
+step s2_rc: BEGIN ISOLATION LEVEL READ COMMITTED;
+step s2_skip_tc: 
+  SELECT k, relname FROM (
+    SELECT t.k, c.relname FROM t JOIN pg_class c ON c.oid = t.reloid
+    FOR UPDATE OF t SKIP LOCKED FOR UPDATE OF c SKIP LOCKED) s
+  ORDER BY k;
+
+k|relname 
+-+--------
+1|pg_class
+3|pg_proc 
+(2 rows)
+
+step s2_skip_ct: 
+  SELECT k, relname FROM (
+    SELECT t.k, c.relname FROM t JOIN pg_class c ON c.oid = t.reloid
+    FOR UPDATE OF c SKIP LOCKED FOR UPDATE OF t SKIP LOCKED) s
+  ORDER BY k;
+
+k|relname 
+-+--------
+1|pg_class
+3|pg_proc 
+(2 rows)
+
+step s2_commit: COMMIT;
+step s1_commit: COMMIT;
+
+starting permutation: s1_rr s1_lock_c s2_ra_on s2_rr s2_skip_tc s2_skip_ct s2_commit s1_commit
+step s1_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_lock_c: SELECT relname FROM pg_class WHERE oid = 'pg_type'::regclass FOR UPDATE;
+relname
+-------
+pg_type
+(1 row)
+
+step s2_ra_on: SET yb_explicit_row_lock_skip_locked_max_read_ahead = 10;
+step s2_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s2_skip_tc: 
+  SELECT k, relname FROM (
+    SELECT t.k, c.relname FROM t JOIN pg_class c ON c.oid = t.reloid
+    FOR UPDATE OF t SKIP LOCKED FOR UPDATE OF c SKIP LOCKED) s
+  ORDER BY k;
+
+k|relname 
+-+--------
+1|pg_class
+3|pg_proc 
+(2 rows)
+
+step s2_skip_ct: 
+  SELECT k, relname FROM (
+    SELECT t.k, c.relname FROM t JOIN pg_class c ON c.oid = t.reloid
+    FOR UPDATE OF c SKIP LOCKED FOR UPDATE OF t SKIP LOCKED) s
+  ORDER BY k;
+
+k|relname 
+-+--------
+1|pg_class
+3|pg_proc 
+(2 rows)
+
+step s2_commit: COMMIT;
+step s1_commit: COMMIT;
+
+starting permutation: s1_rr s1_lock_c s2_ra_off s2_rr s2_skip_tc s2_skip_ct s2_commit s1_commit
+step s1_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_lock_c: SELECT relname FROM pg_class WHERE oid = 'pg_type'::regclass FOR UPDATE;
+relname
+-------
+pg_type
+(1 row)
+
+step s2_ra_off: SET yb_explicit_row_lock_skip_locked_max_read_ahead = 1;
+step s2_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s2_skip_tc: 
+  SELECT k, relname FROM (
+    SELECT t.k, c.relname FROM t JOIN pg_class c ON c.oid = t.reloid
+    FOR UPDATE OF t SKIP LOCKED FOR UPDATE OF c SKIP LOCKED) s
+  ORDER BY k;
+
+k|relname 
+-+--------
+1|pg_class
+3|pg_proc 
+(2 rows)
+
+step s2_skip_ct: 
+  SELECT k, relname FROM (
+    SELECT t.k, c.relname FROM t JOIN pg_class c ON c.oid = t.reloid
+    FOR UPDATE OF c SKIP LOCKED FOR UPDATE OF t SKIP LOCKED) s
+  ORDER BY k;
+
+k|relname 
+-+--------
+1|pg_class
+3|pg_proc 
+(2 rows)
+
+step s2_commit: COMMIT;
+step s1_commit: COMMIT;
+
+starting permutation: s1_rc s1_lock_c s2_ra_on s2_rc s2_skip_tc s2_skip_ct s2_commit s1_commit
+step s1_rc: BEGIN ISOLATION LEVEL READ COMMITTED;
+step s1_lock_c: SELECT relname FROM pg_class WHERE oid = 'pg_type'::regclass FOR UPDATE;
+relname
+-------
+pg_type
+(1 row)
+
+step s2_ra_on: SET yb_explicit_row_lock_skip_locked_max_read_ahead = 10;
+step s2_rc: BEGIN ISOLATION LEVEL READ COMMITTED;
+step s2_skip_tc: 
+  SELECT k, relname FROM (
+    SELECT t.k, c.relname FROM t JOIN pg_class c ON c.oid = t.reloid
+    FOR UPDATE OF t SKIP LOCKED FOR UPDATE OF c SKIP LOCKED) s
+  ORDER BY k;
+
+k|relname 
+-+--------
+1|pg_class
+3|pg_proc 
+(2 rows)
+
+step s2_skip_ct: 
+  SELECT k, relname FROM (
+    SELECT t.k, c.relname FROM t JOIN pg_class c ON c.oid = t.reloid
+    FOR UPDATE OF c SKIP LOCKED FOR UPDATE OF t SKIP LOCKED) s
+  ORDER BY k;
+
+k|relname 
+-+--------
+1|pg_class
+3|pg_proc 
+(2 rows)
+
+step s2_commit: COMMIT;
+step s1_commit: COMMIT;
+
+starting permutation: s1_rc s1_lock_t s2_rc s2_nowait s2_rollback s1_commit
+step s1_rc: BEGIN ISOLATION LEVEL READ COMMITTED;
+step s1_lock_t: SELECT k FROM t WHERE k = 2 FOR UPDATE;
+k
+-
+2
+(1 row)
+
+step s2_rc: BEGIN ISOLATION LEVEL READ COMMITTED;
+step s2_nowait: 
+  SELECT k, relname FROM (
+    SELECT t.k, c.relname FROM t JOIN pg_class c ON c.oid = t.reloid FOR UPDATE NOWAIT) s
+  ORDER BY k;
+
+ERROR:  could not obtain lock on row in relation "t"
+step s2_rollback: ROLLBACK;
+step s1_commit: COMMIT;
+
+starting permutation: s1_rc s1_lock_c s2_rc s2_nowait s2_rollback s1_commit
+step s1_rc: BEGIN ISOLATION LEVEL READ COMMITTED;
+step s1_lock_c: SELECT relname FROM pg_class WHERE oid = 'pg_type'::regclass FOR UPDATE;
+relname
+-------
+pg_type
+(1 row)
+
+step s2_rc: BEGIN ISOLATION LEVEL READ COMMITTED;
+step s2_nowait: 
+  SELECT k, relname FROM (
+    SELECT t.k, c.relname FROM t JOIN pg_class c ON c.oid = t.reloid FOR UPDATE NOWAIT) s
+  ORDER BY k;
+
+ERROR:  could not obtain lock on row in relation "pg_class"
+step s2_rollback: ROLLBACK;
+step s1_commit: COMMIT;
