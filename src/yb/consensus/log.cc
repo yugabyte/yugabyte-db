@@ -101,6 +101,11 @@ DEFINE_RUNTIME_AUTO_bool(enable_quiescent_tablets, kLocalPersisted, false, true,
     "Replace WAL segments of an idle tablet with a quiescent marker, so its bootstrap reads no "
     "WAL. Binaries without this feature cannot bootstrap such a tablet.");
 
+DEFINE_RUNTIME_int32(quiescent_tablet_idle_sec, 0,
+    "A tablet enters the quiescent mode after nothing was appended to its log for this many "
+    "seconds. 0 disables entering the mode, and makes bootstrap start a new WAL segment instead "
+    "of leaving it to the first append.");
+
 // Log retention configuration.
 // -----------------------------
 DEFINE_RUNTIME_int32(log_min_segments_to_retain, 2,
@@ -1329,7 +1334,9 @@ Result<bool> Log::ReuseAsActiveSegment(const scoped_refptr<ReadableLogSegment>& 
 
 Status Log::EnsureSegmentInitialized() {
   std::lock_guard write_lock(state_lock_);
-  return EnsureSegmentInitializedUnlocked(CreateNewSegment::kFalse);
+  // Lazy segment allocation is part of the quiescent tablets feature, so it is off with it.
+  return EnsureSegmentInitializedUnlocked(
+      CreateNewSegment(FLAGS_quiescent_tablet_idle_sec <= 0));
 }
 
 Status Log::EnsureSegmentInitializedUnlocked(CreateNewSegment create_new_segment) {

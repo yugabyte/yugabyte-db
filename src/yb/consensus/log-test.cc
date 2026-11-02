@@ -69,6 +69,7 @@ DECLARE_int32(log_min_segments_to_retain);
 DECLARE_int32(min_segment_size_bytes_to_rollover_at_flush);
 DECLARE_int32(o_direct_block_alignment_bytes);
 DECLARE_int32(o_direct_block_size_bytes);
+DECLARE_int32(quiescent_tablet_idle_sec);
 
 DECLARE_int64(reuse_unclosed_segment_threshold_bytes);
 
@@ -2497,6 +2498,7 @@ TEST_F(LogTest, YB_RELEASE_ONLY_TEST(TestSegmentAllocationFailureAndRecovery)) {
 
 // Reopening a log with a closed last segment starts no segment until the first append.
 TEST_F(LogTest, LazySegmentAllocation) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_quiescent_tablet_idle_sec) = 1;
   BuildLog();
   auto op_id = MakeOpId(1, 1);
   ASSERT_OK(AppendNoOps(&op_id, 3));
@@ -2520,6 +2522,7 @@ TEST_F(LogTest, LazySegmentAllocation) {
 
 // Replaces all segments with a marker, reopens the log and continues it after the marker.
 TEST_F(LogTest, QuiescentMarker) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_quiescent_tablet_idle_sec) = 1;
   options_.segment_size_bytes = std::numeric_limits<size_t>::max();
   BuildLog();
   auto op_id = MakeOpId(1, 1);
