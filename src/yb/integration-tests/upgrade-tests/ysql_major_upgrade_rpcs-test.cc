@@ -317,9 +317,7 @@ TEST_F(YsqlMajorUpgradeRpcsTest, SimultaneousRollback) {
 }
 
 // Make sure ysql major catalog upgrade works with a master crash during the upgrade.
-// Disabled in debug builds: the masters take about 5 minutes there to replay the sys catalog after
-// the last restart, which often outlasts the wait for a master leader.
-TEST_F(YsqlMajorUpgradeRpcsTest, YB_RELEASE_ONLY_TEST(MasterCrashDuringUpgrade)) {
+TEST_F(YsqlMajorUpgradeRpcsTest, MasterCrashDuringUpgrade) {
   ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
   auto master_leader = cluster_->GetLeaderMaster();
 
