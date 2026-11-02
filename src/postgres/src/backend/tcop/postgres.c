@@ -6736,6 +6736,9 @@ PostgresMain(const char *dbname, const char *username)
 
 	YbSetupHeapSnapshotProcExit();
 
+	if (IsYugaByteEnabled())
+		YbMaybeStartTCMallocBackgroundThread();
+
 	pgstat_report_connect(MyDatabaseId);
 
 	/* Perform initialization specific to a WAL sender process. */
@@ -7073,8 +7076,13 @@ PostgresMain(const char *dbname, const char *username)
 				MyProc->yb_is_ash_metadata_set = false;
 			}
 
+			YbSetTCMallocBackgroundReleaseIdle(true);
+
 			ReadyForQuery(whereToSendOutput);
 			send_ready_for_query = false;
+
+			/* ReadyForQuery flushed the reply, so the client is not waiting. */
+			YbReleaseTCMallocMemoryAfterStatement();
 
 			yb_refresh_stats_before_exec = true;
 
@@ -7095,6 +7103,8 @@ PostgresMain(const char *dbname, const char *username)
 		 * (3) read a command (loop blocks here)
 		 */
 		firstchar = ReadCommand(&input_message);
+
+		YbSetTCMallocBackgroundReleaseIdle(false);
 
 		/*
 		 * (4) turn off the idle-in-transaction and idle-session timeouts if

@@ -3686,6 +3686,45 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_tcmalloc_background_thread", PGC_SU_BACKEND, RESOURCES_MEM,
+			gettext_noop("Run a TCMalloc background thread in each backend that "
+						 "drains idle allocator caches and returns free memory "
+						 "to the OS at yb_tcmalloc_background_release_rate."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_tcmalloc_background_thread,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_tcmalloc_release_after_statement", PGC_SUSET, RESOURCES_MEM,
+			gettext_noop("After each statement, drain the TCMalloc per-CPU "
+						 "caches and return all free page heap memory to the "
+						 "OS, including free pages in partially used "
+						 "hugepages."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_tcmalloc_release_after_statement,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_tcmalloc_release_after_statement_drain_cpu_caches", PGC_SUSET, RESOURCES_MEM,
+			gettext_noop("Whether yb_tcmalloc_release_after_statement also "
+						 "drains the TCMalloc per-CPU caches."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_tcmalloc_release_after_statement_drain_cpu_caches,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_fkey_batched_docdb_lookup_when_types_mismatch", PGC_BACKEND, DEVELOPER_OPTIONS,
 			gettext_noop("Enable batched DocDB lookup for foreign key constraint check "
 						 "when types mismatch."),
@@ -6464,6 +6503,19 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&yb_max_num_invalidation_messages,
 		8192, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_tcmalloc_background_release_rate", PGC_SUSET, RESOURCES_MEM,
+			gettext_noop("Rate in bytes per second at which the TCMalloc "
+						 "background thread returns free page heap memory to "
+						 "the OS while the backend is idle."),
+			NULL,
+			GUC_UNIT_BYTE | GUC_NOT_IN_SAMPLE
+		},
+		&yb_tcmalloc_background_release_rate,
+		1024 * 1024 * 1024, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
 

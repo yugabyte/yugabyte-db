@@ -26,6 +26,10 @@
 
 extern int	yb_log_heap_snapshot_on_exit_threshold;
 extern int	yb_startup_free_memory_release_threshold;
+extern bool yb_enable_tcmalloc_background_thread;
+extern int	yb_tcmalloc_background_release_rate;
+extern bool yb_tcmalloc_release_after_statement;
+extern bool yb_tcmalloc_release_after_statement_drain_cpu_caches;
 
 /*
  * Handle and process logging of heap snapshot interrupt.
@@ -40,5 +44,18 @@ extern void ProcessLogHeapSnapshotInterrupt(void);
 extern void YbSetupHeapSnapshotProcExit(void);
 
 extern void YbReleaseFreeMemoryAfterStartup(void);
+
+/*
+ * Start the TCMalloc background thread if yb_enable_tcmalloc_background_thread
+ * is set.
+ */
+extern void YbMaybeStartTCMallocBackgroundThread(void);
+extern void YbSetTCMallocBackgroundReleaseIdle(bool idle);
+
+/*
+ * Drain the per-CPU caches and return all free page heap memory to the OS if
+ * yb_tcmalloc_release_after_statement is set.
+ */
+extern void YbReleaseTCMallocMemoryAfterStatement(void);
 
 #endif							/* YB_TCMALLOC_UTILS_H */

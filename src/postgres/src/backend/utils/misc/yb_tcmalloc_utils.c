@@ -46,6 +46,12 @@
 
 int			yb_log_heap_snapshot_on_exit_threshold = -1;
 int			yb_startup_free_memory_release_threshold = 0;
+bool		yb_enable_tcmalloc_background_thread = true;
+int			yb_tcmalloc_background_release_rate = 1024 * 1024 * 1024;
+bool		yb_tcmalloc_release_after_statement = true;
+bool		yb_tcmalloc_release_after_statement_drain_cpu_caches = true;
+
+static bool yb_tcmalloc_background_thread_started = false;
 
 static void YbLogHeapSnapshotProcExit(int status, Datum arg);
 
@@ -312,6 +318,35 @@ void
 YbSetupHeapSnapshotProcExit(void)
 {
 	on_proc_exit(YbLogHeapSnapshotProcExit, 0);
+}
+
+void
+YbMaybeStartTCMallocBackgroundThread(void)
+{
+	if (!yb_enable_tcmalloc_background_thread)
+		return;
+	HandleYBStatus(YBCStartTCMallocBackgroundThread());
+	yb_tcmalloc_background_thread_started = true;
+}
+
+/*
+ * Return free memory to the OS only while the backend waits for the client.
+ * Releasing during a statement subreleases pages that the statement then
+ * reuses, which splits transparent huge pages and makes the statement fault
+ * them back in as 4 KB pages.
+ */
+void
+YbSetTCMallocBackgroundReleaseIdle(bool idle)
+{
+	if (yb_tcmalloc_background_thread_started)
+		YBCSetTCMallocBackgroundReleaseRate(idle ? yb_tcmalloc_background_release_rate : 0);
+}
+
+void
+YbReleaseTCMallocMemoryAfterStatement(void)
+{
+	if (yb_tcmalloc_release_after_statement)
+		YBCTCMallocReleaseAllFreeMemory(yb_tcmalloc_release_after_statement_drain_cpu_caches);
 }
 
 static void
