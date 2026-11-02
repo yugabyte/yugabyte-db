@@ -4297,18 +4297,24 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         upgradeSystemCatalog,
         finalizeCatalogUpgrade,
         requireAdditionalSuperUserForCatalogUpgrade,
-        true /* saveReadyState */);
+        true /* saveReadyState */,
+        false /* ignorePromoteAutoFlagsErrors */);
   }
 
   /**
    * Finalize subtasks, ending with the Ready state unless {@code saveReadyState} is false; a caller
    * that passes false must save Ready (rollback disallowed) itself, together with the version.
+   *
+   * <p>{@code ignorePromoteAutoFlagsErrors} must be true when finalizing inside an upgrade task. A
+   * failure there leaves the universe in UpgradeFailed after rollback was disallowed (and the YSQL
+   * major catalog possibly finalized), and retrying the upgrade re-allows rollback.
    */
   protected void createFinalizeUpgradeTasks(
       boolean upgradeSystemCatalog,
       boolean finalizeCatalogUpgrade,
       boolean requireAdditionalSuperUserForCatalogUpgrade,
-      boolean saveReadyState) {
+      boolean saveReadyState,
+      boolean ignorePromoteAutoFlagsErrors) {
     Universe universe = getUniverse();
 
     createClearSoftwareUpgradeProgressTask();
@@ -4322,11 +4328,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       if (finalizeCatalogUpgrade) {
         createFinalizeYsqlMajorCatalogUpgradeTask();
       }
-      // Promote all auto flags upto class External. A master refusal fails Finalize.
-      // PromoteAutoFlags ignores only "nothing to promote" (error code 6).
+      // Promote all auto flags upto class External.
       createPromoteAutoFlagTask(
           universe.getUniverseUUID(),
-          false /* ignoreErrors */,
+          ignorePromoteAutoFlagsErrors /* ignoreErrors */,
           AutoFlagUtil.EXTERNAL_AUTO_FLAG_CLASS_NAME /* maxClass */);
 
       if (upgradeSystemCatalog) {

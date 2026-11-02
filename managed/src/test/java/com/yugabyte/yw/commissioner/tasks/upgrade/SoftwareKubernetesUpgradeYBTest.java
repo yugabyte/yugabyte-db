@@ -52,7 +52,6 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 import org.yb.CommonTypes;
-import org.yb.WireProtocol.AppStatusPB;
 import org.yb.WireProtocol.AppStatusPB.ErrorCode;
 import org.yb.client.DeleteSnapshotScheduleResponse;
 import org.yb.client.GetYsqlMajorCatalogUpgradeStateResponse;
@@ -66,8 +65,6 @@ import org.yb.client.UpgradeYsqlResponse;
 import org.yb.client.YBClientApi;
 import org.yb.master.MasterAdminOuterClass.YsqlMajorCatalogUpgradeState;
 import org.yb.master.MasterClusterOuterClass.PromoteAutoFlagsResponsePB;
-import org.yb.master.MasterTypes.MasterErrorPB;
-import org.yb.master.MasterTypes.MasterErrorPB.Code;
 import play.libs.Json;
 
 public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
@@ -171,7 +168,8 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
     when(mockSoftwareUpgradeHelper.checkUpgradeRequireFinalize(anyString(), anyString()))
         .thenReturn(true);
     when(mockClient.promoteAutoFlags(anyString(), anyBoolean(), anyBoolean()))
-        .thenReturn(masterRefusedPromoteAutoFlagsResponse());
+        .thenReturn(
+            promoteAutoFlagsErrorResponse(ErrorCode.ILLEGAL_STATE, TSERVERS_NOT_UPGRADED_MESSAGE));
 
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
     taskParams.ybSoftwareVersion = YB_SOFTWARE_VERSION_NEW;
@@ -188,25 +186,6 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
     assertEquals(
         UniverseDefinitionTaskParams.SoftwareUpgradeState.UpgradeFailed,
         defaultUniverse.getUniverseDetails().softwareUpgradeState);
-  }
-
-  private static PromoteAutoFlagsResponse masterRefusedPromoteAutoFlagsResponse() {
-    return new PromoteAutoFlagsResponse(
-        0,
-        "uuid",
-        PromoteAutoFlagsResponsePB.newBuilder()
-            .setError(
-                MasterErrorPB.newBuilder()
-                    .setStatus(
-                        AppStatusPB.newBuilder()
-                            .setCode(ErrorCode.ILLEGAL_STATE)
-                            .setMessage(
-                                "Cannot promote AutoFlags before all yb-tservers have been"
-                                    + " upgraded to the current version")
-                            .build())
-                    .setCode(Code.UNKNOWN_ERROR)
-                    .build())
-            .build());
   }
 
   @Test

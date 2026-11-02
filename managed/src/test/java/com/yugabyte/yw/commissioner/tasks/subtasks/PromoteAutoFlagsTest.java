@@ -128,7 +128,24 @@ public class PromoteAutoFlagsTest extends CommissionerBaseTest {
     params.maxClass = AutoFlagUtil.EXTERNAL_AUTO_FLAG_CLASS_NAME;
     params.ignoreErrors = false;
     when(mockClient.promoteAutoFlags(anyString(), anyBoolean(), anyBoolean()))
-        .thenReturn(masterRefusedPromoteAutoFlagsResponse(ErrorCode.ALREADY_PRESENT));
+        .thenReturn(
+            promoteAutoFlagsErrorResponse(
+                ErrorCode.ALREADY_PRESENT, "No new AutoFlags eligible to promote"));
+    PromoteAutoFlags task = AbstractTaskBase.createTask(PromoteAutoFlags.class);
+    task.initialize(params);
+    task.run();
+  }
+
+  @Test
+  public void testPromoteAutoFlagManagementDisabledSucceeds() throws Exception {
+    PromoteAutoFlags.Params params = new PromoteAutoFlags.Params();
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.maxClass = AutoFlagUtil.EXTERNAL_AUTO_FLAG_CLASS_NAME;
+    params.ignoreErrors = false;
+    when(mockClient.promoteAutoFlags(anyString(), anyBoolean(), anyBoolean()))
+        .thenReturn(
+            promoteAutoFlagsErrorResponse(
+                ErrorCode.NOT_SUPPORTED, "AutoFlags management is disabled."));
     PromoteAutoFlags task = AbstractTaskBase.createTask(PromoteAutoFlags.class);
     task.initialize(params);
     task.run();
@@ -141,7 +158,8 @@ public class PromoteAutoFlagsTest extends CommissionerBaseTest {
     params.maxClass = AutoFlagUtil.EXTERNAL_AUTO_FLAG_CLASS_NAME;
     params.ignoreErrors = true;
     when(mockClient.promoteAutoFlags(anyString(), anyBoolean(), anyBoolean()))
-        .thenReturn(masterRefusedPromoteAutoFlagsResponse(ErrorCode.ILLEGAL_STATE));
+        .thenReturn(
+            promoteAutoFlagsErrorResponse(ErrorCode.ILLEGAL_STATE, TSERVERS_NOT_UPGRADED_MESSAGE));
     PromoteAutoFlags task = AbstractTaskBase.createTask(PromoteAutoFlags.class);
     task.initialize(params);
     task.run();
@@ -159,24 +177,5 @@ public class PromoteAutoFlagsTest extends CommissionerBaseTest {
     PromoteAutoFlags task = AbstractTaskBase.createTask(PromoteAutoFlags.class);
     task.initialize(params);
     task.run();
-  }
-
-  private static PromoteAutoFlagsResponse masterRefusedPromoteAutoFlagsResponse(ErrorCode code) {
-    return new PromoteAutoFlagsResponse(
-        0,
-        "uuid",
-        PromoteAutoFlagsResponsePB.newBuilder()
-            .setError(
-                MasterErrorPB.newBuilder()
-                    .setStatus(
-                        AppStatusPB.newBuilder()
-                            .setCode(code)
-                            .setMessage(
-                                "Cannot promote AutoFlags before all yb-tservers have been"
-                                    + " upgraded to the current version")
-                            .build())
-                    .setCode(Code.UNKNOWN_ERROR)
-                    .build())
-            .build());
   }
 }

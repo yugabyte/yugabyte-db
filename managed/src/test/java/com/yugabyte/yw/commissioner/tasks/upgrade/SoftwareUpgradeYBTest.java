@@ -43,6 +43,7 @@ import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.forms.AZUpgradeState;
 import com.yugabyte.yw.forms.AZUpgradeStatus;
 import com.yugabyte.yw.forms.AZUpgradeStep;
@@ -91,20 +92,15 @@ import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 import org.yb.CommonTypes;
-import org.yb.WireProtocol.AppStatusPB;
 import org.yb.WireProtocol.AppStatusPB.ErrorCode;
 import org.yb.client.DeleteSnapshotScheduleResponse;
 import org.yb.client.GetYsqlMajorCatalogUpgradeStateResponse;
 import org.yb.client.IsInitDbDoneResponse;
 import org.yb.client.ListSnapshotSchedulesResponse;
-import org.yb.client.PromoteAutoFlagsResponse;
 import org.yb.client.RollbackYsqlMajorCatalogVersionResponse;
 import org.yb.client.SnapshotScheduleInfo;
 import org.yb.client.UpgradeYsqlResponse;
 import org.yb.master.MasterAdminOuterClass.YsqlMajorCatalogUpgradeState;
-import org.yb.master.MasterClusterOuterClass.PromoteAutoFlagsResponsePB;
-import org.yb.master.MasterTypes.MasterErrorPB;
-import org.yb.master.MasterTypes.MasterErrorPB.Code;
 
 @RunWith(JUnitParamsRunner.class)
 @Slf4j
@@ -246,7 +242,8 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     when(mockSoftwareUpgradeHelper.checkUpgradeRequireFinalize(anyString(), anyString()))
         .thenReturn(true);
     when(mockClient.promoteAutoFlags(anyString(), anyBoolean(), anyBoolean()))
-        .thenReturn(masterRefusedPromoteAutoFlagsResponse());
+        .thenReturn(
+            promoteAutoFlagsErrorResponse(ErrorCode.ILLEGAL_STATE, TSERVERS_NOT_UPGRADED_MESSAGE));
 
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
     taskParams.ybSoftwareVersion = "2.21.0.0-b2";
@@ -268,25 +265,6 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     assertEquals(
         SoftwareUpgradeState.UpgradeFailed,
         defaultUniverse.getUniverseDetails().softwareUpgradeState);
-  }
-
-  private static PromoteAutoFlagsResponse masterRefusedPromoteAutoFlagsResponse() {
-    return new PromoteAutoFlagsResponse(
-        0,
-        "uuid",
-        PromoteAutoFlagsResponsePB.newBuilder()
-            .setError(
-                MasterErrorPB.newBuilder()
-                    .setStatus(
-                        AppStatusPB.newBuilder()
-                            .setCode(ErrorCode.ILLEGAL_STATE)
-                            .setMessage(
-                                "Cannot promote AutoFlags before all yb-tservers have been"
-                                    + " upgraded to the current version")
-                            .build())
-                    .setCode(Code.UNKNOWN_ERROR)
-                    .build())
-            .build());
   }
 
   @Test
@@ -391,6 +369,32 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     assertFalse(defaultUniverse.getUniverseDetails().isSoftwareRollbackAllowed);
     assertNull(defaultUniverse.getUniverseDetails().prevYBSoftwareConfig);
+    assertEquals(
+        SoftwareUpgradeState.Ready, defaultUniverse.getUniverseDetails().softwareUpgradeState);
+  }
+
+  @Test
+  public void testAutoFinalizeIgnoresRefusedExternalAutoFlagPromotion() throws Exception {
+    updateDefaultUniverseTo5Nodes(true);
+    mockRunYsqlUpgrade();
+    when(mockClient.promoteAutoFlags(
+            eq(AutoFlagUtil.EXTERNAL_AUTO_FLAG_CLASS_NAME), anyBoolean(), anyBoolean()))
+        .thenReturn(
+            promoteAutoFlagsErrorResponse(ErrorCode.ILLEGAL_STATE, TSERVERS_NOT_UPGRADED_MESSAGE));
+
+    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
+    taskParams.ybSoftwareVersion = "2.21.0.0-b2";
+    taskParams.rollbackSupport = false;
+    taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
+    mockDBServerVersion(
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
+        taskParams.ybSoftwareVersion,
+        defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
+    TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
+
+    assertEquals(Success, taskInfo.getTaskState());
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertFalse(defaultUniverse.getUniverseDetails().isSoftwareRollbackAllowed);
     assertEquals(
         SoftwareUpgradeState.Ready, defaultUniverse.getUniverseDetails().softwareUpgradeState);
   }

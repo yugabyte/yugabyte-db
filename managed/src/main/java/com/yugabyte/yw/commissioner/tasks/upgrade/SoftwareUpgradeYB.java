@@ -527,7 +527,8 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
       createYbcInstallTask(universe, new ArrayList<>(ctx.allNodes), ctx.newVersion);
     }
     createCheckSoftwareVersionTask(ctx.allNodes, ctx.newVersion);
-    // A master refusal fails the upgrade. Error code 6 is ignored in PromoteAutoFlags.
+    // Any promotion failure fails the upgrade, except the outcomes PromoteAutoFlags treats as
+    // success (nothing to promote, AutoFlags management disabled).
     createPromoteAutoFlagTask(
         universe.getUniverseUUID(),
         false /* ignoreErrors */,
@@ -539,7 +540,8 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
           taskParams().upgradeSystemCatalog,
           ctx.requireYsqlMajorVersionUpgrade,
           ctx.requireAdditionalSuperUserForCatalogUpgrade,
-          false /* saveReadyState */);
+          false /* saveReadyState */,
+          true /* ignorePromoteAutoFlagsErrors */);
       endState = UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready;
       isSoftwareRollbackAllowed = false;
     } else if (ctx.upgradeRequireFinalize) {
