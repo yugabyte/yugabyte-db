@@ -89,7 +89,8 @@ public class TestSequenceBackendSwitch extends BaseYsqlConnMgr {
     }
     // ...and the client's own state stays behind on the backend it left.
     for (String test : Arrays.asList("testCurrvalLastvalFollowClientAcrossSwitch",
-                                     "testCurrvalAfterRolledBackNextvalOnOtherBackend")) {
+                                     "testCurrvalAfterRolledBackNextvalOnOtherBackend",
+                                     "testSerialLastvalAfterInsertAcrossSwitch")) {
       knownFailure("#36294", NOT_YET_DEFINED, test, POOLED_WITH, "connection", "server");
     }
     // With the connection cache method each backend hands out its own cached range.
@@ -100,6 +101,8 @@ public class TestSequenceBackendSwitch extends BaseYsqlConnMgr {
                    "connection");
       knownFailure("#36296", "nextval after RESTART", "testRestartSeenOnOtherBackend", mode,
                    "connection");
+      knownFailure("#36296", "id after TRUNCATE RESTART IDENTITY",
+                   "testTruncateRestartIdentitySeenOnOtherBackend", mode, "connection");
     }
     // A rolled-back nextval does not make the client sticky.
     knownFailure("#36295", NOT_YET_DEFINED, "testCurrvalAfterRolledBackNextvalOnOtherBackend",
@@ -213,23 +216,25 @@ public class TestSequenceBackendSwitch extends BaseYsqlConnMgr {
 
   // A failed test leaves its sequence behind on the reused cluster. In pooled_with_curval_lastval
   // mode a backend's lastval() keeps pointing at it for the next client (#36294), which would
-  // break later tests' lastval checks.
+  // break later tests' lastval checks. Tables go first, as they own their serial sequences.
   @After
   public void dropSequencesAndCloseObserver() throws Exception {
     if (observer == null) {
       return;
     }
     try (Statement stmt = observer.createStatement()) {
-      List<String> seqs = new ArrayList<>();
+      List<String> drops = new ArrayList<>();
       try (ResultSet rs = stmt.executeQuery(
-               "SELECT c.relname FROM pg_class c JOIN pg_roles r ON r.oid = c.relowner" +
-               " WHERE c.relkind = 'S' AND r.rolname = '" + APP_USER + "'")) {
+               "SELECT c.relkind, c.relname FROM pg_class c JOIN pg_roles r ON r.oid = c.relowner" +
+               " WHERE c.relkind IN ('r', 'S') AND r.rolname = '" + APP_USER + "'" +
+               " ORDER BY c.relkind = 'S'")) {
         while (rs.next()) {
-          seqs.add(rs.getString(1));
+          drops.add((rs.getString(1).equals("r") ? "DROP TABLE IF EXISTS " :
+                     "DROP SEQUENCE IF EXISTS ") + rs.getString(2));
         }
       }
-      for (String seq : seqs) {
-        stmt.execute("DROP SEQUENCE IF EXISTS " + seq);
+      for (String drop : drops) {
+        stmt.execute(drop);
       }
     } finally {
       observer.close();
@@ -319,6 +324,20 @@ public class TestSequenceBackendSwitch extends BaseYsqlConnMgr {
     if (!isSession()) {
       assertEquals(what + " did not run on backend " + expected, expected, actual);
     }
+  }
+
+  /** Inserts a row into table, whose id is serial; returns {backend pid, id}. */
+  private static long[] insertId(Statement stmt, String table) throws SQLException {
+    stmt.execute("BEGIN");
+    int pid = BackendSteering.backendPid(stmt);
+    long id;
+    try (ResultSet rs =
+             stmt.executeQuery("INSERT INTO " + table + " (v) VALUES (0) RETURNING id")) {
+      assertTrue(rs.next());
+      id = rs.getLong(1);
+    }
+    stmt.execute("COMMIT");
+    return new long[] {pid, id};
   }
 
   private static String notYetDefined(String seq) {
@@ -541,6 +560,57 @@ public class TestSequenceBackendSwitch extends BaseYsqlConnMgr {
         assertEquals("nextval after RESTART on backend " + r[0], 1000, r[1]);
       }
       sa.execute("DROP SEQUENCE " + seq);
+    }
+  }
+
+  // 9. After an INSERT takes its id from a serial default, currval and lastval on another backend
+  //    return that id, as an application reading back the generated id expects.
+  @Test
+  public void testSerialLastvalAfterInsertAcrossSwitch() throws Exception {
+    String table = "serial_insert";
+    String currval = "currval(pg_get_serial_sequence('" + table + "', 'id'))";
+    try (Connection a = appBuilder().connect(); Statement sa = a.createStatement()) {
+      sa.execute("CREATE TABLE " + table + " (id serial PRIMARY KEY, v int)");
+      long[] r = insertId(sa, table);
+      int before = (int) r[0];
+
+      for (String expr : Arrays.asList(currval, "lastval()")) {
+        try (BackendSteering steering = steering()) {
+          assertSteered(steering.hold(before), "hold A's backend " + before);
+          assertSwitched(before, expectSeqFnValue(sa, expr, r[1]));
+        }
+      }
+      sa.execute("DROP TABLE " + table);
+    }
+  }
+
+  // 10. After TRUNCATE ... RESTART IDENTITY, the client's INSERT on another backend, one whose
+  //     cache was filled before the truncate, gets the restarted id. TRUNCATE resets the sequence
+  //     through ResetSequence, not the setval or ALTER SEQUENCE path.
+  @Test
+  public void testTruncateRestartIdentitySeenOnOtherBackend() throws Exception {
+    String table = "serial_truncate";
+    try (Connection a = appBuilder().connect(); Statement sa = a.createStatement();
+         Connection b = appBuilder().connect(); Statement sb = b.createStatement()) {
+      sa.execute("CREATE TABLE " + table + " (id serial PRIMARY KEY, v int)");
+      int p = (int) insertId(sa, table)[0];
+      int q;
+      // B fills another backend's cache.
+      try (BackendSteering steering = steering()) {
+        assertSteered(steering.hold(p), "hold A's backend " + p);
+        q = (int) insertId(sb, table)[0];
+      }
+      try (BackendSteering steering = steering()) {
+        assertSteered(steering.steerTo(p), "steer A to backend " + p);
+        assertLanded(p, exec(sa, "TRUNCATE " + table + " RESTART IDENTITY"), "TRUNCATE");
+      }
+      try (BackendSteering steering = steering()) {
+        assertSteered(steering.steerTo(q), "steer A to B's backend " + q);
+        long[] r = insertId(sa, table);
+        assertLanded(q, (int) r[0], "INSERT");
+        assertEquals("id after TRUNCATE RESTART IDENTITY on backend " + r[0], 1, r[1]);
+      }
+      sa.execute("DROP TABLE " + table);
     }
   }
 }
