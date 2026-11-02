@@ -35,9 +35,9 @@ on:
 
 jobs:
   yb-csi:
-  steps:
-    - name: CSI-status
-      run: echo "https://csiweb.dev.yugabyte.com/pull/${{ github.event.pull_request.number }}"
+    steps:
+      - name: CSI-status
+        run: echo "https://csiweb.dev.yugabyte.com/pull/${{ github.event.pull_request.number }}"
 
   bld-db:
     environment: jenkins
