@@ -510,7 +510,7 @@ Status VectorLSMTestBase::OpenVectorLSM(
     .log_prefix = "Test: ",
     .storage_dir = dir,
     .vector_index_traits = VERIFY_RESULT((CreateHnswlibIndexTraits<std::vector<float>, float>(
-        block_cache_, hnsw_options, mem_tracker))),
+        block_cache_, hnsw_options, mem_tracker, /* tenant_extractor= */ nullptr))),
     .thread_pool = &thread_pool_,
     .insert_thread_pool = &thread_pool_,
     .compaction_token = std::make_shared<PriorityThreadPoolToken>(priority_thread_pool_),
