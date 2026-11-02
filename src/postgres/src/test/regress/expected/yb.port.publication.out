@@ -17,7 +17,7 @@ SELECT obj_description(p.oid, 'pg_publication') FROM pg_publication p;
 (1 row)
 
 SET client_min_messages = 'ERROR';
-CREATE PUBLICATION testpib_ins_trunct WITH (publish = insert);
+CREATE PUBLICATION testpub_ins_trunct WITH (publish = insert);
 RESET client_min_messages;
 ALTER PUBLICATION testpub_default SET (publish = update);
 -- error cases
@@ -29,21 +29,31 @@ CREATE PUBLICATION testpub_xxx WITH (publish_via_partition_root = 'true', publis
 ERROR:  conflicting or redundant options
 LINE 1: ...ub_xxx WITH (publish_via_partition_root = 'true', publish_vi...
                                                              ^
+CREATE PUBLICATION testpub_xxx WITH (publish_generated_columns = stored, publish_generated_columns = none);
+ERROR:  conflicting or redundant options
+LINE 1: ...pub_xxx WITH (publish_generated_columns = stored, publish_ge...
+                                                             ^
+CREATE PUBLICATION testpub_xxx WITH (publish_generated_columns = foo);
+ERROR:  invalid value for publication parameter "publish_generated_columns": "foo"
+DETAIL:  Valid values are "none" and "stored".
+CREATE PUBLICATION testpub_xxx WITH (publish_generated_columns);
+ERROR:  invalid value for publication parameter "publish_generated_columns": ""
+DETAIL:  Valid values are "none" and "stored".
 \dRp
-                                              List of publications
-        Name        |          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
---------------------+--------------------------+------------+---------+---------+---------+-----------+----------
- testpib_ins_trunct | regress_publication_user | f          | t       | f       | f       | f         | f
- testpub_default    | regress_publication_user | f          | f       | t       | f       | f         | f
+                                                                List of publications
+        Name        |          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root 
+--------------------+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------
+ testpub_default    | regress_publication_user | f          | f             | f       | t       | f       | f         | none              | f
+ testpub_ins_trunct | regress_publication_user | f          | f             | t       | f       | f       | f         | none              | f
 (2 rows)
 
 ALTER PUBLICATION testpub_default SET (publish = 'insert, update, delete');
 \dRp
-                                              List of publications
-        Name        |          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
---------------------+--------------------------+------------+---------+---------+---------+-----------+----------
- testpib_ins_trunct | regress_publication_user | f          | t       | f       | f       | f         | f
- testpub_default    | regress_publication_user | f          | t       | t       | t       | f         | f
+                                                                List of publications
+        Name        |          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root 
+--------------------+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------
+ testpub_default    | regress_publication_user | f          | f             | t       | t       | t       | f         | none              | f
+ testpub_ins_trunct | regress_publication_user | f          | f             | t       | f       | f       | f         | none              | f
 (2 rows)
 
 --- adding tables
@@ -98,10 +108,10 @@ LINE 1: ALTER PUBLICATION testpub_fortable ADD TABLES IN SCHEMA pub_...
                                                ^
 HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 \dRp+ testpub_fortable
-                                Publication testpub_fortable
-          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
---------------------------+------------+---------+---------+---------+-----------+----------
- regress_publication_user | f          | t       | t       | t       | t         | f
+                                                         Publication testpub_fortable
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
+ regress_publication_user | f          | f             | t       | t       | t       | t         | none              | f        | 
 Tables:
     "public.testpub_tbl1"
 
@@ -112,10 +122,10 @@ LINE 1: ALTER PUBLICATION testpub_fortable DROP TABLES IN SCHEMA pub...
                                                 ^
 HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 \dRp+ testpub_fortable
-                                Publication testpub_fortable
-          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
---------------------------+------------+---------+---------+---------+-----------+----------
- regress_publication_user | f          | t       | t       | t       | t         | f
+                                                         Publication testpub_fortable
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
+ regress_publication_user | f          | f             | t       | t       | t       | t         | none              | f        | 
 Tables:
     "public.testpub_tbl1"
 
@@ -126,10 +136,10 @@ LINE 1: ALTER PUBLICATION testpub_fortable SET TABLES IN SCHEMA pub_...
                                                ^
 HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 \dRp+ testpub_fortable
-                                Publication testpub_fortable
-          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
---------------------------+------------+---------+---------+---------+-----------+----------
- regress_publication_user | f          | t       | t       | t       | t         | f
+                                                         Publication testpub_fortable
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
+ regress_publication_user | f          | f             | t       | t       | t       | t         | none              | f        | 
 Tables:
     "public.testpub_tbl1"
 
@@ -192,40 +202,184 @@ Indexes:
     "testpub_tbl2_pkey" PRIMARY KEY, lsm (id HASH)
 Publications:
     "testpub_foralltables"
+Not-null constraints:
+    "testpub_tbl2_id_not_null" NOT NULL "id"
 
 \dRp+ testpub_foralltables
-                              Publication testpub_foralltables
-          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
---------------------------+------------+---------+---------+---------+-----------+----------
- regress_publication_user | t          | t       | t       | f       | f         | f
+                                                       Publication testpub_foralltables
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
+ regress_publication_user | t          | f             | t       | t       | f       | f         | none              | f        | 
 (1 row)
 
+---------------------------------------------
+-- EXCEPT clause tests for normal tables
+---------------------------------------------
+SET client_min_messages = 'ERROR';
+CREATE TABLE testpub_tbl3 (id serial primary key, data text);
+-- Specify table list in the EXCEPT clause of a FOR ALL TABLES publication
+CREATE PUBLICATION testpub_foralltables_excepttable FOR ALL TABLES EXCEPT (TABLE testpub_tbl1, testpub_tbl2, TABLE testpub_tbl3);
+\dRp+ testpub_foralltables_excepttable
+                                                 Publication testpub_foralltables_excepttable
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
+ regress_publication_user | t          | f             | t       | t       | t       | t         | none              | f        | 
+Except tables:
+    "public.testpub_tbl1"
+    "public.testpub_tbl2"
+    "public.testpub_tbl3"
+
+-- Specify table in the EXCEPT clause of a FOR ALL TABLES publication
+CREATE PUBLICATION testpub_foralltables_excepttable1 FOR ALL TABLES EXCEPT (TABLE testpub_tbl1);
+\dRp+ testpub_foralltables_excepttable1
+                                                Publication testpub_foralltables_excepttable1
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
+ regress_publication_user | t          | f             | t       | t       | t       | t         | none              | f        | 
+Except tables:
+    "public.testpub_tbl1"
+
+-- Check that the table description shows the publications where it is listed
+-- in the EXCEPT clause
+\d testpub_tbl1
+                            Table "public.testpub_tbl1"
+ Column |  Type   | Collation | Nullable |                 Default                  
+--------+---------+-----------+----------+------------------------------------------
+ id     | integer |           | not null | nextval('testpub_tbl1_id_seq'::regclass)
+ data   | text    |           |          | 
+Indexes:
+    "testpub_tbl1_pkey" PRIMARY KEY, lsm (id HASH)
+Publications:
+    "testpub_foralltables"
+    "testpub_fortable"
+Except Publications:
+    "testpub_foralltables_excepttable"
+    "testpub_foralltables_excepttable1"
+
+-- fail - first table in the EXCEPT list should use TABLE keyword
+CREATE PUBLICATION testpub_foralltables_excepttable2 FOR ALL TABLES EXCEPT (testpub_tbl1, testpub_tbl2);
+ERROR:  syntax error at or near "testpub_tbl1"
+LINE 1: ..._foralltables_excepttable2 FOR ALL TABLES EXCEPT (testpub_tb...
+                                                             ^
+---------------------------------------------
+-- SET ALL TABLES/SEQUENCES
+---------------------------------------------
+-- Replace the existing table list in the EXCEPT clause (testpub_tbl1,
+-- testpub_tbl2, testpub_tbl3) with table (testpub_tbl2).
+ALTER PUBLICATION testpub_foralltables_excepttable SET ALL TABLES EXCEPT (TABLE testpub_tbl2);
+\dRp+ testpub_foralltables_excepttable
+                                                 Publication testpub_foralltables_excepttable
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
+ regress_publication_user | t          | f             | t       | t       | t       | t         | none              | f        | 
+Except tables:
+    "public.testpub_tbl2"
+
+-- Replace the existing table list in the EXCEPT clause (testpub_tbl2) with a
+-- table list containing (testpub_tbl1, testpub_tbl2, testpub_tbl3).
+ALTER PUBLICATION testpub_foralltables_excepttable SET ALL TABLES EXCEPT (TABLE testpub_tbl1, testpub_tbl2, TABLE testpub_tbl3);
+\dRp+ testpub_foralltables_excepttable
+                                                 Publication testpub_foralltables_excepttable
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
+ regress_publication_user | t          | f             | t       | t       | t       | t         | none              | f        | 
+Except tables:
+    "public.testpub_tbl1"
+    "public.testpub_tbl2"
+    "public.testpub_tbl3"
+
+-- Clear the table list in the EXCEPT clause, making the publication include all
+-- tables.
+ALTER PUBLICATION testpub_foralltables_excepttable SET ALL TABLES;
+\dRp+ testpub_foralltables_excepttable
+                                                 Publication testpub_foralltables_excepttable
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
+ regress_publication_user | t          | f             | t       | t       | t       | t         | none              | f        | 
+(1 row)
+
+-- Create an empty publication for subsequent tests.
+CREATE PUBLICATION testpub_forall_tbls_seqs;
+-- Enable both puballtables and puballsequences
+ALTER PUBLICATION testpub_forall_tbls_seqs SET ALL TABLES, ALL SEQUENCES;
+\dRp+ testpub_forall_tbls_seqs
+                                                     Publication testpub_forall_tbls_seqs
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
+ regress_publication_user | t          | t             | t       | t       | t       | t         | none              | f        | 
+(1 row)
+
+-- Explicitly test that SET ALL TABLES resets puballsequences to false
+-- Result should be: puballtables = true, puballsequences = false
+ALTER PUBLICATION testpub_forall_tbls_seqs SET ALL TABLES;
+\dRp+ testpub_forall_tbls_seqs
+                                                     Publication testpub_forall_tbls_seqs
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
+ regress_publication_user | t          | f             | t       | t       | t       | t         | none              | f        | 
+(1 row)
+
+-- Explicitly test that SET ALL SEQUENCES resets puballtables to false
+-- Result should be: puballtables = false, puballsequences = true
+ALTER PUBLICATION testpub_forall_tbls_seqs SET ALL SEQUENCES;
+\dRp+ testpub_forall_tbls_seqs
+                                                     Publication testpub_forall_tbls_seqs
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
+ regress_publication_user | f          | t             | t       | t       | t       | t         | none              | f        | 
+(1 row)
+
+-- fail - SET ALL TABLES/SEQUENCES is not allowed for a 'FOR TABLE' publication
+ALTER PUBLICATION testpub_fortable SET ALL TABLES EXCEPT (TABLE testpub_tbl1);
+ERROR:  publication "testpub_fortable" does not support ALL TABLES operations
+DETAIL:  This operation requires the publication to be defined as FOR ALL TABLES/SEQUENCES or to be empty.
+ALTER PUBLICATION testpub_fortable SET ALL TABLES;
+ERROR:  publication "testpub_fortable" does not support ALL TABLES operations
+DETAIL:  This operation requires the publication to be defined as FOR ALL TABLES/SEQUENCES or to be empty.
+ALTER PUBLICATION testpub_fortable SET ALL SEQUENCES;
+ERROR:  publication "testpub_fortable" does not support ALL SEQUENCES operations
+DETAIL:  This operation requires the publication to be defined as FOR ALL TABLES/SEQUENCES or to be empty.
+-- fail - SET ALL TABLES/SEQUENCES is not allowed for a schema publication
+ALTER PUBLICATION testpub_forschema SET ALL TABLES EXCEPT (TABLE pub_test.testpub_nopk);
+ERROR:  publication "testpub_forschema" does not exist
+ALTER PUBLICATION testpub_forschema SET ALL TABLES;
+ERROR:  publication "testpub_forschema" does not exist
+ALTER PUBLICATION testpub_forschema SET ALL SEQUENCES;
+ERROR:  publication "testpub_forschema" does not exist
+RESET client_min_messages;
+-- YB: testpub_tbl2 and the earlier publications are dropped below.
+-- Drop publications before their tables (#26659). Multi-object DROP
+-- PUBLICATION is unsupported (#880).
+DROP PUBLICATION testpub_forall_tbls_seqs;
+DROP PUBLICATION testpub_foralltables_excepttable;
+DROP PUBLICATION testpub_foralltables_excepttable1;
+DROP TABLE testpub_tbl3;
 DROP TABLE testpub_tbl2;
 DROP PUBLICATION testpub_foralltables, testpub_fortable, testpub_forschema, testpub_for_tbl_schema;
 ERROR:  DROP multiple objects not supported yet
 LINE 1: DROP PUBLICATION testpub_foralltables, testpub_fortable, tes...
                          ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/880. React with thumbs up to raise its priority
-CREATE TABLE testpub_tbl3 (a int);
+CREATE TABLE testpub_tbl3 (a int); -- YB: kept short inheritance case
 CREATE TABLE testpub_tbl3a (b text) INHERITS (testpub_tbl3);
 SET client_min_messages = 'ERROR';
 CREATE PUBLICATION testpub3 FOR TABLE testpub_tbl3;
 CREATE PUBLICATION testpub4 FOR TABLE ONLY testpub_tbl3;
 RESET client_min_messages;
 \dRp+ testpub3
-                                    Publication testpub3
-          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
---------------------------+------------+---------+---------+---------+-----------+----------
- regress_publication_user | f          | t       | t       | t       | t         | f
+                                                             Publication testpub3
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
+ regress_publication_user | f          | f             | t       | t       | t       | t         | none              | f        | 
 Tables:
     "public.testpub_tbl3"
     "public.testpub_tbl3a"
 
 \dRp+ testpub4
-                                    Publication testpub4
-          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
---------------------------+------------+---------+---------+---------+-----------+----------
- regress_publication_user | f          | t       | t       | t       | t         | f
+                                                             Publication testpub4
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
+ regress_publication_user | f          | f             | t       | t       | t       | t         | none              | f        | 
 Tables:
     "public.testpub_tbl3"
 
@@ -240,6 +394,210 @@ HINT:  See https://github.com/yugabyte/yugabyte-db/issues/880. React with thumbs
 -- YB Note: Drop publications one by one to ensure cleanup.
 DROP PUBLICATION testpub3;
 DROP PUBLICATION testpub4;
+---------------------------------------------
+-- Tests for inherited tables, and
+-- EXCEPT clause tests for inherited tables
+---------------------------------------------
+SET client_min_messages = 'ERROR';
+CREATE TABLE testpub_tbl_parent (a int);
+CREATE TABLE testpub_tbl_child (b text) INHERITS (testpub_tbl_parent);
+CREATE PUBLICATION testpub3 FOR TABLE testpub_tbl_parent;
+\dRp+ testpub3
+                                                             Publication testpub3
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
+ regress_publication_user | f          | f             | t       | t       | t       | t         | none              | f        | 
+Tables:
+    "public.testpub_tbl_child"
+    "public.testpub_tbl_parent"
+
+CREATE PUBLICATION testpub4 FOR TABLE ONLY testpub_tbl_parent;
+\dRp+ testpub4
+                                                             Publication testpub4
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
+ regress_publication_user | f          | f             | t       | t       | t       | t         | none              | f        | 
+Tables:
+    "public.testpub_tbl_parent"
+
+-- List the parent table in the EXCEPT clause (without ONLY or '*')
+CREATE PUBLICATION testpub5 FOR ALL TABLES EXCEPT (TABLE testpub_tbl_parent);
+\dRp+ testpub5
+                                                             Publication testpub5
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
+ regress_publication_user | t          | f             | t       | t       | t       | t         | none              | f        | 
+Except tables:
+    "public.testpub_tbl_child"
+    "public.testpub_tbl_parent"
+
+-- EXCEPT with '*': list the table and all its descendants in the EXCEPT clause
+CREATE PUBLICATION testpub6 FOR ALL TABLES EXCEPT (TABLE testpub_tbl_parent *);
+\dRp+ testpub6
+                                                             Publication testpub6
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
+ regress_publication_user | t          | f             | t       | t       | t       | t         | none              | f        | 
+Except tables:
+    "public.testpub_tbl_child"
+    "public.testpub_tbl_parent"
+
+-- EXCEPT with ONLY: list the table in the EXCEPT clause, but not its descendants
+CREATE PUBLICATION testpub7 FOR ALL TABLES EXCEPT (TABLE ONLY testpub_tbl_parent);
+\dRp+ testpub7
+                                                             Publication testpub7
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
+ regress_publication_user | t          | f             | t       | t       | t       | t         | none              | f        | 
+Except tables:
+    "public.testpub_tbl_parent"
+
+RESET client_min_messages;
+-- YB: drop publications before their tables (#26659).
+-- Multi-object DROP PUBLICATION is unsupported (#880).
+DROP PUBLICATION testpub3;
+DROP PUBLICATION testpub4;
+DROP PUBLICATION testpub5;
+DROP PUBLICATION testpub6;
+DROP PUBLICATION testpub7;
+DROP TABLE testpub_tbl_parent, testpub_tbl_child;
+---------------------------------------------
+-- EXCEPT clause tests for partitioned tables
+---------------------------------------------
+SET client_min_messages = 'ERROR';
+CREATE TABLE testpub_root(a int) PARTITION BY RANGE(a);
+CREATE TABLE testpub_part1 PARTITION OF testpub_root FOR VALUES FROM (0) TO (100);
+CREATE PUBLICATION testpub8 FOR ALL TABLES EXCEPT (TABLE testpub_root);
+\dRp+ testpub8;
+                                                             Publication testpub8
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
+ regress_publication_user | t          | f             | t       | t       | t       | t         | none              | f        | 
+Except tables:
+    "public.testpub_root"
+
+\d testpub_part1
+           Table "public.testpub_part1"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+Partition of: testpub_root FOR VALUES FROM (0) TO (100)
+Publications:
+    "testpub_foralltables"
+Except Publications:
+    "testpub8"
+
+\d testpub_root
+      Partitioned table "public.testpub_root"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+Partition key: RANGE (a)
+Publications:
+    "testpub_foralltables"
+Except Publications:
+    "testpub8"
+Number of partitions: 1 (Use \d+ to list them.)
+
+CREATE PUBLICATION testpub9 FOR ALL TABLES EXCEPT (TABLE testpub_part1);
+ERROR:  cannot specify relation "testpub_part1" in the publication EXCEPT clause
+DETAIL:  This operation is not supported for individual partitions.
+CREATE TABLE tab_main (a int) PARTITION BY RANGE(a);
+-- Attaching a partition is not allowed if the partitioned table appears in a
+-- publication's EXCEPT clause.
+ALTER TABLE tab_main ATTACH PARTITION testpub_root FOR VALUES FROM (0) TO (200);
+ERROR:  cannot attach table "testpub_root" as partition because it is referenced in publication "testpub8" EXCEPT clause
+DETAIL:  The publication EXCEPT clause cannot contain tables that are partitions.
+HINT:  Change the publication's EXCEPT clause using ALTER PUBLICATION ... SET ALL TABLES.
+RESET client_min_messages;
+-- YB: drop publications before their tables (#26659).
+DROP PUBLICATION testpub8;
+-- YB: testpub9 was not created (an individual partition cannot be in EXCEPT).
+-- DROP PUBLICATION testpub9;
+DROP TABLE testpub_root, testpub_part1, tab_main;
+--- Tests for publications with SEQUENCES
+CREATE SEQUENCE regress_pub_seq0;
+CREATE SEQUENCE pub_test.regress_pub_seq1;
+-- FOR ALL SEQUENCES
+SET client_min_messages = 'ERROR';
+CREATE PUBLICATION regress_pub_forallsequences1 FOR ALL SEQUENCES;
+RESET client_min_messages;
+SELECT pubname, puballtables, puballsequences FROM pg_publication WHERE pubname = 'regress_pub_forallsequences1';
+           pubname            | puballtables | puballsequences 
+------------------------------+--------------+-----------------
+ regress_pub_forallsequences1 | f            | t
+(1 row)
+
+\d+ regress_pub_seq0
+                      Sequence "public.regress_pub_seq0"
+  Type  | Start | Minimum |       Maximum       | Increment | Cycles? | Cache 
+--------+-------+---------+---------------------+-----------+---------+-------
+ bigint |     1 |       1 | 9223372036854775807 |         1 | no      |   100
+Publications:
+    "regress_pub_forallsequences1"
+
+\dRp+ regress_pub_forallsequences1
+                                                   Publication regress_pub_forallsequences1
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
+ regress_publication_user | f          | t             | t       | t       | t       | t         | none              | f        | 
+(1 row)
+
+SET client_min_messages = 'ERROR';
+CREATE PUBLICATION regress_pub_forallsequences2 FOR ALL SEQUENCES;
+RESET client_min_messages;
+-- check that describe sequence lists both publications the sequence belongs to
+\d+ pub_test.regress_pub_seq1
+                     Sequence "pub_test.regress_pub_seq1"
+  Type  | Start | Minimum |       Maximum       | Increment | Cycles? | Cache 
+--------+-------+---------+---------------------+-----------+---------+-------
+ bigint |     1 |       1 | 9223372036854775807 |         1 | no      |   100
+Publications:
+    "regress_pub_forallsequences1"
+    "regress_pub_forallsequences2"
+
+--- Specifying both ALL TABLES and ALL SEQUENCES
+SET client_min_messages = 'ERROR';
+CREATE PUBLICATION regress_pub_for_allsequences_alltables FOR ALL SEQUENCES, ALL TABLES;
+-- Specifying WITH clause in an ALL SEQUENCES publication will emit a NOTICE.
+SET client_min_messages = 'NOTICE';
+ALTER PUBLICATION regress_pub_for_allsequences_alltables SET (publish = 'insert');
+NOTICE:  publication parameters are not applicable to sequence synchronization and will be ignored for sequences
+ALTER PUBLICATION regress_pub_for_allsequences_alltables SET (publish_generated_columns = 'stored');
+NOTICE:  publication parameters are not applicable to sequence synchronization and will be ignored for sequences
+RESET client_min_messages;
+SELECT pubname, puballtables, puballsequences FROM pg_publication WHERE pubname = 'regress_pub_for_allsequences_alltables';
+                pubname                 | puballtables | puballsequences 
+----------------------------------------+--------------+-----------------
+ regress_pub_for_allsequences_alltables | t            | t
+(1 row)
+
+\dRp+ regress_pub_for_allsequences_alltables
+                                              Publication regress_pub_for_allsequences_alltables
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
+ regress_publication_user | t          | t             | t       | f       | f       | f         | stored            | f        | 
+(1 row)
+
+-- YB: drop publications before their sequences (#26659).
+-- Multi-object DROP is unsupported (#880).
+DROP PUBLICATION regress_pub_forallsequences1;
+DROP PUBLICATION regress_pub_forallsequences2;
+DROP PUBLICATION regress_pub_for_allsequences_alltables;
+DROP SEQUENCE regress_pub_seq0; -- YB: #880
+DROP SEQUENCE pub_test.regress_pub_seq1; -- YB: #880
+-- fail - Specifying ALL TABLES more than once
+CREATE PUBLICATION regress_pub_for_allsequences_alltables FOR ALL SEQUENCES, ALL TABLES, ALL TABLES;
+ERROR:  invalid publication object list
+LINE 1: ...equences_alltables FOR ALL SEQUENCES, ALL TABLES, ALL TABLES...
+                                                             ^
+DETAIL:  ALL TABLES can be specified only once.
+-- fail - Specifying ALL SEQUENCES more than once
+CREATE PUBLICATION regress_pub_for_allsequences_alltables FOR ALL SEQUENCES, ALL TABLES, ALL SEQUENCES;
+ERROR:  invalid publication object list
+LINE 1: ...equences_alltables FOR ALL SEQUENCES, ALL TABLES, ALL SEQUEN...
+                                                             ^
+DETAIL:  ALL SEQUENCES can be specified only once.
 -- Tests for partitioned tables
 SET client_min_messages = 'ERROR';
 CREATE PUBLICATION testpub_forparted;
@@ -257,10 +615,10 @@ HINT:  To enable updating the table, set REPLICA IDENTITY using ALTER TABLE.
 -- only parent is listed as being in publication, not the partition
 ALTER PUBLICATION testpub_forparted ADD TABLE testpub_parted;
 \dRp+ testpub_forparted
-                               Publication testpub_forparted
-          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
---------------------------+------------+---------+---------+---------+-----------+----------
- regress_publication_user | f          | t       | t       | t       | t         | f
+                                                        Publication testpub_forparted
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
+ regress_publication_user | f          | f             | t       | t       | t       | t         | none              | f        | 
 Tables:
     "public.testpub_parted"
 
@@ -277,10 +635,10 @@ ERROR:  cannot update table "testpub_parted1" because it does not have a replica
 HINT:  To enable updating the table, set REPLICA IDENTITY using ALTER TABLE.
 ALTER PUBLICATION testpub_forparted SET (publish_via_partition_root = true);
 \dRp+ testpub_forparted
-                               Publication testpub_forparted
-          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
---------------------------+------------+---------+---------+---------+-----------+----------
- regress_publication_user | f          | t       | t       | t       | t         | t
+                                                        Publication testpub_forparted
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
+ regress_publication_user | f          | f             | t       | t       | t       | t         | none              | t        | 
 Tables:
     "public.testpub_parted"
 
@@ -315,10 +673,10 @@ SET client_min_messages = 'ERROR';
 CREATE PUBLICATION testpub5 FOR TABLE testpub_rf_tbl1, testpub_rf_tbl2 WHERE (c <> 'test' AND d < 5) WITH (publish = 'insert');
 RESET client_min_messages;
 \dRp+ testpub5
-                                    Publication testpub5
-          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
---------------------------+------------+---------+---------+---------+-----------+----------
- regress_publication_user | f          | t       | f       | f       | f         | f
+                                                             Publication testpub5
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
+ regress_publication_user | f          | f             | t       | f       | f       | f         | none              | f        | 
 Tables:
     "public.testpub_rf_tbl1"
     "public.testpub_rf_tbl2" WHERE ((c <> 'test'::text) AND (d < 5))
@@ -333,10 +691,10 @@ Publications:
 
 ALTER PUBLICATION testpub5 ADD TABLE testpub_rf_tbl3 WHERE (e > 1000 AND e < 2000);
 \dRp+ testpub5
-                                    Publication testpub5
-          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
---------------------------+------------+---------+---------+---------+-----------+----------
- regress_publication_user | f          | t       | f       | f       | f         | f
+                                                             Publication testpub5
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
+ regress_publication_user | f          | f             | t       | f       | f       | f         | none              | f        | 
 Tables:
     "public.testpub_rf_tbl1"
     "public.testpub_rf_tbl2" WHERE ((c <> 'test'::text) AND (d < 5))
@@ -353,10 +711,10 @@ Publications:
 
 ALTER PUBLICATION testpub5 DROP TABLE testpub_rf_tbl2;
 \dRp+ testpub5
-                                    Publication testpub5
-          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
---------------------------+------------+---------+---------+---------+-----------+----------
- regress_publication_user | f          | t       | f       | f       | f         | f
+                                                             Publication testpub5
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
+ regress_publication_user | f          | f             | t       | f       | f       | f         | none              | f        | 
 Tables:
     "public.testpub_rf_tbl1"
     "public.testpub_rf_tbl3" WHERE ((e > 1000) AND (e < 2000))
@@ -364,10 +722,10 @@ Tables:
 -- remove testpub_rf_tbl1 and add testpub_rf_tbl3 again (another WHERE expression)
 ALTER PUBLICATION testpub5 SET TABLE testpub_rf_tbl3 WHERE (e > 300 AND e < 500);
 \dRp+ testpub5
-                                    Publication testpub5
-          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
---------------------------+------------+---------+---------+---------+-----------+----------
- regress_publication_user | f          | t       | f       | f       | f         | f
+                                                             Publication testpub5
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
+ regress_publication_user | f          | f             | t       | f       | f       | f         | none              | f        | 
 Tables:
     "public.testpub_rf_tbl3" WHERE ((e > 300) AND (e < 500))
 
@@ -406,10 +764,10 @@ SET client_min_messages = 'ERROR';
 CREATE PUBLICATION testpub_syntax1 FOR TABLE testpub_rf_tbl1, ONLY testpub_rf_tbl3 WHERE (e < 999) WITH (publish = 'insert');
 RESET client_min_messages;
 \dRp+ testpub_syntax1
-                                Publication testpub_syntax1
-          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
---------------------------+------------+---------+---------+---------+-----------+----------
- regress_publication_user | f          | t       | f       | f       | f         | f
+                                                         Publication testpub_syntax1
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
+ regress_publication_user | f          | f             | t       | f       | f       | f         | none              | f        | 
 Tables:
     "public.testpub_rf_tbl1"
     "public.testpub_rf_tbl3" WHERE (e < 999)
@@ -419,10 +777,10 @@ SET client_min_messages = 'ERROR';
 CREATE PUBLICATION testpub_syntax2 FOR TABLE testpub_rf_tbl1, testpub_rf_schema1.testpub_rf_tbl5 WHERE (h < 999) WITH (publish = 'insert');
 RESET client_min_messages;
 \dRp+ testpub_syntax2
-                                Publication testpub_syntax2
-          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
---------------------------+------------+---------+---------+---------+-----------+----------
- regress_publication_user | f          | t       | f       | f       | f         | f
+                                                         Publication testpub_syntax2
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
+ regress_publication_user | f          | f             | t       | f       | f       | f         | none              | f        | 
 Tables:
     "public.testpub_rf_tbl1"
     "testpub_rf_schema1.testpub_rf_tbl5" WHERE (h < 999)
@@ -468,7 +826,7 @@ LINE 1: ...ICATION testpub6 FOR TABLE testpub_rf_tbl3 WHERE (e =#> 27);
                                                              ^
 DETAIL:  User-defined operators are not allowed.
 -- fail - user-defined functions are not allowed
-CREATE FUNCTION testpub_rf_func2() RETURNS integer AS $$ BEGIN RETURN 123; END; $$ LANGUAGE plpgsql;
+CREATE FUNCTION testpub_rf_func2() RETURNS integer IMMUTABLE AS $$ BEGIN RETURN 123; END; $$ LANGUAGE plpgsql;
 ALTER PUBLICATION testpub5 ADD TABLE testpub_rf_tbl1 WHERE (a >= testpub_rf_func2());
 ERROR:  invalid publication WHERE expression
 LINE 1: ...ON testpub5 ADD TABLE testpub_rf_tbl1 WHERE (a >= testpub_rf...
@@ -725,7 +1083,7 @@ ERROR:  publication "testpub_fortable" already exists
 CREATE PUBLICATION testpub_fortable_insert WITH (publish = 'insert');
 RESET client_min_messages;
 CREATE TABLE testpub_tbl5 (a int PRIMARY KEY, b text, c text,
-	d int generated always as (a + length(b)) stored);
+	d int generated always as (a + length(b)) stored); -- YB: virtual generated columns are not supported
 -- error: column "x" does not exist
 ALTER PUBLICATION testpub_fortable ADD TABLE testpub_tbl5 (a, x);
 ERROR:  column "x" of relation "testpub_tbl5" does not exist
@@ -735,9 +1093,6 @@ UPDATE testpub_tbl5 SET a = 1;
 ERROR:  cannot update table "testpub_tbl5"
 DETAIL:  Column list used by the publication does not cover the replica identity.
 ALTER PUBLICATION testpub_fortable DROP TABLE testpub_tbl5;
--- error: generated column "d" can't be in list
-ALTER PUBLICATION testpub_fortable ADD TABLE testpub_tbl5 (a, d);
-ERROR:  cannot use generated column "d" in publication column list
 -- error: system attributes "ctid" not allowed in column list
 ALTER PUBLICATION testpub_fortable ADD TABLE testpub_tbl5 (a, ctid);
 ERROR:  cannot use system column "ctid" in publication column list
@@ -758,10 +1113,17 @@ LINE 1: ALTER TABLE testpub_tbl5 REPLICA IDENTITY USING INDEX testpu...
                                                   ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 -- error: replica identity (b,c) is not covered by column list (a, c)
+-- YB: the update does not fail. REPLICA IDENTITY USING INDEX is unsupported (#1124),
+-- so the replica identity is unchanged.
 UPDATE testpub_tbl5 SET a = 1;
 ALTER PUBLICATION testpub_fortable DROP TABLE testpub_tbl5;
+-- ok: stored generated column "d" can be in the list too
+ALTER PUBLICATION testpub_fortable ADD TABLE testpub_tbl5 (a, d);
+ALTER PUBLICATION testpub_fortable DROP TABLE testpub_tbl5;
+-- YB: virtual generated columns are not supported, so column "e" is omitted.
 -- error: change the replica identity to "b", and column list to (a, c)
 -- then update fails, because (a, c) does not cover replica identity
+-- YB: the update does not fail. REPLICA IDENTITY USING INDEX is unsupported (#1124).
 ALTER TABLE testpub_tbl5 REPLICA IDENTITY USING INDEX testpub_tbl5_b_key;
 ERROR:  ALTER TABLE REPLICA IDENTITY USING INDEX not supported yet
 LINE 1: ALTER TABLE testpub_tbl5 REPLICA IDENTITY USING INDEX testpu...
@@ -775,10 +1137,10 @@ CREATE PUBLICATION testpub_table_ins WITH (publish = 'insert, truncate');
 RESET client_min_messages;
 ALTER PUBLICATION testpub_table_ins ADD TABLE testpub_tbl5 (a);		-- ok
 \dRp+ testpub_table_ins
-                               Publication testpub_table_ins
-          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
---------------------------+------------+---------+---------+---------+-----------+----------
- regress_publication_user | f          | t       | f       | f       | t         | f
+                                                        Publication testpub_table_ins
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
+ regress_publication_user | f          | f             | t       | f       | f       | t         | none              | f        | 
 Tables:
     "public.testpub_tbl5" (a)
 
@@ -1033,10 +1395,10 @@ LINE 1: ...R TABLE testpub_tbl_both_filters REPLICA IDENTITY USING INDE...
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 ALTER PUBLICATION testpub_both_filters ADD TABLE testpub_tbl_both_filters (a,c) WHERE (c != 1);
 \dRp+ testpub_both_filters
-                              Publication testpub_both_filters
-          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
---------------------------+------------+---------+---------+---------+-----------+----------
- regress_publication_user | f          | t       | t       | t       | t         | f
+                                                       Publication testpub_both_filters
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
+ regress_publication_user | f          | f             | t       | t       | t       | t         | none              | f        | 
 Tables:
     "public.testpub_tbl_both_filters" (a, c) WHERE (c <> 1)
 
@@ -1073,10 +1435,10 @@ ALTER TABLE rf_tbl_abcd_part_pk ATTACH PARTITION rf_tbl_abcd_part_pk_1 FOR VALUE
 SET client_min_messages = 'ERROR';
 CREATE PUBLICATION testpub6 FOR TABLE rf_tbl_abcd_pk (a, b);
 RESET client_min_messages;
--- ok - (a,b) coverts all PK cols
+-- ok - (a,b) covers all PK cols
 UPDATE rf_tbl_abcd_pk SET a = 1;
 ALTER PUBLICATION testpub6 SET TABLE rf_tbl_abcd_pk (a, b, c);
--- ok - (a,b,c) coverts all PK cols
+-- ok - (a,b,c) covers all PK cols
 UPDATE rf_tbl_abcd_pk SET a = 1;
 ALTER PUBLICATION testpub6 SET TABLE rf_tbl_abcd_pk (a);
 -- fail - "b" is missing from the column list
@@ -1246,6 +1608,7 @@ DROP TABLE testpub_temptbl;
 CREATE UNLOGGED TABLE testpub_unloggedtbl(a int);
 NOTICE:  unlogged option is currently ignored in YugabyteDB, all non-temp relations will be logged
 -- fail - unlogged table
+-- YB: UNLOGGED is ignored, so this publication is created.
 CREATE PUBLICATION testpub_forunloggedtbl FOR TABLE testpub_unloggedtbl;
 DROP TABLE testpub_unloggedtbl;
 ERROR:  cannot drop a table which is part of a publication.
@@ -1264,10 +1627,10 @@ ERROR:  relation "testpub_tbl1" is already member of publication "testpub_fortbl
 CREATE PUBLICATION testpub_fortbl FOR TABLE testpub_tbl1;
 ERROR:  publication "testpub_fortbl" already exists
 \dRp+ testpub_fortbl
-                                 Publication testpub_fortbl
-          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
---------------------------+------------+---------+---------+---------+-----------+----------
- regress_publication_user | f          | t       | t       | t       | t         | f
+                                                          Publication testpub_fortbl
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
+ regress_publication_user | f          | f             | t       | t       | t       | t         | none              | f        | 
 Tables:
     "pub_test.testpub_nopk"
     "public.testpub_tbl1"
@@ -1279,7 +1642,7 @@ DETAIL:  This operation is not supported for views.
 ALTER PUBLICATION testpub_default ADD TABLE testpub_tbl1;
 ALTER PUBLICATION testpub_default SET TABLE testpub_tbl1;
 ALTER PUBLICATION testpub_default ADD TABLE pub_test.testpub_nopk;
-ALTER PUBLICATION testpib_ins_trunct ADD TABLE pub_test.testpub_nopk, testpub_tbl1;
+ALTER PUBLICATION testpub_ins_trunct ADD TABLE pub_test.testpub_nopk, testpub_tbl1;
 \d+ pub_test.testpub_nopk
                               Table "pub_test.testpub_nopk"
  Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
@@ -1287,9 +1650,9 @@ ALTER PUBLICATION testpib_ins_trunct ADD TABLE pub_test.testpub_nopk, testpub_tb
  foo    | integer |           |          |         | plain   |              | 
  bar    | integer |           |          |         | plain   |              | 
 Publications:
-    "testpib_ins_trunct"
     "testpub_default"
     "testpub_fortbl"
+    "testpub_ins_trunct"
 
 \d+ testpub_tbl1
                                                 Table "public.testpub_tbl1"
@@ -1300,15 +1663,17 @@ Publications:
 Indexes:
     "testpub_tbl1_pkey" PRIMARY KEY, lsm (id HASH)
 Publications:
-    "testpib_ins_trunct"
     "testpub_default"
     "testpub_fortbl"
+    "testpub_ins_trunct"
+Not-null constraints:
+    "testpub_tbl1_id_not_null" NOT NULL "id"
 
 \dRp+ testpub_default
-                                Publication testpub_default
-          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
---------------------------+------------+---------+---------+---------+-----------+----------
- regress_publication_user | f          | t       | t       | t       | f         | f
+                                                            Publication testpub_default
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root |   Description    
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+------------------
+ regress_publication_user | f          | f             | t       | t       | t       | f         | none              | f        | test publication
 Tables:
     "pub_test.testpub_nopk"
     "public.testpub_tbl1"
@@ -1326,8 +1691,8 @@ ERROR:  relation "testpub_nopk" is not part of the publication
 Indexes:
     "testpub_tbl1_pkey" PRIMARY KEY, lsm (id HASH)
 Publications:
-    "testpib_ins_trunct"
     "testpub_fortbl"
+    "testpub_ins_trunct"
 Not-null constraints:
     "testpub_tbl1_id_not_null" NOT NULL "id"
 
@@ -1402,8 +1767,22 @@ ERROR:  publication "testpub4" does not exist
 ALTER PUBLICATION testpub4 owner to regress_publication_user; -- ok
 ERROR:  publication "testpub4" does not exist
 SET ROLE regress_publication_user;
-DROP PUBLICATION testpub4;
-ERROR:  publication "testpub4" does not exist
+SET client_min_messages = 'ERROR';
+CREATE PUBLICATION testpub5 FOR ALL TABLES;
+RESET client_min_messages;
+ALTER PUBLICATION testpub5 OWNER TO regress_publication_user3;
+SET ROLE regress_publication_user3;
+-- fail - SET ALL TABLES/SEQUENCES on a publication requires superuser privileges
+ALTER PUBLICATION testpub5 SET ALL TABLES EXCEPT (TABLE testpub_tbl1); -- fail
+ERROR:  must be superuser to set ALL TABLES
+ALTER PUBLICATION testpub5 SET ALL TABLES; -- fail
+ERROR:  must be superuser to set ALL TABLES
+ALTER PUBLICATION testpub5 SET ALL SEQUENCES; -- fail
+ERROR:  must be superuser to set ALL SEQUENCES
+SET ROLE regress_publication_user;
+-- YB: testpub4 was not created (TABLES IN SCHEMA is unsupported).
+-- DROP PUBLICATION testpub4; -- YB: #880
+DROP PUBLICATION testpub5; -- YB: #880
 DROP ROLE regress_publication_user3;
 -- YB Note: regress tests use the 'yugabyte' database
 REVOKE CREATE ON DATABASE yugabyte FROM regress_publication_user2;
@@ -1412,10 +1791,10 @@ DROP TABLE testpub_tbl1;
 ERROR:  cannot drop a table which is part of a publication.
 HINT:  Use pg_publication_tables to find all such publications and retry after dropping the table from them.
 \dRp+ testpub_default
-                                Publication testpub_default
-          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
---------------------------+------------+---------+---------+---------+-----------+----------
- regress_publication_user | f          | t       | t       | t       | f         | f
+                                                            Publication testpub_default
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root |   Description    
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+------------------
+ regress_publication_user | f          | f             | t       | t       | t       | f         | none              | f        | test publication
 Tables:
     "pub_test.testpub_addpk"
 
@@ -1426,20 +1805,20 @@ ERROR:  must be owner of publication testpub_default
 RESET ROLE;
 ALTER PUBLICATION testpub_default RENAME TO testpub_foo;
 \dRp testpub_foo
-                                           List of publications
-    Name     |          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
--------------+--------------------------+------------+---------+---------+---------+-----------+----------
- testpub_foo | regress_publication_user | f          | t       | t       | t       | f         | f
+                                                             List of publications
+    Name     |          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root 
+-------------+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------
+ testpub_foo | regress_publication_user | f          | f             | t       | t       | t       | f         | none              | f
 (1 row)
 
 -- rename back to keep the rest simple
 ALTER PUBLICATION testpub_foo RENAME TO testpub_default;
 ALTER PUBLICATION testpub_default OWNER TO regress_publication_user2;
 \dRp testpub_default
-                                             List of publications
-      Name       |           Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
------------------+---------------------------+------------+---------+---------+---------+-----------+----------
- testpub_default | regress_publication_user2 | f          | t       | t       | t       | f         | f
+                                                               List of publications
+      Name       |           Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root 
+-----------------+---------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------
+ testpub_default | regress_publication_user2 | f          | f             | t       | t       | t       | f         | none              | f
 (1 row)
 
 -- adding schemas and tables
@@ -1495,10 +1874,10 @@ RESET client_min_messages;
 \dRp+ testpub5_forschema
 \dRp+ testpub6_forschema
 \dRp+ testpub_fortable
-                                Publication testpub_fortable
-          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
---------------------------+------------+---------+---------+---------+-----------+----------
- regress_publication_user | f          | t       | t       | t       | t         | f
+                                                         Publication testpub_fortable
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
+ regress_publication_user | f          | f             | t       | t       | t       | t         | none              | f        | 
 Tables:
     "public.testpub_tbl7" (a, c)
 
@@ -1708,10 +2087,10 @@ SET client_min_messages = 'ERROR';
 CREATE PUBLICATION testpub3_forschema;
 RESET client_min_messages;
 \dRp+ testpub3_forschema
-                               Publication testpub3_forschema
-          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
---------------------------+------------+---------+---------+---------+-----------+----------
- regress_publication_user | f          | t       | t       | t       | t         | f
+                                                        Publication testpub3_forschema
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
+ regress_publication_user | f          | f             | t       | t       | t       | t         | none              | f        | 
 (1 row)
 
 ALTER PUBLICATION testpub3_forschema SET TABLES IN SCHEMA pub_test1;
@@ -1720,10 +2099,10 @@ LINE 1: ALTER PUBLICATION testpub3_forschema SET TABLES IN SCHEMA pu...
                                                  ^
 HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 \dRp+ testpub3_forschema
-                               Publication testpub3_forschema
-          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
---------------------------+------------+---------+---------+---------+-----------+----------
- regress_publication_user | f          | t       | t       | t       | t         | f
+                                                        Publication testpub3_forschema
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
+ regress_publication_user | f          | f             | t       | t       | t       | t         | none              | f        | 
 (1 row)
 
 -- create publication including both 'FOR TABLE' and 'FOR TABLES IN SCHEMA'
@@ -1750,7 +2129,7 @@ LINE 1: CREATE PUBLICATION testpub_error FOR pub_test2.tbl1;
 DETAIL:  One of TABLE or TABLES IN SCHEMA must be specified before a standalone table or schema name.
 DROP VIEW testpub_view;
 DROP PUBLICATION testpub_default;
-DROP PUBLICATION testpib_ins_trunct;
+DROP PUBLICATION testpub_ins_trunct;
 DROP PUBLICATION testpub_fortbl;
 DROP PUBLICATION testpub1_forschema;
 ERROR:  publication "testpub1_forschema" does not exist
@@ -1918,6 +2297,338 @@ ERROR:  publication "pub" does not exist
 DROP TABLE sch1.tbl1;
 DROP SCHEMA sch1 cascade;
 DROP SCHEMA sch2 cascade;
+-- ======================================================
+-- Test the 'publish_generated_columns' parameter with the following values:
+-- 'stored', 'none'.
+SET client_min_messages = 'ERROR';
+CREATE PUBLICATION pub1 FOR ALL TABLES WITH (publish_generated_columns = stored);
+\dRp+ pub1
+                                                               Publication pub1
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
+ regress_publication_user | t          | f             | t       | t       | t       | t         | stored            | f        | 
+(1 row)
+
+CREATE PUBLICATION pub2 FOR ALL TABLES WITH (publish_generated_columns = none);
+\dRp+ pub2
+                                                               Publication pub2
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
+ regress_publication_user | t          | f             | t       | t       | t       | t         | none              | f        | 
+(1 row)
+
+DROP PUBLICATION pub1;
+DROP PUBLICATION pub2;
+-- Test the 'publish_generated_columns' parameter as 'none' and 'stored' for
+-- different scenarios with/without generated columns in column lists.
+CREATE TABLE gencols (a int, gen1 int GENERATED ALWAYS AS (a * 2) STORED);
+-- Generated columns in column list, when 'publish_generated_columns'='none'
+CREATE PUBLICATION pub1 FOR table gencols(a, gen1) WITH (publish_generated_columns = none);
+\dRp+ pub1
+                                                               Publication pub1
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
+ regress_publication_user | f          | f             | t       | t       | t       | t         | none              | f        | 
+Tables:
+    "public.gencols" (a, gen1)
+
+-- Generated columns in column list, when 'publish_generated_columns'='stored'
+CREATE PUBLICATION pub2 FOR table gencols(a, gen1) WITH (publish_generated_columns = stored);
+\dRp+ pub2
+                                                               Publication pub2
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
+ regress_publication_user | f          | f             | t       | t       | t       | t         | stored            | f        | 
+Tables:
+    "public.gencols" (a, gen1)
+
+-- Generated columns in column list, then set 'publish_generated_columns'='none'
+ALTER PUBLICATION pub2 SET (publish_generated_columns = none);
+\dRp+ pub2
+                                                               Publication pub2
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
+ regress_publication_user | f          | f             | t       | t       | t       | t         | none              | f        | 
+Tables:
+    "public.gencols" (a, gen1)
+
+-- Remove generated columns from column list, when 'publish_generated_columns'='none'
+ALTER PUBLICATION pub2 SET TABLE gencols(a);
+\dRp+ pub2
+                                                               Publication pub2
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
+ regress_publication_user | f          | f             | t       | t       | t       | t         | none              | f        | 
+Tables:
+    "public.gencols" (a)
+
+-- Add generated columns in column list, when 'publish_generated_columns'='none'
+ALTER PUBLICATION pub2 SET TABLE gencols(a, gen1);
+\dRp+ pub2
+                                                               Publication pub2
+          Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
+--------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
+ regress_publication_user | f          | f             | t       | t       | t       | t         | none              | f        | 
+Tables:
+    "public.gencols" (a, gen1)
+
+DROP PUBLICATION pub1;
+DROP PUBLICATION pub2;
+DROP TABLE gencols;
+RESET client_min_messages;
+-- Test that the INSERT ON CONFLICT command correctly checks REPLICA IDENTITY
+-- when the target table is published.
+CREATE TABLE testpub_insert_onconfl_no_ri (a int unique, b int);
+CREATE TABLE testpub_insert_onconfl_parted (a int unique, b int) PARTITION by RANGE (a);
+CREATE TABLE testpub_insert_onconfl_part_no_ri PARTITION OF testpub_insert_onconfl_parted FOR VALUES FROM (1) TO (10);
+SET client_min_messages = 'ERROR';
+CREATE PUBLICATION pub1 FOR ALL TABLES;
+RESET client_min_messages;
+-- fail - missing REPLICA IDENTITY
+INSERT INTO testpub_insert_onconfl_no_ri VALUES (1, 1) ON CONFLICT (a) DO UPDATE SET b = 2;
+ERROR:  cannot update table "testpub_insert_onconfl_no_ri" because it does not have a replica identity and publishes updates
+HINT:  To enable updating the table, set REPLICA IDENTITY using ALTER TABLE.
+-- ok - no updates
+INSERT INTO testpub_insert_onconfl_no_ri VALUES (1, 1) ON CONFLICT DO NOTHING;
+-- fail - missing REPLICA IDENTITY in partition testpub_insert_onconfl_no_ri
+INSERT INTO testpub_insert_onconfl_parted VALUES (1, 1) ON CONFLICT (a) DO UPDATE SET b = 2;
+ERROR:  cannot update table "testpub_insert_onconfl_part_no_ri" because it does not have a replica identity and publishes updates
+HINT:  To enable updating the table, set REPLICA IDENTITY using ALTER TABLE.
+-- ok - no updates
+INSERT INTO testpub_insert_onconfl_parted VALUES (1, 1) ON CONFLICT DO NOTHING;
+DROP PUBLICATION pub1;
+DROP TABLE testpub_insert_onconfl_no_ri;
+DROP TABLE testpub_insert_onconfl_parted;
+-- Test pg_get_publication_tables(text[], oid) function
+CREATE SCHEMA gpt_test_sch;
+CREATE TABLE gpt_test_sch.tbl_sch (id int);
+CREATE TABLE tbl_normal (id int);
+CREATE TABLE tbl_parent (id1 int, id2 int, id3 int) PARTITION BY RANGE (id1);
+CREATE TABLE tbl_part1 PARTITION OF tbl_parent FOR VALUES FROM (1) TO (10);
+CREATE VIEW gpt_test_view AS SELECT * FROM tbl_normal;
+SET client_min_messages = 'ERROR';
+CREATE PUBLICATION pub_all FOR ALL TABLES WITH (publish_via_partition_root = true);
+CREATE PUBLICATION pub_all_no_viaroot FOR ALL TABLES WITH (publish_via_partition_root = false);
+CREATE PUBLICATION pub_all_except FOR ALL TABLES EXCEPT (TABLE tbl_parent, gpt_test_sch.tbl_sch) WITH (publish_via_partition_root = true);
+CREATE PUBLICATION pub_all_except_no_viaroot FOR ALL TABLES EXCEPT (TABLE tbl_parent, gpt_test_sch.tbl_sch) WITH (publish_via_partition_root = false);
+-- YB: TABLES IN SCHEMA is blocked at runtime in YB.
+CREATE PUBLICATION pub_schema FOR TABLES IN SCHEMA gpt_test_sch;
+ERROR:  CREATE/ALTER PUBLICATION SCHEMA not supported yet
+LINE 1: CREATE PUBLICATION pub_schema FOR TABLES IN SCHEMA gpt_test_...
+                                          ^
+HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+CREATE PUBLICATION pub_normal FOR TABLE tbl_normal WHERE (id < 10);
+CREATE PUBLICATION pub_part_leaf FOR TABLE tbl_part1 WITH (publish_via_partition_root = false);
+CREATE PUBLICATION pub_part_parent FOR TABLE tbl_parent (id1, id2) WHERE (id1 = 10) WITH (publish_via_partition_root = true);
+CREATE PUBLICATION pub_part_parent_no_viaroot FOR TABLE tbl_parent WITH (publish_via_partition_root = false);
+CREATE PUBLICATION pub_part_parent_child FOR TABLE tbl_parent, tbl_part1 WITH (publish_via_partition_root = true);
+RESET client_min_messages;
+CREATE FUNCTION test_gpt(pubnames text[], relname text)
+RETURNS TABLE (
+  pubname text,
+  relname name,
+  attrs text,
+  qual text
+)
+BEGIN ATOMIC
+  SELECT p.pubname, c.relname, gpt.attrs::text, pg_get_expr(gpt.qual, gpt.relid)
+    FROM pg_get_publication_tables(pubnames, relname::regclass::oid) gpt
+    JOIN pg_publication p ON p.oid = gpt.pubid
+    JOIN pg_class c ON c.oid = gpt.relid
+  ORDER BY p.pubname, c.relname;
+END;
+SELECT * FROM test_gpt(ARRAY['pub_normal'], 'tbl_normal');
+  pubname   |  relname   | attrs |   qual    
+------------+------------+-------+-----------
+ pub_normal | tbl_normal | 1     | (id < 10)
+(1 row)
+
+SELECT * FROM test_gpt(ARRAY['pub_normal'], 'gpt_test_sch.tbl_sch'); -- no result
+ pubname | relname | attrs | qual 
+---------+---------+-------+------
+(0 rows)
+
+SELECT * FROM test_gpt(ARRAY['pub_schema'], 'gpt_test_sch.tbl_sch');
+ pubname | relname | attrs | qual 
+---------+---------+-------+------
+(0 rows)
+
+SELECT * FROM test_gpt(ARRAY['pub_schema'], 'tbl_normal'); -- no result
+ pubname | relname | attrs | qual 
+---------+---------+-------+------
+(0 rows)
+
+SELECT * FROM test_gpt(ARRAY['pub_part_parent'], 'tbl_parent');
+     pubname     |  relname   | attrs |    qual    
+-----------------+------------+-------+------------
+ pub_part_parent | tbl_parent | 1 2   | (id1 = 10)
+(1 row)
+
+SELECT * FROM test_gpt(ARRAY['pub_part_parent'], 'tbl_part1'); -- no result
+ pubname | relname | attrs | qual 
+---------+---------+-------+------
+(0 rows)
+
+SELECT * FROM test_gpt(ARRAY['pub_part_parent_no_viaroot'], 'tbl_part1');
+          pubname           |  relname  | attrs | qual 
+----------------------------+-----------+-------+------
+ pub_part_parent_no_viaroot | tbl_part1 | 1 2 3 | 
+(1 row)
+
+SELECT * FROM test_gpt(ARRAY['pub_part_parent_no_viaroot'], 'tbl_parent'); -- no result
+ pubname | relname | attrs | qual 
+---------+---------+-------+------
+(0 rows)
+
+SELECT * FROM test_gpt(ARRAY['pub_part_leaf'], 'tbl_part1');
+    pubname    |  relname  | attrs | qual 
+---------------+-----------+-------+------
+ pub_part_leaf | tbl_part1 | 1 2 3 | 
+(1 row)
+
+SELECT * FROM test_gpt(ARRAY['pub_part_leaf'], 'tbl_parent'); -- no result
+ pubname | relname | attrs | qual 
+---------+---------+-------+------
+(0 rows)
+
+SELECT * FROM test_gpt(ARRAY['pub_all'], 'tbl_parent');
+ pubname |  relname   | attrs | qual 
+---------+------------+-------+------
+ pub_all | tbl_parent | 1 2 3 | 
+(1 row)
+
+SELECT * FROM test_gpt(ARRAY['pub_all'], 'tbl_part1'); -- no result
+ pubname | relname | attrs | qual 
+---------+---------+-------+------
+(0 rows)
+
+SELECT * FROM test_gpt(ARRAY['pub_all_no_viaroot'], 'tbl_part1');
+      pubname       |  relname  | attrs | qual 
+--------------------+-----------+-------+------
+ pub_all_no_viaroot | tbl_part1 | 1 2 3 | 
+(1 row)
+
+SELECT * FROM test_gpt(ARRAY['pub_all_no_viaroot'], 'tbl_parent'); -- no result
+ pubname | relname | attrs | qual 
+---------+---------+-------+------
+(0 rows)
+
+SELECT * FROM test_gpt(ARRAY['pub_part_parent_child'], 'tbl_parent');
+        pubname        |  relname   | attrs | qual 
+-----------------------+------------+-------+------
+ pub_part_parent_child | tbl_parent | 1 2 3 | 
+(1 row)
+
+SELECT * FROM test_gpt(ARRAY['pub_part_parent_child'], 'tbl_part1'); -- no result
+ pubname | relname | attrs | qual 
+---------+---------+-------+------
+(0 rows)
+
+-- test for the EXCEPT clause
+SELECT * FROM test_gpt(ARRAY['pub_all_except'], 'tbl_normal');
+    pubname     |  relname   | attrs | qual 
+----------------+------------+-------+------
+ pub_all_except | tbl_normal | 1     | 
+(1 row)
+
+SELECT * FROM test_gpt(ARRAY['pub_all_except'], 'gpt_test_sch.tbl_sch'); -- no result (excluded)
+ pubname | relname | attrs | qual 
+---------+---------+-------+------
+(0 rows)
+
+SELECT * FROM test_gpt(ARRAY['pub_all_except'], 'tbl_parent'); -- no result (excluded)
+ pubname | relname | attrs | qual 
+---------+---------+-------+------
+(0 rows)
+
+SELECT * FROM test_gpt(ARRAY['pub_all_except'], 'tbl_part1'); -- no result
+ pubname | relname | attrs | qual 
+---------+---------+-------+------
+(0 rows)
+
+SELECT * FROM test_gpt(ARRAY['pub_all_except_no_viaroot'], 'tbl_normal');
+          pubname          |  relname   | attrs | qual 
+---------------------------+------------+-------+------
+ pub_all_except_no_viaroot | tbl_normal | 1     | 
+(1 row)
+
+SELECT * FROM test_gpt(ARRAY['pub_all_except_no_viaroot'], 'gpt_test_sch.tbl_sch'); -- no result (excluded)
+ pubname | relname | attrs | qual 
+---------+---------+-------+------
+(0 rows)
+
+SELECT * FROM test_gpt(ARRAY['pub_all_except_no_viaroot'], 'tbl_parent'); -- no result (excluded)
+ pubname | relname | attrs | qual 
+---------+---------+-------+------
+(0 rows)
+
+SELECT * FROM test_gpt(ARRAY['pub_all_except_no_viaroot'], 'tbl_part1'); -- no result
+ pubname | relname | attrs | qual 
+---------+---------+-------+------
+(0 rows)
+
+-- two rows with different row filter
+SELECT * FROM test_gpt(ARRAY['pub_all', 'pub_normal'], 'tbl_normal');
+  pubname   |  relname   | attrs |   qual    
+------------+------------+-------+-----------
+ pub_all    | tbl_normal | 1     | 
+ pub_normal | tbl_normal | 1     | (id < 10)
+(2 rows)
+
+-- one row with 'pub_part_parent'
+SELECT * FROM test_gpt(ARRAY['pub_part_parent', 'pub_part_parent_no_viaroot'], 'tbl_parent');
+     pubname     |  relname   | attrs |    qual    
+-----------------+------------+-------+------------
+ pub_part_parent | tbl_parent | 1 2   | (id1 = 10)
+(1 row)
+
+-- no result, tbl_parent is the effective published OID due to pubviaroot
+SELECT * FROM test_gpt(ARRAY['pub_part_parent', 'pub_all'], 'tbl_part1');
+ pubname | relname | attrs | qual 
+---------+---------+-------+------
+(0 rows)
+
+-- no result, non-existent publication
+SELECT * FROM test_gpt(ARRAY['no_such_pub'], 'tbl_normal');
+ pubname | relname | attrs | qual 
+---------+---------+-------+------
+(0 rows)
+
+-- no result, non-table object
+SELECT * FROM test_gpt(ARRAY['pub_all'], 'gpt_test_view');
+ pubname | relname | attrs | qual 
+---------+---------+-------+------
+(0 rows)
+
+-- no result, empty publication array
+SELECT * FROM test_gpt(ARRAY[]::text[], 'tbl_normal');
+ pubname | relname | attrs | qual 
+---------+---------+-------+------
+(0 rows)
+
+-- no result, OID 0 as target_relid
+SELECT * FROM pg_get_publication_tables(ARRAY['pub_normal'], 0::oid);
+ pubid | relid | attrs | qual 
+-------+-------+-------+------
+(0 rows)
+
+-- Clean up
+DROP FUNCTION test_gpt(text[], text);
+DROP PUBLICATION pub_all;
+DROP PUBLICATION pub_all_no_viaroot;
+DROP PUBLICATION pub_all_except;
+DROP PUBLICATION pub_all_except_no_viaroot;
+-- YB: pub_schema was not created (TABLES IN SCHEMA is unsupported).
+-- DROP PUBLICATION pub_schema;
+DROP PUBLICATION pub_normal;
+DROP PUBLICATION pub_part_leaf;
+DROP PUBLICATION pub_part_parent;
+DROP PUBLICATION pub_part_parent_no_viaroot;
+DROP PUBLICATION pub_part_parent_child;
+DROP VIEW gpt_test_view;
+DROP TABLE tbl_normal, tbl_parent, tbl_part1;
+DROP SCHEMA gpt_test_sch CASCADE;
+NOTICE:  drop cascades to table gpt_test_sch.tbl_sch
 -- YB Note: Clean up leaked objects for the next regress test. Multi-object DROP
 -- PUBLICATION is unsupported (#880), and tables without a primary key can now be
 -- part of publications (#29423), so some objects are not dropped earlier in the
@@ -1925,8 +2636,8 @@ DROP SCHEMA sch2 cascade;
 -- publication cannot be dropped, #26659).
 DROP PUBLICATION IF EXISTS testpub_default;
 NOTICE:  publication "testpub_default" does not exist, skipping
-DROP PUBLICATION IF EXISTS testpib_ins_trunct;
-NOTICE:  publication "testpib_ins_trunct" does not exist, skipping
+DROP PUBLICATION IF EXISTS testpub_ins_trunct;
+NOTICE:  publication "testpub_ins_trunct" does not exist, skipping
 DROP PUBLICATION IF EXISTS testpub_fortbl;
 NOTICE:  publication "testpub_fortbl" does not exist, skipping
 DROP PUBLICATION IF EXISTS testpub_fortable;
@@ -1952,6 +2663,13 @@ NOTICE:  table "testpub_tbl8_1" does not exist, skipping
 DROP TABLE IF EXISTS testpub_tbl_both_filters;
 DROP TABLE IF EXISTS testpub_rf_tbl1;
 DROP TABLE IF EXISTS testpub_unloggedtbl;
+-- YB: these stay behind until the all-tables publication is dropped (#26659).
+DROP TABLE IF EXISTS testpub_tbl_parent CASCADE;
+NOTICE:  table "testpub_tbl_parent" does not exist, skipping
+DROP TABLE IF EXISTS testpub_root CASCADE;
+NOTICE:  table "testpub_root" does not exist, skipping
+DROP SEQUENCE IF EXISTS regress_pub_seq0;
+NOTICE:  sequence "regress_pub_seq0" does not exist, skipping
 DROP SCHEMA IF EXISTS pub_test CASCADE;
 NOTICE:  schema "pub_test" does not exist, skipping
 RESET SESSION AUTHORIZATION;
