@@ -146,6 +146,7 @@
 #include "utils/snapshot.h"
 #include "utils/spccache.h"
 #include "utils/syscache.h"
+#include "utils/timestamp.h"
 #include "utils/typcache.h"
 #include "utils/uuid.h"
 #include "yb/yql/pggate/util/ybc_util.h"
@@ -1073,6 +1074,32 @@ yb_pg_partman_check_native_txn_ddl_and_locks(PG_FUNCTION_ARGS)
 				   yb_enable_ddl_savepoint_infra);
 }
 
+/*
+ * Returns the commit timestamp on the source of the transaction currently being
+ * applied, set by the apply worker or directly by an application through
+ * pg_replication_origin_xact_setup().
+ *
+ * Returned in microseconds since the Unix epoch, the domain HybridTime uses,
+ * rather than as a TimestampTz. Zero means there is nothing usable to send,
+ * which the caller treats the same as a local write. Whether the value fits in
+ * a HybridTime is checked by pggate.
+ */
+static int64_t
+YbGetSessionReplicationOriginTimestamp(void)
+{
+	TimestampTz ts = replorigin_session_origin_timestamp;
+
+	const int64_t unix_epoch_offset = ((POSTGRES_EPOCH_JDATE - UNIX_EPOCH_JDATE) *
+									   USECS_PER_DAY);
+
+	Assert(ts == 0 || IsTransactionOrTransactionBlock());
+
+	if (ts == 0 || TIMESTAMP_NOT_FINITE(ts) || ts > PG_INT64_MAX - unix_epoch_offset)
+		return 0;
+
+	return (int64_t) yb_timestamptz_to_micros_time_t(ts);
+}
+
 void
 YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *init_info)
 {
@@ -1101,6 +1128,7 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 			.PgstatReportWaitStart = &yb_pgstat_report_wait_start,
 			.GetCatalogSnapshotReadPoint = &YbGetCatalogSnapshotReadPoint,
 			.GetSessionReplicationOriginId = &YbGetSessionReplicationOriginId,
+			.GetSessionReplicationOriginTimestamp = &YbGetSessionReplicationOriginTimestamp,
 			.HasProcessableAbortInterrupt = &YBHasProcessableAbortInterrupt,
 			.IsInParallelMode = &IsInParallelMode,
 		};
@@ -2286,6 +2314,7 @@ int			yb_insert_on_conflict_read_batch_size = 1024;
 bool		yb_enable_fkey_catcache = true;
 bool		yb_enable_fkey_batched_docdb_lookup_when_types_mismatch = true;
 bool		yb_enable_nop_alter_role_optimization = true;
+bool		yb_alter_type_reuse_expr_and_partial_indexes = true;
 bool		yb_enable_inplace_index_update = true;
 bool		yb_ignore_freeze_with_copy = true;
 bool		yb_enable_docdb_vector_type = false;
@@ -7232,7 +7261,13 @@ YbRegisterSysTableForPrefetching(int sys_table_id)
 			break;
 		case AuthIdRelationId:	/* pg_authid */
 			db_id = Template1DbOid;
-			index_id = AuthIdRolnameIndexId;
+			/*
+			 * Mandatory: a conn mgr auth passthrough control backend looks up
+			 * roles by name while prefetching is active, and with its relcache
+			 * built, an AUTHNAME catcache miss (e.g. a dropped role) is an
+			 * index-ordered scan of pg_authid_rolname_index.
+			 */
+			mandatory_index_id = AuthIdRolnameIndexId;
 			sys_only_filter_attr = InvalidAttrNumber;
 			break;
 		case DatabaseRelationId:	/* pg_database */

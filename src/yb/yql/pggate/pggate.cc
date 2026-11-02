@@ -2622,11 +2622,14 @@ void PgApiImpl::RestoreSessionState(const YbcPgSessionState& session_data) {
 Status PgApiImpl::NewCreateReplicationSlot(
     const char* slot_name, const char* plugin_name, PgOid database_oid,
     YbcPgReplicationSlotSnapshotAction snapshot_action, YbcLsnType lsn_type,
-    YbcOrderingMode ordering_mode, PgStatement** handle) {
+    YbcOrderingMode ordering_mode, const char* yb_publication_name,
+    const PgOid* yb_publication_relfilenodes, size_t yb_num_publication_tables,
+    bool yb_publication_all_tables, PgStatement** handle) {
   return AddToCurrentPgMemctx(
       std::make_unique<PgCreateReplicationSlot>(
           pg_session_, slot_name, plugin_name, database_oid, snapshot_action, lsn_type,
-          ordering_mode),
+          ordering_mode, yb_publication_name, yb_publication_relfilenodes,
+          yb_num_publication_tables, yb_publication_all_tables),
       handle);
 }
 

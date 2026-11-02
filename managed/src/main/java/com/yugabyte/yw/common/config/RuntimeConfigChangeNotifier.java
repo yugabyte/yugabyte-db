@@ -41,7 +41,8 @@ public class RuntimeConfigChangeNotifier {
       BootstrapRequiredRpcPoolMaxThreadListener bootstrapRequiredRpcPoolMaxThreadListener,
       CpuUsageIntervalListener cpuUsageIntervalListener,
       MetricsScrapeIntervalStandbyListener metricsScrapeIntervalStandbyListener,
-      NodeExporterEnabledListener nodeExporterEnabledListener) {
+      NodeExporterEnabledListener nodeExporterEnabledListener,
+      PaActiveTableMetricsListener paActiveTableMetricsListener) {
     List<String> refreshableClients = AppConfigHelper.getRefreshableClients();
     for (String wsClientKey : refreshableClients) {
       addListener(new WSClientKeyListener(wsClientKey));
@@ -55,6 +56,7 @@ public class RuntimeConfigChangeNotifier {
     addListener(cpuUsageIntervalListener);
     addListener(metricsScrapeIntervalStandbyListener);
     addListener(nodeExporterEnabledListener);
+    addListener(paActiveTableMetricsListener);
   }
 
   public void notifyListeners(UUID scopeUUID, String path) {

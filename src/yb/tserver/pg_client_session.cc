@@ -43,6 +43,7 @@
 #include "yb/client/transaction_manager.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/common/cdr_metadata.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/common_util.h"
 #include "yb/common/pgsql_error.h"
@@ -182,6 +183,7 @@ DECLARE_bool(enable_qos);
 #endif
 
 DECLARE_bool(enable_object_lock_fastpath);
+DECLARE_bool(enforce_xcluster_guarded_lease);
 DECLARE_bool(vector_index_dump_stats);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
@@ -1507,9 +1509,10 @@ Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperati
       if (write_time) {
         write_op->SetWriteTime(write_time);
       }
-      if (req->options().xrepl_origin_id()) {
-        write_op->SetXreplOriginId(req->options().xrepl_origin_id());
-      }
+      write_op->SetCdrMetadata({
+          .source_origin = req->options().xrepl_origin_id(),
+          .source_write_ht = HybridTime::FromPB(req->options().xrepl_source_write_ht()),
+      });
       if (origination_info.IsSet()) {
         write_op->SetOriginationInfo(origination_info);
       }
@@ -2025,6 +2028,16 @@ class PgClientSession::Impl {
       }
     }
 
+    std::optional<std::string> bound_publication_name;
+    std::vector<TableId> bound_publication_table_ids;
+    bool bound_publication_all_tables = false;
+    if (!req.bound_publication_name().empty()) {
+      bound_publication_name = req.bound_publication_name();
+      bound_publication_table_ids.assign(
+          req.bound_publication_table_ids().begin(), req.bound_publication_table_ids().end());
+      bound_publication_all_tables = req.bound_publication_all_tables();
+    }
+
     uint64_t consistent_snapshot_time;
     auto stream_result = VERIFY_RESULT(client_.CreateCDCSDKStreamForNamespace(
         GetPgsqlNamespaceId(req.database_oid()), options,
@@ -2035,7 +2048,11 @@ class PgClientSession::Impl {
         CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED,
         &consistent_snapshot_time,
         lsn_type,
-        ordering_mode));
+        ordering_mode,
+        /* bound_table_ids */ {},
+        bound_publication_name,
+        bound_publication_table_ids,
+        bound_publication_all_tables));
     *resp->mutable_stream_id() = stream_result.ToString();
     resp->set_cdcsdk_consistent_snapshot_time(consistent_snapshot_time);
     return Status::OK();
@@ -3134,19 +3151,22 @@ class PgClientSession::Impl {
       LOG_AND_RETURN(WARNING, STATUS(InvalidArgument, txn_meta_res.status().message()));
     }
 
-    std::optional<SubTransactionId> opt_subtxn_id;
-    if (!req.release_all()) {
-      opt_subtxn_id = session_data->transaction->GetActiveSubTransactionId();
-    } else {
+    SCHECK(
+        subtxn_with_session_object_locks_.has_value(), InvalidArgument,
+        "Session object lock release without active session object locks");
+    const SubTransactionId subtxn_id = *subtxn_with_session_object_locks_;
+    RSTATUS_DCHECK_EQ(
+        session_data->transaction->GetActiveSubTransactionId(), subtxn_id, IllegalState,
+        "Expected the session txn's active subtxn to hold the session object locks");
+    if (req.release_all()) {
       // All session object locks as part of a phased DDLs are tagged to the same subtxn id.
       // When releasing all of them, abort the subtxn and bump up the active subtxn id.
-      const auto rollback_to_subtxn = *subtxn_with_session_object_locks_;
       subtxn_with_session_object_locks_.reset();
       RETURN_NOT_OK(session_data->transaction->RollbackToSubTransaction(
-          rollback_to_subtxn, context->GetClientDeadline()));
+          subtxn_id, context->GetClientDeadline()));
       const auto new_subtxn_id = session_data->transaction->IncrementAndGetSubTransactionId();
       RSTATUS_DCHECK(
-          rollback_to_subtxn == new_subtxn_id - 1, IllegalState,
+          subtxn_id == new_subtxn_id - 1, IllegalState,
           "Expected all session object locks to be associated with the same subtxn");
     }
     RSTATUS_DCHECK(
@@ -3154,9 +3174,9 @@ class PgClientSession::Impl {
         "Expected to see valid lock id in session lock release request or release_all option set");
     auto release_req = std::make_shared<master::ReleaseObjectLocksGlobalRequestPB>(
         ReleaseRequestFor<master::ReleaseObjectLocksGlobalRequestPB>(
-            instance_uuid(), txn_meta_res->transaction_id, opt_subtxn_id, lease_epoch_,
+            instance_uuid(), txn_meta_res->transaction_id, subtxn_id, lease_epoch_,
             context_.clock.get()));
-    if (opt_subtxn_id) {
+    if (!req.release_all()) {
       auto* lock = release_req->add_object_locks();
       lock->set_database_oid(req.lock_oid().database_oid());
       lock->set_relation_oid(req.lock_oid().relation_oid());
@@ -3166,7 +3186,7 @@ class PgClientSession::Impl {
     }
     ReleaseWithRetriesGlobal(
         client_, ts_lock_manager(), txn_meta_res->transaction_id,
-        opt_subtxn_id, release_req);
+        subtxn_id, release_req);
     TEST_PAUSE_IF_FLAG(TEST_pause_session_lock_after_release);
     // Release control to the pg backend, and let the release continue in async mode.
     return Status::OK();
@@ -3494,10 +3514,19 @@ class PgClientSession::Impl {
     }
 
     // DMLs.
-    if (xcluster_context()->IsReadOnlyMode(options.namespace_id())) {
+    // Without enforce_xcluster_guarded_lease, the role is UNAVAILABLE only before this TServer's
+    // first heartbeat.  Do not refuse DMLs to every database then: nothing guarantees writes are
+    // refused to targets in that window anyway, since IsReadOnlyMode is also false until then.
+    const bool refuse_dmls_because_role =
+        role == XClusterNamespaceInfoPB::AUTOMATIC_TARGET ||
+        (role == XClusterNamespaceInfoPB::UNAVAILABLE && FLAGS_enforce_xcluster_guarded_lease);
+    if (xcluster_context()->IsReadOnlyMode(options.namespace_id()) || refuse_dmls_because_role) {
       for (const auto& op : data->req.ops()) {
         if (op.has_write() && !op.write().is_backfill()) {
           TEST_SYNC_POINT_CALLBACK("WriteDetectedOnXClusterReadOnlyModeTarget", nullptr);
+          if (role == XClusterNamespaceInfoPB::UNAVAILABLE) {
+            return MakeForbiddenOnAutomaticTargetStatus(role, "DML operations");
+          }
           // Only DDLs and index backfill is allowed in xCluster read-only mode.
           return STATUS(
               IllegalState,

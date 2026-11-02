@@ -231,9 +231,12 @@ bool AsyncRpc::HasResponse() const {
 
 rpc::RpcController* AsyncRpc::PrepareController() {
   auto* controller = Rpc::PrepareController();
-  if (batcher_->local_calls_can_time_out()) {
-    // The rpc keeps alive the request, the response and the batcher with the rest of buffers.
-    controller->set_local_call_buffers_holder(shared_from_this());
+  if (const auto& buffers_holder = batcher_->buffers_holder()) {
+    // The rpc keeps alive the request, the response and the batcher. The batcher drops
+    // buffers_holder once its rpcs are done, so the call needs its own reference.
+    controller->set_local_call_buffers_holder(
+        std::make_shared<std::pair<std::shared_ptr<void>, std::shared_ptr<void>>>(
+            shared_from_this(), buffers_holder));
   }
   return controller;
 }
@@ -724,8 +727,12 @@ void HandleExtraFields(YBPgsqlWriteOp* op, tserver::LWWriteRequestPB* req) {
     req->set_external_hybrid_time(op->write_time().ToUint64());
     ReadHybridTime::SingleTime(op->write_time()).ToPB(req->mutable_read_time());
   }
-  if (op->XreplOriginId()) {
-    req->set_xrepl_origin_id(op->XreplOriginId());
+  const auto& cdr_metadata = op->cdr_metadata();
+  if (cdr_metadata.source_origin) {
+    req->set_xrepl_origin_id(cdr_metadata.source_origin);
+  }
+  if (cdr_metadata.source_write_ht.is_valid()) {
+    req->set_xrepl_source_write_ht(cdr_metadata.source_write_ht.ToUint64());
   }
   if (op->origination_info().IsSet()) {
     op->origination_info().ToPB(req->mutable_origination_info());

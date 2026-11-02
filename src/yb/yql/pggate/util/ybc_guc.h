@@ -187,6 +187,12 @@ extern bool yb_enable_consistent_replication_from_hash_range;
 extern bool yb_enable_replication_slot_exclusive_lock;
 
 /*
+ * GUC variable bounding the number of advisory-lock RPC retries for
+ * DROP_REPLICATION_SLOT ... WAIT. 0 means retry indefinitely.
+ */
+extern int yb_replication_slot_wait_max_retries;
+
+/*
  * GUC variable that enables streaming tables without primary key to CDCSDK logical replication
  * streams.
  */

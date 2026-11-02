@@ -6,9 +6,8 @@ Each processor handles a specific type of work and can be registered with the Ta
 """
 
 import logging
+import os
 import mimetypes
-import threading
-import time
 from datetime import datetime
 from typing import Dict, Any
 from uuid import UUID
@@ -28,11 +27,6 @@ class CreateSourceProcessorForAWS_S3(TaskProcessor):
     Handles document embedding and chunking operations.
     """
 
-    # Global lease renewal configuration (in seconds)
-    # Default: 900 seconds = 15 minutes
-    lease_renewal_interval_seconds = 900
-    _config_lock = threading.Lock()
-
     def __init__(self):
         """
         Initialize the processor.
@@ -43,7 +37,6 @@ class CreateSourceProcessorForAWS_S3(TaskProcessor):
         self.connection_pool = ConnectionPool()
         self.poller = Poller()
         self.source_document_tracking = SourceDocumentTracking()
-        self._lease_renewal_threads = {}  # Track active renewal threads
 
     def validate(self, task: WorkQueueTask) -> bool:
         """
@@ -125,107 +118,86 @@ class CreateSourceProcessorForAWS_S3(TaskProcessor):
             logging.error(f"Invalid source URI: {source_uri}")
             raise ValueError(f"Invalid source URI: {source_uri}")
 
-    def _renew_lease_periodically(self, work_queue_id: str, lease_token: str):
+    def _update_create_source_status(self, task: WorkQueueTask, source_id, status: str) -> bool:
         """
-        Background thread that renews the lease periodically.
-        Uses the globally configured interval.
-        """
-        while True:
-            try:
-                # Get current interval (thread-safe)
-                interval = self.get_lease_renewal_interval()
-                time.sleep(interval)
+        Set the status of the task's source, while the task's lease still holds.
 
-                # Stop if this thread should no longer run (task completed)
-                if not self._lease_renewal_threads.get(work_queue_id):
-                    break
-
-                self.logger.info(f"Renewing lease for task {work_queue_id}")
-                self.poller.renew_lease(work_queue_id, lease_token)
-            except Exception as e:
-                self.logger.error(f"Error renewing lease for task {work_queue_id}: {str(e)}")
-                break
-
-    @classmethod
-    def set_lease_renewal_interval(cls, interval_seconds: int):
-        """
-        Dynamically configure the lease renewal interval.
-
-        Args:
-            interval_seconds: Interval in seconds for lease renewal
-        """
-        with cls._config_lock:
-            cls.lease_renewal_interval_seconds = interval_seconds
-            logging.getLogger(__name__).info(
-                f"Lease renewal interval updated to {interval_seconds} seconds"
-            )
-
-    @classmethod
-    def get_lease_renewal_interval(cls) -> int:
-        """
-        Get the current lease renewal interval.
-
-        Returns:
-            Lease renewal interval in seconds
-        """
-        with cls._config_lock:
-            return cls.lease_renewal_interval_seconds
-
-    def _update_create_source_status(self, work_queue_id: str, status: str):
-        """
-        Update the status of a create source task.
+        A worker whose lease expired and whose task another worker reclaimed
+        writes nothing, so it can't overwrite the new worker's source status.
+        Returns False when nothing was written.
         """
         connection = None
         try:
             connection = self.connection_pool.get_connection()
             cursor = connection.cursor()
-            query = """
-            UPDATE dist_rag.sources
-            SET status = %s
-            WHERE id = %s
-            RETURNING id;
-            """
-            cursor.execute(query, (status, work_queue_id))
-            result = cursor.fetchone()
+            if task.lease_token is None:
+                cursor.execute(
+                    "UPDATE dist_rag.sources SET status = %s WHERE id = %s",
+                    (status, str(source_id)),
+                )
+            else:
+                cursor.execute(
+                    "UPDATE dist_rag.sources SET status = %s WHERE id = %s "
+                    "AND EXISTS (SELECT 1 FROM dist_rag.work_queue w WHERE w.id = %s "
+                    "AND w.lease_token = %s AND w.task_status = 'IN_PROGRESS')",
+                    (status, str(source_id), str(task.id), str(task.lease_token)),
+                )
+            updated = cursor.rowcount > 0
             connection.commit()
+            return updated
         except Exception as e:
             if connection:
                 try:
                     connection.rollback()
                 except Exception:
                     pass
-            logging.error(f"Error updating create source status for task {work_queue_id}: {str(e)}")
+            logging.error(f"Error setting source {source_id} {status} for task {task.id}: {str(e)}")
             raise
         finally:
             if connection:
                 self.connection_pool.return_connection(connection)
 
-    def _mark_task_completed(self, work_queue_id: UUID, source_id: UUID):
+    # A completion that fails (a transaction conflict, a dropped connection)
+    # is retried this many times, COMPLETION_RETRY_SECONDS apart, before the
+    # task is failed.
+    COMPLETION_MAX_RETRIES = int(os.getenv("CREATE_SOURCE_COMPLETION_MAX_RETRIES", "10"))
+    COMPLETION_RETRY_SECONDS = int(os.getenv("CREATE_SOURCE_COMPLETION_RETRY_SECONDS", "60"))
 
+    def _mark_task_completed(self, work_queue_id: UUID, source_id: UUID,
+                             lease_token=None) -> bool:
+        """
+        Mark a CREATE_SOURCE task as completed and queue the source's documents.
+
+        Deleting the task and moving the source to COMPLETED commit together,
+        and only while this lease still holds the task. Queuing the documents
+        runs in its own transaction afterwards, so the completion stays small
+        however many documents the source has. If queuing fails, the source
+        is already COMPLETED, and the poller's sweep queues its documents.
+
+        Returns False, writing nothing, when the lease no longer holds the
+        task: the worker that holds it now completes the source.
+        """
         connection = None
         try:
-            """
-            Mark a CREATE_SOURCE task as completed.
-
-            The work_queue row is removed via :meth:`Poller.mark_completed`
-            (DELETE) so the queue stays compact. The source row is moved to
-            a terminal COMPLETED status -- it is the authoritative record of
-            source ingestion, separate from the dispatch queue.
-            """
-            self.poller.mark_completed(work_queue_id)
             connection = self.connection_pool.get_connection()
             cursor = connection.cursor()
-            query_sources = """
-            UPDATE dist_rag.sources
-            SET status = 'COMPLETED',
-                completed_at = CURRENT_TIMESTAMP
-            WHERE id = %s
-            RETURNING id;
-            """
-            cursor.execute(query_sources, (source_id,))
-            result = cursor.fetchone()
+            if lease_token is None:
+                cursor.execute("DELETE FROM dist_rag.work_queue WHERE id = %s",
+                               (str(work_queue_id),))
+            else:
+                cursor.execute(
+                    "DELETE FROM dist_rag.work_queue WHERE id = %s AND lease_token = %s",
+                    (str(work_queue_id), str(lease_token)),
+                )
+            if cursor.rowcount == 0:
+                connection.rollback()
+                return False
+            cursor.execute(
+                "UPDATE dist_rag.sources SET status = 'COMPLETED', "
+                "completed_at = CURRENT_TIMESTAMP WHERE id = %s",
+                (source_id,),
+            )
             connection.commit()
-            return result
         except Exception as e:
             if connection:
                 try:
@@ -238,98 +210,153 @@ class CreateSourceProcessorForAWS_S3(TaskProcessor):
             if connection:
                 self.connection_pool.return_connection(connection)
 
+        self._queue_source_documents(source_id)
+        return True
+
+    def _queue_source_documents(self, source_id: UUID) -> None:
+        """Queue a completed source's documents for every index it feeds.
+
+        Done here rather than left to a client that waits for COMPLETED: a
+        client that gives up or restarts would strand them with no task. A
+        failure is logged, not raised: the source is already COMPLETED, so
+        the poller's sweep queues the documents within a few minutes.
+        """
+        connection = None
+        try:
+            connection = self.connection_pool.get_connection()
+            cursor = connection.cursor()
+            cursor.execute(
+                "SELECT dist_rag._queue_source_documents(%s, m.index_id) "
+                "FROM dist_rag.vector_index_source_mappings m WHERE m.source_id = %s",
+                (source_id, source_id),
+            )
+            connection.commit()
+        except Exception as e:
+            if connection:
+                try:
+                    connection.rollback()
+                except Exception:
+                    pass
+            logging.warning(
+                f"Could not queue documents of source {source_id}; the sweep will "
+                f"queue them: {str(e)}"
+            )
+        finally:
+            if connection:
+                self.connection_pool.return_connection(connection)
+
+    def _fail_task(self, task: WorkQueueTask) -> None:
+        """Finalize the work_queue row as FAILED, so no poll reclaims it."""
+        try:
+            self.poller.mark_failed(task.id, lease_token=task.lease_token)
+        except Exception as finalize_err:
+            self.logger.error(
+                f"Failed to mark work_queue row {task.id} FAILED: {str(finalize_err)}"
+            )
+
     def process(self, task: WorkQueueTask) -> Dict[str, Any]:
         """
-        Process a document embedding task.
+        Process a CREATE_SOURCE task: list the source's documents, then
+        complete the source and queue its documents.
 
         Args:
-            task: WorkQueueTask object with document details
+            task: WorkQueueTask object with source details
 
         Returns:
             Result dictionary with processing status
 
         Raises:
-            RuntimeError: If RagPipelineHandler not initialized
-            Exception: Any processing errors
+            RuntimeError: If the S3 crawler is not initialized
+            Exception: An error listing the source's documents
         """
-        if not self.s3_crawler:
-            raise RuntimeError("S3 Crawler not initialized")
-
         task_details = task.task_details
+        work_queue_id = task.id
+        source_id = task_details.get('source_id')
 
+        # No client-side lease check: the lease was granted by this poll, and
+        # completing the task is fenced on the lease token in SQL. Comparing
+        # the server's lease_expires_at with this host's clock would misfire
+        # whenever the clocks or time zones differ.
         try:
-            work_queue_id = task.id
-            lease_token = task.lease_token
-            lease_expires_at = task.lease_expires_at
-            source_id = task_details.get('source_id')
-            source_uri = task_details.get('source_uri')
-
-            # Check if the lease has expired
-            if lease_expires_at < datetime.now():
-                self.logger.error(f"Lease expired for task {work_queue_id}")
-                return {
-                    'message': 'Lease expired',
-                    'work_queue_id': work_queue_id
-                }
-
-            # Start background lease renewal thread
-            renewal_thread = threading.Thread(
-                target=self._renew_lease_periodically,
-                args=(str(work_queue_id), str(lease_token)),
-                daemon=True
-            )
-            self._lease_renewal_threads[str(work_queue_id)] = renewal_thread
-            renewal_thread.start()
-            self.logger.info(
-                f"Started lease renewal thread for task {work_queue_id} "
-                f"(interval: {self.get_lease_renewal_interval()} seconds)"
-            )
+            # Inside the try so the task is failed; raised before it, the task
+            # stayed IN_PROGRESS and was redelivered every lease period.
+            if not self.s3_crawler:
+                raise RuntimeError("S3 Crawler not initialized")
 
             self.logger.info(
                 f"Processing create source task: source_id={source_id}"
             )
 
-            self._update_create_source_status(work_queue_id=work_queue_id, status="IN_PROGRESS")
-
             # nik-todo: fetch source details from source_id.
             source_details = self.source_document_tracking.get_source_details(source_id=source_id)
             if not source_details:
+                # Re-running can't fix a missing source; without finalizing,
+                # a poll would reclaim this task every lease period.
                 self.logger.error(f"Source details not found for source_id: {source_id}")
+                self._fail_task(task)
                 return {
                     'message': 'Source details not found',
                     'source_id': source_id
                 }
 
+            # The source exists, so nothing written means the lease expired
+            # and another worker reclaimed the task. Crawling on would list
+            # the source twice at once, and before pg_dist_rag 0.0.4 nothing
+            # stops that from duplicating its documents.
+            if not self._update_create_source_status(task, source_id, "IN_PROGRESS"):
+                self.logger.warning(
+                    f"Task {work_queue_id} lost its lease before crawling source {source_id}"
+                )
+                return {'task_id': work_queue_id, 'status': 'lease_lost'}
+
             source_uri = source_details.get('source_uri')
             self._get_documents_from_source(source_uri=source_uri, source_id=source_id)
 
-            self._mark_task_completed(work_queue_id=work_queue_id, source_id=source_id)
-
-            from datetime import timezone
-            completed_at = datetime.now(timezone.utc).isoformat()
-            self.logger.info(f"Task {work_queue_id} marked as completed at {completed_at}")
-            # Stop the renewal thread once task completes
-            self._lease_renewal_threads.pop(str(work_queue_id), None)
-
-            return {
-                'task_id': work_queue_id,
-                'status': 'success',
-                'completed_at': completed_at
-            }
-
         except Exception as e:
-            # Clean up the renewal thread on error
-            self._lease_renewal_threads.pop(str(work_queue_id), None)
-            self._update_create_source_status(work_queue_id=work_queue_id, status="FAILED")
-            # Finalize the work_queue row too -- without this the row stays
-            # IN_PROGRESS and the SQL-side reaper re-queues it on lease
-            # expiry, causing CREATE_SOURCE tasks to be retried forever.
-            try:
-                self.poller.mark_failed(task.id)
-            except Exception as finalize_err:
-                self.logger.error(
-                    f"Failed to mark work_queue row {task.id} FAILED after "
-                    f"create-source error: {str(finalize_err)}"
-                )
+            self._update_create_source_status(task, source_id, "FAILED")
+            self._fail_task(task)
             self.logger.error(f"Error processing create source task: {str(e)}")
             raise
+
+        try:
+            completed = self._mark_task_completed(
+                work_queue_id=work_queue_id, source_id=source_id,
+                lease_token=task.lease_token)
+        except Exception as e:
+            # Listing the documents succeeded; only the completion failed, and
+            # running it again can fix that. Failing the task would leave the
+            # source incomplete with its documents never queued.
+            attempt = int((task_details or {}).get("attempt") or 0)
+            if attempt < self.COMPLETION_MAX_RETRIES:
+                self.logger.warning(
+                    f"Completing task {work_queue_id} failed (attempt {attempt + 1} of "
+                    f"{self.COMPLETION_MAX_RETRIES}); retrying in "
+                    f"{self.COMPLETION_RETRY_SECONDS}s: {str(e)}"
+                )
+                self.poller.release(work_queue_id, self.COMPLETION_RETRY_SECONDS,
+                                    lease_token=task.lease_token)
+                return {'task_id': work_queue_id, 'status': 'retry'}
+            self._update_create_source_status(task, source_id, "FAILED")
+            self._fail_task(task)
+            self.logger.error(
+                f"Giving up completing task {work_queue_id} after "
+                f"{self.COMPLETION_MAX_RETRIES} retries: {str(e)}"
+            )
+            raise
+
+        if not completed:
+            self.logger.warning(
+                f"Task {work_queue_id} lost its lease; the worker now holding it "
+                f"completes source {source_id}"
+            )
+            return {'task_id': work_queue_id, 'status': 'lease_lost'}
+
+        from datetime import timezone
+        completed_at = datetime.now(timezone.utc).isoformat()
+        self.logger.info(f"Task {work_queue_id} marked as completed at {completed_at}")
+
+        return {
+            'task_id': work_queue_id,
+            'status': 'success',
+            'completed_at': completed_at
+        }

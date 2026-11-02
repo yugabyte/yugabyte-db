@@ -1137,11 +1137,18 @@ ExecInitPartitionDispatchInfo(EState *estate,
 	 * "no partition for tuple" error when a tuple is inserted into a
 	 * partition that's being detached concurrently, but a transaction in
 	 * repeatable-read mode can still use such a partition.
+	 *
+	 * YB: Since YB does not maintain per-row xmin, the snapshot-based
+	 * visibility check for pending-detach partitions is meaningless.  Always
+	 * omit partitions marked as pending detach so that RI checks (and
+	 * partition routing in general) never reference a partition that is being
+	 * concurrently detached.
 	 */
+	bool yb_omit_detached = IsYugaByteEnabled() || !IsolationUsesXactSnapshot();
 	if (estate->es_partition_directory == NULL)
 		estate->es_partition_directory =
 			CreatePartitionDirectory(estate->es_query_cxt,
-									 !IsolationUsesXactSnapshot());
+				yb_omit_detached);
 
 	oldcxt = MemoryContextSwitchTo(proute->memcxt);
 

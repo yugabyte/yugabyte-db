@@ -122,6 +122,11 @@ DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_replication_slot_exclusive_lock, 
     "Acquire a cluster-wide exclusive advisory lock while a replication slot is "
     "in use so that only one consumer can use it at a time across the universe.");
 
+DEFINE_RUNTIME_PG_FLAG(int32, yb_replication_slot_wait_max_retries, 0,
+    "Maximum number of advisory-lock RPC timeout retries for "
+    "DROP_REPLICATION_SLOT ... WAIT before giving up with an error. "
+    "0 (default) retries indefinitely.");
+
 DEFINE_NON_RUNTIME_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication, true,
     "When set to true, modifications to publication will be reflected implicitly. "
     "This replaces the previous mechanism of periodic publication refresh with PG "
@@ -423,8 +428,9 @@ DEFINE_RUNTIME_AUTO_bool(enforce_xcluster_guarded_lease, kLocalPersisted, false,
     "namespace will be reported as UNAVAILABLE if the TServer does not have a current lease.");
 
 DEFINE_RUNTIME_bool(enable_persistence_gate, true,
-    "Whether to refuse YSQL writes and commits to databases whose persisting xCluster has stopped. "
-    " Takes effect only once enforce_xcluster_guarded_lease is on.");
+    "Whether to refuse YSQL writes and commits whose persisting xCluster has stopped.  Also aborts "
+    "pending transactions whose commits would likewise be refused.  Takes effect only once "
+    "enforce_xcluster_guarded_lease is on.");
 TAG_FLAG(enable_persistence_gate, advanced);
 TAG_FLAG(enable_persistence_gate, hidden);
 

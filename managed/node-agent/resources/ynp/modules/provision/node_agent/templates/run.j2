@@ -209,6 +209,11 @@ airgap_flag="--airgap"
 {% else %}
 airgap_flag=""
 {% endif %}
+{% if configure_fips == 'True' %}
+fips_flag="--fips_enabled"
+{% else %}
+fips_flag=""
+{% endif %}
 
 installer_script="{{ ynp_dir }}/../../bin/node-agent-installer.sh"
 if [ ! -f "$installer_script" ]; then
@@ -256,14 +261,14 @@ if [ "$SUDO_ACCESS" = "true" ]; then
         -u {{ url }} -p {{ node_agent_port }} -t {{ api_key }} --provider_id $provider_id \
         --instance_type {{ instance_type_name }} --region_name {{ provider_region_name }} \
         --zone_name {{ provider_region_zone_name }} --node_name {{ node_name }} \
-        --node_ip {{ node_external_fqdn }} --bind_ip {{ bind_ip }} --silent --skip_verify_cert $airgap_flag \
+        --node_ip {{ node_external_fqdn }} --bind_ip {{ bind_ip }} --silent --skip_verify_cert $airgap_flag $fips_flag \
         --install_path {{ yb_home_dir }} $certificate_name_flag"
 else
     "$installer_dir/node-agent-installer.sh" -c install \
         -u {{ url }} -p {{ node_agent_port }} -t {{ api_key }} --provider_id $provider_id \
         --instance_type {{ instance_type_name }} --region_name {{ provider_region_name }} \
         --zone_name {{ provider_region_zone_name }} --node_name {{ node_name }} \
-        --node_ip {{ node_external_fqdn }} --bind_ip {{ bind_ip }} --silent --skip_verify_cert $airgap_flag \
+        --node_ip {{ node_external_fqdn }} --bind_ip {{ bind_ip }} --silent --skip_verify_cert $airgap_flag $fips_flag \
         --install_path {{ yb_home_dir }} $certificate_name_flag
 fi
 
