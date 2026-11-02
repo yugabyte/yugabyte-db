@@ -1507,10 +1507,15 @@ class YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam:
 
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     YbAdminSnapshotScheduleTestWithYsqlParam::UpdateMiniClusterOptions(opts);
+    if (!IsSanitizer()) {
+      return;
+    }
     // On sanitizer builds clone and schedule snapshots stall master UpdateConsensus for 5-7s.
     // With 5s consensus timeouts this causes master failover (aborting the clone) or leader lease
     // loss long enough for the ysql lease to expire, killing the clone's ysqlsh.
-    // Keep the wait RPC timeout above the lease TTL.
+    // Keep the wait RPC timeout above the lease TTL. The longer lease also delays the first
+    // online CREATE INDEX until the lease TTL has passed since the master leader was elected, so
+    // other builds keep the defaults.
     opts->extra_tserver_flags.emplace_back(
         "--wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms=120000");
     opts->extra_master_flags.emplace_back("--master_ysql_operation_lease_ttl_ms=60000");
