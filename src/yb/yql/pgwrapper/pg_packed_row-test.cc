@@ -57,6 +57,7 @@ DECLARE_bool(enable_load_balancing);
 DECLARE_bool(ysql_enable_pack_full_row_update);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
+DECLARE_bool(ysql_filter_before_decoding_columns);
 DECLARE_bool(ysql_use_packed_row_v2);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(timestamp_history_retention_interval_sec);
@@ -885,6 +886,42 @@ TEST_P(PgPackedRowTest, AddColumn) {
   ASSERT_OK(conn.Execute("ALTER TABLE t ADD COLUMN v1 INT"));
 
   ASSERT_OK(conn2.Execute("INSERT INTO t (key, ival) VALUES (2, 2)"));
+}
+
+// Pushed down filters are evaluated before decoding the columns they do not read. Checks that
+// results do not change, including rows with columns missing from the packed row and with columns
+// updated after it.
+TEST_P(PgPackedRowTest, FilterBeforeDecodingColumns) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t (key INT PRIMARY KEY, v INT, data TEXT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO t SELECT i, i % 10, repeat('x', i) FROM generate_series(1, 100) i"));
+  ASSERT_OK(conn.Execute("ALTER TABLE t ADD COLUMN extra TEXT DEFAULT 'default'"));
+  // Each update writes the column separately from the packed row.
+  ASSERT_OK(conn.Execute("UPDATE t SET v = 4 WHERE key % 10 = 3 AND key < 50"));
+  ASSERT_OK(conn.Execute("UPDATE t SET v = 3 WHERE key % 10 = 5 AND key < 50"));
+  ASSERT_OK(conn.Execute("UPDATE t SET data = 'updated' WHERE key % 4 = 0"));
+  ASSERT_OK(conn.Execute("UPDATE t SET extra = 'updated' WHERE key % 3 = 0"));
+
+  const auto queries = {
+      "SELECT * FROM t WHERE v = 3 ORDER BY key",
+      "SELECT key, data FROM t WHERE v = 3 AND extra = 'default' ORDER BY key",
+      "SELECT v, extra FROM t WHERE length(data) > 90 ORDER BY key",
+      "SELECT * FROM t WHERE key % 7 = 0 ORDER BY key",
+  };
+  for (auto compact : {false, true}) {
+    if (compact) {
+      ASSERT_OK(cluster_->CompactTablets());
+    }
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t WHERE v = 3")), 10);
+    for (const auto* query : queries) {
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_filter_before_decoding_columns) = false;
+      auto expected = ASSERT_RESULT(conn.FetchAllAsString(query));
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_filter_before_decoding_columns) = true;
+      ASSERT_EQ(ASSERT_RESULT(conn.FetchAllAsString(query)), expected) << query;
+    }
+  }
 }
 
 // Checks repacking of columns then would not fit into limit with new schema due to added columns.

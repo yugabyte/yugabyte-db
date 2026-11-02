@@ -100,6 +100,13 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
   void InsertPackedRow(
       SchemaVersion version, std::reference_wrapper<const dockv::SchemaPacking> schema_packing,
       const KeyBytes &doc_key, HybridTime ht,
+      std::initializer_list<std::pair<ColumnId, const QLValuePB>> columns,
+      dockv::PackedRowVersion packed_row_version = dockv::PackedRowVersion::kV1);
+
+  template <class Packer>
+  void DoInsertPackedRow(
+      SchemaVersion version, std::reference_wrapper<const dockv::SchemaPacking> schema_packing,
+      const KeyBytes &doc_key, HybridTime ht,
       std::initializer_list<std::pair<ColumnId, const QLValuePB>> columns);
 
   docdb::DocRowwiseIteratorPtr MakeIterator(
@@ -212,6 +219,7 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
   void TestPackedRow();
   void TestDeleteMarkerWithPackedRow();
   void TestUpdatePackedRow();
+  void TestRowFilter(dockv::PackedRowVersion packed_row_version);
   void TestUpperBoundExcludesIntentAtBound();
   // Restore doesn't use delete tombstones for rows, instead marks all columns
   // as deleted.
@@ -386,8 +394,25 @@ void DocRowwiseIteratorTest::InsertTestRangeData() {
 void DocRowwiseIteratorTest::InsertPackedRow(
     SchemaVersion version, std::reference_wrapper<const dockv::SchemaPacking> schema_packing,
     const KeyBytes &doc_key, HybridTime ht,
+    std::initializer_list<std::pair<ColumnId, const QLValuePB>> columns,
+    dockv::PackedRowVersion packed_row_version) {
+  switch (packed_row_version) {
+    case dockv::PackedRowVersion::kV1:
+      DoInsertPackedRow<dockv::RowPackerV1>(version, schema_packing, doc_key, ht, columns);
+      return;
+    case dockv::PackedRowVersion::kV2:
+      DoInsertPackedRow<dockv::RowPackerV2>(version, schema_packing, doc_key, ht, columns);
+      return;
+  }
+  FATAL_INVALID_ENUM_VALUE(dockv::PackedRowVersion, packed_row_version);
+}
+
+template <class Packer>
+void DocRowwiseIteratorTest::DoInsertPackedRow(
+    SchemaVersion version, std::reference_wrapper<const dockv::SchemaPacking> schema_packing,
+    const KeyBytes &doc_key, HybridTime ht,
     std::initializer_list<std::pair<ColumnId, const QLValuePB>> columns) {
-  dockv::RowPackerV1 packer(
+  Packer packer(
       version, schema_packing, /* packed_size_limit= */ std::numeric_limits<int64_t>::max(),
       /* value_control_fields= */ Slice());
 
@@ -2077,6 +2102,120 @@ void DocRowwiseIteratorTest::TestUpdatePackedRow() {
       HybridTime::FromMicros(1500));
 }
 
+// Matches rows whose INT64 column at the given projection index has the given value, and fails
+// on failing_value.
+class Int64EqualsRowFilter : public PgRowFilter {
+ public:
+  Int64EqualsRowFilter(size_t column_idx, int64_t value, std::optional<int64_t> failing_value)
+      : column_idx_(column_idx), value_(value), failing_value_(failing_value) {}
+
+  Result<bool> Match(const dockv::PgTableRow& row) override {
+    auto value = row.GetValueByIndex(column_idx_);
+    if (value && value->int64_value() == failing_value_) {
+      return STATUS_FORMAT(InvalidArgument, "Failing value: $0", *failing_value_);
+    }
+    return value && value->int64_value() == value_;
+  }
+
+ private:
+  const size_t column_idx_;
+  const int64_t value_;
+  const std::optional<int64_t> failing_value_;
+};
+
+void DocRowwiseIteratorTest::TestRowFilter(dockv::PackedRowVersion packed_row_version) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_fast_backward_scan) = false;
+  constexpr int kVersion = 0;
+  auto& schema_packing = ASSERT_RESULT(
+      doc_read_context().schema_packing_storage.GetPacking(kVersion)).get();
+
+  auto doc_key = [](int row) {
+    return dockv::MakeDocKey(Format("row$0", row), int64_t{row}).Encode();
+  };
+  // Rows are packed at 1000, columns are updated after that at 1100.
+  for (auto [row, d] : std::initializer_list<std::pair<int, int64_t>>{
+           {1, 10}, {2, 20}, {3, 30}, {4, 20}, {5, 20}, {6, 50}, {7, 30}}) {
+    InsertPackedRow(
+        kVersion, schema_packing, doc_key(row), 1000_usec_ht,
+        {
+            {30_ColId, QLValue::Primitive(Format("row$0_c", row))},
+            {40_ColId, QLValue::PrimitiveInt64(d)},
+            {50_ColId, QLValue::Primitive(Format("row$0_e", row))},
+        },
+        packed_row_version);
+  }
+  auto update_column = [&](int row, ColumnId column_id, const QLValuePB& value) {
+    ASSERT_OK(SetPrimitive(
+        DocPath(doc_key(row), KeyEntryValue::MakeColumnId(column_id)), value, 1100_usec_ht));
+  };
+  update_column(3, 40_ColId, QLValue::PrimitiveInt64(20));
+  update_column(4, 40_ColId, QLValue::PrimitiveInt64(40));
+  update_column(5, 50_ColId, QLValue::Primitive("row5_e_new"));
+  update_column(6, 30_ColId, QLValue::Primitive("row6_c_new"));
+  update_column(7, 40_ColId, QLValue::PrimitiveInt64(35));
+
+  DocDBDebugDumpToConsole();
+
+  auto scan = [&](
+      size_t column_idx, int64_t value,
+      std::optional<int64_t> failing_value = std::nullopt) -> Result<std::string> {
+    Int64EqualsRowFilter filter(column_idx, value, failing_value);
+    auto pending_op = ScopedRWOperation::TEST_Create();
+    auto iter = MakeIterator(
+        projection(), doc_read_context(), kNonTransactionalOperationContext, doc_db(),
+        ReadOperationData::FromReadTime(ReadHybridTime::FromMicros(2000)), pending_op);
+    RETURN_NOT_OK(iter->InitForTableType(YQL_TABLE_TYPE));
+    iter->TEST_force_allow_fetch_pg_table_row();
+    DynamicBitSet columns;
+    columns.resize(reader_projection_.size());
+    columns.set(column_idx);
+    iter->SetRowFilter(&filter, std::move(columns));
+    dockv::PgTableRow row(reader_projection_);
+    std::string result;
+    while (VERIFY_RESULT(iter->PgFetchNext(&row))) {
+      result += Format(
+          "$0 $1\n", iter->row_filter_matched() ? "match" : "mismatch",
+          VERIFY_RESULT(PgTableRowToString(projection(), row, nullptr)));
+    }
+    return result;
+  };
+
+  // Columns not read by the filter are not decoded from the packed row of a mismatching row,
+  // so they are null unless updated after it.
+  // row3 is read again, because d is updated to match after its packed row did not match.
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(R"#(
+mismatch {string:"row1",int64:1,null,int64:10,null}
+match {string:"row2",int64:2,string:"row2_c",int64:20,string:"row2_e"}
+match {string:"row3",int64:3,string:"row3_c",int64:20,string:"row3_e"}
+mismatch {string:"row4",int64:4,string:"row4_c",int64:40,string:"row4_e"}
+match {string:"row5",int64:5,string:"row5_c",int64:20,string:"row5_e_new"}
+mismatch {string:"row6",int64:6,string:"row6_c_new",int64:50,null}
+mismatch {string:"row7",int64:7,null,int64:35,null}
+  )#", ASSERT_RESULT(scan(/* column_idx= */ 3, 20)));
+
+  // The filter reads key column b.
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(R"#(
+mismatch {string:"row1",int64:1,null,null,null}
+match {string:"row2",int64:2,string:"row2_c",int64:20,string:"row2_e"}
+mismatch {string:"row3",int64:3,null,int64:20,null}
+mismatch {string:"row4",int64:4,null,int64:40,null}
+mismatch {string:"row5",int64:5,null,null,string:"row5_e_new"}
+mismatch {string:"row6",int64:6,string:"row6_c_new",null,null}
+mismatch {string:"row7",int64:7,null,int64:35,null}
+  )#", ASSERT_RESULT(scan(/* column_idx= */ 1, 2)));
+
+  // The filter fails on the packed values of row3 and row7, but succeeds on their updated values.
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(R"#(
+mismatch {string:"row1",int64:1,null,int64:10,null}
+match {string:"row2",int64:2,string:"row2_c",int64:20,string:"row2_e"}
+match {string:"row3",int64:3,string:"row3_c",int64:20,string:"row3_e"}
+mismatch {string:"row4",int64:4,string:"row4_c",int64:40,string:"row4_e"}
+match {string:"row5",int64:5,string:"row5_c",int64:20,string:"row5_e_new"}
+mismatch {string:"row6",int64:6,string:"row6_c_new",int64:50,null}
+mismatch {string:"row7",int64:7,string:"row7_c",int64:35,string:"row7_e"}
+  )#", ASSERT_RESULT(scan(/* column_idx= */ 3, 20, /* failing_value= */ 30)));
+}
+
 void DocRowwiseIteratorTest::TestPartialKeyColumnsProjection() {
   InsertPopulationData();
 
@@ -2633,6 +2772,14 @@ TEST_F(DocRowwiseIteratorTest, DeleteMarkerWithPackedRow) {
 
 TEST_F(DocRowwiseIteratorTest, UpdatePackedRow) {
   TestUpdatePackedRow();
+}
+
+TEST_F(DocRowwiseIteratorTest, RowFilterPackedRowV1) {
+  TestRowFilter(dockv::PackedRowVersion::kV1);
+}
+
+TEST_F(DocRowwiseIteratorTest, RowFilterPackedRowV2) {
+  TestRowFilter(dockv::PackedRowVersion::kV2);
 }
 
 TEST_F(DocRowwiseIteratorTest, UpperBoundExcludesIntentAtBound) {
