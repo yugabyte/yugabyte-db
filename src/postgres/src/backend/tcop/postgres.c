@@ -1359,7 +1359,7 @@ yb_maybe_start_trace_root_span(const char *query_string, bool is_query_string_re
  * Execute a "simple Query" protocol message.
  */
 static void
-exec_simple_query(const char *query_string)
+exec_simple_query(const char *query_string, CommandTag yb_command_tag)
 {
 	CommandDest dest = whereToSendOutput;
 	MemoryContext oldcontext;
@@ -1371,15 +1371,12 @@ exec_simple_query(const char *query_string)
 	char		msec_str[32];
 
 	const char *yb_redacted_query_string;
-	CommandTag	yb_command_tag;
 
 	/*
 	 * Report query to various monitoring facilities.
 	 */
 	debug_query_string = query_string;
 
-	/* Use YbParseCommandTag to suppress error warnings. */
-	yb_command_tag = YbParseCommandTag(query_string);
 	yb_redacted_query_string = YbRedactPasswordIfExists(query_string,
 														yb_command_tag);
 	pgstat_report_activity(STATE_RUNNING, yb_redacted_query_string);
@@ -2088,7 +2085,6 @@ exec_bind_message(StringInfo input_message)
 	ListCell   *lc;
 
 	const char *yb_redacted_query_string;
-	CommandTag	yb_command_tag;
 	uint64		yb_msg_query_id = YbAshGetConstQueryId();
 
 	/* Get the fixed part of the message */
@@ -2123,10 +2119,8 @@ exec_bind_message(StringInfo input_message)
 	 */
 	debug_query_string = psrc->query_string;
 
-	/* Use YbParseCommandTag to suppress error warnings. */
-	yb_command_tag = YbParseCommandTag(psrc->query_string);
 	yb_redacted_query_string = YbRedactPasswordIfExists(psrc->query_string,
-														yb_command_tag);
+														psrc->commandTag);
 	pgstat_report_activity(STATE_RUNNING, yb_redacted_query_string);
 
 	foreach(lc, psrc->query_list)
@@ -2163,7 +2157,7 @@ exec_bind_message(StringInfo input_message)
 	 * we are already in one.  This also arms the statement timeout if
 	 * necessary.
 	 */
-	yb_start_xact_command_internal(yb_skip_read_committed_internal_savepoint(yb_command_tag));
+	yb_start_xact_command_internal(yb_skip_read_committed_internal_savepoint(psrc->commandTag));
 
 	/* Switch back to message context */
 	MemoryContextSwitchTo(MessageContext);
@@ -5380,6 +5374,12 @@ YBCheckSharedCatalogCacheVersion()
 	}
 }
 
+typedef struct YBTaggedQueryString
+{
+	const char *query_string;
+	CommandTag	command_tag;
+} YBTaggedQueryString;
+
 /*
  * Data needed to restart a query (plaintext or portal) after its execution failed.
  *
@@ -5390,8 +5390,7 @@ typedef struct YBQueryRetryData
 {
 	const char *portal_name;	/* '\0' for unnamed portal, NULL if not a
 								 * portal */
-	const char *query_string;
-	CommandTag	command_tag;
+	YBTaggedQueryString query;
 } YBQueryRetryData;
 
 static bool
@@ -5657,7 +5656,7 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 	}
 
 	/* can only restart SELECT queries */
-	if (!retry_data->query_string)
+	if (!retry_data->query.query_string)
 	{
 		const char *retry_err = ("query layer retry isn't possible because "
 								 "the query string is missing");
@@ -5668,7 +5667,7 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 		return false;
 	}
 
-	command_tag = retry_data->command_tag;
+	command_tag = retry_data->query.command_tag;
 
 	/*
 	 * EXECUTE and EXPLAIN only wrap another statement, and retriability is a
@@ -5678,7 +5677,7 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 	 */
 	if (command_tag == CMDTAG_EXECUTE || command_tag == CMDTAG_EXPLAIN)
 	{
-		List	   *parsetree_list = yb_parse_query_silently(retry_data->query_string);
+		List	   *parsetree_list = yb_parse_query_silently(retry_data->query.query_string);
 		Node	   *stmt;
 
 		if (parsetree_list == NIL)
@@ -5867,8 +5866,8 @@ yb_collect_portal_restart_data(const char *portal_name)
 	YBQueryRetryData *result = palloc(sizeof(YBQueryRetryData));
 
 	result->portal_name = portal->name;
-	result->query_string = portal->sourceText;
-	result->command_tag = portal->commandTag;
+	result->query.query_string = portal->sourceText;
+	result->query.command_tag = portal->commandTag;
 	return result;
 }
 
@@ -6333,8 +6332,8 @@ yb_exec_query_wrapper_one_attempt(MemoryContext exec_context,
 								  int attempt,
 								  bool *retry)
 {
-	elog(DEBUG2, "yb_exec_query_wrapper attempt %d for %s", attempt, retry_data->query_string);
-	YBSaveOutputBufferPosition(!yb_is_begin_transaction(retry_data->command_tag));
+	elog(DEBUG2, "yb_exec_query_wrapper attempt %d for %s", attempt, retry_data->query.query_string);
+	YBSaveOutputBufferPosition(!yb_is_begin_transaction(retry_data->query.command_tag));
 	PG_TRY();
 	{
 		(*functor) (functor_context);
@@ -6389,9 +6388,11 @@ yb_exec_query_wrapper(MemoryContext exec_context,
 }
 
 static void
-yb_exec_simple_query_impl(const void *query_string)
+yb_exec_simple_query_impl(const void *query_arg)
 {
-	exec_simple_query((const char *) query_string);
+	const YBTaggedQueryString *query = query_arg;
+
+	exec_simple_query(query->query_string, query->command_tag);
 }
 
 /*
@@ -6404,12 +6405,14 @@ yb_exec_simple_query(const char *query_string, MemoryContext exec_context)
 	YBQueryRetryData retry_data = {
 		.portal_name = "",		/* unnamed portal is used in simple query
 								 * protocol */
-		.query_string = query_string,
-		.command_tag = YbParseCommandTag(query_string),
+		.query = {
+			.query_string = query_string,
+			.command_tag = YbParseCommandTag(query_string),
+		},
 	};
 
 	yb_exec_query_wrapper(exec_context, &retry_data,
-						  &yb_exec_simple_query_impl, query_string);
+						  &yb_exec_simple_query_impl, &retry_data.query);
 
 	/*
 	 * Fetch the updated session execution stats at the end of each query, so
@@ -7502,7 +7505,7 @@ PostgresMain(const char *dbname, const char *username)
 												 old_portal &&
 												 portal_name[0] == '\0' &&
 												 !old_portal->portalParams &&
-												 yb_check_retry_allowed(retry_data->query_string));
+												 yb_check_retry_allowed(retry_data->query.query_string));
 
 
 						/* Stuff we might need for retrying below */
@@ -7516,7 +7519,7 @@ PostgresMain(const char *dbname, const char *username)
 							 * Copy the data needed to retry before transaction
 							 * abort cleans it up.
 							 */
-							query_string = pstrdup(retry_data->query_string);
+							query_string = pstrdup(retry_data->query.query_string);
 
 							if (old_portal->formats)
 							{
