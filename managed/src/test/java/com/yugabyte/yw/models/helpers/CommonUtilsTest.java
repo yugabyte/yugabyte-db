@@ -76,6 +76,18 @@ public class CommonUtilsTest {
   }
 
   @Test
+  public void testMaskConfigOciKmsFields() {
+    ObjectNode config = Json.newObject();
+    config.put("ociKeyName", "itest_key");
+    config.put("ociKeyOcid", "ocid1.key.oc1.iad.abcdefgh");
+    config.put("ociPrivateKeyContent", "PRIVATE_KEY_CONTENT");
+    JsonNode maskedData = CommonUtils.maskConfig(config);
+    assertValue(maskedData, "ociKeyName", "itest_key");
+    assertValue(maskedData, "ociKeyOcid", "ocid1.key.oc1.iad.abcdefgh");
+    assertThat(maskedData.get("ociPrivateKeyContent").asText(), not("PRIVATE_KEY_CONTENT"));
+  }
+
+  @Test
   public void testMaskBearerTokenNestedObject() {
     // The inner `token` string (exact field name) must be masked.
     // The `bearerToken` container object must remain an object - not collapsed to "********".
