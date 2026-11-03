@@ -384,6 +384,10 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   Result<TableInfoPtr> GetTableInfo(TableIdView table_id) const;
   Result<TableInfoPtr> GetTableInfoUnlocked(TableIdView table_id) const REQUIRES(data_mutex_);
 
+  // Unlike GetTableInfo, cheap when the table is missing: debug builds format all tables into the
+  // NotFound status.
+  bool HasTable(const TableId& table_id) const EXCLUDES(data_mutex_);
+
   Result<TableInfoPtr> GetTableInfo(ColocationId colocation_id) const;
   Result<TableInfoPtr> GetTableInfoUnlocked(ColocationId colocation_id) const REQUIRES(data_mutex_);
 

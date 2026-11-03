@@ -3377,8 +3377,9 @@ Status Tablet::AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id
 
   // Decided before the table is added, so that the mark goes into the superblock together with the
   // table: a flush in between would record this operation as applied without the mark.
-  const bool repair_pending = !metadata_->GetTableInfo(table_info.table_id()).ok() &&
-      NeedsVectorReverseMappingRepair(schema, table_info.old_schema_packings());
+  const bool repair_pending =
+      NeedsVectorReverseMappingRepair(schema, table_info.old_schema_packings()) &&
+      !metadata_->HasTable(table_info.table_id());
   auto table_info_ptr = VERIFY_RESULT(metadata_->AddTable(
       table_info.table_id(), table_info.namespace_name(), table_info.namespace_id(),
       table_info.table_name(),

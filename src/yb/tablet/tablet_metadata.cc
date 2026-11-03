@@ -1098,6 +1098,11 @@ Result<TableInfoPtr> RaftGroupMetadata::GetTableInfo(TableIdView table_id) const
   return GetTableInfoUnlocked(table_id);
 }
 
+bool RaftGroupMetadata::HasTable(const TableId& table_id) const {
+  std::lock_guard lock(data_mutex_);
+  return kv_store_.tables.contains(table_id);
+}
+
 Result<TableInfoPtr> RaftGroupMetadata::GetTableInfoUnlocked(TableIdView table_id) const {
   const auto& tables = kv_store_.tables;
 
