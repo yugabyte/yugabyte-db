@@ -6,6 +6,7 @@ package oci
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -258,10 +259,53 @@ var updateOCIProviderCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
+		addImageBundleRegionOverrides, err := cmd.Flags().GetStringArray(
+			"add-image-bundle-region-override")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		editImageBundleRegionOverrides, err := cmd.Flags().GetStringArray(
+			"edit-image-bundle-region-override")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
 
+		if err := validateOCIImageBundlesNotRemoved(
+			removeImageBundles, editImageBundles, editImageBundleRegionOverrides,
+		); err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
+		regionCodes := ociRegionCodes(providerRegions)
 		providerImageBundles = removeOCIImageBundles(removeImageBundles, providerImageBundles)
-		providerImageBundles = editOCIImageBundles(editImageBundles, providerImageBundles)
-		providerImageBundles = addOCIImageBundles(addImageBundles, providerImageBundles)
+		providerImageBundles, err = editOCIImageBundles(
+			editImageBundles,
+			providerImageBundles,
+			regionCodes,
+			editImageBundleRegionOverrides,
+		)
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		providerImageBundles, err = addOCIImageBundles(
+			addImageBundles,
+			providerImageBundles,
+			regionCodes,
+			addImageBundleRegionOverrides,
+		)
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		addedRegionCodes := make([]string, 0, len(addRegions))
+		for _, regionString := range addRegions {
+			addedRegionCodes = append(addedRegionCodes,
+				providerutil.BuildRegionMapFromString(regionString, "add")["name"])
+		}
+		if err := validateOCIBundlesCoverAddedRegions(
+			addedRegionCodes, providerImageBundles,
+		); err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
 		provider.SetImageBundles(providerImageBundles)
 
 		rTask, response, err := authAPI.EditProvider(provider.GetUuid()).
@@ -315,6 +359,8 @@ func init() {
 			formatter.Colorize("Region name and Virtual network are required key-values.",
 				formatter.GreenColor)+
 			" Instance template is optional. "+
+			"OCI image OCIDs are region scoped, so each custom image bundle needs an image "+
+			"for the new region through --edit-image-bundle-region-override. "+
 			"Each region needs to be added using a separate --add-region flag.")
 	updateOCIProviderCmd.Flags().StringArray("add-zone", []string{},
 		"[Optional] Zone associated to the OCI Region defined. "+
@@ -364,15 +410,28 @@ func init() {
 			"machine-image=<image-ocid>::"+
 			"ssh-user=<ssh-user>::ssh-port=<ssh-port>::default=<true/false>\". "+
 			formatter.Colorize(
-				"Image bundle name, machine image and SSH user are required key-value pairs.",
+				"Image bundle name and SSH user are required key-value pairs.",
 				formatter.GreenColor)+
+			" machine-image is the image OCID when the provider has one region. "+
+			"OCI image OCIDs are region scoped, so a provider with more than one region "+
+			"needs --add-image-bundle-region-override once per region instead of machine-image. "+
 			fmt.Sprintf(
-				" Allowed values for architecture are %s and %s, defaults to %s.",
+				"Allowed values for architecture are %s and %s, defaults to %s.",
 				util.X86_64, util.AARCH64, util.X86_64)+
 			" The default SSH Port is 22. Default marks the image bundle as default for the provider. "+
 			"If default is not specified, the bundle will automatically be set as default "+
 			"if no other default bundle exists for the same architecture. "+
 			"Each image bundle can be added using separate --add-image-bundle flag.")
+	updateOCIProviderCmd.Flags().StringArray("add-image-bundle-region-override", []string{},
+		"[Optional] Per-region OCI image for a bundle added with --add-image-bundle. "+
+			"Provide the following double colon (::) separated fields as key-value pairs: "+
+			"\"image-bundle-name=<image-bundle-name>::region-name=<region-name>::"+
+			"machine-image=<image-ocid>\". "+
+			formatter.Colorize(
+				"Image bundle name, region name, and machine image are required key-value pairs.",
+				formatter.GreenColor)+
+			" Required once per provider region when the provider has more than one region. "+
+			"Each override needs a separate --add-image-bundle-region-override flag.")
 
 	updateOCIProviderCmd.Flags().StringArray("edit-image-bundle", []string{},
 		"[Optional] Edit image bundles associated with the provider. "+
@@ -382,7 +441,18 @@ func init() {
 			formatter.Colorize(
 				"Image bundle UUID is a required key-value pair.",
 				formatter.GreenColor)+
+			" machine-image updates the image when the provider has one region. "+
+			"A provider with more than one region uses --edit-image-bundle-region-override. "+
 			"Each image bundle can be edited using separate --edit-image-bundle flag.")
+	updateOCIProviderCmd.Flags().StringArray("edit-image-bundle-region-override", []string{},
+		"[Optional] Edit the image OCID for one region of an OCI image bundle. "+
+			"Provide the following double colon (::) separated fields as key-value pairs: "+
+			"\"image-bundle-uuid=<image-bundle-uuid>::region-name=<region-name>::"+
+			"machine-image=<image-ocid>\". "+
+			formatter.Colorize(
+				"Image bundle UUID, region name, and machine image are required key-value pairs.",
+				formatter.GreenColor)+
+			" Each region needs a separate --edit-image-bundle-region-override flag.")
 
 	updateOCIProviderCmd.Flags().StringArray("remove-image-bundle", []string{},
 		"[Optional] Image bundle UUID to be removed from the provider. "+
@@ -608,19 +678,111 @@ func removeOCIImageBundles(
 	return providerImageBundles
 }
 
+// applyOCIRegionImageEdit updates per-region images. machineImage applies only
+// when the provider has one region. overrides update the named regions.
+func applyOCIRegionImageEdit(
+	details *ybaclient.ImageBundleDetails,
+	regionCodes []string,
+	machineImage string,
+	overrides map[string]string,
+) error {
+	if machineImage == "" && len(overrides) == 0 {
+		return nil
+	}
+	images, err := ociRegionImages(regionCodes, machineImage, overrides, false)
+	if err != nil {
+		return err
+	}
+	regions := details.GetRegions()
+	if regions == nil {
+		regions = map[string]ybaclient.BundleInfo{}
+	}
+	for code, image := range images {
+		info := regions[code]
+		info.SetYbImage(image)
+		regions[code] = info
+	}
+	details.SetRegions(regions)
+	return nil
+}
+
+// customImageBundleType is ImageBundle.Metadata.Type for user-provided bundles.
+const customImageBundleType = "CUSTOM"
+
+// validateOCIBundlesCoverAddedRegions fails early when a custom bundle has no
+// image for a region added in this update. YBA rejects the edit in
+// CloudProviderHelper.validateImageBundles; YBA-managed bundles are handled
+// server side.
+func validateOCIBundlesCoverAddedRegions(
+	addedRegionCodes []string,
+	providerImageBundles []ybaclient.ImageBundle,
+) error {
+	for _, ib := range providerImageBundles {
+		if ib.Metadata == nil || ib.Metadata.GetType() != customImageBundleType {
+			continue
+		}
+		details := ib.GetDetails()
+		regions := details.GetRegions()
+		for _, code := range addedRegionCodes {
+			if info, ok := regions[code]; ok && info.GetYbImage() != "" {
+				continue
+			}
+			return fmt.Errorf(
+				"image bundle %s (%s) has no image for added region %s; "+
+					"add --edit-image-bundle-region-override "+
+					"image-bundle-uuid=%s::region-name=%s::machine-image=<image-ocid>",
+				ib.GetName(), ib.GetUuid(), code, ib.GetUuid(), code)
+		}
+	}
+	return nil
+}
+
+// validateOCIImageBundlesNotRemoved rejects edits of a bundle that the same
+// update removes; otherwise the edit is dropped or reported as an unknown bundle.
+func validateOCIImageBundlesNotRemoved(
+	removeImageBundles, editImageBundles, editRegionOverrides []string,
+) error {
+	edited := make([]string, 0, len(editImageBundles)+len(editRegionOverrides))
+	for _, raw := range editImageBundles {
+		edited = append(edited,
+			providerutil.BuildImageBundleMapFromString(raw, "edit")["uuid"])
+	}
+	for _, raw := range editRegionOverrides {
+		edited = append(edited,
+			providerutil.BuildImageBundleRegionOverrideMapFromString(raw, "edit")["uuid"])
+	}
+	for _, uuid := range edited {
+		if slices.Contains(removeImageBundles, uuid) {
+			return fmt.Errorf(
+				"image bundle %s is removed with --remove-image-bundle in the same command "+
+					"and cannot also be edited", uuid)
+		}
+	}
+	return nil
+}
+
 func editOCIImageBundles(
 	editImageBundles []string,
 	providerImageBundles []ybaclient.ImageBundle,
-) []ybaclient.ImageBundle {
+	regionCodes []string,
+	regionOverrides []string,
+) ([]ybaclient.ImageBundle, error) {
+	overridesByBundle, err := ociOverridesByBundle(regionOverrides, "edit")
+	if err != nil {
+		return nil, err
+	}
 	for i, ib := range providerImageBundles {
 		bundleUUID := ib.GetUuid()
 		details := ib.GetDetails()
+		machineImage := ""
 		if len(editImageBundles) != 0 {
 			for _, imageBundleString := range editImageBundles {
 				imageBundle := providerutil.BuildImageBundleMapFromString(imageBundleString, "edit")
 				if strings.Compare(imageBundle["uuid"], bundleUUID) == 0 {
+					// A later flag for the same UUID with no machine-image
+					// must not clear the OCID set by an earlier one.
 					if len(imageBundle["machine-image"]) != 0 {
-						details.SetGlobalYbImage(imageBundle["machine-image"])
+						machineImage = imageBundle["machine-image"]
 					}
 					if len(imageBundle["ssh-user"]) != 0 {
 						details.SetSshUser(imageBundle["ssh-user"])
@@ -637,7 +799,6 @@ func editOCIImageBundles(
 						}
 						details.SetSshPort(int32(sshPort))
 					}
-					ib.SetDetails(details)
 					if len(imageBundle["default"]) != 0 {
 						defaultBundle, err := strconv.ParseBool(imageBundle["default"])
 						if err != nil {
@@ -653,33 +814,70 @@ func editOCIImageBundles(
 				}
 			}
 		}
+		if err := applyOCIRegionImageEdit(
+			&details,
+			regionCodes,
+			machineImage,
+			overridesByBundle[bundleUUID],
+		); err != nil {
+			return nil, err
+		}
+		delete(overridesByBundle, bundleUUID)
+		ib.SetDetails(details)
 		providerImageBundles[i] = ib
 	}
-	return providerImageBundles
+	if err := unmatchedOverridesError(overridesByBundle); err != nil {
+		return nil, err
+	}
+	return providerImageBundles, nil
 }
 
 func addOCIImageBundles(
 	imageBundles []string,
 	providerImageBundles []ybaclient.ImageBundle,
-) []ybaclient.ImageBundle {
-	if len(imageBundles) == 0 {
-		return providerImageBundles
+	regionCodes []string,
+	regionOverrides []string,
+) ([]ybaclient.ImageBundle, error) {
+	overridesByBundle, err := ociOverridesByBundle(regionOverrides, "add")
+	if err != nil {
+		return nil, err
 	}
+	bundles := make([]map[string]string, 0, len(imageBundles))
+	// Auto-promoting a bundle on an arch that also has an explicit default
+	// fails server side with two defaults for that arch.
+	explicitDefaultArchs := map[string]bool{}
+	names := map[string]bool{}
 	for _, i := range imageBundles {
-		bundle := providerutil.BuildImageBundleMapFromString(i, "add")
-		bundle = providerutil.DefaultImageBundleValues(bundle)
-
+		bundle := providerutil.DefaultImageBundleValues(
+			providerutil.BuildImageBundleMapFromString(i, "add"))
+		// Region overrides are matched to bundles by name.
+		if names[bundle["name"]] {
+			return nil, fmt.Errorf("image bundle name %s is given more than once", bundle["name"])
+		}
+		names[bundle["name"]] = true
+		if isDefault, _ := strconv.ParseBool(bundle["default"]); isDefault {
+			explicitDefaultArchs[strings.ToLower(bundle["arch"])] = true
+		}
+		bundles = append(bundles, bundle)
+	}
+	for _, bundle := range bundles {
 		if _, ok := bundle["ssh-user"]; !ok {
-			logrus.Fatalln(
-				formatter.Colorize(
-					"SSH User not specified in image bundle.\n",
-					formatter.RedColor))
+			return nil, fmt.Errorf("SSH User not specified in image bundle")
 		}
 
-		if _, ok := bundle["machine-image"]; !ok {
-			logrus.Fatalln(
-				formatter.Colorize("Machine Image not specified in image bundle.\n",
-					formatter.RedColor))
+		images, err := ociRegionImages(
+			regionCodes,
+			bundle["machine-image"],
+			overridesByBundle[bundle["name"]],
+			true,
+		)
+		if err != nil {
+			return nil, err
+		}
+		delete(overridesByBundle, bundle["name"])
+		regions := make(map[string]ybaclient.BundleInfo, len(images))
+		for code, image := range images {
+			regions[code] = ybaclient.BundleInfo{YbImage: util.GetStringPointer(image)}
 		}
 
 		sshPort, err := strconv.ParseInt(bundle["ssh-port"], 10, 64)
@@ -704,7 +902,7 @@ func addOCIImageBundles(
 
 		if !defaultBundle {
 			arch := strings.ToLower(bundle["arch"])
-			hasDefaultForArch := false
+			hasDefaultForArch := explicitDefaultArchs[arch]
 			for _, existingBundle := range providerImageBundles {
 				existingArch := strings.ToLower(existingBundle.Details.GetArch())
 				if existingArch == arch && existingBundle.GetUseAsDefault() {
@@ -721,13 +919,16 @@ func addOCIImageBundles(
 			Name:         util.GetStringPointer(bundle["name"]),
 			UseAsDefault: util.GetBoolPointer(defaultBundle),
 			Details: &ybaclient.ImageBundleDetails{
-				Arch:          util.GetStringPointer(bundle["arch"]),
-				GlobalYbImage: util.GetStringPointer(bundle["machine-image"]),
-				SshUser:       util.GetStringPointer(bundle["ssh-user"]),
-				SshPort:       util.GetInt32Pointer(int32(sshPort)),
+				Arch:    util.GetStringPointer(bundle["arch"]),
+				SshUser: util.GetStringPointer(bundle["ssh-user"]),
+				SshPort: util.GetInt32Pointer(int32(sshPort)),
+				Regions: &regions,
 			},
 		}
 		providerImageBundles = append(providerImageBundles, imageBundle)
 	}
-	return providerImageBundles
+	if err := unmatchedOverridesError(overridesByBundle); err != nil {
+		return nil, err
+	}
+	return providerImageBundles, nil
 }
