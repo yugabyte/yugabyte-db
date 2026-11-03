@@ -1998,8 +1998,8 @@ TEST_P(DocDBTestWrapper, SetHybridTimeFilterRemovesHiddenFiles) {
   }
 }
 
-// The frontiers of a file do not bound the hybrid times of its keys, so a restore keeps a file whose
-// frontiers are newer than the filter as long as one of its keys is not.
+// The frontiers of a file do not bound the hybrid times of its keys, so a restore keeps a file
+// whose frontiers are newer than the filter as long as one of its keys is not.
 TEST_P(DocDBTestWrapper, SetHybridTimeFilterKeepsFileWithKeysOlderThanFrontiers) {
   for (int i = 1; i <= 2; ++i) {
     ASSERT_OK(WriteSimpleWithFrontierHt(this, i, HybridTime::FromMicros(5000)));
