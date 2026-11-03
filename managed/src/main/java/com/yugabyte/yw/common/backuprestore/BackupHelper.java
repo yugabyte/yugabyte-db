@@ -823,6 +823,71 @@ public class BackupHelper {
     if (storageUtil.isImmutableStorageEnabled(storageConfig)) {
       validateIfYbdbInbuiltYbcHasImmutableStorage(universe);
     }
+    validateCrossCloudFederationApplied(storageConfig, universe);
+  }
+
+  /**
+   * Fails fast when the universe's nodes need cross-cloud federated IAM to reach this bucket but it
+   * was never applied to them, for example because federation was added to the provider after the
+   * universe was created. Those nodes have no credentials for the bucket, so the YBC check on them
+   * would otherwise wait about 15 minutes and then fail with no error.
+   */
+  private void validateCrossCloudFederationApplied(
+      CustomerConfig storageConfig, Universe universe) {
+    CustomerConfigData data = storageConfig.getDataObject();
+    CloudType bucketCloud;
+    if (data instanceof CustomerConfigStorageS3Data
+        && AWSUtil.isCrossCloudFederationConfig((CustomerConfigStorageS3Data) data)) {
+      bucketCloud = CloudType.aws;
+    } else if (data instanceof CustomerConfigStorageGCSData
+        && ((CustomerConfigStorageGCSData) data).useGcpIam) {
+      bucketCloud = CloudType.gcp;
+    } else {
+      // The nodes do not use their own identity for this config, so federation plays no part.
+      return;
+    }
+    Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+    if (primaryCluster == null || primaryCluster.userIntent.isFederationConfigured()) {
+      return;
+    }
+    Provider provider =
+        Provider.getOrBadRequest(UUID.fromString(primaryCluster.userIntent.provider));
+    if (CloudInfoInterface.getCrossCloudFederationTarget(provider, bucketCloud) == null) {
+      // The provider does not federate to this cloud, so the nodes use their own identity.
+      return;
+    }
+    // An on-prem node's cloud is known only once federation has been applied to it, so a node
+    // whose cloud is unknown is treated as needing it.
+    boolean needsFederation =
+        universe.getRunningTserversInPrimaryCluster().stream()
+            .anyMatch(node -> nodeCloud(primaryCluster, node) != bucketCloud);
+    if (needsFederation) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Universe %s cannot reach this %s bucket: its nodes outside %s need cross-cloud"
+                  + " federated IAM, which provider %s configures but which is not applied to"
+                  + " this universe. Apply it with POST"
+                  + " /api/v2/customers/%s/universes/%s/cross-cloud-federation and body"
+                  + " {\"enabled\": true}, then retry.",
+              universe.getName(),
+              storageConfig.getName(),
+              bucketCloud,
+              provider.getName(),
+              storageConfig.getCustomerUUID(),
+              universe.getUniverseUUID()));
+    }
+  }
+
+  /** The cloud a node runs on, or null for an on-prem node whose cloud was never detected. */
+  @Nullable
+  private static CloudType nodeCloud(Cluster cluster, NodeDetails node) {
+    CloudType providerCloud = cluster.getProviderCloudType(node);
+    if (providerCloud != CloudType.onprem) {
+      return providerCloud;
+    }
+    String physicalCloud = node.cloudInfo == null ? null : node.cloudInfo.physicalCloud;
+    return physicalCloud == null ? null : CloudType.valueOf(physicalCloud);
   }
 
   // For k8s universes: if useYbdbInbuiltYbc is true, need to check if Azure IAM feature is
