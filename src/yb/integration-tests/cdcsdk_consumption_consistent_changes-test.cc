@@ -7128,6 +7128,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCheckPointMovesForwardWithAbo
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestAbortedTxnDoesntMoveCheckpointWhenCantStream) {
   // Disabling the implicit dynamic table addition in this test to make the outcome of each
   // GetConsistentChanges call deterministic.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_resolve_intent_lag_threshold_ms) = 5 * 60 * 1000;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
       false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;

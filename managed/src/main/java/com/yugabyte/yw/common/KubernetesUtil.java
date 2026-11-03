@@ -12,6 +12,8 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase.KubernetesPlacement;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.AZOverrides;
@@ -100,8 +102,10 @@ public class KubernetesUtil {
         >= 0;
   }
 
-  public static boolean isNodeExporterSidecarSupported(@Nullable String universeSoftwareVersion) {
+  public static boolean isNodeExporterSidecarEnabled(
+      @Nullable String universeSoftwareVersion, Universe universe, RuntimeConfGetter confGetter) {
     return universeSoftwareVersion != null
+        && confGetter.getConfForScope(universe, UniverseConfKeys.k8sNodeExporterEnabled)
         && Util.compareYBVersions(
                 universeSoftwareVersion,
                 MIN_VERSION_NODE_EXPORTER_SIDECAR_STABLE,
@@ -816,10 +820,14 @@ public class KubernetesUtil {
     if (!newNamingStyle) {
       return "datadir0";
     }
+    return getHelmFullName(helmReleaseName) + "-datadir0";
+  }
+
+  /** The chart's yugabyte.fullname for a release YBA installs with fullnameOverride set. */
+  public static String getHelmFullName(String helmReleaseName) {
     // trunc then trimSuffix, matching the helm pipeline order: truncation can expose a trailing
     // "-".
-    String fullName = StringUtils.removeEnd(StringUtils.substring(helmReleaseName, 0, 43), "-");
-    return fullName + "-datadir0";
+    return StringUtils.removeEnd(StringUtils.substring(helmReleaseName, 0, 43), "-");
   }
 
   /**

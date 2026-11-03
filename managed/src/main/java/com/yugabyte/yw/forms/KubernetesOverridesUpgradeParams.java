@@ -43,6 +43,8 @@ public class KubernetesOverridesUpgradeParams extends UpgradeTaskParams {
 
     GFlagsUtil.validateHelmOverridesGFlags(
         universeOverrides, azOverrides, universe.getUniverseDetails().fipsEnabled);
+    GFlagsUtil.validateNodeToNodeClientCertsOfHelmOverrides(
+        universeOverrides, azOverrides, userIntent.useNodeToNodeClientCerts);
 
     if (isFirstTry && !userIntent.enableYSQLAuth) {
       Map<String, String> newHbaOverrides =

@@ -1453,11 +1453,11 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 	if (type == KIWI_FE_TERMINATE)
 		return OD_STOP;
 
-	/* YB: ConnMgr's own packet, never legitimate from a client. */
-	if (type == YB_KIWI_FE_YB_THROW_ERROR) {
+	if (yb_kiwi_fe_is_internal_type(type)) {
 		od_error(&instance->logger, "remote client", client,
 			 client->server,
-			 "unexpected YbThrowError packet from client");
+			 "unexpected internal packet type '%c' from client",
+			 type);
 		return OD_ECLIENT_READ;
 	}
 

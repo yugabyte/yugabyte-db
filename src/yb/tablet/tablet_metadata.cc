@@ -344,7 +344,20 @@ Result<TableInfoPtr> TableInfo::LoadFromPB(
       SkipTableTombstoneCheck::kFalse, PrivateTag());
   RETURN_NOT_OK(result->DoLoadFromPB(primary, pb));
   result->CompleteInit();
+  // Repairs superblocks written by a restore that kept the restored columns as deleted.
+  result->EraseDeletedColumnsInSchema();
   return result;
+}
+
+// A PITR to before a DROP COLUMN brings the column back into the schema. Compaction discards a
+// deleted column's values, and its vector reverse mapping entries, once the drop is older than the
+// history cutoff, whatever their write time. So a column in the current schema must not stay
+// deleted. Only valid for the table's current schema: InsertPackedSchemaForXClusterTarget builds
+// a TableInfo from the source's older schema, which can still contain locally dropped columns.
+void TableInfo::EraseDeletedColumnsInSchema() {
+  std::erase_if(deleted_cols, [this](const DeletedColumn& deleted_col) {
+    return schema().find_column_by_id(deleted_col.id) != Schema::kColumnNotFound;
+  });
 }
 
 Status TableInfo::DoLoadFromPB(Primary primary, const TableInfoPB& pb) {
@@ -1688,6 +1701,7 @@ void RaftGroupMetadata::SetSchemaUnlocked(const Schema& schema,
                                                             index_map,
                                                             deleted_cols,
                                                             version);
+  new_table_info->EraseDeletedColumnsInSchema();
   if (target_table_id != primary_table_id_) {
     if (schema.table_properties().is_ysql_catalog_table()) {
       // TODO(alex): cotable_id should be copied from original schema, do we need this section?
@@ -3011,6 +3025,30 @@ std::vector<std::string> RaftGroupMetadata::vector_index_dirs() const {
     result.push_back(vector_index_dir(info->index_info->vector_idx_options()));
   }
   return result;
+}
+
+void RaftGroupMetadata::DeleteUnlistedVectorIndexStorages(
+    const std::vector<std::string>& storage_names) const {
+  if (storage_names.empty()) {
+    return;
+  }
+  auto* env = fs_manager_->env();
+  const auto listed_dirs_list = vector_index_dirs();
+  const std::unordered_set<std::string> listed_dirs(
+      listed_dirs_list.begin(), listed_dirs_list.end());
+  for (const auto& storage_name : storage_names) {
+    if (!storage_name.starts_with(docdb::kVectorIndexDirPrefix)) {
+      continue;
+    }
+    auto dir = docdb::GetStorageDir(kv_store_.rocksdb_dir, storage_name);
+    if (listed_dirs.contains(dir) || !env->DirExists(dir)) {
+      continue;
+    }
+    LOG_WITH_PREFIX(INFO) << "Deleting storage of vector index not in the tablet: " << dir;
+    auto status = env->DeleteRecursively(dir);
+    LOG_IF_WITH_PREFIX(WARNING, !status.ok())
+        << "Failed to delete vector index storage " << dir << ": " << status;
+  }
 }
 
 docdb::KeyBounds RaftGroupMetadata::MakeKeyBounds() const {

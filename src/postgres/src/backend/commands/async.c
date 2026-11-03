@@ -349,6 +349,7 @@ static SlruCtlData NotifyCtlData;
 
 bool		yb_enable_listen_notify = false;
 bool		yb_test_fatal_after_notifs_queue_write = false;
+int			yb_test_notifs_poller_init_delay_ms = 0;
 int			yb_test_notify_queue_max_pages = 0;
 int			yb_notifications_poll_sleep_duration_nonempty_ms = 1;
 int			yb_notifications_poll_sleep_duration_empty_ms = 100;
@@ -588,6 +589,9 @@ static Oid	pg_yb_notifications_relfilenode = InvalidOid;
 static List *ybNotifsPollerPendingEntries = NIL;
 static TransactionId ybNotifsPollerProcessingXid = InvalidTransactionId;
 
+/* A notifications poller's own poller_id, see YbNotifsPollerShmemData. */
+static TimestampTz ybNotifsPollerId = 0;
+
 /*
  * The 'notifications poller' process batches the notifications of a transaction
  * in-memory. On receiving the corresponding COMMIT record from virtual wal, it
@@ -643,6 +647,22 @@ typedef struct
 	volatile YbNotifsPollerInitStatus init_status;
 	char		error_message[1024];
 	volatile bool has_runtime_error;
+
+	/*
+	 * Identifies the poller started for the node's current listeners; zero
+	 * when there are none. Protected by NotifyQueueLock. The postmaster
+	 * restarts a poller after a crash even if nothing tracks it any more, so
+	 * a poller whose id no longer matches exits instead of running. A poller
+	 * writes the fields above, and to the queue, only while it holds
+	 * NotifyQueueLock exclusively and its id matches.
+	 */
+	TimestampTz poller_id;
+
+	/*
+	 * Whether YbNotifsPollerBgwHandle holds a poller's handle. Protected by
+	 * NotifyQueueLock.
+	 */
+	bool		has_bgw_handle;
 } YbNotifsPollerShmemData;
 
 /* local function prototypes */
@@ -687,6 +707,8 @@ static BackgroundWorkerHandle *ybShmemNotifsPollerBgwHandle(bool *found);
 static YbNotifsPollerShmemData *ybShmemNotifsPollerData(bool *found);
 
 /* YB: helper functions for 'notifications poller' bg worker */
+static bool ybIsStaleNotifsPoller(void);
+static void ybExitStaleNotifsPoller(const char *detail) pg_attribute_noreturn();
 static void ybNotifsPollerInit(void);
 static void ybNotifsPollerLoop(void);
 static void ybNotifsPollerProcessRecord(const YbcPgRowMessage *record);
@@ -1404,6 +1426,22 @@ Exec_ListenPreCommit(void)
 					 errdetail("%s", poller_data->error_message)));
 		}
 	}
+	else
+	{
+		bool		found;
+		YbNotifsPollerShmemData *poller_data = ybShmemNotifsPollerData(&found);
+
+		/*
+		 * This listener starts a new poller, with a new id. Reset what the
+		 * previous poller left, under the lock: a stale poller checks its id
+		 * under it before writing, and LISTENs that join this one while it
+		 * creates the slot must not be refused for an earlier error.
+		 */
+		poller_data->init_status = YB_NOTIFS_POLLER_INIT_NOT_STARTED;
+		poller_data->error_message[0] = '\0';
+		poller_data->has_runtime_error = false;
+		poller_data->poller_id = GetCurrentTimestamp();
+	}
 
 	for (BackendId i = QUEUE_FIRST_LISTENER; i > 0; i = QUEUE_NEXT_LISTENER(i))
 	{
@@ -1694,7 +1732,14 @@ ybCleanupListenState(void)
 	bool		found;
 	YbNotifsPollerShmemData *yb_poller_data = ybShmemNotifsPollerData(&found);
 
-	if (found && yb_poller_data->init_status == YB_NOTIFS_POLLER_INIT_SUCCESS)
+	/*
+	 * Any poller still around is now stale. It is terminated here if its
+	 * handle is in shared memory; one left over from before a postmaster
+	 * restart exits when it next checks its id.
+	 */
+	yb_poller_data->poller_id = 0;
+
+	if (found && yb_poller_data->has_bgw_handle)
 	{
 		BackgroundWorkerHandle *shm_handle =
 			ybShmemNotifsPollerBgwHandle(&found);
@@ -1704,6 +1749,7 @@ ybCleanupListenState(void)
 		if (amPostmaster)
 			BackgroundWorkerStateChange(false);
 		memset(shm_handle, 0, YbBackgroundWorkerHandleSize());
+		yb_poller_data->has_bgw_handle = false;
 	}
 
 	/*
@@ -3098,16 +3144,11 @@ ybStartNotifsPollerBgWorker(void)
 {
 	BackgroundWorker worker;
 	BackgroundWorkerHandle *local_handle;
+	BackgroundWorkerHandle *shm_handle;
 	BgwHandleStatus status;
 	pid_t		pid;
 	bool		found;
-
-	/* Reset init status before starting the worker. */
 	YbNotifsPollerShmemData *poller_data = ybShmemNotifsPollerData(&found);
-
-	poller_data->init_status = YB_NOTIFS_POLLER_INIT_NOT_STARTED;
-	poller_data->error_message[0] = '\0';
-	poller_data->has_runtime_error = false;
 
 	memset(&worker, 0, sizeof(worker));
 	sprintf(worker.bgw_name, "notifications poller");
@@ -3118,10 +3159,26 @@ ybStartNotifsPollerBgWorker(void)
 	worker.bgw_restart_time = 1;	/* restart after a crash */
 	sprintf(worker.bgw_library_name, "postgres");
 	sprintf(worker.bgw_function_name, "YbNotifsPollerMain");
-	worker.bgw_main_arg = (Datum) 0;
+	worker.bgw_main_arg = Int64GetDatum(poller_data->poller_id);
 	worker.bgw_notify_pid = getpid();
 
-	RegisterDynamicBackgroundWorker(&worker, &local_handle);
+	if (!RegisterDynamicBackgroundWorker(&worker, &local_handle))
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
+				 errmsg("could not register background process"),
+				 errhint("You may need to increase max_worker_processes.")));
+
+	/*
+	 * Publish the handle right away, so that ybCleanupListenState terminates
+	 * the worker however this LISTEN fails from here on. A handle names the
+	 * registration, so it is valid before the worker starts and across its
+	 * restarts.
+	 */
+	shm_handle = ybShmemNotifsPollerBgwHandle(&found);
+	LWLockAcquire(NotifyQueueLock, LW_EXCLUSIVE);
+	memcpy(shm_handle, local_handle, YbBackgroundWorkerHandleSize());
+	poller_data->has_bgw_handle = true;
+	LWLockRelease(NotifyQueueLock);
 
 	status = WaitForBackgroundWorkerStartup(local_handle, &pid);
 	if (status != BGWH_STARTED)
@@ -3157,13 +3214,6 @@ ybStartNotifsPollerBgWorker(void)
 		pg_usleep(10000L);
 	}
 
-	/*
-	 * Copy handle to shared memory only after successful initialization, so
-	 * asyncQueueUnregister always sees a handle for a fully initialized worker.
-	 */
-	BackgroundWorkerHandle *shm_handle = ybShmemNotifsPollerBgwHandle(&found);
-
-	memcpy(shm_handle, local_handle, YbBackgroundWorkerHandleSize());
 	pfree(local_handle);
 }
 
@@ -3192,6 +3242,12 @@ YbNotifsPollerMain(Datum main_arg)
 
 	BackgroundWorkerUnblockSignals();
 
+	ybNotifsPollerId = DatumGetInt64(main_arg);
+	LWLockAcquire(NotifyQueueLock, LW_SHARED);
+	if (ybIsStaleNotifsPoller())
+		ybExitStaleNotifsPoller(NULL);
+	LWLockRelease(NotifyQueueLock);
+
 	BackgroundWorkerInitializeConnection(YbSystemDbName, NULL, 0);
 
 	ybNotifsPollerInit();
@@ -3205,6 +3261,47 @@ ybNotifsPublications()
 	return list_make1(PgYbNotificationsPublicationName);
 }
 
+/*
+ * Is this poller no longer the one for the node's current listeners? That is
+ * the case once the listeners it was started for are gone (it is terminated
+ * through its handle then, but may run on for a while), and for one left over
+ * from before a postmaster restart (restartable bg workers survive it, shared
+ * memory does not).
+ *
+ * Caller must hold NotifyQueueLock. To write shared state, a poller holds it
+ * exclusively from this check to the write, so it cannot go stale in between.
+ */
+static bool
+ybIsStaleNotifsPoller(void)
+{
+	static YbNotifsPollerShmemData *poller_data = NULL;
+
+	if (poller_data == NULL)
+	{
+		bool		found;
+
+		poller_data = ybShmemNotifsPollerData(&found);
+	}
+
+	Assert(LWLockHeldByMe(NotifyQueueLock));
+	return poller_data->poller_id != ybNotifsPollerId;
+}
+
+/*
+ * Exit a stale poller. Caller holds NotifyQueueLock, which this releases.
+ */
+static void
+ybExitStaleNotifsPoller(const char *detail)
+{
+	LWLockRelease(NotifyQueueLock);
+	ereport(LOG,
+			(errmsg("notifications poller exiting: it is not the poller "
+					"of the current listeners on this node"),
+			 (detail ? errdetail("%s", detail) : 0)));
+	/* Exit code 0 unregisters the worker, so it is not restarted. */
+	proc_exit(0);
+}
+
 static void
 ybNotifsPollerInit(void)
 {
@@ -3212,6 +3309,13 @@ ybNotifsPollerInit(void)
 	YbNotifsPollerShmemData *poller_data = ybShmemNotifsPollerData(&shmem_found);
 	List	   *publications = NIL;
 	MemoryContext caller_context = CurrentMemoryContext;
+
+	/* Test-only: leave time for the LISTEN that started this poller to fail. */
+	for (int i = 0; i < yb_test_notifs_poller_init_delay_ms / 100; i++)
+	{
+		CHECK_FOR_INTERRUPTS();
+		pg_usleep(100000L);
+	}
 
 	PG_TRY();
 	{
@@ -3243,16 +3347,27 @@ ybNotifsPollerInit(void)
 		MemoryContext error_context = MemoryContextSwitchTo(caller_context);
 		ErrorData  *edata = CopyErrorData();
 
+		LWLockAcquire(NotifyQueueLock, LW_EXCLUSIVE);
+		if (ybIsStaleNotifsPoller())
+		{
+			FlushErrorState();
+			ybExitStaleNotifsPoller(edata->message);
+		}
 		strlcpy(poller_data->error_message, edata->message,
 				sizeof(poller_data->error_message));
 		poller_data->init_status = YB_NOTIFS_POLLER_INIT_FAILED;
+		LWLockRelease(NotifyQueueLock);
 		FreeErrorData(edata);
 		MemoryContextSwitchTo(error_context);
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
 
+	LWLockAcquire(NotifyQueueLock, LW_EXCLUSIVE);
+	if (ybIsStaleNotifsPoller())
+		ybExitStaleNotifsPoller(NULL);
 	poller_data->init_status = YB_NOTIFS_POLLER_INIT_SUCCESS;
+	LWLockRelease(NotifyQueueLock);
 }
 
 /*
@@ -3304,6 +3419,18 @@ ybNotifsPollerLoop()
 			MemoryContext error_cxt = MemoryContextSwitchTo(TopMemoryContext);
 			ErrorData  *edata = CopyErrorData();
 
+			/*
+			 * A stale poller, say one whose slot was dropped under it, must
+			 * not report its error: the listeners it would terminate belong
+			 * to the poller that replaced it.
+			 */
+			LWLockAcquire(NotifyQueueLock, LW_EXCLUSIVE);
+			if (ybIsStaleNotifsPoller())
+			{
+				FlushErrorState();
+				ybExitStaleNotifsPoller(edata->message);
+			}
+
 			ereport(WARNING,
 					(errmsg("notifications poller encountered a non-retryable "
 							"error, terminating all listening backends in "
@@ -3313,6 +3440,7 @@ ybNotifsPollerLoop()
 			strlcpy(poller_data->error_message, edata->message,
 					sizeof(poller_data->error_message));
 			poller_data->has_runtime_error = true;
+			LWLockRelease(NotifyQueueLock);
 
 			FreeErrorData(edata);
 			MemoryContextSwitchTo(error_cxt);
@@ -3575,6 +3703,14 @@ ybNotifsPollerAddPendingEntriesToQueue(void)
 		CHECK_FOR_INTERRUPTS();
 
 		LWLockAcquire(NotifyQueueLock, LW_EXCLUSIVE);
+
+		/*
+		 * A stale poller must not add to the queue: the current listeners
+		 * have a poller of their own.
+		 */
+		if (ybIsStaleNotifsPoller())
+			ybExitStaleNotifsPoller(NULL);
+
 		if (asyncQueueIsFull())
 		{
 			LWLockRelease(NotifyQueueLock);

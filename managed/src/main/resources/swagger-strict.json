@@ -3038,7 +3038,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -6082,7 +6083,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -9359,7 +9361,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -10232,7 +10235,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -11798,7 +11802,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -12565,7 +12570,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -16274,6 +16280,12 @@
           "minimum" : 1,
           "type" : "integer"
         },
+        "max_num_replicas" : {
+          "description" : "Maximum replicas",
+          "format" : "int32",
+          "minimum" : 1,
+          "type" : "integer"
+        },
         "min_num_replicas" : {
           "description" : "Minimum replicas",
           "format" : "int32",
@@ -17472,7 +17484,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -18193,7 +18206,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -19299,7 +19313,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -20176,7 +20191,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -21761,7 +21777,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -22469,7 +22486,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -22915,7 +22933,8 @@
               "SaveSoftwareUpgradeProgress",
               "CheckDuplicateInstance",
               "RunUpgradeNodeAgent",
-              "CreateYbStorageDatabase"
+              "CreateYbStorageDatabase",
+              "WaitForRpcClientCert"
             ],
             "type" : "string"
           },
@@ -23515,7 +23534,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -24328,7 +24348,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -25530,7 +25551,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -26921,7 +26943,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -27641,7 +27664,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -28507,7 +28531,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -29192,7 +29217,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -29877,7 +29903,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -31083,7 +31110,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -31304,6 +31332,10 @@
           "type" : "string"
         },
         "useHostname" : {
+          "type" : "boolean"
+        },
+        "useNodeToNodeClientCerts" : {
+          "description" : "WARNING: This is a preview API that could change. Servers require a client cert on RPC (node_to_node_encryption_use_client_certificates). Supported only on Kubernetes universes whose node-to-node encryption uses a cert-manager (K8SCertManager) root CA; VM universes and Kubernetes universes with other root CA types are not supported. Can only be set at universe creation.",
           "type" : "boolean"
         },
         "useSpotInstance" : {
@@ -32269,7 +32301,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },

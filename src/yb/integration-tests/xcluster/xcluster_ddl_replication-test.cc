@@ -707,6 +707,59 @@ TEST_F(XClusterDDLReplicationTest, YB_DISABLE_TEST(BootstrappingWithNoTables)) {
   ASSERT_OK(CreateReplicationFromCheckpoint());
 }
 
+// Sets up replication, from a backup and restore, of an index whose column was renamed on the
+// source before setup, so its column name differs from the target's, and checks that rows
+// replicate through the index, also after a column rename and an index rename on the source.
+TEST_F(XClusterDDLReplicationTest, RenameIndexedColumn) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "This test does not work with yb_backup.py";
+  }
+
+  auto params = XClusterDDLReplicationTestBase::kDefaultParams;
+  params.start_yb_controller_servers = true;
+  ASSERT_OK(SetUpClusters(params));
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE t (key int PRIMARY KEY, a int)"));
+  ASSERT_OK(producer_conn_->Execute("CREATE INDEX t_a_idx ON t (a)"));
+  ASSERT_OK(producer_conn_->Execute("ALTER TABLE t RENAME COLUMN a TO a2"));
+
+  ASSERT_OK(CheckpointReplicationGroupOnNamespaces({namespace_name}));
+  ASSERT_OK(BackupFromProducer());
+  ASSERT_OK(RestoreToConsumer());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  const auto kIndexColumnNameQuery =
+      "SELECT attname FROM pg_attribute WHERE attrelid = 't_a_idx'::regclass AND attnum = 1";
+  ASSERT_EQ(ASSERT_RESULT(producer_conn_->FetchRow<std::string>(kIndexColumnNameQuery)), "a");
+  ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<std::string>(kIndexColumnNameQuery)), "a2");
+
+  auto count_on_target_through_index = [this](
+      const std::string& index, const std::string& column) -> Result<int64_t> {
+    const auto query = Format(
+        "/*+ IndexOnlyScan(t $0) */ SELECT count(*) FROM t WHERE $1 >= 0", index, column);
+    const auto plan = VERIFY_RESULT(consumer_conn_->FetchAllAsString("EXPLAIN " + query));
+    SCHECK_FORMAT(
+        plan.find(index) != std::string::npos, IllegalState, "Expected a scan of $0, got: $1",
+        index, plan);
+    return consumer_conn_->FetchRow<int64_t>(query);
+  };
+
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO t SELECT i, i FROM generate_series(1, 50) AS i"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_EQ(ASSERT_RESULT(count_on_target_through_index("t_a_idx", "a2")), 50);
+
+  ASSERT_OK(producer_conn_->Execute("ALTER TABLE t RENAME COLUMN a2 TO a3"));
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO t SELECT i, i FROM generate_series(51, 60) AS i"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_EQ(ASSERT_RESULT(count_on_target_through_index("t_a_idx", "a3")), 60);
+
+  // Renaming an index bumps its schema version, so the target has to map a new source index
+  // schema whose column names still differ from its own.
+  ASSERT_OK(producer_conn_->Execute("ALTER INDEX t_a_idx RENAME TO t_a_idx2"));
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO t SELECT i, i FROM generate_series(61, 70) AS i"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_EQ(ASSERT_RESULT(count_on_target_through_index("t_a_idx2", "a3")), 70);
+}
+
 TEST_F(XClusterDDLReplicationTest, CreateTable) {
   ASSERT_OK(SetUpClustersAndReplication());
 
@@ -935,6 +988,39 @@ TEST_F(XClusterDDLReplicationTest, CreateIndexWithPartitions) {
   // Allow extra time for the DDLs to replicate now.
   propagation_timeout_ += MonoDelta::FromSeconds(60 * kTimeMultiplier);
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow({namespace_name}));
+}
+
+// Tests that the target gets every index entry when a new index splits before the target replays
+// its CREATE INDEX.
+TEST_F(XClusterDDLReplicationTest, SplitIndexBeforeTargetCreatesIt) {
+  ASSERT_OK(SetUpClustersAndReplication());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_replicated_tables) = true;
+
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO t SELECT i, i FROM generate_series(1, 500) i"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = true;
+  ASSERT_OK(producer_conn_->Execute("CREATE INDEX t_v_idx ON t (v ASC)"));
+  const auto index_name = ASSERT_RESULT(
+      GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name=*/"", "t_v_idx"));
+  std::shared_ptr<client::YBTable> index_table;
+  ASSERT_OK(producer_client()->OpenTable(index_name, &index_table));
+  // These index entries are only in the split parent's WAL, so they only reach the target if it
+  // starts from the parent.
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO t SELECT i, i FROM generate_series(501, 1000) i"));
+  ASSERT_OK(SplitTabletsOnce(producer_cluster_, index_table->id()));
+  ASSERT_OK(
+      producer_conn_->Execute("INSERT INTO t SELECT i, i FROM generate_series(1001, 1500) i"));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = false;
+  propagation_timeout_ += MonoDelta::FromSeconds(60 * kTimeMultiplier);
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  ASSERT_OK(consumer_conn_->Execute("SET enable_seqscan = off"));
+  const auto query = "SELECT count(*) FROM t WHERE v > 0";
+  ASSERT_TRUE(ASSERT_RESULT(consumer_conn_->HasIndexScan(query)));
+  ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>(query)), 1500);
 }
 
 TEST_F(XClusterDDLReplicationTest, MultistatementQuery) {
@@ -7552,6 +7638,31 @@ TEST_F(XClusterWalAnchorStreamTest, TableRewriteRollbackThenRetrySucceeds) {
             "ALTER TABLE $0 ADD PRIMARY KEY (key ASC)", kBaseTable);
       },
       /*table_name=*/kBaseTable, /*verify_tables=*/{kBaseTable});
+}
+
+// Tests that the target gets every row when the table splits while the target keeps rolling back
+// its CREATE TABLE.
+TEST_F(XClusterWalAnchorStreamTest, SplitBeforeRollbackRetrySucceeds) {
+  ASSERT_OK(SetUpClustersAndReplication());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_replicated_tables) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_ddl_queue_max_retries_per_ddl) = 1000;
+
+  const auto kTableName = "anchor_split";
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0 (key int PRIMARY KEY, v int) SPLIT INTO 1 TABLETS", kTableName));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i * 2 FROM generate_series(1, 100) as i", kTableName));
+  ASSERT_OK(StringWaiterLogSink("Failed DDL operation as requested").WaitFor(kTimeout));
+
+  const auto source_table_id = ASSERT_RESULT(GetSourceTableId(kTableName));
+  ASSERT_OK(SplitTabletsOnce(producer_cluster_, source_table_id));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i * 2 FROM generate_series(101, 200) as i", kTableName));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = false;
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifyWrittenRecords(std::vector<TableName>{kTableName}));
 }
 
 // The stream created for a reconnecting table is not usable until its checkpoint lands. Until then

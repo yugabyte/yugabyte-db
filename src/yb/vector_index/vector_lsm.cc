@@ -1193,6 +1193,10 @@ class VectorLSM<Vector, DistanceResult>::CompactionTask : public PriorityThreadP
     auto status = DoRun(suspender);
     if (status.ok() || status.IsShutdownInProgress()) {
       LOG_WITH_PREFIX(INFO) << "Done: " << status;
+    } else if (status.IsServiceUnavailable()) {
+      // Not enough memory for the merged index. The input chunks stay as they are, and a later
+      // compaction retries them.
+      LOG_WITH_PREFIX(WARNING) << "Failed, to be retried: " << status;
     } else {
       LOG_WITH_PREFIX(ERROR) << "Failed: " << status;
       lsm_.CheckFailure(status);
@@ -1245,7 +1249,10 @@ class VectorLSM<Vector, DistanceResult>::CompactionTask : public PriorityThreadP
     if (callback_) {
       callback_(status);
     }
-    if (last_serial_no == lsm_.LastSerialNo()) {
+    // Out of memory is retried after the next flush, not right away. A chunked compaction
+    // changes the serial number by saving its first output chunks, so it would be resubmitted
+    // at once and fail the same way.
+    if (status.IsServiceUnavailable() || last_serial_no == lsm_.LastSerialNo()) {
       lsm_.Deregister(*this);
     } else {
       lsm_.ScheduleBackgroundCompaction(this);
@@ -1617,16 +1624,15 @@ Status VectorLSM<Vector, DistanceResult>::Insert(
   }
   insert_registry_->BindTasks(
       tasks, chunk->index, [this, chunk, frontiers_to_apply](const Status& status) {
-        if (!status.ok()) {
-          auto failure = status.CloneAndPrepend("VectorLSM insertion failed");
-          LOG(ERROR) << LogPrefix() << failure;
-          CheckFailure(failure);
-        } else if (frontiers_to_apply) {
+        // A chunk missing vectors must not be saved: other inserts into it that succeed can carry
+        // later frontiers, so bootstrap would not replay the failed one. Crashing before the save
+        // leaves it in the WAL. Skipping the save instead is not an option, an unsaved chunk would
+        // block the updates queue and CompleteShutdown.
+        LOG_IF_WITH_PREFIX(FATAL, !status.ok()) << "VectorLSM insertion failed: " << status;
+        if (frontiers_to_apply) {
           std::lock_guard lock(mutex_);
           chunk->ApplyFrontiers(*frontiers_to_apply);
         }
-        // A failed chunk is still saved: CheckFailure records the failure, and an unsaved chunk
-        // would block the updates queue and CompleteShutdown.
         chunk->InsertTaskDone();
       });
 
@@ -2276,6 +2282,10 @@ Status VectorLSM<Vector, DistanceResult>::Flush(bool wait) {
 
   RETURN_NOT_OK(RUNNING_STATUS());
 
+  Status injected;
+  TEST_SYNC_POINT_CALLBACK("VectorLSM::Flush:Status", &injected);
+  RETURN_NOT_OK(injected);
+
   std::promise<Status> promise;
   {
     std::lock_guard lock(mutex_);
@@ -2311,7 +2321,10 @@ Status VectorLSM<Vector, DistanceResult>::ModifyChunkFrontiers(
   WritableFile* manifest_file = nullptr;
   {
     std::lock_guard lock(mutex_);
-    RETURN_NOT_OK(failed_status_);
+    // Not RETURN_NOT_OK: it would move the failure out of the member, see AdvanceFlushedFrontier.
+    if (!failed_status_.ok()) {
+      return failed_status_;
+    }
     SCHECK(!mutable_chunk_ || !mutable_chunk_->num_entries, IllegalState,
            "Cannot modify chunk frontiers of a vector index with unflushed entries");
     for (const auto& chunk : immutable_chunks_) {
@@ -2362,7 +2375,11 @@ Result<bool> VectorLSM<Vector, DistanceResult>::AdvanceFlushedFrontier(
   ImmutableChunkPtr chunk;
   {
     std::lock_guard lock(mutex_);
-    RETURN_NOT_OK(failed_status_);
+    // RETURN_NOT_OK on a non-const lvalue moves from it. That would clear failed_status_, and a
+    // chunk whose save failed would then keep WaitForFlush and CompleteShutdown waiting forever.
+    if (!failed_status_.ok()) {
+      return failed_status_;
+    }
     if (mutable_chunk_ && mutable_chunk_->num_entries) {
       return false;
     }
@@ -3146,6 +3163,7 @@ class VectorLSM<Vector, DistanceResult>::Merger {
 
     size_t num_scheduled_tasks = 0;
     std::atomic<size_t> num_completed_tasks = 0;
+    StatusHolder failure;
 
     size_t num_remaining_vectors = num_vectors_to_merge;
     while (num_remaining_vectors > 0 && source_iterator.Valid()) {
@@ -3160,12 +3178,27 @@ class VectorLSM<Vector, DistanceResult>::Merger {
         break;
       }
 
-      auto tasks = VERIFY_RESULT(merge_registry_.AllocateTasks(
+      // After a failed insert the merged index is incomplete, so stop scheduling; the failure is
+      // returned once the scheduled tasks are drained.
+      if (!failure.GetStatus().ok()) {
+        break;
+      }
+
+      auto tasks_result = merge_registry_.AllocateTasks(
           num_total_tasks, target_index,
-          [&num_completed_tasks](const Status&) {
-            // TODO: Handle failure
-            num_completed_tasks.fetch_add(1, std::memory_order::relaxed);
-          }));
+          [&num_completed_tasks, &failure](const Status& status) {
+            failure.UpdateError(status);
+            // Must stay last: once all tasks are counted, the waiting frame returns and destroys
+            // failure. Release pairs with the acquire in the wait loop below, so the frame sees it.
+            num_completed_tasks.fetch_add(1, std::memory_order::release);
+          });
+      // Not VERIFY_RESULT: tasks from earlier batches may still be running, and returning now
+      // would destroy what their callbacks use. Stop scheduling, drain, and report it below.
+      if (!tasks_result.ok()) {
+        failure.UpdateError(tasks_result.status());
+        break;
+      }
+      auto tasks = std::move(*tasks_result);
 
       VLOG_WITH_PREFIX(3) << "Allocated " << tasks.size() << " merge tasks";
 
@@ -3189,7 +3222,7 @@ class VectorLSM<Vector, DistanceResult>::Merger {
     }
 
     // Wait for everything got merged.
-    while (num_scheduled_tasks != num_completed_tasks.load(std::memory_order::relaxed)) {
+    while (num_scheduled_tasks != num_completed_tasks.load(std::memory_order::acquire)) {
       MaybeYield();
       std::this_thread::sleep_for(200ms);
     }
@@ -3197,6 +3230,10 @@ class VectorLSM<Vector, DistanceResult>::Merger {
     // All scheduled tasks have completed, so it is now safe to propagate a shutdown that may have
     // broken the loop above.
     RETURN_NOT_OK(lsm_.RUNNING_STATUS());
+
+    // The merged index is missing the vectors of the failed tasks, so it must not replace the
+    // compaction input.
+    RETURN_NOT_OK_PREPEND(failure.GetStatus(), "Merge into compaction output failed");
 
     LOG_WITH_PREFIX(INFO) << "Chunks merge done via " << num_scheduled_tasks << " tasks";
     return Status::OK();

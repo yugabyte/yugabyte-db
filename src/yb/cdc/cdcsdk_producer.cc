@@ -89,7 +89,7 @@ DEFINE_RUNTIME_bool(cdc_populate_end_markers_transactions, true,
     "If 'true', we will also send 'BEGIN' and 'COMMIT' records for both single shard and multi "
     "shard transactions");
 
-DEFINE_NON_RUNTIME_int64(cdc_resolve_intent_lag_threshold_ms, 5 * 60 * 1000,
+DEFINE_NON_RUNTIME_int64(cdc_resolve_intent_lag_threshold_ms, 500,
     "The lag threshold in milli seconds between the hybrid time returned by "
     "GetMinStartHTRunningTxnsForCDCProducer and LeaderSafeTime, when we decide the "
     "ConsistentStreamSafeTime for CDCSDK by resolving all committed intetns");

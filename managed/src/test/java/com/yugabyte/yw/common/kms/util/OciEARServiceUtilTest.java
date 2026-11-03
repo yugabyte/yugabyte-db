@@ -13,6 +13,7 @@ package com.yugabyte.yw.common.kms.util;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -25,6 +26,7 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.oracle.bmc.Region;
+import com.oracle.bmc.ServiceDetails;
 import com.oracle.bmc.auth.AuthenticationDetailsProvider;
 import com.oracle.bmc.auth.SimpleAuthenticationDetailsProvider;
 import com.oracle.bmc.keymanagement.KmsCryptoClient;
@@ -312,5 +314,30 @@ public class OciEARServiceUtilTest extends FakeDBApplication {
       assertTrue(e.getMessage().contains("Insufficient permissions"));
       assertTrue(e.getMessage().contains(keyOcid));
     }
+  }
+
+  @Test
+  public void testCheckKeyExists_badRequest_messageHasOciTextWithoutSdkBoilerplate() {
+    doReturn(fakeKmsManagementClient)
+        .when(mockOciEARServiceUtil)
+        .getKmsManagementClient(null, fakeAuthConfig);
+    BmcException badRequest =
+        new BmcException(
+            400,
+            "InvalidParameter",
+            "Key ocid is malformed.",
+            "req-id",
+            new ServiceDetails("KeyManagement", "GetKey", "https://kms.example.com/keys", null));
+    doThrow(badRequest).when(fakeKmsManagementClient).getKey(any());
+
+    RuntimeException e =
+        assertThrows(
+            RuntimeException.class,
+            () -> mockOciEARServiceUtil.checkKeyExists(fakeAuthConfig, keyOcid));
+    assertEquals(
+        "Error accessing OCI key '"
+            + keyOcid
+            + "': OCI KeyManagement GetKey failed: Key ocid is malformed. (400 InvalidParameter)",
+        e.getMessage());
   }
 }

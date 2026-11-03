@@ -2902,10 +2902,22 @@ Status Tablet::Flush(
     RETURN_NOT_OK(pending_op);
   }
 
+  // A failed vector index flush is returned last, so it does not keep the RocksDB flushes, e.g.
+  // the memory manager's, from running.
   VectorIndexList vector_indexes_list;
+  Status vector_indexes_flush_status;
   if (HasFlags(flags, FlushFlags::kVectorIndexes)) {
     vector_indexes_list = vector_indexes_->List();
-    vector_indexes_list.Flush();
+    vector_indexes_flush_status = vector_indexes_list.Flush();
+    // VectorIndexList::Flush skips indexes that are shutting down. A caller holding a blocking
+    // operation only sees that for a dropped index, but one holding a non-blocking operation, e.g.
+    // DoCleanupIntentFiles, can race tablet shutdown, which stops the indexes before pausing such
+    // operations. Their unflushed vectors still need the log and the intents. StartShutdown marks
+    // the tablet's indexes before stopping each one, so this check sees it.
+    if (vector_indexes_flush_status.ok() && vector_indexes_->ShutdownStarted()) {
+      vector_indexes_flush_status = STATUS_FORMAT(
+          ShutdownInProgress, "$0Vector indexes are shutting down", LogPrefix());
+    }
   }
 
   rocksdb::FlushOptions options(rocksdb_flush_reason);
@@ -2928,7 +2940,7 @@ Status Tablet::Flush(
     RETURN_NOT_OK(vector_indexes_list.WaitForFlush());
   }
 
-  return Status::OK();
+  return vector_indexes_flush_status;
 }
 
 Status Tablet::Flush(FlushMode mode, FlushFlags flags, rocksdb::FlushReason rocksdb_flush_reason) {
