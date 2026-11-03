@@ -3217,7 +3217,27 @@ Result<SplitPhase> CatalogManager::GetTableSplitPhase(
 
 Result<SplitPhase> CatalogManager::GetTableSplitPhase(
     const TableInfo& table, const ReplicationInfoPB& table_replication_info) const {
+  // The phase thresholds are per-node leader counts, so count only tservers in the live placement:
+  // read-replica tservers host observers, never leaders, even when they share a zone with it.
+  // A table-level placement may omit the uuid; fall back to the cluster's, as the load balancer
+  // does.
+  auto live_placement_uuid = table_replication_info.live_replicas().placement_uuid();
+  if (live_placement_uuid.empty()) {
+    live_placement_uuid = VERIFY_RESULT(placement_uuid());
+  }
   TSDescriptorVector ts_descs = GetAllLiveNotBlacklistedTServers();
+  const auto num_live_tservers = ts_descs.size();
+  std::erase_if(ts_descs, [&live_placement_uuid](const TSDescriptorPtr& ts) {
+    return ts->placement_uuid() != live_placement_uuid;
+  });
+  // Happens when the cluster config's live placement uuid was cleared (yb-admin
+  // clear_placement_info) on a cluster whose tservers have one. The resulting error below is only
+  // logged at VLOG level by the split manager, so surface it here.
+  if (ts_descs.empty() && num_live_tservers > 0) {
+    YB_LOG_EVERY_N_SECS(WARNING, 60) << Format(
+        "None of the $0 live tservers is in the live placement '$1'; automatic tablet splitting "
+        "cannot pick a split phase", num_live_tservers, live_placement_uuid);
+  }
 
   size_t num_servers = 0;
   // If there is custom placement information present then
