@@ -1337,7 +1337,7 @@ class DistTraceTxnHeartbeatTest : public DistTraceTest {
   }
 };
 
-// Counts the lines matching a pattern in the output of one daemon, which includes its postgres logs.
+// Counts the lines matching a pattern in the output of one daemon, including its postgres logs.
 class DaemonLogCounter : public ExternalDaemon::StringListener {
  public:
   DaemonLogCounter(ExternalDaemon* daemon, std::string pattern)
@@ -1428,8 +1428,8 @@ class DistTraceOtelLogThrottleTest : public DistTraceTest {
   static constexpr int kQueries = 10;
 };
 
-// Accepts connections and never replies. The backend export thread blocks on its first span, so with
-// a one-span queue the backend drops every later span.
+// Accepts connections and never replies. The backend export thread blocks on its first span, so
+// with a one-span queue the backend drops every later span.
 class DistTraceStalledCollectorTest : public DistTraceOtelLogThrottleTest {
  protected:
   void ConfigureDistTraceOptions(ExternalMiniClusterOptions* options) override {
