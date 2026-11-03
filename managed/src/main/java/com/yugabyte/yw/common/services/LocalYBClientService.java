@@ -3,6 +3,7 @@
 package com.yugabyte.yw.common.services;
 
 import com.google.inject.Inject;
+import com.yugabyte.yw.common.certmgmt.RpcClientCert;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.services.config.YbClientConfig;
@@ -25,6 +26,7 @@ public class LocalYBClientService implements YBClientService {
 
   @Inject private YbClientConfigFactory ybClientConfigFactory;
   @Inject private RuntimeConfGetter confGetter;
+  @Inject private RpcClientCert rpcClientCert;
 
   @Override
   public synchronized YBClient getClient(String masterHostPorts) {
@@ -39,8 +41,20 @@ public class LocalYBClientService implements YBClientService {
     return null;
   }
 
-  public synchronized YBClient getUniverseClient(Universe universe) {
-    return getClient(universe.getMasterAddresses(), universe.getCertificateNodetoNode());
+  // Not synchronized: loading the client cert may read it from its issuer.
+  public YBClient getUniverseClient(Universe universe) {
+    return getUniverseClient(universe, universe.getMasterAddresses());
+  }
+
+  @Override
+  public YBClient getUniverseClient(Universe universe, String masterHostPorts) {
+    if (masterHostPorts == null) {
+      return null;
+    }
+    return getClientWithConfig(
+        ybClientConfigFactory
+            .create(masterHostPorts, universe.getCertificateNodetoNode())
+            .withClientCertOf(universe));
   }
 
   private YBClient getNewClient(String masterHPs, String certFile) {
@@ -53,15 +67,22 @@ public class LocalYBClientService implements YBClientService {
     if (config == null || StringUtils.isBlank(config.getMasterHostPorts())) {
       return null;
     }
-    return new YBClient.YBClientBuilder(config.getMasterHostPorts())
-        .sslCertFile(config.getCertFile())
-        .defaultAdminOperationTimeoutMs(config.getAdminOperationTimeout().toMillis())
-        .defaultOperationTimeoutMs(config.getOperationTimeout().toMillis())
-        .defaultSocketReadTimeoutMs(config.getSocketReadTimeout().toMillis())
-        .dnsDebugThresholdNs(confGetter.getGlobalConf(GlobalConfKeys.ybClientDnsDebugThresholdNs))
-        .dnsWarningThresholdNs(
-            confGetter.getGlobalConf(GlobalConfKeys.ybClientDnsWarningThresholdNs))
-        .build();
+    YBClient.YBClientBuilder builder =
+        new YBClient.YBClientBuilder(config.getMasterHostPorts())
+            .sslCertFile(config.getCertFile())
+            .defaultAdminOperationTimeoutMs(config.getAdminOperationTimeout().toMillis())
+            .defaultOperationTimeoutMs(config.getOperationTimeout().toMillis())
+            .defaultSocketReadTimeoutMs(config.getSocketReadTimeout().toMillis())
+            .dnsDebugThresholdNs(
+                confGetter.getGlobalConf(GlobalConfKeys.ybClientDnsDebugThresholdNs))
+            .dnsWarningThresholdNs(
+                confGetter.getGlobalConf(GlobalConfKeys.ybClientDnsWarningThresholdNs));
+    if (config.getClientCertUniverse() != null) {
+      rpcClientCert
+          .getFiles(config.getClientCertUniverse())
+          .ifPresent(files -> builder.sslClientCertFiles(files.cert(), files.key()));
+    }
+    return builder.build();
   }
 
   @Override

@@ -52,6 +52,7 @@ import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+import com.yugabyte.yw.common.certmgmt.RpcClientCert;
 import com.yugabyte.yw.common.certmgmt.providers.VaultPKI;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -837,7 +838,12 @@ public class UniverseCRUDHandler {
             Common.CloudType.valueOf(Util.getSingleProvider(c.userIntent).getCode());
       }
       isK8s = c.userIntent.getAllCloudTypes().contains(Common.CloudType.kubernetes);
-      c.validate(!cloudEnabled, isAuthEnforced, taskParams.fipsEnabled, taskParams.nodeDetailsSet);
+      c.validate(
+          !cloudEnabled,
+          isAuthEnforced,
+          taskParams.fipsEnabled,
+          taskParams.getPrimaryCluster().userIntent.useNodeToNodeClientCerts,
+          taskParams.nodeDetailsSet);
       // Enforce user tags.
       validateUserTags(customer, c.userIntent);
 
@@ -1083,6 +1089,7 @@ public class UniverseCRUDHandler {
     }
 
     checkGeoPartitioningParameters(customer, taskParams, OpType.CREATE);
+    RpcClientCert.validate(taskParams);
     validateOciInstanceTags(taskParams);
 
     // Create a new universe. This makes sure that a universe of this name does not already exist
@@ -1851,7 +1858,11 @@ public class UniverseCRUDHandler {
     boolean isAuthEnforced = confGetter.getConfForScope(customer, CustomerConfKeys.isAuthEnforced);
     addOnCluster.userIntent.providerType = Common.CloudType.valueOf(provider.getCode());
     addOnCluster.validate(
-        !cloudEnabled, isAuthEnforced, taskParams.fipsEnabled, taskParams.nodeDetailsSet);
+        !cloudEnabled,
+        isAuthEnforced,
+        taskParams.fipsEnabled,
+        primaryCluster.userIntent.useNodeToNodeClientCerts,
+        taskParams.nodeDetailsSet);
     addOnCluster.userIntent.enableNodeToNodeEncrypt =
         primaryCluster.userIntent.enableNodeToNodeEncrypt;
     addOnCluster.userIntent.enableClientToNodeEncrypt =
@@ -1939,7 +1950,11 @@ public class UniverseCRUDHandler {
         runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled");
     boolean isAuthEnforced = confGetter.getConfForScope(customer, CustomerConfKeys.isAuthEnforced);
     readOnlyCluster.validate(
-        !cloudEnabled, isAuthEnforced, taskParams.fipsEnabled, taskParams.nodeDetailsSet);
+        !cloudEnabled,
+        isAuthEnforced,
+        taskParams.fipsEnabled,
+        primaryCluster.userIntent.useNodeToNodeClientCerts,
+        taskParams.nodeDetailsSet);
     if (readOnlyCluster.userIntent.specificGFlags != null) {
       SpecificGFlags primaryGFlags = primaryCluster.userIntent.specificGFlags;
       if (primaryGFlags != null) {
@@ -2794,6 +2809,9 @@ public class UniverseCRUDHandler {
           && curCluster.clusterType == ClusterType.PRIMARY) {
         throw new PlatformServiceException(BAD_REQUEST, "RF change is not available");
       }
+      // Fixed at creation. Clients that predate the field send false, so keep the current value.
+      newCluster.userIntent.useNodeToNodeClientCerts =
+          curCluster.userIntent.useNodeToNodeClientCerts;
       UserIntent newIntent = newCluster.userIntent;
       UserIntent curIntent = curCluster.userIntent;
       for (UUID providerUUID : newIntent.getAllProviderUUIDs()) {
