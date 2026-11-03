@@ -15676,8 +15676,8 @@ YbSetParallelWorker()
 
 /*
  * Whether the current value of the named setting came from SET LOCAL.  The
- * query-layer retry needs this to put a setting back with the scope it had,
- * since SetConfigOption always makes it a plain SET.
+ * query-layer retry uses this to put a setting back with its scope, because
+ * SetConfigOption always makes a plain SET.
  */
 bool
 YbIsGucSetLocal(const char *name)

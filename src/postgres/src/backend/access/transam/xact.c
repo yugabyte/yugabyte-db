@@ -2365,14 +2365,13 @@ YBCRestartWriteTransaction()
 
 	/*
 	 * An error can leave a function with a SET clause, such as SET role,
-	 * before the function pops its GUC level.  Only the abort pops it;
-	 * without this, the retry would run with the function's settings.  Keep
-	 * the transaction's own level: it holds the BEGIN ISOLATION LEVEL options
-	 * and the SETs from earlier statements of an extended-protocol batch,
-	 * and the retry replays neither.  It also holds plain SETs the failed
-	 * statement made; those carry into the replay, except the role, which
-	 * yb_restart_transaction puts back.  TODO(#28196): undo them as well once
-	 * a full transaction restart replays the batch.
+	 * before the function pops its GUC level.  Only the abort pops it, and
+	 * the retry skips the abort.  Keep the transaction's own level: it holds
+	 * the BEGIN ISOLATION LEVEL options and the SETs of earlier statements in
+	 * an extended-protocol batch, which the retry does not replay.  It also
+	 * holds plain SETs of the failed statement, so those carry into the
+	 * replay; yb_restart_transaction puts back only the role.
+	 * TODO(#28196): undo them too once a full restart replays the batch.
 	 */
 	AtEOXact_GUC(false, CurrentTransactionState->gucNestLevel + 1);
 

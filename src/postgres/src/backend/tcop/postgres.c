@@ -6150,17 +6150,17 @@ yb_restart_transaction(int attempt, bool is_read_restart)
 	}
 
 	/*
-	 * A SET ROLE that the failed statement ran, such as one in a function
-	 * body, is at the transaction's own GUC level, which the restart keeps.
-	 * Put back the role from the start of the attempt, so that the replay
-	 * does not run as that role.  A SET ROLE from an earlier statement of a
-	 * batch ran before the attempt started, so the saved role includes it.
-	 * Keep its scope where the failed statement left it alone, so a role
-	 * from SET LOCAL still ends with the transaction.  A plain SET ROLE in
-	 * the failed statement over a SET LOCAL role is not undone: it changes
-	 * the scope on the GUC stack, and the restore cannot see that.
-	 * TODO(#28196): drop this once a full transaction restart resets this
-	 * state the way an abort does.
+	 * A SET ROLE in the failed statement, such as one in a function body,
+	 * is at the transaction's own GUC level, which the restart keeps.  Put
+	 * back the role from the start of the attempt, so that the replay does
+	 * not run as that role.  The saved role includes a SET ROLE from an
+	 * earlier statement of a batch, because that statement ran first.  Keep
+	 * the role's scope, so that a role from SET LOCAL still ends with the
+	 * transaction.  This fails when the failed statement ran a plain SET
+	 * ROLE over a SET LOCAL role: that changes the scope on the GUC stack,
+	 * and the restore cannot see it.
+	 * TODO(#28196): drop this once a full restart resets this state the way
+	 * an abort does.
 	 */
 	if (GetCurrentRoleId() != yb_attempt_start_roleid)
 		(void) set_config_option("role",
@@ -6345,8 +6345,8 @@ yb_exec_query_wrapper_one_attempt(MemoryContext exec_context,
 		 * An error can leave a SECURITY DEFINER function before it switches
 		 * the user back.  Only the abort undoes that, and the retry skips the
 		 * abort; without this, the retry would start as the function owner.
-		 * TODO(#28196): drop this save and restore once a full transaction
-		 * restart resets this state the way an abort does.
+		 * TODO(#28196): drop this once a full restart resets this state the
+		 * way an abort does.
 		 */
 		SetUserIdAndSecContext(save_userid, save_sec_context);
 		yb_attempt_to_retry_on_error(attempt, retry_data, exec_context);

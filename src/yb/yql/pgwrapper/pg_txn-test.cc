@@ -1589,12 +1589,11 @@ static std::string FetchValue(PGconn* conn, const char* sql) {
   return PQntuples(res.get()) > 0 ? PQgetvalue(res.get(), 0, 0) : "";
 }
 
-// The cases below fail today, so they are disabled; they pin what an abort
-// and a replay would leave. The retry puts the role back with the scope it
-// had at the start of the attempt, but a plain SET ROLE in the failed
-// statement first changes that scope on the GUC stack, and a plain SET of
-// another setting is not undone at all. TODO(#28196): enable them once a
-// full transaction restart replays the batch.
+// The cases below fail today, so they are disabled. Each asserts what an
+// abort and a replay would leave. Two gaps break them: a plain SET ROLE in the
+// failed statement changes the role's scope on the GUC stack before the retry
+// puts the role back, and the retry does not undo a plain SET of another
+// setting. TODO(#28196): enable them once a full restart replays the batch.
 
 // SET LOCAL ROLE alice in the batch, a plain SET ROLE bob in the failed
 // statement. After COMMIT the role must be none, not bob.
