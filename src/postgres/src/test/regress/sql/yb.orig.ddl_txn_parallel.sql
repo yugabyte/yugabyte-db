@@ -67,7 +67,64 @@ EXPLAIN (COSTS OFF) EXECUTE ddl_par_alter;
 COMMIT;
 EXPLAIN (COSTS OFF) EXECUTE ddl_par_alter;
 DEALLOCATE ddl_par_alter;
+
+-- The same after ROLLBACK.
+BEGIN;
+ALTER TABLE ddl_par_other ADD COLUMN y INT;
+PREPARE ddl_par_rb AS SELECT COUNT(*) FROM ddl_par;
+EXPLAIN (COSTS OFF) EXECUTE ddl_par_rb;
+ROLLBACK;
+EXPLAIN (COSTS OFF) EXECUTE ddl_par_rb;
+DEALLOCATE ddl_par_rb;
+
+-- Generic plans cached before the block keep their Gather when the block's
+-- only DDL replaces a function they do not call, and run in the leader with
+-- no workers. Without workers no shared scan state is set up, so each
+-- parallel scan must read the whole table alone: both counts are 1000.
+CREATE FUNCTION ddl_par_unused() RETURNS INT LANGUAGE sql AS 'SELECT 1';
+SET plan_cache_mode = force_generic_plan;
+PREPARE ddl_par_seq AS SELECT COUNT(*) FROM ddl_par WHERE name LIKE 'n%';
+PREPARE ddl_par_idx AS SELECT COUNT(name) FROM ddl_par WHERE id > 0;
+EXPLAIN (COSTS OFF) EXECUTE ddl_par_seq;
+EXPLAIN (COSTS OFF) EXECUTE ddl_par_idx;
+BEGIN;
+CREATE OR REPLACE FUNCTION ddl_par_unused() RETURNS INT LANGUAGE sql
+  AS 'SELECT 2';
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) EXECUTE ddl_par_seq;
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) EXECUTE ddl_par_idx;
+EXECUTE ddl_par_seq;
+EXECUTE ddl_par_idx;
+ROLLBACK;
+DEALLOCATE ddl_par_seq;
+DEALLOCATE ddl_par_idx;
+
+-- The same for a Gather Merge: no workers, and the leader still returns the
+-- rows in order.
+PREPARE ddl_par_gm AS SELECT name FROM ddl_par ORDER BY name LIMIT 3;
+EXPLAIN (COSTS OFF) EXECUTE ddl_par_gm;
+BEGIN;
+CREATE OR REPLACE FUNCTION ddl_par_unused() RETURNS INT LANGUAGE sql
+  AS 'SELECT 3';
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) EXECUTE ddl_par_gm;
+EXECUTE ddl_par_gm;
+ROLLBACK;
+DEALLOCATE ddl_par_gm;
+DROP FUNCTION ddl_par_unused();
+RESET plan_cache_mode;
+
+-- CREATE INDEX marks the block from its own code path, not the generic DDL
+-- one, so it needs its own case: no Gather after it.
+BEGIN;
+CREATE INDEX ddl_par_other_k ON ddl_par_other (k);
+EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM ddl_par;
+ROLLBACK;
 DROP TABLE ddl_par_other;
+
+-- A DDL outside a block ends with its own implicit commit, so the next query
+-- gets a parallel plan.
+CREATE TABLE ddl_par_auto (k INT);
+EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM ddl_par;
+DROP TABLE ddl_par_auto;
 
 -- GH #30978 as filed ran in REPEATABLE READ and rolled back to a savepoint
 -- taken after the DDL. The DDL before the savepoint stays, so the block

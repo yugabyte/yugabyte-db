@@ -165,7 +165,181 @@ EXPLAIN (COSTS OFF) EXECUTE ddl_par_alter;
 (6 rows)
 
 DEALLOCATE ddl_par_alter;
+-- The same after ROLLBACK.
+BEGIN;
+ALTER TABLE ddl_par_other ADD COLUMN y INT;
+PREPARE ddl_par_rb AS SELECT COUNT(*) FROM ddl_par;
+EXPLAIN (COSTS OFF) EXECUTE ddl_par_rb;
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ddl_par_pkey on ddl_par
+         Partial Aggregate: true
+(3 rows)
+
+ROLLBACK;
+EXPLAIN (COSTS OFF) EXECUTE ddl_par_rb;
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Gather
+         Workers Planned: 2
+         ->  Noop Aggregate
+               ->  Parallel Index Only Scan using ddl_par_pkey on ddl_par
+                     Partial Aggregate: true
+(6 rows)
+
+DEALLOCATE ddl_par_rb;
+-- Generic plans cached before the block keep their Gather when the block's
+-- only DDL replaces a function they do not call, and run in the leader with
+-- no workers. Without workers no shared scan state is set up, so each
+-- parallel scan must read the whole table alone: both counts are 1000.
+CREATE FUNCTION ddl_par_unused() RETURNS INT LANGUAGE sql AS 'SELECT 1';
+SET plan_cache_mode = force_generic_plan;
+PREPARE ddl_par_seq AS SELECT COUNT(*) FROM ddl_par WHERE name LIKE 'n%';
+PREPARE ddl_par_idx AS SELECT COUNT(name) FROM ddl_par WHERE id > 0;
+EXPLAIN (COSTS OFF) EXECUTE ddl_par_seq;
+                        QUERY PLAN                        
+----------------------------------------------------------
+ Finalize Aggregate
+   ->  Gather
+         Workers Planned: 2
+         ->  Noop Aggregate
+               ->  Parallel Seq Scan on ddl_par
+                     Storage Filter: (name ~~ 'n%'::text)
+                     Partial Aggregate: true
+(7 rows)
+
+EXPLAIN (COSTS OFF) EXECUTE ddl_par_idx;
+                             QUERY PLAN                              
+---------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Gather
+         Workers Planned: 2
+         ->  Noop Aggregate
+               ->  Parallel Index Scan using ddl_par_pkey on ddl_par
+                     Index Cond: (id > 0)
+                     Partial Aggregate: true
+(7 rows)
+
+BEGIN;
+CREATE OR REPLACE FUNCTION ddl_par_unused() RETURNS INT LANGUAGE sql
+  AS 'SELECT 2';
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) EXECUTE ddl_par_seq;
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Finalize Aggregate (actual rows=1 loops=1)
+   ->  Gather (actual rows=1 loops=1)
+         Workers Planned: 2
+         Workers Launched: 0
+         ->  Noop Aggregate (actual rows=1 loops=1)
+               ->  Parallel Seq Scan on ddl_par (actual rows=1 loops=1)
+                     Storage Filter: (name ~~ 'n%'::text)
+                     Partial Aggregate: true
+(8 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) EXECUTE ddl_par_idx;
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
+ Finalize Aggregate (actual rows=1 loops=1)
+   ->  Gather (actual rows=1 loops=1)
+         Workers Planned: 2
+         Workers Launched: 0
+         ->  Noop Aggregate (actual rows=1 loops=1)
+               ->  Parallel Index Scan using ddl_par_pkey on ddl_par (actual rows=1 loops=1)
+                     Index Cond: (id > 0)
+                     Partial Aggregate: true
+(8 rows)
+
+EXECUTE ddl_par_seq;
+ count 
+-------
+  1000
+(1 row)
+
+EXECUTE ddl_par_idx;
+ count 
+-------
+  1000
+(1 row)
+
+ROLLBACK;
+DEALLOCATE ddl_par_seq;
+DEALLOCATE ddl_par_idx;
+-- The same for a Gather Merge: no workers, and the leader still returns the
+-- rows in order.
+PREPARE ddl_par_gm AS SELECT name FROM ddl_par ORDER BY name LIMIT 3;
+EXPLAIN (COSTS OFF) EXECUTE ddl_par_gm;
+                   QUERY PLAN                   
+------------------------------------------------
+ Limit
+   ->  Gather Merge
+         Workers Planned: 2
+         ->  Sort
+               Sort Key: name
+               ->  Parallel Seq Scan on ddl_par
+(6 rows)
+
+BEGIN;
+CREATE OR REPLACE FUNCTION ddl_par_unused() RETURNS INT LANGUAGE sql
+  AS 'SELECT 3';
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) EXECUTE ddl_par_gm;
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Limit (actual rows=3 loops=1)
+   ->  Gather Merge (actual rows=3 loops=1)
+         Workers Planned: 2
+         Workers Launched: 0
+         ->  Sort (actual rows=3 loops=1)
+               Sort Key: name
+               Sort Method: top-N heapsort
+               ->  Parallel Seq Scan on ddl_par (actual rows=1000 loops=1)
+(8 rows)
+
+EXECUTE ddl_par_gm;
+ name 
+------
+ n1
+ n10
+ n100
+(3 rows)
+
+ROLLBACK;
+DEALLOCATE ddl_par_gm;
+DROP FUNCTION ddl_par_unused();
+RESET plan_cache_mode;
+-- CREATE INDEX marks the block from its own code path, not the generic DDL
+-- one, so it needs its own case: no Gather after it.
+BEGIN;
+CREATE INDEX ddl_par_other_k ON ddl_par_other (k);
+NOTICE:  making create index for table "ddl_par_other" nonconcurrent
+DETAIL:  Create index in transaction block cannot be concurrent.
+HINT:  Consider running it outside of a transaction block. See https://github.com/yugabyte/yugabyte-db/issues/6240.
+EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM ddl_par;
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ddl_par_pkey on ddl_par
+         Partial Aggregate: true
+(3 rows)
+
+ROLLBACK;
 DROP TABLE ddl_par_other;
+-- A DDL outside a block ends with its own implicit commit, so the next query
+-- gets a parallel plan.
+CREATE TABLE ddl_par_auto (k INT);
+EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM ddl_par;
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Gather
+         Workers Planned: 2
+         ->  Noop Aggregate
+               ->  Parallel Index Only Scan using ddl_par_pkey on ddl_par
+                     Partial Aggregate: true
+(6 rows)
+
+DROP TABLE ddl_par_auto;
 -- GH #30978 as filed ran in REPEATABLE READ and rolled back to a savepoint
 -- taken after the DDL. The DDL before the savepoint stays, so the block
 -- still has uncommitted catalog rows and the query gets no parallel plan.
