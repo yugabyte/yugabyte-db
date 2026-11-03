@@ -192,7 +192,13 @@ Result<std::unique_ptr<WritableFile>> VectorLSMMetadataOpenFile(
 //  - 4 bytes - size of serialized update body.
 //  - serialized update body.
 //  - CRC sum for the serialized update body.
-Status VectorLSMMetadataAppendUpdate(WritableFile& file, const VectorLSMUpdatePB& update) {
+Status VectorLSMMetadataAppendUpdate(
+    Env& env, WritableFile& file, const VectorLSMUpdatePB& update) {
+  // A power loss must not keep the record while dropping the directory entries of the files it
+  // references, such as just renamed chunks, or of a just created manifest file. The record could
+  // reach the disk as soon as it is appended, before the file sync below, so sync before appending.
+  RETURN_NOT_OK(env.SyncDir(DirName(file.filename())));
+
   constexpr auto kHeaderSize = sizeof(EntrySizeType);
   std::string bytes;
   bytes.append(kHeaderSize, '\0');

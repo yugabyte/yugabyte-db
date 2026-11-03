@@ -1498,12 +1498,16 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
       promise.set_value(status);
     });
   }
+  // Fail the tablet rather than run it with a vector index that fails every write, since a failed
+  // write applied to the tablet FATALs the tserver.
+  Status load_status;
   for (auto& promise : promises) {
     auto status = promise.get_future().get();
-    if (!status.ok()) {
-      RecordFailureUnlocked(status);
+    if (!status.ok() && load_status.ok()) {
+      load_status = std::move(status);
     }
   }
+  RETURN_NOT_OK(load_status);
 
   std::sort(
       immutable_chunks_.begin(), immutable_chunks_.end(), [](const auto& lhs, const auto& rhs) {
@@ -1552,7 +1556,7 @@ Status VectorLSM<Vector, DistanceResult>::CreateCheckpoint(const std::string& ou
   }
 
   auto manifest_file = VERIFY_RESULT(VectorLSMMetadataOpenFile(env_, out, 0));
-  RETURN_NOT_OK(VectorLSMMetadataAppendUpdate(*manifest_file, update));
+  RETURN_NOT_OK(VectorLSMMetadataAppendUpdate(*env_, *manifest_file, update));
 
   // Some chunks could become obsolete, let's explicitly unreference them. Their files are removed
   // by obsolete_files_remover_.
@@ -2053,7 +2057,7 @@ Status VectorLSM<Vector, DistanceResult>::AddChunkToManifest(
   Status injected;
   TEST_SYNC_POINT_CALLBACK("VectorLSM::AddChunkToManifest:Status", &injected);
   RETURN_NOT_OK(injected);
-  RETURN_NOT_OK(VectorLSMMetadataAppendUpdate(manifest_file, update));
+  RETURN_NOT_OK(VectorLSMMetadataAppendUpdate(*env_, manifest_file, update));
 
   // TODO(vector_index): print chunk number as well, could be covered within #27098.
   LOG_WITH_PREFIX(INFO) << Format("Added chunk to manifest: $0", chunk.ToShortString());
@@ -2355,7 +2359,7 @@ Status VectorLSM<Vector, DistanceResult>::ModifyChunkFrontiers(
   }
 
   VLOG_WITH_PREFIX_AND_FUNC(3) << update.ShortDebugString();
-  RETURN_NOT_OK(VectorLSMMetadataAppendUpdate(*manifest_file, update));
+  RETURN_NOT_OK(VectorLSMMetadataAppendUpdate(*env_, *manifest_file, update));
 
   {
     std::lock_guard lock(mutex_);
@@ -3371,7 +3375,7 @@ Status VectorLSM<Vector, DistanceResult>::DoCompact(
   // Not after the append: it can fail after writing the record, which a reopen still loads, and a
   // manifest chunk without its file fails the load. Leaking the files is the lesser harm.
   delete_merged_files.Cancel();
-  RETURN_NOT_OK(VectorLSMMetadataAppendUpdate(*manifest_file, update));
+  RETURN_NOT_OK(VectorLSMMetadataAppendUpdate(*env_, *manifest_file, update));
 
   // Update in-memory structure.
   ImmutableChunkPtr writing_chunk;
