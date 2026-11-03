@@ -78,9 +78,9 @@ DROP TABLE ddl_par_sp;
 
 -- A temp-table DDL also turns off parallel query for the rest of the block,
 -- even for queries on permanent tables, although workers never read temp
--- tables. TODO(#36712): only non-temp DDL should do this. This block also
--- skips the catalog version bump, so a generic plan made in it must still be
--- replanned with a Gather after COMMIT.
+-- tables. TODO(#32729): this goes away once workers read the catalog in the
+-- leader's mode. This block also skips the catalog version bump, so a generic
+-- plan made in it must still be replanned with a Gather after COMMIT.
 BEGIN;
 CREATE TEMP TABLE ddl_par_tmp (k INT);
 EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM ddl_par;
