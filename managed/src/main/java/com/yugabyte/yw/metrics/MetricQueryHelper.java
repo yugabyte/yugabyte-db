@@ -203,6 +203,9 @@ public class MetricQueryHelper {
     // DB-container filter for the container keys only, set when nodes are selected; a k8s key
     // names its own containers.
     String dbContainerFilter = null;
+    // Names the k8s_ keys' lines from the universe's release metadata, since a series summed by
+    // claim carries no az_name to build the name from.
+    K8sPodNodeNameResolver k8sPodNodeNameResolver = null;
     boolean hasKubernetesKey =
         metricSettingsMap.keySet().stream()
             .anyMatch(key -> getKubernetesKind(key) != KubernetesKind.NONE);
@@ -279,6 +282,7 @@ public class MetricQueryHelper {
       if (hasKubernetesKey) {
 
         boolean newNamingStyle = universe.getUniverseDetails().useNewHelmNamingStyle;
+        k8sPodNodeNameResolver = K8sPodNodeNameResolver.forUniverse(universe);
 
         if (CollectionUtils.isNotEmpty(nodesToFilter)) {
           Set<String> podNames = new HashSet<>();
@@ -424,7 +428,8 @@ public class MetricQueryHelper {
         new ArrayList<>(metricSettingsMap.values()),
         params,
         filterOverrides,
-        metricQueryParams.isRecharts());
+        metricQueryParams.isRecharts(),
+        k8sPodNodeNameResolver);
   }
 
   /**
@@ -440,6 +445,20 @@ public class MetricQueryHelper {
       Map<String, String> params,
       Map<String, Map<String, String>> filterOverrides,
       boolean isRecharts) {
+    return query(customer, metricsWithSettings, params, filterOverrides, isRecharts, null);
+  }
+
+  /**
+   * Query prometheus for a given metricType and query params, naming the k8s_ keys' lines with
+   * {@code k8sPodNodeNameResolver} when it is non-null.
+   */
+  public JsonNode query(
+      Customer customer,
+      List<MetricSettings> metricsWithSettings,
+      Map<String, String> params,
+      Map<String, Map<String, String>> filterOverrides,
+      boolean isRecharts,
+      K8sPodNodeNameResolver k8sPodNodeNameResolver) {
     if (metricsWithSettings.isEmpty()) {
       throw new PlatformServiceException(BAD_REQUEST, "Empty metricsWithSettings data provided.");
     }
@@ -524,7 +543,8 @@ public class MetricQueryHelper {
                 queryParams,
                 metricAdditionalFilters,
                 metricSettings,
-                isRecharts);
+                isRecharts,
+                k8sPodNodeNameResolver);
         Future<JsonNode> future = threadPool.submit(callable);
         futures.add(future);
       }

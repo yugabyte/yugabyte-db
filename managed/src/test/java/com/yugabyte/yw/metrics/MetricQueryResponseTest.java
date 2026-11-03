@@ -13,7 +13,9 @@ import static org.junit.Assert.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.metrics.K8sPodNodeNameResolver.ReleaseInfo;
 import com.yugabyte.yw.models.MetricConfigDefinition;
 import com.yugabyte.yw.models.MetricConfigDefinition.Layout;
 import com.yugabyte.yw.models.MetricConfigDefinition.Layout.Axis;
@@ -244,6 +246,75 @@ public class MetricQueryResponseTest {
     assertThat(
         data.stream().map(d -> d.name).collect(Collectors.toList()),
         containsInAnyOrder("yb-master-0_us-west1-a_datadir0", "yb-tserver-0_us-west1-b_datadir0"));
+  }
+
+  @Test
+  public void testK8sKeysAreNamedByReleaseWithoutAzLabel() {
+    // A multi-zone universe with a read replica; the all-nodes view sums by claim or pod, so the
+    // series carry no az_name.
+    K8sPodNodeNameResolver resolver =
+        K8sPodNodeNameResolver.ofReleases(
+            true,
+            ImmutableList.of(
+                new ReleaseInfo("ybu-us-west1-a-abcd", "ns", "us-west1-a", true, false),
+                new ReleaseInfo("ybu-us-west1-arr-efgh", "ns", "us-west1-a", true, true),
+                new ReleaseInfo("ybu-us-west1-b-ijkl", "ns", "us-west1-b", true, false)));
+    JsonNode volumeJson =
+        Json.parse(
+            "{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":["
+                + "{\"metric\":{\"persistentvolumeclaim\":"
+                + "\"ybu-us-west1-a-abcd-datadir0-ybu-us-west1-a-abcd-yb-master-0\"},"
+                + "\"value\":[1479278137,\"10\"]},"
+                + "{\"metric\":{\"persistentvolumeclaim\":"
+                + "\"ybu-us-west1-arr-efgh-datadir0-ybu-us-west1-arr-efgh-yb-tserver-0\"},"
+                + "\"value\":[1479278137,\"20\"]},"
+                + "{\"metric\":{\"persistentvolumeclaim\":"
+                + "\"ybu-us-west1-b-ijkl-datadir1-ybu-us-west1-b-ijkl-yb-tserver-0\"},"
+                + "\"value\":[1479278137,\"30\"]},"
+                + "{\"metric\":{\"persistentvolumeclaim\":"
+                + "\"ybu-us-west1-c-gone-datadir0-ybu-us-west1-c-gone-yb-tserver-0\"},"
+                + "\"value\":[1479278137,\"40\"]}]}}");
+    List<MetricGraphData> volumeData =
+        Json.fromJson(volumeJson, MetricQueryResponse.class)
+            .getGraphData(
+                "k8s_volume_disk_volume_used",
+                new MetricConfigDefinition().setGroupBy("persistentvolumeclaim"),
+                MetricSettings.defaultSettings("k8s_volume_disk_volume_used"),
+                resolver);
+    assertThat(
+        volumeData.stream().map(d -> d.instanceName).collect(Collectors.toList()),
+        containsInAnyOrder(
+            "yb-master-0_us-west1-a_datadir0",
+            "yb-tserver-0_us-west1-a-readonly_datadir0",
+            "yb-tserver-0_us-west1-b_datadir1",
+            // A release the universe no longer has keeps the claim name.
+            "ybu-us-west1-c-gone-datadir0-ybu-us-west1-c-gone-yb-tserver-0"));
+
+    JsonNode podJson =
+        Json.parse(
+            "{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[{\"metric\":"
+                + "{\"pod_name\":\"ybu-us-west1-arr-efgh-yb-tserver-0\",\"namespace\":\"ns\"},"
+                + "\"value\":[1479278137,\"0.5\"]}]}}");
+    List<MetricGraphData> podData =
+        Json.fromJson(podJson, MetricQueryResponse.class)
+            .getGraphData(
+                "k8s_cpu_usage",
+                new MetricConfigDefinition(),
+                MetricSettings.defaultSettings("k8s_cpu_usage"),
+                resolver);
+    assertThat(podData.get(0).instanceName, equalTo("yb-tserver-0_us-west1-a-readonly"));
+
+    // The older container keys keep their label-based names.
+    List<MetricGraphData> containerData =
+        Json.fromJson(volumeJson, MetricQueryResponse.class)
+            .getGraphData(
+                "container_volume_stats",
+                new MetricConfigDefinition().setGroupBy("persistentvolumeclaim"),
+                MetricSettings.defaultSettings("container_volume_stats"),
+                resolver);
+    assertThat(
+        containerData.get(0).instanceName,
+        equalTo("ybu-us-west1-a-abcd-datadir0-ybu-us-west1-a-abcd-yb-master-0"));
   }
 
   @Test
