@@ -116,6 +116,9 @@ class PgExplicitLockTestTxnBase : public PgExplicitLockTest {
     ASSERT_EQ(PQntuples(res.get()), 4);
     if (level == IsolationLevel::SERIALIZABLE_ISOLATION) {
       ASSERT_NOK(join_conn.Execute("COMMIT"));
+      // The abort may surface before COMMIT ends the block (e.g. while closing the previous
+      // unnamed portal), which leaves the block in aborted state until ROLLBACK.
+      ASSERT_OK(join_conn.Execute("ROLLBACK"));
     } else {
       ASSERT_OK(join_conn.Execute("COMMIT"));
     }
