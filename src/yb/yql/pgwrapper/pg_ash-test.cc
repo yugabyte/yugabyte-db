@@ -905,9 +905,8 @@ TEST_F(PgAshSingleNode, CopyWaitEvents) {
   for (const auto& [yb_event, pg_event] : {
       std::pair{"CopyCommandStreamRead", "CopyFromRead"},
       std::pair{"CopyCommandStreamWrite", "CopyToWrite"}}) {
-    // Match the YB event by suffix so the check does not depend on its name prefix.
     const auto yb_samples = ASSERT_RESULT(conn_->FetchRow<PGUint64>(Format(
-        "SELECT COUNT(*) FROM yb_active_session_history WHERE wait_event LIKE '%$0'",
+        "SELECT COUNT(*) FROM yb_active_session_history WHERE wait_event = '$0'",
         yb_event)));
     ASSERT_GT(yb_samples, 0) << yb_event;
 

@@ -84,8 +84,14 @@ while (<$wait_event_names>)
 
 # Sort the lines based on the second column.
 # uc() is being used to force the comparison to be case-insensitive.
-my @lines_sorted =
-  sort { uc((split(/\t+/, $a))[1]) cmp uc((split(/\t+/, $b))[1]) } @lines;
+# YB: a trailing (DisplayName) is not part of the sort key.
+my @lines_sorted = sort {
+	my ($a_name, $b_name) =
+	  (uc((split(/\t+/, $a))[1]), uc((split(/\t+/, $b))[1]));
+	$a_name =~ s/\([^)]*\)$//;
+	$b_name =~ s/\([^)]*\)$//;
+	$a_name cmp $b_name
+} @lines;
 
 # If we are generating code, concat @lines_sorted and then
 # @abi_compatibility_lines.
@@ -97,11 +103,13 @@ if ($gen_code)
 # Read the sorted lines and populate the hash table
 foreach my $line (@lines_sorted)
 {
+	# YB: optional (DisplayName) between the token and the description.
 	die "unable to parse wait_event_names.txt for line $line\n"
-	  unless $line =~ /^(\w+)\t+(\w+)\t+("\w.*\.")$/;
+	  unless $line =~ /^(\w+)\t+(\w+)(?:\(([^)]+)\))?\t+("\w.*\.")$/;
 
-	(my $waitclassname, my $waiteventname, my $waitevendocsentence) =
-	  ($1, $2, $3);
+	(my $waitclassname, my $waiteventname, my $yb_display_name,
+		my $waitevendocsentence) =
+	  ($1, $2, $3, $4);
 
 	# Generate the element name for the enums based on the
 	# description.  The C symbols are prefixed with "WAIT_EVENT_".
@@ -123,6 +131,12 @@ foreach my $line (@lines_sorted)
 			$waiteventdescription .= substr($waiteventpart, 0, 1)
 			  . lc(substr($waiteventpart, 1, length($waiteventpart)));
 		}
+	}
+
+	# YB: the parenthetical is the name users already filter on.
+	if (defined $yb_display_name && $yb_display_name ne '')
+	{
+		$waiteventdescription = $yb_display_name;
 	}
 
 	# Store the event into the list for each class.
@@ -219,6 +233,13 @@ if ($gen_code)
 			printf $c "\t\t\t event_name = \"%s\";\n\t\t\t break;\n",
 			  $wev->[1];
 		}
+
+		# YB: last enumerator of the class. Not a wait event, so it is
+		# absent from the documentation and from wait_event_funcs_data.c.
+		# yb_wait_event_desc stops before it.
+		printf $h "%s\tWAIT_EVENT_YB_%s_END", $continue, $lastuc;
+		printf $c "\t\t case WAIT_EVENT_YB_%s_END:\n", $lastuc;
+		printf $c "\t\t\t break;\n";
 
 		printf $h "\n} $waitclass;\n\n";
 

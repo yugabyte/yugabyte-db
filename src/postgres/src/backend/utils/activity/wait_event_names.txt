@@ -12,6 +12,11 @@
 #
 #   "Typedef enum definitions" "description in the docs"
 #
+# YB: a token may end with (DisplayName), as in
+# YB_QUERY_DIAGNOSTICS_MAIN(QueryDiagnosticsMain). The enum symbol is
+# still WAIT_EVENT_<token>. The parentheses are the name reported to
+# users, so a documented ASH filter keeps its pre-pg19 spelling.
+#
 # The files generated from this one are:
 #
 #   wait_event_types.h
@@ -69,10 +74,9 @@ WAL_RECEIVER_MAIN	"Waiting in main loop of WAL receiver process."
 WAL_SENDER_MAIN	"Waiting in main loop of WAL sender process."
 WAL_SUMMARIZER_WAL	"Waiting in WAL summarizer for more WAL to be generated."
 WAL_WRITER_MAIN	"Waiting in main loop of WAL writer process."
-YB_ASH_MAIN	"YB_TODO_PG19MERGE: add description."
-YB_IDLE_SLEEP	"YB_TODO_PG19MERGE: add description."
-YB_QUERY_DIAGNOSTICS_MAIN	"YB_TODO_PG19MERGE: add description."
-YB_ACTIVITY_END	"YB: sentinel for activity wait events iteration."
+YB_ASH_MAIN	"The YB ASH collector background worker is waiting in the main loop."
+YB_IDLE_SLEEP	"Inherited from PostgreSQL. Check https://www.postgresql.org/docs/current/monitoring-stats.html for description."
+YB_QUERY_DIAGNOSTICS_MAIN(QueryDiagnosticsMain)	"The YB Query Diagnostics background worker is waiting in the main loop."
 
 ABI_compatibility:
 
@@ -98,7 +102,6 @@ WAIT_FOR_WAL_REPLAY	"Waiting for WAL replay to reach a target LSN on a standby."
 WAIT_FOR_WAL_WRITE	"Waiting for WAL write to reach a target LSN on a standby."
 WAL_SENDER_WAIT_FOR_WAL	"Waiting for WAL to be flushed in WAL sender process."
 WAL_SENDER_WRITE_DATA	"Waiting for any activity when processing replies from WAL receiver in WAL sender process."
-YB_CLIENT_END	"YB: sentinel for client wait events iteration."
 
 ABI_compatibility:
 
@@ -171,8 +174,7 @@ WAL_RECEIVER_EXIT	"Waiting for the WAL receiver to exit."
 WAL_RECEIVER_WAIT_START	"Waiting for startup process to send initial data for streaming replication."
 WAL_SUMMARY_READY	"Waiting for a new WAL summary to be generated."
 XACT_GROUP_UPDATE	"Waiting for the group leader to update transaction status at transaction end."
-YB_PARALLEL_SCAN_EMPTY	"YB_TODO_PG19MERGE: add description."
-YB_IPC_END	"YB: sentinel for IPC wait events iteration."
+YB_PARALLEL_SCAN_EMPTY(YBParallelScanEmpty)	"A YSQL backend is waiting on an empty queue while fetching parallel range keys."
 
 ABI_compatibility:
 
@@ -195,8 +197,7 @@ SPIN_DELAY	"Waiting while acquiring a contended spinlock."
 VACUUM_DELAY	"Waiting in a cost-based vacuum delay point."
 VACUUM_TRUNCATE	"Waiting to acquire an exclusive lock to truncate off any empty pages at the end of a table vacuumed."
 WAL_SUMMARIZER_ERROR	"Waiting after a WAL summarizer error."
-YB_TXN_CONFLICT_BACKOFF	"YB_TODO_PG19MERGE: add description."
-YB_TIMEOUT_END	"YB: sentinel for timeout wait events iteration."
+YB_TXN_CONFLICT_BACKOFF(YBTxnConflictBackoff)	"A YSQL backend is waiting for transaction conflict resolution with an exponential backoff."
 
 ABI_compatibility:
 
@@ -291,9 +292,8 @@ WAL_SUMMARY_WRITE	"Waiting for a write to a WAL summary file."
 WAL_SYNC	"Waiting for a WAL file to reach durable storage."
 WAL_SYNC_METHOD_ASSIGN	"Waiting for data to reach durable storage while assigning a new WAL sync method."
 WAL_WRITE	"Waiting for a write to a WAL file."
-YB_COPY_COMMAND_STREAM_READ	"Waiting for a read from a file or program during COPY."
-YB_COPY_COMMAND_STREAM_WRITE	"Waiting for a write to a file or program during COPY."
-YB_IO_END	"YB: sentinel for IO wait events iteration."
+YB_COPY_COMMAND_STREAM_READ(CopyCommandStreamRead)	"A YSQL backend is waiting for a read from a file or program during COPY."
+YB_COPY_COMMAND_STREAM_WRITE(CopyCommandStreamWrite)	"A YSQL backend is waiting for a write to a file or program during COPY."
 
 ABI_compatibility:
 
@@ -429,11 +429,11 @@ XactSLRU	"Waiting to access the transaction status SLRU cache."
 ParallelVacuumDSA	"Waiting for parallel vacuum dynamic shared memory allocation."
 AioUringCompletion	"Waiting for another process to complete IO via io_uring."
 ShmemIndex	"Waiting to find or allocate space in shared memory."
-YbAshCircularBuffer	"YB_TODO_PG19MERGE: add description."
-YbAshMetadata	"YB_TODO_PG19MERGE: add description."
-YbQueryDiagnostics	"YB_TODO_PG19MERGE: add description."
-YbQueryDiagnosticsCircularBuffer	"YB_TODO_PG19MERGE: add description."
-YbTerminatedQueries	"YB_TODO_PG19MERGE: add description."
+YbAshCircularBuffer	"A YSQL backend is waiting for YB ASH circular buffer memory access."
+YbAshMetadata	"A YSQL backend is waiting to update ASH metadata for a query."
+YbQueryDiagnostics	"A YSQL backend is waiting for YB query diagnostics hash table memory access."
+YbQueryDiagnosticsCircularBuffer	"A YSQL backend is waiting for YB query diagnostics circular buffer memory access."
+YbTerminatedQueries	"A YSQL backend is waiting for YB terminated queries buffer memory access."
 
 # No "ABI_compatibility" region here as WaitEventLWLock has its own C code.
 

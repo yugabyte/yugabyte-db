@@ -1113,26 +1113,27 @@ yb_wait_event_desc(PG_FUNCTION_ARGS)
 	yb_insert_pg_events(PG_WAIT_EXTENSION, tupdesc, tupstore);
 
 	/* for buffer pin */
-	yb_insert_pg_events(PG_WAIT_BUFFER, tupdesc, tupstore);
+	for (i = PG_WAIT_BUFFER; i < WAIT_EVENT_YB_BUFFER_END; ++i)
+		yb_insert_pg_events(i, tupdesc, tupstore);
 
 	/* description related to activity */
-	for (i = WAIT_EVENT_ARCHIVER_MAIN; i < WAIT_EVENT_YB_ACTIVITY_END; ++i)
+	for (i = PG_WAIT_ACTIVITY; i < WAIT_EVENT_YB_ACTIVITY_END; ++i)
 		yb_insert_pg_events(i, tupdesc, tupstore);
 
 	/* description related to client */
-	for (i = WAIT_EVENT_CLIENT_READ; i < WAIT_EVENT_YB_CLIENT_END; ++i)
+	for (i = PG_WAIT_CLIENT; i < WAIT_EVENT_YB_CLIENT_END; ++i)
 		yb_insert_pg_events(i, tupdesc, tupstore);
 
 	/* description related to IPC */
-	for (i = WAIT_EVENT_APPEND_READY; i < WAIT_EVENT_YB_IPC_END; ++i)
+	for (i = PG_WAIT_IPC; i < WAIT_EVENT_YB_IPC_END; ++i)
 		yb_insert_pg_events(i, tupdesc, tupstore);
 
 	/* description related to timeout */
-	for (i = WAIT_EVENT_BASE_BACKUP_THROTTLE; i < WAIT_EVENT_YB_TIMEOUT_END; ++i)
+	for (i = PG_WAIT_TIMEOUT; i < WAIT_EVENT_YB_TIMEOUT_END; ++i)
 		yb_insert_pg_events(i, tupdesc, tupstore);
 
 	/* description related to IO */
-	for (i = WAIT_EVENT_BASEBACKUP_READ; i < WAIT_EVENT_YB_IO_END; ++i)
+	for (i = PG_WAIT_IO; i < WAIT_EVENT_YB_IO_END; ++i)
 		yb_insert_pg_events(i, tupdesc, tupstore);
 
 	/* description related to locks */
