@@ -14,6 +14,12 @@ rightNav:
 type: docs
 ---
 
+Serverless clusters are created in your [Serverless account](../managed-security/manage-access/). This account is created automatically the first time you create a serverless cluster.
+
+To create your first serverless cluster:
+
+1. On the **Clusters** page, click 
+
 ## Create a serverless cluster
 
 If you have previously created a serverless cluster, do the following:
@@ -94,14 +100,30 @@ YugabyteDB Aeon adds the cluster to the **Clusters** page. A new cluster has one
 
 ## Connect
 
-1. On **Clusters**, open the cluster.
+Connect to your serverless cluster using [psql](https://www.postgresql.org/docs/15/app-psql.html).
 
-1. On the endpoint, click **Connect**.
+The connection string is as follows:
 
-1. If the dialog includes a CA certificate, click **Download CA Cert**.
+```sh
+psql "host=<HOST_ADDRESS> port=55433 user=<DB USER> dbname=postgres sslmode=verify-full sslrootcert=<ROOT_CERT_PATH>"
+```
 
-1. Click **Copy command** and run it.
+To obtain the connection string for your cluster endpoint, do the following:
 
-    Use `cloud_admin` as the database user, unless you created another role. The client prompts for the password from the credentials file.
+1. On the **Clusters** page, open the serverless cluster.
+
+1. Select the endpoint you want to connect to and click **Connect**.
+
+1. Click **Download CA Cert**.
+
+1. Click **Copy** to copy the connection string:
+
+    - The host address is populated with the address for the endpoint you selected. This is also shown under **Connection Details** for the endpoint.
+    - port is 55433.
+    - Replace `<DB USER>` with your database username (`cloud_admin` unless you created another role).
+    - `postgres` is the default database; replace it if you're connecting to a database other than the default.
+    - Replace `<ROOT_CERT_PATH>` with the path to the root certificate you downloaded to your computer.
 
     If the endpoint has a DocumentDB address, the dialog also offers **DocumentDB**. Select it and copy that command instead.
+
+The client prompts for the password from the credentials file when you run the command.

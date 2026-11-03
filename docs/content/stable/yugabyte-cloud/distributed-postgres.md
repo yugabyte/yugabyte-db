@@ -46,22 +46,15 @@ Clusters are billed per vCPU. [Request a free trial](../managed-freetrial/) to c
     icon="fa-thin fa-terminal">}}
 
   {{<index/item
-    title="Alerts and monitoring"
-    body="Set alerts and monitor cluster performance and activity."
-    href="../cloud-monitor/"
-    icon="fa-thin fa-chart-column">}}
-
-  {{<index/item
     title="Manage clusters"
     body="Scale clusters, configure backups and maintenance, and pause or delete clusters."
     href="../cloud-clusters/"
     icon="fa-thin fa-sliders">}}
 
+  {{<index/item
+    title="Alerts and monitoring"
+    body="Set alerts and monitor cluster performance and activity."
+    href="../cloud-monitor/"
+    icon="fa-thin fa-chart-column">}}
+
 {{</index/block>}}
-
-## Next steps
-
-- [Build an application](/stable/develop/tutorials/build-apps/)
-- [Request a free trial](../managed-freetrial/)
-
-Share your feedback, questions, and suggestions with other users on the [YugabyteDB Community Slack]({{<slack-invite>}}).

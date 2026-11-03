@@ -15,7 +15,7 @@ menu:
 type: indexpage
 ---
 
-Connect to clusters in YugabyteDB Aeon in the following ways:
+Connect to your YugabyteDB Aeon distributed clusters in the following ways:
 
 | From | How |
 | :--- | :--- |

@@ -15,12 +15,6 @@ type: indexpage
 {{<index/block>}}
 
   {{<index/item
-    title="Serverless Postgres"
-    body="Create a fully managed PostgreSQL cluster for agents and tenants."
-    href="/stable/yugabyte-cloud/serverless/"
-    icon="fa-thin fa-bolt">}}
-
-  {{<index/item
     title="Single region"
     body="Deploy single-region clusters with node- and availability zone-level fault tolerance."
     href="create-single-region/"
