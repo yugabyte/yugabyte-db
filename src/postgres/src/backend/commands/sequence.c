@@ -2386,13 +2386,13 @@ YbFillSequencePage(Page page, HeapTuple tuple)
 	sequence_magic *sm;
 	OffsetNumber offnum;
 
+	/*
+	 * PageInit() leaves pd_lsn as InvalidXLogRecPtr. Sequence changes are not
+	 * WAL-logged in YB, so there is no LSN to report here, and
+	 * pg_get_sequence_data() returns page_lsn = 0/0.
+	 */
 	PageInit(page, BLCKSZ, sizeof(sequence_magic));
 
-	/*
-	 * YB_TODO_PG19MERGE: this page has no real LSN, so anything that asks for
-	 * a sequence's LSN (pg_get_sequence_data) just gets zero. Replicating
-	 * sequences needs a real value.
-	 */
 	sm = (sequence_magic *) PageGetSpecialPointer(page);
 	sm->magic = SEQ_MAGIC;
 
