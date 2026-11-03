@@ -502,7 +502,13 @@ TEST_F(PgLibPqTest, ConcurrentInsertAndDeleteOnTablesWithForeignKey) {
 
     // Insert rows in t2 on a separate thread.
     std::thread insertion_thread([&conn2, &stop, &values_in_t1, &values_in_t2] {
-      while (!stop && values_in_t2 < values_in_t1 + 1) {
+      while (!stop) {
+        // Only reference keys already inserted in t1, i.e. 0 .. values_in_t1 - 1. Otherwise this
+        // thread fails the FK check whenever it gets ahead of the main thread.
+        if (values_in_t2 + 1 >= values_in_t1) {
+          std::this_thread::yield();
+          continue;
+        }
         ASSERT_OK(conn2.ExecuteFormat(
             "INSERT INTO t2 VALUES ($0, $1)", values_in_t2, values_in_t2 + 1));
         values_in_t2++;
