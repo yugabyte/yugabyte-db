@@ -5588,6 +5588,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    */
   public void createDisableMasterOnNonMasterNodesTasks(
       List<NodeDetails> nodes, SubTaskGroupType subTaskGroupType) {
+    createDisableMasterOnNonMasterNodesTasks(nodes, subTaskGroupType, params -> {});
+  }
+
+  public void createDisableMasterOnNonMasterNodesTasks(
+      List<NodeDetails> nodes,
+      SubTaskGroupType subTaskGroupType,
+      Consumer<AnsibleClusterServerCtl.Params> paramsCustomizer) {
     Universe universe = getUniverse();
     if (!confGetter.getConfForScope(
         universe, UniverseConfKeys.allowDisableMasterOnNonMasterNodeSubtask)) {
@@ -5608,7 +5615,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       return;
     }
     log.info("Disabling master on non-master nodes: {}", nodes);
-    createServerControlTasks(nodes, ServerType.MASTER, "stop")
+    createServerControlTasks(nodes, ServerType.MASTER, "stop", paramsCustomizer)
         .setSubTaskGroupType(subTaskGroupType);
   }
 
