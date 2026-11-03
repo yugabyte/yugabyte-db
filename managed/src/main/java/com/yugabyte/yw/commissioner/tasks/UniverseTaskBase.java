@@ -4918,7 +4918,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       log.debug("Skipping configure YBC as 'useYBDBInbuiltYbc' is enabled");
       return;
     }
-    String cert = universe.getCertificateNodetoNode();
     int ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
     Map<String, String> ybcGflags =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags;
@@ -4943,7 +4942,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     for (Cluster cluster : universe.getUniverseDetails().clusters) {
       universe.getTserversInCluster(cluster.uuid).stream()
           .filter(NodeDetails::isQueryable)
-          .filter(node -> !ybcManager.ybcPingCheck(node.cloudInfo.private_ip, cert, ybcPort))
+          .filter(node -> !ybcManager.ybcPingCheck(node.cloudInfo.private_ip, universe, ybcPort))
           .forEach(
               node -> {
                 boolean isK8s = cluster.getProviderCloudType(node) == CloudType.kubernetes;
