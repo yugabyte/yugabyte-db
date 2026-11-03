@@ -1206,7 +1206,9 @@
             https://*.google.com/
             https://pagead2.googlesyndication.com/
             https://www.googleadservices.com/
-            https://www.yugabyte.com
+            https://pixel-config.reddit.com/
+            https://alb.reddit.com/
+            https://www.yugabyte.com/
             https://yugabyteklhgka.dataplane.rudderstack.com/v1/page
             https://cdnjs.cloudflare.com/
             https://cdn.jsdelivr.net/
@@ -1240,6 +1242,7 @@
             https://www.googleadservices.com/
             https://googleads.g.doubleclick.net/
             https://www.google.com/
+            https://www.redditstatic.com/
             https://x.clearbitjs.com/
         ;
 
@@ -1289,6 +1292,7 @@
             https://t2.gstatic.com/faviconV2
             https://t3.gstatic.com/faviconV2
             https://b.6sc.co/
+            https://alb.reddit.com/
         ;
 
         child-src 'self' 'unsafe-inline'
