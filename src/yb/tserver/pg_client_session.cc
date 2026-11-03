@@ -59,6 +59,7 @@
 #include "yb/docdb/object_lock_shared_state_manager.h"
 
 #include "yb/dockv/doc_vector_id.h"
+#include "yb/dockv/key_bytes.h"
 #include "yb/dockv/partition.h"
 
 #include "yb/master/master_ddl.pb.h"
@@ -1734,6 +1735,27 @@ void ClearTransaction(client::YBSession& session) {
   session.read_point()->SetMomento(momento);
 }
 
+// Returns the key used to route a GetTableKeyRanges request with the specified exclusive upper
+// bound. Tablet::GetTabletKeyRanges returns the boundary between hash tablets as the encoded hash
+// partition key [kUInt16Hash, B]. InitHashPartitionKey decodes it as the inclusive max hash code
+// B, so the backward request would be routed back to the tablet starting at B. We route it by
+// [kUInt16Hash, B - 1, kHighest] instead, which has the same keys below it. Other representations
+// of the same boundary (see PartitionSchema::DecodeEncodedHashPartitionKeyBound) are routed the
+// same way.
+std::string UpperBoundRoutingKey(const Schema& schema, Slice upper_bound_key) {
+  if (schema.num_hash_key_columns() == 0) {
+    return upper_bound_key.ToBuffer();
+  }
+  const auto hash_code =
+      dockv::PartitionSchema::DecodeEncodedHashPartitionKeyBound(upper_bound_key);
+  // Hash code 0 is the start of the first tablet, it is never returned as the boundary.
+  if (!hash_code || *hash_code == 0) {
+    return upper_bound_key.ToBuffer();
+  }
+  return dockv::PartitionSchema::HashCodeToDocKeyBound(
+      schema, *hash_code - 1, /* is_lower = */ false).ToStringBuffer();
+}
+
 } // namespace
 
 class PgClientSession::Impl {
@@ -2750,11 +2772,9 @@ class PgClientSession::Impl {
     }
     if (!req.upper_bound_key().empty()) {
       read_request->mutable_upper_bound()->set_is_inclusive(false);
-      for (auto* dest_key :
-           {embedded_req->mutable_upper_bound_key(),
-            read_request->mutable_upper_bound()->mutable_key()}) {
-        *dest_key = req.upper_bound_key();
-      }
+      *embedded_req->mutable_upper_bound_key() = req.upper_bound_key();
+      read_request->mutable_upper_bound()->dup_key(
+          UpperBoundRoutingKey((*table)->InternalSchema(), req.upper_bound_key()));
     }
     embedded_req->set_range_size_bytes(req.range_size_bytes());
     embedded_req->set_max_key_length(req.max_key_length());
