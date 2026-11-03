@@ -2,7 +2,9 @@ package ybactlstate
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -29,6 +31,7 @@ const stateServices = 12
 const asRootState = 13
 const nodeExporterConfig = 14
 const perfAdvisorConfig = 15
+const pgInitialMajorVersion = 18
 
 // Please do not use this in ybactlstate package, only use getSchemaVersion()
 var schemaVersionCache = -1
@@ -399,6 +402,27 @@ func migrateNodeExporterConfig(state *State) error {
 	return nil
 }
 
+// migratePgInitialMajorVersion records the major version of the running postgres cluster. Installs
+// that predate this field may have been pg_upgraded since their first cluster, but every release
+// before it bundled a postgres older than 18, so the running version is on the same side of 18.
+func migratePgInitialMajorVersion(state *State) error {
+	dataDir, err := common.InstalledPostgresDataDir()
+	if errors.Is(err, os.ErrNotExist) {
+		// No cluster yet (dataless install) or none managed by yba-ctl: one created later starts at
+		// the bundled version.
+		state.Postgres.InitialMajorVersion = common.PostgresMajorVersion(common.PostgresVersion)
+		return nil
+	} else if err != nil {
+		return err
+	}
+	major, err := common.PostgresClusterMajorVersion(dataDir)
+	if err != nil {
+		return err
+	}
+	state.Postgres.InitialMajorVersion = major
+	return nil
+}
+
 var migrations = map[int]migration{
 	defaultMigratorValue: {run: defaultMigrate},
 	promConfigMV:         {run: migratePrometheus},
@@ -415,6 +439,8 @@ var migrations = map[int]migration{
 	asRootState:          {run: migrateAsRootState, stateField: []string{"config", "as_root"}},
 	nodeExporterConfig:   {run: migrateNodeExporterConfig},
 	perfAdvisorConfig:    {run: migratePerfAdvisorConfig},
+	pgInitialMajorVersion: {run: migratePgInitialMajorVersion,
+		stateField: []string{"postgres", "initial_major_version"}},
 }
 
 func getSchemaVersion() int {
