@@ -18,6 +18,7 @@ import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
 import com.yugabyte.yw.common.operator.utils.KubernetesClientFactory;
 import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
@@ -79,6 +80,7 @@ import play.libs.Json;
 @Slf4j
 public class YBUniverseReconcilerTest extends FakeDBApplication {
   @Mock KubernetesClient client;
+  @Mock MetricService metricService;
 
   @Mock
   MixedOperation<
@@ -171,7 +173,8 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
             customerTaskManager,
             operatorUtils,
             universeActionsHandler,
-            ybcManager);
+            ybcManager,
+            metricService);
     // reconcilerFactory.getYBUniverseReconciler(client);
 
     // Setup Defaults
@@ -404,6 +407,8 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     assertFalse(newSoftwareVersion.equals(oldSoftwareVersion));
     // Verify old universe objct removed
     assertFalse(Universe.maybeGet(oldUniverse.getUniverseUUID()).isPresent());
+    Mockito.verify(metricService)
+        .markSourceRemoved(defaultCustomer.getUuid(), oldUniverse.getUniverseUUID());
   }
 
   @Test

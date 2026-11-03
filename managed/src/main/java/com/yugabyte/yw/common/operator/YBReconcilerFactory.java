@@ -9,6 +9,7 @@ import com.yugabyte.yw.common.backuprestore.ScheduleTaskHelper;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseActionsHandler;
@@ -28,6 +29,7 @@ public class YBReconcilerFactory {
   @Inject private OperatorUtils operatorUtils;
   @Inject private UniverseActionsHandler universeActionsHandler;
   @Inject private YbcManager ybcManager;
+  @Inject private MetricService metricService;
   @Inject private BackupHelper backupHelper;
   @Inject private ValidatingFormFactory formFactory;
   @Inject private ScheduleTaskHelper scheduleTaskHelper;
@@ -47,7 +49,8 @@ public class YBReconcilerFactory {
         customerTaskManager,
         operatorUtils,
         universeActionsHandler,
-        ybcManager);
+        ybcManager,
+        metricService);
   }
 
   public ScheduledBackupReconciler getScheduledBackupReconciler(KubernetesClient client) {
