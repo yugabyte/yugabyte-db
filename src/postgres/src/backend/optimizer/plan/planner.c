@@ -473,6 +473,9 @@ standard_planner(Query *parse, const char *query_string, int cursorOptions,
 	 * YB: A parallel worker reads only committed catalog rows, so after a DDL
 	 * in this transaction block it fails on the leader's uncommitted changes,
 	 * e.g. "invalid attnum 3" for a column the block added (#30978, #34740).
+	 * YB: TODO(#32729): once the leader and its workers can share the
+	 * PgClientSession read point safely (#32729, #35498), let workers read the
+	 * catalog in the leader's mode and drop this check.
 	 */
 	if ((cursorOptions & CURSOR_OPT_PARALLEL_OK) != 0 &&
 		IsUnderPostmaster &&
