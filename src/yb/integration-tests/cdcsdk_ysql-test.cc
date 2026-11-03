@@ -12790,6 +12790,10 @@ TEST_F(CDCSDKYsqlTest, TestPollingPgCatalogTables) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_dynamic_table_support) = false;
   ANNOTATE_UNPROTECTED_WRITE(
       FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) = true;
+  // The bootstrap's DDL is streamed from the catalog tablet if it lands after stream creation.
+  // Waiting for it is not possible here: MiniCluster gives non-PG tservers an unserved PG address,
+  // and with 3 masters the leader often routes the bootstrap through one of those.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_listen_notify) = false;
 
   ASSERT_OK(SetUpWithParams(3, 3));
   xrepl::StreamId stream_id =
@@ -12913,6 +12917,8 @@ TEST_F(CDCSDKYsqlTest, TestPollingPgCatalogTablesAfterLeaderStepDown) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
   ANNOTATE_UNPROTECTED_WRITE(
     FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) = true;
+  // Same reasons as TestPollingPgCatalogTables.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_listen_notify) = false;
 
   ASSERT_OK(SetUpWithParams(3, 3, false));
 

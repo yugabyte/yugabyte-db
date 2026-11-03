@@ -79,7 +79,8 @@ class PgStatActivityTest : public LibPqTestBase {
 
   static Result<std::vector<TxnInfo>> FetchTxnInfoFromStatActivity(PGConn* conn) {
     auto rows = VERIFY_RESULT((conn->FetchRows<int32_t, Uuid>(
-        "SELECT pid, yb_backend_xid FROM pg_stat_activity WHERE yb_backend_xid IS NOT NULL")));
+        "SELECT pid, yb_backend_xid FROM pg_stat_activity"
+        " WHERE yb_backend_xid IS NOT NULL AND datname = current_database()")));
     std::vector<TxnInfo> result;
     result.reserve(rows.size());
     for (const auto& [pid, txn_id] : rows) {

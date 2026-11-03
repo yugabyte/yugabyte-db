@@ -1046,6 +1046,17 @@ class AdminCliTestForTableLocks : public AdminCliTest {
   }
 
  protected:
+  // The tests check master and tserver object locks and txn ids. CREATE PUBLICATION still holds
+  // its locks for a moment after it commits, so wait for the master to release them too.
+  void BuildAndStartAndWaitForBootstrap() {
+    BuildAndStart();
+    ASSERT_OK(pgwrapper::WaitForListenNotifyBootstrap(
+        [this] { return cluster_->ConnectToDB(master::kYbSystemDbName); }));
+    ASSERT_OK(WaitFor(
+        [this]() -> Result<bool> { return !VERIFY_RESULT(HasLocksMaster()); },
+        10s * kTimeMultiplier, "master object locks released after LISTEN/NOTIFY bootstrap"));
+  }
+
   Result<std::pair<std::string, std::string>> ExtractTxnAndSubtxnIdFrom(
       const HostPort& addr, const std::string& page) {
     EasyCurl curl;
@@ -1102,7 +1113,7 @@ class AdminCliTestForTableLocks : public AdminCliTest {
 };
 
 TEST_F(AdminCliTestForTableLocks, ReleaseExclusiveLocksUsingTxnIdAndSubtxnId) {
-  BuildAndStart();
+  BuildAndStartAndWaitForBootstrap();
   const std::string db_name{"yugabyte"};
   const int kTServerIndex = 0;
   auto conn1 = ASSERT_RESULT(cluster_->ConnectToDB(db_name, kTServerIndex));
@@ -1137,7 +1148,7 @@ TEST_F(AdminCliTestForTableLocks, ReleaseExclusiveLocksUsingTxnIdAndSubtxnId) {
 }
 
 TEST_F(AdminCliTestForTableLocks, ReleaseExclusiveLocksUsingTxnId) {
-  BuildAndStart();
+  BuildAndStartAndWaitForBootstrap();
   const std::string db_name{"yugabyte"};
   const int kTServerIndex = 0;
   auto conn1 = ASSERT_RESULT(cluster_->ConnectToDB(db_name, kTServerIndex));
@@ -1172,7 +1183,7 @@ TEST_F(AdminCliTestForTableLocks, ReleaseExclusiveLocksUsingTxnId) {
 }
 
 TEST_F(AdminCliTestForTableLocks, ReleaseSharedLocksAtTServer) {
-  BuildAndStart();
+  BuildAndStartAndWaitForBootstrap();
   const std::string db_name{"yugabyte"};
   const int kTServerIndex = 0;
   auto conn1 = ASSERT_RESULT(cluster_->ConnectToDB(db_name, kTServerIndex));
@@ -1203,7 +1214,7 @@ TEST_F(AdminCliTestForTableLocks, ReleaseSharedLocksAtTServer) {
 }
 
 TEST_F(AdminCliTestForTableLocks, ReleaseSharedLocksThroughMaster) {
-  BuildAndStart();
+  BuildAndStartAndWaitForBootstrap();
   const std::string db_name{"yugabyte"};
   const int kTServerIndex = 0;
   auto conn1 = ASSERT_RESULT(cluster_->ConnectToDB(db_name, kTServerIndex));

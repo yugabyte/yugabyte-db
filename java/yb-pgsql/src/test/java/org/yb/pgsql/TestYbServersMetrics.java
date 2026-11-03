@@ -29,6 +29,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
+import java.util.Map;
 
 import static org.yb.AssertionWrappers.*;
 
@@ -48,6 +49,14 @@ public class TestYbServersMetrics extends BasePgSQLTest {
     ConnectionBuilder cb = super.getConnectionBuilder();
     cb.setLoadBalance(true);
     return cb;
+  }
+
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    // With LISTEN/NOTIFY on, the connection after the tserver kill intermittently hangs.
+    flagMap.put("ysql_yb_enable_listen_notify", "false");
+    return flagMap;
   }
 
   @Override

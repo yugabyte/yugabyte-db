@@ -783,6 +783,10 @@ TEST_F_EX(PgWaitEventAuxTest, PgCDCServiceRPCs, PgCDCWaitEventAux) {
   static constexpr auto kTableName = "test_table";
   static constexpr auto kSlotName = "test_slot";
 
+  // A slot streams the bootstrap's DDL if it commits after slot creation, and pg_recvlogical then
+  // reaches its end position before the walsender check below.
+  ASSERT_OK(WaitForListenNotifyBootstrap());
+
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY)", kTableName));
   auto res = ASSERT_RESULT(conn_->FetchFormat(
       "SELECT * FROM pg_create_logical_replication_slot('$0', 'test_decoding')", kSlotName));

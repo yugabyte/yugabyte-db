@@ -190,6 +190,8 @@ class PgTabletSplitTest : public PgTabletSplitTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
 
     PgTabletSplitTestBase::SetUp();
+    // The bootstrap's table shows up in table listings, and its RPCs consume one-shot test flags.
+    ASSERT_OK(WaitForListenNotifyBootstrap());
   }
 
   // Splits the last tablet for specified number of times.

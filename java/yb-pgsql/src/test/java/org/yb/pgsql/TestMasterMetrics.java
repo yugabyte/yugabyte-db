@@ -74,6 +74,8 @@ public class TestMasterMetrics extends BasePgSQLTest {
 
   @Test
   public void testMasterMetrics() throws Exception {
+    // The bootstrap's tablet creation must not land between the two metric reads below.
+    waitForListenNotifyBootstrap();
 
     // number of times create replica should be called for a single table should be more than the
     // replication factor * number of TServers

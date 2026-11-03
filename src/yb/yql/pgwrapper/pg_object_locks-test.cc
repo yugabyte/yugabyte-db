@@ -119,6 +119,8 @@ class PgObjectLocksTestRF1 : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_check_broadcast_address) = false;  // GH #26281
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
     PgMiniTestBase::SetUp();
+    // The tests assert absolute object lock counts.
+    ASSERT_OK(WaitForListenNotifyBootstrap());
     Init();
   }
 
@@ -2370,11 +2372,23 @@ TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, AutonomousDdlKeepsLegacyTxnLocks) {
   ASSERT_OK(alter_future.get());
 }
 
+// With the LISTEN/NOTIFY tablet present, a load balancer leader move right after the rewrite brings
+// the new catalog version to the reader early, and it reads the empty new table.
+class PgObjectLocksTestMixModeDuringPromotionNoListenNotify
+    : public PgObjectLocksTestMixModeDuringPromotion {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    PgObjectLocksTestMixModeDuringPromotion::UpdateMiniClusterOptions(opts);
+    opts->extra_master_flags.emplace_back("--ysql_yb_enable_listen_notify=false");
+  }
+};
+
 // An autonomous DDL takes no object locks, so nothing makes it wait for a reader without global
 // object locks, which reads the latest catalog after its next new lock. A table rewrite then leaves
 // the reader's snapshot older than the new table. The reader must get an error or the rows it saw
 // before, never the empty new table.
-TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyRewriteNeverEmptiesLegacyReader) {
+TEST_F_EX(PgObjectLocksTestMixModeDuringPromotion, LegacyRewriteNeverEmptiesLegacyReader,
+          PgObjectLocksTestMixModeDuringPromotionNoListenNotify) {
   auto* ts1 = cluster_->tablet_server(0);
   auto* ts2 = cluster_->tablet_server(1);
   {
@@ -3668,6 +3682,10 @@ TEST_P(PgObjecLocksTestOutOfOrderMessageHandling, TestOutOfOrderMessageHandling)
   const auto ts2_idx = 2;
   auto* ts1 = cluster_->tablet_server(ts1_idx);
   auto* ts2 = cluster_->tablet_server(ts2_idx);
+
+  // The test waits for the node's object lock count to reach zero within a fixed budget, and
+  // TEST_block_acquires_to_simulate_out_of_order blocks every acquire on ts2, the bootstrap's too.
+  ASSERT_OK(WaitForListenNotifyBootstrap());
 
   auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
   auto conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));

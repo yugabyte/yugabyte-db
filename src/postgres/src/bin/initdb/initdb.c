@@ -2150,6 +2150,23 @@ make_system_platform(FILE *cmdfd)
 }
 
 /*
+ * Create yb_system database used by LISTEN/NOTIFY infrastructure.
+ */
+static void
+make_yb_system(FILE *cmdfd)
+{
+	const char *const *line;
+	static const char *const yb_system_setup[] = {
+		"CREATE DATABASE yb_system;\n\n",
+		"COMMENT ON DATABASE yb_system IS 'system database for YugabyteDB internal use';\n\n",
+		NULL,
+	};
+
+	for (line = yb_system_setup; *line; line++)
+		PG_CMD_PUTS(*line);
+}
+
+/*
  * Create pg_stat_statements extension by default
  */
 static void
@@ -3175,6 +3192,7 @@ initialize_data_directory(void)
 		{
 			make_yugabyte(cmdfd);
 			make_system_platform(cmdfd);
+			make_yb_system(cmdfd);
 		}
 	}
 

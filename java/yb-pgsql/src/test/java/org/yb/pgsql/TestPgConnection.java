@@ -130,6 +130,8 @@ public class TestPgConnection extends BasePgSQLTest {
   // cluster with no connection manager, so all connections go straight to the Postgres port.
   @BypassConnMgr(reason = BasePgSQLTest.LESSER_PHYSICAL_CONNS)
   public void testConnectionKills() throws Exception {
+    // Fills ysql_max_connections exactly, so the bootstrap's transient backend must be gone.
+    waitForListenNotifyBootstrap();
     final int NUM_CONNECTIONS = getRemainingAvailableConnections();
 
     final Connection[] connections = createConnections(NUM_CONNECTIONS);
@@ -168,6 +170,8 @@ public class TestPgConnection extends BasePgSQLTest {
   @Test
   @BypassConnMgr(reason = BasePgSQLTest.LESSER_PHYSICAL_CONNS)
   public void testConnectionKillsAndRestarts() throws Exception {
+    // Fills ysql_max_connections exactly, so the bootstrap's transient backend must be gone.
+    waitForListenNotifyBootstrap();
     final int NUM_CONNECTIONS = getRemainingAvailableConnections();
 
     // Create N connections, kill them all. Repeat this process a few times

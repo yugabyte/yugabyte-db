@@ -448,7 +448,8 @@ DEFINE_RUNTIME_int32(db_history_retention_pin_min_txn_age_sec, 300,
     "value must be less than timestamp_history_retention_interval_sec to prevent "
     "snapshot too old errors.");
 
-DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_listen_notify, false, "Enable YSQL LISTEN/NOTIFY.");
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_listen_notify, kLocalPersisted, false, true,
+    "Enable YSQL LISTEN/NOTIFY.");
 DEFINE_RUNTIME_PG_FLAG(int32, yb_test_notify_queue_max_pages, 0,
     "When positive, artificially limits the NOTIFY queue to this many pages for testing.");
 DEFINE_RUNTIME_AUTO_bool(ysql_enable_auto_analyze_infra, kLocalPersisted, false, true,
