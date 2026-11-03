@@ -1075,6 +1075,16 @@ Status TabletVectorIndexes::ModifyFlushedFrontier(
     return Status::OK();
   }
   for (const auto& vector_index : *list) {
+    // An index already flushed at the OpId was stamped with it, e.g. by a restore through
+    // docdb::ForceVectorIndexStorageOpId before opening it. No write is assigned the OpId of a
+    // truncate or a restore. Each stamp adds a frontier only chunk, so it is not repeated.
+    auto flushed_frontier = vector_index->GetFlushedFrontier();
+    if (flushed_frontier && flushed_frontier->op_id() == frontier.op_id()) {
+      VLOG_WITH_PREFIX(1)
+          << "Vector index " << vector_index->table_id() << " already flushed at "
+          << frontier.op_id();
+      continue;
+    }
     LOG_WITH_PREFIX(INFO)
         << "Stamping flushed frontier of vector index " << vector_index->table_id() << ": "
         << frontier.ToString() << ", mode: " << mode;

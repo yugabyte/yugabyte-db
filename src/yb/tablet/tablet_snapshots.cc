@@ -765,17 +765,21 @@ Status TabletSnapshots::RestoreCheckpoint(
   // It is done before the regular DB patch below: once the regular DB has the restore op id,
   // bootstrap does not replay the restore, so a crash after it must find the vector indexes
   // stamped. The storages are those of the snapshot and, for a restore without one, those of the
-  // listed indexes. The restored metadata, which can rename them, is not merged yet.
+  // listed indexes. The restored metadata, which can rename them, is not merged yet, so the
+  // storages it leaves unlisted are stamped too, and deleted below.
+  // A listing failure fails the restore before the regular DB patch, so the restore is replayed.
+  std::vector<std::string> snapshot_children;
+  if (!snapshot_dir.empty()) {
+    snapshot_children = VERIFY_RESULT(env().GetChildren(snapshot_dir, ExcludeDots::kTrue));
+  }
   {
     std::set<std::string> vector_index_dirs;
     for (auto& dir : metadata().vector_index_dirs()) {
       vector_index_dirs.insert(std::move(dir));
     }
-    if (!snapshot_dir.empty()) {
-      for (const auto& child : VERIFY_RESULT(env().GetChildren(snapshot_dir, ExcludeDots::kTrue))) {
-        if (child.starts_with(docdb::kVectorIndexDirPrefix)) {
-          vector_index_dirs.insert(docdb::GetStorageDir(db_dir, child));
-        }
+    for (const auto& child : snapshot_children) {
+      if (child.starts_with(docdb::kVectorIndexDirPrefix)) {
+        vector_index_dirs.insert(docdb::GetStorageDir(db_dir, child));
       }
     }
     for (const auto& dir : vector_index_dirs) {
@@ -849,15 +853,7 @@ Status TabletSnapshots::RestoreCheckpoint(
   // load its chunks. Best effort: a failure here would fail the restore apply, which is fatal for
   // the tserver. A crash before this point is covered by the startup sweep in TSTabletManager.
   // Runs after MergeWithRestored: it can change the id, and so the storage dir, of a listed index.
-  if (!snapshot_dir.empty()) {
-    auto children = env().GetChildren(snapshot_dir, ExcludeDots::kTrue);
-    if (children.ok()) {
-      metadata().DeleteUnlistedVectorIndexStorages(*children);
-    } else {
-      LOG_WITH_PREFIX(WARNING) << "Failed to list " << snapshot_dir
-                               << " for vector index storages to delete: " << children.status();
-    }
-  }
+  metadata().DeleteUnlistedVectorIndexStorages(snapshot_children);
 
   // Reopen database from copied checkpoint.
   // Note: db_dir == metadata()->rocksdb_dir() is still valid db dir.
@@ -867,11 +863,13 @@ Status TabletSnapshots::RestoreCheckpoint(
     return s;
   }
 
-  // The storages stamped above already have the restore op id. This covers a listed index whose
-  // storage the restore did not bring, e.g. one created after the snapshot.
+  // The storages stamped above already have the restore op id and are skipped. This covers a listed
+  // index whose storage was not stamped: one the restore did not bring, e.g. created after the
+  // snapshot, or a leftover one the restored metadata lists, which can carry the OpIds of another
+  // Raft group.
   if (!FLAGS_TEST_skip_vector_index_stamp_after_restore_reopen) {
     RETURN_NOT_OK(tablet().vector_indexes().ModifyFlushedFrontier(
-        frontier, rocksdb::FrontierModificationMode::kUpdate));
+        frontier, rocksdb::FrontierModificationMode::kForce));
   }
 
   LOG_WITH_PREFIX(INFO) << "Checkpoint restored from " << snapshot_dir;

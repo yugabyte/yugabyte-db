@@ -897,45 +897,18 @@ void DocVectorIndex::ApplyReverseEntry(
 }
 
 Status ForceVectorIndexStorageOpId(const std::string& storage_dir, const OpId& op_id) {
-  // The same env VectorLSM loads its manifest with.
-  auto* env = Env::Default();
-  if (!env->DirExists(storage_dir)) {
-    return Status::OK();
-  }
-  auto load_result = VERIFY_RESULT(vector_index::VectorLSMMetadataLoad(env, storage_dir));
-
-  vector_index::VectorLSMUpdatePB update;
-  update.set_reset(true);
-  uint64_t next_order_no = 0;
-  for (auto& chunk : load_result.chunks) {
-    for (auto* boundary : {chunk.mutable_smallest(), chunk.mutable_largest()}) {
-      if (!boundary->has_user_frontier()) {
-        continue;
-      }
-      ConsensusFrontier frontier;
-      RETURN_NOT_OK(frontier.FromPB(boundary->user_frontier()));
-      frontier.set_op_id(op_id);
-      frontier.ToPB(boundary->mutable_user_frontier());
-    }
-    next_order_no = std::max(next_order_no, chunk.order_no() + 1);
-    *update.add_add_chunks() = std::move(chunk);
-  }
-  // Same frontiers as the empty insert of ModifyFlushedFrontier, so an index restored without
+  // The same frontiers as the empty insert of ModifyFlushedFrontier, so an index restored without
   // chunks gets the OpId too.
-  ConsensusFrontiers frontiers;
-  frontiers.Largest().set_op_id(op_id);
-  auto& frontier_chunk = *update.add_add_chunks();
-  frontier_chunk.set_order_no(next_order_no);
-  frontiers.Smallest().ToPB(frontier_chunk.mutable_smallest()->mutable_user_frontier());
-  frontiers.Largest().ToPB(frontier_chunk.mutable_largest()->mutable_user_frontier());
-
-  auto file = VERIFY_RESULT(vector_index::VectorLSMMetadataOpenFile(
-      env, storage_dir, load_result.next_free_file_no));
-  RETURN_NOT_OK(vector_index::VectorLSMMetadataAppendUpdate(*file, update));
-  RETURN_NOT_OK(file->Close());
-  LOG(INFO) << "Forced OpId " << op_id << " on " << load_result.chunks.size()
-            << " chunks of vector index storage " << storage_dir;
-  return Status::OK();
+  ConsensusFrontiers added_chunk_frontiers;
+  added_chunk_frontiers.Largest().set_op_id(op_id);
+  // The same env VectorLSM loads its manifest with.
+  return vector_index::VectorLSMMetadataModifyChunkFrontiers(
+      Env::Default(), storage_dir, [] { return std::make_unique<ConsensusFrontiers>(); },
+      [&op_id](storage::UserFrontiers& frontiers) {
+        down_cast<ConsensusFrontier&>(frontiers.Smallest()).set_op_id(op_id);
+        down_cast<ConsensusFrontier&>(frontiers.Largest()).set_op_id(op_id);
+      },
+      added_chunk_frontiers);
 }
 
 Result<DocVectorIndexPtr> CreateDocVectorIndex(

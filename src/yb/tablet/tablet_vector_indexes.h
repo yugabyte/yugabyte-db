@@ -167,7 +167,7 @@ class TabletVectorIndexes :
   docdb::DocVectorIndexPtr IndexForTable(
       const TableId& table_id) const EXCLUDES(vector_indexes_mutex_);
 
-  // Stamps `frontier` as flushed on every vector index, see
+  // Stamps `frontier` as flushed on every vector index not flushed at its OpId yet, see
   // DocVectorIndex::ModifyFlushedFrontier.
   Status ModifyFlushedFrontier(
       const docdb::ConsensusFrontier& frontier, rocksdb::FrontierModificationMode mode);
