@@ -717,8 +717,9 @@ Status TableInfo::AddTabletUnlocked(
 
   auto old_tablet = VERIFY_RESULT(PromoteTabletPointer(it->second));
   if (old_tablet == tablet) {
-    // The same tablet can be added twice when its table_ids list contains a duplicate entry, see
-    // github issue 34672. There is nothing to replace.
+    // Defensive: a table id listed twice in a tablet's table_ids used to add the same tablet twice
+    // on load (github issue 34672). TabletLoader::Visit now drops repeated ids, so this is not
+    // expected, but adding the same tablet again is harmless.
     LOG_WITH_PREFIX(WARNING) << "Tablet " << tablet->id() << " was already added to this table";
     return Status::OK();
   }
