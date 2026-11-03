@@ -1589,15 +1589,15 @@ static std::string FetchValue(PGconn* conn, const char* sql) {
   return PQntuples(res.get()) > 0 ? PQgetvalue(res.get(), 0, 0) : "";
 }
 
-// The cases below fail today, so they are disabled. Each asserts what an
-// abort and a replay would leave. Two gaps break them: a plain SET ROLE in the
-// failed statement changes the role's scope on the GUC stack before the retry
-// puts the role back, and the retry does not undo a plain SET of another
-// setting. TODO(#28196): enable them once a full restart replays the batch.
+// The cases below fail today. Each asserts what an abort and a replay would
+// leave. Two gaps break them: a plain SET ROLE in the failed statement changes
+// the role's scope on the GUC stack before the retry puts the role back, and
+// the retry does not undo a plain SET of another setting. TODO(#28196): a
+// full restart that replays the batch fixes them.
 
 // SET LOCAL ROLE alice in the batch, a plain SET ROLE bob in the failed
 // statement. After COMMIT the role must be none, not bob.
-TEST_F(PgTxnTest, DISABLED_BatchedRetryKeepsSetLocalRoleOverPlainSet) {
+TEST_F(PgTxnTest, BatchedRetryKeepsSetLocalRoleOverPlainSet) {
   {
     auto conn = ASSERT_RESULT(Connect());
     ASSERT_NO_FATALS(CreateFailingRoleFunction(&conn, "SET ROLE bob;"));
@@ -1617,7 +1617,7 @@ TEST_F(PgTxnTest, DISABLED_BatchedRetryKeepsSetLocalRoleOverPlainSet) {
 
 // A session role under a SET LOCAL role, and a plain SET ROLE bob in the
 // failed statement. After COMMIT the session role must come back, not bob.
-TEST_F(PgTxnTest, DISABLED_BatchedRetryKeepsSessionRoleUnderSetLocal) {
+TEST_F(PgTxnTest, BatchedRetryKeepsSessionRoleUnderSetLocal) {
   {
     auto conn = ASSERT_RESULT(Connect());
     ASSERT_NO_FATALS(CreateFailingRoleFunction(&conn, "SET ROLE bob;"));
@@ -1642,7 +1642,7 @@ TEST_F(PgTxnTest, DISABLED_BatchedRetryKeepsSessionRoleUnderSetLocal) {
 // SET LOCAL ROLE alice in the batch, and a plain SET ROLE alice in the
 // failed statement: the value does not change, but the scope does. After
 // COMMIT the role must be none.
-TEST_F(PgTxnTest, DISABLED_BatchedRetryKeepsSetLocalRoleOverSameRole) {
+TEST_F(PgTxnTest, BatchedRetryKeepsSetLocalRoleOverSameRole) {
   {
     auto conn = ASSERT_RESULT(Connect());
     ASSERT_NO_FATALS(CreateFailingRoleFunction(&conn, "SET ROLE alice;"));
@@ -1660,9 +1660,29 @@ TEST_F(PgTxnTest, DISABLED_BatchedRetryKeepsSetLocalRoleOverSameRole) {
   ASSERT_EQ(FetchValue(conn.get(), "SELECT current_setting('role')"), "none");
 }
 
+// SET ROLE alice in the batch, and SET SESSION AUTHORIZATION bob in the failed
+// statement, where bob is not a member of alice. The retry must still run f
+// as alice and leave the session as alice. This fails today: putting the role
+// back checks membership against the new session user, so the retry ends
+// with "permission denied to set role" instead of rerunning f.
+TEST_F(PgTxnTest, BatchedRetryRestoresRoleAfterSessionAuthorization) {
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_NO_FATALS(CreateFailingRoleFunction(&conn, "SET SESSION AUTHORIZATION bob;"));
+  }
+  PGConnPtr conn(PQconnectdb(Format(
+      "host=$0 port=$1 dbname=yugabyte user=$2", pg_host_port().host(),
+      pg_host_port().port(), PGConnSettings::kDefaultUser).c_str()));
+  ASSERT_EQ(PQstatus(conn.get()), CONNECTION_OK) << PQerrorMessage(conn.get());
+  std::vector<std::string> values;
+  ASSERT_NO_FATALS(RunPipeline(conn.get(), {"SET ROLE alice", "SELECT f()"}, &values));
+  ASSERT_EQ(values, std::vector<std::string>{"alice"});
+  ASSERT_EQ(FetchValue(conn.get(), "SELECT current_setting('role')"), "alice");
+}
+
 // A plain SET of another setting in the failed statement. After the retry,
 // in the same transaction, search_path must be what it was before.
-TEST_F(PgTxnTest, DISABLED_RetryUndoesBodySetSearchPath) {
+TEST_F(PgTxnTest, RetryUndoesBodySetSearchPath) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE SEQUENCE attempt"));
   ASSERT_OK(conn.Execute(
