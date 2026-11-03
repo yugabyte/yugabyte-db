@@ -208,7 +208,7 @@ class MiniCluster : public MiniClusterBase {
   // any other master is the leader. Retrying is needed because the protege's election may fail and
   // let another master win.
   Status StepDownMasterLeaderAndWaitForNewLeader(
-      const std::string& new_leader_uuid = "", MonoDelta timeout = 60s);
+      const TabletServerId& new_leader_uuid = "", MonoDelta timeout = 60s);
 
   ssize_t LeaderMasterIdx();
 

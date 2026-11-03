@@ -643,7 +643,7 @@ Result<TabletServerId> MiniCluster::StepDownMasterLeader(const std::string& new_
 }
 
 Status MiniCluster::StepDownMasterLeaderAndWaitForNewLeader(
-    const std::string& new_leader_uuid, MonoDelta timeout) {
+    const TabletServerId& new_leader_uuid, MonoDelta timeout) {
   const auto old_leader_uuid = VERIFY_RESULT(GetLeaderMiniMaster())->permanent_uuid();
   if (old_leader_uuid == new_leader_uuid) {
     return Status::OK();
