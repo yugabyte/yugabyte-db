@@ -260,8 +260,8 @@ class PgVectorIndex : public VectorIndexIf<FloatVector, float>, public PgVectorI
   }
 
   // Returns why the existing table cannot be reused, or an empty string if it can, after
-  // pointing searches to the matching index. Read-only runs accept any index build options and
-  // row count.
+  // pointing searches to the matching index. Read-only runs accept any row count, and any index
+  // build options when no index has this run's.
   Result<std::string> ExistingDataMismatch(PGConn& conn) {
     if (!VERIFY_RESULT(TableExists(conn))) {
       return Format("table $0 does not exist", config_.table);
@@ -283,12 +283,15 @@ class PgVectorIndex : public VectorIndexIf<FloatVector, float>, public PgVectorI
     const std::string opclass = VectorOpsName(options_.distance_kind);
     const auto index_options = IndexOptions();
     const auto indexes = VERIFY_RESULT(ReadyYbHnswIndexes(conn));
-    const auto matches = [&](const YbHnswIndex& index) {
-      return (config_.index.empty() || index.name == config_.index) &&
-             index.opclass == opclass &&
-             (config_.read_only || index.options == index_options);
+    const auto candidate = [&](const YbHnswIndex& index) {
+      return (config_.index.empty() || index.name == config_.index) && index.opclass == opclass;
     };
-    const auto index = std::ranges::find_if(indexes, matches);
+    auto index = std::ranges::find_if(indexes, [&](const YbHnswIndex& index) {
+      return candidate(index) && index.options == index_options;
+    });
+    if (index == indexes.end() && config_.read_only) {
+      index = std::ranges::find_if(indexes, candidate);
+    }
     if (index == indexes.end()) {
       return Format(
           "table $0 has no ready ybhnsw index$1 with $2$3, found: $4",
@@ -304,6 +307,7 @@ class PgVectorIndex : public VectorIndexIf<FloatVector, float>, public PgVectorI
     }
     // The planner does not prefer any of several ybhnsw indexes with the same opclass.
     search_hint_ = Format("/*+IndexScan(v \"$0\")*/ ", index->name);
+    LOG(INFO) << "PgVectorIndex: searches use index " << index->ToString();
     return std::string();
   }
 
@@ -351,7 +355,8 @@ class PgVectorIndex : public VectorIndexIf<FloatVector, float>, public PgVectorI
         "  JOIN pg_am a ON a.oid = c.relam"
         "  JOIN pg_opclass opc ON opc.oid = i.indclass[0]"
         "  WHERE i.indrelid = to_regclass('$0') AND a.amname = 'ybhnsw'"
-        "    AND i.indisvalid AND i.indisready",
+        "    AND i.indisvalid AND i.indisready"
+        "  ORDER BY c.relname",
         config_.table))));
     std::vector<YbHnswIndex> result;
     result.reserve(rows.size());
