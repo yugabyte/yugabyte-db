@@ -423,7 +423,7 @@ public class TestMisc extends BaseYsqlConnMgr {
     testCurrvalLastvalUndefinedHelper("pooled_with_curval_lastval");
   }
 
-  // pooled_with_currval_lastval is a deprecated alias of pooled_with_curval_lastval.
+  // pooled_with_currval_lastval is accepted as a synonym of pooled_with_curval_lastval.
   @Test
   public void testCurrvalLastvalUndefinedInPooledModeAlias() throws Exception {
     testCurrvalLastvalUndefinedHelper("pooled_with_currval_lastval");
@@ -432,11 +432,9 @@ public class TestMisc extends BaseYsqlConnMgr {
   // currval/lastval before any nextval must raise PG's usual error. This guards against bringing
   // back the fallback that returned the start value, which the next nextval then handed out again.
   private void testCurrvalLastvalUndefinedHelper(String mode) throws Exception {
-    // The final sticky check needs superuser connections to stay unsticky, so pin the flag:
-    // enableStickySuperuserConnsAndRestartCluster() leaves it on for later tests in the JVM.
-    restartClusterWithAdditionalFlags(Collections.emptyMap(),
-        ImmutableMap.of("ysql_conn_mgr_sequence_support_mode", mode,
-                        "ysql_conn_mgr_superuser_sticky", "false"));
+    restartClusterWithFlags(Collections.emptyMap(),
+                            Collections.singletonMap("ysql_conn_mgr_sequence_support_mode",
+                                                     mode));
 
     try (Connection conn = getConnectionBuilder()
              .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)

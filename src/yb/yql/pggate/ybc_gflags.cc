@@ -235,11 +235,9 @@ bool PreloadAdditionalCatalogListValidator(const char* flag_name, const std::str
   return true;
 }
 
-// Postgres compares this value with strcmp, so the deprecated alias is mapped here, once.
+// Postgres compares this value with strcmp, so the synonym is mapped to the documented value here.
 const char* SequenceSupportMode() {
   if (FLAGS_ysql_conn_mgr_sequence_support_mode == "pooled_with_currval_lastval") {
-    LOG(WARNING) << "ysql_conn_mgr_sequence_support_mode=pooled_with_currval_lastval is "
-                 << "deprecated, use pooled_with_curval_lastval";
     return "pooled_with_curval_lastval";
   }
   return FLAGS_ysql_conn_mgr_sequence_support_mode.c_str();
