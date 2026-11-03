@@ -9394,11 +9394,14 @@ YbResetTransactionReadPoint(bool is_catalog_snapshot)
 
 	/*
 	 * If this is a query layer retry for a kReadRestart error, avoid resetting the read point.
+	 * A new catalog snapshot still gets a new read point: the retry may have picked up a newer
+	 * catalog version, and reading the catalog at the old read point would cache entries older
+	 * than that version, such as an index not yet ready for inserts (#34123).
 	 *
 	 * TODO(#29272): Ensure that this logic of not resetting the read point works fine even when there
 	 * are multiple snapshots being used by Pg.
 	 */
-	if (!YBCIsRestartReadPointRequested())
+	if (is_catalog_snapshot || !YBCIsRestartReadPointRequested())
 	{
 		/*
 		 * Flush all earlier operations so that they complete on the previous snapshot.

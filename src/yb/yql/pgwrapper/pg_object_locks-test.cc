@@ -1665,6 +1665,109 @@ TEST_F(PgObjectLocksTest, LockRequestKeepsRepeatableReadSnapshot) {
   ASSERT_OK(conn.Execute("COMMIT"));
 }
 
+class PgObjectLocksReadCommittedTest : public PgObjectLocksTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    PgObjectLocksTest::UpdateMiniClusterOptions(opts);
+    opts->extra_tserver_flags.emplace_back("--yb_enable_read_committed_isolation=true");
+  }
+};
+
+// A READ COMMITTED statement that is retried after a read restart must see catalog changes
+// committed since its previous attempt. Here the statement is planned while an index being built
+// online is live but not ready for inserts, and is retried after CREATE INDEX marks it ready. If
+// the retry reloads the index's catalog entry as of before that, the session keeps the index as
+// not ready and its later INSERT skips it; that row, committed after the backfill read time, is
+// then missing from the index (#34123).
+TEST_F_EX(PgObjectLocksTest, ReadRestartRetrySeesIndexReadyForInserts,
+          PgObjectLocksReadCommittedTest) {
+  auto* ts1 = cluster_->tablet_server(1);
+  auto* ts2 = cluster_->tablet_server(2);
+
+  auto conn1 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(conn1.Execute("CREATE TABLE first_read(k INT PRIMARY KEY)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO first_read VALUES (0)"));
+  ASSERT_OK(conn1.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO test VALUES (0, 0)"));
+  ASSERT_OK(conn1.Execute("SET yb_max_query_layer_retries = 60"));
+  // The wait below looks for the retry in the log.
+  ASSERT_OK(conn1.Execute("SET yb_debug_log_internal_restarts = true"));
+  // Planned before it reads anything; holds on the row lock, then scans test.
+  ASSERT_OK(conn1.Execute(
+      "PREPARE locked_count AS SELECT (SELECT k FROM first_read WHERE k = 0 FOR UPDATE), "
+      "(SELECT count(*) FROM test WHERE v >= 0)"));
+
+  // Declared before what blocks them, so on an early ASSERT failure the blockers are released
+  // before the futures' destructors wait for their statements.
+  std::future<Status> create_index_future;
+  std::future<Status> select_future;
+
+  // Hold CREATE INDEX after it commits indislive=true.
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "indisready"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "true"));
+  CancelableScopeExit cleanup([&]() {
+    WARN_NOT_OK(
+        cluster_->SetFlagOnTServers("TEST_inject_read_restart_with_probability", "0"),
+        "Failed to stop injecting read restarts");
+    WARN_NOT_OK(
+        cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"),
+        "Failed to unblock CREATE INDEX");
+    WARN_NOT_OK(
+        cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"),
+        "Failed to unblock backfill");
+  });
+  LogWaiter indisready_waiter(ts2, "index state change indisready=true");
+  create_index_future = std::async(std::launch::async, [&]() {
+    auto conn2 = VERIFY_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+    return conn2.Execute("CREATE INDEX idx ON test(v)");
+  });
+  ASSERT_OK(indisready_waiter.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 30)));
+
+  // The statement is planned while idx is live but not ready, then waits for the row lock.
+  auto conn3 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_OK(conn3.Execute("BEGIN"));
+  ASSERT_OK(conn3.Fetch("SELECT k FROM first_read WHERE k = 0 FOR UPDATE"));
+  ASSERT_OK(conn1.Execute("BEGIN ISOLATION LEVEL READ COMMITTED"));
+  select_future = std::async(std::launch::async, [&]() -> Status {
+    return ResultToStatus(conn1.Fetch("EXECUTE locked_count"));
+  });
+  auto conn4 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return VERIFY_RESULT(conn4.FetchRow<PGUint64>(
+            "SELECT count(*) FROM pg_locks WHERE NOT granted")) > 0;
+      },
+      MonoDelta::FromSeconds(kTimeMultiplier * 30), "statement waits for the row lock"));
+
+  // Let CREATE INDEX mark the index ready for inserts, and hold it before backfill.
+  LogWaiter backfill_waiter(ts2, "concurrent index backfill");
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "backfill"));
+  ASSERT_OK(backfill_waiter.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 30)));
+
+  // The scan of test now hits a read restart; the retry picks up the new catalog version and is
+  // planned again.
+  LogWaiter retry_waiter(ts1, "performing query layer retry");
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_inject_read_restart_with_probability", "1"));
+  ASSERT_OK(conn3.Execute("COMMIT"));
+  ASSERT_OK(retry_waiter.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 30)));
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_inject_read_restart_with_probability", "0"));
+  ASSERT_OK(select_future.get());
+  ASSERT_OK(conn1.Execute("COMMIT"));
+
+  // Backfill holds right after choosing its read time. This row commits after that read time, so
+  // only the INSERT's own index write covers it.
+  LogWaiter backfill_read_time_waiter(cluster_->GetLeaderMaster(), "will be using");
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"));
+  ASSERT_OK(backfill_read_time_waiter.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 30)));
+  ASSERT_OK(conn1.Execute("INSERT INTO test VALUES (1, 1)"));
+
+  cleanup.Cancel();
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"));
+  ASSERT_OK(create_index_future.get());
+
+  ASSERT_OK(conn3.Fetch("SELECT yb_index_check('idx'::regclass)"));
+}
+
 TEST_F(PgObjectLocksTest, WaitForLockersSeesFastpathDmlLocks) {
   const auto ts1_idx = 1;
   const auto ts2_idx = 2;

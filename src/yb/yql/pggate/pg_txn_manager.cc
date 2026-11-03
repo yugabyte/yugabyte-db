@@ -484,6 +484,9 @@ Status PgTxnManager::ResetTransactionReadPoint(bool is_catalog_snapshot) {
     // NOTE: If YBCIsLegacyModeForCatalogOps() is true, we will not arrive here for
     // catalog snapshots.
     serial_no_.IncMaxReadTime();
+    // read_time_manipulation_ applies to user table reads only. A query layer retry for a read
+    // restart takes new catalog snapshots too, and must keep its pending RESTART.
+    return Status::OK();
   } else {
     // For transaction snapshots, create and switch to the new read time serial number.
     // Leaving it upto the caller would have worked too, but this is how it has been, so not
