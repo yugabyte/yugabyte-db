@@ -379,7 +379,6 @@ Status CatalogManager::AddTableAndTabletEntriesToPB(
 Result<SysRowEntries> CatalogManager::CollectEntriesFromActiveSysCatalog(
     const google::protobuf::RepeatedPtrField<TableIdentifierPB>& table_identifiers,
     CollectFlags flags) {
-  RETURN_NOT_OK(CheckIsLeaderAndReady());
   std::unordered_set<NamespaceId> namespaces;
   auto tables = VERIFY_RESULT(CollectTables(table_identifiers, flags, &namespaces));
   return CollectEntriesInternal(flags, tables, &namespaces);
@@ -388,7 +387,6 @@ Result<SysRowEntries> CatalogManager::CollectEntriesFromActiveSysCatalog(
 Result<SysRowEntries> CatalogManager::CollectEntriesAsOfTime(
     const NamespaceId& namespace_id, CollectFlags flags, HybridTime read_time,
     CoarseTimePoint deadline) {
-  RETURN_NOT_OK(CheckIsLeaderAndReady());
   std::unordered_set<NamespaceId> namespaces;
 
   // CollectTables (used in CollectEntriesFromActiveSysCatalog) gets the set of tables from the
@@ -3199,8 +3197,7 @@ Status CatalogManager::RestoreSysCatalogCommon(
   MAYBE_FAULT(FLAGS_TEST_crash_during_sys_catalog_restoration);
 
   // Restore the other tables.
-  RETURN_NOT_OK(state->PrepareWriteBatch(
-      doc_read_context, schema_packing_provider, write_batch, master_->clock()->Now()));
+  RETURN_NOT_OK(state->PrepareWriteBatch(doc_read_context, schema_packing_provider, write_batch));
 
   // Updates the restoration state to indicate that sys catalog phase has completed.
   // Also, initializes the master side perceived list of tables/tablets/namespaces

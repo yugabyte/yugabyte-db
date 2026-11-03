@@ -17,6 +17,7 @@ import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.AllowedTasks;
 import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -247,6 +248,13 @@ public class UniverseResp {
   @ApiModelProperty(value = "YugabyteDB Anywhere platform software version for this YBA instance")
   public final String platformVersion;
 
+  @ApiModelProperty(
+      value =
+          "YbaApi Internal. Whether YBA scrapes the node_exporter sidecar on this Kubernetes"
+              + " universe")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2026.2.0.0")
+  public final boolean nodeExporterSidecarScraped;
+
   public UniverseResp(Universe entity) {
     this(
         entity,
@@ -347,6 +355,13 @@ public class UniverseResp {
 
     this.rollMaxBatchSize = rollMaxBatchSize;
     this.platformVersion = platformVersion;
+    this.nodeExporterSidecarScraped =
+        confGetter != null
+            && Util.isKubernetesBasedUniverse(entity)
+            && KubernetesUtil.isNodeExporterSidecarEnabled(
+                entity.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
+                entity,
+                confGetter);
   }
 
   // TODO(UI folks): Remove this. This is redundant as it is already available in resources

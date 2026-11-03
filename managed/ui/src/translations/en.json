@@ -671,8 +671,6 @@
         "modalTitle": "Edit Cross-Cloud Federated Access",
         "toggleLabel": "Enable Federated Access for Backups",
         "subText": "Allow database nodes in this universe to access backup storage in other clouds using federated IAM.",
-        "enableInfoTitle": "Cloud provider configuration required",
-        "enableInfoText": "Before applying changes, make sure you have enabled access to the cloud services you want to use in the <bold>{{providerName}}</bold> provider configuration.",
         "providerDisabledTitle": "Enable cloud service access to continue",
         "providerDisabledText": "Federated access for backups is not enabled in the <providerLink>{{providerName}}</providerLink> infrastructure configuration. Enable it before applying changes.",
         "disableWarningTitle": "Disabling federated access will affect backups and restores",

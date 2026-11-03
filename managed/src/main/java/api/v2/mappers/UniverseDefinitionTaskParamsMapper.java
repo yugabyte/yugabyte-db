@@ -235,6 +235,7 @@ public interface UniverseDefinitionTaskParamsMapper {
     return new EncryptionInTransitSpec()
         .enableNodeToNodeEncrypt(primaryUserIntent.enableNodeToNodeEncrypt)
         .enableClientToNodeEncrypt(primaryUserIntent.enableClientToNodeEncrypt)
+        .useNodeToNodeClientCerts(primaryUserIntent.useNodeToNodeClientCerts)
         .rootCa(universeDetails.rootCA)
         .clientRootCa(universeDetails.getClientRootCA())
         .rootAndClientRootCaSame(universeDetails.rootAndClientRootCASame);

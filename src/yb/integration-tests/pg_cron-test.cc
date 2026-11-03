@@ -890,9 +890,11 @@ TEST_F(PgCronTest, KillRunningJob) {
 //
 //   test driver                        A (leader)                       B
 //   schedule Insert "1 second"
+//   wait Insert succeeded on A
 //   schedule Short  "1 second" sleep 5
 //   schedule Long   "1 second" sleep 1000
 //   wait Short, Long running on A
+//   wait Short in pg_sleep on A
 //   t0: MoveTabletLeader(A -> B) ----> Deactivate: stop starting runs  Activate: wait one lease
 //                                      Short finishes: 'succeeded'
 //                                      lease expires: Long aborted
@@ -907,7 +909,8 @@ TEST_F(PgCronTest, GracefulLeaderMove) {
   // Prevent the load balancer from moving the leader back.
   ASSERT_OK(cluster_->SetFlagOnMasters("enable_load_balancing", "false"));
 
-  ASSERT_OK(Schedule1SecInsertNodeJob());
+  const auto insert_job_id = ASSERT_RESULT(Schedule1SecInsertNodeJob());
+  ASSERT_OK(WaitForJobStatus(insert_job_id, "Insert Node", kSucceededJobStatus));
   const std::string short_query = "SELECT pg_sleep(5)";
   const auto short_job_name = "Short Sleep";
   const auto short_job_id = ASSERT_RESULT(ScheduleJob(short_job_name, "1 second", short_query));
@@ -918,7 +921,25 @@ TEST_F(PgCronTest, GracefulLeaderMove) {
   ASSERT_OK(WaitForJobStatus(long_job_id, long_job_name, kRunningJobStatus));
 
   const auto old_leader_idx = ASSERT_RESULT(cluster_->GetTabletLeaderIndex(tablet_id_));
-  const auto short_runid = std::get<0>(ASSERT_RESULT(GetRunningRun(short_job_id)));
+  auto old_leader_conn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte", old_leader_idx));
+  int64_t short_runid = 0;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto run = GetRunningRun(short_job_id);
+        if (!run.ok()) {
+          return false;
+        }
+        const auto [runid, pid] = *run;
+        if (VERIFY_RESULT(old_leader_conn.FetchRow<pgwrapper::PGUint64>(Format(
+                "SELECT COUNT(*) FROM pg_stat_activity WHERE pid = $0 AND query = '$1' AND "
+                "state = 'active'",
+                pid, short_query))) == 0) {
+          return false;
+        }
+        short_runid = runid;
+        return true;
+      },
+      kTimeout, "Wait for a run of the short job to be in its query"));
   const auto long_runid = std::get<0>(ASSERT_RESULT(GetRunningRun(long_job_id)));
 
   const auto t0_db = ASSERT_RESULT(CurrentDbTimestamp());

@@ -78,4 +78,4 @@ ycqlsh:example> SELECT * FROM sensor_data;
 
 ## See also
 
-- [Data types](..#data-types)
+- [Data types](../#data-types)
