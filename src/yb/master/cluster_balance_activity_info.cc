@@ -13,9 +13,22 @@
 
 #include "yb/master/cluster_balance_activity_info.h"
 
+#include "yb/util/flags.h"
 #include "yb/util/shared_lock.h"
 
+DEFINE_RUNTIME_bool(load_balancer_allow_global_balancing_with_warnings, true,
+    "Allow global balancing to be re-enabled after a cluster balancer run that had warnings, as "
+    "long as no tasks or remote bootstraps are in flight for the tables the run did not skip. "
+    "When false, the run must also have no warnings.");
+
 namespace yb::master {
+
+bool ClusterBalancerActivityInfo::CanPerformGlobalMoves() const {
+  if (!tasks_.empty() || has_ongoing_remote_bootstraps_) {
+    return false;
+  }
+  return FLAGS_load_balancer_allow_global_balancing_with_warnings || warnings_.empty();
+}
 
 ClusterBalancerActivityInfo::TasksSummaryMap ClusterBalancerActivityInfo::GetTasksSummary() {
   TasksSummaryMap tasks_summary;
