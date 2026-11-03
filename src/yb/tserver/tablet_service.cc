@@ -2340,17 +2340,18 @@ void TabletServiceAdminImpl::AlterTabletTier(
                         << context.requestor_string();
 
   const auto meta = peer_tablet.tablet_peer->tablet_metadata();
+  auto* tablet_manager = server_->tablet_manager();
 
-  // Keep the disk already resolved for this tier when the tier is unchanged: OpenTablet validated
-  // or repaired the persisted path_id and nothing invalidates it while the tablet is open, so it
-  // is read here rather than re-resolved, and the tablet's own guarded write stays the only one
-  // that can touch the target of an open tablet. Re-running the least-loaded-disk policy could
-  // also pick a different disk within the same tier purely because the first call changed the
-  // load counts, forcing a pointless rewrite of every SST.
-  Result<uint32_t> path_id = meta->target_storage_tier() == req->target_tier()
-      ? Result<uint32_t>(meta->target_tier_path_id())
-      : server_->tablet_manager()->SelectPathIdForTier(
-            *meta, meta->table_id(), req->target_tier());
+  // Same tier: reuse the persisted disk while it still passes OpenTablet's checks; re-resolving
+  // could pick another disk in the tier just because the load counts changed, rewriting every
+  // SST for nothing. OpenTablet leaves a stale path_id behind when the tier has no disks on this
+  // node, and SelectPathIdForTier then refuses with NotFound, as for a tier change. Nothing is
+  // persisted here: the tablet's guarded write stays the only writer.
+  Result<uint32_t> path_id =
+      meta->target_storage_tier() == req->target_tier() &&
+              tablet_manager->IsTargetTierPathIdValid(*meta)
+          ? Result<uint32_t>(meta->target_tier_path_id())
+          : tablet_manager->SelectPathIdForTier(*meta, meta->table_id(), req->target_tier());
   if (!path_id.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), path_id.status(), &context);
     return;

@@ -3750,6 +3750,24 @@ std::string TSTabletManager::PickMinLoadDataRootUnlocked(
   return min_dir;
 }
 
+bool TSTabletManager::IsTargetTierPathIdValid(const tablet::RaftGroupMetadata& meta) const {
+  const auto target_tier = meta.target_storage_tier();
+  const auto cached_path_id = meta.target_tier_path_id();
+  for (const auto& tp : meta.tier_paths()) {
+    if (tp.path_id != cached_path_id) {
+      continue;
+    }
+    if (tp.tier != target_tier) {
+      return false;
+    }
+    const auto configured_roots = fs_manager_->GetDataRootDirsForTier(target_tier);
+    const auto data_root = tablet::GetDataRootFromTabletDir(tp.path);
+    return std::find(configured_roots.begin(), configured_roots.end(), data_root) !=
+           configured_roots.end();
+  }
+  return false;
+}
+
 Result<uint32_t> TSTabletManager::ResolveTargetTierPathId(
     const tablet::RaftGroupMetadataPtr& meta) {
   if (!FLAGS_enable_tiered_storage) {
@@ -3775,29 +3793,7 @@ Result<uint32_t> TSTabletManager::ResolveTargetTierPathId(
   }
 
   const auto cached_path_id = meta->target_tier_path_id();
-  const auto& tier_paths = meta->tier_paths();
-
-  const tablet::TierPathInfo* cached_entry = nullptr;
-  for (const auto& tp : tier_paths) {
-    if (tp.path_id == cached_path_id) {
-      cached_entry = &tp;
-      break;
-    }
-  }
-
-  // Tiered storage: the cached path_id is trustworthy iff (a) it still names a real tier_paths
-  // entry on this replica, (b) that entry's tier still matches the persisted intent, and
-  // (c) that entry's data root is still configured for that tier on *this* node.
-  bool cached_id_valid = false;
-  if (cached_entry != nullptr && cached_entry->tier == target_tier) {
-    const auto data_root = tablet::GetDataRootFromTabletDir(cached_entry->path);
-    const auto configured_roots = fs_manager_->GetDataRootDirsForTier(target_tier);
-    cached_id_valid =
-        std::find(configured_roots.begin(), configured_roots.end(), data_root) !=
-        configured_roots.end();
-  }
-
-  if (cached_id_valid) {
+  if (IsTargetTierPathIdValid(*meta)) {
     VLOG(3) << "TieredStorage ResolveTargetTierPathId: tablet=" << meta->raft_group_id()
             << " target_tier=" << target_tier << " cached path_id=" << cached_path_id
             << " is still valid, reusing it";

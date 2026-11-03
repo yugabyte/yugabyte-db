@@ -5168,12 +5168,15 @@ Status Tablet::SetTierMigrationTargetUnlocked(
       regular_db_->SetOptions({{"target_path_id", std::to_string(target_path_id)}}),
       "Failed to set target_path_id on regular DB");
 
-  // Intent (re)asserted: convergence is unproven again, and earlier failures no longer count.
   std::lock_guard lock(tier_migration_mutex_);
+  ReassertTierIntentUnlocked();
+  return Status::OK();
+}
+
+void Tablet::ReassertTierIntentUnlocked() {
   tier_migration_status_.state = TierMigrationStatus::State::kInProgress;
   tier_migration_status_.consecutive_failed_passes = 0;
   tier_migration_status_.last_error = Status::OK();
-  return Status::OK();
 }
 
 bool Tablet::IsPersistedTierTarget(
@@ -5349,7 +5352,10 @@ Result<TierMigrationStatus> Tablet::AlterTabletTier(
       std::lock_guard lock(tier_migration_mutex_);
       if (tier_migration_status_.pass_in_flight) {
         // The request the pass is already serving, delivered again. Nothing is rewritten under a
-        // running pass, not even the same target; the response says the pass is in flight.
+        // running pass, not even the same target; the response says the pass is in flight. The
+        // intent is re-asserted all the same, so an operator restarting a failing migration
+        // mid-pass does not carry the failures before it toward kFailed.
+        ReassertTierIntentUnlocked();
         return tier_migration_status_;
       }
     }

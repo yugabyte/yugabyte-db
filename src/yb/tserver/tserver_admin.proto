@@ -318,10 +318,10 @@ message FlushTabletsResponsePB {
 // Records target_tier as the tablet replica's placement intent and starts moving its live SSTs
 // there, one DB path move per SST on the compaction/flush thread pool. Returns as soon as the moves
 // are scheduled; the tablet stays RUNNING throughout. While a migration pass is in flight, the same
-// target returns that pass's progress, and a different target is refused with ServiceUnavailable
-// and records nothing: retry once the pass ends. Poll GetTabletTierInfo for progress. Whatever a
-// pass leaves behind is retried by the background reconciler. Master dispatch of this RPC is
-// follow-up work.
+// target returns that pass's progress with the failed-pass count restarted, as for any accepted
+// request, and a different target is refused with ServiceUnavailable and records nothing: retry
+// once the pass ends. Poll GetTabletTierInfo for progress. Whatever a pass leaves behind is retried
+// by the background reconciler. Master dispatch of this RPC is follow-up work.
 message AlterTabletTierRequestPB {
   // UUID of server this request is addressed to.
   optional bytes dest_uuid = 1;
@@ -428,8 +428,8 @@ message GetTabletTierInfoResponsePB {
   optional uint32 target_tier_path_id = 8;
 
   // Where this replica stands relative to target_tier, as of the most recent migration pass,
-  // whether AlterTabletTier or the background reconciler ran it. State NONE until something has
-  // looked at this tablet since the tserver process started.
+  // whether AlterTabletTier or the background reconciler ran it. Unset until something has looked
+  // at this tablet since the tserver process started.
   optional TierMigrationStatusPB migration = 9;
 }
 

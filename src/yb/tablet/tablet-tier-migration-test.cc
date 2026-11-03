@@ -551,6 +551,43 @@ TEST_F(TierMigrationTest, TargetChangeDuringFailingPassIsRefused) {
   ASSERT_EQ(SstCountOnPath(info, kDecoyPathId), 1u);
 }
 
+// A same-target AlterTabletTier during a failing pass is the operator's restart. The pass keeps
+// running (nothing is rewritten under it), but the failures before it no longer count toward
+// kFailed: the running pass's own failure is then the first, not the next.
+TEST_F(TierMigrationTest, SameTargetDuringFailingPassRestartsFailureCount) {
+  WriteFileWithKey(1);
+
+  // Make the target directory unusable, as HardFailureKeepsInProgressAndCountsPasses does.
+  const auto target_dir = GetTestPath("hdd_tier");
+  ASSERT_OK(env_->DeleteDir(target_dir));
+  ASSERT_OK(WriteStringToFile(env_.get(), "", target_dir));
+
+  ASSERT_OK(tablet()->AlterTabletTier("hdd", kTargetPathId));
+  auto info = ASSERT_RESULT(WaitForPassToFinish());
+  ASSERT_EQ(info.migration.consecutive_failed_passes, 1u);
+
+  yb::SyncPoint::GetInstance()->LoadDependency(
+      {{"TierMigrationTest::SameTargetDuringFailingPassRestartsFailureCount:Release",
+        "DBImpl::ExecuteDBPathMoveCompaction:BeforeCopy"}});
+  yb::SyncPoint::GetInstance()->EnableProcessing();
+
+  auto second = ASSERT_RESULT(tablet()->StartTierMigrationPass());
+  ASSERT_TRUE(second.pass_in_flight);
+  ASSERT_EQ(second.consecutive_failed_passes, 1u);
+
+  auto restart = ASSERT_RESULT(tablet()->AlterTabletTier("hdd", kTargetPathId));
+  ASSERT_TRUE(restart.pass_in_flight);
+  ASSERT_EQ(restart.consecutive_failed_passes, 0u);
+  ASSERT_OK(restart.last_error);
+
+  TEST_SYNC_POINT("TierMigrationTest::SameTargetDuringFailingPassRestartsFailureCount:Release");
+  info = ASSERT_RESULT(WaitForPassToFinish());
+  ASSERT_EQ(info.migration.state, TierMigrationStatus::State::kInProgress);
+  ASSERT_EQ(info.migration.files_failed, 1u);
+  ASSERT_EQ(info.migration.consecutive_failed_passes, 1u);
+  ASSERT_NOK(info.migration.last_error);
+}
+
 // Shutdown initiated with a move in flight must complete rather than hang or crash: RocksDB's own
 // shutdown aborts queued moves, and their callbacks land in FinishTierMigrationPass while the
 // tablet is draining the pending-op counter the pass's ScopedRWOperation holds.

@@ -176,7 +176,8 @@ struct TierMigrationStatus {
   uint32_t files_failed = 0;    // hit an unrecoverable error; see last_error
   uint32_t obsoleted = 0;       // gone before the move ran (rewritten by a compaction)
 
-  // Passes in a row that hit a hard error without moving a single file. Any progress resets it.
+  // Passes in a row that hit a hard error without moving a single file. Any progress resets it,
+  // as does any AlterTabletTier.
   uint32_t consecutive_failed_passes = 0;
   Status last_error;
 };
@@ -830,11 +831,13 @@ class Tablet : public AbstractTablet,
   TierMigrationStatus tier_migration_status() const;
 
   // SetTierMigrationTarget followed by StartTierMigrationPass. Backs the AlterTabletTier RPC.
-  // While a pass is in flight, the same target is not an error (a re-delivered request): the
-  // result describes that pass. A different target is refused with ServiceUnavailable and nothing
-  // is persisted: the moves cannot be cancelled, so accepting it would leave the pass copying to a
-  // disk that is no longer the target and booking its outcome against the new one. Also refused
-  // when a concurrent request replaced the target before this one's pass could start.
+  // While a pass is in flight, the same target is not an error (a re-delivered request, or an
+  // operator restarting a failing migration): the result describes that pass, and earlier
+  // failures no longer count toward kFailed, as after any target write. A different target is
+  // refused with ServiceUnavailable and nothing is persisted: the moves cannot be cancelled, so
+  // accepting it would leave the pass copying to a disk that is no longer the target and booking
+  // its outcome against the new one. Also refused when a concurrent request replaced the target
+  // before this one's pass could start.
   Result<TierMigrationStatus> AlterTabletTier(
       const std::string& target_tier, uint32_t target_path_id);
 
@@ -1409,6 +1412,10 @@ class Tablet : public AbstractTablet,
   // flight, so a pass always runs toward the current persisted target.
   Status SetTierMigrationTargetUnlocked(const std::string& target_tier, uint32_t target_path_id)
       REQUIRES(tier_target_mutex_);
+
+  // Tiered storage: intent (re)asserted. Convergence is unproven again and earlier failures no
+  // longer count toward kFailed.
+  void ReassertTierIntentUnlocked() REQUIRES(tier_migration_mutex_);
 
   // Tiered storage: the pass behind StartTierMigrationPass and RunTierReconcilePass. With
   // expected_target, the claim also checks that the persisted target is still that one.
