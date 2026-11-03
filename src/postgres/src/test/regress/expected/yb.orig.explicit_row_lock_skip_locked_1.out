@@ -1476,7 +1476,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_a.id, t_b.cid FROM t_a JOIN t_
          Sort Key: t_a.id, t_b.cid
          Sort Method: quicksort
          ->  YB Batched Nested Loop Join (actual rows=24.00 loops=1)
-               Join Filter: (t_a.id = t_b.parent_id)
+               Join Filter: (t_b.parent_id = t_a.id)
                ->  Seq Scan on t_b (actual rows=24.00 loops=1)
                      Storage Table Read Requests: 1
                      Storage Table Read Ops: 1
@@ -1567,7 +1567,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_a.id, t_b.cid FROM t_a JOIN t_
          Sort Key: t_a.id, t_b.cid
          Sort Method: quicksort
          ->  YB Batched Nested Loop Join (actual rows=24.00 loops=1)
-               Join Filter: (t_a.id = t_b.parent_id)
+               Join Filter: (t_b.parent_id = t_a.id)
                ->  Seq Scan on t_b (actual rows=24.00 loops=1)
                      Storage Table Read Requests: 1
                      Storage Table Read Ops: 1
@@ -1612,7 +1612,6 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_a.id, t_b.cid FROM t_a LEFT JO
          Sort Key: t_a.ord
          Sort Method: quicksort
          ->  Nested Loop Left Join (actual rows=1.00 loops=1)
-               Join Filter: (t_a.id = t_b.parent_id)
                ->  Index Scan using t_a_pkey on t_a (actual rows=1.00 loops=1)
                      Index Cond: (id = 9)
                      Storage Table Read Requests: 1
@@ -1627,7 +1626,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_a.id, t_b.cid FROM t_a LEFT JO
  Storage Rows Scanned: 2
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(20 rows)
+(19 rows)
 
 SELECT * FROM yb_lockrows_max_read_aheads('SELECT t_a.id, t_b.cid FROM t_a LEFT JOIN t_b ON t_a.id = t_b.parent_id WHERE t_a.id = 9 ORDER BY t_a.ord FOR UPDATE OF t_a SKIP LOCKED');
  yb_lockrows_max_read_aheads 
@@ -1673,7 +1672,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_a.id, t_b.cid FROM t_a JOIN t_
                Full-sort Groups: 1  Sort Method: quicksort
                ->  Result (actual rows=24.00 loops=1)
                      ->  YB Batched Nested Loop Join (actual rows=24.00 loops=1)
-                           Join Filter: (t_a.id = t_b.parent_id)
+                           Join Filter: (t_b.parent_id = t_a.id)
                            Sort Keys: t_a.id
                            ->  Index Scan using t_b_parent_idx on t_b (actual rows=24.00 loops=1)
                                  Storage Table Read Requests: 2
@@ -1682,7 +1681,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_a.id, t_b.cid FROM t_a JOIN t_
                                  Storage Index Read Requests: 2
                                  Storage Index Read Ops: 2
                                  Storage Index Rows Scanned: 24
-                           ->  Index Scan using t_a_pkey on t_a (actual rows=4.00 loops=2)
+                           ->  Index Scan using t_a_pkey on t_a (actual rows=4.50 loops=2)
                                  Index Cond: (id = ANY (ARRAY[t_b.parent_id, $3, $4, ..., $1025]))
                                  Storage Table Read Requests: 1
                                  Storage Table Read Ops: 1
@@ -1731,7 +1730,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT x.id AS x_id, y.id AS y_id FROM 
                Sort Key: x.ord
                Sort Method: quicksort
                ->  YB Batched Nested Loop Join (actual rows=9.00 loops=1)
-                     Join Filter: (x.id = y.id)
+                     Join Filter: (y.id = x.id)
                      ->  Seq Scan on t_a x (actual rows=9.00 loops=1)
                            Storage Table Read Requests: 1
                            Storage Table Read Ops: 1
@@ -1855,7 +1854,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_a.id, t_b.cid FROM t_a JOIN t_
                Full-sort Groups: 1  Sort Method: quicksort
                ->  Result (actual rows=12.00 loops=1)
                      ->  YB Batched Nested Loop Join (actual rows=12.00 loops=1)
-                           Join Filter: (t_a.id = t_b.parent_id)
+                           Join Filter: (t_b.parent_id = t_a.id)
                            Sort Keys: t_a.id
                            ->  Index Scan using t_b_parent_idx on t_b (actual rows=24.00 loops=1)
                                  Storage Table Read Requests: 2
@@ -1864,7 +1863,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_a.id, t_b.cid FROM t_a JOIN t_
                                  Storage Index Read Requests: 2
                                  Storage Index Read Ops: 2
                                  Storage Index Rows Scanned: 24
-                           ->  Index Scan using t_a_pkey on t_a (actual rows=2.00 loops=2)
+                           ->  Index Scan using t_a_pkey on t_a (actual rows=2.50 loops=2)
                                  Index Cond: (id = ANY (ARRAY[t_b.parent_id, $3, $4, ..., $1025]))
                                  Storage Filter: (grp = 1)
                                  Storage Table Read Requests: 1
@@ -1919,7 +1918,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_a.id, t_b.cid FROM t_a JOIN t_
                Sort Key: t_a.id, t_b.cid
                Sort Method: quicksort
                ->  YB Batched Nested Loop Join (actual rows=6.00 loops=1)
-                     Join Filter: (t_a.id = t_b.parent_id)
+                     Join Filter: (t_b.parent_id = t_a.id)
                      ->  Index Scan using t_b_val_idx on t_b (actual rows=6.00 loops=1)
                            Index Cond: (val < 70)
                            Storage Table Read Requests: 1
@@ -1982,7 +1981,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_a.id, t_b.cid FROM t_a JOIN t_
                Sort Key: t_a.id, t_b.cid
                Sort Method: quicksort
                ->  YB Batched Nested Loop Join (actual rows=6.00 loops=1)
-                     Join Filter: (t_a.id = t_b.parent_id)
+                     Join Filter: (t_b.parent_id = t_a.id)
                      ->  Index Scan using t_b_val_idx on t_b (actual rows=6.00 loops=1)
                            Index Cond: (val < 70)
                            Storage Table Read Requests: 1
@@ -2042,7 +2041,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_a.id, t_b.cid FROM t_a JOIN t_
                Full-sort Groups: 1  Sort Method: quicksort
                ->  Result (actual rows=3.00 loops=1)
                      ->  YB Batched Nested Loop Join (actual rows=3.00 loops=1)
-                           Join Filter: (t_a.id = t_b.parent_id)
+                           Join Filter: (t_b.parent_id = t_a.id)
                            Sort Keys: t_a.id
                            ->  Index Scan using t_b_parent_idx on t_b (actual rows=24.00 loops=1)
                                  Storage Table Read Requests: 2
@@ -2051,7 +2050,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_a.id, t_b.cid FROM t_a JOIN t_
                                  Storage Index Read Requests: 2
                                  Storage Index Read Ops: 2
                                  Storage Index Rows Scanned: 24
-                           ->  Index Scan using t_a_pkey on t_a (actual rows=0.00 loops=2)
+                           ->  Index Scan using t_a_pkey on t_a (actual rows=0.50 loops=2)
                                  Index Cond: (id = ANY (ARRAY[t_b.parent_id, $3, $4, ..., $1025]))
                                  Filter: ((id)::text ~~ '%1%'::text)
                                  Rows Removed by Filter: 4
@@ -2109,7 +2108,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_a.id, t_b.cid FROM t_a JOIN t_
                Full-sort Groups: 1  Sort Method: quicksort
                ->  Result (actual rows=12.00 loops=1)
                      ->  YB Batched Nested Loop Join (actual rows=12.00 loops=1)
-                           Join Filter: (t_a.id = t_b.parent_id)
+                           Join Filter: (t_b.parent_id = t_a.id)
                            Sort Keys: t_a.id
                            ->  Index Scan using t_b_parent_idx on t_b (actual rows=12.00 loops=1)
                                  Filter: ((cid)::text ~~ '%1%'::text)
@@ -2229,7 +2228,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_a.id FROM t_a JOIN unnest(ARRA
          Sort Key: t_a.ord
          Sort Method: quicksort
          ->  YB Batched Nested Loop Join (actual rows=4.00 loops=1)
-               Join Filter: (t_a.id = ids.id)
+               Join Filter: (ids.id = t_a.id)
                ->  Function Scan on unnest ids (actual rows=4.00 loops=1)
                ->  Index Scan using t_a_pkey on t_a (actual rows=4.00 loops=1)
                      Index Cond: (id = ANY (ARRAY[ids.id, $2, $3, ..., $1024]))
@@ -2282,7 +2281,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_b.cid, t_a.id FROM t_b JOIN t_
          Sort Key: t_b.ord
          Sort Method: quicksort
          ->  YB Batched Nested Loop Join (actual rows=4.00 loops=1)
-               Join Filter: (t_b.parent_id = t_a.id)
+               Join Filter: (t_a.id = t_b.parent_id)
                ->  YB Bitmap Table Scan on t_b (actual rows=4.00 loops=1)
                      Storage Table Read Requests: 1
                      Storage Table Read Ops: 1
@@ -2430,17 +2429,17 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 (18 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_a.id, s.id FROM t_a, (SELECT * FROM t_a FOR UPDATE SKIP LOCKED) AS s WHERE t_a.id < 3;
-                           QUERY PLAN                            
------------------------------------------------------------------
- Nested Loop (actual rows=18 loops=1)
-   ->  Index Scan using t_a_pkey on t_a (actual rows=2 loops=1)
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Nested Loop (actual rows=18.00 loops=1)
+   ->  Index Scan using t_a_pkey on t_a (actual rows=2.00 loops=1)
          Index Cond: (id < 3)
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
          Storage Table Rows Scanned: 2
-   ->  Subquery Scan on s (actual rows=9 loops=2)
-         ->  LockRows (actual rows=9 loops=2)
-               ->  Seq Scan on t_a t_a_1 (actual rows=9 loops=2)
+   ->  Subquery Scan on s (actual rows=9.00 loops=2)
+         ->  LockRows (actual rows=9.00 loops=2)
+               ->  Seq Scan on t_a t_a_1 (actual rows=9.00 loops=2)
                      Storage Table Read Requests: 1
                      Storage Table Read Ops: 1
                      Storage Table Rows Scanned: 9
@@ -2572,9 +2571,10 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT sub_a.id, sub_b.cid FROM (SELECT id FROM t_a ORDER BY ord LIMIT 3 FOR UPDATE SKIP LOCKED) sub_a JOIN (SELECT cid, parent_id FROM t_b ORDER BY ord LIMIT 9 FOR UPDATE SKIP LOCKED) sub_b ON sub_a.id = sub_b.parent_id ORDER BY sub_a.id, sub_b.cid;
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
- Sort (actual rows=9.00 loops=1)
+ Incremental Sort (actual rows=9.00 loops=1)
    Sort Key: sub_a.id, sub_b.cid
-   Sort Method: quicksort
+   Presorted Key: sub_a.id
+   Full-sort Groups: 1  Sort Method: quicksort
    ->  Merge Join (actual rows=9.00 loops=1)
          Merge Cond: (sub_a.id = sub_b.parent_id)
          ->  Sort (actual rows=3.00 loops=1)
@@ -2608,7 +2608,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT sub_a.id, sub_b.cid FROM (SELECT
  Storage Rows Scanned: 45
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(36 rows)
+(37 rows)
 
 SELECT * FROM yb_lockrows_max_read_aheads('SELECT sub_a.id, sub_b.cid FROM (SELECT id FROM t_a ORDER BY ord LIMIT 3 FOR UPDATE SKIP LOCKED) sub_a JOIN (SELECT cid, parent_id FROM t_b ORDER BY ord LIMIT 9 FOR UPDATE SKIP LOCKED) sub_b ON sub_a.id = sub_b.parent_id ORDER BY sub_a.id, sub_b.cid');
  yb_lockrows_max_read_aheads 
@@ -2722,12 +2722,13 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT sub_a.id, sub_b.cid FROM (SELECT
                                          QUERY PLAN                                          
 ---------------------------------------------------------------------------------------------
  Limit (actual rows=6.00 loops=1)
-   ->  Sort (actual rows=6.00 loops=1)
+   ->  Incremental Sort (actual rows=6.00 loops=1)
          Sort Key: sub_a.id, sub_b.cid
-         Sort Method: quicksort
-         ->  Merge Join (actual rows=12.00 loops=1)
+         Presorted Key: sub_a.id
+         Full-sort Groups: 1  Sort Method: quicksort
+         ->  Merge Join (actual rows=7.00 loops=1)
                Merge Cond: (sub_a.id = sub_b.parent_id)
-               ->  Sort (actual rows=4.00 loops=1)
+               ->  Sort (actual rows=3.00 loops=1)
                      Sort Key: sub_a.id
                      Sort Method: quicksort
                      ->  Subquery Scan on sub_a (actual rows=4.00 loops=1)
@@ -2740,7 +2741,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT sub_a.id, sub_b.cid FROM (SELECT
                                                    Storage Table Read Requests: 1
                                                    Storage Table Read Ops: 1
                                                    Storage Table Rows Scanned: 9
-               ->  Sort (actual rows=12 loops=1)
+               ->  Sort (actual rows=7.00 loops=1)
                      Sort Key: sub_b.parent_id
                      Sort Method: quicksort
                      ->  Subquery Scan on sub_b (actual rows=12.00 loops=1)
@@ -2758,7 +2759,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT sub_a.id, sub_b.cid FROM (SELECT
  Storage Rows Scanned: 49
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(37 rows)
+(38 rows)
 
 SELECT * FROM yb_lockrows_max_read_aheads('SELECT sub_a.id, sub_b.cid FROM (SELECT id FROM t_a ORDER BY ord LIMIT 4 FOR UPDATE SKIP LOCKED) sub_a JOIN (SELECT cid, parent_id FROM t_b ORDER BY ord LIMIT 12 FOR UPDATE SKIP LOCKED) sub_b ON sub_a.id = sub_b.parent_id ORDER BY sub_a.id, sub_b.cid LIMIT 6');
  yb_lockrows_max_read_aheads 
@@ -2874,7 +2875,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_a.id, sub.cid FROM t_a JOIN (S
                Sort Key: t_a.id, sub.cid
                Sort Method: quicksort
                ->  YB Batched Nested Loop Join (actual rows=12.00 loops=1)
-                     Join Filter: (t_a.id = sub.parent_id)
+                     Join Filter: (sub.parent_id = t_a.id)
                      ->  Subquery Scan on sub (actual rows=12.00 loops=1)
                            ->  Limit (actual rows=12.00 loops=1)
                                  ->  LockRows (actual rows=12.00 loops=1)
@@ -3004,9 +3005,10 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT sub_a.id, sub_b.cid FROM (SELECT
 ---------------------------------------------------------------------------------------------------
  Limit (actual rows=3.00 loops=1)
    ->  LockRows (actual rows=3.00 loops=1)
-         ->  Sort (actual rows=3.00 loops=1)
+         ->  Incremental Sort (actual rows=3.00 loops=1)
                Sort Key: sub_a.id, sub_b.cid
-               Sort Method: quicksort
+               Presorted Key: sub_a.id
+               Full-sort Groups: 1  Sort Method: quicksort
                ->  Merge Join (actual rows=9.00 loops=1)
                      Merge Cond: (sub_a.id = sub_b.parent_id)
                      ->  Sort (actual rows=4.00 loops=1)
@@ -3040,7 +3042,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT sub_a.id, sub_b.cid FROM (SELECT
  Storage Rows Scanned: 48
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(38 rows)
+(39 rows)
 
 SELECT * FROM yb_lockrows_max_read_aheads('SELECT sub_a.id, sub_b.cid FROM (SELECT id FROM t_a ORDER BY ord LIMIT 6 FOR UPDATE SKIP LOCKED) sub_a JOIN (SELECT cid, parent_id FROM t_b ORDER BY ord LIMIT 9 FOR UPDATE SKIP LOCKED) sub_b ON sub_a.id = sub_b.parent_id ORDER BY sub_a.id, sub_b.cid LIMIT 3 FOR UPDATE SKIP LOCKED');
  yb_lockrows_max_read_aheads 
@@ -3566,29 +3568,26 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_part.a FROM t_part JOIN t_asc 
    ->  LockRows (actual rows=5.00 loops=1)
          ->  Result (actual rows=5.00 loops=1)
                ->  YB Batched Nested Loop Join (actual rows=5.00 loops=1)
-                     Join Filter: (t_part.a = t_asc.k)
+                     Join Filter: (t_asc.k = t_part.a)
                      Sort Keys: t_part.a
-                     ->  Index Scan using t_asc_pkey on t_asc (actual rows=15.00 loops=1)
-                           Storage Table Read Requests: 2
-                           Storage Table Read Ops: 2
-                           Storage Table Rows Scanned: 15
-                     ->  Append (actual rows=5.00 loops=2)
-                           ->  Index Scan using t_part_lo_pkey on t_part_lo t_part_1 (actual rows=2.00 loops=2)
-                                 Index Cond: (a = ANY (ARRAY[t_asc.k, $3, $4, ..., $1025]))
-                                 Storage Table Read Requests: 1
-                                 Storage Table Read Ops: 2
-                                 Storage Table Rows Scanned: 2
-                           ->  Index Scan using t_part_hi_pkey on t_part_hi t_part_2 (actual rows=5.00 loops=1)
+                     ->  Index Scan using t_asc_pkey on t_asc (actual rows=5.00 loops=1)
+                           Storage Table Read Requests: 1
+                           Storage Table Read Ops: 1
+                           Storage Table Rows Scanned: 5
+                     ->  Append (actual rows=5.00 loops=1)
+                           ->  Index Scan using t_part_lo_pkey on t_part_lo t_part_1 (actual rows=5.00 loops=1)
                                  Index Cond: (a = ANY (ARRAY[t_asc.k, $3, $4, ..., $1025]))
                                  Storage Table Read Requests: 1
                                  Storage Table Read Ops: 3
                                  Storage Table Rows Scanned: 5
- Storage Read Requests: 10
- Storage Read Ops: 25
- Storage Rows Scanned: 30
+                           ->  Index Scan using t_part_hi_pkey on t_part_hi t_part_2 (never executed)
+                                 Index Cond: (a = ANY (ARRAY[t_asc.k, $3, $4, ..., $1025]))
+ Storage Read Requests: 7
+ Storage Read Ops: 19
+ Storage Rows Scanned: 15
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(26 rows)
+(23 rows)
 
 SELECT * FROM yb_lockrows_max_read_aheads('SELECT t_part.a FROM t_part JOIN t_asc ON t_part.a = t_asc.k ORDER BY t_part.a LIMIT 5 FOR UPDATE OF t_part SKIP LOCKED');
  yb_lockrows_max_read_aheads 
@@ -3680,7 +3679,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) WITH next AS (SELECT id FROM t_queue OR
                        Storage Table Read Ops: 1
                        Storage Table Rows Scanned: 3
    ->  YB Batched Nested Loop Join (actual rows=3.00 loops=1)
-         Join Filter: (t_queue.id = next.id)
+         Join Filter: (next.id = t_queue.id)
          ->  HashAggregate (actual rows=3.00 loops=1)
                Group Key: next.id
                ->  CTE Scan on next (actual rows=3.00 loops=1)
@@ -3740,7 +3739,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) WITH next AS (SELECT id FROM t_queue OR
                        Storage Table Read Ops: 1
                        Storage Table Rows Scanned: 3
    ->  YB Batched Nested Loop Join (actual rows=3.00 loops=1)
-         Join Filter: (t_queue.id = next.id)
+         Join Filter: (next.id = t_queue.id)
          ->  HashAggregate (actual rows=3.00 loops=1)
                Group Key: next.id
                ->  CTE Scan on next (actual rows=3.00 loops=1)
@@ -3804,10 +3803,10 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) UPDATE t_queue SET status = 'processing
  Update on t_queue (actual rows=5.00 loops=1)
    Storage Table Write Requests: 5
    ->  YB Batched Nested Loop Join (actual rows=5.00 loops=1)
-         Join Filter: (t_queue.id = "ANY_subquery".id)
+         Join Filter: (unnamed_subquery.id = t_queue.id)
          ->  HashAggregate (actual rows=5.00 loops=1)
-               Group Key: "ANY_subquery".id
-               ->  Subquery Scan on "ANY_subquery" (actual rows=5.00 loops=1)
+               Group Key: unnamed_subquery.id
+               ->  Subquery Scan on unnamed_subquery (actual rows=5.00 loops=1)
                      ->  Limit (actual rows=5.00 loops=1)
                            ->  LockRows (actual rows=5.00 loops=1)
                                  ->  Index Scan using t_queue_pkey on t_queue t_queue_1 (actual rows=5.00 loops=1)
@@ -3886,7 +3885,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) WITH next AS (SELECT a FROM t_part ORDE
                                    Storage Table Read Ops: 3
                                    Storage Table Rows Scanned: 5
    ->  YB Batched Nested Loop Join (actual rows=3.00 loops=1)
-         Join Filter: (t_part.a = next.a)
+         Join Filter: (next.a = t_part.a)
          ->  HashAggregate (actual rows=3.00 loops=1)
                Group Key: next.a
                ->  CTE Scan on next (actual rows=3.00 loops=1)
