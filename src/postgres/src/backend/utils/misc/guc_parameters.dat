@@ -3748,6 +3748,14 @@
   boot_val => 'true',
 },
 
+{ name => 'yb_alter_type_reuse_expr_and_partial_indexes', type => 'bool', context => 'PGC_USERSET', group => 'CUSTOM_OPTIONS',
+  short_desc => 'Skip rebuild of expression and partial indexes when ALTER TABLE ... ALTER COLUMN ... TYPE changes only a column\'s type modifier and does not rewrite the table.',
+  long_desc => 'When turned off, such indexes are dropped and rebuilt.',
+  flags => 'GUC_NOT_IN_SAMPLE',
+  variable => 'yb_alter_type_reuse_expr_and_partial_indexes',
+  boot_val => 'true',
+},
+
 { name => 'yb_always_increment_catalog_version_on_ddl', type => 'bool', context => 'PGC_SIGHUP', group => 'DEVELOPER_OPTIONS',
   short_desc => 'When set, all DDL statements will cause the catalog version to increment. Unlike yb_test_make_all_ddl_statements_incrementing, this only controls the version incrementing behavior.',
   variable => 'yb_always_increment_catalog_version_on_ddl',
@@ -5254,6 +5262,15 @@
   max => '86400000',
 },
 
+{ name => 'yb_test_delay_relation_grant_update_ms', type => 'int', context => 'PGC_USERSET', group => 'DEVELOPER_OPTIONS',
+  short_desc => 'When > 0, GRANT and REVOKE on a relation sleep this many ms between reading and updating its pg_class row.',
+  flags => 'GUC_NOT_IN_SAMPLE | GUC_UNIT_MS',
+  variable => 'yb_test_delay_relation_grant_update_ms',
+  boot_val => '0',
+  min => '0',
+  max => 'INT_MAX',
+},
+
 { name => 'yb_test_delay_set_local_tserver_inval_message_ms', type => 'int', context => 'PGC_USERSET', group => 'DEVELOPER_OPTIONS',
   short_desc => 'When > 0, add a delay before calling YBCPgSetTserverCatalogMessageList.',
   variable => 'yb_test_delay_set_local_tserver_inval_message_ms',
@@ -5357,6 +5374,15 @@
   short_desc => 'When set, all DDL statements will cause the catalog version to increment. This mainly affects CREATE commands such as CREATE TABLE, CREATE VIEW, and CREATE SEQUENCE. This also enables negative catcache entries.',
   variable => 'yb_test_make_all_ddl_statements_incrementing',
   boot_val => 'true',
+},
+
+{ name => 'yb_test_notifs_poller_init_delay_ms', type => 'int', context => 'PGC_SIGHUP', group => 'DEVELOPER_OPTIONS',
+  short_desc => 'Time in milliseconds for which the notifications poller waits before it initializes, for testing.',
+  flags => 'GUC_NOT_IN_SAMPLE | GUC_UNIT_MS',
+  variable => 'yb_test_notifs_poller_init_delay_ms',
+  boot_val => '0',
+  min => '0',
+  max => 'INT_MAX',
 },
 
 { name => 'yb_test_notify_queue_max_pages', type => 'int', context => 'PGC_SIGHUP', group => 'DEVELOPER_OPTIONS',
@@ -5633,6 +5659,15 @@
   variable => 'yb_use_tserver_key_auth',
   boot_val => 'false',
   check_hook => 'yb_use_tserver_key_auth_check_hook',
+},
+
+{ name => 'yb_ysql_upgrade_min_next_oid', type => 'oid', context => 'PGC_SUSET', group => 'DEVELOPER_OPTIONS',
+  short_desc => 'Lowest OID to assign in YSQL upgrade mode. Set by the YSQL upgrade runner before a migration that creates a shared relation.',
+  flags => 'GUC_NOT_IN_SAMPLE',
+  variable => 'yb_ysql_upgrade_min_next_oid',
+  boot_val => 'InvalidOid',
+  min => '0',
+  max => 'FirstNormalObjectId',
 },
 
 { name => 'ysql_conn_mgr_sticky_object_count', type => 'int', context => 'PGC_INTERNAL', group => 'CUSTOM_OPTIONS',

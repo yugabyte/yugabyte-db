@@ -712,6 +712,12 @@ extern bool yb_enable_fkey_batched_docdb_lookup_when_types_mismatch;
 extern bool yb_enable_nop_alter_role_optimization;
 
 /*
+ * Skip rebuild of expression and partial indexes during ALTER COLUMN ... TYPE
+ * when the table is not rewritten.
+ */
+extern bool yb_alter_type_reuse_expr_and_partial_indexes;
+
+/*
  * Compatibility option to ignore FREEZE with COPY FROM.
  */
 extern bool yb_ignore_freeze_with_copy;
@@ -912,6 +918,12 @@ extern int	yb_test_delay_after_applying_inval_message_ms;
  * If > 0, add a delay before calling YBCPgSetTserverCatalogMessageList.
  */
 extern int	yb_test_delay_set_local_tserver_inval_message_ms;
+
+/*
+ * If > 0, GRANT/REVOKE on a relation sleeps for this many ms between reading
+ * its pg_class row and writing it back.
+ */
+extern int	yb_test_delay_relation_grant_update_ms;
 
 /*
  * If > 0, sleep for this many ms before committing the DDL

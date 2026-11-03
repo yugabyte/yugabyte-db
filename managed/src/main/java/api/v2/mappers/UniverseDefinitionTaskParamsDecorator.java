@@ -126,6 +126,8 @@ public abstract class UniverseDefinitionTaskParamsDecorator
             EncryptionInTransitSpec source = universeSpec.getEncryptionInTransitSpec();
             cluster.userIntent.enableNodeToNodeEncrypt = source.getEnableNodeToNodeEncrypt();
             cluster.userIntent.enableClientToNodeEncrypt = source.getEnableClientToNodeEncrypt();
+            cluster.userIntent.useNodeToNodeClientCerts =
+                Boolean.TRUE.equals(source.getUseNodeToNodeClientCerts());
           }
           // set networking into all clusters
           if (universeSpec != null && universeSpec.getNetworkingSpec() != null) {

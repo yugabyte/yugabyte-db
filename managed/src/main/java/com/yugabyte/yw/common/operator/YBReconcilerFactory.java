@@ -11,6 +11,7 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.dr.DrConfigHelper;
 import com.yugabyte.yw.common.kms.KMSConfigHelper;
+import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.common.operator.utils.TelemetryProviderCrConverter;
 import com.yugabyte.yw.common.pitr.PitrConfigHelper;
@@ -33,6 +34,7 @@ public class YBReconcilerFactory {
   @Inject private OperatorUtils operatorUtils;
   @Inject private UniverseActionsHandler universeActionsHandler;
   @Inject private YbcManager ybcManager;
+  @Inject private MetricService metricService;
   @Inject private BackupHelper backupHelper;
   @Inject private PitrConfigHelper pitrConfigHelper;
   @Inject private KMSConfigHelper kmsConfigHelper;
@@ -57,7 +59,8 @@ public class YBReconcilerFactory {
         customerTaskManager,
         operatorUtils,
         universeActionsHandler,
-        ybcManager);
+        ybcManager,
+        metricService);
   }
 
   public ScheduledBackupReconciler getScheduledBackupReconciler(KubernetesClient client) {

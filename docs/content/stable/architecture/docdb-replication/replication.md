@@ -18,7 +18,7 @@ Using the [Raft distributed consensus protocol](../raft), DocDB automatically re
 
 ## Replication factor
 
-YugabyteDB replicates data across [fault domains](../../key-concepts#fault-domain) (which, depending on the deployment, could be nodes, availability zones, or regions) in order to tolerate faults. The replication factor (RF) is the number of copies of data in a YugabyteDB cluster.
+YugabyteDB replicates data across [fault domains](../../key-concepts/#fault-domain) (which, depending on the deployment, could be nodes, availability zones, or regions) in order to tolerate faults. The replication factor (RF) is the number of copies of data in a YugabyteDB cluster.
 
 ## Fault tolerance
 
@@ -61,7 +61,7 @@ After the Raft log is replicated to a majority of tablet-peers and successfully 
 
 ## Multi-zone deployment
 
-The replicas of data can be placed across multiple [fault domains](../../key-concepts#fault-domain). The following examples of a multi-zone deployment with three zones and the replication factor assumed to be 3 demonstrate how replication across fault domains is performed in a cluster.
+The replicas of data can be placed across multiple [fault domains](../../key-concepts/#fault-domain). The following examples of a multi-zone deployment with three zones and the replication factor assumed to be 3 demonstrate how replication across fault domains is performed in a cluster.
 
 In the case of a multi-zone deployment, the data in each of the tablets in a node is replicated across multiple zones using the Raft consensus algorithm. All the read and write queries for the rows that belong to a given tablet are handled by that tablet's leader, as per the following diagram:
 

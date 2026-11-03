@@ -47,7 +47,8 @@ extern bool CheckIndexCompatible(Oid oldId,
 								 const char *accessMethodName,
 								 const List *attributeList,
 								 const List *exclusionOpNames,
-								 bool isWithoutOverlaps);
+								 bool isWithoutOverlaps,
+								 Node *yb_where_clause);
 extern Oid	GetDefaultOpClass(Oid type_id, Oid am_id);
 extern Oid	ResolveOpClass(const List *opclass, Oid attrType,
 						   const char *accessMethodName, Oid accessMethodId);
@@ -171,5 +172,6 @@ extern void RenameFunction_internal(Relation rel, HeapTuple tup, const char *new
 extern char *YbChooseExtendedStatisticName(const char *name1,
 										   const char *name2,
 										   const char *label, Oid namespaceid);
+extern List *YbComputeIndexExpressions(Oid heapRelid, IndexStmt *stmt);
 
 #endif							/* DEFREM_H */

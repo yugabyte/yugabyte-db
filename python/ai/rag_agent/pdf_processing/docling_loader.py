@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
 import tempfile
 import threading
 from pathlib import Path
@@ -89,7 +90,22 @@ def preload_docling_models() -> bool:
 def _resolve_local_pdf_path(
     file_location: str,
 ) -> Tuple[str, Callable[[], None]]:
+    # Imported here, not at module scope, to keep this module importable
+    # without the chunking pipeline.
+    from rag_pipeline.partition_chunk_pipeline import (
+        enforce_size_limit,
+        max_file_size_bytes,
+    )
+
     if not file_location.startswith("s3://"):
+        # generate_embeddings accepts local paths too, and routes a local PDF
+        # through this same fine-tuning path, so the guard has to cover it.
+        enforce_size_limit(
+            file_location,
+            os.path.getsize(file_location),
+            max_file_size_bytes(),
+            knob="MAX_FILE_SIZE_BYTES",
+        )
         return file_location, lambda: None
 
     path = file_location[len("s3://"):]
@@ -98,11 +114,39 @@ def _resolve_local_pdf_path(
 
     s3 = boto3.client("s3")
     obj = s3.get_object(Bucket=bucket, Key=key)
-    data = obj["Body"].read()
+    body = obj["Body"]
+    # Same out-of-memory guard the text and Markdown reads use. Checked
+    # against the length S3 reports, before any of the body is pulled down, so
+    # an oversized object costs nothing. There was no size check here at all.
+    try:
+        enforce_size_limit(
+            file_location,
+            obj.get("ContentLength"),
+            max_file_size_bytes(),
+            knob="MAX_FILE_SIZE_BYTES",
+        )
+    except ValueError:
+        # Release the unread stream rather than leaving its connection to be
+        # reclaimed whenever the object is collected.
+        body.close()
+        raise
 
     fd, temp_path = tempfile.mkstemp(suffix=".pdf")
-    with os.fdopen(fd, "wb") as fh:
-        fh.write(data)
+    try:
+        # Copied in fixed-size blocks rather than through one bytes object, so
+        # peak memory does not track the size of the PDF.
+        with os.fdopen(fd, "wb") as fh:
+            shutil.copyfileobj(body, fh, length=1024 * 1024)
+    except BaseException:
+        # The temp file exists from here on, and the caller only gets its
+        # cleanup callback on success. A read that dies part way through would
+        # otherwise strand a file of up to MAX_FILE_SIZE_BYTES on a worker
+        # that stays up and retries the document.
+        try:
+            os.remove(temp_path)
+        except OSError:
+            logger.debug("Temp PDF already removed: %s", temp_path)
+        raise
 
     def _cleanup() -> None:
         try:

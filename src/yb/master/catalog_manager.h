@@ -708,7 +708,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   void UpdateTabletReplicaLocations(
       const TabletInfoPtr& tablet, const std::string& ts_uuid, const TabletReplica& replica);
 
-  void WakeBgTaskIfPendingUpdates();
+  void WakeBgTaskIfPendingUpdates() EXCLUDES(mutex_);
 
   // Get the ycql system.partitions vtable. Note that this has EXCLUDES(mutex_), in order to
   // maintain lock ordering.
@@ -991,6 +991,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Result<std::vector<scoped_refptr<TableInfo>>> GetTableInfosForNamespace(
       const NamespaceId& namespace_id) const;
+
+  Status CheckNoYsqlDdlVerificationInProgress(const NamespaceId& namespace_id) const override;
 
   // Return TableInfos according to specified mode.
   virtual std::vector<TableInfoPtr> GetTables(
@@ -1815,10 +1817,17 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const TableId& table_id, const std::unordered_set<xrepl::StreamId>& stream_ids);
 
   // Find all the CDC streams that have been marked as provided state.
+  // If is_cdcsdk_stream is specified, filters to only CDCSDK (true) or xCluster (false) streams.
   Result<std::vector<CDCStreamInfoPtr>> FindXReplStreamsMarkedForDeletion(
-      SysCDCStreamEntryPB::State deletion_state);
+      SysCDCStreamEntryPB::State deletion_state,
+      std::optional<bool> is_cdcsdk_stream = std::nullopt);
 
-  Status CleanUpDeletedXReplStreams(const LeaderEpoch& epoch);
+  Status CleanUpDeletedCDCSDKStreams(const LeaderEpoch& epoch);
+
+  Status CleanUpDeletedXClusterStreams(const LeaderEpoch& epoch);
+
+  Status CleanUpDeletedXReplStreams(
+      const LeaderEpoch& epoch, std::vector<CDCStreamInfoPtr> streams);
 
   Status GetValidTabletsAndDroppedTablesForStream(
       const CDCStreamInfoPtr stream, std::set<TabletId>* tablets_with_streams,
@@ -1862,7 +1871,15 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   void SetCDCServiceEnabled();
 
-  void PrepareRestore() override;
+  void PrepareRestore(const TxnSnapshotRestorationId& restoration_id) override;
+
+  // Fails in-flight sys catalog work and rejects new RPCs ahead of the RESTORE_SYS_CATALOG op for
+  // restoration_id. Must be called before the op is submitted, not on apply.
+  void FenceSysCatalogForRestore(const TxnSnapshotRestorationId& restoration_id);
+
+  // Drops the fence for restoration_id unless its op was applied on this node.
+  // Must be called once the op has completed or failed to submit.
+  void UnfenceSysCatalogForRestore(const TxnSnapshotRestorationId& restoration_id);
 
   void RunXReplBgTasks(const LeaderEpoch& epoch);
 
@@ -1947,6 +1964,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   std::unordered_set<TableId> GetSysCatalogTableIds() EXCLUDES(mutex_);
 
   // Mark specified CDC streams as DELETING/DELETING_METADATA so they can be removed later.
+  // CDCSDK cleanup runs on the CDC bg thread; xCluster cleanup stays on the catalog manager loop.
   Status DropXReplStreams(
       std::vector<CDCStreamInfoPtr>& streams, SysCDCStreamEntryPB::State delete_state);
 
@@ -2714,7 +2732,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Background thread, used to execute the catalog manager tasks
   // like the assignment and cleaner.
   friend class CatalogManagerBgTasks;
+  friend class CatalogManagerCdcBgTasks;
   std::unique_ptr<CatalogManagerBgTasks> background_tasks_;
+  std::unique_ptr<CatalogManagerCdcBgTasks> cdc_background_tasks_;
 
   // Background threadpool, newer features use this (instead of the Background thread)
   // to execute time-lenient catalog manager tasks.
@@ -2761,6 +2781,13 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // While this is true, the ScopedLeaderSharedLock cannot be acquired on this master, so all RPCs
   // that require this lock will fail.
   std::atomic_bool restoring_sys_catalog_ = false;
+
+  // Restorations fenced by FenceSysCatalogForRestore whose op has not been applied yet.
+  // restoring_sys_catalog_ is only cleared while this is empty.
+  std::mutex restore_fence_mutex_;
+  std::vector<TxnSnapshotRestorationId> fenced_restorations_ GUARDED_BY(restore_fence_mutex_);
+
+  void ClearRestoringSysCatalogIfNotFenced() EXCLUDES(restore_fence_mutex_);
 
   // Lock used to fence operations and leader elections. All logical operations
   // (i.e. create table, alter table, etc.) should acquire this lock for

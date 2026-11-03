@@ -35,6 +35,9 @@
   CXXFLAGS = "-std=c++17"
   ONETRUST_API_KEY = "f9a9d3d1-e74a-4e32-8cc4-4f5c343d758b"
   RUDDERSTACK_API_KEY = "Mmo5Y252MjZ6R290ZjhPa3BROUx4cFl6VFVK"
+  # Production only: keeps the Scarf pixel out of deploy previews, branch
+  # deploys, and local builds, where it isn't set.
+  SCARF_PIXEL_ENABLED = "true"
 
 ################ REDIRECTS ################
 #
@@ -130,7 +133,7 @@
 
 [[redirects]]
   from = "/explore/tunable-reads/"
-  to = "/stable/explore/going-beyond-sql/follower-reads-ycql/"
+  to = "/stable/explore/going-beyond-sql/follower-reads-ysql/"
 
 [[redirects]]
   from = "/explore/*"
@@ -351,11 +354,11 @@
 
 [[redirects]]
   from = "/preview/explore/follower-reads/fr-ycql/"
-  to = "/stable/explore/going-beyond-sql/follower-reads-ycql/"
+  to = "/stable/explore/going-beyond-sql/follower-reads-ysql/"
 
 [[redirects]]
   from = "/preview/explore/high-performance/tunable-reads/"
-  to = "/stable/explore/going-beyond-sql/follower-reads-ycql/"
+  to = "/stable/explore/going-beyond-sql/follower-reads-ysql/"
 
 [[redirects]]
   from = "/preview/explore/linear-scalability/macos/"
@@ -367,7 +370,7 @@
 
 [[redirects]]
   from = "/preview/explore/multi-region-deployments/follower-reads-ycql/"
-  to = "/stable/explore/going-beyond-sql/follower-reads-ycql/"
+  to = "/stable/explore/going-beyond-sql/follower-reads-ysql/"
 
 [[redirects]]
   from = "/preview/explore/multi-region-deployments/follower-reads-ysql/"
@@ -1257,6 +1260,7 @@
         ;
 
         img-src 'self'
+            https://static.scarf.sh/
             https://cdn.cookielaw.org/logos/
             https://docs.camunda.org/
             https://docs.yugabyte.com/images/favicon.ico

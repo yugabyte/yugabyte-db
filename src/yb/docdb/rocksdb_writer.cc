@@ -229,8 +229,15 @@ void PutApplyState(
   handler.Put(key_parts, value_parts);
 }
 
+// The hybrid time a write pair is written at. A row and its vector reverse mapping entry must both
+// use it.
+HybridTime RecordHybridTime(const yb::docdb::LWKeyValuePairPB& kv_pair, HybridTime hybrid_time) {
+  return kv_pair.has_external_hybrid_time() ? HybridTime(kv_pair.external_hybrid_time())
+                                            : hybrid_time;
+}
+
 void HandleRegularRecord(
-    const yb::docdb::LWKeyValuePairPB& kv_pair, HybridTime hybrid_time,
+    const yb::docdb::LWKeyValuePairPB& kv_pair, HybridTime record_hybrid_time,
     DocHybridTimeBuffer* doc_ht_buffer, rocksdb::DirectWriteHandler& handler,
     IntraTxnWriteId* write_id) {
 #ifndef NDEBUG
@@ -252,8 +259,6 @@ void HandleRegularRecord(
   // same key (row/column) within a transaction. We set it based on the position of the write
   // operation in its write batch.
 
-  auto record_hybrid_time =
-      kv_pair.has_external_hybrid_time() ? HybridTime(kv_pair.external_hybrid_time()) : hybrid_time;
   std::array<Slice, 2> key_parts = {{
       Slice(kv_pair.key()),
       doc_ht_buffer->EncodeWithValueType(record_hybrid_time, *write_id),
@@ -313,7 +318,8 @@ Status NonTransactionalWriter::Apply(rocksdb::DirectWriteHandler& handler) {
       continue;
     }
 
-    HandleRegularRecord(kv_pair, hybrid_time_, &doc_ht_buffer, handler, &write_id);
+    HandleRegularRecord(
+        kv_pair, RecordHybridTime(kv_pair, hybrid_time_), &doc_ht_buffer, handler, &write_id);
   }
 
   return Status::OK();
@@ -818,8 +824,8 @@ ApplyIntentsContext::ApplyIntentsContext(
 
   if (ShouldMaintainVectorIndexes(table_type)) {
     vector_indexes_updater_.emplace(
-        std::move(vector_indexes), schema_packing_provider, frontiers_,
-        apply_to_storages, commit_ht, write_id_, chunk_holds_);
+        std::move(vector_indexes), schema_packing_provider, frontiers_, apply_to_storages,
+        chunk_holds_);
   }
 }
 
@@ -954,9 +960,11 @@ Result<bool> ApplyIntentsContext::Entry(
     // See NonTransactionalBatchWriter::Apply.
     const auto decode_row =
         ApplyToRegularDB() ||
-        (vector_indexes_updater_ && vector_indexes_updater_->AppliesToRow(intent.doc_path));
+        (vector_indexes_updater_ &&
+         vector_indexes_updater_->AppliesToRow(intent.doc_path, commit_ht_));
     if (vector_indexes_updater_ && decode_row) {
-      RETURN_NOT_OK(vector_indexes_updater_->Feed(handler, intent.doc_path, decoded_value.body));
+      RETURN_NOT_OK(vector_indexes_updater_->Feed(
+          handler, intent.doc_path, decoded_value.body, DocHybridTime(commit_ht_, write_id_)));
     }
 
     ++write_id_;
@@ -1251,7 +1259,7 @@ Result<bool> NonTransactionalBatchWriter::PrepareApplyExternalIntentsBatch(
   if (ShouldMaintainVectorIndexes(table_type_)) {
     vector_indexes_updater.emplace(
         vector_indexes_, schema_packing_provider_, frontiers_, apply_to_storages_,
-        apply_data.commit_ht, apply_data.write_id, chunk_holds_, /* xcluster_target= */ true);
+        chunk_holds_, /* xcluster_target= */ true);
   }
   for (;;) {
     auto key_size = VERIFY_RESULT(FastDecodeUnsignedVarInt(&input_value));
@@ -1300,9 +1308,12 @@ Result<bool> NonTransactionalBatchWriter::PrepareApplyExternalIntentsBatch(
     // See NonTransactionalBatchWriter::Apply.
     const auto decode_row =
         apply_to_storages_.TestRegularDB() ||
-        (vector_indexes_updater && vector_indexes_updater->AppliesToRow(output_key));
+        (vector_indexes_updater &&
+         vector_indexes_updater->AppliesToRow(output_key, apply_data.commit_ht));
     if (vector_indexes_updater && decode_row) {
-      RETURN_NOT_OK(vector_indexes_updater->Feed(regular_write_handler, output_key, output_value));
+      RETURN_NOT_OK(vector_indexes_updater->Feed(
+          regular_write_handler, output_key, output_value,
+          DocHybridTime(apply_data.commit_ht, apply_data.write_id)));
     }
     ++apply_data.write_id;
 
@@ -1449,30 +1460,32 @@ Status NonTransactionalBatchWriter::Apply(rocksdb::DirectWriteHandler& handler) 
   std::optional<VectorIndexesUpdater> vector_indexes_updater;
   IntraTxnWriteId write_id = 0;
   if (ShouldMaintainVectorIndexes(table_type_)) {
-    // On an xCluster target write_hybrid_time_ is the source's hybrid time, which can be below
+    // On an xCluster target rows are written at the source's hybrid time, which can be below
     // the hybrid time of a vector index whose backfill ran before this write arrived (#34697).
     vector_indexes_updater.emplace(
         vector_indexes_, schema_packing_provider_, frontiers_, apply_to_storages_,
-        write_hybrid_time_, write_id, chunk_holds_, xcluster_target_applied_.get());
+        chunk_holds_, xcluster_target_applied_.get());
   }
 
   DocHybridTimeBuffer doc_ht_buffer;
   for (const auto& write_pair : put_batch_.write_pairs()) {
     if (VERIFY_RESULT(AddEntryToWriteBatch(
             write_pair, apply_external_transactions, handler, write_id))) {
+      const HybridTime pair_ht = RecordHybridTime(write_pair, write_hybrid_time_);
       // A replay into vector indexes only does not decode the rows no index takes, e.g. of other
       // tables: their schema packings could be GCed already (GH#35466).
       const auto decode_row =
           apply_to_storages_.TestRegularDB() ||
-          (vector_indexes_updater && vector_indexes_updater->AppliesToRow(write_pair.key()));
+          (vector_indexes_updater &&
+           vector_indexes_updater->AppliesToRow(write_pair.key(), pair_ht));
       if (vector_indexes_updater && decode_row) {
         RETURN_NOT_OK(vector_indexes_updater->Feed(
-            handler, write_pair.key(), write_pair.value()));
+            handler, write_pair.key(), write_pair.value(), DocHybridTime(pair_ht, write_id)));
       }
       // GH#32797: bootstrap replay clears the regular bit when the op is already flushed to the
       // regular DB but not to a vector index. Keep the write id sequence unchanged either way.
       if (apply_to_storages_.TestRegularDB()) {
-        HandleRegularRecord(write_pair, write_hybrid_time_, &doc_ht_buffer, handler, &write_id);
+        HandleRegularRecord(write_pair, pair_ht, &doc_ht_buffer, handler, &write_id);
       } else {
         ++write_id;
       }
@@ -1480,11 +1493,7 @@ Status NonTransactionalBatchWriter::Apply(rocksdb::DirectWriteHandler& handler) 
       // Non-transactional regular-DB write_pairs (direct PutBatch without a transaction). Local
       // colocated TRUNCATE is always transactional, so this hook is not the YSQL truncate path;
       // it covers any non-txn table-tombstone write_pair shape (and stays consistent with the
-      // external-intents notify above once those are applied via write_pairs). Prefer the pair's
-      // external_hybrid_time when present (xCluster producer HT), else the batch write HT.
-      const HybridTime pair_ht = write_pair.has_external_hybrid_time()
-          ? HybridTime(write_pair.external_hybrid_time())
-          : write_hybrid_time_;
+      // external-intents notify above once those are applied via write_pairs).
       MaybeNotifyTableTombstoneWritten(
           schema_packing_provider(), write_pair.key(), write_pair.value(), pair_ht);
 
@@ -1583,27 +1592,28 @@ Status DumpIntentsContext::Complete(rocksdb::DirectWriteHandler& handler,
 
 VectorIndexesUpdater::VectorIndexesUpdater(
     DocVectorIndexesPtr indexes, SchemaPackingProvider& schema_packing_provider,
-    ConsensusFrontiers& frontiers, const StorageSet& apply_to_storages, HybridTime commit_ht,
-    std::reference_wrapper<IntraTxnWriteId> write_id,
+    ConsensusFrontiers& frontiers, const StorageSet& apply_to_storages,
     vector_index::VectorLSMChunkHolds& chunk_holds, bool xcluster_target)
     : indexes_(std::move(indexes)), schema_packing_provider_(schema_packing_provider),
       frontiers_(frontiers),
-      apply_to_storages_(apply_to_storages), commit_ht_(commit_ht), write_id_(write_id),
-      chunk_holds_(chunk_holds), xcluster_target_(xcluster_target) {
+      apply_to_storages_(apply_to_storages), chunk_holds_(chunk_holds),
+      xcluster_target_(xcluster_target) {
   if (indexes_) {
     batches_.resize(indexes_->size());
   }
 }
 
 bool VectorIndexesUpdater::IntentApplyShouldUpdateVectorIndex(
-    const DocVectorIndex& vector_index) const {
+    const DocVectorIndex& vector_index, HybridTime write_ht) const {
   // Also applies to xCluster targets: a restore can only bring a deactivated index back as of a
   // time before it was deactivated. An active index has an invalid cutoff, which compares above
-  // any commit time.
-  if (commit_ht_ > vector_index.deactivated_hybrid_time()) {
+  // any write time. write_ht is the time the row is stored at, which is what a restore compares
+  // against, so it is the right input on an xCluster target too, where write_ht is a source hybrid
+  // time and the cutoff a local one.
+  if (write_ht > vector_index.deactivated_hybrid_time()) {
     return false;
   }
-  return commit_ht_ > vector_index.hybrid_time() || xcluster_target_;
+  return write_ht > vector_index.hybrid_time() || xcluster_target_;
 }
 
 Result<bool> VectorIndexesUpdater::TableWritesVectorReverseMapping(Slice table_key_prefix) {
@@ -1635,7 +1645,9 @@ Result<bool> VectorIndexesUpdater::TableWritesVectorReverseMapping(Slice table_k
 }
 
 Status VectorIndexesUpdater::Feed(
-    rocksdb::DirectWriteHandler& handler, Slice key, Slice value) {
+    rocksdb::DirectWriteHandler& handler, Slice key, Slice value, DocHybridTime write_time) {
+  DCHECK(write_time.hybrid_time().is_valid());
+  write_time_ = write_time;
   auto row_value = value;
   RETURN_NOT_OK(dockv::ValueControlFields::Decode(&row_value));
 
@@ -1675,7 +1687,7 @@ Status VectorIndexesUpdater::Feed(
         column_id = VERIFY_RESULT(ColumnId::Decode(&column_id_slice));
         auto ybctid = key.Prefix(sizes.doc_key_size).WithoutPrefix(sizes.prefix_size);
         DocVectorIndex::ApplyReverseEntry(
-            handler, ybctid, value, DocHybridTime(commit_ht_, write_id_),
+            handler, ybctid, value, write_time_,
             column_id, key.Prefix(sizes.prefix_size));
         need_reverse_entry = false; // Apply only once, not during vector index processing.
       }
@@ -1690,7 +1702,7 @@ Status VectorIndexesUpdater::Feed(
         for (size_t i = 0; i != indexes_->size(); ++i) {
           const auto& vector_index = *(*indexes_)[i];
           if (vector_index.IsIndexedTableKey(key) && vector_index.column_id() == column_id &&
-              IntentApplyShouldUpdateVectorIndex(vector_index)) {
+              IntentApplyShouldUpdateVectorIndex(vector_index, write_time_.hybrid_time())) {
             // The vector index knows its table key prefix and column id, so the payload stores
             // the ybctid alone.
             auto ybctid = key.Prefix(sizes.doc_key_size).WithoutPrefix(
@@ -1706,7 +1718,7 @@ Status VectorIndexesUpdater::Feed(
             if (need_reverse_entry &&
                 VERIFY_RESULT(TableWritesVectorReverseMapping(key.Prefix(sizes.prefix_size)))) {
               DocVectorIndex::ApplyReverseEntry(
-                  handler, ybctid, value, DocHybridTime(commit_ht_, write_id_));
+                  handler, ybctid, value, write_time_);
               need_reverse_entry = false; // Apply only once, not for every vector index.
             }
           }
@@ -1805,7 +1817,7 @@ Status VectorIndexesUpdater::FeedPackedRowTableOwnedReverseMapping(
     if (!is_null && apply_to_storages_.TestRegularDB() &&
         VERIFY_RESULT(TableWritesVectorReverseMapping(table_key_prefix))) {
       DocVectorIndex::ApplyReverseEntry(
-          handler, ybctid, *column_value, DocHybridTime(commit_ht_, write_id_),
+          handler, ybctid, *column_value, write_time_,
           column_id, table_key_prefix);
     }
 
@@ -1817,7 +1829,7 @@ Status VectorIndexesUpdater::FeedPackedRowTableOwnedReverseMapping(
       const auto& vector_index = *(*indexes_)[index_idx];
       if (vector_index.column_id() == column_id &&
           table_key_prefix == vector_index.indexed_table_key_prefix() &&
-          IntentApplyShouldUpdateVectorIndex(vector_index) &&
+          IntentApplyShouldUpdateVectorIndex(vector_index, write_time_.hybrid_time()) &&
           ApplyToVectorIndex(index_idx)) {
         auto& batch = batches_[index_idx];
         batch.should_apply = true;
@@ -1850,7 +1862,7 @@ Status VectorIndexesUpdater::FeedPackedRowLegacyVectorIndexes(
   for (size_t i = 0; i != indexes_->size(); ++i) {
     const auto& vector_index = *(*indexes_)[i];
     if (table_key_prefix != vector_index.indexed_table_key_prefix() ||
-        !IntentApplyShouldUpdateVectorIndex(vector_index)) {
+        !IntentApplyShouldUpdateVectorIndex(vector_index, write_time_.hybrid_time())) {
       continue;
     }
     if (vector_index.column_id() != prev_index_column_id) {
@@ -1879,7 +1891,7 @@ Status VectorIndexesUpdater::FeedPackedRowLegacyVectorIndexes(
           std::max(columns_added_to_vector_index.size(), column_index + 1));
       if (!columns_added_to_vector_index.test_set(column_index)) {
         DocVectorIndex::ApplyReverseEntry(
-            handler, ybctid, *column_value, DocHybridTime(commit_ht_, write_id_));
+            handler, ybctid, *column_value, write_time_);
       }
     }
   }
@@ -1887,14 +1899,14 @@ Status VectorIndexesUpdater::FeedPackedRowLegacyVectorIndexes(
   return Status::OK();
 }
 
-bool VectorIndexesUpdater::AppliesToRow(Slice key) const {
+bool VectorIndexesUpdater::AppliesToRow(Slice key, HybridTime write_ht) const {
   if (!indexes_) {
     return false;
   }
   for (size_t i = 0; i != indexes_->size(); ++i) {
     const auto& vector_index = *(*indexes_)[i];
     if (ApplyToVectorIndex(i) && vector_index.IsIndexedTableKey(key) &&
-        IntentApplyShouldUpdateVectorIndex(vector_index)) {
+        IntentApplyShouldUpdateVectorIndex(vector_index, write_ht)) {
       return true;
     }
   }

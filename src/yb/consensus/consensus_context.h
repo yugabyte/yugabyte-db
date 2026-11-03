@@ -108,6 +108,13 @@ class ConsensusContext {
   // reached the log cache, the WAL, or any follower, all of which see the modified op.
   virtual Status CheckReplicateAllowed(LWReplicateMsg& replicate_msg) = 0;
 
+  // Whether this replica must give up leadership and not seek it.  While this holds, this replica
+  // starts no elections, including pre-elections; the server steps down its leaders on its own.
+  //
+  // Called on every election start, under the Raft lock, so it must be cheap: it may take only
+  // briefly held locks, and none that is held while taking the Raft lock.
+  virtual bool ShouldRelinquishLeadership() = 0;
+
   virtual ~ConsensusContext() = default;
 };
 

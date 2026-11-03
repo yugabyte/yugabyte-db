@@ -9,6 +9,9 @@ import { NodeAvailabilityProps, Zone as ZoneType } from './dtos';
 import { Region } from '../../../../../features/universe/universe-form/utils/dto';
 import { ResilienceFormMode } from '../resilence-regions/dtos';
 import { AZ_NOT_PREFERRED } from '../../helpers/constants';
+import { AVAILABILITY_ZONES_BY_PROVIDER } from '../../fields/FieldNames';
+import { flattenZonesList } from '../../helpers/nodesByProvider';
+import { CloudIconBox } from '../../helpers/CloudIconBox';
 
 //icons
 import AddIcon from '../../../../../assets/add2.svg';
@@ -31,6 +34,10 @@ interface RegionCardProps {
    * Omit / undefined when not in edit-placement baseline mode.
    */
   baselineZoneUuids?: string[];
+  /** Multi-provider: nest zone rows under availabilityZonesByProvider[uuid]. */
+  providerUuid?: string;
+  /** Multi-provider: cloud code for the provider logo on the card header. */
+  providerCode?: string;
 }
 
 const { styled, Typography, Box, Link, useTheme } = mui;
@@ -50,6 +57,7 @@ const StyledRegionCard = styled('div')(({ theme }) => ({
 const StyledRegionHeader = styled('div')(({ theme }) => ({
   display: 'flex',
   flexDirection: 'row',
+  height: '64px',
   padding: theme.spacing(1.25, 3),
   gap: theme.spacing(3),
   alignItems: 'center'
@@ -82,7 +90,9 @@ export const RegionCard: FC<RegionCardProps> = ({
   addAzTooltipKey,
   addAzTooltipValues,
   isNewRegion = false,
-  baselineZoneUuids
+  baselineZoneUuids,
+  providerUuid,
+  providerCode
 }) => {
   const {
     control,
@@ -97,8 +107,13 @@ export const RegionCard: FC<RegionCardProps> = ({
     keyPrefix: 'createUniverseV2.nodesAndAvailability.availabilityZones'
   });
 
-  const az = watch(`availabilityZones.${region.code}`);
-  const allAz = watch('availabilityZones');
+  const regionZonesPath = providerUuid
+    ? (`${AVAILABILITY_ZONES_BY_PROVIDER}.${providerUuid}.${region.code}` as const)
+    : (`availabilityZones.${region.code}` as const);
+  const az = watch(regionZonesPath as any) as ZoneType[] | undefined;
+  const allAz = providerUuid
+    ? flattenZonesList(watch(AVAILABILITY_ZONES_BY_PROVIDER))
+    : (Object.values(watch('availabilityZones') ?? {}).flat() as ZoneType[]);
 
   const showNodesCountError = shouldMarkNodesFieldError(
     showErrorsAfterSubmit,
@@ -111,10 +126,10 @@ export const RegionCard: FC<RegionCardProps> = ({
     return !baselineZoneUuids.includes(zone.uuid);
   };
   const addAvailabilityZone = () => {
-    const azToAdd = region.zones.find((zone) => !az.find((a) => a.name === zone.name));
+    const azToAdd = region.zones.find((zone) => !(az ?? []).find((a) => a.name === zone.name));
     if (!azToAdd) return;
 
-    const existingZones = Object.values(allAz ?? {}).flat() as ZoneType[];
+    const existingZones = allAz;
     const nodeCountFromConfig =
       existingZones.find((z) => typeof z.nodeCount === 'number' && z.nodeCount >= 1)?.nodeCount ??
       1;
@@ -128,7 +143,7 @@ export const RegionCard: FC<RegionCardProps> = ({
           }
         : { ...azToAdd, nodeCount: nodeCountFromConfig, preffered: AZ_NOT_PREFERRED };
 
-    setValue(`availabilityZones.${region.code}`, [...(az ?? []), newZone], { shouldValidate: true });
+    setValue(regionZonesPath as any, [...(az ?? []), newZone], { shouldValidate: true });
   };
 
   const updatePreferredRanks = (azs: ZoneType[], removedPreferredRank: number) => {
@@ -154,9 +169,19 @@ export const RegionCard: FC<RegionCardProps> = ({
         </Box>
       ) : null}
       <StyledRegionHeader>
-        <Typography color="textSecondary" variant="body1">
-          {t('region', { region_count: index + 1 })}
-        </Typography>
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            height: '20px'
+          }}
+        >
+          {providerCode ? <CloudIconBox code={providerCode} size={24} /> : null}
+          <Typography color="textSecondary" variant="body1" sx={{ fontWeight: 600 }}>
+            {t('region', { region_count: index + 1 })}
+          </Typography>
+        </Box>
         <StyledRegionTagContainer>
           <YBTooltip title={<StyledTooltipText>{t('tooltips.regionTag')}</StyledTooltipText>}>
             <span>
@@ -175,7 +200,7 @@ export const RegionCard: FC<RegionCardProps> = ({
       </StyledRegionHeader>
       <div
         style={{
-          padding: '0px 24px 24px 64px',
+          padding: '0px 24px 24px 96px',
           display: 'flex',
           flexDirection: 'column',
           gap: '24px'
@@ -185,7 +210,7 @@ export const RegionCard: FC<RegionCardProps> = ({
           <Box key={i} sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
             {isNewAz(zone) ? (
               <Box
-                sx={{ ml: '34px' }}
+                sx={{ ml: '40px' }}
                 data-testid={`region-card-new-az-badge-${index}-${i}`}
               >
                 <YBTag size="small" variant="light" color="gradient">
@@ -199,11 +224,12 @@ export const RegionCard: FC<RegionCardProps> = ({
               index={i}
               region={region}
               regionIndex={index}
+              providerUuid={providerUuid}
               showNodesCountError={showNodesCountError}
               remove={() => {
                 const updatedAz = az.filter((_, index) => index !== i);
                 const updatedPreferredRank = updatePreferredRanks(updatedAz, az[i].preffered);
-                setValue(`availabilityZones.${region.code}`, updatedPreferredRank, {
+                setValue(regionZonesPath as any, updatedPreferredRank, {
                   shouldValidate: true,
                   shouldDirty: true
                 });
@@ -247,7 +273,7 @@ export const RegionCard: FC<RegionCardProps> = ({
               )
             }
           >
-            <span style={{ width: 'fit-content', marginLeft: '34px' }}>
+            <span style={{ width: 'fit-content', marginLeft: '40px' }}>
               <YBButton
                 variant="secondary"
                 onClick={addAvailabilityZone}

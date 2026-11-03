@@ -63,6 +63,10 @@ static bool pathlist_is_reparameterizable_by_child(List *pathlist,
 /* YB declarations */
 static void yb_propagate_subqueryscan_fields(YbPathInfo *parent_fields,
 											 RelOptInfo *rel, Path *subpath);
+static ParamPathInfo *yb_get_partitioned_parampathinfo(PlannerInfo *root,
+													   RelOptInfo *rel,
+													   List *subpaths,
+													   Relids required_outer);
 
 
 /*****************************************************************************
@@ -2060,33 +2064,32 @@ create_append_path(PlannerInfo *root,
 	 */
 	if (rel->reloptkind == RELOPT_BASEREL && root && input.subpaths != NIL)
 	{
-		/* YB: Accumulate batching info from subpaths for partitioned baserel. */
+		/* YB */
 		if (IS_PARTITIONED_REL(rel))
-		{
-			List	   *groups = NIL;
-
-			Assert(yb_has_same_batching_reqs(input.subpaths));
-
-			root->yb_cur_batched_relids =
-				YB_PATH_REQ_OUTER_BATCHED((Path *) linitial(input.subpaths));
-
-			/*
-			 * The parent's movable clauses can miss a group that a child's
-			 * index condition batches on, and children can batch different
-			 * clauses, so pass on the union of the children's groups.
-			 */
-			foreach(l, input.subpaths)
-				groups = list_concat(groups,
-									 YB_PATH_BATCHED_GROUPS((Path *) lfirst(l)));
-			root->yb_cur_batched_groups = groups;
-		}
-
-		pathnode->path.param_info = get_baserel_parampathinfo(root,
-															  rel,
-															  required_outer);
-		root->yb_cur_batched_relids = NULL;
-		root->yb_cur_batched_groups = NIL;
+			pathnode->path.param_info =
+				yb_get_partitioned_parampathinfo(root, rel, input.subpaths,
+												 required_outer);
+		else
+			pathnode->path.param_info = get_baserel_parampathinfo(root,
+																  rel,
+																  required_outer);
 	}
+
+	/*
+	 * YB: Unlike upstream, an Append over batched paths of a partition that
+	 * is itself partitioned gets a full ParamPathInfo, because a join over
+	 * that Append needs the batching and the clauses the join must re-apply,
+	 * which get_appendrel_parampathinfo does not record.  An Append over
+	 * unbatched paths needs neither: the scans below it enforce the join
+	 * clauses.
+	 */
+	else if (yb_enable_base_scans_cost_model && root &&
+			 rel->reloptkind == RELOPT_OTHER_MEMBER_REL &&
+			 IS_PARTITIONED_REL(rel) && input.subpaths != NIL &&
+			 YB_PATH_NEEDS_BATCHED_RELS((Path *) linitial(input.subpaths)))
+		pathnode->path.param_info =
+			yb_get_partitioned_parampathinfo(root, rel, input.subpaths,
+											 required_outer);
 	else
 		pathnode->path.param_info = get_appendrel_parampathinfo(rel,
 																required_outer);
@@ -5928,4 +5931,44 @@ yb_propagate_subqueryscan_fields(YbPathInfo *parent_fields, RelOptInfo *rel,
 		yb_convert_subquery_uniqkeys(rel,
 									 subpath->yb_path_info.yb_uniqkeys,
 									 make_tlist_from_pathtarget(subpath->pathtarget));
+}
+
+/*
+ * yb_get_partitioned_parampathinfo
+ *		Get the ParamPathInfo of an Append over subpaths of a partitioned rel
+ *		from get_baserel_parampathinfo, with the subpaths' batched outer rels
+ *		and batch groups.
+ */
+static ParamPathInfo *
+yb_get_partitioned_parampathinfo(PlannerInfo *root, RelOptInfo *rel,
+								 List *subpaths, Relids required_outer)
+{
+	ParamPathInfo *ppi;
+
+	if (subpaths)
+	{
+		List	   *groups = NIL;
+		ListCell   *l;
+
+		Assert(yb_has_same_batching_reqs(subpaths));
+
+		root->yb_cur_batched_relids =
+			YB_PATH_REQ_OUTER_BATCHED((Path *) linitial(subpaths));
+
+		/*
+		 * The parent's movable clauses can miss a group that a child's index
+		 * condition batches on, and children can batch different clauses, so
+		 * pass on the union of the children's groups.
+		 */
+		foreach(l, subpaths)
+			groups = list_concat(groups,
+								 YB_PATH_BATCHED_GROUPS((Path *) lfirst(l)));
+		root->yb_cur_batched_groups = groups;
+	}
+
+	ppi = get_baserel_parampathinfo(root, rel, required_outer);
+	root->yb_cur_batched_relids = NULL;
+	root->yb_cur_batched_groups = NIL;
+
+	return ppi;
 }
