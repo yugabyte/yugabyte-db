@@ -1233,8 +1233,10 @@ Result<bool> Executor::FetchMoreRows(const PTSelectStmt* tnode,
         // condition on the partition columns.
         query_state->set_next_partition_index(tnode_context->current_partition_index());
 
-        // The next page must read at this page's read time (GH #33610).
-        if (!query_state->has_read_time()) {
+        // The next page must read at this page's read time (GH #33610). A consistency ONE read
+        // skips this: the next page can go to a follower that lags the replica of this page.
+        if (!query_state->has_read_time() &&
+            op->yb_consistency_level() == YBConsistencyLevel::STRONG) {
           query_state->set_read_time(PagingReadTime(GetSession()->read_point()->GetReadTime()));
         }
 
