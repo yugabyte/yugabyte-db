@@ -34,6 +34,7 @@
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
+#include "yb/yql/pgwrapper/raw_pg_conn.h"
 
 using std::string;
 
@@ -1482,6 +1483,91 @@ TEST_F(PgReplayRetryTest, PipelineSavepoint) {
                   "RELEASE SAVEPOINT sp", "COMMIT"}));
     ASSERT_EQ(statuses, expected) << "yb_enable_replay_retry=" << enabled;
   }
+}
+
+// The next three tests send message orders libpq cannot: a Parse between a Bind and its Execute,
+// and a Close of a statement. Each sends one batch before Sync on a raw wire-protocol connection.
+//
+// A portal keeps the statement it was bound to after a later unnamed Parse replaces the unnamed
+// statement. Batch: BEGIN, Parse '' SET LOCAL, Bind '', Parse '' SELECT inj, Execute '' (runs the
+// SET), Bind '', Execute '' (fails once). The replay must re-run the SET with the Parse its Bind
+// used, so work_mem is 8MB after the retry, and the retried SELECT returns 1.
+TEST_F(PgReplayRetryTest, BindKeepsItsOwnUnnamedParse) {
+  auto setup_conn = ASSERT_RESULT(ConnectAndSetUp());
+  ASSERT_OK(setup_conn.Execute("CREATE SEQUENCE replay_raw1"));
+  RawPgConn raw;
+  ASSERT_OK(raw.Connect(pg_host_port(), PGConnSettings::kDefaultUser, "yugabyte"));
+  ASSERT_OK(raw.SimpleQuery("SET yb_enable_replay_retry = on"));
+  ASSERT_OK(raw.SimpleQuery("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(raw.SendParse("", "SET LOCAL work_mem = '8MB'"));
+  ASSERT_OK(raw.SendBind("", ""));
+  ASSERT_OK(raw.SendParse("", "SELECT inj('replay_raw1', 'YB003')"));
+  ASSERT_OK(raw.SendExecute("", 0));
+  ASSERT_OK(raw.SendBind("", ""));
+  ASSERT_OK(raw.SendExecute("", 0));
+  ASSERT_OK(raw.SendSync());
+  auto messages = ASSERT_RESULT(raw.ReadMessages());
+  ASSERT_EQ(RawPgConn::Errors(messages), std::vector<std::string>{});
+  ASSERT_EQ(RawPgConn::FirstColumns(messages), std::vector<std::string>{"1"});
+
+  ASSERT_OK(raw.SendSimpleQuery("SHOW work_mem"));
+  messages = ASSERT_RESULT(raw.ReadMessages());
+  ASSERT_EQ(RawPgConn::FirstColumns(messages), std::vector<std::string>{"8MB"});
+  ASSERT_OK(raw.SimpleQuery("COMMIT"));
+}
+
+// After a replay, the unnamed statement is the one the client created last, not one the replay
+// re-parsed. Batch: BEGIN, Parse 'named' SELECT inj, Parse '' SET LOCAL, Bind '', Execute '',
+// Parse '' SELECT 42, Bind '' 'named', Execute '' (fails once, replays the SET), Bind '',
+// Execute ''. The last Execute must run SELECT 42, not the replayed SET.
+TEST_F(PgReplayRetryTest, ReplayRestoresLatestUnnamedStatement) {
+  auto setup_conn = ASSERT_RESULT(ConnectAndSetUp());
+  ASSERT_OK(setup_conn.Execute("CREATE SEQUENCE replay_raw2"));
+  RawPgConn raw;
+  ASSERT_OK(raw.Connect(pg_host_port(), PGConnSettings::kDefaultUser, "yugabyte"));
+  ASSERT_OK(raw.SimpleQuery("SET yb_enable_replay_retry = on"));
+  ASSERT_OK(raw.SimpleQuery("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(raw.SendParse("named", "SELECT inj('replay_raw2', 'YB003')"));
+  ASSERT_OK(raw.SendParse("", "SET LOCAL work_mem = '8MB'"));
+  ASSERT_OK(raw.SendBind("", ""));
+  ASSERT_OK(raw.SendExecute("", 0));
+  ASSERT_OK(raw.SendParse("", "SELECT 42"));
+  ASSERT_OK(raw.SendBind("", "named"));
+  ASSERT_OK(raw.SendExecute("", 0));
+  ASSERT_OK(raw.SendBind("", ""));
+  ASSERT_OK(raw.SendExecute("", 0));
+  ASSERT_OK(raw.SendSync());
+  const auto messages = ASSERT_RESULT(raw.ReadMessages());
+  ASSERT_EQ(RawPgConn::Errors(messages), std::vector<std::string>{});
+  ASSERT_EQ(RawPgConn::FirstColumns(messages), (std::vector<std::string>{"1", "42"}));
+  ASSERT_OK(raw.SimpleQuery("COMMIT"));
+}
+
+// A Close lets the client parse the same statement name again with other text, so a logged Bind
+// of that name would replay the new statement. Batch: BEGIN, Parse 's1' SET LOCAL, Bind '' 's1',
+// Execute '', Close 's1', Parse 's1' SELECT inj, Bind '' 's1', Execute '' (fails once). The Close
+// must end the replay, so the client gets the retryable error. A replay would bind 's1' to the
+// new SELECT and run it, and the retry would then succeed.
+TEST_F(PgReplayRetryTest, ProtocolCloseClosesLog) {
+  auto setup_conn = ASSERT_RESULT(ConnectAndSetUp());
+  ASSERT_OK(setup_conn.Execute("CREATE SEQUENCE replay_raw3"));
+  RawPgConn raw;
+  ASSERT_OK(raw.Connect(pg_host_port(), PGConnSettings::kDefaultUser, "yugabyte"));
+  ASSERT_OK(raw.SimpleQuery("SET yb_enable_replay_retry = on"));
+  ASSERT_OK(raw.SimpleQuery("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(raw.SendParse("s1", "SET LOCAL work_mem = '8MB'"));
+  ASSERT_OK(raw.SendBind("", "s1"));
+  ASSERT_OK(raw.SendExecute("", 0));
+  ASSERT_OK(raw.SendClose('S', "s1"));
+  ASSERT_OK(raw.SendParse("s1", "SELECT inj('replay_raw3', 'YB003')"));
+  ASSERT_OK(raw.SendBind("", "s1"));
+  ASSERT_OK(raw.SendExecute("", 0));
+  ASSERT_OK(raw.SendSync());
+  const auto messages = ASSERT_RESULT(raw.ReadMessages());
+  const auto errors = RawPgConn::Errors(messages);
+  ASSERT_EQ(errors.size(), 1);
+  ASSERT_STR_CONTAINS(errors[0], "the transaction cannot be replayed");
+  ASSERT_OK(raw.SimpleQuery("ROLLBACK"));
 }
 
 TEST_F(PgReplayRetryTest, Autocommit) {
