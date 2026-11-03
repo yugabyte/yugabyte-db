@@ -422,8 +422,8 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
                 return it->second;
             }
         }
-        // Concurrent first points of a tenant must not both become its entry point, the other one
-        // would be unreachable.
+        // The first point of a tenant holds global, see addPointImpl, so it is the only point of
+        // the tenant that could get here.
         std::lock_guard<std::shared_mutex> lock(tenant_entries_mutex_);
         auto [it, inserted] = tenant_entries_.try_emplace(tenant, node);
         if (!inserted) {
