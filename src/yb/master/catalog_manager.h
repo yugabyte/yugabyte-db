@@ -2529,6 +2529,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // ExtractTabletsToProcess already built this cycle. Called from the bg_tasks thread.
   void RemoveDeletedTabletsFromTables(const TabletInfos& candidates);
 
+  // Returns every vector index in tables_, including dropped ones that are still hidden, keyed by
+  // the id of its indexed table.
+  std::unordered_map<TableId, std::vector<TableInfoPtr>> VectorIndexesByIndexedTable()
+      EXCLUDES(mutex_);
+
   // Called when a new table id is added to table_ids_map_.
   void HandleNewTableId(const TableId& id);
 
