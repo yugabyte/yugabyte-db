@@ -1607,6 +1607,57 @@ TEST_F(SkipIntentsMetricTest, TestGucCanBeChangedByNormalUser) {
   ASSERT_EQ(val4, "off");
 }
 
+// The GUCs can be set per role, per database and in connection options, not only with SET. The
+// validation pass of ALTER ROLE/DATABASE ... SET runs inside the ALTER's transaction, and
+// per-role, per-database and connection option values are applied during backend startup, which
+// has its own transaction, so a transaction-state check on those sources rejects every one.
+TEST_F(SkipIntentsMetricTest, TestGucSetThroughRoleDatabaseAndConnectionOptions) {
+  constexpr auto kParentGuc = "yb_enable_new_relation_fastpath_write";
+  constexpr auto kInTxnBlocksGuc = "yb_enable_new_relation_fastpath_write_in_txn_blocks";
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE ROLE fastpath_role LOGIN"));
+  ASSERT_OK(conn.Execute("CREATE DATABASE fastpath_db"));
+
+  ASSERT_OK(conn.ExecuteFormat("ALTER ROLE fastpath_role SET $0 = off", kInTxnBlocksGuc));
+  ASSERT_OK(conn.ExecuteFormat("ALTER DATABASE fastpath_db SET $0 = off", kParentGuc));
+  {
+    auto role_conn = ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "fastpath_role"));
+    ASSERT_EQ(ASSERT_RESULT(role_conn.FetchRow<std::string>(
+        Format("SHOW $0", kInTxnBlocksGuc))), "off");
+    auto db_conn = ASSERT_RESULT(ConnectToDB("fastpath_db"));
+    ASSERT_EQ(ASSERT_RESULT(db_conn.FetchRow<std::string>(Format("SHOW $0", kParentGuc))), "off");
+  }
+
+  // yb_enable_new_relation_fastpath_write being off in the session running ALTER ROLE says
+  // nothing about its value in the role's sessions.
+  ASSERT_OK(conn.ExecuteFormat("SET $0 = off", kParentGuc));
+  ASSERT_OK(conn.ExecuteFormat("ALTER ROLE fastpath_role SET $0 = on", kInTxnBlocksGuc));
+  {
+    auto role_conn = ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "fastpath_role"));
+    ASSERT_EQ(ASSERT_RESULT(role_conn.FetchRow<std::string>(Format("SHOW $0", kParentGuc))), "on");
+    ASSERT_EQ(ASSERT_RESULT(role_conn.FetchRow<std::string>(
+        Format("SHOW $0", kInTxnBlocksGuc))), "on");
+  }
+
+  {
+    auto options_conn = ASSERT_RESULT(ConnectUsingString(Format(
+        "host=$0 port=$1 user=$2 options='-c $3=off -c $4=off'",
+        pg_ts->bind_host(), pg_ts->ysql_port(), PGConnSettings::kDefaultUser, kInTxnBlocksGuc,
+        kParentGuc)));
+    ASSERT_EQ(ASSERT_RESULT(options_conn.FetchRow<std::string>(
+        Format("SHOW $0", kParentGuc))), "off");
+    ASSERT_EQ(ASSERT_RESULT(options_conn.FetchRow<std::string>(
+        Format("SHOW $0", kInTxnBlocksGuc))), "off");
+  }
+
+  // SET keeps the transaction-state restriction.
+  ASSERT_OK(conn.Execute("BEGIN"));
+  auto status = conn.ExecuteFormat("SET $0 = on", kParentGuc);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "cannot be changed inside a transaction block");
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+}
+
 // Startup must not depend on where the GUC and yb_ddl_transaction_block_enabled land in
 // ysql_pg.conf. Settings from --ysql_pg_conf_csv are written ahead of the block that
 // AppendPgGFlags generates from the PG gflags, so the GUC here is assigned while

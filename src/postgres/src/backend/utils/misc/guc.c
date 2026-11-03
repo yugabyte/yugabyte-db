@@ -18419,10 +18419,29 @@ assign_yb_dist_tracecontext(const char *newval, void *extra)
 /*
  * YB: check_skip_intents_internal
  * Common logic for skip-intent GUCs to handle transaction block restrictions.
+ *
+ * Changing these GUCs once the transaction has done work could flip the
+ * optimization off after writes already skipped the intents db, and later reads
+ * in the transaction would then miss those rows.  Two kinds of source cannot do
+ * that and are exempt:
+ * - PGC_S_TEST, the validation pass of ALTER ROLE/DATABASE ... SET, assigns
+ *   nothing.  It always runs inside the ALTER statement's transaction, so the
+ *   check would reject every such setting.
+ * - PGC_S_GLOBAL through PGC_S_CLIENT (pg_db_role_setting entries and
+ *   connection request options) are applied during backend startup, before
+ *   any client statement runs.  Startup has its own transaction and snapshot,
+ *   so the check would refuse the connection.
+ * Every other source keeps the restriction.  That covers SET and also a
+ * configuration file reload, which can happen while the session is idle in a
+ * transaction block.
  */
 static bool
 check_skip_intents_internal(const char *guc_name, bool *newval, GucSource source)
 {
+	if (source == PGC_S_TEST ||
+		(source >= PGC_S_GLOBAL && source <= PGC_S_CLIENT))
+		return true;
+
 	if (IsTransactionBlock() || FirstSnapshotSet)
 	{
 		GUC_check_errdetail("%s cannot be changed inside a transaction block or "
@@ -18458,8 +18477,14 @@ check_yb_enable_new_relation_fastpath_write_in_txn_blocks(bool *newval, void **e
 	 * switch for the optimization as a whole - therefore has the parent assigned
 	 * off before this GUC is assigned on, and rejecting that pair here would
 	 * leave the postmaster refusing to start.
+	 *
+	 * PGC_S_TEST is exempt as well: ALTER ROLE/DATABASE ... SET validates the
+	 * value in the session running the ALTER, whose parent value says nothing
+	 * about the parent value that the target role's or database's sessions will
+	 * have.
 	 */
-	if (*newval && !yb_enable_new_relation_fastpath_write && source >= PGC_S_CLIENT)
+	if (*newval && !yb_enable_new_relation_fastpath_write && source >= PGC_S_CLIENT &&
+		source != PGC_S_TEST)
 	{
 		GUC_check_errdetail("Cannot enable yb_enable_new_relation_fastpath_write_in_txn_blocks "
 							"when yb_enable_new_relation_fastpath_write is disabled.");
