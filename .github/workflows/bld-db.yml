@@ -39,10 +39,10 @@ jobs:
   csi-comment:
     runs-on: ubuntu-latest
     permissions:
-      pull-requests: write
+      issues: write
     steps:
       - name: CSI-status
-        if: github.event.action == 'opened'
+        if: github.event.action == 'reopened'
         uses: actions/github-script@v6
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
