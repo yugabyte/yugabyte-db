@@ -280,7 +280,12 @@ get_greaterstr(Datum prefix, Oid datatype, Oid colloid)
 				 errmsg("cannot handle ybgin scans with prefix on key type %u",
 						datatype)));
 
-	/* yb_make_greater_string cannot accurately handle non-C collations. */
+	/*
+	 * yb_make_greater_string cannot accurately handle non-C collations.
+	 *
+	 * TODO(#36707): remove this error once ybgin stores keys without
+	 * collation encoding.
+	 */
 	if (!pg_newlocale_from_collation(colloid)->collate_is_c)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
