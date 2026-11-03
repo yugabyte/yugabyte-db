@@ -1416,6 +1416,24 @@ Default: `900`
 
 Interval in seconds at which the table list in the publication will be refreshed. Applies in versions earlier than v2026.1, or on v2026.1 and later when [ysql_yb_enable_implicit_dynamic_tables_logical_replication](#ysql-yb-enable-implicit-dynamic-tables-logical-replication) is set to `false`.
 
+##### --cdcsdk_update_restart_time_when_nothing_to_stream
+
+{{% tags/wrap %}}
+
+Default: `true`
+{{% /tags/wrap %}}
+
+When set to `true`, the restart time of a replication slot moves forward while there is nothing to stream, provided the client has acknowledged everything it received. The restart time advances to the commit time of the most recent commit or safepoint record processed by the virtual WAL, at the interval set by [cdcsdk_update_restart_time_interval_secs](#cdcsdk-update-restart-time-interval-secs). This keeps an idle slot from holding back WAL, intent, and history retention.
+
+##### --cdcsdk_update_restart_time_interval_secs
+
+{{% tags/wrap %}}
+
+Default: `60`
+{{% /tags/wrap %}}
+
+Interval in seconds at which the virtual WAL checks whether the restart time of an idle replication slot can be moved forward. Applies when [cdcsdk_update_restart_time_when_nothing_to_stream](#cdcsdk-update-restart-time-when-nothing-to-stream) is `true`.
+
 ##### --cdc_stream_records_threshold_size_bytes
 
 {{% tags/wrap %}}
