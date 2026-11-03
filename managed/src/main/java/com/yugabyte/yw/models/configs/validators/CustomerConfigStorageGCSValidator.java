@@ -51,13 +51,6 @@ public class CustomerConfigStorageGCSValidator extends CustomerConfigStorageVali
 
     CustomerConfigStorageGCSData gcsData = (CustomerConfigStorageGCSData) data;
 
-    // useGcpIam (GKE workload identity or cross-cloud federation): no universe/provider context at
-    // config create/edit to resolve an audience, and same-cloud IAM can't be exercised from YBA.
-    // Skip the bucket/cred check (URL already validated); the node/YBC do the real check.
-    if (gcsData.useGcpIam) {
-      return;
-    }
-
     // Should not contain neither or both json creds and use GCP IAM flag.
     if (StringUtils.isBlank(gcsData.gcsCredentialsJson) ^ (gcsData.useGcpIam)) {
       SetMultimap<String, String> validationErrorsMap = HashMultimap.create();
@@ -68,6 +61,20 @@ public class CustomerConfigStorageGCSValidator extends CustomerConfigStorageVali
           CustomerConfigConsts.GCS_CREDENTIALS_JSON_FIELDNAME,
           "Must pass only one of 'GCS_CREDENTIALS_JSON' or 'USE_GCP_IAM'.");
       throwMultipleBeanConfigDataValidatorError(validationErrorsMap, "storageConfigValidation");
+    }
+
+    // Federation uses an instance identity, so a JSON key saved alongside it would never be used.
+    if (gcsData.useCrossCloudFederation && StringUtils.isNotBlank(gcsData.gcsCredentialsJson)) {
+      throwBeanConfigDataValidatorError(
+          CustomerConfigConsts.GCS_CREDENTIALS_JSON_FIELDNAME,
+          "GCS_CREDENTIALS_JSON cannot be used together with USE_CROSS_CLOUD_FEDERATION.");
+    }
+
+    // useGcpIam (GKE workload identity or cross-cloud federation): no universe/provider context at
+    // config create/edit to resolve an audience, and same-cloud IAM can't be exercised from YBA.
+    // Skip the bucket/cred check (URL already validated); the node/YBC do the real check.
+    if (gcsData.useGcpIam) {
+      return;
     }
 
     Storage storage = null;

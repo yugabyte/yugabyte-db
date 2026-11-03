@@ -63,6 +63,14 @@ public class CustomerConfigStorageS3Validator extends CustomerConfigStorageValid
     // GCP DB node, and there is no universe/provider context here to resolve the role/audience.
     // Skip the credential + bucket checks (URL already validated); the node/YBC do the real check.
     if (AWSUtil.isCrossCloudFederationConfig(s3data)) {
+      // Federation takes the place of keys, so keys saved alongside it would never be used.
+      if (StringUtils.isNotEmpty(s3data.awsAccessKeyId)
+          || StringUtils.isNotEmpty(s3data.awsSecretAccessKey)) {
+        throwBeanConfigDataValidatorError(
+            AWSUtil.AWS_ACCESS_KEY_ID_FIELDNAME,
+            "AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY cannot be used together with"
+                + " USE_CROSS_CLOUD_FEDERATION.");
+      }
       return;
     }
 
