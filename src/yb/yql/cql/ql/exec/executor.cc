@@ -2152,6 +2152,23 @@ Result<bool> Executor::ProcessTnodeResults(TnodeContext* tnode_context) {
       RETURN_NOT_OK(tnode_context->AppendRowsResult(std::make_shared<RowsResult>(op.get())));
     }
 
+    // The tablet picked the read time of this read. Every later read of the statement, such as
+    // more index rows or the table rows of an uncovered index, must use the same time
+    // (GH #33610). The leader that picked it has reached that safe time, so the later reads do
+    // not wait for the current time. A consistency ONE read skips this: a later read can go to a
+    // follower that lags the replica that picked the time, and would wait for it.
+    if (op->type() == YBOperation::Type::QL_READ) {
+      auto* read_op = static_cast<YBqlReadOp*>(op.get());
+      if (read_op->used_read_time() &&
+          read_op->yb_consistency_level() == YBConsistencyLevel::STRONG) {
+        session_->SetReadPoint(read_op->used_read_time(), read_op->used_tablet());
+        session_->SetForceConsistentRead(client::ForceConsistentRead::kTrue);
+        // FetchMoreRows can apply this op again. On a transactional table it then sends the read
+        // time, so its next response has no used read time.
+        read_op->SetUsedReadTime(ReadHybridTime(), TabletId());
+      }
+    }
+
     // For SELECT statement, check if there are more rows to fetch and apply the op as needed.
     if (tnode->opcode() == TreeNodeOpcode::kPTSelectStmt) {
       const auto* select_stmt = static_cast<const PTSelectStmt *>(tnode);
@@ -2500,9 +2517,15 @@ void Executor::AddOperation(const YBqlReadOpPtr& op, TnodeContext *tnode_context
   }
   tnode_context->AddOperation(op);
 
-  // We need consistent read point if statement is executed in multiple RPC commands.
+  // We need consistent read point if statement is executed in multiple RPC commands, or if it
+  // reads a later page (GH #33610). A later page must read at the read time of page 1. If the
+  // tablet picked that time, its leader does not wait for safe time on a later page: a tablet's
+  // safe time never moves backwards, also across leader changes. A consistency ONE read does not
+  // force a later page: a follower can lag the replica that served page 1, and would wait for it.
   if (tnode_context->UnreadPartitionsRemaining() > 0 ||
-      op->request().hashed_column_values().empty()) {
+      op->request().hashed_column_values().empty() ||
+      (exec_context_->params().read_time() &&
+       op->yb_consistency_level() == YBConsistencyLevel::STRONG)) {
     session_->SetForceConsistentRead(client::ForceConsistentRead::kTrue);
   }
 

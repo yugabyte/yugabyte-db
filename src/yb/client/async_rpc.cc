@@ -1057,6 +1057,12 @@ Status ReadRpc::SwapResponses(RefCntBuffer data_holder) {
         RETURN_NOT_OK(CheckResponseCount(kRead, kYCQL, ql_idx, resp_.ql_batch().size()));
         // Restore QL read request PB and extract response.
         auto* ql_op = down_cast<YBqlReadOp*>(yb_op);
+        if (!used_read_time_set && resp_.has_used_read_time()) {
+          // Single operation in a group required used read time.
+          used_read_time_set = true;
+          ql_op->SetUsedReadTime(
+              ReadHybridTime::FromPB(resp_.used_read_time()), tablet().tablet_id());
+        }
         ql_op->set_response(data_holder, &*ql_it++);
         const auto& ql_response = ql_op->response();
         if (ql_response.has_rows_data_sidecar()) {

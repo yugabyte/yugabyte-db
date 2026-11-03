@@ -1287,6 +1287,8 @@ void CqlTest::TestAlteredPrepareForIndexWithPaging(
   ASSERT_OK(session.ExecuteQuery(Format("INSERT INTO t1 (i, j, x, v) VALUES (0, 8, 9, 5)")));
 
   // [Table only, Index only, Index + Table]
+  // Every page reads at the read time of page 1 (GH #33610), so the second page of Client-1 does
+  // not see k = 99, which Client-2 writes after Client-1 reads page 1.
   std::vector<string> queries = {
       "SELECT * FROM t1", "SELECT x, j FROM t1 WHERE x = 10", "SELECT * FROM t1 WHERE x = 10"};
   std::vector<string> expectedFirstPageSession1 = {
@@ -1296,7 +1298,7 @@ void CqlTest::TestAlteredPrepareForIndexWithPaging(
       "0,1,10,5,NULL;0,2,10,5,NULL;0,3,10,5,NULL"};
   std::vector<string> expectedSecondPageSession1 = {
       "0,4,10,5,NULL;0,5,10,5,NULL;0,6,10,5,NULL", "10,4;10,5;10,6",
-      "0,4,10,5,99;0,5,10,5,NULL;0,6,10,5,NULL"};
+      "0,4,10,5,NULL;0,5,10,5,NULL;0,6,10,5,NULL"};
   std::vector<string> expectedSecondPageSession2 = {
       "0,4,10,5,99;0,5,10,5,NULL;0,6,10,5,NULL", "10,4;10,5;10,6",
       "0,4,10,5,99;0,5,10,5,NULL;0,6,10,5,NULL"};
@@ -1304,7 +1306,7 @@ void CqlTest::TestAlteredPrepareForIndexWithPaging(
   // The result is interpreted by the driver in accordance with the old schema in the absence of
   // metadata - as <page-size>*(INT, INT, INT, INT): (0, 4, 10, 5) (NULL, 0, 5, 10) (5, NULL, 0, 6).
   std::vector<string> expectedSecondPageWithoutMetadata = {
-      "0,4,10,5;NULL,0,5,10;5,NULL,0,6", "10,4;10,5;10,6", "0,4,10,5;99,0,5,10;5,NULL,0,6"};
+      "0,4,10,5;NULL,0,5,10;5,NULL,0,6", "10,4;10,5;10,6", "0,4,10,5;NULL,0,5,10;5,NULL,0,6"};
 
   for (size_t i = 0; i < queries.size(); i++) {
     auto& query = queries[i];
@@ -1503,6 +1505,134 @@ TEST_F(CqlTest, PagingReadTimeAtPartitionBoundary) {
       EXPECT_EQ(ASSERT_RESULT(std::move(v)), 0);
     }
   }
+}
+
+// A paged SELECT on one hash key reads every page at the read time of page 1 (GH #33610). The
+// paging state carries that time, and the proxy must send it even though the read goes to one
+// tablet. Table s holds 10 rows under h = 1 and the page size is 3. After page 1, the test sets
+// v = 1 on c = 7 and expects a later page to show v = 0.
+//
+// Runs with ycql_consistent_transactional_paging off and on. With the flag on, the update falls
+// inside the uncertainty window of page 1, so a later page usually fails with a read restart
+// error. It never shows v = 1.
+TEST_F(CqlTest, PagingReadTimeSingleHashKey) {
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  ASSERT_OK(session.ExecuteQuery(
+      "CREATE TABLE s (h INT, c INT, v INT, PRIMARY KEY ((h), c)) "
+      "WITH transactions = {'enabled': true}"));
+  constexpr int kNumRows = 10;
+  constexpr int kPageSize = 3;
+  constexpr int kUpdatedC = 7;
+  for (int i = 0; i < kNumRows; ++i) {
+    ASSERT_OK(session.ExecuteQuery(Format("INSERT INTO s (h, c, v) VALUES (1, $0, 0)", i)));
+  }
+
+  for (const bool consistent_paging : {false, true}) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ycql_consistent_transactional_paging) = consistent_paging;
+    SCOPED_TRACE(Format("consistent paging $0", consistent_paging));
+    ASSERT_OK(session.ExecuteQuery(Format("UPDATE s SET v = 0 WHERE h = 1 AND c = $0", kUpdatedC)));
+    auto paging_session = ASSERT_RESULT(EstablishSession(driver_.get()));
+    CassandraStatement stmt("SELECT c, v FROM s WHERE h = 1");
+    stmt.SetPageSize(kPageSize);
+    auto res = ASSERT_RESULT(paging_session.ExecuteWithResult(stmt));
+    ASSERT_TRUE(res.HasMorePages());
+    ASSERT_OK(session.ExecuteQuery(Format("UPDATE s SET v = 1 WHERE h = 1 AND c = $0", kUpdatedC)));
+    std::optional<int32_t> seen;
+    bool restart_error = false;
+    while (res.HasMorePages()) {
+      stmt.SetPagingState(res);
+      auto next = paging_session.ExecuteWithResult(stmt);
+      if (!next.ok()) {
+        LOG(INFO) << "Later page failed: " << next.status();
+        restart_error = consistent_paging &&
+            next.status().message().ToBuffer().find("Restart read required") != std::string::npos;
+        ASSERT_TRUE(restart_error) << next.status();
+        break;
+      }
+      res = std::move(*next);
+      auto it = res.CreateIterator();
+      while (it.Next()) {
+        auto row = it.Row();
+        int32_t c, v;
+        row.Get(0, &c);
+        row.Get(1, &v);
+        if (c == kUpdatedC) {
+          seen = v;
+        }
+      }
+    }
+    if (restart_error) {
+      continue;
+    }
+    ASSERT_TRUE(seen.has_value());
+    LOG(INFO) << "consistent paging " << consistent_paging << ": c = " << kUpdatedC
+              << " has v = " << *seen << " on a later page";
+    EXPECT_EQ(*seen, 0);
+  }
+}
+
+// A paged SELECT through an uncovered index reads the index and the table in separate RPCs, and
+// all of them must read at one read time (GH #33610). A writer sets v2 to the same value on
+// k = 0 and k = 1, in one transaction per update. The reader pages through WHERE v1 = 0 one row
+// at a time, 500 times, and expects both rows to show the same v2. Without the fix, page 1 reads
+// the table at a later time than the index, and about 30% of reads see k = 0 newer than k = 1.
+//
+// ycql_consistent_transactional_paging is off, so a later page never fails with a read restart.
+TEST_F(CqlTest, PagingReadTimeUncoveredIndex) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ycql_consistent_transactional_paging) = false;
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  ASSERT_OK(session.ExecuteQuery(
+      "CREATE TABLE t (k INT PRIMARY KEY, v1 INT, v2 INT) "
+      "WITH transactions = {'enabled': true}"));
+  ASSERT_OK(session.ExecuteQuery("CREATE INDEX idx ON t (v1)"));
+  WaitForReadPermsOnAllIndexes("t", {"idx"});
+  ASSERT_OK(session.ExecuteQuery("INSERT INTO t (k, v1, v2) VALUES (0, 0, 0)"));
+  ASSERT_OK(session.ExecuteQuery("INSERT INTO t (k, v1, v2) VALUES (1, 0, 0)"));
+
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()] {
+    auto writer = ASSERT_RESULT(EstablishSession(driver_.get()));
+    for (int i = 1; !stop.load(std::memory_order_acquire); ++i) {
+      ASSERT_OK(writer.ExecuteQuery(Format(
+          "BEGIN TRANSACTION "
+          "UPDATE t SET v2 = $0 WHERE k = 0; "
+          "UPDATE t SET v2 = $0 WHERE k = 1; "
+          "END TRANSACTION;", i)));
+    }
+  });
+
+  constexpr int kNumReads = 500;
+  int mismatches = 0;
+  for (int read = 0; read < kNumReads; ++read) {
+    CassandraStatement stmt("SELECT k, v2 FROM t WHERE v1 = 0");
+    stmt.SetPageSize(1);
+    std::map<int32_t, int32_t> v2_by_k;
+    auto res = ASSERT_RESULT(session.ExecuteWithResult(stmt));
+    for (;;) {
+      auto it = res.CreateIterator();
+      while (it.Next()) {
+        auto row = it.Row();
+        int32_t k, v2;
+        row.Get(0, &k);
+        row.Get(1, &v2);
+        v2_by_k[k] = v2;
+      }
+      if (!res.HasMorePages()) {
+        break;
+      }
+      stmt.SetPagingState(res);
+      res = ASSERT_RESULT(session.ExecuteWithResult(stmt));
+    }
+    ASSERT_EQ(v2_by_k.size(), 2);
+    if (v2_by_k[0] != v2_by_k[1]) {
+      LOG(INFO) << "Read " << read << ": k = 0 has v2 = " << v2_by_k[0]
+                << ", k = 1 has v2 = " << v2_by_k[1];
+      ++mismatches;
+    }
+  }
+  thread_holder.Stop();
+  LOG(INFO) << "Mismatches: " << mismatches << " of " << kNumReads;
+  ASSERT_EQ(mismatches, 0);
 }
 
 TEST_F(CqlTest, PasswordReset) {
