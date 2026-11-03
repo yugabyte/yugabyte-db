@@ -20,8 +20,15 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.security.cert.X509Certificate;
 import java.util.LinkedHashMap;
 import java.util.Map;
+
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLParameters;
+import javax.net.ssl.SSLSocket;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -73,6 +80,10 @@ public class WireConn implements AutoCloseable {
     return in.available();
   }
 
+  public String sslApplicationProtocol() {
+    return socket instanceof SSLSocket ? ((SSLSocket) socket).getApplicationProtocol() : null;
+  }
+
   public void closeAbruptly() {
     try {
       socket.close();
@@ -103,6 +114,7 @@ public class WireConn implements AutoCloseable {
     private final Map<String, String> startupParams = new LinkedHashMap<>();
     private int socketTimeoutMs = DEFAULT_SOCKET_TIMEOUT_MS;
     private ConnectionEndpoint endpoint = ConnectionEndpoint.YSQL_CONN_MGR;
+    private String[] directSslAlpn;
 
     Builder(MiniYBCluster cluster) {
       this.cluster = cluster;
@@ -121,6 +133,11 @@ public class WireConn implements AutoCloseable {
 
     public Builder socketTimeoutMs(int socketTimeoutMs) {
       this.socketTimeoutMs = socketTimeoutMs;
+      return this;
+    }
+
+    public Builder directSsl(String... alpnProtocols) {
+      this.directSslAlpn = alpnProtocols;
       return this;
     }
 
@@ -159,6 +176,9 @@ public class WireConn implements AutoCloseable {
         socket.setTcpNoDelay(true);
         socket.setSoTimeout(socketTimeoutMs);
         socket.connect(target);
+        if (directSslAlpn != null) {
+          socket = startDirectSsl(socket, target);
+        }
         WireConn conn = new WireConn(socket);
         conn.sendRaw(PgWireProtocol.buildStartupMessage(USER, DATABASE, startupParams));
         return conn;
@@ -170,6 +190,29 @@ public class WireConn implements AutoCloseable {
         }
         throw e;
       }
+    }
+
+    private SSLSocket startDirectSsl(Socket plain, InetSocketAddress target) throws Exception {
+      SSLContext context = SSLContext.getInstance("TLS");
+      context.init(null, new TrustManager[] {new X509TrustManager() {
+        @Override
+        public void checkClientTrusted(X509Certificate[] chain, String authType) {}
+
+        @Override
+        public void checkServerTrusted(X509Certificate[] chain, String authType) {}
+
+        @Override
+        public X509Certificate[] getAcceptedIssuers() {
+          return new X509Certificate[0];
+        }
+      }}, null);
+      SSLSocket ssl = (SSLSocket) context.getSocketFactory().createSocket(
+          plain, target.getHostString(), target.getPort(), true);
+      SSLParameters params = ssl.getSSLParameters();
+      params.setApplicationProtocols(directSslAlpn);
+      ssl.setSSLParameters(params);
+      ssl.startHandshake();
+      return ssl;
     }
   }
 }

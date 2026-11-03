@@ -241,13 +241,52 @@ yb_frontend_validate_startup_parameters(od_client_t *client)
 	return 0;
 }
 
+static int yb_frontend_detect_direct_ssl(od_client_t *client,
+					 bool *direct_ssl)
+{
+	od_instance_t *instance = client->global->instance;
+	*direct_ssl = false;
+
+	if (client->config_listen->tls_opts->tls_mode == OD_CONFIG_TLS_DISABLE)
+		return 0;
+
+	uint8_t first_byte;
+	if (yb_od_io_peek_byte(&client->io, &first_byte,
+			       client->config_listen->client_login_timeout) ==
+	    -1)
+		return -1;
+	if (first_byte != 0x16)
+		return 0;
+
+	struct sockaddr_storage sa;
+	int salen = sizeof(sa);
+	if (machine_getpeername(client->io.io, (struct sockaddr *)&sa,
+				&salen) == -1)
+		return -1;
+	if (sa.ss_family == AF_UNIX) {
+		od_error(&instance->logger, "startup", client, NULL,
+			 "direct SSL connection rejected on Unix socket");
+		return -1;
+	}
+
+	*direct_ssl = true;
+	return 0;
+}
+
 static int od_frontend_startup(od_client_t *client)
 {
 	od_instance_t *instance = client->global->instance;
 	machine_msg_t *msg;
+	bool yb_direct_ssl;
+
+	if (yb_frontend_detect_direct_ssl(client, &yb_direct_ssl) == -1)
+		goto error;
+	if (yb_direct_ssl)
+		client->startup.is_ssl_request = 1;
 
 	for (uint32_t startup_attempt = 0;
-	     startup_attempt < MAX_STARTUP_ATTEMPTS; startup_attempt++) {
+	     !yb_direct_ssl && startup_attempt < MAX_STARTUP_ATTEMPTS;
+	     startup_attempt++) {
 		msg = od_read_startup(
 			&client->io,
 			client->config_listen->client_login_timeout);
@@ -284,7 +323,8 @@ static int od_frontend_startup(od_client_t *client)
 
 	/* client ssl request */
 	int rc = od_tls_frontend_accept(client, &instance->logger,
-					client->config_listen, client->tls);
+					client->config_listen, client->tls,
+					yb_direct_ssl);
 	if (rc == -1)
 		goto error;
 

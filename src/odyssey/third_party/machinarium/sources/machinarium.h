@@ -231,6 +231,10 @@ MACHINE_API int yb_machine_io_get_server_cert_hash(machine_io_t *,
 
 MACHINE_API int yb_machine_io_is_socket_closed(machine_io_t *obj);
 
+MACHINE_API int yb_machine_io_alpn_negotiated(machine_io_t *);
+
+MACHINE_API ssize_t yb_machine_peek_raw(machine_io_t *, void *, size_t);
+
 /* dns */
 
 MACHINE_API int machine_getsockname(machine_io_t *, struct sockaddr *, int *);

@@ -139,7 +139,8 @@ machine_tls_t *od_tls_frontend(od_config_listen_t *config)
 }
 
 int od_tls_frontend_accept(od_client_t *client, od_logger_t *logger,
-			   od_config_listen_t *config, machine_tls_t *tls)
+			   od_config_listen_t *config, machine_tls_t *tls,
+			   bool yb_direct_ssl)
 {
 	od_instance_t *instance = client->global->instance;
 
@@ -167,18 +168,21 @@ int od_tls_frontend_accept(od_client_t *client, od_logger_t *logger,
 			return 0;
 		}
 
-		/* supported 'S' */
-		machine_msg_t *msg;
-		msg = machine_msg_create(sizeof(uint8_t));
-		if (msg == NULL)
-			return -1;
-		uint8_t *type = machine_msg_data(msg);
-		*type = 'S';
-		rc = od_write(&client->io, &msg);
-		if (rc == -1) {
-			od_error(logger, "tls", client, NULL, "write error: %s",
-				 od_io_error(&client->io));
-			return -1;
+		if (!yb_direct_ssl) {
+			/* supported 'S' */
+			machine_msg_t *msg;
+			msg = machine_msg_create(sizeof(uint8_t));
+			if (msg == NULL)
+				return -1;
+			uint8_t *type = machine_msg_data(msg);
+			*type = 'S';
+			rc = od_write(&client->io, &msg);
+			if (rc == -1) {
+				od_error(logger, "tls", client, NULL,
+					 "write error: %s",
+					 od_io_error(&client->io));
+				return -1;
+			}
 		}
 
 		if (od_readahead_unread(&client->io.readahead) > 0) {
@@ -194,6 +198,12 @@ int od_tls_frontend_accept(od_client_t *client, od_logger_t *logger,
 				 "error: %s, login time %d us",
 				 od_io_error(&client->io),
 				 machine_time_us() - client->time_accept);
+			return -1;
+		}
+		if (yb_direct_ssl &&
+		    !yb_machine_io_alpn_negotiated(client->io.io)) {
+			od_error(logger, "tls", client, NULL,
+				 "received direct SSL connection request without ALPN protocol negotiation extension");
 			return -1;
 		}
 		client->startup.yb_ssl_established = 1;

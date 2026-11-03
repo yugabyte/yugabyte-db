@@ -194,6 +194,33 @@ static inline int od_io_read(od_io_t *io, char *dest, int size,
 	return 0;
 }
 
+static inline int yb_od_io_peek_byte(od_io_t *io, uint8_t *byte,
+				     uint32_t time_ms)
+{
+	int read_started = 0;
+	for (;;) {
+		ssize_t rc = yb_machine_peek_raw(io->io, byte, 1);
+		if (rc == 1)
+			break;
+		if (rc == 0)
+			return -1;
+		int errno_ = machine_errno();
+		if (errno_ != EAGAIN && errno_ != EWOULDBLOCK &&
+		    errno_ != EINTR)
+			return -1;
+		if (!read_started) {
+			if (od_io_read_start(io) == -1)
+				return -1;
+			read_started = 1;
+		}
+		if (machine_cond_wait(io->on_read, time_ms) == -1)
+			return -1;
+	}
+	if (read_started)
+		return od_io_read_stop(io);
+	return 0;
+}
+
 static inline machine_msg_t *od_read_startup(od_io_t *io, uint32_t time_ms)
 {
 	uint32_t header;
