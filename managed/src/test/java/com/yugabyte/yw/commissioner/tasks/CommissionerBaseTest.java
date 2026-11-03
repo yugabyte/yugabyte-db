@@ -168,11 +168,16 @@ import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
 import org.slf4j.LoggerFactory;
+import org.yb.WireProtocol.AppStatusPB;
+import org.yb.WireProtocol.AppStatusPB.ErrorCode;
 import org.yb.client.AreNodesSafeToTakeDownResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.ListLiveTabletServersResponse;
+import org.yb.client.PromoteAutoFlagsResponse;
 import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo;
+import org.yb.master.MasterClusterOuterClass.PromoteAutoFlagsResponsePB;
+import org.yb.master.MasterTypes.MasterErrorPB;
 import org.yb.util.TabletServerInfo;
 import play.Application;
 import play.Environment;
@@ -1471,5 +1476,22 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
 
   Map<String, String> toLabelMap(Labels labels) {
     return labels.stream().collect(Collectors.toMap(Label::getName, Label::getValue));
+  }
+
+  protected static final String TSERVERS_NOT_UPGRADED_MESSAGE =
+      "Cannot promote AutoFlags before all yb-tservers have been upgraded to the current version";
+
+  protected static PromoteAutoFlagsResponse promoteAutoFlagsErrorResponse(
+      ErrorCode code, String message) {
+    return new PromoteAutoFlagsResponse(
+        0,
+        "uuid",
+        PromoteAutoFlagsResponsePB.newBuilder()
+            .setError(
+                MasterErrorPB.newBuilder()
+                    .setStatus(AppStatusPB.newBuilder().setCode(code).setMessage(message).build())
+                    .setCode(MasterErrorPB.Code.UNKNOWN_ERROR)
+                    .build())
+            .build());
   }
 }

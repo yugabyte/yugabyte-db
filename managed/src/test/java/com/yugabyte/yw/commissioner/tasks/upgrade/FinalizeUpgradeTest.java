@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
+import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -35,6 +36,7 @@ import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
+import org.yb.WireProtocol.AppStatusPB.ErrorCode;
 import org.yb.client.GetYsqlMajorCatalogUpgradeStateResponse;
 import org.yb.client.IsInitDbDoneResponse;
 import org.yb.client.PromoteAutoFlagsResponse;
@@ -191,6 +193,28 @@ public class FinalizeUpgradeTest extends UpgradeTaskTest {
   }
 
   @Test
+  public void testFinalizeFailsWhenMasterRefusesAutoFlagPromotion() throws Exception {
+    when(mockClient.promoteAutoFlags(anyString(), anyBoolean(), anyBoolean()))
+        .thenReturn(
+            promoteAutoFlagsErrorResponse(ErrorCode.ILLEGAL_STATE, TSERVERS_NOT_UPGRADED_MESSAGE));
+    FinalizeUpgradeParams params = new FinalizeUpgradeParams();
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.upgradeSystemCatalog = false;
+    TaskInfo taskInfo = submitTask(params);
+
+    assertEquals(Failure, taskInfo.getTaskState());
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .anyMatch(
+                task ->
+                    task.getTaskType() == TaskType.PromoteAutoFlags
+                        && task.getTaskState() == Failure));
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertEquals(
+        UniverseDefinitionTaskParams.SoftwareUpgradeState.FinalizeFailed,
+        defaultUniverse.getUniverseDetails().softwareUpgradeState);
+  }
+
   public void testFinalizeRetries() {
     FinalizeUpgradeParams taskParams = new FinalizeUpgradeParams();
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());

@@ -229,9 +229,11 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
                 YsqlMajorVersionUpgradeState.UPGRADE_COMPLETE);
           }
 
+          // Any promotion failure fails the upgrade, except the outcomes PromoteAutoFlags treats as
+          // success (nothing to promote, AutoFlags management disabled).
           createPromoteAutoFlagTask(
               taskParams().getUniverseUUID(),
-              true /* ignoreErrors*/,
+              false /* ignoreErrors*/,
               AutoFlagUtil.LOCAL_VOLATILE_AUTO_FLAG_CLASS_NAME /* maxClass */);
 
           if (taskParams().isEnableYbc()) {
@@ -248,7 +250,8 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
             createFinalizeUpgradeTasks(
                 taskParams().upgradeSystemCatalog,
                 ysqlMajorVersionUpgrade,
-                requireAdditionalSuperUserForCatalogUpgrade);
+                requireAdditionalSuperUserForCatalogUpgrade,
+                true /* ignorePromoteAutoFlagsErrors */);
           } else {
             if (upgradeRequireFinalize) {
               createUpdateUniverseSoftwareUpgradeStateTask(

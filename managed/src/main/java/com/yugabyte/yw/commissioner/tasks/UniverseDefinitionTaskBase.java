@@ -4115,6 +4115,23 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       boolean upgradeSystemCatalog,
       boolean finalizeCatalogUpgrade,
       boolean requireAdditionalSuperUserForCatalogUpgrade) {
+    createFinalizeUpgradeTasks(
+        upgradeSystemCatalog,
+        finalizeCatalogUpgrade,
+        requireAdditionalSuperUserForCatalogUpgrade,
+        false /* ignorePromoteAutoFlagsErrors */);
+  }
+
+  /**
+   * {@code ignorePromoteAutoFlagsErrors} must be true when finalizing inside an upgrade task. A
+   * failure there leaves the universe in UpgradeFailed after rollback was disallowed (and the YSQL
+   * major catalog possibly finalized), and retrying the upgrade re-allows rollback.
+   */
+  protected void createFinalizeUpgradeTasks(
+      boolean upgradeSystemCatalog,
+      boolean finalizeCatalogUpgrade,
+      boolean requireAdditionalSuperUserForCatalogUpgrade,
+      boolean ignorePromoteAutoFlagsErrors) {
     Universe universe = getUniverse();
 
     createClearSoftwareUpgradeProgressTask();
@@ -4131,7 +4148,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Promote all auto flags upto class External.
       createPromoteAutoFlagTask(
           universe.getUniverseUUID(),
-          true /* ignoreErrors */,
+          ignorePromoteAutoFlagsErrors /* ignoreErrors */,
           AutoFlagUtil.EXTERNAL_AUTO_FLAG_CLASS_NAME /* maxClass */);
 
       if (upgradeSystemCatalog) {

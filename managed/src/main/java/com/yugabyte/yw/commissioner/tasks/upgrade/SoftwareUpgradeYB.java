@@ -525,15 +525,18 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
       createYbcInstallTask(universe, new ArrayList<>(ctx.allNodes), ctx.newVersion);
     }
     createCheckSoftwareVersionTask(ctx.allNodes, ctx.newVersion);
+    // Any promotion failure fails the upgrade, except the outcomes PromoteAutoFlags treats as
+    // success (nothing to promote, AutoFlags management disabled).
     createPromoteAutoFlagTask(
         universe.getUniverseUUID(),
-        true /* ignoreErrors */,
+        false /* ignoreErrors */,
         AutoFlagUtil.LOCAL_VOLATILE_AUTO_FLAG_CLASS_NAME /* maxClass */);
     if (!taskParams().rollbackSupport) {
       createFinalizeUpgradeTasks(
           taskParams().upgradeSystemCatalog,
           ctx.requireYsqlMajorVersionUpgrade,
-          ctx.requireAdditionalSuperUserForCatalogUpgrade);
+          ctx.requireAdditionalSuperUserForCatalogUpgrade,
+          true /* ignorePromoteAutoFlagsErrors */);
     } else {
       if (ctx.upgradeRequireFinalize) {
         createUpdateUniverseSoftwareUpgradeStateTask(
