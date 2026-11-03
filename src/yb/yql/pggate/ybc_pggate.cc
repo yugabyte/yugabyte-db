@@ -15,7 +15,6 @@
 #include <algorithm>
 #include <atomic>
 #include <limits>
-#include <map>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -24,6 +23,8 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+
+#include <boost/functional/hash.hpp>
 
 #include "yb/client/session.h"
 #include "yb/client/table_info.h"
@@ -513,6 +514,15 @@ YbcPgTabletsDescriptor MakeYbcPgTabletsDescriptor(const tablet::TabletStatusPB& 
     .partition_key_end = YBCPAllocStdString(tablet_status.partition().partition_key_end()),
     .partition_key_end_len = tablet_status.partition().partition_key_end().size()
   };
+}
+
+bool HasCDCColumnKey(const DatumMessagePB& datum, bool use_attr_num) {
+  return use_attr_num ? datum.has_col_attr_num() : datum.has_column_name();
+}
+
+std::pair<int32_t, std::string> GetCDCColumnKey(const DatumMessagePB& datum, bool use_attr_num) {
+  return use_attr_num ? std::make_pair(datum.col_attr_num(), std::string())
+                      : std::make_pair(0, datum.column_name());
 }
 
 } // namespace
@@ -3068,13 +3078,6 @@ YbcStatus YBCPgGetCDCConsistentChanges(
     static constexpr size_t OMITTED_VALUE = std::numeric_limits<size_t>::max();
 
     const bool use_attr_num = FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl;
-    auto has_col_key = [use_attr_num](const auto& datum) {
-      return use_attr_num ? datum.has_col_attr_num() : datum.has_column_name();
-    };
-    auto col_key = [use_attr_num](const auto& datum) {
-      return use_attr_num ? std::make_pair(datum.col_attr_num(), std::string())
-                          : std::make_pair(0, datum.column_name());
-    };
 
     // (attnum, column name) -> (index in old tuples, index in new tuples).
     // OMITTED_VALUE indicates omission.
@@ -3082,22 +3085,26 @@ YbcStatus YBCPgGetCDCConsistentChanges(
     // For delete: all the columns will be of form (<index>, OMITTED_VALUE) or
     // won't exist in the map depending on the record type (replica identity) of the stream.
     // For update: both old and new tuples will be present.
-    std::map<std::pair<int32_t, std::string>, std::pair<size_t, size_t>> col_idx_map;
+    std::unordered_map<
+        std::pair<int32_t, std::string>, std::pair<size_t, size_t>,
+        boost::hash<std::pair<int32_t, std::string>>> col_idx_map;
     int new_tuple_idx = 0;
     for (const auto &new_tuple : row_message_pb.new_tuple()) {
-      if (has_col_key(new_tuple)) {
-        col_idx_map.emplace(col_key(new_tuple), std::make_pair(OMITTED_VALUE, new_tuple_idx));
+      if (HasCDCColumnKey(new_tuple, use_attr_num)) {
+        col_idx_map.emplace(
+            GetCDCColumnKey(new_tuple, use_attr_num), std::make_pair(OMITTED_VALUE, new_tuple_idx));
       }
       new_tuple_idx++;
     }
     int old_tuple_idx = 0;
     for (const auto& old_tuple : row_message_pb.old_tuple()) {
-      if (has_col_key(old_tuple)) {
-        auto itr = col_idx_map.find(col_key(old_tuple));
+      if (HasCDCColumnKey(old_tuple, use_attr_num)) {
+        auto col_key = GetCDCColumnKey(old_tuple, use_attr_num);
+        auto itr = col_idx_map.find(col_key);
         if (itr != col_idx_map.end()) {
           itr->second.first = old_tuple_idx;
         } else {
-          col_idx_map.emplace(col_key(old_tuple), std::make_pair(old_tuple_idx, OMITTED_VALUE));
+          col_idx_map.emplace(std::move(col_key), std::make_pair(old_tuple_idx, OMITTED_VALUE));
         }
       }
       old_tuple_idx++;

@@ -1844,11 +1844,12 @@ public class TestPgReplicationSlotWithTxnDdl extends BasePgSQLTest {
       stmt.execute("INSERT INTO t1 VALUES (2, 'two')");
       stmt.execute("COMMIT");
       stmt.execute("UPDATE t1 SET b = 'uno' WHERE a = 1");
+      stmt.execute("UPDATE t1 SET b = NULL WHERE a = 1");
       stmt.execute("DELETE FROM t1 WHERE a = 2");
     }
 
     PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
-    List<PgOutputMessage> result = receiveMessage(stream, 12);
+    List<PgOutputMessage> result = receiveMessage(stream, 15);
 
     List<PgOutputMessage> expectedResult = Arrays.asList(
         beginMessage(2),
@@ -1865,6 +1866,10 @@ public class TestPgReplicationSlotWithTxnDdl extends BasePgSQLTest {
             new PgOutputMessageTuple("1", "one", "7"), new PgOutputMessageTuple("1", "uno", "7")),
         commitMessage(),
         beginMessage(4),
+        PgOutputUpdateMessage.CreateForComparison(
+            new PgOutputMessageTuple("1", "uno", "7"), new PgOutputMessageTuple("1", null, "7")),
+        commitMessage(),
+        beginMessage(5),
         PgOutputDeleteMessage.CreateForComparison(
             false /* hasKey */, new PgOutputMessageTuple("2", "two", "7")),
         commitMessage());
@@ -1925,7 +1930,7 @@ public class TestPgReplicationSlotWithTxnDdl extends BasePgSQLTest {
     conn.close();
   }
 
-  // Several ADD and DROP COLUMNs in one transaction, each followed by a write.
+  // Several ADD and DROP COLUMNs in one transaction, with writes in between.
   @Test
   public void writeAfterRewriteWithDropsAndAddsInsideTransaction() throws Exception {
     restartWithDefaultReplicaIdentity("FULL");
@@ -2198,10 +2203,16 @@ public class TestPgReplicationSlotWithTxnDdl extends BasePgSQLTest {
     conn.close();
   }
 
-  // Swapping two column names after the UPDATE leaves both names valid in the descriptor at the
-  // UPDATE's time, so matching by name would put each value in the other column.
+  // Swapping two column names after the first UPDATE leaves both names valid in the descriptor at
+  // that UPDATE's time, so matching by name would put each value in the other column. The UPDATEs
+  // between the renames are decoded with the final names too, while the descriptor at each of
+  // their times has the intermediate ones.
   @Test
   public void updateThenSwapColumnNamesInsideTransaction() throws Exception {
+    Map<String, String> tserverFlags = new HashMap<>();
+    tserverFlags.put("cdc_enable_intra_transactional_before_image", "true");
+    restartClusterWithFlags(Collections.emptyMap(), tserverFlags);
+
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE TABLE t1 (a int, b int, c int, PRIMARY KEY (a ASC))");
       stmt.execute("ALTER TABLE t1 REPLICA IDENTITY FULL");
@@ -2217,14 +2228,16 @@ public class TestPgReplicationSlotWithTxnDdl extends BasePgSQLTest {
       stmt.execute("BEGIN");
       stmt.execute("UPDATE t1 SET b = 20 WHERE a = 1");
       stmt.execute("ALTER TABLE t1 RENAME COLUMN b TO tmp");
+      stmt.execute("UPDATE t1 SET tmp = 21 WHERE a = 1");
       stmt.execute("ALTER TABLE t1 RENAME COLUMN c TO b");
+      stmt.execute("UPDATE t1 SET b = 101 WHERE a = 1");
       stmt.execute("ALTER TABLE t1 RENAME COLUMN tmp TO c");
       stmt.execute("COMMIT");
       stmt.execute("UPDATE t1 SET c = 30 WHERE a = 1");
     }
 
     PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
-    List<PgOutputMessage> result = receiveMessage(stream, 8);
+    List<PgOutputMessage> result = receiveMessage(stream, 12);
 
     List<PgOutputMessage> expectedResult = Arrays.asList(
         beginMessage(2),
@@ -2232,12 +2245,20 @@ public class TestPgReplicationSlotWithTxnDdl extends BasePgSQLTest {
             Arrays.asList(column("a", INT4_OID), column("b", INT4_OID), column("c", INT4_OID))),
         PgOutputUpdateMessage.CreateForComparison(
             new PgOutputMessageTuple("1", "10", "100"), new PgOutputMessageTuple("1", "20", "100")),
+        PgOutputRelationMessage.CreateForComparison("public", "t1", 'f' /* replicaIdentity */,
+            Arrays.asList(column("a", INT4_OID), column("tmp", INT4_OID), column("c", INT4_OID))),
+        PgOutputUpdateMessage.CreateForComparison(
+            new PgOutputMessageTuple("1", "20", "100"), new PgOutputMessageTuple("1", "21", "100")),
+        PgOutputRelationMessage.CreateForComparison("public", "t1", 'f' /* replicaIdentity */,
+            Arrays.asList(column("a", INT4_OID), column("tmp", INT4_OID), column("b", INT4_OID))),
+        PgOutputUpdateMessage.CreateForComparison(
+            new PgOutputMessageTuple("1", "21", "100"), new PgOutputMessageTuple("1", "21", "101")),
         commitMessage(),
         beginMessage(3),
         PgOutputRelationMessage.CreateForComparison("public", "t1", 'f' /* replicaIdentity */,
             Arrays.asList(column("a", INT4_OID), column("c", INT4_OID), column("b", INT4_OID))),
         PgOutputUpdateMessage.CreateForComparison(
-            new PgOutputMessageTuple("1", "20", "100"), new PgOutputMessageTuple("1", "30", "100")),
+            new PgOutputMessageTuple("1", "21", "101"), new PgOutputMessageTuple("1", "30", "101")),
         commitMessage());
     assertMessages(expectedResult, result);
 

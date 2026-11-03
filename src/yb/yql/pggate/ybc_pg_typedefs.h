@@ -723,10 +723,10 @@ typedef struct {
 // Upon adding any more palloc'd members in the below struct, add logic to free it in
 // DeepFreeRecordBatch function of yb_virtual_wal_client.c.
 typedef struct {
-  // The column is identified by column_attr_num when
-  // TEST_ysql_yb_enable_replication_slot_transactional_ddl is on, and by column_name otherwise.
-  // Only the one in use is set.
   const char* column_name;
+  // When TEST_ysql_yb_enable_replication_slot_transactional_ddl is on, the column is identified by
+  // column_attr_num and column_name is NULL. Otherwise it is identified by column_name and
+  // column_attr_num is 0.
   int column_attr_num;
   // Null indicates that the value is explicitly null while Omitted indicates that the value is
   // present but was just not sent from the CDC service due to the Replica Identity (CHANGE,
