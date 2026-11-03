@@ -84,6 +84,26 @@ static inline bool od_relay_data_pending(od_relay_t *relay)
 	return current < end;
 }
 
+/*
+ * YB: Ported from upstream odyssey ae21c833 ("relay.c: do not attach if
+ * client send X"). Returns true when the next unread packet in the client
+ * readahead is a Terminate ('X') message, so that a detached client that is
+ * disconnecting does not get a server attached (and RESET/deploy queries run)
+ * just to forward the Terminate.
+ */
+static inline bool yb_od_relay_is_client_termination(od_relay_t *relay)
+{
+	/* in the middle of a packet, so the next byte is not a packet type */
+	if (relay->packet != 0)
+		return false;
+
+	if (!od_relay_data_pending(relay))
+		return false;
+
+	return (uint8_t)*od_readahead_pos_read(&relay->src->readahead) ==
+	       (uint8_t)KIWI_FE_TERMINATE;
+}
+
 static inline od_frontend_status_t
 yb_od_relay_start_init(od_relay_t *relay, machine_cond_t *base,
 	       od_frontend_status_t error_read,
@@ -457,8 +477,26 @@ static inline od_frontend_status_t od_relay_step(od_relay_t *relay)
 	int rc;
 	if (machine_cond_try(relay->src->on_read)) {
 		if (relay->dst == NULL) {
+			/*
+			 * YB: Read the pending data into readahead before attaching,
+			 * so that the next packet type can be checked. The data is
+			 * kept in readahead and gets relayed once attached.
+			 */
+			rc = od_relay_read(relay);
+			if (rc != OD_OK)
+				return rc;
+
 			/* signal to retry on read logic */
 			machine_cond_signal(relay->src->on_read);
+
+			/*
+			 * YB: If this is client termination msg, then do not attach -
+			 * just stop the client. Only the client relay is ever stepped
+			 * with no destination.
+			 */
+			if (yb_od_relay_is_client_termination(relay))
+				return OD_STOP;
+
 			return OD_ATTACH;
 		}
 
