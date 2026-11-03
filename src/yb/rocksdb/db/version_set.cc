@@ -773,14 +773,8 @@ void Version::GetColumnFamilyMetaData(ColumnFamilyMetaData* cf_meta) {
     cf_meta->file_count += vstorage->LevelFiles(level).size();
     std::vector<SstFileMetaData> files;
     for (const auto& file : vstorage->LevelFiles(level)) {
-      uint32_t path_id = file->fd.GetPathId();
-      std::string file_path;
-      if (path_id < ioptions->db_paths.size()) {
-        file_path = ioptions->db_paths[path_id].path;
-      } else {
-        assert(!ioptions->db_paths.empty());
-        file_path = ioptions->db_paths.back().path;
-      }
+      const auto path_id = EffectivePathId(ioptions->db_paths, file->fd.GetPathId());
+      const std::string& file_path = ioptions->db_paths[path_id].path;
       files.emplace_back(
           file->fd.GetNumber(),
           file_path,
@@ -4131,10 +4125,8 @@ void VersionSet::GetLiveFilesMetaData(std::vector<LiveFileMetaData>* metadata) {
     for (int level = 0; level < cfd->NumberLevels(); level++) {
       for (const auto& file :
            cfd->current()->storage_info()->LevelFiles(level)) {
-        const auto path_id = file->fd.GetPathId();
-        const auto& db_path = path_id < db_options_->db_paths.size()
-                                  ? db_options_->db_paths[path_id].path
-                                  : db_options_->db_paths.back().path;
+        const auto path_id = EffectivePathId(db_options_->db_paths, file->fd.GetPathId());
+        const auto& db_path = db_options_->db_paths[path_id].path;
         // TODO: replace base_size with an accurate metadata size for uncompressed data.
         // Look into: BlockBasedTableBuilder
         const auto uncompressed_size =
@@ -4149,16 +4141,14 @@ void VersionSet::GetLiveFilesMetaData(std::vector<LiveFileMetaData>* metadata) {
 }
 
 void VersionSet::GetLiveFileNumbersNotOnPath(uint32_t path_id, std::vector<uint64_t>* out) {
-  // A path id past the end of db_paths resolves to the last path everywhere (TableFileName,
-  // GetLiveFilesMetaData), so the file sits there and must compare as such.
-  const auto last_path_id = static_cast<uint32_t>(db_options_->db_paths.size() - 1);
+  const auto& db_paths = db_options_->db_paths;
   for (auto cfd : *column_family_set_) {
     if (cfd->IsDropped()) {
       continue;
     }
     for (int level = 0; level < cfd->NumberLevels(); level++) {
       for (const auto* file : cfd->current()->storage_info()->LevelFiles(level)) {
-        if (std::min(file->fd.GetPathId(), last_path_id) != path_id) {
+        if (EffectivePathId(db_paths, file->fd.GetPathId()) != path_id) {
           out->push_back(file->fd.GetNumber());
         }
       }
