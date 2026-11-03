@@ -37,6 +37,7 @@ import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateDetails;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+import com.yugabyte.yw.common.certmgmt.RpcClientCert;
 import com.yugabyte.yw.common.certmgmt.providers.CertificateProviderInterface;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -821,6 +822,16 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
   }
 
+  @SuppressWarnings("unchecked")
+  private static Map<String, Object> getOrCreateMap(Map<String, Object> parent, String key) {
+    Object value = parent.get(key);
+    if (!(value instanceof Map)) {
+      value = new HashMap<String, Object>();
+      parent.put(key, value);
+    }
+    return (Map<String, Object>) value;
+  }
+
   private String generateHelmOverride() {
     Map<String, Object> overrides = new HashMap<String, Object>();
     Yaml yaml = new Yaml(new SkipNullRepresenter());
@@ -1263,6 +1274,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     if (taskParams().masterJoinExistingCluster) {
       masterGFlags.put(GFlagsUtil.MASTER_JOIN_EXISTING_UNIVERSE, "true");
     }
+    if (primaryClusterIntent.useNodeToNodeClientCerts) {
+      masterGFlags.put(GFlagsUtil.USE_CLIENT_CERTIFICATES, "true");
+    }
     if (primaryClusterIntent.enableYSQL) {
       if (primaryClusterIntent.enableYSQLAuth) {
         masterGFlags.put("ysql_enable_auth", "true");
@@ -1372,6 +1386,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
     if (primaryClusterIntent.enableYCQL && primaryClusterIntent.enableYCQLAuth) {
       tserverGFlags.put("use_cassandra_authentication", "true");
+    }
+    if (primaryClusterIntent.useNodeToNodeClientCerts) {
+      tserverGFlags.put(GFlagsUtil.USE_CLIENT_CERTIFICATES, "true");
     }
     if (placementCloud != null && tserverGFlags.get("placement_cloud") == null) {
       tserverGFlags.put("placement_cloud", placementCloud);
@@ -1483,6 +1500,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
               (long) Math.ceil(Double.parseDouble(tserverResource.get("cpu").toString())));
       ybcGflags.putAll(
           GFlagsUtil.getCommonYbcGflags(confGetter, universeFromDB, hardwareConcurrencyStr));
+      if (RpcClientCert.isClientCertRequired(universeFromDB)) {
+        ybcGflags.put(GFlagsUtil.YBC_REQUIRE_CLIENT_CERTIFICATES, "true");
+      }
       ybcGflags.putAll(primaryClusterIntent.ybcFlags);
       gflagOverrides.put("ybc", ybcGflags);
     }
@@ -1629,6 +1649,23 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       throw new RuntimeException("Error in writing overrides map to string.");
     }
     // TODO gflags which have precedence over helm overrides should be merged here.
+    // Provider overrides are never validated, so for client certs the setting decides,
+    // since YBA presents a client cert only when it is on. While on, also drop the identity checks
+    // YBA's client cert can't pass. While off, only an override that set the gflag is changed, so
+    // other universes' gflags checksum, and with it their pods, stay as they were.
+    for (String server : List.of("master", "tserver")) {
+      if (primaryClusterIntent.useNodeToNodeClientCerts) {
+        Map<String, Object> serverGFlags =
+            getOrCreateMap(getOrCreateMap(overrides, "gflags"), server);
+        serverGFlags.put(GFlagsUtil.USE_CLIENT_CERTIFICATES, "true");
+        serverGFlags.remove(GFlagsUtil.NODE_TO_NODE_REQUIRED_UID);
+        serverGFlags.remove(GFlagsUtil.VERIFY_CLIENT_ENDPOINT);
+      } else if (overrides.get("gflags") instanceof Map<?, ?> gflags
+          && gflags.get(server) instanceof Map<?, ?> serverGFlags
+          && serverGFlags.containsKey(GFlagsUtil.USE_CLIENT_CERTIFICATES)) {
+        ((Map<String, Object>) serverGFlags).put(GFlagsUtil.USE_CLIENT_CERTIFICATES, "false");
+      }
+    }
 
     // For single AZ azUUID may be null, use non-null values
     UUID azUuid =

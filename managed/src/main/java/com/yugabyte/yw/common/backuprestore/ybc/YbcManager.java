@@ -22,6 +22,7 @@ import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.RetryTaskUntilCondition;
 import com.yugabyte.yw.common.StorageUtilFactory;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.certmgmt.RpcClientCert;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -310,7 +311,6 @@ public class YbcManager {
       Map<String, Long> paramsToSet,
       boolean resetToDefaults) {
     Integer ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
-    String certFile = universe.getCertificateNodetoNode();
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
     UUID providerUUID = UUID.fromString(primaryCluster.userIntent.provider);
     List<String> tsIPs =
@@ -320,7 +320,7 @@ public class YbcManager {
     NonRestartSettableControllerFlags currentFlags = null;
     // Get already present throttle values on YBC and add to builder
     try {
-      ybcClient = getYbcClient(tsIPs, ybcPort, certFile);
+      ybcClient = getYbcClient(tsIPs, ybcPort, universe);
       currentFlags = getControllerFlags(ybcClient);
     } finally {
       ybcClientService.closeClient(ybcClient);
@@ -417,7 +417,6 @@ public class YbcManager {
       List<NodeDetails> tsNodes,
       ControllerFlagsSetRequest controllerFlagsSetRequest) {
     Integer ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
-    String certFile = universe.getCertificateNodetoNode();
     tsNodes.forEach(
         (n) -> {
           YbcClient client = null;
@@ -426,7 +425,7 @@ public class YbcManager {
             if (nodeIp == null || !n.isTserver) {
               return;
             }
-            client = ybcClientService.getNewClient(nodeIp, ybcPort, certFile);
+            client = ybcClientService.getNewClient(nodeIp, ybcPort, universe);
             ControllerFlagsSetResponse controllerFlagsSetResponse =
                 client.controllerFlagsSetRequest(controllerFlagsSetRequest);
             if (controllerFlagsSetResponse != null
@@ -778,10 +777,9 @@ public class YbcManager {
   public void validateCloudConfigIgnoreIfYbcUnavailable(
       String nodeIP, Universe universe, CloudStoreConfig csConfig) {
     int ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
-    String certFile = universe.getCertificateNodetoNode();
     YbcClient ybcClient = null;
     try {
-      ybcClient = getYbcClient(nodeIP, ybcPort, certFile);
+      ybcClient = getYbcClient(nodeIP, ybcPort, universe);
     } catch (Exception e) {
       LOG.warn("Cannot check cloud config on node {} as YBC server is not available.", nodeIP);
       return;
@@ -899,10 +897,10 @@ public class YbcManager {
   }
 
   // Ping check for YbcClient.
-  public boolean ybcPingCheck(String nodeIp, String certDir, int port) {
+  public boolean ybcPingCheck(String nodeIp, Universe universe, int port) {
     YbcClient ybcClient = null;
     try {
-      ybcClient = ybcClientService.getNewClient(nodeIp, port, certDir);
+      ybcClient = ybcClientService.getNewClient(nodeIp, port, universe);
       return ybcPingCheck(ybcClient);
     } finally {
       try {
@@ -943,9 +941,8 @@ public class YbcManager {
     Universe universe = Universe.getOrBadRequest(universeUUID);
     if (enablePreference) {
       List<String> nodeIPsWithPreference = getPreferenceBasedYBCNodeIPsList(universe);
-      String certFile = universe.getCertificateNodetoNode();
       int ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
-      return getAvailableYbcClientIpPair(nodeIPsWithPreference, ybcPort, certFile);
+      return getAvailableYbcClientIpPair(nodeIPsWithPreference, ybcPort, universe);
     } else {
       return getAvailableYbcClientIpPair(universe, null);
     }
@@ -967,7 +964,6 @@ public class YbcManager {
 
   public Pair<YbcClient, String> getAvailableYbcClientIpPair(
       Universe universe, @Nullable List<String> nodeIPListOverride) {
-    String certFile = universe.getCertificateNodetoNode();
     int ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
     List<String> nodeIPs = new ArrayList<>();
     if (CollectionUtils.isNotEmpty(nodeIPListOverride)) {
@@ -978,15 +974,15 @@ public class YbcManager {
               .map(nD -> nD.cloudInfo.private_ip)
               .collect(Collectors.toList()));
     }
-    return getAvailableYbcClientIpPair(nodeIPs, ybcPort, certFile);
+    return getAvailableYbcClientIpPair(nodeIPs, ybcPort, universe);
   }
 
   public Pair<YbcClient, String> getAvailableYbcClientIpPair(
-      List<String> nodeIps, int ybcPort, String certFile) {
+      List<String> nodeIps, int ybcPort, Universe universe) {
     for (String nodeIp : nodeIps) {
       YbcClient ybcClient = null;
       try {
-        ybcClient = ybcClientService.getNewClient(nodeIp, ybcPort, certFile);
+        ybcClient = ybcClientService.getNewClient(nodeIp, ybcPort, universe);
         if (ybcPingCheck(ybcClient)) {
           return new Pair<YbcClient, String>(ybcClient, nodeIp);
         }
@@ -1044,13 +1040,13 @@ public class YbcManager {
     return nodesToCheckInPreference;
   }
 
-  public YbcClient getYbcClient(String nodeIp, int ybcPort, String certFile) {
-    return getAvailableYbcClientIpPair(Collections.singletonList(nodeIp), ybcPort, certFile)
+  public YbcClient getYbcClient(String nodeIp, int ybcPort, Universe universe) {
+    return getAvailableYbcClientIpPair(Collections.singletonList(nodeIp), ybcPort, universe)
         .getFirst();
   }
 
-  public YbcClient getYbcClient(List<String> nodeIps, int ybcPort, String certFile) {
-    return getAvailableYbcClientIpPair(nodeIps, ybcPort, certFile).getFirst();
+  public YbcClient getYbcClient(List<String> nodeIps, int ybcPort, Universe universe) {
+    return getAvailableYbcClientIpPair(nodeIps, ybcPort, universe).getFirst();
   }
 
   public YbcClient getYbcClient(UUID universeUUID) {
@@ -1152,6 +1148,9 @@ public class YbcManager {
             hardwareConcurrency,
             ybcGflagsMap,
             confGetter);
+    if (RpcClientCert.isClientCertRequired(universe)) {
+      ybcGflags.putIfAbsent(GFlagsUtil.YBC_REQUIRE_CLIENT_CERTIFICATES, "true");
+    }
     try {
       Path confFilePath =
           fileHelperService.createTempFile(
@@ -1203,7 +1202,6 @@ public class YbcManager {
   }
 
   public void waitForYbc(Universe universe, Set<NodeDetails> nodeDetailsSet, int numRetries) {
-    String certFile = universe.getCertificateNodetoNode();
     int ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
     String errMsg = "";
 
@@ -1216,7 +1214,7 @@ public class YbcManager {
       LOG.info("Node IP: {} to connect to YBC", nodeIp);
 
       try {
-        client = ybcClientService.getNewClient(nodeIp, ybcPort, certFile);
+        client = ybcClientService.getNewClient(nodeIp, ybcPort, universe);
         if (client == null) {
           throw new Exception("Could not create Ybc client.");
         }

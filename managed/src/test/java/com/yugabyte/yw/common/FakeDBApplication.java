@@ -70,7 +70,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public CloudQueryHelper mockCloudQueryHelper = mock(CloudQueryHelper.class);
   public CloudAPI.Factory mockCloudAPIFactory = mock(CloudAPI.Factory.class);
   public ReleaseManager mockReleaseManager = mock(ReleaseManager.class);
-  public YBClientService mockService = mock(YBClientService.class);
+  public YBClientService mockService = TestHelper.mockYBClientService();
   public DnsManager mockDnsManager = mock(DnsManager.class);
   public NetworkManager mockNetworkManager = mock(NetworkManager.class);
   public YamlWrapper mockYamlWrapper = mock(YamlWrapper.class);
