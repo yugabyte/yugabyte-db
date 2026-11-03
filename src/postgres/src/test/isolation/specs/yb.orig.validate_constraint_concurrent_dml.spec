@@ -7,26 +7,19 @@
 #    valid insert
 # 4. Concurrent insert violating the CHECK constraint being validated fails;
 #    VALIDATE succeeds
-# 5. Concurrent insert violating the FK constraint being validated fails;
-#    VALIDATE succeeds
-# 6. Delete of a row referenced by the FK constraint being validated waits for
-#    VALIDATE, then fails
-# 7. VALIDATE fails on a row that predates the NOT VALID constraint; the
+# 5. VALIDATE fails on a row that predates the NOT VALID constraint; the
 #    concurrent writer is unaffected
-# 8. A writer that cached the table before ADD ... NOT VALID waits for the ADD,
+# 6. A writer that cached the table before ADD ... NOT VALID waits for the ADD,
 #    then its violating insert fails; VALIDATE succeeds
 #
-# VALIDATE of an FK constraint with concurrent valid DMLs is covered by
-# alter-table-1.
+# yb.orig.validate_fk_constraint_concurrent_dml covers VALIDATE of an FK
+# constraint.
 
 setup
 {
-  CREATE TABLE r (id int PRIMARY KEY);
-  INSERT INTO r VALUES (1), (2);
-  CREATE TABLE t (id int PRIMARY KEY, rid int, v int);
-  INSERT INTO t SELECT g, 1, g FROM generate_series(1, 30) g;
+  CREATE TABLE t (id int PRIMARY KEY, v int);
+  INSERT INTO t SELECT g, g FROM generate_series(1, 30) g;
   ALTER TABLE t ADD CONSTRAINT t_v_pos CHECK (v > 0) NOT VALID;
-  ALTER TABLE t ADD CONSTRAINT t_r_fk FOREIGN KEY (rid) REFERENCES r (id) NOT VALID;
   CREATE TABLE tb (id int PRIMARY KEY, v int);
   INSERT INTO tb VALUES (1, -1);
   ALTER TABLE tb ADD CONSTRAINT tb_v_pos CHECK (v > 0) NOT VALID;
@@ -43,16 +36,13 @@ teardown
   DROP TABLE tc;
   DROP TABLE tb;
   DROP TABLE t;
-  DROP TABLE r;
 }
 
 session s1
 step s1_begin		{ BEGIN; }
-step s1_ins_t1		{ INSERT INTO t VALUES (100, 1, 100); }
-step s1_ins_t2		{ INSERT INTO t VALUES (101, 2, 101); }
-step s1_ins_t_bad_check	{ INSERT INTO t VALUES (102, 1, -1); }
-step s1_ins_t_bad_fk	{ INSERT INTO t VALUES (103, 99, 103); }
-step s1_del_r_referenced	{ DELETE FROM r WHERE id = 1; }
+step s1_ins_t1		{ INSERT INTO t VALUES (100, 100); }
+step s1_ins_t2		{ INSERT INTO t VALUES (101, 101); }
+step s1_ins_t_bad_check	{ INSERT INTO t VALUES (102, -1); }
 step s1_ins_tb1		{ INSERT INTO tb VALUES (100, 100); }
 step s1_ins_tb2		{ INSERT INTO tb VALUES (101, 101); }
 step s1_ins_tc_valid	{ INSERT INTO tc VALUES (100, 100); }
@@ -64,7 +54,6 @@ step s1_commit		{ COMMIT; }
 session s2
 step s2_begin		{ BEGIN; }
 step s2_validate_check	{ ALTER TABLE t VALIDATE CONSTRAINT t_v_pos; }
-step s2_validate_fk	{ ALTER TABLE t VALIDATE CONSTRAINT t_r_fk; }
 step s2_validate_tb	{ ALTER TABLE tb VALIDATE CONSTRAINT tb_v_pos; }
 step s2_add_tc		{ ALTER TABLE tc ADD CONSTRAINT tc_v_pos CHECK (v > 0) NOT VALID; }
 step s2_validate_tc	{ ALTER TABLE tc VALIDATE CONSTRAINT tc_v_pos; }
@@ -79,7 +68,7 @@ step s2_show_tc		{
 step s2_show		{
   SELECT conname, convalidated FROM pg_constraint
   WHERE conrelid IN ('t'::regclass, 'tb'::regclass) ORDER BY conname;
-  SELECT id, rid, v FROM t WHERE id >= 100 ORDER BY id;
+  SELECT id, v FROM t WHERE id >= 100 ORDER BY id;
   SELECT id, v FROM tb ORDER BY id;
 }
 
@@ -96,13 +85,7 @@ permutation s1_begin s1_ins_p1 s2_begin s2_validate_part s1_ins_p2 s2_commit s1_
 permutation s1_begin s1_ins_t1 s2_begin s2_validate_check s1_ins_t_bad_check s2_commit s1_commit s2_show
 
 # 5.
-permutation s1_begin s1_ins_t1 s2_begin s2_validate_fk s1_ins_t_bad_fk s2_commit s1_commit s2_show
-
-# 6.
-permutation s1_begin s2_begin s2_validate_fk s1_del_r_referenced s2_commit s1_commit s2_show
-
-# 7.
 permutation s1_begin s1_ins_tb1 s2_begin s2_validate_tb s2_commit s1_ins_tb2 s1_commit s2_show
 
-# 8.
+# 6.
 permutation s1_ins_tc_valid s2_begin s2_add_tc s1_begin s1_ins_tc_bad s2_commit s2_validate_tc s1_commit s2_show_tc

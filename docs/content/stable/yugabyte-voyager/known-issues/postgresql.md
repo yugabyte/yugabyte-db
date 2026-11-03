@@ -1402,7 +1402,9 @@ Suggested change is to manually create the SERVER and USER MAPPING on the target
 
 **GitHub**: [Issue 1731](https://github.com/yugabyte/yb-voyager/issues/1731)
 
-**Description**: For live migration, the migration skips data from source databases that have the following data types on any column: `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, `CIRCLE`, `VECTOR`, `XML`, `TIMETZ`, `CID`, or `REFCURSOR`.
+**Description**: For live migration, the migration skips columns that have the following data types: `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, `CIRCLE`, `VECTOR`, `XML`, `TIMETZ`, `CID`, or `REFCURSOR`.
+
+Columns whose type is built on an unsupported data type are also skipped, and are listed in the unsupported-columns output of [export data](../../reference/data-migration/export-data/). This covers domains, arrays, composites, and user-defined multiranges built on an unsupported type. Arrays of geometric types, `pg_lsn[]`, `txid_snapshot[]`, `timetz[]`, and arrays of range types are also skipped in live migration.
 
 For live migration with fall-forward/fall-back, the migration skips data from source databases that have the following data types on any column:
 
@@ -1907,7 +1909,7 @@ CREATE INDEX idx_child_parent_id ON child (parent_id);
 
 ### Missing primary key for table when unique and not null columns exist
 
-**Description**: YugabyteDB uses an index-organized table structure, which means that the primary key _is_ the table. When you don't explicitly define one, the system automatically assigns an internal `ybrowid` column as the primary key and uses [hash sharding](/stable/explore/going-beyond-sql/data-sharding/#hash-sharding) on it. However, if your table already contains columns that are both unique and not null, it's better to designate those as the primary key instead. This approach eliminates the need for an extra unique-constraint index structure, in addition to the primary key index (main table structure).
+**Description**: YugabyteDB uses an index-organized table structure, which means that the primary key _is_ the table. When you don't explicitly define one, the system automatically assigns an internal `ybrowid` column as the primary key and uses [hash sharding](/stable/architecture/docdb-sharding/sharding/#hash-sharding) on it. However, if your table already contains columns that are both unique and not null, it's better to designate those as the primary key instead. This approach eliminates the need for an extra unique-constraint index structure, in addition to the primary key index (main table structure).
 
 **Workaround**: Define a primary key using the columns that are already unique and not null.
 

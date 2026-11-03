@@ -24,11 +24,11 @@ After unzipping it on a convenient new directory, you'll see a `README.txt`.  It
 
 Before trying the code in this section, make sure that you have created the supporting infrastructure:
 
-- The _"actors"_, _"movies_", and _"cast_members"_ tables for representing IMDb data—see [`cr-actors-movies-cast-members-tables.sql`](../../bacon-numbers#cr-actors-movies-cast-members-tables-sql)
+- The _"actors"_, _"movies_", and _"cast_members"_ tables for representing IMDb data—see [`cr-actors-movies-cast-members-tables.sql`](../../bacon-numbers/#cr-actors-movies-cast-members-tables-sql)
 
-- The _"edges"_ table and the procedure to populate it from the _"cast_members"_ table—see [`cr-actors-movies-edges-table-and-proc-sql`](../../bacon-numbers#cr-actors-movies-edges-table-and-proc-sql)
+- The _"edges"_ table and the procedure to populate it from the _"cast_members"_ table—see [`cr-actors-movies-edges-table-and-proc-sql`](../../bacon-numbers/#cr-actors-movies-edges-table-and-proc-sql)
 
-- All the code shown in the section [Common code for traversing all kinds of graph](../../traversing-general-graphs/common-code/). Be sure to chose the [cr-raw-paths-no-tracing.sql](../../traversing-general-graphs/common-code#cr-raw-paths-no-tracing-sql) option.
+- All the code shown in the section [Common code for traversing all kinds of graph](../../traversing-general-graphs/common-code/). Be sure to chose the [cr-raw-paths-no-tracing.sql](../../traversing-general-graphs/common-code/#cr-raw-paths-no-tracing-sql) option.
 
 Use Internet search for "download IMDb data for Bacon Numbers". This brings you to useful subsets of the vast, entire, IMDb data set that have been prepared by, for example, university Computer Science departments specifically to support Bacon Numbers course assignments. The [Oberlin College Computer Science department](https://www.cs.oberlin.edu/) is a good source. Go to [CSCI 151 Lab 10—Everything is better with Bacon](https://www.cs.oberlin.edu/~rhoyle/16f-cs151/lab10/index.html) and look for this:
 
@@ -48,7 +48,7 @@ Alec Guinness|Lovesick (1983)
 ...
 ```
 
-The information content is identical to what the _"cast_members"_ table was designed to represent. (See the [`cr-actors-movies-cast-members-tables.sql`](../../bacon-numbers#cr-actors-movies-cast-members-tables-sql) script.) This means that the `ysqlsh` meta-command `\COPY` can be used, straightforwardly, to ingest the downloaded data.
+The information content is identical to what the _"cast_members"_ table was designed to represent. (See the [`cr-actors-movies-cast-members-tables.sql`](../../bacon-numbers/#cr-actors-movies-cast-members-tables-sql) script.) This means that the `ysqlsh` meta-command `\COPY` can be used, straightforwardly, to ingest the downloaded data.
 
 However, as this script creates it, the _"actors"_ and _"movies"_ tables must be populated first so that the foreign key constraints to these from the _"cast_members"_ table will be satisfied when it's populated. Use this script to do the steps in the proper order and display the resulting table counts:
 

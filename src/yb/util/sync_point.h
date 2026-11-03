@@ -100,6 +100,23 @@ class SyncPoint {
   int num_callbacks_running_ = 0;
 };
 
+// Gives access to the SyncPoint instance and, on destruction, disables processing and clears the
+// callbacks, the dependencies and the trace, so callbacks that capture a test's locals do not
+// outlive the test. Declare it after the locals its callbacks capture.
+class SyncPointScope {
+ public:
+  SyncPointScope() = default;
+  ~SyncPointScope();
+
+  SyncPointScope(const SyncPointScope&) = delete;
+  void operator=(const SyncPointScope&) = delete;
+
+  SyncPoint* operator->() const { return sync_point_; }
+
+ private:
+  SyncPoint* const sync_point_ = SyncPoint::GetInstance();
+};
+
 void TEST_sync_point(const std::string& point, void* cb_arg = nullptr);
 void TEST_sync_point(const char* point, void* cb_arg = nullptr);
 

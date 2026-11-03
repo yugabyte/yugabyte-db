@@ -275,6 +275,15 @@ TEST_F(CqlIndexTest, CreateIndexFailureAfterPersistKeepsIndex) {
   };
 
   ASSERT_OK(check_index_listed());
+  // A master restart can lose CreateTablet requests that are still in flight, leaving the index
+  // tablets in CREATING until tablet_creation_timeout_ms.
+  ASSERT_OK(WaitFor([this]() -> Result<bool> {
+    auto& catalog_manager = VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager_impl();
+    auto index = catalog_manager.GetTableInfoFromNamespaceNameAndTableName(
+        YQL_DATABASE_CQL, kNamespace, kIndexName);
+    SCHECK(index, NotFound, "Index not found");
+    return !index->IsCreateInProgress();
+  }, 60s * kTimeMultiplier, "The index tablets are created"));
   ASSERT_OK(ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->Restart(
       /* wait_until_catalog_manager_is_leader = */ true));
   ASSERT_OK(check_index_listed());

@@ -7,6 +7,7 @@ var InstallChecks = []Check{
 	checks.InstallNotExists,
 	checks.ValidateInstallerConfig,
 	checks.FipsPasswords,
+	checks.FipsServerCert,
 	checks.ServerCertHostname,
 	checks.User,
 	checks.HomeDirSpace,
@@ -59,6 +60,7 @@ var UpgradeChecks = []Check{
 // the host and hardware were already validated at install time.
 var ReconfigureChecks = []Check{
 	checks.FipsPasswords,
+	checks.FipsServerCert,
 	checks.ServerCertHostname,
 }
 

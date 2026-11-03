@@ -6,6 +6,7 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -155,7 +156,7 @@ public class SupportBundleHandlerV2 {
     // the bundle's manifest.json name only what is really collected.
     if (CloudType.kubernetes.equals(cloudType)) {
       pruneK8sUnsupportedSpecs(bundleData);
-      pruneK8sUnsupportedPromExports(bundleData);
+      pruneK8sUnsupportedPromExports(bundleData, universe);
       if (bundleData.components.isEmpty()) {
         throw new PlatformServiceException(
             BAD_REQUEST,
@@ -505,17 +506,23 @@ public class SupportBundleHandlerV2 {
   }
 
   /**
-   * Drops {@code NODE_EXPORT} on kubernetes. {@code SwamperHelper} never writes a node_exporter
-   * scrape target for a pod, so the dump would always come back empty.
+   * Drops {@code NODE_EXPORT} on Kubernetes unless the sidecar is scraped, the only time its
+   * targets exist.
    */
-  private void pruneK8sUnsupportedPromExports(SupportBundleFormDataV2 bundleData) {
+  private void pruneK8sUnsupportedPromExports(
+      SupportBundleFormDataV2 bundleData, Universe universe) {
     if (bundleData.prometheusMetricsTypes == null
+        || KubernetesUtil.isNodeExporterSidecarEnabled(
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
+            universe,
+            confGetter)
         || !bundleData.prometheusMetricsTypes.remove(PrometheusMetricsType.NODE_EXPORT)) {
       return;
     }
     log.warn(
-        "Prometheus export 'NODE_EXPORT' is not applicable for kubernetes universes, where"
-            + " node_exporter is not scraped. Continuing without it.");
+        "Prometheus export 'NODE_EXPORT' is not applicable for kubernetes universe {}, where"
+            + " node_exporter is not active. Continuing without it.",
+        universe.getName());
   }
 
   private void validateYbaComponent(

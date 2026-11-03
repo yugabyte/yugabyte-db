@@ -22,9 +22,11 @@ import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import io.ebean.DataIntegrityException;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
+import io.ebean.annotation.Transactional;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import jakarta.persistence.Column;
@@ -577,21 +579,33 @@ public class CertificateInfo extends Model {
         });
   }
 
+  @Transactional
   public static void delete(UUID certUUID, UUID customerUUID) {
     CertificateInfo certificate = CertificateInfo.getOrBadRequest(certUUID, customerUUID);
-    if (!certificate.getInUse()) {
-      // Delete the certs from FS & DB.
-      File certDirectory = new File(certificate.getCertificate()).getParentFile();
-      FileData.deleteFiles(certDirectory.getAbsolutePath(), true);
-      if (certificate.delete()) {
-        LOG.info("Successfully deleted the certificate: " + certUUID);
-      } else {
+    if (certificate.getInUse()) {
+      throw new PlatformServiceException(BAD_REQUEST, "The certificate is in use.");
+    }
+    // Delete the DB row first so that a foreign key violation fails the delete before
+    // the files are removed - e.g. a node agent still referencing the cert.
+    try {
+      if (!certificate.delete()) {
         throw new PlatformServiceException(
             INTERNAL_SERVER_ERROR, "Unable to delete the Certificate");
       }
-    } else {
-      throw new PlatformServiceException(BAD_REQUEST, "The certificate is in use.");
+    } catch (DataIntegrityException e) {
+      String referencingTable = Util.getReferencingTable(e);
+      LOG.error("Certificate {} is still referenced by {}", certUUID, referencingTable, e);
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          referencingTable == null
+              ? "The certificate is still referenced and cannot be deleted."
+              : String.format(
+                  "The certificate is still referenced by %s and cannot be deleted.",
+                  referencingTable));
     }
+    File certDirectory = new File(certificate.getCertificate()).getParentFile();
+    FileData.deleteFiles(certDirectory.getAbsolutePath(), true);
+    LOG.info("Successfully deleted the certificate: {}", certUUID);
   }
 
   public void checkEditable(UUID certUUID, UUID customerUUID) {

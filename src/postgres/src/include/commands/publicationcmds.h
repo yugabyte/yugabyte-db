@@ -36,4 +36,7 @@ extern bool pub_rf_contains_invalid_column(Oid pubid, Relation relation,
 extern bool pub_collist_contains_invalid_column(Oid pubid, Relation relation,
 												List *ancestors, bool pubviaroot);
 
+/* YB declarations */
+extern bool YbIsSimpleRowFilterExpr(Node *node);
+
 #endif							/* PUBLICATIONCMDS_H */

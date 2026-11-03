@@ -981,6 +981,28 @@ Status XClusterTestBase::WaitForSafeTimeToAdvanceToNow(std::vector<NamespaceName
   return Status::OK();
 }
 
+Status XClusterTestBase::VerifySafeTimeDoesNotAdvanceToNow(
+    std::vector<NamespaceName> namespace_names, MonoDelta timeout) {
+  return VerifyWaitTimesOut(
+      [this, &namespace_names] { return WaitForSafeTimeToAdvanceToNow(namespace_names); },
+      timeout);
+}
+
+Status XClusterTestBase::VerifyWaitTimesOut(
+    const std::function<Status()>& wait_fn, MonoDelta timeout) {
+  auto se = ScopeExit([this, original_propagation_timeout = propagation_timeout_] {
+    propagation_timeout_ = original_propagation_timeout;
+  });
+  propagation_timeout_ = timeout;
+
+  auto status = wait_fn();
+  if (status.IsTimedOut()) {
+    return Status::OK();
+  }
+  RETURN_NOT_OK(status);
+  return STATUS(IllegalState, "Wait succeeded, but it was expected to time out");
+}
+
 Status XClusterTestBase::PauseResumeXClusterProducerStreams(
     const std::vector<xrepl::StreamId>& stream_ids, bool is_paused) {
   master::PauseResumeXClusterProducerStreamsRequestPB req;

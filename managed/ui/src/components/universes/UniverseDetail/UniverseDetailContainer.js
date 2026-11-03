@@ -168,6 +168,9 @@ const mapDispatchToProps = (dispatch) => {
     showConnectionPoolModal: () => {
       dispatch(openDialog('enableConnectionPooling'));
     },
+    showCrossCloudFederationModal: () => {
+      dispatch(openDialog('crossCloudFederationModal'));
+    },
     showMultiTenancyModal: () => {
       dispatch(openDialog('enableMultiTenancy'));
     },

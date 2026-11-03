@@ -9,12 +9,21 @@ import static play.mvc.Http.Status.NOT_FOUND;
 import static play.mvc.Http.Status.UNAUTHORIZED;
 
 import api.v2.models.ApiTokenSpec;
+import api.v2.models.AwsHostInfo;
+import api.v2.models.AzuHostInfo;
 import api.v2.models.CustomerRegistration;
 import api.v2.models.CustomerRegistrationSpec;
+import api.v2.models.GcpHostInfo;
+import api.v2.models.HostCloud;
+import api.v2.models.HostCloudInfo;
 import api.v2.models.UserApiToken;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.google.inject.Provider;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.CloudQueryHelper;
+import com.yugabyte.yw.common.HostCloudDetector;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.user.UserService;
 import com.yugabyte.yw.controllers.RequestContext;
@@ -24,6 +33,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
 import io.ebean.DB;
 import io.ebean.Transaction;
+import java.util.Optional;
 import java.util.UUID;
 import org.apache.commons.validator.routines.EmailValidator;
 import play.mvc.Http;
@@ -36,15 +46,21 @@ public class CustomerManagementHandler {
   private final Provider<TokenAuthenticator> tokenAuthenticatorProvider;
   private final CustomerRegistrationHandler customerRegistrationHandler;
   private final UserService userService;
+  private final HostCloudDetector hostCloudDetector;
+  private final CloudQueryHelper cloudQueryHelper;
 
   @Inject
   public CustomerManagementHandler(
       Provider<TokenAuthenticator> tokenAuthenticatorProvider,
       CustomerRegistrationHandler customerRegistrationHandler,
-      UserService userService) {
+      UserService userService,
+      HostCloudDetector hostCloudDetector,
+      CloudQueryHelper cloudQueryHelper) {
     this.tokenAuthenticatorProvider = tokenAuthenticatorProvider;
     this.customerRegistrationHandler = customerRegistrationHandler;
     this.userService = userService;
+    this.hostCloudDetector = hostCloudDetector;
+    this.cloudQueryHelper = cloudQueryHelper;
   }
 
   public CustomerRegistration registerCustomer(
@@ -133,5 +149,64 @@ public class CustomerManagementHandler {
         .userUuid(user.getUuid())
         .apiToken(apiToken)
         .apiTokenVersion(user.getApiTokenVersion());
+  }
+
+  public HostCloudInfo getHostCloudInfo() {
+    HostCloudInfo info = new HostCloudInfo();
+    Optional<CloudType> cloud = hostCloudDetector.getHostCloud();
+    if (cloud.isEmpty()) {
+      return info;
+    }
+    info.cloud(HostCloud.fromValue(cloud.get().name()));
+    JsonNode hostInfo = cloudQueryHelper.getCurrentHostInfo(cloud.get());
+    // Without metadata, e.g. when the metadata service is unreachable from a pod, the cloud is
+    // still known from DMI.
+    if (!hostInfo.isObject() || hostInfo.has("error")) {
+      return info;
+    }
+    switch (cloud.get()) {
+      case aws:
+        info.aws(
+            new AwsHostInfo()
+                .instanceId(text(hostInfo, "instance-id"))
+                .vpcId(text(hostInfo, "vpc-id"))
+                .privateIp(text(hostInfo, "privateIp"))
+                .region(text(hostInfo, "region")));
+        return info.region(info.getAws().getRegion());
+      case gcp:
+        info.gcp(
+            new GcpHostInfo()
+                .project(text(hostInfo, "project"))
+                .network(text(hostInfo, "network"))
+                .sharedVpcProject(text(hostInfo, "shared_vpc_project"))
+                .zone(text(hostInfo, "zone"))
+                .region(text(hostInfo, "region")));
+        return info.region(info.getGcp().getRegion());
+      default:
+        // The Azure instance metadata document, as returned by IMDS.
+        JsonNode compute = hostInfo.path("compute");
+        info.azu(
+            new AzuHostInfo()
+                .subscriptionId(text(compute, "subscriptionId"))
+                .resourceGroup(text(compute, "resourceGroupName"))
+                .vmId(text(compute, "vmId"))
+                .privateIp(
+                    text(
+                        hostInfo
+                            .path("network")
+                            .path("interface")
+                            .path(0)
+                            .path("ipv4")
+                            .path("ipAddress")
+                            .path(0),
+                        "privateIpAddress"))
+                .region(text(compute, "location")));
+        return info.region(info.getAzu().getRegion());
+    }
+  }
+
+  private static String text(JsonNode node, String field) {
+    JsonNode value = node.path(field);
+    return value.isValueNode() && !value.isNull() ? value.asText() : null;
   }
 }

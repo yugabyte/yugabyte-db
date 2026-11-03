@@ -187,7 +187,7 @@ public class YbcBackupNodeRetrieverTest extends FakeDBApplication {
     subTasksMap.put(UUID.randomUUID(), new ParallelBackupState());
     subTasksMap.put(UUID.randomUUID(), new ParallelBackupState());
     subTasksMap.put(UUID.randomUUID(), new ParallelBackupState());
-    when(mockYbcManager.ybcPingCheck(anyString(), eq(null), anyInt())).thenReturn(true);
+    when(mockYbcManager.ybcPingCheck(anyString(), any(), anyInt())).thenReturn(true);
     YbcBackupNodeRetriever ybcBackupNodeRetriever =
         new YbcBackupNodeRetriever(mockUniverse, 3, subTasksMap);
     ybcBackupNodeRetriever.initializeNodePoolForBackups();
@@ -216,7 +216,7 @@ public class YbcBackupNodeRetrieverTest extends FakeDBApplication {
     subTasksMap.put(UUID.randomUUID(), bS1);
     subTasksMap.put(UUID.randomUUID(), new ParallelBackupState());
     subTasksMap.put(UUID.randomUUID(), new ParallelBackupState());
-    when(mockYbcManager.ybcPingCheck(anyString(), eq(null), anyInt())).thenReturn(true);
+    when(mockYbcManager.ybcPingCheck(anyString(), any(), anyInt())).thenReturn(true);
     YbcBackupNodeRetriever ybcBackupNodeRetriever =
         new YbcBackupNodeRetriever(mockUniverse, 3, subTasksMap);
     ybcBackupNodeRetriever.initializeNodePoolForBackups();
@@ -250,7 +250,7 @@ public class YbcBackupNodeRetrieverTest extends FakeDBApplication {
     subTasksMap.put(UUID.randomUUID(), bS1);
     subTasksMap.put(UUID.randomUUID(), new ParallelBackupState());
     subTasksMap.put(UUID.randomUUID(), new ParallelBackupState());
-    when(mockYbcManager.ybcPingCheck(anyString(), eq(null), anyInt())).thenReturn(true);
+    when(mockYbcManager.ybcPingCheck(anyString(), any(), anyInt())).thenReturn(true);
     YbcBackupNodeRetriever ybcBackupNodeRetriever =
         new YbcBackupNodeRetriever(mockUniverse, 3, subTasksMap);
     ybcBackupNodeRetriever.initializeNodePoolForBackups();
@@ -271,7 +271,7 @@ public class YbcBackupNodeRetrieverTest extends FakeDBApplication {
     Map<UUID, ParallelBackupState> subTasksMap = new HashMap<>();
     YbcBackupNodeRetriever ybcBackupNodeRetriever =
         new YbcBackupNodeRetriever(mockUniverse, 1, subTasksMap);
-    when(mockYbcManager.ybcPingCheck(anyString(), eq(null), anyInt())).thenReturn(true);
+    when(mockYbcManager.ybcPingCheck(anyString(), any(), anyInt())).thenReturn(true);
     ybcBackupNodeRetriever.initializeNodePoolForBackups();
     // Verify 1 poll is successful.
     String node_ip1 = ybcBackupNodeRetriever.getNodeIpForBackup();
@@ -288,7 +288,7 @@ public class YbcBackupNodeRetrieverTest extends FakeDBApplication {
     subTasksMap.put(UUID.randomUUID(), new ParallelBackupState());
     subTasksMap.put(UUID.randomUUID(), new ParallelBackupState());
 
-    when(mockYbcManager.ybcPingCheck(anyString(), eq(null), anyInt()))
+    when(mockYbcManager.ybcPingCheck(anyString(), any(), anyInt()))
         .thenReturn(false)
         .thenReturn(true);
     YbcBackupNodeRetriever ybcBackupNodeRetriever =
@@ -313,7 +313,7 @@ public class YbcBackupNodeRetrieverTest extends FakeDBApplication {
     subTasksMap.put(UUID.randomUUID(), new ParallelBackupState());
     subTasksMap.put(UUID.randomUUID(), new ParallelBackupState());
 
-    when(mockYbcManager.ybcPingCheck(anyString(), eq(null), anyInt())).thenReturn(false);
+    when(mockYbcManager.ybcPingCheck(anyString(), any(), anyInt())).thenReturn(false);
     YbcBackupNodeRetriever ybcBackupNodeRetriever =
         new YbcBackupNodeRetriever(mockUniverse, 3, subTasksMap);
     assertThrows(
@@ -322,7 +322,7 @@ public class YbcBackupNodeRetrieverTest extends FakeDBApplication {
 
   @Test
   public void testNodePreferenceOneNodeMasterLeader() {
-    when(mockYbcManager.ybcPingCheck(anyString(), eq(null), anyInt())).thenReturn(true);
+    when(mockYbcManager.ybcPingCheck(anyString(), any(), anyInt())).thenReturn(true);
     // Verify parallelism 1 get master leader node
     Map<UUID, ParallelBackupState> subTasksMap = new HashMap<>();
     subTasksMap.put(UUID.randomUUID(), new ParallelBackupState());
@@ -336,7 +336,7 @@ public class YbcBackupNodeRetrieverTest extends FakeDBApplication {
 
   @Test
   public void testNodePreferenceOrderMultipleIPs() {
-    when(mockYbcManager.ybcPingCheck(anyString(), eq(null), anyInt())).thenReturn(true);
+    when(mockYbcManager.ybcPingCheck(anyString(), any(), anyInt())).thenReturn(true);
     ArgumentCaptor<String> nodeIPCaptor = ArgumentCaptor.forClass(String.class);
     Map<UUID, ParallelBackupState> subTasksMap = new HashMap<>();
     subTasksMap.put(UUID.randomUUID(), new ParallelBackupState());
@@ -345,7 +345,7 @@ public class YbcBackupNodeRetrieverTest extends FakeDBApplication {
     YbcBackupNodeRetriever ybcBackupNodeRetriever =
         new YbcBackupNodeRetriever(mockUniverse, 3, subTasksMap);
     ybcBackupNodeRetriever.initializeNodePoolForBackups();
-    verify(mockYbcManager, times(3)).ybcPingCheck(nodeIPCaptor.capture(), eq(null), anyInt());
+    verify(mockYbcManager, times(3)).ybcPingCheck(nodeIPCaptor.capture(), any(), anyInt());
     List<String> capturedIPs = nodeIPCaptor.getAllValues();
     NodeDetails masterLeaderNode = mockUniverse.getMasterLeaderNode();
     List<NodeDetails> nodeDetails = mockUniverse.getRunningTserversInPrimaryCluster();

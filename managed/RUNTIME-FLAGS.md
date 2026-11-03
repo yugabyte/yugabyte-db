@@ -298,7 +298,7 @@
 | "Performance Advisor hot shard interval mins" | "yb.perf_advisor.hot_shard_interval_mins" | "UNIVERSE" | "Defines time interval for hot hard recommendation check, in minutes" | "Integer" |
 | "Performance Advisor hot shard minimal writes" | "yb.perf_advisor.hot_shard_min_node_writes" | "UNIVERSE" | "Defines min writes for hot shard recommendation to be raised" | "Integer" |
 | "Performance Advisor hot shard minimal reads" | "yb.perf_advisor.hot_shard_min_node_reads" | "UNIVERSE" | "Defines min reads for hot shard recommendation to be raised" | "Integer" |
-| "Skip TLS Cert Validation" | "yb.tls.skip_cert_validation" | "UNIVERSE" | "Used to skip certificates validation for the configure phase.Possible values - ALL, HOSTNAME, NONE" | "SkipCertValidationType" |
+| "Skip TLS Cert Validation" | "yb.tls.skip_cert_validation" | "UNIVERSE" | "Used to skip certificates validation for the configure phase.Possible values - ALL, HOSTNAME, REQUIRE_SAN, NONE" | "SkipCertValidationType" |
 | "Clean Orphan snapshots" | "yb.snapshot_cleanup.delete_orphan_on_startup" | "UNIVERSE" | "Clean orphan(non-scheduled) snapshots on Yugaware startup/restart" | "Boolean" |
 | "Enable https on Master/TServer UI" | "yb.node_ui.https.enabled" | "UNIVERSE" | "Allow https on Master/TServer UI for a universe" | "Boolean" |
 | "Helm Timeout in Seconds" | "yb.helm.timeout_secs" | "UNIVERSE" | "Timeout used for internal universe-level helm operations like install/upgrade in secs" | "Long" |
@@ -427,3 +427,4 @@
 | "Flush Tablets Timeout on Stop TServer" | "yb.task.flush_tablets_timeout_on_stop_tserver" | "UNIVERSE" | "Timeout for flushing tablets when stopping tserver" | "Duration" |
 | "Skip YCQL precheck when enabling multi-tenancy" | "yb.universe.multitenancy_skip_ycql_precheck" | "UNIVERSE" | "If this flag is enabled, the precheck that requires YCQL to be disabled is skipped" | "Boolean" |
 | "Node Agent Server Wait Timeout" | "yb.node_agent.server.wait_timeout" | "UNIVERSE" | "Timeout for waiting for node agent server to be ready" | "Duration" |
+| "Enable the node_exporter sidecar on Kubernetes universes" | "yb.kubernetes.node_exporter.enabled" | "UNIVERSE" | "Run a node_exporter sidecar in every Kubernetes pod for disk and network metrics. Pods change at their next Helm operation, for example a Kubernetes overrides edit" | "Boolean" |

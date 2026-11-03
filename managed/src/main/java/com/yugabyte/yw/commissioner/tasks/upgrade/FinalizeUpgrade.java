@@ -59,8 +59,8 @@ public class FinalizeUpgrade extends SoftwareUpgradeTaskBase {
     runUpgrade(
         () -> {
           Universe universe = getUniverse();
-          String currentVersion =
-              universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+          // The upgrade's target, not the user intent, which can still hold the old version.
+          String currentVersion = resolveTargetSoftwareVersion(universe);
           String oldVersion =
               universe.getUniverseDetails().prevYBSoftwareConfig.getSoftwareVersion();
           boolean finalizeYSQLMajorVersionUpgrade =
@@ -69,6 +69,7 @@ public class FinalizeUpgrade extends SoftwareUpgradeTaskBase {
           boolean superUserRequiredForCatalogUpgrade =
               softwareUpgradeHelper.isSuperUserRequiredForCatalogUpgrade(
                   universe, oldVersion, currentVersion);
+          createUpdateSoftwareVersionTaskIfStale(universe, currentVersion, getTaskSubGroupType());
           createFinalizeUpgradeTasks(
               taskParams().upgradeSystemCatalog,
               finalizeYSQLMajorVersionUpgrade,
