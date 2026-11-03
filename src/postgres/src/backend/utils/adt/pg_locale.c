@@ -1545,8 +1545,9 @@ pg_newlocale_from_collation(Oid collid)
 	}
 
 	cache_entry = lookup_collation_cache(collid, false);
+	bool		yb_force_locale_lookup = yb_test_collation && YbIsClientYsqlConnMgr();
 
-	if (cache_entry->locale == 0)
+	if (cache_entry->locale == 0 || yb_force_locale_lookup)
 	{
 		/* We haven't computed this yet in this session, so do it */
 		HeapTuple	tp;
@@ -1685,6 +1686,13 @@ pg_newlocale_from_collation(Oid collid)
 		}
 
 		ReleaseSysCache(tp);
+
+		/*
+		 * YB: We leak a reference to the old cache_entry locale when yb_test_collation is true
+		 * as this flag is only a test flag and is visible to users and not supposed to be enabled
+		 * in regular usage. The only other way to hit this code path is on the first locale lookup,
+		 * when the cache_entry is not populated, so no risk of leaking any memory there.
+		 */
 
 		/* We'll keep the pg_locale_t structures in TopMemoryContext */
 		resultp = MemoryContextAlloc(TopMemoryContext, sizeof(*resultp));
