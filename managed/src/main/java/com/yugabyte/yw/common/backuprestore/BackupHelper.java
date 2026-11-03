@@ -33,7 +33,6 @@ import com.yugabyte.yw.common.backuprestore.BackupUtil.TablespaceResponse;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
-import com.yugabyte.yw.common.certmgmt.RpcClientCert;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
@@ -824,9 +823,6 @@ public class BackupHelper {
     if (storageUtil.isImmutableStorageEnabled(storageConfig)) {
       validateIfYbdbInbuiltYbcHasImmutableStorage(universe);
     }
-    if (RpcClientCert.isClientCertRequired(universe)) {
-      validateYbcHasRpcClientCerts(universe);
-    }
   }
 
   // For k8s universes: if useYbdbInbuiltYbc is true, need to check if Azure IAM feature is
@@ -852,18 +848,6 @@ public class BackupHelper {
           BAD_REQUEST,
           "Immutable storage is not supported in the YB-Controller version running on this"
               + " Kubernetes Universe.");
-    }
-  }
-
-  // The universe's masters and tservers reject RPCs from a YBC that presents no client cert.
-  private void validateYbcHasRpcClientCerts(Universe universe) {
-    if (!ybcManager
-        .getEnabledBackupFeatures(universe.getUniverseUUID())
-        .getRpcClientCertificates()) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          "The YB-Controller version running on this universe can't present a client certificate,"
-              + " which the universe's servers require.");
     }
   }
 

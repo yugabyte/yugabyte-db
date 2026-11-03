@@ -810,48 +810,6 @@ public class BackupHelperTest extends FakeDBApplication {
 
   @Test
   @Parameters({"true", "false"})
-  public void testValidateStorageConfigRpcClientCertsOnK8s(boolean ybcPresentsClientCert) {
-    Universe universe =
-        Universe.saveDetails(
-            ModelFactory.createUniverse(
-                    "k8s-client-certs-" + ybcPresentsClientCert,
-                    UUID.randomUUID(),
-                    testCustomer.getId(),
-                    CloudType.kubernetes,
-                    null /* placementInfo */,
-                    null /* rootCA */,
-                    true /* enableYbc */)
-                .getUniverseUUID(),
-            u ->
-                u.getUniverseDetails().getPrimaryCluster().userIntent.useNodeToNodeClientCerts =
-                    true);
-    CustomerConfig storageConfig =
-        ModelFactory.createS3StorageConfig(testCustomer, "TEST-MTLS-" + ybcPresentsClientCert);
-
-    when(mockRuntimeConfGetter.getConfForScope(
-            any(Universe.class), eq(UniverseConfKeys.skipConfigBasedPreflightValidation)))
-        .thenReturn(false);
-    when(mockYbcManager.getEnabledBackupFeatures(any(UUID.class)))
-        .thenReturn(
-            BackupServiceTaskEnabledFeaturesResponse.newBuilder()
-                .setRpcClientCertificates(ybcPresentsClientCert)
-                .build());
-
-    if (ybcPresentsClientCert) {
-      spyBackupHelper.validateStorageConfigForBackupOnUniverse(storageConfig, universe);
-    } else {
-      PlatformServiceException ex =
-          assertThrows(
-              PlatformServiceException.class,
-              () ->
-                  spyBackupHelper.validateStorageConfigForBackupOnUniverse(
-                      storageConfig, universe));
-      assertTrue(ex.getMessage().contains("can't present a client certificate"));
-    }
-  }
-
-  @Test
-  @Parameters({"true", "false"})
   public void testGetSkipPreflightValidationRuntimeValue(boolean value) {
     when(mockRuntimeConfGetter.getConfForScope(
             eq(testUniverse), eq(UniverseConfKeys.skipConfigBasedPreflightValidation)))
