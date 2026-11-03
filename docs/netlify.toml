@@ -956,7 +956,7 @@
   from = "/preview/explore/change-data-capture/using-yugabytedb-grpc-replication/*"
   to = "/stable/additional-features/change-data-capture/using-yugabytedb-grpc-replication/:splat"
   force = true
-  
+
 [[redirects]]
   from = "/stable/explore/change-data-capture/using-yugabytedb-grpc-replication/*"
   to = "/stable/additional-features/change-data-capture/using-yugabytedb-grpc-replication/:splat"
@@ -1194,12 +1194,18 @@
             https://*.hcaptcha.com
             https://raw.githubusercontent.com/
             https://sessions.bugsnag.com/
-            https://stats.g.doubleclick.net/
+            https://*.g.doubleclick.net/
+            https://ad.doubleclick.net/
             https://umbcujcbe8-1.algolianet.com/
             https://umbcujcbe8-2.algolianet.com/
             https://umbcujcbe8-3.algolianet.com/
             https://umbcujcbe8-dsn.algolia.net/
-            https://www.google-analytics.com/
+            https://*.google-analytics.com/
+            https://*.analytics.google.com/
+            https://*.googletagmanager.com/
+            https://*.google.com/
+            https://pagead2.googlesyndication.com/
+            https://www.googleadservices.com/
             https://www.yugabyte.com
             https://yugabyteklhgka.dataplane.rudderstack.com/v1/page
             https://cdnjs.cloudflare.com/
@@ -1231,6 +1237,9 @@
             https://*.hcaptcha.com
             https://www.google-analytics.com/
             https://www.googletagmanager.com/
+            https://www.googleadservices.com/
+            https://googleads.g.doubleclick.net/
+            https://www.google.com/
             https://x.clearbitjs.com/
         ;
 
@@ -1266,7 +1275,12 @@
             https://docs.yugabyte.com/images/favicon.ico
             https://portal.azure.com/
             https://raw.githubusercontent.com/
-            https://www.google-analytics.com/
+            https://*.google-analytics.com/
+            https://*.googletagmanager.com/
+            https://*.g.doubleclick.net/
+            https://*.google.com/
+            https://pagead2.googlesyndication.com/
+            https://www.googleadservices.com/
             https://www.yugabyte.com
             https://www.gstatic.com
             https://www.google.com/s2/favicons
@@ -1281,6 +1295,8 @@
             https://app.netlify.com/
             https://app.supademo.com/
             https://www.google.com/
+            https://www.googletagmanager.com/
+            https://td.doubleclick.net/
             https://hcaptcha.com
             https://*.hcaptcha.com
             https://www.youtube.com/
