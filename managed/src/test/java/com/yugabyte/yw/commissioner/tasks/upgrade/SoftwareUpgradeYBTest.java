@@ -32,6 +32,7 @@ import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.forms.CreatePitrConfigParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -70,6 +71,7 @@ import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 import org.yb.CommonTypes;
+import org.yb.WireProtocol.AppStatusPB.ErrorCode;
 import org.yb.client.DeleteSnapshotScheduleResponse;
 import org.yb.client.GetYsqlMajorCatalogUpgradeStateResponse;
 import org.yb.client.IsInitDbDoneResponse;
@@ -214,6 +216,37 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
   }
 
   @Test
+  public void testSoftwareUpgradeFailsWhenMasterRefusesAutoFlagPromotion() throws Exception {
+    updateDefaultUniverseTo5Nodes(true);
+    when(mockSoftwareUpgradeHelper.checkUpgradeRequireFinalize(anyString(), anyString()))
+        .thenReturn(true);
+    when(mockClient.promoteAutoFlags(anyString(), anyBoolean(), anyBoolean()))
+        .thenReturn(
+            promoteAutoFlagsErrorResponse(ErrorCode.ILLEGAL_STATE, TSERVERS_NOT_UPGRADED_MESSAGE));
+
+    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
+    taskParams.ybSoftwareVersion = "2.21.0.0-b2";
+    taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
+    mockDBServerVersion(
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
+        taskParams.ybSoftwareVersion,
+        defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
+    TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
+
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .anyMatch(
+                task ->
+                    task.getTaskType() == TaskType.PromoteAutoFlags
+                        && task.getTaskState() == TaskInfo.State.Failure));
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertEquals(
+        SoftwareUpgradeState.UpgradeFailed,
+        defaultUniverse.getUniverseDetails().softwareUpgradeState);
+  }
+
+  @Test
   public void testSoftwareUpgradeWithAutoFinalize() {
     updateDefaultUniverseTo5Nodes(true);
 
@@ -279,6 +312,47 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     assertNull(defaultUniverse.getUniverseDetails().prevYBSoftwareConfig);
     assertEquals(
         SoftwareUpgradeState.Ready, defaultUniverse.getUniverseDetails().softwareUpgradeState);
+  }
+
+  @Test
+  public void testAutoFinalizeIgnoresRefusedExternalAutoFlagPromotion() throws Exception {
+    updateDefaultUniverseTo5Nodes(true);
+    mockRunYsqlUpgrade();
+    when(mockClient.promoteAutoFlags(
+            eq(AutoFlagUtil.EXTERNAL_AUTO_FLAG_CLASS_NAME), anyBoolean(), anyBoolean()))
+        .thenReturn(
+            promoteAutoFlagsErrorResponse(ErrorCode.ILLEGAL_STATE, TSERVERS_NOT_UPGRADED_MESSAGE));
+
+    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
+    taskParams.ybSoftwareVersion = "2.21.0.0-b2";
+    taskParams.rollbackSupport = false;
+    taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
+    mockDBServerVersion(
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
+        taskParams.ybSoftwareVersion,
+        defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
+    TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
+
+    assertEquals(Success, taskInfo.getTaskState());
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertFalse(defaultUniverse.getUniverseDetails().isSoftwareRollbackAllowed);
+    assertEquals(
+        SoftwareUpgradeState.Ready, defaultUniverse.getUniverseDetails().softwareUpgradeState);
+  }
+
+  /** Mocks for the RunYsqlUpgrade subtask that auto-finalize (rollbackSupport=false) runs. */
+  private void mockRunYsqlUpgrade() {
+    try {
+      UpgradeYsqlResponse mockUpgradeYsqlResponse = new UpgradeYsqlResponse(1000, "", null);
+      when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
+      when(mockClient.upgradeYsql(any(HostAndPort.class), anyBoolean()))
+          .thenReturn(mockUpgradeYsqlResponse);
+      IsInitDbDoneResponse mockIsInitDbDoneResponse =
+          new IsInitDbDoneResponse(1000, "", true, true, null, null);
+      when(mockClient.getIsInitDbDone()).thenReturn(mockIsInitDbDoneResponse);
+    } catch (Exception ignored) {
+      fail();
+    }
   }
 
   @Test

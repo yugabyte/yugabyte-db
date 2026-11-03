@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
+import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
@@ -50,6 +51,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 import org.yb.CommonTypes;
+import org.yb.WireProtocol.AppStatusPB.ErrorCode;
 import org.yb.client.DeleteSnapshotScheduleResponse;
 import org.yb.client.GetYsqlMajorCatalogUpgradeStateResponse;
 import org.yb.client.IsInitDbDoneResponse;
@@ -146,6 +148,36 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
         defaultUniverse.getUniverseDetails().prevYBSoftwareConfig.getSoftwareVersion());
     assertEquals(
         UniverseDefinitionTaskParams.SoftwareUpgradeState.PreFinalize,
+        defaultUniverse.getUniverseDetails().softwareUpgradeState);
+  }
+
+  @Test
+  public void testSoftwareUpgradeFailsWhenMasterRefusesAutoFlagPromotion() throws Exception {
+    softwareKubernetesUpgrade.setUserTaskUUID(UUID.randomUUID());
+    setupUniverseSingleAZ(false, true);
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.autoFlagUpdateSleepTimeInMilliSeconds.getKey(), "0ms");
+    when(mockSoftwareUpgradeHelper.checkUpgradeRequireFinalize(anyString(), anyString()))
+        .thenReturn(true);
+    when(mockClient.promoteAutoFlags(anyString(), anyBoolean(), anyBoolean()))
+        .thenReturn(
+            promoteAutoFlagsErrorResponse(ErrorCode.ILLEGAL_STATE, TSERVERS_NOT_UPGRADED_MESSAGE));
+
+    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
+    taskParams.ybSoftwareVersion = YB_SOFTWARE_VERSION_NEW;
+    TaskInfo taskInfo = submitTask(taskParams);
+
+    assertEquals(Failure, taskInfo.getTaskState());
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .anyMatch(
+                task ->
+                    task.getTaskType() == TaskType.PromoteAutoFlags
+                        && task.getTaskState() == Failure));
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertEquals(
+        UniverseDefinitionTaskParams.SoftwareUpgradeState.UpgradeFailed,
         defaultUniverse.getUniverseDetails().softwareUpgradeState);
   }
 
