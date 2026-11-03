@@ -822,9 +822,7 @@ class Tablet : public AbstractTablet,
   bool is_sys_catalog() const { return is_sys_catalog_; }
   bool IsTransactionalRequest(bool is_ysql_request) const override;
 
-  void SetCleanupPool(
-      ThreadPool* snapshot_cleanup_pool, rpc::Scheduler* scheduler,
-      ThreadPool* intent_cleanup_pool);
+  void SetCleanupPool(ThreadPool* snapshot_cleanup_pool, rpc::Scheduler* scheduler);
 
   TabletSnapshots& snapshots() {
     return *snapshots_;
@@ -1378,6 +1376,11 @@ class Tablet : public AbstractTablet,
   // Tries to find intent .SST files that could be deleted and remove them.
   void DoCleanupIntentFiles();
 
+  // Flushes the regular DB on behalf of IntentsDbFlushFilter, which must not do it itself. Posts
+  // the flush on cleanup_intent_files_token_.
+  Status RequestRegularDbFlushForIntentsFlush();
+  void FlushRegularDbForIntentsFlush();
+
   void RegularDbFilesChanged();
 
   HybridTime ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) override;
@@ -1410,7 +1413,14 @@ class Tablet : public AbstractTablet,
   IsSysCatalogTablet is_sys_catalog_;
   TransactionsEnabled txns_enabled_;
 
+  // Serial token on TabletInitData::intent_cleanup_pool for intent SST file cleanup and for the
+  // regular DB flushes requested by the intents DB flush filter. Null without a transaction
+  // participant.
   std::unique_ptr<ThreadPoolToken> cleanup_intent_files_token_;
+
+  // Set while a regular DB flush posted by RequestRegularDbFlushForIntentsFlush has not run yet,
+  // so the intents flush filter's retries do not post another.
+  std::atomic<bool> regular_db_flush_for_intents_posted_{false};
 
   std::unique_ptr<TabletSnapshots> snapshots_;
 
