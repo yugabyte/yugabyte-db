@@ -857,7 +857,6 @@ RI_FKey_check(TriggerData *trigdata)
 			if (!found)
 			{
 				ri_BuildQueryKey(&qkey, riinfo, RI_PLAN_CHECK_LOOKUPPK);
-				/* YB_TODO_PG19MERGE: new PG paramter "is_restrict". */
 				ri_ReportViolation(riinfo, pk_rel, fk_rel, newslot, NULL, qkey.constr_queryno,
 								   false /* is_restrict */ ,
 								   false /* partgone */ );
