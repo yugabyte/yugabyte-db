@@ -5318,15 +5318,19 @@ TEST_P(PgVectorIndexSingleServerTest, UnloadableChunkFailsTablet) {
   ASSERT_FALSE(chunk_files.empty());
 
   auto* ts = cluster_->mini_tablet_server(0);
-  ts->Shutdown();
-  // What an unsynced chunk looks like after a power loss.
-  for (const auto& file : chunk_files) {
-    ASSERT_OK(WriteStringToFile(env, "", file));
+  // What an unsynced chunk could look like after a power loss: empty, or zero-filled, so its footer
+  // size reads as 0.
+  for (const auto& content : {std::string(), std::string(4096, '\0')}) {
+    SCOPED_TRACE(Format("Chunk size: $0", content.size()));
+    ts->Shutdown();
+    for (const auto& file : chunk_files) {
+      ASSERT_OK(WriteStringToFile(env, content, file));
+    }
+    ASSERT_OK(ts->Start(tserver::WaitTabletsBootstrapped::kFalse));
+    auto status = ts->WaitStarted();
+    ASSERT_NOK(status);
+    ASSERT_STR_CONTAINS(status.ToString(), "Failed to load");
   }
-  ASSERT_OK(ts->Start(tserver::WaitTabletsBootstrapped::kFalse));
-  auto status = ts->WaitStarted();
-  ASSERT_NOK(status);
-  ASSERT_STR_CONTAINS(status.ToString(), "Failed to load");
 }
 
 class PgVectorIndexPowerLossTest : public PgVectorIndexSingleServerTest {
