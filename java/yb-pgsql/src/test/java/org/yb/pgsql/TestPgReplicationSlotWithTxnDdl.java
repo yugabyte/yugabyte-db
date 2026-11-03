@@ -663,13 +663,16 @@ public class TestPgReplicationSlotWithTxnDdl extends BasePgSQLTest {
 
   // Same as insertAfterAddColumnRolledBackToSavepoint, but the rolled back ADD COLUMN rewrites the
   // table. Rows written after the ROLLBACK TO SAVEPOINT are decoded with the original relfilenode,
-  // not the one of the rewritten table, which is dropped by the rollback.
+  // not the one of the rewritten table, which is dropped by the rollback. The transaction also
+  // writes to t2, so that it has BEGIN records on tablets of different tables. Each one carries the
+  // full aborted set, so it does not matter which one the virtual WAL ships.
   @Test
   public void insertAfterRewriteRolledBackToSavepoint() throws Exception {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE TABLE t1 (a int primary key, b text)");
+      stmt.execute("CREATE TABLE t2 (a int primary key, b text)");
       stmt.execute("INSERT INTO t1 VALUES (0, 'before_slot')");
-      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1, t2");
     }
 
     Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
@@ -684,18 +687,21 @@ public class TestPgReplicationSlotWithTxnDdl extends BasePgSQLTest {
       stmt.execute("ROLLBACK TO SAVEPOINT s1");
       stmt.execute("RELEASE SAVEPOINT s1");
       stmt.execute("INSERT INTO t1 VALUES (2, 'kept')");
+      stmt.execute("INSERT INTO t2 VALUES (1, 'one')");
       stmt.execute("ALTER TABLE t1 ADD COLUMN c text");
       stmt.execute("INSERT INTO t1 VALUES (3, 'after', 'c3')");
       stmt.execute("COMMIT");
     }
 
     PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
-    List<PgOutputMessage> result = receiveMessage(stream, 6);
+    List<PgOutputMessage> result = receiveMessage(stream, 8);
 
     List<PgOutputMessage> expectedResult = Arrays.asList(
         beginMessage(2),
         relation("t1", column("a", INT4_OID), column("b", TEXT_OID)),
         insert("2", "kept"),
+        relation("t2", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("1", "one"),
         relation("t1", column("a", INT4_OID), column("b", TEXT_OID), column("c", TEXT_OID)),
         insert("3", "after", "c3"),
         commitMessage());
