@@ -12,7 +12,7 @@
 [
 
 # For better version control conflict detection, list latest migration filename
-# here: V90.13__34985__yb_index_check_txn_priority_proparallel.sql
-{ major => '90', minor => '13', name => '<baseline>', time_applied => '_null_' }
+# here: V90.14__32935__pg_yb_password_history.sql
+{ major => '90', minor => '14', name => '<baseline>', time_applied => '_null_' }
 
 ]
