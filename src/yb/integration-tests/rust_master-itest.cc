@@ -10,12 +10,15 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-// The Rust master (yb-master-rs) as a follower in a quorum of C++ masters. In layer 1 it never
-// leads, so these tests check that it joins, keeps the same sys catalog as a C++ follower through
-// DDL, snapshots and a PITR restore, answers the follower-servable RPCs, and never claims to lead.
+// The Rust master (yb-master-rs) in a quorum of C++ masters. As a follower it joins, keeps the same
+// sys catalog and the same in-memory catalog as the C++ leader through DDL, snapshots and a PITR
+// restore, answers the follower-servable RPCs, and never claims to lead. With
+// --TEST_rust_master_allow_leadership it leads and serves the core cluster, client and heartbeat
+// RPCs (src/rust/master/docs/testing.md). YSQL is off: a layer-2 Rust leader does not serve it.
 
 #include <algorithm>
 #include <map>
+#include <random>
 #include <regex>
 #include <string>
 #include <vector>
@@ -23,18 +26,25 @@
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
+#include "yb/client/schema.h"
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/snapshot_test_util.h"
+#include "yb/client/table_alterer.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/table.h"
 #include "yb/client/tablet_server.h"
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/wire_protocol.h"
 
+#include "yb/gutil/strings/escaping.h"
+
 #include "yb/integration-tests/external_mini_cluster.h"
 
+#include "yb/master/master_client.proxy.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_ddl.proxy.h"
+#include "yb/master/master_rust_peer.proxy.h"
 
 #include "yb/rpc/rpc_controller.h"
 
@@ -203,6 +213,151 @@ class RustMasterTest : public YBTest {
         Format("http://$0:$1$2", master->bound_rpc_hostport().host(), master->http_port(), path),
         &buf));
     return buf.ToString();
+  }
+
+  // The Rust master's in-memory catalog.
+  Result<master::DumpCatalogResponsePB> DumpCatalog(ExternalMaster* master) {
+    auto proxy = cluster_->GetProxy<master::MasterRustPeerProxy>(master);
+    master::DumpCatalogRequestPB req;
+    master::DumpCatalogResponsePB resp;
+    rpc::RpcController controller;
+    controller.set_timeout(30s);
+    RETURN_NOT_OK(proxy.DumpCatalog(req, &resp, &controller));
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+    return resp;
+  }
+
+  // Rows as `sys-catalog-tool dump-rows` writes them, without its last column.
+  static std::vector<std::string> RowLines(const master::DumpCatalogResponsePB& dump) {
+    std::vector<std::string> rows;
+    for (const auto& row : dump.rows()) {
+      rows.push_back(Format(
+          "$0\t$1\t$2", master::SysRowEntryType_Name(row.entry_type()), b2a_hex(row.id()),
+          b2a_hex(row.data())));
+    }
+    std::sort(rows.begin(), rows.end());
+    return rows;
+  }
+
+  // The Rust master's catalog at a point where the leader wrote nothing between before and after
+  // the dump, so it is the leader's catalog as long as nothing writes until shutdown.
+  Result<master::DumpCatalogResponsePB> DumpQuietCatalog(ExternalMaster* rust_master) {
+    for (int attempt = 0; attempt != 30; ++attempt) {
+      OpIdPB before;
+      RETURN_NOT_OK(cluster_->GetLastOpIdForLeader(&before));
+      RETURN_NOT_OK(cluster_->WaitForMastersToCommitUpTo(before.index()));
+      // Committed is not yet applied.
+      SleepFor(1s);
+      auto dump = VERIFY_RESULT(DumpCatalog(rust_master));
+      OpIdPB after;
+      RETURN_NOT_OK(cluster_->GetLastOpIdForLeader(&after));
+      if (before.index() == after.index()) {
+        return dump;
+      }
+    }
+    return STATUS(TimedOut, "The leader kept writing");
+  }
+
+  // Hands sys catalog leadership to `master` and waits until it reports LEADER.
+  Status TransferLeadershipTo(ExternalMaster* master) {
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          tserver::TabletServerErrorPB::Code error_code;
+          auto status = cluster_->StepDownMasterLeader(&error_code, master->uuid());
+          if (status.ok()) {
+            return true;
+          }
+          if (status.ToString().find("not caught up") != std::string::npos ||
+              status.IsLeaderNotReadyToServe() || status.IsServiceUnavailable()) {
+            return false;
+          }
+          return status;
+        },
+        kTimeout, "the leader to hand over to " + master->uuid()));
+    return WaitForRole(master, PeerRole::LEADER);
+  }
+
+  // Creates, drops and alters YCQL tables through the leader, choosing with `seed`.
+  void RandomDdlWorkload(uint32_t seed, int ops, const std::string& prefix) {
+    LOG(INFO) << "Random DDL workload, seed " << seed;
+    std::mt19937 rng(seed);
+    std::vector<client::YBTableName> tables;
+    for (int i = 0; i != ops; ++i) {
+      const auto op = rng() % 4;
+      if (op == 1 && !tables.empty()) {
+        const auto victim = rng() % tables.size();
+        ASSERT_OK(client_->DeleteTable(tables[victim], /* wait= */ true));
+        tables.erase(tables.begin() + victim);
+      } else if (op == 2 && !tables.empty()) {
+        auto alterer = client_->NewTableAlterer(tables[rng() % tables.size()]);
+        alterer->AddColumn(Format("c$0", i))->Type(DataType::INT32);
+        ASSERT_OK(alterer->Alter());
+      } else {
+        client::TableHandle table;
+        const client::YBTableName name(
+            YQL_DATABASE_CQL, client::kTableName.namespace_name(),
+            Format("$0_$1", prefix, i));
+        client::kv_table_test::CreateTable(
+            client::Transactional(rng() % 2), /* num_tablets= */ 1 + rng() % 3, client_.get(),
+            &table, name);
+        tables.push_back(name);
+      }
+    }
+  }
+
+  // The leader's tables' locations, from the given master.
+  Result<master::GetTableLocationsResponsePB> TableLocations(
+      ExternalMaster* master, const client::YBTableName& table) {
+    auto proxy = cluster_->GetProxy<master::MasterClientProxy>(master);
+    master::GetTableLocationsRequestPB req;
+    table.SetIntoTableIdentifierPB(req.mutable_table());
+    req.set_max_returned_locations(100);
+    master::GetTableLocationsResponsePB resp;
+    rpc::RpcController controller;
+    controller.set_timeout(10s);
+    RETURN_NOT_OK(proxy.GetTableLocations(req, &resp, &controller));
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+    return resp;
+  }
+
+  Result<master::ListTabletServersResponsePB> ListTabletServers(ExternalMaster* master) {
+    auto proxy = cluster_->GetProxy<master::MasterClusterProxy>(master);
+    master::ListTabletServersRequestPB req;
+    master::ListTabletServersResponsePB resp;
+    rpc::RpcController controller;
+    controller.set_timeout(10s);
+    RETURN_NOT_OK(proxy.ListTabletServers(req, &resp, &controller));
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+    return resp;
+  }
+
+  // Waits until every tablet of `table` has a leader in `master`'s locations.
+  Status WaitForLeaders(ExternalMaster* master, const client::YBTableName& table, int tablets) {
+    return WaitFor(
+        [&]() -> Result<bool> {
+          auto resp = TableLocations(master, table);
+          if (!resp.ok() || resp->tablet_locations_size() != tablets) {
+            return false;
+          }
+          for (const auto& tablet : resp->tablet_locations()) {
+            if (tablet.stale() || tablet.replicas_size() != 3) {
+              return false;
+            }
+            if (std::none_of(
+                    tablet.replicas().begin(), tablet.replicas().end(),
+                    [](const auto& r) { return r.role() == PeerRole::LEADER; })) {
+              return false;
+            }
+          }
+          return true;
+        },
+        kTimeout, "tablet leaders in the locations of " + master->uuid());
   }
 
   std::unique_ptr<ExternalMiniCluster> cluster_;
@@ -465,6 +620,228 @@ TEST_F(RustMasterTest, TserverSimulator) {
   ASSERT_STR_CONTAINS(output, Format("\"num_tservers\": $0", kFakeTservers));
   const auto tservers = ASSERT_RESULT(client_->ListTabletServers());
   ASSERT_EQ(tservers.size(), cluster_->num_tablet_servers() + kFakeTservers);
+}
+
+// The Rust follower's in-memory catalog, built from the apply stream, equals the C++ leader's sys catalog row for row after randomized DDL, a snapshot schedule and a
+// PITR restore (which reloads the catalog).
+TEST_F(RustMasterTest, FollowerCatalogMatchesRandomWorkload) {
+  const auto rust_index = ASSERT_RESULT(RestartFollowerAsRust(
+      {{"rust_master_catalog_self_check_interval_ms", "1000"}}));
+  auto* rust_master = cluster_->master(rust_index);
+
+  const auto seed = static_cast<uint32_t>(GetCurrentTimeMicros());
+  ASSERT_NO_FATALS(RandomDdlWorkload(seed, 20, "before"));
+  ASSERT_NO_FATALS(RunWorkload());
+  // Other names: the restore may have brought back tables of the first pass.
+  ASSERT_NO_FATALS(RandomDdlWorkload(seed + 1, 10, "after"));
+
+  // Tablet reports and snapshot schedules keep the leader writing; stop the tservers so it goes
+  // quiet.
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    cluster_->tablet_server(i)->Shutdown();
+  }
+  const auto dump = ASSERT_RESULT(DumpQuietCatalog(rust_master));
+  // The restore reloaded the catalog; the self-check never disagreed with the tablet.
+  ASSERT_GE(dump.generation(), 2);
+  ASSERT_EQ(dump.self_check_mismatches(), 0);
+
+  const auto leader_index = ASSERT_RESULT(cluster_->GetLeaderMasterIndex());
+  auto* leader = cluster_->master(leader_index);
+  cluster_->Shutdown();
+  const auto leader_rows = ASSERT_RESULT(DumpRows(leader));
+  ASSERT_EQ(RowLines(dump), leader_rows) << "seed " << seed;
+  ASSERT_EQ(ASSERT_RESULT(DumpRows(rust_master)), leader_rows);
+}
+
+// With leadership allowed, the Rust master leads and serves the core cluster, client and heartbeat
+// RPCs to real tservers; its writes read back the same on C++ masters after a failback.
+TEST_F(RustMasterTest, RustLeaderServesCoreRpcs) {
+  client::TableHandle table;
+  client::kv_table_test::CreateTable(
+      client::Transactional::kFalse, /* num_tablets= */ 3, client_.get(), &table);
+  const auto rust_index = ASSERT_RESULT(RestartFollowerAsRust(
+      {{"TEST_rust_master_allow_leadership", "true"}}));
+  auto* rust_master = cluster_->master(rust_index);
+  ASSERT_OK(WaitForMastersToCatchUp());
+  ASSERT_OK(TransferLeadershipTo(rust_master));
+
+  // Heartbeats: every tserver registers with the Rust leader and sends a full report.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto resp = ListTabletServers(rust_master);
+        if (!resp.ok()) {
+          return false;
+        }
+        return std::count_if(
+                   resp->servers().begin(), resp->servers().end(),
+                   [](const auto& s) { return s.alive(); }) ==
+               static_cast<ssize_t>(cluster_->num_tablet_servers());
+      },
+      kTimeout, "the tservers to register with the Rust leader"));
+  ASSERT_OK(WaitForLeaders(rust_master, table.name(), 3));
+
+  // Tablets of user tables are mapped by parent id: their table ids come from the catalog, not the
+  // row, and clients need them to cache the locations.
+  {
+    auto locations = ASSERT_RESULT(TableLocations(rust_master, table.name()));
+    for (const auto& tablet : locations.tablet_locations()) {
+      ASSERT_TRUE(std::ranges::find(tablet.table_ids(), table->id()) != tablet.table_ids().end())
+          << tablet.ShortDebugString();
+    }
+  }
+
+  // Web pages only the leader serves answer at once instead of fetching from this master again.
+  ASSERT_OK(FetchPage(rust_master, "/api/v1/is-leader"));
+  ASSERT_NOK(FetchPage(rust_master, "/tablet-servers"));
+
+  {
+    auto proxy = cluster_->GetProxy<master::MasterClusterProxy>(rust_master);
+    master::IsMasterLeaderReadyRequestPB req;
+    master::IsMasterLeaderReadyResponsePB resp;
+    rpc::RpcController controller;
+    controller.set_timeout(10s);
+    ASSERT_OK(proxy.IsMasterLeaderServiceReady(req, &resp, &controller));
+    ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
+  }
+
+  // A cluster config change through the Rust leader.
+  int32_t new_version;
+  {
+    auto proxy = cluster_->GetProxy<master::MasterClusterProxy>(rust_master);
+    master::GetMasterClusterConfigRequestPB get_req;
+    master::GetMasterClusterConfigResponsePB get_resp;
+    rpc::RpcController controller;
+    controller.set_timeout(10s);
+    ASSERT_OK(proxy.GetMasterClusterConfig(get_req, &get_resp, &controller));
+    ASSERT_FALSE(get_resp.has_error()) << get_resp.ShortDebugString();
+    master::ChangeMasterClusterConfigRequestPB req;
+    *req.mutable_cluster_config() = get_resp.cluster_config();
+    auto* host = req.mutable_cluster_config()->mutable_server_blacklist()->add_hosts();
+    host->set_host("127.0.0.250");
+    host->set_port(9100);
+    master::ChangeMasterClusterConfigResponsePB resp;
+    controller.Reset();
+    ASSERT_OK(proxy.ChangeMasterClusterConfig(req, &resp, &controller));
+    ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
+    new_version = get_resp.cluster_config().version() + 1;
+  }
+
+  // A leader method of a later layer is refused, not forwarded.
+  {
+    auto proxy = cluster_->GetProxy<master::MasterDdlProxy>(rust_master);
+    master::ListTablesRequestPB req;
+    master::ListTablesResponsePB resp;
+    rpc::RpcController controller;
+    controller.set_timeout(10s);
+    ASSERT_OK(proxy.ListTables(req, &resp, &controller));
+    ASSERT_EQ(resp.error().status().code(), AppStatusPB::NOT_SUPPORTED)
+        << resp.ShortDebugString();
+  }
+
+  // The tservers keep serving through the Rust leader; then fail back to C++.
+  const auto leader_index = (rust_index + 1) % cluster_->num_masters();
+  auto* cpp_master = cluster_->master(leader_index);
+  ASSERT_OK(TransferLeadershipTo(cpp_master));
+  ASSERT_OK(WaitForLeaders(cpp_master, table.name(), 3));
+  {
+    auto proxy = cluster_->GetProxy<master::MasterClusterProxy>(cpp_master);
+    master::GetMasterClusterConfigRequestPB req;
+    master::GetMasterClusterConfigResponsePB resp;
+    rpc::RpcController controller;
+    controller.set_timeout(10s);
+    ASSERT_OK(proxy.GetMasterClusterConfig(req, &resp, &controller));
+    ASSERT_EQ(resp.cluster_config().version(), new_version);
+    ASSERT_EQ(resp.cluster_config().server_blacklist().hosts_size(), 1);
+  }
+
+  ASSERT_OK(WaitForMastersToCatchUp());
+  cluster_->Shutdown();
+  const auto cpp_rows = ASSERT_RESULT(DumpRows(cpp_master));
+  ASSERT_EQ(ASSERT_RESULT(DumpRows(rust_master)), cpp_rows);
+}
+
+// Two Rust masters: the leader pushes locations and tservers to the other, which serves them
+// right after a failover, before any tserver reports to it.
+TEST_F(RustMasterTest, WarmFailover) {
+  client::TableHandle table;
+  client::kv_table_test::CreateTable(
+      client::Transactional::kFalse, /* num_tablets= */ 2, client_.get(), &table);
+  const auto leader_index = ASSERT_RESULT(cluster_->GetLeaderMasterIndex());
+  std::vector<ExternalMaster*> rust_masters;
+  for (size_t i = 0; i != cluster_->num_masters(); ++i) {
+    if (i == leader_index) {
+      continue;
+    }
+    auto* master = cluster_->master(i);
+    master->Shutdown();
+    master->SetExe(rust_master_exe_);
+    master->AddExtraFlag("TEST_rust_master_allow_leadership", "true");
+    ASSERT_OK(master->Restart());
+    ASSERT_OK(WaitForRole(master, PeerRole::FOLLOWER));
+    rust_masters.push_back(master);
+  }
+  ASSERT_OK(WaitForMastersToCatchUp());
+  ASSERT_OK(TransferLeadershipTo(rust_masters[0]));
+  ASSERT_OK(WaitForLeaders(rust_masters[0], table.name(), 2));
+
+  // The follower holds the leader's locations and tservers.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto dump = DumpCatalog(rust_masters[1]);
+        return dump.ok() && dump->num_tablet_locations() >= 2 &&
+               dump->num_tablet_replicas() >= 3 * dump->num_tablet_locations() &&
+               dump->num_live_tservers() == cluster_->num_tablet_servers();
+      },
+      kTimeout, "the location stream to reach the Rust follower"));
+
+  // Stop the tservers so nothing reports to the new leader, then fail over.
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    cluster_->tablet_server(i)->Shutdown();
+  }
+  ASSERT_OK(TransferLeadershipTo(rust_masters[1]));
+  auto locations = ASSERT_RESULT(TableLocations(rust_masters[1], table.name()));
+  ASSERT_EQ(locations.tablet_locations_size(), 2);
+  for (const auto& tablet : locations.tablet_locations()) {
+    ASSERT_FALSE(tablet.stale()) << tablet.ShortDebugString();
+    ASSERT_EQ(tablet.replicas_size(), 3);
+  }
+  auto servers = ASSERT_RESULT(ListTabletServers(rust_masters[1]));
+  ASSERT_EQ(servers.servers_size(), cluster_->num_tablet_servers());
+}
+
+// Tservers echo the version of the live tserver list they hold, and the Rust leader answers
+// "unchanged" instead of the list until membership changes.
+TEST_F(RustMasterTest, LiveTserverListVersion) {
+  const auto rust_index = ASSERT_RESULT(RestartFollowerAsRust({
+      {"TEST_rust_master_allow_leadership", "true"},
+      {"tserver_unresponsive_timeout_ms", "5000"},
+  }));
+  auto* rust_master = cluster_->master(rust_index);
+  ASSERT_OK(WaitForMastersToCatchUp());
+  ASSERT_OK(TransferLeadershipTo(rust_master));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto dump = DumpCatalog(rust_master);
+        return dump.ok() && dump->num_live_tservers() == cluster_->num_tablet_servers() &&
+               dump->live_tservers_unchanged_responses() > 10;
+      },
+      kTimeout, "heartbeats answered with an unchanged list"));
+
+  // A tserver goes away: the others get the new list and keep heartbeating.
+  cluster_->tablet_server(0)->Shutdown();
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto dump = DumpCatalog(rust_master);
+        return dump.ok() && dump->num_live_tservers() == cluster_->num_tablet_servers() - 1;
+      },
+      kTimeout, "the stopped tserver to become unresponsive"));
+  const auto before = ASSERT_RESULT(DumpCatalog(rust_master)).live_tservers_unchanged_responses();
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto dump = DumpCatalog(rust_master);
+        return dump.ok() && dump->live_tservers_unchanged_responses() > before + 4;
+      },
+      kTimeout, "the remaining tservers to hold the new list"));
 }
 
 }  // namespace yb

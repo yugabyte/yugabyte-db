@@ -13,7 +13,12 @@ crate-type = ["staticlib"]
 [dependencies]
 axum.workspace = true
 cxx.workspace = true
+master-catalog-state.workspace = true
+master-leadership.workspace = true
 master-rpc-handlers.workspace = true
+master-sys-catalog.workspace = true
+master-task-runtime.workspace = true
+master-ts-manager.workspace = true
 protobuf.workspace = true
 tokio.workspace = true
 tracing.workspace = true

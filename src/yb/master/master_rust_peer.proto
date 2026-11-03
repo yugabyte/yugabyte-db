@@ -1,0 +1,92 @@
+// Copyright (c) YugabyteDB, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+
+// Calls only the Rust master (src/rust/master) serves: the location stream between Rust masters
+// (src/rust/master/docs/tablet-locations.md) and a dump of the in-memory catalog for tests. A C++
+// master does not register the service and answers "not registered"; C++ only uses the proxy.
+
+syntax = "proto2";
+
+package yb.master;
+
+option java_package = "org.yb.master";
+
+import "yb/common/common_types.proto";
+import "yb/consensus/metadata.proto";
+import "yb/master/master_heartbeat.proto";
+import "yb/master/master_types.proto";
+
+message ReplicaLocationPB {
+  optional bytes ts_uuid = 1;
+  optional PeerRole role = 2;
+  optional consensus.PeerMemberType member_type = 3;
+}
+
+// The whole replica set of one tablet as the leader knows it; no replicas removes the tablet.
+message TabletReplicasPB {
+  optional bytes tablet_id = 1;
+  repeated ReplicaLocationPB replicas = 2;
+}
+
+message TServerStatePB {
+  optional TSInformationPB info = 1;
+  optional bool live = 2;
+}
+
+// Deltas of the leader's observed state, sequence-numbered within the leader's term.
+message PushLocationsRequestPB {
+  optional bytes leader_uuid = 1;
+  optional int64 term = 2;
+  optional uint64 sequence = 3;
+  // Replaces everything the follower holds instead of applying on top of it.
+  optional bool full = 4;
+  repeated TabletReplicasPB tablets = 5;
+  repeated TServerStatePB tservers = 6;
+}
+
+message PushLocationsResponsePB {
+  optional MasterErrorPB error = 1;
+  // The follower missed a delta and needs a full push.
+  optional bool needs_full = 2;
+}
+
+message DumpCatalogRequestPB {
+}
+
+message DumpCatalogResponsePB {
+  optional MasterErrorPB error = 1;
+  message Row {
+    optional SysRowEntryType entry_type = 1;
+    optional bytes id = 2;
+    optional bytes data = 3;
+  }
+  // Every row of the in-memory catalog, as of `as_of`.
+  repeated Row rows = 2;
+  optional fixed64 as_of = 3;
+  // Full loads so far; a PITR restore or remote bootstrap adds one.
+  optional uint64 generation = 4;
+  // Self-checks whose digest differed from a scan of the tablet.
+  optional uint64 self_check_mismatches = 5;
+  // Observed state: tablets with known replicas, and registered tservers by liveness.
+  optional uint64 num_tablet_locations = 6;
+  optional uint64 num_live_tservers = 7;
+  optional uint64 num_tservers = 8;
+  // Heartbeats answered with live_tservers_unchanged.
+  optional uint64 live_tservers_unchanged_responses = 9;
+  // Replicas over all tablets with known replicas.
+  optional uint64 num_tablet_replicas = 10;
+}
+
+service MasterRustPeer {
+  rpc PushLocations(PushLocationsRequestPB) returns (PushLocationsResponsePB);
+  rpc DumpCatalog(DumpCatalogRequestPB) returns (DumpCatalogResponsePB);
+}

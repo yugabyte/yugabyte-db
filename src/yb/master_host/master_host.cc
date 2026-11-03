@@ -12,6 +12,7 @@
 
 #include "yb/master_host/master_host.h"
 
+#include <algorithm>
 #include <stdexcept>
 
 #include "yb/client/client.h"
@@ -48,6 +49,9 @@
 #include "yb/master/sys_catalog_restore.h"
 #include "yb/master/sys_catalog_writer.h"
 #include "yb/master/encryption_manager.h"
+#include "yb/master/master_heartbeat.pb.h"
+
+#include "yb/master_host/sys_catalog_tap.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/secure.h"
@@ -59,7 +63,12 @@
 #include "yb/server/total_mem_watcher.h"
 #include "yb/server/webserver.h"
 
+#include "yb/docdb/doc_rowwise_iterator.h"
+
+#include "yb/dockv/reader_projection.h"
+
 #include "yb/tablet/maintenance_manager.h"
+#include "yb/tablet/write_query.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
@@ -78,6 +87,8 @@
 #include "yb/util/threadpool.h"
 #include "yb/util/ulimit_util.h"
 
+#include "yb/tserver/tserver.messages.h"
+
 #include "master/server/src/ffi.rs.h"
 
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
@@ -94,6 +105,10 @@ DECLARE_int32(master_yb_client_default_timeout_ms);
 DECLARE_int32(master_ysql_lease_svc_queue_length);
 DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
 DECLARE_string(webserver_authentication_domain);
+
+DEFINE_test_flag(bool, rust_master_allow_leadership, false,
+    "Lets the Rust master lead the sys catalog. A layer-2 Rust leader serves only the core RPCs: "
+    "no DDL, snapshots, load balancing or YSQL leases.");
 DECLARE_string(webserver_password_file);
 DECLARE_bool(webserver_redirect_http_to_https);
 
@@ -104,19 +119,16 @@ using consensus::StartRemoteBootstrapRequestPB;
 
 namespace {
 
-rust::Vec<uint8_t> ToRustBytes(const std::string& bytes) {
-  rust::Vec<uint8_t> result;
-  result.reserve(bytes.size());
-  for (char c : bytes) {
-    result.push_back(static_cast<uint8_t>(c));
-  }
-  return result;
-}
-
 void ThrowIfNotOk(const Status& status) {
   if (!status.ok()) {
     throw std::runtime_error(status.ToString());
   }
+}
+
+ColumnId MetadataColumnId(const Schema& schema) {
+  auto index = schema.ColumnIndexByName(master::kSysCatalogTableColMetadata);
+  CHECK_OK(index);
+  return schema.column_id(*index);
 }
 
 template <class Resp, class Action>
@@ -207,7 +219,7 @@ class MasterHost::SysCatalogContextImpl : public master::SysCatalogContext {
   }
 
   tablet::SnapshotCoordinator* SnapshotCoordinator() override {
-    return host_.snapshot_coordinator_.get();
+    return host_.tap_.get();
   }
   AutoFlagsManagerBase* AutoFlagsManager() override { return host_.auto_flags_manager_.get(); }
   docdb::HistoryCutoff AllowedHistoryCutoff(tablet::RaftGroupMetadata* metadata) override {
@@ -263,6 +275,10 @@ class MasterHost::SnapshotContextImpl : public master::SnapshotCoordinatorContex
     if (status.IsNotSupported()) {
       *complete_status = status;
       return Status::OK();
+    }
+    if (status.ok()) {
+      // The restore rewrites rows without going through the tap.
+      host_.tap_->PostReload("PITR restore", host_.clock()->Now());
     }
     return status;
   }
@@ -354,6 +370,8 @@ MasterHost::MasterHost(const master::MasterOptions& opts, WebserverOptions publi
           sys_catalog_context_.get(), metric_registry_.get())),
       snapshot_coordinator_(std::make_unique<master::MasterSnapshotCoordinator>(
           snapshot_context_.get(), /* cm= */ nullptr, /* tablet_split_manager= */ nullptr)),
+      tap_(std::make_unique<SysCatalogTap>(
+          snapshot_coordinator_.get(), MetadataColumnId(sys_catalog_->schema()))),
       auto_flags_manager_(std::make_unique<master::MasterAutoFlagsManager>(
           clock(), fs_manager(), /* master= */ nullptr)),
       encryption_manager_(std::make_unique<master::EncryptionManager>()),
@@ -370,10 +388,10 @@ MasterHost::~MasterHost() {
 }
 
 std::unique_ptr<MasterHost> CreateMasterHost() {
-  // This peer must never become the sys catalog leader: nothing above the engine can lead yet.
+  // Without TEST_rust_master_allow_leadership this peer must never become the sys catalog leader.
   // Without failure detection it never starts an election on its own; ElectedAsLeader() steps it
   // down if an explicit leader transfer elects it anyway.
-  if (FLAGS_enable_leader_failure_detection) {
+  if (!FLAGS_TEST_rust_master_allow_leadership && FLAGS_enable_leader_failure_detection) {
     LOG(INFO) << "Disabling enable_leader_failure_detection: the Rust master is follower-only";
     FLAGS_enable_leader_failure_detection = false;
   }
@@ -457,10 +475,18 @@ void MasterHost::RegisterWebPages() {
     web_server_->RegisterPathHandler(
         page.path, page.alias,
         [this](const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+          auto masters = ListMastersForWeb();
+          if (IsLeaderInList(masters)) {
+            // RedirectToLeader would fetch this page from this master again, tying up a web
+            // worker per hop.
+            resp->code = 503;
+            resp->output << "<h2>This page is not served by a Rust master leader yet.</h2>\n";
+            return;
+          }
           ServerRegistrationPB local_reg;
           auto status = GetMasterRegistration(&local_reg);
           master::RedirectToLeader(
-              ListMastersForWeb(),
+              masters,
               status.ok() ? Result<ServerRegistrationPB>(std::move(local_reg))
                           : Result<ServerRegistrationPB>(status),
               req, resp);
@@ -476,11 +502,17 @@ void MasterHost::RegisterWebPages() {
       /* is_styled= */ true, /* is_on_nav_bar= */ false);
   web_server_->RegisterPathHandler(
       "/api/v1/is-leader", "Leader Check",
-      [](const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
-        // MasterPathHandlers::HandleCheckIfLeader on a master that is not the leader.
+      [this](const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+        // MasterPathHandlers::HandleCheckIfLeader.
         JsonWriter jw(&resp->output, JsonWriter::COMPACT);
         jw.StartObject();
-        resp->code = 503;
+        if (!IsLeaderInList(ListMastersForWeb())) {
+          resp->code = 503;
+          return;
+        }
+        jw.String("STATUS");
+        jw.String(Status().CodeAsString());
+        jw.EndObject();
       },
       /* is_styled= */ false, /* is_on_nav_bar= */ false);
   web_server_->RegisterPathHandler(
@@ -505,6 +537,18 @@ void MasterHost::RegisterWebPages() {
         WriteServerMetaCacheAsJson(&writer);
       },
       /* is_styled= */ false, /* is_on_nav_bar= */ false);
+}
+
+// Whether the master list, built from GetMasterRegistration, names this master the leader: Rust
+// reports LEADER only for a ready leader.
+bool MasterHost::IsLeaderInList(const Result<std::vector<ServerEntryPB>>& masters) const {
+  if (!masters.ok()) {
+    return false;
+  }
+  return std::ranges::any_of(*masters, [this](const ServerEntryPB& master) {
+    return !master.has_error() && master.role() == PeerRole::LEADER &&
+           master.instance_id().permanent_uuid() == permanent_uuid();
+  });
 }
 
 Result<std::vector<ServerEntryPB>> MasterHost::ListMastersForWeb() const {
@@ -631,6 +675,7 @@ Status MasterHost::DoStart() {
   sys_catalog_started_ = true;
   RETURN_NOT_OK(OpenSysCatalog());
   sys_catalog_initialized_ = true;
+  tap_->PostReload("sys catalog opened", clock()->Now());
 
   RETURN_NOT_OK(Thread::Create(
       "master_host", "pin_refresh", &MasterHost::RefreshHistoryRetentionPinLoop, this,
@@ -669,6 +714,11 @@ Status MasterHost::OpenSysCatalog() {
 }
 
 Status MasterHost::ElectedAsLeader() {
+  if (FLAGS_TEST_rust_master_allow_leadership) {
+    // Rust polls the leader state as well; this only saves it a poll interval.
+    tap_->PostLeadershipChange();
+    return Status::OK();
+  }
   // Runs inside the consensus state-change callback, so the step-down happens on another thread.
   return leadership_pool_->SubmitFunc([this] {
     auto peer = sys_catalog_->tablet_peer();
@@ -834,6 +884,7 @@ Status MasterHost::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB& req
     LOG(INFO) << "Remote bootstrap finished successfully";
   }
   LOG(INFO) << "Master completed remote bootstrap and is out of shell mode.";
+  tap_->PostReload("remote bootstrap", clock()->Now());
   return Status::OK();
 }
 
@@ -1006,6 +1057,20 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
               });
         });
   }
+  // Leader-only; the Rust handlers check leadership first.
+  if (name == "GetAutoFlagsConfig") {
+    return HandleRequest<master::GetAutoFlagsConfigRequestPB, master::GetAutoFlagsConfigResponsePB>(
+        request, [this](const auto& req, auto* resp) {
+          return auto_flags_manager_->GetAutoFlagsConfig(&req, resp);
+        });
+  }
+  if (name == "ValidateAutoFlagsConfig") {
+    return HandleRequest<master::ValidateAutoFlagsConfigRequestPB,
+                         master::ValidateAutoFlagsConfigResponsePB>(
+        request, [this](const auto& req, auto* resp) {
+          return auto_flags_manager_->ValidateAutoFlagsConfig(&req, resp);
+        });
+  }
   if (name == "WriteSysCatalogEntry") {
     // CatalogManager::WriteSysCatalogEntry, which needs emergency_repair_mode; CreateMasterHost
     // refuses to start in it.
@@ -1020,6 +1085,169 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
   throw std::runtime_error("The host does not serve " + name);
 }
 
+void MasterHost::SetApplySink(rust::Box<ApplySink> sink) {
+  tap_->SetSink(std::move(sink));
+}
+
+bool MasterHost::SysCatalogIsOpen() const {
+  return sys_catalog_initialized_.load() && !opts_.IsShellMode() && sys_catalog_->tablet_peer();
+}
+
+uint64_t MasterHost::SysCatalogSafeTime(uint64_t min_time, int64_t timeout_ms) const {
+  auto peer = sys_catalog_->tablet_peer();
+  if (!peer) {
+    throw std::runtime_error("The sys catalog tablet is not open");
+  }
+  auto tablet = peer->shared_tablet();
+  ThrowIfNotOk(ResultToStatus(tablet));
+  auto safe_time = (*tablet)->SafeTime(
+      tablet::RequireLease::kFalse, HybridTime(min_time),
+      CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(timeout_ms));
+  ThrowIfNotOk(ResultToStatus(safe_time));
+  return safe_time->ToUint64();
+}
+
+rust::Vec<ScannedRow> MasterHost::ScanSysCatalog(int32_t entry_type, uint64_t read_time) const {
+  auto peer = sys_catalog_->tablet_peer();
+  if (!peer) {
+    throw std::runtime_error("The sys catalog tablet is not open");
+  }
+  auto tablet = peer->shared_tablet();
+  ThrowIfNotOk(ResultToStatus(tablet));
+  const auto& schema = sys_catalog_->schema();
+  dockv::ReaderProjection projection(schema);
+  auto iter = (*tablet)->NewUninitializedDocRowIterator(
+      projection, ReadHybridTime::SingleTime(HybridTime(read_time)), /* table_id= */ "",
+      CoarseTimePoint::max(), tablet::AllowBootstrappingState::kTrue);
+  ThrowIfNotOk(ResultToStatus(iter));
+  rust::Vec<ScannedRow> rows;
+  ThrowIfNotOk(master::EnumerateSysCatalog(
+      iter->get(), schema, narrow_cast<int8_t>(entry_type),
+      [&rows](const Slice& id, const Slice& data) {
+        rows.push_back(ScannedRow{.id = ToRustBytes(id), .data = ToRustBytes(data)});
+        return Status::OK();
+      }));
+  return rows;
+}
+
+void MasterHost::WriteSysCatalogRows(
+    int64_t term, rust::Slice<const RowChangeFfi> rows,
+    rust::Box<WriteCompletion> completion) const {
+  // Same request as SysCatalogTable::SyncWrite, without waiting: the WriteQuery carries `term`, so
+  // Raft refuses the write once this peer is no longer leader in it.
+  auto shared_completion =
+      std::make_shared<std::optional<rust::Box<WriteCompletion>>>(std::move(completion));
+  auto complete = [shared_completion](const Status& status) {
+    CompleteWrite(
+        std::move(**shared_completion), status.ok() ? 0 : static_cast<int32_t>(status.code()),
+        status.ok() ? rust::String() : rust::String::lossy(status.ToString()));
+  };
+  auto status = [&]() -> Status {
+    auto peer = sys_catalog_->tablet_peer();
+    SCHECK(peer, IllegalState, "The sys catalog tablet is not open");
+    auto tablet = VERIFY_RESULT(peer->shared_tablet());
+    auto writer = std::make_shared<master::SysCatalogWriter>(sys_catalog_->schema(), term);
+    for (const auto& row : rows) {
+      RETURN_NOT_OK(master::FillSysCatalogWriteRequest(
+          narrow_cast<int8_t>(row.entry_type),
+          std::string(reinterpret_cast<const char*>(row.id.data()), row.id.size()),
+          Slice(row.data.data(), row.data.size()),
+          row.deleted ? QLWriteRequestPB::QL_STMT_DELETE : QLWriteRequestPB::QL_STMT_UPDATE,
+          sys_catalog_->schema(), writer->req().add_ql_write_batch()));
+    }
+    auto arena = SharedThreadSafeArena();
+    auto* resp = arena->NewArenaObject<tserver::WriteResponseMsg>();
+    auto query = std::make_unique<tablet::WriteQuery>(
+        term, CoarseTimePoint::max(), peer.get(), tablet, /* rpc_context= */ nullptr, resp);
+    query->set_client_request(writer->req());
+    query->set_callback([writer, arena, resp, complete](const Status& status) {
+      if (!status.ok()) {
+        return complete(status);
+      }
+      if (resp->has_error()) {
+        return complete(StatusFromPB(resp->error().status()));
+      }
+      if (resp->per_row_errors_size() > 0) {
+        return complete(STATUS(Corruption, "One or more rows failed to write"));
+      }
+      complete(Status::OK());
+    });
+    peer->WriteAsync(std::move(query));
+    return Status::OK();
+  }();
+  if (!status.ok()) {
+    complete(status);
+  }
+}
+
+RaftLeaderStateFfi MasterHost::SysCatalogLeaderState() const {
+  RaftLeaderStateFfi result{
+      .role = PeerRole::NON_PARTICIPANT, .term = -1,
+      .leader_status = static_cast<int32_t>(consensus::LeaderStatus::NOT_LEADER)};
+  if (!SysCatalogIsOpen()) {
+    return result;
+  }
+  auto peer = sys_catalog_->tablet_peer();
+  if (!peer) {
+    return result;
+  }
+  auto consensus = peer->GetConsensus();
+  if (!consensus.ok()) {
+    return result;
+  }
+  const auto state = (*consensus)->GetLeaderState();
+  result.leader_status = static_cast<int32_t>(state.status);
+  // LeaderState carries the term only when LEADER_AND_READY (MakeNotReadyLeader sets
+  // kUnknownTerm), so the term comes from the consensus state, as CatalogManager reads it.
+  result.term = state.ok()
+      ? state.term
+      : (*consensus)->ConsensusState(consensus::CONSENSUS_CONFIG_ACTIVE).current_term();
+  result.role = (*consensus)->role();
+  return result;
+}
+
+rust::Vec<uint8_t> MasterHost::HeartbeatHostParts(
+    rust::Slice<const uint8_t> encryption_info, bool send_universe_key_registry,
+    int64_t auto_flags_config_version) const {
+  // CatalogManager::FillHeartbeatResponse and the AutoFlags part of TSHeartbeat.
+  master::TSHeartbeatResponsePB resp;
+  if (send_universe_key_registry && !encryption_info.empty()) {
+    master::EncryptionInfoPB info;
+    if (!info.ParseFromArray(encryption_info.data(), narrow_cast<int>(encryption_info.size()))) {
+      throw std::runtime_error("Unparsable EncryptionInfoPB");
+    }
+    ThrowIfNotOk(encryption_manager_->FillHeartbeatResponseEncryption(info, &resp));
+  }
+  ThrowIfNotOk(snapshot_coordinator_->FillHeartbeatResponse(&resp));
+  if (auto_flags_config_version >= 0 &&
+      static_cast<uint64_t>(auto_flags_config_version) < auto_flags_manager_->GetConfigVersion()) {
+    *resp.mutable_auto_flags_config() = auto_flags_manager_->GetConfig();
+  }
+  return ToRustBytes(resp.SerializeAsString());
+}
+
+rust::Vec<ScannedRow> MasterInfoHandle::ScanSysCatalog(
+    int32_t entry_type, uint64_t read_time) const {
+  return host_.ScanSysCatalog(entry_type, read_time);
+}
+
+void MasterInfoHandle::WriteSysCatalogRows(
+    int64_t term, rust::Slice<const RowChangeFfi> rows,
+    rust::Box<WriteCompletion> completion) const {
+  host_.WriteSysCatalogRows(term, rows, std::move(completion));
+}
+
+RaftLeaderStateFfi MasterInfoHandle::SysCatalogLeaderState() const {
+  return host_.SysCatalogLeaderState();
+}
+
+rust::Vec<uint8_t> MasterInfoHandle::HeartbeatHostParts(
+    rust::Slice<const uint8_t> encryption_info, bool send_universe_key_registry,
+    int64_t auto_flags_config_version) const {
+  return host_.HeartbeatHostParts(
+      encryption_info, send_universe_key_registry, auto_flags_config_version);
+}
+
 // Master::GoIntoShellMode and CatalogManager::GoIntoShellMode.
 Status MasterHost::GoIntoShellMode() {
   std::lock_guard lock(remote_bootstrap_mutex_);
@@ -1032,6 +1260,7 @@ Status MasterHost::GoIntoShellMode() {
   RETURN_NOT_OK(sys_catalog_->GoIntoShellMode());
   tablet_exists_ = false;
   LOG(INFO) << "Done going into shell mode.";
+  tap_->PostReload("shell mode", HybridTime::kMin);
   return Status::OK();
 }
 

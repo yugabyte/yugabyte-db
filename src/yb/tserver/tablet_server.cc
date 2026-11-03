@@ -1168,6 +1168,15 @@ Status TabletServer::KillPg() const {
 
 Status TabletServer::PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp) {
   std::lock_guard l(lock_);
+  // Only a master that got our version back answers "unchanged", and only for that version.
+  if (heartbeat_resp.live_tservers_unchanged() && live_tservers_version_) {
+    return Status::OK();
+  }
+  if (heartbeat_resp.has_live_tservers_version()) {
+    live_tservers_version_ = heartbeat_resp.live_tservers_version();
+  } else {
+    live_tservers_version_.reset();
+  }
   // We reset the list each time, since we want to keep the tservers that are live from the
   // master's perspective.
   // TODO: In the future, we should enhance the logic here to keep track information retrieved
@@ -1186,6 +1195,11 @@ Status TabletServer::PopulateLiveTServers(const master::TSHeartbeatResponsePB& h
     return !live_tservers_.contains(remote_ts_pair.first);
   });
   return Status::OK();
+}
+
+std::optional<master::LiveTServersVersionPB> TabletServer::LiveTServersVersion() const {
+  SharedLock l(lock_);
+  return live_tservers_version_;
 }
 
 Status TabletServer::GetLiveTServers(std::vector<master::TSInformationPB> *live_tservers) const {

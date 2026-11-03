@@ -10,11 +10,17 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-//! Master sys-catalog entities.
-//!
-//! Layer 1 holds only rows by `SysRowEntryType`, mirroring `CATALOG_ENTITY_TYPE_MAP` in
-//! src/yb/master/catalog_entity_types.h: parsing them and serializing them again exactly as the C++
-//! master does.
+//! Master sys-catalog entities: parsing rows by `SysRowEntryType`, mirroring
+//! `CATALOG_ENTITY_TYPE_MAP` in src/yb/master/catalog_entity_types.h, serializing them again
+//! exactly as the C++ master does, and the in-memory [`Entity`] the catalog holds. See
+//! docs/catalog-entity.md.
+
+mod entity;
+
+pub use entity::{
+    decode_entity, Entity, EntityId, HotFields, NamespaceHot, RowKey, TServerHot, TableHot,
+    TabletHot,
+};
 
 use std::fmt;
 
@@ -28,6 +34,8 @@ pub enum EntityError {
     UnknownType(i32),
     /// The bytes are not a valid message of the expected type.
     Parse(protobuf::Error),
+    /// A row the Rust master refuses to load (YEDIS, D16).
+    Unsupported(String),
 }
 
 impl fmt::Display for EntityError {
@@ -35,6 +43,7 @@ impl fmt::Display for EntityError {
         match self {
             EntityError::UnknownType(t) => write!(f, "unsupported catalog entry type {t}"),
             EntityError::Parse(e) => write!(f, "parse error: {e}"),
+            EntityError::Unsupported(what) => write!(f, "unsupported: {what}"),
         }
     }
 }

@@ -400,6 +400,9 @@ Status HeartbeatPoller::TryHeartbeat() {
   }
 
   req.set_auto_flags_config_version(server_.GetAutoFlagConfigVersion());
+  if (auto version = server_.LiveTServersVersion()) {
+    *req.mutable_live_tservers_version() = *version;
+  }
 
   {
     VLOG_WITH_PREFIX(2) << "Sending heartbeat:\n" << req.DebugString();

@@ -13,12 +13,63 @@
 //! The bridge to the master's C++ host (src/yb/master_host/master_host.h), and the entry points
 //! its `main()` calls.
 
+use crate::store::{complete_write, ApplySink, WriteCompletion};
 use crate::web::WebMasterList;
 use crate::{register_flags, run_master};
 
 #[cxx::bridge(namespace = "yb::master_host")]
 pub(crate) mod bridge {
+    /// One applied or written sys-catalog row change.
+    struct RowChangeFfi {
+        entry_type: i32,
+        id: Vec<u8>,
+        data: Vec<u8>,
+        deleted: bool,
+    }
+
+    /// A row from a scan.
+    struct ScannedRow {
+        id: Vec<u8>,
+        data: Vec<u8>,
+    }
+
+    /// The sys-catalog peer's Raft state: `PeerRole`, term, `consensus::LeaderStatus`.
+    struct RaftLeaderStateFfi {
+        role: i32,
+        term: i64,
+        leader_status: i32,
+    }
+
     extern "Rust" {
+        /// Where the host's apply tap sends rows (src/yb/master_host/sys_catalog_tap.h). Its
+        /// methods never block: they run on the tablet's apply thread.
+        type ApplySink;
+        /// The rows of one applied Raft op.
+        #[cxx_name = "OnAppliedBatch"]
+        fn on_applied_batch(
+            self: &ApplySink,
+            op_term: i64,
+            op_index: i64,
+            hybrid_time: u64,
+            rows: Vec<RowChangeFfi>,
+        );
+        /// The tablet changed without rows on the stream; scan it again.
+        #[cxx_name = "OnReload"]
+        fn on_reload(self: &ApplySink, reason: String, min_hybrid_time: u64);
+        /// This peer was elected; re-read the Raft state now.
+        #[cxx_name = "OnLeadershipChange"]
+        fn on_leadership_change(self: &ApplySink);
+
+        /// `bytes` as a Rust vector, in one copy.
+        #[cxx_name = "CopyBytes"]
+        fn copy_bytes(bytes: &[u8]) -> Vec<u8>;
+
+        /// Receives the result of a sys-catalog write.
+        type WriteCompletion;
+        /// Called once per write, on a Raft apply or reactor thread; `status_code` 0 is success.
+        #[cxx_name = "CompleteWrite"]
+        fn complete_write(completion: Box<WriteCompletion>, status_code: i32, message: String);
+
         /// Registers the master's Rust-declared flags with gflags. Called before flag parsing.
         #[namespace = "yb::master_rs"]
         fn register_flags();
@@ -82,6 +133,8 @@ pub(crate) mod bridge {
         );
         #[cxx_name = "LoopbackWebPort"]
         fn loopback_web_port(self: &MasterHost) -> Result<u16>;
+        #[cxx_name = "SetApplySink"]
+        fn set_apply_sink(self: Pin<&mut MasterHost>, sink: Box<ApplySink>);
 
         #[cxx_name = "InstancePB"]
         fn instance_pb(self: &MasterInfoHandle) -> Vec<u8>;
@@ -102,6 +155,36 @@ pub(crate) mod bridge {
         #[cxx_name = "HandleOnHost"]
         fn handle_on_host(self: &MasterInfoHandle, method: &str, request: &[u8])
             -> Result<Vec<u8>>;
+        #[cxx_name = "SysCatalogIsOpen"]
+        fn sys_catalog_is_open(self: &MasterInfoHandle) -> bool;
+        #[cxx_name = "SysCatalogSafeTime"]
+        fn sys_catalog_safe_time(
+            self: &MasterInfoHandle,
+            min_time: u64,
+            timeout_ms: i64,
+        ) -> Result<u64>;
+        #[cxx_name = "ScanSysCatalog"]
+        fn scan_sys_catalog(
+            self: &MasterInfoHandle,
+            entry_type: i32,
+            read_time: u64,
+        ) -> Result<Vec<ScannedRow>>;
+        #[cxx_name = "WriteSysCatalogRows"]
+        fn write_sys_catalog_rows(
+            self: &MasterInfoHandle,
+            term: i64,
+            rows: &[RowChangeFfi],
+            completion: Box<WriteCompletion>,
+        );
+        #[cxx_name = "SysCatalogLeaderState"]
+        fn sys_catalog_leader_state(self: &MasterInfoHandle) -> RaftLeaderStateFfi;
+        #[cxx_name = "HeartbeatHostParts"]
+        fn heartbeat_host_parts(
+            self: &MasterInfoHandle,
+            encryption_info: &[u8],
+            send_universe_key_registry: bool,
+            auto_flags_config_version: i64,
+        ) -> Result<Vec<u8>>;
     }
 }
 
@@ -109,3 +192,7 @@ pub(crate) mod bridge {
 unsafe impl Send for bridge::MasterInfoHandle {}
 // SAFETY: as above.
 unsafe impl Sync for bridge::MasterInfoHandle {}
+
+fn copy_bytes(bytes: &[u8]) -> Vec<u8> {
+    bytes.to_vec()
+}

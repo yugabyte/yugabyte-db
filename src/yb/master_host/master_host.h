@@ -14,8 +14,9 @@
 // replicated state machines that run inside its Raft apply (snapshot coordinator, AutoFlags), but
 // no CatalogManager. Rust drives it through master/server/src/ffi.rs and serves the master RPCs.
 //
-// In layer 1 the host is a follower only: it never starts an election and steps down at once if it
-// wins one, because nothing in Rust can act as a leader yet.
+// The host leads only with --TEST_rust_master_allow_leadership: a Rust leader serves only the core
+// RPCs (src/rust/master/docs/leadership.md). Without the flag it never starts an election and steps
+// down at once if it wins one.
 
 #pragma once
 
@@ -70,8 +71,14 @@ class SysCatalogTable;
 namespace master_host {
 
 class MasterInfoHandle;
+class SysCatalogTap;
 // Defined in Rust (master/server/src/ffi.rs).
+struct ApplySink;
+struct RaftLeaderStateFfi;
+struct RowChangeFfi;
+struct ScannedRow;
 struct WebMasterList;
+struct WriteCompletion;
 
 class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHandle {
  public:
@@ -93,6 +100,8 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   // Blocks until the process is asked to terminate (SIGTERM, SIGINT).
   void WaitForTermination() const;
   void ShutdownHost();
+  // Where applied sys-catalog rows go. Must be called before StartHost().
+  void SetApplySink(rust::Box<ApplySink> sink);
   // Access for Rust handlers, which run on other threads while the main thread owns the host.
   // Must not outlive it.
   std::unique_ptr<MasterInfoHandle> InfoHandle();
@@ -110,6 +119,28 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   // WriteSysCatalogEntry): the serialized response to a serialized request. The caller checks
   // initialization where C++ does.
   rust::Vec<uint8_t> HandleOnHost(rust::Str method, rust::Slice<const uint8_t> request);
+
+  // The sys-catalog store (src/rust/master/sys-catalog). Failures throw.
+
+  // Whether the sys-catalog tablet is open: initialized and not in shell mode.
+  bool SysCatalogIsOpen() const;
+  // The tablet's safe time, waiting up to `timeout_ms` for it to reach `min_time`.
+  uint64_t SysCatalogSafeTime(uint64_t min_time, int64_t timeout_ms) const;
+  // The rows of one entry type as of `read_time`.
+  rust::Vec<ScannedRow> ScanSysCatalog(int32_t entry_type, uint64_t read_time) const;
+  // Submits one Raft write in `term`; `completion` gets the result once it is applied locally.
+  // Raft refuses it if the term has changed.
+  void WriteSysCatalogRows(
+      int64_t term, rust::Slice<const RowChangeFfi> rows,
+      rust::Box<WriteCompletion> completion) const;
+  RaftLeaderStateFfi SysCatalogLeaderState() const;
+  // The heartbeat response fields the host owns (L7): universe key registry when
+  // `send_universe_key_registry`, snapshots info, and the AutoFlags config when the tserver's
+  // version (`auto_flags_config_version`, -1 when absent) is older. `encryption_info` is the
+  // cluster config's, serialized; empty when it has none.
+  rust::Vec<uint8_t> HeartbeatHostParts(
+      rust::Slice<const uint8_t> encryption_info, bool send_universe_key_registry,
+      int64_t auto_flags_config_version) const;
   int32_t MasterServiceQueueLength() const;
   int32_t YsqlLeaseServiceQueueLength() const;
 
@@ -171,6 +202,7 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   Status GetMasterRegistration(ServerRegistrationPB* reg) const;
   Status GoIntoShellMode();
   void RegisterWebPages();
+  bool IsLeaderInList(const Result<std::vector<ServerEntryPB>>& masters) const;
   Result<std::vector<ServerEntryPB>> ListMastersForWeb() const;
   docdb::HistoryCutoff AllowedHistoryCutoff(tablet::RaftGroupMetadata* metadata);
   void RefreshHistoryRetentionPinLoop();
@@ -182,6 +214,8 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   std::unique_ptr<TabletPeerLookupImpl> tablet_peer_lookup_;
   std::unique_ptr<master::SysCatalogTable> sys_catalog_;
   std::unique_ptr<master::MasterSnapshotCoordinator> snapshot_coordinator_;
+  // Wraps snapshot_coordinator_ for the tablet.
+  std::unique_ptr<SysCatalogTap> tap_;
   std::unique_ptr<master::MasterAutoFlagsManager> auto_flags_manager_;
   // Holds the universe keys AddUniverseKeys sends to every master.
   std::unique_ptr<master::EncryptionManager> encryption_manager_;
@@ -227,6 +261,18 @@ class MasterInfoHandle {
   rust::Vec<uint8_t> HandleOnHost(rust::Str method, rust::Slice<const uint8_t> request) const {
     return host_.HandleOnHost(method, request);
   }
+  bool SysCatalogIsOpen() const { return host_.SysCatalogIsOpen(); }
+  uint64_t SysCatalogSafeTime(uint64_t min_time, int64_t timeout_ms) const {
+    return host_.SysCatalogSafeTime(min_time, timeout_ms);
+  }
+  rust::Vec<ScannedRow> ScanSysCatalog(int32_t entry_type, uint64_t read_time) const;
+  void WriteSysCatalogRows(
+      int64_t term, rust::Slice<const RowChangeFfi> rows,
+      rust::Box<WriteCompletion> completion) const;
+  RaftLeaderStateFfi SysCatalogLeaderState() const;
+  rust::Vec<uint8_t> HeartbeatHostParts(
+      rust::Slice<const uint8_t> encryption_info, bool send_universe_key_registry,
+      int64_t auto_flags_config_version) const;
 
  private:
   MasterHost& host_;

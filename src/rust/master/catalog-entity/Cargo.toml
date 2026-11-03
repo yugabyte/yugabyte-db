@@ -1,6 +1,6 @@
 [package]
 name = "master-catalog-entity"
-description = "Master sys-catalog entities. Layer 1: parsing and re-serializing rows by SysRowEntryType."
+description = "Master sys-catalog entities: parsing, re-serializing and the in-memory entity with hot fields."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,6 +9,7 @@ publish.workspace = true
 
 [dependencies]
 protobuf.workspace = true
+tracing.workspace = true
 yb-proto.workspace = true
 
 [lints]

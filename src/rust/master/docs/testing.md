@@ -29,7 +29,7 @@ re-serialize identically. That check is manual: the release binary is not part o
 ## Integration tests
 
 `src/yb/integration-tests/rust_master-itest.cc` runs the Rust master in a quorum of C++ masters
-(ExternalMiniCluster; skipped when `yb-master-rs` is not built):
+(ExternalMiniCluster, YSQL off; skipped when `yb-master-rs` is not built):
 
 ```bash
 ./yb_build.sh release --cxx-test rust_master-itest --gtest_filter RustMasterTest.FollowerKeepsSameCatalog
@@ -43,6 +43,10 @@ re-serialize identically. That check is manual: the release binary is not part o
 | `WebPages` | On the Rust follower's web port, the master list, version, leader-fetched JSON and HTML pages equal a C++ follower's (uptimes and the build-time footer aside); `/masters` bolds the Rust master; `is-leader` is 503; `/varz` and `/prometheus-metrics` come through the proxy; the registration advertises the Rust port. |
 | `WebServerHttps` | With the webserver TLS flags the Rust master serves HTTPS with HSTS, refuses plain HTTP, fetches leader pages from an HTTP leader, and advertises the configured interface. |
 | `TserverSimulator` | `master-tserver-sim` registers ten fake tservers with the leader of a quorum that has a Rust follower, and the leader lists them. |
+| `FollowerCatalogMatchesRandomWorkload` | The Rust follower's in-memory catalog (`MasterRustPeer.DumpCatalog`) equals the C++ leader's sys catalog row for row after seeded random YCQL DDL, a snapshot schedule and a PITR restore; the restore reloaded the catalog and the self-check never disagreed. The seed is logged. |
+| `RustLeaderServesCoreRpcs` | With `TEST_rust_master_allow_leadership`, the Rust master takes leadership; real tservers register and report to it; it serves table locations with leaders, `IsMasterLeaderServiceReady`, a cluster config change, and `NotSupported` for DDL. After failing back, the C++ leader reads the change, and every master's rows match. |
+| `WarmFailover` | Two Rust masters: the leader's location stream reaches the other, which, after a failover with every tserver stopped, serves non-stale locations and the tserver list. |
+| `LiveTserverListVersion` | Tservers echo the live-list version and the Rust leader answers "unchanged"; after a tserver stops, the others get the new list and keep heartbeating. |
 
 ## Tserver simulator and the C++ baseline
 
@@ -77,4 +81,8 @@ Registration takes about two heartbeat intervals at both sizes: the simulator sp
 heartbeats over one interval, and the master answers a new tserver's first heartbeat with a
 TryAgain that carries the universe UUID, so registration happens one interval later. These numbers measure the C++ master; layer 2
 runs the same workload against the Rust leader.
+
+The fake tservers echo the live tserver list version like real ones;
+`--tserver_sim_send_live_tservers_version=false` makes them act like tservers of an earlier
+release, which always get the full list.
 

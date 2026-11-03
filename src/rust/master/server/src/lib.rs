@@ -15,12 +15,17 @@
 
 mod ffi;
 mod host_info;
+mod store;
 mod web;
+mod wiring;
 
 use std::sync::Arc;
 use std::time::Duration;
 
+use master_catalog_state::Catalog;
+use master_leadership::Leadership;
 use master_rpc_handlers::{HandlerOptions, MasterInfo, MasterServiceHandler};
+use master_sys_catalog::SysCatalogStore;
 use yb_cpp_host::rpc::{register_service, CppRpcClient};
 use yb_flags::{yb_flag, FlagRef, FlagTag};
 use yb_host_api::rpc::RpcClient;
@@ -40,6 +45,7 @@ static LIST_RAFT_PEERS_CHECK_IS_LEADER: FlagRef<bool> =
 fn register_flags() {
     yb_flags::set_backend(Box::new(yb_cpp_host::flags::CppFlagBackend::default()));
     yb_flags::register(&[&RUST_MASTER_RUNTIME_THREADS]);
+    yb_flags::register(wiring::FLAGS);
 }
 
 fn run_master() -> i32 {
@@ -70,6 +76,36 @@ fn run() -> Result<(), String> {
     let info: Arc<dyn MasterInfo> =
         Arc::new(host_info::HostInfo::new(host.pin_mut().info_handle()));
     let rpc: Arc<dyn RpcClient> = Arc::new(CppRpcClient::new(host.pin_mut().server_handle()));
+
+    // The core, before the host opens the sys catalog: the tap needs its sink from the start.
+    let (apply_sender, apply_events) = master_sys_catalog::apply_channel();
+    let registry = Arc::new(master_task_runtime::TaskRegistry::default());
+    let gate = store::HostGate::open();
+    let leadership = Leadership::new(
+        Arc::new(store::HostLeaderState(
+            host.pin_mut().info_handle(),
+            gate.clone(),
+        )),
+        wiring::leadership_allowed,
+        registry,
+    );
+    host.pin_mut().set_apply_sink(Box::new(store::ApplySink {
+        sender: apply_sender.clone(),
+        leadership: leadership.clone(),
+    }));
+    let sys_catalog: Arc<dyn SysCatalogStore> =
+        Arc::new(store::HostStore(host.pin_mut().info_handle(), gate.clone()));
+    let core = wiring::Core::start(
+        runtime.handle(),
+        sys_catalog.clone(),
+        apply_events,
+        Catalog::new(apply_sender),
+        leadership,
+        vec![Arc::new(store::HostHeartbeatParts(
+            host.pin_mut().info_handle(),
+            gate.clone(),
+        ))],
+    );
     let options = HandlerOptions {
         master_rpc_timeout: || Duration::from_millis(MASTER_RPC_TIMEOUT_MS.get().max(0) as u64),
         list_raft_peers_check_is_leader: || LIST_RAFT_PEERS_CHECK_IS_LEADER.get(),
@@ -90,6 +126,7 @@ fn run() -> Result<(), String> {
             rpc.clone(),
             runtime.handle().clone(),
             options,
+            Some(core.leader.clone()),
         ));
         register_service(
             host.pin_mut().server_handle(),
@@ -118,6 +155,7 @@ fn run() -> Result<(), String> {
     );
 
     host.pin_mut().start().map_err(|e| e.what().to_string())?;
+    core.run(runtime.handle(), sys_catalog, info.clone(), rpc.clone());
     let loopback_port = host.loopback_web_port().map_err(|e| e.what().to_string())?;
     runtime.spawn(async move {
         if let Err(e) = web_listener.serve(axum::Router::new(), loopback_port).await {
@@ -129,5 +167,6 @@ fn run() -> Result<(), String> {
     tracing::info!("Rust master shutting down");
     host.pin_mut().shutdown();
     runtime.shutdown_timeout(Duration::from_secs(10));
+    gate.close();
     Ok(())
 }

@@ -109,6 +109,7 @@ struct Harness {
     runtime: tokio::runtime::Runtime,
     info: Arc<FakeInfo>,
     rpc: Arc<FakeRpcClient>,
+    leader: Option<Arc<LeaderServices>>,
 }
 
 impl Harness {
@@ -127,6 +128,7 @@ impl Harness {
                 .unwrap(),
             info: FakeInfo::new(),
             rpc: Arc::new(rpc),
+            leader: None,
         }
     }
 
@@ -134,6 +136,7 @@ impl Harness {
     fn call(&self, method: &str, request: Vec<u8>) -> FakeResponse {
         let (service, index, _) = find_method("yb.master.MasterService", method)
             .or_else(|| find_method("yb.master.MasterBackup", method))
+            .or_else(|| find_method("yb.master.MasterRustPeer", method))
             .unwrap();
         let handler = MasterServiceHandler::new(
             service,
@@ -144,6 +147,7 @@ impl Harness {
                 master_rpc_timeout: || Duration::from_secs(1),
                 list_raft_peers_check_is_leader: || false,
             },
+            self.leader.clone(),
         );
         let (call, outcome) = FakeInboundCall::new(index, request);
         handler.handle(call);
@@ -239,7 +243,7 @@ fn leader_only_methods_answer_not_the_leader() {
     assert_eq!(resp.error.code(), master_error_pb::Code::NOT_THE_LEADER);
     assert_eq!(
         resp.error.status.code(),
-        app_status_pb::ErrorCode::ILLEGAL_STATE
+        yb_proto::pb::wire_protocol::app_status_pb::ErrorCode::ILLEGAL_STATE
     );
     assert_eq!(resp.error.status.message(), "Not the leader");
 
@@ -358,4 +362,272 @@ fn list_masters_in_shell_mode() {
         ListMastersResponsePB::parse_from_bytes(&success(h.call("ListMasters", vec![]))).unwrap();
     assert_eq!(resp.masters.len(), 1);
     assert_eq!(resp.masters[0].role(), PeerRole::NON_PARTICIPANT);
+}
+
+mod leader_tests {
+    use std::sync::atomic::AtomicBool;
+
+    use master_catalog_state::{run_materializer, Catalog, CatalogWriter, WriterOptions};
+    use master_leadership::{FakeLeaderState, LeaderStatus, Leadership};
+    use master_sys_catalog::{FakeSysCatalog, RowChange};
+    use master_ts_manager::{TsManager, TsManagerOptions};
+    use protobuf::EnumOrUnknown;
+    use yb_proto::pb::catalog_entity_info::{
+        sys_namespace_entry_pb, sys_tables_entry_pb, sys_tablets_entry_pb, SysClusterConfigEntryPB,
+        SysNamespaceEntryPB, SysTablesEntryPB, SysTabletsEntryPB,
+    };
+    use yb_proto::pb::master_client::{
+        GetTableLocationsRequestPB, GetTableLocationsResponsePB, GetTabletLocationsRequestPB,
+        GetTabletLocationsResponsePB,
+    };
+    use yb_proto::pb::master_cluster::{
+        ChangeMasterClusterConfigRequestPB, ChangeMasterClusterConfigResponsePB,
+        GetMasterClusterConfigResponsePB, GetMasterRegistrationResponsePB,
+        ListTabletServersResponsePB,
+    };
+    use yb_proto::pb::master_heartbeat::{TSHeartbeatRequestPB, TSHeartbeatResponsePB};
+    use yb_proto::pb::master_types::{master_error_pb, SysRowEntryType, TSRegistrationPB};
+
+    use super::*;
+
+    fn upsert(entry_type: SysRowEntryType, id: &str, message: &impl Message) -> RowChange {
+        RowChange::Upsert {
+            entry_type,
+            id: id.as_bytes().to_vec(),
+            data: message.write_to_bytes().unwrap(),
+        }
+    }
+
+    fn with_leader(lead: bool) -> (Harness, Arc<FakeLeaderState>) {
+        let mut harness = Harness::new();
+        harness
+            .info
+            .role
+            .store(PeerRole::LEADER as i32, Ordering::SeqCst);
+        let source = FakeLeaderState::new();
+        let leader = harness.runtime.block_on(async {
+            let (fake, events) = FakeSysCatalog::new();
+            let mut config = SysClusterConfigEntryPB::new();
+            config.set_version(1);
+            config.set_cluster_uuid("cluster".into());
+            let mut ns = SysNamespaceEntryPB::new();
+            ns.set_name(b"ks".to_vec());
+            ns.set_state(sys_namespace_entry_pb::State::RUNNING);
+            let mut table = SysTablesEntryPB::new();
+            table.set_name(b"t".to_vec());
+            table.set_namespace_id(b"ns1".to_vec());
+            table.set_version(0);
+            table.schema = Some(Default::default()).into();
+            table.set_state(sys_tables_entry_pb::State::RUNNING);
+            let mut changes = vec![
+                upsert(SysRowEntryType::CLUSTER_CONFIG, "", &config),
+                upsert(SysRowEntryType::NAMESPACE, "ns1", &ns),
+                upsert(SysRowEntryType::TABLE, "table1", &table),
+            ];
+            for (id, start) in [("tablet-a", ""), ("tablet-b", "m")] {
+                let mut tablet = SysTabletsEntryPB::new();
+                tablet.set_table_id(b"table1".to_vec());
+                tablet.set_state(sys_tablets_entry_pb::State::RUNNING);
+                tablet
+                    .partition
+                    .mut_or_insert_default()
+                    .set_partition_key_start(start.as_bytes().to_vec());
+                let cstate = tablet.committed_consensus_state.mut_or_insert_default();
+                cstate.set_current_term(1);
+                cstate.set_leader_uuid("ts1".into());
+                let mut peer = RaftPeerPB::new();
+                peer.set_permanent_uuid(b"ts1".to_vec());
+                cstate.config.mut_or_insert_default().peers.push(peer);
+                changes.push(upsert(SysRowEntryType::TABLET, id, &tablet));
+            }
+            fake.apply(changes);
+            fake.set_term(7);
+            let catalog = Catalog::new(fake.sender().clone());
+            tokio::spawn(run_materializer(catalog.clone(), fake.clone(), events));
+            catalog.barrier().await;
+            let leadership = Leadership::new(source.clone(), || true, Arc::default());
+            if lead {
+                source.lead(7);
+                leadership.step();
+                let mut phases = leadership.subscribe();
+                while !matches!(
+                    *phases.borrow_and_update(),
+                    master_leadership::Phase::Ready { .. }
+                ) {
+                    phases.changed().await.unwrap();
+                }
+            }
+            let writer = CatalogWriter::start(
+                catalog.clone(),
+                fake.clone(),
+                leadership.clone(),
+                WriterOptions::default(),
+            );
+            Arc::new(LeaderServices {
+                catalog,
+                writer,
+                leadership,
+                ts_manager: TsManager::new(Arc::default(), TsManagerOptions::default()),
+                contributors: vec![],
+                follower_stream: Default::default(),
+                load_balancer_enabled: AtomicBool::new(true),
+                replication_factor: || 3,
+            })
+        });
+        harness.leader = Some(leader);
+        (harness, source)
+    }
+
+    #[test]
+    fn ready_leader_serves_core_rpcs() {
+        let (harness, _source) = with_leader(true);
+        let registration = GetMasterRegistrationResponsePB::parse_from_bytes(&success(
+            harness.call("GetMasterRegistration", vec![]),
+        ))
+        .unwrap();
+        assert_eq!(registration.role(), PeerRole::LEADER);
+
+        // A tserver registers through the leader.
+        let mut req = TSHeartbeatRequestPB::new();
+        let instance = req
+            .common
+            .mut_or_insert_default()
+            .ts_instance
+            .mut_or_insert_default();
+        instance.set_permanent_uuid(b"ts1".to_vec());
+        instance.set_instance_seqno(1);
+        req.registration = Some(TSRegistrationPB::new()).into();
+        let resp = TSHeartbeatResponsePB::parse_from_bytes(&success(
+            harness.call("TSHeartbeat", req.write_to_bytes().unwrap()),
+        ))
+        .unwrap();
+        assert!(resp.leader_master(), "{resp:?}");
+        assert!(resp.error.is_none());
+        assert_eq!(resp.tservers.len(), 1);
+
+        let servers = ListTabletServersResponsePB::parse_from_bytes(&success(
+            harness.call("ListTabletServers", vec![]),
+        ))
+        .unwrap();
+        assert_eq!(servers.servers.len(), 1);
+        assert!(servers.servers[0].alive());
+        assert_eq!(servers.master_uuid(), "self-uuid");
+
+        // Table locations by name, from the committed config until reports arrive.
+        let mut req = GetTableLocationsRequestPB::new();
+        let table = req.table.mut_or_insert_default();
+        table.set_table_name("t".into());
+        table
+            .namespace
+            .mut_or_insert_default()
+            .set_name("ks".into());
+        req.set_partition_key_start(b"n".to_vec());
+        let resp = GetTableLocationsResponsePB::parse_from_bytes(&success(
+            harness.call("GetTableLocations", req.write_to_bytes().unwrap()),
+        ))
+        .unwrap();
+        assert!(resp.error.is_none(), "{resp:?}");
+        assert_eq!(resp.tablet_locations.len(), 1);
+        assert_eq!(resp.tablet_locations[0].tablet_id(), b"tablet-b");
+        assert_eq!(
+            resp.tablet_locations[0].replicas[0].role(),
+            PeerRole::LEADER
+        );
+        assert_eq!(resp.tablet_locations[0].expected_live_replicas(), 3);
+
+        let mut req = GetTabletLocationsRequestPB::new();
+        req.tablet_ids = vec![b"tablet-a".to_vec(), b"nope".to_vec()];
+        let resp = GetTabletLocationsResponsePB::parse_from_bytes(&success(
+            harness.call("GetTabletLocations", req.write_to_bytes().unwrap()),
+        ))
+        .unwrap();
+        assert_eq!(resp.tablet_locations.len(), 1);
+        assert_eq!(resp.errors.len(), 1);
+
+        // Cluster config: a stale version is refused, the current one bumps it.
+        let config = GetMasterClusterConfigResponsePB::parse_from_bytes(&success(
+            harness.call("GetMasterClusterConfig", vec![]),
+        ))
+        .unwrap()
+        .cluster_config
+        .unwrap();
+        // C++ refuses a placement whose minimums exceed num_replicas.
+        let mut invalid = config.clone();
+        let live = invalid
+            .replication_info
+            .mut_or_insert_default()
+            .live_replicas
+            .mut_or_insert_default();
+        live.set_num_replicas(3);
+        for zone in ["z1", "z2"] {
+            let mut block = yb_proto::pb::common_net::PlacementBlockPB::new();
+            let ci = block.cloud_info.mut_or_insert_default();
+            ci.set_placement_cloud("aws".into());
+            ci.set_placement_region("r1".into());
+            ci.set_placement_zone(zone.into());
+            block.set_min_num_replicas(2);
+            live.placement_blocks.push(block);
+        }
+        let mut req = ChangeMasterClusterConfigRequestPB::new();
+        req.cluster_config = Some(invalid).into();
+        let resp = ChangeMasterClusterConfigResponsePB::parse_from_bytes(&success(
+            harness.call("ChangeMasterClusterConfig", req.write_to_bytes().unwrap()),
+        ))
+        .unwrap();
+        assert_eq!(
+            resp.error.code(),
+            master_error_pb::Code::INVALID_CLUSTER_CONFIG
+        );
+
+        let mut stale = config.clone();
+        stale.set_version(0);
+        let mut req = ChangeMasterClusterConfigRequestPB::new();
+        req.cluster_config = Some(stale).into();
+        let resp = ChangeMasterClusterConfigResponsePB::parse_from_bytes(&success(
+            harness.call("ChangeMasterClusterConfig", req.write_to_bytes().unwrap()),
+        ))
+        .unwrap();
+        assert_eq!(
+            resp.error.code(),
+            master_error_pb::Code::CONFIG_VERSION_MISMATCH
+        );
+        req.cluster_config = Some(config).into();
+        let resp = ChangeMasterClusterConfigResponsePB::parse_from_bytes(&success(
+            harness.call("ChangeMasterClusterConfig", req.write_to_bytes().unwrap()),
+        ))
+        .unwrap();
+        assert!(resp.error.is_none(), "{resp:?}");
+        let config = GetMasterClusterConfigResponsePB::parse_from_bytes(&success(
+            harness.call("GetMasterClusterConfig", vec![]),
+        ))
+        .unwrap();
+        assert_eq!(config.cluster_config.version(), 2);
+
+        // A leader method of a later layer.
+        let resp =
+            CreateTableResponsePB::parse_from_bytes(&success(harness.call("CreateTable", vec![])))
+                .unwrap();
+        assert_eq!(
+            resp.error.status.code().value(),
+            StatusCode::NotSupported as i32
+        );
+    }
+
+    #[test]
+    fn not_ready_leader_answers_not_the_leader() {
+        let (harness, source) = with_leader(false);
+        source.set(PeerRole::LEADER, 7, LeaderStatus::NoMajorityReplicatedLease);
+        let registration = GetMasterRegistrationResponsePB::parse_from_bytes(&success(
+            harness.call("GetMasterRegistration", vec![]),
+        ))
+        .unwrap();
+        assert_eq!(registration.role(), PeerRole::FOLLOWER);
+        let resp = ListTabletServersResponsePB::parse_from_bytes(&success(
+            harness.call("ListTabletServers", vec![]),
+        ))
+        .unwrap();
+        assert_eq!(resp.error.code(), master_error_pb::Code::NOT_THE_LEADER);
+        assert_eq!(resp.master_uuid(), "self-uuid");
+        let _ = EnumOrUnknown::new(PeerRole::LEADER);
+    }
 }

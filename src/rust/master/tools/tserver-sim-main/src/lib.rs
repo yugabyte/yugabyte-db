@@ -95,6 +95,15 @@ yb_flag!(
     []
 );
 
+yb_flag!(
+    /// Old-tserver mode.
+    SEND_LIVE_TSERVERS_VERSION: bool = true,
+    "tserver_sim_send_live_tservers_version",
+    "Whether the fake tservers echo the live tserver list version. False acts like tservers of \
+     an earlier release, which always get the whole list.",
+    []
+);
+
 fn register_flags() {
     yb_flags::set_backend(Box::new(yb_cpp_host::flags::CppFlagBackend::default()));
     yb_flags::register(&[
@@ -108,6 +117,7 @@ fn register_flags() {
         &TABLETS_PER_TABLE,
         &RPC_TIMEOUT_MS,
         &OUTPUT_FILE,
+        &SEND_LIVE_TSERVERS_VERSION,
     ]);
 }
 
@@ -182,7 +192,14 @@ fn run() -> Result<(), String> {
     let cluster = Arc::new(SimCluster::new(
         ips.iter()
             .enumerate()
-            .map(|(i, ip)| SimTserver::new(i, ip.clone(), port, instance_seqno))
+            .map(|(i, ip)| {
+                let tserver = SimTserver::new(i, ip.clone(), port, instance_seqno);
+                if SEND_LIVE_TSERVERS_VERSION.get() {
+                    tserver
+                } else {
+                    tserver.without_live_tservers_version()
+                }
+            })
             .collect(),
     ));
     for name in [

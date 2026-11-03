@@ -22,8 +22,14 @@ members = [
     "common/yb-proto",
     "common/yb-web",
     "master/catalog-entity",
+    "master/catalog-state",
+    "master/leadership",
     "master/server",
     "master/rpc-handlers",
+    "master/sys-catalog",
+    "master/tablet-locations",
+    "master/task-runtime",
+    "master/ts-manager",
     "master/tools/conformance",
     "master/tools/tserver-sim",
     "master/tools/tserver-sim-main",
@@ -41,17 +47,22 @@ publish = false
 # cxx and cxx-gen must stay on the same patch version: cxx-gen writes the C++ half of the bridges
 # that the cxx runtime on the Rust side has to match.
 [workspace.dependencies]
+arc-swap = "=1.7.1"
 axum = { version = "=0.8.9", default-features = false, features = ["http1", "tokio"] }
 cxx = "=1.0.202"
 cxx-gen = "=0.7.202"
 hyper-util = { version = "=0.1.20", features = ["client-legacy", "http1", "server-auto", "service", "tokio"] }
+imbl = "=7.0.2"
 openssl = "=0.10.81"
 proc-macro2 = "1"
+proptest = "=1.6.0"
 protobuf = "=3.7.2"
 protobuf-codegen = "=3.7.2"
 protobuf-parse = "=3.7.2"
+rand = "=0.9.2"
 tokio = { version = "=1.53.2", features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
 tokio-openssl = "=0.6.5"
+tokio-util = { version = "=0.7.16", features = ["rt"] }
 tracing = "=0.1.41"
 tracing-subscriber = { version = "=0.3.20", default-features = false, features = ["std", "registry"] }
 
@@ -59,7 +70,13 @@ yb-cpp-host = { path = "common/yb-cpp-host" }
 yb-flags = { path = "common/yb-flags" }
 yb-host-api = { path = "common/yb-host-api" }
 master-catalog-entity = { path = "master/catalog-entity" }
+master-catalog-state = { path = "master/catalog-state" }
+master-leadership = { path = "master/leadership" }
 master-rpc-handlers = { path = "master/rpc-handlers" }
+master-sys-catalog = { path = "master/sys-catalog" }
+master-tablet-locations = { path = "master/tablet-locations" }
+master-task-runtime = { path = "master/task-runtime" }
+master-ts-manager = { path = "master/ts-manager" }
 master-tserver-sim = { path = "master/tools/tserver-sim" }
 yb-proto = { path = "common/yb-proto" }
 yb-web = { path = "common/yb-web" }

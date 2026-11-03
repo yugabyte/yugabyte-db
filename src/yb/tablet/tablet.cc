@@ -2291,6 +2291,7 @@ Status Tablet::ApplyKeyValueRowOperations(
         WARN_NOT_OK(snapshot_coordinator_->ApplyWritePair(pair.key(), pair.value()),
                     "ApplyWritePair failed");
       }
+      snapshot_coordinator_->AppliedWriteBatch(frontiers.Largest().op_id(), write_hybrid_time);
     }
   }
 

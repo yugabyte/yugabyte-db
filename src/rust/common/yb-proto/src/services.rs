@@ -72,8 +72,16 @@ mod tests {
             .find(|s| s.proto_name == "yb.master.MasterBackup")
             .unwrap();
         assert_eq!(backup.wire_name, "yb.master.MasterBackup");
+        // Only the Rust master serves it, so it has a name of its own.
+        let rust_peer = SERVICES
+            .iter()
+            .find(|s| s.proto_name == "yb.master.MasterRustPeer")
+            .unwrap();
+        assert_eq!(rust_peer.wire_name, "yb.master.MasterRustPeer");
         for s in SERVICES.iter().filter(|s| {
-            s.proto_name.starts_with("yb.master.") && s.proto_name != "yb.master.MasterBackup"
+            s.proto_name.starts_with("yb.master.")
+                && s.proto_name != "yb.master.MasterBackup"
+                && s.proto_name != "yb.master.MasterRustPeer"
         }) {
             assert_eq!(s.wire_name, "yb.master.MasterService", "{}", s.proto_name);
         }

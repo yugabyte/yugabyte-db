@@ -80,6 +80,7 @@ macro_rules! numeric_flag_value {
 
 numeric_flag_value!(i32, "int32");
 numeric_flag_value!(i64, "int64");
+numeric_flag_value!(u32, "uint32");
 numeric_flag_value!(u64, "uint64");
 numeric_flag_value!(f64, "double");
 

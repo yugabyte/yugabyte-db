@@ -67,13 +67,15 @@ pub enum StatusCode {
     TryAgain = 25,
     /// `Status::kBusy`.
     Busy = 26,
+    /// `Status::kDeleted`.
+    Deleted = 35,
 }
 
 impl StatusCode {
     /// Converts a C++ status code; unknown values become `InternalError`.
     pub fn from_i32(code: i32) -> StatusCode {
         use StatusCode::*;
-        const ALL: [StatusCode; 24] = [
+        const ALL: [StatusCode; 25] = [
             NotFound,
             Corruption,
             NotSupported,
@@ -98,6 +100,7 @@ impl StatusCode {
             LeaderHasNoLease,
             TryAgain,
             Busy,
+            Deleted,
         ];
         ALL.into_iter()
             .find(|c| *c as i32 == code)

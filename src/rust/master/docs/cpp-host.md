@@ -28,7 +28,9 @@ master and so must be the same code as on a C++ peer:
 
 - `SysCatalogTable`, through `SysCatalogContext` (the interface the C++ `Master` implements too).
 - `MasterSnapshotCoordinator`, with a context whose `LeaderTerm()` is always -1, so only the
-  apply-time paths run: `Load`, `ApplyWritePair`, and the `*Replicated` hooks.
+  apply-time paths run: `Load`, `ApplyWritePair`, and the `*Replicated` hooks. The tablet sees it
+  through `SysCatalogTap`, which forwards every call and hands applied rows to Rust
+  ([sys-catalog.md](sys-catalog.md)).
 - PITR restores of the sys catalog through `RestoreSysCatalogOnApply`
   (`src/yb/master/sys_catalog_restore.cc`), shared with `CatalogManager`.
 - `MasterAutoFlagsManager` for `auto_flags_config` and AutoFlags ops.
@@ -50,16 +52,29 @@ The master RPCs every C++ master serves from state the host has go to `MasterHos
 `EncryptionManager` of its own), `DumpSysCatalogEntries`, and `WriteSysCatalogEntry`, which fails as
 on a C++ master outside emergency repair mode.
 
-**Never leading.** The host turns off `enable_leader_failure_detection`, so it never starts an
-election. If an explicit leader transfer elects it, the state-change callback steps it down at
-once, retrying while the step-down is refused, and `GetMasterRegistration` reports FOLLOWER
-meanwhile, as a C++ leader that is not ready does.
+For the Rust catalog the host offers scans at a read time, the tablet's safe time, asynchronous
+Raft writes in a term (`WriteSysCatalogRows`, the `SysCatalogTable::SyncWrite` request without
+the wait), the Raft leader state, and the heartbeat fields its C++ objects own
+(`HeartbeatHostParts`: universe key registry, snapshots info, AutoFlags config). On a leader it
+also serves `GetAutoFlagsConfig` and `ValidateAutoFlagsConfig` through `HandleOnHost`.
+
+**Leading.** Only with `--TEST_rust_master_allow_leadership`
+([leadership.md](leadership.md)): failure detection stays on and an election only nudges the
+Rust leadership loop. Without the flag the host turns off `enable_leader_failure_detection`, so it
+never starts an election; if an explicit leader transfer elects it, the state-change callback
+steps it down at once, retrying while the step-down is refused, and `GetMasterRegistration`
+reports FOLLOWER meanwhile, as a C++ leader that is not ready does.
+
+A Rust leader leaves these C++ leader duties undone, so leading stays test-only: snapshot
+schedules do not take snapshots and restores are not served (the coordinator's `LeaderTerm()` is
+-1), AutoFlags are not promoted, a removed master is not told (`InformRemovedMaster`), and the
+YSQL history retention pin is not published.
 
 ## Bridges
 
 | Rust file | C++ side | Purpose |
 |---|---|---|
-| `master/server/src/ffi.rs` | `master_host.h`, `master_host_main.cc` | Entry points, `MasterHost` control, `MasterInfoHandle` for handlers |
+| `master/server/src/ffi.rs` | `master_host.h`, `master_host_main.cc`, `sys_catalog_tap.h` | Entry points, `MasterHost` control, `MasterInfoHandle` for handlers and the store, the apply sink and write completions |
 
 Handlers run on other threads while the main thread owns the host, so they get a
 `MasterInfoHandle`, whose methods touch only state the host guards, rather than the host itself.

@@ -260,3 +260,33 @@ async fn workload_runs_to_a_report() {
         "{json}"
     );
 }
+
+#[test]
+fn live_tservers_version_is_echoed_and_unchanged_keeps_the_list() {
+    use yb_proto::pb::master_heartbeat::{LiveTServersVersionPB, TSInformationPB};
+    let mut ts = tserver(0);
+    let (_, sent) = ts.heartbeat_request();
+    let mut resp = TSHeartbeatResponsePB::new();
+    resp.tservers = vec![TSInformationPB::new(), TSInformationPB::new()];
+    let mut version = LiveTServersVersionPB::new();
+    version.set_term(2);
+    version.set_counter(7);
+    resp.live_tservers_version = Some(version.clone()).into();
+    ts.handle_heartbeat_response(&sent, &resp);
+    assert_eq!(ts.live_tservers(), 2);
+
+    let (req, sent) = ts.heartbeat_request();
+    assert_eq!(req.live_tservers_version.as_ref(), Some(&version));
+    let mut unchanged = TSHeartbeatResponsePB::new();
+    unchanged.set_live_tservers_unchanged(true);
+    unchanged.live_tservers_version = Some(version).into();
+    ts.handle_heartbeat_response(&sent, &unchanged);
+    assert_eq!(ts.live_tservers(), 2);
+
+    // An older tserver never sends one.
+    let mut old = tserver(1).without_live_tservers_version();
+    let (_, sent) = old.heartbeat_request();
+    old.handle_heartbeat_response(&sent, &resp);
+    let (req, _) = old.heartbeat_request();
+    assert!(req.live_tservers_version.is_none());
+}

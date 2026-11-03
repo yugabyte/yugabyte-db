@@ -265,6 +265,17 @@ message TSHeartbeatRequestPB {
   // Per-database oldest read HybridTime pinned by live PG transactions on this tserver.
   // map[db_oid] -> earliest local live transaction registered for that db.
   map<uint32, YsqlDbOldestPinnedReadTime> ts_ysql_db_oldest_pinned_read_times = 24;
+
+  // The version of the live tserver list this tserver holds, from the last response that carried
+  // one. Lets the master answer live_tservers_unchanged instead of the list.
+  optional LiveTServersVersionPB live_tservers_version = 25;
+}
+
+// Identifies one live tserver list sent by a master leader. The term makes a version from an earlier
+// leader never match.
+message LiveTServersVersionPB {
+  optional int64 term = 1;
+  optional uint64 counter = 2;
 }
 
 // Load levels are defined by the admission thresholds in master_tablet_service: BUSY means new
@@ -394,6 +405,13 @@ message TSHeartbeatResponsePB {
   // If present, this heartbeat response grants the TServer a xCluster-guarded information lease
   // of this duration from when the TServer sent the heartbeat request.
   optional uint32 xcluster_guarded_lease_duration_ms = 36;
+
+  // The version of the list in `tservers`. Set only by a master that honors
+  // TSHeartbeatRequestPB.live_tservers_version.
+  optional LiveTServersVersionPB live_tservers_version = 38;
+  // The tserver's list, at the version it sent, is current: `tservers` is empty and must not
+  // replace it.
+  optional bool live_tservers_unchanged = 39;
 }
 
 service MasterHeartbeat {

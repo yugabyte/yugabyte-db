@@ -10,22 +10,28 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-//! Master RPC handlers.
+//! Master RPC handlers. Responses mirror the C++ handlers in src/yb/master, field for field.
 //!
-//! Layer 1's master is a follower that never leads. It answers what a C++ follower answers:
-//! `GetMasterRegistration`, `ListMasters`, `ListMasterRaftPeers`, `FlushSysCatalog` and
-//! `CompactSysCatalog` are served here; [`HOST_METHODS`] are served by the C++ host with the C++
-//! master's code; `TSHeartbeat` gets the follower reply (the master Raft config when the
-//! tserver's is older); every other method gets `NOT_THE_LEADER`, which makes clients rerun
-//! leader discovery. Responses mirror the C++ handlers in src/yb/master, field for field.
+//! On every master: `GetMasterRegistration`, `ListMasters`, `ListMasterRaftPeers`,
+//! `FlushSysCatalog`, `CompactSysCatalog`, the load balancer switch, and [`HOST_METHODS`], which
+//! the C++ host serves with the C++ master's code. `TSHeartbeat` returns the master Raft config
+//! when the tserver's is older.
+//!
+//! On a ready Rust leader (`TEST_rust_master_allow_leadership`), the core methods in
+//! `MasterServiceHandler::leader_call` are served from the catalog; other leader methods answer `NotSupported`
+//! naming the workstream that serves them. Elsewhere every leader method gets `NOT_THE_LEADER`,
+//! which makes clients rerun leader discovery.
 //!
 //! Not served yet, though C++ serves them on every master: `DumpState` (yb-admin
 //! dump_masters_state), and the test-only `TestRetry` and `AccessYsqlBackendsManagerTestRegister`.
 
+pub mod leader;
 mod list_masters;
 
+pub use leader::LeaderServices;
 pub use list_masters::list_masters_response;
 
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -34,15 +40,29 @@ use yb_host_api::rpc::{InboundCall, RpcClient, RpcHandler};
 use yb_host_api::{Status, StatusCode};
 use yb_proto::pb::common_types::PeerRole;
 use yb_proto::pb::consensus_metadata::ConsensusStatePB;
+use yb_proto::pb::master_client::{
+    GetTableLocationsRequestPB, GetTableLocationsResponsePB, GetTabletLocationsRequestPB,
+    GetTabletLocationsResponsePB, GetTransactionStatusTabletsRequestPB,
+    GetTransactionStatusTabletsResponsePB,
+};
 use yb_proto::pb::master_cluster::{
-    GetMasterRegistrationResponsePB, ListMasterRaftPeersResponsePB,
+    ChangeLoadBalancerStateRequestPB, ChangeLoadBalancerStateResponsePB,
+    ChangeMasterClusterConfigRequestPB, ChangeMasterClusterConfigResponsePB,
+    GetLoadBalancerStateResponsePB, GetMasterClusterConfigRequestPB,
+    GetMasterClusterConfigResponsePB, GetMasterRegistrationResponsePB,
+    GetMasterXClusterConfigRequestPB, GetMasterXClusterConfigResponsePB,
+    IsMasterLeaderReadyRequestPB, IsMasterLeaderReadyResponsePB, ListLiveTabletServersRequestPB,
+    ListLiveTabletServersResponsePB, ListMasterRaftPeersResponsePB, ListTabletServersRequestPB,
+    ListTabletServersResponsePB, RemoveTabletServerRequestPB, RemoveTabletServerResponsePB,
+    SetPreferredZonesRequestPB, SetPreferredZonesResponsePB,
 };
 use yb_proto::pb::master_heartbeat::{TSHeartbeatRequestPB, TSHeartbeatResponsePB};
-use yb_proto::pb::master_types::{master_error_pb, MasterErrorPB};
-use yb_proto::pb::wire_protocol::{
-    app_status_pb, AppStatusPB, NodeInstancePB, ServerRegistrationPB,
+use yb_proto::pb::master_rust_peer::{
+    dump_catalog_response_pb, DumpCatalogResponsePB, PushLocationsRequestPB,
 };
-use yb_proto::ServiceDesc;
+use yb_proto::pb::master_types::{master_error_pb, MasterErrorPB};
+use yb_proto::pb::wire_protocol::{NodeInstancePB, ServerRegistrationPB};
+use yb_proto::{MethodDesc, ServiceDesc};
 
 /// What the handlers need from the master's host.
 pub trait MasterInfo: Send + Sync + 'static {
@@ -86,16 +106,19 @@ struct Shared {
     rpc: Arc<dyn RpcClient>,
     runtime: tokio::runtime::Handle,
     options: HandlerOptions,
+    leader: Option<Arc<LeaderServices>>,
 }
 
 impl MasterServiceHandler {
     /// Creates a handler for `service`. Blocking and asynchronous work runs on `runtime`.
+    /// `leader` serves the leader methods; without it every leader method is `NOT_THE_LEADER`.
     pub fn new(
         service: &'static ServiceDesc,
         info: Arc<dyn MasterInfo>,
         rpc: Arc<dyn RpcClient>,
         runtime: tokio::runtime::Handle,
         options: HandlerOptions,
+        leader: Option<Arc<LeaderServices>>,
     ) -> MasterServiceHandler {
         MasterServiceHandler {
             service,
@@ -104,6 +127,7 @@ impl MasterServiceHandler {
                 rpc,
                 runtime,
                 options,
+                leader,
             }),
         }
     }
@@ -165,6 +189,15 @@ impl RpcHandler for MasterServiceHandler {
                         Err(status) => call.respond_error(status),
                     }
                 });
+            }
+            "ChangeLoadBalancerState" | "GetLoadBalancerState" if shared.leader.is_some() => {
+                shared.load_balancer_state(call, method.name == "ChangeLoadBalancerState");
+            }
+            "PushLocations" if shared.leader.is_some() => shared.push_locations(call),
+            "DumpCatalog" if shared.leader.is_some() => shared.dump_catalog(call),
+            _ if shared.leader.is_some() => {
+                let runtime = shared.runtime.clone();
+                runtime.spawn(async move { shared.leader_call(call, method).await });
             }
             _ => {
                 let error = shared.not_the_leader_error();
@@ -249,10 +282,10 @@ impl Shared {
                 .into()
             }
         }
-        // A leader that is not ready reports FOLLOWER so clients do not lock onto it. This master
-        // is never ready to lead.
+        // A leader that is not ready reports FOLLOWER so clients do not lock onto it.
+        let ready = self.leader.as_ref().is_some_and(|l| l.ready().is_ok());
         let role = match self.info.raft_role() {
-            PeerRole::LEADER => PeerRole::FOLLOWER,
+            PeerRole::LEADER if !ready => PeerRole::FOLLOWER,
             role => role,
         };
         resp.set_role(role);
@@ -316,9 +349,305 @@ impl Shared {
             ));
             return;
         }
-        resp.set_leader_master(false);
-        resp.error = Some(self.not_the_leader_error()).into();
+        let Some(leader) = self.leader.clone() else {
+            resp.set_leader_master(false);
+            resp.error = Some(self.not_the_leader_error()).into();
+            return respond(call, &resp);
+        };
+        let (token, snapshot) = match self.leader_ready(&leader) {
+            Ok(ready) => ready,
+            Err(error) => {
+                resp.set_leader_master(false);
+                resp.error = Some(error).into();
+                return respond(call, &resp);
+            }
+        };
+        let master_config = resp.master_config.take();
+        let instance = self.info.instance();
+        self.runtime.clone().spawn(async move {
+            let ctx = master_ts_manager::HeartbeatContext {
+                token,
+                writer: &leader.writer,
+                snapshot,
+                contributors: &leader.contributors,
+                master_instance: instance,
+                time_to_deadline: call.time_to_deadline(),
+            };
+            match leader.ts_manager.heartbeat(ctx, &req).await {
+                Ok(mut resp) => {
+                    resp.master_config = master_config.into();
+                    // The leadership may have moved while the report was processed.
+                    if let Err(status) = leader.leadership.check(&token) {
+                        resp.set_leader_master(false);
+                        resp.error = Some(master_error_from(
+                            master_error_pb::Code::NOT_THE_LEADER,
+                            &status,
+                        ))
+                        .into();
+                    }
+                    respond(call, &resp);
+                }
+                Err(status) => call.respond_error(status),
+            }
+        });
+    }
+
+    /// The readiness gate on a master with leader services: `ScopedLeaderSharedLock`.
+    fn leader_ready(
+        &self,
+        leader: &LeaderServices,
+    ) -> Result<
+        (
+            master_leadership::LeaderToken,
+            Arc<master_catalog_state::CatalogSnapshot>,
+        ),
+        MasterErrorPB,
+    > {
+        if let Some(error) = self.initialization_error() {
+            return Err(error);
+        }
+        if self.info.is_shell_mode() {
+            return Err(self.not_the_leader_error());
+        }
+        leader.ready()
+    }
+
+    /// `ChangeLoadBalancerState` and `GetLoadBalancerState`: in memory on every master.
+    fn load_balancer_state(&self, call: Box<dyn InboundCall>, change: bool) {
+        let leader = self.leader.as_ref().expect("leader services");
+        if change {
+            match ChangeLoadBalancerStateRequestPB::parse_from_bytes(call.request()) {
+                Ok(req) => {
+                    if req.has_is_enabled() {
+                        leader
+                            .load_balancer_enabled
+                            .store(req.is_enabled(), Ordering::Relaxed);
+                    }
+                    respond(call, &ChangeLoadBalancerStateResponsePB::new());
+                }
+                Err(e) => {
+                    call.respond_error(Status::new(StatusCode::InvalidArgument, e.to_string()))
+                }
+            }
+        } else {
+            let mut resp = GetLoadBalancerStateResponsePB::new();
+            resp.set_is_enabled(leader.load_balancer_enabled.load(Ordering::Relaxed));
+            respond(call, &resp);
+        }
+    }
+
+    /// `MasterRustPeer.PushLocations`, on a follower.
+    fn push_locations(&self, call: Box<dyn InboundCall>) {
+        let leader = self.leader.as_ref().expect("leader services");
+        match PushLocationsRequestPB::parse_from_bytes(call.request()) {
+            Ok(req) => {
+                let raft = leader.leadership.raft_state();
+                let leading = raft.role == PeerRole::LEADER
+                    || leader.leadership.phase() != master_leadership::Phase::Follower;
+                match master_ts_manager::apply_push(
+                    &leader.ts_manager,
+                    &leader.follower_stream,
+                    &req,
+                    leading,
+                    raft.term,
+                ) {
+                    Ok(resp) => respond(call, &resp),
+                    Err(status) => call.respond_error(status),
+                }
+            }
+            Err(e) => call.respond_error(Status::new(StatusCode::InvalidArgument, e.to_string())),
+        }
+    }
+
+    /// `MasterRustPeer.DumpCatalog`: the in-memory catalog, for tests.
+    fn dump_catalog(&self, call: Box<dyn InboundCall>) {
+        let leader = self.leader.as_ref().expect("leader services");
+        let snapshot = leader.catalog.snapshot();
+        let mut resp = DumpCatalogResponsePB::new();
+        if !snapshot.loaded {
+            resp.error = Some(master_error_from(
+                master_error_pb::Code::CATALOG_MANAGER_NOT_INITIALIZED,
+                &master_catalog_state::not_loaded_status(),
+            ))
+            .into();
+            return respond(call, &resp);
+        }
+        for (entry_type, id, data) in snapshot.rows() {
+            let mut row = dump_catalog_response_pb::Row::new();
+            row.entry_type = Some(protobuf::EnumOrUnknown::from_i32(entry_type));
+            row.set_id(id.to_vec());
+            row.set_data(data.to_vec());
+            resp.rows.push(row);
+        }
+        resp.set_as_of(snapshot.as_of.0);
+        resp.set_generation(snapshot.generation);
+        let ts_manager = &leader.ts_manager;
+        let locations = ts_manager.locations.all();
+        resp.set_num_tablet_locations(locations.len() as u64);
+        resp.set_num_tablet_replicas(locations.iter().map(|(_, r)| r.replicas.len() as u64).sum());
+        resp.set_num_live_tservers(ts_manager.live().len() as u64);
+        resp.set_num_tservers(ts_manager.all().len() as u64);
+        resp.set_live_tservers_unchanged_responses(
+            ts_manager.unchanged_responses.load(Ordering::Relaxed),
+        );
+        resp.set_self_check_mismatches(
+            leader
+                .catalog
+                .stats
+                .self_check_mismatches
+                .load(Ordering::Relaxed),
+        );
         respond(call, &resp);
+    }
+
+    /// A leader method on a master with leader services.
+    async fn leader_call(self: Arc<Self>, call: Box<dyn InboundCall>, method: &'static MethodDesc) {
+        let leader = self.leader.clone().expect("leader services");
+        let (token, snapshot) = match self.leader_ready(&leader) {
+            Ok(ready) => ready,
+            Err(error) => {
+                if method.name == "ListTabletServers" {
+                    // C++ sets master_uuid before the leader check.
+                    let mut resp = ListTabletServersResponsePB::new();
+                    resp.set_master_uuid(
+                        String::from_utf8_lossy(self.info.instance().permanent_uuid()).into(),
+                    );
+                    resp.error = Some(error).into();
+                    return respond(call, &resp);
+                }
+                return respond_or_fail(call, method, error);
+            }
+        };
+        macro_rules! serve {
+            ($req_ty:ty, $resp_ty:ty, |$req:ident, $resp:ident| $body:expr) => {{
+                match <$req_ty>::parse_from_bytes(call.request()) {
+                    Err(e) => {
+                        call.respond_error(Status::new(StatusCode::InvalidArgument, e.to_string()))
+                    }
+                    Ok($req) => {
+                        let mut $resp = <$resp_ty>::new();
+                        let result: Result<(), Status> = $body;
+                        if let Err(status) = result {
+                            if $resp.error.is_none() {
+                                $resp.error = Some(master_error_from(
+                                    master_error_pb::Code::UNKNOWN_ERROR,
+                                    &status,
+                                ))
+                                .into();
+                            }
+                        }
+                        respond(call, &$resp);
+                    }
+                }
+            }};
+        }
+        match method.name {
+            "ListTabletServers" => serve!(
+                ListTabletServersRequestPB,
+                ListTabletServersResponsePB,
+                |req, resp| {
+                    resp.set_master_uuid(
+                        String::from_utf8_lossy(self.info.instance().permanent_uuid()).into(),
+                    );
+                    leader.list_tablet_servers(&snapshot, &req, &mut resp)
+                }
+            ),
+            "ListLiveTabletServers" => serve!(
+                ListLiveTabletServersRequestPB,
+                ListLiveTabletServersResponsePB,
+                |_req, resp| { leader.list_live_tablet_servers(&snapshot, &mut resp) }
+            ),
+            "RemoveTabletServer" => serve!(
+                RemoveTabletServerRequestPB,
+                RemoveTabletServerResponsePB,
+                |req, resp| {
+                    leader
+                        .remove_tablet_server(&token, &snapshot, &req, &mut resp)
+                        .await
+                }
+            ),
+            "IsMasterLeaderServiceReady" => serve!(
+                IsMasterLeaderReadyRequestPB,
+                IsMasterLeaderReadyResponsePB,
+                |_req, _resp| Ok(())
+            ),
+            "GetMasterClusterConfig" => serve!(
+                GetMasterClusterConfigRequestPB,
+                GetMasterClusterConfigResponsePB,
+                |_req, resp| { leader.get_cluster_config(&snapshot, &mut resp) }
+            ),
+            "GetMasterXClusterConfig" => serve!(
+                GetMasterXClusterConfigRequestPB,
+                GetMasterXClusterConfigResponsePB,
+                |_req, resp| { leader.get_xcluster_config(&snapshot, &mut resp) }
+            ),
+            "ChangeMasterClusterConfig" => serve!(
+                ChangeMasterClusterConfigRequestPB,
+                ChangeMasterClusterConfigResponsePB,
+                |req, resp| { leader.change_cluster_config(&token, &req, &mut resp).await }
+            ),
+            "SetPreferredZones" => serve!(
+                SetPreferredZonesRequestPB,
+                SetPreferredZonesResponsePB,
+                |req, resp| { leader.set_preferred_zones(&token, &req, &mut resp).await }
+            ),
+            "GetTabletLocations" => serve!(
+                GetTabletLocationsRequestPB,
+                GetTabletLocationsResponsePB,
+                |req, resp| {
+                    leader.get_tablet_locations(&snapshot, &req, &mut resp);
+                    Ok(())
+                }
+            ),
+            "GetTableLocations" => serve!(
+                GetTableLocationsRequestPB,
+                GetTableLocationsResponsePB,
+                |req, resp| { leader.get_table_locations(&snapshot, &req, &mut resp) }
+            ),
+            "GetTransactionStatusTablets" => serve!(
+                GetTransactionStatusTabletsRequestPB,
+                GetTransactionStatusTabletsResponsePB,
+                |_req, resp| { leader.get_transaction_status_tablets(&snapshot, &mut resp) }
+            ),
+            "GetAutoFlagsConfig" | "ValidateAutoFlagsConfig" => {
+                let info = self.info.clone();
+                let result = tokio::task::spawn_blocking(move || {
+                    let result = info.handle_on_host(method.name, call.request());
+                    (call, result)
+                })
+                .await;
+                if let Ok((call, result)) = result {
+                    match result {
+                        Ok(bytes) => call.respond(&bytes),
+                        Err(status) => call.respond_error(status),
+                    }
+                }
+            }
+            "TSHeartbeat" => unreachable!("handled above"),
+            other => {
+                let status = Status::new(
+                    StatusCode::NotSupported,
+                    format!(
+                        "{other} is not served by a layer-2 Rust master leader; it belongs to {}",
+                        leader::owner(other)
+                    ),
+                );
+                respond_or_fail(
+                    call,
+                    method,
+                    master_error_from(master_error_pb::Code::UNKNOWN_ERROR, &status),
+                )
+            }
+        }
+    }
+}
+
+/// Answers with only `error`, or fails the call when the response has required fields.
+fn respond_or_fail(call: Box<dyn InboundCall>, method: &MethodDesc, error: MasterErrorPB) {
+    if method.response_has_required_fields {
+        call.respond_error(status_of(&error));
+    } else {
+        respond_with_error(call, method.error_field, error);
     }
 }
 
@@ -352,21 +681,9 @@ fn respond_with_error(
     }
 }
 
-fn master_error(code: master_error_pb::Code, status: StatusCode, message: &str) -> MasterErrorPB {
-    let mut error = MasterErrorPB::new();
-    error.set_code(code);
-    let mut app_status = AppStatusPB::new();
-    // AppStatusPB::ErrorCode uses the same numbers as yb::Status::Code.
-    app_status.set_code(
-        app_status_pb::ErrorCode::from_i32(status as i32)
-            .unwrap_or(app_status_pb::ErrorCode::UNKNOWN_ERROR),
-    );
-    app_status.set_message(message.to_string());
-    error.status = Some(app_status).into();
-    error
-}
+pub(crate) use master_ts_manager::master_error;
 
-fn master_error_from(code: master_error_pb::Code, status: &Status) -> MasterErrorPB {
+pub(crate) fn master_error_from(code: master_error_pb::Code, status: &Status) -> MasterErrorPB {
     master_error(code, status.code, &status.message)
 }
 

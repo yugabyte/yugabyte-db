@@ -1,0 +1,17 @@
+[package]
+name = "master-tablet-locations"
+description = "Observed tablet replica state from tserver reports: roles, member types and confirmation per term."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+master-catalog-entity.workspace = true
+protobuf.workspace = true
+tokio.workspace = true
+yb-proto.workspace = true
+
+[lints]
+workspace = true

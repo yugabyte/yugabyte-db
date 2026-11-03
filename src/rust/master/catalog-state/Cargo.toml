@@ -1,0 +1,27 @@
+[package]
+name = "master-catalog-state"
+description = "The master's in-memory catalog: materialized from the sys-catalog apply stream, written through one group-committing writer."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+arc-swap.workspace = true
+imbl.workspace = true
+master-catalog-entity.workspace = true
+master-leadership.workspace = true
+master-sys-catalog.workspace = true
+protobuf.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+yb-host-api.workspace = true
+yb-proto.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+tokio = { workspace = true, features = ["test-util"] }
+
+[lints]
+workspace = true

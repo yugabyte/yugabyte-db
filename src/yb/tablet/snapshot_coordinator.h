@@ -13,6 +13,9 @@
 
 #pragma once
 
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
+
 #include "yb/tablet/tablet_fwd.h"
 
 #include "yb/util/status_fwd.h"
@@ -36,6 +39,9 @@ class SnapshotCoordinator {
   virtual Status Load(Tablet* tablet) = 0;
 
   virtual Status ApplyWritePair(const Slice& key, const Slice& value) = 0;
+
+  // Called once after the ApplyWritePair calls of one applied write batch.
+  virtual void AppliedWriteBatch(const OpId& op_id, HybridTime write_time) {}
 
   virtual ~SnapshotCoordinator() = default;
 };

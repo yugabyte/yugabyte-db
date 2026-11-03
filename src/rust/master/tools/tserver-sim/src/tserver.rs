@@ -18,7 +18,7 @@ use std::collections::BTreeMap;
 use yb_proto::pb::common_net::{CloudInfoPB, HostPortPB};
 use yb_proto::pb::consensus_metadata::{ConsensusStatePB, RaftConfigPB};
 use yb_proto::pb::master_heartbeat::{
-    ReportedTabletPB, TSHeartbeatRequestPB, TSHeartbeatResponsePB,
+    LiveTServersVersionPB, ReportedTabletPB, TSHeartbeatRequestPB, TSHeartbeatResponsePB,
 };
 use yb_proto::pb::master_types::TSRegistrationPB;
 use yb_proto::pb::tablet_types::{RaftGroupStatePB, TabletDataState};
@@ -62,6 +62,10 @@ pub struct SimTserver {
     needs_full_report: bool,
     sequence_number: i32,
     universe_uuid: String,
+    /// Whether to send the live tserver list version back, as tservers of this release do.
+    echo_live_tservers_version: bool,
+    live_tservers_version: Option<LiveTServersVersionPB>,
+    live_tservers: usize,
 }
 
 impl SimTserver {
@@ -80,7 +84,22 @@ impl SimTserver {
             needs_full_report: false,
             sequence_number: 0,
             universe_uuid: String::new(),
+            echo_live_tservers_version: true,
+            live_tservers_version: None,
+            live_tservers: 0,
         }
+    }
+
+    /// Acts like a tserver of a release before the versioned live tserver list (Q3): never sends
+    /// a version, so the master always sends the whole list.
+    pub fn without_live_tservers_version(mut self) -> SimTserver {
+        self.echo_live_tservers_version = false;
+        self
+    }
+
+    /// The number of live tservers in the list the master last sent.
+    pub fn live_tservers(&self) -> usize {
+        self.live_tservers
     }
 
     /// The permanent UUID.
@@ -190,6 +209,9 @@ impl SimTserver {
         if !self.universe_uuid.is_empty() {
             req.set_universe_uuid(self.universe_uuid.clone());
         }
+        if self.echo_live_tservers_version {
+            req.live_tservers_version = self.live_tservers_version.clone().into();
+        }
         (req, sent)
     }
 
@@ -202,6 +224,11 @@ impl SimTserver {
         }
         if resp.error.is_some() {
             return;
+        }
+        // TabletServer::PopulateLiveTServers.
+        if !(resp.live_tservers_unchanged() && self.live_tservers_version.is_some()) {
+            self.live_tservers = resp.tservers.len();
+            self.live_tservers_version = resp.live_tservers_version.clone().into_option();
         }
         if resp.needs_reregister() {
             self.needs_reregister = true;

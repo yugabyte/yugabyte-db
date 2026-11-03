@@ -246,6 +246,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   }
 
   Status PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp) EXCLUDES(lock_);
+  // The version of the live tserver list held, if the master that sent it versions it.
+  std::optional<master::LiveTServersVersionPB> LiveTServersVersion() const EXCLUDES(lock_);
   Result<YSQLLeaseInfo> GetYSQLLeaseInfo() const override;
   Status RestartPG() const override;
   Status KillPg() const override;
@@ -600,6 +602,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // perspective. It is refreshed on every successfull heartbeat exchange between the current
   // tserver and the master leader.
   std::unordered_map<std::string, master::TSInformationPB> live_tservers_ GUARDED_BY(lock_);
+  std::optional<master::LiveTServersVersionPB> live_tservers_version_ GUARDED_BY(lock_);
 
   // Map of 'RemoteTablerServer' shared ptrs keyed by the corresponding tsever uuid. This is used
   // to obtain a proxy handle to the local/remote tserver. It is updated synchronously with
