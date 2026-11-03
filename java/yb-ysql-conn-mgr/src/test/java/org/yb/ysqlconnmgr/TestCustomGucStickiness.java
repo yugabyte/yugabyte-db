@@ -126,6 +126,19 @@ public class TestCustomGucStickiness extends BaseYsqlConnMgr {
   }
 
   @Test
+  public void testPlainSetInsideFunctionSetClause() throws Exception {
+    try (Connection conn = getConnectionBuilder()
+             .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR).connect();
+         Statement stmt = conn.createStatement()) {
+      stmt.execute("CREATE FUNCTION audit_log_set_in_fn() RETURNS void LANGUAGE plpgsql " +
+                   "SET pgaudit.log = 'read' AS $$ BEGIN SET pgaudit.log = 'write'; END $$");
+      stmt.execute("SELECT audit_log_set_in_fn()");
+      assertPgauditLog(stmt, "write");
+      assertStickyConnections("yugabyte", 1);
+    }
+  }
+
+  @Test
   public void testStartupParameter() throws Exception {
     try (Connection conn = getConnectionBuilder()
              .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
