@@ -18422,30 +18422,42 @@ assign_yb_dist_tracecontext(const char *newval, void *extra)
  *
  * Changing these GUCs once the transaction has done work could flip the
  * optimization off after writes already skipped the intents db, and later reads
- * in the transaction would then miss those rows.  Two kinds of source cannot do
- * that and are exempt:
+ * in the transaction would then miss those rows.  So a change is refused inside
+ * a transaction block, or once the transaction has taken a snapshot, except
+ * that:
  * - PGC_S_TEST, the validation pass of ALTER ROLE/DATABASE ... SET, assigns
- *   nothing.  It always runs inside the ALTER statement's transaction, so the
- *   check would reject every such setting.  CREATE/ALTER FUNCTION ... SET
- *   validates with PGC_S_TEST too, but a function's SET clause is applied
- *   with PGC_S_SESSION inside the calling statement, where this check still
- *   rejects it, so YbValidateFunctionSetItem refuses such a clause up front.
+ *   nothing and is always accepted.  It runs inside the ALTER statement's
+ *   transaction, so the checks would reject every such setting.
+ *   CREATE/ALTER FUNCTION ... SET validates with PGC_S_TEST too, but a
+ *   function's SET clause is applied with PGC_S_SESSION inside the calling
+ *   statement, where the checks still reject it, so YbValidateFunctionSetItem
+ *   refuses such a clause up front.
  * - PGC_S_GLOBAL through PGC_S_CLIENT (pg_db_role_setting entries and
- *   connection request options) are applied during backend startup, before
- *   any client statement runs.  Startup has its own transaction and snapshot,
- *   so the check would refuse the connection.
- * Every other source keeps the restriction.  That covers SET and also a
+ *   connection request options) are not subject to the snapshot check.  At
+ *   backend startup they are applied after InitPostgres has taken a snapshot
+ *   for its catalog reads, so that check would refuse a connection that sets
+ *   one of these GUCs in its options, and would drop a per-role or
+ *   per-database value with only a WARNING.  These sources are also applied
+ *   outside startup: Connection Manager re-applies PGC_S_CLIENT values on a
+ *   reused backend with a 'G' message, and auth passthrough applies them and
+ *   pg_db_role_setting values on its control backend.  Both run in a
+ *   transaction of their own, and startup never runs inside a transaction
+ *   block, so the transaction-block check stays for these sources and refuses
+ *   them if they ever arrive inside one.
+ * Every other source is subject to both checks.  That covers SET and also a
  * configuration file reload, which can happen while the session is idle in a
  * transaction block.
  */
 static bool
 check_skip_intents_internal(const char *guc_name, bool *newval, GucSource source)
 {
-	if (source == PGC_S_TEST ||
-		(source >= PGC_S_GLOBAL && source <= PGC_S_CLIENT))
+	bool		is_role_db_or_client_source =
+		source >= PGC_S_GLOBAL && source <= PGC_S_CLIENT;
+
+	if (source == PGC_S_TEST)
 		return true;
 
-	if (IsTransactionBlock() || FirstSnapshotSet)
+	if (IsTransactionBlock() || (FirstSnapshotSet && !is_role_db_or_client_source))
 	{
 		GUC_check_errdetail("%s cannot be changed inside a transaction block or "
 							"after any query has been run in the transaction.", guc_name);
@@ -18481,12 +18493,17 @@ check_yb_enable_new_relation_fastpath_write_in_txn_blocks(bool *newval, void **e
 	 * off before this GUC is assigned on, and rejecting that pair here would
 	 * leave the postmaster refusing to start.
 	 *
+	 * Connection request options (PGC_S_CLIENT) are exempt for the same
+	 * reason: they are applied in the order the client listed them, so
+	 * "-c yb_enable_new_relation_fastpath_write_in_txn_blocks=on
+	 * -c yb_enable_new_relation_fastpath_write=on" would be refused on a
+	 * cluster with the parent off even though the final values are valid.
 	 * PGC_S_TEST is exempt as well: ALTER ROLE/DATABASE ... SET validates the
 	 * value in the session running the ALTER, whose parent value says nothing
 	 * about the parent value that the target role's or database's sessions will
 	 * have.
 	 */
-	if (*newval && !yb_enable_new_relation_fastpath_write && source >= PGC_S_CLIENT &&
+	if (*newval && !yb_enable_new_relation_fastpath_write && source > PGC_S_CLIENT &&
 		source != PGC_S_TEST)
 	{
 		GUC_check_errdetail("Cannot enable yb_enable_new_relation_fastpath_write_in_txn_blocks "

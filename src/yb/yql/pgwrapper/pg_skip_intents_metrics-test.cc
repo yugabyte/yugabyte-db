@@ -1609,8 +1609,10 @@ TEST_F(SkipIntentsMetricTest, TestGucCanBeChangedByNormalUser) {
 
 // The GUCs can be set per role, per database and in connection options, not only with SET. The
 // validation pass of ALTER ROLE/DATABASE ... SET runs inside the ALTER's transaction, and
-// per-role, per-database and connection option values are applied during backend startup, which
-// has its own transaction, so a transaction-state check on those sources rejects every one.
+// per-role, per-database and connection option values are applied during backend startup after a
+// snapshot has been taken, so a check that refuses any change once a snapshot exists makes ALTER
+// fail, drops a per-role or per-database value with a WARNING, and refuses a connection that sets
+// one of the GUCs in its options.
 TEST_F(SkipIntentsMetricTest, TestGucSetThroughRoleDatabaseAndConnectionOptions) {
   constexpr auto kParentGuc = "yb_enable_new_relation_fastpath_write";
   constexpr auto kInTxnBlocksGuc = "yb_enable_new_relation_fastpath_write_in_txn_blocks";
@@ -1656,6 +1658,40 @@ TEST_F(SkipIntentsMetricTest, TestGucSetThroughRoleDatabaseAndConnectionOptions)
   ASSERT_NOK(status);
   ASSERT_STR_CONTAINS(status.ToString(), "cannot be changed inside a transaction block");
   ASSERT_OK(conn.Execute("ROLLBACK"));
+}
+
+// Connection options are applied in the order the client lists them. With the cluster's
+// yb_enable_new_relation_fastpath_write off, listing
+// yb_enable_new_relation_fastpath_write_in_txn_blocks first must not refuse the connection, since
+// the final values are valid.
+class SkipIntentsFastpathOffTest : public SkipIntentsMetricTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    SkipIntentsMetricTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.emplace_back("--ysql_yb_enable_new_relation_fastpath_write=false");
+  }
+};
+
+TEST_F(SkipIntentsFastpathOffTest, TestConnectionOptionsOrder) {
+  constexpr auto kParentGuc = "yb_enable_new_relation_fastpath_write";
+  constexpr auto kInTxnBlocksGuc = "yb_enable_new_relation_fastpath_write_in_txn_blocks";
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(Format("SHOW $0", kParentGuc))), "off");
+  }
+  auto conn = ASSERT_RESULT(ConnectUsingString(Format(
+      "host=$0 port=$1 user=$2 options='-c $3=on -c $4=on'",
+      pg_ts->bind_host(), pg_ts->ysql_port(), PGConnSettings::kDefaultUser, kInTxnBlocksGuc,
+      kParentGuc)));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(Format("SHOW $0", kParentGuc))), "on");
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(Format("SHOW $0", kInTxnBlocksGuc))), "on");
+
+  // SET still refuses the combination while yb_enable_new_relation_fastpath_write is off.
+  ASSERT_OK(conn.ExecuteFormat("SET $0 = off", kInTxnBlocksGuc));
+  ASSERT_OK(conn.ExecuteFormat("SET $0 = off", kParentGuc));
+  auto status = conn.ExecuteFormat("SET $0 = on", kInTxnBlocksGuc);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "when yb_enable_new_relation_fastpath_write is disabled");
 }
 
 // A function's SET clause is applied inside the calling statement, where the GUCs cannot change,
