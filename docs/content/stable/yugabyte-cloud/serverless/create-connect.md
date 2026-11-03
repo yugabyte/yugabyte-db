@@ -1,5 +1,5 @@
 ---
-title: Create and connect
+title: Create and connect to a Serverless Postgres cluster
 headerTitle: Create and connect
 linkTitle: Create and connect
 description: Create a Serverless Postgres cluster in YugabyteDB Aeon and connect to it.
@@ -52,10 +52,10 @@ The engine determines which [extensions](#extensions) can be included.
 
 Choose a size:
 
-- **Small/Free**: 2 vCPU and 16 GB.
-- **Medium**: 4 vCPU and 32 GB.
-- **Large**: 8 vCPU and 64 GB.
-- **Custom**: Select **vCPU** and **Memory**. vCPU can be from 0.5 to 64; add `m` to enter values in millicores (for example, `1500m`). Memory can be from 1 to 512 GB; you can also enter values in MiB. You must have at least 8 GB per vCPU.
+- **Small/Free**: 2 vCPU and 16 GiB.
+- **Medium**: 4 vCPU and 32 GiB.
+- **Large**: 8 vCPU and 64 GiB.
+- **Custom**: Select **vCPU** and **Memory**. vCPU can be from 0.5 to 64; add `m` to enter values in millicores (for example, `1500m`). Memory can be from 1 to 512 GiB; you can also enter values in MiB. You must have at least 8 GiB per vCPU.
 
     Your organization is allowed one Free cluster. If you choose an option other than Free and you have not added a [billing profile](../../cloud-admin/cloud-billing-profile/) to the account, you will be prompted to create a billing profile before the cluster is created.
 

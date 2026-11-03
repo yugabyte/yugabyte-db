@@ -1,5 +1,5 @@
 ---
-title: Serverless Postgres
+title: Serverless Postgres in YugabyteDB Aeon
 headerTitle: Serverless Postgres
 linkTitle: Serverless Postgres
 headContent: Agentic multitenant PostgreSQL, fully managed by Yugabyte
@@ -32,7 +32,7 @@ A Serverless Postgres cluster includes the following features:
 
 Your organization has a single account for serverless clusters, created when you create your first Serverless Postgres cluster. YugabyteDB Aeon prepares the environment and the shared pool for you.
 
-Serverless Postgres is free to start, and includes 2 vCPU, 16 GB RAM, and 100 GB storage.
+Serverless Postgres is free to start, and includes 2 vCPU, 16 GiB RAM, and 100 GiB storage.
 
 This is shared by everything run in the account. You can upgrade to larger sizes; this requires creating a [billing profile](../cloud-admin/cloud-billing-profile/) for the serverless account. Only Admin users can create a billing profile.
 

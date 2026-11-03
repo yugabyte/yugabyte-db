@@ -1,5 +1,5 @@
 ---
-title: Manage a cluster
+title: Manage a Serverless Postgres cluster in YugabyteDB Aeon
 headerTitle: Manage a cluster
 linkTitle: Manage a cluster
 description: Add branches, add compute endpoints, and resize compute on a Serverless Postgres cluster.

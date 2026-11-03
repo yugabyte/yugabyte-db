@@ -1,15 +1,13 @@
 ---
 title: Start a free trial
 linkTitle: Start a free trial
-description: Start a free trial of YugabyteDB Aeon to conduct POCs and performance testing.
-headcontent: Explore all YugabyteDB Aeon features
+description: Start a free trial of YugabyteDB Aeon Distributed Postgres to conduct POCs and performance testing.
+headcontent: Explore YugabyteDB Aeon Distributed Postgres
 menu:
   stable_yugabyte-cloud:
     identifier: managed-freetrial
-    parent: yugabytedb-managed
-    weight: 20
-    params:
-      hide: true
+    parent: distributed-postgres
+    weight: 10
 type: docs
 ---
 

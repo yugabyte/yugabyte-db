@@ -1,5 +1,5 @@
 ---
-title: Distributed Postgres
+title: Distributed Postgres in YugabyteDB Aeon
 headerTitle: Distributed Postgres
 linkTitle: Distributed Postgres
 description: Distributed Postgres clusters in YugabyteDB Aeon for production workloads.
@@ -9,6 +9,8 @@ menu:
     identifier: distributed-postgres
     parent: yugabytedb-managed
     weight: 25
+    params:
+      classes: separator
 type: docs
 showRightNav: true
 ---

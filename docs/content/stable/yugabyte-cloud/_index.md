@@ -50,7 +50,7 @@ Use [Distributed Postgres](distributed-postgres/) for production applications th
 | | [Serverless Postgres](serverless/) | [Distributed Postgres](distributed-postgres/) |
 | :--- | :--- | :--- |
 | Best for | AI agents, tenants, and workloads that are idle between bursts | Production applications that need high availability, more nodes, or several regions |
-| Start | Free, up to 2 vCPU, 16 GB RAM, and 100 GB storage, shared by the account | Billed per vCPU. [Free trial](managed-freetrial/) credits are available |
+| Start | Free, up to 2 vCPU, 16 GiB RAM, and 100 GiB storage, shared by the account | Billed per vCPU. [Free trial](managed-freetrial/) credits are available |
 | Availability | Scales to zero when idle. Active tenants share CPU fairly | Fault tolerance across nodes, availability zones, or regions |
 | Topology | A shared pool. Fork zero-copy branches for separate copies of the data | Single region, replicate across regions, partition by region, and read replicas |
 | Scale | Resize the vCPU and memory of an endpoint | Add or remove nodes, or change vCPUs and disk size |

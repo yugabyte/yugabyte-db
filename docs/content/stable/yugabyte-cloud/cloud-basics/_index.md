@@ -1,14 +1,14 @@
 ---
-title: Deploy clusters in YugabyteDB Aeon
-headerTitle: Deploy clusters
+title: Deploy distributed clusters in YugabyteDB Aeon
+headerTitle: Deploy distributed clusters
 linkTitle: Deploy clusters
-description: Deploy clusters in YugabyteDB Aeon.
-headcontent: Deploy production-ready clusters
+description: Deploy distributed clusters in YugabyteDB Aeon.
+headcontent: Deploy single- and multi-region production clusters
 menu:
   stable_yugabyte-cloud:
-    parent: yugabytedb-managed
+    parent: distributed-postgres
     identifier: cloud-basics
-    weight: 26
+    weight: 20
 type: indexpage
 ---
 
