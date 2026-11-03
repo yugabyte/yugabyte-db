@@ -1709,8 +1709,7 @@ ExecutePlan(QueryDesc *queryDesc,
 	 * the block replaced. Run the plan in the leader alone.
 	 * TODO(#32729): drop this together with the check in standard_planner.
 	 */
-	if (use_parallel_mode && IsYugaByteEnabled() &&
-		YBGetDdlUseRegularTransactionBlock())
+	if (use_parallel_mode && YBGetDdlUseRegularTransactionBlock())
 		use_parallel_mode = false;
 	queryDesc->already_executed = true;
 

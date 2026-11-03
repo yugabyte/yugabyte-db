@@ -486,7 +486,7 @@ standard_planner(Query *parse, const char *query_string, int cursorOptions,
 		max_parallel_workers_per_gather > 0 &&
 		!IsParallelWorker() &&
 		!IsolationIsSerializable() &&
-		!(IsYugaByteEnabled() && YBGetDdlUseRegularTransactionBlock()))
+		!YBGetDdlUseRegularTransactionBlock())
 	{
 		/* all the cheap tests pass, so scan the query tree */
 		glob->maxParallelHazard = max_parallel_hazard(parse);
