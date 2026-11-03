@@ -804,9 +804,10 @@ TEST_F(XClusterPersistenceGateMultiMasterTest, CatalogWriteNotJudgedByEarlierTer
   ASSERT_OK(cluster_->StepDownMasterLeader());
   // The step down is asynchronous; until it completes the first leader rejects catalog writes.
   ASSERT_OK(WaitFor(
-      [this, &first_leader_uuid]() -> Result<bool> {
-        return VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->permanent_uuid() !=
-               first_leader_uuid;
+      [this, &first_leader_uuid] {
+        // No leader is expected mid step-down; keep polling.
+        auto leader = cluster_->GetLeaderMiniMaster();
+        return leader.ok() && (*leader)->permanent_uuid() != first_leader_uuid;
       },
       30s * kTimeMultiplier, "Another master is leader"));
   ASSERT_OK(StopPersisting(database));
