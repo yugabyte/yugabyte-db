@@ -18480,31 +18480,31 @@ check_yb_enable_new_relation_fastpath_write_in_txn_blocks(bool *newval, void **e
 	/*
 	 * yb_enable_new_relation_fastpath_write gates the optimization as a whole,
 	 * and this GUC only widens it to transaction blocks, so a value of on while
-	 * the parent is off is inert rather than unsafe.
-	 *
-	 * Only values supplied once the postmaster has read its configuration are
-	 * rejected, as in the yb_ddl_transaction_block_enabled check below.
-	 * pg_wrapper generates ysql_pg.conf in the data directory, writing the
-	 * ysql_pg_conf_csv entries ahead of the block it derives from the PG gflags,
-	 * and postgres assigns the parameters in the order they appear in that file.
-	 * A cluster that turns the parent off - through ysql_pg_conf_csv, or through
-	 * the ysql_yb_enable_new_relation_fastpath_write gflag, which is the kill
-	 * switch for the optimization as a whole - therefore has the parent assigned
-	 * off before this GUC is assigned on, and rejecting that pair here would
-	 * leave the postmaster refusing to start.
-	 *
-	 * Connection request options (PGC_S_CLIENT) are exempt for the same
-	 * reason: they are applied in the order the client listed them, so
-	 * "-c yb_enable_new_relation_fastpath_write_in_txn_blocks=on
-	 * -c yb_enable_new_relation_fastpath_write=on" would be refused on a
-	 * cluster with the parent off even though the final values are valid.
-	 * PGC_S_TEST is exempt as well: ALTER ROLE/DATABASE ... SET validates the
-	 * value in the session running the ALTER, whose parent value says nothing
-	 * about the parent value that the target role's or database's sessions will
-	 * have.
+	 * the parent is off is inert rather than unsafe.  The check below only
+	 * catches a likely mistake, and it applies only to SET (PGC_S_SESSION, and
+	 * YSQL_CONN_MGR when Connection Manager replays a SET).  For the other
+	 * sources it would refuse configurations whose final values are valid:
+	 * - The configuration file is applied in file order.  pg_wrapper generates
+	 *   ysql_pg.conf in the data directory, writing the ysql_pg_conf_csv
+	 *   entries ahead of the block it derives from the PG gflags.  A cluster
+	 *   that turns the parent off - through ysql_pg_conf_csv, or through the
+	 *   ysql_yb_enable_new_relation_fastpath_write gflag, which is the kill
+	 *   switch for the optimization as a whole - therefore has the parent
+	 *   assigned off before this GUC is assigned on, and rejecting that pair
+	 *   would leave the postmaster refusing to start.
+	 * - Per-role and per-database settings are likewise applied one after
+	 *   another at backend startup, in an order the user does not choose.
+	 * - Connection request options (PGC_S_CLIENT) are applied in the order the
+	 *   client listed them, so "-c
+	 *   yb_enable_new_relation_fastpath_write_in_txn_blocks=on -c
+	 *   yb_enable_new_relation_fastpath_write=on" would be refused on a cluster
+	 *   with the parent off.
+	 * - ALTER ROLE/DATABASE ... SET (PGC_S_TEST) validates the value in the
+	 *   session running the ALTER, whose parent value says nothing about the
+	 *   parent value that the target role's or database's sessions will have.
 	 */
-	if (*newval && !yb_enable_new_relation_fastpath_write && source > PGC_S_CLIENT &&
-		source != PGC_S_TEST)
+	if (*newval && !yb_enable_new_relation_fastpath_write &&
+		(source == PGC_S_SESSION || source == YSQL_CONN_MGR))
 	{
 		GUC_check_errdetail("Cannot enable yb_enable_new_relation_fastpath_write_in_txn_blocks "
 							"when yb_enable_new_relation_fastpath_write is disabled.");
