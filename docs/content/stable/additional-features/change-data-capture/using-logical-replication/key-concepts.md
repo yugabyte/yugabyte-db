@@ -55,7 +55,13 @@ A table whose tablets are not of interest, or have [expired](#when-a-slot-become
 
 - Every table the slot will ever stream must be polled within 4 hours of slot creation, so it must be in a publication the client is streaming during that window. A table not polled in that window becomes unqualified: its changes are no longer retained for the slot, and adding it to the publication later does not bring it back. To stream such a table, create a new slot.
 - Start streaming within 4 hours of creating a slot. If no client connects in that window, every table becomes unqualified and the slot can't be used.
-- If the publication contains an unqualified table, at start or after an `ALTER PUBLICATION ... ADD TABLE` while streaming, streaming fails with the error `Cannot add tablet: <id> to the polling list as it has been unqualified for stream: <id>`. Either remove the table from the publication, or set the [cdc_skip_unqualified_tables_for_polling](../../../../reference/configuration/yb-tserver/#cdc-skip-unqualified-tables-for-polling) flag (v2025.2.7.0, v2026.1.2.0, and later) so that the slot skips unqualified tables and streams the rest. If this is not resolved within `cdc_intent_retention_ms`, the slot expires.
+- If the publication contains an unqualified table, at start or after an `ALTER PUBLICATION ... ADD TABLE` while streaming, streaming fails with the following error:
+
+    ```output
+    Cannot add tablet: <id> to the polling list as it has been unqualified for stream: <id>
+    ```
+
+    Either remove the table from the publication, or set the [cdc_skip_unqualified_tables_for_polling](../../../../reference/configuration/yb-tserver/#cdc-skip-unqualified-tables-for-polling) flag (v2025.2.7.0, v2026.1.2.0, and later) so that the slot skips unqualified tables and streams the rest. If this is not resolved within `cdc_intent_retention_ms`, the slot expires.
 
 #### Restart time
 
@@ -72,7 +78,7 @@ The slot state is stored in the `cdc_state` system table together with a checkpo
 
 #### Disconnection and reconnection
 
-When the client disconnects, the walsender exits, and the in-memory state of the slot on the YB-TServer is discarded. The slot itself, its restart time, and the per-tablet checkpoints remain. After 60 seconds without consumption (the `ysql_cdc_active_replication_slot_window_ms` flag) `pg_replication_slots` shows the slot as not `active`.
+When the client disconnects, the walsender exits, and the in-memory state of the slot on the YB-TServer is discarded. The slot itself, its restart time, and the per-tablet checkpoints remain. After 60 seconds without consumption (the `ysql_cdc_active_replication_slot_window_ms` time), `pg_replication_slots` shows the slot as not `active`.
 
 While the client is disconnected, every tablet the slot polls keeps retaining WAL, transaction intents, and, if the slot needs before images, row history from the slot's restart time. Nothing is released before the client reconnects and acknowledges changes, unless the slot expires first. The retention lasts up to [cdc_intent_retention_ms](../../../../reference/configuration/yb-tserver/#cdc-intent-retention-ms) (default 8 hours), measured from the last successful poll of each tablet. After that the slot expires; see [When a slot becomes unusable](#when-a-slot-becomes-unusable). The matching WAL retention is set by [cdc_wal_retention_time_secs](../../../../reference/configuration/yb-tserver/#cdc-wal-retention-time-secs) (default 8 hours), which must be at least as long.
 
@@ -96,7 +102,7 @@ A publication is a set of changes generated from a table or a group of tables, a
 
 Publications are different from schemas and do not affect how the table is accessed. Each table can be added to multiple publications if needed. Publications may currently only contain tables. Objects must be added explicitly, except when a publication is created for ALL TABLES.
 
-Changing a publication while a slot is streaming takes effect at commit time with [implicit publication](../advanced-topic/#implicit-publication), the default from v2026.1, or at the next refresh with [periodic publication](../advanced-topic/#periodic-publication), the only mode in earlier releases. The mode is recorded in the slot when it is created, based on the `ysql_yb_enable_implicit_dynamic_tables_logical_replication` flag, and doesn't change afterward. Slots created before upgrading to v2026.1 keep using periodic publication; to use implicit publication, create a new slot. See [Adding tables to publication](../advanced-topic/#adding-tables-to-publication) for details, and [Slot behavior by version](../slot-behavior-by-version/) for the versions.
+Changing a publication while a slot is streaming takes effect at commit time with [implicit publication](../advanced-topic/#implicit-publication) (the default in v2026.1 and later), or at the next refresh with [periodic publication](../advanced-topic/#periodic-publication) (the only mode in earlier releases). The mode is recorded in the slot when it is created, based on the `ysql_yb_enable_implicit_dynamic_tables_logical_replication` flag, and doesn't change afterward. Slots created before upgrading to v2026.1 keep using periodic publication; to use implicit publication, create a new slot. See [Adding tables to publication](../advanced-topic/#adding-tables-to-publication) for details, and [Slot behavior by version](../slot-behavior-by-version/) for the versions.
 
 For more information, refer to [Publication](https://www.postgresql.org/docs/15/logical-replication-publication.html#LOGICAL-REPLICATION-PUBLICATION) in the PostgreSQL documentation.
 
