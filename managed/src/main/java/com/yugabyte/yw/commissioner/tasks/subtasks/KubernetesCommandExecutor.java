@@ -37,6 +37,7 @@ import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateDetails;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+import com.yugabyte.yw.common.certmgmt.RpcClientCert;
 import com.yugabyte.yw.common.certmgmt.providers.CertificateProviderInterface;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -1592,6 +1593,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
               (long) Math.ceil(Double.parseDouble(tserverResource.get("cpu").toString())));
       ybcGflags.putAll(
           GFlagsUtil.getCommonYbcGflags(confGetter, universeFromDB, hardwareConcurrencyStr));
+      if (RpcClientCert.isClientCertRequired(universeFromDB)) {
+        ybcGflags.put(GFlagsUtil.YBC_REQUIRE_CLIENT_CERTIFICATES, "true");
+      }
       ybcGflags.putAll(primaryClusterIntent.ybcFlags);
       gflagOverrides.put("ybc", ybcGflags);
     }
