@@ -1056,7 +1056,7 @@ void RemoveTableIdsFromTabletInfo(
 // Helper function for CleanUpDeletedTables. Not intended for general use.
 Status PersistCleanUpOfDeletedTables(
     CatalogManager& cm, const LeaderEpoch& epoch, std::vector<TableInfo*>&& tables,
-    std::vector<std::pair<TableInfo::WriteLock, TransactionId>>&& table_locks,
+    std::vector<std::pair<TableInfo::WriteLock, TransactionId>> table_locks,
     const TabletInfoPtr& sys_catalog_tablet_info) {
   if (tables.empty()) {
     return Status::OK();
@@ -8202,8 +8202,9 @@ void CatalogManager::CleanUpDeletedTables(const LeaderEpoch& epoch) {
     }
     tables_to_prepare.push_back(table);
   }
-  // Separate pass: GetTableInfo above takes mutex_, which must not be acquired while holding the
-  // table write locks returned by PrepareTableDeletion.
+  // Separate pass: mutex_ (GetTableInfo above, LockGuards below) must not be taken while holding
+  // the table write locks from PrepareTableDeletion. PersistCleanUpOfDeletedTables takes them by
+  // value, so they are released when it returns, even on failure.
   for (const auto& table : tables_to_prepare) {
     auto lock_and_transaction_id = PrepareTableDeletion(table);
     if (lock_and_transaction_id.first.locked()) {
