@@ -1844,6 +1844,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Delete specified CDC streams metadata.
   Status CleanUpCDCSDKStreamsMetadata(const LeaderEpoch& epoch) EXCLUDES(mutex_);
 
+  Status AddCatalogTablesToCDCSDKStreamsForTransactionalDdl(const LeaderEpoch& epoch)
+      EXCLUDES(mutex_);
+
   // Returns CDCSDK streams that need metadata cleanup. This includes streams with non-empty
   // dropped_table_id list and, when FLAGS_cdcsdk_use_dropped_table_list_for_cleanup is false,
   // streams in DELETING_METADATA state. When the flag is true, streams in DELETING_METADATA state
@@ -3663,6 +3666,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   std::unordered_map<TableId, std::unordered_set<xrepl::StreamId>> cdcsdk_tables_to_stream_map_
       GUARDED_BY(mutex_);
+
+  std::atomic<bool> implicit_streams_have_catalog_tables_{false};
 
   // Maps a ReplicationSlotName to the xrepl::StreamId of the stream it belongs to. Present for
   // CDCSDK streams created from the YSQL syntax.
