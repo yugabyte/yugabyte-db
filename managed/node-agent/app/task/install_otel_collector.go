@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 const OtelCollectorService = "otel-collector.service"
@@ -421,23 +422,106 @@ func (h *InstallOtelCollector) userOtelCollectorNeedsStop(
 	if err != nil || managerRuns {
 		return managerRuns, err
 	}
+	return false, h.disableUserOtelCollectorWithoutManager(ctx, rootStopFailed)
+}
+
+// disableUserOtelCollectorWithoutManager runs when the manager probe fails. The probe can be
+// wrong, so it tries one stop first, then disables the unit by removing its link.
+func (h *InstallOtelCollector) disableUserOtelCollectorWithoutManager(
+	ctx context.Context,
+	rootStopFailed bool,
+) error {
+	steps := []struct {
+		Desc string
+		Cmd  string
+	}{
+		{"StopOtelCollector", "systemctl --user stop " + OtelCollectorService},
+		{"DisableOtelCollector", "systemctl --user disable " + OtelCollectorService},
+	}
+	if err := module.RunShellSteps(ctx, h.username, steps, h.logOut); err == nil {
+		return nil
+	}
+	info, err := util.UserInfo(h.username)
+	if err != nil {
+		return err
+	}
+	if err := h.removeOtelCollectorWantsLink(ctx, info.User.HomeDir); err != nil {
+		return err
+	}
 	binary := filepath.Join(h.param.GetYbHomeDir(), "otel-collector", otelCollectorInstalledBinary)
-	cmdInfo, err := module.RunShellCmd(
+	// The unit restarts every RestartSec, so one check can miss a crash-looping collector.
+	running, err := otelCollectorRunsWithin(
 		ctx,
-		h.username,
-		"CheckOtelCollectorProcess",
-		fmt.Sprintf("pgrep -f '^%s( |$)' || true", binary),
-		h.logOut,
+		module.SystemdSettleInterval,
+		module.SystemdReadyPollInterval,
+		func() (bool, error) {
+			cmdInfo, err := module.RunShellCmd(
+				ctx,
+				h.username,
+				"CheckOtelCollectorProcess",
+				fmt.Sprintf("pgrep -f '^%s( |$)' || true", binary),
+				h.logOut,
+			)
+			if err != nil {
+				return false, err
+			}
+			return strings.TrimSpace(cmdInfo.StdOut.String()) != "", nil
+		},
 	)
 	if err != nil {
-		return false, err
+		return err
 	}
-	if strings.TrimSpace(cmdInfo.StdOut.String()) != "" {
-		return false, otelCollectorStillRunningError(binary, rootStopFailed)
+	if running {
+		return otelCollectorStillRunningError(binary, rootStopFailed)
 	}
-	util.FileLogger().Warnf(ctx, "No user systemd manager: otel-collector unit left enabled")
-	h.logOut.WriteLine("No user systemd manager: otel-collector unit left enabled")
-	return false, nil
+	msg := "No user systemd manager: otel-collector unit disabled by removing its link"
+	util.FileLogger().Warnf(ctx, "%s", msg)
+	h.logOut.WriteLine("%s", msg)
+	return nil
+}
+
+// removeOtelCollectorWantsLink does what systemctl --user disable does for this unit, whose only
+// install target is default.target. The unit file stays for a later enable.
+func (h *InstallOtelCollector) removeOtelCollectorWantsLink(
+	ctx context.Context,
+	homeDir string,
+) error {
+	link := filepath.Join(
+		homeDir,
+		".config/systemd/user/default.target.wants",
+		OtelCollectorService,
+	)
+	_, err := module.RunShellCmd(
+		ctx,
+		h.username,
+		"RemoveOtelCollectorWantsLink",
+		"rm -f "+shellSingleQuote(link),
+		h.logOut,
+	)
+	return err
+}
+
+// otelCollectorRunsWithin calls isRunning until it reports true or the window ends.
+func otelCollectorRunsWithin(
+	ctx context.Context,
+	window, interval time.Duration,
+	isRunning func() (bool, error),
+) (bool, error) {
+	deadline := time.Now().Add(window)
+	for {
+		running, err := isRunning()
+		if err != nil || running {
+			return running, err
+		}
+		if time.Now().Add(interval).After(deadline) {
+			return false, nil
+		}
+		select {
+		case <-ctx.Done():
+			return false, ctx.Err()
+		case <-time.After(interval):
+		}
+	}
 }
 
 // otelCollectorStillRunningError names the likely cause. pgrep also matches a root collector, so

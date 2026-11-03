@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // newDisableCollectorHandler points the root unit path at a test directory, so the host's own
@@ -109,5 +110,59 @@ func TestOtelCollectorStillRunningError(t *testing.T) {
 			t.Errorf("rootStopFailed=%v: error %q must name %s and %q",
 				tt.rootStopFailed, msg, binary, tt.wantCause)
 		}
+	}
+}
+
+// A crash-looping collector runs only part of each restart cycle, so a single check can miss it.
+func TestOtelCollectorRunsWithin(t *testing.T) {
+	calls := 0
+	running, err := otelCollectorRunsWithin(
+		context.Background(),
+		time.Second,
+		time.Millisecond,
+		func() (bool, error) {
+			calls++
+			return calls == 3, nil
+		},
+	)
+	if err != nil || !running {
+		t.Fatalf("collector seen on call 3 not found: running=%v, err=%v", running, err)
+	}
+	running, err = otelCollectorRunsWithin(
+		context.Background(),
+		20*time.Millisecond,
+		time.Millisecond,
+		func() (bool, error) { return false, nil },
+	)
+	if err != nil || running {
+		t.Fatalf("no collector: running=%v, err=%v", running, err)
+	}
+}
+
+// The link removal must do what systemctl --user disable does and keep the unit file.
+func TestRemoveOtelCollectorWantsLink(t *testing.T) {
+	home := t.TempDir()
+	unitDir := filepath.Join(home, ".config/systemd/user")
+	wantsDir := filepath.Join(unitDir, "default.target.wants")
+	if err := os.MkdirAll(wantsDir, 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	unit := filepath.Join(unitDir, OtelCollectorService)
+	if err := os.WriteFile(unit, []byte("[Unit]\n"), 0644); err != nil {
+		t.Fatalf("write unit: %v", err)
+	}
+	link := filepath.Join(wantsDir, OtelCollectorService)
+	if err := os.Symlink(unit, link); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	handler := newDisableCollectorHandler(t, t.TempDir())
+	if err := handler.removeOtelCollectorWantsLink(context.Background(), home); err != nil {
+		t.Fatalf("removeOtelCollectorWantsLink: %v", err)
+	}
+	if _, err := os.Lstat(link); !os.IsNotExist(err) {
+		t.Fatalf("link should be gone, got err=%v", err)
+	}
+	if _, err := os.Stat(unit); err != nil {
+		t.Fatalf("unit file should stay: %v", err)
 	}
 }
