@@ -1,0 +1,30 @@
+name: "csi-comment"
+
+on:
+  workflow_run:
+    workflows: ["csi-artifact"]
+    types: [completed]
+
+jobs:
+  csi-comment:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download CSI artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: csi-pr
+          path: csi
+          run-id: ${{ github.event.workflow_run.id }}
+      - name: Post CSI link comment
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const prNumber = fs.readFileSync('csi/pr.txt', 'utf8').trim();
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: `[CSIweb for PR #${prNumber}](https://csiweb.dev.yugabyte.com/pull/${prNumber})`
+            });

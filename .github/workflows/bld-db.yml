@@ -36,25 +36,22 @@ on:
 jobs:
   # We want CSI-link posted only for DB changes, hence in this file,
   # but it only needs to run for the opened event.
-  csi-comment:
+  # Creating an artifact, but a PR from fork has no permission to write a comment,
+  # so there is a separate job (csi-comment) to post the CSI link comment.
+  csi-artifact:
     runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
     steps:
-      - name: CSI-status
+      - name: CSI-link
         if: github.event.action == 'opened'
-        uses: actions/github-script@v6
+        run: |
+          mkdir -p csi
+          echo "${{ github.event.pull_request.number }})" > csi/pr.txt
+      - name: Upload CSI artifact
+        if: github.event.action == 'opened'
+        uses: actions/upload-artifact@v3
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const prNumber = context.payload.pull_request.number;
-            const csiMD = `[[CSIweb](https://csiweb.dev.yugabyte.com/pull/${prNumber})]`;
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: prNumber,
-              body: csiMD
-            });
+          name: csi-pr
+          path: csi/pr.txt
 
   bld-db:
     environment: jenkins
