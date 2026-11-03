@@ -31,6 +31,7 @@ class Cache;
 }
 
 DECLARE_bool(TEST_vector_index_exact);
+DECLARE_bool(TEST_vector_index_insert_out_of_memory);
 
 namespace yb::vector_index {
 
@@ -76,6 +77,10 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
   Status Insert(VectorId vector_id, const Vector& v) override {
     if (immutable_) {
       return STATUS_FORMAT(IllegalState, "Attempt to insert value to immutable vector");
+    }
+    if (PREDICT_FALSE(FLAGS_TEST_vector_index_insert_out_of_memory)) {
+      return STATUS_FORMAT(
+          ServiceUnavailable, "TEST: not enough memory to insert vector $0", vector_id);
     }
     if (PREDICT_FALSE(FLAGS_TEST_vector_index_exact)) {
       std::unique_lock lock(TEST_search_exact_mutex_);
