@@ -40,6 +40,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.DeltaEvaluator;
 import com.yugabyte.yw.common.KubernetesUtil;
@@ -493,6 +494,14 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     List<Pod> pods = TestUtils.deserialize(podsString, PodList.class).getItems();
     when(mockKubernetesManager.getPodInfos(any(), any(), any())).thenReturn(pods);
 
+    // PLAT-23216: params carrying ybcFlags older than the universe's (as a retry's would) must not
+    // reach the helm values or the universe.
+    Map<String, String> throttleFlags = Map.of("max_concurrent_uploads", "8");
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        u -> u.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags = throttleFlags,
+        false);
+
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = 2;
@@ -502,10 +511,28 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     newUserIntent.numNodes = 5;
     newUserIntent.tserverK8SNodeResourceSpec = new K8SNodeResourceSpec();
     newUserIntent.masterK8SNodeResourceSpec = new K8SNodeResourceSpec();
+    newUserIntent.ybcFlags = Map.of("max_concurrent_uploads", "2");
     PlacementInfo pi = defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
     pi.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ = 5;
     TaskInfo taskInfo = submitTask(taskParams, newUserIntent, pi);
     assertEquals(Success, taskInfo.getTaskState());
+    List<KubernetesCommandExecutor.Params> helmUpgrades =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.KubernetesCommandExecutor)
+            .map(t -> Json.fromJson(t.getTaskParams(), KubernetesCommandExecutor.Params.class))
+            .filter(p -> p.commandType == HELM_UPGRADE)
+            .collect(Collectors.toList());
+    assertFalse(helmUpgrades.isEmpty());
+    for (KubernetesCommandExecutor.Params p : helmUpgrades) {
+      assertEquals(throttleFlags, p.universeDetails.getPrimaryCluster().userIntent.ybcFlags);
+    }
+    assertEquals(
+        throttleFlags,
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .ybcFlags);
 
     verify(mockKubernetesManager, times(1))
         .helmUpgrade(
@@ -1291,6 +1318,14 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     when(mockKubernetesManager.getPodInfos(any(), any(), any()))
         .thenReturn(rollbackPods(tserversBefore));
 
+    // PLAT-23216: a YBC throttle update while the edit is failed must survive the rollback, in
+    // both the restored details and the helm values the rollback renders.
+    Map<String, String> throttleFlags = Map.of("max_concurrent_uploads", "8");
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> u.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags = throttleFlags,
+        false);
+
     UniverseDefinitionTaskParams rollbackParams =
         Json.fromJson(failedEdit.getTaskParams(), UniverseDefinitionTaskParams.class);
     rollbackParams.setUniverseUUID(universe.getUniverseUUID());
@@ -1314,9 +1349,22 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     verify(mockKubernetesManager, atLeastOnce())
         .helmUpgrade(any(), any(), any(), any(), any(), any(), isNull());
 
+    List<KubernetesCommandExecutor.Params> helmUpgrades =
+        rollbackInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.KubernetesCommandExecutor)
+            .map(t -> Json.fromJson(t.getTaskParams(), KubernetesCommandExecutor.Params.class))
+            .filter(p -> p.commandType == HELM_UPGRADE)
+            .collect(Collectors.toList());
+    assertFalse(helmUpgrades.isEmpty());
+    for (KubernetesCommandExecutor.Params p : helmUpgrades) {
+      assertEquals(throttleFlags, p.universeDetails.getPrimaryCluster().userIntent.ybcFlags);
+    }
+
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     assertEquals(
         tserversBefore, universe.getUniverseDetails().getPrimaryCluster().userIntent.numNodes);
+    assertEquals(
+        throttleFlags, universe.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags);
     assertTrue(universe.getUniverseDetails().updateSucceeded);
     assertNull(universe.getUniverseDetails().placementModificationTaskUuid);
     assertNull(universe.getStateTransitionDetails());
