@@ -115,6 +115,8 @@ CREATE TABLE test_table_2(id INT PRIMARY KEY, aa INT, bb INT);
 
 As the publication was created for ALL TABLES, ALTER PUBLICATION is not required.
 
+## Publication changes
+
 When the publication changes, a replication stream applies the change to the set of tables it polls in one of two modes:
 
 - **Immediate effect**, called [implicit publication](#implicit-publication). The change takes effect at the commit point of the `ALTER PUBLICATION` or `CREATE TABLE`.
@@ -126,7 +128,7 @@ Implicit publication is the default. [Behavior by release](../behavior-by-releas
 
 Implicit publication is the mechanism by which a logical replication stream learns that the set of tables in its publication has changed. The stream watches the system catalog as part of the change stream it is already reading, so an `ALTER PUBLICATION`, or the creation of a table in a `FOR ALL TABLES` publication, is detected at the commit time of that statement, in order with the surrounding changes. The stream then starts or stops polling the affected tables from exactly that point. No events from a newly added table are missed, and no events from a dropped table are sent, regardless of how far behind the consumer is. This behavior matches PostgreSQL.
 
-Implicit publication is the default and applies only to the logical replication model of CDC. The alternative, used when it is disabled, is [periodic publication](#periodic-publication), where the stream re-reads the publication's table list on a timer. A slot's mode is fixed when the slot is created: a slot created with implicit publication cannot stream while the flag is `false`, and a slot created with periodic publication keeps it after the flag is set to `true`.
+Implicit publication is the default and applies only to the logical replication model of CDC. The alternative, used when implicit publication is disabled, is [periodic publication](#periodic-publication), where the stream re-reads the publication's table list on a timer. Implicit publication is enabled by the [ysql_yb_enable_implicit_dynamic_tables_logical_replication](../../../../reference/configuration/yb-tserver/#ysql-yb-enable-implicit-dynamic-tables-logical-replication) flag. A slot's mode is fixed when the slot is created: a slot created with implicit publication cannot stream while the flag is `false`, and a slot created with periodic publication keeps it after the flag is set to `true`.
 
 For example:
 
@@ -139,7 +141,7 @@ ALTER PUBLICATION pub DROP TABLE employees;
 INSERT INTO employees VALUES (1343, 'Jane Doe'); -- This will NOT be captured by CDC
 ```
 
-For architectural details, see [Publication change detection](../../../../architecture/docdb-replication/cdc-logical-replication/#detecting-publication-changes) in the logical replication architecture documentation.
+For architectural details, see [Detecting publication changes](../../../../architecture/docdb-replication/cdc-logical-replication/#detecting-publication-changes) in the logical replication architecture documentation.
 
 Implicit publication is controlled by the following flags. Set them on both YB-Master and YB-TServer.
 
@@ -193,6 +195,8 @@ For architectural details, see [Table rewrite and DROP TABLE handling](../../../
 
 ### What the client receives
 
+The replication protocol has no message for a table rewrite, a truncate, or a drop. The consumer sees only ordinary change records and relation metadata, so it has to infer the DDL from them. For each DDL, the records the consumer receives, and the open issue tracking the gap, are as follows.
+
 - **Rewriting `ALTER TABLE`**: the updated relation metadata, as for any [column change](#column-changes), followed by every existing row streamed again from the new tablets. Consumers must tolerate rows they have already received, for example by applying inserts as upserts. Tracked in {{<issue 31636>}}.
 - **`TRUNCATE`**: no truncate record. Changes committed before the truncate that were not yet streamed are delivered first, followed by changes made after the truncate. The consumer cannot tell where the truncate happened, so an insert after the truncate that reuses a primary key arrives as an insert of a key the consumer already holds. Tracked in {{<issue 29674>}}.
 - **`DROP TABLE`**: changes committed before the drop, after which no further records for the table are sent.
@@ -206,6 +210,8 @@ Rewriting `ALTER TABLE` and `TRUNCATE` on a _colocated_ table are blocked with a
 A replication slot created while [implicit publication](#implicit-publication) was disabled, or before an upgrade to v2026.1 was finalized (including slots created on v2026.1 binaries before the `cdc_enable_dynamic_schema_changes` auto flag was promoted), uses [periodic publication](#periodic-publication) for its lifetime. While such a slot exists on a table, rewriting `ALTER TABLE` and `TRUNCATE` on that table are blocked with an error that names the mechanism. To lift the restriction, drop and recreate those slots. Use [yb-admin list_cdc_streams](../../../../admin/yb-admin/#list-cdc-streams) to find streams whose `detect_publication_changes_implicitly` is not `true`.
 
 ### Flags
+
+The following flags control whether a DDL that rewrites a table is allowed while logical replication is active, and how CDC treats the table afterwards. The defaults give the behavior described above. They are listed here because they appear in the error messages that a blocked DDL returns and in upgrade notes.
 
 | Flag | Details |
 | :--- | :--- |

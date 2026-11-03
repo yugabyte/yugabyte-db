@@ -174,7 +174,7 @@ For a list of all the configuration options provided with the YugabyteDB gRPC Co
 
 {{< tip title="TRUNCATE tables when CDC is enabled" >}}
 
-By default, the YugabyteDB CDC implementation does not allow you to TRUNCATE a table while an active CDC stream is present on the namespace. To allow truncating tables while CDC is active, set the [enable_truncate_cdcsdk_table](../../../reference/configuration/yb-tserver/#enable-truncate-cdcsdk-table) flag to true.
+By default, the YugabyteDB CDC implementation does not allow you to TRUNCATE a table while an active CDC stream is present on the namespace. To allow truncating tables while CDC is active, set the [enable_truncate_cdcsdk_table](../../../reference/configuration/yb-master/#enable-truncate-cdcsdk-table) flag to true.
 
 {{< /tip >}}
 
