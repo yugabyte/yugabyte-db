@@ -249,8 +249,9 @@ std::unique_ptr<OptionsDescription> BenchmarkOptions() {
              ValidEnumValuesCommaSeparatedForHelp<DistanceKind>());
   const auto pg_id_type_help =
       Format("PgVector backend: type of the table's `id` column. Possible values: $0. Use Bigint "
-             "for tables loaded by other tools whose ids are the input vector indexes. Like "
-             "--pg_index, Bigint never modifies the cluster and requires --build_vecs_path.",
+             "for tables loaded by other tools whose ids are the 0-based indexes of the vectors in "
+             "--build_vecs_path. Like --pg_index, Bigint never modifies the cluster and requires "
+             "--build_vecs_path.",
              ValidEnumValuesCommaSeparatedForHelp<PgVectorIdType>());
 
   result->desc.add_options()

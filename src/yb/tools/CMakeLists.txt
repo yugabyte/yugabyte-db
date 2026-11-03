@@ -268,7 +268,6 @@ ADD_YB_TEST_LIBRARY(yb-backup-test_base
 
 # hnsw_tool bundles its own pgvector backend so that the libpq dependency (pulled in via
 # pq_utils) stays scoped to this tool and does not leak into other consumers of ann_methods.
-include_directories(${YB_BUILD_ROOT}/postgres_build/src/include)
 add_executable(hnsw_tool hnsw_tool.cc pgvector_wrapper.cc)
 target_link_libraries(hnsw_tool
                       boost_program_options
