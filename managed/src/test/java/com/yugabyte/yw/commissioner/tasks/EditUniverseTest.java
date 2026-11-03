@@ -45,6 +45,7 @@ import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DoCapacityReservation;
@@ -60,6 +61,7 @@ import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -109,6 +111,7 @@ import org.yb.client.ChangeConfigResponse;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
+import org.yb.client.IsServerReadyResponse;
 import org.yb.client.LeaderStepDownResponse;
 import org.yb.client.ListLiveTabletServersResponse;
 import org.yb.client.ListMasterRaftPeersResponse;
@@ -2281,6 +2284,77 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     assertNull(universe.getStateTransitionDetails());
     verify(mockNodeManager, atLeastOnce())
         .nodeCommand(eq(NodeManager.NodeCommandType.Destroy), any());
+  }
+
+  @Test
+  public void testDedicatedNodesChangeKeepsPerAZTserverGFlags() throws Exception {
+    when(mockClient.getLeaderBlacklistCompletion())
+        .thenReturn(new GetLoadMovePercentResponse(0, "", 100.0, 0, 0, null));
+    when(mockClient.isServerReady(any(HostAndPort.class), anyBoolean()))
+        .thenReturn(new IsServerReadyResponse(0, "", null, 0, 0));
+    Universe universe = defaultUniverse;
+    UUID azUuid = universe.getNodes().iterator().next().azUuid;
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams.UserIntent userIntent =
+                  u.getUniverseDetails().getPrimaryCluster().userIntent;
+              SpecificGFlags specificGFlags =
+                  SpecificGFlags.construct(userIntent.masterGFlags, userIntent.tserverGFlags);
+              specificGFlags.setPerAZ(
+                  Map.of(
+                      azUuid,
+                      new SpecificGFlags.PerProcessFlags(
+                          Map.of(
+                              UniverseTaskBase.ServerType.TSERVER,
+                              Map.of("log_min_seconds_to_retain", "1234")))));
+              userIntent.specificGFlags = specificGFlags;
+            });
+    Set<String> tserverNames =
+        universe.getNodes().stream()
+            .filter(n -> n.isTserver)
+            .map(n -> n.nodeName)
+            .collect(Collectors.toSet());
+
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.nodePrefix = universe.getUniverseDetails().nodePrefix;
+    taskParams.nodeDetailsSet = universe.getUniverseDetails().nodeDetailsSet;
+    taskParams.clusters = universe.getUniverseDetails().clusters;
+    taskParams.creatingUser = defaultUser;
+    Cluster primaryCluster = taskParams.getPrimaryCluster();
+    ApiUtils.configureDedicatedMasterFields(primaryCluster.userIntent);
+    PlacementInfoUtil.updateUniverseDefinition(
+        taskParams, defaultCustomer.getId(), primaryCluster.uuid, EDIT);
+    updateIPs(taskParams);
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+
+    List<TaskInfo> tserverRestartConfigs =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.AnsibleConfigureServers)
+            .filter(t -> t.getSubTaskGroupType() == SubTaskGroupType.UpdatingGFlags)
+            .filter(t -> !t.getTaskParams().get("updateMasterAddrsOnly").asBoolean())
+            .filter(
+                t ->
+                    t.getTaskParams()
+                        .get("properties")
+                        .get("processType")
+                        .asText()
+                        .equals(UniverseTaskBase.ServerType.TSERVER.toString()))
+            .filter(t -> tserverNames.contains(t.getTaskParams().get("nodeName").asText()))
+            .collect(Collectors.toList());
+    assertEquals(tserverNames.size(), tserverRestartConfigs.size());
+    for (TaskInfo configTask : tserverRestartConfigs) {
+      Map<String, String> gflags =
+          Json.fromJson(configTask.getTaskParams().get("gflags"), Map.class);
+      assertEquals("bar", gflags.get("foo"));
+      assertEquals("1234", gflags.get("log_min_seconds_to_retain"));
+    }
   }
 
   @Test

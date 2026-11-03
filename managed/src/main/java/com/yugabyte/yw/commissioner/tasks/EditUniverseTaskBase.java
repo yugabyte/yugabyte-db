@@ -22,6 +22,7 @@ import com.yugabyte.yw.common.TableSpaceUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -554,8 +555,6 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
             .collect(Collectors.toList());
     UpgradeTaskBase.sortTServersInRestartOrder(universe, tservers);
     removeFromLeaderBlackListIfAvailable(tservers, SubTaskGroupType.UpdatingGFlags);
-    SubTaskGroup subTaskGroup =
-        createSubTaskGroup("AnsibleConfigureServers", SubTaskGroupType.UpdatingGFlags);
     for (NodeDetails nodeDetails : tservers) {
       stopProcessesOnNodes(
           Collections.singletonList(nodeDetails),
@@ -573,7 +572,12 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
               ServerType.TSERVER,
               UpgradeTaskParams.UpgradeTaskType.GFlags,
               UpgradeTaskParams.UpgradeTaskSubType.None);
-      params.gflags = cluster.userIntent.tserverGFlags;
+      // getAnsibleConfigureServerParams reads the DB copy, which does not have this edit's intent.
+      params.gflags =
+          GFlagsUtil.getGFlagsForNode(
+              nodeDetails, ServerType.TSERVER, cluster, universe.getUniverseDetails().clusters);
+      SubTaskGroup subTaskGroup =
+          createSubTaskGroup("AnsibleConfigureServers", SubTaskGroupType.UpdatingGFlags);
       AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
       task.initialize(params);
       task.setUserTaskUUID(getUserTaskUUID());
