@@ -269,10 +269,10 @@ get_greaterstr(Datum prefix, Oid datatype, Oid colloid)
 	 * supporting extensions like btree_gin.  This assumption makes finding
 	 * opfamily and operator easier.
 	 *
-	 * Check this before the collation: initGinState leaves colloid invalid
-	 * only for a non-collatable key type, and pg_newlocale_from_collation
-	 * would fail on an invalid collation with an internal error instead of
-	 * this one.
+	 * Check this before the collation: for a YB relation, initGinState
+	 * (gin/ginutil.c) leaves colloid invalid only for a non-collatable key
+	 * type, and pg_newlocale_from_collation would fail on an invalid collation
+	 * with an internal error instead of this one.
 	 */
 	if (datatype != TEXTOID)
 		ereport(ERROR,
