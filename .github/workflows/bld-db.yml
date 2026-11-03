@@ -39,7 +39,7 @@ jobs:
   csi-comment:
     runs-on: ubuntu-latest
     permissions:
-      issues: write
+      pull-requests: write
     steps:
       - name: CSI-status
         if: github.event.action == 'reopened'
