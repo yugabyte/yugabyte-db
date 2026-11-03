@@ -56,6 +56,19 @@ EXPLAIN (COSTS OFF) EXECUTE ddl_par_after;
 DEALLOCATE ddl_par_after;
 DROP TABLE ddl_par_after_t;
 
+-- The same with an ALTER TABLE on a table the plan does not use: the plan
+-- has no dependency on what the block changed, yet it must still get its
+-- Gather back after COMMIT.
+CREATE TABLE ddl_par_other (k INT);
+BEGIN;
+ALTER TABLE ddl_par_other ADD COLUMN x INT;
+PREPARE ddl_par_alter AS SELECT COUNT(*) FROM ddl_par;
+EXPLAIN (COSTS OFF) EXECUTE ddl_par_alter;
+COMMIT;
+EXPLAIN (COSTS OFF) EXECUTE ddl_par_alter;
+DEALLOCATE ddl_par_alter;
+DROP TABLE ddl_par_other;
+
 -- GH #30978 as filed ran in REPEATABLE READ and rolled back to a savepoint
 -- taken after the DDL. The DDL before the savepoint stays, so the block
 -- still has uncommitted catalog rows and the query gets no parallel plan.

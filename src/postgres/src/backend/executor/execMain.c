@@ -1711,6 +1711,7 @@ ExecutePlan(QueryDesc *queryDesc,
 	 */
 	if (use_parallel_mode && YBGetDdlUseRegularTransactionBlock())
 		use_parallel_mode = false;
+
 	queryDesc->already_executed = true;
 
 	estate->es_use_parallel_mode = use_parallel_mode;
