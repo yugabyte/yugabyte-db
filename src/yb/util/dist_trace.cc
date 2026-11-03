@@ -13,7 +13,8 @@
 
 #include "yb/util/dist_trace.h"
 
-#include <cstring>
+#include <atomic>
+#include <string_view>
 
 #include "opentelemetry/context/propagation/global_propagator.h"
 #include "opentelemetry/exporters/otlp/otlp_http_exporter_factory.h"
@@ -67,15 +68,18 @@ DEFINE_NON_RUNTIME_string(otel_internal_log_level, "info",
     "Minimum OpenTelemetry SDK internal log level forwarded to YugabyteDB logging. Allowed "
     "values are debug, info, warning, error, and none.");
 
-DEFINE_RUNTIME_int32(otel_dropped_span_log_interval_secs, 10,
-    "Minimum interval in seconds between two OpenTelemetry dropped-span warnings. The next logged "
-    "warning reports how many were suppressed. 0 logs every dropped span.");
+DEFINE_RUNTIME_PG_FLAG(int32, yb_otel_log_throttle_interval_secs, 10,
+    "Minimum interval in seconds between two logs of the same OpenTelemetry SDK dropped-span or "
+    "export-failure message from one process. The next logged line reports how many were "
+    "suppressed. 0 disables throttling.");
 
 DEFINE_validator(otel_batch_max_queue_size,
     FLAG_GE_FLAG_VALIDATOR(otel_batch_max_export_batch_size));
 
 DEFINE_validator(otel_ysql_batch_max_queue_size,
     FLAG_GE_FLAG_VALIDATOR(otel_batch_max_export_batch_size));
+
+DEFINE_validator(ysql_yb_otel_log_throttle_interval_secs, FLAG_GE_VALUE_VALIDATOR(0));
 
 DEFINE_validator(otel_internal_log_level,
     FLAG_IN_SET_VALIDATOR("debug", "info", "warning", "error", "none"));
@@ -164,9 +168,22 @@ internal_log::LogLevel GetOtelInternalLogLevel() {
   return internal_log::LogLevel::Info;
 }
 
-// The batch span processor logs this once per dropped span, on the query path. A full queue would
-// otherwise flood the logs and slow queries with a synchronous log write per span.
-constexpr const char* kOtelDroppedSpanMessage = "queue is full - dropping span";
+// The SDK logs these once per dropped span (on the query path) or once per failed export batch.
+// A full queue or an unreachable collector would otherwise flood the logs. Each message gets its
+// own throttle window, so one kind of flood does not hide another.
+constexpr std::string_view kOtelDroppedSpanMessage = "BatchSpanProcessor queue is full";
+constexpr std::string_view kOtlpHttpClientMessagePrefix = "[OTLP HTTP Client]";
+constexpr std::string_view kOtlpExportFailureMessagePrefix =
+    "[OTLP TRACE HTTP Exporter] ERROR: Export";
+
+// Postgres backends read gflags only at startup, so they get the interval from the GUC of the same
+// name instead. -1 means no GUC has set it, as in yb-tserver and yb-master.
+std::atomic<int32_t> log_throttle_interval_secs_from_guc{-1};
+
+int32_t OtelLogThrottleIntervalSecs() {
+  auto from_guc = log_throttle_interval_secs_from_guc.load(std::memory_order_relaxed);
+  return from_guc >= 0 ? from_guc : FLAGS_ysql_yb_otel_log_throttle_interval_secs;
+}
 
 class YbOtelLogHandler : public internal_log::LogHandler {
  public:
@@ -178,8 +195,22 @@ class YbOtelLogHandler : public internal_log::LogHandler {
     const char* safe_file = file ? file : "unknown";
     const char* safe_msg = msg ? msg : "";
 
-    if (level == internal_log::LogLevel::Warning && strstr(safe_msg, kOtelDroppedSpanMessage)) {
-      YB_LOG_EVERY_N_SECS(WARNING, FLAGS_otel_dropped_span_log_interval_secs)
+    std::string_view msg_view(safe_msg);
+    if (level == internal_log::LogLevel::Warning &&
+        msg_view.starts_with(kOtelDroppedSpanMessage)) {
+      YB_LOG_EVERY_N_SECS(WARNING, OtelLogThrottleIntervalSecs())
+          << "[" << safe_file << ":" << line << "]: " << safe_msg;
+      return;
+    }
+    if (level == internal_log::LogLevel::Error &&
+        msg_view.starts_with(kOtlpHttpClientMessagePrefix)) {
+      YB_LOG_EVERY_N_SECS(ERROR, OtelLogThrottleIntervalSecs())
+          << "[" << safe_file << ":" << line << "]: " << safe_msg;
+      return;
+    }
+    if (level == internal_log::LogLevel::Error &&
+        msg_view.starts_with(kOtlpExportFailureMessagePrefix)) {
+      YB_LOG_EVERY_N_SECS(ERROR, OtelLogThrottleIntervalSecs())
           << "[" << safe_file << ":" << line << "]: " << safe_msg;
       return;
     }
@@ -298,6 +329,10 @@ class TraceparentCarrier : public context::propagation::TextMapCarrier {
 };
 
 }  // namespace
+
+void SetOtelLogThrottleIntervalSecsFromGuc(int32_t secs) {
+  log_throttle_interval_secs_from_guc.store(secs, std::memory_order_relaxed);
+}
 
 void TEST_SetOtelCollectorEndpoint(const std::string& endpoint) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_collector_traces_endpoint) = endpoint;
