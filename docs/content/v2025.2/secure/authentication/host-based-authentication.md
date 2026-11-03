@@ -30,7 +30,7 @@ When a connection request is received, YugabyteDB does the following:
 1. Authenticates based on the matching record.
 1. If the information provided in the connection request matches the expected content, allows access. If authentication fails, then subsequent records are not evaluated and access is denied.
 
-You can update the `--ysql_hba_conf_csv` flag while the cluster is running. The change takes effect without restarting YB-TServer. Set the flag on every YB-TServer.
+You can update the `--ysql_hba_conf_csv` flag while the cluster is running. The change takes effect without restarting YB-TServer. Set the flag on every YB-TServer, and save the new value in each YB-TServer configuration file or in YugabyteDB Anywhere so the change survives a restart.
 
 The system view `pg_hba_file_rules` can be helpful for pre-testing changes to the `--ysql_hba_conf_csv` flag, or for diagnosing problems if the flag did not have the desired effects. Rows in the view with non-null error fields indicate problems in the corresponding lines of the file.
 
