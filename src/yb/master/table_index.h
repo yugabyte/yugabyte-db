@@ -50,7 +50,6 @@ class TableIndex {
   using TablesRange = boost::iterator_range<Tables::iterator>;
   using PrimaryTablesRange = boost::iterator_range<
       Tables::index<SecondaryTableTag>::type::iterator>;
-  using SecondaryTablesRange = PrimaryTablesRange;
 
   TableIndex() = default;
   ~TableIndex() = default;
@@ -63,12 +62,6 @@ class TableIndex {
   PrimaryTablesRange GetPrimaryTables() const {
     return boost::make_iterator_range(
         tables_.get<SecondaryTableTag>().equal_range(false));
-  }
-
-  // Colocated tables and vector indexes.
-  SecondaryTablesRange GetSecondaryTables() const {
-    return boost::make_iterator_range(
-        tables_.get<SecondaryTableTag>().equal_range(true));
   }
 
   void AddOrReplace(const TableInfoPtr& table);

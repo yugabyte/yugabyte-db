@@ -8257,9 +8257,6 @@ void CatalogManager::RemoveDeletedTabletsFromTables(const TabletInfos& candidate
   // tablets the loader put back in tablet_map_ after a restart. CleanUpDeletedTables covers the
   // tablets of a table that goes away.
   std::vector<std::pair<TabletId, DeletedSplitParent>> tablets_to_erase;
-  // Vector indexes, live or dropped, keyed by their indexed table. Built once a tablet is about to
-  // be erased, which is rare, so a pass without one does not scan the tables.
-  std::optional<std::unordered_map<TableId, std::vector<TableInfoPtr>>> vector_indexes;
   for (const auto& tablet : candidates) {
     auto table = tablet->table();
     // A colocated tablet is listed in every colocated table's tablets_ and is never split, so it is
@@ -8286,15 +8283,17 @@ void CatalogManager::RemoveDeletedTabletsFromTables(const TabletInfos& candidate
     }
     // Vector indexes share their indexed table's tablets and list them in their own tablets_ too.
     // Every table listing the tablet must drop it before tablet_map_ can: their tablets_ hold only
-    // weak pointers, which would otherwise dangle. That includes a dropped vector index, which is
-    // no longer in the indexed table's index list but stays, hidden, while a snapshot schedule
-    // retains it.
-    if (!vector_indexes) {
-      vector_indexes = VectorIndexesByIndexedTable();
-    }
+    // weak pointers, which would otherwise dangle. The tablet's hosted tables are used rather than
+    // the indexed table's index list, as they still include a dropped vector index that a snapshot
+    // schedule keeps hidden.
     std::vector<TableInfoPtr> tables{table};
-    if (auto it = vector_indexes->find(table->id()); it != vector_indexes->end()) {
-      tables.insert(tables.end(), it->second.begin(), it->second.end());
+    for (const auto& table_id : tablet->GetTableIds()) {
+      if (table_id == table->id()) {
+        continue;
+      }
+      if (auto hosted_table = GetTableInfo(table_id)) {
+        tables.push_back(std::move(hosted_table));
+      }
     }
     if (std::ranges::all_of(tables, [&tablet](const auto& t) {
           return t->RemoveInactiveTablet(tablet);
@@ -8321,24 +8320,6 @@ void CatalogManager::RemoveDeletedTabletsFromTables(const TabletInfos& candidate
   }
   LOG_WITH_PREFIX(INFO) << "Removed " << tablets_to_erase.size()
                         << " deleted tablet(s) from the catalog manager's maps";
-}
-
-std::unordered_map<TableId, std::vector<TableInfoPtr>>
-CatalogManager::VectorIndexesByIndexedTable() {
-  std::vector<TableInfoPtr> secondary_tables;
-  {
-    SharedLock lock(mutex_);
-    auto range = tables_->GetSecondaryTables();
-    secondary_tables.assign(std::begin(range), std::end(range));
-  }
-  std::unordered_map<TableId, std::vector<TableInfoPtr>> result;
-  for (const auto& table : secondary_tables) {
-    auto table_lock = table->LockForRead();
-    if (table_lock->is_vector_index()) {
-      result[table_lock->indexed_table_id()].push_back(table);
-    }
-  }
-  return result;
 }
 
 Status CatalogManager::IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
