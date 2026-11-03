@@ -400,6 +400,24 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
     return null;
   }
 
+  /**
+   * Whether the server at {@code ip} is in {@code azUuid}. Looks at the universe in the DB, as
+   * POD_INFO replaces the nodes while the upgrade runs.
+   */
+  protected boolean isNodeInAz(String ip, UUID azUuid) {
+    return Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).getNodes().stream()
+        .anyMatch(node -> azUuid.equals(node.azUuid) && ip.equals(node.cloudInfo.private_ip));
+  }
+
+  /** Asserts one CheckSoftwareVersion per pod, counted from the universe POD_INFO left. */
+  protected void assertCheckSoftwareVersionRanForAllNodes(TaskInfo taskInfo) {
+    assertEquals(
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).getNodes().size(),
+        taskInfo.getSubTasks().stream()
+            .filter(task -> task.getTaskType() == TaskType.CheckSoftwareVersion)
+            .count());
+  }
+
   /** Adds a one-node read replica cluster in the primary's zone. */
   protected Cluster addReadReplicaCluster() {
     Cluster primary = defaultUniverse.getUniverseDetails().getPrimaryCluster();
