@@ -106,6 +106,20 @@ namespace yb::docdb {
 
 namespace {
 
+// Shared by the forced OpId stamps of an open index, DocVectorIndex::ModifyFlushedFrontier, and
+// of one that is not open, ForceVectorIndexStorageOpId, so both write the same frontiers.
+void SetChunkOpId(storage::UserFrontiers& frontiers, const OpId& op_id) {
+  down_cast<ConsensusFrontier&>(frontiers.Smallest()).set_op_id(op_id);
+  down_cast<ConsensusFrontier&>(frontiers.Largest()).set_op_id(op_id);
+}
+
+// The frontiers of the chunk without a file that a stamp adds.
+ConsensusFrontiers StampChunkFrontiers(const OpId& op_id) {
+  ConsensusFrontiers frontiers;
+  frontiers.Largest().set_op_id(op_id);
+  return frontiers;
+}
+
 vector_index::DistanceKind ConvertDistanceKind(PgVectorDistanceType dist_type) {
   switch (dist_type) {
     case PgVectorDistanceType::DIST_L2:
@@ -608,14 +622,12 @@ class DocVectorIndexImpl : public DocVectorIndex {
       const ConsensusFrontier& frontier, rocksdb::FrontierModificationMode mode) override {
     if (mode == rocksdb::FrontierModificationMode::kForce) {
       RETURN_NOT_OK(lsm_.ModifyChunkFrontiers([&frontier](storage::UserFrontiers& frontiers) {
-        down_cast<ConsensusFrontier&>(frontiers.Smallest()).set_op_id(frontier.op_id());
-        down_cast<ConsensusFrontier&>(frontiers.Largest()).set_op_id(frontier.op_id());
+        SetChunkOpId(frontiers, frontier.op_id());
       }));
     }
     // An empty insert only carries the frontier into the mutable chunk, the following flush
     // persists it. Same shape as the split generation update above.
-    ConsensusFrontiers frontiers;
-    frontiers.Largest().set_op_id(frontier.op_id());
+    auto frontiers = StampChunkFrontiers(frontier.op_id());
     RETURN_NOT_OK(Insert(
         DocVectorIndexInsertEntries{}, InsertOptions{ .frontiers = &frontiers, }));
     // Wait for the flush: callers stamp an OpId to make it durable, and an ungraceful restart
@@ -897,18 +909,12 @@ void DocVectorIndex::ApplyReverseEntry(
 }
 
 Status ForceVectorIndexStorageOpId(const std::string& storage_dir, const OpId& op_id) {
-  // The same frontiers as the empty insert of ModifyFlushedFrontier, so an index restored without
-  // chunks gets the OpId too.
-  ConsensusFrontiers added_chunk_frontiers;
-  added_chunk_frontiers.Largest().set_op_id(op_id);
+  // The added chunk gives an index restored without chunks the OpId too.
   // The same env VectorLSM loads its manifest with.
   return vector_index::VectorLSMMetadataModifyChunkFrontiers(
       Env::Default(), storage_dir, [] { return std::make_unique<ConsensusFrontiers>(); },
-      [&op_id](storage::UserFrontiers& frontiers) {
-        down_cast<ConsensusFrontier&>(frontiers.Smallest()).set_op_id(op_id);
-        down_cast<ConsensusFrontier&>(frontiers.Largest()).set_op_id(op_id);
-      },
-      added_chunk_frontiers);
+      [&op_id](storage::UserFrontiers& frontiers) { SetChunkOpId(frontiers, op_id); },
+      StampChunkFrontiers(op_id));
 }
 
 Result<DocVectorIndexPtr> CreateDocVectorIndex(
