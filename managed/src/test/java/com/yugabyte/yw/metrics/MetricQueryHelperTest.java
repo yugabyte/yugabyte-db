@@ -8,6 +8,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.core.AllOf.allOf;
 import static org.hamcrest.core.Is.is;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -15,16 +16,25 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.forms.MetricQueryParams;
 import com.yugabyte.yw.metrics.data.AlertData;
 import com.yugabyte.yw.metrics.data.AlertState;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.MetricConfig;
 import com.yugabyte.yw.models.MetricConfigDefinition;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.IOException;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
@@ -41,6 +51,7 @@ import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
+import org.yaml.snakeyaml.Yaml;
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -421,5 +432,133 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     verify(mockApiHelper).getRequest(queryUrl.capture(), any());
 
     assertThat(queryUrl.getValue(), allOf(notNullValue(), equalTo("foo://bar/api/v1/alerts")));
+  }
+
+  // Captures each key's query from one metrics request.
+  @SuppressWarnings("unchecked")
+  private Map<String, String> queryKeys(Universe universe, List<String> keys, boolean tserverOnly) {
+    MetricQueryParams params = new MetricQueryParams();
+    params.setNodePrefix(universe.getUniverseDetails().nodePrefix);
+    params.setStart(1481147528L);
+    params.setEnd(1481147648L);
+    params.setMetrics(keys);
+    if (tserverOnly) {
+      params.setServerType(UniverseTaskBase.ServerType.TSERVER);
+    }
+    when(mockApiHelper.getRequest(anyString(), anyMap(), anyMap()))
+        .thenReturn(Json.parse("{\"status\":\"success\",\"data\":{\"result\":[]}}"));
+    metricQueryHelper.query(customer, params);
+    ArgumentCaptor<Map> queryParam = ArgumentCaptor.forClass(Map.class);
+    verify(mockApiHelper, times(keys.size()))
+        .getRequest(anyString(), anyMap(), queryParam.capture());
+    Map<String, String> queries = new HashMap<>();
+    for (Map<String, String> captured : queryParam.getAllValues()) {
+      queries.put(captured.get("queryKey"), captured.get("query"));
+    }
+    return queries;
+  }
+
+  private Universe kubernetesUniverse(String name, boolean newNamingStyle, String... azCodes) {
+    MetricConfig.loadConfig(
+        new Yaml().load(getClass().getClassLoader().getResourceAsStream("metric/metrics.yml")));
+    Universe universe = ModelFactory.createUniverse(name, customer.getId(), CloudType.kubernetes);
+    Provider provider =
+        Provider.getOrBadRequest(
+            UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
+    if (Region.getByCode(provider, "region-1") == null) {
+      Region region = Region.create(provider, "region-1", "Region 1", "default-image");
+      CloudInfoInterface.setCloudProviderInfoFromConfig(
+          region, ImmutableMap.of("KUBECONFIG", "/tmp/kubeconfig"));
+      region.save();
+      int i = 1;
+      for (String azCode : azCodes) {
+        AvailabilityZone.createOrThrow(region, azCode, "AZ " + i, "subnet-" + i++);
+      }
+    }
+    return Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> u.getUniverseDetails().useNewHelmNamingStyle = newNamingStyle);
+  }
+
+  // The tasks name releases by zone code, so a zone whose name differs from its code still
+  // selects its pods and claims.
+  @Test
+  public void testMultiAzReleasesUseTheZoneCode() {
+    Universe universe = kubernetesUniverse("k8s-multi-az", true, "az-1", "az-2");
+    Map<String, String> queries =
+        queryKeys(
+            universe, ImmutableList.of("container_memory_usage", "container_volume_stats"), false);
+
+    for (String azCode : ImmutableList.of("az-1", "az-2")) {
+      String release =
+          KubernetesUtil.getHelmReleaseName(
+              true,
+              universe.getUniverseDetails().nodePrefix,
+              universe.getName(),
+              azCode,
+              false,
+              true);
+      assertTrue(
+          release, queries.get("container_memory_usage").contains(release + "-yb-tserver-(.*)"));
+      assertTrue(
+          release,
+          queries.get("container_volume_stats").contains("(.*)-" + release + "-yb-tserver-(.*)"));
+    }
+  }
+
+  // Universes in new naming style can share a namespace, and kubelet volume series carry no pod
+  // name, so the volume keys select the universe's tserver claims by release.
+  @Test
+  public void testContainerVolumeKeysSelectTheUniverseClaims() {
+    List<String> releases = new ArrayList<>();
+    Universe universe = null;
+    for (String name : ImmutableList.of("k8s-shared-a", "k8s-shared-b")) {
+      universe = kubernetesUniverse(name, true, "az-1");
+      releases.add(
+          KubernetesUtil.getHelmReleaseName(
+              false,
+              universe.getUniverseDetails().nodePrefix,
+              universe.getName(),
+              "az-1",
+              false,
+              true));
+    }
+    Map<String, String> queries =
+        queryKeys(
+            universe,
+            ImmutableList.of("container_volume_stats", "container_volume_usage_percent"),
+            false);
+
+    String claim = "persistentvolumeclaim=~\"(.*)-" + releases.get(1) + "-yb-tserver-(.*)\"";
+    for (String key :
+        ImmutableList.of("container_volume_stats", "container_volume_usage_percent")) {
+      String query = queries.get(key);
+      assertTrue(query, query.contains(claim));
+      assertFalse(query, query.contains(releases.get(0)));
+      assertFalse(query, query.contains("persistentvolumeclaim=~\"(.*)-yb-tserver-(.*)\""));
+    }
+    assertTrue(queries.get("container_volume_usage_percent").split("/", 2)[1].contains(claim));
+  }
+
+  @Test
+  public void testContainerVolumeKeysSelectTheChosenPods() {
+    Universe universe = kubernetesUniverse("k8s-scoped", true, "az-1");
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> {
+              NodeDetails node = ApiUtils.getDummyNodeDetails(1, NodeDetails.NodeState.Live);
+              node.isTserver = true;
+              node.cloudInfo.kubernetesPodName = "yb-tserver-0";
+              node.cloudInfo.kubernetesNamespace = "k8s-scoped";
+              u.getUniverseDetails().nodeDetailsSet = new HashSet<>(Collections.singleton(node));
+            });
+    Map<String, String> queries =
+        queryKeys(universe, ImmutableList.of("container_volume_stats"), true);
+
+    assertTrue(
+        queries
+            .get("container_volume_stats")
+            .contains("persistentvolumeclaim=~\"(.*)-yb-tserver-0\""));
   }
 }

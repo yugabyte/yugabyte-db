@@ -235,10 +235,8 @@ static List *yb_useful_pathkeys_without_merge_scan(PlannerInfo *root,
 												  ScanDirection scandir,
 												  int yb_distinct_prefixlen,
 												  int *yb_distinct_nkeys);
-static List *yb_truncate_embedded_index_pathkeys(PlannerInfo *root,
-												 RelOptInfo *rel,
-												 IndexOptInfo *index,
-												 List *useful_pathkeys);
+static bool yb_is_embedded_index(PlannerInfo *root, RelOptInfo *rel,
+								 IndexOptInfo *index);
 static IndexClause *yb_match_clause_to_index(PlannerInfo *root,
 											 RestrictInfo *rinfo,
 											 IndexOptInfo *index);
@@ -5240,21 +5238,12 @@ yb_derive_equal_cond(PlannerInfo *root, RelOptInfo *rel,
 }
 
 /*
- * yb_truncate_embedded_index_pathkeys
- *
- * Expression columns in the Yugabyte's embedded (i.e. colocated) indexess are
- * useless for merge sort purposes, because DocDB returns data from the base
- * table only, and has no mechanism to return the data from the index.
- * Therefore, if the index is an embedded index, we iterate over the pathkeys
- * to check if there are equivalent columns in the base table. If not, we
- * truncate the pathkeys list to exclude the expression columns.
+ * YB: Whether YbIsScanningEmbeddedIdx considers index an embedded index of
+ * rel, such as a colocated index.
  */
-static List *
-yb_truncate_embedded_index_pathkeys(PlannerInfo *root, RelOptInfo *rel,
-									IndexOptInfo *index, List *useful_pathkeys)
+static bool
+yb_is_embedded_index(PlannerInfo *root, RelOptInfo *rel, IndexOptInfo *index)
 {
-	ListCell   *lc;
-	int			useful;
 	Relation	table_rel;
 	Relation	index_rel;
 	bool		is_embedded_index;
@@ -5264,41 +5253,7 @@ yb_truncate_embedded_index_pathkeys(PlannerInfo *root, RelOptInfo *rel,
 	is_embedded_index = YbIsScanningEmbeddedIdx(table_rel, index_rel);
 	RelationClose(table_rel);
 	RelationClose(index_rel);
-	/* Regular index queried directly, all the passkey are useful */
-	if (!is_embedded_index)
-	{
-		return useful_pathkeys;
-	}
-
-	useful = 0;
-	foreach(lc, useful_pathkeys)
-	{
-		ListCell   *lc2;
-		bool		found = false;
-		PathKey    *pathkey = (PathKey *) lfirst(lc);
-		EquivalenceClass *ec = pathkey->pk_eclass;
-		foreach(lc2, ec->ec_members)
-		{
-			EquivalenceMember *em = (EquivalenceMember *) lfirst(lc2);
-			if (bms_equal(em->em_relids, rel->relids))
-			{
-				Expr	   *expr = em->em_expr;
-				while (IsA(expr, RelabelType))
-					expr = ((RelabelType *) expr)->arg;
-				if (IsA(expr, Var))
-				{
-					found = true;
-					break;
-				}
-			}
-		}
-		if (!found)
-		{
-			return list_truncate(useful_pathkeys, useful);
-		}
-		++useful;
-	}
-	return useful_pathkeys;
+	return is_embedded_index;
 }
 
 /*
@@ -5684,24 +5639,18 @@ yb_finalize_merge_scan_path(PlannerInfo *root, RelOptInfo *rel,
 							int *yb_distinct_nkeys, List *useful_pathkeys,
 							List **yb_merge_scan_stream_cols)
 {
+	bool		embedded;
+
 	if (*yb_merge_scan_stream_cols == NIL)
 		return useful_pathkeys;
 
-	if (useful_pathkeys != NIL)
-		useful_pathkeys = yb_truncate_embedded_index_pathkeys(root, rel, index,
-															  useful_pathkeys);
-
-	/*
-	 * yb_distinct_nkeys is the number of pathkeys that span the distinct
-	 * prefix, or -1 if they do not span it.  The truncation can cut into those
-	 * pathkeys, and then they no longer span the prefix.
-	 */
-	if (*yb_distinct_nkeys > list_length(useful_pathkeys))
-		*yb_distinct_nkeys = -1;
+	/* TODO(#36017): an index only scan needs no embedded truncation. */
+	embedded = yb_is_embedded_index(root, rel, index);
 	*yb_merge_scan_stream_cols =
 		yb_finalize_merge_scan_stream_cols(index, rel->relids,
 										   *yb_merge_scan_stream_cols,
-										   index_clauses, useful_pathkeys);
+										   index_clauses, &useful_pathkeys,
+										   yb_distinct_nkeys, embedded);
 	if (*yb_merge_scan_stream_cols == NIL)
 		useful_pathkeys =
 			yb_useful_pathkeys_without_merge_scan(root, rel, index, scandir,

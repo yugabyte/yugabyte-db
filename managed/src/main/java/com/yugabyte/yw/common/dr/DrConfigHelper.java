@@ -7,6 +7,7 @@ import static org.apache.commons.validator.routines.UrlValidator.ALLOW_LOCAL_URL
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.Sets;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
@@ -46,6 +47,7 @@ import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.DrConfig;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.ConfigType;
@@ -651,6 +653,7 @@ public class DrConfigHelper {
       drConfig.setKubernetesResourceDetails(switchoverForm.getKubernetesResourceDetails());
     }
     verifyTaskAllowed(drConfig, TaskType.SwitchoverDrConfig);
+    verifyNoFailedSwitchover(customer, drConfig);
     Optional<XClusterConfig> xClusterConfigOptional =
         drConfig.getActiveXClusterConfig(
             switchoverForm.drReplicaUniverseUuid, switchoverForm.primaryUniverseUuid);
@@ -1063,6 +1066,72 @@ public class DrConfigHelper {
 
     log.info("Submitted {} DrConfig({}), task {}", operation, drConfigUUID, taskUUID);
     return taskUUID;
+  }
+
+  /**
+   * A failed switchover can leave the DR config with a partially set up reverse xCluster config,
+   * and a fresh switchover would add another one on top of it instead of resuming. So if the latest
+   * task on this DR config is a failed switchover (or a failed rollback of one), the user must
+   * retry or roll back that task.
+   */
+  private void verifyNoFailedSwitchover(Customer customer, DrConfig drConfig) {
+    Set<UUID> universeUuids = new HashSet<>();
+    drConfig
+        .getXClusterConfigs()
+        .forEach(
+            xClusterConfig -> {
+              universeUuids.add(xClusterConfig.getSourceUniverseUUID());
+              universeUuids.add(xClusterConfig.getTargetUniverseUUID());
+            });
+    if (universeUuids.isEmpty()) {
+      return;
+    }
+    // DR customer tasks are keyed by a universe, so pick out the ones for this DR config from
+    // the task params.
+    Optional<CustomerTask> lastDrTaskOptional =
+        CustomerTask.find
+            .query()
+            .where()
+            .eq("customer_uuid", customer.getUuid())
+            .eq("target_type", CustomerTask.TargetType.DrConfig)
+            .in("target_uuid", universeUuids)
+            .orderBy("create_time desc")
+            .findList()
+            .stream()
+            .filter(
+                customerTask -> {
+                  JsonNode taskParams = customerTask.getTaskInfo().getTaskParams();
+                  return taskParams != null
+                      && drConfig
+                          .getUuid()
+                          .toString()
+                          .equals(taskParams.path("drConfig").path("uuid").asText());
+                })
+            .findFirst();
+    if (lastDrTaskOptional.isEmpty()) {
+      return;
+    }
+    CustomerTask lastDrTask = lastDrTaskOptional.get();
+    if (!TaskInfo.ERROR_STATES.contains(lastDrTask.getTaskInfo().getTaskState())) {
+      return;
+    }
+    if (lastDrTask.getType() == CustomerTask.TaskType.Switchover) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "The last switchover task %s on this DR config failed; it must be retried instead of"
+                  + " starting a new switchover. If you wish to keep the same replication"
+                  + " direction, you may roll back the failed switchover task.",
+              lastDrTask.getTaskUUID()));
+    }
+    if (lastDrTask.getType() == CustomerTask.TaskType.SwitchoverRollback) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "The last switchover rollback task %s on this DR config failed; it must be retried"
+                  + " before starting a new switchover.",
+              lastDrTask.getTaskUUID()));
+    }
   }
 
   public void verifyTaskAllowed(DrConfig drConfig, TaskType taskType) {

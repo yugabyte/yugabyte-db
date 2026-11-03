@@ -292,24 +292,30 @@ public class MetricQueryHelper {
           // Check if the universe is using newNamingStyle.
           if (newNamingStyle) {
             Set<String> nodePrefixes = new HashSet<String>();
+            Set<String> tserverClaimPatterns = new HashSet<>();
             for (Cluster cluster : universe.getUniverseDetails().clusters) {
               Provider provider = Util.getSingleProvider(cluster);
               for (Region r : provider.getRegions()) {
                 for (AvailabilityZone az : r.getZones()) {
                   boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
+                  // Release names take the zone code on a multi-zone provider, else null.
+                  String azName = isMultiAZ ? az.getCode() : null;
                   String helmRelease =
                       KubernetesUtil.getHelmReleaseName(
                           isMultiAZ,
                           nodePrefix,
                           universe.getName(),
-                          az.getName(),
+                          azName,
                           cluster.clusterType == ClusterType.ASYNC,
                           newNamingStyle);
                   nodePrefixes.add(helmRelease + "-yb-tserver-(.*)");
+                  tserverClaimPatterns.add("(.*)-" + helmRelease + "-yb-tserver-(.*)");
                 }
               }
             }
             filterJson.put(nodeFilterLabel, StringUtils.join(nodePrefixes, '|'));
+            // Kubelet volume series carry no pod name, so the claim selects this universe's pods.
+            filterJson.put(PVC, StringUtils.join(tserverClaimPatterns, '|'));
           }
         }
       } else {

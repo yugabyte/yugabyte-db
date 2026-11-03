@@ -664,44 +664,6 @@ Status KvStoreInfo::MergeWithRestored(
       snapshot_kvstoreinfo, primary_table_id, colocated, overwrite);
 }
 
-// The snapshot lists every vector index that was on the tablet, including invalid indexes the
-// dump omitted and indexes dropped while a snapshot schedule still retained the tablet. Those
-// have no local table. A local vector index with no snapshot entry is the one whose options and
-// restored graph can disagree.
-Result<std::unordered_set<ColocationId>> SnapshotVectorIndexColocationIds(
-    const google::protobuf::RepeatedPtrField<TableInfoPB>& snapshot_tables) {
-  std::unordered_set<ColocationId> ids;
-  for (const auto& snapshot_table : snapshot_tables) {
-    if (!snapshot_table.index_info().has_vector_idx_options()) {
-      continue;
-    }
-    const auto& schema = snapshot_table.schema();
-    SCHECK(
-        schema.has_colocated_table_id() && schema.colocated_table_id().has_colocation_id(),
-        Corruption, "Snapshot vector index $0 has no colocation id", snapshot_table.table_name());
-    ids.insert(schema.colocated_table_id().colocation_id());
-  }
-  return ids;
-}
-
-Status CheckLocalVectorIndexesInSnapshot(
-    const TableInfoMap& tables, const std::unordered_set<ColocationId>& snapshot_colocation_ids) {
-  for (const auto& [table_id, table_info] : tables) {
-    if (!table_info->IsVectorIndex()) {
-      continue;
-    }
-    SCHECK(
-        table_info->schema().has_colocation_id(), Corruption,
-        "Local vector index $0 has no colocation id", table_id);
-    const auto colocation_id = table_info->schema().colocation_id();
-    SCHECK(
-        snapshot_colocation_ids.find(colocation_id) != snapshot_colocation_ids.end(), Corruption,
-        "Local vector index $0 colocation id $1 has no snapshot counterpart", table_id,
-        colocation_id);
-  }
-  return Status::OK();
-}
-
 // CREATE INDEX on the restore cluster fills the local vector_idx_options, but the restored chunk
 // files were written with the snapshot superblock's:
 // - ysql_dump assigns dense DocDB ids and CREATE INDEX records that column id.
@@ -760,13 +722,17 @@ Status KvStoreInfo::RestoreMissingValuesAndMergeTableSchemaPackings(
           table_info->ToString());
     }
     if (overwrite) {
-      auto snapshot_colocation_ids = VERIFY_RESULT(
-          SnapshotVectorIndexColocationIds(snapshot_kvstoreinfo.tables()));
       for (const auto& snapshot_table : snapshot_kvstoreinfo.tables()) {
         if (!snapshot_table.index_info().has_vector_idx_options()) {
           continue;
         }
-        const auto colocation_id = snapshot_table.schema().colocated_table_id().colocation_id();
+        const auto& snapshot_schema = snapshot_table.schema();
+        SCHECK(
+            snapshot_schema.has_colocated_table_id() &&
+                snapshot_schema.colocated_table_id().has_colocation_id(),
+            Corruption, "Snapshot vector index $0 has no colocation id",
+            snapshot_table.table_name());
+        const auto colocation_id = snapshot_schema.colocated_table_id().colocation_id();
         auto it = colocation_to_table.find(colocation_id);
         if (it == colocation_to_table.end()) {
           // The dump does not recreate an invalid index, or one dropped while a snapshot schedule
@@ -777,7 +743,9 @@ Status KvStoreInfo::RestoreMissingValuesAndMergeTableSchemaPackings(
         }
         RETURN_NOT_OK(RestoreVectorIndexOptions(it->second.get(), snapshot_table));
       }
-      RETURN_NOT_OK(CheckLocalVectorIndexesInSnapshot(tables, snapshot_colocation_ids));
+      // A local vector index with no snapshot entry, e.g. one created after the snapshot and kept
+      // by an in-place restore, gets no restored storage. If it was open, the restore wiped its
+      // storage, so it reopens empty and is backfilled after the restore.
     }
     return Status::OK();
   }
@@ -795,10 +763,6 @@ Status KvStoreInfo::RestoreMissingValuesAndMergeTableSchemaPackings(
     if (overwrite) {
       RETURN_NOT_OK(RestoreVectorIndexOptions(target_table, snapshot_table_pb));
     }
-  }
-  if (overwrite) {
-    RETURN_NOT_OK(CheckLocalVectorIndexesInSnapshot(
-        tables, VERIFY_RESULT(SnapshotVectorIndexColocationIds(snapshot_kvstoreinfo.tables()))));
   }
   return Status::OK();
 }
@@ -1123,8 +1087,7 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
     LOG_IF_WITH_PREFIX(WARNING, !s.ok()) << "Unable to delete intents directory " << intents_dir;
   }
 
-  for (const auto& info : GetAllColocatedVectorIndexes()) {
-    auto storage_dir = vector_index_dir(info->index_info->vector_idx_options());
+  for (const auto& storage_dir : vector_index_dirs()) {
     auto status = fs_manager_->env()->DeleteRecursively(storage_dir);
     if (status.ok()) {
       LOG_WITH_PREFIX(INFO) << "Successfully destroyed vector index storage at: " << storage_dir;
@@ -2741,6 +2704,16 @@ std::string RaftGroupMetadata::vector_index_dir(
     const PgVectorIdxOptionsPB& vector_index_options) const {
   return docdb::GetStorageDir(
       kv_store_.rocksdb_dir, docdb::GetVectorIndexStorageName(vector_index_options));
+}
+
+std::vector<std::string> RaftGroupMetadata::vector_index_dirs() const {
+  const auto infos = GetAllColocatedVectorIndexes();
+  std::vector<std::string> result;
+  result.reserve(infos.size());
+  for (const auto& info : infos) {
+    result.push_back(vector_index_dir(info->index_info->vector_idx_options()));
+  }
+  return result;
 }
 
 docdb::KeyBounds RaftGroupMetadata::MakeKeyBounds() const {

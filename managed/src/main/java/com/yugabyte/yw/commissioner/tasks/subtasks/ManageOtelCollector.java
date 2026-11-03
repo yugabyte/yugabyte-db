@@ -24,8 +24,10 @@ import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.server.MasterLogConfig;
 import java.util.Arrays;
 import java.util.Map;
+import java.util.concurrent.CancellationException;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.exception.ExceptionUtils;
 
 @Slf4j
 public class ManageOtelCollector extends NodeTaskBase {
@@ -54,6 +56,8 @@ public class ManageOtelCollector extends NodeTaskBase {
     public TelemetryConfig telemetryConfig;
     public Map<String, String> gflags;
     public boolean useSudo = false;
+    // Log instead of failing the task. Failover and sync only: can leave the collector stopped.
+    public boolean ignoreErrors = false;
 
     @JsonIgnore
     public AuditLogConfig getAuditLogConfig() {
@@ -109,11 +113,26 @@ public class ManageOtelCollector extends NodeTaskBase {
 
   @Override
   public void run() {
+    try {
+      manageOtelCollector();
+    } catch (RuntimeException e) {
+      // Never swallow an abort, even a wrapped one.
+      if (!taskParams().ignoreErrors
+          || ExceptionUtils.indexOfType(e, CancellationException.class) >= 0
+          || ExceptionUtils.indexOfType(e, InterruptedException.class) >= 0) {
+        throw e;
+      }
+      log.warn(
+          "Ignoring failure to manage the OpenTelemetry collector on {}", taskParams().nodeName, e);
+    }
+  }
+
+  private void manageOtelCollector() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     NodeDetails node = universe.getNodeOrBadRequest(taskParams().nodeName);
     Cluster nodeCluster = universe.getCluster(node.placementUuid);
     taskParams().useSudo =
-        isYbServerServiceSystemLevel(universe, node) && taskParams().installOtelCollector;
+        taskParams().installOtelCollector && isYbServerServiceSystemLevel(universe, node);
 
     log.info(
         "Managing OpenTelemetry collector on instance {} with useSudo set to {}",

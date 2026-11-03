@@ -118,6 +118,7 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
                 UniverseDefinitionTaskParams params = universe.getUniverseDetails();
                 for (NodeDetails node : params.nodeDetailsSet) {
                   node.nodeName = "test-node";
+                  node.isMaster = true;
                   node.masterHttpPort = 7000;
                   node.tserverHttpPort = 9000;
                   node.ysqlServerHttpPort = 13000;
@@ -609,12 +610,14 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
   public void yugabyteScrapeTargetsFilteredByNodeServers() {
     Set<ScrapeConfigTargetType> all = EnumSet.allOf(ScrapeConfigTargetType.class);
 
-    // A tserver with both APIs keeps every target.
+    // A master and tserver with both APIs keeps every target.
     NodeDetails tserver = new NodeDetails();
+    tserver.isMaster = true;
     assertEquals(all, OtelCollectorConfigGenerator.getYugabyteScrapeTargetsForNode(tserver, all));
 
     // YCQL-only tserver drops YSQL.
     NodeDetails ycqlOnly = new NodeDetails();
+    ycqlOnly.isMaster = true;
     ycqlOnly.isYsqlServer = false;
     Set<ScrapeConfigTargetType> ycqlTargets =
         OtelCollectorConfigGenerator.getYugabyteScrapeTargetsForNode(ycqlOnly, all);
@@ -638,17 +641,70 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     // A removed or stopped node has isTserver=false stored while add/start node writes its
     // collector config. It must keep the tserver targets, because the tserver starts after.
     NodeDetails beingReAdded = new NodeDetails();
+    beingReAdded.isMaster = true;
     beingReAdded.isTserver = false;
     assertEquals(
         all, OtelCollectorConfigGenerator.getYugabyteScrapeTargetsForNode(beingReAdded, all));
 
-    // MASTER_EXPORT is never dropped: isMaster is stored only after a master move writes the
-    // collector config.
+    // A tserver-only node drops MASTER_EXPORT.
     NodeDetails tserverOnly = new NodeDetails();
-    tserverOnly.isMaster = false;
     tserverOnly.dedicatedTo = ServerType.TSERVER;
     assertEquals(
-        all, OtelCollectorConfigGenerator.getYugabyteScrapeTargetsForNode(tserverOnly, all));
+        EnumSet.complementOf(EnumSet.of(ScrapeConfigTargetType.MASTER_EXPORT)),
+        OtelCollectorConfigGenerator.getYugabyteScrapeTargetsForNode(tserverOnly, all));
+  }
+
+  // PLAT-23125: a tserver-only node must not get a master_export scrape target.
+  @Test
+  public void generateOtelColConfigMetricsSkipsMasterTargetOnTserverOnlyNode() {
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> u.getUniverseDetails().nodeDetailsSet.forEach(n -> n.isMaster = false),
+            false);
+
+    DataDogConfig config = new DataDogConfig();
+    config.setType(ProviderType.DATA_DOG);
+    config.setSite("ddsite");
+    config.setApiKey("apikey");
+    TelemetryProvider telemetryProvider =
+        createTelemetryProvider(new UUID(0, 0), "DataDog", ImmutableMap.of(), config);
+
+    MetricsExportConfig metricsExportConfig =
+        createMetricsExportConfig(
+            telemetryProvider.getUuid(), ImmutableMap.of(), 15, 10, MetricCollectionLevel.NORMAL);
+
+    String result = generateConfig(null, null, metricsExportConfig);
+
+    assertThat(result, containsString("export_type: tserver_export"));
+    assertThat(result, not(containsString("export_type: master_export")));
+    assertThat(result, not(containsString("127.0.0.1:7000")));
+  }
+
+  // A receiver with no scrape jobs is invalid, so when the node runs none of the requested
+  // servers the unfiltered yugabyte job stays.
+  @Test
+  public void generateOtelColConfigMetricsKeepsYugabyteJobWhenNoTargetApplies() {
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> u.getUniverseDetails().nodeDetailsSet.forEach(n -> n.isMaster = false),
+            false);
+
+    DataDogConfig config = new DataDogConfig();
+    config.setType(ProviderType.DATA_DOG);
+    config.setSite("ddsite");
+    config.setApiKey("apikey");
+    TelemetryProvider telemetryProvider =
+        createTelemetryProvider(new UUID(0, 0), "DataDog", ImmutableMap.of(), config);
+    MetricsExportConfig metricsExportConfig =
+        createMetricsExportConfig(
+            telemetryProvider.getUuid(), ImmutableMap.of(), 15, 10, MetricCollectionLevel.NORMAL);
+    metricsExportConfig.setScrapeConfigTargets(EnumSet.of(ScrapeConfigTargetType.MASTER_EXPORT));
+
+    String result = generateConfig(null, null, metricsExportConfig);
+
+    assertThat(result, containsString("export_type: master_export"));
   }
 
   private String generateConfig(
@@ -1291,6 +1347,148 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     }
   }
 
+  // PLAT-21847 on K8s: drop the YSQL/CQL targets when the universe does not run that API. The
+  // target intent wins over the persisted universe, because ConfigureDBApisKubernetes stores the
+  // new API flags only after the helm upgrade that renders this config.
+  @Test
+  public void getOtelColConfigK8sMetricsGatesApiTargetsOnIntent() {
+    DataDogConfig config = new DataDogConfig();
+    config.setType(ProviderType.DATA_DOG);
+    config.setSite("ddsite");
+    config.setApiKey("apikey");
+    TelemetryProvider telemetryProvider =
+        createTelemetryProvider(new UUID(0, 0), "DataDog", ImmutableMap.of(), config);
+    TelemetryConfig telemetryConfig =
+        TelemetryConfig.builder()
+            .metricsExportConfig(
+                createMetricsExportConfig(
+                    telemetryProvider.getUuid(),
+                    ImmutableMap.of(),
+                    15,
+                    10,
+                    MetricCollectionLevel.NORMAL))
+            .build();
+
+    UniverseDefinitionTaskParams.UserIntent ysqlOnly =
+        new UniverseDefinitionTaskParams.UserIntent();
+    ysqlOnly.enableYSQL = true;
+    ysqlOnly.enableYCQL = false;
+    String ysqlOnlyConfig =
+        generator
+            .getOtelColConfigK8s(provider, universe, telemetryConfig, null, "%m [%p] ", ysqlOnly)
+            .getConfig();
+    assertThat(ysqlOnlyConfig, containsString("export_type: ysql_export"));
+    assertThat(ysqlOnlyConfig, not(containsString("export_type: cql_export")));
+
+    UniverseDefinitionTaskParams.UserIntent ycqlOnly =
+        new UniverseDefinitionTaskParams.UserIntent();
+    ycqlOnly.enableYSQL = false;
+    ycqlOnly.enableYCQL = true;
+    String ycqlOnlyConfig =
+        generator
+            .getOtelColConfigK8s(provider, universe, telemetryConfig, null, "%m [%p] ", ycqlOnly)
+            .getConfig();
+    assertThat(ycqlOnlyConfig, containsString("export_type: cql_export"));
+    assertThat(ycqlOnlyConfig, not(containsString("export_type: ysql_export")));
+    // Master and tserver pods share this config, so both server targets stay.
+    assertThat(ycqlOnlyConfig, containsString("export_type: master_export"));
+    assertThat(ycqlOnlyConfig, containsString("export_type: tserver_export"));
+  }
+
+  // A helm release with no master pods (read replica, or an AZ with no masters) must not scrape
+  // the master port: every pod in it would fail that scrape on each interval.
+  @Test
+  public void getOtelColConfigK8sMetricsDropsMasterTargetWithoutMasterPods() {
+    DataDogConfig config = new DataDogConfig();
+    config.setType(ProviderType.DATA_DOG);
+    config.setSite("ddsite");
+    config.setApiKey("apikey");
+    TelemetryProvider telemetryProvider =
+        createTelemetryProvider(new UUID(0, 0), "DataDog", ImmutableMap.of(), config);
+    TelemetryConfig telemetryConfig =
+        TelemetryConfig.builder()
+            .metricsExportConfig(
+                createMetricsExportConfig(
+                    telemetryProvider.getUuid(),
+                    ImmutableMap.of(),
+                    15,
+                    10,
+                    MetricCollectionLevel.NORMAL))
+            .build();
+    UniverseDefinitionTaskParams.UserIntent intent = new UniverseDefinitionTaskParams.UserIntent();
+    intent.enableYSQL = true;
+
+    String tserverOnlyConfig =
+        generator
+            .getOtelColConfigK8s(
+                provider,
+                universe,
+                telemetryConfig,
+                new OtelCollectorConfigGenerator.K8sPodPlacement(
+                    "kubernetes",
+                    "us-west1",
+                    "us-west1-b",
+                    UniverseDefinitionTaskParams.ClusterType.ASYNC,
+                    false /* hasMasters */),
+                "%m [%p] ",
+                intent)
+            .getConfig();
+    assertThat(tserverOnlyConfig, not(containsString("export_type: master_export")));
+    assertThat(tserverOnlyConfig, containsString("export_type: tserver_export"));
+
+    String withMastersConfig =
+        generator
+            .getOtelColConfigK8s(
+                provider,
+                universe,
+                telemetryConfig,
+                new OtelCollectorConfigGenerator.K8sPodPlacement(
+                    "kubernetes",
+                    "us-west1",
+                    "us-west1-a",
+                    UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+                    true /* hasMasters */),
+                "%m [%p] ",
+                intent)
+            .getConfig();
+    assertThat(withMastersConfig, containsString("export_type: master_export"));
+  }
+
+  // A receiver with no scrape jobs is invalid, so when the release runs none of the requested
+  // servers the unfiltered yugabyte job stays.
+  @Test
+  public void getOtelColConfigK8sMetricsKeepsYugabyteJobWhenNoTargetApplies() {
+    DataDogConfig config = new DataDogConfig();
+    config.setType(ProviderType.DATA_DOG);
+    config.setSite("ddsite");
+    config.setApiKey("apikey");
+    TelemetryProvider telemetryProvider =
+        createTelemetryProvider(new UUID(0, 0), "DataDog", ImmutableMap.of(), config);
+    MetricsExportConfig metricsExportConfig =
+        createMetricsExportConfig(
+            telemetryProvider.getUuid(), ImmutableMap.of(), 15, 10, MetricCollectionLevel.NORMAL);
+    metricsExportConfig.setScrapeConfigTargets(EnumSet.of(ScrapeConfigTargetType.MASTER_EXPORT));
+    TelemetryConfig telemetryConfig =
+        TelemetryConfig.builder().metricsExportConfig(metricsExportConfig).build();
+
+    String result =
+        generator
+            .getOtelColConfigK8s(
+                provider,
+                universe,
+                telemetryConfig,
+                new OtelCollectorConfigGenerator.K8sPodPlacement(
+                    "kubernetes",
+                    "us-west1",
+                    "us-west1-b",
+                    UniverseDefinitionTaskParams.ClusterType.ASYNC,
+                    false /* hasMasters */),
+                "%m [%p] ",
+                new UniverseDefinitionTaskParams.UserIntent())
+            .getConfig();
+    assertThat(result, containsString("export_type: master_export"));
+  }
+
   @Test
   public void getOtelColConfigK8sAuditAndQueryPlusAWS() {
     AWSCloudWatchConfig awsConfig = new AWSCloudWatchConfig();
@@ -1672,7 +1870,8 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
             "kubernetes",
             "us-west1",
             "us-west1-a",
-            UniverseDefinitionTaskParams.ClusterType.PRIMARY);
+            UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+            true /* hasMasters */);
     OtelCollectorConfigGenerator.K8sOtelConfig result =
         generator.getOtelColConfigK8s(
             provider,
@@ -1743,7 +1942,8 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
             "kubernetes",
             "us-west1",
             "us-west1-a",
-            UniverseDefinitionTaskParams.ClusterType.PRIMARY);
+            UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+            true /* hasMasters */);
     OtelCollectorConfigGenerator.K8sOtelConfig result =
         generator.getOtelColConfigK8s(
             provider,
