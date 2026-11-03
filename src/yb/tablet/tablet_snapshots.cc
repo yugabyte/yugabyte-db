@@ -758,16 +758,14 @@ Status TabletSnapshots::RestoreCheckpoint(
     }
   }
 
-  // The restore replaced the vector index storages together with the regular DB. Force the
-  // restore op id on the vector indexes. With a lower snapshot time OpId, bootstrap would replay
-  // the rolled back writes back into them. With a higher OpId of another Raft group, e.g. the
-  // source of a clone or of an imported backup, it would skip this group's writes to them.
-  // It is done before the regular DB patch below: once the regular DB has the restore op id,
-  // bootstrap does not replay the restore, so a crash after it must find the vector indexes
-  // stamped. The storages are those of the snapshot and, for a restore without one, those of the
-  // listed indexes. The restored metadata, which can rename them, is not merged yet, so the
-  // storages it leaves unlisted are stamped too, and deleted below.
-  // A listing failure fails the restore before the regular DB patch, so the restore is replayed.
+  // Force the restore op id on the restored vector index storages. With the snapshot's lower
+  // OpIds, bootstrap would replay the rolled back writes into them. With the higher OpIds of
+  // another Raft group, e.g. the source of a clone or of an imported backup, it would skip this
+  // group's writes to them. This must precede the regular DB patch: once the regular DB has the
+  // restore op id, a crash no longer replays the restore. The storages are the snapshot's or,
+  // without a snapshot dir, those of the listed indexes. The restored metadata, which can rename
+  // them, is merged only later, so the storages it leaves unlisted are stamped too and deleted
+  // below. A listing failure fails the restore before the patch, so the restore is replayed.
   std::vector<std::string> snapshot_children;
   if (!snapshot_dir.empty()) {
     snapshot_children = VERIFY_RESULT(env().GetChildren(snapshot_dir, ExcludeDots::kTrue));
