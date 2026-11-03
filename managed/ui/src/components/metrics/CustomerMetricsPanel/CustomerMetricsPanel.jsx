@@ -16,7 +16,8 @@ import {
   MetricMeasure,
   APIMetricToNodeFlag,
   MetricConsts,
-  NodeType
+  NodeType,
+  metricsForTab
 } from '../../metrics/constants';
 import { YBTabsPanel } from '../../panels';
 import { GraphTab } from '../GraphTab/GraphTab';
@@ -34,7 +35,7 @@ import './CustomerMetricsPanel.scss';
  * Move this logic out of render function because we need `selectedUniverse` prop
  * that gets passed down from the `GraphPanelHeader` component.
  */
-const PanelBody = ({
+export const PanelBody = ({
   origin,
   selectedUniverse,
   nodePrefixes,
@@ -89,20 +90,29 @@ const PanelBody = ({
     invalidTabType.push(MetricTypes.OUTLIER_TABLES, MetricTypes.OUTLIER_DATABASES);
   }
 
+  const isKubernetesUniverse =
+    selectedUniverse !== MetricConsts.ALL &&
+    !!selectedUniverse &&
+    getIsKubernetesUniverse(selectedUniverse);
+  // Kubernetes node names carry the pod name, so a selected master pod reads the master series.
+  const isMasterView =
+    currentSelectedNodeType === NodeType.MASTER ||
+    (isKubernetesUniverse && !!graph?.graphFilter?.nodeName?.match('yb-master-'));
   if (!(selectedUniverse === MetricConsts.ALL)) {
-    selectedUniverse && getIsKubernetesUniverse(selectedUniverse)
-      ? invalidTabType.push(MetricTypes.SERVER, MetricTypes.DISK_IO, MetricTypes.PER_PROCESS)
-      : invalidTabType.push(MetricTypes.CONTAINER);
+    if (isKubernetesUniverse) {
+      invalidTabType.push(MetricTypes.PER_PROCESS);
+      // The node panels need the node_exporter sidecar, which YBA scrapes only on supported pods.
+      if (!selectedUniverse.nodeExporterSidecarScraped) {
+        invalidTabType.push(MetricTypes.SERVER, MetricTypes.DISK_IO);
+      }
+    } else {
+      invalidTabType.push(MetricTypes.CONTAINER);
+    }
   }
 
   if (currentSelectedNodeType !== NodeType.ALL && origin !== MetricOrigin.TABLE) {
     currentSelectedNodeType === NodeType.MASTER
-      ? invalidTabType.push(
-        MetricTypes.TSERVER,
-        MetricTypes.YSQL_OPS,
-        MetricTypes.YCQL_OPS,
-        MetricTypes.DISK_IO
-      )
+      ? invalidTabType.push(MetricTypes.TSERVER, MetricTypes.YSQL_OPS, MetricTypes.YCQL_OPS)
       : invalidTabType.push(MetricTypes.MASTER, MetricTypes.MASTER_ADVANCED);
     defaultTabToDisplay =
       currentSelectedNodeType === NodeType.MASTER ? MetricTypes.MASTER : MetricTypes.TSERVER;
@@ -123,6 +133,7 @@ const PanelBody = ({
     const metricTabs = MetricTypesByOrigin[origin].data.reduce((prevTabs, type, idx) => {
       const tabTitle = MetricTypesWithOperations[type].title;
       const metricContent = MetricTypesWithOperations[type];
+      const metricsKey = metricsForTab(type, isKubernetesUniverse, isMasterView);
       if (
         !_.includes(Object.keys(APIMetricToNodeFlag), type) ||
         selectedUniverse?.universeDetails?.nodeDetailsSet.some(
@@ -135,7 +146,7 @@ const PanelBody = ({
               <div style={{ marginBottom: '20px' }}>
                 <GraphTab
                   type={type}
-                  metricsKey={metricContent.metrics}
+                  metricsKey={metricsKey}
                   nodePrefixes={nodePrefixes}
                   selectedUniverse={selectedUniverse}
                   title={metricContent.title}
@@ -158,7 +169,7 @@ const PanelBody = ({
               >
                 <GraphTab
                   type={type}
-                  metricsKey={metricContent.metrics}
+                  metricsKey={metricsKey}
                   nodePrefixes={nodePrefixes}
                   selectedUniverse={selectedUniverse}
                   title={metricContent.title}

@@ -31,8 +31,10 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
@@ -112,7 +114,7 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
       throw new PlatformServiceException(
           BAD_REQUEST, "Rollback of Kubernetes resize node is not supported");
     }
-    rejectCloudWithoutSnapshot(universe.getUniverseDetails().clusters);
+    rejectCloudWithoutSnapshot(universe, failedParams.clusters);
     StateTransitionDetails details = universe.getStateTransitionDetails();
     if (details == null) {
       throw new PlatformServiceException(
@@ -123,7 +125,8 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
     details.requireRollbackable();
 
     UniverseDefinitionTaskParams beforeDetails = details.getBeforeUniverseDetails();
-    Map<String, CloudAPI.NodeDiskSpec> cloudByNode = describeCloudNodes(universe);
+    Map<String, CloudAPI.NodeDiskSpec> cloudByNode =
+        describeCloudNodes(universe, failedParams.clusters);
     ResizeNodeParams rollbackParams =
         buildRollbackParams(failedParams, beforeDetails, universe, cloudByNode);
     // Azure cooldown starts at max(lastVolumeUpdateTime, failed task create time). Carried on the
@@ -162,6 +165,7 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
     // Force is a forward "make it happen anyway" knob; it must not apply on the reverse path or
     // RollbackResizeNode would re-run ChangeInstanceType / Disk_Update on nodes already at before.
     rollbackParams.setForceResizeNode(false);
+    rollbackParams.setFailedResizeForced(failedParams.isForceResizeNode());
     // Roll top-level gflag maps back to before (used when specificGFlags is not present).
     Cluster beforePrimary = before.getPrimaryCluster();
     if (beforePrimary != null && beforePrimary.userIntent != null) {
@@ -371,7 +375,11 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
         if (!cloudHasDiskResizeCooldown(cloud, cooldownDev)) {
           continue;
         }
-        CloudAPI.NodeDiskSpec perf = resolveCloudState(provider, node, cloudByNode);
+        CloudAPI.NodeDiskSpec perf = resolveCloudState(universe, provider, node, cloudByNode);
+        if (!perf.hasDataDisks()) {
+          // Ephemeral storage only: rollback never modifies these disks.
+          continue;
+        }
         if (cloudAlreadyAtDesired(perf, newDev)) {
           log.info(
               "Skipping disk-modify cooldown for node {}: cloud IOPS/throughput already match"
@@ -391,26 +399,33 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
   }
 
   /**
-   * Describe instance + data disks for every node on AWS/GCP/Azure. Empty Optional on those clouds
-   * fails closed. Onprem and other clouds are omitted (YBA-only classification).
+   * Describe instance + data disks for every node of {@code clusters} (the clusters being rolled
+   * back) on AWS/GCP/Azure. Empty Optional on those clouds fails closed. Onprem and other clouds
+   * are omitted (YBA-only classification).
    */
-  public Map<String, CloudAPI.NodeDiskSpec> describeCloudNodes(Universe universe) {
+  public Map<String, CloudAPI.NodeDiskSpec> describeCloudNodes(
+      Universe universe, Collection<Cluster> clusters) {
     Map<String, CloudAPI.NodeDiskSpec> result = new HashMap<>();
     Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(universe);
-    for (NodeDetails node : universe.getNodes()) {
-      Provider provider = providerGetter.apply(node);
-      if (provider == null || !supportsCloudSnapshot(provider.getCloudCode())) {
-        continue;
+    for (Cluster cluster : clusters) {
+      for (NodeDetails node : universe.getUniverseDetails().getNodesInCluster(cluster.uuid)) {
+        Provider provider = providerGetter.apply(node);
+        if (provider == null || !supportsCloudSnapshot(provider.getCloudCode())) {
+          continue;
+        }
+        result.put(node.nodeName, describeNodeCloudState(universe, provider, node));
       }
-      result.put(node.nodeName, describeNodeCloudState(provider, node));
     }
     return result;
   }
 
   /**
    * Public describe used by {@link com.yugabyte.yw.commissioner.tasks.upgrade.RollbackResizeNode}.
+   * A node the cloud reports with no persistent data disks is accepted only where YBA records
+   * ephemeral storage for it; otherwise the snapshot can't be trusted.
    */
-  public CloudAPI.NodeDiskSpec describeNodeCloudState(Provider provider, NodeDetails node) {
+  public CloudAPI.NodeDiskSpec describeNodeCloudState(
+      Universe universe, Provider provider, NodeDetails node) {
     CloudAPI cloudAPI = cloudAPIFactory.get(provider.getCode());
     if (cloudAPI == null) {
       throw couldNotVerify(node, "no cloud API for " + provider.getCode());
@@ -426,7 +441,29 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
     if (perf == null || perf.isEmpty()) {
       throw couldNotVerify(node, "cloud returned no node snapshot");
     }
+    if (!perf.get().hasDataDisks() && !expectsEphemeralStorage(universe, provider, node)) {
+      throw couldNotVerify(node, "cloud reports no data disks");
+    }
     return perf.get();
+  }
+
+  /**
+   * Whether YBA's own record says the node has only ephemeral storage. The cloud's view is what is
+   * being checked, so it can't decide this.
+   */
+  private static boolean expectsEphemeralStorage(
+      Universe universe, Provider provider, NodeDetails node) {
+    Cluster cluster = universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
+    DeviceInfo deviceInfo =
+        cluster == null ? null : cluster.userIntent.evaluateDeviceInfoForNode(node);
+    if (deviceInfo == null) {
+      return false;
+    }
+    Common.CloudType cloud = provider.getCloudCode();
+    // Validation forbids a remote storage type on ephemeral AWS shapes, so one here means EBS.
+    return UniverseDefinitionTaskParams.hasEphemeralStorage(
+            cloud, node.cloudInfo.instance_type, deviceInfo)
+        && (cloud != Common.CloudType.aws || deviceInfo.storageType == null);
   }
 
   public static boolean supportsCloudSnapshot(Common.CloudType cloud) {
@@ -446,11 +483,14 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
   }
 
   private CloudAPI.NodeDiskSpec resolveCloudState(
-      Provider provider, NodeDetails node, Map<String, CloudAPI.NodeDiskSpec> cloudByNode) {
+      Universe universe,
+      Provider provider,
+      NodeDetails node,
+      Map<String, CloudAPI.NodeDiskSpec> cloudByNode) {
     if (cloudByNode != null && cloudByNode.containsKey(node.nodeName)) {
       return cloudByNode.get(node.nodeName);
     }
-    return describeNodeCloudState(provider, node);
+    return describeNodeCloudState(universe, provider, node);
   }
 
   /**
@@ -491,12 +531,19 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
   }
 
   /**
-   * Refuses rollback when a cluster runs on a public cloud with no cloud snapshot ({@link
-   * #supportsCloudSnapshot}), such as OCI. Rollback there would trust YBA's instance type, which a
-   * failed resize may not have saved yet.
+   * Refuses rollback when a cluster being rolled back runs on a public cloud with no cloud snapshot
+   * ({@link #supportsCloudSnapshot}), such as OCI. Rollback there would trust YBA's instance type,
+   * which a failed resize may not have saved yet. Reads the universe's copy of those clusters,
+   * whose cloud types are authoritative.
    */
-  public static void rejectCloudWithoutSnapshot(Collection<Cluster> clusters) {
-    Common.CloudType cloud = findCloudWithoutSnapshot(clusters);
+  public static void rejectCloudWithoutSnapshot(
+      Universe universe, Collection<Cluster> rolledBackClusters) {
+    Set<UUID> rolledBack = rolledBackClusters.stream().map(c -> c.uuid).collect(Collectors.toSet());
+    Common.CloudType cloud =
+        findCloudWithoutSnapshot(
+            universe.getUniverseDetails().clusters.stream()
+                .filter(c -> rolledBack.contains(c.uuid))
+                .collect(Collectors.toList()));
     if (cloud != null) {
       throw new PlatformServiceException(
           BAD_REQUEST,

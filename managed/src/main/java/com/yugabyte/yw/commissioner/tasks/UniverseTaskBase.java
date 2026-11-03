@@ -1298,6 +1298,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     JsonNode delta =
         DeltaEvaluator.buildDeltaJsonTree(beforeUDTP, targetUDTP, new NodeDetailsArrayComparator());
     universe.setStateTransitionDetails(new StateTransitionDetails(true, delta));
+    auditService.updateTaskDiff(getTaskUUID(), DeltaEvaluator.generateOnlyDelta(delta));
   }
 
   /**
@@ -5196,7 +5197,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       log.debug("Skipping configure YBC as 'useYBDBInbuiltYbc' is enabled");
       return;
     }
-    String cert = universe.getCertificateNodetoNode();
     int ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
     Map<String, String> ybcGflags =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags;
@@ -5221,7 +5221,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     for (Cluster cluster : universe.getUniverseDetails().clusters) {
       universe.getTserversInCluster(cluster.uuid).stream()
           .filter(NodeDetails::isQueryable)
-          .filter(node -> !ybcManager.ybcPingCheck(node.cloudInfo.private_ip, cert, ybcPort))
+          .filter(node -> !ybcManager.ybcPingCheck(node.cloudInfo.private_ip, universe, ybcPort))
           .forEach(
               node -> {
                 boolean isK8s = cluster.getProviderCloudType(node) == CloudType.kubernetes;
@@ -5588,6 +5588,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    */
   public void createDisableMasterOnNonMasterNodesTasks(
       List<NodeDetails> nodes, SubTaskGroupType subTaskGroupType) {
+    createDisableMasterOnNonMasterNodesTasks(nodes, subTaskGroupType, params -> {});
+  }
+
+  public void createDisableMasterOnNonMasterNodesTasks(
+      List<NodeDetails> nodes,
+      SubTaskGroupType subTaskGroupType,
+      Consumer<AnsibleClusterServerCtl.Params> paramsCustomizer) {
     Universe universe = getUniverse();
     if (!confGetter.getConfForScope(
         universe, UniverseConfKeys.allowDisableMasterOnNonMasterNodeSubtask)) {
@@ -5608,7 +5615,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       return;
     }
     log.info("Disabling master on non-master nodes: {}", nodes);
-    createServerControlTasks(nodes, ServerType.MASTER, "stop")
+    createServerControlTasks(nodes, ServerType.MASTER, "stop", paramsCustomizer)
         .setSubTaskGroupType(subTaskGroupType);
   }
 
