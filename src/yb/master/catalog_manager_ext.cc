@@ -379,7 +379,6 @@ Status CatalogManager::AddTableAndTabletEntriesToPB(
 Result<SysRowEntries> CatalogManager::CollectEntriesFromActiveSysCatalog(
     const google::protobuf::RepeatedPtrField<TableIdentifierPB>& table_identifiers,
     CollectFlags flags) {
-  RETURN_NOT_OK(CheckIsLeaderAndReady());
   std::unordered_set<NamespaceId> namespaces;
   auto tables = VERIFY_RESULT(CollectTables(table_identifiers, flags, &namespaces));
   return CollectEntriesInternal(flags, tables, &namespaces);
@@ -388,7 +387,6 @@ Result<SysRowEntries> CatalogManager::CollectEntriesFromActiveSysCatalog(
 Result<SysRowEntries> CatalogManager::CollectEntriesAsOfTime(
     const NamespaceId& namespace_id, CollectFlags flags, HybridTime read_time,
     CoarseTimePoint deadline) {
-  RETURN_NOT_OK(CheckIsLeaderAndReady());
   std::unordered_set<NamespaceId> namespaces;
 
   // CollectTables (used in CollectEntriesFromActiveSysCatalog) gets the set of tables from the
@@ -2524,8 +2522,10 @@ Status CatalogManager::ImportTableEntry(
     //   sequentially. If a column was dropped from the indexed table before the snapshot was
     //   taken, the snapshotted and restored tables can have different column ids. Phase 3 fixes
     //   the indexed table's column ids when it imports that table.
-    // - hnsw.backend and store_payload come from --vector_index_backend and
-    //   --vector_index_store_payload, which can differ between the two clusters.
+    // - hnsw.backend, store_payload and tenant_hash_group_and_range_components come from
+    //   --vector_index_backend, --vector_index_store_payload and
+    //   --vector_index_tenant_hash_group_and_range_components, which can differ between the two
+    //   clusters.
     // - id names the tablet's vector index directory. The tablet takes it from the snapshot
     //   superblock, so the restored files are found under the snapshot's id.
     // Here in phase 4, while importing the vector index, we copy the snapshot's options, if
@@ -3197,8 +3197,7 @@ Status CatalogManager::RestoreSysCatalogCommon(
   MAYBE_FAULT(FLAGS_TEST_crash_during_sys_catalog_restoration);
 
   // Restore the other tables.
-  RETURN_NOT_OK(state->PrepareWriteBatch(
-      doc_read_context, schema_packing_provider, write_batch, master_->clock()->Now()));
+  RETURN_NOT_OK(state->PrepareWriteBatch(doc_read_context, schema_packing_provider, write_batch));
 
   // Updates the restoration state to indicate that sys catalog phase has completed.
   // Also, initializes the master side perceived list of tables/tablets/namespaces

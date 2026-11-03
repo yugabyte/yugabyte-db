@@ -428,8 +428,9 @@ DEFINE_RUNTIME_AUTO_bool(enforce_xcluster_guarded_lease, kLocalPersisted, false,
     "namespace will be reported as UNAVAILABLE if the TServer does not have a current lease.");
 
 DEFINE_RUNTIME_bool(enable_persistence_gate, true,
-    "Whether to refuse YSQL writes and commits to databases whose persisting xCluster has stopped. "
-    " Takes effect only once enforce_xcluster_guarded_lease is on.");
+    "Whether to refuse YSQL writes and commits whose persisting xCluster has stopped.  Also aborts "
+    "pending transactions whose commits would likewise be refused.  Takes effect only once "
+    "enforce_xcluster_guarded_lease is on.");
 TAG_FLAG(enable_persistence_gate, advanced);
 TAG_FLAG(enable_persistence_gate, hidden);
 

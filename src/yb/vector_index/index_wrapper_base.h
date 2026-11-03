@@ -35,6 +35,7 @@ class Cache;
 }
 
 DECLARE_bool(TEST_vector_index_exact);
+DECLARE_bool(TEST_vector_index_insert_out_of_memory);
 
 namespace yb::vector_index {
 
@@ -230,6 +231,10 @@ class IndexWrapperWithExternalPayload : public IndexWrapperBase<Impl, Vector, Di
   }
 
   Status DoInsert(VectorId vector_id, const Vector& v, Slice payload) {
+    if (PREDICT_FALSE(FLAGS_TEST_vector_index_insert_out_of_memory)) {
+      return STATUS_FORMAT(
+          ServiceUnavailable, "TEST: not enough memory to insert vector $0", vector_id);
+    }
     auto slot = VERIFY_RESULT(this->impl().DoInsertVector(vector_id, v));
     if (payloads_) {
       RSTATUS_DCHECK(

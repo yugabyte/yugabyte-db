@@ -961,7 +961,7 @@ class ChangeInstanceTypeMethod(AbstractInstancesMethod):
                     args.search_pattern, args.instance_type)
         except Exception as e:
             raise YBOpsRuntimeError('error executing \"instance.modify_attribute\": {}'
-                                    .format(repr(e)))
+                                    .format(self.cloud.format_sdk_error(e) or repr(e)))
         finally:
             if args.boot_script is not None:
                 self.cloud.update_user_data(args)

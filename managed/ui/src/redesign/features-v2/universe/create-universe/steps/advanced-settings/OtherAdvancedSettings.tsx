@@ -170,7 +170,8 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
   );
 
   const userTagsValue = watch(USER_TAGS_FIELD);
-  const hasNamedUserTag = !!userTagsValue?.some((tag) => tag.name);
+  // Any row (even an invalid one kept via Back) must show, or its inline errors would be hidden.
+  const hasUserTagRow = !!userTagsValue?.length;
   const watched = watch();
 
   const { runtimeConfigs, devUserTags } = useRuntimeConfigValues();
@@ -271,7 +272,7 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
             key={devTagsApplied ? 'user-tags-seeded' : 'user-tags'}
             titleContent={t('userTagsHeader')}
             sx={{ width: '100%' }}
-            defaultExpanded={hasNamedUserTag}
+            defaultExpanded={hasUserTagRow}
           >
             <UserTagsField disabled={false} />
           </YBAccordion>
