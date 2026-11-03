@@ -31,6 +31,31 @@ INSTANTIATE_TEST_CASE_P(DocDBTests,
                         DocDBTestWrapper,
                         testing::Values(TestDocDb::kQlReader, TestDocDb::kRedisReader));
 
+namespace {
+
+// Writes the row of DocDBRocksDBUtil::WriteSimple(index), with frontiers at frontier_ht instead of
+// the hybrid time of its keys, like a write with an external hybrid time (xCluster, index
+// backfill), whose keys are older than its Raft operation.
+Status WriteSimpleWithFrontierHt(DocDBRocksDBUtil* util, int index, HybridTime frontier_ht) {
+  auto dwb = util->MakeDocWriteBatch();
+  LWQLValuePB value(nullptr);
+  value.set_int32_value(index);
+  RETURN_NOT_OK(dwb.SetPrimitive(
+      DocPath(dockv::MakeDocKey(Format("row$0", index), 11111 * index).Encode(),
+              KeyEntryValue::MakeColumnId(ColumnId(10))),
+      ValueRef(value)));
+  rocksdb::WriteBatch batch;
+  RETURN_NOT_OK(util->PopulateRocksDBWriteBatch(
+      dwb, &batch, HybridTime::FromMicros(1000 * index)));
+  ConsensusFrontiers frontiers;
+  set_op_id(OpId(1, index), &frontiers);
+  set_hybrid_time(frontier_ht, &frontiers);
+  batch.SetFrontiers(&frontiers);
+  return util->rocksdb()->Write(util->write_options(), &batch);
+}
+
+} // namespace
+
 TEST_P(DocDBTestWrapper, DocPathTest) {
   auto doc_key = MakeDocKey("mydockey", 10, "mydockey", 20);
   DocPath doc_path(doc_key.Encode(), KeyEntryValue("first_subkey"), KeyEntryValue::Int64(123));
@@ -1971,6 +1996,48 @@ TEST_P(DocDBTestWrapper, SetHybridTimeFilterRemovesHiddenFiles) {
         SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(10); HT{ physical: 2000 }]) -> 2
     )#");
   }
+}
+
+// The frontiers of a file do not bound the hybrid times of its keys, so a restore keeps a file whose
+// frontiers are newer than the filter as long as one of its keys is not.
+TEST_P(DocDBTestWrapper, SetHybridTimeFilterKeepsFileWithKeysOlderThanFrontiers) {
+  for (int i = 1; i <= 2; ++i) {
+    ASSERT_OK(WriteSimpleWithFrontierHt(this, i, HybridTime::FromMicros(5000)));
+  }
+  ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
+
+  ASSERT_OK(SetHybridTimeFilter(std::nullopt, HybridTime::FromMicros(2000)));
+
+  ASSERT_EQ(rocksdb()->GetLiveFilesMetaData().size(), 1);
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(10); HT{ physical: 1000 }]) -> 1
+      SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(10); HT{ physical: 2000 }]) -> 2
+  )#");
+}
+
+// A file can already carry an older filter, e.g. set by a restore that did not remove it. A later
+// restore removes the file when that older filter hides all its keys, even if the new one alone
+// would not.
+TEST_P(DocDBTestWrapper, SetHybridTimeFilterRemovesFileHiddenByOlderFilter) {
+  ASSERT_OK(WriteSimple(1));
+  ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
+  for (int i = 3; i <= 4; ++i) {
+    ASSERT_OK(WriteSimple(i));
+  }
+  ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_drop_sst_files_hidden_by_hybrid_time_filter) = false;
+  ASSERT_OK(SetHybridTimeFilter(std::nullopt, HybridTime::FromMicros(2000)));
+  ASSERT_EQ(rocksdb()->GetLiveFilesMetaData().size(), 2);
+
+  // Keys at 3000 and 4000: not all hidden by 3500, all hidden by the older 2000.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_drop_sst_files_hidden_by_hybrid_time_filter) = true;
+  ASSERT_OK(SetHybridTimeFilter(std::nullopt, HybridTime::FromMicros(3500)));
+  ASSERT_EQ(rocksdb()->GetLiveFilesMetaData().size(), 1);
+
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(10); HT{ physical: 1000 }]) -> 1
+  )#");
 }
 
 TEST_P(DocDBTestWrapper, SetHybridTimeFilter) {
