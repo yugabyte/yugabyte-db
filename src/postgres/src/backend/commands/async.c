@@ -616,19 +616,27 @@ static TimestampTz ybNotifsPollerId = 0;
  * Invalid, we skip all non-BEGIN entries because the listener started scanning
  * mid-transaction and must not deliver a partial transaction (doing so would
  * also break duplicate detection if the poller crashes and replays).
+ *
+ * The xids come from the replication slot's virtual WAL and are only unique
+ * within one incarnation of the slot.  Each incarnation has its own poller
+ * (YbNotifsPollerShmemData.poller_id), and a backend only scans entries from
+ * the poller it registered under, so this state is reset when the backend
+ * registers under a different poller (see Exec_ListenPreCommit).
  */
 typedef struct YbListenerQueueScanCurrentXactState
 {
 	TransactionId begin_xid;
 	int			scanned_notifs;
 	int			notifs_to_skip;
+	TimestampTz poller_id;		/* poller whose entries this state describes */
 } YbListenerQueueScanCurrentXactState;
 
 static YbListenerQueueScanCurrentXactState ybListenerQueueScanCurrentXactState =
 {
 	.begin_xid = InvalidTransactionId,
 	.scanned_notifs = 0,
-	.notifs_to_skip = 0
+	.notifs_to_skip = 0,
+	.poller_id = 0
 };
 
 /*
@@ -1456,9 +1464,24 @@ Exec_ListenPreCommit(void)
 	 * YB note: In YB, the queue only contains the committed notifications.
 	 * These notifications were committed before this LISTEN, so we can safely
 	 * set max to head.
+	 *
+	 * The duplicate-txn scan state is reset here too if the poller changed;
+	 * see YbListenerQueueScanCurrentXactState.
 	 */
 	if (IsYugaByteEnabled())
+	{
+		bool		found;
+		TimestampTz poller_id = ybShmemNotifsPollerData(&found)->poller_id;
+
 		max = head;
+		if (ybListenerQueueScanCurrentXactState.poller_id != poller_id)
+		{
+			ybListenerQueueScanCurrentXactState.begin_xid = InvalidTransactionId;
+			ybListenerQueueScanCurrentXactState.scanned_notifs = 0;
+			ybListenerQueueScanCurrentXactState.notifs_to_skip = 0;
+			ybListenerQueueScanCurrentXactState.poller_id = poller_id;
+		}
+	}
 
 	QUEUE_BACKEND_POS(MyBackendId) = max;
 	QUEUE_BACKEND_PID(MyBackendId) = MyProcPid;
@@ -3574,6 +3597,7 @@ ybAsyncQueueHandleBeginEntry(const AsyncQueueEntry *qe)
 
 	ybListenerQueueScanCurrentXactState.begin_xid = qe->xid;
 	ybListenerQueueScanCurrentXactState.scanned_notifs = 0;
+	ybListenerQueueScanCurrentXactState.notifs_to_skip = 0;
 }
 
 /*
