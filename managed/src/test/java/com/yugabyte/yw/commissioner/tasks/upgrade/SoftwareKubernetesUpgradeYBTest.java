@@ -7,6 +7,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
@@ -23,6 +24,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
@@ -31,6 +33,7 @@ import com.yugabyte.yw.forms.CreatePitrConfigParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.TaskInfo;
@@ -441,5 +444,28 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
 
     assertEquals(taskInfo.getErrorMessage(), Success, taskInfo.getTaskState());
     assertReadReplicaCommandsTargetReadReplica(taskInfo, readReplica);
+  }
+
+  @Test
+  public void testUpgradeRejectedWhenTargetVersionLacksInbuiltYbc() {
+    setupUniverseSingleAZ(false, true);
+    setImmutableYbcUniverseState(true, "2025.2.0.0-b1", SoftwareUpgradeState.Ready);
+    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
+    taskParams.ybSoftwareVersion = "2025.1.0.0-b1";
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class, () -> taskParams.verifyParams(defaultUniverse, true));
+    assertTrue(
+        e.getMessage(), e.getMessage().contains("uses ybdb inbuilt ybc, which software version"));
+    assertTrue(e.getMessage(), e.getMessage().contains("Disable ybdb inbuilt ybc"));
+  }
+
+  @Test
+  public void testUpgradeAllowedWhenTargetVersionSupportsInbuiltYbc() {
+    setupUniverseSingleAZ(false, true);
+    setImmutableYbcUniverseState(true, "2025.2.0.0-b1", SoftwareUpgradeState.Ready);
+    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
+    taskParams.ybSoftwareVersion = "2025.2.1.0-b1";
+    taskParams.verifyParams(defaultUniverse, true);
   }
 }
