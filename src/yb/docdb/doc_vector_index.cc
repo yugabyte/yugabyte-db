@@ -908,7 +908,7 @@ void DocVectorIndex::ApplyReverseEntry(
   handler.Put(dockv::DocVectorKeyAsParts(vector_id, encoded_write_time), { &value_slice, 1 });
 }
 
-Status ForceVectorIndexStorageOpId(const std::string& storage_dir, const OpId& op_id) {
+Result<bool> ForceVectorIndexStorageOpId(const std::string& storage_dir, const OpId& op_id) {
   // The added chunk gives an index restored without chunks the OpId too.
   // The same env VectorLSM loads its manifest with.
   return vector_index::VectorLSMMetadataModifyChunkFrontiers(

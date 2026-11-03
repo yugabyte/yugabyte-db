@@ -11,6 +11,9 @@
 // under the License.
 //
 
+#include <map>
+#include <set>
+
 #include <google/protobuf/any.pb.h>
 
 #include "yb/ann_methods/hnswlib_wrapper.h"
@@ -1136,9 +1139,9 @@ TEST_F(VectorLSMHnswlibTest, ModifyChunkFrontiersOfClosedStorage) {
   TestFrontiers added_chunk_frontiers;
   added_chunk_frontiers.Largest().SetVertexId(kTarget);
 
-  ASSERT_OK(vector_index::VectorLSMMetadataModifyChunkFrontiers(
+  ASSERT_TRUE(ASSERT_RESULT(vector_index::VectorLSMMetadataModifyChunkFrontiers(
       env, JoinPathSegments(test_dir, "no_such_dir"), frontiers_factory, set_target,
-      added_chunk_frontiers));
+      added_chunk_frontiers)));
 
   size_t num_chunks = 0;
   {
@@ -1162,20 +1165,34 @@ TEST_F(VectorLSMHnswlibTest, ModifyChunkFrontiersOfClosedStorage) {
   }
   ASSERT_FALSE(manifest_sizes.empty());
 
-  ASSERT_OK(vector_index::VectorLSMMetadataModifyChunkFrontiers(
-      env, storage_dir, frontiers_factory, set_target, added_chunk_frontiers));
+  ASSERT_TRUE(ASSERT_RESULT(vector_index::VectorLSMMetadataModifyChunkFrontiers(
+      env, storage_dir, frontiers_factory, set_target, added_chunk_frontiers)));
 
   for (const auto& [file, size] : manifest_sizes) {
     ASSERT_EQ(ASSERT_RESULT(env->GetFileSize(JoinPathSegments(storage_dir, file))), size) << file;
   }
 
-  FloatVectorLSM lsm;
-  ASSERT_OK(open(lsm));
-  auto flushed = lsm.GetFlushedFrontier();
-  ASSERT_TRUE(flushed);
-  ASSERT_EQ(down_cast<const TestFrontier&>(*flushed).vertex_id(), kTarget);
-  ASSERT_EQ(lsm.NumImmutableChunks(), num_chunks + 1);
-  VerifyVectorLSM(lsm, kDimensions);
+  {
+    FloatVectorLSM lsm;
+    ASSERT_OK(open(lsm));
+    auto flushed = lsm.GetFlushedFrontier();
+    ASSERT_TRUE(flushed);
+    ASSERT_EQ(down_cast<const TestFrontier&>(*flushed).vertex_id(), kTarget);
+    ASSERT_EQ(lsm.NumImmutableChunks(), num_chunks + 1);
+    VerifyVectorLSM(lsm, kDimensions);
+  }
+
+  // A manifest that cannot be loaded is reported, and nothing is written to the storage. An entry
+  // whose CRC does not match is corruption when more data follows it.
+  ASSERT_OK(WriteStringToFile(
+      env, Slice(std::string("\x01\x00\x00\x00" "a" "\x00\x00\x00\x00" "garbage", 16)),
+      JoinPathSegments(storage_dir, "999.meta")));
+  const auto files_before = ASSERT_RESULT(env->GetChildren(storage_dir));
+  ASSERT_FALSE(ASSERT_RESULT(vector_index::VectorLSMMetadataModifyChunkFrontiers(
+      env, storage_dir, frontiers_factory, set_target, added_chunk_frontiers)));
+  auto files_after = ASSERT_RESULT(env->GetChildren(storage_dir));
+  ASSERT_EQ(std::set(files_after.begin(), files_after.end()),
+            std::set(files_before.begin(), files_before.end()));
 }
 
 // An empty insert, e.g. of rows with NULL vectors, creates a mutable chunk of vectors_per_chunk

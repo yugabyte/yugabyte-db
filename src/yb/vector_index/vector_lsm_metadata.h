@@ -58,7 +58,8 @@ Status VectorLSMMetadataAppendUpdate(WritableFile& file, const VectorLSMUpdatePB
 // carrying added_chunk_frontiers, as a single reset update in a new manifest file. The existing
 // manifest files are left as they are, so they can be hard links, e.g. to the files of a snapshot.
 // The new file is synced together with dir. Does nothing if dir does not exist.
-Status VectorLSMMetadataModifyChunkFrontiers(
+// Returns false, after logging why, if the manifest could not be loaded. Nothing is written then.
+Result<bool> VectorLSMMetadataModifyChunkFrontiers(
     Env* env, const std::string& dir,
     const std::function<storage::UserFrontiersPtr()>& frontiers_factory,
     const std::function<void(storage::UserFrontiers&)>& modify,

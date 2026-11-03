@@ -780,8 +780,11 @@ Status TabletSnapshots::RestoreCheckpoint(
         vector_index_dirs.insert(docdb::GetStorageDir(db_dir, child));
       }
     }
+    // A storage whose manifest cannot be loaded is left unstamped rather than failing the restore,
+    // which bootstrap would then replay and fail again: the merge may leave it unlisted, and it is
+    // deleted below. One that stays listed fails OpenStorages as without the stamp.
     for (const auto& dir : vector_index_dirs) {
-      RETURN_NOT_OK(docdb::ForceVectorIndexStorageOpId(dir, frontier.op_id()));
+      RETURN_NOT_OK(ResultToStatus(docdb::ForceVectorIndexStorageOpId(dir, frontier.op_id())));
     }
   }
 
