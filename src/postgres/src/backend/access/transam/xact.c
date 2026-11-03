@@ -2369,7 +2369,10 @@ YBCRestartWriteTransaction()
 	 * without this, the retry would run with the function's settings.  Keep
 	 * the transaction's own level: it holds the BEGIN ISOLATION LEVEL options
 	 * and the SETs from earlier statements of an extended-protocol batch,
-	 * and the retry replays neither.
+	 * and the retry replays neither.  It also holds plain SETs the failed
+	 * statement made; those carry into the replay, except the role, which
+	 * yb_restart_transaction puts back.  TODO(#28196): undo them as well once
+	 * a full transaction restart replays the batch.
 	 */
 	AtEOXact_GUC(false, CurrentTransactionState->gucNestLevel + 1);
 

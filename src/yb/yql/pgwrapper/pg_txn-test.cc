@@ -1561,4 +1561,125 @@ TEST_F(PgTxnTest, BatchedRetryRestoresSetRole) {
   ASSERT_STREQ(PQgetvalue(role.get(), 0, 0), "alice alice");
 }
 
+// Creates roles alice and bob, and a function f() that, on its first call
+// only, runs body and then raises a retriable kAborted (YB001). f returns
+// current_user.
+static void CreateFailingRoleFunction(PGConn* conn, const std::string& body) {
+  ASSERT_OK(conn->Execute("CREATE SEQUENCE attempt"));
+  ASSERT_OK(conn->Execute("CREATE ROLE alice"));
+  ASSERT_OK(conn->Execute("CREATE ROLE bob"));
+  ASSERT_OK(conn->Execute("GRANT USAGE ON SEQUENCE attempt TO alice"));
+  ASSERT_OK(conn->Execute(Format(
+      "CREATE FUNCTION f() RETURNS TEXT LANGUAGE plpgsql AS $$$$\n"
+      "BEGIN\n"
+      "  IF nextval('attempt') = 1 THEN\n"
+      "    $0\n"
+      "    RAISE EXCEPTION 'injected kAborted' USING ERRCODE = 'YB001';\n"
+      "  END IF;\n"
+      "  RETURN current_user;\n"
+      "END $$$$", body)));
+  ASSERT_OK(conn->Execute("GRANT EXECUTE ON FUNCTION f() TO alice"));
+}
+
+// Sends sql on a raw connection outside pipeline mode and returns the first
+// value of its result.
+static std::string FetchValue(PGconn* conn, const char* sql) {
+  PGResultPtr res(PQexec(conn, sql));
+  EXPECT_EQ(PQresultStatus(res.get()), PGRES_TUPLES_OK) << PQresultErrorMessage(res.get());
+  return PQntuples(res.get()) > 0 ? PQgetvalue(res.get(), 0, 0) : "";
+}
+
+// The cases below fail today, so they are disabled; they pin what an abort
+// and a replay would leave. The retry puts the role back with the scope it
+// had at the start of the attempt, but a plain SET ROLE in the failed
+// statement first changes that scope on the GUC stack, and a plain SET of
+// another setting is not undone at all. TODO(#28196): enable them once a
+// full transaction restart replays the batch.
+
+// SET LOCAL ROLE alice in the batch, a plain SET ROLE bob in the failed
+// statement. After COMMIT the role must be none, not bob.
+TEST_F(PgTxnTest, DISABLED_BatchedRetryKeepsSetLocalRoleOverPlainSet) {
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_NO_FATALS(CreateFailingRoleFunction(&conn, "SET ROLE bob;"));
+  }
+  PGConnPtr conn(PQconnectdb(Format(
+      "host=$0 port=$1 dbname=yugabyte user=$2", pg_host_port().host(),
+      pg_host_port().port(), PGConnSettings::kDefaultUser).c_str()));
+  ASSERT_EQ(PQstatus(conn.get()), CONNECTION_OK) << PQerrorMessage(conn.get());
+  std::vector<std::string> values;
+  ASSERT_NO_FATALS(RunPipeline(
+      conn.get(),
+      {"BEGIN ISOLATION LEVEL REPEATABLE READ", "SET LOCAL ROLE alice", "SELECT f()", "COMMIT"},
+      &values));
+  ASSERT_EQ(values, std::vector<std::string>{"alice"});
+  ASSERT_EQ(FetchValue(conn.get(), "SELECT current_setting('role')"), "none");
+}
+
+// A session role under a SET LOCAL role, and a plain SET ROLE bob in the
+// failed statement. After COMMIT the session role must come back, not bob.
+TEST_F(PgTxnTest, DISABLED_BatchedRetryKeepsSessionRoleUnderSetLocal) {
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_NO_FATALS(CreateFailingRoleFunction(&conn, "SET ROLE bob;"));
+    ASSERT_OK(conn.Execute("CREATE ROLE carol"));
+  }
+  PGConnPtr conn(PQconnectdb(Format(
+      "host=$0 port=$1 dbname=yugabyte user=$2", pg_host_port().host(),
+      pg_host_port().port(), PGConnSettings::kDefaultUser).c_str()));
+  ASSERT_EQ(PQstatus(conn.get()), CONNECTION_OK) << PQerrorMessage(conn.get());
+  PGResultPtr set_role(PQexec(conn.get(), "SET ROLE carol"));
+  ASSERT_EQ(PQresultStatus(set_role.get()), PGRES_COMMAND_OK)
+      << PQresultErrorMessage(set_role.get());
+  std::vector<std::string> values;
+  ASSERT_NO_FATALS(RunPipeline(
+      conn.get(),
+      {"BEGIN ISOLATION LEVEL REPEATABLE READ", "SET LOCAL ROLE alice", "SELECT f()", "COMMIT"},
+      &values));
+  ASSERT_EQ(values, std::vector<std::string>{"alice"});
+  ASSERT_EQ(FetchValue(conn.get(), "SELECT current_setting('role')"), "carol");
+}
+
+// SET LOCAL ROLE alice in the batch, and a plain SET ROLE alice in the
+// failed statement: the value does not change, but the scope does. After
+// COMMIT the role must be none.
+TEST_F(PgTxnTest, DISABLED_BatchedRetryKeepsSetLocalRoleOverSameRole) {
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_NO_FATALS(CreateFailingRoleFunction(&conn, "SET ROLE alice;"));
+  }
+  PGConnPtr conn(PQconnectdb(Format(
+      "host=$0 port=$1 dbname=yugabyte user=$2", pg_host_port().host(),
+      pg_host_port().port(), PGConnSettings::kDefaultUser).c_str()));
+  ASSERT_EQ(PQstatus(conn.get()), CONNECTION_OK) << PQerrorMessage(conn.get());
+  std::vector<std::string> values;
+  ASSERT_NO_FATALS(RunPipeline(
+      conn.get(),
+      {"BEGIN ISOLATION LEVEL REPEATABLE READ", "SET LOCAL ROLE alice", "SELECT f()", "COMMIT"},
+      &values));
+  ASSERT_EQ(values, std::vector<std::string>{"alice"});
+  ASSERT_EQ(FetchValue(conn.get(), "SELECT current_setting('role')"), "none");
+}
+
+// A plain SET of another setting in the failed statement. After the retry,
+// in the same transaction, search_path must be what it was before.
+TEST_F(PgTxnTest, DISABLED_RetryUndoesBodySetSearchPath) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE SEQUENCE attempt"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION f() RETURNS INT LANGUAGE plpgsql AS $$\n"
+      "BEGIN\n"
+      "  IF nextval('public.attempt') = 1 THEN\n"
+      "    PERFORM set_config('search_path', 'retry_s', false);\n"
+      "    RAISE EXCEPTION 'injected kAborted' USING ERRCODE = 'YB001';\n"
+      "  END IF;\n"
+      "  RETURN 1;\n"
+      "END $$"));
+  const auto search_path = ASSERT_RESULT(conn.FetchRow<std::string>("SHOW search_path"));
+  ASSERT_OK(conn.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT f()")), 1);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>("SHOW search_path")), search_path);
+  ASSERT_OK(conn.Execute("COMMIT"));
+}
+
 } // namespace yb::pgwrapper

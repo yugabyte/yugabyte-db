@@ -6155,9 +6155,12 @@ yb_restart_transaction(int attempt, bool is_read_restart)
 	 * Put back the role from the start of the attempt, so that the replay
 	 * does not run as that role.  A SET ROLE from an earlier statement of a
 	 * batch ran before the attempt started, so the saved role includes it.
-	 * Keep its scope: a role from SET LOCAL must still end with the
-	 * transaction.  TODO(#28196): drop this once a full transaction restart
-	 * resets this state the way an abort does.
+	 * Keep its scope where the failed statement left it alone, so a role
+	 * from SET LOCAL still ends with the transaction.  A plain SET ROLE in
+	 * the failed statement over a SET LOCAL role is not undone: it changes
+	 * the scope on the GUC stack, and the restore cannot see that.
+	 * TODO(#28196): drop this once a full transaction restart resets this
+	 * state the way an abort does.
 	 */
 	if (GetCurrentRoleId() != yb_attempt_start_roleid)
 		(void) set_config_option("role",

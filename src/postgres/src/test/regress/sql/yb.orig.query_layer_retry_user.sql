@@ -1,6 +1,8 @@
 --
--- A query-layer retry restarts the transaction in place.  It must leave the
--- session as an abort and a replay of the same statement would.  Each
+-- A query-layer retry restarts the transaction in place.  For the user, the
+-- role and function SET clauses, it must leave the session as an abort and a
+-- replay of the same statement would; a plain SET of another setting in the
+-- failed statement still carries into the replay (#28196).  Each
 -- function below raises a retriable kAborted (YB001) on its first call only,
 -- keyed on a sequence.  After the retry, current_user must be the caller.
 -- First case: retry_alice calls sd(), a SECURITY DEFINER function owned by
