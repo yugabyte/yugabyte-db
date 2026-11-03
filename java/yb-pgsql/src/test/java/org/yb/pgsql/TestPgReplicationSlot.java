@@ -6516,7 +6516,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
     // The master can create these tables while only two tservers are up. Wait for a voter on
     // each tserver so that killing tserver 0 leaves every tablet with a majority.
-    waitForSystemTablesFullyReplicated("pg_advisory_locks", "transactions");
+    waitForSystemTablesFullyReplicated("pg_advisory_locks", "transactions", "cdc_state");
 
     PGReplicationStream stream0 = replApi0.replicationStream()
         .logical()
