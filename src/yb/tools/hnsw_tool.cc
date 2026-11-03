@@ -200,6 +200,7 @@ struct BenchmarkArguments {
     // A named index or bigint ids point at existing data, which must not be modified.
     pg_vector.read_only =
         !pg_vector.index.empty() || pg_vector.id_type == PgVectorIdType::kBigint;
+    pg_vector.random_vectors = build_vecs_path.empty();
     pg_vector.num_connections = std::max(num_indexing_threads, num_query_threads);
     return Status::OK();
   }
@@ -249,7 +250,7 @@ std::unique_ptr<OptionsDescription> BenchmarkOptions() {
   const auto pg_id_type_help =
       Format("PgVector backend: type of the table's `id` column. Possible values: $0. Use Bigint "
              "for tables loaded by other tools whose ids are the input vector indexes. Like "
-             "--pg_index, Bigint never modifies the cluster.",
+             "--pg_index, Bigint never modifies the cluster and requires --build_vecs_path.",
              ValidEnumValuesCommaSeparatedForHelp<PgVectorIdType>());
 
   result->desc.add_options()
@@ -331,12 +332,14 @@ std::unique_ptr<OptionsDescription> BenchmarkOptions() {
       (PG_VECTOR_ARG(database),
        "PgVector backend: YSQL database.")
       (PG_VECTOR_ARG(table),
-       "PgVector backend: table to load and query. It is reused when it has the expected row "
-       "count, `id` and `embedding` column types, and a ready ybhnsw index with the same "
-       "distance and m, m0 and ef_construction. Otherwise it is dropped and recreated.")
+       "PgVector backend: table to load and query. With --build_vecs_path, it is reused when it "
+       "has the expected row count, `id` and `embedding` column types, and a ready ybhnsw index "
+       "with the same distance and m, m0 and ef_construction. Otherwise it is dropped and "
+       "recreated.")
       (PG_VECTOR_ARG(index),
        "PgVector backend: name of an existing ybhnsw index on --pg_table. When set, the "
-       "cluster is never modified and the tool fails if the index is missing or not ready.")
+       "cluster is never modified and the tool fails if the index is missing or not ready. "
+       "Requires --build_vecs_path.")
       (PG_VECTOR_ARG(id_type),
        pg_id_type_help.c_str() /* Boost copies the string internally */)
       (PG_VECTOR_ARG(batch_size)->notifier(OptionLowerBound("pg_batch_size", 1)),

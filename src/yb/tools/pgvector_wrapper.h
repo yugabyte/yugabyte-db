@@ -62,6 +62,10 @@ struct PgVectorConfig {
   // Never modify the cluster. Reserve() fails if the table or index is missing or not ready.
   bool read_only = false;
 
+  // Vectors are generated anew in every run, so an existing table never holds them: it is
+  // recreated, and `read_only` is rejected.
+  bool random_vectors = false;
+
   // Connection pool size. Zero means the max of the concurrency limits passed to Reserve().
   size_t num_connections = 0;
 

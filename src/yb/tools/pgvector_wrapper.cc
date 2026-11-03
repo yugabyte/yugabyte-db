@@ -112,6 +112,8 @@ class PgVectorIndex : public VectorIndexIf<FloatVector, float>, public PgVectorI
       rocksdb::Cache::ReservationMode reservation_mode) override {
     SCHECK(config_.read_only || config_.id_type == PgVectorIdType::kUuid, InvalidArgument,
            "PgVectorIndex: bigint ids require read-only mode");
+    SCHECK(!config_.read_only || !config_.random_vectors, InvalidArgument,
+           "PgVectorIndex: read-only mode requires vectors from a file");
     capacity_ = num_vectors;
     const size_t pool_size = config_.num_connections > 0
         ? config_.num_connections
@@ -228,15 +230,17 @@ class PgVectorIndex : public VectorIndexIf<FloatVector, float>, public PgVectorI
   }
 
  private:
-  // Keeps the table if its columns, index and row count fit this run. Otherwise fails in
-  // read-only mode, or recreates the table without an index.
+  // Keeps the table if the vectors come from a file and its columns, index and row count fit
+  // this run. Otherwise fails in read-only mode, or recreates the table without an index.
   Status EnsureSchemaOrDetectExisting() {
     auto conn = pool_->Acquire();
     if (!config_.read_only) {
       RETURN_NOT_OK(conn->ExecuteFormat("CREATE EXTENSION IF NOT EXISTS vector"));
     }
 
-    const auto mismatch = VERIFY_RESULT(ExistingDataMismatch(*conn));
+    const auto mismatch = config_.random_vectors
+        ? std::string("vectors are random")
+        : VERIFY_RESULT(ExistingDataMismatch(*conn));
     if (mismatch.empty()) {
       LOG(INFO) << "PgVectorIndex: reusing loaded table " << config_.table
                 << "; skipping load phase";
