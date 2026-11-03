@@ -192,13 +192,25 @@ class YsqlMajorUpgradeDdlBlockingTest : public YsqlMajorUpgradeTestBase {
     RETURN_NOT_OK(conn.Execute("CREATE TEMP SEQUENCE tmp_mixed_seq"));
     RETURN_NOT_OK(conn.Execute("CREATE TEMP VIEW tmp_mixed_view AS SELECT 1 AS a"));
 
+    // A refused DDL whose catalog writes were forced reaches the catalog version write, which
+    // crashes debug masters. Release masters only log it, so check the log.
+    auto catalog_version_write_waiter =
+        cluster_->GetMasterLogWaiter("Invalid attempt to update catalog version table");
+
     // A cascading drop of a temp sequence or view can reach permanent objects that depend on it.
+    // The temp relations created without the TEMP keyword are not exempt from the catalog version
+    // increment yet.
     const auto stmts = {
         Format("TRUNCATE tmp_mixed_tbl, $0", kPermTable),
         Format("DROP TABLE tmp_mixed_tbl, $0", kPermTable),
         Format("CREATE TEMP TABLE tmp_mixed_perm_child () INHERITS ($0)", kPermTable),
         std::string("DROP SEQUENCE tmp_mixed_seq CASCADE"),
         std::string("DROP VIEW tmp_mixed_view CASCADE"),
+        std::string("CREATE TABLE pg_temp.tmp_mixed_explicit_tbl (a int)"),
+        std::string("CREATE SEQUENCE pg_temp.tmp_mixed_explicit_seq"),
+        std::string("CREATE VIEW tmp_mixed_implicit_view AS SELECT a FROM tmp_mixed_tbl"),
+        std::string("CREATE OR REPLACE VIEW tmp_mixed_view AS SELECT a FROM tmp_mixed_tbl"),
+        std::string("CREATE OR REPLACE VIEW pg_temp.tmp_mixed_view AS SELECT 1 AS a"),
         Format("ALTER SEQUENCE $0 INCREMENT BY 2", kPermSequence),
         Format("DROP SEQUENCE $0", kPermSequence),
         std::string("CREATE SEQUENCE perm_seq2")};
@@ -208,6 +220,11 @@ class YsqlMajorUpgradeDdlBlockingTest : public YsqlMajorUpgradeTestBase {
           !status.ok() && status.message().ToString().find(kExpectedDdlError) != std::string::npos,
           IllegalState, Format("Unexpected status for $0: $1", stmt, status));
     }
+    SCHECK(
+        !catalog_version_write_waiter.WaitFor(1s).ok(), IllegalState,
+        Format(
+            "Catalog version write during the upgrade: $0",
+            catalog_version_write_waiter.matched_log_line()));
 
     return conn.Execute("DISCARD TEMP");
   }

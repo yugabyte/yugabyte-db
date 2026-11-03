@@ -152,7 +152,7 @@ DefineVirtualRelation(RangeVar *relation, List *tlist, bool replace,
 
 		if (IsYugaByteEnabled() &&
 			rel->rd_rel->relpersistence == RELPERSISTENCE_TEMP)
-			YBCRecordTempRelationDDL();
+			YbRecordTempRelationDDL();
 
 		/*
 		 * Create a tuple descriptor to compare against the existing view, and

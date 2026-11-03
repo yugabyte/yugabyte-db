@@ -856,7 +856,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 
 	if (IsYugaByteEnabled() &&
 		stmt->relation->relpersistence == RELPERSISTENCE_TEMP)
-		YBCRecordTempRelationDDL();
+		YbRecordTempRelationDDL();
 
 	/*
 	 * Determine the lockmode to use when scanning parents.  A self-exclusive
@@ -1814,7 +1814,7 @@ RemoveRelations(DropStmt *drop)
 	}
 
 	if (yb_only_temp_tables)
-		YBCRecordTempRelationDDL();
+		YbRecordTempRelationDDL();
 
 	performMultipleDeletions(objects, drop->behavior, flags);
 
@@ -2092,7 +2092,7 @@ ExecuteTruncate(TruncateStmt *stmt, bool yb_is_top_level, List **yb_relids)
 	}
 
 	if (yb_only_temp_tables)
-		YBCRecordTempRelationDDL();
+		YbRecordTempRelationDDL();
 
 	ExecuteTruncateGuts(rels, relids, relids_logged,
 						stmt->behavior, stmt->restart_seqs, yb_is_top_level);
@@ -4648,7 +4648,7 @@ AlterTable(AlterTableStmt *stmt, LOCKMODE lockmode,
 
 	if (IsYugaByteEnabled() &&
 		rel->rd_rel->relpersistence == RELPERSISTENCE_TEMP)
-		YBCRecordTempRelationDDL();
+		YbRecordTempRelationDDL();
 
 	ATController(stmt, rel, stmt->cmds, stmt->relation->inh, lockmode, context);
 }

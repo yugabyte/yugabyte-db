@@ -2890,6 +2890,22 @@ YBGetCurrentDdlMode()
 	return YbCatalogModificationAspectsToDdlMode(combined_aspects);
 }
 
+/*
+ * Mark the current DDL as touching only temp relations, which lets its
+ * catalog writes through during a YSQL major upgrade.  A DDL that increments
+ * the catalog version is refused during the upgrade anyway, and forcing its
+ * catalog writes would only move the refusal to the catalog version write,
+ * which the master treats as a fatal error.
+ */
+void
+YbRecordTempRelationDDL(void)
+{
+	if (YBGetCurrentDdlMode() & YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT)
+		return;
+
+	YBCRecordTempRelationDDL();
+}
+
 bool
 YbIsInvalidationMessageEnabled()
 {

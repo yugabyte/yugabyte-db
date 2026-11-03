@@ -337,7 +337,7 @@ ExecRenameStmt(RenameStmt *stmt)
 {
 	if (IsYugaByteEnabled() && stmt->relation &&
 		YbIsRangeVarTempRelation(stmt->relation))
-		YBCRecordTempRelationDDL();
+		YbRecordTempRelationDDL();
 
 	switch (stmt->renameType)
 	{

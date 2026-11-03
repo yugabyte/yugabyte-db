@@ -1732,7 +1732,7 @@ DefineIndex(Oid relationId,
 
 	if (IsYugaByteEnabled() &&
 		rel->rd_rel->relpersistence == RELPERSISTENCE_TEMP)
-		YBCRecordTempRelationDDL();
+		YbRecordTempRelationDDL();
 
 	yb_skip_index_creation = skip_build && is_alter_table;
 
