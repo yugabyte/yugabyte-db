@@ -6037,6 +6037,27 @@ class PgVectorIndexUtilTest : public PgVectorIndexSingleServerDumpTestBase {
   PackingMode GetPackingMode() const override {
     return PackingMode::kV1;
   }
+
+  Result<bool> HasVectorDeletion() {
+    auto peers = VERIFY_RESULT(ListTabletPeersForTableName(
+        cluster_.get(), "test", ListPeersFilter::kLeaders));
+    SCHECK_EQ(peers.size(), 1U, IllegalState, "Expected one tablet");
+    return VERIFY_RESULT(peers.front()->shared_tablet())->vector_indexes().has_vector_deletion();
+  }
+
+  // Ids of the rows nearest to the origin.
+  Result<std::string> NearestIds(PGConn& conn, size_t limit) {
+    return AsString(VERIFY_RESULT(conn.FetchRows<int64_t>(Format(
+        "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1", VectorOp(), limit))));
+  }
+
+  static Status UpdateInTransaction(PGConn& conn, int64_t id, const std::string& vector) {
+    RETURN_NOT_OK(conn.Execute("BEGIN"));
+    RETURN_NOT_OK(conn.ExecuteFormat("UPDATE test SET embedding = '$0' WHERE id = $1", vector, id));
+    return conn.Execute("COMMIT");
+  }
+
+  void TestUnappliedVectorUpdates();
 };
 
 TEST_F(PgVectorIndexUtilTest, BackfillSkipsReverseMapping) {
@@ -6432,6 +6453,53 @@ TEST_F(PgVectorIndexUtilTest, IndexCheck) {
   ASSERT_FALSE(peers.empty());
   output = ASSERT_RESULT(run_tool({peers.front()->tablet_id(), "unknown_index"}));
   ASSERT_STR_CONTAINS(output, "not checked: Not found");
+}
+
+void PgVectorIndexUtilTest::TestUnappliedVectorUpdates() {
+  constexpr size_t kNumRows = 5;
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  auto query = [this, &conn] { return NearestIds(conn, kNumRows); };
+
+  // Ignored applies are resent after transaction_resend_applying_interval_usec.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 1.0;
+  ASSERT_OK(UpdateInTransaction(conn, 1, "[100, 200, 300]"));
+  ASSERT_EQ(ASSERT_RESULT(query()), "[2, 3, 4, 5, 1]");
+
+  ASSERT_OK(UpdateInTransaction(conn, 2, "[200, 400, 600]"));
+  ASSERT_FALSE(ASSERT_RESULT(HasVectorDeletion()));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 0.0;
+  ASSERT_OK(UpdateInTransaction(conn, 2, "[4.5, 9, 13.5]"));
+  // Set by the apply of the last update.
+  ASSERT_OK(WaitFor(
+      [this]() -> Result<bool> { return HasVectorDeletion(); }, 10s * kTimeMultiplier,
+      "Last update applied"));
+  ASSERT_EQ(ASSERT_RESULT(query()), "[3, 4, 2, 5, 1]");
+
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_EQ(ASSERT_RESULT(query()), "[3, 4, 2, 5, 1]");
+}
+
+TEST_F(PgVectorIndexUtilTest, UnappliedVectorUpdates) {
+  TestUnappliedVectorUpdates();
+}
+
+// The search does not filter vectors, so the index entries of the rows with intents are left in
+// its results.
+TEST_F(PgVectorIndexUtilTest, UnappliedVectorUpdateSkipFilterCheck) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_skip_filter_check) = true;
+
+  constexpr size_t kNumRows = 5;
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 1.0;
+  ASSERT_OK(UpdateInTransaction(conn, 1, "[100, 200, 300]"));
+  ASSERT_EQ(ASSERT_RESULT(NearestIds(conn, kNumRows + 1)), "[2, 3, 4, 5, 1]");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 0.0;
 }
 
 // Verifies table-owned V1 reverse-mapping values dump as SubDocKey(..., [ColumnId(...)]).
