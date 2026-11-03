@@ -145,11 +145,13 @@ Read Time Options:
    must be picked in the storage layer for correctness reasons. Since
    a read point must be picked in storage layer, options such as passed read
    time or ENSURE_READ_TIME_IS_SET is incompatible with this option.
-3) Serializable isolation: Precedes clamp / defer read time options since
+3) Catalog read time: ops using the PG catalog snapshot clamp the uncertainty
+   window and are always sent to the leader. Applies in serializable isolation
+   too: the tserver serves those catalog reads without row marks as snapshot
+   reads.
+4) Serializable isolation: Precedes clamp / defer read time options since
    serializable avoids read restart errors. Incompatible with other read
    time options.
-4) Catalog read time: ops using the PG catalog snapshot clamp the uncertainty
-   window and are always sent to the leader.
 5) Cross txn snapshot read time: applies to the transaction snapshot only.
    e.g. USE_SNAPSHOT option of CREATE REPLICATION SLOT command.
 6) Follower reads may specify a staleness value and the read time is picked

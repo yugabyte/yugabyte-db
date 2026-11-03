@@ -38,9 +38,11 @@ import org.apache.commons.lang3.StringUtils;
  * toward before; IOPS/throughput-only nodes take the non-restart {@code Disk_Update} path;
  * already-before nodes are skipped so rollback retry can make progress. Classification and the
  * ChangeInstanceType skip also consult the cloud so a modify that aborted before YBA persist is
- * still reverted. The exception is a resize that changed the cgroup: nodes record no cgroup, so an
- * already-before node can't be told apart, and every node in the cluster is re-applied (a rolling
- * restart of each node) on every rollback attempt. See {@link #isCgroupChanging}.
+ * still reverted. A node a failed batch may have left stopped is taken through the batch even when
+ * already at before, so its VM and processes are started again. A resize that changed the cgroup
+ * is different: nodes record no cgroup, so an already-before node can't be told apart, and every
+ * node in the cluster is re-applied (a rolling restart of each node) on every rollback attempt.
+ * See {@link #isCgroupChanging}.
  *
  * <p>Freeze must not recapture {@code state_transition_details} - the failed ResizeNode's delta is
  * the source of truth for the before intent. {@link
@@ -57,6 +59,7 @@ public class RollbackResizeNode extends ResizeNode {
 
   private final ResizeNodeRollbackComputer rollbackComputer;
   private Map<String, CloudAPI.NodeDiskSpec> cloudByNode;
+  private UniverseDefinitionTaskParams failedResizeTarget;
 
   @Inject
   protected RollbackResizeNode(
@@ -89,6 +92,11 @@ public class RollbackResizeNode extends ResizeNode {
       throw new PlatformServiceException(
           BAD_REQUEST, "Rollback of Kubernetes resize node is not supported");
     }
+    if (!isRetryOfPlacementLockHolder(universe)) {
+      // A rollback that already holds the placement lock has started changing the universe and
+      // must be able to finish; refusing it would leave the universe locked with nothing to run.
+      ResizeNodeRollbackComputer.rejectCloudWithoutSnapshot(universe, taskParams().clusters);
+    }
     requireStateTransitionDetails(universe).requireRollbackable();
   }
 
@@ -102,7 +110,7 @@ public class RollbackResizeNode extends ResizeNode {
   @Override
   protected void createPrecheckTasks(Universe universe) {
     requireStateTransitionDetails(universe).requireRollbackable();
-    cloudByNode = rollbackComputer.describeCloudNodes(universe);
+    cloudByNode = rollbackComputer.describeCloudNodes(universe, taskParams().clusters);
     rollbackComputer.checkCooldownGate(
         taskParams(), universe, taskParams().getFailedTaskCreateTime(), cloudByNode);
   }
@@ -113,6 +121,9 @@ public class RollbackResizeNode extends ResizeNode {
       UniverseDefinitionTaskParams.UserIntent newIntent,
       UniverseDefinitionTaskParams.UserIntent currentIntent) {
     if (super.isInstanceChanging(node, newIntent, currentIntent)) {
+      return true;
+    }
+    if (mayBeLeftStopped(node)) {
       return true;
     }
     CloudAPI.NodeDiskSpec cloud = cloudState(node);
@@ -146,6 +157,50 @@ public class RollbackResizeNode extends ResizeNode {
     return targetCluster != null
         && !Objects.equals(
             targetCluster.userIntent.getCGroupSize(node), newIntent.getCGroupSize(node));
+  }
+
+  /**
+   * Whether a batch of the failed resize, or of an earlier attempt of this rollback, may have
+   * stopped this node's processes, and possibly its VM, and failed before setting it Live. Its type
+   * may already be the target, so nothing else would bring it back. Only nodes whose instance type
+   * or cgroup the failed resize changes go through the rolling stop, or every node if it was
+   * forced; disk-only nodes are also set Resizing but keep running.
+   */
+  private boolean mayBeLeftStopped(NodeDetails node) {
+    if (node.state != NodeDetails.NodeState.Resizing) {
+      return false;
+    }
+    if (taskParams().isFailedResizeForced()) {
+      return true;
+    }
+    if (failedResizeTarget == null) {
+      failedResizeTarget = requireStateTransitionDetails(getUniverse()).getTargetUniverseDetails();
+    }
+    Cluster before = taskParams().getClusterByUuid(node.placementUuid);
+    Cluster target = failedResizeTarget.getClusterByUuid(node.placementUuid);
+    if (before == null || target == null) {
+      return false;
+    }
+    return !Objects.equals(
+            before.userIntent.getInstanceTypeForNode(node),
+            target.userIntent.getInstanceTypeForNode(node))
+        || !Objects.equals(
+            before.userIntent.getCGroupSize(node), target.userIntent.getCGroupSize(node));
+  }
+
+  /** ybops then only starts the VM when its type already matches. */
+  @Override
+  protected boolean mustRunChangeInstanceType(NodeDetails node) {
+    return mayBeLeftStopped(node);
+  }
+
+  /**
+   * The stop runs before the same-type ChangeInstanceType that starts the VM, and fails if the VM
+   * is off. The base only tolerates that on a retry, but the rollback's first attempt can meet it.
+   */
+  @Override
+  protected boolean isIgnoreStopError(UpgradeContext upgradeContext, NodeDetails nodeDetails) {
+    return super.isIgnoreStopError(upgradeContext, nodeDetails) || mayBeLeftStopped(nodeDetails);
   }
 
   @Override
@@ -213,7 +268,10 @@ public class RollbackResizeNode extends ResizeNode {
 
   private boolean cloudIopsOrThroughputDiffers(NodeDetails node, DeviceInfo desired) {
     CloudAPI.NodeDiskSpec cloud = cloudState(node);
-    if (cloud == null || desired == null) {
+    // An ephemeral-storage node has no cloud disks to compare. YBA's own disk settings still go
+    // through super.isModifyingDevice, and forward resize refuses disk changes on these nodes, so
+    // those settings match before and after.
+    if (cloud == null || desired == null || !cloud.hasDataDisks()) {
       return false;
     }
     return !ResizeNodeRollbackComputer.cloudAlreadyAtDesired(cloud, desired);
@@ -221,8 +279,7 @@ public class RollbackResizeNode extends ResizeNode {
 
   private CloudAPI.NodeDiskSpec cloudState(NodeDetails node) {
     if (cloudByNode == null) {
-      Universe universe = getUniverse();
-      cloudByNode = rollbackComputer.describeCloudNodes(universe);
+      cloudByNode = rollbackComputer.describeCloudNodes(getUniverse(), taskParams().clusters);
     }
     CloudAPI.NodeDiskSpec cached = cloudByNode.get(node.nodeName);
     if (cached != null) {
@@ -234,7 +291,8 @@ public class RollbackResizeNode extends ResizeNode {
         || !ResizeNodeRollbackComputer.supportsCloudSnapshot(provider.getCloudCode())) {
       return null;
     }
-    CloudAPI.NodeDiskSpec described = rollbackComputer.describeNodeCloudState(provider, node);
+    CloudAPI.NodeDiskSpec described =
+        rollbackComputer.describeNodeCloudState(getUniverse(), provider, node);
     if (cloudByNode == null) {
       cloudByNode = new HashMap<>();
     }
