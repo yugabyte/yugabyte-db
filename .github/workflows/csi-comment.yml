@@ -10,10 +10,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download CSI artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v8
         with:
           name: csi-pr
-          path: csi
           run-id: ${{ github.event.workflow_run.id }}
       - name: Post CSI link comment
         uses: actions/github-script@v6
