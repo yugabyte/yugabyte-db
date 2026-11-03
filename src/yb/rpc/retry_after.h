@@ -22,10 +22,8 @@
 namespace yb::rpc {
 
 // How long a service wants the client to wait before retrying the call it is failing. A service
-// attaches this to the status it rejects with, and RespondFailure copies it into ErrorStatusPB.
-//
-// It says nothing about which peer to retry. A rejection that carries it still travels as whatever
-// ErrorStatusPB code the service chose, so the client's choice of peer is unchanged.
+// attaches it to the status it rejects with; RespondFailure copies it into ErrorStatusPB. It sets
+// only the delay -- which peer the client retries is unchanged.
 struct RetryAfterTag : IntegralBackedErrorTag<MonoDeltaTraits> {
   // This category id is part of the wire protocol and should not be changed once released.
   static constexpr CategoryDescriptor kCategory{25, std::string_view("retry after")};

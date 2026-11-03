@@ -138,7 +138,7 @@ class PlainIntegralTraits {
 template <class ValueType>
 using IntegralErrorTag = IntegralBackedErrorTag<PlainIntegralTraits<ValueType>>;
 
-// Base class for error tags whose value is a duration. Carried on the wire as nanoseconds.
+// Traits for an error tag whose value is a duration. Carried on the wire as nanoseconds.
 class MonoDeltaTraits {
  public:
   using ValueType = MonoDelta;
