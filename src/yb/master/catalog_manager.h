@@ -619,6 +619,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
                                       YsqlDdlSubTransactionRollbackState state);
 
   bool HasDdlVerificationState(const TransactionId& txn) const EXCLUDES(ddl_txn_verifier_mutex_);
+  // Returns true if txn's object locks will be released by the DDL verifier, in which case the
+  // caller must drop its release request.
+  bool DeferObjectLockReleaseToDdlVerifier(const TransactionId& txn, bool release_all)
+      EXCLUDES(ddl_txn_verifier_mutex_);
   void RemoveDdlTransactionStateUnlocked(
       const TableId& table_id, const std::vector<TransactionId>& txn_ids)
       REQUIRES(ddl_txn_verifier_mutex_);
@@ -3567,6 +3571,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
     std::unordered_set<TableId> processed_tables;
     // Set of tables whose DocDB schema do not change.
     std::unordered_set<TableId> nochange_tables;
+    // A release of all the txn's object locks was dropped while this entry existed.
+    bool release_all_deferred = false;
   };
 
   struct YsqlDdlSubTransactionRollbackMetadata {

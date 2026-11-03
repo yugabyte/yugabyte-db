@@ -1374,7 +1374,7 @@ Status ObjectLockInfoManager::Impl::UnlockObject(
   auto txn_id = std::move(*txn_id_result);
 
   // Check if DDL verification is in progress
-  if (IsDdlVerificationInProgress(txn_id)) {
+  if (catalog_manager_.DeferObjectLockReleaseToDdlVerifier(txn_id, !req.has_subtxn_id())) {
     VLOG(1) << "Transaction " << txn_id << " is already scheduled for ddl verification. "
             << "Ignoring release request, as it will be released by the ddl verifier.";
     return callback_and_return(Status::OK());
