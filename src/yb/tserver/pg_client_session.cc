@@ -152,6 +152,9 @@ DEFINE_test_flag(bool, request_unknown_tables_during_perform, false,
     "Add several unknown tables while processing perfrom request. "
     "It is expected that opening of such tables will fail");
 
+DEFINE_test_flag(int32, sleep_ms_after_moving_read_point_to_txn, 0,
+    "Sleep after a lazily created transaction takes over the plain session's read point.");
+
 DEFINE_test_flag(bool, perform_ignore_pg_is_region_local, false,
     "Ignore the is_all_region_local field of PgPerformOptionsPB. The intended state is for "
     "everything to work when this field is not set, as the field is only left in for upgrade from "
@@ -4237,6 +4240,7 @@ class PgClientSession::Impl {
         txn_serial_no_ == options.txn_serial_no() &&
         read_point->GetReadTime()) {
       txn->InitWithReadPoint(isolation, read_point);
+      AtomicFlagSleepMs(&FLAGS_TEST_sleep_ms_after_moving_read_point_to_txn);
       VLOG_WITH_PREFIX(2) << "Start transaction " << IsolationLevel_Name(isolation)
                           << ", id: " << txn->id()
                           << ", kept read time: " << txn->read_point().GetReadTime();

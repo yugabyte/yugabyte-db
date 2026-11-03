@@ -54,6 +54,7 @@ DECLARE_int32(rocksdb_universal_compaction_min_merge_width);
 DECLARE_int32(rocksdb_universal_compaction_size_ratio);
 DECLARE_int32(rpc_workers_limit);
 DECLARE_int32(TEST_delay_reads_with_specified_read_time_ms);
+DECLARE_int32(TEST_sleep_ms_after_moving_read_point_to_txn);
 DECLARE_int32(ysql_select_parallelism);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(txn_max_apply_batch_records);
@@ -1464,6 +1465,69 @@ TEST_F_EX(
   LOG(INFO) << "Scan result: "
             << (result.ok() ? Format("$0 rows", result->size()) : result.status().ToString());
   ASSERT_TRUE(!result.ok() || result->size() > 30);
+}
+
+class PgTxnReadPointMoveTest : public PgTxnTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_select_parallelism) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
+    PgTxnTest::SetUp();
+  }
+};
+
+// Test for #30563.
+//
+// Event sequence:
+// 1. Read issued
+// 2. First page returned and next page prefetched
+// 3. UPDATE based on the first page entries.
+// 4. During the flush, move the read point from session to txn.
+// 5. The prefetch page faces a read restart error.
+// 6. However, the read restart error is set on an already moved read point.
+TEST_F_EX(PgTxnTest, RestartMarkedAfterReadPointMoved, PgTxnReadPointMoveTest) {
+  constexpr auto kTable = "restart_probe";
+  constexpr int kRows = 50000;
+  constexpr int kInserters = 8;
+  constexpr int kInsertsPerInserter = 1500;
+  constexpr auto kSleepMs = 2000;
+
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.ExecuteFormat(
+      "CREATE TABLE $0 (k INT, v INT, PRIMARY KEY (k HASH))", kTable));
+  ASSERT_OK(setup_conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i FROM generate_series(1, $1) i", kTable, kRows));
+
+  TestThreadHolder thread_holder;
+  for (int t = 0; t < kInserters; ++t) {
+    thread_holder.AddThreadFunctor([this, kTable, t, &stop = thread_holder.stop_flag()] {
+      auto conn = ASSERT_RESULT(Connect());
+      const auto first_key = kRows + 1 + t * 1000000;
+      for (int i = first_key;
+           i < first_key + kInsertsPerInserter && !stop.load(std::memory_order_acquire); ++i) {
+        ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ($1, $1)", kTable, i));
+      }
+    });
+  }
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET yb_fetch_row_limit = 20000"));
+  ASSERT_OK(conn.Execute("SET ysql_session_max_batch_size = 100"));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sleep_ms_after_moving_read_point_to_txn) = kSleepMs;
+
+  thread_holder.AddThreadFunctor([&stop = thread_holder.stop_flag()] {
+    SleepFor(MonoDelta::FromMilliseconds(kSleepMs * 4));
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sleep_ms_after_moving_read_point_to_txn) = 0;
+    stop.store(true, std::memory_order_release);
+  });
+
+  const auto status = conn.ExecuteFormat("UPDATE $0 SET v = v + 1", kTable);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sleep_ms_after_moving_read_point_to_txn) = 0;
+  thread_holder.Stop();
+
+  ASSERT_OK(status);
 }
 
 } // namespace yb::pgwrapper
