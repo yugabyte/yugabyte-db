@@ -87,10 +87,12 @@ public class NodeCloudDetectorTest {
       return respond(awsInstanceId);
     }
 
+    // A successful command's output comes back prefixed, as NodeActionRunner returns it.
     private ShellResponse respond(String body) {
       return body == null
           ? ShellResponse.create(CURL_HTTP_ERROR, "")
-          : ShellResponse.create(ShellResponse.ERROR_CODE_SUCCESS, body);
+          : ShellResponse.create(
+              ShellResponse.ERROR_CODE_SUCCESS, ShellResponse.RUN_COMMAND_OUTPUT_PREFIX + body);
     }
   }
 
@@ -176,6 +178,17 @@ public class NodeCloudDetectorTest {
         node.commands.stream()
             .flatMap(List::stream)
             .noneMatch(a -> a.startsWith("X-aws-ec2-metadata-token:")));
+  }
+
+  @Test
+  public void testUnidentifiedImdsV2NodeIsUnknown() {
+    FakeNode node = new FakeNode();
+    // The token is unusable and the instance refuses IMDSv1, so nothing reads its instance ID.
+    node.imdsV2Token = "bad token";
+    node.awsInstanceId = "i-0abc123";
+    node.requireImdsV2 = true;
+    // It issued a token, so it is a cloud VM: calling it onprem would silently skip federation.
+    assertNull(detect(node));
   }
 
   @Test

@@ -76,7 +76,8 @@ public class NodeCloudDetector {
    *   <li>{@link CloudType#onprem} - every probe ran and none answered, so the node is not an AWS
    *       or GCP VM.
    *   <li>{@code null} - at least one probe could not be run (the node was unreachable, or {@code
-   *       curl} is missing), so nothing was learned.
+   *       curl} is missing), so nothing was learned; or the AWS metadata service issued a token but
+   *       the instance ID still could not be read, so the node is a cloud VM of unknown identity.
    * </ul>
    *
    * <p>GCP is checked first because GCE requires the {@code Metadata-Flavor} header, so an answer
@@ -112,9 +113,13 @@ public class NodeCloudDetector {
             node,
             context,
             curl("-X", "PUT", AWS_IMDSV2_TOKEN_URL, "-H", AWS_IMDSV2_TOKEN_TTL_HEADER + ":60"));
+    // A node whose metadata service issues a token is not bare metal, so failing to identify it
+    // afterwards must not record it as onprem: that would silently skip its federation.
+    boolean imdsV2TokenIssued = false;
     if (tokenResponse == null) {
       allProbesRan = false;
     } else {
+      imdsV2TokenIssued = tokenResponse.isSuccess();
       String token = extractImdsV2Token(tokenResponse);
       if (token != null) {
         ShellResponse response =
@@ -142,6 +147,12 @@ public class NodeCloudDetector {
       log.warn("Could not probe the node's metadata services; its cloud stays unknown");
       return null;
     }
+    if (imdsV2TokenIssued) {
+      log.warn(
+          "Node's AWS metadata service issued a token but did not return the instance ID; its"
+              + " cloud stays unknown");
+      return null;
+    }
     log.info("Node answered neither metadata service; recording it as a physical node");
     return CloudType.onprem;
   }
@@ -151,7 +162,11 @@ public class NodeCloudDetector {
     if (!response.isSuccess() || StringUtils.isBlank(response.message)) {
       return null;
     }
-    String token = response.message.trim();
+    // A successful response starts with the "Command output:" prefix, which is not part of it.
+    String token = response.extractRunCommandOutput();
+    if (token.isEmpty()) {
+      return null;
+    }
     // The token is opaque, so refuse anything that would not survive being passed back as a single
     // shell argument instead of risking a malformed command.
     if (StringUtils.containsWhitespace(token)) {
