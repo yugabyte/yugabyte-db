@@ -1495,8 +1495,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
   }
 
   @Test
-  public void testRerunAfterSafeWindowEditFailureStaysRollbackable()
-      throws InterruptedException {
+  public void testRerunAfterSafeWindowEditFailureStaysRollbackable() throws InterruptedException {
     TaskInfo rerun = rerunMemoryEditAbortedAfterFreeze(/* firstAttemptCrossesCheckpoint */ false);
     Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     assertTrue(universe.getStateTransitionDetails().isRollbackSafe());
@@ -1508,8 +1507,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
    * MarkRollbackUnsafe (after the new pods were recorded), and rolls it back. The master leader
    * reports no tablets on the drained tservers, so they are safe to delete.
    */
-  private TaskInfo rollBackExpandWithRecordedNewPods()
-      throws InterruptedException {
+  private TaskInfo rollBackExpandWithRecordedNewPods() throws InterruptedException {
     setupUniverseSingleAZ(/* Create Masters */ true);
     enableManualEditRollback();
     Universe universe = defaultUniverse;
@@ -1577,7 +1575,8 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.numNodes;
     // The added tservers are blacklisted and drained before the scale-down, then unblacklisted.
     List<TaskInfo> subTasks = rollbackInfo.getSubTasks();
-    List<TaskType> types = subTasks.stream().map(TaskInfo::getTaskType).collect(Collectors.toList());
+    List<TaskType> types =
+        subTasks.stream().map(TaskInfo::getTaskType).collect(Collectors.toList());
     int waitForServersIdx = types.indexOf(TaskType.WaitForServer);
     int blacklistIdx = types.indexOf(TaskType.ModifyBlackList);
     int dataMoveIdx = types.indexOf(TaskType.WaitForDataMove);
