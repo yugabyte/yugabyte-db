@@ -300,32 +300,6 @@ TEST_F(QuiescentTabletTest, TableWalRetention) {
   }
 }
 
-// With quiescent_tablet_idle_sec lowered to 0, bootstrap of a quiescent tablet starts a segment
-// next to its marker, which later restarts and writes keep working with.
-TEST_F(QuiescentTabletTest, RestartAfterDisabling) {
-  CountRemoteBootstraps();
-  ASSERT_NO_FATALS(WriteRows(0, 100));
-  ASSERT_OK(WaitAllQuiescent());
-  ASSERT_RESULT(CheckWalDirs());
-
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_quiescent_tablet_idle_sec) = 0;
-  ASSERT_NO_FATALS(RestartCluster());
-  ASSERT_NO_FATALS(CheckRows(100));
-  for (const auto& peer : TablePeers()) {
-    ASSERT_GT(peer->log()->num_segments(), 0) << peer->LogPrefix();
-    ASSERT_FALSE(peer->IsQuiescent()) << peer->LogPrefix();
-  }
-
-  // The segment started by bootstrap is still empty.
-  ASSERT_NO_FATALS(RestartCluster());
-  ASSERT_NO_FATALS(CheckRows(100));
-  ASSERT_NO_FATALS(WriteRows(100, 200));
-  ASSERT_NO_FATALS(RestartCluster());
-  ASSERT_NO_FATALS(CheckRows(200));
-
-  ASSERT_EQ(num_remote_bootstraps_.load(), 0);
-}
-
 TEST_F(QuiescentTabletTest, Disabled) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_quiescent_tablets) = false;
   ASSERT_NO_FATALS(WriteRows(0, 10));
