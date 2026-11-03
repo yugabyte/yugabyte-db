@@ -25,6 +25,7 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/init.h"
 #include "yb/common/pgsql_error.h"
+#include "yb/common/retryable_request.h"
 #include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
 
@@ -282,8 +283,11 @@ bool YBCStatusIsTimedOut(YbcStatus s) {
   return StatusWrapper(s)->IsTimedOut();
 }
 
-bool YBCStatusIsExpired(YbcStatus s) {
-  return StatusWrapper(s)->IsExpired();
+// The tablet rejected a retryable write as too old, before replicating it.
+bool YBCStatusIsRetryableRequestExpired(YbcStatus s) {
+  StatusWrapper status{s};
+  return status->IsExpired() &&
+         MinRunningRequestIdStatusData::ValueFromStatus(*status).has_value();
 }
 
 bool YBCStatusIsAlreadyPresent(YbcStatus s) {
