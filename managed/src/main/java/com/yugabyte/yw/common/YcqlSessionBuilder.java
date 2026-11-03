@@ -10,10 +10,7 @@ import com.datastax.oss.driver.api.core.session.ProgrammaticArguments;
 import com.datastax.oss.driver.internal.core.context.DefaultDriverContext;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.net.InetSocketAddress;
-import java.util.Collection;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -35,32 +32,15 @@ public class YcqlSessionBuilder extends CqlSessionBuilder {
   }
 
   public static YcqlSessionBuilder forUniverse(Universe universe) {
-    List<InetSocketAddress> addresses = Util.getNodesAsInet(universe.getUniverseUUID());
+    List<InetSocketAddress> addresses = Util.getNodesAsInet(universe);
     if (addresses.isEmpty()) {
       throw new RuntimeException(
           "Addresses list is empty for universe " + universe.getUniverseUUID());
     }
-    YcqlSessionBuilder builder = new YcqlSessionBuilder(secondaryToPrimaryIps(universe.getNodes()));
+    YcqlSessionBuilder builder =
+        new YcqlSessionBuilder(Util.getSecondaryToPrimaryIps(universe.getNodes()));
     builder.addContactPoints(addresses);
     return builder;
-  }
-
-  static Map<String, String> secondaryToPrimaryIps(Collection<NodeDetails> nodes) {
-    Map<String, String> result = new HashMap<>();
-    for (NodeDetails node : nodes) {
-      if (node.cloudInfo == null) {
-        continue;
-      }
-      String primaryIp = node.cloudInfo.private_ip;
-      String secondaryIp = node.cloudInfo.secondary_private_ip;
-      if (primaryIp != null
-          && secondaryIp != null
-          && !secondaryIp.equals("null")
-          && !secondaryIp.equals(primaryIp)) {
-        result.put(secondaryIp, primaryIp);
-      }
-    }
-    return result;
   }
 
   @Override

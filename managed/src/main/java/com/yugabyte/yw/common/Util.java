@@ -290,7 +290,14 @@ public class Util {
    * Returns a list of Inet address objects in the proxy tier. This is needed by Cassandra clients.
    */
   public static List<InetSocketAddress> getNodesAsInet(UUID universeUUID) {
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    return getNodesAsInet(Universe.getOrBadRequest(universeUUID));
+  }
+
+  /**
+   * Returns a list of Inet address objects in the proxy tier of the given universe snapshot. This
+   * is needed by Cassandra clients.
+   */
+  public static List<InetSocketAddress> getNodesAsInet(Universe universe) {
     List<InetSocketAddress> inetAddrs = new ArrayList<>();
     for (String address : universe.getYQLServerAddresses().split(",")) {
       String[] splitAddress = address.split(":");
@@ -941,6 +948,30 @@ public class Util {
     return Stream.of(node.cloudInfo.private_ip, node.cloudInfo.secondary_private_ip)
         .filter(ip -> StringUtils.isNotBlank(ip) && !"null".equals(ip))
         .collect(Collectors.toSet());
+  }
+
+  /**
+   * Maps each node's {@code secondary_private_ip} to its {@code private_ip}. Dual-NIC servers
+   * advertise their secondary IP, while YBA reaches them by their private IP. Nodes without a
+   * secondary IP, or with the same IP for both, are skipped.
+   */
+  public static Map<String, String> getSecondaryToPrimaryIps(Collection<NodeDetails> nodes) {
+    Map<String, String> result = new HashMap<>();
+    for (NodeDetails node : nodes) {
+      if (node == null || node.cloudInfo == null) {
+        continue;
+      }
+      String primaryIp = node.cloudInfo.private_ip;
+      String secondaryIp = node.cloudInfo.secondary_private_ip;
+      if (StringUtils.isNotBlank(primaryIp)
+          && !"null".equals(primaryIp)
+          && StringUtils.isNotBlank(secondaryIp)
+          && !"null".equals(secondaryIp)
+          && !secondaryIp.equals(primaryIp)) {
+        result.put(secondaryIp, primaryIp);
+      }
+    }
+    return result;
   }
 
   // Generate a deterministic node UUID from the universe UUID and the node name.

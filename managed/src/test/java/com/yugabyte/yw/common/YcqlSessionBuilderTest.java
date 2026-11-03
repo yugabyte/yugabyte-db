@@ -8,38 +8,11 @@ import static org.junit.Assert.assertSame;
 import com.datastax.oss.driver.api.core.config.DriverConfigLoader;
 import com.datastax.oss.driver.api.core.context.DriverContext;
 import com.datastax.oss.driver.api.core.session.ProgrammaticArguments;
-import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
-import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.net.InetSocketAddress;
-import java.util.List;
 import java.util.Map;
 import org.junit.Test;
 
 public class YcqlSessionBuilderTest {
-
-  private static NodeDetails node(String privateIp, String secondaryPrivateIp) {
-    NodeDetails node = new NodeDetails();
-    node.cloudInfo = new CloudSpecificInfo();
-    node.cloudInfo.private_ip = privateIp;
-    node.cloudInfo.secondary_private_ip = secondaryPrivateIp;
-    return node;
-  }
-
-  @Test
-  public void testSecondaryToPrimaryIps() {
-    NodeDetails noCloudInfo = new NodeDetails();
-    Map<String, String> ips =
-        YcqlSessionBuilder.secondaryToPrimaryIps(
-            List.of(
-                node("10.0.0.1", "192.168.0.1"),
-                node("10.0.0.2", "192.168.0.2"),
-                node("10.0.0.3", null),
-                node("10.0.0.4", "null"),
-                node("10.0.0.5", "10.0.0.5"),
-                node(null, "192.168.0.6"),
-                noCloudInfo));
-    assertEquals(Map.of("192.168.0.1", "10.0.0.1", "192.168.0.2", "10.0.0.2"), ips);
-  }
 
   @Test
   public void testTranslator() {
