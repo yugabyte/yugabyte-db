@@ -74,6 +74,9 @@ const uint32 yb_funcs_unsafe_for_pushdown[] = {
 	F_TS_MATCH_TT,
 	F_TS_MATCH_TQ,
 
+	/* Requires session TimeZone, mislabeled IMMUTABLE upstream */
+	F_AGE_TIMESTAMPTZ_TIMESTAMPTZ,
+
 	/* Crypto hash functions require resource owner */
 	F_MD5_BYTEA,
 	F_MD5_TEXT,
