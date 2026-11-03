@@ -62,6 +62,8 @@ tags:
     description: Operations for Telemetry Providers
   - name: Universe
     description: CRUD operations for a Universe
+  - name: User
+    description: User management
   - name: YBA Instance
     description: YBA Instance operations
 paths:

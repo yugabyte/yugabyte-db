@@ -89,6 +89,7 @@ import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupNodeRetriever;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
+import com.yugabyte.yw.common.certmgmt.RpcClientCert;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
@@ -1309,6 +1310,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   /**
+   * Whether this run retries the task that holds the universe's placement lock, so an earlier
+   * attempt already started changing the universe.
+   */
+  protected boolean isRetryOfPlacementLockHolder(Universe universe) {
+    UUID previousTaskUuid = taskParams().getPreviousTaskUUID();
+    return previousTaskUuid != null
+        && previousTaskUuid.equals(universe.getUniverseDetails().placementModificationTaskUuid);
+  }
+
+  /**
    * Whether another task holds the placement lock. The rollback checkpoint ({@code
    * state_transition_details}) is then that task's, so this task must not write or clear it.
    */
@@ -1689,6 +1700,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
   }
 
+  /** Creates subtasks that must run last, just before the universe update is marked successful. */
+  protected void createFinalSubTasks() {}
+
   /** Create a task to mark the change on a universe as success. */
   public SubTaskGroup createMarkUniverseUpdateSuccessTasks() {
     return createMarkUniverseUpdateSuccessTasks(taskParams().getUniverseUUID());
@@ -1701,6 +1715,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @return the subtask group.
    */
   public SubTaskGroup createMarkUniverseUpdateSuccessTasks(UUID universeUuid) {
+    if (Objects.equals(universeUuid, taskParams().getUniverseUUID())) {
+      createFinalSubTasks();
+    }
     SubTaskGroup subTaskGroup = createSubTaskGroup("FinalizeUniverseUpdate");
     UniverseUpdateSucceeded.Params params = new UniverseUpdateSucceeded.Params();
     params.setUniverseUUID(universeUuid);
@@ -3558,6 +3575,21 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
   }
 
+  public void createWaitForRpcClientCertTask(Universe universe) {
+    if (!RpcClientCert.isClientCertRequired(universe)) {
+      return;
+    }
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup(
+            WaitForRpcClientCert.class.getSimpleName(), SubTaskGroupType.ConfigureUniverse);
+    WaitForRpcClientCert task = createTask(WaitForRpcClientCert.class);
+    WaitForRpcClientCert.Params params = new WaitForRpcClientCert.Params();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
   public SubTaskGroup createUpdateConsistencyCheckTask() {
     SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateConsistencyCheckTable");
     UpdateConsistencyCheck task = createTask(UpdateConsistencyCheck.class);
@@ -5164,7 +5196,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       log.debug("Skipping configure YBC as 'useYBDBInbuiltYbc' is enabled");
       return;
     }
-    String cert = universe.getCertificateNodetoNode();
     int ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
     Map<String, String> ybcGflags =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags;
@@ -5189,7 +5220,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     for (Cluster cluster : universe.getUniverseDetails().clusters) {
       universe.getTserversInCluster(cluster.uuid).stream()
           .filter(NodeDetails::isQueryable)
-          .filter(node -> !ybcManager.ybcPingCheck(node.cloudInfo.private_ip, cert, ybcPort))
+          .filter(node -> !ybcManager.ybcPingCheck(node.cloudInfo.private_ip, universe, ybcPort))
           .forEach(
               node -> {
                 boolean isK8s = cluster.getProviderCloudType(node) == CloudType.kubernetes;
@@ -5556,6 +5587,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    */
   public void createDisableMasterOnNonMasterNodesTasks(
       List<NodeDetails> nodes, SubTaskGroupType subTaskGroupType) {
+    createDisableMasterOnNonMasterNodesTasks(nodes, subTaskGroupType, params -> {});
+  }
+
+  public void createDisableMasterOnNonMasterNodesTasks(
+      List<NodeDetails> nodes,
+      SubTaskGroupType subTaskGroupType,
+      Consumer<AnsibleClusterServerCtl.Params> paramsCustomizer) {
     Universe universe = getUniverse();
     if (!confGetter.getConfForScope(
         universe, UniverseConfKeys.allowDisableMasterOnNonMasterNodeSubtask)) {
@@ -5576,7 +5614,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       return;
     }
     log.info("Disabling master on non-master nodes: {}", nodes);
-    createServerControlTasks(nodes, ServerType.MASTER, "stop")
+    createServerControlTasks(nodes, ServerType.MASTER, "stop", paramsCustomizer)
         .setSubTaskGroupType(subTaskGroupType);
   }
 
@@ -6193,8 +6231,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   protected boolean isServerAlive(
       NodeDetails node, ServerType server, String masterAddrs, long timeoutMs) {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    String certificate = universe.getCertificateNodetoNode();
-    try (YBClientApi client = ybService.getClient(masterAddrs, certificate)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe, masterAddrs)) {
       HostAndPort hp =
           HostAndPort.fromParts(
               node.cloudInfo.private_ip,

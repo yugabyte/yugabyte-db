@@ -171,6 +171,20 @@ public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
     }
   }
 
+  /**
+   * Remedy text for an operation blocked by ybdb inbuilt ybc. KubernetesToggleImmutableYbc is not
+   * admitted on a universe frozen by a failed upgrade or rollback, or on a paused canary upgrade,
+   * so only suggest disabling it when the toggle can actually run.
+   */
+  protected static String disableImmutableYbcHint(SoftwareUpgradeState state, String action) {
+    if (state == SoftwareUpgradeState.Ready || state == SoftwareUpgradeState.PreFinalize) {
+      return " Disable ybdb inbuilt ybc before " + action + ".";
+    }
+    return " ybdb inbuilt ybc cannot be disabled while the universe is in software upgrade state "
+        + state
+        + ".";
+  }
+
   private static void verifyRollBatchSize(String fieldName, Integer batchSize) {
     if (batchSize != null && batchSize < 1) {
       throw new PlatformServiceException(

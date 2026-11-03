@@ -20,6 +20,7 @@ from ybops.cloud.oci.command import (
     OciNetworkCommand, OciInstanceCommand, OciAccessCommand, OciQueryCommand,
     OciDnsCommand
 )
+from ybops.cloud.oci.errors import format_oci_error
 from ybops.cloud.oci.utils import (
     OciCloudAdmin, OciMetadata, get_oci_config, is_local_nvme_shape,
     OCI_INSTANCE_RUNNING, OCI_INSTANCE_STOPPED, OCI_INSTANCE_STOPPING,
@@ -51,6 +52,9 @@ class OciCloud(AbstractCloud):
         self.add_subcommand(OciAccessCommand())
         self.add_subcommand(OciQueryCommand())
         self.add_subcommand(OciDnsCommand())
+
+    def format_sdk_error(self, e):
+        return format_oci_error(e)
 
     def validate_credentials(self):
         super(OciCloud, self).validate_credentials()

@@ -737,6 +737,17 @@ message SysCDCStreamEntryPB {
   // For publications bound streams: whether a newly created table is added to the stream, which
   // holds when the bound publication is FOR ALL TABLES.
   optional bool cdcsdk_ysql_include_new_tables = 22 [default = false];
+
+  // Used to set up the target of an xCluster stream. Recording it lets the table split while the
+  // stream is INITIATED, so a recorded checkpoint is never redone. Streams that are checkpointed
+  // again on purpose (indexes after their backfill) are only recorded by that later checkpoint.
+  optional XClusterStreamBootstrapInfoPB xcluster_bootstrap_info = 23;
+}
+
+message XClusterStreamBootstrapInfoPB {
+  // The tablets at the time of the checkpoint, so that target setup can start from them even if
+  // they have split since.
+  repeated bytes checkpointed_tablet_ids = 1;
 }
 
 
