@@ -73,6 +73,25 @@ public class AlertTemplateService {
     private String value;
   }
 
+  /** Universe types an alert template applies to. */
+  public enum ApplicableEnvironment {
+    ANY,
+    VM,
+    K8S;
+
+    public boolean matches(boolean isKubernetes) {
+      switch (this) {
+        case ANY:
+          return true;
+        case VM:
+          return !isKubernetes;
+        case K8S:
+          return isKubernetes;
+      }
+      return true;
+    }
+  }
+
   @Data
   public static class AlertTemplateDescription {
     String name;
@@ -91,6 +110,7 @@ public class AlertTemplateService {
     boolean thresholdReadOnly;
     boolean thresholdConditionReadOnly = true;
     String thresholdUnitName = "";
+    ApplicableEnvironment universeType = ApplicableEnvironment.ANY;
     TestAlertSettings testAlertSettings = new TestAlertSettings();
     Map<String, String> labels = new HashMap<>();
     Map<String, String> annotations = new HashMap<>();
@@ -110,6 +130,13 @@ public class AlertTemplateService {
           Universe universe = Universe.getOrBadRequest(UUID.fromString(universeUuid));
           query =
               query.replaceAll("__mountPoints__", MetricQueryHelper.getDataMountPoints(universe));
+        }
+        if (query.contains("__k8sNamespaces__") || query.contains("__k8sPodNames__")) {
+          Universe universe = Universe.getOrBadRequest(UUID.fromString(universeUuid));
+          for (Map.Entry<String, String> selector :
+              MetricQueryHelper.getAlertKubernetesSelectors(universe).entrySet()) {
+            query = query.replace(selector.getKey(), selector.getValue());
+          }
         }
         if (query.contains("__systemMountPoints__")) {
           Universe universe = Universe.getOrBadRequest(UUID.fromString(universeUuid));

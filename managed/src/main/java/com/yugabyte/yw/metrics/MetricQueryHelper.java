@@ -698,6 +698,53 @@ public class MetricQueryHelper {
     return isAllMetricsPlatformLevel && isAllMetricsWithSettingsPlatformLevel;
   }
 
+  // A full move adds the StatefulSet index to the pod name, as in yb-tserver-1-0.
+  static final String ALERT_K8S_DB_POD_PATTERN = "yb-(master|tserver)(-[0-9]+)?-[0-9]+";
+
+  /**
+   * Selects the universe's pods by namespace and pod name, because cAdvisor and kubelet series have
+   * no universe label and each universe's alert rule would otherwise read every pod.
+   */
+  public static Map<String, String> getAlertKubernetesSelectors(Universe universe) {
+    String nodePrefix = universe.getUniverseDetails().nodePrefix;
+    boolean newNamingStyle = universe.getUniverseDetails().useNewHelmNamingStyle;
+    Set<String> namespaces = new TreeSet<>();
+    Set<String> podNames = new TreeSet<>();
+    for (Cluster cluster : universe.getUniverseDetails().clusters) {
+      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+      boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
+      for (Region region : Region.getByProvider(provider.getUuid())) {
+        for (AvailabilityZone az : AvailabilityZone.getAZsForRegion(region.getUuid())) {
+          Map<String, String> zoneConfig = CloudInfoInterface.fetchEnvVars(az);
+          String azName = isMultiAZ ? az.getCode() : null;
+          for (boolean isReadOnlyCluster : new boolean[] {false, true}) {
+            namespaces.add(
+                KubernetesUtil.getKubernetesNamespace(
+                    isMultiAZ, nodePrefix, azName, zoneConfig, newNamingStyle, isReadOnlyCluster));
+            if (newNamingStyle) {
+              podNames.add(
+                  KubernetesUtil.getHelmReleaseName(
+                          isMultiAZ,
+                          nodePrefix,
+                          universe.getName(),
+                          azName,
+                          isReadOnlyCluster,
+                          newNamingStyle)
+                      + "-"
+                      + ALERT_K8S_DB_POD_PATTERN);
+            }
+          }
+        }
+      }
+    }
+    // Matching the release in new naming style, since several universes can share a namespace.
+    return Map.of(
+        "__k8sNamespaces__",
+        String.join("|", namespaces),
+        "__k8sPodNames__",
+        newNamingStyle ? String.join("|", podNames) : ALERT_K8S_DB_POD_PATTERN);
+  }
+
   public static KubernetesKind getKubernetesKind(String metricKey) {
     if (metricKey.startsWith(K8S_VOLUME_METRIC_PREFIX)
         || metricKey.startsWith(CONTAINER_VOLUME_METRIC_PREFIX)
