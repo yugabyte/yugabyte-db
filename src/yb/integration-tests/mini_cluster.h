@@ -204,6 +204,12 @@ class MiniCluster : public MiniClusterBase {
 
   Result<TabletServerId> StepDownMasterLeader(const std::string& new_leader_uuid = "");
 
+  // Repeats master leader step down until new_leader_uuid is the leader, or, if it is empty, until
+  // any other master is the leader. Retrying is needed because the protege's election may fail and
+  // let another master win.
+  Status StepDownMasterLeaderAndWaitForNewLeader(
+      const std::string& new_leader_uuid = "", MonoDelta timeout = 60s);
+
   ssize_t LeaderMasterIdx();
 
   // Returns the Master at index 'idx' for this MiniCluster.
