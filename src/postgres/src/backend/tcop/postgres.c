@@ -6093,10 +6093,11 @@ yb_restart_current_stmt(int attempt, bool is_read_restart)
 }
 
 /*
- * The role setting at the start of the current attempt; see
- * yb_restart_transaction.
+ * The role setting at the start of the current attempt, and whether it came
+ * from SET LOCAL; see yb_restart_transaction.
  */
 static Oid	yb_attempt_start_roleid = InvalidOid;
+static bool yb_attempt_start_role_is_local = false;
 
 static void
 yb_restart_transaction(int attempt, bool is_read_restart)
@@ -6154,13 +6155,20 @@ yb_restart_transaction(int attempt, bool is_read_restart)
 	 * Put back the role from the start of the attempt, so that the replay
 	 * does not run as that role.  A SET ROLE from an earlier statement of a
 	 * batch ran before the attempt started, so the saved role includes it.
+	 * Keep its scope: a role from SET LOCAL must still end with the
+	 * transaction.  TODO(#28196): drop this once a full transaction restart
+	 * resets this state the way an abort does.
 	 */
 	if (GetCurrentRoleId() != yb_attempt_start_roleid)
-		SetConfigOption("role",
-						OidIsValid(yb_attempt_start_roleid) ?
-						GetUserNameFromId(yb_attempt_start_roleid, false) :
-						"none",
-						PGC_SUSET, PGC_S_SESSION);
+		(void) set_config_option("role",
+								 OidIsValid(yb_attempt_start_roleid) ?
+								 GetUserNameFromId(yb_attempt_start_roleid,
+												   false) :
+								 "none",
+								 PGC_SUSET, PGC_S_SESSION,
+								 yb_attempt_start_role_is_local ?
+								 GUC_ACTION_LOCAL : GUC_ACTION_SET,
+								 true, 0, false);
 }
 
 static void
@@ -6312,6 +6320,7 @@ yb_exec_query_wrapper_one_attempt(MemoryContext exec_context,
 
 	GetUserIdAndSecContext(&save_userid, &save_sec_context);
 	yb_attempt_start_roleid = GetCurrentRoleId();
+	yb_attempt_start_role_is_local = YbIsGucSetLocal("role");
 	elog(DEBUG2, "yb_exec_query_wrapper attempt %d for %s", attempt, retry_data->query_string);
 	YBSaveOutputBufferPosition(!yb_is_begin_transaction(retry_data->command_tag));
 	PG_TRY();
@@ -6333,6 +6342,8 @@ yb_exec_query_wrapper_one_attempt(MemoryContext exec_context,
 		 * An error can leave a SECURITY DEFINER function before it switches
 		 * the user back.  Only the abort undoes that, and the retry skips the
 		 * abort; without this, the retry would start as the function owner.
+		 * TODO(#28196): drop this save and restore once a full transaction
+		 * restart resets this state the way an abort does.
 		 */
 		SetUserIdAndSecContext(save_userid, save_sec_context);
 		yb_attempt_to_retry_on_error(attempt, retry_data, exec_context);

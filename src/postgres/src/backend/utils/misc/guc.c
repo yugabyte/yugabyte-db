@@ -15675,6 +15675,21 @@ YbSetParallelWorker()
 }
 
 /*
+ * Whether the current value of the named setting came from SET LOCAL.  The
+ * query-layer retry needs this to put a setting back with the scope it had,
+ * since SetConfigOption always makes it a plain SET.
+ */
+bool
+YbIsGucSetLocal(const char *name)
+{
+	struct config_generic *record = find_option(name, false, true, ERROR);
+
+	return record != NULL && record->stack != NULL &&
+		(record->stack->state == GUC_LOCAL ||
+		 record->stack->state == GUC_SET_LOCAL);
+}
+
+/*
  * Callback used to add a context message when reporting errors that occur
  * while trying to restore GUCs in parallel workers.
  */

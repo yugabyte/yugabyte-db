@@ -1450,4 +1450,115 @@ TEST_F(PgTxnTest, BatchedRetryKeepsSet) {
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>("SELECT v FROM t")), "7MB");
 }
 
+// Sends the queries as one libpq pipeline with a single sync, and appends the
+// first value of every result that has rows to values.
+static void RunPipeline(
+    PGconn* conn, std::initializer_list<const char*> queries, std::vector<std::string>* values) {
+  ASSERT_EQ(PQenterPipelineMode(conn), 1) << PQerrorMessage(conn);
+  for (const auto* query : queries) {
+    ASSERT_EQ(PQsendQueryParams(conn, query, 0, nullptr, nullptr, nullptr, nullptr, 0), 1)
+        << PQerrorMessage(conn);
+  }
+  ASSERT_EQ(PQpipelineSync(conn), 1) << PQerrorMessage(conn);
+  for (bool done = false; !done;) {
+    PGResultPtr res(PQgetResult(conn));
+    if (!res) {
+      ASSERT_NE(PQstatus(conn), CONNECTION_BAD) << PQerrorMessage(conn);
+      continue;
+    }
+    switch (PQresultStatus(res.get())) {
+      case PGRES_PIPELINE_SYNC:
+        done = true;
+        break;
+      case PGRES_TUPLES_OK:
+        values->push_back(PQgetvalue(res.get(), 0, 0));
+        break;
+      case PGRES_COMMAND_OK:
+        break;
+      default:
+        FAIL() << PQresultErrorMessage(res.get());
+    }
+  }
+  ASSERT_EQ(PQexitPipelineMode(conn), 1) << PQerrorMessage(conn);
+}
+
+// A retried statement that changed the role must end with the role it started
+// with, and the role must keep its scope. Scenario: one pipeline runs, in a
+// REPEATABLE READ block, SET LOCAL ROLE alice and then SELECT f(). On its
+// first call only, f runs SET LOCAL ROLE bob and raises a retriable kAborted
+// (YB001). The retried f must run as alice, and after COMMIT the role must
+// be back to none, because alice was set with SET LOCAL.
+TEST_F(PgTxnTest, BatchedRetryKeepsSetLocalRole) {
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("CREATE SEQUENCE attempt"));
+    ASSERT_OK(conn.Execute("CREATE ROLE alice"));
+    ASSERT_OK(conn.Execute("CREATE ROLE bob"));
+    ASSERT_OK(conn.Execute("GRANT USAGE ON SEQUENCE attempt TO alice"));
+    ASSERT_OK(conn.Execute(
+        "CREATE FUNCTION f() RETURNS TEXT LANGUAGE plpgsql AS $$\n"
+        "BEGIN\n"
+        "  IF nextval('attempt') = 1 THEN\n"
+        "    SET LOCAL ROLE bob;\n"
+        "    RAISE EXCEPTION 'injected kAborted' USING ERRCODE = 'YB001';\n"
+        "  END IF;\n"
+        "  RETURN current_user;\n"
+        "END $$"));
+    ASSERT_OK(conn.Execute("GRANT EXECUTE ON FUNCTION f() TO alice"));
+  }
+
+  const auto conn_str = Format(
+      "host=$0 port=$1 dbname=yugabyte user=$2", pg_host_port().host(),
+      pg_host_port().port(), PGConnSettings::kDefaultUser);
+  PGConnPtr conn(PQconnectdb(conn_str.c_str()));
+  ASSERT_EQ(PQstatus(conn.get()), CONNECTION_OK) << PQerrorMessage(conn.get());
+  std::vector<std::string> values;
+  ASSERT_NO_FATALS(RunPipeline(
+      conn.get(),
+      {"BEGIN ISOLATION LEVEL REPEATABLE READ", "SET LOCAL ROLE alice", "SELECT f()", "COMMIT"},
+      &values));
+  ASSERT_EQ(values, std::vector<std::string>{"alice"});
+
+  PGResultPtr role(PQexec(conn.get(), "SELECT current_setting('role')"));
+  ASSERT_EQ(PQresultStatus(role.get()), PGRES_TUPLES_OK) << PQresultErrorMessage(role.get());
+  ASSERT_STREQ(PQgetvalue(role.get(), 0, 0), "none");
+}
+
+// The same with a role from plain SET ROLE, which the retry puts back by name.
+// Scenario: one pipeline sends SET ROLE alice and then SELECT f(). On its first
+// call only, f runs SET ROLE bob and raises YB001. The retried f must run as
+// alice, and the session must stay alice afterwards.
+TEST_F(PgTxnTest, BatchedRetryRestoresSetRole) {
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("CREATE SEQUENCE attempt"));
+    ASSERT_OK(conn.Execute("CREATE ROLE alice"));
+    ASSERT_OK(conn.Execute("CREATE ROLE bob"));
+    ASSERT_OK(conn.Execute("GRANT USAGE ON SEQUENCE attempt TO alice"));
+    ASSERT_OK(conn.Execute(
+        "CREATE FUNCTION f() RETURNS TEXT LANGUAGE plpgsql AS $$\n"
+        "BEGIN\n"
+        "  IF nextval('attempt') = 1 THEN\n"
+        "    SET ROLE bob;\n"
+        "    RAISE EXCEPTION 'injected kAborted' USING ERRCODE = 'YB001';\n"
+        "  END IF;\n"
+        "  RETURN current_user;\n"
+        "END $$"));
+    ASSERT_OK(conn.Execute("GRANT EXECUTE ON FUNCTION f() TO alice"));
+  }
+
+  const auto conn_str = Format(
+      "host=$0 port=$1 dbname=yugabyte user=$2", pg_host_port().host(),
+      pg_host_port().port(), PGConnSettings::kDefaultUser);
+  PGConnPtr conn(PQconnectdb(conn_str.c_str()));
+  ASSERT_EQ(PQstatus(conn.get()), CONNECTION_OK) << PQerrorMessage(conn.get());
+  std::vector<std::string> values;
+  ASSERT_NO_FATALS(RunPipeline(conn.get(), {"SET ROLE alice", "SELECT f()"}, &values));
+  ASSERT_EQ(values, std::vector<std::string>{"alice"});
+
+  PGResultPtr role(PQexec(conn.get(), "SELECT current_user || ' ' || current_setting('role')"));
+  ASSERT_EQ(PQresultStatus(role.get()), PGRES_TUPLES_OK) << PQresultErrorMessage(role.get());
+  ASSERT_STREQ(PQgetvalue(role.get(), 0, 0), "alice alice");
+}
+
 } // namespace yb::pgwrapper
