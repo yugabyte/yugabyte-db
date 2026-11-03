@@ -33,16 +33,16 @@ drop extension fuzzystrmatch;
 select public.levenshtein('YugaByte', 'yugabyte');
 
 -- Testing pg_stat_statements;
-select pg_stat_statements_reset();
-select pg_get_userbyid(userid),datname,query,calls,rows,shared_blks_hit,shared_blks_read,shared_blks_dirtied,shared_blks_written,local_blks_hit,local_blks_read,local_blks_dirtied,local_blks_written,temp_blks_read,temp_blks_written,blk_read_time
+select pg_stat_statements_reset() is not null as t;
+select pg_get_userbyid(userid),datname,query,calls,rows,shared_blks_hit,shared_blks_read,shared_blks_dirtied,shared_blks_written,local_blks_hit,local_blks_read,local_blks_dirtied,local_blks_written,temp_blks_read,temp_blks_written,shared_blk_read_time
     from pg_stat_statements join pg_database on dbid = oid order by query;
 
 create table test(a int, b float);
 insert into test(a,b) values (5,10);
-select pg_get_userbyid(userid),datname,query,calls,rows,shared_blks_hit,shared_blks_read,shared_blks_dirtied,shared_blks_written,local_blks_hit,local_blks_read,local_blks_dirtied,local_blks_written,temp_blks_read,temp_blks_written,blk_read_time
+select pg_get_userbyid(userid),datname,query,calls,rows,shared_blks_hit,shared_blks_read,shared_blks_dirtied,shared_blks_written,local_blks_hit,local_blks_read,local_blks_dirtied,local_blks_written,temp_blks_read,temp_blks_written,shared_blk_read_time
     from pg_stat_statements join pg_database on dbid = oid order by query;
 insert into test(a,b) values (15,20);
-select pg_get_userbyid(userid),datname,query,calls,rows,shared_blks_hit,shared_blks_read,shared_blks_dirtied,shared_blks_written,local_blks_hit,local_blks_read,local_blks_dirtied,local_blks_written,temp_blks_read,temp_blks_written,blk_read_time
+select pg_get_userbyid(userid),datname,query,calls,rows,shared_blks_hit,shared_blks_read,shared_blks_dirtied,shared_blks_written,local_blks_hit,local_blks_read,local_blks_dirtied,local_blks_written,temp_blks_read,temp_blks_written,shared_blk_read_time
     from pg_stat_statements join pg_database on dbid = oid order by query;
 -- SeqScan forces YbSeqScan node with NodeTag near the end of the list in nodes.h
 explain (analyze, costs off, summary off, timing off) /*+SeqScan(test)*/ select a, b from test;
