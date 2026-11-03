@@ -229,8 +229,8 @@ TEST_F(PgPartmanNativeWithoutTxnDdlTest, TakesFlagOffPathAndWarns) {
   ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(60 * kTimeMultiplier)));
 }
 
-// The flag and its prerequisites are on, but an infra auto flag is off, as before an upgrade is
-// finalized.
+// The flag and its prerequisites are on, but an infra auto flag is off, as before an upgrade that
+// adds it is finalized.
 class PgPartmanNativeWithoutInfraTest : public PgPartmanTestBase,
                                         public ::testing::WithParamInterface<std::string> {
  protected:
