@@ -14,6 +14,7 @@
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/atomic.h"
+#include "yb/util/monotime.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 namespace yb {
@@ -78,6 +79,8 @@ class ConcurrentIsolationLevelsTest : public ExternalMiniClusterITestBase {
         ++total_retries;
         LOG(INFO) << "Retrying insert of key " << key << ": " << status;
         ASSERT_OK(conn.RollbackTransaction());
+        // Give the conflicting serializable txn a chance to commit before retrying.
+        SleepFor(MonoDelta::FromMilliseconds(5));
       }
     }
 
