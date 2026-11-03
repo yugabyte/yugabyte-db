@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -89,6 +90,24 @@ func TestRootOtelCollectorInUse(t *testing.T) {
 		if got := rootOtelCollectorInUse(tt.active, tt.enabled); got != tt.want {
 			t.Errorf("rootOtelCollectorInUse(%q, %q) = %v, want %v",
 				tt.active, tt.enabled, got, tt.want)
+		}
+	}
+}
+
+func TestOtelCollectorStillRunningError(t *testing.T) {
+	binary := "/home/yugabyte/otel-collector/otelcol-contrib"
+	tests := []struct {
+		rootStopFailed bool
+		wantCause      string
+	}{
+		{true, "root-level"},
+		{false, "user systemd manager"},
+	}
+	for _, tt := range tests {
+		msg := otelCollectorStillRunningError(binary, tt.rootStopFailed).Error()
+		if !strings.Contains(msg, binary) || !strings.Contains(msg, tt.wantCause) {
+			t.Errorf("rootStopFailed=%v: error %q must name %s and %q",
+				tt.rootStopFailed, msg, binary, tt.wantCause)
 		}
 	}
 }
