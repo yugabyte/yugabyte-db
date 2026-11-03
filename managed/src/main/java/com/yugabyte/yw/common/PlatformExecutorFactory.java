@@ -75,9 +75,14 @@ public class PlatformExecutorFactory {
   }
 
   /**
-   * Like {@link #createExecutor(String, ThreadFactory)}, but a task submitted while the pool and
-   * its queue are full is rejected right away instead of blocking the submitting thread. The pool
-   * is not shut down with the application shutdown hooks: the caller shuts it down.
+   * Like {@link #createExecutor(String, ThreadFactory)}, with two differences:
+   *
+   * <ul>
+   *   <li>A task submitted while the pool and its queue are full is rejected right away. The other
+   *       pools with a bounded queue block the submitting thread for up to {@link
+   *       PlatformThreadPoolExecutor#DEFAULT_QUEUE_OFFER_TIMEOUT} waiting for room.
+   *   <li>No application shutdown hook is registered: the caller must shut the pool down.
+   * </ul>
    */
   public ThreadPoolExecutor createNonBlockingExecutor(
       String configPoolName, ThreadFactory namedThreadFactory) {
