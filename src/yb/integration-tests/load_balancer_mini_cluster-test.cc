@@ -57,6 +57,7 @@ DECLARE_int32(TEST_load_balancer_wait_ms);
 DECLARE_int32(TEST_slowdown_master_async_rpc_tasks_by_ms);
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_int32(load_balancer_max_concurrent_moves);
+DECLARE_int32(load_balancer_num_idle_runs);
 DECLARE_int32(min_leader_stepdown_retry_interval_ms);
 DECLARE_int32(replication_factor);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
@@ -195,6 +196,13 @@ class LoadBalancerMiniClusterTestWithoutData : public LoadBalancerMiniClusterTes
 
 class LoadBalancerMiniClusterTest : public LoadBalancerMiniClusterTestBase {
  protected:
+  void SetUp() override {
+    // TaskTracker relies on idle checks spanning several runs. Set before the master starts: it
+    // sizes the balancer's activity buffer.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_load_balancer_num_idle_runs) = 5;
+    LoadBalancerMiniClusterTestBase::SetUp();
+  }
+
   int num_drives() override {
     return 3;
   }
@@ -270,45 +278,37 @@ TEST_F(LoadBalancerMiniClusterRf3Test, DurationMetric) {
 }
 
 TEST_F(LoadBalancerMiniClusterTest, TaskTracker) {
-  auto kTimeout = 30s;
   auto load_balancer = ASSERT_RESULT(
       mini_cluster()->GetLeaderMiniMaster())->master()->catalog_manager()->cluster_balancer();
-  ASSERT_TRUE(load_balancer->GetLatestActivityInfo().IsIdle());
 
-  // Completion waits use IsIdle() (several consecutive idle runs): a single idle run can occur
-  // mid-move, e.g. before a new replica is promoted, and its follow-up removal would then land in
-  // the next phase's run.
+  // Idle means load_balancer_num_idle_runs consecutive idle runs (see SetUp): a single idle run
+  // can occur mid-move, e.g. before a new replica is promoted, and the move's follow-up tasks
+  // would then land in the next phase.
+  auto wait_for_task_then_idle = [&](server::MonitoredTaskType type, const std::string& phase) {
+    ASSERT_OK(WaitFor([&] {
+      auto tasks_summary = load_balancer->GetLatestActivityInfo().GetTasksSummary();
+      return std::any_of(tasks_summary.begin(), tasks_summary.end(), [type](const auto& entry) {
+        return entry.first.first == type;
+      });
+    }, kDefaultTimeout * kTimeMultiplier, Format("Wait for $0 task to start", phase)));
+    WaitLoadBalancerIdle(client_.get(), Format("Wait for $0 task to complete", phase));
+  };
+
+  WaitLoadBalancerIdle(client_.get(), "Wait for initial load balancing to complete");
 
   // Add a tablet server. The load balancer should start an add server task.
   auto new_ts_index = mini_cluster()->num_tablet_servers();
   ASSERT_OK(mini_cluster()->AddTabletServer());
-  ASSERT_OK(WaitFor([&] {
-    auto tasks_summary = load_balancer->GetLatestActivityInfo().GetTasksSummary();
-    return tasks_summary.size() == 1 &&
-           tasks_summary.begin()->first.first == server::MonitoredTaskType::kAddServer;
-  }, kTimeout, "Wait for add server task to start"));
-  ASSERT_OK(WaitFor([&] { return load_balancer->IsIdle().ok(); },
-      kTimeout, "Wait for add server task to complete"));
+  ASSERT_NO_FATALS(wait_for_task_then_idle(server::MonitoredTaskType::kAddServer, "add server"));
 
   // Leader blacklist the new tablet server. The load balancer should start a stepdown task.
   ASSERT_OK(mini_cluster()->AddTServerToLeaderBlacklist(new_ts_index));
-  ASSERT_OK(WaitFor([&] {
-    auto tasks_summary = load_balancer->GetLatestActivityInfo().GetTasksSummary();
-    return tasks_summary.size() == 1 &&
-           tasks_summary.begin()->first.first == server::MonitoredTaskType::kTryStepDown;
-  }, kTimeout, "Wait for stepdown task to start"));
-  ASSERT_OK(WaitFor([&] { return load_balancer->IsIdle().ok(); },
-      kTimeout, "Wait for stepdown task to complete"));
+  ASSERT_NO_FATALS(wait_for_task_then_idle(server::MonitoredTaskType::kTryStepDown, "stepdown"));
 
   // Blacklist the new tablet server. The load balancer should start a remove server task.
   ASSERT_OK(mini_cluster()->AddTServerToBlacklist(new_ts_index));
-  ASSERT_OK(WaitFor([&] {
-    auto tasks_summary = load_balancer->GetLatestActivityInfo().GetTasksSummary();
-    return tasks_summary.size() == 1 &&
-           tasks_summary.begin()->first.first == server::MonitoredTaskType::kRemoveServer;
-  }, kTimeout, "Wait for remove server task to start"));
-  ASSERT_OK(WaitFor([&] { return load_balancer->IsIdle().ok(); },
-      kTimeout, "Wait for remove server task to complete"));
+  ASSERT_NO_FATALS(
+      wait_for_task_then_idle(server::MonitoredTaskType::kRemoveServer, "remove server"));
 }
 
 TEST_F(LoadBalancerMiniClusterTest, TabletsInWrongPlacementMetric) {
