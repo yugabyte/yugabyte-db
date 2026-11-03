@@ -1017,6 +1017,20 @@ Default: `9223372036854775807`
 
 When the server restarts from a previous crash, if the tablet's last WAL file size is less than or equal to this threshold value, the last WAL file will be reused. Otherwise, WAL will allocate a new file at bootstrap. To disable WAL reuse, set the value to `-1`.
 
+### Disk space
+
+##### --reject_writes_min_disk_space_pct
+
+{{% tags/wrap %}}
+
+Default: `5`
+{{% /tags/wrap %}}
+
+Available in v2025.2.7.0 and later.
+
+Minimum free disk space, as a percentage of the total disk capacity, that must be available on the WAL or data directory. When free space falls below this percentage and [reject_writes_when_disk_full](../all-flags-yb-tserver/#reject-writes-when-disk-full) is enabled, the YB-TServer rejects writes to the tablet and aborts remote bootstrap transfers to that node.
+
+Because the threshold is a percentage, it scales automatically with disk size. If both this flag and [reject_writes_min_disk_space_mb](../all-flags-yb-tserver/#reject-writes-min-disk-space-mb) yield a threshold, the larger of the two is used. Set this flag to `0` to disable the percentage-based threshold.
 
 ### Sharding flags
 
