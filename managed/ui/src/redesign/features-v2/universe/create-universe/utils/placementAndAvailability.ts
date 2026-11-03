@@ -17,6 +17,7 @@ import {
 import { getFaultToleranceNeeded, getEffectiveReplicationFactorForResilience } from './resilienceReplication';
 import { PlacementRegion } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { AZ_NOT_PREFERRED } from '../helpers/constants';
+import { getEffectiveAvailabilityZones } from '../helpers/nodesByProvider';
 
 export const getNodeCount = (availabilityZones: NodeAvailabilityProps['availabilityZones']) => {
   if (keys(availabilityZones).length === 0) {
@@ -40,16 +41,21 @@ export type DedicatedTserverMasterCounts = {
  */
 export const getDedicatedTserverMasterCounts = (
   resilienceAndRegionsSettings: ResilienceAndRegionsProps | undefined,
-  nodesAvailabilitySettings: NodeAvailabilityProps | undefined
+  nodesAvailabilitySettings: NodeAvailabilityProps | undefined,
+  nodesByProvider?: Record<string, NodeAvailabilityProps> | null
 ): DedicatedTserverMasterCounts | null => {
   if (!nodesAvailabilitySettings?.useDedicatedNodes || !resilienceAndRegionsSettings) {
     return null;
   }
 
+  const availabilityZones = getEffectiveAvailabilityZones(
+    nodesAvailabilitySettings,
+    nodesByProvider
+  );
   const tserver =
     resilienceAndRegionsSettings.resilienceType === ResilienceType.SINGLE_NODE
       ? 1
-      : getNodeCount(nodesAvailabilitySettings.availabilityZones);
+      : getNodeCount(availabilityZones);
   const master = getEffectiveReplicationFactorForResilience(
     resilienceAndRegionsSettings,
     nodesAvailabilitySettings
@@ -200,6 +206,27 @@ export const assignRegionsAZNodeByReplicationFactor = (
     }
 
     return selectedZonesByRegion;
+  }
+
+  // Region-level: exactly one AZ per region; put that region's full node share on it.
+  // (Spreading nodes across every zone in the region created multiple AZs — wrong for REGION_LEVEL.)
+  if (faultToleranceType === FaultToleranceType.REGION_LEVEL) {
+    regions.forEach((region, index) => {
+      const nodeCount = getNodeCountNeeded(faultToleranceNeeded, regions.length, index);
+      const zone = region.zones?.[0];
+      if (!zone || nodeCount <= 0) {
+        updatedRegions[region.code] = [];
+        return;
+      }
+      updatedRegions[region.code] = [
+        {
+          ...zone,
+          nodeCount,
+          preffered: AZ_NOT_PREFERRED
+        }
+      ];
+    });
+    return updatedRegions;
   }
 
   values(regions).forEach((region, index) => {

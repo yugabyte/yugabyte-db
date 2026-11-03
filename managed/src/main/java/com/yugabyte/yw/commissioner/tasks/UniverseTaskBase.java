@@ -89,6 +89,7 @@ import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupNodeRetriever;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
+import com.yugabyte.yw.common.certmgmt.RpcClientCert;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
@@ -176,6 +177,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -1260,20 +1262,25 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   protected UniverseDefinitionTaskParams getTargetUniverseDetails() {
     UniverseDefinitionTaskParams target =
         Json.fromJson(Json.toJson(taskParams()), UniverseDefinitionTaskParams.class);
-    if (target.nodeDetailsSet == null) {
-      return target;
+    if (target.nodeDetailsSet != null) {
+      target.nodeDetailsSet.removeIf(node -> node.state == NodeState.ToBeRemoved);
+      for (NodeDetails node : target.nodeDetailsSet) {
+        if (node.state == NodeState.ToBeAdded) {
+          node.state = NodeState.Live;
+        }
+        if (node.masterState == MasterState.ToStart) {
+          node.isMaster = true;
+        } else if (node.masterState == MasterState.ToStop) {
+          node.isMaster = false;
+        }
+        node.masterState = null;
+      }
     }
-    target.nodeDetailsSet.removeIf(node -> node.state == NodeState.ToBeRemoved);
-    for (NodeDetails node : target.nodeDetailsSet) {
-      if (node.state == NodeState.ToBeAdded) {
-        node.state = NodeState.Live;
-      }
-      if (node.masterState == MasterState.ToStart) {
-        node.isMaster = true;
-      } else if (node.masterState == MasterState.ToStop) {
-        node.isMaster = false;
-      }
-      node.masterState = null;
+    if (target.clusters != null) {
+      // Primary cluster is moved to the front of the list. This is a fix for any regression that
+      // can happen if the primary cluster is not at index 0.
+      // TODO: Fix other places that assume the primary cluster is always at index 0.
+      target.clusters.sort(Comparator.comparing(c -> c.clusterType != ClusterType.PRIMARY));
     }
     target.updateInProgress = false;
     return target;
@@ -1693,6 +1700,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
   }
 
+  /** Creates subtasks that must run last, just before the universe update is marked successful. */
+  protected void createFinalSubTasks() {}
+
   /** Create a task to mark the change on a universe as success. */
   public SubTaskGroup createMarkUniverseUpdateSuccessTasks() {
     return createMarkUniverseUpdateSuccessTasks(taskParams().getUniverseUUID());
@@ -1705,6 +1715,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @return the subtask group.
    */
   public SubTaskGroup createMarkUniverseUpdateSuccessTasks(UUID universeUuid) {
+    if (Objects.equals(universeUuid, taskParams().getUniverseUUID())) {
+      createFinalSubTasks();
+    }
     SubTaskGroup subTaskGroup = createSubTaskGroup("FinalizeUniverseUpdate");
     UniverseUpdateSucceeded.Params params = new UniverseUpdateSucceeded.Params();
     params.setUniverseUUID(universeUuid);
@@ -1872,12 +1885,39 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   /** Create a task to mark the final software version on a universe. */
   public SubTaskGroup createUpdateSoftwareVersionTask(
       String softwareVersion, boolean isSoftwareUpdateViaVm) {
+    return createUpdateSoftwareVersionTask(
+        softwareVersion, isSoftwareUpdateViaVm, null /* softwareUpgradeState */);
+  }
+
+  public SubTaskGroup createUpdateSoftwareVersionTask(
+      String softwareVersion,
+      boolean isSoftwareUpdateViaVm,
+      @Nullable SoftwareUpgradeState softwareUpgradeState) {
+    return createUpdateSoftwareVersionTask(
+        softwareVersion,
+        isSoftwareUpdateViaVm,
+        softwareUpgradeState,
+        null /* isSoftwareRollbackAllowed */);
+  }
+
+  /**
+   * Create a task to mark the final software version on a universe, also setting {@code
+   * softwareUpgradeState} (and {@code isSoftwareRollbackAllowed} when not null) in the same
+   * universe save when it is not null.
+   */
+  public SubTaskGroup createUpdateSoftwareVersionTask(
+      String softwareVersion,
+      boolean isSoftwareUpdateViaVm,
+      @Nullable SoftwareUpgradeState softwareUpgradeState,
+      @Nullable Boolean isSoftwareRollbackAllowed) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("FinalizeUniverseUpdate");
     UpdateSoftwareVersion.Params params = new UpdateSoftwareVersion.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.softwareVersion = softwareVersion;
     params.prevSoftwareVersion = taskParams().ybPrevSoftwareVersion;
     params.isSoftwareUpdateViaVm = isSoftwareUpdateViaVm;
+    params.softwareUpgradeState = softwareUpgradeState;
+    params.isSoftwareRollbackAllowed = isSoftwareRollbackAllowed;
     UpdateSoftwareVersion task = createTask(UpdateSoftwareVersion.class);
     task.initialize(params);
     task.setUserTaskUUID(getUserTaskUUID());
@@ -3533,6 +3573,21 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       subTaskGroup.addSubTask(task);
       getRunnableTask().addSubTaskGroup(subTaskGroup);
     }
+  }
+
+  public void createWaitForRpcClientCertTask(Universe universe) {
+    if (!RpcClientCert.isClientCertRequired(universe)) {
+      return;
+    }
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup(
+            WaitForRpcClientCert.class.getSimpleName(), SubTaskGroupType.ConfigureUniverse);
+    WaitForRpcClientCert task = createTask(WaitForRpcClientCert.class);
+    WaitForRpcClientCert.Params params = new WaitForRpcClientCert.Params();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
   public SubTaskGroup createUpdateConsistencyCheckTask() {
@@ -6170,8 +6225,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   protected boolean isServerAlive(
       NodeDetails node, ServerType server, String masterAddrs, long timeoutMs) {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    String certificate = universe.getCertificateNodetoNode();
-    try (YBClientApi client = ybService.getClient(masterAddrs, certificate)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe, masterAddrs)) {
       HostAndPort hp =
           HostAndPort.fromParts(
               node.cloudInfo.private_ip,

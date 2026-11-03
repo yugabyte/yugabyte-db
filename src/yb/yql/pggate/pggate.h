@@ -861,6 +861,10 @@ class PgApiImpl {
                                   YbcPgReplicationSlotSnapshotAction snapshot_action,
                                   YbcLsnType lsn_type,
                                   YbcOrderingMode ordering_mode,
+                                  const char *yb_publication_name,
+                                  const PgOid *yb_publication_relfilenodes,
+                                  size_t yb_num_publication_tables,
+                                  bool yb_publication_all_tables,
                                   PgStatement **handle);
   Result<tserver::PgCreateReplicationSlotResponsePB> ExecCreateReplicationSlot(
       PgStatement *handle);

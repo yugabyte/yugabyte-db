@@ -80,6 +80,7 @@ DECLARE_uint32(ysql_conn_mgr_tcmalloc_gc_interval);
 DECLARE_uint32(ysql_conn_mgr_backend_drain_timeout_ms);
 DECLARE_uint32(ysql_conn_mgr_socket_listen_backlog);
 DECLARE_bool(ysql_conn_mgr_full_tls_handshake);
+DECLARE_bool(ysql_conn_mgr_pool_attach_check);
 
 namespace yb {
 namespace ysql_conn_mgr_wrapper {
@@ -328,7 +329,8 @@ Result<std::string> YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
       PgDeriveSocketDir(postgres_address_)}, // Return unix socket
             //  file path = "/tmp/.yb.host_ip:port"
     {"{%yb_socket_listen_backlog%}",
-      std::to_string(FLAGS_ysql_conn_mgr_socket_listen_backlog)}};
+      std::to_string(FLAGS_ysql_conn_mgr_socket_listen_backlog)},
+    {"{%pool_attach_check%}", BoolToString(FLAGS_ysql_conn_mgr_pool_attach_check)}};
 
   RETURN_NOT_OK(AddSslConfig(ysql_conn_mgr_configs));
 

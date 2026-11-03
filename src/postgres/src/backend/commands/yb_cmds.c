@@ -42,6 +42,7 @@
 #include "catalog/pg_class.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_database.h"
+#include "catalog/pg_publication.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_type_d.h"
@@ -2254,6 +2255,47 @@ YBCValidatePlacements(const char *live_placement_info,
 /* ------------------------------------------------------------------------- */
 /*  Replication Slot Functions. */
 
+/*
+ * Resolve the publication a slot is being bound to: whether it is a FOR ALL
+ * TABLES publication, and otherwise its member tables as relfilenodes.  Errors
+ * out if the publication does not exist.  The array is allocated in the
+ * caller's memory context.
+ */
+static void
+YbGetPublicationRelfileNodes(const char *publication_name, Oid **relfilenodes,
+							 size_t *num_tables, bool *all_tables)
+{
+	MemoryContext caller_context = CurrentMemoryContext;
+	bool		is_in_txn = IsTransactionOrTransactionBlock();
+	Publication *publication;
+	List	   *tables = NIL;
+	ListCell   *lc;
+	size_t		table_idx = 0;
+
+	/* The walsender runs replication commands outside of a transaction. */
+	if (!is_in_txn)
+		StartTransactionCommand();
+
+	publication = GetPublicationByName(publication_name, false /* missing_ok */ );
+	*all_tables = publication->alltables;
+	if (!publication->alltables)
+		tables = GetPublicationRelations(publication->oid,
+										 publication->pubviaroot ?
+										 PUBLICATION_PART_ROOT :
+										 PUBLICATION_PART_LEAF);
+
+	*num_tables = list_length(tables);
+	*relfilenodes = MemoryContextAlloc(caller_context,
+									   sizeof(Oid) * Max(*num_tables, 1));
+	foreach(lc, tables)
+		(*relfilenodes)[table_idx++] =
+			YbGetRelfileNodeIdFromRelId(lfirst_oid(lc));
+
+	if (!is_in_txn)
+		AbortCurrentTransaction();
+	MemoryContextSwitchTo(caller_context);
+}
+
 void
 YBCCreateReplicationSlot(const char *slot_name,
 						 const char *plugin_name,
@@ -2261,9 +2303,13 @@ YBCCreateReplicationSlot(const char *slot_name,
 						 uint64_t *consistent_snapshot_time,
 						 YbCRSLsnType lsn_type,
 						 YbCRSOrderingMode yb_ordering_mode,
-						 Oid database_oid)
+						 Oid database_oid,
+						 const char *yb_publication_name)
 {
 	YbcPgStatement handle;
+	Oid		   *publication_relfilenodes = NULL;
+	size_t		num_publication_tables = 0;
+	bool		publication_all_tables = false;
 
 	YbcPgReplicationSlotSnapshotAction repl_slot_snapshot_action;
 
@@ -2295,13 +2341,30 @@ YBCCreateReplicationSlot(const char *slot_name,
 	if (yb_ordering_mode == YB_CRS_ROW)
 		repl_slot_ordering_mode = YB_REPLICATION_SLOT_ORDERING_MODE_ROW;
 
+	/*
+	 * The master starts a publication bound slot with exactly these tables, so
+	 * it never has to look the publication up itself.
+	 */
+	if (yb_publication_name != NULL)
+		YbGetPublicationRelfileNodes(yb_publication_name,
+									 &publication_relfilenodes,
+									 &num_publication_tables,
+									 &publication_all_tables);
+
 	HandleYBStatus(YBCPgNewCreateReplicationSlot(slot_name,
 												 plugin_name,
 												 database_oid,
 												 repl_slot_snapshot_action,
 												 repl_slot_lsn_type,
 												 repl_slot_ordering_mode,
+												 yb_publication_name,
+												 publication_relfilenodes,
+												 num_publication_tables,
+												 publication_all_tables,
 												 &handle));
+
+	if (publication_relfilenodes != NULL)
+		pfree(publication_relfilenodes);
 
 	YbcStatus	status = YBCPgExecCreateReplicationSlot(handle, consistent_snapshot_time);
 
@@ -2321,6 +2384,18 @@ YBCCreateReplicationSlot(const char *slot_name,
 				(errcode(ERRCODE_CONFIGURATION_LIMIT_EXCEEDED),
 				 errmsg("all replication slots are in use"),
 				 errhint("Free one or increase max_replication_slots.")));
+	}
+
+	if (yb_publication_name != NULL && YBCStatusIsNotSupported(status))
+	{
+		YBCFreeStatus(status);
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("replication slot cannot be bound to a publication"),
+				 errdetail("Binding a replication slot to a publication requires "
+						   "the yb-master flag "
+						   "cdcsdk_enable_publication_scoped_replication_slots "
+						   "to be enabled.")));
 	}
 
 	HandleYBStatus(status);

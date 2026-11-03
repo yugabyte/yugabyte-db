@@ -1149,7 +1149,7 @@ Number of seconds to retain log files. Log files older than this value will be d
 Default: `102400`
 {{% /tags/wrap %}}
 
-Stop retaining logs if the space available for the logs falls below this limit, specified in megabytes. As with `log_max_seconds_to_retain`, this flag is ignored if a log segment contains unflushed entries.
+Stop retaining logs if the space available for the logs falls below this limit, specified in kilobytes. As with `log_max_seconds_to_retain`, this flag is ignored if a log segment contains unflushed entries.
 
 ##### --cdc_max_stream_intent_records
 

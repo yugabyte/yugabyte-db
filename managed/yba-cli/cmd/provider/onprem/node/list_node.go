@@ -11,7 +11,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/universeutil"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
@@ -81,11 +80,11 @@ var listNodesCmd = &cobra.Command{
 		universeList, response, err := authAPI.ListUniverses().Execute()
 		for _, u := range universeList {
 			details := u.GetUniverseDetails()
-			primaryCluster := universeutil.FindClusterByType(
+			primaryCluster, primaryIndex := util.FindClusterByType(
 				details.GetClusters(),
 				util.PrimaryClusterType,
 			)
-			if universeutil.IsClusterEmpty(primaryCluster) {
+			if primaryIndex < 0 {
 				logrus.Debug(
 					formatter.Colorize(
 						fmt.Sprintf(

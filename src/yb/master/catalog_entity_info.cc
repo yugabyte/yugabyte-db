@@ -1580,6 +1580,21 @@ const ReplicationSlotName CDCStreamInfo::GetCdcsdkYsqlReplicationSlotName() cons
   return ReplicationSlotName(l->pb.cdcsdk_ysql_replication_slot_name());
 }
 
+bool CDCStreamInfo::IsCdcsdkYsqlPublicationsBoundStream() const {
+  auto l = LockForRead();
+  return l->pb.cdcsdk_ysql_publications_bound_stream();
+}
+
+const std::string CDCStreamInfo::GetCdcsdkYsqlBoundPublicationName() const {
+  auto l = LockForRead();
+  return l->pb.cdcsdk_ysql_bound_publication_name();
+}
+
+bool CDCStreamInfo::CdcsdkYsqlIncludesNewTables() const {
+  auto l = LockForRead();
+  return l->pb.cdcsdk_ysql_include_new_tables();
+}
+
 bool CDCStreamInfo::IsConsistentSnapshotStream() const {
   auto l = LockForRead();
   return l->pb.has_cdcsdk_stream_metadata() &&

@@ -218,6 +218,11 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
                   newVersion,
                   ysqlMajorVersionUpgrade ? YsqlMajorVersionUpgradeState.IN_PROGRESS : null));
 
+          // A per-AZ image override can leave pods Ready on the old build. Fail before recording
+          // the upgrade or promoting auto flags.
+          createCheckSoftwareVersionTaskForPods(universe, newVersion)
+              .setSubTaskGroupType(getTaskSubGroupType());
+
           if (ysqlMajorVersionUpgrade) {
             createUpdateSoftwareUpdatePrevConfigTask(
                 true /* canRollbackCatalogUpgrade */,
@@ -231,9 +236,11 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
                 YsqlMajorVersionUpgradeState.UPGRADE_COMPLETE);
           }
 
+          // Any promotion failure fails the upgrade, except the outcomes PromoteAutoFlags treats as
+          // success (nothing to promote, AutoFlags management disabled).
           createPromoteAutoFlagTask(
               taskParams().getUniverseUUID(),
-              true /* ignoreErrors*/,
+              false /* ignoreErrors*/,
               AutoFlagUtil.LOCAL_VOLATILE_AUTO_FLAG_CLASS_NAME /* maxClass */);
 
           if (taskParams().isEnableYbc()) {
@@ -246,26 +253,33 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
                 .setSubTaskGroupType(getTaskSubGroupType());
           }
 
+          UniverseDefinitionTaskParams.SoftwareUpgradeState endState;
+          Boolean isSoftwareRollbackAllowed = null;
           if (!taskParams().rollbackSupport) {
             createFinalizeUpgradeTasks(
                 taskParams().upgradeSystemCatalog,
                 ysqlMajorVersionUpgrade,
-                requireAdditionalSuperUserForCatalogUpgrade);
+                requireAdditionalSuperUserForCatalogUpgrade,
+                false /* saveReadyState */,
+                true /* ignorePromoteAutoFlagsErrors */);
+            endState = UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready;
+            isSoftwareRollbackAllowed = false;
           } else {
-            if (upgradeRequireFinalize) {
-              createUpdateUniverseSoftwareUpgradeStateTask(
-                  UniverseDefinitionTaskParams.SoftwareUpgradeState.PreFinalize,
-                  true /* isSoftwareRollbackAllowed */);
-            } else {
-              createUpdateUniverseSoftwareUpgradeStateTask(
-                  UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
-                  true /* isSoftwareRollbackAllowed */);
-            }
+            endState =
+                upgradeRequireFinalize
+                    ? UniverseDefinitionTaskParams.SoftwareUpgradeState.PreFinalize
+                    : UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready;
           }
-          // Also idempotent can be run again here.
-          // Mark the final software version on the universe (last subtask).
-          createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion)
+          // Mark the final software version on the universe, with the end state in the same save
+          // (PLAT-23182). Also idempotent can be run again here.
+          createUpdateSoftwareVersionTask(
+                  taskParams().ybSoftwareVersion,
+                  false /* isSoftwareUpdateViaVm */,
+                  endState,
+                  isSoftwareRollbackAllowed)
               .setSubTaskGroupType(getTaskSubGroupType());
+          // The node_exporter sidecar's scrape targets follow the DB version.
+          createSwamperTargetUpdateTask(false /* removeFile */);
         },
         () -> {
           if (requireAdditionalSuperUserForCatalogUpgrade) {

@@ -22,9 +22,9 @@ import org.apache.commons.lang3.StringUtils;
 
 /**
  * Rolls back a failed {@link AddNodeToUniverse} within the safe window by stopping/deconfiguring
- * processes on the re-added node, destroying the VM only when the pre-add state was {@code
- * Decommissioned}, restoring {@code universe_details_json} from {@code state_transition_details},
- * and regenerating swamper targets.
+ * processes on the re-added node, destroying the VM when the add creates a new one for the node's
+ * starting state (see {@link #addCreatesNewInstance}), restoring {@code universe_details_json} from
+ * {@code state_transition_details}, and regenerating swamper targets.
  *
  * <p>Prechecks run {@code CheckClusterConsistency} with the adding node name in {@code
  * skipMayBeRunning}. Full {@link #addBasicPrecheckTasks()} is skipped. Feature flag is enforced by
@@ -104,7 +104,7 @@ public class RollbackAddNodeToUniverse extends UniverseDefinitionTaskBase {
         throw new IllegalStateException(
             "Node " + taskParams().nodeName + " not found in before universe details");
       }
-      boolean wasDecommissioned = beforeNode.state == NodeState.Decommissioned;
+      boolean addCreatesNewInstance = addCreatesNewInstance(universe, beforeNode);
       Set<NodeDetails> nodeSet = Collections.singleton(currentNode);
 
       // Process cleanup: stop with deconfigure so leftover conf cannot be started by hand.
@@ -129,18 +129,19 @@ public class RollbackAddNodeToUniverse extends UniverseDefinitionTaskBase {
               })
           .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
 
-      if (wasDecommissioned) {
+      if (addCreatesNewInstance) {
         log.info(
-            "RollbackAddNodeToUniverse for {}: destroying recreated instance for decommissioned"
-                + " node {}",
+            "RollbackAddNodeToUniverse for {}: destroying the instance of node {}, which the add"
+                + " creates from its starting state {}",
             universe.getUniverseUUID(),
-            taskParams().nodeName);
+            taskParams().nodeName,
+            beforeNode.state);
         createSetNodeStateTask(currentNode, NodeState.Terminating)
             .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
         createDestroyServerTasks(
                 universe,
                 nodeSet,
-                node -> true /* isForceDelete */,
+                forceDestroyOnlyOnOnprem(universe),
                 false /* deleteNode */,
                 true /* deleteRootVolumes */,
                 true /* skipDestroyPrecheck */)
@@ -154,10 +155,11 @@ public class RollbackAddNodeToUniverse extends UniverseDefinitionTaskBase {
         }
       } else {
         log.info(
-            "RollbackAddNodeToUniverse for {}: keeping instance for removed node {} (stop +"
-                + " deconfigure only)",
+            "RollbackAddNodeToUniverse for {}: keeping the existing instance for node {} (was {},"
+                + " stop + deconfigure only)",
             universe.getUniverseUUID(),
-            taskParams().nodeName);
+            taskParams().nodeName,
+            beforeNode.state);
       }
 
       createRestoreUniverseDetailsFromDeltaTask(stateTransitionDetails)
@@ -177,5 +179,20 @@ public class RollbackAddNodeToUniverse extends UniverseDefinitionTaskBase {
       }
     }
     log.info("Finished {} task.", getName());
+  }
+
+  /**
+   * Whether the add creates a new instance for the node, so rollback destroys whatever instance the
+   * node has. Decided from the node's state before the add, not from how far the add got. A
+   * Decommissioned node has none, so the add creates one. On a public cloud a node in ToBeAdded or
+   * Adding also gets a new VM: createCreateNodeTasks destroys an Adding node's leftover instance,
+   * which can't be trusted, and creates again. Any other state keeps the instance it already had.
+   */
+  private static boolean addCreatesNewInstance(Universe universe, NodeDetails beforeNode) {
+    if (beforeNode.state == NodeState.Decommissioned) {
+      return true;
+    }
+    return (beforeNode.state == NodeState.ToBeAdded || beforeNode.state == NodeState.Adding)
+        && isCloudInstanceNode(universe, beforeNode);
   }
 }

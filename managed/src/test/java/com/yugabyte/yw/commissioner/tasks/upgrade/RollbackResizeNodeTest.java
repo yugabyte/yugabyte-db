@@ -614,6 +614,7 @@ public class RollbackResizeNodeTest extends UpgradeTaskTest {
             Collections.emptyList(),
             owners,
             owners,
+            Collections.emptySet(),
             ImmutableMap.of(universeUuid, customerTask))
         .orElseThrow(() -> new AssertionError("expected task status"))
         .get("canRollback")

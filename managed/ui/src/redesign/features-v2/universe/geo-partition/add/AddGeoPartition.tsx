@@ -23,6 +23,7 @@ import {
   navigateToUniverseSettingsFromWizard,
   useGetSteps
 } from './AddGeoPartitionUtils';
+import { getPrimaryCluster } from '@app/redesign/utils/universeUtils';
 import { GeoPartitionInfoModal } from './GeoPartitionInfoModal';
 import { getUniverse } from '@app/v2/api/universe/universe';
 import { api } from '@app/redesign/helpers/api';
@@ -81,7 +82,8 @@ export const AddGeoPartition: FC<AddGeoPartitionProps> = (props) => {
       }
     }
   );
-  const provider = universeData?.spec?.clusters[0].provider_spec.provider;
+  const provider = getPrimaryCluster(universeData?.spec?.clusters ?? [])?.provider_spec
+    ?.provider;
 
   useQuery([universeUUID, provider], () => api.fetchProviderRegions(provider), {
     enabled: isSuccess && !!provider,

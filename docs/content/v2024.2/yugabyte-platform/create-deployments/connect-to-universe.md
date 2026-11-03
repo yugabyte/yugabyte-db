@@ -113,15 +113,14 @@ By default, YugabyteDB Anywhere uses OpenSSH for SSH to remote nodes. YugabyteDB
 
 To upload the Tectia license, manually copy it at `${storage_path}/yugaware/data/licenses/<license.txt>`, where _storage_path_ is the path provided during installation.
 
-After the license is uploaded, YugabyteDB Anywhere exposes the runtime flag `yb.security.ssh2_enabled` that you need to enable, as per the following example:
+After the license is uploaded, set the global runtime flag `yb.security.ssh2_enabled` to `true`. The API token must belong to a Super Admin. This flag can be set only once.
 
 ```shell
-curl --location --request PUT 'http://<ip>/api/v1/customers/<customer_uuid>/runtime_config/00000000-0000-0000-0000-000000000000/key/yb.security.ssh2_enabled'
---header 'Cookie: <Cookie>'
---header 'X-AUTH-TOKEN: <token>'
---header 'Csrf-Token: <csrf-token>'
---header 'Content-Type: text/plain'
---data-raw '"true"'
+curl --request PUT \
+  --url 'http://<yba-ip>/api/v1/customers/<customer_uuid>/runtime_config/00000000-0000-0000-0000-000000000000/key/yb.security.ssh2_enabled' \
+  --header 'Content-Type: text/plain' \
+  --header 'X-AUTH-YW-API-TOKEN: <api-token>' \
+  --data-raw 'true'
 ```
 
 ## Connect from your desktop
