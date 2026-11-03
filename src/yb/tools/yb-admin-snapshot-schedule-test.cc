@@ -1398,6 +1398,12 @@ class YbAdminSnapshotScheduleTestWithYsqlParam
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     YbAdminSnapshotScheduleTestWithYsql::UpdateMiniClusterOptions(opts);
     opts->extra_tserver_flags.emplace_back("--ysql_beta_feature_tablegroup=true");
+    // None of the parameterized PITR/clone tests exercise master failover or follower-side sys
+    // catalog restore. The fixtures that do (YbAdminSnapshotScheduleFailoverTests,
+    // YbAdminSnapshotConsistentRestoreFailoverTest and the other non-parameterized ones) keep the
+    // num_masters = 3 set by YbAdminSnapshotScheduleTest. A single master roughly halves the
+    // per-case cost of cluster start, CREATE DATABASE and restore.
+    opts->num_masters = 1;
   }
 
   virtual std::vector<std::string> ExtraTSFlags() override {
@@ -2039,6 +2045,13 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, RestoreWithBac
   ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
   ASSERT_OK(conn.Execute("INSERT INTO test_table "
       "SELECT generate_series(1, 100), md5(random()::text)"));
+
+  // The restore time below is the wall-clock midpoint of CREATE INDEX. Left alone, the backfill is
+  // a ~3 s slice of a DDL that spends most of its time waiting for backends to reach the new
+  // catalog version, so whether the midpoint lands inside it depends on cluster timing (on ASAN
+  // with a single master it missed by 0.2 s). Stretching the backfill well past that wait keeps
+  // the midpoint inside it.
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_slowdown_backfill_by_ms", "20000"));
 
   // Clone to half way through the backfill.
   auto t1 = ASSERT_RESULT(GetCurrentTime());
