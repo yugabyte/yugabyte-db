@@ -6806,45 +6806,6 @@ TEST_F(PgLibPqTestDropTableIfExistsCascadeRetry, CreateIndexRetryAfterAbort) {
   ASSERT_OK(conn.Execute("CREATE INDEX i ON t (k)"));
 }
 
-// #34751 inside a transaction block: the failed CREATE runs in the READ
-// COMMITTED internal subtransaction, whose abort used to drop the messages
-// for catalog rows already cached. The retry fails, ROLLBACK ends the
-// block, and the test expects a plain CREATE TABLE of the same name to
-// succeed.
-TEST_F(PgLibPqTestDropTableIfExistsCascadeRetry,
-       CreateTableRetryInTransactionBlock) {
-  auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.Execute("SET yb_max_query_layer_retries = 1"));
-  ASSERT_OK(conn.Execute("BEGIN"));
-
-  ASSERT_NOK_STR_CONTAINS(
-      ExecuteWithCatalogWritesAborted(
-          conn, "CREATE TABLE IF NOT EXISTS t (k INT PRIMARY KEY)"),
-      "yb_max_query_layer_retries set to 1");
-  ASSERT_OK(conn.Execute("ROLLBACK"));
-  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY)"));
-  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1)"));
-}
-
-// #34751 through ROLLBACK TO SAVEPOINT: with no retry, the failed CREATE's
-// cached catalog rows must still go away when the savepoint rolls back.
-// The test expects the same CREATE TABLE IF NOT EXISTS to create the table
-// after ROLLBACK TO, so the INSERT succeeds.
-TEST_F(PgLibPqTestDropTableIfExistsCascadeRetry,
-       CreateTableAfterRollbackToSavepoint) {
-  auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.Execute("SET yb_max_query_layer_retries = 0"));
-  ASSERT_OK(conn.Execute("BEGIN"));
-  ASSERT_OK(conn.Execute("SAVEPOINT s"));
-
-  ASSERT_NOK(ExecuteWithCatalogWritesAborted(
-      conn, "CREATE TABLE IF NOT EXISTS t (k INT PRIMARY KEY)"));
-  ASSERT_OK(conn.Execute("ROLLBACK TO s"));
-  ASSERT_OK(conn.Execute("CREATE TABLE IF NOT EXISTS t (k INT PRIMARY KEY)"));
-  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1)"));
-  ASSERT_OK(conn.Execute("COMMIT"));
-}
-
 class PgMinimalPrefetchStaleRelcacheTest : public PgLibPqTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {

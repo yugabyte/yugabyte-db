@@ -53,12 +53,6 @@ using namespace std::literals;
 DEFINE_test_flag(int32, transactional_read_delay_ms, 0,
                  "Amount of time to delay between transaction status check and reading start.");
 
-DEFINE_test_flag(int32, read_delay_ms_for_table, 0,
-                 "Delay reads of the table named by TEST_read_delay_table_name by this amount.");
-
-DEFINE_test_flag(string, read_delay_table_name, "",
-                 "Table whose reads TEST_read_delay_ms_for_table delays.");
-
 DEFINE_test_flag(int32, simulate_time_out_failures_msecs, 0, "If greater than 0, we will randomly "
                  "mark read requests as timed out and sleep for the specificed amount of time by "
                  "this flag to simulate time out failures. The requester will mark the timed out "
@@ -500,13 +494,6 @@ Status ReadQuery::DoPerform() {
     return STATUS(
         NotFound, "Tablet not found", req_->tablet_id(),
         TabletServerError(TabletServerErrorPB::TABLET_NOT_FOUND));
-  }
-
-  if (PREDICT_FALSE(FLAGS_TEST_read_delay_ms_for_table > 0) && !abstract_tablet_->system() &&
-      tablet()->metadata()->table_name() == FLAGS_TEST_read_delay_table_name) {
-    LOG(INFO) << "TEST: delaying read of " << FLAGS_TEST_read_delay_table_name << " tablet "
-              << req_->tablet_id() << " by " << FLAGS_TEST_read_delay_ms_for_table << "ms";
-    SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_read_delay_ms_for_table));
   }
 
   if (FLAGS_TEST_simulate_time_out_failures_msecs > 0 && RandomUniformInt(0, 10) < 2) {

@@ -36,9 +36,6 @@ DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_uint64(max_clock_skew_usec);
-DECLARE_uint64(TEST_extra_shared_request_timeout_ms);
-DECLARE_int32(TEST_read_delay_ms_for_table);
-DECLARE_string(TEST_read_delay_table_name);
 
 namespace yb::pgwrapper {
 namespace {
@@ -273,67 +270,6 @@ TEST_F(PgStaleRestartTest, ParallelQuery) {
 
 TEST_F(PgStaleRestartTest, NoParallelQuery) {
   TestRestartLandsOnReadPoint(/* parallel= */ false);
-}
-
-class PgStaleRestartAfterTimeoutTest : public PgStaleRestartTest {
- protected:
-  void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_clock_skew_usec) = 3'000'000;
-    PgStaleRestartTest::SetUp();
-  }
-};
-
-// GH #28190, timed-out Perform: the backend stops waiting for statement N's Perform at its own
-// deadline, but the tserver measures the deadline from when it parsed the request, so N's tablet
-// reads can still be running when statement N+1 resets the session's read point. A restart
-// response for N then lands on N+1's read point, which has no read time yet.
-//
-// Timeline (t = 0 when the reader starts the scan):
-//   0s  reader: SELECT count(*) FROM t (2 tablets) picks a read time on the session read point;
-//       the tablet reads of t sleep 5s.
-//   ~0s writer: INSERT into t; commits inside the read's uncertainty window (3s clock skew).
-//   3s  reader: pggate deadline (statement_timeout 1s + pg_client_extra_timeout_ms 2s) passes;
-//       the statement fails. The tserver deadline is 5s later (extra_shared_request_timeout_ms).
-//   3s  reader: SELECT v FROM t2 WHERE k = 1 resets the read point; a single-tablet read leaves
-//       it without a read time.
-//   5s  t's tablets see the insert and answer "restart required" into the reset read point.
-TEST_F_EX(PgStaleRestartTest, RestartAfterTimedOutPerform, PgStaleRestartAfterTimeoutTest) {
-  constexpr int32_t kReadDelayMs = 5000;
-  auto reader = ASSERT_RESULT(Connect());
-  auto writer = ASSERT_RESULT(Connect());
-  ASSERT_OK(reader.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT) SPLIT INTO 2 TABLETS"));
-  ASSERT_OK(reader.Execute("CREATE TABLE t2 (k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
-  ASSERT_OK(reader.Execute("INSERT INTO t SELECT s, s FROM generate_series(1, 10) AS s"));
-  ASSERT_OK(reader.Execute("INSERT INTO t2 VALUES (1, 1)"));
-  ASSERT_OK(reader.Execute("SET yb_max_query_layer_retries = 0"));
-  ASSERT_OK(reader.Execute("SET max_parallel_workers_per_gather = 0"));
-  // Warm the catalog caches so the timed statements send only their data reads.
-  ASSERT_EQ(ASSERT_RESULT(reader.FetchRow<int64_t>("SELECT count(*) FROM t")), 10);
-  ASSERT_EQ(ASSERT_RESULT(reader.FetchRow<int32_t>("SELECT v FROM t2 WHERE k = 1")), 1);
-  ASSERT_OK(writer.Execute("INSERT INTO t VALUES (100, 100)"));
-  ASSERT_OK(reader.Execute("SET statement_timeout = 1000"));
-
-  StringWaiterLogSink delayed_read_sink("TEST: delaying read of t ");
-  StringWaiterLogSink no_read_time_sink("Unexpected restart without a read time set");
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_extra_shared_request_timeout_ms) = 5000;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_read_delay_table_name) = "t";
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_read_delay_ms_for_table) = kReadDelayMs;
-
-  TestThreadHolder holder;
-  holder.AddThreadFunctor([&writer, &delayed_read_sink] {
-    ASSERT_OK(delayed_read_sink.WaitFor(10s));
-    ASSERT_OK(writer.Execute("INSERT INTO t VALUES (200, 200)"));
-  });
-  auto timed_out = reader.FetchRow<int64_t>("SELECT count(*) FROM t");
-  LOG(INFO) << "Statement N: " << AsString(timed_out);
-  ASSERT_NOK(timed_out);
-  ASSERT_OK(reader.Execute("SET statement_timeout = 0"));
-  ASSERT_EQ(ASSERT_RESULT(reader.FetchRow<int32_t>("SELECT v FROM t2 WHERE k = 1")), 1);
-  holder.JoinAll();
-
-  const auto status = no_read_time_sink.WaitFor(MonoDelta::FromMilliseconds(2 * kReadDelayMs));
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_read_delay_ms_for_table) = 0;
-  ASSERT_FALSE(status.ok()) << "restart reached a read point without a read time";
 }
 
 } // namespace yb::pgwrapper

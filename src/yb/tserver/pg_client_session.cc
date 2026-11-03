@@ -175,10 +175,6 @@ DEFINE_test_flag(bool, pause_perform_with_paging_state, false,
 DEFINE_test_flag(bool, pause_session_lock_after_release, false,
     "Pause after releasing session object lock.");
 
-DEFINE_test_flag(uint64, extra_shared_request_timeout_ms, 0,
-    "Added to the timeout of every request received over the shared exchange, so the tserver's "
-    "deadline falls after the deadline the backend waits for.");
-
 DEFINE_test_flag(uint64, shared_exchange_big_response_delay_ms, 0,
     "Delay before sending response that does not fit into the shared exchange buffer.");
 
@@ -1014,8 +1010,7 @@ class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQu
     DCHECK(!data_);
     DCHECK(DCHECK_NOTNULL(session_.lock().get())->id() == session_id);
     const auto end = input + size;
-    const auto timeout = MonoDelta::FromMilliseconds(
-        LittleEndian::Load64(input) + FLAGS_TEST_extra_shared_request_timeout_ms);
+    const auto timeout = MonoDelta::FromMilliseconds(LittleEndian::Load64(input));
     input += sizeof(uint64_t);
     RETURN_NOT_OK(rpc::ParseMetadataFromSharedMemory(
         &input, end - input, rpc::AnyMessagePtr(&ash_metadata_)));
