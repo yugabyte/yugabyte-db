@@ -3988,7 +3988,13 @@ Status CDCServiceImpl::CleanupExpiredTables(const TableIdToStreamIdMap& expired_
         return Status::OK();
       }
 
-      auto stream_metadata = VERIFY_RESULT(GetStream(stream_id));
+      auto stream_metadata =
+          VERIFY_RESULT(GetStream(stream_id, RefreshStreamMapOption::kIfInitiatedState));
+      // A stream in INITIATED state is still being created: its cdc_state entries may look expired
+      // (e.g. small cdc_intent_retention_ms), and removing tables now fails the creation.
+      if (stream_metadata->GetState() == master::SysCDCStreamEntryPB_State_INITIATED) {
+        continue;
+      }
       auto colocated = tablet_peer->tablet_metadata()->colocated();
       auto sys_catalog = tablet_peer->tablet_metadata()->IsSysCatalog();
 
