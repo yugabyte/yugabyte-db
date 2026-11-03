@@ -1752,8 +1752,8 @@ TEST_F_EX(QLTransactionTest, GCLogsAfterTransactionalWritesStop, QLTransactionTe
       if (!tablet) {
         continue;
       }
-      auto persistent_op_id = ASSERT_RESULT(tablet->MaxPersistentOpId());
-      if (persistent_op_id.intents.index > 10) {
+      auto persistent_state = ASSERT_RESULT(tablet->GetPersistentState());
+      if (persistent_state.intents.index > 10) {
         has_flushed_intents_db = true;
         break;
       }

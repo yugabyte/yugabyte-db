@@ -173,8 +173,8 @@ class TransactionPromotionTest : public TransactionTestBase<MiniCluster> {
             restart.flush_intents ? tablet::FlushFlags::kAllDbs : tablet::FlushFlags::kRegular,
             rocksdb::FlushReason::kTestOnly));
         ASSERT_OK(WaitFor([&] -> Result<bool> {
-          auto op_ids = VERIFY_RESULT(tablet->MaxPersistentOpId());
-          return op_ids.regular.index >= promoted_op_id.index;
+          auto persistent_state = VERIFY_RESULT(tablet->GetPersistentState());
+          return persistent_state.regular.index >= promoted_op_id.index;
         }, 15s * kTimeMultiplier, "regular frontier passed the PROMOTING op"));
       }
 

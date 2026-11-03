@@ -15,6 +15,7 @@
 #include <numeric>
 #include <queue>
 
+#include "yb/client/client-test-util.h"
 #include "yb/client/client_error.h"
 #include "yb/client/client_fwd.h"
 #include "yb/client/meta_cache.h"
@@ -1460,10 +1461,10 @@ void PgVectorIndexTest::TestRestart(
     // replay of plain writes into vector indexes only.
     for (const auto& peer : peers) {
       auto tablet = ASSERT_RESULT(peer->shared_tablet());
-      auto op_ids = ASSERT_RESULT(tablet->MaxPersistentOpId());
-      ASSERT_FALSE(op_ids.vector_indexes.empty());
-      for (const auto& vector_index_op_id : op_ids.vector_indexes) {
-        ASSERT_LT(vector_index_op_id.index, op_ids.regular.index) << AsString(op_ids);
+      auto state = ASSERT_RESULT(tablet->GetPersistentState());
+      ASSERT_FALSE(state.vector_indexes.empty());
+      for (const auto& vector_index : state.vector_indexes) {
+        ASSERT_LT(vector_index.op_id.index, state.regular.index) << AsString(state);
       }
     }
 
@@ -1504,6 +1505,154 @@ TEST_P(PgVectorIndexTest, BootstrapFlushedVectorIndexes) {
 // replayed into the vector index after an ungraceful restart. See issue #32797.
 TEST_P(PgVectorIndexTest, BootstrapNonTransactionalWrites) {
   TestRestart(tablet::FlushFlags::kRegular, NonTransactionalWrites::kTrue);
+}
+
+// A vector index whose backfill has not flushed anything before an ungraceful restart has no
+// flushed OpId, so bootstrap reads the whole retained WAL. Plain writes made before the index
+// existed must not be replayed into it, their schema packing could be GCed already (GH#35124).
+TEST_P(PgVectorIndexTest, BootstrapUnfinishedBackfillAfterSchemaPackingGC) {
+  constexpr size_t kNumRows = 16;
+  constexpr size_t kQueryLimit = 5;
+
+  if (GetPackingMode() == PackingMode::kNone) {
+    GTEST_SKIP() << "Schema packings are used by packed rows only";
+  }
+
+  num_pre_split_tablets_ = 1;
+  // The table has no vector index yet, so nothing else keeps it from being split.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(
+      conn, 1, kNumRows, /* keep_vectors = */ false, NonTransactionalWrites::kTrue));
+
+  // Repack the rows with a later schema version, so packing GC drops the one used by the writes
+  // above, while the WAL still retains them.
+  ASSERT_OK(conn.Execute("ALTER TABLE test ADD COLUMN extra INT"));
+  ASSERT_OK(conn.Execute("ALTER TABLE test DROP COLUMN extra"));
+  // A replica that was not running yet when its tablet elected a leader catches up only on a later
+  // heartbeat. The compaction below must repack its rows too, and the peer listings must see it.
+  ASSERT_OK(WaitAllReplicasAppliedLeaderCommitted(cluster_.get(), 30s * kTimeMultiplier));
+  // Compaction repacks only rows below the history cutoff.
+  const auto history_retention_sec = FLAGS_timestamp_history_retention_interval_sec;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ASSERT_OK(cluster_->FlushTablets());
+  ASSERT_OK(cluster_->CompactTablets());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) =
+      history_retention_sec;
+  const auto table_id = ASSERT_RESULT(GetTableIDFromTableName("test"));
+  auto peers = ASSERT_RESULT(ListTabletPeersForTableName(
+      cluster_.get(), "test", ListPeersFilter::kAll));
+  for (const auto& peer : peers) {
+    ASSERT_OK(WaitFor([&peer, &table_id]() -> Result<bool> {
+      auto table_info = VERIFY_RESULT(peer->tablet_metadata()->GetTableInfo(table_id));
+      return !table_info->doc_read_context->schema_packing_storage.HasVersionBelow(
+          table_info->schema_version);
+    }, 30s * kTimeMultiplier, "Old schema packing GC"));
+  }
+  const auto num_peers = peers.size();
+  peers.clear();
+
+  // Park the backfills until the restart below shuts a follower down. CREATE INDEX waits for the
+  // leader backfill only, which that shutdown releases.
+  auto* sync_point = yb::SyncPoint::GetInstance();
+  sync_point->LoadDependency({
+      {"Tablet::StartShutdown", "TabletVectorIndexes::Backfill:Start"}});
+  sync_point->EnableProcessing();
+  auto sync_point_cleanup = ScopeExit([sync_point] {
+    sync_point->DisableProcessing();
+    sync_point->ClearTrace();
+  });
+
+  TestThreadHolder threads;
+  threads.AddThreadFunctor([this] {
+    auto index_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(CreateIndex(index_conn));
+  });
+
+  // Keep the PG tserver up, so the connections survive the restart.
+  const auto pg_ts_uuid = cluster_->mini_tablet_server(kPgTsIndex)->server()->permanent_uuid();
+  tserver::MiniTabletServer* target_ts = nullptr;
+  {
+    auto followers = ASSERT_RESULT(ListTabletPeersForTableName(
+        cluster_.get(), "test", ListPeersFilter::kNonLeaders));
+    auto it = std::ranges::find_if(followers, [&pg_ts_uuid](const auto& peer) {
+      return peer->permanent_uuid() != pg_ts_uuid;
+    });
+    ASSERT_NE(it, followers.end());
+    const auto& target_peer = *it;
+    ASSERT_OK(WaitFor([&target_peer] {
+      auto tablet = target_peer->shared_tablet_maybe_null();
+      return tablet && tablet->vector_indexes().TEST_HasIndexes();
+    }, 60s * kTimeMultiplier, "Vector index registered on target follower"));
+    // A colocated tablet flushes its superblock lazily, e.g. on WAL rollover, so the index could
+    // be missing from it at the restart.
+    ASSERT_OK(target_peer->tablet_metadata()->Flush());
+    target_ts = cluster_->find_tablet_server(target_peer->permanent_uuid());
+  }
+
+  DisableFlushOnShutdown(*cluster_, true);
+  target_ts->Shutdown();
+  ASSERT_OK(target_ts->Start());
+  ASSERT_OK(target_ts->WaitStarted());
+
+  threads.JoinAll();
+  ASSERT_OK(WaitForVectorIndexBackfills(num_peers, "Backfill done after restart"));
+  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
+
+  // The check reads at the safe time, which on the restarted follower stays below the history
+  // cutoff of the compaction above until the leader propagates a later safe time.
+  std::string inconsistencies;
+  ASSERT_OK(WaitFor([this, &inconsistencies]() -> Result<bool> {
+    auto result = VectorIndexInconsistencies();
+    if (!result.ok() && result.status().IsSnapshotTooOld()) {
+      return false;
+    }
+    inconsistencies = VERIFY_RESULT(std::move(result));
+    return true;
+  }, 30s * kTimeMultiplier, "Vector index check"));
+  ASSERT_EQ(inconsistencies, "");
+}
+
+// A transaction that writes its intents before the vector index is added and commits after it is
+// invisible to the backfill, so the index gets its rows from the apply only. Bootstrap must replay
+// that apply into the index, while skipping the intent writes that precede the index.
+TEST_P(PgVectorIndexTest, BootstrapTransactionCommittedAfterIndexCreation) {
+  constexpr int64_t kNumRows = 16;
+  constexpr size_t kQueryLimit = 5;
+
+  num_pre_split_tablets_ = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+
+  auto conn = ASSERT_RESULT(MakeTable());
+  auto txn_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(txn_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(InsertBatch(txn_conn, 1, kNumRows));
+  // Send the buffered intents to the tablet before the index is created.
+  ASSERT_RESULT(txn_conn.FetchRow<int64_t>("SELECT id FROM test WHERE id = 1"));
+
+  ASSERT_OK(CreateIndex(conn));
+  // CREATE INDEX waits for the leader backfill only. A replica that was not running yet when its
+  // tablet elected a leader could backfill after applying the commit below, and then flush the
+  // committed rows to the index with the backfill.
+  ASSERT_OK(WaitForVectorIndexBackfills(cluster_->num_tablet_servers(), "Replica backfills"));
+  ASSERT_OK(txn_conn.CommitTransaction());
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kRegular));
+
+  // The index got the rows from the apply only, so they are not flushed to it.
+  for (const auto& peer : ListTabletPeersWithVectorIndexes(cluster_.get())) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    auto state = ASSERT_RESULT(tablet->GetPersistentState());
+    ASSERT_EQ(state.vector_indexes.size(), 1);
+    ASSERT_LT(state.vector_indexes[0].op_id.index, state.regular.index) << AsString(state);
+  }
+
+  DisableFlushOnShutdown(*cluster_, true);
+  ASSERT_OK(RestartCluster());
+  conn = ASSERT_RESULT(Connect());
+  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
+  ASSERT_EQ(ASSERT_RESULT(VectorIndexInconsistencies()), "");
 }
 
 TEST_P(PgVectorIndexTest, DeleteAndUpdate) {
@@ -1678,6 +1827,52 @@ TEST_P(PgVectorIndexTest, SnapshotSchedule) {
   ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
 }
 
+// An in-place restore of a plain snapshot keeps vector indexes created after the snapshot. They
+// have no counterpart in the snapshot superblock and must be backfilled from the restored rows.
+// See issue #35832.
+TEST_P(PgVectorIndexTest, SnapshotRestoreIndexCreatedAfterSnapshot) {
+  constexpr size_t kNumRows = 128;
+  constexpr size_t kQueryLimit = 5;
+
+  client::SnapshotTestUtil snapshot_util;
+  snapshot_util.SetProxy(&client_->proxy_cache());
+  snapshot_util.SetCluster(cluster_.get());
+
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
+
+  client::YBTableName db_name(YQL_DATABASE_PGSQL);
+  db_name.set_namespace_id(ASSERT_RESULT(client::GetNamespaceIdByNamespaceName(
+      client_.get(), DbName())));
+  db_name.set_namespace_name(DbName());
+  auto snapshot_id = ASSERT_RESULT(snapshot_util.CreateSnapshot(db_name));
+
+  // Delete the rows first, so the indexes below are built empty and correct results after the
+  // restore can only come from the post-restore backfill.
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = false;
+  ASSERT_OK(conn.Execute("DELETE FROM test"));
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = true;
+
+  ASSERT_OK(CreateIndex(conn, "vi_after"));
+  ASSERT_OK(CreateIndex(conn, "vi_dropped"));
+  ASSERT_OK(conn.Execute("DROP INDEX vi_dropped"));
+
+  ASSERT_OK(snapshot_util.RestoreSnapshot(snapshot_id));
+
+  ASSERT_OK(WaitFor([this]() -> Result<bool> {
+    for (const auto& index : ListVectorIndexes(cluster_.get())) {
+      if (!index->IsDeactivated() && !VERIFY_RESULT(index->BackfillDone())) {
+        return false;
+      }
+    }
+    return true;
+  }, 60s * kTimeMultiplier, "Wait vector index backfills"));
+
+  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
+  // Leave only the index created after the snapshot to serve the query.
+  ASSERT_OK(conn.ExecuteFormat("DROP INDEX $0", kVectorIndexName));
+  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
+}
+
 // A restore to before a DROP COLUMN of the vector column must not leave the column recorded as
 // deleted, otherwise compaction past the drop discards its reverse mapping entries.
 // See issue #35814.
@@ -1835,9 +2030,9 @@ void PgVectorIndexTest::TestBootstrapAfterSchemaChange(
   for (const auto& peer : ASSERT_RESULT(ListTabletPeersForTableName(
            cluster_.get(), "test", ListPeersFilter::kAll))) {
     auto tablet = ASSERT_RESULT(peer->shared_tablet());
-    auto op_ids = ASSERT_RESULT(tablet->MaxPersistentOpId());
-    ASSERT_EQ(op_ids.vector_indexes.size(), 1);
-    ASSERT_LT(op_ids.vector_indexes[0].index, op_ids.regular.index) << AsString(op_ids);
+    auto state = ASSERT_RESULT(tablet->GetPersistentState());
+    ASSERT_EQ(state.vector_indexes.size(), 1);
+    ASSERT_LT(state.vector_indexes[0].op_id.index, state.regular.index) << AsString(state);
   }
   ASSERT_OK(check_old_packings(true));
 
@@ -2969,7 +3164,7 @@ TEST_P(PgVectorIndexColocationOnlyTest, DeactivatedIndexDoesNotHoldBackBootstrap
           }
           for (const auto& [peer, index] : replicas) {
             auto tablet = VERIFY_RESULT(peer->shared_tablet());
-            auto regular = VERIFY_RESULT(tablet->MaxPersistentOpId()).regular;
+            auto regular = VERIFY_RESULT(tablet->GetPersistentState()).regular;
             // Without a flushed regular DB OpId there is nothing to compare against.
             SCHECK(regular.is_valid_not_empty(), IllegalState,
                    Format("$0no flushed regular DB OpId", tablet->LogPrefix()));
@@ -3380,6 +3575,68 @@ TEST_P(PgVectorIndexColocationOnlyTest, CloneRemapsVectorIndexMap) {
       1);
 }
 
+// The snapshot a clone restores holds the storage of every vector index of the source tablet,
+// including indexes created after the clone time. A storage dir is named by index oid, which the
+// clone keeps, so a later index of the clone that gets such an oid would load the source index's
+// chunks, and DROP DATABASE of the clone would leave the dir behind. See issue #35006.
+TEST_P(PgVectorIndexColocationOnlyTest, CloneDropsStorageOfIndexNotInClone) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+  // Cloning a database is off by default on this branch.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_db_clone) = true;
+
+  constexpr size_t kNumRows = 8;
+  const std::string kLaterIndexName = "later_vi";
+
+  auto conn = ASSERT_RESULT(CreateSourceTable(kNumRows));
+  ASSERT_OK(CreateIndex(conn));
+
+  // No scheduled snapshot after the first one, so the clone takes a new snapshot, which holds the
+  // storage of the later index.
+  client::SnapshotTestUtil snapshot_util;
+  snapshot_util.SetProxy(&client_->proxy_cache());
+  snapshot_util.SetCluster(cluster_.get());
+  ASSERT_RESULT(snapshot_util.CreateSchedule(
+      nullptr, YQL_DATABASE_PGSQL, kSourceDb, client::WaitSnapshot::kTrue, 30min, 1h));
+
+  const auto clone_time = ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT (extract(epoch FROM clock_timestamp()) * 1000000)::bigint"));
+  ASSERT_OK(CreateIndex(conn, kLaterIndexName, vector_index::DistanceKind::kInnerProduct));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto admin_conn = ASSERT_RESULT(PgMiniTestBase::Connect());
+  ASSERT_OK(admin_conn.ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kCloneDb, kSourceDb, clone_time));
+
+  const auto clone_table_id = ASSERT_RESULT(FindTableId(kCloneDb, "test"));
+  // The clone waits only for the leaders to apply the restore.
+  auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), clone_table_id);
+  ASSERT_FALSE(peers.empty());
+  for (const auto& peer : peers) {
+    const auto& meta = *peer->tablet_metadata();
+    for (const auto& info : meta.GetAllColocatedVectorIndexes()) {
+      ASSERT_NE(info->table_name, kLaterIndexName);
+    }
+    const auto listed_dirs = meta.vector_index_dirs();
+    ASSERT_EQ(listed_dirs.size(), 1) << peer->tablet_id();
+
+    const auto prefix =
+        docdb::GetStorageDir(BaseName(meta.rocksdb_dir()), docdb::kVectorIndexDirPrefix);
+    const auto parent_dir = DirName(meta.rocksdb_dir());
+    std::vector<std::string> dirs_on_disk;
+    for (const auto& child :
+         ASSERT_RESULT(Env::Default()->GetChildren(parent_dir, ExcludeDots::kTrue))) {
+      if (child.starts_with(prefix)) {
+        dirs_on_disk.push_back(JoinPathSegments(parent_dir, child));
+      }
+    }
+    ASSERT_EQ(dirs_on_disk, listed_dirs) << peer->tablet_id();
+  }
+
+  auto clone_conn = ASSERT_RESULT(ConnectToDB(kCloneDb));
+  ASSERT_EQ(ASSERT_RESULT(FetchIdsThroughIndex(clone_conn, kNumRows)).size(), kNumRows);
+}
+
 // A clone restores the source snapshot onto tablets of a new Raft group, the same as a backup
 // restored into another universe, e.g. an xCluster DR target. The restored vector index chunks
 // carry OpIds of the source Raft group, far above the restore OpId of the new one. Unless the
@@ -3447,10 +3704,10 @@ TEST_P(PgVectorIndexColocationOnlyTest, CloneKeepsNewRowsAcrossRestart) {
   ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
   ASSERT_OK(cluster_->FlushTablets());
   for (const auto& peer : ListTableActiveTabletPeers(cluster_.get(), source_table_id)) {
-    auto op_ids = ASSERT_RESULT(ASSERT_RESULT(peer->shared_tablet())->MaxPersistentOpId());
-    ASSERT_FALSE(op_ids.vector_indexes.empty());
-    for (const auto& vector_index_op_id : op_ids.vector_indexes) {
-      ASSERT_GT(vector_index_op_id.term, kNumSourceLeaderChanges) << op_ids.ToString();
+    auto state = ASSERT_RESULT(ASSERT_RESULT(peer->shared_tablet())->GetPersistentState());
+    ASSERT_FALSE(state.vector_indexes.empty());
+    for (const auto& vector_index : state.vector_indexes) {
+      ASSERT_GT(vector_index.op_id.term, kNumSourceLeaderChanges) << state.ToString();
     }
   }
 
@@ -3488,21 +3745,21 @@ TEST_P(PgVectorIndexColocationOnlyTest, CloneKeepsNewRowsAcrossRestart) {
   };
   ASSERT_EQ(ASSERT_RESULT(missing_from_index()), std::vector<size_t>());
 
-  auto log_flushed_op_ids = [this, &clone_table_id](const char* when) -> Status {
+  auto log_persistent_state = [this, &clone_table_id](const char* when) -> Status {
     for (const auto& peer : ListTableActiveTabletPeers(cluster_.get(), clone_table_id)) {
       auto tablet = VERIFY_RESULT(peer->shared_tablet());
       LOG(INFO) << "Clone tablet " << peer->tablet_id() << " " << when << ": "
-                << VERIFY_RESULT(tablet->MaxPersistentOpId()).ToString();
+                << VERIFY_RESULT(tablet->GetPersistentState()).ToString();
     }
     return Status::OK();
   };
-  ASSERT_OK(log_flushed_op_ids("before restart"));
+  ASSERT_OK(log_persistent_state("before restart"));
 
   DisableFlushOnShutdown(*cluster_, true);
   for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
     ASSERT_OK(cluster_->mini_tablet_server(i)->Restart(tserver::WaitTabletsBootstrapped::kTrue));
   }
-  ASSERT_OK(log_flushed_op_ids("after restart"));
+  ASSERT_OK(log_persistent_state("after restart"));
 
   auto check_conn = ASSERT_RESULT(ConnectToDB(kCloneDb));
   ASSERT_EQ(
@@ -3511,10 +3768,10 @@ TEST_P(PgVectorIndexColocationOnlyTest, CloneKeepsNewRowsAcrossRestart) {
 
   // The restore must not leave a vector index flushed OpId from the source Raft group.
   for (const auto& peer : ListTableActiveTabletPeers(cluster_.get(), clone_table_id)) {
-    auto op_ids = ASSERT_RESULT(ASSERT_RESULT(peer->shared_tablet())->MaxPersistentOpId());
-    ASSERT_FALSE(op_ids.vector_indexes.empty());
-    for (const auto& vector_index_op_id : op_ids.vector_indexes) {
-      ASSERT_LE(vector_index_op_id.index, op_ids.regular.index) << op_ids.ToString();
+    auto state = ASSERT_RESULT(ASSERT_RESULT(peer->shared_tablet())->GetPersistentState());
+    ASSERT_FALSE(state.vector_indexes.empty());
+    for (const auto& vector_index : state.vector_indexes) {
+      ASSERT_LE(vector_index.op_id.index, state.regular.index) << state.ToString();
     }
   }
 }
