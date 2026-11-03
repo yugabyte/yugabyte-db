@@ -829,6 +829,14 @@ void ObjectLockManagerImpl::Lock(LockData&& data) {
   TRACE("Locking a batch of $0 keys", data.key_to_lock.lock_batch.size());
   auto transaction_entry = Reserve(data.key_to_lock.lock_batch, data.object_lock_owner);
   if (transaction_entry->HandleRedundantLock(data.key_to_lock.lock_batch, data.object_lock_owner)) {
+    // Session's fastpath buffer might be full, drain pending fastpath requests so that subsequent
+    // requests can use the fastpath again. Note that AcquireExclusiveLockIntents must not be called
+    // for a redundant request, as exclusive intents are released based on the granted lock state,
+    // which a redundant acquire doesn't update.
+    if (shared_manager_) {
+      std::lock_guard lock(global_mutex_);
+      ConsumePendingSharedLockRequestsUnlocked(data.object_lock_owner.txn_id);
+    }
     data.callback(Status::OK());
     return;
   }
