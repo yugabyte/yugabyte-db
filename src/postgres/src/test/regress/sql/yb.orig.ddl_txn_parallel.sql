@@ -78,7 +78,7 @@ DROP TABLE ddl_par_sp;
 
 -- A temp-table DDL also turns off parallel query for the rest of the block,
 -- even for queries on permanent tables, although workers never read temp
--- tables. TODO(#ISSUE): only non-temp DDL should do this. This block also
+-- tables. TODO(#36712): only non-temp DDL should do this. This block also
 -- skips the catalog version bump, so a generic plan made in it must still be
 -- replanned with a Gather after COMMIT.
 BEGIN;
