@@ -215,7 +215,8 @@ class PgClient {
 
   Result<client::VersionedTablePartitionList> GetTablePartitionList(const PgObjectId& table_id);
 
-  Status FinishTransaction(Commit commit, const std::optional<DdlMode>& ddl_mode = {});
+  Status FinishTransaction(
+      Commit commit, const std::optional<DdlMode>& ddl_mode = {}, bool keep_read_restart = false);
 
   Result<tserver::PgListClonesResponsePB> ListDatabaseClones();
 

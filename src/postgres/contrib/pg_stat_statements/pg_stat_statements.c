@@ -1944,7 +1944,7 @@ pgss_store(const char *query, uint64 queryId,
 	if (!pgss || !pgss_hash)
 		return;
 
-	if (yb_is_calling_internal_sql_for_ddl)
+	if (yb_is_calling_internal_sql_for_ddl || yb_replay_in_progress)
 		return;
 
 	/*

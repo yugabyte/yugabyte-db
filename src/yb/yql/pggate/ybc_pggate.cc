@@ -1996,6 +1996,14 @@ YbcStatus YBCPgRecreateTransaction() {
   return ToYBCStatus(pgapi->RecreateTransaction());
 }
 
+void YBCPgCarryReadRestart(bool carry) {
+  pgapi->CarryReadRestart(carry);
+}
+
+void YBCPgCarryTransactionPriority(bool carry) {
+  pgapi->CarryTransactionPriority(carry);
+}
+
 YbcStatus YBCPgRestartTransaction() {
   return ToYBCStatus(pgapi->RestartTransaction());
 }

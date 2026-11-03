@@ -918,6 +918,18 @@ SetCurrentStatementStartTimestamp(void)
 }
 
 /*
+ * YB: a replay retry re-runs the transaction's BEGIN with the statement start
+ * set to the original transaction start, so the replayed transaction keeps
+ * the start time that deadlock-victim choice and wait-queue order go by.
+ */
+void
+YbSetCurrentStatementStartTimestamp(TimestampTz ts)
+{
+	Assert(!IsParallelWorker());
+	stmtStartTimestamp = ts;
+}
+
+/*
  *	SetCurrentTransactionStopTimestamp
  */
 static inline void

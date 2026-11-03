@@ -97,3 +97,60 @@ free from `YBIsDataSent` flipping on flush; async doesn't, so:
 Without this, retrying a later command would lose earlier ones in the
 batch -- they aren't recorded for replay, so undoing them deletes them
 from the transaction.
+
+### Replay retry (POC, `yb_enable_replay_retry`)
+
+A whole-transaction retry is blocked once anything was sent, even when
+what was sent read no data. That holds in RR/SR for every retryable
+error (the pinned-snapshot rule above), and in RC for kAborted and
+kDeadlock, which a statement rollback cannot undo:
+
+    BEGIN ISOLATION LEVEL REPEATABLE READ;
+    SET LOCAL statement_timeout = '5s';   -- its reply is flushed
+    SELECT ...;                           -- read restart: not retried
+
+And the transaction retry it does allow keeps the PG transaction alive
+under a fresh YB one, so every piece of PG state the surgery forgets
+leaks into the retry (#30540).
+
+With the GUC on, the backend keeps a log of a transaction block's
+statements for as long as each completed one is idempotent: run again in
+a fresh transaction, it leaves the same state and returns the same reply.
+That is BEGIN, START TRANSACTION, SET (except SET TRANSACTION SNAPSHOT,
+whose effect depends on the exporting transaction), RESET, SAVEPOINT and
+RELEASE. A simple query is kept as its text; an extended-protocol
+statement as its raw Bind, the unnamed Parse it binds, and its Execute
+target. A named Parse is not kept: prepared statements outlive an abort.
+
+On an error that needs a whole-transaction restart while the log is open
+-- any retryable error in RR/SR, kAborted or kDeadlock in RC (RC keeps
+the statement rollback for kConflict and kReadRestart) -- it aborts the
+transaction the normal PG way, replays the log in a new transaction
+with the replies dropped (they were sent once already), rebuilds the
+failing statement's portal from its Parse and Bind when it came through
+the extended protocol, and retries it. Outside a block the log is empty,
+so the retry is the abort and the re-run.
+
+What the surgical retry keeps, the replay keeps too:
+
+| State | How |
+|---|---|
+| statement_timeout deadline | saved before the abort, re-armed after |
+| Fail-on-Conflict priority | carried to the next transaction in pggate |
+| read-restart point (read time -> restart time, same global limit) | kept by the tserver across the abort and applied to the next transaction's first read, so restarts converge |
+| transaction start (now(), xact_start, the start time deadlock victims and wait-queue order go by) | the replayed BEGIN runs with the statement start set to the original transaction start |
+| "data was sent" for later gates | re-marked after the replay |
+| observability | replayed statements are not counted or logged: pg_stat_statements, yb_pg_metrics, pg_stat_monitor, pgaudit, pg_stat_activity, log_statement, log_duration, and the abort is not a pg_stat_database rollback |
+
+With the GUC on, the in-place restart is unreachable: reaching it raises an
+error.
+
+The first completed statement outside the set closes the log for the
+rest of the block, as does any error, a fastpath call, or growing past
+`yb_replay_retry_log_limit`. With the GUC on, a whole-transaction
+restart is a replay or nothing: when the log is closed the client gets
+the error, and the in-place restart (`yb_restart_transaction`) runs only
+with the GUC off. One case this changes: a pipeline that completes a read
+and then fails, all before Sync. Nothing was flushed, so the in-place
+restart retries it at a new read point after the read's result was
+already produced at the old one; the replay refuses it.

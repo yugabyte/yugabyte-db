@@ -102,4 +102,95 @@ TEST_F(PgInjectReadRestartTest, FanOutReadRestart) {
   ASSERT_EQ(ASSERT_RESULT(read_conn.FetchRow<int64_t>(kFanOutQuery)), 10);
 }
 
+// The replay retry against read restarts the tablet server reports, rather than errors raised in
+// SQL. A fan-out read has its read time picked by the query layer, so the restart reaches the
+// query-layer retry. In an RR block after SET LOCAL, today's gate refuses the retry; the replay
+// restarts the block. The probability is below 1 because each replay is a new transaction with a
+// new uncertainty window, so a restart on every read would never end.
+TEST_F(PgInjectReadRestartTest, ReplayRetryOnReadRestart) {
+  auto read_conn = ASSERT_RESULT(SetUpKeysTable());
+  ASSERT_OK(read_conn.Execute("SET yb_max_query_layer_retries = 60"));
+  ASSERT_OK(read_conn.Execute("SET yb_enable_replay_retry = on"));
+  ASSERT_OK(SET_FLAG(TEST_inject_read_restart_with_probability, 0.3));
+  for (int i = 0; i < 20; ++i) {
+    ASSERT_OK(read_conn.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+    ASSERT_OK(read_conn.Execute("SET LOCAL work_mem = '8MB'"));
+    ASSERT_EQ(ASSERT_RESULT(read_conn.FetchRow<int64_t>(kFanOutQuery)), 10);
+    ASSERT_OK(read_conn.Execute("COMMIT"));
+  }
+  ASSERT_OK(SET_FLAG(TEST_inject_read_restart_with_probability, 0.0));
+}
+
+
+// With a read restart on every read, the replay must still converge, as the in-place restart
+// does: the replayed transaction starts from the restart point with the old global limit, so the
+// read time moves toward that limit instead of opening a new uncertainty window each attempt.
+// Covers a read-only autocommit statement (restart left on the session read point) and an RR
+// block after SET LOCAL (restart saved from the aborted transaction).
+TEST_F(PgInjectReadRestartTest, ReplayRetryConvergesOnEveryReadRestart) {
+  auto read_conn = ASSERT_RESULT(SetUpKeysTable());
+  ASSERT_OK(read_conn.Execute("SET yb_max_query_layer_retries = 60"));
+  ASSERT_OK(read_conn.Execute("SET yb_enable_replay_retry = on"));
+  ASSERT_OK(SET_FLAG(TEST_inject_read_restart_with_probability, 1.0));
+  ASSERT_EQ(ASSERT_RESULT(read_conn.FetchRow<int64_t>(kFanOutQuery)), 10);
+  ASSERT_OK(read_conn.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(read_conn.Execute("SET LOCAL work_mem = '8MB'"));
+  ASSERT_EQ(ASSERT_RESULT(read_conn.FetchRow<int64_t>(kFanOutQuery)), 10);
+  ASSERT_OK(read_conn.Execute("COMMIT"));
+  ASSERT_OK(SET_FLAG(TEST_inject_read_restart_with_probability, 0.0));
+}
+
+// From the retry-batch clone, run with yb_enable_replay_retry on.
+// A JDBC executeBatch sends its statements as one pipeline with a single Sync.
+TEST_F(PgInjectReadRestartTest, NonFirstBatchStatementRestart) {
+  ASSERT_RESULT(SetUpKeysTable());
+  const auto conn_str = Format(
+      "host=$0 port=$1 dbname=yugabyte user=$2", pg_host_port().host(),
+      pg_host_port().port(), PGConnSettings::kDefaultUser);
+  PGConnPtr conn(PQconnectdb(conn_str.c_str()));
+  ASSERT_EQ(PQstatus(conn.get()), CONNECTION_OK) << PQerrorMessage(conn.get());
+  {
+    PGResultPtr on(PQexec(conn.get(), "SET yb_enable_replay_retry = on"));
+    ASSERT_EQ(PQresultStatus(on.get()), PGRES_COMMAND_OK) << PQresultErrorMessage(on.get());
+    PGResultPtr res(PQexec(
+        conn.get(), "SET default_transaction_isolation = 'read committed'"));
+    ASSERT_EQ(PQresultStatus(res.get()), PGRES_COMMAND_OK)
+        << PQresultErrorMessage(res.get());
+  }
+
+  ASSERT_OK(SET_FLAG(TEST_inject_read_restart_with_probability, 1.0));
+  ASSERT_EQ(PQenterPipelineMode(conn.get()), 1) << PQerrorMessage(conn.get());
+  for (const auto* stmt :
+       {"DELETE FROM keys WHERE k = 1", "DELETE FROM hashed_keys WHERE k > 5"}) {
+    ASSERT_EQ(
+        PQsendQueryParams(
+            conn.get(), stmt, 0, nullptr, nullptr, nullptr, nullptr, 0),
+        1) << PQerrorMessage(conn.get());
+  }
+  ASSERT_EQ(PQpipelineSync(conn.get()), 1) << PQerrorMessage(conn.get());
+
+  std::vector<std::string> errors;
+  for (bool done = false; !done;) {
+    PGResultPtr res(PQgetResult(conn.get()));
+    if (!res) {
+      ASSERT_NE(PQstatus(conn.get()), CONNECTION_BAD)
+          << PQerrorMessage(conn.get());
+      continue;
+    }
+    const auto status = PQresultStatus(res.get());
+    if (status == PGRES_PIPELINE_SYNC) {
+      done = true;
+    } else if (status != PGRES_COMMAND_OK) {
+      errors.push_back(PQresultErrorMessage(res.get()));
+    }
+  }
+  ASSERT_OK(SET_FLAG(TEST_inject_read_restart_with_probability, 0.0));
+  ASSERT_TRUE(errors.empty()) << AsString(errors);
+
+  auto check_conn = ASSERT_RESULT(Connect());
+  ASSERT_EQ(ASSERT_RESULT(check_conn.FetchRow<int64_t>(
+      "SELECT COUNT(*) FROM keys")), 9);
+  ASSERT_EQ(ASSERT_RESULT(check_conn.FetchRow<int64_t>(kFanOutQuery)), 5);
+}
+
 } // namespace yb::pgwrapper

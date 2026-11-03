@@ -774,6 +774,23 @@ extern bool yb_is_non_atomic_commit_done;
  */
 extern bool yb_enable_retry_after_non_atomic_commit;
 
+/*
+ * Restart a transaction for a query layer retry by replaying the statements
+ * that read no data (BEGIN, SET, ...) in a fresh transaction.
+ * POC, see the "Replay retry" section of tcop/README.
+ */
+extern bool yb_enable_replay_retry;
+extern bool check_yb_enable_replay_retry(bool *newval, void **extra, GucSource source);
+
+/* Size cap, in kB, of the replay log; past it the transaction is not retried. */
+extern int	yb_replay_retry_log_limit;
+
+/*
+ * True while a replay retry re-runs earlier statements, so statistics count
+ * them as part of the retry rather than as new executions.
+ */
+extern bool yb_replay_in_progress;
+
 extern char *yb_extra_commands_to_retry_string;
 extern bool *yb_extra_commands_to_retry;
 

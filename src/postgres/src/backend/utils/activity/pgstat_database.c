@@ -18,6 +18,9 @@
 #include "postgres.h"
 
 #include "utils/pgstat_internal.h"
+
+/* YB includes */
+#include "pg_yb_utils.h"
 #include "utils/timestamp.h"
 #include "storage/procsignal.h"
 
@@ -254,7 +257,7 @@ AtEOXact_PgStat_Database(bool isCommit, bool parallel)
 		 */
 		if (isCommit)
 			pgStatXactCommit++;
-		else
+		else if (!yb_replay_in_progress)	/* YB: a replay retry's abort is part of the retry */
 			pgStatXactRollback++;
 	}
 }

@@ -2505,6 +2505,22 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_replay_retry", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Restart a transaction for a query layer retry by "
+						 "replaying its earlier statements in a new transaction."),
+			gettext_noop("Only statements that read no data (BEGIN, SET, RESET, "
+						 "SAVEPOINT, RELEASE) are replayed, so the retry is possible "
+						 "up to and including the first statement that reads data. "
+						 "Applies to REPEATABLE READ and SERIALIZABLE, and to READ "
+						 "COMMITTED for aborted and deadlock errors."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_replay_retry,
+		false,
+		check_yb_enable_replay_retry, NULL, NULL
+	},
+
+	{
 		{"yb_debug_log_docdb_requests", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Log the contents of all internal (protobuf) requests to DocDB."),
 			NULL,
@@ -6277,6 +6293,18 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&yb_max_query_layer_retries,
 		60, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_replay_retry_log_limit", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Size limit of the statements kept for yb_enable_replay_retry."),
+			gettext_noop("Once a transaction's replayable statements exceed it, the "
+						 "transaction is not retried by replay."),
+			GUC_UNIT_KB | GUC_NOT_IN_SAMPLE
+		},
+		&yb_replay_retry_log_limit,
+		64, 0, MAX_KILOBYTES,
 		NULL, NULL, NULL
 	},
 

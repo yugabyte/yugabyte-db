@@ -2377,6 +2377,12 @@ bool		yb_is_non_atomic_commit_done = false;
 
 bool		yb_enable_retry_after_non_atomic_commit = false;
 
+bool		yb_enable_replay_retry;
+
+int			yb_replay_retry_log_limit;
+
+bool		yb_replay_in_progress = false;
+
 char	   *yb_extra_commands_to_retry_string = NULL;
 bool	   *yb_extra_commands_to_retry = NULL;
 

@@ -789,6 +789,8 @@ YbcStatus YBCFinalizeFunctionTargets(YbcPgFunction handle);
 // Transaction control -----------------------------------------------------------------------------
 YbcStatus YBCPgBeginTransaction(int64_t start_time, uint64_t origination_time);
 YbcStatus YBCPgRecreateTransaction();
+void YBCPgCarryTransactionPriority(bool carry);
+void YBCPgCarryReadRestart(bool carry);
 YbcStatus YBCPgRestartTransaction();
 YbcStatus YBCPgResetTransactionReadPoint(bool is_catalog_snapshot);
 YbcStatus YBCPgEnsureReadPoint();

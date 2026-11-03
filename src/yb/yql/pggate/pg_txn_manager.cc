@@ -456,7 +456,8 @@ Status PgTxnManager::CalculateIsolation(
     }
 
     if (!use_saved_priority_ && !priority_.has_value()) {
-      priority_ = NewPriority(txn_priority_requirement);
+      priority_ = carried_priority_ ? *std::exchange(carried_priority_, std::nullopt)
+                                    : NewPriority(txn_priority_requirement);
     }
     isolation_level_ = docdb_isolation;
 
@@ -584,7 +585,8 @@ Status PgTxnManager::FinishPlainTransaction(
   }
   VLOG_TXN_STATE(2) << "Sending FinishTransaction request with commit: " << commit << ", ddl_mode: "
                     << (ddl_mode ? ddl_mode->ToString() : "NULL");
-  Status status = client_->FinishTransaction(commit, ddl_mode);
+  Status status = client_->FinishTransaction(
+      commit, ddl_mode, std::exchange(keep_read_restart_, false));
   VLOG_TXN_STATE(2) << "Transaction " << (commit ? "commit" : "abort") << " status: " << status;
   ResetTxnAndSession();
   return status;
@@ -823,6 +825,11 @@ Status PgTxnManager::SetupReadTimeOptions(
 
   read_time_options.set_read_time_serial_no(serial_no_.read_time());
 
+  if (apply_carried_read_restart_ && !is_catalog_snapshot) {
+    read_time_options.set_apply_carried_read_restart(true);
+    apply_carried_read_restart_ = false;
+  }
+
   // read_time may be set by
   // - PgSession::SetReadTimeIfPresent.
   // - cross txn snapshot mechanism below.
@@ -961,6 +968,15 @@ Status PgTxnManager::SetupPerformOptions(
   options.set_force_tablespace_locality(yb_force_tablespace_locality);
   options.set_force_tablespace_locality_oid(yb_force_tablespace_locality_oid);
   return Status::OK();
+}
+
+void PgTxnManager::CarryReadRestartToNextTransaction(bool carry) {
+  keep_read_restart_ = carry;
+  apply_carried_read_restart_ = carry;
+}
+
+void PgTxnManager::CarryPriorityToNextTransaction(bool carry) {
+  carried_priority_ = carry ? priority_ : std::nullopt;
 }
 
 double PgTxnManager::GetTransactionPriority() const {

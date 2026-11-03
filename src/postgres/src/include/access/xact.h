@@ -458,6 +458,7 @@ extern TimestampTz GetCurrentTransactionStartTimestamp(void);
 extern TimestampTz GetCurrentStatementStartTimestamp(void);
 extern TimestampTz GetCurrentTransactionStopTimestamp(void);
 extern void SetCurrentStatementStartTimestamp(void);
+extern void YbSetCurrentStatementStartTimestamp(TimestampTz ts);
 extern int	GetCurrentTransactionNestLevel(void);
 extern bool TransactionIdIsCurrentTransactionId(TransactionId xid);
 extern void CommandCounterIncrement(void);

@@ -53,7 +53,9 @@ DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(rocksdb_universal_compaction_min_merge_width);
 DECLARE_int32(rocksdb_universal_compaction_size_ratio);
 DECLARE_int32(rpc_workers_limit);
+DECLARE_int32(TEST_sleep_ms_after_moving_read_point_to_txn);
 DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_int32(ysql_select_parallelism);
 DECLARE_int32(txn_max_apply_batch_records);
 DECLARE_int64(db_filter_block_size_bytes);
 DECLARE_int64(db_write_buffer_size);
@@ -1330,6 +1332,782 @@ TEST_F(PgTxnTest, ColumnTombstoneCollectedByPartialCompaction) {
   ASSERT_EQ(
       ASSERT_RESULT(conn.FetchAllAsString("SELECT key, value FROM test WHERE key = 1")),
       "1, NULL");
+}
+
+// A replay retry restarts a transaction whose completed statements are all idempotent (BEGIN,
+// SET, ...) by aborting it and replaying them in a new one. pg_regress covers the simple query
+// protocol; these cover what it cannot reach:
+//   ExtendedProtocol  each statement as Parse/Bind/Execute/Sync, as drivers send it
+//   Pipeline          the whole block before one Sync; nothing is flushed before Sync, so the
+//                     surgical retry also passes it, and the test pins only that the replay can
+//                     rebuild portals from the copied Bind messages inside a batch
+//   Autocommit        no block: the portal is rebuilt after the abort
+//   Priority          the Fail-on-Conflict priority survives the abort, as on a surgical restart
+// inj(seq, code) raises a retryable error the first time it runs for a sequence; sequences
+// outlive the abort, so the retried attempt succeeds.
+class PgReplayRetryTest : public PgTxnTest {
+ protected:
+  Result<PGConn> ConnectAndSetUp() {
+    auto conn = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(conn.Execute("CREATE TABLE replay_t (k INT)"));
+    RETURN_NOT_OK(conn.Execute("INSERT INTO replay_t VALUES (1)"));
+    for (int i = 1; i <= 5; ++i) {
+      RETURN_NOT_OK(conn.ExecuteFormat("CREATE SEQUENCE replay_s$0", i));
+    }
+    RETURN_NOT_OK(conn.Execute("CREATE SEQUENCE prio_seen MINVALUE 0"));
+    RETURN_NOT_OK(conn.Execute(R"#(
+        CREATE FUNCTION inj(seq regclass, code text) RETURNS int LANGUAGE plpgsql AS $$
+        BEGIN
+          IF nextval(seq) = 1 THEN
+            RAISE EXCEPTION 'injected %', code USING ERRCODE = code;
+          END IF;
+          RETURN 1;
+        END $$)#"));
+    // Records the priority of the failing attempt in prio_seen and returns the retried one's.
+    RETURN_NOT_OK(conn.Execute(R"#(
+        CREATE FUNCTION inj_prio(seq regclass) RETURNS bigint LANGUAGE plpgsql AS $$
+        DECLARE p bigint;
+        BEGIN
+          UPDATE replay_t SET k = k;
+          SELECT (substring(v::text, 1, position(' ' IN v::text) - 1)::numeric * 1e9)::bigint
+            INTO p FROM yb_get_current_transaction_priority() AS v;
+          IF nextval(seq) = 1 THEN
+            PERFORM setval('prio_seen', p);
+            RAISE EXCEPTION 'injected' USING ERRCODE = 'YB003';
+          END IF;
+          RETURN p;
+        END $$)#"));
+    RETURN_NOT_OK(conn.Execute("SET yb_enable_replay_retry = on"));
+    RETURN_NOT_OK(conn.Execute("SET yb_replay_retry_log_limit = '64kB'"));
+    return conn;
+  }
+
+  // Sends queries as one pipeline on a new connection and returns each command's status.
+  Result<std::vector<ExecStatusType>> RunPipeline(
+      const std::string& replay_retry, const std::vector<std::string>& queries) {
+    const auto conn_str = Format(
+        "host=$0 port=$1 dbname=yugabyte user=$2 options='-c yb_enable_replay_retry=$3'",
+        pg_host_port().host(), pg_host_port().port(), PGConnSettings::kDefaultUser,
+        replay_retry);
+    PGConnPtr conn(PQconnectdb(conn_str.c_str()));
+    SCHECK_EQ(PQstatus(conn.get()), CONNECTION_OK, IllegalState, PQerrorMessage(conn.get()));
+    SCHECK_EQ(PQenterPipelineMode(conn.get()), 1, IllegalState, PQerrorMessage(conn.get()));
+    for (const auto& query : queries) {
+      SCHECK_EQ(PQsendQueryParams(conn.get(), query.c_str(), 0, nullptr, nullptr, nullptr,
+                                  nullptr, 0), 1, IllegalState, PQerrorMessage(conn.get()));
+    }
+    SCHECK_EQ(PQpipelineSync(conn.get()), 1, IllegalState, PQerrorMessage(conn.get()));
+
+    std::vector<ExecStatusType> statuses;
+    // A NULL result ends one pipelined command's results; PGRES_PIPELINE_SYNC ends the batch.
+    while (statuses.empty() || statuses.back() != PGRES_PIPELINE_SYNC) {
+      PGResultPtr res(PQgetResult(conn.get()));
+      if (res) {
+        statuses.push_back(PQresultStatus(res.get()));
+      }
+    }
+    return statuses;
+  }
+};
+
+class PgReplayRetryFailOnConflictTest : public PgReplayRetryTest {
+ protected:
+  void SetUp() override {
+    EnableFailOnConflict();
+    PgReplayRetryTest::SetUp();
+  }
+};
+
+TEST_F(PgReplayRetryTest, ExtendedProtocol) {
+  auto conn = ASSERT_RESULT(ConnectAndSetUp());
+  ASSERT_OK(conn.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(conn.Execute("SET LOCAL work_mem = '8MB'"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT inj('replay_s1', 'YB003')")), 1);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>("SHOW work_mem")), "8MB");
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  // Off: today's gate refuses the retry after the SET's reply was sent.
+  ASSERT_OK(conn.Execute("SET yb_enable_replay_retry = off"));
+  ASSERT_OK(conn.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(conn.Execute("SET LOCAL work_mem = '8MB'"));
+  ASSERT_NOK(conn.Fetch("SELECT inj('replay_s2', 'YB003')"));
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+}
+
+TEST_F(PgReplayRetryTest, Pipeline) {
+  auto setup_conn = ASSERT_RESULT(ConnectAndSetUp());
+  auto statuses = ASSERT_RESULT(RunPipeline(
+      "on", {"BEGIN ISOLATION LEVEL REPEATABLE READ", "SET LOCAL work_mem = '8MB'",
+             "SELECT inj('replay_s3', 'YB003')"}));
+  ASSERT_EQ(statuses, (std::vector<ExecStatusType>{
+      PGRES_COMMAND_OK, PGRES_COMMAND_OK, PGRES_TUPLES_OK, PGRES_PIPELINE_SYNC}));
+}
+
+// A completed read closes the log, so with replay on the error reaches the client. With it off,
+// the in-place restart retries the batch even though the read's result, taken at the old read
+// point, is already in the reply buffer.
+TEST_F(PgReplayRetryTest, PipelineAfterRead) {
+  auto setup_conn = ASSERT_RESULT(ConnectAndSetUp());
+  ASSERT_OK(setup_conn.Execute("CREATE SEQUENCE replay_s6"));
+  ASSERT_OK(setup_conn.Execute("CREATE SEQUENCE replay_s7"));
+  for (const auto& [enabled, seq, expected] : {
+      std::tuple{"on", "replay_s6", PGRES_FATAL_ERROR},
+      std::tuple{"off", "replay_s7", PGRES_TUPLES_OK}}) {
+    auto statuses = ASSERT_RESULT(RunPipeline(
+        enabled, {"BEGIN ISOLATION LEVEL REPEATABLE READ", "SELECT count(*) FROM replay_t",
+                  Format("SELECT inj('$0', 'YB003')", seq)}));
+    ASSERT_EQ(statuses[2], expected) << "yb_enable_replay_retry=" << enabled;
+  }
+}
+
+// #33921: with the in-place restart, a pipeline that sets a savepoint, reads, then fails is
+// retried after the restart dropped the savepoint, so the later RELEASE fails with 3B001 and the
+// conflict never reaches the client as one. The replay refuses the retry instead: the read closed
+// the log, so the client gets the retryable error and the rest of the batch is skipped.
+TEST_F(PgReplayRetryTest, PipelineSavepoint) {
+  auto setup_conn = ASSERT_RESULT(ConnectAndSetUp());
+  ASSERT_OK(setup_conn.Execute("CREATE SEQUENCE replay_s8"));
+  ASSERT_OK(setup_conn.Execute("CREATE SEQUENCE replay_s9"));
+  using Statuses = std::vector<ExecStatusType>;
+  for (const auto& [enabled, seq, expected] : {
+      std::tuple{"on", "replay_s8", Statuses{
+          PGRES_COMMAND_OK, PGRES_COMMAND_OK, PGRES_TUPLES_OK, PGRES_FATAL_ERROR,
+          PGRES_PIPELINE_ABORTED, PGRES_PIPELINE_ABORTED, PGRES_PIPELINE_SYNC}},
+      std::tuple{"off", "replay_s9", Statuses{
+          PGRES_COMMAND_OK, PGRES_COMMAND_OK, PGRES_TUPLES_OK, PGRES_TUPLES_OK,
+          PGRES_FATAL_ERROR, PGRES_PIPELINE_ABORTED, PGRES_PIPELINE_SYNC}}}) {
+    auto statuses = ASSERT_RESULT(RunPipeline(
+        enabled, {"BEGIN ISOLATION LEVEL REPEATABLE READ", "SAVEPOINT sp",
+                  "SELECT count(*) FROM replay_t", Format("SELECT inj('$0', 'YB003')", seq),
+                  "RELEASE SAVEPOINT sp", "COMMIT"}));
+    ASSERT_EQ(statuses, expected) << "yb_enable_replay_retry=" << enabled;
+  }
+}
+
+TEST_F(PgReplayRetryTest, Autocommit) {
+  auto conn = ASSERT_RESULT(ConnectAndSetUp());
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT inj('replay_s4', 'YB003')")), 1);
+}
+
+TEST_F_EX(PgTxnTest, ReplayRetryKeepsPriority, PgReplayRetryFailOnConflictTest) {
+  auto conn = ASSERT_RESULT(ConnectAndSetUp());
+  ASSERT_OK(conn.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(conn.Execute("SET LOCAL work_mem = '8MB'"));
+  const auto retried = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT inj_prio('replay_s5')"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT last_value FROM prio_seen")), retried);
+}
+
+// Tests handed over from PR 35863 (retry-definer-user), run with yb_enable_replay_retry on for
+// every connection: they open their own libpq connections, so the setting is on the database.
+class PgReplayRetryHandoffTest : public PgTxnTest {
+ protected:
+  void SetUp() override {
+    PgTxnTest::SetUp();
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("ALTER DATABASE yugabyte SET yb_enable_replay_retry = on"));
+  }
+};
+
+// A query-layer retry must keep a SET ROLE that ran earlier in the same
+// transaction, because the retry does not replay it. In an extended-protocol
+// batch, SET ROLE does not advance the command id, so a later statement in
+// the batch can still be retried. Scenario: one pipeline sends SET ROLE alice
+// and then SELECT f(). f returns current_user and raises a retriable
+// kAborted (YB001) on its first call only. The retried f must run as alice.
+// The test needs libpq pipeline mode, which pg_regress's psql cannot drive.
+TEST_F_EX(PgTxnTest, BatchedRetryKeepsSetRole, PgReplayRetryHandoffTest) {
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("CREATE SEQUENCE attempt"));
+    ASSERT_OK(conn.Execute("CREATE ROLE alice"));
+    ASSERT_OK(conn.Execute("GRANT USAGE ON SEQUENCE attempt TO alice"));
+    ASSERT_OK(conn.Execute(
+        "CREATE FUNCTION f() RETURNS TEXT LANGUAGE plpgsql AS $$\n"
+        "BEGIN\n"
+        "  IF nextval('attempt') = 1 THEN\n"
+        "    RAISE EXCEPTION 'injected kAborted' USING ERRCODE = 'YB001';\n"
+        "  END IF;\n"
+        "  RETURN current_user;\n"
+        "END $$"));
+    ASSERT_OK(conn.Execute("GRANT EXECUTE ON FUNCTION f() TO alice"));
+  }
+
+  const auto conn_str = Format(
+      "host=$0 port=$1 dbname=yugabyte user=$2", pg_host_port().host(),
+      pg_host_port().port(), PGConnSettings::kDefaultUser);
+  PGConnPtr conn(PQconnectdb(conn_str.c_str()));
+  ASSERT_EQ(PQstatus(conn.get()), CONNECTION_OK) << PQerrorMessage(conn.get());
+  ASSERT_EQ(PQenterPipelineMode(conn.get()), 1) << PQerrorMessage(conn.get());
+  for (const auto* query : {"SET ROLE alice", "SELECT f()"}) {
+    ASSERT_EQ(
+        PQsendQueryParams(
+            conn.get(), query, 0, nullptr, nullptr, nullptr, nullptr, 0),
+        1)
+        << PQerrorMessage(conn.get());
+  }
+  ASSERT_EQ(PQpipelineSync(conn.get()), 1) << PQerrorMessage(conn.get());
+
+  std::string user_seen_by_f;
+  for (bool done = false; !done;) {
+    PGResultPtr res(PQgetResult(conn.get()));
+    if (!res) {
+      ASSERT_NE(PQstatus(conn.get()), CONNECTION_BAD)
+          << PQerrorMessage(conn.get());
+      continue;
+    }
+    switch (PQresultStatus(res.get())) {
+      case PGRES_PIPELINE_SYNC:
+        done = true;
+        break;
+      case PGRES_TUPLES_OK:
+        user_seen_by_f = PQgetvalue(res.get(), 0, 0);
+        break;
+      case PGRES_COMMAND_OK:
+        break;
+      default:
+        FAIL() << PQresultErrorMessage(res.get());
+    }
+  }
+  ASSERT_EQ(user_seen_by_f, "alice");
+}
+
+// The same for a plain SET before a retried write. The retry pops the GUC
+// levels that the failed attempt pushed, and must keep the transaction's own
+// level, which holds the earlier SET. Scenario: one pipeline sends
+// SET work_mem = '7MB' and then INSERT INTO t VALUES (f()). f returns
+// work_mem and raises a retriable kAborted (YB001) on its first call only.
+// The retried INSERT must write 7MB. f is STABLE: a volatile plpgsql function
+// advances the command id, and then the batch is not retried.
+TEST_F_EX(PgTxnTest, BatchedRetryKeepsSet, PgReplayRetryHandoffTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE SEQUENCE attempt"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t (v TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION f() RETURNS TEXT LANGUAGE plpgsql STABLE AS $$\n"
+      "BEGIN\n"
+      "  IF nextval('attempt') = 1 THEN\n"
+      "    RAISE EXCEPTION 'injected kAborted' USING ERRCODE = 'YB001';\n"
+      "  END IF;\n"
+      "  RETURN current_setting('work_mem');\n"
+      "END $$"));
+
+  const auto conn_str = Format(
+      "host=$0 port=$1 dbname=yugabyte user=$2", pg_host_port().host(),
+      pg_host_port().port(), PGConnSettings::kDefaultUser);
+  PGConnPtr batch_conn(PQconnectdb(conn_str.c_str()));
+  ASSERT_EQ(PQstatus(batch_conn.get()), CONNECTION_OK) << PQerrorMessage(batch_conn.get());
+  ASSERT_EQ(PQenterPipelineMode(batch_conn.get()), 1) << PQerrorMessage(batch_conn.get());
+  for (const auto* query : {"SET work_mem = '7MB'", "INSERT INTO t VALUES (f())"}) {
+    ASSERT_EQ(
+        PQsendQueryParams(
+            batch_conn.get(), query, 0, nullptr, nullptr, nullptr, nullptr, 0),
+        1)
+        << PQerrorMessage(batch_conn.get());
+  }
+  ASSERT_EQ(PQpipelineSync(batch_conn.get()), 1) << PQerrorMessage(batch_conn.get());
+
+  for (bool done = false; !done;) {
+    PGResultPtr res(PQgetResult(batch_conn.get()));
+    if (!res) {
+      ASSERT_NE(PQstatus(batch_conn.get()), CONNECTION_BAD)
+          << PQerrorMessage(batch_conn.get());
+      continue;
+    }
+    switch (PQresultStatus(res.get())) {
+      case PGRES_PIPELINE_SYNC:
+        done = true;
+        break;
+      case PGRES_COMMAND_OK:
+        break;
+      default:
+        FAIL() << PQresultErrorMessage(res.get());
+    }
+  }
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>("SELECT v FROM t")), "7MB");
+}
+
+// Sends the queries as one libpq pipeline with a single sync, and appends the
+// first value of every result that has rows to values.
+static void RunPipeline(
+    PGconn* conn, std::initializer_list<const char*> queries, std::vector<std::string>* values) {
+  ASSERT_EQ(PQenterPipelineMode(conn), 1) << PQerrorMessage(conn);
+  for (const auto* query : queries) {
+    ASSERT_EQ(PQsendQueryParams(conn, query, 0, nullptr, nullptr, nullptr, nullptr, 0), 1)
+        << PQerrorMessage(conn);
+  }
+  ASSERT_EQ(PQpipelineSync(conn), 1) << PQerrorMessage(conn);
+  for (bool done = false; !done;) {
+    PGResultPtr res(PQgetResult(conn));
+    if (!res) {
+      ASSERT_NE(PQstatus(conn), CONNECTION_BAD) << PQerrorMessage(conn);
+      continue;
+    }
+    switch (PQresultStatus(res.get())) {
+      case PGRES_PIPELINE_SYNC:
+        done = true;
+        break;
+      case PGRES_TUPLES_OK:
+        values->push_back(PQgetvalue(res.get(), 0, 0));
+        break;
+      case PGRES_COMMAND_OK:
+        break;
+      default:
+        FAIL() << PQresultErrorMessage(res.get());
+    }
+  }
+  ASSERT_EQ(PQexitPipelineMode(conn), 1) << PQerrorMessage(conn);
+}
+
+// A retried statement that changed the role must end with the role it started
+// with, and the role must keep its scope. Scenario: one pipeline runs, in a
+// REPEATABLE READ block, SET LOCAL ROLE alice and then SELECT f(). On its
+// first call only, f runs SET LOCAL ROLE bob and raises a retriable kAborted
+// (YB001). The retried f must run as alice, and after COMMIT the role must
+// be back to none, because alice was set with SET LOCAL.
+TEST_F_EX(PgTxnTest, BatchedRetryKeepsSetLocalRole, PgReplayRetryHandoffTest) {
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("CREATE SEQUENCE attempt"));
+    ASSERT_OK(conn.Execute("CREATE ROLE alice"));
+    ASSERT_OK(conn.Execute("CREATE ROLE bob"));
+    ASSERT_OK(conn.Execute("GRANT USAGE ON SEQUENCE attempt TO alice"));
+    ASSERT_OK(conn.Execute(
+        "CREATE FUNCTION f() RETURNS TEXT LANGUAGE plpgsql AS $$\n"
+        "BEGIN\n"
+        "  IF nextval('attempt') = 1 THEN\n"
+        "    SET LOCAL ROLE bob;\n"
+        "    RAISE EXCEPTION 'injected kAborted' USING ERRCODE = 'YB001';\n"
+        "  END IF;\n"
+        "  RETURN current_user;\n"
+        "END $$"));
+    ASSERT_OK(conn.Execute("GRANT EXECUTE ON FUNCTION f() TO alice"));
+  }
+
+  const auto conn_str = Format(
+      "host=$0 port=$1 dbname=yugabyte user=$2", pg_host_port().host(),
+      pg_host_port().port(), PGConnSettings::kDefaultUser);
+  PGConnPtr conn(PQconnectdb(conn_str.c_str()));
+  ASSERT_EQ(PQstatus(conn.get()), CONNECTION_OK) << PQerrorMessage(conn.get());
+  std::vector<std::string> values;
+  ASSERT_NO_FATALS(RunPipeline(
+      conn.get(),
+      {"BEGIN ISOLATION LEVEL REPEATABLE READ", "SET LOCAL ROLE alice", "SELECT f()", "COMMIT"},
+      &values));
+  ASSERT_EQ(values, std::vector<std::string>{"alice"});
+
+  PGResultPtr role(PQexec(conn.get(), "SELECT current_setting('role')"));
+  ASSERT_EQ(PQresultStatus(role.get()), PGRES_TUPLES_OK) << PQresultErrorMessage(role.get());
+  ASSERT_STREQ(PQgetvalue(role.get(), 0, 0), "none");
+}
+
+// The same with a role from plain SET ROLE, which the retry puts back by name.
+// Scenario: one pipeline sends SET ROLE alice and then SELECT f(). On its first
+// call only, f runs SET ROLE bob and raises YB001. The retried f must run as
+// alice, and the session must stay alice afterwards.
+TEST_F_EX(PgTxnTest, BatchedRetryRestoresSetRole, PgReplayRetryHandoffTest) {
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("CREATE SEQUENCE attempt"));
+    ASSERT_OK(conn.Execute("CREATE ROLE alice"));
+    ASSERT_OK(conn.Execute("CREATE ROLE bob"));
+    ASSERT_OK(conn.Execute("GRANT USAGE ON SEQUENCE attempt TO alice"));
+    ASSERT_OK(conn.Execute(
+        "CREATE FUNCTION f() RETURNS TEXT LANGUAGE plpgsql AS $$\n"
+        "BEGIN\n"
+        "  IF nextval('attempt') = 1 THEN\n"
+        "    SET ROLE bob;\n"
+        "    RAISE EXCEPTION 'injected kAborted' USING ERRCODE = 'YB001';\n"
+        "  END IF;\n"
+        "  RETURN current_user;\n"
+        "END $$"));
+    ASSERT_OK(conn.Execute("GRANT EXECUTE ON FUNCTION f() TO alice"));
+  }
+
+  const auto conn_str = Format(
+      "host=$0 port=$1 dbname=yugabyte user=$2", pg_host_port().host(),
+      pg_host_port().port(), PGConnSettings::kDefaultUser);
+  PGConnPtr conn(PQconnectdb(conn_str.c_str()));
+  ASSERT_EQ(PQstatus(conn.get()), CONNECTION_OK) << PQerrorMessage(conn.get());
+  std::vector<std::string> values;
+  ASSERT_NO_FATALS(RunPipeline(conn.get(), {"SET ROLE alice", "SELECT f()"}, &values));
+  ASSERT_EQ(values, std::vector<std::string>{"alice"});
+
+  PGResultPtr role(PQexec(conn.get(), "SELECT current_user || ' ' || current_setting('role')"));
+  ASSERT_EQ(PQresultStatus(role.get()), PGRES_TUPLES_OK) << PQresultErrorMessage(role.get());
+  ASSERT_STREQ(PQgetvalue(role.get(), 0, 0), "alice alice");
+}
+
+// Creates roles alice and bob, and a function f() that, on its first call
+// only, runs body and then raises a retriable kAborted (YB001). f returns
+// current_user.
+static void CreateFailingRoleFunction(PGConn* conn, const std::string& body) {
+  ASSERT_OK(conn->Execute("CREATE SEQUENCE attempt"));
+  ASSERT_OK(conn->Execute("CREATE ROLE alice"));
+  ASSERT_OK(conn->Execute("CREATE ROLE bob"));
+  ASSERT_OK(conn->Execute("GRANT USAGE ON SEQUENCE attempt TO alice"));
+  ASSERT_OK(conn->Execute(Format(
+      "CREATE FUNCTION f() RETURNS TEXT LANGUAGE plpgsql AS $$$$\n"
+      "BEGIN\n"
+      "  IF nextval('attempt') = 1 THEN\n"
+      "    $0\n"
+      "    RAISE EXCEPTION 'injected kAborted' USING ERRCODE = 'YB001';\n"
+      "  END IF;\n"
+      "  RETURN current_user;\n"
+      "END $$$$", body)));
+  ASSERT_OK(conn->Execute("GRANT EXECUTE ON FUNCTION f() TO alice"));
+}
+
+// Sends sql on a raw connection outside pipeline mode and returns the first
+// value of its result.
+static std::string FetchValue(PGconn* conn, const char* sql) {
+  PGResultPtr res(PQexec(conn, sql));
+  EXPECT_EQ(PQresultStatus(res.get()), PGRES_TUPLES_OK) << PQresultErrorMessage(res.get());
+  return PQntuples(res.get()) > 0 ? PQgetvalue(res.get(), 0, 0) : "";
+}
+
+// The cases below fail with the in-place restart (PR 35863 kept them
+// disabled); they pin what an abort and a replay leave, and pass with
+// yb_enable_replay_retry. The in-place restart puts the role back with the
+// scope it had at the start of the attempt, but a plain SET ROLE in the
+// failed statement first changes that scope on the GUC stack, and a plain SET
+// of another setting is not undone at all.
+
+// SET LOCAL ROLE alice in the batch, a plain SET ROLE bob in the failed
+// statement. After COMMIT the role must be none, not bob.
+TEST_F_EX(PgTxnTest, BatchedRetryKeepsSetLocalRoleOverPlainSet, PgReplayRetryHandoffTest) {
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_NO_FATALS(CreateFailingRoleFunction(&conn, "SET ROLE bob;"));
+  }
+  PGConnPtr conn(PQconnectdb(Format(
+      "host=$0 port=$1 dbname=yugabyte user=$2", pg_host_port().host(),
+      pg_host_port().port(), PGConnSettings::kDefaultUser).c_str()));
+  ASSERT_EQ(PQstatus(conn.get()), CONNECTION_OK) << PQerrorMessage(conn.get());
+  std::vector<std::string> values;
+  ASSERT_NO_FATALS(RunPipeline(
+      conn.get(),
+      {"BEGIN ISOLATION LEVEL REPEATABLE READ", "SET LOCAL ROLE alice", "SELECT f()", "COMMIT"},
+      &values));
+  ASSERT_EQ(values, std::vector<std::string>{"alice"});
+  ASSERT_EQ(FetchValue(conn.get(), "SELECT current_setting('role')"), "none");
+}
+
+// A session role under a SET LOCAL role, and a plain SET ROLE bob in the
+// failed statement. After COMMIT the session role must come back, not bob.
+TEST_F_EX(PgTxnTest, BatchedRetryKeepsSessionRoleUnderSetLocal, PgReplayRetryHandoffTest) {
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_NO_FATALS(CreateFailingRoleFunction(&conn, "SET ROLE bob;"));
+    ASSERT_OK(conn.Execute("CREATE ROLE carol"));
+  }
+  PGConnPtr conn(PQconnectdb(Format(
+      "host=$0 port=$1 dbname=yugabyte user=$2", pg_host_port().host(),
+      pg_host_port().port(), PGConnSettings::kDefaultUser).c_str()));
+  ASSERT_EQ(PQstatus(conn.get()), CONNECTION_OK) << PQerrorMessage(conn.get());
+  PGResultPtr set_role(PQexec(conn.get(), "SET ROLE carol"));
+  ASSERT_EQ(PQresultStatus(set_role.get()), PGRES_COMMAND_OK)
+      << PQresultErrorMessage(set_role.get());
+  std::vector<std::string> values;
+  ASSERT_NO_FATALS(RunPipeline(
+      conn.get(),
+      {"BEGIN ISOLATION LEVEL REPEATABLE READ", "SET LOCAL ROLE alice", "SELECT f()", "COMMIT"},
+      &values));
+  ASSERT_EQ(values, std::vector<std::string>{"alice"});
+  ASSERT_EQ(FetchValue(conn.get(), "SELECT current_setting('role')"), "carol");
+}
+
+// SET LOCAL ROLE alice in the batch, and a plain SET ROLE alice in the
+// failed statement: the value does not change, but the scope does. After
+// COMMIT the role must be none.
+TEST_F_EX(PgTxnTest, BatchedRetryKeepsSetLocalRoleOverSameRole, PgReplayRetryHandoffTest) {
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_NO_FATALS(CreateFailingRoleFunction(&conn, "SET ROLE alice;"));
+  }
+  PGConnPtr conn(PQconnectdb(Format(
+      "host=$0 port=$1 dbname=yugabyte user=$2", pg_host_port().host(),
+      pg_host_port().port(), PGConnSettings::kDefaultUser).c_str()));
+  ASSERT_EQ(PQstatus(conn.get()), CONNECTION_OK) << PQerrorMessage(conn.get());
+  std::vector<std::string> values;
+  ASSERT_NO_FATALS(RunPipeline(
+      conn.get(),
+      {"BEGIN ISOLATION LEVEL REPEATABLE READ", "SET LOCAL ROLE alice", "SELECT f()", "COMMIT"},
+      &values));
+  ASSERT_EQ(values, std::vector<std::string>{"alice"});
+  ASSERT_EQ(FetchValue(conn.get(), "SELECT current_setting('role')"), "none");
+}
+
+// SET ROLE alice in the batch, and SET SESSION AUTHORIZATION bob in the failed
+// statement, where bob is not a member of alice. The retry must still run f
+// as alice and leave the session as alice. From the PR 35863 session, where it
+// fails: putting the role back checks membership against the new session user,
+// so the retry ends with "permission denied to set role" instead of rerunning f.
+TEST_F_EX(PgTxnTest, BatchedRetryRestoresRoleAfterSessionAuthorization, PgReplayRetryHandoffTest) {
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_NO_FATALS(CreateFailingRoleFunction(&conn, "SET SESSION AUTHORIZATION bob;"));
+  }
+  PGConnPtr conn(PQconnectdb(Format(
+      "host=$0 port=$1 dbname=yugabyte user=$2", pg_host_port().host(),
+      pg_host_port().port(), PGConnSettings::kDefaultUser).c_str()));
+  ASSERT_EQ(PQstatus(conn.get()), CONNECTION_OK) << PQerrorMessage(conn.get());
+  std::vector<std::string> values;
+  ASSERT_NO_FATALS(RunPipeline(conn.get(), {"SET ROLE alice", "SELECT f()"}, &values));
+  ASSERT_EQ(values, std::vector<std::string>{"alice"});
+  ASSERT_EQ(FetchValue(conn.get(), "SELECT current_setting('role')"), "alice");
+}
+
+// A plain SET of another setting in the failed statement. After the retry,
+// in the same transaction, search_path must be what it was before.
+TEST_F_EX(PgTxnTest, RetryUndoesBodySetSearchPath, PgReplayRetryHandoffTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE SEQUENCE attempt"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION f() RETURNS INT LANGUAGE plpgsql AS $$\n"
+      "BEGIN\n"
+      "  IF nextval('public.attempt') = 1 THEN\n"
+      "    PERFORM set_config('search_path', 'retry_s', false);\n"
+      "    RAISE EXCEPTION 'injected kAborted' USING ERRCODE = 'YB001';\n"
+      "  END IF;\n"
+      "  RETURN 1;\n"
+      "END $$"));
+  const auto search_path = ASSERT_RESULT(conn.FetchRow<std::string>("SHOW search_path"));
+  ASSERT_OK(conn.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT f()")), 1);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>("SHOW search_path")), search_path);
+  ASSERT_OK(conn.Execute("COMMIT"));
+}
+
+// #36679: a retry of a batch dropped an earlier SAVEPOINT and the SET ROLE after it, so the
+// later RELEASE failed. Scenario: one pipeline runs BEGIN, SAVEPOINT s, SET ROLE alice, SELECT f(),
+// RELEASE SAVEPOINT s, COMMIT; f raises YB001 on its first call. The replay re-runs the savepoint
+// and the role, so every command succeeds, f runs as alice, and alice stays the role.
+TEST_F_EX(PgTxnTest, BatchedRetryKeepsSavepointAndRole, PgReplayRetryHandoffTest) {
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_NO_FATALS(CreateFailingRoleFunction(&conn, ""));
+  }
+  PGConnPtr conn(PQconnectdb(Format(
+      "host=$0 port=$1 dbname=yugabyte user=$2", pg_host_port().host(),
+      pg_host_port().port(), PGConnSettings::kDefaultUser).c_str()));
+  ASSERT_EQ(PQstatus(conn.get()), CONNECTION_OK) << PQerrorMessage(conn.get());
+  std::vector<std::string> values;
+  ASSERT_NO_FATALS(RunPipeline(
+      conn.get(),
+      {"BEGIN ISOLATION LEVEL REPEATABLE READ", "SAVEPOINT s", "SET ROLE alice", "SELECT f()",
+       "RELEASE SAVEPOINT s", "COMMIT"},
+      &values));
+  ASSERT_EQ(values, std::vector<std::string>{"alice"});
+  ASSERT_EQ(FetchValue(conn.get(), "SELECT current_user || ' ' || current_setting('role')"),
+            "alice alice");
+}
+
+// #36674: a batched write that calls a VOLATILE plpgsql function was never retried, because the
+// function advances the command id and the batch gate takes that for an earlier statement. The
+// replay knows the earlier statements from its log, so it retries. BatchedRetryKeepsSet with f
+// VOLATILE.
+TEST_F_EX(PgTxnTest, BatchedRetryVolatileFunction, PgReplayRetryHandoffTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE SEQUENCE attempt"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t (v TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION f() RETURNS TEXT LANGUAGE plpgsql VOLATILE AS $$\n"
+      "BEGIN\n"
+      "  IF nextval('attempt') = 1 THEN\n"
+      "    RAISE EXCEPTION 'injected kAborted' USING ERRCODE = 'YB001';\n"
+      "  END IF;\n"
+      "  RETURN current_setting('work_mem');\n"
+      "END $$"));
+  PGConnPtr batch_conn(PQconnectdb(Format(
+      "host=$0 port=$1 dbname=yugabyte user=$2", pg_host_port().host(),
+      pg_host_port().port(), PGConnSettings::kDefaultUser).c_str()));
+  ASSERT_EQ(PQstatus(batch_conn.get()), CONNECTION_OK) << PQerrorMessage(batch_conn.get());
+  std::vector<std::string> values;
+  ASSERT_NO_FATALS(RunPipeline(
+      batch_conn.get(), {"SET work_mem = '7MB'", "INSERT INTO t VALUES (f())"}, &values));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>("SELECT v FROM t")), "7MB");
+}
+
+
+// From the plancache-retry-handoff branch history (PR 35700, later moved to
+// yb.orig.query_layer_retry_state): #30540 and the SECURITY DEFINER user.
+// #30540: a query-layer retry of a PL/pgSQL call failed with "plancache
+// reference ... is not owned by resource owner PL/pgSQL simple expressions"
+// when the function's cached plans went stale before the retry. The first
+// attempt evaluates a simple expression, invalidates every cached plan, then
+// raises a retriable kAborted (YB001); the retry must succeed.
+TEST_F_EX(PgTxnTest, PlpgsqlSimpleExprRetryAfterPlanInvalidation, PgReplayRetryHandoffTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE SEQUENCE attempt"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION f() RETURNS INT LANGUAGE plpgsql AS $$\n"
+      "BEGIN\n"
+      "  IF nextval('attempt') = 1 THEN\n"
+      "    EXECUTE 'DISCARD PLANS';\n"
+      "    RAISE EXCEPTION 'injected kAborted' USING ERRCODE = 'YB001';\n"
+      "  END IF;\n"
+      "  RETURN 1;\n"
+      "END $$"));
+
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT f()")), 1);
+}
+
+// A query-layer retry must leave the session as an abort plus a replay of
+// the command would. AbortTransaction restores the user id that a SECURITY
+// DEFINER function switched to; the retry did not, so the caller kept the
+// definer's privileges. Scenario: alice calls a superuser-owned SECURITY
+// DEFINER function that raises a retriable kAborted (YB001) on its first
+// attempt only; after the retried SELECT, current_user must be alice.
+TEST_F_EX(PgTxnTest, SecurityDefinerRetryRestoresUser, PgReplayRetryHandoffTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE SEQUENCE attempt"));
+  ASSERT_OK(conn.Execute("CREATE ROLE alice"));
+  ASSERT_OK(conn.Execute("GRANT USAGE ON SEQUENCE attempt TO alice"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION sd() RETURNS INT LANGUAGE plpgsql "
+      "SECURITY DEFINER AS $$\n"
+      "BEGIN\n"
+      "  IF nextval('attempt') = 1 THEN\n"
+      "    RAISE EXCEPTION 'injected kAborted' USING ERRCODE = 'YB001';\n"
+      "  END IF;\n"
+      "  RETURN 1;\n"
+      "END $$"));
+  ASSERT_OK(conn.Execute("GRANT EXECUTE ON FUNCTION sd() TO alice"));
+  ASSERT_OK(conn.Execute("SET ROLE alice"));
+
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT sd()")), 1);
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<std::string>("SELECT current_user::text")),
+      "alice");
+}
+
+// From the retry-batch clone, run with yb_enable_replay_retry on.
+class PgReadCommittedPipelineTest : public PgTxnTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
+    PgTxnTest::SetUp();
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("ALTER DATABASE yugabyte SET yb_enable_replay_retry = on"));
+  }
+};
+
+// Each statement of an RC transaction must read a fresh snapshot, also when
+// the statements share one transaction because no Sync separates them.
+TEST_F(PgReadCommittedPipelineTest, LaterStatementSeesConcurrentCommit) {
+  auto writer = ASSERT_RESULT(Connect());
+  ASSERT_OK(writer.Execute("CREATE TABLE t (k INT PRIMARY KEY)"));
+  ASSERT_OK(writer.Execute("INSERT INTO t VALUES (1)"));
+
+  const auto conn_str = Format(
+      "host=$0 port=$1 dbname=yugabyte user=$2", pg_host_port().host(),
+      pg_host_port().port(), PGConnSettings::kDefaultUser);
+  PGConnPtr conn(PQconnectdb(conn_str.c_str()));
+  ASSERT_EQ(PQstatus(conn.get()), CONNECTION_OK) << PQerrorMessage(conn.get());
+  {
+    PGResultPtr res(PQexec(
+        conn.get(), "SET default_transaction_isolation = 'read committed'"));
+    ASSERT_EQ(PQresultStatus(res.get()), PGRES_COMMAND_OK)
+        << PQresultErrorMessage(res.get());
+  }
+  ASSERT_EQ(PQenterPipelineMode(conn.get()), 1) << PQerrorMessage(conn.get());
+
+  constexpr auto kCountQuery = "SELECT COUNT(*) FROM t";
+  auto send_count = [&conn]() {
+    return PQsendQueryParams(
+        conn.get(), kCountQuery, 0, nullptr, nullptr, nullptr, nullptr, 0);
+  };
+  auto fetch_count = [&conn]() -> Result<int64_t> {
+    PGResultPtr res(PQgetResult(conn.get()));
+    SCHECK_EQ(
+        PQresultStatus(res.get()), PGRES_TUPLES_OK, IllegalState,
+        PQresultErrorMessage(res.get()));
+    PGResultPtr end_of_statement(PQgetResult(conn.get()));
+    SCHECK(!end_of_statement, IllegalState, "Expected end of statement");
+    return std::stoll(PQgetvalue(res.get(), 0, 0));
+  };
+
+  // A flush instead of a Sync returns the first result while keeping its
+  // transaction open, which lets the commit land between the two statements.
+  ASSERT_EQ(send_count(), 1) << PQerrorMessage(conn.get());
+  ASSERT_EQ(PQsendFlushRequest(conn.get()), 1) << PQerrorMessage(conn.get());
+  ASSERT_EQ(PQflush(conn.get()), 0) << PQerrorMessage(conn.get());
+  ASSERT_EQ(ASSERT_RESULT(fetch_count()), 1);
+
+  ASSERT_OK(writer.Execute("INSERT INTO t VALUES (2)"));
+
+  ASSERT_EQ(send_count(), 1) << PQerrorMessage(conn.get());
+  ASSERT_EQ(PQpipelineSync(conn.get()), 1) << PQerrorMessage(conn.get());
+  ASSERT_EQ(ASSERT_RESULT(fetch_count()), 2);
+  PGResultPtr sync(PQgetResult(conn.get()));
+  ASSERT_EQ(PQresultStatus(sync.get()), PGRES_PIPELINE_SYNC);
+}
+
+// From the restartpt clone (#30563), run with yb_enable_replay_retry on.
+class PgTxnReadPointMoveTest : public PgTxnTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_select_parallelism) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
+    PgTxnTest::SetUp();
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("ALTER DATABASE yugabyte SET yb_enable_replay_retry = on"));
+  }
+};
+
+// Test for #30563.
+//
+// Event sequence:
+// 1. Read issued
+// 2. First page returned and next page prefetched
+// 3. UPDATE based on the first page entries.
+// 4. During the flush, move the read point from session to txn.
+// 5. The prefetch page faces a read restart error.
+// 6. However, the read restart error is set on an already moved read point.
+TEST_F_EX(PgTxnTest, RestartMarkedAfterReadPointMoved, PgTxnReadPointMoveTest) {
+  constexpr auto kTable = "restart_probe";
+  constexpr int kRows = 50000;
+  constexpr int kInserters = 8;
+  constexpr int kInsertsPerInserter = 1500;
+  constexpr auto kSleepMs = 2000;
+
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.ExecuteFormat(
+      "CREATE TABLE $0 (k INT, v INT, PRIMARY KEY (k HASH))", kTable));
+  ASSERT_OK(setup_conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i FROM generate_series(1, $1) i", kTable, kRows));
+
+  TestThreadHolder thread_holder;
+  for (int t = 0; t < kInserters; ++t) {
+    thread_holder.AddThreadFunctor([this, kTable, t, &stop = thread_holder.stop_flag()] {
+      auto conn = ASSERT_RESULT(Connect());
+      const auto first_key = kRows + 1 + t * 1000000;
+      for (int i = first_key;
+           i < first_key + kInsertsPerInserter && !stop.load(std::memory_order_acquire); ++i) {
+        ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ($1, $1)", kTable, i));
+      }
+    });
+  }
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET yb_fetch_row_limit = 20000"));
+  ASSERT_OK(conn.Execute("SET ysql_session_max_batch_size = 100"));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sleep_ms_after_moving_read_point_to_txn) = kSleepMs;
+
+  thread_holder.AddThreadFunctor([&stop = thread_holder.stop_flag()] {
+    SleepFor(MonoDelta::FromMilliseconds(kSleepMs * 4));
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sleep_ms_after_moving_read_point_to_txn) = 0;
+    stop.store(true, std::memory_order_release);
+  });
+
+  const auto status = conn.ExecuteFormat("UPDATE $0 SET v = v + 1", kTable);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sleep_ms_after_moving_read_point_to_txn) = 0;
+  thread_holder.Stop();
+
+  ASSERT_OK(status);
 }
 
 } // namespace yb::pgwrapper

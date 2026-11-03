@@ -151,6 +151,9 @@ DEFINE_test_flag(bool, request_unknown_tables_during_perform, false,
     "Add several unknown tables while processing perfrom request. "
     "It is expected that opening of such tables will fail");
 
+DEFINE_test_flag(int32, sleep_ms_after_moving_read_point_to_txn, 0,
+    "Sleep between plain session's read point move from session to txn.");
+
 DEFINE_test_flag(bool, perform_ignore_pg_is_region_local, false,
     "Ignore the is_all_region_local field of PgPerformOptionsPB. The intended state is for "
     "everything to work when this field is not set, as the field is only left in for upgrade from "
@@ -171,6 +174,10 @@ DEFINE_test_flag(bool, pause_perform_with_paging_state, false,
 
 DEFINE_test_flag(bool, pause_session_lock_after_release, false,
     "Pause after releasing session object lock.");
+
+DEFINE_test_flag(uint64, extra_shared_request_timeout_ms, 0,
+    "Added to the timeout of every request received over the shared exchange, so the tserver's "
+    "deadline falls after the deadline the backend waits for.");
 
 DEFINE_test_flag(uint64, shared_exchange_big_response_delay_ms, 0,
     "Delay before sending response that does not fit into the shared exchange buffer.");
@@ -1007,7 +1014,8 @@ class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQu
     DCHECK(!data_);
     DCHECK(DCHECK_NOTNULL(session_.lock().get())->id() == session_id);
     const auto end = input + size;
-    const auto timeout = MonoDelta::FromMilliseconds(LittleEndian::Load64(input));
+    const auto timeout = MonoDelta::FromMilliseconds(
+        LittleEndian::Load64(input) + FLAGS_TEST_extra_shared_request_timeout_ms);
     input += sizeof(uint64_t);
     RETURN_NOT_OK(rpc::ParseMetadataFromSharedMemory(
         &input, end - input, rpc::AnyMessagePtr(&ash_metadata_)));
@@ -4034,7 +4042,10 @@ class PgClientSession::Impl {
           "has_read_time=$0, has_follower_read_staleness_ms=$1",
           has_read_time, has_follower_staleness);
 
-      if (has_time_manipulation) {
+      if (read_time_options.apply_carried_read_restart() && is_plain_session &&
+          !options.uses_catalog_snapshot()) {
+        ApplyCarriedReadRestart(session);
+      } else if (has_time_manipulation) {
         VLOG_WITH_PREFIX(3) << "Processing read time manipulation"
             << read_time_options.read_time_manipulation();
         RSTATUS_DCHECK(
@@ -4138,6 +4149,27 @@ class PgClientSession::Impl {
     return Status::OK();
   }
 
+  // A replay retry aborts the transaction, so the restart that the in-place retry does on the
+  // same read point (RestartTransaction) is done here on the new transaction's first read: the
+  // read time moves to the restart time and the global limit stays, so repeated restarts
+  // converge on the original uncertainty window. A read-only transaction's restart is still on
+  // the session read point; a writing one's was saved from the transaction in DoFinishTransaction.
+  void ApplyCarriedReadRestart(client::YBSession& session) {
+    auto& read_point = *session.read_point();
+    if (carried_read_restart_) {
+      read_point.SetMomento(*carried_read_restart_);
+      carried_read_restart_.reset();
+    }
+    if (!read_point.IsRestartRequired()) {
+      ResetReadPoint(PgClientSessionKind::kPlain);
+      return;
+    }
+    const auto old_read_time = read_point.GetReadTime();
+    read_point.Restart();
+    VLOG_WITH_PREFIX(3) << "Carried read restart: " << old_read_time << " => "
+                        << read_point.GetReadTime();
+  }
+
   void ResetReadPoint(PgClientSessionKind kind) {
     const auto is_plain_session = (kind == PgClientSessionKind::kPlain);
     DCHECK(is_plain_session || kind == PgClientSessionKind::kLegacyCatalog);
@@ -4236,6 +4268,7 @@ class PgClientSession::Impl {
         txn_serial_no_ == options.txn_serial_no() &&
         (read_point && read_point->GetReadTime())) {
       txn->InitWithReadPoint(isolation, std::move(*read_point));
+      AtomicFlagSleepMs(&FLAGS_TEST_sleep_ms_after_moving_read_point_to_txn);
       VLOG_WITH_PREFIX(2) << "Start transaction " << IsolationLevel_Name(isolation)
                           << ", id: " << txn->id()
                           << ", kept read time: " << txn->read_point().GetReadTime();
@@ -4547,6 +4580,13 @@ class PgClientSession::Impl {
       const PgFinishTransactionRequestPB& req, PgFinishTransactionResponsePB* resp,
       TransitOwner<rpc::RpcContext>& context_owner, PgSessionGuard& guard) {
     saved_priority_.reset();
+    carried_read_restart_.reset();
+    if (req.keep_read_restart()) {
+      const auto& txn = GetSessionData(PgClientSessionKind::kPlain).transaction;
+      if (txn && txn->read_point().IsRestartRequired()) {
+        carried_read_restart_ = txn->read_point().GetMomento();
+      }
+    }
     const auto is_ddl_mode = req.has_ddl_mode();
     const auto is_commit = req.commit();
     const auto ddl_use_regular_transaction_block =
@@ -4957,6 +4997,9 @@ class PgClientSession::Impl {
   uint64_t read_time_serial_no_ = 0;
   ReadPointHistory read_point_history_;
   std::optional<uint64_t> saved_priority_;
+  // Read point of a transaction aborted for a replay retry after a read restart; see
+  // ApplyCarriedReadRestart.
+  std::optional<ConsistentReadPoint::Momento> carried_read_restart_;
   TransactionMetadata ddl_txn_metadata_;
   PendingUsedReadTime plain_session_used_read_time_;
 

@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "yb/util/countdown_latch.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
@@ -29,6 +30,15 @@ DECLARE_int32(ysql_select_parallelism);
 
 DECLARE_uint64(pg_client_heartbeat_interval_ms);
 DECLARE_uint64(pg_client_session_expiration_ms);
+
+DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_enable_concurrent_ddl);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
+DECLARE_bool(yb_enable_read_committed_isolation);
+DECLARE_uint64(max_clock_skew_usec);
+DECLARE_uint64(TEST_extra_shared_request_timeout_ms);
+DECLARE_int32(TEST_read_delay_ms_for_table);
+DECLARE_string(TEST_read_delay_table_name);
 
 namespace yb::pgwrapper {
 namespace {
@@ -161,6 +171,169 @@ TEST_F_EX(
   }
   ASSERT_GT(read_count, 0);
   ASSERT_GT(write_count, 0);
+}
+
+// GH #28190: under read restarts, a tablet response that asks for a restart can reach the
+// session's read point after the read point lost its read time, which logs
+// "Unexpected restart without a read time set" (DFATAL). The bank workload hit it with
+// table-level locks and READ COMMITTED; the report says only parallel-query runs failed, a later
+// report saw it without parallel query, so the test runs both.
+class PgStaleRestartTest : public PgMiniTestBase {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
+    PgMiniTestBase::SetUp();
+    // From the stale-restart clone (#28190), run with yb_enable_replay_retry on.
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("ALTER DATABASE yugabyte SET yb_enable_replay_retry = on"));
+  }
+
+  size_t NumTabletServers() override {
+    return 1;
+  }
+
+  void TestRestartLandsOnReadPoint(bool parallel) {
+    constexpr auto kRowsCount = 10000;
+    constexpr auto kNumWriters = 10;
+    constexpr auto kNumReaders = 20;
+    constexpr auto kDuration = 60s;
+    StringWaiterLogSink no_read_time_sink("Unexpected restart without a read time set");
+
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT) SPLIT INTO 10 TABLETS"));
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO t SELECT s, s FROM generate_series(1, $0) AS s", kRowsCount));
+
+    std::atomic<uint64_t> read_count{0}, write_count{0}, read_errors{0};
+    {
+      std::vector<PGConn> conns;
+      conns.reserve(kNumWriters + kNumReaders);
+      TestThreadHolder thread_holder;
+      for (size_t i = 0; i < kNumWriters; ++i) {
+        conns.emplace_back(ASSERT_RESULT(Connect()));
+        constexpr auto kWSize = kRowsCount / kNumWriters;
+        thread_holder.AddThreadFunctor(
+            [&conn = conns.back(), &stop = thread_holder.stop_flag(), &write_count, i] {
+          unsigned int seed = SeedRandom();
+          while (!stop) {
+            auto status = conn.ExecuteFormat(
+                "UPDATE t SET v = v + 1 WHERE k = $0", i * kWSize + rand_r(&seed) % kWSize + 1);
+            if (status.ok()) {
+              ++write_count;
+            }
+          }
+        });
+      }
+      for (size_t i = 0; i < kNumReaders; ++i) {
+        conns.emplace_back(ASSERT_RESULT(Connect()));
+        auto& reader = conns.back();
+        ASSERT_OK(reader.Execute("SET default_transaction_isolation = 'read committed'"));
+        if (parallel) {
+          ASSERT_OK(reader.Execute(
+              "SET yb_enable_base_scans_cost_model TO true;"
+              "SET yb_parallel_range_rows TO 1;"
+              "SET max_parallel_workers_per_gather TO 2;"
+              "SET parallel_setup_cost TO 0;"
+              "SET parallel_tuple_cost TO 0;"));
+        } else {
+          ASSERT_OK(reader.Execute("SET max_parallel_workers_per_gather TO 0"));
+        }
+        const std::string query("SELECT count(*), sum(k) FROM t");
+        const auto plan = ASSERT_RESULT(reader.FetchAllAsString(
+            Format("EXPLAIN (COSTS OFF) $0", query)));
+        ASSERT_EQ(plan.find("Gather") != std::string::npos, parallel) << plan;
+        thread_holder.AddThreadFunctor(
+            [&reader, &stop = thread_holder.stop_flag(), &read_count, &read_errors, query] {
+          while (!stop) {
+            if (reader.FetchRow<int64_t, int64_t>(query).ok()) {
+              ++read_count;
+            } else {
+              ++read_errors;
+            }
+          }
+        });
+      }
+      thread_holder.WaitAndStop(kDuration);
+    }
+    LOG(INFO) << "reads: " << read_count << ", read errors: " << read_errors
+              << ", writes: " << write_count
+              << ", restarts without read time: " << no_read_time_sink.GetEventCount();
+    ASSERT_GT(read_count, 0);
+    ASSERT_GT(write_count, 0);
+    ASSERT_EQ(no_read_time_sink.GetEventCount(), 0);
+  }
+};
+
+TEST_F(PgStaleRestartTest, ParallelQuery) {
+  TestRestartLandsOnReadPoint(/* parallel= */ true);
+}
+
+TEST_F(PgStaleRestartTest, NoParallelQuery) {
+  TestRestartLandsOnReadPoint(/* parallel= */ false);
+}
+
+class PgStaleRestartAfterTimeoutTest : public PgStaleRestartTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_clock_skew_usec) = 3'000'000;
+    PgStaleRestartTest::SetUp();
+  }
+};
+
+// GH #28190, timed-out Perform: the backend stops waiting for statement N's Perform at its own
+// deadline, but the tserver measures the deadline from when it parsed the request, so N's tablet
+// reads can still be running when statement N+1 resets the session's read point. A restart
+// response for N then lands on N+1's read point, which has no read time yet.
+//
+// Timeline (t = 0 when the reader starts the scan):
+//   0s  reader: SELECT count(*) FROM t (2 tablets) picks a read time on the session read point;
+//       the tablet reads of t sleep 5s.
+//   ~0s writer: INSERT into t; commits inside the read's uncertainty window (3s clock skew).
+//   3s  reader: pggate deadline (statement_timeout 1s + pg_client_extra_timeout_ms 2s) passes;
+//       the statement fails. The tserver deadline is 5s later (extra_shared_request_timeout_ms).
+//   3s  reader: SELECT v FROM t2 WHERE k = 1 resets the read point; a single-tablet read leaves
+//       it without a read time.
+//   5s  t's tablets see the insert and answer "restart required" into the reset read point.
+TEST_F_EX(PgStaleRestartTest, RestartAfterTimedOutPerform, PgStaleRestartAfterTimeoutTest) {
+  constexpr int32_t kReadDelayMs = 5000;
+  auto reader = ASSERT_RESULT(Connect());
+  auto writer = ASSERT_RESULT(Connect());
+  ASSERT_OK(reader.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT) SPLIT INTO 2 TABLETS"));
+  ASSERT_OK(reader.Execute("CREATE TABLE t2 (k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(reader.Execute("INSERT INTO t SELECT s, s FROM generate_series(1, 10) AS s"));
+  ASSERT_OK(reader.Execute("INSERT INTO t2 VALUES (1, 1)"));
+  ASSERT_OK(reader.Execute("SET yb_max_query_layer_retries = 0"));
+  ASSERT_OK(reader.Execute("SET max_parallel_workers_per_gather = 0"));
+  // Warm the catalog caches so the timed statements send only their data reads.
+  ASSERT_EQ(ASSERT_RESULT(reader.FetchRow<int64_t>("SELECT count(*) FROM t")), 10);
+  ASSERT_EQ(ASSERT_RESULT(reader.FetchRow<int32_t>("SELECT v FROM t2 WHERE k = 1")), 1);
+  ASSERT_OK(writer.Execute("INSERT INTO t VALUES (100, 100)"));
+  ASSERT_OK(reader.Execute("SET statement_timeout = 1000"));
+
+  StringWaiterLogSink delayed_read_sink("TEST: delaying read of t ");
+  StringWaiterLogSink no_read_time_sink("Unexpected restart without a read time set");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_extra_shared_request_timeout_ms) = 5000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_read_delay_table_name) = "t";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_read_delay_ms_for_table) = kReadDelayMs;
+
+  TestThreadHolder holder;
+  holder.AddThreadFunctor([&writer, &delayed_read_sink] {
+    ASSERT_OK(delayed_read_sink.WaitFor(10s));
+    ASSERT_OK(writer.Execute("INSERT INTO t VALUES (200, 200)"));
+  });
+  auto timed_out = reader.FetchRow<int64_t>("SELECT count(*) FROM t");
+  LOG(INFO) << "Statement N: " << AsString(timed_out);
+  ASSERT_NOK(timed_out);
+  ASSERT_OK(reader.Execute("SET statement_timeout = 0"));
+  ASSERT_EQ(ASSERT_RESULT(reader.FetchRow<int32_t>("SELECT v FROM t2 WHERE k = 1")), 1);
+  holder.JoinAll();
+
+  const auto status = no_read_time_sink.WaitFor(MonoDelta::FromMilliseconds(2 * kReadDelayMs));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_read_delay_ms_for_table) = 0;
+  ASSERT_FALSE(status.ok()) << "restart reached a read point without a read time";
 }
 
 } // namespace yb::pgwrapper
