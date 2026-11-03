@@ -6280,6 +6280,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           if (nodeStatus.getNodeState() == NodeDetails.NodeState.Decommissioned) {
             node.cloudInfo.private_ip = null;
             node.cloudInfo.public_ip = null;
+            // The node may come back on another machine, which may run on another cloud.
+            node.cloudInfo.physicalCloud = null;
           }
 
           // Update the node details.
