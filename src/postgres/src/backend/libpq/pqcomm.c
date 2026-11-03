@@ -341,6 +341,13 @@ YBRestoreOutputBufferPosition(void)
 void
 YBSetOutputDiscard(bool discard)
 {
+	/*
+	 * With the buffer full at the saved position, discarding back to it frees
+	 * no room and internal_putbytes would spin.  The bytes before it are
+	 * earlier replies the client gets anyway, so send them first.
+	 */
+	if (discard && PqSendYbSavedBufPos >= PqSendBufferSize)
+		(void) internal_flush();
 	PqSendYbDiscardOutput = discard;
 }
 

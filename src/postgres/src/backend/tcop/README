@@ -113,8 +113,9 @@ And the transaction retry it does allow keeps the PG transaction alive
 under a fresh YB one, so every piece of PG state the surgery forgets
 leaks into the retry (#30540).
 
-With the GUC on, the backend keeps a log of a transaction block's
-statements for as long as each completed one is idempotent: run again in
+With the GUC on, the backend keeps a log of the current transaction's
+statements -- a block, or the implicit transaction a pipeline shares until
+Sync -- for as long as each completed one is idempotent: run again in
 a fresh transaction, it leaves the same state and returns the same reply.
 That is BEGIN, START TRANSACTION, SET (except SET TRANSACTION SNAPSHOT,
 whose effect depends on the exporting transaction), RESET, SAVEPOINT and
@@ -146,8 +147,8 @@ With the GUC on, the in-place restart is unreachable: reaching it raises an
 error.
 
 The first completed statement outside the set closes the log for the
-rest of the block, as does any error, a fastpath call, or growing past
-`yb_replay_retry_log_limit`. With the GUC on, a whole-transaction
+rest of the transaction, as does any error, a protocol Close of a
+statement, a fastpath call, or growing past `yb_replay_retry_log_limit`. With the GUC on, a whole-transaction
 restart is a replay or nothing: when the log is closed the client gets
 the error, and the in-place restart (`yb_restart_transaction`) runs only
 with the GUC off. One case this changes: a pipeline that completes a read

@@ -1997,11 +1997,11 @@ YbcStatus YBCPgRecreateTransaction() {
 }
 
 void YBCPgCarryReadRestart(bool carry) {
-  pgapi->CarryReadRestart(carry);
+  pgapi->CarryReadRestart(CarryToNextTxn(carry));
 }
 
 void YBCPgCarryTransactionPriority(bool carry) {
-  pgapi->CarryTransactionPriority(carry);
+  pgapi->CarryTransactionPriority(CarryToNextTxn(carry));
 }
 
 YbcStatus YBCPgRestartTransaction() {

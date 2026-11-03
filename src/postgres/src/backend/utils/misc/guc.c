@@ -2508,12 +2508,14 @@ static struct config_bool ConfigureNamesBool[] =
 		{"yb_enable_replay_retry", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Restart a transaction for a query layer retry by "
 						 "replaying its earlier statements in a new transaction."),
-			gettext_noop("Only statements that read no data (BEGIN, SET, RESET, "
-						 "SAVEPOINT, RELEASE) are replayed, so the retry is possible "
-						 "up to and including the first statement that reads data. "
-						 "Applies to REPEATABLE READ and SERIALIZABLE, and to READ "
-						 "COMMITTED for aborted and deadlock errors."),
-			GUC_NOT_IN_SAMPLE
+			gettext_noop("Only idempotent statements (BEGIN, START TRANSACTION, "
+						 "SET, RESET, SAVEPOINT, RELEASE) are replayed, so the retry "
+						 "is possible up to and including the first statement outside "
+						 "that set. In a transaction block it covers every retryable "
+						 "error in REPEATABLE READ and SERIALIZABLE, and aborted and "
+						 "deadlock errors in READ COMMITTED; outside a block, every "
+						 "retryable error. Cannot change inside a transaction."),
+			GUC_NOT_IN_SAMPLE | GUC_NO_RESET_ALL
 		},
 		&yb_enable_replay_retry,
 		false,

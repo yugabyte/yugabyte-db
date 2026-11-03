@@ -2213,11 +2213,11 @@ Status PgApiImpl::RecreateTransaction() {
   return pg_txn_manager_->RecreateTransaction();
 }
 
-void PgApiImpl::CarryReadRestart(bool carry) {
+void PgApiImpl::CarryReadRestart(CarryToNextTxn carry) {
   pg_txn_manager_->CarryReadRestartToNextTransaction(carry);
 }
 
-void PgApiImpl::CarryTransactionPriority(bool carry) {
+void PgApiImpl::CarryTransactionPriority(CarryToNextTxn carry) {
   pg_txn_manager_->CarryPriorityToNextTransaction(carry);
 }
 

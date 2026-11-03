@@ -5437,6 +5437,7 @@ YBIsTransactionControlCommandTag(CommandTag command_tag)
  */
 typedef struct YbReplayEntry
 {
+	CommandTag	command_tag;
 	char	   *query_string;	/* simple query, or NULL */
 	StringInfo	parse_msg;		/* unnamed Parse it binds, or NULL */
 	char		parse_firstchar;	/* 'P', or 'p' from the connection manager */
@@ -5456,10 +5457,19 @@ static Size yb_replay_log_bytes = 0;
  */
 static LocalTransactionId yb_replay_log_lxid = InvalidLocalTransactionId;
 
-/* The last unnamed Parse and the last Bind, kept while yb_enable_replay_retry is on. */
+/*
+ * Kept while yb_enable_replay_retry is on: the client's latest unnamed Parse,
+ * and the latest Bind with the unnamed Parse it bound.  A portal keeps the
+ * statement it was bound to after a later unnamed Parse replaces the unnamed
+ * statement, so a Bind is replayed with its own Parse, and the client's latest
+ * unnamed statement is put back after the replay.
+ */
 static StringInfo yb_replay_unnamed_parse = NULL;
 static char yb_replay_unnamed_parse_firstchar;
+static bool yb_replay_unnamed_valid = false;
 static StringInfo yb_replay_bind = NULL;
+static StringInfo yb_replay_bind_parse = NULL;
+static char yb_replay_bind_parse_firstchar;
 
 /*
  * Statements that leave the same state and return the same reply when run
@@ -5608,26 +5618,18 @@ yb_replay_note_parse(char firstchar, StringInfo msg, const char *stmt_name)
 	if (stmt_name[0] != '\0')
 		return;
 	/* A copy from before the GUC was turned off would describe a stale statement. */
+	yb_replay_unnamed_valid = yb_enable_replay_retry;
 	if (!yb_enable_replay_retry)
-	{
-		if (yb_replay_unnamed_parse)
-			resetStringInfo(yb_replay_unnamed_parse);
 		return;
-	}
 	yb_replay_save_message(&yb_replay_unnamed_parse, msg);
 	yb_replay_unnamed_parse_firstchar = firstchar;
 }
 
+/* A simple query or a protocol Close drops the unnamed statement. */
 static void
-yb_replay_note_bind(StringInfo msg)
+yb_replay_note_unnamed_dropped(void)
 {
-	if (!yb_enable_replay_retry)
-	{
-		if (yb_replay_bind)
-			resetStringInfo(yb_replay_bind);
-		return;
-	}
-	yb_replay_save_message(&yb_replay_bind, msg);
+	yb_replay_unnamed_valid = false;
 }
 
 static void
@@ -5641,10 +5643,36 @@ yb_replay_bind_names(StringInfo bind, const char **portal_name,
 	*stmt_name = pq_getmsgstring(&buf);
 }
 
+static void
+yb_replay_note_bind(StringInfo msg)
+{
+	const char *portal_name;
+	const char *stmt_name;
+
+	if (!yb_enable_replay_retry)
+	{
+		if (yb_replay_bind)
+			resetStringInfo(yb_replay_bind);
+		if (yb_replay_bind_parse)
+			resetStringInfo(yb_replay_bind_parse);
+		return;
+	}
+	yb_replay_save_message(&yb_replay_bind, msg);
+	yb_replay_bind_names(yb_replay_bind, &portal_name, &stmt_name);
+	if (stmt_name[0] == '\0' && yb_replay_unnamed_valid)
+	{
+		yb_replay_save_message(&yb_replay_bind_parse, yb_replay_unnamed_parse);
+		yb_replay_bind_parse_firstchar = yb_replay_unnamed_parse_firstchar;
+	}
+	else if (yb_replay_bind_parse)
+		resetStringInfo(yb_replay_bind_parse);
+}
+
 /*
  * Whether the portal of an extended-protocol statement can be rebuilt after
  * the abort drops it: its Bind is the last one seen, and the statement it
- * binds outlives the abort or its unnamed Parse was kept.
+ * binds is named (named statements outlive the abort) or is the unnamed Parse
+ * kept with that Bind.
  */
 static bool
 yb_replay_can_rebind(const char *portal_name, bool *needs_parse)
@@ -5658,7 +5686,7 @@ yb_replay_can_rebind(const char *portal_name, bool *needs_parse)
 	if (strcmp(bind_portal_name, portal_name) != 0)
 		return false;
 	*needs_parse = (bind_stmt_name[0] == '\0');
-	return !*needs_parse || yb_replay_has_message(yb_replay_unnamed_parse);
+	return !*needs_parse || yb_replay_has_message(yb_replay_bind_parse);
 }
 
 static bool
@@ -5692,6 +5720,7 @@ yb_replay_log_append(const char *query_string, CommandTag command_tag)
 
 	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
 	entry = palloc0(sizeof(YbReplayEntry));
+	entry->command_tag = command_tag;
 	entry->query_string = pstrdup(query_string);
 	yb_replay_log = lappend(yb_replay_log, entry);
 	MemoryContextSwitchTo(oldcontext);
@@ -5712,7 +5741,7 @@ yb_replay_log_append_execute(const YBQueryRetryData *retry_data, long max_rows)
 									 retry_data->query.command_tag) ||
 		!yb_replay_can_rebind(retry_data->portal_name, &needs_parse) ||
 		!yb_replay_log_reserve(yb_replay_bind->len +
-							   (needs_parse ? yb_replay_unnamed_parse->len : 0)))
+							   (needs_parse ? yb_replay_bind_parse->len : 0)))
 	{
 		yb_replay_log_closed = true;
 		return;
@@ -5720,11 +5749,12 @@ yb_replay_log_append_execute(const YBQueryRetryData *retry_data, long max_rows)
 
 	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
 	entry = palloc0(sizeof(YbReplayEntry));
+	entry->command_tag = retry_data->query.command_tag;
 	entry->bind_msg = yb_copy_message(yb_replay_bind);
 	if (needs_parse)
 	{
-		entry->parse_msg = yb_copy_message(yb_replay_unnamed_parse);
-		entry->parse_firstchar = yb_replay_unnamed_parse_firstchar;
+		entry->parse_msg = yb_copy_message(yb_replay_bind_parse);
+		entry->parse_firstchar = yb_replay_bind_parse_firstchar;
 	}
 	entry->portal_name = pstrdup(retry_data->portal_name);
 	entry->max_rows = max_rows;
@@ -5733,17 +5763,18 @@ yb_replay_log_append_execute(const YBQueryRetryData *retry_data, long max_rows)
 }
 
 /*
- * yb_enable_replay_retry is fixed for the life of a transaction: the log is
- * either kept from its first statement or not at all, so a transaction never
- * replays a log that misses statements run before the GUC was turned on.
+ * yb_enable_replay_retry is fixed for the life of a transaction, so a
+ * transaction never switches between the in-place restart and the replay.
+ * This holds for every source, a configuration reload included; RESET ALL
+ * skips it (GUC_NO_RESET_ALL).  The log also closes at any statement that
+ * completes with the GUC off.
  */
 bool
 check_yb_enable_replay_retry(bool *newval, void **extra, GucSource source)
 {
 	bool		log_started;
 
-	if (*newval == yb_enable_replay_retry || source < PGC_S_INTERACTIVE ||
-		MyProc == NULL)
+	if (*newval == yb_enable_replay_retry || MyProc == NULL)
 		return true;
 
 	log_started = (MyProc->lxid != InvalidLocalTransactionId &&
@@ -5785,7 +5816,26 @@ yb_can_replay_retry(const YBQueryRetryData *retry_data, int sqlerrcode)
 		!yb_replay_can_rebind(retry_data->portal_name, &needs_parse))
 		return false;
 
-	return yb_replay_log_for_current_txn() && !yb_replay_log_closed;
+	if (!yb_replay_log_for_current_txn() || yb_replay_log_closed)
+		return false;
+
+	/*
+	 * In a block, the log must start at the block's BEGIN, so a replay that
+	 * fails before its BEGIN reopens the block can only be the BEGIN itself
+	 * failing (see yb_replay_restart_transaction).  A pipeline can run SET
+	 * before BEGIN in the same transaction.
+	 */
+	if (IsTransactionBlock())
+	{
+		const YbReplayEntry *first;
+
+		if (yb_replay_log == NIL)
+			return false;
+		first = linitial(yb_replay_log);
+		return (first->command_tag == CMDTAG_BEGIN ||
+				first->command_tag == CMDTAG_START_TRANSACTION);
+	}
+	return true;
 }
 
 /*
@@ -6262,9 +6312,12 @@ yb_collect_portal_restart_data(const char *portal_name)
 
 	YBQueryRetryData *result = palloc(sizeof(YBQueryRetryData));
 
-	/* Copies: a replay retry drops the portal and binds a new one. */
-	result->portal_name = pstrdup(portal->name);
-	result->query.query_string = pstrdup(portal->sourceText);
+	/* Copies when a replay retry can drop the portal and bind a new one. */
+	result->portal_name = (yb_enable_replay_retry ? pstrdup(portal->name) :
+						   portal->name);
+	result->query.query_string = (yb_enable_replay_retry ?
+								  pstrdup(portal->sourceText) :
+								  portal->sourceText);
 	result->query.command_tag = portal->commandTag;
 	result->is_simple_query = false;
 	return result;
@@ -6662,8 +6715,16 @@ yb_replay_restart_transaction(int attempt, YbTxnError txn_error_kind,
 	if (rebind)
 		(void) yb_replay_can_rebind(retry_data->portal_name, &needs_parse);
 
+	/*
+	 * The deadline is re-armed after the replay.  Firing inside the replay
+	 * would fail the replayed BEGIN and end the session; after it, a passed
+	 * deadline fires in the retried statement as an ordinary error.
+	 */
 	if (statement_timeout_active)
+	{
 		statement_timeout_fin_time = get_timeout_finish_time(STATEMENT_TIMEOUT);
+		disable_timeout(STATEMENT_TIMEOUT, false);
+	}
 
 	if (yb_debug_log_internal_restarts)
 		elog(LOG, "Restarting transaction by replaying %d statements",
@@ -6712,10 +6773,17 @@ yb_replay_restart_transaction(int attempt, YbTxnError txn_error_kind,
 		if (rebind)
 		{
 			if (needs_parse)
-				yb_replay_parse_message(yb_replay_unnamed_parse_firstchar,
-										yb_replay_unnamed_parse);
+				yb_replay_parse_message(yb_replay_bind_parse_firstchar,
+										yb_replay_bind_parse);
 			yb_replay_bind_message(yb_replay_bind);
 		}
+
+		/* Leave the unnamed statement the client last created, or none. */
+		if (yb_replay_unnamed_valid)
+			yb_replay_parse_message(yb_replay_unnamed_parse_firstchar,
+									yb_replay_unnamed_parse);
+		else
+			drop_unnamed_stmt();
 	}
 	PG_CATCH();
 	{
@@ -6732,8 +6800,9 @@ yb_replay_restart_transaction(int attempt, YbTxnError txn_error_kind,
 
 		/*
 		 * The client got BEGIN's reply long ago and believes it is in a block.
-		 * If the replayed BEGIN did not open it again, which only out of memory
-		 * or an interrupt can cause, the session cannot match what the client
+		 * A block's log starts at its BEGIN (yb_can_replay_retry), so this is
+		 * the replayed BEGIN itself failing, which only out of memory or an
+		 * interrupt can cause.  The session cannot match what the client
 		 * believes, so end it.
 		 */
 		if (was_in_block && !IsTransactionBlock())
@@ -6944,9 +7013,14 @@ yb_exec_query_wrapper_one_attempt(MemoryContext exec_context,
 			* used here, they would prevent PG_END_TRY();
 			*/
 		*retry = false;
+		/* YB: a carry a replay set up is for this attempt only. */
+		YBCPgCarryTransactionPriority(false);
+		YBCPgCarryReadRestart(false);
 	}
 	PG_CATCH();
 	{
+		YBCPgCarryTransactionPriority(false);
+		YBCPgCarryReadRestart(false);
 		YBResetOperationsBuffering();
 		if (IsInParallelMode())
 			YbClearParallelContexts();
@@ -7004,6 +7078,9 @@ yb_exec_simple_query_impl(const void *query_arg)
 static void
 yb_exec_simple_query(const char *query_string, MemoryContext exec_context)
 {
+	/* exec_simple_query drops the unnamed statement. */
+	yb_replay_note_unnamed_dropped();
+
 	YBQueryRetryData retry_data = {
 		.portal_name = "",		/* unnamed portal is used in simple query
 								 * protocol */
@@ -8285,6 +8362,18 @@ PostgresMain(const char *dbname, const char *username)
 					close_type = pq_getmsgbyte(&input_message);
 					close_target = pq_getmsgstring(&input_message);
 					pq_getmsgend(&input_message);
+
+					/*
+					 * YB: a closed statement name can be parsed again with
+					 * other text, so a logged Bind of it would no longer
+					 * replay the same statement.
+					 */
+					if (close_type == 'S')
+					{
+						yb_replay_log_close();
+						if (close_target[0] == '\0')
+							yb_replay_note_unnamed_dropped();
+					}
 
 					switch (close_type)
 					{

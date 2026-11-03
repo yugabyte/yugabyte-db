@@ -6705,13 +6705,6 @@ class PgLibPqTestDropTableIfExistsCascadeRetry : public PgLibPqTest {
     options->extra_tserver_flags.push_back("--yb_enable_read_committed_isolation=true");
   }
 
-  // Tests from the clean-inval clone (#34751, PR 35526) run with yb_enable_replay_retry on.
-  void SetUp() override {
-    PgLibPqTest::SetUp();
-    auto conn = ASSERT_RESULT(Connect());
-    ASSERT_OK(conn.Execute("ALTER DATABASE yugabyte SET yb_enable_replay_retry = on"));
-  }
-
   Status ExecuteWithCatalogWritesAborted(
       PGConn& conn, const std::string& query) {
     RETURN_NOT_OK(cluster_->SetFlagOnMasters(
@@ -6755,6 +6748,8 @@ TEST_F(PgLibPqTestDropTableIfExistsCascadeRetry, DropTableIfExistsCascadeRetryCr
   // aborted transaction clears the relcache, causing RelationIdGetRelation
   // to return NULL on the second attempt.
   // If the bug is present, this will crash with SIGSEGV.
+  // If the bug is fixed, the retry will gracefully fail with an error because
+  // the relation is already dropped in the relcache.
   auto status = conn.Execute(
       "DO $$ \n"
       "BEGIN \n"
@@ -6763,9 +6758,7 @@ TEST_F(PgLibPqTestDropTableIfExistsCascadeRetry, DropTableIfExistsCascadeRetryCr
       "  DROP TABLE IF EXISTS drop_retry_test_crash CASCADE; \n"
       "END $$;");
 
-  ASSERT_NOK_STR_CONTAINS(
-      status,
-      "failed DROP operation as requested (yb_max_query_layer_retries set to");
+  ASSERT_NOK_STR_CONTAINS(status, "could not open relation with OID");
 
   // Verify that the catalog is NOT corrupted.
   // Note that this test runs with transactional DDL disabled! This means
@@ -6778,10 +6771,24 @@ TEST_F(PgLibPqTestDropTableIfExistsCascadeRetry, DropTableIfExistsCascadeRetryCr
   ASSERT_OK(conn.FetchMatrix("SELECT * FROM drop_retry_test_crash", 0, 1));
 }
 
+// The #34751 tests from the clean-inval clone (PR 35526), run with
+// yb_enable_replay_retry on. The base fixture keeps it off, so its tests still
+// cover the in-place restart.
+class PgLibPqTestDropTableIfExistsCascadeReplayRetry
+    : public PgLibPqTestDropTableIfExistsCascadeRetry {
+ protected:
+  void SetUp() override {
+    PgLibPqTestDropTableIfExistsCascadeRetry::SetUp();
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("ALTER DATABASE yugabyte SET yb_enable_replay_retry = on"));
+  }
+};
+
 // #34751: a retried CREATE TABLE IF NOT EXISTS reused catalog cache entries
 // written by the failed attempt, so it skipped or failed on a table that was
 // never created.
-TEST_F(PgLibPqTestDropTableIfExistsCascadeRetry, CreateTableRetryAfterAbort) {
+TEST_F_EX(PgLibPqTestDropTableIfExistsCascadeRetry, CreateTableRetryAfterAbort,
+          PgLibPqTestDropTableIfExistsCascadeReplayRetry) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("SET yb_max_query_layer_retries = 1"));
 
@@ -6794,7 +6801,8 @@ TEST_F(PgLibPqTestDropTableIfExistsCascadeRetry, CreateTableRetryAfterAbort) {
 }
 
 // #34751, through an index.
-TEST_F(PgLibPqTestDropTableIfExistsCascadeRetry, CreateIndexRetryAfterAbort) {
+TEST_F_EX(PgLibPqTestDropTableIfExistsCascadeRetry, CreateIndexRetryAfterAbort,
+          PgLibPqTestDropTableIfExistsCascadeReplayRetry) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("SET yb_max_query_layer_retries = 1"));
   ASSERT_OK(conn.Execute("CREATE TABLE t (k INT)"));

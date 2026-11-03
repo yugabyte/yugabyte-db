@@ -1510,9 +1510,8 @@ class PgReplayRetryHandoffTest : public PgTxnTest {
 };
 
 // A query-layer retry must keep a SET ROLE that ran earlier in the same
-// transaction, because the retry does not replay it. In an extended-protocol
-// batch, SET ROLE does not advance the command id, so a later statement in
-// the batch can still be retried. Scenario: one pipeline sends SET ROLE alice
+// transaction; the replay runs it again before the retried statement.
+// Scenario: one pipeline sends SET ROLE alice
 // and then SELECT f(). f returns current_user and raises a retriable
 // kAborted (YB001) on its first call only. The retried f must run as alice.
 // The test needs libpq pipeline mode, which pg_regress's psql cannot drive.
@@ -1572,13 +1571,12 @@ TEST_F_EX(PgTxnTest, BatchedRetryKeepsSetRole, PgReplayRetryHandoffTest) {
   ASSERT_EQ(user_seen_by_f, "alice");
 }
 
-// The same for a plain SET before a retried write. The retry pops the GUC
-// levels that the failed attempt pushed, and must keep the transaction's own
-// level, which holds the earlier SET. Scenario: one pipeline sends
+// The same for a plain SET before a retried write: the replay runs the earlier
+// SET again in the new transaction. Scenario: one pipeline sends
 // SET work_mem = '7MB' and then INSERT INTO t VALUES (f()). f returns
 // work_mem and raises a retriable kAborted (YB001) on its first call only.
-// The retried INSERT must write 7MB. f is STABLE: a volatile plpgsql function
-// advances the command id, and then the batch is not retried.
+// The retried INSERT must write 7MB. f is STABLE as in PR 35863;
+// BatchedRetryVolatileFunction covers a VOLATILE f (#36674).
 TEST_F_EX(PgTxnTest, BatchedRetryKeepsSet, PgReplayRetryHandoffTest) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE SEQUENCE attempt"));
@@ -1701,7 +1699,7 @@ TEST_F_EX(PgTxnTest, BatchedRetryKeepsSetLocalRole, PgReplayRetryHandoffTest) {
   ASSERT_STREQ(PQgetvalue(role.get(), 0, 0), "none");
 }
 
-// The same with a role from plain SET ROLE, which the retry puts back by name.
+// The same with a role from plain SET ROLE, which the replay runs again.
 // Scenario: one pipeline sends SET ROLE alice and then SELECT f(). On its first
 // call only, f runs SET ROLE bob and raises YB001. The retried f must run as
 // alice, and the session must stay alice afterwards.

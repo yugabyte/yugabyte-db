@@ -458,7 +458,6 @@ extern TimestampTz GetCurrentTransactionStartTimestamp(void);
 extern TimestampTz GetCurrentStatementStartTimestamp(void);
 extern TimestampTz GetCurrentTransactionStopTimestamp(void);
 extern void SetCurrentStatementStartTimestamp(void);
-extern void YbSetCurrentStatementStartTimestamp(TimestampTz ts);
 extern int	GetCurrentTransactionNestLevel(void);
 extern bool TransactionIdIsCurrentTransactionId(TransactionId xid);
 extern void CommandCounterIncrement(void);
@@ -563,6 +562,7 @@ extern bool YBTransactionContainsNonReadCommittedSavepoint(bool skip_backward_co
 extern void YBStartTransactionCommandInternal(bool yb_skip_read_committed_internal_savepoint);
 extern void YbCommitTransactionCommandIntermediate(void);
 extern void YBMarkDataSent(void);
+extern void YbSetCurrentStatementStartTimestamp(TimestampTz ts);
 extern void YBMarkDataNotSent(void);
 extern void YBMarkDataNotSentForCurrQuery(void);
 extern bool YBIsDataSent(void);

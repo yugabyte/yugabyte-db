@@ -105,8 +105,8 @@ TEST_F(PgInjectReadRestartTest, FanOutReadRestart) {
 // The replay retry against read restarts the tablet server reports, rather than errors raised in
 // SQL. A fan-out read has its read time picked by the query layer, so the restart reaches the
 // query-layer retry. In an RR block after SET LOCAL, today's gate refuses the retry; the replay
-// restarts the block. The probability is below 1 because each replay is a new transaction with a
-// new uncertainty window, so a restart on every read would never end.
+// restarts the block. Restarts here mix with clean reads; ReplayRetryConvergesOnEveryReadRestart
+// covers a restart on every read.
 TEST_F(PgInjectReadRestartTest, ReplayRetryOnReadRestart) {
   auto read_conn = ASSERT_RESULT(SetUpKeysTable());
   ASSERT_OK(read_conn.Execute("SET yb_max_query_layer_retries = 60"));

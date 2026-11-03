@@ -76,8 +76,9 @@ DROP FUNCTION f();
 DROP SEQUENCE attempt;
 
 --
--- A query-layer retry restarts the transaction in place.  It must leave the
--- session as an abort and a replay of the same statement would.  Each
+-- With yb_enable_replay_retry on, a query-layer retry aborts the transaction
+-- and replays it, so it must leave the session as an abort and a replay of the
+-- same statement would.  Each
 -- function below raises a retriable kAborted (YB001) on its first call only,
 -- keyed on a sequence.  After the retry, current_user must be the caller.
 -- First case: retry_alice calls sd(), a SECURITY DEFINER function owned by
@@ -208,9 +209,9 @@ RESET ROLE;
 
 --
 -- spr() has no SET clause and is not SECURITY DEFINER.  Its body runs a
--- plain SET ROLE on the first call only, then raises YB001.  That SET is at
--- the transaction's own GUC level, which the restart keeps, and the retried
--- call does not run it again.  After the retry, current_user must be the
+-- plain SET ROLE on the first call only, then raises YB001.  The abort undoes
+-- that SET, and the retried call does not run it again.  After the retry,
+-- current_user must be the
 -- caller and the role setting none, as after an abort and a replay.
 --
 CREATE SEQUENCE spr_attempt;

@@ -1516,9 +1516,14 @@ pgaudit_ProcessUtility_hook(PlannedStmt *pstmt,
       3. if you are not trying to set variable pgaudit.log. In that case you might need to
          log the set statement too and hence you cant bail out.
   */
-  if (yb_replay_in_progress ||
-      (isAuditLoggingDisabled() &&
-       (pstmt->utilityStmt->type != T_VariableSetStmt && !strstr(queryString, "pgaudit.")))) {
+  /* YB: a replay retry re-runs statements that were audited when the client ran them. */
+  if (yb_replay_in_progress) {
+    pgaudit_NextProcessUtility_hook(
+        pstmt, queryString, readOnlyTree, context, params, queryEnv, dest, qc);
+    return;
+  }
+  if (isAuditLoggingDisabled() &&
+      (pstmt->utilityStmt->type != T_VariableSetStmt && !strstr(queryString, "pgaudit."))) {
     pgaudit_NextProcessUtility_hook(
         pstmt, queryString, readOnlyTree, context, params, queryEnv, dest, qc);
     return;

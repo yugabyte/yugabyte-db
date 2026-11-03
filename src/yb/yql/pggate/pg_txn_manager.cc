@@ -544,6 +544,8 @@ DdlMode PgTxnManager::GetDdlModeFromDdlState(
 
 Status PgTxnManager::FinishPlainTransaction(
     Commit commit, const std::optional<PgDdlCommitInfo>& ddl_commit_info) {
+  // Taken here so the early returns below cannot leave it set for a later transaction.
+  const auto keep_read_restart = std::exchange(keep_read_restart_, KeepReadRestart::kFalse);
   if (PREDICT_FALSE(IsDdlMode() && IsDdlModeWithSeparateTransaction())) {
     // GH #22353 - A DML txn must be aborted or committed only when there is no active DDL txn
     // (ie. after any active DDL txn has itself committed or aborted). Silently ignoring this
@@ -585,8 +587,7 @@ Status PgTxnManager::FinishPlainTransaction(
   }
   VLOG_TXN_STATE(2) << "Sending FinishTransaction request with commit: " << commit << ", ddl_mode: "
                     << (ddl_mode ? ddl_mode->ToString() : "NULL");
-  Status status = client_->FinishTransaction(
-      commit, ddl_mode, std::exchange(keep_read_restart_, false));
+  Status status = client_->FinishTransaction(commit, ddl_mode, keep_read_restart);
   VLOG_TXN_STATE(2) << "Transaction " << (commit ? "commit" : "abort") << " status: " << status;
   ResetTxnAndSession();
   return status;
@@ -662,7 +663,7 @@ Status PgTxnManager::ExitSeparateDdlTxnMode(const std::optional<PgDdlCommitInfo>
   const auto commit = commit_info ? Commit::kTrue : Commit::kFalse;
   const auto status = client_->FinishTransaction(
       commit,
-      GetDdlModeFromDdlState(ddl_state_, commit_info));
+      GetDdlModeFromDdlState(ddl_state_, commit_info), KeepReadRestart::kFalse);
   WARN_NOT_OK(status, Format("Failed to $0 DDL transaction", commit ? "commit" : "abort"));
   if (PREDICT_TRUE(status.ok() || !commit)) {
     // In case of an abort, reset the DDL mode here as we may later re-enter this function and retry
@@ -970,12 +971,12 @@ Status PgTxnManager::SetupPerformOptions(
   return Status::OK();
 }
 
-void PgTxnManager::CarryReadRestartToNextTransaction(bool carry) {
-  keep_read_restart_ = carry;
-  apply_carried_read_restart_ = carry;
+void PgTxnManager::CarryReadRestartToNextTransaction(CarryToNextTxn carry) {
+  keep_read_restart_ = KeepReadRestart(carry.get());
+  apply_carried_read_restart_ = carry.get();
 }
 
-void PgTxnManager::CarryPriorityToNextTransaction(bool carry) {
+void PgTxnManager::CarryPriorityToNextTransaction(CarryToNextTxn carry) {
   carried_priority_ = carry ? priority_ : std::nullopt;
 }
 

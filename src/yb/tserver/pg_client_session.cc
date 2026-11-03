@@ -4037,8 +4037,14 @@ class PgClientSession::Impl {
           "has_read_time=$0, has_follower_read_staleness_ms=$1",
           has_read_time, has_follower_staleness);
 
-      if (read_time_options.apply_carried_read_restart() && is_plain_session &&
-          !options.uses_catalog_snapshot()) {
+      const auto apply_carried_read_restart =
+          read_time_options.apply_carried_read_restart() && is_plain_session &&
+          !options.uses_catalog_snapshot() && !has_read_time && !has_follower_staleness;
+      if (!apply_carried_read_restart && is_plain_session && !options.uses_catalog_snapshot()) {
+        // Only the replayed transaction's first read may use a carried restart point.
+        carried_read_restart_.reset();
+      }
+      if (apply_carried_read_restart) {
         ApplyCarriedReadRestart(session);
       } else if (has_time_manipulation) {
         VLOG_WITH_PREFIX(3) << "Processing read time manipulation"
