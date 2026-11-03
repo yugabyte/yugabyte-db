@@ -18426,7 +18426,10 @@ assign_yb_dist_tracecontext(const char *newval, void *extra)
  * that and are exempt:
  * - PGC_S_TEST, the validation pass of ALTER ROLE/DATABASE ... SET, assigns
  *   nothing.  It always runs inside the ALTER statement's transaction, so the
- *   check would reject every such setting.
+ *   check would reject every such setting.  CREATE/ALTER FUNCTION ... SET
+ *   validates with PGC_S_TEST too, but a function's SET clause is applied
+ *   with PGC_S_SESSION inside the calling statement, where this check still
+ *   rejects it, so YbValidateFunctionSetItem refuses such a clause up front.
  * - PGC_S_GLOBAL through PGC_S_CLIENT (pg_db_role_setting entries and
  *   connection request options) are applied during backend startup, before
  *   any client statement runs.  Startup has its own transaction and snapshot,

@@ -10776,6 +10776,32 @@ YbGetSkipIntentsOptimizationInfoWrite(Relation rel)
 	return YbGetSkipIntentsOptimizationInfo(rel, true /* is_write */ );
 }
 
+/*
+ * Rejects a function SET clause for the skip intents GUCs. The clause is
+ * applied with PGC_S_SESSION each time the function is called, inside the
+ * calling statement, where their check hooks refuse any change, so the function
+ * could never be called. The validation pass of CREATE/ALTER FUNCTION ... SET
+ * is PGC_S_TEST, which the hooks accept because ALTER ROLE/DATABASE ... SET
+ * shares it, so the clause has to be refused here instead.
+ */
+void
+YbValidateFunctionSetItem(const VariableSetStmt *sstmt)
+{
+	if (sstmt->kind == VAR_SET_DEFAULT || sstmt->kind == VAR_RESET ||
+		sstmt->kind == VAR_RESET_ALL)
+		return;
+
+	if (pg_strcasecmp(sstmt->name, "yb_enable_new_relation_fastpath_write") == 0 ||
+		pg_strcasecmp(sstmt->name,
+					  "yb_enable_new_relation_fastpath_write_in_txn_blocks") == 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM),
+				 errmsg("parameter \"%s\" cannot be set in a function's SET clause",
+						sstmt->name),
+				 errdetail("The SET clause is applied inside the calling statement, "
+						   "where %s cannot be changed.", sstmt->name)));
+}
+
 static YbcPgSkipIntentsOptimizationInfo
 YbGetSkipIntentsOptimizationInfoRead(Relation rel)
 {

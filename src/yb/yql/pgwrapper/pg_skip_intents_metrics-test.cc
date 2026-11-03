@@ -1658,6 +1658,38 @@ TEST_F(SkipIntentsMetricTest, TestGucSetThroughRoleDatabaseAndConnectionOptions)
   ASSERT_OK(conn.Execute("ROLLBACK"));
 }
 
+// A function's SET clause is applied inside the calling statement, where the GUCs cannot change,
+// so CREATE/ALTER FUNCTION must refuse it rather than leave a function that cannot be called. Its
+// validation pass uses the same source as ALTER ROLE ... SET, which the check hooks accept.
+TEST_F(SkipIntentsMetricTest, TestGucRejectedInFunctionSetClause) {
+  constexpr auto kError = "cannot be set in a function's SET clause";
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE FUNCTION fastpath_f() RETURNS INT AS 'SELECT 1' LANGUAGE sql"));
+
+  for (const auto* guc : {"yb_enable_new_relation_fastpath_write",
+                          "yb_enable_new_relation_fastpath_write_in_txn_blocks"}) {
+    SCOPED_TRACE(guc);
+    for (const auto* clause : {"= off", "FROM CURRENT"}) {
+      SCOPED_TRACE(clause);
+      auto status = conn.ExecuteFormat("ALTER FUNCTION fastpath_f() SET $0 $1", guc, clause);
+      ASSERT_NOK(status);
+      ASSERT_STR_CONTAINS(status.ToString(), kError);
+    }
+    // check_function_bodies = off, as in a dump restore, skips the run of the function's SET
+    // clause that would otherwise reject it at CREATE time.
+    for (const auto* check_function_bodies : {"on", "off"}) {
+      SCOPED_TRACE(Format("check_function_bodies = $0", check_function_bodies));
+      ASSERT_OK(conn.ExecuteFormat("SET check_function_bodies = $0", check_function_bodies));
+      auto status = conn.ExecuteFormat(
+          "CREATE FUNCTION fastpath_g() RETURNS INT AS 'SELECT 1' LANGUAGE sql SET $0 = off", guc);
+      ASSERT_NOK(status);
+      ASSERT_STR_CONTAINS(status.ToString(), kError);
+    }
+    ASSERT_OK(conn.ExecuteFormat("ALTER FUNCTION fastpath_f() RESET $0", guc));
+  }
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT fastpath_f()")), 1);
+}
+
 // Startup must not depend on where the GUC and yb_ddl_transaction_block_enabled land in
 // ysql_pg.conf. Settings from --ysql_pg_conf_csv are written ahead of the block that
 // AppendPgGFlags generates from the PG gflags, so the GUC here is assigned while
