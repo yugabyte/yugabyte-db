@@ -107,18 +107,25 @@ When a slot is created, YB-Master chooses a hybrid time, the _consistent point_,
 - Rows as they were at the consistent point belong to the snapshot.
 - Transactions with a commit time after the consistent point are streamed, in commit order.
 
-The consistent point is the slot's initial [restart time](#restart-time), reported as `yb_restart_commit_ht` in `pg_replication_slots`. `CREATE_REPLICATION_SLOT` returns it in the `snapshot_name` field: as an exported snapshot name in v2025.2.2 and later (the default `EXPORT_SNAPSHOT` option), or as the hybrid time itself in earlier releases and with `USE_SNAPSHOT`.
+The consistent point is the slot's initial [restart time](#restart-time), reported as `yb_restart_commit_ht` in `pg_replication_slots`.
+
+`CREATE_REPLICATION_SLOT` returns the consistent point in the `snapshot_name` field as follows:
+
+- In v2025.2.2 and later, as an exported snapshot name (the default `EXPORT_SNAPSHOT` option).
+- In earlier releases, or with `USE_SNAPSHOT`, as the hybrid time itself.
 
 #### Taking the snapshot
 
 To read a table as of the consistent point, the client pins a transaction to that time and runs the snapshot `SELECT` in the same transaction, in one of two ways:
 
 - `SET TRANSACTION SNAPSHOT '<snapshot_name>'` in a `REPEATABLE READ` transaction, using the exported snapshot name returned by `CREATE_REPLICATION_SLOT`. As in PostgreSQL, the exported snapshot is valid only until the replication connection that created the slot runs its next command. Available from v2025.2.2.
-- `SET LOCAL yb_read_time TO '<hybrid time> ht'`, using the hybrid time from `yb_restart_commit_ht`, or from `snapshot_name` if the slot was created with `USE_SNAPSHOT`. Set `yb_disable_catalog_version_check` to true in the session first; otherwise `yb_read_time` can't be set inside a transaction block. This is also how a client reads the snapshot of a slot that already exists, as long as the slot still [retains history](#retention-during-the-snapshot) at the consistent point. It requires superuser privileges or the setup in [Initial snapshot](../advanced-topic/#initial-snapshot).
+- `SET LOCAL yb_read_time TO '<hybrid time> ht'`, using the hybrid time from `yb_restart_commit_ht`, or from `snapshot_name` if the slot was created with `USE_SNAPSHOT`.
+
+    Set `yb_disable_catalog_version_check` to true in the session first; otherwise `yb_read_time` can't be set inside a transaction block. This is also how a client reads the snapshot of a slot that already exists, as long as the slot still [retains history](#retention-during-the-snapshot) at the consistent point. Requires superuser, or the setup in [Initial snapshot](../advanced-topic/#initial-snapshot).
 
 The query reads the table as it was at the consistent point. It takes no locks and does not block writes. Rows from transactions that committed after the consistent point are not returned; their changes arrive in the stream. Every table, and every connection that uses the same time, sees the same consistent state, so tables can be read on separate connections and in parallel. This differs from PostgreSQL, where Debezium holds table locks during the snapshot (`snapshot.locking.mode`).
 
-The [YugabyteDB connector](../yugabytedb-connector/#snapshots) takes the snapshot before it starts streaming, when `snapshot.mode` is `initial` (the default) or `initial_only`. It pins a read-only transaction as described above, and runs one `SELECT` per captured table, fetching rows in batches of `snapshot.fetch.size` and emitting a `READ` event for each row. Tables are read one at a time. The query is a plain full-table `SELECT`; `snapshot.select.statement.overrides` is the only way to filter rows. The snapshot is not resumable: if the connector restarts before the snapshot completes, it starts the snapshot again from the first table, as of the same consistent point. Streaming starts after the last table, from the consistent point. To snapshot and stream a large table with several tasks, see [Parallel streaming](../yugabytedb-connector/#parallel-streaming).
+The YugabyteDB connector takes the [snapshot](../yugabytedb-connector/#snapshots) before it starts streaming, when `snapshot.mode` is `initial` (the default) or `initial_only`. It pins a read-only transaction as described above, and runs one `SELECT` per captured table, fetching rows in batches of `snapshot.fetch.size` and emitting a `READ` event for each row. Tables are read one at a time. The query is a plain full-table `SELECT`; `snapshot.select.statement.overrides` is the only way to filter rows. The snapshot is not resumable: if the connector restarts before the snapshot completes, it starts the snapshot again from the first table, as of the same consistent point. Streaming starts after the last table, from the consistent point. To snapshot and stream a large table with several tasks, see [Parallel streaming](../yugabytedb-connector/#parallel-streaming).
 
 #### Retention during the snapshot
 
