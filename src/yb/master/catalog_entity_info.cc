@@ -716,6 +716,12 @@ Status TableInfo::AddTabletUnlocked(
   }
 
   auto old_tablet = VERIFY_RESULT(PromoteTabletPointer(it->second));
+  if (old_tablet == tablet) {
+    // The same tablet can be added twice when its table_ids list contains a duplicate entry, see
+    // github issue 34672. There is nothing to replace.
+    LOG_WITH_PREFIX(WARNING) << "Tablet " << tablet->id() << " was already added to this table";
+    return Status::OK();
+  }
   auto old_tablet_lock = old_tablet->LockForRead();
   const auto old_split_depth = old_tablet_lock->pb.split_depth();
   if (tablet_meta.split_depth() > old_split_depth || old_tablet_lock->is_deleted()) {
