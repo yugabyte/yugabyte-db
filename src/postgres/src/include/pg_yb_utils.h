@@ -775,9 +775,9 @@ extern bool yb_is_non_atomic_commit_done;
 extern bool yb_enable_retry_after_non_atomic_commit;
 
 /*
- * Restart a transaction for a query layer retry by replaying the statements
- * that read no data (BEGIN, SET, ...) in a fresh transaction.
- * POC, see the "Replay retry" section of tcop/README.
+ * Restart a transaction for a query layer retry by aborting it and replaying
+ * its idempotent statements (BEGIN, SET, ...) in a new transaction.  See the
+ * "Replay retry" section of tcop/README.
  */
 extern bool yb_enable_replay_retry;
 extern bool check_yb_enable_replay_retry(bool *newval, void **extra, GucSource source);

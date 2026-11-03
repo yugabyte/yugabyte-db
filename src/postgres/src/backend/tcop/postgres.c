@@ -5456,14 +5456,14 @@ static Size yb_replay_log_bytes = 0;
  */
 static LocalTransactionId yb_replay_log_lxid = InvalidLocalTransactionId;
 
-/* The last unnamed Parse and the last Bind, while yb_enable_replay_retry. */
+/* The last unnamed Parse and the last Bind, kept while yb_enable_replay_retry is on. */
 static StringInfo yb_replay_unnamed_parse = NULL;
 static char yb_replay_unnamed_parse_firstchar;
 static StringInfo yb_replay_bind = NULL;
 
 /*
- * Statements that, run again in a fresh transaction, leave the same state and
- * return the same reply, whenever they are run.
+ * Statements that leave the same state and return the same reply when run
+ * again in a new transaction.
  */
 static bool
 yb_is_replay_safe_command_tag(CommandTag command_tag)
@@ -5555,8 +5555,8 @@ yb_replay_log_reset(void)
 }
 
 /*
- * Make the log the current transaction's: a log left by an earlier
- * transaction is dropped.  Returns false outside a transaction.
+ * Drop a log left by an earlier transaction.  Returns false outside a
+ * transaction.
  */
 static bool
 yb_replay_log_for_current_txn(void)
@@ -6757,7 +6757,7 @@ yb_replay_restart_transaction(int attempt, YbTxnError txn_error_kind,
 	 * Each replayed statement's finish_xact_command disarmed the statement
 	 * timeout, and the retried statement would re-arm it from now, giving
 	 * every retry a fresh budget.  Keep the original deadline instead, as the
-	 * surgical retry does.
+	 * in-place restart does.
 	 */
 	if (statement_timeout_active)
 	{

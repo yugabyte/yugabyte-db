@@ -18,11 +18,11 @@
 #include "postgres.h"
 
 #include "utils/pgstat_internal.h"
+#include "utils/timestamp.h"
+#include "storage/procsignal.h"
 
 /* YB includes */
 #include "pg_yb_utils.h"
-#include "utils/timestamp.h"
-#include "storage/procsignal.h"
 
 
 static bool pgstat_should_report_connstat(void);

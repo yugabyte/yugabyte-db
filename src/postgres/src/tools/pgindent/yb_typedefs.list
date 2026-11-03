@@ -206,6 +206,7 @@ YbReCacheInfo
 YbRegisterOuterMatchFn_t
 YbRelationAttrsProcessingState
 YbRemovedAclKind
+YbReplayEntry
 YbResetBatchFn_t
 YbRowBounds
 YbRunWithPrefetcherContext
