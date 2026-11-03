@@ -25,6 +25,7 @@
 #include "yb/util/test_util.h"
 #include "yb/util/thread_holder.h"
 
+#include "yb/vector_index/hnswlib_include.h"
 #include "yb/vector_index/vector_index_if.h"
 
 namespace yb::ann_methods {
@@ -254,6 +255,60 @@ TEST_F(HnswlibTenantTest, ConcurrentFirstInsertsOfTenant) {
       .tenant = tenant,
     }));
     ASSERT_EQ(results.size(), kNumInserts) << "Round " << round;
+  }
+}
+
+// Inserts of a tenant above the level of its entry point replace the entry point. Concurrent ones
+// must not all link from the old entry point, otherwise all but one keep their upper levels
+// unlinked. A vector of another tenant keeps the global level above them.
+TEST_F(HnswlibTenantTest, ConcurrentTenantEntryPromotions) {
+  using HNSW = hnswlib::HierarchicalNSW<float, size_t>;
+  constexpr size_t kNumInserts = 8;
+  constexpr int kEntryLevel = 1;
+  constexpr size_t kNumRounds = 20;
+  const std::string_view tenant = "tenant";
+  const std::string_view other_tenant = "other_tenant";
+  hnswlib::L2Space space(kDimensions);
+  for (size_t round = 0; round != kNumRounds; ++round) {
+    HNSW hnsw(&space, /* max_elements= */ kNumInserts + 2);
+    hnsw.addPointImpl(entries_[0].vector.data(), 0, kEntryLevel + kNumInserts + 1, &other_tenant);
+    hnsw.addPointImpl(entries_[1].vector.data(), 1, kEntryLevel, &tenant);
+    std::atomic<bool> start{false};
+    ThreadHolder threads;
+    for (size_t i = 0; i != kNumInserts; ++i) {
+      threads.AddThreadFunctor([this, &hnsw, &start, &tenant, i] {
+        while (!start.load(std::memory_order_acquire)) {
+        }
+        const auto label = i + 2;
+        hnsw.addPointImpl(
+            entries_[label].vector.data(), label, kEntryLevel + 1 + static_cast<int>(i), &tenant);
+      });
+    }
+    start.store(true, std::memory_order_release);
+    threads.JoinAll();
+
+    // Every point of the tenant must be reachable from its entry point at each of its levels.
+    const auto entry = hnsw.tenant_entries_.find(tenant)->second;
+    for (int level = 0; level <= hnsw.element_levels_[entry]; ++level) {
+      std::unordered_set<hnswlib::tableint> reached = {entry};
+      std::vector<hnswlib::tableint> queue = {entry};
+      while (!queue.empty()) {
+        auto node = queue.back();
+        queue.pop_back();
+        for (auto neighbor : hnsw.getConnectionsWithLock(node, level)) {
+          if (reached.insert(neighbor).second) {
+            queue.push_back(neighbor);
+          }
+        }
+      }
+      // Internal id 0 is the vector of the other tenant.
+      for (hnswlib::tableint node = 1; node != hnsw.cur_element_count; ++node) {
+        if (hnsw.element_levels_[node] >= level) {
+          ASSERT_TRUE(reached.contains(node))
+              << "Round " << round << ", level " << level << ", node " << node;
+        }
+      }
+    }
   }
 }
 

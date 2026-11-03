@@ -433,6 +433,13 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
         return std::nullopt;
     }
 
+    // Returns the level of the entry point of the tenant, or -1 when the tenant has no points.
+    int tenantEntryLevel(std::string_view tenant) const {
+        std::shared_lock<std::shared_mutex> lock(tenant_entries_mutex_);
+        auto it = tenant_entries_.find(tenant);
+        return it == tenant_entries_.end() ? -1 : element_levels_[it->second];
+    }
+
     void updateTenantEntry(std::string_view tenant, tableint node) {
         std::lock_guard<std::shared_mutex> lock(tenant_entries_mutex_);
         auto& entry = tenant_entries_.find(tenant)->second;
@@ -1431,7 +1438,10 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
 
         std::unique_lock <std::mutex> templock(global);
         int maxlevelcopy = maxlevel_;
-        if (curlevel <= maxlevelcopy)
+        // A tenant point above the level of the tenant entry point replaces it, so like a point
+        // above maxlevel_ it keeps global until it is linked. Otherwise concurrent replacements
+        // would all link from the old entry point, and all but one keep their upper levels unlinked.
+        if (curlevel <= maxlevelcopy && (!tenant || curlevel <= tenantEntryLevel(*tenant)))
             templock.unlock();
 
         std::unique_lock <std::mutex> lock_el(link_list_locks_[cur_c]);
