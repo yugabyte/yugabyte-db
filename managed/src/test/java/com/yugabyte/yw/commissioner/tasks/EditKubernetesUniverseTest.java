@@ -2276,7 +2276,8 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
   public void testGetRaftMasterAddressesPrefersBroadcastAddress() throws Exception {
     setupUniverseMultiAZ(/* setMasters */ true, 3);
     PeerInfo broadcastPeer = new PeerInfo();
-    broadcastPeer.setLastKnownPrivateIps(ImmutableList.of(HostAndPort.fromParts("192.0.2.1", 7100)));
+    broadcastPeer.setLastKnownPrivateIps(
+        ImmutableList.of(HostAndPort.fromParts("192.0.2.1", 7100)));
     broadcastPeer.setLastKnownBroadcastIps(
         ImmutableList.of(HostAndPort.fromParts("yb-master-1-0.yb-masters.ns.svc", 7100)));
     PeerInfo privatePeer = new PeerInfo();
