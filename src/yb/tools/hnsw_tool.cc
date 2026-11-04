@@ -578,6 +578,12 @@ class BenchmarkTool {
           "Loading ground truth from file is only allowed when the queries are also loaded from "
           "a file.");
     }
+    if (!StringEndsWith(args_.ground_truth_path, ".ivecs") &&
+        !StringEndsWith(args_.ground_truth_path, ".ibin")) {
+      return STATUS_FORMAT(
+          InvalidArgument, "Expected a ground truth file name that ends in .ivecs or .ibin: $0",
+          args_.ground_truth_path);
+    }
     // The ground truth file contains result sets composed of 0-based vector indexes in the
     // corresponding "base" input file. Convert them to our vertex ids.
     auto ground_truth_by_index = VERIFY_RESULT(

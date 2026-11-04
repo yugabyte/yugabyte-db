@@ -284,15 +284,15 @@ class VectorFileReader : public VectorSource<Vector> {
 // Determine coordinate kind by file name (.fvecs/.bvecs/.ivecs/.fbin).
 Result<CoordinateKind> GetCoordinateKindFromFileName(const std::string& file_path);
 
-// kBin for .fbin files, kBinGroundTruth for .ibin files, kVecs otherwise.
-VectorFileFormat GetVectorFileFormatFromFileName(const std::string& file_path);
+// Determine file format by file name (.fvecs/.bvecs/.ivecs/.fbin/.ibin).
+Result<VectorFileFormat> GetVectorFileFormatFromFileName(const std::string& file_path);
 
 template <IndexableVectorType Vector>
 Result<std::unique_ptr<VectorFileReader<Vector>>> OpenVectorFile(
     const std::string& file_path,
     const std::string& file_description = std::string()) {
   auto reader = std::make_unique<VectorFileReader<Vector>>(
-      file_path, GetVectorFileFormatFromFileName(file_path));
+      file_path, VERIFY_RESULT(GetVectorFileFormatFromFileName(file_path)));
   RETURN_NOT_OK(reader->Open());
   if (!file_description.empty()) {
     LOG(INFO) << "Opened " << file_description << ": " << reader->ToString();

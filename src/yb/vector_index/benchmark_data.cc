@@ -42,14 +42,22 @@ Result<CoordinateKind> GetCoordinateKindFromFileName(const std::string& file_pat
       file_path);
 }
 
-VectorFileFormat GetVectorFileFormatFromFileName(const std::string& file_path) {
+Result<VectorFileFormat> GetVectorFileFormatFromFileName(const std::string& file_path) {
+  if (StringEndsWith(file_path, ".fvecs") || StringEndsWith(file_path, ".bvecs") ||
+      StringEndsWith(file_path, ".ivecs")) {
+    return VectorFileFormat::kVecs;
+  }
   if (StringEndsWith(file_path, ".fbin")) {
     return VectorFileFormat::kBin;
   }
   if (StringEndsWith(file_path, ".ibin")) {
     return VectorFileFormat::kBinGroundTruth;
   }
-  return VectorFileFormat::kVecs;
+  return STATUS_FORMAT(
+      InvalidArgument,
+      "Could not determine vector file format from file name: $0. Expected a file name that "
+      "ends in one of .fvecs/.bvecs/.ivecs/.fbin/.ibin.",
+      file_path);
 }
 
 }  // namespace yb::vector_index
