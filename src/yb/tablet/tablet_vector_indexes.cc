@@ -77,7 +77,7 @@ DEFINE_test_flag(bool, skip_flush_deactivated_vector_indexes, false,
     "Don't flush deactivated vector indexes, so their unflushed rows reach them after a restart "
     "only through bootstrap replay.");
 
-DEFINE_RUNTIME_uint64(vector_index_backfill_single_chunk_size_bytes, 1_GB,
+DEFINE_RUNTIME_uint64(vector_index_backfill_single_chunk_size_bytes, 0,
     "If this flag is non zero, the vector index chunk created during backfill is sized so that "
     "the underlying HNSW index implementation is expected to consume at most this many bytes of "
     "memory for the chunk. When this flag is non zero, the indexed table will be read twice, "
