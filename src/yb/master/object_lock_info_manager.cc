@@ -25,6 +25,7 @@
 #include <google/protobuf/util/message_differencer.h>
 
 #include "yb/common/common_flags.h"
+#include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/pg_catversions.h"
 #include "yb/common/wire_protocol.h"
@@ -39,6 +40,7 @@
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/ts_manager.h"
+#include "yb/master/ysql/ysql_manager_if.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/poller.h"
@@ -110,6 +112,9 @@ DEFINE_test_flag(bool, pause_obj_lock_release_before_persist, false,
 DEFINE_test_flag(bool, pause_obj_lock_acquire_before_relaunch_check, false,
     "If true, pause after an acquire request is acked by all tservers, before checking whether "
     "the fanout must be relaunched for lease changes.");
+
+DEFINE_test_flag(bool, fail_populate_db_catalog_info_on_release, false,
+    "If true, fail reading the catalog versions for an object lock release, which defers it.");
 
 DEFINE_test_flag(bool, fail_master_local_release_once, false,
     "If true, fail the next release in the master leader's local lock manager and reset the flag.");
@@ -259,7 +264,9 @@ class ObjectLockInfoManager::Impl {
   void LockObject(
       AcquireObjectLockRequestPB&& req, CoarseTimePoint deadline, StdStatusCallback&& callback);
 
-  void PopulateDbCatalogVersionCache(ReleaseObjectLockRequestPB& req);
+  // A release that carries no catalog versions would let tservers unlock before invalidating
+  // their caches, so an error here defers the release instead of sending it without them.
+  Status PopulateDbCatalogVersionCache(ReleaseObjectLockRequestPB& req);
   Status UnlockObject(
       ReleaseObjectLockRequestPB&& req, std::optional<StdStatusCallback>&& callback = std::nullopt,
       std::optional<LeaderEpoch> leader_epoch = std::nullopt,
@@ -1235,9 +1242,19 @@ void ObjectLockInfoManager::Impl::LockObject(
       });
 }
 
-void ObjectLockInfoManager::Impl::PopulateDbCatalogVersionCache(ReleaseObjectLockRequestPB& req) {
+Status ObjectLockInfoManager::Impl::PopulateDbCatalogVersionCache(
+    ReleaseObjectLockRequestPB& req) {
   if (!req.populate_db_catalog_info()) {
-    return;
+    return Status::OK();
+  }
+  // Until initdb creates pg_yb_catalog_version there are no catalog caches to invalidate.
+  auto catalog_version_table_id = VERIFY_RESULT(
+      master_.ysql_manager().GetVersionSpecificCatalogTableId(kPgYbCatalogVersionTableId));
+  if (!catalog_manager_.GetTableInfo(catalog_version_table_id)) {
+    return Status::OK();
+  }
+  if (PREDICT_FALSE(FLAGS_TEST_fail_populate_db_catalog_info_on_release)) {
+    return STATUS(IllegalState, "TEST_fail_populate_db_catalog_info_on_release set");
   }
   // Captured before the read below, and handed to Install() at the end:
   // it is what lets that call notice a leader stepdown that reset the cache in between, and
@@ -1250,15 +1267,12 @@ void ObjectLockInfoManager::Impl::PopulateDbCatalogVersionCache(ReleaseObjectLoc
   DbOidToCatalogVersionMap versions;
   uint64_t fingerprint;
   HybridTime read_ht;
-  auto s = catalog_manager_.GetYsqlAllDBCatalogVersions(
-      false /* use_cache */, &versions, &fingerprint, &read_ht);
-  if (!s.ok()) {
-    // In this case, we fallback to delayed cache invalidation on tserver-master heartbeat path.
-    LOG(WARNING) << "Couldn't populate catalog version on exclusive lock release: " << s;
-    return;
-  }
+  RETURN_NOT_OK_PREPEND(
+      catalog_manager_.GetYsqlAllDBCatalogVersions(
+          false /* use_cache */, &versions, &fingerprint, &read_ht),
+      "Couldn't read catalog versions for an exclusive lock release");
   if (versions.empty()) {
-    return;
+    return Status::OK();
   }
   auto* db_catalog_version_data = req.mutable_db_catalog_version_data();
   // The catalog version data may become out of date by the time these requests are
@@ -1304,8 +1318,9 @@ void ObjectLockInfoManager::Impl::PopulateDbCatalogVersionCache(ReleaseObjectLoc
       cache_generation, read_ht, std::move(versions), fingerprint, update_messages, messages);
 
   if (!messages) {
-    // Feature disabled, or the read above failed. Either way there is nothing to send.
-    return;
+    // Feature disabled, or the read above failed. Either way there is nothing to send; the
+    // version bump alone makes tservers do a full catalog refresh.
+    return Status::OK();
   }
   auto* const mutable_messages_data = req.mutable_db_catalog_inval_messages_data();
   for (auto& [db_oid_version, message_list] : *messages) {
@@ -1316,6 +1331,7 @@ void ObjectLockInfoManager::Impl::PopulateDbCatalogVersionCache(ReleaseObjectLoc
       db_inval_messages->set_message_list(std::move(*message_list));
     }
   }
+  return Status::OK();
 }
 
 Status ObjectLockInfoManager::Impl::UnlockObjectSync(
@@ -1414,8 +1430,13 @@ Status ObjectLockInfoManager::Impl::UnlockObject(
     return callback_and_return(Status::OK());
   }
 
-  // Populate DB catalog version cache right before creating UpdateAllTServers
-  PopulateDbCatalogVersionCache(req);
+  // The request stays persisted as in progress, so RetryFailedReleases relaunches it. No tserver
+  // was contacted, so this counts no failures toward a fence.
+  if (auto s = PopulateDbCatalogVersionCache(req); !s.ok()) {
+    YB_LOG_EVERY_N_SECS(WARNING, 10) << "Deferring release request " << req.request_id()
+                                     << " for txn " << txn_id << ": " << s;
+    return callback_and_return(Status::OK());
+  }
 
   // The task calls ReleaseTaskFinished once it completes.
   finished_guard.Cancel();
