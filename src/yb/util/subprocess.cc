@@ -545,7 +545,10 @@ Status Subprocess::DoWait(int* ret, int options) {
 
   CHECK_NE(child_pid, 0);
 
-  int waitpid_ret_val = waitpid(child_pid, ret, options);
+  int waitpid_ret_val;
+  do {
+    waitpid_ret_val = waitpid(child_pid, ret, options);
+  } while (waitpid_ret_val == -1 && errno == EINTR);
   if (waitpid_ret_val == -1) {
     return STATUS(RuntimeError, "Unable to wait on child", Errno(errno));
   }
