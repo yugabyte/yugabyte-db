@@ -851,37 +851,37 @@ TEST_F_EX(PgCloneTest, TestOidsAdvancedAfterClone, PgCloneInitiallyEmptyDBTest) 
 TEST_F(PgCloneTest, CloneVectorIndex) {
   auto timestamp = ASSERT_RESULT(SetUpVectorIndexTable());
 
-  LOG(INFO) << "Create first clone";
+  LOG(INFO) << "Create clone";
   ASSERT_OK(source_conn_->ExecuteFormat(
       "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kTargetNamespaceName1, kSourceNamespaceName,
       timestamp.ToInt64()));
 
-  LOG(INFO) << "Read first clone";
+  LOG(INFO) << "Read clone";
   {
     auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
     auto row = ASSERT_RESULT((target_conn.FetchAllAsString(
         "SELECT id FROM test ORDER BY embedding <-> '[3.9]' LIMIT 3")));
     ASSERT_EQ(row, "4; 2; 6");
   }
-  LOG(INFO) << "Drop first clone";
+  LOG(INFO) << "Drop clone";
   ASSERT_OK(source_conn_->ExecuteFormat("DROP DATABASE $0", kTargetNamespaceName1));
 }
 
 TEST_F(PgCloneTest, CloneVectorIndexLatest) {
   ASSERT_OK(ResultToStatus(SetUpVectorIndexTable()));
 
-  LOG(INFO) << "Create second clone";
+  LOG(INFO) << "Create clone";
   ASSERT_OK(source_conn_->ExecuteFormat(
       "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName2, kSourceNamespaceName));
 
-  LOG(INFO) << "Read second clone";
+  LOG(INFO) << "Read clone";
   {
     auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName2));
     auto row = ASSERT_RESULT((target_conn.FetchAllAsString(
         "SELECT id FROM test ORDER BY embedding <-> '[3.9]' LIMIT 3")));
     ASSERT_EQ(row, "4; 3; 5");
   }
-  LOG(INFO) << "Drop second clone";
+  LOG(INFO) << "Drop clone";
   ASSERT_OK(source_conn_->ExecuteFormat("DROP DATABASE $0", kTargetNamespaceName2));
 }
 
