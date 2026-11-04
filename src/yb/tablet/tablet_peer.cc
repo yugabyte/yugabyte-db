@@ -128,7 +128,11 @@ DEFINE_RUNTIME_uint32(log_retention_diagnostics_min_age_secs, 0,
     "the first retained segment is at least this old in seconds. 0 disables.");
 TAG_FLAG(log_retention_diagnostics_min_age_secs, advanced);
 
-DECLARE_int32(quiescent_tablet_idle_sec);
+// TODO: Restore the default to 600 when enabling quiescent tablets by default.
+DEFINE_RUNTIME_int32(quiescent_tablet_idle_sec, 0,
+    "A tablet enters the quiescent mode after nothing was appended to its log for this many "
+    "seconds. 0 disables entering the mode.");
+
 DECLARE_int32(ysql_transaction_abort_timeout_ms);
 
 DECLARE_bool(cdc_immediate_transaction_cleanup);

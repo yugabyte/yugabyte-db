@@ -69,7 +69,6 @@ DECLARE_int32(log_min_segments_to_retain);
 DECLARE_int32(min_segment_size_bytes_to_rollover_at_flush);
 DECLARE_int32(o_direct_block_alignment_bytes);
 DECLARE_int32(o_direct_block_size_bytes);
-DECLARE_int32(quiescent_tablet_idle_sec);
 
 DECLARE_int64(reuse_unclosed_segment_threshold_bytes);
 
@@ -2498,7 +2497,6 @@ TEST_F(LogTest, YB_RELEASE_ONLY_TEST(TestSegmentAllocationFailureAndRecovery)) {
 
 // Reopening a log with a closed last segment starts no segment until the first append.
 TEST_F(LogTest, LazySegmentAllocation) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_quiescent_tablet_idle_sec) = 1;
   BuildLog();
   auto op_id = MakeOpId(1, 1);
   ASSERT_OK(AppendNoOps(&op_id, 3));
@@ -2522,7 +2520,6 @@ TEST_F(LogTest, LazySegmentAllocation) {
 
 // Replaces all segments with a marker, reopens the log and continues it after the marker.
 TEST_F(LogTest, QuiescentMarker) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_quiescent_tablet_idle_sec) = 1;
   options_.segment_size_bytes = std::numeric_limits<size_t>::max();
   BuildLog();
   auto op_id = MakeOpId(1, 1);
@@ -2593,49 +2590,6 @@ TEST_F(LogTest, QuiescentMarker) {
   ASSERT_EQ(log_->num_segments(), 2);
   ASSERT_EQ(log_->quiescent_marker_op_id(), last_op_id);
   ASSERT_EQ(ASSERT_RESULT(log_->MinAnchorableIndex()), last_op_id.index);
-  ASSERT_OK(log_->Close());
-}
-
-// With quiescent_tablet_idle_sec at 0, reopening a log with a marker starts a segment next to it.
-// If nothing is appended to it, the next open deletes it as covered by the marker.
-TEST_F(LogTest, QuiescentMarkerWithEagerSegment) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_quiescent_tablet_idle_sec) = 1;
-  options_.segment_size_bytes = std::numeric_limits<size_t>::max();
-  BuildLog();
-  auto op_id = MakeOpId(1, 1);
-  ASSERT_OK(AppendNoOps(&op_id, 5));
-  const OpId last_op_id(1, 5);
-  QuiescentMarkerPB marker;
-  ASSERT_OK(log_->CloseActiveSegment(last_op_id, &marker));
-  ASSERT_OK(log_->WriteQuiescentMarker(marker));
-  ASSERT_EQ(ASSERT_RESULT(log_->DeleteSegmentsCoveredByQuiescentMarker()), 1);
-  ASSERT_OK(log_->Close());
-
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_quiescent_tablet_idle_sec) = 0;
-  for (int i = 0; i != 2; ++i) {
-    BuildLog(/* byte_limit = */ -1, CreateNewSegment::kFalse);
-    ASSERT_OK(log_->EnsureSegmentInitialized());
-    ASSERT_NE(log_->TEST_ActiveSegment(), nullptr);
-    CheckRightNumberOfSegmentFiles(1);
-    ASSERT_EQ(log_->quiescent_marker_op_id(), last_op_id);
-    ASSERT_EQ(log_->GetLatestEntryOpId(), last_op_id);
-    ASSERT_EQ(ASSERT_RESULT(log_->LookupOpId(last_op_id.index)), last_op_id);
-    ASSERT_EQ(ASSERT_RESULT(log_->MinAnchorableIndex()), last_op_id.index);
-    ASSERT_OK(log_->Close());
-  }
-
-  BuildLog(/* byte_limit = */ -1, CreateNewSegment::kFalse);
-  ASSERT_OK(log_->EnsureSegmentInitialized());
-  ASSERT_OK(AppendNoOps(&op_id, 2));
-  ASSERT_OK(log_->Close());
-
-  BuildLog(/* byte_limit = */ -1, CreateNewSegment::kFalse);
-  ASSERT_OK(log_->EnsureSegmentInitialized());
-  // The segment with the appended ops is kept, and a new one is started after it.
-  ASSERT_EQ(log_->num_segments(), 2);
-  ASSERT_EQ(ASSERT_RESULT(log_->LookupOpId(6)), OpId(1, 6));
-  ASSERT_EQ(ASSERT_RESULT(log_->LookupOpId(7)), OpId(1, 7));
-  ASSERT_EQ(log_->quiescent_marker_op_id(), last_op_id);
   ASSERT_OK(log_->Close());
 }
 

@@ -330,7 +330,7 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // For a log created with CreateNewSegment::kFalse, this is used to finish log initialization.
   // Reuses the left in-progress segment that doesn't have footer. Otherwise the next segment is
-  // allocated by the first append while quiescent_tablet_idle_sec > 0, and here when it is 0.
+  // allocated by the first append.
   Status EnsureSegmentInitialized() EXCLUDES(state_lock_);
 
   Status EnsureSegmentInitializedUnlocked(CreateNewSegment create_new_segment)
