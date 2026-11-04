@@ -200,8 +200,8 @@ static Oid	yb_system_db_oid_cache = InvalidOid;
  * regular db, or turn it off after writes have skipped the intents db, so that
  * later reads are no longer pointed at in_txn_limit.  The check hooks of the
  * GUCs refuse SET once the transaction has taken a snapshot, which it always
- * has by that point, but RESET, RESET ALL and DISCARD ALL assign the reset
- * value without calling a check hook, and a configuration file reload is
+ * has by that point, but RESET, SET ... TO DEFAULT, RESET ALL and DISCARD ALL
+ * assign the reset value without calling a check hook, and a configuration file reload is
  * accepted at any time.  The copy is not taken when the transaction starts, so
  * that a SET that the check hooks accept before the first use, for example
  * earlier in an extended-protocol pipeline that shares the transaction, still
@@ -10820,9 +10820,12 @@ YbGetSkipIntentsOptimizationInfoWrite(Relation rel)
  * Rejects a function SET clause for the skip intents GUCs. The clause is
  * applied with PGC_S_SESSION each time the function is called, inside the
  * calling statement, where their check hooks refuse any change, so the function
- * could never be called. The validation pass of CREATE/ALTER FUNCTION ... SET
- * is PGC_S_TEST, which the hooks accept because ALTER ROLE/DATABASE ... SET
- * shares it, so the clause has to be refused here instead.
+ * could never be called. CREATE/ALTER FUNCTION ... SET validates each value
+ * with PGC_S_TEST (GUCArrayAdd), which the hooks accept because ALTER
+ * ROLE/DATABASE ... SET shares it. CREATE FUNCTION with check_function_bodies
+ * on also applies the clause with PGC_S_SESSION while validating the body, but
+ * not with it off, and ALTER FUNCTION never does, so the clause has to be
+ * refused here instead.
  */
 void
 YbValidateFunctionSetItem(const VariableSetStmt *sstmt)

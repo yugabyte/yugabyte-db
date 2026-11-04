@@ -18423,9 +18423,10 @@ assign_yb_dist_tracecontext(const char *newval, void *extra)
  * A transaction fixes the values of these GUCs the first time it may use the
  * optimization (see YbSkipIntentsTxnState), and a later change takes effect
  * only from the next transaction.  Every statement that may use the
- * optimization takes a snapshot first, so SET (PGC_S_SESSION) is refused once
- * the transaction has taken one, so that it does not appear to take effect
- * when it does not.  A SET before then is accepted, inside a transaction block
+ * optimization takes a snapshot first, so SET to a value (PGC_S_SESSION) is
+ * refused once the transaction has taken one, so that it does not appear to
+ * take effect when it does not.  RESET and SET ... TO DEFAULT assign the reset
+ * value without calling this hook, so they are accepted at any time.  A SET before then is accepted, inside a transaction block
  * too, and takes effect for the transaction.  Connection Manager relies on
  * this: it replays a client's SETs as one multi-statement query, which runs in
  * an implicit transaction block.  A function's SET clause is applied with
@@ -18438,8 +18439,8 @@ assign_yb_dist_tracecontext(const char *newval, void *extra)
  * idle in a transaction block when it arrived would keep the old value, and
  * per-role, per-database and connection option values are applied at backend
  * startup after a snapshot has been taken.  The copy the transaction holds is
- * what keeps a change from any source, RESET included, from reaching a
- * transaction that may already have used the optimization.
+ * what keeps a change from any source, RESET and SET ... TO DEFAULT included,
+ * from reaching a transaction that may already have used the optimization.
  */
 static bool
 check_skip_intents_internal(const char *guc_name, bool *newval, GucSource source)

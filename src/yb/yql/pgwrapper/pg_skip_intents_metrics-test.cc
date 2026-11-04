@@ -1582,8 +1582,6 @@ TEST_F(SkipIntentsMetricTest, TestGucCanBeChangedByNormalUser) {
   ASSERT_OK(conn.Execute("CREATE USER normal_user"));
   ASSERT_OK(conn.Execute("SET ROLE normal_user"));
 
-  // yb_enable_new_relation_fastpath_write must be on to enable
-  // yb_enable_new_relation_fastpath_write_in_txn_blocks
   ASSERT_OK(conn.Execute("SET yb_enable_new_relation_fastpath_write = on"));
   ASSERT_OK(conn.Execute("SET yb_enable_new_relation_fastpath_write_in_txn_blocks = on"));
 
@@ -1659,6 +1657,11 @@ TEST_F(SkipIntentsMetricTest, TestGucSetThroughRoleDatabaseAndConnectionOptions)
   auto status = conn.ExecuteFormat("SET $0 = on", kParentGuc);
   ASSERT_NOK(status);
   ASSERT_STR_CONTAINS(status.ToString(), "cannot be changed after any query has been run");
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+  // SET ... TO DEFAULT, like RESET, assigns the reset value without the check hook.
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT 1"));
+  ASSERT_OK(conn.ExecuteFormat("SET $0 TO DEFAULT", kParentGuc));
   ASSERT_OK(conn.Execute("ROLLBACK"));
 }
 
@@ -1826,8 +1829,9 @@ TEST_F(SkipIntentsMetricTest, TestConfigReloadInsideTxnBlock) {
 }
 
 // A function's SET clause is applied inside the calling statement, where the GUCs cannot change,
-// so CREATE/ALTER FUNCTION must refuse it rather than leave a function that cannot be called. Its
-// validation pass uses the same source as ALTER ROLE ... SET, which the check hooks accept.
+// so CREATE/ALTER FUNCTION must refuse it rather than leave a function that cannot be called. The
+// value is validated with the same source as ALTER ROLE ... SET, which the check hooks accept, and
+// only CREATE FUNCTION with check_function_bodies on also applies the clause while validating.
 TEST_F(SkipIntentsMetricTest, TestGucRejectedInFunctionSetClause) {
   constexpr auto kError = "cannot be set in a function's SET clause";
   auto conn = ASSERT_RESULT(Connect());
