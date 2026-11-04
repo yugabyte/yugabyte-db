@@ -222,6 +222,17 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
       Universe universe,
       UniverseDefinitionTaskParams before,
       UniverseDefinitionTaskParams target) {
+    String reason = findCgroupRemoval(universe, before, target);
+    if (reason != null) {
+      throw new PlatformServiceException(BAD_REQUEST, "Cannot roll back resize node: " + reason);
+    }
+  }
+
+  /** Why the rollback would have to remove a cgroup limit, or null if it would not. */
+  private String findCgroupRemoval(
+      Universe universe,
+      UniverseDefinitionTaskParams before,
+      UniverseDefinitionTaskParams target) {
     // "before" is the whole pre-resize universe, but "target" is the resize's own params, and a
     // read-replica-only resize carries no primary there. Like the forward task's cgroup lookup,
     // fall back to the primary it did not change.
@@ -244,16 +255,13 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
           UniverseDefinitionTaskBase.getCGroupSize(
               confGetter, universe, targetPrimary, targetCluster, node);
       if (beforeSize <= 0 && targetSize > 0) {
-        throw new PlatformServiceException(
-            BAD_REQUEST,
-            String.format(
-                "Cannot roll back resize node: the failed resize targeted a %d MB cgroup limit for"
-                    + " node %s, which had none before. The limit may already be applied, and"
-                    + " removing a cgroup limit is not supported",
-                targetSize,
-                node.nodeName));
+        return String.format(
+            "the failed resize targeted a %d MB cgroup limit for node %s, which had none before."
+                + " The limit may already be applied, and removing a cgroup limit is not supported",
+            targetSize, node.nodeName);
       }
     }
+    return null;
   }
 
   private static Map<String, String> cloneMap(Map<String, String> src) {
@@ -602,13 +610,40 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
   }
 
   /**
-   * The failed task's own params decide the listing hint, which loads no universe. Unknown cloud
-   * types (a request that left them out) are allowed here; submit checks the universe.
+   * Listing hint. The cloud check uses the failed task's own params; unknown cloud types (a request
+   * that left them out) are allowed here, and submit checks the universe. The cgroup refusal never
+   * clears on retry, so the hint applies it too (see {@link #wouldRemoveCgroup}).
    */
   @Override
   public boolean canRollbackFromParams(TaskInfo failedTask) {
     ResizeNodeParams params = Json.fromJson(failedTask.getTaskParams(), ResizeNodeParams.class);
-    return params.clusters == null || findCloudWithoutSnapshot(params.clusters) == null;
+    if (params.clusters != null && findCloudWithoutSnapshot(params.clusters) != null) {
+      return false;
+    }
+    return !wouldRemoveCgroup(failedTask, params);
+  }
+
+  /**
+   * Whether submit would refuse this rollback for removing a cgroup limit. The checkpoint belongs
+   * to the task holding the universe's placement lock, so it is read only while that is this task;
+   * otherwise submit decides.
+   */
+  private boolean wouldRemoveCgroup(TaskInfo failedTask, ResizeNodeParams params) {
+    if (failedTask.getUuid() == null || params.getUniverseUUID() == null) {
+      return false;
+    }
+    Universe universe = Universe.maybeGet(params.getUniverseUUID()).orElse(null);
+    if (universe == null
+        || !failedTask
+            .getUuid()
+            .equals(universe.getUniverseDetails().placementModificationTaskUuid)) {
+      return false;
+    }
+    StateTransitionDetails details = universe.getStateTransitionDetails();
+    return details != null
+        && findCgroupRemoval(
+                universe, details.getBeforeUniverseDetails(), details.getTargetUniverseDetails())
+            != null;
   }
 
   private static Common.CloudType findCloudWithoutSnapshot(Collection<Cluster> clusters) {
