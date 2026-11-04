@@ -141,7 +141,7 @@ public class CustomerConfigService {
             .collect(Collectors.groupingBy(this::getStorageConfigUuid, Collectors.toList()));
 
     Map<UUID, List<DrConfig>> drConfigsByConfigUuid =
-        DrConfig.getAll().stream()
+        DrConfig.getByStorageConfigUuids(storageConfigUuids).stream()
             .filter(DrConfig::hasActiveXClusterConfig)
             .collect(Collectors.groupingBy(DrConfig::getStorageConfigUuid, Collectors.toList()));
 
