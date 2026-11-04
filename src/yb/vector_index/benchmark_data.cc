@@ -25,21 +25,31 @@ std::unique_ptr<UniformRandomFloatVectorGenerator> CreateUniformRandomVectorSour
       num_vectors, dimensions, UniformRandomFloatDistribution(min_value, max_value));
 }
 
-Result<CoordinateKind> GetCoordinateKindFromVecsFileName(const std::string& vecs_file_path) {
-  if (StringEndsWith(vecs_file_path, ".fvecs")) {
+Result<CoordinateKind> GetCoordinateKindFromFileName(const std::string& file_path) {
+  if (StringEndsWith(file_path, ".fvecs") || StringEndsWith(file_path, ".fbin")) {
     return CoordinateKind::kFloat32;
   }
-  if (StringEndsWith(vecs_file_path, ".bvecs")) {
+  if (StringEndsWith(file_path, ".bvecs")) {
     return CoordinateKind::kUInt8;
   }
-  if (StringEndsWith(vecs_file_path, ".ivecs")) {
+  if (StringEndsWith(file_path, ".ivecs")) {
     return CoordinateKind::kInt32;
   }
-  return STATUS(
+  return STATUS_FORMAT(
       InvalidArgument,
       "Could not determine vector coordinate type from file name: $0. Expected a file name that "
-      "ends in one of .fvecs/.bvecs/.ivecs.",
-      vecs_file_path);
+      "ends in one of .fvecs/.bvecs/.ivecs/.fbin.",
+      file_path);
+}
+
+VectorFileFormat GetVectorFileFormatFromFileName(const std::string& file_path) {
+  if (StringEndsWith(file_path, ".fbin")) {
+    return VectorFileFormat::kBin;
+  }
+  if (StringEndsWith(file_path, ".ibin")) {
+    return VectorFileFormat::kBinGroundTruth;
+  }
+  return VectorFileFormat::kVecs;
 }
 
 }  // namespace yb::vector_index
