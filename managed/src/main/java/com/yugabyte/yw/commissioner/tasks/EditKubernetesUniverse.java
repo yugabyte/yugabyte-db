@@ -10,9 +10,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Sets;
-import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.CanRollback;
@@ -27,7 +25,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.FullMoveParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesPostExpansionCheckVolume;
-import com.yugabyte.yw.commissioner.tasks.subtasks.SetFlagInMemory;
 import com.yugabyte.yw.common.KubernetesFullMoveReplicas;
 import com.yugabyte.yw.common.KubernetesFullMoveReplicas.KubernetesFullMoveReplica;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
@@ -70,7 +67,6 @@ import java.util.Map.Entry;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
-import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
@@ -82,7 +78,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.yb.client.YBClientApi;
 import play.libs.Json;
 
 @Slf4j
@@ -547,8 +542,30 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       createMarkRollbackUnsafeTaskOnce();
       createMoveMasterTasks(
           new ArrayList<>(mastersToAdd), new ArrayList<>(mastersToRemove), masterAddresses);
-      if (supportsNonRestartGflagsUpgrade && !restartAllPods && !instanceTypeChanged) {
-        createMasterAddrsSecretUpdateTasks(universe, newPlacement, curPlacement, masterAddresses);
+      // Rewrite, without restarting pods, the gflags Secrets of the AZs whose pods this edit
+      // leaves as they are, so a pod restarted while the edit runs boots with the new masters.
+      // AZs that scale or move are skipped: a render of their target counts would add or delete
+      // pods before the data has moved. Their Secrets are rewritten when their pods are handled.
+      Set<UUID> changedAZs =
+          newPlacement.placementInfo.getAllAZUUIDs().stream()
+              .filter(az -> !isAZUnchanged(az, newPlacement, curPlacement))
+              .collect(Collectors.toSet());
+      if (supportsNonRestartGflagsUpgrade
+          && !restartAllPods
+          && !instanceTypeChanged
+          && !changedAZs.containsAll(newPlacement.placementInfo.getAllAZUUIDs())) {
+        createMasterAddressesUpdateTask(
+            universe.getUniverseUUID(),
+            newCluster,
+            newPlacement,
+            masterAddresses,
+            Collections.emptySet() /* mastersToAdd */,
+            Collections.emptySet() /* mastersToRemove */,
+            Collections.emptySet() /* tserversToAdd */,
+            Collections.emptySet() /* tserversToRemove */,
+            changedAZs /* skipMasterAZs */,
+            changedAZs /* skipTserverAZs */,
+            false /* includeUniverseNodes */);
       }
     }
 
@@ -909,7 +926,12 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     // that an earlier attempt already removed.
     if (!mastersToRemove.isEmpty()) {
       createMasterAddrsInMemoryUpdateTasks(
-          universe, mastersToAdd, () -> getRaftMasterAddresses(taskParams().getUniverseUUID()));
+          universe,
+          mastersToAdd,
+          () -> {
+            Universe u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+            return u.getHostPortsString(getRemoteMasterNodes(u), ServerType.MASTER, PortType.RPC);
+          });
     }
     // Perform removes.
     for (int idx = 0; idx < mastersToRemove.size(); idx++) {
@@ -956,16 +978,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         universe.getTServers().stream()
             .filter(n -> n.state != NodeState.ToBeAdded && !tserversToSkip.contains(n.nodeName))
             .collect(Collectors.toList());
-    BiConsumer<NodeDetails, SetFlagInMemory.Params> customizer =
-        (node, params) -> {
-          params.force = true;
-          params.updateMasterAddrs = true;
-          params.masterAddrsOverride = masterAddresses;
-        };
-    createSetFlagInMemoryTasks(masters.values(), ServerType.MASTER, customizer)
+    createUpdateMasterAddrsInMemoryTasks(masters.values(), ServerType.MASTER, masterAddresses)
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     if (!tservers.isEmpty()) {
-      createSetFlagInMemoryTasks(tservers, ServerType.TSERVER, customizer)
+      createUpdateMasterAddrsInMemoryTasks(tservers, ServerType.TSERVER, masterAddresses)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
   }
@@ -1006,63 +1022,6 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
 
   private static Set<String> getNodeNames(Collection<NodeDetails> nodes) {
     return nodes.stream().map(n -> n.nodeName).collect(Collectors.toSet());
-  }
-
-  // Comma-separated host:port of every peer in the current master Raft config.
-  @VisibleForTesting
-  String getRaftMasterAddresses(UUID universeUUID) {
-    Universe universe = Universe.getOrBadRequest(universeUUID);
-    try (YBClientApi client = ybService.getUniverseClient(universe)) {
-      return client.listMasterRaftPeers().getPeersList().stream()
-          .map(
-              peer ->
-                  CollectionUtils.isNotEmpty(peer.getLastKnownBroadcastIps())
-                      ? peer.getLastKnownBroadcastIps().get(0)
-                      : peer.getLastKnownPrivateIps().get(0))
-          .map(HostAndPort::toString)
-          .collect(Collectors.joining(","));
-    } catch (Exception e) {
-      throw new RuntimeException(
-          "Failed to list the master Raft peers of universe " + universeUUID, e);
-    }
-  }
-
-  /**
-   * Rewrites the gflags Secrets with the new masters, without restarting pods, in every AZ whose
-   * pods this edit leaves as they are, so a pod restarted while the edit runs boots with the new
-   * masters. AZs that scale or move are skipped: a non-restart render of their target counts would
-   * add or delete pods before the data has moved. Their Secrets are rewritten when their pods are
-   * handled.
-   */
-  private void createMasterAddrsSecretUpdateTasks(
-      Universe universe,
-      KubernetesPlacement newPlacement,
-      KubernetesPlacement curPlacement,
-      String masterAddresses) {
-    Set<UUID> changedAZs =
-        newPlacement.placementInfo.getAllAZUUIDs().stream()
-            .filter(az -> !isAZUnchanged(az, newPlacement, curPlacement))
-            .collect(Collectors.toSet());
-    if (changedAZs.containsAll(newPlacement.placementInfo.getAllAZUUIDs())) {
-      return;
-    }
-    Cluster curPrimaryCluster = universe.getUniverseDetails().getPrimaryCluster();
-    upgradePodsNonRestart(
-        universe.getName(),
-        newPlacement,
-        masterAddresses,
-        ServerType.EITHER,
-        curPrimaryCluster.userIntent.ybSoftwareVersion,
-        curPrimaryCluster.userIntent.universeOverrides,
-        MapUtils.emptyIfNull(curPrimaryCluster.userIntent.azOverrides),
-        taskParams().useNewHelmNamingStyle,
-        false /* isReadOnlyCluster */,
-        universe.isYbcEnabled(),
-        ybcManager.getStableYbcVersion(),
-        null /* ysqlMajorVersionUpgradeState */,
-        null /* rootCAUUID */,
-        changedAZs /* skipMasterAZs */,
-        changedAZs /* skipTserverAZs */);
   }
 
   private static boolean isAZUnchanged(

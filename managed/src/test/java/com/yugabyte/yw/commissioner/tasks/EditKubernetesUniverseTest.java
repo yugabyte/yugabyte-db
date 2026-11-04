@@ -2271,27 +2271,4 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     assertEquals(expected.size(), events.size());
     assertEquals(expected, new java.util.HashSet<>(events));
   }
-
-  @Test
-  public void testGetRaftMasterAddressesPrefersBroadcastAddress() throws Exception {
-    setupUniverseMultiAZ(/* setMasters */ true, 3);
-    PeerInfo broadcastPeer = new PeerInfo();
-    broadcastPeer.setLastKnownPrivateIps(
-        ImmutableList.of(HostAndPort.fromParts("192.0.2.1", 7100)));
-    broadcastPeer.setLastKnownBroadcastIps(
-        ImmutableList.of(HostAndPort.fromParts("yb-master-1-0.yb-masters.ns.svc", 7100)));
-    PeerInfo privatePeer = new PeerInfo();
-    privatePeer.setLastKnownPrivateIps(
-        ImmutableList.of(HostAndPort.fromParts("yb-master-0.yb-masters.ns.svc", 7100)));
-    ListMasterRaftPeersResponse response = mock(ListMasterRaftPeersResponse.class);
-    when(response.getPeersList()).thenReturn(ImmutableList.of(broadcastPeer, privatePeer));
-    when(mockClient.listMasterRaftPeers()).thenReturn(response);
-
-    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
-    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
-    EditKubernetesUniverse task = createTaskWithParams(taskParams);
-    assertEquals(
-        "yb-master-1-0.yb-masters.ns.svc:7100,yb-master-0.yb-masters.ns.svc:7100",
-        task.getRaftMasterAddresses(defaultUniverse.getUniverseUUID()));
-  }
 }

@@ -5983,13 +5983,19 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   public SubTaskGroup createUpdateMasterAddrsInMemoryTasks(
       Collection<NodeDetails> nodes, ServerType serverType) {
+    return createUpdateMasterAddrsInMemoryTasks(
+        nodes, serverType, getOrCreateExecutionContext().getMasterAddrsSupplier());
+  }
+
+  public SubTaskGroup createUpdateMasterAddrsInMemoryTasks(
+      Collection<NodeDetails> nodes, ServerType serverType, Supplier<String> masterAddresses) {
     return createSetFlagInMemoryTasks(
         nodes,
         serverType,
         (node, params) -> {
           params.force = true;
           params.updateMasterAddrs = true;
-          params.masterAddrsOverride = getOrCreateExecutionContext().getMasterAddrsSupplier();
+          params.masterAddrsOverride = masterAddresses;
         });
   }
 
