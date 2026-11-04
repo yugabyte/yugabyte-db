@@ -327,7 +327,7 @@ class TabletInfo : public MetadataCowWrapper<PersistentTabletInfo> {
   // update the tablet locations version.
   void SetReplicaLocations(std::shared_ptr<TabletReplicaMap> replica_locations);
   // Removes this tablet's replicas from their tservers' replica load; later replica changes do not
-  // count. Called when the tablet is deleted.
+  // count. Called when the tablet is deleted or replaced.
   void StopCountingReplicaLoad() EXCLUDES(lock_);
   std::shared_ptr<const TabletReplicaMap> GetReplicaLocations() const;
   Result<TSDescriptorPtr> GetLeader() const;
@@ -430,7 +430,7 @@ class TabletInfo : public MetadataCowWrapper<PersistentTabletInfo> {
       std::make_shared<TabletReplicaMap>();
 
   // Whether replica_locations_ is counted in TSDescriptor::replica_load_.
-  bool counts_replica_load_ GUARDED_BY(lock_);
+  bool counts_replica_load_ GUARDED_BY(lock_) = true;
 
   // Reported schema version (in-memory only).
   std::unordered_map<TableId, uint32_t> reported_schema_version_ GUARDED_BY(lock_);

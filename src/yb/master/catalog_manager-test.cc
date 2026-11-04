@@ -659,6 +659,49 @@ TEST(TestCatalogManager, PerTableLoadStateAddReplica) {
   ASSERT_EQ(1, ASSERT_RESULT(global_state.GetGlobalReplicaLoad("0000")));
 }
 
+TEST(TestCatalogManager, TabletInfoCountsReplicaLoad) {
+  TSDescriptorVector ts_descs = {SetupTS("0000", "a"), SetupTS("1111", "a"), SetupTS("2222", "a")};
+  auto replicas_on = [&ts_descs](std::initializer_list<size_t> indexes) {
+    auto replicas = std::make_shared<TabletReplicaMap>();
+    for (auto i : indexes) {
+      TabletReplica replica;
+      NewReplica(
+          ts_descs[i], tablet::RaftGroupStatePB::RUNNING, PeerRole::FOLLOWER,
+          consensus::PeerMemberType::VOTER, &replica);
+      InsertOrDie(replicas.get(), ts_descs[i]->permanent_uuid(), replica);
+    }
+    return replicas;
+  };
+  auto loads = [&ts_descs]() {
+    std::vector<int64_t> result;
+    for (const auto& ts : ts_descs) {
+      result.push_back(ts->replica_load());
+    }
+    return result;
+  };
+
+  scoped_refptr<TableInfo> table(new TableInfo("table", /* colocated */ false));
+  auto tablet = std::make_shared<TabletInfo>(table, "tablet-1");
+  tablet->SetReplicaLocations(replicas_on({0, 1}));
+  ASSERT_EQ(loads(), (std::vector<int64_t>{1, 1, 0}));
+  tablet->SetReplicaLocations(replicas_on({0, 2}));
+  ASSERT_EQ(loads(), (std::vector<int64_t>{1, 0, 1}));
+
+  auto other = std::make_shared<TabletInfo>(table, "tablet-2");
+  other->SetReplicaLocations(replicas_on({1, 2}));
+  ASSERT_EQ(loads(), (std::vector<int64_t>{1, 1, 2}));
+
+  // Stopping is idempotent and later map changes stay out of the count.
+  tablet->StopCountingReplicaLoad();
+  tablet->StopCountingReplicaLoad();
+  ASSERT_EQ(loads(), (std::vector<int64_t>{0, 1, 1}));
+  tablet->SetReplicaLocations(replicas_on({0, 1}));
+  ASSERT_EQ(loads(), (std::vector<int64_t>{0, 1, 1}));
+
+  other.reset();
+  ASSERT_EQ(loads(), (std::vector<int64_t>{0, 0, 0}));
+}
+
 using consensus::PeerMemberType;
 
 namespace {
