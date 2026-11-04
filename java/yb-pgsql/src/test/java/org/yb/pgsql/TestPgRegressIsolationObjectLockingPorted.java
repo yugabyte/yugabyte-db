@@ -25,7 +25,7 @@ public class TestPgRegressIsolationObjectLockingPorted extends BasePgRegressTest
   // The per-method timeout is capped at 1800s for all build types, so specs are split across
   // schedules to fit in TSAN (alter-table-1 alone takes ~1000s there).
   private static final String SCHEDULE_1 = "yb_pg_isolation_object_locking_schedule";
-  private static final String SCHEDULE_2 = "yb_pg_isolation_object_locking_schedule_2";
+  private static final String SCHEDULE_2 = "yb_pg_isolation_object_locking2_schedule";
 
   @Override
   protected Map<String, String> getTServerFlags() {

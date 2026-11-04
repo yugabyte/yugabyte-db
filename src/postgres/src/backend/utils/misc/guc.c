@@ -917,6 +917,7 @@ static bool yb_conn_mgr_modifying_defaults = false;
 bool		yb_test_skip_binding_scan_keys;
 bool		yb_enable_advanced_index_cond_fold;
 static bool yb_bypass_cond_recheck;
+static bool yb_deprecated_enable_object_locking_infra;
 static bool yb_pushdown_is_not_null;
 static bool yb_pushdown_strict_inequality;
 static bool yb_conn_mgr_selective_deallocate;
@@ -2804,11 +2805,22 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"enable_object_locking_infra", PGC_SIGHUP, LOCK_MANAGEMENT,
+			gettext_noop("DEPRECATED: no-op."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_deprecated_enable_object_locking_infra,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_object_locking_infra", PGC_SIGHUP, LOCK_MANAGEMENT,
 			gettext_noop("Allow enabling object-level locking for table locks."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
-		&enable_object_locking_infra,
+		&yb_enable_object_locking_infra,
 		true,
 		NULL, NULL, NULL
 	},
@@ -4629,6 +4641,18 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"yb_test_notifs_poller_init_delay_ms", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("Time in milliseconds for which the notifications "
+						 "poller waits before it initializes, for testing."),
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_UNIT_MS
+		},
+		&yb_test_notifs_poller_init_delay_ms,
+		0, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_notifications_poll_sleep_duration_nonempty_ms", PGC_SIGHUP, DEVELOPER_OPTIONS,
 			gettext_noop("Time in milliseconds for which the notifications poller"
 						 " process waits before polling again in case the last"
@@ -6411,6 +6435,18 @@ static struct config_int ConfigureNamesInt[] =
 			NULL
 		},
 		&yb_test_delay_set_local_tserver_inval_message_ms,
+		0, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_test_delay_relation_grant_update_ms", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("When > 0, GRANT and REVOKE on a relation sleep this many ms "
+						 "between reading and updating its pg_class row."),
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_UNIT_MS
+		},
+		&yb_test_delay_relation_grant_update_ms,
 		0, 0, INT_MAX,
 		NULL, NULL, NULL
 	},

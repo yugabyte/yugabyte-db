@@ -47,6 +47,8 @@ Result<VectorLSMFiles> ListVectorLSMFiles(Env* env, const std::string& dir);
 Result<std::unique_ptr<WritableFile>> VectorLSMMetadataOpenFile(
     Env* env, const std::string& dir, size_t file_index);
 
-Status VectorLSMMetadataAppendUpdate(WritableFile& file, const VectorLSMUpdatePB& update);
+// The files update references must be in the directory of file, which is synced before the append.
+Status VectorLSMMetadataAppendUpdate(
+    Env& env, WritableFile& file, const VectorLSMUpdatePB& update);
 
 }  // namespace yb::vector_index

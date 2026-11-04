@@ -153,13 +153,17 @@ public class UniverseControllerRequestBinder {
       Http.Request request, Class<T> paramType, Universe universe, RuntimeConfGetter confGetter) {
     T taskParams = bindFormDataToTaskParamsWithoutProviderConversion(request, paramType);
     if (!RedactingService.isGFlagsSensitiveDataApiRedactionEnabled()) {
-      Util.convertOldSchemaToProviderSpecifications(confGetter, taskParams);
+      if (Util.isMulticloud(universe)) {
+        Util.convertOldSchemaToProviderSpecifications(confGetter, taskParams);
+      }
       return taskParams;
     }
     T merged = mergeBoundTaskParamsWithUniverse(taskParams, universe, paramType);
     // Convert after merge so request flat-field updates win and Spec arrays are not replaced
     // with a partial Spec built from the request alone.
-    Util.convertOldSchemaToProviderSpecifications(confGetter, merged);
+    if (Util.isMulticloud(universe)) {
+      Util.convertOldSchemaToProviderSpecifications(confGetter, merged);
+    }
     return merged;
   }
 
@@ -277,6 +281,8 @@ public class UniverseControllerRequestBinder {
       Http.Request request, Class<T> paramType, UUID universeUUID, RuntimeConfGetter confGetter) {
     try {
       Universe universe = Universe.getOrBadRequest(universeUUID);
+      boolean multicloud = Util.isMulticloud(universe);
+
       ObjectNode formData = (ObjectNode) request.body().asJson();
       ArrayNode clustersJson = (ArrayNode) formData.get("clusters");
       List<UniverseDefinitionTaskParams.Cluster> clusters = new ArrayList<>();
@@ -328,7 +334,9 @@ public class UniverseControllerRequestBinder {
               currentCluster = universe.getUniverseDetails().getReadOnlyClusters().get(0);
             }
           }
-          Util.convertSingleProviderSpecToOldSchema(confGetter, currentCluster.userIntent);
+          if (multicloud) {
+            Util.convertSingleProviderSpecToOldSchema(confGetter, currentCluster.userIntent);
+          }
           JsonNode currentClusterJson = Json.mapper().valueToTree(currentCluster);
           CommonUtils.deepMerge(currentClusterJson, clusterJson);
           UniverseDefinitionTaskParams.Cluster cluster =
@@ -372,7 +380,9 @@ public class UniverseControllerRequestBinder {
       }
 
       // V1 clients send the legacy flat schema; persist/operate on ProviderSpecification.
-      Util.convertOldSchemaToProviderSpecifications(confGetter, taskParams);
+      if (multicloud) {
+        Util.convertOldSchemaToProviderSpecifications(confGetter, taskParams);
+      }
 
       return taskParams;
     } catch (JsonProcessingException exception) {
