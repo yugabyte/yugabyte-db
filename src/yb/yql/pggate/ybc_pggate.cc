@@ -723,16 +723,20 @@ void YBCTCMallocReleaseFreeMemory(int64_t bytes) {
   TCMallocReleaseMemoryToSystemIgnoringRecentDemand(bytes);
 }
 
-void YBCTCMallocReleaseAllFreeMemory(bool drain_cpu_caches) {
-  TCMallocReleaseAllFreeMemory(drain_cpu_caches);
+void YBCTCMallocReleaseMemoryToSystem(int64_t bytes) {
+  TCMallocReleaseMemoryToSystem(bytes);
 }
 
-YbcStatus YBCStartTCMallocBackgroundThread() {
-  return ToYBCStatus(WithMaskedYsqlSignals(StartTCMallocBackgroundThread));
+void YBCTCMallocDrainCpuCaches() {
+  TCMallocDrainCpuCaches();
 }
 
-void YBCSetTCMallocBackgroundReleaseRate(int64_t bytes_per_sec) {
-  SetTCMallocBackgroundReleaseRate(bytes_per_sec);
+void YBCSetTCMallocSkipSubreleaseShortInterval(int64_t interval_ms) {
+  SetTCMallocSkipSubreleaseShortInterval(interval_ms);
+}
+
+void YBCSetTCMallocSkipSubreleaseLongInterval(int64_t interval_ms) {
+  SetTCMallocSkipSubreleaseLongInterval(interval_ms);
 }
 
 YbcStatus YBCGetHeapSnapshot(

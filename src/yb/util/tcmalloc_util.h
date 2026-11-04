@@ -18,8 +18,6 @@
 #include <cstdint>
 #include <optional>
 
-#include "yb/util/status_fwd.h"
-
 namespace yb {
 
 // Returns the tcmalloc property with the given name, or 0 if tcmalloc is not used. In case of an
@@ -50,9 +48,15 @@ void TCMallocReleaseMemoryToSystem(int64_t bytes);
 // would otherwise keep mapped to cover the peak demand of the last few minutes.
 void TCMallocReleaseMemoryToSystemIgnoringRecentDemand(int64_t bytes);
 
-// Optionally drains every per-CPU cache, then returns all free page heap memory to the operating
-// system, including free pages inside partially used hugepages.
-void TCMallocReleaseAllFreeMemory(bool drain_cpu_caches);
+// Returns the objects cached in every per-CPU cache to the central free lists. Does nothing unless
+// Google TCMalloc runs with per-CPU caches.
+void TCMallocDrainCpuCaches();
+
+// Sets how far back Google TCMalloc looks at the peak demand when it decides which free pages in
+// partially used hugepages to keep instead of releasing them. Zero disables the corresponding
+// lookback.
+void SetTCMallocSkipSubreleaseShortInterval(int64_t interval_ms);
+void SetTCMallocSkipSubreleaseLongInterval(int64_t interval_ms);
 
 void SetTCMallocTotalThreadCacheSize(int64_t max_size);
 
@@ -66,13 +70,5 @@ void ConfigureTCMalloc(int64_t mem_limit);
 int64_t GetTCMallocSamplingPeriod();
 
 void SetTCMallocSamplingPeriod(int64_t sample_period_bytes);
-
-// Starts a thread that runs Google TCMalloc's ProcessBackgroundActions loop for the rest of the
-// process lifetime: it drains idle per-CPU and transfer caches and releases page heap memory at the
-// background release rate. The thread inherits the caller's signal mask. Does nothing if the thread
-// was already started or if Google TCMalloc is not used.
-Status StartTCMallocBackgroundThread();
-
-void SetTCMallocBackgroundReleaseRate(int64_t bytes_per_sec);
 
 }  // namespace yb

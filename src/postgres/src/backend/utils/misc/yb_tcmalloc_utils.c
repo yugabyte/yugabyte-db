@@ -46,12 +46,10 @@
 
 int			yb_log_heap_snapshot_on_exit_threshold = -1;
 int			yb_startup_free_memory_release_threshold = 0;
-bool		yb_enable_tcmalloc_background_thread = true;
-int			yb_tcmalloc_background_release_rate = 1024 * 1024 * 1024;
+int			yb_tcmalloc_skip_subrelease_short_interval = 0;
+int			yb_tcmalloc_skip_subrelease_long_interval = 0;
 bool		yb_tcmalloc_release_after_statement = true;
-bool		yb_tcmalloc_release_after_statement_drain_cpu_caches = true;
-
-static bool yb_tcmalloc_background_thread_started = false;
+bool		yb_tcmalloc_drain_cpu_caches_after_statement = false;
 
 static void YbLogHeapSnapshotProcExit(int status, Datum arg);
 
@@ -320,35 +318,6 @@ YbSetupHeapSnapshotProcExit(void)
 	on_proc_exit(YbLogHeapSnapshotProcExit, 0);
 }
 
-void
-YbMaybeStartTCMallocBackgroundThread(void)
-{
-	if (!yb_enable_tcmalloc_background_thread)
-		return;
-	HandleYBStatus(YBCStartTCMallocBackgroundThread());
-	yb_tcmalloc_background_thread_started = true;
-}
-
-/*
- * Return free memory to the OS only while the backend waits for the client.
- * Releasing during a statement subreleases pages that the statement then
- * reuses, which splits transparent huge pages and makes the statement fault
- * them back in as 4 KB pages.
- */
-void
-YbSetTCMallocBackgroundReleaseIdle(bool idle)
-{
-	if (yb_tcmalloc_background_thread_started)
-		YBCSetTCMallocBackgroundReleaseRate(idle ? yb_tcmalloc_background_release_rate : 0);
-}
-
-void
-YbReleaseTCMallocMemoryAfterStatement(void)
-{
-	if (yb_tcmalloc_release_after_statement)
-		YBCTCMallocReleaseAllFreeMemory(yb_tcmalloc_release_after_statement_drain_cpu_caches);
-}
-
 static void
 YbLogHeapSnapshotProcExit(int status, Datum arg)
 {
@@ -390,4 +359,40 @@ YbReleaseFreeMemoryAfterStartup(void)
 	if (stats.pageheap_free_bytes >=
 		(int64) yb_startup_free_memory_release_threshold * 1024)
 		YBCTCMallocReleaseFreeMemory(PG_INT64_MAX);
+}
+
+/*
+ * The lookback intervals are process-wide TCMalloc settings.  The postmaster
+ * applies the configured values at startup and its children inherit them;
+ * a SET changes them for the current backend only.
+ */
+void
+assign_yb_tcmalloc_skip_subrelease_short_interval(int newval, void *extra)
+{
+	YBCSetTCMallocSkipSubreleaseShortInterval(newval);
+}
+
+void
+assign_yb_tcmalloc_skip_subrelease_long_interval(int newval, void *extra)
+{
+	YBCSetTCMallocSkipSubreleaseLongInterval(newval);
+}
+
+/*
+ * Called once the reply to a statement has been flushed, so the client does
+ * not wait for it.  Without the release, a backend can keep the pages that a
+ * large statement freed for the rest of its lifetime.
+ *
+ * The drain must come first: it returns the objects held in the per-CPU
+ * caches to the central free lists, which can free whole spans for the
+ * release to return.  It visits every size class on every CPU that the
+ * backend ran on, which costs tens of microseconds per statement.
+ */
+void
+YbReleaseTCMallocMemoryAfterStatement(void)
+{
+	if (yb_tcmalloc_drain_cpu_caches_after_statement)
+		YBCTCMallocDrainCpuCaches();
+	if (yb_tcmalloc_release_after_statement)
+		YBCTCMallocReleaseMemoryToSystem(PG_INT64_MAX);
 }

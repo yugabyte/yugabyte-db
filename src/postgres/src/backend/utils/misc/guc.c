@@ -3686,25 +3686,13 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"yb_enable_tcmalloc_background_thread", PGC_SU_BACKEND, RESOURCES_MEM,
-			gettext_noop("Run a TCMalloc background thread in each backend that "
-						 "drains idle allocator caches and returns free memory "
-						 "to the OS at yb_tcmalloc_background_release_rate."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&yb_enable_tcmalloc_background_thread,
-		true,
-		NULL, NULL, NULL
-	},
-
-	{
 		{"yb_tcmalloc_release_after_statement", PGC_SUSET, RESOURCES_MEM,
-			gettext_noop("After each statement, drain the TCMalloc per-CPU "
-						 "caches and return all free page heap memory to the "
-						 "OS, including free pages in partially used "
-						 "hugepages."),
-			NULL,
+			gettext_noop("After each statement, return the free TCMalloc page "
+						 "heap memory of the backend to the operating system."),
+			gettext_noop("Free pages in partially used hugepages are kept only "
+						 "if yb_tcmalloc_skip_subrelease_short_interval or "
+						 "yb_tcmalloc_skip_subrelease_long_interval attributes "
+						 "them to recent demand."),
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_tcmalloc_release_after_statement,
@@ -3713,14 +3701,15 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"yb_tcmalloc_release_after_statement_drain_cpu_caches", PGC_SUSET, RESOURCES_MEM,
-			gettext_noop("Whether yb_tcmalloc_release_after_statement also "
-						 "drains the TCMalloc per-CPU caches."),
+		{"yb_tcmalloc_drain_cpu_caches_after_statement", PGC_SUSET, RESOURCES_MEM,
+			gettext_noop("After each statement, return the objects cached in "
+						 "the TCMalloc per-CPU caches of the backend to the "
+						 "central free lists."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
-		&yb_tcmalloc_release_after_statement_drain_cpu_caches,
-		true,
+		&yb_tcmalloc_drain_cpu_caches_after_statement,
+		false,
 		NULL, NULL, NULL
 	},
 
@@ -6494,19 +6483,6 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"yb_tcmalloc_background_release_rate", PGC_SUSET, RESOURCES_MEM,
-			gettext_noop("Rate in bytes per second at which the TCMalloc "
-						 "background thread returns free page heap memory to "
-						 "the OS while the backend is idle."),
-			NULL,
-			GUC_UNIT_BYTE | GUC_NOT_IN_SAMPLE
-		},
-		&yb_tcmalloc_background_release_rate,
-		1024 * 1024 * 1024, 0, INT_MAX,
-		NULL, NULL, NULL
-	},
-
-	{
 		{"yb_log_heap_snapshot_on_exit_threshold", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("When a process exits, log a peak heap snapshot showing the "
 						 "approximate memory usage of each malloc call stack if its peak RSS "
@@ -6520,6 +6496,34 @@ static struct config_int ConfigureNamesInt[] =
 		-1,
 		INT_MAX,
 		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_tcmalloc_skip_subrelease_short_interval", PGC_SUSET, RESOURCES_MEM,
+			gettext_noop("How far back TCMalloc looks for short-term peaks in "
+						 "demand when it decides which free pages in partially "
+						 "used hugepages to keep instead of returning them to "
+						 "the operating system."),
+			gettext_noop("0 disables this lookback."),
+			GUC_UNIT_MS | GUC_NOT_IN_SAMPLE
+		},
+		&yb_tcmalloc_skip_subrelease_short_interval,
+		0, 0, INT_MAX,
+		NULL, assign_yb_tcmalloc_skip_subrelease_short_interval, NULL
+	},
+
+	{
+		{"yb_tcmalloc_skip_subrelease_long_interval", PGC_SUSET, RESOURCES_MEM,
+			gettext_noop("How far back TCMalloc looks for the long-term demand "
+						 "trend when it decides which free pages in partially "
+						 "used hugepages to keep instead of returning them to "
+						 "the operating system."),
+			gettext_noop("0 disables this lookback."),
+			GUC_UNIT_MS | GUC_NOT_IN_SAMPLE
+		},
+		&yb_tcmalloc_skip_subrelease_long_interval,
+		0, 0, INT_MAX,
+		NULL, assign_yb_tcmalloc_skip_subrelease_long_interval, NULL
 	},
 
 	{
