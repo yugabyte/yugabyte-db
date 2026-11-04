@@ -450,7 +450,8 @@ public class RollbackResizeNodeTest extends UpgradeTaskTest {
       assertEquals(DEFAULT_INSTANCE_TYPE, subTask.getTaskParams().get("instanceType").asText());
     }
     assertEquals(
-        1024, universe.getUniverseDetails().getPrimaryCluster().userIntent.getCgroupSize().intValue());
+        1024,
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.getCgroupSize().intValue());
   }
 
   @Test

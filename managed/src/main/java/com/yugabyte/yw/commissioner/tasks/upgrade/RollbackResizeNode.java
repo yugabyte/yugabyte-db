@@ -139,8 +139,8 @@ public class RollbackResizeNode extends ResizeNode {
    * universe intent still matches {@code before}, so compare with the failed target instead: if the
    * target changed this node's cgroup, re-apply the {@code before} cgroup. Nodes record no cgroup,
    * so this can't tell which nodes the forward run (or an earlier rollback attempt) reached: every
-   * node in the cluster is re-applied, which stops and restarts each node in turn, on every attempt.
-   * That is the same rolling restart a forward cgroup-only resize does.
+   * node in the cluster is re-applied, which stops and restarts each node in turn, on every
+   * attempt. That is the same rolling restart a forward cgroup-only resize does.
    */
   @Override
   protected boolean isCgroupChanging(
