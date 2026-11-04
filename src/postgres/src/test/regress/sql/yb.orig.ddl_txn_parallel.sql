@@ -1,6 +1,9 @@
 --
--- GH #30978: a parallel worker reads only committed catalog rows, so a
--- query after a DDL in the same transaction block gets no parallel plan.
+-- GH #30978: once a DDL has run in a transaction block, the block makes no
+-- parallel plan and launches no parallel workers. This is needed until
+-- parallel workers stop reading the catalog in legacy mode (see
+-- YBCIsLegacyModeForCatalogOps). In legacy mode, workers do not see the
+-- uncommitted catalog writes of earlier DDLs in the block.
 -- Scenario: BEGIN, ALTER TABLE ADD COLUMN c, then a scan that filters on c.
 -- A worker launched there fails with "invalid attnum 3 for relation".
 --
@@ -17,7 +20,6 @@ ANALYZE ddl_par;
 
 -- A generic plan cached before the block is parallel; the ALTER TABLE
 -- invalidates it, and the replanned query has no Gather.
-SET plan_cache_mode = force_generic_plan;
 PREPARE ddl_par_count AS SELECT COUNT(*) FROM ddl_par;
 EXPLAIN (COSTS OFF) EXECUTE ddl_par_count;
 
@@ -33,7 +35,6 @@ EXECUTE ddl_par_count;
 ROLLBACK;
 
 DEALLOCATE ddl_par_count;
-RESET plan_cache_mode;
 
 -- Once the block ends, queries get parallel plans again, whether the block
 -- rolled back (above) or committed.
@@ -106,7 +107,6 @@ DROP FUNCTION ddl_par_noop();
 -- no workers. Without workers no shared scan state is set up, so each
 -- parallel scan must read the whole table alone: both counts are 1000.
 CREATE FUNCTION ddl_par_unused() RETURNS INT LANGUAGE sql AS 'SELECT 1';
-SET plan_cache_mode = force_generic_plan;
 PREPARE ddl_par_seq AS SELECT COUNT(*) FROM ddl_par WHERE name LIKE 'n%';
 PREPARE ddl_par_idx AS SELECT COUNT(name) FROM ddl_par WHERE id > 0;
 EXPLAIN (COSTS OFF) EXECUTE ddl_par_seq;
@@ -134,7 +134,6 @@ EXECUTE ddl_par_gm;
 ROLLBACK;
 DEALLOCATE ddl_par_gm;
 DROP FUNCTION ddl_par_unused();
-RESET plan_cache_mode;
 
 -- CREATE INDEX in a block builds the index nonconcurrently and marks the
 -- block like any other DDL: no Gather after it.
@@ -172,9 +171,8 @@ DROP TABLE ddl_par_sp;
 
 -- A temp-table DDL also turns off parallel query for the rest of the block,
 -- even for queries on permanent tables, although workers never read temp
--- tables. TODO(#32729): this goes away once workers read the catalog in the
--- leader's mode. This block also skips the catalog version bump, so a generic
--- plan made in it must still be replanned with a Gather after COMMIT.
+-- tables. This block also skips the catalog version bump, so a generic plan
+-- made in it must still be replanned with a Gather after COMMIT.
 BEGIN;
 CREATE TEMP TABLE ddl_par_tmp (k INT);
 EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM ddl_par;
@@ -214,7 +212,6 @@ ROLLBACK;
 -- every row goes through a worker, so a wrong run sums to 1000; the correct
 -- sum in the block is 2000. The same query planned in the block has no
 -- Gather. The cached plan keeps its Gather, but must launch no workers.
-SET plan_cache_mode = force_generic_plan;
 SET parallel_leader_participation = off;
 CREATE TABLE ddl_par_gap (k INT, PRIMARY KEY (k ASC));
 INSERT INTO ddl_par_gap SELECT i FROM generate_series(1, 1000) i;
@@ -242,7 +239,6 @@ ROLLBACK;
 
 DEALLOCATE ddl_par_sum;
 RESET parallel_leader_participation;
-RESET plan_cache_mode;
 DROP FUNCTION ddl_par_f(INT);
 DROP FUNCTION ddl_par_g();
 DROP TABLE ddl_par_gap;

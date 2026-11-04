@@ -940,7 +940,7 @@ CheckCachedPlan(CachedPlanSource *plansource)
 		 * YB: If the plan was made while a DDL had run in the transaction
 		 * block, when no parallel plan was allowed, and that block has ended,
 		 * replan it so that it can be parallel again.
-		 * TODO(#32729): drop this together with the DDL check in
+		 * TODO(#36825): drop this together with the DDL check in
 		 * standard_planner.
 		 */
 		if (plan->is_valid && plan->yb_parallel_off_for_ddl &&

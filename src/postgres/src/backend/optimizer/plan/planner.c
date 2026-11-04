@@ -475,7 +475,7 @@ standard_planner(Query *parse, const char *query_string, int cursorOptions,
 	 * DDL in this transaction block, a worker does not see the block's
 	 * catalog changes and fails, e.g. "invalid attnum 3" for a column the
 	 * block added (#30978, #34740).
-	 * YB: TODO(#32729): once the leader and its workers can share the
+	 * YB: TODO(#36825): once the leader and its workers can share the
 	 * PgClientSession read point safely (#32729, #35498), let workers read the
 	 * catalog in the leader's mode and drop this check.
 	 */
@@ -686,7 +686,7 @@ standard_planner(Query *parse, const char *query_string, int cursorOptions,
 	 * e.g. CREATE OR REPLACE of a function it does not call. The mark also
 	 * covers a SELECT that is serial for another reason, which then gets one
 	 * needless replan after the block.
-	 * TODO(#32729): drop this together with the DDL check above.
+	 * TODO(#36825): drop this together with the DDL check above.
 	 */
 	result->yb_parallel_off_for_ddl =
 		(cursorOptions & CURSOR_OPT_PARALLEL_OK) != 0 &&
