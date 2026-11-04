@@ -182,7 +182,7 @@ libraryDependencies ++= Seq(
   javaWs,
   filters,
   guice,
-  "org.postgresql" % "postgresql" % "42.7.13",
+  "org.postgresql" % "postgresql" % "42.7.14",
   "net.logstash.logback" % "logstash-logback-encoder" % "8.1",
   "ch.qos.logback" % "logback-classic" % "1.5.38",
   "org.codehaus.janino" % "janino" % "3.1.9",
