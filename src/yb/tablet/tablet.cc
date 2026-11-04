@@ -1415,7 +1415,8 @@ Status Tablet::OpenRegularDB(const rocksdb::Options& common_options) {
           << ") does not match home rocksdb_dir (" << db_dir << ")";
 
       // Point flushes and compaction output at the persisted target disk. OpenTablet validated or
-      // repaired target_tier_path_id (ResolveTargetTierPathId) before this runs.
+      // repaired target_tier_path_id (ResolveTargetTierPathId) before this runs, except for a
+      // target tier with no disks on this node, whose stale path_id is used as is (follow-up).
       regular_rocksdb_options.target_path_id = metadata()->target_tier_path_id();
       LOG_WITH_PREFIX(INFO) << "Opening RocksDB with " << tier_paths.size()
                             << " tiered db_paths (target_path_id="
@@ -5150,18 +5151,20 @@ Status Tablet::SetTierMigrationTarget(const std::string& target_tier, uint32_t t
 
 Status Tablet::SetTierMigrationTargetUnlocked(
     const std::string& target_tier, uint32_t target_path_id) {
+  const bool same_target = IsPersistedTierTarget(target_tier, target_path_id);
   {
     std::lock_guard lock(tier_migration_mutex_);
-    if (tier_migration_status_.pass_in_flight) {
+    if (tier_migration_status_.pass_in_flight && !same_target) {
       // ScheduleDBPathMove has no cancel: the pass would keep copying to the old disk, and
-      // FinishTierMigrationPass would book its outcome against the new target.
+      // FinishTierMigrationPass would book its outcome against the new target. The same target
+      // re-asserts what the pass is already doing, so it goes through as usual.
       return STATUS_FORMAT(
           ServiceUnavailable,
           "Tier migration pass toward tier '$0' (path_id $1) is in flight; retry when it ends",
           metadata()->target_storage_tier(), metadata()->target_tier_path_id());
     }
   }
-  if (!IsPersistedTierTarget(target_tier, target_path_id)) {
+  if (!same_target) {
     RETURN_NOT_OK(metadata()->SetTargetTier(target_tier, target_path_id));
   }
   RETURN_NOT_OK_PREPEND(
@@ -5348,18 +5351,13 @@ Result<TierMigrationStatus> Tablet::AlterTabletTier(
 
   {
     std::lock_guard target_lock(tier_target_mutex_);
-    if (IsPersistedTierTarget(target_tier, target_path_id)) {
-      std::lock_guard lock(tier_migration_mutex_);
-      if (tier_migration_status_.pass_in_flight) {
-        // The request the pass is already serving, delivered again. Nothing is rewritten under a
-        // running pass, not even the same target; the response says the pass is in flight. The
-        // intent is re-asserted all the same, so an operator restarting a failing migration
-        // mid-pass does not carry the failures before it toward kFailed.
-        ReassertTierIntentUnlocked();
-        return tier_migration_status_;
-      }
-    }
     RETURN_NOT_OK(SetTierMigrationTargetUnlocked(target_tier, target_path_id));
+    std::lock_guard lock(tier_migration_mutex_);
+    if (tier_migration_status_.pass_in_flight) {
+      // Only the same target gets past the write with a pass in flight: that pass already serves
+      // this request, re-asserted just now like any accepted one, so report it.
+      return tier_migration_status_;
+    }
   }
 
   // Lets a test slip another target in after the write, before the pass starts.

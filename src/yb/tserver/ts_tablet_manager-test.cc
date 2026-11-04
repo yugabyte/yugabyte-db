@@ -1097,9 +1097,10 @@ TEST_F(TsTabletManagerTieredDriveTest, ResolveTargetTierPathIdRepairsStaleId) {
 }
 
 // Tiered storage: a target whose tier has no disks on this node is left alone by
-// ResolveTargetTierPathId (the tablet runs on home until a disk for that tier appears), so the
-// persisted path_id can stay stale on an open tablet. IsTargetTierPathIdValid is the read-only
-// check for that, which the AlterTabletTier handler runs before reusing the persisted path_id.
+// ResolveTargetTierPathId (it returns 0 but persists nothing, and OpenTablet uses only the
+// status, so the regular DB still opens with the stale path_id). IsTargetTierPathIdValid is the
+// read-only check for that, which the AlterTabletTier handler runs before reusing the persisted
+// path_id.
 TEST_F(TsTabletManagerTieredDriveTest, ResolveTargetTierPathIdKeepsStaleIdWhenTierHasNoDisks) {
   std::shared_ptr<tablet::TabletPeer> peer;
   ASSERT_OK(CreateNewTablet(kTableId, kTabletId, schema_, &peer));
@@ -1127,8 +1128,7 @@ TEST_F(TsTabletManagerTieredDriveTest, ResolveTargetTierPathIdKeepsStaleIdWhenTi
   ASSERT_OK(meta->SetTargetTier("nvme", nvme_pid));
   ASSERT_FALSE(tablet_manager_->IsTargetTierPathIdValid(*meta));
 
-  // Resolution falls back to home and keeps the intent, path_id included, for when the drive
-  // comes back.
+  // Resolution returns 0 but keeps the intent, path_id included, for when the drive comes back.
   auto pid = ASSERT_RESULT(tablet_manager_->ResolveTargetTierPathId(meta));
   ASSERT_EQ(pid, 0u);
   ASSERT_EQ(meta->target_storage_tier(), "nvme");

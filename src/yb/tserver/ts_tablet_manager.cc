@@ -3803,13 +3803,15 @@ Result<uint32_t> TSTabletManager::ResolveTargetTierPathId(
   auto resolved = SelectPathIdForTier(*meta, meta->table_id(), target_tier);
   if (!resolved.ok()) {
     if (resolved.status().IsNotFound()) {
-      // Tier has no disks on this node at all. Run on home for now, but deliberately do NOT
-      // overwrite the persistedtarget_tier_path_id: if the tier's disks come back
-      // (e.g. --fs_data_dirs is fixed on restart), the original intent should still be honored.
+      // Tier has no disks on this node at all. Deliberately do NOT overwrite the persisted
+      // target_tier_path_id: if the tier's disks come back (e.g. --fs_data_dirs is fixed on
+      // restart), the original intent should still be honored. OpenTablet uses only the status of
+      // this result, so the regular DB still opens with the stale path_id, and flushes, compaction
+      // output and reconciler passes keep targeting its directory until then (follow-up work).
       LOG(WARNING) << "TieredStorage ResolveTargetTierPathId: tablet=" << meta->raft_group_id()
-                   << " target_tier=" << target_tier << " has no disks on this node; "
-                   << "running on home (path_id 0) until the tier becomes available: "
-                   << resolved.status();
+                   << " target_tier=" << target_tier << " has no disks on this node; keeping "
+                   << "the persisted path_id " << cached_path_id << " until the tier becomes "
+                   << "available: " << resolved.status();
       return 0;
     }
     return resolved.status();

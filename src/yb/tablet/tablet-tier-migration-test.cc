@@ -307,9 +307,9 @@ TEST_F(TierMigrationTest, SecondCallWhilePassInFlightReportsProgress) {
   auto pass = tablet()->StartTierMigrationPass();
   ASSERT_NOK(pass);
   ASSERT_TRUE(pass.status().IsServiceUnavailable()) << pass.status();
-  // So does the bare target write, even for the same target: nothing rewrites it under a pass.
-  auto write = tablet()->SetTierMigrationTarget("hdd", kTargetPathId);
-  ASSERT_TRUE(write.IsServiceUnavailable()) << write;
+  // The bare same-target write is accepted, as a re-assert; only a different target is refused.
+  ASSERT_OK(tablet()->SetTierMigrationTarget("hdd", kTargetPathId));
+  ASSERT_TRUE(tablet()->tier_migration_status().pass_in_flight);
 
   TEST_SYNC_POINT("TierMigrationTest::SecondCallWhilePassInFlightReportsProgress:Release");
   auto info = ASSERT_RESULT(WaitForPassToFinish());
@@ -317,6 +317,39 @@ TEST_F(TierMigrationTest, SecondCallWhilePassInFlightReportsProgress) {
   ASSERT_OK(info.migration.last_error);
   ASSERT_EQ(info.migration.files_moved, 1u);
   ASSERT_EQ(SstCountOnPath(info, kTargetPathId), 1u);
+}
+
+// A same-target AlterTabletTier during a pass is the retry of a request whose SetOptions may have
+// failed after the superblock write, so it re-points the DB like any re-assert (the no-pass case
+// is ReassertingTargetRepointsDb). The running pass is unaffected: it copies toward the superblock
+// target either way.
+TEST_F(TierMigrationTest, SameTargetDuringPassRepointsDb) {
+  WriteFileWithKey(1);
+
+  yb::SyncPoint::GetInstance()->LoadDependency(
+      {{"TierMigrationTest::SameTargetDuringPassRepointsDb:Release",
+        "DBImpl::ExecuteDBPathMoveCompaction:BeforeCopy"}});
+  yb::SyncPoint::GetInstance()->EnableProcessing();
+
+  auto first = ASSERT_RESULT(tablet()->AlterTabletTier("hdd", kTargetPathId));
+  ASSERT_TRUE(first.pass_in_flight);
+
+  // Drift the DB away from the persisted intent behind the tablet's back, as a failed SetOptions
+  // would have left it.
+  ASSERT_OK(tablet()->regular_db()->SetOptions(
+      {{"target_path_id", std::to_string(kDecoyPathId)}}));
+
+  auto second = ASSERT_RESULT(tablet()->AlterTabletTier("hdd", kTargetPathId));
+  ASSERT_TRUE(second.pass_in_flight);
+  // The next flush follows the DB, which must point at hdd again.
+  WriteFileWithKey(2);
+
+  TEST_SYNC_POINT("TierMigrationTest::SameTargetDuringPassRepointsDb:Release");
+  auto info = ASSERT_RESULT(WaitForPassToFinish());
+  ASSERT_EQ(info.migration.files_moved, 1u);
+  ASSERT_EQ(SstCountOnPath(info, kTargetPathId), 2u);
+  ASSERT_EQ(SstCountOnPath(info, kDecoyPathId), 0u);
+  ASSERT_EQ(SstCountOnPath(info, kHomePathId), 0u);
 }
 
 // A file busy with a compaction that was already in flight cannot be moved. That is not a
@@ -551,8 +584,8 @@ TEST_F(TierMigrationTest, TargetChangeDuringFailingPassIsRefused) {
   ASSERT_EQ(SstCountOnPath(info, kDecoyPathId), 1u);
 }
 
-// A same-target AlterTabletTier during a failing pass is the operator's restart. The pass keeps
-// running (nothing is rewritten under it), but the failures before it no longer count toward
+// A same-target AlterTabletTier during a failing pass is the operator's restart. The target is
+// unchanged, so the pass keeps running, but the failures before it no longer count toward
 // kFailed: the running pass's own failure is then the first, not the next.
 TEST_F(TierMigrationTest, SameTargetDuringFailingPassRestartsFailureCount) {
   WriteFileWithKey(1);

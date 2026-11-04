@@ -177,7 +177,7 @@ struct TierMigrationStatus {
   uint32_t obsoleted = 0;       // gone before the move ran (rewritten by a compaction)
 
   // Passes in a row that hit a hard error without moving a single file. Any progress resets it,
-  // as does any AlterTabletTier.
+  // as does any accepted AlterTabletTier or target write.
   uint32_t consecutive_failed_passes = 0;
   Status last_error;
 };
@@ -805,8 +805,9 @@ class Tablet : public AbstractTablet,
   // compaction outputs of the regular DB at that disk. Re-asserting an unchanged intent skips
   // the superblock write but still re-points the DB and resets the migration status.
   // target_path_id must be a tier_paths slot the caller already resolved within target_tier
-  // (TSTabletManager::SelectPathIdForTier). Refused with ServiceUnavailable while a migration
-  // pass is in flight, whatever its target: nothing rewrites the target under a running pass.
+  // (TSTabletManager::SelectPathIdForTier). A different target is refused with ServiceUnavailable
+  // while a migration pass is in flight: nothing changes the target under a running pass. The
+  // same target is accepted then too, as the re-assert above.
   Status SetTierMigrationTarget(const std::string& target_tier, uint32_t target_path_id);
 
   // Tiered storage. Starts one migration pass toward the persisted target: schedules a DB path
@@ -832,12 +833,12 @@ class Tablet : public AbstractTablet,
 
   // SetTierMigrationTarget followed by StartTierMigrationPass. Backs the AlterTabletTier RPC.
   // While a pass is in flight, the same target is not an error (a re-delivered request, or an
-  // operator restarting a failing migration): the result describes that pass, and earlier
-  // failures no longer count toward kFailed, as after any target write. A different target is
-  // refused with ServiceUnavailable and nothing is persisted: the moves cannot be cancelled, so
-  // accepting it would leave the pass copying to a disk that is no longer the target and booking
-  // its outcome against the new one. Also refused when a concurrent request replaced the target
-  // before this one's pass could start.
+  // operator restarting a failing migration): the intent is re-asserted as for any accepted
+  // request, and the result describes that pass. A different target is refused with
+  // ServiceUnavailable and nothing is persisted: the moves cannot be cancelled, so accepting it
+  // would leave the pass copying to a disk that is no longer the target and booking its outcome
+  // against the new one. Also refused when a concurrent request replaced the target before this
+  // one's pass could start.
   Result<TierMigrationStatus> AlterTabletTier(
       const std::string& target_tier, uint32_t target_path_id);
 
@@ -1408,8 +1409,9 @@ class Tablet : public AbstractTablet,
   Result<ScopedRWOperation> CheckTierTargetUsable(uint32_t target_path_id);
 
   // Tiered storage: the one place an open tablet's target is written; creation, remote bootstrap
-  // and OpenTablet's path_id repair write it before the Tablet exists. Refuses while a pass is in
-  // flight, so a pass always runs toward the current persisted target.
+  // and OpenTablet's path_id repair write it before the Tablet exists. Refuses a different target
+  // while a pass is in flight, so a pass always runs toward the current persisted target; the
+  // same target is a re-assert.
   Status SetTierMigrationTargetUnlocked(const std::string& target_tier, uint32_t target_path_id)
       REQUIRES(tier_target_mutex_);
 

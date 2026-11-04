@@ -410,7 +410,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // to data roots tagged with target_tier in FsManager (from --fs_data_dirs parsing).
   //
   // The AlterTabletTier RPC handler calls this for a request that names a different tier than
-  // the persisted one; the migration's moves then target the returned path_id.
+  // the persisted one, and for the same tier when IsTargetTierPathIdValid rejects the persisted
+  // path_id; the migration's moves then target the returned path_id.
   //
   // This call is read-only: it only reads table_data_assignment_map_ / data_dirs_per_drive_
   // (via PickMinLoadDataRootUnlocked) and does not write to them. Callers that actually
@@ -441,9 +442,11 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // new flushes/compactions. Run on every load (OpenTablet). If IsTargetTierPathIdValid rejects
   // the persisted path_id, re-resolves via SelectPathIdForTier and persists the repair so this
   // does not need to happen again on the next load. If the tier has no disks on this node at
-  // all, returns 0 (home) without touching the persisted value, so the intent survives until a
-  // disk for that tier reappears; until then the persisted path_id stays stale on an open tablet,
-  // which is what IsTargetTierPathIdValid is for. With tiered storage disabled, returns 0 and
+  // all, returns 0 without touching the persisted value, so the intent survives until a disk for
+  // that tier reappears. OpenTablet uses only the status of that result: the regular DB still
+  // opens with the stale path_id, so flushes, compaction output and reconciler passes keep
+  // targeting its directory until then (follow-up work); only the AlterTabletTier handler, via
+  // IsTargetTierPathIdValid, declines to trust it. With tiered storage disabled, returns 0 and
   // clears a persisted path_id, again leaving target_storage_tier alone.
   Result<uint32_t> ResolveTargetTierPathId(const tablet::RaftGroupMetadataPtr& meta)
       EXCLUDES(dir_assignment_mutex_);
