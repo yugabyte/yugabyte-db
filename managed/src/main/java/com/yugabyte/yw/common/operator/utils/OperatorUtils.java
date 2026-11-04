@@ -88,6 +88,7 @@ import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageAzureData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
@@ -2671,6 +2672,7 @@ public class OperatorUtils {
         default:
           throw new Exception(String.format("Unsupported storage config type: %s", cfg.getName()));
       }
+      specData.setIMMUTABLE_STORAGE(((CustomerConfigStorageData) data).immutableStorage);
       spec.setData(specData);
       storageConfig.setSpec(spec);
       StorageConfigStatus status = new StorageConfigStatus();

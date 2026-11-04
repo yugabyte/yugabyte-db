@@ -1757,7 +1757,12 @@ Status RaftConsensus::Update(
 
     auto delay = TEST_delay_update_.load(std::memory_order_acquire);
     if (delay != MonoDelta::kZero) {
-      std::this_thread::sleep_for(delay.ToSteadyDuration());
+      // Resetting the delay to zero ends a hold that is already in progress.
+      const auto hold_end = CoarseMonoClock::now() + delay.ToSteadyDuration();
+      while (CoarseMonoClock::now() < hold_end &&
+             TEST_delay_update_.load(std::memory_order_acquire) != MonoDelta::kZero) {
+        std::this_thread::sleep_for(10ms);
+      }
     } else if (FLAGS_TEST_delay_update_consensus_requests_ms != 0) {
       std::this_thread::sleep_for(1ms * FLAGS_TEST_delay_update_consensus_requests_ms);
     }

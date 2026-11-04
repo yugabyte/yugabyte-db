@@ -28,6 +28,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 import org.json.JSONObject;
 import org.yb.minicluster.Metrics;
 import org.yb.minicluster.MiniYBDaemon;
@@ -487,29 +488,48 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
    *
    * Scenario:
    *   1. Poller initialization is delayed on tserver 0.
-   *   2. Session 1 listens with a statement timeout, which cancels its LISTEN while the poller
-   *      waits.
+   *   2. Session 1 listens, and is cancelled while it waits for its poller to initialize.
    *   3. Session 2 listens on the same node, which starts a new poller.
    *   4. Exactly one poller runs, and session 2 receives a notification once.
    */
   @Test
   public void testCancelledFirstListenLeavesOnePoller() throws Exception {
     final String channel = "cancelled_listen";
-    // The timeout must fire after the slot is created, and well before the delay ends.
-    final long statementTimeoutMs = Timeouts.adjustTimeoutSecForBuildType(2000);
+    final String listenQuery = "LISTEN " + channel;
     final long initDelayMs = Timeouts.adjustTimeoutSecForBuildType(8000);
 
     setPollerInitDelay(0, initDelayMs);
     try {
       try (Connection listener1 = getConnectionBuilder().withTServer(0).connect();
-           Statement stmt = listener1.createStatement()) {
-        stmt.execute("SET statement_timeout = " + statementTimeoutMs);
-        stmt.execute("LISTEN " + channel);
-        fail("LISTEN should have been cancelled by statement_timeout");
-      } catch (SQLException e) {
-        LOG.info("Expected LISTEN failure: {}", e.getMessage());
-        assertTrue("Error should mention the statement timeout",
-            e.getMessage().contains("statement timeout"));
+           Statement stmt = listener1.createStatement();
+           Connection canceller = getConnectionBuilder().withTServer(0).connect();
+           Statement cancellerStmt = canceller.createStatement()) {
+        AtomicReference<SQLException> listenError = new AtomicReference<>();
+        Thread listenThread = new Thread(() -> {
+          try {
+            stmt.execute(listenQuery);
+          } catch (SQLException e) {
+            listenError.set(e);
+          }
+        });
+        listenThread.start();
+
+        // LISTEN waits for its poller at commit, where statement_timeout no longer applies, so
+        // cancel it directly, once a poller has started after it: the handle is published then.
+        TestUtils.waitFor(() -> getSingleRow(cancellerStmt,
+            "SELECT EXISTS (SELECT 1 FROM pg_stat_activity l, pg_stat_activity p"
+                + " WHERE l.query = '" + listenQuery + "' AND l.state = 'active'"
+                + " AND p.backend_type = 'notifications poller'"
+                + " AND p.backend_start > l.query_start)").getBoolean(0),
+            Timeouts.adjustTimeoutSecForBuildType(30_000));
+        cancellerStmt.execute("SELECT pg_cancel_backend(pid) FROM pg_stat_activity"
+            + " WHERE query = '" + listenQuery + "' AND state = 'active'");
+
+        listenThread.join(Timeouts.adjustTimeoutSecForBuildType(60_000));
+        assertTrue("LISTEN should have been cancelled", listenError.get() != null);
+        LOG.info("Expected LISTEN failure: {}", listenError.get().getMessage());
+        assertTrue("Error should mention the cancel",
+            listenError.get().getMessage().contains("canceling statement due to user request"));
       }
 
       try (Connection listener2 = getConnectionBuilder().withTServer(0).connect();

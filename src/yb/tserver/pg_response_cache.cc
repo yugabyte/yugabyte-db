@@ -250,7 +250,13 @@ class Data {
     // group and the catalog version say which database refilled and at which version. Neither
     // identifies one fill: a paged prefetch caches every page under a key of its own, and a global
     // catalog version bump moves every database to the same version at once.
-    VLOG(1) << "Fill complete for group " << group << " catalog version " << catalog_version
+    //
+    // The outcome separates a fill that stored a catalog from one that did not: a read that
+    // failed, or a filler that went away without storing anything (see SetAbandoned). All three
+    // release their waiters here; only the first hands them a catalog.
+    const auto* const outcome =
+        new_state == DataState::kReadyOK ? "Fill complete" : "Fill failed";
+    VLOG(1) << outcome << " for group " << group << " catalog version " << catalog_version
             << " after " << MonoDelta(CoarseMonoClock::Now() - creation_time_) << ", releasing "
             << waiters.size() << " waiters, " << sz << " bytes each";
     for (auto waiter : waiters) {
@@ -262,6 +268,25 @@ class Data {
         updater->Consume(sz);
       }
     }
+  }
+
+  // Complete an entry whose filler went away without storing anything. Set() is the only thing
+  // that drains waiters_, and PgResponseCacheWaiter takes nothing but a response, so an error
+  // response is the only way to release callers already queued. Handing them one is what a fill
+  // whose read failed already does: pg_client_session calls the setter with the failed status
+  // and Set() passes it on. Leaving them queued instead costs a postgres backend apiece until
+  // their own deadlines expire, and leaves them to be destroyed un-responded if the entry's
+  // readiness deadline passes first.
+  //
+  // Completing as a failure also leaves the entry in the state that already means "do not serve
+  // this": IsValid() is false for kReadyFailure, so the next caller rebuilds it and fills afresh
+  // rather than inheriting the failure.
+  void SetAbandoned(PgResponseCache::KeyGroup group, uint64_t catalog_version) {
+    auto msg = rpc::MakeSharedMessage<PgPerformResponseMsg>();
+    StatusToPB(
+        STATUS(Aborted, "Catalog response cache fill was abandoned by its filler"),
+        msg->mutable_status());
+    Set(PgResponseCache::Response(*msg, {}), group, catalog_version);
   }
 
   [[nodiscard]] bool IsValid(CoarseTimePoint now, uint64_t version) const {
@@ -490,9 +515,18 @@ class PgResponseCache::Impl : private GarbageCollector {
       }
       return Setter();
     }
-    return [empty_data = std::move(data), observer = fill_observer_,
-            group = cache_info->key_group(),
-            version = cache_info->catalog_version(),
+    const auto group = cache_info->key_group();
+    const auto version = cache_info->catalog_version();
+    // pg_client_session takes this setter and can return early before the flush -- SetupSession
+    // and PrepareOperations both can -- destroying it without ever storing a response. Completing
+    // the entry then is what releases the callers queued behind this fill.
+    auto abandon = [data, group, version] { data->SetAbandoned(group, version); };
+    return [data = std::move(data),
+            abandon_guard =
+                std::make_shared<CancelableScopeExit<decltype(abandon)>>(std::move(abandon)),
+            observer = fill_observer_,
+            group,
+            version,
             completes_connection_prefetch =
                 cache_info->completes_connection_prefetch()](Response&& response) {
       // A prefetch is paged. pggate keeps issuing reads while any operation still returns paging
@@ -510,7 +544,8 @@ class PgResponseCache::Impl : private GarbageCollector {
           }
         }
       }
-      empty_data->Set(std::move(response), group, version);
+      abandon_guard->Cancel();
+      data->Set(std::move(response), group, version);
       // After the entry is set, so an observer can rely on the entry being readable.
       if (observer && is_final_round) {
         observer(group, version);
