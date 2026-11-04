@@ -539,6 +539,11 @@ public class Backup extends Model {
 
   public void updateBackupInfo(BackupTableParams params) {
     this.backupInfo = params;
+    // Keep the column in sync: queries filter and group backups by it. Deleting a backup with
+    // another storage config changes the config in backup_info.
+    if (params.storageConfigUUID != null) {
+      this.storageConfigUUID = params.storageConfigUUID;
+    }
     save();
   }
 

@@ -450,6 +450,23 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testServiceDeleteRefusedWithInProgressBackup() {
+    // The HTTP delete rejects running backups before validation; the service delete doesn't.
+    CustomerConfig config = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST16");
+    ModelFactory.createBackup(defaultCustomer.getUuid(), UUID.randomUUID(), config.getConfigUUID());
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> customerConfigService.delete(defaultCustomer.getUuid(), config.getConfigUUID()));
+    assertTrue(
+        e.getMessage(),
+        e.getMessage()
+            .contains(
+                "Configuration " + config.getConfigName() + " is used in backup and can't be"));
+    assertNotNull(CustomerConfig.get(config.getConfigUUID()));
+  }
+
+  @Test
   public void testEditInUseStorageConfig() {
     ObjectNode bodyJson = Json.newObject();
     JsonNode data =
