@@ -109,7 +109,8 @@ public class KubernetesOverridesUpgradeParams extends UpgradeTaskParams {
 
     // The Helm render also sets the node_exporter sidecar, so this upgrade can still change it.
     boolean nodeExporterWantedKey =
-        KubernetesUtil.isNodeExporterSidecarEnabled(version, universe, runtimeConfGetter);
+        KubernetesUtil.isNodeExporterSidecarEnabled(
+            userIntent.ybSoftwareVersion, universe, runtimeConfGetter);
     if (changesNodeExporterSidecar(universe, nodeExporterWantedKey)) {
       log.info(
           "Accepting upgrade task on unchanged overrides for universe {} "
@@ -128,7 +129,6 @@ public class KubernetesOverridesUpgradeParams extends UpgradeTaskParams {
   // Each master or tserver node is one pod. If a pod can't be read, the upgrade is rejected as
   // unchanged.
   private boolean changesNodeExporterSidecar(Universe universe, boolean nodeExporterWantedKey) {
-    String version = universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
     KubernetesManagerFactory kubernetesManagerFactory =
         StaticInjectorHolder.injector().instanceOf(KubernetesManagerFactory.class);
     try {

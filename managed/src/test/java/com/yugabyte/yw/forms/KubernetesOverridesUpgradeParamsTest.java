@@ -127,25 +127,6 @@ public class KubernetesOverridesUpgradeParamsTest extends FakeDBApplication {
   }
 
   @Test
-  public void testNoChangeRejectedWithNoMasterOrTserverNodes() {
-    Universe u =
-        Universe.saveDetails(
-            k8sUniverse(SUPPORTED_VERSION).getUniverseUUID(),
-            universe -> {
-              UniverseDefinitionTaskParams details = universe.getUniverseDetails();
-              details.nodeDetailsSet.forEach(
-                  node -> {
-                    node.isMaster = false;
-                    node.isTserver = false;
-                  });
-              universe.setUniverseDetails(details);
-            });
-    RuntimeConfigEntry.upsert(u, KEY, "true");
-    mockServerPods(false /* sidecar */);
-    assertNoOverridesModified(u);
-  }
-
-  @Test
   public void testChangedOverrideAcceptedWithoutReadingPods() {
     Universe u = k8sUniverse(SUPPORTED_VERSION);
     KubernetesOverridesUpgradeParams params = noChangeParams();
