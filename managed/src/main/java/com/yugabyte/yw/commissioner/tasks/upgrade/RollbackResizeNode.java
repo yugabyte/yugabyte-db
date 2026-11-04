@@ -147,16 +147,23 @@ public class RollbackResizeNode extends ResizeNode {
       NodeDetails node,
       UniverseDefinitionTaskParams.UserIntent newIntent,
       UniverseDefinitionTaskParams.UserIntent currentIntent) {
-    if (super.isCgroupChanging(node, newIntent, currentIntent)) {
-      return true;
+    return super.isCgroupChanging(node, newIntent, currentIntent)
+        || failedResizeChangesCgroup(node, newIntent);
+  }
+
+  private UniverseDefinitionTaskParams failedResizeTarget() {
+    if (failedResizeTarget == null) {
+      failedResizeTarget = requireStateTransitionDetails(getUniverse()).getTargetUniverseDetails();
     }
-    Cluster targetCluster =
-        requireStateTransitionDetails(getUniverse())
-            .getTargetUniverseDetails()
-            .getClusterByUuid(node.placementUuid);
-    return targetCluster != null
-        && !Objects.equals(
-            targetCluster.userIntent.getCGroupSize(node), newIntent.getCGroupSize(node));
+    return failedResizeTarget;
+  }
+
+  /** Whether the failed resize targeted a different cgroup for this node than {@code before}. */
+  private boolean failedResizeChangesCgroup(
+      NodeDetails node, UniverseDefinitionTaskParams.UserIntent before) {
+    Cluster target = failedResizeTarget().getClusterByUuid(node.placementUuid);
+    return target != null
+        && !Objects.equals(before.getCGroupSize(node), target.userIntent.getCGroupSize(node));
   }
 
   /**
@@ -173,19 +180,15 @@ public class RollbackResizeNode extends ResizeNode {
     if (taskParams().isFailedResizeForced()) {
       return true;
     }
-    if (failedResizeTarget == null) {
-      failedResizeTarget = requireStateTransitionDetails(getUniverse()).getTargetUniverseDetails();
-    }
     Cluster before = taskParams().getClusterByUuid(node.placementUuid);
-    Cluster target = failedResizeTarget.getClusterByUuid(node.placementUuid);
+    Cluster target = failedResizeTarget().getClusterByUuid(node.placementUuid);
     if (before == null || target == null) {
       return false;
     }
     return !Objects.equals(
             before.userIntent.getInstanceTypeForNode(node),
             target.userIntent.getInstanceTypeForNode(node))
-        || !Objects.equals(
-            before.userIntent.getCGroupSize(node), target.userIntent.getCGroupSize(node));
+        || failedResizeChangesCgroup(node, before.userIntent);
   }
 
   /** ybops then only starts the VM when its type already matches. */
