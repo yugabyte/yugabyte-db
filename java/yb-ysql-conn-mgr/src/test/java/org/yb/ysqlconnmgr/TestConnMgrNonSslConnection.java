@@ -108,6 +108,30 @@ public class TestConnMgrNonSslConnection extends BaseYsqlConnMgr {
   }
 
   /**
+   * Verifies that SSL connections work through conn mgr with a small readahead buffer.
+   *
+   * mm_tls_read() used to signal io->on_read even when it was NULL, which crashed Odyssey when a
+   * TLS record did not fit in the readahead buffer.
+   */
+  @Test
+  public void testSslWithSmallReadahead() throws Exception {
+    Map<String, String> tserverFlags = new HashMap<>();
+    tserverFlags.put("ysql_conn_mgr_readahead_buffer_size", "64");
+    restartClusterWithAdditionalFlags(new HashMap<>(), tserverFlags);
+
+    for (int i = 0; i < 5; i++) {
+      try (Connection conn = getConnectionBuilder()
+               .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+               .withSslMode("require")
+               .connect();
+          Statement stmt = conn.createStatement()) {
+        ResultSet rs = stmt.executeQuery("SELECT 1");
+        assertTrue(rs.next());
+      }
+    }
+  }
+
+  /**
    * Verifies that when HBA only allows SSL connections (hostssl rule), a non-SSL connection via
    * YSQL Connection Manager is rejected by PostgreSQL (with "no pg_hba.conf entry"), NOT by conn
    * mgr itself with "SSL is required".

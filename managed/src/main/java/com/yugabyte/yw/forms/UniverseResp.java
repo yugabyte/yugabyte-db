@@ -17,6 +17,7 @@ import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.AllowedTasks;
 import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -38,6 +39,7 @@ import io.swagger.annotations.ApiModelProperty;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -49,6 +51,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.yaml.snakeyaml.Yaml;
 import play.Environment;
+import play.libs.Json;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
 // TODO is this description accurate?
@@ -175,10 +178,7 @@ public class UniverseResp {
   public static void fillClusterRegions(List<Cluster> clusters) {
     Set<UUID> regionUuids =
         clusters.stream()
-            .map(Cluster::getOverallPlacement)
-            .filter(Objects::nonNull)
-            .flatMap(PlacementInfo::azInfoStream)
-            .map(azInfo -> azInfo.region.uuid)
+            .flatMap(c -> getClusterRegionUUIDs(c).stream())
             .collect(Collectors.toSet());
     if (CollectionUtils.isEmpty(regionUuids)) {
       return;
@@ -187,15 +187,36 @@ public class UniverseResp {
         Region.findByUuids(regionUuids).stream()
             .collect(Collectors.toMap(region -> region.getUuid(), Function.identity()));
     clusters.stream()
-        .filter(cluster -> CollectionUtils.isNotEmpty(cluster.userIntent.regionList))
         .forEach(
             cluster -> {
               cluster.regions =
-                  cluster.userIntent.regionList.stream()
+                  getClusterRegionUUIDs(cluster).stream()
                       .filter(regionMap::containsKey)
                       .map(regionMap::get)
                       .collect(Collectors.toList());
             });
+  }
+
+  private static Set<UUID> getClusterRegionUUIDs(Cluster cluster) {
+    Set<UUID> result = new HashSet<>();
+    PlacementInfo placementInfo = cluster.getOverallPlacement();
+    if (placementInfo != null) {
+      placementInfo
+          .azInfoStream()
+          .filter(azInfo -> azInfo.region != null && azInfo.region.uuid != null)
+          .forEach(azInfo -> result.add(azInfo.region.uuid));
+    }
+    return result;
+  }
+
+  private static void copyClusterRegions(
+      UniverseDefinitionTaskParams source, UniverseDefinitionTaskParams target) {
+    Map<UUID, Cluster> currentClusters =
+        source.clusters.stream().collect(Collectors.toMap(c -> c.uuid, c -> c));
+    // source.clusters should be the same as target.clusters (as it was just json copy)
+    for (Cluster cluster : target.clusters) {
+      cluster.regions = currentClusters.get(cluster.uuid).regions;
+    }
   }
 
   @ApiModelProperty(value = "Universe UUID")
@@ -246,6 +267,13 @@ public class UniverseResp {
 
   @ApiModelProperty(value = "YugabyteDB Anywhere platform software version for this YBA instance")
   public final String platformVersion;
+
+  @ApiModelProperty(
+      value =
+          "YbaApi Internal. Whether YBA scrapes the node_exporter sidecar on this Kubernetes"
+              + " universe")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2026.2.0.0")
+  public final boolean nodeExporterSidecarScraped;
 
   public UniverseResp(Universe entity) {
     this(
@@ -327,10 +355,17 @@ public class UniverseResp {
     creationDate = entity.getCreationDate().toString();
     version = entity.getVersion();
     dnsName = getDnsName(customer, provider);
-    Util.convertSingleProviderSpecsToOldSchema(confGetter, entity.getUniverseDetails());
-    universeDetails =
-        new UniverseDefinitionTaskParamsResp(
-            entity.getUniverseDetails(), entity, localInstanceAddress);
+    UniverseDefinitionTaskParams details = entity.getUniverseDetails();
+    if (Util.isMulticloud(entity)) {
+      details =
+          Json.fromJson(
+              Json.toJson(entity.getUniverseDetails()), UniverseDefinitionTaskParams.class);
+      Util.convertSingleProviderSpecsToOldSchema(confGetter, details);
+      // regions is READ_ONLY, so the JSON clone above does not deserialize it.
+      // create() fills regions on the entity in one query; other constructors fill here.
+      copyClusterRegions(entity.getUniverseDetails(), details);
+    }
+    universeDetails = new UniverseDefinitionTaskParamsResp(details, entity, localInstanceAddress);
     this.taskUUID = taskUUID;
     this.resources = resources;
     universeConfig = entity.getConfig();
@@ -347,6 +382,13 @@ public class UniverseResp {
 
     this.rollMaxBatchSize = rollMaxBatchSize;
     this.platformVersion = platformVersion;
+    this.nodeExporterSidecarScraped =
+        confGetter != null
+            && Util.isKubernetesBasedUniverse(entity)
+            && KubernetesUtil.isNodeExporterSidecarEnabled(
+                entity.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
+                entity,
+                confGetter);
   }
 
   // TODO(UI folks): Remove this. This is redundant as it is already available in resources

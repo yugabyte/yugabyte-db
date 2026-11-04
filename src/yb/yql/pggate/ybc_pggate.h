@@ -982,7 +982,9 @@ YbcPgThreadLocalRegexpCache* YBCPgInitThreadLocalRegexpCache(
 
 void YBCPgResetCatalogReadTime();
 
-void YBCPgSetHistoricalReadContext(YbcReadHybridTime read_time, const char* transaction_id);
+void YBCPgSetHistoricalReadContext(
+    YbcReadHybridTime read_time, const char* transaction_id, const uint32_t* aborted_subtxn_set,
+    size_t aborted_subtxn_set_size);
 
 void YBCPgResetHistoricalReadContext();
 

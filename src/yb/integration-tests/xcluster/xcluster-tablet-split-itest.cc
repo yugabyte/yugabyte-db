@@ -63,6 +63,7 @@ DECLARE_bool(TEST_xcluster_consumer_fail_after_process_split_op);
 DECLARE_int32(cdc_parent_tablet_deletion_task_retry_secs);
 DECLARE_int32(load_balancer_num_idle_runs);
 DECLARE_bool(enable_tablet_split_of_xcluster_bootstrapping_tables);
+DECLARE_bool(enable_tablet_split_of_xcluster_bootstrapping_tables_with_recorded_tablets);
 DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
 DECLARE_bool(enable_collect_cdc_metrics);
 DECLARE_int32(update_metrics_interval_ms);
@@ -1271,9 +1272,9 @@ class XClusterBootstrapTabletSplitITest : public XClusterTabletSplitITest {
   std::optional<client::TransactionManager> producer_transaction_manager_;
 };
 
-// TODO(jhe) Re-enable this test. Currently disabled as we disable all splits when a table is being
-// bootstrapped for xCluster.
-TEST_F(XClusterBootstrapTabletSplitITest, YB_DISABLE_TEST(BootstrapWithSplits)) {
+// Tests that the target gets every row when the source splits between the bootstrap and the
+// replication setup.
+TEST_F(XClusterBootstrapTabletSplitITest, BootstrapWithSplits) {
   // Start by writing some rows to the producer.
   ASSERT_RESULT(WriteRowsAndFlush(kDefaultNumRows));
 
@@ -1356,6 +1357,8 @@ TEST_F(NotSupportedTabletSplitITest, SplittingWithCdcStream) {
 TEST_F(NotSupportedTabletSplitITest, SplittingWithBootstrappedStream) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_replicated_tables) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_bootstrapping_tables) = false;
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_enable_tablet_split_of_xcluster_bootstrapping_tables_with_recorded_tablets) = false;
   // Default cluster_ will be our producer.
   // Create a consumer universe and table, then setup universe replication.
   client::TableHandle consumer_cluster_table;
