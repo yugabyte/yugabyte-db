@@ -122,6 +122,7 @@
 #include "yb/master/catalog_entity_parser.h"
 #include "yb/master/catalog_loaders.h"
 #include "yb/master/catalog_manager_bg_tasks.h"
+#include "yb/master/catalog_manager_cdc_bg_tasks.h"
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/cdcsdk_manager.h"
@@ -662,7 +663,19 @@ DEFINE_RUNTIME_bool(vector_index_store_payload, false,
     "mapping entries at all, neither on insert nor on delete. The value is fixed for a table and "
     "for an index when it is created, and indexes of a table that writes no reverse mapping always "
     "store the payload. Disabled by default, because deleted vectors are not removed from such an "
-    "index yet, see #33912.");
+    "index yet.");
+
+DEFINE_RUNTIME_uint32(vector_index_tenant_hash_group_and_range_components, 0,
+    "Temporary, until the tenant of a vector index can be specified when the index is created, "
+    "see #35312. Number of leading primary-key components that identify the vector tenant and are "
+    "stored in the payload of newly created vector indexes, see vector_index_store_payload. All "
+    "hash columns form a single hash-group component, followed by one component per range column. "
+    "0 means vectors have no tenant. Applies only to the yb_hnsw_hnswlib backend. The tenant never "
+    "covers the full primary key: values greater than or equal to the number of components use all "
+    "components but the last one, so a single-component primary key has no tenant. The value is "
+    "fixed when the index is created. Older releases cannot read payloads created with a nonzero "
+    "value and may write vectors without their tenant, so keep it 0 until the upgrade to this "
+    "release is finalized.");
 
 DEFINE_RUNTIME_AUTO_bool(enable_table_owned_vector_reverse_mapping, kExternal, false, true,
     "When true, newly created YSQL tables hold vector reverse mapping ownership. "
@@ -2370,6 +2383,9 @@ void CatalogManager::CompleteShutdown() {
   xcluster_manager_->CompleteShutdown();
   ysql_manager_->CompleteShutdown();
 
+  if (cdc_background_tasks_) {
+    cdc_background_tasks_->Shutdown();
+  }
   if (background_tasks_) {
     background_tasks_->Shutdown();
   }
@@ -4962,6 +4978,16 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       vector_index_options.mutable_hnsw()->set_backend(
           FLAGS_vector_index_backend == kYbHnswUsearch
               ? HnswBackend::YB_HNSW_USEARCH : HnswBackend::YB_HNSW_HNSWLIB);
+      // Tenants are only for the hnswlib backend. A tenant leaves at least the last component of
+      // the primary key, otherwise every row would be its own tenant.
+      if (vector_index_options.store_payload() &&
+          vector_index_options.hnsw().backend() == HnswBackend::YB_HNSW_HNSWLIB) {
+        auto num_components = Schema::NumHashGroupAndRangeComponents(indexed_table_lock->schema());
+        vector_index_options.set_tenant_hash_group_and_range_components(
+            narrow_cast<uint32_t>(std::min<size_t>(
+                FLAGS_vector_index_tenant_hash_group_and_range_components,
+                num_components ? num_components - 1 : 0)));
+      }
     } else if (!is_pg_table) {
       DCHECK_EQ(index_info.columns().size(), schema.num_columns())
         << "Number of columns are not the same between index_info and index_schema";
@@ -8156,6 +8182,22 @@ void CatalogManager::CleanUpDeletedTables(const LeaderEpoch& epoch) {
     }
     if (!ShouldDeleteTable(table)) {
       continue;
+    }
+    // Like CheckTableDeleted, do not mark a DDL-dropped index DELETED while the alter removing it
+    // from the indexed table is in flight; else the next statement may hit a schema version
+    // mismatch. The alter completes via tablet schema version reports, which keep re-sending it
+    // while the indexed table is running, so this deferral ends on its own.
+    if (table->is_index() && table->LockForRead()->has_ysql_ddl_txn_verifier_state()) {
+      auto indexed_table = GetTableInfo(table->indexed_table_id());
+      if (indexed_table) {
+        auto indexed_lock = indexed_table->LockForRead();
+        if (indexed_lock->is_running() && indexed_lock->pb.has_fully_applied_schema()) {
+          VLOG_WITH_PREFIX_AND_FUNC(2)
+              << "Deferring " << table->ToString() << " until alter of "
+              << indexed_table->ToString() << " completes";
+          continue;
+        }
+      }
     }
     auto lock_and_transaction_id = PrepareTableDeletion(table);
     if (lock_and_transaction_id.first.locked()) {
@@ -11772,6 +11814,10 @@ Status CatalogManager::EnableBgTasks() {
   RETURN_NOT_OK_PREPEND(background_tasks_->Init(),
                         "Failed to initialize catalog manager background tasks");
 
+  cdc_background_tasks_.reset(new CatalogManagerCdcBgTasks(master_));
+  RETURN_NOT_OK_PREPEND(cdc_background_tasks_->Init(),
+                        "Failed to initialize CDC cleanup background tasks");
+
   // Add bg thread to rebuild yql system partitions.
   refresh_yql_partitions_task_ = std::make_unique<rpc::ScheduledTaskTracker>();
   refresh_yql_partitions_task_->Bind(&master_->messenger()->scheduler());
@@ -11786,7 +11832,10 @@ Status CatalogManager::EnableBgTasks() {
 }
 
 void CatalogManager::WakeBgTaskIfPendingUpdates() {
-  background_tasks_->WakeIfHasPendingUpdates();
+  SharedLock lock(mutex_);
+  if (background_tasks_) {
+    background_tasks_->WakeIfHasPendingUpdates();
+  }
 }
 
 Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB& req) {
@@ -13752,11 +13801,19 @@ Status CatalogManager::GoIntoShellMode() {
   LOG(INFO) << "Starting going into shell mode.";
   master_->SetShellMode(true);
 
+  std::unique_ptr<CatalogManagerCdcBgTasks> cdc_background_tasks;
+  std::unique_ptr<CatalogManagerBgTasks> background_tasks;
   {
     LockGuard lock(mutex_);
     RETURN_NOT_OK(sys_catalog_->GoIntoShellMode());
-    background_tasks_->Shutdown();
-    background_tasks_.reset();
+    cdc_background_tasks = std::move(cdc_background_tasks_);
+    background_tasks = std::move(background_tasks_);
+  }
+  if (cdc_background_tasks) {
+    cdc_background_tasks->Shutdown();
+  }
+  if (background_tasks) {
+    background_tasks->Shutdown();
   }
   {
     std::lock_guard l(remote_bootstrap_mtx_);
@@ -14231,19 +14288,8 @@ Status CatalogManager::SysCatalogRespectLeaderAffinity() {
     return Status::OK();
   }
 
-  consensus::ConsensusStatePB consensus_state;
-  RETURN_NOT_OK(GetCurrentConfig(&consensus_state));
-
   std::vector<ServerEntryPB> masters;
-  for (const auto& peer : consensus_state.config().peers()) {
-    ServerEntryPB master;
-    master.mutable_instance_id()->set_permanent_uuid(peer.permanent_uuid());
-    auto* registration = master.mutable_registration();
-    registration->mutable_cloud_info()->CopyFrom(peer.cloud_info());
-    registration->mutable_private_rpc_addresses()->CopyFrom(peer.last_known_private_addr());
-    registration->mutable_broadcast_addresses()->CopyFrom(peer.last_known_broadcast_addr());
-    masters.push_back(std::move(master));
-  }
+  RETURN_NOT_OK(master_->ListMasters(&masters));
 
   auto[sorted_scored_masters, i_am_eligible] = GetMoreEligibleSysCatalogLeaders(
       affinitized_zones, blacklist, masters, server_registration_);

@@ -165,7 +165,7 @@ bool yb_ignore_read_time_in_walsender = false;
 
 bool yb_disable_pg_snapshot_mgmt_in_repeatable_read = false;
 
-bool enable_object_locking_infra = true;
+bool yb_enable_object_locking_infra = true;
 
 bool yb_enable_ddl_savepoint_infra = true;
 

@@ -845,6 +845,105 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     }
   }
 
+  /**
+   * Creating a shared relation inserts its array type, with an auto-assigned OID, into every
+   * database. A backend of another database that has already assigned OIDs in upgrade mode must
+   * not assign that OID again.
+   */
+  @Test
+  public void sharedRelOidIsNotReusedByOtherDb() throws Exception {
+    String otherDbName = SHARED_ENTITY_PREFIX + "sys_tables_db2";
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE DATABASE " + otherDbName);
+    }
+    try (Connection conOther = getConnectionBuilder().withDatabase(otherDbName).connect();
+         Connection conUsr = customDbCb.connect();
+         Statement stmtOther = conOther.createStatement();
+         Statement stmtUsr = conUsr.createStatement()) {
+      setSystemRelsModificationGuc(stmtOther, true);
+      setSystemRelsModificationGuc(stmtUsr, true);
+
+      String createViewSqlPat = "CREATE VIEW pg_catalog.%s"
+          + " WITH (use_initdb_acl = true) AS SELECT 1 AS x";
+
+      // Assign the same OIDs in both databases, as a migration does.
+      stmtOther.execute(String.format(createViewSqlPat, "test_oid_view_1"));
+      stmtUsr.execute(String.format(createViewSqlPat, "test_oid_view_1"));
+
+      // The array type gets the next OID, in every database.
+      stmtOther.execute("CREATE TABLE pg_catalog." + sharedRelName + " (v int) WITH ("
+          + "  table_oid = " + newSysOid()
+          + ", row_type_oid = " + newSysOid()
+          + ") TABLESPACE pg_global");
+
+      stmtUsr.execute(String.format(createViewSqlPat, "test_oid_view_2"));
+
+      assertNoRows(stmtUsr, "WITH o AS ("
+          + " SELECT oid FROM pg_class UNION ALL"
+          + " SELECT oid FROM pg_type UNION ALL"
+          + " SELECT oid FROM pg_rewrite)"
+          + " SELECT oid FROM o GROUP BY oid HAVING count(*) > 1");
+    }
+  }
+
+  /**
+   * Creating a shared relation inserts its array type and constraints, with OIDs that template1
+   * assigns, into every database. A database whose system OIDs are ahead of template1's, because a
+   * migration that acts only in some databases assigned OIDs there, must not end up with two
+   * objects with the same OID.
+   */
+  @Test
+  public void sharedRelOidIsFreeInEveryDb() throws Exception {
+    recreateWithYsqlVersion(YsqlSnapshotVersion.PG15_12);
+    createDbConnections();
+    String dbName = SHARED_ENTITY_PREFIX + "ahead_db";
+    try (Connection conn = template1Cb.connect(); Statement stmt = conn.createStatement()) {
+      stmt.execute("CREATE DATABASE " + dbName);
+    }
+    // Move the database's system OIDs ahead of template1's, as ALTER EXTENSION pg_hint_plan UPDATE
+    // in V82 does in the databases that have pg_hint_plan.
+    try (Connection conn = getConnectionBuilder().withDatabase(dbName).connect();
+         Statement stmt = conn.createStatement()) {
+      setSystemRelsModificationGuc(stmt, true);
+      stmt.execute("CREATE VIEW pg_catalog.test_oid_ahead_view"
+          + " WITH (use_initdb_acl = true) AS SELECT 1 AS x");
+      // Make V111, which comes after V109, assign an OID in the database: its ALTER EXTENSION
+      // pg_partman UPDATE recreates a procedure that the database lacks. pg_partman needs a
+      // function that V111 adds, so add it first.
+      stmt.execute("CREATE FUNCTION pg_catalog.yb_pg_partman_check_native_txn_ddl_and_locks()"
+          + " RETURNS boolean LANGUAGE internal"
+          + " AS 'yb_pg_partman_check_native_txn_ddl_and_locks'");
+      stmt.execute("CREATE EXTENSION pg_partman");
+      String proc = "run_analyze(boolean, boolean, text)";
+      stmt.execute("ALTER EXTENSION pg_partman DROP PROCEDURE " + proc);
+      stmt.execute("DROP PROCEDURE " + proc);
+      setAllowNonDdlTxnsGuc(stmt, true);
+      stmt.execute("UPDATE pg_extension SET extversion = '4.7.4' WHERE extname = 'pg_partman'");
+    }
+
+    // The migrations include V109, which creates a shared relation with an array type and a
+    // primary key constraint, and V111.
+    runMigrations(false /* useSingleConnection */);
+
+    for (String db : Arrays.asList("template1", dbName)) {
+      try (Connection conn = getConnectionBuilder().withDatabase(db).connect();
+           Statement stmt = conn.createStatement()) {
+        // List each duplicate OID with the objects that share it, as catalog:name. Every view's
+        // rule is named _RETURN, so name a rule's relation too.
+        List<Row> duplicates = getRowList(stmt, "WITH o AS ("
+            + " SELECT 'pg_class' cat, oid, relname::text nm FROM pg_class UNION ALL"
+            + " SELECT 'pg_type', oid, typname::text FROM pg_type UNION ALL"
+            + " SELECT 'pg_proc', oid, proname::text FROM pg_proc UNION ALL"
+            + " SELECT 'pg_constraint', oid, conname::text FROM pg_constraint UNION ALL"
+            + " SELECT 'pg_rewrite', oid, rulename || ' on ' || ev_class::regclass"
+            + " FROM pg_rewrite)"
+            + " SELECT oid, string_agg(cat || ':' || nm, ', ' ORDER BY cat) FROM o"
+            + " GROUP BY oid HAVING count(*) > 1 ORDER BY oid");
+        assertRows("Duplicate OIDs in " + db, Collections.emptyList(), duplicates);
+      }
+    }
+  }
+
   @Test
   public void insertOnConflictWithOidsWorks() throws Exception {
     try (Connection conn = customDbCb.connect();

@@ -1146,10 +1146,10 @@ Number of seconds to retain log files. Log files older than this value will be d
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-Default: `100`
+Default: `102400`
 {{% /tags/wrap %}}
 
-Stop retaining logs if the space available for the logs falls below this limit, specified in megabytes. As with `log_max_seconds_to_retain`, this flag is ignored if a log segment contains unflushed entries.
+Stop retaining logs if the space available for the logs falls below this limit, specified in kilobytes. As with `log_max_seconds_to_retain`, this flag is ignored if a log segment contains unflushed entries.
 
 ##### --cdc_max_stream_intent_records
 
@@ -1251,6 +1251,41 @@ When set to `true`, CDC does not block DDLs that cause table rewrites on tables 
 When set to `false`, any DDL that causes a table rewrite is blocked when CDC is active on the database (this is also the behavior in versions earlier than v2026.1).
 
 For more information, refer to [Streaming DDLs causing table rewrite](../../../additional-features/change-data-capture/using-logical-replication/advanced-topic/#streaming-ddls-causing-table-rewrite).
+
+##### --cdc_create_stream_alter_table_dispatch_batch_size
+
+{{% tags/wrap %}}
+
+Default: `10`
+{{% /tags/wrap %}}
+
+Number of tables processed in each batch when YB-Master sets CDC retention barriers on the tablets of a namespace during CDC stream creation. A value less than or equal to `0` disables batching, and all tables are processed in a single batch.
+
+This flag can be changed at runtime without restarting YB-Master.
+
+##### --max_concurrent_alter_table_rpcs
+
+{{% tags/wrap %}}
+
+Default: `10`
+{{% /tags/wrap %}}
+
+Maximum number of AlterTable RPCs that YB-Master can have in flight at once when setting CDC retention barriers during CDC stream creation. A value of `0` disables throttling. A positive value sets a global cap. A negative value derives the cap from [max_concurrent_alter_table_rpcs_per_tserver](#max-concurrent-alter-table-rpcs-per-tserver) multiplied by the number of live YB-TServers.
+
+On releases that contain the fix for {{<issue 33260>}}, the default is `0`, so throttling is disabled by default. The default of `10` applies to the affected releases; see [TA-19066](../../../releases/techadvisories/ta-19066/).
+
+This flag can be changed at runtime without restarting YB-Master.
+
+##### --max_concurrent_alter_table_rpcs_per_tserver
+
+{{% tags/wrap %}}
+
+Default: `1`
+{{% /tags/wrap %}}
+
+Maximum number of AlterTable RPCs that YB-Master can have in flight at once per YB-TServer. Used only when [max_concurrent_alter_table_rpcs](#max-concurrent-alter-table-rpcs) is negative, in which case this value is multiplied by the number of live YB-TServers to obtain the global cap.
+
+This flag can be changed at runtime without restarting YB-Master.
 
 ### LISTEN/NOTIFY flags
 
@@ -2456,7 +2491,7 @@ Specifies the default transaction isolation level.
 
 Valid values: `serializable`, `'repeatable read'`, `'read committed'`, and `'read uncommitted'`.
 
-[Read Committed isolation](../../../explore/transactions/isolation-levels/) is supported only if the YB-Master flag `yb_enable_read_committed_isolation` is set to `true`.
+[Read Committed isolation](../../../architecture/transactions/read-committed/) is supported only if the YB-Master flag `yb_enable_read_committed_isolation` is set to `true`.
 
 For new universes running v2025.2 or later, `yb_enable_read_committed_isolation` is set to `true` by default when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon.
 
@@ -2469,11 +2504,11 @@ If `yb_enable_read_committed_isolation` is `false`, the Read Committed isolation
 Default: `false`
 {{% /tags/wrap %}}
 
-Enables Read Committed isolation.
+Enables [Read Committed isolation](../../../architecture/transactions/read-committed/).
 
 For new universes running v2025.2 or later, `yb_enable_read_committed_isolation` is set to `true` by default when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon.
 
-When set to false, Read Committed (and Read Uncommitted) isolation level of YSQL fall back to the stricter [Snapshot isolation](../../../explore/transactions/isolation-levels/). See also the [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag.
+When set to false, Read Committed (and Read Uncommitted) isolation level of YSQL fall back to the stricter Snapshot isolation. See also the [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag.
 
 ##### --pg_client_use_shared_memory
 
