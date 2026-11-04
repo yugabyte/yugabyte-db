@@ -2,28 +2,52 @@ name: "csi-comment"
 
 on:
   workflow_run:
-    workflows: ["csi-artifact"]
+    workflows: ["csi-pr"]
     types: [completed]
 
 jobs:
   csi-comment:
     runs-on: ubuntu-latest
+    permissions:
+       pull-requests: write
+       actions: read
     steps:
       - name: Download CSI artifact
         uses: actions/download-artifact@v8
         with:
-          name: csi-pr
+          path: csi
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ github.event.workflow_run.id }}
       - name: Post CSI link comment
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
+        env:
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const fs = require('fs');
+            // pr.txt comes from the PR's own run, which a fork controls: trust it only
+            // if it is a number naming the PR whose head is the commit that run built.
             const prNumber = fs.readFileSync('csi/pr.txt', 'utf8').trim();
+            if (!/^\d+$/.test(prNumber)) {
+              core.setFailed(`pr.txt is not a PR number: ${JSON.stringify(prNumber.slice(0, 40))}`);
+              return;
+            }
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: Number(prNumber),
+            });
+            if (pr.head.sha !== process.env.HEAD_SHA) {
+              core.setFailed(`PR #${prNumber} head ${pr.head.sha} does not match the csi-pr run's commit ${process.env.HEAD_SHA}`);
+              return;
+            }
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: prNumber,
-              body: `[CSIweb for PR #${prNumber}](https://csiweb.dev.yugabyte.com/pull/${prNumber})`
+              body: [
+                `[![YB](../blob/master/managed/ui/src/redesign/assets/yb_logo.svg?raw=true)`,
+                `CSIweb for PR #${prNumber}](https://csiweb.dev.yugabyte.com/pull/${prNumber})`,
+              ].join(' ')
             });
