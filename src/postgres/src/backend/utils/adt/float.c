@@ -31,6 +31,10 @@
 #include "utils/sortsupport.h"
 #include "utils/timestamp.h"
 
+/* YB includes */
+#include "utils/guc.h"
+#include "yb_ysql_conn_mgr_helper.h"
+
 
 /*
  * Configurable GUC parameter
@@ -2798,6 +2802,12 @@ setseed(PG_FUNCTION_ARGS)
 
 	pg_prng_fseed(&drandom_seed, seed);
 	drandom_seed_set = true;
+
+	if (YbIsClientYsqlConnMgr())
+	{
+		elog(LOG, "Making connection sticky for setseed");
+		yb_ysql_conn_mgr_sticky_guc = true;
+	}
 
 	PG_RETURN_VOID();
 }

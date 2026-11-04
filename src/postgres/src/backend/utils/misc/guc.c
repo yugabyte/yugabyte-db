@@ -6852,7 +6852,8 @@ static struct config_real ConfigureNamesReal[] =
 		{"seed", PGC_USERSET, UNGROUPED,
 			gettext_noop("Sets the seed for random-number generation."),
 			NULL,
-			GUC_NO_SHOW_ALL | GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
+			GUC_NO_SHOW_ALL | GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE |
+			GUC_YB_NO_CONN_MGR_REPORT
 		},
 		&phony_random_seed,
 		0.0, -1.0, 1.0,
@@ -9871,6 +9872,9 @@ yb_should_report_guc(struct config_generic *record)
 
 	if (YbIsClientYsqlConnMgr())
 	{
+		if (record->flags & GUC_YB_NO_CONN_MGR_REPORT)
+			return false;
+
 		shouldReportGUC =
 			shouldReportGUC ||
 			(record->status & (YB_GUC_VALUE_RESET | YB_GUC_DEFAULT_RESET)) ||
