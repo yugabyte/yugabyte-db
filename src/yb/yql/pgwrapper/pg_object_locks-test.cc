@@ -938,7 +938,7 @@ class PgObjectLocksTestMixModeDuringPromotion : public PgObjectLocksTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     PgObjectLocksTest::UpdateMiniClusterOptions(opts);
     // Start off with the flag disabled.
-    opts->extra_tserver_flags.emplace_back("--ysql_enable_object_locking_infra=false");
+    opts->extra_tserver_flags.emplace_back("--ysql_yb_enable_object_locking_infra=false");
     // ysql_enable_concurrent_ddl defaults to kEnableDdlTransactionBlocks, which is only true in
     // release builds. YBCIsLegacyModeForCatalogOps() is pinned to legacy without it, which would
     // leave the promotion unobservable in the catalog op mode, so pin it on for every build type.
@@ -956,14 +956,14 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestMixModeDuringPromotion) {
 
   // Promote ts1 to use table locks before the DDL.
   auto* ts1 = cluster_->tablet_server(0);
-  ASSERT_OK(cluster_->SetFlag(ts1, "ysql_enable_object_locking_infra", "true"));
+  ASSERT_OK(cluster_->SetFlag(ts1, "ysql_yb_enable_object_locking_infra", "true"));
 
   auto conn1 = ASSERT_RESULT(LibPqTestBase::ConnectToTsForDB(*ts1, "testdb"));
   ASSERT_OK(conn1.Execute("BEGIN TRANSACTION"));
   ASSERT_OK(conn1.Execute("ALTER TABLE test ADD COLUMN v1 INT"));
 
   auto* ts2 = cluster_->tablet_server(1);
-  ASSERT_OK(cluster_->SetFlag(ts2, "ysql_enable_object_locking_infra", "true"));
+  ASSERT_OK(cluster_->SetFlag(ts2, "ysql_yb_enable_object_locking_infra", "true"));
   auto conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTsForDB(*ts2, "testdb"));
   const auto kStatementTimeoutSec = 2;
   ASSERT_OK(conn2.ExecuteFormat("SET statement_timeout = '$0s';", kStatementTimeoutSec));
@@ -992,8 +992,8 @@ TEST_F(
   auto* ts2 = cluster_->tablet_server(1);
   auto conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTsForDB(*ts2, "testdb"));
 
-  ASSERT_OK(cluster_->SetFlag(ts1, "ysql_enable_object_locking_infra", "true"));
-  ASSERT_OK(cluster_->SetFlag(ts2, "ysql_enable_object_locking_infra", "true"));
+  ASSERT_OK(cluster_->SetFlag(ts1, "ysql_yb_enable_object_locking_infra", "true"));
+  ASSERT_OK(cluster_->SetFlag(ts2, "ysql_yb_enable_object_locking_infra", "true"));
 
   ASSERT_OK(conn1.Execute("BEGIN TRANSACTION"));
   ASSERT_OK(conn1.Execute("ALTER TABLE test ADD COLUMN v1 INT"));
@@ -1021,8 +1021,8 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestConcurrentTxnsMayNotTakeTabl
 
   ASSERT_OK(conn1.Execute("BEGIN TRANSACTION"));
 
-  ASSERT_OK(cluster_->SetFlag(ts1, "ysql_enable_object_locking_infra", "true"));
-  ASSERT_OK(cluster_->SetFlag(ts2, "ysql_enable_object_locking_infra", "true"));
+  ASSERT_OK(cluster_->SetFlag(ts1, "ysql_yb_enable_object_locking_infra", "true"));
+  ASSERT_OK(cluster_->SetFlag(ts2, "ysql_yb_enable_object_locking_infra", "true"));
 
   ASSERT_OK(conn1.Execute("ALTER TABLE test ADD COLUMN v1 INT"));
 
@@ -1061,7 +1061,7 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestCatalogOpModeStableAcrossPro
     ASSERT_OK(conn.Execute("BEGIN TRANSACTION"));
     ASSERT_OK(conn.FetchAllAsString("SELECT * FROM test"));
 
-    ASSERT_OK(cluster_->SetFlag(ts1, "ysql_enable_object_locking_infra", "true"));
+    ASSERT_OK(cluster_->SetFlag(ts1, "ysql_yb_enable_object_locking_infra", "true"));
 
     // Catalog work after the promotion, including a relation this backend has never seen, so the
     // lookup cannot be served from its caches and has to issue a catalog read.
@@ -1105,7 +1105,7 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestDdlTxnBlockModeStableAcrossP
   ASSERT_OK(conn.Execute("BEGIN TRANSACTION"));
   ASSERT_OK(conn.Execute("CREATE TABLE pre_promotion(k INT PRIMARY KEY)"));
 
-  ASSERT_OK(cluster_->SetFlag(ts1, "ysql_enable_object_locking_infra", "true"));
+  ASSERT_OK(cluster_->SetFlag(ts1, "ysql_yb_enable_object_locking_infra", "true"));
 
   ASSERT_OK(conn.Execute("ROLLBACK"));
   // The DDL ran in an autonomous transaction, so the table is still there.
@@ -1159,13 +1159,13 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestModeChangeDuringStatementFai
     ASSERT_EQ(PQresultStatus(res.get()), PGRES_COMMAND_OK) << PQresultErrorMessage(res.get());
   }
 
-  ASSERT_OK(cluster_->SetFlag(ts1, "ysql_enable_object_locking_infra", "true"));
+  ASSERT_OK(cluster_->SetFlag(ts1, "ysql_yb_enable_object_locking_infra", "true"));
   // The flag reaches a backend as a SIGHUP that it applies in its message loop. Wait for another
   // backend on this tserver to have applied it, which means the signal has been delivered.
   ASSERT_OK(LoggedWaitFor(
       [&observer]() -> Result<bool> {
         return VERIFY_RESULT(observer.FetchRow<std::string>(
-                   "SHOW enable_object_locking_infra")) == "on";
+                   "SHOW yb_enable_object_locking_infra")) == "on";
       },
       MonoDelta::FromSeconds(kTimeMultiplier * 60), "promotion to reach the backends"));
 
@@ -1225,7 +1225,7 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyTxnKeepsCatalogVersionChec
 
   for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
     ASSERT_OK(cluster_->SetFlag(
-        cluster_->tablet_server(i), "ysql_enable_object_locking_infra", "true"));
+        cluster_->tablet_server(i), "ysql_yb_enable_object_locking_infra", "true"));
   }
 
   // A new mode transaction open across a breaking DDL must not be subjected to the check.
@@ -1293,6 +1293,53 @@ TEST_F(PgObjectLocksTest, ConcurrentAlterSelectFreshCache) {
 
 TEST_F(PgObjectLocksTest, ConcurrentAlterSelect) {
   testConcurrentAlterSelect(false);
+}
+
+// TODO(#36589): Flip the final assertion to expect both privileges once concurrent GRANTs on one
+// relation no longer lose an update.
+//
+// GRANT takes no object lock that conflicts with another GRANT, and its tuple lock is a no-op with
+// object locking. So s1 commits its GRANT between s2's read of the pg_class row and its write, and
+// s2 writes back an ACL computed before s1's change.
+TEST_F(PgObjectLocksTest, ConcurrentRepeatableReadGrantsLoseUpdate) {
+  auto* ts = cluster_->tablet_server(0);
+  auto setup_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts));
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE test1 (k INT, v INT)"));
+  ASSERT_OK(setup_conn.Execute("CREATE ROLE role2"));
+  ASSERT_OK(setup_conn.Execute("CREATE ROLE role3"));
+
+  auto conn1 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts));
+  auto conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts));
+  // Long enough for s1's GRANT to commit while s2 is between its read and its write.
+  const auto delay_ms = 10000 * kTimeMultiplier;
+  ASSERT_OK(conn2.ExecuteFormat("SET yb_test_delay_relation_grant_update_ms = $0", delay_ms));
+
+  LogWaiter s2_paused(ts, Format("sleeping for $0 ms before updating relacl", delay_ms));
+  Status s2_status;
+  std::atomic<bool> s2_done{false};
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&conn2, &s2_status, &s2_done] {
+    s2_status = conn2.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ");
+    if (s2_status.ok()) {
+      s2_status = conn2.Execute("GRANT UPDATE ON TABLE test1 TO role3");
+    }
+    if (s2_status.ok()) {
+      s2_status = conn2.Execute("COMMIT");
+    }
+    s2_done = true;
+  });
+
+  ASSERT_OK(s2_paused.WaitFor(MonoDelta::FromSeconds(30 * kTimeMultiplier)));
+  ASSERT_OK(conn1.Execute("GRANT SELECT ON TABLE test1 TO role2"));
+  // s1 must finish inside s2's pause, or this run did not exercise the race.
+  ASSERT_FALSE(s2_done.load()) << "s2 resumed before s1 finished; raise the delay";
+  thread_holder.JoinAll();
+  ASSERT_OK(s2_status);
+
+  const auto relacl = ASSERT_RESULT(setup_conn.FetchRow<std::string>(
+      "SELECT relacl::text FROM pg_class WHERE relname = 'test1'"));
+  ASSERT_STR_CONTAINS(relacl, "role3=w/");
+  ASSERT_STR_NOT_CONTAINS(relacl, "role2=r/");
 }
 
 // Uses a longer YSQL operation lease TTL. On oversubscribed hosts a transient stall of the tserver
@@ -1387,6 +1434,60 @@ TEST_F(PgObjectLocksTest, ConcurrentIndexCreationTakesSessionLock) {
   thread_holder.JoinAll();
   // Alter should go through now since the session lock should have been released.
   ASSERT_OK(conn2.Execute("ALTER TABLE test ADD COLUMN v1 INT DEFAULT 0"));
+}
+
+// All session object locks of a backend belong to one session txn. Releasing them schedules a
+// lost-message retry of the release at the acquire deadline, which must not release session locks
+// that a later DDL of the same backend acquired in the meantime.
+TEST_F(PgObjectLocksTest, SessionLockReleaseRetryKeepsLaterSessionLocks) {
+  const auto kFirstDdlTimeout = MonoDelta::FromSeconds(10 * kTimeMultiplier);
+  auto* ts1 = cluster_->tablet_server(1);
+  auto* ts2 = cluster_->tablet_server(2);
+
+  auto conn1 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  auto conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+
+  ASSERT_OK(conn1.Execute("CREATE TABLE test_a(k INT)"));
+  ASSERT_OK(conn1.Execute("CREATE TABLE test_b(k INT)"));
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+      "ysql_yb_disable_wait_for_backends_catalog_version", "false"));
+
+  // The statement timeout bounds the deadline of the first DDL's session lock acquire, and so
+  // when the lost-message retry of its release fires.
+  const auto first_ddl_start = MonoTime::Now();
+  ASSERT_OK(conn1.ExecuteFormat(
+      "SET statement_timeout = '$0ms'", kFirstDdlTimeout.ToMilliseconds()));
+  ASSERT_OK(conn1.Execute("CREATE INDEX test_a_k ON test_a(k)"));
+  ASSERT_OK(conn1.Execute("RESET statement_timeout"));
+
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_wait_for_lockers", "true"));
+  LogWaiter log_waiter(ts1, "Pausing due to flag TEST_pause_wait_for_lockers");
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&conn1]() {
+    ASSERT_OK(conn1.Execute("CREATE INDEX test_b_k ON test_b(k)"));
+  });
+  // Unpause on early failure so that the thread above finishes before thread_holder joins it.
+  auto unpause = ScopeExit([this] {
+    WARN_NOT_OK(
+        cluster_->SetFlagOnTServers("TEST_pause_wait_for_lockers", "false"),
+        "Failed to unpause CREATE INDEX");
+  });
+  ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(30 * kTimeMultiplier)));
+
+  // Let the lost-message retry of the first DDL's release fire. It is scheduled at the acquire
+  // deadline, i.e. statement_timeout + pg_client_extra_timeout_ms after the acquire, and the extra
+  // margin covers its round trip through the master.
+  SleepFor(first_ddl_start + kFirstDdlTimeout +
+           MonoDelta::FromMilliseconds(FLAGS_pg_client_extra_timeout_ms) +
+           MonoDelta::FromSeconds(3 * kTimeMultiplier) - MonoTime::Now());
+
+  // The second CREATE INDEX still holds its ShareUpdateExclusive session lock on test_b.
+  ASSERT_OK(conn2.Execute("SET statement_timeout = '5s'"));
+  ASSERT_NOK(conn2.Execute("ALTER TABLE test_b ADD COLUMN v INT DEFAULT 0"));
+
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_wait_for_lockers", "false"));
+  thread_holder.JoinAll();
+  ASSERT_OK(conn2.Execute("ALTER TABLE test_b ADD COLUMN v INT DEFAULT 0"));
 }
 
 TEST_F(PgObjectLocksTest, YB_DISABLE_TEST_IN_TSAN(SessionLocksAreReleasedOnBackendErrorsOrKill)) {
@@ -2506,6 +2607,88 @@ TEST_F_EX(
     PgObjectLocksTest, TestConcurrentDdlSyncReleaseForGlobalLocksAndDdls,
     PgObjectLocksWithConcurrentDdl) {
   testSyncReleaseForGlobalLocksAndDdls();
+}
+
+// Assert that we omit the partitions marked as pending_detach (partitions being detached
+// with DETACH PARTITION CONCURRENTLY) from the list of partitions that connections see.
+TEST_F_EX(
+    PgObjectLocksTest, TestDetachConcurrentlyRICheckRepeatableRead,
+    PgObjectLocksWithConcurrentDdl) {
+  auto setup_conn = ASSERT_RESULT(Connect());
+  // Create a partitioned table that will be the PK (referenced) side of the FK.
+  ASSERT_OK(setup_conn.Execute(
+      "CREATE TABLE pk_parent (id INT NOT NULL) PARTITION BY RANGE (id)"));
+  ASSERT_OK(setup_conn.Execute(
+      "CREATE TABLE pk_part1 PARTITION OF pk_parent FOR VALUES FROM (1) TO (100)"));
+  ASSERT_OK(setup_conn.Execute(
+      "CREATE TABLE pk_part2 PARTITION OF pk_parent FOR VALUES FROM (100) TO (200)"));
+  ASSERT_OK(setup_conn.Execute("ALTER TABLE pk_parent ADD PRIMARY KEY (id)"));
+  ASSERT_OK(setup_conn.Execute("INSERT INTO pk_parent VALUES (50)"));
+  ASSERT_OK(setup_conn.Execute(
+      "CREATE TABLE fk_child (id INT, pk_id INT REFERENCES pk_parent(id))"));
+
+  auto conn1 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  auto row = ASSERT_RESULT(conn1.FetchRow<int32_t>("SELECT id FROM pk_parent WHERE id = 50"));
+  LOG(INFO) << "conn1 snapshot established, read id=" << row;
+  // Write a row into pk_part1 (the partition about to be detached) from conn1's txn.
+  ASSERT_OK(conn1.Execute("INSERT INTO pk_parent VALUES (60)"));
+
+  // conn3 is on the same tserver as conn1.
+  auto conn3 = ASSERT_RESULT(Connect());
+  constexpr auto kCatalogVersionQuery =
+      "SELECT catalog_version FROM pg_stat_activity WHERE pid = pg_backend_pid()";
+  const auto initial_catalog_version =
+      ASSERT_RESULT(conn3.FetchRow<int64_t>(kCatalogVersionQuery));
+
+  auto conn2 = ASSERT_RESULT(Connect());
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&conn2]() {
+    LOG(INFO) << "conn2: DETACH PARTITION CONCURRENTLY starting";
+    auto status = conn2.Execute(
+        "ALTER TABLE pk_parent DETACH PARTITION pk_part1 CONCURRENTLY");
+    ASSERT_OK(status);
+  });
+
+  // Wait for Phase 1 of ALTER DETACH CONCURRENTLY to commit: inhdetachpending should be set.
+  // Also wait for the catalog version bump to reach the tserver so that conn1 picks up the
+  // invalidation. Otherwise conn1 could plan with a stale partdesc, and since it has written
+  // in this txn, the resulting schema version mismatch on pk_part1 can't be retried.
+  ASSERT_OK(LoggedWaitFor(
+      [&conn3, initial_catalog_version]() -> Result<bool> {
+        return VERIFY_RESULT(conn3.FetchRow<bool>(
+                   "SELECT EXISTS("
+                   "  SELECT 1 FROM pg_inherits WHERE inhdetachpending = true)")) &&
+               VERIFY_RESULT(conn3.FetchRow<int64_t>(kCatalogVersionQuery)) >
+                   initial_catalog_version;
+      },
+      30s * kTimeMultiplier,
+      "Wait for partition to be marked as detach pending"));
+
+  // The pending-detach partition is no longer visible to conn1's RR snapshot.
+  // This is YB specific logic where we violate RR semantics, but it seems
+  // necessary to avoid violating RI checks, and also to prevent new connections
+  // that started after partition marked as pending detach from seeing it.
+  auto select_result = ASSERT_RESULT(
+      conn1.FetchRows<int32_t>("SELECT id FROM pk_parent WHERE id = 50"));
+  ASSERT_TRUE(select_result.empty())
+      << "Expected id=50 to not be visible after partition marked as pending detach";
+
+  // conn1 also doesn't see its own write made to the pending-detach partition when reading
+  // through the parent. This is again YB specific logic where we violate the read-your-own-writes
+  // guarantee. The row is still visible when reading the partition directly.
+  select_result = ASSERT_RESULT(
+      conn1.FetchRows<int32_t>("SELECT id FROM pk_parent WHERE id = 60"));
+  ASSERT_TRUE(select_result.empty())
+      << "Expected conn1's own write id=60 to not be visible through the parent after "
+      << "partition marked as pending detach";
+  row = ASSERT_RESULT(conn1.FetchRow<int32_t>("SELECT id FROM pk_part1 WHERE id = 60"));
+  ASSERT_EQ(row, 60);
+
+  // RI check correctly rejected the insert -- the partition was properly omitted.
+  ASSERT_NOK(conn1.Execute("INSERT INTO fk_child VALUES (1, 50)"));
+  ASSERT_OK(conn1.Execute("ROLLBACK"));
+  thread_holder.JoinAll();
 }
 
 // In YB, CREATE INDEX acquires session locks against the session level txn's by bumping up the

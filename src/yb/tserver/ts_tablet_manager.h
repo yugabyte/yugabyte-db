@@ -32,7 +32,10 @@
 
 #pragma once
 
+#include <atomic>
 #include <memory>
+#include <mutex>
+#include <queue>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -111,6 +114,7 @@ typedef std::vector<TabletCreationMetadata> SplitTabletsCreationMetadata;
 
 typedef Callback<void(tablet::TabletPeerPtr)> ConsensusChangeCallback;
 
+class TabletFlusher;
 class TabletMetadataValidator;
 
 // If 'expr' fails, log a message, tombstone the given tablet, and return the
@@ -197,6 +201,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   ThreadPool* tablet_prepare_pool() const { return tablet_prepare_pool_.get(); }
   ThreadPool* raft_pool() const { return raft_pool_.get(); }
   ThreadPool* snapshot_cleanup_pool() const { return snapshot_cleanup_pool_.get(); }
+  TabletFlusher& tablet_flusher() const { return *tablet_flusher_; }
   rpc::ThreadPool* raft_notifications_pool() const {
     return raft_notifications_pool_.get();
   }
@@ -694,7 +699,24 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   std::string TabletLogPrefix(const TabletId& tablet_id) const;
 
-  void CleanupCheckpoints();
+  // Deletes leftover remote bootstrap checkpoint dirs and fills startup_vector_index_storages_.
+  void ScanTabletDataDirsOnStartup();
+
+  // Deletes the startup_vector_index_storages_ entries of tablets that are not in tablet_dir_names
+  // (base names of the loaded tablets' RocksDB dirs) and whose RocksDB dir is gone: tablets dropped
+  // with storages they did not list, since DeleteTabletData destroys only the listed ones. Called
+  // from Init, before RPC services start, so no tablet can be created meanwhile.
+  void DeleteStartupVectorIndexStoragesOfDeletedTablets(
+      const std::unordered_set<std::string>& tablet_dir_names);
+
+  // Deletes the startup_vector_index_storages_ entries of meta's tablet that meta does not list. A
+  // crash during a restore, or a restore on a build before #35006, leaves such storages. Called
+  // before the peer starts, so no operation can add an index meanwhile, and for a tablet that
+  // bootstraps, after bootstrap: Tablet::AddTableInMemory creates the storage of a new index before
+  // the superblock listing it is flushed, and replay adds such an index back if its ADD_TABLE is
+  // known committed. One applied before its commit was logged stays pending until the peer starts,
+  // so the sweep deletes its storage, and applying it creates the storage again and backfills it.
+  void DeleteStartupUnlistedVectorIndexStorages(const tablet::RaftGroupMetadata& meta);
 
   void LogCacheGC(MemTracker* log_cache_mem_tracker, size_t required);
 
@@ -705,6 +727,12 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   void MaybeDoChecksForTests(const TableId& table_id) REQUIRES_SHARED(mutex_);
 
   void CleanupSplitTablets();
+
+  // Steps down every leader on this TServer while its tablets must not lead (see
+  // PersistenceGate::ShouldRelinquishLeadership).  Runs on the scheduler; the step-downs run on
+  // the Raft pool, in StepDownLocalLeaders.
+  void RelinquishLeadershipIfNeeded();
+  void StepDownLocalLeaders();
 
   docdb::HistoryCutoff AllowedHistoryCutoff(tablet::RaftGroupMetadata* metadata);
 
@@ -724,6 +752,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   void PollWaitingTxnRegistry();
 
   void FlushDirtySuperblocks();
+
+  void EnterQuiescentModeForIdleTablets();
 
   // Helper functions to reduce code duplication between RemoteBootstrap and RemoteSnapshotTransfer
   // flows.
@@ -829,6 +859,12 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   TransitionInProgressMap transition_in_progress_ GUARDED_BY(transition_in_progress_mutex_);
   mutable std::mutex transition_in_progress_mutex_;
 
+  // Paths of the vector index storages ("<tablet dir>.vi-*") found at startup, keyed by the base
+  // name of the tablet's RocksDB dir.
+  std::unordered_map<std::string, std::vector<std::string>> startup_vector_index_storages_
+      GUARDED_BY(startup_vector_index_storages_mutex_);
+  std::mutex startup_vector_index_storages_mutex_;
+
   // Tablets to include in the next tablet report. When a tablet is added/removed/added
   // locally and needs to be reported to the master, an entry is added to this map.
   // Tablets aren't removed from this Map until the Master acknowledges it in response.
@@ -876,6 +912,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Bounded process-wide pool for physical tablet snapshot directory cleanup.
   std::unique_ptr<ThreadPool> snapshot_cleanup_pool_;
+  std::unique_ptr<TabletFlusher> tablet_flusher_;
 
   // Thread pool for appender threads, shared between all tablets.
   std::unique_ptr<ThreadPool> append_pool_;
@@ -912,6 +949,16 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Used for cleaning up old metrics.
   std::unique_ptr<rpc::Poller> metrics_cleaner_;
+
+  std::unique_ptr<rpc::Poller> relinquish_leadership_poller_;
+
+  // Whether StepDownLocalLeaders is queued or running; at most one is.
+  std::atomic<bool> relinquish_leadership_running_{false};
+
+  // When StepDownLocalLeaders last asked this TServer's leader of each tablet to step down.  Never
+  // pruned: an entry is a few dozen bytes per tablet this TServer has led.  Used only by
+  // StepDownLocalLeaders, which runs one at a time.
+  std::unordered_map<TabletId, CoarseTimePoint> relinquish_step_down_requests_;
 
   // Updates the metrics for the amount of active (non-retention / snapshot-related) and total data
   // on the server, accounting for hardlinks.
@@ -980,6 +1027,22 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Background task for periodically flushing the superblocks.
   std::unique_ptr<BackgroundTask> superblock_flush_bg_task_;
+
+  std::unique_ptr<BackgroundTask> quiescent_tablets_bg_task_;
+
+  struct QuiescentCheck {
+    CoarseTimePoint time;
+    tablet::TabletPeerWeakPtr peer;
+
+    // Reversed, so that the top of the priority queue is the earliest check.
+    bool operator<(const QuiescentCheck& rhs) const {
+      return time > rhs.time;
+    }
+  };
+
+  std::mutex quiescent_checks_mutex_;
+  // Tablets ordered by the time when they could enter the quiescent mode.
+  std::priority_queue<QuiescentCheck> quiescent_checks_ GUARDED_BY(quiescent_checks_mutex_);
 
   std::unique_ptr<FullCompactionManager> full_compaction_manager_;
 

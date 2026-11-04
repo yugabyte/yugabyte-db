@@ -7,16 +7,22 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { FC, useState } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
-import clsx from 'clsx';
-import { useForm } from 'react-hook-form';
-import { toast } from 'react-toastify';
-import { Trans, useTranslation } from 'react-i18next';
-import { find, isEmpty } from 'lodash';
-import * as yup from 'yup';
-import { useMutation } from 'react-query';
+import { FC } from 'react';
+
 import { Grid, MenuItem, Typography, makeStyles } from '@material-ui/core';
+import clsx from 'clsx';
+import { find, isEmpty } from 'lodash';
+import { useForm } from 'react-hook-form';
+import { Trans, useTranslation } from 'react-i18next';
+import { useMutation, useQuery } from 'react-query';
+import { useDispatch, useSelector } from 'react-redux';
+import { toast } from 'react-toastify';
+import * as yup from 'yup';
+
+import { YBLoadingCircleIcon } from '@app/components/common/indicators';
+import { useEditUniverse } from '@app/v2/api/universe/universe';
+import { showTaskInDrawer } from '../../../../../actions/tasks';
+import { ProviderCode } from '../../constants';
 import {
   AlertVariant,
   YBAlert,
@@ -26,22 +32,28 @@ import {
   YBSelectField
 } from '../../../../../redesign/components';
 import {
-  useIsTaskNewUIEnabled,
-  useInterceptBackupTaskLinks
+  useInterceptBackupTaskLinks,
+  useIsTaskNewUIEnabled
 } from '../../../../../redesign/features/tasks/TaskUtils';
-import { showTaskInDrawer } from '../../../../../actions/tasks';
-import {
-  createErrorMessage,
-  transitToUniverse
-} from '../../../../../redesign/features/universe/universe-form/utils/helpers';
 import { UPGRADE_TYPE } from '../../../../../redesign/features/universe/universe-actions/rollback-upgrade/utils/types';
-import { ClusterType, Universe } from '../../../../../redesign/helpers/dtos';
 import {
   ImageBundle,
   ImageBundleType,
   PRECHECK_UPGRADE_TYPE
 } from '../../../../../redesign/features/universe/universe-form/utils/dto';
+import {
+  createErrorMessage,
+  transitToUniverse
+} from '../../../../../redesign/features/universe/universe-form/utils/helpers';
+import { api, runtimeConfigQueryKey } from '../../../../../redesign/helpers/api';
+import { RuntimeConfigKey } from '../../../../../redesign/helpers/constants';
+import { ClusterType, Universe } from '../../../../../redesign/helpers/dtos';
 import { ImageBundleDefaultTag, ImageBundleYBActiveTag } from './LinuxVersionUtils';
+import {
+  OciImageUpgradeMode,
+  getOciImageBundleUpgradeMode,
+  type OciBundleRegionCheck
+} from './ociImageBundleUpgrade';
 import { upgradeVM } from './VersionCatalogApi';
 
 interface UpgradeLinuxVersionModalProps {
@@ -71,7 +83,7 @@ const useStyles = makeStyles((theme) => ({
     marginTop: '28px'
   },
   alert: {
-    marginTop: '50px'
+    marginTop: '16px'
   },
   info: {
     marginTop: '16px',
@@ -83,6 +95,16 @@ const useStyles = makeStyles((theme) => ({
   },
   restartInterval: {
     marginTop: '28px'
+  },
+  loadingContainer: {
+    /* Layout */
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+
+    /* Box Model */
+    height: '100%',
+    width: '100%'
   }
 }));
 
@@ -119,6 +141,90 @@ export const UpgradeLinuxVersionModal: FC<UpgradeLinuxVersionModalProps> = ({
 
   const classes = useStyles();
 
+  const universeRuntimeConfigsQuery = useQuery(
+    runtimeConfigQueryKey.universeScope(universeData.universeUUID),
+    () => api.fetchRuntimeConfigs(universeData.universeUUID),
+    { enabled: visible && !!universeData.universeUUID }
+  );
+  const allowInPlaceForMarketplaceBasedImage =
+    universeRuntimeConfigsQuery.data?.configEntries?.find(
+      (configEntry: { key: string; value: string }) =>
+        configEntry.key === RuntimeConfigKey.OCI_ALLOW_INPLACE_MARKETPLACE_BASED_IMAGE_UPGRADE
+    )?.value === 'true';
+
+  const clusters = universeData?.universeDetails.clusters;
+  const primaryCluster = find(clusters, { clusterType: ClusterType.PRIMARY });
+  const currProvider = find(allProviders.data, { uuid: primaryCluster?.userIntent.provider });
+  const curLinuxImgBundle: ImageBundle | undefined = currProvider
+    ? find(currProvider.imageBundles, {
+        uuid: primaryCluster?.userIntent.imageBundleUUID
+      })
+    : undefined;
+  const regionCodesByCluster: Record<string, string[]> = {};
+  (universeData?.universeDetails.nodeDetailsSet ?? []).forEach((node) => {
+    const regionCode = node.cloudInfo?.region;
+    if (!regionCode) {
+      return;
+    }
+    const clusterRegionCodes = regionCodesByCluster[node.placementUuid] ?? [];
+    if (!clusterRegionCodes.includes(regionCode)) {
+      clusterRegionCodes.push(regionCode);
+    }
+    regionCodesByCluster[node.placementUuid] = clusterRegionCodes;
+  });
+  const currentBundleChecks: OciBundleRegionCheck[] = (clusters ?? []).map((cluster) => {
+    const clusterProvider = find(allProviders.data, { uuid: cluster.userIntent.provider });
+    return {
+      bundle: clusterProvider
+        ? find(clusterProvider.imageBundles, { uuid: cluster.userIntent.imageBundleUUID })
+        : undefined,
+      regionCodes: regionCodesByCluster[cluster.uuid] ?? []
+    };
+  });
+  const allRegionCodes = [...new Set(currentBundleChecks.flatMap((check) => check.regionCodes))];
+  const upgradeModeForTarget = (targetUuid: string | null) => {
+    if (currProvider?.code !== ProviderCode.OCI) {
+      return OciImageUpgradeMode.IN_PLACE;
+    }
+    const selectedBundle: ImageBundle | undefined = targetUuid
+      ? find(currProvider?.imageBundles, { uuid: targetUuid })
+      : undefined;
+    const checks = targetUuid
+      ? [...currentBundleChecks, { bundle: selectedBundle, regionCodes: allRegionCodes }]
+      : currentBundleChecks;
+    return getOciImageBundleUpgradeMode(checks);
+  };
+  const upgradeMode = upgradeModeForTarget(targetVersionValue);
+  const isFullMove =
+    upgradeMode === OciImageUpgradeMode.MARKETPLACE_BASED && !allowInPlaceForMarketplaceBasedImage;
+
+  const showUpgradeStarted = (taskUUID: string | undefined, runOnlyPrechecks: boolean) => {
+    toast.success(
+      <span>
+        {runOnlyPrechecks ? (
+          t('precheckInitiatedMsg', { keyPrefix: 'universeActions' })
+        ) : (
+          <Trans
+            i18nKey="linuxVersion.upgradeModal.successMsg"
+            components={[
+              interceptBackupLink(
+                <a href={`/tasks/${taskUUID}`} target="_blank" rel="noopener noreferrer">
+                  here
+                </a>
+              )
+            ]}
+          ></Trans>
+        )}
+      </span>
+    );
+    if (isNewTaskUIEnabled && taskUUID) {
+      dispatch(showTaskInDrawer(taskUUID));
+    } else {
+      transitToUniverse(universeData.universeUUID);
+    }
+    onHide();
+  };
+
   const doUpgradeVM = useMutation(
     ({
       imageBundleUUID,
@@ -144,31 +250,7 @@ export const UpgradeLinuxVersionModal: FC<UpgradeLinuxVersionModalProps> = ({
     },
     {
       onSuccess: (resp, { runOnlyPrechecks }) => {
-        const taskUUID = resp.data.taskUUID;
-        toast.success(
-          <span>
-            {runOnlyPrechecks ? (
-              t('precheckInitiatedMsg', { keyPrefix: 'universeActions' })
-            ) : (
-              <Trans
-                i18nKey="linuxVersion.upgradeModal.successMsg"
-                components={[
-                  interceptBackupLink(
-                    <a href={`/tasks/${taskUUID}`} target="_blank" rel="noopener noreferrer">
-                      here
-                    </a>
-                  )
-                ]}
-              ></Trans>
-            )}
-          </span>
-        );
-        if (isNewTaskUIEnabled) {
-          dispatch(showTaskInDrawer(taskUUID));
-        } else {
-          transitToUniverse(universeData.universeUUID);
-        }
-        onHide();
+        showUpgradeStarted(resp.data.taskUUID, runOnlyPrechecks);
       },
       onError: (resp: any) => {
         const errMsg = createErrorMessage(resp);
@@ -178,18 +260,60 @@ export const UpgradeLinuxVersionModal: FC<UpgradeLinuxVersionModalProps> = ({
     }
   );
 
-  if (!visible) return null;
-
-  const clusters = universeData?.universeDetails.clusters;
-  if (!clusters) return null;
-
-  const primaryCluster = find(clusters, { clusterType: ClusterType.PRIMARY });
-
-  const currProvider = find(allProviders.data, { uuid: primaryCluster?.userIntent.provider });
-
-  const curLinuxImgBundle: ImageBundle = find(currProvider.imageBundles, {
-    uuid: primaryCluster?.userIntent.imageBundleUUID
+  const editUniverseMutation = useEditUniverse({
+    mutation: {
+      onSuccess: (response) => {
+        showUpgradeStarted(response.task_uuid, false);
+      },
+      onError: (error: unknown) => {
+        toast.error(createErrorMessage(error));
+        onHide();
+      }
+    }
   });
+
+  if (!visible || !clusters || !currProvider || !curLinuxImgBundle) return null;
+
+  if (universeRuntimeConfigsQuery.isLoading) {
+    return (
+      <YBModal
+        open={visible}
+        onClose={onHide}
+        title={t('title')}
+        titleIcon={<i className={clsx('fa fa-arrow-up fa-fw', classes.icon)} />}
+        dialogContentProps={{
+          dividers: true,
+          className: classes.content
+        }}
+        overrideWidth={'886px'}
+        overrideHeight={'720px'}
+        footerAccessory={
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'flex-end',
+              gap: '8px',
+              width: '100%'
+            }}
+          >
+            <YBButton
+              type="button"
+              variant="secondary"
+              data-testid="UpgradeLinuxVersionModal-CancelButton"
+              onClick={onHide}
+            >
+              {t('cancel', { keyPrefix: 'common' })}
+            </YBButton>
+          </div>
+        }
+      >
+        <div className={classes.loadingContainer}>
+          <YBLoadingCircleIcon />
+        </div>
+      </YBModal>
+    );
+  }
 
   const validationSchema = yup.object({
     targetVersion: yup
@@ -206,6 +330,22 @@ export const UpgradeLinuxVersionModal: FC<UpgradeLinuxVersionModalProps> = ({
     handleSubmit(async (values) => {
       try {
         await validationSchema.validate(values);
+        if (isFullMove) {
+          editUniverseMutation.mutate({
+            uniUUID: universeData.universeUUID,
+            data: {
+              expected_universe_version: -1,
+              clusters: clusters.map((cluster) => ({
+                uuid: cluster.uuid,
+                provider_spec: {
+                  region_list: cluster.userIntent.regionList,
+                  image_bundle_uuid: values.targetVersion!
+                }
+              }))
+            }
+          });
+          return;
+        }
         doUpgradeVM.mutateAsync({
           imageBundleUUID: values.targetVersion!,
           nodePrefix: universeData.universeDetails.nodePrefix,
@@ -249,15 +389,17 @@ export const UpgradeLinuxVersionModal: FC<UpgradeLinuxVersionModalProps> = ({
           >
             {t('cancel', { keyPrefix: 'common' })}
           </YBButton>
-          <YBButton
-            type="button"
-            variant="secondary"
-            disabled={!targetVersionValue}
-            onClick={handleFormSubmit(true)}
-            data-testid="UpgradeLinuxVersionModal-PrecheckButton"
-          >
-            {t('runPrecheckOnlyButton')}
-          </YBButton>
+          {!isFullMove && (
+            <YBButton
+              type="button"
+              variant="secondary"
+              disabled={!targetVersionValue}
+              onClick={handleFormSubmit(true)}
+              data-testid="UpgradeLinuxVersionModal-PrecheckButton"
+            >
+              {t('runPrecheckOnlyButton')}
+            </YBButton>
+          )}
           <YBButton
             variant="primary"
             disabled={!isEmpty(errors) || !targetVersionValue}
@@ -320,30 +462,54 @@ export const UpgradeLinuxVersionModal: FC<UpgradeLinuxVersionModalProps> = ({
           </YBSelectField>
         </Grid>
       </Grid>
-      <Grid container className={classes.restartInterval}>
-        <Grid item xs={3} className={classes.versionComp}>
-          <Typography variant="body1">{t('restartAfterInSecond')}</Typography>
+      {isFullMove && (
+        <YBAlert
+          open
+          text={t('marketplaceBasedWarning', {
+            configKey: RuntimeConfigKey.OCI_ALLOW_INPLACE_MARKETPLACE_BASED_IMAGE_UPGRADE
+          })}
+          variant={AlertVariant.Warning}
+          className={classes.alert}
+        />
+      )}
+      {upgradeMode === OciImageUpgradeMode.UNKNOWN && (
+        <YBAlert
+          open
+          text={t('unknownMarketplaceFlagWarning')}
+          variant={AlertVariant.Warning}
+          className={classes.alert}
+        />
+      )}
+      {!isFullMove && (
+        <Grid container className={classes.restartInterval}>
+          <Grid item xs={3} className={classes.versionComp}>
+            <Typography variant="body1">{t('restartAfterInSecond')}</Typography>
+          </Grid>
+          <Grid item xs={5}>
+            <YBInputField control={control} name={'sleepAfterInSeconds'} type="number" fullWidth />
+          </Grid>
         </Grid>
-        <Grid item xs={5}>
-          <YBInputField control={control} name={'sleepAfterInSeconds'} type="number" fullWidth />
-        </Grid>
-      </Grid>
-      <YBAlert
-        open
-        text={
-          <Trans
-            i18nKey={`linuxVersion.upgradeModal.verifyImageText`}
-            components={{
-              b: <b />
-            }}
-          />
-        }
-        variant={AlertVariant.Warning}
-        className={classes.alert}
-      />
+      )}
+      {!isFullMove && (
+        <YBAlert
+          open
+          text={
+            <Trans
+              i18nKey={`linuxVersion.upgradeModal.verifyImageText`}
+              components={{
+                b: <b />
+              }}
+            />
+          }
+          variant={AlertVariant.Warning}
+          className={classes.alert}
+        />
+      )}
       <div className={classes.info}>
         <Trans
-          i18nKey={`linuxVersion.upgradeModal.infoContent`}
+          i18nKey={`linuxVersion.upgradeModal.${
+            isFullMove ? 'fullMoveInfoContent' : 'infoContent'
+          }`}
           components={{
             b: <b />,
             br: <br />

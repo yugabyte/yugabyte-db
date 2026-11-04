@@ -36,6 +36,7 @@
 #include "utils/catcache.h"
 #include "utils/inval.h"
 #include "utils/memutils.h"
+#include "utils/snapmgr.h"
 #include "utils/varlena.h"
 #include "utils/wait_event.h"
 #include "yb/yql/pggate/ybc_gflags.h"
@@ -442,6 +443,13 @@ YbResetVirtualWalCatalogSnapshot(void)
 		YBCResetHistoricalReadContextAndInvalidateRelcache();
 	else
 		YBCResetYbReadTimeAndInvalidateRelcache();
+
+	/*
+	 * Catalog reads under one catalog snapshot can keep using the read time
+	 * first used for it, i.e. the one just reset. Drop the snapshot so that
+	 * later catalog reads pick a fresh read time.
+	 */
+	YbInvalidateCatalogSnapshot();
 }
 
 static void
