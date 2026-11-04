@@ -12956,6 +12956,14 @@ Status CatalogManager::ProcessPendingAssignmentsPerTable(
   // Send the CreateTablet() requests to the servers. This is asynchronous / non-blocking.
   unlocker.Commit();
 
+  // A replaced tablet is only dropped from the maps by the next background pass; its replicas
+  // leave the load count now rather than then.
+  for (const TabletInfoPtr& tablet : deferred.modified_tablets) {
+    if (tablet->LockForRead()->is_deleted()) {
+      tablet->StopCountingReplicaLoad();
+    }
+  }
+
   {
     LockGuard lock(mutex_);
     auto tablet_map_checkout = tablet_map_.CheckOut();

@@ -183,6 +183,7 @@ ADD_YB_TEST(tablet-split-itest)
 ADD_YB_TEST(cdcsdk_gflag-test)
 ADD_YB_TEST(stateful_services/stateful_service-itest)
 ADD_YB_TEST(master_heartbeat-itest)
+YB_TEST_TARGET_LINK_LIBRARIES(master_heartbeat-itest pg_wrapper_test_base)
 
 # Tests which fail on purpose for checking Jenkins test failures reporting, disabled
 # (commented out) by default:

@@ -202,8 +202,7 @@ TabletInfo::TabletInfo(const TableInfoPtr& table, TabletId tablet_id)
     : tablet_id_(std::move(tablet_id)),
       table_(table),
       last_update_time_(MonoTime::Now()),
-      last_time_with_valid_leader_(last_update_time_),
-      counts_replica_load_(!table || !table->is_system()) {
+      last_time_with_valid_leader_(last_update_time_) {
   if (tablet_id_ == kSysCatalogTabletId) {
     mutable_metadata()->SetExcludeFromHeldTabletWriteLockCount();
   }
