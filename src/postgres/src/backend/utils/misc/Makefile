@@ -20,6 +20,7 @@ OBJS = \
 	yb_dist_trace.o \
 	yb_exceptions_for_func_pushdown.o \
 	yb_file_utils.o \
+	yb_guc_hooks.o \
 	yb_index_check.o \
 	yb_internal_conn.o \
 	yb_jumblefuncs.o \
