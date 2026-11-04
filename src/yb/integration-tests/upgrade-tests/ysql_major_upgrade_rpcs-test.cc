@@ -316,6 +316,33 @@ TEST_F(YsqlMajorUpgradeRpcsTest, SimultaneousRollback) {
   ASSERT_OK(InsertRowInSimpleTableAndValidate());
 }
 
+// Make sure an upgrade started right after a rollback waits for the rolled back catalog tables to
+// be deleted, instead of recreating them while they are still DELETING.
+// Disabled in debug builds: two upgrades from a debug build of the old version can time out.
+TEST_F(YsqlMajorUpgradeRpcsTest, YB_RELEASE_ONLY_TEST(UpgradeWaitsForRollbackCleanup)) {
+  ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
+  ASSERT_OK(PerformYsqlMajorCatalogUpgrade());
+
+  // Hold the background task that marks the rolled back tables DELETED.
+  auto* master_leader = cluster_->GetLeaderMaster();
+  ASSERT_OK(cluster_->SetFlag(master_leader, "TEST_pause_catalog_manager_bg_loop_start", "true"));
+  ASSERT_OK(RollbackYsqlMajorCatalogVersion());
+
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([this, master_leader] {
+    // Long enough for initdb to reach its first CreateTable.
+    SleepFor(20s);
+    ASSERT_OK(
+        ValidateYsqlMajorCatalogUpgradeState(master::YSQL_MAJOR_CATALOG_UPGRADE_IN_PROGRESS));
+    ASSERT_OK(
+        cluster_->SetFlag(master_leader, "TEST_pause_catalog_manager_bg_loop_start", "false"));
+  });
+  ASSERT_OK(PerformYsqlMajorCatalogUpgrade());
+  thread_holder.JoinAll();
+
+  ASSERT_OK(CompleteUpgradeAndValidate());
+}
+
 // Make sure ysql major catalog upgrade works with a master crash during the upgrade.
 // Disabling in debug builds since this test times out on it.
 TEST_F(YsqlMajorUpgradeRpcsTest, YB_RELEASE_ONLY_TEST(MasterCrashDuringUpgrade)) {
