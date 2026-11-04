@@ -4340,7 +4340,6 @@ class ControlScript(object):
         masters_list_update_thread = None
         self.stop_callhome = False
         while True:
-            should_callhome = False
 
             is_first_install = is_first_run and not self.is_yb_initialized()
 
@@ -4412,7 +4411,6 @@ class ControlScript(object):
                             logging.ERROR)
                         self.update_tserver_master_addrs()
                         process.start()
-                        should_callhome = True
 
             if warnings:
                 warning_msg = "\n" + Output.make_yellow(Output.ANIMATION_WARNING +
@@ -4479,8 +4477,6 @@ class ControlScript(object):
                 )
 
             is_first_run = False
-            if should_callhome:
-                self.callhome()
 
             time.sleep(int(self.configs.saved_data.get("polling_interval")))
 
