@@ -153,6 +153,25 @@ const char* GroupName(CommandGroup group) {
   FATAL_INVALID_ENUM_VALUE(CommandGroup, group);
 }
 
+// Splits text at spaces into lines of at most width characters. A word longer than width gets a
+// line of its own rather than being broken.
+std::vector<std::string_view> WrapWords(std::string_view text, size_t width) {
+  std::vector<std::string_view> lines;
+  while (text.size() > width) {
+    auto cut = text.rfind(' ', width);
+    if (cut == std::string_view::npos) {
+      cut = text.find(' ');
+      if (cut == std::string_view::npos) {
+        break;
+      }
+    }
+    lines.push_back(text.substr(0, cut));
+    text.remove_prefix(cut + 1);
+  }
+  lines.push_back(text);
+  return lines;
+}
+
 constexpr auto kBlacklistAdd = "ADD";
 constexpr auto kBlacklistRemove = "REMOVE";
 constexpr int32 kDefaultRpcPort = 9100;
@@ -629,11 +648,15 @@ size_t ClusterAdminCli::PrintOperationNames(std::ostream& out, const std::string
   // Only the full list is numbered, so an operation never has two different numbers.
   const auto number_width = std::to_string(matches.size()).size();
   const auto name_column = 2 + number_width + 2;
-  // The full list shows a grouped operation's description instead of its syntax. A group whose
-  // names all leave room for a kMaxDescriptionLength description beside them is a table, with
-  // the descriptions in a column after its longest name. Any other group puts every description
-  // on the line below its name. Either way a group's rows share one shape and no line wraps, and
-  // since the shape depends only on names, editing a description cannot reshape a group.
+  // The full list shows a grouped operation's description instead of its syntax, in a column
+  // after the group's longest name; the column is per group so that one long name does not push
+  // every group's descriptions right. A description too long for the room left of that column
+  // wraps at spaces, its continuation lines indented to the column (the argparse and kubectl
+  // hanging indent). Below kMinDescriptionRoom, wrapping would turn most descriptions into three
+  // or more ragged lines, so such a group instead puts every description on the line below its
+  // name. Either way a group's rows share one shape, and since the shape depends only on names,
+  // editing a description cannot reshape a group.
+  constexpr size_t kMinDescriptionRoom = 30;
   constexpr size_t kStackedIndent = 4;
   // Unset while printing a stacked group.
   std::optional<size_t> description_column;
@@ -647,13 +670,18 @@ size_t ClusterAdminCli::PrintOperationNames(std::ostream& out, const std::string
     }
     line += command.name_;
     if (filter.empty() && !command.metadata_.description.empty()) {
-      if (description_column) {
-        line.resize(*description_column, ' ');
-      } else {
+      if (!description_column) {
         out << line << endl;
         line.assign(name_column + kStackedIndent, ' ');
+        out << line << command.metadata_.description << endl;
+        return;
       }
-      out << line << command.metadata_.description << endl;
+      line.resize(*description_column, ' ');
+      for (const auto& part :
+           WrapWords(command.metadata_.description, kMaxLineWidth - *description_column)) {
+        out << line << part << endl;
+        line.assign(*description_column, ' ');
+      }
       return;
     }
     if (!command.usage_arguments_.empty()) {
@@ -698,7 +726,7 @@ size_t ClusterAdminCli::PrintOperationNames(std::ostream& out, const std::string
         longest_name = std::max(longest_name, (*next)->name_.size());
       }
       description_column = name_column + longest_name + 2;
-      if (*description_column + kMaxDescriptionLength > kMaxLineWidth) {
+      if (*description_column + kMinDescriptionRoom > kMaxLineWidth) {
         description_column.reset();
       }
     }
