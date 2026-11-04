@@ -170,11 +170,14 @@ public class RedactingService {
       new CopyOnWriteArraySet<>(
           SECRET_PATHS_FOR_LOGS.stream().map(JsonPath::compile).collect(Collectors.toList()));
 
+  private static final String REDACTION_PARSE_ERROR_KEY = "_redactionParseError";
+  private static final String REDACTED_PAYLOAD_KEY = "_redactedPayload";
+
   /** Returns a safe fallback ObjectNode when JSON reparsing after redaction fails. */
   private static ObjectNode redactionParseErrorFallback(String redactedPayload) {
     ObjectNode fallback = Json.mapper().createObjectNode();
-    fallback.put("_redactionParseError", true);
-    fallback.put("_redactedPayload", redactedPayload);
+    fallback.put(REDACTION_PARSE_ERROR_KEY, true);
+    fallback.put(REDACTED_PAYLOAD_KEY, redactedPayload);
     return fallback;
   }
 
@@ -1016,17 +1019,45 @@ public class RedactingService {
       return;
     }
     if (auditEntry.has("additionalDetails")) {
-      JsonNode additionalDetails = auditEntry.get("additionalDetails");
-      if (additionalDetails != null && !additionalDetails.isNull()) {
-        if (additionalDetails.has("gflags")) {
-          redactGflagsSection(additionalDetails.get("gflags"), universe, gFlagsValidation);
-        }
-        if (additionalDetails.has("readonly_cluster_gflags")) {
-          redactGflagsSection(
-              additionalDetails.get("readonly_cluster_gflags"), universe, gFlagsValidation);
-        }
+      redactGFlagChanges(auditEntry.get("additionalDetails"), universe, gFlagsValidation);
+    }
+  }
+
+  private static void redactGFlagChanges(
+      JsonNode additionalDetails, Universe universe, GFlagsValidation gFlagsValidation) {
+    if (additionalDetails != null && !additionalDetails.isNull()) {
+      if (additionalDetails.has("gflags")) {
+        redactGflagsSection(additionalDetails.get("gflags"), universe, gFlagsValidation);
+      }
+      if (additionalDetails.has("readonly_cluster_gflags")) {
+        redactGflagsSection(
+            additionalDetails.get("readonly_cluster_gflags"), universe, gFlagsValidation);
       }
     }
+  }
+
+  /**
+   * Redacts sensitive gflag values in the additionalDetails of an audit entry, for storing or
+   * logging it. Each changed gflag there is a {"name", "old", "new", "default"} object, so the
+   * key-based LOGS redaction never sees the values. A parse-error fallback written by an earlier
+   * redaction holds the gflag changes only as text, so it is replaced whole when it names a
+   * sensitive gflag.
+   */
+  public static JsonNode redactAuditGFlagChanges(JsonNode additionalDetails) {
+    if (additionalDetails == null || !additionalDetails.isObject()) {
+      return additionalDetails;
+    }
+    ObjectNode details = additionalDetails.deepCopy();
+    redactGFlagChanges(details, null, null);
+    JsonNode fallbackPayload = details.get(REDACTED_PAYLOAD_KEY);
+    if (details.has(REDACTION_PARSE_ERROR_KEY)
+        && fallbackPayload != null
+        && fallbackPayload.isTextual()
+        && getSensitiveGflagsForRedaction(null, null).stream()
+            .anyMatch(fallbackPayload.asText()::contains)) {
+      details.put(REDACTED_PAYLOAD_KEY, SECRET_REPLACEMENT);
+    }
+    return details;
   }
 
   /** Redacts all ldapbindpasswd values in HBA-formatted strings, preserving quoting style. */

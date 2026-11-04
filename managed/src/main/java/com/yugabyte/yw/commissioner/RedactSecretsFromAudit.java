@@ -21,12 +21,14 @@ import java.util.concurrent.atomic.AtomicInteger;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
+import play.libs.Json;
 
 /**
- * Scheduled task that redacts secrets from audit payloads. Each run processes all pending audit
- * entries batch-wise until no more batches. Uses an in-memory cursor (resets on restart). Already
- * redacted rows are skipped (no update). Migration checksum is used to determine if redaction is
- * needed and to avoid re-redacting already redacted.
+ * Scheduled task that redacts secrets from audit payloads and from the gflag changes in their
+ * additional details. Each run processes all pending audit entries batch-wise until no more
+ * batches. Uses an in-memory cursor (resets on restart). Already redacted rows are skipped (no
+ * update). Migration checksum is used to determine if redaction is needed and to avoid re-redacting
+ * already redacted.
  */
 @Singleton
 @Slf4j
@@ -146,7 +148,38 @@ public class RedactSecretsFromAudit {
       if (!toUpdate.isEmpty()) {
         DB.updateAll(toUpdate);
       }
+      redactGFlagChangesInAdditionalDetails(batch);
       lastProcessedId = currentMaxId;
+    }
+  }
+
+  /**
+   * Redacts the sensitive gflag changes that audit entries written by older versions hold in plain
+   * text in additionalDetails. Reads the column with plain SQL for the reason given on {@link
+   * #redact()}.
+   */
+  private void redactGFlagChangesInAdditionalDetails(List<Audit> batch) {
+    List<Long> ids = batch.stream().map(Audit::getId).toList();
+    List<SqlRow> rows =
+        DB.sqlQuery(
+                "SELECT id, additional_details FROM audit"
+                    + " WHERE id IN (:ids) AND additional_details IS NOT NULL")
+            .setParameter("ids", ids)
+            .findList();
+    for (SqlRow row : rows) {
+      Long id = row.getLong("id");
+      try {
+        JsonNode details = Json.parse(row.getString("additional_details"));
+        JsonNode redacted = RedactingService.redactAuditGFlagChanges(details);
+        if (!details.equals(redacted)) {
+          DB.sqlUpdate("UPDATE audit SET additional_details = :details WHERE id = :id")
+              .setParameter("details", Json.stringify(redacted))
+              .setParameter("id", id)
+              .execute();
+        }
+      } catch (Exception e) {
+        log.warn("Failed to redact additional details of audit id {}", id, e);
+      }
     }
   }
 }

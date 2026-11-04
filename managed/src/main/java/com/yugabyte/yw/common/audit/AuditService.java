@@ -220,7 +220,7 @@ public class AuditService {
             action,
             redactedParams,
             taskUUID,
-            additionalDetails,
+            redactAdditionalDetails(additionalDetails),
             userAddress,
             redactedTaskDiff);
     MDC.put("logType", "audit");
@@ -231,10 +231,14 @@ public class AuditService {
   public void updateAdditionalDetails(UUID taskUUID, JsonNode additionalDetails) {
     Audit audit = Audit.getFromTaskUUID(taskUUID);
     if (audit != null) {
-      audit.setAdditionalDetails(
-          RedactingService.filterSecretFields(additionalDetails, RedactionTarget.LOGS));
+      audit.setAdditionalDetails(redactAdditionalDetails(additionalDetails));
       audit.save();
     }
+  }
+
+  private static JsonNode redactAdditionalDetails(JsonNode additionalDetails) {
+    return RedactingService.filterSecretFields(
+        RedactingService.redactAuditGFlagChanges(additionalDetails), RedactionTarget.LOGS);
   }
 
   public void updateTaskDiff(UUID taskUUID, JsonNode taskDiff) {
