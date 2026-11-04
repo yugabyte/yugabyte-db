@@ -193,6 +193,10 @@ struct LiveLeaseSnapshotEntry {
 // Tservers that have not acked a release, with the lease epoch the failed attempt was sent under.
 using UnackedTServers = std::unordered_map<TabletServerId, uint64_t>;
 
+bool IsReleaseAll(const ReleaseObjectLockRequestPB& req) {
+  return !req.subtxn_id() && req.object_locks_size() == 0;
+}
+
 }  // namespace
 
 class ObjectLockInfoManager::Impl {
@@ -1035,7 +1039,7 @@ Status ObjectLockInfoManager::Impl::PersistRequest(
   VLOG(3) << __PRETTY_FUNCTION__ << ReleaseObjectLockRequestToString(req);
   const auto& session_host_uuid = req.session_host_uuid();
   const auto lease_epoch = req.lease_epoch();
-  const bool erase_txn = !req.subtxn_id() && req.object_locks_size() == 0;
+  const bool erase_txn = IsReleaseAll(req);
   if (erase_txn) {
     RemoveTxnFromHostSessionMap(txn_id);
   }
@@ -1374,9 +1378,10 @@ Status ObjectLockInfoManager::Impl::UnlockObject(
   auto txn_id = std::move(*txn_id_result);
 
   // Check if DDL verification is in progress
-  if (catalog_manager_.DeferObjectLockReleaseToDdlVerifier(txn_id, !req.has_subtxn_id())) {
+  if (catalog_manager_.DeferObjectLockReleaseToDdlVerifier(txn_id, IsReleaseAll(req))) {
     VLOG(1) << "Transaction " << txn_id << " is already scheduled for ddl verification. "
-            << "Ignoring release request, as it will be released by the ddl verifier.";
+            << "Ignoring release request, as the locks are released once its verification "
+            << "state goes away.";
     return callback_and_return(Status::OK());
   }
 
@@ -1560,7 +1565,7 @@ std::shared_ptr<CountDownLatch> ObjectLockInfoManager::Impl::ReleaseLocksHeldByE
     // Txns with a persisted release of all their locks are left to RetryFailedReleases.
     std::unordered_set<TransactionId> txns_being_released;
     for (const auto& [_, request] : l->pb.in_progress_release_request()) {
-      if (!request.subtxn_id() && request.object_locks_size() == 0) {
+      if (IsReleaseAll(request)) {
         txns_being_released.insert(CHECK_RESULT(FullyDecodeTransactionId(request.txn_id())));
       }
     }
