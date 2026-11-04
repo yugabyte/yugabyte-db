@@ -74,8 +74,8 @@ enum class CommandGroup {
   kMeta,
 };
 
-// `help` lists a group's descriptions beside its names only if its names leave this many
-// characters within its 100-column lines; otherwise each description goes below its name.
+// Keeps a description to one short line in `help <operation>` and to at most a few wrapped lines
+// in the `help` list, which wraps descriptions that do not fit beside their group's names.
 inline constexpr size_t kMaxDescriptionLength = 64;
 
 // Help metadata for one operation (#33449). It is data, not text in a print function, so that

@@ -35,6 +35,7 @@
 #include <cctype>
 #include <fstream>
 #include <map>
+#include <optional>
 #include <regex>
 #include <set>
 #include <thread>
@@ -427,17 +428,22 @@ TEST_F(AdminCliTest, HelpListsAllOperations) {
   std::vector<std::string> groups;
   std::vector<std::string> grouped_names;
   std::vector<std::string> group_names;
-  // A grouped operation's description, as the list shows it.
+  // A grouped operation's description, as the list shows it, with wrapped lines rejoined.
   std::map<std::string, std::string> list_descriptions;
-  // Per group: whether its entries are stacked, the columns names and descriptions start at, and
-  // its longest name.
+  // Per group: whether its entries are stacked, the columns names, descriptions and continuation
+  // lines start at, its longest name, and how many entries and lines it has.
   struct GroupLayout {
     std::set<bool> stacked;
     std::set<size_t> name_columns;
     std::set<size_t> description_columns;
+    std::set<size_t> continuation_columns;
     size_t longest_name = 0;
+    size_t entries = 0;
+    size_t lines = 0;
   };
   std::map<std::string, GroupLayout> layouts;
+  std::optional<size_t> listed_count;
+  const std::regex header_re(R"(Operations \((\d+)\):)");
   const std::regex entry_re(R"(\s*(\d+)\. (\S+)(.*))");
   const std::regex group_re(R"((\S.*):)");
   const std::regex description_re(R"((\s+)(\S.*))");
@@ -445,12 +451,15 @@ TEST_F(AdminCliTest, HelpListsAllOperations) {
   for (size_t idx = 0; idx < lines.size(); ++idx) {
     const auto& line = lines[idx];
     std::smatch m;
-    if (std::regex_match(line, m, entry_re)) {
+    if (std::regex_match(line, m, header_re)) {
+      listed_count = std::stoul(m[1].str());
+    } else if (std::regex_match(line, m, entry_re)) {
       numbers.push_back(std::stoi(m[1].str()));
       names.push_back(m[2].str());
       group_names.push_back(m[2].str());
       if (!groups.empty() && groups.back() != "Not yet grouped") {
         grouped_names.push_back(m[2].str());
+        auto& layout = layouts[groups.back()];
         // The description follows the name, or, in a stacked group, is on the next line.
         std::string rest = m[3].str();
         size_t offset = m.position(3);
@@ -459,15 +468,27 @@ TEST_F(AdminCliTest, HelpListsAllOperations) {
         if (stacked) {
           rest = lines[++idx];
           offset = 0;
+          ++layout.lines;
         }
         std::smatch d;
         ASSERT_TRUE(std::regex_match(rest, d, description_re)) << "no description: " << line;
-        list_descriptions[m[2].str()] = d[2].str();
-        auto& layout = layouts[groups.back()];
+        std::string description = d[2].str();
+        ++layout.lines;
+        // Indented lines up to the next entry or blank line continue the description.
+        std::smatch c;
+        while (idx + 1 < lines.size() && !std::regex_match(lines[idx + 1], entry_re) &&
+               std::regex_match(lines[idx + 1], c, description_re)) {
+          ++idx;
+          ++layout.lines;
+          layout.continuation_columns.insert(c.position(2));
+          description += " " + c[2].str();
+        }
+        list_descriptions[m[2].str()] = description;
         layout.stacked.insert(stacked);
         layout.name_columns.insert(m.position(2));
         layout.description_columns.insert(offset + d.position(2));
         layout.longest_name = std::max(layout.longest_name, m[2].str().size());
+        ++layout.entries;
       }
     } else if (std::regex_match(line, m, group_re) && !line.starts_with("Operations (")) {
       ASSERT_TRUE(std::is_sorted(group_names.begin(), group_names.end()))
@@ -479,6 +500,10 @@ TEST_F(AdminCliTest, HelpListsAllOperations) {
   ASSERT_TRUE(std::is_sorted(group_names.begin(), group_names.end()))
       << "group '" << (groups.empty() ? "" : groups.back()) << "' is not alphabetical";
   ASSERT_GE(numbers.size(), 100);
+  // The header counts every visible registered operation, so each is listed exactly once.
+  ASSERT_TRUE(listed_count.has_value());
+  ASSERT_EQ(*listed_count, numbers.size());
+  ASSERT_EQ(std::set<std::string>(names.begin(), names.end()).size(), names.size());
   for (size_t idx = 0; idx < numbers.size(); ++idx) {
     ASSERT_EQ(numbers[idx], static_cast<int>(idx) + 1)
         << "gap or duplicate in operation numbering at position " << idx;
@@ -500,9 +525,10 @@ TEST_F(AdminCliTest, HelpListsAllOperations) {
   ASSERT_TRUE(std::regex_search(
       output, std::regex(R"(add_read_replica_placement_info [^\n]* \.\.\.\n)")))
       << "expected a truncated entry";
-  // Grouped operations show their description instead of the syntax. A group is a table, its
-  // descriptions in one column after its longest name, only if a 64-character description fits
-  // there; otherwise every description is on the line below its name, indented 4.
+  // Grouped operations show their description instead of the syntax, in one column per group
+  // after its longest name, wrapped under a hanging indent at that column. A group where that
+  // leaves fewer than 30 columns (kMinDescriptionRoom) is stacked instead: every description on
+  // the line below its name, indented 4.
   for (const auto& [group, layout] : layouts) {
     SCOPED_TRACE(group);
     ASSERT_EQ(layout.stacked.size(), 1) << "group mixes table and stacked rows";
@@ -510,12 +536,22 @@ TEST_F(AdminCliTest, HelpListsAllOperations) {
     ASSERT_EQ(layout.description_columns.size(), 1) << AsString(layout.description_columns);
     const auto name_column = *layout.name_columns.begin();
     const auto table_column = name_column + layout.longest_name + 2;
-    const bool fits = table_column + 64 <= 100;
-    ASSERT_EQ(*layout.stacked.begin(), !fits);
-    ASSERT_EQ(*layout.description_columns.begin(), fits ? table_column : name_column + 4);
+    const bool stacked = table_column + 30 > 100;
+    ASSERT_EQ(*layout.stacked.begin(), stacked);
+    const auto description_column = *layout.description_columns.begin();
+    ASSERT_EQ(description_column, stacked ? name_column + 4 : table_column);
+    if (stacked) {
+      ASSERT_TRUE(layout.continuation_columns.empty()) << "stacked description wrapped";
+    } else if (!layout.continuation_columns.empty()) {
+      ASSERT_EQ(layout.continuation_columns, std::set<size_t>{description_column});
+    }
   }
-  ASSERT_FALSE(*layouts["Backup and snapshot"].stacked.begin());
-  ASSERT_TRUE(*layouts["xCluster replication, automatic and semi-automatic modes"].stacked.begin());
+  const auto& backup = layouts["Backup and snapshot"];
+  ASSERT_FALSE(*backup.stacked.begin());
+  ASSERT_EQ(backup.lines, backup.entries) << "expected one line per Backup operation";
+  const auto& automatic = layouts["xCluster replication, automatic and semi-automatic modes"];
+  ASSERT_FALSE(*automatic.stacked.begin());
+  ASSERT_FALSE(automatic.continuation_columns.empty()) << "expected wrapped descriptions";
   // A cut must not read as the "]..." repetition syntax: a line ending in " ..." is cut, and a
   // line ending in a bare "..." is the operation's complete usage.
   const std::regex line_re(R"(^\s*\d+\. (\S+) (.*)$)");
