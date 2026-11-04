@@ -18,6 +18,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Suppliers;
 import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
@@ -49,6 +50,7 @@ import com.yugabyte.yw.models.HealthCheck;
 import com.yugabyte.yw.models.HealthCheck.Details;
 import com.yugabyte.yw.models.HealthCheck.Details.NodeData;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
+import com.yugabyte.yw.models.MaintenanceWindow;
 import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.MetricSourceKey;
 import com.yugabyte.yw.models.NodeAgent;
@@ -78,6 +80,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
@@ -97,6 +100,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadFactory;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -455,10 +459,23 @@ public class HealthChecker {
         log.debug("Skipping health check scheduler for follower platform");
         return;
       }
-      // TODO(bogdan): This will not be too DB friendly when we go multi-tenant.
+      // Load the universes and alert configs of all customers at once, rather than querying them
+      // for each customer.
+      Map<Long, List<Universe>> universesByCustomer =
+          Universe.getAllWithoutResources().stream()
+              .collect(Collectors.groupingBy(Universe::getCustomerId));
+      Map<UUID, CustomerConfig> alertConfigs =
+          CustomerConfig.getAllAlertConfigs().stream()
+              .collect(Collectors.toMap(CustomerConfig::getCustomerUUID, cfg -> cfg, (a, b) -> a));
+      Supplier<List<MaintenanceWindow>> activeWindows =
+          Suppliers.memoize(maintenanceService::listActiveWindows);
       for (Customer c : Customer.getAll()) {
         try {
-          checkCustomer(c);
+          checkCustomer(
+              c,
+              alertConfigs.get(c.getUuid()),
+              universesByCustomer.getOrDefault(c.getId(), Collections.emptyList()),
+              activeWindows);
         } catch (Exception ex) {
           log.error("Error running health check scheduler for customer " + c.getUuid(), ex);
         }
@@ -469,9 +486,19 @@ public class HealthChecker {
   }
 
   public void checkCustomer(Customer c) {
-    // We need an alerting config to do work.
-    CustomerConfig config = CustomerConfig.getAlertConfig(c.getUuid());
+    checkCustomer(
+        c,
+        CustomerConfig.getAlertConfig(c.getUuid()),
+        c.getUniverses(),
+        Suppliers.memoize(maintenanceService::listActiveWindows));
+  }
 
+  private void checkCustomer(
+      Customer c,
+      CustomerConfig config,
+      Collection<Universe> universes,
+      Supplier<List<MaintenanceWindow>> activeWindows) {
+    // We need an alerting config to do work.
     boolean shouldSendStatusUpdate = false;
     long storeIntervalMs = healthCheckStoreIntervalMs();
     AlertingData alertingData = null;
@@ -499,7 +526,8 @@ public class HealthChecker {
     if (!onlyMetrics) {
       lastCheckTimeMap.put(c.getUuid(), now);
     }
-    checkAllUniverses(c, alertingData, shouldSendStatusUpdate, onlyMetrics);
+    checkAllUniverses(
+        c, universes, alertingData, shouldSendStatusUpdate, onlyMetrics, activeWindows);
   }
 
   public CompletableFuture<Void> checkSingleUniverse(Customer c, Universe u) {
@@ -545,11 +573,32 @@ public class HealthChecker {
   @VisibleForTesting
   void checkAllUniverses(
       Customer c, AlertingData alertingData, boolean shouldSendStatusUpdate, boolean onlyMetrics) {
+    checkAllUniverses(
+        c,
+        c.getUniverses(),
+        alertingData,
+        shouldSendStatusUpdate,
+        onlyMetrics,
+        Suppliers.memoize(maintenanceService::listActiveWindows));
+  }
+
+  private void checkAllUniverses(
+      Customer c,
+      Collection<Universe> universes,
+      AlertingData alertingData,
+      boolean shouldSendStatusUpdate,
+      boolean onlyMetrics,
+      Supplier<List<MaintenanceWindow>> activeWindows) {
+    if (universes.isEmpty()) {
+      return;
+    }
 
     boolean reportOnlyErrors =
         !shouldSendStatusUpdate && alertingData != null && alertingData.reportOnlyErrors;
+    // The destinations are the same for all universes of the customer.
+    List<String> customerDestinations = emailHelper.getDestinations(c.getUuid());
 
-    c.getUniverses().stream()
+    universes.stream()
         .filter(
             u -> {
               // Skip universes that were never successfully brought up. Running health checks on
@@ -568,7 +617,7 @@ public class HealthChecker {
             })
         .map(
             u -> {
-              String destinations = getAlertDestinations(u, c);
+              String destinations = getAlertDestinations(u, customerDestinations, activeWindows);
               return new CheckSingleUniverseParams(
                   u,
                   c,
@@ -705,8 +754,8 @@ public class HealthChecker {
     return task;
   }
 
-  private String getAlertDestinations(Universe u, Customer c) {
-    List<String> destinations = emailHelper.getDestinations(c.getUuid());
+  private String getAlertDestinations(
+      Universe u, List<String> destinations, Supplier<List<MaintenanceWindow>> activeWindows) {
     if (destinations.isEmpty()) {
       return null;
     }
@@ -719,7 +768,7 @@ public class HealthChecker {
     // Check if there is an active maintenance window for this universe which is supposed to
     // suppress health check alerts.
     boolean maintenanceWindowActiveForUniverse =
-        maintenanceService.isHealthCheckNotificationSuppressedForUniverse(u);
+        MaintenanceService.isHealthCheckNotificationSuppressedForUniverse(u, activeWindows.get());
 
     return (maintenanceWindowActiveForUniverse) ? null : String.join(",", destinations);
   }

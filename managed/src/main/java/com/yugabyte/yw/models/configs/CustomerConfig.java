@@ -306,6 +306,16 @@ public class CustomerConfig extends Model {
     return getConfigs(customerUUIDs, ConfigType.ALERTS, ALERTS_PREFERENCES);
   }
 
+  /** Returns the alert configs of all customers. */
+  public static List<CustomerConfig> getAllAlertConfigs() {
+    return CustomerConfig.find
+        .query()
+        .where()
+        .eq("type", ConfigType.ALERTS.toString())
+        .eq("name", ALERTS_PREFERENCES)
+        .findList();
+  }
+
   public static CustomerConfig getSmtpConfig(UUID customerUUID) {
     return getConfig(customerUUID, ConfigType.ALERTS, SMTP_INFO);
   }
