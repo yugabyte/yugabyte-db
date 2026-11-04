@@ -801,6 +801,20 @@ TEST_F(MasterTest, ValidateReplicationInfoRequiresTserversOnStorageTier) {
     common.mutable_ts_instance()->set_instance_seqno(1);
     ASSERT_RESULT(SendHeartbeat(common, reg));
   }
+  // A tserver outside the live placement (a read replica) that has the tier does not make the
+  // tier available to the live placement, so it must not turn the tier error into the generic
+  // tablet-server count error.
+  {
+    TSRegistrationPB reg;
+    *reg.mutable_common()->add_private_rpc_addresses() = MakeHostPortPB("localhost", 1003);
+    *reg.mutable_common()->add_http_addresses() = MakeHostPortPB("localhost", 2003);
+    reg.mutable_common()->set_placement_uuid("read-replica");
+    reg.mutable_common()->add_storage_tiers(kDefaultStorageTier);
+    TSToMasterCommonPB common;
+    common.mutable_ts_instance()->set_permanent_uuid("ts-read-replica");
+    common.mutable_ts_instance()->set_instance_seqno(1);
+    ASSERT_RESULT(SendHeartbeat(common, reg));
+  }
 
   auto validate = [this](const std::string& storage_tier)
       -> Result<ValidateReplicationInfoResponsePB> {
@@ -829,7 +843,7 @@ TEST_F(MasterTest, ValidateReplicationInfoRequiresTserversOnStorageTier) {
   ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
 
   // With tiered storage off the tier is not acted on, so the ssd placement is validated as
-  // untiered and the all-hdd cluster accepts it.
+  // untiered and the all-hdd live placement accepts it.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = false;
   resp = ASSERT_RESULT(validate(kDefaultStorageTier));
   ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();

@@ -417,7 +417,9 @@ std::set<std::string> TSDescriptor::GetStorageTiers() const {
 }
 
 bool TSDescriptor::HasStorageTier(const std::string& tier) const {
-  return GetStorageTiers().contains(tier);
+  auto l = LockForRead();
+  const auto& registered = l->pb.registration().storage_tiers();
+  return std::find(registered.begin(), registered.end(), tier) != registered.end();
 }
 
 CloudInfoPB TSDescriptor::GetCloudInfo() const {

@@ -12762,18 +12762,22 @@ namespace {
 
 // A tserver belongs to the placement that names its placement uuid; a placement without one is
 // the live placement, whose tservers have an empty placement uuid.
-bool TsInPlacement(const PlacementInfoPB& placement_info, const TSDescriptor& ts_desc) {
-  // A placement that names a storage tier needs a tserver with a disk on it. With tiered storage
-  // off the tier is not acted on: the tablespace refresh already drops it, and a placement that
-  // still carries one (built by a client directly) is placed as untiered.
-  if (FLAGS_enable_tiered_storage && !placement_info.storage_tier().empty() &&
-      !ts_desc.HasStorageTier(placement_info.storage_tier())) {
-    return false;
-  }
+bool TsInPlacementUuid(const PlacementInfoPB& placement_info, const TSDescriptor& ts_desc) {
   if (placement_info.has_placement_uuid()) {
     return ts_desc.placement_uuid() == placement_info.placement_uuid();
   }
   return ts_desc.placement_uuid().empty();
+}
+
+// TsInPlacementUuid, and a disk on the placement's storage tier when it names one. With tiered
+// storage off the tier is not acted on: the tablespace refresh already drops it, and a placement
+// that still carries one (built by a client directly) is placed as untiered.
+bool TsInPlacement(const PlacementInfoPB& placement_info, const TSDescriptor& ts_desc) {
+  if (FLAGS_enable_tiered_storage && !placement_info.storage_tier().empty() &&
+      !ts_desc.HasStorageTier(placement_info.storage_tier())) {
+    return false;
+  }
+  return TsInPlacementUuid(placement_info, ts_desc);
 }
 
 }  // namespace
@@ -13868,7 +13872,8 @@ Status CatalogManager::ValidateReplicationInfo(
   if (FLAGS_enable_tiered_storage && FLAGS_catalog_manager_check_ts_count_for_create_table &&
       !storage_tier.empty() && ts_descs.empty() && !all_ts_descs.empty() &&
       std::none_of(all_ts_descs.begin(), all_ts_descs.end(), [&](const auto& ts_desc) {
-        return ts_desc->HasStorageTier(storage_tier);
+        return TsInPlacementUuid(placement_info, *ts_desc) &&
+               ts_desc->HasStorageTier(storage_tier);
       })) {
     return SetupError(
         resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO,
