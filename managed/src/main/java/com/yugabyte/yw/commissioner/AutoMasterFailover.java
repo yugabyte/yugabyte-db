@@ -314,11 +314,14 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
                 maybeFailedMasters.put(node.getNodeName(), heartbeatDelay);
                 return;
               }
-              HostAndPort hp = HostAndPort.fromParts(node.cloudInfo.private_ip, node.masterRpcPort);
+              // The peer may report its secondary IP first on dual-NIC nodes, but YBA reaches the
+              // master's RPC and web server on the private IP, as CheckFollowerLag does.
+              String privateIp = node.cloudInfo.private_ip;
+              HostAndPort hp = HostAndPort.fromParts(privateIp, node.masterRpcPort);
               if (ybClient.waitForServer(hp, 5000)) {
                 Pair<String, Long> maxFollowerLag =
                     CheckFollowerLag.maxFollowerLag(
-                        getFollowerLagMs(ipAddress, node.masterHttpPort));
+                        getFollowerLagMs(privateIp, node.masterHttpPort));
                 if (maxFollowerLag.getRight() > followerLagSoftThreshold) {
                   log.error(
                       "Adding master {} in universe {} as max follower lag {} exceeds soft"

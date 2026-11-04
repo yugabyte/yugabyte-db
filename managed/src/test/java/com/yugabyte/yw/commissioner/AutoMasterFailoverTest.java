@@ -10,10 +10,13 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.startsWith;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.google.common.net.HostAndPort;
@@ -181,7 +184,8 @@ public class AutoMasterFailoverTest extends FakeDBApplication {
   }
 
   // A dual-NIC universe (dualNetLegacy=false) whose masters and tservers run on their secondary
-  // IPs, as they do when cloud is enabled.
+  // IPs, as they do when cloud is enabled. The masters bind both IPs, secondary first, and n1's
+  // master is the leader.
   private Universe setupDualNicUniverse(YBClientApi ybClient) throws Exception {
     Universe universe = ModelFactory.createUniverse("dual-nic", defaultCustomer.getId());
     universe.updateConfig(Map.of(Universe.DUAL_NET_LEGACY, "false"));
@@ -191,6 +195,8 @@ public class AutoMasterFailoverTest extends FakeDBApplication {
     for (int i = 1; i <= 3; i++) {
       NodeDetails node = new NodeDetails();
       node.nodeName = "dual-nic-n" + i;
+      node.masterRpcPort = 7100;
+      node.masterHttpPort = 7000;
       node.state = NodeDetails.NodeState.Live;
       node.isMaster = true;
       node.isTserver = true;
@@ -200,9 +206,12 @@ public class AutoMasterFailoverTest extends FakeDBApplication {
       nodes.add(node);
 
       PeerInfo master = new PeerInfo();
+      master.setUuid(masterUUIDs[i - 1]);
+      master.setMemberType(PeerInfo.MemberType.VOTER);
       master.setLastKnownPrivateIps(
-          Collections.singletonList(
-              HostAndPort.fromParts(node.cloudInfo.secondary_private_ip, 7100)));
+          List.of(
+              HostAndPort.fromParts(node.cloudInfo.secondary_private_ip, 7100),
+              HostAndPort.fromParts(node.cloudInfo.private_ip, 7100)));
       masters.add(master);
 
       TabletServerInfo tserver = new TabletServerInfo();
@@ -218,8 +227,7 @@ public class AutoMasterFailoverTest extends FakeDBApplication {
     when(mastersResponse.getPeersList()).thenReturn(masters);
     ListLiveTabletServersResponse tserversResponse = mock(ListLiveTabletServersResponse.class);
     when(tserversResponse.getTabletServers()).thenReturn(tservers);
-    when(ybClient.getLeaderMasterHostAndPort())
-        .thenReturn(HostAndPort.fromParts("172.16.0.1", 7100));
+    when(ybClient.getLeaderMasterHostAndPort()).thenReturn(HostAndPort.fromParts("10.0.0.1", 7100));
     when(ybClient.listMasterRaftPeers()).thenReturn(mastersResponse);
     when(ybClient.listLiveTabletServers()).thenReturn(tserversResponse);
     return universe;
@@ -252,5 +260,23 @@ public class AutoMasterFailoverTest extends FakeDBApplication {
                 automatedMasterFailover.checkClusterConsistency(
                     defaultCustomer, universe, ybClient));
     assertTrue(e.getMessage(), e.getMessage().contains("Unexpected TSERVER: 172.16.0."));
+  }
+
+  @Test
+  public void testFollowerLagDualNicUsesPrivateIp() throws Exception {
+    YBClientApi ybClient = mock(YBClientApi.class);
+    Universe universe = setupDualNicUniverse(ybClient);
+    when(mockRuntimeConfGetter.getConfForScope(
+            eq(universe), eq(UniverseConfKeys.autoMasterFailoverFollowerLagSoftThreshold)))
+        .thenReturn(Duration.ofMinutes(10));
+    when(ybClient.getMasterHeartbeatDelays()).thenReturn(mockMasterHeartbeatDelaysResponse);
+    when(ybClient.waitForServer(any(), anyLong())).thenReturn(true);
+    Map<String, Long> maybeFailedMasters =
+        automatedMasterFailover.getMaybeFailedMastersForUniverse(universe, ybClient);
+    assertEquals(0, maybeFailedMasters.size());
+    // The masters' web servers listen on the private IP only.
+    verify(automatedMasterFailover).getFollowerLagMs(eq("10.0.0.2"), eq(7000));
+    verify(automatedMasterFailover).getFollowerLagMs(eq("10.0.0.3"), eq(7000));
+    verify(automatedMasterFailover, never()).getFollowerLagMs(startsWith("172.16."), anyInt());
   }
 }
