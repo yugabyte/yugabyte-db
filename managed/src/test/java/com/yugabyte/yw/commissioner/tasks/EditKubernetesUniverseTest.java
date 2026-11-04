@@ -1808,19 +1808,11 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             .map(t -> t.getTaskParams().path("opType").asText())
             .collect(Collectors.toList()));
 
-    // Right after the post-remove push, a non-restart render rewrites the Secrets of the AZs this
-    // edit leaves as they are, before the data move starts. Nothing scales in that render.
-    // The only other render in that window brings up the az-4 tserver.
-    int dataMove = firstPosition(subtasks(plan, TaskType.WaitForDataMove, p -> true));
-    List<TaskInfo> beforeDataMove = between(helmUpgrades(plan), lastPosition(postRemove), dataMove);
-    List<TaskInfo> earlySecretUpdate =
-        helmUpgradesInAZs(beforeDataMove, ImmutableSet.of(az1.getCode(), az2.getCode()));
+    // Right after the post-remove push, a non-restart render rewrites the Secrets of the AZs
+    // whose masters stay, at their current counts. Nothing scales.
+    List<TaskInfo> earlySecretUpdate = earlySecretUpdate(plan, postRemove);
+    assertEquals(ImmutableSet.of(az1.getCode(), az2.getCode()), azCodes(earlySecretUpdate));
     assertEquals(2, earlySecretUpdate.size());
-    assertEquals(
-        ImmutableSet.of(az1.getCode(), az2.getCode()), earlySecretUpdateAZs(plan, postRemove));
-    assertEquals(
-        beforeDataMove.size() - 2,
-        helmUpgradesInAZs(beforeDataMove, ImmutableSet.of("az-4")).size());
     for (TaskInfo t : earlySecretUpdate) {
       assertEquals(newMasters, helmMasterAddresses(t));
       assertTrue(keepsGflagsChecksum(t));
@@ -1854,23 +1846,26 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     assertTrue(
         helmUpgradesInAZs(
                 between(helmUpgrades(plan), lastPosition(postRemove), dataMove),
-                ImmutableSet.of("az-1", "az-2"))
+                ImmutableSet.of("az-1", "az-2", "az-3"))
             .isEmpty());
   }
 
   @Test
-  public void testZoneReplaceRetrySkipsLeavingServers() {
+  public void testZoneReplaceRetryBeforePropagationRepeatsIt() {
     setupMasterMoveUniverse(FULL_MOVE_VERSION);
     PlacementInfo pi = zoneReplacePlacement();
 
+    // The first attempt stops before the master move, so the retry plans it all again.
     TaskInfo firstAttempt = submitEdit(currentIntent(), pi, null);
     List<TaskInfo> plan = plan(submitEdit(currentIntent(), pi, firstAttempt.getUuid()));
 
-    // On a retry the az-3 pods may already be deleted, so neither push targets them.
-    assertPushesAroundMasterChange(
-        plan,
-        ImmutableSet.of("yb-master-0_az-1", "yb-master-0_az-2", "yb-master-0_az-4"),
-        ImmutableSet.of("yb-tserver-0_az-1", "yb-tserver-0_az-2"));
+    List<TaskInfo> postRemove =
+        assertPushesAroundMasterChange(
+            plan,
+            ImmutableSet.of("yb-master-0_az-1", "yb-master-0_az-2", "yb-master-0_az-4"),
+            ImmutableSet.of("yb-tserver-0_az-1", "yb-tserver-0_az-2", "yb-tserver-0_az-3"));
+    assertEquals(ImmutableSet.of("az-1", "az-2"), azCodes(earlySecretUpdate(plan, postRemove)));
+    assertEquals(1, subtasks(plan, TaskType.UpdateParentTaskParams, p -> true).size());
   }
 
   @Test
@@ -1928,10 +1923,10 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
   }
 
   /**
-   * AZs in the early Secret update: the helm group right after the post-remove push, which waits
-   * for the Secret to sync next. Without it, that slot holds the new az-4 pods instead.
+   * The early Secret update: the helm group right after the post-remove push, which waits for the
+   * Secret to sync next. Without it, that slot holds the new az-4 pods instead.
    */
-  private Set<String> earlySecretUpdateAZs(List<TaskInfo> plan, List<TaskInfo> postRemove) {
+  private List<TaskInfo> earlySecretUpdate(List<TaskInfo> plan, List<TaskInfo> postRemove) {
     int slot = lastPosition(postRemove) + 1;
     List<TaskInfo> group =
         helmUpgrades(plan).stream()
@@ -1946,28 +1941,72 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
               .map(TaskInfo::getTaskType)
               .collect(Collectors.toList()));
     }
-    return group.stream()
+    return group;
+  }
+
+  private static Set<String> azCodes(List<TaskInfo> helmTasks) {
+    return helmTasks.stream()
         .map(t -> t.getTaskParams().path("azCode").asText())
         .collect(Collectors.toSet());
   }
 
   @Test
-  public void testZoneReplaceSkipsScaledZoneInEarlySecretUpdate() {
+  public void testZoneReplaceScaledZoneEarlySecretUpdate() {
     setupMasterMoveUniverse(FULL_MOVE_VERSION);
     PlacementInfo pi = zoneReplacePlacement();
     pi.azStream().filter(az -> az.name.equals("PlacementAZ 1")).forEach(az -> az.numNodesInAZ = 2);
     UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
     newIntent.numNodes = 4;
 
-    List<TaskInfo> plan = planEdit(newIntent, pi);
+    Set<String> masters =
+        ImmutableSet.of("yb-master-0_az-1", "yb-master-0_az-2", "yb-master-0_az-4");
+
+    // az-1 renders at its current single tserver, so nothing scales early. A retry that gets
+    // here has not scaled az-1 yet, so it renders the same.
+    TaskInfo firstAttempt = submitEdit(newIntent, pi, null);
+    for (TaskInfo attempt :
+        ImmutableList.of(firstAttempt, submitEdit(newIntent, pi, firstAttempt.getUuid()))) {
+      List<TaskInfo> plan = plan(attempt);
+      List<TaskInfo> postRemove =
+          assertPushesAroundMasterChange(
+              plan,
+              masters,
+              ImmutableSet.of("yb-tserver-0_az-1", "yb-tserver-0_az-2", "yb-tserver-0_az-3"));
+      List<TaskInfo> earlySecretUpdate = earlySecretUpdate(plan, postRemove);
+      assertEquals(ImmutableSet.of("az-1", "az-2"), azCodes(earlySecretUpdate));
+      for (TaskInfo t : earlySecretUpdate) {
+        assertEquals(1, helmAZ(t).path("numNodesInAZ").asInt());
+        assertEquals(1, t.getTaskParams().path("tserverPartition").asInt());
+      }
+    }
+  }
+
+  @Test
+  public void testZoneGainingMasterSkippedInEarlySecretUpdate() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    AvailabilityZone az3 = AvailabilityZone.getByCode(kubernetesProvider, "az-3");
+    PlacementInfo pi = currentPlacement();
+    pi.cloudList.get(0).regionList.get(0).azList.removeIf(az -> az.uuid.equals(az3.getUuid()));
+    pi.azStream()
+        .filter(az -> az.name.equals("PlacementAZ 1"))
+        .forEach(
+            az -> {
+              az.numNodesInAZ = 2;
+              az.replicationFactor = 2;
+            });
+    assertEquals(
+        ImmutableSet.of("yb-master-0", "yb-master-1"),
+        masterHosts(expectedMasterAddresses(pi)));
+
+    List<TaskInfo> plan = planEdit(currentIntent(), pi);
 
     List<TaskInfo> postRemove =
         assertPushesAroundMasterChange(
             plan,
-            ImmutableSet.of("yb-master-0_az-1", "yb-master-0_az-2", "yb-master-0_az-4"),
+            ImmutableSet.of("yb-master-0_az-1", "yb-master-1_az-1", "yb-master-0_az-2"),
             ImmutableSet.of("yb-tserver-0_az-1", "yb-tserver-0_az-2", "yb-tserver-0_az-3"));
-    // A render of az-1's target count would add its second tserver early, so az-1 is skipped.
-    assertEquals(ImmutableSet.of("az-2"), earlySecretUpdateAZs(plan, postRemove));
+    // az-1 already runs its second master, which a render at the current counts would delete.
+    assertEquals(ImmutableSet.of("az-2"), azCodes(earlySecretUpdate(plan, postRemove)));
   }
 
   @Test
@@ -1988,7 +2027,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             ImmutableSet.of("yb-master-0_az-1", "yb-master-0_az-2", "yb-master-0_az-4"),
             ImmutableSet.of("yb-tserver-0_az-1", "yb-tserver-0_az-2", "yb-tserver-0_az-3"));
     // A render now would carry the resource change into the pod templates ahead of the roll.
-    assertTrue(earlySecretUpdateAZs(plan, postRemove).isEmpty());
+    assertTrue(azCodes(earlySecretUpdate(plan, postRemove)).isEmpty());
   }
 
   @Test
@@ -2097,11 +2136,13 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         Sets.union(
             ImmutableSet.of("yb-tserver-0_az-1", "yb-tserver-0_az-2", "yb-tserver-0_az-3"),
             rrTservers));
-    // On a retry the read replica, which this edit carries, may have lost pods already.
+    // A retry that gets here has not touched any tserver yet, the read replica's included.
     assertPushesAroundMasterChange(
         plan(submit.apply(firstAttempt.getUuid())),
         masters,
-        ImmutableSet.of("yb-tserver-0_az-1", "yb-tserver-0_az-2"));
+        Sets.union(
+            ImmutableSet.of("yb-tserver-0_az-1", "yb-tserver-0_az-2", "yb-tserver-0_az-3"),
+            rrTservers));
   }
 
   @Test
@@ -2141,13 +2182,14 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
   }
 
   /**
-   * Runs a zone replace up to the first helm call after the master removes, against a fake master
-   * quorum, and checks the values each server is sent and when.
+   * Runs a zone replace through the early Secret update, against a fake master quorum, and checks
+   * the values each server is sent and when. A retry from there pushes and renders nothing again.
    */
   @Test
   public void testZoneReplacePushedMasterAddressesAtRunTime() throws Exception {
     setupMasterMoveUniverse(FULL_MOVE_VERSION);
     factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    factory.globalRuntimeConf().setValue("yb.kubernetes.wait_for_gflag_sync_sec", "0");
     PlacementInfo pi = zoneReplacePlacement();
     String newMasters = expectedMasterAddresses(pi);
 
@@ -2221,11 +2263,16 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
                       + sortedCsv(inv.getArgument(2)));
               return true;
             });
-    // Stop at the first helm upgrade after the removes: the early Secret update.
+    // Let the early Secret update of az-1 and az-2 through, and stop at the next helm upgrade
+    // after the removes: the new az-4 tserver.
     doAnswer(
             inv -> {
+              String ns = inv.getArgument(4);
               if (events.stream().anyMatch(e -> e.startsWith("REMOVE"))) {
-                throw new RuntimeException("stop after the master move");
+                if (ns.endsWith("az-4")) {
+                  throw new RuntimeException("stop after the master move");
+                }
+                events.add("HELM " + ns.substring(ns.length() - 4));
               }
               return null;
             })
@@ -2252,13 +2299,22 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             ip.apply("yb-tserver-0_az-3"));
 
     List<String> log = new ArrayList<>(events);
-    assertEquals(
-        ImmutableList.of("ADD " + masterD, "REMOVE " + masterC),
-        log.stream().filter(e -> !e.startsWith("SET")).collect(Collectors.toList()));
     int add = log.indexOf("ADD " + masterD);
     int remove = log.indexOf("REMOVE " + masterC);
+    int earlySecretUpdate = remove + 1;
+    while (log.get(earlySecretUpdate).startsWith("SET")) {
+      earlySecretUpdate++;
+    }
+    assertEquals(
+        ImmutableList.of("ADD " + masterD, "REMOVE " + masterC),
+        log.stream()
+            .filter(e -> e.startsWith("ADD") || e.startsWith("REMOVE"))
+            .collect(Collectors.toList()));
+    assertEquals(
+        ImmutableSet.of("HELM az-1", "HELM az-2"),
+        new java.util.HashSet<>(log.subList(earlySecretUpdate, log.size())));
     List<String> preRemove = log.subList(add + 1, remove);
-    List<String> postRemove = log.subList(remove + 1, log.size());
+    List<String> postRemove = log.subList(remove + 1, earlySecretUpdate);
 
     // Before the remove: the live Raft config, old masters plus the new one.
     String raftConfig =
@@ -2268,6 +2324,29 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     assertPushedTo(preRemove, pushedMasters, pushedTservers, raftConfig);
     // After the remove: the new list, before anything else touches the pods.
     assertPushedTo(postRemove, pushedMasters, pushedTservers, newMasters);
+
+    // The attempt saved that it propagated the new masters, so a retry, which may follow the
+    // later tserver changes, neither pushes nor renders the early Secret update again.
+    UniverseDefinitionTaskParams retryParams =
+        Json.fromJson(
+            TaskInfo.getOrBadRequest(taskInfo.getUuid()).getTaskParams(),
+            UniverseDefinitionTaskParams.class);
+    assertTrue(retryParams.getPrimaryCluster().isMasterAddrsPropagated());
+    retryParams.setPreviousTaskUUID(taskInfo.getUuid());
+    doThrow(new RuntimeException("stop after planning"))
+        .when(mockKubernetesManager)
+        .helmUpgrade(any(), any(), any(), any(), any(), any(), any());
+    TaskInfo retryInfo =
+        waitForTask(commissioner.submit(TaskType.EditKubernetesUniverse, retryParams));
+    assertEquals(Failure, retryInfo.getTaskState());
+    List<TaskInfo> retry = plan(retryInfo);
+    int dataMove = firstPosition(subtasks(retry, TaskType.WaitForDataMove, p -> true));
+    assertTrue(between(masterAddrPushes(retry), 0, dataMove).isEmpty());
+    assertTrue(subtasks(retry, TaskType.UpdateParentTaskParams, p -> true).isEmpty());
+    assertTrue(
+        helmUpgradesInAZs(
+                between(helmUpgrades(retry), 0, dataMove), ImmutableSet.of("az-1", "az-2", "az-3"))
+            .isEmpty());
   }
 
   private static String sortedCsv(String csv) {
