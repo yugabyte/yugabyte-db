@@ -583,7 +583,7 @@ spec:
   actionType: RESTORE
   universe:  <name of universe>
   backup: <name of backup to restore>
-  keyspace: <keyspace overide>
+  keyspace: <keyspace override>
 ```
 
 #### Service account for backup

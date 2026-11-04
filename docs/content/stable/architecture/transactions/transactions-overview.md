@@ -57,5 +57,5 @@ YugabyteDB implements MVCC and internally keeps track of multiple versions of va
 YugabyteDB needs to store uncommitted values written by distributed transactions in a similar persistent data structure. However, they cannot be written to DocDB as regular values, because they would then become visible at different times to clients reading through different tablet servers, allowing a client to see a partially applied transaction and thus breaking atomicity.
 
 {{<lead link="../distributed-txns/#provisional-records">}}
-To get a deeper understanding of the layout of the uncommited records, see [Provisional records](../distributed-txns/#provisional-records)
+To get a deeper understanding of the layout of the uncommitted records, see [Provisional records](../distributed-txns/#provisional-records)
 {{</lead>}}

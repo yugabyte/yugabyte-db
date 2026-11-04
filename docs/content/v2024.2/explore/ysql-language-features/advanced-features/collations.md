@@ -222,7 +222,7 @@ select (x || y) collate "en_US" as z from coll_tab7 order by 1;
 
 ## Expression collation
 
-Conceptually, every expression of a collatable type has a collation. The collation of a more complex expression is derived from the collations of its inputs. YSQL and PosgreSQL consider distinct collation objects to be incompatible even when they have identical properties. For example:
+Conceptually, every expression of a collatable type has a collation. The collation of a more complex expression is derived from the collations of its inputs. YSQL and PostgreSQL consider distinct collation objects to be incompatible even when they have identical properties. For example:
 
 ```sql
 create collation nd from "en_US";

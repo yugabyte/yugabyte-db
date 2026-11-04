@@ -128,7 +128,7 @@ yugabyte=# EXPLAIN (COSTS off) SELECT COUNT(*) FROM t1, t2 WHERE t1.id = t2.id A
 (13 rows)
 ```
 
-'t1' appears twice, once in each of the 2 query blocks. However, in the EXPLAIN output one instance is aliased 't1_1', while the other instance has no alias. 't1_1' was not in the original SQL but instead was *generated as a unique identifer* for the instance of 't1' in the main query block. If multiple instances of an entity appear in a query, and you want to write hints referencing these entities, then you should use the generated unique alias.
+'t1' appears twice, once in each of the 2 query blocks. However, in the EXPLAIN output one instance is aliased 't1_1', while the other instance has no alias. 't1_1' was not in the original SQL but instead was *generated as a unique identifier* for the instance of 't1' in the main query block. If multiple instances of an entity appear in a query, and you want to write hints referencing these entities, then you should use the generated unique alias.
 
 An alternative approach is to rewrite the query and provide unique aliases. However, rewriting a query is often not possible, and in some cases rewriting the SQL to assign unique aliases can be very difficult and confusing.
 
@@ -777,7 +777,7 @@ error hint:
 (1 row)
 ```
 
-Inserting query text with positional parameters can be difficult and error-prone. An alternative is to use `query id` instead of query text. Each query processed by the planner is assigned an ID that is computed from the query's characterisics. To see a query's ID, simply run a verbose EXPLAIN. For example (with the WHERE clause condition on `val` instead of `id`):
+Inserting query text with positional parameters can be difficult and error-prone. An alternative is to use `query id` instead of query text. Each query processed by the planner is assigned an ID that is computed from the query's characteristics. To see a query's ID, simply run a verbose EXPLAIN. For example (with the WHERE clause condition on `val` instead of `id`):
 
 ```sql
 yugabyte=# EXPLAIN (VERBOSE true, COSTS off) SELECT * FROM t1 WHERE t1.val = 9;

@@ -2,7 +2,7 @@
 title: Packed rows in DocDB
 headerTitle: Packed rows in DocDB
 linkTitle: Packed rows
-description: Packed rows implemention in DocDB
+description: Packed rows implementation in DocDB
 headcontent: Understand how packed rows are implemented in DocDB
 menu:
   v2024.2:
