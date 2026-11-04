@@ -1087,7 +1087,6 @@ BuildCachedPlan(CachedPlanSource *plansource, List *qlist,
 	plan->planRoleId = GetUserId();
 	plan->dependsOnRole = plansource->dependsOnRLS;
 	is_transient = false;
-	plan->yb_parallel_off_for_ddl = false;
 	foreach(lc, plist)
 	{
 		PlannedStmt *plannedstmt = lfirst_node(PlannedStmt, lc);
@@ -1099,8 +1098,6 @@ BuildCachedPlan(CachedPlanSource *plansource, List *qlist,
 			is_transient = true;
 		if (plannedstmt->dependsOnRole)
 			plan->dependsOnRole = true;
-		if (plannedstmt->yb_parallel_off_for_ddl)
-			plan->yb_parallel_off_for_ddl = true;
 	}
 	if (is_transient)
 	{
@@ -1109,6 +1106,18 @@ BuildCachedPlan(CachedPlanSource *plansource, List *qlist,
 	}
 	else
 		plan->saved_xmin = InvalidTransactionId;
+
+	/* YB */
+	plan->yb_parallel_off_for_ddl = false;
+	foreach(lc, plist)
+	{
+		PlannedStmt *plannedstmt = lfirst_node(PlannedStmt, lc);
+
+		if (plannedstmt->commandType != CMD_UTILITY &&
+			plannedstmt->yb_parallel_off_for_ddl)
+			plan->yb_parallel_off_for_ddl = true;
+	}
+
 	plan->refcount = 0;
 	plan->context = plan_context;
 	plan->is_oneshot = plansource->is_oneshot;
