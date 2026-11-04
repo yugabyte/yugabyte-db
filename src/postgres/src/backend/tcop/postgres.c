@@ -5710,7 +5710,7 @@ yb_replay_log_append(const char *query_string, CommandTag command_tag)
 	if (!yb_replay_log_for_current_txn() || yb_replay_log_closed)
 		return;
 
-	if (!yb_enable_replay_retry || yb_is_multi_statement_query ||
+	if (!yb_replay_retry_in_txn || yb_is_multi_statement_query ||
 		!yb_is_replay_safe_statement(query_string, command_tag) ||
 		!yb_replay_log_reserve(strlen(query_string) + 1))
 	{
@@ -5736,7 +5736,7 @@ yb_replay_log_append_execute(const YBQueryRetryData *retry_data, long max_rows)
 	if (!yb_replay_log_for_current_txn() || yb_replay_log_closed)
 		return;
 
-	if (!yb_enable_replay_retry ||
+	if (!yb_replay_retry_in_txn ||
 		!yb_is_replay_safe_statement(retry_data->query.query_string,
 									 retry_data->query.command_tag) ||
 		!yb_replay_can_rebind(retry_data->portal_name, &needs_parse) ||
@@ -5763,33 +5763,6 @@ yb_replay_log_append_execute(const YBQueryRetryData *retry_data, long max_rows)
 }
 
 /*
- * yb_enable_replay_retry is fixed for the life of a transaction, so a
- * transaction never switches between the in-place restart and the replay.
- * This holds for every source, a configuration reload included; RESET ALL
- * skips it (GUC_NO_RESET_ALL).  The log also closes at any statement that
- * completes with the GUC off.
- */
-bool
-check_yb_enable_replay_retry(bool *newval, void **extra, GucSource source)
-{
-	bool		log_started;
-
-	if (*newval == yb_enable_replay_retry || MyProc == NULL)
-		return true;
-
-	log_started = (MyProc->lxid != InvalidLocalTransactionId &&
-				   yb_replay_log_lxid == MyProc->lxid &&
-				   (yb_replay_log != NIL || yb_replay_log_closed));
-	if (IsTransactionBlock() || log_started)
-	{
-		GUC_check_errcode(ERRCODE_ACTIVE_SQL_TRANSACTION);
-		GUC_check_errmsg("yb_enable_replay_retry cannot be changed inside a transaction");
-		return false;
-	}
-	return true;
-}
-
-/*
  * Whether this error needs a whole-transaction restart and the replay can
  * provide it.  READ COMMITTED retries kConflict and kReadRestart by rolling
  * back the statement alone, so only kAborted and kDeadlock, which leave no
@@ -5808,7 +5781,7 @@ yb_can_replay_retry(const YBQueryRetryData *retry_data, int sqlerrcode)
 {
 	bool		needs_parse;
 
-	if (!yb_enable_replay_retry || !retry_data ||
+	if (!yb_replay_retry_in_txn || !retry_data ||
 		!yb_needs_whole_txn_restart(sqlerrcode))
 		return false;
 
@@ -5938,11 +5911,15 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 	 * nothing: the in-place restart (yb_restart_transaction) stays only for
 	 * yb_enable_replay_retry = off.
 	 */
-	if (yb_enable_replay_retry && !replay &&
+	if (yb_replay_retry_in_txn && !replay &&
 		yb_needs_whole_txn_restart(edata->sqlerrcode))
 	{
-		const char *retry_err = ("query layer retry isn't possible because "
-								 "the transaction cannot be replayed");
+		const char *retry_err = (IsYBReadCommitted() ?
+								 "query layer retry isn't possible because "
+								 "the transaction cannot be replayed" :
+								 "query layer retry isn't possible because "
+								 "the transaction cannot be replayed. Consider "
+								 "using READ COMMITTED isolation level.");
 
 		edata->message = psprintf("%s (%s)", edata->message, retry_err);
 		if (yb_debug_log_internal_restarts)
@@ -6868,7 +6845,7 @@ yb_prepare_transaction_for_retry(int attempt, bool is_read_restart, bool stateme
 		 * executed even the first statement fully and no data has been sent to
 		 * the client.
 		 */
-		if (yb_enable_replay_retry)
+		if (yb_replay_retry_in_txn)
 			elog(ERROR, "in-place transaction restart with yb_enable_replay_retry on");
 		yb_restart_transaction(attempt, is_read_restart);
 	}

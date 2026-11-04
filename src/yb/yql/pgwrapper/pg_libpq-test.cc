@@ -6705,6 +6705,14 @@ class PgLibPqTestDropTableIfExistsCascadeRetry : public PgLibPqTest {
     options->extra_tserver_flags.push_back("--yb_enable_read_committed_isolation=true");
   }
 
+  // These tests pin fixes in the in-place restart (#29871, #31248), so they keep
+  // yb_enable_replay_retry off; the replay subclass below turns it on.
+  void SetUp() override {
+    PgLibPqTest::SetUp();
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("ALTER DATABASE yugabyte SET yb_enable_replay_retry = off"));
+  }
+
   Status ExecuteWithCatalogWritesAborted(
       PGConn& conn, const std::string& query) {
     RETURN_NOT_OK(cluster_->SetFlagOnMasters(
@@ -6772,8 +6780,7 @@ TEST_F(PgLibPqTestDropTableIfExistsCascadeRetry, DropTableIfExistsCascadeRetryCr
 }
 
 // The #34751 tests from the clean-inval clone (PR 35526), run with
-// yb_enable_replay_retry on. The base fixture keeps it off, so its tests still
-// cover the in-place restart.
+// yb_enable_replay_retry on.
 class PgLibPqTestDropTableIfExistsCascadeReplayRetry
     : public PgLibPqTestDropTableIfExistsCascadeRetry {
  protected:

@@ -2514,12 +2514,13 @@ static struct config_bool ConfigureNamesBool[] =
 						 "that set. In a transaction block it covers every retryable "
 						 "error in REPEATABLE READ and SERIALIZABLE, and aborted and "
 						 "deadlock errors in READ COMMITTED; outside a block, every "
-						 "retryable error. Cannot change inside a transaction."),
-			GUC_NOT_IN_SAMPLE | GUC_NO_RESET_ALL
+						 "retryable error. A change inside a transaction applies from "
+						 "the next transaction."),
+			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_replay_retry,
-		false,
-		check_yb_enable_replay_retry, NULL, NULL
+		true,
+		NULL, NULL, NULL
 	},
 
 	{

@@ -14,9 +14,6 @@ CREATE SEQUENCE replay_s1;
 CREATE SEQUENCE replay_s2;
 CREATE SEQUENCE replay_s3;
 CREATE SEQUENCE replay_s4;
-CREATE SEQUENCE replay_s6;
-CREATE SEQUENCE replay_s7;
-CREATE SEQUENCE replay_s8;
 CREATE FUNCTION inj(seq regclass, code text) RETURNS int LANGUAGE plpgsql AS $$
 BEGIN
   IF nextval(seq) = 1 THEN
@@ -48,30 +45,14 @@ SELECT count(*) FROM replay_t;
 SELECT inj('replay_s3', 'YB003');
 ROLLBACK;
 
--- RC, kAborted: no statement to roll back to, so the replay restarts the block.
-BEGIN ISOLATION LEVEL READ COMMITTED;
-SET LOCAL work_mem = '8MB';
-SELECT inj('replay_s6', 'YB001');
-SHOW yb_effective_transaction_isolation_level;
-SHOW work_mem;
-COMMIT;
-
--- RC, kConflict: still the statement rollback, so it also retries after a
--- completed snapshot read.
-BEGIN ISOLATION LEVEL READ COMMITTED;
-SELECT count(*) FROM replay_t;
-SELECT inj('replay_s7', 'YB003');
-COMMIT;
+-- READ COMMITTED cases are in pg_txn-test (PgReplayRetryReadCommittedTest):
+-- debug builds turn READ COMMITTED off, which would change this file's output.
 
 -- Off: today's behavior, the error reaches the client.
 SET yb_enable_replay_retry = off;
 BEGIN ISOLATION LEVEL REPEATABLE READ;
 SET LOCAL work_mem = '8MB';
 SELECT inj('replay_s4', 'YB003');
-ROLLBACK;
-BEGIN ISOLATION LEVEL READ COMMITTED;
-SET LOCAL work_mem = '8MB';
-SELECT inj('replay_s8', 'YB001');
 ROLLBACK;
 
 -- statement_timeout bounds the statement across retries, as it does for the
@@ -101,16 +82,14 @@ SELECT inj('replay_s9', 'YB003');
 ROLLBACK;
 RESET yb_replay_retry_log_limit;
 
--- yb_enable_replay_retry is fixed for the life of a transaction, so a block
--- cannot replay a log that misses its earlier statements.  Setting the value
--- it already has is allowed.
+-- A change of yb_enable_replay_retry inside a transaction applies from the
+-- next transaction, so a block never switches between the in-place restart and
+-- the replay: this block started with it on and is replayed.
+CREATE SEQUENCE replay_s14;
 BEGIN ISOLATION LEVEL REPEATABLE READ;
-SET LOCAL yb_enable_replay_retry = on;
 SET LOCAL yb_enable_replay_retry = off;
-ROLLBACK;
-BEGIN ISOLATION LEVEL REPEATABLE READ;
-SET yb_enable_replay_retry = off;
-ROLLBACK;
+SELECT inj('replay_s14', 'YB003');
+COMMIT;
 SHOW yb_enable_replay_retry;
 
 -- The replayed transaction keeps the original transaction start, which

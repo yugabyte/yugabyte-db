@@ -2379,6 +2379,8 @@ bool		yb_enable_retry_after_non_atomic_commit = false;
 
 bool		yb_enable_replay_retry;
 
+bool		yb_replay_retry_in_txn = false;
+
 int			yb_replay_retry_log_limit;
 
 bool		yb_replay_in_progress = false;

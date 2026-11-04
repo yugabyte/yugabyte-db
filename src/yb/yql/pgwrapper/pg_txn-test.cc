@@ -1570,6 +1570,50 @@ TEST_F(PgReplayRetryTest, ProtocolCloseClosesLog) {
   ASSERT_OK(raw.SimpleQuery("ROLLBACK"));
 }
 
+// READ COMMITTED cases, moved here from yb.orig.replay_retry because debug builds turn READ
+// COMMITTED off. In a block, RC retries kConflict and kReadRestart by rolling back the statement
+// alone, and only kAborted and kDeadlock, which leave no transaction to roll back into, need the
+// replay.
+class PgReplayRetryReadCommittedTest : public PgReplayRetryTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
+    PgReplayRetryTest::SetUp();
+  }
+};
+
+TEST_F(PgReplayRetryReadCommittedTest, AbortedAfterSetLocal) {
+  auto conn = ASSERT_RESULT(ConnectAndSetUp());
+  ASSERT_OK(conn.Execute("CREATE SEQUENCE replay_rc1"));
+  ASSERT_OK(conn.Execute("BEGIN ISOLATION LEVEL READ COMMITTED"));
+  ASSERT_OK(conn.Execute("SET LOCAL work_mem = '8MB'"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT inj('replay_rc1', 'YB001')")), 1);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(
+      "SHOW yb_effective_transaction_isolation_level")), "read committed");
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>("SHOW work_mem")), "8MB");
+  ASSERT_OK(conn.Execute("COMMIT"));
+}
+
+TEST_F(PgReplayRetryReadCommittedTest, ConflictAfterReadUsesStatementRollback) {
+  auto conn = ASSERT_RESULT(ConnectAndSetUp());
+  ASSERT_OK(conn.Execute("CREATE SEQUENCE replay_rc2"));
+  ASSERT_OK(conn.Execute("BEGIN ISOLATION LEVEL READ COMMITTED"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM replay_t")), 1);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT inj('replay_rc2', 'YB003')")), 1);
+  ASSERT_OK(conn.Execute("COMMIT"));
+}
+
+TEST_F(PgReplayRetryReadCommittedTest, AbortedWithReplayOff) {
+  auto conn = ASSERT_RESULT(ConnectAndSetUp());
+  ASSERT_OK(conn.Execute("CREATE SEQUENCE replay_rc3"));
+  ASSERT_OK(conn.Execute("SET yb_enable_replay_retry = off"));
+  ASSERT_OK(conn.Execute("BEGIN ISOLATION LEVEL READ COMMITTED"));
+  ASSERT_OK(conn.Execute("SET LOCAL work_mem = '8MB'"));
+  ASSERT_NOK_STR_CONTAINS(
+      conn.Fetch("SELECT inj('replay_rc3', 'YB001')"), "READ COMMITTED transaction was aborted");
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+}
+
 TEST_F(PgReplayRetryTest, Autocommit) {
   auto conn = ASSERT_RESULT(ConnectAndSetUp());
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT inj('replay_s4', 'YB003')")), 1);

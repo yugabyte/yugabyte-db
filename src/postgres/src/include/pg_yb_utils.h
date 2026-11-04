@@ -780,7 +780,15 @@ extern bool yb_enable_retry_after_non_atomic_commit;
  * "Replay retry" section of tcop/README.
  */
 extern bool yb_enable_replay_retry;
-extern bool check_yb_enable_replay_retry(bool *newval, void **extra, GucSource source);
+
+/*
+ * yb_enable_replay_retry as it was when the current transaction started.  A
+ * change inside a transaction applies from the next one, so a transaction
+ * never switches between the in-place restart and the replay.  An error
+ * would not do: the connection manager re-applies session settings at points
+ * the client did not choose.
+ */
+extern bool yb_replay_retry_in_txn;
 
 /* Size cap, in kB, of the replay log; past it the transaction is not retried. */
 extern int	yb_replay_retry_log_limit;

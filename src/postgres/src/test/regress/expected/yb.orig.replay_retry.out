@@ -14,9 +14,6 @@ CREATE SEQUENCE replay_s1;
 CREATE SEQUENCE replay_s2;
 CREATE SEQUENCE replay_s3;
 CREATE SEQUENCE replay_s4;
-CREATE SEQUENCE replay_s6;
-CREATE SEQUENCE replay_s7;
-CREATE SEQUENCE replay_s8;
 CREATE FUNCTION inj(seq regclass, code text) RETURNS int LANGUAGE plpgsql AS $$
 BEGIN
   IF nextval(seq) = 1 THEN
@@ -73,59 +70,17 @@ SELECT count(*) FROM replay_t;
 (1 row)
 
 SELECT inj('replay_s3', 'YB003');
-ERROR:  injected YB003 (query layer retry isn't possible because the transaction cannot be replayed)
+ERROR:  injected YB003 (query layer retry isn't possible because the transaction cannot be replayed. Consider using READ COMMITTED isolation level.)
 CONTEXT:  PL/pgSQL function inj(regclass,text) line 4 at RAISE
 ROLLBACK;
--- RC, kAborted: no statement to roll back to, so the replay restarts the block.
-BEGIN ISOLATION LEVEL READ COMMITTED;
-SET LOCAL work_mem = '8MB';
-SELECT inj('replay_s6', 'YB001');
- inj 
------
-   1
-(1 row)
-
-SHOW yb_effective_transaction_isolation_level;
- yb_effective_transaction_isolation_level 
-------------------------------------------
- read committed
-(1 row)
-
-SHOW work_mem;
- work_mem 
-----------
- 8MB
-(1 row)
-
-COMMIT;
--- RC, kConflict: still the statement rollback, so it also retries after a
--- completed snapshot read.
-BEGIN ISOLATION LEVEL READ COMMITTED;
-SELECT count(*) FROM replay_t;
- count 
--------
-     1
-(1 row)
-
-SELECT inj('replay_s7', 'YB003');
- inj 
------
-   1
-(1 row)
-
-COMMIT;
+-- READ COMMITTED cases are in pg_txn-test (PgReplayRetryReadCommittedTest):
+-- debug builds turn READ COMMITTED off, which would change this file's output.
 -- Off: today's behavior, the error reaches the client.
 SET yb_enable_replay_retry = off;
 BEGIN ISOLATION LEVEL REPEATABLE READ;
 SET LOCAL work_mem = '8MB';
 SELECT inj('replay_s4', 'YB003');
 ERROR:  injected YB003 (query layer retry isn't possible because this is not the first command in the transaction. Consider using READ COMMITTED isolation level.)
-CONTEXT:  PL/pgSQL function inj(regclass,text) line 4 at RAISE
-ROLLBACK;
-BEGIN ISOLATION LEVEL READ COMMITTED;
-SET LOCAL work_mem = '8MB';
-SELECT inj('replay_s8', 'YB001');
-ERROR:  injected YB001 (query layer retry isn't possible, READ COMMITTED transaction was aborted  and some data was already sent to the user)
 CONTEXT:  PL/pgSQL function inj(regclass,text) line 4 at RAISE
 ROLLBACK;
 -- statement_timeout bounds the statement across retries, as it does for the
@@ -154,22 +109,23 @@ SET yb_replay_retry_log_limit = 0;
 BEGIN ISOLATION LEVEL REPEATABLE READ;
 SET LOCAL work_mem = '8MB';
 SELECT inj('replay_s9', 'YB003');
-ERROR:  injected YB003 (query layer retry isn't possible because the transaction cannot be replayed)
+ERROR:  injected YB003 (query layer retry isn't possible because the transaction cannot be replayed. Consider using READ COMMITTED isolation level.)
 CONTEXT:  PL/pgSQL function inj(regclass,text) line 4 at RAISE
 ROLLBACK;
 RESET yb_replay_retry_log_limit;
--- yb_enable_replay_retry is fixed for the life of a transaction, so a block
--- cannot replay a log that misses its earlier statements.  Setting the value
--- it already has is allowed.
+-- A change of yb_enable_replay_retry inside a transaction applies from the
+-- next transaction, so a block never switches between the in-place restart and
+-- the replay: this block started with it on and is replayed.
+CREATE SEQUENCE replay_s14;
 BEGIN ISOLATION LEVEL REPEATABLE READ;
-SET LOCAL yb_enable_replay_retry = on;
 SET LOCAL yb_enable_replay_retry = off;
-ERROR:  yb_enable_replay_retry cannot be changed inside a transaction
-ROLLBACK;
-BEGIN ISOLATION LEVEL REPEATABLE READ;
-SET yb_enable_replay_retry = off;
-ERROR:  yb_enable_replay_retry cannot be changed inside a transaction
-ROLLBACK;
+SELECT inj('replay_s14', 'YB003');
+ inj 
+-----
+   1
+(1 row)
+
+COMMIT;
 SHOW yb_enable_replay_retry;
  yb_enable_replay_retry 
 ------------------------

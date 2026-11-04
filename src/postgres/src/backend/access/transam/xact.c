@@ -2091,6 +2091,7 @@ YBStartTransaction(TransactionState s)
 	s->ybDataSent = false;
 	s->ybDataSentForCurrQuery = false;
 	s->YBPostponedDdlOps = NULL;
+	yb_replay_retry_in_txn = yb_enable_replay_retry;
 
 	if (IsYugaByteEnabled())
 	{
