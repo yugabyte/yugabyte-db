@@ -618,10 +618,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
                                       const SubTransactionId sub_txn_id,
                                       YsqlDdlSubTransactionRollbackState state);
 
-  bool HasDdlVerificationState(const TransactionId& txn) const EXCLUDES(ddl_txn_verifier_mutex_);
-  // Returns true if txn has a DDL verification entry, in which case the caller must drop its
-  // release request. txn's locks are then released when the entry goes away: by the DDL verifier
-  // once txn finishes, or by txn's own release-all if the entry was erased while txn was running.
+  // Returns true if txn has a DDL verification entry, in which case the caller must not apply its
+  // release request yet. txn's locks are then released when the entry goes away: by the DDL
+  // verifier once txn finishes, or by txn's own release-all if the entry was erased while txn was
+  // running.
   bool DeferObjectLockReleaseToDdlVerifier(const TransactionId& txn, bool release_all)
       EXCLUDES(ddl_txn_verifier_mutex_);
   void RemoveDdlTransactionStateUnlocked(

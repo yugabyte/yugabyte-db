@@ -198,11 +198,6 @@ Status CatalogManager::YsqlTableSchemaChecker(TableInfoPtr table,
   return YsqlDdlTxnCompleteCallback(table, pb_txn_id, is_committed.get(), epoch, __FUNCTION__);
 }
 
-bool CatalogManager::HasDdlVerificationState(const TransactionId& txn) const {
-  LockGuard lock(ddl_txn_verifier_mutex_);
-  return ysql_ddl_txn_verfication_state_map_.contains(txn);
-}
-
 bool CatalogManager::DeferObjectLockReleaseToDdlVerifier(
     const TransactionId& txn, bool release_all) {
   LockGuard lock(ddl_txn_verifier_mutex_);
@@ -879,12 +874,13 @@ void CatalogManager::RemoveDdlTransactionStateUnlocked(
       // A rollback to savepoint can undo every DDL of a txn that is still running (txn_state is
       // kUnknown until the verifier sees the txn finish; state is no signal, since a failed
       // verification task can set kDdlPostProcessingFailed while the txn runs). Such a txn still
-      // holds its object locks and releases them itself when it finishes, unless a release-all
-      // from it was already dropped because this entry existed.
+      // holds its object locks and releases them itself when it finishes, unless a previous
+      // release-all from it was already dropped because this entry existed.
       const bool release_locks =
           iter->second.txn_state != TxnState::kUnknown || iter->second.release_all_deferred;
-      LOG(INFO) << "Erasing DDL Verification state for " << txn_id
-                << (release_locks ? "" : ", txn is still running, not releasing its object locks");
+      LOG(INFO) << "Erasing DDL Verification state for " << txn_id << ", "
+                << (release_locks ? "releasing its object locks"
+                                  : "txn is still running, deferring its object lock release");
       ysql_ddl_txn_verfication_state_map_.erase(iter);
       // At this point, we can be sure that the docdb schema changes have been applied.
       // For instance, consider the case of an ALTER.

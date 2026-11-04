@@ -278,7 +278,6 @@ class ObjectLockInfoManager::Impl {
   Status MaybePopulateHostInfo(ReleaseObjectLockRequestPB& req) EXCLUDES(mutex_);
   Status PopulateHostInfo(const TransactionId& txn_id, ReleaseObjectLockRequestPB& req)
       EXCLUDES(mutex_);
-  bool IsDdlVerificationInProgress(const TransactionId& txn) const;
 
   Status RefreshYsqlLease(const RefreshYsqlLeaseRequestPB& req,
                           RefreshYsqlLeaseResponsePB& resp,
@@ -926,10 +925,6 @@ std::shared_ptr<ObjectLockInfo> ObjectLockInfoManager::Impl::GetOrCreateObjectLo
   }
 }
 
-bool ObjectLockInfoManager::Impl::IsDdlVerificationInProgress(const TransactionId& txn) const {
-  return catalog_manager_.HasDdlVerificationState(txn);
-}
-
 bool ObjectLockInfoManager::Impl::TabletServerHasLiveLease(const std::string& ts_uuid) const {
   LockGuard lock(mutex_);
   auto it = object_lock_infos_map_.find(ts_uuid);
@@ -1328,9 +1323,12 @@ Status ObjectLockInfoManager::Impl::UnlockObjectSync(
   auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(req.txn_id()));
   // If the txn is scheduled for ddl verification, UnlockObject will be a no-op.
   // Let us first wait to make sure that it is not queued for ddl verification.
+  const bool release_all = IsReleaseAll(tserver_req);
   RETURN_NOT_OK(Wait(
-      [this, &txn_id] { return !IsDdlVerificationInProgress(txn_id); }, deadline,
-      "Waiting for DDL verification to finish"));
+      [this, &txn_id, release_all] {
+        return !catalog_manager_.DeferObjectLockReleaseToDdlVerifier(txn_id, release_all);
+      },
+      deadline, "Waiting for DDL verification to finish"));
   const auto request_id = tserver_req.request_id();
   auto promise = std::make_shared<std::promise<Status>>();
   WARN_NOT_OK(
