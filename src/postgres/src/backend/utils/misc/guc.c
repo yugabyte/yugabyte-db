@@ -2896,6 +2896,18 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_replication_slot_transactional_ddl", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("Autoflag to enable support for logical replication with "
+						 "transactional DDL. Not to be touched by users."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_replication_slot_transactional_ddl,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"ysql_upgrade_mode", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enter a special mode designed specifically for YSQL cluster upgrades. "
 						 "Allows creating new system tables with given relation and type OID. "

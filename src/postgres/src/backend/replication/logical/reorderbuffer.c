@@ -114,7 +114,7 @@
 #include "pg_yb_utils.h"
 #include "replication/walsender_private.h"
 #include "utils/catcache.h"
-#include "yb/yql/pggate/ybc_gflags.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
 
 /* entry for a hash table we use to map from xid to our transaction state */
 typedef struct ReorderBufferTXNByIdEnt
@@ -2242,7 +2242,7 @@ ReorderBufferProcessTXN(ReorderBuffer *rb, ReorderBufferTXN *txn,
 
 					if (IsYugaByteEnabled())
 					{
-						if (*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl)
+						if (yb_enable_replication_slot_transactional_ddl)
 							YBCSetHistoricalReadContext(change->data.tp.yb_read_time,
 														change->data.tp.yb_in_txn_limit,
 														change->data.tp.yb_txn_id);
