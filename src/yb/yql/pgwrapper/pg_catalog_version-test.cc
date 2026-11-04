@@ -3685,6 +3685,31 @@ TEST_P(PgCatalogVersionConnManagerOnlyTest,
   ASSERT_EQ(version_after, version_x + 2);
 }
 
+// Without global impact DDLs, ALTER USER does not bump template1's catalog version, which keys the
+// connection-auth cache, so the cache must not be used: a password change made on ts-1 must be
+// seen at once by a new connection on ts-0, which already cached the old password.
+TEST_F(PgCatalogVersionTest, ConnectionAuthCacheNotUsedWithoutGlobalImpactDdls) {
+  auto conn = ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "yugabyte"));
+  ASSERT_OK(conn.Execute("CREATE USER test_user PASSWORD 'old_password'"));
+  RestartClusterWithInvalMessageEnabled(
+      {"--ysql_enable_auth=true", "--ysql_disable_global_impact_ddl_statements=true"});
+
+  pg_ts = cluster_->tablet_server(0);
+  setenv("PGPASSWORD", "old_password", /*overwrite=*/true);
+  ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "test_user"));
+
+  pg_ts = cluster_->tablet_server(1);
+  setenv("PGPASSWORD", "yugabyte", /*overwrite=*/true);
+  conn = ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "yugabyte"));
+  ASSERT_OK(conn.Execute("ALTER USER test_user WITH PASSWORD 'new_password'"));
+  WaitForCatalogVersionToPropagate();
+
+  pg_ts = cluster_->tablet_server(0);
+  setenv("PGPASSWORD", "old_password", /*overwrite=*/true);
+  ASSERT_NOK_STR_CONTAINS(ConnectToDBAsUser("yugabyte", "test_user"),
+      "password authentication failed for user \"test_user\"");
+}
+
 TEST_F(PgCatalogVersionTest, NewConnectionRelCachePreloadTest) {
   // Disable auto analyze because it makes the number of the metric: RelCachePreload flaky.
   // Also set ysql_enable_relcache_init_optimization=false to show concurrent new connections
