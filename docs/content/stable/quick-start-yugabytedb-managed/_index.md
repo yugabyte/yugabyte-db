@@ -29,7 +29,7 @@ unversioned: true
   </li>
 </ul>
 
-The quickest way to get started with YugabyteDB Aeon is to create a free Serverless Postgres cluster. Serverless Postgres is free up to 2 vCPU and 16 GiB of memory, and no credit card is required.
+The quickest way to get started with YugabyteDB Aeon is to create a free **Serverless Postgres** cluster. Serverless Postgres is free up to 2 vCPU and 16 GiB of memory, and no credit card is required.
 
 1. [Sign up](https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=YBM_signup).
 1. [Log in](https://cloud.yugabyte.com/login).
@@ -51,7 +51,7 @@ The quickest way to get started with YugabyteDB Aeon is to create a free Serverl
 
 ![Free serverless cluster](/images/yb-cloud/serverless-free.png)
 
-The first time you create a cluster, YugabyteDB Aeon creates the [Serverless account](../managed-security/manage-accounts/) in your organization. This account is used for all your serverless clusters.
+The first time you create a cluster, YugabyteDB Aeon creates the [Serverless account](/stable/yugabyte-cloud/managed-security/manage-accounts/) in your organization. This account is used for all your serverless clusters.
 
 ## Connect to the cluster
 
