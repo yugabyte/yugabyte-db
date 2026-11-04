@@ -3694,7 +3694,7 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(get_universe_config);
   REGISTER_COMMAND(get_xcluster_info, {
       .group = CommandGroup::kXClusterGeneral,
-      .description = "Show the universe's xCluster producer and consumer registries"});
+      .description = "Show the xCluster producer and consumer registries"});
   REGISTER_COMMAND(change_blacklist);
   REGISTER_COMMAND(change_leader_blacklist);
   REGISTER_COMMAND(master_leader_stepdown);
@@ -3779,7 +3779,7 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(get_table_hash);
   REGISTER_COMMAND(verify_xcluster_slice, {
       .group = CommandGroup::kXClusterGeneral,
-      .description = "Compare a key range of a source and a target table at one time"});
+      .description = "Compare a key range of source and target tables at one time"});
   REGISTER_COMMAND(verify_xcluster_group, {
       .group = CommandGroup::kXClusterAutomatic,
       .description = "Check inbound tables against the source (automatic mode only)"});
@@ -3827,10 +3827,10 @@ void ClusterAdminCli::RegisterCommandHandlers() {
       .description = "Show the status and errors of inbound replication groups"});
   REGISTER_COMMAND(get_xcluster_safe_time, {
       .group = CommandGroup::kXClusterGeneral,
-      .description = "Show each database's xCluster safe time, optionally lag and skew"});
+      .description = "Show each database's safe time, optionally lag and skew"});
   REGISTER_COMMAND(list_universe_replications, {
       .group = CommandGroup::kXClusterGeneral,
-      .description = "List inbound replication groups, optionally for one database"});
+      .description = "List inbound replication groups, optionally for a database"});
   REGISTER_COMMAND(get_universe_replication_info, {
       .group = CommandGroup::kXClusterGeneral,
       .description = "Show the details of an inbound replication group"});
@@ -3869,7 +3869,7 @@ void ClusterAdminCli::RegisterCommandHandlers() {
       .description = "Repair an outbound replication group by removing a table"});
   REGISTER_COMMAND(list_xcluster_outbound_replication_groups, {
       .group = CommandGroup::kXClusterAutomatic,
-      .description = "List outbound replication groups on the source"});
+      .description = "List the outbound replication groups on the source"});
   REGISTER_COMMAND(get_xcluster_outbound_replication_group_info, {
       .group = CommandGroup::kXClusterAutomatic,
       .description = "Show the details of an outbound replication group"});
