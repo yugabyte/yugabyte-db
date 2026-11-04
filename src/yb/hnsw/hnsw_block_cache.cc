@@ -394,8 +394,11 @@ Result<Header> FileBlockCache::Load() {
   SCHECK_GE(footer_data.size(), sizeof(FooterSizeType), Corruption, "Wrong number of read bytes");
   auto footer_size = LittleEndian::Load64(footer_data.end() - sizeof(FooterSizeType));
   SCHECK_GE(file_size, footer_size, Corruption, "Footer size greater than file size");
+  // SliceReader does not check bounds, so require the version and the header without layers.
   SCHECK_GE(
-      footer_size, sizeof(FooterSizeType) + sizeof(uint32_t), Corruption, "Footer size too small");
+      footer_size,
+      sizeof(uint8_t) + SerializedSize(Header()) + sizeof(uint32_t) + sizeof(FooterSizeType),
+      Corruption, "Footer size too small");
   if (footer_size > buffer.size()) {
     buffer.resize(footer_size);
     RETURN_NOT_OK(file_->Read(

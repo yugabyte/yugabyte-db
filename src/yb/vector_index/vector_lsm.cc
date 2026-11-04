@@ -1450,7 +1450,12 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
   merge_registry_ = std::make_shared<MergeRegistry>(
       options_.log_prefix, *options_.insert_thread_pool);
 
-  RETURN_NOT_OK(env_->CreateDirs(options_.storage_dir));
+  // Manifest appends sync only the directory, not its entry in the parent. Losing that entry would
+  // silently reopen the index empty.
+  if (!env_->DirExists(options_.storage_dir)) {
+    RETURN_NOT_OK(env_->CreateDirs(options_.storage_dir));
+    RETURN_NOT_OK(env_->SyncDir(DirName(options_.storage_dir)));
+  }
   auto load_result = VERIFY_RESULT(VectorLSMMetadataLoad(env_, options_.storage_dir));
   next_manifest_file_no_ = load_result.next_free_file_no;
   for (const auto& chunk_pb : load_result.chunks) {
@@ -1498,8 +1503,8 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
       promise.set_value(status);
     });
   }
-  // Fail the tablet rather than run it with a vector index that fails every write, since a failed
-  // write applied to the tablet FATALs the tserver.
+  // Fail rather than run with a vector index that fails every write, since applying a failed write
+  // FATALs the tserver. On tablet open this fails only the tablet.
   Status load_status;
   for (auto& promise : promises) {
     auto status = promise.get_future().get();
@@ -1549,6 +1554,7 @@ Status VectorLSM<Vector, DistanceResult>::CreateCheckpoint(const std::string& ou
   }
 
   RETURN_NOT_OK(env_->CreateDirs(out));
+  RETURN_NOT_OK(env_->SyncDir(DirName(out)));
   VectorLSMUpdatePB update;
   for (const auto& chunk : chunks) {
     RETURN_NOT_OK(chunk->Link(*env_, options_, out));

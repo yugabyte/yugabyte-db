@@ -5318,10 +5318,15 @@ TEST_P(PgVectorIndexSingleServerTest, UnloadableChunkFailsTablet) {
   ASSERT_FALSE(chunk_files.empty());
 
   auto* ts = cluster_->mini_tablet_server(0);
-  // What an unsynced chunk could look like after a power loss: empty, or zero-filled, so its footer
-  // size reads as 0.
-  for (const auto& content : {std::string(), std::string(4096, '\0')}) {
-    SCOPED_TRACE(Format("Chunk size: $0", content.size()));
+  // A footer of only its CRC and size; the CRC of empty data is 0.
+  std::string footer_only(4096, '\0');
+  footer_only[footer_only.size() - sizeof(uint64_t)] = sizeof(uint32_t) + sizeof(uint64_t);
+  // Empty and zero-filled, with footer size 0, are what an unsynced chunk could look like after a
+  // power loss.
+  const std::vector<std::pair<std::string, std::string>> cases = {
+      {"empty", ""}, {"zero-filled", std::string(4096, '\0')}, {"footer only", footer_only}};
+  for (const auto& [name, content] : cases) {
+    SCOPED_TRACE(name);
     ts->Shutdown();
     for (const auto& file : chunk_files) {
       ASSERT_OK(WriteStringToFile(env, content, file));
