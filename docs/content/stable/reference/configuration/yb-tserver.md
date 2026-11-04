@@ -715,7 +715,7 @@ Default: `on`
 
 Enables faster writes into tables that the same transaction created or rebuilt. When on, qualifying statements skip the provisional-write (intents) path and write straight to the main store.
 
-Available in v2026.1.2 and later. Any user can change this setting; superuser privileges are not required. You cannot change it inside a transaction block, or after the first query of a transaction has run.
+Available in v2026.1.2 and later. Any user can change this setting; superuser privileges are not required. You cannot change it with `SET` after the first query of a transaction has run, or in a function's `SET` clause.
 
 Can be set using the [--ysql_yb_enable_new_relation_fastpath_write](#ysql-yb-enable-new-relation-fastpath-write) flag.
 

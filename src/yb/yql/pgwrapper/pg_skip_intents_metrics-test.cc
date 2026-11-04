@@ -1825,40 +1825,6 @@ TEST_F(SkipIntentsMetricTest, TestConfigReloadInsideTxnBlock) {
       << "The reload that arrived inside the transaction block was lost";
 }
 
-// Connection options are applied in the order the client lists them. With the cluster's
-// yb_enable_new_relation_fastpath_write off, listing
-// yb_enable_new_relation_fastpath_write_in_txn_blocks first must not refuse the connection, since
-// the final values are valid. The same holds for SET, which Connection Manager replays in an order
-// of its own.
-class SkipIntentsFastpathOffTest : public SkipIntentsMetricTest {
- protected:
-  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    SkipIntentsMetricTest::UpdateMiniClusterOptions(options);
-    options->extra_tserver_flags.emplace_back("--ysql_yb_enable_new_relation_fastpath_write=false");
-  }
-};
-
-TEST_F(SkipIntentsFastpathOffTest, TestConnectionOptionsOrder) {
-  constexpr auto kParentGuc = "yb_enable_new_relation_fastpath_write";
-  constexpr auto kInTxnBlocksGuc = "yb_enable_new_relation_fastpath_write_in_txn_blocks";
-  {
-    auto conn = ASSERT_RESULT(Connect());
-    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(Format("SHOW $0", kParentGuc))), "off");
-  }
-  auto conn = ASSERT_RESULT(ConnectUsingString(Format(
-      "host=$0 port=$1 user=$2 options='-c $3=on -c $4=on'",
-      pg_ts->bind_host(), pg_ts->ysql_port(), PGConnSettings::kDefaultUser, kInTxnBlocksGuc,
-      kParentGuc)));
-  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(Format("SHOW $0", kParentGuc))), "on");
-  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(Format("SHOW $0", kInTxnBlocksGuc))), "on");
-
-  ASSERT_OK(conn.ExecuteFormat("SET $0 = off", kInTxnBlocksGuc));
-  ASSERT_OK(conn.ExecuteFormat("SET $0 = off", kParentGuc));
-  ASSERT_OK(conn.ExecuteFormat("SET $0 = on", kInTxnBlocksGuc));
-  ASSERT_OK(conn.ExecuteFormat("SET $0 = on", kParentGuc));
-  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(Format("SHOW $0", kInTxnBlocksGuc))), "on");
-}
-
 // A function's SET clause is applied inside the calling statement, where the GUCs cannot change,
 // so CREATE/ALTER FUNCTION must refuse it rather than leave a function that cannot be called. Its
 // validation pass uses the same source as ALTER ROLE ... SET, which the check hooks accept.
@@ -1958,9 +1924,7 @@ TEST_F(SkipIntentsMetricTest, TestRetryReasonPrefersStatementOverSkippedIntents)
 // ysql_yb_enable_new_relation_fastpath_write is the kill switch for the optimization as a whole,
 // so turning it off has to be enough on its own: the cluster comes up with
 // ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks left on, and nothing takes the
-// fastpath. Both parameters land in ysql_pg.conf and postgres assigns them in the order they
-// appear there, so the dependency check between them must not reject this pair or the postmaster
-// refuses to start.
+// fastpath.
 class SkipIntentsFastpathDisabledTest : public SkipIntentsMetricTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
@@ -1986,11 +1950,39 @@ TEST_F(SkipIntentsFastpathDisabledTest, TestKillSwitchDisablesFastpath) {
   ASSERT_OK(conn.Execute("CREATE TABLE parent_off_tb AS SELECT generate_series(1, 100) AS id"));
   ASSERT_EQ(ASSERT_RESULT(GetSkipIntentsCount()), initial_writes);
 
-  // Enabling it explicitly is still rejected, since that value comes from the user.
-  auto set_conn = ASSERT_RESULT(Connect());
-  auto result = set_conn.Execute("SET yb_enable_new_relation_fastpath_write_in_txn_blocks = on");
-  ASSERT_NOK(result);
-  ASSERT_STR_CONTAINS(result.ToString(), "yb_enable_new_relation_fastpath_write is disabled");
+  // Inside a transaction block too, even with this GUC set explicitly.
+  ASSERT_OK(conn.Execute("SET yb_enable_new_relation_fastpath_write_in_txn_blocks = on"));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE parent_off_block_tb AS SELECT generate_series(1, 100) AS id"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_EQ(ASSERT_RESULT(GetSkipIntentsCount()), initial_writes);
+}
+
+// Connection options are applied in the order the client lists them. With the cluster's
+// yb_enable_new_relation_fastpath_write off, listing
+// yb_enable_new_relation_fastpath_write_in_txn_blocks first must not refuse the connection, since
+// the final values are valid. The same holds for SET, which Connection Manager replays in an order
+// of its own.
+TEST_F(SkipIntentsFastpathDisabledTest, TestConnectionOptionsOrder) {
+  constexpr auto kParentGuc = "yb_enable_new_relation_fastpath_write";
+  constexpr auto kInTxnBlocksGuc = "yb_enable_new_relation_fastpath_write_in_txn_blocks";
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(Format("SHOW $0", kParentGuc))), "off");
+  }
+  auto conn = ASSERT_RESULT(ConnectUsingString(Format(
+      "host=$0 port=$1 user=$2 options='-c $3=on -c $4=on'",
+      pg_ts->bind_host(), pg_ts->ysql_port(), PGConnSettings::kDefaultUser, kInTxnBlocksGuc,
+      kParentGuc)));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(Format("SHOW $0", kParentGuc))), "on");
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(Format("SHOW $0", kInTxnBlocksGuc))), "on");
+
+  ASSERT_OK(conn.ExecuteFormat("SET $0 = off", kInTxnBlocksGuc));
+  ASSERT_OK(conn.ExecuteFormat("SET $0 = off", kParentGuc));
+  ASSERT_OK(conn.ExecuteFormat("SET $0 = on", kInTxnBlocksGuc));
+  ASSERT_OK(conn.ExecuteFormat("SET $0 = on", kParentGuc));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(Format("SHOW $0", kInTxnBlocksGuc))), "on");
 }
 
 // Cluster without transactional DDL, where the in-txn-block fastpath cannot apply.
