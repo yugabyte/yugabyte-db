@@ -1183,12 +1183,14 @@
         connect-src 'self'
             https://cdn.cookielaw.org/
             https://geolocation.onetrust.com/
+            https://yugabytedb-privacy.my.onetrust.com/
             https://80f647c7c1f545fc97ff43f8b602dc86.us-west-2.aws.found.io/
             https://api.rudderstack.com/
             https://app.clearbit.com/
             https://ingesteer.services-prod.nsvcs.net/rum_collection
             https://ka-f.fontawesome.com/releases/
-            https://kapa-widget-proxy-la7dkmplpq-uc.a.run.app
+            https://kapa-widget-proxy-la7dkmplpq-uc.a.run.app/
+            https://proxy.kapa.ai/
             https://metrics.kapa.ai/
             https://hcaptcha.com
             https://*.hcaptcha.com
@@ -1245,6 +1247,7 @@
             https://www.google.com/
             https://www.redditstatic.com/
             https://x.clearbitjs.com/
+            https://www.youtube.com/
         ;
 
         style-src 'self' 'unsafe-inline'
