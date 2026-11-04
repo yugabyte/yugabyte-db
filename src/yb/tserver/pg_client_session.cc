@@ -988,13 +988,15 @@ class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQu
         stats_exchange_response_size_(stats_exchange_response_size) {}
 
   ~SharedExchangeQuery() {
-    // Timed out local calls could use the request in the exchange until the query is destroyed.
-    // Respond only now, so pggate does not find the exchange busy when it sends the next request.
-    exchange_.ResetBusy();
-    if (response_size_) {
-      exchange_.Respond(response_size_);
-    }
+    // Timed out local calls could read the request from the exchange until the query is destroyed,
+    // so only now the response is written over it. Busy is reset before the response is posted, so
+    // pggate does not find the exchange busy when it sends the next request.
     LOG_IF(DFATAL, !responded_.load()) << "Response did not send";
+    const auto response_size = responded_.load() ? WriteResponse() : 0;
+    exchange_.ResetBusy();
+    if (response_size) {
+      exchange_.Respond(response_size);
+    }
   }
 
   using RequestInfo = std::pair<std::shared_ptr<QueryData<T>>, CoarseTimePoint>;
@@ -1070,10 +1072,16 @@ class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQu
   void SendResponse() {
     EndSharedMemSpan(
         &trace_span_, resp_.has_status() ? StatusFromPB(resp_.status()) : Status::OK());
+    responded_ = true;
+  }
+
+  // Runs from the destructor, so everything the response references without a copy must be owned
+  // by the query: arena_, sidecars_ or the ops in data_, which hold their RPC response buffers.
+  // Returns the size to post to the exchange, 0 when the session is gone.
+  size_t WriteResponse() {
     auto locked_session = session_.lock();
     if (!locked_session) {
-      responded_ = true;
-      return;
+      return 0;
     }
 
     using google::protobuf::io::CodedOutputStream;
@@ -1125,8 +1133,7 @@ class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQu
       auto id = locked_session->SaveData(buffer, std::move(sidecars_.buffer()));
       response_size = kTooBigResponseMark | id;
     }
-    response_size_ = response_size;
-    responded_ = true;
+    return response_size;
   }
 
   // Destroyed last, after the destructor is done with the exchange. The session waits for it
@@ -1143,8 +1150,6 @@ class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQu
   SharedExchange& exchange_;
   EventStatsPtr stats_exchange_response_size_;
   std::atomic<bool> responded_{false};
-  // Sent on destruction, 0 for no response.
-  size_t response_size_ = 0;
   std::optional<QueryData<T>> data_;
 };
 
