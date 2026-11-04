@@ -109,7 +109,7 @@ public class UniverseMetricProvider implements MetricsProvider {
         KmsHistory.getAllActiveHistory(TargetType.UNIVERSE_KEY).stream()
             .collect(Collectors.toMap(key -> key.getUuid().targetUuid, Function.identity()));
     Map<UUID, KmsConfig> kmsConfigMap =
-        KmsConfig.listAllKMSConfigs().stream()
+        KmsConfig.listAllKMSConfigsWithoutAuthConfig().stream()
             .collect(Collectors.toMap(config -> config.getConfigUUID(), Function.identity()));
     Map<AccessKeyId, AccessKey> allAccessKeys = accessKeyRotationUtil.createAllAccessKeysMap();
     boolean vmOsPatchingEnabled = confGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching);
@@ -529,7 +529,8 @@ public class UniverseMetricProvider implements MetricsProvider {
         .setValue(value);
   }
 
-  private Double getEncryptionKeyExpiryDays(KmsHistory activeKey, Map<UUID, KmsConfig> configMap) {
+  @VisibleForTesting
+  static Double getEncryptionKeyExpiryDays(KmsHistory activeKey, Map<UUID, KmsConfig> configMap) {
     if (activeKey == null) {
       return null;
     }
@@ -545,7 +546,11 @@ public class UniverseMetricProvider implements MetricsProvider {
       // For now only Hashicorp config expires.
       return null;
     }
-    ObjectNode credentials = kmsConfig.getAuthConfig();
+    // The config map is loaded without auth configs, so load this one's explicitly.
+    ObjectNode credentials = KmsConfig.getKMSAuthObj(kmsConfig.getConfigUUID());
+    if (credentials == null) {
+      return null;
+    }
     JsonNode keyTtlNode = credentials.get(HashicorpVaultConfigParams.HC_VAULT_TTL);
     if (keyTtlNode == null || keyTtlNode.asLong() == 0) {
       return null;
