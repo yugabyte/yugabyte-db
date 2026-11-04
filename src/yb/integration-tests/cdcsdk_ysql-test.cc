@@ -55,6 +55,7 @@ DECLARE_bool(TEST_disable_apply_committed_transactions);
 DECLARE_bool(cdcsdk_enable_publication_scoped_replication_slots);
 DECLARE_bool(cdc_pg_create_grpc_stream);
 DECLARE_bool(ysql_yb_enable_listen_notify);
+DECLARE_bool(enable_collect_cdc_metrics);
 
 namespace yb {
 
@@ -333,6 +334,85 @@ TEST_F(CDCSDKYsqlTest, TestSentLagNoSpikeAfterLeaderChange) {
     ASSERT_EQ(metrics->cdcsdk_last_sent_physicaltime->value(), 0);
     SleepFor(MonoDelta::FromMilliseconds(100));
   }
+}
+
+// A GetChanges response with no data record has no last-sent time. Last-sent stays 0 and sent lag
+// does not spike when UpdateMetrics is not running.
+TEST_F(CDCSDKYsqlTest, TestSentLagNoSpikeWhenNoDataRecord) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_metrics_interval_ms) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName, 1));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version = */ nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  const auto tablet_id = tablets[0].tablet_id();
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream(
+      CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT, CDCCheckpointType::IMPLICIT));
+
+  ASSERT_OK(WriteRowsHelper(0, 1, &test_cluster_, true));
+  GetChangesResponsePB change_resp;
+  ASSERT_OK(WaitForGetChangesToFetchRecords(&change_resp, stream_id, tablets, 1));
+  auto cp = change_resp.cdc_sdk_checkpoint();
+
+  size_t leader_index = 0;
+  size_t follower_index = 0;
+  GetTabletLeaderAndAnyFollowerIndex(tablets, &leader_index, &follower_index);
+  auto* cdc_service = CDCService(test_cluster()->mini_tablet_server(leader_index)->server());
+  ASSERT_OK(WaitFor(
+      [&] { return cdc_service->CDCEnabled(); }, MonoDelta::FromSeconds(30), "IsCDCEnabled"));
+  auto metrics = ASSERT_RESULT(GetCDCSDKTabletMetrics(
+      *cdc_service, tablet_id, stream_id, CreateMetricsEntityIfNotFound::kFalse));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> { return metrics->cdcsdk_last_sent_physicaltime->value() > 0; },
+      MonoDelta::FromSeconds(10) * kTimeMultiplier, "Last-sent set"));
+
+  // A schema change is not a data row, so the next GetChanges has records but no last-sent time.
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN extra INT"));
+
+  auto original_leader_peer =
+      test_cluster()->GetTabletManager(leader_index)->LookupTablet(tablet_id);
+  ASSERT_NE(original_leader_peer, nullptr);
+  StartYbAdminClient();
+  ASSERT_OK(StepDownLeader(follower_index, tablet_id));
+  ASSERT_OK(WaitFor(
+      [&] {
+        return !original_leader_peer->IsLeaderAndReady() &&
+               metrics->cdcsdk_last_sent_physicaltime->value() == 0;
+      },
+      MonoDelta::FromSeconds(30) * kTimeMultiplier, "Original leader cleared last-sent"));
+  ASSERT_EQ(metrics->cdcsdk_sent_lag_micros->value(), 0);
+
+  // Stop UpdateMetrics before this peer is leader again. Only the GetChanges below can publish
+  // sent lag.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_collect_cdc_metrics) = false;
+
+  ASSERT_OK(StepDownLeader(leader_index, tablet_id));
+  ASSERT_OK(WaitFor(
+      [&] { return original_leader_peer->IsLeaderAndReady(); },
+      MonoDelta::FromSeconds(30) * kTimeMultiplier, "Original leader is ready"));
+  ASSERT_EQ(metrics->cdcsdk_last_sent_physicaltime->value(), 0);
+  ASSERT_EQ(metrics->cdcsdk_sent_lag_micros->value(), 0);
+
+  GetChangesRequestPB change_req;
+  GetChangesResponsePB ddl_resp;
+  PrepareChangeRequest(&change_req, stream_id, tablets, cp);
+  change_req.set_serve_as_proxy(true);
+  RpcController rpc;
+  ASSERT_OK(cdc_proxy_->GetChanges(change_req, &ddl_resp, &rpc));
+  ASSERT_FALSE(ddl_resp.has_error());
+  ASSERT_GT(ddl_resp.cdc_sdk_proto_records_size(), 0);
+  for (const auto& record : ddl_resp.cdc_sdk_proto_records()) {
+    ASSERT_FALSE(IsDMLRecord(record));
+    ASSERT_NE(record.row_message().op(), RowMessage::SAFEPOINT);
+  }
+
+  ASSERT_EQ(metrics->cdcsdk_last_sent_physicaltime->value(), 0);
+  ASSERT_EQ(metrics->cdcsdk_sent_lag_micros->value(), 0);
 }
 
 // Begin transaction, perform some operations and abort transaction.
