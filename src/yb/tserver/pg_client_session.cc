@@ -4409,7 +4409,11 @@ class PgClientSession::Impl {
     RETURN_NOT_OK(CheckPlainSessionPendingUsedReadTime(session_data, options));
     read_point_history_.Cleanup(options.read_time_options().read_time_serial_no_history_min());
     const auto read_time_serial_no = options.read_time_options().read_time_serial_no();
-    if (read_time_serial_no != read_time_serial_no_) {
+    // Requests that need no read time, such as object lock requests, carry no
+    // read_time_serial_no. Switching for them would replace the read point of the snapshot that
+    // the next request continues.
+    if (read_time_serial_no != kInvalidReadTimeSerialNo &&
+        read_time_serial_no != read_time_serial_no_) {
       // Update history because a read point could have been chosen (due to multiple reasons:
       // a used read time was received from DocDB or a read time was chosen while sending previous
       // request).

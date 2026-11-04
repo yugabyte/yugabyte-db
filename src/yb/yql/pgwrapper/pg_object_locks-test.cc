@@ -1640,6 +1640,31 @@ TEST_F(PgObjectLocksTest, CreateIndexWaitsForInProgressWriteTxn) {
   ASSERT_TRUE(create_index_waits_for_in_progress_txn);
 }
 
+// An object lock request needs no read time and carries no read_time_serial_no. It must leave the
+// session's read point alone: a REPEATABLE READ transaction that takes a lock between two reads
+// still reads both at its snapshot.
+TEST_F(PgObjectLocksTest, LockRequestKeepsRepeatableReadSnapshot) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t1(k INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2(k INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1)"));
+  auto writer = ASSERT_RESULT(Connect());
+  // Warm the catalog cache, so the reads and the lock below send no catalog reads in between.
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("LOCK TABLE t2 IN SHARE MODE"));
+  ASSERT_OK(conn.Fetch("SELECT count(*) FROM t1"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  ASSERT_OK(conn.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM t1")), 1U);
+  ASSERT_OK(writer.Execute("INSERT INTO t1 VALUES (2)"));
+  // SHARE is stronger than ROW EXCLUSIVE, so the lock is taken by a request to the local tserver
+  // instead of the shared memory fast path.
+  ASSERT_OK(conn.Execute("LOCK TABLE t2 IN SHARE MODE"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM t1")), 1U);
+  ASSERT_OK(conn.Execute("COMMIT"));
+}
+
 TEST_F(PgObjectLocksTest, WaitForLockersSeesFastpathDmlLocks) {
   const auto ts1_idx = 1;
   const auto ts2_idx = 2;
