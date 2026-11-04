@@ -515,6 +515,9 @@ TEST_F_EX(PgTxnTest, SelectForUpdateExclusiveRead, PgTxnTestFailOnConflict) {
 
   bool read_succeeded[kNumThreads] {};
   std::vector<PGConn> conns;
+  // Each thread holds a reference to its element of conns, so conns must not reallocate while the
+  // later connections are added.
+  conns.reserve(kNumThreads);
 
   for (int thread_idx = 0; thread_idx < kNumThreads; ++thread_idx) {
     conns.emplace_back(ASSERT_RESULT(Connect()));
