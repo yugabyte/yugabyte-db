@@ -137,6 +137,9 @@ std::string BuildConnectionString(const PGConnSettings& settings, bool mask_pass
   if (!settings.replication.empty()) {
     result += Format(" replication=$0", PqEscapeStringConn(settings.replication));
   }
+  if (!settings.options.empty()) {
+    result += Format(" options=$0", PqEscapeStringConn(settings.options));
+  }
   if (!settings.yb_internal_conn_kind.empty()) {
     result += Format(
         " yb_internal_conn_kind=$0", PqEscapeStringConn(settings.yb_internal_conn_kind));

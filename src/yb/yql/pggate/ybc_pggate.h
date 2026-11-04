@@ -163,6 +163,8 @@ void YBCTCMallocReleaseFreeMemory(int64_t bytes);
 void YBCTCMallocReleaseMemoryToSystemWithLookbacks(
     int64_t bytes, int64_t short_interval_ms, int64_t long_interval_ms);
 void YBCTCMallocDrainCpuCaches();
+YbcStatus YBCStartTCMallocBackgroundThread();
+void YBCSetTCMallocBackgroundReleaseRate(int64_t bytes_per_sec);
 YbcStatus YBCGetHeapSnapshot(YbcHeapSnapshotSample** snapshot,
                              int64_t* num_samples,
                              bool peak_heap);

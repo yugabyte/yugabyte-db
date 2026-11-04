@@ -452,6 +452,15 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_tcmalloc_drain_cpu_caches_after_statement, false
     "After each statement, return the objects cached in the TCMalloc per-CPU caches of the YSQL "
     "backend to the central free lists.");
 
+DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_tcmalloc_background_thread, false,
+    "Run a TCMalloc background thread in each new YSQL backend that drains idle allocator caches "
+    "and, while the backend is idle, returns free memory to the OS at "
+    "ysql_yb_tcmalloc_background_release_rate.");
+
+DEFINE_RUNTIME_PG_FLAG(int32, yb_tcmalloc_background_release_rate, 10 * 1024 * 1024, // 10MB
+    "Rate in bytes per second at which the TCMalloc background thread of a YSQL backend returns "
+    "free page heap memory to the OS while the backend is idle.");
+
 DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_nop_alter_role_optimization, true,
     "Enable nop alter role statement optimization.");
 
