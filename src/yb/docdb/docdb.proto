@@ -114,6 +114,11 @@ message KeyValueWriteBatchPB {
 
   // Used to keep track of packing schema versions used in a xCluster write batch.
   repeated XClusterUsedSchemaVersionPB xcluster_used_schema_versions = 19;
+
+  // Whether the reverse index key of delete_vector_ids in a transaction uses the inverted hybrid
+  // time, so the delete list is applied right after the rows of its batch. Set by the leader, so
+  // that all replicas, and WAL replay, use the same encoding.
+  optional bool delete_vector_ids_after_rows = 20;
 }
 
 message PerDbFilterPB {

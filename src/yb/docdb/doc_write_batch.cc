@@ -44,12 +44,23 @@
 #include "yb/util/checked_narrow_cast.h"
 #include "yb/util/enums.h"
 #include "yb/util/fast_varint.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 
 using std::numeric_limits;
 using std::string;
+
+// An AutoFlag because the new encoding must not be written until the upgrade is finalized: the
+// transaction loader of an older binary can crash on the new key, and an older follower ignores
+// the replicated choice and keeps the old key. Hidden because it only gates an on-disk format:
+// turning it off later brings back the same-transaction vector bug.
+// Read by the leader only, the choice is replicated in the write batch.
+DEFINE_RUNTIME_AUTO_bool(vector_index_delete_list_after_rows, kLocalPersisted, false, true,
+    "Encode the reverse index key of a transaction's vector delete list like the keys of its "
+    "intents, so that the delete list is applied right after the rows of its batch.");
+TAG_FLAG(vector_index_delete_list_after_rows, hidden);
 
 namespace yb {
 namespace docdb {
@@ -913,6 +924,9 @@ void DocWriteBatch::MoveToWriteBatchPB(LWKeyValueWriteBatchPB *kv_pb) const {
   }
   if (!delete_vector_ids_.empty()) {
     kv_pb->dup_delete_vector_ids(delete_vector_ids_.AsSlice());
+    if (FLAGS_vector_index_delete_list_after_rows) {
+      kv_pb->set_delete_vector_ids_after_rows(true);
+    }
   }
   MoveLocksToWriteBatchPB(kv_pb, /* is_lock= */ true);
   if (has_ttl()) {
