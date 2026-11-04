@@ -27,7 +27,15 @@ public final class LdapBindPasswdHbaFormat {
   private static final String HBA_RECORD_START_CONN_TYPE =
       "local|host(?:ssl|nossl|gssenc|nogssenc)?";
 
-  // Unquoted value ends before the next ldap*= attr, a comma+name= pair, a new HBA record, or end.
+  // Quotes, each possibly JSON-escaped, that close the CSV field and JSON string holding the
+  // record: a JSON delimiter, a line break, or the end follows them. A quote run followed by
+  // anything else is part of the value, such as the escaped opening of a quoted password.
+  private static final String CLOSING_QUOTES = "(?:\\\\*\")+(?=[ \\t]*(?:[,}\\]\\r\\n]|$))";
+
+  // Unquoted value ends before the next ldap*= attr, a comma+name= pair, a new HBA record, a
+  // closing quote, a line break, or end. A password that ends a record is followed only by the
+  // closing quote or line break, so without those stops it swallows the rest of a JSON document,
+  // or never matches in a multi-line file and stays unredacted.
   // Prefer quoted passwords for values that contain commas without a following '='.
   private static final Pattern UNQUOTED_VALUE =
       Pattern.compile(
@@ -35,7 +43,9 @@ public final class LdapBindPasswdHbaFormat {
               + "((?:(?!\\s+ldap[a-zA-Z0-9_]*=).)+?)"
               + "(?=\\s+ldap[a-zA-Z0-9_]*=|,(?=\\s*[A-Za-z][A-Za-z0-9_]*=)|,(?=\\s*(?:"
               + HBA_RECORD_START_CONN_TYPE
-              + ")\\s)|$)");
+              + ")\\s)|"
+              + CLOSING_QUOTES
+              + "|[\\r\\n]|$)");
 
   private record ParsedValue(int endExclusive, String decoded, QuoteStyle style) {}
 
