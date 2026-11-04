@@ -3948,6 +3948,20 @@ YbPreloadRelCacheImpl(YbRunWithPrefetcherContext *ctx)
 		return status;
 
 	/*
+	 * Filling a cache keeps the entries it already holds, and the version
+	 * recorded at the end of this function covers them too.  A connection
+	 * starts with the pg_authid and pg_database entries it read for
+	 * authentication, at the version it holds now.  If a DDL committed since,
+	 * those entries are older than the version recorded below and no
+	 * invalidation would ever replace them, so drop them before filling.
+	 */
+	if (YbGetMasterCatalogVersion() > YbGetCatalogCacheVersion())
+	{
+		ResetCatalogCaches();
+		CallSystemCacheCallbacks();
+	}
+
+	/*
 	 * The preloading catalog cache before processing relations will help to
 	 * avoid sequential scans over prefetched data.
 	 * In case postgres tries to read row from the cache by a key and there is
