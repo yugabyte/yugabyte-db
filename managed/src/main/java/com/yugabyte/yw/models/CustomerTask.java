@@ -688,8 +688,8 @@ public class CustomerTask extends Model {
           return completed ? "Enabled node agent on" : "Enabling node agent on";
         case ManageCrossCloudFederation:
           return completed
-              ? "Updated cross-cloud federated IAM on"
-              : "Updating cross-cloud federated IAM on";
+              ? "Updated cross-cloud federated access on"
+              : "Updating cross-cloud federated access on";
         case CloneNamespace:
           return completed ? "Cloned Namespace" : "Cloning Namespace";
         case UpdateOOMServiceState:
@@ -744,6 +744,8 @@ public class CustomerTask extends Model {
           return "Restart";
         case ReprovisionNode:
           return "Re-provision";
+        case ManageCrossCloudFederation:
+          return "Update Cross-Cloud Federated Access";
         default:
           return toFriendlyTypeName();
       }

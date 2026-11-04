@@ -788,7 +788,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
                 isMultiAZ,
                 universe.getUniverseDetails().nodePrefix,
                 universe.getName(),
-                az.getName(),
+                az.getCode(),
                 cluster.clusterType == ClusterType.ASYNC,
                 universe.getUniverseDetails().useNewHelmNamingStyle);
         helmReleaseNames.add(helmRelease);

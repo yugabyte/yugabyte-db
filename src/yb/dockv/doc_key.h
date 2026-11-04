@@ -232,6 +232,18 @@ class DocKey {
   static std::optional<std::pair<size_t, bool>> TryGetEncodedSizeAndHashPresent(
       Slice slice, DocKeyPart part);
 
+  // Returns the size of the first num_components components of slice, which is an encoded DocKey
+  // or its prefix without the closing range group end. Components are as in
+  // Schema::HashGroupAndRangeComponentIndex. The size covers the cotable or colocation id, but
+  // never the closing range group end. Returns nullopt when slice has fewer components.
+  static Result<std::optional<size_t>> EncodedHashGroupAndRangeComponentsSize(
+      Slice slice, size_t num_components);
+
+  // Like EncodedHashGroupAndRangeComponentsSize, but fails with Corruption when slice has fewer
+  // components.
+  static Result<size_t> EncodedHashGroupAndRangeComponentsSizeStrict(
+      Slice slice, size_t num_components);
+
   // Returns size of encoded hash part and whole part of DocKey.
   static Result<DocKeySizes> EncodedHashPartAndDocKeySizes(
       Slice slice, AllowSpecial allow_special = AllowSpecial::kFalse);

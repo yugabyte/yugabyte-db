@@ -372,11 +372,11 @@ def polling_worker():
         logger.info("Polling worker thread shutting down")
 
 
-# The pg_dist_rag version this agent is written against. The agent still runs
-# on an older version, but without that version's queue indexes every poll
-# and sweep scans the queue, and without its per-index guard a re-queued
-# source adds duplicate tasks (claim_document keeps them from embedding twice).
-REQUIRED_EXTENSION_VERSION = "0.0.3"
+# The pg_dist_rag version this agent is written against. The agent also runs
+# on 0.0.3, as it must during a rolling upgrade: without _queue_document a
+# crawled document is queued when its source completes, and without
+# maintenance_runs every worker sweeps on its own timer (see db/capabilities.py).
+REQUIRED_EXTENSION_VERSION = "0.0.4"
 
 
 def _version_tuple(version: str):

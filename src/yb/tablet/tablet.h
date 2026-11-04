@@ -66,6 +66,7 @@
 #include "yb/tablet/mvcc.h"
 #include "yb/tablet/operations/operation.h"
 #include "yb/tablet/operation_filter.h"
+#include "yb/tablet/tablet_context.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/transaction_intent_applier.h"
@@ -661,6 +662,10 @@ class Tablet : public AbstractTablet,
   // Apply replicated remove table operation.
   Status RemoveTable(const std::string& table_id, const OpId& op_id);
 
+  // Writes the vector reverse mapping entries a colocated table owns for the rows that reached the
+  // tablet before the table did, with op_id as their frontier, see TabletVectorIndexes.
+  Status WriteMissingVectorReverseMappings(const TableInfo& table_info, const OpId& op_id);
+
   // Truncate this tablet by resetting the content of RocksDB.
   Status Truncate(TruncateOperation* operation);
 
@@ -940,11 +945,6 @@ class Tablet : public AbstractTablet,
 
   void SetHybridTimeLeaseProvider(HybridTimeLeaseProvider provider) {
     ht_lease_provider_ = std::move(provider);
-  }
-
-  void SetMemTableFlushFilterFactory(std::function<rocksdb::MemTableFilter()> factory) {
-    std::lock_guard lock(flush_filter_mutex_);
-    mem_table_flush_filter_factory_ = std::move(factory);
   }
 
   // When a compaction starts with a particular "history cutoff" timestamp, it calls this function
@@ -1402,9 +1402,9 @@ class Tablet : public AbstractTablet,
   Result<TierPathInfo> LookupTierPath(uint32_t path_id) const;
   Result<std::string> LookupTierDir(uint32_t path_id) const;
 
-  // Tiered storage: returns the set of files that should be migrated to target_dir.
-  // i.e. file numbers of live regular-DB SSTs not under target_dir.
-  std::vector<uint64_t> CollectTierMigrationCandidates(const std::string& target_dir) const;
+  // Tiered storage: file numbers of the live regular-DB SSTs not on target_path_id, i.e. what a
+  // migration pass still has to move.
+  std::vector<uint64_t> CollectTierMigrationCandidates(uint32_t target_path_id) const;
 
   // Tiered storage: checks the regular DB is open and target_path_id is a disk of target_tier.
   // The returned operation keeps the DB open for as long as the caller holds it.
@@ -1463,6 +1463,12 @@ class Tablet : public AbstractTablet,
     REQUIRES(operation_filters_mutex_);
 
   Status AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id, HybridTime ht);
+
+  // Whether a colocated table about to be added owns a vector reverse mapping with a vector column,
+  // and the tablet already has entries under its colocation id.
+  bool NeedsVectorReverseMappingRepair(
+      const Schema& schema,
+      const google::protobuf::RepeatedPtrField<dockv::SchemaPackingPB>& old_schema_packings);
 
   // Split/LB policy: true when this tablet still has parent data that should block a further
   // split (or, today, a load-balancer move). RocksDB leftover always counts; vector-index leftover
@@ -1698,6 +1704,8 @@ class Tablet : public AbstractTablet,
   Result<HybridTime> DoGetSafeTime(
       RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const override;
 
+  Result<bool> RegularDbFlushFilter(const rocksdb::MemTable& memtable);
+
   struct IntentsDbFlushFilterState;
   Result<bool> IntentsDbFlushFilter(
       const rocksdb::MemTable& memtable, bool write_blocked,
@@ -1743,14 +1751,12 @@ class Tablet : public AbstractTablet,
 
   docdb::HistoryCutoff AllowedHistoryCutoff();
 
-  mutable std::mutex flush_filter_mutex_;
-  std::function<rocksdb::MemTableFilter()> mem_table_flush_filter_factory_
-      GUARDED_BY(flush_filter_mutex_);
-
   client::LocalTabletFilter local_tablet_filter_;
 
   // This is typically "P <peer_id>", so we can get a log prefix "T <tablet_id> P <peer_id>: ".
   std::string log_prefix_suffix_;
+
+  TabletContext* const tablet_context_;
 
   IsSysCatalogTablet is_sys_catalog_;
   TransactionsEnabled txns_enabled_;

@@ -175,6 +175,13 @@ message PgVectorIdxOptionsPB {
   // an index must not mix vectors with and without payload. Always set for an index of a table
   // with TablePropertiesPB::skip_vector_reverse_mapping set.
   optional bool store_payload = 10;
+
+  // Number of leading primary-key components that identify the vector tenant and are stored in
+  // the payload. All hash columns form a single hash-group component, followed by one component
+  // per range column. 0 means the vectors have no tenant.
+  // Set by master at index creation only for hnswlib indexes that store payload. Always less than
+  // Schema::NumHashGroupAndRangeComponents, so the tenant never covers the full primary key.
+  optional uint32 tenant_hash_group_and_range_components = 11;
 }
 
 message PgHnswReadOptionsPB {

@@ -1,4 +1,5 @@
 import logging
+import os
 import threading
 import time
 from contextlib import contextmanager
@@ -7,6 +8,7 @@ import json
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 from enum import Enum
+from db.capabilities import Capabilities
 from db.connection_pool import ConnectionPool
 from models.work_queue_task import WorkQueueTask
 
@@ -73,12 +75,16 @@ class Poller:
             # read one row instead of every PREPROCESS row of the backlog.
             start = self._next_type_offset(len(document_types))
             types = document_types[start:] + document_types[:start]
-            result = None
-            for match, params in (
+            # A task whose worker died goes first, so a mid-flight document
+            # doesn't wait behind the queued backlog.
+            result = self._claim_expired(cursor, worker_id, document_types,
+                                         lease_duration_seconds)
+            claims = [] if result else (
                 [("task_type = 'CREATE_SOURCE' AND task_details->>'document_type' IS NULL", ())]
                 + [("task_type = 'PREPROCESS' AND task_details->>'document_type' = %s",
                     (doc_type,)) for doc_type in types]
-            ):
+            )
+            for match, params in claims:
                 cursor.execute(
                     claim.format(match=match),
                     (worker_id, lease_duration_seconds, *params),
@@ -165,23 +171,22 @@ class Poller:
                 self.connection_pool.return_connection(connection)
 
     def _run_maintenance(self, connection, cursor) -> None:
-        """Reap expired leases and sweep orphaned documents, then commit.
+        """Sweep orphaned documents, then commit.
 
-        Each runs and commits on its own, so a claim that fails afterwards
-        can't roll them back. A failure in either is logged and rolled back,
-        never raised: maintenance must not stop a worker from claiming
-        tasks. Its timer hasn't advanced, so the next poll retries it.
+        It runs and commits on its own, so a claim that fails afterwards
+        can't roll it back. A failure is logged and rolled back, never raised:
+        maintenance must not stop a worker from claiming tasks. Its timer
+        hasn't advanced, so the next poll retries it.
         """
-        for step in (self._maybe_reap_expired, self._maybe_sweep_orphans):
+        try:
+            self._maybe_sweep_orphans(cursor)
+            connection.commit()
+        except Exception as e:
             try:
-                step(cursor)
-                connection.commit()
-            except Exception as e:
-                try:
-                    connection.rollback()
-                except Exception:
-                    pass
-                logging.error(f"Work queue maintenance ({step.__name__}) failed: {str(e)}")
+                connection.rollback()
+            except Exception:
+                pass
+            logging.error(f"Work queue maintenance (_maybe_sweep_orphans) failed: {str(e)}")
 
     def _next_type_offset(self, count: int) -> int:
         """Rotate which document type a poll tries first."""
@@ -189,68 +194,154 @@ class Poller:
         self._type_offset = offset + 1
         return offset
 
-    _REAP_EVERY_SECONDS = 60
     _RESET_TO_QUEUED = (
         "task_status = 'QUEUED', current_worker = NULL, lease_token = NULL, "
         "lease_acquired_at = NULL, lease_expires_at = NULL"
     )
 
-    def _maybe_reap_expired(self, cursor) -> None:
-        """Re-queue tasks whose worker died holding them.
+    # A task whose lease expires this many times is failed instead of run
+    # again, so a task that kills its worker every time doesn't loop forever.
+    # Failed lease renewals during a database outage also count, so keep
+    # room for one: don't lower this to 1.
+    MAX_EXPIRED_CLAIMS = int(os.getenv("TASK_MAX_EXPIRED_CLAIMS", "3"))
 
-        A task stays IN_PROGRESS until its worker finishes it; a worker that
-        crashes or is rescheduled mid-task would otherwise strand it, and its
-        document, for good. Clearing the lease token ends the old worker's
-        hold: claim_document lets the redelivered task take back the document,
-        and the old worker can no longer finish, fail or release the task.
-        Safe to run from every worker; each does so at most once a minute.
+    # The new count, computed from the row being updated.
+    _EXPIRED_COUNT = "COALESCE((task_details->>'expired_claims')::int, 0) + 1"
+
+    def _claim_expired(self, cursor, worker_id, document_types,
+                       lease_duration_seconds) -> Optional[tuple]:
+        """Claim a task whose worker died holding it, or fail it at the cap.
+
+        The claim renews the lease under a new token, which fences the old
+        worker out of every task, document and source write. When the
+        expired_claims count reaches MAX_EXPIRED_CLAIMS, the same UPDATE
+        fails the task and clears its lease instead, and its document or
+        source is failed before the caller commits, so all three commit
+        together. A crash before that commit leaves the task as it was, and
+        the next claim makes the same decision.
+
+        Returns the claimed row for WorkQueueTask.from_db_row, or None.
         """
-        now = time.monotonic()
-        if now - getattr(self, "_last_reap", 0.0) < self._REAP_EVERY_SECONDS:
-            return
+        failing = f"{self._EXPIRED_COUNT} >= %(max)s"
         cursor.execute(
-            f"UPDATE dist_rag.work_queue SET {self._RESET_TO_QUEUED} "
-            "WHERE task_status = 'IN_PROGRESS' AND lease_expires_at < CURRENT_TIMESTAMP"
+            f"""
+            UPDATE dist_rag.work_queue
+            SET task_details = jsonb_set(task_details, '{{expired_claims}}',
+                    to_jsonb({self._EXPIRED_COUNT})),
+                task_status = CASE WHEN {failing} THEN 'FAILED' ELSE 'IN_PROGRESS'
+                              END::dist_rag.task_queue_status_enum,
+                completed_at = CASE WHEN {failing} THEN CURRENT_TIMESTAMP END,
+                current_worker = %(worker)s,
+                started_at = CURRENT_TIMESTAMP,
+                lease_token = CASE WHEN {failing} THEN NULL ELSE gen_random_uuid() END,
+                lease_acquired_at = CURRENT_TIMESTAMP,
+                lease_expires_at = CASE WHEN {failing} THEN NULL
+                    ELSE CURRENT_TIMESTAMP + INTERVAL '1 second' * %(lease)s END
+            WHERE (id, task_type) = (
+                SELECT id, task_type FROM dist_rag.work_queue
+                WHERE task_status = 'IN_PROGRESS'
+                  AND lease_expires_at < CURRENT_TIMESTAMP
+                  AND (task_type = 'CREATE_SOURCE'
+                       OR task_details->>'document_type' = ANY(%(types)s))
+                ORDER BY lease_expires_at LIMIT 1
+                FOR UPDATE SKIP LOCKED
+            )
+            RETURNING id, task_type, task_details, lease_token, lease_expires_at,
+                      task_status;
+            """,
+            {"worker": worker_id, "lease": lease_duration_seconds,
+             "max": self.MAX_EXPIRED_CLAIMS, "types": list(document_types)},
         )
-        # Only after the statement succeeds, so a failed reap is retried on
-        # the next poll rather than a minute later.
-        self._last_reap = now
-        if cursor.rowcount:
-            logging.warning(f"Re-queued {cursor.rowcount} task(s) with expired leases")
+        row = cursor.fetchone()
+        if not row:
+            return None
+        task_id, task_type, details, _, _, status = row
+        if status != "FAILED":
+            logging.warning(f"Reclaimed task {task_id} after its lease expired")
+            return row[:5]
+        details = details or {}
+        if task_type == "PREPROCESS" and details.get("document_id"):
+            cursor.execute(
+                "UPDATE dist_rag.documents SET status = 'FAILED' "
+                "WHERE document_id = %s AND status <> 'COMPLETED'",
+                (details["document_id"],),
+            )
+        elif task_type == "CREATE_SOURCE" and details.get("source_id"):
+            cursor.execute(
+                "UPDATE dist_rag.sources SET status = 'FAILED' "
+                "WHERE id = %s AND status <> 'COMPLETED'",
+                (details["source_id"],),
+            )
+        logging.error(
+            f"Failed task {task_id} ({task_type}): its lease expired "
+            f"{self.MAX_EXPIRED_CLAIMS} times"
+        )
+        return None
 
-    _SWEEP_EVERY_SECONDS = 300
+    _SWEEP_EVERY_SECONDS = int(os.getenv("ORPHAN_SWEEP_INTERVAL_SECONDS", "300"))
     _SWEEP_LIMIT = 1000
 
-    def _maybe_sweep_orphans(self, cursor) -> None:
-        """Queue documents left with no live task.
+    def _win_sweep(self, cursor) -> bool:
+        """True if this worker may sweep now.
 
-        Queuing on source completion misses a document inserted just after the
-        completion read the source's documents, and older agents left
-        documents PROCESSING with no task. Only sources completed over five
-        minutes ago are swept, so a document whose task is about to be queued
-        is left alone; a rare double queue is harmless, since claim_document
-        skips a document another task holds. idx_documents_unfinished keeps
-        this from scanning every finished document.
+        On 0.0.4, one compare-and-set on dist_rag.maintenance_runs lets one
+        worker per interval sweep for the whole cluster. It commits before the
+        sweep, so other pollers don't wait on the row for the sweep's duration;
+        a crash after the commit only delays the next sweep by one interval.
+        On 0.0.3 the table doesn't exist and every worker sweeps on its own
+        timer, as before.
+        """
+        if not Capabilities.has(cursor, Capabilities.MAINTENANCE_RUNS):
+            return True
+        try:
+            cursor.execute(
+                "UPDATE dist_rag.maintenance_runs SET last_run_at = CURRENT_TIMESTAMP "
+                "WHERE name = 'orphan_sweep' "
+                "AND last_run_at < CURRENT_TIMESTAMP - INTERVAL '1 second' * %s "
+                "RETURNING name",
+                (self._SWEEP_EVERY_SECONDS,),
+            )
+        except psycopg.errors.UndefinedTable:
+            Capabilities.forget(Capabilities.MAINTENANCE_RUNS)
+            raise
+        won = cursor.fetchone() is not None
+        cursor.connection.commit()
+        return won
+
+    def _maybe_sweep_orphans(self, cursor) -> None:
+        """Queue documents left with no live task for an index they belong to.
+
+        A safety net, not the main path: the crawler queues each document in
+        the same transaction it inserts it, but the api-server still inserts
+        documents without tasks, and older agents left documents PROCESSING
+        with no task. Only sources completed over five minutes ago are swept,
+        so a document whose task is about to be queued is left alone; a
+        double queue is rejected by uq_live_preprocess on 0.0.4, and on 0.0.3
+        claim_document skips a document another task holds.
+        idx_documents_unfinished keeps this from scanning every finished
+        document.
         """
         now = time.monotonic()
         if now - getattr(self, "_last_sweep", 0.0) < self._SWEEP_EVERY_SECONDS:
             return
+        if not self._win_sweep(cursor):
+            self._last_sweep = now
+            return
         cursor.execute(
             """
-            SELECT d.document_id, d.source_id, d.status
+            SELECT DISTINCT d.document_id, d.source_id, d.status
             FROM dist_rag.documents d
             JOIN dist_rag.sources s ON s.id = d.source_id
+            JOIN dist_rag.vector_index_source_mappings m ON m.source_id = d.source_id
             WHERE d.status IN ('QUEUED', 'PROCESSING')
-              AND EXISTS (
-                  SELECT 1 FROM dist_rag.vector_index_source_mappings m
-                  WHERE m.source_id = d.source_id)
               AND s.status = 'COMPLETED'
               AND s.completed_at < CURRENT_TIMESTAMP - INTERVAL '5 minutes'
               AND NOT EXISTS (
                   SELECT 1 FROM dist_rag.work_queue w
                   WHERE w.task_type = 'PREPROCESS'
                     AND w.task_status IN ('QUEUED', 'IN_PROGRESS')
-                    AND w.task_details->>'document_id' = d.document_id::text)
+                    AND w.task_details->>'document_id' = d.document_id::text
+                    AND w.task_details->>'index_id' = m.index_id::text)
             LIMIT %s
             """,
             (self._SWEEP_LIMIT,),
@@ -282,8 +373,8 @@ class Poller:
     def _fence(work_queue_id, lease_token):
         """WHERE clause and params matching a task only while this lease holds it.
 
-        The reaper re-queues an expired task under the same id, so acting on
-        the id alone would let a worker whose lease lapsed finish, fail or
+        Another worker reclaims an expired task under the same id, so acting
+        on the id alone would let a worker whose lease lapsed finish, fail or
         release the task a second worker now holds.
         """
         if lease_token is None:
@@ -348,9 +439,8 @@ class Poller:
         before this method runs) and in ``dist_rag.pipeline_details``,
         so removing the dispatch row loses no audit data.
 
-        The DELETE also means the SQL-side reaper that re-queues expired
-        IN_PROGRESS rows can't resurrect a finished task: there's nothing
-        left to resurrect.
+        The DELETE also means a poll that reclaims expired IN_PROGRESS rows
+        can't resurrect a finished task: there's nothing left to reclaim.
 
         Args:
             work_queue_id: The work_queue row id (UUID or str).
@@ -377,8 +467,8 @@ class Poller:
         Failed rows are kept (not deleted) so a reconciliation process can
         scan ``dist_rag.work_queue WHERE task_status = 'FAILED'`` and
         decide what to do with them out-of-band (retry, alert, archive).
-        The lease is cleared so the SQL-side reaper won't re-queue the
-        row on lease expiry.
+        The lease is cleared and the status leaves IN_PROGRESS, so no poll
+        reclaims the row.
 
         Args:
             work_queue_id: The work_queue row id (UUID or str).
@@ -479,7 +569,7 @@ class Poller:
     def keep_lease(self, task, lease_duration_seconds: int):
         """Renew a task's lease every third of its duration while the block runs.
 
-        The reaper re-queues any IN_PROGRESS task whose lease has expired, so a
+        A poll reclaims any IN_PROGRESS task whose lease has expired, so a
         task that runs longer than its lease would be redelivered to a second
         worker while the first is still working on it. Two missed renewals in
         a row still leave the lease valid.

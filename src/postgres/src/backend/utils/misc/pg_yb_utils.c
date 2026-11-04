@@ -2314,6 +2314,7 @@ int			yb_insert_on_conflict_read_batch_size = 1024;
 bool		yb_enable_fkey_catcache = true;
 bool		yb_enable_fkey_batched_docdb_lookup_when_types_mismatch = true;
 bool		yb_enable_nop_alter_role_optimization = true;
+bool		yb_alter_type_reuse_expr_and_partial_indexes = true;
 bool		yb_enable_inplace_index_update = true;
 bool		yb_ignore_freeze_with_copy = true;
 bool		yb_enable_docdb_vector_type = false;
@@ -2423,6 +2424,7 @@ bool		yb_test_collation = false;
 bool		yb_test_inval_message_portability = false;
 int			yb_test_delay_after_applying_inval_message_ms = 0;
 int			yb_test_delay_set_local_tserver_inval_message_ms = 0;
+int			yb_test_delay_relation_grant_update_ms = 0;
 double		yb_test_delay_next_ddl = 0;
 int			yb_test_reset_retry_counts = -1;
 int			yb_test_force_parallel = YB_FORCE_PARALLEL_OFF;
@@ -7260,7 +7262,13 @@ YbRegisterSysTableForPrefetching(int sys_table_id)
 			break;
 		case AuthIdRelationId:	/* pg_authid */
 			db_id = Template1DbOid;
-			index_id = AuthIdRolnameIndexId;
+			/*
+			 * Mandatory: a conn mgr auth passthrough control backend looks up
+			 * roles by name while prefetching is active, and with its relcache
+			 * built, an AUTHNAME catcache miss (e.g. a dropped role) is an
+			 * index-ordered scan of pg_authid_rolname_index.
+			 */
+			mandatory_index_id = AuthIdRolnameIndexId;
 			sys_only_filter_attr = InvalidAttrNumber;
 			break;
 		case DatabaseRelationId:	/* pg_database */
@@ -9238,12 +9246,15 @@ YBCUpdateYbReadTimeAndInvalidateRelcache(uint64_t read_time_ht)
 void
 YBCSetHistoricalReadContext(uint64_t read_time_ht,
 							uint64_t in_txn_limit_ht,
-							const char *docdb_txn_id)
+							const char *docdb_txn_id,
+							const uint32_t *aborted_subtxn_set,
+							int aborted_subtxn_set_size)
 {
 	elog(DEBUG1,
 		 "Setting historical read context to read_time_ht: %" PRIu64
-		 ", in_txn_limit_ht: %" PRIu64 ", docdb_txn_id: %s",
-		 read_time_ht, in_txn_limit_ht, docdb_txn_id);
+		 ", in_txn_limit_ht: %" PRIu64 ", docdb_txn_id: %s"
+		 ", aborted_subtxn_set_size: %d",
+		 read_time_ht, in_txn_limit_ht, docdb_txn_id, aborted_subtxn_set_size);
 
 	YbcReadHybridTime read_time = {
 		.read = read_time_ht,
@@ -9253,7 +9264,8 @@ YBCSetHistoricalReadContext(uint64_t read_time_ht,
 		.serial_no = 0
 	};
 
-	YBCPgSetHistoricalReadContext(read_time, docdb_txn_id);
+	YBCPgSetHistoricalReadContext(read_time, docdb_txn_id, aborted_subtxn_set,
+								  aborted_subtxn_set_size);
 }
 
 void
@@ -9265,9 +9277,12 @@ YBCInvalidateCachesForHistoricalReadContext(void)
 void
 YBCSetHistoricalReadContextAndInvalidateCaches(uint64_t read_time_ht,
 											   uint64_t in_txn_limit_ht,
-											   const char *docdb_txn_id)
+											   const char *docdb_txn_id,
+											   const uint32_t *aborted_subtxn_set,
+											   int aborted_subtxn_set_size)
 {
-	YBCSetHistoricalReadContext(read_time_ht, in_txn_limit_ht, docdb_txn_id);
+	YBCSetHistoricalReadContext(read_time_ht, in_txn_limit_ht, docdb_txn_id,
+								aborted_subtxn_set, aborted_subtxn_set_size);
 	YBCInvalidateCachesForHistoricalReadContext();
 }
 

@@ -14,6 +14,7 @@
 #include "yb/ann_methods/usearch_wrapper.h"
 
 #include <algorithm>
+#include <cstring>
 #include <memory>
 #include <semaphore>
 
@@ -195,9 +196,19 @@ class UsearchIndex :
     // does not change, so only the data tracker is updated.
     auto se = UpdateDataConsumptionOnExit();
     auto add_result = index_.add(vector_id, v.data());
-    RSTATUS_DCHECK(
-        add_result, RuntimeError, "Failed to add a vector $0: $1", vector_id,
-        add_result.error.release());
+    // Not a DCHECK: running out of memory for the node tape is a runtime condition. A failed vector
+    // tape allocation is not reported, usearch crashes copying the vector into it.
+    if (!add_result) {
+      // usearch tells running out of memory apart from other failures only by this message, see the
+      // index_gt::add() and update() failure sites in
+      // src/inline-thirdparty/usearch/usearch/index.hpp.
+      const char* error = add_result.error.release();
+      if (std::strcmp(error, "Out of memory!") == 0) {
+        return STATUS_FORMAT(
+            ServiceUnavailable, "Not enough memory to add vector $0 to usearch index", vector_id);
+      }
+      return STATUS_FORMAT(RuntimeError, "Failed to add a vector $0: $1", vector_id, error);
+    }
     return add_result.slot;
   }
 

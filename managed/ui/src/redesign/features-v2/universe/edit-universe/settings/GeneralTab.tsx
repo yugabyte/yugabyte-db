@@ -18,6 +18,7 @@ import {
   countMasterAndTServerNodes,
   countRegionsAzsAndNodes,
   getClusterByType,
+  getClusterProviderSpec,
   getProviderIcon,
   getResilientType,
   hasDedicatedNodesForCluster,
@@ -189,7 +190,7 @@ export const GeneralTab = () => {
   });
 
   const currentProvider = providers?.find(
-    (provider) => provider.uuid === primaryCluster?.provider_spec?.provider
+    (provider) => provider.uuid === getClusterProviderSpec(primaryCluster)?.provider
   );
 
   const universeUuid = universeData?.info?.universe_uuid ?? '';

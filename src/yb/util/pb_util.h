@@ -429,6 +429,13 @@ Status ReadPBContainerFromPath(Env* env, const std::string& path,
 Status ReadPBContainerFromPath(Env* env, const std::string& path, const std::string& pb_type_name,
                                google::protobuf::Message* msg);
 
+template <class PB>
+Result<PB> ReadPBContainerFromPath(Env* env, const std::string& path) {
+  PB result;
+  RETURN_NOT_OK(ReadPBContainerFromPath(env, path, &result));
+  return result;
+}
+
 // Serialize a "containerized" protobuf to the given path.
 //
 // If create == NO_OVERWRITE and 'path' already exists, the function will fail.

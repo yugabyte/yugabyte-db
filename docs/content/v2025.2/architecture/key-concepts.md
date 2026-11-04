@@ -53,7 +53,7 @@ The fault tolerance determines how resilient the cluster is to domain (that is, 
 
 Normally, only the [tablet leader](#tablet-leader) can process user-facing write and read requests. Follower reads allow you to lower read latencies by serving reads from the tablet followers. This is similar to reading from a cache, which can provide more read IOPS with low latency. The data might be slightly stale, but is timeline-consistent, meaning no out of order data is possible.
 
-Follower reads are particularly beneficial in applications that can tolerate staleness. For instance, in a social media application where a post gets a million likes continuously, slightly stale reads are acceptable, and immediate updates are not necessary because the absolute number may not really matter to the end-user reading the post. In such cases, a slightly older value from the closest replica can achieve improved performance with lower latency. Follower reads are required when reading from [read replicas](#read-replica-cluster). {{<link dest="../../explore/going-beyond-sql/follower-reads-ysql/">}}
+Follower reads are particularly beneficial in applications that can tolerate staleness. For instance, in a social media application where a post gets a million likes continuously, slightly stale reads are acceptable, and immediate updates are not necessary because the absolute number may not really matter to the end-user reading the post. In such cases, a slightly older value from the closest replica can achieve improved performance with lower latency. Follower reads are required when reading from [read replicas](#read-replica-cluster). {{<link dest="../../additional-features/follower-reads/">}}
 
 ## Hybrid time
 
@@ -61,10 +61,10 @@ Hybrid time/timestamp is a monotonically increasing timestamp derived using [Hyb
 
 ## Isolation levels
 
-[Transaction](#transaction) isolation levels define the degree to which transactions are isolated from each other. Isolation levels determine how changes made by one transaction become visible to other concurrent transactions. {{<link dest="../../explore/transactions/isolation-levels/">}}
+[Transaction](#transaction) isolation levels define the degree to which transactions are isolated from each other. Isolation levels determine how changes made by one transaction become visible to other concurrent transactions. {{<link dest="../transactions/isolation-levels/">}}
 
 {{<tip>}}
-YugabyteDB offers 3 isolation levels - [Serializable](../../explore/transactions/isolation-levels/#serializable-isolation), [Snapshot](../../explore/transactions/isolation-levels/#snapshot-isolation) and [Read committed](../../explore/transactions/isolation-levels/#read-committed-isolation) - in the {{<product "ysql">}} API and one isolation level - [Snapshot](/stable/develop/learn/transactions/acid-transactions-ycql/) - in the {{<product "ycql">}} API.
+YugabyteDB offers 3 isolation levels - [Serializable](../transactions/isolation-levels/), [Snapshot](../transactions/isolation-levels/) and [Read committed](../transactions/read-committed/) - in the {{<product "ysql">}} API and one isolation level - [Snapshot](/stable/develop/learn/transactions/acid-transactions-ycql/) - in the {{<product "ycql">}} API.
 {{</tip>}}
 
 ## Leader balancing
@@ -141,7 +141,7 @@ You can rank multiple regions so that if the first fails, leaders move to the ne
 
 Follower copies stay in the other regions. Ranking chooses the leader among replicas that already exist; it does not add, remove, or move copies. See [Tablet leader](#tablet-leader).
 
-You can enable [follower reads](#follower-reads) to serve reads from non-preferred regions. If the cluster has [read replicas](#read-replica-cluster) and a client connects to a replica, reads are served from the replica; writes continue to go to the preferred region's tablet leaders. {{<link dest="/stable/develop/build-global-apps/global-database/">}}
+You can enable [follower reads](#follower-reads) to serve reads from non-preferred regions. If the cluster has [read replicas](#read-replica-cluster) and a client connects to a replica, the replica serves the read when follower reads are on; writes continue to go to the preferred region's tablet leaders. With follower reads off, the read goes to the tablet leader in the primary cluster. {{<link dest="/stable/develop/build-global-apps/global-database/">}}
 
 ## Primary cluster
 

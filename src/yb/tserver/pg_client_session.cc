@@ -49,6 +49,7 @@
 #include "yb/common/pgsql_error.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction_error.h"
 #include "yb/common/transaction_priority.h"
@@ -183,6 +184,7 @@ DECLARE_bool(enable_qos);
 #endif
 
 DECLARE_bool(enable_object_lock_fastpath);
+DECLARE_bool(enforce_xcluster_guarded_lease);
 DECLARE_bool(vector_index_dump_stats);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
@@ -192,7 +194,7 @@ DECLARE_bool(ysql_yb_allow_replication_slot_ordering_modes);
 DECLARE_bool(ysql_yb_enable_advisory_locks);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(enable_object_locking_for_table_locks);
-DECLARE_bool(ysql_enable_object_locking_infra);
+DECLARE_bool(ysql_yb_enable_object_locking_infra);
 DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 
 DECLARE_string(ysql_sequence_cache_method);
@@ -3150,19 +3152,22 @@ class PgClientSession::Impl {
       LOG_AND_RETURN(WARNING, STATUS(InvalidArgument, txn_meta_res.status().message()));
     }
 
-    std::optional<SubTransactionId> opt_subtxn_id;
-    if (!req.release_all()) {
-      opt_subtxn_id = session_data->transaction->GetActiveSubTransactionId();
-    } else {
+    SCHECK(
+        subtxn_with_session_object_locks_.has_value(), InvalidArgument,
+        "Session object lock release without active session object locks");
+    const SubTransactionId subtxn_id = *subtxn_with_session_object_locks_;
+    RSTATUS_DCHECK_EQ(
+        session_data->transaction->GetActiveSubTransactionId(), subtxn_id, IllegalState,
+        "Expected the session txn's active subtxn to hold the session object locks");
+    if (req.release_all()) {
       // All session object locks as part of a phased DDLs are tagged to the same subtxn id.
       // When releasing all of them, abort the subtxn and bump up the active subtxn id.
-      const auto rollback_to_subtxn = *subtxn_with_session_object_locks_;
       subtxn_with_session_object_locks_.reset();
       RETURN_NOT_OK(session_data->transaction->RollbackToSubTransaction(
-          rollback_to_subtxn, context->GetClientDeadline()));
+          subtxn_id, context->GetClientDeadline()));
       const auto new_subtxn_id = session_data->transaction->IncrementAndGetSubTransactionId();
       RSTATUS_DCHECK(
-          rollback_to_subtxn == new_subtxn_id - 1, IllegalState,
+          subtxn_id == new_subtxn_id - 1, IllegalState,
           "Expected all session object locks to be associated with the same subtxn");
     }
     RSTATUS_DCHECK(
@@ -3170,9 +3175,9 @@ class PgClientSession::Impl {
         "Expected to see valid lock id in session lock release request or release_all option set");
     auto release_req = std::make_shared<master::ReleaseObjectLocksGlobalRequestPB>(
         ReleaseRequestFor<master::ReleaseObjectLocksGlobalRequestPB>(
-            instance_uuid(), txn_meta_res->transaction_id, opt_subtxn_id, lease_epoch_,
+            instance_uuid(), txn_meta_res->transaction_id, subtxn_id, lease_epoch_,
             context_.clock.get()));
-    if (opt_subtxn_id) {
+    if (!req.release_all()) {
       auto* lock = release_req->add_object_locks();
       lock->set_database_oid(req.lock_oid().database_oid());
       lock->set_relation_oid(req.lock_oid().relation_oid());
@@ -3182,7 +3187,7 @@ class PgClientSession::Impl {
     }
     ReleaseWithRetriesGlobal(
         client_, ts_lock_manager(), txn_meta_res->transaction_id,
-        opt_subtxn_id, release_req);
+        subtxn_id, release_req);
     TEST_PAUSE_IF_FLAG(TEST_pause_session_lock_after_release);
     // Release control to the pg backend, and let the release continue in async mode.
     return Status::OK();
@@ -3510,10 +3515,19 @@ class PgClientSession::Impl {
     }
 
     // DMLs.
-    if (xcluster_context()->IsReadOnlyMode(options.namespace_id())) {
+    // Without enforce_xcluster_guarded_lease, the role is UNAVAILABLE only before this TServer's
+    // first heartbeat.  Do not refuse DMLs to every database then: nothing guarantees writes are
+    // refused to targets in that window anyway, since IsReadOnlyMode is also false until then.
+    const bool refuse_dmls_because_role =
+        role == XClusterNamespaceInfoPB::AUTOMATIC_TARGET ||
+        (role == XClusterNamespaceInfoPB::UNAVAILABLE && FLAGS_enforce_xcluster_guarded_lease);
+    if (xcluster_context()->IsReadOnlyMode(options.namespace_id()) || refuse_dmls_because_role) {
       for (const auto& op : data->req.ops()) {
         if (op.has_write() && !op.write().is_backfill()) {
           TEST_SYNC_POINT_CALLBACK("WriteDetectedOnXClusterReadOnlyModeTarget", nullptr);
+          if (role == XClusterNamespaceInfoPB::UNAVAILABLE) {
+            return MakeForbiddenOnAutomaticTargetStatus(role, "DML operations");
+          }
           // Only DDLs and index backfill is allowed in xCluster read-only mode.
           return STATUS(
               IllegalState,
@@ -3695,6 +3709,26 @@ class PgClientSession::Impl {
         IsTxnUsingTableLocks(options.is_using_table_locks()),
         context_.metrics,
         MakeOriginationInfo(options.origination_ht())));
+    // PrepareOperations has already applied the ops to the session. Failing out before the flush
+    // must drop them, or they would go out with the next one.
+    CancelableScopeExit abort_se{[session] { session->Abort(); }};
+    if (options.uses_catalog_snapshot()) {
+      const auto serializable =
+          data->transaction && data->transaction->isolation() == SERIALIZABLE_ISOLATION;
+      for (const auto& op_data : data->ops) {
+        RSTATUS_DCHECK(
+            op_data.op->table()->InternalSchema().table_properties().is_ysql_catalog_table(),
+            IllegalState, "Non-catalog op on $0 uses the catalog snapshot",
+            op_data.op->table()->name());
+        if (!op_data.op->read_only()) {
+          continue;
+        }
+        auto& read_op = down_cast<client::YBPgsqlReadOp&>(*op_data.op);
+        if (serializable && !IsValidRowMarkType(GetRowMarkTypeFromPB(read_op.request()))) {
+          read_op.set_force_snapshot_read();
+        }
+      }
+    }
     if (VLOG_IS_ON(2) || options.trace_requested()) {
       const auto& read_point = *session->read_point();
       const char* session_kind_str =
@@ -3727,6 +3761,7 @@ class PgClientSession::Impl {
     }
 
     applier_se.Cancel();
+    abort_se.Cancel();
     session->FlushAsync([this, data, trace, trace_created_locally,
                          start_time](client::FlushStatus* flush_status) {
       ADOPT_TRACE(trace.get());
@@ -3883,7 +3918,9 @@ class PgClientSession::Impl {
     metadata.transaction_id = read_txn_id;
     metadata.isolation = IsolationLevel::SNAPSHOT_ISOLATION;
     metadata.is_read_only_historical_committed_txn = true;
-    txn = client::YBTransaction::Fabricate(&context_.transaction_manager_provider(), metadata);
+    txn = client::YBTransaction::Fabricate(
+        &context_.transaction_manager_provider(), metadata,
+        VERIFY_RESULT(SubtxnSet::FromPB(options.historical_read_aborted_subtxns().set())));
     txn->SetLogPrefixTag(kTxnLogPrefixTag, id_);
     session->SetTransaction(txn);
     VLOG_WITH_PREFIX(2) << "Fabricated historical read transaction " << read_txn_id;
@@ -3981,8 +4018,8 @@ class PgClientSession::Impl {
         // Therefore, override the restarted read point here with the current time.
         // This override loses the restart read information until TODO(#31142) is fixed.
         RSTATUS_DCHECK(
-          !(txn && txn->isolation() == SERIALIZABLE_ISOLATION),
-          IllegalState, "Clamping does not apply to SERIALIZABLE txns.");
+          options.uses_catalog_snapshot() || !(txn && txn->isolation() == SERIALIZABLE_ISOLATION),
+          IllegalState, "Clamping applies to SERIALIZABLE txns only for catalog snapshot reads.");
         session.read_point()->SetCurrentReadTime(ClampUncertaintyWindow::kTrue);
         VLOG_WITH_PREFIX(2) << "Clamping read time to " << session.read_point()->GetReadTime();
       }
@@ -4078,8 +4115,8 @@ class PgClientSession::Impl {
       // TODO(#30357): Measure the performance of picking time here instead of the storage layer.
       if (read_time_options.clamp_uncertainty_window() && !session.read_point()->GetReadTime()) {
         RSTATUS_DCHECK(
-          !(txn && txn->isolation() == SERIALIZABLE_ISOLATION),
-          IllegalState, "Clamping does not apply to SERIALIZABLE txns.");
+          options.uses_catalog_snapshot() || !(txn && txn->isolation() == SERIALIZABLE_ISOLATION),
+          IllegalState, "Clamping applies to SERIALIZABLE txns only for catalog snapshot reads.");
         session.read_point()->SetCurrentReadTime(ClampUncertaintyWindow::kTrue);
         VLOG_WITH_PREFIX(2) << "Clamping read time to " << session.read_point()->GetReadTime();
       }
@@ -4747,7 +4784,7 @@ class PgClientSession::Impl {
   [[nodiscard]] bool IsObjectLockingEnabled() const {
     return ts_lock_manager() != nullptr &&
            FLAGS_enable_object_locking_for_table_locks &&
-           FLAGS_ysql_enable_object_locking_infra;
+           FLAGS_ysql_yb_enable_object_locking_infra;
   }
 
   Result<TransactionMetadata> NextObjectLockingTxnMeta(
