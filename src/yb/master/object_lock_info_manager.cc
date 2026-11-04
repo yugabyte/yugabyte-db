@@ -219,10 +219,14 @@ class ObjectLockInfoManager::Impl {
       waiting_txn_registry_poller_->Shutdown();
       waiting_txn_registry_poller_.reset();
     }
-    if (waiting_txn_registry_) {
-      waiting_txn_registry_->StartShutdown();
-      waiting_txn_registry_->CompleteShutdown();
-      waiting_txn_registry_.reset();
+    std::unique_ptr<docdb::LocalWaitingTxnRegistry> waiting_txn_registry;
+    {
+      LockGuard lock(mutex_);
+      waiting_txn_registry = std::move(waiting_txn_registry_);
+    }
+    if (waiting_txn_registry) {
+      waiting_txn_registry->StartShutdown();
+      waiting_txn_registry->CompleteShutdown();
     }
   }
 
@@ -381,7 +385,7 @@ class ObjectLockInfoManager::Impl {
   // Only accessed from a single thread for now, so no need for synchronization.
   std::unordered_map<TabletServerId, std::shared_ptr<CountDownLatch>>
       expired_lease_epoch_cleanup_tasks_;
-  std::unique_ptr<docdb::LocalWaitingTxnRegistry> waiting_txn_registry_;
+  std::unique_ptr<docdb::LocalWaitingTxnRegistry> waiting_txn_registry_ GUARDED_BY(mutex_);
   std::unique_ptr<rpc::Poller> waiting_txn_registry_poller_;
 };
 
