@@ -1247,6 +1247,10 @@ public class CloudProviderHelper {
    * The federation settings a node is configured from: the audience, and the role ARN for S3. A
    * node never federates to the cloud it runs on, so on an AWS or GCP provider the target for its
    * own cloud is not read by any node.
+   *
+   * <p>Returns one entry per target, each {@code [targetCloud (CloudType), audience (String),
+   * roleArn (String, or null)]}. roleArn is kept only for an S3 ({@code aws}) target and is null
+   * for any other, since no node reads it there.
    */
   private static Set<List<Object>> federationSettingsNodesUse(Provider provider) {
     CloudType providerCloud = provider.getCloudCode();
