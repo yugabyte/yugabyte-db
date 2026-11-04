@@ -556,8 +556,12 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       // AZs that scale or move are skipped: a render of their target counts would add or delete
       // pods before the data has moved. Their Secrets are rewritten when their pods are handled.
       Set<UUID> changedAZs =
-          newPlacement.placementInfo.getAllAZUUIDs().stream()
-              .filter(az -> !isAZUnchanged(az, newPlacement, curPlacement))
+          Stream.of(
+                  mastersToAddAzMap,
+                  mastersToRemoveAzMap,
+                  tserversToAddAzMap,
+                  tserversToRemoveAzMap)
+              .flatMap(m -> m.keySet().stream())
               .collect(Collectors.toSet());
       if (supportsNonRestartGflagsUpgrade
           && !restartAllPods
@@ -1002,17 +1006,6 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       createUpdateMasterAddrsInMemoryTasks(tservers, ServerType.TSERVER, masterAddresses)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
-  }
-
-  private static boolean isAZUnchanged(
-      UUID azUUID, KubernetesPlacement newPlacement, KubernetesPlacement curPlacement) {
-    PlacementAZ newAZ = newPlacement.placementInfo.findByAZUUID(azUUID);
-    PlacementAZ curAZ = curPlacement.placementInfo.findByAZUUID(azUUID);
-    return curAZ != null
-        && Objects.equals(newPlacement.masters.get(azUUID), curPlacement.masters.get(azUUID))
-        && Objects.equals(newPlacement.tservers.get(azUUID), curPlacement.tservers.get(azUUID))
-        && newAZ.masterStsIndex == curAZ.masterStsIndex
-        && newAZ.tsStsIndex == curAZ.tsStsIndex;
   }
 
   /*
