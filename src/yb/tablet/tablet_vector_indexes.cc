@@ -662,6 +662,7 @@ Status TabletVectorIndexes::Backfill(
     }
     reader.Restart(from_key);
   }
+  TEST_SYNC_POINT_CALLBACK("TabletVectorIndexes::Backfill:ChunkSize", &chunk_size);
   helper.SetChunkSize(chunk_size);
 
   // Insert rows in batches of the default chunk capacity, but no larger than the backfill chunk

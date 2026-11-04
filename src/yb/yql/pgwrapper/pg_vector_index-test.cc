@@ -143,6 +143,7 @@ DECLARE_int32(TEST_sleep_after_vector_index_backfill_chunk_ms);
 DECLARE_int32(ysql_client_read_write_timeout_ms);
 DECLARE_uint32(vector_index_backfill_retry_delay_ms);
 DECLARE_uint64(TEST_inject_sleep_before_applying_intents_ms);
+DECLARE_uint64(vector_index_backfill_single_chunk_size_bytes);
 DECLARE_int64(db_block_cache_size_bytes);
 DECLARE_int64(db_block_size_bytes);
 DECLARE_int64(db_write_buffer_size);
@@ -6666,6 +6667,7 @@ class PgVectorIndexUtilTest : public PgVectorIndexSingleServerDumpTestBase {
 
   void TestFastPathVectorDeletion(const std::string& statement);
   void TestUnappliedVectorUpdates();
+  void TestBackfillBatches(uint64_t single_chunk_size_bytes);
 };
 
 TEST_F(PgVectorIndexUtilTest, BackfillSkipsReverseMapping) {
@@ -6730,11 +6732,15 @@ TEST_F(PgVectorIndexUtilTest, BackfillWritesReverseMapping) {
 
 // Backfill inserts rows in batches of a default mutable chunk's worth of vectors. For
 // high-dimension vectors the chunk memory limit bounds that well below
-// vector_index_initial_chunk_size, so the rows of one backfill chunk arrive in several batches.
-TEST_F(PgVectorIndexUtilTest, BackfillBatchesByChunkMemoryLimit) {
+// vector_index_initial_chunk_size, so the rows arrive in several batches. With
+// single_chunk_size_bytes set, backfill first counts the rows to size one chunk for all of them,
+// then restarts the scan and inserts them into that chunk in the same batches.
+void PgVectorIndexUtilTest::TestBackfillBatches(uint64_t single_chunk_size_bytes) {
   constexpr size_t kDimensions = 1024;
   constexpr size_t kNumRows = 1000;
 
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backfill_single_chunk_size_bytes) =
+      single_chunk_size_bytes;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_initial_chunk_memstore_size_mb) = 1;
   // The batch sizes below must come from a single tablet's backfill.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
@@ -6743,13 +6749,20 @@ TEST_F(PgVectorIndexUtilTest, BackfillBatchesByChunkMemoryLimit) {
   ASSERT_OK(InsertRows(conn, 1, kNumRows));
   ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
 
-  std::mutex batch_sizes_mutex;
+  std::mutex mutex;
+  std::vector<size_t> chunk_sizes;
   std::vector<size_t> batch_sizes;
   auto* sync_point = SyncPoint::GetInstance();
   sync_point->SetCallBack(
+      "TabletVectorIndexes::Backfill:ChunkSize",
+      [&mutex, &chunk_sizes](void* arg) {
+        std::lock_guard lock(mutex);
+        chunk_sizes.push_back(*static_cast<size_t*>(arg));
+      });
+  sync_point->SetCallBack(
       "VectorIndexBackfillHelper::Flush:NumEntries",
-      [&batch_sizes_mutex, &batch_sizes](void* arg) {
-        std::lock_guard lock(batch_sizes_mutex);
+      [&mutex, &batch_sizes](void* arg) {
+        std::lock_guard lock(mutex);
         batch_sizes.push_back(*static_cast<size_t*>(arg));
       });
   sync_point->EnableProcessing();
@@ -6761,15 +6774,28 @@ TEST_F(PgVectorIndexUtilTest, BackfillBatchesByChunkMemoryLimit) {
   ASSERT_OK(CreateIndex(conn));
   ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
 
-  std::lock_guard lock(batch_sizes_mutex);
-  LOG(INFO) << "Backfill batch sizes: " << AsString(batch_sizes);
+  std::lock_guard lock(mutex);
+  LOG(INFO) << "Backfill chunk sizes: " << AsString(chunk_sizes)
+            << ", batch sizes: " << AsString(batch_sizes);
+  // The budget fits far more than kNumRows vectors, so the counting pass sizes the chunk for
+  // exactly the rows in the table.
+  ASSERT_EQ(chunk_sizes, std::vector<size_t>{single_chunk_size_bytes ? kNumRows : 0});
   ASSERT_GT(batch_sizes.size(), 1);
   // Every batch but the last is full.
   for (size_t i = 1; i + 1 < batch_sizes.size(); ++i) {
     ASSERT_EQ(batch_sizes[i], batch_sizes.front());
   }
   ASSERT_LE(batch_sizes.back(), batch_sizes.front());
+  // The scan restarted after the counting pass: every row is inserted exactly once.
   ASSERT_EQ(std::accumulate(batch_sizes.begin(), batch_sizes.end(), size_t{0}), kNumRows);
+}
+
+TEST_F(PgVectorIndexUtilTest, BackfillBatchesByChunkMemoryLimit) {
+  TestBackfillBatches(/* single_chunk_size_bytes= */ 0);
+}
+
+TEST_F(PgVectorIndexUtilTest, BackfillSingleChunkBatchesByChunkMemoryLimit) {
+  TestBackfillBatches(/* single_chunk_size_bytes= */ 1ULL << 30);
 }
 
 TEST_F(PgVectorIndexUtilTest, SearchSkipsTombstonedReverseMapping) {
