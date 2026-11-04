@@ -20,11 +20,13 @@ import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
@@ -37,6 +39,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Sets;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
@@ -75,12 +79,15 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.ImmutablePair;
@@ -93,7 +100,9 @@ import org.yaml.snakeyaml.Yaml;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.IsServerReadyResponse;
+import org.yb.client.ListMasterRaftPeersResponse;
 import org.yb.client.YBClientApi;
+import org.yb.util.PeerInfo;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -1530,5 +1539,758 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     assertTrue(universe.getUniverseDetails().updateSucceeded);
     assertNull(universe.getUniverseDetails().placementModificationTaskUuid);
     assertNull(universe.getStateTransitionDetails());
+  }
+
+  // The tests below check the plan an edit builds rather than its execution. Every subtask is saved
+  // with its params when the plan is built, so failing the first helm call leaves the whole plan
+  // to inspect: what each helm call renders and where each master address push sits.
+
+  private static final String FULL_MOVE_VERSION = "2026.1.0.0-b1";
+  private static final String PRE_NON_RESTART_VERSION = "2024.1.0.0-b1";
+
+  /** RF3 universe with one master and one tserver in each of az-1..az-3. */
+  private void setupMasterMoveUniverse(String ybSoftwareVersion) {
+    setupUniverseMultiAZ(/* setMasters */ true, 3);
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u ->
+                u.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion =
+                    ybSoftwareVersion);
+    factory.globalRuntimeConf().setValue("yb.task.enable_edit_auto_rollback", "false");
+    factory.globalRuntimeConf().setValue("yb.checks.leaderless_tablets.enabled", "false");
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
+    when(mockKubernetesManager.getStorageClass(any(), any())).thenReturn(mock(StorageClass.class));
+    doThrow(new RuntimeException("stop after planning"))
+        .when(mockKubernetesManager)
+        .helmUpgrade(any(), any(), any(), any(), any(), any(), any());
+    doThrow(new RuntimeException("stop after planning"))
+        .when(mockKubernetesManager)
+        .helmInstall(any(), any(), any(), any(), any(), any(), any());
+  }
+
+  private UniverseDefinitionTaskParams.UserIntent currentIntent() {
+    return defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.clone();
+  }
+
+  private PlacementInfo currentPlacement() {
+    return defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
+  }
+
+  /** Submits the edit, which fails at its first helm call once its plan is saved. */
+  private TaskInfo submitEdit(
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      PlacementInfo pi,
+      @javax.annotation.Nullable UUID previousTaskUUID) {
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet;
+    taskParams.setPreviousTaskUUID(previousTaskUUID);
+    TaskInfo taskInfo = submitTask(taskParams, userIntent, pi);
+    assertEquals(Failure, taskInfo.getTaskState());
+    return taskInfo;
+  }
+
+  /** Subtasks of the edit in plan order. */
+  private static List<TaskInfo> plan(TaskInfo taskInfo) {
+    return taskInfo.getSubTasks().stream()
+        .sorted(Comparator.comparingInt(TaskInfo::getPosition))
+        .collect(Collectors.toList());
+  }
+
+  private List<TaskInfo> planEdit(
+      UniverseDefinitionTaskParams.UserIntent userIntent, PlacementInfo pi) {
+    return plan(submitEdit(userIntent, pi, null));
+  }
+
+  private static List<TaskInfo> helmUpgradesInAZs(List<TaskInfo> helm, Set<String> azCodes) {
+    return helm.stream()
+        .filter(t -> azCodes.contains(t.getTaskParams().path("azCode").asText()))
+        .collect(Collectors.toList());
+  }
+
+  private static List<TaskInfo> subtasks(
+      List<TaskInfo> plan, TaskType type, Predicate<JsonNode> paramsFilter) {
+    return plan.stream()
+        .filter(t -> t.getTaskType() == type && paramsFilter.test(t.getTaskParams()))
+        .collect(Collectors.toList());
+  }
+
+  private static List<TaskInfo> helmUpgrades(List<TaskInfo> plan) {
+    return subtasks(
+        plan,
+        TaskType.KubernetesCommandExecutor,
+        p -> HELM_UPGRADE.name().equals(p.path("commandType").asText()));
+  }
+
+  private static List<TaskInfo> masterAddrPushes(List<TaskInfo> plan) {
+    return subtasks(plan, TaskType.SetFlagInMemory, p -> p.path("updateMasterAddrs").asBoolean());
+  }
+
+  private static List<TaskInfo> changeMasterConfigs(List<TaskInfo> plan, String opType) {
+    return subtasks(
+        plan, TaskType.ChangeMasterConfig, p -> opType.equals(p.path("opType").asText()));
+  }
+
+  private static Set<String> nodeNames(List<TaskInfo> tasks, ServerType serverType) {
+    return tasks.stream()
+        .map(TaskInfo::getTaskParams)
+        .filter(p -> serverType.name().equals(p.path("serverType").asText()))
+        .map(p -> p.path("nodeName").asText())
+        .collect(Collectors.toSet());
+  }
+
+  private static List<TaskInfo> between(List<TaskInfo> tasks, int afterPos, int beforePos) {
+    return tasks.stream()
+        .filter(t -> t.getPosition() > afterPos && t.getPosition() < beforePos)
+        .collect(Collectors.toList());
+  }
+
+  private static int firstPosition(List<TaskInfo> tasks) {
+    return tasks.stream().mapToInt(TaskInfo::getPosition).min().getAsInt();
+  }
+
+  private static int lastPosition(List<TaskInfo> tasks) {
+    return tasks.stream().mapToInt(TaskInfo::getPosition).max().getAsInt();
+  }
+
+  private static String helmMasterAddresses(TaskInfo helmTask) {
+    return helmTask.getTaskParams().path("masterAddresses").asText();
+  }
+
+  private static boolean keepsGflagsChecksum(TaskInfo helmTask) {
+    return helmTask.getTaskParams().path("usePreviousGflagsChecksum").asBoolean();
+  }
+
+  private static JsonNode helmAZ(TaskInfo helmTask) {
+    return helmTask
+        .getTaskParams()
+        .path("placementInfo")
+        .path("cloudList")
+        .get(0)
+        .path("regionList")
+        .get(0)
+        .path("azList")
+        .get(0);
+  }
+
+  private String expectedMasterAddresses(PlacementInfo pi) {
+    return KubernetesUtil.computeMasterAddresses(
+        pi,
+        PlacementInfoUtil.getNumMasterPerAZ(pi),
+        NODE_PREFIX,
+        defaultUniverse.getName(),
+        kubernetesProvider,
+        defaultUniverse.getUniverseDetails().communicationPorts.masterRpcPort,
+        defaultUniverse.getUniverseDetails().useNewHelmNamingStyle);
+  }
+
+  private static Set<String> masterHosts(String masterAddresses) {
+    return Arrays.stream(masterAddresses.split(","))
+        .map(addr -> addr.substring(addr.indexOf("yb-master"), addr.indexOf('.')))
+        .collect(Collectors.toSet());
+  }
+
+  /** Checks the two pushes around the master quorum change and returns the post-remove push. */
+  private List<TaskInfo> assertPushesAroundMasterChange(
+      List<TaskInfo> plan, Set<String> expectedMasters, Set<String> expectedTservers) {
+    List<TaskInfo> adds = changeMasterConfigs(plan, "AddMaster");
+    List<TaskInfo> removes = changeMasterConfigs(plan, "RemoveMaster");
+    List<TaskInfo> pushes = masterAddrPushes(plan);
+    List<TaskInfo> preRemove = between(pushes, lastPosition(adds), firstPosition(removes));
+    // The post-remove push is the two groups (masters, tservers) right after the leader wait.
+    int leaderWait =
+        firstPosition(
+            between(
+                subtasks(plan, TaskType.WaitForMasterLeader, p -> true),
+                lastPosition(removes),
+                Integer.MAX_VALUE));
+    List<TaskInfo> postRemove = between(pushes, leaderWait, leaderWait + 3);
+    assertEquals(
+        ImmutableSet.of(leaderWait + 1, leaderWait + 2),
+        postRemove.stream().map(TaskInfo::getPosition).collect(Collectors.toSet()));
+    for (List<TaskInfo> push : ImmutableList.of(preRemove, postRemove)) {
+      assertEquals(expectedMasters, nodeNames(push, ServerType.MASTER));
+      assertEquals(expectedTservers, nodeNames(push, ServerType.TSERVER));
+    }
+    return postRemove;
+  }
+
+  @Test
+  public void testFullMoveMasterAddressPropagation() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
+    newIntent.ybSoftwareVersion = FULL_MOVE_VERSION;
+    TestUtils.updateDeviceInfo(newIntent, ServerType.MASTER, d -> d.storageClass = "fast");
+    TestUtils.updateDeviceInfo(newIntent, ServerType.TSERVER, d -> d.storageClass = "fast");
+    PlacementInfo pi = currentPlacement();
+    pi.azStream()
+        .forEach(
+            az -> {
+              az.masterStsIndex = 1;
+              az.tsStsIndex = 1;
+            });
+
+    List<TaskInfo> plan = planEdit(newIntent, pi);
+    String newMasters = expectedMasterAddresses(pi);
+    assertEquals(ImmutableSet.of("yb-master-1-0"), masterHosts(newMasters));
+    assertEquals(3, newMasters.split(",").length);
+
+    // Pushes go to the new masters and every tserver serving traffic: the old full-move tservers.
+    List<TaskInfo> postRemove =
+        assertPushesAroundMasterChange(
+            plan,
+            ImmutableSet.of("yb-master-1-0_az-1", "yb-master-1-0_az-2", "yb-master-1-0_az-3"),
+            ImmutableSet.of("yb-tserver-0_az-1", "yb-tserver-0_az-2", "yb-tserver-0_az-3"));
+
+    List<TaskInfo> helm = helmUpgrades(plan);
+    List<TaskInfo> masterHelm =
+        helm.stream()
+            .filter(t -> "MASTER".equals(t.getTaskParams().path("serverType").asText()))
+            .collect(Collectors.toList());
+    List<TaskInfo> tserverHelm =
+        helm.stream()
+            .filter(t -> "TSERVER".equals(t.getTaskParams().path("serverType").asText()))
+            .collect(Collectors.toList());
+    // Master phase, per AZ: create new master pods, delete the old ones, final render.
+    assertEquals(9, masterHelm.size());
+    List<TaskInfo> createNewMasters = between(masterHelm, 0, firstPosition(postRemove));
+    List<TaskInfo> afterMastersJoined =
+        between(masterHelm, lastPosition(postRemove), Integer.MAX_VALUE);
+    assertEquals(3, createNewMasters.size());
+    assertEquals(6, afterMastersJoined.size());
+    for (TaskInfo t : createNewMasters) {
+      // New masters start in shell mode, and nothing in the release changes yet.
+      assertEquals("", helmMasterAddresses(t));
+      assertFalse(keepsGflagsChecksum(t));
+    }
+    for (TaskInfo t : afterMastersJoined) {
+      // The pod delete and final render rewrite every gflags Secret in the release, tservers
+      // included, without rolling any pod.
+      assertEquals(newMasters, helmMasterAddresses(t));
+      assertTrue(keepsGflagsChecksum(t));
+      assertEquals(1, t.getTaskParams().path("tserverPartition").asInt());
+    }
+    // Tserver phase renders the new list, as before.
+    assertFalse(tserverHelm.isEmpty());
+    assertTrue(firstPosition(tserverHelm) > lastPosition(masterHelm));
+    for (TaskInfo t : tserverHelm) {
+      assertEquals(newMasters, helmMasterAddresses(t));
+      assertFalse(keepsGflagsChecksum(t));
+    }
+    // The first master pod delete comes after the post-remove push.
+    List<TaskInfo> podDeletes = subtasks(plan, TaskType.CheckNodeSafeToDelete, p -> true);
+    assertTrue(firstPosition(podDeletes) > lastPosition(postRemove));
+  }
+
+  @Test
+  public void testZoneReplaceMasterAddressPropagation() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    AvailabilityZone az1 = AvailabilityZone.getByCode(kubernetesProvider, "az-1");
+    AvailabilityZone az2 = AvailabilityZone.getByCode(kubernetesProvider, "az-2");
+    PlacementInfo pi = zoneReplacePlacement();
+
+    List<TaskInfo> plan = planEdit(currentIntent(), pi);
+    String newMasters = expectedMasterAddresses(pi);
+
+    // The leaving az-3 tserver still serves traffic until its data moves, so it gets the pushes.
+    List<TaskInfo> postRemove =
+        assertPushesAroundMasterChange(
+            plan,
+            ImmutableSet.of("yb-master-0_az-1", "yb-master-0_az-2", "yb-master-0_az-4"),
+            ImmutableSet.of("yb-tserver-0_az-1", "yb-tserver-0_az-2", "yb-tserver-0_az-3"));
+    assertEquals(
+        ImmutableList.of("AddMaster"),
+        changeMasterConfigs(plan, "AddMaster").stream()
+            .map(t -> t.getTaskParams().path("opType").asText())
+            .collect(Collectors.toList()));
+
+    // Right after the post-remove push, a non-restart render rewrites the Secrets of the AZs this
+    // edit leaves as they are, before the data move starts. Nothing scales in that render.
+    // The only other render in that window brings up the az-4 tserver.
+    int dataMove = firstPosition(subtasks(plan, TaskType.WaitForDataMove, p -> true));
+    List<TaskInfo> beforeDataMove = between(helmUpgrades(plan), lastPosition(postRemove), dataMove);
+    List<TaskInfo> earlySecretUpdate =
+        helmUpgradesInAZs(beforeDataMove, ImmutableSet.of(az1.getCode(), az2.getCode()));
+    assertEquals(2, earlySecretUpdate.size());
+    assertEquals(
+        ImmutableSet.of(az1.getCode(), az2.getCode()), earlySecretUpdateAZs(plan, postRemove));
+    assertEquals(
+        beforeDataMove.size() - 2,
+        helmUpgradesInAZs(beforeDataMove, ImmutableSet.of("az-4")).size());
+    for (TaskInfo t : earlySecretUpdate) {
+      assertEquals(newMasters, helmMasterAddresses(t));
+      assertTrue(keepsGflagsChecksum(t));
+      JsonNode az = helmAZ(t);
+      assertEquals(1, az.path("replicationFactor").asInt());
+      assertEquals(1, az.path("numNodesInAZ").asInt());
+      assertEquals(1, t.getTaskParams().path("masterPartition").asInt());
+      assertEquals(1, t.getTaskParams().path("tserverPartition").asInt());
+    }
+    // Every helm render after the master move carries the new list.
+    for (TaskInfo t : between(helmUpgrades(plan), lastPosition(postRemove), Integer.MAX_VALUE)) {
+      assertEquals(newMasters, helmMasterAddresses(t));
+    }
+  }
+
+  @Test
+  public void testZoneReplaceWithoutNonRestartSupportSkipsEarlySecretUpdate() {
+    setupMasterMoveUniverse(PRE_NON_RESTART_VERSION);
+    PlacementInfo pi = zoneReplacePlacement();
+
+    List<TaskInfo> plan = planEdit(currentIntent(), pi);
+
+    // The in-memory pushes do not depend on non-restart helm support.
+    List<TaskInfo> postRemove =
+        assertPushesAroundMasterChange(
+            plan,
+            ImmutableSet.of("yb-master-0_az-1", "yb-master-0_az-2", "yb-master-0_az-4"),
+            ImmutableSet.of("yb-tserver-0_az-1", "yb-tserver-0_az-2", "yb-tserver-0_az-3"));
+    // This version rolls the pods to change master addresses, so no render before the data move.
+    int dataMove = firstPosition(subtasks(plan, TaskType.WaitForDataMove, p -> true));
+    assertTrue(
+        helmUpgradesInAZs(
+                between(helmUpgrades(plan), lastPosition(postRemove), dataMove),
+                ImmutableSet.of("az-1", "az-2"))
+            .isEmpty());
+  }
+
+  @Test
+  public void testZoneReplaceRetrySkipsLeavingServers() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    PlacementInfo pi = zoneReplacePlacement();
+
+    TaskInfo firstAttempt = submitEdit(currentIntent(), pi, null);
+    List<TaskInfo> plan = plan(submitEdit(currentIntent(), pi, firstAttempt.getUuid()));
+
+    // On a retry the az-3 pods may already be deleted, so neither push targets them.
+    assertPushesAroundMasterChange(
+        plan,
+        ImmutableSet.of("yb-master-0_az-1", "yb-master-0_az-2", "yb-master-0_az-4"),
+        ImmutableSet.of("yb-tserver-0_az-1", "yb-tserver-0_az-2"));
+  }
+
+  @Test
+  public void testTserverScaleOutDoesNotTouchMasterAddresses() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    PlacementInfo pi = currentPlacement();
+    pi.azStream().forEach(az -> az.numNodesInAZ = 2);
+    UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
+    newIntent.numNodes = 6;
+
+    List<TaskInfo> plan = planEdit(newIntent, pi);
+
+    assertTrue(changeMasterConfigs(plan, "AddMaster").isEmpty());
+    assertTrue(changeMasterConfigs(plan, "RemoveMaster").isEmpty());
+    assertTrue(masterAddrPushes(plan).isEmpty());
+    String masters = expectedMasterAddresses(pi);
+    List<TaskInfo> helm = helmUpgrades(plan);
+    assertFalse(helm.isEmpty());
+    for (TaskInfo t : helm) {
+      assertEquals(masters, helmMasterAddresses(t));
+      // Scale-out renders target counts with partitions that protect the existing pods.
+      assertEquals(1, t.getTaskParams().path("masterPartition").asInt());
+      assertEquals(1, t.getTaskParams().path("tserverPartition").asInt());
+      assertEquals(2, helmAZ(t).path("numNodesInAZ").asInt());
+    }
+  }
+
+  @Test
+  public void testAddTserverOnlyZoneDoesNotTouchMasterAddresses() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    AvailabilityZone az4 =
+        AvailabilityZone.createOrThrow(
+            Region.getByCode(kubernetesProvider, "region-1"), "az-4", "PlacementAZ 4", "subnet-4");
+    PlacementInfo pi = currentPlacement();
+    PlacementInfoUtil.addPlacementZone(az4.getUuid(), pi, 0, 1, false);
+    UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
+    newIntent.numNodes = 4;
+
+    List<TaskInfo> plan = planEdit(newIntent, pi);
+
+    assertTrue(changeMasterConfigs(plan, "AddMaster").isEmpty());
+    assertTrue(masterAddrPushes(plan).isEmpty());
+  }
+
+  /** Replaces az-3 with a new az-4 in the current placement. */
+  private PlacementInfo zoneReplacePlacement() {
+    AvailabilityZone az3 = AvailabilityZone.getByCode(kubernetesProvider, "az-3");
+    AvailabilityZone az4 =
+        AvailabilityZone.createOrThrow(
+            Region.getByCode(kubernetesProvider, "region-1"), "az-4", "PlacementAZ 4", "subnet-4");
+    PlacementInfo pi = currentPlacement();
+    pi.cloudList.get(0).regionList.get(0).azList.removeIf(az -> az.uuid.equals(az3.getUuid()));
+    PlacementInfoUtil.addPlacementZone(az4.getUuid(), pi, 1, 1, true);
+    return pi;
+  }
+
+  /**
+   * AZs in the early Secret update: the helm group right after the post-remove push, which waits
+   * for the Secret to sync next. Without it, that slot holds the new az-4 pods instead.
+   */
+  private Set<String> earlySecretUpdateAZs(List<TaskInfo> plan, List<TaskInfo> postRemove) {
+    int slot = lastPosition(postRemove) + 1;
+    List<TaskInfo> group =
+        helmUpgrades(plan).stream()
+            .filter(t -> t.getPosition() == slot && keepsGflagsChecksum(t))
+            .filter(t -> !"az-4".equals(t.getTaskParams().path("azCode").asText()))
+            .collect(Collectors.toList());
+    if (!group.isEmpty()) {
+      assertEquals(
+          ImmutableList.of(TaskType.WaitForDuration),
+          plan.stream()
+              .filter(t -> t.getPosition() == slot + 1)
+              .map(TaskInfo::getTaskType)
+              .collect(Collectors.toList()));
+    }
+    return group.stream()
+        .map(t -> t.getTaskParams().path("azCode").asText())
+        .collect(Collectors.toSet());
+  }
+
+  @Test
+  public void testZoneReplaceSkipsScaledZoneInEarlySecretUpdate() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    PlacementInfo pi = zoneReplacePlacement();
+    pi.azStream().filter(az -> az.name.equals("PlacementAZ 1")).forEach(az -> az.numNodesInAZ = 2);
+    UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
+    newIntent.numNodes = 4;
+
+    List<TaskInfo> plan = planEdit(newIntent, pi);
+
+    List<TaskInfo> postRemove =
+        assertPushesAroundMasterChange(
+            plan,
+            ImmutableSet.of("yb-master-0_az-1", "yb-master-0_az-2", "yb-master-0_az-4"),
+            ImmutableSet.of("yb-tserver-0_az-1", "yb-tserver-0_az-2", "yb-tserver-0_az-3"));
+    // A render of az-1's target count would add its second tserver early, so az-1 is skipped.
+    assertEquals(ImmutableSet.of("az-2"), earlySecretUpdateAZs(plan, postRemove));
+  }
+
+  @Test
+  public void testZoneReplaceWithResourceChangeSkipsEarlySecretUpdate() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    PlacementInfo pi = zoneReplacePlacement();
+    UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
+    K8SNodeResourceSpec spec = new K8SNodeResourceSpec();
+    spec.cpuCoreCount = newIntent.tserverK8SNodeResourceSpec.cpuCoreCount + 1;
+    spec.memoryGib = newIntent.tserverK8SNodeResourceSpec.memoryGib;
+    newIntent.tserverK8SNodeResourceSpec = spec;
+
+    List<TaskInfo> plan = planEdit(newIntent, pi);
+
+    List<TaskInfo> postRemove =
+        assertPushesAroundMasterChange(
+            plan,
+            ImmutableSet.of("yb-master-0_az-1", "yb-master-0_az-2", "yb-master-0_az-4"),
+            ImmutableSet.of("yb-tserver-0_az-1", "yb-tserver-0_az-2", "yb-tserver-0_az-3"));
+    // A render now would carry the resource change into the pod templates ahead of the roll.
+    assertTrue(earlySecretUpdateAZs(plan, postRemove).isEmpty());
+  }
+
+  @Test
+  public void testMasterOnlyFullMoveMasterAddressPropagation() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
+    TestUtils.updateDeviceInfo(newIntent, ServerType.MASTER, d -> d.storageClass = "fast");
+    PlacementInfo pi = currentPlacement();
+    pi.azStream().forEach(az -> az.masterStsIndex = 1);
+
+    List<TaskInfo> plan = planEdit(newIntent, pi);
+    String newMasters = expectedMasterAddresses(pi);
+    assertEquals(ImmutableSet.of("yb-master-1-0"), masterHosts(newMasters));
+
+    // The tservers stay where they are and get both pushes.
+    List<TaskInfo> postRemove =
+        assertPushesAroundMasterChange(
+            plan,
+            ImmutableSet.of("yb-master-1-0_az-1", "yb-master-1-0_az-2", "yb-master-1-0_az-3"),
+            ImmutableSet.of("yb-tserver-0_az-1", "yb-tserver-0_az-2", "yb-tserver-0_az-3"));
+    List<TaskInfo> afterMastersJoined =
+        between(helmUpgrades(plan), lastPosition(postRemove), Integer.MAX_VALUE);
+    assertFalse(afterMastersJoined.isEmpty());
+    for (TaskInfo t : afterMastersJoined) {
+      assertEquals(newMasters, helmMasterAddresses(t));
+    }
+    // The pod delete and final render of each AZ keep the checksum, so no tserver pod rolls.
+    List<TaskInfo> masterRenders =
+        afterMastersJoined.stream()
+            .filter(t -> "MASTER".equals(t.getTaskParams().path("serverType").asText()))
+            .collect(Collectors.toList());
+    assertEquals(6, masterRenders.size());
+    for (TaskInfo t : masterRenders) {
+      assertTrue(keepsGflagsChecksum(t));
+      assertEquals(1, t.getTaskParams().path("tserverPartition").asInt());
+      assertEquals(0, helmAZ(t).path("tsStsIndex").asInt());
+    }
+  }
+
+  @Test
+  public void testTserverOnlyFullMoveDoesNotTouchMasterAddresses() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
+    TestUtils.updateDeviceInfo(newIntent, ServerType.TSERVER, d -> d.storageClass = "fast");
+    PlacementInfo pi = currentPlacement();
+    pi.azStream().forEach(az -> az.tsStsIndex = 1);
+
+    List<TaskInfo> plan = planEdit(newIntent, pi);
+
+    assertTrue(changeMasterConfigs(plan, "AddMaster").isEmpty());
+    assertTrue(changeMasterConfigs(plan, "RemoveMaster").isEmpty());
+    assertTrue(masterAddrPushes(plan).isEmpty());
+    String masters = expectedMasterAddresses(pi);
+    assertEquals(ImmutableSet.of("yb-master-0"), masterHosts(masters));
+    List<TaskInfo> helm = helmUpgrades(plan);
+    assertFalse(helm.isEmpty());
+    for (TaskInfo t : helm) {
+      assertEquals(masters, helmMasterAddresses(t));
+      assertEquals("TSERVER", t.getTaskParams().path("serverType").asText());
+      assertFalse(keepsGflagsChecksum(t));
+    }
+  }
+
+  @Test
+  public void testZoneReplacePushesToReadReplicaTservers() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    UniverseDefinitionTaskParams.UserIntent rrIntent = currentIntent();
+    rrIntent.numNodes = 2;
+    rrIntent.replicationFactor = 1;
+    PlacementInfo rrPlacement = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(
+        AvailabilityZone.getByCode(kubernetesProvider, "az-1").getUuid(), rrPlacement, 1, 2, true);
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            ApiUtils.mockUniverseUpdaterWithReadReplica(rrIntent, rrPlacement));
+    Cluster readReplica = defaultUniverse.getUniverseDetails().getReadOnlyClusters().get(0);
+    Set<String> rrTservers =
+        defaultUniverse.getUniverseDetails().getNodesInCluster(readReplica.uuid).stream()
+            .map(n -> n.nodeName)
+            .collect(Collectors.toSet());
+    assertEquals(2, rrTservers.size());
+
+    PlacementInfo pi = zoneReplacePlacement();
+    UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet;
+    // Like the UI, the edit carries the unchanged read replica too.
+    taskParams.clusters = new ArrayList<>(Collections.singletonList(readReplica));
+    TaskInfo taskInfo = submitTask(taskParams, newIntent, pi);
+    assertEquals(Failure, taskInfo.getTaskState());
+
+    // Read replica tservers get both pushes along with the primary ones.
+    assertPushesAroundMasterChange(
+        plan(taskInfo),
+        ImmutableSet.of("yb-master-0_az-1", "yb-master-0_az-2", "yb-master-0_az-4"),
+        Sets.union(
+            ImmutableSet.of("yb-tserver-0_az-1", "yb-tserver-0_az-2", "yb-tserver-0_az-3"),
+            rrTservers));
+  }
+
+  @Test
+  public void testZoneReplaceSkipsServersNotYetCreated() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    // The universe already lists a pod this edit has not created: it has its DNS address but no
+    // pod behind it yet.
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              NodeDetails planned = u.getNode("yb-tserver-0_az-1").clone();
+              planned.nodeName = "yb-tserver-1_az-1";
+              planned.nodeUuid = UUID.randomUUID();
+              planned.cloudInfo.private_ip = "yb-tserver-1_az-1.svc.cluster.local";
+              planned.state = NodeDetails.NodeState.ToBeAdded;
+              u.getUniverseDetails().nodeDetailsSet.add(planned);
+            });
+    assertNotNull(defaultUniverse.getNode("yb-tserver-1_az-1"));
+
+    List<TaskInfo> plan = planEdit(currentIntent(), zoneReplacePlacement());
+
+    assertPushesAroundMasterChange(
+        plan,
+        ImmutableSet.of("yb-master-0_az-1", "yb-master-0_az-2", "yb-master-0_az-4"),
+        ImmutableSet.of("yb-tserver-0_az-1", "yb-tserver-0_az-2", "yb-tserver-0_az-3"));
+  }
+
+  private String podJson(String hostname, String ip, String namespace) {
+    return "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", \"podIP\": \""
+        + ip
+        + "\"}, \"spec\": {\"hostname\": \""
+        + hostname
+        + "\"}, \"metadata\": {\"namespace\": \""
+        + namespace
+        + "\"}}";
+  }
+
+  /**
+   * Runs a zone replace up to the first helm call after the master removes, against a fake master
+   * quorum, and checks the values each server is sent and when.
+   */
+  @Test
+  public void testZoneReplacePushedMasterAddressesAtRunTime() throws Exception {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    PlacementInfo pi = zoneReplacePlacement();
+    String newMasters = expectedMasterAddresses(pi);
+
+    // az-1..az-3 run a master and a tserver; az-4 gets only its new master at this stage.
+    when(mockKubernetesManager.getPodInfos(any(), any(), any()))
+        .thenAnswer(
+            inv -> {
+              String ns = inv.getArgument(2);
+              String pods =
+                  ns.endsWith("az-4")
+                      ? podJson("yb-master-0", "192.0.2.41", ns)
+                      : podJson("yb-master-0", "192.0.2.11", ns)
+                          + ","
+                          + podJson("yb-tserver-0", "192.0.2.12", ns);
+              return TestUtils.deserialize("{\"items\": [" + pods + "]}", PodList.class).getItems();
+            });
+
+    // Fake quorum that follows the config changes. It is seeded on the first change with the
+    // masters the universe knows then, which by that point carry their POD_INFO addresses.
+    List<String> events = Collections.synchronizedList(new ArrayList<>());
+    Map<String, Integer> voters = Collections.synchronizedMap(new java.util.LinkedHashMap<>());
+    UUID universeUUID = defaultUniverse.getUniverseUUID();
+    when(mockClient.changeMasterConfig(any(), anyInt(), anyBoolean(), anyBoolean(), any()))
+        .thenAnswer(
+            inv -> {
+              String host = inv.getArgument(0);
+              int port = inv.getArgument(1);
+              boolean isAdd = inv.getArgument(2);
+              if (voters.isEmpty()) {
+                Universe.getOrBadRequest(universeUUID).getMasters().stream()
+                    .filter(n -> !n.cloudInfo.private_ip.equals(host))
+                    .forEach(n -> voters.put(n.cloudInfo.private_ip, n.masterRpcPort));
+              }
+              if (isAdd) {
+                voters.put(host, port);
+              } else {
+                voters.remove(host);
+              }
+              events.add((isAdd ? "ADD " : "REMOVE ") + host);
+              return null;
+            });
+    when(mockClient.listMasterRaftPeers())
+        .thenAnswer(
+            inv -> {
+              List<PeerInfo> peers = new ArrayList<>();
+              synchronized (voters) {
+                voters.forEach(
+                    (host, port) -> {
+                      PeerInfo peer = new PeerInfo();
+                      peer.setLastKnownPrivateIps(
+                          ImmutableList.of(HostAndPort.fromParts(host, port)));
+                      peers.add(peer);
+                    });
+              }
+              ListMasterRaftPeersResponse response = mock(ListMasterRaftPeersResponse.class);
+              when(response.getPeersList()).thenReturn(peers);
+              return response;
+            });
+    when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
+    when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
+    when(mockClient.setFlag(any(), any(), any(), anyBoolean()))
+        .thenAnswer(
+            inv -> {
+              HostAndPort hp = inv.getArgument(0);
+              events.add(
+                  "SET "
+                      + hp.getHost()
+                      + " "
+                      + inv.getArgument(1)
+                      + " "
+                      + sortedCsv(inv.getArgument(2)));
+              return true;
+            });
+    // Stop at the first helm upgrade after the removes: the early Secret update.
+    doAnswer(
+            inv -> {
+              if (events.stream().anyMatch(e -> e.startsWith("REMOVE"))) {
+                throw new RuntimeException("stop after the master move");
+              }
+              return null;
+            })
+        .when(mockKubernetesManager)
+        .helmUpgrade(any(), any(), any(), any(), any(), any(), any());
+    doNothing()
+        .when(mockKubernetesManager)
+        .helmInstall(any(), any(), any(), any(), any(), any(), any());
+
+    TaskInfo taskInfo = submitEdit(currentIntent(), pi, null);
+    assertTrue(describeFailure(taskInfo), describeFailure(taskInfo).contains("stop after"));
+
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    java.util.function.Function<String, String> ip = n -> universe.getNode(n).cloudInfo.private_ip;
+    String masterA = ip.apply("yb-master-0_az-1");
+    String masterB = ip.apply("yb-master-0_az-2");
+    String masterC = ip.apply("yb-master-0_az-3");
+    String masterD = ip.apply("yb-master-0_az-4");
+    Set<String> pushedMasters = ImmutableSet.of(masterA, masterB, masterD);
+    Set<String> pushedTservers =
+        ImmutableSet.of(
+            ip.apply("yb-tserver-0_az-1"),
+            ip.apply("yb-tserver-0_az-2"),
+            ip.apply("yb-tserver-0_az-3"));
+
+    List<String> log = new ArrayList<>(events);
+    assertEquals(
+        ImmutableList.of("ADD " + masterD, "REMOVE " + masterC),
+        log.stream().filter(e -> !e.startsWith("SET")).collect(Collectors.toList()));
+    int add = log.indexOf("ADD " + masterD);
+    int remove = log.indexOf("REMOVE " + masterC);
+    List<String> preRemove = log.subList(add + 1, remove);
+    List<String> postRemove = log.subList(remove + 1, log.size());
+
+    // Before the remove: the live Raft config, old masters plus the new one.
+    String raftConfig =
+        ImmutableList.of(masterA, masterB, masterC, masterD).stream()
+            .map(h -> h + ":" + universe.getNode("yb-master-0_az-1").masterRpcPort)
+            .collect(Collectors.joining(","));
+    assertPushedTo(preRemove, pushedMasters, pushedTservers, raftConfig);
+    // After the remove: the new list, before anything else touches the pods.
+    assertPushedTo(postRemove, pushedMasters, pushedTservers, newMasters);
+  }
+
+  private static String sortedCsv(String csv) {
+    return Arrays.stream(csv.split(",")).sorted().collect(Collectors.joining(","));
+  }
+
+  private static void assertPushedTo(
+      List<String> events, Set<String> masters, Set<String> tservers, String masterAddresses) {
+    Set<String> expected = new java.util.HashSet<>();
+    String value = sortedCsv(masterAddresses);
+    masters.forEach(h -> expected.add("SET " + h + " master_addresses " + value));
+    tservers.forEach(h -> expected.add("SET " + h + " tserver_master_addrs " + value));
+    assertEquals(expected.size(), events.size());
+    assertEquals(expected, new java.util.HashSet<>(events));
+  }
+
+  @Test
+  public void testGetRaftMasterAddressesPrefersBroadcastAddress() throws Exception {
+    setupUniverseMultiAZ(/* setMasters */ true, 3);
+    PeerInfo broadcastPeer = new PeerInfo();
+    broadcastPeer.setLastKnownPrivateIps(ImmutableList.of(HostAndPort.fromParts("192.0.2.1", 7100)));
+    broadcastPeer.setLastKnownBroadcastIps(
+        ImmutableList.of(HostAndPort.fromParts("yb-master-1-0.yb-masters.ns.svc", 7100)));
+    PeerInfo privatePeer = new PeerInfo();
+    privatePeer.setLastKnownPrivateIps(
+        ImmutableList.of(HostAndPort.fromParts("yb-master-0.yb-masters.ns.svc", 7100)));
+    ListMasterRaftPeersResponse response = mock(ListMasterRaftPeersResponse.class);
+    when(response.getPeersList()).thenReturn(ImmutableList.of(broadcastPeer, privatePeer));
+    when(mockClient.listMasterRaftPeers()).thenReturn(response);
+
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    EditKubernetesUniverse task = createTaskWithParams(taskParams);
+    assertEquals(
+        "yb-master-1-0.yb-masters.ns.svc:7100,yb-master-0.yb-masters.ns.svc:7100",
+        task.getRaftMasterAddresses(defaultUniverse.getUniverseUUID()));
   }
 }
