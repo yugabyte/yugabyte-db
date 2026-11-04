@@ -1185,6 +1185,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
     NodeDetails nodeDetails =
         universe.getUniverseDetails().nodeDetailsSet.stream()
             .filter(n -> n.isInPlacement(cluserUUID) && n.state.equals(NodeDetails.NodeState.Live))
+            .filter(n -> n.isTserver)
             .findFirst()
             .get();
     ShellResponse response =
