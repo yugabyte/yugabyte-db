@@ -18418,14 +18418,17 @@ assign_yb_dist_tracecontext(const char *newval, void *extra)
 
 /*
  * YB: check_skip_intents_internal
- * Common logic for skip-intent GUCs to handle transaction block restrictions.
+ * Common logic for skip-intent GUCs to handle transaction state restrictions.
  *
  * A transaction fixes the values of these GUCs the first time it may use the
  * optimization (see YbSkipIntentsTxnState), and a later change takes effect
- * only from the next transaction.  So that SET does not appear to take effect
- * when it does not, SET (PGC_S_SESSION) is refused inside a transaction block
- * or once the transaction has taken a snapshot, which every statement that may
- * use the optimization takes first.  A function's SET clause is applied with
+ * only from the next transaction.  Every statement that may use the
+ * optimization takes a snapshot first, so SET (PGC_S_SESSION) is refused once
+ * the transaction has taken one, so that it does not appear to take effect
+ * when it does not.  A SET before then is accepted, inside a transaction block
+ * too, and takes effect for the transaction.  Connection Manager relies on
+ * this: it replays a client's SETs as one multi-statement query, which runs in
+ * an implicit transaction block.  A function's SET clause is applied with
  * PGC_S_SESSION too, inside the calling statement, so
  * YbValidateFunctionSetItem refuses such a clause up front.
  *
@@ -18441,10 +18444,10 @@ assign_yb_dist_tracecontext(const char *newval, void *extra)
 static bool
 check_skip_intents_internal(const char *guc_name, bool *newval, GucSource source)
 {
-	if (source == PGC_S_SESSION && (IsTransactionBlock() || FirstSnapshotSet))
+	if (source == PGC_S_SESSION && FirstSnapshotSet)
 	{
-		GUC_check_errdetail("%s cannot be changed inside a transaction block or "
-							"after any query has been run in the transaction.", guc_name);
+		GUC_check_errdetail("%s cannot be changed after any query has been run "
+							"in the transaction.", guc_name);
 		return false;
 	}
 
@@ -18464,36 +18467,12 @@ check_yb_enable_new_relation_fastpath_write_in_txn_blocks(bool *newval, void **e
 	/*
 	 * yb_enable_new_relation_fastpath_write gates the optimization as a whole,
 	 * and this GUC only widens it to transaction blocks, so a value of on while
-	 * the parent is off is inert rather than unsafe.  The check below only
-	 * catches a likely mistake, and it applies only to SET (PGC_S_SESSION,
-	 * which is also how Connection Manager replays a client's SET).  For the
-	 * other sources it would refuse configurations whose final values are
-	 * valid:
-	 * - The configuration file is applied in file order.  pg_wrapper generates
-	 *   ysql_pg.conf in the data directory, writing the ysql_pg_conf_csv
-	 *   entries ahead of the block it derives from the PG gflags.  A cluster
-	 *   that turns the parent off - through ysql_pg_conf_csv, or through the
-	 *   ysql_yb_enable_new_relation_fastpath_write gflag, which is the kill
-	 *   switch for the optimization as a whole - therefore has the parent
-	 *   assigned off before this GUC is assigned on, and rejecting that pair
-	 *   would leave the postmaster refusing to start.
-	 * - Per-role and per-database settings are likewise applied one after
-	 *   another at backend startup, in an order the user does not choose.
-	 * - Connection request options (PGC_S_CLIENT) are applied in the order the
-	 *   client listed them, so "-c
-	 *   yb_enable_new_relation_fastpath_write_in_txn_blocks=on -c
-	 *   yb_enable_new_relation_fastpath_write=on" would be refused on a cluster
-	 *   with the parent off.
-	 * - ALTER ROLE/DATABASE ... SET (PGC_S_TEST) validates the value in the
-	 *   session running the ALTER, whose parent value says nothing about the
-	 *   parent value that the target role's or database's sessions will have.
+	 * the parent is off has no effect, and is accepted.  GUCs are assigned one
+	 * at a time, in an order that whoever applies them often does not choose
+	 * (the configuration file, per-role and per-database settings, Connection
+	 * Manager replaying a client's SETs), so refusing that pair would refuse
+	 * configurations whose final values are valid.
 	 */
-	if (*newval && !yb_enable_new_relation_fastpath_write && source == PGC_S_SESSION)
-	{
-		GUC_check_errdetail("Cannot enable yb_enable_new_relation_fastpath_write_in_txn_blocks "
-							"when yb_enable_new_relation_fastpath_write is disabled.");
-		return false;
-	}
 
 	/*
 	 * A DDL inside a transaction block can only use the fastpath if it runs in

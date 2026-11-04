@@ -1573,7 +1573,7 @@ TEST_F(SkipIntentsMetricTest, TestGucCannotBeChangedInImplicitTxn) {
   ASSERT_NOK(result);
   ASSERT_STR_CONTAINS(
       result.ToString(),
-      "cannot be changed inside a transaction block or after any query has been run");
+      "cannot be changed after any query has been run in the transaction");
 }
 
 TEST_F(SkipIntentsMetricTest, TestGucCanBeChangedByNormalUser) {
@@ -1655,16 +1655,18 @@ TEST_F(SkipIntentsMetricTest, TestGucSetThroughRoleDatabaseAndConnectionOptions)
 
   // SET keeps the transaction-state restriction.
   ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT 1"));
   auto status = conn.ExecuteFormat("SET $0 = on", kParentGuc);
   ASSERT_NOK(status);
-  ASSERT_STR_CONTAINS(status.ToString(), "cannot be changed inside a transaction block");
+  ASSERT_STR_CONTAINS(status.ToString(), "cannot be changed after any query has been run");
   ASSERT_OK(conn.Execute("ROLLBACK"));
 }
 
 // RESET assigns a GUC its reset value without calling the check hook, so it can change
 // yb_enable_new_relation_fastpath_write inside a transaction block. The transaction must keep the
-// value it started with. Here a per-role setting makes the reset value off, and RESET turns the
-// optimization off after a write has skipped the intents db.
+// value it had when it first used the optimization, here at the CREATE TABLE. A per-role setting
+// makes the reset value off, and RESET turns the optimization off after a write has skipped the
+// intents db.
 TEST_F(SkipIntentsMetricTest, TestGucResetToOffInsideTxnBlock) {
   constexpr auto kParentGuc = "yb_enable_new_relation_fastpath_write";
   auto conn = ASSERT_RESULT(Connect());
@@ -1712,7 +1714,7 @@ TEST_F(SkipIntentsMetricTest, TestGucResetToOnInsideTxnBlock) {
       "SELECT count(*) FROM reset_to_on WHERE k <= 10 AND v = k + 100")), 10)
       << "Rows written to the intents db before the RESET overtook the updates made after it";
   ASSERT_EQ(writes_after, writes_before)
-      << "A transaction that started with the optimization off must not skip the intents db";
+      << "A transaction that first used the optimization with it off must not skip the intents db";
 }
 
 // In an extended-protocol pipeline, statements before the Sync share one transaction that is not a
@@ -1769,6 +1771,34 @@ TEST_F(SkipIntentsMetricTest, TestGucSetEarlierInPipeline) {
       << "The CTAS ignored the SET earlier in its pipeline";
 }
 
+// A SET inside a transaction block, before the transaction's first query, applies to that
+// transaction. Connection Manager replays a client's SETs as one multi-statement query, which runs
+// in an implicit transaction block, so the check hook must accept a SET there.
+TEST_F(SkipIntentsMetricTest, TestGucSetInsideTxnBlockBeforeFirstQuery) {
+  constexpr auto kParentGuc = "yb_enable_new_relation_fastpath_write";
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("SET $0 = off; SET search_path = public", kParentGuc));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(Format("SHOW $0", kParentGuc))), "off");
+  ASSERT_OK(conn.ExecuteFormat("SET $0 = on; SET search_path = public", kParentGuc));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(Format("SHOW $0", kParentGuc))), "on");
+
+  // Premise: the same statement in a transaction block takes the fastpath when the GUC is left on.
+  auto writes_before = ASSERT_RESULT(GetSkipIntentsCount());
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("CREATE TABLE block_on AS SELECT g AS k FROM generate_series(1, 100) g"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_GT(ASSERT_RESULT(GetSkipIntentsCount()), writes_before)
+      << "The CTAS must take the fastpath for the test to cover anything";
+
+  writes_before = ASSERT_RESULT(GetSkipIntentsCount());
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("SET $0 = off", kParentGuc));
+  ASSERT_OK(conn.Execute("CREATE TABLE block_off AS SELECT g AS k FROM generate_series(1, 100) g"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_EQ(ASSERT_RESULT(GetSkipIntentsCount()), writes_before)
+      << "The CTAS ignored the SET earlier in its transaction block";
+}
+
 // A configuration file reload must not be lost when it reaches a session that is idle in a
 // transaction block: it is applied once and never retried. Runtime PG flags such as the kill switch
 // ysql_yb_enable_new_relation_fastpath_write are delivered this way.
@@ -1798,7 +1828,8 @@ TEST_F(SkipIntentsMetricTest, TestConfigReloadInsideTxnBlock) {
 // Connection options are applied in the order the client lists them. With the cluster's
 // yb_enable_new_relation_fastpath_write off, listing
 // yb_enable_new_relation_fastpath_write_in_txn_blocks first must not refuse the connection, since
-// the final values are valid.
+// the final values are valid. The same holds for SET, which Connection Manager replays in an order
+// of its own.
 class SkipIntentsFastpathOffTest : public SkipIntentsMetricTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
@@ -1821,12 +1852,11 @@ TEST_F(SkipIntentsFastpathOffTest, TestConnectionOptionsOrder) {
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(Format("SHOW $0", kParentGuc))), "on");
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(Format("SHOW $0", kInTxnBlocksGuc))), "on");
 
-  // SET still refuses the combination while yb_enable_new_relation_fastpath_write is off.
   ASSERT_OK(conn.ExecuteFormat("SET $0 = off", kInTxnBlocksGuc));
   ASSERT_OK(conn.ExecuteFormat("SET $0 = off", kParentGuc));
-  auto status = conn.ExecuteFormat("SET $0 = on", kInTxnBlocksGuc);
-  ASSERT_NOK(status);
-  ASSERT_STR_CONTAINS(status.ToString(), "when yb_enable_new_relation_fastpath_write is disabled");
+  ASSERT_OK(conn.ExecuteFormat("SET $0 = on", kInTxnBlocksGuc));
+  ASSERT_OK(conn.ExecuteFormat("SET $0 = on", kParentGuc));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(Format("SHOW $0", kInTxnBlocksGuc))), "on");
 }
 
 // A function's SET clause is applied inside the calling statement, where the GUCs cannot change,
