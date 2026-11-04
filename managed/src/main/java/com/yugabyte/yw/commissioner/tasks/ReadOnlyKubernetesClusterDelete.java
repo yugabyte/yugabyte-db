@@ -79,6 +79,9 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
 
   @Override
   public void run() {
+    // Read before the freeze, which moves the placement lock to this task.
+    boolean afterFailedCreate =
+        isPlacementLockHeldBy(getUniverse(), TaskType.ReadOnlyKubernetesClusterCreate);
     Universe universe = lockAndFreezeUniverseForUpdate(-1, null /* Txn callback */);
     Throwable th = null;
     try {
@@ -100,7 +103,11 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
       }
 
       preTaskActions();
-      addBasicPrecheckTasks();
+      // After a failed create the read replica is inconsistent by definition (e.g. pods that
+      // never registered), so these checks would block deleting it.
+      if (!afterFailedCreate) {
+        addBasicPrecheckTasks();
+      }
 
       // We support only one readonly cluster, so using the first one in the list.
       Cluster cluster = roClusters.get(0);

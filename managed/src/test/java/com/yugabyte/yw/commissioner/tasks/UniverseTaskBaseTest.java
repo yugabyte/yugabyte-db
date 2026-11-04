@@ -686,6 +686,22 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
   }
 
   @Test
+  public void testReadReplicaDeleteAllowedAfterFailedReadReplicaCreate() {
+    // PLAT-23418: deleting the half-created read replica is the way out of a failed create.
+    UniverseTaskBase.AllowedTasks k8sAllowed =
+        allowedTasksForFailedTask(TaskType.ReadOnlyKubernetesClusterCreate);
+    assertTrue(k8sAllowed.isRestricted());
+    assertTrue(k8sAllowed.getTaskTypes().contains(TaskType.ReadOnlyKubernetesClusterDelete));
+    UniverseTaskBase.AllowedTasks vmAllowed =
+        allowedTasksForFailedTask(TaskType.ReadOnlyClusterCreate);
+    assertTrue(vmAllowed.isRestricted());
+    assertTrue(vmAllowed.getTaskTypes().contains(TaskType.ReadOnlyClusterDelete));
+    assertTrue(new AllowedUniverseTasksResp(vmAllowed).getTaskIds().contains("Delete_Cluster"));
+    // Only the matching delete: a failed VM create does not allow the K8s delete.
+    assertFalse(vmAllowed.getTaskTypes().contains(TaskType.ReadOnlyKubernetesClusterDelete));
+  }
+
+  @Test
   public void testAllowedTaskIdsAfterFailedRollbackMatchUiActions() {
     // The UI freezes an action when its "<task>_<target>" id is missing from taskIds.
     Set<String> taskIds =
