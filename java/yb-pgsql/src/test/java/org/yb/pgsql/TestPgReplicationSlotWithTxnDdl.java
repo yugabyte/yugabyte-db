@@ -55,7 +55,6 @@ public class TestPgReplicationSlotWithTxnDdl extends BasePgSQLTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     PgReplicationSlotTestUtil.addCommonTServerFlags(flagMap);
-    flagMap.put("ysql_yb_enable_replication_slot_transactional_ddl", "true");
     toggleDDLMode(flagMap, /* useLegacy */ false);
     flagMap.put("ysql_yb_enable_ddl_savepoint_support", "true");
     flagMap.put("vmodule", "cdcsdk_virtual_wal=4");
@@ -66,7 +65,6 @@ public class TestPgReplicationSlotWithTxnDdl extends BasePgSQLTest {
   protected Map<String, String> getMasterFlags() {
     Map<String, String> flagMap = super.getMasterFlags();
     PgReplicationSlotTestUtil.addCommonMasterFlags(flagMap);
-    flagMap.put("ysql_yb_enable_replication_slot_transactional_ddl", "true");
     toggleDDLMode(flagMap, /* useLegacy */ false);
     flagMap.put("ysql_yb_enable_ddl_savepoint_support", "true");
     return flagMap;
