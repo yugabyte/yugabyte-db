@@ -122,14 +122,14 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
     details.requireRollbackable();
 
     UniverseDefinitionTaskParams beforeDetails = details.getBeforeUniverseDetails();
-    Map<String, CloudAPI.NodeDiskSpec> cloudByNode = describeCloudNodes(universe);
+    Map<String, CloudAPI.NodeDiskSpec> diskSpecByNode = describeCloudNodes(universe);
     ResizeNodeParams rollbackParams =
-        buildRollbackParams(failedParams, beforeDetails, universe, cloudByNode);
+        buildRollbackParams(failedParams, beforeDetails, universe, diskSpecByNode);
     // Azure cooldown starts at max(lastVolumeUpdateTime, failed task create time). Carried on the
     // params so the RollbackResizeNode precheck applies the same gate without the original task.
     rollbackParams.setFailedTaskCreateTime(context.getTaskInfo().getCreateTime());
     checkCooldownGate(
-        rollbackParams, universe, rollbackParams.getFailedTaskCreateTime(), cloudByNode);
+        rollbackParams, universe, rollbackParams.getFailedTaskCreateTime(), diskSpecByNode);
 
     // Skip optimistic version check for this programmatically-submitted task.
     rollbackParams.expectedUniverseVersion = -1;
@@ -154,7 +154,7 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
       ResizeNodeParams failedParams,
       UniverseDefinitionTaskParams before,
       Universe universe,
-      Map<String, CloudAPI.NodeDiskSpec> cloudByNode) {
+      Map<String, CloudAPI.NodeDiskSpec> diskSpecByNode) {
     // Start from a JSON round-trip of the failed params so we inherit clusters shape (uuid,
     // clusterType, placement) without carrying transient runtime fields.
     ResizeNodeParams rollbackParams =
@@ -183,7 +183,7 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
       UserIntent restored = beforeIntent.clone();
       keepLargerVolumeSize(rollbackCluster.uuid, restored, beforeIntent, currentIntent);
       rejectShrinkingDisks(
-          restored, currentIntent, current.getNodesInCluster(rollbackCluster.uuid), cloudByNode);
+          restored, currentIntent, current.getNodesInCluster(rollbackCluster.uuid), diskSpecByNode);
       rollbackCluster.userIntent = restored;
     }
     return rollbackParams;
@@ -252,7 +252,7 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
       UserIntent restored,
       UserIntent current,
       Collection<NodeDetails> nodes,
-      Map<String, CloudAPI.NodeDiskSpec> cloudByNode) {
+      Map<String, CloudAPI.NodeDiskSpec> diskSpecByNode) {
     for (NodeDetails node : nodes) {
       DeviceInfo wanted = restored.evaluateDeviceInfoForNode(node);
       if (wanted == null || wanted.volumeSize == null) {
@@ -272,10 +272,10 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
                 node.nodeName,
                 wanted.volumeSize));
       }
-      CloudAPI.NodeDiskSpec cloud = cloudByNode.get(node.nodeName);
-      if (cloud != null
-          && cloud.getVolumeSizeGb() != null
-          && cloud.getVolumeSizeGb() > wanted.volumeSize) {
+      CloudAPI.NodeDiskSpec diskSpec = diskSpecByNode.get(node.nodeName);
+      if (diskSpec != null
+          && diskSpec.getVolumeSizeGb() != null
+          && diskSpec.getVolumeSizeGb() > wanted.volumeSize) {
         throw new PlatformServiceException(
             BAD_REQUEST,
             String.format(
@@ -283,7 +283,7 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
                     + " larger than the %d GB the rollback would set for it, so it can't be rolled"
                     + " back. Retry the resize to drive it forward instead.",
                 node.nodeName,
-                cloud.getVolumeSizeGb(),
+                diskSpec.getVolumeSizeGb(),
                 wanted.volumeSize));
       }
     }
@@ -324,7 +324,7 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
       ResizeNodeParams rollbackParams,
       Universe universe,
       Date failedTaskCreateTime,
-      Map<String, CloudAPI.NodeDiskSpec> cloudByNode) {
+      Map<String, CloudAPI.NodeDiskSpec> diskSpecByNode) {
     if (confGetter.getGlobalConf(GlobalConfKeys.skipResizeNodeRollbackCooldown)) {
       log.warn(
           "Skipping resize-node rollback cooldown gate for universe {} because"
@@ -361,7 +361,7 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
         if (!cloudHasDiskResizeCooldown(cloud, cooldownDev)) {
           continue;
         }
-        CloudAPI.NodeDiskSpec perf = resolveCloudState(provider, node, cloudByNode);
+        CloudAPI.NodeDiskSpec perf = resolveCloudState(provider, node, diskSpecByNode);
         if (cloudAlreadyAtDesired(perf, newDev)) {
           log.info(
               "Skipping disk-modify cooldown for node {}: cloud IOPS/throughput already match"
@@ -436,9 +436,9 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
   }
 
   private CloudAPI.NodeDiskSpec resolveCloudState(
-      Provider provider, NodeDetails node, Map<String, CloudAPI.NodeDiskSpec> cloudByNode) {
-    if (cloudByNode != null && cloudByNode.containsKey(node.nodeName)) {
-      return cloudByNode.get(node.nodeName);
+      Provider provider, NodeDetails node, Map<String, CloudAPI.NodeDiskSpec> diskSpecByNode) {
+    if (diskSpecByNode != null && diskSpecByNode.containsKey(node.nodeName)) {
+      return diskSpecByNode.get(node.nodeName);
     }
     return describeNodeCloudState(provider, node);
   }
