@@ -12709,6 +12709,17 @@ set_config_option_ext(const char *name, const char *value,
 		YbAddToChangedSessionParametersList(name);
 	}
 
+	if (changeVal &&
+		YbIsClientYsqlConnMgr() &&
+		record->context == PGC_SUSET &&
+		source == PGC_S_SESSION &&
+		action == GUC_ACTION_SET &&
+		GetUserId() != GetSessionUserId())
+	{
+		elog(LOG, "Making connection sticky for setting %s", name);
+		yb_ysql_conn_mgr_sticky_guc = true;
+	}
+
 	return changeVal ? 1 : -1;
 }
 
