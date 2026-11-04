@@ -400,13 +400,10 @@ public class TestYbAsh extends BasePgSQLTest {
       // each EXECUTE is short compared to the sampling interval. Keep executing until a sample
       // carries the prepared statement's query id.
       TestUtils.waitFor(() -> {
-        if (getSingleRow(statement, countSamples).getLong(0) > 0) {
-          return true;
-        }
         for (int i = 0; i < 100; ++i) {
           statement.execute(String.format("EXECUTE f(%d)", i));
         }
-        return false;
+        return getSingleRow(statement, countSamples).getLong(0) > 0;
       }, 30000);
     }
   }
