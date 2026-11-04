@@ -4676,7 +4676,10 @@ TEST_P(PgDistributedVectorIndexTest, DroppedIndexCleanedUpAfterSplitParentDelete
         return VERIFY_RESULT(catalog_manager.GetTabletInfo(tablet_id))->LockForRead()->is_hidden();
       },
       30s * kTimeMultiplier, "Split parent hidden"));
-  ASSERT_OK(snapshot_util.WaitScheduleSnapshot(schedule_id, cluster_->mini_master(0)->Now()));
+  // The schedule must release the split parent well before the index, so the parent is deleted and
+  // dropped from the master's maps while the index still lists it.
+  ASSERT_OK(snapshot_util.WaitScheduleSnapshot(
+      schedule_id, cluster_->mini_master(0)->Now().AddDelta(5s * kTimeMultiplier)));
 
   ASSERT_OK(conn.Execute("DROP INDEX " + kVectorIndexName));
 

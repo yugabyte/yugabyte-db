@@ -8277,7 +8277,8 @@ void CatalogManager::RemoveDeletedTabletsFromTables(const TabletInfos& candidate
     }
     // Tablets of a table that is going away are left alone, in tablets_ and tablet_map_. That keeps
     // AreAllTabletsDeleted / AreAllTabletsHidden meaningful, and snapshot, PITR and clone flows can
-    // still look the tablets up; CleanUpDeletedTables removes them with the table.
+    // still look the tablets up; CleanUpDeletedTables removes them with the table. This is checked
+    // only for the tablet's own table, see below for its vector indexes.
     if (table->LockForRead()->started_hiding_or_deleting()) {
       continue;
     }
@@ -8285,7 +8286,13 @@ void CatalogManager::RemoveDeletedTabletsFromTables(const TabletInfos& candidate
     // Every table listing the tablet must drop it before tablet_map_ can: their tablets_ hold only
     // weak pointers, which would otherwise dangle. The tablet's hosted tables are used rather than
     // the indexed table's index list, as they still include a dropped vector index that a snapshot
-    // schedule keeps hidden.
+    // schedule keeps hidden. Such an index is going away too, but unlike the indexed table it
+    // drops the tablet here: the tablet is already deleted, so the index has nothing left to
+    // retain on it, and AreAllTabletsDeleted on the index is unaffected.
+    // A vector index dropped before the split still has the parent as the owner of its partition,
+    // as SplitScope adds only live vector indexes to the children. RemoveInactiveTablet then
+    // refuses, and the parent stays in tablet_map_ until hidden table cleanup removes it from the
+    // index.
     std::vector<TableInfoPtr> tables{table};
     for (const auto& table_id : tablet->GetTableIds()) {
       if (table_id == table->id()) {
