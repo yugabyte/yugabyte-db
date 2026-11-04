@@ -3213,27 +3213,7 @@ public class UniverseCRUDHandler {
   }
 
   private void validateTmpDirGflagConsistency(UniverseDefinitionTaskParams taskParams) {
-    for (Cluster cluster : taskParams.clusters) {
-      if (!cluster.userIntent.getAllCloudTypes().contains(Common.CloudType.onprem)) {
-        continue;
-      }
-      for (UUID providerUuid : cluster.userIntent.getAllProviderUUIDs()) {
-        Provider provider = Provider.getOrBadRequest(providerUuid);
-        if (!provider.getCloudCode().equals(Common.CloudType.onprem)) {
-          continue;
-        }
-        if (confGetter.getConfForScope(
-            provider, ProviderConfKeys.skipTmpDirGflagConsistencyCheck)) {
-          continue;
-        }
-        String tmpDirErrMsg =
-            GFlagsUtil.checkTmpDirGflagConsistency(
-                confGetter, provider, cluster, taskParams.clusters);
-        if (tmpDirErrMsg != null) {
-          throw new PlatformServiceException(BAD_REQUEST, tmpDirErrMsg);
-        }
-      }
-    }
+    GFlagsUtil.validateTmpDirGflagConsistencyOrThrow(confGetter, taskParams.clusters);
   }
 
   private void validateOciInstanceTags(UniverseDefinitionTaskParams taskParams) {

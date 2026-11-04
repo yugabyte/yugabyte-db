@@ -42,6 +42,7 @@ import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -65,9 +66,11 @@ import com.yugabyte.yw.forms.UpgradeWithGFlags;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
@@ -78,6 +81,7 @@ import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import com.yugabyte.yw.models.helpers.telemetry.DataDogConfig;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
@@ -899,6 +903,161 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
     assertEquals(
         SpecificGFlags.construct(masterGFlags, tserverGFlags),
         newParams.getPrimaryCluster().userIntent.specificGFlags);
+  }
+
+  @Test
+  public void testUpgradeGFlagsRejectsUnrelatedEditWhenTmpDirMismatchesProvider()
+      throws IOException {
+    Customer c = ModelFactory.testCustomer();
+    stubProviderTmpDir("/data/tmp", false);
+    Universe u = createOnPremUniverseWithGFlags(c, ImmutableMap.of("master", "1"));
+    GFlagsUpgradeParams params = tmpDirTestEditParams(u, ImmutableMap.of("master", "2"));
+
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> handler.upgradeGFlags(params, c, Universe.getOrBadRequest(u.getUniverseUUID())));
+    assertTrue(exception.getMessage().contains("'/data/tmp'"));
+    assertTrue(exception.getMessage().contains("tmp_dir gflag is '/tmp'"));
+    verify(mockCommissioner, never()).submit(any(TaskType.class), any(ITaskParams.class));
+  }
+
+  @Test
+  public void testUpgradeGFlagsAllowsEditWhenTmpDirMatchesProvider() throws IOException {
+    stubGFlagsUpgradeTaskSubmit();
+    Customer c = ModelFactory.testCustomer();
+    stubProviderTmpDir("/data/tmp", false);
+    Universe u =
+        createOnPremUniverseWithGFlags(
+            c, ImmutableMap.of(GFlagsUtil.TMP_DIRECTORY, "/data/tmp", "master", "1"));
+    GFlagsUpgradeParams params =
+        tmpDirTestEditParams(
+            u, ImmutableMap.of(GFlagsUtil.TMP_DIRECTORY, "/data/tmp", "master", "2"));
+
+    handler.upgradeGFlags(params, c, Universe.getOrBadRequest(u.getUniverseUUID()));
+    verify(mockCommissioner).submit(eq(TaskType.GFlagsUpgrade), any(ITaskParams.class));
+  }
+
+  @Test
+  public void testUpgradeGFlagsRejectsTmpDirChangeAwayFromProvider() throws IOException {
+    Customer c = ModelFactory.testCustomer();
+    stubProviderTmpDir("/data/tmp", false);
+    Universe u =
+        createOnPremUniverseWithGFlags(c, ImmutableMap.of(GFlagsUtil.TMP_DIRECTORY, "/data/tmp"));
+    GFlagsUpgradeParams params =
+        tmpDirTestEditParams(u, ImmutableMap.of(GFlagsUtil.TMP_DIRECTORY, "/tmp"));
+
+    assertThrows(
+        PlatformServiceException.class,
+        () -> handler.upgradeGFlags(params, c, Universe.getOrBadRequest(u.getUniverseUUID())));
+    verify(mockCommissioner, never()).submit(any(TaskType.class), any(ITaskParams.class));
+  }
+
+  @Test
+  public void testUpgradeGFlagsSkipsTmpDirCheckWhenProviderSkipFlagSet() throws IOException {
+    stubGFlagsUpgradeTaskSubmit();
+    Customer c = ModelFactory.testCustomer();
+    stubProviderTmpDir("/data/tmp", true);
+    Universe u = createOnPremUniverseWithGFlags(c, ImmutableMap.of("master", "1"));
+    GFlagsUpgradeParams params = tmpDirTestEditParams(u, ImmutableMap.of("master", "2"));
+
+    handler.upgradeGFlags(params, c, Universe.getOrBadRequest(u.getUniverseUUID()));
+    verify(mockCommissioner).submit(eq(TaskType.GFlagsUpgrade), any(ITaskParams.class));
+  }
+
+  @Test
+  public void testUpgradeGFlagsRejectsPerAzTmpDirMismatchOnPlacementAz() throws IOException {
+    Customer c = ModelFactory.testCustomer();
+    stubProviderTmpDir("/data/tmp", false);
+    Map<String, String> flags = ImmutableMap.of(GFlagsUtil.TMP_DIRECTORY, "/data/tmp");
+    Universe u = createOnPremUniverseWithGFlags(c, flags);
+    UUID az1 = UUID.randomUUID();
+    UUID az2 = UUID.randomUUID();
+    UUID providerUuid =
+        UUID.fromString(u.getUniverseDetails().getPrimaryCluster().userIntent.provider);
+    Universe.saveDetails(
+        u.getUniverseUUID(),
+        universe -> {
+          UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+          details.getPrimaryCluster().placementInfo =
+              createSingleProviderPlacement(providerUuid, az1, az2);
+          universe.setUniverseDetails(details);
+        });
+    Universe updated = Universe.getOrBadRequest(u.getUniverseUUID());
+    GFlagsUpgradeParams params = tmpDirTestEditParams(updated, flags);
+    SpecificGFlags.PerProcessFlags az2Override = new SpecificGFlags.PerProcessFlags();
+    az2Override.value =
+        ImmutableMap.of(
+            ServerType.MASTER, ImmutableMap.of(GFlagsUtil.TMP_DIRECTORY, "/tmp"),
+            ServerType.TSERVER, ImmutableMap.of(GFlagsUtil.TMP_DIRECTORY, "/tmp"));
+    params.getPrimaryCluster().userIntent.specificGFlags.getPerAZ().put(az2, az2Override);
+
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> handler.upgradeGFlags(params, c, Universe.getOrBadRequest(u.getUniverseUUID())));
+    assertTrue(exception.getMessage().contains("tmp_dir gflag is '/tmp'"));
+    verify(mockCommissioner, never()).submit(any(TaskType.class), any(ITaskParams.class));
+  }
+
+  private void stubGFlagsUpgradeTaskSubmit() {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.GFlagsUpgrade);
+    when(mockCommissioner.submit(any(TaskType.class), any(ITaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+  }
+
+  private void stubProviderTmpDir(String remoteTmpDirectory, boolean skipCheck) {
+    when(runtimeConfGetter.getConfForScope(any(Customer.class), any())).thenReturn(false);
+    when(runtimeConfGetter.getConfForScope(
+            any(Provider.class), eq(ProviderConfKeys.remoteTmpDirectory)))
+        .thenReturn(remoteTmpDirectory);
+    when(runtimeConfGetter.getConfForScope(
+            any(Provider.class), eq(ProviderConfKeys.skipTmpDirGflagConsistencyCheck)))
+        .thenReturn(skipCheck);
+  }
+
+  private Universe createOnPremUniverseWithGFlags(Customer c, Map<String, String> gflags) {
+    ModelFactory.onpremProvider(c);
+    Universe u =
+        ModelFactory.createUniverse(
+            "onprem-universe", UUID.randomUUID(), c.getId(), CloudType.onprem);
+    return Universe.saveDetails(
+        u.getUniverseUUID(),
+        universe -> {
+          UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+          UniverseDefinitionTaskParams.UserIntent userIntent =
+              details.getPrimaryCluster().userIntent;
+          userIntent.specificGFlags = SpecificGFlags.construct(gflags, gflags);
+          userIntent.masterGFlags = new HashMap<>(gflags);
+          userIntent.tserverGFlags = new HashMap<>(gflags);
+          universe.setUniverseDetails(details);
+        });
+  }
+
+  private GFlagsUpgradeParams tmpDirTestEditParams(Universe u, Map<String, String> newGFlags) {
+    GFlagsUpgradeParams params = new GFlagsUpgradeParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = u.getUniverseDetails().clusters;
+    params.getPrimaryCluster().userIntent.specificGFlags =
+        SpecificGFlags.construct(newGFlags, newGFlags);
+    return params;
+  }
+
+  private PlacementInfo createSingleProviderPlacement(UUID providerUuid, UUID... azUuids) {
+    PlacementInfo.PlacementRegion region = new PlacementInfo.PlacementRegion();
+    region.uuid = UUID.randomUUID();
+    region.azList = new ArrayList<>();
+    for (UUID azUuid : azUuids) {
+      PlacementInfo.PlacementAZ placementAz = new PlacementInfo.PlacementAZ();
+      placementAz.uuid = azUuid;
+      region.azList.add(placementAz);
+    }
+    PlacementInfo.PlacementCloud cloud = new PlacementInfo.PlacementCloud();
+    cloud.uuid = providerUuid;
+    cloud.regionList = new ArrayList<>(List.of(region));
+    PlacementInfo placementInfo = new PlacementInfo();
+    placementInfo.cloudList = new ArrayList<>(List.of(cloud));
+    return placementInfo;
   }
 
   private void initGflagDefaults() throws IOException {
