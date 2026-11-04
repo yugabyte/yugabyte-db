@@ -263,9 +263,8 @@ TEST_F(CDCSDKYsqlTest, TestSentLagNoSpikeAfterLeaderChange) {
   ASSERT_EQ(tablets.size(), 1);
   const auto tablet_id = tablets[0].tablet_id();
 
-  auto stream_id =
-      ASSERT_RESULT(CreateDBStreamBasedOnCheckpointType(cdc::CDCCheckpointType::IMPLICIT));
-  ASSERT_FALSE(ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets)).has_error());
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream(
+      CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT, CDCCheckpointType::IMPLICIT));
 
   ASSERT_OK(WriteRowsHelper(0, 1, &test_cluster_, true));
   GetChangesResponsePB change_resp;
@@ -287,16 +286,11 @@ TEST_F(CDCSDKYsqlTest, TestSentLagNoSpikeAfterLeaderChange) {
                metrics->cdcsdk_last_sent_physicaltime->value() > 0;
       },
       MonoDelta::FromSeconds(10) * kTimeMultiplier, "Caught up"));
-  const auto old_last_sent_micros = metrics->cdcsdk_last_sent_physicaltime->value();
-
-  auto original_leader_peer = [&]() -> std::shared_ptr<tablet::TabletPeer> {
-    for (const auto& peer : test_cluster()->GetTabletPeers(leader_index)) {
-      if (peer && peer->tablet_id() == tablet_id) {
-        return peer;
-      }
-    }
-    return nullptr;
-  };
+  ASSERT_GT(metrics->cdcsdk_change_event_count->value(), 0);
+  ASSERT_GT(metrics->cdcsdk_traffic_sent->value(), 0);
+  auto original_leader_peer =
+      test_cluster()->GetTabletManager(leader_index)->LookupTablet(tablet_id);
+  ASSERT_NE(original_leader_peer, nullptr);
 
   // Move leadership away, and let the new leader stream the next row so the stream itself stays
   // caught up.
@@ -304,34 +298,39 @@ TEST_F(CDCSDKYsqlTest, TestSentLagNoSpikeAfterLeaderChange) {
   ASSERT_OK(StepDownLeader(follower_index, tablet_id));
   ASSERT_OK(WaitFor(
       [&] {
-        auto peer = original_leader_peer();
-        return peer && !peer->IsLeaderAndReady() &&
+        return !original_leader_peer->IsLeaderAndReady() &&
                metrics->cdcsdk_last_sent_physicaltime->value() == 0;
       },
       MonoDelta::FromSeconds(30) * kTimeMultiplier, "Original leader cleared last-sent"));
-  // The next row must commit more than 2s after the old last-sent time, so a stale last-sent
-  // would show as a spike.
-  ASSERT_OK(WaitFor(
-      [&] { return GetCurrentTimeMicros() - old_last_sent_micros > 3 * 1000 * 1000; },
-      MonoDelta::FromSeconds(10) * kTimeMultiplier, "Commit time past the old last-sent time"));
+  ASSERT_EQ(metrics->cdcsdk_sent_lag_micros->value(), 0);
+  ASSERT_EQ(metrics->cdcsdk_flush_lag->value(), 0);
+
+  // The next row must commit well after the old last-sent time, so a stale last-sent would show
+  // as a spike.
+  SleepFor(MonoDelta::FromSeconds(3) * kTimeMultiplier);
   ASSERT_OK(WriteRowsHelper(1, 2, &test_cluster_, true));
   auto cp = change_resp.cdc_sdk_checkpoint();
   ASSERT_OK(WaitForGetChangesToFetchRecords(
       &change_resp, stream_id, tablets, 1, /* is_explicit_checkpoint */ false, &cp));
 
+  auto new_leader_metrics = ASSERT_RESULT(GetCDCSDKTabletMetrics(
+      *CDCService(test_cluster()->mini_tablet_server(follower_index)->server()), tablet_id,
+      stream_id, CreateMetricsEntityIfNotFound::kFalse));
+  ASSERT_GT(new_leader_metrics->cdcsdk_change_event_count->value(), 0);
+  ASSERT_GT(new_leader_metrics->cdcsdk_traffic_sent->value(), 0);
+  ASSERT_GT(new_leader_metrics->cdcsdk_last_sent_physicaltime->value(), 0);
+  ASSERT_LT(new_leader_metrics->cdcsdk_sent_lag_micros->value(), 1000 * 1000);
+
   ASSERT_OK(StepDownLeader(leader_index, tablet_id));
   ASSERT_OK(WaitFor(
-      [&] {
-        auto peer = original_leader_peer();
-        return peer && peer->IsLeaderAndReady();
-      },
+      [&] { return original_leader_peer->IsLeaderAndReady(); },
       MonoDelta::FromSeconds(30) * kTimeMultiplier, "Original leader is ready"));
 
   // No GetChanges. UpdateMetrics is the only thing that can publish sent lag now.
   const auto deadline = MonoTime::Now() + MonoDelta::FromSeconds(3) * kTimeMultiplier;
   while (MonoTime::Now() < deadline) {
-    ASSERT_LT(metrics->cdcsdk_sent_lag_micros->value(), 2 * 1000 * 1000)
-        << "last_sent=" << metrics->cdcsdk_last_sent_physicaltime->value();
+    ASSERT_LT(metrics->cdcsdk_sent_lag_micros->value(), 1000 * 1000);
+    ASSERT_EQ(metrics->cdcsdk_last_sent_physicaltime->value(), 0);
     SleepFor(MonoDelta::FromMilliseconds(100));
   }
 }
