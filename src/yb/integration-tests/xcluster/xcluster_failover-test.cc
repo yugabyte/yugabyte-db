@@ -110,12 +110,13 @@ class XClusterFailoverWithDDLTest : public XClusterDDLReplicationTestBase {
     for (const auto& ns : namespace_ids) {
       RETURN_NOT_OK(
           WaitForReadOnlyModeOnAllTServers(ns, /*is_read_only=*/false, &consumer_cluster_));
-      // The AUTOMATIC_TARGET role also refuses DMLs and reaches TServers via its own heartbeat.
+      // AUTOMATIC_TARGET and UNAVAILABLE roles also refuse DMLs and reach TServers via their own
+      // heartbeat.
       for (auto& tserver : consumer_cluster_.mini_cluster_->mini_tablet_servers()) {
         RETURN_NOT_OK(WaitFor(
             [&]() -> Result<bool> {
-              return tserver->server()->GetXClusterContext().GetXClusterRole(ns) !=
-                     XClusterNamespaceInfoPB_XClusterRole_AUTOMATIC_TARGET;
+              return tserver->server()->GetXClusterContext().GetXClusterRole(ns) ==
+                     XClusterNamespaceInfoPB_XClusterRole_NOT_AUTOMATIC_MODE;
             },
             kTimeout, Format("Wait for namespace $0 to drop target role", ns)));
       }
