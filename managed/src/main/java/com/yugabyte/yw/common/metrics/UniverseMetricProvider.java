@@ -110,7 +110,7 @@ public class UniverseMetricProvider implements MetricsProvider {
             .collect(Collectors.toMap(config -> config.getConfigUUID(), Function.identity()));
     Map<AccessKeyId, AccessKey> allAccessKeys = accessKeyRotationUtil.createAllAccessKeysMap();
     boolean vmOsPatchingEnabled = confGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching);
-    // Image bundles of the universes seen so far, fetched once per run.
+    // Image bundles of the universes seen so far, fetched once per run. Null for a missing one.
     Map<UUID, ImageBundle> imageBundleMap = new HashMap<>();
 
     String ybaVersion = ConfigHelper.getCurrentVersion(environment);
@@ -243,8 +243,11 @@ public class UniverseMetricProvider implements MetricsProvider {
               int universeOSUpdateRequired = 0;
               for (UUID imageBundleUUID : userIntent.getAllImageBundles()) {
                 if (imageBundleUUID != null) {
-                  ImageBundle bundle =
-                      imageBundleMap.computeIfAbsent(imageBundleUUID, ImageBundle::get);
+                  // Also remember missing bundles (null), so they are not queried again.
+                  if (!imageBundleMap.containsKey(imageBundleUUID)) {
+                    imageBundleMap.put(imageBundleUUID, ImageBundle.get(imageBundleUUID));
+                  }
+                  ImageBundle bundle = imageBundleMap.get(imageBundleUUID);
                   if (bundle != null
                       && bundle.getMetadata() != null
                       && bundle.getMetadata().getType() != null

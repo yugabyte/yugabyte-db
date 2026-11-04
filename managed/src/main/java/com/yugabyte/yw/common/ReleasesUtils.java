@@ -476,9 +476,15 @@ public class ReleasesUtils {
     log.trace("version {} is valid", currVersion);
   }
 
+  // A universe's DB version, as the release endpoints group universes by it: the primary cluster's.
+  private static final String UNIVERSE_VERSION_SQL =
+      "(universe_details_json::json)#>>'{clusters,0,userIntent,ybSoftwareVersion}'";
+
   public Map<String, List<Universe>> versionUniversesMap() {
     String sql =
-        "select (universe_details_json::json)#>>'{clusters,0,userIntent,ybSoftwareVersion}' as"
+        "select "
+            + UNIVERSE_VERSION_SQL
+            + " as"
             + " yb_software_version, string_agg(universe.universe_uuid::text, ',') as universes "
             + " from universe group by yb_software_version;";
     SqlQuery query = DB.sqlQuery(sql);
@@ -502,7 +508,9 @@ public class ReleasesUtils {
    */
   public Map<String, List<ResponseRelease.Universe>> versionUniverseSummaries() {
     String sql =
-        "select (universe_details_json::json)#>>'{clusters,0,userIntent,ybSoftwareVersion}' as"
+        "select "
+            + UNIVERSE_VERSION_SQL
+            + " as"
             + " yb_software_version, universe_uuid, name, creation_date from universe";
     Map<String, List<ResponseRelease.Universe>> result = new HashMap<>();
     for (SqlRow row : DB.sqlQuery(sql).findList()) {

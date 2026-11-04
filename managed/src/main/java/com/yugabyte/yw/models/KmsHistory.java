@@ -15,6 +15,7 @@ import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.ebean.DB;
+import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.SqlUpdate;
@@ -270,30 +271,24 @@ public class KmsHistory extends Model {
         .findList();
   }
 
-  public static List<KmsHistory> getAllUniverseKeysWithActiveMasterKey(UUID targetUUID) {
-    // Get the latest reEncryptionCount value. This represents the most active master key.
-    int latestReEncryptionCount = getLatestReEncryptionCount(targetUUID);
+  // Universe keys encrypted with the most active master key, the one with the latest
+  // reEncryptionCount.
+  private static ExpressionList<KmsHistory> universeKeysWithActiveMasterKey(UUID targetUUID) {
     return KmsHistory.find
         .query()
         .where()
         .eq("target_uuid", targetUUID)
         .eq("type", KmsHistoryId.TargetType.UNIVERSE_KEY)
-        .eq("re_encryption_count", latestReEncryptionCount)
-        .orderBy()
-        .desc("timestamp")
-        .findList();
+        .eq("re_encryption_count", getLatestReEncryptionCount(targetUUID));
+  }
+
+  public static List<KmsHistory> getAllUniverseKeysWithActiveMasterKey(UUID targetUUID) {
+    return universeKeysWithActiveMasterKey(targetUUID).orderBy().desc("timestamp").findList();
   }
 
   /** Same rows as {@link #getAllUniverseKeysWithActiveMasterKey}, counted without loading them. */
   public static int countUniverseKeysWithActiveMasterKey(UUID targetUUID) {
-    int latestReEncryptionCount = getLatestReEncryptionCount(targetUUID);
-    return KmsHistory.find
-        .query()
-        .where()
-        .eq("target_uuid", targetUUID)
-        .eq("type", KmsHistoryId.TargetType.UNIVERSE_KEY)
-        .eq("re_encryption_count", latestReEncryptionCount)
-        .findCount();
+    return universeKeysWithActiveMasterKey(targetUUID).findCount();
   }
 
   public static KmsHistory getKeyRefConfig(
