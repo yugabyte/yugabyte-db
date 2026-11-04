@@ -414,9 +414,9 @@ During startup, only the server-wide value applies, set with [ysql_pg_conf_csv](
 Default: `true`
 {{% /tags/wrap %}}
 
-v2025.2.8.1 and later only. Lets a connection start from a catalog version that the node already has cached. When a connection begins while the YB-Master leader is shedding catalog prefetches, the backend reads the catalog at the cached version instead of fetching the whole catalog from the leader, and applies the invalidation messages between that version and the current version before it runs anything.
+v2025.2.8.1 and later only. Lets a connection that [preloads the catalog cache](../../../best-practices-operations/ysql-catalog-cache-tuning-guide/) start from a catalog version that the node already has cached. When such a connection begins while the YB-Master leader reports that it is shedding catalog prefetches, it can read the catalog at the version cached on its YB-TServer instead of fetching the whole catalog from the leader. It then applies the invalidation messages between that version and the current version before it runs any statement.
 
-This applies only to connections that preload the catalog cache when they start — for example, when [ysql_catalog_preload_additional_tables](#ysql-catalog-preload-additional-tables) or [ysql_catalog_preload_additional_table_list](#ysql-catalog-preload-additional-table-list) is set, or when [ysql_use_relcache_file](#ysql-use-relcache-file) is `false` — and only when invalidation messages and per-database catalog version mode are in use. On a cluster with default settings, connections do not preload the catalog cache, so they do not take this path. In that configuration, this parameter only changes the admission priority of the read that a backend makes ahead of authentication: that read is admitted ahead of catalog prefetches that are waiting to begin.
+On a cluster with default settings, connections do not preload the catalog cache, so they do not take this path. In that configuration, this parameter only changes the admission priority of the read that a backend makes ahead of authentication: that read is admitted ahead of catalog prefetches that are waiting to begin.
 
 When set to `false`, every connection fetches the catalog from the YB-Master leader, and the read that a backend makes ahead of authentication takes the ordinary catalog prefetch admission priority.
 
