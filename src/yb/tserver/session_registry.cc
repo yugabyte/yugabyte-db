@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <ranges>
+#include <thread>
 
 #include "yb/util/atomic.h"
 #include "yb/util/flags.h"
@@ -135,6 +136,15 @@ bool SessionRegistryBase::Shutdown() {
   }
   for (const auto& session : sessions) {
     session->CompleteShutdown();
+  }
+  // A session destructor waits for the session's in-flight requests, so the last reference must
+  // not be released by one of them.
+  for (const auto& session : sessions) {
+    while (!session->ReadyToShutdown()) {
+      YB_LOG_EVERY_N_SECS(WARNING, 10)
+          << "Waiting for session " << session->id() << " to be ready to shutdown";
+      std::this_thread::sleep_for(10ms);
+    }
   }
   check_expired_sessions_.StartShutdown();
   check_expired_sessions_.CompleteShutdown();

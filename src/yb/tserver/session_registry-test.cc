@@ -56,7 +56,7 @@ class MockClientSession : public ClientSession {
     ++metrics_.start_shutdown_count;
   }
 
-  bool ReadyToShutdown() const override { return false; }
+  bool ReadyToShutdown() const override { return metrics_.complete_shutdown_count > 0; }
 
   void CompleteShutdown() override {
     ++metrics_.complete_shutdown_count;
