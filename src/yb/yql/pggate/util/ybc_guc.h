@@ -204,6 +204,8 @@ extern bool yb_cdcsdk_stream_tables_without_primary_key;
  */
 extern bool yb_cdcsdk_allow_dml_without_pk;
 
+extern bool yb_enable_replication_slot_transactional_ddl;
+
 extern bool yb_enable_object_locking_infra;
 
 extern bool yb_enable_ddl_savepoint_infra;
