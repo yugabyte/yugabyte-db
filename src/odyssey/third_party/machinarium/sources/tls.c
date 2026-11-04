@@ -923,7 +923,7 @@ int mm_tls_read(mm_io_t *io, char *buf, int size)
 	int rc;
 	rc = SSL_read(io->tls_ssl, buf, size);
 	if (rc > 0) {
-		if (mm_tls_read_pending(io)) {
+		if (io->on_read != NULL && mm_tls_read_pending(io)) {
 			mm_cond_signal((mm_cond_t *)io->on_read,
 				       &mm_self->scheduler);
 		}

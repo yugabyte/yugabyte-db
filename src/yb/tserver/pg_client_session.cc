@@ -194,7 +194,7 @@ DECLARE_bool(ysql_yb_allow_replication_slot_ordering_modes);
 DECLARE_bool(ysql_yb_enable_advisory_locks);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(enable_object_locking_for_table_locks);
-DECLARE_bool(ysql_enable_object_locking_infra);
+DECLARE_bool(ysql_yb_enable_object_locking_infra);
 DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 
 DECLARE_string(ysql_sequence_cache_method);
@@ -3918,7 +3918,9 @@ class PgClientSession::Impl {
     metadata.transaction_id = read_txn_id;
     metadata.isolation = IsolationLevel::SNAPSHOT_ISOLATION;
     metadata.is_read_only_historical_committed_txn = true;
-    txn = client::YBTransaction::Fabricate(&context_.transaction_manager_provider(), metadata);
+    txn = client::YBTransaction::Fabricate(
+        &context_.transaction_manager_provider(), metadata,
+        VERIFY_RESULT(SubtxnSet::FromPB(options.historical_read_aborted_subtxns().set())));
     txn->SetLogPrefixTag(kTxnLogPrefixTag, id_);
     session->SetTransaction(txn);
     VLOG_WITH_PREFIX(2) << "Fabricated historical read transaction " << read_txn_id;
@@ -4782,7 +4784,7 @@ class PgClientSession::Impl {
   [[nodiscard]] bool IsObjectLockingEnabled() const {
     return ts_lock_manager() != nullptr &&
            FLAGS_enable_object_locking_for_table_locks &&
-           FLAGS_ysql_enable_object_locking_infra;
+           FLAGS_ysql_yb_enable_object_locking_infra;
   }
 
   Result<TransactionMetadata> NextObjectLockingTxnMeta(
