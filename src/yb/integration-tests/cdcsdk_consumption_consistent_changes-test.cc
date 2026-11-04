@@ -27,6 +27,17 @@ DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 namespace yb {
 namespace cdc {
 
+namespace {
+
+template <class Records>
+bool HasDDLRecord(const Records& records) {
+  return std::any_of(records.begin(), records.end(), [](const CDCSDKProtoRecordPB& record) {
+    return record.row_message().op() == RowMessage_Op_DDL;
+  });
+}
+
+}  // namespace
+
 class CDCSDKConsumptionConsistentChangesTest : public CDCSDKYsqlTest {
  public:
   void SetUp() override {
@@ -1460,7 +1471,10 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWitDDLStatemen
 
   CheckRecordsConsistencyFromVWAL(get_all_pending_changes_resp.records);
   LOG(INFO) << "Got " << get_all_pending_changes_resp.records.size() << " records.";
-  CheckRecordCount(get_all_pending_changes_resp, expected_dml_records, expected_ddl_records);
+  CheckRecordCount(get_all_pending_changes_resp, expected_dml_records);
+  ASSERT_EQ_UNLESS_TXN_DDL(
+      expected_ddl_records, get_all_pending_changes_resp.record_count[0],
+      ASSERT_GE(get_all_pending_changes_resp.record_count[0], 2));
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWitDDLStatementsAndRestart) {
@@ -1538,15 +1552,21 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWitDDLStatemen
   auto resp_after_restart = ASSERT_RESULT(
       GetAllPendingTxnsFromVirtualWAL(stream_id, {table.table_id()}, expected_dml_records, true));
 
-  // First 6 records recevied after restart should be DDL records.
-  for (int i = 0; i < expected_ddl_records; i++) {
-    ASSERT_TRUE(resp_after_restart.records[i].row_message().op() == RowMessage_Op_DDL);
+  if (!FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) {
+    // First 6 records recevied after restart should be DDL records.
+    for (int i = 0; i < expected_ddl_records; i++) {
+      ASSERT_TRUE(resp_after_restart.records[i].row_message().op() == RowMessage_Op_DDL);
+    }
   }
+  ASSERT_EQ_UNLESS_TXN_DDL(
+      expected_ddl_records, resp_after_restart.record_count[0],
+      ASSERT_GE(
+          get_all_pending_changes_resp.record_count[0] + resp_after_restart.record_count[0], 2));
 
   CheckRecordsConsistencyFromVWAL(resp_after_restart.records);
   LOG(INFO) << "Got " << resp_after_restart.records.size() << " records.";
   CheckRecordCount(
-      resp_after_restart, expected_dml_records, expected_ddl_records,
+      resp_after_restart, expected_dml_records, 0 /* expected_ddl_records */,
       expected_min_txn_id_after_restart);
 }
 
@@ -1588,8 +1608,9 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWithMultipleAl
   }
   LOG(INFO) << "Added columns and pushed required records";
 
-  int expected_ddl_records = 13 * 3;  // 13 DDL / tablet
-  expected_dml_records = 13 * 10;     /* number of add columns 'times' insert per batch */
+  const int num_add_columns = 13;
+  int expected_ddl_records = num_add_columns * 3;  // 13 DDL / tablet
+  expected_dml_records = num_add_columns * 10; /* number of add columns 'times' insert per batch */
   auto consistent_change_resp_after_alter = ASSERT_RESULT(
       GetAllPendingTxnsFromVirtualWAL(stream_id, {table.table_id()}, expected_dml_records, false));
   LOG(INFO) << "Got " << consistent_change_resp_after_alter.records.size() << " records.";
@@ -1607,7 +1628,8 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWithMultipleAl
     }
   }
 
-  ASSERT_EQ(seen_ddl_records, expected_ddl_records);
+  ASSERT_EQ_UNLESS_TXN_DDL(
+      expected_ddl_records, seen_ddl_records, ASSERT_GE(seen_ddl_records, num_add_columns));
   ASSERT_EQ(seen_dml_records, expected_dml_records);
   CheckRecordsConsistencyFromVWAL(consistent_change_resp_after_alter.records);
 }
@@ -2555,7 +2577,9 @@ void CDCSDKConsumptionConsistentChangesTest::TestCommitTimeTieWithPublicationRef
   uint64_t restart_lsn = 0;
   uint64_t last_record_lsn = 0;
 
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 7);
+  ASSERT_EQ_UNLESS_TXN_DDL(
+      7, change_resp.cdc_sdk_proto_records_size(),
+      ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 6));
   for (auto record : change_resp.cdc_sdk_proto_records()) {
     last_record_lsn = record.row_message().pg_lsn();
     restart_lsn = last_record_lsn + 1;
@@ -5053,7 +5077,8 @@ void CDCSDKConsumptionConsistentChangesTest::TestExplcictCheckpointMovementAfter
         stream_id, {table.table_id()}, 1 /* expected_dml_records */,
         false /* init_virtual_wal */, kVWALSessionId1,
         false /* allow_sending_feedback */));
-    ASSERT_EQ(change_resp.records.size(), 4);
+    ASSERT_EQ_UNLESS_TXN_DDL(
+        4, change_resp.records.size(), ASSERT_TRUE(HasDDLRecord(change_resp.records)));
 
     // Since we haven't acknowledged anything after getting the old_checkpoint, the checkpoints in
     // the state table should not move.
@@ -5120,7 +5145,8 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestExplcictCheckpointMovementAft
       stream_id, {table.table_id()}, 1 /* expected_dml_records */,
       false /* init_virtual_wal */, kVWALSessionId1,
       false /* allow_sending_feedback */));
-  ASSERT_EQ(change_resp.records.size(), 4);
+  ASSERT_EQ_UNLESS_TXN_DDL(
+      4, change_resp.records.size(), ASSERT_TRUE(HasDDLRecord(change_resp.records)));
   auto record = change_resp.records.back();
   ASSERT_EQ(record.row_message().op(), RowMessage_Op_COMMIT);
   auto commit_lsn_1 = record.row_message().pg_lsn();
@@ -5134,7 +5160,8 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestExplcictCheckpointMovementAft
       stream_id, {table.table_id()}, 1 /* expected_dml_records */,
       false /* init_virtual_wal */, kVWALSessionId1,
       false /* allow_sending_feedback */));
-  ASSERT_EQ(change_resp.records.size(), 4);
+  ASSERT_EQ_UNLESS_TXN_DDL(
+      4, change_resp.records.size(), ASSERT_TRUE(HasDDLRecord(change_resp.records)));
   auto record_2 = change_resp.records.back();
   ASSERT_EQ(record_2.row_message().op(), RowMessage_Op_COMMIT);
   auto commit_lsn_2 = record_2.row_message().pg_lsn();
@@ -5997,18 +6024,29 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestOnlyReWriteCausingDDLsTrigger
   // Any DDL which causes table rewrite should send the pub refresh signal to the walsender.
   ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN serial_col SERIAL"));
 
-  // Consume the DDL record.
-  auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 1);
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records()[0].row_message().op(), RowMessage_Op_DDL);
+  GetConsistentChangesResponsePB change_resp;
+  if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) {
+    ASSERT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          change_resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+          return change_resp.needs_publication_table_list_refresh();
+        },
+        MonoDelta::FromSeconds(60), "Timed out waiting for the pub refresh signal"));
+    ASSERT_TRUE(change_resp.has_publication_refresh_time());
+  } else {
+    // Consume the DDL record.
+    change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+    ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 1);
+    ASSERT_EQ(change_resp.cdc_sdk_proto_records()[0].row_message().op(), RowMessage_Op_DDL);
 
-  // Next GetConsistentChanges will signal for pub refresh.
-  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 0);
-  ASSERT_TRUE(
-      change_resp.has_needs_publication_table_list_refresh() &&
-      change_resp.needs_publication_table_list_refresh() &&
-      change_resp.has_publication_refresh_time());
+    // Next GetConsistentChanges will signal for pub refresh.
+    change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+    ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 0);
+    ASSERT_TRUE(
+        change_resp.has_needs_publication_table_list_refresh() &&
+        change_resp.needs_publication_table_list_refresh() &&
+        change_resp.has_publication_refresh_time());
+  }
   ASSERT_GT(change_resp.publication_refresh_time(), 0);
 
   auto new_table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, kTableName));
@@ -6018,6 +6056,20 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestOnlyReWriteCausingDDLsTrigger
   // Any DDL which does not lead to a table rewrite should not send a pub refresh signal to the
   // walsender.
   ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN text_col text"));
+
+  if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) {
+    ASSERT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          change_resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+          SCHECK(
+              !change_resp.has_needs_publication_table_list_refresh() &&
+                  !change_resp.has_publication_refresh_time(),
+              IllegalState, "Pub refresh signalled for a DDL without a table rewrite");
+          return HasDDLRecord(change_resp.cdc_sdk_proto_records());
+        },
+        MonoDelta::FromSeconds(60), "Timed out waiting for the DDL record"));
+    return;
+  }
 
   // No pub refresh, since no table rewrite. This empty response is due to sys catalog tablet queue
   // becoming empty.

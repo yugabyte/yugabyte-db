@@ -4465,15 +4465,22 @@ void CDCSDKYsqlTest::CheckRecordsConsistencyFromVWAL(
     }
 
     if (record.row_message().op() == RowMessage::DDL) {
-      if (prev_op == RowMessage::DDL) {
-        // There can be two DDLs received back to back with the same commit_time.
-        ASSERT_GE(record.row_message().commit_time(), prev_commit_time);
+      if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl && in_transaction) {
+        ASSERT_EQ(record.row_message().commit_time(), prev_commit_time);
+        ASSERT_GT(record.row_message().pg_lsn(), prev_lsn);
+        ASSERT_EQ(record.row_message().pg_transaction_id(), prev_txn_id);
+        prev_lsn = record.row_message().pg_lsn();
       } else {
-        // Since DDL are not part of txn, they should have a strictly greater commit_time.
-        ASSERT_GT(record.row_message().commit_time(), prev_commit_time);
+        if (prev_op == RowMessage::DDL) {
+          // There can be two DDLs received back to back with the same commit_time.
+          ASSERT_GE(record.row_message().commit_time(), prev_commit_time);
+        } else {
+          // Since DDL are not part of txn, they should have a strictly greater commit_time.
+          ASSERT_GT(record.row_message().commit_time(), prev_commit_time);
+        }
+        ASSERT_FALSE(record.row_message().has_pg_lsn());
+        ASSERT_FALSE(record.row_message().has_pg_transaction_id());
       }
-      ASSERT_FALSE(record.row_message().has_pg_lsn());
-      ASSERT_FALSE(record.row_message().has_pg_transaction_id());
     }
 
     prev_op = record.row_message().op();
