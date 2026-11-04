@@ -1813,6 +1813,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     List<TaskInfo> earlySecretUpdate = earlySecretUpdate(plan, postRemove);
     assertEquals(ImmutableSet.of(az1.getCode(), az2.getCode()), azCodes(earlySecretUpdate));
     assertEquals(2, earlySecretUpdate.size());
+    assertEquals(lastPosition(postRemove) + 1, firstPosition(earlySecretUpdate));
     for (TaskInfo t : earlySecretUpdate) {
       assertEquals(newMasters, helmMasterAddresses(t));
       assertTrue(keepsGflagsChecksum(t));
@@ -1923,25 +1924,23 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
   }
 
   /**
-   * The early Secret update: the helm group right after the post-remove push, which waits for the
-   * Secret to sync next. Without it, that slot holds the new az-4 pods instead.
+   * The early Secret update: the first non-restart helm group after the given push that waits for
+   * the Secret to sync and then saves that the new masters were propagated.
    */
-  private List<TaskInfo> earlySecretUpdate(List<TaskInfo> plan, List<TaskInfo> postRemove) {
-    int slot = lastPosition(postRemove) + 1;
-    List<TaskInfo> group =
-        helmUpgrades(plan).stream()
-            .filter(t -> t.getPosition() == slot && keepsGflagsChecksum(t))
-            .filter(t -> !"az-4".equals(t.getTaskParams().path("azCode").asText()))
-            .collect(Collectors.toList());
-    if (!group.isEmpty()) {
-      assertEquals(
-          ImmutableList.of(TaskType.WaitForDuration),
-          plan.stream()
-              .filter(t -> t.getPosition() == slot + 1)
-              .map(TaskInfo::getTaskType)
-              .collect(Collectors.toList()));
-    }
-    return group;
+  private static List<TaskInfo> earlySecretUpdate(List<TaskInfo> plan, List<TaskInfo> push) {
+    Map<Integer, TaskType> typeAt =
+        plan.stream()
+            .collect(Collectors.toMap(TaskInfo::getPosition, TaskInfo::getTaskType, (x, y) -> x));
+    return helmUpgrades(plan).stream()
+        .filter(t -> t.getPosition() > lastPosition(push) && keepsGflagsChecksum(t))
+        .filter(t -> typeAt.get(t.getPosition() + 1) == TaskType.WaitForDuration)
+        .filter(t -> typeAt.get(t.getPosition() + 2) == TaskType.UpdateParentTaskParams)
+        .collect(Collectors.groupingBy(TaskInfo::getPosition))
+        .entrySet()
+        .stream()
+        .min(Map.Entry.comparingByKey())
+        .map(Map.Entry::getValue)
+        .orElse(Collections.emptyList());
   }
 
   private static Set<String> azCodes(List<TaskInfo> helmTasks) {
@@ -1995,8 +1994,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
               az.replicationFactor = 2;
             });
     assertEquals(
-        ImmutableSet.of("yb-master-0", "yb-master-1"),
-        masterHosts(expectedMasterAddresses(pi)));
+        ImmutableSet.of("yb-master-0", "yb-master-1"), masterHosts(expectedMasterAddresses(pi)));
 
     List<TaskInfo> plan = planEdit(currentIntent(), pi);
 
@@ -2007,6 +2005,105 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             ImmutableSet.of("yb-tserver-0_az-1", "yb-tserver-0_az-2", "yb-tserver-0_az-3"));
     // az-1 already runs its second master, which a render at the current counts would delete.
     assertEquals(ImmutableSet.of("az-2"), azCodes(earlySecretUpdate(plan, postRemove)));
+  }
+
+  @Test
+  public void testPartialMasterFullMoveRendersOtherZones() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
+    TestUtils.updateDeviceInfo(newIntent, ServerType.MASTER, d -> d.storageClass = "fast");
+    PlacementInfo pi = currentPlacement();
+    pi.azStream()
+        .filter(az -> az.name.equals("PlacementAZ 1"))
+        .forEach(az -> az.masterStsIndex = 1);
+
+    List<TaskInfo> plan = planEdit(newIntent, pi);
+    String newMasters = expectedMasterAddresses(pi);
+
+    List<TaskInfo> postRemove =
+        assertPushesAroundMasterChange(
+            plan,
+            ImmutableSet.of("yb-master-1-0_az-1", "yb-master-0_az-2", "yb-master-0_az-3"),
+            ImmutableSet.of("yb-tserver-0_az-1", "yb-tserver-0_az-2", "yb-tserver-0_az-3"));
+    // The full move rewrites only az-1's release, so az-2 and az-3 get the new list right after
+    // the master move instead of after the data move.
+    List<TaskInfo> earlySecretUpdate = earlySecretUpdate(plan, postRemove);
+    assertEquals(ImmutableSet.of("az-2", "az-3"), azCodes(earlySecretUpdate));
+    for (TaskInfo t : earlySecretUpdate) {
+      assertEquals(newMasters, helmMasterAddresses(t));
+      assertEquals(1, helmAZ(t).path("numNodesInAZ").asInt());
+      assertEquals(1, t.getTaskParams().path("masterPartition").asInt());
+      assertEquals(1, t.getTaskParams().path("tserverPartition").asInt());
+    }
+    // Before the change, the first render of az-2 and az-3 after the master move was the one at
+    // the end of the task.
+    assertEquals(
+        firstPosition(earlySecretUpdate),
+        firstPosition(
+            helmUpgradesInAZs(
+                between(helmUpgrades(plan), lastPosition(postRemove), Integer.MAX_VALUE),
+                ImmutableSet.of("az-2", "az-3"))));
+  }
+
+  @Test
+  public void testZoneReplaceWithMasterFullMoveWaitsForAllMasters() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
+    TestUtils.updateDeviceInfo(newIntent, ServerType.MASTER, d -> d.storageClass = "fast");
+    PlacementInfo pi = zoneReplacePlacement();
+    pi.azStream()
+        .filter(az -> az.name.equals("PlacementAZ 1"))
+        .forEach(az -> az.masterStsIndex = 1);
+
+    List<TaskInfo> plan = planEdit(newIntent, pi);
+    String newMasters = expectedMasterAddresses(pi);
+    Set<String> tservers =
+        ImmutableSet.of("yb-tserver-0_az-1", "yb-tserver-0_az-2", "yb-tserver-0_az-3");
+
+    // The az-4 master moves in first, then az-1's masters are replaced.
+    List<TaskInfo> adds = changeMasterConfigs(plan, "AddMaster");
+    List<TaskInfo> removes = changeMasterConfigs(plan, "RemoveMaster");
+    assertEquals(
+        ImmutableList.of("yb-master-0_az-4", "yb-master-1-0_az-1"),
+        adds.stream()
+            .map(t -> t.getTaskParams().path("nodeName").asText())
+            .collect(Collectors.toList()));
+    assertEquals(
+        ImmutableList.of("yb-master-0_az-3", "yb-master-0_az-1"),
+        removes.stream()
+            .map(t -> t.getTaskParams().path("nodeName").asText())
+            .collect(Collectors.toList()));
+    List<TaskInfo> pushes = masterAddrPushes(plan);
+
+    // Before the az-3 remove, the live Raft config goes to the masters that run then.
+    List<TaskInfo> firstPreRemove =
+        between(pushes, adds.get(0).getPosition(), removes.get(0).getPosition());
+    assertEquals(
+        ImmutableSet.of("yb-master-0_az-2", "yb-master-0_az-4"),
+        nodeNames(firstPreRemove, ServerType.MASTER));
+    assertEquals(tservers, nodeNames(firstPreRemove, ServerType.TSERVER));
+    // The new list names the az-1 masters, so nothing sends it until they run.
+    assertTrue(between(pushes, removes.get(0).getPosition(), adds.get(1).getPosition()).isEmpty());
+    List<TaskInfo> postRemove =
+        between(pushes, removes.get(1).getPosition(), Integer.MAX_VALUE).stream()
+            .filter(t -> t.getPosition() <= lastPosition(removes) + 3)
+            .collect(Collectors.toList());
+    Set<String> masters =
+        ImmutableSet.of("yb-master-1-0_az-1", "yb-master-0_az-2", "yb-master-0_az-4");
+    List<TaskInfo> secondPreRemove =
+        between(pushes, adds.get(1).getPosition(), removes.get(1).getPosition());
+    for (List<TaskInfo> push : ImmutableList.of(secondPreRemove, postRemove)) {
+      assertEquals(masters, nodeNames(push, ServerType.MASTER));
+      assertEquals(tservers, nodeNames(push, ServerType.TSERVER));
+    }
+
+    // One early Secret update, after the full move of masters: az-2 is the only AZ whose masters
+    // stay.
+    List<TaskInfo> earlySecretUpdate = earlySecretUpdate(plan, postRemove);
+    assertEquals(ImmutableSet.of("az-2"), azCodes(earlySecretUpdate));
+    assertEquals(newMasters, helmMasterAddresses(earlySecretUpdate.get(0)));
+    // No earlier one after the az-4 master move.
+    assertEquals(earlySecretUpdate, earlySecretUpdate(plan, adds.subList(0, 1)));
   }
 
   @Test
@@ -2148,20 +2245,27 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
   @Test
   public void testZoneReplaceSkipsServersNotYetCreated() {
     setupMasterMoveUniverse(FULL_MOVE_VERSION);
-    // The universe already lists a pod this edit has not created: it has its DNS address but no
-    // pod behind it yet.
+    // The universe already lists pods this edit has not created: they have DNS addresses but no
+    // pods behind them yet.
     defaultUniverse =
         Universe.saveDetails(
             defaultUniverse.getUniverseUUID(),
             u -> {
-              NodeDetails planned = u.getNode("yb-tserver-0_az-1").clone();
-              planned.nodeName = "yb-tserver-1_az-1";
-              planned.nodeUuid = UUID.randomUUID();
-              planned.cloudInfo.private_ip = "yb-tserver-1_az-1.svc.cluster.local";
-              planned.state = NodeDetails.NodeState.ToBeAdded;
-              u.getUniverseDetails().nodeDetailsSet.add(planned);
+              for (String[] p :
+                  new String[][] {
+                    {"yb-tserver-0_az-1", "yb-tserver-1_az-1"},
+                    {"yb-master-0_az-2", "yb-master-1_az-2"}
+                  }) {
+                NodeDetails planned = u.getNode(p[0]).clone();
+                planned.nodeName = p[1];
+                planned.nodeUuid = UUID.randomUUID();
+                planned.cloudInfo.private_ip = p[1] + ".svc.cluster.local";
+                planned.state = NodeDetails.NodeState.ToBeAdded;
+                u.getUniverseDetails().nodeDetailsSet.add(planned);
+              }
             });
     assertNotNull(defaultUniverse.getNode("yb-tserver-1_az-1"));
+    assertTrue(defaultUniverse.getNode("yb-master-1_az-2").isMaster);
 
     List<TaskInfo> plan = planEdit(currentIntent(), zoneReplacePlacement());
 
