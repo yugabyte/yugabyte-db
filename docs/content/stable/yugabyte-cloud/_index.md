@@ -26,7 +26,7 @@ YugabyteDB Aeon SLA service availability is [99.99%](https://www.yugabyte.com/yu
 {{< sections/2-boxes >}}
   {{< sections/bottom-image-box
     title="Serverless Postgres"
-    description="Agentic Multitenant PostgreSQL for AI agents and bursty or idle workloads. Free up to 1 vCPU. Fully managed by Yugabyte."
+    description="Agentic Multitenant PostgreSQL for AI agents and bursty or idle workloads. Free up to 2 vCPU. Fully managed by Yugabyte."
     buttonText="Learn more"
     buttonUrl="serverless/"
     imageAlt="Serverless Postgres" imageUrl="/images/homepage/serverless-postgres.svg"

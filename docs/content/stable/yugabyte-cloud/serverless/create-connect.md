@@ -55,7 +55,7 @@ Choose a size:
 - **Large**: 8 vCPU and 64 GiB.
 - **Custom**: Select **vCPU** and **Memory**. vCPU can be from 0.5 to 64; add `m` to enter values in millicores (for example, `1500m`). Memory can be from 1 to 512 GiB; you can also enter values in MiB. You must have at least 8 GiB per vCPU.
 
-    Your organization is allowed one Free cluster. If you choose an option other than Free and you have not added a [billing profile](../../cloud-admin/cloud-billing-profile/) to the account, you will be prompted to create a billing profile before the cluster is created.
+    Your organization is allowed 2 vCPU free. If you choose an option other than Free and you have not added a [billing profile](../../cloud-admin/cloud-billing-profile/) to the account, you will be prompted to create a billing profile before the cluster is created.
 
 #### Extensions
 

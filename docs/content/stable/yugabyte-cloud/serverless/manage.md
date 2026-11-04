@@ -104,9 +104,7 @@ To edit the compute of an endpoint, do the following:
 
 1. Open the endpoint actions menu (**...**) and choose **Edit Compute**.
 
-1. Select a size: **Small**, **Medium**, **Large**, or **Custom**. The sizes follow the same rules as when you create a cluster. Memory must be at least 8GB per vCPU.
-
-    Free compute is shared by everything the account runs, so a size is free only within what remains. The size you are replacing doesn't count against the free compute. Sizes beyond it are marked **Billed**.
+1. Select a size: **Small**, **Medium**, **Large**, or **Custom**. The sizes follow the same rules as when you create a cluster. Memory must be at least 16 GiB per vCPU.
 
 1. Click **Apply Resize**.
 
