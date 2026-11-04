@@ -3561,12 +3561,13 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultiStreamOnSameTableAndDrop
           }
           // stream-1 is associated with a single table, so as part of table drop, stream-1 should
           // be cleaned and wait until the background thread is done with cleanup.
-          if (idx == 1 && get_resp->table_info_size() > kNumberOfCatalogTablesBeingPolledByCDC) {
+          if (idx == 1 && get_resp->table_info_size() > NumberOfCatalogTablesBeingPolledByCDC()) {
             continue;
           }
           // stream-2 is associated with both tables, so dropping one table, should not clean the
           // stream from cache as well as from system catalog, except the dropped table metadata.
-          if (idx > 1 && get_resp->table_info_size() > 1 + kNumberOfCatalogTablesBeingPolledByCDC) {
+          if (idx > 1 &&
+              get_resp->table_info_size() > 1 + NumberOfCatalogTablesBeingPolledByCDC()) {
             continue;
           }
           idx += 1;
@@ -11095,8 +11096,8 @@ TEST_F(CDCSDKYsqlTest, TestDynamicTablesShouldBeEnabledForStreamsWithSlotName) {
   auto slot_stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
 
   auto stream_info = ASSERT_RESULT(GetDBStreamInfo(slot_stream_id));
-  // 2 user tables + 3 catalog tables.
-  ASSERT_EQ(stream_info.table_info_size(), 2 + kNumberOfCatalogTablesBeingPolledByCDC);
+  // 2 user tables + the catalog tables.
+  ASSERT_EQ(stream_info.table_info_size(), 2 + NumberOfCatalogTablesBeingPolledByCDC());
 
   // Create a dynamic table.
   auto table_3 = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "table_3"));
@@ -11105,10 +11106,10 @@ TEST_F(CDCSDKYsqlTest, TestDynamicTablesShouldBeEnabledForStreamsWithSlotName) {
   SleepFor(MonoDelta::FromSeconds(10 * kTimeMultiplier));
 
   // Since dynamic table addition is always enabled in streams associated with slots, table_3 will
-  // get added to its stream metadata. We will have total 6 tables in stream metadata (3 user tables
-  // + 3 catalog tables).
+  // get added to its stream metadata. The stream metadata will have the 3 user tables and the
+  // catalog tables.
   stream_info = ASSERT_RESULT(GetDBStreamInfo(slot_stream_id));
-  ASSERT_EQ(stream_info.table_info_size(), 3 + kNumberOfCatalogTablesBeingPolledByCDC);
+  ASSERT_EQ(stream_info.table_info_size(), 3 + NumberOfCatalogTablesBeingPolledByCDC());
 }
 
 TEST_F(CDCSDKYsqlTest, TestWithMajorityReplicatedButNonCommittedSingleShardTxn) {
@@ -11266,7 +11267,7 @@ void CDCSDKYsqlTest::TestCleanupOfTableNotOfInterest(bool use_logical_replicatio
   ASSERT_EQ(tablets.size(), 1);
 
   auto num_qualified_table_ids =
-      use_logical_replication ? kNumberOfCatalogTablesBeingPolledByCDC + 1 : 1;
+      use_logical_replication ? NumberOfCatalogTablesBeingPolledByCDC() + 1 : 1;
   auto num_state_table_rows = use_logical_replication ? 3 : 2;
 
   auto stream_id = use_logical_replication
@@ -11284,7 +11285,7 @@ void CDCSDKYsqlTest::TestCleanupOfTableNotOfInterest(bool use_logical_replicatio
   // qualified tables list.
   auto expected_num_state_table_rows = use_logical_replication ? 2 : 1;
   auto expected_num_qualified_tables =
-      use_logical_replication ? kNumberOfCatalogTablesBeingPolledByCDC : 0;
+      use_logical_replication ? NumberOfCatalogTablesBeingPolledByCDC() : 0;
   ASSERT_OK(VerifyStateTableAndStreamMetadataEntriesCount(
       stream_id, expected_num_state_table_rows,
       /* qualified_table_ids_count */ expected_num_qualified_tables,
@@ -11315,7 +11316,7 @@ void CDCSDKYsqlTest::TestCleanupOfExpiredTable(bool use_logical_replication) {
   ASSERT_EQ(tablets.size(), 1);
 
   auto num_qualified_table_ids =
-      use_logical_replication ? kNumberOfCatalogTablesBeingPolledByCDC + 1 : 1;
+      use_logical_replication ? NumberOfCatalogTablesBeingPolledByCDC() + 1 : 1;
   auto num_state_table_rows = use_logical_replication ? 3 : 2;
 
   auto stream_id = use_logical_replication
@@ -12730,10 +12731,10 @@ TEST_F(CDCSDKYsqlTest, TestDropTableWithXcluster) {
   ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(slot_name));
   ASSERT_RESULT(cdc::CreateXClusterStream(*test_client(), table_1.table_id()));
 
-  // Verify that replica identity map contains five entries (2 user tables + 3 catalog tables).
+  // Verify that the replica identity map contains the 2 user tables and the catalog tables.
   std::unordered_map<uint32_t, PgReplicaIdentity> replica_identities;
   ASSERT_OK(test_client()->GetCDCStream(ReplicationSlotName(slot_name), &replica_identities));
-  ASSERT_EQ(replica_identities.size(), 2 + kNumberOfCatalogTablesBeingPolledByCDC);
+  ASSERT_EQ(replica_identities.size(), 2 + NumberOfCatalogTablesBeingPolledByCDC());
 
   // Drop the table under xcluster replication.
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
@@ -12746,7 +12747,7 @@ TEST_F(CDCSDKYsqlTest, TestDropTableWithXcluster) {
   // CDCSDK. This means there should be no change to replica identity map.
   replica_identities.clear();
   ASSERT_OK(test_client()->GetCDCStream(ReplicationSlotName(slot_name), &replica_identities));
-  ASSERT_EQ(replica_identities.size(), 2 + kNumberOfCatalogTablesBeingPolledByCDC);
+  ASSERT_EQ(replica_identities.size(), 2 + NumberOfCatalogTablesBeingPolledByCDC());
 }
 
 TEST_F(CDCSDKYsqlTest, TestYbRestartCommitTimeInPgReplicationSlots) {
@@ -14602,7 +14603,7 @@ void CDCSDKYsqlTest::TestXClusterTablesNotAddedToStream(
   const size_t expected_state_table_entries =
       use_logical_replication_stream ? kNumberOfBaseCdcStateEntriesForLogicalStream : 1;
   const size_t expected_qualified_count =
-      use_logical_replication_stream ? kNumberOfCatalogTablesBeingPolledByCDC : 0;
+      use_logical_replication_stream ? NumberOfCatalogTablesBeingPolledByCDC() : 0;
 
   ASSERT_OK(VerifyStateTableAndStreamMetadataEntriesCount(
       stream_id, expected_state_table_entries, expected_qualified_count,
