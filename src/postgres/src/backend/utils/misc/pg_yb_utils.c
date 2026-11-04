@@ -114,11 +114,15 @@
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
+#include "nodes/nodeFuncs.h"
 #include "nodes/pathnodes.h"
 #include "nodes/plannodes.h"
 #include "nodes/readfuncs.h"
 #include "optimizer/cost.h"
 #include "optimizer/plancat.h"
+#include "parser/analyze.h"
+#include "parser/parse_node.h"
+#include "parser/parse_relation.h"
 #include "parser/parse_utilcmd.h"
 #include "parser/parser.h"
 #include "pg_yb_utils.h"
@@ -3836,8 +3840,102 @@ YbAreAllRangeVarsTemp(List *relations)
 	return true;
 }
 
+/* Whether the schema name refers to this session's temp namespace. */
+static bool
+YbIsTempNamespaceName(const char *schemaname)
+{
+	Oid			namespace_oid;
+
+	if (strcmp(schemaname, "pg_temp") == 0)
+		return true;
+	namespace_oid = get_namespace_oid(schemaname, true /* missing_ok */ );
+	return OidIsValid(namespace_oid) && isTempOrTempToastNamespace(namespace_oid);
+}
+
+/*
+ * Whether a relation created under this name will be temporary.  Besides the
+ * TEMP keyword, RangeVarAdjustRelationPersistence also makes a relation
+ * temporary when its schema is the session's temp namespace, e.g. pg_temp.
+ * An unqualified name whose creation namespace is pg_temp through search_path
+ * is not detected.
+ */
+static bool
+YbIsNewRangeVarTemp(const RangeVar *relation)
+{
+	if (relation->relpersistence == RELPERSISTENCE_TEMP)
+		return true;
+	return relation->relpersistence == RELPERSISTENCE_PERMANENT &&
+		relation->schemaname != NULL &&
+		YbIsTempNamespaceName(relation->schemaname);
+}
+
+/*
+ * Whether any relation name in the raw parse tree may refer to a temp
+ * relation.  Qualified names are judged by their schema alone, since looking
+ * up a schema checks privileges and can raise an error.
+ */
+static bool
+YbRawTreeNamesTempRelation(Node *node, void *context)
+{
+	if (node == NULL)
+		return false;
+	if (IsA(node, RangeVar))
+	{
+		RangeVar   *relation = (RangeVar *) node;
+
+		if (relation->catalogname != NULL)
+			return false;
+		if (relation->schemaname != NULL)
+			return YbIsTempNamespaceName(relation->schemaname);
+		return YbIsRangeVarTempRelation(relation);
+	}
+	return raw_expression_tree_walker(node, YbRawTreeNamesTempRelation,
+									  context);
+}
+
+/*
+ * Whether DefineView will make the view temporary because its query uses a
+ * temp relation.  This runs the same parse analysis as DefineView, but only
+ * when the query names a temp relation: a name can also refer to a CTE, so
+ * the names alone are not enough.
+ */
+static bool
+YbIsViewImplicitlyTemp(PlannedStmt *pstmt, const char *queryString,
+					   ViewStmt *stmt)
+{
+	Oid			temp_namespace;
+	Oid			temp_toast_namespace;
+	RawStmt    *rawstmt;
+	ParseState *pstate;
+	Query	   *query;
+
+	if (stmt->view->relpersistence != RELPERSISTENCE_PERMANENT)
+		return false;
+
+	GetTempNamespaceState(&temp_namespace, &temp_toast_namespace);
+	if (!OidIsValid(temp_namespace) ||
+		!YbRawTreeNamesTempRelation(stmt->query, NULL))
+		return false;
+
+	/*
+	 * Like parse_analyze_fixedparams, minus the post-parse-analyze hook and
+	 * the query ID report, which belong to the statement itself.
+	 */
+	rawstmt = makeNode(RawStmt);
+	rawstmt->stmt = copyObject(stmt->query);
+	rawstmt->stmt_location = pstmt->stmt_location;
+	rawstmt->stmt_len = pstmt->stmt_len;
+	pstate = make_parsestate(NULL);
+	pstate->p_sourcetext = queryString;
+	query = transformTopLevelStmt(pstate, rawstmt);
+	free_parsestate(pstate);
+
+	return isQueryUsingTempRelation(query);
+}
+
 YbDdlModeOptional
-YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
+YbGetDdlMode(PlannedStmt *pstmt, const char *queryString,
+			 ProcessUtilityContext context,
 			 bool *requires_autonomous_transaction)
 {
 	bool		is_ddl = true;
@@ -3990,8 +4088,9 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 				YbIsCatalogNamespaceByName(castNode(ViewStmt, parsetree)->view->schemaname))
 				break;
 
-			if (castNode(ViewStmt, parsetree)->view->relpersistence ==
-				RELPERSISTENCE_TEMP)
+			if (YbIsNewRangeVarTemp(castNode(ViewStmt, parsetree)->view) ||
+				YbIsViewImplicitlyTemp(pstmt, queryString,
+									   castNode(ViewStmt, parsetree)))
 			{
 				is_version_increment = false;
 				is_altering_existing_data = true;
@@ -4087,7 +4186,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 				 * The parent of a temp partition is always temp too, while a temp
 				 * table can inherit from a permanent one.
 				 */
-				if (stmt->relation->relpersistence == RELPERSISTENCE_TEMP &&
+				if (YbIsNewRangeVarTemp(stmt->relation) &&
 					YbAreAllRangeVarsTemp(stmt->inhRelations))
 				{
 					is_version_increment = false;
@@ -4163,7 +4262,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 				 * visible only to this transaction/session.
 				 */
 				if (stmt->into && stmt->into->rel &&
-					stmt->into->rel->relpersistence == RELPERSISTENCE_TEMP)
+					YbIsNewRangeVarTemp(stmt->into->rel))
 				{
 					is_version_increment = false;
 					is_altering_existing_data = true;
@@ -4181,8 +4280,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 			is_breaking_change = false;
 
 			/* Also covers the sequences of SERIAL and identity columns. */
-			if (castNode(CreateSeqStmt, parsetree)->sequence->relpersistence ==
-				RELPERSISTENCE_TEMP)
+			if (YbIsNewRangeVarTemp(castNode(CreateSeqStmt, parsetree)->sequence))
 			{
 				is_version_increment = false;
 				is_altering_existing_data = true;
@@ -4819,7 +4917,8 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 	const CommandTag prev_breaking_ddl_command_tag =
 		ddl_transaction_state.breaking_ddl_command_tag;
 	const YbDdlModeOptional ddl_mode =
-		YbGetDdlMode(pstmt, context, &should_run_in_autonomous_transaction);
+		YbGetDdlMode(pstmt, queryString, context,
+					 &should_run_in_autonomous_transaction);
 
 	const bool	is_ddl = ddl_mode.has_value;
 

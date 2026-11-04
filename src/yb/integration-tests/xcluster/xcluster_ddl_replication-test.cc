@@ -4587,6 +4587,11 @@ TEST_F(XClusterDDLReplicationTest, TempTableDDLs) {
     RETURN_NOT_OK(conn.Execute("ALTER TABLE test_temp ADD COLUMN age int"));
     RETURN_NOT_OK(conn.Execute("INSERT INTO test_temp VALUES (2, 'test2', 25)"));
     RETURN_NOT_OK(conn.Execute("ALTER TABLE test_temp DROP COLUMN age"));
+    // Temp without the TEMP keyword.
+    RETURN_NOT_OK(conn.Execute("CREATE VIEW test_implicit_temp_view AS SELECT * FROM test_temp"));
+    RETURN_NOT_OK(conn.Execute("DROP VIEW test_implicit_temp_view"));
+    RETURN_NOT_OK(conn.Execute("CREATE TABLE pg_temp.test_explicit_temp (id int)"));
+    RETURN_NOT_OK(conn.Execute("DROP TABLE test_explicit_temp"));
     RETURN_NOT_OK(conn.Execute("DROP TABLE test_temp"));
 
     return Status::OK();

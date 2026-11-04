@@ -150,6 +150,14 @@ class YsqlMajorUpgradeDdlBlockingTest : public YsqlMajorUpgradeTestBase {
         "CREATE OR REPLACE TEMP VIEW tmp_obj_view AS SELECT * FROM tmp_obj_tbl",
         "ALTER VIEW tmp_obj_view RENAME TO tmp_obj_view2",
         "DROP VIEW tmp_obj_view2",
+        // Temp without the TEMP keyword.
+        "CREATE VIEW tmp_obj_implicit_view AS SELECT * FROM tmp_obj_tbl",
+        "CREATE OR REPLACE VIEW tmp_obj_implicit_view AS SELECT * FROM tmp_obj_tbl",
+        "CREATE OR REPLACE VIEW pg_temp.tmp_obj_implicit_view AS SELECT * FROM tmp_obj_tbl",
+        "DROP VIEW tmp_obj_implicit_view",
+        "CREATE TABLE pg_temp.tmp_obj_explicit_tbl (a int)",
+        "CREATE TABLE pg_temp.tmp_obj_explicit_ctas AS SELECT 1 AS a",
+        "CREATE SEQUENCE pg_temp.tmp_obj_explicit_seq",
         // In a transaction block, and in a DO block.
         "BEGIN",
         "CREATE TEMP SEQUENCE tmp_obj_seq4",
@@ -198,19 +206,16 @@ class YsqlMajorUpgradeDdlBlockingTest : public YsqlMajorUpgradeTestBase {
         cluster_->GetMasterLogWaiter("Invalid attempt to update catalog version table");
 
     // A cascading drop of a temp sequence or view can reach permanent objects that depend on it.
-    // The temp relations created without the TEMP keyword are not exempt from the catalog version
-    // increment yet.
+    // The CTE hides the temp table of the same name, so the view is permanent.
     const auto stmts = {
         Format("TRUNCATE tmp_mixed_tbl, $0", kPermTable),
         Format("DROP TABLE tmp_mixed_tbl, $0", kPermTable),
         Format("CREATE TEMP TABLE tmp_mixed_perm_child () INHERITS ($0)", kPermTable),
         std::string("DROP SEQUENCE tmp_mixed_seq CASCADE"),
         std::string("DROP VIEW tmp_mixed_view CASCADE"),
-        std::string("CREATE TABLE pg_temp.tmp_mixed_explicit_tbl (a int)"),
-        std::string("CREATE SEQUENCE pg_temp.tmp_mixed_explicit_seq"),
-        std::string("CREATE VIEW tmp_mixed_implicit_view AS SELECT a FROM tmp_mixed_tbl"),
-        std::string("CREATE OR REPLACE VIEW tmp_mixed_view AS SELECT a FROM tmp_mixed_tbl"),
-        std::string("CREATE OR REPLACE VIEW pg_temp.tmp_mixed_view AS SELECT 1 AS a"),
+        std::string(
+            "CREATE VIEW cte_view AS WITH tmp_mixed_tbl AS (SELECT 1 AS a) "
+            "SELECT a FROM tmp_mixed_tbl"),
         Format("ALTER SEQUENCE $0 INCREMENT BY 2", kPermSequence),
         Format("DROP SEQUENCE $0", kPermSequence),
         std::string("CREATE SEQUENCE perm_seq2")};

@@ -1264,7 +1264,8 @@ ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 		 */
 		bool		requires_autonomous_transaction = false;
 		YbDdlModeOptional ddl_mode =
-			YbGetDdlMode(pstmt, context, &requires_autonomous_transaction);
+			YbGetDdlMode(pstmt, queryString, context,
+						 &requires_autonomous_transaction);
 
 		INSTR_TIME_SET_CURRENT(start);
 

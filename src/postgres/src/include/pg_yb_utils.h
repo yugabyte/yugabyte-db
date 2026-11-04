@@ -1163,6 +1163,7 @@ typedef struct YbDdlModeOptional
 extern YbDdlMode YBGetCurrentDdlMode();
 extern void YbRecordTempRelationDDL(void);
 extern YbDdlModeOptional YbGetDdlMode(PlannedStmt *pstmt,
+									  const char *queryString,
 									  ProcessUtilityContext context,
 									  bool *requires_autonomous_transaction);
 void		YBAddModificationAspects(YbDdlMode mode);
