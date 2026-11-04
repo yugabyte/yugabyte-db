@@ -303,6 +303,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     reject_mode_.store(value, std::memory_order_release);
   }
 
+  // Delays each Update by duration. Setting it to zero also releases any hold in progress.
   void TEST_DelayUpdate(MonoDelta duration) {
     TEST_delay_update_.store(duration, std::memory_order_release);
   }

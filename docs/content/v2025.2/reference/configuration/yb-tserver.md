@@ -239,6 +239,15 @@ Default: `true`
 
 Disable callhome diagnostics.
 
+##### --stack_trace_symbolize
+
+{{% tags/wrap %}}
+
+Default: `true`
+{{% /tags/wrap %}}
+
+v2025.2.8.1 and later only. Resolve stack trace addresses to symbols when logging stack traces. Symbolization reads the binaries' symbol tables and is expensive. When set to `false`, frames are logged as a hex address plus module and offset, which you can resolve offline with `llvm-symbolizer`. Set it to `false` to reduce CPU load from slow-operation warnings that log stack traces.
+
 ### Metric export flags
 
 YB-TServer metrics are available in Prometheus format at `http://localhost:9000/prometheus-metrics`.
@@ -397,6 +406,23 @@ PostgreSQL parameter that sets how often a backend checks whether its client is 
 In YugabyteDB (on Linux), the check also applies while a new connection starts up, including while the backend waits for catalog preload requests. If the client disconnects during startup, for example because its connect timeout expires, the backend exits with `FATAL: connection to client lost` instead of waiting for the preload to finish.
 
 During startup, only the server-wide value applies, set with [ysql_pg_conf_csv](#ysql-pg-conf-csv), because per-database and per-role settings are loaded after the preload.
+
+##### yb_enable_stale_catalog_prefetch
+
+{{% tags/wrap %}}
+
+Default: `true`
+{{% /tags/wrap %}}
+
+v2025.2.8.1 and later only. Lets a connection that [preloads the catalog cache](../../../best-practices-operations/ysql-catalog-cache-tuning-guide/) start from a catalog version that the node already has cached. When such a connection begins while the YB-Master leader reports that it is shedding catalog prefetches, it can read the catalog at the version cached on its YB-TServer instead of fetching the whole catalog from the leader. It then applies the invalidation messages between that version and the current version before it runs any statement.
+
+On a cluster with default settings, connections do not preload the catalog cache, so they do not take this path. In that configuration, this parameter only changes the admission priority of the read that a backend makes ahead of authentication: that read is admitted ahead of catalog prefetches that are waiting to begin.
+
+When set to `false`, every connection fetches the catalog from the YB-Master leader, and the read that a backend makes ahead of authentication takes the ordinary catalog prefetch admission priority.
+
+Set this parameter server-wide, for example using [ysql_pg_conf_csv](#ysql-pg-conf-csv). Changes take effect when the configuration is reloaded, and apply to connections that start after the reload.
+
+See also the [--ysql_yb_enable_stale_catalog_prefetch](#ysql-yb-enable-stale-catalog-prefetch) flag.
 
 ##### enable_bitmapscan
 
@@ -1631,6 +1657,17 @@ Default: `true`
 {{% /tags/wrap %}}
 
 Enables the YB-TServer catalog cache, which reduces YB-Master overhead for starting a connection and internal system catalog metadata refresh (for example, after executing a DDL), when there are many YSQL connections per node.
+
+##### --ysql_yb_enable_stale_catalog_prefetch
+
+{{% tags/wrap %}}
+
+Default: `true`
+{{% /tags/wrap %}}
+
+v2025.2.8.1 and later only. Lets a connection start from a catalog version that the node already has cached when the YB-Master leader is shedding catalog prefetches, instead of fetching the whole catalog from the leader. This applies only to connections that preload the catalog cache when they start; on a cluster with default settings it only changes the admission priority of the read that a backend makes ahead of authentication. See [yb_enable_stale_catalog_prefetch](#yb-enable-stale-catalog-prefetch) for the preconditions. When set to `false`, every connection fetches the catalog from the leader, and the pre-authentication read takes the ordinary catalog prefetch admission priority.
+
+See also the [yb_enable_stale_catalog_prefetch](#yb-enable-stale-catalog-prefetch) configuration parameter.
 
 ##### --ysql_minimal_catalog_caches_preload
 

@@ -1407,6 +1407,62 @@ TEST_F(PgCatalogPrefetchAdmissionTest, RejectedPrefetchIsRetried) {
       << "the injected rejection did not reach a prefetch, so the retry path was not exercised";
 }
 
+// Preloading makes a connection's prefetch a long sequence of paged reads, and admission is per
+// read, so with a limit of one that sequence holds the only slot for most of its run. A connection
+// arriving meanwhile is rejected over and over on a single retrier -- the case the delay the
+// rejection carries exists for. See issue #36187.
+class PgCatalogPrefetchSaturationTest : public PgCatalogPrefetchAdmissionTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_catalog_preload_additional_tables) = true;
+    PgCatalogPrefetchAdmissionTest::SetUp();
+  }
+};
+
+TEST_F(PgCatalogPrefetchSaturationTest, RepeatedRejectionsDoNotStallConnections) {
+  constexpr size_t kNumConnections = 16;
+  // Deliberately loose: the rejection count does not separate the two retry schedules (52 to 75
+  // with the hint against 33 to 120 without, across the runs below) and it moves the wrong way,
+  // since a faster retry sends more requests to a master that is still full. A threshold tuned to
+  // the hinted arm would fail in the unhinted one, the arm this test exists to catch.
+  constexpr int64_t kMinRejections = static_cast<int64_t>(kNumConnections);
+  // Bounds the symptom from issue #36187 -- an AdminExecutePgsql lost to a 120 s timeout -- rather
+  // than being a tuned threshold. Release, 8 runs with the hint: 3.6 s to 6.5 s. Twelve runs with
+  // --master_ysql_catalog_prefetch_rejection_delay_ms=0, which restores the old schedule without
+  // changing code: eight under 10 s, the rest 33 s, 67 s, 197 s and 525 s. Whether a connection
+  // keeps losing the only slot is a race, so the unhinted schedule trips this in 2 runs of 12.
+  constexpr int64_t kDeadlineMs = 120000;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_max_concurrent_ysql_catalog_prefetches) = 1;
+
+  const auto rejections_before = Rejections();
+  const auto admissions_before = NewAdmissions();
+  const auto start = MonoTime::Now();
+  TestThreadHolder threads;
+  for (size_t i = 0; i < kNumConnections; ++i) {
+    threads.AddThreadFunctor([this] {
+      auto conn = ASSERT_RESULT(Connect());
+      ASSERT_OK(conn.FetchRow<int32_t>("SELECT 1"));
+    });
+  }
+  threads.JoinAll();
+  const auto elapsed = MonoTime::Now() - start;
+
+  // One opening read per connection reaches admission whatever the retry schedule does, so this
+  // holds in both arms and confirms the elapsed time below measures 16 contended prefetches.
+  // Not pinned by OnlyTheFirstReadOfAConnectionCountsAsNew, which runs without the preloading
+  // this fixture turns on and so sees a different request sequence.
+  ASSERT_EQ(NewAdmissions() - admissions_before, static_cast<int64_t>(kNumConnections))
+      << "expected one new admission per connection: fewer means a connection prefetched without "
+         "passing through admission, more means a later preload request was counted as new, and "
+         "either way the limit was not what the timing below measured";
+  ASSERT_GE(Rejections() - rejections_before, kMinRejections)
+      << "the limit did not stay saturated, so neither retry schedule was exercised";
+  ASSERT_LT(elapsed.ToMilliseconds(), kDeadlineMs)
+      << kNumConnections << " connections took " << elapsed
+      << ", the cost of a rejection the client has no delay to pace by";
+}
+
 // The limit itself must not break connections, and admissions must be released once a read
 // finishes -- a leaked slot would reject every prefetch from then on.
 TEST_F(PgCatalogPrefetchAdmissionTest, ConcurrentPrefetchesAreAdmittedAndReleased) {

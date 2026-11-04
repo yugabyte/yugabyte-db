@@ -47,8 +47,11 @@ class ReadTabletProvider {
   // the admission when it is destroyed, so it covers the asynchronous part of the read as well.
   //
   // Returning a failed Result rejects the read and sends that status to the client, so it must be
-  // one the client retries. A bare ServiceUnavailable reaches the client as ERROR_SERVER_TOO_BUSY,
-  // which RpcRetrier retries against the same peer under its own backoff policy.
+  // one the client retries. A ServiceUnavailable carrying neither a tserver::TabletServerError
+  // nor a tserver::TabletServerDelay reaches the client as ERROR_SERVER_TOO_BUSY, which RpcRetrier
+  // retries against the same peer; either of those sends it as a response error instead, moving
+  // the retry off this peer. Attaching rpc::RetryAfter sets how long the client waits, but only on
+  // the ERROR_SERVER_TOO_BUSY path -- only RespondFailure copies it into ErrorStatusPB.
   //
   // The default admits everything.
   virtual Result<std::shared_ptr<void>> AdmitRead(const ReadRequestMsg& req) {

@@ -387,26 +387,29 @@ Result<Header> FileBlockCache::Load() {
 
   using FooterSizeType = uint64_t;
   auto file_size = VERIFY_RESULT(file_->Size());
-  RSTATUS_DCHECK_GE(file_size, sizeof(FooterSizeType), Corruption, "Wrong file size");
+  SCHECK_GE(file_size, sizeof(FooterSizeType), Corruption, "Wrong file size");
   std::vector<std::byte> buffer(std::min<size_t>(1_KB, file_size));
   Slice footer_data;
   RETURN_NOT_OK(file_->Read(file_size - buffer.size(), buffer.size(), &footer_data, buffer.data()));
-  RSTATUS_DCHECK_GE(
-      footer_data.size(), sizeof(FooterSizeType), Corruption, "Wrong number of read bytes");
+  SCHECK_GE(footer_data.size(), sizeof(FooterSizeType), Corruption, "Wrong number of read bytes");
   auto footer_size = LittleEndian::Load64(footer_data.end() - sizeof(FooterSizeType));
-  RSTATUS_DCHECK_GE(file_size, footer_size, Corruption, "Footer size greater than file size");
+  SCHECK_GE(file_size, footer_size, Corruption, "Footer size greater than file size");
+  // SliceReader does not check bounds, so require the version and the header without layers.
+  SCHECK_GE(
+      footer_size,
+      sizeof(uint8_t) + SerializedSize(Header()) + sizeof(uint32_t) + sizeof(FooterSizeType),
+      Corruption, "Footer size too small");
   if (footer_size > buffer.size()) {
     buffer.resize(footer_size);
     RETURN_NOT_OK(file_->Read(
         file_size - buffer.size(), buffer.size(), &footer_data, buffer.data()));
-    RSTATUS_DCHECK_EQ(
-        footer_data.size(), footer_size, Corruption, "Wrong number of read footer bytes");
+    SCHECK_EQ(footer_data.size(), footer_size, Corruption, "Wrong number of read footer bytes");
   }
   footer_data = footer_data.Suffix(footer_size)
                            .WithoutSuffix(sizeof(FooterSizeType) + sizeof(uint32_t));
   auto expected_crc = crc::Crc32c(footer_data.data(), footer_data.size());
   auto found_crc = LittleEndian::Load32(footer_data.end());
-  RSTATUS_DCHECK_EQ(expected_crc, found_crc, Corruption, "Wrong footer CRC");
+  SCHECK_EQ(expected_crc, found_crc, Corruption, "Wrong footer CRC");
   Header header;
   SliceReader reader(footer_data);
   size_t version = reader.Read<uint8_t>();

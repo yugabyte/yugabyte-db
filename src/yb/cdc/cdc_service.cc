@@ -5558,7 +5558,7 @@ void CDCServiceImpl::InitVirtualWALForCDC(
   auto lsn_type = stream_metadata_result->get()->GetReplicationSlotLsnType().value_or(
       ReplicationSlotLsnType_SEQUENCE);
 
-  uint64_t consistent_snapshot_time;
+  uint64_t consistent_snapshot_time = HybridTime::kInvalid.ToUint64();
   std::unique_ptr<ReplicationSlotHashRange> slot_hash_range = nullptr;
   if (FLAGS_ysql_yb_enable_consistent_replication_from_hash_range) {
     RPC_CHECK_AND_RETURN_ERROR(
