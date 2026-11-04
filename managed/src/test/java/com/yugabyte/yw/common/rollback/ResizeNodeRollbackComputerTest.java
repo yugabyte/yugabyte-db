@@ -8,8 +8,11 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -26,6 +29,7 @@ import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -359,6 +363,8 @@ public class ResizeNodeRollbackComputerTest extends FakeDBApplication {
     RollbackSubmission submission = computer.compute(context);
     ResizeNodeParams rollbackParams = (ResizeNodeParams) submission.getParams();
     assertFalse(rollbackParams.isForceResizeNode());
+    // The rollback still needs to know, to restart nodes the forced resize may have left stopped.
+    assertTrue(rollbackParams.isFailedResizeForced());
   }
 
   @Test
@@ -1011,5 +1017,120 @@ public class ResizeNodeRollbackComputerTest extends FakeDBApplication {
   public void primaryClusterLookupSanity() {
     Cluster primary = universe.getUniverseDetails().getPrimaryCluster();
     assertEquals(primary, universe.getUniverseDetails().getClusterByUuid(primary.uuid));
+  }
+
+  @Test
+  public void computeDescribesOnlyClustersBeingRolledBack() {
+    // PLAT-23245: a read replica the resize didn't touch, for example on instance store, must not
+    // be looked up.
+    enableRollback();
+    UUID readReplicaUuid = addReadReplicaNode("rr1");
+    seedStateTransitionDetailsForResize(NEW_VOLUME_SIZE);
+    moveUniverseIntentToTarget(NEW_VOLUME_SIZE);
+    ResizeNodeParams failedParams = failedResizeParams(NEW_VOLUME_SIZE);
+    failedParams.clusters.removeIf(c -> c.uuid.equals(readReplicaUuid));
+
+    computer.compute(buildContext(failedParams, DateUtils.addHours(new Date(), -48)));
+    verify(cloudAPI, never())
+        .describeNodeDataDiskSpec(any(), argThat(n -> "rr1".equals(n.nodeName)));
+  }
+
+  @Test
+  public void computeAcceptsInstanceStoreNodeWithoutDataDisks() {
+    // PLAT-23245: an instance-store node has no data disks to report, and rollback never modifies
+    // them.
+    enableRollback();
+    useInstanceStore("c5d.large");
+    seedStateTransitionDetailsForResize(NEW_VOLUME_SIZE);
+    moveUniverseIntentToTarget(NEW_VOLUME_SIZE);
+    lenient()
+        .when(cloudAPI.describeNodeDataDiskSpec(any(), any()))
+        .thenReturn(Optional.of(CloudAPI.NodeDiskSpec.instanceOnly("c5d.large")));
+
+    RollbackSubmission submission =
+        computer.compute(
+            buildContext(failedResizeParams(NEW_VOLUME_SIZE), DateUtils.addHours(new Date(), -1)));
+    assertNotNull(submission.getParams());
+  }
+
+  @Test
+  public void computeRefusesEbsNodeReportingNoDataDisks() {
+    // PLAT-23245: YBA records EBS (GP3) storage for the node, so a cloud report without data
+    // volumes can't be trusted, even for an instance type that has local storage.
+    enableRollback();
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> u.getNodes().forEach(n -> n.cloudInfo.instance_type = "c5d.large"));
+    seedStateTransitionDetailsForResize(NEW_VOLUME_SIZE);
+    moveUniverseIntentToTarget(NEW_VOLUME_SIZE);
+    lenient()
+        .when(cloudAPI.describeNodeDataDiskSpec(any(), any()))
+        .thenReturn(Optional.of(CloudAPI.NodeDiskSpec.instanceOnly("c5d.large")));
+
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                computer.compute(
+                    buildContext(
+                        failedResizeParams(NEW_VOLUME_SIZE), DateUtils.addHours(new Date(), -48))));
+    assertTrue(ex.getMessage(), ex.getMessage().contains("cloud reports no data disks"));
+  }
+
+  @Test
+  public void computeIgnoresOciClusterNotBeingRolledBack() {
+    // PLAT-23226/PLAT-23245: only the clusters being rolled back decide the OCI refusal.
+    enableRollback();
+    UUID readReplicaUuid = addReadReplicaNode("rr1");
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u ->
+                u.getUniverseDetails().getClusterByUuid(readReplicaUuid).userIntent.providerType =
+                    Common.CloudType.oci);
+    seedStateTransitionDetailsForResize(NEW_VOLUME_SIZE);
+    moveUniverseIntentToTarget(NEW_VOLUME_SIZE);
+    ResizeNodeParams failedParams = failedResizeParams(NEW_VOLUME_SIZE);
+    failedParams.clusters.removeIf(c -> c.uuid.equals(readReplicaUuid));
+
+    assertNotNull(
+        computer.compute(buildContext(failedParams, DateUtils.addHours(new Date(), -48))));
+  }
+
+  /** Records the primary's nodes as AWS instance store: an ephemeral type and no storage type. */
+  private void useInstanceStore(String instanceType) {
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> {
+              u.getUniverseDetails().getPrimaryCluster().userIntent.deviceInfo.storageType = null;
+              u.getNodes().forEach(n -> n.cloudInfo.instance_type = instanceType);
+            });
+  }
+
+  /** Adds a read-replica cluster with one node, a copy of the primary's node. */
+  private UUID addReadReplicaNode(String nodeName) {
+    Cluster readReplica =
+        new Cluster(
+            ClusterType.ASYNC,
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.clone());
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> {
+              u.getUniverseDetails().clusters.add(readReplica);
+              NodeDetails node =
+                  Json.fromJson(
+                      Json.toJson(u.getUniverseDetails().nodeDetailsSet.iterator().next()),
+                      NodeDetails.class);
+              node.nodeName = nodeName;
+              node.nodeIdx = 2;
+              node.nodeUuid = UUID.randomUUID();
+              node.placementUuid = readReplica.uuid;
+              node.cloudInfo.private_ip = "127.0.0.2";
+              u.getUniverseDetails().nodeDetailsSet.add(node);
+            });
+    return readReplica.uuid;
   }
 }

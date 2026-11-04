@@ -461,6 +461,35 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   }
 
   @Test
+  public void testExpandKeepsUniverseYbcFlags() {
+    // PLAT-23216: a retry reuses its first params, so the edit must not use the ybcFlags they carry
+    // over a throttle update made since, in the universe or on the nodes it configures.
+    Map<String, String> throttleFlags = Map.of("max_concurrent_uploads", "8");
+    Universe universe =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> u.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags = throttleFlags,
+            false);
+    factory.forUniverse(universe).setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
+    UniverseDefinitionTaskParams taskParams = performExpand(universe, true /* move master */);
+    taskParams.getPrimaryCluster().userIntent.ybcFlags = Map.of("max_concurrent_uploads", "2");
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+    List<JsonNode> configuredYbcFlags =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.AnsibleConfigureServers)
+            .map(t -> t.getTaskParams().get("ybcGflags"))
+            .filter(Objects::nonNull)
+            .collect(Collectors.toList());
+    assertTrue(configuredYbcFlags.contains(Json.toJson(throttleFlags)));
+    assertFalse(configuredYbcFlags.contains(Json.toJson(Map.of("max_concurrent_uploads", "2"))));
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertEquals(
+        throttleFlags, universe.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags);
+  }
+
+  @Test
   public void testExpandWithCapacityReservationAzureSuccess() {
     factory
         .globalRuntimeConf()
@@ -2022,6 +2051,13 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         .forUniverse(universe)
         .setValue(UniverseConfKeys.verifyClusterStateBeforeTask.getKey(), "true");
 
+    // PLAT-23216: a YBC throttle update while the edit is failed must survive the rollback.
+    Map<String, String> throttleFlags = Map.of("max_concurrent_uploads", "8");
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> u.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags = throttleFlags,
+        false);
+
     // Instances were never created (Create failed); List still empty. Stub Destroy/List to succeed
     // for rollback, and report instances present so destroy is attempted for ADD nodes.
     ShellResponse ok = new ShellResponse();
@@ -2071,6 +2107,8 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
 
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     assertEquals(nodesBefore, universe.getUniverseDetails().nodeDetailsSet.size());
+    assertEquals(
+        throttleFlags, universe.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags);
     assertTrue(universe.getUniverseDetails().updateSucceeded);
     assertNull(universe.getUniverseDetails().placementModificationTaskUuid);
     assertNull(universe.getStateTransitionDetails());
