@@ -278,7 +278,11 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
       if (!repeated_table_ids.empty()) {
         LOG(WARNING) << Format("Removing repeated table ids $0 from the table_ids field of tablet "
             "$1. Sys catalog will be updated asynchronously.", repeated_table_ids, tablet->id());
-        l.mutable_data()->pb.mutable_table_ids()->Assign(table_ids.begin(), table_ids.end());
+        auto& pb = l.mutable_data()->pb;
+        pb.clear_table_ids();
+        for (const auto& table_id : table_ids) {
+          pb.add_table_ids(table_id);
+        }
         needs_async_write_to_sys_catalog = true;
       }
       // This is for backwards compatibility: we want to ensure that the table_ids
