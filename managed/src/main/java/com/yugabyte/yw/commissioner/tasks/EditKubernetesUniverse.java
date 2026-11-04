@@ -56,7 +56,6 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -512,6 +511,13 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         masterAddressesChanged
             || CollectionUtils.isNotEmpty(mastersToAdd)
             || CollectionUtils.isNotEmpty(fullMoveMasterAZs);
+    // Pods this edit deletes, full move included.
+    Set<String> podsToRemove =
+        Stream.concat(
+                mastersToRemoveAzMap.values().stream(), tserversToRemoveAzMap.values().stream())
+            .flatMap(Set::stream)
+            .map(n -> n.nodeName)
+            .collect(Collectors.toSet());
     if (!mastersToAdd.isEmpty()) {
       // Bring up new masters and update the configs.
       // No need to check mastersToRemove as total number of masters is invariant.
@@ -541,7 +547,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       // Rollback checkpoint: moving masters mutates the existing master quorum.
       createMarkRollbackUnsafeTaskOnce();
       createMoveMasterTasks(
-          new ArrayList<>(mastersToAdd), new ArrayList<>(mastersToRemove), masterAddresses);
+          new ArrayList<>(mastersToAdd),
+          new ArrayList<>(mastersToRemove),
+          masterAddresses,
+          podsToRemove);
       // Rewrite, without restarting pods, the gflags Secrets of the AZs whose pods this edit
       // leaves as they are, so a pod restarted while the edit runs boots with the new masters.
       // AZs that scale or move are skipped: a render of their target counts would add or delete
@@ -588,7 +597,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
             newNamingStyle,
             masterAddresses,
             false /* enableYbc */,
-            null /* ybcSoftwareVersion */);
+            null /* ybcSoftwareVersion */,
+            podsToRemove);
       }
       if (CollectionUtils.isNotEmpty(fullMoveTserverAZs)) {
         createFullMoveTasks(
@@ -604,7 +614,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
             newNamingStyle,
             masterAddresses,
             universe.isYbcEnabled(),
-            ybcManager.getStableYbcVersion());
+            ybcManager.getStableYbcVersion(),
+            podsToRemove);
       }
       if (CollectionUtils.isNotEmpty(fullMoveMasterAZs) || !mastersToAdd.isEmpty()) {
         BiFunction<Map<UUID, Set<NodeDetails>>, Set<UUID>, Set<NodeDetails>>
@@ -912,7 +923,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
   Sends the RPC to update the master addresses in the config.
   */
   public void createMoveMasterTasks(
-      List<NodeDetails> mastersToAdd, List<NodeDetails> mastersToRemove, String masterAddresses) {
+      List<NodeDetails> mastersToAdd,
+      List<NodeDetails> mastersToRemove,
+      String masterAddresses,
+      Set<String> podsToRemove) {
 
     UserTaskDetails.SubTaskGroupType subTask = SubTaskGroupType.WaitForDataMigration;
     // Get Universe from DB to confirm latest state.
@@ -928,6 +942,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       createMasterAddrsInMemoryUpdateTasks(
           universe,
           mastersToAdd,
+          podsToRemove,
           () -> {
             Universe u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
             return u.getHostPortsString(getRemoteMasterNodes(u), ServerType.MASTER, PortType.RPC);
@@ -951,32 +966,35 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     // Wait for master leader.
     createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     // Must land before anything deletes the old master pods.
-    createMasterAddrsInMemoryUpdateTasks(universe, mastersToAdd, () -> masterAddresses);
+    createMasterAddrsInMemoryUpdateTasks(
+        universe, mastersToAdd, podsToRemove, () -> masterAddresses);
   }
 
   /**
-   * Sets master_addresses / tserver_master_addrs in memory on every server that outlives this edit:
-   * the masters that stay, the masters being added, and the tservers of every cluster. Servers this
-   * edit deletes are skipped on a retry, since their pods may already be gone and the push to them
-   * would fail the task. Masters being removed are always skipped; they leave the quorum.
+   * Sets master_addresses / tserver_master_addrs in memory on the masters that stay, the new
+   * masters, and every tserver, read replicas included. On a retry, pods this edit deletes are
+   * skipped, and so are read replica tservers when the read replica is edited too: their pods may
+   * already be gone, and a push to them would fail the task.
    */
   private void createMasterAddrsInMemoryUpdateTasks(
-      Universe universe, List<NodeDetails> mastersToAdd, Supplier<String> masterAddresses) {
-    Set<String> mastersToSkip = getNodeNames(getPodsToRemove(universe, ServerType.MASTER));
-    Set<String> tserversToSkip =
-        isFirstTry()
-            ? Collections.emptySet()
-            : getNodeNames(getPodsToRemove(universe, ServerType.TSERVER));
+      Universe universe,
+      List<NodeDetails> mastersToAdd,
+      Set<String> podsToRemove,
+      Supplier<String> masterAddresses) {
+    boolean skipReadReplicas = !isFirstTry() && !taskParams().getReadOnlyClusters().isEmpty();
+    UUID primaryUUID = universe.getUniverseDetails().getPrimaryCluster().uuid;
     // ToBeAdded nodes are pods this edit has not created yet.
     Map<String, NodeDetails> masters = new HashMap<>();
     Stream.concat(
             universe.getMasters().stream().filter(n -> n.state != NodeState.ToBeAdded),
             mastersToAdd.stream())
-        .filter(n -> !mastersToSkip.contains(n.nodeName))
+        .filter(n -> !podsToRemove.contains(n.nodeName))
         .forEach(n -> masters.putIfAbsent(n.nodeName, n));
     List<NodeDetails> tservers =
         universe.getTServers().stream()
-            .filter(n -> n.state != NodeState.ToBeAdded && !tserversToSkip.contains(n.nodeName))
+            .filter(n -> n.state != NodeState.ToBeAdded)
+            .filter(n -> isFirstTry() || !podsToRemove.contains(n.nodeName))
+            .filter(n -> !skipReadReplicas || primaryUUID.equals(n.placementUuid))
             .collect(Collectors.toList());
     createUpdateMasterAddrsInMemoryTasks(masters.values(), ServerType.MASTER, masterAddresses)
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
@@ -984,44 +1002,6 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       createUpdateMasterAddrsInMemoryTasks(tservers, ServerType.TSERVER, masterAddresses)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
-  }
-
-  // Pods of the given server type that this edit deletes, across every cluster it changes.
-  private Set<NodeDetails> getPodsToRemove(Universe universe, ServerType serverType) {
-    Set<NodeDetails> pods = new HashSet<>();
-    for (Cluster newCluster : taskParams().clusters) {
-      Cluster curCluster = universe.getUniverseDetails().getClusterByUuid(newCluster.uuid);
-      if (curCluster == null) {
-        continue;
-      }
-      boolean isReadOnlyCluster = newCluster.clusterType == ClusterType.ASYNC;
-      if (isReadOnlyCluster && serverType == ServerType.MASTER) {
-        continue;
-      }
-      PlacementInfo newPI = newCluster.placementInfo;
-      PlacementInfo curPI = curCluster.placementInfo;
-      if (!isReadOnlyCluster) {
-        selectNumMastersAZ(newPI);
-        PlacementInfoUtil.selectNumMastersAZ(
-            curPI,
-            curCluster.userIntent.replicationFactor,
-            PlacementInfoUtil.getZonesForMasters(curCluster));
-      }
-      getPodsToRemove(
-              new KubernetesPlacement(newPI, isReadOnlyCluster),
-              new KubernetesPlacement(curPI, isReadOnlyCluster),
-              serverType,
-              universe,
-              PlacementInfoUtil.isMultiAZ(Util.getSingleProvider(newCluster)),
-              isReadOnlyCluster)
-          .values()
-          .forEach(pods::addAll);
-    }
-    return pods;
-  }
-
-  private static Set<String> getNodeNames(Collection<NodeDetails> nodes) {
-    return nodes.stream().map(n -> n.nodeName).collect(Collectors.toSet());
   }
 
   private static boolean isAZUnchanged(
@@ -1264,7 +1244,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       boolean newNamingStyle,
       String masterAddresses,
       boolean enableYbc,
-      String ybcSoftwareVersion) {
+      String ybcSoftwareVersion,
+      Set<String> podsToRemove) {
     String universeName = universe.getName();
     Cluster primaryCluster = taskParams().getPrimaryCluster();
     if (primaryCluster == null) {
@@ -1746,7 +1727,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         // For masters, add change config task
         if (CollectionUtils.isNotEmpty(serversToAdd)
             || CollectionUtils.isNotEmpty(serversToRemove)) {
-          createMoveMasterTasks(serversToAdd, serversToRemove, masterAddresses);
+          createMoveMasterTasks(serversToAdd, serversToRemove, masterAddresses, podsToRemove);
         }
       } else {
         // Tserver case

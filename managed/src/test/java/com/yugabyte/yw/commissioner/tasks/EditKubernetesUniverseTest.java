@@ -2073,23 +2073,35 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     assertEquals(2, rrTservers.size());
 
     PlacementInfo pi = zoneReplacePlacement();
-    UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
-    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
-    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
-    taskParams.expectedUniverseVersion = -1;
-    taskParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet;
-    // Like the UI, the edit carries the unchanged read replica too.
-    taskParams.clusters = new ArrayList<>(Collections.singletonList(readReplica));
-    TaskInfo taskInfo = submitTask(taskParams, newIntent, pi);
-    assertEquals(Failure, taskInfo.getTaskState());
+    java.util.function.Function<UUID, TaskInfo> submit =
+        previousTaskUUID -> {
+          UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+          taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+          taskParams.expectedUniverseVersion = -1;
+          taskParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet;
+          taskParams.setPreviousTaskUUID(previousTaskUUID);
+          // Like the UI, the edit carries the read replica too.
+          taskParams.clusters = new ArrayList<>(Collections.singletonList(readReplica));
+          TaskInfo taskInfo = submitTask(taskParams, currentIntent(), pi);
+          assertEquals(Failure, taskInfo.getTaskState());
+          return taskInfo;
+        };
+    Set<String> masters =
+        ImmutableSet.of("yb-master-0_az-1", "yb-master-0_az-2", "yb-master-0_az-4");
 
     // Read replica tservers get both pushes along with the primary ones.
+    TaskInfo firstAttempt = submit.apply(null);
     assertPushesAroundMasterChange(
-        plan(taskInfo),
-        ImmutableSet.of("yb-master-0_az-1", "yb-master-0_az-2", "yb-master-0_az-4"),
+        plan(firstAttempt),
+        masters,
         Sets.union(
             ImmutableSet.of("yb-tserver-0_az-1", "yb-tserver-0_az-2", "yb-tserver-0_az-3"),
             rrTservers));
+    // On a retry the read replica, which this edit carries, may have lost pods already.
+    assertPushesAroundMasterChange(
+        plan(submit.apply(firstAttempt.getUuid())),
+        masters,
+        ImmutableSet.of("yb-tserver-0_az-1", "yb-tserver-0_az-2"));
   }
 
   @Test
