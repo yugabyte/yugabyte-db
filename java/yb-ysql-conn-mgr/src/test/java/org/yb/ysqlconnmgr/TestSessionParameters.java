@@ -1168,6 +1168,9 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
       }
     }
 
+    // Setting seed through startup packet doesn't do anything in vanilla PG
+    // since its check hook only allows interactive sets (>= PGC_S_INTERACTIVE).
+    // So we don't make the connection sticky with ConnMgr.
     try (Connection conn = getConnectionBuilder()
             .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
             .withOptions("-c seed=0.5")

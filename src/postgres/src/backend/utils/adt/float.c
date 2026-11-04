@@ -2803,6 +2803,10 @@ setseed(PG_FUNCTION_ARGS)
 	pg_prng_fseed(&drandom_seed, seed);
 	drandom_seed_set = true;
 
+	/*
+	 * YB: Making connection sticky for setting seed as the RNG state is a
+	 * session state.
+	 */
 	if (YbIsClientYsqlConnMgr())
 	{
 		elog(LOG, "Making connection sticky for setseed");

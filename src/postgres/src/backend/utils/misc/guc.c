@@ -6853,6 +6853,14 @@ static struct config_real ConfigureNamesReal[] =
 			gettext_noop("Sets the seed for random-number generation."),
 			NULL,
 			GUC_NO_SHOW_ALL | GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE |
+			/*
+			 * YB: We don't report this variable to ConnMgr because:
+			 * - Setting this from startup packet is ignored by the check hook
+			 * - Setting this using SET makes the connection sticky
+			 * - Its show hook reports "unavailable", so ConnMgr can't replay
+			 *   it and replaying it would also be wrong as it would reset RNG
+			 *   state.
+			 */
 			GUC_YB_NO_CONN_MGR_REPORT
 		},
 		&phony_random_seed,
