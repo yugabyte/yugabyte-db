@@ -187,8 +187,26 @@ static uint64_t yb_logical_client_cache_version = YB_CATCACHE_VERSION_UNINITIALI
 static bool yb_need_invalidate_all_table_cache = false;
 
 static Oid	yb_system_db_oid_cache = InvalidOid;
+
+/*
+ * enabled and in_txn_blocks hold the values that
+ * yb_enable_new_relation_fastpath_write and
+ * yb_enable_new_relation_fastpath_write_in_txn_blocks had when the transaction
+ * started, and the transaction uses them rather than the GUCs.  A change to
+ * either GUC partway through a transaction could otherwise turn the
+ * optimization on after writes have gone to the intents db, so that those
+ * writes, applied at commit, overtake later writes to the same rows that went
+ * straight to the regular db.  Turning it off after writes have skipped the
+ * intents db would stop later reads from being pointed at in_txn_limit.  The
+ * check hooks of the GUCs refuse SET in a transaction that has done work, but
+ * RESET, RESET ALL and DISCARD ALL assign the reset value without calling a
+ * check hook, and that value can come from the configuration file or a per-role
+ * or per-database setting.
+ */
 typedef struct YbSkipIntentsTxnState
 {
+	bool		enabled;
+	bool		in_txn_blocks;
 	bool		disabled;
 	bool		has_skipped_write;
 	bool		has_seen_non_top_level;
@@ -10637,7 +10655,10 @@ YbInvalidatePlannerRelcache(PlannerInfo *root)
 void
 YbEnableSkipIntentsForNewTransaction()
 {
-	skip_intents_txn_state = (YbSkipIntentsTxnState){};
+	skip_intents_txn_state = (YbSkipIntentsTxnState){
+		.enabled = yb_enable_new_relation_fastpath_write,
+		.in_txn_blocks = yb_enable_new_relation_fastpath_write_in_txn_blocks,
+	};
 }
 
 bool
@@ -10658,7 +10679,7 @@ YbGetSkipIntentsOptimizationInfo(Relation rel, bool is_write)
 {
 	YbcPgSkipIntentsOptimizationInfo info = {0};
 
-	if (!yb_enable_new_relation_fastpath_write)
+	if (!skip_intents_txn_state.enabled)
 		return info;
 
 	/*
@@ -10710,7 +10731,7 @@ YbGetSkipIntentsOptimizationInfo(Relation rel, bool is_write)
 	 * run inside a transaction block.
 	 */
 	bool is_serializable = XactIsoLevel == XACT_SERIALIZABLE;
-	bool top_level_only = !yb_enable_new_relation_fastpath_write_in_txn_blocks || is_serializable;
+	bool top_level_only = !skip_intents_txn_state.in_txn_blocks || is_serializable;
 	bool is_top_level = !IsTransactionBlock() &&
 						GetCurrentTransactionNestLevel() == 1 &&
 						YbGetTriggerDepth() == 0 &&
@@ -10856,7 +10877,7 @@ YbDatabaseHasPublications(void)
 void
 YbMaybeDisableSkipIntentsForCDCSDK(Oid database_oid)
 {
-	if (!yb_enable_new_relation_fastpath_write)
+	if (!skip_intents_txn_state.enabled)
 		return;
 
 	if (skip_intents_txn_state.disabled)

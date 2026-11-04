@@ -1660,6 +1660,60 @@ TEST_F(SkipIntentsMetricTest, TestGucSetThroughRoleDatabaseAndConnectionOptions)
   ASSERT_OK(conn.Execute("ROLLBACK"));
 }
 
+// RESET assigns a GUC its reset value without calling the check hook, so it can change
+// yb_enable_new_relation_fastpath_write inside a transaction block. The transaction must keep the
+// value it started with. Here a per-role setting makes the reset value off, and RESET turns the
+// optimization off after a write has skipped the intents db.
+TEST_F(SkipIntentsMetricTest, TestGucResetToOffInsideTxnBlock) {
+  constexpr auto kParentGuc = "yb_enable_new_relation_fastpath_write";
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE ROLE reset_role LOGIN"));
+  ASSERT_OK(conn.Execute("GRANT CREATE ON SCHEMA public TO reset_role"));
+  ASSERT_OK(conn.ExecuteFormat("ALTER ROLE reset_role SET $0 = off", kParentGuc));
+
+  auto role_conn = ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "reset_role"));
+  ASSERT_OK(role_conn.ExecuteFormat("SET $0 = on", kParentGuc));
+  ASSERT_OK(role_conn.Execute("BEGIN"));
+  ASSERT_OK(role_conn.Execute("CREATE TABLE reset_to_off (k INT PRIMARY KEY, v INT)"));
+  const auto writes_before = ASSERT_RESULT(GetSkipIntentsCount());
+  ASSERT_OK(role_conn.Execute(
+      "INSERT INTO reset_to_off SELECT g, g FROM generate_series(1, 10) g"));
+  ASSERT_GT(ASSERT_RESULT(GetSkipIntentsCount()), writes_before)
+      << "The insert must skip the intents db for the test to cover anything";
+  ASSERT_OK(role_conn.ExecuteFormat("RESET $0", kParentGuc));
+  ASSERT_EQ(ASSERT_RESULT(role_conn.FetchRow<std::string>(Format("SHOW $0", kParentGuc))), "off");
+  ASSERT_EQ(ASSERT_RESULT(role_conn.FetchRow<int64_t>("SELECT count(*) FROM reset_to_off")), 10)
+      << "A read after the RESET missed the rows written to the regular db";
+  ASSERT_OK(role_conn.Execute("COMMIT"));
+  ASSERT_EQ(ASSERT_RESULT(role_conn.FetchRow<int64_t>("SELECT count(*) FROM reset_to_off")), 10);
+}
+
+// The other direction: the reset value is the default, on, and RESET turns the optimization on
+// after writes have gone to the intents db.
+TEST_F(SkipIntentsMetricTest, TestGucResetToOnInsideTxnBlock) {
+  constexpr auto kParentGuc = "yb_enable_new_relation_fastpath_write";
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("SET $0 = off", kParentGuc));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("CREATE TABLE reset_to_on (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO reset_to_on SELECT g, g FROM generate_series(1, 10) g"));
+  ASSERT_OK(conn.ExecuteFormat("RESET $0", kParentGuc));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(Format("SHOW $0", kParentGuc))), "on");
+  const auto writes_before = ASSERT_RESULT(GetSkipIntentsCount());
+  ASSERT_OK(conn.Execute("UPDATE reset_to_on SET v = v + 100"));
+  ASSERT_OK(conn.Execute("INSERT INTO reset_to_on SELECT g, g FROM generate_series(11, 20) g"));
+  const auto writes_after = ASSERT_RESULT(GetSkipIntentsCount());
+  ASSERT_OK(conn.Execute("COMMIT"));
+  // Checked before the write count so that a run without the fix also reports what it did to the
+  // data.
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM reset_to_on")), 20);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM reset_to_on WHERE k <= 10 AND v = k + 100")), 10)
+      << "Rows written to the intents db before the RESET overtook the updates made after it";
+  ASSERT_EQ(writes_after, writes_before)
+      << "A transaction that started with the optimization off must not skip the intents db";
+}
+
 // Connection options are applied in the order the client lists them. With the cluster's
 // yb_enable_new_relation_fastpath_write off, listing
 // yb_enable_new_relation_fastpath_write_in_txn_blocks first must not refuse the connection, since

@@ -18420,11 +18420,11 @@ assign_yb_dist_tracecontext(const char *newval, void *extra)
  * YB: check_skip_intents_internal
  * Common logic for skip-intent GUCs to handle transaction block restrictions.
  *
- * Changing these GUCs once the transaction has done work could flip the
- * optimization off after writes already skipped the intents db, and later reads
- * in the transaction would then miss those rows.  So a change is refused inside
- * a transaction block, or once the transaction has taken a snapshot, except
- * that:
+ * A transaction uses the values these GUCs had when it started (see
+ * YbSkipIntentsTxnState), so a change made inside one would only take effect
+ * in the next transaction.  So that SET does not appear to take effect when it
+ * does not, a change is refused inside a transaction block, or once the
+ * transaction has taken a snapshot, except that:
  * - PGC_S_TEST, the validation pass of ALTER ROLE/DATABASE ... SET, assigns
  *   nothing and is always accepted.  It runs inside the ALTER statement's
  *   transaction, so the checks would reject every such setting.
