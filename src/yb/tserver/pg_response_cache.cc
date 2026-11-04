@@ -281,11 +281,11 @@ class Data {
   // this": IsValid() is false for kReadyFailure, so the next caller rebuilds it and fills afresh
   // rather than inheriting the failure.
   void SetAbandoned(PgResponseCache::KeyGroup group, uint64_t catalog_version) {
-    auto msg = rpc::MakeSharedMessage<PgPerformResponseMsg>();
+    PgPerformResponsePB response;
     StatusToPB(
         STATUS(Aborted, "Catalog response cache fill was abandoned by its filler"),
-        msg->mutable_status());
-    Set(PgResponseCache::Response(*msg, {}), group, catalog_version);
+        response.mutable_status());
+    Set(PgResponseCache::Response(std::move(response), {}), group, catalog_version);
   }
 
   [[nodiscard]] bool IsValid(CoarseTimePoint now, uint64_t version) const {

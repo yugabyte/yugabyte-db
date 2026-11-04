@@ -16,8 +16,6 @@
 #include <memory>
 #include <string>
 
-#include "yb/rpc/lightweight_message.h"
-
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/test_util.h"
@@ -53,22 +51,20 @@ class PgResponseCacheTest : public YBTest {
   }
 
   // A request for the one key every caller in these tests contends on.
-  LWPgPerformOptionsPB::LWCachingInfoPB& MakeCachingInfo(ThreadSafeArena& arena) {
-    auto& info = *arena.NewArenaObject<LWPgPerformOptionsPB::LWCachingInfoPB>();
+  PgPerformOptionsPB::CachingInfoPB MakeCachingInfo() {
+    PgPerformOptionsPB::CachingInfoPB info;
     info.set_key_group(kKeyGroup);
-    info.dup_key_value("the-only-key"sv);
+    info.set_key_value("the-only-key");
     info.set_catalog_version(kCatalogVersion);
     return info;
   }
 
   // A minimal successful fill: no operations, so no rows data to hand back.
   PgResponseCache::Response MakeResponse() {
-    response_msg_ = rpc::MakeSharedMessage<PgPerformResponseMsg>();
-    return PgResponseCache::Response(*response_msg_, {});
+    return PgResponseCache::Response(PgPerformResponsePB(), {});
   }
 
   MetricRegistry registry_;
-  std::shared_ptr<PgPerformResponseMsg> response_msg_;
   std::shared_ptr<MemTracker> mem_tracker_;
   scoped_refptr<MetricEntity> metric_entity_;
   std::unique_ptr<PgResponseCache> cache_;
@@ -81,10 +77,9 @@ class PgResponseCacheTest : public YBTest {
 // entry's readiness deadline passes first. SetAbandoned completes it as a failure instead, which
 // releases them at once.
 TEST_F(PgResponseCacheTest, AbandonedFillReleasesItsWaiters) {
-  ThreadSafeArena arena;
-  auto& filler_info = MakeCachingInfo(arena);
-  auto& waiter_info = MakeCachingInfo(arena);
-  auto& next_info = MakeCachingInfo(arena);
+  auto filler_info = MakeCachingInfo();
+  auto waiter_info = MakeCachingInfo();
+  auto next_info = MakeCachingInfo();
   const auto deadline = CoarseMonoClock::Now() + 60s;
 
   auto filler_waiter = std::make_shared<CountingWaiter>();
@@ -116,10 +111,9 @@ TEST_F(PgResponseCacheTest, AbandonedFillReleasesItsWaiters) {
 // fresh entry to fill, while the older one lives on and still serves everyone queued on it when
 // the late fill lands. Its response is never cached, since the cache now keeps the fresh entry.
 TEST_F(PgResponseCacheTest, AFillOutlivingItsDeadlineStillServesItsWaiters) {
-  ThreadSafeArena arena;
-  auto& filler_info = MakeCachingInfo(arena);
-  auto& waiter_info = MakeCachingInfo(arena);
-  auto& later_info = MakeCachingInfo(arena);
+  auto filler_info = MakeCachingInfo();
+  auto waiter_info = MakeCachingInfo();
+  auto later_info = MakeCachingInfo();
   // Short enough to wait out, long enough that the caller below queues rather than rebuilding.
   constexpr auto kReadiness = 2s;
 
