@@ -21,6 +21,8 @@
 
 #include "yb/gutil/endian.h"
 
+#include "yb/storage/frontier.h"
+
 #include "yb/util/crc.h"
 #include "yb/util/logging.h"
 #include "yb/util/path_util.h"
@@ -247,6 +249,56 @@ Result<VectorLSMFiles> ListVectorLSMFiles(Env* env, const std::string& dir) {
   });
   result.manifest_and_chunk_files = std::move(files);
   return result;
+}
+
+Result<bool> VectorLSMMetadataModifyChunkFrontiers(
+    Env* env, const std::string& dir,
+    const std::function<storage::UserFrontiersPtr()>& frontiers_factory,
+    const std::function<void(storage::UserFrontiers&)>& modify,
+    const storage::UserFrontiers& added_chunk_frontiers) {
+  if (!env->DirExists(dir)) {
+    return true;
+  }
+
+  VectorLSMUpdatePB update;
+  update.set_reset(true);
+  // Only reads, so a failure leaves the storage as it is.
+  auto load = [&]() -> Result<size_t> {
+    auto load_result = VERIFY_RESULT(VectorLSMMetadataLoad(env, dir));
+    uint64_t next_order_no = 0;
+    for (auto& chunk : load_result.chunks) {
+      // Decoded the same way as VectorLSM::Open does.
+      auto frontiers = frontiers_factory();
+      RETURN_NOT_OK(frontiers->Smallest().FromPB(chunk.smallest().user_frontier()));
+      RETURN_NOT_OK(frontiers->Largest().FromPB(chunk.largest().user_frontier()));
+      modify(*frontiers);
+      frontiers->Smallest().ToPB(chunk.mutable_smallest()->mutable_user_frontier());
+      frontiers->Largest().ToPB(chunk.mutable_largest()->mutable_user_frontier());
+      next_order_no = std::max(next_order_no, chunk.order_no() + 1);
+      *update.add_add_chunks() = std::move(chunk);
+    }
+    auto& added_chunk = *update.add_add_chunks();
+    added_chunk.set_order_no(next_order_no);
+    added_chunk_frontiers.Smallest().ToPB(added_chunk.mutable_smallest()->mutable_user_frontier());
+    added_chunk_frontiers.Largest().ToPB(added_chunk.mutable_largest()->mutable_user_frontier());
+    return load_result.next_free_file_no;
+  };
+  auto next_free_file_no = load();
+  if (!next_free_file_no.ok()) {
+    LOG(WARNING) << "Not modifying chunk frontiers in " << dir << ", failed to load its manifest: "
+                 << next_free_file_no.status();
+    return false;
+  }
+
+  auto file = VERIFY_RESULT(VectorLSMMetadataOpenFile(env, dir, *next_free_file_no));
+  RETURN_NOT_OK(VectorLSMMetadataAppendUpdate(*file, update));
+  RETURN_NOT_OK(file->Close());
+  // A caller can rely on the update surviving a crash, e.g. to skip a replay, so the new file
+  // must not be lost with its directory entry.
+  RETURN_NOT_OK(env->SyncDir(dir));
+  LOG(INFO) << "Modified frontiers of " << update.add_chunks_size() - 1 << " chunks in " << dir
+            << ", manifest file no: " << *next_free_file_no;
+  return true;
 }
 
 }  // namespace yb::vector_index
