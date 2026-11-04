@@ -201,11 +201,11 @@ static Oid	yb_system_db_oid_cache = InvalidOid;
  * later reads are no longer pointed at in_txn_limit.  The check hooks of the
  * GUCs refuse SET once the transaction has taken a snapshot, which it always
  * has by that point, but RESET, SET ... TO DEFAULT, RESET ALL and DISCARD ALL
- * assign the reset value without calling a check hook, and a configuration file reload is
- * accepted at any time.  The copy is not taken when the transaction starts, so
- * that a SET that the check hooks accept before the first use, for example
- * earlier in an extended-protocol pipeline that shares the transaction, still
- * applies to it.
+ * assign the reset value without calling a check hook, and a configuration
+ * file reload is accepted at any time.  The copy is not taken when the
+ * transaction starts, so that a SET that the check hooks accept before the
+ * first use, for example earlier in an extended-protocol pipeline that shares
+ * the transaction, still applies to it.
  */
 typedef struct YbSkipIntentsTxnState
 {

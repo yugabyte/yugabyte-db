@@ -18425,13 +18425,14 @@ assign_yb_dist_tracecontext(const char *newval, void *extra)
  * only from the next transaction.  Every statement that may use the
  * optimization takes a snapshot first, so SET to a value (PGC_S_SESSION) is
  * refused once the transaction has taken one, so that it does not appear to
- * take effect when it does not.  RESET and SET ... TO DEFAULT assign the reset
- * value without calling this hook, so they are accepted at any time.  A SET before then is accepted, inside a transaction block
- * too, and takes effect for the transaction.  Connection Manager relies on
- * this: it replays a client's SETs as one multi-statement query, which runs in
- * an implicit transaction block.  A function's SET clause is applied with
- * PGC_S_SESSION too, inside the calling statement, so
- * YbValidateFunctionSetItem refuses such a clause up front.
+ * take effect when it does not.  A SET before then is accepted, inside a
+ * transaction block too, and takes effect for the transaction.  Connection
+ * Manager relies on this: it replays a client's SETs as one multi-statement
+ * query, which runs in an implicit transaction block.  A function's SET clause
+ * is applied with PGC_S_SESSION too, inside the calling statement, so
+ * YbValidateFunctionSetItem refuses such a clause up front.  RESET and SET ...
+ * TO DEFAULT assign the reset value without calling this hook, so they are
+ * accepted at any time.
  *
  * Other sources are accepted.  None of them is a statement that could appear
  * to take effect, and refusing one would lose the value rather than delay it:
