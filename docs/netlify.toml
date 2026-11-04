@@ -1203,7 +1203,8 @@
             https://*.google-analytics.com/
             https://*.analytics.google.com/
             https://*.googletagmanager.com/
-            https://*.google.com/
+            https://www.google.com/
+            https://analytics.google.com/
             https://pagead2.googlesyndication.com/
             https://www.googleadservices.com/
             https://pixel-config.reddit.com/
@@ -1281,7 +1282,7 @@
             https://*.google-analytics.com/
             https://*.googletagmanager.com/
             https://*.g.doubleclick.net/
-            https://*.google.com/
+            https://www.google.com/
             https://pagead2.googlesyndication.com/
             https://www.googleadservices.com/
             https://www.yugabyte.com
