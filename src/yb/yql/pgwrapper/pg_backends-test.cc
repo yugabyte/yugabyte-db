@@ -390,6 +390,11 @@ class PgBackendsTestNoWaitQueues : public PgBackendsTest {
     options->extra_tserver_flags.push_back("--yb_enable_read_committed_isolation=true");
   }
 
+  // The tserver flag reaches a backend through a postmaster SIGHUP, and the backend applies it only
+  // between statements. Wait until conn sees the value, else its next UPDATE can run with the old
+  // threshold for the whole statement.
+  void SetRetryCountThreshold(PGConn& conn, int value);
+
   // Simulates a transaction conflict scenario to test retry counting
   void SimulateConflictRetries(PGConn& conn1, PGConn& conn2);
 
@@ -1333,6 +1338,16 @@ TEST_F(PgBackendsTestRf3Block, LeaderChangeInFlightLater) {
   thread_holder.Stop();
 }
 
+void PgBackendsTestNoWaitQueues::SetRetryCountThreshold(PGConn& conn, int value) {
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_reset_retry_counts", std::to_string(value)));
+  ASSERT_OK(WaitFor(
+      [&conn, value]() -> Result<bool> {
+        return VERIFY_RESULT(conn.FetchRow<std::string>("SHOW yb_test_reset_retry_counts")) ==
+               std::to_string(value);
+      },
+      10s * kTimeMultiplier, "backend sees yb_test_reset_retry_counts"));
+}
+
 void PgBackendsTestNoWaitQueues::SimulateConflictRetries(PGConn& conn1, PGConn& conn2) {
   constexpr auto kWaitTime = 5s;
 
@@ -1382,13 +1397,11 @@ TEST_F_EX(PgBackendsTest, VerifyResetRetryCounts, PgBackendsTestNoWaitQueues) {
   ASSERT_OK(conn1.Execute("CREATE TABLE test (k int PRIMARY KEY, v int)"));
   ASSERT_OK(conn1.Execute("INSERT INTO test VALUES (1, 1)"));
 
-  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_reset_retry_counts",
-                                        std::to_string(kFirstRetryCount)));
+  SetRetryCountThreshold(conn2, kFirstRetryCount);
   SimulateConflictRetries(conn1, conn2);
   CheckPgssConflictRetries(conn1, kFirstRetryCount);
 
-  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_reset_retry_counts",
-                                        std::to_string(kSecondRetryCount)));
+  SetRetryCountThreshold(conn2, kSecondRetryCount);
   SimulateConflictRetries(conn1, conn2);
 
   /*
