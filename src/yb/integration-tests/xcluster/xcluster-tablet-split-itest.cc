@@ -1327,9 +1327,6 @@ class NotSupportedTabletSplitITest : public CdcTabletSplitITest {
     if (restart_server) {
       // Now try to restart the cluster and check that tablet splitting still fails.
       RETURN_NOT_OK(cluster_->RestartSync());
-      // Later splits fail with "No leader found" if issued before re-election completes.
-      RETURN_NOT_OK(WaitForTableLeaders(
-          cluster_.get(), table_->id(), 30s * kTimeMultiplier, RequireLeaderIsReady::kTrue));
 
       s = SplitTabletAndValidate(split_hash_code, kDefaultNumRows);
       EXPECT_NOK(s);
@@ -1422,7 +1419,17 @@ TEST_F(NotSupportedTabletSplitITest, SplittingWithXClusterReplicationOnConsumer)
   // Now delete replication and verify that the tablet can now be split.
   ASSERT_OK(tools::RunAdminToolCommand(
       cluster_->GetMasterAddresses(), "delete_universe_replication", kProducerClusterId));
-  ASSERT_OK(SplitTabletAndValidate(split_hash_code, kDefaultNumRows));
+  // After the restart, the master may not have learned the tablet leader from heartbeats yet.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto s = SplitTabletAndValidate(split_hash_code, kDefaultNumRows);
+    if (s.ok()) {
+      return true;
+    }
+    if (s.status().message().ToBuffer().find("No leader found") != std::string::npos) {
+      return false;
+    }
+    return s.status();
+  }, 30s * kTimeMultiplier, "Split tablet after deleting xCluster replication"));
 
   producer_cluster->Shutdown();
 }
