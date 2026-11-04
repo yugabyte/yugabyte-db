@@ -24,7 +24,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.ConfigureNodeExporterTls;
 import com.yugabyte.yw.common.AccessKeyRotationUtil;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.ConfigHelper;
-import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
@@ -76,8 +75,6 @@ public class UniverseMetricProvider implements MetricsProvider {
 
   @Inject AccessManager accessManager;
 
-  @Inject ImageBundleUtil imageBundleUtil;
-
   @Inject Environment environment;
 
   @Inject Config config;
@@ -106,17 +103,15 @@ public class UniverseMetricProvider implements MetricsProvider {
   public List<MetricSaveGroup> getMetricGroups() throws Exception {
     List<MetricSaveGroup> metricSaveGroups = new ArrayList<>();
     Map<UUID, KmsHistory> activeEncryptionKeys =
-        KmsHistory.getAllActiveHistory(TargetType.UNIVERSE_KEY).stream()
+        KmsHistory.getAllActiveHistoryWithoutEncryptionContext(TargetType.UNIVERSE_KEY).stream()
             .collect(Collectors.toMap(key -> key.getUuid().targetUuid, Function.identity()));
     Map<UUID, KmsConfig> kmsConfigMap =
         KmsConfig.listAllKMSConfigs().stream()
             .collect(Collectors.toMap(config -> config.getConfigUUID(), Function.identity()));
     Map<AccessKeyId, AccessKey> allAccessKeys = accessKeyRotationUtil.createAllAccessKeysMap();
     boolean vmOsPatchingEnabled = confGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching);
-    Map<UUID, ImageBundle> imageBundleMap = null;
-    if (vmOsPatchingEnabled) {
-      imageBundleMap = imageBundleUtil.collectUniversesImageBundles();
-    }
+    // Image bundles of the universes seen so far, fetched once per run.
+    Map<UUID, ImageBundle> imageBundleMap = new HashMap<>();
 
     String ybaVersion = ConfigHelper.getCurrentVersion(environment);
     Map<String, ReleaseContainer> releaseContainers =
@@ -247,8 +242,9 @@ public class UniverseMetricProvider implements MetricsProvider {
             if (userIntent != null) {
               int universeOSUpdateRequired = 0;
               for (UUID imageBundleUUID : userIntent.getAllImageBundles()) {
-                if (imageBundleMap != null && imageBundleMap.containsKey(imageBundleUUID)) {
-                  ImageBundle bundle = ImageBundle.get(imageBundleUUID);
+                if (imageBundleUUID != null) {
+                  ImageBundle bundle =
+                      imageBundleMap.computeIfAbsent(imageBundleUUID, ImageBundle::get);
                   if (bundle != null
                       && bundle.getMetadata() != null
                       && bundle.getMetadata().getType() != null

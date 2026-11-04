@@ -13,12 +13,14 @@ import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.utils.FileUtils;
+import com.yugabyte.yw.controllers.apiModels.ResponseRelease;
 import com.yugabyte.yw.models.Release;
 import com.yugabyte.yw.models.ReleaseArtifact;
 import com.yugabyte.yw.models.ReleaseLocalFile;
 import com.yugabyte.yw.models.Universe;
 import io.ebean.DB;
 import io.ebean.SqlQuery;
+import io.ebean.SqlRow;
 import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -32,6 +34,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -491,6 +494,27 @@ public class ReleasesUtils {
                         .map(u -> Universe.getOrBadRequest(UUID.fromString(u)))
                         .collect(Collectors.toList())));
     return mapUniVersion;
+  }
+
+  /**
+   * Universes per DB version, with only the fields release responses show. Reads uuid, name and
+   * creation date in one query instead of loading and parsing every universe.
+   */
+  public Map<String, List<ResponseRelease.Universe>> versionUniverseSummaries() {
+    String sql =
+        "select (universe_details_json::json)#>>'{clusters,0,userIntent,ybSoftwareVersion}' as"
+            + " yb_software_version, universe_uuid, name, creation_date from universe";
+    Map<String, List<ResponseRelease.Universe>> result = new HashMap<>();
+    for (SqlRow row : DB.sqlQuery(sql).findList()) {
+      result
+          .computeIfAbsent(row.getString("yb_software_version"), k -> new ArrayList<>())
+          .add(
+              new ResponseRelease.Universe(
+                  row.getUUID("universe_uuid"),
+                  row.getString("name"),
+                  row.getTimestamp("creation_date")));
+    }
+    return result;
   }
 
   public String getUploadStoragePath() {
