@@ -2346,11 +2346,15 @@ void TabletServiceAdminImpl::AlterTabletTier(
   // could pick another disk in the tier just because the load counts changed, rewriting every
   // SST for nothing. OpenTablet leaves a stale path_id behind when the tier has no disks on this
   // node, and SelectPathIdForTier then refuses with NotFound, as for a tier change. Nothing is
-  // persisted here: the tablet's guarded write stays the only writer.
+  // persisted here: the tablet's guarded write stays the only writer. The pair is read once and
+  // the path_id validated and sent is the one read; a concurrent AlterTabletTier can still switch
+  // the tablet underneath, and the tablet refuses a path_id that is not a disk of the tier.
+  const auto persisted_tier = meta->target_storage_tier();
+  const auto persisted_path_id = meta->target_tier_path_id();
   Result<uint32_t> path_id =
-      meta->target_storage_tier() == req->target_tier() &&
-              tablet_manager->IsTargetTierPathIdValid(*meta)
-          ? Result<uint32_t>(meta->target_tier_path_id())
+      persisted_tier == req->target_tier() &&
+              tablet_manager->IsTargetTierPathIdValid(*meta, persisted_tier, persisted_path_id)
+          ? Result<uint32_t>(persisted_path_id)
           : tablet_manager->SelectPathIdForTier(*meta, meta->table_id(), req->target_tier());
   if (!path_id.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), path_id.status(), &context);

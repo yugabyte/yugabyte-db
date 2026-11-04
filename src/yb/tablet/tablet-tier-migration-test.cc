@@ -246,6 +246,23 @@ TEST_F(TierMigrationTest, ReassertingTargetRepointsDb) {
   ASSERT_EQ(SstCountOnPath(info, kHomePathId), 0u);
 }
 
+// A path_id that is not a disk of the requested tier is refused before anything is written. The
+// RPC handler reads the tier and the path_id separately, so a concurrent AlterTabletTier that
+// switches the tablet in between can hand it such a pair.
+TEST_F(TierMigrationTest, PathIdOnAnotherTierIsRefused) {
+  WriteFileWithKey(1);
+
+  auto result = tablet()->AlterTabletTier("hdd", kDecoyPathId);
+  ASSERT_NOK(result);
+  ASSERT_TRUE(result.status().IsInvalidArgument()) << result.status();
+  ASSERT_TRUE(tablet()->metadata()->target_storage_tier().empty());
+  ASSERT_EQ(tablet()->tier_migration_status().state, TierMigrationStatus::State::kNone);
+
+  auto write = tablet()->SetTierMigrationTarget("hdd", kDecoyPathId);
+  ASSERT_TRUE(write.IsInvalidArgument()) << write;
+  ASSERT_TRUE(tablet()->metadata()->target_storage_tier().empty());
+}
+
 // A hard error keeps the tablet IN_PROGRESS and counts passes without progress; the first pass
 // that makes progress resets the count.
 TEST_F(TierMigrationTest, HardFailureKeepsInProgressAndCountsPasses) {

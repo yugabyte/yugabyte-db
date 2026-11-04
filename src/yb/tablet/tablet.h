@@ -147,6 +147,7 @@ struct ManualCompactionOptions {
 // Tiered storage: bookkeeping for one migration pass, from Tablet::StartTierMigrationPass to
 // Tablet::FinishTierMigrationPass.
 struct TierMigrationPass;
+struct TierPathInfo;
 
 // Where this replica stands relative to its persisted target tier
 // (RaftGroupMetadata::target_storage_tier() / target_tier_path_id()). In memory only: after a
@@ -1397,16 +1398,18 @@ class Tablet : public AbstractTablet,
       const rocksdb::CompactRangeOptions& regular_options,
       const rocksdb::CompactRangeOptions& intents_options);
 
-  // Tiered storage: directory pinned for path_id in tier_paths.
+  // Tiered storage: the tier_paths entry for path_id, and just its directory.
+  Result<TierPathInfo> LookupTierPath(uint32_t path_id) const;
   Result<std::string> LookupTierDir(uint32_t path_id) const;
 
   // Tiered storage: returns the set of files that should be migrated to target_dir.
   // i.e. file numbers of live regular-DB SSTs not under target_dir.
   std::vector<uint64_t> CollectTierMigrationCandidates(const std::string& target_dir) const;
 
-  // Tiered storage: checks the regular DB is open and target_path_id has a directory. The returned
-  // operation keeps the DB open for as long as the caller holds it.
-  Result<ScopedRWOperation> CheckTierTargetUsable(uint32_t target_path_id);
+  // Tiered storage: checks the regular DB is open and target_path_id is a disk of target_tier.
+  // The returned operation keeps the DB open for as long as the caller holds it.
+  Result<ScopedRWOperation> CheckTierTargetUsable(
+      const std::string& target_tier, uint32_t target_path_id);
 
   // Tiered storage: the one place an open tablet's target is written; creation, remote bootstrap
   // and OpenTablet's path_id repair write it before the Tablet exists. Refuses a different target

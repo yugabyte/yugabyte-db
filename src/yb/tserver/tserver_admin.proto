@@ -317,7 +317,8 @@ message FlushTabletsResponsePB {
 
 // Records target_tier as the tablet replica's placement intent and starts moving its live SSTs
 // there, one DB path move per SST on the compaction/flush thread pool. Returns as soon as the moves
-// are scheduled; the tablet stays RUNNING throughout. While a migration pass is in flight, the same
+// are scheduled; the tablet stays RUNNING throughout. A tier with no disks on this node is refused
+// with NotFound, even when it is the persisted one. While a migration pass is in flight, the same
 // target is accepted as any re-assert is (new flushes re-pointed, failed-pass count restarted) and
 // returns that pass's progress, and a different target is refused with ServiceUnavailable and
 // records nothing: retry once the pass ends. Poll GetTabletTierInfo for progress. Whatever a pass

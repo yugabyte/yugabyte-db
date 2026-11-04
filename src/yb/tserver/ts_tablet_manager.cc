@@ -2389,7 +2389,10 @@ void TSTabletManager::OpenTablet(
   // target for new flushes/compactions, before the DB is actually opened below. OpenTablet is
   // the point every path that can make meta's cached target_tier_path_id stale passes
   // through before opening RocksDB, so repairing it here means every other tiered-storage code
-  // path (flush, compaction, AlterTabletTier) can just trust what's persisted in meta.
+  // path (flush, compaction, AlterTabletTier) can trust what's persisted in meta, with one
+  // exception: a target tier with no disks on this node cannot be repaired, and its stale path_id
+  // stays in use. Only the AlterTabletTier handler re-checks it (IsTargetTierPathIdValid); the
+  // DB open, compactions and reconciler passes do not (follow-up work).
   auto resolved_target_path_id = ResolveTargetTierPathId(meta);
   if (!resolved_target_path_id.ok()) {
     LOG(DFATAL) << kLogPrefix << "Failed to resolve tiered-storage target path_id: "
@@ -3751,10 +3754,14 @@ std::string TSTabletManager::PickMinLoadDataRootUnlocked(
 }
 
 bool TSTabletManager::IsTargetTierPathIdValid(const tablet::RaftGroupMetadata& meta) const {
-  const auto target_tier = meta.target_storage_tier();
-  const auto cached_path_id = meta.target_tier_path_id();
+  return IsTargetTierPathIdValid(meta, meta.target_storage_tier(), meta.target_tier_path_id());
+}
+
+bool TSTabletManager::IsTargetTierPathIdValid(
+    const tablet::RaftGroupMetadata& meta, const std::string& target_tier,
+    uint32_t path_id) const {
   for (const auto& tp : meta.tier_paths()) {
-    if (tp.path_id != cached_path_id) {
+    if (tp.path_id != path_id) {
       continue;
     }
     if (tp.tier != target_tier) {
@@ -3793,7 +3800,7 @@ Result<uint32_t> TSTabletManager::ResolveTargetTierPathId(
   }
 
   const auto cached_path_id = meta->target_tier_path_id();
-  if (IsTargetTierPathIdValid(*meta)) {
+  if (IsTargetTierPathIdValid(*meta, target_tier, cached_path_id)) {
     VLOG(3) << "TieredStorage ResolveTargetTierPathId: tablet=" << meta->raft_group_id()
             << " target_tier=" << target_tier << " cached path_id=" << cached_path_id
             << " is still valid, reusing it";

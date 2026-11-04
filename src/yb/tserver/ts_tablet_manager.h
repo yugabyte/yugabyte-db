@@ -425,17 +425,22 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
       const std::string& table_id,
       const std::string& target_tier) EXCLUDES(dir_assignment_mutex_);
 
-  // Tiered storage: whether meta's persisted target_tier_path_id can still be trusted on this
-  // node. meta's (target_storage_tier, target_tier_path_id) is the cached resolution from a prior
-  // AlterTabletTier/creation, only trustworthy on the node that wrote it, so it is checked here:
-  //   - target_tier_path_id must be a real entry in meta's tier_paths.
-  //   - that entry's tier must equal target_storage_tier (catches stale ids after e.g. a split
-  //     child got a different tier_paths layout than its parent).
-  //   - that entry's data root must still be configured for target_storage_tier on this node
-  //     (catches disks removed from --fs_data_dirs or relabeled to a different tier).
-  // False when no target tier is persisted. Read-only: ResolveTargetTierPathId repairs what this
-  // rejects at tablet open, and the AlterTabletTier handler re-resolves instead, so the tablet's
-  // guarded write stays the only writer of an open tablet's target.
+  // Tiered storage: whether path_id can be trusted as a target_tier disk for this tablet on this
+  // node. A persisted (target_storage_tier, target_tier_path_id) pair is the cached resolution
+  // from a prior AlterTabletTier/creation, only trustworthy on the node that wrote it, so:
+  //   - path_id must be a real entry in meta's tier_paths.
+  //   - that entry's tier must equal target_tier (catches stale ids after e.g. a split child got
+  //     a different tier_paths layout than its parent).
+  //   - that entry's data root must still be configured for target_tier on this node (catches
+  //     disks removed from --fs_data_dirs or relabeled to a different tier).
+  // Read-only: ResolveTargetTierPathId repairs what this rejects at tablet open, and the
+  // AlterTabletTier handler re-resolves instead, so the tablet's guarded write stays the only
+  // writer of an open tablet's target. A caller that read the pair itself passes the values it
+  // read, so what it validates is what it goes on to use.
+  bool IsTargetTierPathIdValid(
+      const tablet::RaftGroupMetadata& meta, const std::string& target_tier,
+      uint32_t path_id) const;
+  // The same for meta's own persisted pair; false when no target tier is persisted.
   bool IsTargetTierPathIdValid(const tablet::RaftGroupMetadata& meta) const;
 
   // Tiered storage: repairs and returns the path_id this tablet's regular DB should target for

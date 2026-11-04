@@ -5110,14 +5110,18 @@ struct TierMigrationPass {
   Status first_hard_error;
 };
 
-Result<std::string> Tablet::LookupTierDir(uint32_t path_id) const {
+Result<TierPathInfo> Tablet::LookupTierPath(uint32_t path_id) const {
   for (const auto& tier_path : metadata()->tier_paths()) {
     if (tier_path.path_id == path_id) {
-      return tier_path.path;
+      return tier_path;
     }
   }
   return STATUS_FORMAT(
       InvalidArgument, "Tablet $0 has no directory pinned for path_id $1", tablet_id(), path_id);
+}
+
+Result<std::string> Tablet::LookupTierDir(uint32_t path_id) const {
+  return VERIFY_RESULT(LookupTierPath(path_id)).path;
 }
 
 std::vector<uint64_t> Tablet::CollectTierMigrationCandidates(const std::string& target_dir) const {
@@ -5133,18 +5137,28 @@ std::vector<uint64_t> Tablet::CollectTierMigrationCandidates(const std::string& 
   return candidates;
 }
 
-Result<ScopedRWOperation> Tablet::CheckTierTargetUsable(uint32_t target_path_id) {
+Result<ScopedRWOperation> Tablet::CheckTierTargetUsable(
+    const std::string& target_tier, uint32_t target_path_id) {
   auto scoped_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
   RETURN_NOT_OK(scoped_operation);
   if (!regular_db_) {
     return STATUS(IllegalState, "Tablet has no regular RocksDB open");
   }
-  RETURN_NOT_OK(LookupTierDir(target_path_id));
+  const auto tier_path = VERIFY_RESULT(LookupTierPath(target_path_id));
+  if (tier_path.tier != target_tier) {
+    // A caller that read the tier and the path_id separately pairs a tier with another tier's
+    // disk when a concurrent AlterTabletTier switches the tablet in between. Persisting that
+    // pair would move every SST to the wrong tier and let a scan declare kDone for the tier the
+    // operator asked for.
+    return STATUS_FORMAT(
+        InvalidArgument, "Tablet $0: path_id $1 is a '$2' disk, not '$3'",
+        tablet_id(), target_path_id, tier_path.tier, target_tier);
+  }
   return scoped_operation;
 }
 
 Status Tablet::SetTierMigrationTarget(const std::string& target_tier, uint32_t target_path_id) {
-  auto scoped_operation = VERIFY_RESULT(CheckTierTargetUsable(target_path_id));
+  auto scoped_operation = VERIFY_RESULT(CheckTierTargetUsable(target_tier, target_path_id));
   std::lock_guard lock(tier_target_mutex_);
   return SetTierMigrationTargetUnlocked(target_tier, target_path_id);
 }
@@ -5347,7 +5361,7 @@ TierMigrationStatus Tablet::tier_migration_status() const {
 
 Result<TierMigrationStatus> Tablet::AlterTabletTier(
     const std::string& target_tier, uint32_t target_path_id) {
-  auto scoped_operation = VERIFY_RESULT(CheckTierTargetUsable(target_path_id));
+  auto scoped_operation = VERIFY_RESULT(CheckTierTargetUsable(target_tier, target_path_id));
 
   {
     std::lock_guard target_lock(tier_target_mutex_);
