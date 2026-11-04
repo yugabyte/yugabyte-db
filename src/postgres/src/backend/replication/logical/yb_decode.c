@@ -701,8 +701,14 @@ YBHandleRelcacheRefresh(LogicalDecodingContext *ctx, XLogReaderState *record)
 											  &read_time, &in_txn_limit,
 											  &txn_id))
 				{
-					YBCSetHistoricalReadContext(read_time, in_txn_limit,
-												txn_id);
+					const uint32_t *aborted_subtxn_set;
+					int			aborted_subtxn_set_size;
+
+					aborted_subtxn_set =
+						YBCGetAbortedSubtxnSet(txn_id, &aborted_subtxn_set_size);
+					YBCSetHistoricalReadContext(read_time, in_txn_limit, txn_id,
+												aborted_subtxn_set,
+												aborted_subtxn_set_size);
 					break;
 				}
 
