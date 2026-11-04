@@ -473,4 +473,22 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
         "Read replica commands: " + commands,
         readReplicaCommands.stream().allMatch(p -> p.path("isReadOnlyCluster").asBoolean()));
   }
+
+  protected void setImmutableYbcUniverseState(
+      boolean useYbdbInbuiltYbc,
+      String ybSoftwareVersion,
+      UniverseDefinitionTaskParams.SoftwareUpgradeState softwareUpgradeState) {
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              UserIntent userIntent = details.getPrimaryCluster().userIntent;
+              userIntent.setUseYbdbInbuiltYbc(useYbdbInbuiltYbc);
+              userIntent.ybSoftwareVersion = ybSoftwareVersion;
+              details.softwareUpgradeState = softwareUpgradeState;
+              u.setUniverseDetails(details);
+            },
+            false);
+  }
 }
