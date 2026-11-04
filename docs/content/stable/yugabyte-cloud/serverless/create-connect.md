@@ -14,7 +14,7 @@ rightNav:
 type: docs
 ---
 
-Serverless clusters are created in your [Serverless account](../managed-security/manage-accounts/). This account is created automatically the first time you create a serverless cluster.
+Serverless clusters are created in your [Serverless account](/stable/yugabyte-cloud/managed-security/manage-accounts/). This account is created automatically the first time you create a serverless cluster.
 
 To create your first serverless cluster, see [Quick Start](../../cloud-quickstart/).
 

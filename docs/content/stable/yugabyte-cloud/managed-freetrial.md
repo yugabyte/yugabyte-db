@@ -17,9 +17,7 @@ To start a free trial:
 
 1. [Sign up](https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=YBM_signup).
 1. [Log in](https://cloud.yugabyte.com/login).
-1. Click **Start Free Trial** to display the **Start Your Free Trial** form.
-
-    ![Enter your details](/images/yb-cloud/managed-trial-2.png)
+1. Click **Request a Free Trial** to display the **Start Your Free Trial** form. (If you don't see the Request a Free Trial option, select the **Clusters** page, then click **Explore Cluster Types**.)
 
 1. If you have a promo code, enter it and click **Start Free Trial** to start your trial right away.
 

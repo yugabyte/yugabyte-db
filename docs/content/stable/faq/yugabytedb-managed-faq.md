@@ -199,7 +199,7 @@ You can connect to clusters in the following ways:
 
 Run the [ysqlsh](../../api/ysqlsh/) or [ycqlsh](../../api/ycqlsh/) shell from your browser to connect to and interact with your YugabyteDB database. Cloud Shell does not require a CA certificate or any special network access configured.
 
-When you connect using Cloud Shell with the YSQL API, the shell window also incorporates a [Quick Start Guide](/stable/yugabyte-cloud/cloud-quickstart/), with a series of pre-built queries for you to run.
+When you connect using Cloud Shell with the YSQL API, the shell window also incorporates a quick start guide, with a series of pre-built queries for you to run.
 
   {{% /tab %}}
 

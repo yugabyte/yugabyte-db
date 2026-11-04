@@ -92,7 +92,7 @@ To add an endpoint, do the following:
 
 1. On **Network Access**, copy the access configuration from an existing endpoint in the cluster, or start from scratch. For a public endpoint, enter the **Trusted IP Addresses**.
 
-1. If the wizard shows **DB Credentials**, set and download the credentials. The `cloud_admin` password is shared by every endpoint on the branch, so setting it here changes the credential that existing endpoints on the branch use.
+1. If the wizard shows **DB Credentials**, set and download the credentials.
 
 1. Click **Add Endpoint**.
 
@@ -104,7 +104,7 @@ To edit the compute of an endpoint, do the following:
 
 1. Open the endpoint actions menu (**...**) and choose **Edit Compute**.
 
-1. Select a size: **Small**, **Medium**, **Large**, or **Custom**. The sizes follow the same rules as when you create a cluster. Memory must be at least 16 GiB per vCPU.
+1. Select a size: **Small**, **Medium**, **Large**, or **Custom**. The sizes follow the same rules as when you create a cluster. Memory must be at least 8 GiB per vCPU.
 
 1. Click **Apply Resize**.
 

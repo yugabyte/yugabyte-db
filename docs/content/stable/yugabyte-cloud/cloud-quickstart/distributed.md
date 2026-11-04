@@ -14,24 +14,33 @@ rightNav:
   <li>
     <a href="../" class="nav-link">
       <i class="fa-solid fa-cloud" aria-hidden="true"></i>
-      Serverless Postgres
+      Free Serverless
     </a>
   </li>
   <li>
     <a href="../distributed/" class="nav-link active">
       <i class="fa-solid fa-circle-nodes" aria-hidden="true"></i>
-      Distributed Postgres
+      Distributed
     </a>
   </li>
 </ul>
 
 For multi-node, highly available YugabyteDB clusters, create a Distributed Postgres cluster. These are deployed across multiple nodes, zones, and regions, and are billed per vCPU.
 
-- [Create a cluster](../../cloud-basics/create-clusters/) - deploy single-region and multi-region clusters.
+Note that before you can create a distributed cluster in YugabyteDB Aeon, you need to [add your billing profile and payment method](/stable/yugabyte-cloud/cloud-admin/cloud-billing-profile/), or you can [request a free trial](/stable/yugabyte-cloud/managed-freetrial/).
 
-- [Request a free trial](../../managed-freetrial/).
+1. If you haven't already, [Sign up](https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=YBM_signup) and [Log in](https://cloud.yugabyte.com/login).
+1. Click **Set Up Distributed**. (If you don't see the Set Up Distributed option, select the **Clusters** page, then click **Explore Cluster Types**.)
 
-The following sections show how to connect to and explore a Distributed Postgres cluster.
+    This displays the **Create Distributed Cluster** wizard.
+
+1. Follow the instructions to create your distributed cluster.
+
+    For information on the distributed topologies you can create, refer to [Create distributed clusters](/stable/yugabyte-cloud/cloud-basics/create-clusters/).
+
+1. Click **Create Cluster**.
+
+The distributed cluster takes up to 5 minutes to deploy.
 
 ## Connect using Cloud Shell
 
