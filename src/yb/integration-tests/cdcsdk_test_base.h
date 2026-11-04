@@ -90,12 +90,8 @@ constexpr static const char* const kValue2ColumnName = "value_2";
 constexpr static const char* const kValue3ColumnName = "value_3";
 constexpr static const char* const kValue4ColumnName = "value_4";
 
-// Number of catalog tables in a logical replication stream's metadata. pg_attribute and
-// pg_publication_rel_prpubid_index are added only with transactional DDL support.
 int NumberOfCatalogTablesBeingPolledByCDC();
 
-// Adds the ids of the catalog tables in a logical replication stream's metadata for the database
-// with the given oid.
 void AddCatalogTableIdsPolledByCDC(PgOid database_oid, std::unordered_set<TableId>* table_ids);
 
 struct CDCSDKTestParams {
