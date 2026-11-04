@@ -12762,22 +12762,18 @@ namespace {
 
 // A tserver belongs to the placement that names its placement uuid; a placement without one is
 // the live placement, whose tservers have an empty placement uuid.
-bool TsInPlacementUuid(const PlacementInfoPB& placement_info, const TSDescriptor& ts_desc) {
-  if (placement_info.has_placement_uuid()) {
-    return ts_desc.placement_uuid() == placement_info.placement_uuid();
-  }
-  return ts_desc.placement_uuid().empty();
-}
-
-// TsInPlacementUuid, and a disk on the placement's storage tier when it names one. With tiered
-// storage off the tier is not acted on: the tablespace refresh already drops it, and a placement
-// that still carries one (built by a client directly) is placed as untiered.
 bool TsInPlacement(const PlacementInfoPB& placement_info, const TSDescriptor& ts_desc) {
+  // A placement that names a storage tier needs a tserver with a disk on it. With tiered storage
+  // off the tier is not acted on: the tablespace refresh already drops it, and a placement that
+  // still carries one (built by a client directly) is placed as untiered.
   if (FLAGS_enable_tiered_storage && !placement_info.storage_tier().empty() &&
       !ts_desc.HasStorageTier(placement_info.storage_tier())) {
     return false;
   }
-  return TsInPlacementUuid(placement_info, ts_desc);
+  if (placement_info.has_placement_uuid()) {
+    return ts_desc.placement_uuid() == placement_info.placement_uuid();
+  }
+  return ts_desc.placement_uuid().empty();
 }
 
 }  // namespace
@@ -13864,27 +13860,61 @@ Status CatalogManager::ValidateReplicationInfo(
   if (placement_info.placement_uuid().empty()) {
     placement_info.set_placement_uuid(VERIFY_RESULT(placement_uuid()));
   }
-  GetTsDescsFromPlacementInfo(placement_info, all_ts_descs, &ts_descs);
-  // When the tier is why nothing qualifies, say so: the count check below would only report that
-  // zero tablet servers are alive. Gated like that check. "Registered" also covers tservers whose
-  // tiers are unknown, which create-time placement does not use.
-  const auto& storage_tier = placement_info.storage_tier();
-  if (FLAGS_enable_tiered_storage && FLAGS_catalog_manager_check_ts_count_for_create_table &&
-      !storage_tier.empty() && ts_descs.empty() && !all_ts_descs.empty() &&
-      std::none_of(all_ts_descs.begin(), all_ts_descs.end(), [&](const auto& ts_desc) {
-        return TsInPlacementUuid(placement_info, *ts_desc) &&
-               ts_desc->HasStorageTier(storage_tier);
-      })) {
-    return SetupError(
-        resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO,
-        STATUS_FORMAT(
-            InvalidArgument,
-            "No live tablet server has registered a data directory on storage tier $0",
-            storage_tier));
+  // Validate the placement without its tier first, so a placement that is short of tservers
+  // whatever their tiers keeps the count messages below and the tier is blamed only when it is
+  // the reason.
+  {
+    PlacementInfoPB untiered_placement_info = placement_info;
+    untiered_placement_info.clear_storage_tier();
+    GetTsDescsFromPlacementInfo(untiered_placement_info, all_ts_descs, &ts_descs);
   }
   Status s = CheckValidPlacementInfo(placement_info, ts_descs, resp);
   if (!s.ok()) {
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO, s);
+  }
+
+  // A tier is a hard constraint at creation. CheckValidPlacementInfo accepts a quorum of tservers,
+  // but a tablet created on fewer tservers than its replication factor starts under-replicated,
+  // and the load balancer, which does not consider tiers, would add the missing replicas on
+  // tservers without the tier. So every replica, and every block's minimum, needs a live tserver
+  // that registered a data directory on the tier. Gated like the count checks. "Registered" also
+  // covers tservers whose tiers are unknown, which create-time placement does not use.
+  const auto& storage_tier = placement_info.storage_tier();
+  if (FLAGS_enable_tiered_storage && FLAGS_catalog_manager_check_ts_count_for_create_table &&
+      !storage_tier.empty()) {
+    GetTsDescsFromPlacementInfo(placement_info, all_ts_descs, &ts_descs);
+    if (ts_descs.empty()) {
+      return SetupError(
+          resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO,
+          STATUS_FORMAT(
+              InvalidArgument,
+              "No live tablet server has registered a data directory on storage tier $0",
+              storage_tier));
+    }
+    const size_t num_replicas = GetNumReplicasOrGlobalReplicationFactor(placement_info);
+    if (ts_descs.size() < num_replicas) {
+      return SetupError(
+          resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO,
+          STATUS_FORMAT(
+              InvalidArgument,
+              "The placement needs $0 replicas on storage tier $1, but only $2 live tablet "
+              "servers have registered a data directory on it",
+              num_replicas, storage_tier, ts_descs.size()));
+    }
+    for (const auto& block : placement_info.placement_blocks()) {
+      const auto block_ts_descs = VERIFY_RESULT(FindTServersForPlacementBlock(block, ts_descs));
+      const size_t min_num_replicas = block.min_num_replicas();
+      if (block_ts_descs.size() < min_num_replicas) {
+        return SetupError(
+            resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO,
+            STATUS_FORMAT(
+                InvalidArgument,
+                "Placement block $0 needs $1 replicas on storage tier $2, but only $3 of its live "
+                "tablet servers have registered a data directory on it",
+                block.cloud_info().ShortDebugString(), min_num_replicas, storage_tier,
+                block_ts_descs.size()));
+      }
+    }
   }
 
   s = CatalogManagerUtil::CheckValidLeaderAffinity(replication_info);
