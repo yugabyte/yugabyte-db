@@ -190,6 +190,70 @@ EXPLAIN (COSTS OFF) EXECUTE ddl_par_rb;
 (6 rows)
 
 DEALLOCATE ddl_par_rb;
+-- The same when the block's only DDL replaces a function the plan does not
+-- call. Nothing invalidates the plan, so the plan cache must replan it once
+-- the block ends, after COMMIT and after ROLLBACK. Inside the block it stays
+-- serial.
+CREATE FUNCTION ddl_par_noop() RETURNS INT LANGUAGE sql AS 'SELECT 1';
+BEGIN;
+CREATE OR REPLACE FUNCTION ddl_par_noop() RETURNS INT LANGUAGE sql
+  AS 'SELECT 2';
+PREPARE ddl_par_fn_c AS SELECT COUNT(*) FROM ddl_par;
+EXPLAIN (COSTS OFF) EXECUTE ddl_par_fn_c;
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ddl_par_pkey on ddl_par
+         Partial Aggregate: true
+(3 rows)
+
+EXPLAIN (COSTS OFF) EXECUTE ddl_par_fn_c;
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ddl_par_pkey on ddl_par
+         Partial Aggregate: true
+(3 rows)
+
+COMMIT;
+EXPLAIN (COSTS OFF) EXECUTE ddl_par_fn_c;
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Gather
+         Workers Planned: 2
+         ->  Noop Aggregate
+               ->  Parallel Index Only Scan using ddl_par_pkey on ddl_par
+                     Partial Aggregate: true
+(6 rows)
+
+DEALLOCATE ddl_par_fn_c;
+BEGIN;
+CREATE OR REPLACE FUNCTION ddl_par_noop() RETURNS INT LANGUAGE sql
+  AS 'SELECT 3';
+PREPARE ddl_par_fn_r AS SELECT COUNT(*) FROM ddl_par;
+EXPLAIN (COSTS OFF) EXECUTE ddl_par_fn_r;
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ddl_par_pkey on ddl_par
+         Partial Aggregate: true
+(3 rows)
+
+ROLLBACK;
+EXPLAIN (COSTS OFF) EXECUTE ddl_par_fn_r;
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Gather
+         Workers Planned: 2
+         ->  Noop Aggregate
+               ->  Parallel Index Only Scan using ddl_par_pkey on ddl_par
+                     Partial Aggregate: true
+(6 rows)
+
+DEALLOCATE ddl_par_fn_r;
+DROP FUNCTION ddl_par_noop();
 -- Generic plans cached before the block keep their Gather when the block's
 -- only DDL replaces a function they do not call, and run in the leader with
 -- no workers. Without workers no shared scan state is set up, so each
@@ -308,8 +372,8 @@ ROLLBACK;
 DEALLOCATE ddl_par_gm;
 DROP FUNCTION ddl_par_unused();
 RESET plan_cache_mode;
--- CREATE INDEX marks the block from its own code path, not the generic DDL
--- one, so it needs its own case: no Gather after it.
+-- CREATE INDEX in a block builds the index nonconcurrently and marks the
+-- block like any other DDL: no Gather after it.
 BEGIN;
 CREATE INDEX ddl_par_other_k ON ddl_par_other (k);
 NOTICE:  making create index for table "ddl_par_other" nonconcurrent

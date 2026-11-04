@@ -678,6 +678,20 @@ standard_planner(Query *parse, const char *query_string, int cursorOptions,
 	result->stmt_location = parse->stmt_location;
 	result->stmt_len = parse->stmt_len;
 	result->yb_num_referenced_relations = root->yb_num_referenced_relations;
+	/*
+	 * YB: The DDL check above allows no parallel plan while a DDL has run in
+	 * the block. Without this mark, a cached copy of a SELECT planned then
+	 * would stay serial for the rest of the session: once the block ends,
+	 * nothing invalidates it when the block's DDL touched nothing it uses,
+	 * e.g. CREATE OR REPLACE of a function it does not call. The mark also
+	 * covers a SELECT that is serial for another reason, which then gets one
+	 * needless replan after the block.
+	 * TODO(#32729): drop this together with the DDL check above.
+	 */
+	result->yb_parallel_off_for_ddl =
+		(cursorOptions & CURSOR_OPT_PARALLEL_OK) != 0 &&
+		parse->commandType == CMD_SELECT &&
+		YBGetDdlUseRegularTransactionBlock();
 	result->ybPlanId = 0;
 
 	result->jitFlags = PGJIT_NONE;

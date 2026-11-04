@@ -77,6 +77,30 @@ ROLLBACK;
 EXPLAIN (COSTS OFF) EXECUTE ddl_par_rb;
 DEALLOCATE ddl_par_rb;
 
+-- The same when the block's only DDL replaces a function the plan does not
+-- call. Nothing invalidates the plan, so the plan cache must replan it once
+-- the block ends, after COMMIT and after ROLLBACK. Inside the block it stays
+-- serial.
+CREATE FUNCTION ddl_par_noop() RETURNS INT LANGUAGE sql AS 'SELECT 1';
+BEGIN;
+CREATE OR REPLACE FUNCTION ddl_par_noop() RETURNS INT LANGUAGE sql
+  AS 'SELECT 2';
+PREPARE ddl_par_fn_c AS SELECT COUNT(*) FROM ddl_par;
+EXPLAIN (COSTS OFF) EXECUTE ddl_par_fn_c;
+EXPLAIN (COSTS OFF) EXECUTE ddl_par_fn_c;
+COMMIT;
+EXPLAIN (COSTS OFF) EXECUTE ddl_par_fn_c;
+DEALLOCATE ddl_par_fn_c;
+BEGIN;
+CREATE OR REPLACE FUNCTION ddl_par_noop() RETURNS INT LANGUAGE sql
+  AS 'SELECT 3';
+PREPARE ddl_par_fn_r AS SELECT COUNT(*) FROM ddl_par;
+EXPLAIN (COSTS OFF) EXECUTE ddl_par_fn_r;
+ROLLBACK;
+EXPLAIN (COSTS OFF) EXECUTE ddl_par_fn_r;
+DEALLOCATE ddl_par_fn_r;
+DROP FUNCTION ddl_par_noop();
+
 -- Generic plans cached before the block keep their Gather when the block's
 -- only DDL replaces a function they do not call, and run in the leader with
 -- no workers. Without workers no shared scan state is set up, so each
@@ -112,8 +136,8 @@ DEALLOCATE ddl_par_gm;
 DROP FUNCTION ddl_par_unused();
 RESET plan_cache_mode;
 
--- CREATE INDEX marks the block from its own code path, not the generic DDL
--- one, so it needs its own case: no Gather after it.
+-- CREATE INDEX in a block builds the index nonconcurrently and marks the
+-- block like any other DDL: no Gather after it.
 BEGIN;
 CREATE INDEX ddl_par_other_k ON ddl_par_other (k);
 EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM ddl_par;
