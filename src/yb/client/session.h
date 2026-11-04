@@ -174,7 +174,10 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   // should not block.
   //
   // For FlushAsync, 'callback' must remain valid until it is invoked.
-  void FlushAsync(FlushCallback callback);
+  //
+  // Non-null buffers_holder lets local tablet calls of this flush time out at the deadline.
+  // It must keep alive the data that the flushed ops reference.
+  void FlushAsync(FlushCallback callback, std::shared_ptr<void> buffers_holder = nullptr);
   std::future<FlushStatus> FlushFuture();
 
   // These block the thread until the operations complete or timeout/deadline has passed.

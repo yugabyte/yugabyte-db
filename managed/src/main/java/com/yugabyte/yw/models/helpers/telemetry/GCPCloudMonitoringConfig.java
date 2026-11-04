@@ -4,7 +4,7 @@ import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
+import com.google.api.client.http.javanet.NetHttpTransport;
 import com.google.api.client.json.gson.GsonFactory;
 import com.google.api.services.cloudresourcemanager.CloudResourceManager;
 import com.google.api.services.cloudresourcemanager.model.TestIamPermissionsRequest;
@@ -173,8 +173,10 @@ public class GCPCloudMonitoringConfig extends TelemetryProviderConfig {
         GoogleCredentials.fromStream(new ByteArrayInputStream(credentials.toString().getBytes()))
             .createScoped(Collections.singleton(IamScopes.CLOUD_PLATFORM));
 
+    // Not GoogleNetHttpTransport.newTrustedTransport(): its bundled google.p12 can't be read in
+    // FIPS mode.
     return new CloudResourceManager.Builder(
-            GoogleNetHttpTransport.newTrustedTransport(),
+            new NetHttpTransport(),
             GsonFactory.getDefaultInstance(),
             new HttpCredentialsAdapter(credential))
         .setApplicationName("service-accounts")

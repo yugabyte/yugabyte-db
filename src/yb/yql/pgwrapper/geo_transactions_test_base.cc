@@ -28,6 +28,7 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/format.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/tsan_util.h"
 
 #include "yb/yql/pgwrapper/geo_transactions_test_base.h"
@@ -43,6 +44,7 @@ DECLARE_string(placement_cloud);
 DECLARE_string(placement_region);
 DECLARE_string(placement_zone);
 DECLARE_bool(auto_create_local_transaction_tables);
+DECLARE_bool(auto_promote_nonlocal_transactions_to_global);
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(enable_ysql_tablespaces_for_placement);
 DECLARE_bool(force_global_transactions);
@@ -406,6 +408,13 @@ Status GeoTransactionsTestBase::WarmupTablespaceCache(
   // must also be consumed, so that the next operation can start in the correct locality.
   RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   if (FLAGS_enable_object_locking_for_table_locks) {
+    // Exclusive locks promote the txn to global, which fails when auto promotion is disabled
+    const auto auto_promote = FLAGS_auto_promote_nonlocal_transactions_to_global;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_promote_nonlocal_transactions_to_global) = true;
+    auto se = ScopeExit([auto_promote] {
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_promote_nonlocal_transactions_to_global) =
+          auto_promote;
+    });
     RETURN_NOT_OK(conn.ExecuteFormat("LOCK TABLE $0 IN EXCLUSIVE MODE", table));
   }
   RETURN_NOT_OK(conn.FetchFormat("SELECT * FROM $0 LIMIT 1", table));

@@ -255,15 +255,6 @@ export const DeviceInfoValidationSchema = (t: TFunction, maxVolumeCount = 32) =>
         (value) => value !== null && value !== undefined && String(value).trim() !== ''
       ),
 
-    mountPoints: Yup.string()
-      .nullable()
-      .test(
-        'mount-point',
-        t('validation.invalidMountPoint'),
-        (value) =>
-          value === null || value === undefined || value === '' || /^\/[a-zA-Z0-9/_-]+$/.test(value)
-      ),
-
     // null ok for k8 / ephemeral
     storageType: Yup.string()
       .nullable()

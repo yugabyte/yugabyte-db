@@ -52,7 +52,6 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -122,6 +121,19 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     }
   }
 
+  /**
+   * A read-replica-only edit carries no primary cluster, and run() copies it into the task params
+   * only after the freeze. Complete the checkpoint's target, or a rollback cannot rebuild it.
+   */
+  @Override
+  protected void captureStateTransitionDelta(
+      Universe universe,
+      UniverseDefinitionTaskParams beforeUDTP,
+      UniverseDefinitionTaskParams targetUDTP) {
+    addPrimaryClusterIfMissing(targetUDTP, beforeUDTP);
+    super.captureStateTransitionDelta(universe, beforeUDTP, targetUDTP);
+  }
+
   @Override
   public void run() {
     Throwable th = null;
@@ -136,6 +148,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           lockAndFreezeUniverseForUpdate(
               taskParams().expectedUniverseVersion,
               u -> setCommunicationPortsForNodes(false) /* Txn callback */);
+      // A YBC throttle update may run while this edit is failed, and a retry reuses the first
+      // params, so take the universe's ybcFlags on every run.
+      taskParams().copyYbcFlagsFrom(universe.getUniverseDetails());
 
       kubernetesStatus.startYBUniverseEventStatus(
           universe,
@@ -807,22 +822,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
 
     // Clear blacklist
     if (!tserversToRemove.isEmpty() || CollectionUtils.isNotEmpty(fullMoveTserverAZs)) {
-      Duration sleepBeforeStart =
-          confGetter.getConfForScope(
-              universe, UniverseConfKeys.ybEditWaitDurationBeforeBlacklistClear);
-      if (sleepBeforeStart.compareTo(Duration.ZERO) > 0) {
-        createWaitForDurationSubtask(universe, sleepBeforeStart)
-            .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
-      }
       // Clear blacklist for all pods
       Set<NodeDetails> removedTservers =
           nonFullMoveAZsPodsBiFunction.apply(tserversToRemoveAzMap, null /* fullMoveAZs */);
-
-      createModifyBlackListTask(
-              null /* addNodes */,
-              new ArrayList<>(removedTservers) /* removeNodes */,
-              false /* isLeaderBlacklist */)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      createClearTserverBlacklistTasks(universe, new ArrayList<>(removedTservers));
     }
 
     // Update the universe to the new state.

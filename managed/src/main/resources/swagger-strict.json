@@ -2315,6 +2315,11 @@
           "readOnly" : true,
           "type" : "string"
         },
+        "taskDiff" : {
+          "description" : "Task Diff",
+          "readOnly" : true,
+          "type" : "object"
+        },
         "taskUUID" : {
           "description" : "Task UUID",
           "format" : "uuid",

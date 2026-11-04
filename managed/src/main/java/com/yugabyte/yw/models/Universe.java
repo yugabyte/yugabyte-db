@@ -110,6 +110,9 @@ public class Universe extends Model {
   public static final String LABEL_K8S_RESOURCES = "labelK8sResources";
   public static final String K8S_SET_MASTER_EXISTING_UNIVERSE_GFLAG =
       "k8sSetMasterJoinExistingUniverseGflag";
+  // Set on K8s universes created since helm overrides started carrying new install gflags. Older
+  // K8s universes have them saved but have always run without them.
+  public static final String K8S_APPLY_NEW_INSTALL_GFLAGS = "k8sApplyNewInstallGflags";
   public static final String VOLUME_MIGRATED = "volumeMigrated";
 
   // This is a key lock for Universe by UUID.

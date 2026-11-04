@@ -309,6 +309,9 @@ extern PGDLLIMPORT bool yb_bnl_enable_hashing;
 extern PGDLLIMPORT int yb_explicit_row_locking_batch_size;
 extern PGDLLIMPORT bool yb_lock_pk_single_rpc;
 extern PGDLLIMPORT int yb_toast_catcache_threshold;
+extern PGDLLIMPORT bool yb_allow_prehashed_passwords;
+extern PGDLLIMPORT int yb_password_reuse_history;
+extern PGDLLIMPORT int yb_password_reuse_interval;
 extern PGDLLIMPORT bool yb_enable_fkey_catcache;
 extern PGDLLIMPORT bool yb_enable_fkey_batched_docdb_lookup_when_types_mismatch;
 extern PGDLLIMPORT bool yb_index_checker;
@@ -320,6 +323,7 @@ extern PGDLLIMPORT char *yb_hinted_uids;
 extern PGDLLIMPORT bool yb_enable_derived_equalities;
 extern PGDLLIMPORT bool yb_enable_listen_notify;
 extern PGDLLIMPORT bool yb_test_fatal_after_notifs_queue_write;
+extern PGDLLIMPORT int yb_test_notifs_poller_init_delay_ms;
 extern PGDLLIMPORT int yb_test_notify_queue_max_pages;
 extern PGDLLIMPORT int yb_notifications_poll_sleep_duration_nonempty_ms;
 extern PGDLLIMPORT int yb_notifications_poll_sleep_duration_empty_ms;
@@ -519,5 +523,7 @@ extern void YbValidateConfigFile(const char *config_file);
 extern void YbSetYsqlConnMgrGucDefaults(const char *data, int len);
 extern void YbResetYsqlConnMgrGucDefaults(void);
 extern void YbSetParallelWorker();
+extern char *YbResolveGucValue(const char *name, const char *value);
+extern bool YbIsValidConfigFileName(const char *name);
 
 #endif							/* GUC_H */

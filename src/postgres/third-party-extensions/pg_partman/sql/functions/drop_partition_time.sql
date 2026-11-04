@@ -35,19 +35,21 @@ v_sql                       text;
 v_step_id                   bigint;
 v_sub_parent                text;
 
+yb_v_use_native_txn_ddl_and_locks boolean := pg_catalog.yb_pg_partman_check_native_txn_ddl_and_locks();
+
 BEGIN
 /*
  * Function to drop child tables from a time-based partition set.
  * Options to move table to different schema, drop only indexes or actually drop the table from the database.
  */
 
-/* YB(GH#3642): advisory lock not supported
+IF yb_v_use_native_txn_ddl_and_locks THEN
 v_adv_lock := pg_try_advisory_xact_lock(hashtext('pg_partman drop_partition_time'));
 IF v_adv_lock = 'false' THEN
     RAISE NOTICE 'drop_partition_time already running.';
     RETURN 0;
 END IF;
-*/
+END IF; -- yb_v_use_native_txn_ddl_and_locks
 
 -- Allow override of configuration options
 IF p_retention IS NULL THEN

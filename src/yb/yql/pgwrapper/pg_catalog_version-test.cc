@@ -2440,11 +2440,11 @@ DROP TABLE tempTable2;
   // Concurrent CREATE INDEX produces one extra invalidation message with object locking
   // (post-backfill WaitForBackendsCatalogVersion).
   if (IsObjectLockingEnabled()) {
-    ASSERT_EQ(result.size(), 80986U);
-    ASSERT_EQ(fingerprint, 16473784601673178567UL);
+    ASSERT_EQ(result.size(), 80746U);
+    ASSERT_EQ(fingerprint, 15353702351801463433UL);
   } else {
-    ASSERT_EQ(result.size(), 80932U);
-    ASSERT_EQ(fingerprint, 148605032842492807UL);
+    ASSERT_EQ(result.size(), 80692U);
+    ASSERT_EQ(fingerprint, 4661495031371014786UL);
   }
 }
 
@@ -4434,7 +4434,7 @@ TEST_F(PgCatalogVersionMasterFailoverTest,
   // overlap. The refresh waiter cannot fire early: the old leader stops refreshing at the reset
   // and only starts again once it is the leader.
   {
-    auto reset_waiter = LogWaiter(old_leader, "ResetCachedCatalogVersions: cache reset");
+    auto reset_waiter = LogWaiter(old_leader, "PgCatalogVersionsCache: reset");
     ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
     ASSERT_OK(reset_waiter.WaitFor(30s * kTimeMultiplier));
   }

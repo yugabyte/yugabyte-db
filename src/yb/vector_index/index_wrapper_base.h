@@ -23,6 +23,7 @@
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
 #include "yb/util/status_format.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/two_group_mutex.h"
 
 #include "yb/vector_index/coordinate_types.h"
@@ -34,6 +35,7 @@ class Cache;
 }
 
 DECLARE_bool(TEST_vector_index_exact);
+DECLARE_bool(TEST_vector_index_insert_out_of_memory);
 
 namespace yb::vector_index {
 
@@ -217,6 +219,8 @@ class IndexWrapperWithExternalPayload : public IndexWrapperBase<Impl, Vector, Di
   Status Reserve(
       size_t num_vectors, size_t max_concurrent_inserts, size_t max_concurrent_reads,
       rocksdb::Cache::ReservationMode reservation_mode) override {
+    TEST_SYNC_POINT_CALLBACK("VectorIndex::Reserve:NumVectors", &num_vectors);
+
     RETURN_NOT_OK(this->impl().DoReserve(
         num_vectors, max_concurrent_inserts, max_concurrent_reads, reservation_mode));
     if (payloads_) {
@@ -227,6 +231,10 @@ class IndexWrapperWithExternalPayload : public IndexWrapperBase<Impl, Vector, Di
   }
 
   Status DoInsert(VectorId vector_id, const Vector& v, Slice payload) {
+    if (PREDICT_FALSE(FLAGS_TEST_vector_index_insert_out_of_memory)) {
+      return STATUS_FORMAT(
+          ServiceUnavailable, "TEST: not enough memory to insert vector $0", vector_id);
+    }
     auto slot = VERIFY_RESULT(this->impl().DoInsertVector(vector_id, v));
     if (payloads_) {
       RSTATUS_DCHECK(

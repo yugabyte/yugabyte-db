@@ -33,6 +33,7 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -287,7 +288,8 @@ public class NativeKubernetesManager extends KubernetesManager {
       String helmReleaseName,
       String appName,
       boolean newNamingStyle,
-      int replicaCount) {
+      int replicaCount,
+      Duration readyTimeout) {
     throw new UnsupportedOperationException("Unimplemented method 'deleteAllServerTypePods'");
   }
 

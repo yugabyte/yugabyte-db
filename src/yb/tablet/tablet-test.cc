@@ -52,11 +52,14 @@
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/join.h"
 
+#include "yb/server/hybrid_clock.h"
+
 #include "yb/tablet/local_tablet_writer.h"
 #include "yb/tablet/tablet-test-base.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
+#include "yb/tablet/tablet_retention_policy.h"
 
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/write_controller.h"
@@ -75,6 +78,8 @@
 #include "yb/util/flags.h"
 
 DECLARE_bool(TEST_skip_write_stop_check_in_should_apply_write);
+DECLARE_bool(enable_history_cutoff_propagation);
+DECLARE_int32(timestamp_history_retention_interval_sec);
 
 using std::string;
 using std::vector;
@@ -219,23 +224,23 @@ TYPED_TEST(TestTablet, TestFlushedOpId) {
   // Insert & flush one row to start index counting.
   ASSERT_OK(this->InsertTestRow(&writer, 0, 333));
   ASSERT_OK(tablet->Flush(FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
-  OpId id = ASSERT_RESULT(tablet->MaxPersistentOpId()).regular;
+  OpId id = ASSERT_RESULT(tablet->GetPersistentState()).regular;
   const int64_t start_index = id.index;
 
   this->InsertTestRows(1, kCount, 555);
-  id = ASSERT_RESULT(tablet->MaxPersistentOpId()).regular;
+  id = ASSERT_RESULT(tablet->GetPersistentState()).regular;
   ASSERT_EQ(id.index, start_index);
 
   ASSERT_OK(tablet->Flush(FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
-  id = ASSERT_RESULT(tablet->MaxPersistentOpId()).regular;
+  id = ASSERT_RESULT(tablet->GetPersistentState()).regular;
   ASSERT_EQ(id.index, start_index + kCount);
 
   this->InsertTestRows(1, kCount, 777);
-  id = ASSERT_RESULT(tablet->MaxPersistentOpId()).regular;
+  id = ASSERT_RESULT(tablet->GetPersistentState()).regular;
   ASSERT_EQ(id.index, start_index + kCount);
 
   ASSERT_OK(tablet->Flush(FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
-  id = ASSERT_RESULT(tablet->MaxPersistentOpId()).regular;
+  id = ASSERT_RESULT(tablet->GetPersistentState()).regular;
   ASSERT_EQ(id.index, start_index + 2*kCount);
 }
 
@@ -455,6 +460,73 @@ TEST_F(TabletIteratorShutdownTest, ShutdownWaitsForIteratorTeardown) {
       << "the ~IntentAwareIterator sync point never fired, so the ordering was never checked";
   ASSERT_FALSE(destroyed_during_teardown.load(std::memory_order_acquire))
       << "RocksDB was destroyed while the iterator's RocksDB iterators were still being torn down";
+}
+
+class TabletRetentionPolicyTest : public TabletTestBase<StringKeyTestSetup> {
+ protected:
+  void SetUp() override {
+    TabletTestBase<StringKeyTestSetup>::SetUp();
+    // Makes the clock based cutoff "now", so the provider's cutoff always wins.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+    ASSERT_OK(hybrid_clock_->Init());
+    now_ = hybrid_clock_->Now();
+  }
+
+  std::unique_ptr<TabletRetentionPolicy> NewPolicy() {
+    return std::make_unique<TabletRetentionPolicy>(
+        hybrid_clock_, [this](RaftGroupMetadata*) { return allowed_cutoff_; },
+        tablet()->metadata());
+  }
+
+  void Allow(HybridTime primary) {
+    allowed_cutoff_ = {.cotables_cutoff_ht = HybridTime::kInvalid, .primary_cutoff_ht = primary};
+  }
+
+  // The harness clock is logical, but clock based cutoffs need physical time.
+  server::ClockPtr hybrid_clock_{new server::HybridClock()};
+  HybridTime now_;
+  docdb::HistoryCutoff allowed_cutoff_;
+};
+
+// A provider that lowers its cutoff, as the sequences_data snapshot schedule cap can, must not
+// lower the cutoff handed to compaction (#35445). The tserver cotables cutoff stays invalid.
+TEST_F(TabletRetentionPolicyTest, HistoryCutoffDoesNotMoveBack) {
+  const auto high = now_.AddSeconds(-10);
+  const auto low = now_.AddSeconds(-100);
+  auto policy = NewPolicy();
+  Allow(high);
+  auto cutoff = policy->GetRetentionDirective().history_cutoff;
+  ASSERT_EQ(cutoff.primary_cutoff_ht, high);
+  ASSERT_FALSE(cutoff.cotables_cutoff_ht.is_valid());
+
+  Allow(low);
+  cutoff = policy->GetRetentionDirective().history_cutoff;
+  ASSERT_EQ(cutoff.primary_cutoff_ht, high);
+  ASSERT_FALSE(cutoff.cotables_cutoff_ht.is_valid());
+
+  // A restarted tablet gets the floor from the flushed frontier.
+  policy = NewPolicy();
+  policy->SeedHistoryCutoffFromFlushedFrontier(
+      {.cotables_cutoff_ht = HybridTime::kInvalid, .primary_cutoff_ht = high});
+  cutoff = policy->GetRetentionDirective().history_cutoff;
+  ASSERT_EQ(cutoff.primary_cutoff_ht, high);
+  ASSERT_FALSE(cutoff.cotables_cutoff_ht.is_valid());
+}
+
+// With propagation, the committed cutoff can pass an active local reader. The floor must not
+// follow it there.
+TEST_F(TabletRetentionPolicyTest, PropagatedCutoffDoesNotRaiseFloorPastReader) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_history_cutoff_propagation) = true;
+  Allow(HybridTime::kMax);
+  auto policy = NewPolicy();
+  const auto read_ht = now_.AddSeconds(-50);
+  ASSERT_OK(policy->RegisterReaderTimestamp(read_ht));
+  policy->UpdateCommittedHistoryCutoff(
+      {.cotables_cutoff_ht = HybridTime::kInvalid, .primary_cutoff_ht = now_.AddSeconds(-10)});
+  ASSERT_EQ(policy->GetRetentionDirective().history_cutoff.primary_cutoff_ht, read_ht);
+  policy->UnregisterReaderTimestamp(read_ht);
+  ASSERT_EQ(
+      policy->GetRetentionDirective().history_cutoff.primary_cutoff_ht, now_.AddSeconds(-10));
 }
 
 } // namespace tablet

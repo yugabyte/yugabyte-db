@@ -8,7 +8,10 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.ConfigureDBApiParams;
@@ -23,6 +26,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
@@ -133,6 +137,8 @@ public class ConfigureDBApis extends UpgradeTaskBase {
                 toOrderedSet(getNodesToBeRestarted().asPair());
             createRollingNodesUpgradeTaskFlow(
                 (nodes, processTypes) -> {
+                  Map<String, NodeDetails> nodesByName =
+                      nodes.stream().collect(Collectors.toMap(NodeDetails::getNodeName, n -> n));
                   for (ServerType processType : processTypes) {
                     if (processType.equals(ServerType.MASTER)
                         || processType.equals(ServerType.TSERVER)) {
@@ -140,6 +146,12 @@ public class ConfigureDBApis extends UpgradeTaskBase {
                           nodes,
                           processType,
                           params -> {
+                            // The override params are built from the universe as it was before
+                            // this task, and the conf file is rewritten whole. Carry the API
+                            // settings applied above, or this restart reverts them (e.g.
+                            // ysql_enable_auth back to false).
+                            applyTargetApiSettings(
+                                params, nodesByName.get(params.nodeName), processType, universe);
                             params.gflags.put(
                                 GFlagsUtil.ENABLE_QOS, mtConfig.isEnableQos() ? "true" : "false");
                             if (mtConfig.getQosMaxDbCount() != null) {
@@ -175,6 +187,38 @@ public class ConfigureDBApis extends UpgradeTaskBase {
         });
   }
 
+  // universe must be the one passed to createTaskToConfigureApiThroughRollingGFlagsUpgrade, whose
+  // clusters carry the connection pooling gflags merged in there.
+  private void applyTargetApiSettings(
+      AnsibleConfigureServers.Params params,
+      NodeDetails node,
+      ServerType processType,
+      Universe universe) {
+    Cluster cluster = universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
+    UserIntent targetIntent = targetUserIntent(cluster);
+    params.enableYSQL = targetIntent.enableYSQL;
+    params.enableYSQLAuth = targetIntent.enableYSQLAuth;
+    params.enableConnectionPooling = targetIntent.enableConnectionPooling;
+    params.enableYCQL = targetIntent.enableYCQL;
+    params.enableYCQLAuth = targetIntent.enableYCQLAuth;
+    params.communicationPorts = taskParams().communicationPorts;
+    params.overrideNodePorts = true;
+    params.gflags =
+        GFlagsUtil.getGFlagsForNode(
+            node, processType, cluster, universe.getUniverseDetails().clusters);
+  }
+
+  // Both restart steps take the requested API state from here, so they can't disagree about it.
+  private UserIntent targetUserIntent(Cluster cluster) {
+    UserIntent userIntent = cluster.userIntent.clone();
+    userIntent.enableYSQL = taskParams().enableYSQL;
+    userIntent.enableYSQLAuth = taskParams().enableYSQLAuth;
+    userIntent.enableConnectionPooling = taskParams().enableConnectionPooling;
+    userIntent.enableYCQL = taskParams().enableYCQL;
+    userIntent.enableYCQLAuth = taskParams().enableYCQLAuth;
+    return userIntent;
+  }
+
   private void createTaskToConfigureApiThroughRollingGFlagsUpgrade(Universe universe) {
     List<UniverseDefinitionTaskParams.Cluster> currClusters =
         universe.getUniverseDetails().clusters;
@@ -182,12 +226,7 @@ public class ConfigureDBApis extends UpgradeTaskBase {
     for (UniverseDefinitionTaskParams.Cluster currentCluster :
         universe.getUniverseDetails().clusters) {
       // Update each cluster's user intent in the target universe state.
-      UserIntent userIntent = currentCluster.userIntent.clone();
-      userIntent.enableYSQL = taskParams().enableYSQL;
-      userIntent.enableYSQLAuth = taskParams().enableYSQLAuth;
-      userIntent.enableConnectionPooling = taskParams().enableConnectionPooling;
-      userIntent.enableYCQL = taskParams().enableYCQL;
-      userIntent.enableYCQLAuth = taskParams().enableYCQLAuth;
+      UserIntent userIntent = targetUserIntent(currentCluster);
       currentCluster.userIntent.specificGFlags =
           SpecificGFlags.combine(
               userIntent.specificGFlags,
@@ -248,6 +287,24 @@ public class ConfigureDBApis extends UpgradeTaskBase {
                                         taskParams().communicationPorts, n);
                                   }))
                   .setSubTaskGroupType(getTaskSubGroupType());
+              // The collector's scrape targets come from the node's API flags and ports, which
+              // changed above. Regenerate its config from the updated node. This runs before the
+              // tserver restart (runBeforeStopping), so a newly enabled API or new port fails to
+              // scrape only until the restart, when every target on the node is down anyway.
+              TelemetryConfig telemetryConfig =
+                  OtelCollectorUtil.getCurrentTelemetryConfig(universe);
+              if (universe.getUniverseDetails().otelCollectorEnabled
+                  && OtelCollectorUtil.isMetricsExportEnabledInUniverse(
+                      telemetryConfig.getMetricsExportConfig())) {
+                createManageOtelCollectorTasks(
+                    userIntent,
+                    nodes,
+                    false,
+                    telemetryConfig,
+                    node ->
+                        GFlagsUtil.getGFlagsForNode(
+                            node, ServerType.TSERVER, currentCluster, currClusters));
+              }
             }
           },
           masterNodes,

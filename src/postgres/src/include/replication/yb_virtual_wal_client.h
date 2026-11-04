@@ -31,6 +31,7 @@
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 extern void YBCInitVirtualWal(List *yb_publication_names);
+extern void YBCValidateBoundPublication(List *yb_publication_names);
 extern void YBCDestroyVirtualWal();
 extern void YBCGetTableHashRange(List **options);
 
@@ -44,5 +45,8 @@ extern XLogRecPtr YBCGetFlushRecPtr(void);
 extern XLogRecPtr YBCCalculatePersistAndGetRestartLSN(XLogRecPtr confirmed_flush);
 
 extern void YBCTrackFilteredTransaction(XLogRecPtr commit_lsn);
+
+extern const uint32_t *YBCGetAbortedSubtxnSet(const char *docdb_txn_id,
+											  int *size);
 
 #endif

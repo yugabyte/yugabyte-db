@@ -46,6 +46,7 @@ DEFINE_test_flag(string, skip_async_insert_packed_schema_for_tablet_id, "",
 DECLARE_int32(tablet_creation_timeout_ms);
 DECLARE_int32(TEST_slowdown_alter_table_rpcs_ms);
 
+DECLARE_bool(TEST_hinted_leader_election_for_existing_tablets);
 DECLARE_bool(ysql_yb_enable_alter_table_rewrite);
 
 namespace yb::master {
@@ -248,6 +249,7 @@ AsyncStartElection::AsyncStartElection(Master *master,
                                        LeaderEpoch epoch)
   : RetrySpecificTSRpcTaskWithTable(master, callback_pool, permanent_uuid,
         tablet->table(), std::move(epoch), /* async_task_throttler */ nullptr),
+    tablet_(tablet),
     tablet_id_(tablet->tablet_id()) {
   // May not honor unresponsive deadline, refer to UnresponsiveDeadline().
   deadline_ = start_timestamp_;
@@ -278,6 +280,13 @@ std::string AsyncStartElection::description() const {
 }
 
 bool AsyncStartElection::SendRequest(int attempt) {
+  // A tablet leaves CREATING once a leader is reported. Retrying past that would run an
+  // ELECT_EVEN_IF_LEADER_IS_ALIVE election against that leader.
+  if (tablet_->LockForRead()->pb.state() != SysTabletsEntryPB::CREATING &&
+      PREDICT_TRUE(!FLAGS_TEST_hinted_leader_election_for_existing_tablets)) {
+    AbortTask(STATUS(Aborted, "Tablet is no longer new"));
+    return false;
+  }
   LOG_WITH_PREFIX(INFO) << Format(
       "Hinted Leader start election at $0 for tablet $1, attempt $2",
       permanent_uuid_, tablet_id_, attempt);
@@ -585,6 +594,12 @@ void AsyncAlterTable::Finished(const Status& status) {
   // it's safe to call OnComplete here without worrying about per-attempt double-counting.
   if (cdc_alter_batch_tracker_) {
     cdc_alter_batch_tracker_->OnComplete(status);
+  }
+}
+
+void AsyncAlterTable::UnregisterAsyncTaskCallback() {
+  if (state() == MonitoredTaskState::kFailed && table_) {
+    master_->catalog_manager()->HandleAlterTableTaskFailed(*table_);
   }
 }
 

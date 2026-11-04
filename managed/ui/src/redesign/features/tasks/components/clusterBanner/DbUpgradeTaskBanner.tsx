@@ -28,16 +28,13 @@ import { OperationBannerLoadingIcon, OperationBannerWaveIcon } from './operation
 interface DbUpgradeTaskBannerProps {
   task: Task;
   universeUuid: string;
-  /** When set, the upgrade-completed (Ready) success banner can be dismissed. */
-  isUpgradeCompletedBannerDismissed?: boolean;
-  onDismissUpgradeCompletedBanner?: () => void;
+  onDismissDbUpgradeTaskBanner?: () => void;
 }
 
 export const DbUpgradeTaskBanner = ({
   task,
   universeUuid,
-  isUpgradeCompletedBannerDismissed = false,
-  onDismissUpgradeCompletedBanner
+  onDismissDbUpgradeTaskBanner
 }: DbUpgradeTaskBannerProps) => {
   const [isDbUpgradeManagementSidePanelOpen, setIsDbUpgradeManagementSidePanelOpen] =
     useState(false);
@@ -104,9 +101,7 @@ export const DbUpgradeTaskBanner = ({
           iconCircle={false}
           icon={<OperationBannerLoadingIcon />}
           title={t('upgradingSoftware.title')}
-          content={
-            <OperationBannerProgressContent progressPercent={task.percentComplete ?? 0} />
-          }
+          content={<OperationBannerProgressContent progressPercent={task.percentComplete ?? 0} />}
           action={openUpgradeMonitorButton}
           message={
             <Trans
@@ -141,9 +136,7 @@ export const DbUpgradeTaskBanner = ({
           iconCircle={false}
           icon={<OperationBannerWaveIcon />}
           title={t('upgradePausedForMonitoring.title')}
-          content={
-            <OperationBannerProgressContent progressPercent={task.percentComplete ?? 0} />
-          }
+          content={<OperationBannerProgressContent progressPercent={task.percentComplete ?? 0} />}
           action={openUpgradeMonitorToContinueButton}
           message={t('upgradePausedForMonitoring.description')}
         />
@@ -170,7 +163,6 @@ export const DbUpgradeTaskBanner = ({
       } else if (
         universeDetailsQuery.data?.info?.software_upgrade_state ===
           UniverseInfoSoftwareUpgradeState.Ready &&
-        !isUpgradeCompletedBannerDismissed &&
         isTaskCompletedWithinDays(task, SOFTWARE_UPGRADE_COMPLETED_BANNER_MAX_AGE_DAYS)
       ) {
         bannerComponent = (
@@ -196,14 +188,15 @@ export const DbUpgradeTaskBanner = ({
                 }}
               />
             }
-            dismissable={!!onDismissUpgradeCompletedBanner}
-            onClose={onDismissUpgradeCompletedBanner}
+            dismissable={!!onDismissDbUpgradeTaskBanner}
+            onClose={onDismissDbUpgradeTaskBanner}
           />
         );
       }
       break;
     case TaskState.FAILURE:
-    case TaskState.ABORTED:
+    case TaskState.ABORTED: {
+      const isTaskAborted = task.status === TaskState.ABORTED;
       if (
         universeDetailsQuery.data?.info?.software_upgrade_state ===
         UniverseInfoSoftwareUpgradeState.Ready
@@ -214,9 +207,13 @@ export const DbUpgradeTaskBanner = ({
             dense
             minHeight={46}
             showDivider={false}
-            title={t('upgradeAborted.title')}
-            message={t('upgradeAborted.description')}
+            title={t(isTaskAborted ? 'upgradeAborted.title' : 'upgradeCanceled.title')}
+            message={t(
+              isTaskAborted ? 'upgradeAborted.description' : 'upgradeCanceled.description'
+            )}
             action={openUpgradeMonitorButton}
+            dismissable={!!onDismissDbUpgradeTaskBanner}
+            onClose={onDismissDbUpgradeTaskBanner}
           />
         );
       } else {
@@ -226,7 +223,8 @@ export const DbUpgradeTaskBanner = ({
             dense
             minHeight={46}
             showDivider={false}
-            title={t('softwareUpgradeFailed.title')}
+            title={t(isTaskAborted ? 'upgradeAborted.title' : 'softwareUpgradeFailed.title')}
+            {...(isTaskAborted ? { message: t('upgradeAborted.description') } : {})}
             content={
               <OperationBannerProgressContent
                 progressPercent={task.percentComplete ?? 0}
@@ -238,6 +236,7 @@ export const DbUpgradeTaskBanner = ({
         );
       }
       break;
+    }
     case TaskState.CREATED:
     case TaskState.INITIALIZING:
     case TaskState.ABORT:

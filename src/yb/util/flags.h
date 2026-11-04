@@ -34,6 +34,7 @@
 #include <cstdint>
 #include <map>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 
 #include <gflags/gflags.h>
@@ -232,6 +233,10 @@ bool ValidatePercentageFlag(const char* flag_name, int value);
 
 // Check if SetUsageMessage() was called. Useful for tools.
 bool IsUsageMessageSet();
+
+// Whether gflags takes the next argument as the value of `arg`, i.e. `arg` is "--flag" or "-flag"
+// without "=" for a registered gflag that is not a bool. For tools that scan argv themselves.
+bool FlagTakesSeparateValue(std::string_view arg);
 
 // GLog sink that keeps an internal buffer of messages that have been logged from DEFINE_validator
 // flag macro.

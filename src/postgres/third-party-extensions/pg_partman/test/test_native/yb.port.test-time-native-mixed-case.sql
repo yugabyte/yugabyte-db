@@ -3,13 +3,21 @@
     -- Test using default template table. Initial child tables will have no indexes. New tables after template has indexes added should.
     -- Mixed case
 
+-- YB: Gate the tests that need yb_pg_partman_check_native_txn_ddl_and_locks() to be true.
+SELECT pg_catalog.yb_pg_partman_check_native_txn_ddl_and_locks()::int AS yb_use_txn_ddl_and_locks \gset
 \set ON_ERROR_ROLLBACK 1
 \set ON_ERROR_STOP true
 
--- BEGIN; YB: Transactional DDL not supported
+\if :yb_use_txn_ddl_and_locks
+BEGIN;
+\endif \\ -- YB
 SELECT set_config('search_path','partman, public',false);
 
+\if :yb_use_txn_ddl_and_locks
+SELECT plan(221);
+\else \\ -- YB
 SELECT plan(204); -- YB: decreased number of tests
+\endif \\ -- YB
 
 CREATE SCHEMA "Partman_Test";
 CREATE SCHEMA "Partman_Retention_Test";
@@ -599,7 +607,7 @@ SELECT hasnt_table('Partman_Test', 'Time_Taptest_Table_p'||to_char(CURRENT_TIMES
 SELECT has_table('Partman_Retention_Test', 'Time_Taptest_Table_p'||to_char(CURRENT_TIMESTAMP-'3 days'::interval, 'YYYY_MM_DD'), 
     'Check Time_Taptest_Table_p'||to_char(CURRENT_TIMESTAMP-'3 days'::interval, 'YYYY_MM_DD')||' got moved to new schema');
 
-/* YB: undo_partition not supported
+\if :yb_use_txn_ddl_and_locks
 SELECT undo_partition('Partman_Test.Time_Taptest_Table', 20, p_target_table := 'Partman_Test.Undo_Taptest', p_keep_table := false);
 SELECT results_eq('SELECT count(*)::int FROM  "Partman_Test"."Undo_Taptest"', ARRAY[118], 'Check count from target table after undo');
 SELECT hasnt_table('Partman_Test', 'Time_Taptest_Table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), 
@@ -634,9 +642,11 @@ SELECT hasnt_table('Partman_Test', 'Time_Taptest_Table_p'||to_char(CURRENT_TIMES
     'Check Time_Taptest_Table_p'||to_char(CURRENT_TIMESTAMP-'2 days'::interval, 'YYYY_MM_DD')||' does not exist');
 
 SELECT hasnt_table('partman', 'Template_Partman_Test_Time_Taptest_Table', 'Check that template table was dropped');
-*/ -- YB
+\endif \\ -- YB
 
 
 SELECT * FROM finish();
--- ROLLBACK; YB: Transactional DDL not supported
+\if :yb_use_txn_ddl_and_locks
+ROLLBACK;
+\endif \\ -- YB
 

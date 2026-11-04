@@ -15,6 +15,7 @@
 #pragma once
 
 #include <limits>
+#include <type_traits>
 #include <vector>
 
 namespace yb {
@@ -64,6 +65,12 @@ T fit_bounds(const T& value, const T& min, const T& max) {
     return max;
   }
   return value;
+}
+
+template <class T>
+constexpr T unsigned_abs_diff(const T& lhs, const T& rhs) {
+  static_assert(std::is_unsigned_v<T>);
+  return lhs > rhs ? lhs - rhs : rhs - lhs;
 }
 
 }  // namespace yb

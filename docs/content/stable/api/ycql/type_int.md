@@ -111,4 +111,4 @@ example> SELECT * FROM item_counters;
 
 ## See also
 
-- [Data types](..#data-types)
+- [Data types](../#data-types)

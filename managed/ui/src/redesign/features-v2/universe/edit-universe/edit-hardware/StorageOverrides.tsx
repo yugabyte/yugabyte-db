@@ -1,19 +1,18 @@
 import { FC, useMemo } from 'react';
-import { mui, YBButton, YBTag } from '@yugabyte-ui-library/core';
+import { mui, YBButton } from '@yugabyte-ui-library/core';
 import { useTranslation } from 'react-i18next';
 import { useToggle } from 'react-use';
 import AddIcon from '@app/redesign/assets/add.svg';
 import EditIcon from '@app/redesign/assets/edit2.svg';
-import StarIcon from '@app/redesign/assets/in-use-star.svg';
 import { ClusterSpec, ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { RbacValidator } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
 import { useEditUniverseContext, useIsUniverseEditActionDisabled, withUniverseResource } from '../EditUniverseUtils';
 import { K8OperatorEditBlockedTooltip } from '../K8OperatorEditBlockedTooltip';
 
-import { getFlagFromRegion } from '../../create-universe/helpers/RegionToFlagUtils';
 import {
   buildStorageOverrideModalProps,
+  StorageOverrideZoneTags,
   StorageOverridesModal
 } from './StorageOverridesModal';
 import {
@@ -69,13 +68,6 @@ const OverrideCardHeader = styled(Box)({
   justifyContent: 'space-between',
   alignItems: 'center',
   gap: '16px'
-});
-
-const ZoneTagList = styled(Box)({
-  display: 'flex',
-  flexWrap: 'wrap',
-  alignItems: 'center',
-  gap: '8px'
 });
 
 interface StorageOverridesProps {
@@ -142,13 +134,7 @@ export const StorageOverrides: FC<StorageOverridesProps> = ({ cluster, hasReadRe
               </Typography>
 
             </OverrideCardHeader>
-            <ZoneTagList>
-              {zoneChips.map((chip) => (
-                <YBTag key={chip.azUuid} size="medium" variant='light' endIcon={chip.isPreferred ? <StarIcon /> : undefined}>
-                  {getFlagFromRegion(chip.regionCode)} {chip.regionName} ({chip.azName})
-                </YBTag>
-              ))}
-            </ZoneTagList>
+            <StorageOverrideZoneTags chips={zoneChips} />
           </OverrideCard>
         ) : (
           <EmptyState>

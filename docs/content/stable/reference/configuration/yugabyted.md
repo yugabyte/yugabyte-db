@@ -778,7 +778,7 @@ For more advanced examples, see [Examples](#examples).
 -h | --help
 : Print the command-line help and exit.
 
---advertise_address *bind-ip*
+<a name="advertise-address"></a>--advertise_address *bind-ip*
 : IP (v4 or v6) address or local hostname on which yugabyted will listen.
 
 --join *master-ip*
@@ -859,11 +859,11 @@ The advanced flags supported by the `start` command are as follows:
 : The path to the directory which has the certificates to be used for secure deployment. Must be an absolute path. Default path is `<base_dir>/certs`.
 
 --master_flags *master_flags*
-: Specify extra [master flags](../../../reference/configuration/yb-master#configuration-flags) as a set of key value pairs. Format (key=value,key=value).
+: Specify extra [master flags](../../../reference/configuration/yb-master/#all-flags) as a set of key value pairs. Format (key=value,key=value).
 : To specify any CSV value flags, enclose the values inside curly braces `{}`. Refer to [Pass additional flags to YB-Master and YB-TServer](#pass-additional-flags-to-yb-master-and-yb-tserver).
 
 --tserver_flags *tserver_flags*
-: Specify extra [tserver flags](../../../reference/configuration/yb-tserver#configuration-flags) as a set of key value pairs. Format (key=value,key=value).
+: Specify extra [tserver flags](../../../reference/configuration/yb-tserver/#all-flags) as a set of key value pairs. Format (key=value,key=value).
 : To specify any CSV value flags, enclose the values inside curly braces `{}`. Refer to [Pass additional flags to YB-Master and YB-TServer](#pass-additional-flags-to-yb-master-and-yb-tserver).
 
 --ysql_enable_auth *bool*
