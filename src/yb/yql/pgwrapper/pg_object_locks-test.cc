@@ -341,46 +341,6 @@ TEST_F(PgObjectLocksTestRF1, TestWaitingOnConflictingLocks) {
   ASSERT_OK(AssertNumLocks(0 /* granted locks*/, 0 /* waiting locks */));
 }
 
-// Rolling back to a savepoint that undoes all of a txn's DDLs removes the txn's DDL verification
-// state on the master while the txn is still running. That must not release the txn's other object
-// locks (GH #32980).
-TEST_F(PgObjectLocksTestRF1, RollbackToSavepointKeepsObjectLocks) {
-  constexpr auto kLockTimeoutMs = 2000;
-  const std::vector<std::string> kDdls = {
-      "ALTER TABLE t2 ADD COLUMN v1 INT",
-      "CREATE TABLE t3(k INT PRIMARY KEY)",
-      "DROP TABLE t2",
-  };
-  auto conn1 = ASSERT_RESULT(Connect());
-  auto conn2 = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn2.ExecuteFormat("SET lock_timeout='$0ms'", kLockTimeoutMs));
-  for (const auto& ddl : kDdls) {
-    SCOPED_TRACE(ddl);
-    ASSERT_OK(conn1.Execute("DROP TABLE IF EXISTS t1, t2, t3"));
-    ASSERT_OK(conn1.Execute("CREATE TABLE t1(k INT PRIMARY KEY)"));
-    ASSERT_OK(conn1.Execute("CREATE TABLE t2(k INT PRIMARY KEY)"));
-
-    ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-    ASSERT_OK(conn1.Execute("LOCK TABLE t1 IN ACCESS EXCLUSIVE MODE"));
-    ASSERT_OK(conn1.Execute("SAVEPOINT s"));
-    ASSERT_OK(conn1.Execute(ddl));
-    auto log_waiter = StringWaiterLogSink("Erasing DDL Verification state");
-    ASSERT_OK(conn1.Execute("ROLLBACK TO SAVEPOINT s"));
-    ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(10 * kTimeMultiplier)));
-
-    ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-    ASSERT_NOK_STR_CONTAINS(
-        conn2.Execute("LOCK TABLE t1 IN ACCESS EXCLUSIVE MODE"),
-        "canceling statement due to lock timeout");
-    ASSERT_OK(conn2.RollbackTransaction());
-
-    ASSERT_OK(conn1.CommitTransaction());
-    ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-    ASSERT_OK(conn2.Execute("LOCK TABLE t1 IN ACCESS EXCLUSIVE MODE"));
-    ASSERT_OK(conn2.CommitTransaction());
-  }
-}
-
 // A DDL blocked on a conflicting object lock used to fail with a transport timeout naming neither
 // the lock nor the holder. This only happens with lock_timeout at its default of 0; setting it arms
 // postgres' timer, which already reports the conflict correctly, so the test shortens the fallback

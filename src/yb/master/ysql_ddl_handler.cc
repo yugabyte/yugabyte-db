@@ -876,13 +876,13 @@ void CatalogManager::RemoveDdlTransactionStateUnlocked(
     }
 
     if (tables.empty()) {
-      // A rollback to savepoint can undo every DDL of a txn that is still running (state is
-      // kDdlInProgress until the verifier sees the txn finish). Such a txn still holds its object
-      // locks and releases them itself when it finishes, unless a release-all from it was already
-      // dropped because this entry existed.
+      // A rollback to savepoint can undo every DDL of a txn that is still running (txn_state is
+      // kUnknown until the verifier sees the txn finish; state is no signal, since a failed
+      // verification task can set kDdlPostProcessingFailed while the txn runs). Such a txn still
+      // holds its object locks and releases them itself when it finishes, unless a release-all
+      // from it was already dropped because this entry existed.
       const bool release_locks =
-          iter->second.state != YsqlDdlVerificationState::kDdlInProgress ||
-          iter->second.release_all_deferred;
+          iter->second.txn_state != TxnState::kUnknown || iter->second.release_all_deferred;
       LOG(INFO) << "Erasing DDL Verification state for " << txn_id
                 << (release_locks ? "" : ", txn is still running, not releasing its object locks");
       ysql_ddl_txn_verfication_state_map_.erase(iter);
