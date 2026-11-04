@@ -50,6 +50,7 @@ export interface AuditLogProps {
   customerUUID: string;
   payload: UniverseDetails;
   additionalDetails: UniverseDetails | GFlagsDiffProps;
+  taskDiff?: unknown;
   target: string;
   targetID: string;
   action: string;

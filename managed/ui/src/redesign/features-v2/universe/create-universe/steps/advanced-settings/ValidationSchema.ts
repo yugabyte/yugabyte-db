@@ -11,6 +11,8 @@ import {
 import { getCommunicationPortFieldIds } from '../../utils/createUniversePayload';
 import { awsArnStringSchema } from '../../fields/arn-field/awsArnValidation';
 import { ACCESS_KEY_CODE_BY_PROVIDER } from '../../fields/FieldNames';
+import { isCloudVendorCloudType } from '@app/components/configRedesign/providerRedesign/utils';
+import { userTagsSchema } from './userTagsValidation';
 
 export interface OtherAdvancedValidationOptions {
   providerCode?: CloudType;
@@ -58,6 +60,8 @@ export const OtherAdvancedValidationSchema = (
         return true;
       }),
     awsArnString: awsArnStringSchema(t),
+    // Tags are dropped from the payload for non-cloud-vendor providers, so don't block on them.
+    ...(isCloudVendorCloudType(providerCode) && { instanceTags: userTagsSchema(t) }),
     ...portShape
   }).test('unique-deployment-ports', '', function (value) {
     if (!canOverrideCommunicationPorts(providerCode)) return true;

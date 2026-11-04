@@ -703,6 +703,13 @@ Close connection otherwise.
 
 `pool_rollback yes`
 
+#### pool\_attach\_check *yes|no*
+
+Check server connection before attaching to client.
+Default: yes
+
+`pool_attach_check no`
+
 #### client\_fwd\_error *yes|no*
 
 Forward PostgreSQL errors during remote server connection.

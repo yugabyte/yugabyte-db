@@ -25,6 +25,7 @@ import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.alerts.impl.AlertTemplateService;
 import com.yugabyte.yw.common.alerts.impl.AlertTemplateService.AlertTemplateDescription;
 import com.yugabyte.yw.common.concurrent.MultiKeyLock;
@@ -615,7 +616,10 @@ public class AlertConfigurationService {
                   (target.isAll() || target.getUuids().contains(universeUuid))
                       && universe != null
                       && universe.getUniverseDetails() != null
-                      && universe.getUniverseDetails().creationSucceeded;
+                      && universe.getUniverseDetails().creationSucceeded
+                      && templateDescription
+                          .getUniverseType()
+                          .matches(Util.isKubernetesBasedUniverse(universe));
               AlertDefinition universeDefinition;
               if (shouldHaveDefinition) {
                 if (CollectionUtils.isEmpty(universeDefinitions)) {

@@ -4,6 +4,7 @@ import { getIsKubernetesUniverse } from './UniverseUtils';
 import { YBLoading, YBErrorIndicator } from '../components/common/indicators';
 import { isEmptyString, isNonEmptyObject, isNonEmptyString } from './ObjectUtils';
 import { DEFAULT_TIMEZONE } from '../redesign/helpers/constants';
+import { getNodeExporterPanelNotes } from './NodeExporterNotes';
 
 export const getTabContent = (
   graph: any,
@@ -64,6 +65,11 @@ export const getTabContent = (
           });
         }
         uniqueOperations = Array.from(uniqueOperations);
+        const nodeExporterPanelNotes = getNodeExporterPanelNotes(
+          metricKey,
+          metrics[type],
+          selectedUniverse
+        );
 
         return isNonEmptyObject(metric) && !metric?.error ? (
           <MetricsPanel
@@ -83,6 +89,7 @@ export const getTabContent = (
             updateTimestamp={updateTimestamp}
             printMode={printMode}
             metricsTimezone={timezone}
+            notes={nodeExporterPanelNotes}
           />
         ) : null;
       })
@@ -100,8 +107,13 @@ export const getTabContent = (
     //Hide empty panels for master pods.
     // eslint-disable-next-line eqeqeq
     if (nodeName.match('yb-master-') != null) {
-      const skipList = ['Tablet Server', 'YSQL Ops', 'YCQL Ops', 'Resource'];
-      if (skipList.includes(title)) {
+      const skipList: string[] = [
+        MetricTypes.TSERVER,
+        MetricTypes.TSERVER_TABLE,
+        MetricTypes.YSQL_OPS,
+        MetricTypes.YCQL_OPS
+      ];
+      if (skipList.includes(type)) {
         return null;
       }
     }

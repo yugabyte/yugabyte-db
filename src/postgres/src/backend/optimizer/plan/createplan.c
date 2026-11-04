@@ -3662,7 +3662,6 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 		foreach(values, build_path_tlist(root, (Path *) projection_path))
 		{
 			TargetEntry *tle = lfirst_node(TargetEntry, values);
-			AttrNumber	varattno = InvalidAttrNumber;
 
 			/* Ignore junk columns. */
 			if (IsA(tle->expr, Var))
@@ -3676,8 +3675,6 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 				{
 					continue;
 				}
-
-				varattno = var->varattno;
 			}
 
 			/*
@@ -3728,32 +3725,6 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 			{
 				RelationClose(relation);
 				return false;
-			}
-
-			/* The column is set to itself (SET col = col). */
-			if (varattno == resno)
-			{
-				/*
-				 * If the column has a NOT NULL constraint, avoid the single row
-				 * path. NOT NULL constraint checks happen in the postgres
-				 * executor and require the value of the column to be populated.
-				 * Since the single row path skips fetching the target tuple,
-				 * the check cannot correctly distinguish between missing values
-				 * and NULL values.
-				 * TODO(kramanathan): Optimizing this path requires code
-				 * refactor.
-				 */
-				if (TupleDescAttr(tupDesc, resno - 1)->attnotnull)
-				{
-					RelationClose(relation);
-					return false;
-				}
-
-				/*
-				 * In all other cases, the column has no impact on the single
-				 * row computation.
-				 */
-				continue;
 			}
 
 			subpath_tlist = lappend(subpath_tlist, tle);

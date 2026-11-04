@@ -75,7 +75,15 @@ DEFINE_RUNTIME_AUTO_bool(xcluster_enable_target_applied_filter, kExternal, false
     "When promoted, new xCluster streams in unidirectional automatic-DDL-mode replication "
     "groups use WritePB.xcluster_target_applied (instead of has_external_hybrid_time) as the "
     "producer's loop-prevention predicate, allowing index backfill writes to replicate "
-    "end-to-end. Bi-directional and pre-existing streams are unaffected.");
+    "end-to-end. Bi-directional and pre-existing streams are unaffected. NOTE: If you want to "
+    "disable the feature, use xcluster_enable_index_backfill_replication instead.");
+
+DEFINE_RUNTIME_bool(xcluster_enable_index_backfill_replication, true,
+    "In xCluster automatic DDL replication mode, replicate index backfill writes from the source "
+    "instead of running the backfill again on the target. The source master checks this when it "
+    "creates an xCluster stream, so setting it to false only affects streams created afterwards. "
+    "Existing streams keep the behavior they were created with. Note that this also includes "
+    "colocated streams and indexes.");
 
 DEFINE_RUNTIME_AUTO_bool(enable_xcluster_wal_anchor_stream_infra, kExternal, false, true,
     "Auto infra flag for the xCluster WAL_ANCHOR stream feature. NOTE: If you want to disable "
@@ -932,6 +940,21 @@ Status XClusterManager::DeleteXClusterWalAnchorStreams(
       req->source_table_ids().begin(), req->source_table_ids().end());
   return XClusterSourceManager::DeleteXClusterWalAnchorStreams(
       xcluster::ReplicationGroupId(req->replication_group_id()), source_table_ids);
+}
+
+Status XClusterManager::RecordXClusterStreamBootstrapInfo(
+    const RecordXClusterStreamBootstrapInfoRequestPB* req,
+    RecordXClusterStreamBootstrapInfoResponsePB* resp, rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+
+  XClusterStreamCheckpointedTablets stream_tablets;
+  for (const auto& stream : req->streams()) {
+    auto stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(stream.stream_id()));
+    stream_tablets[stream_id].assign(
+        stream.checkpointed_tablet_ids().begin(), stream.checkpointed_tablet_ids().end());
+  }
+  return XClusterSourceManager::RecordXClusterStreamBootstrapInfo(stream_tablets, epoch);
 }
 
 Status XClusterManager::GetXClusterOutboundReplicationGroups(

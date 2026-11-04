@@ -7,6 +7,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
+import { useEffect, useMemo } from 'react';
 import { Controller, FieldValues, Path, PathValue, useFormContext } from 'react-hook-form';
 import { YBAutoComplete, YBLabel, YBSelectProps, mui } from '@yugabyte-ui-library/core';
 import { Region } from '../../../../../features/universe/universe-form/utils/dto';
@@ -33,7 +34,15 @@ export const AvailabilityZoneField = <T extends FieldValues>({
 
   const regions = watch(REGIONS_FIELD as Path<T>);
 
-  const az = regions.map((region: Region) => region.zones).flat();
+  const az = useMemo(() => regions.flatMap((region: Region) => region.zones ?? []), [regions]);
+  const value = watch(name);
+
+  // The AZ belongs to the selected region; drop it once it is no longer an option.
+  useEffect(() => {
+    if (value && !az.some((zone: Record<string, string>) => zone.name === value)) {
+      setValue(name, '' as PathValue<T, Path<T>>, { shouldValidate: true });
+    }
+  }, [az, value, name, setValue]);
 
   return (
     <Controller
@@ -55,7 +64,11 @@ export const AvailabilityZoneField = <T extends FieldValues>({
                     ? az[option].name
                     : option.name;
                 }}
-                onChange={(_, val) => setValue(name, (val as any).name as PathValue<T, Path<T>>)}
+                onChange={(_, val) =>
+                  setValue(name, ((val as any)?.name ?? '') as PathValue<T, Path<T>>, {
+                    shouldValidate: true
+                  })
+                }
                 ybInputProps={{
                   error: !!fieldState.error,
                   helperText: fieldState.error?.message,

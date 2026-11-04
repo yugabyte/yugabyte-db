@@ -68,6 +68,10 @@ YB_DEFINE_ENUM(StreamCheckpointLocation, (kOpId0)(kCurrentEndOfWAL));
 
 using XClusterCheckpointStreamsResult = Result<std::pair<std::vector<TableId>, bool>>;
 
+// Stream -> the source tablets its checkpoint covers. Ordered so that stream locks can be taken in
+// a consistent order.
+using XClusterStreamCheckpointedTablets = std::map<xrepl::StreamId, std::vector<TabletId>>;
+
 class XClusterCreateStreamsContext {
  public:
   XClusterCreateStreamsContext() = default;

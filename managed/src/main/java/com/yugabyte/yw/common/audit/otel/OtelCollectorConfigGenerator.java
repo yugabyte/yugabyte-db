@@ -658,6 +658,13 @@ public class OtelCollectorConfigGenerator {
         .collect(Collectors.toList());
   }
 
+  // Scrape targets served by a job other than the yugabyte job.
+  private static final Set<ScrapeConfigTargetType> NON_YUGABYTE_SCRAPE_TARGETS =
+      EnumSet.of(
+          ScrapeConfigTargetType.NODE_EXPORT,
+          ScrapeConfigTargetType.NODE_AGENT_EXPORT,
+          ScrapeConfigTargetType.OTEL_EXPORT);
+
   private void addMetricsExporterPipelines(
       OtelCollectorConfigFormat collectorConfigFormat,
       NodeTaskParams nodeParams,
@@ -874,6 +881,8 @@ public class OtelCollectorConfigGenerator {
     private String region;
     private String zone;
     private UniverseDefinitionTaskParams.ClusterType clusterType;
+    // False when the helm release runs no master pods (read replica, or an AZ with no masters).
+    private boolean hasMasters;
   }
 
   /**
@@ -898,6 +907,23 @@ public class OtelCollectorConfigGenerator {
       TelemetryConfig telemetryConfig,
       K8sPodPlacement podPlacement,
       String logLinePrefix) {
+    return getOtelColConfigK8s(
+        provider,
+        universe,
+        telemetryConfig,
+        podPlacement,
+        logLinePrefix,
+        universe.getUniverseDetails().getPrimaryCluster().userIntent);
+  }
+
+  /** Same as above, with API flags from {@code apiIntent}, the target intent of a helm upgrade. */
+  public K8sOtelConfig getOtelColConfigK8s(
+      Provider provider,
+      Universe universe,
+      TelemetryConfig telemetryConfig,
+      K8sPodPlacement podPlacement,
+      String logLinePrefix,
+      UniverseDefinitionTaskParams.UserIntent apiIntent) {
     AuditLogConfig auditLogConfig =
         telemetryConfig != null ? telemetryConfig.getAuditLogConfig() : null;
     QueryLogConfig queryLogConfig =
@@ -1096,6 +1122,7 @@ public class OtelCollectorConfigGenerator {
           universe,
           metricsExportConfig,
           podPlacement,
+          apiIntent,
           secretEnv,
           secretEnvProviderUuids);
     }
@@ -1270,9 +1297,19 @@ public class OtelCollectorConfigGenerator {
       Universe universe,
       MetricsExportConfig metricsExportConfig,
       K8sPodPlacement podPlacement,
+      UniverseDefinitionTaskParams.UserIntent apiIntent,
       List<Object> secretEnv,
       Set<UUID> secretEnvProviderUuids) {
-    Set<ScrapeConfigTargetType> scrapeTargets = metricsExportConfig.getScrapeConfigTargets();
+    Set<ScrapeConfigTargetType> scrapeTargets =
+        getYugabyteScrapeTargetsForK8s(
+            apiIntent,
+            podPlacement == null || podPlacement.isHasMasters(),
+            metricsExportConfig.getScrapeConfigTargets());
+    // A receiver needs at least one job, and K8s builds only the yugabyte and otel jobs.
+    if (!OtelCollectorUtil.yugabyteJobScrapeConfigEnabled(scrapeTargets)
+        && !scrapeTargets.contains(ScrapeConfigTargetType.OTEL_EXPORT)) {
+      scrapeTargets = metricsExportConfig.getScrapeConfigTargets();
+    }
 
     // Shared prometheus receiver scraping pod-local endpoints.
     OtelCollectorConfigFormat.PrometheusReceiver receiver =
@@ -2044,8 +2081,14 @@ public class OtelCollectorConfigGenerator {
     List<OtelCollectorConfigFormat.ScrapeConfig> scrapeConfigs = new ArrayList<>();
 
     // Add yugabyte scrape config. Includes master, tserver, ysql, cql exports.
+    Set<ScrapeConfigTargetType> requestedTargets = metricsExportConfig.getScrapeConfigTargets();
     Set<ScrapeConfigTargetType> yugabyteTargets =
-        getYugabyteScrapeTargetsForNode(nodeDetails, metricsExportConfig.getScrapeConfigTargets());
+        getYugabyteScrapeTargetsForNode(nodeDetails, requestedTargets);
+    // A receiver needs at least one job, so fall back to the unfiltered targets.
+    if (!OtelCollectorUtil.yugabyteJobScrapeConfigEnabled(yugabyteTargets)
+        && Collections.disjoint(requestedTargets, NON_YUGABYTE_SCRAPE_TARGETS)) {
+      yugabyteTargets = requestedTargets;
+    }
     if (OtelCollectorUtil.yugabyteJobScrapeConfigEnabled(yugabyteTargets)) {
       scrapeConfigs.add(
           createYugabyteScrapeConfig(
@@ -2243,17 +2286,36 @@ public class OtelCollectorConfigGenerator {
         nodeDetails.yqlServerHttpPort);
   }
 
+  /** Drops YSQL/CQL targets for APIs that are off, and the master target without master pods. */
+  static Set<ScrapeConfigTargetType> getYugabyteScrapeTargetsForK8s(
+      UniverseDefinitionTaskParams.UserIntent apiIntent,
+      boolean releaseHasMasters,
+      Set<ScrapeConfigTargetType> requestedTargets) {
+    Set<ScrapeConfigTargetType> targets = EnumSet.noneOf(ScrapeConfigTargetType.class);
+    targets.addAll(requestedTargets);
+    if (!releaseHasMasters) {
+      targets.remove(ScrapeConfigTargetType.MASTER_EXPORT);
+    }
+    if (!apiIntent.enableYSQL) {
+      targets.remove(ScrapeConfigTargetType.YSQL_EXPORT);
+    }
+    if (!apiIntent.enableYCQL) {
+      targets.remove(ScrapeConfigTargetType.CQL_EXPORT);
+    }
+    return targets;
+  }
+
   /**
-   * Drops the requested targets that have no server on this node, so the collector does not scrape
-   * a closed port every interval (PLAT-21847). The collector config is written during configure,
-   * before add/start node and master moves store isTserver/isMaster, so gate only on fields those
-   * flows do not change: dedicatedTo, and the API flags (ConfigureDBApis regenerates the config
-   * when it changes them). This is why MASTER_EXPORT is not gated.
+   * Drops requested targets with no server on this node. Tserver targets use dedicatedTo, since
+   * isTserver is not set yet at configure.
    */
   static Set<ScrapeConfigTargetType> getYugabyteScrapeTargetsForNode(
       NodeDetails nodeDetails, Set<ScrapeConfigTargetType> requestedTargets) {
     Set<ScrapeConfigTargetType> targets = EnumSet.noneOf(ScrapeConfigTargetType.class);
     targets.addAll(requestedTargets);
+    if (!nodeDetails.isMaster) {
+      targets.remove(ScrapeConfigTargetType.MASTER_EXPORT);
+    }
     boolean dedicatedMaster = nodeDetails.dedicatedTo == UniverseTaskBase.ServerType.MASTER;
     if (dedicatedMaster) {
       targets.remove(ScrapeConfigTargetType.TSERVER_EXPORT);
