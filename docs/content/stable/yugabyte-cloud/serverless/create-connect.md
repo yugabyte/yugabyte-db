@@ -14,11 +14,9 @@ rightNav:
 type: docs
 ---
 
-Serverless clusters are created in your [Serverless account](../managed-security/manage-access/). This account is created automatically the first time you create a serverless cluster.
+Serverless clusters are created in your [Serverless account](../managed-security/manage-accounts/). This account is created automatically the first time you create a serverless cluster.
 
-To create your first serverless cluster:
-
-1. On the **Clusters** page, click 
+To create your first serverless cluster, see [Quick Start](../../cloud-quickstart/).
 
 ## Create a serverless cluster
 
