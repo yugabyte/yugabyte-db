@@ -1684,7 +1684,12 @@ class ControlScript(object):
         status_details.extend([
                 (Output.make_yellow("Collected logs path"), display_msg)
         ])
-        Output.print_and_log(self.get_status_string_common(status_details))
+        status_string = self.get_status_string_common(status_details)
+        if self.configs.temp_data.get("collect_logs_stdout"):
+            Output.log(status_string)
+            sys.stderr.write(status_string + "\n")
+        else:
+            Output.print_and_log(status_string)
 
     # Configuring PITR in YugabyteDB cluster
     def configure_point_in_time_recovery(self):
