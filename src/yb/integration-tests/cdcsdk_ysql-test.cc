@@ -140,57 +140,33 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(SingleShardInsertWithAutoCommit))
   CheckCount(expected_count, count);
 }
 
-namespace {
-
-void CheckTextTuple(
-    const google::protobuf::RepeatedPtrField<DatumMessagePB>& tuple, int id, const char* value) {
-  ASSERT_EQ(tuple.size(), 2);
-  ASSERT_TRUE(tuple.Get(0).has_datum_int32());
-  ASSERT_EQ(tuple.Get(0).datum_int32(), id);
-  if (value) {
-    ASSERT_TRUE(tuple.Get(1).has_datum_string());
-    ASSERT_EQ(tuple.Get(1).datum_string(), value);
-  } else {
-    ASSERT_EQ(tuple.Get(1).datum_case(), DatumMessagePB::DATUM_NOT_SET);
-  }
-}
-
-}  // namespace
-
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(SerializableInsertSkipsEmptyTopLevelIntent)) {
+TEST_F(CDCSDKYsqlTest, SerializableDmlSkipsEmptyTopLevelIntent) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_skip_prefix_locks) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_skip_prefix_locks_for_upgrade) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_max_stream_intent_records) = 2;
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.Execute(
       "CREATE TABLE items (id integer PRIMARY KEY, value text) SPLIT INTO 1 TABLETS"));
   ASSERT_OK(conn.Execute("ALTER TABLE items REPLICA IDENTITY FULL"));
-  ASSERT_OK(conn.Execute("CREATE PUBLICATION items_pub FOR TABLE items"));
   auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "items"));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
   auto stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot("items_slot"));
-  ASSERT_FALSE(ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets)).has_error());
 
-  const char* isolation[] = {"SERIALIZABLE", "SERIALIZABLE", "READ COMMITTED", "REPEATABLE READ"};
-  const char* sql_values[] = {"'hello'", "''", "NULL", "'snapshot'"};
-  const char* values[] = {"hello", "", nullptr, "snapshot"};
   CDCSDKCheckpointPB checkpoint;
   int64_t safe_time = -1;
   int wal_segment_index = 0;
-  for (int i = 0; i < 4; ++i) {
-    ASSERT_OK(conn.ExecuteFormat("BEGIN ISOLATION LEVEL $0", isolation[i]));
-    ASSERT_OK(conn.ExecuteFormat("INSERT INTO items VALUES ($0, $1)", i + 1, sql_values[i]));
-    ASSERT_OK(conn.Execute("COMMIT"));
-    if (i == 0) {
-      ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(
-          "SELECT id::text || ':' || value FROM items")), "1:hello");
-    }
-    std::vector<RowMessage> rows;
-    int begins = 0, commits = 0;
-    ASSERT_OK(WaitFor(
+  std::vector<RowMessage> rows;
+  int begins = 0, commits = 0;
+  bool saw_partial_transaction = false;
+  auto stream_until_commits = [&](int expected_commits) {
+    rows.clear();
+    begins = 0;
+    commits = 0;
+    saw_partial_transaction = false;
+    return WaitFor(
         [&]() -> Result<bool> {
           auto resp = VERIFY_RESULT(GetChangesFromCDC(
               stream_id, tablets, &checkpoint, 0, safe_time, wal_segment_index));
@@ -205,107 +181,73 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(SerializableInsertSkipsEmptyTopLe
             }
           }
           checkpoint = resp.cdc_sdk_checkpoint();
+          saw_partial_transaction |= !checkpoint.key().empty() && checkpoint.write_id() > 0;
           safe_time = resp.has_safe_hybrid_time() ? resp.safe_hybrid_time() : -1;
           wal_segment_index = resp.wal_segment_index();
-          return commits >= 1;
-        }, MonoDelta::FromSeconds(60), "Wait for insert transaction commit"));
+          return commits >= expected_commits;
+        },
+        MonoDelta::FromSeconds(60), "Wait for committed transactions");
+  };
+
+  // Single-row inserts under each isolation level, including empty and NULL values.
+  const std::vector<std::string> isolation = {
+      "SERIALIZABLE", "SERIALIZABLE", "READ COMMITTED", "REPEATABLE READ"};
+  const std::vector<std::string> sql_values = {"'hello'", "''", "NULL", "'snapshot'"};
+  const std::vector<std::optional<std::string>> values = {"hello", "", std::nullopt, "snapshot"};
+  for (size_t i = 0; i < isolation.size(); ++i) {
+    const int id = static_cast<int>(i) + 1;
+    ASSERT_OK(conn.ExecuteFormat("BEGIN ISOLATION LEVEL $0", isolation[i]));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO items VALUES ($0, $1)", id, sql_values[i]));
+    ASSERT_OK(conn.Execute("COMMIT"));
+    ASSERT_OK(stream_until_commits(1));
     ASSERT_EQ(begins, 1);
     ASSERT_EQ(commits, 1);
     ASSERT_EQ(rows.size(), 1);
     ASSERT_EQ(rows[0].op(), RowMessage::INSERT);
     ASSERT_EQ(rows[0].table(), "items");
-    ASSERT_NO_FATAL_FAILURE(CheckTextTuple(rows[0].new_tuple(), i + 1, values[i]));
+    ASSERT_NO_FATAL_FAILURE(CheckTextTuple(rows[0].new_tuple(), id, values[i]));
   }
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(
       "SELECT string_agg(id::text || ':' || coalesce(value, '<NULL>'), ',' ORDER BY id) "
       "FROM items")), "1:hello,2:,3:<NULL>,4:snapshot");
-  auto resp = ASSERT_RESULT(GetChangesFromCDC(
-      stream_id, tablets, &checkpoint, 0, safe_time, wal_segment_index));
-  for (const auto& record : resp.cdc_sdk_proto_records()) {
-    ASSERT_TRUE(record.row_message().op() == RowMessage::DDL ||
-                record.row_message().op() == RowMessage::SAFEPOINT);
-  }
-}
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(SerializableDmlSkipsEmptyTopLevelIntent)) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_skip_prefix_locks) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_skip_prefix_locks_for_upgrade) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_max_stream_intent_records) = 2;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_savepoint_rollback_filtering) = true;
-  ASSERT_OK(SetUpWithParams(3, 1, false));
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
-  ASSERT_OK(conn.Execute(
-      "CREATE TABLE items (id integer PRIMARY KEY, value text) SPLIT INTO 1 TABLETS"));
-  ASSERT_OK(conn.Execute("ALTER TABLE items REPLICA IDENTITY FULL"));
-  ASSERT_OK(conn.Execute("CREATE PUBLICATION items_pub FOR TABLE items"));
-  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "items"));
-  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
-  ASSERT_EQ(tablets.size(), 1);
-  auto stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot("items_slot"));
-  ASSERT_FALSE(ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets)).has_error());
-
-  for (const auto* sql : {
-           "BEGIN ISOLATION LEVEL SERIALIZABLE", "INSERT INTO items VALUES (1, 'hello')", "COMMIT",
-           "BEGIN ISOLATION LEVEL SERIALIZABLE", "UPDATE items SET value = 'updated' WHERE id = 1",
-           "COMMIT", "BEGIN ISOLATION LEVEL SERIALIZABLE", "DELETE FROM items WHERE id = 1",
+  // Serializable update, delete, a rolled-back savepoint and a multi-row insert, streamed in
+  // pages of cdc_max_stream_intent_records intents.
+  for (const std::string& sql : std::vector<std::string>{
+           "BEGIN ISOLATION LEVEL SERIALIZABLE", "INSERT INTO items VALUES (10, 'hello')", "COMMIT",
+           "BEGIN ISOLATION LEVEL SERIALIZABLE", "UPDATE items SET value = 'updated' WHERE id = 10",
+           "COMMIT", "BEGIN ISOLATION LEVEL SERIALIZABLE", "DELETE FROM items WHERE id = 10",
            "COMMIT", "BEGIN ISOLATION LEVEL SERIALIZABLE", "SAVEPOINT s",
            "INSERT INTO items VALUES (99, 'abort')", "ROLLBACK TO SAVEPOINT s",
-           "INSERT INTO items SELECT generate_series(2, 9), 'batch'", "COMMIT"}) {
+           "INSERT INTO items SELECT generate_series(11, 18), 'batch'", "COMMIT"}) {
     ASSERT_OK(conn.Execute(sql));
   }
-  CDCSDKCheckpointPB checkpoint;
-  int64_t safe_time = -1;
-  int wal_segment_index = 0;
-  std::vector<RowMessage> rows;
-  int begins = 0, commits = 0;
-  bool saw_partial_transaction = false;
-  ASSERT_OK(WaitFor(
-      [&]() -> Result<bool> {
-        auto resp = VERIFY_RESULT(GetChangesFromCDC(
-            stream_id, tablets, &checkpoint, 0, safe_time, wal_segment_index));
-        for (const auto& record : resp.cdc_sdk_proto_records()) {
-          const auto& row = record.row_message();
-          if (row.op() == RowMessage::BEGIN) {
-            ++begins;
-          } else if (row.op() == RowMessage::COMMIT) {
-            ++commits;
-          } else if (row.op() != RowMessage::DDL && row.op() != RowMessage::SAFEPOINT) {
-            rows.push_back(row);
-          }
-        }
-        checkpoint = resp.cdc_sdk_checkpoint();
-        saw_partial_transaction |= !checkpoint.key().empty() && checkpoint.write_id() > 0;
-        safe_time = resp.has_safe_hybrid_time() ? resp.safe_hybrid_time() : -1;
-        wal_segment_index = resp.wal_segment_index();
-        return commits >= 4;
-      }, MonoDelta::FromSeconds(60), "Wait for paginated serializable transactions"));
+  ASSERT_OK(stream_until_commits(4));
   ASSERT_TRUE(saw_partial_transaction);
   ASSERT_EQ(begins, 4);
   ASSERT_EQ(commits, 4);
   ASSERT_EQ(rows.size(), 11);
   ASSERT_EQ(rows[0].op(), RowMessage::INSERT);
-  ASSERT_NO_FATAL_FAILURE(CheckTextTuple(rows[0].new_tuple(), 1, "hello"));
-  // A packed full-row UPDATE is streamed as an upsert of the new row.
+  ASSERT_NO_FATAL_FAILURE(CheckTextTuple(rows[0].new_tuple(), 10, "hello"));
+  // With packed rows, a full-row UPDATE is streamed as an upsert of the new row.
   ASSERT_TRUE(rows[1].op() == RowMessage::UPDATE || rows[1].op() == RowMessage::INSERT);
-  ASSERT_NO_FATAL_FAILURE(CheckTextTuple(rows[1].new_tuple(), 1, "updated"));
+  ASSERT_NO_FATAL_FAILURE(CheckTextTuple(rows[1].new_tuple(), 10, "updated"));
   ASSERT_EQ(rows[2].op(), RowMessage::DELETE);
-  ASSERT_NO_FATAL_FAILURE(CheckTextTuple(rows[2].old_tuple(), 1, "updated"));
+  ASSERT_NO_FATAL_FAILURE(CheckTextTuple(rows[2].old_tuple(), 10, "updated"));
   std::set<int> ids;
   for (size_t i = 3; i < rows.size(); ++i) {
     ASSERT_EQ(rows[i].op(), RowMessage::INSERT);
     ASSERT_EQ(rows[i].table(), "items");
     ASSERT_EQ(rows[i].new_tuple_size(), 2);
     int id = rows[i].new_tuple(0).datum_int32();
-    ASSERT_GE(id, 2);
-    ASSERT_LE(id, 9);
+    ASSERT_GE(id, 11);
+    ASSERT_LE(id, 18);
     ASSERT_TRUE(ids.insert(id).second);
     ASSERT_NO_FATAL_FAILURE(CheckTextTuple(rows[i].new_tuple(), id, "batch"));
   }
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
-      "SELECT count(*) FROM items WHERE id BETWEEN 2 AND 9 AND value = 'batch'")), 8);
-  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM items")), 8);
+      "SELECT count(*) FROM items WHERE id BETWEEN 11 AND 18 AND value = 'batch'")), 8);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM items")), 12);
   auto resp = ASSERT_RESULT(GetChangesFromCDC(
       stream_id, tablets, &checkpoint, 0, safe_time, wal_segment_index));
   for (const auto& record : resp.cdc_sdk_proto_records()) {

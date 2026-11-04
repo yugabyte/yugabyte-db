@@ -917,8 +917,6 @@ Result<bool> ApplyIntentsContext::Entry(
 
     write_id_ = decoded_value.write_id;
 
-    // Empty top-level conflict locks, row locks and writes from aborted subtransactions are not
-    // written as regular records. CDC applies the same rules through the same helper.
     if (IsNonRecordStrongWriteIntent(intent.doc_path, decoded_value, aborted_)) {
       return false;
     }

@@ -457,8 +457,6 @@ Result<ApplyTransactionState> GetIntentsBatchForCDC(
                 intent_iter.value(), &transaction_id_slice));
             write_id = decoded_value.write_id;
 
-            // Same rules as ApplyIntentsContext::Entry: empty top-level conflict locks, row locks
-            // and writes from aborted subtransactions (rolled-back savepoints) are not streamed.
             if (IsNonRecordStrongWriteIntent(intent.doc_path, decoded_value, aborted)) {
               reverse_index_iter.Next();
               continue;

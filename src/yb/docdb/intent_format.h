@@ -116,8 +116,7 @@ void CombineExternalIntents(
     ExternalIntentsProvider* provider);
 
 // Returns true for strong write intents that must never become regular records: empty top-level
-// conflict locks, row locks, and writes from aborted subtransactions. Shared by intent apply
-// (ApplyIntentsContext::Entry) and CDC (GetIntentsBatchForCDC) so the two cannot drift apart.
+// conflict locks, row locks, and writes from aborted subtransactions.
 bool IsNonRecordStrongWriteIntent(
     Slice doc_path, const dockv::DecodedIntentValue& decoded_value, const SubtxnSet& aborted);
 
