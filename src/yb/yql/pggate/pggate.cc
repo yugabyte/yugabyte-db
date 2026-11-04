@@ -962,7 +962,9 @@ Status PgApiImpl::ReadSequenceTuple(
   const auto actual_yb_read_time = yb_read_time ? std::optional(yb_read_time) : std::nullopt;
   const auto res = VERIFY_RESULT(pg_client_.ReadSequenceTuple(
       db_oid, seq_oid, actual_ysql_catalog_version,
-      pg_txn_manager_->IsTableLockingEnabledForCurrentTxn(), actual_yb_read_time));
+      pg_txn_manager_->IsTableLockingEnabledForCurrentTxn() &&
+          !(actual_yb_read_time && !yb_read_time_skip_catalog),
+      actual_yb_read_time));
   if (last_val) {
     *last_val = res.first;
   }

@@ -907,7 +907,8 @@ YbMaybeRefreshCache(void)
 	 * ReceiveSharedInvalidMessages() below regardless.
 	 */
 	if (YBCIsSysTablePrefetchingStarted() || yb_refresh_cache_in_progress ||
-		local_catalog_version >= shared_catalog_version)
+		local_catalog_version >= shared_catalog_version ||
+		YbIsCatalogPinnedToReadTime())
 	{
 		elog(DEBUG2,
 			 "YbMaybeRefreshCache: prefetch_started=%d, shared = %" PRIu64 " local=%" PRIu64 " in_progress=%d",

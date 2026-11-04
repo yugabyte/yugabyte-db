@@ -948,6 +948,11 @@ message PgPerformOptionsPB {
   // Source commit time of the transaction being applied, as a HybridTime, travelling with
   // xrepl_origin_id.
   fixed64 xrepl_source_write_ht = 39;
+
+  // Keep the tserver catalog version check even though the transaction uses table locks. Set
+  // when yb_read_time is set: object locks are acquired as of now, so they don't cover a reader
+  // whose catalog is as of yb_read_time.
+  bool force_catalog_version_check = 40;
 }
 
 message PgRequestSequenceNumPB {

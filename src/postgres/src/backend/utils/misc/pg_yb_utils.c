@@ -402,6 +402,25 @@ YbResetCatalogCacheVersion()
 	yb_pgstat_set_catalog_version(yb_catalog_cache_version);
 }
 
+/*
+ * Whether the catalog caches and the local catalog version were loaded as of
+ * yb_read_time and must stay that way: until yb_read_time is reset, catalog
+ * changes are neither refreshed nor applied from invalidation messages. Keeping
+ * the version as of yb_read_time is what lets the tserver catalog version check
+ * reject reads across a breaking catalog change made after yb_read_time.
+ *
+ * Changing yb_read_time resets the local catalog version, so the first refresh
+ * after it loads the catalog as of the new value.
+ */
+bool
+YbIsCatalogPinnedToReadTime()
+{
+	return (yb_read_time != 0 &&
+			!yb_read_time_skip_catalog &&
+			!am_walsender &&
+			yb_catalog_cache_version != YB_CATCACHE_VERSION_UNINITIALIZED);
+}
+
 /* These values are lazily initialized based on corresponding environment variables. */
 int			ybc_pg_double_write = -1;
 int			ybc_disable_pg_locking = -1;

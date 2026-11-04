@@ -1440,6 +1440,8 @@ Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperati
   client::YBTablePtr table;
   CancelableScopeExit abort_se{[session] { session->Abort(); }};
   const auto read_from_followers = req->options().read_from_followers();
+  const auto skip_catalog_version_check =
+      is_txn_using_table_locks && !req->options().force_catalog_version_check();
   bool has_write_ops = false;
 
   // Index names for the rpc.table_names span attribute, one cache-only lookup for the batch.
@@ -1465,7 +1467,7 @@ Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperati
       if (read.has_index_request() && next_index_table != index_tables.end()) {
         index_table = std::move(*next_index_table++);
       }
-      if (is_txn_using_table_locks) {
+      if (skip_catalog_version_check) {
         read.set_is_using_table_locks(true);
       }
       if (read.index_request().has_vector_idx_options()) {
@@ -1502,7 +1504,7 @@ Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperati
 
       auto& write = *op.mutable_write();
       RETURN_NOT_OK(GetTable(write.table_id(), tables, &table));
-      if (is_txn_using_table_locks) {
+      if (skip_catalog_version_check) {
         write.set_is_using_table_locks(true);
       }
       auto write_op = std::make_shared<client::YBPgsqlWriteOp>(table, arena, *sidecars, &write);

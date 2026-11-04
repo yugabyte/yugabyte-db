@@ -4833,6 +4833,21 @@ YBRefreshCacheWrapperImpl(uint64_t catalog_master_version, bool is_retry,
 	/* The reason that we need a full catalog cache refresh. */
 	int			reason = 0;
 
+	if (YbIsCatalogPinnedToReadTime())
+	{
+		/*
+		 * Report the shared version rather than the pinned one: the session
+		 * can't write, so it must not hold up DDLs that wait for backends to
+		 * catch up (YbWaitForBackendsCatalogVersion) or the GC of invalidation
+		 * messages it will never apply (resetting yb_read_time does a full
+		 * refresh).
+		 */
+		if (full_refresh_allowed)
+			yb_pgstat_set_catalog_version(shared_catalog_version);
+		yb_need_cache_refresh = false;
+		return false;
+	}
+
 	if (enable_inval_messages)
 	{
 		if (is_retry &&
