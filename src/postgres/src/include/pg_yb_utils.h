@@ -122,6 +122,10 @@ extern void YbResetCatalogCacheVersion();
 
 extern bool YbIsCatalogPinnedToReadTime();
 
+extern void YbSetObjectLockingForCurrTxn();
+
+extern bool YbCurrTxnSkipsObjectLocks();
+
 extern YbcPgLastKnownCatalogVersionInfo YbGetCatalogCacheVersionForTablePrefetching();
 
 extern void YbUpdateLastKnownCatalogCacheVersion(uint64_t catalog_cache_version);

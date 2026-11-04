@@ -968,8 +968,8 @@ char* YBCDecodeRangePartitionKey(const char* partition_key, size_t key_len) {
 // YBCIsSysTablePrefetchingStarted() forces legacy mode anyway.
 static bool object_locking_infra_for_curr_txn = false;
 
-void YBCSetObjectLockingInfraForCurrTxn() {
-  object_locking_infra_for_curr_txn = yb_enable_object_locking_infra;
+void YBCSetObjectLockingInfraForCurrTxn(bool use_object_locks) {
+  object_locking_infra_for_curr_txn = yb_enable_object_locking_infra && use_object_locks;
 }
 
 bool YBCIsObjectLockingInfraEnabled() {

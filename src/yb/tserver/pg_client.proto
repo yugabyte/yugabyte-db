@@ -949,11 +949,6 @@ message PgPerformOptionsPB {
   // xrepl_origin_id.
   fixed64 xrepl_source_write_ht = 39;
 
-  // Keep the tserver catalog version check even though the transaction uses table locks. Set
-  // when the backend's catalog is pinned to yb_read_time: object locks are acquired as of now,
-  // so they don't cover a reader whose catalog is as of yb_read_time.
-  bool force_catalog_version_check = 42;
-
   // This op uses the read_time_serial_no of the CatalogSnapshot in Postgres.
   bool uses_catalog_snapshot = 40;
 }

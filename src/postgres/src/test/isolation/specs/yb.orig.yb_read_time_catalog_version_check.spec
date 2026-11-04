@@ -2,12 +2,12 @@
 #
 # While yb_read_time is set, the backend keeps its catalog caches and its local
 # catalog version as of yb_read_time: it neither refreshes the catalog nor
-# applies invalidation messages until yb_read_time is reset. The tserver
-# catalog version check, forced for these requests even under object locking,
-# then rejects every read once a breaking catalog change has committed after
-# yb_read_time. That check is the only guard against reading user data as of a
-# time before a DDL, and it must behave the same with and without object
-# locking.
+# applies invalidation messages until yb_read_time is reset. Its transactions
+# take no object locks, so the tserver keeps the catalog version check for
+# their requests even under object locking, and it rejects every read once a
+# breaking catalog change has committed after yb_read_time. That check is the
+# only guard against reading user data as of a time before a DDL, and it must
+# behave the same with and without object locking.
 #
 # Permutations marked TODO record current behavior that is not intended.
 #

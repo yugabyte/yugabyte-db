@@ -2309,7 +2309,7 @@ StartTransaction(void)
 
 	if (IsYugaByteEnabled())
 	{
-		YBCSetObjectLockingInfraForCurrTxn();
+		YbSetObjectLockingForCurrTxn();
 
 		/*
 		 * A background worker receives no messages, so it takes a fresh

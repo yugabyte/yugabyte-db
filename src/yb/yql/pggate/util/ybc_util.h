@@ -188,9 +188,10 @@ char* YBCDecodeRangePartitionKey(const char* partition_key, size_t key_len);
  * two statements of the same transaction block and flip object locking on or off mid-transaction.
  * Must be called from PG's StartTransaction() before AtStart_Cache(), which already consults the
  * value, and must not be called for savepoints or for the internal transaction restarts that
- * happen within one PG transaction.
+ * happen within one PG transaction. use_object_locks false runs the transaction without object
+ * locks even when the infra is enabled.
  */
-void YBCSetObjectLockingInfraForCurrTxn();
+void YBCSetObjectLockingInfraForCurrTxn(bool use_object_locks);
 
 /* The value latched by YBCSetObjectLockingInfraForCurrTxn(). */
 bool YBCIsObjectLockingInfraEnabled();

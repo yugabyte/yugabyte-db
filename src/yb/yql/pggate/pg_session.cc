@@ -945,11 +945,6 @@ Status PgSession::SetReadTimeIfPresent(
         options.mutable_read_time_options()->mutable_read_time());
   } else if (yb_read_time != 0) {
     RETURN_NOT_OK(CheckConflictWithYbReadTime(operations));
-    // Only a catalog pinned to yb_read_time keeps an old catalog version. With
-    // yb_read_time_skip_catalog the catalog is current, and object locks cover it as usual.
-    if (!yb_read_time_skip_catalog) {
-      options.set_force_catalog_version_check(true);
-    }
     // Catalog reads never get batched together with other tables.
     const auto read_catalog_as_of_now = yb_read_time_skip_catalog && has_catalog_ops;
     if (!read_catalog_as_of_now) {
