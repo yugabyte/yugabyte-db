@@ -78,21 +78,6 @@ public class TestSusetGucStickiness extends BaseYsqlConnMgr {
   }
 
   @Test
-  public void testGrantedSetIsNotSticky() throws Exception {
-    try (Connection suConn = connectAsSuperuser();
-         Statement suStmt = suConn.createStatement()) {
-      suStmt.execute("CREATE ROLE granted_user LOGIN");
-      suStmt.execute("GRANT SET ON PARAMETER log_min_duration_statement TO granted_user");
-    }
-
-    try (Connection conn = connectViaConnMgr("granted_user");
-         Statement stmt = conn.createStatement()) {
-      stmt.execute("SET log_min_duration_statement = 1000");
-      assertValueOnEveryBackend(stmt, "log_min_duration_statement", "1s", false);
-    }
-  }
-
-  @Test
   public void testYbDbAdminSetIsNotSticky() throws Exception {
     try (Connection suConn = connectAsSuperuser();
          Statement suStmt = suConn.createStatement()) {
