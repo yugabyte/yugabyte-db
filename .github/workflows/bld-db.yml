@@ -12,7 +12,6 @@ on:
       - '.cursor/**'
       - '.git/**'
       - '.github/**'
-      - '!.github/workflows/bld-db.yml'
       - '.gitignore'
       - 'architecture/**'
       - 'arcanist/**'
@@ -32,35 +31,15 @@ on:
       - 'sample/**'
       - 'src/lint/**'
 
+# The jenkins environment requires approval, so the job waits until a yugabyte-dev member
+# approves it. A newer run for the same PR cancels the older one, if it is still waiting.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
-  # We want CSI-link posted only for DB changes, hence in this file,
-  # but it only needs to run for the opened event.
-  # Creating an artifact, but a PR from fork has no permission to write a comment,
-  # so there is a separate job (csi-comment) to post the CSI link comment.
-  csi-artifact:
-    runs-on: ubuntu-latest
-    steps:
-      - name: CSI-link
-        if: github.event.action == 'opened'
-        run: |
-          mkdir -p csi
-          echo "${{ github.event.pull_request.number }})" > csi/pr.txt
-      - name: Upload CSI artifact
-        if: github.event.action == 'opened'
-        uses: actions/upload-artifact@v7
-        with:
-          name: csi-pr
-          path: csi/pr.txt
-          archive: false
-
   bld-db:
     environment: jenkins
-    # The jenkins environment requires approval, so the job waits until a yugabyte-dev member
-    # approves it. A newer run for the same PR cancels the older one, if it is still waiting.
-    concurrency:
-      group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
-      cancel-in-progress: true
     runs-on: ybdbghr
     steps:
       - name: Build Trigger
