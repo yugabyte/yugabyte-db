@@ -470,11 +470,12 @@ standard_planner(Query *parse, const char *query_string, int cursorOptions,
 	 *
 	 * YB: TODO GHI 23549: enable parallel query in serializable isolation.
 	 *
-	 * YB: A parallel worker reads the catalog in legacy mode
-	 * (YBCIsLegacyModeForCatalogOps), which sees only committed rows. After a
-	 * DDL in this transaction block, a worker does not see the block's
-	 * catalog changes and fails, e.g. "invalid attnum 3" for a column the
-	 * block added (#30978, #34740).
+	 * YB: Make no parallel plan if a DDL was executed in the transaction
+	 * block. This is required until we stop forcing legacy catalog mode for
+	 * parallel workers (see YBCIsLegacyModeForCatalogOps). In legacy mode,
+	 * workers can't see uncommitted catalog writes done by previous DDLs in
+	 * the same transaction block: for example, a worker fails with "invalid
+	 * attnum 3" for a column the block added (#30978, #34740).
 	 * YB: TODO(#36825): once the leader and its workers can share the
 	 * PgClientSession read point safely (#32729, #35498), let workers read the
 	 * catalog in the leader's mode and drop this check.
