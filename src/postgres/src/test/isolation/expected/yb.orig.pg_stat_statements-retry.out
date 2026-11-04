@@ -19,10 +19,10 @@ step s2_update: UPDATE test SET v=40 WHERE k=1; <waiting ...>
 step s1_commit: COMMIT;
 step s2_update: <... completed>
 step s2_commit: COMMIT;
-step s1_pgss_reset: SELECT pg_stat_statements_reset();
-pg_stat_statements_reset
-------------------------
-                        
+step s1_pgss_reset: SELECT pg_stat_statements_reset() IS NOT NULL AS t;
+t
+-
+t
 (1 row)
 
 step s1_update: UPDATE test SET v=20 WHERE k=1;
