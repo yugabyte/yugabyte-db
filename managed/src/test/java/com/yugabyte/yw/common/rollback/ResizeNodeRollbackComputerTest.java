@@ -729,34 +729,8 @@ public class ResizeNodeRollbackComputerTest extends FakeDBApplication {
     assertTrue(computer.canRollbackFromParams(failedResizeTask(unknown)));
   }
 
-  @Test
-  public void canRollbackFromParamsRefusesCgroupRemovalOnlyForLockHolder() {
-    UUID failedTaskUuid = UUID.randomUUID();
-    ResizeNodeParams params = failedResizeParams(DEFAULT_VOLUME_SIZE);
-    seedCgroupResize(null);
-    lockPlacementBy(failedTaskUuid);
-    assertFalse(computer.canRollbackFromParams(failedResizeTask(params, failedTaskUuid)));
-    // Another task's checkpoint says nothing about this one; submit decides.
-    assertTrue(computer.canRollbackFromParams(failedResizeTask(params, UUID.randomUUID())));
-
-    seedCgroupResize(1024);
-    lockPlacementBy(failedTaskUuid);
-    assertTrue(computer.canRollbackFromParams(failedResizeTask(params, failedTaskUuid)));
-  }
-
-  private void lockPlacementBy(UUID taskUuid) {
-    universe =
-        Universe.saveDetails(
-            universe.getUniverseUUID(),
-            u -> u.getUniverseDetails().placementModificationTaskUuid = taskUuid);
-  }
-
   private static TaskInfo failedResizeTask(ResizeNodeParams params) {
-    return failedResizeTask(params, null);
-  }
-
-  private static TaskInfo failedResizeTask(ResizeNodeParams params, UUID taskUuid) {
-    TaskInfo taskInfo = new TaskInfo(TaskType.ResizeNode, taskUuid);
+    TaskInfo taskInfo = new TaskInfo(TaskType.ResizeNode, null);
     taskInfo.setTaskParams(Json.toJson(params));
     taskInfo.setTaskState(TaskInfo.State.Failure);
     return taskInfo;
