@@ -20,7 +20,6 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.helpers.BaseBeanValidator;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CrossCloudFederationTarget;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -123,29 +122,15 @@ public abstract class ProviderFieldsValidator extends BaseBeanValidator {
   }
 
   public boolean validateNTPServers(List<String> ntpServers) {
-    try {
-      int maxNTPServerValidateCount =
-          this.runtimeConfGetter.getStaticConf().getInt("yb.provider.validate_ntp_server_count");
-      for (int i = 0; i < Math.min(maxNTPServerValidateCount, ntpServers.size()); i++) {
-        String ntpServer = ntpServers.get(i);
-        if (!StringUtils.isEmpty(ntpServer)) {
-          Process process = Runtime.getRuntime().exec("nc -zvu " + ntpServer + " 123");
-          process.waitFor(PROCESS_WAIT_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
-          if (process.exitValue() != 0) {
-            throw new PlatformServiceException(
-                BAD_REQUEST, "Could not reach ntp server:  " + ntpServer);
-          }
-        }
-      }
-    } catch (Exception e) {
-      log.error("Error: ", e);
-      throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
+    for (int i = 0; i < Math.min(getNtpServerValidateCount(), ntpServers.size()); i++) {
+      validateNTPServer(ntpServers.get(i));
     }
     return true;
   }
 
   /**
-   * Validates each NTP server and keys a failure to that server's entry in {@code processedJson}.
+   * Validates the first {@code yb.provider.validate_ntp_server_count} NTP servers and keys a
+   * failure to that server's entry in {@code processedJson}.
    */
   public void validateNtpServers(
       Provider provider, JsonNode processedJson, SetMultimap<String, String> validationErrorsMap) {
@@ -155,14 +140,33 @@ public abstract class ProviderFieldsValidator extends BaseBeanValidator {
     }
     List<String> ntpServers = provider.getDetails().ntpServers;
     JsonNode ntpArrayJson = processedJson.get("details").get("ntpServers");
-    int maxNTPServerValidateCount =
-        runtimeConfGetter.getStaticConf().getInt("yb.provider.validate_ntp_server_count");
-    for (int i = 0; i < Math.min(maxNTPServerValidateCount, ntpServers.size()); i++) {
+    for (int i = 0; i < Math.min(getNtpServerValidateCount(), ntpServers.size()); i++) {
       try {
-        validateNTPServers(Collections.singletonList(ntpServers.get(i)));
+        validateNTPServer(ntpServers.get(i));
       } catch (PlatformServiceException e) {
         validationErrorsMap.put(ntpArrayJson.get(i).get("jsonPath").asText(), e.getMessage());
       }
+    }
+  }
+
+  private int getNtpServerValidateCount() {
+    return runtimeConfGetter.getStaticConf().getInt("yb.provider.validate_ntp_server_count");
+  }
+
+  private void validateNTPServer(String ntpServer) {
+    if (StringUtils.isEmpty(ntpServer)) {
+      return;
+    }
+    try {
+      Process process = Runtime.getRuntime().exec("nc -zvu " + ntpServer + " 123");
+      process.waitFor(PROCESS_WAIT_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+      if (process.exitValue() != 0) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Could not reach ntp server:  " + ntpServer);
+      }
+    } catch (Exception e) {
+      log.error("Error: ", e);
+      throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
     }
   }
 
