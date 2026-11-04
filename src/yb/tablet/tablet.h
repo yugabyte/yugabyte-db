@@ -1385,9 +1385,9 @@ class Tablet : public AbstractTablet,
   // Tiered storage: directory pinned for path_id in tier_paths.
   Result<std::string> LookupTierDir(uint32_t path_id) const;
 
-  // Tiered storage: returns the set of files that should be migrated to target_dir.
-  // i.e. file numbers of live regular-DB SSTs not under target_dir.
-  std::vector<uint64_t> CollectTierMigrationCandidates(const std::string& target_dir) const;
+  // Tiered storage: file numbers of the live regular-DB SSTs not on target_path_id, i.e. what a
+  // migration pass still has to move.
+  std::vector<uint64_t> CollectTierMigrationCandidates(uint32_t target_path_id) const;
 
   // Tiered storage: the pass behind StartTierMigrationPass and RunTierReconcilePass.
   Result<TierReconcileResult> RunTierMigrationPass(
