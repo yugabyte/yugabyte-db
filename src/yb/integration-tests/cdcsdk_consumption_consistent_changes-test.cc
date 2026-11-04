@@ -5526,16 +5526,11 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest,
   YBTableName dropped_table_by_id;
   dropped_table_by_id.set_table_id(dropped_table.table_id());
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> dropped_tablets;
-  auto get_dropped_tablets = [&]() {
-    return test_client()->GetTablets(
-        dropped_table_by_id, 0, &dropped_tablets, nullptr, RequireTabletsRunning::kFalse,
-        master::IncludeInactive::kTrue);
-  };
-  ASSERT_OK(get_dropped_tablets());
-  ASSERT_FALSE(dropped_tablets.empty());
-  for (const auto& tablet : dropped_tablets) {
-    ASSERT_TRUE(tablet.hidden_table_released_by_cdc()) << tablet.tablet_id();
-  }
+  ASSERT_OK(test_client()->GetTablets(
+      dropped_table_by_id, 0, &dropped_tablets, nullptr, RequireTabletsRunning::kFalse,
+      master::IncludeInactive::kTrue));
+  ASSERT_EQ(dropped_tablets.size(), 1);
+  ASSERT_TRUE(dropped_tablets[0].hidden_table_released_by_cdc());
 
   ASSERT_OK(DestroyVirtualWAL(kVWALSessionId1));
   ASSERT_OK(InitVirtualWAL(
@@ -5546,7 +5541,6 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest,
 
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
-        SleepFor(MonoDelta::FromSeconds(1));
         return test_client()
             ->GetTabletsFromTableId(dropped_table.table_id(), 0, &dropped_tablets)
             .IsNotFound();
@@ -5554,7 +5548,13 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest,
       MonoDelta::FromSeconds(60),
       "Timed out waiting for the hidden tablet to be deleted"));
 
-  ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  // The rebuilt virtual WAL keeps streaming the live table after the hidden tablet is deleted.
+  ASSERT_OK(WriteRowsHelper(2, 3, &test_cluster_, true, 2, live_table.table_name().c_str()));
+  auto change_resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {live_table.table_id()}, 1 /* expected_dml_records */,
+      false /* init_virtual_wal */));
+  ASSERT_EQ(change_resp.records.size(), 3);  // BEGIN, INSERT, COMMIT
+  ASSERT_EQ(change_resp.record_count[1], 1);  // INSERT
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestHiddenTableDeletesOnceExpired) {
