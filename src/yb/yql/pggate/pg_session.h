@@ -299,7 +299,6 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
   struct HistoricalReadContext {
     ReadHybridTime read_time;
     std::string transaction_id;
-    // Run length encoded as in SubtxnSetPB.
     std::vector<uint32_t> aborted_subtxn_set;
   };
   std::optional<HistoricalReadContext> historical_read_context_;
