@@ -189,22 +189,27 @@ static bool yb_need_invalidate_all_table_cache = false;
 static Oid	yb_system_db_oid_cache = InvalidOid;
 
 /*
- * enabled and in_txn_blocks hold the values that
+ * gucs_fixed, enabled and in_txn_blocks: the transaction copies
  * yb_enable_new_relation_fastpath_write and
- * yb_enable_new_relation_fastpath_write_in_txn_blocks had when the transaction
- * started, and the transaction uses them rather than the GUCs.  A change to
- * either GUC partway through a transaction could otherwise turn the
- * optimization on after writes have gone to the intents db, so that those
- * writes, applied at commit, overtake later writes to the same rows that went
- * straight to the regular db.  Turning it off after writes have skipped the
- * intents db would stop later reads from being pointed at in_txn_limit.  The
- * check hooks of the GUCs refuse SET in a transaction that has done work, but
- * RESET, RESET ALL and DISCARD ALL assign the reset value without calling a
- * check hook, and that value can come from the configuration file or a per-role
- * or per-database setting.
+ * yb_enable_new_relation_fastpath_write_in_txn_blocks the first time it may use
+ * the optimization: when it creates a table, or first touches a relation it
+ * created or rewrote, and it uses the copies from then on rather than the GUCs.
+ * A change to either GUC after that point could otherwise turn the optimization
+ * on after writes have gone to the intents db, so that those writes, applied at
+ * commit, overtake later writes to the same rows that went straight to the
+ * regular db, or turn it off after writes have skipped the intents db, so that
+ * later reads are no longer pointed at in_txn_limit.  The check hooks of the
+ * GUCs refuse SET once the transaction has taken a snapshot, which it always
+ * has by that point, but RESET, RESET ALL and DISCARD ALL assign the reset
+ * value without calling a check hook, and a configuration file reload is
+ * accepted at any time.  The copy is not taken when the transaction starts, so
+ * that a SET that the check hooks accept before the first use, for example
+ * earlier in an extended-protocol pipeline that shares the transaction, still
+ * applies to it.
  */
 typedef struct YbSkipIntentsTxnState
 {
+	bool		gucs_fixed;
 	bool		enabled;
 	bool		in_txn_blocks;
 	bool		disabled;
@@ -10655,10 +10660,19 @@ YbInvalidatePlannerRelcache(PlannerInfo *root)
 void
 YbEnableSkipIntentsForNewTransaction()
 {
-	skip_intents_txn_state = (YbSkipIntentsTxnState){
-		.enabled = yb_enable_new_relation_fastpath_write,
-		.in_txn_blocks = yb_enable_new_relation_fastpath_write_in_txn_blocks,
-	};
+	skip_intents_txn_state = (YbSkipIntentsTxnState){};
+}
+
+/* Copies the skip intents GUCs on first use; see YbSkipIntentsTxnState. */
+static void
+YbFixSkipIntentsGucs()
+{
+	if (skip_intents_txn_state.gucs_fixed)
+		return;
+	skip_intents_txn_state.gucs_fixed = true;
+	skip_intents_txn_state.enabled = yb_enable_new_relation_fastpath_write;
+	skip_intents_txn_state.in_txn_blocks =
+		yb_enable_new_relation_fastpath_write_in_txn_blocks;
 }
 
 bool
@@ -10679,9 +10693,6 @@ YbGetSkipIntentsOptimizationInfo(Relation rel, bool is_write)
 {
 	YbcPgSkipIntentsOptimizationInfo info = {0};
 
-	if (!skip_intents_txn_state.enabled)
-		return info;
-
 	/*
 	 * 1. rd_createSubid: The logical table was created in this txn.
 	 * 2. rd_newRelfilenodeSubid: The physical storage was swapped/created
@@ -10699,6 +10710,14 @@ YbGetSkipIntentsOptimizationInfo(Relation rel, bool is_write)
 		elog(DEBUG3, "Skip intents not applicable: relation %u is a system catalog", rel->rd_id);
 		return info;
 	}
+
+	/*
+	 * Only now, so that catalog reads and other relations earlier in the
+	 * transaction do not fix the GUC values before a SET that may still apply.
+	 */
+	YbFixSkipIntentsGucs();
+	if (!skip_intents_txn_state.enabled)
+		return info;
 
 	if (YbIsTempRelation(rel))
 	{
@@ -10877,6 +10896,7 @@ YbDatabaseHasPublications(void)
 void
 YbMaybeDisableSkipIntentsForCDCSDK(Oid database_oid)
 {
+	YbFixSkipIntentsGucs();
 	if (!skip_intents_txn_state.enabled)
 		return;
 

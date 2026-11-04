@@ -18,6 +18,7 @@
 #include "yb/client/snapshot_test_util.h"
 #include "yb/common/ddl_mode-test-util.h"
 #include "yb/rpc/rpc_controller.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/physical_time.h"
 #include "yb/util/status_log.h"
 #include "yb/util/timestamp.h"
@@ -1712,6 +1713,86 @@ TEST_F(SkipIntentsMetricTest, TestGucResetToOnInsideTxnBlock) {
       << "Rows written to the intents db before the RESET overtook the updates made after it";
   ASSERT_EQ(writes_after, writes_before)
       << "A transaction that started with the optimization off must not skip the intents db";
+}
+
+// In an extended-protocol pipeline, statements before the Sync share one transaction that is not a
+// transaction block, and SET takes no snapshot, so the check hook accepts a SET there. The value
+// must then apply to the rest of that transaction, so the transaction may not fix the GUC values
+// before it first uses the optimization.
+TEST_F(SkipIntentsMetricTest, TestGucSetEarlierInPipeline) {
+  // PQconnectdb does not retry, so wait for the server to accept connections first.
+  ASSERT_RESULT(Connect());
+  const auto conn_str = Format(
+      "host=$0 port=$1 user=$2", pg_ts->bind_host(), pg_ts->ysql_port(),
+      PGConnSettings::kDefaultUser);
+  PGConnPtr conn(PQconnectdb(conn_str.c_str()));
+  ASSERT_EQ(PQstatus(conn.get()), CONNECTION_OK) << PQerrorMessage(conn.get());
+
+  auto run_pipeline = [&conn](const std::vector<std::string>& queries) -> Status {
+    SCHECK_EQ(PQenterPipelineMode(conn.get()), 1, IllegalState, PQerrorMessage(conn.get()));
+    for (const auto& query : queries) {
+      SCHECK_EQ(PQsendQueryParams(conn.get(), query.c_str(), 0, nullptr, nullptr, nullptr,
+                                  nullptr, 0),
+                1, IllegalState, PQerrorMessage(conn.get()));
+    }
+    SCHECK_EQ(PQpipelineSync(conn.get()), 1, IllegalState, PQerrorMessage(conn.get()));
+    // A NULL result only separates one command's results from the next; read on to the sync.
+    for (;;) {
+      PGResultPtr res(PQgetResult(conn.get()));
+      if (!res) {
+        SCHECK_NE(PQstatus(conn.get()), CONNECTION_BAD, IllegalState, PQerrorMessage(conn.get()));
+        continue;
+      }
+      const auto status = PQresultStatus(res.get());
+      if (status == PGRES_PIPELINE_SYNC) {
+        break;
+      }
+      SCHECK(status == PGRES_COMMAND_OK || status == PGRES_TUPLES_OK, IllegalState,
+             PQresultErrorMessage(res.get()));
+    }
+    SCHECK_EQ(PQexitPipelineMode(conn.get()), 1, IllegalState, PQerrorMessage(conn.get()));
+    return Status::OK();
+  };
+
+  // Premise: the same statement in a pipeline takes the fastpath when the GUC is left on.
+  auto writes_before = ASSERT_RESULT(GetSkipIntentsCount());
+  ASSERT_OK(run_pipeline(
+      {"CREATE TABLE pipeline_on AS SELECT g AS k FROM generate_series(1, 100) g"}));
+  ASSERT_GT(ASSERT_RESULT(GetSkipIntentsCount()), writes_before)
+      << "The CTAS must take the fastpath for the test to cover anything";
+
+  writes_before = ASSERT_RESULT(GetSkipIntentsCount());
+  ASSERT_OK(run_pipeline({
+      "SET yb_enable_new_relation_fastpath_write = off",
+      "CREATE TABLE pipeline_off AS SELECT g AS k FROM generate_series(1, 100) g"}));
+  ASSERT_EQ(ASSERT_RESULT(GetSkipIntentsCount()), writes_before)
+      << "The CTAS ignored the SET earlier in its pipeline";
+}
+
+// A configuration file reload must not be lost when it reaches a session that is idle in a
+// transaction block: it is applied once and never retried. Runtime PG flags such as the kill switch
+// ysql_yb_enable_new_relation_fastpath_write are delivered this way.
+TEST_F(SkipIntentsMetricTest, TestConfigReloadInsideTxnBlock) {
+  constexpr auto kParentGuc = "yb_enable_new_relation_fastpath_write";
+  auto conn = ASSERT_RESULT(Connect());
+  auto observer = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT 1"));
+
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_enable_new_relation_fastpath_write", "false"));
+  // The flag reaches a backend as a SIGHUP that it applies before running its next command. Wait
+  // for another backend on this tserver to have applied it, which means the signal was delivered.
+  ASSERT_OK(LoggedWaitFor(
+      [&observer]() -> Result<bool> {
+        return VERIFY_RESULT(observer.FetchRow<std::string>(
+                   "SHOW yb_enable_new_relation_fastpath_write")) == "off";
+      },
+      MonoDelta::FromSeconds(kTimeMultiplier * 60), "the reload to reach the backends"));
+
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(Format("SHOW $0", kParentGuc))), "off");
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(Format("SHOW $0", kParentGuc))), "off")
+      << "The reload that arrived inside the transaction block was lost";
 }
 
 // Connection options are applied in the order the client lists them. With the cluster's

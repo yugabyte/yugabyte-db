@@ -18420,44 +18420,28 @@ assign_yb_dist_tracecontext(const char *newval, void *extra)
  * YB: check_skip_intents_internal
  * Common logic for skip-intent GUCs to handle transaction block restrictions.
  *
- * A transaction uses the values these GUCs had when it started (see
- * YbSkipIntentsTxnState), so a change made inside one would only take effect
- * in the next transaction.  So that SET does not appear to take effect when it
- * does not, a change is refused inside a transaction block, or once the
- * transaction has taken a snapshot, except that:
- * - PGC_S_TEST, the validation pass of ALTER ROLE/DATABASE ... SET, assigns
- *   nothing and is always accepted.  It runs inside the ALTER statement's
- *   transaction, so the checks would reject every such setting.
- *   CREATE/ALTER FUNCTION ... SET validates with PGC_S_TEST too, but a
- *   function's SET clause is applied with PGC_S_SESSION inside the calling
- *   statement, where the checks still reject it, so YbValidateFunctionSetItem
- *   refuses such a clause up front.
- * - PGC_S_GLOBAL through PGC_S_CLIENT (pg_db_role_setting entries and
- *   connection request options) are not subject to the snapshot check.  At
- *   backend startup they are applied after InitPostgres has taken a snapshot
- *   for its catalog reads, so that check would refuse a connection that sets
- *   one of these GUCs in its options, and would drop a per-role or
- *   per-database value with only a WARNING.  These sources are also applied
- *   outside startup: Connection Manager re-applies PGC_S_CLIENT values on a
- *   reused backend with a 'G' message, and auth passthrough applies them and
- *   pg_db_role_setting values on its control backend.  Both run in a
- *   transaction of their own, and startup never runs inside a transaction
- *   block, so the transaction-block check stays for these sources and refuses
- *   them if they ever arrive inside one.
- * Every other source is subject to both checks.  That covers SET and also a
- * configuration file reload, which can happen while the session is idle in a
- * transaction block.
+ * A transaction fixes the values of these GUCs the first time it may use the
+ * optimization (see YbSkipIntentsTxnState), and a later change takes effect
+ * only from the next transaction.  So that SET does not appear to take effect
+ * when it does not, SET (PGC_S_SESSION) is refused inside a transaction block
+ * or once the transaction has taken a snapshot, which every statement that may
+ * use the optimization takes first.  A function's SET clause is applied with
+ * PGC_S_SESSION too, inside the calling statement, so
+ * YbValidateFunctionSetItem refuses such a clause up front.
+ *
+ * Other sources are accepted.  None of them is a statement that could appear
+ * to take effect, and refusing one would lose the value rather than delay it:
+ * a configuration file reload is applied once and not retried, so a session
+ * idle in a transaction block when it arrived would keep the old value, and
+ * per-role, per-database and connection option values are applied at backend
+ * startup after a snapshot has been taken.  The copy the transaction holds is
+ * what keeps a change from any source, RESET included, from reaching a
+ * transaction that may already have used the optimization.
  */
 static bool
 check_skip_intents_internal(const char *guc_name, bool *newval, GucSource source)
 {
-	bool		is_role_db_or_client_source =
-		source >= PGC_S_GLOBAL && source <= PGC_S_CLIENT;
-
-	if (source == PGC_S_TEST)
-		return true;
-
-	if (IsTransactionBlock() || (FirstSnapshotSet && !is_role_db_or_client_source))
+	if (source == PGC_S_SESSION && (IsTransactionBlock() || FirstSnapshotSet))
 	{
 		GUC_check_errdetail("%s cannot be changed inside a transaction block or "
 							"after any query has been run in the transaction.", guc_name);
@@ -18481,9 +18465,10 @@ check_yb_enable_new_relation_fastpath_write_in_txn_blocks(bool *newval, void **e
 	 * yb_enable_new_relation_fastpath_write gates the optimization as a whole,
 	 * and this GUC only widens it to transaction blocks, so a value of on while
 	 * the parent is off is inert rather than unsafe.  The check below only
-	 * catches a likely mistake, and it applies only to SET (PGC_S_SESSION, and
-	 * YSQL_CONN_MGR when Connection Manager replays a SET).  For the other
-	 * sources it would refuse configurations whose final values are valid:
+	 * catches a likely mistake, and it applies only to SET (PGC_S_SESSION,
+	 * which is also how Connection Manager replays a client's SET).  For the
+	 * other sources it would refuse configurations whose final values are
+	 * valid:
 	 * - The configuration file is applied in file order.  pg_wrapper generates
 	 *   ysql_pg.conf in the data directory, writing the ysql_pg_conf_csv
 	 *   entries ahead of the block it derives from the PG gflags.  A cluster
@@ -18503,8 +18488,7 @@ check_yb_enable_new_relation_fastpath_write_in_txn_blocks(bool *newval, void **e
 	 *   session running the ALTER, whose parent value says nothing about the
 	 *   parent value that the target role's or database's sessions will have.
 	 */
-	if (*newval && !yb_enable_new_relation_fastpath_write &&
-		(source == PGC_S_SESSION || source == YSQL_CONN_MGR))
+	if (*newval && !yb_enable_new_relation_fastpath_write && source == PGC_S_SESSION)
 	{
 		GUC_check_errdetail("Cannot enable yb_enable_new_relation_fastpath_write_in_txn_blocks "
 							"when yb_enable_new_relation_fastpath_write is disabled.");
