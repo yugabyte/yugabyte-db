@@ -241,6 +241,16 @@ public class SwamperHelper {
       MetricCollectionLevel level = getLevel(universe);
       appendCollectionLevelLabels(level, labels);
     }
+    // Prometheus uses the job's scheme only for targets without this label, so one "node" job
+    // serves HTTPS and HTTP universes. Labels starting with __ never reach stored series. The K8s
+    // sidecar serves plain HTTP.
+    if (t == TargetType.NODE_EXPORT) {
+      if (Util.isKubernetesBasedUniverse(universe)) {
+        labels.put("__scheme__", "http");
+      } else if (universe.isNodeExporterHttps()) {
+        labels.put("__scheme__", "https");
+      }
+    }
 
     target.set("targets", targetNodes);
     target.set("labels", labels);
@@ -279,12 +289,19 @@ public class SwamperHelper {
     if (swamperFile == null) {
       return;
     }
+    // K8s pods are scraped only while the node_exporter sidecar is enabled.
+    boolean scrapeKubernetesPods =
+        Util.isKubernetesBasedUniverse(universe)
+            && KubernetesUtil.isNodeExporterSidecarEnabled(
+                universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
+                universe,
+                confGetter);
     universe
         .getNodes()
         .forEach(
             (node) -> {
-              if (universe.getNodeDeploymentMode(node).equals(CloudType.kubernetes)) {
-                // no node exporter on k8s pods
+              if (universe.getNodeDeploymentMode(node).equals(CloudType.kubernetes)
+                  && !scrapeKubernetesPods) {
                 return;
               }
               nodeTargets.add(getIndividualConfig(universe, TargetType.NODE_EXPORT, node));

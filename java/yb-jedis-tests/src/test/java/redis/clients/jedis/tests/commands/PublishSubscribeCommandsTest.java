@@ -81,6 +81,7 @@ public class PublishSubscribeCommandsTest extends JedisCommandTestBase {
     }, "foo");
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void pubSubChannels() {
     final List<String> expectedActiveChannels = Arrays
@@ -102,6 +103,7 @@ public class PublishSubscribeCommandsTest extends JedisCommandTestBase {
     }, "testchan1", "testchan2", "testchan3");
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void pubSubChannelWithPingPong() throws InterruptedException {
     final CountDownLatch latchUnsubscribed = new CountDownLatch(1);
@@ -133,6 +135,7 @@ public class PublishSubscribeCommandsTest extends JedisCommandTestBase {
     assertEquals(0L, latchUnsubscribed.getCount());
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void pubSubNumPat() {
     jedis.psubscribe(new JedisPubSub() {
@@ -152,6 +155,7 @@ public class PublishSubscribeCommandsTest extends JedisCommandTestBase {
     }, "test*", "test*", "chan*");
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void pubSubNumSub() {
     final Map<String, String> expectedNumSub = new HashMap<String, String>();
@@ -174,6 +178,7 @@ public class PublishSubscribeCommandsTest extends JedisCommandTestBase {
     }, "testchannel1", "testchannel2");
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void subscribeMany()
       throws UnknownHostException, IOException, InterruptedException {
@@ -189,6 +194,7 @@ public class PublishSubscribeCommandsTest extends JedisCommandTestBase {
     }, "foo", "bar");
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void psubscribe()
       throws UnknownHostException, IOException, InterruptedException {
@@ -213,6 +219,7 @@ public class PublishSubscribeCommandsTest extends JedisCommandTestBase {
     }, "foo.*");
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void psubscribeMany()
       throws UnknownHostException, IOException, InterruptedException {
@@ -227,6 +234,7 @@ public class PublishSubscribeCommandsTest extends JedisCommandTestBase {
     }, "foo.*", "bar.*");
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void subscribeLazily()
       throws UnknownHostException, IOException, InterruptedException {
@@ -255,6 +263,7 @@ public class PublishSubscribeCommandsTest extends JedisCommandTestBase {
     jedis.subscribe(pubsub, "foo");
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void binarySubscribe()
       throws UnknownHostException, IOException, InterruptedException {
@@ -278,6 +287,7 @@ public class PublishSubscribeCommandsTest extends JedisCommandTestBase {
     }, SafeEncoder.encode("foo"));
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void binarySubscribeMany()
       throws UnknownHostException, IOException, InterruptedException {
@@ -292,6 +302,7 @@ public class PublishSubscribeCommandsTest extends JedisCommandTestBase {
     }, SafeEncoder.encode("foo"), SafeEncoder.encode("bar"));
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void binaryPsubscribe()
       throws UnknownHostException, IOException, InterruptedException {
@@ -316,6 +327,7 @@ public class PublishSubscribeCommandsTest extends JedisCommandTestBase {
     }, SafeEncoder.encode("foo.*"));
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void binaryPsubscribeMany()
       throws UnknownHostException, IOException, InterruptedException {
@@ -330,6 +342,7 @@ public class PublishSubscribeCommandsTest extends JedisCommandTestBase {
     }, SafeEncoder.encode("foo.*"), SafeEncoder.encode("bar.*"));
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void binarySubscribeLazily()
       throws UnknownHostException, IOException, InterruptedException {
@@ -359,12 +372,14 @@ public class PublishSubscribeCommandsTest extends JedisCommandTestBase {
     jedis.subscribe(pubsub, SafeEncoder.encode("foo"));
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test(expected = JedisConnectionException.class)
   public void unsubscribeWhenNotSusbscribed() throws InterruptedException {
     JedisPubSub pubsub = new JedisPubSub() {};
     pubsub.unsubscribe();
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test(expected = JedisConnectionException.class)
   public void handleClientOutputBufferLimitForSubscribeTooSlow()
       throws InterruptedException {

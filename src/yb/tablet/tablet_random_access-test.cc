@@ -50,7 +50,6 @@
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/numbers.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
 
 #include "yb/qlexpr/ql_rowblock.h"

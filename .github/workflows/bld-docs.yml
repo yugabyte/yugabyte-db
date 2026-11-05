@@ -2,15 +2,15 @@ name: "bld-docs"
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review ]
+    types: [opened, synchronize, reopened]
     paths:
       - 'docs/**'
       - README.md
 
-# Can be skipped if PR is draft or the commit message contains [skip ci] or [ci skip]
 jobs:
   bld-docs:
-    if: github.event.pull_request.draft == false
+    # Runs on jenkins, but very light-weight, so no approval required.
+    # environment: jenkins
     runs-on: ybdbghr
     steps:
       - name: Build Trigger

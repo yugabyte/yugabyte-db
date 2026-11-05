@@ -4,10 +4,13 @@ package com.yugabyte.yw.common;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.fail;
+import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.HierarchicalNodesSpec;
 import com.yugabyte.yw.forms.HierarchicalNodesSpec.AzNodesSpec;
 import com.yugabyte.yw.forms.HierarchicalNodesSpec.RegionNodesSpec;
@@ -27,6 +30,7 @@ import java.util.Set;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.Mockito;
 
 public class ProviderSpecificationTest extends FakeDBApplication {
 
@@ -203,9 +207,62 @@ public class ProviderSpecificationTest extends FakeDBApplication {
     providerSpecification.setNodesSpecs(
         HierarchicalNodesSpec.RootNodesSpec.builder()
             .tserverSpecification(
-                HierarchicalNodesSpec.NodeSpec.builder().instanceType("tserverType").build())
+                HierarchicalNodesSpec.NodeSpec.builder()
+                    .instanceType("tserverType")
+                    .deviceInfo(new DeviceInfo())
+                    .build())
             .build());
-    providerSpecification.validate(false);
+    // This is correct for non-dedicated.
+    providerSpecification.validate(false, false);
+    // But incorrect for dedicated.
+    expectValidationError(
+        true,
+        providerSpecification,
+        false,
+        "nodesSpecs.masterSpecification must be set for dedicated masters mode");
+
+    HierarchicalNodesSpec.NodeSpec tserverSpecification =
+        providerSpecification.getNodesSpecs().getTserverSpecification();
+    tserverSpecification.setDeviceInfo(null);
+    expectValidationError(
+        false, providerSpecification, false, "Specify base device info for tserver");
+    tserverSpecification.setDeviceInfo(new DeviceInfo());
+
+    tserverSpecification.setInstanceType(null);
+    expectValidationError(
+        false, providerSpecification, false, "Specify base instance type for tserver");
+    tserverSpecification.setInstanceType("tserverType");
+
+    HierarchicalNodesSpec.NodeSpec masterSpecification =
+        providerSpecification.getNodesSpecs().getOrCreateMasterSpec();
+    masterSpecification.setInstanceType("masterType");
+    masterSpecification.setDeviceInfo(new DeviceInfo());
+
+    // This is correct for dedicated.
+    providerSpecification.validate(true, false);
+
+    // But incorrect for non-dedicated.
+    expectValidationError(
+        false,
+        providerSpecification,
+        false,
+        "nodesSpecs.masterSpecification cannot be set for non-dedicated masters mode");
+    // for partial update as well.
+    expectValidationError(
+        false,
+        providerSpecification,
+        true,
+        "nodesSpecs.masterSpecification cannot be set for non-dedicated masters mode");
+
+    masterSpecification.setInstanceType(null);
+    expectValidationError(
+        true, providerSpecification, false, "Specify base instance type for master");
+    masterSpecification.setInstanceType("masterType");
+
+    masterSpecification.setDeviceInfo(null);
+    expectValidationError(
+        true, providerSpecification, false, "Specify base device info for master");
+    masterSpecification.setDeviceInfo(new DeviceInfo());
 
     providerSpecification.setProviderUUID(null);
     expectValidationError(providerSpecification, false, "providerUUID must be set");
@@ -247,7 +304,7 @@ public class ProviderSpecificationTest extends FakeDBApplication {
             .build());
 
     // Partial updates (e.g. proxy config) may omit root tserverSpecification.
-    providerSpecification.validate(true);
+    providerSpecification.validate(false, true);
 
     providerSpecification.setProviderUUID(null);
     expectValidationError(providerSpecification, true, "providerUUID must be set");
@@ -270,7 +327,10 @@ public class ProviderSpecificationTest extends FakeDBApplication {
     providerSpecification.setNodesSpecs(
         HierarchicalNodesSpec.RootNodesSpec.builder()
             .tserverSpecification(
-                HierarchicalNodesSpec.NodeSpec.builder().instanceType("tserverType").build())
+                HierarchicalNodesSpec.NodeSpec.builder()
+                    .instanceType("tserverType")
+                    .deviceInfo(new DeviceInfo())
+                    .build())
             .regionNodesSpecs(
                 Arrays.asList(
                     RegionNodesSpec.builder().regionCode("r1").build(),
@@ -288,7 +348,10 @@ public class ProviderSpecificationTest extends FakeDBApplication {
     providerSpecification.setNodesSpecs(
         HierarchicalNodesSpec.RootNodesSpec.builder()
             .tserverSpecification(
-                HierarchicalNodesSpec.NodeSpec.builder().instanceType("tserverType").build())
+                HierarchicalNodesSpec.NodeSpec.builder()
+                    .instanceType("tserverType")
+                    .deviceInfo(new DeviceInfo())
+                    .build())
             .regionNodesSpecs(
                 Arrays.asList(
                     RegionNodesSpec.builder()
@@ -303,12 +366,168 @@ public class ProviderSpecificationTest extends FakeDBApplication {
         providerSpecification, false, "RegionNodesSpec(r1): found duplicate code: z1");
   }
 
+  @Test
+  public void testConvertSingleProviderSpecToOldSchemaAndBack() {
+    Region region = Region.create(provider, "default-region", "Default Region", "yb-image");
+    AvailabilityZone az =
+        AvailabilityZone.createOrThrow(region, "default-az", "Default AZ", "subnet");
+
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        new UniverseDefinitionTaskParams.UserIntent();
+    userIntent.dedicatedNodes = true;
+    UniverseDefinitionTaskParams.ProviderSpecification providerSpecification =
+        new UniverseDefinitionTaskParams.ProviderSpecification();
+    providerSpecification.setProviderUUID(provider.getUuid());
+    providerSpecification.setProviderType(Common.CloudType.gcp);
+    providerSpecification.setInstanceTags(tags);
+    providerSpecification.setImageBundleUUID(imageBundleUUID);
+    providerSpecification.setAccessKeyCode("accessKey");
+    providerSpecification.setEnableLoadBalancer(true);
+    providerSpecification.setExposingServiceState(
+        UniverseDefinitionTaskParams.ExposingServiceState.EXPOSED);
+    providerSpecification.setAwsInstanceProfile("aws profile");
+    providerSpecification.setHelmOverrides("Helm overrides");
+    providerSpecification.setNodesSpecs(
+        HierarchicalNodesSpec.RootNodesSpec.builder()
+            .tserverSpecification(
+                HierarchicalNodesSpec.NodeSpec.builder()
+                    .backupProxyConfig(proxyConfig)
+                    .instanceType("tserverType")
+                    .cgroupSize(10)
+                    .deviceInfo(deviceInfo)
+                    .build())
+            .masterSpecification(
+                HierarchicalNodesSpec.NodeSpec.builder()
+                    .instanceType("masterType")
+                    .deviceInfo(deviceInfo)
+                    .build())
+            .build()
+            .addRegion(
+                RegionNodesSpec.builder()
+                    .regionCode(region.getCode())
+                    .build()
+                    .addZone(
+                        AzNodesSpec.builder()
+                            .azCode(az.getCode())
+                            .tserverSpecification(
+                                HierarchicalNodesSpec.NodeSpec.builder()
+                                    .instanceType("az-tserver")
+                                    .cgroupSize(20)
+                                    .build())
+                            .build())));
+    userIntent.providerSpecifications = Collections.singletonList(providerSpecification);
+    RuntimeConfGetter confGetter = Mockito.mock(RuntimeConfGetter.class);
+    when(confGetter.getGlobalConf(GlobalConfKeys.multicloudEnabled)).thenReturn(true);
+    Util.convertSingleProviderSpecToOldSchema(confGetter, userIntent);
+
+    assertEquals(false, userIntent.isMulticloudSupport());
+    assertEquals(provider.getUuid().toString(), userIntent.provider);
+    assertEquals(Common.CloudType.gcp, userIntent.providerType);
+    assertEquals("accessKey", userIntent.accessKeyCode);
+    assertEquals("tserverType", userIntent.instanceType);
+    assertEquals(Integer.valueOf(10), userIntent.getCgroupSize());
+    assertEquals("masterType", userIntent.masterInstanceType);
+    assertEquals(true, userIntent.enableLB);
+    assertEquals(
+        UniverseDefinitionTaskParams.ExposingServiceState.EXPOSED,
+        userIntent.enableExposingService);
+    assertEquals("aws profile", userIntent.awsArnString);
+    assertEquals(imageBundleUUID, userIntent.imageBundleUUID);
+    assertEquals(tags, userIntent.instanceTags);
+    assertEquals("Helm overrides", userIntent.universeOverrides);
+    assertEquals(proxyConfig, userIntent.getProxyConfig());
+    assertEquals(deviceInfo, userIntent.deviceInfo);
+    assertEquals(deviceInfo, userIntent.masterDeviceInfo);
+    assertEquals(
+        "az-tserver",
+        userIntent.getUserIntentOverrides().getAzOverrides().get(az.getUuid()).getInstanceType());
+    assertEquals(
+        Integer.valueOf(20),
+        userIntent.getUserIntentOverrides().getAzOverrides().get(az.getUuid()).getCgroupSize());
+
+    Util.convertOldSchemaToProviderSpecification(confGetter, userIntent);
+
+    assertEquals(true, userIntent.isMulticloudSupport());
+    assertEquals(1, userIntent.providerSpecifications.size());
+    UniverseDefinitionTaskParams.ProviderSpecification roundTrip =
+        userIntent.getProviderSpecification(provider.getUuid());
+    assertEquals(provider.getUuid(), roundTrip.getProviderUUID());
+    assertEquals(Common.CloudType.gcp, roundTrip.getProviderType());
+    assertEquals("accessKey", roundTrip.getAccessKeyCode());
+    assertEquals("aws profile", roundTrip.getAwsInstanceProfile());
+    assertEquals(imageBundleUUID, roundTrip.getImageBundleUUID());
+    assertEquals(tags, roundTrip.getInstanceTags());
+    assertEquals(true, roundTrip.isEnableLoadBalancer());
+    assertEquals(
+        UniverseDefinitionTaskParams.ExposingServiceState.EXPOSED,
+        roundTrip.getExposingServiceState());
+    assertEquals("Helm overrides", roundTrip.getHelmOverrides());
+    assertEquals(
+        "tserverType", roundTrip.getNodesSpecs().getTserverSpecification().getInstanceType());
+    assertEquals(
+        Integer.valueOf(10), roundTrip.getNodesSpecs().getTserverSpecification().getCgroupSize());
+    assertEquals(
+        "masterType", roundTrip.getNodesSpecs().getMasterSpecification().getInstanceType());
+    assertEquals(
+        "az-tserver",
+        roundTrip
+            .getNodesSpecs()
+            .getRegionNodesSpecs()
+            .get(0)
+            .getAzNodesSpecs()
+            .get(0)
+            .getTserverSpecification()
+            .getInstanceType());
+  }
+
+  @Test
+  public void testConvertOldSchemaToProviderSpecificationFromFlatFields() {
+    RuntimeConfGetter confGetter = Mockito.mock(RuntimeConfGetter.class);
+    when(confGetter.getGlobalConf(GlobalConfKeys.multicloudEnabled)).thenReturn(true);
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        new UniverseDefinitionTaskParams.UserIntent();
+    userIntent.provider = provider.getUuid().toString();
+    userIntent.providerType = Common.CloudType.gcp;
+    userIntent.accessKeyCode = "key";
+    userIntent.instanceType = "n1-standard-8";
+    userIntent.deviceInfo = deviceInfo;
+    userIntent.setCgroupSize(5);
+    userIntent.setProxyConfig(proxyConfig);
+    userIntent.imageBundleUUID = imageBundleUUID;
+    userIntent.instanceTags = tags;
+    userIntent.awsArnString = "arn";
+    userIntent.enableLB = true;
+
+    Util.convertOldSchemaToProviderSpecification(confGetter, userIntent);
+
+    assertEquals(true, userIntent.isMulticloudSupport());
+    UniverseDefinitionTaskParams.ProviderSpecification spec =
+        userIntent.getProviderSpecification(provider.getUuid());
+    assertEquals("key", spec.getAccessKeyCode());
+    assertEquals("n1-standard-8", spec.getNodesSpecs().getTserverSpecification().getInstanceType());
+    assertEquals(deviceInfo, spec.getNodesSpecs().getTserverSpecification().getDeviceInfo());
+    assertEquals(
+        Integer.valueOf(5), spec.getNodesSpecs().getTserverSpecification().getCgroupSize());
+    assertEquals(
+        proxyConfig, spec.getNodesSpecs().getTserverSpecification().getBackupProxyConfig());
+    assertEquals("arn", spec.getAwsInstanceProfile());
+    assertEquals(true, spec.isEnableLoadBalancer());
+  }
+
   private void expectValidationError(
       UniverseDefinitionTaskParams.ProviderSpecification providerSpecification,
       boolean isPartialUpdate,
       String expectedMessage) {
+    expectValidationError(false, providerSpecification, isPartialUpdate, expectedMessage);
+  }
+
+  private void expectValidationError(
+      boolean isDedicatedNodes,
+      UniverseDefinitionTaskParams.ProviderSpecification providerSpecification,
+      boolean isPartialUpdate,
+      String expectedMessage) {
     try {
-      providerSpecification.validate(isPartialUpdate);
+      providerSpecification.validate(isDedicatedNodes, isPartialUpdate);
       fail("Expected PlatformServiceException");
     } catch (PlatformServiceException e) {
       assertEquals(BAD_REQUEST, e.getHttpStatus());

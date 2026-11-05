@@ -196,10 +196,10 @@ static void yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 static void yb_ash_post_parse_analyze(ParseState *pstate, Query *query,
 									  JumbleState *jstate);
 
-static void YbAshMaybeReplaceSample(PGPROC *proc, int num_procs, TimestampTz sample_time,
+static void YbAshMaybeReplaceSample(PGPROC *proc, const YbcWaitEventInfo *info, TimestampTz sample_time,
 									int samples_considered);
 static YbcWaitEventInfo YbGetWaitEventInfo(const PGPROC *proc);
-static void copy_pgproc_sample_fields(PGPROC *proc, int index);
+static void copy_pgproc_sample_fields(PGPROC *proc, const YbcWaitEventInfo *info, int index);
 static void copy_non_pgproc_sample_fields(TimestampTz sample_time, int index);
 static void YbAshIncrementCircularBufferIndex(void);
 static YbcAshSample *YbAshGetNextCircularBufferSlot(void);
@@ -388,7 +388,6 @@ YbAshShmemInit(void)
 		LWLockInitialize(&yb_ash->lock, LWTRANCHE_YB_ASH_CIRCULAR_BUFFER);
 		yb_ash->index = 0;
 		yb_ash->max_entries = yb_ash_cb_max_entries();
-		MemSet(yb_ash->circular_buffer, 0, yb_ash->max_entries * sizeof(YbcAshSample));
 	}
 }
 
@@ -1038,7 +1037,7 @@ YbAshIncrementCircularBufferIndex(void)
 }
 
 static void
-YbAshMaybeReplaceSample(PGPROC *proc, int num_procs, TimestampTz sample_time,
+YbAshMaybeReplaceSample(PGPROC *proc, const YbcWaitEventInfo *info, TimestampTz sample_time,
 						int samples_considered)
 {
 	int			random_index;
@@ -1058,23 +1057,32 @@ YbAshMaybeReplaceSample(PGPROC *proc, int num_procs, TimestampTz sample_time,
 	if (replace_index < 0)
 		replace_index += yb_ash->max_entries;
 
-	YbAshStoreSample(proc, num_procs, sample_time, replace_index);
+	YbAshStoreSample(proc, info, sample_time, replace_index);
 }
 
 void
 YbAshMaybeIncludeSample(PGPROC *proc, int num_procs, TimestampTz sample_time,
 						int *samples_considered)
 {
+	/*
+	 * Read the wait event once: the backend may have entered an idle wait
+	 * after the caller's idle check.
+	 */
+	YbcWaitEventInfo info = YbGetWaitEventInfo(proc);
+
+	if (YbIsIdleWaitEvent(info.wait_event))
+		return;
+
 	if (++(*samples_considered) <= yb_ash_sample_size)
-		YbAshStoreSample(proc, num_procs, sample_time, yb_ash->index);
+		YbAshStoreSample(proc, &info, sample_time, yb_ash->index);
 	else
-		YbAshMaybeReplaceSample(proc, num_procs, sample_time, *samples_considered);
+		YbAshMaybeReplaceSample(proc, &info, sample_time, *samples_considered);
 }
 
 void
-YbAshStoreSample(PGPROC *proc, int num_procs, TimestampTz sample_time, int index)
+YbAshStoreSample(PGPROC *proc, const YbcWaitEventInfo *info, TimestampTz sample_time, int index)
 {
-	copy_pgproc_sample_fields(proc, index);
+	copy_pgproc_sample_fields(proc, info, index);
 	copy_non_pgproc_sample_fields(sample_time, index);
 	YbAshIncrementCircularBufferIndex();
 }
@@ -1120,7 +1128,7 @@ YbGetWaitEventInfo(const PGPROC *proc)
 }
 
 static void
-copy_pgproc_sample_fields(PGPROC *proc, int index)
+copy_pgproc_sample_fields(PGPROC *proc, const YbcWaitEventInfo *info, int index)
 {
 	YbcAshSample *cb_sample = &yb_ash->circular_buffer[index];
 
@@ -1128,11 +1136,9 @@ copy_pgproc_sample_fields(PGPROC *proc, int index)
 	memcpy(&cb_sample->metadata, &proc->yb_ash_metadata, sizeof(YbcAshMetadata));
 	LWLockRelease(&proc->yb_ash_metadata_lock);
 
-	YbcWaitEventInfo info = YbGetWaitEventInfo(proc);
-
-	cb_sample->encoded_wait_event_code = info.wait_event;
-	if (info.aux != 0)
-		snprintf(cb_sample->aux_info, sizeof(cb_sample->aux_info), "%u", info.aux);
+	cb_sample->encoded_wait_event_code = info->wait_event;
+	if (info->aux != 0)
+		snprintf(cb_sample->aux_info, sizeof(cb_sample->aux_info), "%u", info->aux);
 	else
 		cb_sample->aux_info[0] = '\0';
 }

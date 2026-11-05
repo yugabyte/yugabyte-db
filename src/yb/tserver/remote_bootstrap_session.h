@@ -34,6 +34,7 @@
 #include <array>
 #include <atomic>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -138,6 +139,10 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
   }
 
   const log::SegmentSequence& log_segments() const { return log_segments_; }
+
+  const std::optional<log::QuiescentMarkerPB>& quiescent_marker() const {
+    return quiescent_marker_;
+  }
 
   void SetSuccess() EXCLUDES(mutex_);
 
@@ -251,8 +256,12 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
   // session.
   log::SegmentSequence log_segments_;
 
+  // Taken before the RocksDB checkpoint, so the checkpoint has all ops up to the marker.
+  std::optional<log::QuiescentMarkerPB> quiescent_marker_;
+
   log::LogAnchor log_anchor_;
   int64_t log_anchor_index_ GUARDED_BY(mutex_) = 0;
+  uint64_t snapshot_max_wal_segment_seqno_ GUARDED_BY(mutex_) = 0;
   // When a follower peer is serving as the rbs source, the field stores the index at which the
   // leader peer needs to anchor its log at.
   int64_t remote_log_anchor_index_ GUARDED_BY(mutex_) = 0;

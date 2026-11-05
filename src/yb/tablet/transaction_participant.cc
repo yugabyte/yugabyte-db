@@ -1475,6 +1475,11 @@ class TransactionParticipant::Impl
     return transactions_.size();
   }
 
+  bool AllTransactionsLoaded() const {
+    auto completed = loader_.Completed();
+    return completed.ok() && *completed;
+  }
+
   void SetMinReplayTxnFirstWriteTimeUpdateCallback(std::function<void(HybridTime)> callback) {
     std::lock_guard lock(mutex_);
     min_replay_txn_first_write_ht_callback_ = std::move(callback);
@@ -2807,7 +2812,7 @@ class TransactionParticipant::Impl
       } else {
         num_active_rr_rc += inactive ? 0 : 1;
       }
-      LOG(INFO) << "transaction: " << metadata.ToString() << ". inactive:" << inactive;
+      VLOG(1) << "transaction: " << metadata.ToString() << ". inactive:" << inactive;
     }
     CHECK(num_active_rr_rc == 0 || num_active_si == 0)
         << "both Serialiable and RR/RC have active fast mode transactions."
@@ -2840,7 +2845,7 @@ class TransactionParticipant::Impl
   }
 
   Result<bool> TEST_IsTransactionInactive(const TransactionMetadata& metadata) {
-    LOG(INFO) << "Checking transaction: " << metadata;
+    VLOG(1) << "Checking transaction: " << metadata;
     auto it = transactions_.find(metadata.transaction_id);
     if (it != transactions_.end()) {
       auto& txn = **it;
@@ -3205,6 +3210,10 @@ Status TransactionParticipant::ResolveIntents(HybridTime resolve_at, CoarseTimeP
 
 size_t TransactionParticipant::GetNumRunningTransactions() const {
   return impl_->GetNumRunningTransactions();
+}
+
+bool TransactionParticipant::AllTransactionsLoaded() const {
+  return impl_->AllTransactionsLoaded();
 }
 
 OneWayBitmap TransactionParticipant::TEST_TransactionReplicatedBatches(

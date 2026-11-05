@@ -67,11 +67,14 @@ YB_DEFINE_ENUM(YsqlColocationConfig, (kNotColocated)(kDBColocated));
 class YBBackupDuringDdl : public pgwrapper::PgMiniTestBase, public YBBackupTestBase {
  public:
   void SetUp() {
+    // Skip before TEST_SETUP_SUPER starts the cluster, so sanitizer builds do not pay for it.
+    // Derived fixtures must chain through TEST_SETUP_SUPER as well, or they would run their own
+    // setup against the cluster this skip never started.
+    YB_SKIP_TEST_IN_SANITIZERS();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
     // We need the following to be able to run yb-controller with MiniCluster.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_use_custom_varz) = true;
     TEST_SETUP_SUPER(PgMiniTestBase);
-    YB_SKIP_TEST_IN_SANITIZERS();
     ASSERT_OK(CreateClient());
     // Start Yb Controllers for backup/restore.
     if (UseYbController()) {
@@ -235,7 +238,7 @@ class YBBackupTestWithColocationParam : public YBBackupDuringDdl,
                                         public ::testing::WithParamInterface<YsqlColocationConfig> {
  public:
   void SetUp() override {
-    YBBackupDuringDdl::SetUp();
+    TEST_SETUP_SUPER(YBBackupDuringDdl);
     CreateDatabase(kBackupSourceDbName, GetParam());
   }
 };
@@ -611,7 +614,7 @@ class YBBackupDuringAlterTable : public YBBackupDuringDdl,
                                  public ::testing::WithParamInterface<YsqlColocationConfig> {
  public:
   void SetUp() override {
-    YBBackupDuringDdl::SetUp();
+    TEST_SETUP_SUPER(YBBackupDuringDdl);
     CreateDatabase(kBackupSourceDbName, GetParam());
   }
 
@@ -936,7 +939,7 @@ class YBBackupWithAnonymizerTest : public YBBackupDuringDdl {
       GTEST_SKIP() << "Test requires YBC";
     }
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_pg_anonymizer) = true;
-    YBBackupDuringDdl::SetUp();
+    TEST_SETUP_SUPER(YBBackupDuringDdl);
     CreateDatabase(kBackupSourceDbName);
   }
 
@@ -1001,7 +1004,7 @@ class YBCloneWithAnonymizerTest : public YBBackupWithAnonymizerTest {
  public:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_beta_features) = true;
-    YBBackupWithAnonymizerTest::SetUp();
+    TEST_SETUP_SUPER(YBBackupWithAnonymizerTest);
   }
 };
 
@@ -1024,6 +1027,43 @@ TEST_F(YBCloneWithAnonymizerTest, CloneAfterRoleRenameWithAnonymizer) {
   auto cloned_conn = ASSERT_RESULT(ConnectToDB(kRestoreTargetDbName));
   auto row_count = ASSERT_RESULT(cloned_conn.FetchRow<int64_t>("SELECT count(*) FROM test_table"));
   ASSERT_EQ(row_count, 100);
+}
+
+class YBBackupOfColocatedCloneTest : public YBBackupDuringDdl {
+ public:
+  void SetUp() override {
+    TEST_SETUP_SUPER(YBBackupDuringDdl);
+    CreateDatabase(kBackupSourceDbName, YsqlColocationConfig::kDBColocated);
+  }
+};
+
+// Repro for https://github.com/yugabyte/yugabyte-db/issues/33278.
+// Cloning a colocated database bumps the schema version of the clone's colocation parent table.
+// Backup/restore must bump the restored parent table at least as far, otherwise the tserver finds
+// a snapshot schema version newer than the live one when merging schema packings on restore.
+TEST_F(YBBackupOfColocatedCloneTest, BackupRestoreOfClone) {
+  const std::string kCloneDbName = "clone_db";
+  auto conn = ASSERT_RESULT(ConnectToDB(kBackupSourceDbName));
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t SELECT g, 'v' || g FROM generate_series(1, 10) g"));
+
+  ASSERT_RESULT(snapshot_util_->CreateSchedule(kBackupSourceDbName, client::WaitSnapshot(true)));
+  auto clone_time = Timestamp(ASSERT_RESULT(WallClock()->Now()).time_point);
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1 AS OF $2",
+      kCloneDbName, kBackupSourceDbName, clone_time.ToInt64()));
+
+  const std::string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", kCloneDbName), "create"},
+      cluster_.get()));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", kRestoreTargetDbName),
+       "restore"},
+      cluster_.get()));
+
+  auto restored_conn = ASSERT_RESULT(ConnectToDB(kRestoreTargetDbName));
+  ASSERT_EQ(ASSERT_RESULT(restored_conn.FetchRow<int64_t>("SELECT count(*) FROM t")), 10);
 }
 
 }  // namespace tools

@@ -20,6 +20,7 @@
 #include "yb/common/jsonb.h"
 #include "yb/common/ql_value.h"
 
+#include "yb/util/format.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_case.h"
 
@@ -151,7 +152,7 @@ Status ConvertQLValuePBToRapidJson(const QLValuePB& ql_value_pb,
       const QLMapValuePB& map_pb = ql_value_pb.map_value();
 
       if (map_pb.keys_size() != map_pb.values_size()) {
-        return STATUS_SUBSTITUTE(QLError, "Invalid map: $0 keys and $1 values",
+        return STATUS_FORMAT(QLError, "Invalid map: $0 keys and $1 values",
             map_pb.keys_size(), map_pb.values_size());
       }
 
@@ -174,7 +175,7 @@ Status ConvertQLValuePBToRapidJson(const QLValuePB& ql_value_pb,
     case QLValuePB::ValueCase::kTupleValue:
       FALLTHROUGH_INTENDED;
     default:
-        return STATUS_SUBSTITUTE(
+        return STATUS_FORMAT(
             QLError, "Unexpected value type: $0", ql_value_pb.ShortDebugString());
   }
 

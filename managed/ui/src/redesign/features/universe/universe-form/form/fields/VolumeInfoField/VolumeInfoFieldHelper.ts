@@ -15,7 +15,7 @@ import {
   RunTimeConfigEntry,
   StorageType
 } from '../../../utils/dto';
-import { isEphemeralAwsStorageInstance } from '../InstanceTypeField/InstanceTypeFieldHelper';
+import { isEphemeralStorageInstance } from '../InstanceTypeField/InstanceTypeFieldHelper';
 import { RuntimeConfigKey } from '../../../../../../helpers/constants';
 
 export const IO1_DEFAULT_DISK_IOPS = 1000;
@@ -65,7 +65,8 @@ export interface StorageTypeOption {
 export const DEFAULT_STORAGE_TYPES = {
   [CloudType.aws]: StorageType.GP3,
   [CloudType.gcp]: StorageType.Persistent,
-  [CloudType.azu]: StorageType.Premium_LRS
+  [CloudType.azu]: StorageType.Premium_LRS,
+  [CloudType.oci]: StorageType.OCI_BALANCED
 };
 
 export const AWS_STORAGE_TYPE_OPTIONS: StorageTypeOption[] = [
@@ -255,8 +256,8 @@ const getVolumeSize = (instance: InstanceType, providerRuntimeConfigs: any) => {
 
 const getStorageType = (instance: InstanceType, providerRuntimeConfigs: any) => {
   let storageType = null;
-  if (isEphemeralAwsStorageInstance(instance))
-    //aws ephemeral storage
+  if (isEphemeralStorageInstance(instance))
+    // local NVMe / AWS instance store
     return storageType;
 
   if (instance.providerCode === CloudType.aws) {
@@ -271,6 +272,8 @@ const getStorageType = (instance: InstanceType, providerRuntimeConfigs: any) => 
     storageType = providerRuntimeConfigs?.configEntries?.find(
       (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.AZURE_DEFAULT_STORAGE_TYPE
     )?.value;
+  } else if (instance.providerCode === CloudType.oci) {
+    storageType = DEFAULT_STORAGE_TYPES[CloudType.oci];
   }
   return storageType;
 };
@@ -285,7 +288,7 @@ export const getDeviceInfoFromInstance = (
 
   const { volumeDetailsList } = instance.instanceTypeDetails;
   const volumeSize = volumeDetailsList[0].volumeSizeGB;
-  const defaultInstanceVolumeSize = isEphemeralAwsStorageInstance(instance)
+  const defaultInstanceVolumeSize = isEphemeralStorageInstance(instance)
     ? volumeSize
     : getVolumeSize(instance, providerRuntimeConfigs);
   const storageType = isEditMode

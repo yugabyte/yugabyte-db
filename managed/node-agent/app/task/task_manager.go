@@ -97,7 +97,7 @@ func InitTaskManager(ctx context.Context) *TaskManager {
 		// Start the scanner on a schedule.
 		// Completed tasks are not immediately removed as the client can ask for status.
 		scheduler.GetInstance().
-			Schedule(ctx, TaskPollInterval, func(ctx context.Context) (any, error) {
+			Schedule(ctx, TaskPollInterval, false /* runImmediately */, func(ctx context.Context) (any, error) {
 				taskManager.taskInfos.Range(func(k any, v any) bool {
 					taskID := k.(string)
 					tInfo := v.(*taskInfo)

@@ -4,12 +4,15 @@ package com.yugabyte.yw.common;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.forms.RollMaxBatchSize;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.util.HashSet;
 import java.util.Iterator;
+import java.util.Set;
 import org.junit.Test;
 
 public class KubernetesPartitionIteratorTest {
@@ -130,6 +133,37 @@ public class KubernetesPartitionIteratorTest {
     assertFalse(iterator.hasNext());
   }
 
+  @Test
+  public void testNonPositiveBatchSizeRollsOnePodAtATime() {
+    for (int batchSize : new int[] {0, -1}) {
+      Iterator<KubernetesPartitions.KubernetesPartition> iterator =
+          getIterator(3, UniverseTaskBase.ServerType.TSERVER, false, 3, 3, batchSize);
+      assertValues(iterator, 3, 2, 2);
+      assertValues(iterator, 3, 1, 1);
+      assertValues(iterator, 3, 0, 0);
+      assertFalse("batch size " + batchSize, iterator.hasNext());
+    }
+  }
+
+  @Test
+  public void testNonPositiveBatchSizeCoversEveryPodOnce() {
+    int numPods = 5;
+    for (int batchSize : new int[] {0, -1}) {
+      String key = "batch size " + batchSize;
+      int partitions = 0;
+      Set<String> pods = new HashSet<>();
+      for (KubernetesPartitions.KubernetesPartition partition :
+          getIterable(numPods, UniverseTaskBase.ServerType.TSERVER, false, 3, numPods, batchSize)) {
+        // Bound the loop: a batch size of 0 used to make maxIndex Integer.MAX_VALUE.
+        assertTrue(key, ++partitions <= numPods);
+        assertEquals(key, 1, partition.podNames.size());
+        assertTrue(key + " rolled " + partition.podNames, pods.addAll(partition.podNames));
+      }
+      assertEquals(key, numPods, partitions);
+      assertEquals(key, numPods, pods.size());
+    }
+  }
+
   private void assertValues(
       Iterator<KubernetesPartitions.KubernetesPartition> iterator,
       int masterPartition,
@@ -154,6 +188,17 @@ public class KubernetesPartitionIteratorTest {
       int numMasters,
       int numTservers,
       int bachSize) {
+    return getIterable(numPods, serverType, isReadonlyCluster, numMasters, numTservers, bachSize)
+        .iterator();
+  }
+
+  private Iterable<KubernetesPartitions.KubernetesPartition> getIterable(
+      int numPods,
+      UniverseTaskBase.ServerType serverType,
+      boolean isReadonlyCluster,
+      int numMasters,
+      int numTservers,
+      int bachSize) {
     iteration = 0;
     this.serverType = serverType;
     KubernetesTaskBase.PodUpgradeParams params =
@@ -162,15 +207,14 @@ public class KubernetesPartitionIteratorTest {
             .build();
 
     return KubernetesPartitions.iterable(
-            numPods,
-            serverType,
-            isReadonlyCluster,
-            numMasters,
-            numTservers,
-            params,
-            this::getPodName,
-            this::getNodeDetails)
-        .iterator();
+        numPods,
+        serverType,
+        isReadonlyCluster,
+        numMasters,
+        numTservers,
+        params,
+        this::getPodName,
+        this::getNodeDetails);
   }
 
   private NodeDetails getNodeDetails(int part) {

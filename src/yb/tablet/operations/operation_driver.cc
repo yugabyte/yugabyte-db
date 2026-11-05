@@ -46,7 +46,6 @@
 
 #include "yb/gutil/callback.h"
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/thread_annotations.h"
 
 #include "yb/master/sys_catalog_constants.h"

@@ -15,11 +15,13 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Sets;
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ConfigHelper.ConfigType;
+import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.PrometheusConfigHelper;
@@ -33,6 +35,7 @@ import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
 import com.yugabyte.yw.models.PlatformInstance.State;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.zaxxer.hikari.HikariDataSource;
 import io.ebean.DB;
 import io.ebean.annotation.Transactional;
@@ -56,6 +59,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
@@ -91,7 +95,11 @@ public class PlatformReplicationManager {
   private static final DateTimeFormatter DATE_TIME_FORMATTER =
       DateTimeFormatter.ofPattern("yy-MM-dd-HH-mm").withZone(ZoneId.of("UTC"));
 
+  private static final String REPLICATION_SYNC_POOL_NAME = "ha.replication_sync";
+
   private final AtomicReference<Cancellable> schedule;
+
+  private final PlatformExecutorFactory platformExecutorFactory;
 
   private final PlatformScheduler platformScheduler;
 
@@ -106,6 +114,8 @@ public class PlatformReplicationManager {
   private final RuntimeConfGetter confGetter;
 
   private final OperatorResourceRestorer operatorResourceRestorer;
+
+  private ExecutorService replicationCoalesceSyncExecutor;
 
   public static final Gauge HA_LAST_BACKUP_TIME =
       Gauge.builder()
@@ -122,6 +132,7 @@ public class PlatformReplicationManager {
 
   @Inject
   public PlatformReplicationManager(
+      PlatformExecutorFactory platformExecutorFactory,
       PlatformScheduler platformScheduler,
       PlatformReplicationHelper replicationHelper,
       FileDataService fileDataService,
@@ -129,6 +140,7 @@ public class PlatformReplicationManager {
       ConfigHelper configHelper,
       RuntimeConfGetter confGetter,
       OperatorResourceRestorer operatorResourceRestorer) {
+    this.platformExecutorFactory = platformExecutorFactory;
     this.platformScheduler = platformScheduler;
     this.replicationHelper = replicationHelper;
     this.fileDataService = fileDataService;
@@ -173,8 +185,13 @@ public class PlatformReplicationManager {
   }
 
   public void init() {
+    // Instantiate the replication sync executor.
+    replicationCoalesceSyncExecutor =
+        platformExecutorFactory.createCoalescingDelayExecutor(
+            REPLICATION_SYNC_POOL_NAME,
+            new ThreadFactoryBuilder().setNameFormat("ReplicationSyncExecutor-%d").build());
     // Start periodic platform sync schedule if enabled.
-    this.start();
+    start();
     // Switch prometheus to federated if this platform is a follower for HA.
     replicationHelper.ensurePrometheusConfig();
   }
@@ -609,6 +626,16 @@ public class PlatformReplicationManager {
     }
   }
 
+  public void coalesceOneOffSync() {
+    if (replicationHelper.isBackupScheduleEnabled()) {
+      replicationCoalesceSyncExecutor.submit(
+          () -> {
+            log.debug("Running coalesced one-off sync");
+            oneOffSync();
+          });
+    }
+  }
+
   // When adding a new instance, do a sync for all instance and then demote the remote instance
   // to ensure with "promote" as true, to ensure it gets restarted.
   public void syncNewInstance(PlatformInstance newInstance) {
@@ -786,6 +813,7 @@ public class PlatformReplicationManager {
     private final String dbHost;
     // The port that the DB is listening to connection requests on.
     private final int dbPort;
+    private final boolean fipsEnabled;
 
     protected PlatformBackupParams() {
       this.prometheusHost = prometheusConfigHelper.getPrometheusHost();
@@ -794,6 +822,7 @@ public class PlatformReplicationManager {
       this.dbPassword = replicationHelper.getDBPassword();
       this.dbHost = replicationHelper.getDBHost();
       this.dbPort = replicationHelper.getDBPort();
+      this.fipsEnabled = confGetter.getStaticConf().getBoolean(CommonUtils.FIPS_ENABLED);
     }
 
     protected abstract List<String> getCommandSpecificArgs();
@@ -814,6 +843,9 @@ public class PlatformReplicationManager {
       commandArgs.add(String.valueOf(prometheusPort));
       commandArgs.add("--verbose");
       commandArgs.add("--skip_restart");
+      if (fipsEnabled) {
+        commandArgs.add("--fips");
+      }
 
       return commandArgs;
     }

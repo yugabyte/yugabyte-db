@@ -33,6 +33,7 @@
 #include "yb/master/master_defaults.h"
 
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/memory/mc_types.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
@@ -265,11 +266,11 @@ class Selectivity {
   }
 
   string ToString() const {
-    return strings::Substitute("Selectivity: index_id $0 is_local $1 prefix_length $2 "
-                               "single_key_read $3 full_table_scan $4 ends_with_range $5 "
-                               "covers_fully $6 predicate_len $7", index_id_, is_local_,
-                               prefix_length_, single_key_read_, full_table_scan_, ends_with_range_,
-                               covers_fully_, predicate_len_);
+    return Format("Selectivity: index_id $0 is_local $1 prefix_length $2 "
+                  "single_key_read $3 full_table_scan $4 ends_with_range $5 "
+                  "covers_fully $6 predicate_len $7", index_id_, is_local_,
+                  prefix_length_, single_key_read_, full_table_scan_, ends_with_range_,
+                  covers_fully_, predicate_len_);
   }
 
  private:

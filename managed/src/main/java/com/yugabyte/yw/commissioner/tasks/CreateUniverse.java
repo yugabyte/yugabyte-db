@@ -120,7 +120,9 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
   // This is invoked only on first try.
   protected void configureTaskParams(Universe universe) {
     // Select master nodes and apply isMaster flags immediately.
-    selectAndApplyMasters();
+    PlacementInfoUtil.SelectMastersResult selectMastersResult = selectAndApplyMasters();
+    // Verifying that RF number of masters was selected.
+    verifyMastersSelection(selectMastersResult);
     // Set all the in-memory node names.
     setNodeNames(universe);
     // Set non on-prem node UUIDs.
@@ -234,6 +236,10 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
 
       createPersistCpuCgroupConfiguredTask(universe);
 
+      for (Cluster cluster : taskParams().clusters) {
+        createEnsureManagedLoadBalancerTasks(cluster);
+      }
+
       boolean deleteCapacityReservation =
           createCapacityReservationsIfNeeded(
               taskParams().nodeDetailsSet,
@@ -256,6 +262,8 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
             gFlagsParams.resetMasterState = true;
             gFlagsParams.masterJoinExistingCluster = false;
           });
+      // Every node is new, so the universe's node_exporter scheme can be decided once for all.
+      createUpdateNodeExporterTlsTask(universe);
 
       if (deleteCapacityReservation) {
         createDeleteCapacityReservationTask();

@@ -93,7 +93,7 @@ Status YBPartitionGenerator::LookupTabletIdWithTokenizer(const CsvTokenizer& tok
   const Schema &schema = table_->InternalSchema();
   size_t ncolumns = std::distance(tokenizer.begin(), tokenizer.end());
   if (ncolumns < schema.num_hash_key_columns()) {
-    return STATUS_SUBSTITUTE(InvalidArgument, "row doesn't have enough columns for primary "
+    return STATUS_FORMAT(InvalidArgument, "row doesn't have enough columns for primary "
         "key, found: $0 need atleast $1", ncolumns, schema.num_hash_key_columns());
   }
 
@@ -108,7 +108,7 @@ Status YBPartitionGenerator::LookupTabletIdWithTokenizer(const CsvTokenizer& tok
       continue;
     }
     if (IsNull(*it)) {
-      return STATUS_SUBSTITUTE(IllegalState, "Primary key cannot be null: $0", *it);
+      return STATUS_FORMAT(IllegalState, "Primary key cannot be null: $0", *it);
     }
 
     DataType column_type = schema.column(i).type_info()->type;
@@ -147,8 +147,8 @@ Status YBPartitionGenerator::LookupTabletIdWithTokenizer(const CsvTokenizer& tok
   // Find the appropriate table.
   auto iter = tablet_map_.upper_bound(*partition_key);
   if (iter == tablet_map_.begin()) {
-    return STATUS_SUBSTITUTE(IllegalState, "Couldn't find partition key $0 in tablet map",
-                             *partition_key);
+    return STATUS_FORMAT(IllegalState, "Couldn't find partition key $0 in tablet map",
+                         *partition_key);
   }
   --iter;
   *tablet_id = iter->second.tablet_id();

@@ -3662,7 +3662,6 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 		foreach(values, build_path_tlist(root, (Path *) projection_path))
 		{
 			TargetEntry *tle = lfirst_node(TargetEntry, values);
-			AttrNumber	varattno = InvalidAttrNumber;
 
 			/* Ignore junk columns. */
 			if (IsA(tle->expr, Var))
@@ -3676,8 +3675,6 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 				{
 					continue;
 				}
-
-				varattno = var->varattno;
 			}
 
 			/*
@@ -3728,32 +3725,6 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 			{
 				RelationClose(relation);
 				return false;
-			}
-
-			/* The column is set to itself (SET col = col). */
-			if (varattno == resno)
-			{
-				/*
-				 * If the column has a NOT NULL constraint, avoid the single row
-				 * path. NOT NULL constraint checks happen in the postgres
-				 * executor and require the value of the column to be populated.
-				 * Since the single row path skips fetching the target tuple,
-				 * the check cannot correctly distinguish between missing values
-				 * and NULL values.
-				 * TODO(kramanathan): Optimizing this path requires code
-				 * refactor.
-				 */
-				if (TupleDescAttr(tupDesc, resno - 1)->attnotnull)
-				{
-					RelationClose(relation);
-					return false;
-				}
-
-				/*
-				 * In all other cases, the column has no impact on the single
-				 * row computation.
-				 */
-				continue;
 			}
 
 			subpath_tlist = lappend(subpath_tlist, tle);
@@ -4277,6 +4248,7 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 	plan->ybColumnRefs = column_refs;
 	plan->no_row_trigger = no_row_trigger;
 	plan->yb_skip_entities = YbInitSkippableEntities(no_update_index_list);
+	plan->ybInsertOnConflictPushdownPossible = YbIocPushdownPossible(root, plan);
 
 	copy_generic_path_info(&plan->plan, &best_path->path);
 
@@ -4773,9 +4745,19 @@ create_indexscan_plan(PlannerInfo *root,
 
 	if (best_path->yb_index_path_info.merge_scan_stream_cols)
 	{
+		ListCell   *yb_lc;
+
 		yb_merge_scan_info = makeNode(YbMergeScanInfo);
-		yb_merge_scan_info->stream_cols =
-			best_path->yb_index_path_info.merge_scan_stream_cols;
+		/* setrefs.c repoints each entry's clause, so copy the entries. */
+		foreach(yb_lc, best_path->yb_index_path_info.merge_scan_stream_cols)
+		{
+			YbMergeScanStreamColInfo *yb_info =
+				makeNode(YbMergeScanStreamColInfo);
+
+			*yb_info = *lfirst_node(YbMergeScanStreamColInfo, yb_lc);
+			yb_merge_scan_info->stream_cols =
+				lappend(yb_merge_scan_info->stream_cols, yb_info);
+		}
 	}
 
 	/* Finally ready to build the plan node */
@@ -7151,6 +7133,38 @@ replace_nestloop_params_mutator(Node *node, PlannerInfo *root)
 	{
 		YbBatchedExpr *bexpr = (YbBatchedExpr *) node;
 		List	   *batched_elems = NIL;
+
+#ifdef USE_ASSERT_CHECKING
+
+		/*
+		 * Every batched Var below shares root->yb_cur_batch_no, so one
+		 * batched nested loop join has to fill all of them (see
+		 * yb_ppi_batched_groups); yb_availBatchedRelids holds one entry per
+		 * enclosing such join.  yb_batched_clause_final_check keeps paths
+		 * that would span two of them out, and a violation here has no
+		 * symptom other than lost rows, so fail loudly instead.
+		 */
+		Relids		batched_vars =
+			bms_intersect(pull_varnos(root, (Node *) bexpr->orig_expr),
+						  root->yb_cur_batched_relids);
+
+		if (!bms_is_empty(batched_vars))
+		{
+			bool		one_join = false;
+			ListCell   *lc;
+
+			foreach(lc, root->yb_availBatchedRelids)
+			{
+				if (bms_is_subset(batched_vars, (Relids) lfirst(lc)))
+				{
+					one_join = true;
+					break;
+				}
+			}
+
+			Assert(one_join);
+		}
+#endif
 
 		/*
 		 * Populate batched_elems with each batched instance of
@@ -9770,6 +9784,7 @@ make_modifytable(PlannerInfo *root, Plan *subplan,
 	node->yb_skip_entities = NULL;
 	node->yb_update_affected_entities = NULL;
 	node->no_row_trigger = false;
+	node->ybInsertOnConflictPushdownPossible = false;
 	return node;
 }
 

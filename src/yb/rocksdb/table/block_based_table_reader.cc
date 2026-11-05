@@ -64,6 +64,7 @@
 #include "yb/util/atomic.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/debug-util.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/scope_exit.h"
@@ -713,7 +714,7 @@ Status BlockBasedTable::Open(const ImmutableCFOptions& ioptions,
         RLOG(InfoLogLevel::FATAL_LEVEL, rep->ioptions.info_log, "Corrupted bloom filter type: %d",
             rep->filter_type);
         assert(false);
-        return STATUS_SUBSTITUTE(Corruption, "Corrupted bloom filter type: $0", rep->filter_type);
+        return STATUS_FORMAT(Corruption, "Corrupted bloom filter type: $0", rep->filter_type);
       }
     } else {
       // If we don't use block cache for filter access, we'll pre-load these blocks, which will
@@ -737,7 +738,7 @@ Status BlockBasedTable::Open(const ImmutableCFOptions& ioptions,
         RLOG(InfoLogLevel::FATAL_LEVEL, rep->ioptions.info_log, "Corrupted bloom filter type: %d",
             rep->filter_type);
         assert(false);
-        return STATUS_SUBSTITUTE(Corruption, "Corrupted bloom filter type: $0", rep->filter_type);
+        return STATUS_FORMAT(Corruption, "Corrupted bloom filter type: $0", rep->filter_type);
       }
     }
   }

@@ -267,7 +267,7 @@ class PipelineTracking:
 
         Args:
             pipeline_id (str): UUID of the pipeline to update
-            chunks_count (int): Number of chunks to add to the current count
+            chunks_count (int): Total chunks processed so far (replaces the stored value)
 
         Returns:
             bool: True if update was successful
@@ -291,7 +291,7 @@ class PipelineTracking:
 
             self.logger.info(
                 f"Updated chunks processed: pipeline_id={pipeline_id}, "
-                f"chunks_added={chunks_count}"
+                f"chunks_processed={chunks_count}"
             )
 
             return True
@@ -313,7 +313,7 @@ class PipelineTracking:
 
         Args:
             pipeline_id (str): UUID of the pipeline to update
-            embeddings_count (int): Number of embeddings to add to the current count
+            embeddings_count (int): Total embeddings persisted so far (replaces the stored value)
 
         Returns:
             bool: True if update was successful
@@ -326,7 +326,7 @@ class PipelineTracking:
             cur.execute(
                 """
                 UPDATE dist_rag.pipeline_details
-                SET embeddings_persisted = embeddings_persisted + %s
+                SET embeddings_persisted = %s
                 WHERE pipeline_id = %s
                 """,
                 (embeddings_count, pipeline_id)
@@ -337,7 +337,7 @@ class PipelineTracking:
 
             self.logger.info(
                 f"Updated embeddings persisted: pipeline_id={pipeline_id}, "
-                f"embeddings_added={embeddings_count}"
+                f"embeddings_persisted={embeddings_count}"
             )
 
             return True

@@ -26,7 +26,6 @@
 #include "yb/bfpg/gen_opcodes.h"
 #include "yb/bfpg/gen_operator.h"
 
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/logging.h"
 

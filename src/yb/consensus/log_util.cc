@@ -59,6 +59,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/env_util.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/pb_util.h"
@@ -130,8 +131,6 @@ using env_util::ReadFully;
 using std::vector;
 using std::shared_ptr;
 using std::string;
-using strings::Substitute;
-using strings::SubstituteAndAppend;
 
 const char kTmpSuffix[] = ".tmp";
 
@@ -438,9 +437,9 @@ Result<bool> ReadableLogSegment::ReadHeader() {
 
   if (header_size > kLogSegmentMaxHeaderOrFooterSize) {
     return STATUS(Corruption,
-        Substitute("File is corrupted. "
-                   "Parsed header size: $0 is zero or bigger than max header size: $1",
-                   header_size, kLogSegmentMaxHeaderOrFooterSize));
+        Format("File is corrupted. "
+               "Parsed header size: $0 is zero or bigger than max header size: $1",
+               header_size, kLogSegmentMaxHeaderOrFooterSize));
   }
 
   std::vector<uint8_t> header_space(header_size);
@@ -525,11 +524,11 @@ Status ReadableLogSegment::ParseHeaderMagicAndHeaderLength(const Slice &data,
     // Check if file is encrypted
     if (memcmp(yb::encryption::kEncryptionMagic, data.data(),
                yb::encryption::kEncryptionMagicLen) == 0) {
-      return STATUS(IllegalState, Substitute("log segment file $0 is encrypted", path()));
+      return STATUS(IllegalState, Format("log segment file $0 is encrypted", path()));
     }
     // If no magic and not uninitialized, the file is considered corrupt.
-    return STATUS(Corruption, Substitute("Invalid log segment file $0: Bad magic. $1",
-                                         path(), data.ToDebugString()));
+    return STATUS(Corruption, Format("Invalid log segment file $0: Bad magic. $1",
+                                     path(), data.ToDebugString()));
   }
 
   *parsed_len = DecodeFixed32(data.data() + strlen(kLogSegmentHeaderMagicString));
@@ -542,9 +541,9 @@ Status ReadableLogSegment::ReadFooter() {
 
   if (footer_size == 0 || footer_size > kLogSegmentMaxHeaderOrFooterSize) {
     return STATUS(NotFound,
-        Substitute("File is corrupted. "
-                   "Parsed header size: $0 is zero or bigger than max header size: $1",
-                   footer_size, kLogSegmentMaxHeaderOrFooterSize));
+        Format("File is corrupted. "
+               "Parsed header size: $0 is zero or bigger than max header size: $1",
+               footer_size, kLogSegmentMaxHeaderOrFooterSize));
   }
 
   if (footer_size > (file_size() - first_entry_offset_)) {
@@ -675,13 +674,13 @@ ReadEntriesResult ReadableLogSegment::ReadEntries(
         s = batch_result.status();
       }
     } else {
-      s = STATUS(Corruption, Substitute("Truncated log entry at offset $0", offset));
+      s = STATUS(Corruption, Format("Truncated log entry at offset $0", offset));
     }
 
     if (PREDICT_FALSE(!s.ok())) {
       if (!s.IsCorruption()) {
         // IO errors should always propagate back
-        result.status = s.CloneAndPrepend(Substitute("Error reading from log $0", path_));
+        result.status = s.CloneAndPrepend(Format("Error reading from log $0", path_));
         return result;
       }
 
@@ -709,7 +708,7 @@ ReadEntriesResult ReadableLogSegment::ReadEntries(
       if (!has_valid_entries.ok() || *has_valid_entries) {
         string err = "Log file corruption detected.";
         if(!has_valid_entries.ok()) {
-          SubstituteAndAppend(&err, " Scanning forward for valid entries failed with $0",
+          err += Format(" Scanning forward for valid entries failed with $0",
               has_valid_entries.ToString());
         }
         result.status = corrupt_status.CloneAndPrepend(err);
@@ -866,13 +865,13 @@ Status ReadableLogSegment::MakeCorruptionStatus(
     const LogEntries& entries,
     const Status& status) const {
 
-  string err = Substitute("Failed trying to read batch #$0 at offset $1 for "
+  string err = Format("Failed trying to read batch #$0 at offset $1 for "
                       "log segment $2: ", batch_number, batch_offset, path_);
   err.append("Prior batch offsets:");
   std::sort(recent_offsets->begin(), recent_offsets->end());
   for (int64_t offset : *recent_offsets) {
     if (offset >= 0) {
-      SubstituteAndAppend(&err, " $0", offset);
+      err += Format(" $0", offset);
     }
   }
   if (!entries.empty()) {
@@ -888,7 +887,7 @@ Status ReadableLogSegment::MakeCorruptionStatus(
       } else {
         opid_str = "<unknown>";
       }
-      SubstituteAndAppend(&err, " [$0 ($1)]", LogEntryTypePB_Name(type), opid_str);
+      err += Format(" [$0 ($1)]", LogEntryTypePB_Name(type), opid_str);
     }
   }
 
@@ -1016,10 +1015,10 @@ Result<std::shared_ptr<LWLogEntryBatchPB>> ReadableLogSegment::ReadEntryBatch(
   // Verify the CRC.
   uint32_t read_crc = crc::Crc32c(entry_batch_slice.data(), entry_batch_slice.size());
   if (PREDICT_FALSE(read_crc != header.msg_crc)) {
-    return STATUS(Corruption, Substitute("Entry CRC mismatch in byte range $0-$1: "
-                                         "expected CRC=$2, computed=$3",
-                                         *offset, *offset + header.msg_length,
-                                         header.msg_crc, read_crc));
+    return STATUS(Corruption, Format("Entry CRC mismatch in byte range $0-$1: "
+                                     "expected CRC=$2, computed=$3",
+                                     *offset, *offset + header.msg_length,
+                                     header.msg_crc, read_crc));
   }
 
   auto batch = holder->arena.NewArenaObject<LWLogEntryBatchPB>();

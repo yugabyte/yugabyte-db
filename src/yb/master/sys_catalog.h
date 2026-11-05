@@ -248,7 +248,7 @@ class SysCatalogTable {
   using ReadRestartFn = std::function<Status (const ReadHybridTime &, HybridTime *)>;
   // If 'out_read_ht' is set, it receives the hybrid time the read was finally served at (after
   // any read restarts). Callers that cache what they read use it to order snapshots against each
-  // other; see CatalogManager::InstallPgCatalogVersionsSnapshot.
+  // other; see PgCatalogVersionsCache::Install.
   Status ReadWithRestarts(
       const ReadRestartFn& fn,
       tablet::RequireLease require_lease = tablet::RequireLease::kTrue,
@@ -503,11 +503,19 @@ class SysCatalogTable {
 
   std::unique_ptr<ThreadPool> allocation_pool_;
 
+  // Created by the first SetupTabletPeer and shared by every tablet peer it sets up.  The peer
+  // points at it, so it must outlive the peer's use of it: CompleteShutdown shuts the peer down
+  // before the master's SysCatalogTable is destroyed.
+  std::unique_ptr<tablet::PersistenceGate> persistence_gate_;
+
   std::shared_ptr<tablet::TabletPeer> tablet_peer_;
 
   Master* master_;
 
   ElectedLeaderCallback leader_cb_;
+
+  // Term for which leader_cb_ was last run from SysCatalogStateChanged.
+  std::atomic<int64_t> leader_cb_term_{-1};
 
   consensus::RaftPeerPB local_peer_pb_;
 

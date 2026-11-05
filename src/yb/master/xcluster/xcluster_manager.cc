@@ -15,19 +15,27 @@
 
 #include <string>
 
+#include "yb/common/clock.h"
 #include "yb/common/colocated_util.h"
+#include "yb/common/common_flags.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/common/hybrid_time.h"
 
+#include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/master.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_defaults.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_replication.pb.h"
+#include "yb/master/ts_descriptor.h"
+#include "yb/master/ts_manager.h"
 #include "yb/master/xcluster/master_xcluster_util.h"
+#include "yb/master/xcluster/persistence_block_map.h"
+#include "yb/master/xcluster/xcluster_catalog_entity.h"
 #include "yb/master/xcluster/xcluster_config.h"
 #include "yb/master/xcluster/xcluster_status.h"
 #include "yb/master/xcluster/xcluster_universe_replication_setup_helper.h"
@@ -35,6 +43,7 @@
 #include "yb/rpc/rpc_context.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/countdown_latch.h"
 #include "yb/util/flag_validators.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/logging.h"
@@ -66,7 +75,15 @@ DEFINE_RUNTIME_AUTO_bool(xcluster_enable_target_applied_filter, kExternal, false
     "When promoted, new xCluster streams in unidirectional automatic-DDL-mode replication "
     "groups use WritePB.xcluster_target_applied (instead of has_external_hybrid_time) as the "
     "producer's loop-prevention predicate, allowing index backfill writes to replicate "
-    "end-to-end. Bi-directional and pre-existing streams are unaffected.");
+    "end-to-end. Bi-directional and pre-existing streams are unaffected. NOTE: If you want to "
+    "disable the feature, use xcluster_enable_index_backfill_replication instead.");
+
+DEFINE_RUNTIME_bool(xcluster_enable_index_backfill_replication, true,
+    "In xCluster automatic DDL replication mode, replicate index backfill writes from the source "
+    "instead of running the backfill again on the target. The source master checks this when it "
+    "creates an xCluster stream, so setting it to false only affects streams created afterwards. "
+    "Existing streams keep the behavior they were created with. Note that this also includes "
+    "colocated streams and indexes.");
 
 DEFINE_RUNTIME_AUTO_bool(enable_xcluster_wal_anchor_stream_infra, kExternal, false, true,
     "Auto infra flag for the xCluster WAL_ANCHOR stream feature. NOTE: If you want to disable "
@@ -110,6 +127,10 @@ DEFINE_RUNTIME_uint32(xcluster_ddl_tables_retention_secs, /*1 week*/ 7 * 24 * 60
 
 DEFINE_validator(xcluster_ddl_tables_retention_secs, FLAG_GE_VALUE_VALIDATOR(1 * 24 * 60 * 60));
 
+DECLARE_bool(enforce_xcluster_guarded_lease);
+DECLARE_uint64(max_clock_skew_usec);
+DECLARE_bool(persist_tserver_registry);
+
 #define LOG_FUNC_AND_RPC \
   LOG_WITH_FUNC(INFO) << req->ShortDebugString() << ", from: " << RequestorString(rpc)
 
@@ -132,6 +153,14 @@ Status ValidateUniverseUUID(const RequestType& req, CatalogManager& catalog_mana
   return Status::OK();
 }
 
+// Returns a deadline for the persisting RPCs' calls a little before the caller's so that the caller
+// gets master's error -- e.g., which TServer propagation failed for -- instead of its own RPC
+// timeout.
+MonoTime ComputePersistingRpcDeadline(const rpc::RpcContext& rpc) {
+  constexpr auto kDeadlineBuffer = 2s;
+  return MonoTime(ToSteady(rpc.GetClientDeadline() - kDeadlineBuffer));
+}
+
 bool IsYsqlAutoAddNewIndexToBiDirectionalXClusterEnabled() {
   return FLAGS_ysql_auto_add_new_index_to_bidirectional_xcluster_infra &&
          FLAGS_ysql_auto_add_new_index_to_bidirectional_xcluster;
@@ -143,10 +172,12 @@ XClusterManager::XClusterManager(
     Master& master, CatalogManager& catalog_manager, SysCatalogTable& sys_catalog)
     : XClusterSourceManager(master, catalog_manager, sys_catalog),
       XClusterTargetManager(master, catalog_manager, sys_catalog),
+      master_(master),
       catalog_manager_(catalog_manager),
-      sys_catalog_(sys_catalog) {
-  xcluster_config_ = std::make_unique<XClusterConfig>(&sys_catalog_);
-
+      sys_catalog_(sys_catalog),
+      xcluster_config_(std::make_unique<XClusterConfig>(&sys_catalog_)),
+      persistence_block_map_(
+          std::make_unique<PersistenceBlockMap>(catalog_manager, &sys_catalog_)) {
   // No need to run cleaning task as soon as we start; delay it to make startup faster.
   time_of_last_clean_tables_task_run_ = CoarseMonoClock::Now();
 }
@@ -192,6 +223,7 @@ Status XClusterManager::Init() {
 
 void XClusterManager::Clear() {
   xcluster_config_->ClearState();
+  persistence_block_map_->ClearState();
   XClusterSourceManager::Clear();
   XClusterTargetManager::Clear();
 
@@ -207,6 +239,8 @@ Status XClusterManager::RunLoaders(const TabletInfos& hidden_tablets) {
 
   RETURN_NOT_OK(
       sys_catalog_.Load<XClusterConfigLoader>("xcluster configuration", *xcluster_config_));
+  RETURN_NOT_OK(sys_catalog_.Load<PersistenceBlockMapLoader>(
+      "persistence block map", *persistence_block_map_));
 
   RETURN_NOT_OK(XClusterSourceManager::RunLoaders(hidden_tablets));
   RETURN_NOT_OK(XClusterTargetManager::RunLoaders());
@@ -232,6 +266,7 @@ void XClusterManager::RunBgTasks(const LeaderEpoch& epoch) {
 void XClusterManager::DumpState(std::ostream* out, bool on_disk_dump) const {
   if (on_disk_dump) {
     xcluster_config_->DumpState(out);
+    persistence_block_map_->DumpState(out);
   }
   XClusterSourceManager::DumpState(*out, on_disk_dump);
   XClusterTargetManager::DumpState(*out, on_disk_dump);
@@ -255,6 +290,81 @@ Status XClusterManager::FillXClusterGuardedInfo(
   RETURN_NOT_OK(xcluster_config_->FillXClusterInfoPerNamespace(info));
   info.set_oid_cache_invalidations_count(
       VERIFY_RESULT(catalog_manager_.GetOidCacheInvalidationsCount()));
+  return persistence_block_map_->Fill(*info.mutable_persistence_block_map());
+}
+
+Status XClusterManager::PropagateXClusterGuardedInfo(MonoTime deadline) {
+  if (!FLAGS_enforce_xcluster_guarded_lease) {
+    // Nothing depends on the information having propagated while leases are not enforced, and
+    // mid-upgrade some TServers may not implement the RPC yet.
+    return Status::OK();
+  }
+  SCHECK(
+      FLAGS_persist_tserver_registry, IllegalState,
+      "PropagateXClusterGuardedInfo requires the TServer registry to be persisted");
+
+  auto info = std::make_shared<XClusterGuardedInfoPB>();
+  // For correctness, this needs to be the current master leader term, not the one when the RPC or
+  // asynchronous workflow that eventually called this started.  (Using the earlier term might cause
+  // the xCluster-guarded info we pass to be ignored if the TServer has already seen something from
+  // the newer term.)
+  RETURN_NOT_OK(
+      FillXClusterGuardedInfo(catalog_manager_.GetLeaderEpochInternal().leader_term, *info));
+
+  // Any TServer we know lacks a lease right now must acquire xCluster-guarded information more
+  // recent than now, and hence more recent than info, before it can reacquire a lease, so it can
+  // be skipped.
+  TSDescriptorVector descriptors;
+  for (auto& descriptor : master_.ts_manager()->GetAllDescriptors()) {
+    if (descriptor->MaybeHasXClusterGuardedLease()) {
+      descriptors.push_back(std::move(descriptor));
+    }
+  }
+
+  // Shared with the task callbacks, which may run after we give up waiting.
+  struct Outcome {
+    explicit Outcome(size_t count)
+        : statuses(count, STATUS(IllegalState, "Propagation task never reported")), latch(count) {}
+    std::vector<Status> statuses;
+    CountDownLatch latch;
+  };
+  auto outcome = std::make_shared<Outcome>(descriptors.size());
+  for (size_t i = 0; i < descriptors.size(); ++i) {
+    auto task = std::make_shared<AsyncApplyXClusterGuardedInfoIfNewer>(
+        &master_, catalog_manager_.AsyncTaskPool(), descriptors[i]->permanent_uuid(), info,
+        deadline, [outcome, i](const Status& status) {
+          outcome->statuses[i] = status;
+          outcome->latch.CountDown();
+        });
+    auto s = catalog_manager_.ScheduleTask(task);
+    if (!s.ok()) {
+      // ScheduleTask may or may not have aborted the task depending on where it failed; aborting
+      // is idempotent and runs the callback exactly once overall.
+      task->AbortAndReturnPrevState(s, /*call_task_finisher=*/true);
+    }
+  }
+  // Every task reaches a terminal state by its deadline; the slack only guards against surprises.
+  if (!outcome->latch.WaitUntil(deadline + MonoDelta::FromSeconds(1))) {
+    return STATUS(TimedOut, "Timed out waiting for xCluster-guarded info propagation tasks");
+  }
+
+  for (size_t i = 0; i < descriptors.size(); ++i) {
+    const auto& s = outcome->statuses[i];
+    if (s.ok()) {
+      continue;
+    }
+    // A TServer that lost its lease while we were trying no longer needs the information: any
+    // lease it gets later comes with information copied after this call started.
+    if (!descriptors[i]->MaybeHasXClusterGuardedLease()) {
+      LOG(INFO) << "Ignoring failure to propagate xCluster-guarded info to TServer "
+                << descriptors[i]->permanent_uuid() << " because it no longer holds a lease: " << s;
+      continue;
+    }
+    // Each task already logged its own failure.
+    return s.CloneAndPrepend(Format(
+        "Failed to propagate xCluster-guarded info to TServer $0",
+        descriptors[i]->permanent_uuid()));
+  }
   return Status::OK();
 }
 
@@ -266,6 +376,110 @@ Status XClusterManager::SetXClusterRole(
 
 Status XClusterManager::PrepareDefaultXClusterConfig(int64_t term, bool recreate) {
   return xcluster_config_->PrepareDefault(term, recreate);
+}
+
+Result<std::vector<uint32_t>> XClusterManager::GetYsqlUserDatabaseOids(
+    const std::vector<NamespaceId>& namespace_ids) const {
+  static const std::unordered_set<std::string_view> kSystemDatabaseNames = {
+      "template0", "template1", kSystemPlatformNamespace, "system_postgres", kYbSystemDbName};
+
+  std::vector<uint32_t> db_oids;
+  db_oids.reserve(namespace_ids.size());
+  for (const auto& namespace_id : namespace_ids) {
+    auto namespace_info = VERIFY_RESULT(catalog_manager_.FindNamespaceById(namespace_id));
+    SCHECK_FORMAT(
+        namespace_info->database_type() == YQL_DATABASE_PGSQL, InvalidArgument,
+        "Namespace $0 is not a YSQL database", namespace_info->ToString());
+    SCHECK_FORMAT(
+        !kSystemDatabaseNames.contains(namespace_info->name()), InvalidArgument,
+        "Database $0 is a system database", namespace_info->ToString());
+    const auto state = namespace_info->state();
+    SCHECK_FORMAT(
+        state == SysNamespaceEntryPB::RUNNING, InvalidArgument,
+        "Database $0 is not running; its state is: $1",
+        namespace_info->ToString(), SysNamespaceEntryPB::State_Name(state));
+    db_oids.push_back(VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id)));
+  }
+  return db_oids;
+}
+
+namespace {
+
+// Without enforce_xcluster_guarded_lease, PropagateXClusterGuardedInfo does nothing and some
+// TServers may not have gate code, and, without enable_persistence_gate, nothing enforces the map;
+// either way a success would promise a guarantee nobody delivers.
+Status CheckPersistenceGateEnforced() {
+  SCHECK(
+      IsPersistenceGateEnforced(), NotSupported,
+      "The persistence gate is not enforced: it requires --enable_persistence_gate and "
+      "--enforce_xcluster_guarded_lease");
+  return Status::OK();
+}
+
+} // namespace
+
+Status XClusterManager::StopPersisting(
+    const std::vector<NamespaceId>& namespace_ids, MonoTime deadline, const LeaderEpoch& epoch) {
+  RETURN_NOT_OK(CheckPersistenceGateEnforced());
+  std::lock_guard l(persisting_calls_mutex_);
+  const auto db_oids = VERIFY_RESULT(GetYsqlUserDatabaseOids(namespace_ids));
+  RETURN_NOT_OK(persistence_block_map_->SetBlockedThrough(epoch, db_oids, HybridTime::kMax));
+  LOG(INFO) << "Stopped persisting for databases " << AsString(namespace_ids);
+  RETURN_NOT_OK(PropagateXClusterGuardedInfo(deadline));
+
+  // An op that passed the gate against the old map got its hybrid time from its TServer's clock
+  // before that TServer applied the new map, so before propagation finished, i.e., before now.
+  // That clock is at most max_clock_skew_usec ahead of ours, so the op's time is at most now +
+  // max_clock_skew_usec; we wait until our clock is strictly past that.  WaitUntil returns once
+  // the clock reaches its target, hence the extra microsecond.
+  return ResultToStatus(WaitUntil(
+      master_.clock(), master_.clock()->Now().AddMicroseconds(FLAGS_max_clock_skew_usec + 1),
+      ToCoarse(deadline)));
+}
+
+Status XClusterManager::StartPersisting(
+    const std::vector<NamespaceId>& namespace_ids, MonoTime deadline, const LeaderEpoch& epoch) {
+  RETURN_NOT_OK(CheckPersistenceGateEnforced());
+  std::lock_guard l(persisting_calls_mutex_);
+  const auto db_oids = VERIFY_RESULT(GetYsqlUserDatabaseOids(namespace_ids));
+  // The extra microsecond keeps blocked_through_ht above any pre-call origination time whatever its
+  // logical component; origination times are whole microseconds today, so it is not yet needed.
+  const auto blocked_through_ht =
+      master_.clock()->Now().AddMicroseconds(FLAGS_max_clock_skew_usec + 1);
+  RETURN_NOT_OK(persistence_block_map_->SetBlockedThrough(epoch, db_oids, blocked_through_ht));
+  LOG(INFO) << "Started persisting for databases " << AsString(namespace_ids)
+            << ", blocking origination times through " << blocked_through_ht;
+  RETURN_NOT_OK(PropagateXClusterGuardedInfo(deadline));
+
+  // Clocks are within max_clock_skew_usec of each other, so once master's clock is strictly past
+  // blocked_through_ht + max_clock_skew_usec, every backend's clock is strictly past
+  // blocked_through_ht and work originating after we return is not blocked.  WaitUntil returns
+  // once the clock reaches its target, hence the extra microsecond.  Note that this means this
+  // routine normally takes a minimum of FLAGS_max_clock_skew_usec * 2 microseconds to run.
+  return ResultToStatus(WaitUntil(
+      master_.clock(), blocked_through_ht.AddMicroseconds(FLAGS_max_clock_skew_usec + 1),
+      ToCoarse(deadline)));
+}
+
+Result<SysPersistenceBlockMapEntryPB> XClusterManager::GetPersistenceBlockMap() const {
+  return persistence_block_map_->GetEntry();
+}
+
+Result<std::optional<HybridTime>> XClusterManager::GetPersistenceBlockedThrough(
+    int64_t term, uint32_t database_oid) const {
+  return persistence_block_map_->GetBlockedThrough(term, database_oid);
+}
+
+Status XClusterManager::ErasePersistenceBlock(
+    const LeaderEpoch& epoch, const NamespaceId& namespace_id) {
+  // Serialized with StopPersisting and StartPersisting, which reject databases that are not
+  // running, so neither can add an entry after a dropped database's erase.
+  std::lock_guard l(persisting_calls_mutex_);
+  return persistence_block_map_->Erase(epoch, VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id)));
+}
+
+Status XClusterManager::PrepareDefaultPersistenceBlockMap(int64_t term, bool recreate) {
+  return persistence_block_map_->PrepareDefault(term, recreate);
 }
 
 Result<XClusterStatus> XClusterManager::GetXClusterStatus() const {
@@ -545,6 +759,33 @@ Status XClusterManager::XClusterEnsureSequenceUpdatesAreInWal(
       xcluster::ReplicationGroupId(req->replication_group_id()), namespace_ids);
 }
 
+Status XClusterManager::XClusterStopPersisting(
+    const XClusterStopPersistingRequestPB* req, XClusterStopPersistingResponsePB* resp,
+    rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+  return StopPersisting(
+      {req->namespace_ids().begin(), req->namespace_ids().end()},
+      ComputePersistingRpcDeadline(*rpc), epoch);
+}
+
+Status XClusterManager::XClusterStartPersisting(
+    const XClusterStartPersistingRequestPB* req, XClusterStartPersistingResponsePB* resp,
+    rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+  return StartPersisting(
+      {req->namespace_ids().begin(), req->namespace_ids().end()},
+      ComputePersistingRpcDeadline(*rpc), epoch);
+}
+
+Status XClusterManager::XClusterGetPersistenceBlockMap(
+    const XClusterGetPersistenceBlockMapRequestPB* req,
+    XClusterGetPersistenceBlockMapResponsePB* resp, rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+  *resp->mutable_persistence_block_map() = VERIFY_RESULT(GetPersistenceBlockMap());
+  return Status::OK();
+}
+
 Status XClusterManager::GetXClusterStreams(
     const GetXClusterStreamsRequestPB* req, GetXClusterStreamsResponsePB* resp,
     rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
@@ -699,6 +940,21 @@ Status XClusterManager::DeleteXClusterWalAnchorStreams(
       req->source_table_ids().begin(), req->source_table_ids().end());
   return XClusterSourceManager::DeleteXClusterWalAnchorStreams(
       xcluster::ReplicationGroupId(req->replication_group_id()), source_table_ids);
+}
+
+Status XClusterManager::RecordXClusterStreamBootstrapInfo(
+    const RecordXClusterStreamBootstrapInfoRequestPB* req,
+    RecordXClusterStreamBootstrapInfoResponsePB* resp, rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+
+  XClusterStreamCheckpointedTablets stream_tablets;
+  for (const auto& stream : req->streams()) {
+    auto stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(stream.stream_id()));
+    stream_tablets[stream_id].assign(
+        stream.checkpointed_tablet_ids().begin(), stream.checkpointed_tablet_ids().end());
+  }
+  return XClusterSourceManager::RecordXClusterStreamBootstrapInfo(stream_tablets, epoch);
 }
 
 Status XClusterManager::GetXClusterOutboundReplicationGroups(

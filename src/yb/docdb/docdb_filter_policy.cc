@@ -30,13 +30,11 @@ class DocKeyComponentsExtractor : public rocksdb::FilterPolicy::KeyTransformer {
     return instance;
   }
 
-  // For encoded DocKey extracts specified part, for non-DocKey returns empty key, so they will
-  // always match the filter (this is correct, but might be optimized for performance if/when
-  // needed).
-  // As of 2020-05-12 intents DB could contain keys in non-DocKey format.
+  // For encoded DocKey extracts specified part, for non-DocKey (regular DB meta keys, intents DB
+  // reverse index) returns empty key, so they will always match the filter.
   Slice Transform(Slice key) const override {
-    auto size_result = dockv::DocKey::EncodedSize(key, doc_key_part);
-    return size_result.ok() ? Slice(key.data(), *size_result) : Slice();
+    auto size = dockv::DocKey::TryGetEncodedSize(key, doc_key_part);
+    return size ? Slice(key.data(), *size) : Slice();
   }
 
  private:
@@ -58,9 +56,10 @@ class HashedDocKeyUpToHashComponentsExtractor : public rocksdb::FilterPolicy::Ke
   // for non-DocKey or DocKey without hash code (for range-partitioned tables) returns empty key,
   // so they will always match the filter.
   Slice Transform(Slice key) const override {
-    auto size_result = dockv::DocKey::EncodedSizeAndHashPresent(key, dockv::DocKeyPart::kUpToHash);
-    return (size_result.ok() && size_result->second) ? Slice(key.data(), size_result->first)
-                                                     : Slice();
+    auto size_and_hash_present =
+        dockv::DocKey::TryGetEncodedSizeAndHashPresent(key, dockv::DocKeyPart::kUpToHash);
+    return (size_and_hash_present && size_and_hash_present->second)
+        ? Slice(key.data(), size_and_hash_present->first) : Slice();
   }
 
  private:

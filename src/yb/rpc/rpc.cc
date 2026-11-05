@@ -38,13 +38,12 @@
 
 #include "yb/ash/wait_state.h"
 
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_header.pb.h"
 
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/random_util.h"
 #include "yb/util/source_location.h"
@@ -79,7 +78,6 @@ TAG_FLAG(max_backoff_ms_exponent, advanced);
 namespace yb {
 
 using std::string;
-using strings::SubstituteAndAppend;
 
 namespace rpc {
 
@@ -108,7 +106,11 @@ bool RpcRetrier::HandleResponse(
     if (err &&
         err->has_code() &&
         err->code() == ErrorStatusPB::ERROR_SERVER_TOO_BUSY) {
-      auto status = DelayedRetry(rpc, controller_status, BackoffStrategy::kExponential);
+      // Doubling is for a server that may be down; one that said how long to wait knows better.
+      auto status = err->has_retry_after_ms()
+          ? DelayedRetry(rpc, controller_status,
+                         MonoDelta::FromMilliseconds(err->retry_after_ms()))
+          : DelayedRetry(rpc, controller_status, BackoffStrategy::kExponential);
       if (!status.ok()) {
         *out_status = status;
         return false;
@@ -221,7 +223,7 @@ void RpcRetrier::DoRetry(RpcCommand* rpc, const Status& status) {
         string err_str = Format("$0 passed its deadline $1 (passed $2 of $3)",
                                 *rpc, deadline_, now - start_, deadline_ - start_);
         if (!last_error_.ok()) {
-          SubstituteAndAppend(&err_str, ": $0", last_error_.ToString());
+          err_str += Format(": $0", last_error_.ToString());
         }
         new_status = STATUS(TimedOut, err_str);
       }

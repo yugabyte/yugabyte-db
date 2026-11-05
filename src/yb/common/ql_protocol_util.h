@@ -117,9 +117,9 @@ inline Status CQLDecodeNum(
 
   static_assert(sizeof(data_type) == sizeof(num_type), "inconsistent num type size");
   if (len != sizeof(num_type)) {
-    return STATUS_SUBSTITUTE(NetworkError,
-                             "unexpected number byte length: expected $0, provided $1",
-                             static_cast<int64_t>(sizeof(num_type)), len);
+    return STATUS_FORMAT(NetworkError,
+                         "unexpected number byte length: expected $0, provided $1",
+                         static_cast<int64_t>(sizeof(num_type)), len);
   }
 
   RETURN_NOT_ENOUGH(data, sizeof(num_type));

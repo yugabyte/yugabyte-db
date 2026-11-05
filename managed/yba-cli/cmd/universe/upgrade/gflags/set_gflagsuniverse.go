@@ -104,13 +104,8 @@ var setGflagsUniverseCmd = &cobra.Command{
 			))
 		}
 
-		primaryCluster := universeutil.FindClusterByType(clusters, util.PrimaryClusterType)
-		if universeutil.IsClusterEmpty(primaryCluster) {
-			err := fmt.Errorf(
-				"No primary cluster found in universe " + universeName + " (" + universeUUID + ")\n",
-			)
-			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
-		}
+		primaryCluster, _ := universeutil.MustFindPrimaryCluster(
+			clusters, universeName, universeUUID)
 
 		primaryUserIntent := primaryCluster.GetUserIntent()
 		version := primaryUserIntent.GetYbSoftwareVersion()
@@ -256,6 +251,10 @@ var setGflagsUniverseCmd = &cobra.Command{
 			UpgradeOption:                  upgradeOption,
 			SleepAfterTServerRestartMillis: tserverDelay,
 			SleepAfterMasterRestartMillis:  masterDelay,
+			RollMaxBatchSize: universeutil.RollMaxBatchSizeFromFlags(
+				cmd,
+				upgradeOption,
+			),
 		}
 
 		rUpgrade, response, err := authAPI.UpgradeGFlags(universeUUID).
@@ -304,6 +303,8 @@ func init() {
 		18000, "[Optional] Upgrade delay between Master servers (in miliseconds).")
 	setGflagsUniverseCmd.Flags().Int32("delay-between-tservers",
 		18000, "[Optional] Upgrade delay between Tservers (in miliseconds).")
+
+	universeutil.AddRollMaxBatchSizeFlags(setGflagsUniverseCmd)
 
 	setGflagsUniverseCmd.Flags().Bool("dry-run", false,
 		"[Optional] Only validate the input and do not actually set the GFlags.")

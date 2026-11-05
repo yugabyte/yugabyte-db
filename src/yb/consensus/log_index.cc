@@ -62,6 +62,7 @@
 #include "yb/util/atomic.h"
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/scope_exit.h"
@@ -254,7 +255,7 @@ namespace {
 const char* kIndexChunkFileNamePrefix = "index.";
 
 std::string GetChunkPath(const std::string& base_dir, const int64_t chunk_idx) {
-  return StringPrintf("%s/%s%09" PRId64, base_dir.c_str(), kIndexChunkFileNamePrefix, chunk_idx);
+  return Format("$0/$1$2", base_dir, kIndexChunkFileNamePrefix, ZeroPadded(chunk_idx, 9));
 }
 
 bool IsIndexChunkFileName(std::string file_name) {
@@ -483,6 +484,12 @@ int64_t LogIndex::GetMinIndexedSegmentNumber() const {
 
 void LogIndex::SetMinIndexedSegmentNumber(const int64_t segment_number) {
   min_indexed_segment_number_.store(segment_number, std::memory_order_release);
+}
+
+void LogIndex::SetMinIndexedSegmentNumberIfUnset(const int64_t segment_number) {
+  auto expected = kNoIndexForFullWalSegment;
+  min_indexed_segment_number_.compare_exchange_strong(
+      expected, segment_number, std::memory_order_acq_rel);
 }
 
 Result<bool> LogIndex::LazyLoadOneSegment(ReadableLogSegment* segment) {

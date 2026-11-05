@@ -11,14 +11,17 @@
 package com.yugabyte.yw.common.ha;
 
 import static com.yugabyte.yw.common.Util.getYbaVersion;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.ApiHelper;
+import com.yugabyte.yw.common.ApiHelper.HttpResponse;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ConfigHelper.ConfigType;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.controllers.HAAuthenticator;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import io.prometheus.metrics.core.metrics.Gauge;
@@ -27,6 +30,7 @@ import java.io.File;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pekko.stream.javadsl.FileIO;
@@ -62,12 +66,31 @@ public class PlatformInstanceClient implements AutoCloseable {
             .register(PrometheusRegistry.defaultRegistry);
   }
 
+  private final boolean fipsEnabled;
+
+  /** The remote instance rejected the request because its FIPS mode differs from this one's. */
+  public static class FipsModeMismatchException extends PlatformServiceException {
+    public FipsModeMismatchException(String message) {
+      super(BAD_REQUEST, message);
+    }
+  }
+
   public PlatformInstanceClient(
-      ApiHelper apiHelper, String clusterKey, String remoteAddress, ConfigHelper configHelper) {
+      ApiHelper apiHelper,
+      String clusterKey,
+      String remoteAddress,
+      ConfigHelper configHelper,
+      boolean fipsEnabled) {
     this.apiHelper = apiHelper;
     this.remoteAddress = remoteAddress;
-    this.requestHeader = ImmutableMap.of(HAAuthenticator.HA_CLUSTER_KEY_TOKEN_HEADER, clusterKey);
+    this.requestHeader =
+        ImmutableMap.of(
+            HAAuthenticator.HA_CLUSTER_KEY_TOKEN_HEADER,
+            clusterKey,
+            HAAuthenticator.HA_FIPS_ENABLED_HEADER,
+            Boolean.toString(fipsEnabled));
     this.configHelper = configHelper;
+    this.fipsEnabled = fipsEnabled;
   }
 
   // Map a Call object to a request.
@@ -89,10 +112,26 @@ public class PlatformInstanceClient implements AutoCloseable {
 
     if (response == null || response.get("error") != null) {
       log.error("Error received from remote instance {}: {}", this.remoteAddress, response);
+      checkFipsModeMismatch(response);
       throw new RuntimeException("Error received from remote instance " + this.remoteAddress);
     }
 
     return response;
+  }
+
+  /** Throws when the remote instance refused the request for having another FIPS mode. */
+  private void checkFipsModeMismatch(@Nullable JsonNode response) {
+    if (response != null
+        && response.get("error") != null
+        && response.get("error").asText().startsWith(HAAuthenticator.FIPS_MODE_MISMATCH_ERROR)) {
+      throw new FipsModeMismatchException(
+          String.format(
+              "%s: this YBA is %s and %s is %s",
+              HAAuthenticator.FIPS_MODE_MISMATCH_ERROR,
+              HAAuthenticator.fipsModeName(fipsEnabled),
+              this.remoteAddress,
+              HAAuthenticator.fipsModeName(!fipsEnabled)));
+    }
   }
 
   /**
@@ -162,12 +201,19 @@ public class PlatformInstanceClient implements AutoCloseable {
   }
 
   public boolean testConnection() {
+    HttpResponse response;
     try {
-      makeRequest("GET", remoteAddress + "/api/settings/ha/internal/config", null);
+      // Not getRequest: it replaces an error response with its status, and the remote instance
+      // refuses another FIPS mode with a 400 whose body says so.
+      response =
+          apiHelper.getHttpRequest(
+              remoteAddress + "/api/settings/ha/internal/config", requestHeader, null, null);
     } catch (Exception e) {
+      log.error("Error testing connection to remote instance {}", remoteAddress, e);
       return false;
     }
-    return true;
+    checkFipsModeMismatch(response.getBody());
+    return response.getStatus() >= 200 && response.getStatus() < 300;
   }
 
   // Returns true if the backup is valid and can be restored from, false otherwise.

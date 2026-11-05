@@ -2,12 +2,15 @@
 
 package com.yugabyte.yw.common;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.google.protobuf.ByteString;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PrevYBSoftwareConfig;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.models.Customer;
@@ -20,6 +23,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -35,6 +39,46 @@ public class XClusterUtilTest extends FakeDBApplication {
   public void setUp() {
     Customer customer = ModelFactory.testCustomer();
     Users user = ModelFactory.testUser(customer);
+  }
+
+  private static void setFipsEnabled(Universe universe, boolean fipsEnabled) {
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams details = u.getUniverseDetails();
+          details.fipsEnabled = fipsEnabled;
+          u.setUniverseDetails(details);
+        });
+  }
+
+  @Test
+  @Parameters({"true, true", "false, false"})
+  public void testEnsureFipsModesMatchSameMode(boolean sourceFips, boolean targetFips) {
+    Universe sourceUniverse = ModelFactory.createUniverse("source Universe");
+    Universe targetUniverse = ModelFactory.createUniverse("target Universe");
+    setFipsEnabled(sourceUniverse, sourceFips);
+    setFipsEnabled(targetUniverse, targetFips);
+    XClusterUtil.ensureFipsModesMatch(
+        Universe.getOrBadRequest(sourceUniverse.getUniverseUUID()),
+        Universe.getOrBadRequest(targetUniverse.getUniverseUUID()));
+  }
+
+  @Test
+  @Parameters({"true, false", "false, true"})
+  public void testEnsureFipsModesMatchDifferentModes(boolean sourceFips, boolean targetFips) {
+    Universe sourceUniverse = ModelFactory.createUniverse("source Universe");
+    Universe targetUniverse = ModelFactory.createUniverse("target Universe");
+    setFipsEnabled(sourceUniverse, sourceFips);
+    setFipsEnabled(targetUniverse, targetFips);
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                XClusterUtil.ensureFipsModesMatch(
+                    Universe.getOrBadRequest(sourceUniverse.getUniverseUUID()),
+                    Universe.getOrBadRequest(targetUniverse.getUniverseUUID())));
+    assertEquals(BAD_REQUEST, e.getHttpStatus());
+    assertTrue(e.getMessage().contains("one is FIPS-enabled and the other is not"));
   }
 
   @Test

@@ -11,10 +11,12 @@ import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static org.hamcrest.CoreMatchers.allOf;
+import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
@@ -23,10 +25,12 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
+import static play.mvc.Http.Status.FORBIDDEN;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -61,9 +65,12 @@ import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.RuntimeConfigCache;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.AZUpgradeStep;
@@ -73,8 +80,10 @@ import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.RestartTaskParams;
+import com.yugabyte.yw.forms.RollMaxBatchSize;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.SystemdUpgradeParams;
@@ -353,6 +362,215 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     assertThat(task.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
     assertThat(
         task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.RestartUniverse)));
+    assertAuditEntry(1, customer.getUuid());
+  }
+
+  @Test
+  public void testRestartUniverseRollingWithBatchSize() {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.RestartUniverse);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    UUID universeUUID = createUniverse(customer.getId()).getUniverseUUID();
+
+    String url =
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/restart";
+    ObjectNode bodyJson = Json.newObject().put("upgradeOption", "Rolling");
+    bodyJson.set(
+        "rollMaxBatchSize",
+        Json.newObject().put("primaryBatchSize", 2).put("readReplicaBatchSize", 2));
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+
+    assertOk(result);
+    ArgumentCaptor<UpgradeTaskParams> argCaptor = ArgumentCaptor.forClass(UpgradeTaskParams.class);
+    verify(mockCommissioner, times(1)).submit(eq(TaskType.RestartUniverse), argCaptor.capture());
+
+    UpgradeTaskParams taskParams = argCaptor.getValue();
+    assertEquals(UpgradeOption.ROLLING_UPGRADE, taskParams.upgradeOption);
+    assertNotNull(taskParams.rollMaxBatchSize);
+    assertEquals(Integer.valueOf(2), taskParams.rollMaxBatchSize.getPrimaryBatchSize());
+    assertEquals(Integer.valueOf(2), taskParams.rollMaxBatchSize.getReadReplicaBatchSize());
+    assertAuditEntry(1, customer.getUuid());
+  }
+
+  @Test
+  public void testRestartUniverseRejectsNonPositivePrimaryBatchSize() {
+    UUID universeUUID = createUniverse(customer.getId()).getUniverseUUID();
+    String url =
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/restart";
+
+    for (int batchSize : new int[] {0, -1}) {
+      ObjectNode bodyJson = Json.newObject().put("upgradeOption", "Rolling");
+      bodyJson.set(
+          "rollMaxBatchSize",
+          Json.newObject().put("primaryBatchSize", batchSize).put("readReplicaBatchSize", 1));
+      Result result =
+          assertPlatformException(
+              () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+      assertBadRequest(
+          result, "rollMaxBatchSize.primaryBatchSize must be at least 1, got " + batchSize);
+    }
+    verify(mockCommissioner, never()).submit(any(), any());
+    assertAuditEntry(0, customer.getUuid());
+  }
+
+  @Test
+  public void testRestartUniverseRejectsNonPositiveReadReplicaBatchSize() {
+    UUID universeUUID = createUniverse(customer.getId()).getUniverseUUID();
+    String url =
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/restart";
+
+    for (int batchSize : new int[] {0, -1}) {
+      ObjectNode bodyJson = Json.newObject().put("upgradeOption", "Rolling");
+      bodyJson.set(
+          "rollMaxBatchSize",
+          Json.newObject().put("primaryBatchSize", 1).put("readReplicaBatchSize", batchSize));
+      Result result =
+          assertPlatformException(
+              () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+      assertBadRequest(
+          result, "rollMaxBatchSize.readReplicaBatchSize must be at least 1, got " + batchSize);
+    }
+    verify(mockCommissioner, never()).submit(any(), any());
+    assertAuditEntry(0, customer.getUuid());
+  }
+
+  @Test
+  public void testNonPositiveBatchSizeRejectedOnlyOnFirstTry() {
+    Universe universe = createUniverse(customer.getId());
+    RestartTaskParams params = new RestartTaskParams();
+    params.upgradeOption = UpgradeOption.ROLLING_UPGRADE;
+    params.rollMaxBatchSize = RollMaxBatchSize.of(0, 0);
+
+    assertThrows(
+        PlatformServiceException.class, () -> params.verifyParams(universe, true /* isFirstTry */));
+    // A retry cannot correct the stored value, so validation must let it through and rely on the
+    // partition iterator's clamp to roll sequentially instead.
+    params.verifyParams(universe, false /* isFirstTry */);
+  }
+
+  @Test
+  public void testRestartK8sUniverseRollingWithBatchSize() {
+    UUID fakeTaskUUID =
+        FakeDBApplication.buildTaskInfo(null, TaskType.RestartUniverseKubernetesUpgrade);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    k8sUniverse.updateConfig(Map.of(Universe.HELM2_LEGACY, "true"));
+    k8sUniverse.save();
+
+    Result result =
+        runUpgrade(
+            k8sUniverse,
+            p -> p.rollMaxBatchSize = RollMaxBatchSize.of(2, 2),
+            RestartTaskParams.class,
+            "restart");
+    assertOk(result);
+
+    ArgumentCaptor<RestartTaskParams> argCaptor = ArgumentCaptor.forClass(RestartTaskParams.class);
+    verify(mockCommissioner, times(1))
+        .submit(eq(TaskType.RestartUniverseKubernetesUpgrade), argCaptor.capture());
+    RestartTaskParams taskParams = argCaptor.getValue();
+    assertEquals(UpgradeOption.ROLLING_UPGRADE, taskParams.upgradeOption);
+    assertNotNull(taskParams.rollMaxBatchSize);
+    assertEquals(Integer.valueOf(2), taskParams.rollMaxBatchSize.getPrimaryBatchSize());
+    assertEquals(Integer.valueOf(2), taskParams.rollMaxBatchSize.getReadReplicaBatchSize());
+    assertAuditEntry(1, customer.getUuid());
+  }
+
+  @Test
+  public void testKubernetesOverridesUpgradeWithLineBreakInGFlag() {
+    Universe universe = prepareK8sUniverseForOverridesUpgrade("Overrides Line Break Universe");
+    Result result =
+        assertPlatformException(
+            () ->
+                runUpgrade(
+                    universe,
+                    p -> p.universeOverrides = "gflags:\n  tserver:\n    tmp_dir: \"/tmp\\n--a=b\"",
+                    KubernetesOverridesUpgradeParams.class,
+                    "kubernetes_overrides"));
+    assertBadRequest(result, "GFlag tmp_dir cannot contain a line break");
+    verify(mockCommissioner, never()).submit(any(), any());
+  }
+
+  @Test
+  public void testKubernetesOverridesUpgradeCannotReadFipsGFlagFromEnvOnFipsUniverse() {
+    Universe universe = prepareK8sUniverseForOverridesUpgrade("Overrides FIPS Env Universe");
+    Universe fipsUniverse =
+        Universe.saveDetails(
+            universe.getUniverseUUID(), u -> u.getUniverseDetails().fipsEnabled = true);
+    Result result =
+        assertPlatformException(
+            () ->
+                runUpgrade(
+                    fipsUniverse,
+                    p ->
+                        p.universeOverrides =
+                            "gflags:\n  tserver:\n    tryfromenv: openssl_require_fips\n"
+                                + "tserver:\n  extraEnv:\n"
+                                + "  - name: FLAGS_openssl_require_fips\n    value: \"false\"",
+                    KubernetesOverridesUpgradeParams.class,
+                    "kubernetes_overrides"));
+    assertBadRequest(
+        result,
+        "A FIPS enabled universe cannot read openssl_require_fips from the environment, but"
+            + " tryfromenv in the Kubernetes universe overrides (gflags.tserver) lists it.");
+    verify(mockCommissioner, never()).submit(any(), any());
+  }
+
+  @Test
+  public void testKubernetesOverridesUpgradeCannotDisableFipsOnFipsUniverse() {
+    Universe universe = prepareK8sUniverseForOverridesUpgrade("Overrides FIPS Universe");
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              details.fipsEnabled = true;
+              u.setUniverseDetails(details);
+            });
+
+    Universe fipsUniverse = universe;
+    Result result =
+        assertPlatformException(
+            () ->
+                runUpgrade(
+                    fipsUniverse,
+                    p ->
+                        p.universeOverrides =
+                            "gflags:\n  tserver:\n    openssl_require_fips: \"false\"",
+                    KubernetesOverridesUpgradeParams.class,
+                    "kubernetes_overrides"));
+    assertBadRequest(
+        result,
+        "A FIPS enabled universe needs openssl_require_fips set to true or left unset, but the"
+            + " Kubernetes universe overrides (gflags.tserver) set it to false.");
+    verify(mockCommissioner, never()).submit(any(), any());
+  }
+
+  @Test
+  public void testKubernetesOverridesUpgradeWithBatchSize() {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.KubernetesOverridesUpgrade);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    Universe universe = prepareK8sUniverseForOverridesUpgrade("Overrides Batch Universe");
+
+    Result result =
+        runUpgrade(
+            universe,
+            p -> {
+              p.universeOverrides = "tserver:\n  podLabels:\n    env: test";
+              p.rollMaxBatchSize = RollMaxBatchSize.of(2, 2);
+            },
+            KubernetesOverridesUpgradeParams.class,
+            "kubernetes_overrides");
+    assertOk(result);
+
+    ArgumentCaptor<KubernetesOverridesUpgradeParams> argCaptor =
+        ArgumentCaptor.forClass(KubernetesOverridesUpgradeParams.class);
+    verify(mockCommissioner, times(1))
+        .submit(eq(TaskType.KubernetesOverridesUpgrade), argCaptor.capture());
+    KubernetesOverridesUpgradeParams taskParams = argCaptor.getValue();
+    assertEquals(UpgradeOption.ROLLING_UPGRADE, taskParams.upgradeOption);
+    assertEquals("tserver:\n  podLabels:\n    env: test", taskParams.universeOverrides);
+    assertNotNull(taskParams.rollMaxBatchSize);
+    assertEquals(Integer.valueOf(2), taskParams.rollMaxBatchSize.getPrimaryBatchSize());
+    assertEquals(Integer.valueOf(2), taskParams.rollMaxBatchSize.getReadReplicaBatchSize());
     assertAuditEntry(1, customer.getUuid());
   }
 
@@ -1260,6 +1478,50 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
   }
 
   @Test
+  public void testGFlagsUpgradeWithLineBreakInValue() {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.GFlagsUpgrade);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    UUID universeUUID = createUniverse(customer.getId()).getUniverseUUID();
+
+    String url =
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/gflags";
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.set("masterGFlags", Json.parse("{ \"master-flag\": \"123\"}"));
+    bodyJson.set(
+        "tserverGFlags", Json.newObject().put("tmp_dir", "/tmp\n--openssl_require_fips=false"));
+    Result result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+    assertBadRequest(result, "GFlag tmp_dir cannot contain a line break");
+    verify(mockCommissioner, never()).submit(any(), any());
+  }
+
+  @Test
+  public void testGFlagsUpgradeCannotDisableFipsOnFipsUniverse() {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.GFlagsUpgrade);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    UUID universeUUID = createUniverse(customer.getId()).getUniverseUUID();
+    Universe.saveDetails(universeUUID, u -> u.getUniverseDetails().fipsEnabled = true);
+
+    String url =
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/gflags";
+    // The deprecated masterGFlags/tserverGFlags maps, as opposed to specificGFlags.
+    for (ObjectNode tserverGFlags :
+        List.of(
+            Json.newObject().put(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "false"),
+            Json.newObject().put("tryfromenv", GFlagsUtil.OPENSSL_REQUIRE_FIPS))) {
+      ObjectNode bodyJson = Json.newObject();
+      bodyJson.set("masterGFlags", Json.parse("{ \"master-flag\": \"123\"}"));
+      bodyJson.set("tserverGFlags", tserverGFlags);
+      Result result =
+          assertPlatformException(
+              () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+      assertBadRequest(result, "FIPS enabled universe");
+    }
+    verify(mockCommissioner, never()).submit(any(), any());
+  }
+
+  @Test
   public void testGFlagsUpgradeWithTrimParams() {
     UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.GFlagsUpgrade);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
@@ -1373,6 +1635,43 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.getUuid())));
     assertThat(task.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
     assertThat(task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.GFlagsUpgrade)));
+    assertAuditEntry(1, customer.getUuid());
+  }
+
+  @Test
+  public void testGFlagsUpgradeKubernetesWithBatchSize() {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.GFlagsKubernetesUpgrade);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    Universe universe =
+        createUniverse("GFlags Batch Universe", customer.getId(), CloudType.kubernetes);
+    Map<String, String> universeConfig = new HashMap<>();
+    universeConfig.put(Universe.HELM2_LEGACY, "helm");
+    universe.setConfig(universeConfig);
+    universe.save();
+
+    String url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + universe.getUniverseUUID()
+            + "/upgrade/gflags";
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.set("masterGFlags", Json.parse("{ \"master-flag\": \"123\"}"));
+    bodyJson.set("tserverGFlags", Json.parse("{ \"tserver-flag\": \"456\"}"));
+    bodyJson.set(
+        "rollMaxBatchSize",
+        Json.newObject().put("primaryBatchSize", 2).put("readReplicaBatchSize", 2));
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+
+    assertOk(result);
+    ArgumentCaptor<GFlagsUpgradeParams> argCaptor =
+        ArgumentCaptor.forClass(GFlagsUpgradeParams.class);
+    verify(mockCommissioner, times(1))
+        .submit(eq(TaskType.GFlagsKubernetesUpgrade), argCaptor.capture());
+    GFlagsUpgradeParams taskParams = argCaptor.getValue();
+    assertNotNull(taskParams.rollMaxBatchSize);
+    assertEquals(Integer.valueOf(2), taskParams.rollMaxBatchSize.getPrimaryBatchSize());
+    assertEquals(Integer.valueOf(2), taskParams.rollMaxBatchSize.getReadReplicaBatchSize());
     assertAuditEntry(1, customer.getUuid());
   }
 
@@ -2262,6 +2561,38 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
         .put("rootCA", rootCA != null ? rootCA.toString() : "");
   }
 
+  // KubernetesOverridesUpgradeParams.verifyParams walks placement + kubeconfig via
+  // KubernetesUtil.validateUpgradeServiceEndpoints. A bare ModelFactory k8s universe has
+  // null/empty placement and no KUBECONFIG, which NPEs or throws "No config found".
+  private Universe prepareK8sUniverseForOverridesUpgrade(String universeName) {
+    Universe universe = createUniverse(universeName, customer.getId(), CloudType.kubernetes);
+    Provider provider =
+        Provider.getOrBadRequest(
+            UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
+    provider.setConfigMap(ImmutableMap.of("KUBECONFIG", "test"));
+    provider.save();
+    Region region = Region.create(provider, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone az =
+        AvailabilityZone.createOrThrow(region, "az-1", "PlacementAZ 1", "subnet-1");
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> {
+              PlacementInfo placementInfo = new PlacementInfo();
+              PlacementInfoUtil.addPlacementZone(az.getUuid(), placementInfo, 1, 1, false);
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              UserIntent userIntent = details.getPrimaryCluster().userIntent;
+              userIntent.regionList = ImmutableList.of(region.getUuid());
+              details.upsertPrimaryCluster(userIntent, null, placementInfo);
+              u.setUniverseDetails(details);
+            });
+    Map<String, String> universeConfig = new HashMap<>();
+    universeConfig.put(Universe.HELM2_LEGACY, "helm");
+    universe.setConfig(universeConfig);
+    universe.save();
+    return universe;
+  }
+
   private Universe prepareUniverseForVMImageUpgrade(Provider provider, String instanceTypeString) {
     when(mockConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
 
@@ -2336,5 +2667,51 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
           universe.setUniverseDetails(universeDetails);
         };
     Universe.saveDetails(universeUUID, updater);
+  }
+
+  /**
+   * This class mocks the runtime config, where the block for operator-owned resources reads false,
+   * and the handler caches it. Turn the block on, as it is by default.
+   */
+  private RuntimeConfigCache enableOperatorBlock() {
+    when(mockConfig.getBoolean(GlobalConfKeys.blockOperatorApiResources.getKey())).thenReturn(true);
+    RuntimeConfigCache cache = app.injector().instanceOf(RuntimeConfigCache.class);
+    cache.invalidateCache();
+    return cache;
+  }
+
+  @Test
+  public void testRollbackUpgradeBlockedForOperatorOwnedUniverse() {
+    RuntimeConfigCache cache = enableOperatorBlock();
+    try {
+      Universe.saveDetails(
+          defaultUniverse.getUniverseUUID(),
+          u -> u.getUniverseDetails().isKubernetesOperatorControlled = true);
+      defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+
+      Result result = runUpgrade(defaultUniverse, p -> {}, RollbackUpgradeParams.class, "rollback");
+
+      assertEquals(FORBIDDEN, result.status());
+      assertThat(contentAsString(result), containsString("controlled by kubernetes operator"));
+      verifyNoActions();
+    } finally {
+      cache.invalidateCache();
+    }
+  }
+
+  @Test
+  public void testRollbackUpgradeNotBlockedForUniverseNotOwnedByOperator() {
+    RuntimeConfigCache cache = enableOperatorBlock();
+    try {
+      PlatformServiceException exception =
+          assertThrows(
+              PlatformServiceException.class,
+              () -> runUpgrade(defaultUniverse, p -> {}, RollbackUpgradeParams.class, "rollback"));
+
+      // Past the operator check: the handler rejects it, since no upgrade is there to roll back.
+      assertNotEquals(FORBIDDEN, exception.getHttpStatus());
+    } finally {
+      cache.invalidateCache();
+    }
   }
 }

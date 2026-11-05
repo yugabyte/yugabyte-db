@@ -58,12 +58,29 @@ void DeclareMethod(YBPrinter printer, const std::string& type_prefix) {
   );
 }
 
-void DefineMethod(YBPrinter printer, const std::string& type_prefix) {
+// Drains the request's trace-tagged fields onto the pending-attr buffer, which the outbound call's
+// span consumes when it is created. No-op unless there is an active context to consume them.
+const std::string kTraceAttrs =
+    "  if (::yb::dist_trace::HasActiveContext()) {\n"
+    "    for (auto& p : req.TracingAttributes()) {\n"
+    "      ::yb::dist_trace::AddPendingRpcStringAttr(std::move(p.first), std::move(p.second));\n"
+    "    }\n"
+    "  }\n";
+
+const std::string kPbTraceAttrs =
+    "  if (::yb::dist_trace::HasActiveContext()) {\n"
+    "    for (auto& p : TracingAttributes(req)) {\n"
+    "      ::yb::dist_trace::AddPendingRpcStringAttr(std::move(p.first), std::move(p.second));\n"
+    "    }\n"
+    "  }\n";
+
+void DefineMethod(YBPrinter printer, const std::string& type_prefix, const std::string& trace) {
   printer(
       "::yb::Status $service_name$Proxy::$rpc_name$(\n"
       "    const $" + type_prefix + "request$ &req, $" + type_prefix +
           "response$ *resp, ::yb::rpc::RpcController *controller) const {\n"
-      "  static ::yb::rpc::RemoteMethod method(\"$full_service_name$\", \"$rpc_name$\");\n"
+      "  static ::yb::rpc::RemoteMethod method(\"$full_service_name$\", \"$rpc_name$\");\n" +
+      trace +
       "  return proxy().SyncRequest(\n"
       "      &method, metrics<$service_method_count$>(static_cast<size_t>("
           "$service_method_enum$::$metric_enum_key$)), req, resp, controller, "
@@ -74,7 +91,8 @@ void DefineMethod(YBPrinter printer, const std::string& type_prefix) {
       "    const $" + type_prefix + "request$ &req, $" + type_prefix +
           "response$ *resp, ::yb::rpc::RpcController *controller,\n"
       "    ::yb::rpc::ResponseCallback callback) const {\n"
-      "  static ::yb::rpc::RemoteMethod method(\"$full_service_name$\", \"$rpc_name$\");\n"
+      "  static ::yb::rpc::RemoteMethod method(\"$full_service_name$\", \"$rpc_name$\");\n" +
+      trace +
       "  proxy().AsyncRequest(\n"
       "      &method, metrics<$service_method_count$>(static_cast<size_t>("
           "$service_method_enum$::$metric_enum_key$)), req, resp, controller, "
@@ -84,7 +102,23 @@ void DefineMethod(YBPrinter printer, const std::string& type_prefix) {
   );
 }
 
+// True when some request carries trace-tagged fields, i.e. a pb_ stub will call the
+// TracingAttributes(req) free function from this file's .trace.h.
+bool ProxyNeedsTrace(const google::protobuf::FileDescriptor* file) {
+  for (int s = 0; s < file->service_count(); ++s) {
+    const auto* service = file->service(s);
+    for (int m = 0; m < service->method_count(); ++m) {
+      if (MessageHasTracingAttributes(service->method(m)->input_type())) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 } // namespace
+
+ProxyGenerator::ProxyGenerator(bool need_messages) : need_messages_(need_messages) {}
 
 void ProxyGenerator::Header(YBPrinter printer, const google::protobuf::FileDescriptor *file) {
   printer(
@@ -95,7 +129,7 @@ void ProxyGenerator::Header(YBPrinter printer, const google::protobuf::FileDescr
       "#include \"$path_no_extension$.pb.h\"\n"
   );
 
-  if (HasLightweightMethod(file, rpc::RpcSides::PROXY)) {
+  if (need_messages_ && HasLightweightMethod(file, rpc::RpcSides::PROXY)) {
     printer("#include \"$path_no_extension$.messages.h\"\n");
   }
 
@@ -153,9 +187,16 @@ void ProxyGenerator::Source(YBPrinter printer, const google::protobuf::FileDescr
       "\n"
       "#include \"$path_no_extension$.proxy.h\"\n"
       "\n"
-      "#include \"$path_no_extension$.service.h\"\n\n"
+      "#include \"$path_no_extension$.service.h\"\n"
+  );
+  if (ProxyNeedsTrace(file)) {
+    printer("#include \"$path_no_extension$.trace.h\"\n");
+  }
+  printer(
+      "\n"
       "#include \"yb/rpc/proxy.h\"\n"
       "#include \"yb/rpc/outbound_call.h\"\n"
+      "#include \"yb/util/dist_trace.h\"\n"
       "#include \"yb/util/metrics.h\"\n"
       "#include \"yb/util/net/sockaddr.h\"\n"
       "\n"
@@ -211,9 +252,10 @@ void ProxyGenerator::Source(YBPrinter printer, const google::protobuf::FileDescr
       const auto* method = service->method(method_idx);
       ScopedSubstituter method_subs(printer, method, rpc::RpcSides::PROXY);
 
-      DefineMethod(printer, "pb_");
+      const bool trace = MessageHasTracingAttributes(method->input_type());
+      DefineMethod(printer, "pb_", trace ? kPbTraceAttrs : "");
       if (IsLightweightMethod(method, rpc::RpcSides::PROXY)) {
-        DefineMethod(printer, "lw_");
+        DefineMethod(printer, "lw_", trace ? kTraceAttrs : "");
       }
     }
   }

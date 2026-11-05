@@ -45,6 +45,7 @@ import io.ebean.SqlQuery;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.Transactional;
 import io.ebean.annotation.TxIsolation;
+import io.ebean.annotation.WhenModified;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -101,11 +102,17 @@ public class Universe extends Model {
   public static final String NEW_INSTALL_GFLAGS = "new_install_gflags";
   // Flag for whether we have https on for master/tserver UI
   public static final String HTTPS_ENABLED_UI = "httpsEnabledUI";
+  // Set when the universe's node_exporters are configured to serve HTTPS. Prometheus, the OTel
+  // collector and the exporter configuration all read this one value, so they cannot disagree.
+  public static final String NODE_EXPORTER_HTTPS = "nodeExporterHttps";
   // Whether all the Kubernetes resources are labeled with universe
   // name, zone name, etc.
   public static final String LABEL_K8S_RESOURCES = "labelK8sResources";
   public static final String K8S_SET_MASTER_EXISTING_UNIVERSE_GFLAG =
       "k8sSetMasterJoinExistingUniverseGflag";
+  // Set on K8s universes created since helm overrides started carrying new install gflags. Older
+  // K8s universes have them saved but have always run without them.
+  public static final String K8S_APPLY_NEW_INSTALL_GFLAGS = "k8sApplyNewInstallGflags";
   public static final String VOLUME_MIGRATED = "volumeMigrated";
 
   // This is a key lock for Universe by UUID.
@@ -161,6 +168,13 @@ public class Universe extends Model {
   @Column(nullable = false)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   private Date creationDate;
+
+  // Advanced on every Ebean save/update, including save(false). Used as the revision
+  // source for HTTP conditional GET ETags, not the optimistic-lock version.
+  @WhenModified
+  @Column
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  private Date updateTime;
 
   // The universe name.
   private String name;
@@ -421,6 +435,19 @@ public class Universe extends Model {
 
     // Return the universe object.
     return Optional.of(universe);
+  }
+
+  /**
+   * Lightweight projection for conditional GET: loads only identity + {@code updateTime}, without
+   * {@code universe_details_json} or Jackson deserialization.
+   */
+  public static Optional<Universe> findRevision(Long customerId, UUID universeUUID) {
+    return find.query()
+        .select("universeUUID, customerId, updateTime")
+        .where()
+        .eq("universeUUID", universeUUID)
+        .eq("customerId", customerId)
+        .findOneOrEmpty();
   }
 
   public static Universe getUniverseByName(String universeName) {
@@ -1460,6 +1487,43 @@ public class Universe extends Model {
     return isNodeUIHttpsEnabled
         && enableNodeToNodeEncrypt
         && (Util.compareYbVersions(ybSoftwareVersion, "2.17.1.0-b13", true) > 0);
+  }
+
+  // Exporter TLS is on for every node or none, and needs the user-level unit, the only layout whose
+  // exporter can read the node-to-node certificate, on every node still running. Unrecorded nodes
+  // count as not USER. Universes without a node_exporter that node-agent manages never get here.
+  public static boolean shouldEnableNodeExporterHttps(
+      Universe universe, boolean isNodeExporterTlsEnabled) {
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    if (!isNodeExporterTlsEnabled
+        || !details.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt) {
+      return false;
+    }
+    List<NodeDetails> nodes =
+        details.nodeDetailsSet.stream()
+            .filter(Universe::isNodeExporterManaged)
+            .collect(Collectors.toList());
+    return !nodes.isEmpty()
+        && nodes.stream()
+            .allMatch(n -> n.nodeExporterSystemdLevel == NodeDetails.NodeExporterSystemdLevel.USER);
+  }
+
+  // A node counts until its servers are gone: one being removed still runs its exporter, so a
+  // full move turns TLS on only after the old nodes have left.
+  public static boolean isNodeExporterManaged(NodeDetails node) {
+    switch (node.state) {
+      case Removed:
+      case Decommissioned:
+      case Terminated:
+        return false;
+      default:
+        return true;
+    }
+  }
+
+  @JsonIgnore
+  public boolean isNodeExporterHttps() {
+    return "true".equals(getConfig().get(NODE_EXPORTER_HTTPS));
   }
 
   public Optional<TaskInfo> maybeGetLastTaskInfo() {

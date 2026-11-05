@@ -2,7 +2,10 @@ package ybactlstate
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -30,6 +33,8 @@ const asRootState = 13
 const nodeExporterConfig = 14
 const perfAdvisorConfig = 15
 const fipsConfig = 16
+const fipsState = 17
+const pgInitialMajorVersion = 18
 
 // Please do not use this in ybactlstate package, only use getSchemaVersion()
 var schemaVersionCache = -1
@@ -429,6 +434,44 @@ func migrateNodeExporterConfig(state *State) error {
 	return nil
 }
 
+// migrateFipsState records the FIPS mode an existing install is running in. It is read from the
+// installed platform unit, which only carries the approved-only flag in FIPS mode, rather than from
+// yba-ctl.yml, which may already hold the change the state is meant to refuse.
+func migrateFipsState(state *State) error {
+	unit, err := os.ReadFile(filepath.Join(common.SystemdDir, "yb-platform.service"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			state.Config.FipsEnabled = viper.GetBool("fips.enabled")
+			return nil
+		}
+		return fmt.Errorf("reading the platform service to determine FIPS mode: %w", err)
+	}
+	state.Config.FipsEnabled = strings.Contains(string(unit),
+		"-Dorg.bouncycastle.fips.approved_only=true")
+	return nil
+}
+
+// migratePgInitialMajorVersion records the major version of the running postgres cluster. Installs
+// that predate this field may have been pg_upgraded since their first cluster, but every release
+// before it bundled a postgres older than 18, so the running version is on the same side of 18.
+func migratePgInitialMajorVersion(state *State) error {
+	dataDir, err := common.InstalledPostgresDataDir()
+	if errors.Is(err, os.ErrNotExist) {
+		// No cluster yet (dataless install) or none managed by yba-ctl: one created later starts at
+		// the bundled version.
+		state.Postgres.InitialMajorVersion = common.PostgresMajorVersion(common.PostgresVersion)
+		return nil
+	} else if err != nil {
+		return err
+	}
+	major, err := common.PostgresClusterMajorVersion(dataDir)
+	if err != nil {
+		return err
+	}
+	state.Postgres.InitialMajorVersion = major
+	return nil
+}
+
 var migrations = map[int]migration{
 	defaultMigratorValue: {run: defaultMigrate},
 	promConfigMV:         {run: migratePrometheus},
@@ -446,6 +489,9 @@ var migrations = map[int]migration{
 	nodeExporterConfig:   {run: migrateNodeExporterConfig},
 	perfAdvisorConfig:    {run: migratePerfAdvisorConfig},
 	fipsConfig:           {run: migrateFipsConfig},
+	fipsState:            {run: migrateFipsState, stateField: []string{"config", "fips_enabled"}},
+	pgInitialMajorVersion: {run: migratePgInitialMajorVersion,
+		stateField: []string{"postgres", "initial_major_version"}},
 }
 
 func getSchemaVersion() int {

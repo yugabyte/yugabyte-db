@@ -172,6 +172,10 @@ export const getErrorTaskTitle = (task: Task) => {
   return `${task.typeName} ${task.target} failed: ${task.title.split(':')?.[1]}`;
 };
 
+export const getAbortedTaskTitle = (task: Task) => {
+  return `${task.typeName} ${task.target} aborted: ${task.title.split(':')?.[1]}`;
+};
+
 export const getLatestUniverseTask = (
   customerTaskList: Task[] | undefined | null,
   universeUuid: string
@@ -305,6 +309,24 @@ export const getIsEditUniverseRollbackTask = (task: Task): boolean =>
 /** Non-precheck software upgrade, rollback, or finalize — matches DB upgrade cluster banners (excludes precheck-only). */
 export const getIsSoftwareUpgradeLockingTask = (task: Task): boolean =>
   getIsDbUpgradeTask(task) || getIsDbUpgradeRollbackTask(task) || getIsDbUpgradeFinalizeTask(task);
+
+/** How long the post-upgrade success banner stays visible after task completion. */
+export const SOFTWARE_UPGRADE_COMPLETED_BANNER_MAX_AGE_DAYS = 7;
+
+export const isTaskCompletedWithinDays = (
+  task: Pick<Task, 'completionTime'>,
+  days: number
+): boolean => {
+  const completedAtString = task.completionTime?.trim();
+  if (!completedAtString) {
+    return false;
+  }
+  const completedAt = Date.parse(completedAtString);
+  if (Number.isNaN(completedAt)) {
+    return false;
+  }
+  return Date.now() - completedAt <= days * 24 * 60 * 60 * 1000;
+};
 
 /** Latest upgrade / rollback / finalize task for the universe by `createTime` (precheck tasks excluded). */
 export const getLatestSoftwareUpgradeLockingTaskForUniverse = (

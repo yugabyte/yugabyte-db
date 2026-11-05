@@ -35,7 +35,6 @@
 #include <gtest/gtest.h>
 
 #include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc-test-base.h"
@@ -43,6 +42,7 @@
 #include "yb/rpc/yb_rpc.h"
 
 #include "yb/util/countdown_latch.h"
+#include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/status_log.h"
@@ -118,7 +118,7 @@ TEST_F(MultiThreadedRpcTest, TestShutdownDuringService) {
   scoped_refptr<yb::Thread> threads[kNumThreads];
   Status statuses[kNumThreads];
   for (int i = 0; i < kNumThreads; i++) {
-    ASSERT_OK(yb::Thread::Create("test", strings::Substitute("t$0", i),
+    ASSERT_OK(yb::Thread::Create("test", Format("t$0", i),
       &MultiThreadedRpcTest::HammerServer, this, server_addr,
       CalculatorServiceMethods::AddMethod(), &statuses[i], &threads[i]));
   }
@@ -211,7 +211,7 @@ TEST_F(MultiThreadedRpcTest, TestBlowOutServiceQueue) {
   Status status[3];
   CountDownLatch latch(1);
   for (int i = 0; i < 3; i++) {
-    ASSERT_OK(yb::Thread::Create("test", strings::Substitute("t$0", i),
+    ASSERT_OK(yb::Thread::Create("test", Format("t$0", i),
       &MultiThreadedRpcTest::SingleCall, this, HostPort::FromBoundEndpoint(server_addr),
       CalculatorServiceMethods::AddMethod(), &status[i], &latch, &threads[i]));
   }
@@ -274,7 +274,7 @@ TEST_F(MultiThreadedRpcTest, TestShutdownWithIncomingConnections) {
   std::vector<scoped_refptr<yb::Thread>> threads;
   for (int i = 0; i < 8; i++) {
     scoped_refptr<yb::Thread> new_thread;
-    CHECK_OK(yb::Thread::Create("test", strings::Substitute("t$0", i),
+    CHECK_OK(yb::Thread::Create("test", Format("t$0", i),
         &HammerServerWithTCPConns, server_addr, &new_thread));
     threads.push_back(new_thread);
   }

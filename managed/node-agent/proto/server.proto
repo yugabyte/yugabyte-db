@@ -25,6 +25,11 @@ message ServerInfo {
     bool offloadable = 3;
     string compressor = 4;
     int64 certExpirySecs = 5;
+    // Whether /etc/systemd/system/node_exporter.service exists. YBA alerts on nodes that still
+    // have it.
+    bool rootNodeExporterUnit = 6;
+    // Whether node agent runs in Go FIPS 140-3 mode.
+    bool fipsEnabled = 7;
 }
 
 message PingRequest {
@@ -69,6 +74,8 @@ message SubmitTaskRequest {
         YnpPreflightCheckInput ynpPreflightCheckInput = 15;
         RotateSshKeyInput rotateSshKeyInput = 16;
         ConfigureCloudFederationInput configureCloudFederationInput = 17;
+        HealthCheckInput healthCheckInput = 18;
+        ConfigureNodeExporterInput configureNodeExporterInput = 19;
     }
 }
 
@@ -99,6 +106,8 @@ message DescribeTaskResponse {
         YnpPreflightCheckOutput ynpPreflightCheckOutput = 15;
         RotateSshKeyOutput rotateSshKeyOutput = 16;
         ConfigureCloudFederationOutput configureCloudFederationOutput = 17;
+        HealthCheckOutput healthCheckOutput = 18;
+        ConfigureNodeExporterOutput configureNodeExporterOutput = 19;
     }
 }
 

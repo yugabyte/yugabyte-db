@@ -271,6 +271,39 @@ WHERE a.k1 BETWEEN 5000-(160/2-1) AND 5000+(160/2);
 
 
 --
+-- Should choose SERIAL plans under a small LIMIT.  A serial scan's first
+-- read request is trimmed to the pushed-down bound, so one small RPC
+-- satisfies the LIMIT, while parallel workers fetch whole parallel ranges
+-- with the fetch limits lifted regardless of any LIMIT
+-- (yb_scan_apply_next_parallel_range), each range costing far more than the
+-- whole serial plan (#33137: 438s parallel vs 2.3s serial for LIMIT 50
+-- OFFSET 100).
+--
+
+EXPLAIN (COSTS off, SUMMARY off)
+SELECT id, k1, k2, k3, length(v) FROM t1m t LIMIT 5000;
+
+-- The PK provides the requested order: the pushed-down bound satisfies the
+-- query in one RPC; the parallel alternative is Gather Merge over full-range
+-- fetches.
+EXPLAIN (COSTS off, SUMMARY off)
+SELECT id, k1, k2, k3, length(v) FROM t1m t ORDER BY id LIMIT 100;
+
+-- Presorted index plus a storage filter, LIMIT+OFFSET needing a few rows:
+-- the pushed-down bound (count + offset) satisfies the query in one trimmed
+-- RPC.
+EXPLAIN (COSTS off, SUMMARY off)
+SELECT k1, k2, id FROM t1m t WHERE id <= 100000
+ORDER BY k1, k2, k3 OFFSET 100 LIMIT 50;
+
+-- DISTINCT resolved by a Unique over the index order passes the bound
+-- through to the scan (#32804).
+EXPLAIN (COSTS off, SUMMARY off)
+SELECT DISTINCT k1, k2, k3 FROM t1m t WHERE id % 499 = 232
+ORDER BY k1 LIMIT 10;
+
+
+--
 -- Should choose PARALLEL batched nested loop join: with twice the rows the
 -- divided batch work exceeds the setup cost.  Flips serial if the outer
 -- row estimate loses its parallel-divisor division.
@@ -279,6 +312,24 @@ WHERE a.k1 BETWEEN 5000-(160/2-1) AND 5000+(160/2);
 EXPLAIN (COSTS off, SUMMARY off)
 SELECT a.id, b.k2 FROM t1m a JOIN t1m b ON b.id = a.id
 WHERE a.k1 BETWEEN 5000-(330/2-1) AND 5000+(330/2);
+
+
+--
+-- Should still choose PARALLEL plans when the LIMIT takes most of the table,
+-- or when the consumer needs rows past the pushed-down bound: the first-batch
+-- startup charge must not push scans that gain from parallelism to serial
+-- plans.
+--
+
+EXPLAIN (COSTS off, SUMMARY off)
+SELECT id, k1, k2, k3, length(v) FROM t1m t LIMIT 900000;
+
+-- An Incremental Sort reads past the bound to close its last group, and the
+-- scan's second request is default-sized; with the size-limited fetches
+-- here that request costs more than a parallel range per worker.
+EXPLAIN (COSTS off, SUMMARY off)
+SELECT k1, k2, id FROM t1m t WHERE id % 499 = 232
+ORDER BY k1, id OFFSET 100 LIMIT 50;
 
 
 --

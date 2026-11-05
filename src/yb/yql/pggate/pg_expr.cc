@@ -25,6 +25,7 @@
 
 #include "yb/util/decimal.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/status_format.h"
 
 #include "yb/yql/pggate/pg_dml.h"
@@ -149,7 +150,7 @@ PgExpr::PgExpr(Opcode opcode,
 Status PgExpr::CheckOperatorName(const char *name) {
   auto iter = kOperatorNames.find(name);
   if (iter == kOperatorNames.end()) {
-    return STATUS_SUBSTITUTE(InvalidArgument, "Wrong operator name: $0", name);
+    return STATUS_FORMAT(InvalidArgument, "Wrong operator name: $0", name);
   }
   return Status::OK();
 }
@@ -213,7 +214,7 @@ Status PgExpr::PrepareForRead(PgDml *pg_stmt, LWPgsqlExpressionPB *expr_pb) {
 
 Result<std::vector<std::reference_wrapper<PgColumn>>>
 PgExpr::GetColumns(PgTable *pg_table) const {
-  return STATUS_SUBSTITUTE(InvalidArgument, "Illegal call to GetColumns");
+  return STATUS_FORMAT(InvalidArgument, "Illegal call to GetColumns");
 }
 
 Status PgExpr::EvalTo(LWPgsqlExpressionPB *expr_pb) {
@@ -362,7 +363,7 @@ class PgIndexedColumnRef : public PgColumnRef {
     tuple->WriteNull(index());
   }
 
-  int index() const {
+  int index() const override {
     return attr_num() - 1;
   }
 
@@ -551,11 +552,15 @@ struct PgColumnRefFactory {
 
 } // namespace
 
-InternalType PgExpr::internal_type() const {
-  DCHECK(type_entity_) << "Type entity is not set up";
+InternalType InternalTypeOf(const YbcPgTypeEntity* type_entity) {
   // PersistentDataType and DataType has different values so have to use ToLW/ToPB for conversion.
   return client::YBColumnSchema::ToInternalDataType(ToLW(
-      static_cast<PersistentDataType>(type_entity_->yb_type)));
+      static_cast<PersistentDataType>(type_entity->yb_type)));
+}
+
+InternalType PgExpr::internal_type() const {
+  DCHECK(type_entity_) << "Type entity is not set up";
+  return InternalTypeOf(type_entity_);
 }
 
 int PgExpr::get_pg_typid() const {

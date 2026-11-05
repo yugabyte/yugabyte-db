@@ -32,6 +32,7 @@
 #include "yb/util/background_task.h"
 #include "yb/util/cgroups.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/size_literals.h"
@@ -105,7 +106,6 @@ DEFINE_NON_RUNTIME_int64(read_wal_memory_bytes, 512_MB,
 
 namespace yb::tserver {
 
-using strings::Substitute;
 
 namespace {
 
@@ -178,7 +178,7 @@ int64_t GetTargetBlockCacheSize(int32_t default_block_cache_size_percentage) {
   if (target_block_cache_size_bytes == DB_CACHE_SIZE_USE_PERCENTAGE) {
     // Check some bounds.
     CHECK(target_block_cache_size_percentage > 0 && target_block_cache_size_percentage <= 100)
-        << Substitute(
+        << Format(
                "tablet_block_cache_size_percentage must be between 0 and 100. Current value: "
                "$0",
                target_block_cache_size_percentage);
@@ -281,7 +281,7 @@ void TabletMemoryManager::InitLogCacheGC() {
 void TabletMemoryManager::ConfigureBackgroundTask(tablet::TabletOptions* options) {
   // Calculate memstore_size_bytes based on total RAM available and global percentage.
   CHECK(FLAGS_global_memstore_size_percentage > 0 && FLAGS_global_memstore_size_percentage <= 100)
-    << Substitute(
+    << Format(
         "Flag FLAGS_global_memstore_size_percentage must be between 0 and 100. Current value: "
         "$0",
         FLAGS_global_memstore_size_percentage);
@@ -383,7 +383,7 @@ void TabletMemoryManager::FlushTabletIfLimitExceeded() {
             tablet_to_flush->Flush(
                 tablet::FlushMode::kAsync, tablet::FlushFlags::kAllDbs, flush_tick,
                 rocksdb::FlushReason::kGlobalMemstoreLimit),
-            Substitute("Flush failed on $0", peer_to_flush->tablet_id()));
+            Format("Flush failed on $0", peer_to_flush->tablet_id()));
         WARN_NOT_OK(
             peer_to_flush->log()->AsyncAllocateSegmentAndRollover(),
             Format("Roll log failed on $0", peer_to_flush->tablet_id()));
@@ -424,7 +424,7 @@ tablet::TabletPeerPtr TabletMemoryManager::TabletToFlush() {
 }
 
 std::string TabletMemoryManager::LogPrefix(const tablet::TabletPeerPtr& peer) const {
-  return Substitute("T $0 P $1 : ",
+  return Format("T $0 P $1 : ",
       peer->tablet_id(),
       peer->permanent_uuid());
 }

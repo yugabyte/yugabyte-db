@@ -45,6 +45,7 @@
 #include <vector>
 
 #include <boost/container/small_vector.hpp>
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 
 #include "yb/gutil/once.h"
@@ -67,7 +68,6 @@ using std::mutex;
 using std::string;
 using std::vector;
 using strings::Split;
-using strings::Substitute;
 
 extern char** environ;
 
@@ -109,7 +109,7 @@ void EnsureSigPipeDisabled() {
 Result<DIR*> OpenProcFdDir() {
   DIR* dir = opendir(kProcSelfFd);
   if (PREDICT_FALSE(dir == nullptr)) {
-    return STATUS(IOError, Substitute("opendir(\"$0\") failed", kProcSelfFd), Errno(errno));
+    return STATUS(IOError, Format("opendir(\"$0\") failed", kProcSelfFd), Errno(errno));
   }
   return dir;
 }
@@ -120,7 +120,7 @@ void CloseProcFdDir(DIR* dir) {
   if (PREDICT_FALSE(closedir(dir) == -1)) {
     LOG(WARNING)
         << "Unable to close fd dir: "
-        << STATUS(IOError, Substitute("closedir(\"$0\") failed", kProcSelfFd), Errno(errno));
+        << STATUS(IOError, Format("closedir(\"$0\") failed", kProcSelfFd), Errno(errno));
   }
 }
 
@@ -716,7 +716,7 @@ Status Subprocess::Call(string* output, string* error) {
   RETURN_NOT_OK_PREPEND(Wait(&retcode), "Unable to wait() for " + argv_[0]);
 
   if (PREDICT_FALSE(retcode != 0)) {
-    return STATUS(RuntimeError, Substitute(
+    return STATUS(RuntimeError, Format(
         "Subprocess '$0' terminated with non-zero exit status $1",
         argv_[0],
         retcode));

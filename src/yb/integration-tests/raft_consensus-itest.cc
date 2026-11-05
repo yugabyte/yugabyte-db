@@ -89,6 +89,7 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/oid_generator.h"
 #include "yb/util/scope_exit.h"
@@ -153,7 +154,6 @@ using server::SetFlagRequestPB;
 using server::SetFlagResponsePB;
 using server::HybridClock;
 using server::ClockPtr;
-using strings::Substitute;
 
 static const int kConsensusRpcTimeoutForTests = 50;
 
@@ -281,13 +281,13 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
                       const vector<string>& leader_results,
                       TServerDetails* replica,
                       const vector<string>& replica_results) {
-    string ret = strings::Substitute("Replica results did not match the leaders."
-                                     "\nLeader: $0\nReplica: $1. Results size "
-                                     "L: $2 R: $3",
-                                     leader->ToString(),
-                                     replica->ToString(),
-                                     leader_results.size(),
-                                     replica_results.size());
+    string ret = Format("Replica results did not match the leaders."
+                        "\nLeader: $0\nReplica: $1. Results size "
+                        "L: $2 R: $3",
+                        leader->ToString(),
+                        replica->ToString(),
+                        leader_results.size(),
+                        replica_results.size());
 
     StrAppend(&ret, "Leader Results: \n");
     for (const string& result : leader_results) {
@@ -322,7 +322,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
         auto* const req = op->mutable_request();
         QLAddInt32HashValue(req, j);
         table.AddInt32ColumnValue(req, "int_val", j * 2);
-        table.AddStringColumnValue(req, "string_val", StringPrintf("hello %d", j));
+        table.AddStringColumnValue(req, "string_val", Format("hello $0", j));
         session->Apply(op);
       }
 
@@ -627,7 +627,7 @@ TEST_F(RaftConsensusITest, MultiThreadedMutateAndInsertThroughConsensus) {
   int num_threads = FLAGS_num_client_threads;
   for (int i = 0; i < num_threads; i++) {
     scoped_refptr<yb::Thread> new_thread;
-    CHECK_OK(yb::Thread::Create("test", strings::Substitute("ts-test$0", i),
+    CHECK_OK(yb::Thread::Create("test", Format("ts-test$0", i),
                                   &RaftConsensusITest::InsertTestRowsRemoteThread,
                                   this, i * FLAGS_client_inserts_per_thread,
                                   FLAGS_client_inserts_per_thread,
@@ -638,7 +638,7 @@ TEST_F(RaftConsensusITest, MultiThreadedMutateAndInsertThroughConsensus) {
   }
   for (int i = 0; i < FLAGS_num_replicas; i++) {
     scoped_refptr<yb::Thread> new_thread;
-    CHECK_OK(yb::Thread::Create("test", strings::Substitute("chaos-test$0", i),
+    CHECK_OK(yb::Thread::Create("test", Format("chaos-test$0", i),
                                   &RaftConsensusITest::DelayInjectorThread,
                                   this, cluster_->tablet_server(i),
                                   kConsensusRpcTimeoutForTests,
@@ -1773,10 +1773,10 @@ TEST_F(RaftConsensusITest, MultiThreadedInsertWithFailovers) {
 
   OverrideFlagForSlowTests(
       "client_inserts_per_thread",
-      strings::Substitute("$0", (FLAGS_client_inserts_per_thread * 100)));
+      Format("$0", (FLAGS_client_inserts_per_thread * 100)));
   OverrideFlagForSlowTests(
       "client_num_batches_per_thread",
-      strings::Substitute("$0", (FLAGS_client_num_batches_per_thread * 100)));
+      Format("$0", (FLAGS_client_num_batches_per_thread * 100)));
 
   int num_threads = FLAGS_num_client_threads;
   int64_t total_num_rows = num_threads * FLAGS_client_inserts_per_thread;
@@ -1790,7 +1790,7 @@ TEST_F(RaftConsensusITest, MultiThreadedInsertWithFailovers) {
 
   for (int i = 0; i < num_threads; i++) {
     scoped_refptr<yb::Thread> new_thread;
-    CHECK_OK(yb::Thread::Create("test", strings::Substitute("ts-test$0", i),
+    CHECK_OK(yb::Thread::Create("test", Format("ts-test$0", i),
                                   &RaftConsensusITest::InsertTestRowsRemoteThread,
                                   this, i * FLAGS_client_inserts_per_thread,
                                   FLAGS_client_inserts_per_thread,
@@ -1832,8 +1832,8 @@ TEST_F(RaftConsensusITest, TestAutomaticLeaderElection) {
   const int kFinalNumReplicas = FLAGS_num_replicas / 2 + 1;
 
   for (int leaders_killed = 0; leaders_killed < kFinalNumReplicas; leaders_killed++) {
-    LOG(INFO) << Substitute("Writing data to leader of $0-node config ($1 alive)...",
-                            FLAGS_num_replicas, FLAGS_num_replicas - leaders_killed);
+    LOG(INFO) << Format("Writing data to leader of $0-node config ($1 alive)...",
+                        FLAGS_num_replicas, FLAGS_num_replicas - leaders_killed);
 
     ASSERT_NO_FATALS(InsertTestRowsRemoteThread(
         leaders_killed * FLAGS_client_inserts_per_thread,
@@ -1920,7 +1920,7 @@ TEST_F(RaftConsensusITest, VerifyTransactionOrder) {
   AtomicBool finish(false);
   for (int i = 0; i < FLAGS_num_tablet_servers; i++) {
     scoped_refptr<yb::Thread> new_thread;
-    CHECK_OK(yb::Thread::Create("test", strings::Substitute("ts-test$0", i),
+    CHECK_OK(yb::Thread::Create("test", Format("ts-test$0", i),
                                   &RaftConsensusITest::StubbornlyWriteSameRowThread,
                                   this, i, &finish, &new_thread));
     threads_.push_back(new_thread);
@@ -1946,7 +1946,7 @@ void RaftConsensusITest::AddOp(const OpId& id, consensus::LWConsensusRequestPB* 
   msg->set_op_type(consensus::WRITE_OP);
   auto* write_req = msg->mutable_write();
   int32_t key = static_cast<int32_t>(id.index * 10000 + id.term);
-  string str_val = Substitute("term: $0 index: $1", id.term, id.index);
+  string str_val = Format("term: $0 index: $1", id.term, id.index);
   AddKVToPB(key, key + 10, str_val, write_req->mutable_write_batch());
 }
 
@@ -2135,8 +2135,8 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
     vector<string> results;
     ASSERT_NO_FATALS(WaitForRowCount(replica_ts->tserver_proxy.get(), 5, &results));
     SCOPED_TRACE(results);
-    ASSERT_STR_CONTAINS(results[3], Substitute("term: $0 index: 5", leader_term));
-    ASSERT_STR_CONTAINS(results[4], Substitute("term: $0 index: 6", leader_term));
+    ASSERT_STR_CONTAINS(results[3], Format("term: $0 index: 5", leader_term));
+    ASSERT_STR_CONTAINS(results[4], Format("term: $0 index: 6", leader_term));
   }
 }
 
@@ -2372,7 +2372,7 @@ void RaftConsensusITest::AssertMajorityRequiredForElectionsAndWrites(
 
   // And a write should also succeed.
   ASSERT_OK(WriteSimpleTestRow(initial_leader, tablet_id_,
-                               kTestRowKey, kTestRowIntVal, Substitute("qsz=$0", config_size),
+                               kTestRowKey, kTestRowIntVal, Format("qsz=$0", config_size),
                                MonoDelta::FromSeconds(10)));
 }
 
@@ -2724,7 +2724,7 @@ void DoWriteTestRows(const TServerDetails* leader_tserver,
     int cur_row_key = ++*row_key;
     Status write_status = WriteSimpleTestRow(
         leader_tserver, tablet_id, cur_row_key, cur_row_key,
-        Substitute("key=$0", cur_row_key), write_timeout);
+        Format("key=$0", cur_row_key), write_timeout);
     if (!write_status.IsLeaderHasNoLease() &&
         !write_status.IsLeaderNotReadyToServe()) {
       // Temporary failures to write because of not having a valid leader lease are OK. We don't
@@ -2775,7 +2775,7 @@ TEST_F(RaftConsensusITest, TestConfigChangeUnderLoad) {
     int num_threads = FLAGS_num_client_threads;
     for (int i = 0; i < num_threads; i++) {
       scoped_refptr<Thread> thread;
-      ASSERT_OK(Thread::Create(CURRENT_TEST_NAME(), Substitute("row-writer-$0", i),
+      ASSERT_OK(Thread::Create(CURRENT_TEST_NAME(), Format("row-writer-$0", i),
           &DoWriteTestRows,
           leader_tserver,
           tablet_id_,
@@ -3439,9 +3439,9 @@ TEST_F(RaftConsensusITest, DisruptiveServerAndSlowWAL) {
   const auto kHeartbeatIntervalMs = 200;
   const auto kMaxMissedHeartbeatPeriods = 3;
   const vector<string> ts_flags {
-    Substitute("--raft_heartbeat_interval_ms=$0", kHeartbeatIntervalMs),
-    Substitute("--leader_failure_max_missed_heartbeat_periods=$0",
-               kMaxMissedHeartbeatPeriods),
+    Format("--raft_heartbeat_interval_ms=$0", kHeartbeatIntervalMs),
+    Format("--leader_failure_max_missed_heartbeat_periods=$0",
+           kMaxMissedHeartbeatPeriods),
   };
   NO_FATALS(BuildAndStart(ts_flags));
 

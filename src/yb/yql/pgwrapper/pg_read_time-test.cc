@@ -21,6 +21,8 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/common/common_flags.h"
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"
@@ -44,11 +46,6 @@ DECLARE_bool(ysql_enable_write_pipelining);
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_string(ysql_pg_conf_csv);
 DECLARE_bool(ysql_disable_index_backfill);
-DECLARE_bool(enable_object_locking_for_table_locks);
-DECLARE_bool(ysql_enable_concurrent_ddl);
-DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
-DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
-DECLARE_bool(ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks);
 
 METRIC_DECLARE_counter(picked_read_time_on_docdb);
 
@@ -555,6 +552,94 @@ TEST_F(PgMiniTestBase, CheckReadingDataAsOfPastTime) {
 
   LOG(INFO) <<"Negative test case. Invalid unit";
   ASSERT_NOK(conn.ExecuteFormat("SET yb_read_time TO '$0 ms'", t2));
+}
+
+// yb_read_time_skip_catalog: yb_read_time only applies to table reads; the catalog is read as of
+// now.
+TEST_F(PgMiniTestBase, ReadDataAsOfPastTimeWithCurrentCatalog) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t_table (k INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t_table VALUES (1)"));
+  const auto t1 = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+      "SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint"));
+  ASSERT_OK(conn.Execute("INSERT INTO t_table VALUES (2)"));
+  ASSERT_OK(conn.Execute("ALTER TABLE t_table ADD COLUMN v INT"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t_after (k INT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t_after VALUES (1)"));
+
+  // Without the skip, the catalog is read as of t1 too, so t_after isn't visible.
+  ASSERT_OK(conn.ExecuteFormat("SET yb_read_time TO $0", t1));
+  ASSERT_NOK_STR_CONTAINS(
+      conn.Fetch("SELECT * FROM t_after"), "relation \"t_after\" does not exist");
+
+  // With the skip, we get the current catalog (column v, t_after) but rows still as of t1.
+  ASSERT_OK(conn.Execute("SET yb_read_time_skip_catalog = 1"));
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchAllAsString("SELECT k, v FROM t_table ORDER BY k")), "1, NULL");
+  // t_after's row was written after t1, so it reads as empty even though the catalog has it.
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM t_after")), 0);
+
+  // Turning the skip off again goes back to the catalog as of t1.
+  ASSERT_OK(conn.Execute("SET yb_read_time_skip_catalog = 0"));
+  ASSERT_NOK_STR_CONTAINS(conn.Fetch("SELECT k, v FROM t_table"), "column \"v\" does not exist");
+}
+
+// Like yb_read_time, yb_read_time_skip_catalog can't change inside a transaction block while
+// yb_read_time is set.
+TEST_F(PgMiniTestBase, DisallowChangingSkipCatalogInTransactionBlock) {
+  auto conn = ASSERT_RESULT(Connect());
+  const auto t1 = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+      "SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint"));
+  ASSERT_OK(conn.ExecuteFormat("SET yb_read_time TO $0", t1));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_NOK_STR_CONTAINS(
+      conn.Execute("SET yb_read_time_skip_catalog = 1"),
+      "cannot be changed inside a transaction block");
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+}
+
+class PgReadTimeCatalogModeTest : public PgMiniTestBase,
+                                  public ::testing::WithParamInterface<bool> {
+ public:
+  void SetUp() override {
+    ToggleDDLMode(/*use_legacy=*/GetParam());
+    TEST_SETUP_SUPER(PgMiniTestBase);
+  }
+};
+
+INSTANTIATE_TEST_SUITE_P(
+    , PgReadTimeCatalogModeTest, ::testing::Bool(),
+    [](const ::testing::TestParamInfo<bool>& info) {
+      return info.param ? "LegacyCatalog" : "TransactionalCatalog";
+    });
+
+// Tests that with yb_read_time_skip_catalog set, a catalog read still sees the current catalog
+// after a table read in the same transaction has set the read point to yb_read_time.  The
+// xCluster target reads ddl_queue this way, with yb_non_ddl_txn_for_sys_tables_allowed putting
+// catalog reads in the transaction.  The two catalog modes get this right in different ways, so
+// the test runs in both.
+TEST_P(PgReadTimeCatalogModeTest, ReadDataAsOfPastTimeWithCurrentCatalogInTxn) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t_table (k INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t_table VALUES (1)"));
+  const auto t1 = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+      "SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t_after (k INT)"));
+
+  ASSERT_OK(conn.ExecuteFormat("SET yb_read_time TO $0", t1));
+  ASSERT_OK(conn.Execute("SET yb_read_time_skip_catalog = 1"));
+  ASSERT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed = 1"));
+  // An explicit transaction, so the order of the two reads is not up to the planner.
+  ASSERT_OK(conn.Execute("BEGIN"));
+  // The table read pins the transaction's read point to t1.
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM t_table")), 1);
+  // The catalog read after it must still see the current catalog, which has t_after.
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<PGUint64>(
+          "SELECT count(*) FROM pg_class WHERE relname = 't_after'")),
+      1);
+  ASSERT_OK(conn.Execute("COMMIT"));
 }
 
 // Test that write DMLs are disallowed in a pg session when yb_read_time is set to non-zero.
@@ -1306,14 +1391,7 @@ class PgReadTimeBaseTest
 
   void SetUp() override {
     const auto concurrent_ddl = IsConcurrentDdl();
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = concurrent_ddl;
-    // DDL savepoint and the in-txn-block write fastpath require transactional DDL, so keep
-    // these flags consistent.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_ddl_savepoint_support) = concurrent_ddl;
-    ANNOTATE_UNPROTECTED_WRITE(
-        FLAGS_ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks) = concurrent_ddl;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = concurrent_ddl;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = concurrent_ddl;
+    ToggleDDLMode(/* use_legacy = */ !concurrent_ddl);
     PgReadTimeTest::SetUp();
   }
 

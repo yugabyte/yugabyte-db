@@ -29,32 +29,27 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #pragma once
 
-#include <limits>
-#include <memory>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
-#include "yb/common/common_fwd.h"
-
 #include "yb/common/version_info.h"
+
 #include "yb/gutil/macros.h"
 #include "yb/gutil/thread_annotations.h"
 
 #include "yb/master/catalog_loading_state.h"
-#include "yb/master/master_cluster.fwd.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/ts_descriptor.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
-#include "yb/util/status_fwd.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/mutex.h"
-#include "yb/util/net/net_util.h"
+#include "yb/util/status_fwd.h"
 
 DECLARE_int32(tserver_unresponsive_timeout_ms);
 DECLARE_bool(persist_tserver_registry);
@@ -197,7 +192,8 @@ class TSManager {
   ClusterYsqlDbPins GetClusterYsqlDbPinsForPublishing(MonoDelta time_since_elected_leader) const;
 
   // Find TServers that are currently in the state LIVE but have not heartbeated for a long time.
-  // Transition all such TServers into the UNRESPONSIVE state.
+  // Transition all such TServers into the UNRESPONSIVE state.  Similarly, transition TServers that
+  // can no longer have a xCluster-guarded information lease to DEFINITELY_NO_LEASE.
   Status MarkUnresponsiveTServers(const LeaderEpoch& epoch);
 
   Status RunLoader(

@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#include "yb/util/format.h"
 #include "yb/util/slice.h"
 #include "yb/util/slice_parts.h"
 
@@ -43,8 +44,8 @@ namespace yb {
 
 Status Slice::check_size(size_t expected_size) const {
   if (PREDICT_FALSE(size() != expected_size)) {
-    return STATUS(Corruption, StringPrintf("Unexpected Slice size. "
-        "Expected %zu but got %zu.", expected_size, size()), ToDebugString(100));
+    return STATUS(Corruption, Format("Unexpected Slice size. "
+        "Expected $0 but got $1.", expected_size, size()), ToDebugString(100));
   }
   return Status::OK();
 }
@@ -116,7 +117,7 @@ std::string Slice::ToDebugString(size_t max_len) const {
         } else if (ch == ' ') {
           ret += ' ';
         } else {
-          StringAppendF(&ret, "\\x%02x", ch & 0xff);
+          ret += Format("\\x$0", HexString(static_cast<uint8_t>(ch), 2));
         }
       } else {
         ret.push_back(ch);
@@ -125,7 +126,7 @@ std::string Slice::ToDebugString(size_t max_len) const {
   }
 
   if (abbreviated) {
-    StringAppendF(&ret, "...<%zd bytes total>", this->size());
+    ret += Format("...<$0 bytes total>", this->size());
   }
   return ret;
 }

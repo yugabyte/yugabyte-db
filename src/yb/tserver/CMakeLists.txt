@@ -83,6 +83,7 @@ YRPC_GENERATE(
   PROTO_FILES remote_bootstrap.proto)
 set(REMOTE_BOOTSTRAP_YRPC_LIBS
   consensus_proto
+  log_proto
   yrpc
   protobuf
   rpc_header_proto
@@ -260,6 +261,7 @@ set(TSERVER_SRCS
   heartbeater_factory.cc
   master_leader_poller.cc
   metrics_snapshotter.cc
+  pg_cache_util.cc
   pg_client_service.cc
   pg_client_session.cc
   pg_client_session_util.cc
@@ -274,6 +276,7 @@ set(TSERVER_SRCS
   pg_table_cache.cc
   pg_table_mutation_count_sender.cc
   pg_txn_snapshot_manager.cc
+  tier_migration_reconciler.cc
   tserver_xcluster_context.cc
   read_query.cc
   remote_bootstrap_anchor_client.cc
@@ -287,6 +290,8 @@ set(TSERVER_SRCS
   remote_snapshot_transfer_client.cc
   service_util.cc
   session_registry.cc
+  snapshot_preflush.cc
+  tablet_flusher.cc
   tablet_limits.cc
   tablet_memory_manager.cc
   tablet_server.cc
@@ -441,12 +446,14 @@ ADD_YB_LIBRARY(tserver_mock
 set(YB_TEST_LINK_LIBS
   rpc_test_util
   tserver
+  yb_common_test_util
   tserver_mock
   tserver_test_util
   yb_client # yb::client::YBTableName
   yb-tserver_util
   tablet_test_util
   ${YB_MIN_TEST_LIBS})
+ADD_YB_TEST(pg_response_cache-test)
 ADD_YB_TEST(remote_bootstrap_file_downloader-test)
 ADD_YB_TEST(remote_bootstrap_rocksdb_client-test)
 ADD_YB_TEST(remote_bootstrap_rocksdb_session-test)

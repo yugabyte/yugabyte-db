@@ -47,7 +47,9 @@
 #include "yb/client/transaction_manager.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/common_flags.h"
 #include "yb/common/common_types.pb.h"
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/integration-tests/mini_cluster.h"
@@ -117,9 +119,6 @@ DECLARE_bool(TEST_fail_clone_tablets);
 DECLARE_bool(TEST_pause_before_enabling_db_connections);
 DECLARE_string(TEST_mini_cluster_pg_host_port);
 DECLARE_bool(TEST_skip_deleting_split_tablets);
-DECLARE_bool(enable_object_locking_for_table_locks);
-DECLARE_bool(ysql_enable_concurrent_ddl);
-DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_bool(ysql_enable_write_pipelining);
 
@@ -729,6 +728,26 @@ class PgCloneTest : public PgCloneInitiallyEmptyDBTest {
     ASSERT_OK(source_conn_->ExecuteFormat(
         "CREATE TABLE $0 (key INT PRIMARY KEY, value INT)", kSourceTableName));
   }
+
+  // Creates a table with a vector index and inserts even ids, then odd ids, returning the time
+  // between the two batches.
+  // Each clone replays hundreds of pgvector DDLs, which takes minutes in sanitizer builds, so the
+  // vector index tests do one clone each to fit the test timeout.
+  Result<Timestamp> SetUpVectorIndexTable() {
+    RETURN_NOT_OK(source_conn_->Execute("CREATE EXTENSION vector"));
+    RETURN_NOT_OK(source_conn_->Execute(
+        "CREATE TABLE test (id bigserial PRIMARY KEY, embedding vector(1))"));
+    RETURN_NOT_OK(source_conn_->Execute(
+        "CREATE INDEX test_vi ON test USING ybhnsw (embedding vector_l2_ops)"));
+    for (int i = 0; i <= 10; i += 2) {
+      RETURN_NOT_OK(source_conn_->ExecuteFormat("INSERT INTO test VALUES ($0, '[$0]')", i));
+    }
+    auto timestamp = VERIFY_RESULT(GetCurrentTime());
+    for (int i = 1; i <= 10; i += 2) {
+      RETURN_NOT_OK(source_conn_->ExecuteFormat("INSERT INTO test VALUES ($0, '[$0]')", i));
+    }
+    return timestamp;
+  }
 };
 
 class PgCloneTestWithColocatedDBParam
@@ -830,47 +849,39 @@ TEST_F_EX(PgCloneTest, TestOidsAdvancedAfterClone, PgCloneInitiallyEmptyDBTest) 
 }
 
 TEST_F(PgCloneTest, CloneVectorIndex) {
-  ASSERT_OK(source_conn_->Execute("CREATE EXTENSION vector"));
-  ASSERT_OK(source_conn_->Execute(
-      "CREATE TABLE test (id bigserial PRIMARY KEY, embedding vector(1))"));
-  ASSERT_OK(source_conn_->Execute(
-      "CREATE INDEX test_vi ON test USING ybhnsw (embedding vector_l2_ops)"));
+  auto timestamp = ASSERT_RESULT(SetUpVectorIndexTable());
 
-  for (int i = 0; i <= 10; i += 2) {
-    ASSERT_OK(source_conn_->ExecuteFormat("INSERT INTO test VALUES ($0, '[$0]')", i));
-  }
-  auto timestamp = ASSERT_RESULT(GetCurrentTime());
-  for (int i = 1; i <= 10; i += 2) {
-    ASSERT_OK(source_conn_->ExecuteFormat("INSERT INTO test VALUES ($0, '[$0]')", i));
-  }
-
-  LOG(INFO) << "Create first clone";
+  LOG(INFO) << "Create clone";
   ASSERT_OK(source_conn_->ExecuteFormat(
       "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kTargetNamespaceName1, kSourceNamespaceName,
       timestamp.ToInt64()));
 
-  LOG(INFO) << "Read first clone";
+  LOG(INFO) << "Read clone";
   {
     auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
     auto row = ASSERT_RESULT((target_conn.FetchAllAsString(
         "SELECT id FROM test ORDER BY embedding <-> '[3.9]' LIMIT 3")));
     ASSERT_EQ(row, "4; 2; 6");
   }
-  LOG(INFO) << "Drop first clone";
+  LOG(INFO) << "Drop clone";
   ASSERT_OK(source_conn_->ExecuteFormat("DROP DATABASE $0", kTargetNamespaceName1));
+}
 
-  LOG(INFO) << "Create second clone";
+TEST_F(PgCloneTest, CloneVectorIndexLatest) {
+  ASSERT_OK(ResultToStatus(SetUpVectorIndexTable()));
+
+  LOG(INFO) << "Create clone";
   ASSERT_OK(source_conn_->ExecuteFormat(
       "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName2, kSourceNamespaceName));
 
-  LOG(INFO) << "Read second clone";
+  LOG(INFO) << "Read clone";
   {
     auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName2));
     auto row = ASSERT_RESULT((target_conn.FetchAllAsString(
         "SELECT id FROM test ORDER BY embedding <-> '[3.9]' LIMIT 3")));
     ASSERT_EQ(row, "4; 3; 5");
   }
-  LOG(INFO) << "Drop second clone";
+  LOG(INFO) << "Drop clone";
   ASSERT_OK(source_conn_->ExecuteFormat("DROP DATABASE $0", kTargetNamespaceName2));
 }
 
@@ -880,8 +891,7 @@ TEST_F(PgCloneTest, CloneVectorIndex) {
 class PgCloneObjectLocksTest : public PgCloneInitiallyEmptyDBTest {
  protected:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    ToggleDDLMode(/* use_legacy = */ false);
     PgCloneInitiallyEmptyDBTest::SetUp();
   }
 };
@@ -1127,7 +1137,19 @@ TEST_P(PgCloneTestWithColocatedDBParam, CloneWithAlterTableSchema) {
   ASSERT_EQ(rows[0], kRow);
 }
 
-TEST_F(PgCloneTest, CloneYsqlDbTimeout) {
+// Lowers the admin operation timeout cluster-wide (the in-process master and tservers read the
+// flag directly; postgres backends inherit it through their environment), so the delay that
+// CloneYsqlDbTimeout injects to exceed it can be 30 s instead of the default 120 s.
+class PgCloneTimeoutTest : public PgCloneTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_client_admin_operation_timeout_sec) =
+        30 * kTimeMultiplier;
+    PgCloneTest::SetUp();
+  }
+};
+
+TEST_F_EX(PgCloneTest, CloneYsqlDbTimeout, PgCloneTimeoutTest) {
   // Inject an artificial delay that would make CREATE DATABASE timeout in case clone is using
   // a timeout other than ysql_clone_pg_schema_rpc_timeout_ms.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_clone_pg_schema_delay_ms) =
@@ -1848,12 +1870,13 @@ TEST_F(PgCloneColocationTest, NoColocatedChildTables) {
 TEST_F_EX(PgCloneTest, ClonePartitionedTableOidCollision, PgCloneInitiallyEmptyDBTest) {
   // Regression test for GitHub issue #29335.
   // Create a partitioned table with many partitions, an index, and CHECK constraints
-  // in the source DB. ysql_dump's binary_upgrade mode sets OIDs for pg_class and pg_type entries,
+  // in the source DB.  ysql_dump's binary_upgrade mode sets OIDs for pg_class and pg_type entries,
   // but CHECK constraint OIDs in pg_constraint are always dynamically allocated via
-  // GetNewObjectId. This forces the tserver to call ReservePgsqlOids during the clone's
-  // DDL replay, populating its OID cache with a stale range. This should be invalidated after
+  // GetNewObjectId.  This forces the tserver to call ReservePgsqlOids during the clone's
+  // DDL replay, populating its OID cache with a stale range.  This should be invalidated after
   // the clone so if any objects are dropped and recreated, they will get a new OID instead of
-  // colliding with the hidden objects.
+  // colliding with the hidden objects.  The partitions and constraints make the cached range
+  // overlap enough explicit OIDs that the recreated relations hit hidden ones.
   auto create_partitioned_table = [&](pgwrapper::PGConn& conn) -> Status {
     RETURN_NOT_OK(conn.Execute(
         "CREATE TABLE t (key INT, value INT, CHECK (key >= 0), CHECK (value >= 0)) "
@@ -2213,7 +2236,7 @@ class SysCatalogRestoreWithWritePipeliningTest : public PgCloneInitiallyEmptyDBT
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_write_pipelining) = true;
     // Run both DDLs in one multi-statement transaction so its writes span the restore.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    ToggleDDLMode(/* use_legacy = */ false);
     PgCloneInitiallyEmptyDBTest::SetUp();
   }
 };
@@ -2240,7 +2263,8 @@ TEST_F(SysCatalogRestoreWithWritePipeliningTest, YB_DEBUG_ONLY_TEST(DdlTransacti
   SleepFor(500ms);
 
   ASSERT_OK(source_conn_->Execute("BEGIN ISOLATION LEVEL READ COMMITTED"));
-  ASSERT_OK(source_conn_->Execute("CREATE TABLE table1 (i int)"));
+  // Not CREATE TABLE: an uncommitted table would be under DDL verification and block the restore.
+  ASSERT_OK(source_conn_->Execute("CREATE VIEW view1 AS SELECT 1"));
 
   auto restoration_id = ASSERT_RESULT(
       RestoreSnapshotSchedule(master_backup_proxy_.get(), schedule_id_, restore_ht, kTimeout));

@@ -45,7 +45,7 @@ func SetupLogger(ctx context.Context, config map[string]map[string]any) {
 	// Create log directory if it doesn't exist
 	err := os.MkdirAll(logDir, 0755)
 	if err != nil {
-		log.Fatalf("Failed to create log directory: %v", err)
+		log.Fatalf("Failed to create log directory %s: %v", logDir, err)
 	}
 	logPath := filepath.Join(logDir, logFile)
 	util.InitCustomAppLogger(

@@ -234,6 +234,203 @@ func TestRenderTemplatesCloudSkips(t *testing.T) {
 	}
 }
 
+func TestRenderTemplatesExistingProviderValidation(t *testing.T) {
+	tests := []struct {
+		name     string
+		provider model.Provider
+		wantErr  string
+	}{
+		{
+			name: "sudo onprem rejected",
+			provider: model.Provider{
+				BasicInfo: model.BasicInfo{
+					Name: "onprem-provider",
+					Code: "onprem",
+					Uuid: "provider-123",
+				},
+				Details: model.ProviderDetails{
+					SkipProvisioning: false,
+					CloudInfo: model.CloudInfo{
+						Onprem: model.OnPremCloudInfo{YbHomeDir: "/home/yugabyte"},
+					},
+				},
+				Regions: []model.Region{
+					{
+						BasicInfo: model.BasicInfo{Name: "region-a", Code: "region-a"},
+						Zones: []model.Zone{
+							{BasicInfo: model.BasicInfo{Name: "zone-a", Code: "zone-a"}},
+						},
+					},
+				},
+			},
+			wantErr: "sudo provisioning",
+		},
+		{
+			name: "non-onprem rejected",
+			provider: model.Provider{
+				BasicInfo: model.BasicInfo{
+					Name: "aws-provider",
+					Code: "aws",
+					Uuid: "provider-123",
+				},
+				Details: model.ProviderDetails{SkipProvisioning: true},
+			},
+			wantErr: "not an on-prem",
+		},
+		{
+			name: "node exporter port mismatch rejected",
+			provider: model.Provider{
+				BasicInfo: model.BasicInfo{
+					Name: "onprem-provider",
+					Code: "onprem",
+					Uuid: "provider-123",
+				},
+				Details: model.ProviderDetails{
+					SkipProvisioning: true,
+					NodeExporterPort: 9301,
+					CloudInfo: model.CloudInfo{
+						Onprem: model.OnPremCloudInfo{
+							YbHomeDir:          "/home/yugabyte",
+							EnableMultiTenancy: true,
+						},
+					},
+				},
+				Regions: []model.Region{
+					{
+						BasicInfo: model.BasicInfo{Name: "region-a", Code: "region-a"},
+						Zones: []model.Zone{
+							{BasicInfo: model.BasicInfo{Name: "zone-a", Code: "zone-a"}},
+						},
+					},
+				},
+			},
+			wantErr: "node exporter port (9301) does not match the configured value (9300)",
+		},
+		{
+			name: "matching node exporter port accepted",
+			provider: model.Provider{
+				BasicInfo: model.BasicInfo{
+					Name: "onprem-provider",
+					Code: "onprem",
+					Uuid: "provider-123",
+				},
+				Details: model.ProviderDetails{
+					SkipProvisioning: true,
+					NodeExporterPort: 9300,
+					CloudInfo: model.CloudInfo{
+						Onprem: model.OnPremCloudInfo{
+							YbHomeDir:          "/home/yugabyte",
+							EnableMultiTenancy: true,
+						},
+					},
+				},
+				Regions: []model.Region{
+					{
+						BasicInfo: model.BasicInfo{Name: "region-a", Code: "region-a"},
+						Zones: []model.Zone{
+							{BasicInfo: model.BasicInfo{Name: "zone-a", Code: "zone-a"}},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "manual onprem accepted",
+			provider: model.Provider{
+				BasicInfo: model.BasicInfo{
+					Name: "onprem-provider",
+					Code: "onprem",
+					Uuid: "provider-123",
+				},
+				Details: model.ProviderDetails{
+					SkipProvisioning: true,
+					CloudInfo: model.CloudInfo{
+						Onprem: model.OnPremCloudInfo{
+							YbHomeDir:          "/home/yugabyte",
+							EnableMultiTenancy: true,
+						},
+					},
+				},
+				Regions: []model.Region{
+					{
+						BasicInfo: model.BasicInfo{Name: "region-a", Code: "region-a"},
+						Zones: []model.Zone{
+							{BasicInfo: model.BasicInfo{Name: "zone-a", Code: "zone-a"}},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(
+				http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					switch {
+					case strings.Contains(r.URL.RawQuery, "name="):
+						if err := json.NewEncoder(w).Encode([]model.Provider{tt.provider}); err != nil {
+							t.Errorf("failed to encode provider: %v", err)
+						}
+					case strings.Contains(r.URL.Path, "/instance_types/"):
+						if err := json.NewEncoder(w).Encode(model.NodeInstanceType{
+							InstanceTypeCode: "c5.large",
+							Details: model.NodeInstanceTypeDetails{
+								VolumeDetailsList: []model.VolumeDetails{
+									{MountPath: "/mnt/d0"},
+								},
+							},
+						}); err != nil {
+							t.Errorf("failed to encode instance type: %v", err)
+						}
+					case strings.HasSuffix(r.URL.Path, "/nodes/list"):
+						if err := json.NewEncoder(w).Encode([]model.NodeInstance{}); err != nil {
+							t.Errorf("failed to encode node instances: %v", err)
+						}
+					default:
+						http.NotFound(w, r)
+					}
+				}),
+			)
+			defer server.Close()
+
+			tmpDir := t.TempDir()
+			m := NewInstallNodeAgent(tmpDir).(*InstallNodeAgent)
+			values := map[string]any{
+				"url":                        server.URL,
+				"api_key":                    "test-api-key",
+				"customer_uuid":              "customer-123",
+				"provider_name":              tt.provider.Name(),
+				"yb_home_dir":                "/home/yugabyte",
+				"provider_region_name":       "region-a",
+				"provider_region_zone_name":  "zone-a",
+				"configure_cgroup":           true,
+				"instance_type_name":         "c5.large",
+				"instance_type_mount_points": "['/mnt/d0']",
+				"tmp_directory":              tmpDir,
+				"yb_user_id":                 "1000",
+				"node_external_fqdn":         "10.0.0.1",
+				"node_name":                  "node-1",
+			}
+
+			_, err := m.RenderTemplates(context.Background(), values)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf(
+						"RenderTemplates() error = %v, want error containing %q",
+						err,
+						tt.wantErr,
+					)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("RenderTemplates() error = %v", err)
+			}
+		})
+	}
+}
+
 func TestCheckIfNodeInstanceAlreadyExists(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -400,6 +597,7 @@ func TestCreateInstanceIfNotExists(t *testing.T) {
 			name: "existing instance type matching mounts",
 			instanceType: &model.NodeInstanceType{
 				InstanceTypeCode: "c5.large",
+				Active:           true,
 				Details: model.NodeInstanceTypeDetails{
 					VolumeDetailsList: []model.VolumeDetails{
 						{MountPath: "/mnt/d0"},
@@ -413,6 +611,7 @@ func TestCreateInstanceIfNotExists(t *testing.T) {
 			name: "existing instance type mismatched mounts",
 			instanceType: &model.NodeInstanceType{
 				InstanceTypeCode: "c5.large",
+				Active:           true,
 				Details: model.NodeInstanceTypeDetails{
 					VolumeDetailsList: []model.VolumeDetails{
 						{MountPath: "/mnt/d0"},
@@ -426,6 +625,7 @@ func TestCreateInstanceIfNotExists(t *testing.T) {
 			name: "existing instance type mounts different order",
 			instanceType: &model.NodeInstanceType{
 				InstanceTypeCode: "c5.large",
+				Active:           true,
 				Details: model.NodeInstanceTypeDetails{
 					VolumeDetailsList: []model.VolumeDetails{
 						{MountPath: "/mnt/d0"},
@@ -435,6 +635,21 @@ func TestCreateInstanceIfNotExists(t *testing.T) {
 			},
 			mountPoints: "['/mnt/d1', '/mnt/d0']",
 			wantErr:     "mount paths",
+		},
+		{
+			// Inactive types are not listed by the installer, so they are recreated and their
+			// old mounts are not enforced.
+			name: "inactive instance type creates payload",
+			instanceType: &model.NodeInstanceType{
+				InstanceTypeCode: "c5.large",
+				Details: model.NodeInstanceTypeDetails{
+					VolumeDetailsList: []model.VolumeDetails{
+						{MountPath: "/mnt/d0"},
+					},
+				},
+			},
+			mountPoints: "['/mnt/d0', '/mnt/d1']",
+			wantCreate:  true,
 		},
 		{
 			name:        "instance type missing creates payload",
@@ -470,6 +685,7 @@ func TestCreateInstanceIfNotExists(t *testing.T) {
 				"instance_type_volume_size":  250.0,
 				"instance_type_mount_points": tt.mountPoints,
 				"tmp_directory":              tmpDir,
+				"yb_user_id":                 "1000",
 			}
 			provider := &model.Provider{BasicInfo: model.BasicInfo{Uuid: "provider-123"}}
 
@@ -487,7 +703,7 @@ func TestCreateInstanceIfNotExists(t *testing.T) {
 			if err != nil {
 				t.Fatalf("createInstanceIfNotExists() error = %v", err)
 			}
-			payloadPath := filepath.Join(tmpDir, "create_instance.json")
+			payloadPath := filepath.Join(tmpDir, "ynp-node-agent-1000", "create_instance.json")
 			_, statErr := os.Stat(payloadPath)
 			if tt.wantCreate {
 				if statErr != nil {

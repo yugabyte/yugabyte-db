@@ -26,23 +26,27 @@ import play.cache.SyncCacheApi;
 @Slf4j
 public class RuntimeConfigCache {
   // This class utilizes the caffeine cache under the hoods
-  @Inject
-  @NamedCache("runtimeConfigsCache")
-  private SyncCacheApi cache;
+  private final SyncCacheApi cache;
 
-  @Inject private RuntimeConfigFactory runtimeConfigFactory;
-  private RuntimeConfigChangeNotifier runtimeConfigChangeNotifier;
+  private final RuntimeConfigFactory runtimeConfigFactory;
+  private final RuntimeConfigChangeNotifier runtimeConfigChangeNotifier;
   // Add any key that needs to be cached below. Other keys will not be cached.
-  private Set<String> cachedGlobalKeys =
+  private final Set<String> cachedGlobalKeys =
       Set.of(
           GlobalConfKeys.useNewRbacAuthz.getKey(),
           GlobalConfKeys.ybaApiStrictMode.getKey(),
           GlobalConfKeys.ybaApiSafeMode.getKey(),
-          GlobalConfKeys.blockOperatorApiResources.getKey());
+          GlobalConfKeys.blockOperatorApiResources.getKey(),
+          GlobalConfKeys.conditionalGetEnabled.getKey());
 
   @Inject
-  public RuntimeConfigCache(RuntimeConfigChangeNotifier runtimeConfigChangeNotifier) {
+  public RuntimeConfigCache(
+      RuntimeConfigChangeNotifier runtimeConfigChangeNotifier,
+      RuntimeConfigFactory runtimeConfigFactory,
+      @NamedCache("runtimeConfigsCache") SyncCacheApi cache) {
     this.runtimeConfigChangeNotifier = runtimeConfigChangeNotifier;
+    this.runtimeConfigFactory = runtimeConfigFactory;
+    this.cache = cache;
     initializeChangeListener();
   }
 

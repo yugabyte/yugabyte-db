@@ -97,6 +97,10 @@ set_vars_for_cxx_test() {
   if [[ -n $cxx_test_name ]]; then
     make_targets+=( "$cxx_test_name" )
   fi
+  if [[ -n $cxx_benchmark_name ]]; then
+    set_cxx_benchmark_program_name
+    make_targets+=( "$cxx_benchmark_program_name" )
+  fi
 
   # This is necessary to avoid failures if we are just building one test.
   test_existence_check=false
@@ -155,6 +159,7 @@ print_report() {
       report_time "C++ compilation"                     make
       report_time "Java compilation"                    java_build
       report_time "C++ (one test program)"              cxx_test
+      report_time "C++ (one benchmark program)"         cxx_benchmark
       report_time "ctest (multiple C++ test programs)"  ctest
       report_time "Collecting Java tests"               collect_java_tests
       report_time "Java tests"                          java_tests
@@ -488,6 +493,53 @@ run_cxx_test() {
   fi
 }
 
+# Sets cxx_benchmark_program_name, the program --cxx-benchmark builds and runs. In an LTO build
+# that is <name>-lto, the statically linked, whole-program-optimized variant ADD_YB_BENCHMARK adds
+# next to each benchmark (it is not part of the default build, so it has to be requested by name).
+# With --skip-final-lto-link that target does not exist, so the dynamically linked program is used.
+set_cxx_benchmark_program_name() {
+  cxx_benchmark_program_name=$cxx_benchmark_name
+  if [[ ${YB_LINKING_TYPE:-dynamic} == *-lto && ${YB_SKIP_FINAL_LTO_LINK:-0} != "1" ]]; then
+    cxx_benchmark_program_name+="-lto"
+  fi
+}
+
+run_cxx_benchmark() {
+  set_cxx_benchmark_program_name
+  # ADD_YB_BENCHMARK puts each benchmark in a benchmarks-<dir> directory of the build root.
+  local benchmark_paths=( "$BUILD_ROOT"/benchmarks-*/"$cxx_benchmark_program_name" )
+  if [[ ! -x ${benchmark_paths[0]} ]]; then
+    fatal "Could not find benchmark program '$cxx_benchmark_program_name' in" \
+          "$BUILD_ROOT/benchmarks-*. Only programs added with ADD_YB_BENCHMARK are placed there."
+  fi
+  # In a prof_gen (PGO-instrumented) build, collect the profile under the build root instead of
+  # the current directory, in a subdirectory named after the instrumentation type (ir or csir), and
+  # show how to merge it for a later --pgo-data-path build. %m keeps the executable and each
+  # instrumented shared library in their own raw file, as clang's default pattern does; previous
+  # raw files of this benchmark are removed so the merge sees one run.
+  local pgo_profile_dir=""
+  if [[ $build_type == "prof_gen" ]]; then
+    pgo_profile_dir=$BUILD_ROOT/pgo-profiles/$pgo_instrument_type
+    mkdir -p "$pgo_profile_dir"
+    rm -f "$pgo_profile_dir/$cxx_benchmark_name"-*.profraw
+  fi
+  (
+    set_sanitizer_runtime_options
+    if [[ -n $pgo_profile_dir ]]; then
+      export LLVM_PROFILE_FILE=$pgo_profile_dir/$cxx_benchmark_name-%p-%m.profraw
+    fi
+    set +u  # "set -u" fails on an empty benchmark_args with bash < 4.4 (macOS /bin/bash).
+    set -x
+    "${benchmark_paths[0]}" "${benchmark_args[@]}"
+  )
+  if [[ -n $pgo_profile_dir ]]; then
+    log "PGO profile written to $pgo_profile_dir. To merge it for a --pgo-data-path build:"
+    log "  ${YB_LLVM_TOOLCHAIN_DIR:-<llvm toolchain>}/bin/llvm-profdata merge" \
+        "-o $pgo_profile_dir/$cxx_benchmark_name.profdata" \
+        "$pgo_profile_dir/$cxx_benchmark_name-*.profraw"
+  fi
+}
+
 register_file_to_rebuild() {
   expect_num_args 1 "$@"
   local file_name=${1%.o}
@@ -746,6 +798,10 @@ if [[ ${should_run_ctest} == "true" ]]; then
   if [[ $run_java_tests == "false" ]]; then
     build_java=false
   fi
+fi
+
+if [[ ${#benchmark_args[@]} -gt 0 && -z $cxx_benchmark_name ]]; then
+  fatal "--benchmark-args is only used with --cxx-benchmark"
 fi
 
 if [[ $num_test_repetitions -lt 1 ]]; then
@@ -1028,8 +1084,24 @@ if [[ $build_type == "prof_gen" ]]; then
   cmake_opts+=( "-DYB_PGO_INSTRUMENT_TYPE=$pgo_instrument_type" )
 fi
 
+# The profile path lives in CMakeCache.txt once cmake has seen it, and a build root keeps it until a
+# different one is given: later invocations without --pgo-data-path (the release pipeline's initdb
+# step, test runs) must not change how the root is compiled. So re-run cmake only when a different
+# profile is given explicitly, and say so when a cached profile is in effect.
+cached_pgo_data_path=""
+if [[ -f $BUILD_ROOT/CMakeCache.txt ]]; then
+  cached_pgo_data_path=$(sed -n 's/^YB_PGO_DATA_PATH:[A-Z]*=//p' "$BUILD_ROOT/CMakeCache.txt")
+fi
 if [[ $pgo_data_path != "" ]]; then
   cmake_opts+=( "-DYB_PGO_DATA_PATH=$pgo_data_path" )
+  if [[ -n $cached_pgo_data_path && $cached_pgo_data_path != "$pgo_data_path" &&
+        ${force_no_run_cmake} == "false" ]]; then
+    log "PGO profile changed from '${cached_pgo_data_path}' to '${pgo_data_path}', re-running CMake"
+    force_run_cmake=true
+  fi
+elif [[ -n $cached_pgo_data_path ]]; then
+  log "Using the PGO profile recorded in this build root: ${cached_pgo_data_path}" \
+      "(use a different build root, or --clean, to build without it)"
 fi
 
 if [[ $bolt_enabled == "true" ]]; then
@@ -1179,6 +1251,12 @@ if [[ ${ran_tests_remotely} != "true" ]]; then
     capture_sec_timestamp cxx_test_start
     run_cxx_test
     capture_sec_timestamp cxx_test_end
+  fi
+
+  if [[ -n $cxx_benchmark_name ]]; then
+    capture_sec_timestamp cxx_benchmark_start
+    run_cxx_benchmark
+    capture_sec_timestamp cxx_benchmark_end
   fi
 
   capture_sec_timestamp java_test_start

@@ -16,11 +16,16 @@ package org.yb.ysqlconnmgr;
 import java.util.List;
 import java.util.Map;
 
+import org.yb.util.Pair;
+
 public class PipelineResult {
   private final Map<String, List<List<String>>> rowsByLabel;
+  private final List<Pair<String, String>> parameterStatuses;
 
-  PipelineResult(Map<String, List<List<String>>> rowsByLabel) {
+  PipelineResult(Map<String, List<List<String>>> rowsByLabel,
+                 List<Pair<String, String>> parameterStatuses) {
     this.rowsByLabel = rowsByLabel;
+    this.parameterStatuses = parameterStatuses;
   }
 
   public String value(String label) {
@@ -36,5 +41,10 @@ public class PipelineResult {
 
   public int intValue(String label) {
     return Integer.parseInt(value(label));
+  }
+
+  // (name, value) of every ParameterStatus this pipeline received, in arrival order.
+  public List<Pair<String, String>> parameterStatuses() {
+    return parameterStatuses;
   }
 }

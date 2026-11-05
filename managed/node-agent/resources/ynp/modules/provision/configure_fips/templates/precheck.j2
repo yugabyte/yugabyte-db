@@ -1,9 +1,10 @@
 # Reports the node's FIPS state. Only rendered for a FIPS enabled universe (configure_fips).
 #
 # A node that has just had FIPS enabled is not in FIPS mode yet - the kernel flag only flips on
-# reboot, and the run script and this precheck execute in the same provisioning pass. So a pending
-# reboot is reported as a pass with a note; what must not pass is a node that is neither in FIPS
-# mode nor on its way there.
+# reboot. In the precheck that follows provisioning in the same pass, a pending reboot is reported
+# as a pass with a note, since the reboot is still to come. In the standalone preflight, which runs
+# when the node is about to be added to a universe, it is a failure: the node would join with FIPS
+# off.
 
 check_fips_mode() {
     FIPS_KERNEL_FLAG="/proc/sys/crypto/fips_enabled"
@@ -24,7 +25,13 @@ check_fips_mode() {
     if [[ "$kernel_fips" == "1" ]]; then
         add_result "FIPS Mode" "PASS" "Kernel FIPS mode is enabled"
     elif [[ -f "$FIPS_REBOOT_MARKER" ]]; then
+{% if is_preflight_check %}
+        add_result "FIPS Mode" "FAIL" \
+          "FIPS mode is configured but not active until the node reboots - reboot it first"
+        return
+{% else %}
         add_result "FIPS Mode" "PASS" "FIPS mode is configured and takes effect on reboot"
+{% endif %}
     else
         add_result "FIPS Mode" "FAIL" \
           "Kernel FIPS mode is off and no reboot is pending"

@@ -44,6 +44,20 @@ vi.mock('react-i18next', () => ({
   }) => children ?? i18nKey ?? null
 }));
 
+vi.mock('../../create-universe/helpers/utils', () => ({
+  useRuntimeConfigValues: () => ({
+    enablePrimaryRf9: false,
+    osPatchingEnabled: false,
+    useK8CustomResources: false,
+    maxVolumeCount: 32,
+    canUseSpotInstance: false,
+    ebsVolumeEnabled: false,
+    enableAzOverridesK8s: false,
+    isRuntimeConfigLoading: false,
+    isProviderRuntimeConfigLoading: false
+  })
+}));
+
 vi.mock('./NodeInstanceDetails', () => ({
   NodeInstanceDetails: () => <div data-testid="geo-node-instance-details" />
 }));

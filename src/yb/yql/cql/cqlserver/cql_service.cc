@@ -25,7 +25,6 @@
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/strip.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/tablet_server_interface.h"
@@ -122,7 +121,6 @@ const char* const kJwtIdentMapName = "YCQL_IDENT_MAPNAME";
 
 using std::shared_ptr;
 using std::string;
-using strings::Substitute;
 using yb::client::YBMetaDataCache;
 using yb::rpc::InboundCall;
 
@@ -213,8 +211,8 @@ CQLServiceImpl::CQLServiceImpl(CQLServer* server, const CQLServerOptions& opts)
 
   auth_prepared_stmt_ = std::make_shared<ql::Statement>(
       "",
-      Substitute("SELECT $0, $1 FROM system_auth.roles WHERE role = ?",
-                 kRoleColumnNameSaltedHash, kRoleColumnNameCanLogin));
+      Format("SELECT $0, $1 FROM system_auth.roles WHERE role = ?",
+             kRoleColumnNameSaltedHash, kRoleColumnNameCanLogin));
 
   if (FLAGS_cql_update_system_query_cache_msecs > 0) {
     system_cache_ = std::make_shared<SystemQueryCache>(this);
@@ -455,7 +453,7 @@ Result<std::shared_ptr<const CQLStatement>> CQLServiceImpl::GetPreparedStatement
     if (version != stmt_schema_version) {
       return ErrorStatus(
           ql::ErrorCode::WRONG_METADATA_VERSION,
-          Substitute(
+          Format(
               "Table has been altered. Execute the query again. Requested schema version $0, "
               "got $1.", version, stmt_schema_version));
     }

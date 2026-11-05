@@ -75,6 +75,7 @@
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
+#include "yb/util/math_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -772,14 +773,8 @@ void Version::GetColumnFamilyMetaData(ColumnFamilyMetaData* cf_meta) {
     cf_meta->file_count += vstorage->LevelFiles(level).size();
     std::vector<SstFileMetaData> files;
     for (const auto& file : vstorage->LevelFiles(level)) {
-      uint32_t path_id = file->fd.GetPathId();
-      std::string file_path;
-      if (path_id < ioptions->db_paths.size()) {
-        file_path = ioptions->db_paths[path_id].path;
-      } else {
-        assert(!ioptions->db_paths.empty());
-        file_path = ioptions->db_paths.back().path;
-      }
+      const auto path_id = EffectivePathId(ioptions->db_paths, file->fd.GetPathId());
+      const std::string& file_path = ioptions->db_paths[path_id].path;
       files.emplace_back(
           file->fd.GetNumber(),
           file_path,
@@ -2436,13 +2431,9 @@ Result<std::string> Version::FindTargetKey(
     }
   }
 
-  const auto cross_dist = [](uint64_t cross, uint64_t target) {
-    return cross > target ? cross - target : target - cross;
-  };
-
   // At the fixed point both bounds are candidates; take whichever measures closer to the target.
-  const uint64_t low_dist = cross_dist(low_cross, target_size);
-  const uint64_t high_dist = cross_dist(high_cross, target_size);
+  const uint64_t low_dist = yb::unsigned_abs_diff(low_cross, target_size);
+  const uint64_t high_dist = yb::unsigned_abs_diff(high_cross, target_size);
   const bool prefer_low = low_dist <= high_dist;
   const Slice chosen = prefer_low ? Slice(low_buf) : Slice(high_buf);
   const uint64_t chosen_dist = prefer_low ? low_dist : high_dist;
@@ -3300,15 +3291,15 @@ Status VersionSet::Import(const std::string& source_dir,
     return status;
   }
   std::vector<FileMetaData> files;
-  std::vector<std::pair<SequenceNumber, SequenceNumber>> segments;
   for (;;) {
     status = manifest_reader.Next();
     if (!status.ok()) {
       break;
     }
     auto& current = *manifest_reader;
-    if (!current.GetDeletedFiles().empty()) {
-      return STATUS(Corruption, "Deleted files should be empty");
+    // Deletes before adds, as in VersionBuilder, so a file moved between levels is kept.
+    for (const auto& [level, number] : current.GetDeletedFiles()) {
+      std::erase_if(files, [number](const auto& file) { return file.fd.GetNumber() == number; });
     }
     for (const auto& file : current.GetNewFiles()) {
       auto filemeta = file.second;
@@ -3322,7 +3313,6 @@ Status VersionSet::Import(const std::string& source_dir,
                              seqno);
       }
       files.push_back(filemeta);
-      segments.emplace_back(filemeta.smallest.seqno, filemeta.largest.seqno);
     }
   }
   if (!status.IsEndOfFile()) {
@@ -3333,6 +3323,10 @@ Status VersionSet::Import(const std::string& source_dir,
     return STATUS_FORMAT(NotFound, "Imported DB is empty: $0", source_dir);
   }
 
+  std::vector<std::pair<SequenceNumber, SequenceNumber>> segments;
+  for (const auto& file : files) {
+    segments.emplace_back(file.smallest.seqno, file.largest.seqno);
+  }
   std::vector<LiveFileMetaData> live_files;
   GetLiveFilesMetaData(&live_files);
   for (const auto& file : live_files) {
@@ -4131,10 +4125,8 @@ void VersionSet::GetLiveFilesMetaData(std::vector<LiveFileMetaData>* metadata) {
     for (int level = 0; level < cfd->NumberLevels(); level++) {
       for (const auto& file :
            cfd->current()->storage_info()->LevelFiles(level)) {
-        const auto path_id = file->fd.GetPathId();
-        const auto& db_path = path_id < db_options_->db_paths.size()
-                                  ? db_options_->db_paths[path_id].path
-                                  : db_options_->db_paths.back().path;
+        const auto path_id = EffectivePathId(db_options_->db_paths, file->fd.GetPathId());
+        const auto& db_path = db_options_->db_paths[path_id].path;
         // TODO: replace base_size with an accurate metadata size for uncompressed data.
         // Look into: BlockBasedTableBuilder
         const auto uncompressed_size =
@@ -4143,6 +4135,22 @@ void VersionSet::GetLiveFilesMetaData(std::vector<LiveFileMetaData>* metadata) {
             cfd->GetName(), level, file->fd.GetNumber(), db_path, file->fd.GetTotalFileSize(),
             file->fd.GetBaseFileSize(), uncompressed_size, ConvertBoundaryValues(file->smallest),
             ConvertBoundaryValues(file->largest), file->imported, file->being_compacted);
+      }
+    }
+  }
+}
+
+void VersionSet::GetLiveFileNumbersNotOnPath(uint32_t path_id, std::vector<uint64_t>* out) {
+  const auto& db_paths = db_options_->db_paths;
+  for (auto cfd : *column_family_set_) {
+    if (cfd->IsDropped()) {
+      continue;
+    }
+    for (int level = 0; level < cfd->NumberLevels(); level++) {
+      for (const auto* file : cfd->current()->storage_info()->LevelFiles(level)) {
+        if (EffectivePathId(db_paths, file->fd.GetPathId()) != path_id) {
+          out->push_back(file->fd.GetNumber());
+        }
       }
     }
   }

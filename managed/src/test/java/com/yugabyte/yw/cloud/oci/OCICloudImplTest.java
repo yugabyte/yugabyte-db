@@ -2,6 +2,7 @@ package com.yugabyte.yw.cloud.oci;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
@@ -10,6 +11,7 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.NOT_FOUND;
 
+import com.oracle.bmc.ServiceDetails;
 import com.oracle.bmc.core.ComputeClient;
 import com.oracle.bmc.core.model.Image;
 import com.oracle.bmc.core.requests.GetImageRequest;
@@ -167,8 +169,17 @@ public class OCICloudImplTest extends FakeDBApplication {
 
   @Test
   public void testGetImageOrBadRequestWrapsNotFound() {
-    BmcException notFound = mock(BmcException.class);
-    when(notFound.getStatusCode()).thenReturn(NOT_FOUND);
+    BmcException notFound =
+        new BmcException(
+            NOT_FOUND,
+            "NotAuthorizedOrNotFound",
+            "Authorization failed or requested resource not found.",
+            "req-id",
+            new ServiceDetails(
+                "Compute",
+                "GetImage",
+                "https://iaas.us-ashburn-1.oraclecloud.com/20160918/images/" + IMAGE_ID,
+                null));
     when(mockComputeClient().getImage(any(GetImageRequest.class))).thenThrow(notFound);
 
     PlatformServiceException e =
@@ -176,7 +187,41 @@ public class OCICloudImplTest extends FakeDBApplication {
             PlatformServiceException.class,
             () -> ociCloudImpl.getImageOrBadRequest(defaultProvider, REGION, IMAGE_ID));
     assertEquals(NOT_FOUND, e.getHttpStatus());
-    assertEquals("Image not found: " + IMAGE_ID, e.getMessage());
+    assertEquals(
+        "Image not found: "
+            + IMAGE_ID
+            + ": OCI Compute GetImage failed: Authorization failed or requested resource not"
+            + " found. (404 NotAuthorizedOrNotFound, endpoint: iaas.us-ashburn-1.oraclecloud.com)",
+        e.getMessage());
+  }
+
+  @Test
+  public void testGetMarketplaceBaseImageIdFollowsCustomBases() {
+    String parentId = "ocid1.image.oc1.iad.parent";
+    String marketplaceId = "ocid1.image.oc1.iad.marketplace";
+    stubImageLookup(parentId, "ocid1.compartment.oc1..custom", marketplaceId);
+    stubImageLookup(marketplaceId, "publisherCompartment", null);
+    Image image = Image.builder().id(IMAGE_ID).baseImageId(parentId).build();
+
+    assertEquals(
+        marketplaceId, ociCloudImpl.getMarketplaceBaseImageId(defaultProvider, REGION, image));
+  }
+
+  @Test
+  public void testGetMarketplaceBaseImageIdReturnsNullWithoutMarketplaceBase() {
+    String platformId = "ocid1.image.oc1.iad.platform";
+    stubImageLookup(platformId, null, null);
+    Image platformBased = Image.builder().id(IMAGE_ID).baseImageId(platformId).build();
+    Image imported = Image.builder().id(IMAGE_ID).build();
+
+    assertNull(ociCloudImpl.getMarketplaceBaseImageId(defaultProvider, REGION, platformBased));
+    assertNull(ociCloudImpl.getMarketplaceBaseImageId(defaultProvider, REGION, imported));
+  }
+
+  private void stubImageLookup(String imageId, String compartmentId, String baseImageId) {
+    Image image =
+        Image.builder().id(imageId).compartmentId(compartmentId).baseImageId(baseImageId).build();
+    doReturn(image).when(ociCloudImpl).getImageOrBadRequest(defaultProvider, REGION, imageId);
   }
 
   private ComputeClient mockComputeClient() {

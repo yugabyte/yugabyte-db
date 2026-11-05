@@ -31,13 +31,10 @@ public class TestPgRegressPgAuth extends BasePgRegressTestPorted {
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
-    flagMap.put("enable_object_locking_for_table_locks", "true");
-    flagMap.put("ysql_yb_ddl_transaction_block_enabled", "true");
     // yb.port.rowsecurity interleaves SAVEPOINT with DDL inside a transaction
     // block.
+    toggleDDLMode(flagMap, /* useLegacy */ false);
     flagMap.put("ysql_yb_enable_ddl_savepoint_support", "true");
-    flagMap.merge("allowed_preview_flags_csv", "ysql_yb_enable_ddl_savepoint_support",
-                  (e, a) -> e + "," + a);
     flagMap.put("ysql_enable_reindex", "true");
     // (Auto-Analyze #28391) Restart read required
     flagMap.put("ysql_enable_auto_analyze", "false");
@@ -47,11 +44,8 @@ public class TestPgRegressPgAuth extends BasePgRegressTestPorted {
   @Override
   protected Map<String, String> getMasterFlags() {
     Map<String, String> flagMap = super.getMasterFlags();
-    // The savepoint flag requires the transactional DDL flag, so set both.
-    flagMap.put("ysql_yb_ddl_transaction_block_enabled", "true");
+    toggleDDLMode(flagMap, /* useLegacy */ false);
     flagMap.put("ysql_yb_enable_ddl_savepoint_support", "true");
-    flagMap.merge("allowed_preview_flags_csv", "ysql_yb_enable_ddl_savepoint_support",
-                  (e, a) -> e + "," + a);
     return flagMap;
   }
 

@@ -14,6 +14,7 @@
 #pragma once
 
 #include "yb/consensus/consensus.messages.h"
+#include "yb/util/format.h"
 
 namespace yb {
 namespace consensus {
@@ -56,14 +57,14 @@ struct StateChangeContext {
       case StateChangeReason::CONSENSUS_STARTED:
         return "RaftConsensus started";
       case StateChangeReason::NEW_LEADER_ELECTED:
-        return strings::Substitute("New leader $0 elected", new_leader_uuid);
+        return Format("New leader $0 elected", new_leader_uuid);
       case StateChangeReason::FOLLOWER_NO_OP_COMPLETE:
         return "Replicate of NO_OP complete on follower";
       case StateChangeReason::LEADER_CONFIG_CHANGE_COMPLETE:
-        return strings::Substitute("Replicated change config $0 round complete on leader",
+        return Format("Replicated change config $0 round complete on leader",
           change_record.ShortDebugString());
       case StateChangeReason::FOLLOWER_CONFIG_CHANGE_COMPLETE:
-        return strings::Substitute("Config change $0 complete on follower",
+        return Format("Config change $0 complete on follower",
           change_record.ShortDebugString());
       case StateChangeReason::INVALID_REASON: FALLTHROUGH_INTENDED;
       default:

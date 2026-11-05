@@ -428,13 +428,48 @@ void IntentAwareIterator::SeekBeforeSubKey(Slice key) {
 
   SeekTriggered();
 
-  SkipFutureRecords<Direction::kBackward>(iter_.SeekBackward(key));
+  // Called after a forward Seek, which may leave either iterator invalid. SeekBackward() treats
+  // an invalid iterator as positioned before the key and would lose records.
+  if (iter_->Valid()) {
+    SkipFutureRecords<Direction::kBackward>(iter_.SeekBackward(key));
+  } else {
+    // Regular bounds are fixed, so an invalid iterator means no records at or after the key.
+    HandleStatus(iter_->status());
+    if (!status_.ok()) {
+      return;
+    }
+    SkipFutureRecords<Direction::kBackward>(iter_->SeekToLast());
+  }
+
   if (intent_iter_->Initialized()) {
     ResetIntentUpperbound();
-    SeekToSuitableIntent<Direction::kBackward>(intent_iter_.SeekBackward(key));
+    // The forward Seek may have capped the intent upper bound and left intent_iter_ invalid past
+    // it, which SeekBackward() would take as positioned before the key, so seek explicitly then.
+    if (intent_iter_->Valid()) {
+      SeekToSuitableIntent<Direction::kBackward>(intent_iter_.SeekBackward(key));
+    } else if (!IntentSeekBeforeKey(key)) {
+      return;
+    }
   }
 
   FillEntry</* kDescending */ true>();
+}
+
+bool IntentAwareIterator::IntentSeekBeforeKey(Slice key) {
+  DCHECK(intent_iter_->Initialized());
+  ROCKSDB_SEEK(intent_iter_, key);
+  if (intent_iter_->Valid()) {
+    SeekToSuitableIntent<Direction::kBackward>(intent_iter_->Prev());
+    return true;
+  }
+
+  HandleStatus(intent_iter_->status());
+  if (!status_.ok()) {
+    return false;
+  }
+
+  SeekToSuitableIntent<Direction::kBackward>(intent_iter_->SeekToLast());
+  return true;
 }
 
 // If we reach a different key, stop seeking.
@@ -508,15 +543,8 @@ bool IntentAwareIterator::PreparePrev(Slice key) {
 
   if (intent_iter_->Initialized()) {
     ResetIntentUpperbound();
-    ROCKSDB_SEEK(intent_iter_, key);
-    if (intent_iter_->Valid()) {
-      SeekToSuitableIntent<Direction::kBackward>(intent_iter_->Prev());
-    } else {
-      HandleStatus(intent_iter_->status());
-      if (!status_.ok()) {
-        return false;
-      }
-      SeekToSuitableIntent<Direction::kBackward>(intent_iter_->SeekToLast());
+    if (!IntentSeekBeforeKey(key)) {
+      return false;
     }
   }
 
@@ -605,12 +633,14 @@ void IntentAwareIterator::Prev() {
       } else {
         SeekToSuitableIntent<Direction::kBackward>(intent_iter_->Prev());
       }
+    }
 
-      // No need to move regular iterartor, but bounds should be re-checked for the current
-      // regular entry.
-      if (regular_entry_.Valid() && !SatisfyBounds(regular_entry_.key)) {
-        regular_entry_.Reset();
-      }
+    // The regular side is not moved, but the bounds may have been narrowed since it was
+    // positioned, e.g. GetHelperBase sets the lower bound to the row being read. Re-check it even
+    // if intent_iter_ is invalid, as it is then the only candidate. The regular branch needs no
+    // such case: regular_entry_ always matches iter_'s current entry.
+    if (regular_entry_.Valid() && !SatisfyBounds(regular_entry_.key)) {
+      regular_entry_.Reset();
     }
   }
 

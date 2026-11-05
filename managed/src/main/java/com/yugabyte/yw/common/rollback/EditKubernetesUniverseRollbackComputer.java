@@ -38,14 +38,25 @@ public class EditKubernetesUniverseRollbackComputer implements TaskRollbackCompu
   }
 
   @Override
+  public boolean isEnabled() {
+    return confGetter.getGlobalConf(GlobalConfKeys.allowEditUniverseRollback);
+  }
+
+  @Override
   public TaskType rollbackTaskType() {
     return ROLLBACK_TASK_TYPE;
   }
 
   @Override
+  public boolean requiresStateTransitionDetails() {
+    return true;
+  }
+
+  @Override
   public RollbackSubmission compute(RollbackContext context) {
     TaskType taskType = context.getTaskInfo().getTaskType();
-    if (!confGetter.getGlobalConf(GlobalConfKeys.allowEditUniverseRollback)) {
+    // Second gate for direct API calls; listing already uses {@link #isEnabled()}.
+    if (!isEnabled()) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(

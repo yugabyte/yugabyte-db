@@ -19,7 +19,7 @@ yba universe edit cluster --name <universe-name> primary --num-nodes 1 --instanc
 ### Options
 
 ```
-      --dedicated-nodes                         [Optional] Place Masters on dedicated nodes, defaults to false for aws, azu, gcp, onprem. Defaults to true for kubernetes.
+      --dedicated-nodes                         [Optional] Place Masters on dedicated nodes, defaults to false for aws, azu, gcp, oci, onprem. Defaults to true for kubernetes.
       --num-nodes int                           [Optional] Number of nodes in the cluster.
       --add-regions string                      [Optional] Add regions for the nodes of the cluster to be placed in. Provide comma-separated strings in the following format: "--regions 'region-1-for-primary-cluster,region-2-for-primary-cluster'"
       --remove-regions string                   [Optional] Remove regions from the cluster. Provide comma-separated strings in the following format: "--regions 'region-1-for-primary-cluster,region-2-for-primary-cluster'"

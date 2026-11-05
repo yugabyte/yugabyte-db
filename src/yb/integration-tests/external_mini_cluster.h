@@ -52,8 +52,6 @@
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/stringprintf.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/external_daemon.h"
 #include "yb/integration-tests/external_yb_controller.h"
@@ -77,7 +75,6 @@
 
 namespace yb {
 
-using strings::Substitute;
 
 class ExternalDaemon;
 class ExternalMaster;
@@ -597,8 +594,9 @@ class ExternalMiniCluster : public MiniClusterBase {
     return opts_.timeout;
   }
 
-  // Start a leader election on this master.
-  Status StartElection(ExternalMaster* master);
+  // Start a leader election on this master. An initial election is skipped if the sys catalog
+  // already left term 0.
+  Status StartElection(ExternalMaster* master, bool initial_election = false);
 
   bool running() const { return running_; }
 

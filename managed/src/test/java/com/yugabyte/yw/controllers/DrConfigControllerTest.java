@@ -17,6 +17,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -1022,6 +1023,49 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
     assertNotNull(newConfig);
     assertEquals(newConfig.getDbIds(), drConfig.getActiveXClusterConfig().getDbIds());
     assertTrue(newConfig.getTableIds().isEmpty());
+  }
+
+  @Test
+  public void testReplicaReplacementWithDifferentFipsMode() {
+    Universe newReplica = createUniverse("new replication target");
+    Universe.saveDetails(
+        newReplica.getUniverseUUID(), u -> u.getUniverseDetails().fipsEnabled = true);
+    DrConfig drConfig =
+        DrConfig.create(
+            "test",
+            sourceUniverse.getUniverseUUID(),
+            targetUniverse.getUniverseUUID(),
+            new BootstrapBackupParams(),
+            new PitrParams(),
+            Set.of("sourceNamespace"),
+            false);
+    drConfig.setState(State.Replicating);
+    drConfig.update();
+
+    DrConfigReplaceReplicaForm form = new DrConfigReplaceReplicaForm();
+    form.primaryUniverseUuid = sourceUniverse.getUniverseUUID();
+    form.drReplicaUniverseUuid = newReplica.getUniverseUUID();
+
+    Result result =
+        assertPlatformException(
+            () ->
+                doRequestWithAuthTokenAndBody(
+                    "POST",
+                    String.format(
+                        "/api/customers/%s/dr_configs/%s/replace_replica",
+                        defaultCustomer.getUuid(), drConfig.getUuid()),
+                    authToken,
+                    Json.toJson(form)));
+
+    assertBadRequest(
+        result,
+        String.format(
+            "Cannot configure XCluster/DR config between universes '%s' and '%s': one is"
+                + " FIPS-enabled and the other is not.",
+            sourceUniverse.getName(), newReplica.getName()));
+    verify(mockCommissioner, never()).submit(any(), any());
+    drConfig.refresh();
+    assertEquals(1, drConfig.getXClusterConfigs().size());
   }
 
   @Test

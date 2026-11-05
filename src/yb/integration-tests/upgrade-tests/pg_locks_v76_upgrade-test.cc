@@ -74,7 +74,7 @@ TEST_F(PgLocksV76UpgradeTest, TestPgLocksViewAdvisoryLocksSupport) {
       Format("$0 WHERE locktype = 'row';", kPgLocksQuery)));
   ASSERT_EQ(pg_locks_result, "NULL, NULL, NULL, STRONG_READ,STRONG_WRITE");
 
-  // conn's transaction was opened before FinalizeUpgrade(), and the enable_object_locking_infra
+  // conn's transaction was opened before FinalizeUpgrade(), and the yb_enable_object_locking_infra
   // auto flag is latched once per transaction in StartTransaction (c60f1cba1cd), so this
   // transaction keeps the pre-finalize value no matter how enable_object_locking_for_table_locks
   // is set. AcceptInvalidationMessages() therefore skips the full cache invalidation and the

@@ -43,7 +43,6 @@
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/quorum_util.h"
 
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/casts.h"
 
 #include "yb/tserver/tserver_error.h"
@@ -79,7 +78,6 @@ DEFINE_test_flag(bool, follower_fail_retryable_register, false,
 namespace yb::consensus {
 
 using std::string;
-using strings::Substitute;
 
 //////////////////////////////////////////////////
 // ReplicaState
@@ -291,7 +289,7 @@ Status ReplicaState::LockForConfigChange(UniqueLock* lock) const {
   // Can only change the config on running replicas.
   if (PREDICT_FALSE(state_ != kRunning)) {
     return STATUS(IllegalState, "Unable to lock ReplicaState for config change",
-                                Substitute("State = $0", state_));
+                                Format("State = $0", state_));
   }
   lock->swap(l);
   return Status::OK();
@@ -353,10 +351,10 @@ Status ReplicaState::CheckNoConfigChangePendingUnlocked() const {
   DCHECK(IsLocked());
   if (IsConfigChangePendingUnlocked()) {
     return STATUS(IllegalState,
-        Substitute("RaftConfig change currently pending. Only one is allowed at a time.\n"
-                   "  Committed config: $0.\n  Pending config: $1",
-                   GetCommittedConfigUnlocked().ShortDebugString(),
-                   GetPendingConfigUnlocked().ShortDebugString()));
+        Format("RaftConfig change currently pending. Only one is allowed at a time.\n"
+               "  Committed config: $0.\n  Pending config: $1",
+               GetCommittedConfigUnlocked().ShortDebugString(),
+               GetPendingConfigUnlocked().ShortDebugString()));
   }
   return Status::OK();
 }
@@ -507,8 +505,8 @@ Status ReplicaState::SetCurrentTermUnlocked(int64_t new_term, FlushConsensusMeta
   DCHECK(IsLocked());
   if (PREDICT_FALSE(new_term <= GetCurrentTermUnlocked())) {
     return STATUS(IllegalState,
-        Substitute("Cannot change term to a term that is lower than or equal to the current one. "
-                   "Current: $0, Proposed: $1", GetCurrentTermUnlocked(), new_term));
+        Format("Cannot change term to a term that is lower than or equal to the current one. "
+               "Current: $0, Proposed: $1", GetCurrentTermUnlocked(), new_term));
   }
   cmeta_->set_current_term(new_term);
   cmeta_->clear_voted_for();
@@ -1186,11 +1184,11 @@ void ReplicaState::CancelPendingOperation(const OpId& id, bool should_exist) {
 
 string ReplicaState::LogPrefix() const {
   auto role_and_term = cmeta_->GetRoleAndTerm();
-  return Substitute("T $0 P $1 [term $2 $3]: ",
-                    options_.tablet_id,
-                    peer_uuid_,
-                    role_and_term.second,
-                    PeerRole_Name(role_and_term.first));
+  return Format("T $0 P $1 [term $2 $3]: ",
+                options_.tablet_id,
+                peer_uuid_,
+                role_and_term.second,
+                PeerRole_Name(role_and_term.first));
 }
 
 ReplicaState::State ReplicaState::state() const {

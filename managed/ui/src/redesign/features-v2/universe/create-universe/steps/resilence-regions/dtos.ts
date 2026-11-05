@@ -2,6 +2,7 @@ import { Region } from '../../../../../features/universe/universe-form/utils/dto
 import {
   FAULT_TOLERANCE_TYPE,
   NODE_COUNT,
+  REGIONS_BY_PROVIDER,
   REGIONS_FIELD,
   RESILIENCE_FACTOR,
   RESILIENCE_FORM_MODE,
@@ -29,6 +30,8 @@ export interface ResilienceAndRegionsProps {
   [RESILIENCE_TYPE]: ResilienceType;
   [RESILIENCE_FORM_MODE]: ResilienceFormMode;
   [REGIONS_FIELD]: Region[];
+  /** Multi Guided + Expert — form field; persisted to placementsByProvider. */
+  [REGIONS_BY_PROVIDER]?: Record<string, Region[]>;
   [RESILIENCE_FACTOR]: number;
   [FAULT_TOLERANCE_TYPE]: FaultToleranceType;
   [NODE_COUNT]: number;

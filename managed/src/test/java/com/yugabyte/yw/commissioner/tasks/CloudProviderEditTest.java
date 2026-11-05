@@ -47,6 +47,7 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.AvailabilityZoneDetails;
@@ -63,6 +64,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
+import com.yugabyte.yw.models.helpers.CrossCloudFederationTarget;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -1183,6 +1185,113 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
   }
 
   @Test
+  public void testInUseProviderFederatedIamLockedWhileUniversesUseIt() throws InterruptedException {
+    setAwsFederation(provider, true, AUDIENCE);
+    provider.save();
+    Universe universe = ModelFactory.createUniverse("federated-univ", defaultCustomer.getId());
+    setFederationConfigured(universe, true);
+
+    // Turning federation off, or changing what it points at, would strand the configured nodes.
+    Provider p = Provider.getOrBadRequest(provider.getUuid());
+    setAwsFederation(p, false, AUDIENCE);
+    verifyEditError(p, false, FEDERATED_IAM_IN_USE_ERROR);
+    p = Provider.getOrBadRequest(provider.getUuid());
+    setAwsFederation(p, true, AUDIENCE + "-other");
+    verifyEditError(p, false, FEDERATED_IAM_IN_USE_ERROR);
+
+    // Once no universe has it configured, the provider's settings can change again.
+    setFederationConfigured(universe, false);
+    p = Provider.getOrBadRequest(provider.getUuid());
+    setAwsFederation(p, false, AUDIENCE);
+    waitForTask(doEditProvider(p, false));
+  }
+
+  @Test
+  public void testInUseProviderCanEnableFederatedIam() throws InterruptedException {
+    Universe universe = ModelFactory.createUniverse("univ", defaultCustomer.getId());
+    setFederationConfigured(universe, false);
+
+    // The universes opt in afterwards, through the universe-level enable.
+    Provider p = Provider.getOrBadRequest(provider.getUuid());
+    setAwsFederation(p, true, AUDIENCE);
+    waitForTask(doEditProvider(p, false));
+  }
+
+  @Test
+  public void testInUseProviderEnableBlockedByUniverseStillMarkedFederated() {
+    // Marked from before federation was turned off: its nodes hold credentials for old targets.
+    Universe universe = ModelFactory.createUniverse("federated-univ", defaultCustomer.getId());
+    setFederationConfigured(universe, true);
+
+    Provider p = Provider.getOrBadRequest(provider.getUuid());
+    setAwsFederation(p, true, AUDIENCE);
+    verifyEditError(p, false, FEDERATED_IAM_IN_USE_ERROR);
+  }
+
+  @Test
+  public void testInUseProviderFederatedIamIgnoresFieldsNodesDoNotUse()
+      throws InterruptedException {
+    setAwsFederation(provider, true, AUDIENCE);
+    provider.getDetails().getCloudInfo().aws.crossCloudFederationTargets.get(0).roleArn =
+        "arn:aws:iam::123456789012:role/unused";
+    provider.save();
+    Universe universe = ModelFactory.createUniverse("federated-univ", defaultCustomer.getId());
+    setFederationConfigured(universe, true);
+
+    // The edit form sends the gcp target without a role ARN, which no node reads.
+    Provider p = Provider.getOrBadRequest(provider.getUuid());
+    setAwsFederation(p, true, AUDIENCE);
+    waitForTask(doEditProvider(p, false));
+  }
+
+  @Test
+  public void testInUseProviderFederatedIamIgnoresTargetForOwnCloud() throws InterruptedException {
+    setAwsFederation(provider, true, AUDIENCE);
+    provider.save();
+    Universe universe = ModelFactory.createUniverse("federated-univ", defaultCustomer.getId());
+    setFederationConfigured(universe, true);
+
+    // Nodes of an AWS provider run on AWS and never federate to it, so its aws target is unread.
+    Provider p = Provider.getOrBadRequest(provider.getUuid());
+    setAwsFederation(p, true, AUDIENCE);
+    p.getDetails().getCloudInfo().aws.crossCloudFederationTargets =
+        Arrays.asList(
+            CrossCloudFederationTarget.of(Common.CloudType.gcp, AUDIENCE, null),
+            CrossCloudFederationTarget.of(
+                Common.CloudType.aws, "sts.amazonaws.com", "arn:aws:iam::123456789012:role/r"));
+    waitForTask(doEditProvider(p, false));
+  }
+
+  private static final String AUDIENCE =
+      "//iam.googleapis.com/projects/1/locations/global/workloadIdentityPools/p/providers/aws";
+  private static final String FEDERATED_IAM_IN_USE_ERROR =
+      "Federated IAM settings cannot be modified while universes use them: federated-univ.";
+
+  private static void setAwsFederation(Provider p, boolean enabled, String audience) {
+    if (p.getDetails().getCloudInfo() == null) {
+      p.getDetails().setCloudInfo(new ProviderDetails.CloudInfo());
+    }
+    if (p.getDetails().getCloudInfo().aws == null) {
+      p.getDetails().getCloudInfo().aws = new AWSCloudInfo();
+    }
+    AWSCloudInfo aws = p.getDetails().getCloudInfo().aws;
+    aws.enableFederatedIam = enabled;
+    aws.crossCloudFederationTargets =
+        Collections.singletonList(
+            CrossCloudFederationTarget.of(Common.CloudType.gcp, audience, null));
+  }
+
+  private void setFederationConfigured(Universe universe, boolean configured) {
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        univ -> {
+          UserIntent userIntent = univ.getUniverseDetails().getPrimaryCluster().userIntent;
+          TestUtils.existingProviderInitializer(userIntent).setProviderUUID(provider.getUuid());
+          userIntent.setFederationConfigured(configured);
+        });
+  }
+
+  @Test
   public void testWaitForFinishingTasksTimeout() throws InterruptedException {
     factory.globalRuntimeConf().setValue(GlobalConfKeys.waitForProviderTasksStepMs.getKey(), "50");
     factory
@@ -1296,6 +1405,49 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     assertTrue(bundleInfoMap.keySet().contains("us-west-2"));
     ImageBundleDetails.BundleInfo bInfo = ib1.getDetails().getRegions().get("us-west-2");
     assertEquals("Updated YB Image", bInfo.getYbImage());
+  }
+
+  @Test
+  public void testOciProviderEditKeepsMarketplaceFlags() throws InterruptedException {
+    Provider ociProvider = ModelFactory.ociProvider(defaultCustomer);
+    Region.create(ociProvider, "us-ashburn-1", "us-ashburn-1", null);
+    Region.create(ociProvider, "us-phoenix-1", "us-phoenix-1", null);
+    ImageBundleDetails.BundleInfo info = new ImageBundleDetails.BundleInfo();
+    info.setYbImage("ocid1.image.oc1.iad.marketplace");
+    info.setIsImageMarketplaceBased(true);
+    Map<String, ImageBundleDetails.BundleInfo> regionImageInfo = new HashMap<>();
+    regionImageInfo.put("us-ashburn-1", info);
+    ImageBundleDetails details = new ImageBundleDetails();
+    details.setRegions(regionImageInfo);
+    details.setArch(Architecture.x86_64);
+    ImageBundle.Metadata metadata = new ImageBundle.Metadata();
+    metadata.setType(ImageBundleType.YBA_ACTIVE);
+    ImageBundle bundle = ImageBundle.create(ociProvider, "oci-default", details, metadata, true);
+    when(mockOCICloudImpl.getImageOrBadRequest(any(), eq("us-phoenix-1"), eq("ybImage-default")))
+        .thenReturn(
+            com.oracle.bmc.core.model.Image.builder()
+                .compartmentId("publisherCompartment")
+                .build());
+
+    // Resend the bundle with a wrong flag; the edit also fills in us-phoenix-1 with the default.
+    Result providerRes = getProvider(ociProvider.getUuid());
+    Provider editReq = Json.fromJson(Json.parse(contentAsString(providerRes)), Provider.class);
+    editReq
+        .getImageBundles()
+        .get(0)
+        .getDetails()
+        .getRegions()
+        .get("us-ashburn-1")
+        .setIsImageMarketplaceBased(false);
+    TaskInfo taskInfo = waitForTask(doEditProvider(editReq, false));
+    assertEquals(Success, taskInfo.getTaskState());
+
+    Map<String, ImageBundleDetails.BundleInfo> stored =
+        ImageBundle.get(bundle.getUuid()).getDetails().getRegions();
+    assertEquals(true, stored.get("us-ashburn-1").getIsImageMarketplaceBased());
+    assertEquals("ybImage-default", stored.get("us-phoenix-1").getYbImage());
+    assertEquals(true, stored.get("us-phoenix-1").getIsImageMarketplaceBased());
+    verify(mockOCICloudImpl, times(1)).getImageOrBadRequest(any(), anyString(), anyString());
   }
 
   @Test

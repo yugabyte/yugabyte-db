@@ -16,6 +16,7 @@ import java.io.PipedOutputStream;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.junit.Ignore;
 import org.junit.Test;
 
 import redis.clients.jedis.Protocol;
@@ -31,6 +32,7 @@ import redis.clients.jedis.tests.BaseYBClassForJedis;
 import org.yb.YBTestRunner;
 
 @RunWith(value=YBTestRunner.class)
+@Ignore("YEDIS is deprecated")
 public class ProtocolTest extends BaseYBClassForJedis {
   @Test
   public void buildACommand() throws IOException {

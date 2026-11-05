@@ -29,6 +29,15 @@ class CdcUpgradeTest : public UpgradeTestBase {
  public:
   CdcUpgradeTest() : UpgradeTestBase(kBuild_2024_2_4_0) {}
 
+  void TearDown() override {
+    // Old version tservers hang on SIGTERM for 60s if masters are already down (the CDC
+    // update_peers_and_metrics thread keeps retrying master lookups), so stop tservers first.
+    if (cluster_ && !HasFatalFailure()) {
+      cluster_->Shutdown(ExternalMiniCluster::TS_ONLY);
+    }
+    UpgradeTestBase::TearDown();
+  }
+
  protected:
   static constexpr auto kTableName = "test_table";
   static constexpr auto kDbName = "yugabyte";

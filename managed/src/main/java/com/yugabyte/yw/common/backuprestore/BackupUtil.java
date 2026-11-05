@@ -43,6 +43,7 @@ import com.yugabyte.yw.models.CommonBackupInfo.CommonBackupInfoBuilder;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.PitrConfig;
+import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
@@ -66,6 +67,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.Stack;
@@ -737,6 +739,66 @@ public class BackupUtil {
     return Universe.maybeGet(universeUUID).isPresent();
   }
 
+  // The source universe's directory in a backup location: univ-<name>-<uuid>, or univ-<uuid>.
+  private static final Pattern BACKUP_LOCATION_UNIVERSE_DIR =
+      Pattern.compile("univ-(?:[^/]*-)?(" + Restore.BACKUP_UNIVERSE_UUID + ")(?:/|$)");
+
+  /**
+   * FIPS mode of the universe a backup was taken from: the mode recorded with the backup, else the
+   * source universe's, if it still exists in this YBA. A universe's FIPS mode is fixed at create,
+   * so the latter also holds for backups taken before the mode was recorded.
+   */
+  @Nullable
+  public static Boolean getBackupFipsMode(
+      @Nullable Boolean recordedFipsEnabled, Collection<UUID> sourceUniverseUUIDs) {
+    if (recordedFipsEnabled != null) {
+      return recordedFipsEnabled;
+    }
+    return sourceUniverseUUIDs.stream()
+        .filter(Objects::nonNull)
+        .map(Universe::maybeGet)
+        .flatMap(Optional::stream)
+        .map(u -> u.getUniverseDetails().fipsEnabled)
+        .findFirst()
+        .orElse(null);
+  }
+
+  public static Set<UUID> getSourceUniverseUUIDs(Collection<String> backupLocations) {
+    Set<UUID> universeUUIDs = new HashSet<>();
+    for (String location : backupLocations) {
+      Matcher matcher = BACKUP_LOCATION_UNIVERSE_DIR.matcher(location);
+      if (matcher.find()) {
+        universeUUIDs.add(UUID.fromString(matcher.group(1)));
+      }
+    }
+    return universeUUIDs;
+  }
+
+  /**
+   * Refuses a restore across FIPS modes. A non-FIPS backup can hold objects that break in FIPS mode
+   * (MD5 passwords and functions), and the restore itself succeeds, so nothing else would catch it.
+   * A backup whose FIPS mode is unknown is allowed.
+   */
+  public static void validateRestoreFipsMode(
+      @Nullable Boolean backupFipsEnabled, Universe targetUniverse) {
+    boolean targetFipsEnabled = targetUniverse.getUniverseDetails().fipsEnabled;
+    if (backupFipsEnabled == null || backupFipsEnabled == targetFipsEnabled) {
+      return;
+    }
+    throw new PlatformServiceException(
+        PRECONDITION_FAILED,
+        backupFipsEnabled
+            ? String.format(
+                "Cannot restore a backup of a FIPS-enabled universe into universe '%s', which is"
+                    + " not FIPS-enabled",
+                targetUniverse.getName())
+            : String.format(
+                "Cannot restore a backup of a universe that is not FIPS-enabled into FIPS-enabled"
+                    + " universe '%s'. Such a backup can contain objects that don't work in FIPS"
+                    + " mode, such as MD5 passwords",
+                targetUniverse.getName()));
+  }
+
   /**
    * Function to get total time taken for backups taken in parallel. Does a union of time intervals
    * based upon task-start time time taken, taking into considerations overlapping intervals.
@@ -807,6 +869,10 @@ public class BackupUtil {
   public static void validateRestoreActionUsingBackupMetadata(
       RestoreBackupParams restoreParams, RestorePreflightResponse preflightResponse) {
     List<BackupStorageInfo> backupStorageInfoList = restoreParams.backupStorageInfoList;
+
+    validateRestoreFipsMode(
+        preflightResponse.getFipsEnabled(),
+        Universe.getOrBadRequest(restoreParams.getUniverseUUID()));
 
     // Verify KMS related settings.
     if (restoreParams.kmsConfigUUID == null && preflightResponse.getHasKMSHistory()) {

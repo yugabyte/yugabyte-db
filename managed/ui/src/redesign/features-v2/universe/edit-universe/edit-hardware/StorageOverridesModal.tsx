@@ -1,5 +1,5 @@
-import { ReactElement, useEffect, useMemo } from 'react';
-import { mui, yba, YBButton, YBInput, YBSelect } from '@yugabyte-ui-library/core';
+import { ReactElement, ReactNode, useEffect, useMemo } from 'react';
+import { mui, yba, YBButton, YBInput, YBSelect, YBTag } from '@yugabyte-ui-library/core';
 import { useTranslation } from 'react-i18next';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { useYBToast } from '../../create-universe/helpers/ToastUtils';
@@ -8,6 +8,9 @@ import { ClusterSpec, ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywh
 import { createErrorMessage } from '@app/utils/ObjectUtils';
 import TrashIcon from '@app/redesign/assets/delete2.svg';
 import AddCircleIcon from '@app/redesign/assets/add-circle-blue.svg';
+import IdeaIcon from '@app/redesign/assets/approved/idea.svg';
+import StarIcon from '@app/redesign/assets/in-use-star.svg';
+import { getFlagFromRegion } from '../../create-universe/helpers/RegionToFlagUtils';
 import { getClusterByType, useEditUniverseContext } from '../EditUniverseUtils';
 import { useEditUniverseTaskHandler } from '../hooks/useEditUniverseTaskHandler';
 import {
@@ -18,6 +21,7 @@ import {
   rowsToAzNodeSpec,
   StorageOverrideRowFormValue,
   StorageOverridesFormValue,
+  StorageOverrideZoneChip,
   azNodeSpecToRows
 } from './storageOverridesUtils';
 
@@ -96,6 +100,58 @@ const FieldsContainer = styled(Box)({
 const StorageClassField = styled(Box)({
   width: '208px'
 });
+
+const NoteBanner = styled(Box)({
+  display: 'flex',
+  alignItems: 'flex-start',
+  gap: '8px',
+  padding: '8px',
+  borderRadius: '8px',
+  backgroundColor: '#F2F6FF',
+  width: '100%'
+});
+
+const ZoneTagList = styled(Box)({
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: '8px'
+});
+
+export const StorageOverrideZoneTags = ({ chips }: { chips: StorageOverrideZoneChip[] }) => (
+  <ZoneTagList>
+    {chips.map((chip) => (
+      <YBTag
+        key={chip.azUuid}
+        size="medium"
+        variant="light"
+        endIcon={chip.isPreferred ? <StarIcon /> : undefined}
+      >
+        {getFlagFromRegion(chip.regionCode)} {chip.regionName} ({chip.azName})
+      </YBTag>
+    ))}
+  </ZoneTagList>
+);
+
+export const StorageOverrideNote = ({
+  message,
+  chips,
+  dataTestId
+}: {
+  message: ReactNode;
+  chips?: StorageOverrideZoneChip[];
+  dataTestId: string;
+}) => (
+  <NoteBanner data-testid={dataTestId}>
+    <IdeaIcon width={24} height={24} />
+    <Box sx={{ display: 'flex', flex: 1, flexDirection: 'column', gap: '8px', minWidth: 0, py: '4px' }}>
+      <Typography variant="body2" sx={{ color: '#0B1117', fontSize: '13px', lineHeight: '16px' }}>
+        {message}
+      </Typography>
+      {chips && chips.length > 0 && <StorageOverrideZoneTags chips={chips} />}
+    </Box>
+  </NoteBanner>
+);
 
 interface StorageOverridesModalProps {
   cluster: ClusterSpec;
@@ -392,6 +448,17 @@ export const StorageOverridesModal = ({
         >
           {t('addAvailabilityZone')}
         </YBButton>
+        <StorageOverrideNote
+          dataTestId="StorageOverridesModal-FutureChangeNote"
+          message={
+            <>
+              <Box component="span" sx={{ fontWeight: 600 }}>
+                {t('note')}
+              </Box>{' '}
+              {t('futureGlobalChange')}
+            </>
+          }
+        />
       </ModalForm>
     </YBModal>
   );

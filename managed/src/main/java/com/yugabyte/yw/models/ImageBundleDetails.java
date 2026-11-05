@@ -1,5 +1,7 @@
 package com.yugabyte.yw.models;
 
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.models.common.YbaApi;
@@ -36,6 +38,19 @@ public class ImageBundleDetails {
                 + "YBA version 2.20.3.0.</b> Use imageBundles.details.sshUser instead.")
     @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.3.0")
     private Integer sshPortOverride;
+
+    // Derived from ybImage, so it is left out of equality: an edit that resends the same image
+    // without this flag is not a change.
+    @ApiModelProperty(
+        value =
+            "WARNING: This is a preview API that could change. Whether ybImage is an OCI"
+                + " Marketplace image or a custom image built from one. Set by YBA for OCI"
+                + " bundles, and left unset when YBA cannot tell; any value in a request is"
+                + " ignored.",
+        accessMode = READ_ONLY)
+    @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2026.2.0.0")
+    @EqualsAndHashCode.Exclude
+    private Boolean isImageMarketplaceBased;
   }
 
   @ApiModelProperty(value = "Global YB image for the bundle")

@@ -41,8 +41,10 @@
 #include "utils/xml.h"
 
 /* YB includes */
+#include "executor/nodeYbBatchedNestloop.h"
 #include "executor/ybModifyTable.h"
 #include "optimizer/planner.h"
+#include "optimizer/yb_merge_scan.h"
 #include "pg_yb_utils.h"
 #include "utils/guc.h"
 
@@ -166,7 +168,8 @@ static void escape_yaml(StringInfo buf, const char *str);
 
 /* YB declarations */
 static void show_yb_planning_stats_common(double num_seeks,
-										  double num_nexts_prevs,
+										  double num_nexts,
+										  double num_prevs,
 										  double num_table_pages,
 										  double num_index_pages,
 										  int docdb_result_width,
@@ -442,16 +445,8 @@ const char *yb_metric_gauge_label[] = {
 	BUILD_METRIC_LABEL("rocksdb_row_cache_miss"),
 	[YB_STORAGE_GAUGE_REGULARDB_NO_TABLE_CACHE_ITERATORS] =
 	BUILD_METRIC_LABEL("rocksdb_no_table_cache_iterators"),
-	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_SINGLE_TOUCH_HIT] =
-	BUILD_METRIC_LABEL("rocksdb_block_cache_single_touch_hit"),
-	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_SINGLE_TOUCH_ADD] =
-	BUILD_METRIC_LABEL("rocksdb_block_cache_single_touch_add"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_SINGLE_TOUCH_BYTES_WRITE] =
 	BUILD_METRIC_LABEL("rocksdb_block_cache_single_touch_bytes_write"),
-	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_MULTI_TOUCH_HIT] =
-	BUILD_METRIC_LABEL("rocksdb_block_cache_multi_touch_hit"),
-	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_MULTI_TOUCH_ADD] =
-	BUILD_METRIC_LABEL("rocksdb_block_cache_multi_touch_add"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_MULTI_TOUCH_BYTES_WRITE] =
 	BUILD_METRIC_LABEL("rocksdb_block_cache_multi_touch_bytes_write"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_MISS] =
@@ -598,16 +593,8 @@ const char *yb_metric_gauge_label[] = {
 	BUILD_METRIC_LABEL("intentsdb_rocksdb_row_cache_miss"),
 	[YB_STORAGE_GAUGE_INTENTSDB_NO_TABLE_CACHE_ITERATORS] =
 	BUILD_METRIC_LABEL("intentsdb_rocksdb_no_table_cache_iterators"),
-	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_SINGLE_TOUCH_HIT] =
-	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_single_touch_hit"),
-	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_SINGLE_TOUCH_ADD] =
-	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_single_touch_add"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_SINGLE_TOUCH_BYTES_WRITE] =
 	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_single_touch_bytes_write"),
-	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_MULTI_TOUCH_HIT] =
-	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_multi_touch_hit"),
-	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_MULTI_TOUCH_ADD] =
-	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_multi_touch_add"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_MULTI_TOUCH_BYTES_WRITE] =
 	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_multi_touch_bytes_write"),
 	[YB_STORAGE_GAUGE_ACTIVE_WRITE_QUERY_OBJECTS] =
@@ -3315,6 +3302,14 @@ ExplainNode(PlanState *planstate, List *ancestors,
 										 bnl->sortOperators, bnl->collations,
 										 bnl->nullsFirst, ancestors, es);
 
+				/*
+				 * Without the hash strategy every inner row is compared with
+				 * every outer row of the batch; report that, since it is the
+				 * costly case.
+				 */
+				if (!YbBnlUseHash(bnl))
+					ExplainPropertyText("Batch Matching", "Tuplestore", es);
+
 				if (is_yb_planning_stats_required &&
 					bnl->first_batch_size > 0)
 					ExplainPropertyInteger("First Batch Size", NULL,
@@ -5143,13 +5138,14 @@ show_buffer_usage(ExplainState *es, const BufferUsage *usage, bool planning)
 }
 
 static void
-show_yb_planning_stats_common(double num_seeks, double num_nexts_prevs,
-							  double num_table_pages, double num_index_pages,
-							  int docdb_result_width, ExplainState *es)
+show_yb_planning_stats_common(double num_seeks, double num_nexts,
+							  double num_prevs, double num_table_pages,
+							  double num_index_pages, int docdb_result_width,
+							  ExplainState *es)
 {
 	ExplainPropertyFloat("Estimated Seeks", NULL, num_seeks, 0, es);
-	ExplainPropertyFloat("Estimated Nexts And Prevs", NULL, num_nexts_prevs, 0,
-						 es);
+	ExplainPropertyFloat("Estimated Nexts", NULL, num_nexts, 0, es);
+	ExplainPropertyFloat("Estimated Prevs", NULL, num_prevs, 0, es);
 
 	/*
 	 * YB_TODO(#27210): Do not print values of estimated_num_table_result_pages
@@ -5171,18 +5167,29 @@ static void
 show_yb_planning_stats(YbPlanInfo *planinfo, ExplainState *es)
 {
 	show_yb_planning_stats_common(planinfo->estimated_num_seeks,
-								  planinfo->estimated_num_nexts_prevs,
+								  planinfo->estimated_num_nexts,
+								  planinfo->estimated_num_prevs,
 								  planinfo->estimated_num_table_result_pages,
 								  planinfo->estimated_num_index_result_pages,
 								  planinfo->estimated_docdb_result_width,
 								  es);
+
+	/*
+	 * Like total_cost, the estimates above assume all tuples are fetched;
+	 * the first fetch limit is the row bound the LIMIT places on the scan's
+	 * first read request, and startup_cost covers only that trimmed fetch.
+	 */
+	if (planinfo->first_fetch_limit > 0)
+		ExplainPropertyFloat("First Fetch Limit", NULL,
+							 planinfo->first_fetch_limit, 0, es);
 }
 
 static void
 show_yb_bitmap_scan_planning_stats(YbPlanInfo *planinfo, ExplainState *es)
 {
 	show_yb_planning_stats_common(planinfo->estimated_num_bmscan_seeks,
-								  planinfo->estimated_num_bmscan_nexts_prevs,
+								  planinfo->estimated_num_bmscan_nexts,
+								  planinfo->estimated_num_bmscan_prevs,
 								  -1,
 								  planinfo->estimated_num_bmscan_result_pages,
 								  planinfo->estimated_ybctid_width,
@@ -5595,6 +5602,9 @@ show_modifytable_info(ModifyTableState *mtstate, List *ancestors,
 							node->onConflictAction == ONCONFLICT_NOTHING ?
 							"NOTHING" : "UPDATE",
 							es);
+
+		if (mtstate->resultRelInfo->ri_ybUseIocPushdown)
+			ExplainPropertyBool("Conflict Resolution Pushdown", true, es);
 
 		/*
 		 * Don't display arbiter indexes at all when DO NOTHING variant
@@ -6761,7 +6771,6 @@ YbExplainMergeScan(PlanState *planstate, List *indextlist,
 {
 	List	   *stream_keys = NIL;
 	List	   *stream_conds = NIL;
-	int			num_streams = 1;
 	List	   *sort_keys = NIL;
 	ListCell   *lc;
 	List	   *context;
@@ -6797,8 +6806,14 @@ YbExplainMergeScan(PlanState *planstate, List *indextlist,
 									 es->ybMaskConstants);
 
 		stream_keys = lappend(stream_keys, exprstr);
-		stream_conds = lappend(stream_conds, item->clause);
-		num_streams *= item->num_elems;
+		/*
+		 * clause is the SAOP of a SAOP column, the equality index condition of
+		 * an equality column, or NULL for a hash column with neither a SAOP
+		 * nor an equality index condition, which ybValidateMergeScanBinds
+		 * reports.
+		 */
+		if (item->clause)
+			stream_conds = lappend(stream_conds, item->clause);
 	}
 
 	YbSortInfo *sort_cols = merge_scan_info->sort_cols;
@@ -6836,7 +6851,9 @@ YbExplainMergeScan(PlanState *planstate, List *indextlist,
 		ExplainPropertyList("Merge Sort Key", sort_keys, es);
 	Assert(stream_keys);
 	ExplainPropertyList("Merge Stream Key", stream_keys, es);
-	ExplainPropertyInteger("Merge Streams", NULL, num_streams, es);
+	ExplainPropertyInteger("Merge Streams", NULL,
+						   yb_merge_scan_num_streams(merge_scan_info->stream_cols),
+						   es);
 	if (es->verbose)
 		show_scan_qual(stream_conds, "Merge Cond", planstate, ancestors, es);
 }

@@ -93,6 +93,7 @@ Status VectorPayloadMap::SaveToFile(const std::string& index_path, size_t num_pa
   std::unique_ptr<WritableFile> file;
   RETURN_NOT_OK(env->NewWritableFile(tmp_path, &file));
   RETURN_NOT_OK(file->AppendVector(slices));
+  RETURN_NOT_OK(file->Sync());
   RETURN_NOT_OK(file->Close());
   return env->RenameFile(tmp_path, path);
 }

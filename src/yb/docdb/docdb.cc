@@ -50,7 +50,6 @@
 #include "yb/dockv/value_type.h"
 
 #include "yb/gutil/casts.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/rocksdb/options.h"
 
@@ -314,9 +313,13 @@ Status AssembleDocWriteBatch(const vector<unique_ptr<DocOperation>>& doc_write_o
                              InitMarkerBehavior init_marker_behavior,
                              std::atomic<int64_t>* monotonic_counter,
                              ReadRestartData* read_restart_data,
-                             const string& table_name) {
+                             const string& table_name,
+                             const std::optional<CdrMetadata>& cdr_metadata) {
   DCHECK_ONLY_NOTNULL(read_restart_data);
   DocWriteBatch doc_write_batch(doc_db, init_marker_behavior, pending_op, monotonic_counter);
+  if (cdr_metadata) {
+    doc_write_batch.SetCdrMetadata(*cdr_metadata);
+  }
 
   DocOperationApplyData data = {
     .doc_write_batch = &doc_write_batch,

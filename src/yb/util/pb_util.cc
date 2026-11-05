@@ -54,19 +54,18 @@
 
 #include "yb/gutil/callback.h"
 #include "yb/gutil/casts.h"
-#include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/fastmem.h"
 
 #include "yb/util/coding-inl.h"
 #include "yb/util/coding.h"
 #include "yb/util/crc.h"
-#include "yb/util/debug/sanitizer_scopes.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/flag_validators.h"
+#include "yb/util/format.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util-internal.h"
 #include "yb/util/pb_util.pb.h"
@@ -79,7 +78,10 @@
 
 using google::protobuf::Descriptor;
 using google::protobuf::DescriptorPool;
+using google::protobuf::DescriptorProto;
 using google::protobuf::DynamicMessageFactory;
+using google::protobuf::EnumDescriptor;
+using google::protobuf::EnumDescriptorProto;
 using google::protobuf::FieldDescriptor;
 using google::protobuf::FileDescriptor;
 using google::protobuf::FileDescriptorProto;
@@ -89,18 +91,16 @@ using google::protobuf::io::CodedInputStream;
 using google::protobuf::Message;
 using google::protobuf::MessageLite;
 using google::protobuf::Reflection;
+using google::protobuf::RepeatedPtrField;
 using google::protobuf::SimpleDescriptorDatabase;
 using yb::crc::Crc;
 using yb::pb_util::internal::SequentialFileFileInputStream;
 using yb::pb_util::internal::WritableFileOutputStream;
-using std::deque;
 using std::endl;
 using std::shared_ptr;
 using std::string;
-using std::unordered_set;
 using std::vector;
 using std::ostream;
-using strings::Substitute;
 using strings::Utf8SafeCEscape;
 
 using yb::operator""_KB;
@@ -225,23 +225,9 @@ void ByteSizeConsistencyError(size_t byte_size_before_serialization,
 
 string InitializationErrorMessage(const char* action,
                                   const MessageLite& message) {
-  // Note:  We want to avoid depending on strutil in the lite library, otherwise
-  //   we'd use:
-  //
-  // return strings::Substitute(
-  //   "Can't $0 message of type \"$1\" because it is missing required "
-  //   "fields: $2",
-  //   action, message.GetTypeName(),
-  //   message.InitializationErrorString());
-
-  string result;
-  result += "Can't ";
-  result += action;
-  result += " message of type \"";
-  result += message.GetTypeName();
-  result += "\" because it is missing required fields: ";
-  result += message.InitializationErrorString();
-  return result;
+  return Format(
+      "Can't $0 message of type \"$1\" because it is missing required fields: $2",
+      action, message.GetTypeName(), message.InitializationErrorString());
 }
 
 uint8_t* GetUInt8Ptr(const char* buffer) {
@@ -419,8 +405,7 @@ Status WritablePBContainerFile::Init(const Message& msg) {
 
   // Serialize the supplemental header.
   ContainerSupHeaderPB sup_header;
-  PopulateDescriptorSet(msg.GetDescriptor()->file(),
-                        sup_header.mutable_protos());
+  *sup_header.mutable_protos() = PopulateDescriptorSet(*msg.GetDescriptor());
   sup_header.set_pb_type(msg.GetTypeName());
   RETURN_NOT_OK_PREPEND(AppendMsgToBuffer(sup_header, &buf),
                         "Failed to prepare supplemental header for writing");
@@ -498,45 +483,117 @@ Status WritablePBContainerFile::AppendMsgToBuffer(const Message& msg, faststring
   return Status::OK();
 }
 
-void WritablePBContainerFile::PopulateDescriptorSet(
-    const FileDescriptor* desc, FileDescriptorSet* output) {
-  // Because we don't compile protobuf with TSAN enabled, copying the
-  // static PB descriptors in this function ends up triggering a lot of
-  // race reports. We suppress the reports, but TSAN still has to walk
-  // the stack, etc, and this function becomes very slow. So, we ignore
-  // TSAN here.
-  debug::ScopedTSANIgnoreReadsAndWrites ignore_tsan;
+namespace {
 
-  FileDescriptorSet all_descs;
-
-  // Tracks all schemas that have been added to 'unemitted' at one point
-  // or another. Is a superset of 'unemitted' and only ever grows.
-  unordered_set<const FileDescriptor*> processed;
-
-  // Tracks all remaining unemitted schemas.
-  deque<const FileDescriptor*> unemitted;
-
-  InsertOrDie(&processed, desc);
-  unemitted.push_front(desc);
-  while (!unemitted.empty()) {
-    const FileDescriptor* proto = unemitted.front();
-
-    // The current schema is emitted iff we've processed (i.e. emitted) all
-    // of its dependencies.
-    bool emit = true;
-    for (int i = 0; i < proto->dependency_count(); i++) {
-      const FileDescriptor* dep = proto->dependency(i);
-      if (InsertIfNotPresent(&processed, dep)) {
-        unemitted.push_front(dep);
-        emit = false;
+// Schemas of a message type and of the types it needs: those of its fields, recursively, and the
+// messages that contain nested ones. Embedding whole files with all their imports costs tens of KB.
+class ReachableTypes {
+ public:
+  explicit ReachableTypes(const Descriptor& root) {
+    AddMessage(&root);
+    for (size_t i = 0; i != messages_.size(); ++i) {
+      const auto* message = messages_[i];
+      for (int j = 0; j != message->field_count(); ++j) {
+        const auto* field = message->field(j);
+        if (field->message_type()) {
+          AddMessage(field->message_type());
+        } else if (field->enum_type() && seen_enums_.insert(field->enum_type()).second) {
+          AddFile(field->enum_type()->file());
+          AddMessage(field->enum_type()->containing_type());
+        }
       }
     }
-    if (emit) {
-      unemitted.pop_front();
-      proto->CopyTo(all_descs.mutable_file()->Add());
+  }
+
+  FileDescriptorSet Result() const {
+    FileDescriptorSet result;
+    for (const auto* file : files_) {
+      auto& proto = *result.add_file();
+      proto.set_name(file->name());
+      proto.set_package(file->package());
+      if (file->syntax() == FileDescriptor::SYNTAX_PROTO3) {
+        proto.set_syntax("proto3");
+      }
+      std::unordered_set<const FileDescriptor*> dependencies;
+      for (int i = 0; i != file->message_type_count(); ++i) {
+        CopyMessage(file->message_type(i), proto.mutable_message_type(), &dependencies);
+      }
+      for (int i = 0; i != file->enum_type_count(); ++i) {
+        CopyEnum(file->enum_type(i), proto.mutable_enum_type());
+      }
+      // In discovery order, so that the same message type always gets the same bytes.
+      for (const auto* dependency : files_) {
+        if (dependency != file && dependencies.contains(dependency)) {
+          proto.add_dependency(dependency->name());
+        }
+      }
+    }
+    return result;
+  }
+
+ private:
+  // A nested type needs the message that contains it.
+  void AddMessage(const Descriptor* message) {
+    if (!message || !seen_messages_.insert(message).second) {
+      return;
+    }
+    messages_.push_back(message);
+    AddFile(message->file());
+    AddMessage(message->containing_type());
+  }
+
+  void AddFile(const FileDescriptor* file) {
+    if (seen_files_.insert(file).second) {
+      files_.push_back(file);
     }
   }
-  all_descs.Swap(output);
+
+  // Appends message to protos if it is reachable.
+  void CopyMessage(
+      const Descriptor* message, RepeatedPtrField<DescriptorProto>* protos,
+      std::unordered_set<const FileDescriptor*>* dependencies) const {
+    if (!seen_messages_.contains(message)) {
+      return;
+    }
+    auto* proto = protos->Add();
+    message->CopyTo(proto);
+    proto->clear_nested_type();
+    proto->clear_enum_type();
+    proto->clear_extension();
+    for (int i = 0; i != message->field_count(); ++i) {
+      const auto* field = message->field(i);
+      if (field->message_type()) {
+        dependencies->insert(field->message_type()->file());
+      } else if (field->enum_type()) {
+        dependencies->insert(field->enum_type()->file());
+      }
+    }
+    for (int i = 0; i != message->nested_type_count(); ++i) {
+      CopyMessage(message->nested_type(i), proto->mutable_nested_type(), dependencies);
+    }
+    for (int i = 0; i != message->enum_type_count(); ++i) {
+      CopyEnum(message->enum_type(i), proto->mutable_enum_type());
+    }
+  }
+
+  void CopyEnum(
+      const EnumDescriptor* enum_type, RepeatedPtrField<EnumDescriptorProto>* protos) const {
+    if (seen_enums_.contains(enum_type)) {
+      enum_type->CopyTo(protos->Add());
+    }
+  }
+
+  std::vector<const Descriptor*> messages_;
+  std::unordered_set<const Descriptor*> seen_messages_;
+  std::unordered_set<const EnumDescriptor*> seen_enums_;
+  std::vector<const FileDescriptor*> files_;
+  std::unordered_set<const FileDescriptor*> seen_files_;
+};
+
+} // namespace
+
+FileDescriptorSet WritablePBContainerFile::PopulateDescriptorSet(const Descriptor& desc) {
+  return ReachableTypes(desc).Result();
 }
 
 ReadablePBContainerFile::ReadablePBContainerFile(std::unique_ptr<RandomAccessFile> reader)
@@ -553,16 +610,16 @@ Status ReadablePBContainerFile::Init() {
   Slice header;
   std::unique_ptr<uint8_t[]> scratch;
   RETURN_NOT_OK_PREPEND(ValidateAndRead(kPBContainerHeaderLen, EOF_NOT_OK, &header, &scratch),
-                        Substitute("Could not read header for proto container file $0",
-                                   reader_->filename()));
+                        Format("Could not read header for proto container file $0",
+                               reader_->filename()));
 
   // Validate magic number.
   if (PREDICT_FALSE(!strings::memeq(kPBContainerMagic, header.data(), kPBContainerMagicLen))) {
     string file_magic(reinterpret_cast<const char*>(header.data()), kPBContainerMagicLen);
     return STATUS(Corruption, "Invalid magic number",
-                              Substitute("Expected: $0, found: $1",
-                                         Utf8SafeCEscape(kPBContainerMagic),
-                                         Utf8SafeCEscape(file_magic)));
+                              Format("Expected: $0, found: $1",
+                                     Utf8SafeCEscape(kPBContainerMagic),
+                                     Utf8SafeCEscape(file_magic)));
   }
 
   // Validate container file version.
@@ -570,13 +627,13 @@ Status ReadablePBContainerFile::Init() {
   if (PREDICT_FALSE(version != kPBContainerVersion)) {
     // We only support version 1.
     return STATUS(NotSupported,
-        Substitute("Protobuf container has version $0, we only support version $1",
-                   version, kPBContainerVersion));
+        Format("Protobuf container has version $0, we only support version $1",
+               version, kPBContainerVersion));
   }
 
   // Read the supplemental header.
   ContainerSupHeaderPB sup_header;
-  RETURN_NOT_OK_PREPEND(ReadNextPB(&sup_header), Substitute(
+  RETURN_NOT_OK_PREPEND(ReadNextPB(&sup_header), Format(
       "Could not read supplemental header from proto container file $0",
       reader_->filename()));
   protos_.reset(sup_header.release_protos());
@@ -593,16 +650,16 @@ Status ReadablePBContainerFile::ReadNextPB(Message* msg) {
   Slice size;
   std::unique_ptr<uint8_t[]> size_scratch;
   RETURN_NOT_OK_PREPEND(ValidateAndRead(sizeof(uint32_t), EOF_OK, &size, &size_scratch),
-                        Substitute("Could not read data size from proto container file $0",
-                                   reader_->filename()));
+                        Format("Could not read data size from proto container file $0",
+                               reader_->filename()));
   uint32_t data_size = DecodeFixed32(size.data());
 
   // Read body into buffer for checksum & parsing.
   Slice body;
   std::unique_ptr<uint8_t[]> body_scratch;
   RETURN_NOT_OK_PREPEND(ValidateAndRead(data_size, EOF_NOT_OK, &body, &body_scratch),
-                        Substitute("Could not read body from proto container file $0",
-                                   reader_->filename()));
+                        Format("Could not read body from proto container file $0",
+                               reader_->filename()));
 
   // Read checksum.
   uint32_t expected_checksum = 0;
@@ -611,8 +668,8 @@ Status ReadablePBContainerFile::ReadNextPB(Message* msg) {
     std::unique_ptr<uint8_t[]> encoded_checksum_scratch;
     RETURN_NOT_OK_PREPEND(ValidateAndRead(kPBContainerChecksumLen, EOF_NOT_OK,
                                           &encoded_checksum, &encoded_checksum_scratch),
-                          Substitute("Could not read checksum from proto container file $0",
-                                     reader_->filename()));
+                          Format("Could not read checksum from proto container file $0",
+                                 reader_->filename()));
     expected_checksum = DecodeFixed32(encoded_checksum.data());
   }
 
@@ -623,8 +680,8 @@ Status ReadablePBContainerFile::ReadNextPB(Message* msg) {
   crc32c->Compute(size.data(), size.size(), &actual_checksum);
   crc32c->Compute(body.data(), body.size(), &actual_checksum);
   if (PREDICT_FALSE(actual_checksum != expected_checksum)) {
-    return STATUS(Corruption, Substitute("Incorrect checksum of file $0: actually $1, expected $2",
-                                         reader_->filename(), actual_checksum, expected_checksum));
+    return STATUS(Corruption, Format("Incorrect checksum of file $0: actually $1, expected $2",
+                                     reader_->filename(), actual_checksum, expected_checksum));
   }
 
   // The checksum is correct. Time to decode the body.
@@ -654,7 +711,7 @@ Status ReadablePBContainerFile::Dump(ostream* os, bool oneline) {
   SimpleDescriptorDatabase db;
   for (int i = 0; i < protos()->file_size(); i++) {
     if (!db.Add(protos()->file(i))) {
-      return STATUS(Corruption, "Descriptor not loaded", Substitute(
+      return STATUS(Corruption, "Descriptor not loaded", Format(
           "Could not load descriptor for PB type $0 referenced in container file",
           pb_type()));
     }
@@ -662,14 +719,14 @@ Status ReadablePBContainerFile::Dump(ostream* os, bool oneline) {
   DescriptorPool pool(&db);
   const Descriptor* desc = pool.FindMessageTypeByName(pb_type());
   if (!desc) {
-    return STATUS(NotFound, "Descriptor not found", Substitute(
+    return STATUS(NotFound, "Descriptor not found", Format(
         "Could not find descriptor for PB type $0 referenced in container file",
         pb_type()));
   }
   DynamicMessageFactory factory;
   const Message* prototype = factory.GetPrototype(desc);
   if (!prototype) {
-    return STATUS(NotSupported, "Descriptor not supported", Substitute(
+    return STATUS(NotSupported, "Descriptor not supported", Format(
         "Descriptor $0 referenced in container file not supported",
         pb_type()));
   }
@@ -710,7 +767,7 @@ Status ReadablePBContainerFile::ValidateAndRead(size_t length, EofOK eofOK,
         return STATUS(EndOfFile, "Reached end of file");
       case EOF_NOT_OK:
         return STATUS(Corruption, "File size not large enough to be valid",
-                                  Substitute("Proto container file $0: "
+                                  Format("Proto container file $0: "
                                       "tried to read $1 bytes at offset "
                                       "$2 but file size is only $3",
                                       reader_->filename(), length,
@@ -727,7 +784,7 @@ Status ReadablePBContainerFile::ValidateAndRead(size_t length, EofOK eofOK,
 
   // Sanity check the result.
   if (PREDICT_FALSE(s.size() < length)) {
-    return STATUS(Corruption, "Unexpected short read", Substitute(
+    return STATUS(Corruption, "Unexpected short read", Format(
         "Proto container file $0: tried to read $1 bytes; got $2 bytes",
         reader_->filename(), length, s.size()));
   }
@@ -751,7 +808,7 @@ Status ReadPBContainer(
   if (pb_type_name && pb_file.pb_type() != *pb_type_name) {
     WARN_NOT_OK(pb_file.Close(), "Could not Close() PB container file");
     return STATUS(InvalidArgument,
-                  Substitute("Wrong PB type: $0, expected $1", pb_file.pb_type(), *pb_type_name));
+                  Format("Wrong PB type: $0, expected $1", pb_file.pb_type(), *pb_type_name));
   }
 
   RETURN_NOT_OK(pb_file.ReadNextPB(msg));
@@ -759,6 +816,18 @@ Status ReadPBContainer(
 }
 
 } // namespace
+
+Result<bool> IsPBContainerFile(Env* env, const std::string& path) {
+  std::unique_ptr<RandomAccessFile> file;
+  RETURN_NOT_OK(env->NewRandomAccessFile(path, &file));
+  if (VERIFY_RESULT(file->Size()) < kPBContainerMagicLen) {
+    return false;
+  }
+  uint8_t scratch[kPBContainerMagicLen];
+  Slice magic;
+  RETURN_NOT_OK(env_util::ReadFully(file.get(), 0, kPBContainerMagicLen, &magic, scratch));
+  return magic == Slice(kPBContainerMagic, kPBContainerMagicLen);
+}
 
 Status ReadPBContainerFromPath(Env* env, const std::string& path, Message* msg) {
   return ReadPBContainer(env, path, msg);
@@ -778,7 +847,7 @@ Status WritePBContainerToPath(Env* env, const std::string& path,
                "msg_type", msg.GetTypeName());
 
   if (create == NO_OVERWRITE && env->FileExists(path)) {
-    return STATUS(AlreadyPresent, Substitute("File $0 already exists", path));
+    return STATUS(AlreadyPresent, Format("File $0 already exists", path));
   }
 
   const string tmp_template = MakeTempPath(path);

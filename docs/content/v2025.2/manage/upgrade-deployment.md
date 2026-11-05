@@ -22,7 +22,7 @@ type: docs
 Ensure that you are using the most up-to-date version of the software to optimize performance, access new features, and safeguard against software bugs.
 {{< /tip >}}
 
-YugabyteDB is a distributed database that can be installed on multiple nodes. Upgrades happen in-place with minimal impact on availability and performance. This is achieved using a rolling upgrade process, where each node/process is upgraded one node at a time. YugabyteDB [automatically rebalances](../../explore/linear-scalability/data-distribution/) the cluster as nodes/processes are taken down and brought back up during the upgrade.
+YugabyteDB is a distributed database that can be installed on multiple nodes. Upgrades happen in-place with minimal impact on availability and performance. This is achieved using a rolling upgrade process, where each node/process is upgraded one node at a time. YugabyteDB [automatically rebalances](../../architecture/docdb-sharding/cluster-balancing/) the cluster as nodes/processes are taken down and brought back up during the upgrade.
 
 The `data`, `log`, and `conf` directories are typically stored in a fixed location that remains unchanged during the upgrade process. This ensures that the cluster's data and configuration settings are preserved throughout the upgrade.
 
@@ -91,7 +91,7 @@ For some xCluster setups, before upgrading, you should run a verification script
   - YugabyteDB bitmap scan (yb_enable_bitmapscan=true)
   - Parallel append (yb_enable_parallel_append=true, yb_parallel_range_rows=10000)
 
-- If you are upgrading from v2025.1 series and your database includes a [vector index](../../additional-features/pg-extensions/extension-pgvector/#vector-indexing), the upgrade will fail. Drop the indexes and then re-add them after the upgrade is finalized.
+- If your database uses the [pgvector](../../additional-features/pg-extensions/extension-pgvector/) `vector` extension, follow the steps in [Upgrade vector indexes](../../additional-features/pg-extensions/extension-pgvector/#upgrade-vector-indexes) before you upgrade. Upgrading from v2024.2 requires dropping the `vector` extension first. Upgrading from the v2025.1 series fails if a vector index exists, and tables with vector indexes created on earlier releases must be recreated after the upgrade is finalized.
 
 ## Upgrade YugabyteDB cluster
 

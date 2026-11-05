@@ -34,6 +34,8 @@ var installCmd = &cobra.Command{
 			}
 		} else if state.CurrentStatus == ybactlstate.InstalledStatus {
 			log.Fatal("YugabyteDB Anywhere already installed, cannot install twice.")
+		} else if err := state.ValidateReinstall(); err != nil {
+			log.Fatal(err.Error())
 		}
 		if common.RunFromInstalled() {
 			log.Fatal("install must be run from the yba bundle that is getting installed.")

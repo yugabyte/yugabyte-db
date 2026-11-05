@@ -199,6 +199,23 @@ export const getImageBundleUsedByUniverse = (universeDetails: UniverseDetails, p
 };
 
 /**
+ * Checks whether two image bundles refer to the same entry in the catalog.
+ *
+ * Bundles that are already saved on the provider are matched on their UUID, so they keep
+ * their identity across a rename. Bundles added in the current form session do not have a
+ * UUID yet, so they fall back to matching on name and architecture.
+ *
+ * @param imageBundle - An image bundle.
+ * @param otherImageBundle - The image bundle to compare against.
+ * @returns Whether both refer to the same image bundle.
+ */
+export const isSameImageBundle = (imageBundle: ImageBundle, otherImageBundle: ImageBundle) =>
+  imageBundle.uuid && otherImageBundle.uuid
+    ? imageBundle.uuid === otherImageBundle.uuid
+    : imageBundle.name === otherImageBundle.name &&
+      imageBundle.details.arch === otherImageBundle.details.arch;
+
+/**
  * Constructs the payload for image bundles based on the form values.
  *
  * @param formValues - The form values.

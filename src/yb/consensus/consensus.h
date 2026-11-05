@@ -49,7 +49,6 @@
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/stringprintf.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/rpc/rpc_fwd.h"
 

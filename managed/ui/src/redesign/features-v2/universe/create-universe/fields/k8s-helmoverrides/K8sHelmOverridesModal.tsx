@@ -5,11 +5,13 @@ import { Box, Grid, IconButton, InputAdornment } from '@material-ui/core';
 import { toast } from 'react-toastify';
 import {
   YBInputField,
+  YBInput,
   YBCheckbox,
   YBAlert,
   AlertVariant,
   yba,
   YBButton,
+  YBTooltip,
   mui
 } from '@yugabyte-ui-library/core';
 import {
@@ -19,6 +21,7 @@ import {
 import { createErrorMessage } from '@app/redesign/features/universe/universe-form/utils/helpers';
 import {
   ClusterPlacementSpec,
+  RollMaxBatchSize,
   UniverseValidateKubernetesOverridesReqBody
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { useValidateKubernetesOverrides } from '@app/v2/api/universe/universe';
@@ -26,17 +29,31 @@ import { AZ_OVERRIDES_FIELD, UNIVERSE_OVERRIDES_FIELD } from '../FieldNames';
 //Icons
 import CloseIcon from '@app/redesign/assets/close.svg';
 import CircleAddIcon from '@app/redesign/assets/circle-add-v2.svg';
+import InfoMessageIcon from '@app/redesign/assets/info-message.svg';
 
 const { YBModal } = yba;
 const { Typography } = mui;
 
+export interface HelmOverridesSubmitOptions {
+  rollingUpgrade?: boolean;
+  rollMaxBatchSize?: RollMaxBatchSize;
+  sleepAfterMasterRestartMillis?: number;
+  sleepAfterTserverRestartMillis?: number;
+}
+
 interface HelmOverridesModalProps {
   open: boolean;
   onClose: () => void;
-  onSubmit: (universeOverrides: string, azOverrides: Record<string, string>) => void;
+  onSubmit: (
+    universeOverrides: string,
+    azOverrides: Record<string, string>,
+    options?: HelmOverridesSubmitOptions
+  ) => void;
   initialValues: OverridesForm;
   placementSpec?: ClusterPlacementSpec;
   dbVersion?: string;
+  showRollingUpgradeOptions?: boolean;
+  maxBatchSize?: RollMaxBatchSize;
 }
 
 interface OverridesForm {
@@ -65,7 +82,9 @@ export const K8sHelmOverridesModal = ({
   onClose,
   onSubmit,
   placementSpec,
-  dbVersion
+  dbVersion,
+  showRollingUpgradeOptions = false,
+  maxBatchSize
 }: HelmOverridesModalProps): ReactElement => {
   const { t } = useTranslation();
   const validateOverrides = useValidateKubernetesOverrides();
@@ -74,9 +93,35 @@ export const K8sHelmOverridesModal = ({
     useState<K8sHelmOverridesError>(INITIAL_VAIDATION_ERRORS);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [forceConfirm, setForceConfirm] = useState(false);
+  const [rollingUpgrade, setRollingUpgrade] = useState(true);
+  const [timeDelay, setTimeDelay] = useState(180);
+  const [numNodesToUpgradePrimary, setNumNodesToUpgradePrimary] = useState(1);
+
+  // Normalize once: the backend reports 1 when batching cannot be used, but guard against a
+  // missing or non-positive ceiling so the max attribute and the locked state stay consistent.
+  const maxBatchSizePrimary = Math.max(1, maxBatchSize?.primary_batch_size ?? 1);
+  const isMaxBatchSizeLocked = maxBatchSizePrimary <= 1;
+
+  const buildSubmitOptions = (): HelmOverridesSubmitOptions | undefined => {
+    if (!showRollingUpgradeOptions) {
+      return undefined;
+    }
+    const options: HelmOverridesSubmitOptions = {
+      rollingUpgrade,
+      sleepAfterMasterRestartMillis: timeDelay * 1000,
+      sleepAfterTserverRestartMillis: timeDelay * 1000
+    };
+    if (rollingUpgrade) {
+      options.rollMaxBatchSize = {
+        primary_batch_size: numNodesToUpgradePrimary,
+        read_replica_batch_size: numNodesToUpgradePrimary
+      };
+    }
+    return options;
+  };
 
   const setOverides = (universeOverrides: string, azOverrides: Record<string, string>) => {
-    onSubmit(universeOverrides, azOverrides);
+    onSubmit(universeOverrides, azOverrides, buildSubmitOptions());
     setValidationError(INITIAL_VAIDATION_ERRORS);
     onClose();
   };
@@ -307,6 +352,68 @@ export const K8sHelmOverridesModal = ({
           </Box>
         </Box>
       </Grid>
+      {showRollingUpgradeOptions && (
+        <Box mt={2} display="flex" flexDirection="column" gap={1}>
+          <YBCheckbox
+            checked={rollingUpgrade}
+            onChange={() => setRollingUpgrade(!rollingUpgrade)}
+            label={t('universeForm.helmOverrides.rollingUpgradeLabel')}
+            dataTestId="HelmOverridesModal-RollingUpgrade"
+          />
+          <Box display="flex" flexDirection="row" alignItems="center" ml={1} gap={1}>
+            <Typography variant="body2">
+              {t('universeForm.helmOverrides.upgradeDelayLabel')}
+            </Typography>
+            <YBInput
+              type="number"
+              value={timeDelay}
+              onChange={(event) => setTimeDelay(Number(event.target.value))}
+              disabled={!rollingUpgrade}
+              sx={{ width: '120px' }}
+              inputProps={{
+                min: 1,
+                'data-testid': 'HelmOverridesModal-TimeDelay'
+              }}
+            />
+            <Typography variant="body2">{t('common.seconds')}</Typography>
+          </Box>
+          {rollingUpgrade && (
+            <Box display="flex" flexDirection="row" alignItems="center" ml={1} gap={1}>
+              <Typography variant="body2">{t('component.rollMaxBatchSize.label')}</Typography>
+              <YBInput
+                type="number"
+                value={numNodesToUpgradePrimary}
+                onChange={(event) => {
+                  const fieldValue = Number(event.target.value);
+                  if (fieldValue > maxBatchSizePrimary)
+                    setNumNodesToUpgradePrimary(maxBatchSizePrimary);
+                  else if (fieldValue < 1) setNumNodesToUpgradePrimary(1);
+                  else setNumNodesToUpgradePrimary(fieldValue);
+                }}
+                disabled={isMaxBatchSizeLocked}
+                sx={{ width: '120px' }}
+                inputProps={{
+                  min: 1,
+                  max: maxBatchSizePrimary,
+                  'data-testid': 'HelmOverridesModal-NumNodesToRollingUpgrade'
+                }}
+              />
+              <YBTooltip
+                title={
+                  isMaxBatchSizeLocked
+                    ? t('component.rollMaxBatchSize.lockedTooltip')
+                    : t('component.rollMaxBatchSize.tooltip')
+                }
+                placement="top"
+              >
+                <span style={{ lineHeight: 0 }}>
+                  <InfoMessageIcon width={18} height={18} />
+                </span>
+              </YBTooltip>
+            </Box>
+          )}
+        </Box>
+      )}
     </YBModal>
   );
 };

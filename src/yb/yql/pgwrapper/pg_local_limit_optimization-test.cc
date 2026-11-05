@@ -192,7 +192,12 @@ class PgLocalLimitOptimizationTest : public PgMiniTestBase {
     // Wait for read query to pick read time.
     // Telegraphed by Read time: in the log.
     // Requires vmodule=read_query=1
-    StringWaiterLogSink wait_for_read_time("Read time: ");
+    // When the read time is picked on the first tablet, wait for the read to
+    // reach the second tablet (read time passed in with in_txn_limit set).
+    // Otherwise, the insert may commit there before the local limit is picked.
+    RegexWaiterLogSink wait_for_read_time(
+        !is_single_tablet_ && scan_cmd_ == ScanCmd::kOrdered
+            ? R"#(.*Read time: .*in_txn_limit: \{.*)#" : ".*Read time: .*");
     CountDownLatch read_thread_started(1);
     auto table_scan = std::async(std::launch::async, [&]() {
       // Signal insert to proceed

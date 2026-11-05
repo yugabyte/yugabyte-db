@@ -1764,14 +1764,41 @@ run_remote_cmd() {
   fi
 }
 
+# Switches YB_SRC_ROOT and the build parent directories to the /net/<host>/... name of the source
+# root. Returns 1 if the source root has no such name or a build root was given explicitly.
+# shellcheck disable=SC2120
+use_net_name_of_src_root() {
+  expect_no_args "$#"
+  if [[ $YB_SRC_ROOT == /net/* ]]; then
+    return 0
+  fi
+  if [[ -n ${predefined_build_root:-} ]]; then
+    return 1
+  fi
+  local net_src_root
+  net_src_root=$( cd "$YB_SRC_ROOT" && pwd -P ) || return 1
+  if [[ $net_src_root != /net/* ]]; then
+    net_src_root=/net/${HOSTNAME%%.*}$net_src_root
+  fi
+  if [[ ! $net_src_root -ef $YB_SRC_ROOT ]]; then
+    return 1
+  fi
+  log "Using '$net_src_root' instead of '$YB_SRC_ROOT' as the source root for remote compilation."
+  set_yb_src_root "$net_src_root"
+  set_build_parent_dirs
+}
+
 configure_remote_compilation() {
   if [[ ! ${YB_REMOTE_COMPILATION:-auto} =~ ^(0|1|auto)$ ]]; then
     fatal "Invalid value of the YB_REMOTE_COMPILATION environment variable: can be '0', '1', or" \
           "'auto'. Actual value: ${YB_REMOTE_COMPILATION:-undefined}."
   fi
+  if [[ ${YB_REMOTE_COMPILATION:-} == "1" ]]; then
+    use_net_name_of_src_root || true
+  fi
   # Automatically set YB_REMOTE_COMPILATION in an NFS GCP environment.
   if [[ ${YB_REMOTE_COMPILATION:-auto} == "auto" ]]; then
-    if is_running_on_gcp && is_src_root_on_nfs; then
+    if is_running_on_gcp && { is_src_root_on_nfs || use_net_name_of_src_root; }; then
       log "Automatically enabling remote compilation (running in an NFS GCP environment). " \
           "Use YB_REMOTE_COMPILATION=0 (or the --no-remote ybd option) to disable this behavior."
       YB_REMOTE_COMPILATION=1
@@ -2237,13 +2264,14 @@ activate_virtualenv() {
 
   log "Activating python virtual env"
 
-  # Symlink the requirements files into the top level build directory
-  # We assume $YB_SRC_ROOT/build is already created by initialize_yugabyte_bash_common having
-  # already been called.
-  [[ -f "${YB_SRC_ROOT}/build/requirements.txt" ]] \
-    || ln -sf "${YB_SRC_ROOT}/requirements.txt" "${YB_SRC_ROOT}/build/"
-  [[ -f "${YB_SRC_ROOT}/build/requirements_frozen.txt" ]] \
-    || ln -sf "${YB_SRC_ROOT}/requirements_frozen.txt" "${YB_SRC_ROOT}/build/"
+  # Symlink the requirements files into the directory that holds the virtualenv, which is where
+  # yb_activate_virtualenv looks for them. This is $YB_SRC_ROOT/build, or the external build parent
+  # directory when YB_USE_EXTERNAL_BUILD_ROOT=1.
+  mkdir -p "${virtualenv_parent_dir}"
+  [[ -f "${virtualenv_parent_dir}/requirements.txt" ]] \
+    || ln -sf "${YB_SRC_ROOT}/requirements.txt" "${virtualenv_parent_dir}/"
+  [[ -f "${virtualenv_parent_dir}/requirements_frozen.txt" ]] \
+    || ln -sf "${YB_SRC_ROOT}/requirements_frozen.txt" "${virtualenv_parent_dir}/"
 
   yb_activate_virtualenv "${virtualenv_parent_dir}"
 
@@ -2708,14 +2736,18 @@ else
   declare -i -r SIGUSR1_EXIT_CODE=138  # 128 + 10
 fi
 
-# Parent directory for build directories of all build types.
-YB_BUILD_INTERNAL_PARENT_DIR=$YB_SRC_ROOT/build
-YB_BUILD_EXTERNAL_PARENT_DIR=${YB_SRC_ROOT}__build
-if [[ ${YB_USE_EXTERNAL_BUILD_ROOT:-} == "1" ]]; then
-  YB_BUILD_PARENT_DIR=$YB_BUILD_EXTERNAL_PARENT_DIR
-else
-  YB_BUILD_PARENT_DIR=$YB_BUILD_INTERNAL_PARENT_DIR
-fi
+# Sets the parent directory for build directories of all build types.
+set_build_parent_dirs() {
+  YB_BUILD_INTERNAL_PARENT_DIR=$YB_SRC_ROOT/build
+  YB_BUILD_EXTERNAL_PARENT_DIR=${YB_SRC_ROOT}__build
+  if [[ ${YB_USE_EXTERNAL_BUILD_ROOT:-} == "1" ]]; then
+    YB_BUILD_PARENT_DIR=$YB_BUILD_EXTERNAL_PARENT_DIR
+  else
+    YB_BUILD_PARENT_DIR=$YB_BUILD_INTERNAL_PARENT_DIR
+  fi
+}
+
+set_build_parent_dirs
 
 if [[ ! -d $YB_BUILD_SUPPORT_DIR ]]; then
   fatal "Could not determine YB source directory from '${BASH_SOURCE[0]}':" \

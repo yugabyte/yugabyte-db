@@ -35,6 +35,8 @@
 #include <algorithm>
 #include <utility>
 
+#include <boost/container/small_vector.hpp>
+
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service_context.h"
 
@@ -44,8 +46,9 @@
 #include "yb/client/universe_key_client.h"
 
 #include "yb/common/common_flags.h"
-#include "yb/common/entity_ids.h"
 #include "yb/common/common_util.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/hybrid_time.h"
 #include "yb/common/pg_catversions.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
@@ -59,7 +62,7 @@
 
 #include "yb/fs/fs_manager.h"
 
-#include "yb/gutil/strings/substitute.h"
+#include "yb/gutil/walltime.h"
 
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_heartbeat.pb.h"
@@ -87,13 +90,13 @@
 #include "yb/tserver/metrics_snapshotter.h"
 #include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/pg_client_service.h"
-#include "yb/tserver/thin_client_service.h"
 #include "yb/tserver/pg_table_mutation_count_sender.h"
 #include "yb/tserver/remote_bootstrap_service.h"
 #include "yb/tserver/stateful_services/pg_auto_analyze_service.h"
 #include "yb/tserver/stateful_services/pg_cron_leader_service.h"
 #include "yb/tserver/stateful_services/test_echo_service.h"
 #include "yb/tserver/tablet_service.h"
+#include "yb/tserver/thin_client_service.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver-path-handlers.h"
 #include "yb/tserver/tserver_auto_flags_manager.h"
@@ -105,16 +108,19 @@
 #include "yb/tserver/xcluster_consumer_if.h"
 
 #include "yb/util/cgroups.h"
+#include "yb/util/env.h"
 #include "yb/util/flag_validators.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/ntp_clock.h"
+#include "yb/util/path_util.h"
 #include "yb/util/pg_util.h"
 #include "yb/util/random_util.h"
-#include "yb/util/env.h"
-#include "yb/util/path_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
@@ -196,6 +202,18 @@ DEFINE_NON_RUNTIME_int64(inbound_rpc_memory_limit, 0, "Inbound RPC memory limit"
 DEFINE_NON_RUNTIME_bool(tserver_enable_metrics_snapshotter, false,
     "Should metrics snapshotter be enabled");
 
+DEFINE_RUNTIME_bool(enable_active_table_metrics_filtering, true,
+    "Kill switch for filtering table-level metrics on /prometheus-metrics using the latest active "
+    "table list supplied through SetActiveTableIdsForMetrics. The opt-in is the scrape URL: a "
+    "scrape is filtered only if it passes version=v2 and apply_table_IDs_filter=true, and such a "
+    "scrape exports no filtered table metrics until the first list is received. When this flag is "
+    "disabled, all table metrics are exported regardless of the URL parameters.");
+
+DEFINE_RUNTIME_uint32(max_active_table_metrics_table_count, 1000,
+    "Safety cap on the number of table IDs accepted by SetActiveTableIdsForMetrics. Requests "
+    "exceeding this limit are rejected and the previously accepted list remains active. Zero "
+    "allows only an empty list.");
+
 DEFINE_test_flag(uint64, pg_auth_key, 0, "Forces an auth key for the postgres user when non-zero");
 
 DECLARE_int32(num_concurrent_backfills_allowed);
@@ -249,7 +267,9 @@ DEPRECATE_FLAG(uint32, ysql_min_new_version_ignored_count, "2026_05");
 
 DEFINE_RUNTIME_uint32(ysql_stale_catalog_version_min_seconds, 30,
     "Minimum duration in seconds that a tserver may receive only older per-db catalog versions "
-    "(without ever seeing an advance) from the master before crashing itself to resync. A "
+    "(without ever seeing an advance) from the master before crashing itself to resync. The "
+    "duration is how far the master's pg_yb_catalog_version read time advances, not the "
+    "tserver's own elapsed time, so a master that cannot read that table does not consume it. A "
     "random per-episode threshold is picked from [min, min + "
     "ysql_stale_catalog_version_random_extra_seconds]. Replaces the count-based check "
     "controlled by ysql_min_new_version_ignored_count, which was sensitive to heartbeat "
@@ -304,7 +324,30 @@ DECLARE_string(ysql_hba_conf_csv);
 DECLARE_string(ysql_ident_conf_csv);
 DECLARE_string(ysql_pg_conf_csv);
 
+METRIC_DEFINE_gauge_int64(server, xcluster_guarded_info_lease_held,
+    "xCluster-Guarded Information Lease Held",
+    yb::MetricUnit::kUnits,
+    "1 if this TServer holds an unexpired xCluster-guarded information lease, 0 otherwise.");
+
 namespace yb::tserver {
+
+METRIC_DEFINE_gauge_uint64(
+    server, active_table_metrics_last_update_time, "Active Table Metrics Last Update Time",
+    MetricUnit::kMicroseconds,
+    "Physical time of the last SetActiveTableIdsForMetrics request received by this tablet server. "
+    "Zero means no request has been received since process start.");
+
+METRIC_DEFINE_gauge_uint64(
+    server, active_table_metrics_table_count, "Active Table Metrics Table Count",
+    MetricUnit::kEntries,
+    "Number of table IDs in the active table list last accepted by SetActiveTableIdsForMetrics.");
+
+METRIC_DEFINE_gauge_uint64(
+    server, active_table_metrics_list_version, "Active Table Metrics List Version",
+    MetricUnit::kUnits,
+    "Version supplied by the caller with the active table list last accepted by "
+    "SetActiveTableIdsForMetrics. Zero means no list has been received since process start, or "
+    "the caller did not supply a version.");
 
 constexpr auto kYsqlPgConfCsvFlag = "ysql_pg_conf_csv";
 constexpr auto kYsqlHbaConfCsvFlag = "ysql_hba_conf_csv";
@@ -441,6 +484,16 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
       cgroup_manager_(FLAGS_enable_qos ? new TServerCgroupManager() : nullptr)
 #endif
       {
+  active_table_metrics_last_update_time_ =
+      METRIC_active_table_metrics_last_update_time.Instantiate(metric_entity(), 0);
+  active_table_metrics_table_count_ =
+      METRIC_active_table_metrics_table_count.Instantiate(metric_entity(), 0);
+  active_table_metrics_list_version_ =
+      METRIC_active_table_metrics_list_version.Instantiate(metric_entity(), 0);
+  METRIC_xcluster_guarded_info_lease_held.InstantiateFunctionGauge(
+      metric_entity(),
+      Bind(&TabletServer::GetXClusterGuardedInfoLeaseHeldForMetrics, Unretained(this)))
+    ->AutoDetachToLastValue(&xcluster_guarded_info_lease_metric_detacher_);
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
       FLAGS_inbound_rpc_memory_limit, mem_tracker()));
   ysql_db_catalog_version_index_used_ =
@@ -455,9 +508,54 @@ TabletServer::~TabletServer() {
 }
 
 std::string TabletServer::ToString() const {
-  return strings::Substitute("TabletServer : rpc=$0, uuid=$1",
-                             yb::ToString(first_rpc_address()),
-                             fs_manager_->uuid());
+  return Format("TabletServer : rpc=$0, uuid=$1",
+                yb::ToString(first_rpc_address()),
+                fs_manager_->uuid());
+}
+
+// The list is accepted and stored regardless of enable_active_table_metrics_filtering. The flag
+// only gates whether scrapes may use the list, so an operator turning it on takes effect
+// immediately instead of waiting for the caller's next push.
+Status TabletServer::SetActiveTableIdsForMetrics(
+    std::unordered_set<std::string> table_ids, uint32_t list_version) {
+  // The RPC handler already rejects oversized lists while copying the request; this covers other
+  // callers.
+  if (table_ids.size() > FLAGS_max_active_table_metrics_table_count) {
+    return STATUS_FORMAT(
+        InvalidArgument, "Active table list contains $0 tables, exceeding the limit of $1",
+        table_ids.size(), FLAGS_max_active_table_metrics_table_count);
+  }
+  const auto table_count = table_ids.size();
+  const auto update_time = static_cast<uint64_t>(GetCurrentTimeMicros());
+  std::lock_guard lock(active_table_metrics_mutex_);
+  active_table_ids_for_metrics_ = ActiveTableIdsForMetrics{
+    .table_ids = std::make_shared<const std::unordered_set<std::string>>(std::move(table_ids)),
+    .list_version = list_version,
+    .last_update_time = update_time,
+  };
+  // Updated under the lock so that the gauges always describe the stored list, even when requests
+  // race.
+  active_table_metrics_table_count_->set_value(table_count);
+  active_table_metrics_list_version_->set_value(list_version);
+  active_table_metrics_last_update_time_->set_value(update_time);
+  return Status::OK();
+}
+
+ActiveTableIdsForMetrics TabletServer::GetActiveTableIdsForMetrics() const {
+  std::lock_guard lock(active_table_metrics_mutex_);
+  return active_table_ids_for_metrics_;
+}
+
+void TabletServer::ConfigurePrometheusMetricsOptions(MetricPrometheusOptions* options) const {
+  // apply_table_ids_filter is only parsed for v2 scrapes.
+  if (!FLAGS_enable_active_table_metrics_filtering || !options->apply_table_ids_filter) {
+    return;
+  }
+  static const auto kNoActiveTables =
+      std::make_shared<const std::unordered_set<std::string>>();
+  std::lock_guard lock(active_table_metrics_mutex_);
+  const auto& table_ids = active_table_ids_for_metrics_.table_ids;
+  options->active_table_ids = table_ids ? table_ids : kNoActiveTables;
 }
 
 MonoDelta TabletServer::default_client_timeout() {
@@ -827,9 +925,10 @@ Status TabletServer::RegisterServices() {
       std::make_unique<CDCServiceContextImpl>(this), metric_entity(), metric_registry(),
       client_future(), []() { return FLAGS_update_min_cdc_indices_interval_secs; });
 
-  RETURN_NOT_OK(RegisterService(
-      FLAGS_ts_backup_svc_queue_length,
-      std::make_shared<TabletServiceBackupImpl>(tablet_manager_.get(), metric_entity())));
+  auto backup_service =
+      std::make_shared<TabletServiceBackupImpl>(tablet_manager_.get(), metric_entity());
+  backup_service_ = backup_service;
+  RETURN_NOT_OK(RegisterService(FLAGS_ts_backup_svc_queue_length, std::move(backup_service)));
 
   RETURN_NOT_OK(RegisterService(FLAGS_xcluster_svc_queue_length, cdc_service_));
 
@@ -916,7 +1015,8 @@ Status TabletServer::RegisterServices() {
 
   if (FLAGS_enable_pg_cron) {
     auto pg_cron_leader_service = std::make_unique<stateful_service::PgCronLeaderService>(
-        std::bind(&TabletServer::SetCronLeaderLease, this, _1), metric_entity(), client_future());
+        std::bind(&TabletServer::SetCronLeaseEnd, this, _1),
+        std::bind(&TabletServer::SetCronCanStartJobs, this, _1), metric_entity(), client_future());
     LOG(INFO) << "yb::tserver::stateful_service::PgCronLeaderService created at "
               << pg_cron_leader_service.get();
     RETURN_NOT_OK(pg_cron_leader_service->Init(tablet_manager_.get()));
@@ -1037,6 +1137,11 @@ void TabletServer::Shutdown() {
     remote_bootstrap_service->StartShutdown();
   }
 
+  // Release pending snapshot history guards before tablet storage teardown. Outstanding flush
+  // callbacks retain only their result/admission state, not the backup service or snapshot RPC.
+  if (auto backup_service = backup_service_.lock()) {
+    backup_service->Shutdown();
+  }
   tablet_manager_->StartShutdown();
   WARN_NOT_OK(relinquish_lease_future.get(), "Couldn't relinquish ysql lease");
 
@@ -1059,6 +1164,50 @@ Result<YSQLLeaseInfo> TabletServer::GetYSQLLeaseInfo() const {
 }
 
 Status TabletServer::RestartPG() const {
+  std::lock_guard lock(pg_start_mutex_);
+  if (!IsXClusterLeaseRequirementMet()) {
+    LOG(DETAIL) << "Keeping Postgres paused until this TServer holds an xCluster-guarded "
+                << "information lease";
+    pg_awaiting_xcluster_lease_ = true;
+    return KillPgUnlocked();
+  }
+  pg_awaiting_xcluster_lease_ = false;
+  return RestartPgUnlocked();
+}
+
+Status TabletServer::KillPg() const {
+  std::lock_guard lock(pg_start_mutex_);
+  pg_awaiting_xcluster_lease_ = false;
+  return KillPgUnlocked();
+}
+
+void TabletServer::MaybeStartPg() const {
+  std::lock_guard lock(pg_start_mutex_);
+  if (!pg_awaiting_xcluster_lease_ || !IsXClusterLeaseRequirementMet()) {
+    return;
+  }
+  // The YSQL lease checker marks the lease dead before its KillPg clears
+  // pg_awaiting_xcluster_lease_, so check the lease itself too.  This does not check the lease
+  // epoch: a new epoch's RestartPG may still arrive just after this start, which then restarts
+  // Postgres once more, so no backend outlives its epoch.
+  if (auto lease_info = GetYSQLLeaseInfo(); lease_info.ok() && !lease_info->is_live) {
+    return;
+  }
+  LOG(DETAIL)
+      << "Starting Postgres now that this TServer holds an xCluster-guarded information lease";
+  pg_awaiting_xcluster_lease_ = false;
+  WARN_NOT_OK(RestartPgUnlocked(), "Failed to start PG postmaster");
+}
+
+bool TabletServer::IsXClusterLeaseRequirementMet() const {
+  return !IsPersistenceGateEnforced() || xcluster_context_->HasXClusterGuardedInfoLease();
+}
+
+int64_t TabletServer::GetXClusterGuardedInfoLeaseHeldForMetrics() const {
+  return xcluster_context_->HasUnexpiredXClusterGuardedInfoLease() ? 1 : 0;
+}
+
+Status TabletServer::RestartPgUnlocked() const {
   if (!pg_restarter_) {
     return STATUS(IllegalState, "PG restarter callback not registered, cannot restart PG");
   }
@@ -1069,7 +1218,7 @@ Status TabletServer::RestartPG() const {
   return conn_manager_restarter_();
 }
 
-Status TabletServer::KillPg() const {
+Status TabletServer::KillPgUnlocked() const {
   if (pg_killer_) {
     return pg_killer_();
   }
@@ -1169,7 +1318,7 @@ Status GetDynamicUrlTile(
   }
   hp.set_port(port);
 
-  *url = strings::Substitute("http://$0$1", hp.ToString(), path);
+  *url = Format("http://$0$1", hp.ToString(), path);
   return Status::OK();
 }
 
@@ -1368,8 +1517,8 @@ Status TabletServer::SetTserverCatalogMessageList(
                             << " catalog version: " << new_catalog_version
                             << " is_breaking_change: " << is_breaking_change;
       }
-      InvalidatePgTableCache({{db_oid, new_catalog_version}} /* db_oids_updated */,
-                             {} /* db_oids_deleted */);
+      DbCatalogVersionUpdate updated_db[]{{db_oid, new_catalog_version}};
+      InvalidatePgTableCache(PgTableCacheInvalidationFilter{updated_db});
     }
     // We may have added one more message to the queue that exceeded the max size.
     if (db_message_lists &&
@@ -1421,8 +1570,12 @@ Status TabletServer::SetTserverCatalogMessageList(
       existing_entry.last_breaking_version = new_catalog_version;
     }
     UpdateCatalogVersionsFingerprintUnlocked();
-    // Track the time the entry was updated so we can alert if master is stale.
+    // Track the time the entry was updated so we can alert if master is stale. Reset as a set:
+    // SetYsqlDBCatalogVersionsUnlocked() reads stale_since_read_ht for any episode whose
+    // stale_since it finds, so leaving one behind without the other invites a measurement
+    // against a baseline from an episode that already ended.
     existing_entry.stale_since = MonoTime();
+    existing_entry.stale_since_read_ht = HybridTime::kInvalid;
     existing_entry.stale_fatal_threshold = MonoDelta();
     shm_index = existing_entry.shm_index;
     CHECK(shm_index >= 0 &&
@@ -1469,6 +1622,49 @@ Status TabletServer::SetTserverCatalogMessageList(
     }
   }
   return Status::OK();
+}
+
+void TabletServer::SetYsqlDbLastPrefetchedCatalogVersion(
+    uint32_t db_oid, uint64_t catalog_version) {
+  std::lock_guard l(lock_);
+  auto it = ysql_db_catalog_version_map_.find(db_oid);
+  if (it == ysql_db_catalog_version_map_.end()) {
+    // No slot for this database yet. Keep it until one arrives rather than dropping it.
+    // Otherwise nothing will fill this key again, so the node would hold a prefetch it
+    // never admits to holding.
+    //
+    // Every entry here is waiting for a slot, so there can never be more of them than there are
+    // slots. Past that, stop. An entry is only consumed when its slot arrives, so one for a
+    // database that never gets a slot stays, and a node in global catalog version mode allocates
+    // none at all. Leaving one costs a starting backend in a database that later reuses the oid
+    // the catch-up and fallback described where the deletion loop clears a dropped slot; keeping
+    // the map from growing without end is what the bound is for.
+    if (ysql_db_pending_last_prefetched_.size() >= TServerSharedData::kMaxNumDbCatalogVersions &&
+        !ysql_db_pending_last_prefetched_.contains(db_oid)) {
+      YB_LOG_EVERY_N_SECS(WARNING, 60)
+          << "Not holding last prefetched catalog version for db_oid " << db_oid << ": already "
+          << "holding " << ysql_db_pending_last_prefetched_.size() << " databases with no slot";
+      return;
+    }
+    auto& pending = ysql_db_pending_last_prefetched_[db_oid];
+    pending = std::max(pending, catalog_version);
+    return;
+  }
+  const auto shm_index = it->second.shm_index;
+  CHECK(shm_index >= 0 &&
+        shm_index < static_cast<int>(TServerSharedData::kMaxNumDbCatalogVersions))
+    << "shm_index: " << shm_index << ", db_oid: " << db_oid;
+  // Fills for different versions complete in whatever order their reads finish, so an older one
+  // can land last. Keep the newest, which is the one with the fewest invalidation messages to
+  // apply on top of it.
+  const auto index = static_cast<size_t>(shm_index);
+  if (catalog_version > shared_object()->ysql_db_last_prefetched_catalog_version(index)) {
+    shared_object()->SetYsqlDbLastPrefetchedCatalogVersion(index, catalog_version);
+    if (FLAGS_log_ysql_catalog_versions) {
+      LOG_WITH_FUNC(INFO) << "set db " << db_oid
+                          << " last prefetched catalog version: " << catalog_version;
+    }
+  }
 }
 
 void TabletServer::TriggerRelcacheInitConnection(
@@ -1587,6 +1783,10 @@ void TabletServer::MakeRelcacheInitConnection(const std::string& dbname) {
   RelcacheInitConnectionDone(dbname, status);
 }
 
+void TabletServer::SetYsqlCatalogPrefetchLoad(uint32_t load) {
+  shared_object()->SetYsqlCatalogPrefetchLoad(load);
+}
+
 void TabletServer::SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_breaking_version) {
   {
     std::lock_guard l(lock_);
@@ -1615,14 +1815,19 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
 
   bool catalog_changed = false;
   std::unordered_set<uint32_t> db_oid_set;
-  std::unordered_map<uint32_t, uint64_t> db_oids_updated;
-  std::unordered_set<uint32_t> db_oids_deleted;
+  boost::container::small_vector<DbCatalogVersionUpdate, 32> updated_dbs;
+  boost::container::small_vector<PgOid, 16> dropped_dbs;
   bool has_stale_new_version = false;
-  for (int i = 0; i < db_catalog_version_data.db_catalog_versions_size(); i++) {
-    const auto& db_catalog_version = db_catalog_version_data.db_catalog_versions(i);
-    const uint32_t db_oid = db_catalog_version.db_oid();
-    const uint64_t new_version = db_catalog_version.current_version();
-    const uint64_t new_breaking_version = db_catalog_version.last_breaking_version();
+  // Invalid when the sender reports no read time: a pre-upgrade master, or one of the senders
+  // that has none to report (the DDL-commit broadcast, which sets
+  // ignore_catalog_version_staleness_check and so never reaches the check below anyway).
+  const auto master_read_ht = db_catalog_version_data.has_catalog_versions_read_time()
+      ? HybridTime(db_catalog_version_data.catalog_versions_read_time())
+      : HybridTime::kInvalid;
+  for (const auto& db_catalog_version : db_catalog_version_data.db_catalog_versions()) {
+    const auto db_oid = db_catalog_version.db_oid();
+    const auto new_version = db_catalog_version.current_version();
+    const auto new_breaking_version = db_catalog_version.last_breaking_version();
     if (FLAGS_TEST_check_catalog_version_overflow) {
       CHECK_GE(static_cast<int64_t>(new_version), 0)
           << new_version << " db_oid: " << db_oid
@@ -1652,6 +1857,7 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
                      .last_breaking_version = new_breaking_version,
                      .shm_index = -1,
                      .stale_since = MonoTime(),
+                     .stale_since_read_ht = HybridTime::kInvalid,
                      .stale_fatal_threshold = MonoDelta()})));
     bool row_inserted = it.second;
     bool row_updated = false;
@@ -1663,9 +1869,10 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
         existing_entry.last_breaking_version = new_breaking_version;
         // Advance ends any current stale episode.
         existing_entry.stale_since = MonoTime();
+        existing_entry.stale_since_read_ht = HybridTime::kInvalid;
         existing_entry.stale_fatal_threshold = MonoDelta();
         row_updated = true;
-        db_oids_updated.insert({db_oid, new_version});
+        updated_dbs.emplace_back(db_oid, new_version);
         shm_index = existing_entry.shm_index;
         CHECK(
             shm_index >= 0 &&
@@ -1680,24 +1887,56 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
           // be sent at different frequency during full reports.
           if (!existing_entry.stale_since.Initialized()) {
             existing_entry.stale_since = MonoTime::Now();
+            existing_entry.stale_since_read_ht = master_read_ht;
             existing_entry.stale_fatal_threshold =
                 MonoDelta::FromSeconds(RandomUniformInt<uint32_t>(
                     FLAGS_ysql_stale_catalog_version_min_seconds,
                     FLAGS_ysql_stale_catalog_version_min_seconds +
                         FLAGS_ysql_stale_catalog_version_random_extra_seconds));
           }
-          const auto stale_for = MonoTime::Now() - existing_entry.stale_since;
+          const auto elapsed = MonoTime::Now() - existing_entry.stale_since;
+          // Measure the episode by how far the master's snapshot has advanced, not by our own
+          // clock: a master that cannot read pg_yb_catalog_version keeps reporting the snapshot
+          // it already had, and that gap means it has not looked yet, not that we disagree.
+          // An old master reports no read time, so fall back to the wall clock.
+          MonoDelta stale_for = elapsed;
+          if (master_read_ht.is_valid() && existing_entry.stale_since_read_ht.is_valid()) {
+            const auto snapshot_advance =
+                master_read_ht.PhysicalDiff(existing_entry.stale_since_read_ht);
+            // stale_since_read_ht came from whichever master was leader when the episode began,
+            // so a leader change can make master_read_ht older than it. Clamped for the log
+            // below; a negative stale_for is already under the threshold, so the 'fatal' decision
+            // below is unaffected.
+            stale_for = std::max(MonoDelta::kZero, snapshot_advance);
+          }
           const bool fatal = stale_for >= existing_entry.stale_fatal_threshold;
           // Because the session that executes the DDL sets its incremented new version in the
           // local tserver before the master sees it, brief master-side lag is expected and is
           // logged as a WARNING. Persistent lag (over the per-episode threshold) is treated as
           // a real divergence and we crash to resync.
-          (fatal ? LOG(FATAL) : LOG(WARNING))
-              << "Ignoring ysql db " << db_oid << " catalog version update: new version too old. "
-              << "New: " << new_version << ", Old: " << existing_entry.current_version
-              << ", stale_for: " << stale_for
-              << ", threshold: " << existing_entry.stale_fatal_threshold
-              << ", debug_id: " << debug_id;
+          const auto msg = Format(
+              "Ignoring ysql db $0 catalog version update: new version too old. New: $1, "
+              "Old: $2, stale_for: $3, threshold: $4, elapsed: $5, master_read_ht: $6, "
+              "debug_id: $7",
+              db_oid, new_version, existing_entry.current_version, stale_for,
+              existing_entry.stale_fatal_threshold, elapsed, master_read_ht, debug_id);
+          if (fatal) {
+            LOG(FATAL) << msg;
+          } else {
+            // Throttled because the crash used to bound this: an episode ran for at most the
+            // threshold. A master that never reads again now keeps one open indefinitely, and
+            // one line per heartbeat forever would bury everything else in the log.
+            YB_LOG_EVERY_N_SECS(WARNING, 10) << msg;
+          }
+          // Under the old wall-clock rule this tserver would have aborted by now. Say why it
+          // did not, or the WARNING above reads as an ordinary lag rather than a master outage.
+          if (!fatal && elapsed >= existing_entry.stale_fatal_threshold) {
+            YB_LOG_EVERY_N_SECS(WARNING, 60)
+                << "Master catalog versions snapshot for db " << db_oid << " has not advanced in "
+                << elapsed << " (read time " << existing_entry.stale_since_read_ht
+                << "); not counting it against the staleness threshold. The master is likely "
+                << "unable to read pg_yb_catalog_version.";
+          }
         }
       } else {
         // It is possible to have same current_version but a newer last_breaking_version.
@@ -1729,6 +1968,7 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
         }
         // Master sent us the version we already have, so end the staleness check window
         existing_entry.stale_since = MonoTime();
+        existing_entry.stale_since_read_ht = HybridTime::kInvalid;
         existing_entry.stale_fatal_threshold = MonoDelta();
       }
     } else {
@@ -1766,6 +2006,16 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
       }
       // update the newly inserted entry to have the allocated slot.
       inserted_entry.shm_index = shm_index;
+      // A prefetch cached before this slot existed had nowhere to record its version, and no
+      // later connection will fill that key again. Write it now that there is somewhere to put it.
+      if (auto pending = ysql_db_pending_last_prefetched_.find(db_oid);
+          pending != ysql_db_pending_last_prefetched_.end()) {
+        shared_object()->SetYsqlDbLastPrefetchedCatalogVersion(
+            static_cast<size_t>(shm_index), pending->second);
+        LOG_WITH_FUNC(INFO) << "applied pending last prefetched catalog version "
+                            << pending->second << " for db " << db_oid;
+        ysql_db_pending_last_prefetched_.erase(pending);
+      }
       LOG_WITH_FUNC(INFO) << "inserted new db " << db_oid << ", shm_index: " << shm_index
                           << ", catalog version: " << new_version
                           << ", breaking version: " << new_breaking_version
@@ -1808,10 +2058,10 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
   if (!has_stale_new_version) {
     for (auto it = ysql_db_catalog_version_map_.begin();
          it != ysql_db_catalog_version_map_.end();) {
-      const uint32_t db_oid = it->first;
-      if (db_oid_set.count(db_oid) == 0) {
+      const auto db_oid = it->first;
+      if (!db_oid_set.contains(db_oid)) {
         // This means the entry for db_oid no longer exists.
-        db_oids_deleted.insert(db_oid);
+        dropped_dbs.push_back(db_oid);
         catalog_changed = true;
         auto shm_index = it->second.shm_index;
         CHECK(shm_index >= 0 &&
@@ -1821,10 +2071,17 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
         (*ysql_db_catalog_version_index_used_)[shm_index] = false;
         it = ysql_db_catalog_version_map_.erase(it);
         ysql_db_invalidation_messages_map_.erase(db_oid);
+        ysql_db_pending_last_prefetched_.erase(db_oid);
         // Also reset the shared memory array db_catalog_versions_ slot to 0 to assist
         // debugging the shared memory array db_catalog_versions_ (e.g., when we can dump
         // the shared memory file to examine its contents).
         shared_object()->SetYsqlDbCatalogVersion(static_cast<size_t>(shm_index), 0);
+        // Clear the last prefetched version as well, and not only for debugging: a value left
+        // behind makes a starting backend in the next database believe this node holds a prefetch
+        // at that version. It does not, since the response cache is keyed per database, so that
+        // backend waits for the catalog version to catch up and fetches the invalidation messages,
+        // then finds nothing cached and falls back to the full prefetch anyway.
+        shared_object()->SetYsqlDbLastPrefetchedCatalogVersion(static_cast<size_t>(shm_index), 0);
         LOG_WITH_FUNC(INFO) << "reset deleted db " << db_oid << " catalog version to 0"
                             << ", shm_index: " << shm_index
                             << ", debug_id: " << debug_id;
@@ -1845,17 +2102,16 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
 
   // If we only inserted new rows, then the existing databases do not have
   // any catalog version changes and the current catalog caches are valid.
-  if (db_oids_updated.empty() && db_oids_deleted.empty()) {
+  if (updated_dbs.empty() && dropped_dbs.empty()) {
     return;
   }
   // If many databases have their catalog versions changed, there is
   // a high chance that a global impact DDL statement has incremented the
   // catalog versions of all databases.
-  if (db_oids_updated.size() > ysql_db_catalog_version_map_.size() / 2) {
-    InvalidatePgTableCache();
-  } else {
-    InvalidatePgTableCache(db_oids_updated, db_oids_deleted);
-  }
+  InvalidatePgTableCache(
+      updated_dbs.size() > ysql_db_catalog_version_map_.size() / 2
+          ? std::nullopt
+          : std::make_optional<PgTableCacheInvalidationFilter>(updated_dbs, dropped_dbs));
 }
 
 void TabletServer::ResetCatalogVersionsFingerprint() {
@@ -2308,30 +2564,12 @@ Status TabletServer::ListMasterServers(const ListMasterServersRequestPB* req,
   return Status::OK();
 }
 
-void TabletServer::InvalidatePgTableCache() {
-  auto pg_client_service = pg_client_service_.lock();
-  if (!pg_client_service) {
-    return;
-  }
-
-  LOG(INFO) << "Invalidating the entire PgTableCache cache since catalog version incremented";
-  pg_client_service->impl.InvalidateTableCache();
-}
-
 void TabletServer::InvalidatePgTableCache(
-    const std::unordered_map<uint32_t, uint64_t>& db_oids_updated,
-    const std::unordered_set<uint32_t>& db_oids_deleted) {
-  auto pg_client_service = pg_client_service_.lock();
-  if (pg_client_service) {
-    string msg = "Invalidating db PgTableCache caches since ";
-    if (!db_oids_updated.empty()) {
-      msg += Format("catalog version incremented for $0 ", yb::ToString(db_oids_updated));
-    }
-    if (!db_oids_deleted.empty()) {
-      msg += Format("databases $0 are removed", yb::ToString(db_oids_deleted));
-    }
-    LOG(INFO) << msg;
-    pg_client_service->impl.InvalidateTableCache(db_oids_updated, db_oids_deleted);
+    const std::optional<PgTableCacheInvalidationFilter>& filter) {
+  if (auto pg_client_service = pg_client_service_.lock(); pg_client_service) {
+    LOG(INFO) << "Invalidating PgTableCache with filter=" << AsString(filter)
+              << (filter ? "" : " (entirely)");
+    pg_client_service->impl.InvalidateTableCache(filter);
   }
 }
 Status TabletServer::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
@@ -2452,6 +2690,10 @@ Status TabletServer::ClusterConfigHandleMasterHeartbeatResponse(
   return Status::OK();
 }
 
+void TabletServer::UpdateOidCacheInvalidationsCount(uint32_t oid_cache_invalidations_count) {
+  xcluster_context_->UpdateOidCacheInvalidationsCount(oid_cache_invalidations_count);
+}
+
 void TabletServer::ApplyXClusterGuardedInfoIfNewer(const XClusterGuardedInfoPB& info) {
   const auto& version = info.xcluster_guarded_info_version();
   const std::pair<int64_t, uint64_t> term_and_count{version.term(), version.count()};
@@ -2466,12 +2708,13 @@ void TabletServer::ApplyXClusterGuardedInfoIfNewer(const XClusterGuardedInfoPB& 
 
   xcluster_context_->UpdateXClusterInfoPerNamespace(info.xcluster_info_per_namespace());
   if (info.has_oid_cache_invalidations_count()) {
-    set_oid_cache_invalidations_count(info.oid_cache_invalidations_count());
+    UpdateOidCacheInvalidationsCount(info.oid_cache_invalidations_count());
   }
+  xcluster_context_->UpdatePersistenceBlockMap(info.persistence_block_map());
 }
 
 Status TabletServer::XClusterHandleMasterHeartbeatResponse(
-    const master::TSHeartbeatResponsePB& resp) {
+    const master::TSHeartbeatResponsePB& resp, MonoTime lease_expiration_time) {
   xcluster_context_->UpdateSafeTimeMap(resp.xcluster_namespace_to_safe_time());
   // A master with auto flag skip_fields_moved_to_xcluster_guarded_info off sends both the
   // deprecated fields and xcluster_guarded_info; prefer the latter.  See TryHeartbeat.
@@ -2479,6 +2722,17 @@ Status TabletServer::XClusterHandleMasterHeartbeatResponse(
     xcluster_context_->UpdateXClusterInfoPerNamespace(
         resp.deprecated_xcluster_heartbeat_info().xcluster_info_per_namespace());
   }
+  // Update lease now that we have already updated the information it protects with fresh info.
+  // (ApplyXClusterGuardedInfoIfNewer is called by the heartbeater right before this function.)
+  //
+  // This ensures that when a TServer (re-)acquires a lease it has information at least as current
+  // as when that lease was issued.
+  if (lease_expiration_time) {
+    xcluster_context_->UpdateXClusterGuardedLease(lease_expiration_time);
+  }
+  // Called on every heartbeat, not just when the xCluster lease is acquired, so that disabling the
+  // persistence gate also starts a PG that RestartPG left paused.
+  MaybeStartPg();
 
   auto* xcluster_consumer = GetXClusterConsumer();
 
@@ -2513,6 +2767,7 @@ Status TabletServer::XClusterHandleMasterHeartbeatResponse(
         resp.xcluster_config_version()));
   }
 
+  xcluster_producer_state_known_.store(true, std::memory_order_release);
   return Status::OK();
 }
 
@@ -2607,10 +2862,18 @@ void TabletServer::RegisterCertificateReloader(CertificateReloader reloader) {
 }
 
 void TabletServer::RegisterPgProcessRestarter(std::function<Status(void)> restarter) {
+  std::lock_guard lock(pg_start_mutex_);
+  // PgSupervisor::Stop deregisters unconditionally, so a supervisor registering over another's
+  // callbacks would later lose them when the old one stops.
+  DCHECK(!restarter || !pg_restarter_) << "PG restarter callback already registered";
   pg_restarter_ = std::move(restarter);
 }
 
 void TabletServer::RegisterPgProcessKiller(std::function<Status(void)> killer) {
+  std::lock_guard lock(pg_start_mutex_);
+  // PgSupervisor::Stop deregisters unconditionally, so a supervisor registering over another's
+  // callbacks would later lose them when the old one stops.
+  DCHECK(!killer || !pg_killer_) << "PG killer callback already registered";
   pg_killer_ = std::move(killer);
 }
 
@@ -2619,12 +2882,15 @@ void TabletServer::RegisterPgConfigGenerator(pgwrapper::PgConfigGenerator genera
 }
 
 void TabletServer::RegisterConnectionManagerRestarter(std::function<Status(void)> restarter) {
+  std::lock_guard lock(pg_start_mutex_);
   conn_manager_restarter_ = std::move(restarter);
 }
 
 Status TabletServer::StartYSQLLeaseRefresher() {
   return ysql_lease_manager_->StartYSQLLeaseRefresher();
 }
+
+void TabletServer::TriggerYSQLLeaseRefresh() { ysql_lease_manager_->TriggerLeaseRefresh(); }
 
 void TabletServer::ShutdownYSQLLeaseManager() { ysql_lease_manager_->Shutdown(); }
 
@@ -2800,8 +3066,12 @@ Result<std::vector<TserverMetricsInfoPB>> TabletServer::GetMetrics() const {
   return result;
 }
 
-void TabletServer::SetCronLeaderLease(MonoTime cron_leader_lease_end) {
-  SharedObject()->SetCronLeaderLease(cron_leader_lease_end);
+void TabletServer::SetCronLeaseEnd(MonoTime lease_end) {
+  SharedObject()->SetCronLeaseEnd(lease_end);
+}
+
+void TabletServer::SetCronCanStartJobs(bool can_start) {
+  SharedObject()->SetCronCanStartJobs(can_start);
 }
 
 Result<pgwrapper::PGConn> TabletServer::CreateInternalPGConn(

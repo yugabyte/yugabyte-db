@@ -65,6 +65,7 @@
 
 #include "yb/util/async_util.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/yql/pggate/util/ybc_guc.h"
@@ -539,12 +540,12 @@ Status YBqlReadOp::GetPartitionKey(string* partition_key) const {
             paging_state_hash_code < ql_read_request_->hash_code()) ||
         (ql_read_request_->has_max_hash_code() &&
             paging_state_hash_code > ql_read_request_->max_hash_code())) {
-      return STATUS_SUBSTITUTE(InternalError,
-                               "Out of bounds partition key found in paging state:"
-                               "Query's partition bounds: [$0, $1], paging state partition: $2",
-                               ql_read_request_->hash_code(),
-                               ql_read_request_->max_hash_code() ,
-                               paging_state_hash_code);
+      return STATUS_FORMAT(InternalError,
+                           "Out of bounds partition key found in paging state:"
+                           "Query's partition bounds: [$0, $1], paging state partition: $2",
+                           ql_read_request_->hash_code(),
+                           ql_read_request_->max_hash_code() ,
+                           paging_state_hash_code);
     }
 
     ql_read_request_->set_hash_code(paging_state_hash_code);
@@ -871,7 +872,7 @@ Status YBNoOp::Execute(YBClient* client, const dockv::YBPartialRow& key) {
 }
 
 bool YBPgsqlReadOp::should_apply_intents(IsolationLevel isolation_level) {
-  return isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION ||
+  return (isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION && !force_snapshot_read_) ||
          IsValidRowMarkType(GetRowMarkTypeFromPB(*request_));
 }
 

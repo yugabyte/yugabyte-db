@@ -22,6 +22,7 @@
 
 #include "yb/util/async_util.h"
 
+#include "yb/util/format.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 DECLARE_uint32(xcluster_ysql_statement_timeout_sec);
@@ -106,7 +107,7 @@ std::string TableDesignator::name() const { return table_info->name(); }
 std::string TableDesignator::pgschema_name() const { return table_info->pgschema_name(); }
 
 std::string TableDesignator::ToString() const {
-  return strings::Substitute("$0.$1 [id=$2]", pgschema_name(), name(), id);
+  return Format("$0.$1 [id=$2]", pgschema_name(), name(), id);
 }
 
 Result<std::vector<TableDesignator>> GetTablesEligibleForXClusterReplication(

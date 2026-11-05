@@ -30,11 +30,11 @@
 // under the License.
 //
 
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
 
 #include "yb/integration-tests/external_mini_cluster.h"
 
+#include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
@@ -92,7 +92,7 @@ TEST_F(EMCTest, TestBasicOperation) {
     const ExternalTabletServer* const ts = CHECK_NOTNULL(cluster.tablet_server(i));
     const HostPort ts_rpc = ts->bound_rpc_hostport();
     const HostPort ts_http = ts->bound_http_hostport();
-    const string expected_prefix = strings::Substitute("$0:", cluster.GetBindIpForTabletServer(i));
+    const string expected_prefix = Format("$0:", cluster.GetBindIpForTabletServer(i));
 
     // Let TS 0 be on 127.0.0.1 address on MAC.
     if (opts.bind_to_unique_loopback_addresses && i > 0) {

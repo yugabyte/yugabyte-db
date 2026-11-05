@@ -61,3 +61,8 @@ message TestObjectOptionalPB {
   optional TestStringOptionalPB record = 2;
   optional string string2 = 3;
 }
+
+message ProtoContainerNestedTestPB {
+  optional ProtoContainerOuterTestPB.InnerPB inner = 1;
+  map<string, int32> counts = 2;
+}

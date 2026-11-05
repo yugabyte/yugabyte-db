@@ -89,9 +89,6 @@ class TabletSnapshots : public TabletComponent {
 
   Status RestoreFinished(SnapshotOperation* operation);
 
-  // Prepares the operation context for a snapshot operation.
-  Status Prepare(SnapshotOperation* operation);
-
   Result<std::string> RestoreToTemporary(const TxnSnapshotId& snapshot_id, HybridTime restore_at);
 
   //------------------------------------------------------------------------------------------------
@@ -105,10 +102,15 @@ class TabletSnapshots : public TabletComponent {
   // than RPC timeouts.
   // In case of failure, the caller is responsible for cleanup.
   YB_STRONGLY_TYPED_BOOL(UseTryLock);
+  // The vector indexes are flushed after the regular DB checkpoint, so that their checkpoints hold
+  // the vectors of every row in it. A remote bootstrap session can skip that: the new replica
+  // replays the vector indexes from their flushed frontier.
+  YB_STRONGLY_TYPED_BOOL(SkipVectorIndexFlush);
   Status CreateCheckpoint(
       const std::string& dir,
       CreateCheckpointIn create_checkpoint_in = CreateCheckpointIn::kSubDir,
-      UseTryLock use_try_lock = UseTryLock::kFalse);
+      UseTryLock use_try_lock = UseTryLock::kFalse,
+      SkipVectorIndexFlush skip_vector_index_flush = SkipVectorIndexFlush::kFalse);
 
   // Returns the location of the last rocksdb checkpoint. Used for tests only.
   std::string TEST_LastRocksDBCheckpointDir() { return TEST_last_rocksdb_checkpoint_dir_; }
@@ -198,7 +200,9 @@ class TabletSnapshots : public TabletComponent {
   void UpdatePendingMetricsUnlocked() REQUIRES(cleanup_mutex_);
   uint64_t OldestPendingDeletionAgeMs();
 
-  Status DoCreateCheckpoint(const std::string& dir, CreateCheckpointIn create_checkpoint_in);
+  Status DoCreateCheckpoint(
+      const std::string& dir, CreateCheckpointIn create_checkpoint_in,
+      SkipVectorIndexFlush skip_vector_index_flush);
 
   std::string TEST_last_rocksdb_checkpoint_dir_;
   std::unique_ptr<Metrics> metrics_;

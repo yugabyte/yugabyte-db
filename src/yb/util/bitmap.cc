@@ -33,9 +33,9 @@
 
 #include <string>
 
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 
-#include "yb/gutil/stringprintf.h"
 #include "yb/util/coding.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
@@ -136,15 +136,15 @@ std::string BitmapToString(const uint8_t *bitmap, size_t num_bits) {
   std::string s;
   size_t index = 0;
   while (index < num_bits) {
-    StringAppendF(&s, "%4zu: ", index);
+    s += Format("$0: ", PadLeft(ToString(index), 4));
     for (int i = 0; i < 8 && index < num_bits; ++i) {
       for (int j = 0; j < 8 && index < num_bits; ++j) {
-        StringAppendF(&s, "%d", BitmapTest(bitmap, index));
+        s += BitmapTest(bitmap, index) ? '1' : '0';
         index++;
       }
-      StringAppendF(&s, " ");
+      s += ' ';
     }
-    StringAppendF(&s, "\n");
+    s += '\n';
   }
   return s;
 }

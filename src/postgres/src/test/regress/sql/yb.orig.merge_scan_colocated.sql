@@ -140,6 +140,12 @@
 \set query ':P :Q SELECT r2, r4, r5, n, r1, r3 FROM r5n WHERE r1 IN (0, 1, 2) AND r3 IN (3, 4, 5) ORDER BY r2, r4, r5, n LIMIT 5;'
 \i :run_query
 
+-- IN, sort, IN
+-- r3 comes after the last sort column r2, so the merge does not need its IN and
+-- r3 is not a stream key.
+\set query ':P :Q SELECT r2, n, r1, r3 FROM r5n WHERE r1 IN (0, 1, 2) AND r3 IN (3, 4) ORDER BY r2, n LIMIT 5;'
+\i :run_query
+
 -- IN, sort, IN/sort, sort...
 \set query ':P :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (0, 1, 2) AND r3 IN (3, 4, 5) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
 \i :run_query
@@ -148,6 +154,14 @@
 -- TODO(#29030): this should use merge scan.
 \set query ':P :Q SELECT r3, r4, r5, n, r1, r2 FROM r5n WHERE r2 IN (7, 8, 9) AND r2 = r1 ORDER BY r3, r4, r5, n LIMIT 5;'
 \i :run_query
+
+-- The five IN-equivalence queries below, through "last non-key sort column",
+-- each estimate 7 result rows (DEFAULT_EQ_SEL on the column = column
+-- clause).  That fits one response page at 16 rows, so both plans charge the
+-- whole scan to startup_cost and tie, and merge scan's 2% cost penalty makes
+-- the plain scan cheaper.  Merge scan needs a much smaller page to win.
+-- TODO(#29078): remove this SET and its restore once merge scan is costed.
+SET yb_fetch_row_limit = 3;
 
 -- IN equivalence to first key sort column
 \set query ':P :Q SELECT r1, r3, r4, r5, n, r2 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND r2 IN (6, 0, 5) AND r1 = r3 ORDER BY r3, r4, r5, n LIMIT 5;'
@@ -169,6 +183,8 @@
 \set query ':P :Q SELECT r3, r4, r5, r1, n, r2 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND r2 IN (6, 0, 5) AND r1 = n ORDER BY r3, r4, r5, n LIMIT 5;'
 \i :run_query
 
+SET yb_fetch_row_limit = 16;
+
 -- =-var equivalence prefix
 -- Merge scan should not be used.
 \set query ':explain :Q SELECT r4, r5, n, r3, r1, r2 FROM r5n WHERE r3 IN (7, 8, 9) AND r1 = r2 ORDER BY r4, r5, n LIMIT 5;'
@@ -177,6 +193,43 @@
 -- =-var equivalence suffix
 -- Merge scan should not be used.
 \set query ':explain :Q SELECT r4, r5, n, r1, r2, r3 FROM r5n WHERE r1 IN (7, 8, 9) AND r2 = r3 ORDER BY r4, r5, n LIMIT 5;'
+\i :run_query
+
+-- =-var equivalence pinned by a constant
+-- The EquivalenceClass derives both r2 = 5 and r3 = 5, and the merge scan
+-- relies on both staying bound.
+\set query ':P :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (0, 1, 2) AND r2 = r3 AND r2 = 5 ORDER BY r4, r5, n LIMIT 5;'
+\i :run_query
+
+-- =-var equivalence pinned by a constant, straddling the last sort column
+-- The EquivalenceClass derives r1 = 5 and r2 = 5.  The merge order relies on r1
+-- before the sort column r4, but not on r2 after it, so only r1 is a stream
+-- key.
+-- Third hint pins the index.
+CREATE INDEX NONCONCURRENTLY r5n_r3_r1_r4_r2_idx ON r5n (r3 ASC, r1 ASC, r4 ASC, r2 ASC);
+\set query ':P :Q SELECT r1, r2, r4, n, r3 FROM r5n WHERE r3 IN (0, 1, 2) AND r1 = r2 AND r1 = 5 ORDER BY r4, n LIMIT 5;'
+\set Q3 '/*+IndexScan(r5n r5n_r3_r1_r4_r2_idx) Set(yb_max_merge_scan_streams 64)*/'
+\i :run_query
+\unset Q3
+DROP INDEX r5n_r3_r1_r4_r2_idx;
+
+-- =-const before a pathkey that gets trimmed
+-- r2 = r1 gives r2 a pathkey that is useless for ORDER BY r4 and gets trimmed,
+-- so the merge sort key is r4 alone and r3, after it, is not a stream key.
+-- Third hint pins the index and turns sort off so that the merge scan is
+-- chosen.
+CREATE INDEX NONCONCURRENTLY r5n_r1_r4_r3_r2_idx ON r5n (r1 ASC, r4 ASC, r3 ASC, r2 ASC);
+\set query ':P :Q SELECT r3, r4, n, r1, r2 FROM r5n WHERE r1 IN (0, 1, 2) AND r3 = 5 AND r2 = r1 ORDER BY r4, n LIMIT 5;'
+\set Q3 '/*+IndexScan(r5n r5n_r1_r4_r3_r2_idx) Set(yb_max_merge_scan_streams 64) Set(enable_sort off)*/'
+\i :run_query
+\unset Q3
+DROP INDEX r5n_r1_r4_r3_r2_idx;
+
+-- =-var equivalence covering a gap between sort columns
+-- r2 = r3 makes r3 redundant for the ORDER BY without binding it, so r3 is not
+-- a stream key, and the merge order relies on the r2 = r3 filter running in
+-- storage (issue #33384).
+\set query ':P :Q SELECT r2, r4, r5, n, r1, r3 FROM r5n WHERE r1 IN (0, 1, 2) AND r2 = r3 ORDER BY r2, r4, r5, n LIMIT 5;'
 \i :run_query
 
 -- OR clause
@@ -544,12 +597,8 @@ ANALYZE r5n;
 
 -- No order
 -- Merge scan should not be used.
--- Third hint is to use the expression index, which the first two do not choose
--- because a sequential scan is cheaper for an unordered scan of it.
 \set query ':explain :Q SELECT * FROM r5n WHERE (greatest(r2, r3, r4) - least(r2, r3, r4)) IN (0, 2) LIMIT 5;'
-\set Q3 '/*+IndexScan(r5n r5n_expr_r2_r3_r4_idx) Set(yb_max_merge_scan_streams 64)*/'
 \i :run_query
-\unset Q3
 
 -- Forward scan
 \set query ':P :Q SELECT * FROM r5n WHERE (greatest(r2, r3, r4) - least(r2, r3, r4)) IN (0, 2) ORDER BY r2, r3, r4, n LIMIT 5;'
@@ -564,8 +613,13 @@ ANALYZE r5n;
 \i :run_query
 
 -- Secondary index scan VS merge PK scan
+-- Third hint is to use the PK index: a colocated secondary index scan bundles
+-- its table read into the index RPC and stays cheaper, so the second hint does
+-- not switch to the merge PK scan as it does in yb.orig.merge_scan_range.
 \set query ':P :Q SELECT (greatest(r2, r3, r4) - least(r2, r3, r4)), r2, r3, r4, n, r1 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5) AND (greatest(r2, r3, r4) - least(r2, r3, r4)) = 4 ORDER BY r2, r3, r4, n LIMIT 5;'
+\set Q3 '/*+IndexScan(r5n r5n_pkey) Set(yb_max_merge_scan_streams 64)*/'
 \i :run_query
+\unset Q3
 
 -- Merge secondary index scan VS merge PK scan
 -- Third hint is to use the expression index as the second hint ends up using
@@ -575,8 +629,42 @@ ANALYZE r5n;
 \i :run_query
 \unset Q3
 
+-- =, IN, sort... on the expression column
+\set query ':P :Q SELECT r3, r4, n, r2, (greatest(r2, r3, r4) - least(r2, r3, r4)) FROM r5n WHERE (greatest(r2, r3, r4) - least(r2, r3, r4)) = 4 AND r2 IN (1, 3, 5) ORDER BY r3, r4, n LIMIT 5;'
+\set Q3 '/*+IndexScan(r5n r5n_expr_r2_r3_r4_idx) Set(yb_max_merge_scan_streams 64)*/'
+\i :run_query
+\unset Q3
+
 -- (Drop this index)
 DROP INDEX r5n_expr_r2_r3_r4_idx;
+
+--
+-- Expression middle secondary index
+--
+CREATE INDEX NONCONCURRENTLY ON r5n (r2 ASC, r3, (r4 + 0), r5, r4);
+ANALYZE r5n;
+
+-- DISTINCT
+-- The merge sort keys stop before the expression column, which leaves the
+-- merge distinct path with fewer pathkeys than its distinct prefix, the
+-- state #36012 guards against.  That path is only cheapest as a backward
+-- scan, whose per-group discount has to beat the per-row merge charge
+-- (#29078), which it does at two streams and not at four.  With larger
+-- response pages it is then within add_path's fuzz of the plain scan and
+-- wins on pathkeys.  Without the #36012 reset of yb_distinct_nkeys in
+-- yb_finalize_merge_scan_stream_cols, the merge-on EXPLAIN fails an
+-- assertion.
+SET yb_fetch_row_limit = 1024;
+-- Index only scan is off, since only a plain index scan on a colocated index
+-- needs its merge sort keys to stop before an expression column (issue #36017).
+SET enable_indexonlyscan = off;
+\set query ':P :Q SELECT DISTINCT r3, r4 + 0, r5, r4 FROM r5n WHERE r2 IN (0, 1) ORDER BY r3, r4 + 0, r5, r4 LIMIT 5;'
+\i :run_query
+RESET enable_indexonlyscan;
+SET yb_fetch_row_limit = 16;
+
+-- (Drop this index)
+DROP INDEX r5n_r2_r3_expr_r5_r4_idx;
 
 --
 -- Expression suffix secondary index
@@ -644,11 +732,41 @@ ANALYZE r5n;
 \set query ':explain :Q SELECT r5, 1, r5 FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY (r3 + r4) DESC, r2, n LIMIT 5;'
 \i :run_query
 
+-- Expression column tied to a plain column
+-- Third hint is to encourage merge scan by pinning the index and disabling
+-- sort.
+-- TODO(#36180): the third hint should use merge scan.
+\set query ':P :Q SELECT r4, r2, n FROM r5n WHERE r2 IN (0, 1, 2, 3) AND r4 = r3 + r4 ORDER BY r4, n LIMIT 5;'
+\set Q3 '/*+IndexScan(r5n r5n_r2_expr_r21_expr1_r22_r5_idx) Set(yb_max_merge_scan_streams 64) Set(enable_sort off)*/'
+\i :run_query
+\unset Q3
+
 -- (Reset the explain change)
 \set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
 
 -- (Drop this index)
 DROP INDEX r5n_r2_expr_r21_expr1_r22_r5_idx;
+
+--
+-- Cast expression secondary index
+--
+CREATE INDEX NONCONCURRENTLY ON r5n (r2 ASC, (r3::oid), r4);
+ANALYZE r5n;
+
+-- Following queries send various numbers of requests/scan various number of rows
+-- due to non-deterministic order of equal rows in merge sort, hide their DIST
+\set explain 'EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
+
+-- Order by the cast expression
+-- TODO(#36180): this should use merge scan.
+\set query ':P :Q SELECT r3, r2, n FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY r3::oid, n LIMIT 5;'
+\i :run_query
+
+-- (Reset the explain change)
+\set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
+
+-- (Drop this index)
+DROP INDEX r5n_r2_r3_r4_idx;
 
 -- test yb_enable_advanced_index_cond_fold flag off
 SET yb_enable_advanced_index_cond_fold = off;

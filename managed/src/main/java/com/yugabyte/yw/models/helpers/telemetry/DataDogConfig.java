@@ -11,6 +11,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Collections;
+import java.util.List;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
@@ -50,5 +51,10 @@ public class DataDogConfig extends TelemetryProviderConfig {
           BAD_REQUEST,
           "Validation failed. Ensure your Datadog API Key and Datadog Site URL are valid.");
     }
+  }
+
+  @Override
+  public List<String> secretValues() {
+    return nonEmpty(apiKey);
   }
 }

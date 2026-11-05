@@ -123,7 +123,7 @@ EncryptionParamsPtr EncryptionParams::NewEncryptionParams() {
 
 Status EncryptionParams::IsValidKeySize(size_t size) {
   if (size != 16 && size != 24 && size != 32) {
-    return STATUS_SUBSTITUTE(
+    return STATUS_FORMAT(
         InvalidArgument,
         "After parsing nonce and counter, expect 16, 24, or 32 bytes, found $0", size);
   }

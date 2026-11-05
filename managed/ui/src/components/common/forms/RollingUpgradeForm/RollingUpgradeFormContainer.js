@@ -121,6 +121,7 @@ function mapStateToProps(state, ownProps) {
   initialValues.timeDelay = TASK_LONG_TIMEOUT / 1000;
   initialValues.upgradeOption = 'Rolling';
   initialValues.rollingUpgrade = true;
+  initialValues.numNodesToUpgradePrimary = 1;
   initialValues.systemdValue = intialSystemdValue;
   initialValues.universeOverrides = '';
   initialValues.azOverrides = '';

@@ -157,6 +157,8 @@ extern PGDLLIMPORT bool criticalSharedRelcachesBuilt;
 
 /* YB */
 extern List *YbRelationGetFKeyReferencedByList(Relation relation);
+extern List *YbRelationGetUnConstifiedIndexExpressions(Relation relation);
+extern Node *YbRelationGetUnConstifiedIndexPredicate(Relation relation);
 extern void YbComputeIndexExprOrPredicateAttrs(Bitmapset **indexattrs,
 											   Relation indexDesc,
 											   const int Anum_pg_index,
@@ -178,5 +180,14 @@ extern long YbGetRelCacheInitFileRevalidated(void);
 extern long YbGetRelCacheInitFileRevalidationFailed(void);
 
 extern void YbPrefetchRequiredData(bool preload_rel_cache);
+
+/*
+ * Carry a connection that read the catalog at a version this node already had cached up to the
+ * version it would otherwise have read at, by applying the invalidation messages
+ * YbTryPrepareStaleCatalogPrefetch collected. Called once startup is past the point where
+ * removing a relcache entry is unsafe, and before anything reads the catalog for a decision
+ * that is never revisited.
+ */
+extern void YbFinishStaleCatalogPrefetch(void);
 
 #endif							/* RELCACHE_H */

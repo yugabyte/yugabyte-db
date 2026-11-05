@@ -62,6 +62,8 @@ public class UpdateLoadBalancerConfig extends UniverseDefinitionTaskBase {
             updateUniverse(u, taskParams());
           };
       saveUniverseDetails(updater);
+      // After the save: the gflags follow the new load balancer settings.
+      createRebindProxiesTasks();
 
       createMarkUniverseUpdateSuccessTasks()
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
@@ -142,7 +144,7 @@ public class UpdateLoadBalancerConfig extends UniverseDefinitionTaskBase {
   private String getLbFQDN(
       List<PlacementInfo.PlacementRegion> regionList, UUID regionUUID, String currLbFQDN) {
     List<PlacementInfo.PlacementRegion> list =
-        regionList.stream().filter(r -> r.uuid == regionUUID).collect(Collectors.toList());
+        regionList.stream().filter(r -> regionUUID.equals(r.uuid)).collect(Collectors.toList());
     if (CollectionUtils.isNotEmpty(list)) {
       return list.get(0).lbFQDN;
     }

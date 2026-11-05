@@ -40,6 +40,7 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/pg_types.h"
 #include "yb/common/schema.h"
+#include "yb/common/wire_protocol-test-util.h"
 
 #include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/consensus_round.h"
@@ -58,19 +59,26 @@
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/rate_limiter.h"
 
+#include "yb/tablet/operations/operation.h"
 #include "yb/tablet/tablet-test-harness.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/write_query.h"
 
 #include "yb/tserver/full_compaction_manager.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_memory_manager.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/tier_migration_reconciler.h"
 #include "yb/tserver/ts_tablet_manager.h"
+#include "yb/tserver/tserver.messages.h"
 #include "yb/tserver/tserver_types.pb.h"
 
+#include "yb/util/backoff_waiter.h"
+#include "yb/util/countdown_latch.h"
 #include "yb/util/format.h"
+#include "yb/util/memory/arena.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/test_util.h"
@@ -92,12 +100,15 @@ DECLARE_int32(scheduled_full_compaction_frequency_hours);
 DECLARE_int32(scheduled_full_compaction_jitter_factor_percentage);
 DECLARE_int32(auto_compact_memory_cleanup_interval_sec);
 DECLARE_bool(allow_encryption_at_rest);
+DECLARE_bool(enable_tiered_storage);
+DECLARE_bool(enforce_xcluster_guarded_lease);
 DECLARE_int32(db_block_cache_num_shard_bits);
 DECLARE_int32(num_cpus);
 DECLARE_bool(enable_db_history_retention_pins);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(db_history_retention_pin_max_txn_age_sec);
 DECLARE_int32(history_retention_pins_persist_interval_sec);
+DECLARE_int32(tier_migration_reconcile_interval_sec);
 
 namespace yb::tserver {
 
@@ -109,7 +120,6 @@ using docdb::RateLimiterSharingMode;
 using master::ReportedTabletPB;
 using master::TabletReportPB;
 using master::TabletReportUpdatesPB;
-using strings::Substitute;
 using tablet::TabletPeer;
 using gflags::FlagSaver;
 
@@ -125,7 +135,7 @@ class TsTabletManagerTest : public YBTest {
   }
 
   string GetDrivePath(int index) {
-    return JoinPathSegments(test_data_root_, Substitute("drive-$0", index + 1));
+    return JoinPathSegments(test_data_root_, Format("drive-$0", index + 1));
   }
 
   virtual void CreateMiniTabletServer() {
@@ -144,6 +154,9 @@ class TsTabletManagerTest : public YBTest {
 
     // Disallow encryption at rest as there is no master.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_encryption_at_rest) = false;
+
+    // There is no master to grant the xCluster-guarded information lease.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enforce_xcluster_guarded_lease) = false;
 
     mini_server_ = std::make_unique<MiniTabletServer>(paths, paths, 0, *options_result, 0);
   }
@@ -845,7 +858,7 @@ TEST_F(TsTabletManagerTest, DataAndWalFilesLocations) {
   for (int i = 0; i < kDrivesNum; ++i) {
     tablet_manager_->GetAndRegisterDataAndWalDir(fs_manager_,
                                                  kTableId,
-                                                 Substitute("tablet-$0", i + 1),
+                                                 Format("tablet-$0", i + 1),
                                                  &data,
                                                  &wal);
     ASSERT_EQ(data.substr(0, drive_path_len), wal.substr(0, drive_path_len));
@@ -863,8 +876,8 @@ TEST_F(TsTabletManagerTest, EvenDriveSelection) {
     std::string prev_data_drive;
     for (size_t j = 0; j < kNumTablets; ++j) {
       tablet_manager_->GetAndRegisterDataAndWalDir(fs_manager_,
-                                                  Substitute("table-$0", i+ 1),
-                                                  Substitute("tablet-$0", j + 1),
+                                                  Format("table-$0", i+ 1),
+                                                  Format("tablet-$0", j + 1),
                                                   &data,
                                                   &wal);
       const auto chosen_data_drive = data.substr(0, drive_path_len);
@@ -904,7 +917,7 @@ class TsTabletManagerTieredDriveTest : public TsTabletManagerTest {
 
   // Index helpers: ssd drives are 0..(kSsdDrives-1), hdd drives are kSsdDrives..
   std::string GetTieredDrivePath(int index) {
-    return JoinPathSegments(test_data_root_, Substitute("tiered-drive-$0", index));
+    return JoinPathSegments(test_data_root_, Format("tiered-drive-$0", index));
   }
 
   // Overrides the parent's disk layout with 2 ssd + 2 hdd drives instead of the plain
@@ -915,10 +928,13 @@ class TsTabletManagerTieredDriveTest : public TsTabletManagerTest {
     auto options_result = TabletServerOptions::CreateTabletServerOptions();
     ASSERT_OK(options_result);
 
-    // Disable AutoFlags management and encryption at rest, same as the base fixture (there's
-    // no master here).
+    // Disable AutoFlags management, encryption at rest, and the xCluster-guarded information
+    // lease, same as the base fixture (there's no master here).
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_disable_auto_flags_management) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_encryption_at_rest) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enforce_xcluster_guarded_lease) = false;
+    // Tiered drives only exist with the preview feature on.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = true;
 
     // Build paths: drive-0 and drive-1 are ssd; drive-2 and drive-3 are hdd.
     // MiniTabletServer copies data_paths straight into fs_opts.data_paths and does NOT parse a
@@ -1020,7 +1036,7 @@ TEST_F(TsTabletManagerTieredDriveTest, SelectPathIdForTierBalancesWithinTier) {
   // Directly register extra tablets on the heavier drive to skew load.
   for (int i = 0; i < 3; ++i) {
     tablet_manager_->RegisterDataAndWalDir(
-        fs_manager_, kTableId, Substitute("fake-tablet-hdd-$0", i),
+        fs_manager_, kTableId, Format("fake-tablet-hdd-$0", i),
         heavier_data_root, any_wal_root);
   }
 
@@ -1030,6 +1046,255 @@ TEST_F(TsTabletManagerTieredDriveTest, SelectPathIdForTierBalancesWithinTier) {
   ASSERT_EQ(second_pid, lighter_pid)
       << "Expected picker to prefer the lighter hdd drive (path_id " << lighter_pid
       << ") but got path_id " << second_pid;
+}
+
+// Tiered storage: ResolveTargetTierPathId is the validate/repair step run on every tablet open
+// (see TSTabletManager::OpenTablet) so a stale cached target_tier_path_id -- from e.g. a disk
+// that got removed from --fs_data_dirs -- doesn't silently point flushes/compactions at a
+// directory that no longer belongs to the intended tier.
+TEST_F(TsTabletManagerTieredDriveTest, ResolveTargetTierPathIdRepairsStaleId) {
+  std::shared_ptr<tablet::TabletPeer> peer;
+  ASSERT_OK(CreateNewTablet(kTableId, kTabletId, schema_, &peer));
+  auto meta = peer->tablet_metadata();
+
+  // No target tier persisted yet -- must resolve to home (path_id 0) without persisting
+  // anything (i.e. still empty afterwards).
+  auto no_pref_pid = ASSERT_RESULT(tablet_manager_->ResolveTargetTierPathId(meta));
+  ASSERT_EQ(no_pref_pid, 0u);
+  ASSERT_TRUE(meta->target_storage_tier().empty());
+
+  // A freshly-resolved, still-valid target must be reused as-is (not re-resolved to some other
+  // disk in the same tier).
+  auto hdd_pid = ASSERT_RESULT(tablet_manager_->SelectPathIdForTier(*meta, kTableId, "hdd"));
+  ASSERT_OK(meta->SetTargetTier("hdd", hdd_pid));
+  auto resolved_pid = ASSERT_RESULT(tablet_manager_->ResolveTargetTierPathId(meta));
+  ASSERT_EQ(resolved_pid, hdd_pid);
+
+  // Simulate a stale cached path_id (as if this tablet's tier_paths changed under it, e.g. a
+  // relabeled disk) by pointing target_tier_path_id at an "ssd" disk while target_storage_tier
+  // still says "hdd". ResolveTargetTierPathId must detect the mismatch, re-resolve to a real
+  // "hdd" disk, and persist the repair.
+  uint32_t ssd_pid = 0;
+  bool found_ssd = false;
+  for (const auto& tp : meta->tier_paths()) {
+    if (tp.tier == "ssd") {
+      ssd_pid = tp.path_id;
+      found_ssd = true;
+      break;
+    }
+  }
+  ASSERT_TRUE(found_ssd);
+  ASSERT_OK(meta->SetTargetTier("hdd", ssd_pid));
+
+  auto repaired_pid = ASSERT_RESULT(tablet_manager_->ResolveTargetTierPathId(meta));
+  std::unordered_map<uint32_t, std::string> tier_by_path_id;
+  for (const auto& tp : meta->tier_paths()) {
+    tier_by_path_id[tp.path_id] = tp.tier;
+  }
+  ASSERT_EQ(tier_by_path_id.at(repaired_pid), "hdd")
+      << "Repaired path_id " << repaired_pid << " is not an hdd disk";
+
+  // The repair must be persisted, not just returned in-memory.
+  ASSERT_EQ(meta->target_storage_tier(), "hdd");
+  ASSERT_EQ(meta->target_tier_path_id(), repaired_pid);
+}
+
+// Tiered storage disabled: ResolveTargetTierPathId acts on no tier preference. It drops the
+// cached disk so flushes and compactions target home, keeps target_storage_tier so the intent is
+// honored again once the feature is enabled, and never consults the disk layout.
+TEST_F(TsTabletManagerTieredDriveTest, ResolveTargetTierPathIdIgnoresTargetWhenDisabled) {
+  std::shared_ptr<tablet::TabletPeer> peer;
+  ASSERT_OK(CreateNewTablet(kTableId, kTabletId, schema_, &peer));
+  auto meta = peer->tablet_metadata();
+  std::unordered_map<uint32_t, std::string> tier_by_path_id;
+  for (const auto& tp : meta->tier_paths()) {
+    tier_by_path_id[tp.path_id] = tp.tier;
+  }
+
+  auto hdd_pid = ASSERT_RESULT(tablet_manager_->SelectPathIdForTier(*meta, kTableId, "hdd"));
+  ASSERT_NE(hdd_pid, 0u);
+  ASSERT_OK(meta->SetTargetTier("hdd", hdd_pid));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = false;
+  auto pid = ASSERT_RESULT(tablet_manager_->ResolveTargetTierPathId(meta));
+  ASSERT_EQ(pid, 0u);
+  ASSERT_EQ(meta->target_tier_path_id(), 0u);
+  ASSERT_EQ(meta->target_storage_tier(), "hdd");
+  tablet::RaftGroupReplicaSuperBlockPB on_disk;
+  ASSERT_OK(meta->ReadSuperBlockFromDisk(&on_disk));
+  ASSERT_EQ(on_disk.kv_store().target_tier_path_id(), 0u);
+  ASSERT_EQ(on_disk.kv_store().target_storage_tier(), "hdd");
+
+  // Re-enabled: the kept intent resolves back to an hdd disk and is persisted again.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = true;
+  auto resolved_pid = ASSERT_RESULT(tablet_manager_->ResolveTargetTierPathId(meta));
+  ASSERT_EQ(tier_by_path_id.at(resolved_pid), "hdd")
+      << "Resolved path_id " << resolved_pid << " is not an hdd disk";
+  ASSERT_EQ(meta->target_tier_path_id(), resolved_pid);
+}
+
+// ---------------------------------------------------------------------------
+// TierMigrationReconciler: the tserver thread that converges tablets on their target tier.
+// The pass logic itself (kDone / kFailed) is covered per tablet in
+// yb/tablet/tablet-tier-migration-test.cc; these tests cover the thread and its wake-ups.
+// ---------------------------------------------------------------------------
+class TierMigrationReconcilerTest : public TsTabletManagerTieredDriveTest {
+ protected:
+  void CreateMiniTabletServer() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tier_migration_reconcile_interval_sec) =
+        reconcile_interval_sec_;
+    TsTabletManagerTieredDriveTest::CreateMiniTabletServer();
+  }
+
+  // Creates a tablet and writes num_files rows, each flushed into its own SST on the home disk.
+  // The rows go through the peer (Raft and the WAL), not LocalTabletWriter: the peer's memtable
+  // flush filter refuses to flush ops the log does not have, so a WAL-less write would hang the
+  // flush.
+  Result<tablet::TabletPeerPtr> CreateTabletWithFiles(const TabletId& tablet_id, int num_files) {
+    std::shared_ptr<tablet::TabletPeer> peer;
+    RETURN_NOT_OK(CreateNewTablet(kTableId, tablet_id, GetSimpleTestSchema(), &peer));
+    auto tablet = VERIFY_RESULT(peer->shared_tablet());
+    // CreateNewTablet's emulated election completes asynchronously; the term is unknown (and
+    // writes are rejected) until the peer is leader and ready.
+    auto consensus = VERIFY_RESULT(peer->GetConsensus());
+    RETURN_NOT_OK(consensus->WaitUntilLeaderForTests(MonoDelta::FromSeconds(10)));
+    const auto leader_term = consensus->LeaderTerm();
+    for (int32_t key = 0; key < num_files; ++key) {
+      WriteRequestPB req;
+      req.set_tablet_id(tablet_id);
+      AddTestRowInsert(key, key, &req);
+
+      auto arena = SharedThreadSafeArena();
+      auto* resp = arena->NewArenaObject<LWWriteResponsePB>();
+      CountDownLatch latch(1);
+      auto query = std::make_unique<tablet::WriteQuery>(
+          leader_term, CoarseTimePoint::max() /* deadline */, peer.get(), tablet,
+          /* rpc_context= */ nullptr, resp);
+      query->set_client_request(*arena->NewArenaObject<LWWriteRequestPB>(req));
+      query->set_callback(tablet::MakeLatchOperationCompletionCallback(&latch, resp));
+      peer->WriteAsync(std::move(query));
+      latch.Wait();
+      SCHECK(!resp->has_error(), IllegalState,
+             Format("Write of key $0 failed: $1", key, resp->error().ShortDebugString()));
+      RETURN_NOT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
+    }
+    return peer;
+  }
+
+  Result<uint32_t> HddPathId(const tablet::RaftGroupMetadataPtr& meta) {
+    return tablet_manager_->SelectPathIdForTier(*meta, meta->table_id(), "hdd");
+  }
+
+  static uint32_t SstCountOnPath(const tablet::TabletTierInfo& info, uint32_t path_id) {
+    for (const auto& stats : info.tier_paths) {
+      if (stats.path_id == path_id) {
+        return stats.sst_count;
+      }
+    }
+    ADD_FAILURE() << "No tier_paths entry for path_id " << path_id;
+    return 0;
+  }
+
+  Status WaitForMigrationState(
+      const tablet::TabletPtr& tablet, tablet::TierMigrationStatus::State state) {
+    return WaitFor([&]() -> Result<bool> {
+      return tablet->tier_migration_status().state == state;
+    }, MonoDelta::FromSeconds(30), Format("tablet $0 to reach migration state $1",
+                                          tablet->tablet_id(), static_cast<int>(state)));
+  }
+
+  Status WaitForPassToFinish(const tablet::TabletPtr& tablet) {
+    return WaitFor([&]() -> Result<bool> {
+      return !tablet->tier_migration_status().pass_in_flight;
+    }, MonoDelta::FromSeconds(10), "tier migration pass to finish");
+  }
+
+  // Ticks fast: the tests below wait on the thread rather than call RunPass themselves.
+  int32_t reconcile_interval_sec_ = 1;
+};
+
+// With the preview flag off the reconciler thread never starts, whatever the interval says.
+class TierMigrationReconcilerDisabledTest : public TsTabletManagerTest {
+ protected:
+  void CreateMiniTabletServer() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tier_migration_reconcile_interval_sec) = 1;
+    TsTabletManagerTest::CreateMiniTabletServer();
+  }
+};
+
+TEST_F(TierMigrationReconcilerDisabledTest, ThreadNotStartedWhenTieredStorageDisabled) {
+  ASSERT_FALSE(tablet_manager_->tier_migration_reconciler()->TEST_thread_running());
+}
+
+// A tablet with a persisted target and nothing else (no AlterTabletTier pass) is converged by the
+// thread alone.
+TEST_F(TierMigrationReconcilerTest, ThreadConvergesTabletWithTarget) {
+  auto peer = ASSERT_RESULT(CreateTabletWithFiles(kTabletId, 2));
+  auto tablet = ASSERT_RESULT(peer->shared_tablet());
+  const auto hdd_pid = ASSERT_RESULT(HddPathId(peer->tablet_metadata()));
+  ASSERT_OK(tablet->SetTierMigrationTarget("hdd", hdd_pid));
+
+  ASSERT_OK(WaitForMigrationState(tablet, tablet::TierMigrationStatus::State::kDone));
+  auto info = ASSERT_RESULT(tablet->GetTierInfo());
+  ASSERT_EQ(SstCountOnPath(info, hdd_pid), 2u);
+  ASSERT_EQ(info.current_tier, "hdd");
+}
+
+// Restart mid-migration: only the intent survives in the superblock. OpenTablet wakes the
+// reconciler, which converges the tablet without a new AlterTabletTier.
+TEST_F(TierMigrationReconcilerTest, ConvergesTabletAfterRestart) {
+  // Paused, so the intent is all that is on disk when the server goes down.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tier_migration_reconcile_interval_sec) = 0;
+  auto peer = ASSERT_RESULT(CreateTabletWithFiles(kTabletId, 2));
+  auto tablet = ASSERT_RESULT(peer->shared_tablet());
+  const auto hdd_pid = ASSERT_RESULT(HddPathId(peer->tablet_metadata()));
+  ASSERT_OK(tablet->SetTierMigrationTarget("hdd", hdd_pid));
+  auto info = ASSERT_RESULT(tablet->GetTierInfo());
+  ASSERT_EQ(SstCountOnPath(info, hdd_pid), 0u);
+  tablet.reset();
+  peer.reset();
+
+  ASSERT_NO_FATALS(Reload());
+
+  peer = ASSERT_RESULT(tablet_manager_->GetTablet(kTabletId));
+  tablet = ASSERT_RESULT(peer->shared_tablet());
+  ASSERT_OK(WaitForMigrationState(tablet, tablet::TierMigrationStatus::State::kDone));
+  info = ASSERT_RESULT(tablet->GetTierInfo());
+  ASSERT_EQ(SstCountOnPath(info, hdd_pid), 2u);
+  ASSERT_EQ(info.current_tier, "hdd");
+}
+
+// AlterTabletTier's pass wakes the reconciler when it finishes clean, so the verdict does not wait
+// for the interval. With the interval at an hour, only that wake can produce kDone here.
+TEST_F(TierMigrationReconcilerTest, CleanPassWakesReconcilerForVerdict) {
+  reconcile_interval_sec_ = 3600;
+  ASSERT_NO_FATALS(Reload());
+  auto peer = ASSERT_RESULT(CreateTabletWithFiles(kTabletId, 2));
+  auto tablet = ASSERT_RESULT(peer->shared_tablet());
+  const auto hdd_pid = ASSERT_RESULT(HddPathId(peer->tablet_metadata()));
+
+  auto status = ASSERT_RESULT(tablet->AlterTabletTier("hdd", hdd_pid));
+  ASSERT_EQ(status.files_total, 2u);
+  ASSERT_OK(WaitForMigrationState(tablet, tablet::TierMigrationStatus::State::kDone));
+  auto info = ASSERT_RESULT(tablet->GetTierInfo());
+  ASSERT_EQ(SstCountOnPath(info, hdd_pid), 2u);
+
+  // Already converged: the pass schedules nothing and the wake comes at once.
+  status = ASSERT_RESULT(tablet->AlterTabletTier("hdd", hdd_pid));
+  ASSERT_EQ(status.state, tablet::TierMigrationStatus::State::kInProgress);
+  ASSERT_FALSE(status.pass_in_flight);
+  ASSERT_OK(WaitForMigrationState(tablet, tablet::TierMigrationStatus::State::kDone));
+}
+
+// tier_migration_reconcile_interval_sec = 0 at startup means no thread at all; waking is a no-op.
+TEST_F(TierMigrationReconcilerTest, NoThreadWhenIntervalIsZero) {
+  ASSERT_TRUE(tablet_manager_->tier_migration_reconciler()->TEST_thread_running());
+
+  reconcile_interval_sec_ = 0;
+  ASSERT_NO_FATALS(Reload());
+  ASSERT_FALSE(tablet_manager_->tier_migration_reconciler()->TEST_thread_running());
+  tablet_manager_->tier_migration_reconciler()->Wake();
 }
 
 namespace {
@@ -1317,7 +1582,7 @@ class ComputeDbHistoryRetentionPinCutoffTest : public TsTabletManagerTest {
 
     // Unblock AllowedHistoryCutoff's xCluster GetSafeTime early-return so the DB pin logic runs.
     ASSERT_OK(mini_server_->server()->XClusterHandleMasterHeartbeatResponse(
-        master::TSHeartbeatResponsePB()));
+        master::TSHeartbeatResponsePB(), MonoTime()));
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_db_history_retention_pins) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = kSafetyWindowSec;
@@ -1404,7 +1669,7 @@ class ComputeDbHistoryRetentionPinCutoffTest : public TsTabletManagerTest {
     ASSERT_NO_FATAL_FAILURE(Reload());
     config_ = mini_server_->CreateLocalConfig();
     ASSERT_OK(mini_server_->server()->XClusterHandleMasterHeartbeatResponse(
-        master::TSHeartbeatResponsePB()));
+        master::TSHeartbeatResponsePB(), /*lease_expiration_time=*/MonoTime()));
   }
 
   HybridTime ClusterPin(PgOid db_oid = kDbOid) const {

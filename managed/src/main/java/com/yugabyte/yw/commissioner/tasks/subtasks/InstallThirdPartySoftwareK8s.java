@@ -37,6 +37,7 @@ public class InstallThirdPartySoftwareK8s extends AbstractTaskBase {
 
   private final long UPLOAD_PACKAGE_TIMEOUT_SEC = 60;
   private final String PACKAGE_PERMISSIONS = "755";
+  private final String JWKS_FILE_PERMISSIONS = "644";
   private Config appConfig;
 
   @Inject
@@ -115,22 +116,31 @@ public class InstallThirdPartySoftwareK8s extends AbstractTaskBase {
               FileUtils.getOrCreateTmpDirectory(
                   confGetter.getGlobalConf(GlobalConfKeys.ybTmpDirectoryPath));
           Path localGflagFilePath = tmpDirectoryPath.resolve(cluster.uuid.toString());
+          File[] jwksFiles = localGflagFilePath.toFile().listFiles();
+          if (jwksFiles == null) {
+            log.warn("No JWKS files generated at {}, skipping", localGflagFilePath);
+            continue;
+          }
           Provider provider = Util.getSingleProvider(cluster);
-          String ybHomeDir = provider.getYbHome();
-          String remoteGFlagPath = ybHomeDir + GFlagsUtil.GFLAG_REMOTE_FILES_PATH;
-          List<NodeDetails> activeNodes =
+          String remoteGFlagPath = GFlagsUtil.getRemoteGFlagFilesPath(provider);
+          // Only the tserver flags reference the JWKS files.
+          List<NodeDetails> tserverNodes =
               universe.getUniverseDetails().getNodesInCluster(cluster.uuid).stream()
-                  .filter(NodeDetails::isActive)
+                  .filter(n -> n.isActive() && n.isTserver)
                   .collect(Collectors.toList());
 
-          for (NodeDetails node : activeNodes) {
-            nodeUniverseManager.uploadFileToNode(
-                node,
-                universe,
-                localGflagFilePath.toString(),
-                remoteGFlagPath,
-                PACKAGE_PERMISSIONS,
-                context);
+          for (NodeDetails node : tserverNodes) {
+            // Upload file by file: kubectl cp of a directory nests it inside the target when the
+            // target already exists, and the target persists on the PV across tasks.
+            for (File jwksFile : jwksFiles) {
+              nodeUniverseManager.uploadFileToNode(
+                  node,
+                  universe,
+                  jwksFile.getAbsolutePath(),
+                  remoteGFlagPath + jwksFile.getName(),
+                  JWKS_FILE_PERMISSIONS,
+                  context);
+            }
           }
 
           // Delete the local directory.

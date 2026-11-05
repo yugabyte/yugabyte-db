@@ -60,6 +60,10 @@ export const CloudConfiguration = ({ runtimeConfigs }: UniverseFormConfiguration
     runtimeConfigs?.configEntries?.find(
       (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.RF_CHANGE_FEATURE_FLAG
     )?.value === 'true';
+  const isPrimaryRf9Enabled =
+    runtimeConfigs?.configEntries?.find(
+      (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.ENABLE_PRIMARY_RF_9
+    )?.value === 'true';
 
   const useK8CustomResources = !!(useK8CustomResourcesObject?.value === 'true');
   const isDedicatedNodesEnabled = !!(enableDedicatedNodesObject?.value === 'true');
@@ -124,6 +128,7 @@ export const CloudConfiguration = ({ runtimeConfigs }: UniverseFormConfiguration
             disabled={isViewMode || (isEditPrimary && !isRfChangeEnabled)}
             isPrimary={isPrimary}
             isEditMode={isEditMode}
+            isPrimaryRf9Enabled={isPrimaryRf9Enabled}
           />
         </Box>
         {isPrimary && isGeoPartitionEnabled && (

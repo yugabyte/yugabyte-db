@@ -791,6 +791,21 @@ public class TestTransaction extends BaseCQLTest {
     }
   }
 
+  // Runs action up to 4 times while it fails with a schema version mismatch.
+  private void retryOnSchemaMismatch(Runnable action) {
+    for (int attempt = 1;; ++attempt) {
+      try {
+        action.run();
+        return;
+      } catch (InvalidQueryException | AssertionError e) {
+        if (attempt == 4 || !String.valueOf(e.getMessage()).contains("schema version mismatch")) {
+          throw e;
+        }
+        LOG.info("Retrying after schema version mismatch, attempt " + attempt, e);
+      }
+    }
+  }
+
   @Test
   public void testTransactionConditionalDMLWithElseError() throws Exception {
     createTable("t", "h int, r int, v int, primary key ((h), r)", true);
@@ -896,47 +911,49 @@ public class TestTransaction extends BaseCQLTest {
 
     // Test unique index together with the conditional DMLs.
     session.execute("create unique index test_unique_by_v on t (v);");
-    session.execute("begin transaction" +
+    // Index backfill bumps the schema version of t several times, while the proxy retries a
+    // schema version mismatch only once.
+    retryOnSchemaMismatch(() -> session.execute("begin transaction" +
                     "  insert into t (h, r, v) values (1, 5, 15) if not exists else error;" +
-                    "end transaction;");
+                    "end transaction;"));
 
-    assertQueryRowsUnordered("select * from t",
+    retryOnSchemaMismatch(() -> assertQueryRowsUnordered("select * from t",
         "Row[1, 1, 11]",
         "Row[1, 2, 12]",
         "Row[1, 3, 1300]",
         "Row[1, 4, 14]",
-        "Row[1, 5, 15]");
+        "Row[1, 5, 15]"));
 
-    runInvalidStmt("begin transaction" +
+    retryOnSchemaMismatch(() -> runInvalidStmt("begin transaction" +
                    "  insert into t (h, r, v) values (9, 9, 9) if not exists else error;" +
                    "  insert into t2 (h, r) values (100, 100) if not exists else error;" +
                    "end transaction;",
-                   "Execution Error. Condition on table t2 was not satisfied.");
+                   "Execution Error. Condition on table t2 was not satisfied."));
 
-    runInvalidStmt("begin transaction" +
+    retryOnSchemaMismatch(() -> runInvalidStmt("begin transaction" +
                    "  insert into t (h, r, v) values (1, 4, 140) if not exists else error;" +
                    "  insert into t2 (h, r) values (9, 9) if not exists else error;" +
                    "end transaction;",
-                   "Execution Error. Condition on table t was not satisfied.");
+                   "Execution Error. Condition on table t was not satisfied."));
 
     // Breaking the index uniqueness.
-    runInvalidStmt("begin transaction" +
+    retryOnSchemaMismatch(() -> runInvalidStmt("begin transaction" +
                    "  insert into t (h, r, v) values (9, 9, 15) if not exists else error;" +
                    "  insert into t2 (h, r) values (9, 9) if not exists else error;" +
                    "end transaction;",
-                   "Execution Error. Duplicate value disallowed by unique index test_unique_by_v");
-    runInvalidStmt("begin transaction" +
+                   "Execution Error. Duplicate value disallowed by unique index test_unique_by_v"));
+    retryOnSchemaMismatch(() -> runInvalidStmt("begin transaction" +
                    "  insert into t (h, r, v) values (9, 9, 15) if not exists else error;" +
                    "end transaction;",
-                   "Execution Error. Duplicate value disallowed by unique index test_unique_by_v");
+                   "Execution Error. Duplicate value disallowed by unique index test_unique_by_v"));
 
     // Check that both tables were not changed.
-    assertQueryRowsUnordered("select * from t",
+    retryOnSchemaMismatch(() -> assertQueryRowsUnordered("select * from t",
         "Row[1, 1, 11]",
         "Row[1, 2, 12]",
         "Row[1, 3, 1300]",
         "Row[1, 4, 14]",
-        "Row[1, 5, 15]");
+        "Row[1, 5, 15]"));
 
     assertQueryRowsUnordered("select * from t2",
         "Row[100, 100]");

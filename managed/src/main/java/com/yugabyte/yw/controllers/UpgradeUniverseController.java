@@ -318,6 +318,7 @@ public class UpgradeUniverseController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
   public Result rollbackUpgrade(UUID customerUuid, UUID universeUuid, Http.Request request) {
     return requestHandler(
         request,
@@ -898,7 +899,8 @@ public class UpgradeUniverseController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUuid);
     Universe universe = Universe.getOrBadRequest(universeUuid, customer);
     T requestParams =
-        UniverseControllerRequestBinder.bindFormDataToUpgradeTaskParams(request, type, universe);
+        UniverseControllerRequestBinder.bindFormDataToUpgradeTaskParams(
+            request, type, universe.getUniverseUUID(), confGetter);
 
     log.info(
         "Upgrade for universe {} [ {} ] customer {}.",

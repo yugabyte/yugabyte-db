@@ -18,6 +18,18 @@ type: indexpage
   {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/stable/yugabyte-cloud/cloud-monitor/" >}}
 {{< /page-finder/head >}}
 
+## Assess performance with an AI coding agent
+
+If an AI coding agent (such as Claude Code, Cursor, or Codex) assesses universe performance for you, install the official [yb-perf skill](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/yb-perf) first. The skill checks the SQL layer (slow queries, execution plans, locks, and Active Session History) and the metrics layer (Prometheus and YugabyteDB Anywhere), so the agent makes fewer errors.
+
+To install the skill, run the following command:
+
+```sh
+npx skills add yugabyte/yugabytedb-skills -s yb-perf
+```
+
+For more information, see the [yugabytedb-skills](https://github.com/yugabyte/yugabytedb-skills) repository.
+
 {{<index/block>}}
 
   {{<index/item
@@ -37,6 +49,12 @@ type: indexpage
     body="Learn about YSQL views, query identifiers, and wait events that are exposed via active sessions captured by ASH."
     href="active-session-history-monitor/"
     icon="fa-thin fa-monitor-waveform">}}
+
+  {{<index/item
+    title="Tablet metadata"
+    body="Look up local and cluster-wide tablet placement, leadership, and state."
+    href="tablet-metadata/"
+    icon="fa-thin fa-table-cells">}}
 
   {{<index/item
     title="Cluster-wide database views"

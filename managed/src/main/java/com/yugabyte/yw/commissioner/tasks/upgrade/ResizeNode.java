@@ -6,6 +6,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.CanRollback;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
@@ -30,6 +31,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -45,6 +47,7 @@ import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Retryable
+@Abortable
 @CanRollback
 public class ResizeNode extends UpgradeTaskBase {
 
@@ -292,9 +295,14 @@ public class ResizeNode extends UpgradeTaskBase {
             UniverseDefinitionTaskParams.UserIntent currentIntent =
                 universe.getUniverseDetails().getClusterByUuid(cluster.uuid).userIntent;
 
+            // Nodes an earlier attempt left mid-batch go first, so their processes are back up
+            // before any running node is stopped.
             LinkedHashSet<NodeDetails> instanceChangingNodes =
                 nodesToApply.instanceChangingNodes.stream()
                     .filter(n -> n.isInPlacement(cluster.uuid))
+                    .sorted(
+                        Comparator.comparing(
+                            (NodeDetails n) -> n.state == NodeDetails.NodeState.Live))
                     .collect(Collectors.toCollection(LinkedHashSet::new));
 
             List<NodeDetails> justModifyDeviceNodes =
@@ -545,12 +553,14 @@ public class ResizeNode extends UpgradeTaskBase {
     // Change instance type
     if (!newInstanceType.equals(currentInstanceType)
         || taskParams().isForceResizeNode()
-        || cgroupSizeChanging) {
+        || cgroupSizeChanging
+        || nodes.stream().anyMatch(this::mustRunChangeInstanceType)) {
       for (NodeDetails node : nodes) {
         // Check if the node needs to be resized.
         if (!taskParams().isForceResizeNode()
             && isNodeAlreadyAtInstanceType(node, newInstanceType)
-            && !cgroupSizeChanging) {
+            && !cgroupSizeChanging
+            && !mustRunChangeInstanceType(node)) {
           log.info("Skipping node {} as its type is already {}", node.nodeName, newInstanceType);
           continue;
         }
@@ -602,6 +612,11 @@ public class ResizeNode extends UpgradeTaskBase {
     return node.cloudInfo.instance_type.equals(targetInstanceType);
   }
 
+  /** Whether to run ChangeInstanceType for the node even when its type already matches. */
+  protected boolean mustRunChangeInstanceType(NodeDetails node) {
+    return false;
+  }
+
   /**
    * Clusters used as the "old" side of gflag diffs and conf rewrites. Forward ResizeNode uses the
    * persisted universe. Rollback overrides this with the failed task's target so nodes the forward
@@ -611,6 +626,30 @@ public class ResizeNode extends UpgradeTaskBase {
       Universe universe) {
     return universe.getUniverseDetails().clusters.stream()
         .collect(Collectors.toMap(c -> c.uuid, c -> c));
+  }
+
+  /**
+   * Records the gflags this resize applies into the freeze-captured target. Legacy top-level {@code
+   * masterGFlags}/{@code tserverGFlags} are not cluster fields, so the generic target would drop
+   * them; RollbackResizeNode diffs against what is stored here.
+   */
+  @Override
+  protected UniverseDefinitionTaskParams getTargetUniverseDetails() {
+    UniverseDefinitionTaskParams target = super.getTargetUniverseDetails();
+    Universe universe = getUniverse();
+    if (target == null || !taskParams().flagsProvided(universe)) {
+      return target;
+    }
+    Map<UUID, Cluster> newVersions = taskParams().getNewVersionsOfClusters(universe);
+    for (Cluster cluster : target.clusters) {
+      Cluster newVersion = newVersions.get(cluster.uuid);
+      if (newVersion != null) {
+        cluster.userIntent.specificGFlags = newVersion.userIntent.specificGFlags;
+        cluster.userIntent.masterGFlags = newVersion.userIntent.masterGFlags;
+        cluster.userIntent.tserverGFlags = newVersion.userIntent.tserverGFlags;
+      }
+    }
+    return target;
   }
 
   private SubTaskGroup createChangeInstanceTypeTask(NodeDetails node, String instanceType) {

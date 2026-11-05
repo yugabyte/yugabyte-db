@@ -15,11 +15,11 @@
 #include <fstream>
 #include <vector>
 
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 
 #include "yb/bfql/directory.h"
 #include "yb/common/ql_type.h"
-#include "yb/gutil/strings/substitute.h"
 
 using std::endl;
 using std::map;
@@ -91,7 +91,7 @@ class BFCodegen {
       // Form the opcode and print it.
       string current_opcode = entry.bfopcode_name();
       if (current_opcode.empty()) {
-        current_opcode = strings::Substitute("OPCODE_$0_$1", entry.cpp_name(), op_index);
+        current_opcode = Format("OPCODE_$0_$1", entry.cpp_name(), op_index);
       }
       fopcode << "  " << current_opcode << "," << endl;
       if (op_index == 0) {
@@ -110,7 +110,7 @@ class BFCodegen {
       // Use opcode enum value to create unique operator name. This operator keeps the last
       // overloaded opcode to form a chain between overloading opcodes for the same ql_name.
       // Using this chain we can track all opcodes that are mapped to the same ql_name.
-      operator_ids_.emplace_back(strings::Substitute("OPERATOR_$0_$1", entry.cpp_name(), op_index),
+      operator_ids_.emplace_back(Format("OPERATOR_$0_$1", entry.cpp_name(), op_index),
                                  current_opcode, overloaded_opcode);
       op_index++;
     }
@@ -153,7 +153,7 @@ class BFCodegen {
     for (auto entry : yql2opcode_) {
       // For overload function only the opcode with max value is inserted.
       // string ql_name = entry.first;
-      // string opname = strings::Substitute("BFOpcode::OPCODE_$0_$1", entry.first, entry.second);
+      // string opname = Format("BFOpcode::OPCODE_$0_$1", entry.first, entry.second);
       // string opname = entry.second;
       fopcode << "  { \"" << entry.first << "\", " << "BFOpcode::" << entry.second << " }," << endl;
     }

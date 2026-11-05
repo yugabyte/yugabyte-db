@@ -36,6 +36,9 @@ type PostgresState struct {
 	UseExisting bool `json:"UseExisting"`
 	IsEnabled   bool `json:"enabled"`
 	LdapEnabled bool `json:"ldap_enabled"`
+	// Major version of the first postgres cluster of this install. Clusters created before 18 have
+	// data checksums off, and pg_upgrade needs every later cluster to match.
+	InitialMajorVersion int `json:"initial_major_version"`
 }
 
 type ReplicatedMigrationState struct {
@@ -49,6 +52,8 @@ type Config struct {
 	Hostname       string `json:"hostname"`
 	SelfSignedCert bool   `json:"self_signed_cert"`
 	AsRoot         bool   `json:"as_root"`
+	// FIPS mode is fixed at install: reconfigure and upgrade refuse to change it.
+	FipsEnabled bool `json:"fips_enabled"`
 }
 
 type Services struct {
@@ -64,9 +69,10 @@ func New() *State {
 		RootInstall: viper.GetString("installRoot"),
 		Username:    viper.GetString("service_username"),
 		Postgres: PostgresState{
-			UseExisting: viper.GetBool("postgres.useExisting.enabled"),
-			IsEnabled:   common.IsPostgresEnabled(),
-			LdapEnabled: viper.GetBool("postgres.install.ldap_enabled"),
+			UseExisting:         viper.GetBool("postgres.useExisting.enabled"),
+			IsEnabled:           common.IsPostgresEnabled(),
+			LdapEnabled:         viper.GetBool("postgres.install.ldap_enabled"),
+			InitialMajorVersion: common.PostgresMajorVersion(common.PostgresVersion),
 		},
 		Ybdb: YbdbState{
 			IsEnabled: viper.GetBool("ybdb.install.enabled"),
@@ -76,6 +82,7 @@ func New() *State {
 		Config: Config{
 			SelfSignedCert: false, // Default to false
 			AsRoot:         common.HasSudoAccess(),
+			FipsEnabled:    viper.GetBool("fips.enabled"),
 		},
 		// Initialize to false, inistall will set it to true
 		Services: Services{

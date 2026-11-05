@@ -34,6 +34,7 @@
 #include "yb/util/date_time.h"
 #include "yb/util/decimal.h"
 #include "yb/util/enums.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/memory/arena.h"
 #include "yb/util/net/inetaddress.h"
@@ -60,9 +61,9 @@ Status SetNumericResult(
     SetResult set_result, BFParam source, DataType target_datatype, RTypePtr target) {
   auto source_datatype = InternalToDataType(source.value_case());
   if (!QLType::IsExplicitlyConvertible(target_datatype, source_datatype)) {
-    return STATUS_SUBSTITUTE(QLError, "Cannot convert $0 to $1",
-                             QLType::ToCQLString(source_datatype),
-                             QLType::ToCQLString(target_datatype));
+    return STATUS_FORMAT(QLError, "Cannot convert $0 to $1",
+                         QLType::ToCQLString(source_datatype),
+                         QLType::ToCQLString(target_datatype));
   }
 
   switch(source.value_case()) {
@@ -94,17 +95,17 @@ Status SetNumericResult(
         } else { // Expected an Integer type
           RSTATUS_DCHECK(target_datatype == DataType::INT8 || target_datatype == DataType::INT16
               || target_datatype == DataType::INT32 || target_datatype == DataType::INT64,
-              InvalidArgument, strings::Substitute("Unexpected target type: ",
-                                                   QLType::ToCQLString(target_datatype)));
+              InvalidArgument, Format("Unexpected target type: $0",
+                                      QLType::ToCQLString(target_datatype)));
           // Convert via INT64:
           set_result(VERIFY_RESULT(VERIFY_RESULT(d.ToVarInt()).ToInt64()), target);
         }
       }
       break;
     default:
-      return STATUS_SUBSTITUTE(QLError, "Cannot cast $0 to $1",
-                               QLType::ToCQLString(source_datatype),
-                               QLType::ToCQLString(target_datatype));
+      return STATUS_FORMAT(QLError, "Cannot cast $0 to $1",
+                           QLType::ToCQLString(source_datatype),
+                           QLType::ToCQLString(target_datatype));
   }
   return Status::OK();
 }
@@ -156,9 +157,9 @@ inline Result<std::string> GetString(BFParam source) {
 inline Result<BFRetValue> MakeStringResult(BFParam source, BFFactory factory) {
   auto source_datatype = InternalToDataType(source.value_case());
   if (!QLType::IsExplicitlyConvertible(DataType::STRING, source_datatype)) {
-    return STATUS_SUBSTITUTE(QLError, "Cannot convert $0 to $1",
-                             QLType::ToCQLString(source_datatype),
-                             QLType::ToCQLString(DataType::STRING));
+    return STATUS_FORMAT(QLError, "Cannot convert $0 to $1",
+                         QLType::ToCQLString(source_datatype),
+                         QLType::ToCQLString(DataType::STRING));
   }
 
   BFRetValue result = factory();
@@ -169,9 +170,9 @@ inline Result<BFRetValue> MakeStringResult(BFParam source, BFFactory factory) {
 inline Result<BFRetValue> MakeTimestampResult(BFParam source, BFFactory factory) {
   auto source_datatype = InternalToDataType(source.value_case());
   if (!QLType::IsExplicitlyConvertible(DataType::TIMESTAMP, source_datatype)) {
-    return STATUS_SUBSTITUTE(QLError, "Cannot convert $0 to $1",
-                             QLType::ToCQLString(source_datatype),
-                             QLType::ToCQLString(DataType::TIMESTAMP));
+    return STATUS_FORMAT(QLError, "Cannot convert $0 to $1",
+                         QLType::ToCQLString(source_datatype),
+                         QLType::ToCQLString(DataType::TIMESTAMP));
   }
 
   BFRetValue result = factory();
@@ -189,9 +190,9 @@ inline Result<BFRetValue> MakeTimestampResult(BFParam source, BFFactory factory)
       result.set_timestamp_value(DateTime::DateToTimestamp(source.date_value()).ToInt64());
       break;
     default:
-      return STATUS_SUBSTITUTE(QLError, "Cannot cast $0 to $1",
-                               QLType::ToCQLString(source_datatype),
-                               QLType::ToCQLString(DataType::TIMESTAMP));
+      return STATUS_FORMAT(QLError, "Cannot cast $0 to $1",
+                           QLType::ToCQLString(source_datatype),
+                           QLType::ToCQLString(DataType::TIMESTAMP));
   }
   return result;
 }
@@ -199,9 +200,9 @@ inline Result<BFRetValue> MakeTimestampResult(BFParam source, BFFactory factory)
 inline Result<BFRetValue> MakeDateResult(BFParam source, BFFactory factory) {
   auto source_datatype = InternalToDataType(source.value_case());
   if (!QLType::IsExplicitlyConvertible(DataType::DATE, source_datatype)) {
-    return STATUS_SUBSTITUTE(QLError, "Cannot convert $0 to $1",
-                             QLType::ToCQLString(source_datatype),
-                             QLType::ToCQLString(DataType::DATE));
+    return STATUS_FORMAT(QLError, "Cannot convert $0 to $1",
+                         QLType::ToCQLString(source_datatype),
+                         QLType::ToCQLString(DataType::DATE));
   }
 
   BFRetValue result = factory();
@@ -218,9 +219,9 @@ inline Result<BFRetValue> MakeDateResult(BFParam source, BFFactory factory) {
       break;
     }
     default:
-      return STATUS_SUBSTITUTE(QLError, "Cannot cast $0 to $1",
-                               QLType::ToCQLString(source_datatype),
-                               QLType::ToCQLString(DataType::DATE));
+      return STATUS_FORMAT(QLError, "Cannot cast $0 to $1",
+                           QLType::ToCQLString(source_datatype),
+                           QLType::ToCQLString(DataType::DATE));
   }
   return result;
 }
@@ -822,9 +823,9 @@ inline Result<BFRetValue> ConvertToDecimal(BFParam source, BFFactory factory) {
 
   auto source_datatype = InternalToDataType(source.value_case());
   if (!QLType::IsExplicitlyConvertible(DataType::DECIMAL, source_datatype)) {
-    return STATUS_SUBSTITUTE(QLError, "Cannot convert $0 to $1",
-                             QLType::ToCQLString(source_datatype),
-                             QLType::ToCQLString(DataType::DECIMAL));
+    return STATUS_FORMAT(QLError, "Cannot convert $0 to $1",
+                         QLType::ToCQLString(source_datatype),
+                         QLType::ToCQLString(DataType::DECIMAL));
   }
 
   int64_t int_num = 0;
@@ -876,20 +877,20 @@ inline Result<BFRetValue> ConvertToDecimal(BFParam source, BFFactory factory) {
   switch(convert) {
     case ConvertDecimalVia::kString:
       RSTATUS_DCHECK_EQ(source.value_case(), InternalType::kStringValue,
-          InvalidArgument, strings::Substitute("Invalid source type: ",
-                                               QLType::ToCQLString(source_datatype)));
+          InvalidArgument, Format("Invalid source type: $0",
+                                  QLType::ToCQLString(source_datatype)));
       RETURN_NOT_OK(d.FromString(source.string_value()));
       break;
     case ConvertDecimalVia::kVarint:
       RSTATUS_DCHECK_EQ(source.value_case(), InternalType::kVarintValue,
-          InvalidArgument, strings::Substitute("Invalid source type: ",
-                                               QLType::ToCQLString(source_datatype)));
+          InvalidArgument, Format("Invalid source type: $0",
+                                  QLType::ToCQLString(source_datatype)));
       RETURN_NOT_OK(d.FromVarInt(QLValue::varint_value(source)));
       break;
     case ConvertDecimalVia::kDecimal:
       RSTATUS_DCHECK_EQ(source.value_case(), InternalType::kDecimalValue,
-          InvalidArgument, strings::Substitute("Invalid source type: ",
-                                               QLType::ToCQLString(source_datatype)));
+          InvalidArgument, Format("Invalid source type: $0",
+                                  QLType::ToCQLString(source_datatype)));
       RETURN_NOT_OK(d.DecodeFromComparable(source.decimal_value()));
       break;
     case ConvertDecimalVia::kInt64:
@@ -899,9 +900,9 @@ inline Result<BFRetValue> ConvertToDecimal(BFParam source, BFFactory factory) {
       RETURN_NOT_OK(d.FromDouble(double_num));
       break;
     case ConvertDecimalVia::kUnknown:
-      return STATUS_SUBSTITUTE(QLError, "Cannot cast $0 to $1",
-                               QLType::ToCQLString(source_datatype),
-                               QLType::ToCQLString(DataType::DECIMAL));
+      return STATUS_FORMAT(QLError, "Cannot cast $0 to $1",
+                           QLType::ToCQLString(source_datatype),
+                           QLType::ToCQLString(DataType::DECIMAL));
   }
 
   result.set_decimal_value(d.EncodeToComparable());

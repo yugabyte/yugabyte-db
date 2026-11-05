@@ -16,6 +16,7 @@
 #include <random>
 #include <string>
 
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 
 #include "yb/util/bytes_formatter.h"
@@ -32,7 +33,6 @@ using std::string;
 using std::numeric_limits;
 
 using namespace std::literals;
-using strings::Substitute;
 
 namespace yb {
 namespace util {
@@ -40,7 +40,7 @@ namespace util {
 namespace {
 
 void CheckEncoding(int64_t v) {
-  SCOPED_TRACE(Substitute("v=$0", v));
+  SCOPED_TRACE(Format("v=$0", v));
 
   const string correct_encoded(VarInt(v).EncodeToComparable());
   uint8_t buf[16];
@@ -114,7 +114,7 @@ TEST(FastVarintTest, TestEncodeDecode) {
   Random rng(SeedRandom());
   CheckEncoding(-1);
   for (int i = 0; i <= 62; ++i) {
-    SCOPED_TRACE(Substitute("i (power of 2)=$0", i));
+    SCOPED_TRACE(Format("i (power of 2)=$0", i));
     CheckEncoding(1LL << i);
     CheckEncoding((1LL << i) + 1);
     CheckEncoding((1LL << i) - 1);

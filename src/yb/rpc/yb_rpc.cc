@@ -24,6 +24,7 @@
 #include "yb/rpc/connection.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/reactor.h"
+#include "yb/rpc/retry_after.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/serialization.h"
@@ -389,7 +390,23 @@ string YBInboundCall::ToString() const {
 
 bool YBInboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
                            RpcCallInProgressPB* resp) {
-  header_.ToPB(resp->mutable_header());
+  // header_.remote_method references request data, which Clear() may free concurrently.
+  ParsedRequestHeader header;
+  std::string remote_method;
+  bool cleared;
+  {
+    std::lock_guard lock(mutex_);
+    header = header_;
+    cleared = cleared_;
+    if (!cleared) {
+      remote_method = header_.remote_method.ToBuffer();
+    }
+  }
+  header.remote_method = Slice(remote_method);
+  header.ToPB(resp->mutable_header());
+  if (cleared) {
+    resp->mutable_header()->clear_remote_method();
+  }
   auto my_trace = trace();
   if (req.include_traces() && my_trace) {
     resp->set_trace_buffer(my_trace->DumpToString(true));
@@ -483,6 +500,9 @@ void YBInboundCall::RespondFailure(ErrorStatusPB::RpcErrorCodePB error_code,
   ErrorStatusPB err;
   err.set_message(status.ToString());
   err.set_code(error_code);
+  if (auto retry_after = RetryAfter(status); retry_after.value().Initialized()) {
+    err.set_retry_after_ms(narrow_cast<uint32_t>(retry_after.value().ToMilliseconds()));
+  }
 
   Respond(AnyMessageConstPtr(&err), /*is_success=*/false);
 }

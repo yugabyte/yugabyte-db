@@ -11,6 +11,10 @@
 // under the License.
 //
 
+#include "yb/client/client.h"
+
+#include "yb/common/common_flags.h"
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/tserver/ts_local_lock_manager.h"
 
 #include "yb/docdb/docdb-test.h"
@@ -18,6 +22,8 @@
 #include "yb/docdb/object_lock_data.h"
 #include "yb/docdb/object_lock_shared_state.h"
 #include "yb/docdb/object_lock_shared_state_manager.h"
+
+#include "yb/master/master_ddl.pb.h"
 
 #include "yb/rpc/thread_pool.h"
 
@@ -39,9 +45,6 @@
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
-DECLARE_bool(enable_object_locking_for_table_locks);
-DECLARE_bool(ysql_enable_concurrent_ddl);
-DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(TEST_assert_olm_empty_locks_map);
 DECLARE_bool(TEST_olm_skip_scheduling_waiter_resumption);
 DECLARE_bool(TEST_olm_skip_sending_wait_for_probes);
@@ -86,8 +89,7 @@ constexpr auto kDefaultTestStatusTabletId = "test_status_tablet";
 class TSLocalLockManagerTest : public TabletServerTestBase {
  protected:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    ToggleDDLMode(/* use_legacy = */ false);
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_assert_olm_empty_locks_map) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_olm_skip_sending_wait_for_probes) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_lock_fastpath) = true;
@@ -119,7 +121,8 @@ class TSLocalLockManagerTest : public TabletServerTestBase {
       const ObjectLockOwner& owner, uint32_t database_id, const std::vector<uint32_t>& relation_ids,
       const std::vector<TableLockType>& lock_types,
       CoarseTimePoint deadline = CoarseTimePoint::max(), LockStateMap* state_map = nullptr,
-      TransactionId bg_txn = TransactionId::Nil()) {
+      TransactionId bg_txn = TransactionId::Nil(),
+      std::optional<uint64_t> start_time = std::nullopt) {
     SCHECK_EQ(relation_ids.size(), lock_types.size(), IllegalState, "Expected equal sizes");
     tserver::AcquireObjectLockRequestPB req;
     owner.PopulateLockRequest(&req);
@@ -132,7 +135,7 @@ class TSLocalLockManagerTest : public TabletServerTestBase {
       lock->set_object_sub_oid(kDefaultObjectSubId);
       lock->set_lock_type(lock_types[i]);
     }
-    req.set_propagated_hybrid_time(MonoTime::Now().ToUint64());
+    req.set_propagated_hybrid_time(start_time.value_or(MonoTime::Now().ToUint64()));
     if (!bg_txn.IsNil()) {
       req.set_background_transaction_id(bg_txn.data(), bg_txn.size());
     }
@@ -285,6 +288,49 @@ TEST_F(TSLocalLockManagerTest, TestLockAndRelease) {
     ASSERT_EQ(GrantedLocksSize(), 0);
     ASSERT_EQ(WaitingLocksSize(), 0);
   }
+}
+
+TEST_F(TSLocalLockManagerTest, TestAcquireAppliesLeaseEpochFloorsBeforeValidation) {
+  constexpr auto kSessionHostUuid = "origin-ts";
+  constexpr uint64_t kRejectedLeaseEpoch = 10;
+  constexpr uint64_t kAcceptedLeaseEpoch = 11;
+  constexpr uint64_t kIgnoreLeaseEpochsBefore = 11;
+
+  auto make_acquire = [&](const ObjectLockOwner& owner, uint64_t lease_epoch) {
+    tserver::AcquireObjectLockRequestPB req;
+    owner.PopulateLockRequest(&req);
+    req.set_status_tablet(kDefaultTestStatusTabletId);
+    req.set_session_host_uuid(kSessionHostUuid);
+    req.set_lease_epoch(lease_epoch);
+    req.set_propagated_hybrid_time(MonoTime::Now().ToUint64());
+    auto* lock = req.add_object_locks();
+    lock->set_database_oid(kDatabase1);
+    lock->set_relation_oid(kObject1);
+    lock->set_object_oid(kDefaultObjectId);
+    lock->set_object_sub_oid(kDefaultObjectSubId);
+    lock->set_lock_type(TableLockType::ACCESS_SHARE);
+    return req;
+  };
+
+  auto rejected_owner = ObjectLockOwner{TransactionId::GenerateRandom(), 1};
+  auto rejected_req = make_acquire(rejected_owner, kRejectedLeaseEpoch);
+  auto* floor = rejected_req.add_lease_epoch_floors();
+  floor->set_session_host_uuid(kSessionHostUuid);
+  floor->set_ignore_lease_epochs_before(kIgnoreLeaseEpochsBefore);
+  Synchronizer rejected_sync;
+  lm_->AcquireObjectLocksAsync(
+      rejected_req, CoarseMonoClock::Now() + 5s, rejected_sync.AsStdStatusCallback());
+  auto rejected_status = rejected_sync.Wait();
+  ASSERT_NOK(rejected_status);
+  ASSERT_STR_CONTAINS(rejected_status.ToString(), "latest valid lease epoch");
+
+  auto accepted_owner = ObjectLockOwner{TransactionId::GenerateRandom(), 1};
+  auto accepted_req = make_acquire(accepted_owner, kAcceptedLeaseEpoch);
+  Synchronizer accepted_sync;
+  lm_->AcquireObjectLocksAsync(
+      accepted_req, CoarseMonoClock::Now() + 5s, accepted_sync.AsStdStatusCallback());
+  ASSERT_OK(accepted_sync.Wait());
+  ASSERT_OK(ReleaseLocksForOwner(accepted_owner));
 }
 
 TEST_F(TSLocalLockManagerTest, TestFastpathLockAndRelease) {
@@ -895,6 +941,73 @@ TEST_F(TSLocalLockManagerTest, TestTimedOutResumeSignalsNextWaiter) {
   ASSERT_OK(next.get());
   ASSERT_OK(ReleaseLocksForOwner(kTxn3));
 }
+
+// A DML queued behind a DDL only because of the DDL's queued request (and not any conflicting
+// holder) shouldn't slip through when the DDL request times out at Poll. The DDL's retry carries
+// its original start time, re-enters the queue ahead of the DML, and is granted first.
+TEST_F(TSLocalLockManagerTest, TestPollTimedOutWaiterDoesNotResumeNextWaiter) {
+  ASSERT_OK(LockRelation(kTxn1, kDatabase1, kObject1, TableLockType::ROW_EXCLUSIVE));
+
+  std::atomic<bool> dml_resumed{false};
+  SyncPoint::GetInstance()->SetCallBack("WaiterEntry::Resume", [&](void* arg) {
+    if (*static_cast<TransactionId*>(arg) == kTxn3.txn_id) {
+      dml_resumed.store(true);
+    }
+  });
+  SyncPoint::GetInstance()->ClearTrace();
+  SyncPoint::GetInstance()->EnableProcessing();
+  auto disable_sync_point = ScopeExit([] {
+    SyncPoint::GetInstance()->DisableProcessing();
+    SyncPoint::GetInstance()->ClearAllCallBacks();
+  });
+
+  const auto ddl_start_time = MonoTime::Now().ToUint64();
+  auto lock_ddl = [&](CoarseTimePoint deadline) {
+    return LockRelations(
+        kTxn2, kDatabase1, {kObject1}, {TableLockType::SHARE}, deadline,
+        /*state_map=*/nullptr, /*bg_txn=*/TransactionId::Nil(), ddl_start_time);
+  };
+
+  auto ddl = std::async(std::launch::async, [&] {
+    return lock_ddl(CoarseMonoClock::Now() + 2s * kTimeMultiplier);
+  });
+  ASSERT_OK(WaitFor([&] {
+    return WaitingLocksSize() >= 1;
+  }, 5s * kTimeMultiplier, "DDL should wait on the DML holder"));
+  auto dml = std::async(std::launch::async, [&] {
+    return LockRelation(
+        kTxn3, kDatabase1, kObject1, TableLockType::ROW_EXCLUSIVE, CoarseMonoClock::Now() + 60s);
+  });
+  ASSERT_OK(WaitFor([&] {
+    return WaitingLocksSize() >= 2;
+  }, 5s * kTimeMultiplier, "DML should queue behind the waiting DDL"));
+
+  auto ddl_status = ddl.get();
+  ASSERT_NOK(ddl_status);
+  ASSERT_STR_CONTAINS(ddl_status.ToString(), "Failed to acquire object locks within deadline");
+  // Give an erroneously scheduled resumption of the DML a chance to run.
+  SleepFor(500ms * kTimeMultiplier);
+  ASSERT_FALSE(dml_resumed.load()) << "DML resumed on the DDL's Poll timeout";
+  ASSERT_EQ(dml.wait_for(0s), std::future_status::timeout);
+
+  ddl = std::async(std::launch::async, [&] {
+    return lock_ddl(CoarseMonoClock::Now() + 60s);
+  });
+  ASSERT_OK(WaitFor([&] {
+    return WaitingLocksSize() >= 2;
+  }, 5s * kTimeMultiplier, "DDL retry should re-enter the wait-queue"));
+  ASSERT_FALSE(dml_resumed.load());
+
+  ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+  ASSERT_OK(ddl.get());
+  SleepFor(500ms * kTimeMultiplier);
+  ASSERT_FALSE(dml_resumed.load()) << "DML resumed ahead of the DDL retry";
+  ASSERT_EQ(dml.wait_for(0s), std::future_status::timeout);
+
+  ASSERT_OK(ReleaseLocksForOwner(kTxn2));
+  ASSERT_OK(dml.get());
+  ASSERT_OK(ReleaseLocksForOwner(kTxn3));
+}
 #endif
 
 TEST_F(TSLocalLockManagerTest, YB_LINUX_DEBUG_ONLY_TEST(TestFastpathCrash)) {
@@ -1015,6 +1128,76 @@ TEST_F(TSLocalLockManagerBootstrappedLocksTest, TestSimple) {
   ASSERT_FALSE(LockRelationPgFastpath(
       kTxn2.txn_id, kTxn2.subtxn_id, kDatabase1, kObject1,
       ObjectLockFastpathLockType::kRowExclusive));
+}
+
+class TSLocalLockManagerBootstrapLeaseEpochFloorsTest : public TSLocalLockManagerTest {
+ protected:
+  static constexpr auto kSessionHostUuid = "origin-ts";
+  static constexpr uint64_t kStaleLeaseEpoch = 3;
+  static constexpr uint64_t kLeaseEpochFloor = 5;
+
+  // Replayed entries may be from lease epochs older than the floors shipped alongside them, e.g.
+  // master replaying locks whose release hasn't been acked by all tservers.
+  void LockManagerBootstrap() override {
+    DdlLockEntriesPB entries;
+    auto* req = entries.add_lock_entries();
+    kTxn1.PopulateLockRequest(req);
+    req->set_status_tablet(kDefaultTestStatusTabletId);
+    req->set_session_host_uuid(kSessionHostUuid);
+    req->set_lease_epoch(kStaleLeaseEpoch);
+    req->set_propagated_hybrid_time(MonoTime::Now().ToUint64());
+    auto* lock = req->add_object_locks();
+    lock->set_database_oid(kDatabase1);
+    lock->set_relation_oid(kObject1);
+    lock->set_object_oid(kDefaultObjectId);
+    lock->set_object_sub_oid(kDefaultObjectSubId);
+    lock->set_lock_type(TableLockType::ACCESS_SHARE);
+    auto* floor = entries.add_lease_epoch_floors();
+    floor->set_session_host_uuid(kSessionHostUuid);
+    floor->set_ignore_lease_epochs_before(kLeaseEpochFloor);
+    ASSERT_OK(lm_->BootstrapDdlObjectLocks(entries));
+  }
+};
+
+TEST_F_EX(
+    TSLocalLockManagerTest, TestFloorsAppliedAfterReplay,
+    TSLocalLockManagerBootstrapLeaseEpochFloorsTest) {
+  ASSERT_GE(GrantedLocksSize(), 1);
+
+  auto make_acquire = [&](uint64_t lease_epoch) {
+    AcquireObjectLockRequestPB req;
+    kTxn2.PopulateLockRequest(&req);
+    req.set_status_tablet(kDefaultTestStatusTabletId);
+    req.set_session_host_uuid(kSessionHostUuid);
+    req.set_lease_epoch(lease_epoch);
+    req.set_propagated_hybrid_time(MonoTime::Now().ToUint64());
+    auto* lock = req.add_object_locks();
+    lock->set_database_oid(kDatabase1);
+    lock->set_relation_oid(kObject1);
+    lock->set_object_oid(kDefaultObjectId);
+    lock->set_object_sub_oid(kDefaultObjectSubId);
+    lock->set_lock_type(TableLockType::ACCESS_SHARE);
+    return req;
+  };
+
+  Synchronizer rejected_sync;
+  lm_->AcquireObjectLocksAsync(
+      make_acquire(kLeaseEpochFloor - 1), CoarseMonoClock::Now() + 5s,
+      rejected_sync.AsStdStatusCallback());
+  auto rejected_status = rejected_sync.Wait();
+  ASSERT_NOK(rejected_status);
+  ASSERT_STR_CONTAINS(rejected_status.ToString(), "latest valid lease epoch");
+
+  Synchronizer accepted_sync;
+  lm_->AcquireObjectLocksAsync(
+      make_acquire(kLeaseEpochFloor), CoarseMonoClock::Now() + 5s,
+      accepted_sync.AsStdStatusCallback());
+  ASSERT_OK(accepted_sync.Wait());
+
+  ASSERT_OK(ReleaseLocksForOwner(kTxn2));
+  ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+  ASSERT_EQ(GrantedLocksSize(), 0);
+  ASSERT_EQ(WaitingLocksSize(), 0);
 }
 
 class TSLocalLockManagerLockBeforeSharedMemorySetupTest : public TSLocalLockManagerTest {
@@ -1208,6 +1391,37 @@ TEST_F(TSLocalLockManagerTest, TestFastpathOverflow) {
   ASSERT_TRUE(ReleaseLocksPgFastpath(kTxn2.txn_id));
 
   ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+}
+
+
+// A release naming specific objects leaves the subtxn's other locks held, so it must keep the
+// subtxn's tracked acquire deadline. Otherwise the later release-all of the subtxn finds no
+// deadline and schedules no lost-message retry.
+TEST_F(TSLocalLockManagerTest, NamedReleaseKeepsDeadlineForReleaseAll) {
+  // No master is needed: the retries are scheduled far enough out that shutdown aborts them before
+  // they use the client.
+  auto client = ASSERT_RESULT(client::YBClientBuilder()
+      .add_master_server_addr("127.0.0.1:1")
+      .set_skip_master_leader_resolution(true)
+      .Build());
+  auto lock_manager = mini_server_->server()->ts_local_lock_manager();
+  const auto& txn_id = kTxn1.txn_id;
+  const auto subtxn_id = kTxn1.subtxn_id;
+  const auto deadline = CoarseMonoClock::Now() + 1h;
+  lm_->TrackDeadlineForGlobalAcquire(txn_id, subtxn_id, deadline);
+
+  auto named_release = std::make_shared<master::ReleaseObjectLocksGlobalRequestPB>();
+  auto* lock = named_release->add_object_locks();
+  lock->set_database_oid(kDatabase1);
+  lock->set_relation_oid(kObject1);
+  lock->set_lock_type(TableLockType::NONE);
+  lm_->ScheduleReleaseForLostMessages(*client, lock_manager, txn_id, subtxn_id, named_release);
+  ASSERT_EQ(lm_->TEST_MaxDeadlineForTxn(txn_id, subtxn_id), deadline);
+
+  lm_->ScheduleReleaseForLostMessages(
+      *client, lock_manager, txn_id, subtxn_id,
+      std::make_shared<master::ReleaseObjectLocksGlobalRequestPB>());
+  ASSERT_EQ(lm_->TEST_MaxDeadlineForTxn(txn_id, subtxn_id), std::nullopt);
 }
 
 } // namespace yb::tserver

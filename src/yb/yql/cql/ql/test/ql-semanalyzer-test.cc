@@ -19,6 +19,7 @@
 #include "yb/client/table.h"
 #include "yb/client/table_info.h"
 
+#include "yb/util/format.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
 #include "yb/util/varint.h"
@@ -35,7 +36,6 @@ namespace yb {
 namespace ql {
 
 using std::string;
-using strings::Substitute;
 using std::dynamic_pointer_cast;
 using namespace std::literals;
 
@@ -558,7 +558,7 @@ TEST_F(QLTestAnalyzer, TestTruncate) {
   // Analyze the TRUNCATE statement.
   ParseTree::UniPtr parse_tree;
   ANALYZE_VALID_STMT("TRUNCATE TABLE t;", &parse_tree);
-  ANALYZE_VALID_STMT(Substitute("TRUNCATE TABLE $0.t;", kDefaultKeyspaceName), &parse_tree);
+  ANALYZE_VALID_STMT(Format("TRUNCATE TABLE $0.t;", kDefaultKeyspaceName), &parse_tree);
 
   // No such keyspace
   ANALYZE_INVALID_STMT("TRUNCATE TABLE invalid_keyspace.t;", &parse_tree);

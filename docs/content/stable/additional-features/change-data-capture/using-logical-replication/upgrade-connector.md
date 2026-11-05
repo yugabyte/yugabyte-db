@@ -22,10 +22,11 @@ Check [yugabyte/debezium GitHub releases](https://github.com/yugabyte/debezium/r
 
 Upgrade the connector:
 
-- _Before upgrading YugabyteDB_ to a release series newer than the one your connector was built for. The connector is backward compatible only; running it against a newer database release is unsupported and can disrupt streaming. See [Choose a connector version](#choose-a-connector-version).
+- _Before upgrading YugabyteDB_ to a release series newer than the one your connector was built for. The connector is backward compatible only; running it against a newer release series is unsupported and can disrupt streaming. See [Choose a connector version](#choose-a-connector-version).
 - _When a release fixes a bug or security issue_ that affects your deployment.
+- _When a release adds a feature or improvement_ that you need.
 
-As a best practice, run the latest stable connector release regardless of your YugabyteDB version.
+Otherwise, you don't need to upgrade the connector, including when you upgrade YugabyteDB within the same release series.
 
 ## Choose a connector version
 
@@ -37,9 +38,8 @@ Always move to a newer (or the latest stable) version. If you need to go back to
 
 When you pick a target connector version:
 
-- Always use the _latest stable_ release (recommended). Connectors are backward compatible with YugabyteDB releases, so you don't need to match the connector to the database release.
+- Use the _latest stable_ release (recommended). Connectors are backward compatible with YugabyteDB releases, so you don't need to match the connector to the database release.
 - Never run a `*.SNAPSHOT.*` build in production; those are pre-releases.
-- If no newer release is available, use the last published stable release; don't stay on an older one.
 - Read the release notes for the target (and any versions you skip) for breaking changes, and confirm the minimum supported YugabyteDB version before you upgrade.
 
 ## Standard upgrade in place
@@ -52,7 +52,7 @@ Expect a small number of duplicate events around the restart; Debezium events ar
 
 ### Before you begin
 
-- Upgrade the connector first, then YugabyteDB. The connector is backward compatible with earlier database releases but not newer ones, so if a database upgrade is what's driving this, complete the connector upgrade before you upgrade YugabyteDB. See [When to upgrade](#when-to-upgrade).
+- Upgrade the connector first, then YugabyteDB. The connector doesn't support release series later than the one it was built for, so if a database upgrade is what's driving this, complete the connector upgrade before you upgrade YugabyteDB. See [When to upgrade](#when-to-upgrade).
 
 - In Kafka Connect distributed mode, connector configuration, offsets, and status live in Kafka topics (`config.storage.topic`, `offset.storage.topic`, `status.storage.topic`), so the connector recovers cleanly when workers restart. Plan to restart workers one at a time (rolling), and finish with every worker on the same connector version. Don't run mixed versions beyond the rollout window.
 
@@ -91,7 +91,7 @@ A re-snapshot rebuilds the stream from scratch. Instead of resuming from stored 
 A re-snapshot is required when the existing replication slot can't be reused:
 
 - The target release notes call out a breaking change that isn't backward compatible with existing slots or offsets.
-- The replication slot has expired or become invalid (for example, after certain DDL changes, after point-in-time recovery, or after you add an expired or not-of-interest table to the publication).
+- The replication slot has expired or become invalid (for example, after certain DDL changes, after point-in-time recovery, or, in versions earlier than v2026.1.2.0, after you add an expired or not-of-interest table to the publication).
 - You are planning a YSQL major upgrade (PostgreSQL 11 to PostgreSQL 15); see [Upgrade across a YSQL major version](#ysql-major-upgrade) for the supported flow that avoids a full re-snapshot.
 
 To re-snapshot:

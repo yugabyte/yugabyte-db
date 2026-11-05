@@ -57,6 +57,9 @@ VariableCache ShmemVariableCache = NULL;
 /* next OID to assign during YSQL upgrade */
 Oid			ysql_upgrade_next_oid = InvalidOid;
 
+/* lowest OID to assign during YSQL upgrade, set by the upgrade runner */
+Oid			yb_ysql_upgrade_min_next_oid = InvalidOid;
+
 
 /*
  * Allocate the next FullTransactionId for a new transaction or
@@ -689,11 +692,23 @@ GetNewObjectId(void)
 	/*
 	 * In YSQL upgrade mode, we continue OID sequence where initdb left off.
 	 * We don't expect concurrent upgrade, so we don't need to reserve OIDs.
+	 * The counter is reset at the end of every transaction, see
+	 * YbAtEOXact_UpgradeNextOid.
 	 */
 	if (IsYsqlUpgrade)
 	{
 		if (!OidIsValid(ysql_upgrade_next_oid))
 			ysql_upgrade_next_oid = YbGetMaxAllocatedSystemOid() + 1;
+
+		/*
+		 * The catalogs of this database are not the only ones that can hold
+		 * the OID: a migration that creates a shared relation inserts some of
+		 * its rows, with OIDs assigned here, into every database.  Before
+		 * such a migration, the upgrade runner sets the minimum above the
+		 * system OIDs of every database.
+		 */
+		if (ysql_upgrade_next_oid < yb_ysql_upgrade_min_next_oid)
+			ysql_upgrade_next_oid = yb_ysql_upgrade_min_next_oid;
 
 		result = ysql_upgrade_next_oid;
 		ysql_upgrade_next_oid++;
@@ -881,3 +896,28 @@ AssertTransactionIdInAllowableRange(TransactionId xid)
 		   TransactionIdPrecedesOrEquals(xid, next_xid));
 }
 #endif
+
+/*
+ * Forget the next OID to assign during YSQL upgrade, so that the next
+ * transaction rescans the catalogs of the database for the maximum allocated
+ * system OID.
+ *
+ * Another backend may insert rows with auto-assigned OIDs into this
+ * database's catalogs between our transactions: when a YSQL upgrade
+ * migration creates a shared relation, the template1 backend inserts the
+ * relation's array type and constraints into the catalogs of every database
+ * (see YBCatalogTupleInsert).  A counter kept across transactions would not
+ * know about those OIDs and would assign them again, to rows of other
+ * catalogs.
+ *
+ * Resetting between transactions is enough.  The upgrade runner waits for
+ * each migration to finish before it starts the next one, so the template1
+ * backend never inserts rows into this database's catalogs while one of our
+ * transactions is running: its inserts are committed before our next
+ * transaction starts.
+ */
+void
+YbAtEOXact_UpgradeNextOid(void)
+{
+	ysql_upgrade_next_oid = InvalidOid;
+}

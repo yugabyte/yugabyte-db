@@ -26,6 +26,7 @@
 
 #include "yb/gutil/walltime.h"
 #include "yb/util/debug-util.h"
+#include "yb/util/format.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/stack_trace.h"
@@ -342,7 +343,7 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d"; HT{ physica
       MicrosTime hybrid_time = (i + 1) * 1000;
       ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue(subkey)),
                              QLValue::Primitive(value), HybridTime::FromMicros(hybrid_time)));
-      *expected_docdb_str += strings::Substitute(
+      *expected_docdb_str += Format(
           R"#(SubDocKey(DocKey([], ["key"]), ["$0"; HT{ physical: $1 }]) -> "$2")#",
           subkey, hybrid_time, value);
       *expected_docdb_str += "\n";

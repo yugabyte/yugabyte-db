@@ -42,8 +42,6 @@
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/xcluster/xcluster_test_base.h"
 #include "yb/integration-tests/xcluster/xcluster_test_utils.h"
@@ -114,6 +112,7 @@ DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_int32(update_min_cdc_indices_interval_secs);
 DECLARE_uint32(xcluster_max_old_schema_versions);
+DECLARE_bool(xcluster_skip_index_column_name_check_on_setup);
 DECLARE_bool(ysql_disable_index_backfill);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_uint64(ysql_packed_row_size_limit);
@@ -981,6 +980,10 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, GarbageCollectExpiredTransact
   // Trigger a compaction and ensure that the transaction has been cleaned up on the participant.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_aborted_intent_cleanup_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_external_intent_cleanup_secs) = 0;
+  // Followers may still be applying replicated intents; they must reach the flushed SST files,
+  // since compaction does not clean up memtable contents.
+  ASSERT_OK(WaitAllReplicasSynchronizedWithLeader(
+      consumer_cluster(), 30s * kTimeMultiplier, RequireLeaderIsReady::kFalse));
   ASSERT_OK(consumer_cluster()->FlushTablets());
   ASSERT_OK(consumer_cluster()->CompactTablets());
   ASSERT_OK(WaitForIntentsCleanedUpOnConsumer());
@@ -998,7 +1001,7 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, UnevenTxnStatusTablets) {
                                      .GetLoadedStatusTabletsVersion();
           return current_version == version;
         },
-        30s, strings::Substitute(error, version)));
+        30s, Format(error, version)));
   };
   const auto run_write_verify_delete_test = [&]() {
     const auto duration = MonoDelta::FromSeconds(kTransactionalConsistencyTestDurationSecs);
@@ -1010,7 +1013,9 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, UnevenTxnStatusTablets) {
     ASSERT_OK(DeleteUniverseReplication());
   };
 
-  int producer_version = 1, consumer_version = 1;
+  // 1 for system.transaction, plus 1 for each of its tablets (1 per tserver).
+  uint64_t producer_version = 1 + 3;
+  uint64_t consumer_version = 1 + 3;
 
   // Keep same tablet count for normal tablets.
   ASSERT_OK(CreateClusterAndTable());
@@ -1019,7 +1024,7 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, UnevenTxnStatusTablets) {
   auto global_txn_table_id =
       ASSERT_RESULT(client::GetTableId(producer_client(), producer_transaction_table_name));
   ASSERT_OK(producer_client()->AddTransactionStatusTablet(global_txn_table_id));
-  wait_for_txn_status_version(producer_cluster(), ++producer_version);
+  ASSERT_NO_FATALS(wait_for_txn_status_version(producer_cluster(), ++producer_version));
 
   LOG(INFO) << "First run, more txn tablets on producer.";
   ASSERT_OK(SetupReplicationAndWaitForValidSafeTime());
@@ -1036,9 +1041,9 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, UnevenTxnStatusTablets) {
   global_txn_table_id =
       ASSERT_RESULT(client::GetTableId(consumer_client(), producer_transaction_table_name));
   ASSERT_OK(consumer_client()->AddTransactionStatusTablet(global_txn_table_id));
-  wait_for_txn_status_version(consumer_cluster(), ++consumer_version);
+  ASSERT_NO_FATALS(wait_for_txn_status_version(consumer_cluster(), ++consumer_version));
   ASSERT_OK(consumer_client()->AddTransactionStatusTablet(global_txn_table_id));
-  wait_for_txn_status_version(consumer_cluster(), ++consumer_version);
+  ASSERT_NO_FATALS(wait_for_txn_status_version(consumer_cluster(), ++consumer_version));
 
   ASSERT_OK(WaitForReadOnlyModeOnAllTServers(
       consumer_table_->name().namespace_id(), /*is_read_only=*/false));
@@ -2869,6 +2874,42 @@ TEST_F(XClusterYsqlTest, TestAlterColumnTypeIndexRewrite) {
       "Cannot rewrite a table that is a part of non-automatic mode XCluster replication.");
   // The plain index is reused in place without a rewrite, so this should succeed.
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ALTER COLUMN c2 TYPE varchar(255)", table_name));
+}
+
+// Manual-mode setup of an index whose column was renamed on the source before setup, so its
+// column name differs from the target's.  Setup fails until
+// xcluster_skip_index_column_name_check_on_setup is set, then rows replicate through the index.
+TEST_F(XClusterYsqlTest, RenameIndexedColumnBeforeSetup) {
+  ASSERT_OK(SetUpWithParams({1}, {1}, 1));
+  const auto table_name = producer_table_->name().table_name();
+
+  auto producer_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+  ASSERT_OK(producer_conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN a int", table_name));
+  ASSERT_OK(producer_conn.ExecuteFormat("CREATE INDEX a_idx ON $0 (a)", table_name));
+  ASSERT_OK(producer_conn.ExecuteFormat("ALTER TABLE $0 RENAME COLUMN a TO a2", table_name));
+  auto consumer_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+  ASSERT_OK(consumer_conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN a2 int", table_name));
+  ASSERT_OK(consumer_conn.ExecuteFormat("CREATE INDEX a_idx ON $0 (a2)", table_name));
+
+  auto tables = producer_tables_;
+  const auto index_table_name =
+      ASSERT_RESULT(GetYsqlTable(&producer_cluster_, namespace_name, "public", "a_idx"));
+  ASSERT_OK(producer_client()->OpenTable(index_table_name, &tables.emplace_back()));
+  auto s = SetupUniverseReplication(tables);
+  ASSERT_NOK(s);
+  ASSERT_STR_CONTAINS(s.ToString(), "Source and target schemas don't match");
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_skip_index_column_name_check_on_setup) = true;
+  ASSERT_OK(SetupUniverseReplication(tables));
+
+  ASSERT_OK(producer_conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i FROM generate_series(1, 50) AS i", table_name));
+  const auto query = Format(
+      "/*+ IndexOnlyScan($0 a_idx) */ SELECT count(*) FROM $0 WHERE a2 >= 0", table_name);
+  ASSERT_STR_CONTAINS(ASSERT_RESULT(consumer_conn.FetchAllAsString("EXPLAIN " + query)), "a_idx");
+  ASSERT_OK(LoggedWaitFor(
+      [&]() -> Result<bool> { return VERIFY_RESULT(consumer_conn.FetchRow<int64_t>(query)) == 50; },
+      MonoDelta::FromSeconds(30 * kTimeMultiplier), "Wait for rows to replicate through a_idx"));
 }
 
 TEST_F(XClusterYsqlTest, RandomFailuresAfterApply) {

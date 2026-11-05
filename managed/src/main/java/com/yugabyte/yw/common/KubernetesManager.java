@@ -40,6 +40,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -54,10 +55,10 @@ import javax.annotation.Nullable;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.ToString;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.util.CollectionUtils;
 import org.yaml.snakeyaml.Yaml;
 
 public abstract class KubernetesManager {
@@ -223,7 +224,10 @@ public abstract class KubernetesManager {
         ImmutableList.of("kubectl", "diff", "--server-side=false", "-f", inputYamlFilePath);
     ShellResponse response = execCommand(config, diffCommandList);
     if (response != null && !response.isSuccess()) {
-      LOG.error("kubectl diff failed with response {}", response.toString());
+      LOG.error(
+          "kubectl diff failed with response {}",
+          RedactingService.redactShellProcessOutput(
+              response.toString(), RedactionTarget.HELM_VALUES));
     }
   }
 
@@ -1212,7 +1216,8 @@ public abstract class KubernetesManager {
       String helmReleaseName,
       String appName,
       boolean newNamingStyle,
-      int replicaCount);
+      int replicaCount,
+      Duration readyTimeout);
 
   public abstract boolean resourceExists(
       Map<String, String> config, String resourceType, String resourceName, String namespace);

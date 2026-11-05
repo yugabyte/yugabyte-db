@@ -24,7 +24,6 @@
 #include "yb/docdb/docdb_test_util.h"
 #include "yb/docdb/iter_util.h"
 
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/options.h"

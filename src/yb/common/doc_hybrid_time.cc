@@ -17,6 +17,7 @@
 #include "yb/util/cast.h"
 #include "yb/util/checked_narrow_cast.h"
 #include "yb/util/fast_varint.h"
+#include "yb/util/format.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
@@ -25,7 +26,6 @@ using std::string;
 
 using yb::FastEncodeDescendingSignedVarInt;
 
-using strings::SubstituteAndAppend;
 
 namespace yb {
 
@@ -120,7 +120,7 @@ Result<DocHybridTime> DocHybridTime::DecodeFrom(Slice *slice) {
   int64_t decoded_shifted_write_id = VERIFY_RESULT(FastDecodeDescendingSignedVarInt(slice));
 
   if (decoded_shifted_write_id < 0) {
-    return STATUS_SUBSTITUTE(
+    return STATUS_FORMAT(
         Corruption,
         "Negative decoded_shifted_write_id: $0. Was trying to decode from: $1",
         decoded_shifted_write_id,
@@ -133,7 +133,7 @@ Result<DocHybridTime> DocHybridTime::DecodeFrom(Slice *slice) {
   const size_t bytes_decoded = previous_size - slice->size();
   const size_t size_at_the_end = (*(slice->data() - 1)) & kHybridTimeSizeMask;
   if (size_at_the_end != bytes_decoded) {
-    return STATUS_SUBSTITUTE(
+    return STATUS_FORMAT(
         Corruption,
         "Wrong encoded DocHybridTime size at the end: $0. Expected: $1. "
             "Encoded timestamp: $2.",
@@ -149,7 +149,7 @@ Result<DocHybridTime> DocHybridTime::FullyDecodeFrom(const Slice& encoded) {
   Slice s = encoded;
   auto result = DecodeFrom(&s);
   if (result.ok() && !s.empty()) {
-    return STATUS_SUBSTITUTE(
+    return STATUS_FORMAT(
         Corruption,
         "$0 extra bytes left when decoding a DocHybridTime $1",
         s.size(), FormatSliceAsStr(encoded, QuotesType::kDoubleQuotes, /* max_length = */ 32));
@@ -183,7 +183,7 @@ string DocHybridTime::ToString() const {
   if (write_id_ == kMaxWriteId) {
     s += " w: Max }";
   } else {
-    SubstituteAndAppend(&s, " w: $0 }", write_id_);
+    s += Format(" w: $0 }", write_id_);
   }
   return s;
 }
