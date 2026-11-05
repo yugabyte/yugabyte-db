@@ -876,27 +876,20 @@ Status PgDocReadOp::DoPopulateByYbctidOps(const YbctidGenerator& generator, Keep
   //
   // 2- Select 1024 ybctids (prefetch limit) from INDEX.
   //
-  // 3- ONLY ONE TIME: Create a batch of operators, one per partition.
-  //    * Each operator has a clone requests from template_op_.
-  //    * We will reuse the created operators & requests for the future batches of 1024 ybctids.
-  //    * Certain fields in the protobuf requests MUST BE RESET for each batches.
+  // 3- Assign the selected ybctids to operators, one per partition. A partition's operator is
+  //    cloned from template_op_ when its first ybctid is assigned, so partitions that get no
+  //    ybctids cost nothing.
   //
-  // 4- Assign the selected 1024 ybctids to the batch of operators.
+  // 4- Send requests to tablet servers to read data from <tab> associated with ybctid values.
   //
-  // 5- Send requests to tablet servers to read data from <tab> associated with ybctid values.
-  //
-  // 6- Repeat step 2 thru 5 for the next batch of 1024 ybctids till done.
+  // 5- Repeat step 2 thru 4 for the next batch of 1024 ybctids till done.
   end_of_data_ = false;
   InitializeYbctidOperators();
   VLOG(1) << "Row order " << (keep_order ? "is" : "is not") << " important";
-  if (keep_order) {
-    if (!result_stream_) {
-      result_stream_ = std::make_unique<MergingPgDocOpFetchStream<DocResult>>(
-          [this]() { return this->FetchMoreResults(); }, pgsql_ops_);
-      result_stream_->SetFetchedTargets(targets_);
-      VLOG(3) << "Created MergingPgDocOpFetchStream";
-    }
-  }
+  const auto& template_req = GetTemplateReadReq();
+  // This batch's operators, by partition. Operators left in pgsql_ops_ by a previous batch are
+  // never assigned ybctids, as they may still be active.
+  std::vector<PgsqlReadOp*> partition_ops(table_->GetPartitionListSize());
   while (true) {
     const auto ybctid = generator.next();
     if (ybctid.empty()) {
@@ -907,25 +900,30 @@ Status PgDocReadOp::DoPopulateByYbctidOps(const YbctidGenerator& generator, Keep
     // - For range partitioning, we pass partition key to seek the index.
     const auto partition = VERIFY_RESULT(table_->FindPartitionIndex(ybctid));
 
-    // Assign ybctids to operators.
-    auto& read_op = GetReadOp(partition);
-    auto& read_req = read_op.read_request();
-
-    // Check bounds, if set.
-    if (read_req.has_lower_bound()) {
-      const auto& lower_bound = read_req.lower_bound();
+    // Check bounds, if set. The template carries the request bounds, so an out of bounds ybctid
+    // does not cause a clone.
+    if (template_req.has_lower_bound()) {
+      const auto& lower_bound = template_req.lower_bound();
       DCHECK(!dockv::PartitionSchema::IsValidHashPartitionKeyBound(lower_bound.key()));
       if (lower_bound.is_inclusive() ? ybctid < lower_bound.key() : ybctid <= lower_bound.key()) {
         continue;
       }
     }
-    if (read_req.has_upper_bound()) {
-      const auto& upper_bound = read_req.upper_bound();
+    if (template_req.has_upper_bound()) {
+      const auto& upper_bound = template_req.upper_bound();
       DCHECK(!dockv::PartitionSchema::IsValidHashPartitionKeyBound(upper_bound.key()));
       if (upper_bound.is_inclusive() ? ybctid > upper_bound.key() : ybctid >= upper_bound.key()) {
         continue;
       }
     }
+
+    // Assign ybctids to operators.
+    auto*& partition_op = partition_ops[partition];
+    if (!partition_op) {
+      partition_op = &CloneOnePgsqlOp();
+    }
+    auto& read_op = *partition_op;
+    auto& read_req = read_op.read_request();
 
     // Append ybctid and its order to batch_arguments.
     // The "ybctid" values are returned in the same order as the row in the IndexTable. To keep
@@ -952,6 +950,15 @@ Status PgDocReadOp::DoPopulateByYbctidOps(const YbctidGenerator& generator, Keep
     if (VERIFY_RESULT(SetLowerUpperBound(&read_req, partition))) {
       read_op.set_active(true);
     }
+  }
+
+  AddOpsToResultStream();
+  parallelism_level_ = pgsql_ops_.size();
+  if (keep_order && !result_stream_) {
+    result_stream_ = std::make_unique<MergingPgDocOpFetchStream<DocResult>>(
+        [this]() { return this->FetchMoreResults(); }, pgsql_ops_);
+    result_stream_->SetFetchedTargets(targets_);
+    VLOG(3) << "Created MergingPgDocOpFetchStream";
   }
 
   // Done creating request, but not all partition or operator has arguments (inactive).
@@ -992,8 +999,6 @@ void PgDocReadOp::InitializeYbctidOperators() {
     pgsql_op_arena_ = SharedThreadSafeArena();
   }
   ResetInactivePgsqlOps();
-  // Make sure we have one operation per partition
-  ClonePgsqlOps(table_->GetPartitionListSize());
 }
 
 Status PgDocReadOp::DoPopulateMergeStreamRequests(
