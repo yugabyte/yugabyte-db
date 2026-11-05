@@ -25,6 +25,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import io.ebean.DB;
 import io.ebean.DuplicateKeyException;
+import io.ebean.Transaction;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -266,20 +267,49 @@ public class IdempotencyService {
   }
 
   private static void deleteIfUnchanged(ApiIdempotencyKey used) {
+    deleteIfUnchanged(used.getUuid(), used.getUpdateTime());
+  }
+
+  /** Deletes the key unless another request claimed it after {@code claimedAt}. */
+  private static void deleteIfUnchanged(UUID uuid, Date claimedAt) {
     DB.sqlUpdate("DELETE FROM api_idempotency_key WHERE uuid = :uuid AND update_time = :updateTime")
-        .setParameter("uuid", used.getUuid())
-        .setParameter("updateTime", used.getUpdateTime())
+        .setParameter("uuid", uuid)
+        .setParameter("updateTime", claimedAt)
         .execute();
   }
 
-  private static void complete(ApiIdempotencyKey record, Result result) {
-    try {
-      record.setResponseStatus(result.status());
-      record.setResponseContentType(result.body().contentType().orElse(null));
-      record.setResponseBody(bodyAsString(result));
-      record.setState(State.COMPLETED);
-      record.setUpdateTime(new Date());
-      record.update();
+  /**
+   * Stores the response on the key this request claimed. If the key was taken over meanwhile (this
+   * request outlived the in-progress timeout), the new owner's state is left alone.
+   */
+  @VisibleForTesting
+  static void complete(ApiIdempotencyKey record, Result result) {
+    // The update time identifies this request's claim: compare and release against it, not
+    // against the bean, which the update below changes.
+    UUID uuid = record.getUuid();
+    Date claimedAt = record.getUpdateTime();
+    try (Transaction txn = DB.beginTransaction()) {
+      ApiIdempotencyKey claimed =
+          ApiIdempotencyKey.find
+              .query()
+              .forUpdate()
+              .where()
+              .eq("uuid", uuid)
+              .eq("update_time", claimedAt)
+              .findOne();
+      if (claimed == null) {
+        log.warn(
+            "Idempotency key {} was taken over while its request ran, not storing the response",
+            record.getIdempotencyKey());
+        return;
+      }
+      claimed.setResponseStatus(result.status());
+      claimed.setResponseContentType(result.body().contentType().orElse(null));
+      claimed.setResponseBody(bodyAsString(result));
+      claimed.setState(State.COMPLETED);
+      claimed.setUpdateTime(new Date());
+      claimed.update();
+      txn.commit();
     } catch (Exception e) {
       // The operation succeeded; failing the request now would make the client retry it and run
       // it twice. Release the key instead: a retry then runs again, as it would without a key.
@@ -287,7 +317,11 @@ public class IdempotencyService {
           "Failed to store the response for idempotency key {}, releasing it",
           record.getIdempotencyKey(),
           e);
-      release(record);
+      try {
+        deleteIfUnchanged(uuid, claimedAt);
+      } catch (Exception releaseError) {
+        log.error("Failed to release idempotency key {}", record.getIdempotencyKey(), releaseError);
+      }
     }
   }
 
