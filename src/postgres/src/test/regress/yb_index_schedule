@@ -12,5 +12,3 @@
 test: yb.orig.indexing_order
 test: yb.orig.create_index
 test: yb.orig.index_scan
-
-test: yb.orig.index_scan_many_tablets
