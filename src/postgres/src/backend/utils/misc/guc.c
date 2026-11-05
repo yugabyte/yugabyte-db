@@ -12460,6 +12460,24 @@ set_config_option_ext(const char *name, const char *value,
 		YbAddToChangedSessionParametersList(name);
 	}
 
+	/*
+	 * YB: Make the connection sticky when a PGC_SUSET GUC is set while running
+	 * as a user other than the session user (e.g. a SECURITY DEFINER function).
+	 * Conn Mgr replays the GUC as the session user, which can fail with a
+	 * permission error.
+	 */
+	if (changeVal &&
+		YbIsClientYsqlConnMgr() &&
+		record->context == PGC_SUSET &&
+		source == PGC_S_SESSION &&
+		action == GUC_ACTION_SET &&
+		GetUserId() != GetSessionUserId())
+	{
+		elog(LOG, "Making connection sticky for setting %s as a user other than the session user",
+			 name);
+		yb_ysql_conn_mgr_sticky_guc = true;
+	}
+
 	return changeVal ? 1 : -1;
 }
 
