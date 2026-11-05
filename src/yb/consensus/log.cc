@@ -2199,6 +2199,7 @@ Result<SegmentOpIdRelation> Log::GetSegmentOpIdRelation(
     return SegmentOpIdRelation::kOpIdAfterSegment;
   }
 
+  num_segment_op_id_relation_reads_.fetch_add(1, std::memory_order_acq_rel);
   auto read_entries = segment->ReadEntries();
   RETURN_NOT_OK(read_entries.status);
 

@@ -2006,11 +2006,15 @@ Result<std::vector<LogTest::Op>> LogTest::GenerateOpsAndAppendToLog(
 
         if (RandomActWithProbability(commit_probability)) {
           last_committed_op_id = current_op_id;
-          // Commit not yet committed ops from this term.
-          for (auto op = ops.end() - 1;
-               op >= ops.begin() && op->id.term == current_op_id.term && !op->committed;
-               op--) {
-            op->committed = true;
+          // Commit every op up to this one that no later op has overwritten, including earlier-term
+          // ops that this commit commits implicitly. An op survives if all later ops have larger
+          // indexes.
+          auto min_later_index = std::numeric_limits<int64_t>::max();
+          for (auto op = ops.rbegin(); op != ops.rend() && !op->committed; ++op) {
+            if (op->id.index < min_later_index) {
+              op->committed = true;
+              min_later_index = op->id.index;
+            }
           }
         }
         if (RandomActWithProbability(1.0 * num_approx_term_changes / num_entries)) {
@@ -2270,8 +2274,34 @@ TEST_F(LogTest, CopyUpToPastOverwrittenEntryWithSameIndex) {
   ASSERT_EQ(source_entries.size(), 7U);
 
   ASSERT_OK(log_->CopyTo(GetLogCopyPath(0), OpId(2, 5)));
+  // Both segments are classified from their footers.
+  ASSERT_EQ(log_->TEST_NumSegmentOpIdRelationReads(), 0U);
   auto copy_reader = ASSERT_RESULT(GetLogCopyReader(0));
   VerifyRaftLogOps(copy_reader.get(), source_entries);
+
+  ASSERT_OK(log_->Close());
+}
+
+// Copying up to the last entry of a segment, as tablet split apply usually does, must not read the
+// segment. Copying up to an entry inside it still has to.
+TEST_F(LogTest, CopyUpToLastEntryOfSegmentSkipsRead) {
+  options_.segment_size_bytes = std::numeric_limits<size_t>::max();
+  BuildLog();
+
+  auto op_id = MakeOpId(1, 1);
+  ASSERT_OK(AppendNoOps(&op_id, 10));
+  ASSERT_OK(RollLog());
+
+  auto source_reader = ASSERT_RESULT(log_->GetLogReader());
+  const auto source_entries = ASSERT_RESULT(ReadRaftLogData(source_reader.get())).entries;
+
+  ASSERT_OK(log_->CopyTo(GetLogCopyPath(0), OpId(1, 10)));
+  ASSERT_EQ(log_->TEST_NumSegmentOpIdRelationReads(), 0U);
+  auto copy_reader = ASSERT_RESULT(GetLogCopyReader(0));
+  VerifyRaftLogOps(copy_reader.get(), source_entries);
+
+  ASSERT_OK(log_->CopyTo(GetLogCopyPath(1), OpId(1, 5)));
+  ASSERT_EQ(log_->TEST_NumSegmentOpIdRelationReads(), 1U);
 
   ASSERT_OK(log_->Close());
 }

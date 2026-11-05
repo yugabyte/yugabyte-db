@@ -101,7 +101,8 @@ YB_DEFINE_ENUM(SegmentOpIdRelation,
     (kOpIdIsInsideAndNotLast)
     // OpId corresponds to the last operation in the segment
     (kOpIdIsLast)
-    // OpId is after the segment
+    // Segment holds nothing past OpId: copy it whole and continue. OpId can still be the segment's
+    // last entry when this is decided from the footer.
     (kOpIdAfterSegment)
 );
 
@@ -386,6 +387,11 @@ class Log : public RefCountedThreadSafe<Log> {
   }
 
   Status TEST_SubmitFuncToAppendToken(const std::function<void()>& func);
+
+  // Number of segments GetSegmentOpIdRelation has read in full.
+  size_t TEST_NumSegmentOpIdRelationReads() const {
+    return num_segment_op_id_relation_reads_.load(std::memory_order_acquire);
+  }
 
   // Returns the number of segments.
   size_t num_segments() const;
@@ -859,6 +865,8 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // The cached on-disk size of the log, used to track its size even if it has been closed.
   std::atomic<uint64_t> on_disk_size_;
+
+  std::atomic<size_t> num_segment_op_id_relation_reads_{0};
 
   // Listener that will be invoked after new entry was appended to the log.
   std::function<void()> post_append_listener_;
