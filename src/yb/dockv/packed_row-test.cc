@@ -324,13 +324,16 @@ void TestCompleteWithMissingColumns() {
 
   constexpr int kVersion = 1;
   SchemaPacking schema_packing(TableType::PGSQL_TABLE_TYPE, schema);
-  Packer packer(
-      kVersion, schema_packing, /* packed_size_limit= */ std::numeric_limits<int64_t>::max(),
-      /* value_control_fields= */ Slice());
   QLValuePB v1;
   v1.set_int32_value(7);
-  ASSERT_TRUE(ASSERT_RESULT(packer.AddValue(schema_packing.column_packing_data(0).id, v1)));
-  auto packed = ASSERT_RESULT(packer.Complete());
+  auto pack = [&](size_t packed_size_limit) {
+    Packer packer(
+        kVersion, schema_packing, packed_size_limit, /* value_control_fields= */ Slice());
+    EXPECT_TRUE(EXPECT_RESULT(packer.AddValue(schema_packing.column_packing_data(0).id, v1)));
+    return EXPECT_RESULT(packer.Complete()).ToBuffer();
+  };
+  const auto full_row = pack(std::numeric_limits<int64_t>::max());
+  Slice packed(full_row);
   ASSERT_EQ(static_cast<ValueEntryType>(packed.consume_byte()), Decoder::kValueEntryType);
   auto version = ASSERT_RESULT(FastDecodeUnsignedVarInt(&packed));
   ASSERT_EQ(version, kVersion);
@@ -349,6 +352,10 @@ void TestCompleteWithMissingColumns() {
         value_slice, column.type_info()->type));
     ASSERT_EQ(decoded_value, PrimitiveValue::FromQLValuePB(expected[i]));
   }
+
+  // With the limit right after v1, every missing value goes over it and still gets packed.
+  const auto v1_end = Decoder(schema_packing, packed.data()).FetchValue(0)->end();
+  ASSERT_EQ(pack(v1_end - Slice(full_row).data()), full_row);
 }
 
 TEST(PackedRowTest, CompleteWithMissingColumns) {
