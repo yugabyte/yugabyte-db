@@ -687,6 +687,27 @@ extern bool yb_disable_parallel_query_in_ddl;
 extern int	yb_insert_on_conflict_read_batch_size;
 
 /*
+ * How often a logical replication apply worker re-reads its own subscription.
+ * Cross-node subscription DDL raises no local sinval, so this bounds how long
+ * a DISABLE or DROP goes unnoticed.  The worker checks the shared catalog
+ * version on this cadence and skips the re-read while it is unchanged, which
+ * is sound because every cross-node write to pg_subscription bumps the
+ * version.
+ */
+extern int	yb_subscription_reread_interval_ms;
+
+/*
+ * How often a launcher re-probes the advisory lock of a subscription that
+ * another node's apply worker owns, so it can take over if that owner dies.
+ * Each probe is a no-wait lock acquire, a transactional write to the advisory
+ * lock table, and every non-owning node pays it for every subscription, so
+ * this is deliberately much longer than the worker's reread interval.  The
+ * lock itself is freed within seconds of the owner's death, so this interval
+ * is the dominant term in takeover latency.
+ */
+extern int	yb_subscription_takeover_probe_interval_ms;
+
+/*
  * Enable preloading of foreign key information into the relation cache.
  */
 extern bool yb_enable_fkey_catcache;
@@ -1920,7 +1941,59 @@ extern void HandleExplicitRowLockStatus(YbcPgExplicitRowLockStatus status);
 /* YB: classid for replication slot advisory locks. */
 #define ADVISORY_LOCK_CLASSID_REPL_SLOT	2
 
+/* YB: classid for logical replication subscription advisory locks. */
+#define ADVISORY_LOCK_CLASSID_SUBSCRIPTION	3
+
 extern YbcAdvisoryLockId GetYBAdvisoryLockId(LOCKTAG tag);
+extern YbcAdvisoryLockId YbSubscriptionAdvisoryLockId(Oid subid);
 extern bool HandleStatusIgnoreSkipLocking(YbcStatus status);
+
+/*
+ * YB: defined in inval.c; in logical replication workers, asserts the
+ * current command queued no invalidation outside pg_subscription /
+ * pg_subscription_rel.
+ */
+#ifdef USE_ASSERT_CHECKING
+extern void YbAssertSubscriptionInvalsOnly(void);
+#else
+#define YbAssertSubscriptionInvalsOnly() ((void) 0)
+#endif
+
+/*
+ * YB: Run one or more statements (typically a single catalog write) with
+ * yb_non_ddl_txn_for_sys_tables_allowed forced on, restoring the previous
+ * value even if they throw.
+ *
+ * Every current call site is a logical replication path writing
+ * pg_subscription_rel state or clearing pg_subscription's subskiplsn - the
+ * writes whose consumers are all on the writer's own node, reached by
+ * ordinary sinval.  Worker writes that a remote node must act on are not
+ * wrapped here but run as version-bumping DDLs instead (DisableSubscription,
+ * UpdateTwoPhaseState).  In logical replication workers - where the wrapped
+ * write is the whole command - assert builds verify it invalidated nothing
+ * outside those two catalogs; a new worker-side write to another catalog
+ * must first pick a propagation path the same way (see
+ * YbAssertSubscriptionInvalsOnly in inval.c).
+ *
+ * The wrapped code must not return, goto, or break out (standard PG_TRY
+ * rule, hidden here by the macro).
+ */
+#define YB_NON_DDL_TXN_FOR_SYS_TABLES_ALLOWED(...) \
+	do { \
+		volatile bool yb_saved_non_ddl_txn_ = \
+			yb_non_ddl_txn_for_sys_tables_allowed; \
+		if (IsYugaByteEnabled()) \
+			yb_non_ddl_txn_for_sys_tables_allowed = true; \
+		PG_TRY(); \
+		{ \
+			__VA_ARGS__; \
+			YbAssertSubscriptionInvalsOnly(); \
+		} \
+		PG_FINALLY(); \
+		{ \
+			yb_non_ddl_txn_for_sys_tables_allowed = yb_saved_non_ddl_txn_; \
+		} \
+		PG_END_TRY(); \
+	} while (0)
 
 #endif							/* PG_YB_UTILS_H */

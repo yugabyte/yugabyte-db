@@ -6155,6 +6155,36 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"yb_subscription_reread_interval_ms", PGC_SIGHUP, REPLICATION_SUBSCRIBERS,
+			gettext_noop("Sets how often a logical replication apply worker "
+						 "re-reads its own subscription."),
+			gettext_noop("Subscription DDL run on another node raises no local "
+						 "invalidation, so this bounds how long a DISABLE or DROP "
+						 "goes unnoticed.  The worker checks the shared catalog "
+						 "version on this cadence and re-reads only when it moved."),
+			GUC_UNIT_MS
+		},
+		&yb_subscription_reread_interval_ms,
+		10000, 1, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_subscription_takeover_probe_interval_ms", PGC_SIGHUP, REPLICATION_SUBSCRIBERS,
+			gettext_noop("Sets how often the logical replication launcher re-probes "
+						 "the advisory lock of a subscription run by another node."),
+			gettext_noop("Bounds how quickly a node takes over a subscription after "
+						 "the owning node dies.  Every non-owning node probes every "
+						 "such subscription on this cadence, and each probe is a "
+						 "no-wait lock acquire against the advisory lock table."),
+			GUC_UNIT_MS
+		},
+		&yb_subscription_takeover_probe_interval_ms,
+		60000, 1, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"ysql_max_in_flight_ops", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Maximum number of in-flight operations allowed from YSQL to tablet servers"),
 			NULL,

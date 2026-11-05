@@ -47,6 +47,19 @@ GetYBAdvisoryLockId(LOCKTAG tag)
 	return lock;
 }
 
+/* YB: Lock id guarding which node's apply worker runs subscription subid. */
+YbcAdvisoryLockId
+YbSubscriptionAdvisoryLockId(Oid subid)
+{
+	YbcAdvisoryLockId lock;
+
+	lock.database_id = YB_INTERNAL_ADVISORY_LOCK_DB_OID;
+	lock.classid = ADVISORY_LOCK_CLASSID_SUBSCRIPTION;
+	lock.objid = subid;
+	lock.objsubid = 2;
+	return lock;
+}
+
 /*  Returns true if lock is released, false if lock is not found. */
 bool
 HandleStatusIgnoreLockNotFound(YbcStatus status, YbcAdvisoryLockMode mode)

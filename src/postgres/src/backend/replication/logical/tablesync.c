@@ -120,6 +120,9 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 typedef enum
 {
 	SYNC_TABLE_STATE_NEEDS_REBUILD,
@@ -132,6 +135,20 @@ static List *table_states_not_ready = NIL;
 static bool FetchTableStates(bool *started_tx);
 
 static StringInfo copybuf = NULL;
+
+/*
+ * YB: Drop the pinned catalog read time and the read points so the next
+ * pg_subscription_rel read sees the latest committed state.  Legacy catalog
+ * mode pins the transaction read point and object locking mode the catalog
+ * one, so reset both.
+ */
+static void
+YbResetCatalogReadState(void)
+{
+	YbInvalidateCatalogSnapshot();
+	YbResetTransactionReadPoint(true /* is_catalog_snapshot */ );
+	YbResetTransactionReadPoint(false /* is_catalog_snapshot */ );
+}
 
 /*
  * Exit routine for synchronization worker.
@@ -189,6 +206,8 @@ wait_for_relation_state_change(Oid relid, char expected_state)
 
 		CHECK_FOR_INTERRUPTS();
 
+		if (IsYugaByteEnabled())
+			YbResetCatalogReadState();
 		InvalidateCatalogSnapshot();
 		state = GetSubscriptionRelState(MyLogicalRepWorker->subid,
 										relid, &statelsn);
@@ -1278,6 +1297,20 @@ LogicalRepSyncTableStart(XLogRecPtr *origin_startpos)
 		 * seems like a better bet.
 		 */
 		ReplicationSlotDropAtPubNode(LogRepWorkerWalRcvConn, slotname, true);
+
+		/*
+		 * YB: In legacy DDL mode the origin write is durable immediately,
+		 * so a worker failing between origin creation and FINISHEDCOPY
+		 * leaves a stale origin and the retry fails with "already exists".
+		 * Drop it (missing_ok: no-op when it rolled back, as with
+		 * yb_ddl_transaction_block_enabled).
+		 */
+		if (IsYugaByteEnabled())
+		{
+			StartTransactionCommand();
+			replorigin_drop_by_name(originname, true, false);
+			CommitTransactionCommand();
+		}
 	}
 	else if (MyLogicalRepWorker->relstate == SUBREL_STATE_FINISHEDCOPY)
 	{
@@ -1486,6 +1519,9 @@ FetchTableStates(bool *started_tx)
 		list_free_deep(table_states_not_ready);
 		table_states_not_ready = NIL;
 
+		if (IsYugaByteEnabled())
+			YbResetCatalogReadState();
+
 		if (!IsTransactionState())
 		{
 			StartTransactionCommand();
@@ -1571,6 +1607,9 @@ UpdateTwoPhaseState(Oid suboid, char new_state)
 	bool		replaces[Natts_pg_subscription];
 	Datum		values[Natts_pg_subscription];
 
+	/* YB declarations */
+	bool		yb_use_regular_txn_block = YBIsDdlTransactionBlockEnabled();
+
 	Assert(new_state == LOGICALREP_TWOPHASE_STATE_DISABLED ||
 		   new_state == LOGICALREP_TWOPHASE_STATE_PENDING ||
 		   new_state == LOGICALREP_TWOPHASE_STATE_ENABLED);
@@ -1593,7 +1632,25 @@ UpdateTwoPhaseState(Oid suboid, char new_state)
 
 	tup = heap_modify_tuple(tup, RelationGetDescr(rel),
 							values, nulls, replaces);
+
+	/* YB: run as a DDL so the pending->enabled move bumps the catalog version. */
+	if (IsYugaByteEnabled())
+	{
+		if (yb_use_regular_txn_block)
+			YBAddDdlTxnState(YB_DDL_MODE_VERSION_INCREMENT);
+		else
+			YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
+	}
+
 	CatalogTupleUpdate(rel, &tup->t_self, tup);
+
+	if (IsYugaByteEnabled())
+	{
+		if (yb_use_regular_txn_block)
+			YBMergeDdlTxnState();
+		else
+			YBDecrementDdlNestingLevel();
+	}
 
 	heap_freetuple(tup);
 	table_close(rel, RowExclusiveLock);

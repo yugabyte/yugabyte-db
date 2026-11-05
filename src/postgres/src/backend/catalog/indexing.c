@@ -26,9 +26,12 @@
 
 /* YB includes */
 #include "access/yb_special_scans.h"
+#include "catalog/pg_subscription.h"
+#include "catalog/pg_subscription_rel.h"
 #include "executor/ybModifyTable.h"
 #include "miscadmin.h"
 #include "pg_yb_utils.h"
+#include "utils/inval.h"
 #include "utils/syscache.h"
 
 
@@ -399,6 +402,11 @@ YBCatalogTupleInsert(Relation heapRel, HeapTuple tup, bool yb_shared_insert)
 	/* Update the local cache automatically */
 	YbSetSysCacheTuple(heapRel, tup);
 
+	/* YB: see the sinval comment in YBCatalogTupleUpdate. */
+	if (RelationGetRelid(heapRel) == SubscriptionRelRelationId ||
+		RelationGetRelid(heapRel) == SubscriptionRelationId)
+		CacheInvalidateHeapTuple(heapRel, tup, NULL);
+
 	indstate = CatalogOpenIndexes(heapRel);
 	CatalogIndexInsert(indstate, tup, yb_shared_insert);
 	CatalogCloseIndexes(indstate);
@@ -545,6 +553,16 @@ YBCatalogTupleUpdate(Relation heapRel, HeapTuple tup,
 	/* Update the local cache automatically */
 	YbSetSysCacheTuple(heapRel, tup);
 
+	/*
+	 * YB: pg_subscription_rel updates are non-DDL DML (no catalog version
+	 * bump), and logical replication workers consume pg_subscription
+	 * changes via sinval (see LocalExecuteInvalidationMessage), so queue
+	 * the sinval message explicitly.
+	 */
+	if (RelationGetRelid(heapRel) == SubscriptionRelRelationId ||
+		RelationGetRelid(heapRel) == SubscriptionRelationId)
+		CacheInvalidateHeapTuple(heapRel, oldtup ? oldtup : tup, tup);
+
 	if (has_indices)
 		CatalogIndexInsert(indstate, tup, false /* yb_shared_insert */ );
 }
@@ -632,6 +650,11 @@ CatalogTupleDelete(Relation heapRel, HeapTuple yb_tup)
 	if (IsYugaByteEnabled())
 	{
 		YBCDeleteSysCatalogTuple(heapRel, yb_tup);
+
+		/* YB: see the sinval comment in YBCatalogTupleUpdate. */
+		if (RelationGetRelid(heapRel) == SubscriptionRelRelationId ||
+			RelationGetRelid(heapRel) == SubscriptionRelationId)
+			CacheInvalidateHeapTuple(heapRel, yb_tup, NULL);
 
 		CatalogIndexState indstate = CatalogOpenIndexes(heapRel);
 

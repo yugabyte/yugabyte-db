@@ -129,7 +129,10 @@
 #include "utils/syscache.h"
 
 /* YB includes */
+#include "catalog/pg_subscription.h"
+#include "catalog/pg_subscription_rel.h"
 #include "pg_yb_utils.h"
+#include "replication/logicalworker.h"
 #include "replication/walsender.h"
 #include "yb/yql/pggate/ybc_gflags.h"
 #include <assert.h>
@@ -592,6 +595,39 @@ ProcessInvalidationMessagesMulti(InvalidationMsgsGroup *group,
 	ProcessMessageSubGroupMulti(group, RelCacheMsgs, func(msgs, n));
 }
 
+#ifdef USE_ASSERT_CHECKING
+/*
+ * YB: Callback for YbAssertSubscriptionInvalsOnly: fail on any invalidation
+ * message that does not concern pg_subscription or pg_subscription_rel.
+ */
+static void
+YbAssertSubscriptionInvalMessage(SharedInvalidationMessage *msg)
+{
+	if (msg->id >= 0)
+		Assert(msg->cc.id == SUBSCRIPTIONOID ||
+			   msg->cc.id == SUBSCRIPTIONNAME ||
+			   msg->cc.id == SUBSCRIPTIONRELMAP);
+	else if (msg->id == SHAREDINVALCATALOG_ID)
+		Assert(msg->cat.catId == SubscriptionRelationId ||
+			   msg->cat.catId == SubscriptionRelRelationId);
+	else
+		Assert(false);
+}
+
+/*
+ * YB: Worker-only assert that the current command queued no invalidation
+ * outside pg_subscription / pg_subscription_rel (see the macro's comment).
+ */
+void
+YbAssertSubscriptionInvalsOnly(void)
+{
+	if (!IsYugaByteEnabled() || transInvalInfo == NULL || !IsLogicalWorker())
+		return;
+	ProcessInvalidationMessages(&transInvalInfo->CurrentCmdInvalidMsgs,
+								YbAssertSubscriptionInvalMessage);
+}
+#endif
+
 /* ----------------------------------------------------------------
  *					  private support functions
  * ----------------------------------------------------------------
@@ -691,11 +727,18 @@ void
 LocalExecuteInvalidationMessage(SharedInvalidationMessage *msg)
 {
 	/*
-	 * In YB mode all messages originated by other processes are silently
-	 * ignored
+	 * YB: cross-process sinval is ignored (catalog versions invalidate
+	 * instead), but pg_subscription(_rel) writes are non-DDL DML, so sinval
+	 * is the only DISABLE/SYNCDONE signal for an idle apply worker on the
+	 * same node.
 	 */
 	if (IsYugaByteEnabled() && msg->yb_header.yb_sender_pid != getpid())
-		return;
+	{
+		if (msg->id != SUBSCRIPTIONRELMAP &&
+			msg->id != SUBSCRIPTIONOID &&
+			msg->id != SUBSCRIPTIONNAME)
+			return;
+	}
 
 	if (msg->id >= 0)
 	{

@@ -2311,6 +2311,8 @@ int			yb_catcache_list_from_preloaded_limit = 100000;
 int			yb_parallel_range_size = 1024 * 1024;
 bool		yb_disable_parallel_query_in_ddl = true;
 int			yb_insert_on_conflict_read_batch_size = 1024;
+int			yb_subscription_reread_interval_ms = 10000; /* 10 s */
+int			yb_subscription_takeover_probe_interval_ms = 60000; /* 60 s */
 bool		yb_enable_fkey_catcache = true;
 bool		yb_enable_fkey_batched_docdb_lookup_when_types_mismatch = true;
 bool		yb_enable_nop_alter_role_optimization = true;
@@ -4253,7 +4255,6 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 		case T_DropOwnedStmt:
 		case T_DropReplicationSlotCmd:
 		case T_DropRoleStmt:
-		case T_DropSubscriptionStmt:
 		case T_DropTableSpaceStmt:
 		case T_DropUserMappingStmt:
 			break;
@@ -4353,7 +4354,6 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 		case T_AlterRoleSetStmt:
 		case T_AlterSeqStmt:
 		case T_AlterStatsStmt:
-		case T_AlterSubscriptionStmt:
 		case T_AlterSystemStmt:
 		case T_AlterTSConfigurationStmt:
 		case T_AlterTSDictionaryStmt:
@@ -4364,6 +4364,16 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 		case T_AlternativeSubPlan:
 		case T_ReassignOwnedStmt:
 		case T_AlterTypeStmt:
+			break;
+
+		case T_AlterSubscriptionStmt:
+		case T_DropSubscriptionStmt:
+			/*
+			 * Changes no user table metadata, so concurrent transactions
+			 * need not abort.  Apply workers pick up subscription changes
+			 * by re-reading pg_subscription themselves.
+			 */
+			is_breaking_change = false;
 			break;
 
 		case T_AlterRoleStmt:

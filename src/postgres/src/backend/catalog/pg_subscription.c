@@ -34,6 +34,9 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 static List *textarray_to_stringlist(ArrayType *textarray);
 
 /*
@@ -170,6 +173,9 @@ DisableSubscription(Oid subid)
 	Datum		values[Natts_pg_subscription];
 	HeapTuple	tup;
 
+	/* YB declarations */
+	bool		yb_use_regular_txn_block = YBIsDdlTransactionBlockEnabled();
+
 	/* Look up the subscription in the catalog */
 	rel = table_open(SubscriptionRelationId, RowExclusiveLock);
 	tup = SearchSysCacheCopy1(SUBSCRIPTIONOID, ObjectIdGetDatum(subid));
@@ -191,7 +197,26 @@ DisableSubscription(Oid subid)
 	/* Update the catalog */
 	tup = heap_modify_tuple(tup, RelationGetDescr(rel), values, nulls,
 							replaces);
+
+	/* YB: run as a DDL so every node sees the disable via the version bump. */
+	if (IsYugaByteEnabled())
+	{
+		if (yb_use_regular_txn_block)
+			YBAddDdlTxnState(YB_DDL_MODE_VERSION_INCREMENT);
+		else
+			YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
+	}
+
 	CatalogTupleUpdate(rel, &tup->t_self, tup);
+
+	if (IsYugaByteEnabled())
+	{
+		if (yb_use_regular_txn_block)
+			YBMergeDdlTxnState();
+		else
+			YBDecrementDdlNestingLevel();
+	}
+
 	heap_freetuple(tup);
 
 	table_close(rel, NoLock);
@@ -311,7 +336,8 @@ AddSubscriptionRelState(Oid subid, Oid relid, char state,
 	tup = heap_form_tuple(RelationGetDescr(rel), values, nulls);
 
 	/* Insert tuple into catalog. */
-	CatalogTupleInsert(rel, tup);
+	/* YB: see UpdateSubscriptionRelState. */
+	YB_NON_DDL_TXN_FOR_SYS_TABLES_ALLOWED(CatalogTupleInsert(rel, tup));
 
 	heap_freetuple(tup);
 
@@ -362,7 +388,14 @@ UpdateSubscriptionRelState(Oid subid, Oid relid, char state,
 							replaces);
 
 	/* Update the catalog. */
-	CatalogTupleUpdate(rel, &tup->t_self, tup);
+	/*
+	 * YB: workers call this outside DDL mode; allow the sys-catalog write
+	 * for its duration only, restoring on error so DDL callers (e.g.
+	 * ALTER SUBSCRIPTION ... REFRESH) cannot leak the exemption.
+	 */
+	YB_NON_DDL_TXN_FOR_SYS_TABLES_ALLOWED(CatalogTupleUpdate(rel,
+															  &tup->t_self,
+															  tup));
 
 	/* Cleanup. */
 	table_close(rel, NoLock);
@@ -485,7 +518,8 @@ RemoveSubscriptionRel(Oid subid, Oid relid)
 							 "DROP SUBSCRIPTION ...")));
 		}
 
-		CatalogTupleDelete(rel, tup);
+		/* YB: see UpdateSubscriptionRelState. */
+		YB_NON_DDL_TXN_FOR_SYS_TABLES_ALLOWED(CatalogTupleDelete(rel, tup));
 	}
 	table_endscan(scan);
 
