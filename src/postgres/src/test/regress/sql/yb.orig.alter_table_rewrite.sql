@@ -1383,4 +1383,47 @@ SELECT part_idx_snapshot('pord_drop');
 ALTER TABLE pord_drop ALTER COLUMN c TYPE varchar(20);
 SELECT * FROM part_idx_report('pord_drop');
 /*+ IndexScan(pord_drop_1) */ SELECT k FROM pord_drop WHERE lower(c) = 'abc' AND c <> '';
+
+-- Reused indexes keep their own collation, which differs from the column's.
+CREATE TABLE idx_coll (k int PRIMARY KEY, c varchar(10) COLLATE "en_US", d varchar(10) COLLATE "en_US");
+CREATE INDEX idx_coll_c_idx ON idx_coll (c COLLATE "C" ASC) INCLUDE (d);
+CREATE INDEX idx_coll_expr_idx ON idx_coll ((substr(c, 1, 5)) COLLATE "C" ASC);
+CREATE INDEX idx_coll_part_idx ON idx_coll (c COLLATE "C" ASC) WHERE c <> 'z';
+INSERT INTO idx_coll VALUES (1, 'b', 'x'), (2, 'B', 'x'), (3, 'a', 'x');
+CREATE TEMP TABLE idx_coll_info AS
+    SELECT relname, oid, relfilenode FROM pg_class WHERE relname LIKE 'idx_coll_%_idx';
+ALTER TABLE idx_coll ALTER COLUMN c TYPE varchar(20) COLLATE "en_US",
+    ALTER COLUMN d TYPE varchar(20) COLLATE "en_US";
+SELECT old.relname,
+    CASE WHEN old.relfilenode = new.relfilenode THEN 'relfilenode reused' ELSE 'relfilenode changed' END,
+    CASE WHEN old.oid = new.oid THEN 'OID reused' ELSE 'OID changed' END
+FROM idx_coll_info old JOIN pg_class new ON new.relname = old.relname ORDER BY 1;
+SELECT attrelid::regclass, attname, atttypmod, attcollation::regcollation FROM pg_attribute
+WHERE attrelid IN (SELECT oid FROM idx_coll_info) ORDER BY 1, attnum;
+INSERT INTO idx_coll VALUES (4, 'c', 'x'), (5, 'C', 'x');
+-- The column's collation orders the rows differently from "C".
+SELECT c FROM idx_coll ORDER BY c COLLATE "en_US", k;
+EXPLAIN (COSTS OFF) /*+ IndexOnlyScan(idx_coll idx_coll_c_idx) */
+SELECT c FROM idx_coll ORDER BY c COLLATE "C";
+/*+ IndexOnlyScan(idx_coll idx_coll_c_idx) */ SELECT c FROM idx_coll ORDER BY c COLLATE "C";
+EXPLAIN (COSTS OFF) /*+ IndexScan(idx_coll idx_coll_c_idx) */
+SELECT k FROM idx_coll WHERE c COLLATE "C" IN ('b', 'c') ORDER BY k;
+/*+ IndexScan(idx_coll idx_coll_c_idx) */ SELECT k FROM idx_coll WHERE c COLLATE "C" IN ('b', 'c') ORDER BY k;
+EXPLAIN (COSTS OFF) /*+ IndexScan(idx_coll idx_coll_expr_idx) */
+SELECT k FROM idx_coll ORDER BY substr(c, 1, 5) COLLATE "C";
+/*+ IndexScan(idx_coll idx_coll_expr_idx) */ SELECT k FROM idx_coll ORDER BY substr(c, 1, 5) COLLATE "C";
+/*+ IndexScan(idx_coll idx_coll_expr_idx) */
+SELECT k FROM idx_coll WHERE substr(c, 1, 5) COLLATE "C" IN ('b', 'c') ORDER BY k;
+EXPLAIN (COSTS OFF) /*+ IndexOnlyScan(idx_coll idx_coll_part_idx) */
+SELECT c FROM idx_coll WHERE c <> 'z' ORDER BY c COLLATE "C";
+/*+ IndexOnlyScan(idx_coll idx_coll_part_idx) */
+SELECT c FROM idx_coll WHERE c <> 'z' ORDER BY c COLLATE "C";
+/*+ IndexOnlyScan(idx_coll idx_coll_part_idx) */
+SELECT c FROM idx_coll WHERE c COLLATE "C" IN ('b', 'c') AND c <> 'z' ORDER BY 1;
+-- No stale index entries after a delete.
+DELETE FROM idx_coll WHERE k = 1;
+/*+ IndexOnlyScan(idx_coll idx_coll_c_idx) */ SELECT c FROM idx_coll WHERE c COLLATE "C" = 'b';
+/*+ IndexScan(idx_coll idx_coll_expr_idx) */ SELECT k FROM idx_coll WHERE substr(c, 1, 5) COLLATE "C" = 'b';
+/*+ IndexOnlyScan(idx_coll idx_coll_part_idx) */
+SELECT c FROM idx_coll WHERE c COLLATE "C" = 'b' AND c <> 'z';
 RESET yb_alter_type_reuse_expr_and_partial_indexes;
