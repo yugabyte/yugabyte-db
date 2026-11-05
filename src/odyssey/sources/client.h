@@ -103,6 +103,13 @@ struct od_client {
 	char yb_client_address[32];
 
 	/*
+	 * Logical client's ip addr and port, sent to Postgres as reserved
+	 * startup parameters (empty if unknown).
+	 */
+	char yb_ycm_client_addr[64];
+	char yb_ycm_client_port[8];
+
+	/*
 	 * Only set for the authentication flow via the auth backend.
 	 * This refers to the actual client connected to the conn manager.
 	 */
@@ -191,6 +198,8 @@ static inline void od_client_init(od_client_t *client)
 	yb_prepared_statement_init(&client->yb_unnamed_prep_stmt);
 	client->yb_client_cert_der = NULL;
 	client->yb_client_cert_der_len = 0;
+	client->yb_ycm_client_addr[0] = '\0';
+	client->yb_ycm_client_port[0] = '\0';
 }
 
 static inline od_client_t *od_client_allocate(void)

@@ -2155,6 +2155,7 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 	YbInternalConnKind yb_internal_conn_kind = YB_INTERNAL_CONN_KIND_NONE;
 	bool		yb_is_auth_via_conn_mgr = false;
 	bool		yb_is_control_conn = false;
+	bool		yb_ycm_internal_end_seen = false;
 
 retry:
 	pq_startmsgread();
@@ -2415,6 +2416,27 @@ retry1:
 				break;			/* missing value, will complain below */
 			valptr = buf + valoffset;
 
+			/*
+			 * YB: The connection manager writes its reserved parameters,
+			 * then the end marker, then the logical client's parameters.
+			 * A reserved name after the marker came from the client.
+			 */
+			if (YBIsEnabledInPostgresEnvVar() &&
+				YbIsConnMgrReservedStartupParameter(nameptr))
+			{
+				if (yb_ycm_internal_end_seen)
+					ereport(FATAL,
+							(errcode(ERRCODE_PROTOCOL_VIOLATION),
+							 errmsg("startup parameter \"%s\" is reserved for "
+									"the connection manager", nameptr)));
+				if (strcmp(nameptr, YB_YCM_INTERNAL_END) == 0)
+				{
+					yb_ycm_internal_end_seen = true;
+					offset = valoffset + strlen(valptr) + 1;
+					continue;
+				}
+			}
+
 			if (strcmp(nameptr, "database") == 0)
 				port->database_name = pstrdup(valptr);
 			else if (strcmp(nameptr, "user") == 0)
@@ -2589,6 +2611,18 @@ retry1:
 
 	yb_is_auth_via_conn_mgr = yb_is_auth_backend ||
 		port->yb_is_auth_passthrough_req;
+
+	/*
+	 * YB: Packets that carry the logical client's parameters must have the
+	 * end marker, otherwise those parameters can't be told apart from the
+	 * connection manager's.
+	 */
+	if (yb_is_auth_via_conn_mgr && !yb_ycm_internal_end_seen)
+		ereport(FATAL,
+				(errcode(ERRCODE_PROTOCOL_VIOLATION),
+				 errmsg("startup packet from the connection manager has no "
+						"\"%s\" marker", YB_YCM_INTERNAL_END)));
+	port->yb_ycm_internal_end_seen = yb_ycm_internal_end_seen;
 
 	/*
 	 * YB: Connection Manager's auth-passthrough control backends are long-lived
