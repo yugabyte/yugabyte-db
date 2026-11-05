@@ -2,6 +2,7 @@
 package com.yugabyte.yw.common;
 
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.forms.HierarchicalNodesSpec;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -107,6 +108,19 @@ public class SpecificationProviderInitializer implements ProviderInitializer {
       masterSpec.setDeviceInfo(new DeviceInfo());
     }
     mutator.accept(masterSpec.getDeviceInfo());
+    return this;
+  }
+
+  @Override
+  public ProviderInitializer setNodeResourceSpec(
+      UserIntent.K8SNodeResourceSpec resourceSpec, UniverseTaskBase.ServerType serverType) {
+    HierarchicalNodesSpec.NodeSpec nodeSpec;
+    if (serverType == UniverseTaskBase.ServerType.TSERVER) {
+      nodeSpec = providerSpecification.getNodesSpecs().getOrCreateTserverSpec();
+    } else {
+      nodeSpec = providerSpecification.getNodesSpecs().getOrCreateMasterSpec();
+    }
+    nodeSpec.setK8SNodeResourceSpec(resourceSpec);
     return this;
   }
 

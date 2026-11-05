@@ -424,16 +424,20 @@ public class UniverseResourceDetails {
         if (node.cloudInfo != null && node.cloudInfo.az != null) {
           details.addAz(node.cloudInfo.az);
           // If we have resource spec use that.
-          if (userIntent.tserverK8SNodeResourceSpec != null) {
+          UserIntent.K8SNodeResourceSpec tserverK8SNodeResourceSpec =
+              userIntent.getTserverK8SNodeResourceSpec(provider.getUuid());
+          if (tserverK8SNodeResourceSpec != null) {
             if (node.isTserver) {
-              details.addMemSizeGB(userIntent.tserverK8SNodeResourceSpec.memoryGib);
-              details.addNumCores(userIntent.tserverK8SNodeResourceSpec.cpuCoreCount);
+              details.addMemSizeGB(tserverK8SNodeResourceSpec.memoryGib);
+              details.addNumCores(tserverK8SNodeResourceSpec.cpuCoreCount);
             }
             // Check for master and add its resources too
-            if (userIntent.masterK8SNodeResourceSpec != null) {
+            UserIntent.K8SNodeResourceSpec masterK8SNodeResourceSpec =
+                userIntent.getMasterK8SNodeResourceSpec(provider.getUuid());
+            if (masterK8SNodeResourceSpec != null) {
               if (node.isMaster) {
-                details.addMemSizeGB(userIntent.masterK8SNodeResourceSpec.memoryGib);
-                details.addNumCores(userIntent.masterK8SNodeResourceSpec.cpuCoreCount);
+                details.addMemSizeGB(masterK8SNodeResourceSpec.memoryGib);
+                details.addNumCores(masterK8SNodeResourceSpec.cpuCoreCount);
               }
             }
           } else {
