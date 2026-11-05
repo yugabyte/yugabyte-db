@@ -1141,6 +1141,125 @@ TEST_P(PgVectorIndexTest, ManyRowsWithBackfillAndRestart) {
   }
 }
 
+// GH#35499: the backfill writes the reverse mapping entries into the regular DB memtable, with no
+// WAL record, so an unclean restart loses those of the rows before the backfill position the vector
+// index saved. The resumed backfill must write them again.
+TEST_P(PgVectorIndexTest, BackfillResumedAfterUncleanRestart) {
+  constexpr size_t kNumRows = 64;
+
+  // The backfill writes the reverse mapping only of the tables which do not own it.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_owned_vector_reverse_mapping) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+  // Several batches, so that a backfill blocked after its first one is left unfinished.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_initial_chunk_size) = 8;
+  num_pre_split_tablets_ = 1;
+
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  // Only the reverse mapping entries should be left in the memtable the restart drops.
+  ASSERT_OK(cluster_->FlushTablets());
+
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_batch) = true;
+  auto unblock_backfill = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_batch) =
+        false;
+  });
+  TestThreadHolder threads;
+  threads.AddThreadFunctor([this] {
+    auto index_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(CreateIndex(index_conn));
+  });
+
+  // Not the PG tserver, which the connections go through.
+  auto* restarted_ts = cluster_->mini_tablet_server(kPgTsIndex == 0 ? 1 : 0);
+  const auto restarted_uuid = restarted_ts->server()->permanent_uuid();
+  // Listed anew each time: an index must not outlive its tablet, which the restart replaces.
+  auto restarted_peers = [this, &restarted_uuid] {
+    auto peers = ListTabletPeersWithVectorIndexes(cluster_.get());
+    std::erase_if(peers, [&restarted_uuid](const auto& peer) {
+      return peer->permanent_uuid() != restarted_uuid;
+    });
+    return peers;
+  };
+  auto backfilled_entries = [&restarted_peers]() -> Result<int64_t> {
+    int64_t result = 0;
+    for (const auto& peer : restarted_peers()) {
+      auto indexes = VERIFY_RESULT(peer->shared_tablet())->vector_indexes().List();
+      if (!indexes) {
+        continue;
+      }
+      for (const auto& index : *indexes) {
+        result += index->metrics().backfill_inserted_entries->value();
+      }
+    }
+    return result;
+  };
+  ASSERT_OK(WaitFor([&backfilled_entries]() -> Result<bool> {
+    return VERIFY_RESULT(backfilled_entries()) > 0;
+  }, 60s * kTimeMultiplier, "First batch backfilled"));
+
+  // Saves the chunk holding the first batch, and with it the backfill position, while the reverse
+  // mapping entries of its rows stay in the regular DB memtable.
+  auto peers = restarted_peers();
+  ASSERT_EQ(peers.size(), 1);
+  ASSERT_OK(ASSERT_RESULT(peers.front()->shared_tablet())->Flush(
+      tablet::FlushMode::kSync, tablet::FlushFlags::kVectorIndexes,
+      rocksdb::FlushReason::kTestOnly));
+  peers.clear();
+
+  DisableFlushOnShutdown(*cluster_, true);
+  restarted_ts->Shutdown();
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_batch) = false;
+  ASSERT_OK(restarted_ts->RestartStoppedServer(tserver::WaitTabletsBootstrapped::kTrue));
+  threads.JoinAll();
+
+  ASSERT_OK(WaitFor([this]() -> Result<bool> {
+    auto indexes = ListVectorIndexes(cluster_.get());
+    if (indexes.size() != cluster_->num_tablet_servers()) {
+      return false;
+    }
+    for (const auto& index : indexes) {
+      if (!VERIFY_RESULT(index->BackfillDone())) {
+        return false;
+      }
+    }
+    return true;
+  }, 60s * kTimeMultiplier, "Backfills done"));
+
+  // The restarted replica resumed its backfill rather than starting over.
+  const auto resumed_entries = ASSERT_RESULT(backfilled_entries());
+  ASSERT_GT(resumed_entries, 0);
+  ASSERT_LT(resumed_entries, make_signed(kNumRows));
+
+  // The check reads at the replica's safe time, which on the restarted follower can still be below
+  // the backfill read time, where the reverse mapping entries are written.
+  const auto backfilled_ht = HybridTime::FromMicros(ASSERT_RESULT(WallClock()->Now()).time_point);
+  ASSERT_OK(WaitFor([this, backfilled_ht]() -> Result<bool> {
+    for (const auto& peer : ListTabletPeersWithVectorIndexes(cluster_.get())) {
+      auto tablet = VERIFY_RESULT(peer->shared_tablet());
+      if (VERIFY_RESULT(tablet->SafeTime(tablet::RequireLease::kFalse)) <= backfilled_ht) {
+        return false;
+      }
+    }
+    return true;
+  }, 30s * kTimeMultiplier, "Safe time past the backfill"));
+
+  // One check per tablet server, in the order of the servers.
+  auto checks = ASSERT_RESULT(VerifyVectorIndexes());
+  ASSERT_EQ(checks.size(), cluster_->num_tablet_servers());
+  std::string inconsistent;
+  for (size_t i = 0; i != checks.size(); ++i) {
+    const auto& result = checks[i].result();
+    if (result.inconsistencies_size()) {
+      inconsistent += Format(
+          "ts $0 $1: $2 of $3 rows; ", i, PeerRole_Name(checks[i].role()),
+          result.inconsistencies_size(), result.num_rows());
+    }
+  }
+  ASSERT_EQ(inconsistent, "");
+}
+
 TEST_P(PgVectorIndexTest, ManyRowsWithFilter) {
   TestManyRows(AddFilter::kTrue);
 }

@@ -537,11 +537,54 @@ class VectorIndexBackfillHelper : public VectorIndexBackfillContext {
   }
 
   Status Flush(Tablet& tablet, docdb::DocVectorIndex& index, Slice next_ybctid) {
-    ++num_batches_;
+    ApplyReverseMapping(tablet);
+    return Insert(index, next_ybctid);
+  }
 
+  void ApplyReverseMapping(Tablet& tablet) {
     if (reverse_mapping_backfiller_) {
       reverse_mapping_backfiller_->Apply(tablet, *this);
     }
+  }
+
+  // The reverse mapping entries have no WAL record and stay in the regular DB memtable until the
+  // flush at the end of the backfill, while a chunk carrying the backfill position can be saved
+  // before that: when the backfill rolls it, or by a vector index flush. A restart then resumes
+  // from that position and loses the entries of the rows before it, so write them again.
+  // Returns the number of rows read.
+  Result<size_t> RewriteReverseMapping(
+      Tablet& tablet, const docdb::DocVectorIndex& index, Slice end_ybctid) {
+    DCHECK(entries().empty());
+    if (!reverse_mapping_backfiller_ || end_ybctid.empty()) {
+      return 0;
+    }
+    size_t num_rows = 0;
+    IndexedTableReader reader(index);
+    RETURN_NOT_OK(reader.Init(backfill_ht(), Slice()));
+    while (VERIFY_RESULT(reader.FetchNext())) {
+      auto ybctid = reader.current_ybctid();
+      if (ybctid.compare(end_ybctid) >= 0) {
+        break;
+      }
+      if (NeedFlush()) {
+        if (tablet.IsShutdownRequested()) {
+          return STATUS(ShutdownInProgress, "Tablet is shutting down");
+        }
+        ApplyReverseMapping(tablet);
+        Reset();
+      }
+      Add(ybctid, reader.current_vector_slice());
+      ++num_rows;
+    }
+    if (!entries().empty()) {
+      ApplyReverseMapping(tablet);
+      Reset();
+    }
+    return num_rows;
+  }
+
+  Status Insert(docdb::DocVectorIndex& index, Slice next_ybctid) {
+    ++num_batches_;
 
     docdb::ConsensusFrontiers frontiers;
     if (next_ybctid.empty()) {
@@ -681,6 +724,13 @@ Status TabletVectorIndexes::Backfill(
       << "Backfill with chunk size " << chunk_size << " (batch size: " << max_batch_size
       << ", memory budget: " << bytes_limit << " bytes, vector limit: " << limit << ")";
 
+  auto num_rewritten =
+      VERIFY_RESULT(helper.RewriteReverseMapping(tablet(), *vector_index, from_key));
+  if (num_rewritten) {
+    LOG_WITH_PREFIX_AND_FUNC(INFO)
+        << "Rewrote reverse mapping of " << num_rewritten << " rows before the resume position";
+  }
+
   for (;;) {
     if (tablet().IsShutdownRequested()) {
       LOG_WITH_FUNC(INFO) << "Exit: " << AsString(*vector_index);
@@ -711,11 +761,7 @@ Status TabletVectorIndexes::Backfill(
     helper.Add(ybctid, reader.current_vector_slice());
   }
 
-  RETURN_NOT_OK(helper.Flush(tablet(), *vector_index, Slice()));
-
-  LOG_WITH_PREFIX_AND_FUNC(INFO)
-      << "Backfilled " << AsString(*vector_index) << ": " << helper.num_entries() << " entries in "
-      << helper.num_batches() << " batches";
+  helper.ApplyReverseMapping(tablet());
 
   // Hold a blocking operation across both flushes below. Tablet::Flush releases its own one before
   // the vector index flush, so acquire it here and pass kNoScopedOperation. Only
@@ -724,11 +770,19 @@ Status TabletVectorIndexes::Backfill(
   // backfill instead, ScheduleBackfill treats the resulting TryAgain as expected.
   auto flush_op = tablet().CreateScopedRWOperationBlockingRocksDbShutdownStart();
   RETURN_NOT_OK(flush_op);
-  // TODO(vector_index) Need to handle scenario when regular db was not flushed before restart.
+  // The reverse mapping entries must be durable before the backfill done mark can be: a vector
+  // index flush may save the mark right after the insert below, and a restart after that does not
+  // resume the backfill, so nothing would write the entries again.
   RETURN_NOT_OK_PREPEND(
       Flush(FlushMode::kSync, FlushFlags::kRegular | FlushFlags::kNoScopedOperation,
             rocksdb::FlushReason::kVectorIndexBackfill),
       "Flush regular DB");
+  RETURN_NOT_OK(helper.Insert(*vector_index, Slice()));
+
+  LOG_WITH_PREFIX_AND_FUNC(INFO)
+      << "Backfilled " << AsString(*vector_index) << ": " << helper.num_entries() << " entries in "
+      << helper.num_batches() << " batches";
+
   RETURN_NOT_OK_PREPEND(vector_index->Flush(), "Flush vector index");
   return Status::OK();
 }
