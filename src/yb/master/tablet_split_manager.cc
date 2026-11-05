@@ -29,6 +29,7 @@
 #include "yb/dockv/partition.h"
 
 #include "yb/master/async_rpc_tasks_base.h"
+#include "yb/master/online_schema_change.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/catalog_manager_util.h"
@@ -292,6 +293,10 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
     const IgnoreVectorIndexesValidation ignore_vector_indexes_validation) {
   if (PREDICT_FALSE(FLAGS_TEST_validate_all_tablet_candidates)) {
     return Status::OK();
+  }
+  if (auto osc_job = CopyingOnlineSchemaChangeJobReading(*table)) {
+    return STATUS_EC_FORMAT(IllegalState, MasterError(MasterErrorPB::SPLIT_OR_BACKFILL_IN_PROGRESS),
+                            "Online schema change job $0 in progress, table: $1", *osc_job, *table);
   }
   auto table_lock = table->LockForRead();
   if (table_lock->started_deleting()) {

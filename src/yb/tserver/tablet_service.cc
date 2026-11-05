@@ -360,7 +360,6 @@ DEFINE_test_flag(bool, persistence_dfatal_unstamped_pgsql_write, false,
 
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(enable_tiered_storage);
-DECLARE_bool(ysql_enable_object_locking_infra);
 DECLARE_bool(enable_active_table_metrics_filtering);
 DECLARE_uint32(max_active_table_metrics_table_count);
 
@@ -1138,6 +1137,15 @@ void TabletServiceAdminImpl::BackfillIndex(
   }
 
   context.RespondSuccess();
+}
+
+void TabletServiceAdminImpl::TableBackfillChunk(
+    const TableBackfillChunkRequestPB* req,
+    TableBackfillChunkResponsePB* resp,
+    rpc::RpcContext context) {
+  SetupErrorAndRespond(
+      resp->mutable_error(), STATUS(NotSupported, "TableBackfillChunk is not implemented yet"),
+      &context);
 }
 
 void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* req,

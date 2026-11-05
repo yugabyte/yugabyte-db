@@ -31,7 +31,9 @@ import org.apache.commons.lang3.StringUtils;
  * Rolls back a failed {@link ResizeNode} by reversing instance type / cgroup / gflags / IOPS /
  * throughput toward the {@code before} intent captured in {@code state_transition_details}. Never
  * decreases {@code volumeSize} - cloud disk grow is not reversible; the computer already picked
- * {@code max(before, current universe intent, cloud data-disk size)}.
+ * {@code max(before, current universe intent)} for the cluster-level size, kept the {@code before}
+ * per-AZ overrides, and refused the rollback if that would set a node below its current-intent or
+ * cloud data-disk size.
  *
  * <p>Reuses {@link ResizeNode#run} which classifies nodes vs the params intent (now {@code
  * before}): nodes still at the failed target instance/cgroup become {@code instanceChangingNodes}
@@ -92,7 +94,7 @@ public class RollbackResizeNode extends ResizeNode {
     if (!isRetryOfPlacementLockHolder(universe)) {
       // A rollback that already holds the placement lock has started changing the universe and
       // must be able to finish; refusing it would leave the universe locked with nothing to run.
-      ResizeNodeRollbackComputer.rejectCloudWithoutSnapshot(universe.getUniverseDetails().clusters);
+      ResizeNodeRollbackComputer.rejectCloudWithoutSnapshot(universe, taskParams().clusters);
     }
     requireStateTransitionDetails(universe).requireRollbackable();
   }
@@ -107,7 +109,7 @@ public class RollbackResizeNode extends ResizeNode {
   @Override
   protected void createPrecheckTasks(Universe universe) {
     requireStateTransitionDetails(universe).requireRollbackable();
-    cloudByNode = rollbackComputer.describeCloudNodes(universe);
+    cloudByNode = rollbackComputer.describeCloudNodes(universe, taskParams().clusters);
     rollbackComputer.checkCooldownGate(
         taskParams(), universe, taskParams().getFailedTaskCreateTime(), cloudByNode);
   }
@@ -239,7 +241,10 @@ public class RollbackResizeNode extends ResizeNode {
 
   private boolean cloudIopsOrThroughputDiffers(NodeDetails node, DeviceInfo desired) {
     CloudAPI.NodeDiskSpec cloud = cloudState(node);
-    if (cloud == null || desired == null) {
+    // An ephemeral-storage node has no cloud disks to compare. YBA's own disk settings still go
+    // through super.isModifyingDevice, and forward resize refuses disk changes on these nodes, so
+    // those settings match before and after.
+    if (cloud == null || desired == null || !cloud.hasDataDisks()) {
       return false;
     }
     return !ResizeNodeRollbackComputer.cloudAlreadyAtDesired(cloud, desired);
@@ -247,8 +252,7 @@ public class RollbackResizeNode extends ResizeNode {
 
   private CloudAPI.NodeDiskSpec cloudState(NodeDetails node) {
     if (cloudByNode == null) {
-      Universe universe = getUniverse();
-      cloudByNode = rollbackComputer.describeCloudNodes(universe);
+      cloudByNode = rollbackComputer.describeCloudNodes(getUniverse(), taskParams().clusters);
     }
     CloudAPI.NodeDiskSpec cached = cloudByNode.get(node.nodeName);
     if (cached != null) {
@@ -260,7 +264,8 @@ public class RollbackResizeNode extends ResizeNode {
         || !ResizeNodeRollbackComputer.supportsCloudSnapshot(provider.getCloudCode())) {
       return null;
     }
-    CloudAPI.NodeDiskSpec described = rollbackComputer.describeNodeCloudState(provider, node);
+    CloudAPI.NodeDiskSpec described =
+        rollbackComputer.describeNodeCloudState(getUniverse(), provider, node);
     if (cloudByNode == null) {
       cloudByNode = new HashMap<>();
     }

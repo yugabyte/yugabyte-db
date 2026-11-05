@@ -657,6 +657,10 @@ class Tablet : public AbstractTablet,
   // Apply replicated remove table operation.
   Status RemoveTable(const std::string& table_id, const OpId& op_id);
 
+  // Writes the vector reverse mapping entries a colocated table owns for the rows that reached the
+  // tablet before the table did, with op_id as their frontier, see TabletVectorIndexes.
+  Status WriteMissingVectorReverseMappings(const TableInfo& table_info, const OpId& op_id);
+
   // Truncate this tablet by resetting the content of RocksDB.
   Status Truncate(TruncateOperation* operation);
 
@@ -1381,9 +1385,9 @@ class Tablet : public AbstractTablet,
   // Tiered storage: directory pinned for path_id in tier_paths.
   Result<std::string> LookupTierDir(uint32_t path_id) const;
 
-  // Tiered storage: returns the set of files that should be migrated to target_dir.
-  // i.e. file numbers of live regular-DB SSTs not under target_dir.
-  std::vector<uint64_t> CollectTierMigrationCandidates(const std::string& target_dir) const;
+  // Tiered storage: file numbers of the live regular-DB SSTs not on target_path_id, i.e. what a
+  // migration pass still has to move.
+  std::vector<uint64_t> CollectTierMigrationCandidates(uint32_t target_path_id) const;
 
   // Tiered storage: the pass behind StartTierMigrationPass and RunTierReconcilePass.
   Result<TierReconcileResult> RunTierMigrationPass(
@@ -1415,6 +1419,12 @@ class Tablet : public AbstractTablet,
     REQUIRES(operation_filters_mutex_);
 
   Status AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id, HybridTime ht);
+
+  // Whether a colocated table about to be added owns a vector reverse mapping with a vector column,
+  // and the tablet already has entries under its colocation id.
+  bool NeedsVectorReverseMappingRepair(
+      const Schema& schema,
+      const google::protobuf::RepeatedPtrField<dockv::SchemaPackingPB>& old_schema_packings);
 
   // Split/LB policy: true when this tablet still has parent data that should block a further
   // split (or, today, a load-balancer move). RocksDB leftover always counts; vector-index leftover

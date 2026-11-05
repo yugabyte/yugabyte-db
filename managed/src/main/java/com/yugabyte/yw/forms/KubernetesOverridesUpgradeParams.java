@@ -5,18 +5,23 @@ package com.yugabyte.yw.forms;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.google.common.collect.Sets;
+import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.helm.HelmUtils;
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
+import lombok.extern.slf4j.Slf4j;
 import play.mvc.Http.Status;
 
+@Slf4j
 @JsonIgnoreProperties(ignoreUnknown = true)
 @JsonDeserialize(converter = KubernetesOverridesUpgradeParams.Converter.class)
 public class KubernetesOverridesUpgradeParams extends UpgradeTaskParams {
@@ -102,10 +107,54 @@ public class KubernetesOverridesUpgradeParams extends UpgradeTaskParams {
       return;
     }
 
+    // The Helm render also sets the node_exporter sidecar, so this upgrade can still change it.
+    boolean nodeExporterWantedKey =
+        KubernetesUtil.isNodeExporterSidecarEnabled(
+            userIntent.ybSoftwareVersion, universe, runtimeConfGetter);
+    if (changesNodeExporterSidecar(universe, nodeExporterWantedKey)) {
+      log.info(
+          "Accepting upgrade task on unchanged overrides for universe {} "
+              + "to {} the node_exporter sidecar",
+          universe.getUniverseUUID(),
+          nodeExporterWantedKey ? "install" : "remove");
+      return;
+    }
+
     // If we reach this point, none of the overrides changed. RFC: If upgrade fails, next upgrade
     // might fail if user applies same overrides.
     // This is the case with any edit/upgrade functionality in k8s universes.
     throw new PlatformServiceException(Status.BAD_REQUEST, "No kubernetes overrides modified.");
+  }
+
+  // Each master or tserver node is one pod. If a pod can't be read, the upgrade is rejected as
+  // unchanged.
+  private boolean changesNodeExporterSidecar(Universe universe, boolean nodeExporterWantedKey) {
+    KubernetesManagerFactory kubernetesManagerFactory =
+        StaticInjectorHolder.injector().instanceOf(KubernetesManagerFactory.class);
+    try {
+      for (NodeDetails node : universe.getUniverseDetails().nodeDetailsSet) {
+        boolean hasSidecar =
+            kubernetesManagerFactory
+                .getManager()
+                .getPodObject(
+                    KubernetesUtil.getKubernetesConfigPerPod(universe, node),
+                    node.getK8sNamespace(),
+                    node.getK8sPodName())
+                .getSpec()
+                .getContainers()
+                .stream()
+                .anyMatch(container -> "yb-node-exporter".equals(container.getName()));
+        if (hasSidecar != nodeExporterWantedKey) {
+          return true;
+        }
+      }
+    } catch (Exception e) {
+      log.warn(
+          "Unable to read the pods of universe {} to check the node_exporter sidecar",
+          universe.getUniverseUUID(),
+          e);
+    }
+    return false;
   }
 
   public static class Converter extends BaseConverter<KubernetesOverridesUpgradeParams> {}
