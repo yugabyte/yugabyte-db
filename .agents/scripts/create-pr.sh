@@ -272,12 +272,12 @@ is_stack_branch=false
 if $is_stack_branch; then
   if ! gh stack --help >/dev/null 2>&1; then
     echo "error: stacked PRs need the gh-stack extension, which is not" >&2
-    echo "       installed. See the gh-stack skill." >&2
+    echo "       installed. See the stack skill." >&2
     exit 1
   fi
   if ! stack_json=$(gh stack view --json); then
     echo "error: ${current_branch} is not in a local gh stack; see the" >&2
-    echo "       gh-stack skill to create or adopt one." >&2
+    echo "       stack skill to create or adopt one." >&2
     exit 1
   fi
   mapfile -t _stack < <(python3 -c 'import json, sys
@@ -320,7 +320,7 @@ print(" ".join(b["name"] for b in above if has_pr(b)))' "$current_branch" \
   if [[ -n "$stack_above_with_pr" ]]; then
     echo "error: layers above ${current_branch} already have PRs" >&2
     echo "       (${stack_above_with_pr}). Open PRs bottom-up; see the" >&2
-    echo "       gh-stack skill to restructure the stack." >&2
+    echo "       stack skill to restructure the stack." >&2
     exit 1
   fi
 fi

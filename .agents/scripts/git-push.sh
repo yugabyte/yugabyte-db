@@ -199,7 +199,7 @@ run_lint() {
 if $is_stack_branch; then
   if ! gh stack --help >/dev/null 2>&1; then
     echo "error: stack branches are pushed with the gh-stack extension, which" >&2
-    echo "       is not installed. See the gh-stack skill." >&2
+    echo "       is not installed. See the stack skill." >&2
     exit 1
   fi
   if ! stack_json=$(gh stack view --json); then
@@ -218,16 +218,20 @@ print(s["trunk"], live[-1] if live else "")' <<< "$stack_json")
     "+refs/heads/${trunk}:refs/remotes/${UPSTREAM_REMOTE}/${trunk}"
 
   # `gh stack push` sends every layer, and only the top layer's tree holds
-  # all of them, so lint there.
+  # all of them, so lint there.  Detach so this works even when another
+  # worktree has the top layer checked out, and switch back before pushing:
+  # `gh stack push` finds the stack from the current branch.
   if [[ -n "$top_branch" && "$top_branch" != "$current_branch" ]]; then
-    if ! git checkout --quiet "$top_branch"; then
+    if ! git checkout --quiet --detach "$top_branch"; then
       echo "error: could not check out the top layer '${top_branch}' to lint" >&2
-      echo "       the stack. If another worktree has it, run this there." >&2
+      echo "       the stack." >&2
       exit 1
     fi
     trap 'git checkout --quiet "$current_branch"' EXIT
   fi
   run_lint "${UPSTREAM_REMOTE}/${trunk}"
+  git checkout --quiet "$current_branch"
+  trap - EXIT
 
   echo ">>> gh stack push --remote ${UPSTREAM_REMOTE} (${GH_REPO})"
   gh stack push --remote "$UPSTREAM_REMOTE" || exit 5
