@@ -10948,100 +10948,85 @@ components:
           writeOnly: true
     CommunicationPortsSpec:
       title: CommunicationPortsSpec
-      description: Communication Ports used by nodes of this Universe. Part of UniverseNetworkingSpec.
+      description: Communication Ports used by nodes of this Universe. Part of UniverseNetworkingSpec. Omitted ports use the platform defaults on create and are left unchanged on edit.
       type: object
       readOnly: false
       properties:
         master_http_port:
-          description: Master table HTTP port
+          description: Master table HTTP port. Defaults to 7000 on create.
           type: integer
           format: int32
           example: 7000
-          default: 7000
         master_rpc_port:
-          description: Master table RCP port
+          description: Master table RCP port. Defaults to 7100 on create.
           type: integer
           format: int32
           example: 7100
-          default: 7100
         node_exporter_port:
-          description: Node exporter port
+          description: Node exporter port. Defaults to 9300 on create.
           type: integer
           format: int32
           example: 9300
-          default: 9300
         otel_collector_metrics_port:
-          description: Otel Collector metrics port
+          description: Otel Collector metrics port. Defaults to 8889 on create.
           type: integer
           format: int32
           example: 8889
-          default: 8889
         redis_server_http_port:
-          description: Redis HTTP port
+          description: Redis HTTP port. Defaults to 11000 on create.
           type: integer
           format: int32
           example: 11000
-          default: 11000
         redis_server_rpc_port:
-          description: Redis RPC port
+          description: Redis RPC port. Defaults to 6379 on create.
           type: integer
           format: int32
           example: 6379
-          default: 6379
         tserver_http_port:
-          description: Tablet server HTTP port
+          description: Tablet server HTTP port. Defaults to 9000 on create.
           type: integer
           format: int32
           example: 9000
-          default: 9000
         tserver_rpc_port:
-          description: Tablet server RPC port
+          description: Tablet server RPC port. Defaults to 9100 on create.
           type: integer
           format: int32
           example: 9100
-          default: 9100
         yb_controller_http_port:
-          description: Yb controller HTTP port
+          description: Yb controller HTTP port. Defaults to 14000 on create.
           type: integer
           format: int32
           example: 14000
-          default: 14000
         yb_controller_rpc_port:
-          description: Yb controller RPC port
+          description: Yb controller RPC port. Defaults to 18018 on create.
           type: integer
           format: int32
           example: 18018
-          default: 18018
         yql_server_http_port:
-          description: YQL HTTP port
+          description: YQL HTTP port. Defaults to 12000 on create.
           type: integer
           format: int32
           example: 12000
-          default: 12000
         yql_server_rpc_port:
-          description: YQL RPC port
+          description: YQL RPC port. Defaults to 9042 on create.
           type: integer
           format: int32
           example: 9042
-          default: 9042
         ysql_server_http_port:
-          description: YSQL HTTP port
+          description: YSQL HTTP port. Defaults to 13000 on create.
           type: integer
           format: int32
           example: 13000
-          default: 13000
         ysql_server_rpc_port:
-          description: YSQL RPC port
+          description: YSQL RPC port. Defaults to 5433 on create.
           type: integer
           format: int32
           example: 5433
-          default: 5433
         internal_ysql_server_rpc_port:
-          description: Internal YSQL RPC port used when connection pooling is enabled
+          description: Internal YSQL RPC port used when connection pooling is enabled. Defaults to 6433 on create.
           type: integer
           format: int32
           example: 6433
-          default: 6433
     UniverseNetworkingSpec:
       title: UniverseNetworkingSpec
       description: Networking specification that is used for nodes in this Universe.
