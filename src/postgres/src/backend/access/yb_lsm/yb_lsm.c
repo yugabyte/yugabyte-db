@@ -588,12 +588,11 @@ ybcinrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys, ScanKey orderbys
 									 scan->yb_distinct_prefixlen,
 									 scan->yb_exec_params,
 									 false, /* is_internal_scan */
-									 scan->fetch_ybctids_only);
+									 scan->fetch_ybctids_only,
+									 scan->xs_snapshot);
 
 	/* For LSM indexes, we either recheck all rows or no rows. */
 	scan->xs_recheck = YbNeedsPgRecheck(ybScan);
-	YbSetCatalogReadPoint(ybScan->handle, scan->heapRelation,
-							  scan->xs_snapshot);
 
 	scan->opaque = ybScan;
 	if (scan->parallel_scan)

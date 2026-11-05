@@ -25,12 +25,12 @@
 
 #include "access/sysattr.h"
 #include "access/yb_lockrows.h"
-#include "access/yb_scan_core.h"
 #include "catalog/catalog.h"
 #include "executor/executor.h"
 #include "pg_yb_utils.h"
 #include "utils/rel.h"
 #include "utils/relcache.h"
+#include "utils/snapmgr.h"
 
 /*
  * The return value of this function depends on whether we are batching or not.

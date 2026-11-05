@@ -173,7 +173,8 @@ extern YbOpaque YbBeginScan(Relation table,
 							int distinct_prefixlen,
 							YbcPgExecParameters *exec_params,
 							bool is_internal_scan,
-							bool fetch_ybctids_only);
+							bool fetch_ybctids_only,
+							Snapshot snapshot);
 
 /* Returns whether the given populated ybScan needs PG recheck. */
 extern bool YbNeedsPgRecheck(YbOpaque ybScan);
@@ -203,6 +204,3 @@ extern void ybFetchNext(YbcPgStatement handle, TupleTableSlot *slot,
 extern bool yb_scan_apply_next_parallel_range(YbcPgStatement handle,
 											  YbcPgExecParameters *exec_params,
 											  struct YBParallelPartitionKeysData *pscan);
-extern YbcReadPointHandle YbGetCatalogReadPoint(Snapshot snapshot);
-extern void YbSetCatalogReadPoint(YbcPgStatement handle, Relation relation,
-								  Snapshot snapshot);

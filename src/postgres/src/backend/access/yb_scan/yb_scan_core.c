@@ -3546,7 +3546,8 @@ YbBeginScan(Relation table,
 			int distinct_prefixlen,
 			YbcPgExecParameters *exec_params,
 			bool is_internal_scan,
-			bool fetch_ybctids_only)
+			bool fetch_ybctids_only,
+			Snapshot snapshot)
 {
 	/* Set up Yugabyte scan description */
 	YbOpaque	ybScan = (YbOpaque) palloc0(sizeof(YbOpaqueData));
@@ -3582,6 +3583,7 @@ YbBeginScan(Relation table,
 	ybcSetupScanKeys(ybScan, &scan_plan);
 
 	ybScan->handle = YbNewSelect(table, &ybScan->prepare_params);
+	YbSetCatalogReadPoint(ybScan->handle, table, snapshot);
 
 	/* Set up binds */
 	if (!ybBindScanKeys(ybScan, &scan_plan, pg_scan_plan,
@@ -4051,10 +4053,10 @@ ybc_heap_beginscan(Relation relation,
 								 yb_options->distinct_prefixlen,
 								 yb_options->exec_params,
 								 yb_options->is_internal_scan,
-								 yb_options->fetch_ybctids_only);
+								 yb_options->fetch_ybctids_only,
+								 snapshot);
 
 	Assert(!YbNeedsPgRecheck(ybDesc->ybscan));
-	YbSetCatalogReadPoint(ybDesc->ybscan->handle, relation, snapshot);
 
 	if (yb_options->rowmark != YBC_NO_ROW_MARK)
 	{
@@ -4240,34 +4242,4 @@ ybFetchNext(YbcPgStatement handle, TupleTableSlot *slot, Oid relid)
 		TABLETUPLE_YBCTID(slot) = PointerGetDatum(syscols.ybctid);
 		slot->tts_tableOid = relid;
 	}
-}
-
-/*
- * In non-legacy catalog mode, the read point a user statement on a catalog
- * table runs at: the snapshot it was issued with, as in PG.  Returns
- * YbcInvalidReadPointHandle when it must use the catalog snapshot instead: no
- * snapshot that carries a read point (NULL, the catalog snapshot, or a non-MVCC
- * snapshot), or internal SQL run on behalf of a DDL (e.g. the catalog version
- * bump).
- */
-YbcReadPointHandle
-YbGetCatalogReadPoint(Snapshot snapshot)
-{
-	if (!snapshot || snapshot->yb_is_catalog_snapshot ||
-		!snapshot->yb_read_point_handle.has_value ||
-		yb_is_calling_internal_sql_for_ddl)
-		return YbcInvalidReadPointHandle;
-	return snapshot->yb_read_point_handle.value;
-}
-
-void
-YbSetCatalogReadPoint(YbcPgStatement handle, Relation relation,
-					  Snapshot snapshot)
-{
-	if (!handle || !IsCatalogRelation(relation) ||
-		YBCIsLegacyModeForCatalogOps())
-		return;
-
-	HandleYBStatus(YBCPgDmlSetCatalogReadPoint(handle,
-											   YbGetCatalogReadPoint(snapshot)));
 }

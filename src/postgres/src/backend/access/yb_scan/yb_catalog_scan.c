@@ -352,9 +352,9 @@ ybc_systable_begin_default_scan(Relation relation,
 							   0,	/* distinct_prefixlen */
 							   NULL,	/* exec_params */
 							   true,	/* is_internal_scan */
-							   false);	/* fetch_ybctids_only */
+							   false,	/* fetch_ybctids_only */
+							   snapshot);
 	Assert(!YbNeedsPgRecheck(scan->ybscan));
-	YbSetCatalogReadPoint(scan->ybscan->handle, relation, snapshot);
 
 	scan->base.vtable = &yb_default_scan;
 

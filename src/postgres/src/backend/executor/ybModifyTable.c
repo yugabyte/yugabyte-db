@@ -28,7 +28,6 @@
 #include "access/htup_details.h"
 #include "access/sysattr.h"
 #include "access/xact.h"
-#include "access/yb_scan_core.h"
 #include "access/yb_target.h"
 #include "catalog/catalog.h"
 #include "catalog/heap.h"
@@ -68,6 +67,7 @@
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/relcache.h"
+#include "utils/snapmgr.h"
 #include "utils/syscache.h"
 #include "yb/yql/pggate/ybc_gflags.h"
 

@@ -25,12 +25,12 @@
 
 #include "access/htup_details.h"
 #include "access/sysattr.h"
-#include "access/yb_scan_core.h"
 #include "access/yb_special_scans.h"
 #include "access/yb_target.h"
 #include "executor/ybExpr.h"
 #include "pg_yb_utils.h"
 #include "utils/rel.h"
+#include "utils/snapmgr.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
 static bool
