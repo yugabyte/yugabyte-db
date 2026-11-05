@@ -518,6 +518,46 @@ class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase 
     return iter->Valid() ? Entry() : fail_count_mismatch();
   }
 
+  // The parent of the bottom-level block stores the count through the end of that block. The count
+  // before the block is stored on the entry just before the parent's, so this steps back one entry
+  // at the lowest upper level that isn't on its block's first entry, reads it, and steps forward
+  // again, leaving the iterator where Seek put it.
+  Result<uint64_t> PositionOf(Slice target) override {
+    Seek(target);
+    // On a prefix miss Seek stops without reaching the entry the position would count up to.
+    if (num_levels_ == 1 || index_iterator_state_->check_prefix_may_match) {
+      return STATUS(
+          NotSupported, "PositionOf() requires a multi-level index without prefix checks");
+    }
+    RETURN_NOT_OK(status());
+    if (!Valid()) {
+      // Moving the top level doesn't make the iterator valid: only a positioned bottom level is,
+      // and the next Seek starts from the top again.
+      iter_[0].SeekToLast();
+      return GetCumulativeEntryCount(iter_[0]);
+    }
+
+    uint64_t entries_before = 0;
+    for (auto level = num_levels_ - 1; level > 0; --level) {
+      auto& iter = iter_[level - 1];
+      iter.Prev();
+      if (iter.Valid()) {
+        auto count = GetCumulativeEntryCount(iter);
+        iter.Next();
+        entries_before = VERIFY_RESULT(std::move(count));
+        break;
+      }
+      iter.SeekToFirst();
+    }
+    const auto entries_through = VERIFY_RESULT(GetCumulativeEntryCount(*(bottom_level_iter_ - 1)));
+    // Entries that share restart points (index_block_restart_interval > 1) make the restart index
+    // differ from the entry's index within the block.
+    if (entries_through - entries_before != bottom_level_iter_->iter()->GetNumRestarts()) {
+      return STATUS(NotSupported, "PositionOf() requires index_block_restart_interval = 1");
+    }
+    return entries_before + bottom_level_iter_->iter()->GetCurrentRestart();
+  }
+
   const KeyValueEntry& Entry() const override {
     if (bottommost_positioned_iter_ == bottom_level_iter_) {
       return bottom_level_iter_->Entry();

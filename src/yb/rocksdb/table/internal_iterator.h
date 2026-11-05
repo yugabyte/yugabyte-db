@@ -169,6 +169,13 @@ class DataBlockAwareIndexInternalIterator : public InternalIterator {
   virtual yb::Result<const KeyValueEntry&> SeekToPosition(uint64_t position) {
     return STATUS(NotSupported, "SeekToPosition() not supported for this iterator.");
   }
+
+  // Returns the position of the first bottom-level index entry whose key is >= `target`, which is
+  // the number of entries with a smaller key; if every key is smaller, returns the number of
+  // entries in the file.
+  virtual yb::Result<uint64_t> PositionOf(Slice target) {
+    return STATUS(NotSupported, "PositionOf() not supported for this iterator.");
+  }
 };
 
 template <class IteratorType>

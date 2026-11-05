@@ -4186,6 +4186,10 @@ void TestCumulativeEntryCounts(int num_keys, bool write_counts, bool split) {
   if (num_levels == 1 || !write_counts) {
     const auto result = iter->SeekToPosition(0);
     ASSERT_TRUE(!result.ok() && result.status().IsNotSupported());
+    const auto position = iter->PositionOf(table.kvs.begin()->first);
+    ASSERT_TRUE(!position.ok() && position.status().IsNotSupported()) << position.status();
+    ASSERT_TRUE(iter->Valid());
+    ASSERT_OK(iter->status());
     return;
   }
 
@@ -4218,6 +4222,59 @@ void TestCumulativeEntryCounts(int num_keys, bool write_counts, bool split) {
     ASSERT_OK(iter->status());
     if (position > 0) {
       ASSERT_EQ(iter->key().ToBuffer(), entries[position - 1].first) << "position " << position;
+    } else {
+      ASSERT_FALSE(iter->Valid());
+    }
+  }
+
+  const auto make_key = [](const char* user_key) {
+    std::string key;
+    AppendInternalKey(&key, ParsedInternalKey(user_key, 1, kTypeValue));
+    return key;
+  };
+  // The past-the-end key goes first, so every later call starts from the state the past-the-end
+  // path leaves behind. Data keys mostly fall between index keys.
+  std::vector<std::string> targets = {make_key("kez")};
+  for (const auto& entry : entries) {
+    targets.push_back(entry.first);
+  }
+  for (const auto& kv : table.kvs) {
+    targets.push_back(kv.first);
+  }
+  targets.push_back(make_key("a"));
+  const auto& icmp = *table.icmp;
+  for (const auto& target : targets) {
+    SCOPED_TRACE("target " + Slice(target).ToDebugHexString());
+    const auto expected = static_cast<uint64_t>(
+        std::lower_bound(
+            entries.begin(), entries.end(), target,
+            [&icmp](const auto& entry, const std::string& key) {
+              return icmp.Compare(entry.first, key) < 0;
+            }) -
+        entries.begin());
+    const auto position = ASSERT_RESULT(iter->PositionOf(target));
+    ASSERT_EQ(position, expected);
+    if (expected == entries.size()) {
+      ASSERT_FALSE(iter->Valid());
+      continue;
+    }
+    ASSERT_TRUE(iter->Valid());
+    ASSERT_EQ(iter->key().ToBuffer(), entries[expected].first);
+    // PositionOf steps upper levels back and forward again; Next() and Prev() go wrong if one was
+    // left elsewhere.
+    iter->Next();
+    ASSERT_OK(iter->status());
+    if (expected + 1 < entries.size()) {
+      ASSERT_EQ(iter->key().ToBuffer(), entries[expected + 1].first);
+    } else {
+      ASSERT_FALSE(iter->Valid());
+    }
+    const auto position_again = ASSERT_RESULT(iter->PositionOf(target));
+    ASSERT_EQ(position_again, expected);
+    iter->Prev();
+    ASSERT_OK(iter->status());
+    if (expected > 0) {
+      ASSERT_EQ(iter->key().ToBuffer(), entries[expected - 1].first);
     } else {
       ASSERT_FALSE(iter->Valid());
     }
@@ -4273,6 +4330,7 @@ TEST_F(GeneralTableTest, SeekToPositionRestartIntervalShapes) {
     ASSERT_OK(iter->status());
 
     bool saw_not_supported = false;
+    bool saw_position_of_not_supported = false;
     for (size_t position = 0; position < keys.size(); ++position) {
       const auto result = iter->SeekToPosition(position);
       if (result.ok()) {
@@ -4284,8 +4342,21 @@ TEST_F(GeneralTableTest, SeekToPositionRestartIntervalShapes) {
         ASSERT_FALSE(iter->Valid());
         saw_not_supported = true;
       }
+
+      const auto position_of = iter->PositionOf(keys[position]);
+      if (position_of.ok()) {
+        ASSERT_EQ(*position_of, position);
+      } else {
+        ASSERT_TRUE(position_of.status().IsNotSupported())
+            << position_of.status() << ", position " << position;
+        saw_position_of_not_supported = true;
+      }
+      ASSERT_OK(iter->status());
+      ASSERT_TRUE(iter->Valid());
+      ASSERT_EQ(iter->key().ToBuffer(), keys[position]) << "position " << position;
     }
     ASSERT_TRUE(saw_not_supported);
+    ASSERT_TRUE(saw_position_of_not_supported);
   }
 }
 
