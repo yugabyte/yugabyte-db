@@ -75,6 +75,9 @@ class UpgradeTestBase : public ExternalMiniClusterITestBase {
 
   Status PromoteAutoFlags(AutoFlagClass flag_class = AutoFlagClass::kExternal);
 
+  // Waits until every running yb-master and yb-tserver has applied this AutoFlags config version.
+  Status WaitForAutoFlagsConfigApplied(uint32_t config_version);
+
   virtual Status FinalizeYsqlMajorCatalogUpgrade();
 
   Status PerformYsqlUpgrade();
