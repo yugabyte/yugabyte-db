@@ -527,8 +527,7 @@ class PgDocReadOp : public PgDocOp {
   //   * The higher the number of partition_count, the higher the parallelism level.
   //   * If (partition_count == 1), only one operator is needed for the entire partition range.
   //   * If (partition_count > 1), each operator is used for a specific partition range.
-  //   * This optimization is used by
-  //       PopulateParallelSelectOps()
+  //   * This optimization is used by PopulateParallelSelectOps().
   // - When parallelism by arguments is applied, each operator has only one argument.
   //   When tablet server will run the requests in parallel as it assigned one thread per request.
   //       PopulateNextHashPermutationOps()
