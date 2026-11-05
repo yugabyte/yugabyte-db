@@ -132,7 +132,7 @@ class DocVectorIndexReverseMappingReader {
   // no ybctid is found or kTombstone corresponds to the specified vector_id.
   Result<Slice> FetchYbctid(const vector_index::VectorId& vector_id);
 
-  // Whether the fetches observed entries written in the read restart window, see
+  // Whether the fetches observed entries written in the uncertainty window, see
   // IntentAwareIterator::GetReadRestartData.
   virtual Result<ReadRestartData> GetReadRestartData() const = 0;
 };

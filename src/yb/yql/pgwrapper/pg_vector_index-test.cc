@@ -5616,7 +5616,7 @@ TEST_P(PgVectorIndexSingleServerTest, ConcurrentDeleteApplyDuringSearchStress) {
 // A writer keeps moving the vectors of a few rows between Vector(id) and -Vector(id), while
 // searchers with a filter read a row's vector and search near Vector(id) in one statement. Whenever
 // the row is at Vector(id), the search has to return it. The filter fetches the rows of the
-// candidate vectors, and could read a row updated in the read restart window, i.e. after the read
+// candidate vectors, and could read a row updated in the uncertainty window, i.e. after the read
 // time, leaving out its vector without restarting the read.
 //
 // Covers https://github.com/yugabyte/yugabyte-db/issues/36618.

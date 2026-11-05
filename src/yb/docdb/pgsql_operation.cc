@@ -1194,7 +1194,7 @@ class PgsqlVectorFilter {
     if (vector_id.AsSlice() != encoded_value.id) {
       // The row no longer references this vector, i.e. the vector was replaced by an update.
       // Such a vector is filtered out above when the reverse mapping is used, unless the update
-      // is in the read restart window: the row then reads at a later version than the read time,
+      // is in the uncertainty window: the row then reads at a later version than the read time,
       // e.g. from the intents of a transaction committed after ReadIntentRowKeys. The read is
       // restarted in that case, otherwise the reverse mapping and the row disagree.
       if (resolved_via_reverse_mapping) {
@@ -1225,7 +1225,7 @@ class PgsqlVectorFilter {
   }
 
   // The rows and reverse mapping entries the filter reads decide which vectors are search results,
-  // so the read has to be restarted when they are in the read restart window, even though
+  // so the read has to be restarted when they are in the uncertainty window, even though
   // ExecuteBatchKeys does not fetch the rows of the vectors left out.
   Result<ReadRestartData> GetReadRestartData() const {
     ReadRestartData result;
