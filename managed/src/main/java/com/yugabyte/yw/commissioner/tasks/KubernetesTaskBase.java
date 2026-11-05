@@ -1066,9 +1066,17 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
               .getUniverseDetails()
               .getPrimaryCluster();
     }
+    // An edit of the primary alone still updates the read replica, which its params lack.
+    List<Cluster> readOnlyClusters = taskParams().getReadOnlyClusters();
+    if (readOnlyClusters.isEmpty()) {
+      readOnlyClusters =
+          Universe.getOrBadRequest(taskParams().getUniverseUUID())
+              .getUniverseDetails()
+              .getReadOnlyClusters();
+    }
     Provider provider =
         isReadOnlyCluster
-            ? Util.getSingleProvider(taskParams().getReadOnlyClusters().get(0))
+            ? Util.getSingleProvider(readOnlyClusters.get(0))
             : Util.getSingleProvider(primaryCluster);
     boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
 

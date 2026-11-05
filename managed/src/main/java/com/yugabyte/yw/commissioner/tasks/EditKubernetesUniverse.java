@@ -526,14 +526,16 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     // Once an attempt has propagated the new masters, a retry must not: the pods it would push to
     // and render may already be gone or rescaled. Until then, no tserver pod has changed. The first
     // attempt records false, so a retry with no value runs params saved by a YBA build that never
-    // propagated, which may already have changed tserver pods.
-    if (isFirstTry()) {
-      taskParams().getClusterByUuid(newCluster.uuid).setMasterAddrsPropagated(false);
+    // propagated, which may already have changed tserver pods. Only the primary cluster has
+    // masters, and a read replica edited along with it may not be in the task params at all.
+    Cluster paramsCluster =
+        isReadOnlyCluster ? null : taskParams().getClusterByUuid(newCluster.uuid);
+    if (paramsCluster != null && isFirstTry()) {
+      paramsCluster.setMasterAddrsPropagated(false);
       TaskInfo.updateInTxn(getUserTaskUUID(), tf -> tf.setTaskParams(Json.toJson(taskParams())));
     }
     boolean propagateMasterAddrs =
-        Boolean.FALSE.equals(
-            taskParams().getClusterByUuid(newCluster.uuid).getMasterAddrsPropagated());
+        paramsCluster != null && Boolean.FALSE.equals(paramsCluster.getMasterAddrsPropagated());
     // Masters that run once the given ones are added, without the ones this edit removes.
     Universe current = Universe.getOrBadRequest(universe.getUniverseUUID());
     Set<String> leavingMasters =
@@ -561,8 +563,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     // resized nor moved yet, so the edit's target disk spec would change their
     // volumeClaimTemplates, which K8s rejects. They keep the spec they run with, and their original
     // size once the resize has saved a new one.
+    Cluster clusterInParams = taskParams().getClusterByUuid(newCluster.uuid);
     Map<UUID, Map<ServerType, Integer>> originalDiskSizes =
-        MapUtils.emptyIfNull(taskParams().getClusterByUuid(newCluster.uuid).getOriginalDiskSize());
+        MapUtils.emptyIfNull(
+            clusterInParams == null ? null : clusterInParams.getOriginalDiskSize());
     Map<UUID, Map<ServerType, Integer>> keepDiskSpecAZs = new HashMap<>();
     for (UUID az : leavingAZs) {
       keepDiskSpecAZs.put(az, originalDiskSizes.getOrDefault(az, Collections.emptyMap()));
@@ -661,6 +665,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               mastersToAddAzMap.values().stream()
                   .flatMap(Set::stream)
                   .collect(Collectors.toList())),
+          propagateMasterAddrs,
           updateMasterAddrSecrets);
     }
 
@@ -693,6 +698,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
             universe.isYbcEnabled(),
             ybcManager.getStableYbcVersion(),
             Collections.emptyList() /* newMasterQuorum */,
+            false /* pushMasterAddrs */,
             null /* beforeMasterRemoves */);
       }
       if (CollectionUtils.isNotEmpty(fullMoveMasterAZs) || !mastersToAdd.isEmpty()) {
@@ -1331,6 +1337,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       boolean enableYbc,
       String ybcSoftwareVersion,
       Collection<NodeDetails> newMasterQuorum,
+      boolean pushMasterAddrs,
       @Nullable Runnable beforeMasterRemoves) {
     String universeName = universe.getName();
     Cluster primaryCluster = taskParams().getPrimaryCluster();
@@ -1814,11 +1821,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         if (CollectionUtils.isNotEmpty(serversToAdd)
             || CollectionUtils.isNotEmpty(serversToRemove)) {
           createMoveMasterTasks(
-              serversToAdd,
-              serversToRemove,
-              newMasterQuorum,
-              true /* pushMasterAddrs */,
-              beforeMasterRemoves);
+              serversToAdd, serversToRemove, newMasterQuorum, pushMasterAddrs, beforeMasterRemoves);
         }
       } else {
         // Tserver case

@@ -2411,9 +2411,8 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     }
   }
 
-  @Test
-  public void testZoneReplacePushesToReadReplicaTservers() {
-    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+  /** Adds a read replica with two tservers in az-1 and returns their node names. */
+  private Set<String> addReadReplica() {
     UniverseDefinitionTaskParams.UserIntent rrIntent = currentIntent();
     rrIntent.numNodes = 2;
     rrIntent.replicationFactor = 1;
@@ -2430,6 +2429,34 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             .map(n -> n.nodeName)
             .collect(Collectors.toSet());
     assertEquals(2, rrTservers.size());
+    return rrTservers;
+  }
+
+  /** An edit of only the primary still edits the read replica when the masters move. */
+  @Test
+  public void testZoneReplaceWithoutReadReplicaInRequest() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    Set<String> rrTservers = addReadReplica();
+    Set<String> masters =
+        ImmutableSet.of("yb-master-0_az-1", "yb-master-0_az-2", "yb-master-0_az-4");
+    Set<String> tservers =
+        Sets.union(
+            ImmutableSet.of("yb-tserver-0_az-1", "yb-tserver-0_az-2", "yb-tserver-0_az-3"),
+            rrTservers);
+
+    TaskInfo firstAttempt = submitEdit(currentIntent(), zoneReplacePlacement(), null);
+    assertTrue(describeFailure(firstAttempt), describeFailure(firstAttempt).contains("stop after"));
+    assertPushesAroundMasterChange(plan(firstAttempt), masters, tservers);
+    TaskInfo retry = retryEdit(firstAttempt);
+    assertTrue(describeFailure(retry), describeFailure(retry).contains("stop after"));
+    assertPushesAroundMasterChange(plan(retry), masters, tservers);
+  }
+
+  @Test
+  public void testZoneReplacePushesToReadReplicaTservers() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    Set<String> rrTservers = addReadReplica();
+    Cluster readReplica = defaultUniverse.getUniverseDetails().getReadOnlyClusters().get(0);
 
     PlacementInfo pi = zoneReplacePlacement();
     java.util.function.Function<UUID, TaskInfo> submit =
