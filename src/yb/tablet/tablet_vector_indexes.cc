@@ -528,6 +528,10 @@ class VectorIndexBackfillHelper : public VectorIndexBackfillContext {
     return num_batches_;
   }
 
+  size_t num_entries() const {
+    return num_entries_;
+  }
+
   bool NeedFlush() {
     return max_batch_size_ && entries().size() >= max_batch_size_;
   }
@@ -559,6 +563,7 @@ class VectorIndexBackfillHelper : public VectorIndexBackfillContext {
     TEST_SYNC_POINT_CALLBACK("VectorIndexBackfillHelper::Flush:NumEntries", &num_entries);
     RETURN_NOT_OK_PREPEND(index.Insert(entries(), options), "Insert entries");
     index.metrics().backfill_inserted_entries->IncrementBy(num_entries);
+    num_entries_ += num_entries;
 
     if (!next_ybctid.empty()) {
       Reset();
@@ -572,6 +577,7 @@ class VectorIndexBackfillHelper : public VectorIndexBackfillContext {
   size_t chunk_size_ = 0;
   size_t max_batch_size_ = 0;
   size_t num_batches_ = 0;
+  size_t num_entries_ = 0;
   ReverseMappingBackfillerPtr reverse_mapping_backfiller_ = nullptr;
 };
 
@@ -708,7 +714,8 @@ Status TabletVectorIndexes::Backfill(
   RETURN_NOT_OK(helper.Flush(tablet(), *vector_index, Slice()));
 
   LOG_WITH_PREFIX_AND_FUNC(INFO)
-      << "Backfilled " << AsString(*vector_index) << " in " << helper.num_batches() << " batches";
+      << "Backfilled " << AsString(*vector_index) << ": " << helper.num_entries() << " entries in "
+      << helper.num_batches() << " batches";
 
   // Hold a blocking operation across both flushes below. Tablet::Flush releases its own one before
   // the vector index flush, so acquire it here and pass kNoScopedOperation. Only
