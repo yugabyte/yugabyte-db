@@ -11122,3 +11122,21 @@ YbGetFederatedForeignTableBackingRelid(Oid ft_relid)
 
 	return get_relname_relid(table_name, namespace_oid);
 }
+
+/*
+ * Lock id guarding which node's apply worker runs subscription subid.  Built
+ * like the replication slot lock (YbBuildReplicationSlotLockTag), so the two
+ * internal advisory lock kinds share one encoding.
+ */
+YbcAdvisoryLockId
+YbSubscriptionAdvisoryLockId(Oid subid)
+{
+	LOCKTAG		tag;
+
+	SET_LOCKTAG_ADVISORY(tag,
+						 YB_INTERNAL_ADVISORY_LOCK_DB_OID,
+						 ADVISORY_LOCK_CLASSID_SUBSCRIPTION,
+						 subid,
+						 /* objsubid= */ 2);
+	return GetYBAdvisoryLockId(tag);
+}
