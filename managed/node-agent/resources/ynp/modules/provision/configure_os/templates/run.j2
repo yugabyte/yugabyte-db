@@ -6,14 +6,20 @@ bin_path="/usr/local/bin"
 umask 022
 
 # Set a sysctl key now and save it in /etc/sysctl.conf so it survives a reboot
-# or `sysctl --system`. Any existing entry for the key (with or without spaces
-# around "=") is removed first; otherwise an older entry, such as the RHEL
-# systemd-coredump core_pattern, wins the next time the file is loaded.
+# or `sysctl --system`. The value is always appended, so it is the last entry
+# for the key and wins when the file is loaded; earlier entries for the key
+# (with or without spaces around "=") are removed first so the file stays free
+# of duplicates and repeated runs leave it unchanged.
 persist_sysctl() {
-  local key="$1" value="$2"
+  local key="$1" value="$2" conf=/etc/sysctl.conf
   local key_re="${key//./[.]}"
-  sed -i "/^[[:space:]]*${key_re}[[:space:]]*=/d" /etc/sysctl.conf
-  echo "${key}=${value}" >> /etc/sysctl.conf
+  touch "$conf"
+  sed -i "/^[[:space:]]*${key_re}[[:space:]]*=/d" "$conf"
+  # Start on a new line if the file does not end with one.
+  if [[ -s "$conf" && -n "$(tail -c 1 "$conf")" ]]; then
+    echo >> "$conf"
+  fi
+  echo "${key}=${value}" >> "$conf"
   sysctl -w "${key}=${value}"
 }
 
@@ -125,15 +131,14 @@ EOF
 
   persist_sysctl kernel.core_pattern "$CORE_PATTERN"
 
-  # Check if the setting exists with correct value in either location
-  if ! grep -q "^vm.max_map_count=" /etc/sysctl.conf 2>/dev/null && \
-    ! grep -q "^vm.max_map_count=" "/etc/sysctl.d/99-vm-max-map-count.conf" 2>/dev/null; then
-    echo "vm.max_map_count={{ vm_max_map_count }}" | \
-      sudo tee -a /etc/sysctl.d/99-vm-max-map-count.conf > /dev/null
-    chmod 644 /etc/sysctl.d/99-vm-max-map-count.conf
+  persist_sysctl vm.max_map_count "{{ vm_max_map_count }}"
+  # Earlier YNP versions saved vm.max_map_count in this drop-in instead. At boot
+  # systemd-sysctl reads it after /etc/sysctl.conf (99-sysctl.conf), so a stale
+  # value left there would win; remove the key from it.
+  if [[ -f /etc/sysctl.d/99-vm-max-map-count.conf ]]; then
+    sed -i '/^[[:space:]]*vm[.]max_map_count[[:space:]]*=/d' \
+      /etc/sysctl.d/99-vm-max-map-count.conf
   fi
-  # Set max map count
-  sysctl -w vm.max_map_count="{{ vm_max_map_count }}"
 
   # Apply the changes system-wide
   sysctl --system
