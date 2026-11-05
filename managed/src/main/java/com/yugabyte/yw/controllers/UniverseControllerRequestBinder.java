@@ -18,20 +18,17 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.K8SNodeResourceSpec;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeWithGFlags;
-import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.io.IOException;
@@ -100,9 +97,6 @@ public class UniverseControllerRequestBinder {
     // 2. encryptionAtRestConfig - See @JsonAlias annotations on the EncryptionAtRestConfig props
     // 3. cluster.userIntent gflags list to maps - TODO
 
-    // This is only for until we need the config switch for Usek8sCustomResources.
-    // Once we turn turn default we can remove this.
-    // Also eventually we will deprecate instanceType for k8s.
     RuntimeConfGetter runtimeConfGetter =
         StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
 
@@ -114,29 +108,8 @@ public class UniverseControllerRequestBinder {
       taskParams.clusters = clusters;
       taskParams.creatingUser = CommonUtils.getUserFromContext();
       taskParams.platformUrl = request.host();
-      if (UniverseDefinitionTaskParams.class.isAssignableFrom(paramType)) {
-        // We can get rid of this if when we default to new style resource spec.
-        for (Cluster cluster : taskParams.clusters) {
-          UserIntent ui = cluster.userIntent;
-          if (Util.isKubernetesBasedUniverse(taskParams)) {
-            UUID providerUUID = Util.getSingleProviderUUID(ui);
-            if (ui.getBaseInstanceType(providerUUID) != null) {
-              if (runtimeConfGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
-                InstanceType instanceType =
-                    InstanceType.getOrBadRequest(
-                        providerUUID, ui.getBaseInstanceType(providerUUID));
-                // set K8s resource spec from instance type data.
-                ui.masterK8SNodeResourceSpec = new K8SNodeResourceSpec();
-                ui.tserverK8SNodeResourceSpec = new K8SNodeResourceSpec();
-                ui.masterK8SNodeResourceSpec.memoryGib = instanceType.getMemSizeGB();
-                ui.masterK8SNodeResourceSpec.cpuCoreCount = instanceType.getNumCores();
-                ui.tserverK8SNodeResourceSpec.memoryGib = instanceType.getMemSizeGB();
-                ui.tserverK8SNodeResourceSpec.cpuCoreCount = instanceType.getNumCores();
-              }
-            }
-          }
-        }
-      }
+
+      KubernetesUtil.initializeK8sNodeResourceSpecsFromInstanceType(taskParams, true);
 
       return taskParams;
     } catch (JsonProcessingException exception) {
