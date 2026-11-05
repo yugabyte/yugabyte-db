@@ -29,6 +29,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.HashSet;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -1132,6 +1133,48 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
     restartClusterWithAdditionalFlags(java.util.Collections.emptyMap(), tserverFlags);
 
     updateRuntimeFlagPGCBackend();
+  }
+
+  private List<Double> fetchRandomValues(Statement stmt, int count) throws Exception {
+    List<Double> values = new ArrayList<>();
+    for (int i = 0; i < count; i++) {
+      ResultSet rs = stmt.executeQuery("SELECT random()");
+      assertTrue(rs.next());
+      values.add(rs.getDouble(1));
+    }
+    return values;
+  }
+
+  @Test
+  public void testSeedMakesConnectionSticky() throws Exception {
+    for (String setSeed : Arrays.asList("SET seed = 0.5", "SELECT setseed(0.5)")) {
+      try (Connection conn = getConnectionBuilder()
+              .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+              .connect();
+           Statement stmt = conn.createStatement()) {
+        stmt.execute(setSeed);
+        List<Double> first = fetchRandomValues(stmt, 5);
+        assertConnectionStickyState(stmt, true);
+
+        stmt.execute(setSeed);
+        assertEquals(first, fetchRandomValues(stmt, 5));
+
+        stmt.execute("RESET seed");
+        stmt.execute("DISCARD ALL");
+        assertConnectionStickyState(stmt, true);
+      }
+    }
+
+    // Setting seed through startup packet doesn't do anything in vanilla PG
+    // since its check hook only allows interactive sets (>= PGC_S_INTERACTIVE).
+    // So we don't make the connection sticky with ConnMgr.
+    try (Connection conn = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .withOptions("-c seed=0.5")
+            .connect();
+         Statement stmt = conn.createStatement()) {
+      assertConnectionStickyState(stmt, false);
+    }
   }
 
   // With a single backend, B's query resets the backend to defaults, so A's next query has to
