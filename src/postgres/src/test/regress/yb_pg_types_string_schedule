@@ -11,6 +11,7 @@ test: yb.port.text
 test: bit
 test: yb.port.uuid
 test: yb.port.strings
+test: md5
 test: tstypes
 
 test: unicode
@@ -22,3 +23,4 @@ test: yb.port.tsearch
 test: yb.port.tsdicts
 
 test: yb.port.compression
+test: yb.port.compression_lz4
