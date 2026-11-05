@@ -786,9 +786,9 @@ TEST_F(MasterTest, TestHeartbeatFromRegisteredTSPersisted) {
 }
 
 // A placement that names a storage tier needs a live tserver that registered the tier for every
-// replica, counted the way replica selection places them, and the error names the tier only when
-// the tier is the reason. A placement without a tier is unconstrained, so an all-hdd live
-// placement still accepts it.
+// replica, as replica selection can place them within the placement blocks, and the error names
+// the tier only when the tier is the reason. A placement without a tier is unconstrained, so an
+// all-hdd live placement still accepts it.
 TEST_F(MasterTest, ValidateReplicationInfoRequiresTserversOnStorageTier) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_check_ts_count_for_create_table) = true;
@@ -825,12 +825,15 @@ TEST_F(MasterTest, ValidateReplicationInfoRequiresTserversOnStorageTier) {
     }
     return placement_info;
   };
+  // A block for cloud1.region1.<zone>, or for the whole region when zone is empty.
   auto add_block = [](PlacementInfoPB* placement_info, const std::string& zone,
                       int min_num_replicas) {
     auto* block = placement_info->add_placement_blocks();
     block->mutable_cloud_info()->set_placement_cloud("cloud1");
     block->mutable_cloud_info()->set_placement_region("region1");
-    block->mutable_cloud_info()->set_placement_zone(zone);
+    if (!zone.empty()) {
+      block->mutable_cloud_info()->set_placement_zone(zone);
+    }
     block->set_min_num_replicas(min_num_replicas);
   };
   auto validate = [this](const PlacementInfoPB& live_replicas)
@@ -911,6 +914,23 @@ TEST_F(MasterTest, ValidateReplicationInfoRequiresTserversOnStorageTier) {
       "tablet servers that have registered a data directory on it");
   outside.clear_storage_tier();
   resp = ASSERT_RESULT(validate(outside));
+  ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
+
+  // Blocks that overlap count a tserver once per block, while selection gives it to one block: a
+  // region-wide block of three next to a zone0 block of one would count the zone0 hdd tserver
+  // twice, so the count is capped at the three distinct hdd tservers and the 4-replica placement
+  // is one short, while the untiered placement with the same blocks is accepted.
+  auto overlapping = placement("hdd", 4);
+  add_block(&overlapping, "zone0", 1);
+  add_block(&overlapping, "", 3);
+  resp = ASSERT_RESULT(validate(overlapping));
+  ASSERT_TRUE(resp.has_error()) << resp.ShortDebugString();
+  ASSERT_STR_CONTAINS(
+      resp.error().status().message(),
+      "The placement needs 4 replicas on storage tier hdd, but only 3 can be placed on live "
+      "tablet servers that have registered a data directory on it");
+  overlapping.clear_storage_tier();
+  resp = ASSERT_RESULT(validate(overlapping));
   ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
 
   // With tiered storage off the tier is not acted on, so the ssd placement is validated as

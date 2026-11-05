@@ -1075,7 +1075,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
                                  const TSDescriptorVector& ts_descs,
                                  ValidateReplicationInfoResponsePB* resp);
 
-  // How many replicas SelectReplicasForPlacement can put on ts_descs under placement_info.
+  // How many replicas SelectReplicasForPlacement can put on ts_descs under placement_info:
+  // exact unless placement blocks overlap, then an upper bound.
   Result<size_t> CountPlaceableReplicas(
       const PlacementInfoPB& placement_info, const TSDescriptorVector& ts_descs);
 

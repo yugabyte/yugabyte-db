@@ -5606,7 +5606,11 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
 // Without placement blocks every tserver can take a replica. With them, replica selection
 // satisfies each block's minimum from the tservers in that block, then places the slack replicas
 // on the tservers left in any block that stays within its effective maximum, so a tserver outside
-// every block takes no replica. Overlapping blocks are counted independently.
+// every block takes no replica. Blocks can overlap (a zone's block next to its region's; the
+// tablespace parser rejects duplicates only). Each block is counted from all of its tservers,
+// while selection gives a tserver to the first block that takes it, so the sum is capped at the
+// distinct tservers in some block; with overlapping blocks it stays an upper bound, since the
+// tservers an earlier block takes can leave a later one short.
 Result<size_t> CatalogManager::CountPlaceableReplicas(
     const PlacementInfoPB& placement_info, const TSDescriptorVector& ts_descs) {
   if (placement_info.placement_blocks().empty()) {
@@ -5639,7 +5643,10 @@ Result<size_t> CatalogManager::CountPlaceableReplicas(
   }
   // The total number of extra replicas that we can put cannot be more than
   // the total tablet servers that are extra.
-  return total_feasible_replicas + min(total_extra_replicas, total_extra_servers);
+  const size_t total_placeable_replicas =
+      total_feasible_replicas + min(total_extra_replicas, total_extra_servers);
+  const auto in_some_block = VERIFY_RESULT(FindTServersForPlacementInfo(placement_info, ts_descs));
+  return min(total_placeable_replicas, in_some_block.size());
 }
 
 Status CatalogManager::CreateTableInMemory(const CreateTableRequestPB& req,
@@ -13889,9 +13896,11 @@ Status CatalogManager::ValidateReplicationInfo(
   // but a tablet created on fewer tservers than its replication factor starts under-replicated,
   // and the load balancer, which does not consider tiers, would add the missing replicas on
   // tservers without the tier. So every replica needs a live tserver that registered a data
-  // directory on the tier, counted the way replica selection places them: within the placement
-  // blocks and under their maximums. Gated like the count checks. "Registered" also covers
-  // tservers whose tiers are unknown, which create-time placement does not use.
+  // directory on the tier, within the placement blocks and under their maximums as
+  // CountPlaceableReplicas bounds it, exactly unless the blocks overlap. Gated on
+  // catalog_manager_check_ts_count_for_create_table like the live tablet server count.
+  // "Registered" also covers tservers whose tiers are unknown, which create-time placement does
+  // not use.
   const auto& storage_tier = placement_info.storage_tier();
   if (FLAGS_enable_tiered_storage && FLAGS_catalog_manager_check_ts_count_for_create_table &&
       !storage_tier.empty()) {
