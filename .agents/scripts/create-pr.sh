@@ -489,8 +489,15 @@ if [[ -n "$reviewers" && "$pr_num" =~ ^[0-9]+$ ]]; then
 fi
 
 if $is_stack_branch; then
-  echo ">>> gh stack link --base ${stack_trunk} ${stack_below_prs} ${pr_num}"
-  if ! gh stack link --remote "$UPSTREAM_REMOTE" --base "$stack_trunk" \
+  # `gh stack link` needs at least two PRs, so the bottom layer's PR is linked
+  # when the next layer's PR opens.
+  if [[ -z "$stack_below_prs" ]]; then
+    echo ">>> no PR below ${current_branch} yet; it is linked with the next layer's"
+  else
+    echo ">>> gh stack link --base ${stack_trunk} ${stack_below_prs} ${pr_num}"
+  fi
+  if [[ -n "$stack_below_prs" ]] &&
+     ! gh stack link --remote "$UPSTREAM_REMOTE" --base "$stack_trunk" \
          $stack_below_prs "$pr_num"; then
     echo "" >&2
     echo "error: PR #${pr_num} was opened as a draft, but linking it into the" >&2
