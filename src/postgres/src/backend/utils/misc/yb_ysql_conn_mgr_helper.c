@@ -1126,3 +1126,17 @@ YbSendParameterStatusForConnectionManager(const char *name, const char *value)
 	pq_flush();
 	CHECK_FOR_INTERRUPTS();
 }
+
+/*
+ * Whether a startup parameter name is reserved for the connection manager:
+ * anything with the yb_ycm_internal_ prefix, plus the legacy names that
+ * guc.c still maps onto reserved parameters.
+ */
+bool
+YbIsConnMgrReservedStartupParameter(const char *name)
+{
+	return pg_strncasecmp(name, YB_YCM_INTERNAL_STARTUP_PARAMETER_PREFIX,
+						  strlen(YB_YCM_INTERNAL_STARTUP_PARAMETER_PREFIX)) == 0 ||
+		pg_strcasecmp(name, "yb_is_client_ysqlconnmgr") == 0 ||
+		pg_strcasecmp(name, "yb_use_tserver_key_auth") == 0;
+}

@@ -17,7 +17,10 @@ import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
 import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.Collections;
 import java.util.Map;
 
 import org.junit.Test;
@@ -90,6 +93,50 @@ public class TestReservedStartupParameters extends BaseYsqlConnMgr {
         assertTrue("Unexpected error for startup parameter " + parameter[0] + ": " + error,
             errorContains(error, "startup parameter \"" + parameter[0] + "\" is reserved"));
       }
+    }
+  }
+
+  /*
+   * Reserved parameters in "options" are rejected wherever they appear in the string, in both
+   * auth passthrough and auth backend modes.
+   */
+  @Test
+  public void testRejectsReservedParametersAfterOtherSwitch() throws Exception {
+    assertReservedParametersAfterOtherSwitchRejected();
+
+    restartClusterWithAdditionalFlags(Collections.emptyMap(),
+        Collections.singletonMap("ysql_conn_mgr_use_auth_backend", "true"));
+    assertReservedParametersAfterOtherSwitchRejected();
+  }
+
+  private void assertReservedParametersAfterOtherSwitchRejected() throws Exception {
+    String[][] legacyParameters = {
+      {"yb_is_client_ysqlconnmgr", "1"},
+      {"yb_use_tserver_key_auth", "1"},
+    };
+    for (String[][] parameters : new String[][][] {RESERVED_PARAMETERS, legacyParameters}) {
+      for (String[] parameter : parameters) {
+        try (Connection connection = getConnectionBuilder()
+                 .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                 .withOptions("-e -c " + parameter[0] + "=" + parameter[1])
+                 .connect()) {
+          fail("Reserved startup parameter accepted: " + parameter[0]);
+        } catch (SQLException error) {
+          assertTrue("Unexpected error for startup parameter " + parameter[0] + ": " + error,
+              errorContains(error, "startup parameter \"" + parameter[0] + "\" is reserved"));
+        }
+      }
+    }
+
+    // Other switches in "options" still work.
+    try (Connection connection = getConnectionBuilder()
+             .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+             .withOptions("-e -c work_mem=8MB")
+             .connect();
+         Statement stmt = connection.createStatement()) {
+      ResultSet rs = stmt.executeQuery("SHOW work_mem");
+      assertTrue(rs.next());
+      assertTrue("work_mem not applied: " + rs.getString(1), rs.getString(1).equals("8MB"));
     }
   }
 

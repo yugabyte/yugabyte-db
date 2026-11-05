@@ -3014,26 +3014,17 @@ void od_frontend(void *arg)
 	 * Client hostname GUC is updated by doing DNS lookup on the client ip addr in postgres
 	 * during authentication and parameter status is returned to cache it client struct as
 	 * done for any other startup guc.
+	 * They are reserved parameters, so they are written before the
+	 * YB_YCM_INTERNAL_END marker and not mixed with the client's own settings.
 	 */
 	if (client_ip[0] != '\0' && client_ip[0] != '<') {
-		char client_port[8];
-		od_getpeername(client->io.io, client_port,
-			       sizeof(client_port), 0, 1);
-
-		kiwi_vars_update(&client->yb_startup_settings,
-				 YB_YCM_CLIENT_ADDR,
-				 sizeof(YB_YCM_CLIENT_ADDR),
-				 client_ip,
-				 strlen(client_ip) + 1);
-
-		kiwi_vars_update(&client->yb_startup_settings,
-				 YB_YCM_CLIENT_PORT,
-				 sizeof(YB_YCM_CLIENT_PORT),
-				 client_port,
-				 strlen(client_port) + 1);
+		snprintf(client->yb_ycm_client_addr,
+			 sizeof(client->yb_ycm_client_addr), "%s", client_ip);
+		od_getpeername(client->io.io, client->yb_ycm_client_port,
+			       sizeof(client->yb_ycm_client_port), 0, 1);
 		od_debug(&instance->logger, "startup", client, NULL,
-				 "injected " YB_YCM_CLIENT_ADDR " = %s, " YB_YCM_CLIENT_PORT " = %s",
-				 client_ip, client_port);
+				 "client " YB_YCM_CLIENT_ADDR " = %s, " YB_YCM_CLIENT_PORT " = %s",
+				 client->yb_ycm_client_addr, client->yb_ycm_client_port);
 	}
 
 	/* client authentication */

@@ -119,7 +119,7 @@ static int yb_server_write_auth_passthrough_request_pkt(od_client_t *client,
 		&instance->logger, CONTEXT_AUTH_PASSTHROUGH, client, server,
 		"starting Auth Passthrough, sent 'Auth Passthrough Request' packet");
 
-	const int max_default_args = 16;
+	const int max_default_args = 22;
 	int num_startup_args = client->yb_startup_settings.size;
 	kiwi_var_t *startup_vars = client->yb_startup_settings.vars;
 
@@ -174,6 +174,8 @@ static int yb_server_write_auth_passthrough_request_pkt(od_client_t *client,
 		yb_kiwi_set_fe_arg(&argv[argc++],
 				   YB_NAME_AND_SIZEOF("database"));
 	}
+
+	argc = yb_set_reserved_end_args(argv, argc, client);
 
 	/* We only allocated max_default_args spaces for these variables, so assert that */
 	assert(argc <= max_default_args);
@@ -809,12 +811,28 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 			break;
 		}
 
-		case KIWI_BE_ERROR_RESPONSE:
-			/* Physical connection is broken, no need to wait for readyForQuery pkt */
+		case KIWI_BE_ERROR_RESPONSE: {
+			/*
+			 * The control backend failed after authenticating the client,
+			 * e.g. on a startup parameter it rejects. Forward the error to
+			 * the client as FATAL. Physical connection is broken, no need to
+			 * wait for readyForQuery pkt.
+			 */
+			kiwi_fe_error_t error;
+
+			if (kiwi_fe_read_error(machine_msg_data(msg),
+					       machine_msg_size(msg), &error) == 0)
+				od_frontend_fatal_forward(client, error.code, "%s",
+							  error.message);
+			else
+				od_frontend_fatal(
+					client, KIWI_PROTOCOL_VIOLATION,
+					"Error while forwarding the error from the pg_backend.");
 			machine_msg_free(msg);
 			server->offline = 1;
 			yb_discard_guc_batch(&guc_batch);
 			return -1;
+		}
 		default:
 			od_error(
 				&instance->logger, CONTEXT_AUTH_PASSTHROUGH,

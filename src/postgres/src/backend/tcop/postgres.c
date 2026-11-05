@@ -4694,6 +4694,20 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
 									 errmsg("-c %s requires a value",
 											optarg)));
 					}
+
+					/*
+					 * YB: "options" always comes from the logical client, so
+					 * it must not set a parameter reserved for the
+					 * connection manager.
+					 */
+					if (MyProcPort && MyProcPort->yb_ycm_internal_end_seen &&
+						gucsource == PGC_S_CLIENT &&
+						YbIsConnMgrReservedStartupParameter(name))
+						ereport(FATAL,
+								(errcode(ERRCODE_PROTOCOL_VIOLATION),
+								 errmsg("startup parameter \"%s\" is reserved "
+										"for the connection manager", name)));
+
 					SetConfigOption(name, value, ctx, gucsource);
 					free(name);
 					if (value)
