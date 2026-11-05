@@ -251,6 +251,7 @@ public class IdempotencyKeyApiTest extends FakeDBApplication {
     TaskInfo task = new TaskInfo(TaskType.CreateBackup, taskUuid);
     task.setTaskParams(Json.newObject());
     task.setOwner("");
+    task.setTaskState(TaskInfo.State.Running);
     task.save();
 
     Result retry = assertPlatformException(() -> createCert(certSpec("root"), KEY));
@@ -260,6 +261,23 @@ public class IdempotencyKeyApiTest extends FakeDBApplication {
     assertEquals(taskUuid.toString(), error.get("task_uuid").asText());
     assertTrue(CertificateInfo.getAll(customerUuid).isEmpty());
     assertEquals("the key is released", 0, ApiIdempotencyKey.find.query().findCount());
+  }
+
+  @Test
+  public void failedTaskDoesNotBlockTheKey() {
+    // An earlier request's task failed when it was submitted, e.g. on validation, so the request
+    // failed and released the key; the failed task is left under the derived UUID.
+    UUID taskUuid = IdempotencyService.taskUuidFor(customerUuid, KEY);
+    TaskInfo task = new TaskInfo(TaskType.CreateBackup, taskUuid);
+    task.setTaskParams(Json.newObject());
+    task.setOwner("");
+    task.setTaskState(TaskInfo.State.Failure);
+    task.save();
+
+    Result retry = createCert(certSpec("root"), KEY);
+
+    assertEquals(contentAsString(retry), OK, retry.status());
+    assertEquals(1, CertificateInfo.getAll(customerUuid).size());
   }
 
   @Test

@@ -184,10 +184,15 @@ public class IdempotencyService {
     Optional<TaskInfo> existingTask = TaskInfo.maybeGet(taskUUID);
     if (existingTask.isPresent()) {
       Duration retention = confGetter.getGlobalConf(GlobalConfKeys.idempotencyKeyRetention);
-      if (plus(existingTask.get().getCreateTime(), retention).after(new Date())) {
+      boolean recent = plus(existingTask.get().getCreateTime(), retention).after(new Date());
+      // A task that failed or was aborted has nothing left to follow, e.g. one whose submission
+      // failed validation or found the executor full: the retry runs the operation again.
+      boolean followable = !TaskInfo.ERROR_STATES.contains(existingTask.get().getTaskState());
+      if (recent && followable) {
         // An earlier request with this key submitted the task, but its response was never stored:
         // YBA restarted, or the operation failed after submitting. Point the client at the task
-        // instead of submitting a second one.
+        // instead of submitting a second one. A task YBA retries after a restart keeps its UUID
+        // and is followable again.
         release(claim.record);
         ObjectNode error = Json.newObject();
         error.put(
@@ -200,7 +205,9 @@ public class IdempotencyService {
         error.put("task_uuid", taskUUID.toString());
         throw new PlatformServiceException(CONFLICT, error);
       }
-      // A task from an earlier use of the key, before it expired: this use gets no derived UUID.
+      // A failed task, or one from a use of the key that expired: the derived UUID is taken, so
+      // this request's task gets a random one. Reusing it would make TaskExecutor reset and rerun
+      // the old task instead of creating a new one.
       taskUUID = null;
     }
 
