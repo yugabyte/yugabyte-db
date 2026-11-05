@@ -1240,6 +1240,13 @@ pg_newlocale_from_collation(Oid collid)
 	if (collid == C_COLLATION_OID)
 		return &c_locale;
 
+	/*
+	 * YB: DocDB evaluates pushed-down expressions without catalog access.
+	 * POSIX behaves exactly like C, so resolve it the same way there.
+	 */
+	if (IsMultiThreadedMode() && collid == YB_POSIX_COLLATION_OID)
+		return &c_locale;
+
 	if (!OidIsValid(collid))
 		elog(ERROR, "cache lookup failed for collation %u", collid);
 

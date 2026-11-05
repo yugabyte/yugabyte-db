@@ -1316,6 +1316,12 @@ extern bool YBIsCollationValidNonC(Oid collation_id);
  */
 extern bool YBIsDbLocaleDefault();
 
+/*
+ * OID of the "POSIX" collation in pg_collation.dat, which has no oid_symbol.
+ * It behaves exactly like C, so DocDB can evaluate it without the catalog.
+ */
+#define YB_POSIX_COLLATION_OID 951
+
 extern bool YBRequiresCacheToCheckLocale(Oid collation_id);
 
 /*

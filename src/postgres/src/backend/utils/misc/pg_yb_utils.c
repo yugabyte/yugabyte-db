@@ -7084,13 +7084,15 @@ YBRequiresCacheToCheckLocale(Oid collation)
 {
 	/*
 	 * pg_newlocale_from_collation has fast-paths for C_COLLATION_OID and
-	 * DEFAULT_COLLATION_OID, but for any other valid collation OID, it checks
-	 * the catalog cache. In DocDB, we cannot use the catalog cache - so we
-	 * should not push down collations where DocDB would need to access the
-	 * cache to get information about the locale.
+	 * DEFAULT_COLLATION_OID, and in DocDB also for YB_POSIX_COLLATION_OID, but
+	 * for any other valid collation OID, it checks the catalog cache. In
+	 * DocDB, we cannot use the catalog cache - so we should not push down
+	 * collations where DocDB would need to access the cache to get
+	 * information about the locale.
 	 */
 	return OidIsValid(collation) && collation != DEFAULT_COLLATION_OID
-		&& collation != C_COLLATION_OID;
+		&& collation != C_COLLATION_OID
+		&& collation != YB_POSIX_COLLATION_OID;
 }
 
 bool
