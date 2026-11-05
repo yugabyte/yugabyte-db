@@ -955,13 +955,14 @@ Status PgDocReadOp::DoPopulateByYbctidOps(const YbctidGenerator& generator, Keep
     }
   }
 
-  AddOpsToResultStream();
   parallelism_level_ = pgsql_ops_.size();
   if (keep_order && !result_stream_) {
     result_stream_ = std::make_unique<MergingPgDocOpFetchStream<DocResult>>(
         [this]() { return this->FetchMoreResults(); }, pgsql_ops_);
     result_stream_->SetFetchedTargets(targets_);
     VLOG(3) << "Created MergingPgDocOpFetchStream";
+  } else {
+    AddOpsToResultStream();
   }
 
   // Done creating request, but not all partition or operator has arguments (inactive).
