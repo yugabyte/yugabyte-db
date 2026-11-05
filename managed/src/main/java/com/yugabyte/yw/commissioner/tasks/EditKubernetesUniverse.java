@@ -559,20 +559,24 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     Set<UUID> secretSkipAZs = mastersToAddAzMap.keySet();
     // AZs the edit removes, and the old tserver StatefulSets of full-move tserver AZs, are neither
     // resized nor moved yet, so the edit's target disk spec would change their
-    // volumeClaimTemplates, which K8s rejects. They keep the spec they run with. A full-move
-    // tserver AZ's master is resized like any other, so only its tserver size is kept.
+    // volumeClaimTemplates, which K8s rejects. They keep the spec they run with, and their original
+    // size once the resize has saved a new one.
     Map<UUID, Map<ServerType, Integer>> originalDiskSizes =
-        taskParams().getClusterByUuid(newCluster.uuid).getOriginalDiskSize();
+        MapUtils.emptyIfNull(taskParams().getClusterByUuid(newCluster.uuid).getOriginalDiskSize());
     Map<UUID, Map<ServerType, Integer>> keepDiskSpecAZs = new HashMap<>();
-    for (UUID az : Sets.difference(Sets.union(leavingAZs, fullMoveTserverAZs), secretSkipAZs)) {
-      Map<ServerType, Integer> sizes =
-          originalDiskSizes == null
-              ? new HashMap<>()
-              : new HashMap<>(originalDiskSizes.getOrDefault(az, Collections.emptyMap()));
-      if (!leavingAZs.contains(az)) {
-        sizes.remove(ServerType.MASTER);
-      }
-      keepDiskSpecAZs.put(az, sizes);
+    for (UUID az : leavingAZs) {
+      keepDiskSpecAZs.put(az, originalDiskSizes.getOrDefault(az, Collections.emptyMap()));
+    }
+    // A full-move tserver AZ's master is resized like any other AZ's, so only the tserver size is
+    // kept.
+    for (UUID az : Sets.difference(fullMoveTserverAZs, secretSkipAZs)) {
+      Integer tserverSize =
+          originalDiskSizes.getOrDefault(az, Collections.emptyMap()).get(ServerType.TSERVER);
+      keepDiskSpecAZs.put(
+          az,
+          tserverSize == null
+              ? Collections.emptyMap()
+              : Collections.singletonMap(ServerType.TSERVER, tserverSize));
     }
     Runnable updateMasterAddrSecrets =
         propagateMasterAddrs
