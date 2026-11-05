@@ -2075,15 +2075,18 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             .collect(Collectors.toList()));
     List<TaskInfo> pushes = masterAddrPushes(plan);
 
-    // Before the az-3 remove, the live Raft config goes to the masters that run then.
+    // Around the az-3 remove, the live Raft config goes to the masters that run then. The old az-1
+    // master is still in it, and the new one is not yet.
     List<TaskInfo> firstPreRemove =
         between(pushes, adds.get(0).getPosition(), removes.get(0).getPosition());
-    assertEquals(
-        ImmutableSet.of("yb-master-0_az-2", "yb-master-0_az-4"),
-        nodeNames(firstPreRemove, ServerType.MASTER));
-    assertEquals(tservers, nodeNames(firstPreRemove, ServerType.TSERVER));
-    // The new list names the az-1 masters, so nothing sends it until they run.
-    assertTrue(between(pushes, removes.get(0).getPosition(), adds.get(1).getPosition()).isEmpty());
+    List<TaskInfo> firstPostRemove =
+        between(pushes, removes.get(0).getPosition(), adds.get(1).getPosition());
+    for (List<TaskInfo> push : ImmutableList.of(firstPreRemove, firstPostRemove)) {
+      assertEquals(
+          ImmutableSet.of("yb-master-0_az-2", "yb-master-0_az-4"),
+          nodeNames(push, ServerType.MASTER));
+      assertEquals(tservers, nodeNames(push, ServerType.TSERVER));
+    }
     List<TaskInfo> postRemove =
         between(pushes, removes.get(1).getPosition(), Integer.MAX_VALUE).stream()
             .filter(t -> t.getPosition() <= lastPosition(removes) + 3)
@@ -2419,7 +2422,8 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             .map(h -> h + ":" + universe.getNode("yb-master-0_az-1").masterRpcPort)
             .collect(Collectors.joining(","));
     assertPushedTo(preRemove, pushedMasters, pushedTservers, raftConfig);
-    // After the remove: the new list, before anything else touches the pods.
+    // After the remove: the Raft config again, now the new list, before anything else touches the
+    // pods.
     assertPushedTo(postRemove, pushedMasters, pushedTservers, newMasters);
 
     // The attempt saved that it propagated the new masters, so a retry, which may follow the

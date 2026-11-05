@@ -560,15 +560,11 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       // We use the original unfiltered mastersToAdd which is determined from pi.
       // Rollback checkpoint: moving masters mutates the existing master quorum.
       createMarkRollbackUnsafeTaskOnce();
-      // The new list names the full-move masters, which do not exist yet, so its push waits for
-      // the full move of masters.
       createMoveMasterTasks(
           new ArrayList<>(mastersToAdd),
           new ArrayList<>(mastersToRemove),
-          masterAddresses,
           mastersRunningWith.apply(mastersToAdd),
-          propagateMasterAddrs /* pushRaftConfig */,
-          propagateMasterAddrs && fullMoveMasterAZs.isEmpty() /* pushNewMasters */);
+          propagateMasterAddrs);
     }
 
     boolean fullMove =
@@ -964,29 +960,27 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
   public void createMoveMasterTasks(
       List<NodeDetails> mastersToAdd,
       List<NodeDetails> mastersToRemove,
-      String masterAddresses,
       Collection<NodeDetails> masterPushTargets,
-      boolean pushRaftConfig,
-      boolean pushNewMasters) {
+      boolean pushMasterAddrs) {
 
     UserTaskDetails.SubTaskGroupType subTask = SubTaskGroupType.WaitForDataMigration;
     // Get Universe from DB to confirm latest state.
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+    // The pushes send the master Raft config read when they run: the masters running at that
+    // point. A planned list would name masters that a later step, such as a full move of
+    // masters, has not created yet, and on a retry, masters an earlier attempt already removed.
+    Supplier<String> raftConfig =
+        () -> {
+          Universe u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+          return u.getHostPortsString(getRemoteMasterNodes(u), ServerType.MASTER, PortType.RPC);
+        };
     // Perform adds.
     for (int idx = 0; idx < mastersToAdd.size(); idx++) {
       createChangeConfigTasks(mastersToAdd.get(idx), true, subTask);
     }
     // Live servers must know the new masters before a remove can move leadership to one of them.
-    // The list is the Raft config read when the push runs, so a retry never pushes back a master
-    // that an earlier attempt already removed.
-    if (pushRaftConfig && !mastersToRemove.isEmpty()) {
-      createMasterAddrsInMemoryUpdateTasks(
-          universe,
-          masterPushTargets,
-          () -> {
-            Universe u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-            return u.getHostPortsString(getRemoteMasterNodes(u), ServerType.MASTER, PortType.RPC);
-          });
+    if (pushMasterAddrs && !mastersToRemove.isEmpty()) {
+      createMasterAddrsInMemoryUpdateTasks(universe, masterPushTargets, raftConfig);
     }
     // Perform removes.
     for (int idx = 0; idx < mastersToRemove.size(); idx++) {
@@ -1006,8 +1000,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     // Wait for master leader.
     createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     // Must land before anything deletes the old master pods.
-    if (pushNewMasters) {
-      createMasterAddrsInMemoryUpdateTasks(universe, masterPushTargets, () -> masterAddresses);
+    if (pushMasterAddrs) {
+      createMasterAddrsInMemoryUpdateTasks(universe, masterPushTargets, raftConfig);
     }
   }
 
@@ -1743,12 +1737,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         if (CollectionUtils.isNotEmpty(serversToAdd)
             || CollectionUtils.isNotEmpty(serversToRemove)) {
           createMoveMasterTasks(
-              serversToAdd,
-              serversToRemove,
-              masterAddresses,
-              newMasterQuorum,
-              true /* pushRaftConfig */,
-              true /* pushNewMasters */);
+              serversToAdd, serversToRemove, newMasterQuorum, true /* pushMasterAddrs */);
         }
       } else {
         // Tserver case
