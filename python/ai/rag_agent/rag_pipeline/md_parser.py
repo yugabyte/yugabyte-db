@@ -49,7 +49,8 @@ class ParsedChunk:
         lines = []
         if doc_title:
             lines.append(f"Document: {doc_title}")
-        lines.append(f"Section: {breadcrumb}")
+        if breadcrumb:
+            lines.append(f"Section: {breadcrumb}")
         lines.append("")
         lines.append(self.text)
         for cb in self.code_blocks:
@@ -80,7 +81,8 @@ class ParsedChunk:
         }
 
     def _chunk_id(self, doc_slug: str) -> str:
-        slug = re.sub(r"[^a-z0-9]+", "-", self.heading_path[-1].lower()).strip("-")
+        section = self.heading_path[-1] if self.heading_path else ""
+        slug = re.sub(r"[^a-z0-9]+", "-", section.lower()).strip("-")
         return f"{doc_slug}__{slug}__{self.chunk_index}"
 
     def _content_hash(self) -> str:
@@ -103,7 +105,10 @@ class ParsedDocument:
         return len(self.chunks)
 
 def _extract_text(node: dict) -> str:
-    if node.get("type") == "text":
+    # codespan keeps its text in "raw" and has no children, so the recursion
+    # below would drop inline code (a hex colour in a table cell, a command in
+    # a sentence) from the chunk.
+    if node.get("type") in ("text", "codespan"):
         return node.get("raw", "")
     if node.get("type") == "softbreak":
         return " "
@@ -844,11 +849,13 @@ def _iter_chunks(body: str) -> Iterator[ParsedChunk]:
     current_links:    list[str] = []
     chunk_index:      int = 0
 
-    def flush() -> ParsedChunk | None:
+    def flush(final: bool = False) -> ParsedChunk | None:
         nonlocal chunk_index
-        if not heading_stack:
+        if not heading_stack and not final:
             # No clear() on this path, deliberately: content before the first
-            # heading stays buffered and lands in the first chunk.
+            # heading stays buffered and lands in the first chunk. At the end
+            # of the document (final) it is emitted anyway, with an empty
+            # heading path, so a document with no heading still has chunks.
             return None
         # Inline table prose into the text block so it's searchable
         table_prose = "\n\n".join(t.to_prose() for t in current_tables)
@@ -904,7 +911,7 @@ def _iter_chunks(body: str) -> Iterator[ParsedChunk]:
             current_text.append(_extract_text(node).strip())
             current_links.extend(_extract_links(node))
 
-    pending = flush()
+    pending = flush(final=True)
     if pending is not None:
         yield pending
 
