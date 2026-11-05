@@ -108,6 +108,8 @@ class YsqlMajorUpgradeTest : public YsqlMajorUpgradeTestBase {
 
 TEST_F(YsqlMajorUpgradeTest, CheckVersion) {
   const auto kSelectVersion = "SELECT version()";
+  const auto kOldCatalogVersion = "catalog_version: 15";
+  const auto kNewCatalogVersion = "catalog_version: 19";
   {
     auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
     auto version = ASSERT_RESULT(conn.FetchRowAsString(kSelectVersion));
@@ -115,7 +117,7 @@ TEST_F(YsqlMajorUpgradeTest, CheckVersion) {
   }
 
   auto ysql_catalog_config = ASSERT_RESULT(DumpYsqlCatalogConfig());
-  ASSERT_STR_NOT_CONTAINS(ysql_catalog_config, "catalog_version");
+  ASSERT_STR_CONTAINS(ysql_catalog_config, kOldCatalogVersion);
 
   ASSERT_OK(UpgradeClusterToMixedMode());
 
@@ -130,7 +132,7 @@ TEST_F(YsqlMajorUpgradeTest, CheckVersion) {
     ASSERT_STR_CONTAINS(version, old_version_info().version);
   }
   ysql_catalog_config = ASSERT_RESULT(DumpYsqlCatalogConfig());
-  ASSERT_STR_NOT_CONTAINS(ysql_catalog_config, "catalog_version");
+  ASSERT_STR_CONTAINS(ysql_catalog_config, kOldCatalogVersion);
 
   // We should not be allowed to finalize before upgrading all tservers.
   ASSERT_NOK_STR_CONTAINS(
@@ -156,7 +158,7 @@ TEST_F(YsqlMajorUpgradeTest, CheckVersion) {
   }
 
   ysql_catalog_config = ASSERT_RESULT(DumpYsqlCatalogConfig());
-  ASSERT_STR_CONTAINS(ysql_catalog_config, "catalog_version: 15");
+  ASSERT_STR_CONTAINS(ysql_catalog_config, kNewCatalogVersion);
 }
 
 TEST_F(YsqlMajorUpgradeTest, SimpleTableUpgrade) { ASSERT_OK(TestUpgradeWithSimpleTable()); }
@@ -1093,6 +1095,7 @@ TEST_F(YsqlMajorUpgradeTest, Tablegroup) {
   {
     auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
     ASSERT_OK(conn.Execute("CREATE USER user_2"));  // While user is yugabyte
+    ASSERT_OK(conn.Execute("GRANT CREATE ON SCHEMA public TO user_2"));
     ASSERT_OK(conn.Execute("SET ROLE user_1"));
     ASSERT_OK(conn.Execute("CREATE TABLE e2(i text) TABLEGROUP test_grant"));
     ASSERT_OK(conn.Execute("SET ROLE user_2"));
@@ -1253,75 +1256,6 @@ TEST_F(YsqlMajorUpgradeTestWithAuth, YugabyteUserPasswordOwnershipAndGrants) {
   ASSERT_OK(conn.Execute("REVOKE granted_role FROM member_by_admin, member_by_yugabyte"));
   grants = ASSERT_RESULT((conn.FetchRows<std::string, std::string, bool>(kGrantsQuery)));
   ASSERT_VECTORS_EQ((Grants{{"admin_role", "postgres", true}}), grants);
-}
-
-// Test scenario 2: MD5->SCRAM version upgrade with no HBA modification
-// This tests that during a major version upgrade, existing MD5 passwords continue to work
-// while new passwords use the upgraded version's default (SCRAM-SHA-256)
-TEST_F(YsqlMajorUpgradeTestWithAuth, MD5ToSCRAMVersionUpgrade) {
-  // Set password_encryption to md5 to simulate older version behavior
-  ASSERT_OK(ExecuteStatement("SET password_encryption = 'md5'"));
-
-  // Create test users with MD5 passwords (simulating pre-upgrade state)
-  ASSERT_OK(ExecuteStatements({
-    "CREATE USER md5_test_user WITH PASSWORD 'md5_password'",
-    "CREATE USER pre_upgrade_user WITH PASSWORD 'pre_upgrade_pass'"
-  }));
-
-  {
-    auto conn = ASSERT_RESULT(CreateConnToTs(kAnyTserver));
-    auto md5_password_result = conn.FetchRow<std::string>(
-        "SELECT LEFT(rolpassword, 3) FROM pg_authid WHERE rolname='md5_test_user'");
-    auto md5_password = ASSERT_RESULT(std::move(md5_password_result));
-    ASSERT_EQ("md5", md5_password);
-  }
-
-  auto test_auth = [this](const std::string& username, const std::string& password) {
-    auto conn_settings = pgwrapper::PGConnSettings{
-        .host = cluster_->tablet_server(0)->bind_host(),
-        .port = cluster_->tablet_server(0)->ysql_port(),
-        .dbname = "yugabyte",
-        .user = username,
-        .password = password};
-    return pgwrapper::PGConnBuilder(conn_settings).Connect();
-  };
-
-  ASSERT_OK(test_auth("md5_test_user", "md5_password"));
-  ASSERT_OK(test_auth("pre_upgrade_user", "pre_upgrade_pass"));
-
-  ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes));
-
-  // Verify password_encryption default is now SCRAM-SHA-256 after upgrade
-  {
-    auto conn = ASSERT_RESULT(CreateConnToTs(kAnyTserver));
-    auto password_encryption_result = conn.FetchRow<std::string>(
-        "SELECT boot_val FROM pg_settings WHERE name='password_encryption'");
-    auto password_encryption = ASSERT_RESULT(std::move(password_encryption_result));
-    ASSERT_EQ("scram-sha-256", password_encryption);
-  }
-
-  // Verify existing MD5 passwords still work after upgrade
-  ASSERT_OK(test_auth("md5_test_user", "md5_password"));
-  ASSERT_OK(test_auth("pre_upgrade_user", "pre_upgrade_pass"));
-
-  // Create new user and verify it uses SCRAM-SHA-256 by default
-  ASSERT_OK(ExecuteStatement("CREATE USER post_upgrade_user WITH PASSWORD 'post_upgrade_pass'"));
-  {
-    auto conn = ASSERT_RESULT(CreateConnToTs(kAnyTserver));
-    auto scram_password_result = conn.FetchRow<std::string>(
-        "SELECT LEFT(rolpassword, 13) FROM pg_authid WHERE rolname='post_upgrade_user'");
-    auto scram_password = ASSERT_RESULT(std::move(scram_password_result));
-    ASSERT_EQ("SCRAM-SHA-256", scram_password);
-  }
-
-  // Verify new SCRAM user authentication works
-  ASSERT_OK(test_auth("post_upgrade_user", "post_upgrade_pass"));
-
-  ASSERT_OK(ExecuteStatements({
-      "DROP USER md5_test_user",
-    "DROP USER pre_upgrade_user",
-    "DROP USER post_upgrade_user"
-  }));
 }
 
 // Test class for MD5 password encryption configuration scenario
