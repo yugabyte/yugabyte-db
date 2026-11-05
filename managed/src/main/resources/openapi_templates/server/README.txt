@@ -191,3 +191,22 @@ resourcePathSegment: Path segment before the resource UUID (optional; defaults t
   annotation if omitted).
 
 Gating by yb.api.conditional_get.enabled is handled inside ConditionalGetAction.
+
+12. x-yba-api-idempotent
+Optional, boolean. When true on a mutating, authenticated operation, the generated
+*ImpInterface.<operationId>Http method runs the operation through
+IdempotencyService (ApiControllerUtils.idempotent), which honours the Idempotency-Key request
+header: a successful response is stored and replayed to retries with the same key, a concurrent
+retry gets 409 and a key reused for a different request gets 422. See IdempotencyService.
+
+The operation must also declare the shared header parameter, so that generated clients can send
+the key:
+
+parameters:
+  - $ref: "../components/parameters/IdempotencyKey.yaml"
+x-yba-api-idempotent: true
+
+That parameter carries "x-yba-api-idempotency-key: true", which keeps it out of the generated
+server method signatures: the controller implementation never sees it. Document the extra 409 and
+422 responses on the operation. openapi_process_vendor_ext.py rejects an operation that has one of
+the extension and the parameter without the other.

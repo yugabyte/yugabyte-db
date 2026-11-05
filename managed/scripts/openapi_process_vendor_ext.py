@@ -28,6 +28,12 @@ For operations marked with "x-yba-api-stream-response: true" this script ensures
 a binary success response, since the extension makes the generated client hand back the raw HTTP
 response instead of a decoded model.
 
+For operations marked with "x-yba-api-idempotent: true" this script ensures the operation is a
+mutating, authenticated one and declares the Idempotency-Key header parameter (the one marked
+"x-yba-api-idempotency-key: true"), and that no other operation declares that parameter: the
+parameter is what generated clients use to send the key, and the extension is what makes the
+generated server honour it.
+
 TODO: Also handle validation of date-time type is of RFC3339 format.
 '''
 
@@ -45,6 +51,8 @@ X_YBA_API_BLOCK_OPERATOR_RESOURCE = "x-yba-api-block-operator-resource"
 X_YBA_API_MULTIPART = "x-yba-api-multipart"
 X_YBA_API_STREAM_RESPONSE = "x-yba-api-stream-response"
 X_YBA_API_CONDITIONAL_GET = "x-yba-api-conditional-get"
+X_YBA_API_IDEMPOTENT = "x-yba-api-idempotent"
+X_YBA_API_IDEMPOTENCY_KEY = "x-yba-api-idempotency-key"
 X_YBA_API_PREFIX = "x-yba-api-"
 # Every vendor extension understood by the openapi server and client templates. A new extension
 # must be added here, otherwise validate_vendor_ext_names() rejects the spec that uses it.
@@ -57,6 +65,8 @@ X_YBA_API_EXTENSIONS = frozenset([
     X_YBA_API_MULTIPART,
     X_YBA_API_STREAM_RESPONSE,
     X_YBA_API_CONDITIONAL_GET,
+    X_YBA_API_IDEMPOTENT,
+    X_YBA_API_IDEMPOTENCY_KEY,
 ])
 DEPRECATED_MSG_FMT = "<b style=\"color:#ff0000\">Deprecated since YBA version {}.</b></p>"
 PREVIEW_MSG_FMT = ("<b style=\"color:#FFA500\">WARNING: This is a preview API in YBA version {}"
@@ -341,6 +351,50 @@ def process_stream_response_in_paths():
         raise Exception(", ".join(errMsgs))
 
 
+# Validates x-yba-api-idempotent against the Idempotency-Key parameter, see the module docstring.
+def process_idempotent_in_paths():
+    errMsgs = []
+    for path, path_details in global_path_list.items():
+        path_params = path_details.get("parameters", [])
+        for method, method_details in path_details.items():
+            if method not in http_methods:
+                continue
+            idempotent = method_details.get(X_YBA_API_IDEMPOTENT, False)
+            location = method + " method of path " + path
+            if not isinstance(idempotent, bool):
+                errMsgs.append(X_YBA_API_IDEMPOTENT + " must be a boolean in " + location)
+                continue
+            params = path_params + method_details.get("parameters", [])
+            has_key_param = any(resolve_ref(param).get(X_YBA_API_IDEMPOTENCY_KEY) is True
+                                for param in params)
+            if idempotent:
+                if method in ["get", "head", "options", "trace"]:
+                    errMsgs.append(X_YBA_API_IDEMPOTENT + " is set on " + location +
+                                   ", which is not a mutating operation")
+                if not method_details.get("security"):
+                    errMsgs.append(X_YBA_API_IDEMPOTENT + " is set on " + location +
+                                   ", which is not authenticated: keys are scoped per customer")
+                if not has_key_param:
+                    errMsgs.append(X_YBA_API_IDEMPOTENT + " is set on " + location +
+                                   ", which does not declare the Idempotency-Key parameter")
+            elif has_key_param:
+                errMsgs.append(location + " declares the Idempotency-Key parameter without " +
+                               X_YBA_API_IDEMPOTENT + ": true, so the server would ignore it")
+    if errMsgs:
+        raise Exception(", ".join(errMsgs))
+
+
+# resolves a local "#/components/..." reference of the bundled spec
+def resolve_ref(obj):
+    ref = obj.get("$ref") if isinstance(obj, dict) else None
+    if not ref:
+        return obj
+    node = global_openapi_dict
+    for part in ref.lstrip("#/").split("/"):
+        node = node[part]
+    return resolve_ref(node)
+
+
 # checks if any success response of this operation returns a binary payload
 def has_binary_success_response(method_details):
     for status_code, response in method_details.get("responses", {}).items():
@@ -406,6 +460,8 @@ logger.info("Validating " + X_YBA_API_PREFIX + "* vendor extension names")
 validate_vendor_ext_names()
 logger.info("Validating " + X_YBA_API_STREAM_RESPONSE + " in paths")
 process_stream_response_in_paths()
+logger.info("Validating " + X_YBA_API_IDEMPOTENT + " in paths")
+process_idempotent_in_paths()
 remove_internal_components()
 logger.info("Processing paths that are marked 'x-yba-api-visibility: deprecated' or 'preview'")
 process_visibility_in_paths()

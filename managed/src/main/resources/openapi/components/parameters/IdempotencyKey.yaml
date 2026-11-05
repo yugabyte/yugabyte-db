@@ -1,0 +1,19 @@
+name: idempotency-key
+in: header
+description: |
+  Makes the request safe to retry. A unique client-generated value, such as a UUID, for this request.
+
+  The first request with a key runs the operation. If it succeeds, its response is kept for 24 hours
+  (yb.api.idempotency.retention), and a retry with the same key and the same request returns that
+  response with an Idempotent-Replayed: true header, without running the operation again. A retry
+  while the first request is still running gets 409; the same key with a different request gets 422.
+  A failed request does not keep the key, so it can be retried with the same one.
+
+  Keys are scoped to the caller's customer.
+required: false
+schema:
+  type: string
+  minLength: 1
+  maxLength: 255
+example: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+x-yba-api-idempotency-key: true

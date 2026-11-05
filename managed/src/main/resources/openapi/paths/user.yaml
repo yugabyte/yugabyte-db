@@ -15,6 +15,8 @@
     description: 'Adds a local user with a system role to the customer. SuperAdmin users can''t be created this way. With generate_api_token, the response also carries an API token for the new user.'
     tags:
       - User
+    parameters:
+      - $ref: "../components/parameters/IdempotencyKey.yaml"
     requestBody:
       $ref: "../components/requestBodies/UserCreateReq.yaml"
     responses:
@@ -25,7 +27,9 @@
       '401':
         description: 'The request has no valid API or session token, cUUID is not the caller''s customer (including a customer that doesn''t exist), or the caller''s role has no create permission on users'
       '409':
-        description: 'A user with this email already exists, or OIDC SSO creates users automatically on this YBA'
+        description: 'A user with this email already exists, or OIDC SSO creates users automatically on this YBA, or a request with the same Idempotency-Key is still in progress'
+      '422':
+        description: The Idempotency-Key was already used for a different request
       '500':
         description: Server error
     security:
@@ -42,5 +46,6 @@
         resourceLocation:
           path: users
           sourceType: endpoint
+    x-yba-api-idempotent: true
     x-yba-api-since: 2026.2.0.0
     x-yba-api-visibility: preview

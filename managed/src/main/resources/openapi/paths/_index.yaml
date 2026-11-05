@@ -257,6 +257,8 @@
     description: 'Adds a certificate to the customer, such as the root CA for node-to-node and client-to-node encryption in transit. A SelfSigned certificate is a CA certificate with its private key; YBA uses it to sign node and client certificates. The caller either uploads the CA and its key, or omits both and YBA generates them, so that the key never leaves YBA.'
     tags:
       - Certificate
+    parameters:
+      - $ref: "../components/parameters/IdempotencyKey.yaml"
     requestBody:
       $ref: "../components/requestBodies/CertificateCreateReq.yaml"
     responses:
@@ -267,7 +269,9 @@
       '401':
         description: 'The request has no valid API or session token, cUUID is not the caller''s customer (including a customer that doesn''t exist), or the caller''s role has no create permission on the customer'
       '409':
-        description: The customer already has a certificate with this label
+        description: 'The customer already has a certificate with this label, or a request with the same Idempotency-Key is still in progress'
+      '422':
+        description: The Idempotency-Key was already used for a different request
       '500':
         description: Server error
     security:
@@ -284,6 +288,7 @@
         resourceLocation:
           path: customers
           sourceType: endpoint
+    x-yba-api-idempotent: true
     x-yba-api-since: 2026.2.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/auto-yba-backups':
@@ -4802,6 +4807,8 @@
     description: 'Adds a local user with a system role to the customer. SuperAdmin users can''t be created this way. With generate_api_token, the response also carries an API token for the new user.'
     tags:
       - User
+    parameters:
+      - $ref: "../components/parameters/IdempotencyKey.yaml"
     requestBody:
       $ref: "../components/requestBodies/UserCreateReq.yaml"
     responses:
@@ -4812,7 +4819,9 @@
       '401':
         description: 'The request has no valid API or session token, cUUID is not the caller''s customer (including a customer that doesn''t exist), or the caller''s role has no create permission on users'
       '409':
-        description: 'A user with this email already exists, or OIDC SSO creates users automatically on this YBA'
+        description: 'A user with this email already exists, or OIDC SSO creates users automatically on this YBA, or a request with the same Idempotency-Key is still in progress'
+      '422':
+        description: The Idempotency-Key was already used for a different request
       '500':
         description: Server error
     security:
@@ -4829,6 +4838,7 @@
         resourceLocation:
           path: users
           sourceType: endpoint
+    x-yba-api-idempotent: true
     x-yba-api-since: 2026.2.0.0
     x-yba-api-visibility: preview
 /yba-info:

@@ -354,6 +354,8 @@ paths:
         YBA.'
       tags:
       - Certificate
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         $ref: '#/components/requestBodies/CertificateCreateReq'
       responses:
@@ -369,7 +371,10 @@ paths:
             the caller's customer (including a customer that doesn't exist), or the
             caller's role has no create permission on the customer
         '409':
-          description: The customer already has a certificate with this label
+          description: The customer already has a certificate with this label, or
+            a request with the same Idempotency-Key is still in progress
+        '422':
+          description: The Idempotency-Key was already used for a different request
         '500':
           description: Server error
       security:
@@ -386,6 +391,7 @@ paths:
         resourceLocation:
           path: customers
           sourceType: endpoint
+      x-yba-api-idempotent: true
       x-yba-api-since: 2026.2.0.0
       x-yba-api-visibility: preview
   /customers/{cUUID}/auto-yba-backups:
@@ -4695,6 +4701,8 @@ paths:
         the response also carries an API token for the new user.'
       tags:
       - User
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         $ref: '#/components/requestBodies/UserCreateReq'
       responses:
@@ -4709,7 +4717,10 @@ paths:
             caller's role has no create permission on users
         '409':
           description: A user with this email already exists, or OIDC SSO creates
-            users automatically on this YBA
+            users automatically on this YBA, or a request with the same Idempotency-Key
+            is still in progress
+        '422':
+          description: The Idempotency-Key was already used for a different request
         '500':
           description: Server error
       security:
@@ -4726,6 +4737,7 @@ paths:
         resourceLocation:
           path: users
           sourceType: endpoint
+      x-yba-api-idempotent: true
       x-yba-api-since: 2026.2.0.0
       x-yba-api-visibility: preview
 components:
@@ -13227,3 +13239,37 @@ components:
             $ref: '#/components/schemas/UserCreateSpec'
       x-yba-api-since: 2026.2.0.0
       x-yba-api-visibility: preview
+  parameters:
+    IdempotencyKey:
+      name: idempotency-key
+      in: header
+      description: 'Makes the request safe to retry. A unique client-generated value,
+        such as a UUID, for this request.
+
+
+        The first request with a key runs the operation. If it succeeds, its response
+        is kept for 24 hours
+
+        (yb.api.idempotency.retention), and a retry with the same key and the same
+        request returns that
+
+        response with an Idempotent-Replayed: true header, without running the operation
+        again. A retry
+
+        while the first request is still running gets 409; the same key with a different
+        request gets 422.
+
+        A failed request does not keep the key, so it can be retried with the same
+        one.
+
+
+        Keys are scoped to the caller''s customer.
+
+        '
+      required: false
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 255
+      example: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+      x-yba-api-idempotency-key: true
