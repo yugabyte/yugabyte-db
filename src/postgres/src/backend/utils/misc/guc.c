@@ -6614,6 +6614,15 @@ static struct config_real ConfigureNamesReal[] =
 		{"seed", PGC_USERSET, UNGROUPED,
 			gettext_noop("Sets the seed for random-number generation."),
 			NULL,
+			/*
+			 * YB: We don't report this variable to ConnMgr because:
+			 * - Setting this from startup packet is ignored by the check hook
+			 * - Setting this using SET makes the connection sticky
+			 * - Its show hook reports "unavailable", so ConnMgr can't replay
+			 *   it and replaying it would also be wrong as it would reset RNG
+			 *   state.
+			 */
+			GUC_YB_NO_CONN_MGR_REPORT |
 			GUC_NO_SHOW_ALL | GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
 		},
 		&phony_random_seed,
@@ -9591,6 +9600,9 @@ yb_should_report_guc(struct config_generic *record)
 
 	if (YbIsClientYsqlConnMgr())
 	{
+		if (record->flags & GUC_YB_NO_CONN_MGR_REPORT)
+			return false;
+
 		shouldReportGUC =
 			shouldReportGUC ||
 			(record->status & (YB_GUC_VALUE_RESET | YB_GUC_DEFAULT_RESET)) ||
@@ -10322,6 +10334,7 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 				 * set by the user is rolled back
 				 */
 				if (YbIsClientYsqlConnMgr() && changed &&
+					!(gconf->flags & GUC_YB_NO_CONN_MGR_REPORT) &&
 					(gconf->context == PGC_SUSET ||
 					 gconf->context == PGC_USERSET) &&
 					gconf->source == PGC_S_SESSION)
