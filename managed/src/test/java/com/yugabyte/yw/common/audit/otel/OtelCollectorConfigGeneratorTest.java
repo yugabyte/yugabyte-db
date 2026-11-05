@@ -1821,6 +1821,55 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     }
   }
 
+  @Test
+  public void vmConfigEnvCoversPausedAuditExporters() {
+    DataDogConfig dataDog = new DataDogConfig();
+    dataDog.setType(ProviderType.DATA_DOG);
+    dataDog.setSite("datadoghq.com");
+    dataDog.setApiKey("dd-paused-audit-0123456789abcdef");
+    TelemetryProvider auditProvider =
+        createTelemetryProvider(new UUID(0, 1), "dd", ImmutableMap.of(), dataDog);
+
+    SplunkConfig splunk = new SplunkConfig();
+    splunk.setType(ProviderType.SPLUNK);
+    splunk.setEndpoint("https://splunk:8088");
+    splunk.setToken("splunk-active-query-token");
+    TelemetryProvider queryProvider =
+        createTelemetryProvider(new UUID(0, 2), "splunk", ImmutableMap.of(), splunk);
+
+    AuditLogConfig auditLogConfig =
+        createAuditLogConfigWithYSQL(auditProvider.getUuid(), ImmutableMap.of());
+    auditLogConfig.setExportActive(false);
+    QueryLogConfig queryLogConfig =
+        createQueryLogConfig(
+            queryProvider.getUuid(),
+            ImmutableMap.of(),
+            YSQLQueryLogConfig.YSQLLogStatement.ALL,
+            YSQLQueryLogConfig.YSQlLogMinErrorStatement.ERROR,
+            YSQLQueryLogConfig.YSQLLogErrorVerbosity.VERBOSE,
+            false,
+            false,
+            false,
+            false,
+            -1);
+    String vmConfig = generateConfig(auditLogConfig, queryLogConfig, null);
+    // The paused audit exporter is still rendered.
+    assertThat(vmConfig, containsString("_DD_API_KEY}"));
+
+    Map<UUID, TelemetryProvider> providers =
+        ImmutableMap.of(
+            auditProvider.getUuid(), auditProvider, queryProvider.getUuid(), queryProvider);
+    Map<String, String> env = new HashMap<>();
+    for (UUID uuid :
+        OtelCollectorUtil.getVmConfigExporterUuids(
+            TelemetryConfig.of(auditLogConfig, queryLogConfig, null))) {
+      env.putAll(OtelCollectorConfigGenerator.getCredentialEnv(providers.get(uuid)));
+    }
+    String resolved = resolveEnvRefs(vmConfig, env);
+    assertThat(resolved, containsString(dataDog.getApiKey()));
+    assertThat(resolved, containsString(splunk.getToken()));
+  }
+
   /** Resolves ${env:NAME} as the collector does; fails on a reference the env does not carry. */
   private static String resolveEnvRefs(String config, Map<String, String> env) {
     Matcher ref = Pattern.compile("(?<!\\$)\\$\\{env:([A-Za-z_][A-Za-z0-9_]*)\\}").matcher(config);

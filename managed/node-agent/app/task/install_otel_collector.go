@@ -10,11 +10,9 @@ import (
 	"node-agent/app/task/module"
 	pb "node-agent/generated/service"
 	"node-agent/util"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
-	"syscall"
 )
 
 const OtelCollectorService = "otel-collector.service"
@@ -30,6 +28,8 @@ const (
 	otelCollectorInstalledBinary = "otelcol-contrib"
 	// Holds the exporter credentials that config.yml references as ${env:NAME}.
 	otelCollectorSecretEnvFile = "secrets.env"
+	// Env var that carries file content to the shell that writes it.
+	otelColFileContentEnv = "YB_OTEL_FILE_CONTENT"
 )
 
 type InstallOtelCollector struct {
@@ -384,7 +384,6 @@ func (h *InstallOtelCollector) configureOtelCollector(ctx context.Context, ybHom
 	if err := module.RunShellSteps(ctx, h.username, steps, h.logOut); err != nil {
 		return err
 	}
-	// Credentials are written in Go so the values never appear on a command line.
 	if h.param.GetOtelColAwsAccessKey() != "" && h.param.GetOtelColAwsSecretKey() != "" {
 		if err := h.appendAwsCredsBlock(ctx, awsCredsFile); err != nil {
 			return err
@@ -416,14 +415,20 @@ func (h *InstallOtelCollector) secretEnvList() []string {
 }
 
 // writeSecretEnvFile writes the credentials in systemd EnvironmentFile format, readable only by
-// the collector user. An earlier step removes the file, so it must not exist here.
+// the collector user.
 func (h *InstallOtelCollector) writeSecretEnvFile(ctx context.Context, path string) error {
 	var content strings.Builder
 	for _, key := range h.sortedSecretEnvKeys() {
 		value := h.param.GetOtelColSecretEnv()[key]
+		// The file holds one variable per line.
+		if strings.ContainsAny(value, "\r\n") {
+			return fmt.Errorf("credential %s contains a line break", key)
+		}
 		content.WriteString(key + "=" + systemdEnvQuote(value) + "\n")
 	}
-	return h.writeUserFile(ctx, path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600, content.String())
+	cmd := fmt.Sprintf("umask 077 && printf '%%s' \"$%s\" > %s && chmod 600 %s",
+		otelColFileContentEnv, path, path)
+	return h.writeAsUser(ctx, "write-otel-collector-secret-env", cmd, content.String())
 }
 
 // appendAwsCredsBlock appends the collector profile to the AWS credentials file. An earlier
@@ -434,40 +439,17 @@ func (h *InstallOtelCollector) appendAwsCredsBlock(ctx context.Context, path str
 		"aws_access_key_id = " + h.param.GetOtelColAwsAccessKey() + "\n" +
 		"aws_secret_access_key = " + h.param.GetOtelColAwsSecretKey() + "\n" +
 		"# END YB MANAGED BLOCK - OTEL COLLECTOR CREDENTIALS\n"
-	return h.writeUserFile(ctx, path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0440, block)
+	cmd := fmt.Sprintf("umask 077 && printf '%%s' \"$%s\" >> %s && chmod 440 %s",
+		otelColFileContentEnv, path, path)
+	return h.writeAsUser(ctx, "append-otel-collector-creds", cmd, block)
 }
 
-// writeUserFile writes content to path and gives the file to the task user with the mode.
-// O_NOFOLLOW stops a root node-agent from writing through a symlink the user planted.
-func (h *InstallOtelCollector) writeUserFile(
-	ctx context.Context,
-	path string,
-	flag int,
-	mode os.FileMode,
-	content string,
-) error {
-	userDetail, err := util.UserInfo(h.username)
-	if err != nil {
-		return err
-	}
-	file, err := os.OpenFile(path, flag|syscall.O_NOFOLLOW, mode)
-	if err != nil {
-		util.FileLogger().Errorf(ctx, "Error in opening file %s - %s", path, err.Error())
-		return err
-	}
-	defer file.Close()
-	if _, err = file.WriteString(content); err != nil {
-		return err
-	}
-	if err = file.Chmod(mode); err != nil {
-		return err
-	}
-	if !userDetail.IsCurrent {
-		if err = file.Chown(int(userDetail.UserID), int(userDetail.GroupID)); err != nil {
-			return err
-		}
-	}
-	return nil
+// writeAsUser runs cmd as the task user, so a root node-agent cannot follow a symlink the user
+// planted. The content is passed in the env, not on the command line.
+func (h *InstallOtelCollector) writeAsUser(ctx context.Context, desc, cmd, content string) error {
+	env := []string{otelColFileContentEnv + "=" + content}
+	_, err := module.RunShellCmdWithEnv(ctx, h.username, desc, cmd, env, h.logOut)
+	return err
 }
 
 // systemdEnvQuote double-quotes a value for a systemd EnvironmentFile. Inside double quotes,

@@ -58,28 +58,20 @@ func TestWriteSecretEnvFile(t *testing.T) {
 	}
 }
 
-func TestWriteSecretEnvFileRejectsSymlink(t *testing.T) {
+func TestWriteSecretEnvFileRejectsLineBreak(t *testing.T) {
 	currentUser, err := user.Current()
 	if err != nil {
 		t.Fatal(err)
 	}
 	h := NewInstallOtelCollectorHandler(&pb.InstallOtelCollectorInput{
-		OtelColSecretEnv: map[string]string{"YB_OTEL_A_DD_API_KEY": "key"},
+		OtelColSecretEnv: map[string]string{"YB_OTEL_A_DD_API_KEY": "key\n"},
 	}, currentUser.Username)
-	dir := t.TempDir()
-	target := filepath.Join(dir, "target")
-	if err := os.WriteFile(target, []byte("keep"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(dir, otelCollectorSecretEnvFile)
-	if err := os.Symlink(target, path); err != nil {
-		t.Fatal(err)
-	}
+	path := filepath.Join(t.TempDir(), otelCollectorSecretEnvFile)
 	if err := h.writeSecretEnvFile(context.Background(), path); err == nil {
-		t.Fatal("want an error for a symlink, got nil")
+		t.Fatal("want an error for a line break, got nil")
 	}
-	if content, _ := os.ReadFile(target); string(content) != "keep" {
-		t.Errorf("symlink target changed to %q", content)
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Errorf("file written despite the error: %v", err)
 	}
 }
 
@@ -89,8 +81,8 @@ func TestAppendAwsCredsBlock(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := NewInstallOtelCollectorHandler(&pb.InstallOtelCollectorInput{
-		OtelColAwsAccessKey: "AKIA'1",
-		OtelColAwsSecretKey: "se'cret",
+		OtelColAwsAccessKey: "AKIA'1%s",
+		OtelColAwsSecretKey: "se'cret$(id)`id`\\",
 	}, currentUser.Username)
 	path := filepath.Join(t.TempDir(), "credentials")
 	if err := os.WriteFile(path, []byte("[default]\n"), 0600); err != nil {
@@ -113,8 +105,8 @@ func TestAppendAwsCredsBlock(t *testing.T) {
 	want := "[default]\n" +
 		"# BEGIN YB MANAGED BLOCK - OTEL COLLECTOR CREDENTIALS\n" +
 		"[otel-collector]\n" +
-		"aws_access_key_id = AKIA'1\n" +
-		"aws_secret_access_key = se'cret\n" +
+		"aws_access_key_id = AKIA'1%s\n" +
+		"aws_secret_access_key = se'cret$(id)`id`\\\n" +
 		"# END YB MANAGED BLOCK - OTEL COLLECTOR CREDENTIALS\n"
 	if string(content) != want {
 		t.Errorf("content = %q, want %q", content, want)

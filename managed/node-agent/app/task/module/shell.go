@@ -41,7 +41,7 @@ type CommandInfo struct {
 	Desc string
 	Cmd  string
 	Args []string
-	// Env is added to the user environment; it overrides a variable of the same name.
+	// Env is added to the user environment. It cannot override HOME, PWD or the user name vars.
 	Env    []string
 	StdOut util.Buffer
 	StdErr util.Buffer
