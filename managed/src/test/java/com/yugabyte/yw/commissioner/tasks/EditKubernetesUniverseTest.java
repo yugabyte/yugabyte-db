@@ -68,6 +68,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.StateTransitionDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.fabric8.kubernetes.api.model.Pod;
@@ -1953,7 +1954,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
   }
 
   @Test
-  public void testZoneReplaceWithStorageClassChangeKeepsLeavingZoneDisks() {
+  public void testZoneReplaceWithStorageClassChangeKeepsCurrentDisks() {
     setupMasterMoveUniverse(FULL_MOVE_VERSION);
     UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
     TestUtils.updateDeviceInfo(newIntent, ServerType.TSERVER, d -> d.storageClass = "fast");
@@ -1962,14 +1963,95 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
     List<TaskInfo> plan = planEdit(newIntent, pi);
 
-    // az-1 and az-2 move their tservers to the new storage class, so only the leaving az-3
-    // renders, with the storage class its volumes have.
+    // az-1 and az-2 have not moved their tservers to the new storage class yet, and az-3 leaves
+    // the placement, so all three render the StatefulSets and storage class they run with.
     List<TaskInfo> earlySecretUpdate = earlySecretUpdate(plan);
-    assertEquals(ImmutableSet.of("az-3"), azCodes(earlySecretUpdate));
-    JsonNode params = earlySecretUpdate.get(0).getTaskParams();
-    assertFalse(params.path("useNewTserverDeviceInfo").asBoolean());
-    assertFalse(params.path("useNewMasterDeviceInfo").asBoolean());
-    assertFalse(params.hasNonNull("oldTsDiskSize"));
+    assertEquals(ImmutableSet.of("az-1", "az-2", "az-3"), azCodes(earlySecretUpdate));
+    for (TaskInfo t : earlySecretUpdate) {
+      JsonNode params = t.getTaskParams();
+      assertFalse(params.path("useNewTserverDeviceInfo").asBoolean());
+      assertFalse(params.path("useNewMasterDeviceInfo").asBoolean());
+      assertFalse(params.hasNonNull("oldTsDiskSize"));
+      assertEquals(0, helmAZ(t).path("tsStsIndex").asInt());
+    }
+  }
+
+  @Test
+  public void testZoneReplaceWithMasterResizeAndTserverFullMoveKeepsTserverDisks() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
+    int tserverSize = newIntent.deviceInfo.volumeSize;
+    assertNotNull(newIntent.masterDeviceInfo);
+    int masterSize = newIntent.masterDeviceInfo.volumeSize;
+    TestUtils.updateDeviceInfo(newIntent, ServerType.TSERVER, d -> d.storageClass = "fast");
+    TestUtils.updateDeviceInfo(newIntent, ServerType.MASTER, d -> d.volumeSize = masterSize + 10);
+    PlacementInfo pi = zoneReplacePlacement();
+    pi.azStream().forEach(az -> az.tsStsIndex = 1);
+
+    List<TaskInfo> plan = planEdit(newIntent, pi);
+
+    // The masters of az-1 and az-2 are resized before the master move, so they render the saved,
+    // new master size, and only their old tserver StatefulSets keep their size. az-3 leaves the
+    // placement unresized and keeps both.
+    List<TaskInfo> earlySecretUpdate = earlySecretUpdate(plan);
+    assertEquals(ImmutableSet.of("az-1", "az-2", "az-3"), azCodes(earlySecretUpdate));
+    for (TaskInfo t : earlySecretUpdate) {
+      JsonNode params = t.getTaskParams();
+      assertFalse(params.path("useNewTserverDeviceInfo").asBoolean());
+      assertFalse(params.path("useNewMasterDeviceInfo").asBoolean());
+      assertEquals(tserverSize, params.path("oldTsDiskSize").asInt());
+      if (params.path("azCode").asText().equals("az-3")) {
+        assertEquals(masterSize, params.path("oldMasterDiskSize").asInt());
+      } else {
+        assertFalse(params.hasNonNull("oldMasterDiskSize"));
+      }
+    }
+  }
+
+  /** With more AZs than RF, an AZ can keep tservers and no master. */
+  @Test
+  public void testZoneLosingItsMasterInTserverFullMoveGetsNewMasters() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
+    TestUtils.updateDeviceInfo(newIntent, ServerType.TSERVER, d -> d.storageClass = "fast");
+    AvailabilityZone az4 =
+        AvailabilityZone.createOrThrow(
+            Region.getByCode(kubernetesProvider, "region-1"), "az-4", "PlacementAZ 4", "subnet-4");
+    PlacementInfo pi = currentPlacement();
+    pi.azStream().forEach(az -> az.tsStsIndex = 1);
+    PlacementInfoUtil.addPlacementZone(az4.getUuid(), pi, 1, 1, true);
+    // Masters go to the first AZs in order, so listing az-1 last leaves it without one.
+    List<PlacementAZ> azs = pi.cloudList.get(0).regionList.get(0).azList;
+    PlacementAZ az1 = azs.remove(0);
+    az1.replicationFactor = 0;
+    azs.add(az1);
+    String newMasters = expectedMasterAddresses(pi);
+
+    List<TaskInfo> plan = planEdit(newIntent, pi);
+
+    assertEquals(
+        ImmutableList.of("yb-master-0_az-4"),
+        changeMasterConfigs(plan, "AddMaster").stream()
+            .map(t -> t.getTaskParams().path("nodeName").asText())
+            .collect(Collectors.toList()));
+    assertEquals(
+        ImmutableList.of("yb-master-0_az-1"),
+        changeMasterConfigs(plan, "RemoveMaster").stream()
+            .map(t -> t.getTaskParams().path("nodeName").asText())
+            .collect(Collectors.toList()));
+    // az-1 ends with tservers only, still on their old StatefulSet: its Secret gets the new
+    // masters before its own master is removed.
+    List<TaskInfo> earlySecretUpdate = earlySecretUpdate(plan);
+    assertEquals(ImmutableSet.of("az-1", "az-2", "az-3"), azCodes(earlySecretUpdate));
+    TaskInfo az1Render =
+        earlySecretUpdate.stream()
+            .filter(t -> t.getTaskParams().path("azCode").asText().equals("az-1"))
+            .findFirst()
+            .get();
+    assertEquals(newMasters, helmMasterAddresses(az1Render));
+    assertEquals(0, helmAZ(az1Render).path("tsStsIndex").asInt());
+    assertEquals(1, helmAZ(az1Render).path("replicationFactor").asInt());
+    assertFalse(az1Render.getTaskParams().path("useNewTserverDeviceInfo").asBoolean());
   }
 
   @Test

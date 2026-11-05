@@ -408,7 +408,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     Set<UUID> leavingAZs =
         Sets.difference(
             curPlacement.placementInfo.getAllAZUUIDs(), newPlacement.placementInfo.getAllAZUUIDs());
-    if (!azToDiskSizeChangeMap.isEmpty() && !leavingAZs.isEmpty()) {
+    if (!azToDiskSizeChangeMap.isEmpty()
+        && !(leavingAZs.isEmpty() && fullMoveTserverAZs.isEmpty())) {
       persistOriginalDiskSizeInTaskParams(newCluster.uuid);
     }
     if (!azToDiskSizeChangeMap.isEmpty()) {
@@ -549,26 +550,29 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           return masters.values();
         };
     // Before the last master step removes a master, rewrite the gflags Secrets with the new
-    // masters, without restarting pods, so a pod restarted from then on boots with masters that
-    // stay. AZs render at their current counts, which would drop the new master pods of AZs gaining
-    // masters, so those are skipped: creating the pods wrote the AZ's own masters into their
-    // Secrets, and all of those stay. Full-move tserver AZs are skipped too: their old StatefulSets
-    // would need the old disk size when the edit also resizes, and each keeps a master that stays
-    // in its list. A resource change in the edit is safe to render: the partitions stay at the pod
-    // counts, so a pod deleted before its roll comes back at its old revision, and mounts the new
-    // Secret either way.
-    Set<UUID> secretSkipAZs = Sets.union(mastersToAddAzMap.keySet(), fullMoveTserverAZs);
-    // AZs the edit removes keep the disk spec they run with: they skip the resize and the full
-    // move, so the edit's target spec would change their volumeClaimTemplates, which K8s rejects.
+    // masters, without restarting pods, so a pod restarted from then on boots with a list that
+    // names a master that stays. AZs render at their current counts, which would drop the new
+    // master pods of AZs gaining masters, so those are skipped: creating the pods wrote the AZ's
+    // own masters, new ones included, into their Secrets. A resource change in the edit is safe to
+    // render: the partitions stay at the pod counts, so a pod deleted before its roll comes back at
+    // its old revision, and mounts the new Secret either way.
+    Set<UUID> secretSkipAZs = mastersToAddAzMap.keySet();
+    // AZs the edit removes, and the old tserver StatefulSets of full-move tserver AZs, are neither
+    // resized nor moved yet, so the edit's target disk spec would change their
+    // volumeClaimTemplates, which K8s rejects. They keep the spec they run with. A full-move
+    // tserver AZ's master is resized like any other, so only its tserver size is kept.
     Map<UUID, Map<ServerType, Integer>> originalDiskSizes =
         taskParams().getClusterByUuid(newCluster.uuid).getOriginalDiskSize();
     Map<UUID, Map<ServerType, Integer>> keepDiskSpecAZs = new HashMap<>();
-    for (UUID az : Sets.difference(leavingAZs, secretSkipAZs)) {
-      keepDiskSpecAZs.put(
-          az,
+    for (UUID az : Sets.difference(Sets.union(leavingAZs, fullMoveTserverAZs), secretSkipAZs)) {
+      Map<ServerType, Integer> sizes =
           originalDiskSizes == null
-              ? Collections.emptyMap()
-              : originalDiskSizes.getOrDefault(az, Collections.emptyMap()));
+              ? new HashMap<>()
+              : new HashMap<>(originalDiskSizes.getOrDefault(az, Collections.emptyMap()));
+      if (!leavingAZs.contains(az)) {
+        sizes.remove(ServerType.MASTER);
+      }
+      keepDiskSpecAZs.put(az, sizes);
     }
     Runnable updateMasterAddrSecrets =
         propagateMasterAddrs
