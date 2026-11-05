@@ -673,6 +673,13 @@ Status TableInfo::AddTabletUnlocked(const TabletInfoPtr& tablet) {
   }
 
   auto old_tablet = VERIFY_RESULT(PromoteTabletPointer(it->second));
+  if (old_tablet == tablet) {
+    // Defensive: a table id listed twice in a tablet's table_ids used to add the same tablet twice
+    // on load (github issue 34672). TabletLoader::Visit now drops repeated ids, so this is not
+    // expected, but adding the same tablet again is harmless.
+    LOG_WITH_PREFIX(WARNING) << "Tablet " << tablet->id() << " was already added to this table";
+    return Status::OK();
+  }
   auto old_tablet_lock = old_tablet->LockForRead();
   const auto old_split_depth = old_tablet_lock->pb.split_depth();
   if (tablet_meta.split_depth() > old_split_depth || old_tablet_lock->is_deleted()) {
