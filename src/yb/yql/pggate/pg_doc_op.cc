@@ -924,9 +924,16 @@ Status PgDocReadOp::DoPopulateByYbctidOps(const YbctidGenerator& generator, Keep
     auto*& partition_op = partition_ops[partition];
     if (!partition_op) {
       partition_op = &CloneOnePgsqlOp();
+      // For every read operation set partition boundary. In case a tablet is split between
+      // preparing requests and executing them, DocDB will return a paging state for pggate to
+      // continue till the end of current tablet is reached.
+      // The ybctid is within both the request and the partition bounds, so they intersect.
+      const auto has_rows =
+          VERIFY_RESULT(SetLowerUpperBound(&partition_op->read_request(), partition));
+      RSTATUS_DCHECK(has_rows, IllegalState, "Empty read range for partition $0", partition);
+      partition_op->set_active(true);
     }
-    auto& read_op = *partition_op;
-    auto& read_req = read_op.read_request();
+    auto& read_req = partition_op->read_request();
 
     // Append ybctid and its order to batch_arguments.
     // The "ybctid" values are returned in the same order as the row in the IndexTable. To keep
@@ -945,13 +952,6 @@ Status PgDocReadOp::DoPopulateByYbctidOps(const YbctidGenerator& generator, Keep
         arg_value->binary_value() < read_req.ybctid_column_value().value().binary_value()) {
       read_req.mutable_ybctid_column_value()->mutable_value()
           ->ref_binary_value(arg_value->binary_value());
-    }
-
-    // For every read operation set partition boundary. In case a tablet is split between
-    // preparing requests and executing them, DocDB will return a paging state for pggate to
-    // continue till the end of current tablet is reached.
-    if (VERIFY_RESULT(SetLowerUpperBound(&read_req, partition))) {
-      read_op.set_active(true);
     }
   }
 
