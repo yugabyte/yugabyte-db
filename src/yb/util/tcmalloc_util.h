@@ -81,4 +81,12 @@ Status StartTCMallocBackgroundThread();
 
 void SetTCMallocBackgroundReleaseRate(int64_t bytes_per_sec);
 
+// Sets Google TCMalloc's process-wide lookbacks, which every release that is not given its own
+// lookbacks uses, including the background thread's. Zero disables the corresponding lookback.
+void SetTCMallocSkipSubreleaseIntervals(int64_t short_interval_ms, int64_t long_interval_ms);
+
+// Restores the lookbacks that Google TCMalloc had before SetTCMallocSkipSubreleaseIntervals first
+// changed them.
+void RestoreTCMallocSkipSubreleaseIntervals();
+
 }  // namespace yb

@@ -15,6 +15,7 @@
 #include <cstdint>
 #include <limits>
 #include <mutex>
+#include <utility>
 
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
@@ -345,6 +346,37 @@ void SetTCMallocBackgroundReleaseRate(int64_t bytes_per_sec) {
   tcmalloc::MallocExtension::SetBackgroundReleaseRate(
       tcmalloc::MallocExtension::BytesPerSecond{static_cast<size_t>(std::max<int64_t>(
           bytes_per_sec, 0))});
+#endif
+}
+
+#if YB_GOOGLE_TCMALLOC
+namespace {
+
+// TCMalloc's own lookbacks, read before SetTCMallocSkipSubreleaseIntervals first changes them.
+std::pair<absl::Duration, absl::Duration> DefaultSkipSubreleaseIntervals() {
+  static const std::pair<absl::Duration, absl::Duration> intervals{
+      tcmalloc::MallocExtension::GetSkipSubreleaseShortInterval(),
+      tcmalloc::MallocExtension::GetSkipSubreleaseLongInterval()};
+  return intervals;
+}
+
+} // namespace
+#endif
+
+void SetTCMallocSkipSubreleaseIntervals(int64_t short_interval_ms, int64_t long_interval_ms) {
+#if YB_GOOGLE_TCMALLOC
+  DefaultSkipSubreleaseIntervals();
+  tcmalloc::MallocExtension::SetSkipSubreleaseShortInterval(
+      absl::Milliseconds(short_interval_ms));
+  tcmalloc::MallocExtension::SetSkipSubreleaseLongInterval(absl::Milliseconds(long_interval_ms));
+#endif
+}
+
+void RestoreTCMallocSkipSubreleaseIntervals() {
+#if YB_GOOGLE_TCMALLOC
+  const auto [short_interval, long_interval] = DefaultSkipSubreleaseIntervals();
+  tcmalloc::MallocExtension::SetSkipSubreleaseShortInterval(short_interval);
+  tcmalloc::MallocExtension::SetSkipSubreleaseLongInterval(long_interval);
 #endif
 }
 

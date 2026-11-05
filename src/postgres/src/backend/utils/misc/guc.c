@@ -6514,10 +6514,12 @@ static struct config_int ConfigureNamesInt[] =
 
 	{
 		{"yb_tcmalloc_skip_subrelease_short_interval", PGC_SUSET, RESOURCES_MEM,
-			gettext_noop("How far back the release after each statement looks "
-						 "for short-term peaks in demand when it decides which "
-						 "free pages in partially used hugepages to keep "
-						 "instead of returning them to the operating system."),
+			gettext_noop("How far back the release after each statement, and "
+						 "the TCMalloc background thread while the backend is "
+						 "idle, look for short-term peaks in demand when they "
+						 "decide which free pages in partially used hugepages "
+						 "to keep instead of returning them to the operating "
+						 "system."),
 			gettext_noop("0 disables this lookback. Other TCMalloc releases "
 						 "keep TCMalloc's own lookback."),
 			GUC_UNIT_MS | GUC_NOT_IN_SAMPLE
@@ -6529,10 +6531,12 @@ static struct config_int ConfigureNamesInt[] =
 
 	{
 		{"yb_tcmalloc_skip_subrelease_long_interval", PGC_SUSET, RESOURCES_MEM,
-			gettext_noop("How far back the release after each statement looks "
-						 "for the long-term demand trend when it decides which "
-						 "free pages in partially used hugepages to keep "
-						 "instead of returning them to the operating system."),
+			gettext_noop("How far back the release after each statement, and "
+						 "the TCMalloc background thread while the backend is "
+						 "idle, look for the long-term demand trend when they "
+						 "decide which free pages in partially used hugepages "
+						 "to keep instead of returning them to the operating "
+						 "system."),
 			gettext_noop("0 disables this lookback. Other TCMalloc releases "
 						 "keep TCMalloc's own lookback."),
 			GUC_UNIT_MS | GUC_NOT_IN_SAMPLE

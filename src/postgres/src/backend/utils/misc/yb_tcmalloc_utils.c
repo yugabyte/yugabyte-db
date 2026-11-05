@@ -370,7 +370,8 @@ YbReleaseFreeMemoryAfterStartup(void)
  * not wait for it.  Without the release, a backend can keep the pages that a
  * large statement freed for the rest of its lifetime.
  *
- * The lookback GUCs apply to this release only.  The TCMalloc GC that runs
+ * The lookback GUCs apply to this release and to the background thread while
+ * idle (YbSetTCMallocBackgroundReleaseIdle).  The TCMalloc GC that runs
  * during statements keeps TCMalloc's own lookbacks, which hold on to the free
  * pages that cover the statement's recent peak instead of subreleasing them.
  *
@@ -410,10 +411,26 @@ YbMaybeStartTCMallocBackgroundThread(void)
  * Releasing during a statement subreleases pages that the statement then
  * reuses, which splits transparent huge pages and makes the statement fault
  * them back in as 4 KB pages.
+ *
+ * The thread's release uses TCMalloc's process-wide lookbacks, so those are
+ * set to the lookback GUCs while idle.  While a statement runs they are back
+ * at TCMalloc's own values, which the TCMalloc GC that runs during statements
+ * uses.  Each switch changes the lookbacks while the release rate is 0.
  */
 void
 YbSetTCMallocBackgroundReleaseIdle(bool idle)
 {
-	if (yb_tcmalloc_background_thread_started)
-		YBCSetTCMallocBackgroundReleaseRate(idle ? yb_tcmalloc_background_release_rate : 0);
+	if (!yb_tcmalloc_background_thread_started)
+		return;
+	if (idle)
+	{
+		YBCSetTCMallocSkipSubreleaseIntervals(yb_tcmalloc_skip_subrelease_short_interval,
+											  yb_tcmalloc_skip_subrelease_long_interval);
+		YBCSetTCMallocBackgroundReleaseRate(yb_tcmalloc_background_release_rate);
+	}
+	else
+	{
+		YBCSetTCMallocBackgroundReleaseRate(0);
+		YBCRestoreTCMallocSkipSubreleaseIntervals();
+	}
 }
