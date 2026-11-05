@@ -10,11 +10,17 @@ umask 022
 # for the key and wins when the file is loaded; earlier entries for the key
 # (with or without spaces around "=") are removed first so the file stays free
 # of duplicates and repeated runs leave it unchanged.
+# Remove every entry for a sysctl key (with or without spaces around "=")
+# from the given file.
+remove_sysctl_key() {
+  local key_re="${1//./[.]}"
+  sed -i "/^[[:space:]]*${key_re}[[:space:]]*=/d" "$2"
+}
+
 persist_sysctl() {
   local key="$1" value="$2" conf=/etc/sysctl.conf
-  local key_re="${key//./[.]}"
   touch "$conf"
-  sed -i "/^[[:space:]]*${key_re}[[:space:]]*=/d" "$conf"
+  remove_sysctl_key "$key" "$conf"
   # Start on a new line if the file does not end with one.
   if [[ -s "$conf" && -n "$(tail -c 1 "$conf")" ]]; then
     echo >> "$conf"
@@ -136,8 +142,7 @@ EOF
   # systemd-sysctl reads it after /etc/sysctl.conf (99-sysctl.conf), so a stale
   # value left there would win; remove the key from it.
   if [[ -f /etc/sysctl.d/99-vm-max-map-count.conf ]]; then
-    sed -i '/^[[:space:]]*vm[.]max_map_count[[:space:]]*=/d' \
-      /etc/sysctl.d/99-vm-max-map-count.conf
+    remove_sysctl_key vm.max_map_count /etc/sysctl.d/99-vm-max-map-count.conf
   fi
 
   # Apply the changes system-wide
