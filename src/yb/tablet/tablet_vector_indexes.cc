@@ -472,16 +472,23 @@ class VectorIndexBackfillContext {
   }
 
   void Add(Slice ybctid, Slice value) {
-    ybctids_.push_back(arena_.DupSlice(ybctid));
+    AddReverseEntry(ybctid, value);
     entries_.emplace_back(docdb::DocVectorIndexInsertEntry {
       .value = ValueBuffer(value),
       .ybctid = store_payload_ ? KeyBuffer(ybctid) : KeyBuffer(),
     });
   }
 
+  // Keeps only what the reverse mapping entry needs, not the vector.
+  void AddReverseEntry(Slice ybctid, Slice value) {
+    ybctids_.push_back(arena_.DupSlice(ybctid));
+    vector_ids_.push_back(arena_.DupSlice(dockv::EncodedDocVectorValue::FromSlice(value).id));
+  }
+
   void Reset() {
     entries_.clear();
     ybctids_.clear();
+    vector_ids_.clear();
     arena_.Reset(ResetMode::kKeepLast);
   }
 
@@ -497,11 +504,16 @@ class VectorIndexBackfillContext {
     return ybctids_;
   }
 
+  const std::vector<Slice>& vector_ids() const {
+    return vector_ids_;
+  }
+
  private:
   const HybridTime backfill_ht_;
   const bool store_payload_;
   docdb::DocVectorIndexInsertEntries entries_;
   std::vector<Slice> ybctids_;
+  std::vector<Slice> vector_ids_;
   Arena arena_;
 };
 
@@ -554,12 +566,12 @@ class VectorIndexBackfillHelper : public VectorIndexBackfillContext {
   // Returns the number of rows read.
   Result<size_t> RewriteReverseMapping(
       Tablet& tablet, const docdb::DocVectorIndex& index, Slice end_ybctid) {
-    DCHECK(entries().empty());
+    DCHECK(ybctids().empty());
     if (!reverse_mapping_backfiller_ || end_ybctid.empty()) {
       return 0;
     }
     // Nothing is inserted into the vector index, so the batch only bounds the memory taken by the
-    // rows and needs a limit even when the backfill batch has none.
+    // entries and needs a limit even when the backfill batch has none.
     constexpr size_t kMaxBatchSize = 10000;
     const size_t batch_size = max_batch_size_ ? max_batch_size_ : kMaxBatchSize;
     size_t num_rows = 0;
@@ -573,14 +585,14 @@ class VectorIndexBackfillHelper : public VectorIndexBackfillContext {
       if (ybctid.compare(end_ybctid) >= 0) {
         break;
       }
-      if (entries().size() >= batch_size) {
+      if (ybctids().size() >= batch_size) {
         ApplyReverseMapping(tablet);
         Reset();
       }
-      Add(ybctid, reader.current_vector_slice());
+      AddReverseEntry(ybctid, reader.current_vector_slice());
       ++num_rows;
     }
-    if (!entries().empty()) {
+    if (!ybctids().empty()) {
       ApplyReverseMapping(tablet);
       Reset();
     }
@@ -647,14 +659,14 @@ Status ReverseMappingBackfiller::Apply(rocksdb::DirectWriteHandler& handler) {
   DCHECK_ONLY_NOTNULL(context_);
 
   const auto backfill_ht = context_->backfill_ht();
-  const auto& entries = context_->entries();
   const auto& ybctids = context_->ybctids();
-  DCHECK_EQ(entries.size(), ybctids.size());
+  const auto& vector_ids = context_->vector_ids();
+  DCHECK_EQ(vector_ids.size(), ybctids.size());
 
   // Backfiller always uses legacy format, while table-owned vector reverse mapping uses v1 format.
   for (size_t i = 0; i != ybctids.size(); ++i) {
-    docdb::DocVectorIndex::ApplyReverseEntry(
-        handler, ybctids[i], entries[i].value.AsSlice(), DocHybridTime(backfill_ht, 0));
+    docdb::DocVectorIndex::ApplyReverseEntryForVectorId(
+        handler, ybctids[i], vector_ids[i], DocHybridTime(backfill_ht, 0));
   }
   return Status::OK();
 }

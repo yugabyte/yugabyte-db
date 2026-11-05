@@ -108,11 +108,14 @@ class VectorIndexChecker {
       SCHECK_NE(min_running_ht, HybridTime::kInvalid, TryAgain, "Transactions are not loaded yet");
       read_ht = std::min(read_ht, min_running_ht.Decremented());
     }
+    auto index_table = VERIFY_RESULT(tablet_.metadata()->GetTableInfo(vector_index_.table_id()));
+    auto indexed_table = VERIFY_RESULT(
+        tablet_.metadata()->GetTableInfo(index_table->index_info->indexed_table_id()));
     // The backfill writes the reverse mapping entries of a table which does not own them at the
     // index hybrid time, so a read below it would report all the backfilled rows as missing them,
     // e.g. on a lagging follower.
-    if (!stores_payload_ && has_reverse_mapping_ && vector_index_.hybrid_time().is_valid() &&
-        !VERIFY_RESULT(IndexedTableOwnsReverseMapping())) {
+    if (!stores_payload_ && vector_index_.hybrid_time().is_valid() &&
+        !indexed_table->schema().table_properties().owns_vector_reverse_mapping()) {
       SCHECK_GE(read_ht, vector_index_.hybrid_time(), TryAgain,
                 "Read time is below the vector index hybrid time");
     }
@@ -134,7 +137,7 @@ class VectorIndexChecker {
     buckets_.resize(1ULL << (std::bit_width(view_->NumVectors()) / 2));
     reverse_mapping_reader_ = VERIFY_RESULT(vector_index_.context().CreateReverseMappingReader(
         ReadHybridTime::SingleTime(read_ht), nullptr));
-    RETURN_NOT_OK(InitRowIterator(read_ht));
+    RETURN_NOT_OK(InitRowIterator(*indexed_table, read_ht));
 
     result_.set_read_ht(read_ht.ToUint64());
     RETURN_NOT_OK(view_->ForEachVector(make_lw_function(
@@ -149,18 +152,9 @@ class VectorIndexChecker {
     return vector_index_.ToString() + ": ";
   }
 
-  Result<bool> IndexedTableOwnsReverseMapping() const {
-    auto index_table = VERIFY_RESULT(tablet_.metadata()->GetTableInfo(vector_index_.table_id()));
-    auto indexed_table = VERIFY_RESULT(
-        tablet_.metadata()->GetTableInfo(index_table->index_info->indexed_table_id()));
-    return indexed_table->schema().table_properties().owns_vector_reverse_mapping();
-  }
-
-  Status InitRowIterator(HybridTime read_ht) {
-    auto index_table = VERIFY_RESULT(tablet_.metadata()->GetTableInfo(vector_index_.table_id()));
-    const auto& indexed_table_id = index_table->index_info->indexed_table_id();
-    auto indexed_table = VERIFY_RESULT(tablet_.metadata()->GetTableInfo(indexed_table_id));
-    projection_.emplace(indexed_table->schema(), std::array{vector_index_.column_id()});
+  Status InitRowIterator(const TableInfo& indexed_table, HybridTime read_ht) {
+    const auto& indexed_table_id = indexed_table.table_id;
+    projection_.emplace(indexed_table.schema(), std::array{vector_index_.column_id()});
     SCHECK_EQ(projection_->num_value_columns(), 1, IllegalState,
               "Vector column is missing in the projection");
     row_.emplace(*projection_);

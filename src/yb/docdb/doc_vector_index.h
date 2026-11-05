@@ -299,6 +299,11 @@ class DocVectorIndex {
       rocksdb::DirectWriteHandler& handler, Slice ybctid, Slice value, DocHybridTime write_ht,
       ColumnId column_id = kInvalidColumnId, Slice table_key_prefix = {});
 
+  // Same as ApplyReverseEntry, for the encoded vector id, see EncodedDocVectorValue::id.
+  static void ApplyReverseEntryForVectorId(
+      rocksdb::DirectWriteHandler& handler, Slice ybctid, Slice vector_id, DocHybridTime write_ht,
+      ColumnId column_id = kInvalidColumnId, Slice table_key_prefix = {});
+
  private:
   virtual bool ComputeParentDataCompacted() const = 0;
 

@@ -901,12 +901,19 @@ bool DocVectorIndex::ParentDataCompacted() {
 void DocVectorIndex::ApplyReverseEntry(
     rocksdb::DirectWriteHandler& handler, Slice ybctid, Slice value, DocHybridTime write_ht,
     ColumnId column_id, Slice table_key_prefix) {
+  ApplyReverseEntryForVectorId(
+      handler, ybctid, dockv::EncodedDocVectorValue::FromSlice(value).id, write_ht, column_id,
+      table_key_prefix);
+}
+
+void DocVectorIndex::ApplyReverseEntryForVectorId(
+    rocksdb::DirectWriteHandler& handler, Slice ybctid, Slice vector_id, DocHybridTime write_ht,
+    ColumnId column_id, Slice table_key_prefix) {
   if (FLAGS_TEST_vector_index_skip_reverse_mapping_write) {
     return;
   }
   DocHybridTimeBuffer ht_buf;
   auto encoded_write_time = ht_buf.EncodeWithValueType(write_ht);
-  auto vector_id = dockv::EncodedDocVectorValue::FromSlice(value).id;
 
   // Legacy format.
   if (column_id == kInvalidColumnId) {
