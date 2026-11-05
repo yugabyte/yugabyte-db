@@ -95,6 +95,11 @@ func (h *InstallOtelCollector) Handle(ctx context.Context) (*pb.DescribeTaskResp
 		return nil, err
 	}
 	ybUserHome := userInfo.User.HomeDir
+	// Checked before any change, so a bad credential leaves the running collector untouched.
+	if err = h.checkCredentials(); err != nil {
+		util.FileLogger().Error(ctx, err.Error())
+		return nil, err
+	}
 	// 2) Put & setup the otel collector.
 	err = h.execOtelCollectorSetupSteps(ctx, h.param.GetYbHomeDir())
 	if err != nil {
@@ -420,15 +425,29 @@ func (h *InstallOtelCollector) writeSecretEnvFile(ctx context.Context, path stri
 	var content strings.Builder
 	for _, key := range h.sortedSecretEnvKeys() {
 		value := h.param.GetOtelColSecretEnv()[key]
-		// The file holds one variable per line.
-		if strings.ContainsAny(value, "\r\n") {
-			return fmt.Errorf("credential %s contains a line break", key)
-		}
 		content.WriteString(key + "=" + systemdEnvQuote(value) + "\n")
 	}
 	cmd := fmt.Sprintf("umask 077 && printf '%%s' \"$%s\" > %s && chmod 600 %s",
-		otelColFileContentEnv, path, path)
+		otelColFileContentEnv, shellSingleQuote(path), shellSingleQuote(path))
 	return h.writeAsUser(ctx, "write-otel-collector-secret-env", cmd, content.String())
+}
+
+// checkCredentials rejects a credential with a line break. Both credential files hold one
+// value per line, so a line break would add or split lines.
+func (h *InstallOtelCollector) checkCredentials() error {
+	values := map[string]string{
+		"AWS access key": h.param.GetOtelColAwsAccessKey(),
+		"AWS secret key": h.param.GetOtelColAwsSecretKey(),
+	}
+	for key, value := range h.param.GetOtelColSecretEnv() {
+		values[key] = value
+	}
+	for name, value := range values {
+		if strings.ContainsAny(value, "\r\n") {
+			return fmt.Errorf("credential %s contains a line break", name)
+		}
+	}
+	return nil
 }
 
 // appendAwsCredsBlock appends the collector profile to the AWS credentials file. An earlier
@@ -440,7 +459,7 @@ func (h *InstallOtelCollector) appendAwsCredsBlock(ctx context.Context, path str
 		"aws_secret_access_key = " + h.param.GetOtelColAwsSecretKey() + "\n" +
 		"# END YB MANAGED BLOCK - OTEL COLLECTOR CREDENTIALS\n"
 	cmd := fmt.Sprintf("umask 077 && printf '%%s' \"$%s\" >> %s && chmod 440 %s",
-		otelColFileContentEnv, path, path)
+		otelColFileContentEnv, shellSingleQuote(path), shellSingleQuote(path))
 	return h.writeAsUser(ctx, "append-otel-collector-creds", cmd, block)
 }
 

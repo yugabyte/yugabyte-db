@@ -58,20 +58,23 @@ func TestWriteSecretEnvFile(t *testing.T) {
 	}
 }
 
-func TestWriteSecretEnvFileRejectsLineBreak(t *testing.T) {
-	currentUser, err := user.Current()
-	if err != nil {
-		t.Fatal(err)
+func TestCheckCredentialsRejectsLineBreak(t *testing.T) {
+	cases := map[string]*pb.InstallOtelCollectorInput{
+		"secret env": {OtelColSecretEnv: map[string]string{"YB_OTEL_A_DD_API_KEY": "key\n"}},
+		"aws secret": {OtelColAwsAccessKey: "AKIA", OtelColAwsSecretKey: "x\rcredential_process=id"},
 	}
-	h := NewInstallOtelCollectorHandler(&pb.InstallOtelCollectorInput{
-		OtelColSecretEnv: map[string]string{"YB_OTEL_A_DD_API_KEY": "key\n"},
-	}, currentUser.Username)
-	path := filepath.Join(t.TempDir(), otelCollectorSecretEnvFile)
-	if err := h.writeSecretEnvFile(context.Background(), path); err == nil {
-		t.Fatal("want an error for a line break, got nil")
+	for name, input := range cases {
+		if err := NewInstallOtelCollectorHandler(input, "").checkCredentials(); err == nil {
+			t.Errorf("%s: want an error for a line break, got nil", name)
+		}
 	}
-	if _, err := os.Stat(path); !os.IsNotExist(err) {
-		t.Errorf("file written despite the error: %v", err)
+	valid := &pb.InstallOtelCollectorInput{
+		OtelColSecretEnv:    map[string]string{"YB_OTEL_A_DD_API_KEY": "key$1"},
+		OtelColAwsAccessKey: "AKIA",
+		OtelColAwsSecretKey: "se'cret",
+	}
+	if err := NewInstallOtelCollectorHandler(valid, "").checkCredentials(); err != nil {
+		t.Errorf("valid credentials: %v", err)
 	}
 }
 
