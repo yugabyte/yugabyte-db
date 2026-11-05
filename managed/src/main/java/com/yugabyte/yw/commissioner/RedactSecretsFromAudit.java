@@ -15,8 +15,10 @@ import io.ebean.DB;
 import io.ebean.SqlRow;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -123,9 +125,14 @@ public class RedactSecretsFromAudit {
       if (batch.isEmpty()) {
         return;
       }
+      Set<Long> unredactedIds = redactGFlagChangesInAdditionalDetails(batch);
       long currentMaxId = lastProcessedId;
       List<Audit> toUpdate = new ArrayList<>();
       for (Audit audit : batch) {
+        currentMaxId = Math.max(currentMaxId, audit.getId());
+        if (unredactedIds.contains(audit.getId())) {
+          continue;
+        }
         JsonNode payload = audit.getPayload();
         if (payload != null && !payload.isNull() && !payload.isMissingNode()) {
           try {
@@ -143,22 +150,23 @@ public class RedactSecretsFromAudit {
           audit.setLastRedactedVersion(currentChecksum);
           toUpdate.add(audit);
         }
-        currentMaxId = Math.max(currentMaxId, audit.getId());
       }
       if (!toUpdate.isEmpty()) {
         DB.updateAll(toUpdate);
       }
-      redactGFlagChangesInAdditionalDetails(batch);
       lastProcessedId = currentMaxId;
     }
   }
 
   /**
-   * Redacts the sensitive gflag changes that audit entries written by older versions hold in plain
-   * text in additionalDetails. Reads the column with plain SQL for the reason given on {@link
-   * #redact()}.
+   * Redacts the LDAP passwords (ycql_ldap_bind_passwd, and ldapbindpasswd in ysql_hba_conf_csv)
+   * that audit entries written by older versions hold in plain text in the gflag changes in
+   * additionalDetails. Reads the column with plain SQL for the reason given on {@link #redact()}.
+   * Returns the ids of the entries it failed to redact; they must stay unmarked so that the job
+   * retries them once the cursor resets.
    */
-  private void redactGFlagChangesInAdditionalDetails(List<Audit> batch) {
+  private Set<Long> redactGFlagChangesInAdditionalDetails(List<Audit> batch) {
+    Set<Long> unredactedIds = new HashSet<>();
     List<Long> ids = batch.stream().map(Audit::getId).toList();
     List<SqlRow> rows =
         DB.sqlQuery(
@@ -179,7 +187,9 @@ public class RedactSecretsFromAudit {
         }
       } catch (Exception e) {
         log.warn("Failed to redact additional details of audit id {}", id, e);
+        unredactedIds.add(id);
       }
     }
+    return unredactedIds;
   }
 }

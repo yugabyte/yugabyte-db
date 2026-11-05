@@ -4,10 +4,13 @@ package com.yugabyte.yw.commissioner;
 
 import static com.yugabyte.yw.common.RedactingService.SECRET_REPLACEMENT;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.verify;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -26,6 +29,7 @@ import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.MockedStatic;
 import play.libs.Json;
 
 public class RedactSecretsFromAuditTest extends FakeDBApplication {
@@ -66,6 +70,28 @@ public class RedactSecretsFromAuditTest extends FakeDBApplication {
             .asText());
     assertEquals(otherChange, Audit.getFromTaskUUID(otherTask).getAdditionalDetails());
     assertNull(Audit.getFromTaskUUID(noDetailsTask).getAdditionalDetails());
+  }
+
+  @Test
+  public void testLeavesEntryUnmarkedWhenAdditionalDetailsFail() {
+    ObjectNode failingChange = gflagChange("ycql_ldap_bind_passwd", "oldSecret", "newSecret");
+    UUID failingTask = createAudit(failingChange);
+    UUID otherTask = createAudit(gflagChange("ycql_ldap_bind_passwd", "secret1", "secret2"));
+    DB.sqlUpdate("UPDATE audit SET last_redacted_version = 0").execute();
+
+    try (MockedStatic<RedactingService> redacting =
+        mockStatic(RedactingService.class, CALLS_REAL_METHODS)) {
+      redacting
+          .when(() -> RedactingService.redactAuditGFlagChanges(failingChange))
+          .thenThrow(new RuntimeException("injected"));
+      runRedaction();
+    }
+
+    assertEquals(0, Audit.getFromTaskUUID(failingTask).getLastRedactedVersion());
+    assertNotEquals(0, Audit.getFromTaskUUID(otherTask).getLastRedactedVersion());
+    assertEquals(
+        gflagChange("ycql_ldap_bind_passwd", SECRET_REPLACEMENT, SECRET_REPLACEMENT),
+        Audit.getFromTaskUUID(otherTask).getAdditionalDetails());
   }
 
   private void runRedaction() {

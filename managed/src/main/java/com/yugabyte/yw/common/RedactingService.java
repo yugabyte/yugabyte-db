@@ -1037,11 +1037,12 @@ public class RedactingService {
   }
 
   /**
-   * Redacts sensitive gflag values in the additionalDetails of an audit entry, for storing or
-   * logging it. Each changed gflag there is a {"name", "old", "new", "default"} object, so the
-   * key-based LOGS redaction never sees the values. A parse-error fallback written by an earlier
-   * redaction holds the gflag changes only as text, so it is replaced whole when it names a
-   * sensitive gflag.
+   * Redacts the LDAP passwords in the gflag changes in the additionalDetails of an audit entry, for
+   * storing or logging it: ycql_ldap_bind_passwd, and ldapbindpasswd in ysql_hba_conf_csv. Other
+   * sensitive gflags are not covered. Each changed gflag there is a {"name", "old", "new",
+   * "default"} object, so the key-based LOGS redaction never sees the values. A parse-error
+   * fallback written by an earlier redaction holds the gflag changes only as text, so it is
+   * replaced whole when it names ycql_ldap_bind_passwd.
    */
   public static JsonNode redactAuditGFlagChanges(JsonNode additionalDetails) {
     if (additionalDetails == null || !additionalDetails.isObject()) {
