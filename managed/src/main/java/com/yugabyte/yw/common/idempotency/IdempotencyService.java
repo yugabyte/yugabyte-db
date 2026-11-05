@@ -96,10 +96,31 @@ public class IdempotencyService {
     this.platformScheduler = platformScheduler;
   }
 
-  /** Schedules the periodic removal of expired keys. */
+  /**
+   * Releases the keys of requests that a restart cut off, and schedules the periodic removal of
+   * expired keys. Called once at startup, before requests are served.
+   */
   public void start() {
+    releaseInProgressKeys();
     platformScheduler.schedule(
         getClass().getSimpleName(), Duration.ZERO, CLEANUP_INTERVAL, this::deleteExpiredKeys);
+  }
+
+  /**
+   * YBA runs one active process, so at startup every in-progress key belongs to a request that died
+   * with the previous process. Its client lost the response and will retry: release the key so the
+   * retry runs now instead of getting 409 until the in-progress timeout.
+   */
+  @VisibleForTesting
+  public void releaseInProgressKeys() {
+    try {
+      int released = ApiIdempotencyKey.deleteInProgress();
+      if (released > 0) {
+        log.info("Released {} idempotency keys of requests interrupted by a restart", released);
+      }
+    } catch (Exception e) {
+      log.error("Failed to release in-progress idempotency keys", e);
+    }
   }
 
   @VisibleForTesting
@@ -233,11 +254,13 @@ public class IdempotencyService {
       }
       Duration inProgressTimeout =
           confGetter.getGlobalConf(GlobalConfKeys.idempotencyKeyInProgressTimeout);
-      if (plus(used.getUpdateTime(), inProgressTimeout).before(now) && takeOver(used, now)) {
+      Date abandonedAt = used.getUpdateTime();
+      if (plus(abandonedAt, inProgressTimeout).before(now)
+          && takeOver(used, now, plus(now, retention))) {
         log.warn(
             "Taking over idempotency key {}: its request started at {} and never finished",
             key,
-            used.getUpdateTime());
+            abandonedAt);
         return new Claim(used, null);
       }
       throw new PlatformServiceException(
@@ -248,19 +271,24 @@ public class IdempotencyService {
         CONFLICT, "A concurrent request is using " + IDEMPOTENCY_KEY_HEADER + " " + key);
   }
 
-  /** Claims an abandoned in-progress key, unless another request claimed it first. */
-  private static boolean takeOver(ApiIdempotencyKey used, Date now) {
+  /**
+   * Claims an abandoned in-progress key, unless another request claimed it first. The retention
+   * restarts with the new claim, so that its response is kept as long as any other.
+   */
+  private static boolean takeOver(ApiIdempotencyKey used, Date now, Date expireTime) {
     int updated =
         DB.sqlUpdate(
-                "UPDATE api_idempotency_key SET update_time = :now"
+                "UPDATE api_idempotency_key SET update_time = :now, expire_time = :expireTime"
                     + " WHERE uuid = :uuid AND state = :state AND update_time = :updateTime")
             .setParameter("now", now)
+            .setParameter("expireTime", expireTime)
             .setParameter("uuid", used.getUuid())
             .setParameter("state", State.IN_PROGRESS.name())
             .setParameter("updateTime", used.getUpdateTime())
             .execute();
     if (updated == 1) {
       used.setUpdateTime(now);
+      used.setExpireTime(expireTime);
       return true;
     }
     return false;

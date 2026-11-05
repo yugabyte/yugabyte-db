@@ -2546,7 +2546,8 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Idempotency key in-progress timeout",
           "How long a request sent with an Idempotency-Key header holds the key while it runs."
               + " Until then a concurrent request with the same key gets 409; after it, the key"
-              + " is considered abandoned (e.g. YBA restarted mid-request) and can be reused.",
+              + " is considered abandoned and a retry of the same request runs it again. A"
+              + " different request with the key still gets 422 until the retention ends.",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 }

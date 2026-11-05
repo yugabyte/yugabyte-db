@@ -206,6 +206,10 @@ parameters:
   - $ref: "../components/parameters/IdempotencyKey.yaml"
 x-yba-api-idempotent: true
 
+Do not mark an operation whose response carries a secret (a generated API token, a private key):
+the response is stored as is for the retention period (yb.api.idempotency.retention), and a stored
+secret would defeat YBA's hash-only storage of credentials.
+
 That parameter carries "x-yba-api-idempotency-key: true", which keeps it out of the generated
 server method signatures: the controller implementation never sees it. Document the extra 409 and
 422 responses on the operation. openapi_process_vendor_ext.py rejects an operation that has one of

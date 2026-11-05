@@ -4701,8 +4701,6 @@ paths:
         the response also carries an API token for the new user.'
       tags:
       - User
-      parameters:
-      - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         $ref: '#/components/requestBodies/UserCreateReq'
       responses:
@@ -4717,10 +4715,7 @@ paths:
             caller's role has no create permission on users
         '409':
           description: A user with this email already exists, or OIDC SSO creates
-            users automatically on this YBA, or a request with the same Idempotency-Key
-            is still in progress
-        '422':
-          description: The Idempotency-Key was already used for a different request
+            users automatically on this YBA
         '500':
           description: Server error
       security:
@@ -4737,7 +4732,6 @@ paths:
         resourceLocation:
           path: users
           sourceType: endpoint
-      x-yba-api-idempotent: true
       x-yba-api-since: 2026.2.0.0
       x-yba-api-visibility: preview
 components:

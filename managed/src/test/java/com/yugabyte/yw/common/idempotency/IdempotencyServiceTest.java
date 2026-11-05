@@ -95,4 +95,17 @@ public class IdempotencyServiceTest extends FakeDBApplication {
     assertEquals(State.IN_PROGRESS, current.getState());
     assertEquals(takenOverAt, current.getUpdateTime());
   }
+
+  @Test
+  public void startupReleasesOnlyInProgressKeys() {
+    claim("interrupted");
+    IdempotencyService.complete(claim("done"), Results.ok(Json.newObject()));
+
+    app.injector().instanceOf(IdempotencyService.class).releaseInProgressKeys();
+
+    assertTrue(ApiIdempotencyKey.find(customer.getUuid(), "interrupted").isEmpty());
+    assertEquals(
+        State.COMPLETED,
+        ApiIdempotencyKey.find(customer.getUuid(), "done").orElseThrow().getState());
+  }
 }

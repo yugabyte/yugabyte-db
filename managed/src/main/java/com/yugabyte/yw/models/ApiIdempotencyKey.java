@@ -4,7 +4,6 @@ package com.yugabyte.yw.models;
 
 import io.ebean.Finder;
 import io.ebean.Model;
-import io.ebean.annotation.Encrypted;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -55,7 +54,9 @@ public class ApiIdempotencyKey extends Model {
 
   private String responseContentType;
 
-  @Encrypted private String responseBody;
+  // Stored as is: an operation whose response carries a secret must not be made idempotent, see
+  // x-yba-api-idempotent in openapi_templates/server/README.txt.
+  private String responseBody;
 
   private Date createTime;
 
@@ -77,5 +78,10 @@ public class ApiIdempotencyKey extends Model {
   /** Deletes the rows whose retention ended before {@code now}; returns how many were deleted. */
   public static int deleteExpired(Date now) {
     return find.query().where().lt("expire_time", now).delete();
+  }
+
+  /** Deletes the rows of requests still in progress; returns how many were deleted. */
+  public static int deleteInProgress() {
+    return find.query().where().eq("state", State.IN_PROGRESS).delete();
   }
 }

@@ -18,8 +18,8 @@ CREATE TABLE IF NOT EXISTS api_idempotency_key (
     state                 VARCHAR(16)   NOT NULL,
     response_status       INTEGER,
     response_content_type VARCHAR(255),
-    -- Encrypted at rest by Ebean's @Encrypted: responses can carry generated secrets.
-    response_body         bytea,
+    -- Stored as is: operations whose responses carry secrets are not made idempotent.
+    response_body         TEXT,
     create_time           TIMESTAMP     NOT NULL,
     update_time           TIMESTAMP     NOT NULL,
     expire_time           TIMESTAMP     NOT NULL,

@@ -145,24 +145,6 @@ public class IdempotencyKeyApiTest extends FakeDBApplication {
   }
 
   @Test
-  public void keyReusedOnAnotherOperationIsRejected() {
-    createCert(certSpec("root"), KEY);
-    ObjectNode userSpec = Json.newObject();
-    userSpec.set("spec", Json.newObject().put("email", "u@example.com").put("role", "Admin"));
-    userSpec.put("password", "Passw0rd#123");
-
-    Http.RequestBuilder request =
-        Helpers.fakeRequest("POST", "/api/v2/customers/" + customerUuid + "/users")
-            .bodyJson(userSpec)
-            .header(TokenAuthenticator.API_TOKEN_HEADER, apiToken)
-            .header(IdempotencyService.IDEMPOTENCY_KEY_HEADER, KEY);
-    Result reused = assertPlatformException(() -> Helpers.route(app, request));
-
-    assertEquals(UNPROCESSABLE_ENTITY, reused.status());
-    assertTrue(contentAsString(reused), contentAsString(reused).contains("/certificates"));
-  }
-
-  @Test
   public void failedRequestReleasesTheKey() {
     ObjectNode invalid = certSpec("root").put("cert_content", "not a certificate\n");
     Result failed = assertPlatformException(() -> createCert(invalid, KEY));
@@ -199,6 +181,9 @@ public class IdempotencyKeyApiTest extends FakeDBApplication {
     assertEquals(1, CertificateInfo.getAll(customerUuid).size());
     ApiIdempotencyKey key = ApiIdempotencyKey.find(customerUuid, KEY).orElseThrow();
     assertEquals(ApiIdempotencyKey.State.COMPLETED, key.getState());
+    // The retention restarts with the takeover: the abandoned claim's expiry was an hour away.
+    long retentionLeft = key.getExpireTime().getTime() - System.currentTimeMillis();
+    assertTrue(String.valueOf(retentionLeft), retentionLeft > 23 * 3600 * 1000L);
   }
 
   @Test
@@ -254,32 +239,6 @@ public class IdempotencyKeyApiTest extends FakeDBApplication {
       assertEquals(key, BAD_REQUEST, result.status());
     }
     assertTrue(CertificateInfo.getAll(customerUuid).isEmpty());
-  }
-
-  @Test
-  public void generatedSecretsAreReplayedButStoredEncrypted() {
-    ObjectNode body = Json.newObject();
-    body.set("spec", Json.newObject().put("email", "u@example.com").put("role", "Admin"));
-    body.put("password", "Passw0rd#123").put("generate_api_token", true);
-    Http.RequestBuilder request =
-        Helpers.fakeRequest("POST", "/api/v2/customers/" + customerUuid + "/users")
-            .bodyJson(body)
-            .header(TokenAuthenticator.API_TOKEN_HEADER, apiToken)
-            .header(IdempotencyService.IDEMPOTENCY_KEY_HEADER, KEY);
-
-    Result first = Helpers.route(app, request);
-    Result retry = Helpers.route(app, request);
-
-    assertEquals(contentAsString(first), OK, first.status());
-    String token = Json.parse(contentAsString(first)).get("api_token").asText();
-    assertFalse(token.isEmpty());
-    assertEquals(token, Json.parse(contentAsString(retry)).get("api_token").asText());
-    byte[] stored =
-        (byte[])
-            DB.sqlQuery("SELECT response_body FROM api_idempotency_key")
-                .findOne()
-                .get("response_body");
-    assertFalse("stored encrypted", new String(stored).contains(token));
   }
 
   private void claimInProgress(String key, Date updateTime) {
