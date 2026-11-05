@@ -24,6 +24,7 @@ import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.models.ApiIdempotencyKey;
 import com.yugabyte.yw.models.ApiIdempotencyKey.State;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import io.ebean.DB;
@@ -185,14 +186,19 @@ public class IdempotencyService {
     if (existingTask.isPresent()) {
       Duration retention = confGetter.getGlobalConf(GlobalConfKeys.idempotencyKeyRetention);
       boolean recent = plus(existingTask.get().getCreateTime(), retention).after(new Date());
-      // A task that failed or was aborted has nothing left to follow, e.g. one whose submission
-      // failed validation or found the executor full: the retry runs the operation again.
-      boolean followable = !TaskInfo.ERROR_STATES.contains(existingTask.get().getTaskState());
-      if (recent && followable) {
+      Optional<CustomerTask> customerTask = CustomerTask.maybeGet(taskUUID);
+      // The task was started unless it failed while being submitted (param validation, a full
+      // executor): that fails the request before its handler records the CustomerTask, and
+      // leaves nothing to follow. A started task is followable even once it failed or was
+      // aborted: a restart fails it (PLATFORM_RESTARTED) or aborts it (PLATFORM_SHUTDOWN) and may
+      // retry it under a new UUID, and running the operation again would duplicate it.
+      boolean started =
+          customerTask.isPresent()
+              || !TaskInfo.ERROR_STATES.contains(existingTask.get().getTaskState());
+      if (recent && started) {
         // An earlier request with this key submitted the task, but its response was never stored:
         // YBA restarted, or the operation failed after submitting. Point the client at the task
-        // instead of submitting a second one. A task YBA retries after a restart keeps its UUID
-        // and is followable again.
+        // instead of submitting a second one.
         release(claim.record);
         ObjectNode error = Json.newObject();
         error.put(
@@ -203,11 +209,14 @@ public class IdempotencyService {
                 + key
                 + ", follow it instead of retrying");
         error.put("task_uuid", taskUUID.toString());
+        customerTask
+            .flatMap(IdempotencyService::latestRetry)
+            .ifPresent(retry -> error.put("latest_task_uuid", retry.toString()));
         throw new PlatformServiceException(CONFLICT, error);
       }
-      // A failed task, or one from a use of the key that expired: the derived UUID is taken, so
-      // this request's task gets a random one. Reusing it would make TaskExecutor reset and rerun
-      // the old task instead of creating a new one.
+      // A task that failed while being submitted, or one from a use of the key that expired: the
+      // derived UUID is taken, so this request's task gets a random one. Reusing it would make
+      // TaskExecutor reset and rerun the old task instead of creating a new one.
       taskUUID = null;
     }
 
@@ -227,6 +236,37 @@ public class IdempotencyService {
       release(claim.record);
     }
     return result;
+  }
+
+  /**
+   * The newest retry of {@code original}, if YBA or a user retried it (e.g. YBA's automatic retry
+   * of a task aborted by a shutdown), so that the client follows the task that is actually running.
+   * Retries are separate customer tasks on the same target, whose task params name the original.
+   */
+  private static Optional<UUID> latestRetry(CustomerTask original) {
+    return CustomerTask.find
+        .query()
+        .where()
+        .eq("customer_uuid", original.getCustomerUUID())
+        .eq("target_uuid", original.getTargetUUID())
+        .eq("type", original.getType())
+        .gt("create_time", original.getCreateTime())
+        .orderBy("create_time desc")
+        .setMaxRows(10)
+        .findList()
+        .stream()
+        .filter(retry -> original.getTaskUUID().equals(originalTaskUuid(retry.getTaskUUID())))
+        .map(CustomerTask::getTaskUUID)
+        .findFirst();
+  }
+
+  private static UUID originalTaskUuid(UUID taskUUID) {
+    return TaskInfo.maybeGet(taskUUID)
+        .map(TaskInfo::getTaskParams)
+        .map(params -> params.get("originalTaskUUID"))
+        .filter(node -> node.isTextual() && !node.asText().isEmpty())
+        .map(node -> UUID.fromString(node.asText()))
+        .orElse(null);
   }
 
   /**

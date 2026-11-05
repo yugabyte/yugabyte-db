@@ -25,6 +25,7 @@ import com.yugabyte.yw.models.ApiIdempotencyKey;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -44,6 +45,7 @@ import play.test.Helpers;
 /** X-IDEMPOTENCY-KEY handling, exercised through the v2 operations that opt into it. */
 public class IdempotencyKeyApiTest extends FakeDBApplication {
 
+  private static final UUID TARGET_UUID = UUID.fromString("0f6c1a2b-3c4d-4e5f-8a9b-0c1d2e3f4a5b");
   private static final String KEY = "6f1c4d0e-1d3b-4c55-9a4e-0f7f8f6f9b11";
 
   private UUID customerUuid;
@@ -264,20 +266,77 @@ public class IdempotencyKeyApiTest extends FakeDBApplication {
   }
 
   @Test
-  public void failedTaskDoesNotBlockTheKey() {
+  public void taskThatFailedWhileBeingSubmittedDoesNotBlockTheKey() {
     // An earlier request's task failed when it was submitted, e.g. on validation, so the request
-    // failed and released the key; the failed task is left under the derived UUID.
-    UUID taskUuid = IdempotencyService.taskUuidFor(customerUuid, KEY);
-    TaskInfo task = new TaskInfo(TaskType.CreateBackup, taskUuid);
-    task.setTaskParams(Json.newObject());
-    task.setOwner("");
-    task.setTaskState(TaskInfo.State.Failure);
-    task.save();
+    // failed before recording a customer task and released the key.
+    task(IdempotencyService.taskUuidFor(customerUuid, KEY), TaskInfo.State.Failure, null);
 
     Result retry = createCert(certSpec("root"), KEY);
 
     assertEquals(contentAsString(retry), OK, retry.status());
     assertEquals(1, CertificateInfo.getAll(customerUuid).size());
+  }
+
+  @Test
+  public void taskFailedByARestartIsReportedInsteadOfRunningAgain() {
+    // The earlier request's task started, then YBA restarted and failed it (PLATFORM_RESTARTED).
+    UUID taskUuid = IdempotencyService.taskUuidFor(customerUuid, KEY);
+    task(taskUuid, TaskInfo.State.Failure, null);
+    customerTask(taskUuid);
+
+    Result retry = assertPlatformException(() -> createCert(certSpec("root"), KEY));
+
+    assertEquals(CONFLICT, retry.status());
+    JsonNode error = Json.parse(contentAsString(retry)).get("error");
+    assertEquals(taskUuid.toString(), error.get("task_uuid").asText());
+    assertFalse(error.has("latest_task_uuid"));
+    assertTrue(CertificateInfo.getAll(customerUuid).isEmpty());
+  }
+
+  @Test
+  public void taskRetriedAfterAShutdownIsReportedWithItsRetry() {
+    // A shutdown aborted the task and YBA retried it automatically under a new UUID.
+    UUID taskUuid = IdempotencyService.taskUuidFor(customerUuid, KEY);
+    task(taskUuid, TaskInfo.State.Aborted, null);
+    customerTask(taskUuid);
+    UUID retryUuid = UUID.randomUUID();
+    task(retryUuid, TaskInfo.State.Running, taskUuid);
+    customerTask(retryUuid);
+    DB.sqlUpdate(
+            "UPDATE customer_task SET create_time = create_time + interval '1 second'"
+                + " WHERE task_uuid = :uuid")
+        .setParameter("uuid", retryUuid)
+        .execute();
+
+    Result retry = assertPlatformException(() -> createCert(certSpec("root"), KEY));
+
+    assertEquals(CONFLICT, retry.status());
+    JsonNode error = Json.parse(contentAsString(retry)).get("error");
+    assertEquals(taskUuid.toString(), error.get("task_uuid").asText());
+    assertEquals(retryUuid.toString(), error.get("latest_task_uuid").asText());
+    assertTrue(CertificateInfo.getAll(customerUuid).isEmpty());
+  }
+
+  private static void task(UUID uuid, TaskInfo.State state, UUID originalTaskUuid) {
+    TaskInfo task = new TaskInfo(TaskType.CreateBackup, uuid);
+    ObjectNode params = Json.newObject();
+    if (originalTaskUuid != null) {
+      params.put("originalTaskUUID", originalTaskUuid.toString());
+    }
+    task.setTaskParams(params);
+    task.setOwner("");
+    task.setTaskState(state);
+    task.save();
+  }
+
+  private void customerTask(UUID taskUuid) {
+    CustomerTask.create(
+        Customer.get(customerUuid),
+        TARGET_UUID,
+        taskUuid,
+        CustomerTask.TargetType.Backup,
+        CustomerTask.TaskType.Create,
+        "universe-1");
   }
 
   @Test

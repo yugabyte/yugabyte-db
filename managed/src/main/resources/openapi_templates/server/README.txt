@@ -212,7 +212,10 @@ it.
 
 If the operation submits a task, the first task it submits without an explicit UUID gets the UUID
 derived from the key (IdempotencyService.taskUuidFor, picked up in Commissioner.submit), so that
-clients can follow it without the response and a retry after a restart can't submit it twice.
+clients can follow it without the response. A retry that finds the task started (it has a
+CustomerTask, or hasn't failed) gets 409 pointing at it, and at its newest retry if YBA retried it
+after a restart, instead of running the operation twice. Only a task that failed while being
+submitted lets the retry run again.
 
 Do not mark an operation whose response carries a secret (a generated API token, a private key):
 the response is stored as is for the retention period (yb.api.idempotency.retention), and a stored
