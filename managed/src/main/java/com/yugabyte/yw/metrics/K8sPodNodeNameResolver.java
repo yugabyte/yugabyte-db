@@ -11,9 +11,9 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -116,6 +116,8 @@ public class K8sPodNodeNameResolver {
       }
       boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
       boolean isReadReplica = cluster.clusterType == ClusterType.ASYNC;
+      Map<UUID, Map<String, String>> zoneConfigs =
+          KubernetesUtil.getConfigPerProviderZone(provider);
       for (Region region : provider.getRegions()) {
         for (AvailabilityZone az : region.getZones()) {
           String azName = isMultiAZ ? az.getCode() : null;
@@ -135,7 +137,7 @@ public class K8sPodNodeNameResolver {
                     isMultiAZ,
                     nodePrefix,
                     azName,
-                    CloudInfoInterface.fetchEnvVars(az),
+                    zoneConfigs.get(az.getUuid()),
                     newNamingStyle,
                     isReadReplica);
           } catch (Exception e) {
