@@ -2,6 +2,7 @@
 package com.yugabyte.yw.common;
 
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import java.util.Map;
@@ -91,6 +92,17 @@ public class IntentProviderInitializer implements ProviderInitializer {
       userIntent.masterDeviceInfo = new DeviceInfo();
     }
     mutator.accept(userIntent.masterDeviceInfo);
+    return this;
+  }
+
+  @Override
+  public ProviderInitializer setNodeResourceSpec(
+      UserIntent.K8SNodeResourceSpec resourceSpec, UniverseTaskBase.ServerType serverType) {
+    if (serverType == UniverseTaskBase.ServerType.TSERVER) {
+      userIntent.tserverK8SNodeResourceSpec = resourceSpec;
+    } else {
+      userIntent.masterK8SNodeResourceSpec = resourceSpec;
+    }
     return this;
   }
 

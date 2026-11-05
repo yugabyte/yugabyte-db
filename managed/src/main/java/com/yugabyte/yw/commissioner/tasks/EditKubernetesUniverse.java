@@ -450,25 +450,42 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         instanceTypeChanged = true;
       }
     } else {
-      boolean tserverCpuChanged =
-          !curIntent.tserverK8SNodeResourceSpec.cpuCoreCount.equals(
-              newIntent.tserverK8SNodeResourceSpec.cpuCoreCount);
-      boolean tserverMemChanged =
-          !curIntent.tserverK8SNodeResourceSpec.memoryGib.equals(
-              newIntent.tserverK8SNodeResourceSpec.memoryGib);
+      UUID providerUUID = Util.getSingleProviderUUID(curIntent);
+      boolean tserverCpuChanged = false;
+      boolean tserverMemChanged = false;
+      UserIntent.K8SNodeResourceSpec curTserverK8SNodeResourceSpec =
+          curIntent.getTserverK8SNodeResourceSpec(providerUUID);
+      UserIntent.K8SNodeResourceSpec newTserverK8SNodeResourceSpec =
+          newIntent.getTserverK8SNodeResourceSpec(providerUUID);
+      if (curTserverK8SNodeResourceSpec != null && newTserverK8SNodeResourceSpec != null) {
+        tserverCpuChanged =
+            !Objects.equals(
+                curTserverK8SNodeResourceSpec.cpuCoreCount,
+                newTserverK8SNodeResourceSpec.cpuCoreCount);
+
+        tserverMemChanged =
+            !Objects.equals(
+                curTserverK8SNodeResourceSpec.memoryGib, newTserverK8SNodeResourceSpec.memoryGib);
+      }
+
       boolean masterMemChanged = false;
       boolean masterCpuChanged = false;
 
+      UserIntent.K8SNodeResourceSpec curMasterK8SNodeResourceSpec =
+          curIntent.getMasterK8SNodeResourceSpec(providerUUID);
+      UserIntent.K8SNodeResourceSpec newMasterK8SNodeResourceSpec =
+          newIntent.getMasterK8SNodeResourceSpec(providerUUID);
       // For clusters that have read replicas, this condition is true since we
       // do not pass in masterK8sNodeResourceSpec.
-      if (curIntent.masterK8SNodeResourceSpec != null
-          && newIntent.masterK8SNodeResourceSpec != null) {
-        masterMemChanged =
-            !curIntent.masterK8SNodeResourceSpec.memoryGib.equals(
-                newIntent.masterK8SNodeResourceSpec.memoryGib);
+      if (curMasterK8SNodeResourceSpec != null && newMasterK8SNodeResourceSpec != null) {
         masterCpuChanged =
-            !curIntent.masterK8SNodeResourceSpec.cpuCoreCount.equals(
-                newIntent.masterK8SNodeResourceSpec.cpuCoreCount);
+            !Objects.equals(
+                curMasterK8SNodeResourceSpec.cpuCoreCount,
+                newMasterK8SNodeResourceSpec.cpuCoreCount);
+
+        masterMemChanged =
+            !Objects.equals(
+                curMasterK8SNodeResourceSpec.memoryGib, newMasterK8SNodeResourceSpec.memoryGib);
       }
       instanceTypeChanged =
           tserverCpuChanged || masterCpuChanged || tserverMemChanged || masterMemChanged;
