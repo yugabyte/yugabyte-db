@@ -67,6 +67,7 @@ import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
+import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.controllers.handlers.KubernetesOverridesHandler;
@@ -142,6 +143,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
   @Inject private FileCollectionDownloader fileCollectionDownloader;
   @Inject private LocalhostAccessChecker localhostChecker;
   @Inject private KubernetesOverridesHandler kubernetesOverridesHandler;
+  @Inject private MetricService metricService;
 
   private static final String RELEASES_PATH = "yb.releases.path";
 
@@ -799,6 +801,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
         nodeInstance.delete();
       }
       Universe.delete(universe.getUniverseUUID());
+      metricService.markSourceRemoved(customer.getUuid(), universe.getUniverseUUID());
     } else {
       throw new PlatformServiceException(
           BAD_REQUEST,

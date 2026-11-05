@@ -65,6 +65,16 @@ public class MetricQueryHelper {
   public static final String CONTAINER_METRIC_PREFIX = "container";
   public static final String KUBELET_VOLUME_METRIC_PREFIX = "kubelet_volume";
   public static final String CONTAINER_VOLUME_METRIC_PREFIX = "container_volume";
+  public static final String K8S_METRIC_PREFIX = "k8s";
+  public static final String K8S_VOLUME_METRIC_PREFIX = "k8s_volume";
+
+  /** The series a metrics.yml key reads: a pod's cAdvisor series, a volume claim's, or neither. */
+  public enum KubernetesKind {
+    POD,
+    VOLUME,
+    NONE
+  }
+
   private static final String NODE_PREFIX = "node_prefix";
   public static final String NAMESPACE = "namespace";
   public static final String EXPORTED_INSTANCE = "exported_instance";
@@ -185,14 +195,18 @@ public class MetricQueryHelper {
           metricQueryParams.isRecharts());
     }
 
-    // Given we have a limitation on not being able to rename the pod labels in
-    // kubernetes cadvisor metrics, we try to see if the metric being queried is for
-    // container or not, and use pod_name vs exported_instance accordingly.
-    // Expect for container metrics, all the metrics would with node_prefix and exported_instance.
-    boolean hasContainerMetric =
-        metricSettingsMap.keySet().stream().anyMatch(s -> s.startsWith(CONTAINER_METRIC_PREFIX));
-    String universeFilterLabel = hasContainerMetric ? NAMESPACE : NODE_PREFIX;
-    String nodeFilterLabel = hasContainerMetric ? POD_NAME : EXPORTED_INSTANCE;
+    // Choosing filters per key, since cAdvisor and kubelet series have no node_prefix and one
+    // request can mix them with node keys.
+    Map<String, String> nodeFilters = new LinkedHashMap<>();
+    Map<String, String> k8sFilters = new LinkedHashMap<>();
+    // Kept apart from k8sFilters so the container keys keep their tserver-only pod pattern.
+    Map<String, String> k8sKeyDefaultFilters = new LinkedHashMap<>();
+    // DB-container filter for the container keys only, set when nodes are selected; a k8s key
+    // names its own containers.
+    String dbContainerFilter = null;
+    boolean hasKubernetesKey =
+        metricSettingsMap.keySet().stream()
+            .anyMatch(key -> getKubernetesKind(key) != KubernetesKind.NONE);
 
     ObjectNode filterJson = Json.newObject();
     if (StringUtils.isEmpty(metricQueryParams.getNodePrefix())) {
@@ -200,7 +214,8 @@ public class MetricQueryHelper {
           customer.getUniverses().stream()
               .map((universe -> universe.getUniverseDetails().nodePrefix))
               .collect(Collectors.joining("|"));
-      filterJson.put(universeFilterLabel, universePrefixes);
+      nodeFilters.put(NODE_PREFIX, universePrefixes);
+      k8sFilters.put(NAMESPACE, universePrefixes);
     } else {
       final String nodePrefix = metricQueryParams.getNodePrefix();
       List<Universe> universes =
@@ -262,7 +277,7 @@ public class MetricQueryHelper {
         }
       }
       // Check if it is a Kubernetes deployment.
-      if (hasContainerMetric) {
+      if (hasKubernetesKey) {
 
         boolean newNamingStyle = universe.getUniverseDetails().useNewHelmNamingStyle;
 
@@ -270,6 +285,7 @@ public class MetricQueryHelper {
           Set<String> podNames = new HashSet<>();
           Set<String> containerNames = new HashSet<>();
           Set<String> pvcNames = new HashSet<>();
+          Set<String> dataClaimNames = new HashSet<>();
           Set<String> namespaces = new HashSet<>();
           for (NodeDetails node : nodesToFilter) {
             String podName = node.getK8sPodName();
@@ -279,19 +295,22 @@ public class MetricQueryHelper {
             podNames.add(podName);
             containerNames.add(containerName);
             pvcNames.add(pvcName);
+            dataClaimNames.add("(.*)datadir[0-9]+-" + podName);
             namespaces.add(namespace);
           }
-          filterJson.put(nodeFilterLabel, StringUtils.join(podNames, '|'));
-          filterJson.put(CONTAINER_NAME, StringUtils.join(containerNames, '|'));
-          filterJson.put(PVC, StringUtils.join(pvcNames, '|'));
-          filterJson.put(universeFilterLabel, StringUtils.join(namespaces, '|'));
+          k8sFilters.put(POD_NAME, StringUtils.join(podNames, '|'));
+          dbContainerFilter = StringUtils.join(containerNames, '|');
+          k8sFilters.put(PVC, StringUtils.join(pvcNames, '|'));
+          k8sFilters.put(NAMESPACE, StringUtils.join(namespaces, '|'));
+          k8sKeyDefaultFilters.put(PVC, StringUtils.join(dataClaimNames, '|'));
         } else {
-          filterJson.put(
-              universeFilterLabel, getNamespacesFilter(universe, nodePrefix, newNamingStyle));
+          k8sFilters.put(NAMESPACE, getNamespacesFilter(universe, nodePrefix, newNamingStyle));
           // Check if the universe is using newNamingStyle.
           if (newNamingStyle) {
             Set<String> nodePrefixes = new HashSet<String>();
+            Set<String> podPatterns = new HashSet<>();
             Set<String> tserverClaimPatterns = new HashSet<>();
+            Set<String> claimPatterns = new HashSet<>();
             for (Cluster cluster : universe.getUniverseDetails().clusters) {
               Provider provider = Util.getSingleProvider(cluster);
               for (Region r : provider.getRegions()) {
@@ -308,26 +327,46 @@ public class MetricQueryHelper {
                           cluster.clusterType == ClusterType.ASYNC,
                           newNamingStyle);
                   nodePrefixes.add(helmRelease + "-yb-tserver-(.*)");
+                  podPatterns.add(helmRelease + "-yb-(master|tserver)-(.*)");
                   tserverClaimPatterns.add("(.*)-" + helmRelease + "-yb-tserver-(.*)");
+                  claimPatterns.add(
+                      "(.*)datadir[0-9]+-" + helmRelease + "-yb-(master|tserver)-(.*)");
                 }
               }
             }
-            filterJson.put(nodeFilterLabel, StringUtils.join(nodePrefixes, '|'));
+            k8sFilters.put(POD_NAME, StringUtils.join(nodePrefixes, '|'));
             // Kubelet volume series carry no pod name, so the claim selects this universe's pods.
-            filterJson.put(PVC, StringUtils.join(tserverClaimPatterns, '|'));
+            k8sFilters.put(PVC, StringUtils.join(tserverClaimPatterns, '|'));
+            k8sKeyDefaultFilters.put(POD_NAME, StringUtils.join(podPatterns, '|'));
+            k8sKeyDefaultFilters.put(PVC, StringUtils.join(claimPatterns, '|'));
+          } else {
+            k8sKeyDefaultFilters.put(PVC, "(.*)datadir[0-9]+-yb-(master|tserver)-(.*)");
           }
         }
-      } else {
-        filterJson.put(universeFilterLabel, metricQueryParams.getNodePrefix());
-        if (CollectionUtils.isNotEmpty(nodesToFilter)) {
-          Set<String> nodeNames =
-              nodesToFilter.stream().map(NodeDetails::getNodeName).collect(Collectors.toSet());
-          filterJson.put(nodeFilterLabel, StringUtils.join(nodeNames, '|'));
-        }
-
-        filterOverrides.putAll(
-            getFilterOverrides(customer, nodePrefix, metricSettingsMap.keySet()));
       }
+      nodeFilters.put(NODE_PREFIX, metricQueryParams.getNodePrefix());
+      if (CollectionUtils.isNotEmpty(nodesToFilter)) {
+        Set<String> nodeNames =
+            nodesToFilter.stream().map(NodeDetails::getNodeName).collect(Collectors.toSet());
+        nodeFilters.put(EXPORTED_INSTANCE, StringUtils.join(nodeNames, '|'));
+      }
+      filterOverrides.putAll(getFilterOverrides(customer, nodePrefix, metricSettingsMap.keySet()));
+    }
+    for (String metricKey : metricSettingsMap.keySet()) {
+      KubernetesKind kind = getKubernetesKind(metricKey);
+      Map<String, String> keyFilters = new LinkedHashMap<>();
+      if (kind == KubernetesKind.NONE) {
+        keyFilters.putAll(nodeFilters);
+      } else {
+        keyFilters.putAll(k8sFilters);
+        if (metricKey.startsWith(K8S_METRIC_PREFIX)) {
+          keyFilters.putAll(k8sKeyDefaultFilters);
+        } else if (dbContainerFilter != null) {
+          keyFilters.put(CONTAINER_NAME, dbContainerFilter);
+        }
+      }
+      keyFilters.putAll(filterOverrides.getOrDefault(metricKey, Map.of()));
+      filterOverrides.put(metricKey, keyFilters);
     }
     if (StringUtils.isNotEmpty(metricQueryParams.getTableName())) {
       filterJson.put("table_name", metricQueryParams.getTableName());
@@ -673,6 +712,18 @@ public class MetricQueryHelper {
             .allMatch(metricSettings -> isPlatformMetric(metricSettings.getMetric()));
 
     return isAllMetricsPlatformLevel && isAllMetricsWithSettingsPlatformLevel;
+  }
+
+  public static KubernetesKind getKubernetesKind(String metricKey) {
+    if (metricKey.startsWith(K8S_VOLUME_METRIC_PREFIX)
+        || metricKey.startsWith(CONTAINER_VOLUME_METRIC_PREFIX)
+        || metricKey.startsWith(KUBELET_VOLUME_METRIC_PREFIX)) {
+      return KubernetesKind.VOLUME;
+    }
+    if (metricKey.startsWith(K8S_METRIC_PREFIX) || metricKey.startsWith(CONTAINER_METRIC_PREFIX)) {
+      return KubernetesKind.POD;
+    }
+    return KubernetesKind.NONE;
   }
 
   public static String getDataMountPoints(Universe universe) {
