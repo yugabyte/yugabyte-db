@@ -5,6 +5,18 @@ bin_path="/usr/local/bin"
 # systemd) must be able to read /etc/systemd/{system,user}.conf and similar.
 umask 022
 
+# Set a sysctl key now and save it in /etc/sysctl.conf so it survives a reboot
+# or `sysctl --system`. Any existing entry for the key (with or without spaces
+# around "=") is removed first; otherwise an older entry, such as the RHEL
+# systemd-coredump core_pattern, wins the next time the file is loaded.
+persist_sysctl() {
+  local key="$1" value="$2"
+  local key_re="${key//./[.]}"
+  sed -i "/^[[:space:]]*${key_re}[[:space:]]*=/d" /etc/sysctl.conf
+  echo "${key}=${value}" >> /etc/sysctl.conf
+  sysctl -w "${key}=${value}"
+}
+
 {% if os_distribution == "ubuntu" %}
 # Ubuntu's apport service rewrites kernel.core_pattern when it starts, clobbering
 # the value sysctl loads from /etc/sysctl.conf and breaking YB core dump capture.
@@ -71,27 +83,11 @@ ulimit -u {{ nproc_limit }}
 
 
 # Configure kernel settings
-# Set and persist vm.swappiness
-if ! grep -q "^vm.swappiness" /etc/sysctl.conf; then
-  echo "vm.swappiness={{ vm_swappiness }}" >> /etc/sysctl.conf
-else
-  sed -i "s/^vm.swappiness.*/vm.swappiness={{ vm_swappiness }}/" /etc/sysctl.conf
-fi
-sysctl -w vm.swappiness={{ vm_swappiness }}
+persist_sysctl vm.swappiness "{{ vm_swappiness }}"
 
 if [[ "$is_cloud" == "False" ]]; then
-  # Set and persist kernel.core_pattern. Drop any existing entry (e.g. the
-  # RHEL systemd-coredump pattern) before appending ours; otherwise sysctl -w
-  # only changes the live value and the old entry wins on the next reboot or
-  # sysctl --system.
-  sed -i '/^[[:space:]]*kernel\.core_pattern[[:space:]]*=/d' /etc/sysctl.conf
-  echo "kernel.core_pattern={{ kernel_core_pattern }}" >> /etc/sysctl.conf
-  sysctl -w kernel.core_pattern={{ kernel_core_pattern }}
-
-  # Set and persist vm.max_map_count, replacing any existing entry.
-  sed -i '/^[[:space:]]*vm\.max_map_count[[:space:]]*=/d' /etc/sysctl.conf
-  echo "vm.max_map_count={{ vm_max_map_count }}" >> /etc/sysctl.conf
-  sysctl -w vm.max_map_count={{ vm_max_map_count }}
+  persist_sysctl kernel.core_pattern "{{ kernel_core_pattern }}"
+  persist_sysctl vm.max_map_count "{{ vm_max_map_count }}"
 fi
 
 if [[ "$is_cloud" == "True" ]]; then
@@ -127,15 +123,7 @@ EOF
   CORE_DIR="{{ yb_home_dir }}/cores"
   CORE_PATTERN="|$CORE_SCRIPT $CORE_DIR/core_yb.%t.%e.%p"
 
-  # Apply the core pattern temporarily
-  sysctl -w kernel.core_pattern="$CORE_PATTERN"
-
-  # Update or append kernel.core_pattern in /etc/sysctl.conf
-  if grep -q "^kernel.core_pattern=" /etc/sysctl.conf; then
-      sed -i "s#^kernel.core_pattern=.*#kernel.core_pattern=$CORE_PATTERN#" /etc/sysctl.conf
-  else
-      echo "kernel.core_pattern=$CORE_PATTERN" | tee -a /etc/sysctl.conf > /dev/null
-  fi
+  persist_sysctl kernel.core_pattern "$CORE_PATTERN"
 
   # Check if the setting exists with correct value in either location
   if ! grep -q "^vm.max_map_count=" /etc/sysctl.conf 2>/dev/null && \
