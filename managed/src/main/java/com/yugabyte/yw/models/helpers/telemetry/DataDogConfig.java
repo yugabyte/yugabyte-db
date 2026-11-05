@@ -72,7 +72,7 @@ public class DataDogConfig extends TelemetryProviderConfig {
       response =
           apiHelper.getRequest(validationUrl(site), Collections.singletonMap("DD-API-KEY", apiKey));
     } catch (Exception e) {
-      log.error("Encountered error while validating Datadog API Key: {}", e.getMessage());
+      log.error("Encountered error while validating Datadog API Key", e);
       throw new PlatformServiceException(BAD_REQUEST, VALIDATION_ERROR);
     }
     if (response == null || !response.path("valid").asBoolean(false)) {

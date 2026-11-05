@@ -322,7 +322,8 @@ libraryDependencies ++= Seq(
   "io.zonky.test.postgres" % "embedded-postgres-binaries-darwin-arm64v8" % "14.5.0" % Test,
   "org.springframework" % "spring-test" % "5.3.9" % Test,
   "com.yugabyte" % "yba-client-v2" % "1.8.14" % Test,
-  // yba-client-v2's ApiClient registers MultiPartFeature, but its POM does not declare it.
+  // yba-client-v2's ApiClient registers MultiPartFeature. The POM it installs is the shade
+  // plugin's dependency-reduced one, which drops all compile deps, so declare this one here.
   "org.glassfish.jersey.media" % "jersey-media-multipart" % "2.41" % Test,
   "io.fabric8" % "kubernetes-server-mock" % "6.14.0" % Test
 )
