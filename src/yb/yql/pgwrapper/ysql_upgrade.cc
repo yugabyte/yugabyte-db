@@ -32,13 +32,19 @@
 using namespace std::literals;
 
 DEFINE_RUNTIME_int32(ysql_upgrade_migration_max_retries, 10,
-    "Maximum number of times YSQL upgrade re-runs a migration script that failed with a "
-    "serialization failure (SQLSTATE 40001), such as a read restart or a conflict caused by "
-    "concurrent DDL. 0 disables retries.");
+    "Maximum number of times YSQL upgrade re-runs a migration script that failed with an error "
+    "caused by concurrent activity: a serialization failure (SQLSTATE 40001) such as a read "
+    "restart or a conflict with concurrent DDL, or a deadlock. 0 disables retries.");
 
 DEFINE_test_flag(int32, ysql_upgrade_fail_migration_attempts, 0,
     "Make the first N attempts of each migration script fail: after the script's own statements "
-    "have committed, a new transaction block raises a read restart error and is left aborted.");
+    "have committed, a new transaction block runs TEST_ysql_upgrade_fail_migration_sql, which is "
+    "expected to fail and leave the block aborted.");
+
+DEFINE_test_flag(string, ysql_upgrade_fail_migration_sql,
+    "DO $$ BEGIN RAISE EXCEPTION 'Injected error' USING ERRCODE = 'YB002'; END $$;",
+    "SQL run by TEST_ysql_upgrade_fail_migration_attempts. The default raises YB002, the "
+    "internal read restart code.");
 
 namespace yb {
 namespace pgwrapper {
@@ -209,12 +215,33 @@ bool IsNonSqlFile(const std::string& filename) {
   return !boost::algorithm::iends_with(filename, ".sql");
 }
 
-// A migration can lose a read restart or a conflict to concurrent DDL in the same database, and
-// the query layer can't retry it when the script is a multi-statement query or has already sent
-// a notice to the client. Notices are flushed immediately and count as data sent; e.g. ALTER
-// EXTENSION emits "'extension' is a beta feature!" unless ysql_beta_feature_extension is set.
-// Migrations are required to be idempotent (see ysql_migrations/README.md), so re-run the whole
-// script.
+// Errors that a migration can hit because of concurrent user activity, and that a re-run of the
+// script can succeed past:
+// - 40001: a read restart or a conflict with concurrent DDL in the same database.
+// - 40P01: a deadlock on row locks.
+// - XX000 with "aborted due to a deadlock": a deadlock on global object locks, e.g. a script that
+//   replaces several system views in one transaction and a user transaction that reads those
+//   views in a different order (#33275). AcquireObjectLocksGlobalRpc::ProcessResponse
+//   (client-internal.cc) appends the deadlock status's message to a TryAgain status but drops its
+//   TransactionError code, so this deadlock doesn't reach the client as 40P01. The text comes from
+//   the deadlock detector (deadlock_detector.cc).
+bool IsRetryableMigrationError(const Status& status) {
+  switch (PgsqlError(status).value()) {
+    case YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE:
+    case YBPgErrorCode::YB_PG_T_R_DEADLOCK_DETECTED:
+      return true;
+    case YBPgErrorCode::YB_PG_INTERNAL_ERROR:
+      return status.message().ToBuffer().find("aborted due to a deadlock") != std::string::npos;
+    default:
+      return false;
+  }
+}
+
+// The query layer can't retry a failed migration when the script is a multi-statement query or
+// has already sent a notice to the client. Notices are flushed immediately and count as data
+// sent; e.g. ALTER EXTENSION emits "'extension' is a beta feature!" unless
+// ysql_beta_feature_extension is set. Migrations are required to be idempotent (see
+// ysql_migrations/README.md), so re-run the whole script.
 Status ExecuteMigration(
     PGConn* pgconn, const std::string& migration_content, const std::string& migration_name) {
   CoarseBackoffWaiter waiter(CoarseTimePoint::max(), 2s /* max_wait */);
@@ -222,16 +249,12 @@ Status ExecuteMigration(
     auto script = migration_content;
     if (attempt < FLAGS_TEST_ysql_upgrade_fail_migration_attempts) {
       // COMMIT ends the script's trailing implicit block; otherwise BEGIN would absorb it and the
-      // failure would roll it back. YB002 is the internal read restart code, which the client
-      // sees as 40001 only while yb_enable_extended_sql_codes is off.
-      script += "\nCOMMIT;\nBEGIN;\n"
-                "DO $$ BEGIN RAISE EXCEPTION 'Injected read restart' "
-                "USING ERRCODE = 'YB002'; END $$;\n";
+      // failure would roll it back.
+      script += "\nCOMMIT;\nBEGIN;\n" + FLAGS_TEST_ysql_upgrade_fail_migration_sql + "\n";
     }
     auto status = pgconn->Execute(
         script, /*show_query_in_error=*/false, /*ignore_empty_query=*/true);
-    if (status.ok() ||
-        PgsqlError(status) != YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE ||
+    if (status.ok() || !IsRetryableMigrationError(status) ||
         attempt >= FLAGS_ysql_upgrade_migration_max_retries) {
       return status;
     }
@@ -267,8 +290,9 @@ class YsqlUpgradeHelper::DatabaseEntry {
   Result<std::shared_ptr<pgwrapper::PGConn>> MakeConnection() {
     auto pgconn = std::make_shared<pgwrapper::PGConn>(VERIFY_RESULT(conn_builder_.Connect()));
     RETURN_NOT_OK(pgconn->Execute("SET ysql_upgrade_mode TO true;"));
-    // ExecuteMigration retries on 40001. A database or role setting that enables extended codes
-    // would turn read restarts and conflicts into YB00x codes and silently disable that retry.
+    // ExecuteMigration retries on 40001 and 40P01. A database or role setting that enables
+    // extended codes would turn read restarts, conflicts and deadlocks into YB00x codes and
+    // silently disable that retry.
     RETURN_NOT_OK(pgconn->Execute("SET yb_enable_extended_sql_codes TO false"));
     // Use snapshot isolation mode during YSQL upgrade. This is needed as a simple work
     // around so that we do not start subtransactions during YSQL upgrade. Otherwise the
