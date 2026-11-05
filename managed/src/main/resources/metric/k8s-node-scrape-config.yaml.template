@@ -72,7 +72,7 @@
     # Only keep the metrics which we care about
     - source_labels: ["__name__"]
       regex: "container_cpu_usage_seconds_total|container_memory_working_set_bytes|\
-        container_spec_memory_limit_bytes|container_memory_cache"
+        container_spec_memory_limit_bytes|container_memory_cache|container_memory_usage_bytes"
       action: keep
     # Save the name of the metric so we can group_by since we cannot by __name__ directly...
     - source_labels: ["__name__"]
