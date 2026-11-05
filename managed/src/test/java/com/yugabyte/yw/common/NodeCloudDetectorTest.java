@@ -172,7 +172,9 @@ public class NodeCloudDetectorTest {
     FakeNode node = new FakeNode();
     node.imdsV2Token = "bad token";
     node.awsInstanceId = "i-0abc123";
-    // The token is unusable, so no probe may carry it; the v1 fallback still identifies AWS.
+    node.requireImdsV2 = true;
+    // The token is unusable, so no probe may carry it. Issuing one still identifies AWS, even on an
+    // instance that refuses IMDSv1.
     assertEquals(CloudType.aws, detect(node));
     assertTrue(
         node.commands.stream()
@@ -181,14 +183,13 @@ public class NodeCloudDetectorTest {
   }
 
   @Test
-  public void testUnidentifiedImdsV2NodeIsUnknown() {
+  public void testImdsV2NodeIsAwsWhenItsInstanceIdCannotBeRead() {
     FakeNode node = new FakeNode();
-    // The token is unusable and the instance refuses IMDSv1, so nothing reads its instance ID.
-    node.imdsV2Token = "bad token";
-    node.awsInstanceId = "i-0abc123";
+    node.imdsV2Token = "AQAEALtq_token_value";
     node.requireImdsV2 = true;
-    // It issued a token, so it is a cloud VM: calling it onprem would silently skip federation.
-    assertNull(detect(node));
+    // The instance-ID read fails, but only AWS issues the token: calling the node onprem would
+    // silently skip its federation.
+    assertEquals(CloudType.aws, detect(node));
   }
 
   @Test
