@@ -17,7 +17,7 @@ type: indexpage
 
   {{<index/item
     title="Advanced capabilities"
-    body="Deploy advanced capabilities for your YugabyteDB universe."
+    body="Enable and configure capabilities that extend your YugabyteDB universe."
     href="../additional-features/"
     icon="fa-thin fa-raygun">}}
 

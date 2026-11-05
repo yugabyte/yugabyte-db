@@ -4,7 +4,11 @@ package com.yugabyte.yw.common;
 
 import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
+import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -17,6 +21,7 @@ import com.yugabyte.yw.models.Region;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
@@ -34,6 +39,8 @@ public class CloudQueryHelperTest extends FakeDBApplication {
   @Mock ShellProcessHandler shellProcessHandler;
 
   @Mock RuntimeConfGetter mockConfGetter;
+
+  @Mock HostCloudDetector hostCloudDetector;
 
   private Customer defaultCustomer;
   private Provider defaultProvider;
@@ -79,6 +86,7 @@ public class CloudQueryHelperTest extends FakeDBApplication {
       case machine_image:
         return cloudQueryHelper.queryImage(regionUUID, "yb-image");
       default:
+        when(hostCloudDetector.getHostCloud()).thenReturn(Optional.of(Common.CloudType.aws));
         return cloudQueryHelper.getCurrentHostInfo(Common.CloudType.aws);
     }
   }
@@ -130,6 +138,49 @@ public class CloudQueryHelperTest extends FakeDBApplication {
     JsonNode json = runCommand(defaultRegion.getUuid(), true, CommandType.host_info);
     assertErrorNodeValue(
         json, "YBCloud command query (current-host) failed to execute. Unknown error occurred");
+  }
+
+  @Test
+  public void testGetHostInfoSuccessIsCached() {
+    runCommand(defaultRegion.getUuid(), false, CommandType.host_info);
+    JsonNode json = cloudQueryHelper.getCurrentHostInfo(Common.CloudType.aws);
+    assertValue(json, "foo", "bar");
+    verify(shellProcessHandler, times(1)).run(anyList(), any(ShellProcessContext.class));
+  }
+
+  @Test
+  public void testGetHostInfoFailureIsCachedForAWhile() {
+    runCommand(defaultRegion.getUuid(), true, CommandType.host_info);
+    JsonNode json = cloudQueryHelper.getCurrentHostInfo(Common.CloudType.aws);
+    assertErrorNodeValue(
+        json, "YBCloud command query (current-host) failed to execute. Unknown error occurred");
+    verify(shellProcessHandler, times(1)).run(anyList(), any(ShellProcessContext.class));
+  }
+
+  @Test
+  public void testGetHostInfoIsRetriedOnceAFailureExpires() {
+    cloudQueryHelper.hostInfoFailureTtl = Duration.ZERO;
+    // ybops reports an unreachable metadata service as a string.
+    ShellResponse unreachable = new ShellResponse();
+    unreachable.code = 0;
+    unreachable.message = "\"Unable to auto-discover AWS provider information\"";
+    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class)))
+        .thenReturn(unreachable);
+    when(hostCloudDetector.getHostCloud()).thenReturn(Optional.of(Common.CloudType.aws));
+    assertEquals(
+        "Unable to auto-discover AWS provider information",
+        cloudQueryHelper.getCurrentHostInfo(Common.CloudType.aws).asText());
+    JsonNode json = runCommand(defaultRegion.getUuid(), false, CommandType.host_info);
+    assertValue(json, "foo", "bar");
+    verify(shellProcessHandler, times(2)).run(anyList(), any(ShellProcessContext.class));
+  }
+
+  @Test
+  public void testGetHostInfoOfAnotherCloudSkipsYbops() {
+    when(hostCloudDetector.getHostCloud()).thenReturn(Optional.of(Common.CloudType.aws));
+    JsonNode json = cloudQueryHelper.getCurrentHostInfo(Common.CloudType.gcp);
+    assertEquals("Unable to auto-discover GCP provider information", json.asText());
+    verify(shellProcessHandler, never()).run(anyList(), any(ShellProcessContext.class));
   }
 
   @Test

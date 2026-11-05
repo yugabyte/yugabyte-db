@@ -42,6 +42,7 @@
 #include "yb/client/client-internal.h"
 #include "yb/client/client-test-util.h"
 #include "yb/client/client.h"
+#include "yb/client/client_master_rpc.h"
 #include "yb/client/client_utils.h"
 #include "yb/client/error.h"
 #include "yb/client/client_error.h"
@@ -59,6 +60,7 @@
 #include "yb/client/xcluster_client.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/dockv/doc_key.h"
 #include "yb/dockv/partial_row.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
@@ -722,6 +724,98 @@ TEST_F_EX(ClientTest, TestBadKeyRanges, ClientTestNoCluster) {
   }, "Invalid table partition list");
 }
 
+namespace {
+
+std::vector<size_t> SelectedPartitions(
+    const std::vector<std::string>& partitions, const std::vector<std::string>& prefixes) {
+  boost::dynamic_bitset<> mask(partitions.size());
+  for (const auto& prefix : prefixes) {
+    CHECK_OK(SelectPartitionsForPartitionKeyPrefix(partitions, prefix, mask));
+  }
+  std::vector<size_t> result;
+  for (size_t i = 0; i != mask.size(); ++i) {
+    if (mask[i]) {
+      result.push_back(i);
+    }
+  }
+  return result;
+}
+
+std::string HashPartitionKey(uint16_t hash) {
+  return PartitionSchema::EncodeMultiColumnHashValue(hash);
+}
+
+std::string RangeKey(
+    std::initializer_list<int32_t> values, SortOrder sort_order = SortOrder::kAscending) {
+  dockv::KeyEntryValues components;
+  for (auto value : values) {
+    components.push_back(dockv::KeyEntryValue::Int32(value, sort_order));
+  }
+  return dockv::DocKey(std::move(components)).Encode().ToStringBuffer();
+}
+
+// Encoded leading range components without the closing group end.
+std::string RangeKeyPrefix(
+    std::initializer_list<int32_t> values, SortOrder sort_order = SortOrder::kAscending) {
+  auto key = RangeKey(values, sort_order);
+  key.pop_back();
+  return key;
+}
+
+} // namespace
+
+TEST_F_EX(ClientTest, SelectPartitionsForHashPartitionKeys, ClientTestNoCluster) {
+  const std::vector<std::string> partitions = {
+      "", HashPartitionKey(0x4000), HashPartitionKey(0x8000), HashPartitionKey(0xC000)};
+  using Partitions = std::vector<size_t>;
+  ASSERT_EQ(SelectedPartitions(partitions, {}), Partitions{});
+  ASSERT_EQ(SelectedPartitions(partitions, {HashPartitionKey(0)}), Partitions{0});
+  ASSERT_EQ(SelectedPartitions(partitions, {HashPartitionKey(0x3FFF)}), Partitions{0});
+  ASSERT_EQ(SelectedPartitions(partitions, {HashPartitionKey(0x4000)}), Partitions{1});
+  ASSERT_EQ(SelectedPartitions(partitions, {HashPartitionKey(0xFFFF)}), Partitions{3});
+  ASSERT_EQ(
+      SelectedPartitions(partitions, {HashPartitionKey(0x9000), HashPartitionKey(0x9001)}),
+      Partitions{2});
+  ASSERT_EQ(
+      SelectedPartitions(partitions, {HashPartitionKey(0xC001), HashPartitionKey(0x10)}),
+      (Partitions{0, 3}));
+
+  boost::dynamic_bitset<> mask(partitions.size());
+  ASSERT_NOK(SelectPartitionsForPartitionKeyPrefix(partitions, "", mask));
+}
+
+TEST_F_EX(ClientTest, SelectPartitionsForRangePartitionKeyPrefixes, ClientTestNoCluster) {
+  const std::vector<std::string> partitions = {
+      "",
+      RangeKey({10}),
+      RangeKey({20, 5}),
+      RangeKey({30}),
+  };
+  using Partitions = std::vector<size_t>;
+  ASSERT_EQ(SelectedPartitions(partitions, {RangeKeyPrefix({5})}), Partitions{0});
+  ASSERT_EQ(SelectedPartitions(partitions, {RangeKeyPrefix({15})}), Partitions{1});
+  ASSERT_EQ(SelectedPartitions(partitions, {RangeKeyPrefix({40})}), Partitions{3});
+  // Keys starting with 20 are split between the partitions starting at {10} and {20, 5}.
+  ASSERT_EQ(SelectedPartitions(partitions, {RangeKeyPrefix({20})}), (Partitions{1, 2}));
+  ASSERT_EQ(SelectedPartitions(partitions, {RangeKeyPrefix({20, 4})}), Partitions{1});
+  // A prefix sorts before a start key that extends it, so when a split point starts with the
+  // prefix, the partition before it is selected too. That costs a search, never a row.
+  ASSERT_EQ(SelectedPartitions(partitions, {RangeKeyPrefix({20, 5})}), (Partitions{1, 2}));
+  ASSERT_EQ(SelectedPartitions(partitions, {RangeKeyPrefix({30})}), (Partitions{2, 3}));
+  ASSERT_EQ(
+      SelectedPartitions(partitions, {RangeKeyPrefix({5}), RangeKeyPrefix({40})}),
+      (Partitions{0, 3}));
+
+  // A descending key: 0 encodes as 7f ff ff ff, so the prefix ends in 0xff bytes. Keys starting
+  // with 0 sort between 10 and -5 and are split by the split point (0, 5).
+  constexpr auto kDesc = SortOrder::kDescending;
+  const std::vector<std::string> desc_partitions = {
+      "", RangeKey({10}, kDesc), RangeKey({0, 5}, kDesc), RangeKey({-5}, kDesc)};
+  ASSERT_EQ(SelectedPartitions(desc_partitions, {RangeKeyPrefix({0}, kDesc)}), (Partitions{1, 2}));
+  ASSERT_EQ(SelectedPartitions(desc_partitions, {RangeKeyPrefix({20}, kDesc)}), Partitions{0});
+  ASSERT_EQ(SelectedPartitions(desc_partitions, {RangeKeyPrefix({-9}, kDesc)}), Partitions{3});
+}
+
 TEST_F(ClientTest, TestKeyRangeFiltering) {
   ASSERT_NO_FATALS(CreateTable(kTable3Name, 8, &client_table3_));
 
@@ -1239,6 +1333,22 @@ TEST_F(ClientTest, TestAsyncFlushResponseAfterSessionDropped) {
   ASSERT_FALSE(session->HasNotFlushedOperations());
   session.reset();
   ASSERT_EQ(flush_future.wait_for(3min), std::future_status::ready);
+}
+
+// The session releases the buffers holder before the flush callback, so the caller can reuse the
+// buffers right away.
+TEST_F(ClientTest, FlushReleasesBuffersHolderBeforeCallback) {
+  auto session = CreateSession();
+  ApplyInsertToSession(session.get(), client_table_, 1, 1, "row");
+  auto holder = std::make_shared<int>(0);
+  std::weak_ptr<int> weak_holder = holder;
+  std::promise<std::pair<Status, bool>> promise;
+  session->FlushAsync([&weak_holder, &promise](FlushStatus* flush_status) {
+    promise.set_value({flush_status->status, weak_holder.expired()});
+  }, std::move(holder));
+  auto [status, released] = promise.get_future().get();
+  ASSERT_OK(status);
+  ASSERT_TRUE(released);
 }
 
 TEST_F(ClientTest, TestSessionClose) {
@@ -2292,7 +2402,8 @@ TEST_F(ClientTest, TestReadFromFollower) {
   // rejected due to staleness. To avoid this situation, we'll wait until all followers
   // have at least 1 op from the leader.
   ASSERT_NO_FATALS(InsertTestRows(table, 1));
-  ASSERT_OK(WaitAllReplicasSynchronizedWithLeader(cluster_.get(), CoarseMonoClock::Now() + 5s));
+  ASSERT_OK(WaitAllReplicasSynchronizedWithLeader(
+      cluster_.get(), CoarseMonoClock::Now() + 5s, RequireLeaderIsReady::kFalse));
 
   ASSERT_NO_FATALS(InsertTestRows(table, FLAGS_test_scan_num_rows));
 
@@ -3438,6 +3549,48 @@ TEST_F_EX(ClientTest, IsMultiMasterWithFailingHostnameResolution, ClientTestWith
   // master addresses currently doesn't resolve. Thus, we should be able to find the new master
   // leader and complete the request.
   ASSERT_RESULT(client_->ListTables());
+}
+
+// Supplies the response directly. Reaching ClientMasterRpcBase::Finished with a response error
+// while the client is shutting down would otherwise require the master reply to land inside the
+// window after YBClient::Shutdown sets closing_.
+class ResponseErrorRpc : public internal::ClientMasterRpc<
+    master::GetNamespaceInfoRequestPB, master::GetNamespaceInfoResponsePB> {
+ public:
+  ResponseErrorRpc(YBClient* client, CoarseTimePoint deadline)
+      : ClientMasterRpc(client, deadline) {
+    auto& error = *resp_.mutable_error();
+    error.set_code(master::MasterErrorPB::OBJECT_NOT_FOUND);
+    StatusToPB(STATUS(NotFound, "Keyspace not found"), error.mutable_status());
+  }
+
+  using internal::ClientMasterRpcBase::Finished;
+
+  std::string ToString() const override { return "ResponseErrorRpc"; }
+
+  const std::optional<Status>& processed_status() const { return processed_status_; }
+
+ private:
+  void CallRemoteMethod() override {}
+
+  void ProcessResponse(const Status& status) override { processed_status_ = status; }
+
+  std::optional<Status> processed_status_;
+};
+
+TEST_F(ClientTest, MasterRpcReportsResponseErrorWhileShuttingDown) {
+  auto client = ASSERT_RESULT(YBClientBuilder()
+      .add_master_server_addr(ToString(cluster_->mini_master()->bound_rpc_addr()))
+      .Build());
+  auto rpc = std::make_shared<ResponseErrorRpc>(client.get(), CoarseMonoClock::Now() + 10s);
+
+  client->Shutdown();
+  rpc->Finished(Status::OK());
+
+  ASSERT_TRUE(rpc->processed_status().has_value());
+  ASSERT_TRUE(rpc->processed_status()->IsNotFound()) << *rpc->processed_status();
+  ASSERT_EQ(master::MasterError(*rpc->processed_status()),
+            master::MasterErrorPB::OBJECT_NOT_FOUND);
 }
 
 }  // namespace client

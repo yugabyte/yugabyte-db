@@ -61,7 +61,7 @@ check_clean_dirs = {{ ynp_config['ynp'].check_clean_dirs | default(false) }}
 # Check available ports only if set for first time installation.
 check_available_ports = {{ ynp_config['ynp'].check_available_ports | default(false) }}
 # Define ports with default values if not provided.
-node_exporter_port = {{ ynp_config['ynp'].node_exporter_http_port | default(9300) }}
+node_exporter_port = {{ ynp_config['ynp'].node_exporter_port | default(9300) }}
 master_http_port = {{ ynp_config['ynp'].master_http_port | default(7000) }}
 master_rpc_port = {{ ynp_config['ynp'].master_rpc_port | default(7100) }}
 tserver_http_port = {{ ynp_config['ynp'].tserver_http_port | default(9000) }}
@@ -187,6 +187,7 @@ ip_address={{ ynp_config['ynp'].node_ip }}
 {{ render_section(ynp_config['yba']) -}}
 node_ip = {{ ynp_config['yba'].node_external_fqdn }}
 bind_ip = {{ ynp_config['ynp'].node_ip }}
+chrony_servers = {{ ynp_config['ynp'].chrony_servers | join(', ') }}
 node_agent_port = {{ ynp_config['ynp'].node_agent_port | default(9070) }}
 
 {%- if 'earlyoom' in ynp_config['ynp'] %}

@@ -64,13 +64,13 @@ void GetTablePartitionList(const client::YBTable& table, PgTablePartitionsPB* pa
 // Serves an OpenTable-style RPC from the table cache lookup, filling the schema info of the
 // requested table. A subclass may add response fields via Fill.
 template <class Req, class Resp>
-class OpenTableQueryBase : public PgTablesQueryListener {
+class OpenTableQueryBase : public PgTablesQueryListenerNonBlocking {
  public:
   using ContextHolder = rpc::TypedPBRpcContextHolder<Req, Resp>;
 
   explicit OpenTableQueryBase(ContextHolder&& context) : context_(std::move(context)) {}
 
-  void Ready(const PgTablesQueryResult& tables) override {
+  void ReadyNonBlocking(PgTablesQueryResult&& tables) override {
     auto res = tables.GetInfo(context_.req().table_id());
     auto& resp = context_.resp();
     if (!res.ok()) {

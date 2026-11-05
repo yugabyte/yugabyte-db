@@ -633,13 +633,18 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionTableDeletion
       kLocalRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
       InsertToLocalFirst::kFalse, ExpectedLocality::kLocal);
 
+  // Warm up all connections before starting any transaction, since we need to consume the
+  // reusable transaction when object locking is enabled.
   std::vector<pgwrapper::PGConn> connections;
   for (int i = 0; i < 2; ++i) {
-    auto conn = ASSERT_RESULT(Connect());
+    connections.push_back(ASSERT_RESULT(Connect()));
+    ASSERT_OK(WarmupTablespaceCache(
+        connections.back(), Format("$0$1_2", kTablePrefix, kLocalRegion)));
+  }
+  for (auto& conn : connections) {
     ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
     ASSERT_OK(conn.ExecuteFormat(
         "INSERT INTO $0$1_2(value) VALUES (1000)", kTablePrefix, kLocalRegion));
-    connections.push_back(std::move(conn));
   }
 
   // Prevent transaction table from getting recreated.
@@ -700,6 +705,7 @@ TEST_F(GeoTransactionsTest, TestTransactionTableDeletionRemoteAbort) {
 
   for (const bool wait_for_deleted_heartbeat : {false, true}) {
     auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(WarmupTablespaceCache(conn, Format("$0$1_2", kTablePrefix, kLocalRegion)));
     ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
     ASSERT_OK(conn.ExecuteFormat(
         "INSERT INTO $0$1_2(value) VALUES (1000)", kTablePrefix, kLocalRegion));
@@ -1492,6 +1498,11 @@ class GeoTransactionsMultiTabletTest : public GeoTransactionsTest {
 };
 
 TEST_F(GeoTransactionsMultiTabletTest, TestTransactionTableDeletionParticipantRestart) {
+  // TODO(#35109): Catalog reads made inside the transaction with object locking enabled
+  // trigger promotion of the tablespace-local transactions this test relies on.
+  if (FLAGS_enable_object_locking_for_table_locks) {
+    GTEST_SKIP() << "Skipped until GH #35109 is addressed";
+  }
   constexpr auto kLongTxnTime = 10000ms;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_flush_rocksdb_on_shutdown) = false;
@@ -1508,16 +1519,21 @@ TEST_F(GeoTransactionsMultiTabletTest, TestTransactionTableDeletionParticipantRe
       SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
       ExpectedLocality::kLocal);
 
+  // Warm up all connections before starting any transaction, since we need to consume the
+  // reusable transaction when object locking is enabled.
   std::vector<pgwrapper::PGConn> connections;
   for (int i = 0; i < 2; ++i) {
-    auto conn = ASSERT_RESULT(Connect());
+    connections.push_back(ASSERT_RESULT(Connect()));
+    ASSERT_OK(WarmupTablespaceCache(connections.back(), kTableName2));
+  }
+  for (size_t i = 0; i < connections.size(); ++i) {
+    auto& conn = connections[i];
     ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
     // Insert enough rows to cover all tablets.
     for (int j = 0; j < 100; ++j) {
       ASSERT_OK(conn.ExecuteFormat(
           "INSERT INTO $0(value) VALUES (100000+1000*$1+$2)", kTableName2, i, j));
     }
-    connections.push_back(std::move(conn));
   }
 
   // Prevent transaction table from getting recreated.

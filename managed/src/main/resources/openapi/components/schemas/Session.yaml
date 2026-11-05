@@ -1,0 +1,24 @@
+title: Session
+description: Session of a logged-in user. Part of SessionResp.
+type: object
+required:
+  - auth_token
+  - customer_uuid
+  - user_uuid
+properties:
+  auth_token:
+    description: 'Session token, to be sent in the X-AUTH-TOKEN header. It expires after yb.authtoken.token_expiry (12 hours by default)'
+    type: string
+    readOnly: true
+  customer_uuid:
+    description: UUID of the user's customer
+    type: string
+    format: uuid
+    readOnly: true
+  user_uuid:
+    description: UUID of the user
+    type: string
+    format: uuid
+    readOnly: true
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview

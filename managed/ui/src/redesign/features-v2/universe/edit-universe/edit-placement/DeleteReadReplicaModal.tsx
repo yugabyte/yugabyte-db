@@ -2,7 +2,7 @@ import { FC } from 'react';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from 'react-query';
-import { mui, yba, YBInputField } from '@yugabyte-ui-library/core';
+import { mui, yba, YBCheckboxField, YBInputField } from '@yugabyte-ui-library/core';
 import { getGetUniverseQueryKey, useDeleteCluster } from '@app/v2/api/universe/universe';
 import { createErrorMessage } from '@app/utils/ObjectUtils';
 import { useDispatch } from 'react-redux';
@@ -14,10 +14,12 @@ const { YBModal } = yba;
 
 type DeleteReadReplicaFormValues = {
   universeName: string | null;
+  forceDelete: boolean;
 };
 
 const DEFAULT_VALUES: DeleteReadReplicaFormValues = {
-  universeName: null
+  universeName: null,
+  forceDelete: false
 };
 
 export interface DeleteReadReplicaModalProps {
@@ -56,7 +58,7 @@ export const DeleteReadReplicaModal: FC<DeleteReadReplicaModalProps> = ({
     onClose();
   };
 
-  const handleFormSubmit = handleSubmit(async () => {
+  const handleFormSubmit = handleSubmit(async ({ forceDelete }) => {
     const cUUID = localStorage.getItem('customerId');
     if (!cUUID) return;
 
@@ -65,7 +67,7 @@ export const DeleteReadReplicaModal: FC<DeleteReadReplicaModalProps> = ({
         {
           uniUUID: universeUuid,
           clsUUID: clusterUuid,
-          params: { isForceDelete: false },
+          params: { isForceDelete: forceDelete },
           cUUID
         },
         {
@@ -87,7 +89,7 @@ export const DeleteReadReplicaModal: FC<DeleteReadReplicaModalProps> = ({
   return (
     <YBModal
       open={open}
-      overrideHeight={300}
+      overrideHeight="auto"
       titleSeparator
       cancelLabel={t('common.no')}
       submitLabel={t('common.yes')}
@@ -96,6 +98,15 @@ export const DeleteReadReplicaModal: FC<DeleteReadReplicaModalProps> = ({
       })}
       onClose={handleClose}
       onSubmit={handleFormSubmit}
+      actionsInfo={
+        <YBCheckboxField
+          sx={{ alignSelf: 'end' }}
+          control={control}
+          name="forceDelete"
+          label={t('universeForm.deleteClusterModal.forceDeleteCheckbox')}
+          dataTestId="delete-read-replica-force-delete"
+        />
+      }
       buttonProps={{
         primary: {
           disabled: !isValid || deleteClusterMutation.isLoading,
@@ -120,7 +131,7 @@ export const DeleteReadReplicaModal: FC<DeleteReadReplicaModalProps> = ({
           <Typography variant="body1">
             {t('universeForm.deleteClusterModal.enterUniverseName')}
           </Typography>
-          <Box mt={1}>
+          <Box mt={1} mb={1}>
             <YBInputField
               fullWidth
               dataTestId="delete-read-replica-universe-name-input"

@@ -63,7 +63,7 @@ func buildClusters(
 	var res []ybaclient.Cluster
 
 	providerListRequest := authAPI.GetListOfProviders()
-	providerListRequest = providerListRequest.ProviderCode(strings.ToLower(providerType))
+	providerListRequest = providerListRequest.ProviderCode(providerType)
 	providerName := v1.GetString("provider-name")
 	if !util.IsEmptyString(providerName) {
 		providerListRequest = providerListRequest.Name(providerName)
@@ -944,7 +944,8 @@ func setDefaultStorageTypes(
 }
 
 func getProviderType() {
-	providerType = v1.GetString("provider-code")
+	// Lowercase the code, because the provider type checks compare it exactly.
+	providerType = strings.ToLower(v1.GetString("provider-code"))
 	if util.IsEmptyString(providerType) {
 		logrus.Fatalln(formatter.Colorize("No provider code found\n", formatter.RedColor))
 	}
@@ -962,8 +963,6 @@ func getProviderType() {
 func buildKMSConfigs(authAPI *ybaAuthClient.AuthAPIClient) string {
 	opType := ""
 
-	oldKMSUsed := true
-
 	kmsConfigs, err := authAPI.GetListOfKMSConfigs(
 		"Universe",
 		"Create - Get KMS Configurations",
@@ -974,13 +973,12 @@ func buildKMSConfigs(authAPI *ybaAuthClient.AuthAPIClient) string {
 
 	cveKMSConfigName := v1.GetString("cloud-volume-encryption-kms-config")
 	if !util.IsEmptyString(cveKMSConfigName) {
-		if !strings.EqualFold(providerType, util.AWSProviderType) {
+		if providerType != util.AWSProviderType {
 			logrus.Debug(
 				"cloud-volume-encryption-kms-config can only be set for AWS universes, ignoring value\n",
 			)
 			cveKMSConfigUUID = ""
 		} else {
-			oldKMSUsed = false
 			cveKMSConfigs := earutil.KMSConfigNameAndCodeFilter(cveKMSConfigName, "", kmsConfigs)
 			if len(cveKMSConfigs) == 1 {
 				cveKMSConfigUUID = cveKMSConfigs[0].ConfigUUID
@@ -1003,7 +1001,6 @@ func buildKMSConfigs(authAPI *ybaAuthClient.AuthAPIClient) string {
 
 	earKMSConfigName := v1.GetString("encryption-at-rest-kms-config")
 	if !util.IsEmptyString(earKMSConfigName) {
-		oldKMSUsed = false
 		earKMSConfigs := earutil.KMSConfigNameAndCodeFilter(earKMSConfigName, "", kmsConfigs)
 		if len(earKMSConfigs) == 1 {
 			opType = util.EnableOpType
@@ -1029,42 +1026,5 @@ func buildKMSConfigs(authAPI *ybaAuthClient.AuthAPIClient) string {
 		}
 	}
 
-	if oldKMSUsed {
-		enableVolumeEncryption := v1.GetBool("enable-volume-encryption")
-		if enableVolumeEncryption {
-			opType = util.EnableOpType
-			kmsConfigName := v1.GetString("kms-config")
-			// find kmsConfigUUID from the name
-			if util.IsEmptyString(kmsConfigName) {
-				logrus.Fatalf(formatter.Colorize(
-					"No kms config name found to create universe, "+
-						"use --cloud-volume-encryption-kms-config or --encryption-at-rest-kms-config\n",
-					formatter.RedColor,
-				))
-			}
-			kmsConfigsName := earutil.KMSConfigNameAndCodeFilter(kmsConfigName, "", kmsConfigs)
-			if len(kmsConfigsName) == 1 {
-				kmsConfigUUID = kmsConfigsName[0].ConfigUUID
-				logrus.Info(
-					"Using kms config: ",
-					fmt.Sprintf(
-						"%s %s",
-						kmsConfigName,
-						formatter.Colorize(kmsConfigUUID, formatter.GreenColor),
-					),
-					"\n",
-				)
-			} else if len(kmsConfigsName) > 1 {
-				logrus.Fatalf(
-					formatter.Colorize(
-						fmt.Sprintf("Multiple kms configurations with same name %s found", kmsConfigName),
-						formatter.RedColor))
-			} else {
-				logrus.Fatalf(formatter.Colorize(
-					fmt.Sprintf("KMS config %s not found\n", kmsConfigName), formatter.RedColor,
-				))
-			}
-		}
-	}
 	return opType
 }

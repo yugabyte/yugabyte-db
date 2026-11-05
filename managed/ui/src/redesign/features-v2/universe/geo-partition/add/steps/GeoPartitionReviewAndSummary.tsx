@@ -22,6 +22,7 @@ import {
   sumNumNodesInClusterPartitionPlacement,
   useGeoPartitionNavigation
 } from '../AddGeoPartitionUtils';
+import { getPrimaryCluster } from '@app/redesign/utils/universeUtils';
 import { YBLoadingCircleIcon } from '@app/components/common/indicators';
 import PinIcon from '@app/redesign/assets/pin.svg';
 import { getReadReplicaExitRoute } from '../../../read-replica/readReplicaUtils';
@@ -38,7 +39,8 @@ export const GeoPartitionReviewAndSummary = () => {
   const { t } = useTranslation('translation', { keyPrefix: 'geoPartition.reviewAndSummary' });
   const { t: tSteps } = useTranslation('translation', { keyPrefix: 'geoPartition.steps' });
   const isK8s =
-    universeData?.spec?.clusters?.[0]?.placement_spec?.cloud_list?.[0]?.code === CloudType.kubernetes;
+    getPrimaryCluster(universeData?.spec?.clusters ?? [])?.placement_spec?.cloud_list?.[0]
+      ?.code === CloudType.kubernetes;
   const { moveToPreviousPage } = useGeoPartitionNavigation();
 
   const geoPartitionData = prepareAddGeoPartitionPayload(addGeoPartitionContext);

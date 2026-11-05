@@ -1103,6 +1103,9 @@ TEST_F(PgWaitQueuesProbeForwardingTest, ForwardProbeDuringDetectorShutdown) {
   auto setup_conn = ASSERT_RESULT(Connect());
   ASSERT_OK(setup_conn.Execute("CREATE TABLE foo (k INT PRIMARY KEY, v INT)"));
   ASSERT_OK(setup_conn.Execute("INSERT INTO foo SELECT generate_series(0, 5), 0"));
+  // The LB may still be adding the third replica of a status tablet. Shutting down its leader
+  // before that replica is a voter leaves the tablet without quorum and hangs the final query.
+  ASSERT_OK(cluster_->WaitForLoadBalancerToStabilize(120s * kTimeMultiplier));
 
   // Build a wait-for chain conn1 -> conn2 -> conn3. GetProbesToForward reaches the AddBlocker loop
   // because the probed blocker, conn2, is itself blocked.

@@ -7,10 +7,12 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"node-agent/util"
 	"node-agent/ynp/command"
 	"node-agent/ynp/config"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -388,6 +390,54 @@ func TestConfigOverride(t *testing.T) {
 	})
 }
 
+// TestNodeExporterPort tests that ynp.node_exporter_port from YBA or a config override is
+// rendered into the generated config instead of the default.
+func TestNodeExporterPort(t *testing.T) {
+	configPath := configFilePath(t, ynpCloudConfig)
+	projectDir := os.Getenv("PROJECT_DIR")
+	ynpBasePath := filepath.Join(projectDir, "resources/ynp")
+	yamlConfigPath := filepath.Join(projectDir, "resources/node-agent-provision.yaml")
+	cases := []struct {
+		name         string
+		extraArgs    []string
+		expectedLine string
+	}{
+		{
+			name:         "from extra_vars",
+			expectedLine: "node_exporter_port = 9310",
+		},
+		{
+			name:         "from config override",
+			extraArgs:    []string{"--config_override", "ynp.node_exporter_port=9320"},
+			expectedLine: "node_exporter_port = 9320",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			testRootCmd := testRootCmd()
+			testRootCmd.SetArgs(append([]string{
+				"--ynp_base_path",
+				ynpBasePath,
+				"--config_file",
+				yamlConfigPath,
+				"--extra_vars",
+				configPath,
+				"--dry_run",
+				"--skip_module",
+				"InstallNodeAgent", /* This needs YBA */
+				"--skip_module",
+				"ConfigureSystemd", /* This requires some setup */
+			}, tc.extraArgs...))
+			setupCommand(testRootCmd)
+			if err := testRootCmd.Execute(); err != nil {
+				t.Fatalf("Error executing command: %v\n", err)
+			}
+			iniFile := filepath.Join(ynpBasePath, "configs/config.ini")
+			checkLine(t, iniFile, []string{tc.expectedLine})
+		})
+	}
+}
+
 // TestNonExistingEnabledModule tests the scenario where a module is defined in INI but not registered in the command.
 func TestNonExistingEnabledModule(t *testing.T) {
 	configPath := configFilePath(t, ynpCloudConfig)
@@ -639,5 +689,35 @@ func TestNodeExporterRootRun(t *testing.T) {
 	exporter := renderModuleScripts(t, "ConfigureNodeExporter", "--root")
 	if strings.Contains(exporter, "Executing module ConfigureNodeExporter") {
 		t.Error("a run with only root must not include ConfigureNodeExporter")
+	}
+}
+
+// node_exporter is a GOFIPS140 build. Outside FIPS its unit turns FIPS mode off, and ynp itself
+// runs in FIPS mode only for a FIPS config.
+func TestNodeExporterFipsMode(t *testing.T) {
+	var appliedFips []bool
+	applyFipsMode = func(fipsEnabled bool) { appliedFips = append(appliedFips, fipsEnabled) }
+	t.Cleanup(func() { applyFipsMode = util.ApplyFipsMode })
+
+	godebugOff := `Environment="GODEBUG=fips140=off"`
+	if script := renderModuleScripts(t, "ConfigureNodeExporter"); !strings.Contains(
+		script,
+		godebugOff,
+	) {
+		t.Errorf("non-FIPS node_exporter unit must contain %q", godebugOff)
+	}
+	// The last --extra_vars wins over the one renderModuleScripts passes.
+	fipsConfig := filepath.Join(t.TempDir(), "fips_config.json")
+	err := os.WriteFile(fipsConfig, []byte(strings.Replace(ynpCloudConfig, `"ynp" : {`,
+		`"ynp" : { "is_fips_enabled" : true,`, 1)), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := renderModuleScripts(t, "ConfigureNodeExporter", "--extra_vars", fipsConfig)
+	if strings.Contains(script, godebugOff) {
+		t.Errorf("FIPS node_exporter unit must not contain %q", godebugOff)
+	}
+	if want := []bool{false, true}; !reflect.DeepEqual(appliedFips, want) {
+		t.Errorf("applied FIPS modes %v, want %v", appliedFips, want)
 	}
 }

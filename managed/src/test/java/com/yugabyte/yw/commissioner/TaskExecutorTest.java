@@ -52,6 +52,7 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.YBAError;
 import com.yugabyte.yw.models.helpers.YBAError.Code;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -389,6 +390,18 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
       latch.countDown();
     }
     waitForTask(taskUUID);
+  }
+
+  @Test
+  public void testRollbackTasksAreAbortable() {
+    // Rolling back an in-flight task starts with aborting it, so a rollback task must be abortable.
+    List<TaskType> notAbortable =
+        Arrays.stream(TaskType.values())
+            .filter(t -> t.getTaskClass() != null)
+            .filter(t -> TaskExecutor.canTaskRollback(t.getTaskClass()))
+            .filter(t -> !TaskExecutor.isTaskAbortable(t.getTaskClass()))
+            .collect(Collectors.toList());
+    assertTrue("Rollback tasks missing @Abortable: " + notAbortable, notAbortable.isEmpty());
   }
 
   @Test

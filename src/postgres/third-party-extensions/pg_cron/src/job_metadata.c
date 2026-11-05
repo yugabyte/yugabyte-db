@@ -98,6 +98,9 @@ static Oid GetRoleOidIfCanLogin(char *username);
 static entry * ParseSchedule(char *scheduleText);
 static bool TryParseInterval(char *scheduleText, uint32 *secondsInterval);
 
+/* YB declarations */
+static void YbEnsureFreshCatalog(void);
+
 
 /* SQL-callable functions */
 PG_FUNCTION_INFO_V1(cron_schedule);
@@ -543,6 +546,7 @@ NextRunId(void)
 	bool failOK = true;
 	MemoryContext originalContext = CurrentMemoryContext;
 
+	YbEnsureFreshCatalog();
 	StartTransactionCommand();
 	PushActiveSnapshot(GetTransactionSnapshot());
 
@@ -830,6 +834,7 @@ void
 InvalidateJobCacheCallback(Datum argument, Oid relationId)
 {
 	if (relationId == CachedCronJobRelationId ||
+		relationId == InvalidOid ||
 		CachedCronJobRelationId == InvalidOid)
 	{
 		CronJobCacheValid = false;
@@ -873,6 +878,7 @@ LoadCronJobList(void)
 	MemoryContext originalContext = CurrentMemoryContext;
 
 	SetCurrentStatementStartTimestamp();
+	YbEnsureFreshCatalog();
 	StartTransactionCommand();
 	PushActiveSnapshot(GetTransactionSnapshot());
 
@@ -1084,6 +1090,7 @@ InsertJobRunDetail(int64 runId, int64 *jobId, char *database, char *username, ch
 	MemoryContext originalContext = CurrentMemoryContext;
 
 	SetCurrentStatementStartTimestamp();
+	YbEnsureFreshCatalog();
 	StartTransactionCommand();
 	PushActiveSnapshot(GetTransactionSnapshot());
 
@@ -1153,6 +1160,7 @@ UpdateJobRunDetail(int64 runId, int32 *job_pid, char *status, char *return_messa
 	MemoryContext originalContext = CurrentMemoryContext;
 
 	SetCurrentStatementStartTimestamp();
+	YbEnsureFreshCatalog();
 	StartTransactionCommand();
 	PushActiveSnapshot(GetTransactionSnapshot());
 
@@ -1424,6 +1432,7 @@ MarkPendingRunsAsFailed(void)
 	MemoryContext originalContext = CurrentMemoryContext;
 
 	SetCurrentStatementStartTimestamp();
+	YbEnsureFreshCatalog();
 	StartTransactionCommand();
 	PushActiveSnapshot(GetTransactionSnapshot());
 
@@ -1449,6 +1458,10 @@ MarkPendingRunsAsFailed(void)
 
 	if (SPI_exec(querybuf.data, 0) != SPI_OK_UPDATE)
 		elog(ERROR, "SPI_exec failed: %s", querybuf.data);
+
+	if (IsYugaByteEnabled())
+		ereport(LOG, (errmsg("pg_cron marked " UINT64_FORMAT " pending runs as failed",
+							 SPI_processed)));
 
 	pfree(querybuf.data);
 
@@ -1585,4 +1598,22 @@ TryParseInterval(char *scheduleText, uint32 *secondsInterval)
 	}
 
 	return false;
+}
+
+
+/*
+ * Reset the catalog read time in legacy catalog mode, and check the catalog
+ * version where AcceptInvalidationMessages does not, as PostgresMain does
+ * before each statement.
+ */
+static void
+YbEnsureFreshCatalog(void)
+{
+	if (!IsYugaByteEnabled())
+		return;
+
+	if (YBCIsLegacyModeForCatalogOps())
+		YbInvalidateCatalogSnapshot();
+	if (!YBCIsObjectLockingEnabled() || !YbIsInvalidationMessageEnabled())
+		YbMaybeRefreshCache();
 }

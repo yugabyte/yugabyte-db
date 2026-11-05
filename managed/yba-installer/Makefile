@@ -51,7 +51,7 @@ SHA1SUM ?= $(shell command -v sha1sum >/dev/null 2>&1 && echo sha1sum || echo sh
 PREREQS_DIR := ${TOP_BUILDDIR}/prereqs
 
 # Prometheus Version
-PROMETHEUS_VERSION ?= 3.13.1
+PROMETHEUS_VERSION ?= 3.15.1
 
 # Node Exporter Version
 NODE_EXPORTER_VERSION ?= 1.12.1-fips
@@ -198,7 +198,7 @@ ${BIN_DIR}/${BIN_NAME}:
 	CGO_ENABLED=0 GOOS=${GOOS} GOARCH=${GOARCH} GOFIPS140=${GOFIPS140} go build -a -o $@ -tags ${BUILD_TAGS} -ldflags=" \
 	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components/ybactl.Version=${VERSION}' \
 	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components/ybactl.BuildID=${BUILD_ID}' \
-	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/cmd.PostgresVersion=${POSTGRES_VERSION}' \
+	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common.PostgresVersion=${POSTGRES_VERSION}' \
 	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/cmd.PrometheusVersion=${PROMETHEUS_VERSION}' \
 	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/cmd.PerfAdvisorVersion=${PERF_ADVISOR_VERSION}' \
 	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/cmd.NodeExporterVersion=${NODE_EXPORTER_VERSION}'"

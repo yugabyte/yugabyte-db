@@ -8,6 +8,7 @@ import static io.ebean.DB.beginTransaction;
 import static io.ebean.DB.commitTransaction;
 import static io.ebean.DB.endTransaction;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.FORBIDDEN;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -31,6 +32,7 @@ import com.yugabyte.yw.common.YsqlQueryExecutor.ConsistencyInfoResp;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.operator.utils.ResourceOperatorOwned;
 import com.yugabyte.yw.common.rollback.RollbackContext;
 import com.yugabyte.yw.common.rollback.RollbackSubmission;
 import com.yugabyte.yw.common.rollback.TaskRollbackComputer;
@@ -748,9 +750,7 @@ public class CustomerTaskManager {
           if (!optional.isPresent()) {
             return false;
           }
-          return tf.getUuid().equals(optional.get().getUniverseDetails().updatingTaskUUID)
-              || tf.getUuid()
-                  .equals(optional.get().getUniverseDetails().placementModificationTaskUuid);
+          return optional.get().getUniverseDetails().isOwnedByTask(tf.getUuid());
         });
   }
 
@@ -793,8 +793,7 @@ public class CustomerTaskManager {
       }
     } else if (taskParams instanceof UniverseTaskParams) {
       Universe universe = Universe.getOrBadRequest(targetUUID);
-      if (!retriedTaskUuid.equals(universe.getUniverseDetails().updatingTaskUUID)
-          && !retriedTaskUuid.equals(universe.getUniverseDetails().placementModificationTaskUuid)) {
+      if (!universe.getUniverseDetails().isOwnedByTask(retriedTaskUuid)) {
         return String.format("Invalid task state: Task %s cannot be retried", retriedTaskUuid);
       }
       CommonUtils.maybeGetUserFromContext()
@@ -845,6 +844,12 @@ public class CustomerTaskManager {
 
   public CustomerTask rollbackCustomerTask(UUID customerUUID, UUID taskUUID) {
     CustomerTask customerTask = CustomerTask.getOrBadRequest(customerUUID, taskUUID);
+    // The operator reconciles its universes to the CR spec, so a user rollback would just be
+    // re-applied.
+    if (commissioner.isRollbackBlockedByOperator(customerTask)) {
+      throw new PlatformServiceException(
+          FORBIDDEN, ResourceOperatorOwned.CONTROLLED_BY_OPERATOR_MESSAGE);
+    }
     Customer customer = Customer.getOrBadRequest(customerUUID);
     TaskInfo taskInfo = customerTask.getTaskInfo();
     JsonNode oldTaskParams = commissioner.getTaskParams(taskUUID);

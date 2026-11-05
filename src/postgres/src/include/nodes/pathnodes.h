@@ -1333,13 +1333,15 @@ typedef struct YbPathInfo
  */
 typedef struct YbPlanInfo
 {
-	double		estimated_num_nexts_prevs;
+	double		estimated_num_nexts;
+	double		estimated_num_prevs;
 	double		estimated_num_seeks;
 	int			estimated_docdb_result_width;
 	int			estimated_ybctid_width;
 	double		estimated_num_table_result_pages;
 	double		estimated_num_index_result_pages;
-	double		estimated_num_bmscan_nexts_prevs;
+	double		estimated_num_bmscan_nexts;
+	double		estimated_num_bmscan_prevs;
 	double		estimated_num_bmscan_seeks;
 	double		estimated_num_bmscan_result_pages;
 	double		first_fetch_limit;	/* LIMIT bound on first fetch; 0 = none */

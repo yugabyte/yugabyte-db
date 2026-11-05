@@ -46,6 +46,9 @@ ERROR:  replica_placement: Invalid type for "min_num_replicas" in placement bloc
 -- Sum of min_num_replicas greater than num_replicas.
 CREATE TABLESPACE y WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":2},{"cloud":"cloud2","region":"r2", "zone":"z2", "min_num_replicas":2}]}');
 ERROR:  Sum of min_num_replicas fields (4) exceeds the total replication factor in the placement policy (3)
+-- max_num_replicas cannot be combined with a wildcard placement block.
+CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":2,"max_num_replicas":2},{"cloud":"cloud1","region":"r1","zone":"*","min_num_replicas":1}]}');
+ERROR:  max_num_replicas is not supported in combination with wildcard placement blocks: placement_cloud: "cloud1" placement_region: "r1"
 -- Positive cases
 -- Tablespace without replica_placement option.
 CREATE TABLESPACE x LOCATION '/data';
@@ -63,6 +66,8 @@ CREATE TABLESPACE z WITH (replica_placement='{"num_replicas":3, "placement_block
 CREATE TABLESPACE wildcard_region_ts WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"*","zone":"*","min_num_replicas":3}]}');
 -- wildcard zone
 CREATE TABLESPACE wildcard_zone_ts WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone": "*","min_num_replicas":3}]}');
+ALTER TABLESPACE wildcard_zone_ts SET (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone": "*","min_num_replicas":3,"max_num_replicas":3}]}');
+ERROR:  max_num_replicas is not supported in combination with wildcard placement blocks: placement_cloud: "cloud1" placement_region: "r1"
 -- describe command
 \db
             List of tablespaces

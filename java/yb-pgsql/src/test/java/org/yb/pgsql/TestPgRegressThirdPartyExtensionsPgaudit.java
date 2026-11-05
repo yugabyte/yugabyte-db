@@ -35,11 +35,13 @@ public class TestPgRegressThirdPartyExtensionsPgaudit extends BasePgRegressTestP
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flags = super.getTServerFlags();
     appendToYsqlPgConf(flags, TURN_OFF_COPY_FROM_BATCH_TRANSACTION);
+    flags.put("ysql_conn_mgr_alter_guc_stale_backend_ttl_ms", "-1");
     return flags;
   }
 
   @Test
   public void schedule() throws Exception {
+    setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.ROUND_ROBIN);
     runPgRegressTest(new File(TestUtils.getBuildRootDir(),
                               "postgres_build/third-party-extensions/pgaudit"),
                      "yb_schedule");

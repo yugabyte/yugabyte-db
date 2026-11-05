@@ -63,6 +63,7 @@ DECLARE_bool(TEST_xcluster_consumer_fail_after_process_split_op);
 DECLARE_int32(cdc_parent_tablet_deletion_task_retry_secs);
 DECLARE_int32(load_balancer_num_idle_runs);
 DECLARE_bool(enable_tablet_split_of_xcluster_bootstrapping_tables);
+DECLARE_bool(enable_tablet_split_of_xcluster_bootstrapping_tables_with_recorded_tablets);
 DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
 DECLARE_bool(enable_collect_cdc_metrics);
 DECLARE_int32(update_metrics_interval_ms);
@@ -639,12 +640,12 @@ class XClusterTabletSplitITest : public CdcTabletSplitITest {
   }
 };
 
-class xClusterTabletMapTest : public XClusterTabletSplitITest,
-                              public testing::WithParamInterface<Partitioning> {
+class xClusterTabletMapTest : public XClusterTabletSplitITest {
  public:
   void SetUp() override {}
 
-  void RunSetUp(int producer_tablet_count, int consumer_tablet_count) {
+  void RunSetUp(
+      Partitioning partitioning, int producer_tablet_count, int consumer_tablet_count) {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_table_num_tablets) = 1;
 
     {
@@ -657,7 +658,7 @@ class xClusterTabletMapTest : public XClusterTabletSplitITest,
 
     SetNumTablets(producer_tablet_count);
     Schema schema;
-    client::kv_table_test::BuildSchema(GetParam(), &schema);
+    client::kv_table_test::BuildSchema(partitioning, &schema);
     schema.mutable_table_properties()->SetTransactional(
         GetIsolationLevel() != IsolationLevel::NON_TRANSACTIONAL);
     ASSERT_OK(client::kv_table_test::CreateTable(schema, NumTablets(), client_.get(), &table_));
@@ -689,21 +690,24 @@ class xClusterTabletMapTest : public XClusterTabletSplitITest,
   }
 };
 
+class xClusterTabletMapPartitioningTest : public xClusterTabletMapTest,
+                                          public testing::WithParamInterface<Partitioning> {};
+
 // ValidateOverlap() is called before teardown for all these tests.
-TEST_P(xClusterTabletMapTest, SingleTableCountMapTest) {
-  RunSetUp(1, 1);
+TEST_P(xClusterTabletMapPartitioningTest, SingleTableCountMapTest) {
+  RunSetUp(GetParam(), 1, 1);
 }
 
-TEST_P(xClusterTabletMapTest, SameTableCountMapTest) {
-  RunSetUp(4, 4);
+TEST_F(xClusterTabletMapTest, SameTableCountMapTest) {
+  RunSetUp(Partitioning::kHash, 4, 4);
 }
 
-TEST_P(xClusterTabletMapTest, MoreProducerTablets) {
-  RunSetUp(8, 2);
+TEST_F(xClusterTabletMapTest, MoreProducerTablets) {
+  RunSetUp(Partitioning::kHash, 8, 2);
 }
 
-TEST_P(xClusterTabletMapTest, MoreConsumerTablets) {
-  RunSetUp(3, 8);
+TEST_F(xClusterTabletMapTest, MoreConsumerTablets) {
+  RunSetUp(Partitioning::kHash, 3, 8);
 }
 
 TEST_F(XClusterTabletSplitITest, SplittingWithXClusterReplicationOnConsumer) {
@@ -1016,13 +1020,15 @@ TEST_F(XClusterTabletSplitMetricsTest, VerifyReplicationLagMetricsOnChildren) {
       consumer_cluster_->GetMasterAddresses(), "set_universe_replication_enabled",
       kProducerClusterId, "1"));
   ASSERT_OK(CheckForNumRowsOnConsumer(3 * kDefaultNumRows));
-  SleepFor(FLAGS_update_metrics_interval_ms * 2ms);  // Wait for metrics to update.
-  {
-    auto [committed_lag_micros, sent_lag_micros] = FetchMaxReplicationLag(stream_id);
-    LOG(INFO) << "Replication lag is : " << committed_lag_micros << ", " << sent_lag_micros;
-    ASSERT_EQ(committed_lag_micros, 1);
-    ASSERT_EQ(sent_lag_micros, 1);
-  }
+  // A caught-up GetChanges sets lag to 1, but the periodic metrics update recomputes it as 0, so
+  // wait until the value from a caught-up poll is observed.
+  ASSERT_OK(LoggedWaitFor(
+      [this, &stream_id]() {
+        auto [committed_lag_micros, sent_lag_micros] = FetchMaxReplicationLag(stream_id);
+        LOG(INFO) << "Replication lag is : " << committed_lag_micros << ", " << sent_lag_micros;
+        return committed_lag_micros == 1 && sent_lag_micros == 1;
+      },
+      kRpcTimeout, "Wait for caught-up replication lag"));
 }
 
 class XClusterExternalTabletSplitITest :
@@ -1266,9 +1272,9 @@ class XClusterBootstrapTabletSplitITest : public XClusterTabletSplitITest {
   std::optional<client::TransactionManager> producer_transaction_manager_;
 };
 
-// TODO(jhe) Re-enable this test. Currently disabled as we disable all splits when a table is being
-// bootstrapped for xCluster.
-TEST_F(XClusterBootstrapTabletSplitITest, YB_DISABLE_TEST(BootstrapWithSplits)) {
+// Tests that the target gets every row when the source splits between the bootstrap and the
+// replication setup.
+TEST_F(XClusterBootstrapTabletSplitITest, BootstrapWithSplits) {
   // Start by writing some rows to the producer.
   ASSERT_RESULT(WriteRowsAndFlush(kDefaultNumRows));
 
@@ -1351,6 +1357,8 @@ TEST_F(NotSupportedTabletSplitITest, SplittingWithCdcStream) {
 TEST_F(NotSupportedTabletSplitITest, SplittingWithBootstrappedStream) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_replicated_tables) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_bootstrapping_tables) = false;
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_enable_tablet_split_of_xcluster_bootstrapping_tables_with_recorded_tablets) = false;
   // Default cluster_ will be our producer.
   // Create a consumer universe and table, then setup universe replication.
   client::TableHandle consumer_cluster_table;
@@ -1414,7 +1422,17 @@ TEST_F(NotSupportedTabletSplitITest, SplittingWithXClusterReplicationOnConsumer)
   // Now delete replication and verify that the tablet can now be split.
   ASSERT_OK(tools::RunAdminToolCommand(
       cluster_->GetMasterAddresses(), "delete_universe_replication", kProducerClusterId));
-  ASSERT_OK(SplitTabletAndValidate(split_hash_code, kDefaultNumRows));
+  // After the restart, the master may not have learned the tablet leader from heartbeats yet.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto s = SplitTabletAndValidate(split_hash_code, kDefaultNumRows);
+    if (s.ok()) {
+      return true;
+    }
+    if (s.status().message().ToBuffer().find("No leader found") != std::string::npos) {
+      return false;
+    }
+    return s.status();
+  }, 30s * kTimeMultiplier, "Split tablet after deleting xCluster replication"));
 
   producer_cluster->Shutdown();
 }
@@ -1428,7 +1446,7 @@ std::string TestParamToString(const testing::TestParamInfo<T>& param_info) {
 
 INSTANTIATE_TEST_CASE_P(
     xClusterTabletMapTestITest,
-    xClusterTabletMapTest,
+    xClusterTabletMapPartitioningTest,
     ::testing::ValuesIn(test::kPartitioningArray),
     TestParamToString<Partitioning>);
 
