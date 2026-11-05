@@ -2128,6 +2128,11 @@ TEST_F(LogTest, CopyUpTo) {
   const auto log_copy_path = GetLogCopyPath(kLogCopyIdx);
   for (size_t copy_num_ops = 1; copy_num_ops <= ops.size(); ++copy_num_ops) {
     const auto& max_included_op = ops[copy_num_ops - 1];
+    // CopyTo requires a committed op: an uncommitted one can be overwritten by later entries with
+    // the same or a smaller index.
+    if (!max_included_op.committed) {
+      continue;
+    }
     const auto& max_included_op_id = max_included_op.id;
     ASSERT_OK(options_.env->DeleteRecursively(log_copy_path));
     VLOG(1) << "max_included_op_id: " << AsString(max_included_op_id);
@@ -2245,6 +2250,30 @@ void VerifyRaftLogOps(LogReader* log_reader, const LogEntries& expected_entries)
   }
   const int64_t last_op_index = meta_by_index.empty() ? 0 : meta_by_index.rbegin()->first;
   ASSERT_OK(CheckLogIndex(log_reader, meta_by_index, last_op_index));
+}
+
+// The first segment's max index equals the copied op's index, but only because of an older-term
+// entry that the second segment overwrites. The copy must not stop at the first segment.
+TEST_F(LogTest, CopyUpToPastOverwrittenEntryWithSameIndex) {
+  options_.segment_size_bytes = std::numeric_limits<size_t>::max();
+  BuildLog();
+
+  auto op_id = MakeOpId(1, 1);
+  ASSERT_OK(AppendNoOps(&op_id, 5));
+  ASSERT_OK(RollLog());
+  op_id = MakeOpId(2, 4);
+  ASSERT_OK(AppendNoOps(&op_id, 2));
+  ASSERT_OK(RollLog());
+
+  auto source_reader = ASSERT_RESULT(log_->GetLogReader());
+  const auto source_entries = ASSERT_RESULT(ReadRaftLogData(source_reader.get())).entries;
+  ASSERT_EQ(source_entries.size(), 7U);
+
+  ASSERT_OK(log_->CopyTo(GetLogCopyPath(0), OpId(2, 5)));
+  auto copy_reader = ASSERT_RESULT(GetLogCopyReader(0));
+  VerifyRaftLogOps(copy_reader.get(), source_entries);
+
+  ASSERT_OK(log_->Close());
 }
 
 // Parametrized on reuse_unclosed_segment_threshold_bytes to test both Log::CopyTo ->

@@ -417,7 +417,8 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // Copies log to a new dir. Expects dest_wal_dir to be absent.
   // If max_included_op_id is specified - only part of the log up to and including
-  // max_included_op_id is copied.
+  // max_included_op_id is copied. max_included_op_id must be committed: GetSegmentOpIdRelation
+  // relies on no later entry having an index <= max_included_op_id.index.
   // Flushes necessary files and uses hard links where it is safe.
   // The quiescent marker, if any, is copied with dest_tablet_id.
   Status CopyTo(
@@ -665,7 +666,8 @@ class Log : public RefCountedThreadSafe<Log> {
   WritableFileOptions GetNewSegmentWritableFileOptions();
 
   // See SegmentOpIdRelation comments.
-  // Returns SegmentOpIdRelation::kOpIdAfterSegment if op_id is not valid or empty.
+  // Returns SegmentOpIdRelation::kOpIdAfterSegment if op_id is not valid or empty, or if the
+  // footer shows no entry with an index above op_id.index (op_id must be committed).
   // Note: this function can potentially read all entries from WAL segment that might a large amount
   // of data.
   Result<SegmentOpIdRelation> GetSegmentOpIdRelation(

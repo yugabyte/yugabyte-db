@@ -2190,7 +2190,12 @@ Result<SegmentOpIdRelation> Log::GetSegmentOpIdRelation(
                                << " footer.max_replicate_index(): "
                                << footer.max_replicate_index();
 
-  if (footer.has_max_replicate_index() && op_id.index > footer.max_replicate_index()) {
+  // op_id is committed, so no entry written after it has an index <= op_id.index. A segment whose
+  // max index is op_id.index therefore holds nothing past op_id and can be linked whole without
+  // reading it. Equality is reported as kOpIdAfterSegment rather than kOpIdIsLast so the copy moves
+  // on to the next segment: the max may come from an older-term entry at op_id.index that was
+  // later overwritten, with op_id itself in a later segment.
+  if (footer.has_max_replicate_index() && op_id.index >= footer.max_replicate_index()) {
     return SegmentOpIdRelation::kOpIdAfterSegment;
   }
 
