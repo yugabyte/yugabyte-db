@@ -19,6 +19,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
+#include "yb/client/snapshot_test_util.h"
 #include "yb/client/table.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_table_name.h"
@@ -1304,6 +1305,41 @@ TEST_F(MasterHeartbeatITest, TServerListDeltaOnAdd) {
 
   ASSERT_OK(WaitForTServerListVersion(*mini_cluster_, delta.version()));
   ASSERT_NO_FATALS(CheckLiveTServers(*mini_cluster_, RunningTServerUuids(*mini_cluster_)));
+
+  // A re-provisioned node registers on the same address with a new uuid and a higher sequence
+  // number, replacing the old descriptor.
+  auto* new_ts = mini_cluster_->mini_tablet_server(3);
+  const auto old_instance = new_ts->server()->instance_pb();
+  master::TSHeartbeatRequestPB req;
+  ASSERT_OK(new_ts->server()->GetRegistration(req.mutable_registration()->mutable_common()));
+  new_ts->Shutdown();
+  const std::string replacement_uuid = "replacement_uuid";
+  req.mutable_common()->mutable_ts_instance()->set_permanent_uuid(replacement_uuid);
+  req.mutable_common()->mutable_ts_instance()->set_instance_seqno(
+      old_instance.instance_seqno() + 1);
+  auto* leader = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster());
+  req.set_universe_uuid(
+      ASSERT_RESULT(leader->catalog_manager().GetClusterConfig()).universe_uuid());
+  master::TSHeartbeatResponsePB resp;
+  rpc::RpcController rpc;
+  master::MasterHeartbeatProxy master_proxy(proxy_cache_.get(), leader->bound_rpc_addr());
+  ASSERT_OK(master_proxy.TSHeartbeat(req, &resp, &rpc));
+  ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
+
+  master::TServerListUpdatePB replaced;
+  ts_manager.FillTServerListUpdate(delta.version(), &replaced);
+  ASSERT_FALSE(replaced.full());
+  ASSERT_GT(replaced.version(), delta.version());
+  ASSERT_EQ(SortedUuids(replaced), std::vector<std::string>{replacement_uuid});
+  ASSERT_TRUE(replaced.tservers(0).alive());
+  ASSERT_EQ(replaced.removed_size(), 1);
+  ASSERT_EQ(replaced.removed(0), new_uuid);
+
+  ASSERT_OK(WaitForTServerListVersion(*mini_cluster_, replaced.version()));
+  auto expected = RunningTServerUuids(*mini_cluster_);
+  expected.push_back(replacement_uuid);
+  std::ranges::sort(expected);
+  ASSERT_NO_FATALS(CheckLiveTServers(*mini_cluster_, expected));
 }
 
 TEST_F(MasterHeartbeatITest, TServerListDeltaAfterSameTermReload) {
@@ -1319,24 +1355,115 @@ TEST_F(MasterHeartbeatITest, TServerListDeltaAfterSameTermReload) {
       leader->master()->catalog_manager()->GetLeaderEpochInternal());
   ASSERT_OK(ts_manager.RunLoader(
       leader->master()->MakeCloudInfoPB(), &leader->master()->proxy_cache(), state));
+  // Every tserver takes its one full list after the reload before anything else changes.
+  master::TServerListUpdatePB reloaded;
+  ts_manager.FillTServerListUpdate(/*since_version=*/0, &reloaded);
+  ASSERT_OK(WaitForTServerListVersion(*mini_cluster_, reloaded.version()));
 
   ASSERT_OK(mini_cluster_->AddTabletServer());
   ASSERT_OK(mini_cluster_->WaitForTabletServerCount(4));
   const auto new_uuid = mini_cluster_->mini_tablet_server(3)->server()->permanent_uuid();
 
+  master::TServerListUpdatePB delta;
+  ts_manager.FillTServerListUpdate(reloaded.version(), &delta);
+  ASSERT_FALSE(delta.full());
+  ASSERT_GT(delta.version(), reloaded.version());
+  ASSERT_EQ(SortedUuids(delta), std::vector<std::string>{new_uuid});
+  ASSERT_EQ(delta.removed_size(), 0);
+
+  ASSERT_OK(WaitForTServerListVersion(*mini_cluster_, delta.version()));
+  ASSERT_NO_FATALS(CheckLiveTServers(*mini_cluster_, RunningTServerUuids(*mini_cluster_)));
+}
+
+// A PITR restore reloads the tserver registry under the same leader term; a tserver cut off
+// across the restore must still get a full list afterwards.
+TEST_F(MasterHeartbeatITest, TServerListAfterPitrRestore) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  auto& ts_manager = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster())->ts_manager();
+  client::SnapshotTestUtil snapshot_util(*mini_cluster_, client_->proxy_cache());
+  const auto schedule_id = ASSERT_RESULT(snapshot_util.CreateSchedule(
+      table_, table_name().namespace_type(), table_name().namespace_name(),
+      client::WaitSnapshot::kFalse));
+  const auto snapshot = ASSERT_RESULT(snapshot_util.WaitScheduleSnapshot(schedule_id));
+
+  // The version held by a tserver that loses contact with the master here.
+  master::TServerListUpdatePB before;
+  ts_manager.FillTServerListUpdate(/*since_version=*/0, &before);
+  ASSERT_OK(WaitForTServerListVersion(*mini_cluster_, before.version()));
+  const auto counter_before = static_cast<uint32_t>(before.version());
+  const auto counter = [&ts_manager]() {
+    master::TServerListUpdatePB current;
+    ts_manager.FillTServerListUpdate(/*since_version=*/0, &current);
+    return static_cast<uint32_t>(current.version());
+  };
+
+  ASSERT_OK(snapshot_util.RestoreSnapshotSchedule(
+      schedule_id, HybridTime(snapshot.entry().snapshot_hybrid_time())));
+  ASSERT_OK(WaitFor(
+      [&]() { return counter() != counter_before; }, 30s * kTimeMultiplier,
+      "Wait for the restore to reload the tserver registry"));
+
+  // Tservers registering after the restore move the counter past the cut-off version.
+  std::vector<std::string> added;
+  do {
+    ASSERT_OK(mini_cluster_->AddTabletServer());
+    added.push_back(mini_cluster_->mini_tablet_servers().back()->server()->permanent_uuid());
+    ASSERT_OK(mini_cluster_->WaitForTabletServerCount(3 + added.size()));
+  } while (counter() <= counter_before);
+
+  // The cut-off tserver reconnects with its pre-restore version: a delta from the reloaded
+  // registry would skip the tservers added since, so it must get the full list.
+  master::TServerListUpdatePB after;
+  ts_manager.FillTServerListUpdate(before.version(), &after);
+  ASSERT_TRUE(after.full()) << after.ShortDebugString();
+  const auto listed = SortedUuids(after);
+  for (const auto& uuid : added) {
+    ASSERT_TRUE(std::ranges::binary_search(listed, uuid))
+        << uuid << " missing from " << after.ShortDebugString();
+  }
+}
+
+TEST_F(MasterHeartbeatITest, TServerListCounterRestart) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  auto& ts_manager = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster())->ts_manager();
+  // Past the restart point, so the next stamp restarts the counter instead of wrapping it.
+  ts_manager.TEST_SetTServerListCounter(std::numeric_limits<uint32_t>::max() - 1);
+  master::TServerListUpdatePB before;
+  ts_manager.FillTServerListUpdate(/*since_version=*/0, &before);
+  ASSERT_OK(WaitForTServerListVersion(*mini_cluster_, before.version()));
+
+  ASSERT_OK(mini_cluster_->AddTabletServer());
+  ASSERT_OK(mini_cluster_->WaitForTabletServerCount(4));
+
+  // A version from before the restart is ahead of the master's and gets the full list under the
+  // same term.
+  master::TServerListUpdatePB after;
+  ts_manager.FillTServerListUpdate(before.version(), &after);
+  ASSERT_TRUE(after.full()) << after.ShortDebugString();
+  ASSERT_EQ(after.version() >> 32, before.version() >> 32);
+  ASSERT_LT(static_cast<uint32_t>(after.version()), static_cast<uint32_t>(before.version()));
+  ASSERT_EQ(SortedUuids(after), RunningTServerUuids(*mini_cluster_));
+
+  // From the restarted version on, deltas resume and nothing stale is re-sent.
+  master::TServerListUpdatePB delta;
+  ts_manager.FillTServerListUpdate(after.version(), &delta);
+  ASSERT_FALSE(delta.full()) << delta.ShortDebugString();
+  ASSERT_EQ(delta.tservers_size(), 0) << delta.ShortDebugString();
+  ASSERT_EQ(delta.removed_size(), 0) << delta.ShortDebugString();
+
+  const auto expected = RunningTServerUuids(*mini_cluster_);
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
         for (const auto& ts : mini_cluster_->mini_tablet_servers()) {
           std::vector<master::TSInformationPB> live;
           RETURN_NOT_OK(ts->server()->GetLiveTServers(&live));
-          if (!std::ranges::binary_search(SortedUuids(live), new_uuid)) {
+          if (SortedUuids(live) != expected) {
             return false;
           }
         }
         return true;
       },
-      10s * kTimeMultiplier, "Wait for tservers to learn the tserver added after the reload"));
-  ASSERT_NO_FATALS(CheckLiveTServers(*mini_cluster_, RunningTServerUuids(*mini_cluster_)));
+      10s * kTimeMultiplier, "Wait for tservers to take the list across the counter restart"));
 }
 
 TEST_F(MasterHeartbeatITest, TServerListNoDeltaOnLeaseLoss) {
@@ -1401,30 +1528,47 @@ TEST_F(MasterHeartbeatITest, TServerListDeltaOnUnresponsiveAndRemove) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 3000;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_guarded_lease_duration_ms) = 3000;
 
+  // Two tservers go down together, so one unresponsive pass flips both.
   ASSERT_OK(mini_cluster_->AddTabletServer());
-  ASSERT_OK(mini_cluster_->WaitForTabletServerCount(4));
-  auto* new_ts = mini_cluster_->mini_tablet_server(3);
-  const auto new_uuid = new_ts->server()->permanent_uuid();
-  const auto new_hp = HostPort(new_ts->bound_rpc_addr());
+  ASSERT_OK(mini_cluster_->AddTabletServer());
+  ASSERT_OK(mini_cluster_->WaitForTabletServerCount(5));
+  std::vector<tserver::MiniTabletServer*> new_tss = {
+      mini_cluster_->mini_tablet_server(3), mini_cluster_->mini_tablet_server(4)};
+  std::vector<std::string> new_uuids;
+  std::vector<HostPort> new_hps;
+  for (auto* ts : new_tss) {
+    new_uuids.push_back(ts->server()->permanent_uuid());
+    new_hps.push_back(HostPort(ts->bound_rpc_addr()));
+  }
+  std::ranges::sort(new_uuids);
 
   auto* leader = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster());
   auto& ts_manager = leader->ts_manager();
-  auto new_desc = ASSERT_RESULT(ts_manager.LookupTS(new_ts->server()->instance_pb()));
+  std::vector<master::TSDescriptorPtr> new_descs;
+  for (auto* ts : new_tss) {
+    new_descs.push_back(ASSERT_RESULT(ts_manager.LookupTS(ts->server()->instance_pb())));
+  }
   master::TServerListUpdatePB before;
   ts_manager.FillTServerListUpdate(/*since_version=*/0, &before);
   ASSERT_OK(WaitForTServerListVersion(*mini_cluster_, before.version()));
 
-  new_ts->Shutdown();
+  for (auto* ts : new_tss) {
+    ts->Shutdown();
+  }
   ASSERT_OK(WaitFor(
-      [&]() -> Result<bool> { return !new_desc->IsLive(); }, 30s * kTimeMultiplier,
-      "Wait for tserver to become unresponsive"));
+      [&]() -> Result<bool> {
+        return std::ranges::none_of(new_descs, [](const auto& desc) { return desc->IsLive(); });
+      },
+      30s * kTimeMultiplier, "Wait for tservers to become unresponsive"));
 
   master::TServerListUpdatePB unresponsive;
   ts_manager.FillTServerListUpdate(before.version(), &unresponsive);
   ASSERT_FALSE(unresponsive.full());
   ASSERT_GT(unresponsive.version(), before.version());
-  ASSERT_EQ(SortedUuids(unresponsive), std::vector<std::string>{new_uuid});
-  ASSERT_FALSE(unresponsive.tservers(0).alive());
+  ASSERT_EQ(SortedUuids(unresponsive), new_uuids);
+  for (const auto& entry : unresponsive.tservers()) {
+    ASSERT_FALSE(entry.alive()) << entry.ShortDebugString();
+  }
   ASSERT_EQ(unresponsive.removed_size(), 0);
 
   ASSERT_OK(WaitForTServerListVersion(*mini_cluster_, unresponsive.version()));
@@ -1432,33 +1576,38 @@ TEST_F(MasterHeartbeatITest, TServerListDeltaOnUnresponsiveAndRemove) {
 
   master::MasterClusterClient cluster_client(
       master::MasterClusterProxy(proxy_cache_.get(), leader->bound_rpc_addr()));
-  ASSERT_OK(cluster_client.BlacklistHost(new_hp.ToPB<HostPortPB>()));
-  // Removal is refused until the master has seen the lease lapse.
-  ASSERT_OK(WaitFor(
-      [&]() -> Result<bool> {
-        auto s = cluster_client.RemoveTabletServer(std::string(new_uuid));
-        if (s.ok() || s.IsInvalidArgument()) {
-          return s.ok();
-        }
-        return s;
-      },
-      30s * kTimeMultiplier, "Wait for tserver removal"));
+  for (size_t i = 0; i < new_tss.size(); ++i) {
+    ASSERT_OK(cluster_client.BlacklistHost(new_hps[i].ToPB<HostPortPB>()));
+    // Removal is refused until the master has seen the lease lapse.
+    ASSERT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          auto s = cluster_client.RemoveTabletServer(std::string(new_descs[i]->permanent_uuid()));
+          if (s.ok() || s.IsInvalidArgument()) {
+            return s.ok();
+          }
+          return s;
+        },
+        30s * kTimeMultiplier, "Wait for tserver removal"));
+  }
 
+  const auto sorted_removed = [](const master::TServerListUpdatePB& update) {
+    std::vector<std::string> uuids(update.removed().begin(), update.removed().end());
+    std::ranges::sort(uuids);
+    return uuids;
+  };
   master::TServerListUpdatePB removed;
   ts_manager.FillTServerListUpdate(unresponsive.version(), &removed);
   ASSERT_FALSE(removed.full());
   ASSERT_GT(removed.version(), unresponsive.version());
   ASSERT_EQ(removed.tservers_size(), 0);
-  ASSERT_EQ(removed.removed_size(), 1);
-  ASSERT_EQ(removed.removed(0), new_uuid);
+  ASSERT_EQ(sorted_removed(removed), new_uuids);
 
-  // A tserver still holding the pre-shutdown version sees only the removal.
+  // A tserver still holding the pre-shutdown version sees only the removals.
   master::TServerListUpdatePB since_before;
   ts_manager.FillTServerListUpdate(before.version(), &since_before);
   ASSERT_FALSE(since_before.full());
   ASSERT_EQ(since_before.tservers_size(), 0);
-  ASSERT_EQ(since_before.removed_size(), 1);
-  ASSERT_EQ(since_before.removed(0), new_uuid);
+  ASSERT_EQ(sorted_removed(since_before), new_uuids);
 
   ASSERT_OK(WaitForTServerListVersion(*mini_cluster_, removed.version()));
   ASSERT_NO_FATALS(CheckLiveTServers(*mini_cluster_, RunningTServerUuids(*mini_cluster_)));
@@ -1467,9 +1616,30 @@ TEST_F(MasterHeartbeatITest, TServerListDeltaOnUnresponsiveAndRemove) {
       continue;
     }
     for (const auto& known : ts->server()->GetKnownTServers()) {
-      ASSERT_NE(known.info.tserver_instance().permanent_uuid(), new_uuid);
+      ASSERT_FALSE(std::ranges::binary_search(
+          new_uuids, known.info.tserver_instance().permanent_uuid()));
     }
   }
+
+  // The removed node comes back with its old uuid and registers as a new descriptor.
+  const std::string restarted_uuid(new_descs[0]->permanent_uuid());
+  ASSERT_OK(new_tss[0]->RestartStoppedServer());
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto desc = ts_manager.LookupTS(new_tss[0]->server()->instance_pb());
+        return desc.ok() && (*desc)->IsLive();
+      },
+      30s * kTimeMultiplier, "Wait for the restarted tserver to register"));
+
+  // A tserver at the pre-shutdown version sees it once, alive, and the other one removed.
+  master::TServerListUpdatePB restarted;
+  ts_manager.FillTServerListUpdate(before.version(), &restarted);
+  ASSERT_FALSE(restarted.full());
+  ASSERT_EQ(restarted.tservers_size(), 1) << restarted.ShortDebugString();
+  ASSERT_EQ(restarted.tservers(0).instance().permanent_uuid(), restarted_uuid);
+  ASSERT_TRUE(restarted.tservers(0).alive());
+  ASSERT_EQ(restarted.removed_size(), 1) << restarted.ShortDebugString();
+  ASSERT_NE(restarted.removed(0), restarted_uuid);
 }
 
 }  // namespace yb::integration_tests
