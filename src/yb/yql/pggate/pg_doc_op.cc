@@ -876,7 +876,7 @@ Status PgDocReadOp::DoPopulateByYbctidOps(const YbctidGenerator& generator, Keep
   //
   // 2- Select 1024 ybctids (prefetch limit) from INDEX.
   //
-  // 3- Assign the selected ybctids to operators, one per partition. A partition's operator is
+  // 3- Assign the selected ybctids to operators. A partition's operator is
   //    cloned from template_op_ when its first ybctid is assigned, so partitions that get no
   //    ybctids cost nothing.
   //
@@ -886,7 +886,24 @@ Status PgDocReadOp::DoPopulateByYbctidOps(const YbctidGenerator& generator, Keep
   end_of_data_ = false;
   InitializeYbctidOperators();
   VLOG(1) << "Row order " << (keep_order ? "is" : "is not") << " important";
+  // The template carries the request bounds, so an out of bounds ybctid does not cause a clone.
   const auto& template_req = GetTemplateReadReq();
+  const auto* lower_bound = template_req.has_lower_bound() ? &template_req.lower_bound() : nullptr;
+  const auto* upper_bound = template_req.has_upper_bound() ? &template_req.upper_bound() : nullptr;
+  DCHECK(!lower_bound ||
+         !dockv::PartitionSchema::IsValidHashPartitionKeyBound(lower_bound->key()));
+  DCHECK(!upper_bound ||
+         !dockv::PartitionSchema::IsValidHashPartitionKeyBound(upper_bound->key()));
+  const auto in_request_bounds = [lower_bound, upper_bound](Slice ybctid) {
+    if (lower_bound &&
+        (lower_bound->is_inclusive() ? ybctid < lower_bound->key()
+                                     : ybctid <= lower_bound->key())) {
+      return false;
+    }
+    return !upper_bound ||
+           (upper_bound->is_inclusive() ? ybctid <= upper_bound->key()
+                                        : ybctid < upper_bound->key());
+  };
   // This batch's operators, by partition. Operators left in pgsql_ops_ by a previous batch are
   // never assigned ybctids, as they may still be active.
   std::vector<PgsqlReadOp*> partition_ops(table_->GetPartitionListSize());
@@ -895,28 +912,14 @@ Status PgDocReadOp::DoPopulateByYbctidOps(const YbctidGenerator& generator, Keep
     if (ybctid.empty()) {
       break;
     }
+    if (!in_request_bounds(ybctid)) {
+      continue;
+    }
+
     // Find partition. The partition index is the boundary order minus 1.
     // - For hash partitioning, we use hashcode to find the right index.
     // - For range partitioning, we pass partition key to seek the index.
     const auto partition = VERIFY_RESULT(table_->FindPartitionIndex(ybctid));
-
-    // Check bounds, if set. The template carries the request bounds, so an out of bounds ybctid
-    // does not cause a clone.
-    if (template_req.has_lower_bound()) {
-      const auto& lower_bound = template_req.lower_bound();
-      DCHECK(!dockv::PartitionSchema::IsValidHashPartitionKeyBound(lower_bound.key()));
-      if (lower_bound.is_inclusive() ? ybctid < lower_bound.key() : ybctid <= lower_bound.key()) {
-        continue;
-      }
-    }
-    if (template_req.has_upper_bound()) {
-      const auto& upper_bound = template_req.upper_bound();
-      DCHECK(!dockv::PartitionSchema::IsValidHashPartitionKeyBound(upper_bound.key()));
-      if (upper_bound.is_inclusive() ? ybctid > upper_bound.key() : ybctid >= upper_bound.key()) {
-        continue;
-      }
-    }
-
     // Assign ybctids to operators.
     auto*& partition_op = partition_ops[partition];
     if (!partition_op) {
