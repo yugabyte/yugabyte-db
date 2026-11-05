@@ -1670,6 +1670,14 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         .collect(Collectors.toSet());
   }
 
+  private static Set<String> bestEffortNodeNames(List<TaskInfo> pushes) {
+    return pushes.stream()
+        .map(TaskInfo::getTaskParams)
+        .filter(p -> p.path("ignoreErrors").asBoolean())
+        .map(p -> p.path("nodeName").asText())
+        .collect(Collectors.toSet());
+  }
+
   private static List<TaskInfo> between(List<TaskInfo> tasks, int afterPos, int beforePos) {
     return tasks.stream()
         .filter(t -> t.getPosition() > afterPos && t.getPosition() < beforePos)
@@ -1728,17 +1736,22 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     List<TaskInfo> removes = changeMasterConfigs(plan, "RemoveMaster");
     List<TaskInfo> pushes = masterAddrPushes(plan);
     List<TaskInfo> preRemove = between(pushes, lastPosition(adds), firstPosition(removes));
-    // The post-remove push is the two groups (masters, tservers) right after the leader wait.
+    // The post-remove push is the groups right after the leader wait: masters, tservers, and the
+    // best-effort push to tservers the edit removes.
     int leaderWait =
         firstPosition(
             between(
                 subtasks(plan, TaskType.WaitForMasterLeader, p -> true),
                 lastPosition(removes),
                 Integer.MAX_VALUE));
-    List<TaskInfo> postRemove = between(pushes, leaderWait, leaderWait + 3);
-    assertEquals(
-        ImmutableSet.of(leaderWait + 1, leaderWait + 2),
-        postRemove.stream().map(TaskInfo::getPosition).collect(Collectors.toSet()));
+    List<TaskInfo> postRemove = between(pushes, leaderWait, leaderWait + 4);
+    Set<Integer> postRemoveGroups =
+        postRemove.stream().map(TaskInfo::getPosition).collect(Collectors.toSet());
+    assertTrue(
+        postRemoveGroups.toString(),
+        postRemoveGroups.equals(ImmutableSet.of(leaderWait + 1, leaderWait + 2))
+            || postRemoveGroups.equals(
+                ImmutableSet.of(leaderWait + 1, leaderWait + 2, leaderWait + 3)));
     for (List<TaskInfo> push : ImmutableList.of(preRemove, postRemove)) {
       assertEquals(expectedMasters, nodeNames(push, ServerType.MASTER));
       assertEquals(expectedTservers, nodeNames(push, ServerType.TSERVER));
@@ -1824,11 +1837,18 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     String newMasters = expectedMasterAddresses(pi);
 
     // The leaving az-3 tserver still serves traffic until its data moves, so it gets the pushes.
+    // It may be down, so a failed push to it does not fail the edit.
     List<TaskInfo> postRemove =
         assertPushesAroundMasterChange(
             plan,
             ImmutableSet.of("yb-master-0_az-1", "yb-master-0_az-2", "yb-master-0_az-4"),
             ImmutableSet.of("yb-tserver-0_az-1", "yb-tserver-0_az-2", "yb-tserver-0_az-3"));
+    assertEquals(ImmutableSet.of("yb-tserver-0_az-3"), bestEffortNodeNames(masterAddrPushes(plan)));
+    assertEquals(
+        2,
+        masterAddrPushes(plan).stream()
+            .filter(t -> t.getTaskParams().path("ignoreErrors").asBoolean())
+            .count());
     assertEquals(
         ImmutableList.of("AddMaster"),
         changeMasterConfigs(plan, "AddMaster").stream()
@@ -2305,7 +2325,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     }
     List<TaskInfo> postRemove =
         between(pushes, removes.get(1).getPosition(), Integer.MAX_VALUE).stream()
-            .filter(t -> t.getPosition() <= lastPosition(removes) + 3)
+            .filter(t -> t.getPosition() <= lastPosition(removes) + 4)
             .collect(Collectors.toList());
     Set<String> masters =
         ImmutableSet.of("yb-master-1-0_az-1", "yb-master-0_az-2", "yb-master-0_az-4");
@@ -2551,16 +2571,14 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
   }
 
   /**
-   * Runs a zone replace through the early Secret update, against a fake master quorum, and checks
-   * the values each server is sent and when. A retry from there pushes and renders nothing again.
+   * Runs a zone replace of az-3 by az-4 against a fake master quorum, through the master move, up
+   * to the helm upgrade of the new az-4 tserver. Records the config changes, the in-memory pushes
+   * and the helm upgrades in events. A push to one of downHosts fails.
    */
-  @Test
-  public void testZoneReplacePushedMasterAddressesAtRunTime() throws Exception {
-    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+  private TaskInfo runZoneReplaceThroughMasterMove(
+      PlacementInfo pi, List<String> events, Set<String> downHosts) throws Exception {
     factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
     factory.globalRuntimeConf().setValue("yb.kubernetes.wait_for_gflag_sync_sec", "0");
-    PlacementInfo pi = zoneReplacePlacement();
-    String newMasters = expectedMasterAddresses(pi);
 
     // az-1..az-3 run a master and a tserver; az-4 gets only its new master at this stage.
     when(mockKubernetesManager.getPodInfos(any(), any(), any()))
@@ -2578,7 +2596,6 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
     // Fake quorum that follows the config changes. It is seeded on the first change with the
     // masters the universe knows then, which by that point carry their POD_INFO addresses.
-    List<String> events = Collections.synchronizedList(new ArrayList<>());
     Map<String, Integer> voters = Collections.synchronizedMap(new java.util.LinkedHashMap<>());
     UUID universeUUID = defaultUniverse.getUniverseUUID();
     when(mockClient.changeMasterConfig(any(), anyInt(), anyBoolean(), anyBoolean(), any()))
@@ -2623,6 +2640,9 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         .thenAnswer(
             inv -> {
               HostAndPort hp = inv.getArgument(0);
+              if (downHosts.contains(hp.getHost())) {
+                return false;
+              }
               events.add(
                   "SET "
                       + hp.getHost()
@@ -2651,7 +2671,66 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         .when(mockKubernetesManager)
         .helmInstall(any(), any(), any(), any(), any(), any(), any());
 
-    TaskInfo taskInfo = submitEdit(currentIntent(), pi, null);
+    return submitEdit(currentIntent(), pi, null);
+  }
+
+  /** The address the run-time tests reach pod 0 of the server in the AZ at. */
+  private static String podHost(String server, String az) {
+    return String.format("%s-0.%ss.%s-%s.svc.cluster.local", server, server, NODE_PREFIX, az);
+  }
+
+  /** A leaving tserver that is down does not fail the master move, which used to not touch it. */
+  @Test
+  public void testZoneReplaceWithLeavingTserverDownMovesMasters() throws Exception {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    String leavingTserver = podHost("yb-tserver", "az-3");
+    String masterC = podHost("yb-master", "az-3");
+    List<String> events = Collections.synchronizedList(new ArrayList<>());
+
+    TaskInfo taskInfo =
+        runZoneReplaceThroughMasterMove(
+            zoneReplacePlacement(), events, ImmutableSet.of(leavingTserver));
+
+    assertTrue(describeFailure(taskInfo), describeFailure(taskInfo).contains("stop after"));
+    assertTrue(events.toString(), events.contains("REMOVE " + masterC));
+    assertEquals(
+        Boolean.TRUE,
+        Json.fromJson(
+                TaskInfo.getOrBadRequest(taskInfo.getUuid()).getTaskParams(),
+                UniverseDefinitionTaskParams.class)
+            .getPrimaryCluster()
+            .getMasterAddrsPropagated());
+  }
+
+  /** A tserver that stays must get the new masters, so the edit stops before any remove. */
+  @Test
+  public void testZoneReplaceWithStayingTserverDownFailsBeforeRemove() throws Exception {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    String stayingTserver = podHost("yb-tserver", "az-1");
+    List<String> events = Collections.synchronizedList(new ArrayList<>());
+
+    TaskInfo taskInfo =
+        runZoneReplaceThroughMasterMove(
+            zoneReplacePlacement(), events, ImmutableSet.of(stayingTserver));
+
+    assertEquals(Failure, taskInfo.getTaskState());
+    assertFalse(describeFailure(taskInfo), describeFailure(taskInfo).contains("stop after"));
+    assertTrue(events.toString(), events.stream().anyMatch(e -> e.startsWith("ADD")));
+    assertTrue(events.toString(), events.stream().noneMatch(e -> e.startsWith("REMOVE")));
+  }
+
+  /**
+   * Runs a zone replace through the early Secret update, against a fake master quorum, and checks
+   * the values each server is sent and when. A retry from there pushes and renders nothing again.
+   */
+  @Test
+  public void testZoneReplacePushedMasterAddressesAtRunTime() throws Exception {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    PlacementInfo pi = zoneReplacePlacement();
+    String newMasters = expectedMasterAddresses(pi);
+    UUID universeUUID = defaultUniverse.getUniverseUUID();
+    List<String> events = Collections.synchronizedList(new ArrayList<>());
+    TaskInfo taskInfo = runZoneReplaceThroughMasterMove(pi, events, Collections.emptySet());
     assertTrue(describeFailure(taskInfo), describeFailure(taskInfo).contains("stop after"));
 
     Universe universe = Universe.getOrBadRequest(universeUUID);

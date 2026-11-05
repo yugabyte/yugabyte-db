@@ -551,6 +551,13 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               .forEach(n -> masters.putIfAbsent(n.nodeName, n));
           return masters.values();
         };
+    // Tservers the edit removes may be down, often the reason for the edit, so the pushes to them
+    // are best effort. The Secret render covers them if they restart.
+    Set<String> leavingTservers =
+        tserversToRemoveAzMap.values().stream()
+            .flatMap(Set::stream)
+            .map(n -> n.nodeName)
+            .collect(Collectors.toSet());
     // Before the last master step removes a master, rewrite the gflags Secrets with the new
     // masters, without restarting pods, so a pod restarted from then on boots with a list that
     // names a master that stays. AZs render at their current counts, which would drop the new
@@ -633,6 +640,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           new ArrayList<>(mastersToAdd),
           new ArrayList<>(mastersToRemove),
           mastersRunningWith.apply(mastersToAdd),
+          leavingTservers,
           propagateMasterAddrs,
           // The new list names the full-move masters, which do not exist yet.
           fullMoveMasterAZs.isEmpty() ? updateMasterAddrSecrets : null);
@@ -665,6 +673,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               mastersToAddAzMap.values().stream()
                   .flatMap(Set::stream)
                   .collect(Collectors.toList())),
+          leavingTservers,
           propagateMasterAddrs,
           updateMasterAddrSecrets);
     }
@@ -698,6 +707,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
             universe.isYbcEnabled(),
             ybcManager.getStableYbcVersion(),
             Collections.emptyList() /* newMasterQuorum */,
+            Collections.emptySet() /* bestEffortTservers */,
             false /* pushMasterAddrs */,
             null /* beforeMasterRemoves */);
       }
@@ -1010,6 +1020,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       List<NodeDetails> mastersToAdd,
       List<NodeDetails> mastersToRemove,
       Collection<NodeDetails> masterPushTargets,
+      Set<String> bestEffortTservers,
       boolean pushMasterAddrs,
       @Nullable Runnable beforeRemoves) {
 
@@ -1030,7 +1041,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     }
     // Live servers must know the new masters before a remove can move leadership to one of them.
     if (pushMasterAddrs && !mastersToRemove.isEmpty()) {
-      createMasterAddrsInMemoryUpdateTasks(universe, masterPushTargets, raftConfig);
+      createMasterAddrsInMemoryUpdateTasks(
+          universe, masterPushTargets, bestEffortTservers, raftConfig);
     }
     if (beforeRemoves != null) {
       beforeRemoves.run();
@@ -1054,25 +1066,42 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     // Must land before anything deletes the old master pods.
     if (pushMasterAddrs) {
-      createMasterAddrsInMemoryUpdateTasks(universe, masterPushTargets, raftConfig);
+      createMasterAddrsInMemoryUpdateTasks(
+          universe, masterPushTargets, bestEffortTservers, raftConfig);
     }
   }
 
   /**
    * Sets master_addresses / tserver_master_addrs in memory on the given masters and every tserver,
    * read replicas included. Callers plan this only while no tserver pod has been added or removed,
-   * so every tserver in the universe is live.
+   * so every tserver in the universe exists. A failed push to one of bestEffortTservers does not
+   * fail the edit.
    */
   private void createMasterAddrsInMemoryUpdateTasks(
-      Universe universe, Collection<NodeDetails> masters, Supplier<String> masterAddresses) {
-    List<NodeDetails> tservers =
+      Universe universe,
+      Collection<NodeDetails> masters,
+      Set<String> bestEffortTservers,
+      Supplier<String> masterAddresses) {
+    Map<Boolean, List<NodeDetails>> tservers =
         universe.getTServers().stream()
             .filter(n -> n.state != NodeState.ToBeAdded)
-            .collect(Collectors.toList());
+            .collect(Collectors.partitioningBy(n -> bestEffortTservers.contains(n.nodeName)));
     createUpdateMasterAddrsInMemoryTasks(masters, ServerType.MASTER, masterAddresses)
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-    if (!tservers.isEmpty()) {
-      createUpdateMasterAddrsInMemoryTasks(tservers, ServerType.TSERVER, masterAddresses)
+    if (!tservers.get(false).isEmpty()) {
+      createUpdateMasterAddrsInMemoryTasks(tservers.get(false), ServerType.TSERVER, masterAddresses)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    }
+    if (!tservers.get(true).isEmpty()) {
+      createSetFlagInMemoryTasks(
+              tservers.get(true),
+              ServerType.TSERVER,
+              (node, params) -> {
+                params.force = true;
+                params.updateMasterAddrs = true;
+                params.masterAddrsOverride = masterAddresses;
+                params.ignoreErrors = true;
+              })
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
   }
@@ -1337,6 +1366,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       boolean enableYbc,
       String ybcSoftwareVersion,
       Collection<NodeDetails> newMasterQuorum,
+      Set<String> bestEffortTservers,
       boolean pushMasterAddrs,
       @Nullable Runnable beforeMasterRemoves) {
     String universeName = universe.getName();
@@ -1821,7 +1851,12 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         if (CollectionUtils.isNotEmpty(serversToAdd)
             || CollectionUtils.isNotEmpty(serversToRemove)) {
           createMoveMasterTasks(
-              serversToAdd, serversToRemove, newMasterQuorum, pushMasterAddrs, beforeMasterRemoves);
+              serversToAdd,
+              serversToRemove,
+              newMasterQuorum,
+              bestEffortTservers,
+              pushMasterAddrs,
+              beforeMasterRemoves);
         }
       } else {
         // Tserver case
