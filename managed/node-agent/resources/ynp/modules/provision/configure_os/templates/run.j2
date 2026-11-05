@@ -5,11 +5,6 @@ bin_path="/usr/local/bin"
 # systemd) must be able to read /etc/systemd/{system,user}.conf and similar.
 umask 022
 
-# Set a sysctl key now and save it in /etc/sysctl.conf so it survives a reboot
-# or `sysctl --system`. The value is always appended, so it is the last entry
-# for the key and wins when the file is loaded; earlier entries for the key
-# (with or without spaces around "=") are removed first so the file stays free
-# of duplicates and repeated runs leave it unchanged.
 # Remove every entry for a sysctl key (with or without spaces around "=")
 # from the given file.
 remove_sysctl_key() {
@@ -17,6 +12,11 @@ remove_sysctl_key() {
   sed -i "/^[[:space:]]*${key_re}[[:space:]]*=/d" "$2"
 }
 
+# Set a sysctl key now and save it in /etc/sysctl.conf so it survives a reboot
+# or `sysctl --system`. The value is always appended, so it is the last entry
+# for the key and wins when the file is loaded; earlier entries for the key
+# (with or without spaces around "=") are removed first so the file stays free
+# of duplicates and repeated runs leave it unchanged.
 persist_sysctl() {
   local key="$1" value="$2" conf=/etc/sysctl.conf
   touch "$conf"
