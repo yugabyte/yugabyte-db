@@ -16,6 +16,8 @@ import static play.mvc.Http.Status.FORBIDDEN;
 
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import java.util.Collections;
 import org.junit.Before;
 import org.junit.Test;
@@ -26,10 +28,18 @@ public class DataDogConfigTest {
   private static final String API_KEY = "test-api-key";
 
   private ApiHelper apiHelper;
+  private RuntimeConfGetter confGetter;
 
   @Before
   public void setUp() {
     apiHelper = mock(ApiHelper.class);
+    confGetter = mock(RuntimeConfGetter.class);
+    skipConnectivityValidation(false);
+  }
+
+  private void skipConnectivityValidation(boolean skip) {
+    when(confGetter.getGlobalConf(GlobalConfKeys.telemetrySkipConnectivityValidations))
+        .thenReturn(skip);
   }
 
   private DataDogConfig config(String site) {
@@ -41,7 +51,7 @@ public class DataDogConfigTest {
 
   private void assertRejected(DataDogConfig config) {
     PlatformServiceException e =
-        assertThrows(PlatformServiceException.class, () -> config.validateConnectivity(apiHelper));
+        assertThrows(PlatformServiceException.class, () -> config.validate(apiHelper, confGetter));
     assertEquals(BAD_REQUEST, e.getHttpStatus());
   }
 
@@ -49,7 +59,7 @@ public class DataDogConfigTest {
   public void testValidKeySendsKeyToSiteApiHost() {
     when(apiHelper.getRequest(anyString(), anyMap())).thenReturn(Json.parse("{\"valid\": true}"));
 
-    config("us5.datadoghq.com").validateConnectivity(apiHelper);
+    config("us5.datadoghq.com").validate(apiHelper, confGetter);
 
     verify(apiHelper)
         .getRequest(
@@ -71,7 +81,7 @@ public class DataDogConfigTest {
           "ddog-gov.com",
           "DatadogHQ.com"
         }) {
-      config(site).validateConnectivity(apiHelper);
+      config(site).validate(apiHelper, confGetter);
     }
   }
 
@@ -91,6 +101,19 @@ public class DataDogConfigTest {
         }) {
       assertRejected(config(site));
     }
+    verify(apiHelper, never()).getRequest(anyString(), any());
+  }
+
+  @Test
+  public void testSkippedConnectivityStillRejectsNonDatadogSite() {
+    skipConnectivityValidation(true);
+    assertRejected(config("example.com"));
+
+    DataDogConfig noKey = config("datadoghq.com");
+    noKey.setApiKey(null);
+    assertRejected(noKey);
+
+    config("datadoghq.eu").validate(apiHelper, confGetter);
     verify(apiHelper, never()).getRequest(anyString(), any());
   }
 

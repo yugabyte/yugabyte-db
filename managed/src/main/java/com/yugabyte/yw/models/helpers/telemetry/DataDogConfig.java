@@ -48,10 +48,10 @@ public class DataDogConfig extends TelemetryProviderConfig {
     return "https://api." + site + "/api/v1/validate";
   }
 
-  // Datadog's API key validation endpoint answers {"valid": true} for a usable key. Anything else,
-  // including an error body or a failed request, means the key or site is wrong.
+  // Runs even when connectivity validation is skipped: the OTel collector's Datadog exporter also
+  // sends the API key to this site.
   @Override
-  public void validateConnectivity(ApiHelper apiHelper) {
+  public void validateConfigFields() {
     if (site == null || !DATADOG_SITE.matcher(site).matches()) {
       throw new PlatformServiceException(
           BAD_REQUEST,
@@ -61,7 +61,12 @@ public class DataDogConfig extends TelemetryProviderConfig {
     if (StringUtils.isBlank(apiKey)) {
       throw new PlatformServiceException(BAD_REQUEST, "Datadog API Key is required.");
     }
+  }
 
+  // Datadog's API key validation endpoint answers {"valid": true} for a usable key. Anything else,
+  // including an error body or a failed request, means the key or site is wrong.
+  @Override
+  public void validateConnectivity(ApiHelper apiHelper) {
     JsonNode response;
     try {
       response =
