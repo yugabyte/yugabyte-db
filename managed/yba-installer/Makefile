@@ -44,7 +44,7 @@ SHA1SUM ?= $(shell command -v sha1sum >/dev/null 2>&1 && echo sha1sum || echo sh
 PREREQS_DIR := ${TOP_BUILDDIR}/prereqs
 
 # Prometheus Version
-PROMETHEUS_VERSION ?= 3.13.1
+PROMETHEUS_VERSION ?= 3.15.1
 
 # Node Exporter Version
 NODE_EXPORTER_VERSION ?= 1.10.2
