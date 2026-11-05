@@ -69,10 +69,10 @@
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_statistics.h"
 #include "yb/docdb/docdb_util.h"
-#include "yb/docdb/properties_collector/key_hybrid_time_range_collector.h"
 #include "yb/docdb/properties_collector/sst_stats_aggregator.h"
 #include "yb/docdb/properties_collector/sst_stats_collector.h"
 #include "yb/docdb/properties_collector/sst_stats_metrics.h"
+#include "yb/docdb/properties_collector/write_hybrid_time_range_collector.h"
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/ql_rocksdb_storage.h"
 #include "yb/docdb/redis_operation.h"
@@ -401,6 +401,7 @@ DECLARE_bool(cdc_enable_time_based_intent_retention);
 DECLARE_bool(consistent_restore);
 DECLARE_bool(enable_tiered_storage);
 DECLARE_bool(docdb_enable_sst_stats_collector);
+DECLARE_bool(docdb_enable_sst_write_hybrid_time_range_collector);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(TEST_invalidate_last_change_metadata_op);
 DECLARE_int32(client_read_write_timeout_ms);
@@ -1401,7 +1402,9 @@ Status Tablet::OpenRegularDB(const rocksdb::Options& common_options) {
 
   // Lets a restore to a point in time remove the files that it hides entirely, see
   // RocksDBPatcher::SetHybridTimeFilter.
-  docdb::AddKeyHybridTimeRangeCollector(&regular_rocksdb_options);
+  if (FLAGS_docdb_enable_sst_write_hybrid_time_range_collector) {
+    docdb::AddWriteHybridTimeRangeCollector(&regular_rocksdb_options);
+  }
 
   if (FLAGS_docdb_enable_sst_stats_collector) {
     regular_rocksdb_options.table_properties_collector_factories.push_back(

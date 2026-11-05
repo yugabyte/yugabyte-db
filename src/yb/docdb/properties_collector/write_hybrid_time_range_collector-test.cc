@@ -11,7 +11,7 @@
 // under the License.
 //
 
-#include "yb/docdb/properties_collector/key_hybrid_time_range_collector.h"
+#include "yb/docdb/properties_collector/write_hybrid_time_range_collector.h"
 
 #include "yb/docdb/properties_collector/chain_tracker_test_util.h"
 
@@ -19,11 +19,11 @@
 
 namespace yb::docdb {
 
-class KeyHybridTimeRangeCollectorTest : public YBTest {
+class WriteHybridTimeRangeCollectorTest : public YBTest {
  protected:
   void SetUp() override {
     YBTest::SetUp();
-    collector_.reset(MakeKeyHybridTimeRangeCollectorFactory()->CreateTablePropertiesCollector(
+    collector_.reset(MakeWriteHybridTimeRangeCollectorFactory()->CreateTablePropertiesCollector(
         rocksdb::TablePropertiesCollectorFactory::Context()));
   }
 
@@ -31,20 +31,20 @@ class KeyHybridTimeRangeCollectorTest : public YBTest {
     return collector_->AddUserKey(key, Str("v"), rocksdb::kEntryPut, 0, 0);
   }
 
-  std::optional<KeyHybridTimeRange> Finish() {
+  std::optional<WriteHybridTimeRange> Finish() {
     rocksdb::UserCollectedProperties properties;
     EXPECT_OK(collector_->Finish(&properties));
     // Finish is called more than once per build and must give the same result.
     rocksdb::UserCollectedProperties again;
     EXPECT_OK(collector_->Finish(&again));
     EXPECT_EQ(properties, again);
-    return GetKeyHybridTimeRange(properties);
+    return GetWriteHybridTimeRange(properties);
   }
 
   std::unique_ptr<rocksdb::TablePropertiesCollector> collector_;
 };
 
-TEST_F(KeyHybridTimeRangeCollectorTest, Range) {
+TEST_F(WriteHybridTimeRangeCollectorTest, Range) {
   // File order is key order, not time order.
   ASSERT_OK(Add(RowKey(Row(1), 5 * kMinute)));
   ASSERT_OK(Add(ColumnKey(Row(1), 1, 1 * kMinute)));
@@ -56,11 +56,11 @@ TEST_F(KeyHybridTimeRangeCollectorTest, Range) {
   ASSERT_EQ(range->max, AgeToHt(1 * kMinute));
 }
 
-TEST_F(KeyHybridTimeRangeCollectorTest, Empty) {
+TEST_F(WriteHybridTimeRangeCollectorTest, Empty) {
   ASSERT_FALSE(Finish().has_value());
 }
 
-TEST_F(KeyHybridTimeRangeCollectorTest, UndecodableKey) {
+TEST_F(WriteHybridTimeRangeCollectorTest, UndecodableKey) {
   ASSERT_OK(Add(RowKey(Row(1), 5 * kMinute)));
   // A key whose hybrid time cannot be decoded must leave the file without a range: it is unknown
   // whether a hybrid time filter would hide it.
@@ -69,10 +69,10 @@ TEST_F(KeyHybridTimeRangeCollectorTest, UndecodableKey) {
   ASSERT_FALSE(Finish().has_value());
 }
 
-TEST_F(KeyHybridTimeRangeCollectorTest, AddIsIdempotent) {
+TEST_F(WriteHybridTimeRangeCollectorTest, AddIsIdempotent) {
   rocksdb::Options options;
-  AddKeyHybridTimeRangeCollector(&options);
-  AddKeyHybridTimeRangeCollector(&options);
+  AddWriteHybridTimeRangeCollector(&options);
+  AddWriteHybridTimeRangeCollector(&options);
   ASSERT_EQ(options.table_properties_collector_factories.size(), 1);
 }
 

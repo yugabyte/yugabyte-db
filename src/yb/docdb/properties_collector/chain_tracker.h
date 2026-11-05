@@ -22,6 +22,7 @@
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/hybrid_time.h"
 
+#include "yb/docdb/properties_collector/encoded_hybrid_time_range.h"
 #include "yb/docdb/properties_collector/exponential_histogram.h"
 
 #include "yb/util/slice.h"
@@ -172,7 +173,6 @@ class ChainTracker {
   void Invalidate();
   void AssignPrevKey(Slice subdoc_key, size_t shared_prefix);
   void AddReclaimable(size_t entry_bytes, int64_t droppable_by_micros);
-  void UpdateWriteHtRange(const EncodedDocHybridTime& encoded_ht);
   Result<int64_t> PhysicalMicros(const EncodedDocHybridTime& encoded_ht);
   void AddCoveringWrite(const EncodedDocHybridTime& encoded_ht, int64_t micros, bool is_tombstone);
   // The oldest covering write newer than encoded_ht, i.e. the first write whose passing of the
@@ -195,10 +195,7 @@ class ChainTracker {
   bool has_prev_ = false;
   std::vector<char> prev_key_;              // subdoc key without hybrid time
   EncodedDocHybridTime prev_entry_ht_;
-  // Time-order extremes: EncodedDocHybridTime's comparator inverts the reversed byte encoding,
-  // so min_encoded_ht_ is the OLDEST write time and max_encoded_ht_ the newest.
-  EncodedDocHybridTime min_encoded_ht_;
-  EncodedDocHybridTime max_encoded_ht_;
+  EncodedHybridTimeRange write_ht_range_;
 
   // Current row.
   size_t row_end_ = 0;

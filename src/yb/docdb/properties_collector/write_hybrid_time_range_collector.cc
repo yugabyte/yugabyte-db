@@ -11,22 +11,28 @@
 // under the License.
 //
 
-#include "yb/docdb/properties_collector/key_hybrid_time_range_collector.h"
+#include "yb/docdb/properties_collector/write_hybrid_time_range_collector.h"
 
 #include <algorithm>
 
 #include "yb/common/doc_hybrid_time.h"
 
-#include "yb/util/format.h"
+#include "yb/util/flags.h"
 #include "yb/util/stol_utils.h"
+
+DEFINE_NON_RUNTIME_bool(docdb_enable_sst_write_hybrid_time_range_collector, true,
+    "Whether to register the collector that stores the range of the write hybrid times of every "
+    "entry in each SST file's properties block, on the regular RocksDB of each tablet. A restore "
+    "to a point in time removes the SST files it hides entirely only when they have this range. "
+    "Takes effect on tablet (re)open.");
 
 namespace yb::docdb {
 
 namespace {
 
-constexpr const char* kCollectorName = "DocDbKeyHybridTimeRangeCollector";
+constexpr const char* kCollectorName = "DocDbWriteHybridTimeRangeCollector";
 
-class KeyHybridTimeRangeCollector : public rocksdb::TablePropertiesCollector {
+class WriteHybridTimeRangeCollector : public rocksdb::TablePropertiesCollector {
  public:
   Status AddUserKey(
       const Slice& key, const Slice& value, rocksdb::EntryType type, rocksdb::SequenceNumber seq,
@@ -34,31 +40,24 @@ class KeyHybridTimeRangeCollector : public rocksdb::TablePropertiesCollector {
     if (!valid_) {
       return Status::OK();
     }
-    // A properties collector must never fail the table build. A key without a hybrid time leaves
-    // the file without a range, so nothing relies on it.
+    // A properties collector must never fail the table build. A key without a valid hybrid time
+    // size leaves the file without a range. Only that size is checked, to keep this cheap: the
+    // range assumes well-formed hybrid times, and decodes only its two extremes.
     auto size = DocHybridTime::GetEncodedSize(key);
     if (!size.ok()) {
       valid_ = false;
       return Status::OK();
     }
-    // Runs for every key of every flush and compaction, so the hybrid times are compared encoded
-    // and only the two extremes are decoded. Encoded hybrid times sort in reverse time order.
-    auto encoded = key.Suffix(*size);
-    if (newest_.empty() || encoded.compare(newest_.AsSlice()) < 0) {
-      newest_.Assign(encoded);
-    }
-    if (oldest_.empty() || encoded.compare(oldest_.AsSlice()) > 0) {
-      oldest_.Assign(encoded);
-    }
+    range_.Add(key.Suffix(*size));
     return Status::OK();
   }
 
   // Called more than once, see properties_collector/README.md.
   Status Finish(rocksdb::UserCollectedProperties* properties) override {
     if (auto range = Range()) {
-      using K = KeyHybridTimeRangePropertyKeys;
-      (*properties)[std::string(K::kMinKeyHt)] = std::to_string(range->min.ToUint64());
-      (*properties)[std::string(K::kMaxKeyHt)] = std::to_string(range->max.ToUint64());
+      using K = WriteHybridTimeRangePropertyKeys;
+      (*properties)[std::string(K::kFileMinWriteHt)] = std::to_string(range->min.ToUint64());
+      (*properties)[std::string(K::kFileMaxWriteHt)] = std::to_string(range->max.ToUint64());
     }
     return Status::OK();
   }
@@ -69,36 +68,34 @@ class KeyHybridTimeRangeCollector : public rocksdb::TablePropertiesCollector {
       return {};
     }
     return {
-      {std::string(KeyHybridTimeRangePropertyKeys::kMinKeyHt), range->min.ToString()},
-      {std::string(KeyHybridTimeRangePropertyKeys::kMaxKeyHt), range->max.ToString()},
+      {std::string(WriteHybridTimeRangePropertyKeys::kFileMinWriteHt), range->min.ToString()},
+      {std::string(WriteHybridTimeRangePropertyKeys::kFileMaxWriteHt), range->max.ToString()},
     };
   }
 
   const char* Name() const override { return kCollectorName; }
 
  private:
-  std::optional<KeyHybridTimeRange> Range() const {
-    if (!valid_ || oldest_.empty()) {
+  std::optional<WriteHybridTimeRange> Range() const {
+    if (!valid_ || range_.empty()) {
       return std::nullopt;
     }
-    auto oldest = oldest_.Decode();
-    auto newest = newest_.Decode();
-    if (!oldest.ok() || !newest.ok()) {
+    auto range = range_.Decode();
+    if (!range.ok()) {
       return std::nullopt;
     }
-    return KeyHybridTimeRange{.min = oldest->hybrid_time(), .max = newest->hybrid_time()};
+    return *range;
   }
 
   bool valid_ = true;
-  EncodedDocHybridTime oldest_;
-  EncodedDocHybridTime newest_;
+  EncodedHybridTimeRange range_;
 };
 
-class KeyHybridTimeRangeCollectorFactory : public rocksdb::TablePropertiesCollectorFactory {
+class WriteHybridTimeRangeCollectorFactory : public rocksdb::TablePropertiesCollectorFactory {
  public:
   rocksdb::TablePropertiesCollector* CreateTablePropertiesCollector(
       rocksdb::TablePropertiesCollectorFactory::Context context) override {
-    return new KeyHybridTimeRangeCollector();
+    return new WriteHybridTimeRangeCollector();
   }
 
   const char* Name() const override { return kCollectorName; }
@@ -123,33 +120,29 @@ std::optional<HybridTime> GetHybridTime(
 
 }  // namespace
 
-std::string KeyHybridTimeRange::ToString() const {
-  return YB_STRUCT_TO_STRING(min, max);
-}
-
 std::shared_ptr<rocksdb::TablePropertiesCollectorFactory>
-    MakeKeyHybridTimeRangeCollectorFactory() {
-  return std::make_shared<KeyHybridTimeRangeCollectorFactory>();
+    MakeWriteHybridTimeRangeCollectorFactory() {
+  return std::make_shared<WriteHybridTimeRangeCollectorFactory>();
 }
 
-void AddKeyHybridTimeRangeCollector(rocksdb::Options* options) {
+void AddWriteHybridTimeRangeCollector(rocksdb::Options* options) {
   auto& factories = options->table_properties_collector_factories;
   if (std::any_of(factories.begin(), factories.end(), [](const auto& factory) {
         return std::string_view(factory->Name()) == kCollectorName;
       })) {
     return;
   }
-  factories.push_back(MakeKeyHybridTimeRangeCollectorFactory());
+  factories.push_back(MakeWriteHybridTimeRangeCollectorFactory());
 }
 
-std::optional<KeyHybridTimeRange> GetKeyHybridTimeRange(
+std::optional<WriteHybridTimeRange> GetWriteHybridTimeRange(
     const rocksdb::UserCollectedProperties& properties) {
-  auto min = GetHybridTime(properties, KeyHybridTimeRangePropertyKeys::kMinKeyHt);
-  auto max = GetHybridTime(properties, KeyHybridTimeRangePropertyKeys::kMaxKeyHt);
+  auto min = GetHybridTime(properties, WriteHybridTimeRangePropertyKeys::kFileMinWriteHt);
+  auto max = GetHybridTime(properties, WriteHybridTimeRangePropertyKeys::kFileMaxWriteHt);
   if (!min || !max || *min > *max) {
     return std::nullopt;
   }
-  return KeyHybridTimeRange{.min = *min, .max = *max};
+  return WriteHybridTimeRange{.min = *min, .max = *max};
 }
 
 }  // namespace yb::docdb

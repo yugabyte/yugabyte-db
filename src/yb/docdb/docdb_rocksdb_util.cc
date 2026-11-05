@@ -31,7 +31,7 @@
 #include "yb/docdb/docdb_statistics.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/key_bounds.h"
-#include "yb/docdb/properties_collector/key_hybrid_time_range_collector.h"
+#include "yb/docdb/properties_collector/write_hybrid_time_range_collector.h"
 #include "yb/docdb/read_operation_data.h"
 
 #include "yb/gutil/casts.h"
@@ -857,11 +857,11 @@ class RocksDBPatcherHelper {
     delete_edit_->DeleteFile(level, fmd.fd.GetNumber());
   }
 
-  Result<std::optional<KeyHybridTimeRange>> GetKeyHybridTimeRange(
+  Result<std::optional<WriteHybridTimeRange>> GetWriteHybridTimeRange(
       const rocksdb::FileMetaData& fmd) {
     std::shared_ptr<const rocksdb::TableProperties> properties;
     RETURN_NOT_OK(cfd_->current()->GetTableProperties(&properties, &fmd));
-    return docdb::GetKeyHybridTimeRange(properties->user_collected_properties);
+    return docdb::GetWriteHybridTimeRange(properties->user_collected_properties);
   }
 
   rocksdb::VersionEdit& Edit() {
@@ -1007,14 +1007,14 @@ class RocksDBPatcher::Impl {
       if (FLAGS_drop_sst_files_hidden_by_hybrid_time_filter) {
         auto existing_filter = consensus_frontier.GlobalFilter();
         auto filter = existing_filter.is_valid() ? std::min(existing_filter, value) : value;
-        auto key_ht_range = helper.GetKeyHybridTimeRange(file);
-        if (!key_ht_range.ok()) {
-          LOG(WARNING) << "Failed to read the key hybrid time range of " << file.ToString() << ": "
-                       << key_ht_range.status();
-        } else if (*key_ht_range && (**key_ht_range).min > filter) {
+        auto write_ht_range = helper.GetWriteHybridTimeRange(file);
+        if (!write_ht_range.ok()) {
+          LOG(WARNING) << "Failed to read the write hybrid time range of " << file.ToString()
+                       << ": " << write_ht_range.status();
+        } else if (*write_ht_range && (**write_ht_range).min > filter) {
           LOG(INFO) << "Removing " << file.ToString() << ", all its keys are hidden by hybrid time "
-                    << "filter " << filter << ", key hybrid time range "
-                    << AsString(**key_ht_range);
+                    << "filter " << filter << ", write hybrid time range "
+                    << AsString(**write_ht_range);
           helper.DeleteFile(level, file);
           dropped_files.push_back(file.fd);
           return;
@@ -1063,8 +1063,9 @@ class RocksDBPatcher::Impl {
       auto base_path = rocksdb::MakeTableFileName(
           options_.db_paths[fd.GetPathId()].path, fd.GetNumber());
       for (const auto& path : {base_path, rocksdb::TableBaseToDataFileName(base_path)}) {
-        auto status = options_.env->DeleteFile(path);
-        LOG_IF(WARNING, !status.ok()) << "Failed to delete removed file " << path << ": " << status;
+        auto delete_status = options_.env->DeleteFile(path);
+        LOG_IF(WARNING, !delete_status.ok())
+            << "Failed to delete removed file " << path << ": " << delete_status;
       }
     }
     return Status::OK();
