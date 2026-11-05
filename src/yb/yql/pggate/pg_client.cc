@@ -1002,15 +1002,20 @@ class PgClient::Impl : public BigDataFetcher {
     return ResponseStatus(resp);
   }
 
-  Status RestartTransactionForRetry(tserver::PgPerformOptionsPB* options) {
+  Result<PgClient::RetryReadTimes> RestartTransactionForRetry(
+      tserver::PgPerformOptionsPB* options, bool read_point_only) {
     tserver::PgRestartTransactionForRetryRequestPB req;
     req.set_session_id(session_id_);
     options->Swap(req.mutable_options());
+    req.set_read_point_only(read_point_only);
 
     tserver::PgRestartTransactionForRetryResponsePB resp;
     RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::RestartTransactionForRetry,
         req, resp, PggateRPC::kRestartTransactionForRetry));
-    return ResponseStatus(resp);
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return PgClient::RetryReadTimes{
+        .restart_read = HybridTime::FromPB(resp.restart_read_ht()),
+        .global_limit = HybridTime::FromPB(resp.global_limit_ht())};
   }
 
   Status InsertSequenceTuple(int64_t db_oid,
@@ -2380,8 +2385,9 @@ Status PgClient::RollbackToSubTransaction(
   return impl_->RollbackToSubTransaction(id, options);
 }
 
-Status PgClient::RestartTransactionForRetry(tserver::PgPerformOptionsPB* options) {
-  return impl_->RestartTransactionForRetry(options);
+Result<PgClient::RetryReadTimes> PgClient::RestartTransactionForRetry(
+    tserver::PgPerformOptionsPB* options, bool read_point_only) {
+  return impl_->RestartTransactionForRetry(options, read_point_only);
 }
 
 Status PgClient::ValidatePlacement(tserver::PgValidatePlacementRequestPB* req) {

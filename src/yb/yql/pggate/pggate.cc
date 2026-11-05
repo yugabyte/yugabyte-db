@@ -2225,11 +2225,11 @@ Status PgApiImpl::EnsureReadPoint() {
 }
 
 Status PgApiImpl::RestartReadPoint() {
-  return pg_txn_manager_->RestartReadPoint();
+  return pg_txn_manager_->RestartReadPoint(ClearSessionState());
 }
 
-bool PgApiImpl::IsRestartReadPointRequested() {
-  return pg_txn_manager_->IsRestartReadPointRequested();
+void PgApiImpl::ResetRetryReadTimeConstraints() {
+  pg_txn_manager_->ResetRetryReadTimeConstraints();
 }
 
 Status PgApiImpl::CommitPlainTransaction(const std::optional<PgDdlCommitInfo>& ddl_commit_info) {

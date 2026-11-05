@@ -297,7 +297,7 @@ Status PgTxnManager::BeginTransaction(int64_t start_time, uint64_t origination_t
 Status PgTxnManager::RecreateTransaction(SetupPerformOptionsAccessorTag tag) {
   VLOG_TXN_STATE(2);
   RETURN_NOT_OK(RecreateTransaction(SavePriority::kTrue));
-  return RestartTransactionForRetry(tag);
+  return ResultToStatus(RestartTransactionForRetry(tag, /* read_point_only= */ false));
 }
 
 Status PgTxnManager::RecreateTransaction(SavePriority save_priority) {
@@ -471,15 +471,35 @@ Status PgTxnManager::CalculateIsolation(
 
 Status PgTxnManager::RestartTransaction(SetupPerformOptionsAccessorTag tag) {
   need_restart_ = true;
-  return RestartTransactionForRetry(tag);
+  ConstrainRetryReadTimes(
+      VERIFY_RESULT(RestartTransactionForRetry(tag, /* read_point_only= */ false)));
+  return Status::OK();
 }
 
-Status PgTxnManager::RestartTransactionForRetry(SetupPerformOptionsAccessorTag tag) {
+Result<PgClient::RetryReadTimes> PgTxnManager::RestartTransactionForRetry(
+    SetupPerformOptionsAccessorTag tag, bool read_point_only) {
   tserver::PgPerformOptionsPB options;
-  RETURN_NOT_OK(SetupPerformOptions(
-      tag, options, NonTransactionalWrites::kFalse, /* read_time_action= */ {},
-      SkipReadTimeOptions::kTrue));
-  return client_->RestartTransactionForRetry(&options);
+  if (!read_point_only) {
+    RETURN_NOT_OK(SetupPerformOptions(
+        tag, options, NonTransactionalWrites::kFalse, /* read_time_action= */ {},
+        SkipReadTimeOptions::kTrue));
+  }
+  return client_->RestartTransactionForRetry(&options, read_point_only);
+}
+
+void PgTxnManager::ConstrainRetryReadTimes(const PgClient::RetryReadTimes& times) {
+  if (times.global_limit &&
+      (!retry_global_limit_cap_ || times.global_limit < retry_global_limit_cap_)) {
+    retry_global_limit_cap_ = times.global_limit;
+  }
+  if (times.restart_read) {
+    retry_read_time_floor_.MakeAtLeast(times.restart_read);
+  }
+}
+
+void PgTxnManager::ResetRetryReadTimeConstraints() {
+  retry_global_limit_cap_ = HybridTime::kInvalid;
+  retry_read_time_floor_ = HybridTime::kInvalid;
 }
 
 // Reset to a new read point. This corresponds to a new latest snapshot.
@@ -515,14 +535,10 @@ Status PgTxnManager::EnsureReadPoint() {
   return Status::OK();
 }
 
-/* This is called when a read committed transaction wants to restart its read point */
-Status PgTxnManager::RestartReadPoint() {
-  read_time_manipulation_ = tserver::ReadTimeManipulation::RESTART;
+Status PgTxnManager::RestartReadPoint(SetupPerformOptionsAccessorTag tag) {
+  ConstrainRetryReadTimes(
+      VERIFY_RESULT(RestartTransactionForRetry(tag, /* read_point_only= */ true)));
   return Status::OK();
-}
-
-bool PgTxnManager::IsRestartReadPointRequested() {
-  return read_time_manipulation_ == tserver::ReadTimeManipulation::RESTART;
 }
 
 void PgTxnManager::SetActiveSubTransactionId(SubTransactionId id) {
@@ -831,6 +847,12 @@ Status PgTxnManager::SetupReadTimeOptions(
   }
 
   read_time_options.set_read_time_serial_no(serial_no_.read_time());
+  if (retry_global_limit_cap_) {
+    read_time_options.set_global_limit_cap_ht(retry_global_limit_cap_.ToUint64());
+    if (retry_read_time_floor_) {
+      read_time_options.set_read_time_floor_ht(retry_read_time_floor_.ToUint64());
+    }
+  }
 
   // read_time may be set by
   // - PgSession::SetReadTimeIfPresent.

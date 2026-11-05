@@ -273,7 +273,12 @@ class PgClient {
 
   Status RollbackToSubTransaction(SubTransactionId id, tserver::PgPerformOptionsPB* options);
 
-  Status RestartTransactionForRetry(tserver::PgPerformOptionsPB* options);
+  struct RetryReadTimes {
+    HybridTime restart_read;
+    HybridTime global_limit;
+  };
+  Result<RetryReadTimes> RestartTransactionForRetry(
+      tserver::PgPerformOptionsPB* options, bool read_point_only);
 
   Status ValidatePlacement(tserver::PgValidatePlacementRequestPB* req);
 

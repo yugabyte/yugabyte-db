@@ -2170,8 +2170,27 @@ class PgClientSession::Impl {
       const PgRestartTransactionForRetryRequestPB& req,
       PgRestartTransactionForRetryResponsePB* resp, rpc::RpcContext* context) {
     VLOG_WITH_PREFIX_AND_FUNC(2) << req.ShortDebugString();
-    return ResultToStatus(
-        SetupSession(req.options(), context->GetClientDeadline(), /* arena= */ nullptr));
+    const auto& session = Session(PgClientSessionKind::kPlain);
+    if (session) {
+      if (const auto global_limit = session->read_point()->GetReadTime().global_limit;
+          global_limit.is_valid()) {
+        resp->set_global_limit_ht(global_limit.ToUint64());
+      }
+    }
+    if (req.read_point_only()) {
+      if (session && session->read_point()->IsRestartRequired()) {
+        session->read_point()->Restart();
+      }
+    } else {
+      RETURN_NOT_OK(
+          SetupSession(req.options(), context->GetClientDeadline(), /* arena= */ nullptr));
+    }
+    if (session) {
+      if (const auto read = session->read_point()->GetReadTime().read; read.is_valid()) {
+        resp->set_restart_read_ht(read.ToUint64());
+      }
+    }
+    return Status::OK();
   }
 
   Status RollbackToSubTransaction(
@@ -3994,19 +4013,6 @@ class PgClientSession::Impl {
     if (read_time_options.restart_transaction()) {
       VLOG_WITH_PREFIX(3) << "Restarting transaction";
       RETURN_NOT_OK(RestartTransaction(kind, deadline));
-      if (read_time_options.clamp_uncertainty_window()) {
-        // The clamp uncertainty option is set by catalog reads (among other cases).
-        // Catalog cache invalidation messages are processed by resetting the catalog snapshot,
-        // so a subsequent catalog read must use the latest snapshot. Reusing a restarted read
-        // time from a prior error can predate the invalidations and return stale catalog rows.
-        // Therefore, override the restarted read point here with the current time.
-        // This override loses the restart read information until TODO(#31142) is fixed.
-        RSTATUS_DCHECK(
-          !(txn && txn->isolation() == SERIALIZABLE_ISOLATION),
-          IllegalState, "Clamping does not apply to SERIALIZABLE txns.");
-        session.read_point()->SetCurrentReadTime(ClampUncertaintyWindow::kTrue);
-        VLOG_WITH_PREFIX(2) << "Clamping read time to " << session.read_point()->GetReadTime();
-      }
     } else if (!skip_read_time) {
       const auto is_plain_session = (kind == PgClientSessionKind::kPlain);
       const auto has_read_time = read_time_options.has_read_time();
@@ -4094,6 +4100,17 @@ class PgClientSession::Impl {
         RETURN_NOT_OK(session.read_point()->TrySetDeferredCurrentReadTime());
         VLOG_WITH_PREFIX(3) << "Set current read time for deferred mode "
             << session.read_point()->GetReadTime();
+      }
+
+      if (const auto cap = HybridTime::FromPB(read_time_options.global_limit_cap_ht());
+          cap && kind == PgClientSessionKind::kPlain &&
+          !(txn && txn->isolation() == SERIALIZABLE_ISOLATION)) {
+        // A read time picked by DocDB would get an unconstrained global limit.
+        if (!session.read_point()->GetReadTime()) {
+          session.read_point()->SetCurrentReadTime();
+        }
+        session.read_point()->ConstrainForRetry(
+            HybridTime::FromPB(read_time_options.read_time_floor_ht()), cap);
       }
 
       // TODO(#30357): Measure the performance of picking time here instead of the storage layer.

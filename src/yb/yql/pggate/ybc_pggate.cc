@@ -2025,8 +2025,8 @@ YbcStatus YBCPgRestartReadPoint() {
   return ToYBCStatus(pgapi->RestartReadPoint());
 }
 
-bool YBCIsRestartReadPointRequested() {
-  return pgapi->IsRestartReadPointRequested();
+void YBCPgResetRetryReadTimeConstraints() {
+  pgapi->ResetRetryReadTimeConstraints();
 }
 
 YbcStatus YBCPgCommitPlainTransaction() {

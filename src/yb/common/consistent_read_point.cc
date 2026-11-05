@@ -12,6 +12,7 @@
 //
 #include "yb/common/consistent_read_point.h"
 
+#include <algorithm>
 #include <mutex>
 #include <type_traits>
 #include <utility>
@@ -138,6 +139,26 @@ void ConsistentReadPoint::Restart() {
   local_limits_.swap(restarts_);
   restarts_.clear();
   read_time_.read = restart_read_ht_;
+}
+
+void ConsistentReadPoint::ConstrainForRetry(HybridTime read_floor, HybridTime global_limit_cap) {
+  std::lock_guard lock(mutex_);
+  if (!read_time_) {
+    return;
+  }
+  if (read_floor) {
+    read_time_.read.MakeAtLeast(read_floor);
+  }
+  if (global_limit_cap) {
+    read_time_.global_limit = std::min(read_time_.global_limit, global_limit_cap);
+  }
+  read_time_.global_limit.MakeAtLeast(read_time_.read);
+  const auto clamp = [read = read_time_.read, global_limit = read_time_.global_limit](
+                         HybridTime& limit) { limit = std::clamp(limit, read, global_limit); };
+  clamp(read_time_.local_limit);
+  for (auto& [_, local_limit] : local_limits_) {
+    clamp(local_limit);
+  }
 }
 
 void ConsistentReadPoint::Defer() {
