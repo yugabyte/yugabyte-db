@@ -216,8 +216,35 @@ public class AuditTest extends FakeDBApplication {
     assertEquals(entries.get(0).getTaskUUID(), taskUUID);
     assertEquals(entries.get(0).getPayload(), testPayload);
     assertEquals(entries.get(0).getAdditionalDetails(), testAdditionalDetails);
+    assertNull(entries.get(0).getTaskDiff());
     assertNotNull(entries.get(0).getTimestamp());
     assertEquals(entries.get(0).getUserAddress(), request.remoteAddress());
+  }
+
+  @Test
+  public void testCreateAndUpdateTaskDiff() {
+    UUID taskUUID = UUID.randomUUID();
+    ObjectNode taskDiff =
+        Json.newObject().put("field", "numNodes").put("before", "3").put("after", "6");
+    ObjectNode secretDiff = taskDiff.deepCopy().put("password", "qwerty");
+    ObjectNode expectedDiff = taskDiff.deepCopy().put("password", SECRET_REPLACEMENT);
+
+    auditService.createAuditEntry(
+        request,
+        Audit.TargetType.Universe,
+        "Test TargetID",
+        Audit.ActionType.Edit,
+        null,
+        taskUUID,
+        null,
+        secretDiff);
+    Audit created = Audit.getFromTaskUUID(taskUUID);
+    assertEquals(expectedDiff, created.getTaskDiff());
+
+    ObjectNode updatedDiff =
+        Json.newObject().put("field", "numNodes").put("before", "6").put("after", "9");
+    auditService.updateTaskDiff(taskUUID, updatedDiff);
+    assertEquals(updatedDiff, Audit.getFromTaskUUID(taskUUID).getTaskDiff());
   }
 
   @Test

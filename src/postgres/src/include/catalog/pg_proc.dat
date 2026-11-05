@@ -12031,7 +12031,7 @@
 { oid => '8049',
   descr => 'Get the current distributed transaction\'s priority. If no distributed transaction is active, return 0.',
   proname => 'yb_get_current_transaction_priority', provolatile => 'v',
-  prorettype => 'cstring', proargtypes => '',
+  proparallel => 'r', prorettype => 'cstring', proargtypes => '',
   prosrc => 'yb_get_current_transaction_priority' },
 
 { oid => '8050',
@@ -12196,8 +12196,9 @@
   prosrc => 'yb_log_catcache_stats'},
 
 { oid => '8090', descr => 'checks whether the index is consistent with its base relation',
-  proname => 'yb_index_check', provolatile => 'v', proisstrict => 'f',
-  proretset => 't', prorettype => 'record', proargtypes => 'oid bool int4',
+  proname => 'yb_index_check', provolatile => 'v', proparallel => 'u',
+  proisstrict => 'f', proretset => 't', prorettype => 'record',
+  proargtypes => 'oid bool int4',
   proallargtypes => '{oid,bool,int4,oid,oid,bytea,jsonb,bytea,jsonb,text}',
   proargmodes => '{i,i,i,t,t,t,t,t,t,t}',
   proargnames => '{indexrelid,single_snapshot_mode,log_num_errors,tablerelid,indexrelid,ybctid,table_cols,ybbasectid,index_cols,error_category}',

@@ -44,7 +44,7 @@ func DeleteStorageConfigurationValidation(cmd *cobra.Command) {
 	}
 }
 
-func DeleteStorageConfigurationUtil(cmd *cobra.Command, commandCall string) {
+func DeleteStorageConfigurationUtil(cmd *cobra.Command, commandCall, storageCode string) {
 	authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
 
 	storageName, err := cmd.Flags().GetString("name")
@@ -71,19 +71,24 @@ func DeleteStorageConfigurationUtil(cmd *cobra.Command, commandCall string) {
 	}
 	storageConfigsName := make([]ybaclient.CustomerConfigUI, 0)
 	for _, s := range storageConfigs {
-		if strings.Compare(s.GetConfigName(), storageName) == 0 {
-			storageConfigsName = append(storageConfigsName, s)
+		if strings.Compare(s.GetConfigName(), storageName) != 0 {
+			continue
 		}
+		if !util.IsEmptyString(storageCode) &&
+			!strings.EqualFold(s.GetName(), storageCode) {
+			continue
+		}
+		storageConfigsName = append(storageConfigsName, s)
 	}
 	r = storageConfigsName
 
 	if len(r) < 1 {
-		logrus.Fatalf(
-			formatter.Colorize(
-				fmt.Sprintf("No storage configurations with name: %s found\n",
-					storageName),
-				formatter.RedColor,
-			))
+		errMessage := fmt.Sprintf("No storage configurations with name: %s found\n", storageName)
+		if !util.IsEmptyString(storageCode) {
+			errMessage = fmt.Sprintf("No %s storage configurations with name: %s found\n",
+				storageCode, storageName)
+		}
+		logrus.Fatalf(formatter.Colorize(errMessage, formatter.RedColor))
 	}
 
 	var storageUUID string

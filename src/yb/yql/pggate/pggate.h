@@ -134,7 +134,9 @@ class PgApiImpl {
   void Interrupt();
 
   void ResetCatalogReadTime();
-  void SetHistoricalReadContext(const ReadHybridTime& read_time, const char* transaction_id);
+  void SetHistoricalReadContext(
+      const ReadHybridTime& read_time, const char* transaction_id,
+      std::span<const uint32_t> aborted_subtxn_set);
   void ResetHistoricalReadContext();
   [[nodiscard]] ReadHybridTime GetCatalogReadTime() const;
 
