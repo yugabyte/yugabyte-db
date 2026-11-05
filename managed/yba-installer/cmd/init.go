@@ -20,7 +20,6 @@ import (
 )
 
 var (
-	PostgresVersion    string = ""
 	PrometheusVersion  string = ""
 	PerfAdvisorVersion string = ""
 )
@@ -99,7 +98,7 @@ func ensureInstallerConfFile() {
 
 func initServices() {
 	// services is an ordered map so services that depend on others should go later in the chain.
-	serviceManager.RegisterService(NewPostgres(PostgresVersion))
+	serviceManager.RegisterService(NewPostgres(common.PostgresVersion))
 	serviceManager.RegisterService(NewPrometheus(PrometheusVersion))
 	serviceManager.RegisterService(NewPlatform(ybactl.Version))
 	serviceManager.RegisterService(NewPerfAdvisor(PerfAdvisorVersion))
@@ -148,7 +147,7 @@ func handleRootCheck(cmdName string) {
 }
 
 func init() {
-	if PostgresVersion == "" {
+	if common.PostgresVersion == "" {
 		panic("PostgresVersion not set during build")
 	}
 	if PrometheusVersion == "" {

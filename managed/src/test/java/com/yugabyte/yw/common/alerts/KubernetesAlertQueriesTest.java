@@ -28,6 +28,7 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.common.Condition;
 import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import java.io.File;
 import java.io.IOException;
@@ -71,6 +72,9 @@ public class KubernetesAlertQueriesTest extends FakeDBApplication {
             java.util.UUID.fromString(
                 k8s.getUniverseDetails().getPrimaryCluster().userIntent.provider));
     Region region = Region.create(provider, "region-1", "Region 1", "default-image");
+    CloudInfoInterface.setCloudProviderInfoFromConfig(
+        region, Map.of("KUBECONFIG", "/tmp/kubeconfig"));
+    region.save();
     AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
     vm = ModelFactory.createUniverse("vm-alerts", customer.getId());
     confGetter = app.injector().instanceOf(RuntimeConfGetter.class);
@@ -123,6 +127,21 @@ public class KubernetesAlertQueriesTest extends FakeDBApplication {
               true, k8s.getUniverseDetails().nodePrefix, k8s.getName(), azCode, false, true);
       assertTrue(release, (release + "-yb-tserver-0").matches(podNames));
     }
+  }
+
+  // The tasks read KUBENAMESPACE from the region and zone config merged.
+  @Test
+  public void testSelectorsUseARegionLevelNamespace() {
+    Provider provider =
+        Provider.getOrBadRequest(
+            java.util.UUID.fromString(
+                k8s.getUniverseDetails().getPrimaryCluster().userIntent.provider));
+    Region region = Region.getByCode(provider, "region-1");
+    CloudInfoInterface.setCloudProviderInfoFromConfig(
+        region, Map.of("KUBECONFIG", "/tmp/kubeconfig", "KUBENAMESPACE", "region-ns"));
+    region.save();
+    assertEquals(
+        "region-ns", MetricQueryHelper.getAlertKubernetesSelectors(k8s).get("__k8sNamespaces__"));
   }
 
   @Test

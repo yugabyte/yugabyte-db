@@ -29,7 +29,6 @@ import com.yugabyte.yw.metrics.data.AlertData;
 import com.yugabyte.yw.metrics.data.AlertsResponse;
 import com.yugabyte.yw.metrics.data.ResponseStatus;
 import com.yugabyte.yw.models.*;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.IOException;
 import java.util.*;
@@ -637,19 +636,19 @@ public class MetricQueryHelper {
 
     for (UniverseDefinitionTaskParams.Cluster cluster : universe.getUniverseDetails().clusters) {
       Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
-      for (Region r : Region.getByProvider(provider.getUuid())) {
-        for (AvailabilityZone az : AvailabilityZone.getAZsForRegion(r.getUuid())) {
-          boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
-          Map<String, String> zoneConfig = CloudInfoInterface.fetchEnvVars(az);
-          namespaces.add(
-              KubernetesUtil.getKubernetesNamespace(
-                  isMultiAZ,
-                  nodePrefix,
-                  az.getCode(),
-                  zoneConfig,
-                  newNamingStyle,
-                  cluster.clusterType == ClusterType.ASYNC));
-        }
+      boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
+      for (Map.Entry<UUID, Map<String, String>> zone :
+          KubernetesUtil.getConfigPerProviderZone(provider).entrySet()) {
+        String azName =
+            isMultiAZ ? AvailabilityZone.getOrBadRequest(zone.getKey()).getCode() : null;
+        namespaces.add(
+            KubernetesUtil.getKubernetesNamespace(
+                isMultiAZ,
+                nodePrefix,
+                azName,
+                zone.getValue(),
+                newNamingStyle,
+                cluster.clusterType == ClusterType.ASYNC));
       }
     }
 
@@ -733,26 +732,30 @@ public class MetricQueryHelper {
     for (Cluster cluster : universe.getUniverseDetails().clusters) {
       Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
       boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
-      for (Region region : Region.getByProvider(provider.getUuid())) {
-        for (AvailabilityZone az : AvailabilityZone.getAZsForRegion(region.getUuid())) {
-          Map<String, String> zoneConfig = CloudInfoInterface.fetchEnvVars(az);
-          String azName = isMultiAZ ? az.getCode() : null;
-          for (boolean isReadOnlyCluster : new boolean[] {false, true}) {
-            namespaces.add(
-                KubernetesUtil.getKubernetesNamespace(
-                    isMultiAZ, nodePrefix, azName, zoneConfig, newNamingStyle, isReadOnlyCluster));
-            if (newNamingStyle) {
-              podNames.add(
-                  KubernetesUtil.getHelmReleaseName(
-                          isMultiAZ,
-                          nodePrefix,
-                          universe.getName(),
-                          azName,
-                          isReadOnlyCluster,
-                          newNamingStyle)
-                      + "-"
-                      + ALERT_K8S_DB_POD_PATTERN);
-            }
+      for (Map.Entry<UUID, Map<String, String>> zone :
+          KubernetesUtil.getConfigPerProviderZone(provider).entrySet()) {
+        String azName =
+            isMultiAZ ? AvailabilityZone.getOrBadRequest(zone.getKey()).getCode() : null;
+        for (boolean isReadOnlyCluster : new boolean[] {false, true}) {
+          namespaces.add(
+              KubernetesUtil.getKubernetesNamespace(
+                  isMultiAZ,
+                  nodePrefix,
+                  azName,
+                  zone.getValue(),
+                  newNamingStyle,
+                  isReadOnlyCluster));
+          if (newNamingStyle) {
+            podNames.add(
+                KubernetesUtil.getHelmReleaseName(
+                        isMultiAZ,
+                        nodePrefix,
+                        universe.getName(),
+                        azName,
+                        isReadOnlyCluster,
+                        newNamingStyle)
+                    + "-"
+                    + ALERT_K8S_DB_POD_PATTERN);
           }
         }
       }

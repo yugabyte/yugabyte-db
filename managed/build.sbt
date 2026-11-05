@@ -155,6 +155,8 @@ Global / onChangedBuildSource := ReloadOnSourceChanges
 
 val bouncyCastleFipsVersion = "2.1.1"
 val bouncyCastleUtilFipsVersion = "2.1.7"
+// Flyway 10+ ships database support as separate modules; the postgresql one is required.
+val flywayVersion = "13.8.0"
 
 libraryDependencies ++= Seq(
   javaJdbc,
@@ -174,7 +176,8 @@ libraryDependencies ++= Seq(
   "org.apache.httpcomponents.core5" % "httpcore5-h2" % "5.4.3",
   "org.apache.httpcomponents.client5" % "httpclient5" % "5.6.4",
   "org.apache.mina" % "mina-core" % "2.2.9",
-  "org.flywaydb" %% "flyway-play" % "9.0.0",
+  "org.flywaydb" % "flyway-core" % flywayVersion,
+  "org.flywaydb" % "flyway-database-postgresql" % flywayVersion,
   // https://github.com/YugaByte/cassandra-java-driver/releases
   "com.yugabyte" % "java-driver-core" % "4.15.0-yb-3",
   "org.yaml" % "snakeyaml" % "2.1",

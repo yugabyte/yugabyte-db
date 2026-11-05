@@ -218,6 +218,12 @@ DEFINE_NON_RUNTIME_CONN_MGR_FLAG(uint32, socket_listen_backlog, 128,
     "Connection Manager's listening socket (the backlog argument to listen(2)). "
     "Incoming connections beyond this limit may be refused or dropped during connection bursts.");
 
+DEFINE_NON_RUNTIME_CONN_MGR_FLAG(bool, pool_attach_check, true,
+    "When enabled, before attaching a pooled backend connection to a client, Ysql Connection "
+    "Manager checks whether the backend has closed its socket (for example after "
+    "pg_terminate_backend() or a backend crash). Such a connection is discarded and another "
+    "backend is used, instead of failing the client's query with a broken connection error.");
+
 DEFINE_test_flag(uint32, ysql_conn_mgr_shutdown_delay_ms, 0,
     "Time (in ms) that Ysql Connection Manager waits during SIGINT/SIGTERM shutdown before the "
     "process exits.");

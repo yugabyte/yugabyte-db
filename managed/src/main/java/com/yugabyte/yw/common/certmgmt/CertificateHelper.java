@@ -16,6 +16,7 @@ import com.yugabyte.yw.common.certmgmt.providers.CertificateProviderInterface;
 import com.yugabyte.yw.common.certmgmt.providers.CertificateSelfSigned;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.FileData;
@@ -84,7 +85,6 @@ import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
 import org.bouncycastle.pkcs.PKCS10CertificationRequest;
 import org.bouncycastle.pkcs.PKCS10CertificationRequestBuilder;
 import org.bouncycastle.pkcs.jcajce.JcaPKCS10CertificationRequestBuilder;
-import org.flywaydb.play.FileUtils;
 import play.libs.Json;
 
 @Slf4j

@@ -169,6 +169,11 @@ message ErrorStatusPB {
   // TODO: Make code required?
   optional RpcErrorCodePB code = 2;  // Specific error identifier.
 
+  // How long the server asks the client to wait before retrying this call. Only meaningful with
+  // a retryable code, today ERROR_SERVER_TOO_BUSY. A hint only: a client that ignores it falls
+  // back to its own backoff, so it is safe to send to an older client.
+  optional uint32 retry_after_ms = 3;
+
   // Allow extensions. When the RPC returns ERROR_APPLICATION, the server
   // should also fill in exactly one of these extension fields, which contains
   // more details on the service-specific error.

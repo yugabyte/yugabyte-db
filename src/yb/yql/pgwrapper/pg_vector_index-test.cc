@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include <sys/stat.h>
+
 #include <algorithm>
 #include <numeric>
 #include <queue>
@@ -48,8 +50,10 @@
 #include "yb/rocksdb/sst_dump_tool.h"
 
 #include "yb/tablet/kv_formatter.h"
+#include "yb/tablet/metadata.pb.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_vector_indexes.h"
 
@@ -62,10 +66,13 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
+#include "yb/util/env.h"
+#include "yb/util/errno.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/power_loss_env.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
@@ -77,6 +84,7 @@
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/yql/pgwrapper/ysql_binary_runner.h"
 
+DECLARE_bool(allow_encryption_at_rest);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(TEST_skip_flush_deactivated_vector_indexes);
@@ -1653,6 +1661,152 @@ TEST_P(PgVectorIndexTest, BootstrapTransactionCommittedAfterIndexCreation) {
   conn = ASSERT_RESULT(Connect());
   ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
   ASSERT_EQ(ASSERT_RESULT(VectorIndexInconsistencies()), "");
+}
+
+// A vector index storage the tablet does not list, as a restore leaves on a crash, is deleted at
+// tserver startup. See issue #35895.
+TEST_P(PgVectorIndexTest, StartupDeletesStorageOfUnlistedIndex) {
+  constexpr size_t kNumRows = 64;
+  constexpr size_t kQueryLimit = 5;
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto* env = Env::Default();
+  std::vector<std::string> unlisted_dirs;
+  std::vector<std::string> listed_dirs;
+  for (const auto& peer : ListTabletPeersWithVectorIndexes(cluster_.get())) {
+    const auto& meta = *peer->tablet_metadata();
+    auto dirs = meta.vector_index_dirs();
+    ASSERT_FALSE(dirs.empty()) << peer->tablet_id();
+    listed_dirs.insert(listed_dirs.end(), dirs.begin(), dirs.end());
+    auto dir = docdb::GetStorageDir(meta.rocksdb_dir(), docdb::kVectorIndexDirPrefix + "99999");
+    ASSERT_OK(env->CreateDir(dir));
+    ASSERT_OK(WriteStringToFile(env, "chunk", JoinPathSegments(dir, "1.yb_hnsw")));
+    unlisted_dirs.push_back(std::move(dir));
+  }
+  ASSERT_FALSE(unlisted_dirs.empty());
+
+  DisableFlushOnShutdown(*cluster_, true);
+  ASSERT_OK(RestartCluster());
+  conn = ASSERT_RESULT(Connect());
+  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
+
+  for (const auto& dir : unlisted_dirs) {
+    ASSERT_FALSE(env->DirExists(dir)) << dir;
+  }
+  for (const auto& dir : listed_dirs) {
+    ASSERT_TRUE(env->DirExists(dir)) << dir;
+  }
+}
+
+// DROP destroys only the vector index storages the tablet lists, so it leaves one a restore left,
+// e.g. on a build before #35006. The tserver deletes it at startup. See issue #35895.
+TEST_P(PgVectorIndexTest, StartupDeletesStorageOfDroppedTablet) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+
+  auto* env = Env::Default();
+  std::vector<std::string> rocksdb_dirs;
+  std::vector<std::string> unlisted_dirs;
+  {
+    auto conn = ASSERT_RESULT(MakeIndexAndFill(16));
+    for (const auto& peer : ListTabletPeersWithVectorIndexes(cluster_.get())) {
+      const auto& meta = *peer->tablet_metadata();
+      rocksdb_dirs.push_back(meta.rocksdb_dir());
+      auto dir =
+          docdb::GetStorageDir(meta.rocksdb_dir(), docdb::kVectorIndexDirPrefix + "99999");
+      ASSERT_OK(env->CreateDir(dir));
+      ASSERT_OK(WriteStringToFile(env, "chunk", JoinPathSegments(dir, "1.yb_hnsw")));
+      unlisted_dirs.push_back(std::move(dir));
+    }
+    ASSERT_FALSE(unlisted_dirs.empty());
+    // Dropping a colocated table keeps its tablet.
+    if (!IsColocated()) {
+      ASSERT_OK(conn.Execute("DROP TABLE test"));
+    }
+  }
+  if (IsColocated()) {
+    auto conn = ASSERT_RESULT(PgMiniTestBase::Connect());
+    ASSERT_OK(conn.Execute("DROP DATABASE colocated_db"));
+  }
+
+  ASSERT_OK(WaitFor([env, &rocksdb_dirs]() {
+    return std::none_of(rocksdb_dirs.begin(), rocksdb_dirs.end(), [env](const auto& dir) {
+      return env->DirExists(dir);
+    });
+  }, 30s * kTimeMultiplier, "Tablet data deleted"));
+  for (const auto& dir : unlisted_dirs) {
+    ASSERT_TRUE(env->DirExists(dir)) << dir;
+  }
+
+  ASSERT_OK(RestartCluster());
+  for (const auto& dir : unlisted_dirs) {
+    ASSERT_FALSE(env->DirExists(dir)) << dir;
+  }
+}
+
+// Tablet::AddTableInMemory creates the storage of a new vector index before the superblock that
+// lists the index is flushed. Rolling the superblocks back to before the index simulates a crash in
+// that window: bootstrap replays the index back, so the startup sweep must keep its storage.
+TEST_P(PgVectorIndexTest, StartupKeepsStorageOfIndexReplayedByBootstrap) {
+  constexpr size_t kNumRows = 64;
+  constexpr size_t kQueryLimit = 5;
+
+  num_pre_split_tablets_ = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  // Flushed before the index, so bootstrap replays from before its ADD_TABLE.
+  ASSERT_OK(cluster_->FlushTablets());
+
+  std::unordered_map<std::string, tablet::RaftGroupReplicaSuperBlockPB> superblocks;
+  for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
+    const auto& meta = *peer->tablet_metadata();
+    auto path = ASSERT_RESULT(meta.fs_manager()->GetRaftGroupMetadataPath(peer->tablet_id()));
+    ASSERT_OK(meta.ReadSuperBlockFromDisk(&superblocks[path]));
+  }
+
+  ASSERT_OK(CreateIndex(conn));
+  ASSERT_OK(WaitForVectorIndexBackfills(cluster_->num_tablet_servers(), "Replica backfills"));
+
+  // The inode tells a kept storage dir from one deleted and created again by bootstrap.
+  auto dir_inode = [](const std::string& dir) -> Result<ino_t> {
+    struct stat st;
+    if (stat(dir.c_str(), &st) != 0) {
+      return STATUS_FROM_ERRNO(Format("stat $0", dir), errno);
+    }
+    return st.st_ino;
+  };
+  std::vector<std::pair<std::string, ino_t>> storages;
+  std::vector<std::string> rolled_back_paths;
+  for (const auto& peer : ListTabletPeersWithVectorIndexes(cluster_.get())) {
+    const auto& meta = *peer->tablet_metadata();
+    rolled_back_paths.push_back(
+        ASSERT_RESULT(meta.fs_manager()->GetRaftGroupMetadataPath(peer->tablet_id())));
+    for (const auto& dir : meta.vector_index_dirs()) {
+      storages.emplace_back(dir, ASSERT_RESULT(dir_inode(dir)));
+    }
+  }
+  ASSERT_EQ(storages.size(), cluster_->num_tablet_servers());
+
+  DisableFlushOnShutdown(*cluster_, true);
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    cluster_->mini_tablet_server(i)->Shutdown();
+  }
+  for (const auto& path : rolled_back_paths) {
+    ASSERT_OK(pb_util::WritePBContainerToPath(
+        Env::Default(), path, superblocks.at(path), pb_util::OVERWRITE, pb_util::SYNC));
+  }
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    ASSERT_OK(cluster_->mini_tablet_server(i)->Start());
+  }
+
+  ASSERT_EQ(ListTabletPeersWithVectorIndexes(cluster_.get()).size(), rolled_back_paths.size());
+  for (const auto& [dir, inode] : storages) {
+    ASSERT_EQ(ASSERT_RESULT(dir_inode(dir)), inode) << dir;
+  }
+  conn = ASSERT_RESULT(Connect());
+  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
 }
 
 TEST_P(PgVectorIndexTest, DeleteAndUpdate) {
@@ -5063,6 +5217,91 @@ TEST_P(PgVectorIndexSingleServerTest, GracefulRestart) {
   ASSERT_OK(InsertRows(conn, 1, kNumRows));
   ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
   ASSERT_OK(RestartCluster());
+  conn = ASSERT_RESULT(Connect());
+  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
+}
+
+// A tablet whose vector index chunk cannot be loaded must fail to open. Otherwise the first write
+// applied to it FATALs the tserver, which then crash-loops replaying that write. See issue #36620.
+TEST_P(PgVectorIndexSingleServerTest, UnloadableChunkFailsTablet) {
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, 64));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kAllDbs));
+
+  auto* env = Env::Default();
+  std::vector<std::string> chunk_files;
+  for (const auto& peer : ListTabletPeersWithVectorIndexes(cluster_.get())) {
+    for (const auto& dir : peer->tablet_metadata()->vector_index_dirs()) {
+      for (const auto& file : ASSERT_RESULT(env->GetChildren(dir))) {
+        if (file.ends_with(".yb_hnsw")) {
+          chunk_files.push_back(JoinPathSegments(dir, file));
+        }
+      }
+    }
+  }
+  ASSERT_FALSE(chunk_files.empty());
+
+  auto* ts = cluster_->mini_tablet_server(0);
+  // A footer of only its CRC and size; the CRC of empty data is 0.
+  std::string footer_only(4096, '\0');
+  footer_only[footer_only.size() - sizeof(uint64_t)] = sizeof(uint32_t) + sizeof(uint64_t);
+  // Empty and zero-filled, with footer size 0, are what an unsynced chunk could look like after a
+  // power loss.
+  const std::vector<std::pair<std::string, std::string>> cases = {
+      {"empty", ""}, {"zero-filled", std::string(4096, '\0')}, {"footer only", footer_only}};
+  for (const auto& [name, content] : cases) {
+    SCOPED_TRACE(name);
+    ts->Shutdown();
+    for (const auto& file : chunk_files) {
+      ASSERT_OK(WriteStringToFile(env, content, file));
+    }
+    ASSERT_OK(ts->Start(tserver::WaitTabletsBootstrapped::kFalse));
+    auto status = ts->WaitStarted();
+    ASSERT_NOK(status);
+    ASSERT_STR_CONTAINS(status.ToString(), "Failed to load");
+  }
+}
+
+class PgVectorIndexPowerLossTest : public PgVectorIndexSingleServerTest {
+ protected:
+  void SetUp() override {
+    // Otherwise tablets use an encrypted env that bypasses power_loss_env_.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_encryption_at_rest) = false;
+    PgVectorIndexSingleServerTest::SetUp();
+  }
+
+  void OverrideMiniClusterOptions(MiniClusterOptions* options) override {
+    options->ts_env = &power_loss_env_;
+  }
+
+  PowerLossEnv power_loss_env_;
+};
+
+MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgVectorIndexPowerLossTest);
+
+// The fsynced vector index manifest lists the chunks of a flush, so their files must survive a
+// power loss right after it. See issue #36620.
+TEST_P(PgVectorIndexPowerLossTest, FlushedChunkSurvives) {
+  constexpr size_t kQueryLimit = 5;
+  auto is_chunk_file = [](const std::string& path) {
+    return BaseName(path).starts_with("vectorindex_");
+  };
+
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, 64));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kAllDbs));
+  // Otherwise chunk files bypass power_loss_env_ and the scenario is not exercised.
+  ASSERT_GT(power_loss_env_.NumTrackedFiles(is_chunk_file), 0U);
+
+  DisableFlushOnShutdown(*cluster_, true);
+  auto* ts = cluster_->mini_tablet_server(0);
+  ts->Shutdown();
+  // Drop only the chunk data: a vector index flush can persist ops past the fsynced WAL, #36244.
+  ASSERT_OK(power_loss_env_.DropUnsyncedData(is_chunk_file));
+
+  ASSERT_OK(ts->Start());
   conn = ASSERT_RESULT(Connect());
   ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
 }
