@@ -208,14 +208,9 @@ The merge commit never reaches `master` (the repo squash-merges every PR), so it
 
 ## Stacked PRs
 
-A stack is for a feature that splits into several dependent changes. Reach for it only when the user asks for one; a single PR is the default.
-
-**Load the `gh-stack` skill** (`gh skill install github/gh-stack gh-stack --scope user` if it is missing) and follow it for building, editing, rebasing, syncing, and merging the stack. This section only covers what this repo adds to it:
-
-- **Name every layer `feature-stack/<feature-name>/<change-name>`.** That prefix is the only one the rulesets exempt from `Block Creations`, `Require PR`, and `yb-required`, and stack branches must live in `yugabyte/yugabyte-db` because GitHub has no cross-fork stacks. `git-push.sh` warns on a name that isn't this two-segment shape but still pushes.
-- **The remote is the one pointing at `yugabyte/yugabyte-db`**, never your fork. Pass it wherever `gh stack` takes `--remote`.
-- **Push with `git-push.sh`, not `gh stack push`.** For a stack branch it lints the whole stack from the top layer, then runs `gh stack push`. The no-rewrite rule in [Pushing follow-up commits](#pushing-follow-up-commits) does not apply: GitHub merges a stack only when its history is linear, so cascading rebases and lease-protected force-pushes are the normal update, even mid-review. Never `git merge` the trunk or another layer into a stack branch.
-- **Open PRs with `create-pr.sh`, not `gh stack submit`**, one layer at a time from the bottom up, because `submit`'s generated titles fail the pr-title check. Don't pass `-b`. The script opens the PR as a draft, links it into the stack with `gh stack link`, and then marks it ready unless you passed `-D`.
+A `feature-stack/<feature>/<change>` branch is a layer of a PR stack.  **Load the `stack` skill
+first**; it holds this repo's stack rules (naming, remote, pushing, opening PRs bottom-up, and
+the history-rewrite exception) on top of the upstream `gh-stack` skill.
 
 ## Notes
 

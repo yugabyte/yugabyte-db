@@ -26,6 +26,12 @@ For agents that want to deploy, configure and run YugabyteDB refer to instructio
 
 When working on DB code (`src/`), refer to `src/AGENTS.md` for build and test guidance
 
+### Stacked PRs
+
+Before any operation on a PR stack (`feature-stack/<feature>/<change>` branches) -- creating,
+pushing, rebasing, syncing, merging, or landing it -- load the `stack` skill.  It holds this
+repo's rules on top of the upstream `gh-stack` skill.
+
 ### Meko datapacks (`MEKO.md`)
 
 A `MEKO.md` lists the Meko datapacks that hold context for the folder it sits in, with each one's
