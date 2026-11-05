@@ -207,9 +207,10 @@ class TSManager {
   // Mark live tservers as needing a leader blacklist notification on the next heartbeat.
   void MarkTServersForLeaderBlacklistNotification();
 
-  // Fills the tserver list for a tserver holding since_version: the changes since then, or the
-  // full list when that version is unset, from another leader, aged out, or ahead of the master.
+  // Changes since since_version, or the full list when no delta can be built from it.
   void FillTServerListUpdate(uint64_t since_version, TServerListUpdatePB* update) const;
+
+  void TEST_SetTServerListCounter(uint32_t counter) EXCLUDES(version_lock_);
 
   // Make sure all live tservers are on the expected version.
   Status ValidateAllTserverVersions(ValidateVersionInfoOp op) const;
@@ -265,6 +266,7 @@ class TSManager {
   // Moves desc from the entry of its previous change to the one at counter.
   void StampTServerListChangeUnlocked(TSDescriptor& desc, uint32_t counter, MonoTime now)
       REQUIRES(version_lock_);
+  uint32_t NextTServerListCounterUnlocked() REQUIRES(version_lock_);
 
   void GetAllDescriptorsUnlocked(TSDescriptorVector* descs) const REQUIRES_SHARED(map_lock_);
   void GetDescriptorsUnlocked(
@@ -311,6 +313,8 @@ class TSManager {
   // Tserver ids by the change counter that last touched them, removals included; each id is in
   // exactly one entry, so a delta is the entries above the requested counter.
   std::map<uint32_t, TServerListChange> tserver_list_changes_ GUARDED_BY(version_lock_);
+  // The entry each id is in.
+  std::unordered_map<std::string, uint32_t> tserver_list_stamps_ GUARDED_BY(version_lock_);
   // Counters up to this have been dropped by age; a delta cannot start below it.
   uint32_t tserver_list_horizon_ GUARDED_BY(version_lock_) = 0;
   size_t ts_count_callback_min_count_ GUARDED_BY(registration_lock_) = 0;
