@@ -248,6 +248,8 @@ typedef enum
 
 #define GUC_YB_CUSTOM_STICKY	0x40000000	/* YB: stickiness for custom
 											 * string variables */
+#define GUC_YB_NO_CONN_MGR_REPORT	0x20000000	/* YB: never report to
+												 * Connection Manager */
 
 
 /* GUC vars that are actually declared in guc.c, rather than elsewhere */
