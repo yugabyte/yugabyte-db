@@ -397,7 +397,8 @@ Status CompleteColumns(size_t packed_columns, Packer* packer) {
     const auto& packing_data = packing.column_packing_data(idx);
     const auto& missing_value = packing_data.missing_value;
     if (!IsNull(missing_value)) {
-      RETURN_NOT_OK(packer->AddValue(packing_data.id, missing_value));
+      RETURN_NOT_OK(packer->AddValue(
+          packing_data.id, missing_value, std::numeric_limits<ssize_t>::min()));
     } else {
       RSTATUS_DCHECK(
           packing_data.nullable, InvalidArgument, "Non nullable column $0 was not specified",
