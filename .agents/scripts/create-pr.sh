@@ -5,8 +5,8 @@
 # A "feature-stack/<feature>/<change>" branch is the exception: it lives in
 # the main repo (GitHub can only stack PRs whose head branches it owns), so
 # the push goes upstream and the PR is same-repo. Its base is the layer below
-# it in the local gh stack, and once opened the PR is linked into the native
-# GitHub stack with `gh stack link`.
+# it in the local gh stack.  Once a PR exists below it, the new PR is linked
+# with those below into the native GitHub stack with `gh stack link`.
 #
 # Designed to be invoked from the /create-pr Claude Code skill once metadata
 # (issue, title, body, reviewers) has been gathered. Usable standalone too.
@@ -454,9 +454,10 @@ trap 'rm -f "$combined_body"' EXIT
 } > "$combined_body"
 gh_pr_create_args=(-R "$GH_REPO" -B "$base_branch" -H "$pr_head"
                    -t "$full_title" -F "$combined_body")
-# A stack layer always opens as a draft and is marked ready only after it is
-# linked, so the CI that readiness triggers already sees a stack member.
-if (( draft )) || $is_stack_branch; then
+# A stack layer with PRs below it opens as a draft and is marked ready only
+# after it is linked, so the CI that readiness triggers already sees a stack
+# member.
+if (( draft )) || { $is_stack_branch && [[ -n "$stack_below_prs" ]]; }; then
   gh_pr_create_args+=(--draft)
 fi
 pr_url=$(gh pr create "${gh_pr_create_args[@]}")
@@ -492,23 +493,22 @@ if $is_stack_branch; then
   # `gh stack link` needs at least two PRs, so the bottom layer's PR is linked
   # when the next layer's PR opens.
   if [[ -z "$stack_below_prs" ]]; then
-    echo ">>> no PR below ${current_branch} yet; it is linked with the next layer's"
+    echo ">>> no PR below ${current_branch} yet; it is linked when the next layer's PR opens"
   else
     echo ">>> gh stack link --base ${stack_trunk} ${stack_below_prs} ${pr_num}"
-  fi
-  if [[ -n "$stack_below_prs" ]] &&
-     ! gh stack link --remote "$UPSTREAM_REMOTE" --base "$stack_trunk" \
-         $stack_below_prs "$pr_num"; then
-    echo "" >&2
-    echo "error: PR #${pr_num} was opened as a draft, but linking it into the" >&2
-    echo "       stack failed. Fix the cause above, then link it with" >&2
-    echo "         gh stack link --remote ${UPSTREAM_REMOTE} --base ${stack_trunk}" \
-         "${stack_below_prs} ${pr_num}" >&2
-    (( draft )) || echo "       and mark it ready with: gh pr ready ${pr_num} -R ${GH_REPO}" >&2
-    exit 6
-  fi
-  if (( ! draft )); then
-    gh pr ready "$pr_num" -R "$GH_REPO"
+    if ! gh stack link --remote "$UPSTREAM_REMOTE" --base "$stack_trunk" \
+           $stack_below_prs "$pr_num"; then
+      echo "" >&2
+      echo "error: PR #${pr_num} was opened as a draft, but linking it into the" >&2
+      echo "       stack failed. Fix the cause above, then link it with" >&2
+      echo "         gh stack link --remote ${UPSTREAM_REMOTE} --base ${stack_trunk}" \
+           "${stack_below_prs} ${pr_num}" >&2
+      (( draft )) || echo "       and mark it ready with: gh pr ready ${pr_num} -R ${GH_REPO}" >&2
+      exit 6
+    fi
+    if (( ! draft )); then
+      gh pr ready "$pr_num" -R "$GH_REPO"
+    fi
   fi
 fi
 

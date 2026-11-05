@@ -54,14 +54,16 @@ Only `gh stack` reads `gh-stack.remote`, so plain `git push` is unaffected.  A b
   only when its history is linear, so cascading rebases and lease-protected force-pushes are the
   normal update, even mid-review.  Never `git merge` the trunk or another layer into a stack
   branch.
-- **Never `gh pr merge` a stack PR**; use `gh stack merge` (see [Landing](#landing)).  `gh pr edit`
-  is broken on this repo; see [Updating PR titles and bodies](#updating-pr-titles-and-bodies).
+- **Never `gh pr merge` a PR that is in a GitHub stack**; use `gh stack merge` (see
+  [Landing](#landing)).  `gh pr edit` is broken on this repo; see [Updating PR titles and
+  bodies](#updating-pr-titles-and-bodies).
 - **Never click "Update branch" on a stack PR.**  Its default merges the base into the layer, which
   breaks the linear history a stack needs.  GitHub's "Rebase Stack" button is fine; see
   [Syncing](#syncing).
 - **Work a stack from one clone.**  `gh stack push` fetches just before its lease, so it silently
   overwrites commits that reached a layer from anywhere but this clone.  Worktrees of the same
-  clone share branches and are safe.
+  clone share branches and are safe, though `gh stack rebase` stops if a worktree holding a layer
+  has uncommitted changes.
 
 ## Opening PRs
 
@@ -152,4 +154,9 @@ itself block a merge; GitHub's merge box decides.
    Squash is the only method the repo allows.  The merge box's "Squash and merge stack" button
    does the same thing.  If GitHub refuses because the stack is not linear, follow
    [Syncing](#syncing), wait for Jenkins, and retry.
+
+   A PR that is not yet in a GitHub stack -- the only PR so far, since a GitHub stack needs at
+   least two -- makes `gh stack merge` fail with "not a stack number or a stacked pull request".
+   Check with `gh api repos/yugabyte/yugabyte-db/pulls/<pr> --jq .stack`, which prints `null` for
+   such a PR, and land it as an ordinary PR with `gh pr merge <pr> --squash`.
 3. **Clean up** with `gh stack sync --remote <upstream> --prune`.
