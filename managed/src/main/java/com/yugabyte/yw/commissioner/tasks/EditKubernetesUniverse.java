@@ -517,8 +517,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     // Once an attempt has propagated the new masters, a retry must not: the pods it would push to
     // and render may already be gone or rescaled. Until then, no tserver pod has changed.
     boolean propagateMasterAddrs = !newCluster.isMasterAddrsPropagated();
-    // Masters that run once the given ones are added, without the ones this edit removes. ToBeAdded
-    // nodes are pods this edit has not created yet.
+    // Masters that run once the given ones are added, without the ones this edit removes.
     Universe current = Universe.getOrBadRequest(universe.getUniverseUUID());
     Set<String> leavingMasters =
         mastersToRemoveAzMap.values().stream()
@@ -528,9 +527,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     Function<Collection<NodeDetails>, Collection<NodeDetails>> mastersRunningWith =
         added -> {
           Map<String, NodeDetails> masters = new LinkedHashMap<>();
-          Stream.concat(
-                  current.getMasters().stream().filter(n -> n.state != NodeState.ToBeAdded),
-                  added.stream())
+          Stream.concat(current.getMasters().stream(), added.stream())
               .filter(n -> !leavingMasters.contains(n.nodeName))
               .forEach(n -> masters.putIfAbsent(n.nodeName, n));
           return masters.values();

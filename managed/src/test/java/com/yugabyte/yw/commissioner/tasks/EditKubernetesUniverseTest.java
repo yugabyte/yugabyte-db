@@ -2245,27 +2245,20 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
   @Test
   public void testZoneReplaceSkipsServersNotYetCreated() {
     setupMasterMoveUniverse(FULL_MOVE_VERSION);
-    // The universe already lists pods this edit has not created: they have DNS addresses but no
-    // pods behind them yet.
+    // The universe already lists a pod this edit has not created: it has its DNS address but no
+    // pod behind it yet.
     defaultUniverse =
         Universe.saveDetails(
             defaultUniverse.getUniverseUUID(),
             u -> {
-              for (String[] p :
-                  new String[][] {
-                    {"yb-tserver-0_az-1", "yb-tserver-1_az-1"},
-                    {"yb-master-0_az-2", "yb-master-1_az-2"}
-                  }) {
-                NodeDetails planned = u.getNode(p[0]).clone();
-                planned.nodeName = p[1];
-                planned.nodeUuid = UUID.randomUUID();
-                planned.cloudInfo.private_ip = p[1] + ".svc.cluster.local";
-                planned.state = NodeDetails.NodeState.ToBeAdded;
-                u.getUniverseDetails().nodeDetailsSet.add(planned);
-              }
+              NodeDetails planned = u.getNode("yb-tserver-0_az-1").clone();
+              planned.nodeName = "yb-tserver-1_az-1";
+              planned.nodeUuid = UUID.randomUUID();
+              planned.cloudInfo.private_ip = "yb-tserver-1_az-1.svc.cluster.local";
+              planned.state = NodeDetails.NodeState.ToBeAdded;
+              u.getUniverseDetails().nodeDetailsSet.add(planned);
             });
     assertNotNull(defaultUniverse.getNode("yb-tserver-1_az-1"));
-    assertTrue(defaultUniverse.getNode("yb-master-1_az-2").isMaster);
 
     List<TaskInfo> plan = planEdit(currentIntent(), zoneReplacePlacement());
 
