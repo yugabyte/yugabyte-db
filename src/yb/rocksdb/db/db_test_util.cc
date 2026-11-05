@@ -1066,7 +1066,12 @@ std::unordered_map<std::string, uint64_t> DBHolder::GetAllSSTFiles(
     if (ParseFileName(file_name, &number, &type) &&
         (type == kTableFile || type == kTableSBlockFile)) {
       uint64_t file_size = 0;
-      CHECK_OK(env_->GetFileSize(file_path, &file_size));
+      auto s = env_->GetFileSize(file_path, &file_size);
+      // File could be deleted by concurrent background job after listing.
+      if (s.IsNotFound()) {
+        continue;
+      }
+      CHECK_OK(s);
       res[file_path] = file_size;
       if (total_size) {
         *total_size += file_size;
