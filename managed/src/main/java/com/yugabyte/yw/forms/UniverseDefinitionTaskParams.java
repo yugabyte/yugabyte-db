@@ -1909,6 +1909,17 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           providerUUID, spec -> spec.awsInstanceProfile, u -> u.awsArnString);
     }
 
+    public K8SNodeResourceSpec getMasterK8SNodeResourceSpec(UUID providerUUID) {
+      return getProviderSpecProperty(
+          providerUUID,
+          spec -> {
+            HierarchicalNodesSpec.NodeSpec masterSpec =
+                spec.getNodesSpecs().getNodesSpec().getMasterSpecification();
+            return masterSpec != null ? masterSpec.getK8SNodeResourceSpec() : null;
+          },
+          u -> u.masterK8SNodeResourceSpec);
+    }
+
     public void setProviderInstanceTags(UUID providerUUID, Map<String, String> instanceTags) {
       setProviderSpecProperty(
           providerUUID, pc -> pc.instanceTags = instanceTags, u -> u.instanceTags = instanceTags);

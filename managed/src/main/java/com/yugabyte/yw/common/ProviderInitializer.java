@@ -2,6 +2,7 @@
 package com.yugabyte.yw.common;
 
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import java.util.Map;
@@ -37,6 +38,9 @@ public interface ProviderInitializer {
   ProviderInitializer updateDeviceInfo(Consumer<DeviceInfo> mutator);
 
   ProviderInitializer updateMasterDeviceInfo(Consumer<DeviceInfo> mutator);
+
+  ProviderInitializer setNodeResourceSpec(
+      UserIntent.K8SNodeResourceSpec resourceSpec, UniverseTaskBase.ServerType serverType);
 
   ProviderInitializer setAwsInstanceProfile(String awsInstanceProfile);
 }
