@@ -5,11 +5,12 @@ bin_path="/usr/local/bin"
 # systemd) must be able to read /etc/systemd/{system,user}.conf and similar.
 umask 022
 
-# Remove every entry for a sysctl key (with or without spaces around "=")
-# from the given file.
+# Remove every entry for a sysctl key from the given file. Matches both the
+# dotted and slash spellings (kernel.core_pattern, kernel/core_pattern), an
+# optional leading "-" (ignore-errors prefix), and spaces around "=".
 remove_sysctl_key() {
-  local key_re="${1//./[.]}"
-  sed -i "/^[[:space:]]*${key_re}[[:space:]]*=/d" "$2"
+  local key_re="${1//./[./]}"
+  sed -i "/^[[:space:]]*\(-[[:space:]]*\)\{0,1\}${key_re}[[:space:]]*=/d" "$2"
 }
 
 # Set a sysctl key now and save it in /etc/sysctl.conf so it survives a reboot
