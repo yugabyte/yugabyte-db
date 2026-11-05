@@ -78,6 +78,9 @@
     "script-and-regex.script": {
       "type": "script-and-regex",
       "include": "(^managed/.*[.]java$)",
+      "exclude": [
+        "(^managed/byoc-api-proxy/)"
+      ],
       "script-and-regex.script":
       "managed/lint/lint-java.sh",
       "script-and-regex.regex":
