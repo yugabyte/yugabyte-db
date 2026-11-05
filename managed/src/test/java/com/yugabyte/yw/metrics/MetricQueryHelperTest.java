@@ -580,6 +580,10 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     assertTrue(
         queries.get("container_memory_usage"),
         queries.get("container_memory_usage").contains("namespace=\"shared-ns\""));
+    assertEquals(
+        "yb-tserver-0",
+        K8sPodNodeNameResolver.forUniverse(universe)
+            .resolveNodeName("yb-tserver-0", "shared-ns", null));
   }
 
   // One request can mix keys over cAdvisor/kubelet series with keys over node_exporter and DB

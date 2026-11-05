@@ -90,10 +90,9 @@ public class K8sPodNodeNameResolver {
 
   /**
    * Build a resolver for the given universe by enumerating every (cluster, AZ) combination and
-   * precomputing its helm release name and namespace. Callers build it only for Kubernetes
-   * universes. Returns {@code null} when the metadata is insufficient to construct any release
-   * info; callers should treat a null resolver the same as "no mapping available" and fall back to
-   * the label-only heuristic.
+   * precomputing its helm release name and namespace. Returns {@code null} when the metadata is
+   * insufficient to construct any release info; callers should treat a null resolver the same as
+   * "no mapping available" and fall back to the label-only heuristic.
    */
   public static K8sPodNodeNameResolver forUniverse(Universe universe) {
     if (universe == null) {
