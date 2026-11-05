@@ -5,16 +5,14 @@ properties:
   communication_ports:
     $ref: "./CommunicationPortsSpec.yaml"
   assign_public_ip:
-    description: Whether to assign a public IP for nodes in this Universe.
+    description: Whether to assign a public IP for nodes in this Universe. Defaults to true on create. On edit, omit to leave unchanged.
     type: boolean
     example: true
-    default: true
   assign_static_public_ip:
-    description: Whether to assign a static public IP for nodes in this Universe.
+    description: Whether to assign a static public IP for nodes in this Universe. Defaults to false on create. On edit, omit to leave unchanged.
     type: boolean
     example: false
-    default: false
   enable_ipv6:
-    description: Whether to enable IPv6 on nodes in this cluster. Defaults to false.
+    description: Whether to enable IPv6 on nodes in this cluster. Defaults to false on create. On edit, omit to leave unchanged.
     type: boolean
     example: false
