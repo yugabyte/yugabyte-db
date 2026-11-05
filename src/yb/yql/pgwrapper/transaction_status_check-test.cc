@@ -20,6 +20,8 @@
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_bg_tasks.h"
+#include "yb/master/master_cluster.proxy.h"
+#include "yb/master/master_cluster_client.h"
 #include "yb/master/mini_master.h"
 
 #include "yb/tserver/mini_tablet_server.h"
@@ -674,6 +676,67 @@ TEST_F(MasterTxnStatusCheck, AutoScaleRetriesWhenTablespaceInfoUnavailable) {
             .ok();
       },
       MonoDelta::FromSeconds(30), "Waiting for transaction tablets in the local table"));
+}
+
+// Read-replica tservers host no transaction status leaders, so they must not size or grow the
+// global or a local transaction status table, even in the local table's zone.
+TEST_F(MasterTxnStatusCheck, ReadReplicaTServersDoNotScaleUp) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_table_check_interval_sec) = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_table_num_tablets) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_table_num_tablets_per_tserver) = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_name_transaction_tables_with_tablespace_id) = true;
+
+  ASSERT_EQ(cluster_->num_tablet_servers(), 1);
+  ASSERT_OK(WaitForGlobalTxnStatusTableCreation());
+  const size_t kTabletsPerTServer = FLAGS_transaction_table_num_tablets_per_tserver;
+
+  // A read-replica placement in zone2, then one primary and one read-replica tserver there.
+  const std::string kReadReplicaPlacementUuid = "read_replica";
+  master::MasterClusterClient cluster_client(
+      cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>());
+  auto config = ASSERT_RESULT(cluster_client.GetMasterClusterConfig());
+  auto* read_replicas = config.mutable_replication_info()->add_read_replicas();
+  read_replicas->set_placement_uuid(kReadReplicaPlacementUuid);
+  read_replicas->set_num_replicas(1);
+  auto* read_replica_block = read_replicas->add_placement_blocks();
+  auto* read_replica_cloud_info = read_replica_block->mutable_cloud_info();
+  read_replica_cloud_info->set_placement_cloud("test_cloud");
+  read_replica_cloud_info->set_placement_region("test_region");
+  read_replica_cloud_info->set_placement_zone("zone2");
+  read_replica_block->set_min_num_replicas(1);
+  ASSERT_OK(cluster_client.ChangeMasterClusterConfig(std::move(config)));
+
+  auto ts_opts = ASSERT_RESULT(tserver::TabletServerOptions::CreateTabletServerOptions());
+  ts_opts.SetPlacement("test_cloud", "test_region", "zone2");
+  ASSERT_OK(cluster_->AddTabletServer(ts_opts, true));
+  auto rr_opts = ASSERT_RESULT(tserver::TabletServerOptions::CreateTabletServerOptions());
+  rr_opts.SetPlacement("test_cloud", "test_region", "zone2");
+  rr_opts.placement_uuid = kReadReplicaPlacementUuid;
+  ASSERT_OK(cluster_->AddTabletServer(rr_opts, true));
+  ASSERT_OK(cluster_->WaitForTabletServerCount(3));
+
+  // The local transaction table is sized at creation for the one primary tserver in zone2.
+  const std::string tablespace_name = "tablespace_zone2";
+  const auto tablespace_oid = ASSERT_RESULT(CreateTablespaceAndGetOid(tablespace_name));
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE test_table (key INT PRIMARY KEY) TABLESPACE $0", tablespace_name));
+  const auto local_txnstatus_name = "transactions_" + std::to_string(tablespace_oid);
+
+  // The global table grows for the two primary tservers only.
+  ASSERT_OK(WaitFor(
+      [&] -> Result<bool> {
+        return VerifyTransactionTableTablets(
+                   kGlobalTransactionsTableName, 2 * kTabletsPerTServer).ok();
+      },
+      MonoDelta::FromSeconds(30), "Waiting for the global transaction table to scale up"));
+  ASSERT_OK(VerifyTransactionTableTablets(local_txnstatus_name, kTabletsPerTServer));
+
+  // A later check that counted the read-replica tserver would add tablets to both tables.
+  SleepFor(MonoDelta::FromSeconds(3 * FLAGS_transaction_table_check_interval_sec));
+  ASSERT_OK(VerifyTransactionTableTablets(kGlobalTransactionsTableName, 2 * kTabletsPerTServer));
+  ASSERT_OK(VerifyTransactionTableTablets(local_txnstatus_name, kTabletsPerTServer));
 }
 
 }  // namespace yb

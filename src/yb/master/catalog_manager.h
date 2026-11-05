@@ -2928,6 +2928,12 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const PlacementInfoPB& placement_info,
       const TSDescriptorVector& ts_descs) const;
 
+  // Live, non-blacklisted tservers of the live placement in the zones of 'live_placement'.
+  // Read-replica tservers in those zones are left out: they host no leaders. A placement without
+  // a uuid, such as a table-level one, uses the cluster's live placement uuid.
+  Result<TSDescriptorVector> FindLiveTServersForLivePlacement(
+      const PlacementInfoPB& live_placement) const;
+
   // Using the TServer info in 'ts_descs', return the TServers that match 'pplacement_block'.
   // Returns error if there aren't enough TServers to fulfill the min_num_replicas requirement
   // outlined in 'placement_block'.

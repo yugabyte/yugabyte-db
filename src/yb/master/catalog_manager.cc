@@ -5752,8 +5752,8 @@ Status CatalogManager::CreateTransactionStatusTableInternal(
     if (req.has_tablespace_id() || req.has_replication_info()) {
       const ReplicationInfoPB& table_replication_info =
           VERIFY_RESULT(GetTableReplicationInfo(req.replication_info(), req.tablespace_id()));
-      auto live_tservers = VERIFY_RESULT(FindTServersForPlacementInfo(
-          table_replication_info.live_replicas(), GetAllLiveNotBlacklistedTServers()));
+      auto live_tservers = VERIFY_RESULT(
+          FindLiveTServersForLivePlacement(table_replication_info.live_replicas()));
       num_tablets = narrow_cast<int>(
           live_tservers.size() * FLAGS_transaction_table_num_tablets_per_tserver);
     } else {
@@ -12977,6 +12977,19 @@ Result<vector<shared_ptr<TSDescriptor>>> CatalogManager::FindTServersForPlacemen
   }
 
   return all_allowed_ts;
+}
+
+Result<TSDescriptorVector> CatalogManager::FindLiveTServersForLivePlacement(
+    const PlacementInfoPB& live_placement) const {
+  auto live_placement_uuid = live_placement.placement_uuid();
+  if (live_placement_uuid.empty()) {
+    live_placement_uuid = VERIFY_RESULT(placement_uuid());
+  }
+  TSDescriptorVector ts_descs;
+  auto blacklist = BlacklistSetFromPB();
+  master_->ts_manager()->GetAllLiveDescriptorsInCluster(
+      &ts_descs, live_placement_uuid, blacklist.ok() ? *blacklist : BlacklistSet());
+  return FindTServersForPlacementInfo(live_placement, ts_descs);
 }
 
 Result<vector<shared_ptr<TSDescriptor>>> CatalogManager::FindTServersForPlacementBlock(
