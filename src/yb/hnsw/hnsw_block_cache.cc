@@ -311,27 +311,14 @@ struct CachedBlock {
     auto result = future.get();
     cache->metrics().take_wait_us->Increment((MonoTime::Now() - start).ToMicroseconds());
     if (!result.ok()) {
-      lock.lock();
-      --use_count;
+      // Another Take could have loaded the block since, so the handle could be ours to release.
+      DoRelease(/* failed_take= */ true);
     }
     return result;
   }
 
   void Release() {
-    BlockCacheHandle release_handle;
-    {
-      std::lock_guard lock(mutex);
-      if (--use_count != 0) {
-        return;
-      }
-      release_handle = std::exchange(handle, {});
-    }
-    if (release_handle) {
-      cache->metrics().add->IncrementBy(size);
-      cache->Release(release_handle);
-    } else {
-      cache->metrics().evict->IncrementBy(size);
-    }
+    DoRelease(/* failed_take= */ false);
   }
 
   void Unload() {
@@ -352,6 +339,24 @@ struct CachedBlock {
   }
 
  private:
+  // A failed Take did not hold the block, so it does not count an eviction.
+  void DoRelease(bool failed_take) {
+    BlockCacheHandle release_handle;
+    {
+      std::lock_guard lock(mutex);
+      if (--use_count != 0) {
+        return;
+      }
+      release_handle = std::exchange(handle, {});
+    }
+    if (release_handle) {
+      cache->metrics().add->IncrementBy(size);
+      cache->Release(release_handle);
+    } else if (!failed_take) {
+      cache->metrics().evict->IncrementBy(size);
+    }
+  }
+
   Result<const std::byte*> Load(RandomAccessFile& file, bool has_trailer) {
     auto start = MonoTime::Now();
     std::unique_ptr<std::byte[]> new_content(new std::byte[size]);
