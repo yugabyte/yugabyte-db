@@ -10,8 +10,11 @@ import (
 	"node-agent/app/task/module"
 	pb "node-agent/generated/service"
 	"node-agent/util"
+	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+	"syscall"
 )
 
 const OtelCollectorService = "otel-collector.service"
@@ -25,6 +28,8 @@ const (
 	// which the systemd unit, the health check's `ps -C` lookup and the `process` label on the
 	// per-process metrics all key off, so it must stay stable across collector version changes.
 	otelCollectorInstalledBinary = "otelcol-contrib"
+	// Holds the exporter credentials that config.yml references as ${env:NAME}.
+	otelCollectorSecretEnvFile = "secrets.env"
 )
 
 type InstallOtelCollector struct {
@@ -118,7 +123,8 @@ func (h *InstallOtelCollector) Handle(ctx context.Context) (*pb.DescribeTaskResp
 		// Must mirror the conditions the setup steps use to write these credentials.
 		"otel_col_aws_creds_present": h.param.GetOtelColAwsAccessKey() != "" &&
 			h.param.GetOtelColAwsSecretKey() != "",
-		"otel_col_gcp_creds_present": h.param.GetOtelColGcpCredsFile() != "",
+		"otel_col_gcp_creds_present":  h.param.GetOtelColGcpCredsFile() != "",
+		"otel_col_secret_env_present": len(h.param.GetOtelColSecretEnv()) > 0,
 	}
 
 	// Copy otel-collector.service
@@ -191,8 +197,10 @@ func (h *InstallOtelCollector) validateOtelCollectorConfig(
 		filepath.Join(ybHome, "otel-collector", otelCollectorInstalledBinary),
 		h.param.GetOtelColConfigFile(),
 	)
-	if _, err := module.RunShellCmd(
-		ctx, h.username, "ValidateOtelCollectorConfig", cmd, h.logOut); err != nil {
+	// The new config may reference credentials that are not in the env file yet.
+	if _, err := module.RunShellCmdWithEnv(
+		ctx, h.username, "ValidateOtelCollectorConfig", cmd, h.secretEnvList(), h.logOut,
+	); err != nil {
 		return fmt.Errorf("otel-collector config was rejected: %w", err)
 	}
 	return nil
@@ -301,6 +309,7 @@ func (h *InstallOtelCollector) configureOtelCollector(ctx context.Context, ybHom
 	otelColLogCleanupEnv := filepath.Join(ybHome, "otel-collector", "log_cleanup_env")
 	awsCredsFile := filepath.Join(ybHome, ".aws", "credentials")
 	gcpCredsFile := filepath.Join(ybHome, "otel-collector", "gcp_creds")
+	secretEnvFile := filepath.Join(ybHome, "otel-collector", otelCollectorSecretEnvFile)
 
 	steps := []struct {
 		Desc string
@@ -334,6 +343,10 @@ func (h *InstallOtelCollector) configureOtelCollector(ctx context.Context, ybHom
 			"remove-gcp-credentials",
 			fmt.Sprintf("rm -rf %s", gcpCredsFile),
 		},
+		{
+			"remove-otel-collector-secret-env",
+			fmt.Sprintf("rm -f %s", secretEnvFile),
+		},
 	}
 	// log_cleanup_env carries the audit-log retention settings that the
 	// zip_purge_yb_logs.sh script sources on every run. Regenerating it here
@@ -343,26 +356,6 @@ func (h *InstallOtelCollector) configureOtelCollector(ctx context.Context, ybHom
 		h.param.GetYsqlAuditLogRetentionDays(),
 		h.param.GetYcqlAuditLogRetentionDays(),
 		h.param.GetYsqlAuditLineStartRegex())...)
-
-	if h.param.GetOtelColAwsAccessKey() != "" && h.param.GetOtelColAwsSecretKey() != "" {
-		steps = append(steps, struct {
-			Desc string
-			Cmd  string
-		}{
-			"append-otel-collector-creds",
-			fmt.Sprintf(
-				`echo '# BEGIN YB MANAGED BLOCK - OTEL COLLECTOR CREDENTIALS
-			[otel-collector]
-			aws_access_key_id = %s
-			aws_secret_access_key = %s
-			# END YB MANAGED BLOCK - OTEL COLLECTOR CREDENTIALS' >> %s && chmod 440 %s`,
-				h.param.GetOtelColAwsAccessKey(),
-				h.param.GetOtelColAwsSecretKey(),
-				awsCredsFile,
-				awsCredsFile,
-			),
-		})
-	}
 
 	if h.param.GetOtelColConfigFile() != "" {
 		steps = append(steps, struct {
@@ -391,7 +384,105 @@ func (h *InstallOtelCollector) configureOtelCollector(ctx context.Context, ybHom
 	if err := module.RunShellSteps(ctx, h.username, steps, h.logOut); err != nil {
 		return err
 	}
+	// Credentials are written in Go so the values never appear on a command line.
+	if h.param.GetOtelColAwsAccessKey() != "" && h.param.GetOtelColAwsSecretKey() != "" {
+		if err := h.appendAwsCredsBlock(ctx, awsCredsFile); err != nil {
+			return err
+		}
+	}
+	if len(h.param.GetOtelColSecretEnv()) > 0 {
+		return h.writeSecretEnvFile(ctx, secretEnvFile)
+	}
 	return nil
+}
+
+// sortedSecretEnvKeys returns the names of the exporter credential env vars, sorted.
+func (h *InstallOtelCollector) sortedSecretEnvKeys() []string {
+	keys := make([]string, 0, len(h.param.GetOtelColSecretEnv()))
+	for key := range h.param.GetOtelColSecretEnv() {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// secretEnvList returns the exporter credentials as KEY=VALUE pairs, sorted by key.
+func (h *InstallOtelCollector) secretEnvList() []string {
+	env := []string{}
+	for _, key := range h.sortedSecretEnvKeys() {
+		env = append(env, key+"="+h.param.GetOtelColSecretEnv()[key])
+	}
+	return env
+}
+
+// writeSecretEnvFile writes the credentials in systemd EnvironmentFile format, readable only by
+// the collector user. An earlier step removes the file, so it must not exist here.
+func (h *InstallOtelCollector) writeSecretEnvFile(ctx context.Context, path string) error {
+	var content strings.Builder
+	for _, key := range h.sortedSecretEnvKeys() {
+		value := h.param.GetOtelColSecretEnv()[key]
+		content.WriteString(key + "=" + systemdEnvQuote(value) + "\n")
+	}
+	return h.writeUserFile(ctx, path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600, content.String())
+}
+
+// appendAwsCredsBlock appends the collector profile to the AWS credentials file. An earlier
+// step removes the old block.
+func (h *InstallOtelCollector) appendAwsCredsBlock(ctx context.Context, path string) error {
+	block := "# BEGIN YB MANAGED BLOCK - OTEL COLLECTOR CREDENTIALS\n" +
+		"[otel-collector]\n" +
+		"aws_access_key_id = " + h.param.GetOtelColAwsAccessKey() + "\n" +
+		"aws_secret_access_key = " + h.param.GetOtelColAwsSecretKey() + "\n" +
+		"# END YB MANAGED BLOCK - OTEL COLLECTOR CREDENTIALS\n"
+	return h.writeUserFile(ctx, path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0440, block)
+}
+
+// writeUserFile writes content to path and gives the file to the task user with the mode.
+// O_NOFOLLOW stops a root node-agent from writing through a symlink the user planted.
+func (h *InstallOtelCollector) writeUserFile(
+	ctx context.Context,
+	path string,
+	flag int,
+	mode os.FileMode,
+	content string,
+) error {
+	userDetail, err := util.UserInfo(h.username)
+	if err != nil {
+		return err
+	}
+	file, err := os.OpenFile(path, flag|syscall.O_NOFOLLOW, mode)
+	if err != nil {
+		util.FileLogger().Errorf(ctx, "Error in opening file %s - %s", path, err.Error())
+		return err
+	}
+	defer file.Close()
+	if _, err = file.WriteString(content); err != nil {
+		return err
+	}
+	if err = file.Chmod(mode); err != nil {
+		return err
+	}
+	if !userDetail.IsCurrent {
+		if err = file.Chown(int(userDetail.UserID), int(userDetail.GroupID)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// systemdEnvQuote double-quotes a value for a systemd EnvironmentFile. Inside double quotes,
+// systemd keeps the character after a backslash only for these four, so only they are escaped.
+func systemdEnvQuote(value string) string {
+	var quoted strings.Builder
+	quoted.WriteByte('"')
+	for _, r := range value {
+		if strings.ContainsRune("\\\"`$", r) {
+			quoted.WriteByte('\\')
+		}
+		quoted.WriteRune(r)
+	}
+	quoted.WriteByte('"')
+	return quoted.String()
 }
 
 // refreshLogPurgeScript renders the bundled zip_purge_yb_logs.sh.j2 template

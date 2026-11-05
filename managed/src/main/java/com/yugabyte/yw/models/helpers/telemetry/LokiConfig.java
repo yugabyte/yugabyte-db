@@ -19,6 +19,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.Collections;
@@ -241,12 +242,7 @@ public class LokiConfig extends TelemetryProviderConfig {
       builder.header("X-Scope-OrgID", organizationID);
     }
     if (authType == AuthCredentials.AuthType.BasicAuth) {
-      builder.header(
-          "Authorization",
-          "Basic "
-              + Base64.getEncoder()
-                  .encodeToString(
-                      (basicAuth.getUsername() + ":" + basicAuth.getPassword()).getBytes()));
+      builder.header("Authorization", "Basic " + basicAuthCredential());
     }
     return builder.build();
   }
@@ -258,6 +254,16 @@ public class LokiConfig extends TelemetryProviderConfig {
     }
     // The exporter sends "Authorization: Basic base64(user:password)".
     return nonEmpty(
-        basicAuth.getPassword(), basicAuth.getUsername() + ":" + basicAuth.getPassword());
+        basicAuth.getPassword(),
+        basicAuth.getUsername() + ":" + basicAuth.getPassword(),
+        basicAuthCredential());
+  }
+
+  /** base64(user:password), as sent after "Basic " in the Authorization header. */
+  public String basicAuthCredential() {
+    return Base64.getEncoder()
+        .encodeToString(
+            (basicAuth.getUsername() + ":" + basicAuth.getPassword())
+                .getBytes(StandardCharsets.UTF_8));
   }
 }

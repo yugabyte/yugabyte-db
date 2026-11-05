@@ -1254,7 +1254,8 @@ public class RedactingService {
           secrets.addAll(provider.getConfig().secretValues());
         }
       }
-    } catch (RuntimeException e) {
+    } catch (RuntimeException | LinkageError e) {
+      // LinkageError: Ebean is not initialized, e.g. in a unit test without the app.
       log.warn("Could not load telemetry provider credentials for redaction", e);
       return Collections.emptyList();
     }

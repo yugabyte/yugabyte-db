@@ -755,6 +755,8 @@ public class NodeAgentRpcPayload {
       UUID universeUUID,
       UUID nodeUUID) {
     TelemetryProvider telemetryProvider = telemetryProviderService.get(exporterUUID);
+    installOtelCollectorInputBuilder.putAllOtelColSecretEnv(
+        OtelCollectorConfigGenerator.getCredentialEnv(telemetryProvider));
     switch (telemetryProvider.getConfig().getType()) {
       case AWS_CLOUDWATCH -> {
         log.info("Setting AWS credentials in builder for exporter UUID: {}", exporterUUID);

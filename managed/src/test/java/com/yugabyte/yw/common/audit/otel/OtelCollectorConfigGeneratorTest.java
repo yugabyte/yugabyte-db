@@ -63,6 +63,7 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -1702,7 +1703,7 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
   }
 
   @Test
-  public void getOtelColConfigK8sExporterCredentialsAreRedactedInShellOutput() {
+  public void exporterCredentialsReachCollectorOnlyThroughEnv() {
     DataDogConfig dataDog = new DataDogConfig();
     dataDog.setType(ProviderType.DATA_DOG);
     dataDog.setSite("datadoghq.com");
@@ -1778,30 +1779,58 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
       // Redaction reads the credentials to redact from the DB, not from the mocked service.
       telemetryProvider.save();
 
+      AuditLogConfig auditLogConfig =
+          createAuditLogConfigWithYSQL(telemetryProvider.getUuid(), ImmutableMap.of());
       OtelCollectorConfigGenerator.K8sOtelConfig result =
           generator.getOtelColConfigK8s(
               provider,
               universe,
-              TelemetryConfig.builder()
-                  .auditLogConfig(
-                      createAuditLogConfigWithYSQL(telemetryProvider.getUuid(), ImmutableMap.of()))
-                  .build(),
+              TelemetryConfig.builder().auditLogConfig(auditLogConfig).build(),
               null,
               "%m [%p] ");
+      String vmConfig = generateConfig(auditLogConfig, null, null);
 
-      assertThat(
-          "test is only meaningful if the renderer inlines the credential",
-          result.getConfig(),
-          containsString(secret));
-
-      for (String line : result.getConfig().split("\\n")) {
-        String redacted =
-            RedactingService.redactShellProcessOutput(line, RedactionTarget.HELM_VALUES);
+      Map<String, String> credentialEnv =
+          OtelCollectorConfigGenerator.getCredentialEnv(telemetryProvider);
+      Map<String, String> k8sEnv = new HashMap<>();
+      for (Object secretEnvEntry : result.getSecretEnv()) {
+        @SuppressWarnings("unchecked")
+        Map<String, String> env = (Map<String, String>) secretEnvEntry;
+        k8sEnv.put(
+            env.get("envName"),
+            new String(Base64.getDecoder().decode(env.get("envValue")), StandardCharsets.UTF_8));
+        // Helm values carry the Secret data, and support bundles collect them.
+        String helmLine = "envValue: " + env.get("envValue");
         assertFalse(
-            config.getType() + " credential leaked into shell output: " + redacted,
-            redacted.contains(secret));
+            config.getType() + " Secret data leaked into shell output",
+            RedactingService.redactShellProcessOutput(helmLine, RedactionTarget.HELM_VALUES)
+                .contains(env.get("envValue")));
+      }
+      assertEquals(config.getType() + " K8s Secret", credentialEnv, k8sEnv);
+
+      // Kubelet collapses "$$" in the K8s config before the collector reads it.
+      for (String rendered : ImmutableList.of(vmConfig, result.getConfig().replace("$$", "$"))) {
+        assertFalse(
+            config.getType() + " credential inlined in collector config",
+            rendered.contains(secret));
+        assertThat(
+            config.getType() + " credential must reach the exporter",
+            resolveEnvRefs(rendered, credentialEnv),
+            containsString(secret));
       }
     }
+  }
+
+  /** Resolves ${env:NAME} as the collector does; fails on a reference the env does not carry. */
+  private static String resolveEnvRefs(String config, Map<String, String> env) {
+    Matcher ref = Pattern.compile("(?<!\\$)\\$\\{env:([A-Za-z_][A-Za-z0-9_]*)\\}").matcher(config);
+    StringBuilder resolved = new StringBuilder();
+    while (ref.find()) {
+      assertTrue("unset env reference " + ref.group(1), env.containsKey(ref.group(1)));
+      ref.appendReplacement(resolved, Matcher.quoteReplacement(env.get(ref.group(1))));
+    }
+    ref.appendTail(resolved);
+    return resolved.toString();
   }
 
   // The K8s config reaches the collector through the OTEL_CONFIG env var, and kubelet's $(VAR)
@@ -1853,7 +1882,7 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     while (envRef.find()) {
       assertTrue(
           "collector would reject env reference ${" + envRef.group(1) + "}",
-          envRef.group(1).matches("[a-zA-Z_][a-zA-Z0-9_]*"));
+          envRef.group(1).matches("(env:)?[a-zA-Z_][a-zA-Z0-9_]*"));
     }
   }
 

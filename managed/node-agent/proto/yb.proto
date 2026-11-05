@@ -197,6 +197,8 @@ message InstallOtelCollectorInput {
     // zip_purge_yb_logs.sh needs it to group multi-line audit statements into
     // whole records when archiving; empty falls back to the script's default.
     string ysqlAuditLineStartRegex = 14;
+    // Exporter credentials the collector config references as ${env:NAME}, keyed by NAME.
+    map<string, string> otelColSecretEnv = 15;
 }
 
 message InstallOtelCollectorOutput {
