@@ -104,6 +104,47 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
     dummyShellResponse.code = ShellResponse.ERROR_CODE_SUCCESS;
     preflightResponse = new ShellResponse();
     preflightResponse.message = "{\"test\": true}";
+    mockNodeCommands();
+    mockClient = mock(YBClientApi.class);
+    when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
+    when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
+    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+    lenient()
+        .doAnswer(
+            inv -> {
+              ObjectNode res = newObject();
+              res.put("response", "success");
+              return res;
+            })
+        .when(mockYsqlQueryExecutor)
+        .executeQueryInNodeShell(any(), any(), any(), anyBoolean(), anyBoolean());
+    // Create hooks
+    hook1 =
+        Hook.create(
+            defaultCustomer.getUuid(),
+            "hook1",
+            Hook.ExecutionLang.Python,
+            "HOOK\nTEXT\n",
+            true,
+            null);
+    hook2 =
+        Hook.create(
+            defaultCustomer.getUuid(),
+            "hook2",
+            Hook.ExecutionLang.Bash,
+            "HOOK\nTEXT\n",
+            true,
+            null);
+    hookScope1 =
+        HookScope.create(defaultCustomer.getUuid(), HookScope.TriggerType.PreNodeProvision);
+    hookScope2 =
+        HookScope.create(defaultCustomer.getUuid(), HookScope.TriggerType.PostNodeProvision);
+    hookScope1.addHook(hook1);
+    hookScope2.addHook(hook2);
+  }
+
+  /** The node commands of VMs that exist and work; a test can restore them after overriding. */
+  protected void mockNodeCommands() {
     AtomicInteger masterIpCnt = new AtomicInteger();
     when(mockNodeManager.nodeCommand(any(), any()))
         .then(
@@ -144,42 +185,6 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
               }
               return dummyShellResponse;
             });
-    mockClient = mock(YBClientApi.class);
-    when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
-    when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
-    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
-    lenient()
-        .doAnswer(
-            inv -> {
-              ObjectNode res = newObject();
-              res.put("response", "success");
-              return res;
-            })
-        .when(mockYsqlQueryExecutor)
-        .executeQueryInNodeShell(any(), any(), any(), anyBoolean(), anyBoolean());
-    // Create hooks
-    hook1 =
-        Hook.create(
-            defaultCustomer.getUuid(),
-            "hook1",
-            Hook.ExecutionLang.Python,
-            "HOOK\nTEXT\n",
-            true,
-            null);
-    hook2 =
-        Hook.create(
-            defaultCustomer.getUuid(),
-            "hook2",
-            Hook.ExecutionLang.Bash,
-            "HOOK\nTEXT\n",
-            true,
-            null);
-    hookScope1 =
-        HookScope.create(defaultCustomer.getUuid(), HookScope.TriggerType.PreNodeProvision);
-    hookScope2 =
-        HookScope.create(defaultCustomer.getUuid(), HookScope.TriggerType.PostNodeProvision);
-    hookScope1.addHook(hook1);
-    hookScope2.addHook(hook2);
   }
 
   protected void mockCommonForEditUniverseBasedTasks(Universe universe) {
