@@ -1928,6 +1928,28 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
   }
 
   @Test
+  public void testMasterFullMoveRetryOfParamsWithoutPropagationRecordSkipsIt() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
+    TestUtils.updateDeviceInfo(newIntent, ServerType.MASTER, d -> d.storageClass = "fast");
+    PlacementInfo pi = currentPlacement();
+    pi.azStream().forEach(az -> az.masterStsIndex = 1);
+
+    TaskInfo firstAttempt = submitEdit(newIntent, pi, null);
+    assertFalse(masterAddrPushes(plan(firstAttempt)).isEmpty());
+    // The first attempt stopped before the master full move, so the retry plans it again, but
+    // without the record it neither pushes nor renders around the master change.
+    List<TaskInfo> plan =
+        plan(retryEdit(firstAttempt, p -> p.getPrimaryCluster().setMasterAddrsPropagated(null)));
+    List<TaskInfo> adds = changeMasterConfigs(plan, "AddMaster");
+    List<TaskInfo> removes = changeMasterConfigs(plan, "RemoveMaster");
+    assertFalse(removes.isEmpty());
+    assertTrue(
+        between(masterAddrPushes(plan), firstPosition(adds), lastPosition(removes) + 3).isEmpty());
+    assertTrue(earlySecretUpdate(plan).isEmpty());
+  }
+
+  @Test
   public void testZoneReplaceWithDiskResizeKeepsLeavingZoneDisks() {
     setupMasterMoveUniverse(FULL_MOVE_VERSION);
     UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
