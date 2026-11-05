@@ -19,6 +19,7 @@
 
 #include <sys/types.h>
 
+#include <memory>
 #include <string>
 #include <unordered_map>
 
@@ -113,7 +114,7 @@ inline TransactionErrorCode GetTransactionErrorCode(const Status& status) {
   return status.ok() ? TransactionErrorCode::kNone : TransactionError(status).value();
 }
 
-// Momentos of a session's read points keyed by read_time_serial_no, so a paged read can restore
+// A session's read points keyed by read_time_serial_no, so a paged read can restore
 // the snapshot its scan started at.
 constexpr uint64_t kInvalidReadTimeSerialNo = 0;
 
@@ -121,28 +122,25 @@ class ReadPointHistory {
  public:
   explicit ReadPointHistory(const PrefixLogger& prefix_logger) : prefix_logger_(prefix_logger) {}
 
-  [[nodiscard]] bool Restore(ConsistentReadPoint* read_point, uint64_t read_time_serial_no) {
-    if (read_time_serial_no == kInvalidReadTimeSerialNo) {
-      return false;
+  [[nodiscard]] std::shared_ptr<ConsistentReadPoint> Find(uint64_t read_time_serial_no) const {
+    if (read_time_serial_no == kInvalidReadTimeSerialNo || read_time_serial_no < min_) {
+      return nullptr;
     }
-    auto result = false;
-    if (const auto i = read_points_.find(read_time_serial_no);
-        i != read_points_.end() && read_time_serial_no >= min_) {
-      read_point->SetMomento(i->second);
-      result = true;
-    }
-    VLOG_WITH_PREFIX(4) << "ReadPointHistory::Restore read_time_serial_no=" << read_time_serial_no
-                        << " return " << result
-                        << " read time is " << read_point->GetReadTime();
+    const auto i = read_points_.find(read_time_serial_no);
+    auto result = i != read_points_.end() ? i->second : nullptr;
+    VLOG_WITH_PREFIX(4) << "ReadPointHistory::Find read_time_serial_no=" << read_time_serial_no
+                        << " found " << (result != nullptr)
+                        << " read time is " << (result ? AsString(result->GetReadTime()) : "-");
     return result;
   }
 
-  void Save(const ConsistentReadPoint& read_point, uint64_t read_time_serial_no) {
+  // The read point is stored by reference: batches flushed with it may still be in flight and
+  // record restart or local limit info into it.
+  void Save(std::shared_ptr<ConsistentReadPoint> read_point, uint64_t read_time_serial_no) {
     if (read_time_serial_no == kInvalidReadTimeSerialNo) {
       return;
     }
-    auto momento = read_point.GetMomento();
-    const auto& read_time = momento.read_time();
+    const auto read_time = read_point->GetReadTime();
     DCHECK(read_time);
     VLOG_WITH_PREFIX(4) << "ReadPointHistory::Save read_time_serial_no=" << read_time_serial_no
                         << " read time is " << AsString(read_time);
@@ -153,16 +151,16 @@ class ReadPointHistory {
       min_ = std::min(min_, read_time_serial_no);
       max_ = std::max(max_, read_time_serial_no);
     }
-    auto ipair = read_points_.try_emplace(read_time_serial_no, std::move(momento));
+    auto ipair = read_points_.try_emplace(read_time_serial_no, read_point);
     if (!ipair.second) {
       // Potentially read time could be set to same read_time_serial_no multiple times.
       // It is expected that read time is the same or fresher (due to possible restart)
       // but not older.
-      DCHECK(read_time.read >= ipair.first->second.read_time().read)
+      DCHECK(read_time.read >= ipair.first->second->GetReadTime().read)
           << "Overwriting read_time_serial_no=" << read_time_serial_no
           << " with an older read time, given: " << AsString(read_time)
-          << ", existing: " << AsString(ipair.first->second.read_time());
-      ipair.first->second = std::move(momento);
+          << ", existing: " << AsString(ipair.first->second->GetReadTime());
+      ipair.first->second = std::move(read_point);
     }
   }
 
@@ -185,7 +183,7 @@ class ReadPointHistory {
   const PrefixLogger prefix_logger_;
   uint64_t min_ = 0;
   uint64_t max_ = 0;
-  std::unordered_map<uint64_t, ConsistentReadPoint::Momento> read_points_;
+  std::unordered_map<uint64_t, std::shared_ptr<ConsistentReadPoint>> read_points_;
 };
 
 Status CombineErrorsToStatus(const client::CollectedErrors& errors, const Status& status);

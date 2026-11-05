@@ -143,6 +143,7 @@ class SingleLocalityPool {
     internal::InFlightOpsGroupsWithMetadata ops_info;
     if (new_txn->batcher_if().Prepare(
         &ops_info, ForceConsistentRead::kFalse, deadline, Initial::kFalse,
+        /* read_point= */ nullptr,
         std::bind(&SingleLocalityPool::TransactionReady, this, _1, new_txn, old_taken))) {
       TransactionReady(Status::OK(), new_txn, old_taken);
     }

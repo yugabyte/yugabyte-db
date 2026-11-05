@@ -21,6 +21,7 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/client/client.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/ddl_mode-test-util.h"
 #include "yb/tablet/tablet.h"
@@ -46,6 +47,8 @@ DECLARE_bool(ysql_enable_write_pipelining);
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_string(ysql_pg_conf_csv);
 DECLARE_bool(ysql_disable_index_backfill);
+DECLARE_int32(master_inject_latency_on_tablet_lookups_ms);
+DECLARE_uint64(TEST_doc_op_next_result_prefetching_delay_ms);
 
 METRIC_DECLARE_counter(picked_read_time_on_docdb);
 
@@ -2163,6 +2166,82 @@ TEST_P(PgClampDeferReadTest, DoesNotApplyIfReadTimeIsAlreadyPicked) {
         ASSERT_RESULT(reader.FetchRow<PGUint64>("SELECT clamp_after_read_time()")), kSeedRows);
   });
   threads.Stop();
+}
+
+// GH #35498: the read time of a Perform is copied into its DocDB requests only when the batcher
+// builds them, which can happen after PgClientSession releases the session lock (e.g. after an
+// async tablet lookup). A later Perform from the same backend that switches the session's read
+// point must not change the read time of that earlier, still unbuilt batch.
+//
+// The outer FOR loop's scan prefetches its second page right after receiving the first one. The
+// prefetch is delayed (TEST_doc_op_next_result_prefetching_delay_ms) so that, before it is sent,
+// rows are committed into the second page's key range and the meta cache is cleared with a slow
+// master lookup, making the prefetch's batch wait for the tablet location. The loop body then runs
+// a new statement, which in READ COMMITTED switches the session to a new read time. The outer scan
+// must still not see the rows committed after it started.
+TEST_F(PgReadTimeTest, PrefetchedPageKeepsReadTimeAcrossReadPointSwitch) {
+  const auto kPrefetchDelay = 3s * kTimeMultiplier;
+  const auto kLookupLatency = 3s * kTimeMultiplier;
+  constexpr int kNumRows = 20;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT, PRIMARY KEY (k ASC))"));
+  ASSERT_OK(conn.Execute("CREATE TABLE u (k INT PRIMARY KEY)"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t SELECT 2 * i FROM generate_series(1, $0) i", kNumRows));
+  ASSERT_OK(conn.Execute("INSERT INTO u VALUES (1)"));
+  ASSERT_OK(conn.Execute(R"#(
+      CREATE FUNCTION scan_t() RETURNS TEXT LANGUAGE plpgsql VOLATILE AS $$
+      DECLARE
+        r RECORD;
+        n INT := 0;
+        odd INT := 0;
+      BEGIN
+        FOR r IN SELECT k FROM t ORDER BY k LOOP
+          IF n = 0 THEN
+            PERFORM k FROM u WHERE k = 1;
+          END IF;
+          n := n + 1;
+          IF r.k % 2 = 1 THEN
+            odd := odd + 1;
+          END IF;
+        END LOOP;
+        RETURN n || ',' || odd;
+      END $$)#"));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_doc_op_next_result_prefetching_delay_ms) =
+      std::chrono::milliseconds(kPrefetchDelay).count();
+  ASSERT_OK(RestartPostgres());
+
+  auto scan_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(scan_conn.Execute("SET default_transaction_isolation = 'read committed'"));
+  ASSERT_OK(scan_conn.Execute("SET yb_fetch_row_limit = 10"));
+  // Cache the function's plans: with the meta cache cleared, catalog reads in the loop body would
+  // wait for the slow master lookup and delay the body's read point switch past the prefetch.
+  ASSERT_EQ(ASSERT_RESULT(scan_conn.FetchRow<std::string>("SELECT scan_t()")),
+            Format("$0,0", kNumRows));
+  auto writer_conn = ASSERT_RESULT(Connect());
+  ASSERT_RESULT(writer_conn.FetchRow<int32_t>("SELECT k FROM t WHERE k = 2"));
+
+  TestThreadHolder threads;
+  std::string result;
+  threads.AddThreadFunctor([&scan_conn, &result] {
+    result = ASSERT_RESULT(scan_conn.FetchRow<std::string>("SELECT scan_t()"));
+  });
+
+  // The scan has received its first page and is waiting to send the prefetch.
+  std::this_thread::sleep_for(kPrefetchDelay / 3);
+  ASSERT_OK(writer_conn.ExecuteFormat(
+      "INSERT INTO t SELECT 2 * i + 1 FROM generate_series($0, $1) i", kNumRows / 2, kNumRows));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_inject_latency_on_tablet_lookups_ms) =
+      std::chrono::milliseconds(kLookupLatency).count();
+  for (const auto& ts : cluster_->mini_tablet_servers()) {
+    ts->server()->client_future().get()->ClearAllMetaCachesOnServer();
+  }
+
+  threads.JoinAll();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_inject_latency_on_tablet_lookups_ms) = 0;
+  ASSERT_EQ(result, Format("$0,0", kNumRows));
 }
 
 } // namespace yb::pgwrapper
