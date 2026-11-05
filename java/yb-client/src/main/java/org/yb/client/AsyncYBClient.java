@@ -107,6 +107,10 @@ import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
 import javax.net.ssl.TrustManagerFactory;
+import org.bouncycastle.asn1.ASN1ObjectIdentifier;
+import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
+import org.bouncycastle.asn1.pkcs.PrivateKeyInfo;
+import org.bouncycastle.asn1.x9.X9ObjectIdentifiers;
 import org.bouncycastle.util.io.pem.PemObject;
 import org.bouncycastle.util.io.pem.PemReader;
 import org.slf4j.Logger;
@@ -4145,23 +4149,43 @@ public class AsyncYBClient implements AutoCloseable {
     }
   }
 
-  private PrivateKey getPrivateKey(String keyFile) {
+  @VisibleForTesting
+  static PrivateKey getPrivateKey(String keyFile) {
     try {
       PemReader pemReader = new PemReader(new FileReader(keyFile));
       PemObject pemObject = pemReader.readPemObject();
       pemReader.close();
       byte[] bytes = pemObject.getContent();
       PKCS8EncodedKeySpec spec = new PKCS8EncodedKeySpec(bytes);
-      KeyFactory kf = KeyFactory.getInstance("RSA");
+      KeyFactory kf = KeyFactory.getInstance(getPrivateKeyAlgorithm(bytes));
       PrivateKey pk = kf.generatePrivate(spec);
       return pk;
     } catch (InvalidKeySpecException e) {
       LOG.error("Could not read the private key file.", e);
-      throw new RuntimeException("InvalidKeySpecException while reading key: " + keyFile);
+      throw new RuntimeException(
+          "InvalidKeySpecException while reading key: " + keyFile + ": " + e.getMessage(), e);
     } catch (Exception e) {
       LOG.error("Issue reading pem file.", e);
-      throw new RuntimeException("IOException reading key: " + keyFile);
+      throw new RuntimeException("IOException reading key: " + keyFile + ": " + e, e);
     }
+  }
+
+  // KeyFactory needs the algorithm named up front, so take it from the PKCS#8 AlgorithmIdentifier.
+  // EC is needed for ECDSA keys, e.g. from cert-manager.
+  private static String getPrivateKeyAlgorithm(byte[] pkcs8Bytes) throws InvalidKeySpecException {
+    ASN1ObjectIdentifier oid;
+    try {
+      oid = PrivateKeyInfo.getInstance(pkcs8Bytes).getPrivateKeyAlgorithm().getAlgorithm();
+    } catch (IllegalArgumentException e) {
+      throw new InvalidKeySpecException("Not a PKCS#8 private key", e);
+    }
+    if (PKCSObjectIdentifiers.rsaEncryption.equals(oid)) {
+      return "RSA";
+    }
+    if (X9ObjectIdentifiers.id_ecPublicKey.equals(oid)) {
+      return "EC";
+    }
+    throw new InvalidKeySpecException("Unsupported private key algorithm: " + oid);
   }
 
   /**

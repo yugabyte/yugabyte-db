@@ -121,7 +121,7 @@ CREATE OR REPLACE FUNCTION
 RETURNS TABLE(tablerelid oid, indexrelid oid, ybctid bytea, table_cols jsonb,
               ybbasectid bytea, index_cols jsonb, error_category text)
 LANGUAGE INTERNAL
-VOLATILE PARALLEL SAFE
+VOLATILE PARALLEL UNSAFE
 AS 'yb_index_check';
 
 CREATE OR REPLACE FUNCTION

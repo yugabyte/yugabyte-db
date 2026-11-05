@@ -262,7 +262,8 @@ TableInfo::TableInfo(const TableInfo& other,
       skip_table_tombstone_check(other.skip_table_tombstone_check),
       deleted_cols(other.deleted_cols),
       cdcsdk_schema_version_boundaries(other.cdcsdk_schema_version_boundaries),
-      vector_index_deactivated_ht(other.vector_index_deactivated_ht) {
+      vector_index_deactivated_ht(other.vector_index_deactivated_ht),
+      vector_reverse_mapping_repair_pending(other.vector_reverse_mapping_repair_pending) {
   this->deleted_cols.insert(this->deleted_cols.end(), deleted_cols.begin(), deleted_cols.end());
   CompleteInit();
 }
@@ -289,7 +290,8 @@ TableInfo::TableInfo(const TableInfo& other,
       skip_table_tombstone_check(other.skip_table_tombstone_check),
       deleted_cols(other.deleted_cols),
       cdcsdk_schema_version_boundaries(other.cdcsdk_schema_version_boundaries),
-      vector_index_deactivated_ht(other.vector_index_deactivated_ht) {
+      vector_index_deactivated_ht(other.vector_index_deactivated_ht),
+      vector_reverse_mapping_repair_pending(other.vector_reverse_mapping_repair_pending) {
   CompleteInit();
 }
 
@@ -313,7 +315,8 @@ TableInfo::TableInfo(const TableInfo& other, SchemaVersion min_schema_version)
       skip_table_tombstone_check(other.skip_table_tombstone_check),
       deleted_cols(other.deleted_cols),
       cdcsdk_schema_version_boundaries(other.cdcsdk_schema_version_boundaries),
-      vector_index_deactivated_ht(other.vector_index_deactivated_ht) {
+      vector_index_deactivated_ht(other.vector_index_deactivated_ht),
+      vector_reverse_mapping_repair_pending(other.vector_reverse_mapping_repair_pending) {
   // Prune boundaries together with the packings dropped by this copy.
   const auto min_version = std::min(min_schema_version, other.schema_version);
   cdcsdk_schema_version_boundaries.erase(
@@ -344,7 +347,20 @@ Result<TableInfoPtr> TableInfo::LoadFromPB(
       SkipTableTombstoneCheck::kFalse, PrivateTag());
   RETURN_NOT_OK(result->DoLoadFromPB(primary, pb));
   result->CompleteInit();
+  // Repairs superblocks written by a restore that kept the restored columns as deleted.
+  result->EraseDeletedColumnsInSchema();
   return result;
+}
+
+// A PITR to before a DROP COLUMN brings the column back into the schema. Compaction discards a
+// deleted column's values, and its vector reverse mapping entries, once the drop is older than the
+// history cutoff, whatever their write time. So a column in the current schema must not stay
+// deleted. Only valid for the table's current schema: InsertPackedSchemaForXClusterTarget builds
+// a TableInfo from the source's older schema, which can still contain locally dropped columns.
+void TableInfo::EraseDeletedColumnsInSchema() {
+  std::erase_if(deleted_cols, [this](const DeletedColumn& deleted_col) {
+    return schema().find_column_by_id(deleted_col.id) != Schema::kColumnNotFound;
+  });
 }
 
 Status TableInfo::DoLoadFromPB(Primary primary, const TableInfoPB& pb) {
@@ -372,6 +388,7 @@ Status TableInfo::DoLoadFromPB(Primary primary, const TableInfoPB& pb) {
   if (pb.has_vector_index_deactivated_ht()) {
     vector_index_deactivated_ht = HybridTime::FromPB(pb.vector_index_deactivated_ht());
   }
+  vector_reverse_mapping_repair_pending = pb.vector_reverse_mapping_repair_pending();
 
   RETURN_NOT_OK(dockv::PartitionSchema::FromPB(pb.partition_schema(), schema(), &partition_schema));
 
@@ -458,6 +475,9 @@ void TableInfo::ToPB(TableInfoPB* pb) const {
   if (vector_index_deactivated_ht.is_valid()) {
     pb->set_vector_index_deactivated_ht(vector_index_deactivated_ht.ToPB());
   }
+  if (vector_reverse_mapping_repair_pending) {
+    pb->set_vector_reverse_mapping_repair_pending(true);
+  }
 }
 
 const Schema& TableInfo::schema() const {
@@ -530,7 +550,8 @@ bool TableInfo::TEST_Equals(const TableInfo& lhs, const TableInfo& rhs) {
                           deleted_cols,
                           cdcsdk_schema_version_boundaries,
                           wal_retention_secs,
-                          vector_index_deactivated_ht) &&
+                          vector_index_deactivated_ht,
+                          vector_reverse_mapping_repair_pending) &&
          DereferencedEqual(lhs.doc_read_context,
                            rhs.doc_read_context,
                            &docdb::DocReadContext::TEST_Equals) &&
@@ -681,44 +702,6 @@ Status KvStoreInfo::MergeWithRestored(
       snapshot_kvstoreinfo, primary_table_id, colocated, overwrite);
 }
 
-// The snapshot lists every vector index that was on the tablet, including invalid indexes the
-// dump omitted and indexes dropped while a snapshot schedule still retained the tablet. Those
-// have no local table. A local vector index with no snapshot entry is the one whose options and
-// restored graph can disagree.
-Result<std::unordered_set<ColocationId>> SnapshotVectorIndexColocationIds(
-    const google::protobuf::RepeatedPtrField<TableInfoPB>& snapshot_tables) {
-  std::unordered_set<ColocationId> ids;
-  for (const auto& snapshot_table : snapshot_tables) {
-    if (!snapshot_table.index_info().has_vector_idx_options()) {
-      continue;
-    }
-    const auto& schema = snapshot_table.schema();
-    SCHECK(
-        schema.has_colocated_table_id() && schema.colocated_table_id().has_colocation_id(),
-        Corruption, "Snapshot vector index $0 has no colocation id", snapshot_table.table_name());
-    ids.insert(schema.colocated_table_id().colocation_id());
-  }
-  return ids;
-}
-
-Status CheckLocalVectorIndexesInSnapshot(
-    const TableInfoMap& tables, const std::unordered_set<ColocationId>& snapshot_colocation_ids) {
-  for (const auto& [table_id, table_info] : tables) {
-    if (!table_info->IsVectorIndex()) {
-      continue;
-    }
-    SCHECK(
-        table_info->schema().has_colocation_id(), Corruption,
-        "Local vector index $0 has no colocation id", table_id);
-    const auto colocation_id = table_info->schema().colocation_id();
-    SCHECK(
-        snapshot_colocation_ids.find(colocation_id) != snapshot_colocation_ids.end(), Corruption,
-        "Local vector index $0 colocation id $1 has no snapshot counterpart", table_id,
-        colocation_id);
-  }
-  return Status::OK();
-}
-
 // CREATE INDEX on the restore cluster fills the local vector_idx_options, but the restored chunk
 // files were written with the snapshot superblock's:
 // - ysql_dump assigns dense DocDB ids and CREATE INDEX records that column id.
@@ -780,13 +763,17 @@ Status KvStoreInfo::RestoreMissingValuesAndMergeTableSchemaPackings(
           table_info->ToString());
     }
     if (overwrite) {
-      auto snapshot_colocation_ids = VERIFY_RESULT(
-          SnapshotVectorIndexColocationIds(snapshot_kvstoreinfo.tables()));
       for (const auto& snapshot_table : snapshot_kvstoreinfo.tables()) {
         if (!snapshot_table.index_info().has_vector_idx_options()) {
           continue;
         }
-        const auto colocation_id = snapshot_table.schema().colocated_table_id().colocation_id();
+        const auto& snapshot_schema = snapshot_table.schema();
+        SCHECK(
+            snapshot_schema.has_colocated_table_id() &&
+                snapshot_schema.colocated_table_id().has_colocation_id(),
+            Corruption, "Snapshot vector index $0 has no colocation id",
+            snapshot_table.table_name());
+        const auto colocation_id = snapshot_schema.colocated_table_id().colocation_id();
         auto it = colocation_to_table.find(colocation_id);
         if (it == colocation_to_table.end()) {
           // The dump does not recreate an invalid index, or one dropped while a snapshot schedule
@@ -797,7 +784,9 @@ Status KvStoreInfo::RestoreMissingValuesAndMergeTableSchemaPackings(
         }
         RETURN_NOT_OK(RestoreVectorIndexOptions(it->second.get(), snapshot_table));
       }
-      RETURN_NOT_OK(CheckLocalVectorIndexesInSnapshot(tables, snapshot_colocation_ids));
+      // A local vector index with no snapshot entry, e.g. one created after the snapshot and kept
+      // by an in-place restore, gets no restored storage. If it was open, the restore wiped its
+      // storage, so it reopens empty and is backfilled after the restore.
     }
     return Status::OK();
   }
@@ -815,10 +804,6 @@ Status KvStoreInfo::RestoreMissingValuesAndMergeTableSchemaPackings(
     if (overwrite) {
       RETURN_NOT_OK(RestoreVectorIndexOptions(target_table, snapshot_table_pb));
     }
-  }
-  if (overwrite) {
-    RETURN_NOT_OK(CheckLocalVectorIndexesInSnapshot(
-        tables, VERIFY_RESULT(SnapshotVectorIndexColocationIds(snapshot_kvstoreinfo.tables()))));
   }
   return Status::OK();
 }
@@ -1124,6 +1109,11 @@ Status MakeColocatedTableNotFound(
 Result<TableInfoPtr> RaftGroupMetadata::GetTableInfo(TableIdView table_id) const {
   std::lock_guard lock(data_mutex_);
   return GetTableInfoUnlocked(table_id);
+}
+
+bool RaftGroupMetadata::HasTable(const TableId& table_id) const {
+  std::lock_guard lock(data_mutex_);
+  return kv_store_.tables.contains(table_id);
 }
 
 Result<TableInfoPtr> RaftGroupMetadata::GetTableInfoUnlocked(TableIdView table_id) const {
@@ -1724,6 +1714,7 @@ void RaftGroupMetadata::SetSchemaUnlocked(const Schema& schema,
                                                             index_map,
                                                             deleted_cols,
                                                             version);
+  new_table_info->EraseDeletedColumnsInSchema();
   if (target_table_id != primary_table_id_) {
     if (schema.table_properties().is_ysql_catalog_table()) {
       // TODO(alex): cotable_id should be copied from original schema, do we need this section?
@@ -1892,7 +1883,8 @@ Result<TableInfoPtr> RaftGroupMetadata::AddTable(
     const dockv::PartitionSchema& partition_schema, const std::optional<IndexInfo>& index_info,
     const SchemaVersion schema_version, const OpId& op_id, HybridTime ht,
     const TableId& pg_table_id, const SkipTableTombstoneCheck skip_table_tombstone_check,
-    const google::protobuf::RepeatedPtrField<dockv::SchemaPackingPB>& old_schema_packings) {
+    const google::protobuf::RepeatedPtrField<dockv::SchemaPackingPB>& old_schema_packings,
+    bool vector_reverse_mapping_repair_pending) {
   DCHECK(schema.has_column_ids());
   std::lock_guard lock(data_mutex_);
   Primary primary(table_id == primary_table_id_);
@@ -1923,6 +1915,8 @@ Result<TableInfoPtr> RaftGroupMetadata::AddTable(
     RETURN_NOT_OK(new_table_info->doc_read_context->schema_packing_storage.InsertSchemas(
         old_schema_packings, /* could_be_present */ false, dockv::OverwriteSchemaPacking::kFalse));
   }
+
+  new_table_info->vector_reverse_mapping_repair_pending = vector_reverse_mapping_repair_pending;
 
   auto& tables = kv_store_.tables;
   auto[iter, inserted] = tables.emplace(table_id, new_table_info);
@@ -2939,6 +2933,22 @@ OpId RaftGroupMetadata::MinUnflushedChangeMetadataOpId() const {
   return min_unflushed_change_metadata_op_id_;
 }
 
+Status RaftGroupMetadata::SetVectorReverseMappingRepairPending(
+    const TableId& table_id, bool pending) {
+  std::lock_guard lock(data_mutex_);
+  auto it = kv_store_.tables.find(table_id);
+  if (it == kv_store_.tables.end()) {
+    RETURN_TABLE_NOT_FOUND(table_id, kv_store_.tables);
+  }
+  if (it->second->vector_reverse_mapping_repair_pending == pending) {
+    return Status::OK();
+  }
+  const auto& old_info = *it->second;
+  auto new_info = std::make_shared<TableInfo>(old_info, old_info.schema());
+  new_info->vector_reverse_mapping_repair_pending = pending;
+  return SetTableInfoUnlocked(it, new_info);
+}
+
 Status RaftGroupMetadata::OnBackfillDone(
     const TableId& table_id, uint64_t birth_time) {
   std::lock_guard lock(data_mutex_);
@@ -3047,6 +3057,30 @@ std::vector<std::string> RaftGroupMetadata::vector_index_dirs() const {
     result.push_back(vector_index_dir(info->index_info->vector_idx_options()));
   }
   return result;
+}
+
+void RaftGroupMetadata::DeleteUnlistedVectorIndexStorages(
+    const std::vector<std::string>& storage_names) const {
+  if (storage_names.empty()) {
+    return;
+  }
+  auto* env = fs_manager_->env();
+  const auto listed_dirs_list = vector_index_dirs();
+  const std::unordered_set<std::string> listed_dirs(
+      listed_dirs_list.begin(), listed_dirs_list.end());
+  for (const auto& storage_name : storage_names) {
+    if (!storage_name.starts_with(docdb::kVectorIndexDirPrefix)) {
+      continue;
+    }
+    auto dir = docdb::GetStorageDir(kv_store_.rocksdb_dir, storage_name);
+    if (listed_dirs.contains(dir) || !env->DirExists(dir)) {
+      continue;
+    }
+    LOG_WITH_PREFIX(INFO) << "Deleting storage of vector index not in the tablet: " << dir;
+    auto status = env->DeleteRecursively(dir);
+    LOG_IF_WITH_PREFIX(WARNING, !status.ok())
+        << "Failed to delete vector index storage " << dir << ": " << status;
+  }
 }
 
 docdb::KeyBounds RaftGroupMetadata::MakeKeyBounds() const {

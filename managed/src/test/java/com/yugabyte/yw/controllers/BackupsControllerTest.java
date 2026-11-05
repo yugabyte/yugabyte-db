@@ -52,6 +52,7 @@ import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.forms.YbcThrottleParametersResponse;
+import com.yugabyte.yw.forms.backuprestore.BackupScheduleTaskParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Customer;
@@ -293,6 +294,24 @@ public class BackupsControllerTest extends FakeDBApplication {
     bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
     Result r = createBackupScheduleAsync(bodyJson, null);
     assertEquals(OK, r.status());
+  }
+
+  @Test
+  public void testCreateScheduledBackupAsyncTakesCustomerFromUrl() {
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST23");
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("universeUUID", defaultUniverse.getUniverseUUID().toString());
+    bodyJson.put("storageConfigUUID", customerConfig.getConfigUUID().toString());
+    bodyJson.put("cronExpression", "0 */2 * * *");
+    bodyJson.put("scheduleName", "schedule-1");
+    bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
+    ArgumentCaptor<BackupScheduleTaskParams> taskParams =
+        ArgumentCaptor.forClass(BackupScheduleTaskParams.class);
+    Result r = createBackupScheduleAsync(bodyJson, null);
+    assertEquals(OK, r.status());
+    // The body has no customerUUID; the schedule must still be created for the URL's customer.
+    verify(mockCommissioner).submit(any(), taskParams.capture());
+    assertEquals(defaultCustomer.getUuid(), taskParams.getValue().getScheduleParams().customerUUID);
   }
 
   @Test
