@@ -58,6 +58,7 @@ import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.FileCollectionDownloader;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.LocalhostAccessChecker;
 import com.yugabyte.yw.common.NodeFileCollector;
 import com.yugabyte.yw.common.NodeScriptRunner;
@@ -134,6 +135,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -309,6 +311,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     UniverseDefinitionTaskParams v1DefnParams =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toV1UniverseDefinitionTaskParamsFromCreateSpec(
             universeSpec);
+    v1DefnParams.clusters.forEach(this::fillAndVerifyK8sResourceSpecs);
     UniverseConfigureTaskParams v1Params =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toUniverseConfigureTaskParams(
             v1DefnParams, request);
@@ -341,6 +344,13 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     // persisted placement with the requested one. Anything read from dbUniverse after that point
     // reflects the request, not what is deployed.
     Map<UUID, Map<UUID, K8sStsIndices>> savedK8sStsIndices = captureK8sStsIndices(dbUniverse);
+    Map<UUID, String> savedInstanceTypes = new HashMap<>();
+    if (Util.isKubernetesBasedUniverse(dbUniverse)) {
+      for (Cluster cluster : dbUniverse.getUniverseDetails().clusters) {
+        UUID providerUUID = Util.getSingleProviderUUID(cluster);
+        savedInstanceTypes.put(cluster.uuid, cluster.userIntent.getBaseInstanceType(providerUUID));
+      }
+    }
     UniverseCRUDHandler.checkInstanceTypeConsistency(dbUniverse);
     log.info("Edit Universe with v2 spec: {}", prettyPrint(universeEditSpec));
     UniverseSpec v2Universe =
@@ -371,11 +381,40 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     UniverseConfigureTaskParams v1Params =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toUniverseConfigureTaskParams(
             v1DefnParams, request);
+
+    Map<UUID, ClusterEditSpec> editedNodesClusters =
+        universeEditSpec.getClusters().stream()
+            .filter(c -> c.getNodeSpec() != null)
+            .collect(Collectors.toMap(c -> c.getUuid(), c -> c));
+
     for (Cluster cluster : v1Params.clusters) {
       // Since in V2 API is based on partial updates,
       // we cannot detect the case when these fields are removed (during dedicated mode switch)
       // Keeping these fields will lead to error in validation.
       clearNonDedicatedFields(cluster.userIntent);
+
+      // Before we completely replace instance type with resourceSpec for k8s,
+      // initializing missing tserver/master resource specs from instanceType.
+      // Explicitly requested specs and specs of clusters not changed by the request are kept as is
+      // (the mapper clears them when the node spec is passed without them).
+      if (editedNodesClusters.containsKey(cluster.uuid)) {
+        if (Util.isKubernetesBased(cluster)
+            && confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
+          UUID providerUUID = Util.getSingleProviderUUID(cluster);
+          String instanceType = cluster.userIntent.getBaseInstanceType(providerUUID);
+          // If the instanceType was changed as a result of operation and specs are omitted
+          // in request - raise an exception.
+          if (!Objects.equals(instanceType, savedInstanceTypes.get(cluster.uuid))) {
+            ClusterEditSpec spec = editedNodesClusters.get(cluster.uuid);
+            if (spec.getNodeSpec().getK8sTserverResourceSpec() == null) {
+              throw new PlatformServiceException(BAD_REQUEST, "Tserver k8s resource spec is required");
+            }
+            if (spec.getNodeSpec().getK8sMasterResourceSpec() == null && cluster.clusterType == ClusterType.PRIMARY) {
+              throw new PlatformServiceException(BAD_REQUEST, "Master k8s resource spec is required");
+            }
+          }
+        }
+      }
     }
     log.debug("Edit Universe translated to v1 spec: {}", prettyPrint(v1Params));
 
@@ -615,6 +654,8 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     // prepare the v1Params with only the read replica cluster in the payload
     v1Params.clusters.clear();
     v1Params.clusters.add(newReadReplica);
+
+    fillAndVerifyK8sResourceSpecs(newReadReplica);
     v1Params.newUI =
         (hasPartitions(dbUniverse.getUniverseDetails()) || hasPartitions(v1Params)) && isNewUI();
     if (v1Params.newUI) {
@@ -1901,5 +1942,22 @@ public class UniverseManagementHandler extends ApiControllerUtils {
       res.add(ResizeUpdateOption.FULL_MOVE);
     }
     return new CheckResizeOptionsResp().options(res);
+  }
+
+  // Before we completely replace instance type with resourceSpec for k8s,
+  // initializing missing tserver/master resource specs from instanceType.
+  // Explicitly requested resource specs are kept as is.
+  private void fillAndVerifyK8sResourceSpecs(Cluster cluster) {
+    if (Util.isKubernetesBased(cluster) && confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
+      KubernetesUtil.fillMissingK8sNodeResourceSpecsFromInstanceType(
+          cluster.clusterType, cluster.userIntent, confGetter);
+      UUID providerUUID = Util.getSingleProviderUUID(cluster);
+      if (cluster.userIntent.getTserverK8SNodeResourceSpec(providerUUID) == null) {
+        throw new PlatformServiceException(BAD_REQUEST, "Tserver k8s resource spec is required");
+      }
+      if (cluster.clusterType == ClusterType.PRIMARY && cluster.userIntent.getMasterK8SNodeResourceSpec(providerUUID) == null) {
+        throw new PlatformServiceException(BAD_REQUEST, "Master k8s resource spec is required");
+      }
+    }
   }
 }
