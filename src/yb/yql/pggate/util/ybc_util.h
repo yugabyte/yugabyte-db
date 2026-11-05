@@ -188,10 +188,19 @@ char* YBCDecodeRangePartitionKey(const char* partition_key, size_t key_len);
  * two statements of the same transaction block and flip object locking on or off mid-transaction.
  * Must be called from PG's StartTransaction() before AtStart_Cache(), which already consults the
  * value, and must not be called for savepoints or for the internal transaction restarts that
- * happen within one PG transaction. use_object_locks false runs the transaction without object
- * locks even when the infra is enabled.
+ * happen within one PG transaction.
+ *
+ * A transaction that starts with yb_read_time set runs without object locks: it reads the catalog
+ * and the data as of yb_read_time, so locks taken as of now protect nothing and only make it wait
+ * on, and block, concurrent DDLs. Without them it also uses the legacy catalog read path, and the
+ * tserver keeps the catalog version check for its requests, which is what rejects reads across a
+ * breaking catalog change made after yb_read_time. yb_read_time_skip_catalog sessions read the
+ * current catalog, and walsender manages yb_read_time itself, so both keep object locks.
  */
-void YBCSetObjectLockingInfraForCurrTxn(bool use_object_locks);
+void YBCSetObjectLockingInfraForCurrTxn(bool is_walsender);
+
+/* Whether the current transaction runs without object locks because yb_read_time is set. */
+bool YBCCurrTxnSkipsObjectLocksForReadTime();
 
 /* The value latched by YBCSetObjectLockingInfraForCurrTxn(). */
 bool YBCIsObjectLockingInfraEnabled();

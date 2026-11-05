@@ -48,11 +48,11 @@ LockTableCommand(LockStmt *lockstmt)
 
 	/*
 	 * YB: a transaction running as of yb_read_time takes no object locks (see
-	 * YbSetObjectLockingForCurrTxn). ACCESS SHARE only protects its own reads,
-	 * which don't need it, so it is a no-op; a stronger mode would be expected
-	 * to fence other sessions, so refuse it.
+	 * YBCSetObjectLockingInfraForCurrTxn). ACCESS SHARE only protects its own
+	 * reads, which don't need it, so it is a no-op; a stronger mode would be
+	 * expected to fence other sessions, so refuse it.
 	 */
-	if (IsYugaByteEnabled() && YbCurrTxnSkipsObjectLocks() &&
+	if (IsYugaByteEnabled() && YBCCurrTxnSkipsObjectLocksForReadTime() &&
 		lockstmt->mode > AccessShareLock)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),

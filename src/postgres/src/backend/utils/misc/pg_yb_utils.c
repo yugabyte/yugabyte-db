@@ -412,34 +412,6 @@ YbResetCatalogCacheVersion()
  * Changing yb_read_time resets the local catalog version, so the first refresh
  * after it loads the catalog as of the new value.
  */
-static bool yb_curr_txn_skips_object_locks = false;
-
-/*
- * A transaction that starts with yb_read_time set runs without object locks:
- * it reads the catalog and the data as of yb_read_time, so locks taken as of
- * now protect nothing and only make it wait on, and block, concurrent DDLs.
- * Without them it also uses the legacy catalog read path, and the tserver
- * keeps the catalog version check for its requests, which is what rejects
- * reads across a breaking catalog change made after yb_read_time.
- *
- * yb_read_time_skip_catalog sessions read the current catalog, and walsender
- * manages yb_read_time itself, so both keep object locks.
- */
-void
-YbSetObjectLockingForCurrTxn()
-{
-	yb_curr_txn_skips_object_locks = (yb_read_time != 0 &&
-									  !yb_read_time_skip_catalog &&
-									  !am_walsender);
-	YBCSetObjectLockingInfraForCurrTxn(!yb_curr_txn_skips_object_locks);
-}
-
-bool
-YbCurrTxnSkipsObjectLocks()
-{
-	return yb_curr_txn_skips_object_locks;
-}
-
 bool
 YbIsCatalogPinnedToReadTime()
 {
@@ -7636,10 +7608,10 @@ check_yb_read_time(char **newval, void **extra, GucSource source)
 
 	/*
 	 * A transaction that started with yb_read_time set took no object locks
-	 * (YbSetObjectLockingForCurrTxn); the rest of it must not run as of now
-	 * without them.
+	 * (YBCSetObjectLockingInfraForCurrTxn); the rest of it must not run as of
+	 * now without them.
 	 */
-	if (YbCurrTxnSkipsObjectLocks() && IsTransactionBlock() &&
+	if (YBCCurrTxnSkipsObjectLocksForReadTime() && IsTransactionBlock() &&
 		(value_ull != yb_read_time || is_ht_unit != yb_is_read_time_ht))
 	{
 		GUC_check_errcode(ERRCODE_ACTIVE_SQL_TRANSACTION);
