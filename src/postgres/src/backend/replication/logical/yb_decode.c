@@ -46,7 +46,8 @@ static void YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 static void YBDecodeDelete(LogicalDecodingContext *ctx, XLogReaderState *record);
 static void YBDecodeCommit(LogicalDecodingContext *ctx, XLogReaderState *record);
 
-static int	YBFindAttributeIndexInDescriptor(TupleDesc tupdesc, const char *column_name);
+static int	YBFindAttributeIndexInDescriptor(Relation relation, TupleDesc tupdesc,
+											 const YbcPgDatumMessage *col);
 static void YBHandleRelcacheRefresh(LogicalDecodingContext *ctx, XLogReaderState *record);
 static bool YbDmlHistoricalReadParams(const YbVirtualWalRecord *yb_record,
 									  uint64_t *read_time,
@@ -339,25 +340,11 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 	for (int col_idx = 0; col_idx < yb_record->col_count; col_idx++)
 	{
 		YbcPgDatumMessage *col = &yb_record->cols[col_idx];
+		int			attr_idx = YBFindAttributeIndexInDescriptor(relation, tupdesc,
+																col);
 
-		/*
-		 * Column name is null when both new and old values are omitted. If this
-		 * were to happen here, this would indicate that an empty column value
-		 * was sent from the CDC service which should have been caught in
-		 * ybc_pggate.
-		 */
-		Assert(col->column_name);
-
-		/*
-		 * 'ybrowid' is an internal primary key column added by DocDB for tables
-		 * without a primary key. Skip this column.
-		 */
-		if (YBGetTablePrimaryKeyBms(relation) == NULL &&
-			strcmp(col->column_name, "ybrowid") == 0)
+		if (attr_idx < 0)
 			continue;
-
-		int			attr_idx = YBFindAttributeIndexInDescriptor(tupdesc,
-																col->column_name);
 
 		if (should_handle_omitted_case)
 		{
@@ -596,15 +583,11 @@ YBGetHeapTuplesForRecord(const YbVirtualWalRecord *yb_record)
 	for (int col_idx = 0; col_idx < yb_record->col_count; col_idx++)
 	{
 		const YbcPgDatumMessage *col = &yb_record->cols[col_idx];
-		/*
-		 * 'ybrowid' is an internal primary key column added by DocDB for tables
-		 * without a primary key. Skip this column.
-		 */
-		if (YBGetTablePrimaryKeyBms(relation) == NULL &&
-			strcmp(col->column_name, "ybrowid") == 0)
+		int			attr_idx = YBFindAttributeIndexInDescriptor(relation, tupdesc,
+																col);
+
+		if (attr_idx < 0)
 			continue;
-		int			attr_idx = YBFindAttributeIndexInDescriptor(tupdesc,
-																col->column_name);
 
 		datums[attr_idx] = ((action == YB_PG_ROW_MESSAGE_ACTION_INSERT) ?
 							col->after_op_datum :
@@ -635,15 +618,49 @@ YBGetHeapTuplesForRecord(const YbVirtualWalRecord *yb_record)
 }
 
 /*
- * TODO(#20726): Optimize this lookup via a cache. We do not need to iterate
- * through all attributes everytime this function is called. This should be done
- * after we have landed support for schema evolution as this logic is highly
- * likely to change before that.
+ * Returns the index of the column in the descriptor, or -1 if the caller should
+ * skip it.
+ *
+ * TODO(#20726): Optimize the lookup by name via a cache. We do not need to
+ * iterate through all attributes everytime this function is called. This
+ * should be done after we have landed support for schema evolution as this
+ * logic is highly likely to change before that.
  */
 static int
-YBFindAttributeIndexInDescriptor(TupleDesc tupdesc, const char *column_name)
+YBFindAttributeIndexInDescriptor(Relation relation, TupleDesc tupdesc,
+								 const YbcPgDatumMessage *col)
 {
+	const char *column_name = col->column_name;
 	int			attr_idx = 0;
+
+	/*
+	 * With transactional DDL, we use attr num to find column in the tuple
+	 * descriptor.
+	 */
+	if (*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl)
+	{
+		int			attr_num = col->column_attr_num;
+
+		if (attr_num <= 0 || attr_num > tupdesc->natts ||
+			TupleDescAttr(tupdesc, attr_num - 1)->attisdropped)
+			return -1;
+		return attr_num - 1;
+	}
+
+	/*
+	 * Column name is null when both new and old values are omitted. If this
+	 * were to happen here, this would indicate that an empty column value was
+	 * sent from the CDC service which should have been caught in ybc_pggate.
+	 */
+	Assert(column_name);
+
+	/*
+	 * 'ybrowid' is an internal primary key column added by DocDB for tables
+	 * without a primary key. Skip this column.
+	 */
+	if (YBGetTablePrimaryKeyBms(relation) == NULL &&
+		strcmp(column_name, "ybrowid") == 0)
+		return -1;
 
 	for (attr_idx = 0; attr_idx < tupdesc->natts; attr_idx++)
 	{

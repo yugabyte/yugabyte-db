@@ -10559,12 +10559,6 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 								set_extra_field(&conf->gen, &conf->gen.extra,
 												newextra);
 								changed = true;
-								if (conf->gen.flags & GUC_YB_CUSTOM_STICKY)
-								{
-									elog(LOG, "Making connection sticky for %s",
-										 conf->gen.name);
-									yb_ysql_conn_mgr_sticky_guc = true;
-								}
 							}
 
 							/*
@@ -12573,7 +12567,10 @@ set_config_option_ext(const char *name, const char *value,
 													 elevel,
 													 false);
 
-					if (conf->gen.flags & GUC_YB_CUSTOM_STICKY)
+					if ((conf->gen.flags & GUC_YB_CUSTOM_STICKY) &&
+						(source == PGC_S_SESSION || source == PGC_S_CLIENT) &&
+						action == GUC_ACTION_SET &&
+						YbIsClientYsqlConnMgr())
 					{
 						elog(LOG, "Making connection sticky for setting %s", name);
 						yb_ysql_conn_mgr_sticky_guc = true;

@@ -1139,6 +1139,15 @@ void TabletServiceAdminImpl::BackfillIndex(
   context.RespondSuccess();
 }
 
+void TabletServiceAdminImpl::TableBackfillChunk(
+    const TableBackfillChunkRequestPB* req,
+    TableBackfillChunkResponsePB* resp,
+    rpc::RpcContext context) {
+  SetupErrorAndRespond(
+      resp->mutable_error(), STATUS(NotSupported, "TableBackfillChunk is not implemented yet"),
+      &context);
+}
+
 void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* req,
                                          ChangeMetadataResponsePB* resp,
                                          rpc::RpcContext context) {
