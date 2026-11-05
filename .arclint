@@ -81,7 +81,7 @@
       "script-and-regex.script":
       "managed/lint/lint-java.sh",
       "script-and-regex.regex":
-        "/(?P<message>.*)/is"
+        "/^(?P<severity>error): (?P<message>.+)/s"
     },
     "eslint-ui": {
       "type": "script-and-regex",
