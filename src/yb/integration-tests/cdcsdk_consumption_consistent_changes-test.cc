@@ -29,8 +29,7 @@ namespace cdc {
 
 namespace {
 
-template <class Records>
-bool HasDDLRecord(const Records& records) {
+bool HasDDLRecord(const std::vector<CDCSDKProtoRecordPB>& records) {
   return std::any_of(records.begin(), records.end(), [](const CDCSDKProtoRecordPB& record) {
     return record.row_message().op() == RowMessage_Op_DDL;
   });
@@ -1546,8 +1545,8 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWitDDLStatemen
   // We should only receive inserts performed after VWAL restart.
   expected_dml_records = 2 * num_batches * inserts_per_batch;
   int expected_min_txn_id_after_restart = last_received_txn_id + 1;
-  // We should receive all 6 DDLs (2 DDLs per tablet) after restart since we havent acknowledged the
-  // DDLs to the cdc_service.
+  // Without transactional DDL, we should receive all 6 DDLs (2 DDLs per tablet) after restart since
+  // we havent acknowledged the DDLs to the cdc_service.
   int expected_ddl_records = 2 * 3;
   auto resp_after_restart = ASSERT_RESULT(
       GetAllPendingTxnsFromVirtualWAL(stream_id, {table.table_id()}, expected_dml_records, true));
@@ -6058,6 +6057,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestOnlyReWriteCausingDDLsTrigger
   ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN text_col text"));
 
   if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) {
+    bool seen_ddl_record = false;
     ASSERT_OK(WaitFor(
         [&]() -> Result<bool> {
           change_resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
@@ -6065,9 +6065,16 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestOnlyReWriteCausingDDLsTrigger
               !change_resp.has_needs_publication_table_list_refresh() &&
                   !change_resp.has_publication_refresh_time(),
               IllegalState, "Pub refresh signalled for a DDL without a table rewrite");
-          return HasDDLRecord(change_resp.cdc_sdk_proto_records());
+          for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+            if (record.row_message().op() == RowMessage_Op_DDL) {
+              seen_ddl_record = true;
+            } else if (seen_ddl_record && record.row_message().op() == RowMessage_Op_COMMIT) {
+              return true;
+            }
+          }
+          return false;
         },
-        MonoDelta::FromSeconds(60), "Timed out waiting for the DDL record"));
+        MonoDelta::FromSeconds(60), "Timed out waiting for the DDL txn"));
     return;
   }
 

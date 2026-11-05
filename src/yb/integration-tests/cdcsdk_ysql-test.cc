@@ -12899,9 +12899,9 @@ TEST_F(CDCSDKYsqlTest, TestStreamIndependenceWhilePollingCatalogTablet) {
   // corresponding to the ALTER PUB (BEGIN, DDL, INSERT, COMMIT).
   auto change_resp = ASSERT_RESULT(GetChangesFromMaster(stream_id_1));
   ASSERT_FALSE(change_resp.has_error());
-  const int txn_ddl_catalog_records = static_cast<int>(std::count_if(
+  const auto txn_ddl_catalog_records = std::count_if(
       change_resp.cdc_sdk_proto_records().begin(), change_resp.cdc_sdk_proto_records().end(),
-      IsTransactionalDdlCatalogRecord));
+      IsTransactionalDdlCatalogRecord);
   ASSERT_EQ_UNLESS_TXN_DDL(0, txn_ddl_catalog_records, ASSERT_GT(txn_ddl_catalog_records, 0));
   ASSERT_EQ(change_resp.cdc_sdk_proto_records_size() - txn_ddl_catalog_records, 11);
 
