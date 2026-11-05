@@ -34,7 +34,6 @@
 #include <crcutil/interface.h>
 
 #include "yb/gutil/once.h"
-#include "yb/util/crc32c_accelerated.h"
 #include "yb/util/debug/leakcheck_disabler.h"
 
 namespace yb::crc {
@@ -55,23 +54,7 @@ Crc* GetCrc32cInstance() {
   return crc32c_instance;
 }
 
-namespace {
-
-// Null when the CPU does not support the accelerated implementation. Then crcutil is used, which
-// computes the same CRC32C.
-const Crc32cEngine* AcceleratedEngine() {
-  static const Crc32cEngine* const engine = TryNewCRC32AcceleratedX86ARMCombined();
-  return engine;
-}
-
-} // namespace
-
 uint32_t Crc32c(const void* data, size_t length) {
-  if (const auto* engine = AcceleratedEngine()) {
-    uint32_t crc = ~0U;
-    engine->Extend(&crc, data, length);
-    return ~crc;
-  }
   uint64_t crc32 = 0;
   GetCrc32cInstance()->Compute(data, length, &crc32);
   // Only uses lower 32 bits, since top 32 bits are always zero.
@@ -79,12 +62,6 @@ uint32_t Crc32c(const void* data, size_t length) {
 }
 
 void Crc32Accumulator::Feed(const void* data, size_t length) {
-  if (const auto* engine = AcceleratedEngine()) {
-    auto crc = ~static_cast<uint32_t>(state_);
-    engine->Extend(&crc, data, length);
-    state_ = ~crc;
-    return;
-  }
   GetCrc32cInstance()->Compute(data, length, &state_);
 }
 

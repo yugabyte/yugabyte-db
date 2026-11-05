@@ -32,14 +32,11 @@
 
 #include <zlib.h>
 
-#include <random>
-
 #include "yb/gutil/casts.h"
 
 #include "yb/rocksdb/util/xxhash.h"
 
 #include "yb/util/crc.h"
-#include "yb/util/crc32c_accelerated.h"
 #include "yb/util/format.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/stopwatch.h"
@@ -81,51 +78,6 @@ TEST_F(CrcTest, TestCRC32C) {
   output = FastHex32ToBuffer(static_cast<uint32_t>(data_crc), buf);
   LOG(INFO) << "CRC32C of " << test_data << " is: 0x" << output << " (truncated 32 bits)";
   ASSERT_EQ(0xa9421b7, data_crc); // Known value from crcutil usage test program.
-}
-
-uint32_t CrcutilCrc32c(const void* data, size_t length) {
-  uint64_t crc = 0;
-  GetCrc32cInstance()->Compute(data, length, &crc);
-  return static_cast<uint32_t>(crc);
-}
-
-// Crc32c and Crc32Accumulator use the accelerated implementation when the CPU supports it, and must
-// produce the same values as crcutil.
-TEST_F(CrcTest, YB_DISABLE_TEST_ON_MACOS(AcceleratedMatchesCrcutil)) {
-  constexpr size_t kMaxShortLength = 4096;
-  std::unique_ptr<Crc32cEngine> engine(TryNewCRC32AcceleratedX86ARMCombined());
-  LOG(INFO) << "Accelerated CRC32C available: " << (engine != nullptr);
-#if defined(__x86_64__)
-  ASSERT_NE(engine, nullptr);
-#endif
-
-  std::mt19937 rng(42);
-  std::vector<uint8_t> data(128 * 1024);
-  for (auto& byte : data) {
-    byte = static_cast<uint8_t>(rng());
-  }
-  for (size_t offset : {0, 1, 3, 7, 13}) {
-    const auto* start = data.data() + offset;
-    for (size_t length = 0; length <= kMaxShortLength; ++length) {
-      ASSERT_EQ(CrcutilCrc32c(start, length), Crc32c(start, length))
-          << "offset: " << offset << ", length: " << length;
-    }
-    for (size_t length : {8191, 8192, 65535, 65536, 65540, 100000}) {
-      ASSERT_EQ(CrcutilCrc32c(start, length), Crc32c(start, length))
-          << "offset: " << offset << ", length: " << length;
-    }
-  }
-
-  for (int i = 0; i != 100; ++i) {
-    const size_t length = rng() % data.size();
-    Crc32Accumulator accumulator;
-    for (size_t pos = 0; pos < length;) {
-      auto chunk = std::min<size_t>(length - pos, rng() % 1000);
-      accumulator.Feed(data.data() + pos, chunk);
-      pos += chunk;
-    }
-    ASSERT_EQ(CrcutilCrc32c(data.data(), length), accumulator.result()) << "length: " << length;
-  }
 }
 
 template <class F>
