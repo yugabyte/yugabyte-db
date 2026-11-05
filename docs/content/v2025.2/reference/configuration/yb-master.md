@@ -280,6 +280,15 @@ Default: `true`
 
 Disable callhome diagnostics.
 
+##### --stack_trace_symbolize
+
+{{% tags/wrap %}}
+
+Default: `true`
+{{% /tags/wrap %}}
+
+v2025.2.8.1 and later only. Resolve stack trace addresses to symbols when logging stack traces. Symbolization reads the binaries' symbol tables and is expensive. When set to `false`, frames are logged as a hex address plus module and offset, which you can resolve offline with `llvm-symbolizer`. Set it to `false` to reduce CPU load from slow-operation warnings that log stack traces.
+
 ### Metric export flags
 
 YB-Master metrics are available in Prometheus format at `http://localhost:7000/prometheus-metrics`.

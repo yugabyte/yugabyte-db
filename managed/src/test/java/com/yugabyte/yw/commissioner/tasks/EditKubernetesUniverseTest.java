@@ -18,6 +18,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -47,6 +48,7 @@ import com.yugabyte.yw.common.DeltaEvaluator;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.NodeDetailsArrayComparator;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ProviderInitializer;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.ShellResponse;
@@ -1143,6 +1145,27 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     assertNotNull(taskUUID);
   }
 
+  @Test
+  public void testEditCannotTurnOnManagedLoadBalancer() {
+    setupUniverseSingleAZ(/* setMasters */ true);
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    UniverseDefinitionTaskParams taskParams = defaultUniverse.getUniverseDetails();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.expectedUniverseVersion = defaultUniverse.getVersion();
+    UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig lbConfig =
+        new UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig();
+    lbConfig.setEnablePrivate(true);
+    taskParams.getPrimaryCluster().userIntent.setManagedLoadBalancer(lbConfig);
+
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> commissioner.submit(TaskType.EditKubernetesUniverse, taskParams));
+
+    assertEquals(
+        "Managed load balancers are not supported for Kubernetes universes", e.getMessage());
+  }
+
   private void mockMetrics(
       Set<NodeDetails> nodeDetails, ServerType serverType, double totalUsedSizeGb) {
     List<MetricQueryResponse.Entry> sizeResponseList = new ArrayList<>();
@@ -1373,6 +1396,111 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     assertTrue(universe.getUniverseDetails().updateSucceeded);
     assertNull(universe.getUniverseDetails().placementModificationTaskUuid);
     assertNull(universe.getStateTransitionDetails());
+  }
+
+  // A tserver memory-only edit of the single-AZ universe. It adds no pods, so the K8s edit allows a
+  // fresh rerun of it on the failed universe.
+  private UUID submitTserverMemoryEdit(double addMemoryGib) throws InterruptedException {
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.nodePrefix = NODE_PREFIX;
+    taskParams.nodeDetailsSet = universe.getUniverseDetails().nodeDetailsSet;
+    UniverseDefinitionTaskParams.UserIntent newUserIntent =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.clone();
+    newUserIntent.tserverK8SNodeResourceSpec = new K8SNodeResourceSpec();
+    newUserIntent.tserverK8SNodeResourceSpec.memoryGib += addMemoryGib;
+    newUserIntent.masterK8SNodeResourceSpec = new K8SNodeResourceSpec();
+    taskParams.upsertPrimaryCluster(
+        newUserIntent, null, universe.getUniverseDetails().getPrimaryCluster().placementInfo);
+    taskParams.getPrimaryCluster().uuid = universe.getUniverseDetails().getPrimaryCluster().uuid;
+    return commissioner.submit(TaskType.EditKubernetesUniverse, taskParams);
+  }
+
+  // Runs the memory edit and aborts it right after its freeze, before its MarkRollbackUnsafe.
+  private TaskInfo memoryEditAbortedAfterFreeze(double addMemoryGib) throws InterruptedException {
+    try {
+      setPausePosition(0);
+      UUID taskUuid = submitTserverMemoryEdit(addMemoryGib);
+      waitForTaskPaused(taskUuid);
+      setAbortPosition(firstSubTaskPosition(taskUuid, TaskType.FreezeUniverse) + 1);
+      commissioner.resumeTask(taskUuid);
+      TaskInfo taskInfo = waitForTask(taskUuid);
+      assertEquals(Aborted, taskInfo.getTaskState());
+      return taskInfo;
+    } finally {
+      clearAbortOrPausePositions();
+    }
+  }
+
+  // The pre-edit state captured by the first attempt of the edit rerun below.
+  private UniverseDefinitionTaskParams firstAttemptBefore;
+
+  /**
+   * Fails a tserver memory edit, after or inside its rollback-safe window, then reruns the same
+   * edit and aborts the rerun right after its freeze. Returns the rerun.
+   */
+  private TaskInfo rerunMemoryEditAbortedAfterFreeze(boolean firstAttemptCrossesCheckpoint)
+      throws InterruptedException {
+    setupUniverseSingleAZ(/* Create Masters */ true);
+    enableManualEditRollback();
+    if (firstAttemptCrossesCheckpoint) {
+      // The pod roll is the first helm upgrade, and it runs after MarkRollbackUnsafe.
+      doThrow(new RuntimeException("helm boom"))
+          .when(mockKubernetesManager)
+          .helmUpgrade(any(), any(), any(), any(), any(), any(), isNull());
+      TaskInfo firstEdit = waitForTask(submitTserverMemoryEdit(1.0));
+      assertEquals(describeFailure(firstEdit), Failure, firstEdit.getTaskState());
+    } else {
+      memoryEditAbortedAfterFreeze(1.0);
+    }
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertNotNull(universe.getStateTransitionDetails());
+    assertEquals(
+        !firstAttemptCrossesCheckpoint, universe.getStateTransitionDetails().isRollbackSafe());
+    firstAttemptBefore = universe.getStateTransitionDetails().getBeforeUniverseDetails();
+
+    // The rerun asks for a different memory value than the first attempt.
+    TaskInfo rerun = memoryEditAbortedAfterFreeze(2.0);
+    universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertEquals(rerun.getUuid(), universe.getUniverseDetails().placementModificationTaskUuid);
+    assertNotNull(universe.getStateTransitionDetails());
+    return rerun;
+  }
+
+  @Test
+  public void testRerunAfterUnsafeEditFailureStaysNonRollbackable() throws InterruptedException {
+    TaskInfo rerun = rerunMemoryEditAbortedAfterFreeze(/* firstAttemptCrossesCheckpoint */ true);
+    // The first attempt rolled pods past its rollback checkpoint, so the rerun must not be
+    // rollbackable even though its own freeze captures a new checkpoint.
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertFalse(universe.getStateTransitionDetails().isRollbackSafe());
+    // "before" is the pre-edit state and "target" is the rerun's own spec. (This attempt fails
+    // before the new intent is saved, so the rerun's own snapshot also matches "before" here.)
+    StateTransitionDetails details = universe.getStateTransitionDetails();
+    assertEquals(
+        Json.toJson(firstAttemptBefore.getPrimaryCluster().userIntent),
+        Json.toJson(details.getBeforeUniverseDetails().getPrimaryCluster().userIntent));
+    assertEquals(
+        new K8SNodeResourceSpec().memoryGib + 2.0,
+        details
+            .getTargetUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .tserverK8SNodeResourceSpec
+            .memoryGib,
+        0);
+    assertFalse(commissioner.canTaskRollbackDetailed(rerun));
+  }
+
+  @Test
+  public void testRerunAfterSafeWindowEditFailureStaysRollbackable()
+      throws InterruptedException {
+    TaskInfo rerun = rerunMemoryEditAbortedAfterFreeze(/* firstAttemptCrossesCheckpoint */ false);
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertTrue(universe.getStateTransitionDetails().isRollbackSafe());
+    assertTrue(commissioner.canTaskRollbackDetailed(rerun));
   }
 
   /**
