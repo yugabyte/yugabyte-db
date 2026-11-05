@@ -165,7 +165,7 @@ public class TestPgReplicationSlotWithTxnDdl extends BasePgSQLTest {
   }
 
   // Pinning LSNs is brittle: any extra catalog write shifts them. BEGIN and COMMIT of one
-  // transaction carry the same commit LSN, the commit end LSN is greater, and the next
+  // transaction carry the same commit LSN, which is also the commit end LSN, and the next
   // transaction starts after that.
   private static void assertMessages(
       List<PgOutputMessage> expected, List<PgOutputMessage> actual) {
@@ -203,7 +203,7 @@ public class TestPgReplicationSlotWithTxnDdl extends BasePgSQLTest {
         PgOutputCommitMessage commit = (PgOutputCommitMessage) message;
         assertTrue("COMMIT without BEGIN", beginLsn != null);
         assertEquals(beginLsn, commit.commitLSN);
-        previous = assertLsnAfter(previous, commit.endLSN);
+        assertEquals(commit.commitLSN, commit.endLSN);
         beginLsn = null;
       }
     }
