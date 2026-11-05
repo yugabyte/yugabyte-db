@@ -26,6 +26,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -70,58 +71,72 @@ public class ConnectivityChecker {
       return;
     }
     try {
-      Map<Long, List<Universe>> universesByCustomer = Universe.getAllWithoutResourcesByCustomer();
+      // Only the universe identities are read here: each check loads its universe when it runs,
+      // so the details of all universes are never in memory at once.
+      Map<Long, List<Universe.Summary>> universesByCustomer =
+          Universe.getSummaries().stream()
+              .collect(Collectors.groupingBy(Universe.Summary::customerId));
       for (Customer customer : Customer.getAll()) {
-        for (Universe universe :
+        for (Universe.Summary universe :
             universesByCustomer.getOrDefault(customer.getId(), Collections.emptyList())) {
-          if (universe.universeIsLocked()) {
-            continue;
-          }
-          if (universe.getUniverseDetails() == null
-              || universe.getUniverseDetails().getPrimaryCluster() == null
-              || universe.getUniverseDetails().getPrimaryCluster().userIntent == null) {
-            continue;
-          }
-          if (Util.compareYBVersions(
-                  universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
-                  "2026.1.0.0-b1",
-                  "2.29.0.0-b570",
-                  true)
-              < 0) {
-            continue;
-          }
-
-          Future<?> curFuture = runningChecks.get(universe.getUniverseUUID());
+          UUID universeUuid = universe.universeUUID();
+          Future<?> curFuture = runningChecks.get(universeUuid);
           if (curFuture != null) {
-            log.debug(
-                "Connectivity check already in progress for {}, skipping",
-                universe.getUniverseUUID());
+            log.debug("Connectivity check already in progress for {}, skipping", universeUuid);
             continue;
           }
 
           final Customer c = customer;
           try {
             runningChecks.put(
-                universe.getUniverseUUID(),
+                universeUuid,
                 connectivityCheckExecutor.submit(
                     () -> {
                       try {
-                        collectAndSaveConnectivityMetrics(c, universe);
+                        loadEligibleUniverse(universeUuid)
+                            .ifPresent(u -> collectAndSaveConnectivityMetrics(c, u));
                       } finally {
-                        runningChecks.remove(universe.getUniverseUUID());
+                        runningChecks.remove(universeUuid);
                       }
                     }));
           } catch (RuntimeException e) {
-            log.error(
-                "Failed to submit connectivity check for universe {}",
-                universe.getUniverseUUID(),
-                e);
+            log.error("Failed to submit connectivity check for universe {}", universeUuid, e);
           }
         }
       }
     } catch (Exception e) {
       log.error("Failed to process connectivity checks", e);
     }
+  }
+
+  /**
+   * Loads the universe for its connectivity check. Returns empty when the universe no longer
+   * exists, fails to load, is locked, or runs a version without the connectivity state API.
+   */
+  private Optional<Universe> loadEligibleUniverse(UUID universeUuid) {
+    Optional<Universe> maybeUniverse;
+    try {
+      maybeUniverse = Universe.maybeGet(universeUuid);
+    } catch (Exception e) {
+      log.error("Failed to load universe {} for its connectivity check", universeUuid, e);
+      return Optional.empty();
+    }
+    return maybeUniverse.filter(
+        universe ->
+            universe.getUniverseDetails() != null
+                && !universe.universeIsLocked()
+                && universe.getUniverseDetails().getPrimaryCluster() != null
+                && universe.getUniverseDetails().getPrimaryCluster().userIntent != null
+                && Util.compareYBVersions(
+                        universe
+                            .getUniverseDetails()
+                            .getPrimaryCluster()
+                            .userIntent
+                            .ybSoftwareVersion,
+                        "2026.1.0.0-b1",
+                        "2.29.0.0-b570",
+                        true)
+                    >= 0);
   }
 
   @VisibleForTesting

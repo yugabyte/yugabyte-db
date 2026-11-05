@@ -379,29 +379,27 @@ public class Universe extends Model {
     return rawList.stream().peek(Universe::fillUniverseDetails).collect(Collectors.toSet());
   }
 
+  /** The identity of a universe, read without its details. */
+  public record Summary(UUID universeUUID, String name, Long customerId) {}
+
   /**
-   * Returns all universes grouped by customer id, for jobs that process every universe. A universe
-   * without a customer, or whose details fail to parse, is logged and left out, so that it doesn't
-   * stop the job for the other universes.
+   * Returns the uuid, name and customer of all universes that have a customer, without loading or
+   * parsing their details. For jobs that go over all universes and load each one when they process
+   * it.
    */
-  public static Map<Long, List<Universe>> getAllWithoutResourcesByCustomer() {
-    Map<Long, List<Universe>> universesByCustomer = new HashMap<>();
-    for (Universe universe : find.query().findList()) {
-      if (universe.getCustomerId() == null) {
-        log.warn("Skipping universe {} without a customer", universe.getUniverseUUID());
-        continue;
-      }
-      try {
-        fillUniverseDetails(universe);
-      } catch (Exception e) {
-        log.error("Skipping universe {}: its details fail to parse", universe.getUniverseUUID(), e);
-        continue;
-      }
-      universesByCustomer
-          .computeIfAbsent(universe.getCustomerId(), id -> new ArrayList<>())
-          .add(universe);
-    }
-    return universesByCustomer;
+  public static List<Summary> getSummaries() {
+    return getSummaries(find.query().where().isNotNull("customerId"));
+  }
+
+  /** Returns the uuid, name and customer of the customer's universes, without their details. */
+  public static List<Summary> getSummaries(Customer customer) {
+    return getSummaries(find.query().where().eq("customerId", customer.getId()));
+  }
+
+  private static List<Summary> getSummaries(ExpressionList<Universe> query) {
+    return query.select("universeUUID, name, customerId").findList().stream()
+        .map(u -> new Summary(u.getUniverseUUID(), u.getName(), u.getCustomerId()))
+        .collect(Collectors.toList());
   }
 
   public static Set<Universe> getAllWithoutResources(Customer customer) {

@@ -99,7 +99,7 @@ public class UniverseTest extends FakeDBApplication {
   }
 
   @Test
-  public void testGetAllWithoutResourcesByCustomerSkipsInvalidUniverses() {
+  public void testGetSummaries() {
     Customer otherCustomer = ModelFactory.testCustomer("tc2", "Customer 2");
     Universe first = createUniverse("first", defaultCustomer.getId());
     Universe second = createUniverse("second", otherCustomer.getId());
@@ -113,16 +113,18 @@ public class UniverseTest extends FakeDBApplication {
         .setParameter("uuid", withoutCustomer.getUniverseUUID())
         .execute();
 
-    Map<Long, List<Universe>> universesByCustomer = Universe.getAllWithoutResourcesByCustomer();
-
-    assertEquals(2, universesByCustomer.size());
-    List<Universe> defaultCustomerUniverses = universesByCustomer.get(defaultCustomer.getId());
-    assertEquals(1, defaultCustomerUniverses.size());
-    assertEquals(first.getUniverseUUID(), defaultCustomerUniverses.get(0).getUniverseUUID());
-    assertNotNull(defaultCustomerUniverses.get(0).getUniverseDetails());
-    List<Universe> otherCustomerUniverses = universesByCustomer.get(otherCustomer.getId());
-    assertEquals(1, otherCustomerUniverses.size());
-    assertEquals(second.getUniverseUUID(), otherCustomerUniverses.get(0).getUniverseUUID());
+    // The details are not read, so a universe with details that don't parse is listed. A universe
+    // without a customer is not.
+    assertEquals(
+        Set.of(
+            new Universe.Summary(first.getUniverseUUID(), "first", defaultCustomer.getId()),
+            new Universe.Summary(second.getUniverseUUID(), "second", otherCustomer.getId()),
+            new Universe.Summary(
+                unparsable.getUniverseUUID(), "unparsable", defaultCustomer.getId())),
+        new HashSet<>(Universe.getSummaries()));
+    assertEquals(
+        List.of(new Universe.Summary(second.getUniverseUUID(), "second", otherCustomer.getId())),
+        Universe.getSummaries(otherCustomer));
   }
 
   @Test

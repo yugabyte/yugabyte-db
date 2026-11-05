@@ -40,11 +40,13 @@ import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Rule;
@@ -257,23 +259,17 @@ public class ConnectivityCheckerTest extends FakeDBApplication {
   public void testProcessAll_skipsLockedUniverse() {
     Universe locked = eligibleUniverse("2026.1.0.0-b1");
     when(locked.universeIsLocked()).thenReturn(true);
-    try (MockedStatic<HighAvailabilityConfig> haStatic = mockStatic(HighAvailabilityConfig.class);
-        MockedStatic<Customer> customerStatic = mockStatic(Customer.class);
-        MockedStatic<Universe> universeStatic = mockStatic(Universe.class)) {
-      haStatic.when(HighAvailabilityConfig::isFollower).thenReturn(false);
-      customerStatic.when(Customer::getAll).thenReturn(List.of(customer));
-      universeStatic
-          .when(Universe::getAllWithoutResourcesByCustomer)
-          .thenReturn(Map.of(CUSTOMER_ID, List.of(locked)));
-      checker.processAll();
-    }
-    verify(executorService, never()).submit(any(Runnable.class));
+    runSubmittedTasksInline();
+
+    processAll(List.of(customer), Map.of(locked, CUSTOMER_ID));
+
+    verify(executorService, times(1)).submit(any(Runnable.class));
+    verify(checker, never()).collectAndSaveConnectivityMetrics(any(), any());
   }
 
   @Test
   public void testProcessAll_skipsWhenDetailsOrPrimaryOrIntentMissing() {
     Universe noDetails = mock(Universe.class);
-    when(noDetails.universeIsLocked()).thenReturn(false);
     when(noDetails.getUniverseDetails()).thenReturn(null);
     when(noDetails.getUniverseUUID()).thenReturn(UUID.randomUUID());
 
@@ -293,62 +289,57 @@ public class ConnectivityCheckerTest extends FakeDBApplication {
     detailsNoIntent.clusters = new ArrayList<>(List.of(cluster));
     when(noIntent.getUniverseDetails()).thenReturn(detailsNoIntent);
     when(noIntent.getUniverseUUID()).thenReturn(UUID.randomUUID());
+    runSubmittedTasksInline();
 
-    try (MockedStatic<HighAvailabilityConfig> haStatic = mockStatic(HighAvailabilityConfig.class);
-        MockedStatic<Customer> customerStatic = mockStatic(Customer.class);
-        MockedStatic<Universe> universeStatic = mockStatic(Universe.class)) {
-      haStatic.when(HighAvailabilityConfig::isFollower).thenReturn(false);
-      customerStatic.when(Customer::getAll).thenReturn(List.of(customer));
-      universeStatic
-          .when(Universe::getAllWithoutResourcesByCustomer)
-          .thenReturn(Map.of(CUSTOMER_ID, List.of(noDetails, noPrimary, noIntent)));
-      checker.processAll();
-    }
-    verify(executorService, never()).submit(any(Runnable.class));
+    processAll(
+        List.of(customer),
+        Map.of(noDetails, CUSTOMER_ID, noPrimary, CUSTOMER_ID, noIntent, CUSTOMER_ID));
+
+    verify(checker, never()).collectAndSaveConnectivityMetrics(any(), any());
   }
 
   @Test
   public void testProcessAll_skipsOlderVersionUniverse() {
     Universe oldVersion = eligibleUniverse("2.28.0.0-b1");
-    try (MockedStatic<HighAvailabilityConfig> haStatic = mockStatic(HighAvailabilityConfig.class);
-        MockedStatic<Customer> customerStatic = mockStatic(Customer.class);
-        MockedStatic<Universe> universeStatic = mockStatic(Universe.class)) {
-      haStatic.when(HighAvailabilityConfig::isFollower).thenReturn(false);
-      customerStatic.when(Customer::getAll).thenReturn(List.of(customer));
-      universeStatic
-          .when(Universe::getAllWithoutResourcesByCustomer)
-          .thenReturn(Map.of(CUSTOMER_ID, List.of(oldVersion)));
-      checker.processAll();
-    }
-    verify(executorService, never()).submit(any(Runnable.class));
+    runSubmittedTasksInline();
+
+    processAll(List.of(customer), Map.of(oldVersion, CUSTOMER_ID));
+
+    verify(checker, never()).collectAndSaveConnectivityMetrics(any(), any());
   }
 
   @Test
   public void testProcessAll_submitsEligibleUniverseAndInvokesCollection() {
     Universe eligible = eligibleUniverse("2026.1.0.0-b1");
-    doNothing()
-        .when(checker)
-        .collectAndSaveConnectivityMetrics(any(Customer.class), any(Universe.class));
-    when(executorService.submit(any(Runnable.class)))
-        .thenAnswer(
-            i -> {
-              Runnable runnable = i.getArgument(0);
-              runnable.run();
-              return CompletableFuture.completedFuture(null);
-            });
+    runSubmittedTasksInline();
 
-    try (MockedStatic<HighAvailabilityConfig> haStatic = mockStatic(HighAvailabilityConfig.class);
-        MockedStatic<Customer> customerStatic = mockStatic(Customer.class);
-        MockedStatic<Universe> universeStatic = mockStatic(Universe.class)) {
-      haStatic.when(HighAvailabilityConfig::isFollower).thenReturn(false);
-      customerStatic.when(Customer::getAll).thenReturn(List.of(customer));
-      universeStatic
-          .when(Universe::getAllWithoutResourcesByCustomer)
-          .thenReturn(Map.of(CUSTOMER_ID, List.of(eligible)));
-      checker.processAll();
-    }
+    processAll(List.of(customer), Map.of(eligible, CUSTOMER_ID));
+
     verify(executorService, times(1)).submit(any(Runnable.class));
     verify(checker, times(1)).collectAndSaveConnectivityMetrics(customer, eligible);
+  }
+
+  @Test
+  public void testProcessAll_skipsUniverseThatFailsToLoadOrNoLongerExists() {
+    Universe eligible = eligibleUniverse("2026.1.0.0-b1");
+    Universe failsToLoad = eligibleUniverse("2026.1.0.0-b1");
+    Universe deleted = eligibleUniverse("2026.1.0.0-b1");
+    UUID failsToLoadUuid = failsToLoad.getUniverseUUID();
+    UUID deletedUuid = deleted.getUniverseUUID();
+    runSubmittedTasksInline();
+
+    processAll(
+        List.of(customer),
+        Map.of(eligible, CUSTOMER_ID, failsToLoad, CUSTOMER_ID, deleted, CUSTOMER_ID),
+        universeStatic -> {
+          universeStatic
+              .when(() -> Universe.maybeGet(failsToLoadUuid))
+              .thenThrow(new RuntimeException("bad details"));
+          universeStatic.when(() -> Universe.maybeGet(deletedUuid)).thenReturn(Optional.empty());
+        });
+
+    verify(checker, times(1)).collectAndSaveConnectivityMetrics(customer, eligible);
+    verify(checker, times(1)).collectAndSaveConnectivityMetrics(any(), any());
   }
 
   @Test
@@ -356,16 +347,7 @@ public class ConnectivityCheckerTest extends FakeDBApplication {
     Universe eligible = eligibleUniverse("2026.1.0.0-b1");
     runningChecks(checker).put(eligible.getUniverseUUID(), CompletableFuture.completedFuture(null));
 
-    try (MockedStatic<HighAvailabilityConfig> haStatic = mockStatic(HighAvailabilityConfig.class);
-        MockedStatic<Customer> customerStatic = mockStatic(Customer.class);
-        MockedStatic<Universe> universeStatic = mockStatic(Universe.class)) {
-      haStatic.when(HighAvailabilityConfig::isFollower).thenReturn(false);
-      customerStatic.when(Customer::getAll).thenReturn(List.of(customer));
-      universeStatic
-          .when(Universe::getAllWithoutResourcesByCustomer)
-          .thenReturn(Map.of(CUSTOMER_ID, List.of(eligible)));
-      checker.processAll();
-    }
+    processAll(List.of(customer), Map.of(eligible, CUSTOMER_ID));
 
     verify(executorService, never()).submit(any(Runnable.class));
   }
@@ -374,10 +356,6 @@ public class ConnectivityCheckerTest extends FakeDBApplication {
   public void testProcessAll_submitFailureOnFirstUniverseStillProcessesSecond() {
     Universe first = eligibleUniverse("2026.1.0.0-b1");
     Universe second = eligibleUniverse("2026.1.0.0-b1");
-    doNothing()
-        .when(checker)
-        .collectAndSaveConnectivityMetrics(any(Customer.class), any(Universe.class));
-
     AtomicInteger submitCount = new AtomicInteger(0);
     when(executorService.submit(any(Runnable.class)))
         .thenAnswer(
@@ -390,20 +368,10 @@ public class ConnectivityCheckerTest extends FakeDBApplication {
               return CompletableFuture.completedFuture(null);
             });
 
-    try (MockedStatic<HighAvailabilityConfig> haStatic = mockStatic(HighAvailabilityConfig.class);
-        MockedStatic<Customer> customerStatic = mockStatic(Customer.class);
-        MockedStatic<Universe> universeStatic = mockStatic(Universe.class)) {
-      haStatic.when(HighAvailabilityConfig::isFollower).thenReturn(false);
-      customerStatic.when(Customer::getAll).thenReturn(List.of(customer));
-      universeStatic
-          .when(Universe::getAllWithoutResourcesByCustomer)
-          .thenReturn(Map.of(CUSTOMER_ID, List.of(first, second)));
-      checker.processAll();
-    }
+    processAll(List.of(customer), Map.of(first, CUSTOMER_ID, second, CUSTOMER_ID));
 
     verify(executorService, times(2)).submit(any(Runnable.class));
-    verify(checker, times(1))
-        .collectAndSaveConnectivityMetrics(any(Customer.class), any(Universe.class));
+    verify(checker, times(1)).collectAndSaveConnectivityMetrics(any(), any());
   }
 
   @Test
@@ -413,39 +381,15 @@ public class ConnectivityCheckerTest extends FakeDBApplication {
     Universe first = eligibleUniverse("2026.1.0.0-b1");
     Universe second = eligibleUniverse("2026.1.0.0-b1");
     Universe unknownCustomerUniverse = eligibleUniverse("2026.1.0.0-b1");
-    doNothing()
-        .when(checker)
-        .collectAndSaveConnectivityMetrics(any(Customer.class), any(Universe.class));
-    when(executorService.submit(any(Runnable.class)))
-        .thenAnswer(
-            i -> {
-              Runnable runnable = i.getArgument(0);
-              runnable.run();
-              return CompletableFuture.completedFuture(null);
-            });
+    runSubmittedTasksInline();
 
-    try (MockedStatic<HighAvailabilityConfig> haStatic = mockStatic(HighAvailabilityConfig.class);
-        MockedStatic<Customer> customerStatic = mockStatic(Customer.class);
-        MockedStatic<Universe> universeStatic = mockStatic(Universe.class)) {
-      haStatic.when(HighAvailabilityConfig::isFollower).thenReturn(false);
-      customerStatic.when(Customer::getAll).thenReturn(List.of(customer, otherCustomer));
-      universeStatic
-          .when(Universe::getAllWithoutResourcesByCustomer)
-          .thenReturn(
-              Map.of(
-                  CUSTOMER_ID,
-                  List.of(first),
-                  2L,
-                  List.of(second),
-                  3L,
-                  List.of(unknownCustomerUniverse)));
-      checker.processAll();
-    }
+    processAll(
+        List.of(customer, otherCustomer),
+        Map.of(first, CUSTOMER_ID, second, 2L, unknownCustomerUniverse, 3L));
 
     verify(checker).collectAndSaveConnectivityMetrics(customer, first);
     verify(checker).collectAndSaveConnectivityMetrics(otherCustomer, second);
-    verify(checker, times(2))
-        .collectAndSaveConnectivityMetrics(any(Customer.class), any(Universe.class));
+    verify(checker, times(2)).collectAndSaveConnectivityMetrics(any(), any());
   }
 
   @Test
@@ -457,6 +401,51 @@ public class ConnectivityCheckerTest extends FakeDBApplication {
       checker.processAll();
     }
     verifyNoInteractions(executorService);
+  }
+
+  /** Makes the executor run each submitted check right away, with the collection stubbed out. */
+  private void runSubmittedTasksInline() {
+    doNothing().when(checker).collectAndSaveConnectivityMetrics(any(), any());
+    when(executorService.submit(any(Runnable.class)))
+        .thenAnswer(
+            i -> {
+              Runnable runnable = i.getArgument(0);
+              runnable.run();
+              return CompletableFuture.completedFuture(null);
+            });
+  }
+
+  private void processAll(List<Customer> customers, Map<Universe, Long> universeCustomerIds) {
+    processAll(customers, universeCustomerIds, universeStatic -> {});
+  }
+
+  /**
+   * Runs processAll with the given customers and universes: Universe.getSummaries() returns the
+   * universes with the given customer ids, and Universe.maybeGet() returns each universe, unless
+   * extraStubs stubs it otherwise.
+   */
+  private void processAll(
+      List<Customer> customers,
+      Map<Universe, Long> universeCustomerIds,
+      Consumer<MockedStatic<Universe>> extraStubs) {
+    try (MockedStatic<HighAvailabilityConfig> haStatic = mockStatic(HighAvailabilityConfig.class);
+        MockedStatic<Customer> customerStatic = mockStatic(Customer.class);
+        MockedStatic<Universe> universeStatic = mockStatic(Universe.class)) {
+      haStatic.when(HighAvailabilityConfig::isFollower).thenReturn(false);
+      customerStatic.when(Customer::getAll).thenReturn(customers);
+      List<Universe.Summary> summaries = new ArrayList<>();
+      universeCustomerIds.forEach(
+          (universe, customerId) -> {
+            UUID universeUuid = universe.getUniverseUUID();
+            summaries.add(new Universe.Summary(universeUuid, "universe", customerId));
+            universeStatic
+                .when(() -> Universe.maybeGet(universeUuid))
+                .thenReturn(Optional.of(universe));
+          });
+      universeStatic.when(Universe::getSummaries).thenReturn(summaries);
+      extraStubs.accept(universeStatic);
+      checker.processAll();
+    }
   }
 
   private Universe eligibleUniverse(String version) {

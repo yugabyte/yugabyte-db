@@ -80,6 +80,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
@@ -595,6 +596,18 @@ public class HealthCheckerTest extends FakeDBApplication {
     verify(mockEmailHelper, never()).getDestinations(customerWithoutUniverses.getUuid());
     // The maintenance windows are listed once per run.
     verify(mockMaintenanceService, times(1)).listActiveWindows();
+  }
+
+  @Test
+  public void testCheckCustomer_SkipsUniverseWhoseCheckIsStillRunning() {
+    Universe u = setupUniverse("univ1");
+    CompletableFuture<Void> running = new CompletableFuture<>();
+    healthChecker.runningHealthChecks.put(u.getUniverseUUID(), running);
+
+    healthChecker.checkCustomer(defaultCustomer);
+
+    verifyNodeUniverseManager(0, 0);
+    assertEquals(running, healthChecker.runningHealthChecks.get(u.getUniverseUUID()));
   }
 
   @Test

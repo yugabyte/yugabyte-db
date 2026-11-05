@@ -459,9 +459,12 @@ public class HealthChecker {
         log.debug("Skipping health check scheduler for follower platform");
         return;
       }
-      // Load the universes and alert configs of all customers at once, rather than querying them
-      // for each customer. A universe that fails to load is skipped, not the whole run.
-      Map<Long, List<Universe>> universesByCustomer = Universe.getAllWithoutResourcesByCustomer();
+      // Read the universes and alert configs of all customers at once, rather than querying them
+      // for each customer. Only the universe identities are read here: each check loads its
+      // universe when it runs, so the details of all universes are never in memory at once.
+      Map<Long, List<Universe.Summary>> universesByCustomer =
+          Universe.getSummaries().stream()
+              .collect(Collectors.groupingBy(Universe.Summary::customerId));
       Map<UUID, CustomerConfig> alertConfigs =
           CustomerConfig.getAllAlertConfigs().stream()
               .collect(Collectors.toMap(CustomerConfig::getCustomerUUID, cfg -> cfg, (a, b) -> a));
@@ -487,14 +490,14 @@ public class HealthChecker {
     checkCustomer(
         c,
         CustomerConfig.getAlertConfig(c.getUuid()),
-        c.getUniverses(),
+        Universe.getSummaries(c),
         Suppliers.memoize(maintenanceService::listActiveWindows));
   }
 
   private void checkCustomer(
       Customer c,
       CustomerConfig config,
-      Collection<Universe> universes,
+      Collection<Universe.Summary> universes,
       Supplier<List<MaintenanceWindow>> activeWindows) {
     // We need an alerting config to do work.
     boolean shouldSendStatusUpdate = false;
@@ -573,7 +576,7 @@ public class HealthChecker {
       Customer c, AlertingData alertingData, boolean shouldSendStatusUpdate, boolean onlyMetrics) {
     checkAllUniverses(
         c,
-        c.getUniverses(),
+        Universe.getSummaries(c),
         alertingData,
         shouldSendStatusUpdate,
         onlyMetrics,
@@ -582,7 +585,7 @@ public class HealthChecker {
 
   private void checkAllUniverses(
       Customer c,
-      Collection<Universe> universes,
+      Collection<Universe.Summary> universes,
       AlertingData alertingData,
       boolean shouldSendStatusUpdate,
       boolean onlyMetrics,
@@ -596,36 +599,42 @@ public class HealthChecker {
     // The destinations are the same for all universes of the customer.
     List<String> customerDestinations = emailHelper.getDestinations(c.getUuid());
 
-    universes.stream()
-        .filter(
-            u -> {
-              // Skip universes that were never successfully brought up. Running health checks on
-              // them just produces noisy failures and misleading alerts for something that never
-              // reached a healthy baseline. The UI surfaces a "Universe creation failed" state
-              // for these so operators still see the problem. Null details are handled downstream
-              // in checkSingleUniverse (which reports a failure metric), so let them through here.
-              UniverseDefinitionTaskParams details = u.getUniverseDetails();
-              if (details != null && !details.creationSucceeded) {
-                log.debug(
-                    "Skipping universe {} - universe creation has never successfully completed",
-                    u.getName());
-                return false;
-              }
-              return true;
-            })
-        .map(
-            u -> {
-              String destinations = getAlertDestinations(u, customerDestinations, activeWindows);
-              return new CheckSingleUniverseParams(
-                  u,
-                  c,
-                  shouldSendStatusUpdate,
-                  reportOnlyErrors,
-                  onlyMetrics,
-                  destinations,
-                  false /*runImmediately*/);
-            })
-        .forEach(params -> runHealthCheck(params, false /*ignoreLastHealthCheck*/));
+    for (Universe.Summary summary : universes) {
+      // The universe is loaded by the check itself, so that only the universes being checked are
+      // in memory, and their details are current when the check starts.
+      scheduleHealthCheck(
+          summary.universeUUID(),
+          summary.name(),
+          false /*ignoreLastCheck*/,
+          () -> {
+            Optional<Universe> maybeUniverse = Universe.maybeGet(summary.universeUUID());
+            if (maybeUniverse.isEmpty()) {
+              log.debug("Universe {} no longer exists", summary.name());
+              return null;
+            }
+            Universe u = maybeUniverse.get();
+            // Skip universes that were never successfully brought up. Running health checks on
+            // them just produces noisy failures and misleading alerts for something that never
+            // reached a healthy baseline. The UI surfaces a "Universe creation failed" state
+            // for these so operators still see the problem. Null details are handled downstream
+            // in checkSingleUniverse (which reports a failure metric), so let them through here.
+            UniverseDefinitionTaskParams details = u.getUniverseDetails();
+            if (details != null && !details.creationSucceeded) {
+              log.debug(
+                  "Skipping universe {} - universe creation has never successfully completed",
+                  u.getName());
+              return null;
+            }
+            return new CheckSingleUniverseParams(
+                u,
+                c,
+                shouldSendStatusUpdate,
+                reportOnlyErrors,
+                onlyMetrics,
+                getAlertDestinations(u, customerDestinations, activeWindows),
+                false /*runImmediately*/);
+          });
+    }
   }
 
   public void cancelHealthCheck(UUID universeUUID) {
@@ -713,9 +722,26 @@ public class HealthChecker {
 
   public CompletableFuture<Void> runHealthCheck(
       CheckSingleUniverseParams params, boolean ignoreLastCheck) {
-    String universeName = params.universe.getName();
-    CompletableFuture<Void> lastCheck =
-        this.runningHealthChecks.get(params.universe.getUniverseUUID());
+    return scheduleHealthCheck(
+        params.universe.getUniverseUUID(),
+        params.universe.getName(),
+        ignoreLastCheck,
+        () -> params);
+  }
+
+  /**
+   * Schedules a health check of the universe, unless its previous check is still running and
+   * ignoreLastCheck is false.
+   *
+   * @param paramsSupplier called by the check when it starts; returns the check parameters, or null
+   *     to skip the check
+   */
+  private CompletableFuture<Void> scheduleHealthCheck(
+      UUID universeUuid,
+      String universeName,
+      boolean ignoreLastCheck,
+      Supplier<CheckSingleUniverseParams> paramsSupplier) {
+    CompletableFuture<Void> lastCheck = this.runningHealthChecks.get(universeUuid);
     // Only schedule a task if the previous one for the given universe has completed.
     if (!ignoreLastCheck && lastCheck != null && !lastCheck.isDone()) {
       log.info("Health check for universe {} is still running. Skipping...", universeName);
@@ -730,7 +756,12 @@ public class HealthChecker {
               long diff = System.currentTimeMillis() - scheduled;
               log.debug(
                   "Health check for universe {} was queued for [ {} ms ]", universeName, diff);
+              CheckSingleUniverseParams params = null;
               try {
+                params = paramsSupplier.get();
+                if (params == null) {
+                  return;
+                }
                 log.info("Running health check for universe: {}", universeName);
                 checkSingleUniverse(params);
               } catch (CancellationException | CompletionException e) {
@@ -739,15 +770,17 @@ public class HealthChecker {
                     universeName);
               } catch (Exception e) {
                 log.error("Error running health check for universe: {}", universeName, e);
-                setHealthCheckFailedMetric(params.customer, params.universe);
+                if (params != null) {
+                  setHealthCheckFailedMetric(params.customer, params.universe);
+                }
               } finally {
-                runningHealthChecks.remove(params.universe.getUniverseUUID());
+                runningHealthChecks.remove(universeUuid);
               }
             },
             this.universeExecutor);
 
     // Add the task to the map of running tasks.
-    this.runningHealthChecks.put(params.universe.getUniverseUUID(), task);
+    this.runningHealthChecks.put(universeUuid, task);
 
     return task;
   }
