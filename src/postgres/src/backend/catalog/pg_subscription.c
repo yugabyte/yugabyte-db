@@ -336,8 +336,9 @@ AddSubscriptionRelState(Oid subid, Oid relid, char state,
 	tup = heap_form_tuple(RelationGetDescr(rel), values, nulls);
 
 	/* Insert tuple into catalog. */
-	/* YB: see UpdateSubscriptionRelState. */
-	YB_NON_DDL_TXN_FOR_SYS_TABLES_ALLOWED(CatalogTupleInsert(rel, tup));
+	YB_BEGIN_NON_DDL_SYS_TABLE_WRITE();
+	CatalogTupleInsert(rel, tup);
+	YB_END_NON_DDL_SYS_TABLE_WRITE();
 
 	heap_freetuple(tup);
 
@@ -388,14 +389,9 @@ UpdateSubscriptionRelState(Oid subid, Oid relid, char state,
 							replaces);
 
 	/* Update the catalog. */
-	/*
-	 * YB: workers call this outside DDL mode; allow the sys-catalog write
-	 * for its duration only, restoring on error so DDL callers (e.g.
-	 * ALTER SUBSCRIPTION ... REFRESH) cannot leak the exemption.
-	 */
-	YB_NON_DDL_TXN_FOR_SYS_TABLES_ALLOWED(CatalogTupleUpdate(rel,
-															  &tup->t_self,
-															  tup));
+	YB_BEGIN_NON_DDL_SYS_TABLE_WRITE();
+	CatalogTupleUpdate(rel, &tup->t_self, tup);
+	YB_END_NON_DDL_SYS_TABLE_WRITE();
 
 	/* Cleanup. */
 	table_close(rel, NoLock);
@@ -518,8 +514,9 @@ RemoveSubscriptionRel(Oid subid, Oid relid)
 							 "DROP SUBSCRIPTION ...")));
 		}
 
-		/* YB: see UpdateSubscriptionRelState. */
-		YB_NON_DDL_TXN_FOR_SYS_TABLES_ALLOWED(CatalogTupleDelete(rel, tup));
+		YB_BEGIN_NON_DDL_SYS_TABLE_WRITE();
+		CatalogTupleDelete(rel, tup);
+		YB_END_NON_DDL_SYS_TABLE_WRITE();
 	}
 	table_endscan(scan);
 

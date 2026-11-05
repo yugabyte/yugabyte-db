@@ -6180,7 +6180,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_UNIT_MS
 		},
 		&yb_subscription_takeover_probe_interval_ms,
-		60000, 1, INT_MAX,
+		60000, 1000, INT_MAX,
 		NULL, NULL, NULL
 	},
 

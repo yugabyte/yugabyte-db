@@ -97,8 +97,6 @@ static void check_duplicates_in_publist(List *publist, Datum *datums);
 static List *merge_publications(List *oldpublist, List *newpublist, bool addpub, const char *subname);
 static void ReportSlotConnectionError(List *rstates, Oid subid, char *slotname, char *err);
 
-/* YB declarations */
-static bool YbHasLocalApplyWorker(Oid subid);
 
 /*
  * Common option parsing function for CREATE and ALTER SUBSCRIPTION commands.
@@ -901,7 +899,7 @@ AlterSubscription_refresh(Subscription *sub, bool copy_data,
 				if (IsYugaByteEnabled() &&
 					state != SUBREL_STATE_READY &&
 					state != SUBREL_STATE_SYNCDONE &&
-					!YbHasLocalApplyWorker(sub->oid))
+					!yb_logicalrep_owns_subscription(sub->oid))
 					ereport(ERROR,
 							(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 							 errmsg("cannot remove table \"%s\" from subscription \"%s\" on this node while the table is being synchronized",
@@ -2028,18 +2026,4 @@ merge_publications(List *oldpublist, List *newpublist, bool addpub, const char *
 				 errmsg("cannot drop all the publications from a subscription")));
 
 	return oldpublist;
-}
-
-/*
- * YB: Whether this node runs the subscription's apply worker.
- */
-static bool
-YbHasLocalApplyWorker(Oid subid)
-{
-	LogicalRepWorker *worker;
-
-	LWLockAcquire(LogicalRepWorkerLock, LW_SHARED);
-	worker = logicalrep_worker_find(subid, InvalidOid, false);
-	LWLockRelease(LogicalRepWorkerLock);
-	return worker != NULL;
 }

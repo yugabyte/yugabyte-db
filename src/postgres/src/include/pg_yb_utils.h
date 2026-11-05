@@ -1960,33 +1960,33 @@ extern void YbAssertSubscriptionInvalsOnly(void);
 #endif
 
 /*
- * YB: Run one or more statements (typically a single catalog write) with
- * yb_non_ddl_txn_for_sys_tables_allowed forced on, restoring the previous
- * value even if they throw.
+ * YB: Run the catalog write between YB_BEGIN_NON_DDL_SYS_TABLE_WRITE() and
+ * YB_END_NON_DDL_SYS_TABLE_WRITE() with yb_non_ddl_txn_for_sys_tables_allowed
+ * forced on, restoring the previous value even if it throws.  The pair opens
+ * and closes a PG_TRY block, so the upstream write between them stays
+ * untouched; that code must not return, goto, or break out.
  *
- * Every current call site is a logical replication path writing
- * pg_subscription_rel state or clearing pg_subscription's subskiplsn - the
- * writes whose consumers are all on the writer's own node, reached by
- * ordinary sinval.  Worker writes that a remote node must act on are not
- * wrapped here but run as version-bumping DDLs instead (DisableSubscription,
- * UpdateTwoPhaseState).  In logical replication workers - where the wrapped
- * write is the whole command - assert builds verify it invalidated nothing
- * outside those two catalogs; a new worker-side write to another catalog
- * must first pick a propagation path the same way (see
- * YbAssertSubscriptionInvalsOnly in inval.c).
- *
- * The wrapped code must not return, goto, or break out (standard PG_TRY
- * rule, hidden here by the macro).
+ * The call sites are the pg_subscription_rel writes (AddSubscriptionRelState,
+ * UpdateSubscriptionRelState, RemoveSubscriptionRel) and the subskiplsn clear
+ * in clear_subscription_skip_lsn.  Made by a logical replication worker,
+ * their consumers are on the worker's own node and reached by sinval (a stale
+ * subskiplsn elsewhere is harmless), and assert builds check the write queued
+ * no invalidation for any other catalog (YbAssertSubscriptionInvalsOnly).
+ * Made by CREATE SUBSCRIPTION, ALTER SUBSCRIPTION ... REFRESH or DROP
+ * SUBSCRIPTION, that DDL's own catalog version bump carries them to other
+ * nodes.  Worker writes that other nodes must act on are not wrapped; they
+ * run as version-bumping DDL (DisableSubscription, UpdateTwoPhaseState).
  */
-#define YB_NON_DDL_TXN_FOR_SYS_TABLES_ALLOWED(...) \
+#define YB_BEGIN_NON_DDL_SYS_TABLE_WRITE() \
 	do { \
 		volatile bool yb_saved_non_ddl_txn_ = \
 			yb_non_ddl_txn_for_sys_tables_allowed; \
 		if (IsYugaByteEnabled()) \
 			yb_non_ddl_txn_for_sys_tables_allowed = true; \
 		PG_TRY(); \
-		{ \
-			__VA_ARGS__; \
+		{
+
+#define YB_END_NON_DDL_SYS_TABLE_WRITE() \
 			YbAssertSubscriptionInvalsOnly(); \
 		} \
 		PG_FINALLY(); \

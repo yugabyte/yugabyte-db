@@ -377,6 +377,7 @@ static inline void set_apply_error_context_xact(TransactionId xid, XLogRecPtr ls
 static inline void reset_apply_error_context_info(void);
 
 /* YB declarations */
+static void yb_force_subscription_reread(void);
 static void yb_apply_worker_onexit(int code, Datum arg);
 
 /*
@@ -2716,16 +2717,6 @@ UpdateWorkerStats(XLogRecPtr last_lsn, TimestampTz send_time, bool reply)
 	}
 }
 
-/* YB: drop this worker's subscription caches; the next lookup goes to storage. */
-static void
-yb_force_subscription_reread(void)
-{
-	YbInvalidateCatalogSnapshot();
-	CatalogCacheFlushCatalog(SubscriptionRelRelationId);
-	CatalogCacheFlushCatalog(SubscriptionRelationId);
-	MySubscriptionValid = false;
-}
-
 /*
  * Apply main loop.
  */
@@ -3818,6 +3809,9 @@ ApplyWorkerMain(Datum main_arg)
 		}
 
 		before_shmem_exit(yb_apply_worker_onexit, (Datum) 0);
+		LWLockAcquire(LogicalRepWorkerLock, LW_EXCLUSIVE);
+		MyLogicalRepWorker->yb_owns_subscription = true;
+		LWLockRelease(LogicalRepWorkerLock);
 	}
 
 	/* Connect to the origin and start the replication. */
@@ -4123,11 +4117,9 @@ clear_subscription_skip_lsn(XLogRecPtr finish_lsn)
 
 		tup = heap_modify_tuple(tup, RelationGetDescr(rel), values, nulls,
 								replaces);
-
-		/* YB: non-DDL: must commit with this txn; staleness is benign. */
-		YB_NON_DDL_TXN_FOR_SYS_TABLES_ALLOWED(CatalogTupleUpdate(rel,
-																  &tup->t_self,
-																  tup));
+		YB_BEGIN_NON_DDL_SYS_TABLE_WRITE();
+		CatalogTupleUpdate(rel, &tup->t_self, tup);
+		YB_END_NON_DDL_SYS_TABLE_WRITE();
 
 		if (myskiplsn != finish_lsn)
 			ereport(WARNING,
@@ -4243,6 +4235,10 @@ yb_apply_worker_onexit(int code, Datum arg)
 	}
 	list_free(workers);
 
+	LWLockAcquire(LogicalRepWorkerLock, LW_EXCLUSIVE);
+	MyLogicalRepWorker->yb_owns_subscription = false;
+	LWLockRelease(LogicalRepWorkerLock);
+
 	/*
 	 * The session's end releases the lock too; this only does it sooner.  It
 	 * fails on a SIGTERM exit, which has already shut the session down.
@@ -4256,4 +4252,14 @@ yb_apply_worker_onexit(int code, Datum arg)
 				 errdetail("%s", YBCStatusMessageBegin(status))));
 		YBCFreeStatus(status);
 	}
+}
+
+/* YB: drop this worker's subscription caches; the next lookup goes to storage. */
+static void
+yb_force_subscription_reread(void)
+{
+	YbInvalidateCatalogSnapshot();
+	CatalogCacheFlushCatalog(SubscriptionRelRelationId);
+	CatalogCacheFlushCatalog(SubscriptionRelationId);
+	MySubscriptionValid = false;
 }

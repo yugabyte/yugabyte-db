@@ -137,21 +137,8 @@ static bool FetchTableStates(bool *started_tx);
 static StringInfo copybuf = NULL;
 
 /* YB declarations */
+static void YbResetCatalogReadState(void);
 static void YbExitIfNoApplyWorker(void);
-
-/*
- * YB: Drop the pinned catalog read time and the read points so the next
- * pg_subscription_rel read sees the latest committed state.  Legacy catalog
- * mode pins the transaction read point and object locking mode the catalog
- * one, so reset both.
- */
-static void
-YbResetCatalogReadState(void)
-{
-	YbInvalidateCatalogSnapshot();
-	YbResetTransactionReadPoint(true /* is_catalog_snapshot */ );
-	YbResetTransactionReadPoint(false /* is_catalog_snapshot */ );
-}
 
 /*
  * Exit routine for synchronization worker.
@@ -1665,25 +1652,33 @@ UpdateTwoPhaseState(Oid suboid, char new_state)
 }
 
 /*
- * YB: Exit unless this node runs the subscription's apply worker.  The apply
- * worker stops its tablesync workers when it exits (yb_apply_worker_onexit in
- * worker.c), so another node can take the subscription over once its lock is
- * free; this catches a tablesync worker that was still starting then.
+ * YB: Exit unless this node owns the subscription.  The apply worker stops its
+ * tablesync workers when it exits (yb_apply_worker_onexit in worker.c), so
+ * another node can take the subscription over once its lock is free; this
+ * catches a tablesync worker that was still starting then.
  */
 static void
 YbExitIfNoApplyWorker(void)
 {
-	LogicalRepWorker *worker;
-
-	LWLockAcquire(LogicalRepWorkerLock, LW_SHARED);
-	worker = logicalrep_worker_find(MyLogicalRepWorker->subid, InvalidOid,
-									true);
-	LWLockRelease(LogicalRepWorkerLock);
-	if (worker)
+	if (yb_logicalrep_owns_subscription(MyLogicalRepWorker->subid))
 		return;
 
 	ereport(LOG,
-			(errmsg("logical replication table synchronization worker for subscription %u, table %u will stop because the subscription's apply worker is not running on this node",
+			(errmsg("logical replication table synchronization worker for subscription %u, table %u will stop because this node no longer runs the subscription's apply worker",
 					MyLogicalRepWorker->subid, MyLogicalRepWorker->relid)));
 	proc_exit(0);
+}
+
+/*
+ * YB: Drop the pinned catalog read time and the read points so the next
+ * pg_subscription_rel read sees the latest committed state.  Legacy catalog
+ * mode pins the transaction read point and object locking mode the catalog
+ * one, so reset both.
+ */
+static void
+YbResetCatalogReadState(void)
+{
+	YbInvalidateCatalogSnapshot();
+	YbResetTransactionReadPoint(true /* is_catalog_snapshot */ );
+	YbResetTransactionReadPoint(false /* is_catalog_snapshot */ );
 }

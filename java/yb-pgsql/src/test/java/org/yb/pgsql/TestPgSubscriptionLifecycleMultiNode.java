@@ -236,9 +236,9 @@ public class TestPgSubscriptionLifecycleMultiNode
 
   /**
    * Forces node tserverIdx's launcher to scan pg_subscription now rather than
-   * after DEFAULT_NAPTIME_PER_CYCLE (180s).  Only the ENABLE path calls
-   * ApplyLauncherWakeupAtCommit, and enabling an enabled subscription is a
-   * no-op, so this wakes the launcher without changing state.
+   * after DEFAULT_NAPTIME_PER_CYCLE (180s).  ENABLE on an enabled
+   * subscription calls ApplyLauncherWakeupAtCommit and leaves it enabled; it
+   * still rewrites the pg_subscription row and bumps the catalog version.
    */
   private void wakeLauncherOnNode(int tserverIdx) throws Exception {
     try (Connection conn = nodeConn(tserverIdx, SUB_DB);

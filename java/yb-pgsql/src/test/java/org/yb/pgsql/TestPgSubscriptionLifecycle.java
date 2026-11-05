@@ -34,9 +34,9 @@ import org.yb.util.BuildTypeUtil;
  *
  * Validates:
  *  - Launcher detects new/dropped subscriptions (catalog read-time reset)
- *  - Tablesync state transitions (SYNCDONE commit, stale origin cleanup,
- *    HT-based origin_startpos, fresh pg_subscription_rel reads)
- *  - sinval messages for pg_subscription_rel (indexing.c + inval.c)
+ *  - Tablesync with copy_data up to SYNCDONE, and its retry after a failed
+ *    initial copy (stale origin cleanup)
+ *  - Tables added with copy_data = false start READY
  *
  * These tests do NOT assert on replicated data; they only observe worker
  * PIDs, table sync states, and replication slot metadata.
@@ -393,9 +393,8 @@ public class TestPgSubscriptionLifecycle extends BasePgSubscriptionLifecycleTest
   }
 
   /**
-   * Verifies that table sync reaches 'r' (ready) state with copy_data=false.
-   * Exercises the sinval path (indexing.c + inval.c) that lets the apply
-   * worker see SYNCDONE state updates from the tablesync worker.
+   * Verifies that a table subscribed with copy_data=false is READY.  CREATE
+   * SUBSCRIPTION inserts it as READY directly; no tablesync worker runs.
    */
   @Test
   public void testTableSyncReachesReady() throws Exception {
@@ -409,9 +408,8 @@ public class TestPgSubscriptionLifecycle extends BasePgSubscriptionLifecycleTest
   }
 
   /**
-   * Verifies that table sync completes with copy_data=true on an empty table.
-   * Exercises the SYNCDONE commit fix and HT-based origin_startpos extraction
-   * in tablesync.c.
+   * Verifies that a tablesync worker copies the initial data and moves the
+   * table to SYNCDONE with copy_data=true.
    */
   @Test
   public void testTableSyncWithCopyData() throws Exception {
@@ -488,9 +486,10 @@ public class TestPgSubscriptionLifecycle extends BasePgSubscriptionLifecycleTest
   }
 
   /**
-   * Verifies that a subscription can be dropped and recreated successfully.
-   * Tests the stale replication origin cleanup in tablesync.c (the
-   * replorigin_drop_by_name call that handles origins surviving YB crashes).
+   * Verifies that a subscription can be dropped and recreated successfully,
+   * with a new apply worker and slot.  With copy_data=false no tablesync
+   * worker runs; the stale origin cleanup is covered by
+   * testTableSyncRetriesAfterCopyFailure.
    */
   @Test
   public void testSubscriptionRecreation() throws Exception {
@@ -507,15 +506,15 @@ public class TestPgSubscriptionLifecycle extends BasePgSubscriptionLifecycleTest
     dropSubscriptionCleanly();
     waitForNoWorker(SUB_NAME);
 
-    // Recreate should succeed even if stale origins exist.
+    // Recreate under the same name.
     createSubscription(false);
     waitForWorkerPid(SUB_NAME);
     waitForTableState(SUB_NAME, "t", 'r');
   }
 
   /**
-   * Verifies that multiple tables all reach 'r' (ready) state.
-   * Exercises the sinval path for pg_subscription_rel across multiple tables.
+   * Verifies that multiple tables subscribed with copy_data=false are all
+   * READY and tracked in pg_subscription_rel.
    */
   @Test
   public void testMultipleTableSync() throws Exception {
@@ -536,9 +535,8 @@ public class TestPgSubscriptionLifecycle extends BasePgSubscriptionLifecycleTest
   }
 
   /**
-   * Verifies that ALTER SUBSCRIPTION ... REFRESH PUBLICATION picks up a
-   * newly added table and syncs it to 'r'.  Tests the FetchTableStates
-   * read-point reset in tablesync.c.
+   * Verifies that ALTER SUBSCRIPTION ... REFRESH PUBLICATION with
+   * copy_data=false adds a newly published table as READY.
    */
   @Test
   public void testAlterSubscriptionRefresh() throws Exception {

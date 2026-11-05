@@ -4370,10 +4370,13 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 		case T_DropSubscriptionStmt:
 			/*
 			 * Changes no user table metadata, so concurrent transactions
-			 * need not abort.  Apply workers pick up subscription changes
-			 * by re-reading pg_subscription themselves.
+			 * need not abort.  Apply workers on other nodes re-read
+			 * pg_subscription only once the catalog version changes, so the
+			 * bump must not depend on
+			 * yb_always_increment_catalog_version_on_ddl.
 			 */
 			is_breaking_change = false;
+			is_version_increment = true;
 			break;
 
 		case T_AlterRoleStmt:

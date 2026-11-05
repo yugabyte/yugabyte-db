@@ -595,39 +595,6 @@ ProcessInvalidationMessagesMulti(InvalidationMsgsGroup *group,
 	ProcessMessageSubGroupMulti(group, RelCacheMsgs, func(msgs, n));
 }
 
-#ifdef USE_ASSERT_CHECKING
-/*
- * YB: Callback for YbAssertSubscriptionInvalsOnly: fail on any invalidation
- * message that does not concern pg_subscription or pg_subscription_rel.
- */
-static void
-YbAssertSubscriptionInvalMessage(SharedInvalidationMessage *msg)
-{
-	if (msg->id >= 0)
-		Assert(msg->cc.id == SUBSCRIPTIONOID ||
-			   msg->cc.id == SUBSCRIPTIONNAME ||
-			   msg->cc.id == SUBSCRIPTIONRELMAP);
-	else if (msg->id == SHAREDINVALCATALOG_ID)
-		Assert(msg->cat.catId == SubscriptionRelationId ||
-			   msg->cat.catId == SubscriptionRelRelationId);
-	else
-		Assert(false);
-}
-
-/*
- * YB: Worker-only assert that the current command queued no invalidation
- * outside pg_subscription / pg_subscription_rel (see the macro's comment).
- */
-void
-YbAssertSubscriptionInvalsOnly(void)
-{
-	if (!IsYugaByteEnabled() || transInvalInfo == NULL || !IsLogicalWorker())
-		return;
-	ProcessInvalidationMessages(&transInvalInfo->CurrentCmdInvalidMsgs,
-								YbAssertSubscriptionInvalMessage);
-}
-#endif
-
 /* ----------------------------------------------------------------
  *					  private support functions
  * ----------------------------------------------------------------
@@ -728,17 +695,11 @@ LocalExecuteInvalidationMessage(SharedInvalidationMessage *msg)
 {
 	/*
 	 * YB: cross-process sinval is ignored (catalog versions invalidate
-	 * instead), but pg_subscription(_rel) writes are non-DDL DML, so sinval
-	 * is the only DISABLE/SYNCDONE signal for an idle apply worker on the
-	 * same node.
+	 * instead), except for YbIsCrossProcessInvalMessage.
 	 */
-	if (IsYugaByteEnabled() && msg->yb_header.yb_sender_pid != getpid())
-	{
-		if (msg->id != SUBSCRIPTIONRELMAP &&
-			msg->id != SUBSCRIPTIONOID &&
-			msg->id != SUBSCRIPTIONNAME)
-			return;
-	}
+	if (IsYugaByteEnabled() && msg->yb_header.yb_sender_pid != getpid() &&
+		!YbIsCrossProcessInvalMessage(msg))
+		return;
 
 	if (msg->id >= 0)
 	{
@@ -2257,3 +2218,53 @@ YbCheckSharedInvalMessages()
 	static_assert(offsetof(SharedInvalidationMessage, sm) == 0, "offset mismatch");
 	static_assert(offsetof(SharedInvalidationMessage, sn) == 0, "offset mismatch");
 }
+
+/*
+ * YB: Whether a backend applies msg even when another process sent it.
+ * Catalog versions do cross-process invalidation in YB, but
+ * pg_subscription_rel writes are DML that bump no version.  A same-node apply
+ * worker learns of them (the tablesync -> apply worker handoff), and promptly
+ * of a same-node ALTER or DISABLE, only through sinval.  SICleanupQueue must
+ * agree with this.
+ */
+bool
+YbIsCrossProcessInvalMessage(const SharedInvalidationMessage *msg)
+{
+	return msg->id == SUBSCRIPTIONRELMAP ||
+		msg->id == SUBSCRIPTIONOID ||
+		msg->id == SUBSCRIPTIONNAME;
+}
+
+#ifdef USE_ASSERT_CHECKING
+/*
+ * YB: Callback for YbAssertSubscriptionInvalsOnly: fail on any invalidation
+ * message that does not concern pg_subscription or pg_subscription_rel.
+ */
+static void
+YbAssertSubscriptionInvalMessage(SharedInvalidationMessage *msg)
+{
+	if (msg->id >= 0)
+		Assert(msg->cc.id == SUBSCRIPTIONOID ||
+			   msg->cc.id == SUBSCRIPTIONNAME ||
+			   msg->cc.id == SUBSCRIPTIONRELMAP);
+	else if (msg->id == SHAREDINVALCATALOG_ID)
+		Assert(msg->cat.catId == SubscriptionRelationId ||
+			   msg->cat.catId == SubscriptionRelRelationId);
+	else
+		Assert(false);
+}
+
+/*
+ * YB: Worker-only assert that the current command queued no invalidation
+ * outside pg_subscription / pg_subscription_rel (see
+ * YB_BEGIN_NON_DDL_SYS_TABLE_WRITE).
+ */
+void
+YbAssertSubscriptionInvalsOnly(void)
+{
+	if (!IsYugaByteEnabled() || transInvalInfo == NULL || !IsLogicalWorker())
+		return;
+	ProcessInvalidationMessages(&transInvalInfo->CurrentCmdInvalidMsgs,
+								YbAssertSubscriptionInvalMessage);
+}
+#endif
