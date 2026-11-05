@@ -46,7 +46,7 @@ public class TestSusetGucStickiness extends BaseYsqlConnMgr {
   private void assertValueOnEveryBackend(Statement stmt, String guc, String expected,
                                          boolean expectedSticky) throws Exception {
     Set<Integer> pids = new HashSet<>();
-    for (int i = 0; i < 10 || (!expectedSticky && pids.size() < 2 && i < 200); i++) {
+    for (int i = 0; expectedSticky ? i < 10 : (pids.size() < 2 && i < 200); i++) {
       ResultSet rs = stmt.executeQuery(
           "SELECT pg_backend_pid(), current_setting('" + guc + "')");
       assertTrue(rs.next());
