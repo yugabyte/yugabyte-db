@@ -162,8 +162,9 @@ public class RedactSecretsFromAudit {
    * Redacts the LDAP passwords (ycql_ldap_bind_passwd, and ldapbindpasswd in ysql_hba_conf_csv)
    * that audit entries written by older versions hold in plain text in the gflag changes in
    * additionalDetails. Reads the column with plain SQL for the reason given on {@link #redact()}.
-   * Returns the ids of the entries it failed to redact; they must stay unmarked so that the job
-   * retries them once the cursor resets.
+   * Returns the ids of the entries whose additionalDetails it failed to parse or update; they must
+   * stay unmarked so that the job retries them once the cursor resets. The gflag redaction logs and
+   * swallows its own errors, so those never leave an entry unmarked.
    */
   private Set<Long> redactGFlagChangesInAdditionalDetails(List<Audit> batch) {
     Set<Long> unredactedIds = new HashSet<>();
