@@ -140,6 +140,28 @@ public class LdapBindPasswdHbaFormatTest {
   }
 
   @Test
+  public void redactAllValuesKeepsQuotedPunctuationInsideUnquotedValue() {
+    // HBA reads pa","ss as pa,ss and ab"}cd" as ab}cd.
+    for (String password : new String[] {"pa\",\"ss", "ab\"}cd\"", "ab\"]cd\""}) {
+      String in = "host all all 0.0.0.0/0 ldap ldapbindpasswd=" + password + " ldaptls=0";
+      assertEquals(
+          "host all all 0.0.0.0/0 ldap ldapbindpasswd=" + SECRET_REPLACEMENT + " ldaptls=0",
+          LdapBindPasswdHbaFormat.redactAllValues(in, SECRET_REPLACEMENT));
+    }
+
+    String endOfCsvRecordInJson =
+        "{\"ysql_hba_conf_csv\":\"\\\"host all all 0.0.0.0/0 ldap"
+            + " ldapbindpasswd=pa\\\"\\\",\\\"\\\"ss\\\",local all all trust\",\"other\":\"keep\"}";
+    String out = LdapBindPasswdHbaFormat.redactAllValues(endOfCsvRecordInJson, SECRET_REPLACEMENT);
+    assertEquals(
+        "\"host all all 0.0.0.0/0 ldap ldapbindpasswd="
+            + SECRET_REPLACEMENT
+            + "\",local all all trust",
+        Json.parse(out).get("ysql_hba_conf_csv").asText());
+    assertEquals("keep", Json.parse(out).get("other").asText());
+  }
+
+  @Test
   public void encodeNullDecodedReturnsEmpty() {
     assertEquals("", LdapBindPasswdHbaFormat.encode(QuoteStyle.UNQUOTED, null));
     assertEquals("", LdapBindPasswdHbaFormat.encode(QuoteStyle.SINGLE_CSV, null));
