@@ -210,6 +210,10 @@ yourself; the script rejects that. The parameter carries "x-yba-api-idempotency-
 keeps it out of the generated server method signatures: the controller implementation never sees
 it.
 
+If the operation submits a task, the first task it submits without an explicit UUID gets the UUID
+derived from the key (IdempotencyService.taskUuidFor, picked up in Commissioner.submit), so that
+clients can follow it without the response and a retry after a restart can't submit it twice.
+
 Do not mark an operation whose response carries a secret (a generated API token, a private key):
 the response is stored as is for the retention period (yb.api.idempotency.retention), and a stored
 secret would defeat YBA's hash-only storage of credentials.

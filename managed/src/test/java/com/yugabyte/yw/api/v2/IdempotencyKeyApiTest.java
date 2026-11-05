@@ -25,7 +25,9 @@ import com.yugabyte.yw.models.ApiIdempotencyKey;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.DB;
 import java.security.KeyPair;
 import java.security.cert.X509Certificate;
@@ -239,6 +241,43 @@ public class IdempotencyKeyApiTest extends FakeDBApplication {
       assertEquals(key, BAD_REQUEST, result.status());
     }
     assertTrue(CertificateInfo.getAll(customerUuid).isEmpty());
+  }
+
+  @Test
+  public void taskSubmittedForTheKeyIsReportedInsteadOfRunningAgain() {
+    // An earlier request with the key submitted its task, but YBA restarted before storing the
+    // response, so the key was released.
+    UUID taskUuid = IdempotencyService.taskUuidFor(customerUuid, KEY);
+    TaskInfo task = new TaskInfo(TaskType.CreateBackup, taskUuid);
+    task.setTaskParams(Json.newObject());
+    task.setOwner("");
+    task.save();
+
+    Result retry = assertPlatformException(() -> createCert(certSpec("root"), KEY));
+
+    assertEquals(CONFLICT, retry.status());
+    JsonNode error = Json.parse(contentAsString(retry)).get("error");
+    assertEquals(taskUuid.toString(), error.get("task_uuid").asText());
+    assertTrue(CertificateInfo.getAll(customerUuid).isEmpty());
+    assertEquals("the key is released", 0, ApiIdempotencyKey.find.query().findCount());
+  }
+
+  @Test
+  public void taskFromAnExpiredUseOfTheKeyDoesNotBlockIt() {
+    UUID taskUuid = IdempotencyService.taskUuidFor(customerUuid, KEY);
+    TaskInfo task = new TaskInfo(TaskType.CreateBackup, taskUuid);
+    task.setTaskParams(Json.newObject());
+    task.setOwner("");
+    task.save();
+    DB.sqlUpdate("UPDATE task_info SET create_time = :t WHERE uuid = :uuid")
+        .setParameter("t", new Date(System.currentTimeMillis() - 48 * 3600 * 1000L))
+        .setParameter("uuid", taskUuid)
+        .execute();
+
+    Result result = createCert(certSpec("root"), KEY);
+
+    assertEquals(contentAsString(result), OK, result.status());
+    assertEquals(1, CertificateInfo.getAll(customerUuid).size());
   }
 
   private void claimInProgress(String key, Date updateTime) {

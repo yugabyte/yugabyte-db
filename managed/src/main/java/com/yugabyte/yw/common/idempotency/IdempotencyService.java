@@ -10,7 +10,9 @@ import static play.mvc.Http.Status.UNPROCESSABLE_ENTITY;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.PlatformScheduler;
@@ -22,10 +24,12 @@ import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.models.ApiIdempotencyKey;
 import com.yugabyte.yw.models.ApiIdempotencyKey.State;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import io.ebean.DB;
 import io.ebean.DuplicateKeyException;
 import io.ebean.Transaction;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -34,11 +38,13 @@ import java.util.Date;
 import java.util.HexFormat;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pekko.util.ByteString;
 import play.http.HttpEntity;
 import play.libs.Json;
+import play.libs.typedmap.TypedKey;
 import play.mvc.Http;
 import play.mvc.Result;
 import play.mvc.Results;
@@ -72,6 +78,14 @@ public class IdempotencyService {
 
   public static final String IDEMPOTENCY_KEY_HEADER = "X-IDEMPOTENCY-KEY";
   public static final String REPLAYED_HEADER = "X-IDEMPOTENT-REPLAYED";
+
+  /** Namespace of the task UUIDs derived from idempotency keys, see {@link #taskUuidFor}. */
+  public static final UUID TASK_UUID_NAMESPACE =
+      UUID.fromString("3bf373dd-d374-4df5-bdea-c3cd942ae7f4");
+
+  // The derived task UUID the idempotent request running on this thread hasn't used yet.
+  private static final TypedKey<AtomicReference<UUID>> PENDING_TASK_UUID =
+      TypedKey.create("idempotencyPendingTaskUuid");
 
   static final int MAX_KEY_LENGTH = 255;
   // Visible ASCII only: the key is an opaque client-generated token, typically a UUID.
@@ -166,12 +180,39 @@ public class IdempotencyService {
       return claim.replay;
     }
 
+    UUID taskUUID = taskUuidFor(customer.getUuid(), key);
+    Optional<TaskInfo> existingTask = TaskInfo.maybeGet(taskUUID);
+    if (existingTask.isPresent()) {
+      Duration retention = confGetter.getGlobalConf(GlobalConfKeys.idempotencyKeyRetention);
+      if (plus(existingTask.get().getCreateTime(), retention).after(new Date())) {
+        // An earlier request with this key submitted the task, but its response was never stored:
+        // YBA restarted, or the operation failed after submitting. Point the client at the task
+        // instead of submitting a second one.
+        release(claim.record);
+        ObjectNode error = Json.newObject();
+        error.put(
+            "message",
+            "A task was already submitted for "
+                + IDEMPOTENCY_KEY_HEADER
+                + " "
+                + key
+                + ", follow it instead of retrying");
+        error.put("task_uuid", taskUUID.toString());
+        throw new PlatformServiceException(CONFLICT, error);
+      }
+      // A task from an earlier use of the key, before it expired: this use gets no derived UUID.
+      taskUUID = null;
+    }
+
     Result result;
+    RequestContext.put(PENDING_TASK_UUID, new AtomicReference<>(taskUUID));
     try {
       result = operation.get();
     } catch (Throwable t) {
       release(claim.record);
       throw t;
+    } finally {
+      RequestContext.clean(ImmutableSet.of(PENDING_TASK_UUID));
     }
     if (isSuccess(result.status())) {
       complete(claim.record, result);
@@ -179,6 +220,44 @@ public class IdempotencyService {
       release(claim.record);
     }
     return result;
+  }
+
+  /**
+   * The UUID that the task an idempotent request submits gets, so that a client can follow the task
+   * even when it lost the response, and a retry can't submit it twice: a name-based (version 5)
+   * UUID of {@code "<customer uuid>:<key>"} in the {@link #TASK_UUID_NAMESPACE} namespace.
+   */
+  public static UUID taskUuidFor(UUID customerUUID, String key) {
+    return nameUuidV5(TASK_UUID_NAMESPACE, customerUUID + ":" + key);
+  }
+
+  /**
+   * Called by {@code Commissioner.submit} for a task submitted without an explicit UUID: returns
+   * the derived task UUID of the idempotent request running on this thread, once, so only the first
+   * task the operation submits gets it. Null outside such a request.
+   */
+  public static UUID consumeTaskUuid() {
+    AtomicReference<UUID> pending = RequestContext.getIfPresent(PENDING_TASK_UUID);
+    return pending == null ? null : pending.getAndSet(null);
+  }
+
+  @VisibleForTesting
+  static UUID nameUuidV5(UUID namespace, String name) {
+    try {
+      MessageDigest sha1 = MessageDigest.getInstance("SHA-1");
+      ByteBuffer namespaceBytes = ByteBuffer.allocate(16);
+      namespaceBytes.putLong(namespace.getMostSignificantBits());
+      namespaceBytes.putLong(namespace.getLeastSignificantBits());
+      sha1.update(namespaceBytes.array());
+      sha1.update(name.getBytes(StandardCharsets.UTF_8));
+      byte[] hash = sha1.digest();
+      hash[6] = (byte) ((hash[6] & 0x0f) | 0x50); // version 5
+      hash[8] = (byte) ((hash[8] & 0x3f) | 0x80); // IETF variant
+      ByteBuffer bytes = ByteBuffer.wrap(hash, 0, 16);
+      return new UUID(bytes.getLong(), bytes.getLong());
+    } catch (NoSuchAlgorithmException e) {
+      throw new IllegalStateException("SHA-1 is not available", e);
+    }
   }
 
   private static String validateKey(String key) {

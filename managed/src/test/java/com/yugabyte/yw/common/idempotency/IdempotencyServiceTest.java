@@ -3,6 +3,7 @@
 package com.yugabyte.yw.common.idempotency;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -107,5 +108,25 @@ public class IdempotencyServiceTest extends FakeDBApplication {
     assertEquals(
         State.COMPLETED,
         ApiIdempotencyKey.find(customer.getUuid(), "done").orElseThrow().getState());
+  }
+
+  @Test
+  public void derivedTaskUuidIsANameBasedV5Uuid() {
+    // Python: uuid.uuid5(uuid.NAMESPACE_DNS, "python.org")
+    assertEquals(
+        UUID.fromString("886313e1-3b8a-5372-9b90-0c9aee199e5d"),
+        IdempotencyService.nameUuidV5(
+            UUID.fromString("6ba7b810-9dad-11d1-80b4-00c04fd430c8"), "python.org"));
+    // Python: uuid.uuid5(IdempotencyService.TASK_UUID_NAMESPACE, "<customer uuid>:<key>"), which
+    // is what a client computes to follow its task.
+    assertEquals(
+        UUID.fromString("dbb0927e-2708-503d-9ac0-6d192ae35883"),
+        IdempotencyService.taskUuidFor(
+            UUID.fromString("f1b2c3d4-0000-4000-8000-000000000001"), "my-key"));
+  }
+
+  @Test
+  public void noDerivedTaskUuidOutsideAnIdempotentRequest() {
+    assertNull(IdempotencyService.consumeTaskUuid());
   }
 }

@@ -24,6 +24,7 @@ import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.idempotency.IdempotencyService;
 import com.yugabyte.yw.common.operator.utils.ResourceOperatorOwned;
 import com.yugabyte.yw.common.rollback.TaskRollbackComputer;
 import com.yugabyte.yw.forms.ITaskParams;
@@ -194,6 +195,11 @@ public class Commissioner {
       ITaskParams taskParams,
       UUID taskUUID,
       @Nullable Consumer<RunnableTask> preTaskSubmitWork) {
+    if (taskUUID == null) {
+      // Within a request sent with X-IDEMPOTENCY-KEY, the first task gets the UUID derived from
+      // the key, so that the client can follow it and a retry can't submit it twice.
+      taskUUID = IdempotencyService.consumeTaskUuid();
+    }
     RunnableTask taskRunnable =
         taskQueue.enqueue(
             TaskParams.builder()
