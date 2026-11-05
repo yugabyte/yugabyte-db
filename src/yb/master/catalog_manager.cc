@@ -5585,35 +5585,8 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
 
     // Try allocating tservers for the replicas and see if we can place a quorum
     // number of replicas.
-    // Essentially, the logic is:
-    // 1. We satisfy whatever we can from the minimums.
-    // 2. We then satisfy whatever we can from the slack.
-    //    Slack replicas can go into any of the valid placement blocks, as long as the block
-    //    stays within its effective maximum number of replicas.
-    // Overall, if in this process we are able to place n/2 + 1 replicas
-    // then we succeed otherwise we fail.
-    size_t total_extra_replicas = num_replicas - minimum_sum;
-    size_t total_feasible_replicas = 0;
-    size_t total_extra_servers = 0;
-    for (const auto& pb : placement_info.placement_blocks()) {
-      auto allowed_ts = VERIFY_RESULT(FindTServersForPlacementBlock(pb, ts_descs));
-      size_t allowed_ts_size = allowed_ts.size();
-      size_t min_num_replicas = pb.min_num_replicas();
-      size_t max_num_replicas =
-          GetEffectiveMaxNumReplicas(pb, narrow_cast<int32_t>(num_replicas));
-      // For every placement block, we can only satisfy upto the number of
-      // tservers present in that particular placement block.
-      total_feasible_replicas += min(allowed_ts_size, min_num_replicas);
-      // Extra tablet servers beyond min_num_replicas will be used to place
-      // the extra replicas over and above the minimums.
-      size_t max_feasible_replicas = min(allowed_ts_size, max_num_replicas);
-      if (max_feasible_replicas > min_num_replicas) {
-        total_extra_servers += max_feasible_replicas - min_num_replicas;
-      }
-    }
-    // The total number of extra replicas that we can put cannot be more than
-    // the total tablet servers that are extra.
-    total_feasible_replicas += min(total_extra_replicas, total_extra_servers);
+    const size_t total_feasible_replicas =
+        VERIFY_RESULT(CountPlaceableReplicas(placement_info, ts_descs));
 
     // If we place the replicas in accordance with above, we should be able to place
     // at least replica_quorum_needed otherwise we fail.
@@ -5628,6 +5601,45 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
   }
 
   return Status::OK();
+}
+
+// Without placement blocks every tserver can take a replica. With them, replica selection
+// satisfies each block's minimum from the tservers in that block, then places the slack replicas
+// on the tservers left in any block that stays within its effective maximum, so a tserver outside
+// every block takes no replica. Overlapping blocks are counted independently.
+Result<size_t> CatalogManager::CountPlaceableReplicas(
+    const PlacementInfoPB& placement_info, const TSDescriptorVector& ts_descs) {
+  if (placement_info.placement_blocks().empty()) {
+    return ts_descs.size();
+  }
+  const size_t num_replicas = GetNumReplicasOrGlobalReplicationFactor(placement_info);
+  size_t minimum_sum = 0;
+  for (const auto& pb : placement_info.placement_blocks()) {
+    minimum_sum += pb.min_num_replicas();
+  }
+  // CheckValidPlacementInfo rejects minimums above num_replicas; there is no slack then.
+  const size_t total_extra_replicas = num_replicas > minimum_sum ? num_replicas - minimum_sum : 0;
+  size_t total_feasible_replicas = 0;
+  size_t total_extra_servers = 0;
+  for (const auto& pb : placement_info.placement_blocks()) {
+    const auto allowed_ts = VERIFY_RESULT(FindTServersForPlacementBlock(pb, ts_descs));
+    const size_t allowed_ts_size = allowed_ts.size();
+    const size_t min_num_replicas = pb.min_num_replicas();
+    const size_t max_num_replicas =
+        GetEffectiveMaxNumReplicas(pb, narrow_cast<int32_t>(num_replicas));
+    // For every placement block, we can only satisfy upto the number of
+    // tservers present in that particular placement block.
+    total_feasible_replicas += min(allowed_ts_size, min_num_replicas);
+    // Extra tablet servers beyond min_num_replicas will be used to place
+    // the extra replicas over and above the minimums.
+    const size_t max_feasible_replicas = min(allowed_ts_size, max_num_replicas);
+    if (max_feasible_replicas > min_num_replicas) {
+      total_extra_servers += max_feasible_replicas - min_num_replicas;
+    }
+  }
+  // The total number of extra replicas that we can put cannot be more than
+  // the total tablet servers that are extra.
+  return total_feasible_replicas + min(total_extra_replicas, total_extra_servers);
 }
 
 Status CatalogManager::CreateTableInMemory(const CreateTableRequestPB& req,
@@ -13876,9 +13888,10 @@ Status CatalogManager::ValidateReplicationInfo(
   // A tier is a hard constraint at creation. CheckValidPlacementInfo accepts a quorum of tservers,
   // but a tablet created on fewer tservers than its replication factor starts under-replicated,
   // and the load balancer, which does not consider tiers, would add the missing replicas on
-  // tservers without the tier. So every replica, and every block's minimum, needs a live tserver
-  // that registered a data directory on the tier. Gated like the count checks. "Registered" also
-  // covers tservers whose tiers are unknown, which create-time placement does not use.
+  // tservers without the tier. So every replica needs a live tserver that registered a data
+  // directory on the tier, counted the way replica selection places them: within the placement
+  // blocks and under their maximums. Gated like the count checks. "Registered" also covers
+  // tservers whose tiers are unknown, which create-time placement does not use.
   const auto& storage_tier = placement_info.storage_tier();
   if (FLAGS_enable_tiered_storage && FLAGS_catalog_manager_check_ts_count_for_create_table &&
       !storage_tier.empty()) {
@@ -13892,28 +13905,16 @@ Status CatalogManager::ValidateReplicationInfo(
               storage_tier));
     }
     const size_t num_replicas = GetNumReplicasOrGlobalReplicationFactor(placement_info);
-    if (ts_descs.size() < num_replicas) {
+    const size_t placeable_replicas =
+        VERIFY_RESULT(CountPlaceableReplicas(placement_info, ts_descs));
+    if (placeable_replicas < num_replicas) {
       return SetupError(
           resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO,
           STATUS_FORMAT(
               InvalidArgument,
-              "The placement needs $0 replicas on storage tier $1, but only $2 live tablet "
-              "servers have registered a data directory on it",
-              num_replicas, storage_tier, ts_descs.size()));
-    }
-    for (const auto& block : placement_info.placement_blocks()) {
-      const auto block_ts_descs = VERIFY_RESULT(FindTServersForPlacementBlock(block, ts_descs));
-      const size_t min_num_replicas = block.min_num_replicas();
-      if (block_ts_descs.size() < min_num_replicas) {
-        return SetupError(
-            resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO,
-            STATUS_FORMAT(
-                InvalidArgument,
-                "Placement block $0 needs $1 replicas on storage tier $2, but only $3 of its live "
-                "tablet servers have registered a data directory on it",
-                block.cloud_info().ShortDebugString(), min_num_replicas, storage_tier,
-                block_ts_descs.size()));
-      }
+              "The placement needs $0 replicas on storage tier $1, but only $2 can be placed on "
+              "live tablet servers that have registered a data directory on it",
+              num_replicas, storage_tier, placeable_replicas));
     }
   }
 

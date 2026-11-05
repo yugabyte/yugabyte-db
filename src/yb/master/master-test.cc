@@ -785,9 +785,10 @@ TEST_F(MasterTest, TestHeartbeatFromRegisteredTSPersisted) {
   ASSERT_EQ(list_resp.servers(0).instance_id().permanent_uuid(), kUUID);
 }
 
-// A placement that names a storage tier only counts tservers that registered that tier, so a
-// cluster with none of them rejects the replication info instead of creating tablets nowhere. A
-// placement without a tier is unconstrained, so an all-hdd cluster still accepts it.
+// A placement that names a storage tier needs a live tserver that registered the tier for every
+// replica, counted the way replica selection places them, and the error names the tier only when
+// the tier is the reason. A placement without a tier is unconstrained, so an all-hdd live
+// placement still accepts it.
 TEST_F(MasterTest, ValidateReplicationInfoRequiresTserversOnStorageTier) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_check_ts_count_for_create_table) = true;
@@ -875,12 +876,12 @@ TEST_F(MasterTest, ValidateReplicationInfoRequiresTserversOnStorageTier) {
   ASSERT_TRUE(resp.has_error()) << resp.ShortDebugString();
   ASSERT_STR_CONTAINS(
       resp.error().status().message(),
-      "The placement needs 5 replicas on storage tier hdd, but only 3 live tablet servers have "
-      "registered a data directory on it");
+      "The placement needs 5 replicas on storage tier hdd, but only 3 can be placed on live "
+      "tablet servers that have registered a data directory on it");
 
-  // The same per placement block: zone0 has one hdd tserver, so a block that wants two replicas
-  // there fails on the tier although the placement as a whole has three, while the untiered
-  // placement with the same blocks is accepted on a quorum.
+  // Within placement blocks the count follows replica selection: zone0 has one hdd tserver, so a
+  // block that wants two replicas there leaves the placement one short although it has three hdd
+  // tservers, while the untiered placement with the same blocks is accepted on a quorum.
   auto blocked = placement("hdd", 3);
   add_block(&blocked, "zone0", 2);
   add_block(&blocked, "zone1", 1);
@@ -888,10 +889,28 @@ TEST_F(MasterTest, ValidateReplicationInfoRequiresTserversOnStorageTier) {
   ASSERT_TRUE(resp.has_error()) << resp.ShortDebugString();
   ASSERT_STR_CONTAINS(
       resp.error().status().message(),
-      "needs 2 replicas on storage tier hdd, but only 1 of its live tablet servers have "
-      "registered a data directory on it");
+      "The placement needs 3 replicas on storage tier hdd, but only 2 can be placed on live "
+      "tablet servers that have registered a data directory on it");
   blocked.clear_storage_tier();
   resp = ASSERT_RESULT(validate(blocked));
+  ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
+
+  // A tier tserver outside every block takes no replica: with blocks for zone0 and zone1 only,
+  // the hdd tserver in zone2 does not count and the placement is one short. The untiered
+  // placement with the same blocks is accepted on a quorum; the ssd-only tserver in zone0 is
+  // where the balancer would have completed the tiered tablet.
+  ASSERT_RESULT(register_ts("ts-ssd", "zone0", kDefaultStorageTier));
+  auto outside = placement("hdd", 3);
+  add_block(&outside, "zone0", 1);
+  add_block(&outside, "zone1", 1);
+  resp = ASSERT_RESULT(validate(outside));
+  ASSERT_TRUE(resp.has_error()) << resp.ShortDebugString();
+  ASSERT_STR_CONTAINS(
+      resp.error().status().message(),
+      "The placement needs 3 replicas on storage tier hdd, but only 2 can be placed on live "
+      "tablet servers that have registered a data directory on it");
+  outside.clear_storage_tier();
+  resp = ASSERT_RESULT(validate(outside));
   ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
 
   // With tiered storage off the tier is not acted on, so the ssd placement is validated as
