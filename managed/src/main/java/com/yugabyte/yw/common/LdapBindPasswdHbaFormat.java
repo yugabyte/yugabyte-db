@@ -28,9 +28,14 @@ public final class LdapBindPasswdHbaFormat {
       "local|host(?:ssl|nossl|gssenc|nogssenc)?";
 
   // Quotes, each possibly JSON-escaped, that close the CSV field and JSON string holding the
-  // record: a JSON delimiter, a line break, or the end follows them. A quote run followed by
-  // anything else is part of the value, such as the escaped opening of a quoted password.
-  private static final String CLOSING_QUOTES = "(?:\\\\*\")+(?=[ \\t]*(?:[,}\\]\\r\\n]|$))";
+  // record: a JSON delimiter, a line break, or the end follows them. A comma counts only before
+  // another JSON string, HBA record or name= pair, because HBA quotes a comma inside a value
+  // (pa",ss" is pa,ss). A quote run followed by anything else is part of the value, such as the
+  // escaped opening of a quoted password.
+  private static final String CLOSING_QUOTES =
+      "(?:\\\\*\")+(?=[ \\t]*(?:[}\\]\\r\\n]|$|,[ \\t]*(?:\\\\*\"|(?:"
+          + HBA_RECORD_START_CONN_TYPE
+          + ")\\s|[A-Za-z][A-Za-z0-9_]*=)))";
 
   // Unquoted value ends before the next ldap*= attr, a comma+name= pair, a new HBA record, a
   // closing quote, a line break, or end. A password that ends a record is followed only by the
