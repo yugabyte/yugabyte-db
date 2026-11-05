@@ -1143,7 +1143,8 @@ TEST_P(PgVectorIndexTest, ManyRowsWithBackfillAndRestart) {
 
 // GH#35499: the backfill writes the reverse mapping entries into the regular DB memtable, with no
 // WAL record, so an unclean restart loses those of the rows before the backfill position the vector
-// index saved. The resumed backfill must write them again.
+// index saved. The resumed backfill must write them again, and a vector index compaction running
+// before it does must keep the vectors of those rows.
 TEST_P(PgVectorIndexTest, BackfillResumedAfterUncleanRestart) {
   constexpr size_t kNumRows = 64;
 
@@ -1161,11 +1162,13 @@ TEST_P(PgVectorIndexTest, BackfillResumedAfterUncleanRestart) {
   ASSERT_OK(cluster_->FlushTablets());
 
   ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_batch) = true;
+  TestThreadHolder threads;
+  // Declared after the threads, so that an early return unblocks the backfill CREATE INDEX waits
+  // for before the threads are joined.
   auto unblock_backfill = ScopeExit([] {
     ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_batch) =
         false;
   });
-  TestThreadHolder threads;
   threads.AddThreadFunctor([this] {
     auto index_conn = ASSERT_RESULT(Connect());
     ASSERT_OK(CreateIndex(index_conn));
@@ -1211,7 +1214,41 @@ TEST_P(PgVectorIndexTest, BackfillResumedAfterUncleanRestart) {
   DisableFlushOnShutdown(*cluster_, true);
   restarted_ts->Shutdown();
   ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_batch) = false;
+
+  // Parks the resumed backfill before it writes the lost reverse mapping entries again. The other
+  // replicas are past this point already.
+  std::atomic<bool> backfill_parked{false};
+  std::atomic<bool> release_backfill{false};
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack(
+      "TabletVectorIndexes::Backfill:Start", [&backfill_parked, &release_backfill](void*) {
+        backfill_parked = true;
+        while (!release_backfill) {
+          std::this_thread::sleep_for(10ms);
+        }
+      });
+  sync_point->EnableProcessing();
+  auto sync_point_cleanup = ScopeExit([&release_backfill, sync_point] {
+    release_backfill = true;
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
   ASSERT_OK(restarted_ts->RestartStoppedServer(tserver::WaitTabletsBootstrapped::kTrue));
+  ASSERT_OK(WaitFor(
+      [&backfill_parked] { return backfill_parked.load(); }, 30s * kTimeMultiplier,
+      "Resumed backfill parked"));
+  // Compacts the saved chunk while the reverse mapping still lacks the entries of its vectors.
+  {
+    auto restarted = restarted_peers();
+    ASSERT_EQ(restarted.size(), 1);
+    auto indexes = ASSERT_RESULT(restarted.front()->shared_tablet())->vector_indexes().List();
+    ASSERT_TRUE(indexes);
+    ASSERT_EQ(indexes->size(), 1);
+    ASSERT_OK(indexes->front()->Compact());
+    ASSERT_OK(indexes->front()->WaitForCompaction());
+  }
+  release_backfill = true;
   threads.JoinAll();
 
   ASSERT_OK(WaitFor([this]() -> Result<bool> {
@@ -1232,21 +1269,18 @@ TEST_P(PgVectorIndexTest, BackfillResumedAfterUncleanRestart) {
   ASSERT_GT(resumed_entries, 0);
   ASSERT_LT(resumed_entries, make_signed(kNumRows));
 
-  // The check reads at the replica's safe time, which on the restarted follower can still be below
-  // the backfill read time, where the reverse mapping entries are written.
-  const auto backfilled_ht = HybridTime::FromMicros(ASSERT_RESULT(WallClock()->Now()).time_point);
-  ASSERT_OK(WaitFor([this, backfilled_ht]() -> Result<bool> {
-    for (const auto& peer : ListTabletPeersWithVectorIndexes(cluster_.get())) {
-      auto tablet = VERIFY_RESULT(peer->shared_tablet());
-      if (VERIFY_RESULT(tablet->SafeTime(tablet::RequireLease::kFalse)) <= backfilled_ht) {
-        return false;
-      }
+  // The safe time of the restarted follower can still be below the index hybrid time, where the
+  // reverse mapping entries are written, and the replica is not checked until it gets past it.
+  std::vector<tserver::VectorIndexReplicaCheckPB> checks;
+  ASSERT_OK(WaitFor([this, &checks]() -> Result<bool> {
+    auto result = VerifyVectorIndexes();
+    if (!result.ok() && result.status().IsTryAgain()) {
+      return false;
     }
+    checks = VERIFY_RESULT(std::move(result));
     return true;
-  }, 30s * kTimeMultiplier, "Safe time past the backfill"));
-
+  }, 30s * kTimeMultiplier, "Vector indexes checked"));
   // One check per tablet server, in the order of the servers.
-  auto checks = ASSERT_RESULT(VerifyVectorIndexes());
   ASSERT_EQ(checks.size(), cluster_->num_tablet_servers());
   std::string inconsistent;
   for (size_t i = 0; i != checks.size(); ++i) {
@@ -7380,6 +7414,37 @@ TEST_F(PgVectorIndexUtilTest, IndexCheck) {
   ASSERT_FALSE(peers.empty());
   output = ASSERT_RESULT(run_tool({peers.front()->tablet_id(), "unknown_index"}));
   ASSERT_STR_CONTAINS(output, "not checked: Not found");
+}
+
+// A transaction which started before the index was created holds the read time of the check below
+// the index hybrid time, where the backfill writes the reverse mapping entries. Reading there would
+// report every backfilled row as missing its entry, so the replica is not checked until then.
+TEST_F(PgVectorIndexUtilTest, IndexCheckBelowIndexHybridTime) {
+  constexpr size_t kNumRows = 5;
+
+  // The backfill writes the reverse mapping only of the tables which do not own it.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_owned_vector_reverse_mapping) = false;
+
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  auto txn_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(txn_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(txn_conn.Execute("INSERT INTO test VALUES (1000, '[1, 2, 3]')"));
+  ASSERT_OK(CreateIndex(conn));
+
+  auto status = ResultToStatus(VerifyVectorIndexes());
+  ASSERT_TRUE(status.IsTryAgain()) << status;
+
+  ASSERT_OK(txn_conn.RollbackTransaction());
+  ASSERT_OK(WaitFor([this]() -> Result<bool> {
+    auto check_status = ResultToStatus(VerifyVectorIndexes());
+    if (check_status.IsTryAgain()) {
+      return false;
+    }
+    RETURN_NOT_OK(check_status);
+    return true;
+  }, 30s * kTimeMultiplier, "Vector indexes checked"));
+  ASSERT_EQ(ASSERT_RESULT(VectorIndexInconsistencies()), "");
 }
 
 // An index which stores payloads has no reverse mapping, so deleted and replaced vectors are

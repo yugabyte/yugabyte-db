@@ -558,18 +558,22 @@ class VectorIndexBackfillHelper : public VectorIndexBackfillContext {
     if (!reverse_mapping_backfiller_ || end_ybctid.empty()) {
       return 0;
     }
+    // Nothing is inserted into the vector index, so the batch only bounds the memory taken by the
+    // rows and needs a limit even when the backfill batch has none.
+    constexpr size_t kMaxBatchSize = 10000;
+    const size_t batch_size = max_batch_size_ ? max_batch_size_ : kMaxBatchSize;
     size_t num_rows = 0;
     IndexedTableReader reader(index);
     RETURN_NOT_OK(reader.Init(backfill_ht(), Slice()));
     while (VERIFY_RESULT(reader.FetchNext())) {
+      if (tablet.IsShutdownRequested()) {
+        return STATUS(ShutdownInProgress, "Tablet is shutting down");
+      }
       auto ybctid = reader.current_ybctid();
       if (ybctid.compare(end_ybctid) >= 0) {
         break;
       }
-      if (NeedFlush()) {
-        if (tablet.IsShutdownRequested()) {
-          return STATUS(ShutdownInProgress, "Tablet is shutting down");
-        }
+      if (entries().size() >= batch_size) {
         ApplyReverseMapping(tablet);
         Reset();
       }
