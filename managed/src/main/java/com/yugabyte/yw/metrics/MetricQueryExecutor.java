@@ -36,6 +36,9 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
 
   private final boolean isRecharts;
 
+  // Names the k8s_ keys' lines by the universe's release metadata; null without universe context.
+  private final K8sPodNodeNameResolver k8sPodNodeNameResolver;
+
   public MetricQueryExecutor(
       MetricUrlProvider metricUrlProvider,
       ApiHelper apiHelper,
@@ -60,6 +63,26 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
       Map<String, String> additionalFilters,
       MetricSettings metricSettings,
       boolean isRecharts) {
+    this(
+        metricUrlProvider,
+        apiHelper,
+        headers,
+        queryParam,
+        additionalFilters,
+        metricSettings,
+        isRecharts,
+        null);
+  }
+
+  public MetricQueryExecutor(
+      MetricUrlProvider metricUrlProvider,
+      ApiHelper apiHelper,
+      Map<String, String> headers,
+      Map<String, String> queryParam,
+      Map<String, String> additionalFilters,
+      MetricSettings metricSettings,
+      boolean isRecharts,
+      K8sPodNodeNameResolver k8sPodNodeNameResolver) {
     this.apiHelper = apiHelper;
     this.metricUrlProvider = metricUrlProvider;
     this.headers.putAll(headers);
@@ -67,6 +90,7 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
     this.additionalFilters.putAll(additionalFilters);
     this.metricSettings = metricSettings;
     this.isRecharts = isRecharts;
+    this.k8sPodNodeNameResolver = k8sPodNodeNameResolver;
     if (queryParam.containsKey("step")) {
       this.queryRangeSecs = Integer.parseInt(queryParam.get("step"));
     } else {
@@ -178,7 +202,9 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
           responseJson.put("error", queryResponse.error);
           break;
         } else {
-          output.addAll(queryResponse.getGraphData(metric, configDefinition, metricSettings));
+          output.addAll(
+              queryResponse.getGraphData(
+                  metric, configDefinition, metricSettings, k8sPodNodeNameResolver));
         }
       }
       directURLs.add(getDirectURL(queryExpressions));

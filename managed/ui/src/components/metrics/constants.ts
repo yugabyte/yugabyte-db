@@ -399,3 +399,55 @@ export const DEFAULT_OUTLIER_NUM_NODES = 3;
 export const MIN_OUTLIER_NUM_NODES = 1;
 export const MAX_OUTLIER_NUM_NODES = 5;
 export const MAX_OUTLIER_NUM_TABLES = 7;
+
+// Kubernetes universes read these panels from cAdvisor and kubelet instead of the node.
+export const KUBERNETES_METRIC_KEYS: Readonly<Record<string, string>> = {
+  cpu_usage: 'k8s_cpu_usage',
+  memory_usage: 'k8s_memory_usage',
+  disk_used_size_total: 'k8s_volume_disk_used_size_total',
+  disk_usage_percent: 'k8s_volume_disk_usage_percent',
+  disk_volume_used: 'k8s_volume_disk_volume_used',
+  disk_volume_usage_percent: 'k8s_volume_disk_volume_usage_percent'
+};
+
+// Node panels with no source on Kubernetes pods.
+export const METRICS_UNAVAILABLE_ON_KUBERNETES: readonly string[] = [
+  'disk_iops',
+  'disk_bytes_per_second_per_node',
+  'disk_io_time',
+  'disk_io_queue_depth',
+  'disk_io_read_latency',
+  'disk_io_write_latency',
+  'network_packets',
+  'network_bytes',
+  'network_errors',
+  'network_tcp_retransmits',
+  'system_load_over_time'
+];
+
+// Master processes export the same DB metrics under their own names.
+export const MASTER_DISK_IO_METRIC_KEYS: Readonly<Record<string, string>> = {
+  lsm_rocksdb_flush_size: 'master_lsm_rocksdb_flush_size',
+  lsm_rocksdb_compaction: 'master_lsm_rocksdb_compaction',
+  lsm_rocksdb_compaction_time: 'master_lsm_rocksdb_compaction_time',
+  tserver_log_bytes_read: 'master_log_bytes_read',
+  tserver_log_bytes_written: 'master_log_bytes_written'
+};
+
+/**
+ * Returns the metric keys to query for a tab, adjusted for Kubernetes universes and for master
+ * servers.
+ */
+export const metricsForTab = (type: string, isKubernetes: boolean, isMaster: boolean): string[] => {
+  const tab = (MetricTypesWithOperations as Record<string, { metrics: readonly string[] }>)[type];
+  let metrics: string[] = [...tab.metrics];
+  if (isKubernetes) {
+    metrics = metrics
+      .filter((metric) => !METRICS_UNAVAILABLE_ON_KUBERNETES.includes(metric))
+      .map((metric) => KUBERNETES_METRIC_KEYS[metric] ?? metric);
+  }
+  if (isMaster && type === MetricTypes.DISK_IO) {
+    metrics = metrics.map((metric) => MASTER_DISK_IO_METRIC_KEYS[metric] ?? metric);
+  }
+  return metrics;
+};
