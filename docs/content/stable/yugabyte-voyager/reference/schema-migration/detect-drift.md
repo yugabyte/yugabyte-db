@@ -229,7 +229,7 @@ The console shows a summary of the comparison window, stored captures, intervals
 
 The HTML report shows the migration as a timeline, from export schema to the live read of the source taken when the command runs. Each change is listed in the interval in which it happened, labeled with what the migration was doing at the time, such as "export data: running".
 
-Every change has a severity (such as, Breaks the migration: unrecoverable, Breaks the migration: recoverable, Potential impact, or Advisory), a description of its impact on the migration, and the corrective step. The JSON report carries the same information for scripts.
+Every change has a severity (such as, Breaks the migration: unrecoverable, Breaks the migration: recoverable, Potential impact, or Advisory), a description of its impact on the migration, and the corrective step. The severity, impact, and recommended action are set based on when the change occurred: before export data, during offline, live, or changes-only migration, or after cutover is initiated but not completed. Changes that can go either way, such as NOT NULL set or dropped and a partition attached or detached, are reported as separate types. The JSON report carries the same information for scripts.
 
 ## Example
 
@@ -254,7 +254,7 @@ yb-voyager schema detect-drift --export-dir /dir/export-dir \
 
 - Applicable to PostgreSQL sources only.
 - Only tables and columns are compared. Indexes, constraints, views, functions, and other objects are not.
-- Only source-side changes are reported, and only up to cutover to the target.
+- Only source-side changes are reported, and only up to cutover to the target. Changes after cutover is completed are not reported.
 - The report says what to do; it doesn't generate or apply DDL.
 - With [iterative cutover](../../iterative-cutover/), each iteration records its snapshots in its own export directory, and the command reports only on the directory passed in `--export-dir`. The main export directory covers the first iteration. To report on a later iteration, pass that iteration's export directory: `<export-dir>/live-data-migration-iterations/live-data-migration-iteration-<N>/export-dir`. There is no single report across iterations.
 - If a table is renamed during the migration, filtering with `--table-list` on either name doesn't show its full history. An unfiltered run shows both.

@@ -262,6 +262,10 @@ void Tablet::EmitRocksDBMetrics(std::shared_ptr<rocksdb::Statistics> rocksdb_sta
                                 const MetricJsonOptions& opts) {
 ```
 
+### Passing small and large values
+
+Pass small value types such as `HybridTime` by value, and larger ones such as `EncodedDocHybridTime` by const reference.
+
 ### Pointer and reference parameters and variables
 
 Put a space on either side of `*` and `&` (but not on both sides).
@@ -638,6 +642,15 @@ In new code, use the following utilities rather than the legacy forms that do th
 | `std::function` | `boost::function` |
 | `std::optional` | `boost::optional` |
 | `ScopeExit` from `yb/util/scope_exit.h` | `BOOST_SCOPE_EXIT`, `absl::Cleanup` |
+| `yb::Thread` | `std::thread` |
+| The `TPtr` alias from the module's `*_fwd.h`, such as `using LogReaderPtr = std::shared_ptr<LogReader>;` (add one if missing) | `std::shared_ptr<LogReader>` spelled out |
+| Including the owning module's `*_fwd.h` | A hand-written forward declaration of another library's type |
+| `YB_STRONGLY_TYPED_BOOL` from `yb/util/strongly_typed_bool.h` | A bare `bool` parameter |
+| Explicit arguments at the call sites | Default argument values, especially on virtual functions |
+| `YB_STRUCT_TO_STRING` or `YB_FIELDS_TO_STRING` from `yb/util/tostring.h`, in a `ToString` defined in the `.cc` file | A hand-written list of fields in `ToString` |
+| `AsString` | `yb::ToString` |
+| `CollectionToString` | Building a vector just to print it |
+| `narrow_cast` or `trim_cast` from `yb/gutil/casts.h` | A raw narrowing cast |
 
 ### consensus::OpId
 

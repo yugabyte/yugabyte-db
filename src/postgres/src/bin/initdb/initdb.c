@@ -3187,6 +3187,9 @@ initialize_data_directory(void)
 int
 main(int argc, char *argv[])
 {
+	/* YB: This should be done as the first thing after process start. */
+	YBSetParentDeathSignal();
+
 	if (IsYugaByteGlobalClusterInitdb() || IsYugaByteLocalNodeInitdb())
 		YBSetInitDbModeEnvVar();
 

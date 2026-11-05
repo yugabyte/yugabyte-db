@@ -102,10 +102,12 @@
 /* YB includes */
 #include "access/sysattr.h"
 #include "access/table.h"
+#include "access/yb_scan_plan.h"
 #include "catalog/pg_statistic.h"
 #include "catalog/pg_statistic_ext.h"
 #include "catalog/pg_type_d.h"
 #include "executor/ybExpr.h"
+#include "optimizer/yb_merge_scan.h"
 #include "optimizer/ybplan.h"
 #include "pg_yb_utils.h"
 #include "utils/syscache.h"
@@ -177,6 +179,8 @@ double		yb_inter_zone_roundtrip_cost = YB_DEFAULT_INTER_ZONE_ROUNDTRIP_COST;
 double		yb_inter_zone_transfer_cost = YB_DEFAULT_INTER_ZONE_TRANSFER_COST;
 double		yb_local_roundtrip_cost = YB_DEFAULT_LOCAL_ROUNDTRIP_COST;
 double		yb_local_transfer_cost = YB_DEFAULT_LOCAL_TRANSFER_COST;
+double		yb_merge_scan_row_cost_factor = YB_DEFAULT_MERGE_SCAN_ROW_COST_FACTOR;
+double		yb_merge_scan_stream_cost_factor = YB_DEFAULT_MERGE_SCAN_STREAM_COST_FACTOR;
 
 
 double		recursive_worktable_factor = DEFAULT_RECURSIVE_WORKTABLE_FACTOR;
@@ -8571,8 +8575,9 @@ yb_saop_const_bounds(ScalarArrayOpExpr *saop, Const **min_const,
  *      selectivity (sparse IN-lists ~ 1, clustered IN-lists ~ 0).
  *
  *      Returns false (outputs unchanged) when the clause is not a SAOP,
- *      the rhs is not a non-null Const array, or no btree comparator is
- *      available for the element type.
+ *      the rhs is not a non-null Const array, the executor cannot bind the
+ *      array to the index column, or no btree comparator is available for
+ *      the element type and the SAOP operator.
  */
 static bool
 yb_estimate_saop_bounding_range_selectivity(PlannerInfo *root,
@@ -8588,6 +8593,8 @@ yb_estimate_saop_bounding_range_selectivity(PlannerInfo *root,
 	int			numElems;
 	Oid			elemtype;
 	TypeCacheEntry *typeCache;
+	Oid			lefttype;
+	Oid			righttype;
 	Oid			leOp;
 	Oid			geOp;
 	Expr	   *geExpr;
@@ -8607,12 +8614,26 @@ yb_estimate_saop_bounding_range_selectivity(PlannerInfo *root,
 		return true;
 	}
 
+	/*
+	 * The executor binds the IN-list to the index only for the type pairs
+	 * YbIsScanCompatible accepts, e.g. not (name, text); otherwise no
+	 * bounding range is walked.
+	 */
+	op_input_types(saop->opno, &lefttype, &righttype);
+	if (!YbIsScanCompatible(lefttype, righttype,
+							false /* is_value_scalar */ , (Datum) 0))
+		return false;
+
+	/*
+	 * Look up btree '<=', '>=' for the SAOP operator's input types in the
+	 * element type's opfamily, to bound lhs.
+	 */
 	lhs = (Node *) linitial(saop->args);
 	elemtype = minConst->consttype;
 	typeCache = lookup_type_cache(elemtype, TYPECACHE_BTREE_OPFAMILY);
-	leOp = get_opfamily_member(typeCache->btree_opf, elemtype, elemtype,
+	leOp = get_opfamily_member(typeCache->btree_opf, lefttype, righttype,
 							   BTLessEqualStrategyNumber);
-	geOp = get_opfamily_member(typeCache->btree_opf, elemtype, elemtype,
+	geOp = get_opfamily_member(typeCache->btree_opf, lefttype, righttype,
 							   BTGreaterEqualStrategyNumber);
 	if (!OidIsValid(leOp) || !OidIsValid(geOp))
 		return false;
@@ -10592,17 +10613,48 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	if (!enable_indexscan)
 		startup_cost += disable_cost;
 
-	/* TODO(#29078): cost this better. */
 	if (path->yb_index_path_info.merge_scan_stream_cols)
 	{
 		/*
-		 * We need merge index scans to cost higher than plain index scans to
-		 * avoid doing merge scan where it doesn't give any gains for upper
-		 * nodes.  Make them cost twice of STD_FUZZ_FACTOR higher, where
-		 * STD_FUZZ_FACTOR = 1.01.
+		 * The merge's own work: per row passed up, a constant overhead plus
+		 * one heap step to pick the next row from the streams, about
+		 * log2(streams) comparisons, on top of the index scan's cost.  A
+		 * merge scan must never beat the same index scan without the merge:
+		 * it wins a slot only where an upper node uses its order.  The floor
+		 * keeps it at least 2 % above that scan where the term is smaller,
+		 * outside add_path's fuzz, so the plain path survives and stays the
+		 * cheapest.  Part of the floor goes on startup_cost: a join or Limit
+		 * over the two scans can be within the fuzz on total cost, and
+		 * add_path then falls back to startup_cost before pathkeys.
 		 */
-		startup_cost *= 1.02;
-		run_cost *= 1.02;
+		int			num_streams =
+			yb_merge_scan_num_streams(path->yb_index_path_info.merge_scan_stream_cols);
+		Cardinality merge_rows;
+		Cost		merge_cost;
+		Cost		plain_startup_cost = startup_cost;
+		Cost		plain_total_cost = startup_cost + run_cost;
+
+		/*
+		 * A secondary index with its own read request merges the index
+		 * streams and then fetches base rows by ybctid in merged order, so
+		 * every matched index tuple goes through the heap before the
+		 * base-table filters apply.  A primary key, an index-only scan or an
+		 * embedded secondary index merges the base-table result instead.  As
+		 * elsewhere in this function, a colocated base relation stands in for
+		 * the embedded case.
+		 *
+		 * The planned stream count can be 0 or 1 (an empty or single-element
+		 * IN list, see #36359), and the heap still runs once per row, so
+		 * charge at least one comparison.
+		 */
+		merge_rows = (is_primary_index || index_only || baserel_is_colocated) ?
+			num_baserel_result_rows : num_index_tuples_matched;
+		merge_cost = cpu_operator_cost * merge_rows *
+			(yb_merge_scan_row_cost_factor +
+			 yb_merge_scan_stream_cost_factor * log2(Max(num_streams, 2)));
+		startup_cost = plain_startup_cost * 1.02;
+		run_cost += Max(merge_cost, 0.02 * plain_total_cost) -
+			0.02 * plain_startup_cost;
 	}
 
 	/*
@@ -11010,25 +11062,20 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
  * We require only that the OUTER is sorted on a join key: take the leading
  * outer pathkey and find a mergejoinable join clause whose equivalence class
  * matches it (no inner pathkey is needed).  Both sides' statistics are used,
- * in different roles: the INNER histogram supplies a single boundary value --
- * its lowest join key (highest for a DESC outer) -- and the OUTER's own
- * statistics estimate the fraction of outer rows that sort before that
- * boundary.  This is the outer half of what initial_cost_mergejoin derives.
- *
- * Unlike merge join, we make that fraction FILTER-AWARE
- * (yb_bnl_outer_skip_selectivity): mergejoinscansel measures the leading
- * mismatch over the FULL outer column histogram, ignoring the outer scan's
- * own restriction.  Multiplying that full-column fraction by the already
- * restricted outer_path_rows over-counts the skip whenever the outer is
- * itself bounded to start at/above the inner's matching range (e.g.
- * "outer.k >= c" with c >= min(inner.k) has NO leading mismatch, yet the
- * full-column fraction is large).  Conditioning the fraction on the outer
- * relation's baserestrictinfo collapses it to ~0 there while preserving a
- * genuine low-key prefix.
+ * in different roles: the INNER supplies a single boundary value, its first
+ * join key in the outer's sort order, and the OUTER's own statistics estimate
+ * the fraction of outer rows that sort before that boundary.  This is the
+ * outer half of what initial_cost_mergejoin derives, and
+ * yb_bnl_outer_skip_selectivity seeds it as mergejoinscansel does and adjusts
+ * it with yb_adjust_scansel_for_restrictions: the outer's own range bounds
+ * remove leading mismatches the full column counts (e.g. "outer.k >= c" with
+ * c >= min(inner.k) has NO leading mismatch, yet the full-column fraction is
+ * large), and the inner's bound on the side where its keys start moves its
+ * first key, since the inner's restrictions apply on every probe.
  *
  * Returns 0 (the conservative fallback merge join also uses) when the outer is
  * unsorted, no mergejoinable join clause matches the leading pathkey, or the
- * stats/bounds needed for a filter-aware estimate are unavailable.
+ * statistics the estimate needs are unavailable.
  */
 static double
 yb_bnl_outer_skip_rows(PlannerInfo *root, Path *outer_path,
@@ -11076,8 +11123,7 @@ yb_bnl_outer_skip_rows(PlannerInfo *root, Path *outer_path,
 			yb_bnl_outer_skip_selectivity(root, (Node *) rinfo->clause,
 										  opathkey->pk_opfamily,
 										  opathkey->pk_strategy,
-										  outer_path->parent->relids,
-										  outer_path->parent->baserestrictinfo);
+										  outer_path->parent->relids);
 		if (outerstartsel < 0.0)
 			return 0.0;
 

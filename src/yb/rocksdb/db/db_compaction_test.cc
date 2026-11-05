@@ -726,7 +726,7 @@ class ThrottlingEventListener : public EventListener {
   explicit ThrottlingEventListener(yb::CountDownLatch* flush_compaction_latch = nullptr)
       : flush_compaction_latch_(flush_compaction_latch) {}
 
-  void OnFlushScheduled(DB* /*db*/) override {
+  void OnFlushScheduled(DB* /*db*/, const yb::storage::UserFrontier*) override {
     if (flush_compaction_latch_) {
       flush_compaction_latch_->CountDown();
       LOG(INFO) << "Flush scheduled";

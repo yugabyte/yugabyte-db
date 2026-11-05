@@ -89,6 +89,7 @@ import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupNodeRetriever;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
+import com.yugabyte.yw.common.certmgmt.RpcClientCert;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
@@ -176,6 +177,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -309,7 +311,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.DecommissionNode,
           TaskType.ProvisionUniverseNodes);
 
-  // Tasks that are allowed to run if cluster placement modification task failed.
+  // Tasks that are allowed to run if cluster placement modification task failed. None of them may
+  // be a placement modification task: one would take over the failed task's placement lock and
+  // rollback checkpoint.
   // This mapping blocks/allows actions on the UI done by a mapping defined in
   // UNIVERSE_ACTION_TO_FROZEN_TASK_MAP in "./managed/ui/src/redesign/helpers/constants.ts".
   private static final Set<TaskType> SAFE_TO_RUN_IF_UNIVERSE_BROKEN =
@@ -336,7 +340,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.DestroyUniverse,
           TaskType.DestroyKubernetesUniverse,
           TaskType.ReinstallNodeAgent,
-          TaskType.ProvisionUniverseNodes,
           TaskType.CreateSupportBundle,
           TaskType.CreateSupportBundleV2,
           TaskType.CreateBackupSchedule,
@@ -348,16 +351,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.EnableNodeAgentInUniverse,
           TaskType.UpdateYbcThrottleFlags,
           TaskType.UpdateK8sYbcThrottleFlags);
-
-  /**
-   * Same as {@link #SAFE_TO_RUN_IF_UNIVERSE_BROKEN} but for a universe locked by a rollback task
-   * that itself failed. Re-provisioning nodes is not offered there; destroying the universe and
-   * reinstalling the node agent stay.
-   */
-  private static final Set<TaskType> SAFE_TO_RUN_IF_ROLLBACK_FAILED =
-      Sets.difference(
-              SAFE_TO_RUN_IF_UNIVERSE_BROKEN, ImmutableSet.of(TaskType.ProvisionUniverseNodes))
-          .immutableCopy();
 
   private static final Set<TaskType> SKIP_CONSISTENCY_CHECK_TASKS =
       ImmutableSet.of(
@@ -654,10 +647,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         AllowedTasks.builder().lockedTaskType(lockedTaskType);
     if (PLACEMENT_MODIFICATION_TASKS.contains(lockedTaskType)) {
       builder.restricted(true);
-      builder.taskTypes(
-          TaskRollbackModule.PLACEMENT_ROLLBACK_TASK_TYPES.containsValue(lockedTaskType)
-              ? SAFE_TO_RUN_IF_ROLLBACK_FAILED
-              : SAFE_TO_RUN_IF_UNIVERSE_BROKEN);
+      builder.taskTypes(SAFE_TO_RUN_IF_UNIVERSE_BROKEN);
       if (ROLLBACK_SUPPORTED_SOFTWARE_UPGRADE_TASKS.contains(lockedTaskType)) {
         builder.taskTypes(SOFTWARE_UPGRADE_ROLLBACK_TASKS);
       }
@@ -1041,7 +1031,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           // TODO When checkSuccess = false, lock and unlock are not reverse of each other, but this
           // existing behaviour is retained to not cause regression.
           if (clearUpdatingTask || updaterConfig.isRollbackPerformed()) {
-            universe.setStateTransitionDetails(null);
+            // A task allowed on a universe broken by another task keeps that task's checkpoint.
+            if (!isPlacementLockHeldByOtherTask(universeDetails)) {
+              universe.setStateTransitionDetails(null);
+            }
             if (PLACEMENT_MODIFICATION_TASKS.contains(universeDetails.updatingTask)) {
               boolean pausedTask =
                   getTaskExecutor()
@@ -1269,20 +1262,25 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   protected UniverseDefinitionTaskParams getTargetUniverseDetails() {
     UniverseDefinitionTaskParams target =
         Json.fromJson(Json.toJson(taskParams()), UniverseDefinitionTaskParams.class);
-    if (target.nodeDetailsSet == null) {
-      return target;
+    if (target.nodeDetailsSet != null) {
+      target.nodeDetailsSet.removeIf(node -> node.state == NodeState.ToBeRemoved);
+      for (NodeDetails node : target.nodeDetailsSet) {
+        if (node.state == NodeState.ToBeAdded) {
+          node.state = NodeState.Live;
+        }
+        if (node.masterState == MasterState.ToStart) {
+          node.isMaster = true;
+        } else if (node.masterState == MasterState.ToStop) {
+          node.isMaster = false;
+        }
+        node.masterState = null;
+      }
     }
-    target.nodeDetailsSet.removeIf(node -> node.state == NodeState.ToBeRemoved);
-    for (NodeDetails node : target.nodeDetailsSet) {
-      if (node.state == NodeState.ToBeAdded) {
-        node.state = NodeState.Live;
-      }
-      if (node.masterState == MasterState.ToStart) {
-        node.isMaster = true;
-      } else if (node.masterState == MasterState.ToStop) {
-        node.isMaster = false;
-      }
-      node.masterState = null;
+    if (target.clusters != null) {
+      // Primary cluster is moved to the front of the list. This is a fix for any regression that
+      // can happen if the primary cluster is not at index 0.
+      // TODO: Fix other places that assume the primary cluster is always at index 0.
+      target.clusters.sort(Comparator.comparing(c -> c.clusterType != ClusterType.PRIMARY));
     }
     target.updateInProgress = false;
     return target;
@@ -1291,15 +1289,32 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   /**
    * Captures the delta between the clean pre-task universe definition and the intended target
    * definition. Invoked from the freeze callback wrapper in {@link #createFreezeUniverseTask} after
-   * the freeze callback, using the pre-lock snapshot as {@code beforeUDTP}.
+   * the freeze callback, using the pre-lock snapshot as {@code beforeUDTP}. A rerun of an attempt
+   * that left the rollback-safe window keeps that attempt's pre-edit state as "before" instead, and
+   * stays not rollbackable.
    */
   protected void captureStateTransitionDelta(
       Universe universe,
       UniverseDefinitionTaskParams beforeUDTP,
       UniverseDefinitionTaskParams targetUDTP) {
+    // A checkpoint is still here only if an earlier attempt failed and this rerun took over its
+    // placement lock. If that attempt crossed its rollback checkpoint (left the rollback-safe
+    // window), the current universe is no longer the real pre-edit state. Keep the earlier
+    // checkpoint's "before", which still is, and stay non-rollbackable.
+    StateTransitionDetails existing = universe.getStateTransitionDetails();
+    boolean rollbackSafe = existing == null || existing.isRollbackSafe();
+    UniverseDefinitionTaskParams before = beforeUDTP;
+    if (!rollbackSafe) {
+      log.info(
+          "Universe {} keeps the pre-edit state and rollbackSafe=false of an earlier failed"
+              + " attempt",
+          universe.getUniverseUUID());
+      before = existing.getBeforeUniverseDetails();
+    }
     JsonNode delta =
-        DeltaEvaluator.buildDeltaJsonTree(beforeUDTP, targetUDTP, new NodeDetailsArrayComparator());
-    universe.setStateTransitionDetails(new StateTransitionDetails(true, delta));
+        DeltaEvaluator.buildDeltaJsonTree(before, targetUDTP, new NodeDetailsArrayComparator());
+    universe.setStateTransitionDetails(new StateTransitionDetails(rollbackSafe, delta));
+    auditService.updateTaskDiff(getTaskUUID(), DeltaEvaluator.generateOnlyDelta(delta));
   }
 
   /**
@@ -1309,6 +1324,25 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    */
   protected boolean shouldCaptureStateTransitionDelta() {
     return true;
+  }
+
+  /**
+   * Whether this run retries the task that holds the universe's placement lock, so an earlier
+   * attempt already started changing the universe.
+   */
+  protected boolean isRetryOfPlacementLockHolder(Universe universe) {
+    UUID previousTaskUuid = taskParams().getPreviousTaskUUID();
+    return previousTaskUuid != null
+        && previousTaskUuid.equals(universe.getUniverseDetails().placementModificationTaskUuid);
+  }
+
+  /**
+   * Whether another task holds the placement lock. The rollback checkpoint ({@code
+   * state_transition_details}) is then that task's, so this task must not write or clear it.
+   */
+  private boolean isPlacementLockHeldByOtherTask(UniverseDefinitionTaskParams universeDetails) {
+    return universeDetails.placementModificationTaskUuid != null
+        && !universeDetails.placementModificationTaskUuid.equals(getUserTaskUUID());
   }
 
   private void initAndAddPrecheckTasks(Universe universe) {
@@ -1427,7 +1461,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // already finalizes params in precheck; this keeps the generic path correct for other tasks.
     // Deep-copy before so a freeze callback that mutates universe details cannot alias the
     // snapshot used for the delta (otherwise new nodes look like REPLACE, not ADD).
-    if (isFirstTry() && shouldCaptureStateTransitionDelta()) {
+    // A retry after an auto-rollback starts again from the restored universe, and the unlock that
+    // performed the rollback cleared the earlier checkpoint, so capture a new one.
+    if ((isFirstTry() || universe.getUniverseDetails().autoRollbackPerformed)
+        && shouldCaptureStateTransitionDelta()) {
       UniverseDefinitionTaskParams beforeDetails =
           Json.fromJson(
               Json.toJson(universe.getUniverseDetails()), UniverseDefinitionTaskParams.class);
@@ -1438,7 +1475,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
               originalCallback.accept(univ);
             }
             UniverseDefinitionTaskParams target = getTargetUniverseDetails();
-            if (target != null) {
+            // The freeze has already taken the placement lock if this task modifies placement.
+            if (target != null && !isPlacementLockHeldByOtherTask(univ.getUniverseDetails())) {
               captureStateTransitionDelta(univ, beforeDetails, target);
             }
           };
@@ -1679,6 +1717,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
   }
 
+  /** Creates subtasks that must run last, just before the universe update is marked successful. */
+  protected void createFinalSubTasks() {}
+
   /** Create a task to mark the change on a universe as success. */
   public SubTaskGroup createMarkUniverseUpdateSuccessTasks() {
     return createMarkUniverseUpdateSuccessTasks(taskParams().getUniverseUUID());
@@ -1691,6 +1732,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @return the subtask group.
    */
   public SubTaskGroup createMarkUniverseUpdateSuccessTasks(UUID universeUuid) {
+    if (Objects.equals(universeUuid, taskParams().getUniverseUUID())) {
+      createFinalSubTasks();
+    }
     SubTaskGroup subTaskGroup = createSubTaskGroup("FinalizeUniverseUpdate");
     UniverseUpdateSucceeded.Params params = new UniverseUpdateSucceeded.Params();
     params.setUniverseUUID(universeUuid);
@@ -1858,12 +1902,39 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   /** Create a task to mark the final software version on a universe. */
   public SubTaskGroup createUpdateSoftwareVersionTask(
       String softwareVersion, boolean isSoftwareUpdateViaVm) {
+    return createUpdateSoftwareVersionTask(
+        softwareVersion, isSoftwareUpdateViaVm, null /* softwareUpgradeState */);
+  }
+
+  public SubTaskGroup createUpdateSoftwareVersionTask(
+      String softwareVersion,
+      boolean isSoftwareUpdateViaVm,
+      @Nullable SoftwareUpgradeState softwareUpgradeState) {
+    return createUpdateSoftwareVersionTask(
+        softwareVersion,
+        isSoftwareUpdateViaVm,
+        softwareUpgradeState,
+        null /* isSoftwareRollbackAllowed */);
+  }
+
+  /**
+   * Create a task to mark the final software version on a universe, also setting {@code
+   * softwareUpgradeState} (and {@code isSoftwareRollbackAllowed} when not null) in the same
+   * universe save when it is not null.
+   */
+  public SubTaskGroup createUpdateSoftwareVersionTask(
+      String softwareVersion,
+      boolean isSoftwareUpdateViaVm,
+      @Nullable SoftwareUpgradeState softwareUpgradeState,
+      @Nullable Boolean isSoftwareRollbackAllowed) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("FinalizeUniverseUpdate");
     UpdateSoftwareVersion.Params params = new UpdateSoftwareVersion.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.softwareVersion = softwareVersion;
     params.prevSoftwareVersion = taskParams().ybPrevSoftwareVersion;
     params.isSoftwareUpdateViaVm = isSoftwareUpdateViaVm;
+    params.softwareUpgradeState = softwareUpgradeState;
+    params.isSoftwareRollbackAllowed = isSoftwareRollbackAllowed;
     UpdateSoftwareVersion task = createTask(UpdateSoftwareVersion.class);
     task.initialize(params);
     task.setUserTaskUUID(getUserTaskUUID());
@@ -2577,11 +2648,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                     && certificateInfo.getCertType() != CertConfigType.SelfSigned) {
                   throw new PlatformServiceException(
                       BAD_REQUEST,
-                      "Only CustomCertHostPath or SelfSigned type certificate is supported for node"
-                          + " agent. Disable provider runtime config "
-                          + ProviderConfKeys.nodeAgentUseUniverseCertificatesOnInstall.getKey()
-                          + " to not use universe certificates for node agent installation and"
-                          + " retry.");
+                      String.format(
+                          "Certificate %s is of type %s, but only CustomCertHostPath or SelfSigned"
+                              + " type certificate is supported for node agent. Disable provider"
+                              + " runtime config %s to not use universe certificates for node"
+                              + " agent installation and retry.",
+                          certificateInfo.getLabel(),
+                          certificateInfo.getCertType(),
+                          ProviderConfKeys.nodeAgentUseUniverseCertificatesOnInstall.getKey()));
                 }
               }
               params.certificateUuid = certificateInfo == null ? null : certificateInfo.getUuid();
@@ -3516,6 +3590,21 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       subTaskGroup.addSubTask(task);
       getRunnableTask().addSubTaskGroup(subTaskGroup);
     }
+  }
+
+  public void createWaitForRpcClientCertTask(Universe universe) {
+    if (!RpcClientCert.isClientCertRequired(universe)) {
+      return;
+    }
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup(
+            WaitForRpcClientCert.class.getSimpleName(), SubTaskGroupType.ConfigureUniverse);
+    WaitForRpcClientCert task = createTask(WaitForRpcClientCert.class);
+    WaitForRpcClientCert.Params params = new WaitForRpcClientCert.Params();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
   public SubTaskGroup createUpdateConsistencyCheckTask() {
@@ -5124,7 +5213,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       log.debug("Skipping configure YBC as 'useYBDBInbuiltYbc' is enabled");
       return;
     }
-    String cert = universe.getCertificateNodetoNode();
     int ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
     Map<String, String> ybcGflags =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags;
@@ -5149,7 +5237,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     for (Cluster cluster : universe.getUniverseDetails().clusters) {
       universe.getTserversInCluster(cluster.uuid).stream()
           .filter(NodeDetails::isQueryable)
-          .filter(node -> !ybcManager.ybcPingCheck(node.cloudInfo.private_ip, cert, ybcPort))
+          .filter(node -> !ybcManager.ybcPingCheck(node.cloudInfo.private_ip, universe, ybcPort))
           .forEach(
               node -> {
                 boolean isK8s = cluster.getProviderCloudType(node) == CloudType.kubernetes;
@@ -5516,6 +5604,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    */
   public void createDisableMasterOnNonMasterNodesTasks(
       List<NodeDetails> nodes, SubTaskGroupType subTaskGroupType) {
+    createDisableMasterOnNonMasterNodesTasks(nodes, subTaskGroupType, params -> {});
+  }
+
+  public void createDisableMasterOnNonMasterNodesTasks(
+      List<NodeDetails> nodes,
+      SubTaskGroupType subTaskGroupType,
+      Consumer<AnsibleClusterServerCtl.Params> paramsCustomizer) {
     Universe universe = getUniverse();
     if (!confGetter.getConfForScope(
         universe, UniverseConfKeys.allowDisableMasterOnNonMasterNodeSubtask)) {
@@ -5536,7 +5631,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       return;
     }
     log.info("Disabling master on non-master nodes: {}", nodes);
-    createServerControlTasks(nodes, ServerType.MASTER, "stop")
+    createServerControlTasks(nodes, ServerType.MASTER, "stop", paramsCustomizer)
         .setSubTaskGroupType(subTaskGroupType);
   }
 
@@ -5634,6 +5729,24 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
     createModifyBlackListTask(Collections.emptyList(), removedNodes, isLeaderBlacklist)
         .setSubTaskGroupType(subTaskGroupType);
+  }
+
+  /**
+   * Removes tservers that were just deleted from the server blacklist, after waiting {@code
+   * yb.edit.wait_before_blacklist_clear} (when set) so the master stops treating them as live
+   * first.
+   */
+  public void createClearTserverBlacklistTasks(
+      Universe universe, Collection<NodeDetails> tservers) {
+    Duration sleepBeforeClear =
+        confGetter.getConfForScope(
+            universe, UniverseConfKeys.ybEditWaitDurationBeforeBlacklistClear);
+    if (sleepBeforeClear.compareTo(Duration.ZERO) > 0) {
+      createWaitForDurationSubtask(universe, sleepBeforeClear)
+          .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
+    }
+    createModifyBlackListTask(null /* addNodes */, tservers, false /* isLeaderBlacklist */)
+        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
   }
 
   /**
@@ -5763,8 +5876,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // Get load balancers for each cluster
     for (Cluster cluster : clusters) {
       if (ManagedLoadBalancerUtil.isEnabled(cluster)) {
-        // Validation keeps load balancer names out of a universe with managed load balancers.
-        addManagedLoadBalancers(taskParams, cluster, loadBalancerMap, nodesToIgnore, nodesToAdd);
+        // Names from the saved state: params are the client's copy.
+        addManagedLoadBalancers(
+            taskParams,
+            cluster,
+            ManagedLoadBalancerUtil.planLoadBalancers(
+                cluster, getUniverse().getUniverseDetails().getManagedLoadBalancerState()),
+            loadBalancerMap,
+            nodesToIgnore,
+            nodesToAdd);
         continue;
       }
       Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(cluster);
@@ -5798,16 +5918,17 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * before the load balancer exists. A load balancer that an edit drops from the plan gets no
    * entry: the edit deletes it with the target groups, so there is nothing left to deregister from.
    */
-  private void addManagedLoadBalancers(
+  protected void addManagedLoadBalancers(
       UniverseDefinitionTaskParams taskParams,
       Cluster cluster,
+      List<ManagedLoadBalancer> lbs,
       Map<LoadBalancerPlacement, LoadBalancerConfig> loadBalancerMap,
       Set<NodeDetails> nodesToIgnore,
       Set<NodeDetails> nodesToAdd) {
     // A load balancer whose last node is being removed keeps its entry, so that the node is
     // deregistered.
     Map<UUID, LoadBalancerConfig> configByZone = new HashMap<>();
-    for (ManagedLoadBalancer lb : ManagedLoadBalancerUtil.planLoadBalancers(cluster)) {
+    for (ManagedLoadBalancer lb : lbs) {
       Region region = Region.getOrBadRequest(lb.getRegionUuid());
       LoadBalancerConfig config =
           loadBalancerMap.computeIfAbsent(
@@ -6153,8 +6274,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   protected boolean isServerAlive(
       NodeDetails node, ServerType server, String masterAddrs, long timeoutMs) {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    String certificate = universe.getCertificateNodetoNode();
-    try (YBClientApi client = ybService.getClient(masterAddrs, certificate)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe, masterAddrs)) {
       HostAndPort hp =
           HostAndPort.fromParts(
               node.cloudInfo.private_ip,
@@ -6478,8 +6598,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       task.initialize(params);
 
       subTaskGroup.addSubTask(task);
-      getRunnableTask().addSubTaskGroup(subTaskGroup);
     }
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 

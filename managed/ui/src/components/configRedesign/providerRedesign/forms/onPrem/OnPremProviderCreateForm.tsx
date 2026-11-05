@@ -43,7 +43,7 @@ import {
 } from '../utils';
 import { SshPrivateKeyFormField } from '../../components/SshPrivateKeyField';
 import {
-  buildFederationTargets,
+  buildFederationPayload,
   CrossCloudFederatedIamFields,
   FEDERATED_IAM_VALIDATION
 } from '../components/CrossCloudFederatedIamFields';
@@ -81,7 +81,7 @@ interface OnPremProviderCreateFormFieldValues {
   // "direction", because that is the decision the operator actually makes: which bucket must my
   // nodes reach. Which way any given node federates follows from the cloud it runs on, which YBA
   // detects - the operator never states it.
-  enableFederatedIam?: boolean;
+  federationGcsCredentialFile?: File;
   federationGcsEnabled?: boolean;
   federationGcsAudience?: string;
   federationS3Enabled?: boolean;
@@ -148,7 +148,6 @@ export const OnPremProviderCreateForm = ({
     sshPrivateKeyInputType: SshPrivateKeyInputType.UPLOAD_KEY,
     sshPort: DEFAULT_SSH_PORT,
     ybHomeDir: '',
-    enableFederatedIam: false,
     federationGcsEnabled: false,
     federationGcsAudience: '',
     federationS3Enabled: false,
@@ -355,10 +354,6 @@ export const OnPremProviderCreateForm = ({
                   disabled={isFormDisabled}
                 />
               </FormField>
-              <CrossCloudFederatedIamFields
-                control={formMethods.control}
-                isFormDisabled={isFormDisabled}
-              />
               <FormField>
                 <FieldLabel>Install Node Exporter</FieldLabel>
                 <YBToggleField
@@ -393,6 +388,10 @@ export const OnPremProviderCreateForm = ({
                 <NTPConfigField isDisabled={isFormDisabled} providerCode={ProviderCode.ON_PREM} />
               </FormField>
             </FieldGroup>
+            <CrossCloudFederatedIamFields
+              control={formMethods.control}
+              isFormDisabled={isFormDisabled}
+            />
             {(formMethods.formState.isValidating || formMethods.formState.isSubmitting) && (
               <Box display="flex" gridGap="5px" marginLeft="auto">
                 <CircularProgress size={16} color="primary" thickness={5} />
@@ -476,10 +475,7 @@ const constructProviderPayload = async (
       cloudInfo: {
         [ProviderCode.ON_PREM]: {
           ...(formValues.ybHomeDir && { ybHomeDir: formValues.ybHomeDir }),
-          ...(formValues.enableFederatedIam && {
-            enableFederatedIam: true,
-            crossCloudFederationTargets: buildFederationTargets(formValues)
-          })
+          ...buildFederationPayload(formValues)
         }
       },
       installNodeExporter: formValues.installNodeExporter,

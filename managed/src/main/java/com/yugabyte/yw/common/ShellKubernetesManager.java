@@ -7,6 +7,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
@@ -44,6 +45,7 @@ import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -56,6 +58,8 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import javax.inject.Singleton;
@@ -69,6 +73,9 @@ import play.libs.Json;
 @Singleton
 @Slf4j
 public class ShellKubernetesManager extends KubernetesManager {
+
+  // How often deleteUnusedPVCs re-checks the StatefulSet while waiting for it to be ready.
+  @VisibleForTesting long statefulSetReadyPollSecs = 10;
 
   @Inject
   public ShellKubernetesManager(
@@ -504,14 +511,16 @@ public class ShellKubernetesManager extends KubernetesManager {
       String helmReleaseName,
       String appLabelValue,
       boolean newNamingStyle,
-      int replicaCount) {
+      int replicaCount,
+      Duration readyTimeout) {
 
     String appLabel = newNamingStyle ? "app.kubernetes.io/name" : "app";
     String labelSelector =
         String.format("%s=%s,release=%s", appLabel, appLabelValue, helmReleaseName);
-    if (!checkStatefulSetStatus(config, namespace, labelSelector, replicaCount)) {
-      String message = "Statefulset is not ready: " + namespace + labelSelector;
-      throw new RuntimeException(message);
+    // The chart renders no StatefulSet for a server type with 0 replicas, e.g. an AZ that has
+    // tservers but no masters, so there is nothing to wait for there.
+    if (replicaCount > 0) {
+      waitForStatefulSetReady(config, namespace, labelSelector, replicaCount, readyTimeout);
     }
     List<PersistentVolumeClaim> pvcs =
         getPVCs(config, namespace, helmReleaseName, appLabelValue, newNamingStyle);
@@ -527,6 +536,46 @@ public class ShellKubernetesManager extends KubernetesManager {
             ImmutableList.of("kubectl", "--namespace", namespace, "delete", "pvc", pvcName);
         execCommand(config, commandList, true).processErrors("Unable to delete  PVC:" + pvcName);
       }
+    }
+  }
+
+  private void waitForStatefulSetReady(
+      Map<String, String> config,
+      String namespace,
+      String labelSelector,
+      int replicaCount,
+      Duration readyTimeout) {
+    // A surviving pod can be briefly not ready here, e.g. rescheduled and waiting for its volume
+    // to detach from the old node, so wait for the StatefulSet to settle instead of failing.
+    AtomicReference<String> lastStatus = new AtomicReference<>();
+    boolean ready =
+        new RetryTaskUntilCondition<>(
+                () -> {
+                  try {
+                    return getStatefulSetStatus(config, namespace, labelSelector);
+                  } catch (CancellationException e) {
+                    // processErrors throws this when the task is aborted.
+                    throw e;
+                  } catch (RuntimeException e) {
+                    log.info("Retrying StatefulSet status after error: {}", e.getMessage());
+                    lastStatus.set(e.getMessage());
+                    return null;
+                  }
+                },
+                status -> {
+                  if (status == null) {
+                    return false;
+                  }
+                  lastStatus.set(status.toString());
+                  return isStatefulSetReady(status, replicaCount);
+                })
+            .retryUntilCond(statefulSetReadyPollSecs, readyTimeout.getSeconds());
+    if (!ready) {
+      throw new RuntimeException(
+          String.format(
+              "StatefulSet not ready after %d s, not deleting unused PVCs. Namespace: %s, label"
+                  + " selector: %s, expected replicas: %d, last status: %s",
+              readyTimeout.getSeconds(), namespace, labelSelector, replicaCount, lastStatus.get()));
     }
   }
 
@@ -547,8 +596,13 @@ public class ShellKubernetesManager extends KubernetesManager {
         execCommand(config, commandList, true).processErrors("Unable to get Pod Volumes");
 
     List<Pod> podList = deserialize(response.getMessage(), PodList.class).getItems();
-    // Verify all replicas are up.
-    assert podList.size() == replicaCount;
+    // A pod missing from this list would make its live PVC look unused and get it deleted.
+    if (podList.size() < replicaCount) {
+      throw new RuntimeException(
+          String.format(
+              "Found %d of %d pods for %s in namespace %s, not deleting unused PVCs",
+              podList.size(), replicaCount, labelSelector, namespace));
+    }
     List<String> pvcNames = new ArrayList<>();
     for (Pod pod : podList) {
       for (Volume volume : pod.getSpec().getVolumes()) {
@@ -581,6 +635,22 @@ public class ShellKubernetesManager extends KubernetesManager {
   @Override
   public boolean checkStatefulSetStatus(
       Map<String, String> config, String namespace, String labelSelector, int replicaCount) {
+    return isStatefulSetReady(getStatefulSetStatus(config, namespace, labelSelector), replicaCount);
+  }
+
+  // Ready means the StatefulSet has exactly replicaCount pods and all of them are ready. Missing
+  // status fields parse as -1: Kubernetes omits readyReplicas when it is 0, and older clusters do
+  // not report availableReplicas, so either ready count is accepted.
+  private static boolean isStatefulSetReady(Map<String, Integer> status, int replicaCount) {
+    return status.get("replicas") == replicaCount
+        && (replicaCount == 0
+            || status.get("readyReplicas") == replicaCount
+            || status.get("availableReplicas") == replicaCount);
+  }
+
+  // Returns the StatefulSet's replicas, readyReplicas and availableReplicas.
+  private Map<String, Integer> getStatefulSetStatus(
+      Map<String, String> config, String namespace, String labelSelector) {
     List<String> commandList =
         ImmutableList.of(
             "kubectl",
@@ -619,18 +689,9 @@ public class ShellKubernetesManager extends KubernetesManager {
         execCommand(config, commandList, false)
             .processErrors("Unable to get StatefulSet status for " + statefulSetNames[0]);
 
-    Map<String, Integer> parsedValues = parseKubectlOutput(response.getMessage());
-
-    // Access values from the map
-    int replicas = parsedValues.get("replicas");
-    int readyReplicas = parsedValues.get("readyReplicas");
-    int availableReplicas = parsedValues.get("availableReplicas");
-
-    if (replicas <= 0 || replicas == availableReplicas || replicas == readyReplicas) {
-      // Either no replicas or all replicas are available/ready
-      return true;
-    }
-    return false;
+    Map<String, Integer> status = parseKubectlOutput(response.getMessage());
+    log.info("StatefulSet {} in namespace {}: {}", statefulSetNames[0], namespace, status);
+    return status;
   }
 
   private static Map<String, Integer> parseKubectlOutput(String response) {
@@ -1532,13 +1593,13 @@ public class ShellKubernetesManager extends KubernetesManager {
     Set<String> helmReleaseNames = new HashSet<>();
     boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
     for (NodeDetails node : universe.getNodesInCluster(cluster.uuid)) {
-      AvailabilityZone az = AvailabilityZone.getOrBadRequest(node.azUuid);
+      String azCode = isMultiAZ ? AvailabilityZone.getOrBadRequest(node.azUuid).getCode() : null;
       String helmRelease =
           KubernetesUtil.getHelmReleaseName(
               isMultiAZ,
               universe.getUniverseDetails().nodePrefix,
               universe.getName(),
-              az.getName(),
+              azCode,
               cluster.clusterType == ClusterType.ASYNC,
               universe.getUniverseDetails().useNewHelmNamingStyle);
       helmReleaseNames.add(helmRelease);

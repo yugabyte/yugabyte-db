@@ -70,9 +70,13 @@ using std::string;
 DECLARE_bool(cdcsdk_enable_dynamic_tables_disable_option);
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 
+// We do not support user tablets with this flag disabled: the master assumes every tablet except
+// the sys catalog tablet maps its hosted tables by parent id. Do not disable it outside of an
+// emergency.
 DEFINE_RUNTIME_AUTO_bool(use_parent_table_id_field, kLocalPersisted, false, true,
     "Whether to use the new schema for colocated tables based on the parent_table_id field.");
 TAG_FLAG(use_parent_table_id_field, advanced);
+TAG_FLAG(use_parent_table_id_field, hidden);
 
 namespace yb::master {
 
@@ -716,6 +720,13 @@ Status TableInfo::AddTabletUnlocked(
   }
 
   auto old_tablet = VERIFY_RESULT(PromoteTabletPointer(it->second));
+  if (old_tablet == tablet) {
+    // Defensive: a table id listed twice in a tablet's table_ids used to add the same tablet twice
+    // on load (github issue 34672). TabletLoader::Visit now drops repeated ids, so this is not
+    // expected, but adding the same tablet again is harmless.
+    LOG_WITH_PREFIX(WARNING) << "Tablet " << tablet->id() << " was already added to this table";
+    return Status::OK();
+  }
   auto old_tablet_lock = old_tablet->LockForRead();
   const auto old_split_depth = old_tablet_lock->pb.split_depth();
   if (tablet_meta.split_depth() > old_split_depth || old_tablet_lock->is_deleted()) {
@@ -1162,16 +1173,6 @@ bool TableInfo::IsXClusterDDLReplicationReplicatedDDLsTable() const {
   return LockForRead()->IsXClusterDDLReplicationReplicatedDDLsTable();
 }
 
-TablespaceId TableInfo::TablespaceIdForTableCreation() const {
-  SharedLock<decltype(lock_)> l(lock_);
-  return tablespace_id_for_table_creation_;
-}
-
-void TableInfo::SetTablespaceIdForTableCreation(const TablespaceId& tablespace_id) {
-  std::lock_guard l(lock_);
-  tablespace_id_for_table_creation_ = tablespace_id;
-}
-
 google::protobuf::RepeatedField<int> TableInfo::GetHostedStatefulServices() const {
   auto l = LockForRead();
   return l->pb.hosted_stateful_services();
@@ -1588,6 +1589,21 @@ HybridTime CDCStreamInfo::GetConsistentSnapshotHybridTime() const {
 const ReplicationSlotName CDCStreamInfo::GetCdcsdkYsqlReplicationSlotName() const {
   auto l = LockForRead();
   return ReplicationSlotName(l->pb.cdcsdk_ysql_replication_slot_name());
+}
+
+bool CDCStreamInfo::IsCdcsdkYsqlPublicationsBoundStream() const {
+  auto l = LockForRead();
+  return l->pb.cdcsdk_ysql_publications_bound_stream();
+}
+
+const std::string CDCStreamInfo::GetCdcsdkYsqlBoundPublicationName() const {
+  auto l = LockForRead();
+  return l->pb.cdcsdk_ysql_bound_publication_name();
+}
+
+bool CDCStreamInfo::CdcsdkYsqlIncludesNewTables() const {
+  auto l = LockForRead();
+  return l->pb.cdcsdk_ysql_include_new_tables();
 }
 
 bool CDCStreamInfo::IsConsistentSnapshotStream() const {

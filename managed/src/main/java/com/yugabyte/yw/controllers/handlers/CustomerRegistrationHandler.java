@@ -4,7 +4,9 @@ package com.yugabyte.yw.controllers.handlers;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
+import com.google.inject.Provider;
 import com.google.inject.Singleton;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
@@ -13,6 +15,7 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.pa.PACollectorSync;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.common.rbac.RoleBindingUtil;
+import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.rbac.ResourceGroup;
@@ -22,7 +25,9 @@ import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
 import db.migration.default_.common.R__Sync_System_Roles;
 import io.ebean.DB;
 import io.ebean.annotation.Transactional;
+import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
+import play.mvc.Http;
 
 /** Creates a customer together with its primary user. Shared by the v1 and v2 register APIs. */
 @Slf4j
@@ -38,6 +43,10 @@ public class CustomerRegistrationHandler {
   private final RoleBindingUtil roleBindingUtil;
   private final RuntimeConfGetter confGetter;
   private final PACollectorSync paCollectorSync;
+  private final Config config;
+  // TokenAuthenticator caches token lookups for 10 minutes, so this singleton takes a fresh one per
+  // call, as Play does for its actions.
+  private final Provider<TokenAuthenticator> tokenAuthenticatorProvider;
 
   @Inject
   public CustomerRegistrationHandler(
@@ -46,13 +55,17 @@ public class CustomerRegistrationHandler {
       AlertConfigurationService alertConfigurationService,
       RoleBindingUtil roleBindingUtil,
       RuntimeConfGetter confGetter,
-      PACollectorSync paCollectorSync) {
+      PACollectorSync paCollectorSync,
+      Config config,
+      Provider<TokenAuthenticator> tokenAuthenticatorProvider) {
     this.passwordPolicyService = passwordPolicyService;
     this.alertDestinationService = alertDestinationService;
     this.alertConfigurationService = alertConfigurationService;
     this.roleBindingUtil = roleBindingUtil;
     this.confGetter = confGetter;
     this.paCollectorSync = paCollectorSync;
+    this.config = config;
+    this.tokenAuthenticatorProvider = tokenAuthenticatorProvider;
   }
 
   /**
@@ -77,6 +90,41 @@ public class CustomerRegistrationHandler {
         .setParameter("key", REGISTRATION_LOCK_KEY)
         .findOne();
     return Customer.find.query().findCount();
+  }
+
+  /**
+   * Why a request may not register a customer. The v1 and v2 APIs map these to their own errors.
+   */
+  public enum Refusal {
+    SINGLE_TENANT,
+    SSO_ENABLED,
+    NOT_AUTHENTICATED,
+    NOT_SUPER_ADMIN
+  }
+
+  /**
+   * Checks whether the request may register a customer when {@code customerCount} customers exist.
+   * The first customer can always be registered. Further ones only on a multi-tenant instance
+   * without SSO, and only by a SuperAdmin, who is then set as the request's user.
+   */
+  public Optional<Refusal> checkAllowed(Http.Request request, int customerCount) {
+    if (customerCount == 0) {
+      return Optional.empty();
+    }
+    if (!config.getBoolean("yb.multiTenant")) {
+      return Optional.of(Refusal.SINGLE_TENANT);
+    }
+    if (confGetter.getGlobalConf(GlobalConfKeys.useOauth)) {
+      return Optional.of(Refusal.SSO_ENABLED);
+    }
+    TokenAuthenticator tokenAuthenticator = tokenAuthenticatorProvider.get();
+    if (tokenAuthenticator.superAdminAuthentication(request)) {
+      return Optional.empty();
+    }
+    return Optional.of(
+        tokenAuthenticator.getCurrentAuthenticatedUser(request) == null
+            ? Refusal.NOT_AUTHENTICATED
+            : Refusal.NOT_SUPER_ADMIN);
   }
 
   /**

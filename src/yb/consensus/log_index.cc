@@ -486,6 +486,12 @@ void LogIndex::SetMinIndexedSegmentNumber(const int64_t segment_number) {
   min_indexed_segment_number_.store(segment_number, std::memory_order_release);
 }
 
+void LogIndex::SetMinIndexedSegmentNumberIfUnset(const int64_t segment_number) {
+  auto expected = kNoIndexForFullWalSegment;
+  min_indexed_segment_number_.compare_exchange_strong(
+      expected, segment_number, std::memory_order_acq_rel);
+}
+
 Result<bool> LogIndex::LazyLoadOneSegment(ReadableLogSegment* segment) {
   int64_t first_op_index = INT64_MAX;
   const auto loaded = VERIFY_RESULT(LoadFromSegment(segment, &first_op_index));

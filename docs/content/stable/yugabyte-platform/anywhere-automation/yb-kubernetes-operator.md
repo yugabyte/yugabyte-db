@@ -24,6 +24,22 @@ You can additionally convert Kubernetes universes that are managed via Helm char
 
 ![YugabyteDB Kubernetes Operator](/images/yb-platform/yb-kubernetes-operator.png)
 
+## Use the operator with an AI coding agent
+
+If an AI coding agent (such as Claude Code, Cursor, or Codex) generates operator custom resources for you, install the official [yb-k8s-operator skill](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/yb-k8s-operator) first. The skill supplies the operator's resource rules, so the agent makes fewer errors and uses fewer tokens.
+
+To install the skill, run the following command:
+
+```sh
+npx skills add yugabyte/yugabytedb-skills -s yb-k8s-operator
+```
+
+For more information, see the [yugabytedb-skills](https://github.com/yugabyte/yugabytedb-skills) repository.
+
+{{< note title="YugabyteDB Anywhere operator only" >}}
+The skill targets the YugabyteDB Anywhere Kubernetes Operator. It does not fully apply to the [open source YugabyteDB Kubernetes Operator](../../../deploy/kubernetes/single-zone/oss/yugabyte-operator/).
+{{< /note >}}
+
 ## YugabyteDB Kubernetes Operator CRDs
 
 The Operator is built around the **YBUniverse CRD**, which defines and manages a YugabyteDB universe.
@@ -475,7 +491,7 @@ NAME                     STATE   SOFTWARE VERSION
 operator-universe-demo   Ready   {{< yb-version version="stable" format="build">}}
 ```
 
-To modify the universe, edit the CRD and use `kubectl apply/edit` operations.
+To modify the universe, edit the CRD and use `kubectl apply/edit` operations. Set `replicationFactor` when you create the universe; the Operator does not support changing it later. See [Limitations](#limitations).
 
 To change storage class or volume count on a running universe, use the `tserverVolume` and `masterVolume` fields (including optional `perAZ` overrides). Refer to [Full move for Kubernetes universes](../../scale-deployments/kubernetes-full-move/#operator-universes).
 
@@ -1474,3 +1490,4 @@ Importing a universe to the operator creates or adopts the following in the targ
   - Software upgrade rollback
   - [Encryption at rest](../../security/enable-encryption-at-rest/) (prior to v2026.1.2)
 - [Encryption in transit](../../security/enable-encryption-in-transit/) configuration cannot be edited after it is initially configured.
+- `replicationFactor` cannot be changed after the universe is created. To increase replication factor on a Kubernetes universe that YugabyteDB Anywhere manages directly, refer to [Scale universes](../../scale-deployments/edit-universe/#horizontal-scaling).

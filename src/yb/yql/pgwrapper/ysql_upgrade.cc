@@ -21,11 +21,25 @@
 #include "server/catalog/pg_yb_migration_d.h"
 
 #include "yb/common/entity_ids.h"
+#include "yb/common/pgsql_error.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/env_util.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pg_util.h"
 #include "yb/util/status_format.h"
+
+using namespace std::literals;
+
+DEFINE_RUNTIME_int32(ysql_upgrade_migration_max_retries, 10,
+    "Maximum number of times YSQL upgrade re-runs a migration script that failed with a "
+    "serialization failure (SQLSTATE 40001), such as a read restart or a conflict caused by "
+    "concurrent DDL. 0 disables retries.");
+
+DEFINE_test_flag(int32, ysql_upgrade_fail_migration_attempts, 0,
+    "Make the first N attempts of each migration script fail: after the script's own statements "
+    "have committed, a new transaction block raises a read restart error and is left aborted.");
 
 namespace yb {
 namespace pgwrapper {
@@ -196,6 +210,68 @@ bool IsNonSqlFile(const std::string& filename) {
   return !boost::algorithm::iends_with(filename, ".sql");
 }
 
+// Returns the highest OID in [FirstUnpinnedObjectId, FirstNormalObjectId) over all catalogs with an
+// oid column in the connected database, or nullopt if there is none. These are the OIDs that
+// initdb and YSQL upgrade mode assign to system objects. YbGetMaxAllocatedSystemOid computes the
+// same value in the backend.
+Result<std::optional<Oid>> GetMaxAllocatedSystemOid(PGConn* pgconn) {
+  // FirstUnpinnedObjectId, hardcoded in transam.h.
+  constexpr Oid kPgFirstUnpinnedObjectId = 12000;
+
+  const auto catalogs = VERIFY_RESULT(pgconn->FetchRows<std::string>(
+      "SELECT quote_ident(c.relname) FROM pg_catalog.pg_class c"
+      "  JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid"
+      "  WHERE c.relnamespace = 'pg_catalog'::regnamespace AND c.relkind = 'r'"
+      "    AND a.attname = 'oid'"));
+  SCHECK(!catalogs.empty(), IllegalState, "No catalog with an oid column found");
+  std::vector<std::string> selects;
+  for (const auto& catalog : catalogs) {
+    selects.push_back(Format(
+        "SELECT max(oid) AS oid FROM pg_catalog.$0 WHERE oid >= $1 AND oid < $2",
+        catalog, kPgFirstUnpinnedObjectId, kPgFirstNormalObjectId));
+  }
+  return pgconn->FetchRow<std::optional<PGOid>>(Format(
+      "SELECT max(oid) FROM ($0) AS o", boost::algorithm::join(selects, " UNION ALL ")));
+}
+
+// A migration can lose a read restart or a conflict to concurrent DDL in the same database, and
+// the query layer can't retry it when the script is a multi-statement query or has already sent
+// a notice to the client. Notices are flushed immediately and count as data sent; e.g. ALTER
+// EXTENSION emits "'extension' is a beta feature!" unless ysql_beta_feature_extension is set.
+// Migrations are required to be idempotent (see ysql_migrations/README.md), so re-run the whole
+// script.
+Status ExecuteMigration(
+    PGConn* pgconn, const std::string& migration_content, const std::string& migration_name) {
+  CoarseBackoffWaiter waiter(CoarseTimePoint::max(), 2s /* max_wait */);
+  for (int attempt = 0;; ++attempt) {
+    auto script = migration_content;
+    if (attempt < FLAGS_TEST_ysql_upgrade_fail_migration_attempts) {
+      // COMMIT ends the script's trailing implicit block; otherwise BEGIN would absorb it and the
+      // failure would roll it back. YB002 is the internal read restart code, which the client
+      // sees as 40001 only while yb_enable_extended_sql_codes is off.
+      script += "\nCOMMIT;\nBEGIN;\n"
+                "DO $$ BEGIN RAISE EXCEPTION 'Injected read restart' "
+                "USING ERRCODE = 'YB002'; END $$;\n";
+    }
+    auto status = pgconn->Execute(
+        script, /*show_query_in_error=*/false, /*ignore_empty_query=*/true);
+    if (status.ok() ||
+        PgsqlError(status) != YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE ||
+        attempt >= FLAGS_ysql_upgrade_migration_max_retries) {
+      return status;
+    }
+    LOG(WARNING) << "Retrying migration '" << migration_name << "' after attempt " << attempt + 1
+                 << " failed: " << status;
+    // A failure inside a script's explicit BEGIN block leaves the session in an aborted
+    // transaction.
+    if (auto rollback_status = pgconn->RollbackTransaction(); !rollback_status.ok()) {
+      return status.CloneAndAppend(
+          Format("; ROLLBACK before retrying failed: $0", rollback_status));
+    }
+    waiter.Wait();
+  }
+}
+
 } // anonymous namespace
 
 class YsqlUpgradeHelper::DatabaseEntry {
@@ -212,10 +288,16 @@ class YsqlUpgradeHelper::DatabaseEntry {
   // not in single-connection mode.
   virtual Result<std::shared_ptr<pgwrapper::PGConn>> GetConnection() = 0;
 
+  // Close the connection kept for reuse, if any, so that the next one starts a new backend.
+  virtual void CloseConnection() {}
+
  protected:
   Result<std::shared_ptr<pgwrapper::PGConn>> MakeConnection() {
     auto pgconn = std::make_shared<pgwrapper::PGConn>(VERIFY_RESULT(conn_builder_.Connect()));
     RETURN_NOT_OK(pgconn->Execute("SET ysql_upgrade_mode TO true;"));
+    // ExecuteMigration retries on 40001. A database or role setting that enables extended codes
+    // would turn read restarts and conflicts into YB00x codes and silently disable that retry.
+    RETURN_NOT_OK(pgconn->Execute("SET yb_enable_extended_sql_codes TO false"));
     // Use snapshot isolation mode during YSQL upgrade. This is needed as a simple work
     // around so that we do not start subtransactions during YSQL upgrade. Otherwise the
     // COMMIT will only capture the invalidation messages generated by the last DML statement
@@ -246,6 +328,10 @@ class YsqlUpgradeHelper::ReusableConnectionDatabaseEntry
 
     pgconn_ = VERIFY_RESULT(MakeConnection());
     return pgconn_;
+  }
+
+  void CloseConnection() override {
+    pgconn_.reset();
   }
 
  private:
@@ -283,6 +369,8 @@ YsqlUpgradeHelper::YsqlUpgradeHelper(const HostPort& ysql_proxy_addr,
       heartbeat_interval_ms_(heartbeat_interval_ms),
       use_single_connection_(use_single_connection) {
 }
+
+YsqlUpgradeHelper::~YsqlUpgradeHelper() = default;
 
 Status YsqlUpgradeHelper::AnalyzeMigrationFiles() {
   const std::string search_for_dir = JoinPathSegments(kStaticDataParentDir, kMigrationsDir);
@@ -396,17 +484,28 @@ Result<bool> YsqlUpgradeHelper::HasYbCatalogVersion(DatabaseEntry* db_entry) {
   return FunctionExists(conn.get(), "yb_catalog_version");
 }
 
+Result<Oid> YsqlUpgradeHelper::GetMinNextOidOfAllDatabases() {
+  Oid max_oid = 0;
+  for (auto& entry : databases_) {
+    auto conn = VERIFY_RESULT(entry->GetConnection());
+    const auto db_max_oid = VERIFY_RESULT(GetMaxAllocatedSystemOid(conn.get()));
+    if (db_max_oid && *db_max_oid > max_oid) {
+      max_oid = *db_max_oid;
+    }
+  }
+  LOG(INFO) << "Highest system OID over all databases is " << max_oid;
+  return max_oid + 1;
+}
+
 Status YsqlUpgradeHelper::Upgrade() {
   RETURN_NOT_OK(AnalyzeMigrationFiles());
   LOG(INFO) << "Latest version defined in migrations is " << latest_version_;
-
-  std::vector<std::unique_ptr<DatabaseEntry>> databases;
 
   // Place template databases to be processed first.
   std::vector<std::string> db_names{"template1", "template0"};
 
   {
-    auto& t1_entry = databases.emplace_back(VERIFY_RESULT(MakeDatabaseEntry("template1")));
+    auto& t1_entry = databases_.emplace_back(VERIFY_RESULT(MakeDatabaseEntry("template1")));
     auto  t1_conn  = VERIFY_RESULT(t1_entry->GetConnection());
 
     // Fetch databases list
@@ -423,8 +522,8 @@ Status YsqlUpgradeHelper::Upgrade() {
   for (const auto& db : db_names) {
     LOG(INFO) << "Determining a YSQL version for DB " << db;
     auto& entry = db == "template1"
-        ? databases[0]
-        : databases.emplace_back(VERIFY_RESULT(MakeDatabaseEntry(db)));
+        ? databases_[0]
+        : databases_.emplace_back(VERIFY_RESULT(MakeDatabaseEntry(db)));
 
     auto conn = VERIFY_RESULT(entry->GetConnection());
 
@@ -438,7 +537,7 @@ Status YsqlUpgradeHelper::Upgrade() {
 
   while (true) {
     DatabaseEntry* min_version_entry =
-        &**std::min_element(databases.begin(), databases.end(),
+        &**std::min_element(databases_.begin(), databases_.end(),
                             [](const auto& db1, const auto& db2) {
                               return db1->version_ < db2->version_;
                             });
@@ -464,7 +563,7 @@ Status YsqlUpgradeHelper::Upgrade() {
   // two releases the table pg_yb_catalog_version exists but the function
   // yb_catalog_version does not exist. However we have skipped V1 because
   // SystemTableHasRows(pgconn, "pg_yb_catalog_version") returns true.
-  for (auto& entry : databases) {
+  for (auto& entry : databases_) {
     if (!VERIFY_RESULT(HasYbCatalogVersion(entry.get()))) {
       LOG(WARNING) << "Function yb_catalog_version is missing in " << entry->database_name_;
       // Run V1 migration script to introduce function "yb_catalog_version".
@@ -481,8 +580,6 @@ Status YsqlUpgradeHelper::Upgrade() {
 Status YsqlUpgradeHelper::MigrateOnce(DatabaseEntry* db_entry, const Version* historical_version) {
   const auto& db_name = db_entry->database_name_;
   const auto& version = historical_version ? *historical_version : db_entry->version_;
-
-  auto pgconn = VERIFY_RESULT(db_entry->GetConnection());
 
   const auto& next_migration = std::find_if(migration_filenames_map_.begin(),
                                             migration_filenames_map_.end(),
@@ -503,6 +600,26 @@ Status YsqlUpgradeHelper::MigrateOnce(DatabaseEntry* db_entry, const Version* hi
 
   LOG(INFO) << db_name << ": applying migration '" << next_migration_filename << "'";
 
+  // We use the existence of "pg_global" to indicate that we need to wait.
+  // For example, the creation of shared system relation need to be propagated
+  // to invalidate its negative cache entry in other Postgres backends.
+  pg_global_heartbeat_wait_ =
+    db_name == "template1" && boost::icontains(migration_content.ToString(), "pg_global");
+  std::optional<Oid> min_next_oid;
+  if (pg_global_heartbeat_wait_) {
+    LOG(INFO) << "Found pg_global in migration file " << next_migration_filename
+              << " when applying to " << db_name;
+    // Creating a shared relation inserts some of its catalog rows, such as its array type and
+    // constraints, into every database, with OIDs that template1 assigns. Another database can
+    // already use such an OID, if a migration that acts only in some databases has assigned
+    // OIDs there. So make template1 assign OIDs above the system OIDs of every database.
+    // Do this before taking template1's connection: in single connection mode, only one
+    // connection can be open at a time.
+    min_next_oid = VERIFY_RESULT(GetMinNextOidOfAllDatabases());
+  }
+
+  auto pgconn = VERIFY_RESULT(db_entry->GetConnection());
+
   const auto check_breaking_ddl =
       catalog_version_migration_applied_ && !use_single_connection_;
   uint64_t old_breaking_version = last_breaking_version_;
@@ -511,14 +628,9 @@ Status YsqlUpgradeHelper::MigrateOnce(DatabaseEntry* db_entry, const Version* hi
     DCHECK_GE(old_breaking_version, 1UL);
   }
 
-  // We use the existence of "pg_global" to indicate that we need to wait.
-  // For example, the creation of shared system relation need to be propagated
-  // to invalidate its negative cache entry in other Postgres backends.
-  pg_global_heartbeat_wait_ =
-    db_name == "template1" && boost::icontains(migration_content.ToString(), "pg_global");
-  if (pg_global_heartbeat_wait_) {
-    LOG(INFO) << "Found pg_global in migration file " << next_migration_filename
-              << " when applying to " << db_name;
+  if (min_next_oid) {
+    RETURN_NOT_OK(pgconn->ExecuteFormat(
+        "SET yb_ysql_upgrade_min_next_oid TO $0", *min_next_oid));
   }
 
   // Note that underlying PQexec executes mutiple statements transactionally, where our usual ACID
@@ -526,10 +638,21 @@ Status YsqlUpgradeHelper::MigrateOnce(DatabaseEntry* db_entry, const Version* hi
   // Migrations may override that using BEGIN/COMMIT statements - this will split a singular
   // implicit transaction onto several explicit ones.
   RETURN_NOT_OK_PREPEND(
-      pgconn->Execute(
-          migration_content.ToString(),
-          /*show_query_in_error=*/false, /*ignore_empty_query=*/true),
+      ExecuteMigration(&*pgconn, migration_content.ToString(), next_migration_filename),
       Format("Failed to apply migration '$0' to a database $1", next_migration_filename, db_name));
+  if (min_next_oid) {
+    RETURN_NOT_OK(pgconn->Execute("RESET yb_ysql_upgrade_min_next_oid"));
+    // A backend of another database must not go on counting up from a next OID it read from its
+    // catalogs before this migration, or it would assign the OIDs that template1 has just
+    // inserted into its database. The backend already reads its catalogs again after every
+    // transaction (YbAtEOXact_UpgradeNextOid), but close those connections anyway, so that this
+    // does not depend on it.
+    for (auto& entry : databases_) {
+      if (entry.get() != db_entry) {
+        entry->CloseConnection();
+      }
+    }
+  }
 
   bool has_breaking_ddl = false;
   if (check_breaking_ddl) {

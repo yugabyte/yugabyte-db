@@ -17,6 +17,8 @@
 #include "yb/consensus/log_reader.h"
 #include "yb/consensus/raft_consensus.h"
 
+#include "yb/fs/fs_manager.h"
+
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_table_test_base.h"
 
@@ -28,6 +30,9 @@
 #include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/env.h"
+#include "yb/util/path_util.h"
+#include "yb/util/power_loss_env.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
@@ -36,6 +41,8 @@ using std::string;
 using namespace std::literals;
 
 DECLARE_bool(TEST_simulate_abrupt_server_restart);
+
+DECLARE_bool(allow_encryption_at_rest);
 
 DECLARE_bool(TEST_disable_flush_on_shutdown);
 
@@ -48,6 +55,10 @@ DECLARE_bool(enable_flush_retryable_requests);
 DECLARE_bool(TEST_asyncrpc_finished_set_timedout);
 
 DECLARE_int32(retryable_request_timeout_secs);
+
+DECLARE_int32(interval_durable_wal_write_ms);
+
+DECLARE_int32(bytes_durable_wal_write_mb);
 
 namespace yb {
 namespace integration_tests {
@@ -133,9 +144,11 @@ TEST_F(RestartTest, WalFooterProperlyInitialized) {
   ASSERT_OK(tablet_server->WaitStarted());
   log::SegmentSequence segments;
   auto log_reader = ASSERT_RESULT(tablet_peer->log()->GetLogReader());
-  ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
-
-  ASSERT_EQ(2, segments.size());
+  // The second segment is started by the first append after restart.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    RETURN_NOT_OK(log_reader->GetSegmentsSnapshot(&segments));
+    return segments.size() == 2;
+  }, 10s * kTimeMultiplier, "Second segment"));
   log::ReadableLogSegmentPtr segment = ASSERT_RESULT(segments.front());
   ASSERT_TRUE(segment->HasFooter());
   ASSERT_TRUE(segment->footer().has_close_timestamp_micros());
@@ -201,15 +214,18 @@ TEST_F(RestartTest, BootstrapReplaysUnflushedWritesFromWAL) {
   ASSERT_NO_FATALS(check_all_keys_present(kNumRows));
 
   // The previously-active segment should now have a footer rebuilt by tail-scan during bootstrap.
-  // With reuse_unclosed_segment_threshold_bytes = -1 and an abrupt prior shutdown, bootstrap is
-  // guaranteed to close the prior segment and allocate a fresh tail, so >= 2 segments must exist.
+  // With reuse_unclosed_segment_threshold_bytes = -1 and an abrupt prior shutdown, bootstrap does
+  // not reuse the prior segment. A new one is started by the first append after the restart, which
+  // this replica may receive after the scan.
   {
     auto* ts = mini_cluster()->mini_tablet_server(0);
     auto peer = ASSERT_RESULT(ts->server()->tablet_manager()->GetServingTablet(tablet_id));
     log::SegmentSequence segments;
     auto log_reader = ASSERT_RESULT(peer->log()->GetLogReader());
-    ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
-    ASSERT_GE(segments.size(), 2);
+    ASSERT_OK(WaitFor([&]() -> Result<bool> {
+      RETURN_NOT_OK(log_reader->GetSegmentsSnapshot(&segments));
+      return segments.size() >= 2;
+    }, 10s * kTimeMultiplier, "Second segment"));
     log::ReadableLogSegmentPtr first = ASSERT_RESULT(segments.front());
     ASSERT_TRUE(first->HasFooter()) << "first segment missing footer after bootstrap";
   }
@@ -388,6 +404,101 @@ TEST_F(PersistRetryableRequestsTest, TestRetryableWriteWithoutPersistence) {
 TEST_F(PersistRetryableRequestsTest, TestRetryableRequestsFileTooOld) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_flush_retryable_requests) = true;
   return TestRetryableWrite(/* wait_file_to_expire */ true);
+}
+
+class PowerLossTest : public RestartTest {
+ protected:
+  void SetUp() override {
+    auto env = std::make_unique<PowerLossEnv>();
+    power_loss_env_ = env.get();
+    ts_env_ = std::move(env);
+    RestartTest::SetUp();
+  }
+
+  void BeforeStartCluster() override {
+    // Otherwise tablets use an encrypted env that bypasses ts_env_.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_encryption_at_rest) = false;
+    // Fsync WAL only when forced to: segment allocation, rollover or close.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_interval_durable_wal_write_ms) = 3600 * 1000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_bytes_durable_wal_write_mb) = 1024;
+  }
+
+  size_t num_tablet_servers() override { return 1; }
+
+  using Rows = std::vector<std::pair<std::string, std::string>>;
+
+  // Returns the written rows sorted.
+  Rows WriteRows(int num_rows) {
+    Rows result;
+    for (int i = 0; i != num_rows; ++i) {
+      result.emplace_back(Format("key_$0", i), Format("value_$0", i));
+      PutKeyValue(result.back().first, result.back().second);
+    }
+    std::sort(result.begin(), result.end());
+    return result;
+  }
+
+  void CheckRows(const Rows& expected) {
+    auto rows = GetScanResults(client::TableRange(table_));
+    std::sort(rows.begin(), rows.end());
+    ASSERT_EQ(rows, expected);
+  }
+
+  // Shuts down without closing the WAL, as a crash would.
+  void ShutdownAbruptly(tserver::MiniTabletServer* ts) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_abrupt_server_restart) = true;
+    ts->Shutdown();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_abrupt_server_restart) = false;
+  }
+
+  static bool IsWalSegment(const std::string& path) {
+    return FsManager::IsWalSegmentFileName(BaseName(path));
+  }
+
+  PowerLossEnv* power_loss_env_ = nullptr;
+};
+
+// Power loss drops the WAL tail that was not fsynced. A memtable flush done before the power loss
+// must not have persisted operations from that tail, otherwise the flushed op id is ahead of the
+// WAL and bootstrap fails with "WAL files missing".
+// https://github.com/yugabyte/yugabyte-db/issues/34197
+TEST_F(PowerLossTest, FlushAheadOfUnsyncedWal) {
+  auto expected_rows = WriteRows(10);
+
+  // Otherwise the WAL tail is already durable and the scenario is not exercised.
+  ASSERT_GT(power_loss_env_->UnsyncedBytes(IsWalSegment), 0U);
+
+  auto* ts = mini_cluster()->mini_tablet_server(0);
+  ASSERT_OK(ts->FlushTablets());
+
+  ShutdownAbruptly(ts);
+  ASSERT_OK(power_loss_env_->DropUnsyncedData(IsWalSegment));
+
+  ASSERT_OK(ts->Start());
+  ASSERT_NO_FATALS(CheckRows(expected_rows));
+}
+
+// A process crash leaves the WAL tail unsynced. When bootstrap does not reuse that segment, it must
+// fsync it, since flushes may then persist the entries replayed from it.
+TEST_F(PowerLossTest, FlushReplayedFromUnreusedSegment) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_reuse_unclosed_segment_threshold_bytes) = -1;
+  auto expected_rows = WriteRows(10);
+  ASSERT_GT(power_loss_env_->UnsyncedBytes(IsWalSegment), 0U);
+
+  // Process crash: neither the shutdown flush nor the WAL close syncs the WAL.
+  auto* ts = mini_cluster()->mini_tablet_server(0);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_flush_on_shutdown) = true;
+  ShutdownAbruptly(ts);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_flush_on_shutdown) = false;
+
+  ASSERT_OK(ts->Start());
+  ASSERT_OK(ts->FlushTablets());
+
+  ShutdownAbruptly(ts);
+  ASSERT_OK(power_loss_env_->DropUnsyncedData(IsWalSegment));
+
+  ASSERT_OK(ts->Start());
+  ASSERT_NO_FATALS(CheckRows(expected_rows));
 }
 
 } // namespace integration_tests

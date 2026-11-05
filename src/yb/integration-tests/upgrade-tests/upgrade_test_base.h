@@ -22,10 +22,10 @@ namespace yb {
 struct BuildInfo {
   std::string version;
   std::string build_number;
-  std::string linux_debug_x86_url;
   std::string linux_release_x86_url;
+  // Optional. Used by fastdebug builds of the current version when set.
+  std::string linux_fastdebug_x86_url;
   std::string linux_release_aarch64_url;
-  std::string darwin_debug_arm64_url;
   std::string darwin_release_arm64_url;
 };
 
@@ -75,6 +75,9 @@ class UpgradeTestBase : public ExternalMiniClusterITestBase {
 
   Status PromoteAutoFlags(AutoFlagClass flag_class = AutoFlagClass::kExternal);
 
+  // Waits until every running yb-master and yb-tserver has applied this AutoFlags config version.
+  Status WaitForAutoFlagsConfigApplied(uint32_t config_version);
+
   virtual Status FinalizeYsqlMajorCatalogUpgrade();
 
   Status PerformYsqlUpgrade();
@@ -99,6 +102,9 @@ class UpgradeTestBase : public ExternalMiniClusterITestBase {
   Status WaitForClusterToStabilize();
 
   BuildInfo old_version_info() const { return old_version_info_; }
+  // Can only be used after the cluster has been started in the old version.
+  const std::string& old_version_bin_path() const { return old_version_bin_path_; }
+  const std::string& current_version_bin_path() const { return current_version_bin_path_; }
   // Can only be used after SetUp has been called.
   VersionInfoPB current_version_info() const { return current_version_info_; }
   TestThreadHolder test_thread_holder_;

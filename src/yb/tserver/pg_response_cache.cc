@@ -47,6 +47,29 @@ METRIC_DEFINE_counter(server, pg_response_cache_hits,
                       "PgClientService Response Cache Hits",
                       yb::MetricUnit::kCacheHits,
                       "Total number of hits in PgClientService response cache");
+DEFINE_test_flag(bool, pg_response_cache_force_lookup_only_miss, false,
+    "Treat every lookup-only response cache query as a miss, as though the entry had been "
+    "evicted. Lets a test exercise the fallback from reading an older catalog version to a full "
+    "prefetch without having to arrange an eviction.");
+
+DEFINE_test_flag(bool, pg_response_cache_force_lookup_only_miss_on_final_request, false,
+    "Treat only the lookup-only query that completes a connection start's prefetch as a miss. "
+    "The earlier requests still hit, so this reproduces a connection that has already built its "
+    "relcache from the older version by the time it has to fall back.");
+
+METRIC_DEFINE_counter(server, pg_response_cache_lookup_only_hits,
+                      "PgClientService Response Cache Lookup Only Hits",
+                      yb::MetricUnit::kCacheHits,
+                      "Number of lookup-only queries to PgClientService response cache that were "
+                      "served from a catalog version this node already held rather than fetched "
+                      "from the master leader. A connection start issues one per prefetch "
+                      "request, so this counts requests rather than connections");
+METRIC_DEFINE_counter(server, pg_response_cache_lookup_only_misses,
+                      "PgClientService Response Cache Lookup Only Misses",
+                      yb::MetricUnit::kCacheQueries,
+                      "Number of lookup-only queries to PgClientService response cache that found "
+                      "nothing cached, after which the connection falls back to a full catalog "
+                      "prefetch. Counts requests rather than connections");
 METRIC_DEFINE_counter(server, pg_response_cache_queries,
                       "PgClientService Response Cache Queries",
                       yb::MetricUnit::kCacheQueries,
@@ -187,7 +210,9 @@ class Data {
         creation_time_(creation_time),
         readiness_deadline_(readiness_deadline) {}
 
-  void Set(PgResponseCache::Response&& value) {
+  void Set(
+      PgResponseCache::Response&& value, PgResponseCache::KeyGroup group,
+      uint64_t catalog_version) {
     if (PREDICT_FALSE(FLAGS_TEST_pg_response_cache_catalog_read_time_usec > 0) &&
         value.response->has_catalog_read_time()) {
       TEST_UpdateCatalogReadTime(
@@ -214,6 +239,26 @@ class Data {
       response = &*response_;
       state_.store(new_state, std::memory_order_release);
     }
+    // Logged before the loop, not after, because a node that is about to run out of memory dies
+    // inside it.
+    //
+    // The waiter count is the point: every waiter receives the response here, and connections that
+    // arrived one at a time go on to build their catalog caches together. The byte count is the
+    // response itself, not what a backend grows to holding it -- a few MB here has been seen to
+    // become a few hundred MB of relcache. The fill duration is here because anything that delays
+    // the filler, such as the master shedding its prefetch, lengthens the queue behind it. The
+    // group and the catalog version say which database refilled and at which version. Neither
+    // identifies one fill: a paged prefetch caches every page under a key of its own, and a global
+    // catalog version bump moves every database to the same version at once.
+    //
+    // The outcome separates a fill that stored a catalog from one that did not: a read that
+    // failed, or a filler that went away without storing anything (see SetAbandoned). All three
+    // release their waiters here; only the first hands them a catalog.
+    const auto* const outcome =
+        new_state == DataState::kReadyOK ? "Fill complete" : "Fill failed";
+    VLOG(1) << outcome << " for group " << group << " catalog version " << catalog_version
+            << " after " << MonoDelta(CoarseMonoClock::Now() - creation_time_) << ", releasing "
+            << waiters.size() << " waiters, " << sz << " bytes each";
     for (auto waiter : waiters) {
       waiter->Apply(*response);
     }
@@ -223,6 +268,25 @@ class Data {
         updater->Consume(sz);
       }
     }
+  }
+
+  // Complete an entry whose filler went away without storing anything. Set() is the only thing
+  // that drains waiters_, and PgResponseCacheWaiter takes nothing but a response, so an error
+  // response is the only way to release callers already queued. Handing them one is what a fill
+  // whose read failed already does: pg_client_session calls the setter with the failed status
+  // and Set() passes it on. Leaving them queued instead costs a postgres backend apiece until
+  // their own deadlines expire, and leaves them to be destroyed un-responded if the entry's
+  // readiness deadline passes first.
+  //
+  // Completing as a failure also leaves the entry in the state that already means "do not serve
+  // this": IsValid() is false for kReadyFailure, so the next caller rebuilds it and fills afresh
+  // rather than inheriting the failure.
+  void SetAbandoned(PgResponseCache::KeyGroup group, uint64_t catalog_version) {
+    auto msg = rpc::MakeSharedMessage<PgPerformResponseMsg>();
+    StatusToPB(
+        STATUS(Aborted, "Catalog response cache fill was abandoned by its filler"),
+        msg->mutable_status());
+    Set(PgResponseCache::Response(*msg, {}), group, catalog_version);
   }
 
   [[nodiscard]] bool IsValid(CoarseTimePoint now, uint64_t version) const {
@@ -253,6 +317,14 @@ class Data {
       return nullptr;
     }
     return &*response_;
+  }
+
+  // The cached response, or null while one is still being filled. Unlike RegisterWaiter this
+  // neither claims the entry for filling nor enqueues the waiter, so a query that only looks
+  // leaves no trace on the entry.
+  [[nodiscard]] const PgResponseCache::Response* ReadyResponse() EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    return response_ ? &*response_ : nullptr;
   }
 
   [[nodiscard]] CoarseTimePoint creation_time() const {
@@ -399,10 +471,32 @@ class PgResponseCache::Impl : private GarbageCollector {
     return value.data();
   }
 
+  // The data for an already cached entry, or null when there is none to serve. Unlike
+  // GetEntryData this never inserts.
+  [[nodiscard]] std::shared_ptr<Data> FindEntryData(
+      LWPgPerformOptionsPB::LWCachingInfoPB* cache_info) EXCLUDES(mutex_) {
+    const auto now = CoarseMonoClock::Now();
+    std::lock_guard lock(mutex_);
+    const auto group = cache_info->key_group();
+    const auto& bucket = GetKeyGroupBucket(group);
+    if (bucket.disabler.lock()) {
+      return nullptr;
+    }
+    const auto i = entries_.find(Key(group, cache_info->key_value()));
+    if (i == entries_.end()) {
+      return nullptr;
+    }
+    const auto& data = i->value.data();
+    return data && data->IsValid(now, bucket.version) ? data : nullptr;
+  }
+
  public:
   Result<Setter> Get(
       LWPgPerformOptionsPB::LWCachingInfoPB* cache_info, CoarseTimePoint deadline,
       const PgResponseCacheWaiterPtr& waiter) EXCLUDES(mutex_) {
+    if (cache_info->lookup_only()) {
+      return LookupOnlyGet(cache_info, waiter);
+    }
     auto data = GetEntryData(cache_info, deadline);
     queries_->Increment();
     if (!data) {
@@ -421,9 +515,70 @@ class PgResponseCache::Impl : private GarbageCollector {
       }
       return Setter();
     }
-    return [empty_data = std::move(data)](Response&& response) {
-      empty_data->Set(std::move(response));
+    const auto group = cache_info->key_group();
+    const auto version = cache_info->catalog_version();
+    // pg_client_session takes this setter and can return early before the flush -- SetupSession
+    // and PrepareOperations both can -- destroying it without ever storing a response. Completing
+    // the entry then is what releases the callers queued behind this fill.
+    auto abandon = [data, group, version] { data->SetAbandoned(group, version); };
+    return [data = std::move(data),
+            abandon_guard =
+                std::make_shared<CancelableScopeExit<decltype(abandon)>>(std::move(abandon)),
+            observer = fill_observer_,
+            group,
+            version,
+            completes_connection_prefetch =
+                cache_info->completes_connection_prefetch()](Response&& response) {
+      // A prefetch is paged. pggate keeps issuing reads while any operation still returns paging
+      // state, and each round is cached under a key of its own, so an observer told about the
+      // first round would learn of a version whose later rounds are not cached yet. The round
+      // where nothing is left to page is the one after which this node holds all of them.
+      // A failed round holds no rows and no paging state, so it must not be mistaken for the
+      // last one. Computed before the move below, which empties the response.
+      bool is_final_round = completes_connection_prefetch && IsOk(response);
+      if (is_final_round) {
+        for (const auto& op_response : response.response->responses()) {
+          if (op_response.has_paging_state()) {
+            is_final_round = false;
+            break;
+          }
+        }
+      }
+      abandon_guard->Cancel();
+      data->Set(std::move(response), group, version);
+      // After the entry is set, so an observer can rely on the entry being readable.
+      if (observer && is_final_round) {
+        observer(group, version);
+      }
     };
+  }
+
+  // A lookup-only query answers whether a response is cached here and never fills the cache; its
+  // caller reads from the master leader instead when nothing is. It must leave no entry behind on
+  // a miss: an entry claimed for a fill that is not coming makes every later query on that key
+  // wait out the RPC deadline.
+  Result<Setter> LookupOnlyGet(
+      LWPgPerformOptionsPB::LWCachingInfoPB* cache_info,
+      const PgResponseCacheWaiterPtr& waiter) EXCLUDES(mutex_) {
+    auto data = FindEntryData(cache_info);
+    queries_->Increment();
+    // A response another query is still filling is not one this can serve, since waiting for it
+    // would mean registering as a waiter on an entry this query does not own.
+    const auto* response = data ? data->ReadyResponse() : nullptr;
+    // An entry whose fill failed still holds a response, since Set stores it before recording the
+    // failure and ReadyResponse does not consult the state. Serving one counts a hit for something
+    // the caller cannot start from, and it falls back either way.
+    if (!response || !IsOk(*response) ||
+        PREDICT_FALSE(FLAGS_TEST_pg_response_cache_force_lookup_only_miss) ||
+        PREDICT_FALSE(FLAGS_TEST_pg_response_cache_force_lookup_only_miss_on_final_request &&
+                      cache_info->completes_connection_prefetch())) {
+      lookup_only_misses_->Increment();
+      return STATUS(Incomplete, "Response is not cached");
+    }
+    hits_->Increment();
+    lookup_only_hits_->Increment();
+    waiter->Apply(*response);
+    return Setter();
   }
 
   [[nodiscard]] Disabler Disable(KeyGroup group) {
@@ -441,22 +596,30 @@ class PgResponseCache::Impl : private GarbageCollector {
   }
 
   [[nodiscard]] static std::shared_ptr<Impl> Make(
-      const std::shared_ptr<MemTracker>& parent_mem_tracker, MetricEntity* metric_entity) {
+      const std::shared_ptr<MemTracker>& parent_mem_tracker, MetricEntity* metric_entity,
+      PgResponseCache::FillObserver fill_observer) {
     struct PrivateConstructorAccessor : public Impl {
       PrivateConstructorAccessor(
-          const std::shared_ptr<MemTracker>& parent_mem_tracker, MetricEntity* metric_entity)
-          : Impl(parent_mem_tracker, metric_entity) {}
+          const std::shared_ptr<MemTracker>& parent_mem_tracker, MetricEntity* metric_entity,
+          PgResponseCache::FillObserver fill_observer)
+          : Impl(parent_mem_tracker, metric_entity, std::move(fill_observer)) {}
     };
-    auto result = std::make_shared<PrivateConstructorAccessor>(parent_mem_tracker, metric_entity);
+    auto result = std::make_shared<PrivateConstructorAccessor>(
+        parent_mem_tracker, metric_entity, std::move(fill_observer));
     result->metric_context_.mem_tracker().AddGarbageCollector(
         std::shared_ptr<GarbageCollector>(result, result.get()));
     return result;
   }
 
  private:
-  Impl(const std::shared_ptr<MemTracker>& parent_mem_tracker, MetricEntity* metric_entity)
+  Impl(const std::shared_ptr<MemTracker>& parent_mem_tracker, MetricEntity* metric_entity,
+       PgResponseCache::FillObserver fill_observer)
       : queries_(METRIC_pg_response_cache_queries.Instantiate(metric_entity)),
         hits_(METRIC_pg_response_cache_hits.Instantiate(metric_entity)),
+        lookup_only_hits_(
+            METRIC_pg_response_cache_lookup_only_hits.Instantiate(metric_entity)),
+        lookup_only_misses_(
+            METRIC_pg_response_cache_lookup_only_misses.Instantiate(metric_entity)),
         renew_soft_(METRIC_pg_response_cache_renew_soft.Instantiate(metric_entity)),
         renew_hard_(METRIC_pg_response_cache_renew_hard.Instantiate(metric_entity)),
         gc_calls_(METRIC_pg_response_cache_gc_calls.Instantiate(metric_entity)),
@@ -467,7 +630,8 @@ class PgResponseCache::Impl : private GarbageCollector {
             GetCacheMemoryTracker(parent_mem_tracker),
             METRIC_pg_response_cache_entries.Instantiate(metric_entity, 0)),
         entries_(FLAGS_pg_response_cache_capacity),
-        key_group_buckets_(FLAGS_pg_response_cache_num_key_group_bucket)
+        key_group_buckets_(FLAGS_pg_response_cache_num_key_group_bucket),
+        fill_observer_(std::move(fill_observer))
   {}
 
   void CollectGarbage(size_t required) override {
@@ -511,6 +675,8 @@ class PgResponseCache::Impl : private GarbageCollector {
 
   scoped_refptr<Counter> queries_;
   scoped_refptr<Counter> hits_;
+  scoped_refptr<Counter> lookup_only_hits_;
+  scoped_refptr<Counter> lookup_only_misses_;
   scoped_refptr<Counter> renew_soft_;
   scoped_refptr<Counter> renew_hard_;
   scoped_refptr<Counter> gc_calls_;
@@ -525,13 +691,16 @@ class PgResponseCache::Impl : private GarbageCollector {
 
   std::vector<KeyGroupBucket> key_group_buckets_ GUARDED_BY(mutex_);
 
+  const PgResponseCache::FillObserver fill_observer_;
+
   DISALLOW_COPY_AND_ASSIGN(Impl);
 };
 
 PgResponseCache::PgResponseCache(
     const std::shared_ptr<MemTracker>& parent_mem_tracker,
-    MetricEntity* metric_entity)
-    : impl_(Impl::Make(parent_mem_tracker, metric_entity)) {
+    MetricEntity* metric_entity,
+    FillObserver fill_observer)
+    : impl_(Impl::Make(parent_mem_tracker, metric_entity, std::move(fill_observer))) {
 }
 
 PgResponseCache::~PgResponseCache() = default;
