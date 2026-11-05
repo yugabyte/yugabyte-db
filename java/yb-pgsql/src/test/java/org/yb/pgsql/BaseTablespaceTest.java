@@ -302,6 +302,22 @@ public abstract class BaseTablespaceTest extends BasePgSQLTest {
     }
   }
 
+  /**
+   * Waits until the table's placement matches the tablespace. Use after ALTER ... SET TABLESPACE
+   * instead of waitForLoadBalancer(): the load balancer can go active and idle before the master
+   * refreshes its tablespace info and sees the new placement.
+   */
+  void waitForTablePlacement(final String table, Tablespace tablespace) throws Exception {
+    TestUtils.waitFor(() -> {
+      try {
+        verifyTablePlacement(table, tablespace);
+        return true;
+      } catch (AssertionError e) {
+        return false;
+      }
+    }, MASTER_LOAD_BALANCER_WAIT_TIME_MS);
+  }
+
   private void verifyTabletPlacement(LocatedTablet tablet, Tablespace tablespace) {
     List<LocatedTablet.Replica> replicas = tablet.getReplicas();
     assertEquals(tablespace.numReplicas, replicas.size());

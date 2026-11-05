@@ -15,6 +15,8 @@
 
 #include <sys/stat.h>
 
+#include <fstream>
+
 #include "yb/client/client-test-util.h"
 #include "yb/client/table_info.h"
 #include "yb/util/async_util.h"
@@ -63,6 +65,44 @@ class YsqlMajorUpgradeTest : public YsqlMajorUpgradeTestBase {
     RETURN_NOT_OK(cluster_->WaitForMasterToMarkTSDead(static_cast<int>(master_tserver_idx)));
 
     return master_tserver;
+  }
+
+  // Returns Name, State and PPid from /proc/<pid>/status, or nullopt if the process is gone.
+  static std::optional<std::tuple<std::string, char, pid_t>> GetProcStatus(pid_t pid) {
+    std::ifstream status(Format("/proc/$0/status", pid));
+    std::string line, name;
+    char state = 0;
+    pid_t ppid = -1;
+    while (std::getline(status, line)) {
+      if (line.starts_with("Name:")) {
+        name = line.substr(line.find_first_not_of(" \t", 5));
+      } else if (line.starts_with("State:")) {
+        state = line[line.find_first_not_of(" \t", 6)];
+      } else if (line.starts_with("PPid:")) {
+        ppid = std::stoi(line.substr(5));
+      }
+    }
+    if (name.empty()) {
+      return std::nullopt;
+    }
+    return std::make_tuple(name, state, ppid);
+  }
+
+  static bool IsProcessRunning(pid_t pid) {
+    const auto status = GetProcStatus(pid);
+    return status && std::get<1>(*status) != 'Z';
+  }
+
+  // Returns the closest ancestor of pid named name, or 0 if there is none.
+  static pid_t FindAncestorProcess(pid_t pid, const std::string& name) {
+    for (auto status = GetProcStatus(pid); status && std::get<2>(*status) > 1;) {
+      pid = std::get<2>(*status);
+      status = GetProcStatus(pid);
+      if (status && std::get<0>(*status) == name) {
+        return pid;
+      }
+    }
+    return 0;
   }
 };
 
@@ -2416,6 +2456,53 @@ TEST_F(YsqlMajorUpgradeTest, SocketDirCleanedUpAfterMasterKilledDuringUpgrade) {
       << "Stale socket directory was not cleaned up: " << socket_dir;
 
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_kill_master_before_ysql_pg_upgrade", "false"));
+  ASSERT_OK(RollbackYsqlMajorCatalogVersion());
+  ASSERT_OK(PerformYsqlMajorCatalogUpgrade());
+}
+
+// Verify that when the yb-master is killed while pg_upgrade runs a ysql_dump, both pg_upgrade and
+// the ysql_dump end instead of running on as orphans.
+TEST_F(
+    YsqlMajorUpgradeTest,
+    YB_DISABLE_TEST_ON_MACOS(MasterKilledDuringUpgradeKillsPgUpgradeAndYsqlDump)) {
+  ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
+
+  auto* leader = cluster_->GetLeaderMaster();
+  const auto leader_pid = leader->pid();
+
+  // Make the first ysql_dump leave its pid in pid_dir and wait there for a signal.
+  const auto pid_dir = JoinPathSegments(GetTestDataDirectory(), "ysql_dump_pid");
+  ASSERT_OK(Env::Default()->CreateDir(pid_dir));
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_ysql_pg_upgrade_dump_pid_dir", pid_dir));
+
+  ASSERT_OK(StartYsqlMajorCatalogUpgrade());
+
+  pid_t ysql_dump_pid = 0;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        const auto files = VERIFY_RESULT(Env::Default()->GetChildren(pid_dir, ExcludeDots::kTrue));
+        if (files.empty()) {
+          return false;
+        }
+        ysql_dump_pid = std::stoi(files.front());
+        return true;
+      },
+      5min, "pg_upgrade to start a ysql_dump"));
+  const auto pg_upgrade_pid = FindAncestorProcess(ysql_dump_pid, "pg_upgrade");
+  ASSERT_NE(pg_upgrade_pid, 0) << "ysql_dump " << ysql_dump_pid << " has no pg_upgrade ancestor";
+  LOG(INFO) << "Killing yb-master " << leader_pid << " while pg_upgrade " << pg_upgrade_pid
+            << " runs ysql_dump " << ysql_dump_pid;
+
+  leader->Shutdown();
+  ASSERT_OK(WaitFor(
+      [pg_upgrade_pid]() -> Result<bool> { return !IsProcessRunning(pg_upgrade_pid); }, 5s,
+      "pg_upgrade to exit after its yb-master was killed"));
+  ASSERT_OK(WaitFor(
+      [ysql_dump_pid]() -> Result<bool> { return !IsProcessRunning(ysql_dump_pid); }, 5s,
+      "ysql_dump to exit after its yb-master was killed"));
+
+  ASSERT_OK(leader->Restart());
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_ysql_pg_upgrade_dump_pid_dir", ""));
   ASSERT_OK(RollbackYsqlMajorCatalogVersion());
   ASSERT_OK(PerformYsqlMajorCatalogUpgrade());
 }

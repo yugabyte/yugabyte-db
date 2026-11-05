@@ -444,6 +444,16 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Disable Slow queries command logging in the Yugabyte Anywhere Logs",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> paActiveTableMetricsEnabled =
+      new ConfKeyInfo<>(
+          "yb.pa.active_table_metrics.enabled",
+          ScopeType.UNIVERSE,
+          "Perf Advisor Collector active table metrics",
+          "Have Perf Advisor Collector push the universe's most active and largest tables to its"
+              + " TServers, so Prometheus scrapes that opt into filtering keep table-level metrics"
+              + " only for those tables",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> perfAdvisorEnabled =
       new ConfKeyInfo<>(
           "yb.perf_advisor.enabled",
@@ -623,7 +633,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           ScopeType.UNIVERSE,
           "Skip TLS Cert Validation",
           "Used to skip certificates validation for the configure phase."
-              + "Possible values - ALL, HOSTNAME, NONE",
+              + "Possible values - ALL, HOSTNAME, REQUIRE_SAN, NONE",
           ConfDataType.SkipCertValdationEnum,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> deleteOrphanSnapshotOnStartup =
@@ -1797,6 +1807,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Amount of space (in KB) we want as buffer for NFS precheck",
           ConfDataType.LongType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> k8sMasterPvcGcReadyTimeout =
+      new ConfKeyInfo<>(
+          "yb.kubernetes.master_pvc_gc_ready_timeout",
+          ScopeType.UNIVERSE,
+          "Kubernetes master volume cleanup ready timeout",
+          "How long removing unused master volumes after a Kubernetes edit waits for the master"
+              + " StatefulSet to have all its pods ready before failing the task",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> rollingOpsWaitAfterEachPodMs =
       new ConfKeyInfo<>(
           "yb.kubernetes.operator.rolling_ops_wait_after_each_pod_ms",
@@ -1973,6 +1992,16 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Enable canary upgrade for the universe",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> ociAllowBootVolumeReplaceForMarketplaceBasedImages =
+      new ConfKeyInfo<>(
+          "yb.oci.allow_boot_volume_replace_for_marketplace_based_images",
+          ScopeType.UNIVERSE,
+          "Allow OCI boot volume replacement with Marketplace-based images",
+          "When enabled, the OCI VM image upgrade precheck no longer blocks Marketplace images or"
+              + " custom images built from one. Use only when YBA's record of an image is wrong or"
+              + " missing.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Long> fullMoveRollBatchSize =
       new ConfKeyInfo<>(
           "yb.task.full_move.roll_batch_size",
@@ -2034,5 +2063,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Node Agent Server Wait Timeout",
           "Timeout for waiting for node agent server to be ready",
           ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> k8sNodeExporterEnabled =
+      new ConfKeyInfo<>(
+          "yb.kubernetes.node_exporter.enabled",
+          ScopeType.UNIVERSE,
+          "Enable the node_exporter sidecar on Kubernetes universes",
+          "Run a node_exporter sidecar in every Kubernetes pod for disk and network metrics."
+              + " Pods change at their next Helm operation, for example a Kubernetes overrides"
+              + " edit",
+          ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

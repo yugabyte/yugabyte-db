@@ -32,6 +32,7 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/test_macros.h"
@@ -40,6 +41,8 @@
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
+
+using namespace std::chrono_literals;
 
 namespace yb {
 namespace pgwrapper {
@@ -199,6 +202,22 @@ TEST_F(PgTableSizeTest, ColocatedTableSize) {
 
   ASSERT_OK(VerifyInvalidTableSize(cluster_.get(), &test_conn, "T", kTable));
   ASSERT_OK(VerifyInvalidTableSize(cluster_.get(), &test_conn, "I", kIndex));
+
+  // Drive info is cached from tserver heartbeats. The view and
+  // yb_tablegroup_size are separate RPCs, so a heartbeat can land between
+  // them. Retry until both observe the same positive cached size.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return test_conn.FetchRow<bool>(
+        "SELECT EXISTS ("
+        "  SELECT 1 FROM yb_tablet_metadata "
+        "  WHERE db_name = current_database() "
+        "    AND relname LIKE '%.colocation.parent.tablename' "
+        "    AND tablet_attrs IS NOT NULL "
+        "    AND (tablet_attrs->>'total_bytes')::bigint > 0 "
+        "    AND (tablet_attrs->>'total_bytes')::bigint = "
+        "        (SELECT yb_tablegroup_size(oid) FROM pg_yb_tablegroup "
+        "         WHERE grpname = 'default'))");
+  }, 30s, "Wait for colocated parent tablet_attrs to match yb_tablegroup_size"));
 }
 
 TEST_F(PgTableSizeTest, SimpleTableSize) {

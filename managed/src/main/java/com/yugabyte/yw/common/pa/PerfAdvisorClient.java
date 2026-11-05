@@ -463,6 +463,13 @@ public class PerfAdvisorClient {
     private boolean metricsExportJsonlEnabled = true;
 
     /**
+     * Whether the PA Collector pushes the universe's active table list to its TServers. Set from
+     * {@code yb.pa.active_table_metrics.enabled}; PA Collector versions without the feature ignore
+     * it.
+     */
+    private boolean activeTableMetricsEnabled;
+
+    /**
      * Every PUT sends the whole record, so an omitted mode would reset the universe to LOCAL on PA.
      * {@link PerfAdvisorService#putUniverse} always sets it explicitly.
      */

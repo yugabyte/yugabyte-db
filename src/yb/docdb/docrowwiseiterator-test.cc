@@ -49,6 +49,8 @@ DECLARE_bool(enable_scan_choices_variable_bloom_filter);
 DECLARE_bool(use_fast_backward_scan);
 DECLARE_bool(use_fast_next_for_iteration);
 DECLARE_int32(max_nexts_to_avoid_seek);
+DECLARE_int32(max_prevs_to_avoid_seek);
+DECLARE_bool(ysql_enable_cdr_metadata);
 
 namespace yb {
 namespace docdb {
@@ -185,6 +187,7 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
   void TestClusteredFilterRange();
   void TestClusteredFilterRangeWithTableTombstone();
   void TestClusteredFilterRangeWithTableTombstoneReverseScan();
+  void TestCdrStampedTombstoneReverseScan();
   void TestClusteredFilterHybridScan();
   void TestClusteredFilterSubsetCol();
   void TestClusteredFilterSubsetCol2();
@@ -209,6 +212,7 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
   void TestPackedRow();
   void TestDeleteMarkerWithPackedRow();
   void TestUpdatePackedRow();
+  void TestUpperBoundExcludesIntentAtBound();
   // Restore doesn't use delete tombstones for rows, instead marks all columns
   // as deleted.
   void TestDeletedDocumentUsingLivenessColumnDelete();
@@ -671,6 +675,68 @@ void DocRowwiseIteratorTest::TestClusteredFilterRangeWithTableTombstoneReverseSc
         {int32:5,int32:6,int32:10}
       )#",
       HybridTime::FromMicros(1000));
+}
+
+// A tombstone written by a replication apply carries a CDR stamp, so its value no longer begins
+// with kTombstone. The fast backward scan path reads the row entry's value type directly, so it has
+// to look past the control fields - otherwise the delete goes unnoticed and the row still reads.
+void DocRowwiseIteratorTest::TestCdrStampedTombstoneReverseScan() {
+  ASSERT_TRUE(FLAGS_use_fast_backward_scan) << "this covers the fast backward scan path";
+
+  Schema test_schema(
+      {ColumnSchema("r1", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
+       ColumnSchema("r2", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
+       // Non-key columns
+       ColumnSchema("payload", DataType::INT32, ColumnKind::VALUE, Nullable::kTrue)},
+      {10_ColId, 11_ColId, 12_ColId});
+
+  const KeyEntryValues range_components{
+      KeyEntryValue::Int32(5), KeyEntryValue::Int32(6)};
+  const auto encoded_doc_key = DocKey(test_schema, range_components).Encode();
+
+  ASSERT_OK(SetPrimitive(
+      DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(12_ColId)),
+      QLValue::Primitive(10), HybridTime::FromMicros(1000)));
+
+  {
+    google::FlagSaver flag_saver;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_cdr_metadata) = true;
+    auto dwb = MakeDocWriteBatch();
+    dwb.SetCdrMetadata({.source_origin = 42, .source_write_ht = HybridTime::FromMicros(1500)});
+    ASSERT_OK(dwb.DeleteSubDoc(DocPath(encoded_doc_key)));
+    ASSERT_OK(WriteToRocksDB(dwb, HybridTime::FromMicros(2000)));
+  }
+
+  PgsqlConditionPB cond;
+  auto ids = cond.add_operands()->mutable_tuple();
+  ids->add_elems()->set_column_id(12_ColId);
+  cond.set_op(QL_OP_LESS_THAN);
+  auto options = cond.add_operands()->mutable_value()->mutable_list_value();
+
+  auto option1 = options->add_elems()->mutable_tuple_value();
+  option1->add_elems()->set_int32_value(5);
+
+  const KeyEntryValues empty_key_components;
+  std::optional<int32_t> empty_hash_code;
+  static const DocKey default_doc_key;
+  DocPgsqlScanSpec spec(
+      test_schema, rocksdb::kDefaultQueryId, nullptr, {}, empty_key_components,
+      PgsqlConditionPBPtr(&cond), empty_hash_code, empty_hash_code, default_doc_key,
+      /* is_forward_scan */ false);
+
+  // Built directly rather than through CreateIteratorAndValidate, which turns fast backward scan
+  // off - the path under test here is exactly the one it disables.
+  auto doc_read_context = DocReadContext::TEST_Create(test_schema);
+  auto pending_op = ScopedRWOperation::TEST_Create();
+  auto iter = MakeIterator(
+      test_schema, doc_read_context, kNonTransactionalOperationContext, doc_db(),
+      ReadOperationData::FromReadTime(ReadHybridTime::FromMicros(3000)), pending_op);
+  ASSERT_OK(iter->Init(spec));
+  ASSERT_TRUE(iter->TEST_use_fast_backward_scan());
+
+  dockv::ReaderProjection reader_projection(test_schema);
+  dockv::PgTableRow row(reader_projection);
+  ASSERT_FALSE(ASSERT_RESULT(iter->PgFetchNext(&row))) << "deleted row was returned";
 }
 
 void DocRowwiseIteratorTest::TestClusteredFilterHybridScan() {
@@ -1848,6 +1914,65 @@ void DocRowwiseIteratorTest::TestDeleteMarkerWithPackedRow() {
       HybridTime::FromMicros(1100));
 }
 
+// An intent for a whole row has the row's doc key as its key prefix, with no hybrid time suffix,
+// and IntentAwareIterator::SatisfyBounds lets it pass when the upper bound is equal to that doc
+// key. Checks that the bound set by SetUpperBound still excludes such a row and that each row is
+// returned for exactly one range.
+void DocRowwiseIteratorTest::TestUpperBoundExcludesIntentAtBound() {
+  constexpr int kVersion = 0;
+  auto& schema_packing = ASSERT_RESULT(
+      doc_read_context().schema_packing_storage.GetPacking(kVersion)).get();
+
+  SetTransactionIsolationLevel(IsolationLevel::SNAPSHOT_ISOLATION);
+  TransactionStatusManagerMock txn_status_manager;
+  const auto txn = ASSERT_RESULT(FullyDecodeTransactionId("0000000000000001"));
+
+  // Row 1 is written by a transaction which is committed but not applied, so it is present only
+  // as an intent for the whole row.
+  SetCurrentTransactionId(txn);
+  InsertPackedRow(
+      kVersion, schema_packing, kEncodedDocKey1, HybridTime::FromMicros(500),
+      {
+          {30_ColId, QLValue::Primitive("row1_c")},
+          {40_ColId, QLValue::PrimitiveInt64(10000)},
+          {50_ColId, QLValue::Primitive("row1_e")},
+      });
+  ResetCurrentTransactionId();
+  txn_status_manager.Commit(txn, HybridTime::FromMicros(600));
+
+  InsertPackedRow(
+      kVersion, schema_packing, kEncodedDocKey2, HybridTime::FromMicros(1000),
+      {
+          {30_ColId, QLValue::Primitive("row2_c")},
+      });
+
+  DocDBDebugDumpToConsole();
+
+  const auto txn_context =
+      TransactionOperationContext(TransactionId::GenerateRandom(), &txn_status_manager);
+  auto pending_op = ScopedRWOperation::TEST_Create();
+  auto iter = MakeIterator(
+      projection(), doc_read_context(), txn_context, doc_db(),
+      ReadOperationData::FromReadTime(ReadHybridTime::FromMicros(2000)), pending_op);
+  ASSERT_OK(iter->InitForTableType(YQL_TABLE_TYPE, Slice(), SkipSeek::kTrue));
+
+  auto fetch_range = [&](Slice lower_bound, Slice upper_bound) -> Result<std::string> {
+    iter->SetUpperBound(upper_bound);
+    iter->SeekToDocKeyPrefix(lower_bound);
+    return ConvertIteratorRowsToString(iter.get(), IteratorMode::kGeneric, projection());
+  };
+
+  const std::string kRow1 =
+      R"#({string:"row1",int64:11111,string:"row1_c",int64:10000,string:"row1_e"})#" "\n";
+  const std::string kRow2 = R"#({string:"row2",int64:22222,string:"row2_c",null,null})#" "\n";
+
+  // Row 1 belongs to the range which starts at its doc key, and only to it.
+  ASSERT_EQ(ASSERT_RESULT(fetch_range(Slice(), kEncodedDocKey1)), "");
+  ASSERT_EQ(ASSERT_RESULT(fetch_range(kEncodedDocKey1, kEncodedDocKey2)), kRow1);
+  ASSERT_EQ(ASSERT_RESULT(fetch_range(kEncodedDocKey2, Slice())), kRow2);
+  ASSERT_EQ(ASSERT_RESULT(fetch_range(Slice(), Slice())), kRow1 + kRow2);
+}
+
 void DocRowwiseIteratorTest::TestDeletedDocumentUsingLivenessColumnDelete() {
   // Row 1
   // We don't need any seeks for writes, where column values are primitives.
@@ -2414,6 +2539,10 @@ TEST_F(DocRowwiseIteratorTest, ClusteredFilterRangeWithTableTombstoneReverseScan
   TestClusteredFilterRangeWithTableTombstoneReverseScan();
 }
 
+TEST_F(DocRowwiseIteratorTest, CdrStampedTombstoneReverseScan) {
+  TestCdrStampedTombstoneReverseScan();
+}
+
 TEST_F(DocRowwiseIteratorTest, ClusteredFilterHybridScanTest) {
   TestClusteredFilterHybridScan();
 }
@@ -2504,6 +2633,10 @@ TEST_F(DocRowwiseIteratorTest, DeleteMarkerWithPackedRow) {
 
 TEST_F(DocRowwiseIteratorTest, UpdatePackedRow) {
   TestUpdatePackedRow();
+}
+
+TEST_F(DocRowwiseIteratorTest, UpperBoundExcludesIntentAtBound) {
+  TestUpperBoundExcludesIntentAtBound();
 }
 
 TEST_F(DocRowwiseIteratorTest, DeletedDocumentUsingLivenessColumnDeleteTest) {
@@ -2896,6 +3029,73 @@ TEST_F(FastBackwardScanSplitChildTest, ScanAfterNewerDelete) {
       /* prev_deleted= */ true);
   ASSERT_EQ(AsString(ASSERT_RESULT(ScanRows({"a", "b"}))), AsString(std::vector<std::string>{
       R"#({string:"dddddddddddddddd",int64:2,missing,missing,missing})#"}));
+}
+
+// GH #35147: in a fast backward scan of a colocated table, column C of the last row B has
+// more updates than max_prevs_to_avoid_seek, so it is read with a forward Seek(). Nothing
+// in the IntentsDB follows C within the table, so that Seek() leaves the intent iterator
+// invalid. Row A has a committed but not yet applied update of C, newer than its applied
+// value, and the scan must return it.
+TEST_F(DocRowwiseIteratorTest, FastBackwardScanColocatedSeesIntentAfterForwardSeek) {
+  constexpr ColocationId kColocationId(0x4001);
+  Schema schema = doc_read_context().schema();
+  schema.set_colocation_id(kColocationId);
+  const auto read_context = DocReadContext::TEST_Create(schema);
+  const DocKey high_key(schema, dockv::MakeKeyEntryValues("b", int64_t{1}));
+  const DocKey low_key(schema, dockv::MakeKeyEntryValues("a", int64_t{1}));
+
+  auto write_c = [this](const DocKey& doc_key, HybridTime ht, const std::string& value) {
+    auto dwb = MakeDocWriteBatch();
+    ASSERT_OK(dwb.TEST_SetPrimitive(
+        DocPath(doc_key.Encode(), KeyEntryValue::MakeColumnId(30_ColId)),
+        QLValue::Primitive(value)));
+    ASSERT_OK(WriteToRocksDBAndClear(&dwb, ht));
+  };
+
+  write_c(high_key, 1000_usec_ht, "h1");
+  write_c(high_key, 1100_usec_ht, "h2");
+  write_c(high_key, 1200_usec_ht, "h3");
+  write_c(low_key, 1000_usec_ht, "applied");
+
+  SetTransactionIsolationLevel(IsolationLevel::SNAPSHOT_ISOLATION);
+  const auto txn_id = TransactionId::GenerateRandom();
+  SetCurrentTransactionId(txn_id);
+  write_c(low_key, 1500_usec_ht, "committed");
+  ResetCurrentTransactionId();
+  TransactionStatusManagerMock txn_status_manager;
+  txn_status_manager.Commit(txn_id, 1600_usec_ht);
+  DocDBDebugDumpToConsole();
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_fast_backward_scan) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_prevs_to_avoid_seek) = 2;
+
+  Schema projection;
+  ASSERT_OK(schema.TEST_CreateProjectionByNames({"a", "b", "c"}, &projection));
+  const KeyEntryValues empty_key_components;
+  DocPgsqlScanSpec spec(
+      schema, rocksdb::kDefaultQueryId, /* arena = */ nullptr,
+      /* encoded_hashed_components = */ {}, empty_key_components, /* condition = */ nullptr,
+      /* hash_code = */ std::nullopt, /* max_hash_code = */ std::nullopt,
+      /* start_doc_key = */ DocKey(), /* is_forward_scan = */ false,
+      /* lower_doc_key = */ DocKey(schema), /* upper_doc_key = */ DocKey(
+          schema, KeyEntryValues{KeyEntryValue(dockv::KeyEntryType::kHighest)}));
+
+  auto pending_op = ScopedRWOperation::TEST_Create();
+  auto iter = MakeIterator(
+      projection, read_context, {TransactionId::GenerateRandom(), &txn_status_manager}, doc_db(),
+      ReadOperationData::FromSingleReadTime(2000_usec_ht), pending_op);
+  ASSERT_OK(iter->Init(spec));
+  ASSERT_TRUE(iter->TEST_use_fast_backward_scan());
+
+  dockv::ReaderProjection reader_projection(projection);
+  dockv::PgTableRow row(reader_projection);
+  std::vector<std::string> rows;
+  while (ASSERT_RESULT(iter->PgFetchNext(&row))) {
+    rows.push_back(ASSERT_RESULT(PgTableRowToString(schema, row, &projection)));
+  }
+  ASSERT_EQ(AsString(rows), AsString(std::vector<std::string>{
+      R"#({string:"b",int64:1,string:"h3",missing,missing})#",
+      R"#({string:"a",int64:1,string:"committed",missing,missing})#"}));
 }
 
 }  // namespace docdb

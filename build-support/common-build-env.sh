@@ -2264,13 +2264,14 @@ activate_virtualenv() {
 
   log "Activating python virtual env"
 
-  # Symlink the requirements files into the top level build directory
-  # We assume $YB_SRC_ROOT/build is already created by initialize_yugabyte_bash_common having
-  # already been called.
-  [[ -f "${YB_SRC_ROOT}/build/requirements.txt" ]] \
-    || ln -sf "${YB_SRC_ROOT}/requirements.txt" "${YB_SRC_ROOT}/build/"
-  [[ -f "${YB_SRC_ROOT}/build/requirements_frozen.txt" ]] \
-    || ln -sf "${YB_SRC_ROOT}/requirements_frozen.txt" "${YB_SRC_ROOT}/build/"
+  # Symlink the requirements files into the directory that holds the virtualenv, which is where
+  # yb_activate_virtualenv looks for them. This is $YB_SRC_ROOT/build, or the external build parent
+  # directory when YB_USE_EXTERNAL_BUILD_ROOT=1.
+  mkdir -p "${virtualenv_parent_dir}"
+  [[ -f "${virtualenv_parent_dir}/requirements.txt" ]] \
+    || ln -sf "${YB_SRC_ROOT}/requirements.txt" "${virtualenv_parent_dir}/"
+  [[ -f "${virtualenv_parent_dir}/requirements_frozen.txt" ]] \
+    || ln -sf "${YB_SRC_ROOT}/requirements_frozen.txt" "${virtualenv_parent_dir}/"
 
   yb_activate_virtualenv "${virtualenv_parent_dir}"
 

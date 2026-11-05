@@ -225,8 +225,26 @@ std::shared_ptr<const YBTable> AsyncRpc::table() const {
   return ops_[0].yb_op->table();
 }
 
+bool AsyncRpc::HasResponse() const {
+  return retrier().controller().status().ok();
+}
+
+rpc::RpcController* AsyncRpc::PrepareController() {
+  auto* controller = Rpc::PrepareController();
+  if (const auto& buffers_holder = batcher_->buffers_holder()) {
+    // The rpc keeps alive the request, the response and the batcher. The batcher drops
+    // buffers_holder once its rpcs are done, so the call needs its own reference.
+    controller->set_local_call_buffers_holder(
+        std::make_shared<std::pair<std::shared_ptr<void>, std::shared_ptr<void>>>(
+            shared_from_this(), buffers_holder));
+  }
+  return controller;
+}
+
 void AsyncRpc::Finished(const Status& status) {
-  VLOG_WITH_FUNC(4) << "status: " << status << ", error: " << AsString(response_error());
+  VLOG_WITH_FUNC(4)
+      << "status: " << status << ", error: "
+      << (HasResponse() ? AsString(response_error()) : "<no response>");
   Status new_status = status;
   RefCntBuffer data_holder;
   if (status.ok()) {
@@ -507,6 +525,10 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(
   req_.ref_tablet_id(tablet_invoker_.tablet()->tablet_id());
   req_.set_include_trace(IsTracingEnabled());
   const ConsistentReadPoint* read_point = batcher_->read_point();
+  const auto& metadata = batcher_->in_flight_ops().metadata;
+  const bool serializable =
+      !metadata.transaction.transaction_id.IsNil() &&
+      metadata.transaction.isolation == IsolationLevel::SERIALIZABLE_ISOLATION;
   bool has_read_time = false;
   if (read_point) {
     req_.set_propagated_hybrid_time(read_point->Now().ToUint64());
@@ -516,7 +538,15 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(
         (data.need_consistent_read &&
          table()->InternalSchema().table_properties().is_transactional())) {
       auto read_time = read_point->GetReadTime(tablet_invoker_.tablet()->tablet_id());
-      if (read_time) {
+      // A SERIALIZABLE transaction's read point carries a read time only while it reads the
+      // catalog snapshot, and those reads are performed in the forced snapshot mode. All other
+      // operations in serializable isolation must stay without a read time.
+      if (serializable && !data.force_snapshot_read) {
+        LOG_IF(DFATAL,
+               read_time && !table()->InternalSchema().table_properties().is_ysql_catalog_table())
+            << "Read time should NOT be specified for serializable isolation: "
+            << read_time.ToString();
+      } else if (read_time) {
         has_read_time = true;
         read_time.AddToPB(&req_);
       }
@@ -529,22 +559,22 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(
   if (start_time_micros > 0) {
     req_.set_start_time_micros(start_time_micros);
   }
-  const auto& metadata = batcher_->in_flight_ops().metadata;
   if (!metadata.transaction.transaction_id.IsNil()) {
     DCHECK(!data.skip_intents);
     SetMetadata(metadata, data.need_metadata, &req_);
-    bool serializable = metadata.transaction.isolation == IsolationLevel::SERIALIZABLE_ISOLATION;
-    LOG_IF(DFATAL, has_read_time && serializable)
-        << "Read time should NOT be specified for serializable isolation: "
-        << read_point->GetReadTime().ToString();
+    LOG_IF(DFATAL, data.force_snapshot_read && !has_read_time)
+        << "Forced snapshot read without a read time";
 
     // Use in_txn_limit to be able to read writes that happened with skip_intents i.e., they bypass
     // the intents db and land in the regular db. Only this op's read time moves; the transaction
     // and its metadata are untouched.
     //
-    // Serializable is excluded because it must not carry a read time at all (see the check above),
-    // and does not need one: it reads at the latest time, which is already above those rows.
-    if (data.read_at_in_txn_limit && has_read_time && !serializable) {
+    // A SERIALIZABLE RPC has a read time only for a forced snapshot read of a catalog table, and
+    // skip_intents doesn't apply to catalog tables. Other SERIALIZABLE reads read at the latest
+    // time, which is already above those rows.
+    LOG_IF(DFATAL, serializable && data.read_at_in_txn_limit && has_read_time)
+        << "in_txn_limit read time for a serializable read";
+    if (data.read_at_in_txn_limit && has_read_time) {
       if (!SetReadTimeToInTxnLimit(read_point, &req_)) {
         // Some sessions never pick a statement in_txn_limit -- PgClientSession::UpdateReadTime
         // skips SetInTxnLimit for autonomous DDL ones (see the TODO there) -- but the relation
@@ -646,7 +676,7 @@ template <class Req, class Resp>
 void AsyncRpcBase<Req, Resp>::ProcessResponseFromTserver(
     RefCntBuffer data_holder, const Status& status) {
   TRACE_TO(trace_, "ProcessResponseFromTserver($0)", status.ToString(false));
-  if (resp_.has_trace_buffer()) {
+  if (HasResponse() && resp_.has_trace_buffer()) {
     TRACE_TO(
         trace_, "Received from server: \nBEGIN AsyncRpc\n$0END AsyncRpc",
         resp_.trace_buffer().ToBuffer());
@@ -686,6 +716,9 @@ void AsyncRpcBase<Req, Resp>::SetRequestRaftConfigOpidIndex(int64_t opid_index) 
 
 template <class Req, class Resp>
 FlushExtraResult AsyncRpcBase<Req, Resp>::MakeFlushExtraResult() {
+  if (!HasResponse()) {
+    return {};
+  }
   return {GetPropagatedHybridTime(resp_),
           resp_.has_used_read_time() ? ReadHybridTime::FromPB(resp_.used_read_time())
                                      : ReadHybridTime()};
@@ -706,8 +739,12 @@ void HandleExtraFields(YBPgsqlWriteOp* op, tserver::LWWriteRequestPB* req) {
     req->set_external_hybrid_time(op->write_time().ToUint64());
     ReadHybridTime::SingleTime(op->write_time()).ToPB(req->mutable_read_time());
   }
-  if (op->XreplOriginId()) {
-    req->set_xrepl_origin_id(op->XreplOriginId());
+  const auto& cdr_metadata = op->cdr_metadata();
+  if (cdr_metadata.source_origin) {
+    req->set_xrepl_origin_id(cdr_metadata.source_origin);
+  }
+  if (cdr_metadata.source_write_ht.is_valid()) {
+    req->set_xrepl_source_write_ht(cdr_metadata.source_write_ht.ToUint64());
   }
   if (op->origination_info().IsSet()) {
     op->origination_info().ToPB(req->mutable_origination_info());
@@ -956,6 +993,9 @@ ReadRpc::ReadRpc(
   req_.set_consistency_level(yb_consistency_level);
   req_.dup_proxy_uuid(data.batcher->proxy_uuid());
   req_.set_use_async_write(data.use_async_write);
+  if (data.force_snapshot_read) {
+    req_.set_force_snapshot_read(true);
+  }
   if (!data.pending_async_write_op_ids.empty()) {
     // Old servers only read this field, and reject the gaps the later fences would cover.
     data.pending_async_write_op_ids.front().ToPB(

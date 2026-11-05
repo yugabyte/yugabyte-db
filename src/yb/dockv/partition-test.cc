@@ -33,6 +33,8 @@
 #include <stdint.h>
 
 #include <iterator>
+#include <limits>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -40,10 +42,15 @@
 
 #include "yb/common/common.pb.h"
 #include "yb/common/crc16.h"
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/key_entry_value.h"
 #include "yb/dockv/partial_row.h"
 #include "yb/dockv/partition.h"
+#include "yb/dockv/value_type.h"
 #include "yb/common/schema.h"
 
+#include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/tsan_util.h"
@@ -232,6 +239,116 @@ TEST(PartitionTest, Distribution) {
       next_hash_code = bounds.second + 1;
     }
     ASSERT_EQ(total_hash_codes, PartitionSchema::kMaxPartitionKey + 1);
+  }
+}
+
+TEST(PartitionTest, DecodeEncodedHashPartitionKeyBound) {
+  const auto make_bound = [](uint16_t hash_code, std::optional<KeyEntryType> suffix) {
+    KeyBytes key;
+    key.AppendKeyEntryType(KeyEntryType::kUInt16Hash);
+    key.AppendUInt16(hash_code);
+    if (suffix) {
+      key.AppendKeyEntryType(*suffix);
+    }
+    return key;
+  };
+  const auto decode = [](Slice bound) {
+    return PartitionSchema::DecodeEncodedHashPartitionKeyBound(bound);
+  };
+
+  // All three representations of a boundary h decode to h.
+  for (const uint16_t boundary : {uint16_t(0), uint16_t(1), uint16_t(100), uint16_t(0xFFFF)}) {
+    SCOPED_TRACE(Format("boundary: $0", boundary));
+    ASSERT_EQ(decode(make_bound(boundary, std::nullopt).AsSlice()), boundary);
+    ASSERT_EQ(decode(make_bound(boundary, KeyEntryType::kLowest).AsSlice()), boundary);
+    if (boundary > 0) {
+      ASSERT_EQ(
+          decode(make_bound(static_cast<uint16_t>(boundary - 1), KeyEntryType::kHighest).AsSlice()),
+          boundary);
+    }
+  }
+
+  // The boundary above all hash buckets has no hash code, so it is not recognized.
+  ASSERT_EQ(
+      decode(make_bound(PartitionSchema::kMaxPartitionKey, KeyEntryType::kHighest).AsSlice()),
+      std::nullopt);
+
+  // Encode and decode back - GetEncodedPartitionKey produces the base representation.
+  PartitionSchemaPB hash_partition_schema_pb;
+  hash_partition_schema_pb.set_hash_schema(PartitionSchemaPB::MULTI_COLUMN_HASH_SCHEMA);
+  for (const uint16_t hash_code : {uint16_t(0), uint16_t(100), uint16_t(0xFFFF)}) {
+    SCOPED_TRACE(Format("hash_code: $0", hash_code));
+    const auto encoded = ASSERT_RESULT(PartitionSchema::GetEncodedPartitionKey(
+        PartitionSchema::EncodeMultiColumnHashValue(hash_code), hash_partition_schema_pb));
+    ASSERT_EQ(decode(encoded), hash_code);
+  }
+
+  // Matching is by prefix: bytes after kLowest/kHighest are ignored, in particular the kGroupEnd
+  // markers of a fully encoded doc key.
+  {
+    auto key = make_bound(100, KeyEntryType::kLowest);
+    key.AppendKeyEntryType(KeyEntryType::kGroupEnd);
+    key.AppendKeyEntryType(KeyEntryType::kLowest);
+    key.AppendKeyEntryType(KeyEntryType::kGroupEnd);
+    ASSERT_EQ(decode(key.AsSlice()), 100);
+  }
+
+  // Not encoded hash partition keys.
+  ASSERT_EQ(decode(Slice()), std::nullopt);
+  // The legacy 2-byte format is not dockey-encoded.
+  ASSERT_EQ(decode(PartitionSchema::EncodeMultiColumnHashValue(100)), std::nullopt);
+  // The legacy 2-byte format with the first byte equal to kUInt16Hash.
+  ASSERT_EQ(decode(PartitionSchema::EncodeMultiColumnHashValue(static_cast<uint16_t>(
+                KeyEntryTypeAsChar::kUInt16Hash << 8 | 100))),
+            std::nullopt);
+  // Truncated: kUInt16Hash prefix without the full hash code.
+  ASSERT_EQ(decode(make_bound(100, std::nullopt).AsSlice().WithoutSuffix(1)), std::nullopt);
+  // A real doc key: the hash code is followed by a column value type.
+  ASSERT_EQ(decode(make_bound(100, KeyEntryType::kInt32).AsSlice()), std::nullopt);
+}
+
+TEST(PartitionTest, HashCodeToDocKeyBound) {
+  Schema schema({ ColumnSchema("h", DataType::INT32, ColumnKind::HASH),
+                  ColumnSchema("r", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST) },
+                { ColumnId(0), ColumnId(1) });
+  const auto doc_key = [&schema](uint16_t hash_code, int32_t value) {
+    return DocKey(
+        schema, hash_code, {KeyEntryValue::Int32(value)}, {KeyEntryValue::Int32(value)}).Encode();
+  };
+
+  for (const uint16_t hash_code : {uint16_t(0), uint16_t(1), uint16_t(100), uint16_t(0xFFFF)}) {
+    SCOPED_TRACE(Format("hash_code: $0", hash_code));
+    const auto lower = PartitionSchema::HashCodeToDocKeyBound(schema, hash_code, true);
+    const auto upper = PartitionSchema::HashCodeToDocKeyBound(schema, hash_code, false);
+
+    // The bounds are below and above all keys with the hash code.
+    for (const int32_t value : {std::numeric_limits<int32_t>::min(), 0,
+                                std::numeric_limits<int32_t>::max()}) {
+      const auto key = doc_key(hash_code, value);
+      ASSERT_LT(lower.AsSlice().compare(key.AsSlice()), 0);
+      ASSERT_GT(upper.AsSlice().compare(key.AsSlice()), 0);
+    }
+    if (hash_code > 0) {
+      const auto key =
+          doc_key(static_cast<uint16_t>(hash_code - 1), std::numeric_limits<int32_t>::max());
+      ASSERT_GT(lower.AsSlice().compare(key.AsSlice()), 0);
+    }
+    if (hash_code < 0xFFFF) {
+      const auto key =
+          doc_key(static_cast<uint16_t>(hash_code + 1), std::numeric_limits<int32_t>::min());
+      ASSERT_LT(upper.AsSlice().compare(key.AsSlice()), 0);
+    }
+
+    // The lower bound is h+0 and the upper bound is (h+1)-0, see
+    // DecodeEncodedHashPartitionKeyBound.
+    ASSERT_EQ(PartitionSchema::DecodeEncodedHashPartitionKeyBound(lower.AsSlice()), hash_code);
+    if (hash_code < 0xFFFF) {
+      ASSERT_EQ(PartitionSchema::DecodeEncodedHashPartitionKeyBound(upper.AsSlice()),
+                hash_code + 1);
+    } else {
+      ASSERT_EQ(PartitionSchema::DecodeEncodedHashPartitionKeyBound(upper.AsSlice()),
+                std::nullopt);
+    }
   }
 }
 

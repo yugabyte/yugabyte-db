@@ -91,7 +91,7 @@ northwind=# SELECT * FROM categories;
 ## Learn more
 
 - [Unique index with HASH column ordering](../../../../api/ysql/the-sql-language/statements/ddl_create_index/#unique-index-with-hash-column-ordering)
-- [UNIQUE constraint](../../data-manipulation#constraints)
+- [UNIQUE constraint](../../data-manipulation/#constraints)
 - [Indexes on JSON attributes](../../jsonb-ysql/#indexes-on-json-attributes)
 - [Benefits of Index-only scan](https://www.yugabyte.com/blog/how-a-distributed-sql-database-boosts-secondary-index-queries-with-index-only-scan/)
 - [CREATE TABLE](../../../../api/ysql/the-sql-language/statements/ddl_create_table/)

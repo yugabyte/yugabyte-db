@@ -649,4 +649,116 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
     assertThat(details.pricePerHour, equalTo(expectedTotal));
     assertThat(details.pricingKnown, equalTo(true));
   }
+
+  @Test
+  public void testAddPriceToDetailsOciDenseIoIncludesNvme() {
+    provider =
+        ModelFactory.newProvider(customer, com.yugabyte.yw.commissioner.Common.CloudType.oci);
+    region = Region.create(provider, "us-ashburn-1", "US Ashburn", "yb-image");
+    az = AvailabilityZone.createOrThrow(region, "ashburn-ad-1", "Ashburn AD-1", "subnet-1");
+    String ociShape = "VM.DenseIO.E4.Flex";
+    double ocpuPerHour = 0.025;
+    double memoryGbPerHour = 0.0015;
+    double nvmeTbPerHour = 0.0612;
+    int ocpus = 8;
+    double memGb = 128.0;
+    int nvmeGb = 6800;
+
+    InstanceType.InstanceTypeDetails typeDetails = new InstanceType.InstanceTypeDetails();
+    typeDetails.setVolumeDetailsList(1, nvmeGb, InstanceType.VolumeType.NVME);
+    InstanceType.upsert(provider.getUuid(), ociShape, ocpus, memGb, typeDetails);
+    PriceComponent.PriceDetails ocpuDetails = new PriceComponent.PriceDetails();
+    ocpuDetails.pricePerHour = ocpuPerHour;
+    PriceComponent.upsert(
+        provider.getUuid(),
+        region.getCode(),
+        OCIPriceUtil.ocpuComponentCode("DenseIOE4"),
+        ocpuDetails);
+    PriceComponent.PriceDetails memDetails = new PriceComponent.PriceDetails();
+    memDetails.pricePerHour = memoryGbPerHour;
+    PriceComponent.upsert(
+        provider.getUuid(),
+        region.getCode(),
+        OCIPriceUtil.memoryComponentCode("DenseIOE4"),
+        memDetails);
+    PriceComponent.PriceDetails nvmeDetails = new PriceComponent.PriceDetails();
+    nvmeDetails.pricePerHour = nvmeTbPerHour;
+    PriceComponent.upsert(
+        provider.getUuid(),
+        region.getCode(),
+        OCIPriceUtil.nvmeComponentCode("DenseIOE4"),
+        nvmeDetails);
+
+    DeviceInfo deviceInfo = getDummyDeviceInfo(1, nvmeGb);
+    deviceInfo.storageType = null;
+    UserIntent userIntent = getDummyUserIntent(deviceInfo, provider, ociShape);
+
+    sampleNodeDetails.cloudInfo.cloud = provider.getCode();
+    sampleNodeDetails.cloudInfo.instance_type = ociShape;
+    sampleNodeDetails.cloudInfo.region = region.getCode();
+    sampleNodeDetails.cloudInfo.az = az.getCode();
+    sampleNodeDetails.azUuid = az.getUuid();
+
+    UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
+    params.upsertPrimaryCluster(userIntent, null, setupPlacement());
+    sampleNodeDetails.placementUuid = params.getPrimaryCluster().uuid;
+    params.nodeDetailsSet = setUpNodeDetailsSet();
+    context = new Context(null, customer, params);
+
+    UniverseResourceDetails details = new UniverseResourceDetails();
+    details.addPrice(params, context);
+
+    double nvmeTb = nvmeGb / OCIPriceUtil.NVME_GB_PER_TB;
+    double expectedInstance =
+        ocpus * ocpuPerHour + memGb * memoryGbPerHour + nvmeTb * nvmeTbPerHour;
+    double expectedTotal = Double.parseDouble(String.format("%.4f", NUM_NODES * expectedInstance));
+    assertThat(details.ebsPricePerHour, equalTo(0.0));
+    assertThat(details.pricePerHour, equalTo(expectedTotal));
+    assertThat(details.pricingKnown, equalTo(true));
+  }
+
+  @Test
+  public void testAddPriceToDetailsOciHpcNvmeIncludedInOcpu() {
+    provider =
+        ModelFactory.newProvider(customer, com.yugabyte.yw.commissioner.Common.CloudType.oci);
+    region = Region.create(provider, "us-ashburn-1", "US Ashburn", "yb-image");
+    az = AvailabilityZone.createOrThrow(region, "ashburn-ad-1", "Ashburn AD-1", "subnet-1");
+    String ociShape = "BM.HPC2.36";
+    double ocpuPerHour = 0.075;
+    int ocpus = 36;
+    double memGb = 384.0;
+
+    InstanceType.InstanceTypeDetails typeDetails = new InstanceType.InstanceTypeDetails();
+    typeDetails.setVolumeDetailsList(1, 6400, InstanceType.VolumeType.NVME);
+    InstanceType.upsert(provider.getUuid(), ociShape, ocpus, memGb, typeDetails);
+    PriceComponent.PriceDetails ocpuDetails = new PriceComponent.PriceDetails();
+    ocpuDetails.pricePerHour = ocpuPerHour;
+    PriceComponent.upsert(
+        provider.getUuid(), region.getCode(), OCIPriceUtil.ocpuComponentCode("HPCX7"), ocpuDetails);
+
+    DeviceInfo deviceInfo = getDummyDeviceInfo(1, 6400);
+    deviceInfo.storageType = null;
+    UserIntent userIntent = getDummyUserIntent(deviceInfo, provider, ociShape);
+
+    sampleNodeDetails.cloudInfo.cloud = provider.getCode();
+    sampleNodeDetails.cloudInfo.instance_type = ociShape;
+    sampleNodeDetails.cloudInfo.region = region.getCode();
+    sampleNodeDetails.cloudInfo.az = az.getCode();
+    sampleNodeDetails.azUuid = az.getUuid();
+
+    UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
+    params.upsertPrimaryCluster(userIntent, null, setupPlacement());
+    sampleNodeDetails.placementUuid = params.getPrimaryCluster().uuid;
+    params.nodeDetailsSet = setUpNodeDetailsSet();
+    context = new Context(null, customer, params);
+
+    UniverseResourceDetails details = new UniverseResourceDetails();
+    details.addPrice(params, context);
+
+    double expectedTotal =
+        Double.parseDouble(String.format("%.4f", NUM_NODES * ocpus * ocpuPerHour));
+    assertThat(details.ebsPricePerHour, equalTo(0.0));
+    assertThat(details.pricePerHour, equalTo(expectedTotal));
+    assertThat(details.pricingKnown, equalTo(true));
+  }
 }

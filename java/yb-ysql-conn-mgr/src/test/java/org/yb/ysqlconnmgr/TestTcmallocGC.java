@@ -14,6 +14,7 @@
 package org.yb.ysqlconnmgr;
 
 import static org.junit.Assume.assumeFalse;
+import static org.junit.Assume.assumeTrue;
 import static org.yb.AssertionWrappers.assertNotNull;
 import static org.yb.AssertionWrappers.assertNull;
 import static org.yb.AssertionWrappers.assertTrue;
@@ -25,6 +26,7 @@ import com.google.gson.JsonObject;
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Scanner;
 import java.util.concurrent.TimeUnit;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -78,6 +80,13 @@ public class TestTcmallocGC extends BaseYsqlConnMgr {
         "Pool still reports %d logical connections after %d ms, was %d before the burst",
         logicalConns, DRAIN_TIMEOUT_MS, logicalConnsBefore),
         logicalConns <= logicalConnsBefore);
+  }
+
+  private static long getSystemPageSize() throws Exception {
+    Process process = Runtime.getRuntime().exec("getconf PAGESIZE");
+    try (Scanner scanner = new Scanner(process.getInputStream())) {
+      return scanner.nextLong();
+    }
   }
 
   private long createLoadToRecordPeakRss(int odysseyPid) throws Exception {
@@ -181,6 +190,12 @@ public class TestTcmallocGC extends BaseYsqlConnMgr {
     assertNotNull(
         "Expected cron to log 'released pageheap free memory to OS' ",
         released);
+
+    // tcmalloc can unmap only whole system pages. With 64 KiB pages (aarch64 AlmaLinux 8) the
+    // burst's freed 8 KiB tcmalloc pages rarely cover one, so the release lowers RSS by too little
+    // to tell apart from RSS growing in 64 KiB steps over the same window.
+    final long pageSize = getSystemPageSize();
+    assumeTrue("Skipping the RSS check with " + pageSize + " byte pages", pageSize <= 4096);
 
     // Sampled after the release, so it reflects what the GC gave back.
     long odysseyRSSEnd = getRssForPid(odysseyPid);

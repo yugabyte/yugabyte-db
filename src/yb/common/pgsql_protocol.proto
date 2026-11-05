@@ -211,6 +211,13 @@ message PgsqlWriteRequestPB {
     PGSQL_FETCH_SEQUENCE = 6;
   }
 
+  // ON CONFLICT action.
+  enum PgsqlOnConflictAction {
+    PGSQL_ON_CONFLICT_NONE = 0;
+    PGSQL_ON_CONFLICT_NOTHING = 1;
+    PGSQL_ON_CONFLICT_UPDATE = 2;
+  }
+
   // Client info
   optional QLClient client = 1;       // required
 
@@ -346,6 +353,13 @@ message PgsqlWriteRequestPB {
   // all-or-nothing to fall back on. Like any hybrid time comparison it is only as tight as
   // max_clock_skew_usec.
   optional fixed64 ignore_after_hybrid_time = 32;
+
+  // ON CONFLICT resolution for a PGSQL_INSERT.
+  optional PgsqlOnConflictAction on_conflict_action = 33 [default = PGSQL_ON_CONFLICT_NONE];
+
+  // Set when the transaction uses object locks. The tserver skips the catalog version check only
+  // for such requests.
+  optional bool is_using_table_locks = 34 [default = false];
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -430,14 +444,16 @@ message PgsqlBackfillSpecPB {
 }
 
 // Why a read is prefetching whole catalog tables. Every prefetch sends a wave of these to the
-// master leader, and the master admits them by kind. CACHE_REFRESH is for a prefetch something is
-// already blocked on: a backend refreshing its catalog cache, or the relcache-init backend, whose
-// file every new connection on its node waits for. A connection still starting up can afford to
-// wait, so it gets CONNECTION_START.
+// master leader, and the master admits them by kind. HIGH_PRIORITY is for a prefetch something is
+// already blocked on: a backend refreshing its catalog cache, the relcache-init backend whose
+// file every new connection on its node waits for, and the small read a backend makes before it
+// can authenticate. The large prefetch of a connection that is still starting up can afford to
+// wait, so that gets CONNECTION_START.
+// Make sure this is in sync with YbcPgSysTablePrefetchKind in ybc_pg_typedefs.h.
 enum YsqlCatalogPrefetchKindPB {
   YSQL_CATALOG_PREFETCH_NONE = 0;
   YSQL_CATALOG_PREFETCH_CONNECTION_START = 1;
-  YSQL_CATALOG_PREFETCH_CACHE_REFRESH = 2;
+  YSQL_CATALOG_PREFETCH_HIGH_PRIORITY = 2;
 }
 
 // Make sure this is in sync with YbcPgMetricsCaptureType in ybc_pg_typedefs.h.
@@ -646,6 +662,17 @@ message PgsqlReadRequestPB {
   // master bounds how many it serves at a time. NONE is never bounded, which keeps an older
   // client working against a newer master.
   optional YsqlCatalogPrefetchKindPB catalog_prefetch_kind = 48;
+
+  // Whether the prefetcher that issued this has already had a request served in this session. A
+  // connection start is several separately keyed requests -- the large relcache preload, then a
+  // few small tables -- and only the first of them is work the master has not already committed
+  // to. Paging state alone cannot say this: the opening request of each of those carries none,
+  // so without this the master would hold every one of them to the limit meant for prefetches it
+  // has not started, and could shed a connection that had already paid for the large read.
+  optional bool catalog_prefetch_continuation = 49;
+
+  // See PgsqlWriteRequestPB::is_using_table_locks.
+  optional bool is_using_table_locks = 50 [default = false];
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -699,6 +726,13 @@ message PgsqlResponsePB {
     PGSQL_STATUS_DUPLICATE_KEY_ERROR = 5;
   }
 
+  enum PgsqlOnConflictOutcome {
+    PGSQL_ON_CONFLICT_OUTCOME_UNKNOWN = 0;
+    PGSQL_ON_CONFLICT_OUTCOME_INSERTED = 1;
+    PGSQL_ON_CONFLICT_OUTCOME_UPDATED = 2;
+    PGSQL_ON_CONFLICT_OUTCOME_SKIPPED = 3;
+  }
+
   // Internal Status information
   optional RequestStatus status = 1 [ default = PGSQL_STATUS_OK ]; // required
 
@@ -738,8 +772,11 @@ message PgsqlResponsePB {
   // Whether this replica could have more vectors, used for paging.
   optional bool vector_index_could_have_more_data = 21;
 
-  // Number of rows affected by the operation. Currently only used for update and delete.
+  // Number of rows affected by the operation. Used for update, delete and by
+  // INSERT ... ON CONFLICT pushdown.
   optional int32 rows_affected_count = 7;
+
+  optional PgsqlOnConflictOutcome on_conflict_outcome = 22;
 
   //
   // External statuses.

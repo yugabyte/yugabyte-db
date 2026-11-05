@@ -265,6 +265,62 @@ public class DeltaEvaluatorTest {
   }
 
   @Test
+  public void buildDeltaJsonTreeClustersKeepsPrimaryFirst() {
+    // The primary's uuid sorts after the others, so a uuid-only ordering would move it.
+    JsonNode current =
+        Json.parse(
+            "{\"clusters\":["
+                + "{\"uuid\":\"zz-primary\",\"clusterType\":\"PRIMARY\","
+                + "\"userIntent\":{\"numNodes\":3}},"
+                + "{\"uuid\":\"aa-async\",\"clusterType\":\"ASYNC\"},"
+                + "{\"uuid\":\"bb-addon\",\"clusterType\":\"ADDON\"}"
+                + "]}");
+    JsonNode newValue =
+        Json.parse(
+            "{\"clusters\":["
+                + "{\"uuid\":\"zz-primary\",\"clusterType\":\"PRIMARY\","
+                + "\"userIntent\":{\"numNodes\":4}},"
+                + "{\"uuid\":\"aa-async\",\"clusterType\":\"ASYNC\"},"
+                + "{\"uuid\":\"bb-addon\",\"clusterType\":\"ADDON\"}"
+                + "]}");
+    JsonNode delta =
+        DeltaEvaluator.buildDeltaJsonTree(current, newValue, new NodeDetailsArrayComparator());
+    JsonNode numNodesDelta = delta.get("clusters").get(0).get("userIntent").get("numNodes");
+    assertEquals("REPLACE", numNodesDelta.get("$deltaType").asText());
+    assertEquals(current, DeltaEvaluator.generateOldValue(delta));
+    assertEquals(newValue, DeltaEvaluator.generateNewValue(delta));
+  }
+
+  @Test
+  public void buildDeltaJsonTreeArrayDeleteAndAddKeepOriginalOrder() {
+    // uuids are deliberately not in sorted order.
+    JsonNode current =
+        Json.parse(
+            "{\"clusters\":["
+                + "{\"uuid\":\"z\",\"userIntent\":{\"numNodes\":3}},"
+                + "{\"uuid\":\"m\"},"
+                + "{\"uuid\":\"a\"}"
+                + "]}");
+    JsonNode newValue =
+        Json.parse(
+            "{\"clusters\":["
+                + "{\"uuid\":\"z\",\"userIntent\":{\"numNodes\":4}},"
+                + "{\"uuid\":\"a\"},"
+                + "{\"uuid\":\"b\"}"
+                + "]}");
+    JsonNode delta =
+        DeltaEvaluator.buildDeltaJsonTree(current, newValue, new NodeDetailsArrayComparator());
+    JsonNode clustersDelta = delta.get("clusters");
+    assertEquals(4, clustersDelta.size());
+    JsonNode numNodesDelta = clustersDelta.get(0).get("userIntent").get("numNodes");
+    assertEquals("REPLACE", numNodesDelta.get("$deltaType").asText());
+    assertEquals("DELETE", clustersDelta.get(1).get("$deltaType").asText());
+    assertEquals("ADD", clustersDelta.get(3).get("$deltaType").asText());
+    assertEquals(current, DeltaEvaluator.generateOldValue(delta));
+    assertEquals(newValue, DeltaEvaluator.generateNewValue(delta));
+  }
+
+  @Test
   public void buildDeltaJsonTreeClustersReorderWithInPlaceChangeUsesReplace() {
     JsonNode current =
         Json.parse(
@@ -283,13 +339,13 @@ public class DeltaEvaluatorTest {
         DeltaEvaluator.buildDeltaJsonTree(current, newValue, new NodeDetailsArrayComparator());
     JsonNode clustersDelta = delta.get("clusters");
     assertEquals(2, clustersDelta.size());
-    // Sorted by uuid: async then primary, nested REPLACE, not whole-cluster DELETE+ADD.
+    // New order: async then primary, nested REPLACE, not whole-cluster DELETE+ADD.
     assertEquals("async", clustersDelta.get(0).get("uuid").asText());
     JsonNode numNodesDelta = clustersDelta.get(1).get("userIntent").get("numNodes");
     assertEquals("REPLACE", numNodesDelta.get("$deltaType").asText());
     assertEquals(3, numNodesDelta.get("$oldValue").asInt());
     assertEquals(4, numNodesDelta.get("$newValue").asInt());
-    // Reconstruction preserves content; array order follows uuid sort, not original order.
+    // Matched elements were reordered, so only the new order can be kept; check content.
     JsonNode reconstructedOld = DeltaEvaluator.generateOldValue(delta);
     JsonNode reconstructedNew = DeltaEvaluator.generateNewValue(delta);
     assertEquals(3, clusterNumNodes(reconstructedOld, "primary"));

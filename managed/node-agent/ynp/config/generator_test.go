@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 // Mock data provider to avoid calling YBA APIs.
@@ -135,6 +137,18 @@ func TestGenerateConfig(t *testing.T) {
 		t.Fatalf("Failed to validate resolvers: %v", err)
 	}
 	t.Logf("Output: %s\n", out)
+	// --generate_and_run feeds the generated config back through schema validation.
+	var parsed map[string]map[string]any
+	if err := yaml.Unmarshal([]byte(out), &parsed); err != nil {
+		t.Fatalf("Failed to parse generated config: %v", err)
+	}
+	schemaHandler, err := NewSchemaHandler(filepath.Join(ynpBasePath, YnpConfigSchemaPath))
+	if err != nil {
+		t.Fatalf("Failed to create schema handler: %v", err)
+	}
+	if err := schemaHandler.ValidateYnpConfig(FixParsedConfigMap(parsed)); err != nil {
+		t.Fatalf("Generated config failed schema validation: %v", err)
+	}
 	t.Log("All resolvers validated successfully")
 }
 

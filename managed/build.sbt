@@ -182,9 +182,9 @@ libraryDependencies ++= Seq(
   javaWs,
   filters,
   guice,
-  "org.postgresql" % "postgresql" % "42.7.13",
+  "org.postgresql" % "postgresql" % "42.7.14",
   "net.logstash.logback" % "logstash-logback-encoder" % "8.1",
-  "ch.qos.logback" % "logback-classic" % "1.5.38",
+  "ch.qos.logback" % "logback-classic" % "1.6.3",
   "org.codehaus.janino" % "janino" % "3.1.9",
   "org.apache.commons" % "commons-lang3" % "3.20.0",
   "org.apache.commons" % "commons-collections4" % "4.4",
@@ -208,7 +208,10 @@ libraryDependencies ++= Seq(
   "org.bouncycastle" % "bcpkix-fips" % "2.1.12",
   "org.bouncycastle" % "bctls-fips" % "2.1.24",
   "org.mindrot" % "jbcrypt" % "0.4",
-  "org.springframework.security" % "spring-security-core" % "5.8.16",
+  // Only the crypto module is used (Encryptors, BCrypt). It has no Spring dependencies, so taking
+  // it alone keeps spring-security-core and spring-expression out of the image. Ciphertext and
+  // bcrypt hashes written by 5.8.x read back unchanged on 6.5.x.
+  "org.springframework.security" % "spring-security-crypto" % "6.5.11",
   // AWS SDK 2.x dependencies
   "software.amazon.awssdk" % "bom" % "2.29.52" pomOnly(),
   "software.amazon.awssdk" % "core" % "2.29.52",
@@ -241,11 +244,11 @@ libraryDependencies ++= Seq(
   "io.prometheus" % "prometheus-metrics-exporter-httpserver" % "1.4.3",
   "org.glassfish.jaxb" % "jaxb-runtime" % "2.3.2",
   // pac4j and nimbusds libraries need to be upgraded together.
-  "org.pac4j" %% "play-pac4j" % "11.0.0-PLAY2.8",
-  "org.pac4j" % "pac4j-oauth" % "5.7.10" exclude("commons-io" , "commons-io"),
-  "org.pac4j" % "pac4j-oidc" % "5.7.10"  exclude("commons-io" , "commons-io"),
-  "com.nimbusds" % "nimbus-jose-jwt" % "10.8",
-  "com.nimbusds" % "oauth2-oidc-sdk" % "11.34",
+  "org.pac4j" %% "play-pac4j" % "13.0.3-PLAY3.0",
+  "org.pac4j" % "pac4j-oauth" % "6.5.9" exclude("commons-io" , "commons-io"),
+  "org.pac4j" % "pac4j-oidc" % "6.5.9"  exclude("commons-io" , "commons-io"),
+  "com.nimbusds" % "nimbus-jose-jwt" % "10.9.1",
+  "com.nimbusds" % "oauth2-oidc-sdk" % "11.38.2",
   "commons-validator" % "commons-validator" % "1.10.0",
   "org.apache.velocity" % "velocity-engine-core" % "2.4.1",
   "com.fasterxml.woodstox" % "woodstox-core" % "6.4.0",
@@ -274,7 +277,7 @@ libraryDependencies ++= Seq(
   // Compatible with protoc 33.0 https://protobuf.dev/support/version-support/
   "com.google.protobuf" % "protobuf-java" % "4.33.0",
   "com.google.protobuf" % "protobuf-java-util" % "4.33.0",
-  "org.xerial.snappy" % "snappy-java" % "1.1.10.7",
+  "org.xerial.snappy" % "snappy-java" % "1.1.10.12",
   "io.kamon" %% "kamon-bundle" % "2.7.5",
   "io.kamon" %% "kamon-prometheus" % "2.7.5",
   "org.unix4j" % "unix4j-command" % "0.6",
@@ -317,7 +320,7 @@ libraryDependencies ++= Seq(
   // aarch64 binaries (same PG 14.5) so the embedded server starts natively there.
   "io.zonky.test.postgres" % "embedded-postgres-binaries-darwin-arm64v8" % "14.5.0" % Test,
   "org.springframework" % "spring-test" % "5.3.9" % Test,
-  "com.yugabyte" % "yba-client-v2" % "1.8.7" % Test,
+  "com.yugabyte" % "yba-client-v2" % "1.8.14" % Test,
   "io.fabric8" % "kubernetes-server-mock" % "6.14.0" % Test
 )
 
@@ -750,7 +753,7 @@ lazy val javagen = project.in(file("client/java"))
     openApiGenerateApiTests := SettingDisabled,
     openApiValidateSpec := SettingDisabled,
     openApiConfigFile := "client/java/openapi-java-config.json",
-    version := "1.0.2",
+    version := "1.0.3",
     openApiHttpUserAgent := s"yba-java-client/${version.value}",
     target := file("client/java/target/v1"),
   )
@@ -767,7 +770,7 @@ lazy val javaGenV2Client = project.in(file("client/java"))
     openApiConfigFile := "client/java/openapi-java-config-v2.json",
     openApiGlobalProperties += ("skipFormModel" -> "false"),
     openApiTemplateDir := (baseDirectory.value / resDir / "openapi_templates/clients/v2").absolutePath,
-    version := "1.8.7",
+    version := "1.8.14",
     openApiHttpUserAgent := s"yba-java-client/${version.value}",
     target := file("client/java/target/v2"),
   )
@@ -1089,33 +1092,55 @@ runPlatform := {
 dependencyOverrides += "org.bouncycastle" % "bc-fips" % bouncyCastleFipsVersion
 dependencyOverrides += "org.bouncycastle" % "bcutil-fips" % bouncyCastleUtilFipsVersion
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.123-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.4-b11"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.125-SNAPSHOT"
+libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.4-b13"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b35"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",
-  "io.netty" % "netty-codec-haproxy" % "4.1.137.Final",
+  "io.netty" % "netty-codec-haproxy" % "4.1.139.Final",
   "io.projectreactor.netty" % "reactor-netty-http" % "1.0.39",
   "org.slf4j" % "slf4j-ext" % "1.7.26",
 )
 
 
 dependencyOverrides += "org.reflections" % "reflections" % "0.10.2"
-dependencyOverrides += "io.netty" % "netty-all" % "4.1.137.Final"
-dependencyOverrides += "io.netty" % "netty-codec-http" % "4.1.137.Final"
-dependencyOverrides += "io.netty" % "netty-codec-http2" % "4.1.137.Final"
+dependencyOverrides += "io.netty" % "netty-all" % "4.1.139.Final"
+dependencyOverrides += "io.netty" % "netty-codec-http" % "4.1.139.Final"
+dependencyOverrides += "io.netty" % "netty-codec-http2" % "4.1.139.Final"
 // netty-all does not force these core modules, so they stay at the next-highest
-// requested version (4.1.130) and must be pinned explicitly to reach 4.1.137.
-dependencyOverrides += "io.netty" % "netty-buffer" % "4.1.137.Final"
-dependencyOverrides += "io.netty" % "netty-codec" % "4.1.137.Final"
-dependencyOverrides += "io.netty" % "netty-common" % "4.1.137.Final"
-dependencyOverrides += "io.netty" % "netty-handler" % "4.1.137.Final"
-dependencyOverrides += "io.netty" % "netty-transport" % "4.1.137.Final"
-dependencyOverrides += "io.netty" % "netty-transport-sctp" % "4.1.137.Final"
+// requested version (4.1.130) and must be pinned explicitly to reach 4.1.139.
+dependencyOverrides += "io.netty" % "netty-buffer" % "4.1.139.Final"
+dependencyOverrides += "io.netty" % "netty-codec" % "4.1.139.Final"
+dependencyOverrides += "io.netty" % "netty-common" % "4.1.139.Final"
+dependencyOverrides += "io.netty" % "netty-handler" % "4.1.139.Final"
+dependencyOverrides += "io.netty" % "netty-transport" % "4.1.139.Final"
+dependencyOverrides += "io.netty" % "netty-transport-sctp" % "4.1.139.Final"
 
-// Play pulls the at.yawk fork of lz4-java transitively; pinned for CVE-2026-59949.
-dependencyOverrides += "at.yawk.lz4" % "lz4-java" % "1.11.1"
+// Play pulls the at.yawk fork of lz4-java transitively; pinned for CVE-2026-59949,
+// CVE-2026-106451 and GHSA-48mj-8f7c-7qfm.
+dependencyOverrides += "at.yawk.lz4" % "lz4-java" % "1.12.1"
+
+// Google Cloud libraries pull Guava and the OpenTelemetry API/SDK transitively. The OpenTelemetry
+// core modules are released in lockstep and must stay on one version.
+dependencyOverrides += "com.google.guava" % "guava" % "33.7.2-jre"
+val openTelemetryVersion = "1.67.0"
+dependencyOverrides ++= Seq(
+  "io.opentelemetry" % "opentelemetry-api",
+  "io.opentelemetry" % "opentelemetry-context",
+  "io.opentelemetry" % "opentelemetry-common",
+  "io.opentelemetry" % "opentelemetry-sdk",
+  "io.opentelemetry" % "opentelemetry-sdk-common",
+  "io.opentelemetry" % "opentelemetry-sdk-trace",
+  "io.opentelemetry" % "opentelemetry-sdk-metrics",
+  "io.opentelemetry" % "opentelemetry-sdk-logs",
+  "io.opentelemetry" % "opentelemetry-sdk-extension-autoconfigure-spi",
+).map(_ % openTelemetryVersion)
+
+// pac4j 6 pulls spring-core 6.x, but Play forms and spring-security use Spring 5.3 modules.
+// pac4j only needs the core.io resources, which 5.3 has.
+dependencyOverrides += "org.springframework" % "spring-core" % "5.3.39"
+dependencyOverrides += "org.springframework" % "spring-jcl" % "5.3.39"
 
 // cron-utils pulls org.glassfish:javax.el 3.0.0 (CVE-2021-28170), which has no fixed release.
 // The fix shipped as org.glassfish:jakarta.el 3.0.4, which keeps the javax.el package.
@@ -1165,7 +1190,7 @@ val pekkoOverrides = pekkoLibs.map(_ % pekkoVersion)
 
 dependencyOverrides ++= pekkoOverrides
 
-val jacksonVersion         = "2.22.2"
+val jacksonVersion         = "2.22.4"
 // jackson-annotations dropped the patch component from 2.20 onward: it publishes 2.20, 2.21,
 // 2.22, so it cannot follow jacksonVersion.
 val jacksonAnnotationsVersion = "2.22"

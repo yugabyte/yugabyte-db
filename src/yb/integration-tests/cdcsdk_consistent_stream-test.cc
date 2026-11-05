@@ -962,6 +962,7 @@ TEST_F(CDCSDKConsistentStreamTest,
 
 TEST_F(CDCSDKConsistentStreamTest,
        YB_DISABLE_TEST_IN_TSAN(TestCDCSDKMakesProgressWithLongRunningTxn)) {
+  ASSERT_EQ(FLAGS_cdc_resolve_intent_lag_threshold_ms, 500);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_resolve_intent_lag_threshold_ms) = 10 * 1000;
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
@@ -1083,7 +1084,7 @@ TEST_F(CDCSDKYsqlTest, TestConsistentSnapshotWithCDCSDKConsistentStream) {
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN, COMMIT in
   // that order.
   const int expected_count[] = {
-      FLAGS_ysql_enable_packed_row ? 1 : 0,
+      0,
       2 * num_batches * inserts_per_batch,
       0,
       0,
@@ -1105,7 +1106,7 @@ TEST_F(CDCSDKYsqlTest, TestConsistentSnapshotWithCDCSDKConsistentStream) {
   for (int i = 0; i < 8; i++) {
     ASSERT_EQ(expected_count[i], count[i]);
   }
-  ASSERT_EQ(FLAGS_ysql_enable_packed_row ? 2021 : 2020, get_changes_resp.records.size());
+  ASSERT_EQ(2020, get_changes_resp.records.size());
 }
 
 TEST_F(CDCSDKConsistentStreamTest, TestReadingOfWALSegmentBySegment) {
@@ -1139,6 +1140,7 @@ TEST_F(CDCSDKConsistentStreamTest, TestReadingOfWALSegmentBySegment) {
 }
 
 TEST_F(CDCSDKConsistentStreamTest, TestReadingOfWALWithUncommittedTxn) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_resolve_intent_lag_threshold_ms) = 5 * 60 * 1000;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 10_KB;
 
@@ -1229,6 +1231,7 @@ TEST_F(CDCSDKConsistentStreamTest, TestConsumptionContinuationAfterSegmentGC) {
 }
 
 TEST_F(CDCSDKConsistentStreamTest, TestGetChangesDuringLoadTxn) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_resolve_intent_lag_threshold_ms) = 5 * 60 * 1000;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_load_txn_for_cdc) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
 
