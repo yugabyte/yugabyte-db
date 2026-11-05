@@ -431,14 +431,16 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_tcmalloc_sample_period, 1024 * 1024, // 1MB
     "Sampling is disabled if this is set to 0.");
 
 DEFINE_RUNTIME_PG_FLAG(int32, yb_tcmalloc_skip_subrelease_short_interval, 0,
-    "How far back, in milliseconds, TCMalloc in YSQL processes looks for short-term peaks in "
-    "demand when deciding which free pages in partially used hugepages to keep instead of "
-    "returning them to the OS. 0 disables this lookback.");
+    "How far back, in milliseconds, the release after each YSQL statement looks for short-term "
+    "peaks in demand when deciding which free pages in partially used hugepages to keep instead "
+    "of returning them to the OS. 0 disables this lookback. Other TCMalloc releases in YSQL "
+    "processes keep TCMalloc's own lookback.");
 
 DEFINE_RUNTIME_PG_FLAG(int32, yb_tcmalloc_skip_subrelease_long_interval, 0,
-    "How far back, in milliseconds, TCMalloc in YSQL processes looks for the long-term demand "
-    "trend when deciding which free pages in partially used hugepages to keep instead of "
-    "returning them to the OS. 0 disables this lookback.");
+    "How far back, in milliseconds, the release after each YSQL statement looks for the "
+    "long-term demand trend when deciding which free pages in partially used hugepages to keep "
+    "instead of returning them to the OS. 0 disables this lookback. Other TCMalloc releases in "
+    "YSQL processes keep TCMalloc's own lookback.");
 
 DEFINE_RUNTIME_PG_FLAG(bool, yb_tcmalloc_release_after_statement, true,
     "After each statement, return the free TCMalloc page heap memory of the YSQL backend to the "
@@ -528,7 +530,9 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_startup_free_memory_release_threshold, 0,
     "much free memory in KB, return that memory to the operating system. Connection startup "
     "frees most of the memory it allocates (fetched catalog data, relation cache build scratch), "
     "and without this the freed pages stay resident for the life of the connection. "
-    "Set to 0 (the default) to always release, or -1 to disable the release.");
+    "Set to 0 (the default) to always release, or -1 to disable the release. Has no effect while "
+    "ysql_yb_tcmalloc_release_after_statement is on, which releases when the backend first "
+    "becomes ready for queries.");
 
 const char* const AUTH_METHOD_MD5 = "md5";
 const char* const AUTH_METHOD_SCRAM = "scram-sha-256";

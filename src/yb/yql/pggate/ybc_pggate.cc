@@ -723,20 +723,13 @@ void YBCTCMallocReleaseFreeMemory(int64_t bytes) {
   TCMallocReleaseMemoryToSystemIgnoringRecentDemand(bytes);
 }
 
-void YBCTCMallocReleaseMemoryToSystem(int64_t bytes) {
-  TCMallocReleaseMemoryToSystem(bytes);
+void YBCTCMallocReleaseMemoryToSystemWithLookbacks(
+    int64_t bytes, int64_t short_interval_ms, int64_t long_interval_ms) {
+  TCMallocReleaseMemoryToSystemWithLookbacks(bytes, short_interval_ms, long_interval_ms);
 }
 
 void YBCTCMallocDrainCpuCaches() {
   TCMallocDrainCpuCaches();
-}
-
-void YBCSetTCMallocSkipSubreleaseShortInterval(int64_t interval_ms) {
-  SetTCMallocSkipSubreleaseShortInterval(interval_ms);
-}
-
-void YBCSetTCMallocSkipSubreleaseLongInterval(int64_t interval_ms) {
-  SetTCMallocSkipSubreleaseLongInterval(interval_ms);
 }
 
 YbcStatus YBCGetHeapSnapshot(

@@ -6500,30 +6500,32 @@ static struct config_int ConfigureNamesInt[] =
 
 	{
 		{"yb_tcmalloc_skip_subrelease_short_interval", PGC_SUSET, RESOURCES_MEM,
-			gettext_noop("How far back TCMalloc looks for short-term peaks in "
-						 "demand when it decides which free pages in partially "
-						 "used hugepages to keep instead of returning them to "
-						 "the operating system."),
-			gettext_noop("0 disables this lookback."),
+			gettext_noop("How far back the release after each statement looks "
+						 "for short-term peaks in demand when it decides which "
+						 "free pages in partially used hugepages to keep "
+						 "instead of returning them to the operating system."),
+			gettext_noop("0 disables this lookback. Other TCMalloc releases "
+						 "keep TCMalloc's own lookback."),
 			GUC_UNIT_MS | GUC_NOT_IN_SAMPLE
 		},
 		&yb_tcmalloc_skip_subrelease_short_interval,
 		0, 0, INT_MAX,
-		NULL, assign_yb_tcmalloc_skip_subrelease_short_interval, NULL
+		NULL, NULL, NULL
 	},
 
 	{
 		{"yb_tcmalloc_skip_subrelease_long_interval", PGC_SUSET, RESOURCES_MEM,
-			gettext_noop("How far back TCMalloc looks for the long-term demand "
-						 "trend when it decides which free pages in partially "
-						 "used hugepages to keep instead of returning them to "
-						 "the operating system."),
-			gettext_noop("0 disables this lookback."),
+			gettext_noop("How far back the release after each statement looks "
+						 "for the long-term demand trend when it decides which "
+						 "free pages in partially used hugepages to keep "
+						 "instead of returning them to the operating system."),
+			gettext_noop("0 disables this lookback. Other TCMalloc releases "
+						 "keep TCMalloc's own lookback."),
 			GUC_UNIT_MS | GUC_NOT_IN_SAMPLE
 		},
 		&yb_tcmalloc_skip_subrelease_long_interval,
 		0, 0, INT_MAX,
-		NULL, assign_yb_tcmalloc_skip_subrelease_long_interval, NULL
+		NULL, NULL, NULL
 	},
 
 	{
@@ -6531,7 +6533,11 @@ static struct config_int ConfigureNamesInt[] =
 			gettext_noop("When a backend finishes connection startup, return "
 						 "the free memory held by TCMalloc to the operating "
 						 "system if it is at least this amount."),
-			gettext_noop("0 (the default) always releases. -1 disables the release."),
+			gettext_noop("0 (the default) always releases. -1 disables the "
+						 "release. Has no effect while "
+						 "yb_tcmalloc_release_after_statement is on, which "
+						 "releases when the backend first becomes ready for "
+						 "queries."),
 			GUC_UNIT_KB
 		},
 		&yb_startup_free_memory_release_threshold,

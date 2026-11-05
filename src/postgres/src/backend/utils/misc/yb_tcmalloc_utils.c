@@ -362,26 +362,13 @@ YbReleaseFreeMemoryAfterStartup(void)
 }
 
 /*
- * The lookback intervals are process-wide TCMalloc settings.  The postmaster
- * applies the configured values at startup and its children inherit them;
- * a SET changes them for the current backend only.
- */
-void
-assign_yb_tcmalloc_skip_subrelease_short_interval(int newval, void *extra)
-{
-	YBCSetTCMallocSkipSubreleaseShortInterval(newval);
-}
-
-void
-assign_yb_tcmalloc_skip_subrelease_long_interval(int newval, void *extra)
-{
-	YBCSetTCMallocSkipSubreleaseLongInterval(newval);
-}
-
-/*
  * Called once the reply to a statement has been flushed, so the client does
  * not wait for it.  Without the release, a backend can keep the pages that a
  * large statement freed for the rest of its lifetime.
+ *
+ * The lookback GUCs apply to this release only.  The TCMalloc GC that runs
+ * during statements keeps TCMalloc's own lookbacks, which hold on to the free
+ * pages that cover the statement's recent peak instead of subreleasing them.
  *
  * The drain must come first: it returns the objects held in the per-CPU
  * caches to the central free lists, which can free whole spans for the
@@ -394,5 +381,7 @@ YbReleaseTCMallocMemoryAfterStatement(void)
 	if (yb_tcmalloc_drain_cpu_caches_after_statement)
 		YBCTCMallocDrainCpuCaches();
 	if (yb_tcmalloc_release_after_statement)
-		YBCTCMallocReleaseMemoryToSystem(PG_INT64_MAX);
+		YBCTCMallocReleaseMemoryToSystemWithLookbacks(PG_INT64_MAX,
+													  yb_tcmalloc_skip_subrelease_short_interval,
+													  yb_tcmalloc_skip_subrelease_long_interval);
 }

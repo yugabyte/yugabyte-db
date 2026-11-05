@@ -45,9 +45,6 @@ extern void YbSetupHeapSnapshotProcExit(void);
 
 extern void YbReleaseFreeMemoryAfterStartup(void);
 
-extern void assign_yb_tcmalloc_skip_subrelease_short_interval(int newval, void *extra);
-extern void assign_yb_tcmalloc_skip_subrelease_long_interval(int newval, void *extra);
-
 extern void YbReleaseTCMallocMemoryAfterStatement(void);
 
 #endif							/* YB_TCMALLOC_UTILS_H */
