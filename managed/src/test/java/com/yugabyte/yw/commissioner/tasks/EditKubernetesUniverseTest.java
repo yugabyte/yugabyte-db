@@ -2131,24 +2131,46 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
   }
 
   @Test
-  public void testZoneReplaceWithResourceChangeSkipsEarlySecretUpdate() {
+  public void testZoneReplaceWithTserverResourceChangeKeepsPodsAtTheirRevision() {
     setupMasterMoveUniverse(FULL_MOVE_VERSION);
-    PlacementInfo pi = zoneReplacePlacement();
     UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
     K8SNodeResourceSpec spec = new K8SNodeResourceSpec();
     spec.cpuCoreCount = newIntent.tserverK8SNodeResourceSpec.cpuCoreCount + 1;
     spec.memoryGib = newIntent.tserverK8SNodeResourceSpec.memoryGib;
     newIntent.tserverK8SNodeResourceSpec = spec;
+    assertEarlySecretUpdateKeepsPodsAtTheirRevision(newIntent);
+  }
 
-    List<TaskInfo> plan = planEdit(newIntent, pi);
+  /** A master resource change also restarts every pod later in the edit. */
+  @Test
+  public void testZoneReplaceWithMasterResourceChangeKeepsPodsAtTheirRevision() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
+    assertNotNull(newIntent.masterK8SNodeResourceSpec);
+    K8SNodeResourceSpec spec = new K8SNodeResourceSpec();
+    spec.cpuCoreCount = newIntent.masterK8SNodeResourceSpec.cpuCoreCount;
+    spec.memoryGib = newIntent.masterK8SNodeResourceSpec.memoryGib + 1;
+    newIntent.masterK8SNodeResourceSpec = spec;
+    assertEarlySecretUpdateKeepsPodsAtTheirRevision(newIntent);
+  }
 
-    List<TaskInfo> postRemove =
-        assertPushesAroundMasterChange(
-            plan,
-            ImmutableSet.of("yb-master-0_az-1", "yb-master-0_az-2", "yb-master-0_az-4"),
-            ImmutableSet.of("yb-tserver-0_az-1", "yb-tserver-0_az-2", "yb-tserver-0_az-3"));
-    // A render now would carry the resource change into the pod templates ahead of the roll.
-    assertTrue(earlySecretUpdate(plan).isEmpty());
+  private void assertEarlySecretUpdateKeepsPodsAtTheirRevision(
+      UniverseDefinitionTaskParams.UserIntent newIntent) {
+    List<TaskInfo> plan = planEdit(newIntent, zoneReplacePlacement());
+
+    assertPushesAroundMasterChange(
+        plan,
+        ImmutableSet.of("yb-master-0_az-1", "yb-master-0_az-2", "yb-master-0_az-4"),
+        ImmutableSet.of("yb-tserver-0_az-1", "yb-tserver-0_az-2", "yb-tserver-0_az-3"));
+    // The render carries the new resources into the pod templates, but the partitions stay at the
+    // pod counts, so no pod moves to them before its roll.
+    List<TaskInfo> earlySecretUpdate = earlySecretUpdate(plan);
+    assertEquals(ImmutableSet.of("az-1", "az-2", "az-3"), azCodes(earlySecretUpdate));
+    for (TaskInfo t : earlySecretUpdate) {
+      assertTrue(keepsGflagsChecksum(t));
+      assertEquals(1, t.getTaskParams().path("masterPartition").asInt());
+      assertEquals(1, t.getTaskParams().path("tserverPartition").asInt());
+    }
   }
 
   @Test
