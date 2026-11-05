@@ -117,9 +117,11 @@ Starting in YugabyteDB Anywhere v2026.1.2.0, the [YBA installer](../../install-y
 
 To enable the PA collector for a universe:
 
-1. Open the universe and click **Actions > More > Enable Perf Advisor Collector**.
+1. Open the universe and click **Actions > More > Enable Performance Monitoring**.
 
-1. Confirm the **Are you sure you want to enable Performance Monitoring?** action, and select **Apply changes**.
+1. Choose **Basic** to only enable PA Collector, or **Advanced** to also enable Advanced Observability features.
+
+1. Click **Apply changes**.
 
 After you enable the collector, it runs in the background and gathers metadata for that universe, such as PostgreSQL Statement Statistics (PGSS) and ASH data.
 
@@ -127,7 +129,7 @@ To disable collection, click **Actions > More > Disable Perf Advisor Collector**
 
 When you create a support bundle, select the **Perf Advisor metrics** component to include this data in the archive. Note that if the PA collector is not enabled for the universe, the **Perf Advisor metrics** option is not displayed. For more information about the component, see [Perf Advisor metrics](#perf-advisor-metrics).
 
-For performance recommendations based on live cluster metrics, see [Performance Advisor](../../alerts-monitoring/performance-advisor/).
+For performance recommendations based on live cluster metrics, see [Performance Advisor](../../alerts-monitoring/performance-advisor/). To see whether the universe was overloaded, and why, use [Cluster Load](../../alerts-monitoring/cluster-load/) on the **Performance** tab (requires **Advanced**).
 
 ### Create support bundles
 
