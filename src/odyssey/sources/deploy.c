@@ -149,6 +149,66 @@ static int yb_send_reset_query(od_server_t *server)
 	return rc;
 }
 
+/*
+ * Every client encoding PG accepts is an ASCII superset whose multibyte
+ * characters start with a byte >= 0x80 (SJIS trail bytes can be < 0x80, but
+ * its lead byte never is; SQL_ASCII converts nothing), and kiwi_enquote copies
+ * value bytes verbatim. So a query with no such byte decodes identically
+ * under any client encoding the backend is on.
+ */
+static bool yb_has_high_bit_byte(const char *query, int query_size)
+{
+	for (int i = 0; i < query_size; i++) {
+		if ((unsigned char)query[i] >= 0x80)
+			return true;
+	}
+	return false;
+}
+
+/*
+ * Stored values are in the server encoding, which YSQL pins to UTF8 in
+ * initdb.c (setlocales) and dbcommands.c (createdb).
+ */
+static const char yb_utf8_client_encoding_query[] =
+	"SET client_encoding='UTF8';";
+
+static int yb_send_utf8_client_encoding_query(od_server_t *server)
+{
+	machine_msg_t *msg;
+
+	msg = kiwi_fe_write_query(NULL, (char *)yb_utf8_client_encoding_query,
+				  sizeof(yb_utf8_client_encoding_query));
+	if (msg == NULL)
+		return -1;
+
+	return od_write(&server->io, &msg);
+}
+
+static int yb_build_utf8_session_vars_query(od_client_t *client,
+					    od_server_t *server, char *query)
+{
+	static const char reset[] = "RESET client_encoding;";
+	kiwi_var_t *client_encoding;
+	int pos;
+
+	pos = kiwi_vars_cas(&client->yb_vars_session,
+			    &server->yb_vars_session, query, yb_max_query_size,
+			    "client_encoding");
+	if (pos == -1)
+		return -1;
+
+	client_encoding =
+		yb_kiwi_vars_get(&client->yb_vars_session, "client_encoding");
+	if (client_encoding != NULL)
+		return yb_kiwi_add_var_to_query(client_encoding, query, pos,
+						yb_max_query_size);
+
+	if (yb_max_query_size < pos + (int)sizeof(reset) - 1)
+		return -1;
+	memcpy(query + pos, reset, sizeof(reset) - 1);
+	return pos + (int)sizeof(reset) - 1;
+}
+
 int od_deploy(od_client_t *client, char *context)
 {
 	od_instance_t *instance = client->global->instance;
@@ -206,7 +266,26 @@ int od_deploy(od_client_t *client, char *context)
 	int query_size;
 	query_size = kiwi_vars_cas(
 		&client->yb_vars_session, &server->yb_vars_session, query,
-		yb_max_query_size);
+		yb_max_query_size, NULL);
+
+	if (query_size > 0 && yb_has_high_bit_byte(query, query_size)) {
+		query_size = yb_build_utf8_session_vars_query(client, server,
+							      query);
+		if (query_size == -1) {
+			free(query);
+			return -1;
+		}
+
+		rc = yb_send_utf8_client_encoding_query(server);
+		if (rc == -1) {
+			free(query);
+			return -1;
+		}
+		query_count++;
+
+		od_debug(&instance->logger, context, client, server,
+			 "deploy: %s", yb_utf8_client_encoding_query);
+	}
 
 	if (query_size > 0) {
 		query[query_size] = 0;
