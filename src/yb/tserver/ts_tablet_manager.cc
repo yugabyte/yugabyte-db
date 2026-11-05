@@ -512,9 +512,10 @@ std::string SnapshotIdToString(const std::string& snapshot_id) {
   return uuid.IsNil() ? snapshot_id : uuid.ToString();
 }
 
-// The longest wait between quiescent checks, so that new tablets and quiescent_tablet_idle_sec
-// raised from 0 are picked up. Other flag changes reach a tablet at its next queued check.
-// A shorter idle period shortens the wait, so a new tablet is checked within two idle periods.
+// The longest wait between quiescent checks while quiescent_tablet_idle_sec is set, so that new
+// tablets are picked up. While it is 0, checks run hourly, so a raise from 0 is picked up within
+// an hour. Other flag changes reach a tablet at its next queued check. A shorter idle period
+// shortens the wait, so a new tablet is checked within two idle periods.
 constexpr auto kQuiescentTabletsMaxCheckInterval = 60s;
 
 } // namespace
@@ -4475,6 +4476,12 @@ void TSTabletManager::EnterQuiescentModeForIdleTablets() {
   // xCluster producer could delete WAL that a consumer still needs.
   if (!server_->XClusterProducerStateKnown()) {
     quiescent_tablets_bg_task_->SetInterval(1s);
+    return;
+  }
+  // Tablets registered while disabled are queued 1s out, so after the flag is raised they are
+  // due at the next run.
+  if (FLAGS_quiescent_tablet_idle_sec <= 0) {
+    quiescent_tablets_bg_task_->SetInterval(1h);
     return;
   }
   const auto now = CoarseMonoClock::Now();
