@@ -1306,7 +1306,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     UniverseDefinitionTaskParams before = beforeUDTP;
     if (!rollbackSafe) {
       log.info(
-          "Universe {} keeps the pre-edit state and rollbackSafe=false of an earlier failed attempt",
+          "Universe {} keeps the pre-edit state and rollbackSafe=false of an earlier failed"
+              + " attempt",
           universe.getUniverseUUID());
       before = existing.getBeforeUniverseDetails();
     }
@@ -5732,11 +5733,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   /**
    * Removes tservers that were just deleted from the server blacklist, after waiting {@code
-   * yb.edit.wait_before_blacklist_clear} (when set) so the master stops treating them as live first.
+   * yb.edit.wait_before_blacklist_clear} (when set) so the master stops treating them as live
+   * first.
    */
-  public void createClearTserverBlacklistTasks(Universe universe, Collection<NodeDetails> tservers) {
+  public void createClearTserverBlacklistTasks(
+      Universe universe, Collection<NodeDetails> tservers) {
     Duration sleepBeforeClear =
-        confGetter.getConfForScope(universe, UniverseConfKeys.ybEditWaitDurationBeforeBlacklistClear);
+        confGetter.getConfForScope(
+            universe, UniverseConfKeys.ybEditWaitDurationBeforeBlacklistClear);
     if (sleepBeforeClear.compareTo(Duration.ZERO) > 0) {
       createWaitForDurationSubtask(universe, sleepBeforeClear)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);

@@ -24062,7 +24062,13 @@ YbATExecAlterIndexAttributeType(AlteredTableInfo *tab, Relation rel,
 
 			heap_att = TupleDescAttr(heapTupDesc, AttrNumberGetAttrOffset(table_attnum));
 
-			/* Update attribute type-related fields. */
+			/*
+			 * Update attribute type-related fields, but not attcollation.
+			 * The index's collation can differ from the table's, so setting it
+			 * to the table's collation would be incorrect. Moreover, the index
+			 * collation does not change on reuse, so there is no need to update
+			 * it.
+			 */
 			do_replace[Anum_pg_attribute_atttypid - 1] = true;
 			new_values[Anum_pg_attribute_atttypid - 1] = ObjectIdGetDatum(heap_att->atttypid);
 			do_replace[Anum_pg_attribute_atttypmod - 1] = true;
@@ -24075,8 +24081,6 @@ YbATExecAlterIndexAttributeType(AlteredTableInfo *tab, Relation rel,
 			new_values[Anum_pg_attribute_attalign - 1] = CharGetDatum(heap_att->attalign);
 			do_replace[Anum_pg_attribute_attstorage - 1] = true;
 			new_values[Anum_pg_attribute_attstorage - 1] = CharGetDatum(heap_att->attstorage);
-			do_replace[Anum_pg_attribute_attcollation - 1] = true;
-			new_values[Anum_pg_attribute_attcollation - 1] = ObjectIdGetDatum(heap_att->attcollation);
 		}
 
 		newTuple = heap_modify_tuple(attrTup, RelationGetDescr(pg_attribute),
