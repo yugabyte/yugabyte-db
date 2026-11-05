@@ -13266,13 +13266,16 @@ components:
         "<customer UUID>:<key>" in the namespace 3bf373dd-d374-4df5-bdea-c3cd942ae7f4.
         A client can
 
-        follow the task even if it lost the response. If the task already exists,
-        for example because
+        follow the task even if it lost the response. If that task exists and hasn''t
+        failed, for example
 
-        YBA restarted before the response was stored, a retry gets 409 with the task''s
-        UUID in
+        because YBA restarted before the response was stored, a retry gets 409 with
+        the task''s UUID in
 
-        error.task_uuid instead of starting the task again.
+        error.task_uuid instead of starting the task again. If it failed, the retry
+        runs the operation
+
+        again under a new task UUID.
 
         '
       required: false
