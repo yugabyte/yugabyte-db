@@ -21,6 +21,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+#include <atomic>
 #include <future>
 #include <limits>
 #include <mutex>
@@ -985,14 +986,20 @@ TEST_F(DBTest, DBWithMaxSpaceAllowedRandomized) {
 
   int reached_max_space_on_flush = 0;
   int reached_max_space_on_compaction = 0;
-  // Use the size seen by SstFileManager: listing the directory races with concurrent deletion of
-  // obsolete files that SstFileManager still counts at the time of the check.
-  SstFileManagerImpl* sfm = nullptr;
+  // Total that the limit check compared, captured under SstFileManagerImpl::mu_. Reading the size
+  // later races with concurrent deletion of obsolete files.
+  std::atomic<uint64_t> checked_total_size{0};
+  yb::SyncPoint::GetInstance()->SetCallBack(
+      "SstFileManagerImpl::IsMaxAllowedSpaceReached:Reached",
+      [&](void* arg) {
+        checked_total_size = *static_cast<uint64_t*>(arg);
+      });
+
   yb::SyncPoint::GetInstance()->SetCallBack(
       "DBImpl::FlushMemTableToOutputFile:MaxAllowedSpaceReached",
       [&](void* arg) {
         bg_error_set = true;
-        total_sst_files_size = sfm->GetTotalSize();
+        total_sst_files_size = checked_total_size;
         reached_max_space_on_flush++;
       });
 
@@ -1000,17 +1007,18 @@ TEST_F(DBTest, DBWithMaxSpaceAllowedRandomized) {
       "CompactionJob::FinishCompactionOutputFile:MaxAllowedSpaceReached",
       [&](void* arg) {
         bg_error_set = true;
-        total_sst_files_size = sfm->GetTotalSize();
+        total_sst_files_size = checked_total_size;
         reached_max_space_on_compaction++;
       });
 
   for (auto limit_mb : max_space_limits_mbs) {
     bg_error_set = false;
     total_sst_files_size = 0;
+    checked_total_size = 0;
     yb::SyncPoint::GetInstance()->ClearTrace();
     yb::SyncPoint::GetInstance()->EnableProcessing();
     std::shared_ptr<SstFileManager> sst_file_manager(ASSERT_RESULT(NewSstFileManager(env_)));
-    sfm = static_cast<SstFileManagerImpl*>(sst_file_manager.get());
+    auto sfm = static_cast<SstFileManagerImpl*>(sst_file_manager.get());
 
     Options options = CurrentOptions();
     options.sst_file_manager = sst_file_manager;

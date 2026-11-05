@@ -84,7 +84,13 @@ bool SstFileManagerImpl::IsMaxAllowedSpaceReached() {
   if (max_allowed_space_ <= 0) {
     return false;
   }
-  return total_files_size_ >= max_allowed_space_;
+  if (total_files_size_ < max_allowed_space_) {
+    return false;
+  }
+  // Called under mu_: the callback must not call back into this object.
+  DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK(
+      "SstFileManagerImpl::IsMaxAllowedSpaceReached:Reached", &total_files_size_);
+  return true;
 }
 
 uint64_t SstFileManagerImpl::GetTotalSize() {
