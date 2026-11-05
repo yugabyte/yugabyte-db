@@ -22,12 +22,9 @@ import java.util.HashSet;
 import java.util.Set;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.YBTestRunner;
 import org.yb.pgsql.ConnectionEndpoint;
-import org.yb.util.RequiresLinux;
 
-@RequiresLinux
-@RunWith(value = YBTestRunner.class)
+@RunWith(value = YBTestRunnerYsqlConnMgr.class)
 public class TestSusetGucStickiness extends BaseYsqlConnMgr {
 
   private Connection connectAsSuperuser() throws Exception {
