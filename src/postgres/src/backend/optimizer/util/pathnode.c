@@ -5192,12 +5192,9 @@ do { \
 
 		case T_YbBitmapTablePath:
 			{
-				/*
-				 * YB_TODO_PG19MERGE: PG19 removed FLAT_COPY_PATH macro; mirror
-				 * the BitmapHeapPath branch above which just adjusts in place.
-				 */
 				YbBitmapTablePath *bhpath = (YbBitmapTablePath *) path;
 
+				ADJUST_CHILD_ATTRS(bhpath->path.parent->baserestrictinfo);
 				REPARAMETERIZE_CHILD_PATH(bhpath->bitmapqual);
 				new_path = (Path *) bhpath;
 			}
@@ -5443,6 +5440,14 @@ do { \
 		case T_BitmapHeapPath:
 			{
 				BitmapHeapPath *bhpath = (BitmapHeapPath *) path;
+
+				REJECT_IF_PATH_NOT_REPARAMETERIZABLE(bhpath->bitmapqual);
+			}
+			break;
+
+		case T_YbBitmapTablePath:
+			{
+				YbBitmapTablePath *bhpath = (YbBitmapTablePath *) path;
 
 				REJECT_IF_PATH_NOT_REPARAMETERIZABLE(bhpath->bitmapqual);
 			}
