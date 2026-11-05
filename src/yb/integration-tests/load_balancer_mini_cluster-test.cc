@@ -57,7 +57,6 @@ DECLARE_int32(TEST_load_balancer_wait_ms);
 DECLARE_int32(TEST_slowdown_master_async_rpc_tasks_by_ms);
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_int32(load_balancer_max_concurrent_moves);
-DECLARE_int32(load_balancer_num_idle_runs);
 DECLARE_int32(min_leader_stepdown_retry_interval_ms);
 DECLARE_int32(replication_factor);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
@@ -196,13 +195,6 @@ class LoadBalancerMiniClusterTestWithoutData : public LoadBalancerMiniClusterTes
 
 class LoadBalancerMiniClusterTest : public LoadBalancerMiniClusterTestBase {
  protected:
-  void SetUp() override {
-    // TaskTracker relies on idle checks spanning several runs. Set before the master starts: it
-    // sizes the balancer's activity buffer.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_load_balancer_num_idle_runs) = 5;
-    LoadBalancerMiniClusterTestBase::SetUp();
-  }
-
   int num_drives() override {
     return 3;
   }
@@ -281,20 +273,23 @@ TEST_F(LoadBalancerMiniClusterTest, TaskTracker) {
   auto load_balancer = ASSERT_RESULT(
       mini_cluster()->GetLeaderMiniMaster())->master()->catalog_manager()->cluster_balancer();
 
-  // Idle means load_balancer_num_idle_runs consecutive idle runs (see SetUp): a single idle run
-  // can occur mid-move, e.g. before a new replica is promoted, and the move's follow-up tasks
-  // would then land in the next phase.
+  const auto& activity_buffer = load_balancer->TEST_activity_buffer();
+
+  // Wait for load_balancer_num_idle_runs consecutive idle runs rather than one: a single idle run
+  // can occur mid-move, and the move's follow-up tasks would then land in the next phase. Checking
+  // every buffered run, not just the latest, catches a task type that shows up in only one run.
   auto wait_for_task_then_idle = [&](server::MonitoredTaskType type, const std::string& phase) {
-    ASSERT_OK(WaitFor([&] {
-      auto tasks_summary = load_balancer->GetLatestActivityInfo().GetTasksSummary();
-      return std::any_of(tasks_summary.begin(), tasks_summary.end(), [type](const auto& entry) {
-        return entry.first.first == type;
-      });
-    }, kDefaultTimeout * kTimeMultiplier, Format("Wait for $0 task to start", phase)));
+    ASSERT_OK(WaitFor(
+        [&] { return activity_buffer.AnyRunHasOnlyTasksOfType(type); },
+        kDefaultTimeout * kTimeMultiplier, Format("Wait for $0 task to start", phase)));
     WaitLoadBalancerIdle(client_.get(), Format("Wait for $0 task to complete", phase));
   };
 
-  WaitLoadBalancerIdle(client_.get(), "Wait for initial load balancing to complete");
+  // A partially filled buffer reports idle after fewer than load_balancer_num_idle_runs runs.
+  ASSERT_OK(WaitFor([&] { return activity_buffer.IsFull(); }, kDefaultTimeout * kTimeMultiplier,
+                    "Wait for activity buffer to fill"));
+  ASSERT_NO_FATALS(
+      WaitLoadBalancerIdle(client_.get(), "Wait for initial load balancing to complete"));
 
   // Add a tablet server. The load balancer should start an add server task.
   auto new_ts_index = mini_cluster()->num_tablet_servers();
