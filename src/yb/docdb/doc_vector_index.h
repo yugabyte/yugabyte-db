@@ -131,6 +131,10 @@ class DocVectorIndexReverseMappingReader {
   // Returns ybctid which corresponds to the specified vector_id. Returns empty value if
   // no ybctid is found or kTombstone corresponds to the specified vector_id.
   Result<Slice> FetchYbctid(const vector_index::VectorId& vector_id);
+
+  // Whether the fetches observed entries written in the read restart window, see
+  // IntentAwareIterator::GetReadRestartData.
+  virtual Result<ReadRestartData> GetReadRestartData() const = 0;
 };
 
 using DocVectorIndexReverseMappingReaderPtr = std::unique_ptr<DocVectorIndexReverseMappingReader>;

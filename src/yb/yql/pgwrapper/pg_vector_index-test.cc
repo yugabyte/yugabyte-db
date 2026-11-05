@@ -5613,6 +5613,81 @@ TEST_P(PgVectorIndexSingleServerTest, ConcurrentDeleteApplyDuringSearchStress) {
   threads.Stop();
 }
 
+// A writer keeps moving the vectors of a few rows between Vector(id) and -Vector(id), while
+// searchers with a filter read a row's vector and search near Vector(id) in one statement. Whenever
+// the row is at Vector(id), the search has to return it. The filter fetches the rows of the
+// candidate vectors, and could read a row updated in the read restart window, i.e. after the read
+// time, leaving out its vector without restarting the read.
+//
+// Covers https://github.com/yugabyte/yugabyte-db/issues/36618.
+TEST_P(PgVectorIndexSingleServerTest, FilteredSearchWithConcurrentUpdates) {
+  constexpr int64_t kNumRows = 1000;
+  constexpr int64_t kNumHotRows = 20;
+  constexpr size_t kRowsPerTransaction = 5;
+  constexpr size_t kNumSearchers = 4;
+  const auto kRunTime = RegularBuildVsSanitizers<std::chrono::seconds>(15s, 10s);
+
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
+
+  TestThreadHolder threads;
+  threads.AddThreadFunctor([this, &stop_flag = threads.stop_flag()] {
+    auto write_conn = ASSERT_RESULT(Connect());
+    std::vector<int64_t> ids(kNumHotRows);
+    std::iota(ids.begin(), ids.end(), 1);
+    while (!stop_flag.load(std::memory_order_acquire)) {
+      std::shuffle(ids.begin(), ids.end(), ThreadLocalRandom());
+      ASSERT_OK(write_conn.Execute("BEGIN"));
+      for (size_t i = 0; i != kRowsPerTransaction; ++i) {
+        auto id = ids[i];
+        auto vector = Vector(id);
+        if (RandomUniformBool()) {
+          for (auto& coordinate : vector) {
+            coordinate = -coordinate;
+          }
+        }
+        ASSERT_OK(write_conn.ExecuteFormat(
+            "UPDATE test SET embedding = '$0' WHERE id = $1", AsString(vector), id));
+      }
+      ASSERT_OK(write_conn.Execute("COMMIT"));
+    }
+  });
+
+  std::atomic<size_t> num_searches{0};
+  std::atomic<size_t> num_misses{0};
+  for (size_t i = 0; i != kNumSearchers; ++i) {
+    threads.AddThreadFunctor(
+        [this, &num_searches, &num_misses, &stop_flag = threads.stop_flag()] {
+      auto read_conn = ASSERT_RESULT(Connect());
+      while (!stop_flag.load(std::memory_order_acquire)) {
+        auto id = RandomUniformInt<int64_t>(1, kNumHotRows);
+        auto near = AsString(Vector(id));
+        // id + 0 keeps the always true filter from becoming a key bound, so the search is done
+        // with a DocDB filter, i.e. PgsqlVectorFilter fetches the row of every candidate vector.
+        auto result = read_conn.FetchRow<bool, int64_t>(Format(
+            "SELECT (SELECT embedding = '$1' FROM test WHERE id = $0), "
+            "(SELECT id FROM test WHERE id + 0 >= 0 $2)",
+            id, near, IndexQuerySuffix(near, 1)));
+        if (!result.ok()) {
+          ASSERT_TRUE(IsRetryable(result.status())) << result.status();
+          continue;
+        }
+        ++num_searches;
+        auto [is_near, found_id] = *result;
+        if (is_near && found_id != id) {
+          LOG(WARNING) << "Row " << id << " is at " << near << ", but search returned "
+                       << found_id;
+          ++num_misses;
+        }
+      }
+    });
+  }
+
+  threads.WaitAndStop(kRunTime);
+  LOG(INFO) << "Searches: " << num_searches << ", misses: " << num_misses;
+  ASSERT_GT(num_searches, 0);
+  ASSERT_EQ(num_misses, 0);
+}
+
 TEST_P(PgVectorIndexSingleServerTest, OnDiskSize) {
   // Make the heartbeat compute (and read OnDiskSize) on every heartbeat, and
   // heartbeat often.
