@@ -967,17 +967,9 @@ char* YBCDecodeRangePartitionKey(const char* partition_key, size_t key_len) {
 // YBCIsLegacyModeForCatalogOps during sys table prefetching, where
 // YBCIsSysTablePrefetchingStarted() forces legacy mode anyway.
 static bool object_locking_infra_for_curr_txn = false;
-static bool curr_txn_skips_object_locks_for_read_time = false;
 
-void YBCSetObjectLockingInfraForCurrTxn(bool is_walsender) {
-  curr_txn_skips_object_locks_for_read_time =
-      yb_read_time != 0 && !yb_read_time_skip_catalog && !is_walsender;
-  object_locking_infra_for_curr_txn =
-      yb_enable_object_locking_infra && !curr_txn_skips_object_locks_for_read_time;
-}
-
-bool YBCCurrTxnSkipsObjectLocksForReadTime() {
-  return curr_txn_skips_object_locks_for_read_time;
+void YBCSetObjectLockingInfraForCurrTxn(bool enabled) {
+  object_locking_infra_for_curr_txn = enabled;
 }
 
 bool YBCIsObjectLockingInfraEnabled() {
