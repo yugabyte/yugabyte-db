@@ -2890,7 +2890,7 @@ TEST_F(AutomaticTabletSplitAddServerITest, ReadReplicaTServerDoesNotLowerSplitPh
   const auto& ts0_opts = *cluster_->mini_tablet_server(0)->options();
   const std::string kReadReplicaPlacementUuid = "read_replica";
   master::MasterClusterClient cluster_client(
-      cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>());
+      ASSERT_RESULT(cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>()));
   auto config = ASSERT_RESULT(cluster_client.GetMasterClusterConfig());
   auto* live_replicas = config.mutable_replication_info()->mutable_live_replicas();
   live_replicas->set_num_replicas(3);
