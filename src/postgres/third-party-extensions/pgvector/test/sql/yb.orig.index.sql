@@ -112,13 +112,19 @@ INSERT INTO items VALUES (1, '[1, 1, 1]'), (2, '[2, 2, 2]'), (3, '[3, 3, 3]');
 ALTER TABLE items ALTER COLUMN embedding TYPE vector;
 ALTER TABLE items ALTER COLUMN embedding TYPE vector(4);
 ALTER TABLE items ALTER COLUMN embedding TYPE vector(3);
--- The index keeps its dimensions: wrong-size vectors are refused and searches
--- work.
+-- Nothing changed: the index column keeps its dimensions, the column still
+-- refuses wrong-size vectors, and searches work.
 SELECT atttypmod FROM pg_attribute WHERE attrelid = 'items_idx'::regclass;
 INSERT INTO items VALUES (4, '[1, 2]');
 SELECT id FROM items ORDER BY embedding <-> '[1, 1, 1]' LIMIT 2;
 -- Without the index, the ALTER works.
 DROP INDEX items_idx;
+ALTER TABLE items ALTER COLUMN embedding TYPE vector;
+DROP TABLE items;
+-- The same on a partitioned table with the index on the parent.
+CREATE TABLE items (id int, embedding vector(3)) PARTITION BY RANGE (id);
+CREATE TABLE items_1 PARTITION OF items FOR VALUES FROM (0) TO (100);
+CREATE INDEX items_idx ON items USING ybhnsw (embedding vector_l2_ops);
 ALTER TABLE items ALTER COLUMN embedding TYPE vector;
 DROP TABLE items;
 

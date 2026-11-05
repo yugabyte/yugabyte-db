@@ -24144,21 +24144,27 @@ YbATExecAlterIndexAttributeType(AlteredTableInfo *tab, Relation rel,
  *
  * A vector index is built for a fixed number of dimensions, which DocDB keeps
  * from CREATE INDEX.  Without a rewrite (e.g. vector(4) -> vector), the index
- * would be kept while its column loses the dimensions.  With a rewrite, the
- * index would be re-created without its options.  See #36753.
+ * would be kept while its column loses the dimensions.  See #36753.
  */
 static void
 YbCheckAlterTypeOfVectorIndexColumn(Oid indoid, const char *colName)
 {
 	Relation	indexRel = index_open(indoid, AccessShareLock);
+	bool		is_vector_index = (indexRel->rd_indam &&
+								   indexRel->rd_indam->yb_amiscopartitioned);
 
-	if (indexRel->rd_indam && indexRel->rd_indam->yb_amiscopartitioned)
+	index_close(indexRel, AccessShareLock);
+
+	if (is_vector_index)
+	{
+		ObjectAddress obj;
+
+		ObjectAddressSet(obj, RelationRelationId, indoid);
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("cannot alter type of a column used by a vector index"),
-				 errdetail("Index \"%s\" depends on column \"%s\".",
-						   RelationGetRelationName(indexRel), colName),
+				 errdetail("%s depends on column \"%s\"",
+						   getObjectDescription(&obj, false), colName),
 				 errhint("Drop the index first, or add a new column with the new type.")));
-
-	index_close(indexRel, AccessShareLock);
+	}
 }
