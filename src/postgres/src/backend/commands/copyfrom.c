@@ -751,12 +751,16 @@ CopyFrom(CopyFromState cstate)
 	 *    inconsistencies.
 	 * 2. When rules or trigger are defined. Both rules and trigger may write
 	 *    data in separate buffer, leading to inconsistencies.
+	 * 3. When the target is a partitioned table. The checks here only see the
+	 *    partitioned table itself, but each partition can have its own foreign
+	 *    keys, triggers, indexes and colocation.
 	 */
 	bool		has_rule_or_trigger = resultRelInfo->ri_RelationDesc->rd_rel->relhastriggers ||
 		resultRelInfo->ri_RelationDesc->rd_rel->relhasrules;
 
 	if (yb_fast_path_for_colocated_copy &&
 		!set_txn_batch_size_explicitly && IsYBRelation(resultRelInfo->ri_RelationDesc) &&
+		resultRelInfo->ri_RelationDesc->rd_rel->relkind != RELKIND_PARTITIONED_TABLE &&
 		YbGetTableProperties(resultRelInfo->ri_RelationDesc)->is_colocated &&
 		!has_rule_or_trigger && !IsTransactionBlock())
 	{
