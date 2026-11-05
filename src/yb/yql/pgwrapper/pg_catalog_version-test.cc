@@ -256,29 +256,6 @@ class PgCatalogVersionTest : public LibPqTestBase {
     return result;
   }
 
-  // Return the shared memory catalog version of 'db_oid' at the tserver at 'tablet_index'.
-  Result<Version> GetShmDBCatalogVersion(size_t tablet_index, Oid db_oid) {
-    auto* ts = cluster_->tablet_server(tablet_index);
-    tserver::SharedMemoryManager shared_mem_manager;
-    RETURN_NOT_OK(shared_mem_manager.InitializePgBackend(ts->instance_id().permanent_uuid()));
-    auto tserver_shared_data = shared_mem_manager.SharedData();
-
-    rpc::RpcController controller;
-    controller.set_timeout(30s);
-    auto proxy = cluster_->GetProxy<tserver::TabletServerServiceProxy>(ts);
-    tserver::GetTserverCatalogVersionInfoRequestPB req;
-    tserver::GetTserverCatalogVersionInfoResponsePB resp;
-    req.set_db_oid(db_oid);
-    RETURN_NOT_OK(proxy.GetTserverCatalogVersionInfo(req, &resp, &controller));
-    if (resp.has_error()) {
-      return StatusFromPB(resp.error().status());
-    }
-    SCHECK_EQ(resp.entries_size(), 1, IllegalState, "expected one entry");
-    const auto& entry = resp.entries(0);
-    SCHECK(entry.has_shm_index(), IllegalState, "missing shm_index");
-    return tserver_shared_data->ysql_db_catalog_version(entry.shm_index());
-  }
-
   struct CatalogVersionMatcher {
     Status operator()(const CatalogVersion& lhs, const CatalogVersion& rhs) const {
       SCHECK_EQ(

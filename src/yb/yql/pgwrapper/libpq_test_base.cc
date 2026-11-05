@@ -16,6 +16,10 @@
 
 #include "yb/common/common.pb.h"
 #include "yb/common/pgsql_error.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/tserver/tserver_service.proxy.h"
+#include "yb/tserver/tserver_shared_mem.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/format.h"
 #include "yb/util/json_document.h"
@@ -422,6 +426,39 @@ void LibPqTestBase::WaitForCatalogVersionToPropagate() {
   constexpr int kSleepSeconds = 2;
   LOG(INFO) << "Wait " << kSleepSeconds << " seconds for heartbeat to propagate catalog versions";
   std::this_thread::sleep_for(kSleepSeconds * kTimeMultiplier * 1s);
+}
+
+Result<uint64_t> LibPqTestBase::GetShmDBCatalogVersion(size_t tablet_index, PgOid db_oid) {
+  auto* ts = cluster_->tablet_server(tablet_index);
+  tserver::SharedMemoryManager shared_mem_manager;
+  RETURN_NOT_OK(shared_mem_manager.InitializePgBackend(ts->instance_id().permanent_uuid()));
+  auto tserver_shared_data = shared_mem_manager.SharedData();
+
+  rpc::RpcController controller;
+  controller.set_timeout(30s);
+  auto proxy = cluster_->GetProxy<tserver::TabletServerServiceProxy>(ts);
+  tserver::GetTserverCatalogVersionInfoRequestPB req;
+  tserver::GetTserverCatalogVersionInfoResponsePB resp;
+  req.set_db_oid(db_oid);
+  RETURN_NOT_OK(proxy.GetTserverCatalogVersionInfo(req, &resp, &controller));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  SCHECK_EQ(resp.entries_size(), 1, IllegalState, "expected one entry");
+  const auto& entry = resp.entries(0);
+  SCHECK(entry.has_shm_index(), IllegalState, "missing shm_index");
+  return tserver_shared_data->ysql_db_catalog_version(entry.shm_index());
+}
+
+Status LibPqTestBase::WaitForShmDBCatalogVersion(
+    size_t tablet_index, PgOid db_oid, uint64_t min_version) {
+  return LoggedWaitFor(
+      [this, tablet_index, db_oid, min_version]() -> Result<bool> {
+        return VERIFY_RESULT(GetShmDBCatalogVersion(tablet_index, db_oid)) >= min_version;
+      },
+      30s * kTimeMultiplier,
+      Format("tserver $0 catalog version of database $1 reaches $2",
+             tablet_index, db_oid, min_version));
 }
 
 Result<int64_t> LibPqTestBase::GetCatCacheTableMissMetric(const std::string& table_name) {

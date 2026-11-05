@@ -12,11 +12,14 @@
 
 #include <poll.h>
 
+#include "yb/gutil/casts.h"
+
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/logging.h"
 #include "yb/util/test_thread_holder.h"
 
 #include "yb/yql/pgwrapper/libpq_test_base.h"
+#include "yb/yql/pgwrapper/libpq_test_utils.h"
 
 using namespace std::chrono_literals;
 
@@ -354,13 +357,13 @@ class AuthPausedConnection {
 
   Status Start(
       const std::string& host, uint16_t port, const std::string& user,
-      const std::string& password) {
+      const std::string& password, const std::string& options = "") {
     const auto port_str = std::to_string(port);
     const char* keywords[] = {
-        "host", "port", "dbname", "user", "password", "sslmode", "gssencmode", nullptr};
+        "host", "port", "dbname", "user", "password", "sslmode", "gssencmode", "options", nullptr};
     const char* values[] = {
         host.c_str(), port_str.c_str(), "yugabyte", user.c_str(), password.c_str(), "disable",
-        "disable", nullptr};
+        "disable", options.c_str(), nullptr};
     conn_ = PQconnectStartParams(keywords, values, 0 /* expand_dbname */);
     SCHECK(conn_ && PQstatus(conn_) != CONNECTION_BAD, NetworkError, "PQconnectStartParams failed");
     auto poll_status = PGRES_POLLING_WRITING;
@@ -410,7 +413,7 @@ class AuthPausedConnection {
   Status WaitForSocket(PostgresPollingStatusType poll_status) {
     pollfd pfd = {
       .fd = PQsocket(conn_),
-      .events = static_cast<int16_t>(poll_status == PGRES_POLLING_READING ? POLLIN : POLLOUT),
+      .events = narrow_cast<int16_t>(poll_status == PGRES_POLLING_READING ? POLLIN : POLLOUT),
       .revents = 0,
     };
     const int rc = poll(&pfd, 1 /* nfds */, 60000 /* timeout_ms */);
@@ -433,6 +436,8 @@ class PgConnTestAuthCatcache : public PgConnTest {
         "host all postgres all trust,host all yugabyte all trust,host all all all password");
   }
 
+  virtual bool PreloadsCatalogCaches() const { return false; }
+
   void TestSuperuserRevokedDuringAuth();
 };
 
@@ -443,6 +448,8 @@ class PgConnTestAuthCatcachePreload : public PgConnTestAuthCatcache {
     // Every connection preloads the relcache and catalog caches in RelationCacheInitializePhase3.
     options->extra_tserver_flags.push_back("--ysql_catalog_preload_additional_tables=true");
   }
+
+  bool PreloadsCatalogCaches() const override { return true; }
 };
 
 // A connection to tserver 1 reads pg_authid during authentication. While it waits for the
@@ -450,17 +457,31 @@ class PgConnTestAuthCatcachePreload : public PgConnTestAuthCatcache {
 // completes and the new catalog version reaches tserver 1, the session must not act as a
 // superuser.
 void PgConnTestAuthCatcache::TestSuperuserRevokedDuringAuth() {
+  constexpr auto kLoginTsIndex = 1;
   auto* ddl_ts = cluster_->tablet_server(0);
-  auto* login_ts = cluster_->tablet_server(1);
+  auto* login_ts = cluster_->tablet_server(kLoginTsIndex);
   auto ddl_conn = ASSERT_RESULT(ConnectToTs(*ddl_ts));
+  const auto db_oid = ASSERT_RESULT(GetDatabaseOid(&ddl_conn, "yugabyte"));
   ASSERT_OK(ddl_conn.Execute("CREATE ROLE su LOGIN SUPERUSER PASSWORD 'pw'"));
-  WaitForCatalogVersionToPropagate();
+  ASSERT_OK(WaitForShmDBCatalogVersion(
+      kLoginTsIndex, db_oid, ASSERT_RESULT(GetCatalogVersion(&ddl_conn))));
 
   AuthPausedConnection login;
   ASSERT_OK(login.Start(login_ts->bind_host(), login_ts->ysql_port(), "su", "pw"));
+  AuthPausedConnection login_with_su_option;
+  ASSERT_OK(login_with_su_option.Start(
+      login_ts->bind_host(), login_ts->ysql_port(), "su", "pw",
+      "-c log_min_duration_statement=0"));
   ASSERT_OK(ddl_conn.Execute("ALTER ROLE su NOSUPERUSER"));
   ASSERT_OK(login.Finish());
-  WaitForCatalogVersionToPropagate();
+  // Without the preload, startup has no pg_authid row newer than the one read for authentication.
+  if (PreloadsCatalogCaches()) {
+    auto status = login_with_su_option.Finish();
+    ASSERT_NOK(status);
+    ASSERT_STR_CONTAINS(status.ToString(), "permission denied to set parameter");
+  }
+  ASSERT_OK(WaitForShmDBCatalogVersion(
+      kLoginTsIndex, db_oid, ASSERT_RESULT(GetCatalogVersion(&ddl_conn))));
 
   // A connection made after the DDL is not allowed to set a superuser-only parameter.
   {
