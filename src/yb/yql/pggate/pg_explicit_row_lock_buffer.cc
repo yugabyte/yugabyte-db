@@ -159,7 +159,8 @@ class ExplicitRowLockBuffer::Impl {
         {.rowmark = info_->rowmark,
         .pg_wait_policy = info_->pg_wait_policy,
         .docdb_wait_policy = info_->docdb_wait_policy,
-        .run_marker = PgSessionRunOperationMarker::ExplicitRowLock});
+        .run_marker = PgSessionRunOperationMarker::ExplicitRowLock,
+        .catalog_read_point = info_->catalog_read_point});
   }
 
   Status DoFlushImpl() {

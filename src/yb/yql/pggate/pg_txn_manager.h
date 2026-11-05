@@ -60,6 +60,7 @@ YB_STRONGLY_TYPED_BOOL(IsLocalObjectLockOp);
 YB_STRONGLY_TYPED_BOOL(NonTransactionalWrites);
 YB_STRONGLY_TYPED_BOOL(SkipReadTimeOptions);
 YB_STRONGLY_TYPED_BOOL(IsCatalogSnapshot);
+YB_STRONGLY_TYPED_BOOL(HasCatalogOps);
 
 struct TxnReadPoint {
   uint64_t txn; // Transaction serial number
@@ -118,6 +119,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   bool IsDdlModeWithRegularTransactionBlock() const {
     return ddl_state_.has_value() && ddl_state_->use_regular_transaction_block;
   }
+  bool UsesFollowerReads() const;
+
   bool IsDdlModeWithSeparateTransaction() const {
     return ddl_state_.has_value() && !ddl_state_->use_regular_transaction_block;
   }
@@ -145,7 +148,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
       tserver::PgPerformOptionsPB& options, NonTransactionalWrites ops_has_non_transactional_writes,
       std::optional<ReadTimeAction> read_time_action = {},
       SkipReadTimeOptions skip_read_time_options = SkipReadTimeOptions::kFalse,
-      IsCatalogSnapshot is_catalog_snapshot = IsCatalogSnapshot::kFalse);
+      IsCatalogSnapshot is_catalog_snapshot = IsCatalogSnapshot::kFalse,
+      HasCatalogOps has_catalog_ops = HasCatalogOps::kFalse);
 
   double GetTransactionPriority() const;
   YbcTxnPriorityRequirement GetTransactionPriorityType() const;
@@ -250,7 +254,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
       std::optional<ReadTimeAction> read_time_action,
       NonTransactionalWrites ops_has_non_transactional_writes,
       SkipReadTimeOptions skip_read_time_options,
-      IsCatalogSnapshot is_catalog_snapshot);
+      IsCatalogSnapshot is_catalog_snapshot,
+      HasCatalogOps has_catalog_ops);
   bool ShouldResetReadTime(std::optional<ReadTimeAction> read_time_action) const;
   bool ShouldClamp() const;
   void ClampCatalogReadTime(
@@ -262,7 +267,6 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
       NonTransactionalWrites ops_has_non_transactional_writes,
       bool need_defer_read_point) const;
 
-  bool UsesFollowerReads() const;
 
   static uint64_t NewPriority(YbcTxnPriorityRequirement txn_priority_requirement);
 

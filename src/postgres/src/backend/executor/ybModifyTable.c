@@ -28,6 +28,7 @@
 #include "access/htup_details.h"
 #include "access/sysattr.h"
 #include "access/xact.h"
+#include "access/yb_scan_core.h"
 #include "access/yb_target.h"
 #include "catalog/catalog.h"
 #include "catalog/heap.h"
@@ -447,9 +448,13 @@ YBCExecuteInsertInternal(Oid dboid,
 						 TupleTableSlot *slot,
 						 OnConflictAction onConflictAction,
 						 Datum *ybctid,
-						 YbcPgTransactionSetting transaction_setting)
+						 YbcPgTransactionSetting transaction_setting,
+						 Snapshot snapshot)
 {
 	YbcPgStatement insert_stmt = YbNewInsertForDb(dboid, rel, transaction_setting);
+
+	if (snapshot)
+		YbSetCatalogReadPoint(insert_stmt, rel, snapshot);
 
 	YBCApplyInsertRow(insert_stmt, rel, slot, onConflictAction, ybctid,
 					  transaction_setting, true /* add_fk_reference_cache */ );
@@ -610,7 +615,8 @@ YBCExecuteInsertForDb(Oid dboid,
 							 slot,
 							 onConflictAction,
 							 ybctid,
-							 YBCFixTransactionSetting(rel, transaction_setting));
+							 YBCFixTransactionSetting(rel, transaction_setting),
+							 NULL /* snapshot */ );
 }
 
 void
@@ -637,7 +643,8 @@ YBCExecuteNonTxnInsertForDb(Oid dboid,
 							 slot,
 							 onConflictAction,
 							 ybctid,
-							 YB_NON_TRANSACTIONAL);
+							 YB_NON_TRANSACTIONAL,
+							 NULL /* snapshot */ );
 }
 
 void
@@ -659,6 +666,8 @@ YBCHeapInsert(ResultRelInfo *resultRelInfo,
 
 	if (blockInsertStmt)
 	{
+		YbSetCatalogReadPoint(blockInsertStmt, resultRelationDesc,
+							  estate->es_snapshot);
 		YBCApplyInsertRow(blockInsertStmt, resultRelationDesc, slot,
 						  onConflictAction, NULL /* ybctid */ ,
 						  YBCFixTransactionSetting(resultRelationDesc,
@@ -676,8 +685,11 @@ YBCHeapInsert(ResultRelInfo *resultRelInfo,
 	 * transaction that targets a single row (i.e. single-row-modify txn), and
 	 * there are no indices or triggers on the target table.
 	 */
-	YBCExecuteInsertForDb(dboid, resultRelationDesc, slot, onConflictAction,
-						  NULL /* ybctid */ , transaction_setting);
+	YBCExecuteInsertInternal(dboid, resultRelationDesc, slot, onConflictAction,
+							 NULL /* ybctid */ ,
+							 YBCFixTransactionSetting(resultRelationDesc,
+													  transaction_setting),
+							 estate->es_snapshot);
 }
 
 /*
@@ -992,6 +1004,9 @@ YBCExecuteDelete(Relation rel,
 
 	YbcPgStatement delete_stmt = YbNewDelete(rel, transaction_setting);
 
+	if (estate)
+		YbSetCatalogReadPoint(delete_stmt, rel, estate->es_snapshot);
+
 	/*
 	 * Look for ybctid. Raise error if ybctid is not found.
 	 *
@@ -1205,6 +1220,9 @@ YBCExecuteUpdate(ResultRelInfo *resultRelInfo,
 	slot->tts_tableOid = RelationGetRelid(rel);
 
 	YbcPgStatement update_stmt = YbNewUpdate(rel, transaction_setting);
+
+	if (estate)
+		YbSetCatalogReadPoint(update_stmt, rel, estate->es_snapshot);
 
 	/*
 	 * Look for ybctid. Raise error if ybctid is not found.

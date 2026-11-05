@@ -3743,21 +3743,34 @@ class PgClientSession::Impl {
     // PrepareOperations has already applied the ops to the session. Failing out before the flush
     // must drop them, or they would go out with the next one.
     CancelableScopeExit abort_se{[session] { session->Abort(); }};
-    if (options.uses_catalog_snapshot()) {
-      const auto serializable =
-          data->transaction && data->transaction->isolation() == SERIALIZABLE_ISOLATION;
-      for (const auto& op_data : data->ops) {
-        RSTATUS_DCHECK(
-            op_data.op->table()->InternalSchema().table_properties().is_ysql_catalog_table(),
-            IllegalState, "Non-catalog op on $0 uses the catalog snapshot",
-            op_data.op->table()->name());
-        if (!op_data.op->read_only()) {
-          continue;
+    const auto serializable =
+        data->transaction && data->transaction->isolation() == SERIALIZABLE_ISOLATION;
+    // Catalog ops at the txn snapshot (not the catalog snapshot) use its read time only once
+    // pggate made the read point carry one; otherwise they stay plain serializable ops. PG takes
+    // no SSI predicate locks on catalogs, so user catalog ops get snapshot isolation semantics:
+    // snapshot reads, and writes conflict-checked against the read time. Internal catalog writes
+    // (on the catalog snapshot) keep serializable semantics.
+    const auto use_catalog_read_time =
+        serializable &&
+        (options.uses_catalog_snapshot() || session->read_point()->GetReadTime());
+    // An explicit row lock flush can batch catalog and user table rows into one Perform, which
+    // pggate runs at the catalog snapshot when that applies to its first (catalog) table.
+    for (const auto& op_data : data->ops) {
+      const auto is_catalog =
+          op_data.op->table()->InternalSchema().table_properties().is_ysql_catalog_table();
+      if (!use_catalog_read_time || !is_catalog) {
+        continue;
+      }
+      if (!op_data.op->read_only()) {
+        if (!options.uses_catalog_snapshot() &&
+            op_data.op->type() == client::YBOperation::Type::PGSQL_WRITE) {
+          down_cast<client::YBPgsqlWriteOp&>(*op_data.op).set_force_read_time();
         }
-        auto& read_op = down_cast<client::YBPgsqlReadOp&>(*op_data.op);
-        if (serializable && !IsValidRowMarkType(GetRowMarkTypeFromPB(read_op.request()))) {
-          read_op.set_force_snapshot_read();
-        }
+        continue;
+      }
+      auto& read_op = down_cast<client::YBPgsqlReadOp&>(*op_data.op);
+      if (!IsValidRowMarkType(GetRowMarkTypeFromPB(read_op.request()))) {
+        read_op.set_force_snapshot_read();
       }
     }
     if (VLOG_IS_ON(2) || options.trace_requested()) {

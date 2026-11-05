@@ -449,11 +449,12 @@ class PgSession::RunHelper {
  public:
   RunHelper(
       PgSession* pg_session, SessionType session_type, HybridTime in_txn_limit,
-      ForceNonBufferable force_non_bufferable)
+      ForceNonBufferable force_non_bufferable, bool uses_catalog_snapshot)
       : pg_session_(*pg_session),
         session_type_(session_type),
         in_txn_limit_(in_txn_limit),
-        force_non_bufferable_(force_non_bufferable) {
+        force_non_bufferable_(force_non_bufferable),
+        uses_catalog_snapshot_(uses_catalog_snapshot) {
     VLOG(2) << "RunHelper session_type: " << ToString(session_type_)
             << ", in_txn_limit: " << ToString(in_txn_limit_)
             << ", force_non_bufferable: " << force_non_bufferable_;
@@ -574,6 +575,7 @@ class PgSession::RunHelper {
     return pg_session_.Perform(
         std::move(ops_info_.ops), {.use_legacy_catalog_session = IsLegacyCatalog(),
                                    .has_catalog_ops = has_catalog_ops_,
+                                   .uses_catalog_snapshot = uses_catalog_snapshot_,
                                    .cache_options = std::move(cache_options),
                                    .in_txn_limit = in_txn_limit_});
   }
@@ -642,6 +644,7 @@ class PgSession::RunHelper {
   const SessionType session_type_;
   const HybridTime in_txn_limit_;
   const ForceNonBufferable force_non_bufferable_;
+  const bool uses_catalog_snapshot_;
   bool has_catalog_ops_ = false;
 };
 
@@ -987,7 +990,8 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
     RETURN_NOT_OK(SetupPerformOptions(
         {}, options, OpsHaveNonTransactionalWrites(ops.operations()),
         ops_options.read_time_action, SkipReadTimeOptions::kFalse,
-        IsCatalogSnapshot(!YBCIsLegacyModeForCatalogOps() && ops_options.has_catalog_ops)));
+        IsCatalogSnapshot(!YBCIsLegacyModeForCatalogOps() && ops_options.uses_catalog_snapshot),
+        HasCatalogOps(ops_options.has_catalog_ops)));
     if (pg_txn_manager_->IsTxnInProgress()) {
       options.mutable_in_txn_limit_ht()->set_value(ops_options.in_txn_limit.ToUint64());
     }
@@ -1265,21 +1269,56 @@ Status PgSession::ValidatePlacements(
   return Status::OK();
 }
 
-Result<TxnReadPoint> PgSession::UpdateReadPointForCatalogOps(PgOid catalog_table_oid) {
-  const auto original_read_point = pg_txn_manager_->GetCurrentReadPointState();
+Result<TxnReadPoint> PgSession::UpdateReadPointForCatalogOps(
+    PgOid catalog_table_oid, bool is_row_lock_flush) {
   auto catalog_read_time_serial_no = pg_callbacks_.GetCatalogSnapshotReadPoint(
       catalog_table_oid, /* create_if_not_exists = */ true);
   LOG_IF(INFO, VLOG_IS_ON(2) || yb_debug_log_snapshot_mgmt)
-      << "Using catalog snapshot read time serial number: " << catalog_read_time_serial_no
-      << " and saving read time serial no " << original_read_point.read_time_serial_no
-      << " for txn no " << original_read_point.txn;
+      << "Using catalog snapshot read time serial number: " << catalog_read_time_serial_no;
   RSTATUS_DCHECK(
       catalog_read_time_serial_no != 0, IllegalState, "Catalog snapshot read time is 0");
+  return SwitchReadPoint(
+      catalog_read_time_serial_no,
+      PgFlushDebugContext::SwitchToCatalogSnapshot(catalog_read_time_serial_no),
+      is_row_lock_flush);
+}
+
+Status PgSession::FlushBeforeReadPointSwitch(
+    const PgFlushDebugContext& dbg_ctx, bool is_row_lock_flush) {
   // Changing snapshots. Buffered writes are on the current snapshot. Flush them before the switch.
-  RETURN_NOT_OK(FlushBufferedEntities(
-      PgFlushDebugContext::SwitchToCatalogSnapshot(catalog_read_time_serial_no)));
-  RETURN_NOT_OK(pg_txn_manager_->RestoreReadPoint(catalog_read_time_serial_no));
+  // A row lock flush must not re-flush the explicit row lock buffer it is being called from: the
+  // buffer clears its intents only after the flush returns, so it would recurse (#36224).
+  if (is_row_lock_flush) {
+    return buffer_.Flush(dbg_ctx);
+  }
+  return ResultToStatus(FlushBufferedEntities(dbg_ctx));
+}
+
+Result<TxnReadPoint> PgSession::SwitchReadPoint(
+    YbcReadPointHandle read_point, const PgFlushDebugContext& dbg_ctx, bool is_row_lock_flush) {
+  const auto original_read_point = pg_txn_manager_->GetCurrentReadPointState();
+  LOG_IF(INFO, VLOG_IS_ON(2) || yb_debug_log_snapshot_mgmt)
+      << "Switching to read time serial no " << read_point
+      << " and saving read time serial no " << original_read_point.read_time_serial_no
+      << " for txn no " << original_read_point.txn;
+  RETURN_NOT_OK(FlushBeforeReadPointSwitch(dbg_ctx, is_row_lock_flush));
+  RETURN_NOT_OK(pg_txn_manager_->RestoreReadPoint(read_point));
   return original_read_point;
+}
+
+bool PgSession::CatalogOpsUseCatalogSnapshot(
+    const PgsqlOp& first_op, const RunOptions& options) const {
+  // Internal catalog writes (no read point) use the catalog snapshot: concurrent DDLs are
+  // serialized by object locks, not by write-write conflicts against the txn read time. A user
+  // DML's base table write carries its statement snapshot, so it is checked against the same read
+  // time its scans used; its catalog index writes go through the same path as DDLs' and stay on
+  // the catalog snapshot. yb_read_time and follower reads keep their pre-existing catalog read
+  // semantics: catalog tablets are never read from followers or at a stale time.
+  return !yb_catalog_scans_use_scan_snapshot || yb_read_time != 0 ||
+         pg_txn_manager_->IsDdlModeWithSeparateTransaction() ||
+         pg_txn_manager_->UsesFollowerReads() ||
+         (!first_op.is_read() && !options.catalog_read_point) ||
+         options.catalog_read_point == YbcInvalidReadPointHandle;
 }
 
 template<class Generator>
@@ -1308,16 +1347,29 @@ Result<PerformFuture> PgSession::DoRunAsync(
   }
   auto force_non_bufferable = options.force_non_bufferable;
   std::optional<TxnReadPoint> read_point_before_catalog_ops;
+  bool uses_catalog_snapshot = false;
+  const auto is_row_lock_flush =
+      options.marker == std::optional(PgSessionRunOperationMarker::ExplicitRowLock);
   if (!YBCIsLegacyModeForCatalogOps() &&
       first_table.schema().table_properties().is_ysql_catalog_table()) {
     // TODO(#29284): Are catalog writes buffered in the legacy mode? Allow buffering of catalog
     // writes.
     force_non_bufferable = ForceNonBufferable::kTrue;
-    read_point_before_catalog_ops.emplace(VERIFY_RESULT(UpdateReadPointForCatalogOps(
-        first_table.pg_table_id().object_oid)));
+    if (CatalogOpsUseCatalogSnapshot(**first_table_op.operation, options)) {
+      uses_catalog_snapshot = true;
+      read_point_before_catalog_ops.emplace(VERIFY_RESULT(UpdateReadPointForCatalogOps(
+          first_table.pg_table_id().object_oid, is_row_lock_flush)));
+    } else if (options.catalog_read_point &&
+               *options.catalog_read_point != pg_txn_manager_->GetCurrentReadPoint()) {
+      read_point_before_catalog_ops.emplace(VERIFY_RESULT(SwitchReadPoint(
+          *options.catalog_read_point,
+          PgFlushDebugContext::ChangeTxnSnapshot(*options.catalog_read_point),
+          is_row_lock_flush)));
+    }
   }
   RunHelper runner(
-      this, group_session_type, options.in_txn_limit, force_non_bufferable);
+      this, group_session_type, options.in_txn_limit, force_non_bufferable,
+      uses_catalog_snapshot);
   const auto ddl_force_catalog_mod_opt = pg_txn_manager_->GetDdlForceCatalogModification();
   auto processor =
       [this,
@@ -1364,8 +1416,10 @@ Result<PerformFuture> PgSession::DoRunAsync(
         << "Restoring original read time serial no to "
         << read_point_before_catalog_ops->read_time_serial_no
         << " for txn no " << read_point_before_catalog_ops->txn;
-    RETURN_NOT_OK(FlushBufferedEntities(PgFlushDebugContext::ChangeTxnSnapshot(
-        read_point_before_catalog_ops->read_time_serial_no)));
+    RETURN_NOT_OK(FlushBeforeReadPointSwitch(
+        PgFlushDebugContext::ChangeTxnSnapshot(
+            read_point_before_catalog_ops->read_time_serial_no),
+        is_row_lock_flush));
     RETURN_NOT_OK(pg_txn_manager_->RestoreReadPoint(*read_point_before_catalog_ops));
   }
   return result;

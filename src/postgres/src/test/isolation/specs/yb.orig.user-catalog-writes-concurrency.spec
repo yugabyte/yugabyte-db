@@ -1,8 +1,9 @@
 # User-issued reads and writes of catalog rows, in REPEATABLE READ and SERIALIZABLE.
 #
-# TODO(#29275): YB checks write-write conflicts on catalog rows against the catalog snapshot, not
-# the transaction snapshot as PG does, and doesn't keep SERIALIZABLE read intents on catalog rows
-# (#34631). PG takes no SSI predicate locks on catalogs either.
+# As in PG, they run at the transaction snapshot, and write-write conflicts are checked against
+# it. SERIALIZABLE catalog reads are snapshot reads without read intents, and its catalog writes
+# are conflict-checked against the snapshot's read time: PG takes no SSI predicate locks on
+# catalogs.
 
 setup
 {
@@ -66,9 +67,8 @@ step s2_select_relpages { SELECT relname, relpages FROM pg_class WHERE relname I
 permutation s1_begin_rr s2_begin_rr s1_increment_a s2_increment_a s1_commit s2_commit s2_select_relpages
 permutation s1_begin_sr s2_begin_sr s1_increment_a s2_increment_a s1_commit s2_commit s2_select_relpages
 
-# s2 writes after s1 commits. Both commit and a ends at 2, in RR and SERIALIZABLE alike: s2's UPDATE
-# reads the row at the catalog snapshot, which sees s1's commit. In PG, s2's UPDATE fails with
-# "could not serialize access", since its transaction snapshot predates s1's commit (#29275).
+# s2 writes after s1 commits. As in PG, s2's UPDATE fails with "could not serialize access" in RR
+# and SERIALIZABLE alike, since its transaction snapshot predates s1's commit, and a ends at 1.
 permutation s1_begin_rr s2_begin_rr s1_read_a s2_read_a s1_increment_a s1_commit s2_increment_a s2_commit s2_select_relpages
 permutation s1_begin_sr s2_begin_sr s1_read_a s2_read_a s1_increment_a s1_commit s2_increment_a s2_commit s2_select_relpages
 

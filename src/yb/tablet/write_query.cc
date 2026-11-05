@@ -1077,13 +1077,8 @@ Status WriteQuery::PickReadTimeIfNecessary() {
     metrics_->Increment(tablet::TabletCounters::kPickReadTimeOnDocDB);
     return Status::OK();
   }
-  if (prepare_result_.need_read_snapshot &&
-      isolation_level_ == IsolationLevel::SERIALIZABLE_ISOLATION) {
-    return STATUS_FORMAT(
-        InvalidArgument,
-        "Read time should NOT be specified for serializable isolation level: $0",
-        read_time_);
-  }
+  // A SERIALIZABLE write may carry a read time (YSQL user catalog writes): it was conflict-checked
+  // against writes committed after it, and reads at it.
   read_time_.local_limit = std::min(read_time_.local_limit, safe_time);
   return Status::OK();
 }

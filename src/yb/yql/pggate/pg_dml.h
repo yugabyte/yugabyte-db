@@ -97,6 +97,12 @@ class PgDml : public PgStatement {
   virtual void SetCatalogCacheVersion(std::optional<PgOid> db_oid, uint64_t version) = 0;
   virtual void SetTablespaceOid(uint32_t tablespace_oid) = 0;
 
+  virtual void SetCatalogReadPoint(YbcReadPointHandle read_point) {
+    if (doc_op_) {
+      doc_op_->SetCatalogReadPoint(read_point);
+    }
+  }
+
   // Get column info on whether the column 'attr_num' is a hash key, a range
   // key, or neither.
   Result<YbcPgColumnInfo> GetColumnInfo(int attr_num) const;

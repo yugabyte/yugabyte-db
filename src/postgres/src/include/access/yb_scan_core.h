@@ -203,3 +203,6 @@ extern void ybFetchNext(YbcPgStatement handle, TupleTableSlot *slot,
 extern bool yb_scan_apply_next_parallel_range(YbcPgStatement handle,
 											  YbcPgExecParameters *exec_params,
 											  struct YBParallelPartitionKeysData *pscan);
+extern YbcReadPointHandle YbGetCatalogReadPoint(Snapshot snapshot);
+extern void YbSetCatalogReadPoint(YbcPgStatement handle, Relation relation,
+								  Snapshot snapshot);

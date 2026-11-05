@@ -538,15 +538,10 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(
         (data.need_consistent_read &&
          table()->InternalSchema().table_properties().is_transactional())) {
       auto read_time = read_point->GetReadTime(tablet_invoker_.tablet()->tablet_id());
-      // A SERIALIZABLE transaction's read point carries a read time only while it reads the
-      // catalog snapshot, and those reads are performed in the forced snapshot mode. All other
-      // operations in serializable isolation must stay without a read time.
-      if (serializable && !data.force_snapshot_read) {
-        LOG_IF(DFATAL,
-               read_time && !table()->InternalSchema().table_properties().is_ysql_catalog_table())
-            << "Read time should NOT be specified for serializable isolation: "
-            << read_time.ToString();
-      } else if (read_time) {
+      // A SERIALIZABLE transaction's read point can carry a read time for its user catalog ops:
+      // forced snapshot reads, and writes conflict-checked against that time. All other
+      // operations in serializable isolation ignore it, even on the same read point.
+      if (read_time && (!serializable || data.force_snapshot_read)) {
         has_read_time = true;
         read_time.AddToPB(&req_);
       }

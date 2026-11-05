@@ -979,6 +979,8 @@ YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version,
 								  YbBuildSystemTableLocalityInfo(YBCatalogVersionRelationId),
 								  YB_SKIP_INTENTS_OPTIMIZATION_INFO_NONE,
 								  &ybc_stmt));
+	HandleYBStatus(YBCPgDmlSetCatalogReadPoint(ybc_stmt,
+											   YbcInvalidReadPointHandle));
 
 	if (!(acquire_row_lock && yb_use_internal_auto_analyze_service_conn))
 	{

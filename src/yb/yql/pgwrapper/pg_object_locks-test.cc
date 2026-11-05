@@ -1342,6 +1342,123 @@ TEST_F(PgObjectLocksTest, ConcurrentRepeatableReadGrantsLoseUpdate) {
   ASSERT_STR_NOT_CONTAINS(relacl, "role2=r/");
 }
 
+namespace {
+
+constexpr auto kRelnameByOidQuery = "SELECT relname::text FROM pg_class WHERE oid = $0";
+
+Result<std::string> FetchRelname(PGConn& conn, PgOid oid) {
+  return conn.FetchRow<std::string>(Format(kRelnameByOidQuery, oid));
+}
+
+} // namespace
+
+// #29275: in PG, user queries on catalog tables read at the transaction snapshot; only internal
+// catalog access (catcache, relcache, systable scans) uses the catalog snapshot.
+TEST_F(PgObjectLocksTest, UserCatalogScansUseTxnSnapshot) {
+  auto* ts = cluster_->tablet_server(0);
+  auto conn1 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts));
+  auto conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts));
+  ASSERT_OK(conn2.Execute("CREATE TABLE t_old (k INT PRIMARY KEY)"));
+  const auto oid = ASSERT_RESULT(conn2.FetchRow<PGOid>("SELECT 't_old'::regclass::oid"));
+
+  for (const auto* isolation : {"REPEATABLE READ", "SERIALIZABLE"}) {
+    ASSERT_OK(conn1.ExecuteFormat("BEGIN ISOLATION LEVEL $0", isolation));
+    ASSERT_EQ(ASSERT_RESULT(FetchRelname(conn1, oid)), "t_old");
+    ASSERT_OK(conn2.Execute("ALTER TABLE t_old RENAME TO t_new"));
+    // Seq scan and index scan of pg_class.
+    ASSERT_EQ(ASSERT_RESULT(FetchRelname(conn1, oid)), "t_old");
+    ASSERT_EQ(ASSERT_RESULT(conn1.FetchRow<int64_t>(
+        "SELECT COUNT(*) FROM pg_class WHERE relname = 't_new'")), 0);
+    // Internal catalog access still sees the latest catalog.
+    ASSERT_EQ(ASSERT_RESULT(conn1.FetchRow<std::string>(Format("SELECT $0::regclass::text", oid))),
+              "t_new");
+    ASSERT_OK(conn1.Execute("COMMIT"));
+    ASSERT_EQ(ASSERT_RESULT(FetchRelname(conn1, oid)), "t_new");
+    ASSERT_OK(conn2.Execute("ALTER TABLE t_new RENAME TO t_old"));
+  }
+
+  // READ COMMITTED: each statement sees DDLs committed before it.
+  ASSERT_OK(conn1.Execute("BEGIN ISOLATION LEVEL READ COMMITTED"));
+  ASSERT_EQ(ASSERT_RESULT(FetchRelname(conn1, oid)), "t_old");
+  ASSERT_OK(conn2.Execute("ALTER TABLE t_old RENAME TO t_new"));
+  ASSERT_EQ(ASSERT_RESULT(FetchRelname(conn1, oid)), "t_new");
+  ASSERT_OK(conn1.Execute("COMMIT"));
+
+  // The kill switch restores reads at the catalog snapshot.
+  ASSERT_OK(conn1.Execute("SET yb_catalog_scans_use_scan_snapshot = off"));
+  ASSERT_OK(conn1.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_EQ(ASSERT_RESULT(FetchRelname(conn1, oid)), "t_new");
+  ASSERT_OK(conn2.Execute("ALTER TABLE t_new RENAME TO t_old"));
+  ASSERT_EQ(ASSERT_RESULT(FetchRelname(conn1, oid)), "t_old");
+  ASSERT_OK(conn1.Execute("COMMIT"));
+}
+
+// Row locks on catalog rows are taken at the same snapshot the scan read at.
+TEST_F(PgObjectLocksTest, UserCatalogRowLocksUseTxnSnapshot) {
+  auto* ts = cluster_->tablet_server(0);
+  auto conn1 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts));
+  auto conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts));
+  ASSERT_OK(conn2.Execute("CREATE TABLE t_old (k INT PRIMARY KEY)"));
+  ASSERT_OK(conn2.Execute("INSERT INTO t_old VALUES (1)"));
+  const auto oid = ASSERT_RESULT(conn2.FetchRow<PGOid>("SELECT 't_old'::regclass::oid"));
+
+  ASSERT_OK(conn1.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_EQ(ASSERT_RESULT(FetchRelname(conn1, oid)), "t_old");
+  ASSERT_OK(conn2.Execute("ALTER TABLE t_old RENAME TO t_new"));
+  const auto status = conn1.FetchRow<std::string>(
+      Format("SELECT relname::text FROM pg_class WHERE oid = $0 FOR UPDATE", oid));
+  ASSERT_TRUE(IsSerializeAccessError(status.status())) << status.status();
+  ASSERT_OK(conn1.Execute("ROLLBACK"));
+
+  // A row lock statement locking catalog and user table rows, with the kill switch on and off.
+  for (const auto* use_scan_snapshot : {"on", "off"}) {
+    ASSERT_OK(conn1.ExecuteFormat(
+        "SET yb_catalog_scans_use_scan_snapshot = $0", use_scan_snapshot));
+    for (const auto* isolation : {"READ COMMITTED", "REPEATABLE READ"}) {
+      ASSERT_OK(conn1.ExecuteFormat("BEGIN ISOLATION LEVEL $0", isolation));
+      ASSERT_EQ(ASSERT_RESULT(conn1.FetchRow<std::string>(Format(
+          "SELECT c.relname::text FROM pg_class c JOIN t_new t ON t.k = 1 WHERE c.oid = $0 "
+          "FOR UPDATE", oid))), "t_new");
+      ASSERT_OK(conn1.Execute("COMMIT"));
+    }
+  }
+}
+
+// pg_get_constraintdef scans pg_constraint with the transaction snapshot, as in PG.
+TEST_F(PgObjectLocksTest, SystableScanWithTxnSnapshot) {
+  auto* ts = cluster_->tablet_server(0);
+  auto conn1 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts));
+  auto conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts));
+  ASSERT_OK(conn2.Execute("CREATE TABLE t (k INT CONSTRAINT c1 CHECK (k > 0))"));
+
+  ASSERT_OK(conn1.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+  const auto oid = ASSERT_RESULT(conn1.FetchRow<PGOid>(
+      "SELECT oid FROM pg_constraint WHERE conname = 'c1'"));
+  ASSERT_OK(conn2.Execute("ALTER TABLE t DROP CONSTRAINT c1"));
+  ASSERT_EQ(ASSERT_RESULT(conn1.FetchRow<std::string>(
+      Format("SELECT pg_get_constraintdef($0)", oid))), "CHECK ((k > 0))");
+  ASSERT_OK(conn1.Execute("COMMIT"));
+}
+
+// Internal catalog reads must keep using the latest catalog inside an older transaction snapshot.
+TEST_F(PgObjectLocksTest, InternalCatalogReadsUseCatalogSnapshot) {
+  auto* ts = cluster_->tablet_server(0);
+  auto conn1 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts));
+  auto conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts));
+  ASSERT_OK(conn2.Execute("CREATE TABLE t (k INT PRIMARY KEY)"));
+  ASSERT_OK(conn2.Execute("INSERT INTO t VALUES (1)"));
+  ASSERT_OK(conn2.Execute("CREATE TABLE other (k INT)"));
+
+  ASSERT_OK(conn1.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+  // Takes the txn snapshot without locking t, which the DDLs below need exclusively.
+  ASSERT_EQ(ASSERT_RESULT(conn1.FetchRow<int64_t>("SELECT COUNT(*) FROM other")), 0);
+  ASSERT_OK(conn2.Execute("ALTER TABLE t ADD COLUMN v INT DEFAULT 5"));
+  ASSERT_OK(conn2.Execute("CREATE INDEX t_v_idx ON t (v)"));
+  ASSERT_OK(conn2.Execute("ALTER TABLE t RENAME COLUMN v TO w"));
+  ASSERT_EQ(ASSERT_RESULT(conn1.FetchRow<int32_t>("SELECT w FROM t WHERE k = 1")), 5);
+  ASSERT_OK(conn1.Execute("COMMIT"));
+}
+
 // Uses a longer YSQL operation lease TTL. On oversubscribed hosts a transient stall of the tserver
 // lease refresher can otherwise expire the lease and kill an in-flight PG backend mid-statement.
 class PgObjectLocksTestLongLease : public PgObjectLocksTest {

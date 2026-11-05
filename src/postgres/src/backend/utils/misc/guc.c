@@ -3784,6 +3784,21 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_catalog_scans_use_scan_snapshot", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("With object locking and concurrent DDL enabled, catalog "
+						 "scans read at the snapshot they were opened with, as in "
+						 "PostgreSQL, e.g. the transaction snapshot for user "
+						 "queries. When off, all catalog reads use the latest "
+						 "catalog snapshot."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_catalog_scans_use_scan_snapshot,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_advisory_locks", PGC_SIGHUP, LOCK_MANAGEMENT,
 			gettext_noop("DEPRECATED - Enable advisory lock feature"),
 			NULL,

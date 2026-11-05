@@ -25,6 +25,7 @@
 
 #include "access/htup_details.h"
 #include "access/sysattr.h"
+#include "access/yb_scan_core.h"
 #include "access/yb_special_scans.h"
 #include "access/yb_target.h"
 #include "executor/ybExpr.h"
@@ -86,6 +87,9 @@ YbFetchHeapTuple(Relation relation, Datum ybctid, HeapTuple *tuple)
 
 	/* Read data */
 	YbcPgStatement ybc_stmt = YbNewSelect(relation, NULL /* prepare_params */ );
+
+	/* Callers are internal catalog accesses. */
+	YbSetCatalogReadPoint(ybc_stmt, relation, NULL /* snapshot */ );
 
 	const bool has_data = YbFetchRowData(ybc_stmt, relation, ybctid, values, nulls, &syscols);
 

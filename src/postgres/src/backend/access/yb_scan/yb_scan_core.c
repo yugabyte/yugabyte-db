@@ -4054,6 +4054,7 @@ ybc_heap_beginscan(Relation relation,
 								 yb_options->fetch_ybctids_only);
 
 	Assert(!YbNeedsPgRecheck(ybDesc->ybscan));
+	YbSetCatalogReadPoint(ybDesc->ybscan->handle, relation, snapshot);
 
 	if (yb_options->rowmark != YBC_NO_ROW_MARK)
 	{
@@ -4239,4 +4240,34 @@ ybFetchNext(YbcPgStatement handle, TupleTableSlot *slot, Oid relid)
 		TABLETUPLE_YBCTID(slot) = PointerGetDatum(syscols.ybctid);
 		slot->tts_tableOid = relid;
 	}
+}
+
+/*
+ * In non-legacy catalog mode, the read point a user statement on a catalog
+ * table runs at: the snapshot it was issued with, as in PG.  Returns
+ * YbcInvalidReadPointHandle when it must use the catalog snapshot instead: no
+ * snapshot that carries a read point (NULL, the catalog snapshot, or a non-MVCC
+ * snapshot), or internal SQL run on behalf of a DDL (e.g. the catalog version
+ * bump).
+ */
+YbcReadPointHandle
+YbGetCatalogReadPoint(Snapshot snapshot)
+{
+	if (!snapshot || snapshot->yb_is_catalog_snapshot ||
+		!snapshot->yb_read_point_handle.has_value ||
+		yb_is_calling_internal_sql_for_ddl)
+		return YbcInvalidReadPointHandle;
+	return snapshot->yb_read_point_handle.value;
+}
+
+void
+YbSetCatalogReadPoint(YbcPgStatement handle, Relation relation,
+					  Snapshot snapshot)
+{
+	if (!handle || !IsCatalogRelation(relation) ||
+		YBCIsLegacyModeForCatalogOps())
+		return;
+
+	HandleYBStatus(YBCPgDmlSetCatalogReadPoint(handle,
+											   YbGetCatalogReadPoint(snapshot)));
 }
