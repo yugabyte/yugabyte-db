@@ -3220,7 +3220,31 @@ Result<SplitPhase> CatalogManager::GetTableSplitPhase(
 
 Result<SplitPhase> CatalogManager::GetTableSplitPhase(
     const TableInfo& table, const ReplicationInfoPB& table_replication_info) const {
-  TSDescriptorVector ts_descs = GetAllLiveNotBlacklistedTServers();
+  // The phase thresholds are per-node leader counts, so count only tservers in the live placement:
+  // read-replica tservers host observers, never leaders, even when they share a zone with it.
+  // A table-level placement may omit the uuid; fall back to the cluster's, as the load balancer
+  // does. Membership is the same as GetNumLiveTServersForPlacement, which sizes new tables.
+  auto live_placement_uuid = table_replication_info.live_replicas().placement_uuid();
+  if (live_placement_uuid.empty()) {
+    live_placement_uuid = VERIFY_RESULT(placement_uuid());
+  }
+  TSDescriptorVector ts_descs;
+  auto blacklist = BlacklistSetFromPB();
+  master_->ts_manager()->GetAllLiveDescriptorsInCluster(
+      &ts_descs, live_placement_uuid, blacklist.ok() ? *blacklist : BlacklistSet());
+  // No live tserver matches when the cluster config's live uuid disagrees with the tservers' (for
+  // example after yb-admin clear_placement_info, or a uuid set only on the tservers). Such a
+  // cluster can't place new replicas, but its existing tables should keep splitting, so count
+  // every live tserver as before and warn: nothing else surfaces the mismatch on this path.
+  if (ts_descs.empty()) {
+    ts_descs = GetAllLiveNotBlacklistedTServers();
+    if (!ts_descs.empty()) {
+      YB_LOG_EVERY_N_SECS(WARNING, 60) << Format(
+          "None of the $0 live tservers is in the live placement '$1'; counting all of them, "
+          "including any read replicas, for the automatic tablet split phase",
+          ts_descs.size(), live_placement_uuid);
+    }
+  }
 
   size_t num_servers = 0;
   // If there is custom placement information present then
