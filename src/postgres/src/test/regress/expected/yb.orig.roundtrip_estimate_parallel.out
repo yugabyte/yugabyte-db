@@ -2,6 +2,10 @@
 -- DEPENDENCY: yb.orig.roundtrip_estimate_setup
 \c roundtrip_test
 set client_min_messages to 'warning';
+-- The parallel plans are collected by CREATE TABLE AS, a DDL in the same
+-- statement. It touches nothing the parallel plans read, so keep parallel
+-- query on after it.
+set yb_disable_parallel_query_after_ddl = off;
 -- No index rebuild here: the shared setup defines every secondary as
 -- INCLUDE (vv).  Serial projects v/* (uncovered -> Index Scan); this suite
 -- projects vv (covered -> Index Only Scan).  --memstore_size_mb=1 (see

@@ -2238,6 +2238,7 @@ int			yb_toast_catcache_threshold = 2048; /* 2 KB */
 int			yb_catcache_list_from_preloaded_limit = 100000;
 int			yb_parallel_range_size = 1024 * 1024;
 bool		yb_disable_parallel_query_in_ddl = true;
+bool		yb_disable_parallel_query_after_ddl;
 int			yb_insert_on_conflict_read_batch_size = 1024;
 bool		yb_enable_fkey_catcache = true;
 bool		yb_enable_fkey_batched_docdb_lookup_when_types_mismatch = true;
@@ -2672,6 +2673,13 @@ bool
 YBGetDdlUseRegularTransactionBlock()
 {
 	return ddl_transaction_state.use_regular_txn_block;
+}
+
+bool
+YbDdlDisablesParallelQuery(void)
+{
+	return yb_disable_parallel_query_after_ddl &&
+		YBGetDdlUseRegularTransactionBlock();
 }
 
 void

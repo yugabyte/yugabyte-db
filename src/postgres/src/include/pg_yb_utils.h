@@ -679,6 +679,15 @@ extern int	yb_parallel_range_size;
 extern bool yb_disable_parallel_query_in_ddl;
 
 /*
+ * Disables parallel query once a DDL has run in the current transaction,
+ * including a DDL earlier in the same statement. Parallel workers read the
+ * catalog in legacy mode and do not see the transaction's uncommitted catalog
+ * writes (#30978, #34740). An advanced developer option: set it off only
+ * where no parallel query reads anything those DDLs changed.
+ */
+extern bool yb_disable_parallel_query_after_ddl;
+
+/*
  * INSERT ON CONFLICT batching read batch size.
  */
 extern int	yb_insert_on_conflict_read_batch_size;
@@ -1098,6 +1107,7 @@ extern CommandTag YBGetTopLevelStmtDdlCommandTag();
 extern CommandTag YBGetGlobalDdlCommandTag();
 extern CommandTag YBGetBreakingDdlCommandTag();
 extern bool YBGetDdlUseRegularTransactionBlock();
+extern bool YbDdlDisablesParallelQuery(void);
 
 /*
  * Snapshot of the current top-level DDL statement identity. Used to preserve

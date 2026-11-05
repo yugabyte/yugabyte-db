@@ -1,6 +1,10 @@
 -- Test cardinality estimate consistency
 -- DEPENDENCY: yb.orig.cardinality_estimate_setup
 set client_min_messages to warning;
+-- The parallel plans are collected by CREATE TABLE AS, a DDL in the same
+-- statement. It touches nothing the parallel plans read, so keep parallel
+-- query on after it.
+set yb_disable_parallel_query_after_ddl = off;
 analyze r;
 analyze s;
 set yb_enable_cbo = on;

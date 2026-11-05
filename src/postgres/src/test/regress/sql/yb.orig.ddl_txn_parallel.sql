@@ -4,6 +4,8 @@
 -- parallel workers stop reading the catalog in legacy mode (see
 -- YBCIsLegacyModeForCatalogOps). In legacy mode, workers do not see the
 -- uncommitted catalog writes of earlier DDLs in the block.
+-- yb_disable_parallel_query_after_ddl = off turns this off; it is on here
+-- except in the case that tests it.
 -- Scenario: BEGIN, ALTER TABLE ADD COLUMN c, then a scan that filters on c.
 -- A worker launched there fails with "invalid attnum 3 for relation".
 --
@@ -143,6 +145,23 @@ EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM ddl_par;
 ROLLBACK;
 DROP TABLE ddl_par_other;
 
+-- yb_disable_parallel_query_after_ddl = off turns the checks off: after a DDL
+-- that touches nothing the query reads, the query gets a parallel plan in the
+-- same block. The setting cannot change inside a block, so every plan cached
+-- in a block was made under one setting.
+SET yb_disable_parallel_query_after_ddl = off;
+BEGIN;
+CREATE TABLE ddl_par_guc (k INT);
+EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM ddl_par;
+SELECT COUNT(*) FROM ddl_par;
+SET yb_disable_parallel_query_after_ddl = on;
+ROLLBACK;
+RESET yb_disable_parallel_query_after_ddl;
+BEGIN;
+CREATE TABLE ddl_par_guc (k INT);
+EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM ddl_par;
+ROLLBACK;
+
 -- A DDL outside a block ends with its own implicit commit, so the next query
 -- gets a parallel plan.
 CREATE TABLE ddl_par_auto (k INT);
@@ -185,7 +204,7 @@ DROP TABLE ddl_par_tmp;
 
 -- CREATE TABLE AS is a DDL, so it sets the flag before it plans its query.
 -- With transactional DDL on, yb_disable_parallel_query_in_ddl = off then
--- brings no parallel plan back.
+-- brings no parallel plan back while yb_disable_parallel_query_after_ddl is on.
 SET yb_disable_parallel_query_in_ddl = off;
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)
   CREATE TABLE ddl_par_ctas AS SELECT COUNT(*) FROM ddl_par;

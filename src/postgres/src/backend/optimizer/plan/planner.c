@@ -476,6 +476,7 @@ standard_planner(Query *parse, const char *query_string, int cursorOptions,
 	 * workers can't see uncommitted catalog writes done by previous DDLs in
 	 * the same transaction block: for example, a worker fails with "invalid
 	 * attnum 3" for a column the block added (#30978, #34740).
+	 * yb_disable_parallel_query_after_ddl = off turns this check off.
 	 * YB: TODO(#36825): once the leader and its workers can share the
 	 * PgClientSession read point safely (#32729, #35498), let workers read the
 	 * catalog in the leader's mode and drop this check.
@@ -487,7 +488,7 @@ standard_planner(Query *parse, const char *query_string, int cursorOptions,
 		max_parallel_workers_per_gather > 0 &&
 		!IsParallelWorker() &&
 		!IsolationIsSerializable() &&
-		!YBGetDdlUseRegularTransactionBlock())
+		!YbDdlDisablesParallelQuery())
 	{
 		/* all the cheap tests pass, so scan the query tree */
 		glob->maxParallelHazard = max_parallel_hazard(parse);
@@ -692,7 +693,7 @@ standard_planner(Query *parse, const char *query_string, int cursorOptions,
 	result->yb_parallel_off_for_ddl =
 		(cursorOptions & CURSOR_OPT_PARALLEL_OK) != 0 &&
 		parse->commandType == CMD_SELECT &&
-		YBGetDdlUseRegularTransactionBlock();
+		YbDdlDisablesParallelQuery();
 	result->ybPlanId = 0;
 
 	result->jitFlags = PGJIT_NONE;
