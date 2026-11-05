@@ -75,6 +75,12 @@ public class TestSusetGucStickiness extends BaseYsqlConnMgr {
       stmt.execute("SELECT set_log_min_duration()");
       assertValueOnEveryBackend(stmt, "log_min_duration_statement", "1s", true);
     }
+
+    try (Connection conn = connectViaConnMgr("yugabyte");
+         Statement stmt = conn.createStatement()) {
+      stmt.execute("SELECT set_log_min_duration()");
+      assertValueOnEveryBackend(stmt, "log_min_duration_statement", "1s", false);
+    }
   }
 
   @Test

@@ -12722,7 +12722,8 @@ set_config_option_ext(const char *name, const char *value,
 		action == GUC_ACTION_SET &&
 		GetUserId() != GetSessionUserId())
 	{
-		elog(LOG, "Making connection sticky for setting %s", name);
+		elog(LOG, "Making connection sticky for setting %s as a user other than the session user",
+			 name);
 		yb_ysql_conn_mgr_sticky_guc = true;
 	}
 
