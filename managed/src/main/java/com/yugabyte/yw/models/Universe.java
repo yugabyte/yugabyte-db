@@ -379,6 +379,31 @@ public class Universe extends Model {
     return rawList.stream().peek(Universe::fillUniverseDetails).collect(Collectors.toSet());
   }
 
+  /**
+   * Returns all universes grouped by customer id, for jobs that process every universe. A universe
+   * without a customer, or whose details fail to parse, is logged and left out, so that it doesn't
+   * stop the job for the other universes.
+   */
+  public static Map<Long, List<Universe>> getAllWithoutResourcesByCustomer() {
+    Map<Long, List<Universe>> universesByCustomer = new HashMap<>();
+    for (Universe universe : find.query().findList()) {
+      if (universe.getCustomerId() == null) {
+        log.warn("Skipping universe {} without a customer", universe.getUniverseUUID());
+        continue;
+      }
+      try {
+        fillUniverseDetails(universe);
+      } catch (Exception e) {
+        log.error("Skipping universe {}: its details fail to parse", universe.getUniverseUUID(), e);
+        continue;
+      }
+      universesByCustomer
+          .computeIfAbsent(universe.getCustomerId(), id -> new ArrayList<>())
+          .add(universe);
+    }
+    return universesByCustomer;
+  }
+
   public static Set<Universe> getAllWithoutResources(Customer customer) {
     return getAllWithoutResources(customer, null);
   }

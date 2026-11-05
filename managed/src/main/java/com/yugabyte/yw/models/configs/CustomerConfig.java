@@ -308,12 +308,7 @@ public class CustomerConfig extends Model {
 
   /** Returns the alert configs of all customers. */
   public static List<CustomerConfig> getAllAlertConfigs() {
-    return CustomerConfig.find
-        .query()
-        .where()
-        .eq("type", ConfigType.ALERTS.toString())
-        .eq("name", ALERTS_PREFERENCES)
-        .findList();
+    return getConfigs(ConfigType.ALERTS, ALERTS_PREFERENCES);
   }
 
   public static CustomerConfig getSmtpConfig(UUID customerUUID) {
@@ -324,14 +319,17 @@ public class CustomerConfig extends Model {
     return getConfig(customerUUID, ConfigType.PASSWORD_POLICY, PASSWORD_POLICY);
   }
 
+  private static ExpressionList<CustomerConfig> configsQuery(ConfigType type, String name) {
+    return CustomerConfig.find.query().where().eq("type", type.toString()).eq("name", name);
+  }
+
   public static CustomerConfig getConfig(UUID customerUUID, ConfigType type, String name) {
-    return CustomerConfig.find
-        .query()
-        .where()
-        .eq("customer_uuid", customerUUID)
-        .eq("type", type.toString())
-        .eq("name", name)
-        .findOne();
+    return configsQuery(type, name).eq("customer_uuid", customerUUID).findOne();
+  }
+
+  /** Returns the configs of the given type and name of all customers. */
+  public static List<CustomerConfig> getConfigs(ConfigType type, String name) {
+    return configsQuery(type, name).findList();
   }
 
   public static List<CustomerConfig> getConfigs(
@@ -339,13 +337,7 @@ public class CustomerConfig extends Model {
     if (CollectionUtils.isEmpty(customerUUIDs)) {
       return Collections.emptyList();
     }
-    return CustomerConfig.find
-        .query()
-        .where()
-        .in("customer_uuid", customerUUIDs)
-        .eq("type", type.toString())
-        .eq("name", name)
-        .findList();
+    return configsQuery(type, name).in("customer_uuid", customerUUIDs).findList();
   }
 
   public static List<CustomerConfig> getAllStorageConfigsQueuedForDeletion(UUID customerUUID) {

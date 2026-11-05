@@ -23,6 +23,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -69,52 +70,53 @@ public class ConnectivityChecker {
       return;
     }
     try {
-      Map<Long, Customer> customers =
-          Customer.getAll().stream().collect(Collectors.toMap(Customer::getId, c -> c));
-      for (Universe universe : Universe.getAllWithoutResources()) {
-        Customer customer = customers.get(universe.getCustomerId());
-        if (customer == null) {
-          continue;
-        }
-        if (universe.universeIsLocked()) {
-          continue;
-        }
-        if (universe.getUniverseDetails() == null
-            || universe.getUniverseDetails().getPrimaryCluster() == null
-            || universe.getUniverseDetails().getPrimaryCluster().userIntent == null) {
-          continue;
-        }
-        if (Util.compareYBVersions(
-                universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
-                "2026.1.0.0-b1",
-                "2.29.0.0-b570",
-                true)
-            < 0) {
-          continue;
-        }
+      Map<Long, List<Universe>> universesByCustomer = Universe.getAllWithoutResourcesByCustomer();
+      for (Customer customer : Customer.getAll()) {
+        for (Universe universe :
+            universesByCustomer.getOrDefault(customer.getId(), Collections.emptyList())) {
+          if (universe.universeIsLocked()) {
+            continue;
+          }
+          if (universe.getUniverseDetails() == null
+              || universe.getUniverseDetails().getPrimaryCluster() == null
+              || universe.getUniverseDetails().getPrimaryCluster().userIntent == null) {
+            continue;
+          }
+          if (Util.compareYBVersions(
+                  universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
+                  "2026.1.0.0-b1",
+                  "2.29.0.0-b570",
+                  true)
+              < 0) {
+            continue;
+          }
 
-        Future<?> curFuture = runningChecks.get(universe.getUniverseUUID());
-        if (curFuture != null) {
-          log.debug(
-              "Connectivity check already in progress for {}, skipping",
-              universe.getUniverseUUID());
-          continue;
-        }
+          Future<?> curFuture = runningChecks.get(universe.getUniverseUUID());
+          if (curFuture != null) {
+            log.debug(
+                "Connectivity check already in progress for {}, skipping",
+                universe.getUniverseUUID());
+            continue;
+          }
 
-        try {
-          runningChecks.put(
-              universe.getUniverseUUID(),
-              connectivityCheckExecutor.submit(
-                  () -> {
-                    try {
-                      collectAndSaveConnectivityMetrics(customer, universe);
-                    } finally {
-                      runningChecks.remove(universe.getUniverseUUID());
-                    }
-                  }));
-        } catch (RuntimeException e) {
-          log.error(
-              "Failed to submit connectivity check for universe {}", universe.getUniverseUUID(), e);
+          final Customer c = customer;
+          try {
+            runningChecks.put(
+                universe.getUniverseUUID(),
+                connectivityCheckExecutor.submit(
+                    () -> {
+                      try {
+                        collectAndSaveConnectivityMetrics(c, universe);
+                      } finally {
+                        runningChecks.remove(universe.getUniverseUUID());
+                      }
+                    }));
+          } catch (RuntimeException e) {
+            log.error(
+                "Failed to submit connectivity check for universe {}",
+                universe.getUniverseUUID(),
+                e);
+          }
         }
       }
     } catch (Exception e) {

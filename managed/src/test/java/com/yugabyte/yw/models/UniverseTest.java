@@ -57,6 +57,7 @@ import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import io.ebean.DB;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -95,6 +96,33 @@ public class UniverseTest extends FakeDBApplication {
     //    mockConfGetter = Mockito.mock(RuntimeConfGetter.class);
     //    when(mockConfGetter.getStaticConf()).thenReturn(Mockito.mock(Config.class));
     mockConfGetter = app.injector().instanceOf(RuntimeConfGetter.class);
+  }
+
+  @Test
+  public void testGetAllWithoutResourcesByCustomerSkipsInvalidUniverses() {
+    Customer otherCustomer = ModelFactory.testCustomer("tc2", "Customer 2");
+    Universe first = createUniverse("first", defaultCustomer.getId());
+    Universe second = createUniverse("second", otherCustomer.getId());
+    Universe unparsable = createUniverse("unparsable", defaultCustomer.getId());
+    Universe withoutCustomer = createUniverse("without-customer", otherCustomer.getId());
+    DB.sqlUpdate(
+            "update universe set universe_details_json = 'not json' where universe_uuid = :uuid")
+        .setParameter("uuid", unparsable.getUniverseUUID())
+        .execute();
+    DB.sqlUpdate("update universe set customer_id = null where universe_uuid = :uuid")
+        .setParameter("uuid", withoutCustomer.getUniverseUUID())
+        .execute();
+
+    Map<Long, List<Universe>> universesByCustomer = Universe.getAllWithoutResourcesByCustomer();
+
+    assertEquals(2, universesByCustomer.size());
+    List<Universe> defaultCustomerUniverses = universesByCustomer.get(defaultCustomer.getId());
+    assertEquals(1, defaultCustomerUniverses.size());
+    assertEquals(first.getUniverseUUID(), defaultCustomerUniverses.get(0).getUniverseUUID());
+    assertNotNull(defaultCustomerUniverses.get(0).getUniverseDetails());
+    List<Universe> otherCustomerUniverses = universesByCustomer.get(otherCustomer.getId());
+    assertEquals(1, otherCustomerUniverses.size());
+    assertEquals(second.getUniverseUUID(), otherCustomerUniverses.get(0).getUniverseUUID());
   }
 
   @Test

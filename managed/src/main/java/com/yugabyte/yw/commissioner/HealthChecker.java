@@ -460,10 +460,8 @@ public class HealthChecker {
         return;
       }
       // Load the universes and alert configs of all customers at once, rather than querying them
-      // for each customer.
-      Map<Long, List<Universe>> universesByCustomer =
-          Universe.getAllWithoutResources().stream()
-              .collect(Collectors.groupingBy(Universe::getCustomerId));
+      // for each customer. A universe that fails to load is skipped, not the whole run.
+      Map<Long, List<Universe>> universesByCustomer = Universe.getAllWithoutResourcesByCustomer();
       Map<UUID, CustomerConfig> alertConfigs =
           CustomerConfig.getAllAlertConfigs().stream()
               .collect(Collectors.toMap(CustomerConfig::getCustomerUUID, cfg -> cfg, (a, b) -> a));

@@ -40,7 +40,6 @@ import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -264,8 +263,8 @@ public class ConnectivityCheckerTest extends FakeDBApplication {
       haStatic.when(HighAvailabilityConfig::isFollower).thenReturn(false);
       customerStatic.when(Customer::getAll).thenReturn(List.of(customer));
       universeStatic
-          .when(() -> Universe.getAllWithoutResources())
-          .thenReturn(Set.of(locked));
+          .when(Universe::getAllWithoutResourcesByCustomer)
+          .thenReturn(Map.of(CUSTOMER_ID, List.of(locked)));
       checker.processAll();
     }
     verify(executorService, never()).submit(any(Runnable.class));
@@ -277,7 +276,6 @@ public class ConnectivityCheckerTest extends FakeDBApplication {
     when(noDetails.universeIsLocked()).thenReturn(false);
     when(noDetails.getUniverseDetails()).thenReturn(null);
     when(noDetails.getUniverseUUID()).thenReturn(UUID.randomUUID());
-    when(noDetails.getCustomerId()).thenReturn(CUSTOMER_ID);
 
     Universe noPrimary = mock(Universe.class);
     when(noPrimary.universeIsLocked()).thenReturn(false);
@@ -285,7 +283,6 @@ public class ConnectivityCheckerTest extends FakeDBApplication {
     detailsNoPrimary.nodePrefix = "np1";
     when(noPrimary.getUniverseDetails()).thenReturn(detailsNoPrimary);
     when(noPrimary.getUniverseUUID()).thenReturn(UUID.randomUUID());
-    when(noPrimary.getCustomerId()).thenReturn(CUSTOMER_ID);
 
     Universe noIntent = mock(Universe.class);
     when(noIntent.universeIsLocked()).thenReturn(false);
@@ -296,7 +293,6 @@ public class ConnectivityCheckerTest extends FakeDBApplication {
     detailsNoIntent.clusters = new ArrayList<>(List.of(cluster));
     when(noIntent.getUniverseDetails()).thenReturn(detailsNoIntent);
     when(noIntent.getUniverseUUID()).thenReturn(UUID.randomUUID());
-    when(noIntent.getCustomerId()).thenReturn(CUSTOMER_ID);
 
     try (MockedStatic<HighAvailabilityConfig> haStatic = mockStatic(HighAvailabilityConfig.class);
         MockedStatic<Customer> customerStatic = mockStatic(Customer.class);
@@ -304,8 +300,8 @@ public class ConnectivityCheckerTest extends FakeDBApplication {
       haStatic.when(HighAvailabilityConfig::isFollower).thenReturn(false);
       customerStatic.when(Customer::getAll).thenReturn(List.of(customer));
       universeStatic
-          .when(() -> Universe.getAllWithoutResources())
-          .thenReturn(Set.of(noDetails, noPrimary, noIntent));
+          .when(Universe::getAllWithoutResourcesByCustomer)
+          .thenReturn(Map.of(CUSTOMER_ID, List.of(noDetails, noPrimary, noIntent)));
       checker.processAll();
     }
     verify(executorService, never()).submit(any(Runnable.class));
@@ -320,8 +316,8 @@ public class ConnectivityCheckerTest extends FakeDBApplication {
       haStatic.when(HighAvailabilityConfig::isFollower).thenReturn(false);
       customerStatic.when(Customer::getAll).thenReturn(List.of(customer));
       universeStatic
-          .when(() -> Universe.getAllWithoutResources())
-          .thenReturn(Set.of(oldVersion));
+          .when(Universe::getAllWithoutResourcesByCustomer)
+          .thenReturn(Map.of(CUSTOMER_ID, List.of(oldVersion)));
       checker.processAll();
     }
     verify(executorService, never()).submit(any(Runnable.class));
@@ -347,8 +343,8 @@ public class ConnectivityCheckerTest extends FakeDBApplication {
       haStatic.when(HighAvailabilityConfig::isFollower).thenReturn(false);
       customerStatic.when(Customer::getAll).thenReturn(List.of(customer));
       universeStatic
-          .when(() -> Universe.getAllWithoutResources())
-          .thenReturn(Set.of(eligible));
+          .when(Universe::getAllWithoutResourcesByCustomer)
+          .thenReturn(Map.of(CUSTOMER_ID, List.of(eligible)));
       checker.processAll();
     }
     verify(executorService, times(1)).submit(any(Runnable.class));
@@ -366,8 +362,8 @@ public class ConnectivityCheckerTest extends FakeDBApplication {
       haStatic.when(HighAvailabilityConfig::isFollower).thenReturn(false);
       customerStatic.when(Customer::getAll).thenReturn(List.of(customer));
       universeStatic
-          .when(() -> Universe.getAllWithoutResources())
-          .thenReturn(Set.of(eligible));
+          .when(Universe::getAllWithoutResourcesByCustomer)
+          .thenReturn(Map.of(CUSTOMER_ID, List.of(eligible)));
       checker.processAll();
     }
 
@@ -400,8 +396,8 @@ public class ConnectivityCheckerTest extends FakeDBApplication {
       haStatic.when(HighAvailabilityConfig::isFollower).thenReturn(false);
       customerStatic.when(Customer::getAll).thenReturn(List.of(customer));
       universeStatic
-          .when(() -> Universe.getAllWithoutResources())
-          .thenReturn(Set.of(first, second));
+          .when(Universe::getAllWithoutResourcesByCustomer)
+          .thenReturn(Map.of(CUSTOMER_ID, List.of(first, second)));
       checker.processAll();
     }
 
@@ -416,9 +412,7 @@ public class ConnectivityCheckerTest extends FakeDBApplication {
     when(otherCustomer.getId()).thenReturn(2L);
     Universe first = eligibleUniverse("2026.1.0.0-b1");
     Universe second = eligibleUniverse("2026.1.0.0-b1");
-    when(second.getCustomerId()).thenReturn(2L);
-    Universe noCustomer = eligibleUniverse("2026.1.0.0-b1");
-    when(noCustomer.getCustomerId()).thenReturn(3L);
+    Universe unknownCustomerUniverse = eligibleUniverse("2026.1.0.0-b1");
     doNothing()
         .when(checker)
         .collectAndSaveConnectivityMetrics(any(Customer.class), any(Universe.class));
@@ -436,8 +430,15 @@ public class ConnectivityCheckerTest extends FakeDBApplication {
       haStatic.when(HighAvailabilityConfig::isFollower).thenReturn(false);
       customerStatic.when(Customer::getAll).thenReturn(List.of(customer, otherCustomer));
       universeStatic
-          .when(() -> Universe.getAllWithoutResources())
-          .thenReturn(Set.of(first, second, noCustomer));
+          .when(Universe::getAllWithoutResourcesByCustomer)
+          .thenReturn(
+              Map.of(
+                  CUSTOMER_ID,
+                  List.of(first),
+                  2L,
+                  List.of(second),
+                  3L,
+                  List.of(unknownCustomerUniverse)));
       checker.processAll();
     }
 
@@ -463,7 +464,6 @@ public class ConnectivityCheckerTest extends FakeDBApplication {
     when(u.universeIsLocked()).thenReturn(false);
     when(u.getUniverseDetails()).thenReturn(detailsWithVersion(version));
     when(u.getUniverseUUID()).thenReturn(UUID.randomUUID());
-    when(u.getCustomerId()).thenReturn(CUSTOMER_ID);
     return u;
   }
 
