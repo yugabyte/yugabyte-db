@@ -145,10 +145,6 @@ void ConsistentReadPoint::Defer() {
   read_time_.read = read_time_.global_limit;
 }
 
-void ConsistentReadPoint::UpdateClock(HybridTime propagated_hybrid_time) {
-  clock_->Update(propagated_hybrid_time);
-}
-
 HybridTime ConsistentReadPoint::Now() const {
   return clock_->Now();
 }
@@ -225,30 +221,6 @@ ReadHybridTime ConsistentReadPoint::GetReadTime() const {
   LOG_IF(DFATAL, read_time_.read > read_time_.global_limit)
       << "Read time cannot be higher than the global limit" << read_time_;
   return read_time_;
-}
-
-// NO_THREAD_SAFETY_ANALYSIS is required here because analysis does not understand std::lock.
-void ConsistentReadPoint::MoveFrom(ConsistentReadPoint* rhs) NO_THREAD_SAFETY_ANALYSIS {
-  std::lock(mutex_, rhs->mutex_);
-  std::lock_guard lock1(mutex_, std::adopt_lock);
-  std::lock_guard lock2(rhs->mutex_, std::adopt_lock);
-  read_time_ = rhs->read_time_;
-  restart_read_ht_ = rhs->restart_read_ht_;
-  local_limits_ = std::move(rhs->local_limits_);
-  restarts_ = std::move(rhs->restarts_);
-}
-
-ConsistentReadPoint::Momento ConsistentReadPoint::GetMomento() const {
-  std::lock_guard lock(mutex_);
-  return {read_time_, restart_read_ht_, local_limits_, restarts_};
-}
-
-void ConsistentReadPoint::SetMomento(const ConsistentReadPoint::Momento& momento) {
-  std::lock_guard lock(mutex_);
-  read_time_ = momento.read_time_;
-  restart_read_ht_ = momento.restart_read_ht_;
-  local_limits_ = momento.local_limits_;
-  restarts_ = momento.restarts_;
 }
 
 } // namespace yb

@@ -171,7 +171,7 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
       YBClient* client,
       const YBSessionPtr& session,
       YBTransactionPtr transaction,
-      ConsistentReadPoint* read_point,
+      ConsistentReadPointPtr read_point,
       bool force_consistent_read,
       int64_t leader_term,
       ThreadSafeArenaPtr arena);
@@ -236,7 +236,7 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
     return async_rpc_metrics_;
   }
 
-  ConsistentReadPoint* read_point() {
+  const ConsistentReadPointPtr& read_point() const {
     return read_point_;
   }
 
@@ -411,7 +411,9 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
   YBTransactionPtr transaction_;
 
   // The consistent read point for this batch if it is specified.
-  ConsistentReadPoint* read_point_ = nullptr;
+  ConsistentReadPointPtr read_point_;
+
+  const scoped_refptr<ClockBase> clock_;
 
   // Force consistent read on transactional table, even we have only single shard commands.
   ForceConsistentRead force_consistent_read_;

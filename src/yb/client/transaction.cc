@@ -258,7 +258,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         wait_state_(ash::WaitStateInfo::CurrentWaitState()),
         manager_(manager),
         transaction_(transaction),
-        read_point_(manager->clock()),
+        read_point_(std::make_shared<ConsistentReadPoint>(manager->clock())),
         child_(Child::kFalse) {
     metadata_.priority =
         PREDICT_FALSE(FLAGS_TEST_override_transaction_priority != 0)
@@ -294,7 +294,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         manager_(manager),
         transaction_(transaction),
         metadata_(metadata),
-        read_point_(manager->clock()),
+        read_point_(std::make_shared<ConsistentReadPoint>(manager->clock())),
         child_(Child::kFalse) {
     CompleteConstruction();
     VLOG_WITH_PREFIX(2) << "Taken, metadata: " << metadata_;
@@ -305,7 +305,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         wait_state_(ash::WaitStateInfo::CurrentWaitState()),
         manager_(manager),
         transaction_(transaction),
-        read_point_(manager->clock()),
+        read_point_(std::make_shared<ConsistentReadPoint>(manager->clock())),
         child_(Child::kTrue),
         child_had_read_time_(data.read_time) {
     // For serializable isolation we use read intents, so could always read most recent
@@ -313,7 +313,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     // Otherwise there is possible case when we miss value change that happened after transaction
     // start.
     if (data.metadata.isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
-      read_point_.SetReadTime(std::move(data.read_time), std::move(data.local_limits));
+      read_point_->SetReadTime(std::move(data.read_time), std::move(data.local_limits));
     }
     metadata_ = std::move(data.metadata);
     CompleteConstruction();
@@ -375,13 +375,13 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     TRACE_TO(trace_, __func__);
     VLOG_WITH_PREFIX(1) << __func__ << "(" << IsolationLevel_Name(isolation) << ", "
                         << read_time << ")";
-    if (read_point_.GetReadTime().read.is_valid()) {
+    if (read_point_->GetReadTime().read.is_valid()) {
       return STATUS_FORMAT(IllegalState, "Read point already specified: $0",
-                           read_point_.GetReadTime());
+                           read_point_->GetReadTime());
     }
 
     if (read_time.read.is_valid()) {
-      read_point_.SetReadTime(read_time, ConsistentReadPoint::HybridTimeMap());
+      read_point_->SetReadTime(read_time, ConsistentReadPoint::HybridTimeMap());
     }
     CompleteInit(isolation);
     return Status::OK();
@@ -397,12 +397,12 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     }
   }
 
-  void InitWithReadPoint(IsolationLevel isolation, ConsistentReadPoint&& read_point) {
+  void InitWithReadPoint(IsolationLevel isolation, ConsistentReadPointPtr read_point) {
     TRACE_TO(trace_, __func__);
     VLOG_WITH_PREFIX(1) << __func__ << "(" << IsolationLevel_Name(isolation) << ", "
-                        << read_point.GetReadTime() << ")";
+                        << read_point->GetReadTime() << ")";
 
-    read_point_.MoveFrom(&read_point);
+    read_point_ = std::move(read_point);
     CompleteInit(isolation);
   }
 
@@ -423,20 +423,20 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
             IllegalState, "Restart of completed transaction $0: $1",
             metadata_.transaction_id, state);
       }
-      if (!read_point_.IsRestartRequired()) {
+      if (!read_point_->IsRestartRequired()) {
         return STATUS_FORMAT(
             IllegalState, "Restart of transaction that does not require restart: $0",
             metadata_.transaction_id);
       }
-      other->read_point_.MoveFrom(&read_point_);
-      other->read_point_.Restart();
+      other->read_point_ = read_point_;
+      other->read_point_->Restart();
       other->metadata_.isolation = metadata_.isolation;
       // TODO(Piyush): Do we need the below? If yes, prove with a test case and add it.
       // other->metadata_.priority = metadata_.priority;
       if (metadata_.isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
-        other->metadata_.start_time = other->read_point_.GetReadTime().read;
+        other->metadata_.start_time = other->read_point_->GetReadTime().read;
       } else {
-        other->metadata_.start_time = other->read_point_.Now();
+        other->metadata_.start_time = other->read_point_->Now();
       }
       other->metadata_.pg_txn_start_us = metadata_.pg_txn_start_us;
       other->SetOriginationInfo(origination_info_);
@@ -547,7 +547,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
       if (status.ok()) {
         if (used_read_time && metadata_.isolation != IsolationLevel::SERIALIZABLE_ISOLATION) {
-          const bool read_point_already_set = static_cast<bool>(read_point_.GetReadTime());
+          const bool read_point_already_set = static_cast<bool>(read_point_->GetReadTime());
           if (read_point_already_set) {
 #ifndef NDEBUG
             // Display details of operations before crashing in debug mode.
@@ -558,13 +558,13 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
             }
 #endif
             LOG_WITH_PREFIX(DFATAL)
-                << "Read time already picked (" << read_point_.GetReadTime()
+                << "Read time already picked (" << read_point_->GetReadTime()
                 << ", but server replied with used read time: " << used_read_time;
           }
           // TODO: Update local limit for the tablet id which sent back the used read time
-          read_point_.SetReadTime(used_read_time, ConsistentReadPoint::HybridTimeMap());
+          read_point_->SetReadTime(used_read_time, ConsistentReadPoint::HybridTimeMap());
           VLOG_WITH_PREFIX(3)
-              << "Update read time from used read time: " << read_point_.GetReadTime();
+              << "Update read time from used read time: " << read_point_->GetReadTime();
         }
         const std::string* prev_tablet_id = nullptr;
         for (const auto& op : ops) {
@@ -902,7 +902,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   }
 
   bool IsRestartRequired() const {
-    return read_point_.IsRestartRequired();
+    return read_point_->IsRestartRequired();
   }
 
   std::shared_future<Result<TransactionMetadata>> GetMetadata(
@@ -1027,7 +1027,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
           tablet.second.has_metadata ? InvolvedTabletMetadataState::EXIST
                                      : InvolvedTabletMetadataState::MISSING);
     }
-    read_point_.FinishChildTransactionResult(HadReadTime(child_had_read_time_), &result);
+    read_point_->FinishChildTransactionResult(HadReadTime(child_had_read_time_), &result);
     return result;
   }
 
@@ -1063,7 +1063,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
           tablet_state.has_metadata ||
           tablet.metadata_state() == InvolvedTabletMetadataState::EXIST;
     }
-    read_point_.ApplyChildTransactionResult(result);
+    read_point_->ApplyChildTransactionResult(result);
 
     return Status::OK();
   }
@@ -1082,7 +1082,15 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   }
 
   ConsistentReadPoint& read_point() {
+    return *read_point_;
+  }
+
+  const ConsistentReadPointPtr& ysql_read_point_handle() const {
     return read_point_;
+  }
+
+  void SetYsqlReadPointHandle(ConsistentReadPointPtr read_point) {
+    read_point_ = std::move(read_point);
   }
 
   Result<TransactionMetadata> Release() {
@@ -1530,21 +1538,21 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     // TODO(Piyush): read_point_ might not represent the correct start time for
     // a READ COMMITTED txn since it might have been updated several times
     // before a YBTransaction is created. Fix this.
-    if (read_point_.GetReadTime()) {
-      metadata_.start_time = read_point_.GetReadTime().read;
+    if (read_point_->GetReadTime()) {
+      metadata_.start_time = read_point_->GetReadTime().read;
     } else {
-      metadata_.start_time = read_point_.Now();
+      metadata_.start_time = read_point_->Now();
     }
     // Time when the BEGIN statement was executed.
     start_.store(metadata_.pg_txn_start_us, std::memory_order_release);
   }
 
   void SetReadTimeIfNeeded(bool do_it) {
-    if (!read_point_.GetReadTime() && do_it &&
+    if (!read_point_->GetReadTime() && do_it &&
         (metadata_.isolation == IsolationLevel::SNAPSHOT_ISOLATION ||
          metadata_.isolation == IsolationLevel::READ_COMMITTED)) {
       VLOG_WITH_PREFIX(2) << "Setting current read time as read point for distributed txn";
-      read_point_.SetCurrentReadTime();
+      read_point_->SetCurrentReadTime();
     }
   }
 
@@ -2751,7 +2759,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       const YBTransactionPtr& transaction) REQUIRES(mutex_) {
     ChildTransactionDataPB data;
     metadata_.ToPB(data.mutable_metadata());
-    read_point_.PrepareChildTransactionData(&data);
+    read_point_->PrepareChildTransactionData(&data);
     return data;
   }
 
@@ -2816,7 +2824,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   YBTransaction* const transaction_;
 
   TransactionMetadata metadata_;
-  ConsistentReadPoint read_point_;
+  ConsistentReadPointPtr read_point_;
 
   // Metadata tracking savepoint-related state for the scope of this transaction.
   YBSubTransaction subtransaction_;
@@ -2982,7 +2990,7 @@ void YBTransaction::SetStartTimeIfNecessary() {
 
 void YBTransaction::InitWithReadPoint(
     IsolationLevel isolation,
-    ConsistentReadPoint&& read_point) {
+    ConsistentReadPointPtr read_point) {
   return impl_->InitWithReadPoint(isolation, std::move(read_point));
 }
 
@@ -3018,6 +3026,17 @@ const ConsistentReadPoint& YBTransaction::read_point() const {
 
 ConsistentReadPoint& YBTransaction::read_point() {
   return impl_->read_point();
+}
+
+const ConsistentReadPointPtr& YBTransaction::ysql_read_point_handle() const {
+  return impl_->ysql_read_point_handle();
+}
+
+// YSQL shares its transaction read point handle with the session.
+// In YSQL, transactions may be created lazily. And the ConsistentReadPoint
+// handle must be the same as that used by the session so far.
+void YBTransaction::SetYsqlReadPointHandle(ConsistentReadPointPtr read_point) {
+  impl_->SetYsqlReadPointHandle(std::move(read_point));
 }
 
 std::future<Status> YBTransaction::CommitFuture(
