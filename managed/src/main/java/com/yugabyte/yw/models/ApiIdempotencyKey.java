@@ -16,7 +16,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 /**
- * A customer's use of an {@code Idempotency-Key} on a mutating API operation. The first request
+ * A customer's use of an {@code X-IDEMPOTENCY-KEY} on a mutating API operation. The first request
  * with a key claims the row; a successful response is stored on it so that retries with the same
  * key get that response back instead of running the operation again.
  */

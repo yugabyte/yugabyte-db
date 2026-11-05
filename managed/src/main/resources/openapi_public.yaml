@@ -354,8 +354,6 @@ paths:
         YBA.'
       tags:
       - Certificate
-      parameters:
-      - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         $ref: '#/components/requestBodies/CertificateCreateReq'
       responses:
@@ -371,12 +369,12 @@ paths:
             the caller's customer (including a customer that doesn't exist), or the
             caller's role has no create permission on the customer
         '409':
-          description: The customer already has a certificate with this label, or
-            a request with the same Idempotency-Key is still in progress
-        '422':
-          description: The Idempotency-Key was already used for a different request
+          description: The customer already has a certificate with this label. Also
+            returned while a request with the same X-IDEMPOTENCY-KEY is still in progress.
         '500':
           description: Server error
+        '422':
+          description: The X-IDEMPOTENCY-KEY was already used for a different request
       security:
       - apiKeyAuth: []
       - authTokenAuth: []
@@ -394,6 +392,8 @@ paths:
       x-yba-api-idempotent: true
       x-yba-api-since: 2026.2.0.0
       x-yba-api-visibility: preview
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
   /customers/{cUUID}/auto-yba-backups:
     parameters:
     - name: cUUID
@@ -13235,7 +13235,7 @@ components:
       x-yba-api-visibility: preview
   parameters:
     IdempotencyKey:
-      name: idempotency-key
+      name: X-IDEMPOTENCY-KEY
       in: header
       description: 'Makes the request safe to retry. A unique client-generated value,
         such as a UUID, for this request.
@@ -13247,7 +13247,7 @@ components:
         (yb.api.idempotency.retention), and a retry with the same key and the same
         request returns that
 
-        response with an Idempotent-Replayed: true header, without running the operation
+        response with an X-IDEMPOTENT-REPLAYED: true header, without running the operation
         again. A retry
 
         while the first request is still running gets 409; the same key with a different

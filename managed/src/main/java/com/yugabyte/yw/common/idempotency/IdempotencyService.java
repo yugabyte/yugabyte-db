@@ -44,12 +44,13 @@ import play.mvc.Result;
 import play.mvc.Results;
 
 /**
- * Makes a mutating API operation safe to retry with an {@code Idempotency-Key} request header
- * (draft-ietf-httpapi-idempotency-key-header).
+ * Makes a mutating API operation safe to retry with an {@code X-IDEMPOTENCY-KEY} request header.
+ * The semantics follow draft-ietf-httpapi-idempotency-key-header; the header names follow YBA's
+ * {@code X-} convention for custom headers.
  *
  * <p>The first request with a key claims it for the caller's customer and runs the operation. A
  * successful (2xx) response is stored, and a retry with the same key and the same request gets that
- * response back, with an {@code Idempotent-Replayed: true} header, without running the operation
+ * response back, with an {@code X-IDEMPOTENT-REPLAYED: true} header, without running the operation
  * again. So a client that lost the response to a create, e.g. on a timeout, retries and learns the
  * task and resource the first attempt started instead of starting a second one.
  *
@@ -69,8 +70,8 @@ import play.mvc.Results;
 @Singleton
 public class IdempotencyService {
 
-  public static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
-  public static final String REPLAYED_HEADER = "Idempotent-Replayed";
+  public static final String IDEMPOTENCY_KEY_HEADER = "X-IDEMPOTENCY-KEY";
+  public static final String REPLAYED_HEADER = "X-IDEMPOTENT-REPLAYED";
 
   static final int MAX_KEY_LENGTH = 255;
   // Visible ASCII only: the key is an opaque client-generated token, typically a UUID.
@@ -136,7 +137,7 @@ public class IdempotencyService {
   }
 
   /**
-   * Runs {@code operation} unless the request carries an {@code Idempotency-Key} that was already
+   * Runs {@code operation} unless the request carries an {@code X-IDEMPOTENCY-KEY} that was already
    * used, in which case it returns the stored response of the earlier request (or fails, see the
    * class description). Without the header the operation simply runs.
    */

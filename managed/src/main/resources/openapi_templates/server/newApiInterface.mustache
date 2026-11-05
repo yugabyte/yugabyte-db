@@ -65,7 +65,7 @@ public abstract class {{classname}}ControllerImpInterface extends ApiControllerU
       Http.Request request{{#allParams}}{{^vendorExtensions.x-yba-api-idempotency-key}}, {{>pathParams}}{{>queryParams}}{{>bodyParams}}{{>formParams}}{{>headerParams}}{{/vendorExtensions.x-yba-api-idempotency-key}}{{/allParams}})
       {{#handleExceptions}}throws Exception{{/handleExceptions}} {
 {{#vendorExtensions.x-yba-api-idempotent}}
-    {{! Yugabyte modification: honour the Idempotency-Key header, see IdempotencyService }}
+    {{! Yugabyte modification: honour the X-IDEMPOTENCY-KEY header, see IdempotencyService }}
     return idempotent(request, () -> {
 {{/vendorExtensions.x-yba-api-idempotent}}
 {{>responseToResult}}

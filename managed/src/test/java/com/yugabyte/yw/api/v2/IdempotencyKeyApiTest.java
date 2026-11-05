@@ -39,7 +39,7 @@ import play.mvc.Http;
 import play.mvc.Result;
 import play.test.Helpers;
 
-/** Idempotency-Key handling, exercised through the v2 operations that opt into it. */
+/** X-IDEMPOTENCY-KEY handling, exercised through the v2 operations that opt into it. */
 public class IdempotencyKeyApiTest extends FakeDBApplication {
 
   private static final String KEY = "6f1c4d0e-1d3b-4c55-9a4e-0f7f8f6f9b11";
