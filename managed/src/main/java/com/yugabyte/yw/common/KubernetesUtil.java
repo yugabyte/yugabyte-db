@@ -1943,4 +1943,46 @@ public class KubernetesUtil {
     podSecurityContext.put("enabled", true);
     return podSecurityContext;
   }
+
+  public static void initializeK8sNodeResourceSpecsFromInstanceType(
+      UniverseDefinitionTaskParams taskParams, boolean overwrite) {
+    if (taskParams == null
+        || taskParams.clusters == null
+        || !Util.isKubernetesBasedUniverse(taskParams)) {
+      return;
+    }
+    for (Cluster cluster : taskParams.clusters) {
+      UserIntent ui = cluster.userIntent;
+      if (Util.isKubernetesBased(cluster)) {
+        UUID providerUUID = Util.getSingleProviderUUID(cluster);
+        ProviderInitializer pi =
+            Util.providerInitializerForExistingIntent(cluster.userIntent, providerUUID);
+        for (ServerType serverType : EnumSet.of(ServerType.TSERVER, ServerType.MASTER)) {
+          UserIntent.K8SNodeResourceSpec current =
+              serverType == ServerType.TSERVER
+                  ? ui.getTserverK8SNodeResourceSpec(providerUUID)
+                  : ui.getMasterK8SNodeResourceSpec(providerUUID);
+
+          if (current == null || overwrite) {
+            pi.setNodeResourceSpec(initK8sResourceSpec(ui, serverType), serverType);
+          }
+        }
+      }
+    }
+  }
+
+  private static UserIntent.K8SNodeResourceSpec initK8sResourceSpec(
+      UserIntent userIntent, ServerType serverType) {
+    UUID providerUUID = Util.getSingleProviderUUID(userIntent);
+
+    String instanceTypeCode = userIntent.getBaseInstanceType(providerUUID, serverType);
+    UserIntent.K8SNodeResourceSpec spec = new UserIntent.K8SNodeResourceSpec();
+    if (instanceTypeCode == null) {
+      return spec;
+    }
+    InstanceType instanceType = InstanceType.getOrBadRequest(providerUUID, instanceTypeCode);
+    spec.memoryGib = instanceType.getMemSizeGB();
+    spec.cpuCoreCount = instanceType.getNumCores();
+    return spec;
+  }
 }
