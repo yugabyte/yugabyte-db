@@ -376,6 +376,15 @@ static void apply_error_callback(void *arg);
 static inline void set_apply_error_context_xact(TransactionId xid, XLogRecPtr lsn);
 static inline void reset_apply_error_context_info(void);
 
+/* YB declarations */
+static void yb_apply_worker_onexit(int code, Datum arg);
+
+/*
+ * YB: the shared catalog version read just before this worker last read its
+ * subscription.  The apply loop re-reads once the shared version differs.
+ */
+static uint64_t yb_subscription_read_catalog_version = 0;
+
 /*
  * Should this worker apply changes for given relation.
  *
@@ -2730,7 +2739,6 @@ LogicalRepApplyLoop(XLogRecPtr last_received)
 
 	/* YB declarations */
 	TimestampTz yb_last_sub_reread = GetCurrentTimestamp();
-	uint64_t	yb_last_seen_catalog_version = 0;
 
 	/*
 	 * Init the ApplyMessageContext which we clean up after each replication
@@ -2879,10 +2887,10 @@ LogicalRepApplyLoop(XLogRecPtr last_received)
 				{
 					uint64_t	yb_catalog_version = YbGetSharedCatalogVersion();
 
-					if (yb_catalog_version != yb_last_seen_catalog_version)
+					if (yb_catalog_version != yb_subscription_read_catalog_version)
 					{
 						yb_force_subscription_reread();
-						yb_last_seen_catalog_version = yb_catalog_version;
+						yb_subscription_read_catalog_version = yb_catalog_version;
 					}
 					yb_last_sub_reread = now;
 				}
@@ -3708,6 +3716,10 @@ ApplyWorkerMain(Datum main_arg)
 	StartTransactionCommand();
 	oldctx = MemoryContextSwitchTo(ApplyContext);
 
+	/* YB: read before the subscription, so a DDL in between still differs. */
+	if (IsYugaByteEnabled())
+		yb_subscription_read_catalog_version = YbGetSharedCatalogVersion();
+
 	MySubscription = GetSubscription(MyLogicalRepWorker->subid, true);
 	if (!MySubscription)
 	{
@@ -3804,6 +3816,8 @@ ApplyWorkerMain(Datum main_arg)
 				ResetLatch(MyLatch);
 			CHECK_FOR_INTERRUPTS();
 		}
+
+		before_shmem_exit(yb_apply_worker_onexit, (Datum) 0);
 	}
 
 	/* Connect to the origin and start the replication. */
@@ -4194,4 +4208,52 @@ reset_apply_error_context_info(void)
 	apply_error_callback_arg.rel = NULL;
 	apply_error_callback_arg.remote_attnum = -1;
 	set_apply_error_context_xact(InvalidTransactionId, InvalidXLogRecPtr);
+}
+
+/*
+ * YB: before_shmem_exit callback of an apply worker that took its
+ * subscription's lock.  Tablesync workers must not outlive it: the SYNCWAIT /
+ * CATCHUP handoff lives in this node's shared memory, and once the lock is
+ * free another node can take the subscription over and start a second
+ * tablesync worker for a table one of them is still syncing.  So stop them
+ * first, then release the lock.  This runs for every exit except a signal
+ * kill, which restarts the whole postmaster anyway.
+ */
+static void
+yb_apply_worker_onexit(int code, Datum arg)
+{
+	YbcAdvisoryLockId lock_id =
+		YbSubscriptionAdvisoryLockId(MyLogicalRepWorker->subid);
+	List	   *workers;
+	ListCell   *lc;
+	YbcStatus	status;
+
+	/* An ERROR exit can get here holding LWLocks; nothing below needs them. */
+	LWLockReleaseAll();
+
+	LWLockAcquire(LogicalRepWorkerLock, LW_SHARED);
+	workers = logicalrep_workers_find(MyLogicalRepWorker->subid, false);
+	LWLockRelease(LogicalRepWorkerLock);
+	foreach(lc, workers)
+	{
+		LogicalRepWorker *w = (LogicalRepWorker *) lfirst(lc);
+
+		if (OidIsValid(w->relid))
+			logicalrep_worker_stop(w->subid, w->relid);
+	}
+	list_free(workers);
+
+	/*
+	 * The session's end releases the lock too; this only does it sooner.  It
+	 * fails on a SIGTERM exit, which has already shut the session down.
+	 */
+	status = YBCReleaseAdvisoryLock(lock_id, YB_ADVISORY_LOCK_EXCLUSIVE);
+	if (status)
+	{
+		ereport(DEBUG1,
+				(errmsg("logical replication apply worker for subscription %u could not release its advisory lock",
+						MyLogicalRepWorker->subid),
+				 errdetail("%s", YBCStatusMessageBegin(status))));
+		YBCFreeStatus(status);
+	}
 }

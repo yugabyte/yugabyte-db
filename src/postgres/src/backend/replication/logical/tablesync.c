@@ -136,6 +136,9 @@ static bool FetchTableStates(bool *started_tx);
 
 static StringInfo copybuf = NULL;
 
+/* YB declarations */
+static void YbExitIfNoApplyWorker(void);
+
 /*
  * YB: Drop the pinned catalog read time and the read points so the next
  * pg_subscription_rel read sees the latest committed state.  Legacy catalog
@@ -272,6 +275,8 @@ wait_for_worker_state_change(char expected_state)
 		if (worker && worker->proc)
 			logicalrep_worker_wakeup_ptr(worker);
 		LWLockRelease(LogicalRepWorkerLock);
+		if (IsYugaByteEnabled() && !worker)
+			YbExitIfNoApplyWorker();
 		if (!worker)
 			break;
 
@@ -1230,6 +1235,9 @@ LogicalRepSyncTableStart(XLogRecPtr *origin_startpos)
 	char		originname[NAMEDATALEN];
 	RepOriginId originid;
 
+	if (IsYugaByteEnabled())
+		YbExitIfNoApplyWorker();
+
 	/* Check the state of the table synchronization. */
 	StartTransactionCommand();
 	relstate = GetSubscriptionRelState(MyLogicalRepWorker->subid,
@@ -1654,4 +1662,28 @@ UpdateTwoPhaseState(Oid suboid, char new_state)
 
 	heap_freetuple(tup);
 	table_close(rel, RowExclusiveLock);
+}
+
+/*
+ * YB: Exit unless this node runs the subscription's apply worker.  The apply
+ * worker stops its tablesync workers when it exits (yb_apply_worker_onexit in
+ * worker.c), so another node can take the subscription over once its lock is
+ * free; this catches a tablesync worker that was still starting then.
+ */
+static void
+YbExitIfNoApplyWorker(void)
+{
+	LogicalRepWorker *worker;
+
+	LWLockAcquire(LogicalRepWorkerLock, LW_SHARED);
+	worker = logicalrep_worker_find(MyLogicalRepWorker->subid, InvalidOid,
+									true);
+	LWLockRelease(LogicalRepWorkerLock);
+	if (worker)
+		return;
+
+	ereport(LOG,
+			(errmsg("logical replication table synchronization worker for subscription %u, table %u will stop because the subscription's apply worker is not running on this node",
+					MyLogicalRepWorker->subid, MyLogicalRepWorker->relid)));
+	proc_exit(0);
 }

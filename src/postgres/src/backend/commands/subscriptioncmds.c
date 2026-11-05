@@ -97,6 +97,8 @@ static void check_duplicates_in_publist(List *publist, Datum *datums);
 static List *merge_publications(List *oldpublist, List *newpublist, bool addpub, const char *subname);
 static void ReportSlotConnectionError(List *rstates, Oid subid, char *slotname, char *err);
 
+/* YB declarations */
+static bool YbHasLocalApplyWorker(Oid subid);
 
 /*
  * Common option parsing function for CREATE and ALTER SUBSCRIPTION commands.
@@ -890,6 +892,23 @@ AlterSubscription_refresh(Subscription *sub, bool copy_data,
 				/* Last known rel state. */
 				state = GetSubscriptionRelState(sub->oid, relid, &statelsn);
 
+				/*
+				 * YB: the table may still have a tablesync worker, which runs
+				 * on the apply worker's node, and logicalrep_worker_stop below
+				 * reaches only this node.  The slot drop below would then wait
+				 * forever for that worker.
+				 */
+				if (IsYugaByteEnabled() &&
+					state != SUBREL_STATE_READY &&
+					state != SUBREL_STATE_SYNCDONE &&
+					!YbHasLocalApplyWorker(sub->oid))
+					ereport(ERROR,
+							(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+							 errmsg("cannot remove table \"%s\" from subscription \"%s\" on this node while the table is being synchronized",
+									get_rel_name(relid), sub->name),
+							 errdetail("Only the node that runs the subscription's apply worker can stop the table's synchronization."),
+							 errhint("Run the command on the node whose pg_stat_subscription shows the subscription's apply worker.")));
+
 				sub_remove_rels[remove_rel_len].relid = relid;
 				sub_remove_rels[remove_rel_len++].state = state;
 
@@ -1437,6 +1456,19 @@ DropSubscription(DropSubscriptionStmt *stmt, bool isTopLevel)
 	 */
 	if (slotname)
 		PreventInTransactionBlock(isTopLevel, "DROP SUBSCRIPTION");
+
+	/*
+	 * YB: logicalrep_worker_stop below reaches only this node.  An apply
+	 * worker on another node exits only once it sees this DROP committed, so
+	 * the slot drop below would wait for it forever.  After a committed
+	 * DISABLE it exits on its own, and the slot drop waits only for that.
+	 */
+	if (IsYugaByteEnabled() && form->subenabled)
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("cannot drop subscription \"%s\" while it is enabled",
+						subname),
+				 errhint("Disable the subscription with ALTER SUBSCRIPTION ... DISABLE first.")));
 
 	ObjectAddressSet(myself, SubscriptionRelationId, subid);
 	EventTriggerSQLDropAddObject(&myself, true, true);
@@ -1996,4 +2028,18 @@ merge_publications(List *oldpublist, List *newpublist, bool addpub, const char *
 				 errmsg("cannot drop all the publications from a subscription")));
 
 	return oldpublist;
+}
+
+/*
+ * YB: Whether this node runs the subscription's apply worker.
+ */
+static bool
+YbHasLocalApplyWorker(Oid subid)
+{
+	LogicalRepWorker *worker;
+
+	LWLockAcquire(LogicalRepWorkerLock, LW_SHARED);
+	worker = logicalrep_worker_find(subid, InvalidOid, false);
+	LWLockRelease(LogicalRepWorkerLock);
+	return worker != NULL;
 }

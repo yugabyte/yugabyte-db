@@ -366,8 +366,9 @@ public class TestPgSubscriptionLifecycle extends BasePgSubscriptionLifecycleTest
   }
 
   /**
-   * Verifies that dropping a subscription causes the apply worker to exit
-   * and the replication slot on the publisher is removed.
+   * Verifies that DROP SUBSCRIPTION requires a disabled subscription (its
+   * workers may run on another node, which DROP cannot stop), and that after
+   * DISABLE it stops the apply worker and removes the slot on the publisher.
    */
   @Test
   public void testApplyWorkerExitsOnDrop() throws Exception {
@@ -380,6 +381,9 @@ public class TestPgSubscriptionLifecycle extends BasePgSubscriptionLifecycleTest
     assertEquals("Replication slot should exist", 1, getReplicationSlotCount());
 
     try (Statement stmt = subConn.createStatement()) {
+      runInvalidQuery(stmt, "DROP SUBSCRIPTION " + SUB_NAME,
+                      "while it is enabled");
+      stmt.execute("ALTER SUBSCRIPTION " + SUB_NAME + " DISABLE");
       stmt.execute("DROP SUBSCRIPTION " + SUB_NAME);
     }
 

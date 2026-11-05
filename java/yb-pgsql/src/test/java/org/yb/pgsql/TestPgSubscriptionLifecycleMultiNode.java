@@ -633,4 +633,255 @@ public class TestPgSubscriptionLifecycleMultiNode
       Thread.sleep(2000);
     }
   }
+
+  // ---------------------------------------------------------------------------
+  //  Tablesync workers stay with their apply worker; cross-node DROP / REFRESH
+  // ---------------------------------------------------------------------------
+
+  /** Some node other than ownerNode. */
+  private static int otherNode(int ownerNode) {
+    return (ownerNode + 1) % NUM_NODES;
+  }
+
+  /** srsubstate of table for SUB_NAME, or null if it is not in the subscription. */
+  private String relState(String table) throws Exception {
+    try (Statement stmt = subConn.createStatement();
+         ResultSet rs = stmt.executeQuery(
+             "SELECT sr.srsubstate FROM pg_subscription_rel sr "
+             + "JOIN pg_subscription s ON sr.srsubid = s.oid "
+             + "WHERE s.subname = '" + SUB_NAME + "' "
+             + "AND sr.srrelid = '" + table + "'::regclass")) {
+      return rs.next() ? rs.getString(1) : null;
+    }
+  }
+
+  /** Whether the publisher still has a replication slot named slotName. */
+  private boolean publisherHasSlot(String slotName) throws Exception {
+    try (Statement stmt = pubConn.createStatement();
+         ResultSet rs = stmt.executeQuery(
+             "SELECT count(*) FROM pg_replication_slots WHERE slot_name = '"
+             + slotName + "'")) {
+      return rs.next() && rs.getInt(1) > 0;
+    }
+  }
+
+  /**
+   * {apply workers, tablesync workers} running for SUB_NAME on a node.  One
+   * query, so both counts come from the same read of that node's worker slots.
+   */
+  private int[] workerCountsOnNode(int tserverIdx) throws Exception {
+    try (Connection conn = nodeConn(tserverIdx, SUB_DB);
+         Statement stmt = conn.createStatement();
+         ResultSet rs = stmt.executeQuery(
+             "SELECT count(*) FILTER (WHERE relid IS NULL), "
+             + "count(*) FILTER (WHERE relid IS NOT NULL) "
+             + "FROM pg_stat_subscription WHERE subname = '" + SUB_NAME + "' "
+             + "AND pid IS NOT NULL")) {
+      assertTrue(rs.next());
+      return new int[] {rs.getInt(1), rs.getInt(2)};
+    }
+  }
+
+  /** Tablesync workers may run only next to an apply worker, on one node. */
+  private void assertTablesyncOnlyWithApplyWorker() throws Exception {
+    int nodesWithTablesync = 0;
+    for (int node = 0; node < NUM_NODES; node++) {
+      int[] counts = workerCountsOnNode(node);
+      if (counts[1] > 0) {
+        nodesWithTablesync++;
+        assertTrue("node " + node + " runs a tablesync worker without an "
+                   + "apply worker", counts[0] > 0);
+      }
+    }
+    assertTrue("tablesync workers run on " + nodesWithTablesync + " nodes",
+               nodesWithTablesync <= 1);
+  }
+
+  /**
+   * A tablesync worker must not outlive its apply worker.  The SYNCWAIT /
+   * CATCHUP handoff is in the owner node's shared memory, and once the apply
+   * worker's lock is free another node can take over and start a second
+   * tablesync worker for the same table.  The apply worker's exit hook stops
+   * its tablesync workers before it releases the lock.
+   *
+   * An ALWAYS row trigger that sleeps keeps the initial COPY running long
+   * enough to kill the apply worker in the middle of it.  A table with a
+   * trigger also makes YB COPY use one transaction, so the interrupted COPY
+   * rolls back and the retry starts from an empty table.
+   */
+  @Test
+  public void testApplyExitStopsTablesyncWorkers() throws Exception {
+    final int numRows = 3000;
+    createPublishedTable("t");
+    try (Statement pub = pubConn.createStatement();
+         Statement sub = subConn.createStatement()) {
+      pub.execute("INSERT INTO t SELECT g, 'v' || g "
+                  + "FROM generate_series(1, " + numRows + ") g");
+      pub.execute("CREATE PUBLICATION " + PUB_NAME + " FOR TABLE t");
+      sub.execute("CREATE FUNCTION slow_row() RETURNS trigger LANGUAGE plpgsql "
+                  + "AS $$ BEGIN PERFORM pg_sleep(0.01); RETURN NEW; END $$");
+      sub.execute("CREATE TRIGGER slow_copy BEFORE INSERT ON t "
+                  + "FOR EACH ROW EXECUTE FUNCTION slow_row()");
+      sub.execute("ALTER TABLE t ENABLE ALWAYS TRIGGER slow_copy");
+      sub.execute(createSubscriptionSql(SUB_NAME, PUB_NAME, true /* copyData */));
+    }
+
+    // Wait for the COPY to be under way on the owner node.
+    final int[] owner = {-1};
+    TestUtils.waitFor(() -> {
+      for (int node = 0; node < NUM_NODES; node++) {
+        int[] counts = workerCountsOnNode(node);
+        if (counts[0] > 0 && counts[1] > 0) {
+          owner[0] = node;
+          return true;
+        }
+      }
+      return false;
+    }, CROSS_NODE_TIMEOUT_MS, POLL_INTERVAL_MS);
+
+    int applyPid;
+    int syncPid;
+    try (Connection conn = nodeConn(owner[0], SUB_DB);
+         Statement stmt = conn.createStatement();
+         ResultSet rs = stmt.executeQuery(
+             "SELECT pid FROM pg_stat_subscription WHERE subname = '" + SUB_NAME
+             + "' AND pid IS NOT NULL AND relid IS NOT NULL")) {
+      assertTrue(rs.next());
+      syncPid = rs.getInt(1);
+      applyPid = applyWorkerPid(conn, SUB_NAME);
+    }
+    LOG.info("Terminating apply worker pid {} on node {} while tablesync "
+             + "worker pid {} copies", applyPid, owner[0], syncPid);
+    try (Connection conn = nodeConn(owner[0], SUB_DB);
+         Statement stmt = conn.createStatement()) {
+      stmt.execute("SELECT pg_terminate_backend(" + applyPid + ")");
+    }
+
+    // The tablesync worker goes with it, long before its COPY could finish.
+    final int deadSyncPid = syncPid;
+    TestUtils.waitFor(() -> {
+      try (Connection conn = nodeConn(owner[0], SUB_DB);
+           Statement stmt = conn.createStatement();
+           ResultSet rs = stmt.executeQuery(
+               "SELECT count(*) FROM pg_stat_subscription WHERE pid = "
+               + deadSyncPid)) {
+        return rs.next() && rs.getInt(1) == 0;
+      }
+    }, CROSS_NODE_TIMEOUT_MS, POLL_INTERVAL_MS);
+    String state = relState("t");
+    assertTrue("the COPY must have been interrupted, state " + state,
+               "i".equals(state) || "d".equals(state));
+
+    // Through the restart, possibly on another node, the copy completes and
+    // tablesync workers only ever run next to an apply worker.
+    TestUtils.waitFor(() -> {
+      assertTablesyncOnlyWithApplyWorker();
+      String s = relState("t");
+      return "s".equals(s) || "r".equals(s);
+    }, COPY_TIMEOUT_MS, POLL_INTERVAL_MS);
+
+    try (Statement stmt = subConn.createStatement();
+         ResultSet rs = stmt.executeQuery("SELECT count(*) FROM t")) {
+      assertTrue(rs.next());
+      assertEquals("the retried COPY must load every row once",
+                   numRows, rs.getInt(1));
+    }
+  }
+
+  /**
+   * DROP SUBSCRIPTION stops workers only on its own node and then drops the
+   * slot with WAIT.  An apply worker on another node exits only once it sees
+   * the DROP committed, so that WAIT used to hang.  DROP of an enabled
+   * subscription therefore fails on every node.  Right after DISABLE, DROP
+   * from another node must succeed: the owner exits on its own once it sees
+   * the DISABLE, and the WAIT waits only for that.
+   */
+  @Test
+  public void testDropRequiresDisable() throws Exception {
+    createSingleTableSubscription(false /* copyData */);
+    TestUtils.waitFor(() -> nodesRunningApplyWorker() == 1,
+                      CROSS_NODE_TIMEOUT_MS, POLL_INTERVAL_MS);
+    int owner = findApplyWorkerNode();
+    int other = otherNode(owner);
+
+    for (int node : new int[] {owner, other}) {
+      try (Connection conn = nodeConn(node, SUB_DB);
+           Statement stmt = conn.createStatement()) {
+        runInvalidQuery(stmt, "DROP SUBSCRIPTION " + SUB_NAME,
+                        "while it is enabled");
+      }
+    }
+    assertEquals("the failed DROPs must leave the worker running",
+                 1, nodesRunningApplyWorker());
+
+    try (Connection conn = nodeConn(other, SUB_DB);
+         Statement stmt = conn.createStatement()) {
+      stmt.execute("ALTER SUBSCRIPTION " + SUB_NAME + " DISABLE");
+      long start = System.currentTimeMillis();
+      stmt.execute("DROP SUBSCRIPTION " + SUB_NAME);
+      LOG.info("DROP on node {} right after DISABLE took {} ms (owner node {})",
+               other, System.currentTimeMillis() - start, owner);
+    }
+
+    assertTrue("DROP must drop the slot on the publisher",
+               !publisherHasSlot(SUB_NAME));
+    Thread.sleep(LOCK_LOSER_SETTLE_MS);
+    assertEquals("no node may run a worker for a dropped subscription",
+                 0, nodesRunningApplyWorker());
+  }
+
+  /**
+   * REFRESH that removes a table still syncing stops its tablesync worker,
+   * which works only on the owner node, so elsewhere it must fail fast.
+   * Removing a table that finished syncing touches no worker and works from
+   * any node.
+   */
+  @Test
+  public void testCrossNodeRefreshRemovingTables() throws Exception {
+    createPublishedTable("t1");
+    createPublishedTable("t2");
+    try (Statement pub = pubConn.createStatement();
+         Statement sub = subConn.createStatement()) {
+      for (String t : new String[] {"t1", "t2"}) {
+        pub.execute("INSERT INTO " + t + " SELECT g, 'v' || g "
+                    + "FROM generate_series(1, 100) g");
+      }
+      pub.execute("CREATE PUBLICATION " + PUB_NAME + " FOR TABLE t1, t2");
+      // t2's COPY hits this row's key and retries forever, so t2 stays
+      // in DATASYNC.
+      sub.execute("INSERT INTO t2 VALUES (1, 'conflict')");
+      sub.execute(createSubscriptionSql(SUB_NAME, PUB_NAME, true /* copyData */));
+    }
+    TestUtils.waitFor(() -> nodesRunningApplyWorker() == 1,
+                      CROSS_NODE_TIMEOUT_MS, POLL_INTERVAL_MS);
+    TestUtils.waitFor(() -> {
+      String s = relState("t1");
+      return "s".equals(s) || "r".equals(s);
+    }, COPY_TIMEOUT_MS, POLL_INTERVAL_MS);
+    String t2State = relState("t2");
+    assertTrue("t2 must still be syncing, state " + t2State,
+               "i".equals(t2State) || "d".equals(t2State));
+
+    int owner = findApplyWorkerNode();
+    int other = otherNode(owner);
+    String refresh = "ALTER SUBSCRIPTION " + SUB_NAME + " REFRESH PUBLICATION";
+
+    try (Statement pub = pubConn.createStatement();
+         Connection otherConn = nodeConn(other, SUB_DB);
+         Statement otherStmt = otherConn.createStatement()) {
+      pub.execute("ALTER PUBLICATION " + PUB_NAME + " DROP TABLE t1");
+      otherStmt.execute(refresh);
+      assertEquals("t1 must be removed", null, relState("t1"));
+
+      pub.execute("ALTER PUBLICATION " + PUB_NAME + " DROP TABLE t2");
+      runInvalidQuery(otherStmt, refresh, "while the table is being synchronized");
+      assertTrue("the failed REFRESH must keep t2", relState("t2") != null);
+    }
+
+    try (Connection ownerConn = nodeConn(owner, SUB_DB);
+         Statement ownerStmt = ownerConn.createStatement()) {
+      ownerStmt.execute(refresh);
+    }
+    assertEquals("t2 must be removed", null, relState("t2"));
+  }
 }

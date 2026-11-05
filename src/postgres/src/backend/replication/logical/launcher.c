@@ -843,10 +843,9 @@ YbSubscriptionOwnedElsewhere(Subscription *sub)
 								   300000 /* 5 min */ ))
 	{
 		ereport(WARNING,
-				(errmsg("logical replication apply worker for subscription \"%s\" cannot be started",
-						sub->name),
-				 errdetail("Could not probe the subscription's advisory lock: %s",
-						   YBCStatusMessageBegin(status)),
+				(errmsg("logical replication apply workers cannot be started on this node"),
+				 errdetail("Could not probe the advisory lock of subscription \"%s\": %s",
+						   sub->name, YBCStatusMessageBegin(status)),
 				 errhint("Advisory locks require ysql_yb_enable_advisory_locks.")));
 		yb_last_probe_warning = GetCurrentTimestamp();
 	}
