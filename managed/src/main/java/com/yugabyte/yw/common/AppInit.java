@@ -20,6 +20,7 @@ import com.yugabyte.yw.commissioner.NodeAgentPoller;
 import com.yugabyte.yw.commissioner.PerfAdvisorGarbageCollector;
 import com.yugabyte.yw.commissioner.PerfAdvisorScheduler;
 import com.yugabyte.yw.commissioner.PitrConfigPoller;
+import com.yugabyte.yw.commissioner.RedactSecretsFromAudit;
 import com.yugabyte.yw.commissioner.RefreshKmsService;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.commissioner.SlowQueriesAggregator;
@@ -108,6 +109,7 @@ public class AppInit {
       AutoMasterFailoverScheduler autoMasterFailoverScheduler,
       TaskGarbageCollector taskGC,
       SetUniverseKey setUniverseKey,
+      RedactSecretsFromAudit redactSecretsFromAudit,
       RefreshKmsService refreshKmsService,
       BackupGarbageCollector backupGC,
       PerfAdvisorScheduler perfAdvisorScheduler,
@@ -309,6 +311,9 @@ public class AppInit {
         perfRecGC.start();
 
         setUniverseKey.start();
+
+        // Start the background task to redact secrets from audit table.
+        redactSecretsFromAudit.start();
         // Refreshes all the KMS providers. Useful for renewing tokens, ttls, etc.
         refreshKmsService.start();
 
