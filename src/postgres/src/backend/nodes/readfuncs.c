@@ -622,7 +622,12 @@ _readYbUpdateAffectedEntities(void)
 	READ_DONE();
 }
 
-/* YB: custom read for YbBatchedNestLoop due to palloc/loop logic for hashClauseInfos */
+/*
+ * YB: custom read for YbBatchedNestLoop due to palloc/loop logic for
+ * hashClauseInfos.
+ * Inherited Plan/Join/NestLoop fields are listed by hand: keep them in sync
+ * with plannodes.h.
+ */
 static YbBatchedNestLoop *
 _readYbBatchedNestLoop(void)
 {
@@ -649,6 +654,7 @@ _readYbBatchedNestLoop(void)
 	READ_STRING_FIELD(nl.join.plan.ybInheritedHintAlias);
 	READ_BOOL_FIELD(nl.join.plan.ybIsHinted);
 	READ_BOOL_FIELD(nl.join.plan.ybHasHintedUid);
+	READ_BOOL_FIELD(nl.join.plan.ybReadAheadCapable);
 	READ_ENUM_FIELD(nl.join.jointype, JoinType);
 	READ_BOOL_FIELD(nl.join.inner_unique);
 	READ_NODE_FIELD(nl.join.joinqual);
@@ -663,7 +669,7 @@ _readYbBatchedNestLoop(void)
 	for (int i = 0; i < local_node->num_hashClauseInfos; i++)
 	{
 		token = pg_strtok(&length);
-		local_node->hashClauseInfos[i].hashOp = atoi(token);
+		local_node->hashClauseInfos[i].hashOp = atooid(token);
 	}
 
 	/* Ignore :innerHashAttNos */
