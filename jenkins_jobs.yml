@@ -48,24 +48,6 @@ jobs:
     when:
      - full
 
-  - os: mac15
-    compiler: clang
-    build_type: release
-    architecture: arm64
-    test_opts: YB_TEST_YB_CONTROLLER=0
-    release_artifact: true
-    when:
-     - full
-
-  - os: mac15
-    compiler: clang
-    build_type: release
-    architecture: x86_64
-    test_opts: YB_COMPILE_ONLY=1
-    release_artifact: true
-    when:
-     - full
-
   - os: ubuntu22.04
     compiler: clang17
     build_type: debug
