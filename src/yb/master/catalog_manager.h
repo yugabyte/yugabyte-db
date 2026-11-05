@@ -2975,6 +2975,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Result<std::shared_ptr<TableToTablespaceIdMap>> GetYsqlTableToTablespaceMap(
       const TablespaceIdToReplicationInfoMap& tablespace_info) EXCLUDES(mutex_);
 
+  // Live, non-blacklisted tservers of the cluster with this placement uuid. For the live
+  // placement, tservers without a placement uuid are included.
+  TSDescriptorVector GetLiveTServersForPlacement(const PlacementId& placement_id) const;
   size_t GetNumLiveTServersForPlacement(const PlacementId& placement_id);
 
   TSDescriptorVector GetAllLiveNotBlacklistedTServers() const override;

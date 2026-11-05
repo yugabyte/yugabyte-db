@@ -4548,12 +4548,17 @@ Status CatalogManager::CopyPgsqlSysTables(const NamespaceInfo& ns,
   return Status::OK();
 }
 
-size_t CatalogManager::GetNumLiveTServersForPlacement(const PlacementId& placement_id) {
+TSDescriptorVector CatalogManager::GetLiveTServersForPlacement(
+    const PlacementId& placement_id) const {
   auto blacklist = BlacklistSetFromPB();
   TSDescriptorVector ts_descs;
   master_->ts_manager()->GetAllLiveDescriptorsInCluster(
       &ts_descs, placement_id, (blacklist.ok() ? *blacklist : BlacklistSet()));
-  return ts_descs.size();
+  return ts_descs;
+}
+
+size_t CatalogManager::GetNumLiveTServersForPlacement(const PlacementId& placement_id) {
+  return GetLiveTServersForPlacement(placement_id).size();
 }
 
 TSDescriptorVector CatalogManager::GetAllLiveNotBlacklistedTServers() const {
@@ -12985,11 +12990,8 @@ Result<TSDescriptorVector> CatalogManager::FindLiveTServersForLivePlacement(
   if (live_placement_uuid.empty()) {
     live_placement_uuid = VERIFY_RESULT(placement_uuid());
   }
-  TSDescriptorVector ts_descs;
-  auto blacklist = BlacklistSetFromPB();
-  master_->ts_manager()->GetAllLiveDescriptorsInCluster(
-      &ts_descs, live_placement_uuid, blacklist.ok() ? *blacklist : BlacklistSet());
-  return FindTServersForPlacementInfo(live_placement, ts_descs);
+  return FindTServersForPlacementInfo(
+      live_placement, GetLiveTServersForPlacement(live_placement_uuid));
 }
 
 Result<vector<shared_ptr<TSDescriptor>>> CatalogManager::FindTServersForPlacementBlock(

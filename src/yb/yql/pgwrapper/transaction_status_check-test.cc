@@ -694,7 +694,7 @@ TEST_F(MasterTxnStatusCheck, ReadReplicaTServersDoNotScaleUp) {
   // A read-replica placement in zone2, then one primary and one read-replica tserver there.
   const std::string kReadReplicaPlacementUuid = "read_replica";
   master::MasterClusterClient cluster_client(
-      cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>());
+      ASSERT_RESULT(cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>()));
   auto config = ASSERT_RESULT(cluster_client.GetMasterClusterConfig());
   auto* read_replicas = config.mutable_replication_info()->add_read_replicas();
   read_replicas->set_placement_uuid(kReadReplicaPlacementUuid);
@@ -733,9 +733,21 @@ TEST_F(MasterTxnStatusCheck, ReadReplicaTServersDoNotScaleUp) {
       MonoDelta::FromSeconds(30), "Waiting for the global transaction table to scale up"));
   ASSERT_OK(VerifyTransactionTableTablets(local_txnstatus_name, kTabletsPerTServer));
 
-  // A later check that counted the read-replica tserver would add tablets to both tables.
-  SleepFor(MonoDelta::FromSeconds(3 * FLAGS_transaction_table_check_interval_sec));
-  ASSERT_OK(VerifyTransactionTableTablets(kGlobalTransactionsTableName, 2 * kTabletsPerTServer));
+  // A primary tserver outside zone2 forces a scale-up pass with the read-replica tserver live.
+  // Counting it would size the global table for 4 tservers and the local one for 2.
+  auto zone3_opts = ASSERT_RESULT(tserver::TabletServerOptions::CreateTabletServerOptions());
+  zone3_opts.SetPlacement("test_cloud", "test_region", "zone3");
+  ASSERT_OK(cluster_->AddTabletServer(zone3_opts, true));
+  ASSERT_OK(cluster_->WaitForTabletServerCount(4));
+  ASSERT_OK(WaitFor(
+      [&] -> Result<bool> {
+        return VerifyTransactionTableTablets(
+                   kGlobalTransactionsTableName, 3 * kTabletsPerTServer).ok();
+      },
+      MonoDelta::FromSeconds(30), "Waiting for the global transaction table to scale up"));
+  // The pass handles the local tables after the global one; let it finish.
+  ASSERT_OK(WaitForBackgroundTaskRun());
+  ASSERT_OK(VerifyTransactionTableTablets(kGlobalTransactionsTableName, 3 * kTabletsPerTServer));
   ASSERT_OK(VerifyTransactionTableTablets(local_txnstatus_name, kTabletsPerTServer));
 }
 
