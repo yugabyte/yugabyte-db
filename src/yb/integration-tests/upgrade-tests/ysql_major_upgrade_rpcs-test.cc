@@ -16,6 +16,7 @@
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/test_thread_holder.h"
 
@@ -328,14 +329,16 @@ TEST_F(YsqlMajorUpgradeRpcsTest, YB_RELEASE_ONLY_TEST(UpgradeWaitsForRollbackCle
   ASSERT_OK(cluster_->SetFlag(master_leader, "TEST_pause_catalog_manager_bg_loop_start", "true"));
   ASSERT_OK(RollbackYsqlMajorCatalogVersion());
 
+  auto log_waiter = cluster_->GetMasterLogWaiter("Waiting for rolled back catalog table");
   TestThreadHolder thread_holder;
-  thread_holder.AddThreadFunctor([this, master_leader] {
-    // Long enough for initdb to reach its first CreateTable.
-    SleepFor(20s);
+  thread_holder.AddThreadFunctor([this, master_leader, &log_waiter] {
+    auto resume_bg_task = ScopeExit([this, master_leader] {
+      EXPECT_OK(
+          cluster_->SetFlag(master_leader, "TEST_pause_catalog_manager_bg_loop_start", "false"));
+    });
+    ASSERT_OK(log_waiter.WaitFor(5min));
     ASSERT_OK(
         ValidateYsqlMajorCatalogUpgradeState(master::YSQL_MAJOR_CATALOG_UPGRADE_IN_PROGRESS));
-    ASSERT_OK(
-        cluster_->SetFlag(master_leader, "TEST_pause_catalog_manager_bg_loop_start", "false"));
   });
   ASSERT_OK(PerformYsqlMajorCatalogUpgrade());
   thread_holder.JoinAll();

@@ -484,6 +484,9 @@ Status YsqlInitDBAndMajorUpgradeHandler::WaitForRolledBackCatalogTablesDeleted()
         for (const auto& table : catalog_manager_.GetTables(GetTablesMode::kAll)) {
           if (IsCurrentVersionYsqlCatalogTable(table->id()) &&
               table->LockForRead()->is_deleting()) {
+            YB_LOG_EVERY_N_SECS(INFO, 10)
+                << "Waiting for rolled back catalog table " << table->ToString()
+                << " to be deleted";
             return false;
           }
         }
