@@ -135,11 +135,21 @@ void TabletReplica::UpdateFrom(const TabletReplica& source) {
   member_type = source.member_type;
   should_disable_lb_move = source.should_disable_lb_move;
   fs_data_dir = source.fs_data_dir;
-  current_storage_tier = source.current_storage_tier;
-  target_storage_tier = source.target_storage_tier;
-  tier_migration_state = source.tier_migration_state;
+  UpdateStorageTierInfo(&source);
   full_compaction_status = source.full_compaction_status;
   time_updated = MonoTime::Now();
+}
+
+void TabletReplica::UpdateStorageTierInfo(const TabletReplica* source) {
+  if (!source) {
+    current_storage_tier.clear();
+    target_storage_tier.clear();
+    tier_migration_state = tserver::TierMigrationStatusPB::NONE;
+    return;
+  }
+  current_storage_tier = source->current_storage_tier;
+  target_storage_tier = source->target_storage_tier;
+  tier_migration_state = source->tier_migration_state;
 }
 
 void TabletReplica::UpdateDriveInfo(const TabletReplicaDriveInfo& info) {

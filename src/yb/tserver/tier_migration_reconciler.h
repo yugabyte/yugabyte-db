@@ -49,6 +49,12 @@ struct TierReconcilePassStats {
   uint32_t tablets_failed = 0;
 };
 
+// The wire form of a tablet's migration status, shared by the tablet report
+// (ReportedTabletPB.tier_migration_state) and the AlterTabletTier / GetTabletTierInfo responses.
+TierMigrationStatusPB::State ToTierMigrationStatePB(const tablet::TierMigrationStatus& status);
+void FillTierMigrationStatusPB(
+    const tablet::TierMigrationStatus& status, TierMigrationStatusPB* pb);
+
 // Background driver of tiered-storage migration, one per tserver. A tablet's target tier is
 // persisted in its superblock (by AlterTabletTier, by creation from a tablespace, and carried
 // along by remote bootstrap and splits) and points new flushes and compaction outputs at the
@@ -61,12 +67,6 @@ struct TierReconcilePassStats {
 // It is also the only thing that decides a tablet is done (a scan of its own found nothing to
 // move) or that retrying is pointless (TierMigrationStatus::State::kFailed after
 // FLAGS_tier_migration_max_consecutive_failed_passes).
-// The wire form of a tablet's migration status, shared by the tablet report
-// (ReportedTabletPB.tier_migration_state) and the AlterTabletTier / GetTabletTierInfo responses.
-TierMigrationStatusPB::State ToTierMigrationStatePB(const tablet::TierMigrationStatus& status);
-void FillTierMigrationStatusPB(
-    const tablet::TierMigrationStatus& status, TierMigrationStatusPB* pb);
-
 class TierMigrationReconciler {
  public:
   explicit TierMigrationReconciler(TSTabletManager* ts_tablet_manager);

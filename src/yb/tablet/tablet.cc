@@ -5546,11 +5546,10 @@ Result<TabletTierInfo> Tablet::GetTierInfo() const {
   }
 
   // An empty tablet (no live SSTs yet: still bootstrapping, or never flushed) is trivially "on"
-  // the tier its next flush lands on rather than "none": the target's disk when a target is set
-  // (the home disk when this node has none on that tier, see ResolveTargetTierPathId), the home
-  // disk (path_id 0) otherwise. This agrees with the reconciler, which declares such a tablet
-  // converged. Overwritten below once there is at least one live SST to derive current_tier
-  // from directly.
+  // the tier its next flush lands on rather than "none": the target's disk when a target is set,
+  // the home disk (path_id 0) otherwise. This agrees with the reconciler, which declares such a
+  // tablet converged. Overwritten below once there is at least one live SST to derive
+  // current_tier from directly.
   const uint32_t next_flush_path_id = info.target_tier.empty() ? 0 : info.target_tier_path_id;
   for (const auto& stats : info.tier_paths) {
     if (stats.path_id == next_flush_path_id) {

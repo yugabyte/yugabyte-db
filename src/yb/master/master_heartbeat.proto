@@ -67,10 +67,13 @@ message ReportedTabletPB {
 
   // Tiered storage, set only by a tserver running with --enable_tiered_storage: where this
   // replica's SSTs are and where they are headed, for the master to compare with the tier its
-  // tablespace asks for. The tserver re-reports the tablet whenever either changes.
+  // tablespace asks for. The tserver re-reports the tablet when target_storage_tier or
+  // tier_migration_state changes; current_storage_tier is refreshed only in those reports (and
+  // in full ones), so mid-migration it can lag the SST moves until the verdict arrives.
   // The tier every live SST sits on. An empty tablet is on the tier its next flush lands on: the
   // target's disk when a target is set, the home disk otherwise. Unset while a migration
-  // straddles two tiers.
+  // straddles two tiers, and while a replica with a target is not open yet (tier_migration_state
+  // is NONE then).
   optional string current_storage_tier = 12;
   // The persisted placement intent (superblock target_storage_tier); unset when there is none.
   optional string target_storage_tier = 13;

@@ -369,9 +369,10 @@ message GetTabletTierInfoResponsePB {
   optional TabletServerErrorPB error = 1;
   optional bytes tablet_id = 2;
 
-  // The tier all live regular-DB SSTs currently sit on. Defaults to the home tier (path_id 0)
-  // when there are zero live SSTs yet (e.g. never flushed) -- an empty tablet is trivially "on"
-  // its home tier.
+  // The tier all live regular-DB SSTs currently sit on. With zero live SSTs yet (never flushed,
+  // still bootstrapping) it is the tier of the disk the next flush lands on: the target's when
+  // target_tier is set, the home tier (path_id 0) otherwise -- an empty tablet is trivially "on"
+  // that tier. Unset while the SSTs straddle more than one tier (mid-migration).
   optional string current_tier = 3;
 
   repeated TierPathInfoPB tier_paths = 4;

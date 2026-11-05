@@ -853,6 +853,46 @@ TEST_F(TierStateHeartbeatTest, TierStateReachesMaster) {
       ASSERT_TRUE(replica.target_storage_tier.empty()) << replica.ToString();
     }
   }
+
+  // A report with a new term, as a leader election produces, makes the master rebuild every
+  // replica's entry from that one report. Send one from the migrated replica: its tier fields
+  // describe that replica only, so the others must keep what they last reported.
+  auto* mini_master = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster());
+  auto ts_desc = ASSERT_RESULT(mini_master->ts_manager().LookupTSByUUID(ts_uuid));
+  master::MasterHeartbeatProxy master_proxy(proxy_cache_.get(), mini_master->bound_rpc_addr());
+  master::TSHeartbeatRequestPB req;
+  req.set_universe_uuid(ASSERT_RESULT(catalog_mgr.GetClusterConfig()).universe_uuid());
+  *req.mutable_common() = MakeTSToMasterCommonPB(*ts_desc, ts_desc->latest_seqno());
+  auto* report = req.mutable_tablet_report();
+  report->set_is_incremental(true);
+  report->set_sequence_number(ts_desc->latest_report_seqno() + 1);
+  auto* reported = report->add_updated_tablets();
+  reported->set_tablet_id(tablet->tablet_id());
+  reported->set_state(tablet::RaftGroupStatePB::RUNNING);
+  reported->set_tablet_data_state(tablet::TabletDataState::TABLET_DATA_READY);
+  auto* cstate = reported->mutable_committed_consensus_state();
+  *cstate = tablet->LockForRead()->pb.committed_consensus_state();
+  cstate->set_leader_uuid(ts_uuid);
+  cstate->set_current_term(cstate->current_term() + 1);
+  reported->set_current_storage_tier(kDefaultStorageTier);
+  reported->set_target_storage_tier(kDefaultStorageTier);
+  reported->set_tier_migration_state(tserver::TierMigrationStatusPB::DONE);
+  master::TSHeartbeatResponsePB resp;
+  rpc::RpcController rpc;
+  ASSERT_OK(master_proxy.TSHeartbeat(req, &resp, &rpc));
+  ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
+  for (const auto& [uuid, replica] : *tablet->GetReplicaLocations()) {
+    if (uuid == ts_uuid) {
+      ASSERT_EQ(replica.target_storage_tier, kDefaultStorageTier) << replica.ToString();
+      ASSERT_EQ(replica.tier_migration_state, tserver::TierMigrationStatusPB::DONE)
+          << replica.ToString();
+      continue;
+    }
+    ASSERT_EQ(replica.current_storage_tier, kDefaultStorageTier) << replica.ToString();
+    ASSERT_TRUE(replica.target_storage_tier.empty()) << replica.ToString();
+    ASSERT_EQ(replica.tier_migration_state, tserver::TierMigrationStatusPB::NONE)
+        << replica.ToString();
+  }
 }
 
 class DriveInfoTest : public MasterHeartbeatITest {

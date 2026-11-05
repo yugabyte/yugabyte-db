@@ -1328,7 +1328,8 @@ TEST_F(TierMigrationReconcilerTest, ReportCarriesTierState) {
       << reported.ShortDebugString();
   ASSERT_TRUE(nothing_reported());
 
-  // Re-asserting the same intent changes nothing, so nothing is re-reported.
+  // Re-asserting the same intent while still in progress changes nothing, so nothing is
+  // re-reported.
   ASSERT_RESULT(tablet->AlterTabletTier("hdd", hdd_pid));
   ASSERT_TRUE(nothing_reported());
 

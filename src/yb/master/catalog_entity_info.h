@@ -190,9 +190,9 @@ struct TabletReplica {
   std::string fs_data_dir;
 
   // Tiered storage, from the tablet report (ReportedTabletPB): the tier the replica's SSTs are on
-  // (empty while a migration straddles two), its persisted target tier (empty without one) and
-  // where it stands relative to that target. All unset when the tserver runs without
-  // --enable_tiered_storage.
+  // (empty while a migration straddles two, or while a replica with a target is not open yet),
+  // its persisted target tier (empty without one) and where it stands relative to that target.
+  // All unset when the tserver runs without --enable_tiered_storage.
   std::string current_storage_tier;
   std::string target_storage_tier;
   tserver::TierMigrationStatusPB::State tier_migration_state = tserver::TierMigrationStatusPB::NONE;
@@ -208,6 +208,10 @@ struct TabletReplica {
   TabletReplica() : time_updated(MonoTime::Now()) {}
 
   void UpdateFrom(const TabletReplica& source);
+
+  // The tiered-storage fields from source, or unset when source is null. A tablet report
+  // describes them for the sender's own replica only.
+  void UpdateStorageTierInfo(const TabletReplica* source);
 
   void UpdateDriveInfo(const TabletReplicaDriveInfo& info);
 
