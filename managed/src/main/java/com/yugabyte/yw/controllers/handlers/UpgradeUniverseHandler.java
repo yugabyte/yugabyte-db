@@ -360,11 +360,13 @@ public class UpgradeUniverseHandler {
       GFlagsUtil.trimFlags(userIntent.specificGFlags);
       userIntent.masterGFlags = GFlagsUtil.trimFlags(userIntent.masterGFlags);
       userIntent.tserverGFlags = GFlagsUtil.trimFlags(userIntent.tserverGFlags);
-      requestParams.masterGFlags = userIntent.masterGFlags;
-      requestParams.tserverGFlags = userIntent.tserverGFlags;
 
       mergeSensitiveMasterTserverGFlagsForRequestClusters(requestParams, universe);
       mergeSensitiveSpecificGFlagsForRequestClusters(requestParams, universe);
+      // The merges replace the cluster maps, so copy them only now:
+      // checkGFlagsProvidedInOldSchema rebuilds specificGFlags from these top-level maps.
+      requestParams.masterGFlags = userIntent.masterGFlags;
+      requestParams.tserverGFlags = userIntent.tserverGFlags;
     } else {
       userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
       GFlagsUtil.trimFlags(userIntent.specificGFlags);

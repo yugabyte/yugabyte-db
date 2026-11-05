@@ -111,6 +111,48 @@ public class RedactingServiceTest {
     assertEquals(SECRET_REPLACEMENT, redacted.get("ycql_ldap_bind_passwd").asText());
   }
 
+  @Test
+  public void testStorageRedactionKeepsSensitiveGFlags() {
+    String hba =
+        "host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com ldapbindpasswd=hba-secret";
+    ObjectNode gflags = mapper.createObjectNode();
+    gflags.put("ycql_ldap_bind_passwd", "ycql-ldap-secret");
+    gflags.put("ysql_hba_conf_csv", hba);
+    ObjectNode userIntent = mapper.createObjectNode();
+    userIntent.put("ysqlPassword", "ysql-secret");
+    userIntent.put("ycqlPassword", "ycql-secret");
+    userIntent.set("tserverGFlags", gflags);
+    userIntent
+        .putObject("specificGFlags")
+        .putObject("perProcessFlags")
+        .putObject("value")
+        .set("TSERVER", gflags.deepCopy());
+    ObjectNode details = mapper.createObjectNode();
+    details.putArray("clusters").addObject().set("userIntent", userIntent);
+
+    // Runs without an injector, so this also fails if storage redaction starts reading runtime
+    // config.
+    JsonNode stored = RedactingService.filterSecretFieldsForStorage(details);
+    JsonNode storedIntent = stored.at("/clusters/0/userIntent");
+    assertEquals(SECRET_REPLACEMENT, storedIntent.get("ysqlPassword").asText());
+    assertEquals(SECRET_REPLACEMENT, storedIntent.get("ycqlPassword").asText());
+    for (JsonNode storedGFlags :
+        List.of(
+            storedIntent.get("tserverGFlags"),
+            storedIntent.at("/specificGFlags/perProcessFlags/value/TSERVER"))) {
+      assertEquals("ycql-ldap-secret", storedGFlags.get("ycql_ldap_bind_passwd").asText());
+      assertEquals(hba, storedGFlags.get("ysql_hba_conf_csv").asText());
+    }
+    assertEquals("ysql-secret", details.at("/clusters/0/userIntent/ysqlPassword").asText());
+
+    // The same gflags are redacted for API responses.
+    JsonNode api =
+        RedactingService.filterSecretFields(details, RedactionTarget.APIS, null, null, true);
+    JsonNode apiGFlags = api.at("/clusters/0/userIntent/tserverGFlags");
+    assertEquals(SECRET_REPLACEMENT, apiGFlags.get("ycql_ldap_bind_passwd").asText());
+    assertFalse(apiGFlags.get("ysql_hba_conf_csv").asText().contains("hba-secret"));
+  }
+
   // Test for API responses YSQL HBA conf csv parsing and redaction through regexes
   @Test
   public void testFilterSecretFieldsApisYsqlHbaConfLdapbindpasswd() {
