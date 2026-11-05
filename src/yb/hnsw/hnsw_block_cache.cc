@@ -19,11 +19,18 @@
 #include "yb/rocksdb/cache.h"
 
 #include "yb/util/crc.h"
+#include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/unique_lock.h"
 
 using namespace yb::size_literals;
+
+DEFINE_test_flag(bool, yb_hnsw_write_version_1, false,
+    "Write YbHnsw files in format version 1, without block trailers.");
+
+DEFINE_test_flag(bool, yb_hnsw_ignore_block_trailers, false,
+    "Read YbHnsw files like a reader of format version 1, which ignores block trailers.");
 
 METRIC_DEFINE_counter(server, vector_index_cache_hit, "Vector index block cache hits",
                       yb::MetricUnit::kCacheHits,
@@ -378,7 +385,7 @@ DataBlock FileBlockCacheBuilder::MakeFooter(const Header& header) const {
     sizeof(uint32_t) + // CRC32
     sizeof(uint64_t)); // Size
   BlockWriter writer(buffer);
-  writer.Append<uint8_t>(kSerializationVersion);
+  writer.Append<uint8_t>(FLAGS_TEST_yb_hnsw_write_version_1 ? 1 : kSerializationVersion);
   Serialize(header, writer);
   uint64_t sum = 0;
   for (const auto& block : blocks_) {
@@ -452,7 +459,8 @@ Result<Header> FileBlockCache::Load() {
   Header header;
   SliceReader reader(footer_data);
   size_t version = reader.Read<uint8_t>();
-  has_block_trailers_ = version >= kFirstVersionWithBlockTrailers;
+  has_block_trailers_ =
+      version >= kFirstVersionWithBlockTrailers && !FLAGS_TEST_yb_hnsw_ignore_block_trailers;
   Deserialize(version, header, reader);
   AllocateBlocks(reader.Left() / sizeof(uint64_t));
   size_t prev_end = 0;

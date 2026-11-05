@@ -57,17 +57,33 @@ void VectorIndexTestBase::SetUp() {
       *rocksdb_cache_);
 }
 
-Status VectorIndexTestBase::DamageYbHnswBlocks(const std::string& path, size_t stride) {
-  faststring content;
-  RETURN_NOT_OK(ReadFileToString(env_.get(), path, &content));
+namespace {
+
+// Returns the offset of the footer, which starts with the format version.
+Result<size_t> YbHnswFooterOffset(const faststring& content, const std::string& path) {
   SCHECK_GE(content.size(), sizeof(uint64_t), IllegalState, Format("$0 is too small", path));
   const auto footer_size = LittleEndian::Load64(
       content.data() + content.size() - sizeof(uint64_t));
   SCHECK_LT(footer_size, content.size(), IllegalState, Format("Bad footer size in $0", path));
-  for (size_t pos = 0; pos < content.size() - footer_size; pos += stride) {
+  return content.size() - footer_size;
+}
+
+} // namespace
+
+Status VectorIndexTestBase::DamageYbHnswBlocks(const std::string& path, size_t stride) {
+  faststring content;
+  RETURN_NOT_OK(ReadFileToString(env_.get(), path, &content));
+  const auto footer_offset = VERIFY_RESULT(YbHnswFooterOffset(content, path));
+  for (size_t pos = 0; pos < footer_offset; pos += stride) {
     content[pos] ^= 0xff;
   }
   return WriteStringToFile(env_.get(), content, path);
+}
+
+Result<uint8_t> VectorIndexTestBase::YbHnswFormatVersion(const std::string& path) {
+  faststring content;
+  RETURN_NOT_OK(ReadFileToString(env_.get(), path, &content));
+  return content[VERIFY_RESULT(YbHnswFooterOffset(content, path))];
 }
 
 size_t VectorIndexTestBase::BlockCacheCapacity() {

@@ -34,6 +34,9 @@
 using namespace std::chrono_literals;
 using namespace yb::size_literals;
 
+DECLARE_bool(TEST_yb_hnsw_ignore_block_trailers);
+DECLARE_bool(TEST_yb_hnsw_write_version_1);
+
 METRIC_DEFINE_entity(table);
 
 namespace yb::hnsw {
@@ -201,6 +204,20 @@ TEST_F(YbHnswTest, Simple) {
 
 TEST_F(YbHnswTest, Persistence) {
   TestSimple(/* load= */ true);
+}
+
+// Files written before block trailers were added.
+TEST_F(YbHnswTest, Version1) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_yb_hnsw_write_version_1) = true;
+  TestSimple(/* load= */ true);
+  ASSERT_EQ(ASSERT_RESULT(YbHnswFormatVersion(GetTestPath("0.yb_hnsw"))), 1);
+}
+
+// A reader of version 1, i.e. after a rollback, ignores block trailers.
+TEST_F(YbHnswTest, IgnoreBlockTrailers) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_yb_hnsw_ignore_block_trailers) = true;
+  TestSimple(/* load= */ true);
+  ASSERT_EQ(ASSERT_RESULT(YbHnswFormatVersion(GetTestPath("0.yb_hnsw"))), 2);
 }
 
 TEST_F(YbHnswTest, DamagedBlock) {

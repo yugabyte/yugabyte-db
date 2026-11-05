@@ -38,6 +38,8 @@ class VectorIndexTestBase : public YBTest {
   // intact, so the file still loads.
   Status DamageYbHnswBlocks(const std::string& path, size_t stride);
 
+  Result<uint8_t> YbHnswFormatVersion(const std::string& path);
+
   size_t dimensions_ = 8;
   size_t max_vectors_ = 65536;
   std::mt19937_64 rng_{42};

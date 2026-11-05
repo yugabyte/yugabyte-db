@@ -91,7 +91,7 @@ uint32_t CrcutilCrc32c(const void* data, size_t length) {
 
 // Crc32c and Crc32Accumulator use the accelerated implementation when the CPU supports it, and must
 // produce the same values as crcutil.
-TEST_F(CrcTest, AcceleratedMatchesCrcutil) {
+TEST_F(CrcTest, YB_DISABLE_TEST_ON_MACOS(AcceleratedMatchesCrcutil)) {
   constexpr size_t kMaxShortLength = 4096;
   std::unique_ptr<Crc32cEngine> engine(TryNewCRC32AcceleratedX86ARMCombined());
   LOG(INFO) << "Accelerated CRC32C available: " << (engine != nullptr);

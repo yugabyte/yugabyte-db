@@ -33,6 +33,8 @@
 
 using namespace yb::size_literals;
 
+DECLARE_bool(TEST_yb_hnsw_write_version_1);
+
 DEFINE_RUNTIME_uint64(yb_hnsw_max_block_size, 64_KB,
     "Individual block max size in YbHnsw vector index");
 
@@ -421,7 +423,7 @@ class YbHnswBuilder {
 
   Result<BlockWriter> StartNewBlock(size_t size) {
     RETURN_NOT_OK(FlushBlock());
-    current_block_.Allocate(size + kBlockTrailerSize);
+    current_block_.Allocate(size + (write_block_trailers_ ? kBlockTrailerSize : 0));
     ++num_blocks_;
     auto* data = current_block_.data.get();
     return BlockWriter(data, data + size);
@@ -431,7 +433,9 @@ class YbHnswBuilder {
     if (num_blocks_ == 0) {
       return Status::OK();
     }
-    WriteBlockTrailer(current_block_);
+    if (write_block_trailers_) {
+      WriteBlockTrailer(current_block_);
+    }
     RETURN_NOT_OK(out_->Append(Slice(current_block_.AsSlice())));
     if (!FLAGS_yb_hnsw_keep_new_blocks_in_cache) {
       current_block_.data.reset();
@@ -452,6 +456,7 @@ class YbHnswBuilder {
   Header header_;
   size_t num_blocks_ = 0;
   DataBlock current_block_;
+  const bool write_block_trailers_ = !FLAGS_TEST_yb_hnsw_write_version_1;
   FileBlockCacheBuilder builder_;
   std::unique_ptr<WritableFile> out_;
   size_t size_ = 0;
