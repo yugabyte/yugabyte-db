@@ -348,6 +348,27 @@ inline bool IsColumnId(KeyEntryType type) {
   return type == KeyEntryType::kColumnId || type == KeyEntryType::kSystemColumnId;
 }
 
+// Whether a value begins with a control field rather than with its primitive value. Lets a caller
+// that only wants the primitive value skip the decode on the overwhelmingly common unadorned value.
+// This list has to hold every marker the encoder can write first, and it is maintained by hand
+// alongside the encoder and decoder in value.cc.
+inline bool IsControlFieldMarker(KeyEntryType type) {
+  switch (type) {
+    case KeyEntryType::kMergeFlags: [[fallthrough]];
+    case KeyEntryType::kHybridTime: [[fallthrough]];
+    case KeyEntryType::kTtl: [[fallthrough]];
+    case KeyEntryType::kUserTimestamp: [[fallthrough]];
+    case KeyEntryType::kCdrMetadata:
+      return true;
+    default:
+      return false;
+  }
+}
+
+inline bool StartsWithControlField(Slice value) {
+  return IsControlFieldMarker(DecodeKeyEntryType(value));
+}
+
 YB_DEFINE_ENUM(PackedRowVersion, (kV1)(kV2));
 
 inline std::optional<PackedRowVersion> GetPackedRowVersion(ValueEntryType type) {

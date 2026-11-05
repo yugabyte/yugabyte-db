@@ -104,13 +104,8 @@ var setGflagsUniverseCmd = &cobra.Command{
 			))
 		}
 
-		primaryCluster := universeutil.FindClusterByType(clusters, util.PrimaryClusterType)
-		if universeutil.IsClusterEmpty(primaryCluster) {
-			err := fmt.Errorf(
-				"No primary cluster found in universe " + universeName + " (" + universeUUID + ")\n",
-			)
-			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
-		}
+		primaryCluster, _ := universeutil.MustFindPrimaryCluster(
+			clusters, universeName, universeUUID)
 
 		primaryUserIntent := primaryCluster.GetUserIntent()
 		version := primaryUserIntent.GetYbSoftwareVersion()
@@ -256,7 +251,10 @@ var setGflagsUniverseCmd = &cobra.Command{
 			UpgradeOption:                  upgradeOption,
 			SleepAfterTServerRestartMillis: tserverDelay,
 			SleepAfterMasterRestartMillis:  masterDelay,
-			RollMaxBatchSize:               universeutil.RollMaxBatchSizeFromFlags(cmd, upgradeOption),
+			RollMaxBatchSize: universeutil.RollMaxBatchSizeFromFlags(
+				cmd,
+				upgradeOption,
+			),
 		}
 
 		rUpgrade, response, err := authAPI.UpgradeGFlags(universeUUID).

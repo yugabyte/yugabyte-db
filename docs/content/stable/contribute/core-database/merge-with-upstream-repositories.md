@@ -1044,7 +1044,7 @@ This also helps make sure the author made clear resolution notes and covered exp
   There are also some different types, such as the isolation regress tests in `src/postgres/src/test/isolation`.
   Any changes to these tests should be ported to `yb.port.` equivalents.
   (Note that, at the time of writing, pg_hint_plan is the one exception to this: YB changes are made on the original test directly.)
-  See [build and test](../build-and-test#ysql-regress-tests).
+  See [build and test](../build-and-test/#ysql-regress-tests).
 
 [repo-postgres]: https://github.com/yugabyte/postgres
 [repo-thirdparty]: https://github.com/yugabyte/yugabyte-db-thirdparty

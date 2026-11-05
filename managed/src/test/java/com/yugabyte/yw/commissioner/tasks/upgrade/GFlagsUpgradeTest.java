@@ -324,6 +324,77 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
   }
 
   @Test
+  public void testYsqlHbaGFlagRejectedWhenYsqlAuthDisabled() {
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    taskParams.masterGFlags = ImmutableMap.of();
+    taskParams.tserverGFlags =
+        ImmutableMap.of(GFlagsUtil.YSQL_HBA_CONF_CSV, "host all all all md5");
+    taskParams.upgradeOption = UpgradeOption.ROLLING_UPGRADE;
+
+    PlatformServiceException exception =
+        assertThrows(PlatformServiceException.class, () -> submitTask(taskParams));
+
+    assertThat(exception.getMessage(), containsString(GFlagsUtil.YSQL_HBA_REQUIRES_AUTH_ERROR));
+  }
+
+  @Test
+  public void testExistingYsqlHbaGFlagKeptWhenYsqlAuthDisabled() {
+    setUniverseYsqlHbaGFlag();
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    taskParams.masterGFlags = ImmutableMap.of("master-flag", "m1");
+    taskParams.tserverGFlags =
+        ImmutableMap.of(GFlagsUtil.YSQL_HBA_CONF_CSV, "host all all all md5");
+    taskParams.upgradeOption = UpgradeOption.ROLLING_UPGRADE;
+
+    TaskInfo taskInfo = submitTask(taskParams);
+
+    assertEquals(Success, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testExistingYsqlHbaGFlagRemovedWhenYsqlAuthDisabled() {
+    setUniverseYsqlHbaGFlag();
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    taskParams.masterGFlags = ImmutableMap.of();
+    taskParams.tserverGFlags = ImmutableMap.of();
+    taskParams.upgradeOption = UpgradeOption.ROLLING_UPGRADE;
+
+    TaskInfo taskInfo = submitTask(taskParams);
+
+    assertEquals(Success, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testYsqlHbaGFlagAllowedWhenYsqlAuthEnabled() {
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            universe ->
+                universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQLAuth = true);
+    expectedUniverseVersion++;
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    taskParams.masterGFlags = ImmutableMap.of();
+    taskParams.tserverGFlags =
+        ImmutableMap.of(GFlagsUtil.YSQL_HBA_CONF_CSV, "host all all all md5");
+    taskParams.upgradeOption = UpgradeOption.ROLLING_UPGRADE;
+
+    TaskInfo taskInfo = submitTask(taskParams);
+
+    assertEquals(Success, taskInfo.getTaskState());
+  }
+
+  private void setUniverseYsqlHbaGFlag() {
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            universe ->
+                universe.getUniverseDetails().getPrimaryCluster().userIntent.tserverGFlags =
+                    new HashMap<>(
+                        ImmutableMap.of(GFlagsUtil.YSQL_HBA_CONF_CSV, "host all all all md5")));
+    expectedUniverseVersion++;
+  }
+
+  @Test
   public void testSkipConfiguredPrechecksForNonRollingGFlagsUpgrade() {
     factory
         .forUniverse(defaultUniverse)

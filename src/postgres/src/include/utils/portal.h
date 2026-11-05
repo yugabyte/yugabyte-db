@@ -203,6 +203,10 @@ typedef struct PortalData
 	/* Presentation data, primarily used by the pg_cursors system view */
 	TimestampTz creation_time;	/* time at which this portal was defined */
 	bool		visible;		/* include this portal in pg_cursors? */
+
+	/* YB fields */
+	YbcOtelSpanContext yb_comment_span_ctx; /* copy of the plan source's, or
+											 * NULL */
 }			PortalData;
 
 /*

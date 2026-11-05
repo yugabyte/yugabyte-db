@@ -53,6 +53,45 @@ message BackfillJobPB {
   optional uint64 backfilling_timestamp = 3;
 }
 
+message OnlineSchemaChangeJobPB {
+  // Only the master writes this state; the controller (OnlineSchemaChangeController) drives the
+  // copy from it. Postgres reads it through GetTableBackfillStatus and records a terminal state in
+  // pg_yb_online_schema_change itself.
+  enum State {
+    IN_PROGRESS = 0;
+    FAILED = 1;
+    SUCCESS = 2;
+    CANCELLED = 3;
+    // A resume recomputes the read time from scratch.
+    COMPUTING_READ_TIME = 4;
+  }
+  optional State state = 1;
+  // In COMPUTING_READ_TIME, the client's lower bound for the read time. In every later state, the
+  // read time itself: the max of the source tablets' safe times.
+  optional uint64 backfilling_timestamp = 2;
+  optional int64 pg_job_id = 3;
+  optional uint32 source_table_oid = 4;
+  optional uint32 target_table_oid = 5;
+  optional uint32 transform_fn_oid = 6;
+  optional string database_name = 7;
+  // Written with the terminal state. Until then the count is the sum of the source tablets'
+  // backfilled_rows.
+  optional uint64 num_rows_processed = 8;
+  optional uint32 resume_count = 9;
+  // Set by CancelTableBackfill. A job that has it stops copying and ends CANCELLED, on this
+  // leader or at the next resume.
+  optional bool cancel_requested = 10;
+  // Written with the terminal state: a SUCCESS job drops the per-tablet resume keys they are
+  // otherwise derived from.
+  optional int32 num_tablets_done = 15;
+  optional int32 num_tablets_total = 16;
+  // FAILED only: the first error that failed the job.
+  optional string error_message = 17;
+  // Hybrid time of the terminal write. The delete-marker retention pin of a SUCCESS job is
+  // released only once no chunk sent before it can still be writing.
+  optional fixed64 finished_at = 18;
+}
+
   message YsqlDdlTxnVerifierStatePB {
     optional bool contains_create_table_op = 1;
     optional bool contains_alter_table_op = 2;
@@ -233,6 +272,26 @@ message SysTablesEntryPB {
 
   // Marker to indicate that the xCluster source still has a WAL_ANCHOR stream to clean up.
   optional bytes xcluster_pending_wal_anchor_deletion_source_table_id = 43;
+
+  // Marks a table known to have no custom tablespace.
+  message NoCustomTablespacePB {}
+
+  // Set at CREATE TABLE, then kept in sync with pg_class by the tablespace refresh; persisted
+  // because a HIDDEN table has no pg_class row. Neither set: not observed yet.
+  oneof tablespace {
+    bytes tablespace_id = 44;
+    NoCustomTablespacePB no_custom_tablespace = 45;
+  }
+
+  // The online schema change whose source is this table: the running job, or the last finished one,
+  // which the next job replaces.
+  optional OnlineSchemaChangeJobPB online_schema_change_job = 46;
+
+  // pg_job_id of the online schema change backfill that set retain_delete_markers on this table (a
+  // target or one of its indexes). Set and cleared in the same write as retain_delete_markers.
+  // While it is set, GetBackfillStatus reports BACKFILL_UNKNOWN so that the tserver tablet
+  // validator does not clear the property; the controller releases pins whose job has finished.
+  optional int64 table_backfill_pin_job_id = 47;
 }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for
@@ -307,6 +366,10 @@ message SysTabletsEntryPB {
   // Whether this tablet was created by DB cloning. If true, we should not try to send
   // CreateTablet requests for this tablet (it should be created by tservers applying the clone op).
   optional bool created_by_clone = 19 [ default = false ];
+
+  // Rows an online schema change has copied from this tablet, keyed like backfilled_until
+  // ("online_schema_change_<pg_job_id>"). Written in the same write as the resume key.
+  map<string, uint64> backfilled_rows = 20;
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for a namespace.
@@ -711,6 +774,33 @@ message SysCDCStreamEntryPB {
   // never consumed by the target, they only pin the source WAL at the table's creation point so
   // that an in flight DDL can be retried.
   optional bool xcluster_is_wal_anchor = 19 [default = false];
+
+  // Signifies the stream whose table set is governed by the publication named in
+  // cdcsdk_ysql_bound_publication_name.
+  // Set at creation for streams created with a bound publication while feature flag
+  // cdcsdk_enable_publication_scoped_replication_slots is enabled.
+  // It is false for streams created before the feature (including pre-upgrade streams, where this
+  // field is absent), with feature flag off, or without a publication.
+  optional bool cdcsdk_ysql_publications_bound_stream = 20 [default = false];
+
+  // Publication this stream is statically bound to. Set exactly for publications bound streams
+  // (cdcsdk_ysql_publications_bound_stream above), unset for regular streams.
+  optional string cdcsdk_ysql_bound_publication_name = 21;
+
+  // For publications bound streams: whether a newly created table is added to the stream, which
+  // holds when the bound publication is FOR ALL TABLES.
+  optional bool cdcsdk_ysql_include_new_tables = 22 [default = false];
+
+  // Used to set up the target of an xCluster stream. Recording it lets the table split while the
+  // stream is INITIATED, so a recorded checkpoint is never redone. Streams that are checkpointed
+  // again on purpose (indexes after their backfill) are only recorded by that later checkpoint.
+  optional XClusterStreamBootstrapInfoPB xcluster_bootstrap_info = 23;
+}
+
+message XClusterStreamBootstrapInfoPB {
+  // The tablets at the time of the checkpoint, so that target setup can start from them even if
+  // they have split since.
+  repeated bytes checkpointed_tablet_ids = 1;
 }
 
 

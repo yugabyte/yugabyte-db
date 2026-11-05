@@ -143,6 +143,36 @@ TEST_F(ValueControlFieldsTest, TruncatedSourceOriginIsCorruption) {
   ASSERT_NOK(ValueControlFields::Decode(&slice));
 }
 
+// Callers skip the decode entirely when the first byte is not a control-field marker, so the
+// predicate has to recognise every field the encoder can put first. Encoding one field at a time
+// is what makes each of them first.
+TEST_F(ValueControlFieldsTest, EveryFieldIsRecognisedAsAControlFieldMarker) {
+  const std::pair<const char*, ValueControlFields> cases[] = {
+      {"merge flags", [] { ValueControlFields f; f.merge_flags = 1; return f; }()},
+      {"ttl", [] { ValueControlFields f; f.ttl = MonoDelta::FromMilliseconds(1); return f; }()},
+      {"user timestamp", [] { ValueControlFields f; f.timestamp = 1; return f; }()},
+      {"cdr metadata", [] {
+        ValueControlFields f;
+        f.cdr_source_origin = kOrigin;
+        f.cdr_source_write_ht = kSourceHt;
+        return f;
+      }()},
+  };
+  for (const auto& [name, fields] : cases) {
+    auto encoded = Encode(fields);
+    ASSERT_FALSE(encoded.empty()) << name;
+    ASSERT_TRUE(StartsWithControlField(Slice(encoded))) << name;
+  }
+
+  // Written by the intent path rather than by AppendEncoded, so it is checked directly.
+  ASSERT_TRUE(IsControlFieldMarker(KeyEntryType::kHybridTime));
+
+  // A plain value must not be mistaken for one, or the decode would be skipped where it matters
+  // and paid for everywhere it does not.
+  ASSERT_FALSE(StartsWithControlField(Slice()));
+  ASSERT_FALSE(StartsWithControlField(Value::EncodedTombstone()));
+}
+
 TEST_F(ValueControlFieldsTest, ToStringReportsCdrMetadata) {
   ValueControlFields fields;
   fields.cdr_source_origin = kOrigin;

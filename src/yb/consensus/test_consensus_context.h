@@ -47,9 +47,11 @@ class TestConsensusContext : public ConsensusContext {
     return Status::OK();
   }
 
-  Status CheckReplicateAllowed(const LWReplicateMsg& replicate_msg) override {
+  Status CheckReplicateAllowed(LWReplicateMsg& replicate_msg) override {
     return Status::OK();
   }
+
+  bool ShouldRelinquishLeadership() override { return false; }
 };
 
 } // namespace consensus

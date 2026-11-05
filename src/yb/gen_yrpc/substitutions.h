@@ -47,6 +47,10 @@ class FileSubstitutions {
     return path_no_extension_ + ".fwd";
   }
 
+  std::string trace() const {
+    return path_no_extension_ + ".trace";
+  }
+
  private:
   const google::protobuf::FileDescriptor* file_;
   std::string path_no_extension_;

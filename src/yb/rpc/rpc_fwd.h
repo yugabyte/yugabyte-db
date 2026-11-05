@@ -112,6 +112,9 @@ class InboundCall;
 using InboundCallPtr = std::shared_ptr<InboundCall>;
 using InboundCallWeakPtr = std::weak_ptr<InboundCall>;
 
+using LocalYBInboundCallPtr = std::shared_ptr<LocalYBInboundCall>;
+using LocalYBInboundCallWeakPtr = std::weak_ptr<LocalYBInboundCall>;
+
 class Messenger;
 
 class OutboundCall;

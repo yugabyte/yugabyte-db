@@ -882,7 +882,7 @@ CallSystemCacheCallbacks(void)
 	InvalidateSystemCachesExtended(true, true /* yb_callback */ );
 }
 
-static void
+void
 YbMaybeRefreshCache(void)
 {
 	uint64_t	shared_catalog_version = YbGetSharedCatalogVersion();

@@ -33,7 +33,6 @@ import com.yugabyte.yw.models.helpers.ManagedLoadBalancer;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -381,7 +380,14 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       // removal.safe.
       createMarkRollbackUnsafeTaskOnce();
       maybeMoveMasters(
-          universe, clusters, liveNodes, newMasters, newTservers, mastersToStop, removeMasters);
+          universe,
+          clusters,
+          liveNodes,
+          newMasters,
+          existingNodesToStartMaster,
+          newTservers,
+          mastersToStop,
+          removeMasters);
     }
     if (!newTservers.isEmpty() || !tserversToBeRemoved.isEmpty()) {
       // Unblacklisting ADDs can allow tablet placement; end the rollback-safe window first.
@@ -460,7 +466,14 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
     if (!moveMastersFirst) {
       // An example task is EditUniverse where multiple nodes are moved including full-move.
       maybeMoveMasters(
-          universe, clusters, liveNodes, newMasters, newTservers, mastersToStop, removeMasters);
+          universe,
+          clusters,
+          liveNodes,
+          newMasters,
+          existingNodesToStartMaster,
+          newTservers,
+          mastersToStop,
+          removeMasters);
     }
     if (!nodesToProvision.isEmpty()) {
       // Set the new nodes' state to live after the processes are running.
@@ -500,7 +513,9 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
     // Delete the load balancers of the cluster that the new placement does not call for, after
     // their nodes are gone. This also cleans up a load balancer left by an edit that was rolled
     // back.
-    List<ManagedLoadBalancer> plannedLbs = ManagedLoadBalancerUtil.planLoadBalancers(cluster);
+    List<ManagedLoadBalancer> plannedLbs =
+        ManagedLoadBalancerUtil.planLoadBalancers(
+            cluster, universe.getUniverseDetails().getManagedLoadBalancerState());
     createDeleteManagedLoadBalancerTasks(
         lb ->
             lb.getClusterUuid().equals(cluster.uuid) && plannedLbs.stream().noneMatch(lb::matches),
@@ -517,18 +532,7 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
     }
 
     if (!tserversToBeRemoved.isEmpty()) {
-      Duration sleepBeforeStart =
-          confGetter.getConfForScope(
-              universe, UniverseConfKeys.ybEditWaitDurationBeforeBlacklistClear);
-      if (sleepBeforeStart.compareTo(Duration.ZERO) > 0) {
-        createWaitForDurationSubtask(universe, sleepBeforeStart)
-            .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
-      }
-      createModifyBlackListTask(
-              null /* addNodes */,
-              tserversToBeRemoved /* removeNodes */,
-              false /* isLeaderBlacklist */)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      createClearTserverBlacklistTasks(universe, tserversToBeRemoved);
     }
   }
 
@@ -638,6 +642,7 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       Collection<Cluster> clusters,
       Set<NodeDetails> liveNodes,
       Set<NodeDetails> newMasters,
+      Set<NodeDetails> existingNodesToStartMaster,
       Set<NodeDetails> newTservers,
       Set<NodeDetails> mastersToStop,
       Set<NodeDetails> removeMasters) {
@@ -661,6 +666,12 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
               .collect(Collectors.toSet());
       Set<NodeDetails> currentLiveMasters =
           liveNodes.stream().filter(n -> n.isMaster).collect(Collectors.toSet());
+      // Task params, since a retry can see removed nodes past ToBeRemoved in the DB.
+      Set<String> leavingNodes =
+          PlacementInfoUtil.getNodesToBeRemoved(taskParams().nodeDetailsSet).stream()
+              .map(n -> n.nodeName)
+              .collect(Collectors.toSet());
+      Set<NodeDetails> demotedStayingNodes = new HashSet<>();
       // Now finalize the master quorum change tasks.
       createMoveMastersTasks(
           SubTaskGroupType.ConfigureUniverse,
@@ -683,6 +694,10 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
             }
             createMasterAddressUpdateTask(
                 universe, currentLiveMasters, allLiveTservers, false /* ignore error */);
+            if (opType == ChangeMasterConfig.OpType.RemoveMaster
+                && !leavingNodes.contains(node.nodeName)) {
+              demotedStayingNodes.add(node);
+            }
           });
       if (!mastersToStop.isEmpty()) {
         createStopServerTasks(
@@ -696,6 +711,9 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       }
       // Do this once after all the master addresses are frozen as this is expensive.
       createXClusterConfigUpdateMasterAddressesTask();
+      // Existing nodes whose master role changed.
+      queueOtelCollectorConfigRewrite(
+          Sets.union(existingNodesToStartMaster, demotedStayingNodes), false /* ignoreErrors */);
     }
   }
 
@@ -773,18 +791,22 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
 
   /**
    * Nodes present in the current universe but absent from {@code before} (by name) are the ones the
-   * failed edit added. Always enqueue them for force-delete; missing instances are handled by
-   * {@code isForceDelete}. Universe details converge via restore of {@code before}.
+   * failed edit added. Always enqueue them for destroy. On a cloud a missing instance is fine
+   * because destroy succeeds when it is already gone; onprem destroys are forced. Universe details
+   * converge via restore of {@code before}. A checkpoint with no before nodes is refused, since
+   * every node would then count as added. The precheck calls this, so nothing is destroyed.
    */
   protected Set<NodeDetails> collectAddedNodesToDestroy(
       Universe universe, UniverseDefinitionTaskParams before) {
+    if (before == null || before.nodeDetailsSet == null || before.nodeDetailsSet.isEmpty()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot roll back edit universe: the checkpoint has no before topology");
+    }
     Set<String> beforeNames =
-        before.nodeDetailsSet == null
-            ? Set.of()
-            : before.nodeDetailsSet.stream()
-                .map(NodeDetails::getNodeName)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
+        before.nodeDetailsSet.stream()
+            .map(NodeDetails::getNodeName)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toSet());
 
     Set<NodeDetails> toDestroy = new HashSet<>();
     for (NodeDetails node : universe.getNodes()) {

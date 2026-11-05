@@ -14,12 +14,14 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <vector>
 
 #include <boost/function.hpp>
 
+#include "yb/common/cdr_metadata.h"
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/read_hybrid_time.h"
@@ -136,7 +138,8 @@ Status AssembleDocWriteBatch(
     InitMarkerBehavior init_marker_behavior,
     std::atomic<int64_t>* monotonic_counter,
     ReadRestartData* read_restart_data,
-    const std::string& table_name);
+    const std::string& table_name,
+    const std::optional<CdrMetadata>& cdr_metadata);
 
 // replicated_batches_state format does not matter at this point, because it is just
 // appended to appropriate value.
