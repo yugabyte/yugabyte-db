@@ -79,6 +79,8 @@ DECLARE_uint32(initial_tserver_registration_duration_secs);
 namespace yb::master {
 namespace {
 
+constexpr uint32_t kTServerListCounterLimit = 1u << 31;
+
 bool HasSameHostPort(const HostPortPB& lhs, const HostPortPB& rhs);
 
 bool HasSameHostPort(const google::protobuf::RepeatedPtrField<HostPortPB>& lhs,
@@ -298,7 +300,6 @@ Result<std::pair<TSDescriptorPtr, TSCountCallback>> TSManager::DoRegistrationMut
                  << new_ts_instance.ShortDebugString();
     l.Commit();
   }
-  StampTServerListChanges(registration_data.replaced_descs);
   if (registration_data.insert_into_map) {
     std::lock_guard map_l(map_lock_);
     InsertOrDie(&servers_by_id_, new_ts_instance.permanent_uuid(), registration_data.desc);
@@ -315,7 +316,9 @@ Result<std::pair<TSDescriptorPtr, TSCountCallback>> TSManager::DoRegistrationMut
     LOG(INFO) << "Re-registered known tablet server { " << new_ts_instance.ShortDebugString()
               << " }: " << registration.ShortDebugString();
   }
-  StampTServerListChange(*registration_data.desc);
+  auto& stamped = registration_data.replaced_descs;
+  stamped.push_back(registration_data.desc);
+  StampTServerListChanges(stamped);
 
   return std::make_pair(std::move(registration_data.desc), std::move(callback));
 }
@@ -472,13 +475,13 @@ Status TSManager::MarkUnresponsiveTServers(const LeaderEpoch& epoch) {
     std::vector<TSDescriptor*> updated_descs;
     std::vector<TSDescriptor::WriteLock> cow_locks;
     // Only a state change is visible to tservers; a lease-only change is not stamped.
-    std::vector<TSDescriptor*> newly_unresponsive_descs;
+    std::vector<TSDescriptorPtr> newly_unresponsive_descs;
     for (const auto& [id, desc] : servers_by_id_) {
       const bool was_live = desc->IsLive();
       auto lock_opt = desc->MaybeUpdateLiveness(current_time);
       if (lock_opt) {
         if (was_live && !(*lock_opt)->IsLive()) {
-          newly_unresponsive_descs.push_back(desc.get());
+          newly_unresponsive_descs.push_back(desc);
         }
         updated_descs.push_back(desc.get());
         cow_locks.push_back(std::move(lock_opt).value());
@@ -488,8 +491,8 @@ Status TSManager::MarkUnresponsiveTServers(const LeaderEpoch& epoch) {
     for (auto& l : cow_locks) {
       l.Commit();
     }
-    for (auto* desc : newly_unresponsive_descs) {
-      StampTServerListChange(*desc);
+    if (!newly_unresponsive_descs.empty()) {
+      StampTServerListChanges(newly_unresponsive_descs);
     }
   }
   return Status::OK();
@@ -498,12 +501,15 @@ Status TSManager::MarkUnresponsiveTServers(const LeaderEpoch& epoch) {
 Status TSManager::RunLoader(
     const CloudInfoPB& cloud_info, rpc::ProxyCache* proxy_cache, SysCatalogLoadingState& state) {
   {
-    // A new term makes every tserver's version foreign, so they all get the full list once.
+    // Every version issued before the reload must get a full list once.
     std::lock_guard l(version_lock_);
-    tserver_list_version_ = static_cast<uint64_t>(
-        static_cast<uint32_t>(state.epoch.leader_term)) << 32;
+    const auto term = static_cast<uint32_t>(state.epoch.leader_term);
+    const uint32_t counter = static_cast<uint32_t>(tserver_list_version_ >> 32) == term
+        ? static_cast<uint32_t>(tserver_list_version_) + 1 : 0;
+    tserver_list_version_ = static_cast<uint64_t>(term) << 32 | counter;
     tserver_list_changes_.clear();
-    tserver_list_horizon_ = 0;
+    tserver_list_stamps_.clear();
+    tserver_list_horizon_ = counter;
   }
   if (!FLAGS_persist_tserver_registry) {
     return Status::OK();
@@ -594,17 +600,33 @@ Status TSManager::RemoveTabletServer(
 
 void TSManager::StampTServerListChange(TSDescriptor& desc) {
   std::lock_guard l(version_lock_);
-  StampTServerListChangeUnlocked(
-      desc, static_cast<uint32_t>(++tserver_list_version_), MonoTime::Now());
+  StampTServerListChangeUnlocked(desc, NextTServerListCounterUnlocked(), MonoTime::Now());
 }
 
 void TSManager::StampTServerListChanges(const std::vector<TSDescriptorPtr>& descs) {
   std::lock_guard l(version_lock_);
-  const auto counter = static_cast<uint32_t>(++tserver_list_version_);
+  const auto counter = NextTServerListCounterUnlocked();
   const auto now = MonoTime::Now();
   for (const auto& desc : descs) {
     StampTServerListChangeUnlocked(*desc, counter, now);
   }
+}
+
+uint32_t TSManager::NextTServerListCounterUnlocked() {
+  // Restart before the counter can carry into the term bits; older versions are then "ahead".
+  if (static_cast<uint32_t>(tserver_list_version_) >= kTServerListCounterLimit) {
+    tserver_list_version_ &= ~uint64_t{std::numeric_limits<uint32_t>::max()};
+    tserver_list_changes_.clear();
+    tserver_list_stamps_.clear();
+    tserver_list_horizon_ = 0;
+  }
+  return static_cast<uint32_t>(++tserver_list_version_);
+}
+
+void TSManager::TEST_SetTServerListCounter(uint32_t counter) {
+  std::lock_guard l(version_lock_);
+  tserver_list_version_ =
+      (tserver_list_version_ & ~uint64_t{std::numeric_limits<uint32_t>::max()}) | counter;
 }
 
 void TSManager::StampTServerListChangeUnlocked(
@@ -613,21 +635,25 @@ void TSManager::StampTServerListChangeUnlocked(
   while (!tserver_list_changes_.empty() &&
          now - tserver_list_changes_.begin()->second.time > retention) {
     tserver_list_horizon_ = tserver_list_changes_.begin()->first;
+    for (const auto& id : tserver_list_changes_.begin()->second.ids) {
+      tserver_list_stamps_.erase(id);
+    }
     tserver_list_changes_.erase(tserver_list_changes_.begin());
   }
-  auto it = tserver_list_changes_.find(desc.tserver_list_stamp());
-  if (it != tserver_list_changes_.end()) {
+  auto [stamp, is_new] = tserver_list_stamps_.try_emplace(desc.id(), counter);
+  if (!is_new) {
+    auto it = tserver_list_changes_.find(stamp->second);
     it->second.ids.erase(desc.id());
     if (it->second.ids.empty()) {
       tserver_list_changes_.erase(it);
     }
+    stamp->second = counter;
   }
   auto [change, inserted] = tserver_list_changes_.try_emplace(counter);
   if (inserted) {
     change->second.time = now;
   }
   change->second.ids.insert(desc.id());
-  desc.set_tserver_list_stamp(counter);
 }
 
 void TSManager::FillTServerListUpdate(
