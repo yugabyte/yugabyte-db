@@ -58,6 +58,7 @@
 
 #include "yb/qlexpr/index.h"
 #include "yb/tablet/metadata.pb.h"
+#include "yb/tserver/tserver_types.pb.h"
 
 #include "yb/util/cow_object.h"
 #include "yb/util/monotime.h"
@@ -187,6 +188,14 @@ struct TabletReplica {
   bool should_disable_lb_move = false;
 
   std::string fs_data_dir;
+
+  // Tiered storage, from the tablet report (ReportedTabletPB): the tier the replica's SSTs are on
+  // (empty while a migration straddles two), its persisted target tier (empty without one) and
+  // where it stands relative to that target. All unset when the tserver runs without
+  // --enable_tiered_storage.
+  std::string current_storage_tier;
+  std::string target_storage_tier;
+  tserver::TierMigrationStatusPB::State tier_migration_state = tserver::TierMigrationStatusPB::NONE;
 
   TabletReplicaDriveInfo drive_info;
 

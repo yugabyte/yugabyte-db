@@ -1820,6 +1820,52 @@ Status ClusterAdminClient::ListTablets(
   return DoListTablets(*yb_client_, table_name, max_tablets, json, followers);
 }
 
+Status ClusterAdminClient::GetTableTierInfo(const YBTableName& table_name) {
+  std::vector<TabletId> tablet_uuids;
+  std::vector<master::TabletLocationsPB> locations;
+  RETURN_NOT_OK(TableTraits<YBTableName>::GetTablets(
+      *yb_client_, table_name, 0 /* max_tablets: all */, tablet_uuids, &locations));
+
+  const int kTierColWidth = 10;
+  std::cout << RightPadToUuidWidth("Tablet-UUID") << kColumnSep
+            << RightPadToUuidWidth("TS-UUID") << kColumnSep
+            << RightPadToWidth("Role", kTierColWidth) << kColumnSep
+            << RightPadToWidth("Tier", kTierColWidth) << kColumnSep
+            << RightPadToWidth("Target", kTierColWidth) << kColumnSep << "Migration" << std::endl;
+  size_t replicas = 0, on_target = 0, migrating = 0, failed = 0, untargeted = 0;
+  for (size_t i = 0; i < tablet_uuids.size(); ++i) {
+    for (const auto& replica : locations[i].replicas()) {
+      ++replicas;
+      // No tier while the replica straddles two: a migration is moving its files.
+      const auto tier = replica.has_current_storage_tier() ? replica.current_storage_tier() : "-";
+      std::string target = "-";
+      std::string migration = "-";
+      if (replica.has_target_storage_tier()) {
+        target = replica.target_storage_tier();
+        migration = tserver::TierMigrationStatusPB::State_Name(replica.tier_migration_state());
+        if (replica.tier_migration_state() == tserver::TierMigrationStatusPB::FAILED) {
+          ++failed;
+        } else if (replica.current_storage_tier() == target) {
+          ++on_target;
+        } else {
+          ++migrating;
+        }
+      } else {
+        ++untargeted;
+      }
+      std::cout << tablet_uuids[i] << kColumnSep
+                << replica.ts_info().permanent_uuid() << kColumnSep
+                << RightPadToWidth(PeerRole_Name(replica.role()), kTierColWidth) << kColumnSep
+                << RightPadToWidth(tier, kTierColWidth) << kColumnSep
+                << RightPadToWidth(target, kTierColWidth) << kColumnSep << migration << std::endl;
+    }
+  }
+  std::cout << replicas << " replica(s): " << on_target << " on their target tier, " << migrating
+            << " migrating, " << failed << " failed, " << untargeted << " without a target"
+            << std::endl;
+  return Status::OK();
+}
+
 Status ClusterAdminClient::LaunchBackfillIndexForTable(const YBTableName& table_name) {
   master::LaunchBackfillIndexForTableRequestPB req;
   table_name.SetIntoTableIdentifierPB(req.mutable_table_identifier());

@@ -48,6 +48,7 @@ using TSDescriptorVector = std::vector<TSDescriptorPtr>;
 class EncryptionManager;
 
 class AsyncAddServerTask;
+class RetryingRpcTask;
 class AsyncDeleteReplica;
 class AsyncRemoveServerTask;
 class AsyncTryStepDown;
@@ -162,6 +163,8 @@ using TablespaceIdToReplicationInfoMap =
 using LeaderStepDownFailureTimes = std::unordered_map<TabletServerId, MonoTime>;
 using TabletReplicaMap = std::unordered_map<TabletServerId, TabletReplica>;
 using TabletToTabletServerMap = std::unordered_map<TabletId, TabletServerId>;
+// Tiered storage: a tablet may have one migration in flight per replica.
+using TabletToTabletServersMap = std::unordered_map<TabletId, std::unordered_set<TabletServerId>>;
 using TabletInfoMap = std::map<TabletId, TabletInfoPtr, std::less<>>;
 struct cloud_hash;
 struct cloud_equal_to;

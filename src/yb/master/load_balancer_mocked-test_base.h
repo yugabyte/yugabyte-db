@@ -173,6 +173,17 @@ class LoadBalancerMockedBase : public YBTest {
     return cb_.state_->CanAddTabletToTabletServer(tablet_id, to_ts, from_ts);
   }
 
+  Result<bool> HandleTierMigrations(TabletId* out_tablet_id, TabletServerId* out_ts_uuid)
+      NO_THREAD_SAFETY_ANALYSIS /* disabling for controlled test */ {
+    return cb_.HandleTierMigrations(out_tablet_id, out_ts_uuid);
+  }
+
+  int TotalTierMigrationsInFlight() const {
+    return cb_.global_state_->total_tier_migrations_in_flight_;
+  }
+
+  bool TierMigrationRetriesEmpty() const { return cb_.tier_migration_retries_.empty(); }
+
   Result<bool> HandleLeaderMoves(
       TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts)
       NO_THREAD_SAFETY_ANALYSIS /* disabling for controlled test */ {

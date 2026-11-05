@@ -545,6 +545,7 @@ TEST_F(TierMigrationTest, DeferredFileDoesNotWakeReconciler) {
       .files_moved = nullptr,
       .files_failed = nullptr,
       .wake_reconciler = [&wakes] { ++wakes; },
+      .tier_state_changed = {},
   }));
   const uint64_t file_number = WriteFileWithKey(1);
 
@@ -763,6 +764,7 @@ TEST_F(TierMigrationTest, OnlyCleanManualPassWakesReconciler) {
       .files_moved = nullptr,
       .files_failed = nullptr,
       .wake_reconciler = [&wakes] { ++wakes; },
+      .tier_state_changed = {},
   }));
   auto wait_for_wakes = [&wakes](int expected) {
     return WaitFor([&wakes, expected]() { return wakes.load() == expected; },

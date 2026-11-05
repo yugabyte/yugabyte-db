@@ -27,7 +27,9 @@ YB_DEFINE_ENUM(ClusterBalancerWarningType,
     (kTableAddReplicas)
     (kTableLeaderMoves)
     (kTabletUnderReplicated)
-    (kTabletWrongPlacement));
+    (kTabletWrongPlacement)
+    (kTableTierMigrations)
+    (kReplicaOnTserverWithoutStorageTier));
 
 // Information representing the activity in one iteration of the cluster balancer.
 class ClusterBalancerActivityInfo {

@@ -23,6 +23,7 @@
 #include "yb/tablet/tablet_fwd.h"
 
 #include "yb/tserver/tserver_fwd.h"
+#include "yb/tserver/tserver_types.pb.h"
 
 #include "yb/util/metrics_fwd.h"
 #include "yb/util/status_fwd.h"
@@ -60,6 +61,12 @@ struct TierReconcilePassStats {
 // It is also the only thing that decides a tablet is done (a scan of its own found nothing to
 // move) or that retrying is pointless (TierMigrationStatus::State::kFailed after
 // FLAGS_tier_migration_max_consecutive_failed_passes).
+// The wire form of a tablet's migration status, shared by the tablet report
+// (ReportedTabletPB.tier_migration_state) and the AlterTabletTier / GetTabletTierInfo responses.
+TierMigrationStatusPB::State ToTierMigrationStatePB(const tablet::TierMigrationStatus& status);
+void FillTierMigrationStatusPB(
+    const tablet::TierMigrationStatus& status, TierMigrationStatusPB* pb);
+
 class TierMigrationReconciler {
  public:
   explicit TierMigrationReconciler(TSTabletManager* ts_tablet_manager);

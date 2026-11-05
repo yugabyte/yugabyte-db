@@ -266,6 +266,7 @@ TAG_FLAG(catalog_manager_inject_latency_in_delete_table_ms, hidden);
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
 
 DECLARE_bool(enable_qos);
+DECLARE_bool(enable_tiered_storage);
 DEFINE_RUNTIME_int32(qos_max_db_count, 0,
     "Maximum number of YSQL databases allowed per cluster when QoS is enabled "
     "(enable_qos=true). CREATE DATABASE is rejected when the non-template database "
@@ -12576,6 +12577,16 @@ Result<std::shared_ptr<AsyncAddServerTask>> CatalogManager::ScheduleAddServerTas
   return task;
 }
 
+Result<std::shared_ptr<RetryingRpcTask>> CatalogManager::ScheduleAlterTabletTierTask(
+    const TabletInfoPtr& tablet, const TabletServerId& ts_uuid, const std::string& target_tier,
+    const LeaderEpoch& epoch, const std::string& reason) {
+  auto task = std::make_shared<AsyncAlterTabletTier>(
+      master_, AsyncTaskPool(), tablet, ts_uuid, target_tier, epoch, reason);
+  tablet->table()->AddTask(task);
+  RETURN_NOT_OK(ScheduleTask(task));
+  return task;
+}
+
 void CatalogManager::ExtractTabletsToProcess(
     TabletInfos *tablets_to_delete,
     TableToTabletInfos *tablets_to_process) {
@@ -12983,6 +12994,13 @@ namespace {
 // A tserver belongs to the placement that names its placement uuid; a placement without one is
 // the live placement, whose tservers have an empty placement uuid.
 bool TsInPlacement(const PlacementInfoPB& placement_info, const TSDescriptor& ts_desc) {
+  // A placement that names a storage tier needs a tserver with a disk on it. With tiered storage
+  // off the tier is not acted on: the tablespace refresh already drops it, and a placement that
+  // still carries one (built by a client directly) is placed as untiered.
+  if (FLAGS_enable_tiered_storage && !placement_info.storage_tier().empty() &&
+      !ts_desc.HasStorageTier(placement_info.storage_tier())) {
+    return false;
+  }
   if (placement_info.has_placement_uuid()) {
     return ts_desc.placement_uuid() == placement_info.placement_uuid();
   }
@@ -13644,6 +13662,13 @@ Status CatalogManager::BuildLocationsForTablet(
       replica_pb->set_role(tablet_replica.role);
       replica_pb->set_member_type(tablet_replica.member_type);
       replica_pb->set_state(tablet_replica.state);
+      if (!tablet_replica.current_storage_tier.empty()) {
+        replica_pb->set_current_storage_tier(tablet_replica.current_storage_tier);
+      }
+      if (!tablet_replica.target_storage_tier.empty()) {
+        replica_pb->set_target_storage_tier(tablet_replica.target_storage_tier);
+        replica_pb->set_tier_migration_state(tablet_replica.tier_migration_state);
+      }
       TSInfoPB* out_ts_info = replica_pb->mutable_ts_info();
       out_ts_info->set_permanent_uuid(ts_uuid);
       auto strong_ts_desc_ptr = tablet_replica.ts_desc.lock();
@@ -14082,6 +14107,22 @@ Status CatalogManager::ValidateReplicationInfo(
     placement_info.set_placement_uuid(VERIFY_RESULT(placement_uuid()));
   }
   GetTsDescsFromPlacementInfo(placement_info, all_ts_descs, &ts_descs);
+  // When the tier is why nothing qualifies, say so: the count check below would only report that
+  // zero tablet servers are alive. Gated like that check. "Registered" also covers tservers whose
+  // tiers are unknown, which create-time placement does not use.
+  const auto& storage_tier = placement_info.storage_tier();
+  if (FLAGS_enable_tiered_storage && FLAGS_catalog_manager_check_ts_count_for_create_table &&
+      !storage_tier.empty() && ts_descs.empty() && !all_ts_descs.empty() &&
+      std::none_of(all_ts_descs.begin(), all_ts_descs.end(), [&](const auto& ts_desc) {
+        return ts_desc->HasStorageTier(storage_tier);
+      })) {
+    return SetupError(
+        resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO,
+        STATUS_FORMAT(
+            InvalidArgument,
+            "No live tablet server has registered a data directory on storage tier $0",
+            storage_tier));
+  }
   Status s = CheckValidPlacementInfo(placement_info, ts_descs, resp);
   if (!s.ok()) {
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO, s);

@@ -695,6 +695,42 @@ class AsyncSplitTablet : public AsyncTabletLeaderTask {
   tserver::SplitTabletResponsePB resp_;
 };
 
+// Tiered storage: tells one replica which storage tier its SSTs belong on (AlterTabletTier).
+// Started by the cluster balancer, one task per replica, addressed to that replica's tserver:
+// tiering is per replica and nothing goes through Raft. The reply means "intent persisted, first
+// pass queued": the tserver's reconciler finishes the move and the tablet report carries the
+// outcome, so the task completes on the reply and nothing polls.
+class AsyncAlterTabletTier : public RetrySpecificTSRpcTaskWithTable {
+ public:
+  AsyncAlterTabletTier(
+      Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
+      const TabletServerId& ts_uuid, std::string target_tier, LeaderEpoch epoch,
+      std::string reason);
+
+  server::MonitoredTaskType type() const override {
+    return server::MonitoredTaskType::kAlterTabletTier;
+  }
+
+  std::string type_name() const override { return "Alter Tablet Tier"; }
+
+  std::string description() const override;
+
+  bool started_by_lb() const override { return true; }
+
+  TabletId tablet_id() const override;
+  const TabletServerId& ts_uuid() const { return permanent_uuid_; }
+  const std::string& target_tier() const { return target_tier_; }
+
+ private:
+  void HandleResponse(int attempt) override;
+  bool SendRequest(int attempt) override;
+
+  const TabletInfoPtr tablet_;
+  const std::string target_tier_;
+  const std::string reason_;
+  tserver::AlterTabletTierResponsePB resp_;
+};
+
 class AsyncTsTestRetry : public RetrySpecificTSRpcTask {
  public:
   AsyncTsTestRetry(

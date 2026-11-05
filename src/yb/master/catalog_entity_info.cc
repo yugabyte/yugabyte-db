@@ -109,17 +109,23 @@ string TabletReplica::ToString() const {
       "member_type: $3, "
       "should_disable_lb_move: $4, "
       "fs_data_dir: $5, "
-      "total_space_used (excluding snapshots): $6, "
-      "total_space_used (including snapshots): $7, "
-      "full_compaction_state: $8, "
-      "last_full_compaction_time: $9, "
-      "time since update: $10ms }",
+      "storage_tier: $6, "
+      "target_storage_tier: $7, "
+      "tier_migration_state: $8, "
+      "total_space_used (excluding snapshots): $9, "
+      "total_space_used (including snapshots): $10, "
+      "full_compaction_state: $11, "
+      "last_full_compaction_time: $12, "
+      "time since update: $13ms }",
       ts_uuid,
       tablet::RaftGroupStatePB_Name(state),
       PeerRole_Name(role),
       consensus::PeerMemberType_Name(member_type),
       should_disable_lb_move,
       fs_data_dir,
+      current_storage_tier,
+      target_storage_tier,
+      tserver::TierMigrationStatusPB::State_Name(tier_migration_state),
       drive_info.sst_files_size + drive_info.wal_files_size,
       drive_info.total_size,
       tablet::FullCompactionState_Name(full_compaction_status.full_compaction_state),
@@ -133,6 +139,9 @@ void TabletReplica::UpdateFrom(const TabletReplica& source) {
   member_type = source.member_type;
   should_disable_lb_move = source.should_disable_lb_move;
   fs_data_dir = source.fs_data_dir;
+  current_storage_tier = source.current_storage_tier;
+  target_storage_tier = source.target_storage_tier;
+  tier_migration_state = source.tier_migration_state;
   full_compaction_status = source.full_compaction_status;
   time_updated = MonoTime::Now();
 }

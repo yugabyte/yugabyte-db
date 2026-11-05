@@ -305,6 +305,15 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
     }
     auto& meta_ts = per_ts_meta_[ts_uuid];
 
+    // Tiered storage: a replica still moving toward its target counts against the migration
+    // caps until the tserver reports it on the target tier or gives up (FAILED).
+    if (!replica.target_storage_tier.empty() &&
+        replica.current_storage_tier != replica.target_storage_tier &&
+        replica.tier_migration_state != tserver::TierMigrationStatusPB::FAILED) {
+      ++global_state_->tier_migrations_in_flight_[ts_uuid];
+      ++global_state_->total_tier_migrations_in_flight_;
+    }
+
     // If the TS of this replica is deemed DEAD then perform LBing only if it is blacklisted.
     if (check_ts_liveness_ && !meta_ts.descriptor->IsLiveAndHasReported()) {
       if (!global_state_->blacklisted_servers_.count(ts_uuid)) {

@@ -5424,26 +5424,43 @@ Status Tablet::SetTierMigrationTarget(const std::string& target_tier, uint32_t t
   }
   RETURN_NOT_OK(LookupTierDir(target_path_id));
 
+  bool changed = false;
   {
     std::lock_guard lock(tier_target_mutex_);
     if (metadata()->target_storage_tier() != target_tier ||
         metadata()->target_tier_path_id() != target_path_id) {
       RETURN_NOT_OK(metadata()->SetTargetTier(target_tier, target_path_id));
+      changed = true;
     }
     RETURN_NOT_OK_PREPEND(
         regular_db_->SetOptions({{"target_path_id", std::to_string(target_path_id)}}),
         "Failed to set target_path_id on regular DB");
   }
 
-  // Intent (re)asserted: convergence is unproven again, and earlier failures no longer count.
-  std::lock_guard lock(tier_migration_mutex_);
-  tier_migration_status_.state = TierMigrationStatus::State::kInProgress;
-  tier_migration_status_.consecutive_failed_passes = 0;
-  tier_migration_status_.last_error = Status::OK();
+  {
+    // Intent (re)asserted: convergence is unproven again, and earlier failures no longer count.
+    std::lock_guard lock(tier_migration_mutex_);
+    changed = changed || tier_migration_status_.state != TierMigrationStatus::State::kInProgress;
+    tier_migration_status_.state = TierMigrationStatus::State::kInProgress;
+    tier_migration_status_.consecutive_failed_passes = 0;
+    tier_migration_status_.last_error = Status::OK();
+  }
+  if (changed) {
+    NotifyTierStateChanged();
+  }
   return Status::OK();
 }
 
 Result<TierReconcileResult> Tablet::RunTierMigrationPass(
+    const TierReconcileOptions& options, ReconcilerPass reconciler_pass) {
+  auto result = DoRunTierMigrationPass(options, reconciler_pass);
+  if (result.ok() && result->state_changed) {
+    NotifyTierStateChanged();
+  }
+  return result;
+}
+
+Result<TierReconcileResult> Tablet::DoRunTierMigrationPass(
     const TierReconcileOptions& options, ReconcilerPass reconciler_pass) {
   using State = TierMigrationStatus::State;
 
@@ -5711,6 +5728,12 @@ void Tablet::WakeTierMigrationReconciler() {
   }
 }
 
+void Tablet::NotifyTierStateChanged() {
+  if (tier_migration_hooks_ && tier_migration_hooks_->tier_state_changed) {
+    tier_migration_hooks_->tier_state_changed(tablet_id());
+  }
+}
+
 Result<TabletTierInfo> Tablet::GetTierInfo() const {
   // Keeps regular_db_ alive for the GetLiveFilesMetaData scan below: a concurrent tablet
   // shutdown/delete waits for this to be released before destroying the DB.
@@ -5736,12 +5759,15 @@ Result<TabletTierInfo> Tablet::GetTierInfo() const {
     info.tier_paths.push_back(stats);
   }
 
-  // Home tier (path_id 0) is where the first flush will land absent any migration, so an empty
-  // tablet (no live SSTs yet, e.g. still bootstrapping or just created and never flushed) is
-  // trivially "on" its home tier rather than "none". Overwritten below once there is at
-  // least one live SST to derive current_tier from directly.
+  // An empty tablet (no live SSTs yet: still bootstrapping, or never flushed) is trivially "on"
+  // the tier its next flush lands on rather than "none": the target's disk when a target is set
+  // (the home disk when this node has none on that tier, see ResolveTargetTierPathId), the home
+  // disk (path_id 0) otherwise. This agrees with the reconciler, which declares such a tablet
+  // converged. Overwritten below once there is at least one live SST to derive current_tier
+  // from directly.
+  const uint32_t next_flush_path_id = info.target_tier.empty() ? 0 : info.target_tier_path_id;
   for (const auto& stats : info.tier_paths) {
-    if (stats.is_home) {
+    if (stats.path_id == next_flush_path_id) {
       info.current_tier = stats.tier;
       break;
     }

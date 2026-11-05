@@ -11,6 +11,7 @@
 // under the License.
 //
 
+#include <map>
 #include <set>
 
 #include <gflags/gflags_declare.h>
@@ -21,6 +22,7 @@
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/master/load_balancer_mocked-test_base.h"
 #include "yb/tablet/tablet_types.pb.h"
+#include "yb/tserver/tserver_types.pb.h"
 
 namespace yb {
 namespace master {
@@ -1579,6 +1581,191 @@ TEST_F(OptimalLoadDistributionTest, CalculateTableLoadDifference) {
   current_load = {{"ts0", 1}, {"ts1", 1}};
   goal_load =    {{"ts1", 1}, {"ts2", 1}};
   ASSERT_EQ(CalculateTableLoadDifference(current_load, goal_load), 1);
+}
+
+
+// ---------------------------------------------------------------------------
+// Tiered storage: the balancer tells replicas off their placement's tier to migrate.
+// ---------------------------------------------------------------------------
+class LoadBalancerTierMigrationTest : public LoadBalancerMockedTest {
+ protected:
+  // Re-registers a tserver with the given storage tiers, as its registration heartbeat would.
+  void SetTsStorageTiers(
+      const std::shared_ptr<TSDescriptor>& ts_desc, const std::vector<std::string>& tiers) {
+    auto registration = ts_desc->GetTSRegistrationPB();
+    registration.mutable_common()->clear_storage_tiers();
+    for (const auto& tier : tiers) {
+      registration.mutable_common()->add_storage_tiers(tier);
+    }
+    auto lock = ASSERT_RESULT(ts_desc->UpdateRegistration(
+        ts_desc->GetNodeInstancePB(), registration, RegisteredThroughHeartbeat::kTrue));
+    lock.Commit();
+  }
+
+  // What the tserver last reported for one replica.
+  void SetReplicaTier(
+      TabletInfo* tablet, const TabletServerId& ts_uuid, const std::string& current_tier,
+      const std::string& target_tier,
+      tserver::TierMigrationStatusPB::State state = tserver::TierMigrationStatusPB::NONE) {
+    auto replicas = std::const_pointer_cast<TabletReplicaMap>(tablet->GetReplicaLocations());
+    auto& replica = replicas->at(ts_uuid);
+    replica.current_storage_tier = current_tier;
+    replica.target_storage_tier = target_tier;
+    replica.tier_migration_state = state;
+    tablet->SetReplicaLocations(replicas);
+  }
+
+  // Three tservers with ssd and hdd disks, four tablets with a replica on each, every replica
+  // born on ssd with no target, and a placement that asks for hdd.
+  void PrepareTieredState() {
+    PrepareTestStateSingleAz();
+    for (const auto& ts_desc : ts_descs_) {
+      SetTsStorageTiers(ts_desc, {"ssd", "hdd"});
+      for (const auto& tablet : tablets_) {
+        SetReplicaTier(tablet.get(), ts_desc->permanent_uuid(), "ssd", "");
+      }
+    }
+    replication_info_.mutable_live_replicas()->set_storage_tier("hdd");
+    cb_.options_.kMaxConcurrentTierMigrations = 100;
+    cb_.options_.kMaxConcurrentTierMigrationsPerTs = 100;
+  }
+
+  // Runs the step until it sends nothing more; returns how many AlterTabletTier it sent.
+  Result<int> RunTierMigrations() NO_THREAD_SAFETY_ANALYSIS {
+    int sent = 0;
+    TabletId tablet_id;
+    TabletServerId ts_uuid;
+    while (VERIFY_RESULT(HandleTierMigrations(&tablet_id, &ts_uuid))) {
+      ++sent;
+    }
+    return sent;
+  }
+
+  std::map<TabletServerId, int> SentPerTs() const {
+    std::map<TabletServerId, int> counts;
+    for (const auto& sent : cb_.tier_migrations_sent_) {
+      ++counts[sent.ts_uuid];
+    }
+    return counts;
+  }
+};
+
+// Every replica that does not target its placement's tier is told to, once.
+TEST_F(LoadBalancerTierMigrationTest, SendsToEveryReplicaOffItsTier) {
+  PrepareTieredState();
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), total_num_tablets_);
+  for (const auto& sent : cb_.tier_migrations_sent_) {
+    ASSERT_EQ(sent.target_tier, "hdd");
+  }
+  // The ones just sent are pending, so another pass in the same run sends nothing.
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 0);
+}
+
+// A placement without a tier never migrates anything.
+TEST_F(LoadBalancerTierMigrationTest, UntieredPlacementSendsNothing) {
+  PrepareTieredState();
+  replication_info_.mutable_live_replicas()->clear_storage_tier();
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 0);
+}
+
+// Replicas already targeting the tier are left alone, and the ones still moving count against the
+// in-flight caps.
+TEST_F(LoadBalancerTierMigrationTest, ReplicasTargetingTheTierAreLeftAlone) {
+  PrepareTieredState();
+  // Tablet 0: one replica converged, one still moving, one that straddles both tiers.
+  const auto& tablet = tablets_[0];
+  SetReplicaTier(tablet.get(), ts_descs_[0]->permanent_uuid(), "hdd", "hdd",
+                 tserver::TierMigrationStatusPB::DONE);
+  SetReplicaTier(tablet.get(), ts_descs_[1]->permanent_uuid(), "ssd", "hdd",
+                 tserver::TierMigrationStatusPB::IN_PROGRESS);
+  SetReplicaTier(tablet.get(), ts_descs_[2]->permanent_uuid(), "", "hdd",
+                 tserver::TierMigrationStatusPB::IN_PROGRESS);
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(TotalTierMigrationsInFlight(), 2);
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), total_num_tablets_ - 3);
+  for (const auto& sent : cb_.tier_migrations_sent_) {
+    ASSERT_NE(sent.tablet_id, tablet->tablet_id());
+  }
+
+  // With the cluster cap at what is already in flight, nothing more is sent.
+  cb_.tier_migrations_sent_.clear();
+  cb_.options_.kMaxConcurrentTierMigrations = 2;
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 0);
+}
+
+// The cluster and per-tserver caps bound what one run adds to what is in flight.
+TEST_F(LoadBalancerTierMigrationTest, CapsBoundWhatIsSent) {
+  PrepareTieredState();
+  cb_.options_.kMaxConcurrentTierMigrations = 5;
+  cb_.options_.kMaxConcurrentTierMigrationsPerTs = 2;
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 5);
+  for (const auto& [ts_uuid, count] : SentPerTs()) {
+    ASSERT_LE(count, 2) << ts_uuid;
+  }
+}
+
+// An AlterTabletTier task still pending from an earlier run is a migration in flight: its replica
+// is not told again and it counts against the caps.
+TEST_F(LoadBalancerTierMigrationTest, PendingTaskCountsAsInFlight) {
+  PrepareTieredState();
+  const auto& tablet_id = tablets_[0]->tablet_id();
+  const auto& ts_uuid = ts_descs_[0]->permanent_uuid();
+  cb_.pending_tier_migration_tasks_[tablet_id].insert(ts_uuid);
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(TotalTierMigrationsInFlight(), 1);
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), total_num_tablets_ - 1);
+  for (const auto& sent : cb_.tier_migrations_sent_) {
+    ASSERT_FALSE(sent.tablet_id == tablet_id && sent.ts_uuid == ts_uuid);
+  }
+}
+
+// A replica whose tserver gave up (FAILED) is re-sent the intent, then left alone until its
+// backoff expires.
+TEST_F(LoadBalancerTierMigrationTest, FailedReplicaIsRetriedWithBackoff) {
+  PrepareTieredState();
+  for (const auto& tablet : tablets_) {
+    for (const auto& ts_desc : ts_descs_) {
+      SetReplicaTier(tablet.get(), ts_desc->permanent_uuid(), "hdd", "hdd",
+                     tserver::TierMigrationStatusPB::DONE);
+    }
+  }
+  const auto& tablet = tablets_[0];
+  const auto& ts_uuid = ts_descs_[0]->permanent_uuid();
+  SetReplicaTier(tablet.get(), ts_uuid, "ssd", "hdd", tserver::TierMigrationStatusPB::FAILED);
+
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 1);
+  ASSERT_EQ(cb_.tier_migrations_sent_[0].tablet_id, tablet->tablet_id());
+  ASSERT_EQ(cb_.tier_migrations_sent_[0].ts_uuid, ts_uuid);
+
+  // Still FAILED on the next run: the backoff holds the re-send back.
+  cb_.tier_migrations_sent_.clear();
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 0);
+
+  cb_.TEST_ExpireTierMigrationRetries();
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 1);
+
+  // Once the replica reports anything else, the schedule is dropped.
+  SetReplicaTier(tablet.get(), ts_uuid, "hdd", "hdd", tserver::TierMigrationStatusPB::DONE);
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 0);
+  ASSERT_TRUE(TierMigrationRetriesEmpty());
+}
+
+// A tserver with no disk on the tier cannot migrate there: its replicas are skipped rather than
+// told every run, and the others are still told.
+TEST_F(LoadBalancerTierMigrationTest, TserverWithoutTheTierIsSkipped) {
+  PrepareTieredState();
+  SetTsStorageTiers(ts_descs_[0], {"ssd"});
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), total_num_tablets_ - NumTablets());
+  ASSERT_EQ(SentPerTs().count(ts_descs_[0]->permanent_uuid()), 0u);
 }
 
 } // namespace master

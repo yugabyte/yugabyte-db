@@ -2502,6 +2502,12 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const consensus::ConsensusStatePB& cstate, const std::string& change_config_ts_uuid,
       const LeaderEpoch& epoch, const std::string& reason);
 
+  // Tiered storage: start a task that tells the replica of 'tablet' on 'ts_uuid' to move its
+  // SSTs to 'target_tier' (AlterTabletTier).
+  Result<std::shared_ptr<RetryingRpcTask>> ScheduleAlterTabletTierTask(
+      const TabletInfoPtr& tablet, const TabletServerId& ts_uuid, const std::string& target_tier,
+      const LeaderEpoch& epoch, const std::string& reason);
+
   // Abort creation of 'table': abort all mutation for TabletInfo and
   // TableInfo objects (releasing all COW locks), abort all pending
   // tasks associated with the table, and erase any state related to

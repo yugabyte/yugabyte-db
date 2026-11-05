@@ -372,6 +372,11 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   void MarkTabletDirty(const TabletId& tablet_id,
                        std::shared_ptr<consensus::StateChangeContext> context);
 
+  // MarkTabletDirty for a change with no consensus event behind it (a tier migration event), so
+  // the stateful-service callbacks that follow a consensus change are not run.
+  void MarkTabletReportDirty(const TabletId& tablet_id,
+                             std::shared_ptr<consensus::StateChangeContext> context);
+
   void MarkTabletBeingRemoteBootstrapped(const TabletId& tablet_id, const TableId& table_id);
 
   void UnmarkTabletBeingRemoteBootstrapped(const TabletId& tablet_id, const TableId& table_id);

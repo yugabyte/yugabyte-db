@@ -98,6 +98,9 @@ class ClusterLoadBalancer {
   // Sets whether to enable or disable the cluster balancer, on demand.
   void SetLoadBalancerEnabled(bool is_enabled) { is_enabled_ = is_enabled; }
 
+  // Tiered storage, tests only: make every FAILED replica's re-send due now.
+  void TEST_ExpireTierMigrationRetries();
+
   bool IsLoadBalancerEnabled() const;
 
   bool CanBalanceGlobalLoad() const;
@@ -151,7 +154,8 @@ class ClusterLoadBalancer {
   virtual void GetPendingTasks(const TableInfoPtr& table,
                                TabletToTabletServerMap* add_replica_tasks,
                                TabletToTabletServerMap* remove_replica_tasks,
-                               TabletToTabletServerMap* stepdown_leader_tasks);
+                               TabletToTabletServerMap* stepdown_leader_tasks,
+                               TabletToTabletServersMap* tier_migration_tasks);
 
   // Issue the calls to CatalogManager to change the config for this particular tablet.
   virtual Status SendAddReplica(
@@ -163,6 +167,10 @@ class ClusterLoadBalancer {
       const TabletInfoPtr& tablet, const TabletServerId& ts_uuid,
       bool also_remove_replica, const std::string& reason,
       const TabletServerId& new_leader_ts_uuid = "");
+  // Tiered storage: tell the replica of 'tablet' on 'ts_uuid' to move its SSTs to 'target_tier'.
+  virtual Status SendAlterTabletTier(
+      const TabletInfoPtr& tablet, const TabletServerId& ts_uuid, const std::string& target_tier,
+      const std::string& reason);
 
   // If type_ is live, return PRE_VOTER, otherwise, return PRE_OBSERVER.
   consensus::PeerMemberType GetDefaultMemberType();
@@ -191,6 +199,11 @@ class ClusterLoadBalancer {
   // one that is less loaded.
   //
   // Returns true if a move was actually made.
+  // Tiered storage: sends one AlterTabletTier to a replica of this table whose tablespace asks
+  // for another tier than the replica targets, or whose migration the tserver gave up on and
+  // whose re-send is due. Bounded by the in-flight caps. Returns true if one was sent.
+  Result<bool> HandleTierMigrations(TabletId* out_tablet_id, TabletServerId* out_ts_uuid);
+
   Result<bool> HandleAddReplicas(
       TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts);
 
@@ -433,6 +446,15 @@ class ClusterLoadBalancer {
   void UpdatePerRunMetrics();
 
   LeaderEpoch epoch_;
+
+  // Tiered storage: re-send schedule for replicas whose migration the tserver gave up on
+  // (FAILED), keyed by tablet id and tserver uuid. An entry is dropped once the replica reports
+  // anything but FAILED. Only the balancer's own thread touches it.
+  struct TierMigrationRetry {
+    MonoTime next_attempt;
+    MonoDelta backoff;
+  };
+  std::unordered_map<std::string, TierMigrationRetry> tier_migration_retries_;
 
   DISALLOW_COPY_AND_ASSIGN(ClusterLoadBalancer);
 };

@@ -77,6 +77,7 @@
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
+#include "yb/util/storage_tier.h"
 #include "yb/util/string_util.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_tablespace_util.h"
@@ -401,6 +402,32 @@ TEST_F(MasterPathHandlersItest, TestDeadTServers) {
         return verifyTServersAlive(3, result.ToString());
       },
       10s /* timeout */, "Waiting for tserver heartbeat to master"));
+}
+
+// A default cluster has unlabeled data dirs, so every tserver registers kDefaultStorageTier only,
+// and both the HTML table and the JSON listing show it.
+TEST_F(MasterPathHandlersItest, TabletServersListStorageTiers) {
+  const auto cells =
+      ASSERT_RESULT(GetHtmlTableColumn("/tablet-servers", "[^']*_tserver", "Storage Tiers"));
+  ASSERT_EQ(cells.size(), cluster_->num_tablet_servers());
+  for (const auto& cell : cells) {
+    ASSERT_EQ(cell, kDefaultStorageTier);
+  }
+
+  faststring result;
+  ASSERT_OK(GetUrl("/api/v1/tablet-servers", &result));
+  JsonDocument doc;
+  auto json_obj = ASSERT_RESULT(doc.Parse(result.ToString()));
+  size_t tserver_count = 0;
+  for (const auto& [cluster_uuid, cluster_json] : ASSERT_RESULT(json_obj.GetObject())) {
+    for (const auto& [host_port, tserver_json] : ASSERT_RESULT(cluster_json.GetObject())) {
+      const auto tiers = ASSERT_RESULT(tserver_json["storage_tiers"].GetArray());
+      ASSERT_EQ(tiers.size(), 1u) << ASSERT_RESULT(tserver_json.ToString());
+      ASSERT_EQ(ASSERT_RESULT(tiers[0].GetString()), kDefaultStorageTier);
+      ++tserver_count;
+    }
+  }
+  ASSERT_EQ(tserver_count, cluster_->num_tablet_servers());
 }
 
 TEST_F(MasterPathHandlersItest, TestTabletReplicationEndpoint) {

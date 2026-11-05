@@ -1497,6 +1497,15 @@ TabletReplica MasterHeartbeatServiceImpl::CreateNewReplicaForLocalMemory(
   if (report.has_fs_data_dir()) {
     replica.fs_data_dir = report.fs_data_dir();
   }
+  if (report.has_current_storage_tier()) {
+    replica.current_storage_tier = report.current_storage_tier();
+  }
+  if (report.has_target_storage_tier()) {
+    replica.target_storage_tier = report.target_storage_tier();
+  }
+  if (report.has_tier_migration_state()) {
+    replica.tier_migration_state = report.tier_migration_state();
+  }
   replica.state = state;
   replica.ts_desc = ts_desc;
   if (!ts_desc->registered_through_heartbeat()) {

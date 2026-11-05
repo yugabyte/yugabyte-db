@@ -28,6 +28,7 @@ import "yb/master/master_types.proto";
 import "yb/rpc/service.proto";
 import "yb/tablet/tablet_types.proto";
 import "yb/tserver/tserver.proto";
+import "yb/tserver/tserver_types.proto";
 import "yb/common/common_net.proto";
 
 // Common information sent with every request from the tablet server
@@ -63,6 +64,20 @@ message ReportedTabletPB {
 
   // Mapping of table ids to their respective schema version numbers.
   map<string, uint32> table_to_version = 11;
+
+  // Tiered storage, set only by a tserver running with --enable_tiered_storage: where this
+  // replica's SSTs are and where they are headed, for the master to compare with the tier its
+  // tablespace asks for. The tserver re-reports the tablet whenever either changes.
+  // The tier every live SST sits on. An empty tablet is on the tier its next flush lands on: the
+  // target's disk when a target is set, the home disk otherwise. Unset while a migration
+  // straddles two tiers.
+  optional string current_storage_tier = 12;
+  // The persisted placement intent (superblock target_storage_tier); unset when there is none.
+  optional string target_storage_tier = 13;
+  // Where the replica stands relative to target_storage_tier; set only with a target. NONE until
+  // a pass has looked at the tablet since the tserver started. DONE and FAILED come only from the
+  // reconciler.
+  optional tserver.TierMigrationStatusPB.State tier_migration_state = 14;
 }
 
 // Sent by the tablet server to report the set of tablets hosted by that TS.

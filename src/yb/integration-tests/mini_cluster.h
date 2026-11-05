@@ -114,6 +114,12 @@ struct MiniClusterOptions {
   // By default, we create max(2, num_tablet_servers) tablets per transaction table. If this is
   // set to a non-zero value, this value is used instead.
   int transaction_table_num_tablets = 0;
+
+  // Tiered storage: the storage tier label of each drive, by drive index, applied to every TS
+  // (as --fs_data_dirs=path:tier would). Drives past the end of the list stay unlabeled. Needs
+  // num_drives > 1 and --enable_tiered_storage. The default initializer lets designated
+  // initializers of this struct keep omitting it.
+  std::vector<std::string> ts_drive_storage_tiers{};
 };
 
 // An in-process cluster with a MiniMaster and a configurable
