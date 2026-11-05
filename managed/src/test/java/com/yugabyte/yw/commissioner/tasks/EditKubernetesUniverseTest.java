@@ -18,6 +18,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -47,6 +48,7 @@ import com.yugabyte.yw.common.DeltaEvaluator;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.NodeDetailsArrayComparator;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ProviderInitializer;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.ShellResponse;
@@ -1141,6 +1143,27 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     // submit() calls validateParams synchronously; should not throw for volume-only increase
     UUID taskUUID = commissioner.submit(TaskType.EditKubernetesUniverse, taskParams);
     assertNotNull(taskUUID);
+  }
+
+  @Test
+  public void testEditCannotTurnOnManagedLoadBalancer() {
+    setupUniverseSingleAZ(/* setMasters */ true);
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    UniverseDefinitionTaskParams taskParams = defaultUniverse.getUniverseDetails();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.expectedUniverseVersion = defaultUniverse.getVersion();
+    UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig lbConfig =
+        new UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig();
+    lbConfig.setEnablePrivate(true);
+    taskParams.getPrimaryCluster().userIntent.setManagedLoadBalancer(lbConfig);
+
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> commissioner.submit(TaskType.EditKubernetesUniverse, taskParams));
+
+    assertEquals(
+        "Managed load balancers are not supported for Kubernetes universes", e.getMessage());
   }
 
   private void mockMetrics(

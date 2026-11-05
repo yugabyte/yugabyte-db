@@ -4743,17 +4743,22 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         confGetter.getConfForScope(
             Customer.get(universe.getCustomerId()), CustomerConfKeys.cloudEnabled);
     Set<ServerType> tserver = EnumSet.of(ServerType.TSERVER);
+    boolean rebinds = false;
     for (Cluster cluster : universe.getUniverseDetails().clusters) {
       if (!clusterUuids.contains(cluster.uuid)
           || !GFlagsUtil.listensOnLoadBalancerAddress(cluster)) {
         continue;
       }
+      rebinds = true;
       for (NodeDetails node : universe.getNodesInCluster(cluster.uuid)) {
         if (!node.isTserver
             || node.state != NodeState.Live
             || !needsProxyRebind(universe, cluster, node, cloudEnabled)) {
           continue;
         }
+        // A rollback can't undo a restart: it would leave proxies on 0.0.0.0, and a tserver whose
+        // restart failed stays leader-blacklisted until a retry clears it below.
+        createMarkRollbackUnsafeTaskOnce();
         List<NodeDetails> nodes = Collections.singletonList(node);
         stopProcessesOnNodes(
             nodes,
@@ -4772,6 +4777,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             true /* wasStopped */,
             true /* waitForServerReady */);
       }
+    }
+    // A restart that failed after its stop left the tserver leader-blacklisted, and a retry skips
+    // it once its proxies match.
+    if (rebinds && !isFirstTry()) {
+      clearLeaderBlacklistIfAvailable(SubTaskGroupType.StartingNodeProcesses);
     }
   }
 

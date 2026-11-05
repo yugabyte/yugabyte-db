@@ -10,8 +10,6 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import static play.mvc.Http.Status.BAD_REQUEST;
-
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
@@ -20,14 +18,15 @@ import com.yugabyte.yw.commissioner.ITask.CanRollback;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ManageLoadBalancerGroup;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.utils.CapacityReservationUtil;
 import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
+import com.yugabyte.yw.forms.UniverseTaskParams.CommunicationPorts;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.ManagedLoadBalancerState;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -79,6 +78,9 @@ public class EditUniverse extends EditUniverseTaskBase {
         taskParams().getPrimaryCluster() != null
             ? taskParams().getPrimaryCluster()
             : universe.getUniverseDetails().getPrimaryCluster();
+    CommunicationPorts currentPorts = universe.getUniverseDetails().communicationPorts;
+    CommunicationPorts ports =
+        taskParams().communicationPorts != null ? taskParams().communicationPorts : currentPorts;
     for (Cluster cluster : taskParams().clusters) {
       Cluster current = universe.getCluster(cluster.uuid);
       if (current == null) {
@@ -86,17 +88,14 @@ public class EditUniverse extends EditUniverseTaskBase {
       }
       ManagedLoadBalancerUtil.validateEditedCluster(
           universe, primaryAfterEdit, current, cluster, confGetter, cloudAPIFactory);
-      // No VM work, and no auto-rollback: it restores only nodes, not the setting saved at freeze.
-      if (ManagedLoadBalancerUtil.isTurnedOnOrOff(current, cluster)
-          && taskParams().getNodesInCluster(cluster.uuid).stream()
-              .anyMatch(
-                  n ->
-                      n.state == NodeDetails.NodeState.ToBeAdded
-                          || n.state == NodeDetails.NodeState.ToBeRemoved)) {
-        throw new PlatformServiceException(
-            BAD_REQUEST,
-            "An edit that turns the managed load balancer on or off cannot also add or remove"
-                + " nodes");
+      // The edit ensures the load balancers with these ports last, after the rollback checkpoint.
+      List<Integer> forwarded =
+          ManageLoadBalancerGroup.getForwardedPorts(cluster.userIntent, ports);
+      if (ManagedLoadBalancerUtil.isEnabled(cluster)
+          && (!ManagedLoadBalancerUtil.isEnabled(current)
+              || !forwarded.equals(
+                  ManageLoadBalancerGroup.getForwardedPorts(current.userIntent, currentPorts)))) {
+        ManagedLoadBalancerUtil.validatePorts(universe, cluster, forwarded, cloudAPIFactory);
       }
     }
   }
@@ -124,6 +123,10 @@ public class EditUniverse extends EditUniverseTaskBase {
     for (Cluster cluster : taskParams().clusters) {
       Cluster saved = details.getClusterByUuid(cluster.uuid);
       if (saved != null) {
+        if (!ManagedLoadBalancerUtil.isEnabled(saved)
+            && ManagedLoadBalancerUtil.isEnabled(cluster)) {
+          ManagedLoadBalancerUtil.nameTakeoversOnZones(cluster, saved);
+        }
         saved.userIntent.setManagedLoadBalancer(cluster.userIntent.getManagedLoadBalancer());
       }
     }
@@ -175,7 +178,13 @@ public class EditUniverse extends EditUniverseTaskBase {
                   Comparator.<Cluster, Integer>comparing(
                       c -> c.clusterType == ClusterType.PRIMARY ? -1 : c.index))
               .collect(Collectors.toList());
-      // GCP proxies need 0.0.0.0 once the LB is on. Before ensure, so a retry still finds no state.
+      // Before VM creation and tserver restarts, so that a cloud permission error fails the edit
+      // first. This creates the load balancers of new regions and reconciles the existing ones.
+      for (Cluster cluster : clusters) {
+        createEnsureManagedLoadBalancerTasks(cluster);
+      }
+      // GCP proxies need 0.0.0.0 once the LB is on. A retry rechecks every node: the last attempt
+      // may have saved the state and stopped mid-rebind.
       ManagedLoadBalancerState lbState =
           universe.getUniverseDetails().getManagedLoadBalancerState();
       createRebindProxiesTasks(
@@ -183,16 +192,12 @@ public class EditUniverse extends EditUniverseTaskBase {
               .filter(ManagedLoadBalancerUtil::isEnabled)
               .filter(
                   c ->
-                      lbState == null
+                      !isFirstTry()
+                          || lbState == null
                           || lbState.getLoadBalancers().stream()
                               .noneMatch(lb -> lb.getClusterUuid().equals(c.uuid)))
               .map(c -> c.uuid)
               .collect(Collectors.toSet()));
-      // Before VM creation, so that a cloud permission error fails the edit first. This creates the
-      // load balancers of new regions and reconciles the existing ones.
-      for (Cluster cluster : clusters) {
-        createEnsureManagedLoadBalancerTasks(cluster);
-      }
       Set<NodeDetails> nodesToProvision =
           PlacementInfoUtil.getNodesToProvision(taskParams().nodeDetailsSet);
       if (!nodesToProvision.isEmpty()) {
@@ -328,6 +333,16 @@ public class EditUniverse extends EditUniverseTaskBase {
     }
     UniverseDefinitionTaskParams taskParams = taskParams();
     if (dedicatedNodesChanged || taskParams.isRunOnlyPrechecks()) {
+      return false;
+    }
+    // This restores only nodes; RollbackEditUniverse also undoes the managed load balancer setting
+    // saved at freeze and the state of a partial ensure.
+    if (taskParams.clusters.stream()
+        .anyMatch(
+            c ->
+                prevState.getClusterByUuid(c.uuid) != null
+                    && ManagedLoadBalancerUtil.isTurnedOnOrOff(
+                        prevState.getClusterByUuid(c.uuid), c))) {
       return false;
     }
     try {

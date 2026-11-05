@@ -164,9 +164,7 @@ public class ManagedLoadBalancerUtil {
   private static Map<UUID, String> getTakeoverNames(Cluster cluster) {
     Map<UUID, Set<String>> namesByRegion = new HashMap<>();
     Map<UUID, String> regionCodes = new HashMap<>();
-    getPlacements(cluster)
-        .flatMap(placement -> placement.cloudList.stream())
-        .flatMap(cloud -> cloud.regionList.stream())
+    getRegions(cluster)
         .forEach(
             region -> {
               regionCodes.put(region.uuid, region.code);
@@ -277,8 +275,48 @@ public class ManagedLoadBalancerUtil {
           validateNoLbNames(updated, other);
         }
       }
-      getTakeoverNames(updated);
+      // The freeze names them on the saved zones (nameTakeoversOnZones); a new region has none.
+      Map<UUID, String> takeoverNames = getTakeoverNames(updated);
+      Set<UUID> currentRegions =
+          getRegions(current).map(region -> region.uuid).collect(Collectors.toSet());
+      getRegions(updated)
+          .filter(
+              region ->
+                  takeoverNames.containsKey(region.uuid) && !currentRegions.contains(region.uuid))
+          .findFirst()
+          .ifPresent(
+              region -> {
+                throw new PlatformServiceException(
+                    BAD_REQUEST,
+                    String.format(
+                        "Region %s is new in this edit. Take over its load balancer in a later"
+                            + " edit.",
+                        region.code));
+              });
       return;
+    }
+    if (isEnabled(current) && !isEnabled(updated)) {
+      ManagedLoadBalancerState state = universe.getUniverseDetails().getManagedLoadBalancerState();
+      Set<String> deletedNames =
+          state == null
+              ? Collections.emptySet()
+              : state.getLoadBalancers().stream()
+                  .filter(lb -> lb.getClusterUuid().equals(current.uuid))
+                  .map(ManagedLoadBalancer::getName)
+                  .collect(Collectors.toSet());
+      getPlacements(updated)
+          .flatMap(PlacementInfo::azStream)
+          .map(az -> az.lbName)
+          .filter(deletedNames::contains)
+          .findFirst()
+          .ifPresent(
+              name -> {
+                throw new PlatformServiceException(
+                    BAD_REQUEST,
+                    String.format(
+                        "Turning off the managed load balancer deletes %s, so lbName can't name it",
+                        name));
+              });
     }
     if (isPublicEnabled(current) != isPublicEnabled(updated)) {
       throw new PlatformServiceException(
@@ -350,12 +388,34 @@ public class ManagedLoadBalancerUtil {
 
   public static boolean isNamedByZones(@Nullable Cluster cluster, ManagedLoadBalancer lb) {
     return cluster != null
-        && getPlacements(cluster)
-            .flatMap(placement -> placement.cloudList.stream())
-            .flatMap(cloud -> cloud.regionList.stream())
+        && getRegions(cluster)
             .filter(region -> lb.getRegionUuid().equals(region.uuid))
             .flatMap(region -> region.azList.stream())
             .anyMatch(az -> lb.getName().equals(az.lbName));
+  }
+
+  /**
+   * Names the load balancers that the edit takes over on the zones of the saved cluster, so that no
+   * rollback, destroy or later edit deletes them before the takeover clears lbName.
+   */
+  public static void nameTakeoversOnZones(Cluster edited, Cluster saved) {
+    Map<UUID, String> names = getTakeoverNames(edited);
+    getRegions(saved)
+        .filter(region -> names.containsKey(region.uuid))
+        .forEach(region -> region.azList.forEach(az -> az.lbName = names.get(region.uuid)));
+  }
+
+  /** Throws, before the task changes anything, if ensure would fail to forward the ports. */
+  public static void validatePorts(
+      Universe universe, Cluster cluster, List<Integer> ports, CloudAPI.Factory cloudAPIFactory) {
+    for (ManagedLoadBalancer lb :
+        planLoadBalancers(cluster, universe.getUniverseDetails().getManagedLoadBalancerState())) {
+      Region region = Region.getOrBadRequest(lb.getRegionUuid());
+      Provider provider = region.getProvider();
+      cloudAPIFactory
+          .get(provider.getCloudCode().name())
+          .validateManagedLoadBalancerPorts(provider, region.getCode(), lb.getName(), ports);
+    }
   }
 
   // getOverallPlacement() drops lbName.
@@ -365,5 +425,11 @@ public class ManagedLoadBalancerUtil {
             CollectionUtils.emptyIfNull(cluster.getPartitions()).stream()
                 .map(UniverseDefinitionTaskParams.PartitionInfo::getPlacement))
         .filter(Objects::nonNull);
+  }
+
+  private static Stream<PlacementInfo.PlacementRegion> getRegions(Cluster cluster) {
+    return getPlacements(cluster)
+        .flatMap(placement -> placement.cloudList.stream())
+        .flatMap(cloud -> cloud.regionList.stream());
   }
 }

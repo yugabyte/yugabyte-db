@@ -163,26 +163,35 @@ public class ManagedLoadBalancerUtilTest extends FakeDBApplication {
   }
 
   @Test
-  public void testTurningOnTakesOverOnlyOneLbNamePerRegion() {
+  public void testTurningOnTakesOverOneLbNamePerRegionThatTheUniverseHas() {
+    Cluster current = cluster(ClusterType.PRIMARY, false, "byo-lb");
+    UUID regionUuid = UUID.randomUUID();
+    current.placementInfo.cloudList.get(0).regionList.get(0).uuid = regionUuid;
     // az-2 of the same region names no load balancer.
     Cluster updated = cluster(ClusterType.PRIMARY, true, "byo-lb");
     PlacementInfo.PlacementRegion region = updated.placementInfo.cloudList.get(0).regionList.get(0);
+    region.uuid = regionUuid;
     region.code = "r1";
     PlacementInfo.PlacementAZ az2 = new PlacementInfo.PlacementAZ();
     az2.name = "az-2";
     region.azList.add(az2);
 
-    PlatformServiceException e =
-        assertThrows(
-            PlatformServiceException.class,
-            () -> validateEdit(cluster(ClusterType.PRIMARY, false, "byo-lb"), updated));
+    PlatformServiceException mixed =
+        assertThrows(PlatformServiceException.class, () -> validateEdit(current, updated));
+    az2.lbName = "byo-lb";
+    validateEdit(current, updated);
+    // Nothing on the saved universe could name it until the takeover ends.
+    region.uuid = UUID.randomUUID();
+    PlatformServiceException newRegion =
+        assertThrows(PlatformServiceException.class, () -> validateEdit(current, updated));
 
     assertEquals(
         "The zones of region r1 set different load balancers: (none), byo-lb. Set the same lbName"
             + " in every zone of the region, or none.",
-        e.getMessage());
-    az2.lbName = "byo-lb";
-    validateEdit(cluster(ClusterType.PRIMARY, false, "byo-lb"), updated);
+        mixed.getMessage());
+    assertEquals(
+        "Region r1 is new in this edit. Take over its load balancer in a later edit.",
+        newRegion.getMessage());
   }
 
   @Test
