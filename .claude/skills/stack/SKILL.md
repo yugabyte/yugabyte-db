@@ -68,7 +68,8 @@ Only `gh stack` reads `gh-stack.remote`, so plain `git push` is unaffected.  A b
 Open each layer's PR with the `create-pr` skill (`create-pr.sh`), not `gh stack submit`, one layer
 at a time from the bottom up, because `submit`'s generated titles fail the pr-title check.  Don't
 pass `-b`; the script takes the base from `gh stack`.  It opens the PR as a draft, links it into the
-stack with `gh stack link`, and then marks it ready unless you passed `-D`.
+stack with `gh stack link`, and then marks it ready unless you passed `-D`.  The bottom layer's PR
+is linked when the next layer's PR opens, since `gh stack link` needs at least two PRs.
 
 ## Updating a layer
 
