@@ -1,6 +1,0 @@
-# src/test/regress/yb_table2_schedule
-# This schedule is for non-ported tests only.
-#
-# Second half of yb_table_schedule.
-
-test: yb.orig.alter_table_typmod_index

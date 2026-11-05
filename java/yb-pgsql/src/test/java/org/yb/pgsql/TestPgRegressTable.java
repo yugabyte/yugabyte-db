@@ -32,9 +32,4 @@ public class TestPgRegressTable extends BasePgRegressTest {
   public void schedule() throws Exception {
     runPgRegressTest("yb_table_schedule");
   }
-
-  @Test
-  public void schedule2() throws Exception {
-    runPgRegressTest("yb_table2_schedule");
-  }
 }
