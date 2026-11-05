@@ -80,16 +80,17 @@ fi
 sysctl -w vm.swappiness={{ vm_swappiness }}
 
 if [[ "$is_cloud" == "False" ]]; then
-  # Set and persist kernel.core_pattern
-  if ! grep -q "^kernel.core_pattern=" /etc/sysctl.conf; then
-    echo "kernel.core_pattern={{ kernel_core_pattern }}" >> /etc/sysctl.conf
-  fi
+  # Set and persist kernel.core_pattern. Drop any existing entry (e.g. the
+  # RHEL systemd-coredump pattern) before appending ours; otherwise sysctl -w
+  # only changes the live value and the old entry wins on the next reboot or
+  # sysctl --system.
+  sed -i '/^[[:space:]]*kernel\.core_pattern[[:space:]]*=/d' /etc/sysctl.conf
+  echo "kernel.core_pattern={{ kernel_core_pattern }}" >> /etc/sysctl.conf
   sysctl -w kernel.core_pattern={{ kernel_core_pattern }}
 
-  # Set and persist vm.max_map_count
-  if ! grep -q "^vm.max_map_count=" /etc/sysctl.conf; then
-    echo "vm.max_map_count={{ vm_max_map_count }}" >> /etc/sysctl.conf
-  fi
+  # Set and persist vm.max_map_count, replacing any existing entry.
+  sed -i '/^[[:space:]]*vm\.max_map_count[[:space:]]*=/d' /etc/sysctl.conf
+  echo "vm.max_map_count={{ vm_max_map_count }}" >> /etc/sysctl.conf
   sysctl -w vm.max_map_count={{ vm_max_map_count }}
 fi
 
