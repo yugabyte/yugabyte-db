@@ -12,7 +12,14 @@ description: >-
 A stack is for a feature that splits into several dependent changes.  Reach for one only when the
 user asks for it; a single PR is the default.
 
+
 ## Setup
+
+**Install the `gh stack` extension** if `gh stack --help` fails:
+
+```
+gh extension install github/gh-stack
+```
 
 **Load the `gh-stack` skill** and follow it for everything this skill does not override.  If it is
 missing, install it at user scope for the agent you are running in:
@@ -40,30 +47,37 @@ git config gh-stack.remote <upstream>
 Only `gh stack` reads `gh-stack.remote`, so plain `git push` is unaffected.  A branch's own
 `branch.<name>.remote` takes precedence over it; stack branches normally have none.
 
+
 ## Rules
 
 - **Name every layer `feature-stack/<feature-name>/<change-name>`.**  That prefix is the only one
   the rulesets exempt from `Block Creations`, `Require PR`, and `yb-required`, and stack branches
   must live in `yugabyte/yugabyte-db` because GitHub has no cross-fork stacks.  `git-push.sh` warns
   on a name that isn't this two-segment shape but still pushes.
+
 - **Push with `.agents/scripts/git-push.sh`, never `gh stack push`, `gh stack submit`, or a
   `gh stack sync` that has something to push.**  For a stack branch the script lints the whole
   stack from the top layer, then runs `gh stack push`.
+
 - **History may be rewritten.**  The no-rewrite rule in [create-pr's Pushing follow-up
   commits](../create-pr/SKILL.md#pushing-follow-up-commits) does not apply: GitHub merges a stack
   only when its history is linear, so cascading rebases and lease-protected force-pushes are the
   normal update, even mid-review.  Never `git merge` the trunk or another layer into a stack
   branch.
+
 - **Never `gh pr merge` a PR that is in a GitHub stack**; use `gh stack merge` (see
   [Landing](#landing)).  `gh pr edit` is broken on this repo; see [Updating PR titles and
   bodies](#updating-pr-titles-and-bodies).
+
 - **Never click "Update branch" on a stack PR.**  Its default merges the base into the layer, which
   breaks the linear history a stack needs.  GitHub's "Rebase Stack" button is fine; see
   [Syncing](#syncing).
+
 - **Work a stack from one clone.**  `gh stack push` fetches just before its lease, so it silently
   overwrites commits that reached a layer from anywhere but this clone.  Worktrees of the same
   clone share branches and are safe, though `gh stack rebase` stops if a worktree holding a layer
   has uncommitted changes.
+
 
 ## Opening PRs
 
@@ -72,6 +86,7 @@ at a time from the bottom up, because `submit`'s generated titles fail the pr-ti
 pass `-b`; the script takes the base from `gh stack`.  It opens the PR as a draft, links it into the
 stack with `gh stack link`, and then marks it ready unless you passed `-D`.  The bottom layer's PR
 is linked when the next layer's PR opens, since `gh stack link` needs at least two PRs.
+
 
 ## Updating a layer
 
@@ -86,6 +101,7 @@ gh stack rebase --upstack --remote <upstream>
 
 Then report which PRs need a new Jenkins run (see [Jenkins](#jenkins)), and check the changed
 layer's PR title and body (see [Updating PR titles and bodies](#updating-pr-titles-and-bodies)).
+
 
 ## Syncing
 
@@ -115,9 +131,14 @@ gh stack sync --remote <upstream> --prune
 
 ## Jenkins
 
-Every push that changes a layer's head commit needs a new Jenkins run on that PR before the stack
-can merge.  After such a push, list the affected PRs; run `.agents/scripts/trigger-jenkins.sh <pr>`
-only when the user says to.
+Merging needs a passing `yb-required` status on each PR's current head commit.  Every push that
+changes a layer's head commit -- including a pure rebase or GitHub's "Rebase Stack" -- creates new
+`bld-*` runs on that PR, and an earlier approval does not carry over.  A code build waits at the
+`jenkins` environment's approval gate until someone approves it, which starts the Jenkins build;
+a layer that touches only non-build paths (`.claude/`, `.agents/`, `*.md`, and the like) gets
+`bld-none`, which needs no approval.  After such a push, list the PRs whose head changed; run
+`.agents/scripts/trigger-jenkins.sh <pr>` only when the user says to (it reports when nothing is
+waiting).
 
 
 ## Updating PR titles and bodies
@@ -145,6 +166,7 @@ itself block a merge; GitHub's merge box decides.
 
 1. **Check every layer up to the target**: open, not a draft, approved, and all checks green,
    including Jenkins on its current head commit.  If any fails, stop and report it.
+
 2. **Merge** the target and everything below it in one all-or-nothing operation:
 
    ```
@@ -153,10 +175,12 @@ itself block a merge; GitHub's merge box decides.
 
    Squash is the only method the repo allows.  The merge box's "Squash and merge stack" button
    does the same thing.  If GitHub refuses because the stack is not linear, follow
-   [Syncing](#syncing), wait for Jenkins, and retry.
+   [Syncing](#syncing), report which PRs need Jenkins (see [Jenkins](#jenkins)), and retry once
+   `yb-required` passes on every layer.
 
    A PR that is not yet in a GitHub stack -- the only PR so far, since a GitHub stack needs at
    least two -- makes `gh stack merge` fail with "not a stack number or a stacked pull request".
    Check with `gh api repos/yugabyte/yugabyte-db/pulls/<pr> --jq .stack`, which prints `null` for
    such a PR, and land it as an ordinary PR with `gh pr merge <pr> --squash`.
+
 3. **Clean up** with `gh stack sync --remote <upstream> --prune`.
