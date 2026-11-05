@@ -130,6 +130,29 @@ message BackfillIndexResponsePB {
   map<string, double> num_rows_backfilled_in_index = 6;
 }
 
+message TableBackfillChunkRequestPB {
+  optional bytes dest_uuid = 1;
+  required bytes tablet_id = 2;
+  optional fixed64 read_at_hybrid_time = 3;
+  // The previous chunk's backfilled_until. Empty starts at the beginning of the tablet.
+  optional bytes start_key = 4;
+  optional string namespace_name = 5;
+  optional uint32 source_table_oid = 6;
+  optional uint32 target_table_oid = 7;
+  optional uint32 transform_fn_oid = 8;
+  optional fixed64 propagated_hybrid_time = 9;
+  optional int64 pg_job_id = 10;
+}
+
+message TableBackfillChunkResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional fixed64 propagated_hybrid_time = 2;
+  // Key of the next row to copy, sent back as the next chunk's start_key. Empty means the tablet is
+  // fully copied.
+  optional bytes backfilled_until = 3;
+  optional uint64 num_rows_processed = 4;
+}
+
 // A create tablet request.
 message CreateTabletRequestPB {
   // UUID of server this request is addressed to.
@@ -612,6 +635,10 @@ service TabletServerAdminService {
   rpc BackfillDone(tablet.ChangeMetadataRequestPB) returns (ChangeMetadataResponsePB) {
     option (yb.rpc.send_metadata) = true;
   }
+
+  // Copies one chunk of one source tablet of an online schema change backfill. Sent to the tablet
+  // leader.
+  rpc TableBackfillChunk(TableBackfillChunkRequestPB) returns (TableBackfillChunkResponsePB);
 
   rpc FlushTablets(FlushTabletsRequestPB) returns (FlushTabletsResponsePB);
 

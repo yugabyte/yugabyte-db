@@ -1436,6 +1436,16 @@ class PgClient::Impl : public BigDataFetcher {
     return ResponseStatus(resp);
   }
 
+  Status StartTableBackfill(
+      tserver::PgStartTableBackfillRequestPB* req, CoarseTimePoint deadline) {
+    tserver::PgStartTableBackfillResponsePB resp;
+    req->set_session_id(session_id_);
+
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::StartTableBackfill,
+        *req, resp, PggateRPC::kStartTableBackfill, deadline));
+    return ResponseStatus(resp);
+  }
+
   Status GetIndexBackfillProgress(const std::vector<PgObjectId>& index_ids,
                                   uint64_t* num_rows_read_from_table,
                                   double* num_rows_backfilled) {
@@ -2335,6 +2345,11 @@ Result<int> PgClient::WaitForBackendsCatalogVersion(
 Status PgClient::BackfillIndex(
     tserver::PgBackfillIndexRequestPB* req, CoarseTimePoint deadline) {
   return impl_->BackfillIndex(req, deadline);
+}
+
+Status PgClient::StartTableBackfill(
+    tserver::PgStartTableBackfillRequestPB* req, CoarseTimePoint deadline) {
+  return impl_->StartTableBackfill(req, deadline);
 }
 
 Status PgClient::GetIndexBackfillProgress(

@@ -2140,6 +2140,17 @@ class PgClientSession::Impl {
         /* wait= */ true, context->GetClientDeadline());
   }
 
+  Status StartTableBackfill(
+      const PgStartTableBackfillRequestPB& req,
+      PgStartTableBackfillResponsePB* resp,
+      rpc::RpcContext* context) {
+    return client_.StartTableBackfill(
+        PgObjectId::GetYbTableIdFromPB(req.source_table_id()),
+        req.target_table_oid(), req.transform_fn_oid(),
+        req.backfill_timestamp(), req.pg_job_id(),
+        context->GetClientDeadline());
+  }
+
   Status CreateTablegroup(
       const PgCreateTablegroupRequestPB& req, PgCreateTablegroupResponsePB* resp,
       rpc::RpcContext* context) {

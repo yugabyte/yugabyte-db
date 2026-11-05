@@ -148,6 +148,7 @@ struct TabletDeleteRetainerInfo;
 class AlterTableBatchTracker;
 class RestoreSysCatalogState;
 class YsqlInitDBAndMajorUpgradeHandler;
+class OnlineSchemaChangeController;
 class YsqlManager;
 class YsqlManagerIf;
 
@@ -457,6 +458,38 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
                                      LaunchBackfillIndexForTableResponsePB* resp,
                                      rpc::RpcContext* rpc,
                                      const LeaderEpoch& epoch);
+
+  Status StartTableBackfill(const StartTableBackfillRequestPB* req,
+                            StartTableBackfillResponsePB* resp,
+                            rpc::RpcContext* rpc,
+                            const LeaderEpoch& epoch);
+
+  // The target of an online schema change backfill always lives in the source table's namespace.
+  Result<scoped_refptr<TableInfo>> GetOnlineSchemaChangeTargetTable(
+      const NamespaceId& source_namespace_id, uint32_t target_table_oid);
+
+  // Sets retain_delete_markers and table_backfill_pin_job_id on an online schema change backfill's
+  // target and on each of its indexes, for the life of the backfill.
+  //
+  // The capture trigger writes a source DELETE as tombstones on the target and its indexes at the
+  // delete's hybrid time, which is above the backfill read time. The backfill then writes the same
+  // row at the read time, below those tombstones. A compaction that removed a tombstone first
+  // would make the row live again. retain_delete_markers also waives the snapshot-too-old check in
+  // TabletRetentionPolicy::RegisterReaderTimestamp, which backfill writes to the target and its
+  // unique indexes would otherwise fail once the job outlives the history retention cutoff.
+  //
+  // Idempotent for the same job. Returns TryAgain if a table already has retain_delete_markers set
+  // by someone else, e.g. an index backfill that has not finished releasing it.
+  Status PinOnlineSchemaChangeTargetDeleteMarkers(
+      const scoped_refptr<TableInfo>& target, int64_t pg_job_id, const LeaderEpoch& epoch);
+
+  // Releases the pin that PinOnlineSchemaChangeTargetDeleteMarkers placed for `pg_job_id`. Only
+  // clears tables whose table_backfill_pin_job_id matches, so it never takes a pin owned by an
+  // index backfill or by another online schema change job. The clear reaches the tablets through
+  // the BACKFILL_DONE op, as for the index backfill, because an alter does not see a
+  // retain_delete_markers change. Idempotent.
+  Status UnpinOnlineSchemaChangeTargetDeleteMarkers(
+      const scoped_refptr<TableInfo>& target, int64_t pg_job_id, const LeaderEpoch& epoch);
 
   void AcquireObjectLocksGlobal(
       const AcquireObjectLocksGlobalRequestPB* req, AcquireObjectLocksGlobalResponsePB* resp,
@@ -965,6 +998,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   }
 
   YsqlManagerIf& GetYsqlManager();
+
+  OnlineSchemaChangeController& online_schema_change() { return *online_schema_change_; }
   YsqlManager& GetYsqlManagerImpl() { return *DCHECK_NOTNULL(ysql_manager_.get()); }
 
   // Dump all of the current state about tables and tablets to the
@@ -2068,6 +2103,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   friend class MultiStageAlterTable;
   friend class BackfillTable;
   friend class BackfillTablet;
+  friend class OnlineSchemaChangeController;
   friend class YsqlBackendsManager;
   friend class BackendsCatalogVersionJob;
   friend class AddTableToXClusterTargetTask;
@@ -2364,6 +2400,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const scoped_refptr<TableInfo>& table, const TransactionId& txn_id, const LeaderEpoch& epoch,
       const AlterTableRequestPB* req = nullptr,
       std::shared_ptr<AlterTableBatchTracker> cdc_alter_batch_tracker = nullptr);
+
+  // The target and its existing indexes.
+  std::vector<scoped_refptr<TableInfo>> GetOnlineSchemaChangePinnedTables(
+      const scoped_refptr<TableInfo>& target);
 
   // Starts the background task to send the SplitTablet RPC to the leader for the specified tablet.
   Status SendSplitTabletRequest(
@@ -2868,6 +2908,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   std::unique_ptr<XClusterManager> xcluster_manager_;
 
   std::unique_ptr<YsqlManager> ysql_manager_;
+
+  std::unique_ptr<OnlineSchemaChangeController> online_schema_change_;
 
   Status CanAddPartitionsToTable(
       size_t desired_partitions, const PlacementInfoPB& placement_info) override;
