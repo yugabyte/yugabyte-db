@@ -2402,8 +2402,6 @@ TEST_P(VectorLSMTest, ConcurrentSearchWhileInsertingAcrossSegments) {
   ASSERT_GE(found * 100, inserted_entries_.size() * 99);
 }
 
-// A compaction that runs out of memory keeps its input chunks and leaves the LSM usable, so a later
-// compaction merges them.
 // Reading a damaged chunk fails searches and compactions instead of crashing.
 void VectorLSMTestBase::TestDamagedChunk(bool use_merge_tasks) {
   constexpr size_t kDimensions = 8;
@@ -2466,6 +2464,8 @@ TEST_P(VectorLSMTest, DamagedChunkWithoutMergeTasks) {
   TestDamagedChunk(/* use_merge_tasks= */ false);
 }
 
+// A compaction that runs out of memory keeps its input chunks and leaves the LSM usable, so a later
+// compaction merges them.
 TEST_P(VectorLSMTest, CompactionOutOfMemoryKeepsInputs) {
   constexpr size_t kDimensions = 8;
   constexpr size_t kNumChunks = 3;

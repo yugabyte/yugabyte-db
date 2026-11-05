@@ -60,7 +60,7 @@ class YbHnswIterator : public vector_index::VectorIndexIterator<Vector> {
   }
 
   Status DoStatus() const override {
-    return status_;
+    return cache_.status();
   }
 
  private:
@@ -72,7 +72,6 @@ class YbHnswIterator : public vector_index::VectorIndexIterator<Vector> {
     coordinates_ = cache_.CoordinatesPtr(index_);
     std::tie(vector_id_, payload_) = cache_.GetVectorIdAndPayload(index_);
     if (PREDICT_FALSE(!cache_.status().ok())) {
-      status_ = cache_.status();
       index_ = size_;
     }
   }
@@ -85,7 +84,6 @@ class YbHnswIterator : public vector_index::VectorIndexIterator<Vector> {
   const std::byte* coordinates_ = nullptr;
   VectorId vector_id_;
   Slice payload_;
-  Status status_;
 };
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
