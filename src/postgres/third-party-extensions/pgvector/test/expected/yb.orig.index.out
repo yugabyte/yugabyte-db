@@ -336,9 +336,8 @@ CREATE TABLE items (id serial PRIMARY KEY, embedding vector);
 CREATE INDEX ON items USING ybhnsw (embedding vector_l2_ops);
 ERROR:  column does not have dimensions
 DROP TABLE items;
--- ALTER COLUMN TYPE is rejected on a column used by a ybhnsw index (#36753).
--- The index is built for the column's dimensions, so it can't follow a type
--- change.
+-- ALTER COLUMN TYPE is rejected on a column used by a ybhnsw index (#36753),
+-- whether or not it rewrites the table.
 CREATE TABLE items (id int PRIMARY KEY, embedding vector(3));
 CREATE INDEX items_idx ON items USING ybhnsw (embedding vector_l2_ops);
 INSERT INTO items VALUES (1, '[1, 1, 1]'), (2, '[2, 2, 2]'), (3, '[3, 3, 3]');

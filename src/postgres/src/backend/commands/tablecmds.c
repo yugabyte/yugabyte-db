@@ -24144,7 +24144,9 @@ YbATExecAlterIndexAttributeType(AlteredTableInfo *tab, Relation rel,
  *
  * A vector index is built for a fixed number of dimensions, which DocDB keeps
  * from CREATE INDEX.  Without a rewrite (e.g. vector(4) -> vector), the index
- * would be kept while its column loses the dimensions.  See #36753.
+ * would be kept while its column loses the dimensions.  Type changes that
+ * rewrite the table are refused too, to keep the rule simple: drop the index
+ * first.  See #36753.
  */
 static void
 YbCheckAlterTypeOfVectorIndexColumn(Oid indoid, const char *colName)
