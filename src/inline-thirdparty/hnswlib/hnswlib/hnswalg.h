@@ -3,6 +3,7 @@
 #include "visited_list_pool.h"
 #include "hnswlib.h"
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <bit>
 #include <random>
@@ -241,6 +242,12 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
     std::unordered_map<std::string_view, tableint> tenant_entries_;
     std::atomic<size_t> tenant_entries_bytes_{0};
 
+    // Serialize the first point of a tenant and replacements of its entry point, see addPointImpl.
+    // Tenants with the same hash share a lock, so the number of locks should stay well above the
+    // number of concurrent inserts.
+    static const size_t MAX_TENANT_ENTRY_LOCKS = 1024;
+    mutable std::array<std::mutex, MAX_TENANT_ENTRY_LOCKS> tenant_entry_locks_;
+
     std::default_random_engine level_generator_;
     std::default_random_engine update_probability_generator_;
 
@@ -422,8 +429,8 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
                 return it->second;
             }
         }
-        // The first point of a tenant holds global, see addPointImpl, so it is the only point of
-        // the tenant that could get here.
+        // The caller holds the tenant entry lock, see addPointImpl, so no other point of the tenant
+        // could get here.
         std::lock_guard<std::shared_mutex> lock(tenant_entries_mutex_);
         auto [it, inserted] = tenant_entries_.try_emplace(tenant, node);
         if (!inserted) {
@@ -433,11 +440,8 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
         return std::nullopt;
     }
 
-    // Returns the level of the entry point of the tenant, or -1 when the tenant has no points.
-    int tenantEntryLevel(std::string_view tenant) const {
-        std::shared_lock<std::shared_mutex> lock(tenant_entries_mutex_);
-        auto it = tenant_entries_.find(tenant);
-        return it == tenant_entries_.end() ? -1 : element_levels_[it->second];
+    std::mutex& getTenantEntryMutex(std::string_view tenant) const {
+        return tenant_entry_locks_[std::hash<std::string_view>{}(tenant) & (MAX_TENANT_ENTRY_LOCKS - 1)];
     }
 
     void updateTenantEntry(std::string_view tenant, tableint node) {
@@ -1438,10 +1442,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
 
         std::unique_lock <std::mutex> templock(global);
         int maxlevelcopy = maxlevel_;
-        // A tenant point above the level of the tenant entry point replaces it, so like a point
-        // above maxlevel_ it keeps global until it is linked. Otherwise concurrent replacements
-        // would all link from the old entry point, and all but one keep their upper levels unlinked.
-        if (curlevel <= maxlevelcopy && (!tenant || curlevel <= tenantEntryLevel(*tenant)))
+        if (curlevel <= maxlevelcopy)
             templock.unlock();
 
         std::unique_lock <std::mutex> lock_el(link_list_locks_[cur_c]);
@@ -1459,12 +1460,22 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
         // Level of currObj, the point to start linking from.
         int entry_level = maxlevelcopy;
         std::optional<tableint> tenant_entry;
+        std::unique_lock<std::mutex> tenant_lock;
         if (tenant) {
+            // A point above the level of the tenant entry point replaces it, so like a point above
+            // maxlevel_ it keeps a lock until it is linked, but one that only points of the tenant
+            // wait for. Otherwise concurrent replacements would all link from the old entry point,
+            // and all but one keep their upper levels unlinked. It is taken under lock_el, which no
+            // other insert waits for yet: the point is not reachable before it is linked or added
+            // as the tenant entry point below.
+            tenant_lock = std::unique_lock<std::mutex>(getTenantEntryMutex(*tenant));
             tenant_entry = findOrAddTenantEntry(*tenant, cur_c);
             // Nothing to link the first point of a tenant to.
             currObj = tenant_entry ? *tenant_entry : -1;
             enterpoint_copy = currObj;
             entry_level = tenant_entry ? element_levels_[*tenant_entry] : -1;
+            if (curlevel <= entry_level)
+                tenant_lock.unlock();
         }
 
         if ((signed)currObj != -1) {

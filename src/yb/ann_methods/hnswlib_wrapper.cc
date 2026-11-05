@@ -282,9 +282,9 @@ class HnswlibIndex :
     auto se = UpdateDataConsumptionOnExit();
     // A failure before the new element becomes reachable, such as running out of memory for its
     // storage, leaves the index unchanged. A later one, including running out of memory while
-    // linking it, can leave the element half-linked. Both are returned only because no caller
-    // keeps using the index after a failed insert: VectorLSM crashes on a failed insert into a
-    // mutable chunk, and compaction discards its merged index.
+    // linking it or adding its tenant, can leave the element half-linked. Both are returned only
+    // because no caller keeps using the index after a failed insert: VectorLSM crashes on a failed
+    // insert into a mutable chunk, and compaction discards its merged index.
     try {
       if (tenant_extractor_) {
         // The tenant points into the stored payload, which hnswlib could keep as the tenant key.
