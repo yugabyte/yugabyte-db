@@ -28,7 +28,7 @@ For operations marked with "x-yba-api-stream-response: true" this script ensures
 a binary success response, since the extension makes the generated client hand back the raw HTTP
 response instead of a decoded model.
 
-For operations marked with "x-yba-api-idempotent: true" this script adds the X-IDEMPOTENCY-KEY
+For operations marked with "x-yba-api-idempotent: true" this script adds the Idempotency-Key
 header parameter (components/parameters/IdempotencyKey.yaml, the source of truth for it), the 409
 it can cause and a 422 response, and writes the result back to openapi.yaml, which the server and
 client generators read. The parameter carries "x-yba-api-idempotency-key: true", which keeps it out
@@ -58,9 +58,9 @@ X_YBA_API_IDEMPOTENCY_KEY = "x-yba-api-idempotency-key"
 IDEMPOTENCY_KEY_PARAM_PATH = ("../src/main/resources/openapi/components/parameters/"
                               "IdempotencyKey.yaml")
 IDEMPOTENCY_KEY_PARAM_NAME = "IdempotencyKey"
-IDEMPOTENCY_CONFLICT_DESC = ("Also returned while a request with the same X-IDEMPOTENCY-KEY is"
+IDEMPOTENCY_CONFLICT_DESC = ("Also returned while a request with the same Idempotency-Key is"
                              " still in progress.")
-IDEMPOTENCY_MISMATCH_DESC = "The X-IDEMPOTENCY-KEY was already used for a different request"
+IDEMPOTENCY_MISMATCH_DESC = "The Idempotency-Key was already used for a different request"
 X_YBA_API_PREFIX = "x-yba-api-"
 # Every vendor extension understood by the openapi server and client templates. A new extension
 # must be added here, otherwise validate_vendor_ext_names() rejects the spec that uses it.

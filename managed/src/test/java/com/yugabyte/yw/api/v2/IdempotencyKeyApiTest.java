@@ -42,7 +42,7 @@ import play.mvc.Http;
 import play.mvc.Result;
 import play.test.Helpers;
 
-/** X-IDEMPOTENCY-KEY handling, exercised through the v2 operations that opt into it. */
+/** Idempotency-Key handling, exercised through the v2 operations that opt into it. */
 public class IdempotencyKeyApiTest extends FakeDBApplication {
 
   private static final UUID TARGET_UUID = UUID.fromString("0f6c1a2b-3c4d-4e5f-8a9b-0c1d2e3f4a5b");

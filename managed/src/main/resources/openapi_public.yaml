@@ -370,11 +370,11 @@ paths:
             caller's role has no create permission on the customer
         '409':
           description: The customer already has a certificate with this label. Also
-            returned while a request with the same X-IDEMPOTENCY-KEY is still in progress.
+            returned while a request with the same Idempotency-Key is still in progress.
         '500':
           description: Server error
         '422':
-          description: The X-IDEMPOTENCY-KEY was already used for a different request
+          description: The Idempotency-Key was already used for a different request
       security:
       - apiKeyAuth: []
       - authTokenAuth: []
@@ -13235,7 +13235,7 @@ components:
       x-yba-api-visibility: preview
   parameters:
     IdempotencyKey:
-      name: X-IDEMPOTENCY-KEY
+      name: Idempotency-Key
       in: header
       description: 'Makes the request safe to retry. A unique client-generated value,
         such as a UUID, for this request.

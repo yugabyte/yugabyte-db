@@ -1,6 +1,6 @@
 -- Copyright (c) YugabyteDB, Inc.
 
--- X-IDEMPOTENCY-KEY header support for mutating API operations (PLAT-19704). One row per key a
+-- Idempotency-Key header support for mutating API operations (PLAT-19704). One row per key a
 -- customer has used: the first request with a key claims the row (state IN_PROGRESS), and a
 -- successful response is stored on it (state COMPLETED) so retries with the same key replay that
 -- response instead of running the operation again. Rows expire after the retention period and are

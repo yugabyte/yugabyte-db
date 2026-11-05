@@ -41,7 +41,7 @@ public class ApiControllerUtils {
 
   /**
    * Runs an operation marked {@code x-yba-api-idempotent} in the spec, honouring the request's
-   * {@code X-IDEMPOTENCY-KEY} header. Called by the generated code.
+   * {@code Idempotency-Key} header. Called by the generated code.
    */
   protected Result idempotent(Http.Request request, IdempotencyService.ResultSupplier operation)
       throws Exception {

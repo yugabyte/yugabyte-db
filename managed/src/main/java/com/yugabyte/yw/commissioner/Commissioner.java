@@ -196,7 +196,7 @@ public class Commissioner {
       UUID taskUUID,
       @Nullable Consumer<RunnableTask> preTaskSubmitWork) {
     if (taskUUID == null) {
-      // Within a request sent with X-IDEMPOTENCY-KEY, the first task gets the UUID derived from
+      // Within a request sent with Idempotency-Key, the first task gets the UUID derived from
       // the key, so that the client can follow it and a retry can't submit it twice.
       taskUUID = IdempotencyService.consumeTaskUuid();
     }

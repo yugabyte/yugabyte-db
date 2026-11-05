@@ -1,4 +1,4 @@
-name: X-IDEMPOTENCY-KEY
+name: Idempotency-Key
 in: header
 description: |
   Makes the request safe to retry. A unique client-generated value, such as a UUID, for this request.
