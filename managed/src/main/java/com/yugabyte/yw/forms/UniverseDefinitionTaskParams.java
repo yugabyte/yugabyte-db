@@ -543,7 +543,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty(
         hidden = true,
         value = "YbaApi Internal. New master addresses pushed to servers in a K8s master move")
-    private boolean masterAddrsPropagated = false;
+    private Boolean masterAddrsPropagated;
 
     @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.27.0.0")
     @Getter

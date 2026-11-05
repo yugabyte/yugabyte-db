@@ -1594,6 +1594,32 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     return taskInfo;
   }
 
+  /**
+   * Retries the edit the way YBA does, with the task params the earlier attempt saved, changed by
+   * the given consumer.
+   */
+  private TaskInfo retryEdit(
+      TaskInfo previous, java.util.function.Consumer<UniverseDefinitionTaskParams> change) {
+    UniverseDefinitionTaskParams taskParams =
+        Json.fromJson(
+            TaskInfo.getOrBadRequest(previous.getUuid()).getTaskParams(),
+            UniverseDefinitionTaskParams.class);
+    taskParams.setPreviousTaskUUID(previous.getUuid());
+    change.accept(taskParams);
+    try {
+      TaskInfo taskInfo =
+          waitForTask(commissioner.submit(TaskType.EditKubernetesUniverse, taskParams));
+      assertEquals(Failure, taskInfo.getTaskState());
+      return taskInfo;
+    } catch (InterruptedException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
+  private TaskInfo retryEdit(TaskInfo previous) {
+    return retryEdit(previous, p -> {});
+  }
+
   /** Subtasks of the edit in plan order. */
   private static List<TaskInfo> plan(TaskInfo taskInfo) {
     return taskInfo.getSubTasks().stream()
@@ -1865,7 +1891,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
     // The first attempt stops before the master move, so the retry plans it all again.
     TaskInfo firstAttempt = submitEdit(currentIntent(), pi, null);
-    List<TaskInfo> plan = plan(submitEdit(currentIntent(), pi, firstAttempt.getUuid()));
+    List<TaskInfo> plan = plan(retryEdit(firstAttempt));
 
     List<TaskInfo> postRemove =
         assertPushesAroundMasterChange(
@@ -1874,6 +1900,76 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             ImmutableSet.of("yb-tserver-0_az-1", "yb-tserver-0_az-2", "yb-tserver-0_az-3"));
     assertEquals(ImmutableSet.of("az-1", "az-2", "az-3"), azCodes(earlySecretUpdate(plan)));
     assertEquals(1, subtasks(plan, TaskType.UpdateParentTaskParams, p -> true).size());
+  }
+
+  @Test
+  public void testRetryOfParamsWithoutPropagationRecordSkipsIt() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    PlacementInfo pi = zoneReplacePlacement();
+
+    // The first attempt records that it has not propagated the new masters yet.
+    TaskInfo firstAttempt = submitEdit(currentIntent(), pi, null);
+    UniverseDefinitionTaskParams saved =
+        Json.fromJson(
+            TaskInfo.getOrBadRequest(firstAttempt.getUuid()).getTaskParams(),
+            UniverseDefinitionTaskParams.class);
+    assertEquals(Boolean.FALSE, saved.getPrimaryCluster().getMasterAddrsPropagated());
+
+    // Params saved by a YBA build without the record may come from an attempt that already
+    // changed tserver pods, so the retry neither pushes nor renders.
+    List<TaskInfo> plan =
+        plan(retryEdit(firstAttempt, p -> p.getPrimaryCluster().setMasterAddrsPropagated(null)));
+    assertFalse(changeMasterConfigs(plan, "AddMaster").isEmpty());
+    int dataMove = firstPosition(subtasks(plan, TaskType.WaitForDataMove, p -> true));
+    assertTrue(between(masterAddrPushes(plan), 0, dataMove).isEmpty());
+    assertTrue(earlySecretUpdate(plan).isEmpty());
+    assertTrue(subtasks(plan, TaskType.UpdateParentTaskParams, p -> true).isEmpty());
+  }
+
+  @Test
+  public void testZoneReplaceWithDiskResizeKeepsLeavingZoneDisks() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
+    int tserverSize = newIntent.deviceInfo.volumeSize;
+    TestUtils.updateDeviceInfo(newIntent, ServerType.TSERVER, d -> d.volumeSize = tserverSize + 10);
+
+    List<TaskInfo> plan = planEdit(newIntent, zoneReplacePlacement());
+
+    // az-1 and az-2 are resized before the master move and render the new size. az-3 leaves the
+    // placement, so it is not resized and keeps rendering the size its volumes have.
+    List<TaskInfo> earlySecretUpdate = earlySecretUpdate(plan);
+    assertEquals(ImmutableSet.of("az-1", "az-2", "az-3"), azCodes(earlySecretUpdate));
+    for (TaskInfo t : earlySecretUpdate) {
+      JsonNode params = t.getTaskParams();
+      boolean leaving = params.path("azCode").asText().equals("az-3");
+      assertEquals(!leaving, params.path("useNewTserverDeviceInfo").asBoolean());
+      assertEquals(!leaving, params.path("useNewMasterDeviceInfo").asBoolean());
+      if (leaving) {
+        assertEquals(tserverSize, params.path("oldTsDiskSize").asInt());
+      } else {
+        assertFalse(params.hasNonNull("oldTsDiskSize"));
+      }
+    }
+  }
+
+  @Test
+  public void testZoneReplaceWithStorageClassChangeKeepsLeavingZoneDisks() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
+    TestUtils.updateDeviceInfo(newIntent, ServerType.TSERVER, d -> d.storageClass = "fast");
+    PlacementInfo pi = zoneReplacePlacement();
+    pi.azStream().forEach(az -> az.tsStsIndex = 1);
+
+    List<TaskInfo> plan = planEdit(newIntent, pi);
+
+    // az-1 and az-2 move their tservers to the new storage class, so only the leaving az-3
+    // renders, with the storage class its volumes have.
+    List<TaskInfo> earlySecretUpdate = earlySecretUpdate(plan);
+    assertEquals(ImmutableSet.of("az-3"), azCodes(earlySecretUpdate));
+    JsonNode params = earlySecretUpdate.get(0).getTaskParams();
+    assertFalse(params.path("useNewTserverDeviceInfo").asBoolean());
+    assertFalse(params.path("useNewMasterDeviceInfo").asBoolean());
+    assertFalse(params.hasNonNull("oldTsDiskSize"));
   }
 
   @Test
@@ -1977,8 +2073,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     // az-1 renders at its current single tserver, so nothing scales early. A retry that gets
     // here has not scaled az-1 yet, so it renders the same.
     TaskInfo firstAttempt = submitEdit(newIntent, pi, null);
-    for (TaskInfo attempt :
-        ImmutableList.of(firstAttempt, submitEdit(newIntent, pi, firstAttempt.getUuid()))) {
+    for (TaskInfo attempt : ImmutableList.of(firstAttempt, retryEdit(firstAttempt))) {
       List<TaskInfo> plan = plan(attempt);
       List<TaskInfo> postRemove =
           assertPushesAroundMasterChange(
@@ -2281,7 +2376,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             rrTservers));
     // A retry that gets here has not touched any tserver yet, the read replica's included.
     assertPushesAroundMasterChange(
-        plan(submit.apply(firstAttempt.getUuid())),
+        plan(retryEdit(firstAttempt)),
         masters,
         Sets.union(
             ImmutableSet.of("yb-tserver-0_az-1", "yb-tserver-0_az-2", "yb-tserver-0_az-3"),
@@ -2476,7 +2571,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         Json.fromJson(
             TaskInfo.getOrBadRequest(taskInfo.getUuid()).getTaskParams(),
             UniverseDefinitionTaskParams.class);
-    assertTrue(retryParams.getPrimaryCluster().isMasterAddrsPropagated());
+    assertEquals(Boolean.TRUE, retryParams.getPrimaryCluster().getMasterAddrsPropagated());
     retryParams.setPreviousTaskUUID(taskInfo.getUuid());
     doThrow(new RuntimeException("stop after planning"))
         .when(mockKubernetesManager)

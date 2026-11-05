@@ -1018,6 +1018,47 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       UUID rootCAUUID,
       Set<UUID> skipMasterAZs,
       Set<UUID> skipTserverAZs) {
+    upgradePodsNonRestart(
+        universeName,
+        placement,
+        masterAddresses,
+        serverType,
+        softwareVersion,
+        universeOverridesStr,
+        azsOverrides,
+        newNamingStyle,
+        isReadOnlyCluster,
+        enableYbc,
+        ybcSoftwareVersion,
+        ysqlMajorVersionUpgradeState,
+        rootCAUUID,
+        skipMasterAZs,
+        skipTserverAZs,
+        Collections.emptyMap() /* keepDiskSpecAZs */);
+  }
+
+  /**
+   * @param keepDiskSpecAZs AZs rendered with the disk spec their StatefulSets have now instead of
+   *     the edit's target one, mapped to the disk size per server type to keep, if a disk resize
+   *     already saved the new size to the universe.
+   */
+  public void upgradePodsNonRestart(
+      String universeName,
+      KubernetesPlacement placement,
+      String masterAddresses,
+      ServerType serverType,
+      String softwareVersion,
+      String universeOverridesStr,
+      Map<String, String> azsOverrides,
+      boolean newNamingStyle,
+      boolean isReadOnlyCluster,
+      boolean enableYbc,
+      String ybcSoftwareVersion,
+      YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState,
+      UUID rootCAUUID,
+      Set<UUID> skipMasterAZs,
+      Set<UUID> skipTserverAZs,
+      Map<UUID, Map<ServerType, Integer>> keepDiskSpecAZs) {
     Cluster primaryCluster = taskParams().getPrimaryCluster();
     if (primaryCluster == null) {
       primaryCluster =
@@ -1084,7 +1125,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                       isReadOnlyCluster,
                       enableYbc,
                       ysqlMajorVersionUpgradeState,
-                      rootCAUUID));
+                      rootCAUUID,
+                      keepDiskSpecAZs.get(azUUID)));
             });
     getRunnableTask().addSubTaskGroup(helmUpgrade);
     // Wait for gflags change to be reflected on mounted locations
@@ -3140,6 +3182,46 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       boolean enableYbc,
       YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState,
       UUID rootCAUUID) {
+    return getSingleNonRestartKubernetesExecutorTaskForServerTypeTask(
+        universeName,
+        pi,
+        az,
+        masterAddresses,
+        ybSoftwareVersion,
+        serverType,
+        masterPartition,
+        tserverPartition,
+        config,
+        universeOverrides,
+        azOverrides,
+        isReadOnlyCluster,
+        enableYbc,
+        ysqlMajorVersionUpgradeState,
+        rootCAUUID,
+        null /* keptDiskSizes */);
+  }
+
+  /**
+   * @param keptDiskSizes non-null to render the disk spec the StatefulSets have now: the saved
+   *     storage class and volume count, and these sizes per server type when present.
+   */
+  public KubernetesCommandExecutor getSingleNonRestartKubernetesExecutorTaskForServerTypeTask(
+      String universeName,
+      PlacementInfo pi,
+      String az,
+      String masterAddresses,
+      String ybSoftwareVersion,
+      ServerType serverType,
+      int masterPartition,
+      int tserverPartition,
+      Map<String, String> config,
+      Map<String, Object> universeOverrides,
+      Map<String, Object> azOverrides,
+      boolean isReadOnlyCluster,
+      boolean enableYbc,
+      YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState,
+      UUID rootCAUUID,
+      @Nullable Map<ServerType, Integer> keptDiskSizes) {
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     Cluster primaryCluster = taskParams().getPrimaryCluster();
@@ -3205,6 +3287,12 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.useNewTserverDeviceInfo = true;
     params.useNewTserverDeviceInfo = true;
     params.useNewMasterDeviceInfo = true;
+    if (keptDiskSizes != null) {
+      params.useNewMasterDeviceInfo = false;
+      params.useNewTserverDeviceInfo = false;
+      params.oldMasterDiskSize = keptDiskSizes.get(ServerType.MASTER);
+      params.oldTsDiskSize = keptDiskSizes.get(ServerType.TSERVER);
+    }
     params.rootCA = rootCAUUID;
     KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
     task.initialize(params);
