@@ -10,7 +10,8 @@ umask 022
 # optional leading "-" (ignore-errors prefix), and spaces around "=".
 remove_sysctl_key() {
   local key_re="${1//./[./]}"
-  sed -i "/^[[:space:]]*\(-[[:space:]]*\)\{0,1\}${key_re}[[:space:]]*=/d" "$2"
+  # "#" as the address delimiter, since key_re contains "/".
+  sed -i "\#^[[:space:]]*\(-[[:space:]]*\)\{0,1\}${key_re}[[:space:]]*=#d" "$2"
 }
 
 # Set a sysctl key now and save it in /etc/sysctl.conf so it survives a reboot
