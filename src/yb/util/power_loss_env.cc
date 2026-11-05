@@ -56,10 +56,6 @@ class PowerLossEnv::File : public WritableFileWrapper {
     return SyncAndTrack([this] { return WritableFileWrapper::Sync(); });
   }
 
-  Status Fsync() override {
-    return SyncAndTrack([this] { return WritableFileWrapper::Fsync(); });
-  }
-
   Status Close() override {
     if (sync_on_close_) {
       return SyncAndTrack([this] { return WritableFileWrapper::Close(); });
