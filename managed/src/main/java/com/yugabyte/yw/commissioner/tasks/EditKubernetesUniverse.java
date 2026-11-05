@@ -536,10 +536,12 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     // Before the last master step removes a master, rewrite the gflags Secrets with the new
     // masters, without restarting pods, so a pod restarted from then on boots with masters that
     // stay. AZs render at their current counts, which would drop the new master pods of AZs gaining
-    // masters, so those are skipped: their Secrets got a list of the new masters when the pods were
-    // created. Full-move tserver AZs are skipped too. A resource change in the edit is safe to
-    // render: the partitions stay at the pod counts, so a pod deleted before its roll comes back at
-    // its old revision, and mounts the new Secret either way.
+    // masters, so those are skipped: creating the pods wrote the AZ's own masters into their
+    // Secrets, and all of those stay. Full-move tserver AZs are skipped too: their old StatefulSets
+    // would need the old disk size when the edit also resizes, and each keeps a master that stays
+    // in its list. A resource change in the edit is safe to render: the partitions stay at the pod
+    // counts, so a pod deleted before its roll comes back at its old revision, and mounts the new
+    // Secret either way.
     Set<UUID> secretSkipAZs = Sets.union(mastersToAddAzMap.keySet(), fullMoveTserverAZs);
     Runnable updateMasterAddrSecrets =
         propagateMasterAddrs
