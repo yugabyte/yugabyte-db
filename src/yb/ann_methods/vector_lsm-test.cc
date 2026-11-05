@@ -61,6 +61,7 @@ DECLARE_uint32(vector_index_compaction_chunk_max_memstore_size_percentage);
 DECLARE_uint32(vector_index_num_compactions_limit);
 DECLARE_uint64(vector_index_initial_chunk_memstore_size_mb);
 DECLARE_uint64(vector_index_initial_chunk_size);
+DECLARE_uint64(vector_index_max_merge_tasks);
 DECLARE_uint64(vector_index_task_size);
 
 METRIC_DEFINE_entity(table);
@@ -287,6 +288,8 @@ class VectorLSMTestBase : public hnsw::VectorIndexTestBase {
   void TestBackgroundCompactionSizeRatio(bool test_metrics);
 
   void TestMultipleChunksSimpleCompaction(vector_index::DistanceKind distance_kind);
+
+  void TestDamagedChunk(bool use_merge_tasks);
 
   MergeFilterPtr GetMergeFilter();
 
@@ -2401,6 +2404,68 @@ TEST_P(VectorLSMTest, ConcurrentSearchWhileInsertingAcrossSegments) {
 
 // A compaction that runs out of memory keeps its input chunks and leaves the LSM usable, so a later
 // compaction merges them.
+// Reading a damaged chunk fails searches and compactions instead of crashing.
+void VectorLSMTestBase::TestDamagedChunk(bool use_merge_tasks) {
+  constexpr size_t kDimensions = 8;
+  constexpr size_t kNumChunks = 2;
+  // Damages every block larger than this.
+  constexpr size_t kDamageStride = 128;
+  const std::string kChunkFilePrefix = "vectorindex_";
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+  if (!use_merge_tasks) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_max_merge_tasks) = 0;
+  }
+
+  std::string storage_dir;
+  {
+    FloatVectorLSM lsm;
+    ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kDefaultChunkSize));
+    storage_dir = lsm.StorageDir();
+    for (size_t i = 0; i != kNumChunks; ++i) {
+      ASSERT_OK(InsertRandomAndFlush(lsm, kDimensions, kDefaultChunkSize));
+    }
+    ASSERT_EQ(lsm.NumImmutableChunks(), kNumChunks);
+  }
+
+  // Damaged while the LSM is closed, so the blocks are read from disk.
+  auto files = ASSERT_RESULT(vector_index::ListVectorLSMFiles(env_.get(), storage_dir));
+  size_t num_damaged_chunks = 0;
+  for (const auto& file : files.manifest_and_chunk_files) {
+    if (file.starts_with(kChunkFilePrefix)) {
+      ASSERT_OK(DamageYbHnswBlocks(JoinPathSegments(storage_dir, file), kDamageStride));
+      ++num_damaged_chunks;
+    }
+  }
+  ASSERT_EQ(num_damaged_chunks, kNumChunks);
+
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(
+      lsm, kDimensions, kDefaultChunkSize, vector_index::DistanceKind::kL2Squared,
+      /* mem_tracker = */ {}, storage_dir));
+
+  FloatVectorLSM::Vector query_vector(kDimensions);
+  auto search_result = lsm.Search(query_vector, vector_index::SearchOptions {
+    .max_num_results = 10,
+    .ef = 0,
+  });
+  ASSERT_NOK(search_result);
+  ASSERT_TRUE(search_result.status().IsCorruption()) << search_result.status();
+
+  auto status = lsm.Compact(/* wait= */ true);
+  ASSERT_TRUE(status.IsCorruption()) << status;
+  ASSERT_STR_CONTAINS(status.ToString(), "Block checksum mismatch");
+  ASSERT_EQ(lsm.NumImmutableChunks(), kNumChunks);
+}
+
+TEST_P(VectorLSMTest, DamagedChunk) {
+  TestDamagedChunk(/* use_merge_tasks= */ true);
+}
+
+TEST_P(VectorLSMTest, DamagedChunkWithoutMergeTasks) {
+  TestDamagedChunk(/* use_merge_tasks= */ false);
+}
+
 TEST_P(VectorLSMTest, CompactionOutOfMemoryKeepsInputs) {
   constexpr size_t kDimensions = 8;
   constexpr size_t kNumChunks = 3;

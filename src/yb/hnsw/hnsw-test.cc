@@ -133,7 +133,7 @@ class YbHnswTest : public VectorIndexTestBase {
     HnswlibFilter hnswlib_filter(options.filter);
     auto hnswlib_results = index_->searchKnnCloserFirst(
         query_vector.data(), max_results, &hnswlib_filter, options.ef);
-    auto yb_hnsw_results = yb_hnsw_->Search(query_vector.data(), options, *context);
+    auto yb_hnsw_results = ASSERT_RESULT(yb_hnsw_->Search(query_vector.data(), options, *context));
     ASSERT_EQ(hnswlib_results.size(), yb_hnsw_results.size());
     for (size_t j = 0; j != hnswlib_results.size(); ++j) {
       const auto& [distance, vector_id, _] = hnswlib_results[j];
@@ -201,6 +201,33 @@ TEST_F(YbHnswTest, Simple) {
 
 TEST_F(YbHnswTest, Persistence) {
   TestSimple(/* load= */ true);
+}
+
+TEST_F(YbHnswTest, DamagedBlock) {
+  constexpr size_t kNumVectors = 1000;
+  constexpr size_t kNumSearches = 10;
+  constexpr size_t kMaxResults = 10;
+  // Smaller than any block, so every search hits a damaged block.
+  constexpr size_t kDamageStride = 512;
+
+  InsertRandomVectors(kNumVectors);
+  auto path = GetTestPath("0.yb_hnsw");
+  {
+    YbHnsw temp(metric_, block_cache_);
+    ASSERT_OK(temp.Import(*index_, path, &payloads_));
+  }
+
+  ASSERT_OK(DamageYbHnswBlocks(path, kDamageStride));
+  ASSERT_OK(yb_hnsw_->Init(path));
+
+  Vector query_vector;
+  for (size_t i = 0; i != kNumSearches; ++i) {
+    RandomVector(query_vector);
+    auto result = yb_hnsw_->Search(query_vector.data(), MakeSearchOptions(kMaxResults), context_);
+    ASSERT_NOK(result);
+    ASSERT_TRUE(result.status().IsCorruption()) << result.status();
+    ASSERT_STR_CONTAINS(result.status().message().ToBuffer(), "Block checksum mismatch");
+  }
 }
 
 std::vector<Vector> YbHnswTest::PrepareRandom(

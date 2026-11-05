@@ -2876,20 +2876,21 @@ VectorLSM<Vector, DistanceResult>::PickChunksForCompaction(CompactionType type) 
 
 namespace {
 
-void PopulateMergeTasks(
+Status PopulateMergeTasks(
     auto& tasks, size_t num_vectors_per_task, size_t& num_remaining, auto& source_iterator) {
   DCHECK(source_iterator.Valid());
   for (auto tasks_it = tasks.begin(); tasks_it != tasks.end(); ++tasks_it) {
     size_t num_vectors_added_in_task = 0;
     while (num_vectors_added_in_task < num_vectors_per_task) {
-      if ((num_remaining == 0) || !source_iterator.Next()) {
-        return;
+      if ((num_remaining == 0) || !VERIFY_RESULT(source_iterator.Next())) {
+        return Status::OK();
       }
       tasks_it->Add(std::move(*source_iterator).ToOwned());
       ++num_vectors_added_in_task;
       --num_remaining;
     }
   }
+  return Status::OK();
 }
 
 } // namespace
@@ -2927,10 +2928,10 @@ class VectorLSM<Vector, DistanceResult>::MergingIterator {
     return &(*value_);
   }
 
-  bool Next() {
-    bool reset_inner_iterator = !inner_it_.Valid();
+  Result<bool> Next() {
+    bool reset_inner_iterator = !inner_it_;
     while (Valid()) {
-      if (InnerNext(reset_inner_iterator)) {
+      if (VERIFY_RESULT(InnerNext(reset_inner_iterator))) {
         return true;
       }
 
@@ -2980,15 +2981,11 @@ class VectorLSM<Vector, DistanceResult>::MergingIterator {
   }
 
  private:
-  bool InnerValid() const {
-    return inner_it_ != inner_end_;
-  }
-
   // Outer iterator must be valid and advanced to the next chunk if necessary. To prevent
   // the infinite loop of the inner iterator, the method accepts a flag to explicitly indicate
   // if the inner iterator should be reset (it is expected to be true on the outer iterator move).
   // Returns true if the inner iterator advanced to the next vector which passes the filter.
-  bool InnerNext(bool reset_inner_iterator) {
+  Result<bool> InnerNext(bool reset_inner_iterator) {
     // 1. Setup/advance inner iterator.
     if (reset_inner_iterator) {
       // Sanity check.
@@ -2998,26 +2995,24 @@ class VectorLSM<Vector, DistanceResult>::MergingIterator {
       if (!(*outer_it_)->index) {
         return false;
       }
-      inner_it_  = (*outer_it_)->index->begin();
-      inner_end_ = (*outer_it_)->index->end();
-    } else if (InnerValid()) {
-      ++inner_it_;
-    } else {
-      return false;
+      inner_it_ = (*outer_it_)->index->CreateIterator();
+    } else if (inner_it_->Valid()) {
+      inner_it_->Next();
     }
 
     // 2. Find a vector which passes the filter and update the value_ only in case of success.
     ValueType current_value;
-    while (inner_it_ != inner_end_) {
-      current_value = *inner_it_;
+    while (inner_it_->Valid()) {
+      current_value = inner_it_->Entry();
       auto decision = filter_.Filter(current_value.vector_id, current_value.payload);
       if (decision == storage::FilterDecision::kKeep) {
         value_ = std::move(current_value);
         return true;
       }
-      ++inner_it_;
+      inner_it_->Next();
     }
 
+    RETURN_NOT_OK(inner_it_->status());
     return false;
   }
 
@@ -3037,8 +3032,7 @@ class VectorLSM<Vector, DistanceResult>::MergingIterator {
   const ImmutableChunkPtrs& chunks_;
   VectorLSMMergeFilter& filter_;
   Iterator outer_it_;
-  InnerIterator inner_it_ { nullptr };
-  InnerIterator inner_end_ { nullptr };
+  std::unique_ptr<InnerIterator> inner_it_;
   std::optional<ValueType> value_ { std::nullopt };
   storage::UserFrontiersPtr frontiers_;
   bool frontiers_updated_ = false;
@@ -3078,7 +3072,7 @@ class VectorLSM<Vector, DistanceResult>::Merger {
       if (num_vectors_per_chunk == 0) {
         // input_size is 0, so no input chunk holds a vector. Next() walks all remaining
         // chunks to accumulate their frontiers and must find nothing.
-        const bool has_vectors = input_it.Next();
+        const bool has_vectors = VERIFY_RESULT(input_it.Next());
         RSTATUS_DCHECK(
             !has_vectors, IllegalState, "Merge input has vectors, but none were counted");
       } else {
@@ -3150,7 +3144,7 @@ class VectorLSM<Vector, DistanceResult>::Merger {
 
     // Adding all input vectors to the target index, filtering outdated vectors out.
     size_t num_vectors_added = 0;
-    while ((num_vectors_added < num_vectors_to_merge) && source_iterator.Next()) {
+    while ((num_vectors_added < num_vectors_to_merge) && VERIFY_RESULT(source_iterator.Next())) {
       RETURN_NOT_OK(target_index->Insert(
           source_iterator->vector_id, source_iterator->vector, source_iterator->payload));
       ++num_vectors_added;
@@ -3218,7 +3212,9 @@ class VectorLSM<Vector, DistanceResult>::Merger {
       }
       num_total_tasks -= tasks.size();
 
-      PopulateMergeTasks(tasks, num_vectors_per_task, num_remaining_vectors, source_iterator);
+      // Allocated tasks are executed even when reading the input fails, see below.
+      failure.UpdateError(PopulateMergeTasks(
+          tasks, num_vectors_per_task, num_remaining_vectors, source_iterator));
 
       // `tasks` is now counted in the merge registry. Once allocated they must always be executed:
       // the registry only tracks executed tasks via active_tasks_, so dropping an allocated batch

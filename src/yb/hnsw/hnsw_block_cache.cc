@@ -150,7 +150,10 @@ class WriteCounter {
   size_t value_ = 0;
 };
 
-constexpr size_t kSerializationVersion = 1;
+// Version 2 adds block trailers. Readers find data inside a block by offsets from other blocks and
+// never read past them, so readers of version 1 ignore the trailers, keeping rollback possible.
+constexpr size_t kSerializationVersion = 2;
+constexpr size_t kFirstVersionWithBlockTrailers = 2;
 
 template <class Out, class... Args>
 void Serialize(const Out& out, Args&&... args) {
@@ -187,7 +190,29 @@ void Deserialize(size_t version, Out& out, Args&&... args) {
   Convert(version, out, std::forward<Args&&>(args)...);
 }
 
+Status VerifyBlockTrailer(const RandomAccessFile& file, size_t offset, Slice block) {
+  SCHECK_GE(
+      block.size(), kBlockTrailerSize, Corruption,
+      Format("Block at $0 in $1 is too small: $2", offset, file.filename(), block.size()));
+  auto contents_size = block.size() - kBlockTrailerSize;
+  auto expected = Load<uint32_t, HnswEndian>(block.data() + contents_size);
+  auto actual = crc::Crc32c(block.data(), contents_size);
+  if (actual != expected) {
+    return STATUS_FORMAT(
+        Corruption, "Block checksum mismatch at $0 in $1, size: $2, expected: $3, actual: $4",
+        offset, file.filename(), block.size(), expected, actual);
+  }
+  return Status::OK();
+}
+
 } // namespace
+
+void WriteBlockTrailer(DataBlock& block) {
+  DCHECK_GE(block.size, kBlockTrailerSize);
+  auto contents_size = block.size - kBlockTrailerSize;
+  Store<uint32_t, HnswEndian>(
+      block.data.get() + contents_size, crc::Crc32c(block.data.get(), contents_size));
+}
 
 BlockCacheMetrics::BlockCacheMetrics(const MetricEntityPtr& entity)
     : hit(METRIC_vector_index_cache_hit.Instantiate(entity)),
@@ -236,7 +261,8 @@ struct CachedBlock {
     }
   }
 
-  Result<const std::byte*> Take(RandomAccessFile& file) {
+  // The caller should call Release only if this succeeds.
+  Result<const std::byte*> Take(RandomAccessFile& file, bool has_trailer) {
     cache->metrics().query->Increment();
 
     UniqueLock lock(mutex);
@@ -260,8 +286,14 @@ struct CachedBlock {
       std::promise<Result<const std::byte*>> promise;
       load_future = promise.get_future();
       lock.unlock();
-      auto result = Load(file);
+      auto result = Load(file, has_trailer);
       promise.set_value(result);
+      if (!result.ok()) {
+        lock.lock();
+        // So the next Take reads the block again instead of returning this error.
+        load_future = {};
+        --use_count;
+      }
       return result;
     }
 
@@ -271,6 +303,10 @@ struct CachedBlock {
     auto start = MonoTime::Now();
     auto result = future.get();
     cache->metrics().take_wait_us->Increment((MonoTime::Now() - start).ToMicroseconds());
+    if (!result.ok()) {
+      lock.lock();
+      --use_count;
+    }
     return result;
   }
 
@@ -309,7 +345,7 @@ struct CachedBlock {
   }
 
  private:
-  Result<const std::byte*> Load(RandomAccessFile& file) {
+  Result<const std::byte*> Load(RandomAccessFile& file, bool has_trailer) {
     auto start = MonoTime::Now();
     std::unique_ptr<std::byte[]> new_content(new std::byte[size]);
     Slice read_result;
@@ -317,6 +353,9 @@ struct CachedBlock {
     RSTATUS_DCHECK_EQ(
         read_result.size(), size, Corruption,
         Format("Wrong number of read bytes in block $0 - $1", end - size, size));
+    if (has_trailer) {
+      RETURN_NOT_OK(VerifyBlockTrailer(file, end - size, read_result));
+    }
 
     cache->metrics().read_us->Increment((MonoTime::Now() - start).ToMicroseconds());
     cache->metrics().read->IncrementBy(size);
@@ -413,6 +452,7 @@ Result<Header> FileBlockCache::Load() {
   Header header;
   SliceReader reader(footer_data);
   size_t version = reader.Read<uint8_t>();
+  has_block_trailers_ = version >= kFirstVersionWithBlockTrailers;
   Deserialize(version, header, reader);
   AllocateBlocks(reader.Left() / sizeof(uint64_t));
   size_t prev_end = 0;
@@ -425,7 +465,7 @@ Result<Header> FileBlockCache::Load() {
 }
 
 Result<const std::byte*> FileBlockCache::Take(size_t index) {
-  return blocks_[index].Take(*file_);
+  return blocks_[index].Take(*file_, has_block_trailers_);
 }
 
 void FileBlockCache::Release(size_t index) {

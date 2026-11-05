@@ -13,9 +13,14 @@
 
 #include "yb/hnsw/vector_index_test_base.h"
 
+#include "yb/gutil/endian.h"
+
 #include "yb/rocksdb/cache.h"
 
+#include "yb/util/env.h"
+#include "yb/util/faststring.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
 
 namespace yb::hnsw {
 
@@ -50,6 +55,19 @@ void VectorIndexTestBase::SetUp() {
       MemTracker::GetRootTracker()->FindOrCreateTracker(1ULL << 30, "block_cache"),
       metric_entity_,
       *rocksdb_cache_);
+}
+
+Status VectorIndexTestBase::DamageYbHnswBlocks(const std::string& path, size_t stride) {
+  faststring content;
+  RETURN_NOT_OK(ReadFileToString(env_.get(), path, &content));
+  SCHECK_GE(content.size(), sizeof(uint64_t), IllegalState, Format("$0 is too small", path));
+  const auto footer_size = LittleEndian::Load64(
+      content.data() + content.size() - sizeof(uint64_t));
+  SCHECK_LT(footer_size, content.size(), IllegalState, Format("Bad footer size in $0", path));
+  for (size_t pos = 0; pos < content.size() - footer_size; pos += stride) {
+    content[pos] ^= 0xff;
+  }
+  return WriteStringToFile(env_.get(), content, path);
 }
 
 size_t VectorIndexTestBase::BlockCacheCapacity() {

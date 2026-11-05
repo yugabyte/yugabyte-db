@@ -23,6 +23,12 @@
 
 namespace yb::hnsw {
 
+// Each block ends with the CRC32C of the rest of the block.
+constexpr size_t kBlockTrailerSize = sizeof(uint32_t);
+
+// Fills the trailer of a block whose contents are fully written.
+void WriteBlockTrailer(DataBlock& block);
+
 class FileBlockCacheBuilder {
  public:
   void Add(DataBlock&& block) {
@@ -78,6 +84,8 @@ class FileBlockCache {
   std::unique_ptr<RandomAccessFile> file_;
   std::unique_ptr<CachedBlock[]> blocks_;
   size_t size_ = 0;
+  // False for files written before block trailers were added.
+  bool has_block_trailers_ = true;
 };
 
 class BlockCacheHandle {

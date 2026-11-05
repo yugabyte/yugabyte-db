@@ -91,14 +91,9 @@ class ShardedVectorIndex : public VectorIndexIf<Vector, DistanceResult> {
   }
 
   // TODO(vector_index): define begin and end methods to iterate over all shareded indexes.
-  std::unique_ptr<AbstractIterator<VectorIndexIteratorEntry<Vector>>> BeginImpl() const override {
+  std::unique_ptr<VectorIndexIterator<Vector>> CreateIterator() const override {
     CHECK(!indexes_.empty());
-    return indexes_[0]->BeginImpl();
-  }
-
-  std::unique_ptr<AbstractIterator<VectorIndexIteratorEntry<Vector>>> EndImpl() const override {
-    CHECK(!indexes_.empty());
-    return indexes_[0]->EndImpl();
+    return indexes_[0]->CreateIterator();
   }
 
   // Search for the closest vectors across all shards.

@@ -121,6 +121,7 @@ set(UTIL_SRCS
   countdown_latch.cc
   crash_point.cc
   crc.cc
+  crc32c_accelerated.cc
   cross_thread_mutex.cc
   crypt.cc
   csv_util.cc
