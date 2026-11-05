@@ -8914,6 +8914,8 @@ static bool YbDbAdminCanSetVariable(const char *name);
 static bool yb_conn_mgr_next_guc_entry(const char **ptr, const char *end,
 									   const char **name, const char **value,
 									   bool *skip_check);
+static void YbSendConnMgrParamStatus(const char *name, const char *val,
+									 uint8 flags);
 
 
 /*
@@ -11039,11 +11041,30 @@ ReportGUCOption(struct config_generic *record)
 					break;
 			}
 
-			pq_beginmessage(&msgbuf, 'r');
-			pq_sendstring(&msgbuf, record->name);
-			pq_sendstring(&msgbuf, val);
-			pq_sendbyte(&msgbuf, flags);
-			pq_endmessage(&msgbuf);
+			if (!(flags & YB_PARAM_STATUS_REPORT_ENABLED))
+				YbSendConnMgrParamStatus(record->name, val, flags);
+			else
+			{
+				char	   *client_val = pg_server_to_client(val,
+															 strlen(val));
+
+				if (strcmp(client_val, val) == 0)
+					YbSendConnMgrParamStatus(record->name, val, flags);
+				else
+				{
+					uint8		stored_flags =
+						flags & ~YB_PARAM_STATUS_REPORT_ENABLED;
+
+					if (stored_flags & ~YB_PARAM_STATUS_SKIP_CHECK_ON_REPLAY)
+						YbSendConnMgrParamStatus(record->name, val,
+												 stored_flags);
+					YbSendConnMgrParamStatus(record->name, client_val,
+											 YB_PARAM_STATUS_REPORT_ENABLED);
+				}
+
+				if (client_val != val)
+					pfree(client_val);
+			}
 		}
 		else
 		{
@@ -19036,6 +19057,18 @@ YbDbAdminCanSetVariable(const char *name)
 			return true;
 	}
 	return false;
+}
+
+static void
+YbSendConnMgrParamStatus(const char *name, const char *val, uint8 flags)
+{
+	StringInfoData msgbuf;
+
+	pq_beginmessage(&msgbuf, 'r');
+	pq_sendbytes(&msgbuf, name, strlen(name) + 1);
+	pq_sendbytes(&msgbuf, val, strlen(val) + 1);
+	pq_sendbyte(&msgbuf, flags);
+	pq_endmessage(&msgbuf);
 }
 
 #include "guc-file.c"
