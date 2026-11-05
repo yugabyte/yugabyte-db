@@ -336,6 +336,45 @@ CREATE TABLE items (id serial PRIMARY KEY, embedding vector);
 CREATE INDEX ON items USING ybhnsw (embedding vector_l2_ops);
 ERROR:  column does not have dimensions
 DROP TABLE items;
+-- ALTER COLUMN TYPE is rejected on a column used by a ybhnsw index (#36753).
+-- The index is built for the column's dimensions, so it can't follow a type
+-- change.
+CREATE TABLE items (id int PRIMARY KEY, embedding vector(3));
+CREATE INDEX items_idx ON items USING ybhnsw (embedding vector_l2_ops);
+INSERT INTO items VALUES (1, '[1, 1, 1]'), (2, '[2, 2, 2]'), (3, '[3, 3, 3]');
+ALTER TABLE items ALTER COLUMN embedding TYPE vector;
+ERROR:  cannot alter type of a column used by a vector index
+DETAIL:  Index "items_idx" depends on column "embedding".
+HINT:  Drop the index first, or add a new column with the new type.
+ALTER TABLE items ALTER COLUMN embedding TYPE vector(4);
+ERROR:  cannot alter type of a column used by a vector index
+DETAIL:  Index "items_idx" depends on column "embedding".
+HINT:  Drop the index first, or add a new column with the new type.
+ALTER TABLE items ALTER COLUMN embedding TYPE vector(3);
+ERROR:  cannot alter type of a column used by a vector index
+DETAIL:  Index "items_idx" depends on column "embedding".
+HINT:  Drop the index first, or add a new column with the new type.
+-- The index keeps its dimensions: wrong-size vectors are refused and searches
+-- work.
+SELECT atttypmod FROM pg_attribute WHERE attrelid = 'items_idx'::regclass;
+ atttypmod 
+-----------
+         3
+(1 row)
+
+INSERT INTO items VALUES (4, '[1, 2]');
+ERROR:  expected 3 dimensions, not 2
+SELECT id FROM items ORDER BY embedding <-> '[1, 1, 1]' LIMIT 2;
+ id 
+----
+  1
+  2
+(2 rows)
+
+-- Without the index, the ALTER works.
+DROP INDEX items_idx;
+ALTER TABLE items ALTER COLUMN embedding TYPE vector;
+DROP TABLE items;
 -- Partial vector indexes are not supported (#31441).  The predicate is not
 -- pushed into the vector AM, so allowing them would silently produce wrong
 -- query results.  The CREATE INDEX should be rejected for both vector AMs.
