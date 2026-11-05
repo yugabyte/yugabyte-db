@@ -305,6 +305,10 @@ class XClusterManager : public XClusterManagerIf,
       const DeleteXClusterWalAnchorStreamsRequestPB* req,
       DeleteXClusterWalAnchorStreamsResponsePB* resp, rpc::RpcContext* rpc,
       const LeaderEpoch& epoch);
+  Status RecordXClusterStreamBootstrapInfo(
+      const RecordXClusterStreamBootstrapInfoRequestPB* req,
+      RecordXClusterStreamBootstrapInfoResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
   Status GetXClusterOutboundReplicationGroups(
       const GetXClusterOutboundReplicationGroupsRequestPB* req,
       GetXClusterOutboundReplicationGroupsResponsePB* resp, rpc::RpcContext* rpc,

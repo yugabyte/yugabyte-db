@@ -48,6 +48,8 @@ public class TestAuthPassthrough extends BaseYsqlConnMgr {
   final String ADMIN_USERNAME = "yugabyte";
   final String ADMIN_PASSWORD = "yugabyte";
   final String WRONG_PASSWORD = "abcd"; // Non-empty wrong password
+  // Logged by an auth passthrough control backend each time it prefetches, not when it reuses.
+  static final String AUTH_PREFETCH_LOG_LINE = "YB auth passthrough: prefetching catalogs";
 
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
@@ -368,6 +370,165 @@ public class TestAuthPassthrough extends BaseYsqlConnMgr {
     });
   }
 
+  // ---------------------------------------------------------------------------
+  // Warm auth prefetcher tests.
+  //
+  // In auth passthrough mode the auth catalog table prefetcher (pg_authid, pg_auth_members,
+  // pg_database, pg_db_role_setting, ...) is kept started on the control backend across auths. Its
+  // entries are prefetched again when a DDL bumps the shared catalog version or once
+  // pg_cache_response_trust_auth_lifetime_limit_ms has passed since they were prefetched.
+  //
+  // Dropped roles, password changes, NOLOGIN and CONNECT revocation are covered by the *WithCache
+  // tests above, whose auth passthrough pass runs this same configuration.
+  // ---------------------------------------------------------------------------
+
+  // A newly created role must be able to log in even though the control backend
+  // has prefetched entries from before the CREATE ROLE.
+  @Test
+  public void testWarmPrefetcherCreateRoleVisible() throws Exception {
+    final String newUser = "warm_new_user";
+    withAuthPassthroughCacheCluster(adminStmt -> {
+      try {
+        // Recreate the warm-up role on the freshly restarted cluster, then log
+        // in to warm the control backend's prefetcher.
+        recreateLoginRole(adminStmt, TEST_USERNAME, TEST_PASSWORD);
+        assertLoginResult(TEST_USERNAME, TEST_PASSWORD, true);
+        recreateLoginRole(adminStmt, newUser, TEST_PASSWORD);
+        assertLoginResult(newUser, TEST_PASSWORD, true);
+      } finally {
+        adminStmt.execute("DROP ROLE IF EXISTS " + newUser);
+        adminStmt.execute("DROP ROLE IF EXISTS " + TEST_USERNAME);
+      }
+    });
+  }
+
+  // A global-impact DDL run from a connection to another database must reach the control backend,
+  // which runs on the internal connection database (ysql_conn_mgr_internal_conn_db).
+  @Test
+  public void testWarmPrefetcherCrossDatabaseRoleVisible() throws Exception {
+    final String db = "warm_db_b";
+    final String newUser = "warm_xdb_user";
+    withAuthPassthroughCacheCluster(adminStmt -> {
+      try {
+        adminStmt.execute("CREATE DATABASE " + db);
+        // Warm the control backend's prefetcher.
+        assertLoginResult(ADMIN_USERNAME, ADMIN_PASSWORD, true);
+
+        try (Connection dbConn = getConnectionBuilder()
+                 .withConnectionEndpoint(ConnectionEndpoint.POSTGRES)
+                 .withUser(ADMIN_USERNAME)
+                 .withPassword(ADMIN_PASSWORD)
+                 .withDatabase(db)
+                 .connect();
+             Statement dbStmt = dbConn.createStatement()) {
+          dbStmt.execute("CREATE ROLE " + newUser + " LOGIN PASSWORD '" + TEST_PASSWORD + "'");
+        }
+        assertLoginResult(newUser, TEST_PASSWORD, true);
+      } finally {
+        adminStmt.execute("DROP ROLE IF EXISTS " + newUser);
+      }
+    });
+  }
+
+  // Logins with no catalog version bump between them must share one prefetch, and a DDL must make
+  // the next login prefetch again. The other tests here pass even if every auth prefetches anew.
+  @Test
+  public void testWarmPrefetcherReusedUntilDdl() throws Exception {
+    final String user = TEST_USERNAME;
+    withAuthPassthroughCacheCluster(adminStmt -> {
+      PgLogListener listener = new PgLogListener(AUTH_PREFETCH_LOG_LINE);
+      miniCluster.getTabletServers().values()
+          .forEach(ts -> ts.getLogPrinter().addErrorListener(listener));
+      try {
+        recreateLoginRole(adminStmt, user, TEST_PASSWORD);
+        long versionBeforeDdl = getTemplate1CatalogVersion(adminStmt);
+        loginUntilAuthPrefetchAt(listener, user, versionBeforeDdl);
+        assertLoginResult(user, TEST_PASSWORD, true);
+        assertLoginResult(user, TEST_PASSWORD, true);
+
+        adminStmt.execute("ALTER ROLE " + user + " CONNECTION LIMIT 10");
+        long versionAfterDdl = getTemplate1CatalogVersion(adminStmt);
+        List<Long> versions = loginUntilAuthPrefetchAt(listener, user, versionAfterDdl);
+
+        assertEquals("Expected the logins before the DDL to share one prefetch, got versions "
+            + versions, 1, Collections.frequency(versions, versionBeforeDdl));
+        assertEquals("Expected one prefetch after the DDL, got versions " + versions,
+            1, Collections.frequency(versions, versionAfterDdl));
+      } finally {
+        adminStmt.execute("DROP ROLE IF EXISTS " + user);
+      }
+    });
+  }
+
+  // Reuse must also stop once pg_cache_response_trust_auth_lifetime_limit_ms has passed, so that
+  // with no DDL the next login prefetches again at the same version.
+  @Test
+  public void testWarmPrefetcherReuseExpires() throws Exception {
+    final String user = TEST_USERNAME;
+    final int lifetimeMs = 10_000;
+    Map<String, String> flags = new HashMap<>();
+    flags.put("pg_cache_response_trust_auth_lifetime_limit_ms", Integer.toString(lifetimeMs));
+    withAuthPassthroughCacheCluster(flags, adminStmt -> {
+      PgLogListener listener = new PgLogListener(AUTH_PREFETCH_LOG_LINE);
+      miniCluster.getTabletServers().values()
+          .forEach(ts -> ts.getLogPrinter().addErrorListener(listener));
+      try {
+        recreateLoginRole(adminStmt, user, TEST_PASSWORD);
+        long version = getTemplate1CatalogVersion(adminStmt);
+        loginUntilAuthPrefetchAt(listener, user, version);
+        assertLoginResult(user, TEST_PASSWORD, true);
+
+        Thread.sleep(lifetimeMs + 1_000);
+        List<Long> versions = getAuthPrefetchVersions(listener);
+        assertEquals("Expected the login within the lifetime to reuse, got versions " + versions,
+            1, Collections.frequency(versions, version));
+
+        assertLoginResult(user, TEST_PASSWORD, true);
+        versions = findAuthPrefetchAt(listener, version, 2, 10_000);
+        assertNotNull("Expected a new prefetch at version " + version + " after the lifetime",
+            versions);
+      } finally {
+        adminStmt.execute("DROP ROLE IF EXISTS " + user);
+      }
+    });
+  }
+
+  // DDL churn: interleave password changes with logins so the control backend goes through repeated
+  // stop -> refresh -> re-prefetch cycles, then check that the final auth state (final password,
+  // then a DROP) is observed rather than a stale warm cache.
+  @Test
+  public void testWarmPrefetcherDdlChurn() throws Exception {
+    final String user = TEST_USERNAME;
+    final int churnCount = 50;
+    final int loginEvery = 10;
+    withAuthPassthroughCacheCluster(adminStmt -> {
+      try {
+        recreateLoginRole(adminStmt, user, TEST_PASSWORD);
+        assertLoginResult(user, TEST_PASSWORD, true);
+
+        String finalPassword = TEST_PASSWORD;
+        for (int i = 0; i < churnCount; i++) {
+          finalPassword = "churn_pwd_" + i;
+          adminStmt.execute(
+              "ALTER ROLE " + user + " PASSWORD '" + finalPassword + "'");
+          if ((i + 1) % loginEvery == 0 && i + 1 < churnCount) {
+            assertLoginWithPasswordResult(user, finalPassword, true);
+          }
+        }
+
+        // Only the final password (pg_authid.rolpassword) must authenticate;
+        // the original warm-cached password must be rejected.
+        assertLoginWithPasswordResult(user, finalPassword, true);
+        assertLoginWithPasswordResult(user, TEST_PASSWORD, false);
+
+        adminStmt.execute("DROP ROLE " + user);
+        assertLoginWithPasswordResult(user, finalPassword, false);
+      } finally {
+        adminStmt.execute("DROP ROLE IF EXISTS " + user);
+      }
+    });
+  }
+
   @FunctionalInterface
   private interface AdminAction {
     void run(Statement adminStatement) throws Exception;
@@ -391,14 +552,35 @@ public class TestAuthPassthrough extends BaseYsqlConnMgr {
       flags.put("ysql_conn_mgr_use_auth_backend", Boolean.toString(useAuthBackend));
       restartClusterWithAdditionalFlags(Collections.EMPTY_MAP, flags);
 
-      try (Connection adminConn = getConnectionBuilder()
-               .withConnectionEndpoint(ConnectionEndpoint.POSTGRES)
-               .withUser(ADMIN_USERNAME)
-               .withPassword(ADMIN_PASSWORD)
-               .connect();
-           Statement adminStmt = adminConn.createStatement()) {
-        action.run(adminStmt);
-      }
+      runWithAdminConnection(action);
+    }
+  }
+
+  // As withAuthCacheCluster, but auth passthrough only: the auth catalog table prefetcher is only
+  // kept started across authentications on an auth passthrough control backend, so auth backend
+  // mode is not covered here.
+  private void withAuthPassthroughCacheCluster(AdminAction action) throws Exception {
+    withAuthPassthroughCacheCluster(Collections.emptyMap(), action);
+  }
+
+  private void withAuthPassthroughCacheCluster(Map<String, String> extraFlags,
+      AdminAction action) throws Exception {
+    Map<String, String> flags = new HashMap<>(extraFlags);
+    flags.put("ysql_enable_read_request_cache_for_connection_auth", "true");
+    flags.put("ysql_conn_mgr_use_auth_backend", "false");
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), flags);
+
+    runWithAdminConnection(action);
+  }
+
+  private void runWithAdminConnection(AdminAction action) throws Exception {
+    try (Connection adminConn = getConnectionBuilder()
+             .withConnectionEndpoint(ConnectionEndpoint.POSTGRES)
+             .withUser(ADMIN_USERNAME)
+             .withPassword(ADMIN_PASSWORD)
+             .connect();
+         Statement adminStmt = adminConn.createStatement()) {
+      action.run(adminStmt);
     }
   }
 
@@ -430,6 +612,63 @@ public class TestAuthPassthrough extends BaseYsqlConnMgr {
         fail("Expected login to succeed for user \"" + user + "\", got: " + e.getMessage());
       }
     }
+  }
+
+  // The auth prefetch is keyed on template1's catalog version (see the 'A' handler in postgres.c).
+  private long getTemplate1CatalogVersion(Statement stmt) throws SQLException {
+    try (ResultSet rs = stmt.executeQuery(
+             "SELECT current_version FROM pg_yb_catalog_version WHERE db_oid = 1")) {
+      assertTrue("Expected a catalog version row for template1", rs.next());
+      return rs.getLong(1);
+    }
+  }
+
+  // Logs in as `user` until an auth prefetch at catalog `version` is logged, and returns the
+  // versions of all auth prefetches logged so far. Until `version` reaches this tserver a login
+  // reuses the previous prefetch, which logs nothing, so extra logins add no prefetch at `version`.
+  private List<Long> loginUntilAuthPrefetchAt(PgLogListener listener, String user, long version)
+      throws Exception {
+    for (int attempt = 0; attempt < 10; attempt++) {
+      assertLoginResult(user, TEST_PASSWORD, true);
+      List<Long> versions = findAuthPrefetchAt(listener, version, 1, 1_000);
+      if (versions != null) {
+        return versions;
+      }
+    }
+    fail("No auth prefetch at catalog version " + version + " was logged");
+    return null;
+  }
+
+  // Waits up to `timeoutMs` for `count` auth prefetches at `version` to be logged, then returns the
+  // versions of all auth prefetches logged so far, or null on timeout. Lines from one control
+  // backend arrive in order, so every prefetch before the last one counted is included.
+  private List<Long> findAuthPrefetchAt(PgLogListener listener, long version, int count,
+      long timeoutMs) throws InterruptedException {
+    long deadline = System.currentTimeMillis() + timeoutMs;
+    while (true) {
+      List<Long> versions = getAuthPrefetchVersions(listener);
+      if (Collections.frequency(versions, version) >= count) {
+        return versions;
+      }
+      if (System.currentTimeMillis() > deadline) {
+        return null;
+      }
+      Thread.sleep(100);
+    }
+  }
+
+  // Returns the versions of the auth prefetches logged so far, in order.
+  private List<Long> getAuthPrefetchVersions(PgLogListener listener) {
+    Pattern versionPattern = Pattern.compile(
+        Pattern.quote(AUTH_PREFETCH_LOG_LINE) + " at shared catalog version (\\d+)");
+    List<Long> versions = new ArrayList<>();
+    for (String line : listener.getLines()) {
+      Matcher m = versionPattern.matcher(line);
+      if (m.find()) {
+        versions.add(Long.parseLong(m.group(1)));
+      }
+    }
+    return versions;
   }
 
   private void assertLoginWithPasswordResult(String user, String password, boolean shouldSucceed)
@@ -645,8 +884,8 @@ public class TestAuthPassthrough extends BaseYsqlConnMgr {
   }
 
   /**
-   * LogErrorListener that captures PostgreSQL log lines containing
-   * "Auth Passthrough" from the tserver's LogPrinter stream.
+   * LogErrorListener that captures PostgreSQL log lines containing a marker
+   * (by default "Auth Passthrough") from the tserver's LogPrinter stream.
    *
    * Only lines matching the marker are buffered to avoid unbounded memory
    * growth from the full tserver log output. Callers use
@@ -656,12 +895,21 @@ public class TestAuthPassthrough extends BaseYsqlConnMgr {
   private static class PgLogListener implements LogErrorListener {
     private static final String AUTH_PASSTHROUGH_MARKER = "Auth Passthrough";
 
+    private final String marker;
     private final List<String> lines = new ArrayList<>();
     private final Object lock = new Object();
 
+    PgLogListener() {
+      this(AUTH_PASSTHROUGH_MARKER);
+    }
+
+    PgLogListener(String marker) {
+      this.marker = marker;
+    }
+
     @Override
     public void handleLine(String line) {
-      if (!line.contains(AUTH_PASSTHROUGH_MARKER)) {
+      if (!line.contains(marker)) {
         return;
       }
       synchronized (lock) {
@@ -698,6 +946,12 @@ public class TestAuthPassthrough extends BaseYsqlConnMgr {
           }
           lock.wait(waitMs);
         }
+      }
+    }
+
+    public List<String> getLines() {
+      synchronized (lock) {
+        return new ArrayList<>(lines);
       }
     }
 

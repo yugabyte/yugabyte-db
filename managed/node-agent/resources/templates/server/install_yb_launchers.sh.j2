@@ -1,0 +1,48 @@
+{#- Installs the launchers the yb-master and yb-tserver units exec: bin/yb-server-exec.sh, and
+    bin/yb-tserver-cgroup-exec.sh when cgroups are configured. ConfigureServer installs them with
+    the other server scripts, but re-provisioning starts the servers on the units YNP writes
+    without running ConfigureServer, so the YNP modules that write the units include this next to
+    them.
+    Only a node that already has bin/ needs them now. A blank node gets them from ConfigureServer,
+    and creating bin/ here would fail the clean home directory check in the yugabyte precheck.
+    The module scripts do not run with set -e, so a failed install exits here instead of leaving
+    the units pointing at a missing file. #}
+# Reads the launcher from stdin and installs it as bin/$1, owned by the yb user.
+# install creates a new file in bin/, so it gets bin/'s SELinux label. A file moved from the
+# temp dir would keep tmp_t, which systemd may not be allowed to exec. No -C: a launcher an
+# earlier run left with the wrong label is rewritten even when its content is unchanged.
+install_yb_launcher() {
+    local dest="{{ yb_home_dir }}/bin/$1"
+    local owner_args=()
+    local tmp_file
+    local rc
+    if [ "$SUDO_ACCESS" = "true" ]; then
+        owner_args=(-o {{ yb_user }} -g {{ yb_user }})
+    fi
+    tmp_file=$(mktemp) || return 1
+    cat > "$tmp_file" && install -m 0755 "${owner_args[@]}" "$tmp_file" "$dest"
+    rc=$?
+    rm -f "$tmp_file"
+    return $rc
+}
+
+if [ -d "{{ yb_home_dir }}/bin" ]; then
+    if ! install_yb_launcher yb-server-exec.sh <<'YB_LAUNCHER_EOF'
+{% include "yb-server-exec.sh.j2" %}
+YB_LAUNCHER_EOF
+    then
+        echo "Failed to install {{ yb_home_dir }}/bin/yb-server-exec.sh"
+        exit 1
+    fi
+{% if configure_cgroup is true %}
+    if ! install_yb_launcher yb-tserver-cgroup-exec.sh <<'YB_LAUNCHER_EOF'
+{% include "yb-tserver-cgroup-exec.sh.j2" %}
+YB_LAUNCHER_EOF
+    then
+        echo "Failed to install {{ yb_home_dir }}/bin/yb-tserver-cgroup-exec.sh"
+        exit 1
+    fi
+{% endif %}
+else
+    echo "{{ yb_home_dir }}/bin does not exist; ConfigureServer installs the server launchers"
+fi

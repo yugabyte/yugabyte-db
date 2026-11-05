@@ -88,17 +88,23 @@ DEFINE_RUNTIME_uint64(vector_index_initial_chunk_memstore_size_mb, 256,
     "specifies its own chunk size, as backfill does, uses that instead. A single insert batch "
     "that does not fit gets a chunk of its own size.");
 
-DEFINE_RUNTIME_uint64(vector_index_compaction_chunk_max_mem_store_size_mb, 0,
+DEFINE_RUNTIME_uint64(vector_index_compaction_chunk_max_memstore_size_mb, 0,
     "Maximum in-memory size in megabytes for a single output chunk built during Vector LSM "
     "compaction. 0 means no limit (single output chunk). When non-zero, this flag takes priority "
-    "over `vector_index_compaction_chunk_max_mem_store_size_percentage`.");
+    "over `vector_index_compaction_chunk_max_memstore_size_percentage`.");
 
-DEFINE_RUNTIME_uint32(vector_index_compaction_chunk_max_mem_store_size_percentage, 60,
+DEFINE_RUNTIME_uint32(vector_index_compaction_chunk_max_memstore_size_percentage, 60,
     "Maximum in-memory size for a single output chunk built during Vector LSM "
     "compaction, as a percentage of the vector index block cache capacity. "
     "0 means no limit (single output chunk). Values above 100 are treated as 100. "
-    "Ignored when `vector_index_compaction_chunk_max_mem_store_size_mb` is non-zero or "
+    "Ignored when `vector_index_compaction_chunk_max_memstore_size_mb` is non-zero or "
     "concurrent compactions are allowed (`vector_index_num_compactions_limit` is not 1).");
+
+// Renamed to the one-word "memstore" spelling to follow the wording of the existing gflags.
+// The old names are accepted but their values are ignored: they are not expected to be used
+// anywhere.
+DEPRECATE_FLAG(uint64, vector_index_compaction_chunk_max_mem_store_size_mb, "10_2026");
+DEPRECATE_FLAG(uint32, vector_index_compaction_chunk_max_mem_store_size_percentage, "10_2026");
 
 DEFINE_RUNTIME_uint32(vector_index_num_compactions_limit, 1,
     "Number of vector index compaction per tserver. 0 - no limit per tserver.");
@@ -165,9 +171,9 @@ YB_DEFINE_ENUM(ImmutableChunkState, (kInMemory)(kOnDisk)(kInManifest));
 YB_DEFINE_ENUM(CompactionState, (kNone)(kCompacting)(kCompacted));
 YB_DEFINE_ENUM(ManifestUpdateType, (kFull)(kActual));
 
-// Resolves the max mem-store size for a Vector LSM compaction output chunk from gflags.
-// --vector_index_compaction_chunk_max_mem_store_size_mb takes priority when non-zero.
-// Otherwise --vector_index_compaction_chunk_max_mem_store_size_percentage of block_cache_capacity
+// Resolves the max memstore size for a Vector LSM compaction output chunk from gflags.
+// --vector_index_compaction_chunk_max_memstore_size_mb takes priority when non-zero.
+// Otherwise --vector_index_compaction_chunk_max_memstore_size_percentage of block_cache_capacity
 // is used when --vector_index_num_compactions_limit is 1 (meaning no concurrent compactions).
 // Returned bytes == 0 means no limit.
 struct CompactionChunkMemStoreLimit {
@@ -176,27 +182,27 @@ struct CompactionChunkMemStoreLimit {
 };
 
 CompactionChunkMemStoreLimit GetCompactionChunkMaxMemStoreBytes(size_t block_cache_capacity) {
-  const auto max_mem_store_size_mb = FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb;
-  if (max_mem_store_size_mb) {
+  const auto max_memstore_size_mb = FLAGS_vector_index_compaction_chunk_max_memstore_size_mb;
+  if (max_memstore_size_mb) {
     return {
-      .bytes = max_mem_store_size_mb * 1_MB,
-      .description = Format("$0 MB", max_mem_store_size_mb),
+      .bytes = max_memstore_size_mb * 1_MB,
+      .description = Format("$0 MB", max_memstore_size_mb),
     };
   }
 
   // Concurrent compactions disable the percentage limit (no automatic budget).
-  // Users should set --vector_index_compaction_chunk_max_mem_store_size_mb.
+  // Users should set --vector_index_compaction_chunk_max_memstore_size_mb.
   if (FLAGS_vector_index_num_compactions_limit != 1) {
-    LOG_IF(WARNING, FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage != 0)
-        << "vector_index_compaction_chunk_max_mem_store_size_percentage is ignored because "
+    LOG_IF(WARNING, FLAGS_vector_index_compaction_chunk_max_memstore_size_percentage != 0)
+        << "vector_index_compaction_chunk_max_memstore_size_percentage is ignored because "
         << "concurrent vector index compactions are allowed; set "
-        << "vector_index_compaction_chunk_max_mem_store_size_mb";
+        << "vector_index_compaction_chunk_max_memstore_size_mb";
     return {.description = "- (percentage disabled by concurrent compactions)"};
   }
 
-  auto percentage = FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage;
+  auto percentage = FLAGS_vector_index_compaction_chunk_max_memstore_size_percentage;
   if (percentage > 100) {
-     LOG(WARNING) << "Setting vector_index_compaction_chunk_max_mem_store_size_percentage to 100";
+     LOG(WARNING) << "Setting vector_index_compaction_chunk_max_memstore_size_percentage to 100";
      percentage = 100;
   }
 
@@ -1187,6 +1193,10 @@ class VectorLSM<Vector, DistanceResult>::CompactionTask : public PriorityThreadP
     auto status = DoRun(suspender);
     if (status.ok() || status.IsShutdownInProgress()) {
       LOG_WITH_PREFIX(INFO) << "Done: " << status;
+    } else if (status.IsServiceUnavailable()) {
+      // Not enough memory for the merged index. The input chunks stay as they are, and a later
+      // compaction retries them.
+      LOG_WITH_PREFIX(WARNING) << "Failed, to be retried: " << status;
     } else {
       LOG_WITH_PREFIX(ERROR) << "Failed: " << status;
       lsm_.CheckFailure(status);
@@ -1239,7 +1249,10 @@ class VectorLSM<Vector, DistanceResult>::CompactionTask : public PriorityThreadP
     if (callback_) {
       callback_(status);
     }
-    if (last_serial_no == lsm_.LastSerialNo()) {
+    // Out of memory is retried after the next flush, not right away. A chunked compaction
+    // changes the serial number by saving its first output chunks, so it would be resubmitted
+    // at once and fail the same way.
+    if (status.IsServiceUnavailable() || last_serial_no == lsm_.LastSerialNo()) {
       lsm_.Deregister(*this);
     } else {
       lsm_.ScheduleBackgroundCompaction(this);
@@ -1437,7 +1450,12 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
   merge_registry_ = std::make_shared<MergeRegistry>(
       options_.log_prefix, *options_.insert_thread_pool);
 
-  RETURN_NOT_OK(env_->CreateDirs(options_.storage_dir));
+  // Manifest appends sync only the directory, not its entry in the parent. Losing that entry would
+  // silently reopen the index empty.
+  if (!env_->DirExists(options_.storage_dir)) {
+    RETURN_NOT_OK(env_->CreateDirs(options_.storage_dir));
+    RETURN_NOT_OK(env_->SyncDir(DirName(options_.storage_dir)));
+  }
   auto load_result = VERIFY_RESULT(VectorLSMMetadataLoad(env_, options_.storage_dir));
   next_manifest_file_no_ = load_result.next_free_file_no;
   for (const auto& chunk_pb : load_result.chunks) {
@@ -1485,12 +1503,16 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
       promise.set_value(status);
     });
   }
+  // Fail rather than run with a vector index that fails every write, since applying a failed write
+  // FATALs the tserver. On tablet open this fails only the tablet.
+  Status load_status;
   for (auto& promise : promises) {
     auto status = promise.get_future().get();
-    if (!status.ok()) {
-      RecordFailureUnlocked(status);
+    if (!status.ok() && load_status.ok()) {
+      load_status = std::move(status);
     }
   }
+  RETURN_NOT_OK(load_status);
 
   std::sort(
       immutable_chunks_.begin(), immutable_chunks_.end(), [](const auto& lhs, const auto& rhs) {
@@ -1532,6 +1554,7 @@ Status VectorLSM<Vector, DistanceResult>::CreateCheckpoint(const std::string& ou
   }
 
   RETURN_NOT_OK(env_->CreateDirs(out));
+  RETURN_NOT_OK(env_->SyncDir(DirName(out)));
   VectorLSMUpdatePB update;
   for (const auto& chunk : chunks) {
     RETURN_NOT_OK(chunk->Link(*env_, options_, out));
@@ -1539,7 +1562,7 @@ Status VectorLSM<Vector, DistanceResult>::CreateCheckpoint(const std::string& ou
   }
 
   auto manifest_file = VERIFY_RESULT(VectorLSMMetadataOpenFile(env_, out, 0));
-  RETURN_NOT_OK(VectorLSMMetadataAppendUpdate(*manifest_file, update));
+  RETURN_NOT_OK(VectorLSMMetadataAppendUpdate(*env_, *manifest_file, update));
 
   // Some chunks could become obsolete, let's explicitly unreference them. Their files are removed
   // by obsolete_files_remover_.
@@ -1611,16 +1634,15 @@ Status VectorLSM<Vector, DistanceResult>::Insert(
   }
   insert_registry_->BindTasks(
       tasks, chunk->index, [this, chunk, frontiers_to_apply](const Status& status) {
-        if (!status.ok()) {
-          auto failure = status.CloneAndPrepend("VectorLSM insertion failed");
-          LOG(ERROR) << LogPrefix() << failure;
-          CheckFailure(failure);
-        } else if (frontiers_to_apply) {
+        // A chunk missing vectors must not be saved: other inserts into it that succeed can carry
+        // later frontiers, so bootstrap would not replay the failed one. Crashing before the save
+        // leaves it in the WAL. Skipping the save instead is not an option, an unsaved chunk would
+        // block the updates queue and CompleteShutdown.
+        LOG_IF_WITH_PREFIX(FATAL, !status.ok()) << "VectorLSM insertion failed: " << status;
+        if (frontiers_to_apply) {
           std::lock_guard lock(mutex_);
           chunk->ApplyFrontiers(*frontiers_to_apply);
         }
-        // A failed chunk is still saved: CheckFailure records the failure, and an unsaved chunk
-        // would block the updates queue and CompleteShutdown.
         chunk->InsertTaskDone();
       });
 
@@ -2041,7 +2063,7 @@ Status VectorLSM<Vector, DistanceResult>::AddChunkToManifest(
   Status injected;
   TEST_SYNC_POINT_CALLBACK("VectorLSM::AddChunkToManifest:Status", &injected);
   RETURN_NOT_OK(injected);
-  RETURN_NOT_OK(VectorLSMMetadataAppendUpdate(manifest_file, update));
+  RETURN_NOT_OK(VectorLSMMetadataAppendUpdate(*env_, manifest_file, update));
 
   // TODO(vector_index): print chunk number as well, could be covered within #27098.
   LOG_WITH_PREFIX(INFO) << Format("Added chunk to manifest: $0", chunk.ToShortString());
@@ -2270,6 +2292,10 @@ Status VectorLSM<Vector, DistanceResult>::Flush(bool wait) {
 
   RETURN_NOT_OK(RUNNING_STATUS());
 
+  Status injected;
+  TEST_SYNC_POINT_CALLBACK("VectorLSM::Flush:Status", &injected);
+  RETURN_NOT_OK(injected);
+
   std::promise<Status> promise;
   {
     std::lock_guard lock(mutex_);
@@ -2305,7 +2331,10 @@ Status VectorLSM<Vector, DistanceResult>::ModifyChunkFrontiers(
   WritableFile* manifest_file = nullptr;
   {
     std::lock_guard lock(mutex_);
-    RETURN_NOT_OK(failed_status_);
+    // Not RETURN_NOT_OK: it would move the failure out of the member, see AdvanceFlushedFrontier.
+    if (!failed_status_.ok()) {
+      return failed_status_;
+    }
     SCHECK(!mutable_chunk_ || !mutable_chunk_->num_entries, IllegalState,
            "Cannot modify chunk frontiers of a vector index with unflushed entries");
     for (const auto& chunk : immutable_chunks_) {
@@ -2336,7 +2365,7 @@ Status VectorLSM<Vector, DistanceResult>::ModifyChunkFrontiers(
   }
 
   VLOG_WITH_PREFIX_AND_FUNC(3) << update.ShortDebugString();
-  RETURN_NOT_OK(VectorLSMMetadataAppendUpdate(*manifest_file, update));
+  RETURN_NOT_OK(VectorLSMMetadataAppendUpdate(*env_, *manifest_file, update));
 
   {
     std::lock_guard lock(mutex_);
@@ -2356,7 +2385,11 @@ Result<bool> VectorLSM<Vector, DistanceResult>::AdvanceFlushedFrontier(
   ImmutableChunkPtr chunk;
   {
     std::lock_guard lock(mutex_);
-    RETURN_NOT_OK(failed_status_);
+    // RETURN_NOT_OK on a non-const lvalue moves from it. That would clear failed_status_, and a
+    // chunk whose save failed would then keep WaitForFlush and CompleteShutdown waiting forever.
+    if (!failed_status_.ok()) {
+      return failed_status_;
+    }
     if (mutable_chunk_ && mutable_chunk_->num_entries) {
       return false;
     }
@@ -3140,6 +3173,7 @@ class VectorLSM<Vector, DistanceResult>::Merger {
 
     size_t num_scheduled_tasks = 0;
     std::atomic<size_t> num_completed_tasks = 0;
+    StatusHolder failure;
 
     size_t num_remaining_vectors = num_vectors_to_merge;
     while (num_remaining_vectors > 0 && source_iterator.Valid()) {
@@ -3154,12 +3188,27 @@ class VectorLSM<Vector, DistanceResult>::Merger {
         break;
       }
 
-      auto tasks = VERIFY_RESULT(merge_registry_.AllocateTasks(
+      // After a failed insert the merged index is incomplete, so stop scheduling; the failure is
+      // returned once the scheduled tasks are drained.
+      if (!failure.GetStatus().ok()) {
+        break;
+      }
+
+      auto tasks_result = merge_registry_.AllocateTasks(
           num_total_tasks, target_index,
-          [&num_completed_tasks](const Status&) {
-            // TODO: Handle failure
-            num_completed_tasks.fetch_add(1, std::memory_order::relaxed);
-          }));
+          [&num_completed_tasks, &failure](const Status& status) {
+            failure.UpdateError(status);
+            // Must stay last: once all tasks are counted, the waiting frame returns and destroys
+            // failure. Release pairs with the acquire in the wait loop below, so the frame sees it.
+            num_completed_tasks.fetch_add(1, std::memory_order::release);
+          });
+      // Not VERIFY_RESULT: tasks from earlier batches may still be running, and returning now
+      // would destroy what their callbacks use. Stop scheduling, drain, and report it below.
+      if (!tasks_result.ok()) {
+        failure.UpdateError(tasks_result.status());
+        break;
+      }
+      auto tasks = std::move(*tasks_result);
 
       VLOG_WITH_PREFIX(3) << "Allocated " << tasks.size() << " merge tasks";
 
@@ -3183,7 +3232,7 @@ class VectorLSM<Vector, DistanceResult>::Merger {
     }
 
     // Wait for everything got merged.
-    while (num_scheduled_tasks != num_completed_tasks.load(std::memory_order::relaxed)) {
+    while (num_scheduled_tasks != num_completed_tasks.load(std::memory_order::acquire)) {
       MaybeYield();
       std::this_thread::sleep_for(200ms);
     }
@@ -3191,6 +3240,10 @@ class VectorLSM<Vector, DistanceResult>::Merger {
     // All scheduled tasks have completed, so it is now safe to propagate a shutdown that may have
     // broken the loop above.
     RETURN_NOT_OK(lsm_.RUNNING_STATUS());
+
+    // The merged index is missing the vectors of the failed tasks, so it must not replace the
+    // compaction input.
+    RETURN_NOT_OK_PREPEND(failure.GetStatus(), "Merge into compaction output failed");
 
     LOG_WITH_PREFIX(INFO) << "Chunks merge done via " << num_scheduled_tasks << " tasks";
     return Status::OK();
@@ -3328,7 +3381,7 @@ Status VectorLSM<Vector, DistanceResult>::DoCompact(
   // Not after the append: it can fail after writing the record, which a reopen still loads, and a
   // manifest chunk without its file fails the load. Leaking the files is the lesser harm.
   delete_merged_files.Cancel();
-  RETURN_NOT_OK(VectorLSMMetadataAppendUpdate(*manifest_file, update));
+  RETURN_NOT_OK(VectorLSMMetadataAppendUpdate(*env_, *manifest_file, update));
 
   // Update in-memory structure.
   ImmutableChunkPtr writing_chunk;
