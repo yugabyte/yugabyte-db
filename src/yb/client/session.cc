@@ -53,7 +53,7 @@ YBSession::YBSession(YBClient* client, const scoped_refptr<ClockBase>& clock,
                      const ThreadSafeArenaPtr& arena) {
   batcher_config_.client = client;
   batcher_config_.non_transactional_read_point =
-      clock ? std::make_unique<ConsistentReadPoint>(clock) : nullptr;
+      clock ? std::make_shared<ConsistentReadPoint>(clock) : nullptr;
   const auto metric_entity = client->metric_entity();
   async_rpc_metrics_ =
       metric_entity ? std::make_shared<internal::AsyncRpcMetrics>(metric_entity) : nullptr;
@@ -306,13 +306,25 @@ void YBSession::SetInTxnLimit(HybridTime value) {
   }
 }
 
-ConsistentReadPoint* YBSession::BatcherConfig::read_point() const {
-  return transaction ? &transaction->read_point() : non_transactional_read_point.get();
+const std::shared_ptr<ConsistentReadPoint>& YBSession::BatcherConfig::read_point() const {
+  return transaction ? transaction->ysql_read_point_handle() : non_transactional_read_point;
 }
 
-
 ConsistentReadPoint* YBSession::read_point() {
+  return batcher_config_.read_point().get();
+}
+
+const std::shared_ptr<ConsistentReadPoint>& YBSession::ysql_read_point_handle() const {
   return batcher_config_.read_point();
+}
+
+// YSQL and YCQL manage read point lifetime differently, so they get separate APIs.
+// YSQL runs multiple snapshots per session and each snapshot gets its own ConsistentReadPoint.
+void YBSession::SetYsqlReadPointHandle(std::shared_ptr<ConsistentReadPoint> read_point) {
+  if (batcher_config_.transaction) {
+    batcher_config_.transaction->SetYsqlReadPointHandle(read_point);
+  }
+  batcher_config_.non_transactional_read_point = std::move(read_point);
 }
 
 internal::Batcher& YBSession::Batcher() {

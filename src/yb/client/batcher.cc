@@ -202,7 +202,7 @@ Batcher::Batcher(
     YBClient* client,
     const YBSessionPtr& session,
     YBTransactionPtr transaction,
-    ConsistentReadPoint* read_point,
+    ConsistentReadPointPtr read_point,
     bool force_consistent_read,
     int64_t leader_term,
     ThreadSafeArenaPtr arena)
@@ -210,7 +210,8 @@ Batcher::Batcher(
       weak_session_(session),
       async_rpc_metrics_(session->async_rpc_metrics()),
       transaction_(std::move(transaction)),
-      read_point_(read_point),
+      read_point_(std::move(read_point)),
+      clock_(read_point_ ? read_point_->clock() : nullptr),
       force_consistent_read_(force_consistent_read),
       leader_term_(leader_term),
       arena_(std::move(arena)) {}
@@ -832,8 +833,8 @@ void Batcher::Flushed(
           ops, ops_info_.metadata.subtransaction_pb, flush_extra_result.used_read_time, status);
     }
   }
-  if (status.ok() && read_point_) {
-    read_point_->UpdateClock(flush_extra_result.propagated_hybrid_time);
+  if (status.ok() && clock_) {
+    clock_->Update(flush_extra_result.propagated_hybrid_time);
   }
 
   if (--outstanding_rpcs_ == 0) {
