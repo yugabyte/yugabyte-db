@@ -42,16 +42,12 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 
 /*
- * Catalog scans (yb_catalog_scan.c): ybc_systable_beginscan() is YB's
- * implementation of systable_beginscan() in genam.c and is called only from
- * there.  #36174 tracks replacing it with upstream's systable_* path.
- * ybc_systable_begin_default_scan() is the plain catalog scan underneath it.
- * yb_inheritscache.c also calls that directly to fill the pg_inherits cache,
- * because systable_beginscan() on pg_inherits reads the cache.  The
- * SysScanDesc they return works with systable_getnext() and
- * systable_endscan().  It reads at pggate's current read point, whatever
- * snapshot the caller passes, except that a pg_inherits scan reads the
- * pg_inherits cache.
+ * Catalog scans (yb_catalog_scan.c): ybc_systable_beginscan() implements
+ * genam's systable_beginscan() and is called only from genam.c.
+ * ybc_systable_begin_default_scan() exists so that yb_inheritscache.c can fill
+ * the pg_inherits cache.  How these scans read is intricate.  A change that
+ * needs more from this API should not add to it but first rework it by routing
+ * catalog scans through upstream's systable_* path, as #36174 describes.
  */
 extern SysScanDesc ybc_systable_beginscan(Relation relation,
 										  Oid indexId,
