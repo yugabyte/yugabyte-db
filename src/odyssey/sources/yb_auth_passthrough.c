@@ -120,7 +120,7 @@ static int yb_server_write_auth_passthrough_request_pkt(od_client_t *client,
 		&instance->logger, CONTEXT_AUTH_PASSTHROUGH, client, server,
 		"starting Auth Passthrough, sent 'Auth Passthrough Request' packet");
 
-	const int max_default_args = 16;
+	const int max_default_args = 22;
 	int num_startup_args = client->yb_startup_settings.size;
 	kiwi_var_t *startup_vars = client->yb_startup_settings.vars;
 
@@ -175,6 +175,8 @@ static int yb_server_write_auth_passthrough_request_pkt(od_client_t *client,
 		yb_kiwi_set_fe_arg(&argv[argc++],
 				   YB_NAME_AND_SIZEOF("database"));
 	}
+
+	argc = yb_set_reserved_end_args(argv, argc, client);
 
 	/* We only allocated max_default_args spaces for these variables, so assert that */
 	assert(argc <= max_default_args);

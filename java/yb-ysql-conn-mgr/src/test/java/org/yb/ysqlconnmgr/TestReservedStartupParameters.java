@@ -13,11 +13,17 @@
 
 package org.yb.ysqlconnmgr;
 
+import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertNotNull;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
+import com.google.gson.JsonObject;
 import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.Collections;
 import java.util.Map;
 
 import org.junit.Test;
@@ -49,6 +55,11 @@ public class TestReservedStartupParameters extends BaseYsqlConnMgr {
     {"yb_ycm_internal_future_parameter", "1"},
     {"yb_ycm_internal_client_addr", "192.168.1.1"},
     {"yb_ycm_internal_client_port", "9432"},
+  };
+  // Legacy names that guc.c still maps onto reserved parameters.
+  private static final String[][] LEGACY_RESERVED_PARAMETERS = {
+    {"yb_is_client_ysqlconnmgr", "1"},
+    {"yb_use_tserver_key_auth", "1"},
   };
 
   public TestReservedStartupParameters() {
@@ -90,6 +101,63 @@ public class TestReservedStartupParameters extends BaseYsqlConnMgr {
         assertTrue("Unexpected error for startup parameter " + parameter[0] + ": " + error,
             errorContains(error, "startup parameter \"" + parameter[0] + "\" is reserved"));
       }
+    }
+  }
+
+  /*
+   * Postgres rejects reserved parameters sent as top-level keys or in "options" (wherever they
+   * appear in it), in both auth passthrough and auth backend modes. In auth passthrough a
+   * top-level key fails only the logical connection; the shared control backend stays up.
+   */
+  @Test
+  public void testRejectsReservedParametersInBothAuthModes() throws Exception {
+    assertReservedParametersRejected(true /* isAuthPassthrough */);
+
+    restartClusterWithAdditionalFlags(Collections.emptyMap(),
+        Collections.singletonMap("ysql_conn_mgr_use_auth_backend", "true"));
+    assertReservedParametersRejected(false /* isAuthPassthrough */);
+  }
+
+  private void assertReservedParametersRejected(boolean isAuthPassthrough) throws Exception {
+    String[][][] allParameters = {RESERVED_PARAMETERS, LEGACY_RESERVED_PARAMETERS};
+    for (String[][] parameters : allParameters) {
+      for (String[] parameter : parameters) {
+        assertReservedParameterRejected(parameter[0], parameter[1]);
+      }
+    }
+
+    if (isAuthPassthrough) {
+      Thread.sleep(2 * STATS_UPDATE_INTERVAL * 1_000);
+      JsonObject pool = getPool("control_connection", "control_connection");
+      assertNotNull("Expected a control_connection pool", pool);
+      assertEquals("Control backend should stay up after rejecting reserved parameters", 1,
+          pool.get("active_physical_connections").getAsInt()
+              + pool.get("idle_physical_connections").getAsInt());
+    }
+
+    for (String[][] parameters : allParameters) {
+      for (String[] parameter : parameters) {
+        try (Connection connection = getConnectionBuilder()
+                 .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                 .withOptions("-e -c " + parameter[0] + "=" + parameter[1])
+                 .connect()) {
+          fail("Reserved startup parameter accepted: " + parameter[0]);
+        } catch (SQLException error) {
+          assertTrue("Unexpected error for startup parameter " + parameter[0] + ": " + error,
+              errorContains(error, "startup parameter \"" + parameter[0] + "\" is reserved"));
+        }
+      }
+    }
+
+    // Other switches in "options" still work.
+    try (Connection connection = getConnectionBuilder()
+             .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+             .withOptions("-e -c work_mem=8MB")
+             .connect();
+         Statement stmt = connection.createStatement()) {
+      ResultSet rs = stmt.executeQuery("SHOW work_mem");
+      assertTrue(rs.next());
+      assertTrue("work_mem not applied: " + rs.getString(1), rs.getString(1).equals("8MB"));
     }
   }
 
