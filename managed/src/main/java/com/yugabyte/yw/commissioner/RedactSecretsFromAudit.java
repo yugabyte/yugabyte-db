@@ -15,18 +15,22 @@ import io.ebean.DB;
 import io.ebean.SqlRow;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
+import play.libs.Json;
 
 /**
- * Scheduled task that redacts secrets from audit payloads. Each run processes all pending audit
- * entries batch-wise until no more batches. Uses an in-memory cursor (resets on restart). Already
- * redacted rows are skipped (no update). Migration checksum is used to determine if redaction is
- * needed and to avoid re-redacting already redacted.
+ * Scheduled task that redacts secrets from audit payloads and from the gflag changes in their
+ * additional details. Each run processes all pending audit entries batch-wise until no more
+ * batches. Uses an in-memory cursor (resets on restart). Already redacted rows are skipped (no
+ * update). Migration checksum is used to determine if redaction is needed and to avoid re-redacting
+ * already redacted.
  */
 @Singleton
 @Slf4j
@@ -121,9 +125,14 @@ public class RedactSecretsFromAudit {
       if (batch.isEmpty()) {
         return;
       }
+      Set<Long> unredactedIds = redactGFlagChangesInAdditionalDetails(batch);
       long currentMaxId = lastProcessedId;
       List<Audit> toUpdate = new ArrayList<>();
       for (Audit audit : batch) {
+        currentMaxId = Math.max(currentMaxId, audit.getId());
+        if (unredactedIds.contains(audit.getId())) {
+          continue;
+        }
         JsonNode payload = audit.getPayload();
         if (payload != null && !payload.isNull() && !payload.isMissingNode()) {
           try {
@@ -141,12 +150,47 @@ public class RedactSecretsFromAudit {
           audit.setLastRedactedVersion(currentChecksum);
           toUpdate.add(audit);
         }
-        currentMaxId = Math.max(currentMaxId, audit.getId());
       }
       if (!toUpdate.isEmpty()) {
         DB.updateAll(toUpdate);
       }
       lastProcessedId = currentMaxId;
     }
+  }
+
+  /**
+   * Redacts the LDAP passwords (ycql_ldap_bind_passwd, and ldapbindpasswd in ysql_hba_conf_csv)
+   * that audit entries written by older versions hold in plain text in the gflag changes in
+   * additionalDetails. Reads the column with plain SQL for the reason given on {@link #redact()}.
+   * Returns the ids of the entries whose additionalDetails it failed to parse or update; they must
+   * stay unmarked so that the job retries them once the cursor resets. The gflag redaction logs and
+   * swallows its own errors, so those never leave an entry unmarked.
+   */
+  private Set<Long> redactGFlagChangesInAdditionalDetails(List<Audit> batch) {
+    Set<Long> unredactedIds = new HashSet<>();
+    List<Long> ids = batch.stream().map(Audit::getId).toList();
+    List<SqlRow> rows =
+        DB.sqlQuery(
+                "SELECT id, additional_details FROM audit"
+                    + " WHERE id IN (:ids) AND additional_details IS NOT NULL")
+            .setParameter("ids", ids)
+            .findList();
+    for (SqlRow row : rows) {
+      Long id = row.getLong("id");
+      try {
+        JsonNode details = Json.parse(row.getString("additional_details"));
+        JsonNode redacted = RedactingService.redactAuditGFlagChanges(details);
+        if (!details.equals(redacted)) {
+          DB.sqlUpdate("UPDATE audit SET additional_details = :details WHERE id = :id")
+              .setParameter("details", Json.stringify(redacted))
+              .setParameter("id", id)
+              .execute();
+        }
+      } catch (Exception e) {
+        log.warn("Failed to redact additional details of audit id {}", id, e);
+        unredactedIds.add(id);
+      }
+    }
+    return unredactedIds;
   }
 }
