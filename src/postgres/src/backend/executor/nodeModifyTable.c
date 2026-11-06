@@ -1368,10 +1368,9 @@ YbExecInsertAct(ModifyTableContext *context,
 				/*
 				 * In upsert mode, check the relation this row goes into and
 				 * fall back to a normal insert if it is unsafe.  That is the
-				 * target itself, which already passed in ExecInitModifyTable,
-				 * or, for a partitioned target, the leaf partition the row
-				 * was routed to, which can be unsafe even when the target is
-				 * not.
+				 * target itself, or, for a partitioned target, the leaf
+				 * partition the row was routed to, which can be unsafe even
+				 * when the target is not.
 				 */
 				if (onconflict == ONCONFLICT_YB_REPLACE &&
 					!YbUseUpsertMode(resultRelInfo, false /* is_copy_replace */ ))
