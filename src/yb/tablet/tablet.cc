@@ -1150,8 +1150,8 @@ Status Tablet::WaitWalDurable(const OpId& op_id) {
         // WalState has started the fsync.
         break;
       case log::WalEntryState::kNone:
-        // The op could be applied before it is appended locally. The log could be closed before
-        // it is, so do not wait for that during shutdown.
+        // The op could be applied before it is appended locally.
+        // The log could be closed before it is, so do not wait for that during shutdown.
         if (IsShutdownRequested()) {
           return STATUS_FORMAT(
               ShutdownInProgress, "$0Op $1 is not in log during shutdown", LogPrefix(), op_id);

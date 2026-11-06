@@ -5484,8 +5484,9 @@ TEST_P(PgVectorIndexPowerLossTest, FlushedChunkSurvives) {
 }
 
 // A power loss drops the WAL tail that was not fsynced, along with the unflushed regular DB rows
-// written by it. A vector index flush done before the power loss must not have persisted vectors
-// of those rows. See issue #36244.
+// written by it.
+// A vector index flush done before the power loss must not have persisted vectors of those rows.
+// See issue #36244.
 TEST_P(PgVectorIndexPowerLossTest, FlushAheadOfUnsyncedWal) {
   constexpr size_t kNumRows = 64;
   constexpr size_t kQueryLimit = 5;

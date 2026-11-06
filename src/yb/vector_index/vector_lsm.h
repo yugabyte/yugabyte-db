@@ -113,9 +113,9 @@ struct VectorLSMOptions {
   rpc::ThreadPool* insert_thread_pool;
   PriorityThreadPoolTokenPtr compaction_token;
   FrontiersFactory frontiers_factory;
-  // Blocks until the ops up to the frontier are durable in the WAL. A chunk is added to the
-  // manifest only after that, otherwise a power loss could drop from the WAL the ops the flushed
-  // frontier covers. Not set when there is no WAL.
+  // Blocks until the ops up to the frontier are durable in the WAL.
+  // A chunk is added to the manifest only after that, otherwise a power loss could drop from the
+  // WAL the ops the flushed frontier covers.
   FrontierDurabilityWaiter wait_frontier_durable;
   MergeFilterFactory vector_merge_filter_factory;
   std::string file_extension;

@@ -452,7 +452,9 @@ class Tablet : public AbstractTablet,
   }
 
   // Blocks until the WAL entry with op_id is durable, or WAL fsync failed, see
-  // RegularDbFlushFilter. Fails if the entry is not in the WAL once shutdown is requested.
+  // RegularDbFlushFilter.
+  // Returns at once while the log is not open yet, e.g. during bootstrap.
+  // Fails if the entry is not in the WAL once shutdown is requested.
   Status WaitWalDurable(const OpId& op_id);
 
   // Complete the shutdown of this tablet. This includes shutdown of internal structures such as:
