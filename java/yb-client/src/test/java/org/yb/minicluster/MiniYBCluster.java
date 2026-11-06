@@ -42,10 +42,13 @@ import org.slf4j.LoggerFactory;
 import java.io.*;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.nio.channels.FileChannel;
+import java.nio.channels.OverlappingFileLockException;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListSet;
@@ -135,6 +138,9 @@ public class MiniYBCluster implements AutoCloseable {
    */
   private static final ConcurrentSkipListSet<String> usedBindIPs =
       new ConcurrentSkipListSet<>();
+
+  // Cross-process reservations of bind IPs; see lockBindIpAcrossProcesses().
+  private static final Map<String, FileChannel> bindIpLocks = new ConcurrentHashMap<>();
 
   // These are used to assign master/tserver indexes used in the logs (the "m1", "ts2", etc.
   // prefixes).
@@ -320,8 +326,39 @@ public class MiniYBCluster implements AutoCloseable {
       }
     }
 
+    if (clusterParameters.useIpWithCertificate && !lockBindIpAcrossProcesses(bindIP)) {
+      return false;
+    }
+
     // All ports we care about are free, let's try to use this IP address.
     return usedBindIPs.add(bindIP);
+  }
+
+  /*
+   * The certificate IP pool is small, so parallel test processes often pick the same IP, and the
+   * free port check above races with the other process's daemon binding the port. Reserve the IP
+   * with a file lock until this cluster shuts down. A lock file that cannot be opened (e.g. owned
+   * by another user) does not block the IP.
+   */
+  private static boolean lockBindIpAcrossProcesses(String bindIP) {
+    try {
+      FileChannel channel = FileChannel.open(
+          Paths.get("/tmp", "yb_test_bind_ip_" + bindIP + ".lock"),
+          StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+      try {
+        if (channel.tryLock() != null) {
+          bindIpLocks.put(bindIP, channel);
+          return true;
+        }
+      } catch (OverlappingFileLockException e) {
+        // Held by this process for a daemon it has since killed.
+      }
+      channel.close();
+      return false;
+    } catch (IOException e) {
+      LOG.warn("Could not lock file for bind IP " + bindIP, e);
+      return true;
+    }
   }
 
   private String getDaemonBindAddress(MiniYBDaemonType daemonType) throws IOException {
@@ -1199,6 +1236,9 @@ public class MiniYBCluster implements AutoCloseable {
     }
 
     shutdownAllDaemons();
+    for (String bindIP : bindIpLocks.keySet()) {
+      bindIpLocks.remove(bindIP).close();
+    }
 
     String processInfoDir = getProcessInfoDir();
     processCoreFiles(processInfoDir, coreFileDirs);
