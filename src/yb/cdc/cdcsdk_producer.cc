@@ -1069,7 +1069,7 @@ Status PopulateCDCSDKIntentRecord(
   std::unordered_set<std::string> modified_columns;
   size_t col_count = 0;
   docdb::IntentKeyValueForCDC prev_intent;
-  MicrosTime prev_intent_phy_time = 0;
+  HybridTime prev_intent_ht;
   bool new_cdc_record_needed = false;
   dockv::SubDocKey prev_decoded_key;
   std::unordered_set<std::string> null_value_columns;
@@ -1127,7 +1127,11 @@ Status PopulateCDCSDKIntentRecord(
           (prev_key != primary_key) ||
           (IsPackedRow(value_type) && row_message->op() == RowMessage_Op_DELETE) ||
           (value_type == dockv::ValueEntryType::kTombstone && decoded_key.num_subkeys() == 0) ||
-          prev_intent_phy_time != intent.intent_ht.hybrid_time().GetPhysicalValueMicros();
+          // All intents of one write op share its hybrid time, so a change in it marks the next
+          // statement. Compare the logical part too: after a clock jump, the hybrid clock holds
+          // the physical part and advances only the logical one, so separate statements on the
+          // same row can share a physical microsecond.
+          prev_intent_ht != intent.intent_ht.hybrid_time();
     } else {
       new_cdc_record_needed = (prev_key != primary_key) || (col_count >= schema.num_columns());
     }
@@ -1260,7 +1264,7 @@ Status PopulateCDCSDKIntentRecord(
     }
 
     prev_key = primary_key;
-    prev_intent_phy_time = intent.intent_ht.hybrid_time().GetPhysicalValueMicros();
+    prev_intent_ht = intent.intent_ht.hybrid_time();
     if (IsInsertOrUpdate(*row_message)) {
       if (auto packed_row_version = GetPackedRowVersion(value_type)) {
         col_count += VERIFY_RESULT(PopulatePackedRows(
