@@ -1141,10 +1141,10 @@ public class UtilTest extends FakeDBApplication {
   }
 
   @Test
-  public void testGetSecondaryToPrimaryIps() {
+  public void testGetSecondaryToPrivateIps() {
     NodeDetails noCloudInfo = new NodeDetails();
     Map<String, String> ips =
-        Util.getSecondaryToPrimaryIps(
+        Util.getSecondaryToPrivateIps(
             List.of(
                 nodeWithIps("10.0.0.1", "192.168.0.1"),
                 nodeWithIps("10.0.0.2", "192.168.0.2"),

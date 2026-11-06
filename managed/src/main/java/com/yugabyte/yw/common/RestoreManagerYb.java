@@ -94,7 +94,7 @@ public class RestoreManagerYb extends DevopsBase {
     boolean legacyNet =
         universe.getConfig().getOrDefault(Universe.DUAL_NET_LEGACY, "true").equals("true");
     if (!legacyNet) {
-      secondaryToPrimaryIP = Util.getSecondaryToPrimaryIps(tservers);
+      secondaryToPrimaryIP = Util.getSecondaryToPrivateIps(tservers);
     }
 
     commandArgs.add(PY_WRAPPER);

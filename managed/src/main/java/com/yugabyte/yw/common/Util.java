@@ -959,7 +959,7 @@ public class Util {
    * advertise their secondary IP, while YBA reaches them by their private IP. Nodes without a
    * secondary IP, or with the same IP for both, are skipped.
    */
-  public static Map<String, String> getSecondaryToPrimaryIps(Collection<NodeDetails> nodes) {
+  public static Map<String, String> getSecondaryToPrivateIps(Collection<NodeDetails> nodes) {
     Map<String, String> result = new HashMap<>();
     for (NodeDetails node : nodes) {
       if (node == null || node.cloudInfo == null) {

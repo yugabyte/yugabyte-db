@@ -25,10 +25,10 @@ import java.util.Map;
  */
 public class YcqlSessionBuilder extends CqlSessionBuilder {
 
-  private final Map<String, String> secondaryToPrimaryIps;
+  private final Map<String, String> secondaryToPrivateIps;
 
-  YcqlSessionBuilder(Map<String, String> secondaryToPrimaryIps) {
-    this.secondaryToPrimaryIps = ImmutableMap.copyOf(secondaryToPrimaryIps);
+  YcqlSessionBuilder(Map<String, String> secondaryToPrivateIps) {
+    this.secondaryToPrivateIps = ImmutableMap.copyOf(secondaryToPrivateIps);
   }
 
   public static YcqlSessionBuilder forUniverse(Universe universe) {
@@ -38,7 +38,7 @@ public class YcqlSessionBuilder extends CqlSessionBuilder {
           "Addresses list is empty for universe " + universe.getUniverseUUID());
     }
     YcqlSessionBuilder builder =
-        new YcqlSessionBuilder(Util.getSecondaryToPrimaryIps(universe.getNodes()));
+        new YcqlSessionBuilder(Util.getSecondaryToPrivateIps(universe.getNodes()));
     builder.addContactPoints(addresses);
     return builder;
   }
@@ -51,16 +51,16 @@ public class YcqlSessionBuilder extends CqlSessionBuilder {
     return new DefaultDriverContext(configLoader, programmaticArguments) {
       @Override
       protected AddressTranslator buildAddressTranslator() {
-        return new SecondaryToPrimaryIpTranslator(secondaryToPrimaryIps);
+        return new SecondaryToPrivateIpTranslator(secondaryToPrivateIps);
       }
     };
   }
 
-  static class SecondaryToPrimaryIpTranslator implements AddressTranslator {
-    private final Map<String, String> secondaryToPrimaryIps;
+  static class SecondaryToPrivateIpTranslator implements AddressTranslator {
+    private final Map<String, String> secondaryToPrivateIps;
 
-    SecondaryToPrimaryIpTranslator(Map<String, String> secondaryToPrimaryIps) {
-      this.secondaryToPrimaryIps = secondaryToPrimaryIps;
+    SecondaryToPrivateIpTranslator(Map<String, String> secondaryToPrivateIps) {
+      this.secondaryToPrivateIps = secondaryToPrivateIps;
     }
 
     @Override
@@ -69,8 +69,8 @@ public class YcqlSessionBuilder extends CqlSessionBuilder {
           address.getAddress() != null
               ? address.getAddress().getHostAddress()
               : address.getHostString();
-      String primaryIp = secondaryToPrimaryIps.get(host);
-      return primaryIp == null ? address : new InetSocketAddress(primaryIp, address.getPort());
+      String privateIp = secondaryToPrivateIps.get(host);
+      return privateIp == null ? address : new InetSocketAddress(privateIp, address.getPort());
     }
 
     @Override

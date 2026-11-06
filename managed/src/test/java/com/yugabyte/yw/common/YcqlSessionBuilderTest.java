@@ -16,8 +16,8 @@ public class YcqlSessionBuilderTest {
 
   @Test
   public void testTranslator() {
-    YcqlSessionBuilder.SecondaryToPrimaryIpTranslator translator =
-        new YcqlSessionBuilder.SecondaryToPrimaryIpTranslator(Map.of("192.168.0.1", "10.0.0.1"));
+    YcqlSessionBuilder.SecondaryToPrivateIpTranslator translator =
+        new YcqlSessionBuilder.SecondaryToPrivateIpTranslator(Map.of("192.168.0.1", "10.0.0.1"));
 
     assertEquals(
         new InetSocketAddress("10.0.0.1", 9042),
