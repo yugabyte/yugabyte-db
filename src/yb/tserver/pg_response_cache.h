@@ -80,8 +80,8 @@ class PgResponseCache {
   // mistaken for another connection's fill. See AnotherFillInFlight.
   //
   // token is the caller's slot for a connection start's claim, kept across that prefetch's
-  // requests and released on its last one. Dropping the slot ends the claim, so a session that
-  // goes away cannot leave its database looking busy.
+  // requests and released on its last one. The claim ends when its last holder lets go, so a
+  // session that goes away cannot leave its database looking busy.
   Result<Setter> Get(
       LWPgPerformOptionsPB_LWCachingInfoPB* cache_info, CoarseTimePoint deadline,
       const PgResponseCacheWaiterPtr& waiter, uint64_t session_id, FillTokenPtr* token);

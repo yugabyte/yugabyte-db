@@ -3488,7 +3488,8 @@ YbRunWithPrefetcher(YbcStatus (*func) (YbRunWithPrefetcherContext *),
 				 * under way, though: that wait is as long as the leader takes, and every
 				 * connection that arrives during it waits too. Being sent away costs an attempt
 				 * at the older read, which waits for this node's shared catalog version to reach
-				 * the one asked for -- a heartbeat at worst, against a fill with no bound.
+				 * the one asked for -- normally a heartbeat, and bounded either way, against a
+				 * fill with no bound.
 				 *
 				 * Only the cheap checks here, since this is paid whether or not a fill turns out
 				 * to be under way. The wait and the message fetch come later, and only for a

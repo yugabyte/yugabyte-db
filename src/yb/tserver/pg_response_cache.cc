@@ -91,10 +91,9 @@ METRIC_DEFINE_counter(server, pg_response_cache_send_away_asks,
                       "prefetches, so this is the denominator for "
                       "pg_response_cache_send_aways: how often one of those connections "
                       "actually met a fill. Zero while connections queue means none of them "
-                      "asked, which places the cause on the PG side: see the conditions in "
-                      "YbStaleCatalogPrefetchLooksPossible, the commonest being the feature "
-                      "turned off, no older version recorded for the database yet, or a "
-                      "leader reporting itself busy");
+                      "asked, which places the cause on the PG side, the commonest being the "
+                      "feature turned off, no older version recorded for the database yet, or "
+                      "a leader reporting itself busy");
 METRIC_DEFINE_counter(server, pg_response_cache_send_aways,
                       "PgClientService Response Cache Send-Aways From An In-Flight Fill",
                       yb::MetricUnit::kCacheQueries,
@@ -743,8 +742,7 @@ class PgResponseCache::Impl : private GarbageCollector {
                 std::make_shared<CancelableScopeExit<decltype(abandon)>>(std::move(abandon)),
             fill = TakeFillToken(
                 PartOfConnectionPrefetch(cache_info->part_of_connection_prefetch()),
-                group, session_id,
-                                 token),
+                group, session_id, token),
             observer = fill_observer_,
             group,
             version,
