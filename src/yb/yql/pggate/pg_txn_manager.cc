@@ -409,11 +409,11 @@ Status PgTxnManager::CalculateIsolation(
   }
 
   // Force use of a docdb distributed txn for YSQL read only transactions involving savepoints when
-  // object locking feature is enabled (only for isolation != read committed case).
+  // the transaction takes object locks (only for isolation != read committed case).
   //
   // TODO(table-locks): Need to explicitly handle READ_COMMITTED case since YSQL internally bumps up
   // subtxn id for every statement. Else, every RC read-only txn would burn a docdb txn.
-  if (IsTableLockingEnabledForCurrentTxn() &&
+  if (IsTakingObjectLocksForCurrentTxn() &&
       active_sub_transaction_id_ > kMinSubTransactionId &&
       pg_isolation_level_ != PgIsolationLevel::READ_COMMITTED) {
     read_only_op = false;
@@ -1168,7 +1168,7 @@ Status PgTxnManager::RollbackToSubTransaction(
     return Status::OK();
   }
   if (isolation_level_ == IsolationLevel::NON_TRANSACTIONAL &&
-      !IsTableLockingEnabledForCurrentTxn()) {
+      !IsTakingObjectLocksForCurrentTxn()) {
     VLOG(4) << "This isn't a distributed transaction, so nothing to rollback.";
     return Status::OK();
   }

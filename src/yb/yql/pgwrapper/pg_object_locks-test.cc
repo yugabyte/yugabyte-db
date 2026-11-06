@@ -1460,6 +1460,30 @@ TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, LegacyReadOnlyTxnReleasesLocksAtCommi
   ASSERT_OK(ddl_conn.Execute("ALTER TABLE test ADD COLUMN v2 INT"));
 }
 
+// ROLLBACK TO SAVEPOINT in a read-only legacy transaction must release the locks taken after the
+// savepoint, as it does in new mode, or a new mode DDL waits for the rest of the transaction.
+TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, LegacyReadOnlyTxnReleasesLocksAtRollbackToSavepoint) {
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts2 = cluster_->tablet_server(1);
+  {
+    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+    ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(1, 10), 0"));
+  }
+
+  auto legacy_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(legacy_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(legacy_conn.Execute("SAVEPOINT a"));
+  ASSERT_EQ(ASSERT_RESULT(legacy_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test")), 10);
+  ASSERT_OK(legacy_conn.Execute("ROLLBACK TO SAVEPOINT a"));
+
+  ASSERT_NO_FATALS(PromoteForDdl());
+  auto ddl_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_OK(ddl_conn.Execute("SET statement_timeout = '10s'"));
+  ASSERT_OK(ddl_conn.Execute("ALTER TABLE test ADD COLUMN v2 INT"));
+  ASSERT_OK(legacy_conn.Execute("ROLLBACK"));
+}
+
 INSTANTIATE_TEST_SUITE_P(
     PromoteLegacyTxnNode, PgObjectLocksTestLegacyTxnVsNewDdl, ::testing::Bool(),
     ::testing::PrintToStringParamName());
