@@ -39,8 +39,8 @@ The name of the output plugin used for logical decoding.
 Determines how the client consumes the snapshot of the database that is established when the slot is created. See [Initial snapshot](../../../../../additional-features/change-data-capture/using-logical-replication/key-concepts/#initial-snapshot) in the logical replication key concepts.
 
 - EXPORT_SNAPSHOT (default): the command returns the name of an exported snapshot in the `snapshot_name` field. Use it with `SET TRANSACTION SNAPSHOT` in a `REPEATABLE READ` transaction on another connection to read the tables as of slot creation. As in PostgreSQL, the exported snapshot is valid until this connection runs its next command. Requires the YB-TServer flag [ysql_enable_pg_export_snapshot](../../../../../explore/ysql-language-features/advanced-features/snapshot-synchronization).
-- USE_SNAPSHOT: the client reads the snapshot on this connection. This option can only be used inside a transaction, and CREATE_REPLICATION_SLOT must be the first command run in that transaction. The `snapshot_name` field contains the hybrid time of the snapshot.
-- NOEXPORT_SNAPSHOT: the snapshot is used for logical decoding only. The database does not retain row history as of slot creation for tables whose replica identity does not need it, so an initial snapshot of such tables can't be taken reliably for this slot.
+- USE_SNAPSHOT: the `snapshot_name` field contains the hybrid time of the consistent point. To take the snapshot, set that value in `yb_read_time` on a separate connection before running the snapshot query. This differs from PostgreSQL, where the snapshot is used by the transaction that created the slot. This option can only be used inside a transaction, and CREATE_REPLICATION_SLOT must be the first command run in that transaction.
+- NOEXPORT_SNAPSHOT: use when the client does not intend to take an initial snapshot. The snapshot is used for logical decoding only.
 
 ## Examples
 
