@@ -265,6 +265,14 @@ bool PgTxnManager::IsTableLockingEnabledForCurrentTxn() const {
   return enable_table_locking_ && YBCIsObjectLockingInfraEnabled();
 }
 
+bool PgTxnManager::IsUsingLocalDmlLocksForCurrentTxn() const {
+  return enable_table_locking_ && YBCIsLegacyTxnTakingObjectLocks();
+}
+
+bool PgTxnManager::IsTakingObjectLocksForCurrentTxn() const {
+  return enable_table_locking_ && YBCIsTxnTakingObjectLocks();
+}
+
 PgTxnManager::~PgTxnManager() = default;
 
 void PgTxnManager::Shutdown() {
@@ -558,7 +566,7 @@ Status PgTxnManager::FinishPlainTransaction(
 
   const auto is_read_only = isolation_level_ == IsolationLevel::NON_TRANSACTIONAL;
   if (is_read_only &&
-      (!IsTableLockingEnabledForCurrentTxn() ||
+      (!IsTakingObjectLocksForCurrentTxn() ||
        client_->TryReleaseAllObjectLocksInSharedMemory())) {
     VLOG_TXN_STATE(2) << "This was a read-only transaction, nothing to commit.";
     ResetTxnAndSession();
@@ -1199,6 +1207,7 @@ Status PgTxnManager::AcquireObjectLock(
   RETURN_NOT_OK(SetupPerformOptions(
       tag, options, NonTransactionalWrites::kFalse, /* read_time_action= */ {},
       SkipReadTimeOptions::kTrue));
+  options.set_is_using_local_dml_locks(IsUsingLocalDmlLocksForCurrentTxn());
   RETURN_NOT_OK(client_->AcquireObjectLock(
       &options, lock_id, mode, is_session_lock, tablespace_oid));
   DEBUG_ONLY(DEBUG_UpdateLastObjectLockingInfo());

@@ -2826,6 +2826,18 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_object_locks_for_legacy_txns", PGC_SIGHUP, LOCK_MANAGEMENT,
+			gettext_noop("Take local DML object locks in transactions that "
+						 "start while yb_enable_object_locking_infra is off."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_object_locks_for_legacy_txns,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_ddl_savepoint_infra", PGC_SIGHUP, LOCK_MANAGEMENT,
 			gettext_noop("Allow enabling ddl savepoint support."),
 			NULL,

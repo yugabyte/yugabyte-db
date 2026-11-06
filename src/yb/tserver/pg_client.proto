@@ -951,6 +951,11 @@ message PgPerformOptionsPB {
 
   // This op uses the read_time_serial_no of the CatalogSnapshot in Postgres.
   bool uses_catalog_snapshot = 40;
+
+  // A legacy mode transaction (is_using_table_locks is false) that takes local DML object locks
+  // anyway, so that new mode DDLs wait for it while ysql_yb_enable_object_locking_infra is being
+  // promoted (#36572).
+  bool is_using_local_dml_locks = 41;
 }
 
 message PgRequestSequenceNumPB {

@@ -197,6 +197,16 @@ bool YBCIsObjectLockingInfraEnabled();
 
 bool YBCIsObjectLockingEnabled();
 
+/*
+ * Whether the current transaction runs in the legacy mode (YBCIsObjectLockingInfraEnabled() is
+ * false) but takes local DML object locks, so that new mode DDLs wait for it (#36572). Latched
+ * by YBCSetObjectLockingInfraForCurrTxn() from yb_enable_object_locks_for_legacy_txns.
+ */
+bool YBCIsLegacyTxnTakingObjectLocks();
+
+/* Whether the current transaction takes object locks, in either mode. */
+bool YBCIsTxnTakingObjectLocks();
+
 void YBCPgSetClampUncertaintyWindow(bool clamp);
 
 bool YBCIsAutoAnalyzeEnabled();

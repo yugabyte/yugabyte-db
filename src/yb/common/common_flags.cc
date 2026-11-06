@@ -247,6 +247,15 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_object_locking_infra, kLocalPersiste
     "during upgrade. Both this flag and enable_object_locking_for_table_locks "
     "must be true to enable the feature.");
 
+// A new mode DDL waits for DMLs through object locks only, so a transaction that starts while
+// ysql_yb_enable_object_locking_infra is off must take its local DML locks too, or such a DDL
+// does not wait for it during the promotion (#36572). Kill switch for that.
+DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_object_locks_for_legacy_txns, true,
+    "When enable_object_locking_for_table_locks is true, transactions that start while "
+    "ysql_yb_enable_object_locking_infra is false take local object locks of mode "
+    "RowExclusive and weaker on the relations their DMLs access, so that DDLs that run with "
+    "object locking wait for them.");
+
 DEFINE_NON_RUNTIME_bool(ysql_yb_pg_partman_use_native_txn_ddl_and_locks,
     kEnableObjectLockingForTableLocks,
     "When this is true and transactional DDL, table level locks, and DDL savepoint support are "
