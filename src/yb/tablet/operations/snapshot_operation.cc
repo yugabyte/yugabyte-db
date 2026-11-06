@@ -31,6 +31,12 @@ DEFINE_test_flag(bool, modify_flushed_frontier_snapshot_op, true,
                  "Whether to modify flushed frontier after "
                  "a create snapshot operation.");
 
+DEFINE_RUNTIME_bool(skip_flushed_frontier_update_on_snapshot_delete, true,
+    "Do not record DELETE_ON_TABLET snapshot operations in the flushed frontier of the tablet's "
+    "RocksDB instances. Recording an operation there requires a synchronous flush of the regular "
+    "and intents DBs, which stalls writes on busy tablets, and for a delete it only avoids a "
+    "harmless replay of the delete on the next tablet bootstrap.");
+
 namespace yb {
 namespace tablet {
 
@@ -210,6 +216,13 @@ Status SnapshotOperation::DoAborted(const Status& status) {
 
 Status SnapshotOperation::DoReplicated(int64_t leader_term, Status* complete_status) {
   RETURN_NOT_OK(Apply(leader_term, complete_status));
+  if (operation() == TabletSnapshotOpRequestPB::DELETE_ON_TABLET &&
+      FLAGS_skip_flushed_frontier_update_on_snapshot_delete) {
+    // A delete writes nothing to RocksDB and TabletSnapshots::Delete is idempotent, so the only
+    // thing the frontier update below would buy is skipping the delete's replay on bootstrap. That
+    // is not worth the synchronous flush of the regular and intents DBs it requires (#36655).
+    return Status::OK();
+  }
   // Record the fact that we've executed the "create snapshot" Raft operation. We are not forcing
   // the flushed frontier to have this exact value, although in practice it will, since this is the
   // latest operation we've ever executed in this Raft group. This way we keep the current value

@@ -22,6 +22,10 @@
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/wire_protocol-test-util.h"
 
+#include "yb/docdb/consensus_frontier.h"
+
+#include "yb/rocksdb/db.h"
+
 #include "yb/rpc/messenger.h"
 
 #include "yb/tablet/local_tablet_writer.h"
@@ -44,6 +48,7 @@
 #include "yb/util/threadpool.h"
 
 DECLARE_bool(enable_async_snapshot_directory_cleanup);
+DECLARE_bool(skip_flushed_frontier_update_on_snapshot_delete);
 DECLARE_int32(TEST_snapshot_cleanup_retry_delay_ms);
 
 METRIC_DECLARE_counter(snapshot_cleanup_failures);
@@ -186,6 +191,9 @@ class SnapshotCleanupTestEnv : public EnvWrapper {
 class TabletSnapshotsTest : public YBTest {
  public:
   static constexpr int kCleanupThreadPoolSize = 2;
+  // Snapshot op ids start above anything LocalTabletWriter assigns to the rows written by the
+  // tests, so that a flushed frontier update records exactly the snapshot op's id.
+  static constexpr int64_t kSnapshotOpIndexBase = 1000000;
 
   void SetUp() override {
     YBTest::SetUp();
@@ -267,6 +275,56 @@ class TabletSnapshotsTest : public YBTest {
     operation.AllocateRequest()->CopyFrom(request);
     RETURN_NOT_OK(operation.Prepare(IsLeaderSide::kTrue));
     return operation.Prepare(IsLeaderSide::kFalse);
+  }
+
+  // Applies the operation the way Raft apply and bootstrap replay do, through
+  // SnapshotOperation::DoReplicated, which is where the flushed frontier update happens.
+  Status ReplicateSnapshotOperation(
+      tserver::TabletSnapshotOpRequestPB::Operation op_type, const std::string& snapshot_id,
+      int64_t op_index) {
+    tserver::TabletSnapshotOpRequestPB request;
+    request.set_operation(op_type);
+    request.set_snapshot_id(snapshot_id);
+    SnapshotOperation operation(harness_->tablet());
+    operation.AllocateRequest()->CopyFrom(request);
+    operation.set_op_id(OpId(1, op_index));
+    operation.set_hybrid_time(harness_->clock()->Now());
+    return operation.Replicated(OpId::kUnknownTerm, WasPending::kFalse);
+  }
+
+  OpId RegularDbFlushedOpId() {
+    return docdb::MaxPersistentOpIdForDb(
+        harness_->tablet()->regular_db(), /* invalid_if_no_new_data = */ false);
+  }
+
+  void TestReplayedDeleteIsNoOp(bool async_cleanup) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_async_snapshot_directory_cleanup) = async_cleanup;
+    constexpr int64_t kDeleteOpIndex = kSnapshotOpIndexBase + 1;
+
+    const auto paths = CreateSnapshotDirectory("snapshot.replay", kDeleteOpIndex);
+    ASSERT_OK(ReplicateSnapshotOperation(
+        tserver::TabletSnapshotOpRequestPB::DELETE_ON_TABLET, "snapshot.replay", kDeleteOpIndex));
+    ASSERT_FALSE(test_env_->FileExists(paths.active));
+    ASSERT_EQ(test_env_->FileExists(paths.tombstone), async_cleanup);
+
+    // Without a frontier update the delete stays above the flushed frontier until the next flush,
+    // so a bootstrap in that window applies it again, with the same op id.
+    ASSERT_OK(ReplicateSnapshotOperation(
+        tserver::TabletSnapshotOpRequestPB::DELETE_ON_TABLET, "snapshot.replay", kDeleteOpIndex));
+    ASSERT_FALSE(test_env_->FileExists(paths.active));
+    ASSERT_EQ(test_env_->FileExists(paths.tombstone), async_cleanup);
+
+    // Bootstrap removes leftover tombstones before replaying anything, so the replay can also find
+    // both directories gone.
+    if (async_cleanup) {
+      ASSERT_OK(test_env_->DeleteRecursively(paths.tombstone));
+      ASSERT_OK(ReplicateSnapshotOperation(
+          tserver::TabletSnapshotOpRequestPB::DELETE_ON_TABLET, "snapshot.replay",
+          kDeleteOpIndex));
+      ASSERT_FALSE(test_env_->FileExists(paths.active));
+      ASSERT_FALSE(test_env_->FileExists(paths.tombstone));
+    }
+    ASSERT_EQ(NumRegularDbSSTFiles(), 0);
   }
 
   uint64_t NumRegularDbSSTFiles() {
@@ -597,6 +655,61 @@ TEST_F(TabletSnapshotsTest, PrepareDoesNotFlush) {
   ASSERT_OK(PrepareSnapshotOperation(tserver::TabletSnapshotOpRequestPB::CREATE_ON_TABLET));
   ASSERT_OK(PrepareSnapshotOperation(tserver::TabletSnapshotOpRequestPB::DELETE_ON_TABLET));
   ASSERT_EQ(NumRegularDbSSTFiles(), 0);
+}
+
+// DELETE_ON_TABLET writes nothing to RocksDB, so recording it in the flushed frontier only saved
+// its replay on bootstrap, and that replay is a no-op (ReplayedDeleteIsNoOp). The synchronous flush
+// the update requires is what stalled writes on busy tablets (#36655). CREATE_ON_TABLET keeps the
+// update: replaying a create after history was compacted past its snapshot time would produce a
+// different snapshot.
+TEST_F(TabletSnapshotsTest, DeleteDoesNotFlushOrUpdateFlushedFrontier) {
+  constexpr int64_t kDeleteOpIndex = kSnapshotOpIndexBase + 1;
+  constexpr int64_t kCreateOpIndex = kSnapshotOpIndexBase + 2;
+  constexpr int64_t kSecondDeleteOpIndex = kSnapshotOpIndexBase + 3;
+
+  ASSERT_OK(WriteRow(1));
+  const auto paths = CreateSnapshotDirectory("snapshot.delete", kDeleteOpIndex);
+  ASSERT_OK(ReplicateSnapshotOperation(
+      tserver::TabletSnapshotOpRequestPB::DELETE_ON_TABLET, "snapshot.delete", kDeleteOpIndex));
+  ASSERT_FALSE(test_env_->FileExists(paths.active));
+  ASSERT_TRUE(test_env_->FileExists(paths.tombstone));
+  // The row is still only in the memtable and no frontier was ever recorded.
+  ASSERT_EQ(NumRegularDbSSTFiles(), 0);
+  ASSERT_EQ(RegularDbFlushedOpId(), OpId());
+
+  ASSERT_OK(ReplicateSnapshotOperation(
+      tserver::TabletSnapshotOpRequestPB::CREATE_ON_TABLET, "snapshot.create", kCreateOpIndex));
+  ASSERT_EQ(NumRegularDbSSTFiles(), 1);
+  ASSERT_EQ(RegularDbFlushedOpId(), OpId(1, kCreateOpIndex));
+
+  ASSERT_OK(WriteRow(2));
+  ASSERT_OK(ReplicateSnapshotOperation(
+      tserver::TabletSnapshotOpRequestPB::DELETE_ON_TABLET, "snapshot.create",
+      kSecondDeleteOpIndex));
+  ASSERT_FALSE(test_env_->FileExists(
+      JoinPathSegments(harness_->tablet()->metadata()->snapshots_dir(), "snapshot.create")));
+  ASSERT_EQ(NumRegularDbSSTFiles(), 1);
+  ASSERT_EQ(RegularDbFlushedOpId(), OpId(1, kCreateOpIndex));
+}
+
+TEST_F(TabletSnapshotsTest, DeleteUpdatesFlushedFrontierWhenNotSkipped) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_skip_flushed_frontier_update_on_snapshot_delete) = false;
+  constexpr int64_t kDeleteOpIndex = kSnapshotOpIndexBase + 1;
+
+  ASSERT_OK(WriteRow(1));
+  CreateSnapshotDirectory("snapshot.delete", kDeleteOpIndex);
+  ASSERT_OK(ReplicateSnapshotOperation(
+      tserver::TabletSnapshotOpRequestPB::DELETE_ON_TABLET, "snapshot.delete", kDeleteOpIndex));
+  ASSERT_EQ(NumRegularDbSSTFiles(), 1);
+  ASSERT_EQ(RegularDbFlushedOpId(), OpId(1, kDeleteOpIndex));
+}
+
+TEST_F(TabletSnapshotsTest, ReplayedDeleteIsNoOp) {
+  TestReplayedDeleteIsNoOp(/* async_cleanup = */ true);
+}
+
+TEST_F(TabletSnapshotsTest, ReplayedDeleteIsNoOpWithSyncCleanup) {
+  TestReplayedDeleteIsNoOp(/* async_cleanup = */ false);
 }
 
 }  // namespace
