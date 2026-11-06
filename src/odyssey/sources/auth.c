@@ -31,7 +31,7 @@ static inline int od_auth_frontend_cleartext(od_client_t *client)
 
 	/* wait for password response */
 	while (1) {
-		msg = od_read(&client->io, UINT32_MAX);
+		msg = yb_od_read_auth(&client->io, UINT32_MAX);
 		if (msg == NULL) {
 			od_error(&instance->logger, "auth", client, NULL,
 				 "read error: %s", od_io_error(&client->io));
@@ -201,7 +201,7 @@ static inline int od_auth_frontend_md5(od_client_t *client)
 
 	/* wait for password response */
 	while (1) {
-		msg = od_read(&client->io, UINT32_MAX);
+		msg = yb_od_read_auth(&client->io, UINT32_MAX);
 		if (msg == NULL) {
 			od_error(&instance->logger, "auth", client, NULL,
 				 "read error: %s", od_io_error(&client->io));
@@ -353,7 +353,7 @@ static inline int od_auth_frontend_scram_sha_256(od_client_t *client)
 
 	/* wait for SASLInitialResponse */
 	while (1) {
-		msg = od_read(&client->io, UINT32_MAX);
+		msg = yb_od_read_auth(&client->io, UINT32_MAX);
 		if (msg == NULL) {
 			od_error(&instance->logger, "auth", client, NULL,
 				 "read error: %s", od_io_error(&client->io));
@@ -506,7 +506,7 @@ static inline int od_auth_frontend_scram_sha_256(od_client_t *client)
 	while (1) {
 		// TODO: here's infinite wait, need to replace it with
 		// client_login_timeout
-		msg = od_read(&client->io, UINT32_MAX);
+		msg = yb_od_read_auth(&client->io, UINT32_MAX);
 		if (msg == NULL) {
 			od_error(&instance->logger, "auth", client, NULL,
 				 "read error: %s", od_io_error(&client->io));
@@ -1051,7 +1051,7 @@ static inline int yb_od_relay_client_to_auth_server(od_server_t *server,
 
 	uint64_t start_ts = machine_time_us();
 	while (true) {
-		msg = od_read(&client->io, login_timeout_ms);
+		msg = yb_od_read_auth(&client->io, login_timeout_ms);
 
 		/*
 		 * YB: Unconditionally exit if the client has not given a relevant
