@@ -325,9 +325,9 @@ class VectorMergeFilter : public vector_index::VectorLSMMergeFilter {
  public:
   VectorMergeFilter(
       const std::string& log_prefix, const KeyBounds& key_bounds,
-      DocVectorIndexReverseMappingReaderPtr reverse_mapping_reader)
+      DocVectorIndexReverseMappingReaderPtr reverse_mapping_reader, bool backfill_done)
       : log_prefix_(log_prefix), key_bounds_(key_bounds),
-        reverse_mapping_reader_(std::move(reverse_mapping_reader)) {
+        reverse_mapping_reader_(std::move(reverse_mapping_reader)), backfill_done_(backfill_done) {
   }
 
   const std::string& LogPrefix() const {
@@ -357,6 +357,13 @@ class VectorMergeFilter : public vector_index::VectorLSMMergeFilter {
       return decision;
     }
 
+    // Until the backfill is done the reverse mapping may lack the entries of backfilled rows: a
+    // backfill resumed after an unclean restart writes them again only once it gets to them.
+    if (!backfill_done_) {
+      VLOG_WITH_PREFIX(4) << "Filtering " << vector_id << " => " << decision << " (backfill)";
+      return decision;
+    }
+
     // Use Fetch (raw value), not FetchYbctid: we only care whether a reverse-mapping entry
     // exists. Decoding is unnecessary, and FetchYbctid would treat tombstones as missing
     // while this filter relies on regular compaction to clean those up. Fetch also drops
@@ -378,6 +385,7 @@ class VectorMergeFilter : public vector_index::VectorLSMMergeFilter {
   const std::string& log_prefix_;
   const KeyBounds& key_bounds_;
   DocVectorIndexReverseMappingReaderPtr reverse_mapping_reader_;
+  const bool backfill_done_;
 };
 
 template<vector_index::IndexableVectorType Vector,
@@ -460,8 +468,11 @@ class DocVectorIndexImpl : public DocVectorIndex {
     auto merge_filter_factory = [this]() -> typename LSM::Options::MergeFilterFactory::result_type {
       auto reader =
           VERIFY_RESULT(context_->CreateReverseMappingReader(ReadHybridTime::Max(), nullptr));
+      // A failed backfill is not done either.
+      auto backfill_done = BackfillDone();
       return std::make_unique<VectorMergeFilter>(
-          lsm_.LogPrefix(), context_->key_bounds(), std::move(reader));
+          lsm_.LogPrefix(), context_->key_bounds(), std::move(reader),
+          backfill_done.ok() && *backfill_done);
     };
 
     name_ = RemoveLogPrefixColon(log_prefix);
@@ -899,12 +910,19 @@ bool DocVectorIndex::ParentDataCompacted() {
 void DocVectorIndex::ApplyReverseEntry(
     rocksdb::DirectWriteHandler& handler, Slice ybctid, Slice value, DocHybridTime write_ht,
     ColumnId column_id, Slice table_key_prefix) {
+  ApplyReverseEntryForVectorId(
+      handler, ybctid, dockv::EncodedDocVectorValue::FromSlice(value).id, write_ht, column_id,
+      table_key_prefix);
+}
+
+void DocVectorIndex::ApplyReverseEntryForVectorId(
+    rocksdb::DirectWriteHandler& handler, Slice ybctid, Slice vector_id, DocHybridTime write_ht,
+    ColumnId column_id, Slice table_key_prefix) {
   if (FLAGS_TEST_vector_index_skip_reverse_mapping_write) {
     return;
   }
   DocHybridTimeBuffer ht_buf;
   auto encoded_write_time = ht_buf.EncodeWithValueType(write_ht);
-  auto vector_id = dockv::EncodedDocVectorValue::FromSlice(value).id;
 
   // Legacy format.
   if (column_id == kInvalidColumnId) {

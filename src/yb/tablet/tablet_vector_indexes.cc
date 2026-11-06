@@ -472,16 +472,23 @@ class VectorIndexBackfillContext {
   }
 
   void Add(Slice ybctid, Slice value) {
-    ybctids_.push_back(arena_.DupSlice(ybctid));
+    AddReverseEntry(ybctid, value);
     entries_.emplace_back(docdb::DocVectorIndexInsertEntry {
       .value = ValueBuffer(value),
       .ybctid = store_payload_ ? KeyBuffer(ybctid) : KeyBuffer(),
     });
   }
 
+  // Keeps only what the reverse mapping entry needs, not the vector.
+  void AddReverseEntry(Slice ybctid, Slice value) {
+    ybctids_.push_back(arena_.DupSlice(ybctid));
+    vector_ids_.push_back(arena_.DupSlice(dockv::EncodedDocVectorValue::FromSlice(value).id));
+  }
+
   void Reset() {
     entries_.clear();
     ybctids_.clear();
+    vector_ids_.clear();
     arena_.Reset(ResetMode::kKeepLast);
   }
 
@@ -497,11 +504,16 @@ class VectorIndexBackfillContext {
     return ybctids_;
   }
 
+  const std::vector<Slice>& vector_ids() const {
+    return vector_ids_;
+  }
+
  private:
   const HybridTime backfill_ht_;
   const bool store_payload_;
   docdb::DocVectorIndexInsertEntries entries_;
   std::vector<Slice> ybctids_;
+  std::vector<Slice> vector_ids_;
   Arena arena_;
 };
 
@@ -537,11 +549,58 @@ class VectorIndexBackfillHelper : public VectorIndexBackfillContext {
   }
 
   Status Flush(Tablet& tablet, docdb::DocVectorIndex& index, Slice next_ybctid) {
-    ++num_batches_;
+    ApplyReverseMapping(tablet);
+    return Insert(index, next_ybctid);
+  }
 
+  void ApplyReverseMapping(Tablet& tablet) {
     if (reverse_mapping_backfiller_) {
       reverse_mapping_backfiller_->Apply(tablet, *this);
     }
+  }
+
+  // The reverse mapping entries have no WAL record and stay in the regular DB memtable until the
+  // flush at the end of the backfill, while a chunk carrying the backfill position can be saved
+  // before that: when the backfill rolls it, or by a vector index flush. A restart then resumes
+  // from that position and loses the entries of the rows before it, so write them again.
+  // Returns the number of rows read.
+  Result<size_t> RewriteReverseMapping(
+      Tablet& tablet, const docdb::DocVectorIndex& index, Slice end_ybctid) {
+    DCHECK(ybctids().empty());
+    if (!reverse_mapping_backfiller_ || end_ybctid.empty()) {
+      return 0;
+    }
+    // Nothing is inserted into the vector index, so the batch only bounds the memory taken by the
+    // entries and needs a limit even when the backfill batch has none.
+    constexpr size_t kMaxBatchSize = 10000;
+    const size_t batch_size = max_batch_size_ ? max_batch_size_ : kMaxBatchSize;
+    size_t num_rows = 0;
+    IndexedTableReader reader(index);
+    RETURN_NOT_OK(reader.Init(backfill_ht(), Slice()));
+    while (VERIFY_RESULT(reader.FetchNext())) {
+      if (tablet.IsShutdownRequested()) {
+        return STATUS(ShutdownInProgress, "Tablet is shutting down");
+      }
+      auto ybctid = reader.current_ybctid();
+      if (ybctid.compare(end_ybctid) >= 0) {
+        break;
+      }
+      if (ybctids().size() >= batch_size) {
+        ApplyReverseMapping(tablet);
+        Reset();
+      }
+      AddReverseEntry(ybctid, reader.current_vector_slice());
+      ++num_rows;
+    }
+    if (!ybctids().empty()) {
+      ApplyReverseMapping(tablet);
+      Reset();
+    }
+    return num_rows;
+  }
+
+  Status Insert(docdb::DocVectorIndex& index, Slice next_ybctid) {
+    ++num_batches_;
 
     docdb::ConsensusFrontiers frontiers;
     if (next_ybctid.empty()) {
@@ -600,14 +659,14 @@ Status ReverseMappingBackfiller::Apply(rocksdb::DirectWriteHandler& handler) {
   DCHECK_ONLY_NOTNULL(context_);
 
   const auto backfill_ht = context_->backfill_ht();
-  const auto& entries = context_->entries();
   const auto& ybctids = context_->ybctids();
-  DCHECK_EQ(entries.size(), ybctids.size());
+  const auto& vector_ids = context_->vector_ids();
+  DCHECK_EQ(vector_ids.size(), ybctids.size());
 
   // Backfiller always uses legacy format, while table-owned vector reverse mapping uses v1 format.
   for (size_t i = 0; i != ybctids.size(); ++i) {
-    docdb::DocVectorIndex::ApplyReverseEntry(
-        handler, ybctids[i], entries[i].value.AsSlice(), DocHybridTime(backfill_ht, 0));
+    docdb::DocVectorIndex::ApplyReverseEntryForVectorId(
+        handler, ybctids[i], vector_ids[i], DocHybridTime(backfill_ht, 0));
   }
   return Status::OK();
 }
@@ -681,6 +740,13 @@ Status TabletVectorIndexes::Backfill(
       << "Backfill with chunk size " << chunk_size << " (batch size: " << max_batch_size
       << ", memory budget: " << bytes_limit << " bytes, vector limit: " << limit << ")";
 
+  auto num_rewritten =
+      VERIFY_RESULT(helper.RewriteReverseMapping(tablet(), *vector_index, from_key));
+  if (num_rewritten) {
+    LOG_WITH_PREFIX_AND_FUNC(INFO)
+        << "Rewrote reverse mapping of " << num_rewritten << " rows before the resume position";
+  }
+
   for (;;) {
     if (tablet().IsShutdownRequested()) {
       LOG_WITH_FUNC(INFO) << "Exit: " << AsString(*vector_index);
@@ -711,11 +777,7 @@ Status TabletVectorIndexes::Backfill(
     helper.Add(ybctid, reader.current_vector_slice());
   }
 
-  RETURN_NOT_OK(helper.Flush(tablet(), *vector_index, Slice()));
-
-  LOG_WITH_PREFIX_AND_FUNC(INFO)
-      << "Backfilled " << AsString(*vector_index) << ": " << helper.num_entries() << " entries in "
-      << helper.num_batches() << " batches";
+  helper.ApplyReverseMapping(tablet());
 
   // Hold a blocking operation across both flushes below. Tablet::Flush releases its own one before
   // the vector index flush, so acquire it here and pass kNoScopedOperation. Only
@@ -724,11 +786,19 @@ Status TabletVectorIndexes::Backfill(
   // backfill instead, ScheduleBackfill treats the resulting TryAgain as expected.
   auto flush_op = tablet().CreateScopedRWOperationBlockingRocksDbShutdownStart();
   RETURN_NOT_OK(flush_op);
-  // TODO(vector_index) Need to handle scenario when regular db was not flushed before restart.
+  // The reverse mapping entries must be durable before the backfill done mark can be: a vector
+  // index flush may save the mark right after the insert below, and a restart after that does not
+  // resume the backfill, so nothing would write the entries again.
   RETURN_NOT_OK_PREPEND(
       Flush(FlushMode::kSync, FlushFlags::kRegular | FlushFlags::kNoScopedOperation,
             rocksdb::FlushReason::kVectorIndexBackfill),
       "Flush regular DB");
+  RETURN_NOT_OK(helper.Insert(*vector_index, Slice()));
+
+  LOG_WITH_PREFIX_AND_FUNC(INFO)
+      << "Backfilled " << AsString(*vector_index) << ": " << helper.num_entries() << " entries in "
+      << helper.num_batches() << " batches";
+
   RETURN_NOT_OK_PREPEND(vector_index->Flush(), "Flush vector index");
   return Status::OK();
 }
