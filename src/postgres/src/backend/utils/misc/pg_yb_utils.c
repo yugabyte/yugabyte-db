@@ -402,7 +402,7 @@ YbResetCatalogCacheVersion()
 	yb_pgstat_set_catalog_version(yb_catalog_cache_version);
 }
 
-static bool yb_curr_txn_skips_object_locks = false;
+static bool yb_is_historical_catalog_read = false;
 
 /*
  * A transaction that starts with yb_read_time set runs without object locks:
@@ -418,16 +418,16 @@ static bool yb_curr_txn_skips_object_locks = false;
 void
 YbSetObjectLockingForCurrTxn()
 {
-	yb_curr_txn_skips_object_locks = (yb_read_time != 0 &&
-									  !yb_read_time_skip_catalog);
+	yb_is_historical_catalog_read = (yb_read_time != 0 &&
+									 !yb_read_time_skip_catalog);
 	YBCSetObjectLockingInfraForCurrTxn(yb_enable_object_locking_infra &&
-									   !yb_curr_txn_skips_object_locks);
+									   !yb_is_historical_catalog_read);
 }
 
 bool
-YbCurrTxnSkipsObjectLocks()
+YbIsHistoricalCatalogRead()
 {
-	return yb_curr_txn_skips_object_locks;
+	return yb_is_historical_catalog_read;
 }
 
 /*
@@ -7639,7 +7639,7 @@ check_yb_read_time(char **newval, void **extra, GucSource source)
 	 * (YbSetObjectLockingForCurrTxn); the rest of it must not run as of now
 	 * without them.
 	 */
-	if (YbCurrTxnSkipsObjectLocks() && IsTransactionBlock() &&
+	if (YbIsHistoricalCatalogRead() && IsTransactionBlock() &&
 		(value_ull != yb_read_time || is_ht_unit != yb_is_read_time_ht))
 	{
 		GUC_check_errcode(ERRCODE_ACTIVE_SQL_TRANSACTION);

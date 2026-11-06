@@ -124,7 +124,7 @@ extern bool YbIsCatalogPinnedToReadTime();
 
 extern void YbSetObjectLockingForCurrTxn();
 
-extern bool YbCurrTxnSkipsObjectLocks();
+extern bool YbIsHistoricalCatalogRead();
 
 extern YbcPgLastKnownCatalogVersionInfo YbGetCatalogCacheVersionForTablePrefetching();
 

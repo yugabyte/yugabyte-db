@@ -52,7 +52,7 @@ LockTableCommand(LockStmt *lockstmt)
 	 * which don't need it, so it is a no-op; a stronger mode would be expected
 	 * to fence other sessions, so refuse it.
 	 */
-	if (IsYugaByteEnabled() && YbCurrTxnSkipsObjectLocks() &&
+	if (IsYugaByteEnabled() && YbIsHistoricalCatalogRead() &&
 		lockstmt->mode > AccessShareLock)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
