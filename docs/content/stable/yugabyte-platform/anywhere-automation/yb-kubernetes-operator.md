@@ -497,7 +497,11 @@ To change storage class or volume count on a running universe, use the `tserverV
 
 ### Create a universe with placement information
 
-You can specify `placementInfo` in the YBUniverse CRD to control regional and zonal placement of nodes. Use `defaultRegion` and `regions` with zone-level `numNodes` and optional `preferred` to define where nodes are placed. You need a Kubernetes provider (for example, one created via [YBProvider](#create-a-provider)) and set `spec.providerName` to its name.
+You can specify `placementInfo` in the YBUniverse CRD to control regional and zonal placement of nodes. Use `defaultRegion` and `regions` with zone-level `numNodes` and optional `leaderPreference` to define where nodes are placed. You need a Kubernetes provider (for example, one created via [YBProvider](#create-a-provider)) and set `spec.providerName` to its name.
+
+In v2026.1.3.0 and later, set `leaderPreference` on each zone to rank where tablet leaders are placed. `0` means the zone is not preferred. A lower positive value is a higher priority, and `1` is the most preferred. Zones can share a value. The values you set must be contiguous non-negative integers, with no gaps. If you omit it, the zone defaults to `1`. See [Preferred region](../../create-deployments/create-universes-overview/#preferred-region).
+
+The boolean `preferred` field is deprecated. It applies only when `leaderPreference` is not set.
 
 `placementInfo` also supports multi-region universes that span multiple Kubernetes clusters. Configure per-zone kubeconfigs in your YBProvider via [kubeConfigSecret](#using-a-custom-kubeconfig). Multi-cluster deployments require proper network connectivity between clusters; see [Configure Kubernetes multi-cluster environment](../../configure-yugabyte-platform/kubernetes/#configure-kubernetes-multi-cluster-environment) and [Networking for Kubernetes](../../prepare/networking-kubernetes/).
 
@@ -519,10 +523,10 @@ spec:
       zones:
       - code: us-west1-a
         numNodes: 2
-        preferred: true
+        leaderPreference: 1
       - code: us-west1-b
         numNodes: 1
-        preferred: true
+        leaderPreference: 1
   providerName: test-provider
   numNodes: 3
   replicationFactor: 3

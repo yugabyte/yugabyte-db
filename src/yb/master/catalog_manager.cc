@@ -675,9 +675,12 @@ DEFINE_RUNTIME_uint32(vector_index_tenant_hash_group_and_range_components, 0,
     "0 means vectors have no tenant. Applies only to the yb_hnsw_hnswlib backend. The tenant never "
     "covers the full primary key: values greater than or equal to the number of components use all "
     "components but the last one, so a single-component primary key has no tenant. The value is "
-    "fixed when the index is created. Older releases cannot read payloads created with a nonzero "
+    "fixed when the index is created. Must stay 0 until #36086: until then a saved YbHnsw chunk "
+    "keeps a single entry point, so its searches miss the vectors of all tenants but one. "
+    "Older releases cannot read payloads created with a nonzero "
     "value and may write vectors without their tenant, so keep it 0 until the upgrade to this "
     "release is finalized.");
+TAG_FLAG(vector_index_tenant_hash_group_and_range_components, experimental);
 
 DEFINE_RUNTIME_AUTO_bool(enable_table_owned_vector_reverse_mapping, kExternal, false, true,
     "When true, newly created YSQL tables hold vector reverse mapping ownership. "
@@ -1058,7 +1061,7 @@ void RemoveTableIdsFromTabletInfo(
 // Helper function for CleanUpDeletedTables. Not intended for general use.
 Status PersistCleanUpOfDeletedTables(
     CatalogManager& cm, const LeaderEpoch& epoch, std::vector<TableInfo*>&& tables,
-    std::vector<std::pair<TableInfo::WriteLock, TransactionId>>&& table_locks,
+    std::vector<std::pair<TableInfo::WriteLock, TransactionId>> table_locks,
     const TabletInfoPtr& sys_catalog_tablet_info) {
   if (tables.empty()) {
     return Status::OK();
@@ -8368,6 +8371,7 @@ void CatalogManager::CleanUpDeletedTables(const LeaderEpoch& epoch) {
   std::vector<TableInfo*> tables_to_remove_from_map;
   std::vector<std::map<TabletId, std::weak_ptr<TabletInfo>>> tablets_to_remove_from_map;
   std::vector<TableInfo*> newly_hidden_tables;
+  std::vector<TableInfoPtr> tables_to_prepare;
   for (const auto& table : tables) {
     if (table->is_deleted()) {
       tables_to_remove_from_map.push_back(table.get());
@@ -8395,6 +8399,12 @@ void CatalogManager::CleanUpDeletedTables(const LeaderEpoch& epoch) {
         }
       }
     }
+    tables_to_prepare.push_back(table);
+  }
+  // Separate pass: mutex_ (GetTableInfo above, LockGuards below) must not be taken while holding
+  // the table write locks from PrepareTableDeletion. PersistCleanUpOfDeletedTables takes them by
+  // value, so they are released when it returns, even on failure.
+  for (const auto& table : tables_to_prepare) {
     auto lock_and_transaction_id = PrepareTableDeletion(table);
     if (lock_and_transaction_id.first.locked()) {
       if (lock_and_transaction_id.first.data().is_hidden()) {
