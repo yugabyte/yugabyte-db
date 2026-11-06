@@ -924,17 +924,7 @@ Result<bool> ApplyIntentsContext::Entry(
 
     write_id_ = decoded_value.write_id;
 
-    if (dockv::IsTopLevelIntentKey(intent.doc_path) && decoded_value.body.empty()) {
-      return false;
-    }
-
-    // Intents for row locks should be ignored (i.e. should not be written as regular records).
-    if (decoded_value.body.starts_with(ValueEntryTypeAsChar::kRowLock)) {
-      return false;
-    }
-
-    // Intents from aborted subtransactions should not be written as regular records.
-    if (aborted_.Test(decoded_value.subtransaction_id)) {
+    if (IsNonRecordStrongWriteIntent(intent.doc_path, decoded_value, aborted_)) {
       return false;
     }
 
