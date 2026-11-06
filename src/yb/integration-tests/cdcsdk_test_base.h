@@ -75,6 +75,15 @@ namespace cdc {
                                                                                           \
   TEST_F(fixture, YB_DISABLE_TEST_IN_TSAN(test_name##Implicit)) { test_name(IMPLICIT); }
 
+#define ASSERT_EQ_UNLESS_TXN_DDL(expected, actual, txn_ddl_assertion)   \
+  do {                                                                  \
+    if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) { \
+      txn_ddl_assertion;                                                \
+    } else {                                                            \
+      ASSERT_EQ(expected, actual);                                      \
+    }                                                                   \
+  } while (false)
+
 constexpr int kRpcTimeout = 60 * kTimeMultiplier;
 constexpr int kFlushTimeoutSecs = 60 * kTimeMultiplier;
 // Number of cdc_state entries a logical replication stream creates by default when the database has

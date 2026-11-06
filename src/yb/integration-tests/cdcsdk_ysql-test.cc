@@ -12783,6 +12783,15 @@ TEST_F(CDCSDKYsqlTest, TestYbRestartCommitTimeInPgReplicationSlots) {
   ASSERT_EQ(view_time, expected_time);
 }
 
+namespace {
+
+bool IsTransactionalDdlCatalogRecord(const CDCSDKProtoRecordPB& record) {
+  return record.row_message().table() == "pg_attribute" ||
+         record.row_message().table() == "pg_publication_rel_prpubid_index";
+}
+
+}  // namespace
+
 // This test verifies that we are able to call GetChanges successfully on master tablet.
 TEST_F(CDCSDKYsqlTest, TestPollingPgCatalogTables) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
@@ -12828,14 +12837,19 @@ TEST_F(CDCSDKYsqlTest, TestPollingPgCatalogTables) {
   // ALTER TABLE will give one update to pg_class in debug builds and one insert in release builds.
   // Creation of 2 replication origins gives 2 inserts to pg_replication_origin and dropping one
   // gives 1 delete.
-  // We will not receive any record corresponding to the addition of column in other catalog tables
-  // such as pg_attribute.
+  // The records of pg_attribute and pg_publication_rel_prpubid_index are counted separately.
   const int expected_count_without_packed_row[] = {4, 12, 4, 2, 0, 0, 11, 11};
   const int expected_count_with_packed_row[] = {4, 16, 0, 2, 0, 0, 11, 11};
 
+  int txn_ddl_catalog_records = 0;
   for (auto record : change_resp.cdc_sdk_proto_records()) {
+    if (IsTransactionalDdlCatalogRecord(record)) {
+      ++txn_ddl_catalog_records;
+      continue;
+    }
     UpdateRecordCount(record, record_count);
   }
+  ASSERT_EQ_UNLESS_TXN_DDL(0, txn_ddl_catalog_records, ASSERT_GT(txn_ddl_catalog_records, 0));
 
   for (int i = 0; i < 8; i++) {
     if (FLAGS_ysql_enable_packed_row) {
@@ -12885,7 +12899,11 @@ TEST_F(CDCSDKYsqlTest, TestStreamIndependenceWhilePollingCatalogTablet) {
   // corresponding to the ALTER PUB (BEGIN, DDL, INSERT, COMMIT).
   auto change_resp = ASSERT_RESULT(GetChangesFromMaster(stream_id_1));
   ASSERT_FALSE(change_resp.has_error());
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 11);
+  const auto txn_ddl_catalog_records = std::count_if(
+      change_resp.cdc_sdk_proto_records().begin(), change_resp.cdc_sdk_proto_records().end(),
+      IsTransactionalDdlCatalogRecord);
+  ASSERT_EQ_UNLESS_TXN_DDL(0, txn_ddl_catalog_records, ASSERT_GT(txn_ddl_catalog_records, 0));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size() - txn_ddl_catalog_records, 11);
 
   // Call GetChanges on sys catalog tablet using stream_2. We will not get any DMLs as sys catalog
   // tablet only has change records corresponding to the DB 1. These records will be filtered by CDC
@@ -12933,7 +12951,12 @@ TEST_F(CDCSDKYsqlTest, TestPollingPgCatalogTablesAfterLeaderStepDown) {
   const int expected_count_with_packed_row[] = {1, 3, 0, 0, 0, 0, 1, 1};
 
   // None of the records should belong to the DDL which was performed before stream creation.
+  int txn_ddl_catalog_records = 0;
   for (auto record : change_resp.cdc_sdk_proto_records()) {
+    if (IsTransactionalDdlCatalogRecord(record)) {
+      ++txn_ddl_catalog_records;
+      continue;
+    }
     UpdateRecordCount(record, record_count);
     if (record.row_message().op() == RowMessage_Op_INSERT ||
         record.row_message().op() == RowMessage_Op_UPDATE) {
@@ -12941,6 +12964,7 @@ TEST_F(CDCSDKYsqlTest, TestPollingPgCatalogTablesAfterLeaderStepDown) {
           record.row_message().new_tuple().Get(1).pg_catalog_value().string_value(), "test_1");
     }
   }
+  ASSERT_EQ_UNLESS_TXN_DDL(0, txn_ddl_catalog_records, ASSERT_GT(txn_ddl_catalog_records, 0));
 
   for (int i = 0; i < 8; i++) {
     if (FLAGS_ysql_enable_packed_row) {
