@@ -457,23 +457,17 @@ bool ObjectLockFastpathEnabled() {
   return FLAGS_enable_object_lock_fastpath && FLAGS_enable_object_locking_for_table_locks;
 }
 
-// Appends 'master' unless 'masters' already has an entry with the same addresses. Entries in
-// 'masters' must be sorted.
-bool AddMasterIfMissing(server::MasterAddresses& masters, std::vector<HostPort> master) {
-  std::sort(master.begin(), master.end());
-  if (std::find(masters.begin(), masters.end(), master) != masters.end()) {
-    return false;
+// Matches on any shared address: flag file entries are single host:ports, while entries learned
+// from the Raft config hold each master's private and broadcast addresses.
+bool HasMaster(const server::MasterAddresses& masters, const std::vector<HostPort>& master) {
+  for (const auto& existing : masters) {
+    for (const auto& hp : master) {
+      if (std::find(existing.begin(), existing.end(), hp) != existing.end()) {
+        return true;
+      }
+    }
   }
-  masters.push_back(std::move(master));
-  return true;
-}
-
-server::MasterAddresses SortedMasterAddresses(const server::MasterAddresses& masters) {
-  auto result = masters;
-  for (auto& list : result) {
-    std::sort(list.begin(), list.end());
-  }
-  return result;
+  return false;
 }
 
 }  // namespace
@@ -592,10 +586,11 @@ void TabletServer::SetupAsyncClientInit(client::AsyncClientInitializer* async_cl
     });
   }
   // The client re-reads its master list from the flag file on each leader lookup, which on K8s can
-  // lag the Raft config or list only some masters. Heartbeats keep opts_ in sync with the config.
+  // lag the Raft config or list only some masters. opts_ holds the list heartbeats learned.
   async_client_init->builder().AddMasterAddressSource([this] {
+    const auto masters = opts_.GetMasterAddresses();
     std::vector<std::string> result;
-    for (const auto& master : *opts_.GetMasterAddresses()) {
+    for (const auto& master : *masters) {
       result.push_back(HostPort::ToCommaSeparatedString(master));
     }
     return result;
@@ -632,7 +627,11 @@ Status TabletServer::UpdateMasterAddresses(const consensus::RaftConfigPB& new_co
       new_master_addresses->push_back(std::move(list));
     }
   } else {
-    auto merged = SortedMasterAddresses(*opts_.GetMasterAddresses());
+    new_master_addresses = make_shared<server::MasterAddresses>(*opts_.GetMasterAddresses());
+
+    for (auto& list : *new_master_addresses) {
+      std::sort(list.begin(), list.end());
+    }
 
     for (const auto& peer : new_config.peers()) {
       std::vector<HostPort> list;
@@ -642,9 +641,18 @@ Status TabletServer::UpdateMasterAddresses(const consensus::RaftConfigPB& new_co
       for (const auto& hp : peer.last_known_broadcast_addr()) {
         list.push_back(HostPortFromPB(hp));
       }
-      AddMasterIfMissing(merged, std::move(list));
+      std::sort(list.begin(), list.end());
+      bool found = false;
+      for (const auto& existing : *new_master_addresses) {
+        if (existing == list) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        new_master_addresses->push_back(std::move(list));
+      }
     }
-    new_master_addresses = make_shared<server::MasterAddresses>(std::move(merged));
   }
 
   LOG(INFO) << "Got new list of " << new_config.peers_size() << " masters at index "
@@ -660,8 +668,9 @@ Status TabletServer::UpdateMasterAddresses(const consensus::RaftConfigPB& new_co
   return Status::OK();
 }
 
-// Only adds masters: the file may list a subset of the masters, and the next heartbeat reply from
-// the leader replaces the list with the Raft config anyway.
+// Only adds masters, since the file may list a subset of them. Resets the master config index so
+// that the next reply from the leader carries its config and replaces the list, dropping whatever
+// stale entries the file had.
 Status TabletServer::AddMasterAddressesFromFlagFile() {
   if (FLAGS_flagfile.empty()) {
     return Status::OK();
@@ -674,18 +683,21 @@ Status TabletServer::AddMasterAddressesFromFlagFile() {
   auto file_masters = VERIFY_RESULT(server::ParseMasterAddresses(flag_value));
 
   const auto old_master_addresses = opts_.GetMasterAddresses();
-  auto merged = SortedMasterAddresses(*old_master_addresses);
-  bool added = false;
+  auto new_master_addresses = std::make_shared<server::MasterAddresses>(*old_master_addresses);
   for (auto& master : file_masters) {
-    added |= AddMasterIfMissing(merged, std::move(master));
+    if (!HasMaster(*new_master_addresses, master)) {
+      new_master_addresses->push_back(std::move(master));
+    }
   }
-  if (!added) {
+  if (new_master_addresses->size() == old_master_addresses->size()) {
     return Status::OK();
   }
 
   LOG(INFO) << "Added masters from flag file " << FLAGS_flagfile << ": old masters = "
-            << yb::ToString(old_master_addresses) << " new masters = " << yb::ToString(merged);
-  opts_.SetMasterAddresses(make_shared<server::MasterAddresses>(std::move(merged)));
+            << AsString(*old_master_addresses) << " new masters = "
+            << AsString(*new_master_addresses);
+  SetCurrentMasterIndex(0);
+  opts_.SetMasterAddresses(std::move(new_master_addresses));
   DoUpdateMasterAddresses();
   return Status::OK();
 }
