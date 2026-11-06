@@ -461,9 +461,20 @@ class LRUCache {
   bool Unref(LRUHandle* e);
 
   // Returns the capacity of the subcache.
-  // For multi touch cache it is the same as its initial allocation.
-  // For single touch cache it is the amount of space left in the entire cache.
+  // Without overflow, each subcache is capped at its share of the cache. With overflow, the single
+  // touch cache can use any space that the multi touch cache is not using, and the multi touch
+  // cache can grow past its share into space that the single touch cache is not using.
   size_t GetSubCacheCapacity(const SubCacheType subcache_type);
+
+  bool CanOverflow() const {
+    return !strict_capacity_limit_ && FLAGS_cache_overflow_single_touch;
+  }
+
+  // Evicts from the multi touch LRU while the multi touch cache is above its share and the cache
+  // has no room for `charge` more bytes, so that single touch entries get their share back.
+  void EvictMultiTouchOverShare(size_t charge, LRUHandleDeleter* deleted);
+
+  void EvictLRUHead(LRUSubCache* sub_cache, LRUHandleDeleter* deleted);
 
   // Free some space following strict LRU policy until enough space
   // to hold (usage_ + charge) is freed or the lru list is empty.
@@ -539,7 +550,7 @@ void LRUCache::LRU_Append(LRUHandle* e) {
 size_t LRUCache::GetSubCacheCapacity(const SubCacheType subcache_type) {
   switch (subcache_type) {
     case SINGLE_TOUCH :
-      if (strict_capacity_limit_ || !FLAGS_cache_overflow_single_touch) {
+      if (!CanOverflow()) {
         return total_capacity_ - multi_touch_capacity_;
       }
       // total_capacity_ can drop below the multi-touch usage held by pinned entries once
@@ -550,9 +561,29 @@ size_t LRUCache::GetSubCacheCapacity(const SubCacheType subcache_type) {
       return total_capacity_ > multi_touch_sub_cache_.Usage()
           ? total_capacity_ - multi_touch_sub_cache_.Usage() : 0;
     case MULTI_TOUCH :
-      return multi_touch_capacity_;
+      if (!CanOverflow()) {
+        return multi_touch_capacity_;
+      }
+      // Like the single touch cache, the multi touch cache can use any space the other one is not
+      // using, but it keeps its share even when the single touch cache overflows into it.
+      return std::max(
+          multi_touch_capacity_,
+          total_capacity_ > single_touch_sub_cache_.Usage()
+              ? total_capacity_ - single_touch_sub_cache_.Usage() : 0);
   }
   FATAL_INVALID_ENUM_VALUE(SubCacheType, subcache_type);
+}
+
+void LRUCache::EvictLRUHead(LRUSubCache* sub_cache, LRUHandleDeleter* deleted) {
+  LRUHandle* old = sub_cache->LRU_Head().next;
+  assert(old->in_cache);
+  assert(old->refs == 1);  // LRU list contains elements which may be evicted
+  sub_cache->LRU_Remove(old);
+  table_.Remove(old->key(), old->hash);
+  old->in_cache = false;
+  Unref(old);
+  sub_cache->DecrementUsage(old->charge);
+  deleted->Add(old);
 }
 
 void LRUCache::EvictFromLRU(const size_t charge,
@@ -561,15 +592,14 @@ void LRUCache::EvictFromLRU(const size_t charge,
   LRUSubCache* sub_cache =  GetSubCache(subcache_type);
   const size_t capacity = GetSubCacheCapacity(subcache_type);
   while (sub_cache->Usage() + charge > capacity && !sub_cache->IsLRUEmpty())  {
-    LRUHandle* old = sub_cache->LRU_Head().next;
-    assert(old->in_cache);
-    assert(old->refs == 1);  // LRU list contains elements which may be evicted
-    sub_cache->LRU_Remove(old);
-    table_.Remove(old->key(), old->hash);
-    old->in_cache = false;
-    Unref(old);
-    sub_cache->DecrementUsage(old->charge);
-    deleted->Add(old);
+    EvictLRUHead(sub_cache, deleted);
+  }
+}
+
+void LRUCache::EvictMultiTouchOverShare(const size_t charge, LRUHandleDeleter* deleted) {
+  while (multi_touch_sub_cache_.Usage() > multi_touch_capacity_ &&
+         TotalUsage() + charge > total_capacity_ && !multi_touch_sub_cache_.IsLRUEmpty()) {
+    EvictLRUHead(&multi_touch_sub_cache_, deleted);
   }
 }
 
@@ -625,6 +655,7 @@ Cache::Handle* LRUCache::Lookup(const Slice& key, uint32_t hash, const QueryId q
                                 Statistics* statistics)  {
   LRUHandle* e;
   int64_t multi_touch_increment = 0;
+  LRUHandleDeleter multi_touch_eviction_list(metrics_.get());
   {
     absl::MutexLock l(&mutex_);
     e = table_.Lookup(key, hash);
@@ -640,10 +671,6 @@ Cache::Handle* LRUCache::Lookup(const Slice& key, uint32_t hash, const QueryId q
       // Now the handle will be added to the multi touch pool only if it exists.
       if (FLAGS_cache_single_touch_ratio < 1 && e->GetSubCacheType() != MULTI_TOUCH &&
           e->query_id != query_id) {
-        {
-          LRUHandleDeleter multi_touch_eviction_list(metrics_.get());
-          EvictFromLRU(e->charge, &multi_touch_eviction_list, MULTI_TOUCH);
-        }
         // Cannot have any single touch elements in this case.
         assert(FLAGS_cache_single_touch_ratio != 0);
         if (!strict_capacity_limit_ ||
@@ -653,6 +680,9 @@ Cache::Handle* LRUCache::Lookup(const Slice& key, uint32_t hash, const QueryId q
           single_touch_sub_cache_.DecrementUsage(e->charge);
           multi_touch_sub_cache_.IncrementUsage(e->charge);
           multi_touch_increment = e->charge;
+          // Promotion does not change the total usage, so with overflow this normally evicts
+          // nothing.
+          EvictFromLRU(0, &multi_touch_eviction_list, MULTI_TOUCH);
         }
       }
     }
@@ -669,11 +699,12 @@ Cache::Handle* LRUCache::Lookup(const Slice& key, uint32_t hash, const QueryId q
 bool LRUCache::HasFreeSpace(const SubCacheType subcache_type) {
   switch(subcache_type) {
     case SINGLE_TOUCH :
-      if (strict_capacity_limit_ || !FLAGS_cache_overflow_single_touch) {
+      if (!CanOverflow()) {
         return single_touch_sub_cache_.Usage() <= (total_capacity_ - multi_touch_capacity_);
       }
       return TotalUsage() <= total_capacity_;
-    case MULTI_TOUCH : return multi_touch_sub_cache_.Usage() <= multi_touch_capacity_;
+    case MULTI_TOUCH :
+      return multi_touch_sub_cache_.Usage() <= GetSubCacheCapacity(MULTI_TOUCH);
   }
   FATAL_INVALID_ENUM_VALUE(SubCacheType, subcache_type);
 }
@@ -770,6 +801,9 @@ Status LRUCache::Insert(const Slice& key, uint32_t hash, const QueryId query_id,
       subcache_type = SINGLE_TOUCH;
     } else {
       subcache_type = table_.GetSubCacheTypeCandidate(e);
+    }
+    if (subcache_type == SINGLE_TOUCH) {
+      EvictMultiTouchOverShare(charge, &last_reference_list);
     }
     EvictFromLRU(charge, &last_reference_list, subcache_type);
     LRUSubCache* sub_cache = GetSubCache(subcache_type);
