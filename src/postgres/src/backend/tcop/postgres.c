@@ -1493,6 +1493,12 @@ exec_simple_query(const char *query_string, CommandTag yb_command_tag)
 							"commands ignored until end of transaction block"),
 					 errdetail_abort()));
 
+		/*
+		 * YB: Reject the statement while the catalog is unreadable as of
+		 * yb_read_time; only SET/RESET yb_read_time and SHOW get through.
+		 */
+		YbCheckReadTimeTooOld(parsetree->stmt);
+
 		/* Make sure we are in a transaction command */
 		yb_start_xact_command_internal(yb_skip_read_committed_internal_savepoint(commandTag));
 
@@ -1915,6 +1921,9 @@ exec_parse_message(const char *query_string,	/* string to execute */
 							"commands ignored until end of transaction block"),
 					 errdetail_abort()));
 
+		/* YB: same treatment while the catalog is unreadable as of yb_read_time */
+		YbCheckReadTimeTooOld(raw_parse_tree->stmt);
+
 		/*
 		 * Create the CachedPlanSource before we do parse analysis, since it
 		 * needs to see the unmodified raw parse tree.
@@ -2203,6 +2212,10 @@ exec_bind_message(StringInfo input_message)
 				 errmsg("current transaction is aborted, "
 						"commands ignored until end of transaction block"),
 				 errdetail_abort()));
+
+	/* YB: same treatment while the catalog is unreadable as of yb_read_time */
+	if (psrc->raw_parse_tree)
+		YbCheckReadTimeTooOld(psrc->raw_parse_tree->stmt);
 
 	/*
 	 * Create the portal.  Allow silent replacement of an existing portal only
@@ -3149,6 +3162,10 @@ exec_describe_statement_message(const char *stmt_name)
 				 errmsg("current transaction is aborted, "
 						"commands ignored until end of transaction block"),
 				 errdetail_abort()));
+
+	/* YB: same treatment while the catalog is unreadable as of yb_read_time */
+	if (psrc->raw_parse_tree)
+		YbCheckReadTimeTooOld(psrc->raw_parse_tree->stmt);
 
 	if (whereToSendOutput != DestRemote)
 		return;					/* can't actually do anything... */
@@ -5330,6 +5347,34 @@ yb_check_retry_allowed(const char *query_string)
 	return yb_is_dml_command_ext(query_string, true);
 }
 
+/*
+ * YBStopAuthPrefetcherAndRefreshCache() for the refreshes that run between
+ * statements: the one before each message and the one deferred to
+ * ReadyForQuery.  With
+ * yb_read_time set, the refresh reads the catalog as of that time and fails
+ * with "Snapshot too old" once it is older than the sys catalog's history
+ * cutoff.  Left alone, the failure would repeat before every later statement
+ * (or, at ReadyForQuery, before any statement is read at all), RESET
+ * yb_read_time included; see yb_read_time_too_old_detail in pg_yb_utils.c.
+ */
+static void
+YbRefreshCacheBetweenStatements(uint64_t catalog_master_version, bool is_retry)
+{
+	MemoryContext oldcontext = CurrentMemoryContext;
+
+	PG_TRY();
+	{
+		YBStopAuthPrefetcherAndRefreshCache(catalog_master_version, is_retry);
+	}
+	PG_CATCH();
+	{
+		MemoryContextSwitchTo(oldcontext);
+		YbHandleReadTimeSnapshotTooOld();
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+}
+
 static void
 YBCheckSharedCatalogCacheVersion()
 {
@@ -5361,8 +5406,8 @@ YBCheckSharedCatalogCacheVersion()
 						__func__, shared_catalog_version)));
 	}
 	if (need_global_cache_refresh)
-		YBStopAuthPrefetcherAndRefreshCache(YB_CATCACHE_VERSION_UNINITIALIZED,
-											false /* is_retry */ );
+		YbRefreshCacheBetweenStatements(YB_CATCACHE_VERSION_UNINITIALIZED,
+										false /* is_retry */ );
 	else
 	{
 		yb_pgstat_set_catalog_version(local_catalog_version);
@@ -7006,8 +7051,8 @@ PostgresMain(const char *dbname, const char *username)
 				long		stats_timeout;
 
 				if (yb_need_cache_refresh)
-					YBStopAuthPrefetcherAndRefreshCache(YB_CATCACHE_VERSION_UNINITIALIZED,
-														true /* is_retry */ );
+					YbRefreshCacheBetweenStatements(YB_CATCACHE_VERSION_UNINITIALIZED,
+													true /* is_retry */ );
 
 				/*
 				 * Process incoming notifies (including self-notifies), if
