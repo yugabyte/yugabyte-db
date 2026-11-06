@@ -345,11 +345,22 @@ public class ConnectivityCheckerTest extends FakeDBApplication {
   @Test
   public void testProcessAll_dedupesWhenRunningCheckAlreadyExists() throws Exception {
     Universe eligible = eligibleUniverse("2026.1.0.0-b1");
-    runningChecks(checker).put(eligible.getUniverseUUID(), CompletableFuture.completedFuture(null));
+    runningChecks(checker).put(eligible.getUniverseUUID(), new CompletableFuture<Void>());
 
     processAll(List.of(customer), Map.of(eligible, CUSTOMER_ID));
 
     verify(executorService, never()).submit(any(Runnable.class));
+  }
+
+  @Test
+  public void testProcessAll_completedLeftoverEntryDoesNotBlockCheck() throws Exception {
+    Universe eligible = eligibleUniverse("2026.1.0.0-b1");
+    runningChecks(checker).put(eligible.getUniverseUUID(), CompletableFuture.completedFuture(null));
+    runSubmittedTasksInline();
+
+    processAll(List.of(customer), Map.of(eligible, CUSTOMER_ID));
+
+    verify(checker, times(1)).collectAndSaveConnectivityMetrics(customer, eligible);
   }
 
   @Test

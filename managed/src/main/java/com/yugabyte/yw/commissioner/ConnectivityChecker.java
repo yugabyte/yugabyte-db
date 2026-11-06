@@ -81,7 +81,9 @@ public class ConnectivityChecker {
             universesByCustomer.getOrDefault(customer.getId(), Collections.emptyList())) {
           UUID universeUuid = universe.universeUUID();
           Future<?> curFuture = runningChecks.get(universeUuid);
-          if (curFuture != null) {
+          // A check that finished before its future was stored can leave a completed entry behind,
+          // so only a check that is still running blocks a new one.
+          if (curFuture != null && !curFuture.isDone()) {
             log.debug("Connectivity check already in progress for {}, skipping", universeUuid);
             continue;
           }
