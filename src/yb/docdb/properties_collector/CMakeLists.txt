@@ -24,7 +24,6 @@ set(DOCDB_PROPERTIES_COLLECTOR_SRCS
     sst_stats_aggregator.cc
     sst_stats_collector.cc
     sst_stats_metrics.cc
-    write_hybrid_time_range_collector.cc
     )
 
 set(DOCDB_PROPERTIES_COLLECTOR_DEPS
@@ -45,4 +44,3 @@ ADD_YB_TEST(exponential_histogram-test)
 ADD_YB_TEST(sst_stats_aggregator-test)
 ADD_YB_TEST(sst_stats_collector-test)
 ADD_YB_TEST(sst_stats_metrics-test)
-ADD_YB_TEST(write_hybrid_time_range_collector-test)

@@ -72,7 +72,6 @@
 #include "yb/docdb/properties_collector/sst_stats_aggregator.h"
 #include "yb/docdb/properties_collector/sst_stats_collector.h"
 #include "yb/docdb/properties_collector/sst_stats_metrics.h"
-#include "yb/docdb/properties_collector/write_hybrid_time_range_collector.h"
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/ql_rocksdb_storage.h"
 #include "yb/docdb/redis_operation.h"
@@ -401,7 +400,6 @@ DECLARE_bool(cdc_enable_time_based_intent_retention);
 DECLARE_bool(consistent_restore);
 DECLARE_bool(enable_tiered_storage);
 DECLARE_bool(docdb_enable_sst_stats_collector);
-DECLARE_bool(docdb_enable_sst_write_hybrid_time_range_collector);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(TEST_invalidate_last_change_metadata_op);
 DECLARE_int32(client_read_write_timeout_ms);
@@ -1398,12 +1396,6 @@ Status Tablet::OpenRegularDB(const rocksdb::Options& common_options) {
     regular_rocksdb_options.table_factory = docdb::CreateRocksDBTableFactory(
         tablet_options_, docdb::StorageDbType::kRegular, regular_rocksdb_options.info_log.get(),
         std::move(table_options));
-  }
-
-  // Lets a restore to a point in time remove the files that it hides entirely, see
-  // RocksDBPatcher::SetHybridTimeFilter.
-  if (FLAGS_docdb_enable_sst_write_hybrid_time_range_collector) {
-    docdb::AddWriteHybridTimeRangeCollector(&regular_rocksdb_options);
   }
 
   if (FLAGS_docdb_enable_sst_stats_collector) {
@@ -3003,6 +2995,8 @@ docdb::ApplyTransactionState Tablet::ApplyIntents(const TransactionApplyData& da
   AtomicFlagSleepMs(&FLAGS_TEST_inject_sleep_before_applying_intents_ms);
   docdb::ConsensusFrontiers frontiers;
   InitFrontiers(data, frontiers);
+  // The entries are written at the commit hybrid time, which InitFrontiers covers.
+  frontiers.Smallest().set_hybrid_time_bounds_entries(true);
   auto vector_indexes = vector_indexes_->List().impl();
   docdb::ApplyIntentsContextCompleteListener complete_listener;
   if (!vector_indexes_->has_vector_deletion()) {

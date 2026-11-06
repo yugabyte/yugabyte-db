@@ -25,7 +25,6 @@
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/intent_format.h"
-#include "yb/docdb/properties_collector/write_hybrid_time_range_collector.h"
 #include "yb/docdb/rocksdb_writer.h"
 
 #include "yb/dockv/doc_key.h"
@@ -247,6 +246,8 @@ Status DocDBRocksDBUtil::WriteToRocksDB(
     ++op_id_.index;
     set_op_id(op_id_, &frontiers);
     set_hybrid_time(hybrid_time, &frontiers);
+    // Every entry is written at hybrid_time.
+    frontiers.Smallest().set_hybrid_time_bounds_entries(true);
     rocksdb_write_batch.SetFrontiers(&frontiers);
   }
 
@@ -571,7 +572,6 @@ Status DocDBRocksDBUtil::ReinitDBOptions(const TabletId& tablet_id) {
   docdb::InitRocksDBOptions(
       &intents_db_options_, yb::Format("[I] $0", tablet_id), tablet_id,
       intents_db_options_.statistics, tablet_options, StorageDbType::kIntents);
-  AddWriteHybridTimeRangeCollector(&regular_db_options_);
   regular_db_options_.compaction_context_factory = CreateCompactionContextFactory(
       retention_policy_, &KeyBounds::kNoBounds,
       [this](const std::vector<rocksdb::FileMetaData*>&) {

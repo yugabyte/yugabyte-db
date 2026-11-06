@@ -555,6 +555,9 @@ void ReverseMappingBackfiller::Apply(Tablet& tablet, const VectorIndexBackfillCo
   docdb::ConsensusFrontiers frontiers;
   frontiers.Smallest().set_op_id(op_id_);
   frontiers.Largest().set_op_id(op_id_);
+  // The entries are written at the backfill hybrid time.
+  frontiers.Smallest().set_hybrid_time(context.backfill_ht());
+  frontiers.Smallest().set_hybrid_time_bounds_entries(true);
   rocksdb::WriteBatch write_batch;
   write_batch.SetDirectWriter(this);
   tablet.WriteToRocksDB(frontiers, &write_batch, docdb::StorageDbType::kRegular);

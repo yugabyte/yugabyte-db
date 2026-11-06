@@ -1452,6 +1452,12 @@ Result<bool> NonTransactionalBatchWriter::AddEntryToWriteBatch(
 
 Status NonTransactionalBatchWriter::Apply(rocksdb::DirectWriteHandler& handler) {
   auto apply_external_transactions = VERIFY_RESULT(ExternalTxnApplyStateData::FromPB(put_batch_));
+  // The oldest hybrid time an entry is written at. Writes with an external hybrid time (xCluster,
+  // index backfill) store entries older than the Raft operation the frontiers carry.
+  HybridTime oldest_entry_ht = write_hybrid_time_;
+  for (const auto& [_, apply_data] : apply_external_transactions) {
+    oldest_entry_ht = std::min(oldest_entry_ht, apply_data.commit_ht);
+  }
   if (!apply_external_transactions.empty()) {
     DCHECK(intents_db_iter_.Initialized());
     RETURN_NOT_OK(PrepareApplyExternalIntents(apply_external_transactions, handler));
@@ -1472,6 +1478,7 @@ Status NonTransactionalBatchWriter::Apply(rocksdb::DirectWriteHandler& handler) 
     if (VERIFY_RESULT(AddEntryToWriteBatch(
             write_pair, apply_external_transactions, handler, write_id))) {
       const HybridTime pair_ht = RecordHybridTime(write_pair, write_hybrid_time_);
+      oldest_entry_ht = std::min(oldest_entry_ht, pair_ht);
       // A replay into vector indexes only does not decode the rows no index takes, e.g. of other
       // tables: their schema packings could be GCed already (GH#35466).
       const auto decode_row =
@@ -1525,6 +1532,14 @@ Status NonTransactionalBatchWriter::Apply(rocksdb::DirectWriteHandler& handler) 
   if (can_advance_intents_flush_op_id_ && intents_write_batch_->Count() != 0) {
     can_advance_intents_flush_op_id_->store(false, std::memory_order_release);
   }
+
+  // The write batch reads the frontiers after this writer runs. Only the smallest is lowered: the
+  // largest feeds the MVCC state restored at bootstrap, which must not get ahead of Raft (#2912).
+  auto& smallest = frontiers_.Smallest();
+  if (!smallest.hybrid_time().is_valid() || oldest_entry_ht < smallest.hybrid_time()) {
+    smallest.set_hybrid_time(oldest_entry_ht);
+  }
+  smallest.set_hybrid_time_bounds_entries(true);
 
   return Status::OK();
 }

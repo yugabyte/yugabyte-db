@@ -31,7 +31,6 @@
 #include "yb/docdb/docdb_statistics.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/key_bounds.h"
-#include "yb/docdb/properties_collector/write_hybrid_time_range_collector.h"
 #include "yb/docdb/read_operation_data.h"
 
 #include "yb/gutil/casts.h"
@@ -131,8 +130,8 @@ DEFINE_NON_RUNTIME_bool(rocksdb_persist_options_file, false,
 DEFINE_RUNTIME_bool(drop_sst_files_hidden_by_hybrid_time_filter, true,
     "When a restore to a point in time (PITR, clone, transactional snapshot) sets a hybrid time "
     "filter on the regular RocksDB, remove the SST files whose keys are all newer than the filter "
-    "instead of keeping them hidden behind it until a compaction. Only files that record the "
-    "hybrid time range of their keys qualify.");
+    "instead of keeping them hidden behind it until a compaction. Only files whose frontiers "
+    "bound the hybrid times of their keys qualify.");
 
 DEFINE_RUNTIME_bool(rocksdb_advise_random_on_open, true,
     "If set to true, will hint the underlying file system that the file access pattern is random, "
@@ -826,6 +825,19 @@ void SetLogPrefix(rocksdb::Options* options, const std::string& log_prefix) {
 
 namespace {
 
+// The hybrid time of the file's oldest entry, when its smallest frontier bounds them. See
+// ConsensusFrontierPB::hybrid_time_bounds_entries.
+std::optional<HybridTime> OldestEntryHybridTime(const rocksdb::FileMetaData& file) {
+  if (!file.smallest.user_frontier) {
+    return std::nullopt;
+  }
+  const auto& smallest = down_cast<const ConsensusFrontier&>(*file.smallest.user_frontier);
+  if (!smallest.hybrid_time_bounds_entries() || !smallest.hybrid_time().is_valid()) {
+    return std::nullopt;
+  }
+  return smallest.hybrid_time();
+}
+
 // Helper class for RocksDBPatcher.
 class RocksDBPatcherHelper {
  public:
@@ -855,13 +867,6 @@ class RocksDBPatcherHelper {
 
   void DeleteFile(int level, const rocksdb::FileMetaData& fmd) {
     delete_edit_->DeleteFile(level, fmd.fd.GetNumber());
-  }
-
-  Result<std::optional<WriteHybridTimeRange>> GetWriteHybridTimeRange(
-      const rocksdb::FileMetaData& fmd) {
-    std::shared_ptr<const rocksdb::TableProperties> properties;
-    RETURN_NOT_OK(cfd_->current()->GetTableProperties(&properties, &fmd));
-    return docdb::GetWriteHybridTimeRange(properties->user_collected_properties);
   }
 
   rocksdb::VersionEdit& Edit() {
@@ -1007,14 +1012,10 @@ class RocksDBPatcher::Impl {
       if (FLAGS_drop_sst_files_hidden_by_hybrid_time_filter) {
         auto existing_filter = consensus_frontier.GlobalFilter();
         auto filter = existing_filter.is_valid() ? std::min(existing_filter, value) : value;
-        auto write_ht_range = helper.GetWriteHybridTimeRange(file);
-        if (!write_ht_range.ok()) {
-          LOG(WARNING) << "Failed to read the write hybrid time range of " << file.ToString()
-                       << ": " << write_ht_range.status();
-        } else if (*write_ht_range && (**write_ht_range).min > filter) {
+        auto oldest_entry_ht = OldestEntryHybridTime(file);
+        if (oldest_entry_ht && *oldest_entry_ht > filter) {
           LOG(INFO) << "Removing " << file.ToString() << ", all its keys are hidden by hybrid time "
-                    << "filter " << filter << ", write hybrid time range "
-                    << AsString(**write_ht_range);
+                    << "filter " << filter;
           helper.DeleteFile(level, file);
           dropped_files.push_back(file.fd);
           return;
@@ -1122,6 +1123,22 @@ class RocksDBPatcher::Impl {
     return helper.Apply(options_, imm_cf_options_);
   }
 
+  Status ClearHybridTimeBoundsEntries() {
+    RocksDBPatcherHelper helper(&version_set_);
+
+    helper.IterateFiles([&helper](int level, const rocksdb::FileMetaData& file) {
+      if (!OldestEntryHybridTime(file)) {
+        return;
+      }
+      rocksdb::FileMetaData fmd = file;
+      down_cast<ConsensusFrontier&>(*fmd.smallest.user_frontier)
+          .set_hybrid_time_bounds_entries(false);
+      helper.ModifyFile(level, fmd);
+    });
+
+    return helper.Apply(options_, imm_cf_options_);
+  }
+
   Status UpdateFileSizes() {
     RocksDBPatcherHelper helper(&version_set_);
 
@@ -1197,6 +1214,10 @@ Status RocksDBPatcher::ModifyFlushedFrontier(
 
 Status RocksDBPatcher::UpdateFileSizes() {
   return impl_->UpdateFileSizes();
+}
+
+Status RocksDBPatcher::ClearHybridTimeBoundsEntries() {
+  return impl_->ClearHybridTimeBoundsEntries();
 }
 
 bool RocksDBPatcher::TEST_ContainsHybridTimeFilter() {

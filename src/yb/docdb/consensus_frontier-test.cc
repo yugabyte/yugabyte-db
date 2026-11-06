@@ -198,6 +198,39 @@ TEST_F(ConsensusFrontierTest, TestUpdateExpirationTime) {
   EXPECT_EQ(consensusClone.max_value_level_ttl_expiration_time(), maxHT);
 }
 
+TEST_F(ConsensusFrontierTest, HybridTimeBoundsEntries) {
+  ConsensusFrontierPB legacy_pb;
+  google::protobuf::Any legacy_any;
+  legacy_any.PackFrom(legacy_pb);
+  ConsensusFrontier legacy;
+  ASSERT_OK(legacy.FromPB(legacy_any));
+  ASSERT_FALSE(legacy.hybrid_time_bounds_entries());
+
+  ConsensusFrontier bounds;
+  bounds.set_hybrid_time_bounds_entries(true);
+  google::protobuf::Any any;
+  bounds.ToPB(&any);
+  ConsensusFrontier restored;
+  ASSERT_OK(restored.FromPB(any));
+  ASSERT_TRUE(restored.hybrid_time_bounds_entries());
+  ASSERT_TRUE(restored.Equals(bounds));
+  ASSERT_FALSE(restored.Equals(legacy));
+
+  // Kept on a smallest frontier only while every merged frontier has it.
+  ConsensusFrontier smallest = bounds;
+  smallest.Update(bounds, UpdateUserValueType::kSmallest);
+  ASSERT_TRUE(smallest.hybrid_time_bounds_entries());
+  smallest.Update(legacy, UpdateUserValueType::kSmallest);
+  ASSERT_FALSE(smallest.hybrid_time_bounds_entries());
+  smallest.Update(bounds, UpdateUserValueType::kSmallest);
+  ASSERT_FALSE(smallest.hybrid_time_bounds_entries());
+
+  // A largest frontier does not carry it.
+  ConsensusFrontier largest = bounds;
+  largest.Update(legacy, UpdateUserValueType::kLargest);
+  ASSERT_TRUE(largest.hybrid_time_bounds_entries());
+}
+
 TEST_F(ConsensusFrontierTest, SplitGenerationAndMinChunkSerialNo) {
   ConsensusFrontierPB legacy_pb;
   google::protobuf::Any legacy_any;
