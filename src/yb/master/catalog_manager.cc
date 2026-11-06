@@ -10834,7 +10834,7 @@ void CatalogManager::DeleteYsqlDatabaseAsync(
     scoped_refptr<NamespaceInfo> database, const LeaderEpoch& epoch) {
   TEST_PAUSE_IF_FLAG(TEST_hang_on_namespace_transition);
 
-  const auto is_ysql_major_upgrade = ysql_manager_->IsMajorUpgradeInProgress();
+  bool is_ysql_major_upgrade = false;
 
   // Lock database before removing content.
   TRACE("Locking database");
@@ -10859,6 +10859,11 @@ void CatalogManager::DeleteYsqlDatabaseAsync(
       return;
     }
 
+    // A DELETING database was already being dropped, or failed to be created, before the upgrade
+    // (DDLs are blocked during one), so drop it in full. Only pg_upgrade's drops leave the database
+    // RUNNING and drop just the current version catalog.
+    is_ysql_major_upgrade = metadata.state() != SysNamespaceEntryPB::DELETING &&
+                            ysql_manager_->IsMajorUpgradeInProgress();
     if (is_ysql_major_upgrade) {
       if (metadata.state() != SysNamespaceEntryPB::RUNNING) {
         LOG(DFATAL) << "Namespace (" << database->name() << ") has invalid state "
@@ -10904,7 +10909,11 @@ void CatalogManager::DeleteYsqlDatabaseAsync(
   // Delete all tables in the database. If we're in a major YSQL upgrade, this will delete
   // only the new version's tables.
   TRACE("Delete all tables in YSQL database");
-  auto s = DeleteYsqlDBTables(database->id(), DeleteYsqlDBTablesType::kNormal, epoch);
+  auto s = DeleteYsqlDBTables(
+      database->id(),
+      is_ysql_major_upgrade ? DeleteYsqlDBTablesType::kMajorUpgradeDrop
+                            : DeleteYsqlDBTablesType::kNormal,
+      epoch);
   WARN_NOT_OK(s, "DeleteYsqlDBTables failed");
 
   auto l = database->LockForWrite();
@@ -10971,21 +10980,9 @@ namespace {
 // Should we delete this table during a YSQL database drop?
 // Handles all ysql major upgrade cases.
 Result<bool> ShouldDeleteTableForYsqlDbDrop(
-    const TableId& table_id, bool is_pg_shared_table, bool is_ysql_major_upgrade,
-    DeleteYsqlDBTablesType delete_type) {
+    const TableId& table_id, bool is_pg_shared_table, DeleteYsqlDBTablesType delete_type) {
   switch (delete_type) {
     case DeleteYsqlDBTablesType::kNormal:
-      if (is_ysql_major_upgrade) {
-        // Initdb pre-creates certain databases like template1 and yugabyte. pg_upgrade needs to
-        // drop and recreate these in order to ensure they have proper properties like collation. We
-        // only need to delete the current version catalog tables during these drops. Previous
-        // version catalog and user tables should be left untouched.
-        // Shared tables are linked to the template1 database. Don't drop these when template1 is
-        // recreated, since such tables are technically global tables and not intended to be
-        // dropped.
-        return !is_pg_shared_table && IsCurrentVersionYsqlCatalogTable(table_id);
-      }
-
       // In the normal database drop case, delete all tables. We dont ever expect delelte of the
       // shared tables.
       RSTATUS_DCHECK(
@@ -10993,6 +10990,16 @@ Result<bool> ShouldDeleteTableForYsqlDbDrop(
           "Cannot delete a database that contains shared YSQL tables");
 
       return true;
+
+    case DeleteYsqlDBTablesType::kMajorUpgradeDrop:
+      // Initdb pre-creates certain databases like template1 and yugabyte. pg_upgrade needs to
+      // drop and recreate these in order to ensure they have proper properties like collation. We
+      // only need to delete the current version catalog tables during these drops. Previous
+      // version catalog and user tables should be left untouched.
+      // Shared tables are linked to the template1 database. Don't drop these when template1 is
+      // recreated, since such tables are technically global tables and not intended to be
+      // dropped.
+      return !is_pg_shared_table && IsCurrentVersionYsqlCatalogTable(table_id);
 
     case DeleteYsqlDBTablesType::kMajorUpgradeRollback:
       // The rollback of a YSQL major upgrade deletes all current version catalog tables in order to
@@ -11013,7 +11020,12 @@ Result<bool> ShouldDeleteTableForYsqlDbDrop(
 Status CatalogManager::DeleteYsqlDBTables(
     const NamespaceId& database_id, DeleteYsqlDBTablesType delete_type, const LeaderEpoch& epoch) {
   const auto is_ysql_major_upgrade = ysql_manager_->IsMajorUpgradeInProgress();
-  if (delete_type == DeleteYsqlDBTablesType::kMajorUpgradeRollback) {
+  if (delete_type == DeleteYsqlDBTablesType::kMajorUpgradeDrop) {
+    RSTATUS_DCHECK(
+        is_ysql_major_upgrade, IllegalState,
+        "Cannot drop only the current version of a YSQL database's catalog when we are not in a "
+        "YSQL major upgrade");
+  } else if (delete_type == DeleteYsqlDBTablesType::kMajorUpgradeRollback) {
     // User attempts to delete the table come from a user facing pg backend which is blocked from
     // updating the catalog, so they can never reach here.
     RSTATUS_DCHECK(
@@ -11053,7 +11065,7 @@ Status CatalogManager::DeleteYsqlDBTables(
       }
 
       if (!VERIFY_RESULT(ShouldDeleteTableForYsqlDbDrop(
-              table->id(), l->pb.is_pg_shared_table(), is_ysql_major_upgrade, delete_type))) {
+              table->id(), l->pb.is_pg_shared_table(), delete_type))) {
         continue;
       }
 
@@ -11076,7 +11088,7 @@ Status CatalogManager::DeleteYsqlDBTables(
       }
     }
 
-    if (is_ysql_major_upgrade || delete_type == DeleteYsqlDBTablesType::kMajorUpgradeCleanup) {
+    if (delete_type != DeleteYsqlDBTablesType::kNormal) {
       RSTATUS_DCHECK(
           colocation_parents.empty(), IllegalState,
           "Unexpected colocation parents found during ysql major upgrade or cleanup");
@@ -11087,13 +11099,14 @@ Status CatalogManager::DeleteYsqlDBTables(
         std::make_move_iterator(colocation_parents.end()));
   }
 
-  if (is_ysql_major_upgrade || delete_type == DeleteYsqlDBTablesType::kMajorUpgradeCleanup) {
+  if (delete_type != DeleteYsqlDBTablesType::kNormal) {
     RSTATUS_DCHECK(
         tables_and_locks.size() == sys_table_ids.size(), IllegalState,
         "Unexpected non sytem tables found during ysql major upgrade or cleanup");
   }
 
-  if (is_ysql_major_upgrade) {
+  if (delete_type == DeleteYsqlDBTablesType::kMajorUpgradeDrop ||
+      delete_type == DeleteYsqlDBTablesType::kMajorUpgradeRollback) {
     // We explicitly delete all rows from the sys_catalog tablet instead of lazy cleanup, since
     // we expect new identical rows to get inserted again soon. If we skip this step, it would
     // cause conflict errors on those inserts.
