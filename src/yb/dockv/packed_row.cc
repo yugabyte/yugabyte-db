@@ -393,11 +393,13 @@ Status CompleteColumns(size_t packed_columns, Packer* packer) {
   // Fill them with missing default values (if any) or NULLs to keep the same behaviour
   // like we have w/o packed row.
   const auto& packing = packer->packing();
-  if (packed_columns < packing.columns()) {
-    const auto& packing_data = packing.column_packing_data(packing.columns() - 1);
+  for (auto idx = packed_columns; idx < packing.columns(); ++idx) {
+    const auto& packing_data = packing.column_packing_data(idx);
     const auto& missing_value = packing_data.missing_value;
     if (!IsNull(missing_value)) {
-      RETURN_NOT_OK(packer->AddValue(packing_data.id, missing_value));
+      auto added = VERIFY_RESULT(packer->AddValue(
+          packing_data.id, missing_value, std::numeric_limits<ssize_t>::min()));
+      RSTATUS_DCHECK(added, Corruption, "Unable to pack missing value for $0", packing_data);
     } else {
       RSTATUS_DCHECK(
           packing_data.nullable, InvalidArgument, "Non nullable column $0 was not specified",
