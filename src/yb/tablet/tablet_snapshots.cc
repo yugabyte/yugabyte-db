@@ -511,10 +511,11 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
   RETURN_NOT_OK_PREPEND(
       env.RenameFile(tmp_snapshot_dir, snapshot_dir),
       Format("Cannot rename temp snapshot dir $0 to $1", tmp_snapshot_dir, snapshot_dir));
+  step_start = LogSnapshotStepDone(LogPrefix(), "Snapshot dir rename", step_start);
   RETURN_NOT_OK_PREPEND(
       env.SyncDir(top_snapshots_dir),
       Format("Cannot sync top snapshots dir $0", top_snapshots_dir));
-  step_start = LogSnapshotStepDone(LogPrefix(), "Snapshot dir rename", step_start);
+  step_start = LogSnapshotStepDone(LogPrefix(), "Snapshot rename parent dir sync", step_start);
 
   if (need_flush) {
     RETURN_NOT_OK(tablet().metadata()->Flush());
