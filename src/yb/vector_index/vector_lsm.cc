@@ -2056,6 +2056,10 @@ Status VectorLSM<Vector, DistanceResult>::AddChunkToManifest(
   DCHECK_EQ(chunk.state, ImmutableChunkState::kOnDisk);
   DCHECK(ManifestAcquired());
 
+  if (options_.wait_frontier_durable && chunk.applied_frontiers) {
+    RETURN_NOT_OK(options_.wait_frontier_durable(chunk.applied_frontiers->Largest()));
+  }
+
   VectorLSMUpdatePB update;
   chunk.AddToUpdate(update);
   VLOG_WITH_PREFIX_AND_FUNC(3) << update.ShortDebugString();

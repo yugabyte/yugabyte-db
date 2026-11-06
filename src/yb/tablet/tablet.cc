@@ -121,6 +121,7 @@
 #include "yb/tserver/tserver_error.h"
 #include "yb/tserver/ysql_advisory_lock_table.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/file_util.h"
@@ -1129,6 +1130,41 @@ Result<bool> Tablet::RegularDbFlushFilter(const rocksdb::MemTable& memtable) {
       "flush! This should not happen.";
   LOG_WITH_PREFIX(DFATAL) << error_msg;
   return STATUS(IllegalState, error_msg);
+}
+
+Status Tablet::WaitWalDurable(const OpId& op_id) {
+  const auto start = CoarseMonoClock::now();
+  CoarseBackoffWaiter waiter(
+      CoarseTimePoint::max(), /* max_wait= */ 100ms, /* base_delay= */ 1ms,
+      /* max_jitter_ms= */ 0, /* init_exponent= */ 1);
+  for (;;) {
+    auto wal_state = tablet_context_->WalState(op_id);
+    switch (wal_state) {
+      case log::WalEntryState::kDurable:
+        return Status::OK();
+      case log::WalEntryState::kSyncFailed:
+        YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 10)
+            << "Flushing vector index with ops not fsynced in log, op id: " << op_id;
+        return Status::OK();
+      case log::WalEntryState::kAppended:
+        // WalState has started the fsync.
+        break;
+      case log::WalEntryState::kNone:
+        // The op could be applied before it is appended locally. The log could be closed before
+        // it is, so do not wait for that during shutdown.
+        if (IsShutdownRequested()) {
+          return STATUS_FORMAT(
+              ShutdownInProgress, "$0Op $1 is not in log during shutdown", LogPrefix(), op_id);
+        }
+        break;
+    }
+    if (CoarseMonoClock::now() - start > 10s) {
+      YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 10)
+          << "Vector index flush waits for op " << op_id << " to become durable in log, state: "
+          << wal_state;
+    }
+    waiter.Wait();
+  }
 }
 
 Result<bool> Tablet::IntentsDbFlushFilter(

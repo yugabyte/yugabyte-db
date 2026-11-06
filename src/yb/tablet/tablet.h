@@ -451,6 +451,10 @@ class Tablet : public AbstractTablet,
     return shutdown_requested_.load(std::memory_order::acquire);
   }
 
+  // Blocks until the WAL entry with op_id is durable, or WAL fsync failed, see
+  // RegularDbFlushFilter. Fails if the entry is not in the WAL once shutdown is requested.
+  Status WaitWalDurable(const OpId& op_id);
+
   // Complete the shutdown of this tablet. This includes shutdown of internal structures such as:
   // - transaction coordinator
   // - transaction participant
