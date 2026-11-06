@@ -319,6 +319,7 @@ DECLARE_bool(skip_fields_moved_to_xcluster_guarded_info);
 DECLARE_bool(ysql_enable_auto_analyze_infra);
 DECLARE_int32(update_min_cdc_indices_interval_secs);
 DECLARE_uint64(ysql_lease_refresher_rpc_timeout_ms);
+DECLARE_string(flagfile);
 DECLARE_string(tmp_dir);
 DECLARE_string(ysql_hba_conf_csv);
 DECLARE_string(ysql_ident_conf_csv);
@@ -456,6 +457,19 @@ bool ObjectLockFastpathEnabled() {
   return FLAGS_enable_object_lock_fastpath && FLAGS_enable_object_locking_for_table_locks;
 }
 
+// Matches on any shared address: flag file entries are single host:ports, while entries learned
+// from the Raft config hold each master's private and broadcast addresses.
+bool HasMaster(const server::MasterAddresses& masters, const std::vector<HostPort>& master) {
+  for (const auto& existing : masters) {
+    for (const auto& hp : master) {
+      if (std::find(existing.begin(), existing.end(), hp) != existing.end()) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 }  // namespace
 
 struct TabletServer::PgClientServiceHolder {
@@ -571,6 +585,16 @@ void TabletServer::SetupAsyncClientInit(client::AsyncClientInitializer* async_cl
       client->SetLocalTabletServer(uuid, proxy, tserver);
     });
   }
+  // The client re-reads its master list from the flag file on each leader lookup, which on K8s can
+  // lag the Raft config or list only some masters. opts_ holds the list heartbeats learned.
+  async_client_init->builder().AddMasterAddressSource([this] {
+    const auto masters = opts_.GetMasterAddresses();
+    std::vector<std::string> result;
+    for (const auto& master : *masters) {
+      result.push_back(HostPort::ToCommaSeparatedString(master));
+    }
+    return result;
+  });
 #ifdef __linux__
   async_client_init->AddPostCreateHook([this](client::YBClient* client) {
     client->SetCallbackCgroupProvider(
@@ -641,6 +665,40 @@ Status TabletServer::UpdateMasterAddresses(const consensus::RaftConfigPB& new_co
 
   DoUpdateMasterAddresses();
 
+  return Status::OK();
+}
+
+// Only adds masters, since the file may list a subset of them. Resets the master config index so
+// that the next reply from the leader carries its config and replaces the list, dropping whatever
+// stale entries the file had.
+Status TabletServer::AddMasterAddressesFromFlagFile() {
+  if (FLAGS_flagfile.empty()) {
+    return Status::OK();
+  }
+  const auto flag_value =
+      VERIFY_RESULT(ReadFlagValueFromFlagFile(FLAGS_flagfile, "tserver_master_addrs"));
+  if (flag_value.empty()) {
+    return Status::OK();
+  }
+  auto file_masters = VERIFY_RESULT(server::ParseMasterAddresses(flag_value));
+
+  const auto old_master_addresses = opts_.GetMasterAddresses();
+  auto new_master_addresses = std::make_shared<server::MasterAddresses>(*old_master_addresses);
+  for (auto& master : file_masters) {
+    if (!HasMaster(*new_master_addresses, master)) {
+      new_master_addresses->push_back(std::move(master));
+    }
+  }
+  if (new_master_addresses->size() == old_master_addresses->size()) {
+    return Status::OK();
+  }
+
+  LOG(INFO) << "Added masters from flag file " << FLAGS_flagfile << ": old masters = "
+            << AsString(*old_master_addresses) << " new masters = "
+            << AsString(*new_master_addresses);
+  SetCurrentMasterIndex(0);
+  opts_.SetMasterAddresses(std::move(new_master_addresses));
+  DoUpdateMasterAddresses();
   return Status::OK();
 }
 
