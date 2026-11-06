@@ -1484,6 +1484,7 @@ get_baserel_parampathinfo(PlannerInfo *root, RelOptInfo *baserel,
 	ListCell   *lc;
 	Relids		batchedrelids = root->yb_cur_batched_relids;
 	List	   *yb_relegated_clauses = NIL;
+	List	   *yb_groups;
 
 	/* If rel has LATERAL refs, every path for it should account for them */
 	Assert(bms_is_subset(baserel->lateral_relids, required_outer));
@@ -1584,37 +1585,6 @@ get_baserel_parampathinfo(PlannerInfo *root, RelOptInfo *baserel,
 		pclauses = kept_clauses;
 	}
 
-	List	   *sel_clauses = pclauses;
-
-	if (!bms_is_empty(batchedrelids) && yb_enable_base_scans_cost_model)
-	{
-		List	   *new_pclauses = NIL;
-
-		foreach(lc, pclauses)
-		{
-			RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
-			RestrictInfo *batched = yb_get_batched_restrictinfo(rinfo,
-																batchedrelids,
-																baserel->relids);
-
-			if (batched)
-				rinfo = batched;
-
-			new_pclauses = lappend(new_pclauses, rinfo);
-		}
-		sel_clauses = new_pclauses;
-	}
-
-	/* Estimate the number of rows returned by the parameterized scan */
-	rows = get_parameterized_baserel_size(root, baserel, sel_clauses);
-	/* And now we can build the ParamPathInfo */
-	ppi = makeNode(ParamPathInfo);
-	ppi->ppi_req_outer = required_outer;
-	ppi->ppi_rows = rows;
-	ppi->ppi_clauses = pclauses;
-	ppi->yb_ppi_req_outer_batched = batchedrelids;
-	ppi->yb_ppi_relegated_clauses = yb_relegated_clauses;
-
 	/*
 	 * Two sources, because neither sees every batched clause.  pclauses covers
 	 * clauses that never become an index condition, but it can miss one that
@@ -1630,12 +1600,31 @@ get_baserel_parampathinfo(PlannerInfo *root, RelOptInfo *baserel,
 	 * does not need, which costs that join order its batching, never
 	 * correctness.
 	 */
-	ppi->yb_ppi_batched_groups =
+	yb_groups =
 		yb_add_batched_groups(yb_clause_batched_groups(pclauses, batchedrelids,
 													   baserel->relids),
 							  yb_groups_within(root->yb_cur_batched_groups,
 											   required_outer),
 							  batchedrelids);
+
+	/* Estimate the batched clauses in their batched forms. */
+	List	   *yb_sel_clauses = pclauses;
+
+	if (!bms_is_empty(batchedrelids) && yb_enable_base_scans_cost_model)
+		yb_sel_clauses = yb_batched_clauses(root, baserel, pclauses,
+											batchedrelids, yb_groups);
+
+	/* Estimate the number of rows returned by the parameterized scan */
+	rows = get_parameterized_baserel_size(root, baserel, yb_sel_clauses);
+
+	/* And now we can build the ParamPathInfo */
+	ppi = makeNode(ParamPathInfo);
+	ppi->ppi_req_outer = required_outer;
+	ppi->ppi_rows = rows;
+	ppi->ppi_clauses = pclauses;
+	ppi->yb_ppi_req_outer_batched = batchedrelids;
+	ppi->yb_ppi_relegated_clauses = yb_relegated_clauses;
+	ppi->yb_ppi_batched_groups = yb_groups;
 
 	baserel->ppilist = lappend(baserel->ppilist, ppi);
 

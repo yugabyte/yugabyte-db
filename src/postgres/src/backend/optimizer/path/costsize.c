@@ -7837,6 +7837,10 @@ yb_exist_conditions_on_all_hash_keys(IndexOptInfo *index,
  * This logic can be reused to identify non-strictest index conditions, and use
  * them as filters instead. The decision should also be propagated forward to
  * pggate to remove duplicate logic from `YbBindScanKeys`.
+ *
+ * 'strictest_in_shares_batch', when not NULL, is set when the strictest
+ * condition is a batched IN list that shares its batch with the batched
+ * conditions on other columns (yb_batched_clauses).
  */
 static void
 yb_analyze_conditions_on_current_column(PlannerInfo *root,
@@ -7845,7 +7849,8 @@ yb_analyze_conditions_on_current_column(PlannerInfo *root,
 										int index_col,
 										List *index_conditions,
 										YbIndexCondTypes *strictest_condition_type,
-										int *strictest_in_expr_array_length)
+										int *strictest_in_expr_array_length,
+										bool *strictest_in_shares_batch)
 {
 	/* Check if exist equality or IN conditions on the index column */
 	bool		in_expr = false;
@@ -7855,6 +7860,8 @@ yb_analyze_conditions_on_current_column(PlannerInfo *root,
 	ListCell   *lc;
 
 	*strictest_in_expr_array_length = INT_MAX;
+	if (strictest_in_shares_batch)
+		*strictest_in_shares_batch = false;
 
 	foreach(lc, index_conditions)
 	{
@@ -7882,13 +7889,16 @@ yb_analyze_conditions_on_current_column(PlannerInfo *root,
 
 					int			in_expr_array_length;
 
-					in_expr_array_length = yb_batch_expr_size(root,
-															  baserel->relid,
-															  other_operand);
+					in_expr_array_length =
+						(int) rint(yb_batch_expr_size(root, baserel->relid,
+													  other_operand));
 
 					if (*strictest_in_expr_array_length > in_expr_array_length)
 					{
 						*strictest_in_expr_array_length = in_expr_array_length;
+						if (strictest_in_shares_batch)
+							*strictest_in_shares_batch =
+								castNode(YbBatchedExpr, other_operand)->share > 0;
 					}
 				}
 				else
@@ -7934,6 +7944,8 @@ yb_analyze_conditions_on_current_column(PlannerInfo *root,
 			if (*strictest_in_expr_array_length > in_expr_array_length)
 			{
 				*strictest_in_expr_array_length = in_expr_array_length;
+				if (strictest_in_shares_batch)
+					*strictest_in_shares_batch = false;
 			}
 		}
 		else if (IsA(clause, NullTest))
@@ -7951,6 +7963,8 @@ yb_analyze_conditions_on_current_column(PlannerInfo *root,
 	if (equality_expr)
 	{
 		*strictest_condition_type |= EQUALITY_EXPR;
+		if (strictest_in_shares_batch)
+			*strictest_in_shares_batch = false;
 	}
 	else if (in_expr)
 	{
@@ -8047,12 +8061,14 @@ yb_estimate_seeks_nexts_in_index_scan(PlannerInfo *root,
 	{
 		YbIndexCondTypes current_column_strictest_cond_type = 0;
 		int			strictest_in_expr_array_length;
+		bool		strictest_in_shares_batch;
 
 		yb_analyze_conditions_on_current_column(root, baserel, index,
 												index_col,
 												index_conditions_on_each_column[index_col],
 												&current_column_strictest_cond_type,
-												&strictest_in_expr_array_length);
+												&strictest_in_expr_array_length,
+												&strictest_in_shares_batch);
 
 		Selectivity selectivity_current_key_conds;
 
@@ -8094,8 +8110,15 @@ yb_estimate_seeks_nexts_in_index_scan(PlannerInfo *root,
 				 * we cap the number of seeks by the number of unique values
 				 * of current key for each group of prefix keys. Otherwise we
 				 * may absurdbly over-estimate seeks for IN filters.
+				 *
+				 * A batched IN list that shares its batch with other columns
+				 * is not capped: the shares stay within the columns' distinct
+				 * values already, and the values per prefix group divide group
+				 * estimates that clamp a multi-column prefix at a tenth of the
+				 * rows (yb_estimate_num_groups), which would count only part of
+				 * the batch's tuples.
 				 */
-				if (index_col > 0)
+				if (index_col > 0 && !strictest_in_shares_batch)
 				{
 					Cardinality	num_unique_values_per_prefix_group =
 						num_groups_of_index_key_prefixes[index_col] /
@@ -8183,6 +8206,16 @@ yb_estimate_seeks_nexts_in_index_scan(PlannerInfo *root,
 								  yb_get_attdistinctcount(baserel_oid,
 														  index->indexkeys[0]));
 			}
+
+			/*
+			 * The share of a batched IN list that shares its batch with
+			 * other columns is the number of this column's values per value
+			 * of the columns before it, as the shares cross into one target
+			 * per tuple of the batch.
+			 */
+			if (strictest_in_shares_batch)
+				num_unique_values_per_prefix_key_group =
+					strictest_in_expr_array_length;
 
 			if ((current_column_strictest_cond_type &
 				 (LOWER_BOUND_INEQUALITY_EXPR |
@@ -9295,7 +9328,7 @@ yb_estimate_distinct_index_scan(PlannerInfo *root,
 
 		yb_analyze_conditions_on_current_column(root, baserel, index, col,
 												conds, &cond_type,
-												&in_list_length);
+												&in_list_length, NULL);
 		if (conds != NIL)
 			col_selectivity = clauselist_selectivity(root, conds,
 													 baserel->relid,
@@ -9735,16 +9768,25 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	bms_free(non_pushable_attnums);
 
 	/*
-	 * Sort the index conditions into `index_conditions_on_each_column`.
+	 * The index conditions as they are estimated, a batched one in its
+	 * batched form (yb_batched_clauses), sorted into
+	 * `index_conditions_on_each_column`.
 	 */
+	index_conditions = get_quals_from_indexclauses(path->indexclauses);
+	if (YB_PATH_NEEDS_BATCHED_RELS(&path->path))
+		index_conditions =
+			yb_batched_clauses(root, baserel, index_conditions,
+							   YB_PATH_REQ_OUTER_BATCHED(&path->path),
+							   YB_PATH_BATCHED_GROUPS(&path->path));
+
 	index_conditions_on_each_column = palloc0(sizeof(List *) * index->nkeycolumns);
-	index_conditions = NIL;
 	index_col = 0;
+
+	ListCell   *lc_cond = list_head(index_conditions);
 
 	foreach(lc, path->indexclauses)
 	{
 		IndexClause *iclause = lfirst_node(IndexClause, lc);
-		ListCell   *lc2;
 		int			index_qual_col = iclause->indexcol;
 
 		while (index_col != index_qual_col)
@@ -9753,24 +9795,12 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 			Assert(index_col < index->nkeycolumns);
 		}
 
-		foreach(lc2, iclause->indexquals)
+		for (int i = 0; i < list_length(iclause->indexquals); i++)
 		{
-			RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc2);
-
-			if (path->path.param_info)
-			{
-				Relids		batched = YB_PATH_REQ_OUTER_BATCHED(&path->path);
-				RestrictInfo *batched_rinfo;
-
-				batched_rinfo =
-					yb_get_batched_restrictinfo(rinfo, batched,
-												path->path.parent->relids);
-				if (batched_rinfo)
-					rinfo = batched_rinfo;
-			}
 			index_conditions_on_each_column[index_col] =
-				lappend(index_conditions_on_each_column[index_col], rinfo);
-			index_conditions = lappend(index_conditions, rinfo);
+				lappend(index_conditions_on_each_column[index_col],
+						lfirst(lc_cond));
+			lc_cond = lnext(index_conditions, lc_cond);
 		}
 	}
 
@@ -11302,4 +11332,176 @@ yb_first_fetch_limit(PlannerInfo *root, Path *path, bool has_local_quals)
 	}
 
 	return root->yb_limit_tuples;
+}
+
+/*
+ * yb_batched_clauses
+ *	  The clauses of a parameterized scan of rel in the form the scan is
+ *	  estimated with: a clause that has a batched form over batchedrelids is
+ *	  replaced by that form, and the others are returned as they are.
+ *
+ * A batched clause probes rel with a batch of outer values per rescan, and
+ * eqsel multiplies its per-value selectivity by the number of values
+ * (yb_batch_expr_size).  The batched clauses one batch feeds are zipped into
+ * one row comparison against the batch's tuples (createplan.c), so the batch
+ * probes rel once per tuple, not once per combination of the clauses' values.
+ * Each of those clauses is given a share of the batch size on a copy of its
+ * batched form, and the shares multiply to the batch size.  A clause with a
+ * batch of its own keeps the whole batch size.
+ *
+ * One batch feeds the clauses whose batched relations one join batches:
+ * clauses with a relation in common, since one join batches a relation, and
+ * clauses linked by a group of relations one batched expression reads
+ * together (yb_ppi_batched_groups).  Clauses on disjoint relations may be fed
+ * by nested joins, each with a batch of its own.
+ *
+ * The shares are assigned in clause order, each at most the reciprocal of its
+ * clause's selectivity, where eqsel would clamp it, and the last clause takes
+ * the rest; the selectivities then multiply to the estimate for the batch in
+ * any clause order.  yb_cost_index passes the clauses in index column order,
+ * so the leading key columns take as many values as they have, and
+ * yb_estimate_seeks_nexts_in_index_scan, which crosses the columns' shares as
+ * IN lists, counts one target per tuple of the batch.
+ *
+ * As var_eq_non_const does for one value, the estimate assumes that a probe
+ * tuple has rows in rel, so it matches at least one.  When the per-value
+ * selectivities multiply to less than one row of rel, rel has fewer rows than
+ * value combinations and its columns are not independent.  The last clause
+ * then carries the rows_scale that raises the estimate to one row per probe
+ * tuple; eqsel applies it, and the seek and next estimate does not, as the
+ * scan still probes once per tuple.
+ */
+List *
+yb_batched_clauses(PlannerInfo *root, RelOptInfo *rel, List *clauses,
+				   Relids batchedrelids, List *groups)
+{
+	int			nclauses = list_length(clauses);
+	RestrictInfo **batched = palloc0(nclauses * sizeof(RestrictInfo *));
+	Relids	   *relids = palloc0(nclauses * sizeof(Relids));
+	int		   *set = palloc(nclauses * sizeof(int));
+	Selectivity *sel = palloc0(nclauses * sizeof(Selectivity));
+	double	   *share = palloc0(nclauses * sizeof(double));
+	double	   *rows_scale = palloc0(nclauses * sizeof(double));
+	List	   *result = NIL;
+	ListCell   *lc;
+
+	foreach(lc, clauses)
+	{
+		int			i = foreach_current_index(lc);
+
+		batched[i] = yb_get_batched_restrictinfo(lfirst(lc), batchedrelids,
+												 rel->relids);
+		if (batched[i])
+			relids[i] = bms_intersect(batched[i]->right_relids,
+									  batchedrelids);
+		set[i] = i;
+	}
+
+	/* Label the clauses one batch feeds with one set number. */
+	for (int i = 0; i < nclauses; i++)
+	{
+		for (int j = i + 1; batched[i] && j < nclauses; j++)
+		{
+			bool		together = bms_overlap(relids[i], relids[j]);
+			ListCell   *lc2;
+
+			foreach(lc2, groups)
+			{
+				Relids		group = (Relids) lfirst(lc2);
+
+				if (bms_overlap(relids[i], group) &&
+					bms_overlap(relids[j], group))
+					together = true;
+			}
+
+			if (batched[j] && together && set[j] != set[i])
+			{
+				int			from = set[j];
+
+				for (int k = 0; k < nclauses; k++)
+				{
+					if (set[k] == from)
+						set[k] = set[i];
+				}
+			}
+		}
+	}
+
+	for (int s = 0; s < nclauses; s++)
+	{
+		int			last = -1;
+		int			nmembers = 0;
+		double		remaining = 0;
+		Selectivity joint_sel = 1.0;
+
+		/*
+		 * The set's batch size, the smallest of its clauses' (each capped by
+		 * its own outer rows), and the product of their per-value
+		 * selectivities, estimated as for an unbatched parameterized scan.
+		 */
+		for (int i = 0; i < nclauses; i++)
+		{
+			double		batch_size;
+
+			if (!batched[i] || set[i] != s)
+				continue;
+
+			last = i;
+			nmembers++;
+			batch_size = yb_batch_expr_size(root, rel->relid,
+											get_rightop(batched[i]->clause));
+			if (remaining == 0 || batch_size < remaining)
+				remaining = batch_size;
+			sel[i] = clause_selectivity(root, list_nth(clauses, i),
+										rel->relid, JOIN_INNER, NULL);
+			joint_sel *= sel[i];
+		}
+
+		if (nmembers < 2)
+			continue;
+
+		for (int i = 0; i < last; i++)
+		{
+			if (!batched[i] || set[i] != s)
+				continue;
+
+			share[i] = remaining;
+			if (sel[i] > 0 && 1.0 / sel[i] < share[i])
+				share[i] = 1.0 / sel[i];
+			remaining /= share[i];
+		}
+		share[last] = remaining;
+		if (joint_sel > 0 && rel->tuples * joint_sel < 1.0)
+			rows_scale[last] = 1.0 / (rel->tuples * joint_sel);
+	}
+
+	foreach(lc, clauses)
+	{
+		int			i = foreach_current_index(lc);
+		RestrictInfo *rinfo = lfirst(lc);
+
+		if (share[i] > 0)
+		{
+			YbBatchedExpr *bexpr;
+
+			rinfo = copyObject(batched[i]);
+			bexpr = castNode(YbBatchedExpr, get_rightop(rinfo->clause));
+			bexpr->share = share[i];
+			bexpr->rows_scale = rows_scale[i];
+		}
+		else if (batched[i])
+			rinfo = batched[i];
+
+		result = lappend(result, rinfo);
+		bms_free(relids[i]);
+	}
+
+	pfree(batched);
+	pfree(relids);
+	pfree(set);
+	pfree(sel);
+	pfree(share);
+	pfree(rows_scale);
+
+	return result;
 }
