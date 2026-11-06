@@ -375,6 +375,10 @@ class CDCSDKVirtualWAL {
   // Store the LSN type the replication slot is created with.
   ReplicationSlotLsnType slot_lsn_type_;
 
+  // Set once a transaction has been given its real commit time as LSN while
+  // TEST_cdcsdk_force_adjacent_commit_lsn is on; later transactions get the previous LSN + 1.
+  bool TEST_force_adjacent_commit_lsn_primed_ = false;
+
   // Slot's hash range for tablets with end range being exclusive. Tablets whose start hash range
   // falls within these ranges will be polled.
   std::unique_ptr<ReplicationSlotHashRange> slot_hash_range_;
