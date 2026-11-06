@@ -7,7 +7,7 @@ import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
 
 @RunWith(value = YBTestRunner.class)
-public class TestBindCollectionWithSubscriptedColumn extends TestBindVariable {
+public class TestBindCollectionWithSubscriptedColumn extends BaseCollectionBindUpdatesTest {
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flags = super.getTServerFlags();
@@ -16,7 +16,6 @@ public class TestBindCollectionWithSubscriptedColumn extends TestBindVariable {
   }
 
   @Test
-  @Override
   public void testCollectionBindUpdates() throws Exception {
     testCollectionBindUpdates(BindCollAssignmentByColName.ON);
   }
