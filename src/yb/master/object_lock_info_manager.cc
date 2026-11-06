@@ -25,7 +25,6 @@
 #include <google/protobuf/util/message_differencer.h>
 
 #include "yb/common/common_flags.h"
-#include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/pg_catversions.h"
 #include "yb/common/wire_protocol.h"
@@ -40,7 +39,6 @@
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/ts_manager.h"
-#include "yb/master/ysql/ysql_manager_if.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/poller.h"
@@ -1248,9 +1246,7 @@ Status ObjectLockInfoManager::Impl::PopulateDbCatalogVersionCache(
     return Status::OK();
   }
   // Until initdb creates pg_yb_catalog_version there are no catalog caches to invalidate.
-  auto catalog_version_table_id = VERIFY_RESULT(
-      master_.ysql_manager().GetVersionSpecificCatalogTableId(kPgYbCatalogVersionTableId));
-  if (!catalog_manager_.GetTableInfo(catalog_version_table_id)) {
+  if (!VERIFY_RESULT(catalog_manager_.IsYsqlCatalogVersionTableCreated())) {
     return Status::OK();
   }
   if (PREDICT_FALSE(FLAGS_TEST_fail_populate_db_catalog_info_on_release)) {

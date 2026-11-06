@@ -11558,10 +11558,7 @@ Status CatalogManager::GetYsqlDBCatalogVersion(
   }
   LOG_IF(INFO, PREDICT_FALSE(use_cache && FLAGS_TEST_log_catalog_version_cache_events))
       << "GetYsqlDBCatalogVersion: cache miss for db_oid " << db_oid;
-  auto table_id =
-      VERIFY_RESULT(ysql_manager_->GetVersionSpecificCatalogTableId(kPgYbCatalogVersionTableId));
-  auto table_info = GetTableInfo(table_id);
-  if (table_info != nullptr) {
+  if (VERIFY_RESULT(IsYsqlCatalogVersionTableCreated())) {
     RETURN_NOT_OK(sys_catalog_->ReadYsqlDBCatalogVersion(
         kPgYbCatalogVersionTableId, db_oid, catalog_version, last_breaking_version));
     // If the version is properly initialized, we're done.
@@ -11586,13 +11583,19 @@ Status CatalogManager::GetYsqlDBCatalogVersion(
   return Status::OK();
 }
 
+Result<bool> CatalogManager::IsYsqlCatalogVersionTableCreated() const {
+  auto table_id =
+      VERIFY_RESULT(ysql_manager_->GetVersionSpecificCatalogTableId(kPgYbCatalogVersionTableId));
+  return GetTableInfo(table_id) != nullptr;
+}
+
 Status CatalogManager::GetYsqlAllDBCatalogVersionsImpl(
     DbOidToCatalogVersionMap* versions, HybridTime* out_read_ht) {
   // pg_yb_catalog_version exists in every steady-state YSQL-enabled cluster (created during
-  // initdb). The only caller that may invoke this before the table exists is the initdb path
-  // (Master::get_ysql_db_oid_to_cat_version_info_map), which gates this call on a GetTableInfo
-  // check itself. Reading directly here avoids a SharedLock on the catalog manager's main
-  // mutex_ on every heartbeat-rate refresh.
+  // initdb). Callers that may run before the table exists (the initdb path in
+  // Master::get_ysql_db_oid_to_cat_version_info_map, and object lock releases) check
+  // IsYsqlCatalogVersionTableCreated first. Reading directly here avoids a SharedLock on the
+  // catalog manager's main mutex_ on every heartbeat-rate refresh.
   return sys_catalog_->ReadYsqlAllDBCatalogVersions(
       kPgYbCatalogVersionTableId, versions, out_read_ht);
 }
